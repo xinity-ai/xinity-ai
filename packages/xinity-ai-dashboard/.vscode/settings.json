@@ -1,0 +1,14 @@
+{
+  "editor.tabSize": 2,
+  "editor.rulers": [80, 100],
+  "editor.formatOnSave": true,
+  "[svelte]": {
+    "editor.defaultFormatter": "svelte.svelte-vscode"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "vscode.typescript-language-features"
+  },
+  "explorer.sortOrder": "filesFirst",
+  "workbench.editor.labelFormat": "medium",
+  "terminal.integrated.enablePersistentSessions": false
+}

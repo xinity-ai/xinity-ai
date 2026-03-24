@@ -1,0 +1,54 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/compose-spec/compose-spec/master/schema/compose-spec.json
+
+services:
+  gateway:
+    build:
+      context: ..
+      dockerfile: packages/xinity-ai-gateway/Dockerfile
+    image: ghcr.io/xinity-ai/xinity-ai-gateway:1
+    ports:
+      - "4121:4121"
+    environment:
+      PORT: "4121"
+      HOST: 0.0.0.0
+      DB_CONNECTION_URL: postgresql://tester:example@db/default
+      REDIS_URL: redis://redis:6379
+  dashboard:
+    build:
+      context: ..
+      dockerfile: packages/xinity-ai-dashboard/Dockerfile
+    env_file:
+      - ../packages/xinity-ai-dashboard/.env
+    environment:
+      HTTP_PORT: "5173"
+      MAIL_URL: smtps://localhost:1025
+      ORIGIN: http://localhost:5121
+      HTTP_OVERRIDE_ORIGIN: http://localhost:5121
+      BETTER_AUTH_URL: http://localhost:5173
+      PUBLIC_LLM_API_URL: http://localhost:4121
+      APP_NAME: Xinity Dashboard
+      SIGNUP_ENABLED: "true"
+      INFOSERVER_URL: http://xinity-infoserver:8090
+      # MODEL_CONFIG_URL: "file:///config-path/models.test.yaml"
+      DB_CONNECTION_URL: postgresql://tester:example@db/default
+      NODE_ENV: production
+    volumes:
+      - .:/config-path/
+      - ./logs/:/usr/src/app/packages/xinity-ai-dashboard/logs
+
+    image: ghcr.io/xinity-ai/xinity-ai-dashboard:1
+    ports:
+      - "8888:8888"
+  xinity-infoserver:
+    build:
+      context: ..
+      dockerfile: packages/xinity-infoserver/Dockerfile
+    ports:
+      - "8090:8090"
+    environment:
+      MODEL_INFO_FILE: /data/models.yaml
+      PORT: "8090"
+    volumes:
+      - ./xinity-infoserver/models.example.yaml:/data/models.yaml:ro
+    image: ghcr.io/xinity-ai/xinity-infoserver
+      

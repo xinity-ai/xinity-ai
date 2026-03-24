@@ -1,0 +1,9 @@
+models:
+  - modelSpecifier: mixtral:8x22b
+    name: Mixtral 8x22B
+    publicSpecifier: mixtral-8x22b
+    url: https://mistral.ai/news/mixtral-8x22b
+    description: Sparse mixture-of-experts model for high-quality, latency-aware responses
+    weight: 10
+    registeredAt: 2025.12.03
+    driver: ollama

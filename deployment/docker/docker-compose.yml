@@ -1,0 +1,189 @@
+version: '3.8'
+
+services:
+  # ── PostgreSQL Database ────────────────────────────────────────────────
+  postgres:
+    image: postgres:17-alpine
+    container_name: xinity-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-xinity}
+      POSTGRES_USER: ${POSTGRES_USER:-xinity}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - xinity-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-xinity}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis Cache ────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: xinity-redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    volumes:
+      - redis-data:/data
+    networks:
+      - xinity-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Database Migration ─────────────────────────────────────────────────
+  db-migrate:
+    image: ghcr.io/xinity-ai/xinity-db-migrate:${VERSION:-latest}
+    container_name: xinity-db-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_CONNECTION_URL: postgresql://${POSTGRES_USER:-xinity}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-xinity}
+    networks:
+      - xinity-network
+    restart: "no"
+
+  # ── Gateway API ────────────────────────────────────────────────────────
+  gateway:
+    image: ghcr.io/xinity-ai/xinity-ai-gateway:${VERSION:-latest}
+    container_name: xinity-gateway
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+    environment:
+      HOST: 0.0.0.0
+      PORT: ${GATEWAY_PORT:-4121}
+      DB_CONNECTION_URL: postgresql://${POSTGRES_USER:-xinity}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-xinity}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      WEB_SEARCH_ENGINE_URL: ${WEB_SEARCH_ENGINE_URL:-http://searxng:${SEARXNG_PORT:-8888}}
+      RESPONSE_CACHE_TTL_SECONDS: ${RESPONSE_CACHE_TTL:-3600}
+    networks:
+      - xinity-network
+    # Expose port for direct access (if not using Caddy)
+    # ports:
+    #   - "${GATEWAY_PORT:-4121}:4121"
+
+  # ── Dashboard Web UI ───────────────────────────────────────────────────
+  dashboard:
+    image: ghcr.io/xinity-ai/xinity-ai-dashboard:${VERSION:-latest}
+    container_name: xinity-dashboard
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+    environment:
+      HTTP_PORT: ${DASHBOARD_PORT:-5121}
+      NODE_ENV: production
+      DB_CONNECTION_URL: postgresql://${POSTGRES_USER:-xinity}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-xinity}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+      BETTER_AUTH_URL: https://${DASHBOARD_SUBDOMAIN:-dashboard}.${DOMAIN:?DOMAIN is required}
+      ORIGIN: https://${DASHBOARD_SUBDOMAIN:-dashboard}.${DOMAIN}
+      HTTP_OVERRIDE_ORIGIN: https://${DASHBOARD_SUBDOMAIN:-dashboard}.${DOMAIN}
+      PUBLIC_LLM_API_URL: https://${GATEWAY_SUBDOMAIN:-api}.${DOMAIN}/v1
+      INFOSERVER_URL: ${INFOSERVER_URL:-https://sysinfo.xinity.ai}
+      APP_NAME: ${APP_NAME:-Xinity Admin}
+      SIGNUP_ENABLED: ${SIGNUP_ENABLED:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Optional: Mount logs directory
+      # LOG_DIR: /var/log/xinity
+    networks:
+      - xinity-network
+    # volumes:
+    #   - ./logs/dashboard:/var/log/xinity
+    # Expose port for direct access (if not using Caddy)
+    # ports:
+    #   - "${DASHBOARD_PORT:-5121}:5121"
+
+  # ── Infoserver (Model Information) ─────────────────────────────────────
+  # Optional: Only needed if hosting a custom model registry
+  # The dashboard defaults to using https://sysinfo.xinity.ai
+  infoserver:
+    image: ghcr.io/xinity-ai/xinity-infoserver:${VERSION:-latest}
+    container_name: xinity-infoserver
+    restart: unless-stopped
+    environment:
+      PORT: ${INFOSERVER_PORT:-8090}
+      MODEL_INFO_FILE: /data/models.yaml
+    volumes:
+      - ./models.yaml:/data/models.yaml:ro
+    networks:
+      - xinity-network
+    profiles:
+      - ${INFOSERVER_PROFILE:-infoserver}
+    # Expose port for direct access (if not using Caddy)
+    # ports:
+    #   - "${INFOSERVER_PORT:-8090}:8090"
+
+  # ── SearXNG Web Search ─────────────────────────────────────────────────
+  searxng:
+    image: searxng/searxng:latest
+    container_name: xinity-searxng
+    restart: unless-stopped
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-change-this-secret-key}
+      SEARXNG_BASE_URL: http://searxng:${SEARXNG_PORT:-8888}
+    networks:
+      - xinity-network
+    profiles:
+      - ${SEARXNG_PROFILE:-searxng}
+    # Expose port for direct access (if needed)
+    # ports:
+    #   - "${SEARXNG_PORT:-8888}:8888"
+
+  # ── Caddy Reverse Proxy ────────────────────────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    container_name: xinity-caddy
+    restart: unless-stopped
+    depends_on:
+      - gateway
+      - dashboard
+      - infoserver
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"  # HTTP/3
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN is required}
+      DASHBOARD_SUBDOMAIN: ${DASHBOARD_SUBDOMAIN:-dashboard}
+      GATEWAY_SUBDOMAIN: ${GATEWAY_SUBDOMAIN:-api}
+      INFOSERVER_SUBDOMAIN: ${INFOSERVER_SUBDOMAIN:-sysinfo}
+      GATEWAY_PORT: ${GATEWAY_PORT:-4121}
+      DASHBOARD_PORT: ${DASHBOARD_PORT:-5121}
+      INFOSERVER_PORT: ${INFOSERVER_PORT:-8090}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL is required}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - xinity-network
+
+# ── Networks ─────────────────────────────────────────────────────────────
+networks:
+  xinity-network:
+    driver: bridge
+
+# ── Volumes ──────────────────────────────────────────────────────────────
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+  caddy-data:
+    driver: local
+  caddy-config:
+    driver: local

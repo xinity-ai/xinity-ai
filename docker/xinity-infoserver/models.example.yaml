@@ -1,0 +1,222 @@
+# yaml-language-server: $schema=../../packages/xinity-infoserver/models.schema.json
+
+models:
+  granite4-micro:
+    name: Granite4 Micro
+    url: &granite https://github.com/ibm-granite/granite-4.0-language-models
+    description: |
+      Smallest variant of Granite4, without using mamba variant
+    weight: 0.5
+    minKvCache: 0.2
+    registeredAt: 2025.12.03
+    providers:
+      ollama: "granite4:350m"
+    family: granite4
+    type: chat
+    isCustom: false
+    tags: []
+    entryVersion: 0.4.10
+  granite4-micro-mamba:
+    name: Granite4 Micro Mamba
+    url: *granite
+    description: Smallest variant of Granite4, using the mamba hybrid architecture
+    weight: 0.5
+    minKvCache: 0.2
+    registeredAt: 2025.12.03
+    providers:
+      ollama: "granite4:350m-h"
+    family: granite4
+    type: chat
+    entryVersion: 0.4.10
+  granite4-small:
+    name: Granite4 Small
+    url: *granite
+    description: Small variant of Granite4, without using mamba variant
+    weight: 2
+    minKvCache: 0.8
+    registeredAt: 2025.12.03
+    providers:
+      ollama: "granite4:3b"
+    family: granite4
+    type: chat
+    entryVersion: 0.4.10
+  llama-3.1-8b:
+    name: Llama 3.1 8B Instruct
+    url: &llama3 https://ai.meta.com/blog/meta-llama-3-1
+    description: Balanced general-purpose model, great default chat baseline
+    weight: 3.5
+    minKvCache: 1.5
+    registeredAt: 2025.12.03
+    providers:
+      ollama: "llama3.1:8b"
+    family: llama
+    type: chat
+    entryVersion: 0.4.10
+  llama-3.1-70b:
+    name: Llama 3.1 70B Instruct
+    url: *llama3
+    description: Larger Llama 3.1 tuned for higher reasoning depth
+    weight: 9
+    minKvCache: 10
+    registeredAt: 2025.12.03
+    providers:
+      ollama: "llama3.1:70b"
+    family: llama
+    type: chat
+    entryVersion: 0.4.10
+  qwen2.5-7b:
+    name: Qwen2.5 7B Instruct
+    url: https://github.com/QwenLM/Qwen2.5
+    description: Efficient multilingual model with strong code and math performance
+    weight: 3
+    minKvCache: 1.2
+    registeredAt: 2025.12.03
+    providers:
+      ollama: "qwen2.5:7b"
+    family: qwen
+    type: chat
+    entryVersion: 0.4.10
+  qwen2.5-32b:
+    name: Qwen2.5 32B Instruct
+    url: https://github.com/QwenLM/Qwen2.5
+    description: Larger Qwen2.5 variant, excels at complex reasoning and coding tasks
+    weight: 7
+    minKvCache: 5
+    registeredAt: 2025.12.03
+    providers:
+      ollama: "qwen2.5:32b"
+    family: qwen
+    type: chat
+    entryVersion: 0.4.10
+  qwq-32b:
+    name: QwQ 32B
+    url: https://github.com/QwenLM/QwQ
+    description: RL-aligned Qwen family model optimized for deep reasoning and tool use
+    weight: 7
+    minKvCache: 5
+    registeredAt: 2025.12.03
+    providers:
+      ollama: "qwq:32b"
+    family: qwen
+    type: chat
+    entryVersion: 0.4.10
+  phi-3-mini:
+    name: Phi-3 Mini 3.8B
+    url: https://github.com/microsoft/Phi-3CookBook
+    description: Lightweight Phi model optimized for low-latency chat and code
+    weight: 2
+    minKvCache: 0.8
+    family: phi3
+    registeredAt: 2025.12.03
+    providers:
+      ollama: "phi3:mini"
+    type: chat
+    entryVersion: 0.4.10
+  phi-3-medium-128k:
+    name: Phi-3 Medium 14B (128k)
+    url: https://github.com/microsoft/Phi-3CookBook
+    description: Longer-context Phi variant, solid reasoning with modest hardware needs
+    weight: 5
+    minKvCache: 2.5
+    family: phi3
+    registeredAt: 2025.12.03
+    providers:
+      ollama: "phi3:medium-128k"
+    type: chat
+    entryVersion: 0.4.10
+  gemma2-9b:
+    name: Gemma 2 9B
+    url: https://blog.google/products/google-gemma-2
+    description: Google Gemma 2 mid-size model with strong safety and coding ability
+    weight: 3.5
+    minKvCache: 1.5
+    registeredAt: 2025.12.03
+    providers:
+      ollama: "gemma2:9b"
+    family: gemma
+    type: chat
+    entryVersion: 0.4.10
+  mistral-nemo-12b:
+    name: Mistral Nemo 12B
+    url: https://mistral.ai/news/mistral-nemo
+    description: Mistral 12B variant offering balanced speed, quality, and cost
+    weight: 4
+    minKvCache: 2
+    registeredAt: 2025.12.03
+    providers:
+      ollama: "mistral-nemo:12b"
+    family: mistral
+    type: chat
+    entryVersion: 0.4.10
+  mixtral-8x22b:
+    name: Mixtral 8x22B
+    url: https://mistral.ai/news/mixtral-8x22b
+    description: Sparse mixture-of-experts model for high-quality, latency-aware responses
+    weight: 10
+    minKvCache: 7
+    registeredAt: 2025.12.03
+    providers:
+      ollama: "mixtral:8x22b"
+    family: mistral
+    type: chat
+    entryVersion: 0.4.10
+  nemotron-mini-4b:
+    name: Nemotron Mini 4B Instruct
+    url: https://developer.nvidia.com/blog/introducing-nemotron-mini
+    description: Tiny NVIDIA instruct model suited for roleplay, RAG QA, and function calling.
+    weight: 1.2
+    minKvCache: 0.6
+    registeredAt: 2025.12.03
+    providers:
+      ollama: "nemotron-mini:4b-instruct-q3_K_S"
+    type: chat
+    entryVersion: 0.4.10
+  # Embedding models
+  embedding-gemma:
+    name: Gemma Embedding
+    url: https://ai.google.dev/gemma/docs/embeddinggemma
+    description: Embedding model variant of the gemma family of models
+    registeredAt: 2025.12.03
+    weight: 0.2
+    minKvCache: 0.1
+    type: embedding
+    providers:
+      ollama: "embeddinggemma:300m"
+    family: gemma
+    entryVersion: 0.4.10
+  qwen3-embedding-small:
+    name: Qwen3 Embedding Small
+    url: https://github.com/QwenLM/Qwen3-Embedding
+    type: embedding
+    description: Small embedding model variant of Qwen3
+    weight: 0.5
+    minKvCache: 0.2
+    registeredAt: 2025.12.03
+    providers:
+      ollama: "qwen3-embedding:0.6b"
+    family: qwen
+    entryVersion: 0.4.10
+  qwen3-embedding-large:
+    name: Qwen3 Embedding Large
+    url: https://github.com/QwenLM/Qwen3-Embedding
+    type: embedding
+    description: Large embedding model variant of Qwen3
+    weight: 3
+    minKvCache: 1.5
+    registeredAt: 2025.12.11
+    providers:
+      ollama: "qwen3-embedding:8b"
+    family: qwen
+    entryVersion: 0.4.10
+  nomic-embed-text:
+    name: Nomic Embed Text
+    url: https://blog.nomic.ai/posts/nomic-embed-text-v1
+    type: embedding
+    description: Embedding model by mixedbreed.ai
+    weight: 0.2
+    minKvCache: 0.1
+    registeredAt: 2025.12.11
+    providers:
+      ollama: "nomic-embed-text:v1.5"
+    family: nomic
+    entryVersion: 0.4.10

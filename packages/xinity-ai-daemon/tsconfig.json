@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "lib": ["ESNext"],
+    "types": ["bun"],
+    "paths": {
+      "common-db": ["../common-db/src/"],
+      "common-log": ["../common-log/src/"]
+    }
+  }
+}

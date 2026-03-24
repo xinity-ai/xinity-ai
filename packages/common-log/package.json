@@ -1,0 +1,14 @@
+{
+  "name": "common-log",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "common-env": "workspace:*",
+    "pino": "^10.1.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5",
+    "zod": "^4"
+  }
+}

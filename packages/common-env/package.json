@@ -1,0 +1,10 @@
+{
+  "name": "common-env",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "peerDependencies": {
+    "typescript": "^5",
+    "zod": "^4"
+  }
+}

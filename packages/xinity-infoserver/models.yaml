@@ -1,0 +1,55 @@
+# yaml-language-server: $schema=../../packages/xinity-infoserver/models.schema.json
+
+models:
+  phi-3-mini:
+    name: Phi-3 Mini 3.8B
+    url: https://github.com/microsoft/Phi-3CookBook
+    description: Lightweight Phi model optimized for low-latency chat and code
+    weight: 2
+    minKvCache: 1
+    family: phi3
+    registeredAt: 2025.12.03
+    entryVersion: 0.4.10
+    providers:
+      ollama: "phi3:mini"
+    type: chat
+  phi-3-vision:
+    name: Phi-3 Vision
+    url: https://huggingface.co/microsoft/Phi-3-vision-128k-instruct
+    family: phi3
+    weight: 8
+    minKvCache: 2
+    registeredAt: 2026.02.17
+    type: chat
+    description: Lightweight model with vision capabilities
+    entryVersion: 0.5.4
+    tags: [vision]
+    providerTags:
+      vllm: [custom_code, vision]
+    providers:
+      vllm: "microsoft/Phi-3-vision-128k-instruct"
+  ministral-3-m:
+    name: Ministral-3-medium
+    url: https://ollama.com/library/qwen3-coder-next
+    description: Multimodal Mistral family model
+    family: mistral
+    tags: [tools]
+    weight: 14
+    minKvCache: 4
+    registeredAt: 2026.02.18
+    entryVersion: 0.6.0
+    providers:
+      ollama: "ministral-3:14b-instruct-2512-fp16"
+  qwen3-coder-next-large:
+    name: Qwen coder Next
+    url: https://ollama.com/library/qwen3-coder-next
+    description: Coding model
+    family: qwen3
+    tags: [tools]
+    type: chat
+    weight: 14
+    minKvCache: 4
+    registeredAt: 2026.02.18
+    entryVersion: 0.6.0
+    providers:
+      ollama: "qwen3-coder-next:q8_0"

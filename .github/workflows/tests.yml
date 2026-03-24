@@ -1,0 +1,202 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  dockerfile-sync:
+    name: Dockerfile manifests in sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3"
+      - run: bun scripts/sync-dockerfile-manifests.ts --check
+
+  unit-tests:
+    name: "Unit: ${{ matrix.suite.name }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - name: Gateway
+            cmd: bun test --reporter=default --reporter=junit --reporter-outfile=results.xml src/
+            cwd: packages/xinity-ai-gateway
+          - name: Daemon
+            cmd: bun test --reporter=default --reporter=junit --reporter-outfile=results.xml src/
+            cwd: packages/xinity-ai-daemon
+          - name: Infoserver
+            cmd: bun test --reporter=default --reporter=junit --reporter-outfile=results.xml .
+            cwd: packages/xinity-infoserver
+          - name: Common DB
+            cmd: bun test --reporter=default --reporter=junit --reporter-outfile=results.xml src/
+            cwd: packages/common-db
+          - name: CLI
+            cmd: bun test --timeout 30000 --reporter=default --reporter=junit --reporter-outfile=results.xml
+            cwd: packages/xinity-cli
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3"
+      - run: bun install --frozen-lockfile
+      - name: Run tests
+        run: ${{ matrix.suite.cmd }}
+        working-directory: ${{ matrix.suite.cwd }}
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.suite.name }}
+          path: ${{ matrix.suite.cwd }}/results.xml
+
+  system-tests:
+    name: System Integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: tester
+          POSTGRES_PASSWORD: example
+          POSTGRES_DB: default
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U tester -d default"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=5
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      DB_CONNECTION_URL: postgresql://tester:example@localhost/default
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3"
+      - run: bun install --frozen-lockfile
+      - name: Run system tests
+        run: bun test --timeout 30000 --reporter=default --reporter=junit --reporter-outfile=results.xml tests/system/
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-system
+          path: results.xml
+
+  dashboard-e2e:
+    name: Dashboard E2E
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: tester
+          POSTGRES_PASSWORD: example
+          POSTGRES_DB: default
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U tester -d default"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=5
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=5
+      mailhog:
+        image: mailhog/mailhog
+        ports: ["1025:1025", "8025:8025"]
+    env:
+      DB_CONNECTION_URL: postgresql://tester:example@localhost/default
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3"
+      - run: bun install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: |
+          bunx playwright install --with-deps chromium
+          CHROME=$(find ~/.cache/ms-playwright -name 'chrome' -type f | head -1)
+          echo "BROWSER_PATH=${CHROME}" >> "$GITHUB_ENV"
+          echo "Using browser: ${CHROME}"
+
+      - name: Run database migrations
+        run: bun run migrate
+        working-directory: packages/common-db
+
+      - name: Start infoserver
+        run: bun run server.ts &
+        working-directory: packages/xinity-infoserver
+        env:
+          MODEL_INFO_FILE: ./models.yaml
+          PORT: "8393"
+
+      - name: Build dashboard
+        run: |
+          cp example.env .env
+          bun run build
+        working-directory: packages/xinity-ai-dashboard
+        env:
+          PUBLIC_LLM_API_URL: http://localhost:8080/v1
+
+      - name: Start dashboard
+        run: bun build/index.js &
+        working-directory: packages/xinity-ai-dashboard
+        env:
+          NODE_ENV: production
+          HTTP_PORT: "5173"
+          MAIL_URL: smtp://localhost:1025
+          MAIL_FROM: "Auth Service <noreply@example.com>"
+          BETTER_AUTH_SECRET: secret_key
+          BETTER_AUTH_URL: http://localhost:5173
+          PUBLIC_LLM_API_URL: http://localhost:8080/v1
+          APP_NAME: "Xinity Admin"
+          SIGNUP_ENABLED: "true"
+          METRICS_AUTH: "user:pass"
+          LOG_LEVEL: trace
+          INFOSERVER_URL: http://localhost:8393
+          MULTI_TENANT_MODE: "true"
+
+      - name: Wait for dashboard to be ready
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf -o /dev/null http://localhost:5173; then
+              echo "Dashboard is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Dashboard failed to start"
+          exit 1
+
+      - name: Run E2E tests
+        run: bun test --timeout 30000 --reporter=default --reporter=junit --reporter-outfile=results.xml e2e/
+        working-directory: packages/xinity-ai-dashboard
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-dashboard-e2e
+          path: packages/xinity-ai-dashboard/results.xml

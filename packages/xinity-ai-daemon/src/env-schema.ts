@@ -1,0 +1,49 @@
+import { z } from "zod";
+import { secret, expert } from "common-env";
+import { logEnvSchema } from "common-log";
+
+export const daemonEnvSchema = z.object({
+  PORT: z.coerce.number().default(4010).describe("Listen port"),
+  HOST: z.string().default("0.0.0.0").describe("Bind address"),
+  XINITY_OLLAMA_ENDPOINT: z.url().optional().describe("Ollama API endpoint (enables ollama driver)"),
+  DB_CONNECTION_URL: z.url().describe("PostgreSQL connection string").meta(secret()),
+  INFOSERVER_URL: z.url().default("https://sysinfo.xinity.ai").describe("Infoserver URL"),
+  STATE_DIR: z.string().default("./.local").describe("Local state directory").meta(expert()),
+  CIDR_PREFIX: z.string().default("").describe("Network CIDR prefix").meta(expert()),
+  SYNC_INTERVAL_MS: z.coerce
+    .number()
+    .default(1000 * 60 * 5)
+    .describe("Sync interval in milliseconds")
+    .meta(expert()),
+  INFOSERVER_CACHE_TTL_MS: z.coerce.number().default(30_000).describe("How long to cache infoserver responses locally (ms)").meta(expert()),
+
+  // vLLM configuration
+  VLLM_BACKEND: z.enum(["systemd", "docker"]).default("systemd").describe("vLLM backend type"),
+  VLLM_ENV_DIR: z.string().default("/etc/vllm").describe("vLLM environment config directory").meta(expert()),
+  VLLM_TEMPLATE_UNIT_PATH: z
+    .string()
+    .default("/etc/systemd/system/vllm-driver@.service")
+    .describe("vLLM systemd template unit path")
+    .meta(expert()),
+  VLLM_PATH: z.string().optional().describe("Path to vllm binary (enables vllm-systemd driver)"),
+  VLLM_DOCKER_IMAGE: z
+    .string()
+    .optional()
+    .describe("vLLM Docker image (enables vllm-docker driver) (i.e. nvcr.io/nvidia/vllm:26.01-py3)"),
+  VLLM_HF_CACHE_DIR: z.string().default("/var/lib/vllm/hf-cache").describe("HuggingFace cache directory").meta(expert()),
+  VLLM_TRITON_CACHE_DIR: z.string().default("/var/lib/vllm/triton-cache").describe("Triton cache directory").meta(expert()),
+  VLLM_HEALTH_TIMEOUT_MS: z.coerce
+    .number()
+    .default(60 * 60 * 1000)
+    .describe("vLLM health check timeout in milliseconds (default: 1 hour)")
+    .meta(expert()),
+  VLLM_HEALTH_POLL_INTERVAL_MS: z.coerce
+    .number()
+    .default(5_000)
+    .describe("vLLM health check poll interval in milliseconds")
+    .meta(expert()),
+  VLLM_MAX_RESTART_COUNT: z.coerce
+    .number()
+    .default(3)
+    .describe("Max container restarts before marking installation as permanently failed"),
+}).extend(logEnvSchema.shape);

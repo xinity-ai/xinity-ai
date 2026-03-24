@@ -1,0 +1,197 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "includes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      },
+      "description": "Include instruction. Will result in fetch attempts for additional model sources.\nGlobal uniqueness of model identifiers persists"
+    },
+    "models": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "description": "Public model specifier. The unique public identity of this model"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name of the model. Intended to be easily human readable"
+          },
+          "description": {
+            "type": "string",
+            "description": "Brief description of the model and its unique properties"
+          },
+          "weight": {
+            "type": "number",
+            "description": "Relative weight of how much strain the model places on the node it is installed on"
+          },
+          "minKvCache": {
+            "type": "number",
+            "description": "Minimum KV-cache allocation in GB. Should be precomputed from the model's config.json (if available) as roughly: 2 * num_hidden_layers * num_key_value_heads * head_dim * dtype_bytes * total_tokens, where total_tokens is chosen based on desired concurrent capacity."
+          },
+          "registeredAt": {
+            "type": "string",
+            "description": "Time of registering the model in question"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "External documentation url, for curious users that want to know more"
+          },
+          "type": {
+            "description": "Usage type of the model in question",
+            "default": "chat",
+            "type": "string",
+            "enum": [
+              "embedding",
+              "chat",
+              "rerank"
+            ]
+          },
+          "family": {
+            "description": "Family of the model. May be unknown",
+            "default": "unknown",
+            "type": "string"
+          },
+          "tags": {
+            "description": "Default tags, used when providerTags is absent for a given driver. Also the searchable superset",
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "tools",
+                "custom_code",
+                "vision"
+              ]
+            }
+          },
+          "isCustom": {
+            "default": false,
+            "type": "boolean"
+          },
+          "providerTags": {
+            "description": "Per-driver tag overrides. When present for a driver, replaces model-level tags for that driver",
+            "type": "object",
+            "properties": {
+              "vllm": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "tools",
+                    "custom_code",
+                    "vision"
+                  ]
+                }
+              },
+              "ollama": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "tools",
+                    "custom_code",
+                    "vision"
+                  ]
+                }
+              }
+            }
+          },
+          "providerArgs": {
+            "description": "Per-driver extra CLI arguments appended to the server command line. Arrays are deeply flattened to support YAML anchors",
+            "type": "object",
+            "properties": {
+              "vllm": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              },
+              "ollama": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              }
+            }
+          },
+          "providers": {
+            "type": "object",
+            "properties": {
+              "vllm": {
+                "type": "string",
+                "description": "vLLM model specifier"
+              },
+              "ollama": {
+                "type": "string",
+                "description": "Ollama model specifier"
+              }
+            },
+            "description": "Map from supported provider names to the provider-specific model specifier"
+          },
+          "entryVersion": {
+            "type": "string",
+            "description": "Version number at which version of xinity-ai this model was introduced. Used for compatibility checks"
+          },
+          "custom": {
+            "description": "Info for fine tuned custom models",
+            "type": "object",
+            "properties": {
+              "baseModel": {
+                "type": "string"
+              },
+              "extraFacts": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "baseModel",
+              "extraFacts"
+            ],
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "weight",
+          "minKvCache",
+          "registeredAt",
+          "url",
+          "providers",
+          "entryVersion"
+        ],
+        "additionalProperties": {}
+      }
+    }
+  },
+  "required": [
+    "models"
+  ],
+  "$defs": {
+    "__schema0": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema0"
+          }
+        }
+      ]
+    }
+  }
+}

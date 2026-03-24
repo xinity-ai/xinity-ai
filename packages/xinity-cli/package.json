@@ -1,0 +1,36 @@
+{
+  "name": "xinity-cli",
+  "type": "module",
+  "private": true,
+  "main": "src/index.ts",
+  "bin": {
+    "xinity": "src/index.ts"
+  },
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "build": "bun run build.ts",
+    "test": "bun test --timeout 30000 tests/",
+    "test:unit": "bun test --timeout 15000 tests/unit/",
+    "test:integration": "bun test --timeout 30000 tests/integration/"
+  },
+  "devDependencies": {
+    "@clack/prompts": "^1.0.1",
+    "@orpc/server": "^1.13.5",
+    "@types/bun": "^1.3.6",
+    "@types/yargs": "^17.0.33",
+    "common-db": "workspace:*",
+    "common-env": "workspace:*",
+    "drizzle-orm": "^0.44.6",
+    "picocolors": "^1.1.1",
+    "postgres": "^3.4.7",
+    "xinity-ai-daemon": "workspace:*",
+    "xinity-ai-dashboard": "workspace:*",
+    "xinity-ai-gateway": "workspace:*",
+    "xinity-infoserver": "workspace:*",
+    "yargs": "^17.7.2",
+    "zod": "^4.1.12"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

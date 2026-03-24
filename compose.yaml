@@ -1,0 +1,12 @@
+include:
+  - docker/build.compose.yaml
+  - docker/dev.compose.yaml
+services:
+  all:
+    image: alpine:3.22
+    depends_on:
+      - dev
+      - gateway
+      - dashboard
+volumes:
+  pgdata:

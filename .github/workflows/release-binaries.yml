@@ -1,0 +1,285 @@
+name: Build and release binaries
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+env:
+  BUN_VERSION: "1.3.1"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Standalone binaries via `bun build --compile`
+  # Embeds the Bun runtime, zero runtime dependencies on the target machine.
+  # One job per package compiles all architecture variants in a loop, so
+  # `bun install` only runs once per package (not once per target).
+  #
+  # Targets:
+  #   linux-x64           Haswell+ (2013 and later, default)
+  #   linux-x64-baseline  Nehalem+ (pre-2013, maximum compatibility)
+  #   linux-arm64          AArch64
+  #
+  # Each binary is zipped following the Bun convention:
+  #   xinity-ai-gateway-linux-x64.zip  →  contains `xinity-ai-gateway`
+  # ---------------------------------------------------------------------------
+  build-binaries:
+    name: ${{ matrix.package }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: xinity-ai-gateway
+            entry: src/gatewayServer.ts
+            workdir: packages/xinity-ai-gateway
+          - package: xinity-ai-daemon
+            entry: src/index.ts
+            workdir: packages/xinity-ai-daemon
+          - package: xinity-infoserver
+            entry: server.ts
+            workdir: packages/xinity-infoserver
+          - package: xinity-cli
+            binary_name: xinity
+            workdir: packages/xinity-cli
+            custom_build: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Compile all targets and zip
+        working-directory: ${{ matrix.workdir }}
+        run: |
+          if [ -f example.env ]; then cp example.env .env; fi
+          BINARY_NAME="${{ matrix.binary_name || matrix.package }}"
+
+          for target in bun-linux-x64 bun-linux-x64-baseline bun-linux-arm64; do
+            suffix="${target#bun-}"
+            echo "::group::Compiling ${{ matrix.package }} for ${suffix}"
+
+            if [ "${{ matrix.custom_build || 'false' }}" = "true" ]; then
+              # Custom two-step build (bundle with plugins, then compile)
+              bun run build.ts --target "$target" --outfile "${BINARY_NAME}"
+            else
+              bun build --compile --minify \
+                --sourcemap=external \
+                --target="${target}" \
+                ${{ matrix.entry }} \
+                --outfile "${BINARY_NAME}"
+            fi
+
+            zip "${{ matrix.package }}-${suffix}.zip" "${BINARY_NAME}" *.map 2>/dev/null || \
+              zip "${{ matrix.package }}-${suffix}.zip" "${BINARY_NAME}"
+            rm -f "${BINARY_NAME}" *.map
+
+            echo "::endgroup::"
+          done
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.package }}
+          path: ${{ matrix.workdir }}/*.zip
+          retention-days: 1
+
+  # ---------------------------------------------------------------------------
+  # JS bundles (platform-independent) + Dashboard tarball
+  # Single-file bundles that run on any OS with `bun run <file>.js`.
+  # Dashboard is a SvelteKit app (server + static assets) so it ships as a
+  # tarball: extract and run with `bun run ./`.
+  # ---------------------------------------------------------------------------
+  build-bundles:
+    name: JS bundles + dashboard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build gateway bundle
+        working-directory: packages/xinity-ai-gateway
+        run: |
+          if [ -f example.env ]; then cp example.env .env; fi
+          bun build --minify --target=bun \
+            --outfile xinity-ai-gateway.js \
+            ./src/gatewayServer.ts
+
+      - name: Build daemon bundle
+        working-directory: packages/xinity-ai-daemon
+        run: |
+          if [ -f example.env ]; then cp example.env .env; fi
+          bun build --minify --target=bun \
+            --outfile xinity-ai-daemon.js \
+            ./src/index.ts
+
+      - name: Build infoserver bundle
+        working-directory: packages/xinity-infoserver
+        run: |
+          if [ -f example.env ]; then cp example.env .env; fi
+          bun build --minify --target=bun \
+            --outfile xinity-infoserver.js \
+            ./server.ts
+
+      - name: Build dashboard
+        working-directory: packages/xinity-ai-dashboard
+        run: |
+          cp example.env .env
+          bun run build
+          tar czf xinity-ai-dashboard.tar.gz -C build .
+
+      - name: Package database migrations
+        run: tar czf db-migrations.tar.gz -C packages/common-db/db-migration .
+
+      - name: Stage all bundles
+        run: |
+          mkdir staging
+          cp packages/xinity-ai-gateway/xinity-ai-gateway.js staging/
+          cp packages/xinity-ai-daemon/xinity-ai-daemon.js staging/
+          cp packages/xinity-infoserver/xinity-infoserver.js staging/
+          cp packages/xinity-ai-dashboard/xinity-ai-dashboard.tar.gz staging/
+          cp db-migrations.tar.gz staging/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundles
+          path: staging/
+          retention-days: 1
+
+  # ---------------------------------------------------------------------------
+  # Collect all artifacts, generate a single SHASUMS256.txt, publish release.
+  # Follows the convention used by Bun, Terraform, and other CLI tools:
+  #   - Clean filenames (version is in the release tag, not the filename)
+  #   - One checksums file for easy `sha256sum -c` verification
+  #   - Quick-install instructions in the release body
+  # ---------------------------------------------------------------------------
+  release:
+    name: Create GitHub Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build-binaries, build-bundles]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Generate changelog for this release
+        run: |
+          {
+            echo 'RELEASE_NOTES<<CLIFF_EOF'
+            bunx git-cliff --latest --strip header 2>/dev/null || true
+            echo 'CLIFF_EOF'
+          } >> "$GITHUB_ENV"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+
+      - name: Add install script to release
+        run: cp scripts/install.sh release/install.sh
+
+      - name: Generate SHASUMS256.txt
+        working-directory: release
+        run: sha256sum * | sort > SHASUMS256.txt
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          body: |
+            ${{ env.RELEASE_NOTES }}
+
+            ---
+            ## Quick Install (CLI)
+
+            ```bash
+            curl -fsSL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/install.sh" \
+              | bash
+            ```
+
+            Or manually:
+
+            ```bash
+            curl -fSL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/xinity-cli-linux-x64.zip" \
+              -o cli.zip
+            unzip cli.zip
+            mv xinity ~/.local/bin/xinity
+            chmod +x ~/.local/bin/xinity
+            ```
+
+            ## Install (services)
+
+            **Standalone binary** (no dependencies):
+
+            ```bash
+            # x64 (Haswell+, 2013 and later, recommended)
+            curl -fSL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/xinity-ai-gateway-linux-x64.zip" \
+              -o gateway.zip
+            unzip gateway.zip
+            chmod +x xinity-ai-gateway
+            ./xinity-ai-gateway
+
+            # x64-baseline (Nehalem+, maximum compatibility)
+            curl -fSL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/xinity-ai-gateway-linux-x64-baseline.zip" \
+              -o gateway.zip
+
+            # arm64
+            curl -fSL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/xinity-ai-gateway-linux-arm64.zip" \
+              -o gateway.zip
+            ```
+
+            Replace `xinity-ai-gateway` with `xinity-ai-daemon` or `xinity-infoserver` as needed.
+
+            **JS bundle** (requires [Bun](https://bun.sh)):
+
+            ```bash
+            curl -fSL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/xinity-ai-gateway.js" \
+              -o xinity-ai-gateway.js
+            bun run xinity-ai-gateway.js
+            ```
+
+            **Dashboard** (requires [Bun](https://bun.sh)):
+
+            ```bash
+            curl -fSL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/xinity-ai-dashboard.tar.gz" \
+              | tar xz -C dashboard
+            bun run dashboard/
+            ```
+
+            ## Verify
+
+            ```bash
+            curl -fSL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/SHASUMS256.txt" \
+              -o SHASUMS256.txt
+            sha256sum -c SHASUMS256.txt --ignore-missing
+            ```
+
+            ---

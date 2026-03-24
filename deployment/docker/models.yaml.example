@@ -1,0 +1,55 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v1.json
+# Xinity AI Model Configuration Example
+# Copy this file to models.yaml and configure your models
+# This file is mounted read-only into the infoserver container
+
+# Include the public Xinity model registry
+includes:
+  - https://sysinfo.xinity.ai/models/v1.yaml
+
+# Define your custom models here
+models:
+  # Example: Custom fine-tuned model
+  my-custom-llama:
+    publicSpecifier: my-custom-llama
+    name: My Custom Llama
+    description: Custom fine-tuned version of Llama 3.1 8B for specific domain tasks
+    weight: 8
+    registeredAt: "2024-01-15T00:00:00Z"
+    url: https://example.com/models/my-custom-llama
+    entryVersion: 1
+    type: chat
+    family: llama
+    driver: ollama
+    isCustom: true
+    tags:
+      - fine-tuned
+      - domain-specific
+    custom:
+      baseModel: llama-3.1-8b
+      extraFacts:
+        training_dataset: proprietary-corpus
+        training_date: "2024-01-10"
+
+  # Example: Local embedding model
+  local-embeddings:
+    publicSpecifier: local-embeddings
+    name: Local Embedding Model
+    description: Fast local embeddings for semantic search
+    weight: 2
+    registeredAt: "2024-01-20T00:00:00Z"
+    url: https://example.com/models/embeddings
+    entryVersion: 1
+    type: embedding
+    family: nomic
+    driver: ollama
+    tags:
+      - embeddings
+      - fast
+
+# Notes:
+# - Models in the 'includes' section are fetched from remote sources
+# - Local models defined here take precedence over included models with the same publicSpecifier
+# - The 'weight' field indicates resource requirements (higher = more resources)
+# - Use 'isCustom: true' for fine-tuned models and provide 'custom.baseModel'
+# - The infoserver exposes the merged configuration at /v1/models

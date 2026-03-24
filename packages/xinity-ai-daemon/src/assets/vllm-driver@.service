@@ -1,0 +1,81 @@
+# vLLM Model Server - Template Unit File
+#
+# Usage:
+#   1. Create a config file at /etc/vllm/<instance>.env
+#   2. Start with: systemctl start vllm-driver@<instance>.service
+#
+# Example:
+#   /etc/vllm/llama8b.env
+#   systemctl start vllm-driver@llama8b.service
+#
+# Install this file to: /etc/systemd/system/vllm-driver@.service
+
+[Unit]
+Description=vLLM Model Server (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=vllm
+Group=vllm
+
+# Load instance-specific configuration
+EnvironmentFile=/etc/vllm/%i.env
+
+# Defaults (overridable in the .env file)
+Environment=VLLM_PORT=8000
+Environment=VLLM_HOST=0.0.0.0
+Environment=VLLM_KV_CACHE_BYTES=
+Environment=VLLM_MAX_MODEL_LEN=
+Environment=VLLM_ENFORCE_EAGER=false
+Environment=VLLM_TRUST_REMOTE_CODE=false
+Environment=VLLM_EXTRA_ARGS=
+Environment=VLLM_QUANTIZATION=
+Environment=VLLM_SERVED_MODEL_NAME=
+Environment=VLLM_API_KEY=
+Environment=VLLM_KV_CACHE_DTYPE=auto
+Environment=VLLM_BINARY_PATH=/usr/bin/vllm
+Environment=CUDA_VISIBLE_DEVICES=0
+
+# HuggingFace cache: ensure models are downloaded here
+Environment=HF_HOME=/var/lib/vllm/hf-cache
+Environment=TRITON_CACHE_DIR=/var/lib/vllm/triton-cache
+
+ExecStart=/bin/bash -c '\
+    ARGS=""; \
+    [ -n "$VLLM_KV_CACHE_BYTES" ] && ARGS="$ARGS --kv-cache-memory-bytes $VLLM_KV_CACHE_BYTES"; \
+    [ -n "$VLLM_MAX_MODEL_LEN" ] && ARGS="$ARGS --max-model-len $VLLM_MAX_MODEL_LEN"; \
+    [ "$VLLM_ENFORCE_EAGER" = "true" ] && ARGS="$ARGS --enforce-eager"; \
+    [ -n "$VLLM_QUANTIZATION" ] && ARGS="$ARGS --quantization $VLLM_QUANTIZATION"; \
+    [ -n "$VLLM_SERVED_MODEL_NAME" ] && ARGS="$ARGS --served-model-name $VLLM_SERVED_MODEL_NAME"; \
+    [ "$VLLM_TRUST_REMOTE_CODE" = "true" ] && ARGS="$ARGS --trust-remote-code"; \
+    [ -n "$VLLM_API_KEY" ] && ARGS="$ARGS --api-key $VLLM_API_KEY"; \
+    [ "$VLLM_KV_CACHE_DTYPE" != "auto" ] && ARGS="$ARGS --kv-cache-dtype $VLLM_KV_CACHE_DTYPE"; \
+    exec $VLLM_BINARY_PATH serve "$VLLM_MODEL" \
+        --host $VLLM_HOST \
+        --port $VLLM_PORT \
+        $ARGS \
+        $VLLM_EXTRA_ARGS \
+    '
+
+Restart=on-failure
+RestartSec=10
+
+# Resource limits
+LimitMEMLOCK=infinity
+LimitNOFILE=65536
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/vllm
+PrivateTmp=true
+
+# Give it time to load large models
+TimeoutStartSec=600
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,34 @@
+# Environment files (contain secrets)
+.env
+.env.local
+.env.*.local
+
+# Actual configuration files (copied from examples)
+models.yaml
+
+# Log files
+logs/
+*.log
+
+# Docker volumes (if mounted locally)
+data/
+postgres-data/
+redis-data/
+caddy-data/
+caddy-config/
+
+# Backup files
+*.sql
+*.dump
+backup/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db

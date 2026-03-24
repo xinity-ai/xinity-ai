@@ -1,0 +1,15 @@
+use_default_settings: true
+server:
+  secret_key: "debug_secret_key_for_development_only"
+  port: 6148
+  bind_address: "0.0.0.0"
+search:
+  formats:
+    - html
+    - json
+ui:
+  static_use_hash: true
+enabled_plugins:
+  - 'Hash plugin'
+  - 'Self Information'
+  - 'Tracker avoidance'

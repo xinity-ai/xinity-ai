@@ -1,0 +1,105 @@
+[
+  {
+    "model": "qwen3-30b-a3b-instruct-fp8",
+    "duration": 12700,
+    "inputMessages": [
+      {
+        "role": "user",
+        "content": "Can you summarize the key points of the Agile methodology?"
+      }
+    ],
+    "outputMessage": {
+      "content": "Agile methodology emphasizes iterative development, collaboration, continuous feedback, and flexibility. Key principles include delivering working software frequently, welcoming changing requirements, and maintaining sustainable development pace."
+    }
+  },
+  {
+    "model": "qwen3-30b-a3b-instruct-fp8",
+    "duration": 19400,
+    "inputMessages": [
+      {
+        "role": "user",
+        "content": "Write a LinkedIn post announcing my new role as Product Manager at Rivet AI."
+      }
+    ],
+    "outputMessage": {
+      "content": "Excited to share that I've joined Rivet AI as a Product Manager! I'm looking forward to working with an incredible team on cutting-edge AI solutions. Here's to new challenges and opportunities ahead!"
+    }
+  },
+  {
+    "model": "qwen3-30b-a3b-instruct-fp8",
+    "duration": 8200,
+    "inputMessages": [
+      {
+        "role": "user",
+        "content": "What is 347 multiplied by 89?"
+      }
+    ],
+    "outputMessage": {
+      "content": "347 multiplied by 89 is 30,883."
+    }
+  },
+  {
+    "model": "qwen3-30b-a3b-instruct-fp8",
+    "duration": 25600,
+    "inputMessages": [
+      {
+        "role": "system",
+        "content": "You are a helpful programming assistant."
+      },
+      {
+        "role": "user",
+        "content": "How do I implement a debounce function in JavaScript?"
+      }
+    ],
+    "outputMessage": {
+      "content": "Here's a simple debounce function in JavaScript:\n\n```js\nfunction debounce(func, delay) {\n  let timeout;\n  return function(...args) {\n    clearTimeout(timeout);\n    timeout = setTimeout(() => func.apply(this, args), delay);\n  };\n}\n```\n\nThis ensures that the function only executes after the delay period has passed since the last call."
+    }
+  },
+  {
+    "model": "qwen3-30b-a3b-instruct-fp8",
+    "duration": 33100,
+    "inputMessages": [
+      {
+        "role": "user",
+        "content": "Can you generate a daily affirmation and explain its psychological benefit?"
+      }
+    ],
+    "outputMessage": {
+      "content": "Affirmation: 'I am capable of overcoming any challenge that comes my way.'\n\nPsychological benefit: Positive affirmations help rewire our internal dialogue. Repeating statements like this reinforces self-efficacy, builds resilience, and reduces negative self-talk, which can enhance confidence and motivation over time."
+    }
+  },
+  {
+    "model": "qwen3-30b-a3b-instruct-fp8",
+    "duration": 14800,
+    "inputMessages": [
+      {
+        "role": "user",
+        "content": "Translate 'The quick brown fox jumps over the lazy dog' into Spanish."
+      }
+    ],
+    "outputMessage": {
+      "content": "El rápido zorro marrón salta sobre el perro perezoso."
+    }
+  },
+  {
+    "model": "qwen3-30b-a3b-instruct-fp8",
+    "duration": 52900,
+    "inputMessages": [
+      {
+        "role": "user",
+        "content": "I'm preparing for a job interview at a startup. Can you help me craft some good questions to ask the founders?"
+      },
+      {
+        "role": "assistant",
+        "content": "Absolutely! You might consider asking about their vision for the company, how they plan to scale, and what they see as the biggest challenges in the next year. Would you like a list of 5-7 polished example questions?"
+      },
+      {
+        "role": "user",
+        "content": "Yes, and can you also make them sound thoughtful but concise?"
+      }
+    ],
+    "outputMessage": {
+      "content": "Sure! Here are some example questions:\n\n1. What inspired you to start this company, and how has your vision evolved?\n2. What are the biggest challenges you're currently facing?\n3. How do you define success over the next 12-18 months?\n4. What does a strong cultural fit look like to you?\n5. How do you plan to differentiate in such a competitive space?\n6. What excites you most about where the company is headed?\n7. How do you see this role evolving as the company grows?\n\nThese questions show genuine interest and strategic thinking."
+    }
+  }
+]

@@ -1,0 +1,341 @@
+.code-block {
+  background-color: hsl(var(--muted) / 0.5);
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  padding: 16px;
+  max-height: 500px;
+  overflow-y: auto;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
+}
+
+.call-item {
+  transition: background-color 0.2s;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+}
+
+.call-item:hover {
+  background-color: hsl(var(--muted) / 0.5);
+}
+
+.call-item.selected {
+  background-color: hsl(var(--muted));
+  border-left-color: hsl(var(--primary));
+}
+
+.status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+}
+
+.status-completed {
+  background-color: #10b981;
+}
+
+.edit-toolbar {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+
+.edit-status {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  font-style: italic;
+  margin-left: 8px;
+}
+
+.edit-status.saved {
+  color: #10b981;
+}
+
+.edit-status.edited {
+  color: #f59e0b;
+}
+
+.rating-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.rating-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  background: linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--muted) / 0.3) 100%);
+  border: 1px solid hsl(var(--border));
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 999px;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.rating-btn:hover {
+  background-color: hsl(var(--background));
+  transform: translateY(-1px) scale(1.06);
+  box-shadow:
+    0 6px 16px rgba(15, 23, 42, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.rating-btn svg {
+  width: 24px;
+  height: 24px;
+  transition: all 0.2s;
+}
+
+.rating-btn:first-child svg {
+  stroke: #64748b;
+  stroke-width: 2.2;
+}
+
+.rating-btn:first-child:hover svg {
+  stroke: #16a34a;
+}
+
+.rating-btn.liked svg {
+  stroke: #16a34a;
+  fill: rgba(22, 163, 74, 0.18);
+}
+
+.rating-btn.liked {
+  border-color: rgba(22, 163, 74, 0.5);
+  background: linear-gradient(180deg, #ecfdf5 0%, #dcfce7 100%);
+  box-shadow:
+    0 10px 18px rgba(22, 163, 74, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.rating-btn:last-of-type svg {
+  stroke: #64748b;
+  stroke-width: 2.2;
+}
+
+.rating-btn:last-of-type:hover svg {
+  stroke: #dc2626;
+}
+
+.rating-btn.disliked svg {
+  stroke: #dc2626;
+  fill: rgba(220, 38, 38, 0.18);
+}
+
+.rating-btn.disliked {
+  border-color: rgba(220, 38, 38, 0.5);
+  background: linear-gradient(180deg, #fef2f2 0%, #fee2e2 100%);
+  box-shadow:
+    0 10px 18px rgba(220, 38, 38, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.highlight-positive {
+  background-color: rgba(16, 185, 129, 0.2);
+  border-bottom: 2px solid #10b981;
+  padding: 2px 0;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.highlight-negative {
+  background-color: rgba(239, 68, 68, 0.2);
+  border-bottom: 2px solid #ef4444;
+  padding: 2px 0;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.highlight-positive:hover {
+  background-color: rgba(16, 185, 129, 0.3);
+}
+
+.highlight-negative:hover {
+  background-color: rgba(239, 68, 68, 0.3);
+}
+
+.highlight-overlay {
+  position: absolute;
+  inset: 0;
+  padding: 16px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-y: auto;
+  pointer-events: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.highlight-overlay .highlight-positive,
+.highlight-overlay .highlight-negative {
+  pointer-events: auto;
+}
+
+.unified-editor {
+  width: 100%;
+  min-height: 500px;
+  max-height: 500px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 14px;
+  padding: 16px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  background-color: hsl(var(--muted) / 0.5);
+  white-space: pre-wrap;
+  line-height: 1.5;
+  overflow-y: auto;
+  resize: vertical;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+  cursor: text;
+  border-left: 3px solid hsl(var(--primary));
+}
+
+.unified-editor:focus {
+  outline: none;
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.25);
+}
+
+.unified-editor::selection,
+.unified-editor *::selection {
+  background-color: rgba(59, 130, 246, 0.3);
+}
+
+.highlight-popup {
+  position: fixed;
+  background-color: hsl(var(--card));
+  backdrop-filter: blur(12px);
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 1000;
+  transform: translateX(-50%);
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.highlight-popup::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-top: 8px solid hsl(var(--card));
+}
+
+.highlight-popup-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  width: 36px;
+  height: 36px;
+}
+
+.highlight-popup-btn:hover {
+  background-color: hsl(var(--muted));
+  transform: scale(1.1);
+}
+
+.positive-btn {
+  color: #10b981;
+}
+
+.positive-btn:hover {
+  background-color: rgba(16, 185, 129, 0.1);
+}
+
+.negative-btn {
+  color: #ef4444;
+}
+
+.negative-btn:hover {
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+.neutral-btn {
+  color: #6b7280;
+  background-color: rgba(148, 163, 184, 0.1);
+}
+
+.neutral-btn:hover {
+  background-color: rgba(148, 163, 184, 0.2);
+}
+
+/* Input exclusion range styling */
+.input-exclusion {
+  background-color: rgba(239, 68, 68, 0.15);
+  text-decoration: line-through;
+  text-decoration-color: rgba(239, 68, 68, 0.6);
+  padding: 1px 0;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  border-radius: 2px;
+}
+
+.input-exclusion:hover {
+  background-color: rgba(239, 68, 68, 0.25);
+}
+
+/* Whole-message exclusion visual */
+.msg-excluded {
+  opacity: 0.4;
+}
+
+/* Exclusion popup button */
+.exclusion-btn {
+  color: #ef4444;
+}
+
+.exclusion-btn:hover {
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+/* Make input message text selectable for exclusion marking */
+.input-selectable {
+  user-select: text;
+  cursor: text;
+}

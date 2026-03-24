@@ -1,0 +1,30 @@
+import { z } from "zod";
+import { secret, expert } from "common-env";
+
+export const dashboardEnvSchema = z.object({
+  DB_CONNECTION_URL: z.url().describe("PostgreSQL connection string").meta(secret()),
+  NODE_ENV: z.enum(["production", "development", "test"]).describe("Node environment").meta(expert()),
+  ORIGIN: z.url().default("http://localhost:5173").describe("Public origin URL"),
+  BETTER_AUTH_SECRET: z.string().describe("Better Auth secret key").meta(secret()),
+  BETTER_AUTH_URL: z.string().describe("Better Auth URL"),
+  INFOSERVER_URL: z.url().describe("Infoserver URL"),
+  SIGNUP_ENABLED: z.stringbool().default(true).describe("Enable user signup"),
+  COMPUTE_MANAGEMENT_ENABLED: z.stringbool().default(true).describe("Enable compute management").meta(expert()),
+  APP_NAME: z.string().default("Xinity Admin").describe("Application display name").meta(expert()),
+  INSTANCE_ADMIN_EMAILS: z.string().optional().describe("Comma-separated instance admin emails"),
+  MULTI_TENANT_MODE: z.stringbool().default(false).describe("Allow any authenticated user to create organizations. Required when INSTANCE_ADMIN_EMAILS is not set."),
+  LOG_DIR: z.string().optional().describe("Log file directory").meta(expert()),
+  LOG_LEVEL: z.string().default("debug").describe("Log level").meta(expert()),
+  MAIL_URL: z.url().optional().describe("SMTP mail server URL").meta(secret()),
+  MAIL_FROM: z.string().optional().describe("Email sender address"),
+  METRICS_AUTH: z.string().describe("Metrics basic auth (user:pass)").optional().meta(secret()).meta(expert()),
+  INFOSERVER_CACHE_TTL_MS: z.coerce.number().default(30_000).describe("How long to cache infoserver responses locally (ms)").meta(expert()),
+  NOTIFICATIONS_ENABLED: z.stringbool().default(true).describe("Enable the notification scheduler (deployment status, node health, capacity warnings, weekly reports)").meta(expert()),
+  S3_ENDPOINT: z.url().optional().describe("SeaweedFS / S3-compatible endpoint URL (required for multimodal image display)").meta(expert()),
+  S3_ACCESS_KEY_ID: z.string().optional().describe("S3 access key ID").meta(secret()).meta(expert()),
+  S3_SECRET_ACCESS_KEY: z.string().optional().describe("S3 secret access key").meta(secret()).meta(expert()),
+  S3_BUCKET: z.string().default("xinity-media").describe("S3 bucket for media objects").meta(expert()),
+  S3_REGION: z.string().default("us-east-1").describe("S3 region").meta(expert()),
+  MCP_ENABLED: z.stringbool().default(true).describe("Enable the /mcp Model Context Protocol endpoint"),
+  LICENSE_KEY: z.string().optional().describe("License key for unlocking paid features (Ed25519-signed token)").meta(secret()),
+});

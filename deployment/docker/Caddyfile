@@ -1,0 +1,72 @@
+# Xinity AI Caddy Configuration
+# Automatic HTTPS with Let's Encrypt
+
+# Global options
+{
+	email {$ACME_EMAIL}
+	# Uncomment for staging/testing (higher rate limits)
+	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+# Dashboard
+{$DASHBOARD_SUBDOMAIN}.{$DOMAIN} {
+	reverse_proxy dashboard:{$DASHBOARD_PORT}
+
+	# Security headers
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		X-XSS-Protection "1; mode=block"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	# Enable compression
+	encode gzip zstd
+
+	# Logging
+	log {
+		output file /data/logs/dashboard-access.log
+		format json
+	}
+}
+
+# API Gateway
+{$GATEWAY_SUBDOMAIN}.{$DOMAIN} {
+	reverse_proxy gateway:{$GATEWAY_PORT}
+
+	# Security headers
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+	}
+
+	# Enable compression
+	encode gzip zstd
+
+	# Logging
+	log {
+		output file /data/logs/gateway-access.log
+		format json
+	}
+}
+
+# Infoserver
+{$INFOSERVER_SUBDOMAIN}.{$DOMAIN} {
+	reverse_proxy infoserver:{$INFOSERVER_PORT}
+
+	# Security headers
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+	}
+
+	# Enable compression
+	encode gzip zstd
+
+	# Logging
+	log {
+		output file /data/logs/infoserver-access.log
+		format json
+	}
+}
