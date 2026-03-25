@@ -55,6 +55,7 @@ type StreamToolCall = {
 export interface StreamResponseParams {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Output type varies per call site
   result: StreamTextResult<ToolSet, any>;
+  orgId: string;
   responseId: string;
   messageItemId: string;
   createdAt: number;
@@ -73,7 +74,7 @@ export interface StreamResponseParams {
  */
 export function createResponseStream(params: StreamResponseParams): ReadableStream {
   const {
-    result, responseId, messageItemId, createdAt, originalModel, body,
+    result, orgId, responseId, messageItemId, createdAt, originalModel, body,
     baseResponse, toolCalls, toolResults, include, onFinished,
   } = params;
 
@@ -147,17 +148,25 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
           output: buildOutputItems(responseId, finalText, toolCalls, toolResults, include),
           usage: finalUsage, body,
         });
-        await saveResponse(responseId, completedResponse)
+        await saveResponse(orgId, responseId, completedResponse)
           .catch((err) => log.error({ err, responseId }, "Failed to persist completed response"));
         onFinished(finalUsage, finalText);
 
         emitResponseCompleted(controller, completedResponse, seq);
         controller.close();
       } catch (error) {
+        if (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")) {
+          try { controller.close(); } catch {}
+          return;
+        }
         const message = error instanceof Error ? error.message : "Gateway error";
-        emitStreamError(controller, message, seq);
-        emitResponseFailed(controller, markResponseFailed(baseResponse, message), seq);
-        controller.close();
+        try {
+          emitStreamError(controller, message, seq);
+          emitResponseFailed(controller, markResponseFailed(baseResponse, message), seq);
+          controller.close();
+        } catch {
+          try { controller.error(error as Error); } catch {}
+        }
       }
     },
   });

@@ -167,7 +167,7 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
     // Load previous response context (before image processing so previous
     // messages are included in the LLM context but not re-processed)
     if (body.previous_response_id) {
-      const previousResponse = await getResponse(body.previous_response_id);
+      const previousResponse = await getResponse(auth.orgId, body.previous_response_id);
       if (!previousResponse) return errorResponse("Not found", 404);
       const previousMessages = extractPreviousMessages(previousResponse as StoredResponse);
       if (previousMessages.length) messages.unshift(...previousMessages);
@@ -207,9 +207,9 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
       const baseResponse = createResponseObject({
         responseId, createdAt, model: originalModel, status: "in_progress", body,
       });
-      await saveResponse(responseId, baseResponse);
+      await saveResponse(auth.orgId, responseId, baseResponse);
 
-      void runBackground(responseId, createdAt, originalModel, body, genParams, include, outputConfig, logFields);
+      void runBackground(auth.orgId, responseId, createdAt, originalModel, body, genParams, include, outputConfig, logFields);
 
       return Response.json(baseResponse, { status: 202 });
     }
@@ -225,13 +225,13 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
       const baseResponse = createResponseObject({
         responseId, createdAt, model: originalModel, status: "in_progress", body,
       });
-      await saveResponse(responseId, baseResponse);
+      await saveResponse(auth.orgId, responseId, baseResponse);
 
       // Tool tracking happens inline in the stream for consistent IDs
       const result = streamText(genParams);
 
       const streamBody = createResponseStream({
-        result, responseId, messageItemId, createdAt, originalModel, body,
+        result, orgId: auth.orgId, responseId, messageItemId, createdAt, originalModel, body,
         baseResponse, toolCalls, toolResults, include,
         onFinished: (usage, text) => {
           logChatUsage({
@@ -270,7 +270,7 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
       usage: result.usage, body,
     });
 
-    await saveResponse(responseId, responseBody);
+    await saveResponse(auth.orgId, responseId, responseBody);
     logChatUsage({
       ...logFields,
       usage: result.usage,
@@ -309,6 +309,7 @@ type LogFields = {
 };
 
 async function runBackground(
+  orgId: string,
   responseId: string,
   createdAt: number,
   originalModel: string,
@@ -331,7 +332,7 @@ async function runBackground(
       output: buildOutputItems(responseId, responseText, toolCalls, toolResults, include),
       usage: result.usage, body,
     });
-    await saveResponse(responseId, completedResponse);
+    await saveResponse(orgId, responseId, completedResponse);
     logChatUsage({
       ...logFields,
       usage: result.usage,
@@ -343,7 +344,7 @@ async function runBackground(
       createResponseObject({ responseId, createdAt, model: originalModel, status: "failed", body }),
       error instanceof Error ? error.message : "Gateway error",
     );
-    await saveResponse(responseId, failedResponse)
+    await saveResponse(orgId, responseId, failedResponse)
       .catch((err) => log.error({ err, responseId }, "Failed to persist failed response"));
   }
 }
@@ -363,13 +364,13 @@ export async function handleGetOrDeleteResponseRequest(req: Request): Promise<Re
   if (!responseId) return errorResponse("Not found", 404);
 
   if (req.method === "GET") {
-    const stored = await getResponse(responseId);
+    const stored = await getResponse(authCheckResponse.orgId, responseId);
     if (!stored) return errorResponse("Not found", 404);
     return Response.json(stored);
   }
 
   if (req.method === "DELETE") {
-    await deleteResponse(responseId);
+    deleteResponse(authCheckResponse.orgId, responseId);
     return Response.json({ id: responseId, object: "response", deleted: true });
   }
 

@@ -4,22 +4,22 @@ import { rootLogger } from "../logger";
 
 const log = rootLogger.child({ name: "response-store" });
 
-const responseKey = (id: string) => `response:${id}`;
+const responseKey = (orgId: string, id: string) => `response:${orgId}:${id}`;
 
-export async function saveResponse(id: string, payload: unknown): Promise<void> {
+export async function saveResponse(orgId: string, id: string, payload: unknown): Promise<void> {
   await redis.set(
-    responseKey(id),
+    responseKey(orgId, id),
     JSON.stringify(payload),
     "EX",
     env.RESPONSE_CACHE_TTL_SECONDS
   );
 }
 
-export async function getResponse(id: string): Promise<unknown | null> {
+export async function getResponse(orgId: string, id: string): Promise<unknown | null> {
   let payload: string | null;
   try {
     payload = await redis.getex(
-      responseKey(id),
+      responseKey(orgId, id),
       "EX",
       env.RESPONSE_CACHE_TTL_SECONDS
     );
@@ -36,7 +36,7 @@ export async function getResponse(id: string): Promise<unknown | null> {
   }
 }
 
-export function deleteResponse(id: string): void {
-  redis.del(responseKey(id))
+export function deleteResponse(orgId: string, id: string): void {
+  redis.del(responseKey(orgId, id))
     .catch((err: unknown) => log.warn({ err }, "Redis error in deleteResponse"));
 }
