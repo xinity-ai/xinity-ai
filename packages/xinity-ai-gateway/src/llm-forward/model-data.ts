@@ -20,7 +20,7 @@ async function publicModelSpecifierToModelSource(orgId: string, specifier: strin
     ${modelDeploymentT.enabled}
     AND
     ${modelDeploymentT.deletedAt} IS NULL
-  `);
+  `).limit(1);
   if (!deployment) {
     return;
   }

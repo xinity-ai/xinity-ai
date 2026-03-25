@@ -120,7 +120,7 @@ export function requirePermission(permissions: PermissionSpec) {
     });
 
     if (!result.success) {
-      log.warn({ permissions, userId: (context as any).session?.user?.id }, "Permission denied");
+      log.warn({ permissions, userId: context.session?.user?.id }, "Permission denied");
       throw errors.FORBIDDEN();
     }
 
