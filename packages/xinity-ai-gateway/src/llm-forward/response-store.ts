@@ -36,7 +36,7 @@ export async function getResponse(id: string): Promise<unknown | null> {
   }
 }
 
-export async function deleteResponse(id: string): Promise<void> {
+export function deleteResponse(id: string): void {
   redis.del(responseKey(id))
     .catch((err: unknown) => log.warn({ err }, "Redis error in deleteResponse"));
 }

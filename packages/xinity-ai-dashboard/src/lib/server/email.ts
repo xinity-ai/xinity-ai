@@ -59,7 +59,7 @@ export async function sendEmail<Props extends Record<string, unknown>>({
     }
 
   } catch (error) {
-    log.error(error, "Failed to send email");
+    log.error({ err: error }, "Failed to send email");
     throw error;
   }
 }

@@ -27,7 +27,7 @@ const changePassword = rootOs
       });
       return { success: true };
     } catch (error: any) {
-      log.error(error, "Error during password change");
+      log.error({ err: error }, "Error during password change");
       throw errors.UNAUTHORIZED({
         message: error?.body?.message || error?.message || "Failed to change password",
       });
@@ -57,7 +57,7 @@ const deletePasskey = rootOs
       });
       return { success: true };
     } catch (error) {
-      log.error(error, "Error deleting passkey");
+      log.error({ err: error }, "Error deleting passkey");
       throw errors.INTERNAL_SERVER_ERROR({ message: "Failed to delete passkey" });
     }
   });
@@ -104,7 +104,7 @@ const createDashboardApiKey = rootOs
       });
       return { key: apiKey.key, id: apiKey.id };
     } catch (error) {
-      log.error(error, "Error during dashboard API key creation");
+      log.error({ err: error }, "Error during dashboard API key creation");
       throw errors.INTERNAL_SERVER_ERROR({ message: "Failed to create API key" });
     }
   });
@@ -122,7 +122,7 @@ const deleteDashboardApiKey = rootOs
       });
       return { success: true };
     } catch (error) {
-      log.error(error, "Error during dashboard API key deletion");
+      log.error({ err: error }, "Error during dashboard API key deletion");
       throw errors.INTERNAL_SERVER_ERROR({ message: "Failed to delete API key" });
     }
   });

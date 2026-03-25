@@ -24,7 +24,7 @@ export async function handleModelsRequest(req: Request): Promise<Response> {
   models.forEach(model => {
     if (modelMap.has(model.model_deployment.publicSpecifier)) {
       if (model.model_installation) {
-        modelMap.get(model.model_deployment.publicSpecifier)!.modelInstallations.push(model.model_installation);
+        modelMap.get(model.model_deployment.publicSpecifier)?.modelInstallations.push(model.model_installation);
       }
     } else {
       modelMap.set(model.model_deployment.publicSpecifier, {

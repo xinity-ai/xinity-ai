@@ -100,7 +100,7 @@ export async function handleCompletion(req: Request): Promise<Response> {
 
     if (body.stream) {
       const streamDeltas: z.infer<typeof BackendCompletionChunkSchema>[] = [];
-      let collectedUsage: z.infer<typeof BackendUsageSchema> = undefined;
+      let collectedUsage: z.infer<typeof BackendUsageSchema> | undefined = undefined;
 
       const stream = new ReadableStream({
         async start(controller) {

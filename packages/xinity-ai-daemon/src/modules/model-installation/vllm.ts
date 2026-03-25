@@ -394,7 +394,7 @@ export function syncVllmInstallations$(
                     { err, model: installation.model, installationId: installation.id },
                     "vLLM failed to start",
                   );
-                  const preCapturedLogs: string | undefined = (err as any)?.preCapturedLogs;
+                  const preCapturedLogs: string | undefined = (err as { preCapturedLogs?: string })?.preCapturedLogs;
                   return from(
                     (async () => {
                       const logs = preCapturedLogs || await ops.getLogs(installation.id).catch(() => "");

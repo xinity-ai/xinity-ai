@@ -58,7 +58,7 @@ const addExampleCalls = rootOs
         );
 
     } catch (e) {
-      log.error(e, "Error");
+      log.error({ err: e }, "Error inserting example calls");
       throw e;
     }
   });
