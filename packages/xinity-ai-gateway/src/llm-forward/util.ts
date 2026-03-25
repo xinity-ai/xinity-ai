@@ -316,7 +316,7 @@ function errorTypeFromStatus(status: number): string {
   }
 }
 
-export function errorResponse(message: string, statusCode = 500) {
+export function errorResponse(message: string, statusCode = 500, headers?: Record<string, string>) {
   return new Response(JSON.stringify({
     error: {
       message,
@@ -326,7 +326,7 @@ export function errorResponse(message: string, statusCode = 500) {
     },
   }), {
     status: statusCode,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...headers },
   });
 }
 
@@ -340,7 +340,9 @@ export async function forwardBackendError(
 ): Promise<Response> {
   const text = await backendResponse.text().catch(() => "");
   log.error({ status: backendResponse.status, body: text }, "Backend error");
-  const status = backendResponse.status >= 500 ? 502 : backendResponse.status;
+  const status = backendResponse.status >= 500
+    ? (backendResponse.status === 503 ? 503 : 502)
+    : backendResponse.status;
   try {
     JSON.parse(text);
     return new Response(text, { status, headers: { "Content-Type": "application/json" } });
@@ -348,6 +350,14 @@ export async function forwardBackendError(
     return errorResponse(text || "Bad Gateway", status);
   }
 }
+
+/** Returns true when the error represents a refused/unreachable backend connection. */
+export function isConnectionRefused(error: unknown): boolean {
+  return error instanceof Error && (error as { code?: string }).code === "ConnectionRefused";
+}
+
+/** Seconds to advertise in Retry-After when a backend node is unreachable (covers typical vLLM restart time). */
+export const BACKEND_RESTART_RETRY_AFTER = 120;
 
 export function validateModelType(
   modelInfo: { type?: string },

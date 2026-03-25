@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { resolveModel } from "../ai-sdk";
-import { errorResponse, forwardBackendError, logChatUsage, readSSEStream, validateModelType } from "../util";
+import { errorResponse, forwardBackendError, logChatUsage, readSSEStream, validateModelType, isConnectionRefused, BACKEND_RESTART_RETRY_AFTER } from "../util";
 import { BackendCompletionChunkSchema, BackendUsageSchema } from "../backend-schemas";
 import type { ApiCallInputMessage } from "common-db";
 import { rootLogger } from "../../logger";
@@ -226,6 +226,10 @@ export async function handleCompletion(req: Request): Promise<Response> {
     if (error instanceof Error && error.name === "TimeoutError") {
       log.warn({ err: error }, "Backend timeout");
       return errorResponse("Backend timeout", 504);
+    }
+    if (isConnectionRefused(error)) {
+      log.warn({ err: error }, "Backend unreachable");
+      return errorResponse("Service temporarily unavailable — consider adding cluster capacity", 503, { "Retry-After": String(BACKEND_RESTART_RETRY_AFTER) });
     }
     log.error({ err: error }, "Internal gateway error");
     return errorResponse(error instanceof Error ? error.message : "Internal Server Error", 500);
