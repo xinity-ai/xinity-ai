@@ -165,7 +165,7 @@ const removeMember = rootOs
           orgName: org?.name ?? "",
           dashboardUrl: `${serverEnv.ORIGIN}/organizations`,
         },
-      });
+      }).catch((err: unknown) => log.error({ err }, "Failed to send member removed notification"));
     }
 
     return { success: true };
@@ -222,7 +222,7 @@ const updateMemberRole = rootOs
           orgName: org?.name ?? "",
           dashboardUrl: `${serverEnv.ORIGIN}/organizations`,
         },
-      });
+      }).catch((err: unknown) => log.error({ err }, "Failed to send member role changed notification"));
     }
 
     return { success: true };
