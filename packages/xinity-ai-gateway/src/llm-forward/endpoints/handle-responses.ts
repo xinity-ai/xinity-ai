@@ -285,7 +285,7 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
     );
     if (isUpstreamError) {
       const status = (error as Record<string, unknown>).statusCode ?? (error as Record<string, unknown>).status;
-      const code = typeof status === "number" && status >= 400 ? status : 502;
+      const code = typeof status === "number" && status >= 400 && status < 600 ? status : 502;
       log.error({ err: error }, "Upstream error");
       return errorResponse(error.message || "Bad Gateway", code as number);
     }
