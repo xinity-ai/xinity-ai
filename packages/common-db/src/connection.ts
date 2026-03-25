@@ -105,7 +105,7 @@ async function* fromCallback<T, K>(register: (callback: (val: T) => void) => K, 
   try {
     while (!done) {
       if (queue.length) {
-        yield queue.shift();
+        yield queue.shift()!;
       } else {
         const result = await new Promise<Phe>(resolve => (resolveNext = resolve));
         if (result.done) break;

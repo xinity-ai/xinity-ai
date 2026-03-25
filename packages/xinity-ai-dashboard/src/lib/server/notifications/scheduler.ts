@@ -115,7 +115,7 @@ async function checkDeploymentStatus() {
             orgName: info.orgName,
             dashboardUrl: `${serverEnv.ORIGIN}/modelhub`,
           },
-        });
+        }).catch((err: unknown) => log.error({ err }, "Failed to send deployment ready notification"));
         log.info({ deploymentId, name: info.name }, "Deployment ready notification sent");
       }
 
@@ -130,7 +130,7 @@ async function checkDeploymentStatus() {
             orgName: info.orgName,
             dashboardUrl: `${serverEnv.ORIGIN}/modelhub`,
           },
-        });
+        }).catch((err: unknown) => log.error({ err }, "Failed to send deployment failed notification"));
         log.info({ deploymentId, name: info.name }, "Deployment failed notification sent");
       }
     }
@@ -176,7 +176,7 @@ async function checkNodeHealth() {
             status: node.available ? "online" : "offline",
             dashboardUrl: `${serverEnv.ORIGIN}/modelhub`,
           },
-        });
+        }).catch((err: unknown) => log.error({ err }, "Failed to send node status notification"));
       }
 
       log.info({ nodeId: node.id, host: nodeHost, available: node.available }, "Node status change notification sent");
@@ -234,7 +234,7 @@ async function checkCapacity() {
               usedCapacityGb: Math.round(usedCapacity * 10) / 10,
               dashboardUrl: `${serverEnv.ORIGIN}/modelhub`,
             },
-          });
+          }).catch((err: unknown) => log.error({ err }, "Failed to send capacity warning notification"));
         }
         log.info({ usedPercent, totalCapacity, usedCapacity }, "Capacity warning notification sent");
       }
@@ -316,7 +316,7 @@ async function checkWeeklyReport() {
           period,
           dashboardUrl: serverEnv.ORIGIN,
         },
-      });
+      }).catch((err: unknown) => log.error({ err }, "Failed to send weekly report notification"));
 
       log.info({ orgId: org.id, orgName: org.name }, "Weekly report sent");
     }
