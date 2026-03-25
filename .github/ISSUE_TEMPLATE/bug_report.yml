@@ -1,0 +1,83 @@
+name: Bug report
+description: Something is not working as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before opening a bug report, please check that the issue has not already been reported.
+        For security vulnerabilities, do **not** use this form — see [SECURITY.md](../../SECURITY.md).
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of Xinity AI is affected?
+      options:
+        - Gateway
+        - Dashboard
+        - Daemon
+        - CLI
+        - Common DB
+        - Infoserver
+        - Documentation
+        - Other / unsure
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of the bug.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps that reliably trigger the issue.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened? Include error messages, logs, or screenshots where relevant.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Version and deployment details.
+      placeholder: |
+        Xinity AI version:
+        OS / distribution:
+        Deployment type (on-prem / VPC / NixOS / air-gapped):
+        Inference driver (Ollama / vLLM):
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that might be relevant.
+    validations:
+      required: false

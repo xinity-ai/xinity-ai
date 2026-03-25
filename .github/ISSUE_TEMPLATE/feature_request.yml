@@ -1,0 +1,57 @@
+name: Feature request
+description: Suggest a new feature or improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For large architectural changes, please open a discussion first to align on scope before investing time in an implementation.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of Xinity AI would this affect?
+      options:
+        - Gateway
+        - Dashboard
+        - Daemon
+        - CLI
+        - Common DB
+        - Infoserver
+        - Documentation
+        - Multiple / new component
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What problem does this solve? What is currently missing or painful?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe the change or feature you have in mind.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any other approaches you considered, and why you prefer the proposed solution.
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Any other relevant context, links, or prior art.
+    validations:
+      required: false
