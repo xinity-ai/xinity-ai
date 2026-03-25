@@ -26,7 +26,7 @@ export async function handleEmbeddingGeneration(req: Request): Promise<Response>
 
     const parseResult = EmbeddingBodySchema.safeParse(rawBody);
     if (!parseResult.success) {
-      return errorResponse(`Invalid request body: ${parseResult.error.issues.map((i) => i.message).join(", ")}`, 422);
+      return errorResponse(`Invalid request body: ${parseResult.error.issues.map((i) => i.message).join(", ")}`, 400);
     }
     const body = parseResult.data;
 
@@ -68,7 +68,7 @@ export async function handleEmbeddingGeneration(req: Request): Promise<Response>
 
     if (usageResult.success) {
       recordUsage({
-        usage: { prompt_tokens: usageResult.data.prompt_tokens ?? usageResult.data.total_tokens, completion_tokens: 0 },
+        usage: { prompt_tokens: usageResult.data.prompt_tokens, completion_tokens: 0 },
         auth,
         modelInfo,
         callStartTime,
