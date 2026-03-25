@@ -85,7 +85,7 @@ function setApiKeyCache(
   ttlSeconds: number = 60 * 60,
 ): void {
   const key = `apikey:${identifier}`;
-  redis.set(key, JSON.stringify(pickAttrs(data)), "EX", ttlSeconds)
+  void redis.set(key, JSON.stringify(pickAttrs(data)), "EX", ttlSeconds)
     .catch((err: unknown) => log.warn({ err }, "Redis error in setApiKeyCache"));
 }
 
