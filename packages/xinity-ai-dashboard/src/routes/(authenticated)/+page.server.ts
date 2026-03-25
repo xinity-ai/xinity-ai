@@ -132,7 +132,7 @@ export const load: PageServerLoad = async ({ parent }) => {
         unrated: sql<number>`COUNT(CASE WHEN ${apiCallResponseT.response} IS NULL THEN 1 END)::int`,
       })
       .from(apiCallResponseT)
-      .where(sql`${apiCallResponseT.userId} = ${activeOrgId}`),
+      .where(sql`${apiCallResponseT.userId} = ${userId}`),
 
     db.select({
         total: sql<number>`COUNT(*)::int`,
