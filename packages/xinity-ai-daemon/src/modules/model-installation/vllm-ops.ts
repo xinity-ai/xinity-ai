@@ -154,7 +154,7 @@ export function createDockerVllmOps(): VllmOps {
         .split("\n")
         .map((name) => name.trim())
         .filter(Boolean)
-        .map((name) => name.replace(DOCKER_CONTAINER_PREFIX, ""));
+        .map((name) => name.startsWith(DOCKER_CONTAINER_PREFIX) ? name.slice(DOCKER_CONTAINER_PREFIX.length) : name);
     },
 
     async start(id, config) {

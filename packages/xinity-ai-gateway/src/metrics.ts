@@ -1,4 +1,5 @@
 import { env } from "./env";
+import { releaseCallbacks } from "./llm-forward/release-registry";
 
 // Metrics basic auth: comma-separated "user:pass" pairs, e.g. "admin:secret,reader:abc123"
 const METRICS_AUTH: Array<{ user: string; pass: string }> = (() => {
@@ -11,7 +12,6 @@ const METRICS_AUTH: Array<{ user: string; pass: string }> = (() => {
     return { user: pair.slice(0, sep), pass: pair.slice(sep + 1) };
   });
 })();
-import { releaseCallbacks } from "./llm-forward/release-registry";
 
 const UNAUTHORIZED = (message = "Unauthorized") =>
   new Response(message, {

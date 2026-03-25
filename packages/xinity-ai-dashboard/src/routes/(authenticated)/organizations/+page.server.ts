@@ -12,7 +12,7 @@ export const load: PageServerLoad = async ({ request, parent }) => {
   const activeOrganizationId = parent().then(({session})=> session.activeOrganizationId)
 
   return {
-    organizations: await organizations || [],
+    organizations: (await organizations) ?? [],
     invites: (await invites),
     activeOrganizationId: (await activeOrganizationId), 
   };

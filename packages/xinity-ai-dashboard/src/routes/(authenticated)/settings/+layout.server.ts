@@ -8,6 +8,7 @@ export const load: LayoutServerLoad = async ({ parent }) => {
   const [fullUser] = await getDB()
     .select()
     .from(userT)
-    .where(sql`${userT.id} = ${user.id}`);
+    .where(sql`${userT.id} = ${user.id}`)
+    .limit(1);
   return { fullUser };
 };

@@ -126,7 +126,7 @@ const cli = rootOs
         body: { email: input.email, password: input.password, name: input.name },
       });
     } catch (err) {
-      log.error(err, "CLI onboarding signup failed");
+      log.error({ err }, "CLI onboarding signup failed");
       throw errors.CONFLICT({ message: "Failed to create user, email may already be in use" });
     }
 
