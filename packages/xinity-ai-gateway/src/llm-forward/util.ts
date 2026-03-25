@@ -5,6 +5,9 @@ import type { AuthResult } from "./auth";
 import type { ModelMessage, ImagePart, TextPart } from "ai";
 import type { ApiCallInputMessage } from "common-db";
 import { BLOCKED_REQUEST_PARAM_PREFIXES } from "xinity-infoserver";
+import { rootLogger } from "../logger";
+
+const log = rootLogger.child({ name: "util" });
 
 // ---------------------------------------------------------------------------
 // Message conversion (OpenAI wire format → AI SDK ModelMessage)
@@ -178,14 +181,12 @@ export const logChatUsage = ({
   };
 
   if (stream) {
-    logChatStream({
-      ...commonFields,
-      data: outputData,
+    logChatStream({ ...commonFields, data: outputData }).catch((err) => {
+      log.error({ err }, "logChatStream error");
     });
   } else {
-    logChatSync({
-      ...commonFields,
-      data: outputData,
+    logChatSync({ ...commonFields, data: outputData }).catch((err) => {
+      log.error({ err }, "logChatSync error");
     });
   }
 };

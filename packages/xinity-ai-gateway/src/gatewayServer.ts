@@ -13,6 +13,13 @@ import { handleCreateResponseRequest, handleGetOrDeleteResponseRequest } from ".
 import { handleRerank } from "./llm-forward/endpoints/handle-rerank";
 import { handleMetrics, withMetrics } from "./metrics";
 
+process.on("unhandledRejection", (reason) => {
+  rootLogger.error({ err: reason }, "Unhandled promise rejection");
+});
+process.on("uncaughtException", (err) => {
+  rootLogger.error({ err }, "Uncaught exception");
+});
+
 const migrationState = await checkMigrations();
 if (migrationState.status !== "ok") {
   rootLogger.fatal("Database migrations are not up to date, gateway cannot start.");
