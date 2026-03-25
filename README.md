@@ -1,6 +1,9 @@
-# Xinity-ai
+# Xinity AI
 
-Xinity AI monorepo. This repo contains the API gateway, the admin dashboard, and shared database + model schema packages.
+[![CI](https://github.com/xinity-ai/xinity-ai/actions/workflows/tests.yml/badge.svg)](https://github.com/xinity-ai/xinity-ai/actions/workflows/tests.yml)
+[![License](https://img.shields.io/badge/license-Apache%202.0%20%2F%20ELv2-blue)](#licensing)
+
+Self-hostable AI orchestration platform with an OpenAI-compatible API. Run LLMs on your own infrastructure — no data leaves your environment.
 
 ## What it is
 
@@ -14,7 +17,7 @@ Xinity AI is a full model orchestration system. Once deployed, it enables users 
 ### Who it's for
 
 - Enterprises with strict data governance or regulatory requirements.
-- Organizations that do not trust US or China based vendors with sensitive data.
+- Organizations that cannot send sensitive data to third-party AI vendors for legal, regulatory, or policy reasons.
 - Teams that need on-prem or data-residency compliant AI deployments.
 
 ## Requirements
@@ -42,8 +45,8 @@ Three routes are available. The **Xinity CLI** is the recommended starting point
 ```bash
 bun install
 
-# Initialize .env files from any example.env files (does not overwrite existing .env)
-rg --files -g 'example.env' | while read -r f; do
+# Initialize .env files from example.env files (does not overwrite existing .env)
+find . -name 'example.env' -not -path '*/node_modules/*' | while read -r f; do
   target="${f%/example.env}/.env"
   [ -f "$target" ] || cp "$f" "$target"
 done
@@ -164,6 +167,10 @@ This monorepo uses lockstep versioning: all packages are released with the same 
 ## Documentation
 
 - Architecture overview: `docs/architecture.md`
+
+## Security
+
+To report a vulnerability, please follow the process in [SECURITY.md](SECURITY.md). Do not open a public issue.
 
 ## Contributing
 
