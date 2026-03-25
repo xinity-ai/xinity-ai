@@ -25,8 +25,8 @@ function consumePull$({model, id}: ModelInstallation): Observable<void> {
     concatMap(async (chunk) => {
       const newest = chunk.at(-1);
       if(newest){
-        const isDownloading = Boolean(newest.completed) && Boolean(newest.total);
-        const progress = isDownloading ? (newest.completed / newest.total): null;
+        const isDownloading = newest.completed != null && newest.total != null && newest.total > 0;
+        const progress = isDownloading ? (newest.completed / newest.total) : null;
         const isDone = newest.status === "success";
         const isInstalling = newest.status.startsWith("verifying");
         const lifecycleState = isDone ? "ready" : isInstalling ? "installing" : "downloading";

@@ -19,6 +19,13 @@ function createSlug(name: string): string {
     .replace(/^-|-$/g, "");
 }
 
+async function assertSlugAvailable(slug: string, errors: { CONFLICT: (opts: { message: string }) => Error }): Promise<void> {
+  const existing = await getDB().select({ id: organizationT.id }).from(organizationT).where(eq(organizationT.slug, slug)).limit(1);
+  if (existing.length > 0) {
+    throw errors.CONFLICT({ message: "An organization with this name already exists. Please choose a different name." });
+  }
+}
+
 const setupOnboarding = rootOs
   .meta({ mcp: false })
   .use(withAuth)
@@ -41,10 +48,7 @@ const setupOnboarding = rootOs
 
     // Check slug availability before creating
     const db = getDB();
-    const existing = await db.select({ id: organizationT.id }).from(organizationT).where(eq(organizationT.slug, slug)).limit(1);
-    if (existing.length > 0) {
-      throw errors.CONFLICT({ message: "An organization with this name already exists. Please choose a different name." });
-    }
+    await assertSlugAvailable(slug, errors);
 
     // 1. Create organization and set it as active
     await call(createOrganization, {
@@ -140,10 +144,7 @@ const cli = rootOs
     const slug = createSlug(input.orgName);
 
     // Check slug availability before creating
-    const existing = await db.select({ id: organizationT.id }).from(organizationT).where(eq(organizationT.slug, slug)).limit(1);
-    if (existing.length > 0) {
-      throw errors.CONFLICT({ message: "An organization with this name already exists. Please choose a different name." });
-    }
+    await assertSlugAvailable(slug, errors);
 
     const orgId = crypto.randomUUID();
     await db.insert(organizationT).values({
