@@ -53,7 +53,8 @@ async function requireSsoAccess(
   const [org] = await getDB()
     .select({ ssoSelfManage: organizationT.ssoSelfManage })
     .from(organizationT)
-    .where(eq(organizationT.id, organizationId));
+    .where(eq(organizationT.id, organizationId))
+    .limit(1);
   if (!org) {
     throw errors.NOT_FOUND({ message: "Organization not found" });
   }
@@ -179,7 +180,7 @@ const deleteProvider = rootOs
     providerId: z.string(),
   }))
   .handler(async ({ input, context, errors }) => {
-    const [provider] = await getDB().select().from(ssoProviderT).where(eq(ssoProviderT.providerId, input.providerId));
+    const [provider] = await getDB().select().from(ssoProviderT).where(eq(ssoProviderT.providerId, input.providerId)).limit(1);
     if (!provider) {
       throw errors.NOT_FOUND({ message: "Provider not found" });
     }
