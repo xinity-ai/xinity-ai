@@ -57,7 +57,7 @@ export async function handleRerank(req: Request): Promise<Response> {
       return forwardBackendError(backendResponse, log);
     }
 
-    const result: any = await backendResponse.json();
+    const result = await backendResponse.json() as Record<string, unknown>;
 
     return Response.json({
       ...result,
