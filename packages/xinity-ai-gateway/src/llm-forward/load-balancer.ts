@@ -50,14 +50,15 @@ function incrWithExpire(key: string, ttl: number): Promise<boolean> {
 /** Atomically track a connection for least-connections balancing. Returns a release function. */
 function trackConnection(host: string): { release: () => void } {
   const connKey = `${CONN_PREFIX}${host}`;
-  let shouldDecrement = false;
-  incrWithExpire(connKey, CONN_SAFETY_TTL).then((ok) => { shouldDecrement = ok; });
+  const incrPromise = incrWithExpire(connKey, CONN_SAFETY_TTL);
   let released = false;
   return {
     release: () => {
-      if (released || !shouldDecrement) return;
+      if (released) return;
       released = true;
-      redis.send("DECR", [connKey]).catch((err: unknown) => log.warn({ err }, "Redis DECR error"));
+      incrPromise.then((ok) => {
+        if (ok) redis.send("DECR", [connKey]).catch((err: unknown) => log.warn({ err }, "Redis DECR error"));
+      });
     },
   };
 }
