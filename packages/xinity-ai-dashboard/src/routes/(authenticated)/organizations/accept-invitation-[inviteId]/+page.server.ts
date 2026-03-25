@@ -20,10 +20,10 @@ export const load: PageServerLoad = async ({ params, request, parent }) => {
       headers: request.headers,
     });
     if(invitation){
-      const [organization] = await getDB().select().from(organizationT).where(sql`
-        ${organizationT.id} = ${invitation.invitation.organizationId}  
-      `);
-      organizationSlug = organization.slug;
+      const [organization] = await getDB().select({ slug: organizationT.slug }).from(organizationT).where(sql`
+        ${organizationT.id} = ${invitation.invitation.organizationId}
+      `).limit(1);
+      organizationSlug = organization?.slug;
     }
 
   } catch (err: unknown) {
@@ -32,7 +32,7 @@ export const load: PageServerLoad = async ({ params, request, parent }) => {
     const body = (e?.body ?? {}) as Record<string, unknown>;
     const errorCode = (body.code || e?.code) as string | undefined;
     const statusCode = (e?.statusCode || e?.status || 500) as number;
-    log.error(err, "Error accepting invitation");
+    log.error({ err }, "Error accepting invitation");
 
     return {
       error: true,

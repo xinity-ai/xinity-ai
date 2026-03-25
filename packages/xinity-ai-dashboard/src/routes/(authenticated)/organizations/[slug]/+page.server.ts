@@ -2,7 +2,6 @@ import type { PageServerLoad } from "./$types";
 import { auth } from "$lib/server/auth-server";
 import { redirect } from "@sveltejs/kit";
 import { memberT, organizationT, sql, eq } from "common-db";
-import { serverEnv } from "$lib/server/serverenv";
 import { getDB } from "$lib/server/db";
 import type { RoleName } from "$lib/roles";
 
@@ -15,7 +14,7 @@ export const load: PageServerLoad = async ({ params, request, parent }) => {
     headers: request.headers,
   });
 
-  const organization = organizations?.find((org: any) => org.slug === slug);
+  const organization = organizations?.find((org) => org.slug === slug);
 
   if (!organization) {
     throw redirect(302, "/organizations");
@@ -45,8 +44,8 @@ export const load: PageServerLoad = async ({ params, request, parent }) => {
       ${memberT.userId} = ${user.id}
       AND
       ${memberT.organizationId} = ${organization.id}
-    `),
-    getDB().select({ ssoSelfManage: organizationT.ssoSelfManage }).from(organizationT).where(eq(organizationT.id, organization.id)),
+    `).limit(1),
+    getDB().select({ ssoSelfManage: organizationT.ssoSelfManage }).from(organizationT).where(eq(organizationT.id, organization.id)).limit(1),
   ]);
 
   return {

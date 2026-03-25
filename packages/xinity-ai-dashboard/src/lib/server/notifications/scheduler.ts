@@ -255,7 +255,14 @@ async function checkWeeklyReport() {
     if (now.getUTCDay() !== 1 || now.getUTCHours() !== 8) return;
 
     const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60_000);
-    const orgs = await getDB().select({ id: organizationT.id, name: organizationT.name }).from(organizationT);
+    const [orgs, nodeResult] = await Promise.all([
+      getDB().select({ id: organizationT.id, name: organizationT.name }).from(organizationT),
+      // Count active nodes (instance-wide, same for all orgs)
+      getDB().select({ count: count() }).from(aiNodeT).where(sql`
+        ${aiNodeT.available} = true AND ${aiNodeT.deletedAt} IS NULL
+      `),
+    ]);
+    const activeNodes = nodeResult[0]?.count ?? 0;
 
     for (const org of orgs) {
       // Count active deployments
@@ -263,23 +270,12 @@ async function checkWeeklyReport() {
         .select({ count: count() })
         .from(modelDeploymentT)
         .where(sql`
-          ${modelDeploymentT.organizationId} = ${org.id} 
+          ${modelDeploymentT.organizationId} = ${org.id}
         AND
           ${modelDeploymentT.enabled} = true
         AND
           ${modelDeploymentT.deletedAt} IS NULL`);
       const deploymentCount = deploymentResult?.count ?? 0;
-
-      // Count active nodes (instance-wide)
-      const [nodeResult] = await getDB()
-        .select({ count: count() })
-        .from(aiNodeT)
-        .where(sql`
-          ${aiNodeT.available} = true 
-        AND 
-          ${aiNodeT.deletedAt} IS NULL
-        `);
-      const activeNodes = nodeResult?.count ?? 0;
 
       // Count API calls this week
       const [callResult] = await getDB()

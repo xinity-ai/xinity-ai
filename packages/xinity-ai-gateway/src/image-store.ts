@@ -242,9 +242,6 @@ export async function processMessageImages(
 
     if (dbParts.length > 0) {
       messagesForDB.push({ ...message, content: dbParts });
-    } else if (llmParts.some((p) => p.type === "text")) {
-      // Keep the message if it has text parts, just with images stripped
-      messagesForDB.push({ ...message, content: dbParts });
     }
     // If the message had only images and all were stripped, omit it from DB
   }
