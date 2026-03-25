@@ -139,7 +139,6 @@
     },
     "packages/xinity-cli": {
       "name": "xinity-cli",
-      "version": "0.1.0",
       "bin": {
         "xinity": "src/index.ts",
       },
