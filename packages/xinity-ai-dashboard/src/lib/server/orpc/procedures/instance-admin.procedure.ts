@@ -9,6 +9,16 @@ const tags = ["Instance Admin"];
 
 const RoleSchema = z.enum(["owner", "admin", "member", "labeler", "viewer", "pending"]);
 
+/** Returns true when the organization has only one owner (removing or demoting them would leave it ownerless). */
+async function isSoleOwner(organizationId: string): Promise<boolean> {
+  const owners = await getDB()
+    .select({ userId: memberT.userId })
+    .from(memberT)
+    .where(and(eq(memberT.organizationId, organizationId), eq(memberT.role, "owner")))
+    .limit(2);
+  return owners.length <= 1;
+}
+
 // ── Users ────────────────────────────────────────────────────────────────
 
 const listUsers = rootOs
@@ -172,14 +182,8 @@ const removeUserFromOrganization = rootOs
       .where(and(eq(memberT.userId, input.userId), eq(memberT.organizationId, input.organizationId)))
       .limit(1);
 
-    if (membership?.role === "owner") {
-      const owners = await db
-        .select({ userId: memberT.userId })
-        .from(memberT)
-        .where(and(eq(memberT.organizationId, input.organizationId), eq(memberT.role, "owner")));
-      if (owners.length <= 1) {
-        throw errors.FORBIDDEN({ message: "Cannot remove the sole owner of an organization. Transfer ownership first." });
-      }
+    if (membership?.role === "owner" && await isSoleOwner(input.organizationId)) {
+      throw errors.FORBIDDEN({ message: "Cannot remove the sole owner of an organization. Transfer ownership first." });
     }
 
     log.info(input, "Removing user from organization");
@@ -209,14 +213,8 @@ const updateUserRole = rootOs
         .where(and(eq(memberT.userId, input.userId), eq(memberT.organizationId, input.organizationId)))
         .limit(1);
 
-      if (current?.role === "owner") {
-        const owners = await db
-          .select({ userId: memberT.userId })
-          .from(memberT)
-          .where(and(eq(memberT.organizationId, input.organizationId), eq(memberT.role, "owner")));
-        if (owners.length <= 1) {
-          throw errors.FORBIDDEN({ message: "Cannot demote the sole owner of an organization. Transfer ownership first." });
-        }
+      if (current?.role === "owner" && await isSoleOwner(input.organizationId)) {
+        throw errors.FORBIDDEN({ message: "Cannot demote the sole owner of an organization. Transfer ownership first." });
       }
     }
 
