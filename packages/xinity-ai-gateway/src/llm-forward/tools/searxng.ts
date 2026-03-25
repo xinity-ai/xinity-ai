@@ -26,7 +26,7 @@ export async function searchSearxng(query: string, maxResults = 5): Promise<Sear
     throw new Error(`Search request failed: ${response.status}`);
   }
 
-  const payload = (await response.json()) as { results?: any[] };
+  const payload = (await response.json()) as { results?: SearxngResult[] };
   const results = payload.results ?? [];
 
   return results.slice(0, maxResults).map(result => ({

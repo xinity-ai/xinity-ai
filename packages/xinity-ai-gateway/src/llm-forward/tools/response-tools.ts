@@ -13,11 +13,11 @@ export const webSearch = tool({
   description: "Search the web for recent information",
   inputSchema: z.object({
     query: z.string().describe("Query to search for"),
-    max_results: z.number().int().min(1).max(10).optional().describe("Maxium results to return"),
+    max_results: z.number().int().min(1).max(10).optional().describe("Maximum results to return"),
   }),
   execute: async ({ query, max_results }: { query: string; max_results?: number }) => {
     const results = await searchSearxng(query, max_results ?? 5);
-    log.debug({ query, resultCount: results.length }, "Web search")
+    log.debug({ query, resultCount: results.length }, "Web search");
     return { query, results };
   },
 });
@@ -30,7 +30,7 @@ export const webFetch = tool({
   }),
   execute: async ({ url, max_chars }) => {
     const result = await fetchWebContent(url, max_chars)
-    log.debug({ url }, "Web content fetched")
+    log.debug({ url }, "Web content fetched");
     return result;
   },
 });
