@@ -232,7 +232,7 @@ const updateDeployment = rootOs
         ${modelDeploymentT.organizationId} = ${context.activeOrganizationId}
       AND
         ${modelDeploymentT.deletedAt} IS NULL
-      `);
+      `).limit(1);
     if (!current) throw errors.NOT_FOUND();
 
     // When the deployment is enabled and not being disabled, block changes to restricted fields
@@ -285,12 +285,12 @@ const toggleEnabled = rootOs
       // Fetch current state to check if we're re-enabling a disabled deployment
       const [current] = await getDB().select().from(modelDeploymentT)
         .where(sql`
-          ${modelDeploymentT.id} = ${input.id} 
-        AND 
-          ${modelDeploymentT.organizationId} = ${context.activeOrganizationId} 
-        AND 
+          ${modelDeploymentT.id} = ${input.id}
+        AND
+          ${modelDeploymentT.organizationId} = ${context.activeOrganizationId}
+        AND
           ${modelDeploymentT.deletedAt} IS NULL
-        `);
+        `).limit(1);
       if (!current) throw errors.NOT_FOUND();
       if (!current.enabled) {
         const result = await checkDeploymentCapacity(current);
@@ -325,7 +325,7 @@ const getDeployment = rootOs
       AND
         ${modelDeploymentT.organizationId} = ${context.activeOrganizationId}
       AND
-        ${modelDeploymentT.deletedAt} IS NULL`);
+        ${modelDeploymentT.deletedAt} IS NULL`).limit(1);
     if (!deployment) {
       throw errors.NOT_FOUND();
     }
@@ -377,7 +377,7 @@ const findDeployment = rootOs
         ${modelDeploymentT.organizationId} = ${context.activeOrganizationId}
       AND
         ${modelDeploymentT.deletedAt} IS NULL
-      `);
+      `).limit(1);
     if (!deployment) {
       throw errors.NOT_FOUND();
     }
@@ -432,7 +432,7 @@ export const createDeployment = rootOs
           orgName: org?.name ?? "",
           dashboardUrl: `${serverEnv.ORIGIN}/modelhub`,
         },
-      });
+      }).catch((err: unknown) => log.error({ err }, "Failed to send deployment created notification"));
       return deployment;
     } catch (err) {
       log.error(err);

@@ -70,7 +70,8 @@ const getApplication = rootOs
           sql`${aiApplicationT.organizationId} = ${context.activeOrganizationId}`,
           isNull(aiApplicationT.deletedAt)
         )
-      );
+      )
+      .limit(1);
 
     return app;
   });
