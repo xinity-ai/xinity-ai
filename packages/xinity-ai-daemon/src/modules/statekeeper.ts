@@ -34,7 +34,7 @@ export async function getNodeId(){
   const idFile = Bun.file(join(env.STATE_DIR, "node_id"));
   if(!await idFile.exists()){
     const host = Object.values(networkInterfaces())
-      .flatMap(n => n!)
+      .flatMap(n => n ?? [])
       .find(n =>  n.family === 'IPv4' &&
           (!n.cidr || n.cidr.startsWith(env.CIDR_PREFIX)) &&
           !n.internal
