@@ -46,6 +46,11 @@ function matchFatalPattern(logs: string): string | null {
   return null;
 }
 
+async function captureLogsAndMatch(id: string, ops: VllmOps): Promise<{ logs: string; fatalMatch: string | null }> {
+  const logs = await ops.getLogs(id).catch(() => "");
+  return { logs, fatalMatch: matchFatalPattern(logs) };
+}
+
 function resolveDefaultOps(): VllmOps {
   return env.VLLM_BACKEND === "docker"
     ? createDockerVllmOps()
@@ -102,8 +107,7 @@ function pollUntilHealthy$(
       const restartCount = await ops.getRestartCount(installation.id);
 
       if (restartCount >= env.VLLM_MAX_RESTART_COUNT) {
-        const logs = await ops.getLogs(installation.id).catch(() => "");
-        const fatalMatch = matchFatalPattern(logs);
+        const { logs, fatalMatch } = await captureLogsAndMatch(installation.id, ops);
         const reason = fatalMatch ?? "unknown reason";
         throw Object.assign(
           new Error(`Container crash-looping (${restartCount} restarts, ${reason}): ${installation.model}`),
@@ -112,8 +116,7 @@ function pollUntilHealthy$(
       }
 
       if (restartCount > 0) {
-        const logs = await ops.getLogs(installation.id).catch(() => "");
-        const fatalMatch = matchFatalPattern(logs);
+        const { logs, fatalMatch } = await captureLogsAndMatch(installation.id, ops);
         if (fatalMatch) {
           throw Object.assign(
             new Error(`Fatal error detected (${fatalMatch}): ${installation.model}`),
@@ -232,8 +235,7 @@ function reconcileStaleStates$(
                   if (alive) {
                     const restartCount = await ops.getRestartCount(installation.id);
                     if (restartCount >= env.VLLM_MAX_RESTART_COUNT) {
-                      const logs = await ops.getLogs(installation.id).catch(() => "");
-                      const fatalMatch = matchFatalPattern(logs);
+                      const { logs, fatalMatch } = await captureLogsAndMatch(installation.id, ops);
                       await updateInstallationState(installation.id, "failed", {
                         errorMessage: `Container crash-looping (${restartCount} restarts${fatalMatch ? `, ${fatalMatch}` : ""})`,
                         statusMessage: "Container crash-looping",
