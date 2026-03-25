@@ -99,8 +99,9 @@ export async function handleCompletion(req: Request): Promise<Response> {
     }
 
     if (body.stream) {
-      const streamDeltas: z.infer<typeof BackendCompletionChunkSchema>[] = [];
       let collectedUsage: z.infer<typeof BackendUsageSchema> | undefined = undefined;
+      let deltaModel = originalModel;
+      const accumByChoice = new Map<number, { content: string; finish_reason?: string | null }>();
 
       const stream = new ReadableStream({
         async start(controller) {
@@ -124,7 +125,15 @@ export async function handleCompletion(req: Request): Promise<Response> {
               const chunk = { ...parsed.data, model: originalModel };
 
               if (chunk.usage) collectedUsage = chunk.usage;
-              if (chunk.choices.length) streamDeltas.push(chunk);
+              if (chunk.choices.length) {
+                deltaModel = chunk.model;
+                for (const choice of chunk.choices) {
+                  const acc = accumByChoice.get(choice.index) ?? { content: "" };
+                  acc.content += choice.text ?? "";
+                  if (choice.finish_reason) acc.finish_reason = choice.finish_reason;
+                  accumByChoice.set(choice.index, acc);
+                }
+              }
 
               controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
             }
@@ -134,21 +143,32 @@ export async function handleCompletion(req: Request): Promise<Response> {
             logChatUsage({
               ...logFields,
               usage: collectedUsage,
-              outputData: streamDeltas.map((c) => ({
-                model: c.model,
-                choices: c.choices.map((ch) => ({
-                  index: ch.index,
-                  delta: { role: "assistant" as const, content: ch.text },
-                  finish_reason: ch.finish_reason ?? null,
+              outputData: [...accumByChoice.entries()]
+                .sort(([a], [b]) => a - b)
+                .map(([idx, acc]) => ({
+                  model: deltaModel,
+                  choices: [{
+                    index: idx,
+                    delta: { role: "assistant" as const, content: acc.content },
+                    finish_reason: acc.finish_reason ?? null,
+                  }],
                 })),
-              })),
               stream: true,
             });
           } catch (e) {
+            if (e instanceof Error && e.name === "AbortError") {
+              log.info({ err: e }, "Client disconnected during stream");
+              try { controller.close(); } catch {}
+              return;
+            }
             log.error({ err: e }, "Stream error");
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: { message: "Internal stream error", type: "server_error" } })}\n\n`));
-            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-            controller.close();
+            try {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: { message: "Internal stream error", type: "server_error" } })}\n\n`));
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+              controller.close();
+            } catch {
+              try { controller.error(e as Error); } catch {}
+            }
           }
         },
       });
@@ -199,6 +219,14 @@ export async function handleCompletion(req: Request): Promise<Response> {
 
     return Response.json(raw);
   } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      log.info({ err: error }, "Client disconnected");
+      return new Response(null, { status: 499 });
+    }
+    if (error instanceof Error && error.name === "TimeoutError") {
+      log.warn({ err: error }, "Backend timeout");
+      return errorResponse("Backend timeout", 504);
+    }
     log.error({ err: error }, "Internal gateway error");
     return errorResponse(error instanceof Error ? error.message : "Internal Server Error", 500);
   }

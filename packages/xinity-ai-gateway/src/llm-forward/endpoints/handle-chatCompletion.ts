@@ -132,8 +132,12 @@ export async function handleChatCompletion(req: Request) {
     }
 
     if (body.stream) {
-      const streamDeltas: z.infer<typeof BackendChatChunkSchema>[] = [];
       let collectedUsage: z.infer<typeof BackendUsageSchema> | undefined;
+      let deltaModel = originalModel;
+      const accumByChoice = new Map<number, {
+        content: string; role: string;
+        tool_calls?: unknown[]; finish_reason?: string | null;
+      }>();
 
       const stream = new ReadableStream({
         async start(controller) {
@@ -157,7 +161,18 @@ export async function handleChatCompletion(req: Request) {
               const chunk = { ...parsed.data, model: originalModel };
 
               if (chunk.usage) collectedUsage = chunk.usage;
-              if (chunk.choices.length) streamDeltas.push(chunk);
+              if (chunk.choices.length) {
+                deltaModel = chunk.model;
+                for (const choice of chunk.choices) {
+                  const acc = accumByChoice.get(choice.index) ?? { content: "", role: "assistant" };
+                  acc.content += typeof choice.delta.content === "string" ? choice.delta.content : "";
+                  if (choice.delta.role) acc.role = choice.delta.role as string;
+                  if (Array.isArray(choice.delta.tool_calls) && choice.delta.tool_calls.length > 0)
+                    acc.tool_calls = choice.delta.tool_calls as unknown[];
+                  if (choice.finish_reason) acc.finish_reason = choice.finish_reason;
+                  accumByChoice.set(choice.index, acc);
+                }
+              }
 
               controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
             }
@@ -166,14 +181,32 @@ export async function handleChatCompletion(req: Request) {
             logChatUsage({
               ...logFields,
               usage: collectedUsage,
-              outputData: streamDeltas.map((c) => ({ model: c.model, choices: c.choices })),
+              outputData: [...accumByChoice.entries()]
+                .sort(([a], [b]) => a - b)
+                .map(([idx, acc]) => ({
+                  model: deltaModel,
+                  choices: [{
+                    index: idx,
+                    delta: { role: acc.role, content: acc.content, ...(acc.tool_calls ? { tool_calls: acc.tool_calls } : {}) },
+                    finish_reason: acc.finish_reason ?? null,
+                  }],
+                })),
               stream: true,
             });
           } catch (e) {
+            if (e instanceof Error && e.name === "AbortError") {
+              log.info({ err: e }, "Client disconnected during stream");
+              try { controller.close(); } catch {}
+              return;
+            }
             log.error({ err: e }, "Stream error");
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: { message: "Internal stream error", type: "server_error" } })}\n\n`));
-            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-            controller.close();
+            try {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: { message: "Internal stream error", type: "server_error" } })}\n\n`));
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+              controller.close();
+            } catch {
+              try { controller.error(e as Error); } catch {}
+            }
           }
         },
       });
@@ -231,6 +264,14 @@ export async function handleChatCompletion(req: Request) {
     }
 
   } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      log.info({ err: error }, "Client disconnected");
+      return new Response(null, { status: 499 });
+    }
+    if (error instanceof Error && error.name === "TimeoutError") {
+      log.warn({ err: error }, "Backend timeout");
+      return errorResponse("Backend timeout", 504);
+    }
     log.error({ err: error }, "Internal gateway error");
     return errorResponse(error instanceof Error ? error.message : "Internal Server Error", 500);
   }
