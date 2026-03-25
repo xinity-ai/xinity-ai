@@ -155,7 +155,8 @@ async function listDrmCardsForVendor(vendorId: string): Promise<string[]> {
       }
     }
     return matching;
-  } catch {
+  } catch (err) {
+    log.debug({ err }, "Failed to read DRM sysfs path, assuming no DRM devices");
     return [];
   }
 }
