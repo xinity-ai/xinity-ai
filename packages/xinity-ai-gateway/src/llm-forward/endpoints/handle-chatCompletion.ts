@@ -133,7 +133,7 @@ export async function handleChatCompletion(req: Request) {
 
     if (body.stream) {
       const streamDeltas: z.infer<typeof BackendChatChunkSchema>[] = [];
-      let collectedUsage: z.infer<typeof BackendUsageSchema> = undefined;
+      let collectedUsage: z.infer<typeof BackendUsageSchema> | undefined;
 
       const stream = new ReadableStream({
         async start(controller) {

@@ -79,11 +79,11 @@ export async function checkAuth(authHeader: string): Promise<Response | AuthResu
 
 type PartialApiKey = Pick<AIAPIKeyT, "organizationId" | "id" | "applicationId" | "collectData">;
 const pickAttrs = pick(["organizationId", "id", "applicationId", "collectData"] satisfies (keyof AIAPIKeyT)[]);
-async function setApiKeyCache(
+function setApiKeyCache(
   identifier: string,
   data: AIAPIKeyT,
   ttlSeconds: number = 60 * 60,
-): Promise<void> {
+): void {
   const key = `apikey:${identifier}`;
   redis.set(key, JSON.stringify(pickAttrs(data)), "EX", ttlSeconds)
     .catch((err: unknown) => log.warn({ err }, "Redis error in setApiKeyCache"));

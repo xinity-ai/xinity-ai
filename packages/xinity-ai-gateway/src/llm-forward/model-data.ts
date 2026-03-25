@@ -106,7 +106,7 @@ export async function getModelInfo(orgId: string, modelSpecifier: string, keyId:
 
   const resolvedModel = result.useFinalModel
     ? accessInfo.modelSpecifier
-    : accessInfo.earlyModelSpecifier!;
+    : (accessInfo.earlyModelSpecifier ?? accessInfo.modelSpecifier);
 
   // Look up driver from whichever source set the host came from
   const driver = finalSources.driverMap.get(result.host)

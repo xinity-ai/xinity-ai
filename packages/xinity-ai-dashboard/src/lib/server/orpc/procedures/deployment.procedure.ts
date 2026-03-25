@@ -122,7 +122,7 @@ async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>
   return { deployable: true };
 }
 
-async function internalUpdateDeployment(orgId: string, id: string, params: Partial<ModelDeployment>): Promise<ModelDeployment> {
+async function internalUpdateDeployment(orgId: string, id: string, params: Partial<ModelDeployment>): Promise<ModelDeployment | undefined> {
   const [deployment] = await getDB().update(modelDeploymentT)
     .set(params)
     .where(sql`
