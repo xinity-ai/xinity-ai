@@ -74,7 +74,7 @@ export async function logChatStream(input: ChatStreamInput) {
       .map((x) => x.choices[choiceIndex]?.delta.content as string | undefined)
       .filter((x) => x)
       .join("");
-    const role = ((input.data[0]?.choices[choiceIndex]!.delta.role as string) || "assistant") as ApiCallInputMessage["role"];
+    const role = ((input.data[0]!.choices[choiceIndex]?.delta.role as string) || "assistant") as ApiCallInputMessage["role"];
     const outputMessage: ApiCallInputMessage = { content: fullMessage, role };
     // Preserve tool_calls from the final delta (set by onFinish)
     const toolCalls = input.data

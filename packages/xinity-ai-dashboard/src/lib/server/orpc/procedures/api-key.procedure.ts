@@ -168,11 +168,11 @@ const toggleEnabled = rootOs
   .use(requirePermission({ apiKey: ["update"] }))
   .route({ method: "POST", path: "/{id}/toggle-enabled", tags, summary: "Enable/Disable LLM Api Key" })
   .input(ApiKeyDto.pick({ id: true }).extend({ enabled: z.boolean().optional() }))
-  .handler(async ({ context, input }) => {
+  .handler(async ({ context, input, errors }) => {
     let enabled = input.enabled;
     const keySelector = sql`
-      ${aiApiKeyT.id} = ${input.id} 
-      AND 
+      ${aiApiKeyT.id} = ${input.id}
+      AND
       ${aiApiKeyT.organizationId} = ${context.activeOrganizationId}`;
     if (typeof enabled !== "boolean") {
       const [apiKey] = await getDB()
@@ -180,6 +180,7 @@ const toggleEnabled = rootOs
         .from(aiApiKeyT)
         .where(keySelector)
         .orderBy(aiApiKeyT.name);
+      if (!apiKey) throw errors.NOT_FOUND({ message: "API key not found" });
       enabled = !apiKey.enabled;
     }
     await getDB().update(aiApiKeyT).set({ enabled }).where(keySelector);
