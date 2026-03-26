@@ -1,7 +1,13 @@
 import { z } from "zod";
 
+const WebSearchTypeSchema = z.enum([
+  "web_search", "web_search_preview", "web_search_preview_2025_03_11"])
+  .transform(() => "web_search" as const);
+
+const BuiltinToolTypeSchema = WebSearchTypeSchema.or(z.literal("web_fetch"));
+
 const BuiltinToolSchema = z.looseObject({
-  type: z.enum(["web_search", "web_fetch"]),
+  type: BuiltinToolTypeSchema,
 });
 
 const FunctionToolSchema = z.looseObject({
@@ -13,7 +19,7 @@ const FunctionToolSchema = z.looseObject({
 });
 
 const ToolDefinitionSchema = z.union([
-  z.enum(["web_search", "web_fetch"]),
+  BuiltinToolTypeSchema,
   BuiltinToolSchema,
   FunctionToolSchema,
 ]);
@@ -114,11 +120,13 @@ export const WebSearchCallOutputItemSchema = z.object({
   status: z.enum(["in_progress", "searching", "completed", "failed"]),
   results: z.array(z.unknown()).optional(),
   action: z.object({
+    type: z.string().default("search"),
+    query: z.string().optional(),
     sources: z.array(z.object({
       type: z.enum(["url_citation"]),
       url: z.string(),
       title: z.string(),
-    })),
+    })).optional(),
   }).optional(),
 });
 
