@@ -4,10 +4,8 @@ const WebSearchTypeSchema = z.enum([
   "web_search", "web_search_preview", "web_search_preview_2025_03_11"])
   .transform(() => "web_search" as const);
 
-const BuiltinToolTypeSchema = WebSearchTypeSchema.or(z.literal("web_fetch"));
-
 const BuiltinToolSchema = z.looseObject({
-  type: BuiltinToolTypeSchema,
+  type: WebSearchTypeSchema,
 });
 
 const FunctionToolSchema = z.looseObject({
@@ -19,7 +17,7 @@ const FunctionToolSchema = z.looseObject({
 });
 
 const ToolDefinitionSchema = z.union([
-  BuiltinToolTypeSchema,
+  WebSearchTypeSchema,
   BuiltinToolSchema,
   FunctionToolSchema,
 ]);

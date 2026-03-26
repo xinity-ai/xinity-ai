@@ -295,7 +295,7 @@ describe("handleResponses", () => {
       body: JSON.stringify({
         model: "test-model",
         input: "Hi",
-        tools: ["web_search", "web_fetch"],
+        tools: ["web_search"],
       }),
     });
 

@@ -652,7 +652,7 @@ describe("parseFunctionTools", () => {
   });
 
   test("ignores non-function tools", () => {
-    const tools = [{ type: "web_search" }, { type: "web_fetch" }, "web_search"];
+    const tools = [{ type: "web_search" }, { type: "unknown" }, "web_search"];
     const result = parseFunctionTools(tools);
     expect(result).toHaveLength(0);
   });

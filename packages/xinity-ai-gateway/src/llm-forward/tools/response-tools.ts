@@ -6,7 +6,7 @@ import { rootLogger } from "../../logger";
 
 const log = rootLogger.child({ name: "response-tools" });
 
-export const RESPONSE_TOOL_NAMES = ["web_search", "web_fetch"] as const;
+export const RESPONSE_TOOL_NAMES = ["web_search"] as const;
 export type ResponseToolName = (typeof RESPONSE_TOOL_NAMES)[number];
 
 export const webSearch = tool({
