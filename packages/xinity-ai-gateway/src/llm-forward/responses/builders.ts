@@ -1,4 +1,4 @@
-import { Output, jsonSchema, type ModelMessage, type ToolSet } from "ai";
+import { Output, tool, jsonSchema, type ModelMessage, type ToolSet } from "ai";
 import type { OpenAICompatibleProvider } from "@ai-sdk/openai-compatible";
 import { responseTools, type ResponseToolName, RESPONSE_TOOL_NAMES } from "../tools/response-tools";
 import type {
@@ -8,6 +8,7 @@ import type {
   OutputTextContentPart,
   MessageOutputItem,
   WebSearchCallOutputItem,
+  FunctionCallOutputItem,
   Usage,
 } from "./schemas";
 
@@ -41,8 +42,14 @@ export type ToolCallItem = {
   id: string;
   /** The AI SDK's internal tool call ID, used to match results back to calls. */
   aiToolCallId: string;
-  type: "web_search_call";
+  type: "web_search_call" | "function_call";
   status: "in_progress" | "completed" | "failed";
+  /** Function tool name (only for function_call). */
+  name?: string;
+  /** The AI SDK tool call ID used as the Responses API call_id (only for function_call). */
+  callId?: string;
+  /** Serialised JSON arguments (only for function_call). */
+  arguments?: string;
 };
 
 export type ToolResultData = {
@@ -57,6 +64,9 @@ export function generateCallId(): string {
   return `call_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`;
 }
 
+/** Internal helper tools that should not appear as visible output items. */
+const INTERNAL_TOOL_NAMES = new Set(["web_fetch"]);
+
 /**
  * Creates an `onStepFinish` callback for non-streaming `generateText` that
  * accumulates tool calls and their results across multi-step runs.
@@ -64,8 +74,8 @@ export function generateCallId(): string {
  * The AI SDK fires `onStepFinish` after each tool-use loop iteration with
  * arrays of the tool calls and results from that step. This tracker:
  *
- * 1. Filters to only `web_search` calls (ignores helper tools like `web_fetch`
- *    which are internal implementation details).
+ * 1. Builds `web_search_call` items for web_search, `function_call` items for
+ *    user-defined function tools, and ignores internal helpers like `web_fetch`.
  * 2. Generates a stable public `call_*` ID for each, and records the AI SDK's
  *    internal `toolCallId` so `buildOutputItems` can later match results.
  * 3. Collects all tool results (including `web_fetch`) so annotations and
@@ -73,7 +83,7 @@ export function generateCallId(): string {
  */
 export function createToolTracker(toolCalls: ToolCallItem[], toolResults: ToolResultData[]) {
   return ({ toolCalls: stepToolCalls, toolResults: stepToolResults }: {
-    toolCalls?: Array<{ toolCallId: string; toolName: string }>;
+    toolCalls?: Array<{ toolCallId: string; toolName: string; input?: unknown }>;
     toolResults?: Array<Record<string, unknown>>;
   }) => {
     if (stepToolCalls) {
@@ -81,15 +91,27 @@ export function createToolTracker(toolCalls: ToolCallItem[], toolResults: ToolRe
         const toolCallId = typeof tc.toolCallId === "string" ? tc.toolCallId : "";
         const toolName = typeof tc.toolName === "string" ? tc.toolName : "";
         if (!toolCallId) continue;
-        // Only expose web_search as a visible output item; web_fetch is an
-        // internal helper that shouldn't appear in the response output.
-        if (toolName !== "web_search") continue;
-        toolCalls.push({
-          id: generateCallId(),
-          aiToolCallId: toolCallId,
-          type: "web_search_call",
-          status: "completed",
-        });
+
+        if (toolName === "web_search") {
+          toolCalls.push({
+            id: generateCallId(),
+            aiToolCallId: toolCallId,
+            type: "web_search_call",
+            status: "completed",
+          });
+        } else if (!INTERNAL_TOOL_NAMES.has(toolName)) {
+          // User-defined function tool
+          const args = tc.input != null ? JSON.stringify(tc.input) : "{}";
+          toolCalls.push({
+            id: generateCallId(),
+            aiToolCallId: toolCallId,
+            type: "function_call",
+            status: "completed",
+            name: toolName,
+            callId: toolCallId,
+            arguments: args,
+          });
+        }
       }
     }
     if (stepToolResults) {
@@ -107,46 +129,104 @@ export function createToolTracker(toolCalls: ToolCallItem[], toolResults: ToolRe
 // Tool resolution
 // ---------------------------------------------------------------------------
 
-function parseToolDefinitions(tools: unknown[]): ResponseToolName[] {
+export type FunctionToolDefinition = {
+  type: "function";
+  name: string;
+  description?: string;
+  parameters?: Record<string, unknown>;
+  strict?: boolean;
+};
+
+function parseBuiltinToolNames(tools: unknown[]): ResponseToolName[] {
   if (!Array.isArray(tools)) return [];
   return tools
-    .map((tool) => {
-      if (typeof tool === "string" && RESPONSE_TOOL_NAMES.includes(tool as ResponseToolName))
-        return tool as ResponseToolName;
-      if (typeof tool === "object" && tool !== null && "type" in tool) {
-        const t = (tool as { type: string }).type;
-        if (RESPONSE_TOOL_NAMES.includes(t as ResponseToolName)) return t as ResponseToolName;
+    .map((t) => {
+      if (typeof t === "string" && RESPONSE_TOOL_NAMES.includes(t as ResponseToolName))
+        return t as ResponseToolName;
+      if (typeof t === "object" && t !== null && "type" in t) {
+        const type = (t as { type: string }).type;
+        if (RESPONSE_TOOL_NAMES.includes(type as ResponseToolName)) return type as ResponseToolName;
       }
       return null;
     })
     .filter((t): t is ResponseToolName => t !== null);
 }
 
+/** Extracts function tool definitions from the tools array. */
+export function parseFunctionTools(tools: unknown[]): FunctionToolDefinition[] {
+  if (!Array.isArray(tools)) return [];
+  return tools
+    .filter((t): t is { type: string; name: string; [key: string]: unknown } =>
+      typeof t === "object" && t !== null &&
+      "type" in t && (t as { type: unknown }).type === "function" &&
+      "name" in t && typeof (t as { name: unknown }).name === "string",
+    )
+    .map((t) => ({
+      type: "function" as const,
+      name: t.name,
+      description: typeof t.description === "string" ? t.description : undefined,
+      parameters: typeof t.parameters === "object" && t.parameters !== null
+        ? t.parameters as Record<string, unknown> : undefined,
+      strict: typeof t.strict === "boolean" ? t.strict : undefined,
+    }));
+}
+
+/** Converts function tool definitions to AI SDK tool objects (manual, no execute). */
+export function buildFunctionToolSet(functionTools: FunctionToolDefinition[]): ToolSet {
+  const toolSet: ToolSet = {};
+  for (const ft of functionTools) {
+    toolSet[ft.name] = tool({
+      description: ft.description ?? "",
+      inputSchema: ft.parameters ? jsonSchema(ft.parameters) : jsonSchema({ type: "object" }),
+    });
+    // No execute function → "manual" tool in AI SDK: model can call it but
+    // the SDK returns the call without executing, stopping the tool loop.
+  }
+  return toolSet;
+}
+
+export type ResolvedTools = {
+  activeTools: ToolSet;
+  hasFunctionTools: boolean;
+  hasBuiltinTools: boolean;
+};
+
 /** Determines which tools to activate based on `tools` and `tool_choice`. */
 export function resolveActiveTools(
   tools: unknown[],
   toolChoice: unknown,
-): Record<string, (typeof responseTools)[keyof typeof responseTools]> {
-  let names: ResponseToolName[];
+): ResolvedTools {
+  let builtinNames: ResponseToolName[];
   if (toolChoice === "none") {
-    names = [];
+    builtinNames = [];
   } else if (typeof toolChoice === "string" && RESPONSE_TOOL_NAMES.includes(toolChoice as ResponseToolName)) {
-    names = [toolChoice as ResponseToolName];
+    builtinNames = [toolChoice as ResponseToolName];
   } else if (typeof toolChoice === "object" && toolChoice !== null && "type" in toolChoice) {
     const t = (toolChoice as { type: string }).type;
-    names = RESPONSE_TOOL_NAMES.includes(t as ResponseToolName) ? [t as ResponseToolName] : parseToolDefinitions(tools);
+    builtinNames = RESPONSE_TOOL_NAMES.includes(t as ResponseToolName) ? [t as ResponseToolName] : parseBuiltinToolNames(tools);
   } else {
-    names = parseToolDefinitions(tools);
+    builtinNames = parseBuiltinToolNames(tools);
   }
 
-  const active: Record<string, (typeof responseTools)[keyof typeof responseTools]> = {};
+  const activeTools: ToolSet = {};
 
-  // web_fetch is always included alongside web_search so the model can read pages
-  if (names.includes("web_search")) active["web_fetch"] = responseTools["web_fetch"];
-  for (const name of names) {
-    if (name in responseTools) active[name] = responseTools[name];
+  // Built-in tools (with execute functions — auto-executed by AI SDK)
+  if (builtinNames.includes("web_search")) activeTools["web_fetch"] = responseTools["web_fetch"];
+  for (const name of builtinNames) {
+    if (name in responseTools) activeTools[name] = responseTools[name];
   }
-  return active;
+  const hasBuiltinTools = Object.keys(activeTools).length > 0;
+
+  // Function tools (manual — no execute, AI SDK returns them to caller)
+  const functionTools = toolChoice === "none" ? [] : parseFunctionTools(tools);
+  const functionToolSet = buildFunctionToolSet(functionTools);
+  Object.assign(activeTools, functionToolSet);
+
+  return {
+    activeTools,
+    hasFunctionTools: functionTools.length > 0,
+    hasBuiltinTools,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -325,26 +405,43 @@ export function buildOutputItems(
   const output: OutputItem[] = [];
 
   for (const toolCall of toolCalls) {
-    const item: WebSearchCallOutputItem = { id: toolCall.id, type: toolCall.type, status: toolCall.status };
-    const result = toolResults.find((r) => r.toolCallId === toolCall.aiToolCallId);
+    if (toolCall.type === "web_search_call") {
+      const item: WebSearchCallOutputItem = { id: toolCall.id, type: "web_search_call", status: toolCall.status };
+      const result = toolResults.find((r) => r.toolCallId === toolCall.aiToolCallId);
 
-    if (shouldInclude(include, "web_search_call.results")) {
-      if (result?.result && typeof result.result === "object") {
-        const data = result.result as { results?: unknown[] };
-        if (data.results) item.results = data.results;
-      }
-    }
+      // Always populate action with type and query so consumers know what was searched
+      const query = result?.args && typeof result.args === "object"
+        ? (result.args as { query?: string }).query : undefined;
+      item.action = { type: "search", query: query ?? "" };
 
-    if (shouldInclude(include, "web_search_call.action.sources")) {
-      if (result?.result && typeof result.result === "object") {
-        const data = result.result as { results?: Array<{ url: string; title: string }> };
-        if (data.results) {
-          item.action = { sources: data.results.map((r) => ({ type: "url_citation" as const, url: r.url, title: r.title })) };
+      if (shouldInclude(include, "web_search_call.results")) {
+        if (result?.result && typeof result.result === "object") {
+          const data = result.result as { results?: unknown[] };
+          if (data.results) item.results = data.results;
         }
       }
-    }
 
-    output.push(item);
+      if (shouldInclude(include, "web_search_call.action.sources")) {
+        if (result?.result && typeof result.result === "object") {
+          const data = result.result as { results?: Array<{ url: string; title: string }> };
+          if (data.results) {
+            item.action.sources = data.results.map((r) => ({ type: "url_citation" as const, url: r.url, title: r.title }));
+          }
+        }
+      }
+
+      output.push(item);
+    } else if (toolCall.type === "function_call") {
+      const item: FunctionCallOutputItem = {
+        id: toolCall.id,
+        type: "function_call",
+        status: toolCall.status,
+        call_id: toolCall.callId ?? toolCall.aiToolCallId,
+        name: toolCall.name ?? "",
+        arguments: toolCall.arguments ?? "{}",
+      };
+      output.push(item);
+    }
   }
 
   const annotations = extractSearchAnnotations(toolResults);
