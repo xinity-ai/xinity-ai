@@ -51,8 +51,8 @@ mock.module("../model-data", () => ({
   getModelInfo,
 }));
 
-const mockLogChatStream = mock(() => {});
-const mockLogChatSync = mock(() => {});
+const mockLogChatStream = mock(() => Promise.resolve());
+const mockLogChatSync = mock(() => Promise.resolve());
 
 mock.module("../../callLogger", () => ({
   logChatStream: mockLogChatStream,

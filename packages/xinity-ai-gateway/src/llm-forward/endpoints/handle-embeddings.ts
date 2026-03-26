@@ -26,7 +26,7 @@ export async function handleEmbeddingGeneration(req: Request): Promise<Response>
 
     const parseResult = EmbeddingBodySchema.safeParse(rawBody);
     if (!parseResult.success) {
-      return errorResponse(`Invalid request body: ${parseResult.error.issues.map((i) => i.message).join(", ")}`, 400);
+      return errorResponse(`Invalid request body: ${parseResult.error.issues.map((i) => i.message).join(", ")}`, 422);
     }
     const body = parseResult.data;
 

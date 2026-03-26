@@ -43,11 +43,11 @@ mock.module("../model-data", () => ({
 }));
 
 const responseStore = new Map<string, any>();
-const saveResponse = jest.fn(async (id: string, payload: any) => {
+const saveResponse = jest.fn(async (_orgId: string, id: string, payload: any) => {
   responseStore.set(id, payload);
 });
-const getResponse = jest.fn(async (id: string) => responseStore.get(id) ?? null);
-const deleteResponse = jest.fn(async (id: string) => {
+const getResponse = jest.fn(async (_orgId: string, id: string) => responseStore.get(id) ?? null);
+const deleteResponse = jest.fn(async (_orgId: string, id: string) => {
   responseStore.delete(id);
 });
 
@@ -165,7 +165,7 @@ describe("handleResponses", () => {
     expect(text).toContain("response.completed");
 
     expect(saveResponse.mock.calls.length).toBeGreaterThan(0);
-    const responseId = saveResponse.mock.calls[0]?.[0] as string;
+    const responseId = saveResponse.mock.calls[0]?.[1] as string;
     expect(responseId).toContain("resp_");
     expect(responseStore.get(responseId)?.status).toBe("completed");
   });
