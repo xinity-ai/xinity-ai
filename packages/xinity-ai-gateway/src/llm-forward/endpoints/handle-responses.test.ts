@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, beforeAll, afterAll, jest, afterEach } from "bun:test";
-import { makeChatSseResponse, makeChatJsonResponse } from "./test-helpers";
+import { makeChatSseResponse, makeChatJsonResponse, makeChatJsonResponseWithToolCalls, makeChatSseResponseWithToolCalls } from "./test-helpers";
 
 mock.module("../../env", () => ({
   env: {
@@ -79,7 +79,24 @@ beforeAll(() => {
     async fetch(req) {
       const url = new URL(req.url);
       if (url.pathname === "/v1/chat/completions") {
-        const body = (await req.json()) as { stream?: boolean; response_format?: { type?: string } };
+        const body = (await req.json()) as {
+          stream?: boolean;
+          response_format?: { type?: string };
+          tools?: Array<{ type: string; function?: { name: string } }>;
+        };
+
+        // If the request includes user-defined function tools (not built-in web_search/web_fetch
+        // which the AI SDK also sends as type:"function"), return a tool call response
+        const userFunctionTool = body.tools?.find((t) =>
+          t.type === "function" && t.function?.name !== "web_search" && t.function?.name !== "web_fetch"
+        );
+        if (userFunctionTool) {
+          const firstFn = userFunctionTool;
+          const toolCall = { id: "call_mock_1", name: firstFn.function!.name, arguments: '{"city":"Berlin"}' };
+          if (body.stream) return makeChatSseResponseWithToolCalls("test-model", [toolCall]);
+          return makeChatJsonResponseWithToolCalls("test-model", [toolCall]);
+        }
+
         const wantsJson = body.response_format?.type === "json_schema" || body.response_format?.type === "json_object";
         const content = wantsJson ? JSON.stringify({ greeting: "Hello" }) : "Hello";
         if (body.stream) return makeChatSseResponse("test-model", [content]);
@@ -408,5 +425,107 @@ describe("handleResponses", () => {
 
     const res = await handleCreateResponseRequest(req);
     expect(res.status).toBe(200);
+  });
+
+  test("should accept web_search_preview tool type", async () => {
+    const req = new Request("http://localhost:4000/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        input: "Hi",
+        tools: [{ type: "web_search_preview" }],
+      }),
+    });
+
+    const res = await handleCreateResponseRequest(req);
+    expect(res.status).toBe(200);
+  });
+
+  test("should accept web_search_preview_2025_03_11 tool type", async () => {
+    const req = new Request("http://localhost:4000/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        input: "Hi",
+        tools: [{ type: "web_search_preview_2025_03_11" }],
+      }),
+    });
+
+    const res = await handleCreateResponseRequest(req);
+    expect(res.status).toBe(200);
+  });
+
+  test("should return function_call output items when model calls a function tool", async () => {
+    const req = new Request("http://localhost:4000/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        input: "What is the weather in Berlin?",
+        tools: [{
+          type: "function",
+          name: "get_weather",
+          description: "Get weather for a city",
+          parameters: { type: "object", properties: { city: { type: "string" } } },
+        }],
+      }),
+    });
+
+    const res = await handleCreateResponseRequest(req);
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as any;
+    expect(body.status).toBe("completed");
+
+    const functionCallItem = body.output?.find((item: any) => item.type === "function_call");
+    expect(functionCallItem).toBeDefined();
+    expect(functionCallItem.name).toBe("get_weather");
+    expect(functionCallItem.status).toBe("completed");
+    expect(functionCallItem.call_id).toBeDefined();
+    expect(functionCallItem.arguments).toBe('{"city":"Berlin"}');
+  });
+
+  test("should accept function_call_output in input for multi-turn tool use", async () => {
+    // First, create a response that ends with a function_call
+    const req1 = new Request("http://localhost:4000/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        input: "What is the weather?",
+        tools: [{
+          type: "function",
+          name: "get_weather",
+          parameters: { type: "object", properties: { city: { type: "string" } } },
+        }],
+      }),
+    });
+
+    const res1 = await handleCreateResponseRequest(req1);
+    const body1 = (await res1.json()) as any;
+    const responseId = body1.id;
+
+    // Now send a follow-up with function_call_output
+    const functionCallItem = body1.output?.find((item: any) => item.type === "function_call");
+    const req2 = new Request("http://localhost:4000/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        input: [
+          { type: "function_call_output", call_id: functionCallItem.call_id, output: '{"temp": 20}' },
+        ],
+        previous_response_id: responseId,
+      }),
+    });
+
+    const res2 = await handleCreateResponseRequest(req2);
+    expect(res2.status).toBe(200);
+
+    const body2 = (await res2.json()) as any;
+    expect(body2.status).toBe("completed");
+    expect(body2.previous_response_id).toBe(responseId);
   });
 });

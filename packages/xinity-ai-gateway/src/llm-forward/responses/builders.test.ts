@@ -1,5 +1,5 @@
 import { describe, test, expect, mock } from "bun:test";
-import type { CreateResponseBody, MessageOutputItem } from "./schemas";
+import { CreateResponseBodySchema, type CreateResponseBody, type MessageOutputItem } from "./schemas";
 import type {
   IncludeValue,
   ToolCallItem,
@@ -29,6 +29,8 @@ const {
   shouldInclude,
   createToolTracker,
   resolveActiveTools,
+  parseFunctionTools,
+  buildFunctionToolSet,
   buildOutputConfig,
   resolveResponseText,
   formatUsage,
@@ -98,7 +100,7 @@ describe("generateCallId", () => {
 // ---------------------------------------------------------------------------
 
 describe("createToolTracker", () => {
-  test("accumulates web_search tool calls and ignores others", () => {
+  test("accumulates web_search tool calls and ignores web_fetch", () => {
     const toolCalls: ToolCallItem[] = [];
     const toolResults: ToolResultData[] = [];
     const tracker = createToolTracker(toolCalls, toolResults);
@@ -116,6 +118,43 @@ describe("createToolTracker", () => {
     expect(toolCalls[0]!.status).toBe("completed");
     expect(toolCalls[0]!.aiToolCallId).toBe("tc_1");
     expect(toolCalls[1]!.aiToolCallId).toBe("tc_3");
+  });
+
+  test("tracks function tool calls with name, callId, and arguments", () => {
+    const toolCalls: ToolCallItem[] = [];
+    const toolResults: ToolResultData[] = [];
+    const tracker = createToolTracker(toolCalls, toolResults);
+
+    tracker({
+      toolCalls: [
+        { toolCallId: "tc_1", toolName: "get_weather", input: { city: "Berlin" } },
+      ],
+    });
+
+    expect(toolCalls).toHaveLength(1);
+    expect(toolCalls[0]!.type).toBe("function_call");
+    expect(toolCalls[0]!.name).toBe("get_weather");
+    expect(toolCalls[0]!.callId).toBe("tc_1");
+    expect(toolCalls[0]!.arguments).toBe(JSON.stringify({ city: "Berlin" }));
+  });
+
+  test("tracks mixed web_search and function tool calls", () => {
+    const toolCalls: ToolCallItem[] = [];
+    const toolResults: ToolResultData[] = [];
+    const tracker = createToolTracker(toolCalls, toolResults);
+
+    tracker({
+      toolCalls: [
+        { toolCallId: "tc_1", toolName: "web_search" },
+        { toolCallId: "tc_2", toolName: "get_weather", input: { city: "Paris" } },
+        { toolCallId: "tc_3", toolName: "web_fetch" },
+      ],
+    });
+
+    expect(toolCalls).toHaveLength(2);
+    expect(toolCalls[0]!.type).toBe("web_search_call");
+    expect(toolCalls[1]!.type).toBe("function_call");
+    expect(toolCalls[1]!.name).toBe("get_weather");
   });
 
   test("accumulates all tool results regardless of tool name", () => {
@@ -156,32 +195,87 @@ describe("createToolTracker", () => {
 
 describe("resolveActiveTools", () => {
   test("returns empty when toolChoice is 'none'", () => {
-    const result = resolveActiveTools([{ type: "web_search" }], "none");
-    expect(Object.keys(result)).toHaveLength(0);
+    const { activeTools } = resolveActiveTools([{ type: "web_search" }], "none");
+    expect(Object.keys(activeTools)).toHaveLength(0);
   });
 
   test("resolves a specific tool when toolChoice is a known name", () => {
-    const result = resolveActiveTools([], "web_search");
-    expect(result).toHaveProperty("web_search");
-    // web_fetch is included alongside web_search
-    expect(result).toHaveProperty("web_fetch");
+    const { activeTools, hasBuiltinTools } = resolveActiveTools([], "web_search");
+    expect(activeTools).toHaveProperty("web_search");
+    expect(activeTools).toHaveProperty("web_fetch");
+    expect(hasBuiltinTools).toBe(true);
   });
 
   test("parses tool definitions from tools array (object form)", () => {
-    const result = resolveActiveTools([{ type: "web_search" }], "auto");
-    expect(result).toHaveProperty("web_search");
-    expect(result).toHaveProperty("web_fetch");
+    const { activeTools } = resolveActiveTools([{ type: "web_search" }], "auto");
+    expect(activeTools).toHaveProperty("web_search");
+    expect(activeTools).toHaveProperty("web_fetch");
   });
 
-  test("ignores unknown tool types", () => {
-    const result = resolveActiveTools([{ type: "unknown_tool" }], "auto");
-    expect(Object.keys(result)).toHaveLength(0);
+  test("ignores unknown tool types (not builtin, not function)", () => {
+    const { activeTools } = resolveActiveTools([{ type: "unknown_tool" }], "auto");
+    expect(Object.keys(activeTools)).toHaveLength(0);
   });
 
   test("handles toolChoice as object with type", () => {
-    const result = resolveActiveTools([], { type: "web_search" });
-    expect(result).toHaveProperty("web_search");
-    expect(result).toHaveProperty("web_fetch");
+    const { activeTools } = resolveActiveTools([], { type: "web_search" });
+    expect(activeTools).toHaveProperty("web_search");
+    expect(activeTools).toHaveProperty("web_fetch");
+  });
+
+  test("normalises web_search_preview to web_search via schema transform", () => {
+    const parsed = CreateResponseBodySchema.parse({
+      model: "m", input: "hi", tools: [{ type: "web_search_preview" }],
+    });
+    const { activeTools } = resolveActiveTools(parsed.tools, "auto");
+    expect(activeTools).toHaveProperty("web_search");
+    expect(activeTools).toHaveProperty("web_fetch");
+  });
+
+  test("normalises web_search_preview_2025_03_11 to web_search via schema transform", () => {
+    const parsed = CreateResponseBodySchema.parse({
+      model: "m", input: "hi", tools: [{ type: "web_search_preview_2025_03_11" }],
+    });
+    const { activeTools } = resolveActiveTools(parsed.tools, "auto");
+    expect(activeTools).toHaveProperty("web_search");
+  });
+
+  test("normalises string-form web_search_preview via schema transform", () => {
+    const parsed = CreateResponseBodySchema.parse({
+      model: "m", input: "hi", tools: ["web_search_preview"],
+    });
+    const { activeTools } = resolveActiveTools(parsed.tools, "auto");
+    expect(activeTools).toHaveProperty("web_search");
+  });
+
+  test("resolves function tools alongside builtin tools", () => {
+    const tools = [
+      { type: "web_search" },
+      { type: "function", name: "get_weather", description: "Get weather", parameters: { type: "object", properties: { city: { type: "string" } } } },
+    ];
+    const { activeTools, hasFunctionTools, hasBuiltinTools } = resolveActiveTools(tools, "auto");
+    expect(activeTools).toHaveProperty("web_search");
+    expect(activeTools).toHaveProperty("get_weather");
+    expect(hasFunctionTools).toBe(true);
+    expect(hasBuiltinTools).toBe(true);
+  });
+
+  test("resolves function tools only when no builtin tools", () => {
+    const tools = [
+      { type: "function", name: "calculate", parameters: { type: "object" } },
+    ];
+    const { activeTools, hasFunctionTools, hasBuiltinTools } = resolveActiveTools(tools, "auto");
+    expect(activeTools).toHaveProperty("calculate");
+    expect(activeTools).not.toHaveProperty("web_search");
+    expect(hasFunctionTools).toBe(true);
+    expect(hasBuiltinTools).toBe(false);
+  });
+
+  test("toolChoice 'none' disables function tools too", () => {
+    const tools = [{ type: "function", name: "f1" }];
+    const { activeTools, hasFunctionTools } = resolveActiveTools(tools, "none");
+    expect(Object.keys(activeTools)).toHaveLength(0);
+    expect(hasFunctionTools).toBe(false);
   });
 });
 
@@ -434,12 +528,38 @@ describe("buildOutputItems", () => {
       { id: "call_abc", aiToolCallId: "tc_1", type: "web_search_call", status: "completed" },
     ];
     const toolResults: ToolResultData[] = [
-      { toolCallId: "tc_1", toolName: "web_search", args: {}, result: { results: [] } },
+      { toolCallId: "tc_1", toolName: "web_search", args: { query: "test" }, result: { results: [] } },
     ];
     const items = buildOutputItems("resp_1", "Result", toolCalls, toolResults);
     expect(items).toHaveLength(2);
     expect(items[0]!.type).toBe("web_search_call");
     expect(items[1]!.type).toBe("message");
+  });
+
+  test("always populates action.type and action.query on web_search_call items", () => {
+    const toolCalls: ToolCallItem[] = [
+      { id: "call_abc", aiToolCallId: "tc_1", type: "web_search_call", status: "completed" },
+    ];
+    const toolResults: ToolResultData[] = [
+      { toolCallId: "tc_1", toolName: "web_search", args: { query: "climate change" }, result: { results: [] } },
+    ];
+    const items = buildOutputItems("resp_1", "text", toolCalls, toolResults);
+    const searchItem = items[0] as any;
+    expect(searchItem.action).toBeDefined();
+    expect(searchItem.action.type).toBe("search");
+    expect(searchItem.action.query).toBe("climate change");
+  });
+
+  test("action.query defaults to empty string when args have no query", () => {
+    const toolCalls: ToolCallItem[] = [
+      { id: "call_abc", aiToolCallId: "tc_1", type: "web_search_call", status: "completed" },
+    ];
+    const toolResults: ToolResultData[] = [
+      { toolCallId: "tc_1", toolName: "web_search", args: {}, result: { results: [] } },
+    ];
+    const items = buildOutputItems("resp_1", "text", toolCalls, toolResults);
+    const searchItem = items[0] as any;
+    expect(searchItem.action.query).toBe("");
   });
 
   test("includes web_search_call.results when requested via include", () => {
@@ -455,16 +575,17 @@ describe("buildOutputItems", () => {
     expect(searchItem.results).toHaveLength(1);
   });
 
-  test("includes web_search_call.action.sources when requested", () => {
+  test("includes web_search_call.action.sources when requested alongside type and query", () => {
     const toolCalls: ToolCallItem[] = [
       { id: "call_abc", aiToolCallId: "tc_1", type: "web_search_call", status: "completed" },
     ];
     const toolResults: ToolResultData[] = [
-      { toolCallId: "tc_1", toolName: "web_search", args: {}, result: { results: [{ url: "https://x.com", title: "X" }] } },
+      { toolCallId: "tc_1", toolName: "web_search", args: { query: "test" }, result: { results: [{ url: "https://x.com", title: "X" }] } },
     ];
     const items = buildOutputItems("resp_1", "text", toolCalls, toolResults, ["web_search_call.action.sources"]);
     const searchItem = items[0] as any;
-    expect(searchItem.action).toBeDefined();
+    expect(searchItem.action.type).toBe("search");
+    expect(searchItem.action.query).toBe("test");
     expect(searchItem.action.sources).toHaveLength(1);
     expect(searchItem.action.sources[0]).toEqual({ type: "url_citation", url: "https://x.com", title: "X" });
   });
@@ -477,5 +598,98 @@ describe("buildOutputItems", () => {
     const msg = items[0] as any;
     expect(msg.content[0].annotations).toHaveLength(1);
     expect(msg.content[0].annotations[0].url).toBe("https://a.com");
+  });
+
+  test("builds function_call output items", () => {
+    const toolCalls: ToolCallItem[] = [
+      {
+        id: "call_abc", aiToolCallId: "tc_1", type: "function_call", status: "completed",
+        name: "get_weather", callId: "tc_1", arguments: '{"city":"Berlin"}',
+      },
+    ];
+    const items = buildOutputItems("resp_1", "", toolCalls, []);
+    expect(items).toHaveLength(2); // function_call + message
+    expect(items[0]!.type).toBe("function_call");
+    const fc = items[0] as any;
+    expect(fc.name).toBe("get_weather");
+    expect(fc.call_id).toBe("tc_1");
+    expect(fc.arguments).toBe('{"city":"Berlin"}');
+    expect(fc.status).toBe("completed");
+  });
+
+  test("builds mixed web_search_call and function_call output", () => {
+    const toolCalls: ToolCallItem[] = [
+      { id: "call_1", aiToolCallId: "tc_1", type: "web_search_call", status: "completed" },
+      { id: "call_2", aiToolCallId: "tc_2", type: "function_call", status: "completed", name: "calc", callId: "tc_2", arguments: "{}" },
+    ];
+    const toolResults: ToolResultData[] = [
+      { toolCallId: "tc_1", toolName: "web_search", args: { query: "q" }, result: { results: [] } },
+    ];
+    const items = buildOutputItems("resp_1", "Answer", toolCalls, toolResults);
+    expect(items).toHaveLength(3);
+    expect(items[0]!.type).toBe("web_search_call");
+    expect(items[1]!.type).toBe("function_call");
+    expect(items[2]!.type).toBe("message");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseFunctionTools
+// ---------------------------------------------------------------------------
+
+describe("parseFunctionTools", () => {
+  test("extracts function tool definitions from mixed tools array", () => {
+    const tools = [
+      { type: "web_search" },
+      { type: "function", name: "get_weather", description: "Get weather info", parameters: { type: "object" } },
+      { type: "function", name: "calculate", parameters: { type: "object", properties: { expr: { type: "string" } } } },
+    ];
+    const result = parseFunctionTools(tools);
+    expect(result).toHaveLength(2);
+    expect(result[0]!.name).toBe("get_weather");
+    expect(result[0]!.description).toBe("Get weather info");
+    expect(result[1]!.name).toBe("calculate");
+  });
+
+  test("ignores non-function tools", () => {
+    const tools = [{ type: "web_search" }, { type: "web_fetch" }, "web_search"];
+    const result = parseFunctionTools(tools);
+    expect(result).toHaveLength(0);
+  });
+
+  test("handles tools with optional fields", () => {
+    const tools = [{ type: "function", name: "minimal" }];
+    const result = parseFunctionTools(tools);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.name).toBe("minimal");
+    expect(result[0]!.description).toBeUndefined();
+    expect(result[0]!.parameters).toBeUndefined();
+  });
+
+  test("returns empty for non-array input", () => {
+    expect(parseFunctionTools(null as any)).toEqual([]);
+    expect(parseFunctionTools(undefined as any)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildFunctionToolSet
+// ---------------------------------------------------------------------------
+
+describe("buildFunctionToolSet", () => {
+  test("creates AI SDK tool objects without execute", () => {
+    const defs = [
+      { type: "function" as const, name: "greet", description: "Say hello", parameters: { type: "object", properties: { name: { type: "string" } } } },
+    ];
+    const toolSet = buildFunctionToolSet(defs);
+    expect(toolSet).toHaveProperty("greet");
+    // Manual tools should not have an execute function
+    expect((toolSet["greet"] as any).execute).toBeUndefined();
+  });
+
+  test("handles tools with no parameters", () => {
+    const defs = [{ type: "function" as const, name: "noop" }];
+    const toolSet = buildFunctionToolSet(defs);
+    expect(toolSet).toHaveProperty("noop");
   });
 });
