@@ -1,18 +1,8 @@
 # yaml-language-server: $schema=../../packages/xinity-infoserver/models.schema.json
+includes:
+  - https://sysinfo.xinity.ai/models/v1.json
 
 models:
-  phi-3-mini:
-    name: Phi-3 Mini 3.8B
-    url: https://github.com/microsoft/Phi-3CookBook
-    description: Lightweight Phi model optimized for low-latency chat and code
-    weight: 2
-    minKvCache: 1
-    family: phi3
-    registeredAt: 2025.12.03
-    entryVersion: 0.4.10
-    providers:
-      ollama: "phi3:mini"
-    type: chat
   phi-3-vision:
     name: Phi-3 Vision
     url: https://huggingface.co/microsoft/Phi-3-vision-128k-instruct
