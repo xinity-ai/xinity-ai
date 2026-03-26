@@ -4,6 +4,7 @@ import type {
   OutputTextContentPart,
   MessageOutputItem,
   WebSearchCallOutputItem,
+  FunctionCallOutputItem,
   CreateResponseBody,
 } from "./schemas";
 import type { ToolCallItem, ToolResultData, IncludeValue } from "./builders";
@@ -46,7 +47,12 @@ type StreamToolCall = {
   id: string;
   aiToolCallId: string;
   outputIndex: number;
+  toolName: string;
+  query?: string;
 };
+
+/** Internal helper tools that should not appear as visible output items. */
+const INTERNAL_TOOL_NAMES = new Set(["web_fetch"]);
 
 // ---------------------------------------------------------------------------
 // Streaming entry point
@@ -105,12 +111,33 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
             accumulatedText += part.text;
             emitTextDelta(controller, messageItemId, messageOutputIndex, part.text, seq);
           } else if (part.type === "tool-call") {
-            // Only emit visible streaming events for web_search
             if (part.toolName === "web_search") {
               const callId = generateCallId();
               const outputIdx = nextOutputIndex++;
-              streamToolCalls.push({ id: callId, aiToolCallId: part.toolCallId, outputIndex: outputIdx });
+              streamToolCalls.push({ id: callId, aiToolCallId: part.toolCallId, outputIndex: outputIdx, toolName: "web_search" });
               emitToolCallStarted(controller, callId, outputIdx, seq);
+            } else if (!INTERNAL_TOOL_NAMES.has(part.toolName)) {
+              // Function tool call (manual — no execute in AI SDK)
+              const callId = generateCallId();
+              const outputIdx = nextOutputIndex++;
+              const argsStr = JSON.stringify(part.args ?? {});
+
+              streamToolCalls.push({ id: callId, aiToolCallId: part.toolCallId, outputIndex: outputIdx, toolName: part.toolName });
+
+              const functionItem: FunctionCallOutputItem = {
+                id: callId, type: "function_call", status: "completed",
+                call_id: part.toolCallId, name: part.toolName,
+                arguments: argsStr,
+              };
+              emitFunctionCallEvents(controller, functionItem, outputIdx, seq);
+
+              // Track for final output building
+              toolCalls.push({
+                id: callId, aiToolCallId: part.toolCallId,
+                type: "function_call", status: "completed",
+                name: part.toolName, callId: part.toolCallId,
+                arguments: argsStr,
+              });
             }
           } else if (part.type === "tool-result") {
             // Always record results for final response building
@@ -121,11 +148,14 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
               result: part.output,
             });
 
-            // Emit completed events only for tracked (web_search) calls
+            // Emit completed events only for tracked web_search calls
             const match = streamToolCalls.find((tc) => tc.aiToolCallId === part.toolCallId);
-            if (match) {
+            if (match && match.toolName === "web_search") {
+              const query = part.input && typeof part.input === "object"
+                ? (part.input as { query?: string }).query : undefined;
+              match.query = query;
               toolCalls.push({ id: match.id, aiToolCallId: match.aiToolCallId, type: "web_search_call", status: "completed" });
-              emitToolCallCompleted(controller, match.id, match.outputIndex, seq);
+              emitToolCallCompleted(controller, match.id, match.outputIndex, query, seq);
             }
           }
         }
@@ -279,9 +309,13 @@ function emitToolCallCompleted(
   ctrl: ReadableStreamDefaultController,
   toolCallId: string,
   outputIndex: number,
+  query: string | undefined,
   seq: () => number,
 ) {
-  const completedItem: WebSearchCallOutputItem = { id: toolCallId, type: "web_search_call", status: "completed" };
+  const completedItem: WebSearchCallOutputItem = {
+    id: toolCallId, type: "web_search_call", status: "completed",
+    action: { type: "search", query: query ?? "" },
+  };
 
   emit(ctrl, "response.web_search_call.done", {
     type: "response.web_search_call.done",
@@ -294,6 +328,41 @@ function emitToolCallCompleted(
     type: "response.output_item.done",
     output_index: outputIndex,
     item: completedItem,
+    sequence_number: seq(),
+  });
+}
+
+/** Emits the full event sequence for a function tool call (added → args delta → args done → item done). */
+function emitFunctionCallEvents(
+  ctrl: ReadableStreamDefaultController,
+  item: FunctionCallOutputItem,
+  outputIndex: number,
+  seq: () => number,
+) {
+  emit(ctrl, "response.output_item.added", {
+    type: "response.output_item.added",
+    output_index: outputIndex,
+    item: { ...item, status: "in_progress", arguments: "" },
+    sequence_number: seq(),
+  });
+  emit(ctrl, "response.function_call_arguments.delta", {
+    type: "response.function_call_arguments.delta",
+    item_id: item.id,
+    output_index: outputIndex,
+    delta: item.arguments,
+    sequence_number: seq(),
+  });
+  emit(ctrl, "response.function_call_arguments.done", {
+    type: "response.function_call_arguments.done",
+    item_id: item.id,
+    output_index: outputIndex,
+    arguments: item.arguments,
+    sequence_number: seq(),
+  });
+  emit(ctrl, "response.output_item.done", {
+    type: "response.output_item.done",
+    output_index: outputIndex,
+    item,
     sequence_number: seq(),
   });
 }
