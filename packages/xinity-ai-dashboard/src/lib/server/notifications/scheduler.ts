@@ -47,7 +47,7 @@ async function getDeploymentPhases(): Promise<Map<string, { phase: DeploymentPha
       deploymentName: modelDeploymentT.name,
       organizationId: modelDeploymentT.organizationId,
       orgName: organizationT.name,
-      modelSpecifier: modelDeploymentT.modelSpecifier,
+      publicSpecifier: modelDeploymentT.publicSpecifier,
       installationId: modelInstallationT.id,
       lifecycleState: modelInstallationStateT.lifecycleState,
       errorMessage: modelInstallationStateT.errorMessage,
@@ -74,7 +74,7 @@ async function getDeploymentPhases(): Promise<Map<string, { phase: DeploymentPha
         orgId: row.organizationId,
         orgName: row.orgName ?? "",
         name: row.deploymentName,
-        model: row.modelSpecifier,
+        model: row.publicSpecifier,
         error: row.errorMessage,
       });
     } else {

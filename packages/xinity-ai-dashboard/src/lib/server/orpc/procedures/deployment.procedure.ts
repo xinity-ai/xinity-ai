@@ -427,7 +427,7 @@ export const createDeployment = rootOs
         organizationId: context.activeOrganizationId,
         data: {
           deploymentName: deployment.name,
-          modelSpecifier: deployment.modelSpecifier,
+          modelSpecifier: deployment.publicSpecifier,
           creatorName: context.session.user.name || context.session.user.email,
           orgName: org?.name ?? "",
           dashboardUrl: `${serverEnv.ORIGIN}/modelhub`,
