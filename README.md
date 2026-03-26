@@ -3,7 +3,7 @@
 [![CI](https://github.com/xinity-ai/xinity-ai/actions/workflows/tests.yml/badge.svg)](https://github.com/xinity-ai/xinity-ai/actions/workflows/tests.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0%20%2F%20ELv2-blue)](#licensing)
 
-Self-hostable AI orchestration platform with an OpenAI-compatible API. Run LLMs on your own infrastructure — no data leaves your environment.
+Self-hostable AI orchestration platform with an OpenAI-compatible API. Run LLMs on your own infrastructure. No data leaves your environment.
 
 ## What it is
 
@@ -51,16 +51,16 @@ find . -name 'example.env' -not -path '*/node_modules/*' | while read -r f; do
   [ -f "$target" ] || cp "$f" "$target"
 done
 
-# Start local dependencies (Postgres, Redis, Mailhog)
-docker compose up -d dev
+# Start local dependencies (Postgres, Redis, Mailhog, and more)
+docker compose up -d
 
 # Run DB migrations
 cd packages/common-db
 bun run migrate
 ```
 
-From there, start whichever package you want to work on (see Package details below).  
-Be aware, the xinity infoserver (`./packages/xinity-infoserver`) should be running, for most of the other packages to work right
+From there, start whichever package you want to work on (see Package details below).
+The infoserver needs to be running for most packages to work. Start it with `bun run dev` in `packages/xinity-infoserver`.
 
 ## Environment variables
 
@@ -198,7 +198,7 @@ Yes. The entire codebase is here and intended to be auditable.
 
 ## Common workflows
 
-- Start local dependencies: `docker compose up -d dev`
+- Start local dependencies: `docker compose up -d`
 - Stop local dependencies: `docker compose down`
 - Reset local dependencies (drop volumes/state): `docker compose down -v`
 - Regenerate DB migrations (from `packages/common-db`): `bun run migrate:gen`
@@ -218,66 +218,37 @@ bun run test:system
 
 This script will:
 
-1. Start the `db`, `redis`, and `mailhog` services via Docker Compose.
+1. Start `db`, `redis`, and `mailhog` via Docker Compose.
 2. Run DB migrations from `packages/common-db`.
 3. Execute Bun system tests in `tests/system`.
 
 ## Docker Compose stacks
 
-This repo uses a single `docker-compose.yaml` that includes two compose files:
-
-- `docker/dev.compose.yaml`: dev-only dependencies (Postgres, Redis, Mailhog)
-- `docker/build.compose.yaml`: buildable app images (gateway, dashboard)
-
-### Dev dependencies
-
-`docker compose up -d dev` brings up a small dependency stack and nothing else. It starts:
+`docker compose up -d` starts all local development dependencies:
 
 - `db`: Postgres 17 (port `5432`)
 - `redis`: Redis 7 (port `6379`)
 - `mailhog`: local SMTP + UI (ports `1025` and `8025`)
-- `xinity-infoserver`: model config server (port `8090`, path `/models/v1.yaml`)
+- `searxng`: web search (port `6148`)
+- `seaweedfs`: S3-compatible object storage (port `8333`)
 
-The `dev` service is just a lightweight "group" container that depends on the three services above.
-
-If you need a clean slate (fresh database + redis state), run:
+For a clean slate (fresh database + redis state):
 
 ```bash
 docker compose down -v
 ```
 
-To update dependency versions, ports, or env defaults, edit `docker/dev.compose.yaml` and re-run:
-
-```bash
-docker compose up -d dev
-```
-
-The model config file served in dev comes from `docker/xinity-infoserver/models.example.yaml`.
-
 ### Building images
 
-The app images are wired to each package's `Dockerfile`:
-
-- Gateway: `packages/xinity-ai-gateway/Dockerfile`
-- Dashboard: `packages/xinity-ai-dashboard/Dockerfile`
-
-To build them:
+`docker/build.compose.yaml` exists to make building and tagging the app images locally easy. It is not included in the root `compose.yaml`, so you need to reference it explicitly:
 
 ```bash
-docker compose build gateway
-docker compose build dashboard
-docker compose build xinity-infoserver
+docker compose -f docker/build.compose.yaml build gateway
+docker compose -f docker/build.compose.yaml build dashboard
+docker compose -f docker/build.compose.yaml build xinity-infoserver
 ```
 
-When you change a Dockerfile or add new build dependencies, re-run the relevant `docker compose build ...`.
-To run the built services locally (using the compose defaults in `docker/build.compose.yaml`):
-
-```bash
-docker compose up -d gateway dashboard
-```
-
-To tweak runtime env defaults, ports, or volumes for these containers, edit `docker/build.compose.yaml`
-and re-run the `docker compose up -d ...` command above.
+For a full local deployment, see `deployment/docker/`.
 
 ## Package details
 
@@ -297,9 +268,15 @@ bun run dev
 
 ### Model info server + schema
 
-This package exports Zod schemas for model metadata. It can also emit JSON schema:
+This package exports Zod schemas for model metadata and serves them over HTTP. Most other packages depend on it being available at startup.
 
 ```bash
 cd packages/xinity-infoserver
+bun run dev
+```
+
+It can also emit JSON schema standalone:
+
+```bash
 bun run model.ts
 ```
