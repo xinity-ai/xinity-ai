@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { ownerPage } from "../utils/browser";
-import { expectVisible } from "../utils/helpers";
+import { expectVisible, expectHidden } from "../utils/helpers";
 
 describe("API key CRUD", () => {
   test("API keys page loads with heading", async () => {
@@ -53,11 +53,12 @@ describe("API key CRUD", () => {
 
       await page.getByRole("button", { name: "Create", exact: true }).click();
 
-      // Should show the full key
       await expectVisible(page.locator("#fullKey"), 10_000);
 
       // Close modal and verify key appears in listing
-      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "OK", exact: true }).click();
+      await expectHidden(page.locator("#keyName"));
+
       await expectVisible(page.getByTitle(keyName));
     } finally {
       await context.close();
