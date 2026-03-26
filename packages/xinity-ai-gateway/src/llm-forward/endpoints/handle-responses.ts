@@ -92,6 +92,18 @@ function normalizeMessages(input: unknown): ApiCallInputMessage[] | null {
     for (const item of input) {
       if (!item || typeof item !== "object") return null;
       const obj = item as Record<string, unknown>;
+
+      // Handle function_call_output items (client returning function tool results)
+      if (obj.type === "function_call_output") {
+        const output = typeof obj.output === "string" ? obj.output : JSON.stringify(obj.output ?? "");
+        messages.push({
+          role: "tool",
+          content: output,
+          tool_call_id: obj.call_id as string,
+        } as ApiCallInputMessage);
+        continue;
+      }
+
       const role = normalizeRole(obj.role);
       const content = extractContent(obj.content ?? obj.input ?? obj.text);
       if (!content) return null;
@@ -110,18 +122,50 @@ function normalizeMessages(input: unknown): ApiCallInputMessage[] | null {
 }
 
 type StoredResponse = {
-  output?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }>;
+  output?: Array<{
+    type?: string;
+    content?: Array<{ type?: string; text?: string }>;
+    // function_call fields
+    call_id?: string;
+    name?: string;
+    arguments?: string;
+  }>;
 };
 
 function extractPreviousMessages(stored: StoredResponse): ApiCallInputMessage[] {
   const messages: ApiCallInputMessage[] = [];
+  // Collect function_call items to inject as a single assistant tool_calls message
+  const functionCalls: Array<{ call_id: string; name: string; arguments: string }> = [];
+
   for (const item of stored.output ?? []) {
-    if (item.type !== "message") continue;
-    const textParts = (item.content ?? [])
-      .filter((c) => c.type === "output_text" && typeof c.text === "string")
-      .map((c) => c.text as string);
-    if (textParts.length) messages.push({ role: "assistant", content: textParts.join("") });
+    if (item.type === "message") {
+      const textParts = (item.content ?? [])
+        .filter((c) => c.type === "output_text" && typeof c.text === "string")
+        .map((c) => c.text as string);
+      if (textParts.length) messages.push({ role: "assistant", content: textParts.join("") });
+    } else if (item.type === "function_call" && item.call_id && item.name) {
+      functionCalls.push({
+        call_id: item.call_id,
+        name: item.name,
+        arguments: item.arguments ?? "{}",
+      });
+    }
   }
+
+  // Re-inject function calls as an assistant tool_calls message so the AI SDK
+  // can continue the conversation when the client sends function_call_output
+  if (functionCalls.length) {
+    messages.push({
+      role: "assistant",
+      content: null,
+      tool_calls: functionCalls.map((fc) => ({
+        id: fc.call_id,
+        type: "function" as const,
+        function: { name: fc.name, arguments: fc.arguments },
+      })),
+    } as ApiCallInputMessage);
+  }
+
   return messages;
 }
 
@@ -156,7 +200,7 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
     const include = (body.include ?? []) as IncludeValue[];
     const textConfig = body.text ?? null;
     const outputConfig = buildOutputConfig(textConfig);
-    const activeTools = resolveActiveTools(body.tools ?? [], body.tool_choice);
+    const { activeTools } = resolveActiveTools(body.tools ?? [], body.tool_choice);
     const hasTools = Object.keys(activeTools).length > 0;
 
     const background = body.background && !body.stream;
