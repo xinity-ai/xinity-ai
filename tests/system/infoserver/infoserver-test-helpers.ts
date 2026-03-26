@@ -2,7 +2,7 @@ import { createServer } from "net";
 import { waitForHttp } from "../test-helpers";
 
 const HOST = process.env.INFOSERVER_HOST ?? "127.0.0.1";
-const MODEL_INFO_FILE = process.env.MODEL_INFO_FILE ?? "../../docker/xinity-infoserver/models.example.yaml";
+const MODEL_INFO_FILE = process.env.MODEL_INFO_FILE ?? "models.yaml";
 
 let allocatedPort: string | null = null;
 let infoProcess: Bun.Subprocess | null = null;
