@@ -91,7 +91,7 @@ describe("Authentication flows", () => {
 
       // Click logout, wait for page to fully load first
       await page.waitForLoadState("domcontentloaded");
-      await page.locator("nav button span:text-is('Logout')").click();
+      await page.locator("nav button[aria-label='Logout']").click();
       await expectURL(page, /\/login/, 30_000);
     } finally {
       await context.close();

@@ -240,7 +240,7 @@
           <button
             onclick={() => {
               isLoggingOut = true;
-              signOut().then(() => goto("/login")).catch(() => { isLoggingOut = false; });
+              signOut().then(() => goto("/login", { invalidateAll: true })).finally(() => { isLoggingOut = false; });
             }}
             disabled={isLoggingOut}
             aria-label="Logout"
