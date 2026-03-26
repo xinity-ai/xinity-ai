@@ -1,6 +1,6 @@
 {
   "name": "xinity-ai",
-  "version": "0.16.3",
+  "version": "0.16.4",
   "peerDependencies": {
     "typescript": "^5"
   },
