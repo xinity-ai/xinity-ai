@@ -9,6 +9,7 @@ import { rootLogger } from "../logger";
 const log = rootLogger.child({ name: "statekeeper" });
 
 let cachedProfile: HardwareProfile | null = null;
+let cachedNodeId: string | null = null;
 
 async function getHardwareProfile(): Promise<HardwareProfile> {
   if (!cachedProfile) {
@@ -31,6 +32,8 @@ export function getNodeDrivers(): string[] {
 
 /** Retrieves the nodeID of this ai node. If it is not recorded in the database yet, it will be created */
 export async function getNodeId(){
+  if (cachedNodeId) return cachedNodeId;
+
   const idFile = Bun.file(join(env.STATE_DIR, "node_id"));
   if(!await idFile.exists()){
     const host = Object.values(networkInterfaces())
@@ -59,12 +62,14 @@ export async function getNodeId(){
         drivers: getNodeDrivers(),
       },
     }).returning({id: aiNodeT.id});
-    const id = row.id;
 
-    idFile.write(id);
-    return id;
+    idFile.write(row.id);
+    cachedNodeId = row.id;
+    return cachedNodeId;
   }
-  return idFile.text();
+
+  cachedNodeId = (await idFile.text()).trim();
+  return cachedNodeId;
 }
 
 /** Sets the node to available, and updates driver capabilities and hardware profile */

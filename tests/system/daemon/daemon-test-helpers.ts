@@ -109,7 +109,7 @@ export async function stopDaemon(proc: Bun.Subprocess): Promise<void> {
   let didExit = false;
   proc.exited.then(() => { didExit = true; });
   proc.kill("SIGTERM");
-  await Promise.race([proc.exited.then(() => undefined), Bun.sleep(2000)]);
+  await Promise.race([proc.exited.then(() => undefined), Bun.sleep(5000)]);
   if (!didExit) {
     try {
       proc.kill("SIGKILL");

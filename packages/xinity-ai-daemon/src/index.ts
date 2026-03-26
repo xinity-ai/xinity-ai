@@ -2,7 +2,8 @@ import { SubscriptionLike } from "rxjs";
 import { dbSync } from "./modules/db-sync";
 import { startServer } from "./modules/serverfront/webserver";
 import { getNodeId, setOffline, setOnline } from "./modules/statekeeper";
-import { listen, checkMigrations } from "./db/connection";
+import { getDB, listen, checkMigrations } from "./db/connection";
+import { sql } from "common-db";
 import { rootLogger } from "./logger";
 
 let shuttingDown = false;
@@ -52,6 +53,14 @@ async function main(){
 async function shutdown(subscription: SubscriptionLike){
   if (shuttingDown) return;
   shuttingDown = true;
+
+  // Wake the listen loop so it can break out and release the connection.
+  try {
+    const nodeId = await getNodeId();
+    await getDB().execute(sql.raw(`NOTIFY "ai_node:${nodeId}"`));
+  } catch {
+    // best-effort
+  }
 
   try {
     await setOffline();
