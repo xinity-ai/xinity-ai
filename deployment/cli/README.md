@@ -65,6 +65,54 @@ xinity up daemon
 
 The daemon connects to the shared database and receives deployment instructions from the dashboard. Ollama must be installed and running on the same machine.
 
+## Secrets Management
+
+The CLI automatically separates configuration from secrets. During `xinity up`, it inspects each service's schema and prompts for secrets separately (with masked input).
+
+### How it works
+
+Every environment variable in a service schema is either **config** (non-sensitive) or a **secret** (marked with `.meta(secret())` in the source). The CLI stores them differently:
+
+| Type | Location | Permissions | Loaded via |
+|---|---|---|---|
+| Config | `/etc/xinity-ai/<component>.env` | `644` (readable) | systemd `EnvironmentFile=` |
+| Secrets | `/etc/xinity-ai/secrets/<KEY>` | `600` (root only) | systemd `LoadCredential=` |
+
+At runtime, systemd loads each secret file into an ephemeral credentials directory (`/run/credentials/xinity-ai-<component>/`). The service receives a `KEY_FILE` environment variable pointing to that path and reads the secret from the file. The secret never appears as a plain environment variable in the process environment.
+
+This is the same `_FILE` convention used by the Docker and NixOS deployments, for any variable `KEY`, set `KEY_FILE` to a file path and the service reads it at startup. Direct values take precedence.
+
+### File layout example
+
+After `xinity up gateway`:
+
+```
+/etc/xinity-ai/
+  gateway.env                    # HOST=0.0.0.0, PORT=4121, ...  (mode 644)
+  secrets/                       # (mode 700)
+    DB_CONNECTION_URL            # postgresql://...               (mode 600)
+    REDIS_URL                    # redis://...                    (mode 600)
+```
+
+### Reconfiguring
+
+```bash
+xinity configure gateway    # re-prompts for config and secrets
+```
+
+Updated values are written to the same files. Restart the service to pick up changes:
+
+```bash
+sudo systemctl restart xinity-ai-gateway
+```
+
+### Rotating secrets
+
+1. Write the new value: `printf '%s' 'new-value' | sudo tee /etc/xinity-ai/secrets/KEY > /dev/null`
+2. Restart: `sudo systemctl restart xinity-ai-<component>`
+
+Or use `xinity configure <component>` to re-run the interactive prompts.
+
 ## Verify the Deployment
 
 ```bash

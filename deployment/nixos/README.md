@@ -65,6 +65,38 @@ BETTER_AUTH_SECRET=<random 32+ char string>
 
 Use a secrets manager (e.g. [agenix](https://github.com/ryantm/agenix) or [sops-nix](https://github.com/Mic92/sops-nix)) to provision this file.
 
+### Secrets: Three Tiers
+
+The modules offer three ways to provide secrets, from simplest to most secure:
+
+**1. Direct values (development only)** — set values in Nix. These end up in the world-readable Nix store. Do NOT use in production.
+
+```nix
+services.xinity-ai-gateway.dbConnectionUrl = "postgresql://...";
+```
+
+**2. Environment file** — a single file outside the Nix store, sourced by systemd or the container runtime. Secrets stay off disk in the store but share one file.
+
+```nix
+services.xinity-ai.environmentFile = "/run/secrets/xinity";
+```
+
+**3. Per-secret files with `_FILE` (recommended)** — each secret gets its own file, mounted read-only into the container at `/run/secrets/`. The application reads the file at startup; the value never appears as an environment variable.
+
+```nix
+services.xinity-ai.secrets = {
+  dbConnectionUrlFile = "/run/secrets/xinity-db-url";
+  redisUrlFile = "/run/secrets/xinity-redis-url";
+  betterAuthSecretFile = "/run/secrets/xinity-auth-secret";
+  metricsAuthFile = "/run/secrets/xinity-metrics-auth";
+  s3AccessKeyIdFile = "/run/secrets/xinity-s3-key";
+  s3SecretAccessKeyFile = "/run/secrets/xinity-s3-secret";
+  licenseKeyFile = "/run/secrets/xinity-license";
+};
+```
+
+All three tiers can be mixed. Direct values and `environmentFile` entries take precedence over `_FILE` variants. For the full list of per-secret options, see the module source in [nix/modules/](../../nix/modules/).
+
 ### Subdomains
 
 By default, services are exposed at:
@@ -108,7 +140,7 @@ Deploy this on each machine with GPU capacity. The module is the flake's default
   services.xinity-ai-node = {
     enable = true;
     envFiles = [ "/run/secrets/xinity-daemon" ];
-    orchistrator = "https://dashboard.example.com";
+    orchestrator = "https://dashboard.example.com";
   };
 }
 ```

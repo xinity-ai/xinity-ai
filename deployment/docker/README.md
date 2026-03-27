@@ -87,10 +87,67 @@ PostgreSQL data is persisted in the `postgres-data` volume. Automatic backups ar
 
 ### Secrets Management
 
-**CRITICAL:** Never commit `.env` to version control. All secrets should be:
-- Stored in `.env` (gitignored)
-- Kept secure with proper file permissions (`chmod 600 .env`)
-- Rotated regularly
+**CRITICAL:** Never commit `.env` to version control.
+
+#### Option A: `.env` file (simplest)
+
+Store all secrets in `.env` alongside the compose file:
+
+```bash
+chmod 600 .env
+```
+
+This is fine for single-server deployments. Secrets end up as container environment variables, which are visible via `docker inspect`.
+
+#### Option B: Docker secrets with `_FILE` (recommended for production)
+
+Every Xinity service supports a `_FILE` convention: for any environment variable `VAR`, you can set `VAR_FILE` to a file path instead. The service reads the file at startup and uses its trimmed contents as the value. Direct environment variables take precedence over `_FILE` variants.
+
+1. Create secret files:
+
+```bash
+mkdir -p secrets
+openssl rand -base64 32 > secrets/postgres_password
+openssl rand -base64 32 > secrets/redis_password
+openssl rand -base64 32 > secrets/better_auth_secret
+chmod 600 secrets/*
+```
+
+2. Reference them in your compose override or environment:
+
+```yaml
+# docker-compose.override.yml
+services:
+  gateway:
+    environment:
+      DB_CONNECTION_URL_FILE: /run/secrets/db_connection_url
+    secrets:
+      - db_connection_url
+      - redis_url
+
+  dashboard:
+    environment:
+      DB_CONNECTION_URL_FILE: /run/secrets/db_connection_url
+      BETTER_AUTH_SECRET_FILE: /run/secrets/better_auth_secret
+    secrets:
+      - db_connection_url
+      - better_auth_secret
+
+secrets:
+  db_connection_url:
+    file: ./secrets/db_connection_url
+  redis_url:
+    file: ./secrets/redis_url
+  better_auth_secret:
+    file: ./secrets/better_auth_secret
+```
+
+With this approach, secrets are mounted as in-memory files at `/run/secrets/` inside each container and are never exposed as environment variables.
+
+#### Rotating secrets
+
+1. Update the secret file(s) in `secrets/`
+2. Restart affected services: `docker compose restart gateway dashboard`
 
 ### Network Mode
 
@@ -222,11 +279,37 @@ docker compose up -d
 - Change all default passwords in `.env`
 - Use strong secrets (minimum 32 characters)
 - Keep `.env` file permissions restricted: `chmod 600 .env`
+- Use Docker secrets with the `_FILE` pattern for production (see Secrets Management above)
 - Regularly update images: `docker compose pull`
 - Monitor logs for suspicious activity
-- Consider using Docker secrets for production
 - Enable firewall rules (allow only 80/443)
 - Regular database backups
+
+## Local Evaluation (No Domain Required)
+
+To try Xinity locally without a domain or HTTPS, override the Caddy service and access services directly:
+
+```bash
+cp .env.example .env
+# Fill in passwords and BETTER_AUTH_SECRET, set DOMAIN to anything (unused)
+```
+
+Then start without Caddy and expose ports directly:
+
+```bash
+docker compose up -d postgres redis db-migrate gateway dashboard
+```
+
+Access the dashboard at `http://localhost:5121` and the gateway at `http://localhost:4121`. You will need to set the auth-related environment variables to match:
+
+```env
+BETTER_AUTH_URL=http://localhost:5121
+ORIGIN=http://localhost:5121
+HTTP_OVERRIDE_ORIGIN=http://localhost:5121
+PUBLIC_LLM_API_URL=http://localhost:4121/v1
+```
+
+And uncomment the `ports:` sections for gateway and dashboard in `docker-compose.yml`.
 
 ## Advanced Configuration
 
