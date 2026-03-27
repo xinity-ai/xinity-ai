@@ -57,6 +57,14 @@ export const auth = betterAuth({
   appName: serverEnv.APP_NAME,
   baseURL: serverEnv.ORIGIN,
   secret: serverEnv.BETTER_AUTH_SECRET,
+  session: {
+    expiresIn: 60 * 60 * 24 * 30, // 30 days
+    updateAge: 60 * 60 * 24, // refresh session if older than 1 day
+    cookieCache: {
+      enabled: true,
+      maxAge: 5 * 60, // cache session in cookie for 5 minutes to reduce DB lookups
+    },
+  },
   database: drizzleAdapter(getDB(), {
     provider: "pg", // or "mysql", "sqlite"
     schema: {
