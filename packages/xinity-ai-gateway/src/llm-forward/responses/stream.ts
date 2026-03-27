@@ -17,6 +17,7 @@ import {
 } from "./builders";
 import { saveResponse } from "../response-store";
 import { rootLogger } from "../../logger";
+import { isAbortError, isTimeoutError } from "../util";
 
 const log = rootLogger.child({ name: "response-stream" });
 
@@ -185,7 +186,7 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
         emitResponseCompleted(controller, completedResponse, seq);
         controller.close();
       } catch (error) {
-        if (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")) {
+        if (isAbortError(error) || isTimeoutError(error)) {
           try { controller.close(); } catch {}
           return;
         }

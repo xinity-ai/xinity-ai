@@ -303,6 +303,19 @@ export function extractAllowedRequestParams(
 // Error helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Reliably detect AbortError / TimeoutError regardless of whether the runtime
+ * throws a plain Error or a DOMException (Bun throws DOMException whose
+ * `instanceof Error` can be false in some versions).
+ */
+export function isAbortError(e: unknown): boolean {
+  return e != null && typeof e === "object" && "name" in e && (e as { name: unknown }).name === "AbortError";
+}
+
+export function isTimeoutError(e: unknown): boolean {
+  return e != null && typeof e === "object" && "name" in e && (e as { name: unknown }).name === "TimeoutError";
+}
+
 function errorTypeFromStatus(status: number): string {
   switch (status) {
     case 401: return "authentication_error";

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { resolveModel } from "../ai-sdk";
-import { errorResponse, forwardBackendError, logChatUsage, readSSEStream, validateModelType, isConnectionRefused, BACKEND_RESTART_RETRY_AFTER } from "../util";
+import { errorResponse, forwardBackendError, logChatUsage, readSSEStream, validateModelType, isConnectionRefused, isAbortError, isTimeoutError, BACKEND_RESTART_RETRY_AFTER } from "../util";
 import { BackendCompletionChunkSchema, BackendUsageSchema } from "../backend-schemas";
 import type { ApiCallInputMessage } from "common-db";
 import { rootLogger } from "../../logger";
@@ -156,7 +156,7 @@ export async function handleCompletion(req: Request): Promise<Response> {
               stream: true,
             });
           } catch (e) {
-            if (e instanceof Error && e.name === "AbortError") {
+            if (isAbortError(e)) {
               log.info({ err: e }, "Client disconnected during stream");
               try { controller.close(); } catch {}
               return;
@@ -219,11 +219,11 @@ export async function handleCompletion(req: Request): Promise<Response> {
 
     return Response.json(raw);
   } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
+    if (isAbortError(error)) {
       log.info({ err: error }, "Client disconnected");
       return new Response(null, { status: 499 });
     }
-    if (error instanceof Error && error.name === "TimeoutError") {
+    if (isTimeoutError(error)) {
       log.warn({ err: error }, "Backend timeout");
       return errorResponse("Backend timeout", 504);
     }

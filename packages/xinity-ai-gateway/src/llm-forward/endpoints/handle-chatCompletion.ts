@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { errorResponse, forwardBackendError, logChatUsage, validateModelType, extractAllowedRequestParams, readSSEStream, isConnectionRefused, BACKEND_RESTART_RETRY_AFTER } from "../util";
+import { errorResponse, forwardBackendError, logChatUsage, validateModelType, extractAllowedRequestParams, readSSEStream, isConnectionRefused, isAbortError, isTimeoutError, BACKEND_RESTART_RETRY_AFTER } from "../util";
 import { resolveModel } from "../ai-sdk";
 import { BackendChatChunkSchema, BackendUsageSchema } from "../backend-schemas";
 import type { ApiCallInputMessage } from "common-db";
@@ -194,7 +194,7 @@ export async function handleChatCompletion(req: Request) {
               stream: true,
             });
           } catch (e) {
-            if (e instanceof Error && e.name === "AbortError") {
+            if (isAbortError(e)) {
               log.info({ err: e }, "Client disconnected during stream");
               try { controller.close(); } catch {}
               return;
@@ -264,11 +264,11 @@ export async function handleChatCompletion(req: Request) {
     }
 
   } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
+    if (isAbortError(error)) {
       log.info({ err: error }, "Client disconnected");
       return new Response(null, { status: 499 });
     }
-    if (error instanceof Error && error.name === "TimeoutError") {
+    if (isTimeoutError(error)) {
       log.warn({ err: error }, "Backend timeout");
       return errorResponse("Backend timeout", 504);
     }
