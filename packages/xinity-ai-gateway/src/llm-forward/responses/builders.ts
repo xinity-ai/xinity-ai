@@ -48,7 +48,7 @@ export type ToolCallItem = {
   name?: string;
   /** The AI SDK tool call ID used as the Responses API call_id (only for function_call). */
   callId?: string;
-  /** Serialised JSON arguments (only for function_call). */
+  /** Serialized JSON arguments (only for function_call). */
   arguments?: string;
 };
 
@@ -264,7 +264,7 @@ export function buildOutputConfig(textConfig: TextConfig | null): OutputConfig {
 }
 
 /**
- * If structured output was requested, serialise the parsed object; otherwise
+ * If structured output was requested, serialize the parsed object; otherwise
  * pass text through.
  *
  * `getOutput` is a thunk so that the AI-SDK lazy getter (`result.output`) is
