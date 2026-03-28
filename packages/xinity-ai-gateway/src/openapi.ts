@@ -17,8 +17,8 @@ export async function createOpenapiSpec() {
       - records usage and api call contents / messages
       - provides metrics about model usage, for observability
 
-      All capabilities are presented via a openai compatible api focusing on embeddings and chat completion, which is not individually documented here. 
-      Simply point the baseUrl of a openai client toward /v1 
+      All capabilities are presented via an OpenAI-compatible API focusing on embeddings and chat completion, which is not individually documented here.
+      Simply point the baseUrl of an OpenAI client toward /v1
       `,
     },
     tags: [],
