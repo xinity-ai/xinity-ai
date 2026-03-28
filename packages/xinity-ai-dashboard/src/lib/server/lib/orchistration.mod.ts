@@ -69,7 +69,7 @@ export async function assembleModelRequirementTable(): Promise<ModelRequirementT
 }
 
 /** Indexes existing installations by model and by server, and initialises capacity tracking. */
-function buildClusterState(existing: ModelInstallation[], availableServers: AiNode[]): ClusterState {
+export function buildClusterState(existing: ModelInstallation[], availableServers: AiNode[]): ClusterState {
   const installationsByModel = new Map<string, ModelInstallation[]>();
   const installationsByServer = new Map<string, ModelInstallation[]>();
   const serverCapacity = new Map<string, { total: number; used: number }>();
@@ -96,7 +96,7 @@ function buildClusterState(existing: ModelInstallation[], availableServers: AiNo
 }
 
 /** Finds installations that exceed the required replica count and frees their capacity. */
-function collectExcessInstallations(requiredModels: ModelRequirementTable, state: ClusterState): string[] {
+export function collectExcessInstallations(requiredModels: ModelRequirementTable, state: ClusterState): string[] {
   const toUninstall: string[] = [];
 
   for (const [model, installs] of state.installationsByModel) {
@@ -126,7 +126,7 @@ function collectExcessInstallations(requiredModels: ModelRequirementTable, state
  * Picks a server for a new model installation using a first-fit strategy.
  * Skips nodes that already host the model, lack the required driver, or have insufficient capacity.
  */
-function findServerForModel(
+export function findServerForModel(
   model: string,
   driver: string,
   weight: number,
@@ -225,11 +225,20 @@ async function applyChanges(toUninstall: string[], toInstall: NewInstallation[])
 export async function syncDeployedModels() {
   const requiredModels = await assembleModelRequirementTable();
   const existing: ModelInstallation[] = await getDB().select().from(modelInstallationT).where(isNull(modelInstallationT.deletedAt));
-  const availableServers: AiNode[] = await getDB().select().from(aiNodeT).where(isNull(aiNodeT.deletedAt));
-  log.debug({ requiredModels, installedModels: existing.length, availableServers: availableServers.length }, "Syncing deployed models");
+  const availableServers: AiNode[] = await getDB().select().from(aiNodeT).where(sql`${aiNodeT.available} AND ${aiNodeT.deletedAt} IS NULL`);
 
-  const state = buildClusterState(existing, availableServers);
-  const toUninstall = collectExcessInstallations(requiredModels, state);
+  // Installations on unavailable nodes must be removed and rescheduled
+  const availableServerIds = new Set(availableServers.map(s => s.id));
+  const orphaned = existing.filter(i => !availableServerIds.has(i.nodeId));
+  const active = existing.filter(i => availableServerIds.has(i.nodeId));
+
+  log.debug({ requiredModels, installedModels: existing.length, availableServers: availableServers.length, orphaned: orphaned.length }, "Syncing deployed models");
+
+  const state = buildClusterState(active, availableServers);
+  const toUninstall = [
+    ...orphaned.map(i => i.id),
+    ...collectExcessInstallations(requiredModels, state),
+  ];
   const toInstall = await planNewInstallations(requiredModels, state);
   await applyChanges(toUninstall, toInstall);
 }

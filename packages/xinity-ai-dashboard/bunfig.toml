@@ -1,2 +1,3 @@
 [test]
 timeout = 60000
+preload = ["./tests/preload.ts"]
