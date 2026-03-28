@@ -10,7 +10,7 @@ export async function createOpenapiSpec() {
   });
   const spec = await generator.generate(serverRouter, {
     info: {
-      title: "Xinity GPEU Gateway",
+      title: "Xinity AI Gateway",
       version,
       description: `The gateway represents one of the central pieces of xinity infrastructure. It    
       - forwards calls to the respective target nodes running models
