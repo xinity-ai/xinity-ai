@@ -1127,6 +1127,55 @@ export async function installAll(targetVersion: string, dryRun = false, hardRese
       warn("Partial", `daemon had issues: ${result.errors.join(", ")}`);
     }
   }
+
+  // ── Health check ──────────────────────────────────────────────────────
+  p.log.step(pc.bold("\n── health check ──"));
+  const { runDoctor } = await import("./doctor.ts");
+  const doctorSpinner = p.spinner();
+  doctorSpinner.start("Running diagnostics…");
+  const report = await runDoctor({
+    interactive: false,
+    host: resolvedHost,
+    spinner: {
+      message: (msg: string) => doctorSpinner.message(msg),
+      stop: () => doctorSpinner.stop(""),
+    },
+  });
+  doctorSpinner.stop("");
+
+  const { pass: passCount, warn: warnCount, fail: failCount } = report.summary;
+  if (failCount > 0) {
+    warn("Health", `${failCount} check(s) failed. Run ${pc.cyan("xinity doctor")} for details.`);
+  } else if (warnCount > 0) {
+    pass("Health", `All checks passed (${warnCount} warning(s))`);
+  } else {
+    pass("Health", `All ${passCount} checks passed`);
+  }
+
+  // ── Post-install summary ──────────────────────────────────────────────
+  const summaryLines: string[] = [];
+
+  const dashContent = await resolvedHost.readFile(`${ENV_DIR}/dashboard.env`);
+  if (dashContent) {
+    const parsed = parseEnvString(dashContent);
+    if (parsed.ORIGIN) summaryLines.push(`Dashboard:  ${pc.cyan(parsed.ORIGIN)}`);
+  }
+
+  const gwContent = await resolvedHost.readFile(`${ENV_DIR}/gateway.env`);
+  if (gwContent) {
+    const parsed = parseEnvString(gwContent);
+    const gwHost = parsed.HOST || "localhost";
+    const gwPort = parsed.PORT || "4010";
+    summaryLines.push(`Gateway:    ${pc.cyan(`http://${gwHost}:${gwPort}`)}`);
+  }
+
+  if (summaryLines.length > 0) summaryLines.push("");
+  summaryLines.push(pc.bold("Next steps:"));
+  summaryLines.push(`  1. Open the dashboard to create your first admin account`);
+  summaryLines.push(`  2. Add inference nodes: ${pc.cyan("xinity up daemon")} on each GPU machine`);
+  summaryLines.push(`  3. Check health anytime: ${pc.cyan("xinity doctor")}`);
+
+  p.note(summaryLines.join("\n"), "Installation complete");
 }
 
 // ─── Remove ─────────────────────────────────────────────────────────────────

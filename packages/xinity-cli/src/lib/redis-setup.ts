@@ -379,24 +379,52 @@ export async function discoverRedisUrl(
   }
 
   if (choice === "setup") {
-    return redisSetup(host, dryRun);
+    const url = await redisSetup(host, dryRun);
+    if (url) {
+      const { testRedisConnection } = await import("./connectivity.ts");
+      await testRedisConnection(url, host);
+    }
+    return url;
   }
 
-  // Existing instance, prompt for URL
-  const value = await p.text({
-    message: "REDIS_URL",
-    placeholder: "redis://localhost:6379",
-    validate: (val) => {
-      if (!val) return "A connection URL is required";
-      if (!val.startsWith("redis")) return "Must be a Redis connection URL";
+  // Existing instance, prompt for URL then validate connectivity
+  return promptAndValidateRedisUrl(host);
+}
+
+/**
+ * Prompt for a Redis connection URL and test connectivity, allowing retries.
+ */
+async function promptAndValidateRedisUrl(host: Host): Promise<string | undefined> {
+  const { testRedisConnection } = await import("./connectivity.ts");
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const value = await p.text({
+      message: "REDIS_URL",
+      placeholder: "redis://localhost:6379",
+      validate: (val) => {
+        if (!val) return "A connection URL is required";
+        if (!val.startsWith("redis")) return "Must be a Redis connection URL";
+        return undefined;
+      },
+    });
+    if (p.isCancel(value)) {
+      p.cancel("Cancelled.");
       return undefined;
-    },
-  });
-  if (p.isCancel(value)) {
-    p.cancel("Cancelled.");
-    return undefined;
+    }
+
+    const ok = await testRedisConnection(value, host);
+    if (ok) return value;
+
+    const action = await p.select({
+      message: "Could not connect to Redis.",
+      options: [
+        { value: "retry", label: "Enter a different URL" },
+        { value: "proceed", label: "Use this URL anyway" },
+      ],
+    });
+    if (p.isCancel(action) || action === "proceed") return value;
   }
-  return value;
 }
 
 /**

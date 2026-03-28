@@ -76,24 +76,52 @@ async function discoverConnectionUrl(
   }
 
   if (choice === "setup") {
-    return postgresSetup(host, dryRun);
+    const url = await postgresSetup(host, dryRun);
+    if (url) {
+      const { testPostgresConnection } = await import("./connectivity.ts");
+      await testPostgresConnection(url, host);
+    }
+    return url;
   }
 
-  // Existing database, prompt for URL
-  const value = await p.text({
-    message: "DB_CONNECTION_URL",
-    placeholder: "postgresql://user:pass@host:5432/dbname",
-    validate: (val) => {
-      if (!val) return "A connection URL is required";
-      if (!val.startsWith("postgres")) return "Must be a PostgreSQL connection URL";
+  // Existing database, prompt for URL then validate connectivity
+  return promptAndValidateDbUrl(host);
+}
+
+/**
+ * Prompt for a DB connection URL and test connectivity, allowing retries.
+ */
+async function promptAndValidateDbUrl(host: Host): Promise<string | undefined> {
+  const { testPostgresConnection } = await import("./connectivity.ts");
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const value = await p.text({
+      message: "DB_CONNECTION_URL",
+      placeholder: "postgresql://user:pass@host:5432/dbname",
+      validate: (val) => {
+        if (!val) return "A connection URL is required";
+        if (!val.startsWith("postgres")) return "Must be a PostgreSQL connection URL";
+        return undefined;
+      },
+    });
+    if (p.isCancel(value)) {
+      p.cancel("Cancelled.");
       return undefined;
-    },
-  });
-  if (p.isCancel(value)) {
-    p.cancel("Cancelled.");
-    return undefined;
+    }
+
+    const ok = await testPostgresConnection(value, host);
+    if (ok) return value;
+
+    const action = await p.select({
+      message: "Could not connect to the database.",
+      options: [
+        { value: "retry", label: "Enter a different URL" },
+        { value: "proceed", label: "Use this URL anyway" },
+      ],
+    });
+    if (p.isCancel(action) || action === "proceed") return value;
   }
-  return value;
 }
 
 export interface MigrateResult {
