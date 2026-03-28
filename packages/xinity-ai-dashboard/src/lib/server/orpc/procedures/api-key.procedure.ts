@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ApiKeyDto } from "$lib/orpc/dtos/api-key.dto";
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
 import { randomBytes } from "node:crypto";
-import { and, eq, sql, aiApiKeyT, aiApplicationT, userT, isNull } from "common-db";
+import { and, eq, sql, aiApiKeyT, aiApplicationT, isNull } from "common-db";
 import { pick } from "$lib/util";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
