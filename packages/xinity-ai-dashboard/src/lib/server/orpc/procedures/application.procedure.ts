@@ -2,11 +2,9 @@
  * ORPC procedures for Application management.
  */
 import { rootOs, withOrganization, requirePermission } from "../root";
-import { z } from "zod";
 import { ApplicationDto } from "$lib/orpc/dtos/application.dto";
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
-import { aiApplicationT, aiApiKeyT, sql, isNull, and, eq } from "common-db";
-import { pick } from "$lib/util";
+import { aiApplicationT, sql, isNull, and } from "common-db";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
 
