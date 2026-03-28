@@ -16,7 +16,7 @@ export async function createOpenapiSpec() {
     info: {
       title: "LLM Compute Node Server",
       version,
-      description: `The LLM Compute Node Server handles interactions between computers as part of a xinity-llm-enginge installation.
+      description: `The LLM Compute Node Server handles interactions between computers as part of a xinity-llm-engine installation.
     Authentication is handled via API key in the \`x-apikey\` header.`,
     },
     security: [{ apiKeyAuth: [] }],
