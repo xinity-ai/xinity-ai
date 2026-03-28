@@ -328,6 +328,12 @@
           };
         };
 
+        containerUid = lib.mkOption {
+          type = lib.types.int;
+          default = 6000;
+          description = "UID (and GID) the container processes run as. Secret files passed via *File options must be readable by this UID.";
+        };
+
         # --- Secret file options (recommended for production) ---
         # These use the _FILE env var pattern for secure secret injection.
 
@@ -436,6 +442,7 @@
           # --- Gateway ---
           services.xinity-ai-gateway = {
             enable = true;
+            containerUid = cfg.containerUid;
             port = cfg.gateway.port;
             backendTimeoutMs = lib.mkDefault cfg.gateway.backendTimeoutMs;
             infoserverUrl = infoserverUrl;
@@ -461,6 +468,7 @@
           # --- Dashboard ---
           services.xinity-ai-dashboard = {
             enable = true;
+            containerUid = cfg.containerUid;
             port = cfg.dashboard.port;
             mcpEnabled = lib.mkDefault cfg.dashboard.mcpEnabled;
             licenseKey = lib.mkDefault cfg.dashboard.licenseKey;

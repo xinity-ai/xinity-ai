@@ -95,6 +95,35 @@ services.xinity-ai.secrets = {
 };
 ```
 
+**File permissions:** Secret files are bind-mounted into the container. The container process runs as UID 6000 by default (configurable via `containerUid`), so each secret file must be readable by this UID. With agenix:
+
+```nix
+age.secrets.xinity-db-url = {
+  file = ./secrets/db-url.age;
+  owner = "6000";
+  group = "6000";
+  mode = "0440";
+};
+```
+
+With sops-nix:
+
+```nix
+sops.secrets."xinity-db-url" = {
+  owner = "6000";
+  group = "6000";
+};
+```
+
+To change the container UID (e.g., to avoid clashes with existing users):
+
+```nix
+services.xinity-ai.containerUid = 7000;
+# or per-service:
+services.xinity-ai-gateway.containerUid = 7000;
+services.xinity-ai-dashboard.containerUid = 7000;
+```
+
 All three tiers can be mixed. Direct values and `environmentFile` entries take precedence over `_FILE` variants. For the full list of per-secret options, see the module source in [nix/modules/](../../nix/modules/).
 
 ### Subdomains

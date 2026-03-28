@@ -281,6 +281,12 @@ in {
           description = "Additional environment variables to pass to the container.";
         };
 
+        containerUid = lib.mkOption {
+          type = lib.types.int;
+          default = 6000;
+          description = "UID (and GID) the container process runs as. Secret files passed via *File options must be readable by this UID.";
+        };
+
         extraOptions = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           default = [ "--network=host" ];
@@ -400,7 +406,7 @@ in {
             ++ lib.optional (cfg.s3AccessKeyIdFile != null) "${cfg.s3AccessKeyIdFile}:/run/secrets/s3-access-key-id:ro"
             ++ lib.optional (cfg.s3SecretAccessKeyFile != null) "${cfg.s3SecretAccessKeyFile}:/run/secrets/s3-secret-access-key:ro"
             ++ lib.optional (cfg.licenseKeyFile != null) "${cfg.licenseKeyFile}:/run/secrets/license-key:ro";
-          extraOptions = cfg.extraOptions;
+          extraOptions = [ "--user=${toString cfg.containerUid}:${toString cfg.containerUid}" ] ++ cfg.extraOptions;
         };
       };
     };
