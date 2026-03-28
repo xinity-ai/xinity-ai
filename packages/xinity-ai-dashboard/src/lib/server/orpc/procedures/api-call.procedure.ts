@@ -1,7 +1,7 @@
 /**
  * ORPC procedures for API call data and seeded examples.
  */
-import { rootOs, withAuth, withOrganization, requirePermission } from "../root";
+import { rootOs, withOrganization, requirePermission } from "../root";
 import { z } from "zod";
 import exampleCalls from "./example.call.data.json" assert {type: "json"};
 import { sql, aiApiKeyT, apiCallT, type ApiCallInputMessage } from "common-db";
