@@ -28,6 +28,8 @@ Xinity AI is a full model orchestration system. Once deployed, it enables users 
 
 ## Deployment
 
+See the [Deployment Guide](deployment/README.md) for a full overview, decision tree, and instructions for adding inference nodes.
+
 Three routes are available. The **Xinity CLI** is the recommended starting point for most deployments, handling installation, configuration, and updates interactively.
 
 > **Daemon note:** The daemon must always run on the machine with GPU capacity. Even in Docker or NixOS deployments, the daemon is installed separately on each inference node via the CLI.
