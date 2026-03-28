@@ -4,7 +4,7 @@ import { sql, isNull, modelDeploymentT, modelInstallationT, modelInstallationSta
 import z from "zod";
 import { DeploymentDto } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
-import { syncDeployedModels } from "$lib/server/lib/orchistration.mod";
+import { syncDeployedModels } from "$lib/server/lib/orchestration.mod";
 import { infoClient } from "$lib/server/info-client";
 import { rootLogger } from "$lib/server/logging";
 import { aggregatePhase, type PhaseInfo } from "$lib/server/lib/deployment-phase";

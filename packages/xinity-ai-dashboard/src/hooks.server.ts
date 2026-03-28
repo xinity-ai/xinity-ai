@@ -6,7 +6,7 @@ import { httpRequestCountMetric } from "$lib/server/metrics";
 import { auth } from "$lib/server/auth-server";
 import { svelteKitHandler } from "better-auth/svelte-kit";
 import { building } from "$app/environment";
-import { startDeploymentSyncService } from "$lib/server/lib/orchistration.mod";
+import { startDeploymentSyncService } from "$lib/server/lib/orchestration.mod";
 import { startNotificationScheduler } from "$lib/server/notifications/scheduler";
 import { serverEnv } from "$lib/server/serverenv";
 import { checkMigrationState, isMigrationOk } from "$lib/server/migration-check";

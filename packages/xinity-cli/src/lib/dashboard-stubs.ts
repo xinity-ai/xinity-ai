@@ -55,7 +55,7 @@ export const serverStubs: Record<string, Record<string, unknown>> = {
     getModelInfo: () => null,
     InvalidModelInfo: class extends Error {},
   },
-  "$lib/server/lib/orchistration.mod": {
+  "$lib/server/lib/orchestration.mod": {
     assembleModelRequirementTable: asyncNoop,
     syncDeployedModels: asyncNoop,
     startDeploymentSyncService: asyncNoop,

@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
-import { buildClusterState, collectExcessInstallations, findServerForModel } from "../src/lib/server/lib/orchistration.mod";
+import { buildClusterState, collectExcessInstallations, findServerForModel } from "../src/lib/server/lib/orchestration.mod";
 import type { AiNode, ModelInstallation } from "common-db";
-import type { ModelRequirementTable } from "../src/lib/server/lib/orchistration.mod";
+import type { ModelRequirementTable } from "../src/lib/server/lib/orchestration.mod";
 
 function makeNode(overrides: Partial<AiNode> & { id: string }): AiNode {
   return {
@@ -31,7 +31,7 @@ function makeInstallation(overrides: Partial<ModelInstallation> & { id: string; 
   };
 }
 
-describe("orchistration: node goes unavailable", () => {
+describe("orchestration: node goes unavailable", () => {
   const nodeA = makeNode({ id: "node-a", host: "10.0.0.1" });
   const nodeB = makeNode({ id: "node-b", host: "10.0.0.2" });
 
