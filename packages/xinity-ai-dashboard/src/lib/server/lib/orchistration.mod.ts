@@ -5,7 +5,7 @@ import { resolveDriverForProviderModel } from "xinity-infoserver";
 import { rootLogger } from "../logging";
 import { building } from "$app/environment";
 
-const log = rootLogger.child({ name: "orchistration.mod" })
+const log = rootLogger.child({ name: "orchestration.mod" })
 
 const OLLAMA_PORT = 11434;
 const VLLM_PORT_BASE = 11435;
