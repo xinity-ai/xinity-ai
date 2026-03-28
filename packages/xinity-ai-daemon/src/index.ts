@@ -12,7 +12,7 @@ if (import.meta.main) {
   main();
 }
 
-async function main(){
+async function main() {
   const migrationState = await checkMigrations();
   if (migrationState.status !== "ok") {
     rootLogger.fatal("Database migrations are not up to date, daemon cannot start.");
@@ -31,8 +31,8 @@ async function main(){
   await setOnline();
   const coordinator = dbSync();
   const subscription = coordinator.start();
-  process.once("SIGTERM", ()=> shutdown(subscription));
-  process.once("SIGINT", ()=> shutdown(subscription));
+  process.once("SIGTERM", () => shutdown(subscription));
+  process.once("SIGINT", () => shutdown(subscription));
   process.once("uncaughtException", (err) => {
     rootLogger.fatal({ err }, "Uncaught exception");
     void shutdown(subscription);
@@ -43,14 +43,14 @@ async function main(){
   });
 
   const nodeId = await getNodeId();
-  for await(const _notification of listen(`ai_node:${nodeId}`)){
+  for await (const _notification of listen(`ai_node:${nodeId}`)) {
     if (shuttingDown) break;
     rootLogger.debug("Responding to DB notification");
     coordinator.signal("notification");
   }
 }
 
-async function shutdown(subscription: SubscriptionLike){
+async function shutdown(subscription: SubscriptionLike) {
   if (shuttingDown) return;
   shuttingDown = true;
 
