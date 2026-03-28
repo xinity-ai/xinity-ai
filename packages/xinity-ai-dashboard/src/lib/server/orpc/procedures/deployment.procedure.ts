@@ -312,7 +312,7 @@ const getDeployment = rootOs
   .route({
     summary: "Get Deployment",
     path: "/{id}", method: "GET", tags, description: `Endpoint to get deployments by id.
-    Other then the other deployment related endpoints, this one also returns computed properties such as those
+    Other than the other deployment related endpoints, this one also returns computed properties such as those
     relevant for canary deployments, and exact deployment transition state`,
   })
   .input(z.object({ id: z.uuid() }))
