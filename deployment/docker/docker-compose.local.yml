@@ -1,0 +1,31 @@
+# Localhost evaluation overlay — no domain, no HTTPS, no Caddy.
+#
+# Usage:
+#   cp .env.example .env
+#   # Fill in POSTGRES_PASSWORD, REDIS_PASSWORD, BETTER_AUTH_SECRET
+#   # Set DOMAIN and ACME_EMAIL to any value (unused since Caddy is disabled)
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
+#
+# Access:
+#   Dashboard: http://localhost:5121
+#   Gateway:   http://localhost:4121
+
+services:
+  # Disable Caddy — assign it to a profile that is never activated
+  caddy:
+    profiles: [disabled]
+
+  # Expose gateway directly on the host
+  gateway:
+    ports:
+      - "${GATEWAY_PORT:-4121}:${GATEWAY_PORT:-4121}"
+
+  # Expose dashboard directly and rewrite URLs for localhost
+  dashboard:
+    ports:
+      - "${DASHBOARD_PORT:-5121}:${DASHBOARD_PORT:-5121}"
+    environment:
+      BETTER_AUTH_URL: http://localhost:${DASHBOARD_PORT:-5121}
+      ORIGIN: http://localhost:${DASHBOARD_PORT:-5121}
+      HTTP_OVERRIDE_ORIGIN: http://localhost:${DASHBOARD_PORT:-5121}
+      PUBLIC_LLM_API_URL: http://localhost:${GATEWAY_PORT:-4121}/v1

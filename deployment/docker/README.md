@@ -287,29 +287,22 @@ docker compose up -d
 
 ## Local Evaluation (No Domain Required)
 
-To try Xinity locally without a domain or HTTPS, override the Caddy service and access services directly:
+A compose overlay is included for trying Xinity on `localhost` without a domain or HTTPS:
 
 ```bash
 cp .env.example .env
-# Fill in passwords and BETTER_AUTH_SECRET, set DOMAIN to anything (unused)
+# Fill in POSTGRES_PASSWORD, REDIS_PASSWORD, BETTER_AUTH_SECRET
+# DOMAIN and ACME_EMAIL can be any value (Caddy is disabled by the overlay)
 ```
-
-Then start without Caddy and expose ports directly:
 
 ```bash
-docker compose up -d postgres redis db-migrate gateway dashboard
+docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
 ```
 
-Access the dashboard at `http://localhost:5121` and the gateway at `http://localhost:4121`. You will need to set the auth-related environment variables to match:
+- Dashboard: `http://localhost:5121`
+- Gateway API: `http://localhost:4121`
 
-```env
-BETTER_AUTH_URL=http://localhost:5121
-ORIGIN=http://localhost:5121
-HTTP_OVERRIDE_ORIGIN=http://localhost:5121
-PUBLIC_LLM_API_URL=http://localhost:4121/v1
-```
-
-And uncomment the `ports:` sections for gateway and dashboard in `docker-compose.yml`.
+The overlay disables Caddy, exposes the gateway and dashboard ports directly, and rewrites `ORIGIN`, `BETTER_AUTH_URL`, and `PUBLIC_LLM_API_URL` for localhost.
 
 ## Advanced Configuration
 
