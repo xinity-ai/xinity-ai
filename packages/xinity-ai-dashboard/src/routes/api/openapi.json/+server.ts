@@ -22,10 +22,10 @@ const apiRouter = os.prefix("/api").router(removeInternalRecursively(router));
 // @ts-ignore // type inaccuracy due to versions
 const spec = await generator.generate(apiRouter, {
   info: {
-    title: 'Xinity Orchistrator API',
+    title: 'Xinity Orchestrator API',
     version: '0.1.0',
-    description: `API interface of the Xinity LLM Orchistration Layer,  
-exposing endpoints regarding management of API keys, availability of LLM models,  
+    description: `API interface of the Xinity LLM Orchestration Layer,
+exposing endpoints regarding management of API keys, availability of LLM models,
 and accessing information about recorded LLM calls`
   },
   tags: [
