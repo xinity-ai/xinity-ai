@@ -210,7 +210,7 @@ const updateDeployment = rootOs
   .use(withOrganization)
   .use(requirePermission({ modelDeployment: ["update"] }))
   .route({
-    path: "/{id}", method: "PATCH", tags, summary: "Update Deployments",
+    path: "/{id}", method: "PATCH", tags, summary: "Update Deployment",
   })
   .input(DeploymentDto.omit(commonInputFilter))
   .output(DeploymentDto)
