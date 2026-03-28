@@ -157,9 +157,12 @@ xinity update            # update the CLI itself
 ## Repo layout
 
 - `packages/common-db`: shared DB schema, migrations, and tooling
+- `packages/common-env`: shared environment variable validation (Zod)
+- `packages/common-log`: shared Pino logger wrapper
 - `packages/xinity-ai-gateway`: API gateway service
 - `packages/xinity-ai-dashboard`: SvelteKit admin dashboard
 - `packages/xinity-ai-daemon`: model runtime/installation agent (runs on inference hardware)
+- `packages/xinity-cli`: operator CLI for installation, configuration, and management
 - `packages/xinity-infoserver`: model metadata schema + YAML server
 
 ## Versioning
