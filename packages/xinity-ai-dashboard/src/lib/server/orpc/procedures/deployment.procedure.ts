@@ -274,7 +274,7 @@ const toggleEnabled = rootOs
   .use(withOrganization)
   .use(requirePermission({ modelDeployment: ["update"] }))
   .route({
-    path: "/{id}", method: "PATCH", tags, summary: "Enable Deployments",
+    path: "/{id}", method: "PATCH", tags, summary: "Toggle Deployment Enabled State",
     description: "Updates the deployment, specifically by setting it enabled or disabled",
   })
   .input(DeploymentDto.pick({ id: true, enabled: true }))
