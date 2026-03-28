@@ -24,7 +24,7 @@ function consumePull$({model, id}: ModelInstallation): Observable<void> {
     bufferTime(15 * 1000),
     concatMap(async (chunk) => {
       const newest = chunk.at(-1);
-      if(newest){
+      if (newest){
         const isDownloading = newest.completed != null && newest.total != null && newest.total > 0;
         const progress = isDownloading ? (newest.completed / newest.total) : null;
         const isDone = newest.status === "success";
@@ -68,12 +68,12 @@ export function syncOllamaInstallations$(
       return { toRemove, toAdd };
     }),
     tap(({ toRemove, toAdd }) => {
-      if(toRemove.length)
+      if (toRemove.length)
         log.info(
           { models: toRemove.map((i) => i.model) },
           "Removing installations"
         );
-      if(toAdd.length)
+      if (toAdd.length)
         log.info(
           { models: toAdd.map((i) => i.model) },
           "Adding installations"
