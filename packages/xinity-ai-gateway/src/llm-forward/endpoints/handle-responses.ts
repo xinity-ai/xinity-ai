@@ -418,5 +418,5 @@ export async function handleGetOrDeleteResponseRequest(req: Request): Promise<Re
     return Response.json({ id: responseId, object: "response", deleted: true });
   }
 
-  return errorResponse("Method Not found", 404);
+  return errorResponse("Method not allowed", 405);
 }
