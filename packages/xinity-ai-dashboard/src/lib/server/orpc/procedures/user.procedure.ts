@@ -15,7 +15,7 @@ const log = rootLogger.child({ name: "api.user" });
 const getSelf = rootOs.use(withAuth)
   .route({
     method: "GET", path: "/self", tags, summary: "Get Self",
-    description: "Endpoint to obtain a available info about your own user",
+    description: "Endpoint to obtain available info about your own user",
   })
   .output(UserDto)
   .handler(async ({ context, errors }): Promise<z.infer<typeof UserDto>> => {
