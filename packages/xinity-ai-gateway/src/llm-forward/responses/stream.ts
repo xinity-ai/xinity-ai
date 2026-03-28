@@ -121,7 +121,7 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
               // Function tool call (manual — no execute in AI SDK)
               const callId = generateCallId();
               const outputIdx = nextOutputIndex++;
-              const argsStr = JSON.stringify(part.args ?? {});
+              const argsStr = JSON.stringify(part.input ?? {});
 
               streamToolCalls.push({ id: callId, aiToolCallId: part.toolCallId, outputIndex: outputIdx, toolName: part.toolName });
 
