@@ -30,8 +30,8 @@ and accessing information about recorded LLM calls`
   },
   tags: [
     { name: "User", description: "API Endpoints all around users. Currently this is only ever about the currently signed in user" },
-    { name: "Api Key", description: "All about API Keys to access llm apis with. API Keys also represent collections of actions as they are recorded. LLM usage is tracked by this key" },
-    { name: "Api Call", description: "Recorded API Calls" }
+    { name: "API Key", description: "All about API Keys to access llm apis with. API Keys also represent collections of actions as they are recorded. LLM usage is tracked by this key" },
+    { name: "API Call", description: "Recorded API Calls" }
   ],
   commonSchemas: {
     UserDto: { schema: UserDto },

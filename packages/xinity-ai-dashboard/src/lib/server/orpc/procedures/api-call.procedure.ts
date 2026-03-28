@@ -10,7 +10,7 @@ import { rootLogger } from "$lib/server/logging";
 
 const log = rootLogger.child({ name: "api-call.procedure" });
 
-const tags = ["Api Call"];
+const tags = ["API Call"];
 
 /** Adds seeded example API calls for a specific API key (dev-only). */
 const addExampleCalls = rootOs
@@ -18,7 +18,7 @@ const addExampleCalls = rootOs
   .use(withOrganization)
   .route({ method: "POST", path: "/add-example-data", tags: [...tags, ".internal"], summary: "Add example api calls (dev)" })
   .input(z.object({ apiKeyId: z.uuid(), applicationId: z.uuid() }))
-  .errors({ NOT_FOUND: { message: "Api key not found" }, NOT_ACCEPTABLE: { message: "Environment mismatch. This is not available in production" } })
+  .errors({ NOT_FOUND: { message: "API key not found" }, NOT_ACCEPTABLE: { message: "Environment mismatch. This is not available in production" } })
   .handler(async ({ context, input, errors }) => {
     if (process.env.NODE_ENV === "production") {
       throw errors.NOT_ACCEPTABLE();
@@ -68,7 +68,7 @@ const addExampleCalls = rootOs
 const listApiCalls = rootOs
   .use(withOrganization)
   .use(requirePermission({ apiCall: ["read"] }))
-  .errors({ NOT_FOUND: { message: "Api key not found" } })
+  .errors({ NOT_FOUND: { message: "API key not found" } })
   .route({ path: "/", tags, summary: "List API Calls" })
   .input(z.object({ apiKeyId: z.uuid() }))
   .handler(async ({ context, input, errors }) => {

@@ -14,7 +14,7 @@ function generateRandomKey(length = 64) {
   return randomBytes(length).toString("base64url"); // URL-safe base64 string
 }
 
-const tags = ["LLM Api Key"];
+const tags = ["LLM API Key"];
 
 export const createApiKey = rootOs
   .use(withOrganization)
@@ -147,7 +147,7 @@ const updateApiKey = rootOs
 const deleteApiKey = rootOs
   .use(withOrganization)
   .use(requirePermission({ apiKey: ["delete"] }))
-  .route({ method: "DELETE", path: "/{id}", tags, summary: "Soft Delete LLM Api Key" })
+  .route({ method: "DELETE", path: "/{id}", tags, summary: "Soft Delete LLM API Key" })
   .input(ApiKeyDto.pick({ id: true }))
   .handler(async ({ context, input }) => {
     log.info(input, "Soft deleting api key")
@@ -166,7 +166,7 @@ const deleteApiKey = rootOs
 const toggleEnabled = rootOs
   .use(withOrganization)
   .use(requirePermission({ apiKey: ["update"] }))
-  .route({ method: "POST", path: "/{id}/toggle-enabled", tags, summary: "Enable/Disable LLM Api Key" })
+  .route({ method: "POST", path: "/{id}/toggle-enabled", tags, summary: "Enable/Disable LLM API Key" })
   .input(ApiKeyDto.pick({ id: true }).extend({ enabled: z.boolean().optional() }))
   .handler(async ({ context, input, errors }) => {
     let enabled = input.enabled;
