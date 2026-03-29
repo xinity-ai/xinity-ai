@@ -2,7 +2,6 @@
  * Internal-only dev procedures.
  */
 import { sql } from "common-db";
-import { os } from "@orpc/server";
 import z from "zod";
 import { rootOs, withAuth } from "../root";
 import { getDB } from "$lib/server/db";
