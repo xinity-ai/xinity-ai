@@ -69,7 +69,7 @@ const listApiCalls = rootOs
   .use(withOrganization)
   .use(requirePermission({ apiCall: ["read"] }))
   .errors({ NOT_FOUND: { message: "API key not found" } })
-  .route({ path: "/", tags, summary: "List API Calls" })
+  .route({ path: "/", method: "GET", tags, summary: "List API Calls" })
   .input(z.object({ apiKeyId: z.uuid() }))
   .handler(async ({ context, input, errors }) => {
     const [apiKey] = await getDB().select({ id: aiApiKeyT.id })
