@@ -2,7 +2,7 @@ import { rootOs, withInstanceAdmin } from "../root";
 import { z } from "zod";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
-import { userT, memberT, organizationT, modelDeploymentT, modelInstallationT, sql, eq, or, ilike, count, and } from "common-db";
+import { userT, memberT, organizationT, sql, eq, or, ilike, count, and } from "common-db";
 
 const log = rootLogger.child({ name: "instance-admin.procedure" });
 const tags = ["Instance Admin"];
