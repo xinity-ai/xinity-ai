@@ -61,7 +61,10 @@
     <p class="mb-2 text-sm font-medium text-gray-700">Available endpoints:</p>
     <ul class="mb-4 space-y-1 text-sm text-gray-600 list-disc list-inside">
       <li><code class="bg-gray-100 px-1 rounded">POST /v1/chat/completions</code> chat generation</li>
+      <li><code class="bg-gray-100 px-1 rounded">POST /v1/completions</code> text completion</li>
       <li><code class="bg-gray-100 px-1 rounded">POST /v1/embeddings</code> text embeddings</li>
+      <li><code class="bg-gray-100 px-1 rounded">POST /v1/rerank</code> reranking</li>
+      <li><code class="bg-gray-100 px-1 rounded">POST /v1/responses</code> responses API</li>
       <li><code class="bg-gray-100 px-1 rounded">GET /v1/models</code> list available deployments</li>
     </ul>
 
