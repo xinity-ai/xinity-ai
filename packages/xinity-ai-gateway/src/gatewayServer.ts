@@ -49,7 +49,7 @@ Bun.serve({
     "/v1/models": withMetrics("/v1/models", handleModelsRequest),
     "/v1/rerank": withMetrics("/v1/rerank", handleRerank),
     "/v1/responses": withMetrics("/v1/responses", handleCreateResponseRequest),
-    "/v1/responses/:responseId": withMetrics("/v1/responses/:id", handleGetOrDeleteResponseRequest),
+    "/v1/responses/:responseId": withMetrics("/v1/responses/:responseId", handleGetOrDeleteResponseRequest),
   },
   fetch: handleRequest,
   port: env.PORT,
