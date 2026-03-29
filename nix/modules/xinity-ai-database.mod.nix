@@ -90,14 +90,14 @@
           type = lib.types.nullOr lib.types.str;
           default = null;
           description =
-            "The password by which the postgres database is accessed by the specified user";
+            "Path to a file containing the password for the PostgreSQL database user.";
         };
 
         redisPasswordFile = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
           description =
-            "The password by which the redis database is accessed by the specified user";
+            "Path to a file containing the password for the Redis instance.";
         };
       };
 
