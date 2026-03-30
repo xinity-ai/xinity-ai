@@ -97,6 +97,7 @@ const update = rootOs
 const inviteMember = rootOs
   .use(withOrganization)
   .use(requirePermission({ invitation: ["create"] }))
+  .errors({ CONFLICT: {}, BAD_REQUEST: {} })
   .route({ path: "/invite", method: "POST", tags, summary: "Invite Member" })
   .input(z.object({
     email: z.email(),
@@ -107,20 +108,42 @@ const inviteMember = rootOs
       throw errors.FORBIDDEN({ message: `The "${input.role}" role requires a paid license. Upgrade at xinity.ai/pricing.` });
     }
 
-    const result = await auth.api.createInvitation({
-      body: {
-        email: input.email,
-        role: input.role as any,
-        organizationId: context.activeOrganizationId,
-      },
-      headers: context.request.headers,
-    });
+    try {
+      const result = await auth.api.createInvitation({
+        body: {
+          email: input.email,
+          role: input.role as any,
+          organizationId: context.activeOrganizationId,
+        },
+        headers: context.request.headers,
+      });
 
-    if (!result) {
-      throw errors.INTERNAL_SERVER_ERROR({ message: "Failed to send invitation" });
+      if (!result) {
+        throw errors.INTERNAL_SERVER_ERROR({ message: "Failed to send invitation" });
+      }
+
+      return { success: true };
+    } catch (err: unknown) {
+      const body = (err as Record<string, any>)?.body;
+      const code = body?.code as string | undefined;
+
+      switch (code) {
+        case "USER_IS_ALREADY_INVITED_TO_THIS_ORGANIZATION":
+          throw errors.CONFLICT({ message: "This email already has a pending invitation to this organization" });
+        case "USER_IS_ALREADY_A_MEMBER_OF_THIS_ORGANIZATION":
+          throw errors.CONFLICT({ message: "This user is already a member of this organization" });
+        case "INVITATION_LIMIT_REACHED":
+          throw errors.FORBIDDEN({ message: "This organization has reached its invitation limit" });
+        case "YOU_ARE_NOT_ALLOWED_TO_INVITE_USER_WITH_THIS_ROLE":
+          throw errors.FORBIDDEN({ message: "You are not allowed to invite users with this role" });
+        case "ROLE_NOT_FOUND":
+          throw errors.BAD_REQUEST({ message: "The specified role does not exist" });
+        default: {
+          const message = (body?.message ?? (err as Error)?.message) as string | undefined;
+          throw errors.INTERNAL_SERVER_ERROR({ message: message || "Failed to send invitation" });
+        }
+      }
     }
-
-    return { success: true };
   });
 
 const removeMember = rootOs

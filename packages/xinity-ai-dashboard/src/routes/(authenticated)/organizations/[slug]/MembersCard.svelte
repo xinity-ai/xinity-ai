@@ -73,7 +73,7 @@
     });
 
     if (error) {
-      toastState.add("Failed to send invitation", "error");
+      toastState.add(error.message || "Failed to send invitation", "error");
     } else {
       await invalidateAll();
       await permissions.refresh();
