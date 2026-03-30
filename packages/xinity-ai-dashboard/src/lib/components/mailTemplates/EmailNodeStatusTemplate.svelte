@@ -6,6 +6,8 @@
     nodeHost = "",
     status = "offline",
     dashboardUrl = "",
+    appName = "Xinity",
+    preferencesUrl = "",
   } = $props();
 
   // svelte-ignore state_referenced_locally
@@ -43,6 +45,6 @@
       </mj-column>
     </mj-section>
 
-    <EmailFooter />
+    <EmailFooter {appName} {preferencesUrl} />
   </mj-body>
 </mjml>

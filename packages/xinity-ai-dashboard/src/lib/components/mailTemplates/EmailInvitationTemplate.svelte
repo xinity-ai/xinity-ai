@@ -1,13 +1,15 @@
-<script lang="ts">
+<script>
   import EmailFooter from "./partials/EmailFooter.svelte";
   import EmailHeader from "./partials/EmailHeader.svelte";
 
-  export let url: string;
-  export let inviterName: string;
-  export let orgName: string;
-  export let loginUrl: string;
-
-  let appName = "Xinity";
+  const {
+    url = "",
+    inviterName = "",
+    orgName = "",
+    loginUrl = "",
+    appName = "Xinity",
+    preferencesUrl = "",
+  } = $props();
 </script>
 
 <mjml>
@@ -54,6 +56,6 @@
       </mj-column>
     </mj-section>
 
-    <EmailFooter />
+    <EmailFooter {appName} {preferencesUrl} />
   </mj-body>
 </mjml>

@@ -8,12 +8,16 @@
     role = "",
     orgName = "",
     dashboardUrl = "",
+    appName = "Xinity",
+    preferencesUrl = "",
   }: {
     memberName: string;
     eventType: "joined" | "role_changed" | "removed";
     role: string;
     orgName: string;
     dashboardUrl: string;
+    appName: string;
+    preferencesUrl: string;
   } = $props();
 
   const titles: Record<string, string> = {
@@ -56,6 +60,6 @@
       </mj-column>
     </mj-section>
 
-    <EmailFooter />
+    <EmailFooter {appName} {preferencesUrl} />
   </mj-body>
 </mjml>

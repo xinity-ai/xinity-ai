@@ -7,6 +7,8 @@
     message = "Hello, you have a new update in your account. Please review the details by clicking the button below.",
     actionUrl = "",
     actionLabel = "View Notification",
+    appName = "Xinity",
+    preferencesUrl = "",
   } = $props();
 </script>
 
@@ -39,6 +41,6 @@
       </mj-column>
     </mj-section>
 
-    <EmailFooter />
+    <EmailFooter {appName} {preferencesUrl} />
   </mj-body>
 </mjml>

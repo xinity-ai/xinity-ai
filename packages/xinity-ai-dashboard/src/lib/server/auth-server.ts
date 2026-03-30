@@ -90,7 +90,7 @@ export const auth = betterAuth({
           to: user.email,
           subject: "Confirm your email change",
           template: EmailEmailChangeConfirmationTemplate,
-          props: { url, newEmail },
+          props: { url, newEmail, appName: serverEnv.APP_NAME, preferencesUrl: `${serverEnv.ORIGIN}/settings/notifications/` },
         });
       },
     }
@@ -107,7 +107,7 @@ export const auth = betterAuth({
         to: user.email,
         subject: "Reset your password",
         template: EmailForgotPasswordTemplate,
-        props: { url },
+        props: { url, appName: serverEnv.APP_NAME, preferencesUrl: `${serverEnv.ORIGIN}/settings/notifications/` },
       });
     },
   },
@@ -120,7 +120,7 @@ export const auth = betterAuth({
         to: user.email,
         subject: "Verify your email",
         template: EmailVerificationTemplate,
-        props: { url },
+        props: { url, appName: serverEnv.APP_NAME, preferencesUrl: `${serverEnv.ORIGIN}/settings/notifications/` },
       });
     },
 
@@ -218,6 +218,8 @@ export const auth = betterAuth({
             inviterName: data.inviter.user.name || data.inviter.user.email,
             orgName: data.organization.name,
             loginUrl: `${serverEnv.ORIGIN}/login?email=${encodedEmail}&tab=signup`,
+            appName: serverEnv.APP_NAME,
+            preferencesUrl: `${serverEnv.ORIGIN}/settings/notifications/`,
           },
         });
       },

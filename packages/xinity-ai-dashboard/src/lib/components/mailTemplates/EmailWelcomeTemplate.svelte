@@ -6,6 +6,7 @@
     userName = "",
     appName = "Xinity",
     appUrl = "https://xinity.ai",
+    preferencesUrl = "",
   } = $props();
 
   const greeting = $derived(userName ? `Welcome, ${userName}!` : `Welcome to ${appName}!`);
@@ -34,6 +35,6 @@
       </mj-column>
     </mj-section>
 
-    <EmailFooter></EmailFooter>
+    <EmailFooter {appName} {preferencesUrl}></EmailFooter>
   </mj-body>
 </mjml>

@@ -8,6 +8,8 @@
     creatorName = "",
     orgName = "",
     dashboardUrl = "",
+    appName = "Xinity",
+    preferencesUrl = "",
   } = $props();
 </script>
 
@@ -37,6 +39,6 @@
       </mj-column>
     </mj-section>
 
-    <EmailFooter />
+    <EmailFooter {appName} {preferencesUrl} />
   </mj-body>
 </mjml>

@@ -8,6 +8,7 @@ import { rootLogger } from "$lib/server/logging";
 import { type NotificationType, isNotificationEnabled } from "./events";
 import { emailChannel } from "./channels";
 import { getTemplateForType, getSubjectForType } from "./templates";
+import { serverEnv } from "$lib/server/serverenv";
 
 const log = rootLogger.child({ name: "notification.service" });
 
@@ -44,12 +45,17 @@ export async function notify(params: NotifyParams): Promise<void> {
 
     const template = getTemplateForType(type);
     const subject = getSubjectForType(type, data);
+    const props = {
+      ...data,
+      appName: serverEnv.APP_NAME,
+      preferencesUrl: `${serverEnv.ORIGIN}/settings/notifications/`,
+    };
 
     await emailChannel.send({
       recipient: { email: user.email, name: user.name },
       subject,
       template,
-      props: data,
+      props,
     });
 
     // Log to DB

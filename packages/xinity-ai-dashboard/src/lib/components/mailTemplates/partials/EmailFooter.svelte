@@ -1,5 +1,5 @@
 <script>
-  const { appName = "Xinity", supportEmail = "support@xinity.ai" } = $props();
+  const { appName = "Xinity", supportEmail = "support@xinity.ai", preferencesUrl = "" } = $props();
 </script>
 
 <mj-section background-color="#f4f4f4" padding="20px">
@@ -9,6 +9,10 @@
       <br />
       Need help?
       <a href="mailto:{supportEmail}" style="color:#999999;">Contact Support</a>
+      {#if preferencesUrl}
+        &nbsp;|&nbsp;
+        <a href={preferencesUrl} style="color:#999999;">Manage notification preferences</a>
+      {/if}
     </mj-text>
   </mj-column>
 </mj-section>
