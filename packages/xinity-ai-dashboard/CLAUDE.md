@@ -19,7 +19,7 @@ bun x shadcn-svelte@latest add <component-name>
 
 Local services (from monorepo root):
 ```bash
-docker compose up -d dev   # PostgreSQL + Mailhog (UI: localhost:8025)
+docker compose up -d   # PostgreSQL + Mailhog (UI: localhost:8025)
 ```
 
 ## Architecture

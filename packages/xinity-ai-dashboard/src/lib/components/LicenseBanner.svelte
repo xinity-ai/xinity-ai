@@ -42,7 +42,7 @@
       aria-live="polite"
     >
       <span class="h-2 w-2 rounded-full bg-amber-500"></span>
-      <span>License expired — enterprise features will be disabled soon</span>
+      <span>License expired: enterprise features will be disabled soon</span>
       <button
         class="ml-1 cursor-pointer rounded-full border border-amber-300 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
         type="button"

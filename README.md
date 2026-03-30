@@ -44,40 +44,95 @@ Three routes are available. The **Xinity CLI** is the recommended starting point
 
 ## Quick start (local dev)
 
+**1. Install dependencies**
+
 ```bash
 bun install
+```
 
-# Initialize .env files from example.env files (does not overwrite existing .env)
+> The postinstall hook sets up git commit hooks (commitlint). 
+
+**2. Create `.env` files from examples**
+
+```bash
 find . -name 'example.env' -not -path '*/node_modules/*' | while read -r f; do
   target="${f%/example.env}/.env"
   [ -f "$target" ] || cp "$f" "$target"
 done
-
-# Start local dependencies (Postgres, Redis, Mailhog, and more)
-docker compose up -d
-
-# Run DB migrations
-cd packages/common-db
-bun run migrate
 ```
 
-From there, start whichever package you want to work on (see Package details below).
-The infoserver needs to be running for most packages to work. Start it with `bun run dev` in `packages/xinity-infoserver`.
+This copies each `example.env` to `.env` without overwriting existing files. Review and adjust values as needed. In particular, generate a real secret for `BETTER_AUTH_SECRET` in `packages/xinity-ai-dashboard/.env`:
+
+```bash
+openssl rand -base64 33
+```
+
+**3. Start infrastructure**
+
+```bash
+docker compose up -d
+```
+
+This starts Postgres, Redis, and Mailhog. To also start optional services (SearXNG for web search, SeaweedFS for S3 storage), use `docker compose --profile full up -d`.
+
+Verify services are healthy: `docker compose ps`
+
+**4. Run database migrations**
+
+```bash
+bun run --cwd packages/common-db migrate
+```
+
+**5. Start the infoserver**
+
+```bash
+bun run --cwd packages/xinity-infoserver dev
+```
+
+The infoserver must be running before the gateway, dashboard, or daemon can start. See the [service dependency table](#service-dependencies) below.
+
+**6. Start the package you want to work on**
+
+See [Package details](#package-details) below for per-package dev commands.
+
+### Service dependencies
+
+| Service | Requires running |
+|---|---|
+| **Infoserver** | nothing (standalone) |
+| **Gateway** | Postgres, Redis, Infoserver |
+| **Dashboard** | Postgres, Infoserver, Mailhog (for auth emails) |
+| **Daemon** | Postgres, Infoserver, Ollama or vLLM |
+
+Start order: infrastructure (step 3) → migrations (step 4) → infoserver (step 5) → other services (step 6).
 
 ## Environment variables
 
-- The repo root `example.env` contains shared defaults for database and Redis.
-- Some packages also have their own `example.env` files.
-- It is usually enough to copy each `example.env` to `.env` and adjust values as needed.
+Each package reads its own `.env` file. There is no automatic inheritance from the repo root. The root `.env` is only used by system tests (`bun run test:system`), which need `DB_CONNECTION_URL` and `REDIS_URL`.
 
-If you use direnv, a minimal per-package `.envrc` can be:
+Each package's `example.env` is the authoritative source for its variables. Copy it to `.env` and adjust values.
+
+**Key variables by package:**
+
+| Variable | Gateway | Dashboard | Daemon | Infoserver |
+|---|---|---|---|---|
+| `DB_CONNECTION_URL` | yes | yes | yes | no |
+| `REDIS_URL` | yes | no | no | no |
+| `INFOSERVER_URL` | yes | yes | yes | no |
+| `BETTER_AUTH_SECRET` | no | yes | no | no |
+| `MAIL_URL` / `MAIL_FROM` | no | yes | no | no |
+| `S3_*` | optional | optional | no | no |
+
+### direnv (optional)
+
+If you use [direnv](https://direnv.net/), create a `.envrc` in each package directory you work in:
 
 ```bash
-# .envrc
+# e.g. packages/xinity-ai-gateway/.envrc
 dotenv
 ```
 
-Run `direnv allow` in that directory after creating `.envrc`.
+Run `direnv allow` in that directory after creating the file.
 
 ## Accessing the system
 
@@ -190,6 +245,29 @@ This project uses dual licensing:
 
 The entire codebase is visible and auditable.
 
+## Troubleshooting
+
+**`bun: command not found`**
+Install Bun from [bun.sh](https://bun.sh). This project requires Bun >= 1.3.
+
+**`docker compose` fails or Docker not found**
+Install [Docker Engine](https://docs.docker.com/engine/install/) with the Compose plugin (or Docker Desktop).
+
+**Port already in use (5432, 6379, etc.)**
+Another process is using that port. Check with `lsof -i :5432` and stop the conflicting process, or adjust ports in `compose.yaml`.
+
+**Migration fails with connection error**
+Ensure Docker Compose is running (`docker compose ps`). The `db` service must be healthy before running migrations.
+
+**`BETTER_AUTH_SECRET` error on dashboard startup**
+Generate a secret and set it in `packages/xinity-ai-dashboard/.env`:
+```bash
+openssl rand -base64 33
+```
+
+**`bun2nix` is slow or fails during install**
+This runs in the postinstall hook for NixOS support. Run `CI=1 bun install` to skip it.
+
 ## Q&A
 
 **Can I use it for free?**
@@ -229,13 +307,16 @@ This script will:
 
 ## Docker Compose stacks
 
-`docker compose up -d` starts all local development dependencies:
+`docker compose up -d` starts the core local development dependencies:
 
 - `db`: Postgres 17 (port `5432`)
 - `redis`: Redis 7 (port `6379`)
 - `mailhog`: local SMTP + UI (ports `1025` and `8025`)
-- `searxng`: web search (port `6148`)
-- `seaweedfs`: S3-compatible object storage (port `8333`)
+
+Optional services (started with `docker compose --profile full up -d` or by name):
+
+- `searxng`: web search engine (port `6148`), needed for gateway web search features
+- `seaweedfs`: S3-compatible object storage (port `8333`), needed for multimodal image support
 
 For a clean slate (fresh database + redis state):
 

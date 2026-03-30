@@ -61,7 +61,7 @@ export function parseLicense(key: string): LicenseInfo {
 
 /**
  * Returns true if a paid license is active but its origin doesn't match the dashboard's ORIGIN.
- * Free tier (no key) is exempt — origin only matters for paid licenses.
+ * Free tier (no key) is exempt. Origin only matters for paid licenses.
  */
 export function hasOriginMismatch(): boolean {
   const license = getLicense();
@@ -82,17 +82,17 @@ export function getLicense(): LicenseInfo {
   const key = serverEnv.LICENSE_KEY;
   if (!key) {
     cachedLicense = { valid: false, reason: "No license key configured" };
-    log.info("No LICENSE_KEY set — running in free tier");
+    log.info("No LICENSE_KEY set. Running in free tier");
     return cachedLicense;
   }
 
   cachedLicense = parseLicense(key);
   if (cachedLicense.valid) {
     if (cachedLicense.expired && !cachedLicense.inGracePeriod) {
-      log.warn({ licensee: cachedLicense.payload.licensee }, "License expired beyond grace period — falling back to free tier");
+      log.warn({ licensee: cachedLicense.payload.licensee }, "License expired beyond grace period. Falling back to free tier");
     } else if (cachedLicense.inGracePeriod) {
       const daysLeft = Math.ceil((cachedLicense.payload.expiresAt + GRACE_PERIOD_DAYS * MS_PER_DAY - Date.now()) / MS_PER_DAY);
-      log.warn({ licensee: cachedLicense.payload.licensee, daysLeft }, "License expired — grace period active");
+      log.warn({ licensee: cachedLicense.payload.licensee, daysLeft }, "License expired. Grace period active");
     } else {
       log.info({ tier: cachedLicense.payload.tier, licensee: cachedLicense.payload.licensee }, "License validated");
     }
@@ -101,11 +101,11 @@ export function getLicense(): LicenseInfo {
     if (hasOriginMismatch()) {
       log.error(
         { allowedOrigins: cachedLicense.payload.origins, actual: serverEnv.ORIGIN },
-        "LICENSE ORIGIN MISMATCH — the dashboard ORIGIN does not match the licensed origin. The dashboard will idle until this is corrected.",
+        "LICENSE ORIGIN MISMATCH: The dashboard ORIGIN does not match the licensed origin. The dashboard will idle until this is corrected.",
       );
     }
   } else {
-    log.warn({ reason: cachedLicense.reason }, "Invalid license key — running in free tier");
+    log.warn({ reason: cachedLicense.reason }, "Invalid license key. Running in free tier");
   }
 
   return cachedLicense;

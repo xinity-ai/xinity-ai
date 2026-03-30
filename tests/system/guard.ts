@@ -40,14 +40,14 @@ export async function ensureSystemReady(): Promise<void> {
     throw new Error(
       "DB_CONNECTION_URL is not set.\n" +
         "  1. Copy example.env to .env (or set the var)\n" +
-        "  2. Run: docker compose up -d dev",
+        "  2. Run: docker compose up -d",
     );
   }
   if (!process.env.REDIS_URL) {
     throw new Error(
       "REDIS_URL is not set.\n" +
         "  1. Copy example.env to .env (or set the var)\n" +
-        "  2. Run: docker compose up -d dev",
+        "  2. Run: docker compose up -d",
     );
   }
 
@@ -58,7 +58,7 @@ export async function ensureSystemReady(): Promise<void> {
   } catch {
     throw new Error(
       `PostgreSQL is not reachable at ${dbUrl}\n` +
-        "  Run: docker compose up -d dev",
+        "  Run: docker compose up -d",
     );
   }
 

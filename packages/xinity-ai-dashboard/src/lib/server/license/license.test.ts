@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, mock } from "bun:test";
 import crypto from "node:crypto";
 
-// Generate a dedicated test key pair — independent of the production key.
+// Generate a dedicated test key pair independent of the production key.
 const testKeyPair = crypto.generateKeyPairSync("ed25519");
 const testPublicKeyBase64 = testKeyPair.publicKey
   .export({ type: "spki", format: "der" })

@@ -7,7 +7,7 @@ metadata to the database.
 ## Requirements
 
 - Bun >= 1.3
-- Local dependencies running via `docker compose up -d dev` at repo root
+- Local dependencies running via `docker compose up -d` at repo root
 - Root `.env` configured (see `example.env`)
 
 ## Development

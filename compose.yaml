@@ -27,12 +27,14 @@ services:
       - 1025:1025 # SMTP server
   searxng:
     image: searxng/searxng:2026.2.6-b5bb27f23
+    profiles: ["full"]
     ports:
       - 6148:8080
     volumes:
       - ./docker/searxng:/etc/searxng:rw
   seaweedfs:
     image: chrislusf/seaweedfs:3.75
+    profiles: ["full"]
     command: server -s3 -ip.bind=0.0.0.0 -s3.port=8333
     ports:
       - 8333:8333

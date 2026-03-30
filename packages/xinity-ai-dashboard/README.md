@@ -5,7 +5,7 @@ SvelteKit admin dashboard for Xinity AI. Built with Vite + Bun, Tailwind CSS, an
 ## Requirements
 
 - Bun >= 1.3
-- Local dependencies running via `docker compose up -d dev` at repo root
+- Local dependencies running via `docker compose up -d` at repo root
 - `.env` configured in this directory (see `example.env`)
 
 ## Stack overview

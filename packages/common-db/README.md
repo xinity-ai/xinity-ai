@@ -5,7 +5,7 @@ Shared database schema, migrations, and tooling for the monorepo.
 ## Requirements
 
 - Bun >= 1.3
-- Docker Compose services running (Postgres from `docker compose up -d dev` at repo root)
+- Docker Compose services running (Postgres from `docker compose up -d` at repo root)
 - Root `.env` configured (see `example.env`)
 
 ## Migrations
