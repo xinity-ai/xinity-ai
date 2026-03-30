@@ -25,6 +25,9 @@ export function dbSync(){
     onError(err, trigger) {
       log.error({ err, trigger }, "Error during sync")
     },
+    onDrop(trigger) {
+      log.warn({ trigger }, "Sync trigger dropped (queue full)")
+    },
   });
 }
 
