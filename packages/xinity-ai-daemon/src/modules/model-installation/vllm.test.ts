@@ -65,11 +65,25 @@ const mockHasTag = mock<(specifier: string, tag: string) => Promise<boolean>>(
 const mockResolveDriverArgs = mock<(specifier: string) => Promise<string[]>>(
   () => Promise.resolve([]),
 );
+const mockFetchModel = mock<(specifier: string) => Promise<{ type?: string } | undefined>>(
+  () => Promise.resolve({ type: "chat" }),
+);
 
 mock.module("xinity-infoserver", () => ({
   createInfoserverClient: () => ({
     hasTag: mockHasTag,
     resolveDriverArgs: mockResolveDriverArgs,
+    fetchModel: mockFetchModel,
+  }),
+}));
+
+// Mock the statekeeper hardware profile
+mock.module("../statekeeper", () => ({
+  getHardwareProfile: () => Promise.resolve({
+    gpus: [{ vendor: "nvidia", name: "Test GPU", vramMb: 24576 }],
+    gpuCount: 1,
+    detectedCapacityGb: 24,
+    source: "nvidia",
   }),
 }));
 
@@ -122,6 +136,7 @@ describe("syncVllmInstallations$", () => {
     mockSelectWhere.mockImplementation(() => Promise.resolve([]));
     mockHasTag.mockImplementation(() => Promise.resolve(false));
     mockResolveDriverArgs.mockImplementation(() => Promise.resolve([]));
+    mockFetchModel.mockImplementation(() => Promise.resolve({ type: "chat" }));
   });
 
   test("completes with no changes when desired matches running", async () => {
