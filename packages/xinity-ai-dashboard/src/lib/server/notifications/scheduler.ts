@@ -66,7 +66,7 @@ async function getDeploymentPhases(): Promise<Map<string, { phase: DeploymentPha
 
   for (const row of rows) {
     const existing = result.get(row.deploymentId);
-    const phase: DeploymentPhase = row.lifecycleState as DeploymentPhase ?? (row.installationId ? "downloading" : "pending");
+    const phase: DeploymentPhase = row.lifecycleState as DeploymentPhase ?? (row.installationId ? "scheduling" : "pending");
 
     if (!existing) {
       result.set(row.deploymentId, {

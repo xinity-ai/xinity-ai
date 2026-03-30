@@ -141,7 +141,7 @@ const listDeployments = rootOs.use(withOrganization)
   .input(z.object({ withStatus: z.coerce.boolean().default(false) }))
   .output(DeploymentDto.extend({
     status: z.object({
-      phase: z.enum(["ready", "downloading", "installing", "failed"]),
+      phase: z.enum(["ready", "downloading", "installing", "failed", "scheduling"]),
       progress: z.number().nullable(),
       error: z.string().nullable().optional(),
       failureLogs: z.string().nullable().optional(),
@@ -161,7 +161,7 @@ const listDeployments = rootOs.use(withOrganization)
         .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`)
         .where(orgCondition);
 
-      type StatusPhase = "ready" | "downloading" | "installing" | "failed";
+      type StatusPhase = "ready" | "downloading" | "installing" | "failed" | "scheduling";
       const deployments: Array<{ deployment: ModelDeployment; status?: { phase: StatusPhase; progress: number | null } }> = [];
       const deploymentMap = new Map<string, { deployment: ModelDeployment; phaseInfo?: PhaseInfo }>();
 
@@ -176,9 +176,9 @@ const listDeployments = rootOs.use(withOrganization)
         const installation = row.model_installation;
         const state = row.model_installation_state;
 
-        // Installation exists but daemon hasn't reported state yet → treat as early downloading
+        // Installation exists but daemon hasn't reported state yet → scheduling phase
         if (installation && !state) {
-          entry.phaseInfo = aggregatePhase(entry.phaseInfo, "downloading", 0, null);
+          entry.phaseInfo = aggregatePhase(entry.phaseInfo, "scheduling", null, null);
           continue;
         }
 

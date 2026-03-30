@@ -185,25 +185,46 @@
 
               {#if !deployment.enabled}
                 <div>
-                  <p class="text-sm text-muted-foreground mb-2">Deployment Status</p>
-                  <p class="text-sm mt-1.5 text-destructive">Disabled</p>
+                  <p class="text-sm text-muted-foreground mb-2">Status</p>
+                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold tracking-wide uppercase bg-muted text-muted-foreground">
+                    <span class="w-2 h-2 rounded-full bg-muted-foreground/50"></span>
+                    Disabled
+                  </span>
                 </div>
               {:else if deployment.status}
                 <div>
-                  <p class="text-sm text-muted-foreground mb-2">Deployment Status</p>
+                  <p class="text-sm text-muted-foreground mb-2">Status</p>
+                  {#if deployment.status.phase === 'ready'}
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold tracking-wide uppercase bg-[#4ade80]/15 text-[#16a34a]">
+                      <span class="w-2 h-2 rounded-full bg-[#4ade80]"></span>
+                      Ready
+                    </span>
+                  {:else if deployment.status.phase === 'failed'}
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold tracking-wide uppercase bg-destructive/15 text-destructive">
+                      <span class="w-2 h-2 rounded-full bg-destructive"></span>
+                      Failed
+                    </span>
+                  {:else if deployment.status.phase === 'scheduling'}
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold tracking-wide uppercase bg-[#98B9FD]/15 text-[#5b8ae6]">
+                      <span class="w-2 h-2 rounded-full bg-[#98B9FD] animate-pulse"></span>
+                      Scheduling
+                    </span>
+                  {:else}
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold tracking-wide uppercase bg-primary/15 text-primary">
+                      <span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+                      {deployment.status.phase === 'downloading' ? 'Downloading' : 'Installing'}
+                    </span>
+                  {/if}
                   {#if deployment.status.progress}
-                    <div class="w-full bg-muted rounded-full h-2">
+                    <div class="w-full bg-muted rounded-full h-2 mt-2">
                       <div
                         class="bg-primary h-2 rounded-full transition-all"
                         style="width: {deployment.status.progress * 100}%"
                       ></div>
                     </div>
                   {/if}
-                  <p class="text-sm mt-1.5" class:text-destructive={deployment.status.phase === 'failed'}>
-                    {deployment.status.phase}
-                  </p>
                   {#if deployment.status.phase === 'failed' && deployment.status.error}
-                    <p class="text-sm text-destructive mt-1">{deployment.status.error}</p>
+                    <p class="text-sm text-destructive mt-2">{deployment.status.error}</p>
                     <a href="/docs/deployment-troubleshooting" class="text-xs text-muted-foreground hover:underline mt-1 inline-block">
                       Troubleshooting guide
                     </a>
