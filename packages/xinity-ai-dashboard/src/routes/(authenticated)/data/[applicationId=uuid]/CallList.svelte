@@ -14,6 +14,7 @@
     onLoadMore = () => {},
     loadingMore = false,
     hasMore = true,
+    totalCount = null as number | null,
     getReactionSummary,
     getUserResponse,
   }: {
@@ -24,6 +25,7 @@
     onLoadMore?: () => void;
     loadingMore?: boolean;
     hasMore?: boolean;
+    totalCount?: number | null;
     getReactionSummary: (callId: string) => ApiCallReactionSummary;
     getUserResponse: (callId: string) => ApiCallResponse | null;
   } = $props();
@@ -81,7 +83,11 @@
     <Card.Header class="border-b bg-muted/50">
       <Card.Title class="text-base">Recent API Calls</Card.Title>
       <Card.Description>
-        Showing {calls.length} calls{hasMore ? ' (scroll for more)' : ''}
+        {#if totalCount != null}
+          Showing {calls.length} of {totalCount} calls{hasMore ? " (scroll for more)" : ""}
+        {:else}
+          Showing {calls.length} calls{hasMore ? " (scroll for more)" : ""}
+        {/if}
       </Card.Description>
     </Card.Header>
     <Card.Content class="p-0">

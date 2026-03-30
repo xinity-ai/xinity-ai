@@ -15,7 +15,12 @@
   import { Archive, ArrowRight, Plus, Pencil, Trash2 } from "@lucide/svelte";
 
   let { data }: { data: PageData } = $props();
-  const applications = $derived(data.applications as ApplicationDto[]);
+  let applications = $state(data.applications as ApplicationDto[]);
+
+  // Resync when page data changes (e.g. on navigation)
+  $effect(() => {
+    applications = data.applications as ApplicationDto[];
+  });
 
   // --- Edit state ---
   let editingApp: {
@@ -50,7 +55,7 @@
           description: editingApp!.description || null,
         }),
       update: () => {
-        data.applications = data.applications.map((a) =>
+        applications = applications.map((a) =>
           a.id === updatedApp.id
             ? { ...a, name: updatedApp.name, description: updatedApp.description || null }
             : a,
@@ -58,7 +63,7 @@
       },
       undo: () => {
         if (appBefore) {
-          data.applications = data.applications.map((a) =>
+          applications = applications.map((a) =>
             a.id === appBefore.id
               ? { ...a, name: appBefore.name, description: appBefore.description }
               : a,
@@ -93,15 +98,15 @@
     showDeleteModal = false;
     let failed = false;
 
-    const applicationsBefore = data.applications;
+    const applicationsBefore = applications;
 
     await updateOptimistically({
       apiPromise: () => orpc.application.softDelete({ id: deletingApp.id }),
       update: () => {
-        data.applications = data.applications.filter((a) => a.id !== deletingApp.id);
+        applications = applications.filter((a) => a.id !== deletingApp.id);
       },
       undo: () => {
-        data.applications = applicationsBefore;
+        applications = applicationsBefore;
         failed = true;
         toastState.add("Error deleting application", "error");
       },
@@ -146,7 +151,7 @@
       return;
     }
 
-    data.applications = [...data.applications, createdApp];
+    applications = [...applications, createdApp];
     toastState.add(`Created application "${createdApp.name}"`, "success");
     showCreateModal = false;
     newApp = { name: "", description: "" };

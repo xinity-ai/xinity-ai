@@ -8,13 +8,14 @@
     getAPICallResponse,
     getApiCallReactionSummary,
     getApiCalls,
+    getApiCallCount,
     getApiKeys,
     type ApiCallReactionSummary,
   } from "./data.remote";
-  import { messageContentToString } from "./data.utils";
   import type { ApiCall, ApiCallResponse } from "common-db";
   import Modal from "$lib/components/Modal.svelte";
   import { permissions } from "$lib/state/permissions.svelte";
+  import { useDebouncedValue } from "$lib/state/debounced.svelte";
   import { Button } from "$lib/components/ui/button";
   import { ArrowLeft, BookOpen } from "@lucide/svelte";
 
@@ -57,9 +58,11 @@
   let loadingMore = $state(false);
   let hasMore = $state(true);
 
+  const debouncedSearch = useDebouncedValue(() => searchQuery, 300);
+
   // Build a filter key to detect when server-side filters change
   let filterKey = $derived(
-    `${applicationId}|${apiKeyFilter}|${sortOption}|${metadataKey}|${metadataValue}`,
+    `${applicationId}|${apiKeyFilter}|${sortOption}|${metadataKey}|${metadataValue}|${debouncedSearch.current}`,
   );
   let prevFilterKey = $state("");
 
@@ -70,10 +73,22 @@
       sortOption,
       metadataKey: metadataKey || undefined,
       metadataValue: metadataValue || undefined,
+      searchQuery: debouncedSearch.current || undefined,
       limit: PAGE_SIZE,
       offset,
     }),
   );
+
+  const apiCallCount = $derived(
+    getApiCallCount({
+      applicationId,
+      apiKeyId: apiKeyFilter === "all" ? undefined : apiKeyFilter,
+      metadataKey: metadataKey || undefined,
+      metadataValue: metadataValue || undefined,
+      searchQuery: debouncedSearch.current || undefined,
+    }),
+  );
+  let totalCount = $derived(apiCallCount.current ?? null);
 
   // Reset pagination when server-side filters change
   $effect(() => {
@@ -139,18 +154,8 @@
   }
 
   function getFilteredCalls(calls: ApiCall[]) {
+    if (reactionFilter === "all") return calls;
     return calls.filter((call) => {
-      const prompt = (call.inputMessages ?? [])
-        .map((msg) => messageContentToString(msg.content))
-        .join(" ");
-
-      const response = messageContentToString(call.outputMessage?.content);
-
-      const matchesSearch =
-        prompt.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        response.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesApiKey =
-        apiKeyFilter === "all" || call.apiKeyId === apiKeyFilter;
       const reactionSummary = getReactionSummary(call.id);
       const userResponse = getUserResponse(call.id);
       const userRating =
@@ -159,16 +164,15 @@
           : userResponse?.response === false
             ? "disliked"
             : null;
-      const matchesReaction =
-        reactionFilter === "all" ||
+      return (
         (reactionFilter === "has-reactions" && reactionSummary.total > 0) ||
         (reactionFilter === "no-reactions" && reactionSummary.total === 0) ||
         (reactionFilter === "likes" && reactionSummary.likes > 0) ||
         (reactionFilter === "dislikes" && reactionSummary.dislikes > 0) ||
         (reactionFilter === "my-reactions" && userRating !== null) ||
         (reactionFilter === "my-liked" && userRating === "liked") ||
-        (reactionFilter === "my-disliked" && userRating === "disliked");
-      return matchesSearch && matchesApiKey && matchesReaction;
+        (reactionFilter === "my-disliked" && userRating === "disliked")
+      );
     });
   }
 
@@ -258,6 +262,7 @@
       onLoadMore={loadMoreData}
       {loadingMore}
       {hasMore}
+      {totalCount}
       getReactionSummary={getReactionSummary}
       getUserResponse={getUserResponse}
     />

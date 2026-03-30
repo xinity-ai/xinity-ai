@@ -15,6 +15,41 @@ async function getSession() {
   return session;
 }
 
+function escapeLikePattern(s: string): string {
+  return s.replace(/[%_\\]/g, "\\$&");
+}
+
+function buildApiCallConditions(opts: {
+  organizationId: string;
+  applicationId: string | null;
+  apiKeyId?: string;
+  metadataKey?: string;
+  metadataValue?: string;
+  searchQuery?: string;
+}) {
+  const conditions = [
+    sql`${apiCallT.organizationId} = ${opts.organizationId}`,
+  ];
+  if (opts.applicationId) {
+    conditions.push(sql`${apiCallT.applicationId} = ${opts.applicationId}`);
+  } else {
+    conditions.push(isNull(apiCallT.applicationId));
+  }
+  if (opts.apiKeyId) {
+    conditions.push(sql`${apiCallT.apiKeyId} = ${opts.apiKeyId}`);
+  }
+  if (opts.metadataKey && opts.metadataValue) {
+    conditions.push(sql`${apiCallT.metadata} @> ${JSON.stringify({ [opts.metadataKey]: opts.metadataValue })}::jsonb`);
+  }
+  if (opts.searchQuery && opts.searchQuery.trim().length > 0) {
+    const term = `%${escapeLikePattern(opts.searchQuery.trim())}%`;
+    conditions.push(
+      sql`(${apiCallT.inputMessages}::text ILIKE ${term} OR ${apiCallT.outputMessage}::text ILIKE ${term})`
+    );
+  }
+  return conditions;
+}
+
 export const getApiKeys = query(z.object({ applicationId: z.uuid().nullable() }), async ({ applicationId }) => {
   const { session } = await getSession();
   if (!session.activeOrganizationId) {
@@ -47,33 +82,25 @@ const apiCallFilters = z.object({
   sortOption: z.enum(["newest", "oldest", "duration"]).optional(),
   metadataKey: z.string().optional(),
   metadataValue: z.string().optional(),
+  searchQuery: z.string().optional(),
   limit: z.number().int().min(1).max(500).optional(),
   offset: z.number().int().min(0).optional(),
 })
 
-export const getApiCalls = query(apiCallFilters, async ({ applicationId, apiKeyId, sortOption, metadataKey, metadataValue, limit = 50, offset = 0 }) => {
+export const getApiCalls = query(apiCallFilters, async ({ applicationId, apiKeyId, sortOption, metadataKey, metadataValue, searchQuery, limit = 50, offset = 0 }) => {
   const { session } = await getSession();
   if (!session.activeOrganizationId) {
     return [] as ApiCall[];
   }
 
-  const conditions = [
-    sql`${apiCallT.organizationId} = ${session.activeOrganizationId}`,
-  ];
-
-  if (applicationId) {
-    conditions.push(sql`${apiCallT.applicationId} = ${applicationId}`);
-  } else {
-    conditions.push(isNull(apiCallT.applicationId));
-  }
-
-  if (apiKeyId) {
-    conditions.push(sql`${apiCallT.apiKeyId} = ${apiKeyId}`);
-  }
-
-  if (metadataKey && metadataValue) {
-    conditions.push(sql`${apiCallT.metadata} @> ${JSON.stringify({ [metadataKey]: metadataValue })}::jsonb`);
-  }
+  const conditions = buildApiCallConditions({
+    organizationId: session.activeOrganizationId,
+    applicationId,
+    apiKeyId,
+    metadataKey,
+    metadataValue,
+    searchQuery,
+  });
 
   const select = pick(apiCallT, "id", "apiKeyId", "createdAt", "duration", "inputMessages", "outputMessage", "model", "specifiedModel", "user", "applicationId", "metadata");
   const apiCalls = await getDB()
@@ -84,6 +111,31 @@ export const getApiCalls = query(apiCallFilters, async ({ applicationId, apiKeyI
     .limit(limit)
     .offset(offset);
   return apiCalls as ApiCall[];
+});
+
+const apiCallCountFilters = z.object({
+  applicationId: z.uuid().nullable(),
+  apiKeyId: z.uuid().optional(),
+  metadataKey: z.string().optional(),
+  metadataValue: z.string().optional(),
+  searchQuery: z.string().optional(),
+});
+
+export const getApiCallCount = query(apiCallCountFilters, async (params) => {
+  const { session } = await getSession();
+  if (!session.activeOrganizationId) return 0;
+
+  const conditions = buildApiCallConditions({
+    organizationId: session.activeOrganizationId,
+    ...params,
+  });
+
+  const [result] = await getDB()
+    .select({ count: sql<number>`COUNT(*)::int` })
+    .from(apiCallT)
+    .where(and(...conditions));
+
+  return result?.count ?? 0;
 });
 
 export type ApiCallReactionSummary = {
