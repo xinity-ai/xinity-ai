@@ -2,10 +2,10 @@
   import type { LicenseSummary } from "$lib/server/license";
 
   export let license: LicenseSummary;
-  export let nodeCount: number = 0;
+  export let totalVramGb: number = 0;
 
   let dismissed = false;
-  let nodeDismissed = false;
+  let vramDismissed = false;
 </script>
 
 {#if license.originMismatch}
@@ -56,7 +56,7 @@
   </div>
 {/if}
 
-{#if !nodeDismissed && nodeCount > license.maxNodes}
+{#if !vramDismissed && totalVramGb > license.maxVramGb}
   <div class="fixed right-4 top-4 z-40" style:top={!dismissed && license.expired && license.inGracePeriod ? "3.5rem" : "1rem"}>
     <div
       class="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 shadow-sm max-w-md"
@@ -64,13 +64,13 @@
     >
       <span class="h-2 w-2 shrink-0 rounded-full bg-amber-500"></span>
       <span>
-        {nodeCount} active instances detected but your license allows {license.maxNodes}. Only {license.maxNodes} will be used for deployments.
-        <a href="https://xinity.ai/xinity-pricing" target="_blank" rel="noopener noreferrer" class="underline hover:text-amber-900">Upgrade</a> to use all instances.
+        {totalVramGb} GB of VRAM detected across your instances but your license allows {license.maxVramGb} GB. Some instances will be excluded from deployments.
+        <a href="https://xinity.ai/xinity-pricing" target="_blank" rel="noopener noreferrer" class="underline hover:text-amber-900">Upgrade</a> to use all capacity.
       </span>
       <button
         class="ml-1 shrink-0 cursor-pointer rounded-full border border-amber-300 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
         type="button"
-        on:click={() => { nodeDismissed = true; }}
+        on:click={() => { vramDismissed = true; }}
       >
         Dismiss
       </button>

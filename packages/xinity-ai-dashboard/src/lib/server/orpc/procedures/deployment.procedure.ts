@@ -11,7 +11,7 @@ import { aggregatePhase, type PhaseInfo } from "$lib/server/lib/deployment-phase
 import { notifyOrgMembers } from "$lib/server/notifications/notification.service";
 import { NotificationType } from "$lib/server/notifications/events";
 import { serverEnv } from "$lib/server/serverenv";
-import { maxNodes } from "$lib/server/license";
+import { maxVramGb } from "$lib/server/license";
 
 const log = rootLogger.child({ name: "deployment.orpc" });
 
@@ -19,15 +19,15 @@ const tags = ["Deployment"];
 const SuccessDto = z.object({ success: z.literal(true) });
 const successObject = { success: true } as const;
 
-/** Checks that the number of active daemon nodes does not exceed the license limit. */
-async function checkNodeLimit(): Promise<{ allowed: boolean; current: number; limit: number }> {
-  const limit = maxNodes();
+/** Checks that the total VRAM across active daemon nodes does not exceed the license limit. */
+async function checkVramLimit(): Promise<{ allowed: boolean; currentGb: number; limitGb: number }> {
+  const limitGb = maxVramGb();
   const [result] = await getDB()
-    .select({ count: sql<number>`count(*)::int` })
+    .select({ total: sql<number>`coalesce(sum(${aiNodeT.estCapacity}), 0)` })
     .from(aiNodeT)
     .where(sql`${aiNodeT.available} AND ${aiNodeT.deletedAt} IS NULL`);
-  const current = result?.count ?? 0;
-  return { allowed: current <= limit, current, limit };
+  const currentGb = result?.total ?? 0;
+  return { allowed: currentGb <= limitGb, currentGb, limitGb };
 }
 
 /** Validates that primary and canary models share the same type. */
@@ -394,11 +394,11 @@ export const createDeployment = rootOs
   .output(DeploymentDto)
   .errors({ CONFLICT: {}, BAD_REQUEST: {}, LICENSE_LIMIT: {} })
   .handler(async ({ context, input, errors }) => {
-    // License gate: check node limit
-    const nodeCheck = await checkNodeLimit();
-    if (!nodeCheck.allowed) {
+    // License gate: check VRAM limit
+    const vramCheck = await checkVramLimit();
+    if (!vramCheck.allowed) {
       throw errors.LICENSE_LIMIT({
-        message: `Your license allows up to ${nodeCheck.limit} daemon${nodeCheck.limit === 1 ? "" : "s"} (currently ${nodeCheck.current} active). Upgrade at xinity.ai/xinity-pricing.`,
+        message: `Your license allows up to ${vramCheck.limitGb} GB of VRAM (currently ${vramCheck.currentGb} GB active). Upgrade at xinity.ai/xinity-pricing.`,
       });
     }
 

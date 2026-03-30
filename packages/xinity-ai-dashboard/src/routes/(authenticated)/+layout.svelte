@@ -15,12 +15,12 @@
 </script>
 
 {#if data.license.originMismatch}
-  <LicenseBanner license={data.license} nodeCount={data.nodeCount} />
+  <LicenseBanner license={data.license} totalVramGb={data.totalVramGb} />
 {:else}
   <Sidebar isInstanceAdmin={data.isInstanceAdmin} license={data.license} />
   <main class="sm:ml-64 ml-14 min-w-0">
     <VersionNotice versioning={data.versioning} />
-    <LicenseBanner license={data.license} nodeCount={data.nodeCount} />
+    <LicenseBanner license={data.license} totalVramGb={data.totalVramGb} />
     <slot />
   </main>
 

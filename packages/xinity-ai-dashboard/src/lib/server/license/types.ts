@@ -9,7 +9,7 @@ export type LicenseFeature = z.infer<typeof LicenseFeature>;
 export const LicensePayloadSchema = z.object({
   version: z.literal(1),
   tier: LicenseTier,
-  maxNodes: z.number().int(),
+  maxVramGb: z.number(),
   features: z.array(LicenseFeature),
   licensee: z.string().min(1),
   origins: z.array(z.string().min(1)).min(1),

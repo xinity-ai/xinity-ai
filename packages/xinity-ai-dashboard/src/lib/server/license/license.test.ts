@@ -24,7 +24,7 @@ mock.module("$lib/server/logging", () => ({
 }));
 
 // Now import the module under test (after mocks are in place).
-const { parseLicense, resetLicenseCache, hasFeature, maxNodes, tierName, licenseeName, isExpired, isInGracePeriod, hasOriginMismatch, getLicenseSummary } = await import("./license");
+const { parseLicense, resetLicenseCache, hasFeature, maxVramGb, tierName, licenseeName, isExpired, isInGracePeriod, hasOriginMismatch, getLicenseSummary } = await import("./license");
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -40,7 +40,7 @@ function validPayload(overrides: Record<string, unknown> = {}) {
   return {
     version: 1,
     tier: "enterprise-sm",
-    maxNodes: 5,
+    maxVramGb: 500,
     features: ["sso", "multi-org", "sso-self-manage", "all-roles"],
     licensee: "Test Corp",
     origins: ["https://dashboard.example.com"],
@@ -134,20 +134,20 @@ describe("guard functions", () => {
     serverEnv.ORIGIN = "https://dashboard.example.com";
   });
 
-  test("free tier: no key yields tier=free, maxNodes=1, no features", () => {
+  test("free tier: no key yields tier=free, maxVramGb=120, no features", () => {
     expect(tierName()).toBe("free");
-    expect(maxNodes()).toBe(1);
+    expect(maxVramGb()).toBe(120);
     expect(licenseeName()).toBeNull();
     expect(hasFeature("sso")).toBe(false);
     expect(hasFeature("all-roles")).toBe(false);
   });
 
-  test("valid key: returns correct tier, maxNodes, features, licensee", () => {
+  test("valid key: returns correct tier, maxVramGb, features, licensee", () => {
     const { serverEnv } = require("$lib/server/serverenv");
-    serverEnv.LICENSE_KEY = signLicense(validPayload({ maxNodes: 5 }));
+    serverEnv.LICENSE_KEY = signLicense(validPayload({ maxVramGb: 500 }));
 
     expect(tierName()).toBe("enterprise-sm");
-    expect(maxNodes()).toBe(5);
+    expect(maxVramGb()).toBe(500);
     expect(licenseeName()).toBe("Test Corp");
     expect(hasFeature("sso")).toBe(true);
     expect(hasFeature("multi-org")).toBe(true);
@@ -160,12 +160,12 @@ describe("guard functions", () => {
     const { serverEnv } = require("$lib/server/serverenv");
     serverEnv.LICENSE_KEY = signLicense(validPayload({
       tier: "startup",
-      maxNodes: 2,
+      maxVramGb: 200,
       features: ["all-roles"],
     }));
 
     expect(tierName()).toBe("startup");
-    expect(maxNodes()).toBe(2);
+    expect(maxVramGb()).toBe(200);
     expect(hasFeature("all-roles")).toBe(true);
     expect(hasFeature("sso")).toBe(false);
     expect(hasFeature("multi-org")).toBe(false);
@@ -178,7 +178,7 @@ describe("guard functions", () => {
     }));
 
     expect(tierName()).toBe("free");
-    expect(maxNodes()).toBe(1);
+    expect(maxVramGb()).toBe(120);
     expect(hasFeature("sso")).toBe(false);
     expect(licenseeName()).toBeNull();
     expect(isExpired()).toBe(true);
@@ -193,16 +193,16 @@ describe("guard functions", () => {
 
     expect(tierName()).toBe("enterprise-sm");
     expect(hasFeature("sso")).toBe(true);
-    expect(maxNodes()).toBe(5);
+    expect(maxVramGb()).toBe(500);
     expect(isExpired()).toBe(true);
     expect(isInGracePeriod()).toBe(true);
   });
 
-  test("maxNodes -1 returns Infinity", () => {
+  test("maxVramGb -1 returns Infinity", () => {
     const { serverEnv } = require("$lib/server/serverenv");
-    serverEnv.LICENSE_KEY = signLicense(validPayload({ maxNodes: -1 }));
+    serverEnv.LICENSE_KEY = signLicense(validPayload({ maxVramGb: -1 }));
 
-    expect(maxNodes()).toBe(Infinity);
+    expect(maxVramGb()).toBe(Infinity);
   });
 });
 
@@ -279,7 +279,7 @@ describe("getLicenseSummary", () => {
     expect(summary.expired).toBe(false);
     expect(summary.inGracePeriod).toBe(false);
     expect(summary.originMismatch).toBe(false);
-    expect(summary.maxNodes).toBe(1);
+    expect(summary.maxVramGb).toBe(120);
     expect(summary.features.sso).toBe(false);
     expect(summary.features.multiOrg).toBe(false);
     expect(summary.features.allRoles).toBe(false);
@@ -292,7 +292,7 @@ describe("getLicenseSummary", () => {
     const summary = getLicenseSummary();
     expect(summary.tier).toBe("enterprise-sm");
     expect(summary.licensee).toBe("Test Corp");
-    expect(summary.maxNodes).toBe(5);
+    expect(summary.maxVramGb).toBe(500);
     expect(summary.features.sso).toBe(true);
     expect(summary.features.multiOrg).toBe(true);
     expect(summary.features.allRoles).toBe(true);

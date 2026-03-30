@@ -84,16 +84,16 @@ export const load: LayoutServerLoad = async ({ request, url }) => {
     log.warn({ err }, "Failed to fetch display settings");
   }
 
-  // Count active nodes for license limit warnings
-  let nodeCount = 0;
+  // Sum total VRAM across active nodes for license limit warnings
+  let totalVramGb = 0;
   try {
     const [result] = await getDB()
-      .select({ count: sql<number>`count(*)::int` })
+      .select({ total: sql<number>`coalesce(sum(${aiNodeT.estCapacity}), 0)` })
       .from(aiNodeT)
       .where(sql`${aiNodeT.available} AND ${aiNodeT.deletedAt} IS NULL`);
-    nodeCount = result?.count ?? 0;
+    totalVramGb = result?.total ?? 0;
   } catch (err) {
-    log.warn({ err }, "Failed to count active nodes");
+    log.warn({ err }, "Failed to sum node VRAM");
   }
 
   return {
@@ -107,7 +107,7 @@ export const load: LayoutServerLoad = async ({ request, url }) => {
     canCreateOrganization: (serverEnv.MULTI_TENANT_MODE || isInstanceAdmin(session.user.email)) && (hasFeature("multi-org") || !session.session.activeOrganizationId),
     versioning: interpretVersion(),
     license: getLicenseSummary(),
-    nodeCount,
+    totalVramGb,
   };
 };
 

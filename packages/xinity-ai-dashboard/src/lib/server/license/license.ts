@@ -7,7 +7,7 @@ import { serverEnv } from "../serverenv";
 const log = rootLogger.child({ name: "license" });
 
 const GRACE_PERIOD_DAYS = 30;
-const FREE_MAX_NODES = 1
+const FREE_MAX_VRAM_GB = 120;
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
 let cachedLicense: LicenseInfo | null = null;
@@ -127,13 +127,13 @@ export function hasFeature(feature: LicenseFeature): boolean {
   return license.payload.features.includes(feature);
 }
 
-/** Returns the maximum number of daemon nodes allowed by the current license. */
-export function maxNodes(): number {
+/** Returns the maximum total VRAM (in GB) allowed by the current license. */
+export function maxVramGb(): number {
   const license = getLicense();
-  if (!license.valid) return FREE_MAX_NODES;
-  if (license.expired && !license.inGracePeriod) return FREE_MAX_NODES;
-  if (license.payload.maxNodes === -1) return Infinity;
-  return license.payload.maxNodes;
+  if (!license.valid) return FREE_MAX_VRAM_GB;
+  if (license.expired && !license.inGracePeriod) return FREE_MAX_VRAM_GB;
+  if (license.payload.maxVramGb === -1) return Infinity;
+  return license.payload.maxVramGb;
 }
 
 /** Returns the current tier name. */
@@ -174,7 +174,7 @@ export function getLicenseSummary() {
     expired: isExpired(),
     inGracePeriod: isInGracePeriod(),
     originMismatch: hasOriginMismatch(),
-    maxNodes: maxNodes(),
+    maxVramGb: maxVramGb(),
     features: {
       sso: hasFeature("sso"),
       multiOrg: hasFeature("multi-org"),

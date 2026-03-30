@@ -4,7 +4,7 @@ import { infoClient } from "../info-client";
 import { resolveDriverForProviderModel } from "xinity-infoserver";
 import { rootLogger } from "../logging";
 import { building } from "$app/environment";
-import { maxNodes } from "$lib/server/license";
+import { maxVramGb } from "$lib/server/license";
 
 const log = rootLogger.child({ name: "orchestration.mod" })
 
@@ -228,11 +228,20 @@ export async function syncDeployedModels() {
   const existing: ModelInstallation[] = await getDB().select().from(modelInstallationT).where(isNull(modelInstallationT.deletedAt));
   let availableServers: AiNode[] = await getDB().select().from(aiNodeT).where(sql`${aiNodeT.available} AND ${aiNodeT.deletedAt} IS NULL`);
 
-  // Enforce license node limit
-  const limit = maxNodes();
-  if (availableServers.length > limit) {
-    log.warn({ limit, total: availableServers.length }, "License allows %d nodes but %d are available. Using only the first %d", limit, availableServers.length, limit);
-    availableServers = availableServers.slice(0, limit);
+  // Enforce license VRAM limit: include nodes in descending capacity order until the limit is reached
+  const vramLimit = maxVramGb();
+  const totalVram = availableServers.reduce((sum, s) => sum + s.estCapacity, 0);
+  if (totalVram > vramLimit) {
+    availableServers.sort((a, b) => b.estCapacity - a.estCapacity);
+    let accumulated = 0;
+    const included: typeof availableServers = [];
+    for (const server of availableServers) {
+      if (accumulated + server.estCapacity > vramLimit && included.length > 0) break;
+      included.push(server);
+      accumulated += server.estCapacity;
+    }
+    log.warn({ vramLimit, totalVram, includedNodes: included.length, totalNodes: availableServers.length }, "Total VRAM (%d GB) exceeds license limit (%d GB). Using %d of %d nodes", totalVram, vramLimit, included.length, availableServers.length);
+    availableServers = included;
   }
 
   // Installations on unavailable nodes must be removed and rescheduled

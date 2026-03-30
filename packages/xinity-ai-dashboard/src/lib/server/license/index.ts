@@ -3,7 +3,7 @@ export {
   getLicense,
   resetLicenseCache,
   hasFeature,
-  maxNodes,
+  maxVramGb,
   tierName,
   licenseeName,
   isExpired,
