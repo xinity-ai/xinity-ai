@@ -25,6 +25,7 @@ import {
 } from "./vllm-ops";
 import { createInfoserverClient } from "xinity-infoserver";
 import { rootLogger } from "../../logger";
+import { getHardwareProfile } from "../statekeeper";
 
 const infoClient = createInfoserverClient({ baseUrl: env.INFOSERVER_URL, cacheTtlMs: env.INFOSERVER_CACHE_TTL_MS });
 
@@ -92,6 +93,7 @@ async function updateInstallationState(
 function pollUntilHealthy$(
   installation: ModelInstallation,
   ops: VllmOps,
+  modelType?: string,
 ): Observable<void> {
   const deadline = Date.now() + env.VLLM_HEALTH_TIMEOUT_MS;
 
@@ -141,25 +143,29 @@ function pollUntilHealthy$(
         (async () => {
           // Fire a warmup request to pre-compile Triton kernels so the
           // first real user request doesn't pay the compilation cost.
-          try {
-            await fetch(
-              `http://localhost:${installation.port}/v1/chat/completions`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  model: installation.model,
-                  messages: [{ role: "user", content: "warmup" }],
-                  max_tokens: 1,
-                }),
-              },
-            );
-            log.info(
-              { model: installation.model, installationId: installation.id },
-              "vLLM warmup completed",
-            );
-          } catch {
-            // Warmup is best-effort, don't block readiness
+          // Embedding and rerank models don't serve /v1/chat/completions,
+          // so skip warmup for those types.
+          if (modelType !== "embedding" && modelType !== "rerank") {
+            try {
+              await fetch(
+                `http://localhost:${installation.port}/v1/chat/completions`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    model: installation.model,
+                    messages: [{ role: "user", content: "warmup" }],
+                    max_tokens: 1,
+                  }),
+                },
+              );
+              log.info(
+                { model: installation.model, installationId: installation.id },
+                "vLLM warmup completed",
+              );
+            } catch {
+              // Warmup is best-effort, don't block readiness
+            }
           }
           await updateInstallationState(installation.id, "ready", {
             statusMessage: "vLLM server healthy",
@@ -368,27 +374,43 @@ export function syncVllmInstallations$(
                         infoClient.hasTag(installation.model, "custom_code"),
                         infoClient.hasTag(installation.model, "tools"),
                         infoClient.resolveDriverArgs(installation.model),
-                      ]).then(([trustRemoteCode, hasToolsTag, extraArgs]) =>
-                        ops.start(installation.id, {
+                        infoClient.fetchModel(installation.model),
+                        getHardwareProfile(),
+                      ]).then(([trustRemoteCode, hasToolsTag, extraArgs, modelInfo, profile]) => {
+                        let gpuMemoryUtilization: number | undefined;
+                        const totalVramMb = profile.gpus.reduce((sum, gpu) => sum + gpu.vramMb, 0);
+                        if (totalVramMb > 0) {
+                          const totalVramGb = totalVramMb / 1024;
+                          gpuMemoryUtilization = Math.min(
+                            (installation.estCapacity * 1.1) / totalVramGb,
+                            0.95,
+                          );
+                          log.info(
+                            { model: installation.model, gpuMemoryUtilization: gpuMemoryUtilization.toFixed(3), estCapacityGb: installation.estCapacity, totalVramGb: totalVramGb.toFixed(1) },
+                            "Calculated GPU memory utilization",
+                          );
+                        }
+                        return ops.start(installation.id, {
                           model: installation.model,
                           port: installation.port,
                           kvCacheBytes: `${installation.kvCacheCapacity}G`,
                           trustRemoteCode,
+                          gpuMemoryUtilization,
                           extraArgs: hasToolsTag
                             ? ["--enable-auto-tool-choice", ...extraArgs]
                             : extraArgs,
-                        }),
-                      ),
+                        }).then(() => modelInfo?.type);
+                      }),
                     ),
                   ),
-                  map(() => installation),
+                  map((modelType) => ({ installation, modelType })),
                 ),
             ),
           );
 
           return start$.pipe(
-            mergeMap((installation) =>
-              pollUntilHealthy$(installation, ops).pipe(
+            mergeMap(({ installation, modelType }) =>
+              pollUntilHealthy$(installation, ops, modelType).pipe(
                 catchError((err) => {
                   log.error(
                     { err, model: installation.model, installationId: installation.id },

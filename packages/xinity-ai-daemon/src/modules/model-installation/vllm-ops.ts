@@ -12,6 +12,7 @@ export interface VllmInstanceConfig {
   kvCacheBytes: string;
   trustRemoteCode?: boolean;
   extraArgs?: string[];
+  gpuMemoryUtilization?: number;
 }
 
 export interface VllmOps {
@@ -49,6 +50,9 @@ function buildEnvFileContent(config: VllmInstanceConfig): string {
   }
   if (config.trustRemoteCode) {
     lines.push(`VLLM_TRUST_REMOTE_CODE=true`);
+  }
+  if (config.gpuMemoryUtilization != null) {
+    lines.push(`VLLM_GPU_MEMORY_UTILIZATION=${config.gpuMemoryUtilization}`);
   }
   if (config.extraArgs && config.extraArgs.length > 0) {
     lines.push(`VLLM_EXTRA_ARGS=${config.extraArgs.join(" ")}`);
@@ -178,6 +182,9 @@ export function createDockerVllmOps(): VllmOps {
         "--served-model-name", config.model,
         "--kv-cache-memory-bytes", config.kvCacheBytes,
       ];
+      if (config.gpuMemoryUtilization != null) {
+        args.push("--gpu-memory-utilization", String(config.gpuMemoryUtilization));
+      }
       if (config.trustRemoteCode) {
         args.push("--trust-remote-code");
       }

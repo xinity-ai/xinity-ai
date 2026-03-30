@@ -30,6 +30,7 @@ Environment=VLLM_KV_CACHE_BYTES=
 Environment=VLLM_MAX_MODEL_LEN=
 Environment=VLLM_ENFORCE_EAGER=false
 Environment=VLLM_TRUST_REMOTE_CODE=false
+Environment=VLLM_GPU_MEMORY_UTILIZATION=
 Environment=VLLM_EXTRA_ARGS=
 Environment=VLLM_QUANTIZATION=
 Environment=VLLM_SERVED_MODEL_NAME=
@@ -49,6 +50,7 @@ ExecStart=/bin/bash -c '\
     [ "$VLLM_ENFORCE_EAGER" = "true" ] && ARGS="$ARGS --enforce-eager"; \
     [ -n "$VLLM_QUANTIZATION" ] && ARGS="$ARGS --quantization $VLLM_QUANTIZATION"; \
     [ -n "$VLLM_SERVED_MODEL_NAME" ] && ARGS="$ARGS --served-model-name $VLLM_SERVED_MODEL_NAME"; \
+    [ -n "$VLLM_GPU_MEMORY_UTILIZATION" ] && ARGS="$ARGS --gpu-memory-utilization $VLLM_GPU_MEMORY_UTILIZATION"; \
     [ "$VLLM_TRUST_REMOTE_CODE" = "true" ] && ARGS="$ARGS --trust-remote-code"; \
     [ -n "$VLLM_API_KEY" ] && ARGS="$ARGS --api-key $VLLM_API_KEY"; \
     [ "$VLLM_KV_CACHE_DTYPE" != "auto" ] && ARGS="$ARGS --kv-cache-dtype $VLLM_KV_CACHE_DTYPE"; \

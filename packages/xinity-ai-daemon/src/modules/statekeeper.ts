@@ -11,7 +11,7 @@ const log = rootLogger.child({ name: "statekeeper" });
 let cachedProfile: HardwareProfile | null = null;
 let cachedNodeId: string | null = null;
 
-async function getHardwareProfile(): Promise<HardwareProfile> {
+export async function getHardwareProfile(): Promise<HardwareProfile> {
   if (!cachedProfile) {
     cachedProfile = await detectHardwareProfile();
     log.info(

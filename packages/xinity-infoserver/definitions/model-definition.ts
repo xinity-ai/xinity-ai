@@ -17,6 +17,7 @@ export const BLOCKED_VLLM_ARGS = new Set([
   "--port",                    // system-managed
   "--served-model-name",       // system-managed
   "--kv-cache-memory-bytes",   // system-managed via kvCacheCapacity
+  "--gpu-memory-utilization",  // system-managed, calculated from model needs and total VRAM
   "--api-key",                 // system-managed
 ]);
 
