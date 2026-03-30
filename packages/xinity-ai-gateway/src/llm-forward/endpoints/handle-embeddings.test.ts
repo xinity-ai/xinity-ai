@@ -139,7 +139,7 @@ describe("handleEmbeddingGeneration", () => {
     expect(body.data[1].embedding).toEqual([3, 4]);
   });
 
-  test("returns 422 for invalid encoding format", async () => {
+  test("returns 400 for invalid encoding format", async () => {
     const req = new Request("http://localhost:4000/v1/embeddings", {
       method: "POST",
       headers: { "Authorization": "Bearer test" },
@@ -151,10 +151,10 @@ describe("handleEmbeddingGeneration", () => {
     });
 
     const res = await handleEmbeddingGeneration(req);
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
   });
 
-  test("returns 422 for unsupported input", async () => {
+  test("returns 400 for unsupported input", async () => {
     const req = new Request("http://localhost:4000/v1/embeddings", {
       method: "POST",
       headers: { "Authorization": "Bearer test" },
@@ -165,7 +165,7 @@ describe("handleEmbeddingGeneration", () => {
     });
 
     const res = await handleEmbeddingGeneration(req);
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
   });
 
   test("forwards 4xx from upstream as-is", async () => {
