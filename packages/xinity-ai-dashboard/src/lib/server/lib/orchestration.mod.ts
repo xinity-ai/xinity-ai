@@ -236,7 +236,7 @@ export async function syncDeployedModels() {
     let accumulated = 0;
     const included: typeof availableServers = [];
     for (const server of availableServers) {
-      if (accumulated + server.estCapacity > vramLimit && included.length > 0) break;
+      if (accumulated + server.estCapacity > vramLimit) continue;
       included.push(server);
       accumulated += server.estCapacity;
     }
