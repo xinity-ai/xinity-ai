@@ -10,7 +10,7 @@
 
 {#if license.originMismatch}
   <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-6" role="dialog" aria-modal="true" aria-label="License origin mismatch">
-    <div class="relative w-full max-w-2xl rounded-2xl border border-red-200 bg-white p-8 shadow-2xl">
+    <div class="relative w-full max-w-2xl rounded-xl border border-red-200 bg-card p-8 shadow-2xl">
       <div class="flex items-center gap-3">
         <div class="rounded-full bg-red-100 p-3 text-red-700">
           <svg viewBox="0 0 24 24" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

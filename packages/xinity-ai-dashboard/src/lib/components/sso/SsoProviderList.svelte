@@ -108,7 +108,7 @@
 </div>
 
 <Modal bind:open={deleteOpen} onClose={() => { deleteOpen = false; deleteTarget = null; }}>
-  <div class="bg-card rounded-xl border shadow-2xl max-w-md w-full animate-in fade-in zoom-in duration-200 p-6 space-y-4">
+  <div class="bg-card rounded-xl border shadow-2xl max-w-md w-full p-6 space-y-4">
     <h2 class="text-lg font-semibold">Delete SSO provider</h2>
     {#if deleteTarget}
       <p class="text-sm text-muted-foreground">

@@ -336,7 +336,7 @@
 
 <Modal {open} onClose={close} class="z-40">
   {#if open}
-    <div class="bg-card rounded-2xl shadow-2xl w-full max-w-4xl min-w-[min(56rem,90vw)] max-h-[90vh] flex flex-col">
+    <div class="bg-card rounded-xl shadow-2xl w-full max-w-4xl min-w-[min(56rem,90vw)] max-h-[90vh] flex flex-col">
       <header class="p-6 border-b flex justify-between items-center">
         <h2 class="text-2xl font-semibold">
           {isEditMode ? "Edit Deployment" : "Create New Deployment"}
@@ -383,7 +383,7 @@
         {/if}
       </main>
 
-      <footer class="p-6 border-t bg-muted/50 rounded-b-2xl flex justify-between items-center gap-4">
+      <footer class="p-6 border-t bg-muted/50 rounded-b-xl flex justify-between items-center gap-4">
         <div class="flex items-center gap-2">
           <Checkbox
             id="enabled{idSuffix}"

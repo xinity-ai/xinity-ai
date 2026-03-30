@@ -130,7 +130,7 @@
 
 <!-- Create Passkey Modal -->
 <Modal bind:open={createDialogOpen} class="max-w-md">
-  <div class="bg-card rounded-lg shadow-lg p-6 space-y-4">
+  <div class="bg-card rounded-xl shadow-2xl w-full p-6 space-y-4">
     <div>
       <h3 class="text-lg font-semibold">Create a passkey</h3>
       <p class="text-sm text-muted-foreground">
@@ -168,7 +168,7 @@
 
 <!-- Delete Passkey Modal -->
 <Modal bind:open={deleteDialogOpen} class="max-w-md">
-  <div class="bg-card rounded-lg shadow-lg p-6 space-y-4">
+  <div class="bg-card rounded-xl shadow-2xl w-full p-6 space-y-4">
     <div>
       <h3 class="text-lg font-semibold">Delete passkey?</h3>
       <p class="text-sm text-muted-foreground">

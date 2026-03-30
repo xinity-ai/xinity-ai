@@ -276,7 +276,7 @@
 </Card.Root>
 
 <Modal open={Boolean(keyToDelete)} onClose={cancelDelete}>
-  <div class="w-full max-w-md p-6 bg-card rounded-lg shadow-xl space-y-4">
+  <div class="w-full max-w-md p-6 bg-card rounded-xl shadow-2xl space-y-4">
     <div>
       <h3 class="text-lg font-semibold">Delete API Key</h3>
       <p class="text-sm text-muted-foreground mt-2">

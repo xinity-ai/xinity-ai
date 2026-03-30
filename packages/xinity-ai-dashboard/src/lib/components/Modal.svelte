@@ -56,14 +56,21 @@
     backdropPress = false;
   }}
   class={twMerge(
+    "modal-root m-auto w-full max-w-5/6 p-0 border-0 bg-transparent backdrop:bg-black/50 animate-in fade-in zoom-in duration-200",
     className,
-    "m-auto max-w-5/6 p-0 border-0 bg-transparent backdrop:bg-black/50",
   )}
 >
-  <!-- <div class="bg-white rounded-lg shadow-lg w-[90vw] max-w-md p-6">
-  </div> -->
   {@render children()}
 
   <!-- Included to allow interactable toasts in modals -->
   <ToastContainer />
 </dialog>
+
+<style>
+  /* Center modal content panels within the full-width dialog and prevent
+     content-driven width jitter by anchoring to their max-width.
+     :global() is needed because the children are slotted from other components. */
+  .modal-root > :global(:first-child) {
+    margin-inline: auto;
+  }
+</style>

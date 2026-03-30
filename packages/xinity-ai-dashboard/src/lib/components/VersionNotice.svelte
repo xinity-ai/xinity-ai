@@ -30,7 +30,7 @@
       >
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
-          class="relative w-full max-w-2xl rounded-2xl border border-red-200 bg-white p-8 shadow-2xl"
+          class="relative w-full max-w-2xl rounded-xl border border-red-200 bg-card p-8 shadow-2xl"
           on:click|stopPropagation
         >
           <button

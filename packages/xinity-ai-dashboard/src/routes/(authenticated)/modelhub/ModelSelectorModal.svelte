@@ -124,7 +124,7 @@
 </script>
 
 <Modal {open} {onClose} class="z-50">
-  <div class="bg-card rounded-2xl shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden">
+  <div class="bg-card rounded-xl shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden">
     <!-- Header -->
     <header class="p-5 border-b flex justify-between items-center bg-muted/50">
       <div>

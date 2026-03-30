@@ -14,7 +14,7 @@
 </script>
 
 <Modal bind:open {onClose}>
-  <div class="bg-card rounded-xl border shadow-2xl max-w-3xl w-full animate-in fade-in zoom-in duration-200">
+  <div class="bg-card rounded-xl border shadow-2xl max-w-3xl w-full">
     <div class="flex items-center justify-between p-6 pb-0">
       <h2 class="text-xl font-semibold">Roles & Permissions</h2>
       <Button variant="ghost" size="icon-sm" onclick={onClose}>

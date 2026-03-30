@@ -292,7 +292,7 @@
 
 <Modal open={Boolean(memberToRemove)} onClose={() => (memberToRemove = null)}>
   <div
-    class="p-6 compact:p-4 bg-card rounded-xl border shadow-2xl max-w-md w-full animate-in fade-in zoom-in duration-200"
+    class="p-6 compact:p-4 bg-card rounded-xl border shadow-2xl max-w-md w-full"
   >
     <div class="flex items-center gap-3 compact:gap-2 mb-4 compact:mb-3">
       <div class="p-2 rounded-full bg-destructive/10 text-destructive">

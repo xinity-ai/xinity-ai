@@ -273,7 +273,7 @@
   <Modal open={true} onClose={cancelEditApp}>
     <form
       onsubmit={(e) => { e.preventDefault(); saveApplication(); }}
-      class="w-full max-w-md p-6 bg-card rounded-lg shadow-xl space-y-4"
+      class="w-full max-w-md p-6 bg-card rounded-xl shadow-2xl space-y-4"
       data-appid={editingApp.id}
     >
       <h3 class="text-lg font-semibold">Edit Application</h3>
@@ -310,7 +310,7 @@
 
 <!-- Delete Application Modal -->
 <Modal open={showDeleteModal} onClose={cancelDeleteApp}>
-  <div class="w-full max-w-md p-6 bg-card rounded-lg shadow-xl space-y-4">
+  <div class="w-full max-w-md p-6 bg-card rounded-xl shadow-2xl space-y-4">
     <div>
       <h3 class="text-lg font-semibold">Delete Application</h3>
       <p class="text-sm text-muted-foreground mt-2">
@@ -335,7 +335,7 @@
 <Modal open={showCreateModal} onClose={cancelCreate}>
   <form
     onsubmit={(e) => { e.preventDefault(); createApplication(); }}
-    class="w-full max-w-md p-6 bg-card rounded-lg shadow-xl space-y-4"
+    class="w-full max-w-md p-6 bg-card rounded-xl shadow-2xl space-y-4"
   >
     <h3 class="text-lg font-semibold">Create Application</h3>
 

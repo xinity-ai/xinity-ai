@@ -280,7 +280,7 @@
 </div>
 
 <Modal bind:open={deleteModalOpen} onClose={closeDeleteModal}>
-  <div class="w-[90vw] max-w-md rounded-lg bg-card p-6 shadow-lg space-y-4">
+  <div class="w-full max-w-md rounded-xl bg-card p-6 shadow-2xl space-y-4">
     <div>
       <h2 class="text-lg font-semibold">Delete API call?</h2>
       <p class="mt-2 text-sm text-muted-foreground">

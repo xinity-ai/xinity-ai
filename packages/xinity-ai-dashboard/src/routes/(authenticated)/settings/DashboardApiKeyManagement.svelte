@@ -177,7 +177,7 @@
 
 <!-- Create API Key Modal -->
 <Modal bind:open={createDialogOpen} class="max-w-md">
-  <div class="bg-card rounded-lg shadow-lg p-6 space-y-4">
+  <div class="bg-card rounded-xl shadow-2xl w-full p-6 space-y-4">
     <h3 class="text-lg font-semibold">Create API Key</h3>
 
     {#if createdKey}
@@ -272,7 +272,7 @@
 
 <!-- Delete API Key Modal -->
 <Modal bind:open={deleteDialogOpen} class="max-w-md">
-  <div class="bg-card rounded-lg shadow-lg p-6 space-y-4">
+  <div class="bg-card rounded-xl shadow-2xl w-full p-6 space-y-4">
     <div>
       <h3 class="text-lg font-semibold">Delete API Key</h3>
       <p class="text-sm text-muted-foreground">
