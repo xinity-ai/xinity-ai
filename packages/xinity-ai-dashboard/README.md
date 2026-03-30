@@ -53,6 +53,10 @@ Docs and component list: https://shadcn-svelte.com/
 - `src/params`: custom route param matchers
 - `static`: static assets served as-is
 
+## License
+
+This package is licensed under the **Elastic License 2.0 (ELv2)**, which differs from the Apache 2.0 license used by the rest of the monorepo. See the [LICENSE](./LICENSE) file in this directory for the full terms.
+
 ## Notes
 
 - Mailhog UI runs at `http://localhost:8025` when the dev Docker stack is up.
