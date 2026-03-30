@@ -40,7 +40,7 @@ export const createOrganization = rootOs
         .from(organizationT)
         .limit(1);
       if (existingOrgs.length > 0) {
-        throw errors.FORBIDDEN({ message: "Multiple organizations require an Enterprise license. Upgrade at xinity.ai/pricing." });
+        throw errors.FORBIDDEN({ message: "Multiple organizations require an Enterprise license. Upgrade at xinity.ai/xinity-pricing." });
       }
     }
 
@@ -105,7 +105,7 @@ const inviteMember = rootOs
   }))
   .handler(async ({ input, context, errors }) => {
     if (!isRoleAvailable(input.role)) {
-      throw errors.FORBIDDEN({ message: `The "${input.role}" role requires a paid license. Upgrade at xinity.ai/pricing.` });
+      throw errors.FORBIDDEN({ message: `The "${input.role}" role requires a paid license. Upgrade at xinity.ai/xinity-pricing.` });
     }
 
     try {
@@ -204,7 +204,7 @@ const updateMemberRole = rootOs
   }))
   .handler(async ({ input, context, errors }) => {
     if (!isRoleAvailable(input.role)) {
-      throw errors.FORBIDDEN({ message: `The "${input.role}" role requires a paid license. Upgrade at xinity.ai/pricing.` });
+      throw errors.FORBIDDEN({ message: `The "${input.role}" role requires a paid license. Upgrade at xinity.ai/xinity-pricing.` });
     }
 
     const result = await auth.api.updateMemberRole({

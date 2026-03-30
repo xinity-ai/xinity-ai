@@ -28,7 +28,7 @@ async function requireSsoAccess(
 ): Promise<void> {
   // License gate: SSO requires enterprise license
   if (!hasFeature("sso")) {
-    throw errors.FORBIDDEN({ message: "SSO requires an Enterprise license. Upgrade at xinity.ai/pricing." });
+    throw errors.FORBIDDEN({ message: "SSO requires an Enterprise license. Upgrade at xinity.ai/xinity-pricing." });
   }
 
   // License gate: org-level SSO self-management requires the feature

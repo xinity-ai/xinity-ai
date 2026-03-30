@@ -398,7 +398,7 @@ export const createDeployment = rootOs
     const nodeCheck = await checkNodeLimit();
     if (!nodeCheck.allowed) {
       throw errors.LICENSE_LIMIT({
-        message: `Your license allows up to ${nodeCheck.limit} daemon${nodeCheck.limit === 1 ? "" : "s"} (currently ${nodeCheck.current} active). Upgrade at xinity.ai/pricing.`,
+        message: `Your license allows up to ${nodeCheck.limit} daemon${nodeCheck.limit === 1 ? "" : "s"} (currently ${nodeCheck.current} active). Upgrade at xinity.ai/xinity-pricing.`,
       });
     }
 
