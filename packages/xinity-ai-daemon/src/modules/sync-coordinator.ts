@@ -11,6 +11,7 @@ import {
 import {
   catchError,
   concatMap,
+  finalize,
   map,
   scan,
   share,
@@ -145,9 +146,8 @@ export function createWorkflowCoordinator(
                 onError?.(err, trigger);
                 return EMPTY;
               }),
-              concatMap(() => {
+              finalize(() => {
                 done$.next({ type: "done" });
-                return EMPTY;
               })
             )
           )

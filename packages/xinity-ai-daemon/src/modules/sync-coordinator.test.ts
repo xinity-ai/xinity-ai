@@ -199,6 +199,39 @@ describe("createWorkflowCoordinator", () => {
     sub.unsubscribe();
   });
 
+  test("recovers after consecutive errors (no permanent queue-full)", async () => {
+    const errors: unknown[] = [];
+    let runCount = 0;
+    const recovered = deferred();
+
+    const coordinator = createWorkflowCoordinator({
+      periodMs: 60_000,
+      run: async () => {
+        runCount++;
+        if (runCount <= 2) {
+          throw new Error(`fail-${runCount}`);
+        }
+        recovered.resolve();
+      },
+      onError: (err) => errors.push(err),
+    });
+
+    const sub = coordinator.start();
+    await tick(50); // initial interval trigger → error #1
+
+    coordinator.signal("s1"); // → error #2
+    await tick(50);
+
+    // Without the fix, the coordinator is permanently stuck here.
+    // Every subsequent trigger would be dropped with "queue full".
+    coordinator.signal("s2"); // → should succeed
+    await recovered.promise;
+
+    expect(errors).toHaveLength(2);
+    expect(runCount).toBe(3);
+    sub.unsubscribe();
+  });
+
   test("unsubscribe stops the coordinator", async () => {
     let runCount = 0;
 
