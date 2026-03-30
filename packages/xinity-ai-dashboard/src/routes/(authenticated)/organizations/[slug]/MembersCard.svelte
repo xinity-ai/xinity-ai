@@ -35,6 +35,7 @@
     canRemove,
     canChangeRoles,
     activeRole,
+    allRoles = true,
     onOpenRolesInfo,
   }: {
     organizationId: string;
@@ -43,12 +44,14 @@
     canRemove: boolean;
     canChangeRoles: boolean;
     activeRole: RoleName;
+    allRoles?: boolean;
     onOpenRolesInfo?: () => void;
   } = $props();
 
   let showInviteForm = $state(false);
   let inviteEmail = $state("");
-  let inviteRole: RoleName = $state("member");
+  const defaultInviteRole: RoleName = $derived(allRoles ? "member" : "admin");
+  let inviteRole: RoleName = $state("admin");
   let inviting = $state(false);
 
   // Optimistic state for member role changes
@@ -57,7 +60,7 @@
   let memberToRemove = $state<Member | null>(null);
   let isRemoving = $state(false);
 
-  const availableRoles = $derived(getAvailableRoles(activeRole));
+  const availableRoles = $derived(getAvailableRoles(activeRole, allRoles));
   const inviteRoleLabel = $derived(roleLabels[inviteRole] || "Select role");
 
   function getMemberRole(memberId: string, actualRole: RoleName): RoleName {
@@ -80,7 +83,7 @@
       toastState.add("Invitation sent", "success");
       showInviteForm = false;
       inviteEmail = "";
-      inviteRole = "member";
+      inviteRole = defaultInviteRole;
     }
 
     inviting = false;
@@ -95,7 +98,7 @@
     });
 
     if (error) {
-      toastState.add("Failed to remove member", "error");
+      toastState.add(error.message || "Failed to remove member", "error");
     } else {
       await invalidateAll();
       await permissions.refresh();
@@ -117,7 +120,7 @@
 
     if (error) {
       delete memberRoleOverrides[memberId];
-      toastState.add("Failed to update role", "error");
+      toastState.add(error.message || "Failed to update role", "error");
     } else {
       await invalidateAll();
       await permissions.refresh();

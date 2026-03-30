@@ -263,14 +263,24 @@
       {#if license?.licensee}
         <span class="text-xs text-gray-400">{license.licensee}</span>
       {:else}
-        <a
-          href="https://xinity.ai"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="text-xs text-gray-400 hover:text-indigo-500"
-        >
-          Powered by Xinity AI
-        </a>
+        <div class="flex flex-col items-center gap-1">
+          <a
+            href="https://xinity.ai/xinity-pricing"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 hover:bg-amber-100 transition-colors"
+          >
+            <span class="hidden sm:inline">Free Tier</span>
+          </a>
+          <a
+            href="https://xinity.ai"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-xs text-gray-400 hover:text-indigo-500 hidden sm:inline"
+          >
+            Powered by Xinity AI
+          </a>
+        </div>
       {/if}
     </div>
 </nav>

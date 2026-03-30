@@ -99,6 +99,7 @@
       canRemove={canRemoveMembers}
       canChangeRoles={canChangeRoles}
       activeRole={data.currentUserRole}
+      allRoles={data.license.features.allRoles}
       onOpenRolesInfo={openRolesInfo}
     />
 

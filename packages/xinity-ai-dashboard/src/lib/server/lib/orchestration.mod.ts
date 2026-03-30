@@ -4,6 +4,7 @@ import { infoClient } from "../info-client";
 import { resolveDriverForProviderModel } from "xinity-infoserver";
 import { rootLogger } from "../logging";
 import { building } from "$app/environment";
+import { maxNodes } from "$lib/server/license";
 
 const log = rootLogger.child({ name: "orchestration.mod" })
 
@@ -225,7 +226,14 @@ async function applyChanges(toUninstall: string[], toInstall: NewInstallation[])
 export async function syncDeployedModels() {
   const requiredModels = await assembleModelRequirementTable();
   const existing: ModelInstallation[] = await getDB().select().from(modelInstallationT).where(isNull(modelInstallationT.deletedAt));
-  const availableServers: AiNode[] = await getDB().select().from(aiNodeT).where(sql`${aiNodeT.available} AND ${aiNodeT.deletedAt} IS NULL`);
+  let availableServers: AiNode[] = await getDB().select().from(aiNodeT).where(sql`${aiNodeT.available} AND ${aiNodeT.deletedAt} IS NULL`);
+
+  // Enforce license node limit
+  const limit = maxNodes();
+  if (availableServers.length > limit) {
+    log.warn({ limit, total: availableServers.length }, "License allows %d nodes but %d are available. Using only the first %d", limit, availableServers.length, limit);
+    availableServers = availableServers.slice(0, limit);
+  }
 
   // Installations on unavailable nodes must be removed and rescheduled
   const availableServerIds = new Set(availableServers.map(s => s.id));

@@ -9,24 +9,34 @@ export function getInitials(name?: string | null, email?: string | null): string
   return email?.charAt(0).toUpperCase() || "?";
 }
 
-export function getAvailableRoles(role: RoleName): RoleName[] {
+/** Roles that require the "all-roles" license feature. */
+const LICENSED_ROLES: RoleName[] = ["member", "labeler", "viewer"];
+
+export function getAvailableRoles(role: RoleName, allRoles = true): RoleName[] {
+  let roles: RoleName[];
   switch(role){
     case "owner":
-      return [
+      roles = [
         "member",
         "admin",
         "labeler",
         "viewer",
         "pending",
       ];
+      break;
     case "admin":
-      return [
+      roles = [
         "member",
         "labeler",
         "viewer",
         "pending",
       ];
-    
+      break;
+    default:
+      return [];
   }
-  return [];
+  if (!allRoles) {
+    roles = roles.filter(r => !LICENSED_ROLES.includes(r));
+  }
+  return roles;
 }
