@@ -55,7 +55,7 @@ describe("Sidebar navigation", () => {
 
       const orgLink = page.locator('nav a[href="/organizations/"]');
       const classes = await orgLink.getAttribute("class");
-      expect(classes).toContain("!bg-gray-50");
+      expect(classes).toContain("!bg-xinity-purple/5");
     } finally {
       await context.close();
     }
