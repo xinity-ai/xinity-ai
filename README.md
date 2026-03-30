@@ -1,60 +1,130 @@
-# Xinity AI
+<p align="center">
+  <img src="docs/assets/xinity-logo.png" alt="Xinity AI" width="280" />
+</p>
 
-[![CI](https://github.com/xinity-ai/xinity-ai/actions/workflows/tests.yml/badge.svg)](https://github.com/xinity-ai/xinity-ai/actions/workflows/tests.yml)
-[![License](https://img.shields.io/badge/license-Apache%202.0%20%2F%20ELv2-blue)](#licensing)
+<h3 align="center">Run AI where your data lives. No exceptions.</h3>
 
-Self-hostable AI orchestration platform with an OpenAI-compatible API. Run LLMs on your own infrastructure. No data leaves your environment.
+<p align="center">
+  The open-source AI platform for enterprises that <em>cannot</em> send data to the cloud:
+  not because of preference, but because of law, regulation, or trade secrets.
+</p>
 
-## What it is
-
-Xinity AI is a full model orchestration system. Once deployed, it enables users without deep IT or AI expertise to host cutting edge LLMs, and to fine-tune smaller, more accurate domain models by distilling and/or labeling their own requests.
-
-### The pain it solves
-
-- Enterprises that cannot use AI today due to strict data locality and compliance constraints can run models where their data must stay.
-- Reduces dependency on external AI vendors and eliminates the need to send sensitive data to third-party regions or clouds.
-
-### Who it's for
-
-- Enterprises with strict data governance or regulatory requirements.
-- Organizations that cannot send sensitive data to third-party AI vendors for legal, regulatory, or policy reasons.
-- Teams that need on-prem or data-residency compliant AI deployments.
-
-## Requirements
-
-- Bun >= 1.3 (build, package manager, and runtime)
-- Docker + Docker Compose (local dependencies and container builds)
-- direnv (recommended for easy env var loading)
-
-## Deployment
-
-See the [Deployment Guide](deployment/README.md) for a full overview, decision tree, and instructions for adding inference nodes.
-
-Three routes are available. The **Xinity CLI** is the recommended starting point for most deployments, handling installation, configuration, and updates interactively.
-
-> **Daemon note:** The daemon must always run on the machine with GPU capacity. Even in Docker or NixOS deployments, the daemon is installed separately on each inference node via the CLI.
-
-| Route | Best for | Guide |
-|---|---|---|
-| **Xinity CLI** | Any Linux server with systemd | [deployment/cli/README.md](deployment/cli/README.md) |
-| **Docker Compose** | Servers with Docker, or cloud VMs | [deployment/docker/README.md](deployment/docker/README.md) |
-| **NixOS Flake** | NixOS infrastructure | [deployment/nixos/README.md](deployment/nixos/README.md) |
+<p align="center">
+  <a href="https://github.com/xinity-ai/xinity-ai/actions/workflows/tests.yml"><img src="https://github.com/xinity-ai/xinity-ai/actions/workflows/tests.yml/badge.svg" alt="CI" /></a>
+  <a href="#licensing"><img src="https://img.shields.io/badge/license-Apache%202.0%20%2F%20ELv2-blue" alt="License" /></a>
+  <a href="https://discord.gg/7f66jBpaYR"><img src="https://img.shields.io/badge/Discord-Join%20Us-5865F2?logo=discord&logoColor=white" alt="Discord" /></a>
+  <a href="https://github.com/xinity-ai/xinity-ai/stargazers"><img src="https://img.shields.io/github/stars/xinity-ai/xinity-ai?style=social" alt="GitHub Stars" /></a>
+  <br/>
+  <img src="https://img.shields.io/badge/🇪🇺_Made_in_Europe-blue" alt="Made in Europe" />
+  <img src="https://img.shields.io/badge/sovereign_by_architecture-not_by_contract-critical" alt="Sovereign by Architecture" />
+</p>
 
 ---
 
-## Quick start (local dev)
+<!-- TODO before launch: replace with actual screenshot -->
+<p align="center"><img src="docs/assets/dashboard-screenshot.png" alt="Xinity Dashboard" width="720" /></p>
+
+> **Deployed in production** by regulated European enterprises: media companies, manufacturers, and public institutions running AI on their own infrastructure with zero data egress.
+
+---
+
+## Why Xinity exists
+
+Cloud AI assumes your data can leave the building. For many enterprises, it can't, not without violating GDPR, banking secrecy, journalistic source protection, attorney-client privilege, or trade secret law. These organizations aren't cloud-skeptical. They're **sovereignty-blocked**.
+
+Xinity gives them a complete AI platform: model orchestration, an OpenAI-compatible API, a management dashboard, fine-tuning pipelines, and multi-node scaling, that runs entirely on their own hardware. No data leaves. Not to a region. Not to a cloud. Not at all.
+
+**And it's cheaper.** Cloud pricing assumes bursty ~15% utilization. Always-on AI agents run at 80–90%. At that utilization, dedicated on-prem infrastructure delivers roughly **80% cost savings** compared to equivalent cloud capacity. Sovereignty isn't just a compliance requirement, it's an economic advantage. We call this phenomenon, the **Utilization Inversion**.
+
+## See it in action
+
+<!-- TODO: replace with asciinema embed or GIF -->
+```bash
+# Install the CLI
+curl -fsSL https://github.com/xinity-ai/xinity-ai/releases/latest/download/install.sh | bash
+
+# Set up everything (Postgres, inference engine, dashboard)
+xinity up all
+
+# Check system health
+xinity doctor
+
+# You're live. Hit your local OpenAI-compatible API:
+curl http://localhost:3000/v1/chat/completions \
+  -H "Authorization: Bearer sk_..." \
+  -H "Content-Type: application/json" \
+  -d '{"model": "qwen3.5", "messages": [{"role": "user", "content": "Hello from on-prem."}]}'
+```
+
+Your existing OpenAI SDK code works unchanged, just point the base URL to your Xinity instance.
+
+## How is this different?
+
+| | **Xinity AI** | oLLaMa | LocalAI | vLLM |
+|---|---|---|---|---|
+| OpenAI-compatible API | ✅ | ✅ | ✅ | ✅ |
+| Multi-model orchestration | ✅ | ❌ | Partial | ❌ |
+| Multi-GPU orchestration | ✅ | ❌ | ❌ | ✅ |
+| Load balancing | ✅ | ❌ | ❌ | ❌ |
+| Web dashboard with RBAC | ✅ | ❌ | ❌ | ❌ |
+| Enterprise auth (SSO/SAML/2FA) | ✅ | ❌ | ❌ | ❌ |
+| Multi-org tenant isolation | ✅ | ❌ | ❌ | ❌ |
+| Usage tracking & data collection | ✅ | ❌ | ❌ | ❌ |
+| Fine-tuning / distillation pipeline | ✅ | ❌ | ❌ | ❌ |
+| MCP server (AI-managed infra) | ✅ | ❌ | ❌ | ❌ |
+| EU Governance & Audit trail | ✅ | ❌ | ❌ | ❌ |
+| Fully auditable source code | ✅ | ✅ | ✅ | ✅ |
+
+**Xinity isn't a model runner: it's the full operations layer.** Ollama and vLLM are excellent inference engines (Xinity uses them under the hood). Xinity adds everything else an enterprise needs to actually run AI in production: orchestration, access control, observability, and governance.
+**Xinity isn't a orchestration layer only either.** It's a complete platform that gives you everything you need to run AI in production. We aim to have an AI-cloud experience on your own hardware.
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                      Your Infrastructure                     │
+│                                                              │
+│  ┌──────────────┐    ┌──────────────┐    ┌────────────────┐  │
+│  │  Dashboard   │◄──►│   Gateway    │◄──►│    Daemon(s)   │  │
+│  │  (SvelteKit) │    │  (API proxy) │    │  (GPU nodes)   │  │
+│  │              │    │              │    │                │  │
+│  │  • RBAC      │    │  • OpenAI-   │    │  • Ollama /    │  │
+│  │  • SSO/SAML  │    │    compat.   │    │    vLLM        │  │
+│  │  • Usage     │    │  • Routing   │    │  • Model mgmt  │  │
+│  │    tracking  │    │  • Rate      │    │  • Auto-scale  │  │
+│  │  • MCP       │    │    limiting  │    │                │  │
+│  └──────┬───────┘    └──────┬───────┘    └───────┬────────┘  │
+│         │                   │                    │           │
+│         └─────────┬─────────┘────────────────────┘           │
+│                   │                              │           │
+│             ┌─────▼──────┐               ┌───────▼────────┐  │
+│             │ PostgreSQL │               │  Infoserver    │  │
+│             │   + Redis  │               │ (model schema) │  │
+│             └────────────┘               └────────────────┘  │
+│                                                              │
+│               Nothing leaves this box.                       │
+└──────────────────────────────────────────────────────────────┘
+```
+
+For a detailed architecture walkthrough, see [`docs/architecture.md`](docs/architecture.md).
+
+## Quick start (local development)
 
 **1. Install dependencies**
 
 ```bash
+# Clone and install dependencies
+git clone https://github.com/xinity-ai/xinity-ai.git
+cd xinity-ai
 bun install
 ```
 
-> The postinstall hook sets up git commit hooks (commitlint). 
+> The postinstall hook sets up git commit hooks (commitlint).
 
 **2. Create `.env` files from examples**
 
 ```bash
+# Initialize .env files from examples (won't overwrite existing)
 find . -name 'example.env' -not -path '*/node_modules/*' | while read -r f; do
   target="${f%/example.env}/.env"
   [ -f "$target" ] || cp "$f" "$target"
@@ -106,7 +176,11 @@ See [Package details](#package-details) below for per-package dev commands.
 
 Start order: infrastructure (step 3) → migrations (step 4) → infoserver (step 5) → other services (step 6).
 
-## Environment variables
+### Requirements
+
+- **Bun** ≥ 1.3 (build, package manager, and runtime)
+- **Docker + Docker Compose** (local dependencies and container builds)
+- **direnv** (recommended for env var loading)
 
 Each package reads its own `.env` file. There is no automatic inheritance from the repo root. The root `.env` is only used by system tests (`bun run test:system`), which need `DB_CONNECTION_URL` and `REDIS_URL`.
 
@@ -134,116 +208,102 @@ dotenv
 
 Run `direnv allow` in that directory after creating the file.
 
-## Accessing the system
+## Deployment
 
-Once deployed, there are four ways to interact with a running Xinity AI instance. All programmatic access uses **dashboard API keys**, created and managed in the dashboard under **Settings → API Keys**.
+Three production deployment routes, all documented with step-by-step guides:
+
+| Route | Best for | Guide |
+|---|---|---|
+| **Xinity CLI** ⭐ | Any Linux server with systemd | [`deployment/cli/`](deployment/cli/README.md) |
+| **Docker Compose** | Servers with Docker, or cloud VMs | [`deployment/docker/`](deployment/docker/README.md) |
+| **NixOS Flake** | NixOS infrastructure | [`deployment/nixos/`](deployment/nixos/README.md) |
+
+> **Note:** The daemon must always run on machines with GPU capacity. Even in Docker or NixOS deployments, the daemon is installed separately on each inference node via the CLI.
+
+See the full [Deployment Guide](deployment/README.md) for the decision tree and multi-node setup.
+
+## Accessing a running instance
+
+All programmatic access uses **dashboard API keys** (Settings → API Keys in the dashboard).
+
+### OpenAI-compatible API
+
+Point any OpenAI SDK or tool at your gateway:
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://your-xinity-instance/v1",
+    api_key="sk_..."
+)
+
+response = client.chat.completions.create(
+    model="qwen3.5",
+    messages=[{"role": "user", "content": "Summarize this contract."}]
+)
+```
 
 ### Dashboard UI
 
-The web-based admin interface for day-to-day management: creating and managing model deployments, API keys, applications, organizations, and reviewing recorded LLM calls. Available at the dashboard URL configured during deployment.
+Web-based admin for managing models, API keys, organizations, and reviewing recorded LLM calls.
 
 ### REST API
 
-Every dashboard operation is also available as a REST API, documented live at:
-
-```
-https://<your-dashboard>/api/
-# or as an openapi schema with:
-https://<your-dashboard>/api/openapi.json
-```
-
-Authenticate with your dashboard API key:
+Every dashboard operation is available programmatically:
 
 ```bash
-curl -H "x-api-key: sk_..." https://<your-dashboard>/api/deployment
+curl -H "x-api-key: sk_..." https://your-dashboard/api/deployment
 ```
+
+Full API docs live at `https://your-dashboard/api/` with an OpenAPI schema at `/api/openapi.json`.
 
 ### MCP Server
 
-The dashboard exposes a [Model Context Protocol](https://modelcontextprotocol.io) endpoint at `/mcp`, letting AI assistants (Claude Desktop, Cursor, etc.) manage the system directly using natural language. All non-internal API operations are available as MCP tools and stay in sync with the API automatically.
-
-Authenticate using either a bearer token or the `x-api-key` header. Both are equivalent:
+Let AI assistants (Claude, Cursor, etc.) manage your infrastructure via natural language:
 
 ```json
 {
   "mcpServers": {
     "xinity-ai": {
-      "url": "https://<your-dashboard>/mcp",
+      "url": "https://your-dashboard/mcp",
       "headers": { "Authorization": "Bearer sk_..." }
     }
   }
 }
 ```
 
-```json
-{
-  "mcpServers": {
-    "xinity-ai": {
-      "url": "https://<your-dashboard>/mcp",
-      "headers": { "x-api-key": "sk_..." }
-    }
-  }
-}
-```
-
-The MCP endpoint can be disabled server-side by setting `MCP_ENABLED=false` in the dashboard environment. Individual operations can be excluded from MCP by the system operator using the procedure metadata API (see `packages/xinity-ai-dashboard/CLAUDE.md`).
-
-### Xinity CLI
-
-Install the CLI with a single command:
-
-```bash
-curl -fsSL https://github.com/xinity-ai/xinity-ai/releases/latest/download/install.sh | bash
-```
-
-This downloads the latest release binary, verifies its checksum, and installs it to `~/.local/bin`. You can pin a version with `--version v1.0.0` or change the install directory with `--prefix /usr/local/bin`. See the [CLI README](packages/xinity-cli/README.md) for all options.
-
-Once installed, the CLI provides commands for installation, configuration, and day-to-day management:
+### CLI
 
 ```bash
 xinity up all            # install / configure services
 xinity doctor            # check system health
-xinity act --help        # call dashboard API routes from the terminal
+xinity act --help        # call dashboard API from the terminal
 xinity update            # update the CLI itself
 ```
 
----
-
 ## Repo layout
 
-- `packages/common-db`: shared DB schema, migrations, and tooling
-- `packages/common-env`: shared environment variable validation (Zod)
-- `packages/common-log`: shared Pino logger wrapper
-- `packages/xinity-ai-gateway`: API gateway service
-- `packages/xinity-ai-dashboard`: SvelteKit admin dashboard
-- `packages/xinity-ai-daemon`: model runtime/installation agent (runs on inference hardware)
-- `packages/xinity-cli`: operator CLI for installation, configuration, and management
-- `packages/xinity-infoserver`: model metadata schema + YAML server
-
-## Versioning
-
-This monorepo uses lockstep versioning: all packages are released with the same version number.
-
-## Documentation
-
-- Architecture overview: `docs/architecture.md`
-
-## Security
-
-To report a vulnerability, please follow the process in [SECURITY.md](SECURITY.md). Do not open a public issue.
-
-## Contributing
-
-We welcome issues, bug reports, and PRs. Please read `CONTRIBUTING.md` before opening a PR. It outlines scope boundaries, review expectations, and how to propose changes.
+```
+packages/
+├── common-db/             # Shared DB schema, migrations (Drizzle ORM)
+├── common-env/            # Shared env validation (Zod)
+├── common-log/            # Shared Pino logger
+├── xinity-ai-gateway/     # API gateway (OpenAI-compatible proxy)
+├── xinity-ai-dashboard/   # SvelteKit admin dashboard
+├── xinity-ai-daemon/      # Model runtime agent (runs on GPU hardware)
+├── xinity-cli/            # Operator CLI
+└── xinity-infoserver/     # Model metadata schema + YAML server
+```
 
 ## Licensing
 
-This project uses dual licensing:
+| Component | License | You can... |
+|---|---|---|
+| Gateway, Daemon, CLI, Infoserver, DB schema, shared libs | [Apache 2.0](LICENSE) | Use, modify, distribute freely — including commercially |
+| Dashboard | [Elastic License v2](packages/xinity-ai-dashboard/LICENSE) | Use and view source. Free tier: 1 org + 1 node. Paid tiers unlock multi-node and multi-org |
 
-- **Gateway, daemon, CLI, infoserver, common-db** are licensed under the [Apache License 2.0](LICENSE).
-- **Dashboard** (`packages/xinity-ai-dashboard`) is source-available under the [Elastic License 2.0](packages/xinity-ai-dashboard/LICENSE).
-
-The entire codebase is visible and auditable.
+The entire codebase is visible and auditable. The open-core engine runs without the dashboard, the dashboard adds enterprise management features on top.
 
 ## Troubleshooting
 
@@ -268,101 +328,89 @@ openssl rand -base64 33
 **`bun2nix` is slow or fails during install**
 This runs in the postinstall hook for NixOS support. Run `CI=1 bun install` to skip it.
 
-## Q&A
+<details>
+<summary><strong>Licensing FAQ</strong></summary>
 
 **Can I use it for free?**
-The gateway, daemon, CLI, infoserver, and database layer are Apache 2.0 licensed and can be used without any restrictions. Only the dashboard requires a license key for larger deployments: the free tier supports one organization and one inference node, which is enough to evaluate the platform or run a small deployment. Paid tiers unlock multiple nodes and organizations, starting with an affordable startup tier (2 nodes), scaling up to enterprise plans (6, 20, or more nodes) with additional features.
-
-**Where does most of the logic live?**
-Logic lives in the components responsible for their domain: the dashboard orchestrates system actions, the gateway handles inference requests, and the daemon manages installed models on inference hardware. The database is the shared connection point that allows multiple instances of gateway and daemon to coordinate.
+Yes. The engine (gateway, daemon, CLI, infoserver, DB layer) is Apache 2.0 with no restrictions. The dashboard free tier supports one organization and one inference node — enough to evaluate or run smaller deployments.
 
 **Can I audit the system?**
-Yes. The entire codebase is here and intended to be auditable.
+Yes. Every line of code is here and intended to be auditable. That's the point.
+
+**What does the paid dashboard unlock?**
+Multi-node orchestration (2, 6, 20+ nodes), multi-org tenant isolation, and additional enterprise features. Pricing starts with an affordable startup tier.
+
+</details>
+
+## Contributing
+
+We'd love your help. Whether it's bug reports, documentation improvements, or new features, contributions are welcome.
+
+```bash
+# Good places to start:
+# 1. Issues labeled "good first issue"
+# 2. Documentation gaps you notice while setting up
+# 3. Integrations with inference engines beyond Ollama/vLLM
+```
+
+Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening a PR — it covers scope, review expectations, and how to propose changes.
+
+**Join the community:** [Discord](https://discord.gg/xinity) · [Discussions](https://github.com/xinity-ai/xinity-ai/discussions)
+
+## Roadmap
+
+See the [public roadmap](https://github.com/orgs/xinity-ai/projects/1) for what's coming next. Key areas:
+
+- 🔬 Distributed split inference (MoE across nodes with privacy-preserving encoding)
+- 🔄 One-click migration from OpenAI / Azure OpenAI
+- 📊 Advanced usage analytics and cost attribution
+- 🇪🇺 EU compliance reporting templates (GDPR, Digital Networks Act)
+
+## Security
+
+To report a vulnerability, follow the process in [SECURITY.md](SECURITY.md). Do not open a public issue.
 
 ## Common workflows
 
-- Start local dependencies: `docker compose up -d`
-- Stop local dependencies: `docker compose down`
-- Reset local dependencies (drop volumes/state): `docker compose down -v`
-- Regenerate DB migrations (from `packages/common-db`): `bun run migrate:gen`
-- Apply DB migrations (from `packages/common-db`): `bun run migrate`
-- Inspect DB schema (from `packages/common-db`): `bun run inspect`
-- Run system tests (DB + gateway health): `bun run test:system`
-
-## System tests
-
-System tests exercise real DB interactions and service endpoints. They require the dev dependency stack (Postgres + Redis + Mailhog) and a valid `DB_CONNECTION_URL` + `REDIS_URL` in `.env`.
-
-Run them from repo root:
+<details>
+<summary>Click to expand</summary>
 
 ```bash
+# Local dependencies
+docker compose up -d          # start
+docker compose down           # stop
+docker compose down -v        # reset (drop all state)
+
+# Database
+cd packages/common-db
+bun run migrate               # apply migrations
+bun run migrate:gen           # regenerate migrations
+bun run inspect               # inspect schema
+
+# System tests (requires running dependencies)
 bun run test:system
-```
 
-This script will:
-
-1. Start `db`, `redis`, and `mailhog` via Docker Compose.
-2. Run DB migrations from `packages/common-db`.
-3. Execute Bun system tests in `tests/system`.
-
-## Docker Compose stacks
-
-`docker compose up -d` starts the core local development dependencies:
-
-- `db`: Postgres 17 (port `5432`)
-- `redis`: Redis 7 (port `6379`)
-- `mailhog`: local SMTP + UI (ports `1025` and `8025`)
-
-Optional services (started with `docker compose --profile full up -d` or by name):
-
-- `searxng`: web search engine (port `6148`), needed for gateway web search features
-- `seaweedfs`: S3-compatible object storage (port `8333`), needed for multimodal image support
-
-For a clean slate (fresh database + redis state):
-
-```bash
-docker compose down -v
-```
-
-### Building images
-
-`docker/build.compose.yaml` exists to make building and tagging the app images locally easy. It is not included in the root `compose.yaml`, so you need to reference it explicitly:
-
-```bash
+# Build Docker images
 docker compose -f docker/build.compose.yaml build gateway
 docker compose -f docker/build.compose.yaml build dashboard
 docker compose -f docker/build.compose.yaml build xinity-infoserver
 ```
 
-For a full local deployment, see `deployment/docker/`.
+### Docker Compose services
 
-## Package details
+| Service | Port | Purpose |
+|---|---|---|
+| `db` | 5432 | PostgreSQL 17 |
+| `redis` | 6379 | Redis 7 |
+| `mailhog` | 1025 / 8025 | Local SMTP + UI |
+| `searxng` | 6148 | Web search |
+| `seaweedfs` | 8333 | S3-compatible storage |
 
-### Gateway (API)
+</details>
 
-```bash
-cd packages/xinity-ai-gateway
-bun run dev
-```
+---
 
-### Dashboard (web)
-
-```bash
-cd packages/xinity-ai-dashboard
-bun run dev
-```
-
-### Model info server + schema
-
-This package exports Zod schemas for model metadata and serves them over HTTP. Most other packages depend on it being available at startup.
-
-```bash
-cd packages/xinity-infoserver
-bun run dev
-```
-
-It can also emit JSON schema standalone:
-
-```bash
-bun run model.ts
-```
+<p align="center">
+  <strong>Contracts are paper. Infrastructure is Physics.</strong><br/>
+  <sub>Built in Vienna. Open to the world.</sub>
+</p>
