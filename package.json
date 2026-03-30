@@ -6,7 +6,7 @@
   },
   "private": true,
   "scripts": {
-    "bump": "bunx bumpp@11 --release conventional --git-check --all --commit --tag --push --execute 'bash scripts/update-changelog.sh'",
+    "bump": "bumpp --release conventional --git-check --all --commit --tag --push --execute 'bash scripts/update-changelog.sh'",
     "changelog:preview": "bunx git-cliff --unreleased",
     "postinstall": "if [ -z \"$CI\" ]; then bunx simple-git-hooks@2 && bunx bun2nix -c ../ -o nix/bun.nix; fi",
     "sync:dockerfiles": "bun scripts/sync-dockerfile-manifests.ts",
@@ -24,6 +24,7 @@
   },
   "devDependencies": {
     "@commitlint/cli": "^20.4.2",
-    "@commitlint/config-conventional": "^20.4.2"
+    "@commitlint/config-conventional": "^20.4.2",
+    "bumpp": "^11.0.1"
   }
 }
