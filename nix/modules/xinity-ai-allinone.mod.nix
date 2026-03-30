@@ -78,22 +78,22 @@
 
       config = lib.mkIf cfg.enable {
         services.caddy = {
-          enable = true;
-          globalConfig = ''
+          enable = lib.mkDefault true;
+          globalConfig = lib.mkDefault ''
             email ${cfg.acmeEmail}
           '';
           virtualHosts."${cfg.dashboardSubdomain}.${cfg.domain}" = {
-            extraConfig = ''
+            extraConfig = lib.mkDefault ''
               reverse_proxy ${dashboardTarget}
             '';
           };
           virtualHosts."${cfg.gatewaySubdomain}.${cfg.domain}" = {
-            extraConfig = ''
+            extraConfig = lib.mkDefault ''
               reverse_proxy ${gatewayTarget}
             '';
           };
           virtualHosts."${cfg.infoserverSubdomain}.${cfg.domain}" = {
-            extraConfig = ''
+            extraConfig = lib.mkDefault ''
               reverse_proxy ${infoserverTarget}
             '';
           };
@@ -152,8 +152,8 @@
 
       config = lib.mkIf cfg.enable {
         services.searx = {
-          enable = true;
-          settings = lib.recursiveUpdate {
+          enable = lib.mkDefault true;
+          settings = lib.mkDefault (lib.recursiveUpdate {
             server = {
               port = cfg.port;
               bind_address = cfg.host;
@@ -161,8 +161,8 @@
               limiter = false;
             };
             search.formats = [ "html" "json" ];
-          } cfg.extraSettings;
-          environmentFile = cfg.environmentFile;
+          } cfg.extraSettings);
+          environmentFile = lib.mkDefault cfg.environmentFile;
         };
       };
     };
@@ -428,12 +428,12 @@
           # --- Delegate to database module ---
           services.xinity-ai-database = {
             enable = true;
-            name = cfg.database.name;
-            user = cfg.database.user;
-            listenMode = cfg.listenMode;
-            redis.port = cfg.redis.port;
-            pgPasswordFile = cfg.database.pgPasswordFile;
-            redisPasswordFile = cfg.redis.redisPasswordFile;
+            name = lib.mkDefault cfg.database.name;
+            user = lib.mkDefault cfg.database.user;
+            listenMode = lib.mkDefault cfg.listenMode;
+            redis.port = lib.mkDefault cfg.redis.port;
+            pgPasswordFile = lib.mkDefault cfg.database.pgPasswordFile;
+            redisPasswordFile = lib.mkDefault cfg.redis.redisPasswordFile;
           };
 
           # --- Database initialization (password setup + migrations) ---
@@ -442,14 +442,15 @@
           # --- Gateway ---
           services.xinity-ai-gateway = {
             enable = true;
-            containerUid = cfg.containerUid;
-            port = cfg.gateway.port;
+            containerUid = lib.mkDefault cfg.containerUid;
+            port = lib.mkDefault cfg.gateway.port;
             backendTimeoutMs = lib.mkDefault cfg.gateway.backendTimeoutMs;
-            infoserverUrl = infoserverUrl;
-            webSearchEngineUrl =
+            infoserverUrl = lib.mkDefault infoserverUrl;
+            webSearchEngineUrl = lib.mkDefault (
               if cfg.searxng.enable
               then "http://127.0.0.1:${toString cfg.searxng.port}"
-              else null;
+              else null
+            );
             s3Endpoint = lib.mkDefault (
               if cfg.seaweedfs.enable
               then "http://127.0.0.1:${toString cfg.seaweedfs.s3Port}"
@@ -461,22 +462,22 @@
             metricsAuthFile = lib.mkDefault cfg.secrets.metricsAuthFile;
             s3AccessKeyIdFile = lib.mkDefault cfg.secrets.s3AccessKeyIdFile;
             s3SecretAccessKeyFile = lib.mkDefault cfg.secrets.s3SecretAccessKeyFile;
-            environmentFiles = envFiles;
-            extraOptions = networkOptions;
+            environmentFiles = lib.mkDefault envFiles;
+            extraOptions = lib.mkDefault networkOptions;
           };
 
           # --- Dashboard ---
           services.xinity-ai-dashboard = {
             enable = true;
-            containerUid = cfg.containerUid;
-            port = cfg.dashboard.port;
+            containerUid = lib.mkDefault cfg.containerUid;
+            port = lib.mkDefault cfg.dashboard.port;
             mcpEnabled = lib.mkDefault cfg.dashboard.mcpEnabled;
             licenseKey = lib.mkDefault cfg.dashboard.licenseKey;
-            betterAuthUrl = publicDashboardUrl;  # Public URL for auth redirects
-            origin = publicDashboardUrl;          # Public URL for CORS
-            infoserverUrl = infoserverUrl;        # Internal URL for server-side fetching
-            publicLlmApiUrl = "${publicGatewayUrl}/v1";  # Public URL for client-side API calls
-            nodeEnv = "production";
+            betterAuthUrl = lib.mkDefault publicDashboardUrl;  # Public URL for auth redirects
+            origin = lib.mkDefault publicDashboardUrl;          # Public URL for CORS
+            infoserverUrl = lib.mkDefault infoserverUrl;        # Internal URL for server-side fetching
+            publicLlmApiUrl = lib.mkDefault "${publicGatewayUrl}/v1";  # Public URL for client-side API calls
+            nodeEnv = lib.mkDefault "production";
             s3Endpoint = lib.mkDefault (
               if cfg.seaweedfs.enable
               then "http://127.0.0.1:${toString cfg.seaweedfs.s3Port}"
@@ -490,40 +491,40 @@
             s3AccessKeyIdFile = lib.mkDefault cfg.secrets.s3AccessKeyIdFile;
             s3SecretAccessKeyFile = lib.mkDefault cfg.secrets.s3SecretAccessKeyFile;
             licenseKeyFile = lib.mkDefault cfg.secrets.licenseKeyFile;
-            environmentFiles = envFiles;
-            extraOptions = networkOptions;
+            environmentFiles = lib.mkDefault envFiles;
+            extraOptions = lib.mkDefault networkOptions;
           };
 
           # --- InfoServer ---
           services.xinity-infoserver = {
             enable = true;
-            port = cfg.infoserver.port;
-            modelInfoFile = cfg.infoserver.modelInfoFile;
-            environmentFiles = envFiles;
-            extraOptions = networkOptions;
+            port = lib.mkDefault cfg.infoserver.port;
+            modelInfoFile = lib.mkDefault cfg.infoserver.modelInfoFile;
+            environmentFiles = lib.mkDefault envFiles;
+            extraOptions = lib.mkDefault networkOptions;
           };
 
           # --- SearXNG ---
           services.xinity-ai-searxng = lib.mkIf cfg.searxng.enable {
             enable = true;
-            port = cfg.searxng.port;
+            port = lib.mkDefault cfg.searxng.port;
           };
 
           # --- SeaweedFS ---
           services.xinity-ai-seaweedfs = lib.mkIf cfg.seaweedfs.enable {
             enable = true;
-            s3Port = cfg.seaweedfs.s3Port;
-            s3Config = cfg.seaweedfs.s3Config;
+            s3Port = lib.mkDefault cfg.seaweedfs.s3Port;
+            s3Config = lib.mkDefault cfg.seaweedfs.s3Config;
           };
 
           # --- Caddy (always enabled in allinone) ---
           services.xinity-ai-caddy = {
             enable = true;
-            domain = cfg.domain;
-            acmeEmail = cfg.acmeEmail;
-            dashboardSubdomain = cfg.dashboardSubdomain;
-            gatewaySubdomain = cfg.gatewaySubdomain;
-            infoserverSubdomain = cfg.infoserverSubdomain;
+            domain = lib.mkDefault cfg.domain;
+            acmeEmail = lib.mkDefault cfg.acmeEmail;
+            dashboardSubdomain = lib.mkDefault cfg.dashboardSubdomain;
+            gatewaySubdomain = lib.mkDefault cfg.gatewaySubdomain;
+            infoserverSubdomain = lib.mkDefault cfg.infoserverSubdomain;
           };
         };
     };
