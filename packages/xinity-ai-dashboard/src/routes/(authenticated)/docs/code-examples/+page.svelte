@@ -59,7 +59,7 @@
   <nav class="mb-6">
     <a
       href="/docs/"
-      class="text-blue-600 hover:text-blue-800 flex items-center gap-2"
+      class="text-xinity-magenta hover:text-xinity-pink flex items-center gap-2"
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -92,7 +92,7 @@
             <button
               class="w-full text-left px-3 py-2 rounded transition {selectedExample ===
               slug
-                ? 'bg-blue-100 text-blue-700 font-semibold'
+                ? 'bg-xinity-purple/15 text-xinity-pink font-semibold'
                 : 'hover:bg-gray-100'}"
               onclick={() => (selectedExample = slug)}
             >
@@ -120,7 +120,7 @@
               <button
                 class="inline-block p-4 border-b-2 rounded-t-lg {selectedLanguage ===
                 'python'
-                  ? 'text-blue-600 border-blue-600'
+                  ? 'text-xinity-magenta border-xinity-magenta'
                   : 'border-transparent hover:text-gray-600 hover:border-gray-300'}"
                 onclick={() => (selectedLanguage = "python")}
               >
@@ -131,7 +131,7 @@
               <button
                 class="inline-block p-4 border-b-2 rounded-t-lg {selectedLanguage ===
                 'javascript'
-                  ? 'text-blue-600 border-blue-600'
+                  ? 'text-xinity-magenta border-xinity-magenta'
                   : 'border-transparent hover:text-gray-600 hover:border-gray-300'}"
                 onclick={() => (selectedLanguage = "javascript")}
               >
@@ -142,7 +142,7 @@
               <button
                 class="inline-block p-4 border-b-2 rounded-t-lg {selectedLanguage ===
                 'bash'
-                  ? 'text-blue-600 border-blue-600'
+                  ? 'text-xinity-magenta border-xinity-magenta'
                   : 'border-transparent hover:text-gray-600 hover:border-gray-300'}"
                 onclick={() => (selectedLanguage = "bash")}
               >
@@ -164,36 +164,36 @@
 
       <!-- Tips section -->
       <div
-        class="mt-6 p-6 bg-linear-to-r from-blue-50 to-indigo-50 rounded-lg"
+        class="mt-6 p-6 bg-linear-to-r from-xinity-purple/10 to-xinity-coral/10 rounded-lg"
       >
         <h3 class="text-xl font-semibold mb-4">Tips & Best Practices</h3>
         <ul class="space-y-2 text-gray-700">
           <li class="flex items-start gap-2">
-            <span class="text-blue-600 font-bold">&#8226;</span>
+            <span class="text-xinity-magenta font-bold">&#8226;</span>
             <span
               >Always store your API key in environment variables, never
               hardcode it</span
             >
           </li>
           <li class="flex items-start gap-2">
-            <span class="text-blue-600 font-bold">&#8226;</span>
+            <span class="text-xinity-magenta font-bold">&#8226;</span>
             <span>Implement exponential backoff when retrying failed requests</span>
           </li>
           <li class="flex items-start gap-2">
-            <span class="text-blue-600 font-bold">&#8226;</span>
+            <span class="text-xinity-magenta font-bold">&#8226;</span>
             <span
               >Use streaming for long-form content to improve perceived
               performance</span
             >
           </li>
           <li class="flex items-start gap-2">
-            <span class="text-blue-600 font-bold">&#8226;</span>
+            <span class="text-xinity-magenta font-bold">&#8226;</span>
             <span
               >Monitor your API usage on the dashboard to track call volume</span
             >
           </li>
           <li class="flex items-start gap-2">
-            <span class="text-blue-600 font-bold">&#8226;</span>
+            <span class="text-xinity-magenta font-bold">&#8226;</span>
             <span
               >Set appropriate <code class="bg-white px-1 rounded"
                 >max_tokens</code
@@ -209,14 +209,14 @@
           href="/docs/quick-start"
           class="block p-4 bg-white rounded-lg shadow hover:shadow-md transition"
         >
-          <h3 class="font-semibold text-blue-600 mb-1">Quick Start Guide</h3>
+          <h3 class="font-semibold text-xinity-purple mb-1">Quick Start Guide</h3>
           <p class="text-sm text-gray-600">Get started in minutes</p>
         </a>
         <a
           href="/docs/api-reference"
           class="block p-4 bg-white rounded-lg shadow hover:shadow-md transition"
         >
-          <h3 class="font-semibold text-blue-600 mb-1">API Reference</h3>
+          <h3 class="font-semibold text-xinity-purple mb-1">API Reference</h3>
           <p class="text-sm text-gray-600">Complete endpoint documentation</p>
         </a>
       </div>

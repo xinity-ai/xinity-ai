@@ -6,7 +6,7 @@
   <nav class="mb-6">
     <a
       href="/docs/"
-      class="text-blue-600 hover:text-blue-800 flex items-center gap-2"
+      class="text-xinity-magenta hover:text-xinity-pink flex items-center gap-2"
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -218,7 +218,7 @@
         on cluster nodes</strong> with sufficient capacity are considered.
       </li>
     </ol>
-    <div class="p-4 bg-blue-50 border-l-4 border-blue-400 text-gray-700">
+    <div class="p-4 bg-xinity-purple/10 border-l-4 border-xinity-purple text-gray-700">
       <strong>Tip:</strong> Auto is the recommended setting for most deployments. Only override it
       if you have a specific reason to prefer one driver over the other, for example, choosing
       Ollama to reduce idle energy consumption on a low-traffic deployment, or forcing vLLM for a
@@ -233,7 +233,7 @@
       You can set the preferred driver when creating or editing a deployment:
     </p>
     <ol class="list-decimal pl-6 space-y-3 text-gray-600">
-      <li>Navigate to the <a href="/modelhub" class="text-blue-600 hover:text-blue-800 underline">Model Hub</a>.</li>
+      <li>Navigate to the <a href="/modelhub" class="text-xinity-magenta hover:text-xinity-pink underline">Model Hub</a>.</li>
       <li>Click <strong>Deploy New Model</strong> or <strong>Edit</strong> on an existing deployment.</li>
       <li>Open the <strong>Expert Settings</strong> section.</li>
       <li>Select your preferred driver from the <strong>Preferred Driver</strong> dropdown.</li>
@@ -249,14 +249,14 @@
         href="/docs/quick-start"
         class="group block p-4 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
       >
-        <h3 class="font-semibold group-hover:text-blue-600 transition-colors">Quick Start Guide</h3>
+        <h3 class="font-semibold group-hover:text-xinity-purple transition-colors">Quick Start Guide</h3>
         <p class="text-sm text-gray-600">Deploy a model and make your first request.</p>
       </a>
       <a
         href="/docs/api-reference"
         class="group block p-4 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
       >
-        <h3 class="font-semibold group-hover:text-blue-600 transition-colors">API Reference</h3>
+        <h3 class="font-semibold group-hover:text-xinity-purple transition-colors">API Reference</h3>
         <p class="text-sm text-gray-600">Complete reference for all endpoints and parameters.</p>
       </a>
     </div>

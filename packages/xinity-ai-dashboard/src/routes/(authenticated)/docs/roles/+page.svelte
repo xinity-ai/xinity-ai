@@ -10,7 +10,7 @@
   <nav class="mb-6">
     <a
       href="/docs/"
-      class="text-blue-600 hover:text-blue-800 flex items-center gap-2"
+      class="text-xinity-magenta hover:text-xinity-pink flex items-center gap-2"
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -61,7 +61,7 @@
       To invite members or change roles, navigate to your organization's settings page.
     </p>
     <ol class="list-decimal pl-6 space-y-2 text-gray-600">
-      <li>Go to <a href="/organizations/" class="text-blue-600 hover:text-blue-800 underline">Organizations</a> and select your organization.</li>
+      <li>Go to <a href="/organizations/" class="text-xinity-magenta hover:text-xinity-pink underline">Organizations</a> and select your organization.</li>
       <li>In the <strong>Members</strong> section, click <strong>Invite member</strong> to add someone new.</li>
       <li>To change an existing member's role, click the role badge next to their name and select a new role.</li>
     </ol>

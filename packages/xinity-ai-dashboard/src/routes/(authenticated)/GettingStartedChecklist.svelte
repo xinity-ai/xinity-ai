@@ -117,7 +117,7 @@
           <PartyPopper class="w-5 h-5 text-green-600 shrink-0" />
           <h3 class="text-base font-semibold">All done!</h3>
         {:else}
-          <Rocket class="w-5 h-5 text-blue-600 shrink-0" />
+          <Rocket class="w-5 h-5 text-xinity-magenta shrink-0" />
           <h3 class="text-base font-semibold">Getting Started</h3>
         {/if}
         <span class="text-xs text-muted-foreground">{completedCount}/{totalSteps}</span>

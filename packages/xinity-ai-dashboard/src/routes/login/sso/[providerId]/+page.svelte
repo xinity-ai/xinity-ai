@@ -69,7 +69,7 @@
           type="button"
           onclick={handleSignIn}
           disabled={!hasProvider || isLoading}
-          class="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 py-2 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+          class="flex w-full items-center justify-center gap-2 rounded-lg bg-xinity-purple py-2 font-semibold text-white hover:bg-xinity-pink disabled:cursor-not-allowed disabled:opacity-60"
         >
           {#if isLoading}
             <svg
@@ -116,12 +116,12 @@
         </h2>
         <ul class="mt-3 space-y-3 text-sm text-gray-600">
           <li class="flex items-start gap-2">
-            <span class="mt-1 inline-block h-2 w-2 rounded-full bg-blue-600"></span>
+            <span class="mt-1 inline-block h-2 w-2 rounded-full bg-xinity-purple"></span>
             We'll request only the basic profile information you share with
             {providerLabel}.
           </li>
           <li class="flex items-start gap-2">
-            <span class="mt-1 inline-block h-2 w-2 rounded-full bg-blue-600"></span>
+            <span class="mt-1 inline-block h-2 w-2 rounded-full bg-xinity-purple"></span>
             You'll be redirected back here once authentication completes.
           </li>
         </ul>
@@ -129,7 +129,7 @@
 
       <div class="text-center text-xs text-gray-500">
         <p>By continuing you agree to Xinity's security policies.</p>
-        <a class="text-blue-600 hover:text-blue-700" href="/login">
+        <a class="text-xinity-magenta hover:text-xinity-pink" href="/login">
           Choose a different sign-in method
         </a>
       </div>

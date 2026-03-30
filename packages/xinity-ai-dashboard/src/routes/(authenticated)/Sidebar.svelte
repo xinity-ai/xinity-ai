@@ -20,8 +20,8 @@
   let isLoggingOut = $state(false);
 
   const linkClasses =
-    "relative flex flex-row items-center pr-6 text-gray-600 border-l-4 border-transparent h-11 compact:h-9 focus:outline-none hover:bg-gray-50 hover:text-gray-800 hover:border-indigo-500";
-  const activeLinkClasses = "!bg-gray-50 !text-gray-800 !border-indigo-500";
+    "relative flex flex-row items-center pr-6 text-gray-600 border-l-4 border-transparent h-11 compact:h-9 focus:outline-none hover:bg-xinity-purple/5 hover:text-gray-800 hover:border-xinity-purple";
+  const activeLinkClasses = "!bg-xinity-purple/5 !text-gray-800 !border-xinity-purple";
 
   const links = {
     home: "/",
@@ -49,6 +49,11 @@
 <nav
   class="fixed top-0 left-0 z-40 flex flex-col h-full bg-white border-r sm:w-64 w-14"
 >
+  <div class="flex items-center justify-center px-3 py-4 compact:py-2 border-b border-gray-200">
+    <a href="/" class="flex items-center">
+      <img src="/xinity-logo.png" alt="Xinity" class="h-8 sm:h-9 w-auto" />
+    </a>
+  </div>
   <div
     class="flex flex-col justify-between grow overflow-x-hidden overflow-y-auto"
   >
@@ -225,7 +230,7 @@
             aria-label="Documentation"
             class="{linkClasses} {activeLink === 'docs'
               ? activeLinkClasses
-              : 'text-indigo-500!'}"
+              : 'text-xinity-magenta!'}"
           >
             <span
               title="Documentation"
@@ -276,7 +281,7 @@
             href="https://xinity.ai"
             target="_blank"
             rel="noopener noreferrer"
-            class="text-xs text-gray-400 hover:text-indigo-500 hidden sm:inline"
+            class="text-xs text-gray-400 hover:text-xinity-magenta hidden sm:inline"
           >
             Powered by Xinity AI
           </a>

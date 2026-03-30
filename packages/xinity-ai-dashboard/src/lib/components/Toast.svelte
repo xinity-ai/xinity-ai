@@ -7,14 +7,14 @@
   const typeStyles = {
     success: "bg-green-50 border-green-500 text-green-800",
     error: "bg-red-50 border-red-500 text-red-800",
-    info: "bg-blue-50 border-blue-500 text-blue-800",
+    info: "bg-xinity-magenta/10 border-xinity-purple text-xinity-pink",
     warning: "bg-yellow-50 border-yellow-500 text-yellow-800",
   };
 
   const iconStyles = {
     success: "text-green-500",
     error: "text-red-500",
-    info: "text-blue-500",
+    info: "text-xinity-magenta",
     warning: "text-yellow-500",
   };
 </script>

@@ -95,6 +95,9 @@
 <!-- Container -->
 <div class="flex items-center justify-center min-h-screen px-4 bg-gray-100">
   <div class="w-full max-w-md p-6 space-y-6 bg-white shadow-lg rounded-2xl">
+    <div class="flex justify-center">
+      <img src="/xinity-logo.png" alt="Xinity" class="h-10 w-auto" />
+    </div>
     {#if signUpSuccess}
       <!-- Success screen -->
       <div class="space-y-4 text-center">
@@ -117,7 +120,7 @@
           class="w-1/2 py-2 font-semibold text-center border-b-2"
           class:text-gray-800={$params.tab !== "signup"}
           class:text-gray-500={$params.tab === "signup"}
-          class:border-blue-600={$params.tab !== "signup"}
+          class:border-xinity-purple={$params.tab !== "signup"}
           on:click={() => ($params.tab = "")}
         >
           Sign In
@@ -127,7 +130,7 @@
           class="w-1/2 py-2 font-semibold text-center border-b-2"
           class:text-gray-800={$params.tab === "signup"}
           class:text-gray-500={$params.tab !== "signup"}
-          class:border-blue-600={$params.tab === "signup"}
+          class:border-xinity-purple={$params.tab === "signup"}
           on:click={() => ($params.tab = "signup")}
         >
           Sign Up
@@ -154,7 +157,7 @@
             name="in-email"
             required
             bind:value={$params.email}
-            class="block w-full mt-1 p-2 border-gray-300 rounded-lg shadow-sm outline-none focus:ring-blue-500 focus:border-blue-500"
+            class="block w-full mt-1 p-2 border-gray-300 rounded-lg shadow-sm outline-none focus:ring-xinity-purple focus:border-xinity-purple"
           />
         </div>
         <div>
@@ -167,12 +170,12 @@
             name="in-pass"
             required
             bind:value={password}
-            class="block w-full mt-1 p-2 border-gray-300 rounded-lg shadow-sm outline-none focus:ring-blue-500 focus:border-blue-500"
+            class="block w-full mt-1 p-2 border-gray-300 rounded-lg shadow-sm outline-none focus:ring-xinity-purple focus:border-xinity-purple"
           />
         </div>
         <button
           type="submit"
-          class="flex items-center justify-center w-full py-2 font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60"
+          class="flex items-center justify-center w-full py-2 font-semibold text-white bg-xinity-purple rounded-lg hover:bg-xinity-pink disabled:opacity-60"
           disabled={loadingSignIn}
         >
           {#if loadingSignIn}
@@ -260,7 +263,7 @@
             name="name"
             required
             bind:value={$params.name}
-            class="block w-full mt-1 p-2 border-gray-300 rounded-lg shadow-sm outline-none focus:ring-blue-500 focus:border-blue-500"
+            class="block w-full mt-1 p-2 border-gray-300 rounded-lg shadow-sm outline-none focus:ring-xinity-purple focus:border-xinity-purple"
           />
         </div>
         <div>
@@ -274,7 +277,7 @@
             required
             autocomplete="email webauthn"
             bind:value={$params.email}
-            class="block w-full mt-1 p-2 border-gray-300 rounded-lg shadow-sm outline-none focus:ring-blue-500 focus:border-blue-500"
+            class="block w-full mt-1 p-2 border-gray-300 rounded-lg shadow-sm outline-none focus:ring-xinity-purple focus:border-xinity-purple"
           />
         </div>
         <div>
@@ -288,7 +291,7 @@
             required
             autocomplete="current-password webauthn"
             bind:value={password}
-            class="block w-full mt-1 p-2 border-gray-300 rounded-lg shadow-sm outline-none focus:ring-blue-500 focus:border-blue-500"
+            class="block w-full mt-1 p-2 border-gray-300 rounded-lg shadow-sm outline-none focus:ring-xinity-purple focus:border-xinity-purple"
           />
         </div>
         <button
@@ -346,7 +349,7 @@
       minlength="6"
       maxlength="6"
       bind:value={totpPass}
-      class="w-full mb-4 text-lg tracking-widest text-center border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+      class="w-full mb-4 text-lg tracking-widest text-center border-gray-300 rounded-lg focus:ring-xinity-purple focus:border-xinity-purple"
       placeholder="------"
     />
     <div class="flex justify-between">
@@ -355,7 +358,7 @@
         on:click={() => (showingTOTP = false)}>Cancel</button
       >
       <button
-        class="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+        class="px-4 py-2 text-sm text-white bg-xinity-purple rounded-lg hover:bg-xinity-pink"
         >Verify</button
       >
     </div>

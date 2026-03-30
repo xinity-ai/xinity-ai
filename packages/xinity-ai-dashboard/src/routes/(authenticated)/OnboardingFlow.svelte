@@ -131,8 +131,8 @@
       <!-- Onboarding Form -->
       <Card.Root>
         <Card.Header class="text-center">
-          <div class="mx-auto mb-3 flex items-center justify-center w-14 h-14 rounded-full bg-blue-100">
-            <Rocket class="w-7 h-7 text-blue-600" />
+          <div class="mx-auto mb-3 flex items-center justify-center w-14 h-14 rounded-full bg-xinity-purple/15">
+            <Rocket class="w-7 h-7 text-xinity-magenta" />
           </div>
           <Card.Title class="text-2xl">Welcome to Xinity AI</Card.Title>
           <Card.Description>

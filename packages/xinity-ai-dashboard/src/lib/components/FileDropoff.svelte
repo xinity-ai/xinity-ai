@@ -58,26 +58,26 @@
     on:dragover={(e) => {
       e.preventDefault();
       if (!disabled) {
-        fileDropArea.classList.add("border-blue-500", "bg-blue-50");
+        fileDropArea.classList.add("border-xinity-purple", "bg-xinity-purple/10");
       }
     }}
     on:dragleave={() => {
-      fileDropArea.classList.remove("border-blue-500", "bg-blue-50");
+      fileDropArea.classList.remove("border-xinity-purple", "bg-xinity-purple/10");
     }}
     on:drop={async (e) => {
       e.preventDefault();
-      fileDropArea.classList.remove("border-blue-500", "bg-blue-50");
+      fileDropArea.classList.remove("border-xinity-purple", "bg-xinity-purple/10");
 
       if (e.dataTransfer && !disabled) {
         // files = e.dataTransfer.files;
         dispatch("uploaded", await scanDataTransfer(e.dataTransfer));
       }
     }}
-    class:hover:border-blue-500={!disabled}
+    class:hover:border-xinity-purple={!disabled}
     class="flex flex-col items-center justify-center w-full max-w-md p-6 px-20 transition-colors bg-white border-2 border-dashed rounded-lg cursor-pointer border-grey-100 md:max-w-lg">
     <UploadIcon />
 
-    <p class="mt-2 mb-3 font-sans text-xl font-semibold text-blue-500 hover:text-blue-800">
+    <p class="mt-2 mb-3 font-sans text-xl font-semibold text-xinity-magenta hover:text-xinity-pink">
       <slot name="message">Drag & Drop files, or select them</slot>
     </p>
     <input

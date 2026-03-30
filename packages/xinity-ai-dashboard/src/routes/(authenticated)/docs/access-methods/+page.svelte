@@ -18,7 +18,7 @@
 
   <!-- Two APIs overview -->
   <div class="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2">
-    <div class="bg-white rounded-lg shadow-md p-5 border-t-4 border-blue-500">
+    <div class="bg-white rounded-lg shadow-md p-5 border-t-4 border-xinity-purple">
       <h2 class="mb-1 text-lg font-semibold">Inference Gateway</h2>
       <p class="text-sm text-gray-600">
         The API your applications talk to. Accepts chat completion and embedding requests,
@@ -26,7 +26,7 @@
       </p>
       <p class="mt-3 text-xs text-gray-400 font-medium uppercase tracking-wide">Used by: applications, clients, SDKs</p>
     </div>
-    <div class="bg-white rounded-lg shadow-md p-5 border-t-4 border-indigo-500">
+    <div class="bg-white rounded-lg shadow-md p-5 border-t-4 border-xinity-coral">
       <h2 class="mb-1 text-lg font-semibold">Dashboard Management</h2>
       <p class="text-sm text-gray-600">
         The API for administering the system. Manages deployments, organizations, API keys, recorded calls,
@@ -46,13 +46,13 @@
       the gateway URL instead with no other code changes.
     </p>
 
-    <div class="mb-4 bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-lg">
-      <p class="text-sm font-medium text-blue-800">Authentication</p>
-      <p class="mt-1 text-sm text-blue-700">
+    <div class="mb-4 bg-xinity-purple/10 border-l-4 border-xinity-purple p-4 rounded-r-lg">
+      <p class="text-sm font-medium text-xinity-pink">Authentication</p>
+      <p class="mt-1 text-sm text-xinity-pink">
         Gateway API keys are created in this dashboard under
-        <a href="/ai-api-keys/" class="font-semibold text-blue-800 hover:underline">AI API Keys</a>
+        <a href="/ai-api-keys/" class="font-semibold text-xinity-pink hover:underline">AI API Keys</a>
         and passed as a standard
-        <code class="bg-blue-100 px-1 rounded">Authorization: Bearer</code> token in your requests.
+        <code class="bg-xinity-purple/15 px-1 rounded">Authorization: Bearer</code> token in your requests.
         These are separate from dashboard API keys (found under Settings &rarr; API Keys), which are used
         for the management API.
       </p>
@@ -97,16 +97,16 @@
     <h3 class="mb-1 text-xl font-semibold">Management REST API</h3>
     <p class="mb-4 text-gray-600">
       Every dashboard operation is available as a REST endpoint. The full API is documented live at
-      <a href="/api/" class="text-blue-600 hover:underline"><code class="px-1 py-0.5 bg-gray-100 rounded text-sm">/api/</code></a>,
+      <a href="/api/" class="text-xinity-magenta hover:underline"><code class="px-1 py-0.5 bg-gray-100 rounded text-sm">/api/</code></a>,
       with an OpenAPI schema at
-      <a href="/api/openapi.json" class="text-blue-600 hover:underline"><code class="px-1 py-0.5 bg-gray-100 rounded text-sm">/api/openapi.json</code></a>
+      <a href="/api/openapi.json" class="text-xinity-magenta hover:underline"><code class="px-1 py-0.5 bg-gray-100 rounded text-sm">/api/openapi.json</code></a>
       for code generation or importing into tools like Postman.
     </p>
 
-    <div class="mb-4 bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-lg">
-      <p class="text-sm font-medium text-blue-800">Authentication</p>
-      <p class="mt-1 text-sm text-blue-700">
-        Pass your dashboard API key in the <code class="bg-blue-100 px-1 rounded">x-api-key</code> header on every request.
+    <div class="mb-4 bg-xinity-purple/10 border-l-4 border-xinity-purple p-4 rounded-r-lg">
+      <p class="text-sm font-medium text-xinity-pink">Authentication</p>
+      <p class="mt-1 text-sm text-xinity-pink">
+        Pass your dashboard API key in the <code class="bg-xinity-purple/15 px-1 rounded">x-api-key</code> header on every request.
       </p>
     </div>
 
@@ -119,17 +119,17 @@
   <div class="mb-6 bg-white rounded-lg shadow-md p-6">
     <h3 class="mb-1 text-xl font-semibold">MCP Server</h3>
     <p class="mb-4 text-gray-600">
-      The dashboard exposes a <a href="https://modelcontextprotocol.io" target="_blank" rel="noopener" class="text-blue-600 hover:underline">Model Context Protocol</a>
+      The dashboard exposes a <a href="https://modelcontextprotocol.io" target="_blank" rel="noopener" class="text-xinity-magenta hover:underline">Model Context Protocol</a>
       endpoint at <code class="px-1 py-0.5 bg-gray-100 rounded text-sm">/mcp</code>. AI assistants such as Claude Desktop and Cursor
       can connect to it and manage the system using natural language. All non-restricted management operations are available
       as MCP tools and stay in sync with the management API automatically.
     </p>
 
-    <div class="mb-4 bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-lg">
-      <p class="text-sm font-medium text-blue-800">Authentication</p>
-      <p class="mt-1 text-sm text-blue-700">
+    <div class="mb-4 bg-xinity-purple/10 border-l-4 border-xinity-purple p-4 rounded-r-lg">
+      <p class="text-sm font-medium text-xinity-pink">Authentication</p>
+      <p class="mt-1 text-sm text-xinity-pink">
         Pass your dashboard API key as a bearer token or via the
-        <code class="bg-blue-100 px-1 rounded">x-api-key</code> header. Both are equivalent.
+        <code class="bg-xinity-purple/15 px-1 rounded">x-api-key</code> header. Both are equivalent.
       </p>
     </div>
 
@@ -171,13 +171,13 @@
     </p>
     <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 text-sm overflow-x-auto mb-4"><code>&#123; "headers": &#123; "x-api-key": "sk_..." &#125; &#125;</code></pre>
 
-    <div class="mb-4 bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-lg">
-      <p class="text-sm font-medium text-blue-800">Restricted operations</p>
-      <p class="mt-1 text-sm text-blue-700">
+    <div class="mb-4 bg-xinity-purple/10 border-l-4 border-xinity-purple p-4 rounded-r-lg">
+      <p class="text-sm font-medium text-xinity-pink">Restricted operations</p>
+      <p class="mt-1 text-sm text-xinity-pink">
         Certain management operations are intentionally unavailable via MCP: credential management (passwords, passkeys,
         API keys), SSO provider configuration, organization deletion, onboarding flows, and all instance-admin operations.
         These require explicit human action through the dashboard UI or REST API.
-        The MCP endpoint can also be disabled entirely by the operator via <code class="bg-blue-100 px-1 rounded">MCP_ENABLED=false</code>.
+        The MCP endpoint can also be disabled entirely by the operator via <code class="bg-xinity-purple/15 px-1 rounded">MCP_ENABLED=false</code>.
       </p>
     </div>
 
@@ -212,22 +212,22 @@ xinity update            # update the CLI itself</code></pre>
   </div>
 
   <!-- Related links -->
-  <div class="bg-linear-to-r from-blue-50 to-indigo-50 rounded-lg p-6">
+  <div class="bg-linear-to-r from-xinity-purple/10 to-xinity-coral/10 rounded-lg p-6">
     <h3 class="mb-3 text-lg font-semibold text-gray-800">Related</h3>
     <div class="grid grid-cols-1 gap-2 md:grid-cols-3">
-      <a href="/docs/api-reference/" class="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 hover:underline">
+      <a href="/docs/api-reference/" class="flex items-center gap-2 text-sm text-xinity-magenta hover:text-xinity-pink hover:underline">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
         API Reference
       </a>
-      <a href="/settings/auth/" class="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 hover:underline">
+      <a href="/settings/auth/" class="flex items-center gap-2 text-sm text-xinity-magenta hover:text-xinity-pink hover:underline">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
         </svg>
         Manage API Keys
       </a>
-      <a href="/docs/quick-start/" class="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 hover:underline">
+      <a href="/docs/quick-start/" class="flex items-center gap-2 text-sm text-xinity-magenta hover:text-xinity-pink hover:underline">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
         </svg>

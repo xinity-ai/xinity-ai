@@ -95,11 +95,11 @@
       {/if}
 
       <!-- Suggestions -->
-      <div class="p-4 mb-6 bg-blue-50 border border-blue-200 rounded-md">
-        <h3 class="mb-2 text-sm font-semibold text-blue-900">
+      <div class="p-4 mb-6 bg-xinity-magenta/10 border border-xinity-magenta/20 rounded-md">
+        <h3 class="mb-2 text-sm font-semibold text-xinity-magenta">
           What you can do:
         </h3>
-        <div class="text-sm text-blue-800 whitespace-pre-line">
+        <div class="text-sm text-xinity-pink whitespace-pre-line">
           {errorInfo.suggestion}
         </div>
       </div>
@@ -108,13 +108,13 @@
       <div class="flex gap-3">
         <a
           href="/organizations"
-          class="flex-1 px-4 py-2 text-sm font-medium text-center text-white bg-indigo-600 rounded-md hover:bg-indigo-700"
+          class="flex-1 px-4 py-2 text-sm font-medium text-center text-white bg-xinity-purple rounded-md hover:bg-xinity-pink"
         >
           Go to Organizations
         </a>
         <a
           href="/settings"
-          class="flex-1 px-4 py-2 text-sm font-medium text-center text-indigo-600 border border-indigo-600 rounded-md hover:bg-indigo-50"
+          class="flex-1 px-4 py-2 text-sm font-medium text-center text-xinity-magenta border border-xinity-purple rounded-md hover:bg-xinity-magenta/5"
         >
           Account Settings
         </a>
@@ -142,7 +142,7 @@
     <div class="p-8 text-center bg-white rounded-lg shadow">
       <div class="flex justify-center mb-4">
         <div
-          class="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"
+          class="w-12 h-12 border-4 border-xinity-purple border-t-transparent rounded-full animate-spin"
         ></div>
       </div>
       <p class="text-gray-600">Processing invitation...</p>

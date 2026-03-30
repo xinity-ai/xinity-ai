@@ -159,7 +159,7 @@
     <div class="bg-white rounded-lg shadow p-5 compact:p-3">
       <p class="text-sm text-gray-500 mb-1">Training Datapoints</p>
       <p class="text-2xl font-bold">{trainingData.datapoints}</p>
-      <p class="text-xs text-blue-600 mt-2">
+      <p class="text-xs text-xinity-magenta mt-2">
         {trainingData.edited}% edited, {trainingData.rated}% rated
       </p>
     </div>
@@ -181,46 +181,46 @@
                 {
                   label: "Total Calls",
                   data: usageTrend.map(d => d.totalCalls),
-                  backgroundColor: "rgba(59, 130, 246, 0.2)",
-                  borderColor: "rgba(59, 130, 246, 1)",
+                  backgroundColor: "rgba(160, 32, 240, 0.2)",
+                  borderColor: "rgba(160, 32, 240, 1)",
                   borderWidth: 2,
                   tension: 0.3,
                   pointRadius: 3,
-                  pointBackgroundColor: "rgba(59, 130, 246, 1)",
+                  pointBackgroundColor: "rgba(160, 32, 240, 1)",
                   yAxisID: "y",
                 },
                 {
                   label: "Logged Calls",
                   data: usageTrend.map(d => d.loggedCalls),
-                  backgroundColor: "rgba(59, 130, 246, 0.05)",
-                  borderColor: "rgba(59, 130, 246, 0.4)",
+                  backgroundColor: "rgba(160, 32, 240, 0.05)",
+                  borderColor: "rgba(160, 32, 240, 0.4)",
                   borderWidth: 2,
                   borderDash: [5, 5],
                   tension: 0.3,
                   pointRadius: 2,
-                  pointBackgroundColor: "rgba(59, 130, 246, 0.4)",
+                  pointBackgroundColor: "rgba(160, 32, 240, 0.4)",
                   yAxisID: "y",
                 },
                 {
                   label: "Input Tokens",
                   data: usageTrend.map(d => d.inputTokens),
-                  backgroundColor: "rgba(16, 185, 129, 0.1)",
-                  borderColor: "rgba(16, 185, 129, 0.8)",
+                  backgroundColor: "rgba(214, 51, 132, 0.1)",
+                  borderColor: "rgba(214, 51, 132, 0.8)",
                   borderWidth: 2,
                   tension: 0.3,
                   pointRadius: 2,
-                  pointBackgroundColor: "rgba(16, 185, 129, 0.8)",
+                  pointBackgroundColor: "rgba(214, 51, 132, 0.8)",
                   yAxisID: "y1",
                 },
                 {
                   label: "Output Tokens",
                   data: usageTrend.map(d => d.outputTokens),
-                  backgroundColor: "rgba(168, 85, 247, 0.1)",
-                  borderColor: "rgba(168, 85, 247, 0.8)",
+                  backgroundColor: "rgba(232, 96, 74, 0.1)",
+                  borderColor: "rgba(232, 96, 74, 0.8)",
                   borderWidth: 2,
                   tension: 0.3,
                   pointRadius: 2,
-                  pointBackgroundColor: "rgba(168, 85, 247, 0.8)",
+                  pointBackgroundColor: "rgba(232, 96, 74, 0.8)",
                   yAxisID: "y1",
                 },
               ],
@@ -293,13 +293,13 @@
                     responseRatings.unrated,
                   ],
                   backgroundColor: [
-                    "rgba(16, 185, 129, 0.6)",
-                    "rgba(239, 68, 68, 0.6)",
+                    "rgba(160, 32, 240, 0.6)",
+                    "rgba(232, 96, 74, 0.6)",
                     "rgba(209, 213, 219, 0.6)",
                   ],
                   borderColor: [
-                    "rgba(16, 185, 129, 1)",
-                    "rgba(239, 68, 68, 1)",
+                    "rgba(160, 32, 240, 1)",
+                    "rgba(232, 96, 74, 1)",
                     "rgba(209, 213, 219, 1)",
                   ],
                   borderWidth: 1,
@@ -335,8 +335,8 @@
                 {
                   label: "Calls (30 days)",
                   data: topApplications.map((app) => app.totalCalls),
-                  backgroundColor: "rgba(99, 102, 241, 0.6)",
-                  borderColor: "rgba(99, 102, 241, 1)",
+                  backgroundColor: "rgba(160, 32, 240, 0.6)",
+                  borderColor: "rgba(160, 32, 240, 1)",
                   borderWidth: 1,
                   borderRadius: 4,
                 },
@@ -368,7 +368,7 @@
     <div class="bg-white rounded-lg shadow p-5 compact:p-3 lg:col-span-2">
       <div class="flex justify-between items-center mb-4">
         <h2 class="text-lg font-medium">Recent Activities</h2>
-        <a href="/data" class="text-sm text-blue-600 hover:text-blue-800"
+        <a href="/data" class="text-sm text-xinity-magenta hover:text-xinity-pink"
           >View All</a
         >
       </div>
@@ -454,7 +454,7 @@
     <div class="bg-white rounded-lg shadow p-5 compact:p-3">
       <div class="flex justify-between items-center mb-4">
         <h2 class="text-lg font-medium">Deployed Models</h2>
-        <a href="/modelhub" class="text-sm text-blue-600 hover:text-blue-800"
+        <a href="/modelhub" class="text-sm text-xinity-magenta hover:text-xinity-pink"
           >View All</a
         >
       </div>
@@ -474,7 +474,7 @@
             </div>
             <a
               href="/modelhub"
-              class="text-sm text-blue-600 hover:text-blue-800">Details</a
+              class="text-sm text-xinity-magenta hover:text-xinity-pink">Details</a
             >
           </div>
         {/each}
@@ -482,7 +482,7 @@
       <div class="mt-4 text-center">
         <a
           href="/training"
-          class="inline-flex items-center px-4 py-2 border border-blue-600 text-sm font-medium rounded-md text-blue-600 bg-white hover:bg-blue-50"
+          class="inline-flex items-center px-4 py-2 border border-xinity-purple text-sm font-medium rounded-md text-xinity-magenta bg-white hover:bg-xinity-magenta/10"
         >
           Train New Model
         </a>
