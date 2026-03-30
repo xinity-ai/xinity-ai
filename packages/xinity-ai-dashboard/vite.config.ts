@@ -58,6 +58,21 @@ export default defineConfig({
 		sveltekit(),
 		devtoolsJson()
 	],
+	server: {
+		warmup: {
+			ssrFiles: [
+				'src/hooks.server.ts',
+				'src/lib/server/**/*.ts',
+				'src/routes/**/+layout.server.ts',
+				'src/routes/**/+page.server.ts',
+			],
+			clientFiles: [
+				'src/routes/**/+layout.svelte',
+				'src/routes/(authenticated)/+page.svelte',
+				'src/lib/components/ui/**/*.svelte',
+			],
+		},
+	},
 	ssr: {
 		external: Object.keys(dependencies),
 		noExternal: Object.keys(devDependencies),
