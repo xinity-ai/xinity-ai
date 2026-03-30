@@ -8,7 +8,7 @@ const updatedAt = timestamp("updated_at")
   .notNull()
   .$onUpdate(() => new Date());
 
-export const invitationStatusEnum = pgEnum("invitation_status", ["pending", "accepted", "rejected", "cancelled"]);
+export const invitationStatusEnum = pgEnum("invitation_status", ["pending", "accepted", "rejected", "canceled"]);
 
 /**
  * Organization Schema for better-auth organizations plugin.

@@ -15,6 +15,13 @@
       "when": 1774371006636,
       "tag": "0001_loud_stellaris",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1774866320712,
+      "tag": "0002_bitter_clea",
+      "breakpoints": true
     }
   ]
 }
