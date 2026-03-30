@@ -14,7 +14,7 @@ import { getLicenseSummary, hasFeature } from "$lib/server/license";
 
 const log = rootLogger.child({name: "+layout.root"})
 
-export const load: LayoutServerLoad = async ({ request, url }) => {
+export const load: LayoutServerLoad = async ({ request, url, cookies }) => {
   const session = await auth.api.getSession(request);
   if (!session) {
     rootLogger.info({ name: "auth", }, "redirecting")
@@ -31,6 +31,7 @@ export const load: LayoutServerLoad = async ({ request, url }) => {
 
   // Auto-activate the first organization if user has orgs but none is active
   if (!session.session.activeOrganizationId) {
+    let autoActivated = false;
     try {
       const organizations = await auth.api.listOrganizations({
         headers: request.headers,
@@ -40,11 +41,17 @@ export const load: LayoutServerLoad = async ({ request, url }) => {
           headers: request.headers,
           body: { organizationId: organizations[0].id },
         });
-        session.session.activeOrganizationId = organizations[0].id;
         log.info({ orgId: organizations[0].id }, "Auto-activated organization for user");
+        autoActivated = true;
       }
     } catch (err) {
       log.warn({ err }, "Failed to auto-activate organization");
+    }
+    if (autoActivated) {
+      // Clear the stale session cookie cache and redirect so the next
+      // request reads the updated session from the DB.
+      cookies.delete('better-auth.session_data', { path: '/' });
+      redirect(302, url.pathname + url.search);
     }
   }
 
