@@ -275,7 +275,7 @@
             {#if requiresDisabled}
               <input
                 id="canary-kv-cache-size{idSuffix}"
-                type="range" min={minCanaryKvCache} max={maxCanaryKvCache || minCanaryKvCache + 1} step="0.5"
+                type="range" min={minCanaryKvCache} max={maxCanaryKvCache || minCanaryKvCache + 1} step="1"
                 value={earlyKvCacheSize ?? minCanaryKvCache}
                 disabled
                 class="w-full h-2 bg-muted rounded-lg appearance-none cursor-not-allowed opacity-50"
@@ -284,7 +284,7 @@
             {:else}
               <input
                 id="canary-kv-cache-size{idSuffix}"
-                type="range" min={minCanaryKvCache} max={maxCanaryKvCache || minCanaryKvCache + 1} step="0.5"
+                type="range" min={minCanaryKvCache} max={maxCanaryKvCache || minCanaryKvCache + 1} step="1"
                 bind:value={earlyKvCacheSize}
                 class="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
               />
@@ -373,7 +373,7 @@
           {#if requiresDisabled}
             <input
               id="kv-cache-size{idSuffix}"
-              type="range" min={minKvCache} max={maxKvCache || minKvCache + 1} step="0.5"
+              type="range" min={minKvCache} max={maxKvCache || minKvCache + 1} step="1"
               value={kvCacheSize ?? minKvCache}
               disabled
               class="w-full h-2 bg-muted rounded-lg appearance-none cursor-not-allowed opacity-50"
@@ -382,7 +382,7 @@
           {:else}
             <input
               id="kv-cache-size{idSuffix}"
-              type="range" min={minKvCache} max={maxKvCache || minKvCache + 1} step="0.5"
+              type="range" min={minKvCache} max={maxKvCache || minKvCache + 1} step="1"
               bind:value={kvCacheSize}
               class="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
             />
