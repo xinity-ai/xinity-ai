@@ -21,7 +21,6 @@
 
 ---
 
-<!-- TODO before launch: replace with actual screenshot -->
 <p align="center"><img src="docs/assets/dashboard-screenshot.png" alt="Xinity Dashboard" width="720" /></p>
 
 > **Deployed in production** by regulated European enterprises: media companies, manufacturers, and public institutions running AI on their own infrastructure with zero data egress.
