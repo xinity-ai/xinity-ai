@@ -1,11 +1,10 @@
 <script lang="ts">
   import type { LicenseSummary } from "$lib/server/license";
 
-  export let license: LicenseSummary;
-  export let totalVramGb: number = 0;
+  let { license, totalVramGb = 0 }: { license: LicenseSummary; totalVramGb?: number } = $props();
 
-  let dismissed = false;
-  let vramDismissed = false;
+  let dismissed = $state(false);
+  let vramDismissed = $state(false);
 </script>
 
 {#if license.originMismatch}
@@ -48,7 +47,7 @@
       <button
         class="ml-1 cursor-pointer rounded-full border border-amber-300 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
         type="button"
-        on:click={() => { dismissed = true; }}
+        onclick={() => { dismissed = true; }}
       >
         Dismiss
       </button>
@@ -70,7 +69,7 @@
       <button
         class="ml-1 shrink-0 cursor-pointer rounded-full border border-amber-300 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
         type="button"
-        on:click={() => { vramDismissed = true; }}
+        onclick={() => { vramDismissed = true; }}
       >
         Dismiss
       </button>
