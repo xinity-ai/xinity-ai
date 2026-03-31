@@ -378,15 +378,13 @@ export function syncVllmInstallations$(
                         getHardwareProfile(),
                       ]).then(([trustRemoteCode, hasToolsTag, extraArgs, modelInfo, profile]) => {
                         let gpuMemoryUtilization: number | undefined;
-                        const totalVramMb = profile.gpus.reduce((sum, gpu) => sum + gpu.vramMb, 0);
-                        if (totalVramMb > 0) {
-                          const totalVramGb = totalVramMb / 1024;
+                        if (profile.gpuCount > 0 && profile.detectedCapacityGb > 0) {
                           gpuMemoryUtilization = Math.min(
-                            (installation.estCapacity * 1.1) / totalVramGb,
+                            (installation.estCapacity * 1.1) / profile.detectedCapacityGb,
                             0.95,
                           );
                           log.info(
-                            { model: installation.model, gpuMemoryUtilization: gpuMemoryUtilization.toFixed(3), estCapacityGb: installation.estCapacity, totalVramGb: totalVramGb.toFixed(1) },
+                            { model: installation.model, gpuMemoryUtilization: gpuMemoryUtilization.toFixed(3), estCapacityGb: installation.estCapacity, totalCapacityGb: profile.detectedCapacityGb },
                             "Calculated GPU memory utilization",
                           );
                         }
