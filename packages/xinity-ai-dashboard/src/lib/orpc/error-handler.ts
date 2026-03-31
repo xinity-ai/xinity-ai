@@ -22,7 +22,6 @@ const errorMessages: Record<string, string> = {
   NOT_FOUND: "The requested resource was not found.",
   CONFLICT: "This action conflicts with existing data.",
   BAD_REQUEST: "Invalid request. Please check your input.",
-  LICENSE_LIMIT: "This action exceeds your license's VRAM limit. Upgrade at xinity.ai/xinity-pricing.",
 };
 
 /**

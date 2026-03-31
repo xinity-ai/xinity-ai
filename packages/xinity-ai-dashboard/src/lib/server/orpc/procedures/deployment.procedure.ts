@@ -11,24 +11,11 @@ import { aggregatePhase, type PhaseInfo } from "$lib/server/lib/deployment-phase
 import { notifyOrgMembers } from "$lib/server/notifications/notification.service";
 import { NotificationType } from "$lib/server/notifications/events";
 import { serverEnv } from "$lib/server/serverenv";
-import { maxVramGb } from "$lib/server/license";
-
 const log = rootLogger.child({ name: "deployment.orpc" });
 
 const tags = ["Deployment"];
 const SuccessDto = z.object({ success: z.literal(true) });
 const successObject = { success: true } as const;
-
-/** Checks that the total VRAM across active daemon nodes does not exceed the license limit. */
-async function checkVramLimit(): Promise<{ allowed: boolean; currentGb: number; limitGb: number }> {
-  const limitGb = maxVramGb();
-  const [result] = await getDB()
-    .select({ total: sql<number>`coalesce(sum(${aiNodeT.estCapacity}), 0)` })
-    .from(aiNodeT)
-    .where(sql`${aiNodeT.available} AND ${aiNodeT.deletedAt} IS NULL`);
-  const currentGb = result?.total ?? 0;
-  return { allowed: currentGb <= limitGb, currentGb, limitGb };
-}
 
 /** Validates that primary and canary models share the same type. */
 async function validateCanaryModelTypes(modelSpecifier: string, earlyModelSpecifier: string | null | undefined) {
@@ -392,16 +379,8 @@ export const createDeployment = rootOs
   })
   .input(DeploymentDto.omit({ ...commonInputFilter, id: true }))
   .output(DeploymentDto)
-  .errors({ CONFLICT: {}, BAD_REQUEST: {}, LICENSE_LIMIT: {} })
+  .errors({ CONFLICT: {}, BAD_REQUEST: {} })
   .handler(async ({ context, input, errors }) => {
-    // License gate: check VRAM limit
-    const vramCheck = await checkVramLimit();
-    if (!vramCheck.allowed) {
-      throw errors.LICENSE_LIMIT({
-        message: `Your license allows up to ${vramCheck.limitGb} GB of VRAM (currently ${vramCheck.currentGb} GB active). Upgrade at xinity.ai/xinity-pricing.`,
-      });
-    }
-
     try {
       await validateCanaryModelTypes(input.modelSpecifier, input.earlyModelSpecifier);
     } catch (err: any) {
