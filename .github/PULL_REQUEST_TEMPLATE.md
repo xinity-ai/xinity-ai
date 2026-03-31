@@ -6,12 +6,8 @@ Closes #
 
 ## Type of change
 
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Refactor / internal improvement
-- [ ] Documentation
-- [ ] CI / build / tooling
-- [ ] Breaking change
+<!-- Replace with one of: Bug fix | New feature | Refactor | Documentation | CI / build / tooling | Breaking change -->
+
 
 ## Testing
 
