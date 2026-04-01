@@ -53,6 +53,38 @@ Docs and component list: https://shadcn-svelte.com/
 - `src/params`: custom route param matchers
 - `static`: static assets served as-is
 
+## Testing
+
+```bash
+bun run test            # all dashboard tests
+bun run test:api        # API tests only
+bun run test:headed     # browser tests with visible browser
+bun run test:setup      # run test setup (user/org creation) standalone
+```
+
+The dashboard tests require a running application and its dependencies. Before running tests locally:
+
+1. Start local dependencies from the repo root:
+   ```bash
+   docker compose up -d
+   cd packages/common-db && bun run migrate
+   ```
+
+2. Start the infoserver:
+   ```bash
+   cd packages/xinity-infoserver && bun run dev
+   ```
+
+3. Build and run the dashboard:
+   ```bash
+   cd packages/xinity-ai-dashboard
+   cp example.env .env    # if not already configured
+   bun run build
+   bun run preview
+   ```
+
+The tests expect the dashboard at `http://localhost:5173`. On first run, the test setup automatically creates test users and organizations via the API.
+
 ## License
 
 This package is licensed under the **Elastic License 2.0 (ELv2)**, which differs from the Apache 2.0 license used by the rest of the monorepo. See the [LICENSE](./LICENSE) file in this directory for the full terms.
