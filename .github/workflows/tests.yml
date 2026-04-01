@@ -98,7 +98,7 @@ jobs:
           path: results.xml
 
   dashboard-e2e:
-    name: Dashboard E2E
+    name: Dashboard Tests
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -191,12 +191,12 @@ jobs:
           exit 1
 
       - name: Run E2E tests
-        run: bun run test:e2e -- --reporter=default --reporter=junit --reporter-outfile=results.xml
+        run: bun run test -- --reporter=default --reporter=junit --reporter-outfile=results.xml
         working-directory: packages/xinity-ai-dashboard
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-dashboard-e2e
+          name: test-results-dashboard
           path: packages/xinity-ai-dashboard/results.xml
