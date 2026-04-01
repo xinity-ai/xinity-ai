@@ -169,7 +169,9 @@ export const auth = betterAuth({
     after: sendWelcomeNotification,
   },
   trustedOrigins: serverEnv.NODE_ENV === "development" ? ["*"] : [
+    serverEnv.ORIGIN,
     "*.google.com",
+    ...(serverEnv.TRUSTED_ORIGINS?.split(",").map(s => s.trim()).filter(Boolean) ?? []),
   ],
 
   plugins: [
