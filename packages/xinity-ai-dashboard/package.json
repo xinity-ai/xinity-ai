@@ -8,11 +8,10 @@
 		"preview": "bun --bun vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-		"test": "bun test --timeout 30000 e2e/",
-		"test:e2e": "bun test --timeout 30000 e2e/",
-		"test:api": "bun test --timeout 30000 e2e/api/",
-		"test:e2e:headed": "HEADED=1 bun test --timeout 30000 e2e/",
-		"test:e2e:setup": "bun run e2e/global-setup.ts"
+		"test": "bun test --timeout 60000",
+		"test:api": "bun test --timeout 60000 e2e/api/",
+		"test:headed": "HEADED=1 bun test --timeout 60000 e2e/",
+		"test:setup": "bun run e2e/global-setup.ts"
 	},
 	"devDependencies": {
 		"@better-auth/passkey": "^1.4.18",

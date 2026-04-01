@@ -7,7 +7,7 @@ describe("API key CRUD", () => {
     const { page, context } = await ownerPage();
     try {
       await page.goto("/ai-api-keys/");
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
 
       await expectVisible(page.getByRole("heading", { name: "API Integration" }));
       await expectVisible(page.getByText("API Keys", { exact: true }));
@@ -20,7 +20,7 @@ describe("API key CRUD", () => {
     const { page, context } = await ownerPage();
     try {
       await page.goto("/ai-api-keys/");
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
 
       await page.getByRole("button", { name: /Generate New Key/ }).click();
       await expectVisible(page.locator("#keyName"));
@@ -33,7 +33,7 @@ describe("API key CRUD", () => {
     const { page, context } = await ownerPage();
     try {
       await page.goto("/ai-api-keys/");
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
 
       await page.getByRole("button", { name: /Generate New Key/ }).click();
       await expectVisible(page.locator("#keyName"));
@@ -69,7 +69,7 @@ describe("API key CRUD", () => {
     const { page, context } = await ownerPage();
     try {
       await page.goto("/ai-api-keys/");
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
 
       const deactivateBtn = page.getByRole("button", { name: "Deactivate" }).first();
       if (await deactivateBtn.isVisible({ timeout: 5_000 }).catch(() => false)) {
@@ -91,7 +91,7 @@ describe("API key CRUD", () => {
     const { page, context } = await ownerPage();
     try {
       await page.goto("/ai-api-keys/");
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
 
       const deleteBtn = page.getByRole("button", { name: "Delete" }).first();
       if (await deleteBtn.isVisible({ timeout: 5_000 }).catch(() => false)) {

@@ -386,7 +386,10 @@ bun run migrate               # apply migrations
 bun run migrate:gen           # regenerate migrations
 bun run inspect               # inspect schema
 
-# System tests (requires running dependencies)
+# Run all tests across all packages
+bun run test
+
+# System tests only (requires running dependencies)
 bun run test:system
 
 # Build Docker images
@@ -404,6 +407,23 @@ docker compose -f docker/build.compose.yaml build xinity-infoserver
 | `mailhog` | 1025 / 8025 | Local SMTP + UI |
 | `searxng` | 6148 | Web search |
 | `seaweedfs` | 8333 | S3-compatible storage |
+
+### Testing
+
+Tests use [Bun's built-in test runner](https://bun.sh/docs/cli/test). Most packages define a `test` script in their `package.json`:
+
+```bash
+bun run test:system       # system integration tests (requires DB + Redis)
+```
+
+Per-package tests can be run from within the package directory:
+
+```bash
+cd packages/xinity-ai-gateway && bun run test
+cd packages/xinity-cli && bun run test
+```
+
+Dashboard tests have additional prerequisites — see the [dashboard README](packages/xinity-ai-dashboard/README.md#testing) for details.
 
 </details>
 
