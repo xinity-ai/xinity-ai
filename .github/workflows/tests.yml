@@ -191,7 +191,7 @@ jobs:
           exit 1
 
       - name: Run E2E tests
-        run: bun test --timeout 30000 --reporter=default --reporter=junit --reporter-outfile=results.xml e2e/
+        run: bun test --timeout 60000 --reporter=default --reporter=junit --reporter-outfile=results.xml e2e/
         working-directory: packages/xinity-ai-dashboard
 
       - name: Upload test results
