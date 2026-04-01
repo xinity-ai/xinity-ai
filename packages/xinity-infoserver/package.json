@@ -7,7 +7,7 @@
     "refresh-schema": "bun run definitions/model-definition.ts > models.schema.json",
     "dev": "bun run server.ts | pino-pretty",
     "build:compile": "bun build --compile --minify --target=bun ./server.ts --outfile xinity-infoserver",
-    "test": "bun test src/"
+    "test": "bun test ."
   },
   "devDependencies": {
     "@types/bun": "^1.3.6",

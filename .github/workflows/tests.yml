@@ -25,19 +25,19 @@ jobs:
       matrix:
         suite:
           - name: Gateway
-            cmd: bun test --reporter=default --reporter=junit --reporter-outfile=results.xml src/
+            cmd: bun run test -- --reporter=default --reporter=junit --reporter-outfile=results.xml
             cwd: packages/xinity-ai-gateway
           - name: Daemon
-            cmd: bun test --reporter=default --reporter=junit --reporter-outfile=results.xml src/
+            cmd: bun run test -- --reporter=default --reporter=junit --reporter-outfile=results.xml
             cwd: packages/xinity-ai-daemon
           - name: Infoserver
-            cmd: bun test --reporter=default --reporter=junit --reporter-outfile=results.xml .
+            cmd: bun run test -- --reporter=default --reporter=junit --reporter-outfile=results.xml
             cwd: packages/xinity-infoserver
           - name: Common DB
             cmd: bun test --reporter=default --reporter=junit --reporter-outfile=results.xml src/
             cwd: packages/common-db
           - name: CLI
-            cmd: bun test --timeout 30000 --reporter=default --reporter=junit --reporter-outfile=results.xml
+            cmd: bun run test -- --reporter=default --reporter=junit --reporter-outfile=results.xml
             cwd: packages/xinity-cli
     steps:
       - uses: actions/checkout@v4
@@ -89,7 +89,7 @@ jobs:
           bun-version: "1.3"
       - run: bun install --frozen-lockfile
       - name: Run system tests
-        run: bun test --timeout 60000 --reporter=default --reporter=junit --reporter-outfile=results.xml tests/system/
+        run: bun run test:system -- --reporter=default --reporter=junit --reporter-outfile=results.xml
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -191,7 +191,7 @@ jobs:
           exit 1
 
       - name: Run E2E tests
-        run: bun test --timeout 60000 --reporter=default --reporter=junit --reporter-outfile=results.xml e2e/
+        run: bun run test:e2e -- --reporter=default --reporter=junit --reporter-outfile=results.xml
         working-directory: packages/xinity-ai-dashboard
 
       - name: Upload test results
