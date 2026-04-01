@@ -27,4 +27,5 @@ export const dashboardEnvSchema = z.object({
   S3_REGION: z.string().default("us-east-1").describe("S3 region").meta(expert()),
   MCP_ENABLED: z.stringbool().default(true).describe("Enable the /mcp Model Context Protocol endpoint"),
   LICENSE_KEY: z.string().optional().describe("License key for unlocking paid features (Ed25519-signed token)").meta(secret()),
+  TRUSTED_ORIGINS: z.string().optional().describe("Comma-separated additional trusted origins for CSRF validation behind reverse proxies").meta(expert()),
 });
