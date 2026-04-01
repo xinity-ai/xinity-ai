@@ -30,7 +30,7 @@ export const load: LayoutServerLoad = async ({ request, url, cookies }) => {
   }
 
   // Auto-activate the first organization if user has orgs but none is active
-  if (!session.session.activeOrganizationId) {
+  if (!session.session.activeOrganizationId && !url.searchParams.has('_orgActivated')) {
     let autoActivated = false;
     try {
       const organizations = await auth.api.listOrganizations({
@@ -48,10 +48,24 @@ export const load: LayoutServerLoad = async ({ request, url, cookies }) => {
       log.warn({ err }, "Failed to auto-activate organization");
     }
     if (autoActivated) {
-      // Clear the stale session cookie cache and redirect so the next
-      // request reads the updated session from the DB.
-      cookies.delete('better-auth.session_data', { path: '/' });
-      redirect(302, url.pathname + url.search);
+      // Clear the stale session cookie cache so the next request does a DB lookup.
+      // Better Auth prefixes cookie names with __Secure- when baseURL is HTTPS.
+      const prefix = serverEnv.ORIGIN.startsWith("https://") ? "__Secure-" : "";
+      const cacheCookieName = `${prefix}better-auth.session_data`;
+      cookies.delete(cacheCookieName, { path: '/' });
+      // Also delete any chunked variants (e.g. .0, .1, …)
+      const cookieHeader = request.headers.get("cookie") ?? "";
+      for (const part of cookieHeader.split(";")) {
+        const name = part.trim().split("=")[0];
+        if (name && name.startsWith(cacheCookieName + ".")) {
+          cookies.delete(name, { path: '/' });
+        }
+      }
+
+      // Redirect with a guard param to prevent loops
+      const redirectUrl = new URL(url);
+      redirectUrl.searchParams.set('_orgActivated', '1');
+      redirect(302, redirectUrl.pathname + redirectUrl.search);
     }
   }
 
