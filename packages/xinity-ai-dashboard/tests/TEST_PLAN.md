@@ -115,8 +115,8 @@ Verify that `tools/list` returns only procedures that are not excluded via `meta
 ```
 e2e/api/mcp.test.ts (tool visibility)
 ├── tools/list does not contain any excluded procedure names
-│   (auth_changePassword, auth_listPasskeys, auth_deletePasskey,
-│    auth_listDashboardApiKeys, auth_createDashboardApiKey, auth_deleteDashboardApiKey,
+│   (account_changePassword, account_listPasskeys, account_deletePasskey,
+│    account_listDashboardApiKeys, account_createDashboardApiKey, account_deleteDashboardApiKey,
 │    sso_registerOidc, sso_registerSaml, sso_deleteProvider,
 │    organization_deleteOrganization, onboarding_setupOnboarding, onboarding_cli,
 │    instanceAdmin_listUsers, instanceAdmin_banUser, instanceAdmin_unbanUser,
