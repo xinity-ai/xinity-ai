@@ -70,7 +70,7 @@ Configure your MCP client to connect:
 }
 ```
 
-See the in-app documentation at `/docs/access-methods` for detailed setup instructions per client (Claude Desktop, Cursor, Windsurf, Claude Code CLI).
+See the in-app documentation at `/docs/access-methods` for detailed setup instructions per client (Claude Desktop, Cursor, Windsurf, Claude Code CLI). For implementation details, see the [MCP developer guide](docs/mcp.md).
 
 ## Testing
 
@@ -102,7 +102,7 @@ The dashboard tests require a running application and its dependencies. Before r
    bun run preview
    ```
 
-The tests expect the dashboard at `http://localhost:5173`. On first run, the test setup automatically creates test users and organizations via the API.
+The tests expect the dashboard at `http://localhost:5173`. On first run, the test setup automatically creates test users and organizations via the API. See [tests/TEST_PLAN.md](tests/TEST_PLAN.md) for the full test plan.
 
 ## License
 
