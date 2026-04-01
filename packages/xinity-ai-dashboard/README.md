@@ -53,6 +53,25 @@ Docs and component list: https://shadcn-svelte.com/
 - `src/params`: custom route param matchers
 - `static`: static assets served as-is
 
+## MCP Server
+
+The dashboard exposes a [Model Context Protocol](https://modelcontextprotocol.io) endpoint at `/mcp`, enabling AI assistants to manage resources through natural language. It is enabled by default and can be disabled with `MCP_ENABLED=false`.
+
+Configure your MCP client to connect:
+
+```json
+{
+  "mcpServers": {
+    "xinity-ai": {
+      "url": "https://your-dashboard/mcp",
+      "headers": { "Authorization": "Bearer sk_..." }
+    }
+  }
+}
+```
+
+See the in-app documentation at `/docs/access-methods` for detailed setup instructions per client (Claude Desktop, Cursor, Windsurf, Claude Code CLI).
+
 ## Testing
 
 ```bash
