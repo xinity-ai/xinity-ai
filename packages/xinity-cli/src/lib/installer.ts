@@ -771,6 +771,47 @@ async function startService(component: Component, host: Host): Promise<boolean> 
   return false;
 }
 
+/**
+ * Restart a running service so it picks up new configuration.
+ * No-op if the service unit is not currently active.
+ */
+export async function restartService(component: Component, host: Host): Promise<boolean> {
+  const unit = unitName(component);
+  if (!(await isUnitActiveOn(host, unit))) return false;
+
+  info("Service", `Restarting ${unit} to apply new configuration…`);
+
+  const result = await host.withElevation(
+    `systemctl restart ${unit}`,
+    `Restart ${unit}`,
+  );
+
+  if (!result.success) {
+    if (!result.skipped) fail("Service", result.output);
+    return false;
+  }
+
+  const spinner = p.spinner();
+  spinner.start("Waiting for service to restart…");
+  await Bun.sleep(3000);
+
+  const active = await isUnitActiveOn(host, unit);
+  if (active) {
+    spinner.stop("Service restarted");
+    pass("Service", `${unit} restarted with new configuration`);
+    return true;
+  }
+
+  spinner.stop("Service failed to restart");
+  const status = await getUnitStatusOn(host, unit);
+  fail("Service", `${unit} is ${status} after restart`);
+  const journal = await host.run(["journalctl", "-u", unit, "--no-pager", "-n", "20"]);
+  if (journal.ok) {
+    p.log.info(pc.dim(journal.output));
+  }
+  return false;
+}
+
 // ─── Main orchestrator ─────────────────────────────────────────────────────
 
 export async function installComponent(opts: {

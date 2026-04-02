@@ -260,6 +260,7 @@ export async function menuConfigureEnv(
     SECRETS_DIR,
     getAutoDefaults,
     writeEnvConfig,
+    restartService,
   } = await import("./installer.ts");
   const { createLocalHost } = await import("./host.ts");
 
@@ -344,7 +345,10 @@ export async function menuConfigureEnv(
     else config[field.key] = val;
   }
 
-  await writeEnvConfig(component, config, secrets, h);
+  const wrote = await writeEnvConfig(component, config, secrets, h);
+  if (wrote) {
+    await restartService(component, h);
+  }
   p.outro("Done");
 }
 
