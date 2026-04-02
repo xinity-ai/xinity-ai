@@ -24,7 +24,7 @@
 
   async function loadPasskeys() {
     isLoading = true;
-    const [error, data] = await orpc.auth.listPasskeys({});
+    const [error, data] = await orpc.account.listPasskeys({});
     isLoading = false;
     if (error) {
       loadError = error.message;
@@ -60,7 +60,7 @@
     confirmDelete = null;
     deleteDialogOpen = false;
 
-    const [error] = await orpc.auth.deletePasskey({ id });
+    const [error] = await orpc.account.deletePasskey({ id });
     if (error) {
       browserLogger.error(error, "Error deleting passkey");
       toastState.add("Error deleting passkey", "error");

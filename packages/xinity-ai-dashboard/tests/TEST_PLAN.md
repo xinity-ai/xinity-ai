@@ -106,7 +106,44 @@ error-handler.test.ts
 
 ---
 
-## 5. E2E Smoke Tests (With Real App)
+## 5. MCP Endpoint
+
+### 5.1 Tool Visibility (API - No Mocking)
+
+Verify that `tools/list` returns only procedures that are not excluded via `meta({ mcp: false })`. Uses a direct HTTP POST to `/mcp` with JSON-RPC.
+
+```
+e2e/api/mcp.test.ts (tool visibility)
+├── tools/list does not contain any excluded procedure names
+│   (account_changePassword, account_listPasskeys, account_deletePasskey,
+│    account_listDashboardApiKeys, account_createDashboardApiKey, account_deleteDashboardApiKey,
+│    sso_registerOidc, sso_registerSaml, sso_deleteProvider,
+│    organization_deleteOrganization, onboarding_setupOnboarding, onboarding_cli,
+│    instanceAdmin_listUsers, instanceAdmin_banUser, instanceAdmin_unbanUser,
+│    instanceAdmin_addUserToOrganization, instanceAdmin_removeUserFromOrganization,
+│    instanceAdmin_updateUserRole, instanceAdmin_listOrganizations,
+│    instanceAdmin_getOrganizationMembers, instanceAdmin_setSsoSelfManage,
+│    apiCall_addExampleCalls)
+├── tools/list contains expected included tools (e.g. apiKey_list, deployment_list)
+└── tools/call with an excluded tool name returns "Unknown tool" error
+```
+
+### 5.2 Permission Enforcement via MCP (API - Requires Setup)
+
+Verify that the oRPC permission middleware runs correctly when tools are called through the MCP endpoint. Requires dashboard API keys for both owner and viewer roles.
+
+The owner API key is already created by global-setup. A viewer dashboard API key needs to be created in `beforeAll` via the auth API using viewer session cookies.
+
+```
+e2e/api/mcp.test.ts (permissions)
+├── owner can call apiKey_list via MCP (returns tool result)
+├── viewer cannot call apiKey_create via MCP (returns permission error in tool result)
+└── request without API key returns JSON-RPC error -32001 (Unauthorized)
+```
+
+---
+
+## 6. E2E Smoke Tests (With Real App)
 
 Minimal set of critical paths using Playwright or similar.
 
@@ -127,11 +164,13 @@ e2e/
 | Permission State | 3 | No |
 | oRPC Permission Middleware | 4 | No (mocked) |
 | oRPC Business Logic | 4 | Yes |
+| MCP Tool Visibility | 3 | Yes |
+| MCP Permission Enforcement | 3 | Yes |
 | UI Sidebar | 3 | No |
 | UI API Keys Page | 3 | No |
 | Error Handling | 3 | No |
 | E2E Smoke | 3 | Yes |
-| **Total** | **28** | **7 with DB** |
+| **Total** | **34** | **13 with DB** |
 
 ---
 
@@ -176,5 +215,6 @@ mock.module("$lib/state/permissions.svelte", () => ({
 
 1. **Role Permissions** - Ensures role definitions are correct
 2. **oRPC Permission Middleware** - Ensures API is protected
-3. **UI Permission Gating** - Ensures users see correct UI
-4. **E2E Smoke Tests** - Ensures critical paths work end-to-end
+3. **MCP Endpoint** - Ensures excluded tools are hidden and permissions enforced via MCP
+4. **UI Permission Gating** - Ensures users see correct UI
+5. **E2E Smoke Tests** - Ensures critical paths work end-to-end

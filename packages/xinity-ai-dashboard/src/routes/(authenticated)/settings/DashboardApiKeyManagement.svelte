@@ -30,7 +30,7 @@
 
   async function loadApiKeys() {
     isLoading = true;
-    const [error, data] = await orpc.auth.listDashboardApiKeys({});
+    const [error, data] = await orpc.account.listDashboardApiKeys({});
     isLoading = false;
     if (error) {
       loadError = error.message;
@@ -79,7 +79,7 @@
     }
 
     isCreating = true;
-    const [error, data] = await orpc.auth.createDashboardApiKey({
+    const [error, data] = await orpc.account.createDashboardApiKey({
       name: newKeyName,
       organizationId: newKeyOrgId,
     });
@@ -107,7 +107,7 @@
     apiKeyToDelete = null;
     deleteDialogOpen = false;
 
-    const [error] = await orpc.auth.deleteDashboardApiKey({ id });
+    const [error] = await orpc.account.deleteDashboardApiKey({ id });
     if (error) {
       browserLogger.error(error, "Error deleting API key");
       toastState.add("Error deleting API key", "error");

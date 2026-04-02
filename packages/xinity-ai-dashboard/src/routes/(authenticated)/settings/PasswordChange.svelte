@@ -22,7 +22,7 @@
     }
 
     isSubmitting = true;
-    const [error] = await orpc.auth.changePassword({
+    const [error] = await orpc.account.changePassword({
       currentPassword,
       newPassword,
     });
