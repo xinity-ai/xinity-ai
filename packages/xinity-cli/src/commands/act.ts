@@ -234,7 +234,22 @@ export const actCommand: CommandModule = {
     const rawData = argv.data as string | undefined;
 
     if (rawData === "-") {
-      data = JSON.parse(await Bun.stdin.text());
+      if (process.stdin.isTTY) {
+        p.log.error("Cannot read from stdin: no piped input detected.");
+        p.log.info(`Usage: ${pc.cyan("echo '{...}' | xinity act " + routeName + " -")}`);
+        process.exit(1);
+      }
+      const input = await Bun.stdin.text();
+      if (!input.trim()) {
+        p.log.error("Empty stdin input.");
+        process.exit(1);
+      }
+      try {
+        data = JSON.parse(input);
+      } catch {
+        p.log.error("Invalid JSON from stdin.");
+        process.exit(1);
+      }
     } else if (rawData) {
       data = JSON.parse(rawData);
     } else if (route.input) {
