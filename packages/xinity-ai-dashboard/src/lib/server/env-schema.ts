@@ -4,9 +4,9 @@ import { secret, expert } from "common-env";
 export const dashboardEnvSchema = z.object({
   DB_CONNECTION_URL: z.url().describe("PostgreSQL connection string").meta(secret()),
   NODE_ENV: z.enum(["production", "development", "test"]).describe("Node environment").meta(expert()),
-  ORIGIN: z.url().default("http://localhost:5173").describe("Public origin URL"),
+  ORIGIN: z.url().default("http://localhost:5173").describe("Public origin URL, no trailing slash (e.g. https://xinity.mydomain.com)"),
   BETTER_AUTH_SECRET: z.string().describe("Better Auth secret key").meta(secret()),
-  BETTER_AUTH_URL: z.string().describe("Better Auth URL"),
+  BETTER_AUTH_URL: z.string().describe("Better Auth URL, usually the same as ORIGIN (e.g. https://xinity.mydomain.com)"),
   INFOSERVER_URL: z.url().describe("Infoserver URL"),
   SIGNUP_ENABLED: z.stringbool().default(true).describe("Enable user signup"),
   COMPUTE_MANAGEMENT_ENABLED: z.stringbool().default(true).describe("Enable compute management").meta(expert()),
