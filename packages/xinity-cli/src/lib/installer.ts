@@ -608,11 +608,27 @@ async function configureEnv(
   return promptForEnv(component, schema, existing);
 }
 
+// ─── Bun path resolution ──────────────────────────────────────────────────
+
+async function resolveBunPath(host: Host): Promise<string> {
+  const result = await host.runShell(
+    `command -v bun || echo "$HOME/.bun/bin/bun"`,
+  );
+  return result.output.trim();
+}
+
 // ─── Systemd unit ──────────────────────────────────────────────────────────
 
 async function installUnit(component: Component, secretKeys: string[], host: Host): Promise<boolean> {
   const baseConfig = getComponentConfig(component);
   const config: UnitConfig = { ...baseConfig, secretKeys };
+
+  // Dashboard runs via bun, resolve its actual path on the target host
+  if (component === "dashboard") {
+    const bunPath = await resolveBunPath(host);
+    config.execStart = `${bunPath} run /opt/xinity/dashboard/`;
+  }
+
   const unitContent = generateUnit(config);
   const unitPath = `${UNIT_DIR}/${unitName(component)}`;
 
