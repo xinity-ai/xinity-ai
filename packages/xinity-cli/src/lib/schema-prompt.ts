@@ -115,8 +115,13 @@ export async function promptForSchema(
         placeholder: hint ?? (defaultVal !== undefined ? String(defaultVal) : undefined),
         defaultValue: defaultVal !== undefined ? String(defaultVal) : undefined,
         validate: (val) => {
-          if (!val && !isRequired) return undefined;
-          if (!val && isRequired) return "This field is required";
+          if (!val) {
+            return (
+              (isRequired && defaultVal === undefined) 
+              ? "This field is required" 
+              : undefined
+            );
+          }
           if (Number.isNaN(Number(val))) return "Must be a number";
           return undefined;
         },
@@ -170,7 +175,7 @@ export async function promptForSchema(
       placeholder: hint,
       defaultValue: typeof defaultVal === "string" ? defaultVal : undefined,
       validate: (val) => {
-        if (!val && isRequired) return "This field is required";
+        if (!val && isRequired && defaultVal === undefined) return "This field is required";
         return undefined;
       },
     });
