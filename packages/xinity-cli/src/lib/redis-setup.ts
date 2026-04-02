@@ -13,7 +13,7 @@ import * as p from "./clack.ts";
 import pc from "picocolors";
 import { type Host, commandExistsOn } from "./host.ts";
 import { pass, fail, info, warn } from "./output.ts";
-import { parseEnvString } from "./env-prompt.ts";
+import { parseEnvString } from "./env-file.ts";
 
 // ─── Package-manager definitions ────────────────────────────────────────────
 

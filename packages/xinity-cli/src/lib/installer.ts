@@ -9,78 +9,22 @@ import { join } from "path";
 import { mkdirSync } from "fs";
 import * as p from "./clack.ts";
 import pc from "picocolors";
-import { z } from "zod";
 
 import { fetchRelease, downloadAsset, fetchChecksums, verifySha256, getAssetName, resolveDirectUrl, type Release } from "./github.ts";
-export type { Release } from "./github.ts";
 import { readManifest, updateManifestEntry, writeManifest } from "./manifest.ts";
 import { generateUnit, getComponentConfig, unitName, type UnitConfig } from "./systemd.ts";
-import {
-  analyzeEnvSchema,
-  categorizeFields,
-  promptForEnv,
-  parseEnvString,
-  serializeEnvFile,
-} from "./env-prompt.ts";
+import { analyzeEnvSchema, categorizeFields, promptForEnv } from "./env-prompt.ts";
+import { parseEnvString } from "./env-file.ts";
 import { pass, fail, warn, info, cancelAndExit } from "./output.ts";
-import { type Host, createLocalHost, commandExistsOn, isUnitActiveOn, getUnitStatusOn } from "./host.ts";
+import { type Host, createLocalHost, commandExistsOn, isUnitActiveOn } from "./host.ts";
+import { writeEnvConfig, stopService, startService } from "./service.ts";
+import {
+  type Component, type InstallResult, type RemoveResult,
+  ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, BIN_DIR, DASHBOARD_DIR, UNIT_DIR,
+  binaryBaseName, getAutoDefaults,
+} from "./component-meta.ts";
 
-// Env schemas imported directly from workspace packages (no side effects)
-import { gatewayEnvSchema } from "xinity-ai-gateway/src/env-schema.ts";
-import { daemonEnvSchema } from "xinity-ai-daemon/src/env-schema.ts";
-import { dashboardEnvSchema } from "xinity-ai-dashboard/src/lib/server/env-schema.ts";
-import { infoserverEnvSchema } from "xinity-infoserver/env-schema.ts";
-
-export type Component = "gateway" | "dashboard" | "daemon" | "infoserver";
-
-export const ENV_SCHEMAS: Record<Component, z.ZodObject<any>> = {
-  gateway: gatewayEnvSchema,
-  dashboard: dashboardEnvSchema,
-  daemon: daemonEnvSchema,
-  infoserver: infoserverEnvSchema,
-};
-
-export const ENV_DIR = "/etc/xinity-ai";
-export const SECRETS_DIR = "/etc/xinity-ai/secrets";
-const BIN_DIR = "/opt/xinity/bin";
-const DASHBOARD_DIR = "/opt/xinity/dashboard";
-const UNIT_DIR = "/etc/systemd/system";
-
-/** Map component name to its compiled binary filename. */
-function binaryBaseName(component: Component): string {
-  if (component === "infoserver") return "xinity-infoserver";
-  return `xinity-ai-${component}`;
-}
-
-export interface InstallResult {
-  success: boolean;
-  version: string;
-  errors: string[];
-}
-
-/**
- * Sensible auto-defaults derived from the systemd unit configuration.
- * These are used as lowest-priority defaults during env prompting;
- * existing config file values always take precedence.
- */
-export function getAutoDefaults(component: Component): Record<string, string> {
-  // systemd StateDirectory=xinity-ai-{component} → /var/lib/xinity-ai-{component}
-  const stateDir = `/var/lib/xinity-ai-${component}`;
-  const common: Record<string, string> = {
-    INFOSERVER_URL: "https://sysinfo.xinity.ai",
-  };
-
-  switch (component) {
-    case "daemon":
-      return { ...common, STATE_DIR: stateDir };
-    case "dashboard":
-      return { ...common, NODE_ENV: "production" };
-    case "infoserver":
-      return {};
-    default:
-      return common;
-  }
-}
+export type { Release } from "./github.ts";
 
 
 // ─── Pre-checks ────────────────────────────────────────────────────────────
@@ -664,43 +608,6 @@ async function configureEnv(
   return promptForEnv(component, schema, existing);
 }
 
-export async function writeEnvConfig(
-  component: Component,
-  config: Record<string, string>,
-  secrets: Record<string, string>,
-  host: Host = createLocalHost(),
-): Promise<boolean> {
-  // Write config env file
-  const envContent = serializeEnvFile(config);
-  const envPath = `${ENV_DIR}/${component}.env`;
-  let result = await host.withElevation(
-    `mkdir -p ${ENV_DIR} && cat > ${envPath} << 'ENVEOF'\n${envContent}ENVEOF\nchmod 644 ${envPath}`,
-    `Write ${component} configuration`,
-  );
-  if (!result.success && !result.skipped) {
-    fail("Config", result.output);
-    return false;
-  }
-
-  // Write secret files
-  if (Object.keys(secrets).length > 0) {
-    const cmds = [`mkdir -p ${SECRETS_DIR}`, `chmod 700 ${SECRETS_DIR}`];
-    for (const [key, value] of Object.entries(secrets)) {
-      // Use printf to avoid newline interpretation issues
-      cmds.push(`printf '%s' '${value.replace(/'/g, "'\\''")}' > ${SECRETS_DIR}/${key}`);
-      cmds.push(`chmod 600 ${SECRETS_DIR}/${key}`);
-    }
-    result = await host.withElevation(cmds.join(" && "), "Write secrets", { sensitive: true });
-    if (!result.success && !result.skipped) {
-      fail("Secrets", result.output);
-      return false;
-    }
-  }
-
-  pass("Config", "Environment configured");
-  return true;
-}
-
 // ─── Systemd unit ──────────────────────────────────────────────────────────
 
 async function installUnit(component: Component, secretKeys: string[], host: Host): Promise<boolean> {
@@ -722,94 +629,6 @@ async function installUnit(component: Component, secretKeys: string[], host: Hos
 
   pass("Systemd", `Unit installed at ${unitPath}`);
   return true;
-}
-
-// ─── Service management ────────────────────────────────────────────────────
-
-async function stopService(component: Component, host: Host): Promise<void> {
-  const unit = unitName(component);
-  if (await isUnitActiveOn(host, unit)) {
-    info("Service", `Stopping ${unit}…`);
-    await host.withElevation(`systemctl stop ${unit}`, `Stop ${unit}`);
-  }
-}
-
-async function startService(component: Component, host: Host): Promise<boolean> {
-  const unit = unitName(component);
-  const result = await host.withElevation(
-    `systemctl enable --now ${unit}`,
-    `Enable and start ${unit}`,
-  );
-
-  if (!result.success && !result.skipped) {
-    fail("Service", result.output);
-    return false;
-  }
-  if (result.skipped) return false;
-
-  // Wait a few seconds for the service to stabilize
-  const spinner = p.spinner();
-  spinner.start("Waiting for service to start…");
-  await Bun.sleep(3000);
-
-  const active = await isUnitActiveOn(host, unit);
-  if (active) {
-    spinner.stop("Service running");
-    pass("Service", `${unit} is active`);
-    return true;
-  }
-
-  spinner.stop("Service failed to start");
-  const status = await getUnitStatusOn(host, unit);
-  fail("Service", `${unit} is ${status}`);
-
-  // Show recent journal output
-  const journal = await host.run(["journalctl", "-u", unit, "--no-pager", "-n", "20"]);
-  if (journal.ok) {
-    p.log.info(pc.dim(journal.output));
-  }
-  return false;
-}
-
-/**
- * Restart a running service so it picks up new configuration.
- * No-op if the service unit is not currently active.
- */
-export async function restartService(component: Component, host: Host): Promise<boolean> {
-  const unit = unitName(component);
-  if (!(await isUnitActiveOn(host, unit))) return false;
-
-  info("Service", `Restarting ${unit} to apply new configuration…`);
-
-  const result = await host.withElevation(
-    `systemctl restart ${unit}`,
-    `Restart ${unit}`,
-  );
-
-  if (!result.success) {
-    if (!result.skipped) fail("Service", result.output);
-    return false;
-  }
-
-  const spinner = p.spinner();
-  spinner.start("Waiting for service to restart…");
-  await Bun.sleep(3000);
-
-  const active = await isUnitActiveOn(host, unit);
-  if (active) {
-    spinner.stop("Service restarted");
-    pass("Service", `${unit} restarted with new configuration`);
-    return true;
-  }
-
-  spinner.stop("Service failed to restart");
-  const status = await getUnitStatusOn(host, unit);
-  fail("Service", `${unit} is ${status} after restart`);
-  const journal = await host.run(["journalctl", "-u", unit, "--no-pager", "-n", "20"]);
-  if (journal.ok) {
-    p.log.info(pc.dim(journal.output));
-  }
-  return false;
 }
 
 // ─── Main orchestrator ─────────────────────────────────────────────────────
@@ -1221,10 +1040,6 @@ export async function installAll(targetVersion: string, dryRun = false, hardRese
 
 // ─── Remove ─────────────────────────────────────────────────────────────────
 
-export interface RemoveResult {
-  success: boolean;
-  errors: string[];
-}
 
 export async function removeComponent(opts: {
   component: Component;
