@@ -1045,11 +1045,26 @@ export async function installAll(targetVersion: string, dryRun = false, hardRese
     summaryLines.push(`Gateway:    ${pc.cyan(`http://${gwHost}:${gwPort}`)}`);
   }
 
+  // Read dashboard ORIGIN for configure hint
+  let dashboardOrigin: string | undefined;
+  if (dashContent) {
+    dashboardOrigin = parseEnvString(dashContent).ORIGIN;
+  }
+
   if (summaryLines.length > 0) summaryLines.push("");
   summaryLines.push(pc.bold("Next steps:"));
-  summaryLines.push(`  1. Open the dashboard to create your first admin account`);
-  summaryLines.push(`  2. Add inference nodes: ${pc.cyan("xinity up daemon")} on each GPU machine`);
-  summaryLines.push(`  3. Check health anytime: ${pc.cyan("xinity doctor")}`);
+  if (dashboardOrigin) {
+    summaryLines.push(`  1. Connect the CLI to your dashboard:`);
+    summaryLines.push(`     ${pc.cyan(`xinity configure dashboardUrl ${dashboardOrigin}`)}`);
+    summaryLines.push(`  2. Create your admin account from the CLI:`);
+    summaryLines.push(`     ${pc.cyan("xinity act onboarding.cli")}`);
+    summaryLines.push(`     Or open ${pc.cyan(dashboardOrigin)} in a browser to sign up there.`);
+  } else {
+    summaryLines.push(`  1. Create your admin account via the dashboard UI`);
+    summaryLines.push(`     Or from the CLI: ${pc.cyan("xinity act onboarding.cli")}`);
+  }
+  summaryLines.push(`  ${dashboardOrigin ? "3" : "2"}. Add inference nodes: ${pc.cyan("xinity up daemon")} on each GPU machine`);
+  summaryLines.push(`  ${dashboardOrigin ? "4" : "3"}. Check health anytime: ${pc.cyan("xinity doctor")}`);
 
   p.note(summaryLines.join("\n"), "Installation complete");
 }
