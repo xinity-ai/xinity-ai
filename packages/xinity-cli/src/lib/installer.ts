@@ -818,6 +818,30 @@ export async function installComponent(opts: {
   return { success, version: release.tagName, errors };
 }
 
+/** Show onboarding hints after a dashboard install. */
+export async function showDashboardHints(host: Host): Promise<void> {
+  const dashContent = await host.readFile(`${ENV_DIR}/dashboard.env`);
+  const origin = dashContent ? parseEnvString(dashContent).ORIGIN : undefined;
+
+  const lines: string[] = [];
+  if (origin) {
+    lines.push(`Dashboard:  ${pc.cyan(origin)}`);
+    lines.push("");
+    lines.push(pc.bold("Next steps:"));
+    lines.push(`  1. Connect the CLI to your dashboard:`);
+    lines.push(`     ${pc.cyan(`xinity configure dashboardUrl ${origin}`)}`);
+    lines.push(`  2. Create your admin account from the CLI:`);
+    lines.push(`     ${pc.cyan("xinity act onboarding.cli")}`);
+    lines.push(`     Or open ${pc.cyan(origin)} in a browser to sign up there.`);
+  } else {
+    lines.push(pc.bold("Next steps:"));
+    lines.push(`  1. Create your admin account via the dashboard UI`);
+    lines.push(`     Or from the CLI: ${pc.cyan("xinity act onboarding.cli")}`);
+  }
+
+  p.note(lines.join("\n"), "Dashboard installed");
+}
+
 // ─── Dry run ───────────────────────────────────────────────────────────────
 
 function dryRunSummary(
@@ -1032,10 +1056,8 @@ export async function installAll(targetVersion: string, dryRun = false, hardRese
   const summaryLines: string[] = [];
 
   const dashContent = await resolvedHost.readFile(`${ENV_DIR}/dashboard.env`);
-  if (dashContent) {
-    const parsed = parseEnvString(dashContent);
-    if (parsed.ORIGIN) summaryLines.push(`Dashboard:  ${pc.cyan(parsed.ORIGIN)}`);
-  }
+  const dashboardOrigin = dashContent ? parseEnvString(dashContent).ORIGIN : undefined;
+  if (dashboardOrigin) summaryLines.push(`Dashboard:  ${pc.cyan(dashboardOrigin)}`);
 
   const gwContent = await resolvedHost.readFile(`${ENV_DIR}/gateway.env`);
   if (gwContent) {
@@ -1043,12 +1065,6 @@ export async function installAll(targetVersion: string, dryRun = false, hardRese
     const gwHost = parsed.HOST || "localhost";
     const gwPort = parsed.PORT || "4010";
     summaryLines.push(`Gateway:    ${pc.cyan(`http://${gwHost}:${gwPort}`)}`);
-  }
-
-  // Read dashboard ORIGIN for configure hint
-  let dashboardOrigin: string | undefined;
-  if (dashContent) {
-    dashboardOrigin = parseEnvString(dashContent).ORIGIN;
   }
 
   if (summaryLines.length > 0) summaryLines.push("");
