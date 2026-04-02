@@ -276,7 +276,8 @@ async function configureRedisUrl(
     placeholder: "6379",
     defaultValue: "6379",
     validate: (val) => {
-      const n = parseInt(val ?? "");
+      if (!val) return undefined;
+      const n = parseInt(val);
       if (isNaN(n) || n < 1 || n > 65535) return "Must be a valid port number";
       return undefined;
     },
