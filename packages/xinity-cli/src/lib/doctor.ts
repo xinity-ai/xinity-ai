@@ -3,15 +3,10 @@ import postgres from "postgres";
 import { expectedMigrationCount } from "common-db";
 import { readManifest, type Manifest, type ComponentEntry } from "./manifest.ts";
 import { commandExistsOn, isUnitActiveOn, getUnitStatusOn, type Host, createLocalHost } from "./host.ts";
-import {
-  analyzeEnvSchema,
-  categorizeFields,
-  parseEnvString,
-} from "./env-prompt.ts";
+import { analyzeEnvSchema, categorizeFields } from "./env-prompt.ts";
+import { parseEnvString } from "./env-file.ts";
 import { unitName } from "./systemd.ts";
-
-import type { Component } from "./installer.ts";
-import { ENV_SCHEMAS, ENV_DIR, SECRETS_DIR } from "./installer.ts";
+import { type Component, ENV_SCHEMAS, ENV_DIR, SECRETS_DIR } from "./component-meta.ts";
 import { collectRemoteState, createCachedHost } from "./remote-probe.ts";
 
 // Types

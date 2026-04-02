@@ -1,7 +1,7 @@
 import type { CommandModule } from "yargs";
 import { menuConfigureCli, loadConfig, saveConfig, updateConfig } from "../lib/config.ts";
 import { menuConfigureEnv } from "../lib/env-prompt.ts";
-import type { Component } from "../lib/installer.ts";
+import type { Component } from "../lib/component-meta.ts";
 import type { CliConfig } from "../lib/config.ts";
 import { createLocalHost } from "../lib/host.ts";
 import { connectRemoteHost } from "../lib/remote-host.ts";

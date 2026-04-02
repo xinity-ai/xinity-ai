@@ -45,6 +45,10 @@ curl -fsSL https://github.com/xinity-ai/xinity-ai/releases/latest/download/insta
 # Set up everything (Postgres, inference engine, dashboard)
 xinity up all
 
+# Create your admin account right from the terminal (no browser needed)
+xinity configure dashboardUrl http://localhost:3100
+xinity act onboarding.cli
+
 # Check system health
 xinity doctor
 
@@ -276,8 +280,9 @@ Let AI assistants (Claude, Cursor, etc.) manage your infrastructure via natural 
 
 ```bash
 xinity up all            # install / configure services
+xinity act onboarding.cli  # create admin account from the terminal
+xinity act --list-routes # see all available API operations
 xinity doctor            # check system health
-xinity act --help        # call dashboard API from the terminal
 xinity update            # update the CLI itself
 ```
 

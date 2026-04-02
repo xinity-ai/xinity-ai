@@ -100,11 +100,7 @@ After `xinity up gateway`:
 xinity configure gateway    # re-prompts for config and secrets
 ```
 
-Updated values are written to the same files. Restart the service to pick up changes:
-
-```bash
-sudo systemctl restart xinity-ai-gateway
-```
+The service is automatically restarted after saving to pick up the new configuration.
 
 ### Rotating secrets
 
@@ -112,6 +108,24 @@ sudo systemctl restart xinity-ai-gateway
 2. Restart: `sudo systemctl restart xinity-ai-<component>`
 
 Or use `xinity configure <component>` to re-run the interactive prompts.
+
+## First-time Setup (Onboarding)
+
+After installation, create your admin account and organization. You can do this entirely from the CLI without opening a browser:
+
+```bash
+# Point the CLI at your dashboard
+xinity configure dashboardUrl http://your-dashboard-url
+
+# Create your admin account, organization, and API key
+xinity act onboarding.cli
+```
+
+The onboarding wizard prompts for your name, email, password, and organization name. It creates everything and saves the dashboard API key to your CLI config automatically.
+
+Alternatively, open the dashboard URL in a browser and sign up through the web UI.
+
+Once onboarded, you can manage your instance from the CLI using `xinity act`. Run `xinity act --list-routes` to see all available operations.
 
 ## Verify the Deployment
 

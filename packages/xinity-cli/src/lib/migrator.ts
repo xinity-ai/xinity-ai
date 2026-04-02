@@ -16,7 +16,7 @@ import pc from "picocolors";
 
 import { fetchRelease, getAssetName, type Release } from "./github.ts";
 import { downloadAndVerify } from "./installer.ts";
-import { parseEnvString } from "./env-prompt.ts";
+import { parseEnvString } from "./env-file.ts";
 import { fail, pass, info } from "./output.ts";
 import { postgresSetup } from "./postgres-setup.ts";
 import { type Host, createLocalHost } from "./host.ts";
