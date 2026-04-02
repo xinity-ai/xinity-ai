@@ -13,6 +13,8 @@ export type Tag = z.infer<typeof TagEnum>;
 export const BLOCKED_VLLM_ARGS = new Set([
   "--trust-remote-code",       // controlled by custom_code tag
   "--enable-auto-tool-choice", // auto-derived from tools tag
+  "--runner",                  // auto-derived from model type (embedding/rerank → pooling)
+  "--task",                    // deprecated in favor of --runner, auto-managed
   "--host",                    // system-managed
   "--port",                    // system-managed
   "--served-model-name",       // system-managed
@@ -46,10 +48,19 @@ const flatStringArray = z.array(nestedStringItem)
   .pipe(z.array(z.string()));
 
 const vllmArgs = flatStringArray
-  .refine(
-    (args: string[]) => !args.some(arg => BLOCKED_VLLM_ARGS.has(arg)),
-    { message: `providerArgs.vllm must not contain system-managed or tag-derived arguments: ${[...BLOCKED_VLLM_ARGS].join(", ")}` },
-  );
+  .transform((args: string[]) => {
+    const result: string[] = [];
+    for (let i = 0; i < args.length; i++) {
+      if (BLOCKED_VLLM_ARGS.has(args[i]!)) {
+        if (args[i + 1] && !args[i + 1]!.startsWith("--")) {
+          i++;
+        }
+      } else {
+        result.push(args[i]!);
+      }
+    }
+    return result;
+  });
 
 export const ModelSchema = z.looseObject({
   name: z.string().describe("Display name of the model. Intended to be easily human readable"),

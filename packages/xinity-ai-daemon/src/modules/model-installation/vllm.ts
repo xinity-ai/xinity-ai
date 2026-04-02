@@ -388,16 +388,20 @@ export function syncVllmInstallations$(
                             "Calculated GPU memory utilization",
                           );
                         }
+                        const modelType = modelInfo?.type;
+                        const resolvedExtraArgs = [
+                          ...(modelType === "embedding" || modelType === "rerank" ? ["--runner", "pooling"] : []),
+                          ...(hasToolsTag ? ["--enable-auto-tool-choice"] : []),
+                          ...extraArgs,
+                        ];
                         return ops.start(installation.id, {
                           model: installation.model,
                           port: installation.port,
                           kvCacheBytes: `${installation.kvCacheCapacity}G`,
                           trustRemoteCode,
                           gpuMemoryUtilization,
-                          extraArgs: hasToolsTag
-                            ? ["--enable-auto-tool-choice", ...extraArgs]
-                            : extraArgs,
-                        }).then(() => modelInfo?.type);
+                          extraArgs: resolvedExtraArgs,
+                        }).then(() => modelType);
                       }),
                     ),
                   ),
