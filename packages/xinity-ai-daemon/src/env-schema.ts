@@ -4,12 +4,12 @@ import { logEnvSchema } from "common-log";
 
 export const daemonEnvSchema = z.object({
   PORT: z.coerce.number().default(4010).describe("Listen port"),
-  HOST: z.string().default("0.0.0.0").describe("Bind address"),
-  XINITY_OLLAMA_ENDPOINT: z.url().optional().describe("Ollama API endpoint (enables ollama driver)"),
-  DB_CONNECTION_URL: z.url().describe("PostgreSQL connection string").meta(secret()),
-  INFOSERVER_URL: z.url().default("https://sysinfo.xinity.ai").describe("Infoserver URL"),
-  STATE_DIR: z.string().default("./.local").describe("Local state directory").meta(expert()),
-  CIDR_PREFIX: z.string().default("").describe("Network CIDR prefix").meta(expert()),
+  HOST: z.string().default("0.0.0.0").describe("Bind address (use 0.0.0.0 to listen on all interfaces)"),
+  XINITY_OLLAMA_ENDPOINT: z.url().optional().describe("Ollama API endpoint, typically http://localhost:11434 (enables ollama driver)"),
+  DB_CONNECTION_URL: z.url().describe("PostgreSQL connection string (e.g. postgresql://user:pass@host:5432/dbname)").meta(secret()),
+  INFOSERVER_URL: z.url().default("https://sysinfo.xinity.ai").describe("Infoserver URL (default hosted: https://sysinfo.xinity.ai, or your self-hosted instance)"),
+  STATE_DIR: z.string().default("./.local").describe("Local state directory for daemon runtime data").meta(expert()),
+  CIDR_PREFIX: z.string().default("").describe("Network CIDR prefix for filtering which local IPs the daemon advertises to the cluster").meta(expert()),
   SYNC_INTERVAL_MS: z.coerce
     .number()
     .default(1000 * 60 * 5)

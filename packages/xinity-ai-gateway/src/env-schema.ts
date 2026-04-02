@@ -3,11 +3,11 @@ import { secret, expert } from "common-env";
 import { logEnvSchema } from "common-log";
 
 export const gatewayEnvSchema = z.object({
-  HOST: z.string().default("localhost").describe("Bind address"),
+  HOST: z.string().default("localhost").describe("Bind address (use 0.0.0.0 to listen on all interfaces)"),
   PORT: z.coerce.number().default(4010).describe("Listen port"),
-  DB_CONNECTION_URL: z.url().describe("PostgreSQL connection string").meta(secret()),
-  REDIS_URL: z.url().describe("Redis connection URL").meta(secret()),
-  INFOSERVER_URL: z.url().describe("Infoserver URL"),
+  DB_CONNECTION_URL: z.url().describe("PostgreSQL connection string (e.g. postgresql://user:pass@host:5432/dbname)").meta(secret()),
+  REDIS_URL: z.url().describe("Redis connection URL (e.g. redis://localhost:6379)").meta(secret()),
+  INFOSERVER_URL: z.url().describe("Infoserver URL (default hosted: https://sysinfo.xinity.ai, or your self-hosted instance)"),
   WEB_SEARCH_ENGINE_URL: z.url().optional().describe("SearXNG search engine URL").meta(expert()),
   RESPONSE_CACHE_TTL_SECONDS: z.coerce
     .number()
