@@ -1,13 +1,8 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { z } from "zod";
 import { secret } from "common-env";
-import {
-  analyzeEnvSchema,
-  categorizeFields,
-  readEnvFile,
-  serializeEnvFile,
-  readSecretFiles,
-} from "../../src/lib/env-prompt.ts";
+import { analyzeEnvSchema, categorizeFields } from "../../src/lib/env-prompt.ts";
+import { readEnvFile, serializeEnvFile, readSecretFiles } from "../../src/lib/env-file.ts";
 import { createTempDir, type TempDir } from "../helpers/temp-config.ts";
 
 describe("env-prompt", () => {
