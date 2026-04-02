@@ -122,6 +122,40 @@
               }
             }
           },
+          "requestParams": {
+            "description": "Per-driver allowlist of extra request-level parameters that the gateway may forward. Dot-notation paths mapped to primitive types (boolean, number, string). All are optional at request time",
+            "type": "object",
+            "properties": {
+              "vllm": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "enum": [
+                    "boolean",
+                    "number",
+                    "string"
+                  ]
+                }
+              },
+              "ollama": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "enum": [
+                    "boolean",
+                    "number",
+                    "string"
+                  ]
+                }
+              }
+            }
+          },
           "providers": {
             "type": "object",
             "properties": {
