@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { goto, invalidateAll } from "$app/navigation";
-  import { page } from "$app/stores";
+  import { onMount } from "svelte";
   import { orpc } from "$lib/orpc/orpc-client";
   import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
@@ -11,12 +10,59 @@
   import { Search, Ban, ShieldCheck, UserPlus, X, ChevronLeft, ChevronRight, MailCheck, MailX, KeyRound, Copy } from "@lucide/svelte";
   import { toastState } from "$lib/state/toast.svelte";
   import { copyToClipboard } from "$lib/copy";
+  import { createUrlSearchParamsStore } from "$lib/urlSearchParamsStore";
 
-  let { data } = $props();
+  const searchParams = createUrlSearchParamsStore();
+  const LIMIT = 25;
 
-  // svelte-ignore state_referenced_locally
-  let searchValue = $state(data.search);
+  let users = $state<any[]>([]);
+  let total = $state(0);
+  let organizations = $state<any[]>([]);
+
+  const currentPage = $derived(Number($searchParams.page) || 1);
+  const searchValue = $derived($searchParams.search ?? "");
+
+  let searchInputValue = $state($searchParams.search ?? "");
   let searchTimeout: ReturnType<typeof setTimeout> | undefined;
+
+  async function fetchUsers() {
+    const result = await orpc.instanceAdmin.listUsers({
+      page: currentPage,
+      limit: LIMIT,
+      search: searchValue || undefined,
+    });
+    if (result.data) {
+      users = result.data.users;
+      total = result.data.total;
+    }
+  }
+
+  async function fetchOrganizations() {
+    const result = await orpc.instanceAdmin.listOrganizations({ page: 1, limit: 100 });
+    if (result.data) {
+      organizations = result.data.organizations;
+    }
+  }
+
+  onMount(() => {
+    void fetchUsers();
+    void fetchOrganizations();
+  });
+
+  function onSearchInput(e: Event) {
+    searchInputValue = (e.target as HTMLInputElement).value;
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+      $searchParams.search = searchInputValue || "";
+      delete $searchParams.page;
+      void fetchUsers();
+    }, 300);
+  }
+
+  function goToPage(p: number) {
+    $searchParams.page = String(p);
+    void fetchUsers();
+  }
 
   // Ban modal state
   let banModalOpen = $state(false);
@@ -42,28 +88,6 @@
   let addOrgSelectedOrg = $state("");
   let addOrgSelectedRole = $state<RoleName>("pending");
 
-  function onSearchInput(e: Event) {
-    const value = (e.target as HTMLInputElement).value;
-    searchValue = value;
-    clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(() => {
-      const url = new URL($page.url);
-      if (value) {
-        url.searchParams.set("search", value);
-      } else {
-        url.searchParams.delete("search");
-      }
-      url.searchParams.delete("page");
-      goto(url.toString(), { replaceState: true });
-    }, 300);
-  }
-
-  function goToPage(p: number) {
-    const url = new URL($page.url);
-    url.searchParams.set("page", String(p));
-    goto(url.toString());
-  }
-
   async function handleBan() {
     if (!banTargetUser) return;
     const result = await orpc.instanceAdmin.banUser({
@@ -77,7 +101,7 @@
       banModalOpen = false;
       banReason = "";
       banTargetUser = null;
-      invalidateAll();
+      void fetchUsers();
     }
   }
 
@@ -87,7 +111,7 @@
       toastState.add("Failed to unban user", "error");
     } else {
       toastState.add(`Unbanned ${name}`, "success");
-      invalidateAll();
+      void fetchUsers();
     }
   }
 
@@ -106,7 +130,7 @@
       addOrgTargetUser = null;
       addOrgSelectedOrg = "";
       addOrgSelectedRole = "pending";
-      invalidateAll();
+      void fetchUsers();
     }
   }
 
@@ -116,7 +140,7 @@
       toastState.add(result.error.message || "Failed to remove user from organization", "error");
     } else {
       toastState.add(`Removed ${userName} from organization`, "success");
-      invalidateAll();
+      void fetchUsers();
     }
   }
 
@@ -130,7 +154,7 @@
       toastState.add(result.error.message || "Failed to update role", "error");
     } else {
       toastState.add("Role updated", "success");
-      invalidateAll();
+      void fetchUsers();
     }
   }
 
@@ -143,7 +167,7 @@
       toastState.add(result.error.message || "Failed to update verification status", "error");
     } else {
       toastState.add(`${!currentlyVerified ? "Verified" : "Unverified"} email for ${name}`, "success");
-      invalidateAll();
+      void fetchUsers();
     }
   }
 
@@ -159,7 +183,7 @@
       toastState.add(result.error.message || "Failed to create user", "error");
     } else {
       createUserTempPassword = result.data.temporaryPassword;
-      invalidateAll();
+      void fetchUsers();
     }
   }
 
@@ -177,7 +201,7 @@
     }
   }
 
-  const totalPages = $derived(Math.ceil(data.total / data.limit));
+  const totalPages = $derived(Math.ceil(total / LIMIT));
 </script>
 
 <Card.Root>
@@ -185,7 +209,7 @@
     <div class="flex items-center justify-between">
       <div>
         <Card.Title>Users</Card.Title>
-        <Card.Description>{data.total} total users</Card.Description>
+        <Card.Description>{total} total users</Card.Description>
       </div>
       <Button onclick={() => { createUserModalOpen = true; }}>
         <UserPlus class="w-4 h-4 mr-2" />
@@ -196,14 +220,14 @@
       <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
       <Input
         placeholder="Search by name or email..."
-        value={searchValue}
+        value={searchInputValue}
         oninput={onSearchInput}
         class="pl-9"
       />
     </div>
   </Card.Header>
   <Card.Content>
-    {#if data.users.length === 0}
+    {#if users.length === 0}
       <p class="text-center text-muted-foreground py-8">No users found.</p>
     {:else}
       <div class="overflow-x-auto">
@@ -219,7 +243,7 @@
             </tr>
           </thead>
           <tbody>
-            {#each data.users as user (user.id)}
+            {#each users as user (user.id)}
               <tr class="border-b last:border-0">
                 <td class="py-3 pr-4 font-medium">{user.name}</td>
                 <td class="py-3 pr-4 text-muted-foreground">{user.email}</td>
@@ -334,14 +358,14 @@
       {#if totalPages > 1}
         <div class="flex items-center justify-between mt-4 pt-4 border-t">
           <span class="text-sm text-muted-foreground">
-            Page {data.page} of {totalPages}
+            Page {currentPage} of {totalPages}
           </span>
           <div class="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
-              disabled={data.page <= 1}
-              onclick={() => goToPage(data.page - 1)}
+              disabled={currentPage <= 1}
+              onclick={() => goToPage(currentPage - 1)}
             >
               <ChevronLeft class="w-4 h-4" />
               Previous
@@ -349,8 +373,8 @@
             <Button
               variant="outline"
               size="sm"
-              disabled={data.page >= totalPages}
-              onclick={() => goToPage(data.page + 1)}
+              disabled={currentPage >= totalPages}
+              onclick={() => goToPage(currentPage + 1)}
             >
               Next
               <ChevronRight class="w-4 h-4" />
@@ -478,7 +502,7 @@
           bind:value={addOrgSelectedOrg}
         >
           <option value="">Select organization...</option>
-          {#each data.organizations as org}
+          {#each organizations as org}
             <option value={org.id}>{org.name}</option>
           {/each}
         </select>

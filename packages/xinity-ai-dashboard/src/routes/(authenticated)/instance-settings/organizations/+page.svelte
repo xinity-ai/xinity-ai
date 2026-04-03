@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { goto, invalidateAll } from "$app/navigation";
-  import { page } from "$app/stores";
+  import { onMount } from "svelte";
   import { orpc } from "$lib/orpc/orpc-client";
   import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
@@ -9,36 +8,52 @@
   import { roleLabels, roleBadgeVariant, type RoleName } from "$lib/roles";
   import { Search, ChevronDown, ChevronRight, ChevronLeft, X, Users, Shield, HardDrive } from "@lucide/svelte";
   import { toastState } from "$lib/state/toast.svelte";
+  import { createUrlSearchParamsStore } from "$lib/urlSearchParamsStore";
 
-  let { data } = $props();
+  const searchParams = createUrlSearchParamsStore();
+  const LIMIT = 25;
 
-  // svelte-ignore state_referenced_locally
-  let searchValue = $state(data.search);
+  let orgs = $state<any[]>([]);
+  let total = $state(0);
+
+  const currentPage = $derived(Number($searchParams.page) || 1);
+  const searchValue = $derived($searchParams.search ?? "");
+
+  let searchInputValue = $state($searchParams.search ?? "");
   let searchTimeout: ReturnType<typeof setTimeout> | undefined;
   let expandedOrg = $state<string | null>(null);
   let orgMembers = $state<Record<string, any[]>>({});
   let loadingMembers = $state<Set<string>>(new Set());
 
+  async function fetchOrgs() {
+    const result = await orpc.instanceAdmin.listOrganizations({
+      page: currentPage,
+      limit: LIMIT,
+      search: searchValue || undefined,
+    });
+    if (result.data) {
+      orgs = result.data.organizations;
+      total = result.data.total;
+    }
+  }
+
+  onMount(() => {
+    void fetchOrgs();
+  });
+
   function onSearchInput(e: Event) {
-    const value = (e.target as HTMLInputElement).value;
-    searchValue = value;
+    searchInputValue = (e.target as HTMLInputElement).value;
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(() => {
-      const url = new URL($page.url);
-      if (value) {
-        url.searchParams.set("search", value);
-      } else {
-        url.searchParams.delete("search");
-      }
-      url.searchParams.delete("page");
-      goto(url.toString(), { replaceState: true });
+      $searchParams.search = searchInputValue || "";
+      delete $searchParams.page;
+      void fetchOrgs();
     }, 300);
   }
 
   function goToPage(p: number) {
-    const url = new URL($page.url);
-    url.searchParams.set("page", String(p));
-    goto(url.toString());
+    $searchParams.page = String(p);
+    void fetchOrgs();
   }
 
   async function toggleOrg(orgId: string) {
@@ -63,11 +78,10 @@
       toastState.add(result.error.message || "Failed to remove member", "error");
     } else {
       toastState.add(`Removed ${userName}`, "success");
-      // Refresh members for this org
       delete orgMembers[organizationId];
       orgMembers = { ...orgMembers };
       await toggleOrg(organizationId);
-      invalidateAll();
+      void fetchOrgs();
     }
   }
 
@@ -81,7 +95,6 @@
       toastState.add(result.error.message || "Failed to update role", "error");
     } else {
       toastState.add("Role updated", "success");
-      // Refresh members
       delete orgMembers[organizationId];
       orgMembers = { ...orgMembers };
       await toggleOrg(organizationId);
@@ -94,11 +107,11 @@
       toastState.add("Failed to update SSO self-management", "error");
     } else {
       toastState.add(enabled ? "SSO self-management enabled" : "SSO self-management disabled", "success");
-      invalidateAll();
+      void fetchOrgs();
     }
   }
 
-  const totalPages = $derived(Math.ceil(data.total / data.limit));
+  const totalPages = $derived(Math.ceil(total / LIMIT));
 </script>
 
 <Card.Root>
@@ -106,29 +119,32 @@
     <div class="flex items-center justify-between">
       <div>
         <Card.Title>Organizations</Card.Title>
-        <Card.Description>{data.total} total organizations</Card.Description>
+        <Card.Description>{total} total organizations</Card.Description>
       </div>
     </div>
     <div class="relative mt-4">
       <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
       <Input
         placeholder="Search by name or slug..."
-        value={searchValue}
+        value={searchInputValue}
         oninput={onSearchInput}
         class="pl-9"
       />
     </div>
   </Card.Header>
   <Card.Content>
-    {#if data.organizations.length === 0}
+    {#if orgs.length === 0}
       <p class="text-center text-muted-foreground py-8">No organizations found.</p>
     {:else}
       <div class="space-y-2">
-        {#each data.organizations as org (org.id)}
+        {#each orgs as org (org.id)}
           <div class="border rounded-lg">
-            <button
-              class="w-full flex items-center justify-between p-4 hover:bg-muted/50 text-left"
+            <div
+              role="button"
+              tabindex="0"
+              class="w-full flex items-center justify-between p-4 hover:bg-muted/50 text-left cursor-pointer"
               onclick={() => toggleOrg(org.id)}
+              onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleOrg(org.id); } }}
             >
               <div class="flex items-center gap-3">
                 {#if expandedOrg === org.id}
@@ -164,7 +180,7 @@
                   {new Date(org.createdAt).toLocaleDateString()}
                 </span>
               </div>
-            </button>
+            </div>
 
             {#if expandedOrg === org.id}
               <div class="border-t px-4 py-3">
@@ -231,14 +247,14 @@
       {#if totalPages > 1}
         <div class="flex items-center justify-between mt-4 pt-4 border-t">
           <span class="text-sm text-muted-foreground">
-            Page {data.page} of {totalPages}
+            Page {currentPage} of {totalPages}
           </span>
           <div class="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
-              disabled={data.page <= 1}
-              onclick={() => goToPage(data.page - 1)}
+              disabled={currentPage <= 1}
+              onclick={() => goToPage(currentPage - 1)}
             >
               <ChevronLeft class="w-4 h-4" />
               Previous
@@ -246,8 +262,8 @@
             <Button
               variant="outline"
               size="sm"
-              disabled={data.page >= totalPages}
-              onclick={() => goToPage(data.page + 1)}
+              disabled={currentPage >= totalPages}
+              onclick={() => goToPage(currentPage + 1)}
             >
               Next
               <ChevronRight class="w-4 h-4" />
