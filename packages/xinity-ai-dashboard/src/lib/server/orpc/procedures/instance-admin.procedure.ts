@@ -11,9 +11,9 @@ const tags = ["Instance Admin"];
 
 const RoleSchema = z.enum(["owner", "admin", "member", "labeler", "viewer", "pending"]);
 
-/** Generates a random temporary password (16 chars, alphanumeric + symbols). */
+/** Generates a random 16-char temporary password (ambiguous characters like 0/O/l/1/I excluded). */
 function generateTempPassword(): string {
-  const chars = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%";
+  const chars = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%^&*";
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   return Array.from(bytes, (b) => chars[b % chars.length]).join("");
 }
@@ -261,7 +261,7 @@ const createUser = rootOs
   .route({ method: "POST", path: "/users/create", tags, summary: "Create a new user" })
   .input(z.object({
     name: z.string().min(1, "Name is required"),
-    email: z.string().email("Invalid email address"),
+    email: z.email("Invalid email address"),
   }))
   .handler(async ({ input, errors }) => {
     const temporaryPassword = generateTempPassword();

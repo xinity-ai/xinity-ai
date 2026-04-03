@@ -8,8 +8,9 @@
   import * as Card from "$lib/components/ui/card";
   import Modal from "$lib/components/Modal.svelte";
   import { roleLabels, roleBadgeVariant, type RoleName } from "$lib/roles";
-  import { Search, Ban, ShieldCheck, UserPlus, X, ChevronLeft, ChevronRight, MailCheck, MailX, KeyRound, Copy, Check } from "@lucide/svelte";
+  import { Search, Ban, ShieldCheck, UserPlus, X, ChevronLeft, ChevronRight, MailCheck, MailX, KeyRound, Copy } from "@lucide/svelte";
   import { toastState } from "$lib/state/toast.svelte";
+  import { copyToClipboard } from "$lib/copy";
 
   let { data } = $props();
 
@@ -34,9 +35,6 @@
   let resetPasswordTargetUser = $state<{ id: string; name: string } | null>(null);
   let resetPasswordLoading = $state(false);
   let resetPasswordTempPassword = $state("");
-
-  // Temp password copy state
-  let tempPasswordCopied = $state(false);
 
   // Add to org modal state
   let addOrgModalOpen = $state(false);
@@ -161,7 +159,6 @@
       toastState.add(result.error.message || "Failed to create user", "error");
     } else {
       createUserTempPassword = result.data.temporaryPassword;
-      tempPasswordCopied = false;
       invalidateAll();
     }
   }
@@ -177,14 +174,7 @@
       toastState.add(result.error.message || "Failed to reset password", "error");
     } else {
       resetPasswordTempPassword = result.data.temporaryPassword;
-      tempPasswordCopied = false;
     }
-  }
-
-  async function copyTempPassword(password: string) {
-    await navigator.clipboard.writeText(password);
-    tempPasswordCopied = true;
-    setTimeout(() => { tempPasswordCopied = false; }, 2000);
   }
 
   const totalPages = $derived(Math.ceil(data.total / data.limit));
@@ -314,7 +304,6 @@
                       onclick={() => {
                         resetPasswordTargetUser = { id: user.id, name: user.name };
                         resetPasswordTempPassword = "";
-                        tempPasswordCopied = false;
                         resetPasswordModalOpen = true;
                       }}
                     >
@@ -373,6 +362,22 @@
   </Card.Content>
 </Card.Root>
 
+{#snippet tempPasswordDisplay(password: string, description: string, onDone: () => void)}
+  <div class="space-y-4">
+    <p class="text-sm text-muted-foreground">{@html description}</p>
+    <div class="flex items-center gap-2">
+      <code class="flex-1 rounded-md bg-muted px-3 py-2 text-sm font-mono select-all">{password}</code>
+      <Button variant="outline" size="icon-sm" onclick={() => copyToClipboard(password)}>
+        <Copy class="w-4 h-4" />
+      </Button>
+    </div>
+    <p class="text-xs text-muted-foreground">This password will not be shown again.</p>
+    <div class="flex justify-end">
+      <Button onclick={onDone}>Done</Button>
+    </div>
+  </div>
+{/snippet}
+
 <!-- Ban Modal -->
 <Modal bind:open={banModalOpen} onClose={() => { banModalOpen = false; }}>
   <div class="bg-card rounded-xl border shadow-2xl max-w-md w-full p-6">
@@ -399,25 +404,11 @@
   <div class="bg-card rounded-xl border shadow-2xl max-w-md w-full p-6">
     {#if createUserTempPassword}
       <h2 class="text-lg font-semibold mb-4">User Created</h2>
-      <div class="space-y-4">
-        <p class="text-sm text-muted-foreground">
-          User <span class="font-medium text-foreground">{createUserName}</span> has been created. Give them this temporary password:
-        </p>
-        <div class="flex items-center gap-2">
-          <code class="flex-1 rounded-md bg-muted px-3 py-2 text-sm font-mono select-all">{createUserTempPassword}</code>
-          <Button variant="outline" size="icon-sm" onclick={() => copyTempPassword(createUserTempPassword)}>
-            {#if tempPasswordCopied}
-              <Check class="w-4 h-4 text-green-600" />
-            {:else}
-              <Copy class="w-4 h-4" />
-            {/if}
-          </Button>
-        </div>
-        <p class="text-xs text-muted-foreground">This password will not be shown again.</p>
-        <div class="flex justify-end">
-          <Button onclick={() => { createUserModalOpen = false; createUserTempPassword = ""; createUserName = ""; createUserEmail = ""; }}>Done</Button>
-        </div>
-      </div>
+      {@render tempPasswordDisplay(
+        createUserTempPassword,
+        `User <span class="font-medium text-foreground">${createUserName}</span> has been created. Give them this temporary password:`,
+        () => { createUserModalOpen = false; createUserTempPassword = ""; createUserName = ""; createUserEmail = ""; },
+      )}
     {:else}
       <h2 class="text-lg font-semibold mb-4">Create User</h2>
       <div class="space-y-4">
@@ -449,25 +440,11 @@
   <div class="bg-card rounded-xl border shadow-2xl max-w-md w-full p-6">
     {#if resetPasswordTempPassword}
       <h2 class="text-lg font-semibold mb-4">Password Reset</h2>
-      <div class="space-y-4">
-        <p class="text-sm text-muted-foreground">
-          New temporary password for <span class="font-medium text-foreground">{resetPasswordTargetUser?.name}</span>:
-        </p>
-        <div class="flex items-center gap-2">
-          <code class="flex-1 rounded-md bg-muted px-3 py-2 text-sm font-mono select-all">{resetPasswordTempPassword}</code>
-          <Button variant="outline" size="icon-sm" onclick={() => copyTempPassword(resetPasswordTempPassword)}>
-            {#if tempPasswordCopied}
-              <Check class="w-4 h-4 text-green-600" />
-            {:else}
-              <Copy class="w-4 h-4" />
-            {/if}
-          </Button>
-        </div>
-        <p class="text-xs text-muted-foreground">This password will not be shown again.</p>
-        <div class="flex justify-end">
-          <Button onclick={() => { resetPasswordModalOpen = false; resetPasswordTempPassword = ""; }}>Done</Button>
-        </div>
-      </div>
+      {@render tempPasswordDisplay(
+        resetPasswordTempPassword,
+        `New temporary password for <span class="font-medium text-foreground">${resetPasswordTargetUser?.name}</span>:`,
+        () => { resetPasswordModalOpen = false; resetPasswordTempPassword = ""; },
+      )}
     {:else}
       <h2 class="text-lg font-semibold mb-4">Reset Password</h2>
       <div class="space-y-4">
