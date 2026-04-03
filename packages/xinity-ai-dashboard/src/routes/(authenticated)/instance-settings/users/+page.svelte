@@ -8,7 +8,7 @@
   import * as Card from "$lib/components/ui/card";
   import Modal from "$lib/components/Modal.svelte";
   import { roleLabels, roleBadgeVariant, type RoleName } from "$lib/roles";
-  import { Search, Ban, ShieldCheck, UserPlus, X, ChevronLeft, ChevronRight } from "@lucide/svelte";
+  import { Search, Ban, ShieldCheck, UserPlus, X, ChevronLeft, ChevronRight, MailCheck, MailX, KeyRound, Copy, Check } from "@lucide/svelte";
   import { toastState } from "$lib/state/toast.svelte";
 
   let { data } = $props();
@@ -21,6 +21,22 @@
   let banModalOpen = $state(false);
   let banTargetUser = $state<{ id: string; name: string } | null>(null);
   let banReason = $state("");
+
+  // Create user modal state
+  let createUserModalOpen = $state(false);
+  let createUserName = $state("");
+  let createUserEmail = $state("");
+  let createUserLoading = $state(false);
+  let createUserTempPassword = $state("");
+
+  // Reset password modal state
+  let resetPasswordModalOpen = $state(false);
+  let resetPasswordTargetUser = $state<{ id: string; name: string } | null>(null);
+  let resetPasswordLoading = $state(false);
+  let resetPasswordTempPassword = $state("");
+
+  // Temp password copy state
+  let tempPasswordCopied = $state(false);
 
   // Add to org modal state
   let addOrgModalOpen = $state(false);
@@ -120,6 +136,57 @@
     }
   }
 
+  async function handleToggleEmailVerified(userId: string, name: string, currentlyVerified: boolean) {
+    const result = await orpc.instanceAdmin.setEmailVerified({
+      userId,
+      verified: !currentlyVerified,
+    });
+    if (result.error) {
+      toastState.add(result.error.message || "Failed to update verification status", "error");
+    } else {
+      toastState.add(`${!currentlyVerified ? "Verified" : "Unverified"} email for ${name}`, "success");
+      invalidateAll();
+    }
+  }
+
+  async function handleCreateUser() {
+    if (!createUserName || !createUserEmail) return;
+    createUserLoading = true;
+    const result = await orpc.instanceAdmin.createUser({
+      name: createUserName,
+      email: createUserEmail,
+    });
+    createUserLoading = false;
+    if (result.error) {
+      toastState.add(result.error.message || "Failed to create user", "error");
+    } else {
+      createUserTempPassword = result.data.temporaryPassword;
+      tempPasswordCopied = false;
+      invalidateAll();
+    }
+  }
+
+  async function handleResetPassword() {
+    if (!resetPasswordTargetUser) return;
+    resetPasswordLoading = true;
+    const result = await orpc.instanceAdmin.resetUserPassword({
+      userId: resetPasswordTargetUser.id,
+    });
+    resetPasswordLoading = false;
+    if (result.error) {
+      toastState.add(result.error.message || "Failed to reset password", "error");
+    } else {
+      resetPasswordTempPassword = result.data.temporaryPassword;
+      tempPasswordCopied = false;
+    }
+  }
+
+  async function copyTempPassword(password: string) {
+    await navigator.clipboard.writeText(password);
+    tempPasswordCopied = true;
+    setTimeout(() => { tempPasswordCopied = false; }, 2000);
+  }
+
   const totalPages = $derived(Math.ceil(data.total / data.limit));
 </script>
 
@@ -130,6 +197,10 @@
         <Card.Title>Users</Card.Title>
         <Card.Description>{data.total} total users</Card.Description>
       </div>
+      <Button onclick={() => { createUserModalOpen = true; }}>
+        <UserPlus class="w-4 h-4 mr-2" />
+        Create User
+      </Button>
     </div>
     <div class="relative mt-4">
       <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -163,11 +234,18 @@
                 <td class="py-3 pr-4 font-medium">{user.name}</td>
                 <td class="py-3 pr-4 text-muted-foreground">{user.email}</td>
                 <td class="py-3 pr-4">
-                  {#if user.banned}
-                    <Badge variant="destructive">Banned</Badge>
-                  {:else}
-                    <Badge variant="outline">Active</Badge>
-                  {/if}
+                  <div class="flex flex-wrap gap-1">
+                    {#if user.banned}
+                      <Badge variant="destructive">Banned</Badge>
+                    {:else}
+                      <Badge variant="outline">Active</Badge>
+                    {/if}
+                    {#if user.emailVerified}
+                      <Badge variant="outline" class="text-green-600 border-green-600/30">Verified</Badge>
+                    {:else}
+                      <Badge variant="secondary">Unverified</Badge>
+                    {/if}
+                  </div>
                 </td>
                 <td class="py-3 pr-4">
                   <div class="flex flex-wrap gap-1">
@@ -217,6 +295,31 @@
                         <Ban class="w-4 h-4" />
                       </Button>
                     {/if}
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      title={user.emailVerified ? "Unverify email" : "Verify email"}
+                      onclick={() => handleToggleEmailVerified(user.id, user.name, !!user.emailVerified)}
+                    >
+                      {#if user.emailVerified}
+                        <MailX class="w-4 h-4" />
+                      {:else}
+                        <MailCheck class="w-4 h-4" />
+                      {/if}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      title="Reset password"
+                      onclick={() => {
+                        resetPasswordTargetUser = { id: user.id, name: user.name };
+                        resetPasswordTempPassword = "";
+                        tempPasswordCopied = false;
+                        resetPasswordModalOpen = true;
+                      }}
+                    >
+                      <KeyRound class="w-4 h-4" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon-sm"
@@ -288,6 +391,100 @@
         <Button variant="destructive" onclick={handleBan}>Ban User</Button>
       </div>
     </div>
+  </div>
+</Modal>
+
+<!-- Create User Modal -->
+<Modal bind:open={createUserModalOpen} onClose={() => { createUserModalOpen = false; createUserTempPassword = ""; createUserName = ""; createUserEmail = ""; }}>
+  <div class="bg-card rounded-xl border shadow-2xl max-w-md w-full p-6">
+    {#if createUserTempPassword}
+      <h2 class="text-lg font-semibold mb-4">User Created</h2>
+      <div class="space-y-4">
+        <p class="text-sm text-muted-foreground">
+          User <span class="font-medium text-foreground">{createUserName}</span> has been created. Give them this temporary password:
+        </p>
+        <div class="flex items-center gap-2">
+          <code class="flex-1 rounded-md bg-muted px-3 py-2 text-sm font-mono select-all">{createUserTempPassword}</code>
+          <Button variant="outline" size="icon-sm" onclick={() => copyTempPassword(createUserTempPassword)}>
+            {#if tempPasswordCopied}
+              <Check class="w-4 h-4 text-green-600" />
+            {:else}
+              <Copy class="w-4 h-4" />
+            {/if}
+          </Button>
+        </div>
+        <p class="text-xs text-muted-foreground">This password will not be shown again.</p>
+        <div class="flex justify-end">
+          <Button onclick={() => { createUserModalOpen = false; createUserTempPassword = ""; createUserName = ""; createUserEmail = ""; }}>Done</Button>
+        </div>
+      </div>
+    {:else}
+      <h2 class="text-lg font-semibold mb-4">Create User</h2>
+      <div class="space-y-4">
+        <div>
+          <label for="create-name" class="text-sm font-medium">Name</label>
+          <Input id="create-name" placeholder="Full name" bind:value={createUserName} />
+        </div>
+        <div>
+          <label for="create-email" class="text-sm font-medium">Email</label>
+          <Input id="create-email" type="email" placeholder="user@example.com" bind:value={createUserEmail} />
+        </div>
+        <p class="text-xs text-muted-foreground">A temporary password will be generated for you to share with the user.</p>
+        <div class="flex justify-end gap-2">
+          <Button variant="outline" onclick={() => { createUserModalOpen = false; }}>Cancel</Button>
+          <Button
+            disabled={!createUserName || !createUserEmail || createUserLoading}
+            onclick={handleCreateUser}
+          >
+            {createUserLoading ? "Creating..." : "Create User"}
+          </Button>
+        </div>
+      </div>
+    {/if}
+  </div>
+</Modal>
+
+<!-- Reset Password Modal -->
+<Modal bind:open={resetPasswordModalOpen} onClose={() => { resetPasswordModalOpen = false; resetPasswordTempPassword = ""; }}>
+  <div class="bg-card rounded-xl border shadow-2xl max-w-md w-full p-6">
+    {#if resetPasswordTempPassword}
+      <h2 class="text-lg font-semibold mb-4">Password Reset</h2>
+      <div class="space-y-4">
+        <p class="text-sm text-muted-foreground">
+          New temporary password for <span class="font-medium text-foreground">{resetPasswordTargetUser?.name}</span>:
+        </p>
+        <div class="flex items-center gap-2">
+          <code class="flex-1 rounded-md bg-muted px-3 py-2 text-sm font-mono select-all">{resetPasswordTempPassword}</code>
+          <Button variant="outline" size="icon-sm" onclick={() => copyTempPassword(resetPasswordTempPassword)}>
+            {#if tempPasswordCopied}
+              <Check class="w-4 h-4 text-green-600" />
+            {:else}
+              <Copy class="w-4 h-4" />
+            {/if}
+          </Button>
+        </div>
+        <p class="text-xs text-muted-foreground">This password will not be shown again.</p>
+        <div class="flex justify-end">
+          <Button onclick={() => { resetPasswordModalOpen = false; resetPasswordTempPassword = ""; }}>Done</Button>
+        </div>
+      </div>
+    {:else}
+      <h2 class="text-lg font-semibold mb-4">Reset Password</h2>
+      <div class="space-y-4">
+        <p class="text-sm text-muted-foreground">
+          Generate a new temporary password for <span class="font-medium text-foreground">{resetPasswordTargetUser?.name}</span>? Their current password will stop working immediately.
+        </p>
+        <div class="flex justify-end gap-2">
+          <Button variant="outline" onclick={() => { resetPasswordModalOpen = false; }}>Cancel</Button>
+          <Button
+            disabled={resetPasswordLoading}
+            onclick={handleResetPassword}
+          >
+            {resetPasswordLoading ? "Resetting..." : "Reset Password"}
+          </Button>
+        </div>
+      </div>
+    {/if}
   </div>
 </Modal>
 

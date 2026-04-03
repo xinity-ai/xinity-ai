@@ -2,12 +2,21 @@ import { rootOs, withInstanceAdmin } from "../root";
 import { z } from "zod";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
-import { userT, memberT, organizationT, sql, eq, or, ilike, count, and } from "common-db";
+import { auth, getGreenlitCallId } from "$lib/server/auth-server";
+import { hashPassword } from "better-auth/crypto";
+import { userT, accountT, memberT, organizationT, sql, eq, or, ilike, count, and } from "common-db";
 
 const log = rootLogger.child({ name: "instance-admin.procedure" });
 const tags = ["Instance Admin"];
 
 const RoleSchema = z.enum(["owner", "admin", "member", "labeler", "viewer", "pending"]);
+
+/** Generates a random temporary password (16 chars, alphanumeric + symbols). */
+function generateTempPassword(): string {
+  const chars = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%";
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (b) => chars[b % chars.length]).join("");
+}
 
 /** Returns true when the organization has only one owner (removing or demoting them would leave it ownerless). */
 async function isSoleOwner(organizationId: string): Promise<boolean> {
@@ -226,6 +235,81 @@ const updateUserRole = rootOs
     return { success: true };
   });
 
+const setEmailVerified = rootOs
+  .meta({ mcp: false })
+  .use(withInstanceAdmin)
+  .route({ method: "POST", path: "/users/set-email-verified", tags, summary: "Set user email verification status" })
+  .input(z.object({
+    userId: z.string(),
+    verified: z.boolean(),
+  }))
+  .handler(async ({ input, context, errors }) => {
+    if (input.userId === context.session.user.id && !input.verified) {
+      throw errors.FORBIDDEN({ message: "You cannot unverify your own email" });
+    }
+    log.info({ userId: input.userId, verified: input.verified }, "Setting email verification status");
+    await getDB()
+      .update(userT)
+      .set({ emailVerified: input.verified })
+      .where(eq(userT.id, input.userId));
+    return { success: true };
+  });
+
+const createUser = rootOs
+  .meta({ mcp: false })
+  .use(withInstanceAdmin)
+  .route({ method: "POST", path: "/users/create", tags, summary: "Create a new user" })
+  .input(z.object({
+    name: z.string().min(1, "Name is required"),
+    email: z.string().email("Invalid email address"),
+  }))
+  .handler(async ({ input, errors }) => {
+    const temporaryPassword = generateTempPassword();
+    let signupResult: { user: { id: string } };
+    try {
+      const greenlitCallId = getGreenlitCallId();
+      signupResult = await auth.api.signUpEmail({
+        body: { email: input.email, password: temporaryPassword, name: input.name },
+        query: { greenlitCallId },
+      });
+    } catch (err) {
+      log.error({ err, email: input.email }, "Admin user creation failed");
+      throw errors.FORBIDDEN({ message: "Failed to create user. Email may already be in use." });
+    }
+    // Admin-created users are considered verified
+    await getDB()
+      .update(userT)
+      .set({ emailVerified: true })
+      .where(eq(userT.id, signupResult.user.id));
+    log.info({ userId: signupResult.user.id, email: input.email }, "Admin created user");
+    return { success: true, userId: signupResult.user.id, temporaryPassword };
+  });
+
+const resetUserPassword = rootOs
+  .meta({ mcp: false })
+  .use(withInstanceAdmin)
+  .route({ method: "POST", path: "/users/reset-password", tags, summary: "Reset a user's password" })
+  .input(z.object({ userId: z.string() }))
+  .handler(async ({ input, errors }) => {
+    const db = getDB();
+    const [account] = await db
+      .select({ id: accountT.id })
+      .from(accountT)
+      .where(and(eq(accountT.userId, input.userId), eq(accountT.providerId, "credential")))
+      .limit(1);
+    if (!account) {
+      throw errors.NOT_FOUND({ message: "User has no password-based account (may use SSO only)." });
+    }
+    const temporaryPassword = generateTempPassword();
+    const hashed = await hashPassword(temporaryPassword);
+    await db
+      .update(accountT)
+      .set({ password: hashed, updatedAt: new Date() })
+      .where(eq(accountT.id, account.id));
+    log.info({ userId: input.userId }, "Admin reset user password");
+    return { success: true, temporaryPassword };
+  });
+
 // ── Organizations ────────────────────────────────────────────────────────
 
 const listOrganizations = rootOs
@@ -320,6 +404,9 @@ export const instanceAdminRouter = rootOs.prefix("/instance-admin").router({
   listUsers,
   banUser,
   unbanUser,
+  setEmailVerified,
+  createUser,
+  resetUserPassword,
   addUserToOrganization,
   removeUserFromOrganization,
   updateUserRole,
