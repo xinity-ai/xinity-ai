@@ -6,6 +6,8 @@
   import { Input } from "$lib/components/ui/input";
   import * as Card from "$lib/components/ui/card";
   import Modal from "$lib/components/Modal.svelte";
+  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
+  import * as Select from "$lib/components/ui/select";
   import { roleLabels, roleBadgeVariant, type RoleName } from "$lib/roles";
   import { Search, Ban, ShieldCheck, UserPlus, X, ChevronLeft, ChevronRight, MailCheck, MailX, KeyRound, Copy } from "@lucide/svelte";
   import { toastState } from "$lib/state/toast.svelte";
@@ -87,6 +89,13 @@
   let addOrgTargetUser = $state<{ id: string; name: string } | null>(null);
   let addOrgSelectedOrg = $state("");
   let addOrgSelectedRole = $state<RoleName>("pending");
+
+  const addOrgOrgLabel = $derived(
+    addOrgSelectedOrg === ""
+      ? "Select organization..."
+      : organizations.find((o: any) => o.id === addOrgSelectedOrg)?.name ?? "Select organization...",
+  );
+  const addOrgRoleLabel = $derived(roleLabels[addOrgSelectedRole] ?? "Select role...");
 
   async function handleBan() {
     if (!banTargetUser) return;
@@ -403,25 +412,22 @@
 {/snippet}
 
 <!-- Ban Modal -->
-<Modal bind:open={banModalOpen} onClose={() => { banModalOpen = false; }}>
-  <div class="bg-card rounded-xl border shadow-2xl max-w-md w-full p-6">
-    <h2 class="text-lg font-semibold mb-4">Ban {banTargetUser?.name}</h2>
-    <div class="space-y-4">
-      <div>
-        <label for="ban-reason" class="text-sm font-medium">Reason (optional)</label>
-        <Input
-          id="ban-reason"
-          placeholder="Reason for ban..."
-          bind:value={banReason}
-        />
-      </div>
-      <div class="flex justify-end gap-2">
-        <Button variant="outline" onclick={() => { banModalOpen = false; }}>Cancel</Button>
-        <Button variant="destructive" onclick={handleBan}>Ban User</Button>
-      </div>
-    </div>
+<ConfirmDialog
+  bind:open={banModalOpen}
+  title="Ban {banTargetUser?.name}"
+  confirmLabel="Ban User"
+  onConfirm={handleBan}
+  onCancel={() => { banReason = ""; banTargetUser = null; }}
+>
+  <div>
+    <label for="ban-reason" class="text-sm font-medium">Reason (optional)</label>
+    <Input
+      id="ban-reason"
+      placeholder="Reason for ban..."
+      bind:value={banReason}
+    />
   </div>
-</Modal>
+</ConfirmDialog>
 
 <!-- Create User Modal -->
 <Modal bind:open={createUserModalOpen} onClose={() => { createUserModalOpen = false; createUserTempPassword = ""; createUserName = ""; createUserEmail = ""; }}>
@@ -496,30 +502,32 @@
     <div class="space-y-4">
       <div>
         <label for="org-select" class="text-sm font-medium">Organization</label>
-        <select
-          id="org-select"
-          class="w-full mt-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
-          bind:value={addOrgSelectedOrg}
-        >
-          <option value="">Select organization...</option>
-          {#each organizations as org}
-            <option value={org.id}>{org.name}</option>
-          {/each}
-        </select>
+        <Select.Root type="single" bind:value={addOrgSelectedOrg}>
+          <Select.Trigger id="org-select" class="w-full mt-1">
+            {addOrgOrgLabel}
+          </Select.Trigger>
+          <Select.Content>
+            <Select.Item value="" label="Select organization..." />
+            {#each organizations as org}
+              <Select.Item value={org.id} label={org.name} />
+            {/each}
+          </Select.Content>
+        </Select.Root>
       </div>
       <div>
         <label for="role-select" class="text-sm font-medium">Role</label>
-        <select
-          id="role-select"
-          class="w-full mt-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
-          bind:value={addOrgSelectedRole}
-        >
-          {#each Object.entries(roleLabels) as [value, label]}
-            {#if value !== "owner"}
-              <option {value}>{label}</option>
-            {/if}
-          {/each}
-        </select>
+        <Select.Root type="single" bind:value={addOrgSelectedRole}>
+          <Select.Trigger id="role-select" class="w-full mt-1">
+            {addOrgRoleLabel}
+          </Select.Trigger>
+          <Select.Content>
+            {#each Object.entries(roleLabels) as [value, label]}
+              {#if value !== "owner"}
+                <Select.Item {value} {label} />
+              {/if}
+            {/each}
+          </Select.Content>
+        </Select.Root>
       </div>
       <div class="flex justify-end gap-2">
         <Button variant="outline" onclick={() => { addOrgModalOpen = false; }}>Cancel</Button>

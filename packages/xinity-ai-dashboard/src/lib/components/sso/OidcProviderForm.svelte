@@ -3,6 +3,7 @@
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
   import * as Select from "$lib/components/ui/select";
+  import * as Collapsible from "$lib/components/ui/collapsible";
   import { Checkbox } from "$lib/components/ui/checkbox";
   import { orpc } from "$lib/orpc/orpc-client";
 
@@ -163,79 +164,85 @@
     <span class="text-xs">Scopes: openid email profile</span>
   </div>
 
-  <Button
-    variant="ghost"
-    size="sm"
-    type="button"
-    onclick={() => (showAdvanced = !showAdvanced)}
-  >
-    {showAdvanced ? "Hide advanced settings" : "Show advanced settings"}
-  </Button>
+  <Collapsible.Root bind:open={showAdvanced}>
+    <Collapsible.Trigger>
+      {#snippet child({ props })}
+        <Button
+          {...props}
+          variant="ghost"
+          size="sm"
+          type="button"
+        >
+          {showAdvanced ? "Hide advanced settings" : "Show advanced settings"}
+        </Button>
+      {/snippet}
+    </Collapsible.Trigger>
 
-  {#if showAdvanced}
-    <div class="rounded-lg border bg-muted/50 p-4">
-      <p class="text-xs text-muted-foreground">
-        OIDC discovery fills most endpoint fields automatically. Use these only
-        when required by your IdP.
-      </p>
-      <div class="mt-3 grid gap-4 md:grid-cols-2">
-        <div class="space-y-2">
-          <Label for="oidc-discovery-endpoint">Discovery endpoint</Label>
-          <Input
-            id="oidc-discovery-endpoint"
-            bind:value={discoveryEndpoint}
-            placeholder="https://idp.example.com/.well-known/openid-configuration"
-          />
+    <Collapsible.Content>
+      <div class="rounded-lg border bg-muted/50 p-4">
+        <p class="text-xs text-muted-foreground">
+          OIDC discovery fills most endpoint fields automatically. Use these only
+          when required by your IdP.
+        </p>
+        <div class="mt-3 grid gap-4 md:grid-cols-2">
+          <div class="space-y-2">
+            <Label for="oidc-discovery-endpoint">Discovery endpoint</Label>
+            <Input
+              id="oidc-discovery-endpoint"
+              bind:value={discoveryEndpoint}
+              placeholder="https://idp.example.com/.well-known/openid-configuration"
+            />
+          </div>
+          <div class="space-y-2">
+            <Label for="oidc-token-endpoint-auth">Token endpoint auth</Label>
+            <Select.Root type="single" bind:value={tokenEndpointAuthentication}>
+              <Select.Trigger class="w-full">
+                {tokenEndpointAuthentication}
+              </Select.Trigger>
+              <Select.Content>
+                <Select.Item value="client_secret_basic" label="client_secret_basic" />
+                <Select.Item value="client_secret_post" label="client_secret_post" />
+              </Select.Content>
+            </Select.Root>
+          </div>
         </div>
-        <div class="space-y-2">
-          <Label for="oidc-token-endpoint-auth">Token endpoint auth</Label>
-          <Select.Root type="single" bind:value={tokenEndpointAuthentication}>
-            <Select.Trigger class="w-full">
-              {tokenEndpointAuthentication}
-            </Select.Trigger>
-            <Select.Content>
-              <Select.Item value="client_secret_basic" label="client_secret_basic" />
-              <Select.Item value="client_secret_post" label="client_secret_post" />
-            </Select.Content>
-          </Select.Root>
+        <div class="mt-4 grid gap-4 md:grid-cols-2">
+          <div class="space-y-2">
+            <Label for="oidc-authorization-endpoint">Authorization endpoint</Label>
+            <Input
+              id="oidc-authorization-endpoint"
+              bind:value={authorizationEndpoint}
+              placeholder="https://idp.example.com/authorize"
+            />
+          </div>
+          <div class="space-y-2">
+            <Label for="oidc-token-endpoint">Token endpoint</Label>
+            <Input
+              id="oidc-token-endpoint"
+              bind:value={tokenEndpoint}
+              placeholder="https://idp.example.com/token"
+            />
+          </div>
+          <div class="space-y-2">
+            <Label for="oidc-jwks-endpoint">JWKS endpoint</Label>
+            <Input
+              id="oidc-jwks-endpoint"
+              bind:value={jwksEndpoint}
+              placeholder="https://idp.example.com/jwks"
+            />
+          </div>
+          <div class="space-y-2">
+            <Label for="oidc-userinfo-endpoint">UserInfo endpoint</Label>
+            <Input
+              id="oidc-userinfo-endpoint"
+              bind:value={userInfoEndpoint}
+              placeholder="https://idp.example.com/userinfo"
+            />
+          </div>
         </div>
       </div>
-      <div class="mt-4 grid gap-4 md:grid-cols-2">
-        <div class="space-y-2">
-          <Label for="oidc-authorization-endpoint">Authorization endpoint</Label>
-          <Input
-            id="oidc-authorization-endpoint"
-            bind:value={authorizationEndpoint}
-            placeholder="https://idp.example.com/authorize"
-          />
-        </div>
-        <div class="space-y-2">
-          <Label for="oidc-token-endpoint">Token endpoint</Label>
-          <Input
-            id="oidc-token-endpoint"
-            bind:value={tokenEndpoint}
-            placeholder="https://idp.example.com/token"
-          />
-        </div>
-        <div class="space-y-2">
-          <Label for="oidc-jwks-endpoint">JWKS endpoint</Label>
-          <Input
-            id="oidc-jwks-endpoint"
-            bind:value={jwksEndpoint}
-            placeholder="https://idp.example.com/jwks"
-          />
-        </div>
-        <div class="space-y-2">
-          <Label for="oidc-userinfo-endpoint">UserInfo endpoint</Label>
-          <Input
-            id="oidc-userinfo-endpoint"
-            bind:value={userInfoEndpoint}
-            placeholder="https://idp.example.com/userinfo"
-          />
-        </div>
-      </div>
-    </div>
-  {/if}
+    </Collapsible.Content>
+  </Collapsible.Root>
 
   {#if formError}
     <p class="text-sm text-destructive">{formError}</p>

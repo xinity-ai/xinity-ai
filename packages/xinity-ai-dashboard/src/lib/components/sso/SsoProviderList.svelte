@@ -2,7 +2,7 @@
   import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
   import * as Card from "$lib/components/ui/card";
-  import Modal from "$lib/components/Modal.svelte";
+  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import Trash2 from "@lucide/svelte/icons/trash-2";
 
   type ParsedProvider = {
@@ -107,25 +107,20 @@
   {/if}
 </div>
 
-<Modal bind:open={deleteOpen} onClose={() => { deleteOpen = false; deleteTarget = null; }}>
-  <div class="bg-card rounded-xl border shadow-2xl max-w-md w-full p-6 space-y-4">
-    <h2 class="text-lg font-semibold">Delete SSO provider</h2>
-    {#if deleteTarget}
-      <p class="text-sm text-muted-foreground">
-        Are you sure you want to delete the <span class="font-medium text-foreground">{deleteTarget.type.toUpperCase()}</span> provider
-        <span class="font-mono font-medium text-foreground">{deleteTarget.providerId}</span>?
-      </p>
-      <p class="text-sm text-muted-foreground">
-        Users who sign in through this provider will no longer be able to authenticate via SSO. This action cannot be undone.
-      </p>
-    {/if}
-    <div class="flex items-center justify-end gap-3 pt-2">
-      <Button variant="outline" size="sm" onclick={() => { deleteOpen = false; deleteTarget = null; }}>
-        Cancel
-      </Button>
-      <Button variant="destructive" size="sm" disabled={deleting} onclick={executeDelete}>
-        {deleting ? "Deleting..." : "Delete provider"}
-      </Button>
-    </div>
-  </div>
-</Modal>
+<ConfirmDialog
+  bind:open={deleteOpen}
+  title="Delete SSO provider"
+  confirmLabel={deleting ? "Deleting..." : "Delete provider"}
+  onConfirm={() => void executeDelete()}
+  onCancel={() => { deleteOpen = false; deleteTarget = null; }}
+>
+  {#if deleteTarget}
+    <p class="text-sm text-muted-foreground">
+      Are you sure you want to delete the <span class="font-medium text-foreground">{deleteTarget.type.toUpperCase()}</span> provider
+      <span class="font-mono font-medium text-foreground">{deleteTarget.providerId}</span>?
+    </p>
+    <p class="text-sm text-muted-foreground">
+      Users who sign in through this provider will no longer be able to authenticate via SSO. This action cannot be undone.
+    </p>
+  {/if}
+</ConfirmDialog>

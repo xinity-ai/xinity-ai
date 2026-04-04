@@ -5,6 +5,8 @@
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import * as Card from "$lib/components/ui/card";
+  import * as Select from "$lib/components/ui/select";
+  import * as Collapsible from "$lib/components/ui/collapsible";
   import { roleLabels, roleBadgeVariant, type RoleName } from "$lib/roles";
   import { Search, ChevronDown, ChevronRight, ChevronLeft, X, Users, Shield, HardDrive } from "@lucide/svelte";
   import { toastState } from "$lib/state/toast.svelte";
@@ -56,12 +58,7 @@
     void fetchOrgs();
   }
 
-  async function toggleOrg(orgId: string) {
-    if (expandedOrg === orgId) {
-      expandedOrg = null;
-      return;
-    }
-    expandedOrg = orgId;
+  async function loadMembers(orgId: string) {
     if (!orgMembers[orgId]) {
       loadingMembers = new Set([...loadingMembers, orgId]);
       const result = await orpc.instanceAdmin.getOrganizationMembers({ organizationId: orgId });
@@ -80,7 +77,7 @@
       toastState.add(`Removed ${userName}`, "success");
       delete orgMembers[organizationId];
       orgMembers = { ...orgMembers };
-      await toggleOrg(organizationId);
+      void loadMembers(organizationId);
       void fetchOrgs();
     }
   }
@@ -97,7 +94,7 @@
       toastState.add("Role updated", "success");
       delete orgMembers[organizationId];
       orgMembers = { ...orgMembers };
-      await toggleOrg(organizationId);
+      void loadMembers(organizationId);
     }
   }
 
@@ -138,13 +135,20 @@
     {:else}
       <div class="space-y-2">
         {#each orgs as org (org.id)}
-          <div class="border rounded-lg">
-            <div
-              role="button"
-              tabindex="0"
+          <Collapsible.Root
+            class="border rounded-lg"
+            open={expandedOrg === org.id}
+            onOpenChange={(isOpen) => {
+              if (isOpen) {
+                expandedOrg = org.id;
+                void loadMembers(org.id);
+              } else {
+                expandedOrg = null;
+              }
+            }}
+          >
+            <Collapsible.Trigger
               class="w-full flex items-center justify-between p-4 hover:bg-muted/50 text-left cursor-pointer"
-              onclick={() => toggleOrg(org.id)}
-              onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleOrg(org.id); } }}
             >
               <div class="flex items-center gap-3">
                 {#if expandedOrg === org.id}
@@ -163,7 +167,7 @@
                   size="sm"
                   class="gap-1.5"
                   title={org.ssoSelfManage ? "SSO self-management enabled, click to disable" : "SSO self-management disabled, click to enable"}
-                  onclick={(e: MouseEvent) => { e.stopPropagation(); handleToggleSsoSelfManage(org.id, !org.ssoSelfManage); }}
+                  onclick={(e: MouseEvent) => { e.stopPropagation(); void handleToggleSsoSelfManage(org.id, !org.ssoSelfManage); }}
                 >
                   <Shield class="w-3.5 h-3.5" />
                   SSO
@@ -180,9 +184,9 @@
                   {new Date(org.createdAt).toLocaleDateString()}
                 </span>
               </div>
-            </div>
+            </Collapsible.Trigger>
 
-            {#if expandedOrg === org.id}
+            <Collapsible.Content>
               <div class="border-t px-4 py-3">
                 {#if loadingMembers.has(org.id)}
                   <p class="text-sm text-muted-foreground">Loading members...</p>
@@ -203,15 +207,20 @@
                           <td class="py-2 pr-4">{member.userName}</td>
                           <td class="py-2 pr-4 text-muted-foreground">{member.userEmail}</td>
                           <td class="py-2 pr-4">
-                            <select
-                              class="rounded-md border border-input bg-background px-2 py-1 text-xs"
+                            <Select.Root
+                              type="single"
                               value={member.role}
-                              onchange={(e) => handleRoleChange(member.userId, org.id, (e.target as HTMLSelectElement).value)}
+                              onValueChange={(v) => void handleRoleChange(member.userId, org.id, v)}
                             >
-                              {#each Object.entries(roleLabels) as [value, label]}
-                                <option {value}>{label}</option>
-                              {/each}
-                            </select>
+                              <Select.Trigger class="h-7 px-2 text-xs min-w-24">
+                                {roleLabels[member.role as RoleName] ?? member.role}
+                              </Select.Trigger>
+                              <Select.Content>
+                                {#each Object.entries(roleLabels) as [value, label]}
+                                  <Select.Item {value} {label} />
+                                {/each}
+                              </Select.Content>
+                            </Select.Root>
                           </td>
                           <td class="py-2 pr-4">
                             {#if member.userBanned}
@@ -225,7 +234,7 @@
                               variant="ghost"
                               size="icon-sm"
                               title="Remove from organization"
-                              onclick={() => handleRemoveMember(member.userId, org.id, member.userName)}
+                              onclick={() => void handleRemoveMember(member.userId, org.id, member.userName)}
                             >
                               <X class="w-4 h-4" />
                             </Button>
@@ -238,8 +247,8 @@
                   <p class="text-sm text-muted-foreground">No members in this organization.</p>
                 {/if}
               </div>
-            {/if}
-          </div>
+            </Collapsible.Content>
+          </Collapsible.Root>
         {/each}
       </div>
 
