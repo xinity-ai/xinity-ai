@@ -65,27 +65,35 @@ export function createUrlSearchParamsStore(): Writable<Record<string, string>> {
     pushState(url.pathname + url.search + url.hash, {});
   };
 
-  const { subscribe, set } = writable(getParamsObject(), set => {
+  const { subscribe, set } = writable(getParamsObject(), (set) => {
     const onPopState = () => set(getParamsObject());
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   });
 
+  let pendingUpdate: Record<string, string> | null = null;
+
+  const flush = () => {
+    if (pendingUpdate) {
+      setUrlFromParams(pendingUpdate);
+      set(getParamsObject());
+      pendingUpdate = null;
+    }
+  };
+
   return {
     subscribe,
     set: (value: Record<string, string>) => {
-      setUrlFromParams(value);
-      // Update store subscribers after URL change
-      // so $store always matches the URL
-      const params = getParamsObject();
-      set(params);
+      pendingUpdate = value;
+      set(value); // update subscribers immediately for responsive UI
+      queueMicrotask(flush);
     },
-    update: updater => {
-      const current = getParamsObject();
+    update: (updater) => {
+      const current = pendingUpdate ?? getParamsObject();
       const updated = updater(current);
-      setUrlFromParams(updated);
-      const params = getParamsObject();
-      set(params);
+      pendingUpdate = updated;
+      set(updated);
+      queueMicrotask(flush);
     },
   } as Writable<Record<string, string>>;
 }
