@@ -16,7 +16,7 @@
 	"devDependencies": {
 		"@better-auth/passkey": "^1.4.18",
 		"@eslym/sveltekit-adapter-bun": "^2.0.5",
-		"@internationalized/date": "^3.10.0",
+		"@internationalized/date": "^3.12.0",
 		"@lucide/svelte": "^0.561.0",
 		"@orpc/client": "^1.11.1",
 		"@orpc/openapi": "^1.11.1",
@@ -29,7 +29,7 @@
 		"@types/nodemailer": "^7.0.4",
 		"@types/prismjs": "^1.26.5",
 		"better-auth": "^1.4.18",
-		"bits-ui": "^2.15.5",
+		"bits-ui": "^2.16.3",
 		"chart.js": "^4.5.1",
 		"clsx": "^2.1.1",
 		"common-db": "workspace:*",
