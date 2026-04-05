@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { errorResponse, forwardBackendError, logChatUsage, validateModelType, extractAllowedRequestParams, readSSEStream, isConnectionRefused, isAbortError, isTimeoutError, BACKEND_RESTART_RETRY_AFTER } from "../util";
+import { errorResponse, forwardBackendError, logChatUsage, validateModelType, extractAllowedRequestParams, readSSEStream, isAbortError, handleEndpointError } from "../util";
 import { resolveModel } from "../ai-sdk";
 import { BackendChatChunkSchema, BackendUsageSchema } from "../backend-schemas";
 import type { ApiCallInputMessage } from "common-db";
@@ -264,19 +264,6 @@ export async function handleChatCompletion(req: Request) {
     }
 
   } catch (error) {
-    if (isAbortError(error)) {
-      log.info({ err: error }, "Client disconnected");
-      return new Response(null, { status: 499 });
-    }
-    if (isTimeoutError(error)) {
-      log.warn({ err: error }, "Backend timeout");
-      return errorResponse("Backend timeout", 504);
-    }
-    if (isConnectionRefused(error)) {
-      log.warn({ err: error }, "Backend unreachable");
-      return errorResponse("Service temporarily unavailable — consider adding cluster capacity", 503, { "Retry-After": String(BACKEND_RESTART_RETRY_AFTER) });
-    }
-    log.error({ err: error }, "Internal gateway error");
-    return errorResponse(error instanceof Error ? error.message : "Internal Server Error", 500);
+    return handleEndpointError(error, log);
   }
 }

@@ -372,6 +372,34 @@ export function isConnectionRefused(error: unknown): boolean {
 /** Seconds to advertise in Retry-After when a backend node is unreachable (covers typical vLLM restart time). */
 export const BACKEND_RESTART_RETRY_AFTER = 120;
 
+/**
+ * Shared top-level error handler for endpoint catch blocks.
+ * Maps common fetch errors to appropriate HTTP status codes.
+ */
+export function handleEndpointError(
+  error: unknown,
+  log: { info: (obj: Record<string, unknown>, msg: string) => void; warn: (obj: Record<string, unknown>, msg: string) => void; error: (obj: Record<string, unknown>, msg: string) => void },
+): Response {
+  if (isAbortError(error)) {
+    log.info({ err: error }, "Client disconnected");
+    return new Response(null, { status: 499 });
+  }
+  if (isTimeoutError(error)) {
+    log.warn({ err: error }, "Backend timeout");
+    return errorResponse("Backend timeout", 504);
+  }
+  if (isConnectionRefused(error)) {
+    log.warn({ err: error }, "Backend unreachable");
+    return errorResponse(
+      "Service temporarily unavailable — consider adding cluster capacity",
+      503,
+      { "Retry-After": String(BACKEND_RESTART_RETRY_AFTER) },
+    );
+  }
+  log.error({ err: error }, "Internal gateway error");
+  return errorResponse(error instanceof Error ? error.message : "Internal Server Error", 500);
+}
+
 export function validateModelType(
   modelInfo: { type?: string },
   expectedTypes: string[],

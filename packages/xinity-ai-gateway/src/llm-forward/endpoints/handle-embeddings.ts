@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { resolveModel } from "../ai-sdk";
-import { errorResponse, forwardBackendError, recordUsage, validateModelType } from "../util";
+import { errorResponse, forwardBackendError, recordUsage, validateModelType, handleEndpointError } from "../util";
 import { rootLogger } from "../../logger";
 import { env } from "../../env";
 
@@ -80,7 +80,6 @@ export async function handleEmbeddingGeneration(req: Request): Promise<Response>
 
     return Response.json(raw);
   } catch (error) {
-    log.error({ err: error }, "Internal gateway error");
-    return errorResponse(error instanceof Error ? error.message : "Internal Server Error", 500);
+    return handleEndpointError(error, log);
   }
 }

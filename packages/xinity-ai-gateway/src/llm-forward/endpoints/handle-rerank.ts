@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { resolveModel } from "../ai-sdk";
-import { errorResponse, forwardBackendError, validateModelType } from "../util";
+import { errorResponse, forwardBackendError, validateModelType, handleEndpointError } from "../util";
 import { rootLogger } from "../../logger";
 import { env } from "../../env";
 
@@ -64,7 +64,6 @@ export async function handleRerank(req: Request): Promise<Response> {
       model: originalModel,
     });
   } catch (error) {
-    log.error({ err: error }, "Internal gateway error");
-    return errorResponse(error instanceof Error ? error.message : "Internal Server Error", 500);
+    return handleEndpointError(error, log);
   }
 }
