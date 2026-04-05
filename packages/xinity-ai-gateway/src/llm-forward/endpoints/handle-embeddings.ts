@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { resolveModel } from "../ai-sdk";
-import { errorResponse, forwardBackendError, recordUsage, validateModelType, handleEndpointError } from "../util";
+import { errorResponse, forwardBackendError, recordUsage, validateModelType, handleEndpointError, validationError } from "../util";
 import { rootLogger } from "../../logger";
 import { env } from "../../env";
 
@@ -26,7 +26,7 @@ export async function handleEmbeddingGeneration(req: Request): Promise<Response>
 
     const parseResult = EmbeddingBodySchema.safeParse(rawBody);
     if (!parseResult.success) {
-      return errorResponse(`Invalid request body: ${parseResult.error.issues.map((i) => i.message).join(", ")}`, 400);
+      return validationError(parseResult.error);
     }
     const body = parseResult.data;
 

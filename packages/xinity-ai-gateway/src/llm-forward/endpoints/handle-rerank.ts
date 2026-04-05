@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { resolveModel } from "../ai-sdk";
-import { errorResponse, forwardBackendError, validateModelType, handleEndpointError } from "../util";
+import { forwardBackendError, validateModelType, handleEndpointError, validationError } from "../util";
 import { rootLogger } from "../../logger";
 import { env } from "../../env";
 
@@ -36,7 +36,7 @@ export async function handleRerank(req: Request): Promise<Response> {
 
     const parseResult = RerankBodySchema.safeParse(rawBody);
     if (!parseResult.success) {
-      return errorResponse(`Invalid request body: ${parseResult.error.issues.map((i) => i.message).join(", ")}`, 400);
+      return validationError(parseResult.error);
     }
     const body = parseResult.data;
 

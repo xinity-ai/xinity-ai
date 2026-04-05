@@ -230,6 +230,15 @@ export function handleStreamError(
 }
 
 // ---------------------------------------------------------------------------
+// Validation helpers
+// ---------------------------------------------------------------------------
+
+/** Returns a 400 error response with formatted Zod validation issues. */
+export function validationError(error: { issues: { message: string }[] }): Response {
+  return errorResponse(`Invalid request body: ${error.issues.map((i) => i.message).join(", ")}`, 400);
+}
+
+// ---------------------------------------------------------------------------
 // SSE parsing
 // ---------------------------------------------------------------------------
 

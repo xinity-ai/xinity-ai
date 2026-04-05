@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { errorResponse, forwardBackendError, logChatUsage, validateModelType, extractAllowedRequestParams, readSSEStream, handleEndpointError, SSE_RESPONSE_HEADERS, sseEncoder, handleStreamError } from "../util";
+import { errorResponse, forwardBackendError, logChatUsage, validateModelType, extractAllowedRequestParams, readSSEStream, handleEndpointError, SSE_RESPONSE_HEADERS, sseEncoder, handleStreamError, validationError } from "../util";
 import { resolveModel } from "../ai-sdk";
 import { BackendChatChunkSchema, BackendUsageSchema } from "../backend-schemas";
 import type { ApiCallInputMessage } from "common-db";
@@ -62,7 +62,7 @@ export async function handleChatCompletion(req: Request) {
 
     const parseResult = ChatCompletionBodySchema.safeParse(rawBody);
     if (!parseResult.success) {
-      return errorResponse(`Invalid request body: ${parseResult.error.issues.map((i) => i.message).join(", ")}`, 400);
+      return validationError(parseResult.error);
     }
     const body = parseResult.data;
 
