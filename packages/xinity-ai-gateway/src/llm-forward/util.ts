@@ -191,6 +191,48 @@ export const logChatUsage = ({
   }
 };
 
+// ---------------------------------------------------------------------------
+// SSE streaming helpers
+// ---------------------------------------------------------------------------
+
+/** Standard headers for SSE streaming responses. */
+export const SSE_RESPONSE_HEADERS = {
+  "Content-Type": "text/event-stream",
+  "Cache-Control": "no-cache",
+  "Connection": "keep-alive",
+} as const;
+
+/** Shared TextEncoder for SSE frame encoding. */
+export const sseEncoder = new TextEncoder();
+
+/**
+ * Handles errors inside an OpenAI-compatible streaming ReadableStream.
+ * Emits an error event + [DONE] sentinel and closes the controller.
+ */
+export function handleStreamError(
+  e: unknown,
+  controller: ReadableStreamDefaultController,
+  log: { info: (obj: Record<string, unknown>, msg: string) => void; error: (obj: Record<string, unknown>, msg: string) => void },
+): void {
+  if (isAbortError(e)) {
+    log.info({ err: e }, "Client disconnected during stream");
+    try { controller.close(); } catch {}
+    return;
+  }
+  log.error({ err: e }, "Stream error");
+  try {
+    controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify({ error: { message: "Internal stream error", type: "server_error" } })}\n\n`));
+    controller.enqueue(sseEncoder.encode("data: [DONE]\n\n"));
+    controller.close();
+  } catch {
+    try { controller.error(e as Error); } catch {}
+  }
+}
+
+// ---------------------------------------------------------------------------
+// SSE parsing
+// ---------------------------------------------------------------------------
+
 export async function* readSSEStream(response: Response) {
   if (!response.body) throw new Error("ReadableStream not available");
 

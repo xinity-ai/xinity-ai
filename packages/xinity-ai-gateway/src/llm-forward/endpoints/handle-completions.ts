@@ -1,14 +1,12 @@
 import { z } from "zod";
 import { resolveModel } from "../ai-sdk";
-import { errorResponse, forwardBackendError, logChatUsage, readSSEStream, validateModelType, isAbortError, handleEndpointError } from "../util";
+import { errorResponse, forwardBackendError, logChatUsage, readSSEStream, validateModelType, handleEndpointError, SSE_RESPONSE_HEADERS, sseEncoder, handleStreamError } from "../util";
 import { BackendCompletionChunkSchema, BackendUsageSchema } from "../backend-schemas";
 import type { ApiCallInputMessage } from "common-db";
 import { rootLogger } from "../../logger";
 import { env } from "../../env";
 
 const log = rootLogger.child({ name: "handle-completions" });
-
-const encoder = new TextEncoder();
 
 const CompletionBodySchema = z.looseObject({
   model: z.string(),
@@ -108,7 +106,7 @@ export async function handleCompletion(req: Request): Promise<Response> {
           try {
             for await (const event of readSSEStream(backendResponse)) {
               if (event.data === "[DONE]") {
-                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                controller.enqueue(sseEncoder.encode("data: [DONE]\n\n"));
                 break;
               }
 
@@ -135,7 +133,7 @@ export async function handleCompletion(req: Request): Promise<Response> {
                 }
               }
 
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+              controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
             }
             controller.close();
 
@@ -156,30 +154,12 @@ export async function handleCompletion(req: Request): Promise<Response> {
               stream: true,
             });
           } catch (e) {
-            if (isAbortError(e)) {
-              log.info({ err: e }, "Client disconnected during stream");
-              try { controller.close(); } catch {}
-              return;
-            }
-            log.error({ err: e }, "Stream error");
-            try {
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: { message: "Internal stream error", type: "server_error" } })}\n\n`));
-              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-              controller.close();
-            } catch {
-              try { controller.error(e as Error); } catch {}
-            }
+            handleStreamError(e, controller, log);
           }
         },
       });
 
-      return new Response(stream, {
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive",
-        },
-      });
+      return new Response(stream, { headers: SSE_RESPONSE_HEADERS });
     }
 
     // Non-streaming: always forward, extract logging data field-by-field

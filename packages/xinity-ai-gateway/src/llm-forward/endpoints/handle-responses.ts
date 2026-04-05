@@ -1,6 +1,6 @@
 import { generateText, streamText } from "ai";
 import { resolveAuthorizedModel } from "../ai-sdk";
-import { errorResponse, logChatUsage, validateModelType, toModelMessages } from "../util";
+import { errorResponse, logChatUsage, validateModelType, toModelMessages, SSE_RESPONSE_HEADERS } from "../util";
 import type { ApiCallInputMessage } from "common-db";
 import { checkAuth, type AuthResult } from "../auth";
 import { deleteResponse, getResponse, saveResponse } from "../response-store";
@@ -287,13 +287,7 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
         },
       });
 
-      return new Response(streamBody, {
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive",
-        },
-      });
+      return new Response(streamBody, { headers: SSE_RESPONSE_HEADERS });
     }
 
     // -------------------------------------------------------------------
