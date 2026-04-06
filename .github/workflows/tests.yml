@@ -177,6 +177,7 @@ jobs:
           LOG_LEVEL: trace
           INFOSERVER_URL: http://localhost:8393
           MULTI_TENANT_MODE: "true"
+          INSTANCE_ADMIN_EMAILS: "e2e-owner@xinity-test.local"
 
       - name: Wait for dashboard to be ready
         run: |
