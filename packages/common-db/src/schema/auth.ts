@@ -55,6 +55,7 @@ export const userT = pgTable("user", {
   banned: boolean().notNull().default(false),
   banReason: text("ban_reason"),
   banExpires: timestamp("ban_expires_at"),
+  temporaryPassword: boolean("temporary_password").notNull().default(false),
   // Default fields
   createdAt,
   updatedAt,
