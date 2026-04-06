@@ -162,7 +162,7 @@
           <Select.Trigger id="appSelect" class="w-full">
             {applicationLabel}
           </Select.Trigger>
-          <Select.Content>
+          <Select.Content portalProps={{ disabled: true }}>
             <Select.Item value="__none__" label="No default application" />
             {#if isNew}
               <Select.Item value="__new__" label={'Create new application "' + (editingKey.name || "...") + '"'} />

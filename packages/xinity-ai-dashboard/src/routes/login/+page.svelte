@@ -175,7 +175,7 @@
         </div>
         <button
           type="submit"
-          class="flex items-center justify-center w-full py-2 font-semibold text-white bg-xinity-purple rounded-lg hover:bg-xinity-pink disabled:opacity-60"
+          class="flex items-center justify-center w-full py-2 font-semibold text-white bg-xinity-purple rounded-lg hover:bg-xinity-purple/80 transition-colors disabled:opacity-60"
           disabled={loadingSignIn}
         >
           {#if loadingSignIn}
@@ -358,7 +358,7 @@
         on:click={() => (showingTOTP = false)}>Cancel</button
       >
       <button
-        class="px-4 py-2 text-sm text-white bg-xinity-purple rounded-lg hover:bg-xinity-pink"
+        class="px-4 py-2 text-sm text-white bg-xinity-purple rounded-lg hover:bg-xinity-purple/80 transition-colors"
         >Verify</button
       >
     </div>

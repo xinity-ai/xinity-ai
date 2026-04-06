@@ -328,7 +328,7 @@
               <Select.Trigger id="advancement-strategy{idSuffix}" class="w-full">
                 {advancementStrategyLabel}
               </Select.Trigger>
-              <Select.Content>
+              <Select.Content portalProps={{ disabled: true }}>
                 <Select.Item value="manual" label="Manual" />
                 <Select.Item value="time-based" label="Time-Based" />
               </Select.Content>
@@ -421,7 +421,7 @@
                 <Select.Trigger id="preferred-driver{idSuffix}" class="w-full">
                   {preferredDriverLabel}
                 </Select.Trigger>
-                <Select.Content>
+                <Select.Content portalProps={{ disabled: true }}>
                   <Select.Item value="" label="Auto" />
                   {#each modelDriverOptions as driver}
                     <Select.Item value={driver} label={driverLabel(driver)} />

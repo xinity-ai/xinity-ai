@@ -69,7 +69,7 @@
           type="button"
           onclick={handleSignIn}
           disabled={!hasProvider || isLoading}
-          class="flex w-full items-center justify-center gap-2 rounded-lg bg-xinity-purple py-2 font-semibold text-white hover:bg-xinity-pink disabled:cursor-not-allowed disabled:opacity-60"
+          class="flex w-full items-center justify-center gap-2 rounded-lg bg-xinity-purple py-2 font-semibold text-white hover:bg-xinity-purple/80 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
         >
           {#if isLoading}
             <svg
