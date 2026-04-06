@@ -183,7 +183,7 @@ describe("Password change via UI", () => {
       await page.locator("#form-signin button[type='submit']").click();
 
       // Should show an error, not redirect
-      await expectVisible(page.locator("p.text-red-600"));
+      await expectVisible(page.locator("#form-signin").getByText("Invalid email or password"));
     } finally {
       await context.close();
     }

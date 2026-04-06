@@ -36,7 +36,8 @@ describe("Authentication flows", () => {
       await page.locator("#in-pass").fill("WrongPassword123!");
       await page.locator("#form-signin button[type='submit']").click();
 
-      await expectVisible(page.locator("p.text-red-600"));
+      // Wait for error text within the sign-in form
+      await expectVisible(page.locator("#form-signin").getByText("Invalid email or password"));
     } finally {
       await context.close();
     }

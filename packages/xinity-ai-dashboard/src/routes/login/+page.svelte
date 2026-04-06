@@ -138,7 +138,7 @@
           class:hidden={$params.tab === "signup"}
         >
           {#if errorSignIn}
-            <p class="text-sm text-destructive">{errorSignIn}</p>
+            <p role="alert" class="text-sm text-destructive">{errorSignIn}</p>
           {/if}
           <div class="space-y-2">
             <Label for="in-email">Email</Label>
@@ -213,7 +213,7 @@
             </div>
           {/if}
           {#if errorSignUp}
-            <p class="text-sm text-destructive">{errorSignUp}</p>
+            <p role="alert" class="text-sm text-destructive">{errorSignUp}</p>
           {/if}
           <div class="space-y-2">
             <Label for="name">Full Name</Label>
