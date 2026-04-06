@@ -137,7 +137,7 @@ describe("Password change via UI", () => {
     const { page, context } = await testUserPage();
     try {
       await page.goto("/settings/auth");
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
 
       await expectVisible(page.getByRole("heading", { name: "Authentication Settings" }));
       // Password section is open by default

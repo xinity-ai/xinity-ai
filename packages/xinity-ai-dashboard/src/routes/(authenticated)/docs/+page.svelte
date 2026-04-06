@@ -18,10 +18,10 @@
       class="group block p-6 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
     >
       <div class="flex items-center gap-3 mb-3">
-        <div class="p-2 rounded-lg bg-blue-50 text-blue-600 group-hover:bg-blue-100 transition-colors">
+        <div class="p-2 rounded-lg bg-xinity-purple/10 text-xinity-purple group-hover:bg-xinity-purple/15 transition-colors">
           <Rocket class="w-5 h-5" />
         </div>
-        <h2 class="text-lg font-semibold group-hover:text-blue-600 transition-colors">Quick Start Guide</h2>
+        <h2 class="text-lg font-semibold group-hover:text-xinity-purple transition-colors">Quick Start Guide</h2>
       </div>
       <p class="text-sm text-gray-600">
         Deploy a model, create an API key, and make your first request in minutes.
@@ -33,10 +33,10 @@
       class="group block p-6 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
     >
       <div class="flex items-center gap-3 mb-3">
-        <div class="p-2 rounded-lg bg-blue-50 text-blue-600 group-hover:bg-blue-100 transition-colors">
+        <div class="p-2 rounded-lg bg-xinity-purple/10 text-xinity-purple group-hover:bg-xinity-purple/15 transition-colors">
           <Layers class="w-5 h-5" />
         </div>
-        <h2 class="text-lg font-semibold group-hover:text-blue-600 transition-colors">Applications</h2>
+        <h2 class="text-lg font-semibold group-hover:text-xinity-purple transition-colors">Applications</h2>
       </div>
       <p class="text-sm text-gray-600">
         Organize API calls into logical groups for labeling, distillation, and fine-tuning.
@@ -48,10 +48,10 @@
       class="group block p-6 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
     >
       <div class="flex items-center gap-3 mb-3">
-        <div class="p-2 rounded-lg bg-blue-50 text-blue-600 group-hover:bg-blue-100 transition-colors">
+        <div class="p-2 rounded-lg bg-xinity-purple/10 text-xinity-purple group-hover:bg-xinity-purple/15 transition-colors">
           <BookOpen class="w-5 h-5" />
         </div>
-        <h2 class="text-lg font-semibold group-hover:text-blue-600 transition-colors">API Reference</h2>
+        <h2 class="text-lg font-semibold group-hover:text-xinity-purple transition-colors">API Reference</h2>
       </div>
       <p class="text-sm text-gray-600">
         Complete reference for all endpoints, parameters, headers, and error codes.
@@ -63,10 +63,10 @@
       class="group block p-6 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
     >
       <div class="flex items-center gap-3 mb-3">
-        <div class="p-2 rounded-lg bg-blue-50 text-blue-600 group-hover:bg-blue-100 transition-colors">
+        <div class="p-2 rounded-lg bg-xinity-purple/10 text-xinity-purple group-hover:bg-xinity-purple/15 transition-colors">
           <Code class="w-5 h-5" />
         </div>
-        <h2 class="text-lg font-semibold group-hover:text-blue-600 transition-colors">Code Examples</h2>
+        <h2 class="text-lg font-semibold group-hover:text-xinity-purple transition-colors">Code Examples</h2>
       </div>
       <p class="text-sm text-gray-600">
         Practical examples in Python, JavaScript, and cURL for common use cases.
@@ -78,10 +78,10 @@
       class="group block p-6 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
     >
       <div class="flex items-center gap-3 mb-3">
-        <div class="p-2 rounded-lg bg-blue-50 text-blue-600 group-hover:bg-blue-100 transition-colors">
+        <div class="p-2 rounded-lg bg-xinity-purple/10 text-xinity-purple group-hover:bg-xinity-purple/15 transition-colors">
           <ShieldCheck class="w-5 h-5" />
         </div>
-        <h2 class="text-lg font-semibold group-hover:text-blue-600 transition-colors">Single Sign-On (SSO)</h2>
+        <h2 class="text-lg font-semibold group-hover:text-xinity-purple transition-colors">Single Sign-On (SSO)</h2>
       </div>
       <p class="text-sm text-gray-600">
         Configure OIDC or SAML identity providers for your organization or instance.
@@ -93,10 +93,10 @@
       class="group block p-6 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
     >
       <div class="flex items-center gap-3 mb-3">
-        <div class="p-2 rounded-lg bg-blue-50 text-blue-600 group-hover:bg-blue-100 transition-colors">
+        <div class="p-2 rounded-lg bg-xinity-purple/10 text-xinity-purple group-hover:bg-xinity-purple/15 transition-colors">
           <Cpu class="w-5 h-5" />
         </div>
-        <h2 class="text-lg font-semibold group-hover:text-blue-600 transition-colors">Inference Drivers</h2>
+        <h2 class="text-lg font-semibold group-hover:text-xinity-purple transition-colors">Inference Drivers</h2>
       </div>
       <p class="text-sm text-gray-600">
         Understand the differences between vLLM and Ollama, and choose the right driver for your deployments.
@@ -108,10 +108,10 @@
       class="group block p-6 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
     >
       <div class="flex items-center gap-3 mb-3">
-        <div class="p-2 rounded-lg bg-blue-50 text-blue-600 group-hover:bg-blue-100 transition-colors">
+        <div class="p-2 rounded-lg bg-xinity-purple/10 text-xinity-purple group-hover:bg-xinity-purple/15 transition-colors">
           <Wrench class="w-5 h-5" />
         </div>
-        <h2 class="text-lg font-semibold group-hover:text-blue-600 transition-colors">Deployment Troubleshooting</h2>
+        <h2 class="text-lg font-semibold group-hover:text-xinity-purple transition-colors">Deployment Troubleshooting</h2>
       </div>
       <p class="text-sm text-gray-600">
         Diagnose and resolve common model deployment failures like GPU OOM, permission errors, and crash-loops.
@@ -123,10 +123,10 @@
       class="group block p-6 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
     >
       <div class="flex items-center gap-3 mb-3">
-        <div class="p-2 rounded-lg bg-blue-50 text-blue-600 group-hover:bg-blue-100 transition-colors">
+        <div class="p-2 rounded-lg bg-xinity-purple/10 text-xinity-purple group-hover:bg-xinity-purple/15 transition-colors">
           <Tag class="w-5 h-5" />
         </div>
-        <h2 class="text-lg font-semibold group-hover:text-blue-600 transition-colors">Labeling Guide</h2>
+        <h2 class="text-lg font-semibold group-hover:text-xinity-purple transition-colors">Labeling Guide</h2>
       </div>
       <p class="text-sm text-gray-600">
         How to rate, highlight, edit, and curate your training data for best fine-tuning results.
@@ -138,10 +138,10 @@
       class="group block p-6 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
     >
       <div class="flex items-center gap-3 mb-3">
-        <div class="p-2 rounded-lg bg-blue-50 text-blue-600 group-hover:bg-blue-100 transition-colors">
+        <div class="p-2 rounded-lg bg-xinity-purple/10 text-xinity-purple group-hover:bg-xinity-purple/15 transition-colors">
           <Users class="w-5 h-5" />
         </div>
-        <h2 class="text-lg font-semibold group-hover:text-blue-600 transition-colors">Roles & Permissions</h2>
+        <h2 class="text-lg font-semibold group-hover:text-xinity-purple transition-colors">Roles & Permissions</h2>
       </div>
       <p class="text-sm text-gray-600">
         Understand what each role can do and how to manage team access within your organization.
@@ -153,10 +153,10 @@
       class="group block p-6 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
     >
       <div class="flex items-center gap-3 mb-3">
-        <div class="p-2 rounded-lg bg-blue-50 text-blue-600 group-hover:bg-blue-100 transition-colors">
+        <div class="p-2 rounded-lg bg-xinity-purple/10 text-xinity-purple group-hover:bg-xinity-purple/15 transition-colors">
           <Plug class="w-5 h-5" />
         </div>
-        <h2 class="text-lg font-semibold group-hover:text-blue-600 transition-colors">Access Methods</h2>
+        <h2 class="text-lg font-semibold group-hover:text-xinity-purple transition-colors">Access Methods</h2>
       </div>
       <p class="text-sm text-gray-600">
         Four ways to interact with Xinity AI: dashboard UI, REST API, MCP server, and CLI.

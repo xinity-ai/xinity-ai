@@ -25,7 +25,7 @@ describe("Settings & profile", () => {
     const { page, context } = await ownerPage();
     try {
       await page.goto("/settings/profile");
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
 
       await page.getByRole("link", { name: "Notifications" }).click();
       await expectURL(page, /\/settings\/notifications/);
@@ -47,7 +47,7 @@ describe("Settings & profile", () => {
     const { page, context } = await ownerPage();
     try {
       await page.goto("/settings/profile");
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
 
       await expectVisible(page.getByRole("heading", { name: "Profile Settings" }));
       await expectValue(page.locator("#name"), OWNER.name);
@@ -63,7 +63,7 @@ describe("Settings & profile", () => {
     const { page, context } = await ownerPage();
     try {
       await page.goto("/settings/profile");
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
 
       const newName = `E2E Owner ${Date.now()}`;
       await page.locator("#name").fill(newName);

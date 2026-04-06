@@ -11,7 +11,7 @@
   <nav class="mb-6">
     <a
       href="/docs/"
-      class="text-blue-600 hover:text-blue-800 flex items-center gap-2"
+      class="text-xinity-magenta hover:text-xinity-pink flex items-center gap-2"
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -38,7 +38,7 @@
   <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
     <h2 class="text-2xl font-semibold mb-2">When a deployment fails</h2>
     <p class="text-gray-600 mb-4">
-      Go to the <a href="/modelhub" class="text-blue-600 hover:text-blue-800 underline">Model Hub</a>,
+      Go to the <a href="/modelhub" class="text-xinity-magenta hover:text-xinity-pink underline">Model Hub</a>,
       find the failed deployment, and look at the <strong>error message</strong>.
       If available, expand <strong>View logs</strong> for more detail.
       Then match it to one of the patterns below.
@@ -207,7 +207,7 @@
     <!-- Model Not Found -->
     <section class="p-6 bg-white rounded-lg shadow-md">
       <div class="flex items-start gap-3 mb-3">
-        <span class="mt-0.5 inline-block px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 shrink-0">Config</span>
+        <span class="mt-0.5 inline-block px-2 py-0.5 rounded text-xs font-medium bg-xinity-purple/15 text-xinity-pink shrink-0">Config</span>
         <div>
           <h3 class="text-lg font-semibold">Model not found</h3>
           <p class="text-sm text-gray-500 mt-0.5">
@@ -262,15 +262,15 @@
     </p>
     <div class="space-y-3">
       <div class="flex items-start gap-3">
-        <span class="mt-1 w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold shrink-0">1</span>
+        <span class="mt-1 w-6 h-6 rounded-full bg-xinity-purple/15 text-xinity-pink flex items-center justify-center text-xs font-bold shrink-0">1</span>
         <p class="text-gray-600"><strong>Start from the bottom.</strong> The most important error is usually in the last few lines.</p>
       </div>
       <div class="flex items-start gap-3">
-        <span class="mt-1 w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold shrink-0">2</span>
+        <span class="mt-1 w-6 h-6 rounded-full bg-xinity-purple/15 text-xinity-pink flex items-center justify-center text-xs font-bold shrink-0">2</span>
         <p class="text-gray-600"><strong>Look for keywords</strong> like "Error", "Exception", or "FATAL".</p>
       </div>
       <div class="flex items-start gap-3">
-        <span class="mt-1 w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold shrink-0">3</span>
+        <span class="mt-1 w-6 h-6 rounded-full bg-xinity-purple/15 text-xinity-pink flex items-center justify-center text-xs font-bold shrink-0">3</span>
         <p class="text-gray-600"><strong>Match to a pattern above.</strong> Copy the error text and search this page.</p>
       </div>
     </div>
@@ -286,7 +286,7 @@
     <ol class="list-decimal pl-6 space-y-2 text-gray-600">
       <li>Note down the error and check the failure logs (they are deleted with the deployment).</li>
       <li>Fix the underlying issue.</li>
-      <li>Delete the failed deployment from the <a href="/modelhub" class="text-blue-600 hover:text-blue-800 underline">Model Hub</a>.</li>
+      <li>Delete the failed deployment from the <a href="/modelhub" class="text-xinity-magenta hover:text-xinity-pink underline">Model Hub</a>.</li>
       <li>Create a new deployment with the corrected settings.</li>
     </ol>
   </section>
@@ -299,14 +299,14 @@
         href="/docs/inference-drivers"
         class="group block p-4 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
       >
-        <h3 class="font-semibold group-hover:text-blue-600 transition-colors">Inference Drivers</h3>
+        <h3 class="font-semibold group-hover:text-xinity-purple transition-colors">Inference Drivers</h3>
         <p class="text-sm text-gray-600">Understand the differences between vLLM and Ollama.</p>
       </a>
       <a
         href="/docs/quick-start"
         class="group block p-4 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
       >
-        <h3 class="font-semibold group-hover:text-blue-600 transition-colors">Quick Start Guide</h3>
+        <h3 class="font-semibold group-hover:text-xinity-purple transition-colors">Quick Start Guide</h3>
         <p class="text-sm text-gray-600">Deploy a model and make your first request.</p>
       </a>
     </div>

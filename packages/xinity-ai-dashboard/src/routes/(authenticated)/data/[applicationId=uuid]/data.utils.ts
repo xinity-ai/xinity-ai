@@ -42,9 +42,9 @@ export interface RoleStyle {
 
 const roleStyles: Record<string, RoleStyle> = {
   user: {
-    borderColor: "border-l-blue-500",
+    borderColor: "border-l-xinity-purple",
     bgColor: "bg-blue-50/50 dark:bg-blue-950/20",
-    badgeColor: "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300",
+    badgeColor: "bg-xinity-magenta/15 text-xinity-pink dark:bg-xinity-magenta/20 dark:text-xinity-pink",
     label: "User",
   },
   system: {

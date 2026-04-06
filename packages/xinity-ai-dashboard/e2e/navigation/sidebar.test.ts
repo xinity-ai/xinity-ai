@@ -7,7 +7,7 @@ describe("Sidebar navigation", () => {
     const { page, context } = await ownerPage();
     try {
       await page.goto("/");
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
 
       const nav = page.locator("nav");
       await expectVisible(nav.locator("span:text-is('Home')"));
@@ -27,7 +27,7 @@ describe("Sidebar navigation", () => {
     const { page, context } = await viewerPage();
     try {
       await page.goto("/");
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
 
       const nav = page.locator("nav");
 
@@ -51,11 +51,11 @@ describe("Sidebar navigation", () => {
     const { page, context } = await ownerPage();
     try {
       await page.goto("/organizations/");
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
 
       const orgLink = page.locator('nav a[href="/organizations/"]');
       const classes = await orgLink.getAttribute("class");
-      expect(classes).toContain("!bg-gray-50");
+      expect(classes).toContain("!bg-xinity-purple/5");
     } finally {
       await context.close();
     }
@@ -65,7 +65,7 @@ describe("Sidebar navigation", () => {
     const { page, context } = await ownerPage();
     try {
       await page.goto("/");
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
 
       await page.locator("nav span:text-is('Settings')").click();
       await page.waitForURL(/\/settings\//);

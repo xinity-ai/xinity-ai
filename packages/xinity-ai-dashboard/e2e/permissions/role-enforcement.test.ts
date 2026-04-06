@@ -8,7 +8,7 @@ describe("Permission enforcement", () => {
     const { page, context } = await ownerPage();
     try {
       await page.goto("/ai-api-keys/");
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
 
       await expectVisible(page.getByRole("button", { name: /Generate New Key/ }));
     } finally {
@@ -20,7 +20,7 @@ describe("Permission enforcement", () => {
     const { page, context } = await viewerPage();
     try {
       await page.goto("/ai-api-keys/");
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
 
       expect(
         await page.getByRole("button", { name: /Generate New Key/ }).isVisible(),
@@ -34,13 +34,13 @@ describe("Permission enforcement", () => {
     const { page, context } = await ownerPage();
     try {
       await page.goto(`/organizations/${TEST_ORG.slug}`);
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
 
       // If the org isn't the active one, activate it first
       const activateBtn = page.getByRole("button", { name: "Activate", exact: true });
       if (await activateBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
         await activateBtn.click();
-        await page.waitForLoadState("domcontentloaded");
+        await page.waitForLoadState("networkidle");
       }
 
       await expectVisible(page.getByRole("button", { name: /Invite/ }));
@@ -54,7 +54,7 @@ describe("Permission enforcement", () => {
     const { page, context } = await viewerPage();
     try {
       await page.goto(`/organizations/${TEST_ORG.slug}`);
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
 
       expect(
         await page.getByRole("button", { name: /Invite/ }).isVisible(),
@@ -69,7 +69,7 @@ describe("Permission enforcement", () => {
     const { page, context } = await ownerPage();
     try {
       await page.goto("/modelhub/");
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
 
       // Owner should see either "Deploy Your First Model" or "Deploy New Model"
       const hasButton = await page

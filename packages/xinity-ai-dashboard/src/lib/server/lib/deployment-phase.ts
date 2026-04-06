@@ -6,13 +6,14 @@
  * This module provides the common types and aggregation function.
  */
 
-export type DeploymentPhase = "ready" | "downloading" | "installing" | "failed" | "pending";
+export type DeploymentPhase = "ready" | "downloading" | "installing" | "failed" | "pending" | "scheduling";
 
 /** Higher number = worse state. Used to pick the "worst" phase across installations. */
 export const PHASE_PRIORITY: Record<string, number> = {
   ready: 1,
   installing: 2,
   downloading: 3,
+  scheduling: 3,
   failed: 4,
 };
 

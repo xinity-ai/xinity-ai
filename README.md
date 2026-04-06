@@ -12,7 +12,7 @@
 <p align="center">
   <a href="https://github.com/xinity-ai/xinity-ai/actions/workflows/tests.yml"><img src="https://github.com/xinity-ai/xinity-ai/actions/workflows/tests.yml/badge.svg" alt="CI" /></a>
   <a href="#licensing"><img src="https://img.shields.io/badge/license-Apache%202.0%20%2F%20ELv2-blue" alt="License" /></a>
-  <a href="https://discord.gg/7f66jBpaYR"><img src="https://img.shields.io/badge/Discord-Join%20Us-5865F2?logo=discord&logoColor=white" alt="Discord" /></a>
+  <a href="https://get.xinity.ai/discord"><img src="https://img.shields.io/badge/Discord-Join%20Us-5865F2?logo=discord&logoColor=white" alt="Discord" /></a>
   <a href="https://github.com/xinity-ai/xinity-ai/stargazers"><img src="https://img.shields.io/github/stars/xinity-ai/xinity-ai?style=social" alt="GitHub Stars" /></a>
   <br/>
   <img src="https://img.shields.io/badge/🇪🇺_Made_in_Europe-blue" alt="Made in Europe" />
@@ -21,7 +21,6 @@
 
 ---
 
-<!-- TODO before launch: replace with actual screenshot -->
 <p align="center"><img src="docs/assets/dashboard-screenshot.png" alt="Xinity Dashboard" width="720" /></p>
 
 > **Deployed in production** by regulated European enterprises: media companies, manufacturers, and public institutions running AI on their own infrastructure with zero data egress.
@@ -45,6 +44,10 @@ curl -fsSL https://github.com/xinity-ai/xinity-ai/releases/latest/download/insta
 
 # Set up everything (Postgres, inference engine, dashboard)
 xinity up all
+
+# Create your admin account right from the terminal (no browser needed)
+xinity configure dashboardUrl http://localhost:3100
+xinity act onboarding.cli
 
 # Check system health
 xinity doctor
@@ -277,8 +280,9 @@ Let AI assistants (Claude, Cursor, etc.) manage your infrastructure via natural 
 
 ```bash
 xinity up all            # install / configure services
+xinity act onboarding.cli  # create admin account from the terminal
+xinity act --list-routes # see all available API operations
 xinity doctor            # check system health
-xinity act --help        # call dashboard API from the terminal
 xinity update            # update the CLI itself
 ```
 
@@ -387,7 +391,10 @@ bun run migrate               # apply migrations
 bun run migrate:gen           # regenerate migrations
 bun run inspect               # inspect schema
 
-# System tests (requires running dependencies)
+# Run all tests across all packages
+bun run test
+
+# System tests only (requires running dependencies)
 bun run test:system
 
 # Build Docker images
@@ -405,6 +412,23 @@ docker compose -f docker/build.compose.yaml build xinity-infoserver
 | `mailhog` | 1025 / 8025 | Local SMTP + UI |
 | `searxng` | 6148 | Web search |
 | `seaweedfs` | 8333 | S3-compatible storage |
+
+### Testing
+
+Tests use [Bun's built-in test runner](https://bun.sh/docs/cli/test). Most packages define a `test` script in their `package.json`:
+
+```bash
+bun run test:system       # system integration tests (requires DB + Redis)
+```
+
+Per-package tests can be run from within the package directory:
+
+```bash
+cd packages/xinity-ai-gateway && bun run test
+cd packages/xinity-cli && bun run test
+```
+
+Dashboard tests have additional prerequisites — see the [dashboard README](packages/xinity-ai-dashboard/README.md#testing) for details.
 
 </details>
 

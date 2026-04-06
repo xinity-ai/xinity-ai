@@ -88,6 +88,8 @@ The dashboard is the central management surface. It serves three distinct roles 
 
 - *Notification scheduler:* Polls every 5 minutes and fires notifications based on system state transitions: deployment readiness or failure, node online/offline status changes, capacity warnings (when usage exceeds 80% of available capacity), and a weekly usage report (sent Monday mornings with deployment counts, node counts, API call volumes, and top models).
 
+**MCP server:** The dashboard exposes a [Model Context Protocol](https://modelcontextprotocol.io) endpoint at `/mcp`, allowing AI assistants (Claude, Cursor, Windsurf) to manage deployments, applications, API keys, and other resources via natural language. The MCP server dynamically generates its tool list from oRPC procedures at startup — any procedure not explicitly excluded is automatically available as an MCP tool. Security-sensitive operations (credential management, SSO configuration, organization deletion, instance admin) are excluded. Authentication uses the same API keys as the REST API. The endpoint can be disabled with `MCP_ENABLED=false`.
+
 Auth is handled by Better Auth with plugins for 2FA (TOTP), passkeys (WebAuthn), SSO (OIDC/SAML), API keys, and multi-tenant organizations. Five roles control access: owner, admin, member, labeler, and viewer.
 
 ### Gateway

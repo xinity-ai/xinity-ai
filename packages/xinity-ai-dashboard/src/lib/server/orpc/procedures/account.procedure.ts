@@ -5,7 +5,7 @@ import { rootLogger } from "$lib/server/logging";
 import { getDB } from "$lib/server/db";
 import { memberT, sql } from "common-db";
 
-const log = rootLogger.child({ name: "auth.procedure" });
+const log = rootLogger.child({ name: "account.procedure" });
 const tags = ["Auth"];
 
 const changePassword = rootOs
@@ -127,7 +127,7 @@ const deleteDashboardApiKey = rootOs
     }
   });
 
-export const authRouter = rootOs.prefix("/auth").router({
+export const authRouter = rootOs.prefix("/account").router({
   changePassword,
   listPasskeys,
   deletePasskey,

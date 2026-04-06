@@ -421,6 +421,56 @@ describe("syncVllmInstallations$", () => {
     expect(ops.start).not.toHaveBeenCalled();
   });
 
+  test("adds --runner pooling for embedding models", async () => {
+    const id = crypto.randomUUID();
+    const inst = makeInstallation("embed-model", id, 9102);
+    mockFetchModel.mockImplementation(() => Promise.resolve({ type: "embedding" }));
+    const ops = createMockOps({
+      listRunning: mock(() => Promise.resolve([])),
+      checkHealth: mock(() => Promise.resolve(true)),
+      isAlive: mock(() => Promise.resolve(true)),
+    });
+
+    await firstValueFrom(syncVllmInstallations$([inst], ops));
+
+    const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
+    expect(startCall[1].extraArgs).toContain("--runner");
+    expect(startCall[1].extraArgs).toContain("pooling");
+  });
+
+  test("adds --runner pooling for rerank models", async () => {
+    const id = crypto.randomUUID();
+    const inst = makeInstallation("rerank-model", id, 9103);
+    mockFetchModel.mockImplementation(() => Promise.resolve({ type: "rerank" }));
+    const ops = createMockOps({
+      listRunning: mock(() => Promise.resolve([])),
+      checkHealth: mock(() => Promise.resolve(true)),
+      isAlive: mock(() => Promise.resolve(true)),
+    });
+
+    await firstValueFrom(syncVllmInstallations$([inst], ops));
+
+    const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
+    expect(startCall[1].extraArgs).toContain("--runner");
+    expect(startCall[1].extraArgs).toContain("pooling");
+  });
+
+  test("does not add --runner pooling for chat models", async () => {
+    const id = crypto.randomUUID();
+    const inst = makeInstallation("chat-model", id, 9104);
+    mockFetchModel.mockImplementation(() => Promise.resolve({ type: "chat" }));
+    const ops = createMockOps({
+      listRunning: mock(() => Promise.resolve([])),
+      checkHealth: mock(() => Promise.resolve(true)),
+      isAlive: mock(() => Promise.resolve(true)),
+    });
+
+    await firstValueFrom(syncVllmInstallations$([inst], ops));
+
+    const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
+    expect(startCall[1].extraArgs).not.toContain("--runner");
+  });
+
   test("reconciles crash-looping container to failed and stops it", async () => {
     const id = crypto.randomUUID();
     const inst = makeInstallation("reconcile-crashloop", id, 9101);

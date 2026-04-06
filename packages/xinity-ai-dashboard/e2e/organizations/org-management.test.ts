@@ -8,7 +8,7 @@ describe("Organization management", () => {
     const { page, context } = await ownerPage();
     try {
       await page.goto("/organizations/");
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
 
       await expectVisible(page.getByRole("heading", { name: "Organizations" }));
       await expectVisible(page.getByText(TEST_ORG.name));
@@ -21,7 +21,7 @@ describe("Organization management", () => {
     const { page, context } = await ownerPage();
     try {
       await page.goto("/organizations/");
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
 
       await expectVisible(page.getByText("Active"));
     } finally {
@@ -33,7 +33,7 @@ describe("Organization management", () => {
     const { page, context } = await ownerPage();
     try {
       await page.goto("/organizations/");
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
 
       const createButton = page.locator('button[disabled]', { hasText: /Create Organization/ }).first();
       await expectVisible(createButton);
@@ -47,7 +47,7 @@ describe("Organization management", () => {
     const { page, context } = await ownerPage();
     try {
       await page.goto(`/organizations/${TEST_ORG.slug}`);
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
 
       await expectVisible(page.getByText(TEST_ORG.name));
     } finally {

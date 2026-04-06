@@ -18,12 +18,17 @@ export { groupInstallationsByDriver };
 
 const log = rootLogger.child({ name: "db-sync" });
 
+let previousInstallationsSnapshot: string | null = null;
+
 export function dbSync(){
   return createWorkflowCoordinator({
     periodMs: env.SYNC_INTERVAL_MS,
     run: sync,
     onError(err, trigger) {
       log.error({ err, trigger }, "Error during sync")
+    },
+    onDrop(trigger) {
+      log.warn({ trigger }, "Sync trigger dropped (queue full)")
     },
   });
 }
@@ -71,7 +76,7 @@ function syncUnsupportedDriver$(
  * Non-ollama drivers are explicitly no-ops for now.
  */
 function sync(): Observable<void> {
-  log.info("Performing sync");
+  log.debug("Performing sync");
 
   return defer(() => from(getNodeId())).pipe(
     switchMap((nodeID) =>
@@ -90,10 +95,12 @@ function sync(): Observable<void> {
           buckets.push({ driver, installations: [] });
         }
       }
-      log.info(
-        { models: installations.map(({ driver, model, estCapacity }) => ({ driver, model, estCapacity })) },
-        "Current installations"
-      );
+      const models = installations.map(({ driver, model, estCapacity }) => ({ driver, model, estCapacity }));
+      const snapshot = JSON.stringify(models);
+      if (snapshot !== previousInstallationsSnapshot) {
+        previousInstallationsSnapshot = snapshot;
+        log.info({ models }, "Installations changed");
+      }
       return from(buckets).pipe(
         mergeMap(({ driver, installations: driverInstallations }) => {
           if (driver === "ollama") {

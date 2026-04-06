@@ -8,7 +8,7 @@ import {
   driverHasTag,
   resolveArgsForDriver,
 } from "./model-tags";
-import type { Model } from "./definitions/model-definition";
+import { ModelSchema, type Model } from "./definitions/model-definition";
 
 /** Minimal model with both providers */
 function makeModel(overrides: Partial<Model> = {}): Model {
@@ -152,5 +152,46 @@ describe("resolveArgsForDriver", () => {
   it("returns empty array when driver has no args entry", () => {
     const m = makeModel({ providerArgs: { vllm: ["--some-arg"] } });
     expect(resolveArgsForDriver(m, "ollama")).toEqual([]);
+  });
+});
+
+describe("ModelSchema vllm providerArgs filtering", () => {
+  function parseModel(providerArgs: string[]) {
+    return ModelSchema.parse({
+      name: "Test", description: "test", weight: 1, minKvCache: 1,
+      registeredAt: "2025-01-01", url: "https://example.com", entryVersion: "0.1.0",
+      providers: { vllm: "org/test" },
+      providerArgs: { vllm: providerArgs },
+    });
+  }
+
+  it("filters out blocked flag with its value", () => {
+    const m = parseModel(["--runner", "pooling", "--some-flag"]);
+    expect(m.providerArgs!.vllm).toEqual(["--some-flag"]);
+  });
+
+  it("filters out standalone blocked flag followed by another flag", () => {
+    const m = parseModel(["--trust-remote-code", "--some-flag"]);
+    expect(m.providerArgs!.vllm).toEqual(["--some-flag"]);
+  });
+
+  it("filters out blocked flag at end of array", () => {
+    const m = parseModel(["--some-flag", "--trust-remote-code"]);
+    expect(m.providerArgs!.vllm).toEqual(["--some-flag"]);
+  });
+
+  it("filters out multiple blocked args", () => {
+    const m = parseModel(["--runner", "pooling", "--task", "embed", "--some-flag"]);
+    expect(m.providerArgs!.vllm).toEqual(["--some-flag"]);
+  });
+
+  it("passes through non-blocked args unchanged", () => {
+    const m = parseModel(["--max-model-len", "4096", "--dtype", "float16"]);
+    expect(m.providerArgs!.vllm).toEqual(["--max-model-len", "4096", "--dtype", "float16"]);
+  });
+
+  it("returns empty array when all args are blocked", () => {
+    const m = parseModel(["--runner", "pooling"]);
+    expect(m.providerArgs!.vllm).toEqual([]);
   });
 });

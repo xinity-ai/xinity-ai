@@ -1,8 +1,11 @@
 import { z } from "zod";
-import { existsSync, readFileSync } from "fs";
 import * as p from "./clack.ts";
 import pc from "picocolors";
 import { cancelAndExit } from "./output.ts";
+import { parseEnvString } from "./env-file.ts";
+import { type Component, ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, getAutoDefaults } from "./component-meta.ts";
+import { writeEnvConfig, restartService } from "./service.ts";
+import { createLocalHost, type Host } from "./host.ts";
 
 export interface EnvField {
   key: string;
@@ -251,18 +254,9 @@ function displayValue(field: EnvField, value: string | undefined): string {
  * persists the config to disk.
  */
 export async function menuConfigureEnv(
-  component: import("./installer.ts").Component,
-  host?: import("./host.ts").Host,
+  component: Component,
+  host?: Host,
 ): Promise<void> {
-  const {
-    ENV_SCHEMAS,
-    ENV_DIR,
-    SECRETS_DIR,
-    getAutoDefaults,
-    writeEnvConfig,
-  } = await import("./installer.ts");
-  const { createLocalHost } = await import("./host.ts");
-
   const h = host ?? createLocalHost();
   const schema = ENV_SCHEMAS[component];
   const fields = analyzeEnvSchema(schema);
@@ -344,57 +338,10 @@ export async function menuConfigureEnv(
     else config[field.key] = val;
   }
 
-  await writeEnvConfig(component, config, secrets, h);
+  const wrote = await writeEnvConfig(component, config, secrets, h);
+  if (wrote) {
+    await restartService(component, h);
+  }
   p.outro("Done");
 }
 
-/** Parse env file content (KEY=value lines) into a key-value record. */
-export function parseEnvString(content: string): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eq = trimmed.indexOf("=");
-    if (eq === -1) continue;
-    const key = trimmed.slice(0, eq);
-    let value = trimmed.slice(eq + 1);
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
-    }
-    result[key] = value;
-  }
-  return result;
-}
-
-/** Read an existing env file into a key-value record. */
-export function readEnvFile(path: string): Record<string, string> {
-  if (!existsSync(path)) return {};
-  return parseEnvString(readFileSync(path, "utf-8"));
-}
-
-/** Serialize a key-value record to .env file format. */
-export function serializeEnvFile(values: Record<string, string>): string {
-  return (
-    Object.entries(values)
-      .map(([k, v]) => {
-        // Quote values that contain spaces or special chars
-        if (/[\s#"']/.test(v)) return `${k}="${v}"`;
-        return `${k}=${v}`;
-      })
-      .join("\n") + "\n"
-  );
-}
-
-/** Read existing secret files from a directory into a key-value record. */
-export function readSecretFiles(dir: string, keys: string[]): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const key of keys) {
-    const path = `${dir}/${key}`;
-    if (existsSync(path)) {
-      try {
-        result[key] = readFileSync(path, "utf-8").trim();
-      } catch { /* skip unreadable secrets */ }
-    }
-  }
-  return result;
-}

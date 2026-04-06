@@ -4,46 +4,27 @@
   import GettingStartedChecklist from "./GettingStartedChecklist.svelte";
 
   export let data;
-
-  // Extract only dashboard data, excluding user
-  const {
-    noOrg,
-    checklist,
-    apiCallStats,
-    tokenStats,
-    recentModels,
-    topApplications,
-    responseRatings,
-    trainingData,
-    recentActivities,
-    usageTrend,
-  } = data;
 </script>
 
 <svelte:head>
   <title>Xinity Dashboard</title>
 </svelte:head>
 
-{#if noOrg}
+{#if data.noOrg}
   <OnboardingFlow />
 {/if}
 
 {#if !data.displaySettings?.gettingStartedDismissed}
   <GettingStartedChecklist
-    {checklist}
+    checklist={data.checklist}
     displaySettings={data.displaySettings}
   />
 {/if}
 
-{#if !noOrg}
+{#if !data.noOrg}
   <Dashboard
-    {apiCallStats}
-    {tokenStats}
-    {recentModels}
-    {topApplications}
-    {responseRatings}
-    {trainingData}
-    {recentActivities}
-    {usageTrend}
+    keyMetrics={data.keyMetrics}
+    charts={data.charts}
+    tables={data.tables}
   />
 {/if}

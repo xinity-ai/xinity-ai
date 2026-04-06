@@ -1,7 +1,8 @@
 import type { CommandModule } from "yargs";
 import * as p from "../lib/clack.ts";
 import pc from "picocolors";
-import { installComponent, installAll, preflightCheck, type Component } from "../lib/installer.ts";
+import { installComponent, installAll, preflightCheck, showDashboardHints } from "../lib/installer.ts";
+import type { Component } from "../lib/component-meta.ts";
 import { runMigrations } from "../lib/migrator.ts";
 import { logErrors, warn } from "../lib/output.ts";
 import { createLocalHost } from "../lib/host.ts";
@@ -100,6 +101,11 @@ export const upCommand: CommandModule = {
     });
 
     logErrors(result);
+
+    if (component === "dashboard" && result.success && !dryRun) {
+      await showDashboardHints(host);
+    }
+
     p.outro("Done");
   },
 };

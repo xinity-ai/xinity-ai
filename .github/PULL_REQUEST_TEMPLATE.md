@@ -6,20 +6,17 @@ Closes #
 
 ## Type of change
 
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Refactor / internal improvement
-- [ ] Documentation
-- [ ] CI / build / tooling
-- [ ] Breaking change
+<!-- Replace with one of: Bug fix | New feature | Refactor | Documentation | CI / build / tooling | Breaking change -->
 
 ## Testing
 
-<!-- How was this tested? Which test suites cover the change? -->
+<!-- Describe how the change was validated. If tests are not applicable, explain why. -->
 
 ## Checklist
 
-- [ ] Tests pass locally (`bun test`)
-- [ ] New behavior is covered by tests
-- [ ] Documentation updated if behavior or configuration changed
-- [ ] Breaking changes are noted with `!` in the commit type and described above
+- [ ] Tests pass locally (`bun test`), or no testable code was changed
+- [ ] New or changed behavior is covered by tests, or this change does not require tests
+- [ ] Documentation is updated, or no user-facing behavior or configuration was changed
+- [ ] There are no breaking changes, or they are marked with `!` in the commit type and described above
+- [ ] No security-sensitive changes (authentication, credentials, input handling), or they have been reviewed
+- [ ] No new dependencies were added, or they have been reviewed for license and maintenance status

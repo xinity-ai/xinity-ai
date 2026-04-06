@@ -140,7 +140,7 @@ const completion = await openai.chat.completions.create({
   <nav class="mb-6">
     <a
       href="/docs/"
-      class="text-blue-600 hover:text-blue-800 flex items-center gap-2"
+      class="text-xinity-magenta hover:text-xinity-pink flex items-center gap-2"
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -167,7 +167,7 @@ const completion = await openai.chat.completions.create({
   <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
     <div class="flex items-start gap-3 mb-4">
       <div
-        class="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold"
+        class="flex-shrink-0 w-8 h-8 bg-xinity-purple text-white rounded-full flex items-center justify-center font-bold"
       >
         1
       </div>
@@ -181,7 +181,7 @@ const completion = await openai.chat.completions.create({
           <li>
             Navigate to the <a
               href="/modelhub/"
-              class="text-blue-600 hover:underline">Model Hub</a
+              class="text-xinity-magenta hover:underline">Model Hub</a
             >
           </li>
           <li>Select a model you wish to use and click "Deploy"</li>
@@ -198,7 +198,7 @@ const completion = await openai.chat.completions.create({
   <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
     <div class="flex items-start gap-3 mb-4">
       <div
-        class="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold"
+        class="flex-shrink-0 w-8 h-8 bg-xinity-purple text-white rounded-full flex items-center justify-center font-bold"
       >
         2
       </div>
@@ -211,7 +211,7 @@ const completion = await openai.chat.completions.create({
           <li>
             Navigate to the <a
               href="/ai-api-keys/"
-              class="text-blue-600 hover:underline">API Keys page</a
+              class="text-xinity-magenta hover:underline">API Keys page</a
             >
           </li>
           <li>Click the "Create New Key" button</li>
@@ -235,7 +235,7 @@ const completion = await openai.chat.completions.create({
   <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
     <div class="flex items-start gap-3 mb-4">
       <div
-        class="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold"
+        class="flex-shrink-0 w-8 h-8 bg-xinity-purple text-white rounded-full flex items-center justify-center font-bold"
       >
         3
       </div>
@@ -269,7 +269,7 @@ const completion = await openai.chat.completions.create({
   <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
     <div class="flex items-start gap-3 mb-4">
       <div
-        class="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold"
+        class="flex-shrink-0 w-8 h-8 bg-xinity-purple text-white rounded-full flex items-center justify-center font-bold"
       >
         4
       </div>
@@ -300,7 +300,7 @@ const completion = await openai.chat.completions.create({
   <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
     <div class="flex items-start gap-3 mb-4">
       <div
-        class="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold"
+        class="flex-shrink-0 w-8 h-8 bg-xinity-purple text-white rounded-full flex items-center justify-center font-bold"
       >
         5
       </div>
@@ -325,9 +325,9 @@ const completion = await openai.chat.completions.create({
           <CodeExample code={curlXAppExample} language="bash" withCopy />
         </div>
 
-        <div class="mt-4 p-4 bg-blue-50 border-l-4 border-blue-400 rounded">
-          <p class="text-sm text-blue-800">
-            <strong>Tip:</strong> Set the header once via <code class="bg-blue-100 px-1 rounded text-xs font-mono">default_headers</code> (Python) or <code class="bg-blue-100 px-1 rounded text-xs font-mono">defaultHeaders</code> (JS) and all requests from that client will be tagged automatically. Create separate clients per application if needed.
+        <div class="mt-4 p-4 bg-xinity-purple/10 border-l-4 border-xinity-purple rounded">
+          <p class="text-sm text-xinity-pink">
+            <strong>Tip:</strong> Set the header once via <code class="bg-xinity-purple/15 px-1 rounded text-xs font-mono">default_headers</code> (Python) or <code class="bg-xinity-purple/15 px-1 rounded text-xs font-mono">defaultHeaders</code> (JS) and all requests from that client will be tagged automatically. Create separate clients per application if needed.
           </p>
         </div>
       </div>
@@ -338,7 +338,7 @@ const completion = await openai.chat.completions.create({
   <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
     <div class="flex items-start gap-3 mb-4">
       <div
-        class="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold"
+        class="flex-shrink-0 w-8 h-8 bg-xinity-purple text-white rounded-full flex items-center justify-center font-bold"
       >
         6
       </div>
@@ -358,8 +358,8 @@ const completion = await openai.chat.completions.create({
           <CodeExample code={javascriptMetadataExample} language="javascript" withCopy />
         </div>
 
-        <div class="mt-4 p-4 bg-blue-50 border-l-4 border-blue-400 rounded">
-          <p class="text-sm text-blue-800">
+        <div class="mt-4 p-4 bg-xinity-purple/10 border-l-4 border-xinity-purple rounded">
+          <p class="text-sm text-xinity-pink">
             <strong>Tip:</strong> Use metadata to tag calls by environment, feature, user segment, or any other dimension. You can filter by metadata key/value pairs in the Data section of the dashboard.
           </p>
         </div>
@@ -371,7 +371,7 @@ const completion = await openai.chat.completions.create({
   <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
     <div class="flex items-start gap-3 mb-4">
       <div
-        class="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold"
+        class="flex-shrink-0 w-8 h-8 bg-xinity-purple text-white rounded-full flex items-center justify-center font-bold"
       >
         7
       </div>
@@ -414,14 +414,14 @@ const completion = await openai.chat.completions.create({
   </section>
 
   <!-- Next Steps -->
-  <section class="p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg">
+  <section class="p-6 bg-gradient-to-r from-xinity-purple/10 to-xinity-coral/10 rounded-lg">
     <h2 class="text-2xl font-semibold mb-4">Next Steps</h2>
     <div class="space-y-3">
       <a
         href="/docs/applications"
         class="block p-4 bg-white rounded-lg shadow hover:shadow-md transition"
       >
-        <h3 class="font-semibold text-blue-600">
+        <h3 class="font-semibold text-xinity-purple">
           Learn About Applications
         </h3>
         <p class="text-sm text-gray-600">
@@ -432,7 +432,7 @@ const completion = await openai.chat.completions.create({
         href="/docs/api-reference"
         class="block p-4 bg-white rounded-lg shadow hover:shadow-md transition"
       >
-        <h3 class="font-semibold text-blue-600">
+        <h3 class="font-semibold text-xinity-purple">
           Explore the API Reference
         </h3>
         <p class="text-sm text-gray-600">
@@ -443,7 +443,7 @@ const completion = await openai.chat.completions.create({
         href="/docs/code-examples"
         class="block p-4 bg-white rounded-lg shadow hover:shadow-md transition"
       >
-        <h3 class="font-semibold text-blue-600">View More Code Examples</h3>
+        <h3 class="font-semibold text-xinity-purple">View More Code Examples</h3>
         <p class="text-sm text-gray-600">
           See advanced examples and integration patterns
         </p>
@@ -452,7 +452,7 @@ const completion = await openai.chat.completions.create({
         href="/training"
         class="block p-4 bg-white rounded-lg shadow hover:shadow-md transition"
       >
-        <h3 class="font-semibold text-blue-600">Fine-tune Your Model</h3>
+        <h3 class="font-semibold text-xinity-purple">Fine-tune Your Model</h3>
         <p class="text-sm text-gray-600">
           Customize the AI for your specific use case
         </p>

@@ -84,7 +84,12 @@ export function createSystemdVllmOps(): VllmOps {
     async start(id, config) {
       await $`mkdir -p ${env.VLLM_ENV_DIR}`;
       const envPath = `${env.VLLM_ENV_DIR}/${id}.env`;
-      await Bun.write(envPath, buildEnvFileContent(config));
+      const envContent = buildEnvFileContent(config);
+      log.info(
+        { id, envPath, config },
+        "Starting vLLM systemd service",
+      );
+      await Bun.write(envPath, envContent);
       await $`chmod 644 ${envPath}`;
       await $`systemctl enable --now vllm-driver@${id}.service`;
     },
@@ -192,6 +197,10 @@ export function createDockerVllmOps(): VllmOps {
         args.push(...config.extraArgs);
       }
 
+      log.info(
+        { id, containerName, config, cmd: args.join(" ") },
+        "Starting vLLM Docker container",
+      );
       await $`${args}`;
     },
 

@@ -2,7 +2,7 @@ import { os } from "@orpc/server";
 import { apiCallRouter } from "./procedures/api-call.procedure";
 import { apiKeyRouter } from "./procedures/api-key.procedure";
 import { applicationRouter } from "./procedures/application.procedure";
-import { authRouter } from "./procedures/auth.procedure";
+import { authRouter } from "./procedures/account.procedure";
 import { deploymentRouter } from "./procedures/deployment.procedure";
 import { devRouter } from "./procedures/dev.procedure";
 import { organizationRouter } from "./procedures/organization.procedure";
@@ -27,7 +27,7 @@ export const router = {
   apiKey: apiKeyRouter,
   application: applicationRouter,
   apiCall: apiCallRouter,
-  auth: authRouter,
+  account: authRouter,
   organization: organizationRouter,
   user: userRouter,
   deployment: deploymentRouter,

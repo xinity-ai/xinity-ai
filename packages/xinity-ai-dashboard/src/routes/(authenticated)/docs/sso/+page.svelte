@@ -10,7 +10,7 @@
   <nav class="mb-6">
     <a
       href="/docs/"
-      class="text-blue-600 hover:text-blue-800 flex items-center gap-2"
+      class="text-xinity-magenta hover:text-xinity-pink flex items-center gap-2"
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -47,7 +47,7 @@
       </li>
       <li>
         <strong>Instance-wide</strong>, configured by instance admins under
-        <a href="/instance-settings" class="text-blue-600 hover:text-blue-800 underline">Instance Settings</a>.
+        <a href="/instance-settings" class="text-xinity-magenta hover:text-xinity-pink underline">Instance Settings</a>.
         These providers appear on the login page for all users.
       </li>
     </ul>
@@ -79,7 +79,7 @@
 
     <div class="space-y-4">
       <div class="flex items-start gap-3">
-        <div class="shrink-0 w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold">1</div>
+        <div class="shrink-0 w-7 h-7 bg-xinity-purple text-white rounded-full flex items-center justify-center text-sm font-bold">1</div>
         <div>
           <h3 class="font-semibold mb-1">Create an application in your IdP</h3>
           <p class="text-gray-600 text-sm">
@@ -92,7 +92,7 @@
       </div>
 
       <div class="flex items-start gap-3">
-        <div class="shrink-0 w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold">2</div>
+        <div class="shrink-0 w-7 h-7 bg-xinity-purple text-white rounded-full flex items-center justify-center text-sm font-bold">2</div>
         <div>
           <h3 class="font-semibold mb-1">Copy credentials from your IdP</h3>
           <p class="text-gray-600 text-sm">
@@ -102,7 +102,7 @@
       </div>
 
       <div class="flex items-start gap-3">
-        <div class="shrink-0 w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold">3</div>
+        <div class="shrink-0 w-7 h-7 bg-xinity-purple text-white rounded-full flex items-center justify-center text-sm font-bold">3</div>
         <div>
           <h3 class="font-semibold mb-1">Register the provider in Xinity</h3>
           <p class="text-gray-600 text-sm">
@@ -118,7 +118,7 @@
       </div>
 
       <div class="flex items-start gap-3">
-        <div class="shrink-0 w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold">4</div>
+        <div class="shrink-0 w-7 h-7 bg-xinity-purple text-white rounded-full flex items-center justify-center text-sm font-bold">4</div>
         <div>
           <h3 class="font-semibold mb-1">Test the connection</h3>
           <p class="text-gray-600 text-sm">
@@ -128,8 +128,8 @@
       </div>
     </div>
 
-    <div class="mt-6 rounded-lg border bg-blue-50 p-4">
-      <p class="text-sm text-blue-800">
+    <div class="mt-6 rounded-lg border bg-xinity-purple/10 p-4">
+      <p class="text-sm text-xinity-pink">
         <strong>PKCE</strong> is enabled by default for added security. If your IdP doesn't support PKCE, you can disable it in the advanced settings during registration.
       </p>
     </div>
@@ -145,7 +145,7 @@
 
     <div class="space-y-4">
       <div class="flex items-start gap-3">
-        <div class="shrink-0 w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold">1</div>
+        <div class="shrink-0 w-7 h-7 bg-xinity-purple text-white rounded-full flex items-center justify-center text-sm font-bold">1</div>
         <div>
           <h3 class="font-semibold mb-1">Register the provider in Xinity</h3>
           <p class="text-gray-600 text-sm">
@@ -163,7 +163,7 @@
       </div>
 
       <div class="flex items-start gap-3">
-        <div class="shrink-0 w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold">2</div>
+        <div class="shrink-0 w-7 h-7 bg-xinity-purple text-white rounded-full flex items-center justify-center text-sm font-bold">2</div>
         <div>
           <h3 class="font-semibold mb-1">Configure your IdP with Xinity's SP metadata</h3>
           <p class="text-gray-600 text-sm">
@@ -179,7 +179,7 @@
       </div>
 
       <div class="flex items-start gap-3">
-        <div class="shrink-0 w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold">3</div>
+        <div class="shrink-0 w-7 h-7 bg-xinity-purple text-white rounded-full flex items-center justify-center text-sm font-bold">3</div>
         <div>
           <h3 class="font-semibold mb-1">Set the Assertion Consumer Service (ACS) URL</h3>
           <p class="text-gray-600 text-sm">
@@ -192,7 +192,7 @@
       </div>
 
       <div class="flex items-start gap-3">
-        <div class="shrink-0 w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold">4</div>
+        <div class="shrink-0 w-7 h-7 bg-xinity-purple text-white rounded-full flex items-center justify-center text-sm font-bold">4</div>
         <div>
           <h3 class="font-semibold mb-1">Ensure email is sent as a claim</h3>
           <p class="text-gray-600 text-sm">
@@ -203,7 +203,7 @@
       </div>
 
       <div class="flex items-start gap-3">
-        <div class="shrink-0 w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold">5</div>
+        <div class="shrink-0 w-7 h-7 bg-xinity-purple text-white rounded-full flex items-center justify-center text-sm font-bold">5</div>
         <div>
           <h3 class="font-semibold mb-1">Test the connection</h3>
           <p class="text-gray-600 text-sm">

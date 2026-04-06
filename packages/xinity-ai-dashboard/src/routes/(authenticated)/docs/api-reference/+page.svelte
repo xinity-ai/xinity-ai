@@ -31,7 +31,7 @@
   <nav class="mb-6">
     <a
       href="/docs/"
-      class="text-blue-600 hover:text-blue-800 flex items-center gap-2"
+      class="text-xinity-magenta hover:text-xinity-pink flex items-center gap-2"
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -72,8 +72,8 @@
     <pre class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto"><code
         >Authorization: Bearer YOUR_API_KEY</code
       ></pre>
-    <div class="mt-4 p-4 bg-blue-50 border-l-4 border-blue-400 rounded">
-      <p class="text-sm text-blue-800">
+    <div class="mt-4 p-4 bg-xinity-purple/10 border-l-4 border-xinity-purple rounded">
+      <p class="text-sm text-xinity-pink">
         <strong>Tip:</strong> Store your API key securely and never commit it to
         version control.
       </p>
@@ -259,7 +259,7 @@
   <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
     <div class="flex items-center gap-2 mb-4">
       <span
-        class="px-3 py-1 bg-blue-100 text-blue-800 rounded font-mono text-sm font-semibold"
+        class="px-3 py-1 bg-xinity-purple/15 text-xinity-pink rounded font-mono text-sm font-semibold"
         >GET</span
       >
       <h2 class="text-2xl font-semibold">/v1/models</h2>
@@ -407,21 +407,21 @@
   </section>
 
   <!-- Related Links -->
-  <section class="p-6 bg-linear-to-r from-blue-50 to-indigo-50 rounded-lg">
+  <section class="p-6 bg-linear-to-r from-xinity-purple/10 to-xinity-coral/10 rounded-lg">
     <h2 class="text-2xl font-semibold mb-4">Related Documentation</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
       <a
         href="/docs/quick-start"
         class="block p-4 bg-white rounded-lg shadow hover:shadow-md transition"
       >
-        <h3 class="font-semibold text-blue-600">Quick Start Guide</h3>
+        <h3 class="font-semibold text-xinity-purple">Quick Start Guide</h3>
         <p class="text-sm text-gray-600">Get started in minutes</p>
       </a>
       <a
         href="/docs/code-examples"
         class="block p-4 bg-white rounded-lg shadow hover:shadow-md transition"
       >
-        <h3 class="font-semibold text-blue-600">Code Examples</h3>
+        <h3 class="font-semibold text-xinity-purple">Code Examples</h3>
         <p class="text-sm text-gray-600">See practical implementations</p>
       </a>
     </div>

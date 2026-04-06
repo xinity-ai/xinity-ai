@@ -53,6 +53,61 @@ Docs and component list: https://shadcn-svelte.com/
 - `src/params`: custom route param matchers
 - `static`: static assets served as-is
 
+## MCP Server
+
+The dashboard exposes a [Model Context Protocol](https://modelcontextprotocol.io) endpoint at `/mcp`, enabling AI assistants to manage resources through natural language. It is enabled by default and can be disabled with `MCP_ENABLED=false`.
+
+Configure your MCP client to connect:
+
+```json
+{
+  "mcpServers": {
+    "xinity-ai": {
+      "url": "https://your-dashboard/mcp",
+      "headers": { "Authorization": "Bearer sk_..." }
+    }
+  }
+}
+```
+
+See the in-app documentation at `/docs/access-methods` for detailed setup instructions per client (Claude Desktop, Cursor, Windsurf, Claude Code CLI). For implementation details, see the [MCP developer guide](docs/mcp.md).
+
+## Testing
+
+```bash
+bun run test            # all dashboard tests
+bun run test:api        # API tests only
+bun run test:headed     # browser tests with visible browser
+bun run test:setup      # run test setup (user/org creation) standalone
+```
+
+The dashboard tests require a running application and its dependencies. Before running tests locally:
+
+1. Start local dependencies from the repo root:
+   ```bash
+   docker compose up -d
+   cd packages/common-db && bun run migrate
+   ```
+
+2. Start the infoserver:
+   ```bash
+   cd packages/xinity-infoserver && bun run dev
+   ```
+
+3. Build and run the dashboard:
+   ```bash
+   cd packages/xinity-ai-dashboard
+   cp example.env .env    # if not already configured
+   bun run build
+   bun run preview
+   ```
+
+The tests expect the dashboard at `http://localhost:5173`. On first run, the test setup automatically creates test users and organizations via the API. See [tests/TEST_PLAN.md](tests/TEST_PLAN.md) for the full test plan.
+
+## License
+
+This package is licensed under the **Elastic License 2.0 (ELv2)**, which differs from the Apache 2.0 license used by the rest of the monorepo. See the [LICENSE](./LICENSE) file in this directory for the full terms.
+
 ## Notes
 
 - Mailhog UI runs at `http://localhost:8025` when the dev Docker stack is up.

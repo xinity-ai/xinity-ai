@@ -15,6 +15,7 @@
   import { Archive, ArrowRight, Plus, Pencil, Trash2 } from "@lucide/svelte";
 
   let { data }: { data: PageData } = $props();
+  // svelte-ignore state_referenced_locally
   let applications = $state(data.applications as ApplicationDto[]);
 
   // Resync when page data changes (e.g. on navigation)

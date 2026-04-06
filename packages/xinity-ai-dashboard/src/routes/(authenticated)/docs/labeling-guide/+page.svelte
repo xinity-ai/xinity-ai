@@ -14,7 +14,7 @@
 
 <div class="container px-4 py-8 mx-auto max-w-4xl">
   <nav class="mb-6">
-    <a href="/docs/" class="text-blue-600 hover:text-blue-800 flex items-center gap-2">
+    <a href="/docs/" class="text-xinity-magenta hover:text-xinity-pink flex items-center gap-2">
       <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
       All Docs
     </a>
@@ -102,7 +102,7 @@
   <!-- Step 1: Overall rating -->
   <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
     <h2 class="text-2xl font-semibold mb-2">Step 1: Give an Overall Rating</h2>
-    <p class="text-sm text-blue-700 bg-blue-50 rounded px-3 py-2 mb-4">
+    <p class="text-sm text-xinity-pink bg-xinity-purple/10 rounded px-3 py-2 mb-4">
       <strong>Recommendation:</strong> Always start by giving every call a thumbs-up or thumbs-down.
       This is the single most valuable signal for fine-tuning, and it takes one click.
     </p>
@@ -357,23 +357,23 @@
   </section>
 
   <!-- Related docs -->
-  <section class="p-6 bg-linear-to-r from-blue-50 to-indigo-50 rounded-lg">
+  <section class="p-6 bg-linear-to-r from-xinity-purple/10 to-xinity-coral/10 rounded-lg">
     <h2 class="text-2xl font-semibold mb-4">Related Documentation</h2>
     <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
       <a href="/docs/applications" class="block p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition">
-        <h3 class="font-semibold text-blue-600">Applications</h3>
+        <h3 class="font-semibold text-xinity-purple">Applications</h3>
         <p class="text-sm text-gray-600">Organize API calls into logical groups for labeling and fine-tuning.</p>
       </a>
       <a href="/docs/quick-start" class="block p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition">
-        <h3 class="font-semibold text-blue-600">Quick Start Guide</h3>
+        <h3 class="font-semibold text-xinity-purple">Quick Start Guide</h3>
         <p class="text-sm text-gray-600">Deploy a model, create an API key, and make your first request.</p>
       </a>
       <a href="/docs/roles" class="block p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition">
-        <h3 class="font-semibold text-blue-600">Roles & Permissions</h3>
+        <h3 class="font-semibold text-xinity-purple">Roles & Permissions</h3>
         <p class="text-sm text-gray-600">The "labeler" role can rate and annotate but cannot manage deployments.</p>
       </a>
       <a href="/docs/api-reference" class="block p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition">
-        <h3 class="font-semibold text-blue-600">API Reference</h3>
+        <h3 class="font-semibold text-xinity-purple">API Reference</h3>
         <p class="text-sm text-gray-600">Endpoint details for calls that get logged and labeled.</p>
       </a>
     </div>

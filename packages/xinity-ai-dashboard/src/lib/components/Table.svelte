@@ -159,7 +159,7 @@
           {@const pageNumber = startingPageIndex + index}
           {#if pageNumber === pageIndex}
             <li
-              class="block leading-8 text-center bg-indigo-600 border-indigo-600 rounded size-8 compact:size-6 compact:leading-6 dark:text-white"
+              class="block leading-8 text-center bg-xinity-purple border-xinity-purple rounded size-8 compact:size-6 compact:leading-6 dark:text-white"
             >
               {pageNumber + 1}
             </li>

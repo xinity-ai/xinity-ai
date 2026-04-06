@@ -31,7 +31,7 @@ describe("Authentication flows", () => {
     const { page, context } = await freshPage();
     try {
       await page.goto("/login/");
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
       await page.locator("#in-email").fill("nonexistent@example.com");
       await page.locator("#in-pass").fill("WrongPassword123!");
       await page.locator("#form-signin button[type='submit']").click();
@@ -46,7 +46,7 @@ describe("Authentication flows", () => {
     const { page, context } = await freshPage();
     try {
       await page.goto("/login/");
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
       await page.locator("#in-email").fill(OWNER.email);
       await page.locator("#in-pass").fill(OWNER.password);
       await page.locator("#form-signin button[type='submit']").click();
@@ -64,7 +64,7 @@ describe("Authentication flows", () => {
     const { page, context } = await freshPage();
     try {
       await page.goto("/login/");
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
       await page.locator("#tab-signup").click();
 
       await expectVisible(page.locator("#form-signup"));
@@ -81,7 +81,7 @@ describe("Authentication flows", () => {
     try {
       // Sign in first
       await page.goto("/login/");
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
       await page.locator("#in-email").fill(OWNER.email);
       await page.locator("#in-pass").fill(OWNER.password);
       await page.locator("#form-signin button[type='submit']").click();
@@ -90,7 +90,7 @@ describe("Authentication flows", () => {
       });
 
       // Click logout, wait for page to fully load first
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("networkidle");
       await page.locator("nav button[aria-label='Logout']").click();
       await expectURL(page, /\/login/, 30_000);
     } finally {

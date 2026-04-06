@@ -14,7 +14,7 @@ import { getLicenseSummary, hasFeature } from "$lib/server/license";
 
 const log = rootLogger.child({name: "+layout.root"})
 
-export const load: LayoutServerLoad = async ({ request, url }) => {
+export const load: LayoutServerLoad = async ({ request, url, cookies }) => {
   const session = await auth.api.getSession(request);
   if (!session) {
     rootLogger.info({ name: "auth", }, "redirecting")
@@ -30,7 +30,8 @@ export const load: LayoutServerLoad = async ({ request, url }) => {
   }
 
   // Auto-activate the first organization if user has orgs but none is active
-  if (!session.session.activeOrganizationId) {
+  if (!session.session.activeOrganizationId && !url.searchParams.has('_orgActivated')) {
+    let autoActivated = false;
     try {
       const organizations = await auth.api.listOrganizations({
         headers: request.headers,
@@ -40,11 +41,31 @@ export const load: LayoutServerLoad = async ({ request, url }) => {
           headers: request.headers,
           body: { organizationId: organizations[0].id },
         });
-        session.session.activeOrganizationId = organizations[0].id;
         log.info({ orgId: organizations[0].id }, "Auto-activated organization for user");
+        autoActivated = true;
       }
     } catch (err) {
       log.warn({ err }, "Failed to auto-activate organization");
+    }
+    if (autoActivated) {
+      // Clear the stale session cookie cache so the next request does a DB lookup.
+      // Better Auth prefixes cookie names with __Secure- when baseURL is HTTPS.
+      const prefix = serverEnv.ORIGIN.startsWith("https://") ? "__Secure-" : "";
+      const cacheCookieName = `${prefix}better-auth.session_data`;
+      cookies.delete(cacheCookieName, { path: '/' });
+      // Also delete any chunked variants (e.g. .0, .1, …)
+      const cookieHeader = request.headers.get("cookie") ?? "";
+      for (const part of cookieHeader.split(";")) {
+        const name = part.trim().split("=")[0];
+        if (name && name.startsWith(cacheCookieName + ".")) {
+          cookies.delete(name, { path: '/' });
+        }
+      }
+
+      // Redirect with a guard param to prevent loops
+      const redirectUrl = new URL(url);
+      redirectUrl.searchParams.set('_orgActivated', '1');
+      redirect(302, redirectUrl.pathname + redirectUrl.search);
     }
   }
 

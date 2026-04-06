@@ -85,7 +85,7 @@ response = client.chat.completions.create(
   <nav class="mb-6">
     <a
       href="/docs/"
-      class="text-blue-600 hover:text-blue-800 flex items-center gap-2"
+      class="text-xinity-magenta hover:text-xinity-pink flex items-center gap-2"
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -119,19 +119,19 @@ response = client.chat.completions.create(
     </p>
     <ul class="space-y-2 text-gray-700 ml-4">
       <li class="flex items-start gap-2">
-        <span class="text-blue-600 font-bold mt-1">&#8226;</span>
+        <span class="text-xinity-magenta font-bold mt-1">&#8226;</span>
         <span><strong>Label data per use case:</strong> Review and rate responses within the context they were generated for</span>
       </li>
       <li class="flex items-start gap-2">
-        <span class="text-blue-600 font-bold mt-1">&#8226;</span>
+        <span class="text-xinity-magenta font-bold mt-1">&#8226;</span>
         <span><strong>Build targeted training sets:</strong> Export clean, focused datasets for distillation or fine-tuning specific to each application</span>
       </li>
       <li class="flex items-start gap-2">
-        <span class="text-blue-600 font-bold mt-1">&#8226;</span>
+        <span class="text-xinity-magenta font-bold mt-1">&#8226;</span>
         <span><strong>Track quality independently:</strong> Compare performance across applications without cross-contamination</span>
       </li>
       <li class="flex items-start gap-2">
-        <span class="text-blue-600 font-bold mt-1">&#8226;</span>
+        <span class="text-xinity-magenta font-bold mt-1">&#8226;</span>
         <span><strong>Simplify key management:</strong> Use one API key for multiple applications instead of managing one key per use case</span>
       </li>
     </ul>
@@ -145,7 +145,7 @@ response = client.chat.completions.create(
       <div>
         <h3 class="text-lg font-semibold mb-2">1. Create Applications in the Dashboard</h3>
         <p class="text-gray-600">
-          Go to the <a href="/ai-api-keys/" class="text-blue-600 hover:underline">API Keys page</a> and create applications in the Application Manager. Give each one a descriptive name (e.g. "customer-chatbot", "doc-summarizer", "code-reviewer").
+          Go to the <a href="/ai-api-keys/" class="text-xinity-magenta hover:underline">API Keys page</a> and create applications in the Application Manager. Give each one a descriptive name (e.g. "customer-chatbot", "doc-summarizer", "code-reviewer").
         </p>
       </div>
 
@@ -167,7 +167,7 @@ response = client.chat.completions.create(
       <div>
         <h3 class="text-lg font-semibold mb-2">3. View and Label Data per Application</h3>
         <p class="text-gray-600">
-          In the <a href="/data/" class="text-blue-600 hover:underline">Data section</a>, each application has its own page where you can browse calls, rate responses, edit outputs, and highlight passages. This labeled data can then be exported for fine-tuning.
+          In the <a href="/data/" class="text-xinity-magenta hover:underline">Data section</a>, each application has its own page where you can browse calls, rate responses, edit outputs, and highlight passages. This labeled data can then be exported for fine-tuning.
         </p>
       </div>
     </div>
@@ -212,8 +212,8 @@ response = client.chat.completions.create(
         </tbody>
       </table>
     </div>
-    <div class="mt-4 p-4 bg-blue-50 border-l-4 border-blue-400 rounded">
-      <p class="text-sm text-blue-800">
+    <div class="mt-4 p-4 bg-xinity-purple/10 border-l-4 border-xinity-purple rounded">
+      <p class="text-sm text-xinity-pink">
         <strong>Tip:</strong> A single API key can route calls to many applications. You only need multiple keys when you want separate credentials (e.g. for different teams or environments).
       </p>
     </div>
@@ -228,21 +228,21 @@ response = client.chat.completions.create(
 
     <div class="space-y-4">
       <div class="flex gap-4 items-start p-4 rounded border">
-        <div class="shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-sm">1</div>
+        <div class="shrink-0 w-8 h-8 bg-xinity-purple text-white rounded-full flex items-center justify-center font-bold text-sm">1</div>
         <div>
           <h3 class="font-semibold">Collect</h3>
           <p class="text-sm text-gray-600">API calls are automatically logged under their application. Use metadata to add additional context like user segment or feature flag.</p>
         </div>
       </div>
       <div class="flex gap-4 items-start p-4 rounded border">
-        <div class="shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-sm">2</div>
+        <div class="shrink-0 w-8 h-8 bg-xinity-purple text-white rounded-full flex items-center justify-center font-bold text-sm">2</div>
         <div>
           <h3 class="font-semibold">Label</h3>
           <p class="text-sm text-gray-600">In the Data section, review calls per application. Rate responses (thumbs up/down), edit outputs to show the ideal answer, and highlight good or bad passages.</p>
         </div>
       </div>
       <div class="flex gap-4 items-start p-4 rounded border">
-        <div class="shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-sm">3</div>
+        <div class="shrink-0 w-8 h-8 bg-xinity-purple text-white rounded-full flex items-center justify-center font-bold text-sm">3</div>
         <div>
           <h3 class="font-semibold">Fine-Tune</h3>
           <p class="text-sm text-gray-600">Export labeled data as a clean training set. Because each application's data is isolated, you can fine-tune a model specifically for one use case without noise from others.</p>
@@ -281,26 +281,26 @@ response = client.chat.completions.create(
       Each API key has a <strong>data collection toggle</strong>. When disabled, request and response content won't be stored, only usage metrics are recorded. This is useful for keys used in environments where you don't want to retain conversation data.
     </p>
     <p class="text-gray-600">
-      You can toggle data collection per key from the <a href="/ai-api-keys/" class="text-blue-600 hover:underline">API Keys page</a>.
+      You can toggle data collection per key from the <a href="/ai-api-keys/" class="text-xinity-magenta hover:underline">API Keys page</a>.
     </p>
   </section>
 
   <!-- Related Links -->
-  <section class="p-6 bg-linear-to-r from-blue-50 to-indigo-50 rounded-lg">
+  <section class="p-6 bg-linear-to-r from-xinity-purple/10 to-xinity-coral/10 rounded-lg">
     <h2 class="text-2xl font-semibold mb-4">Related Documentation</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
       <a
         href="/docs/quick-start"
         class="block p-4 bg-white rounded-lg shadow hover:shadow-md transition"
       >
-        <h3 class="font-semibold text-blue-600">Quick Start Guide</h3>
+        <h3 class="font-semibold text-xinity-purple">Quick Start Guide</h3>
         <p class="text-sm text-gray-600">Get started with the API in minutes</p>
       </a>
       <a
         href="/docs/api-reference"
         class="block p-4 bg-white rounded-lg shadow hover:shadow-md transition"
       >
-        <h3 class="font-semibold text-blue-600">API Reference</h3>
+        <h3 class="font-semibold text-xinity-purple">API Reference</h3>
         <p class="text-sm text-gray-600">Complete endpoint documentation</p>
       </a>
     </div>

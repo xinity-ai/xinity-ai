@@ -8,8 +8,7 @@
 import type { Host, RunResult, ElevationResult } from "./host.ts";
 import type { Manifest } from "./manifest.ts";
 import { unitName } from "./systemd.ts";
-import type { Component } from "./installer.ts";
-import { ENV_DIR, SECRETS_DIR, ENV_SCHEMAS } from "./installer.ts";
+import { type Component, ENV_DIR, SECRETS_DIR, ENV_SCHEMAS } from "./component-meta.ts";
 import { analyzeEnvSchema, categorizeFields } from "./env-prompt.ts";
 
 export interface RemoteState {
@@ -179,8 +178,7 @@ export function createCachedHost(realHost: Host, state: RemoteState): Host {
     async readFile(path: string): Promise<string | null> {
       if (path in state.fileContents) {
         const val = state.fileContents[path];
-        if (val === null) return null;
-        // Decode base64
+        if (val == null) return null;
         return Buffer.from(val, "base64").toString("utf-8");
       }
       return realHost.readFile(path);
