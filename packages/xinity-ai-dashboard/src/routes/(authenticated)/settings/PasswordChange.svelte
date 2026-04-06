@@ -1,11 +1,14 @@
 <script lang="ts">
+  import { invalidateAll } from "$app/navigation";
   import { orpc } from "$lib/orpc/orpc-client";
   import { toastState } from "$lib/state/toast.svelte";
 
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
-  import { Loader2, Lock } from "@lucide/svelte";
+  import { Loader2, Lock, AlertTriangle } from "@lucide/svelte";
+
+  let { temporaryPassword = false }: { temporaryPassword?: boolean } = $props();
 
   let currentPassword = $state("");
   let newPassword = $state("");
@@ -35,9 +38,20 @@
       currentPassword = "";
       newPassword = "";
       confirmPassword = "";
+      invalidateAll();
     }
   }
 </script>
+
+{#if temporaryPassword}
+  <div class="flex items-start gap-3 rounded-md border border-amber-500/30 bg-amber-500/10 p-4 mb-4 max-w-md">
+    <AlertTriangle class="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+    <div class="text-sm">
+      <p class="font-medium text-amber-500">Temporary password</p>
+      <p class="text-muted-foreground">You are using a temporary password. Please set a new password to continue.</p>
+    </div>
+  </div>
+{/if}
 
 <form
     onsubmit={(e) => {

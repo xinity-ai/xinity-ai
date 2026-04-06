@@ -3,7 +3,7 @@ import { z } from "zod";
 import { auth, getGreenlitCallId } from "$lib/server/auth-server";
 import { rootLogger } from "$lib/server/logging";
 import { getDB } from "$lib/server/db";
-import { memberT, sql } from "common-db";
+import { memberT, userT, sql, eq } from "common-db";
 
 const log = rootLogger.child({ name: "account.procedure" });
 const tags = ["Auth"];
@@ -25,13 +25,14 @@ const changePassword = rootOs
           newPassword: input.newPassword,
         },
       });
-      return { success: true };
     } catch (error: any) {
       log.error({ err: error }, "Error during password change");
       throw errors.UNAUTHORIZED({
         message: error?.body?.message || error?.message || "Failed to change password",
       });
     }
+    await getDB().update(userT).set({ temporaryPassword: false }).where(eq(userT.id, context.session.user.id));
+    return { success: true };
   });
 
 const listPasskeys = rootOs

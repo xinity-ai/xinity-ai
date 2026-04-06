@@ -85,24 +85,31 @@ export const load: LayoutServerLoad = async ({ request, url, cookies }) => {
     }
   }
 
-  // Fetch display settings for global UI state
+  // Fetch display settings and temporary password flag
   let displaySettings: DisplaySettings = {
     darkMode: false,
     compactView: false,
     showDetailedMetrics: true,
     gettingStartedDismissed: false,
   };
+  let temporaryPassword = false;
   try {
     const [row] = await getDB()
-      .select({ displaySettings: userT.displaySettings })
+      .select({ displaySettings: userT.displaySettings, temporaryPassword: userT.temporaryPassword })
       .from(userT)
       .where(sql`${userT.id} = ${session.user.id}`)
       .limit(1);
     if (row?.displaySettings) {
       displaySettings = row.displaySettings;
     }
+    temporaryPassword = row?.temporaryPassword ?? false;
   } catch (err) {
     log.warn({ err }, "Failed to fetch display settings");
+  }
+
+  // Force users with temporary passwords to the password change page
+  if (temporaryPassword && !url.pathname.startsWith("/settings/auth")) {
+    redirect(302, "/settings/auth");
   }
 
   // Sum total VRAM across active nodes for license limit warnings
@@ -123,6 +130,7 @@ export const load: LayoutServerLoad = async ({ request, url, cookies }) => {
     activeOrganizationId: session.session.activeOrganizationId,
     memberRole,
     displaySettings,
+    temporaryPassword,
     isInstanceAdmin: isInstanceAdmin(session.user.email),
     singleTenantMode: !serverEnv.MULTI_TENANT_MODE,
     canCreateOrganization: (serverEnv.MULTI_TENANT_MODE || isInstanceAdmin(session.user.email)) && (hasFeature("multi-org") || !session.session.activeOrganizationId),

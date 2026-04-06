@@ -6,6 +6,8 @@
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { ChevronRight, Lock, Fingerprint, KeyRound } from "@lucide/svelte";
 
+  let { data } = $props();
+
   type Section = "password" | "passkeys" | "apiKeys";
   let openSection = $state<Section | null>("password");
 
@@ -33,7 +35,7 @@
     </Collapsible.Trigger>
     <Collapsible.Content>
       <div class="pt-4 pl-7">
-        <PasswordChange />
+        <PasswordChange temporaryPassword={data.fullUser?.temporaryPassword ?? false} />
       </div>
     </Collapsible.Content>
   </Collapsible.Root>

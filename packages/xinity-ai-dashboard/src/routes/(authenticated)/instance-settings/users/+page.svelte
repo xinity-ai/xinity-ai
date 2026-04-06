@@ -9,7 +9,8 @@
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import * as Select from "$lib/components/ui/select";
   import { roleLabels, roleBadgeVariant, type RoleName } from "$lib/roles";
-  import { Search, Ban, ShieldCheck, UserPlus, X, ChevronLeft, ChevronRight, MailCheck, MailX, KeyRound, Copy } from "@lucide/svelte";
+  import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
+  import { Search, Ban, ShieldCheck, UserPlus, X, ChevronLeft, ChevronRight, MailCheck, MailX, KeyRound, Copy, Ellipsis } from "@lucide/svelte";
   import { toastState } from "$lib/state/toast.svelte";
   import { copyToClipboard } from "$lib/copy";
   import { createUrlSearchParamsStore } from "$lib/urlSearchParamsStore";
@@ -248,7 +249,7 @@
               <th class="py-2 pr-4 font-medium text-muted-foreground">Status</th>
               <th class="py-2 pr-4 font-medium text-muted-foreground">Organizations</th>
               <th class="py-2 pr-4 font-medium text-muted-foreground">Created</th>
-              <th class="py-2 font-medium text-muted-foreground">Actions</th>
+              <th class="py-2 font-medium text-muted-foreground w-10"></th>
             </tr>
           </thead>
           <tbody>
@@ -294,68 +295,61 @@
                   {new Date(user.createdAt).toLocaleDateString()}
                 </td>
                 <td class="py-3">
-                  <div class="flex items-center gap-1">
-                    {#if user.banned}
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        title="Unban"
-                        onclick={() => handleUnban(user.id, user.name)}
-                      >
-                        <ShieldCheck class="w-4 h-4" />
-                      </Button>
-                    {:else}
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        title="Ban"
-                        onclick={() => {
-                          banTargetUser = { id: user.id, name: user.name };
-                          banReason = "";
-                          banModalOpen = true;
-                        }}
-                      >
-                        <Ban class="w-4 h-4" />
-                      </Button>
-                    {/if}
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      title={user.emailVerified ? "Unverify email" : "Verify email"}
-                      onclick={() => handleToggleEmailVerified(user.id, user.name, !!user.emailVerified)}
-                    >
-                      {#if user.emailVerified}
-                        <MailX class="w-4 h-4" />
-                      {:else}
-                        <MailCheck class="w-4 h-4" />
-                      {/if}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      title="Reset password"
-                      onclick={() => {
-                        resetPasswordTargetUser = { id: user.id, name: user.name };
-                        resetPasswordTempPassword = "";
-                        resetPasswordModalOpen = true;
-                      }}
-                    >
-                      <KeyRound class="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      title="Add to organization"
-                      onclick={() => {
-                        addOrgTargetUser = { id: user.id, name: user.name };
-                        addOrgSelectedOrg = "";
-                        addOrgSelectedRole = "pending";
-                        addOrgModalOpen = true;
-                      }}
-                    >
-                      <UserPlus class="w-4 h-4" />
-                    </Button>
-                  </div>
+                  <DropdownMenu.Root>
+                    <DropdownMenu.Trigger>
+                      {#snippet child({ props })}
+                        <Button variant="ghost" size="icon-sm" {...props}>
+                          <Ellipsis class="w-4 h-4" />
+                        </Button>
+                      {/snippet}
+                    </DropdownMenu.Trigger>
+                    <DropdownMenu.Portal>
+                      <DropdownMenu.Content align="end" class="w-48">
+                        {#if user.banned}
+                          <DropdownMenu.Item onclick={() => handleUnban(user.id, user.name)}>
+                            <ShieldCheck class="w-4 h-4 mr-2" />
+                            Unban
+                          </DropdownMenu.Item>
+                        {:else}
+                          <DropdownMenu.Item onclick={() => {
+                            banTargetUser = { id: user.id, name: user.name };
+                            banReason = "";
+                            banModalOpen = true;
+                          }}>
+                            <Ban class="w-4 h-4 mr-2" />
+                            Ban
+                          </DropdownMenu.Item>
+                        {/if}
+                        <DropdownMenu.Item onclick={() => handleToggleEmailVerified(user.id, user.name, !!user.emailVerified)}>
+                          {#if user.emailVerified}
+                            <MailX class="w-4 h-4 mr-2" />
+                            Unverify email
+                          {:else}
+                            <MailCheck class="w-4 h-4 mr-2" />
+                            Verify email
+                          {/if}
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Item onclick={() => {
+                          resetPasswordTargetUser = { id: user.id, name: user.name };
+                          resetPasswordTempPassword = "";
+                          resetPasswordModalOpen = true;
+                        }}>
+                          <KeyRound class="w-4 h-4 mr-2" />
+                          Reset password
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Separator />
+                        <DropdownMenu.Item onclick={() => {
+                          addOrgTargetUser = { id: user.id, name: user.name };
+                          addOrgSelectedOrg = "";
+                          addOrgSelectedRole = "pending";
+                          addOrgModalOpen = true;
+                        }}>
+                          <UserPlus class="w-4 h-4 mr-2" />
+                          Add to organization
+                        </DropdownMenu.Item>
+                      </DropdownMenu.Content>
+                    </DropdownMenu.Portal>
+                  </DropdownMenu.Root>
                 </td>
               </tr>
             {/each}
@@ -506,7 +500,7 @@
           <Select.Trigger id="org-select" class="w-full mt-1">
             {addOrgOrgLabel}
           </Select.Trigger>
-          <Select.Content>
+          <Select.Content portalProps={{ disabled: true }}>
             <Select.Item value="" label="Select organization..." />
             {#each organizations as org}
               <Select.Item value={org.id} label={org.name} />
@@ -520,7 +514,7 @@
           <Select.Trigger id="role-select" class="w-full mt-1">
             {addOrgRoleLabel}
           </Select.Trigger>
-          <Select.Content>
+          <Select.Content portalProps={{ disabled: true }}>
             {#each Object.entries(roleLabels) as [value, label]}
               {#if value !== "owner"}
                 <Select.Item {value} {label} />

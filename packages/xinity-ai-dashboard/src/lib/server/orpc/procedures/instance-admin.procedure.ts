@@ -2,8 +2,7 @@ import { rootOs, withInstanceAdmin } from "../root";
 import { z } from "zod";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
-import { auth, getGreenlitCallId } from "$lib/server/auth-server";
-import { hashPassword } from "better-auth/crypto";
+import { auth, getGreenlitCallId, adminResetPassword } from "$lib/server/auth-server";
 import { userT, accountT, memberT, organizationT, sql, eq, or, ilike, count, and } from "common-db";
 
 const log = rootLogger.child({ name: "instance-admin.procedure" });
@@ -279,7 +278,7 @@ const createUser = rootOs
     // Admin-created users are considered verified
     await getDB()
       .update(userT)
-      .set({ emailVerified: true })
+      .set({ emailVerified: true, temporaryPassword: true })
       .where(eq(userT.id, signupResult.user.id));
     log.info({ userId: signupResult.user.id, email: input.email }, "Admin created user");
     return { success: true, userId: signupResult.user.id, temporaryPassword };
@@ -292,20 +291,25 @@ const resetUserPassword = rootOs
   .input(z.object({ userId: z.string() }))
   .handler(async ({ input, errors }) => {
     const db = getDB();
-    const [account] = await db
-      .select({ id: accountT.id })
-      .from(accountT)
-      .where(and(eq(accountT.userId, input.userId), eq(accountT.providerId, "credential")))
+    // Look up the user's email and verify they have a credential-based account
+    const [user] = await db
+      .select({ email: userT.email })
+      .from(userT)
+      .innerJoin(accountT, and(eq(accountT.userId, userT.id), eq(accountT.providerId, "credential")))
+      .where(eq(userT.id, input.userId))
       .limit(1);
-    if (!account) {
+    if (!user) {
       throw errors.NOT_FOUND({ message: "User has no password-based account (may use SSO only)." });
     }
     const temporaryPassword = generateTempPassword();
-    const hashed = await hashPassword(temporaryPassword);
-    await db
-      .update(accountT)
-      .set({ password: hashed, updatedAt: new Date() })
-      .where(eq(accountT.id, account.id));
+    try {
+      // Uses Better Auth's full reset flow (hashing, session revocation)
+      await adminResetPassword(user.email, temporaryPassword);
+    } catch (err) {
+      log.error({ err, userId: input.userId }, "Admin password reset failed");
+      throw errors.INTERNAL_SERVER_ERROR({ message: "Failed to reset password." });
+    }
+    await db.update(userT).set({ temporaryPassword: true }).where(eq(userT.id, input.userId));
     log.info({ userId: input.userId }, "Admin reset user password");
     return { success: true, temporaryPassword };
   });

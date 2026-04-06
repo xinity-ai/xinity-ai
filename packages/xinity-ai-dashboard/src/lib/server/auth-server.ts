@@ -32,6 +32,27 @@ export function getGreenlitCallId() {
   return id;
 }
 
+// Admin-initiated password resets: suppress the email and capture the token.
+const pendingAdminResets = new Map<string, (token: string) => void>();
+/**
+ * Initiates an admin password reset via Better Auth's standard flow.
+ * Suppresses the reset email and captures the verification token so the
+ * caller can immediately consume it with auth.api.resetPassword().
+ */
+export async function adminResetPassword(email: string, newPassword: string) {
+  const resetId = crypto.randomUUID();
+  const tokenPromise = new Promise<string>((resolve) => {
+    pendingAdminResets.set(resetId, resolve);
+  });
+  await auth.api.requestPasswordReset({
+    body: { email, redirectTo: `__admin_reset__:${resetId}` },
+  });
+  const token = await tokenPromise;
+  await auth.api.resetPassword({
+    body: { newPassword, token },
+  });
+}
+
 const sendWelcomeNotification = createAuthMiddleware(async (ctx) => {
   if (ctx.path !== "/verify-email") return;
 
@@ -101,7 +122,19 @@ export const auth = betterAuth({
     revokeSessionsOnPasswordReset: true,
     requireEmailVerification: !!serverEnv.MAIL_URL,
     disableSignUp: false,
-    async sendResetPassword({ url, user }, request) {
+    async sendResetPassword({ url, user, token }, request) {
+      // Admin-initiated resets use a special redirectTo prefix to suppress email
+      const redirectTo = new URL(url).searchParams.get("callbackURL") ?? "";
+      const adminResetMatch = decodeURIComponent(redirectTo).match(/^__admin_reset__:(.+)$/);
+      if (adminResetMatch) {
+        const resetId = adminResetMatch[1];
+        const resolve = pendingAdminResets.get(resetId);
+        if (resolve) {
+          resolve(token);
+          pendingAdminResets.delete(resetId);
+        }
+        return;
+      }
       log.info({ url, user: pick(user, "email", "id") }, "Send reset password");
       void sendEmail({
         to: user.email,
