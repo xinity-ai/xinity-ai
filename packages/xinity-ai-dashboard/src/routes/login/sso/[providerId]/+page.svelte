@@ -1,6 +1,9 @@
 <script lang="ts">
   import { page } from "$app/state";
   import { signIn } from "$lib/auth";
+  import { Button } from "$lib/components/ui/button";
+  import * as Card from "$lib/components/ui/card";
+  import { Loader2 } from "@lucide/svelte";
 
   const providerId = $derived(page.params.providerId ?? "");
   const providerLabel = $derived(formatProviderId(providerId));
@@ -24,7 +27,6 @@
     isLoading = true;
 
     try {
-      // Initiates SSO sign in, with the selected provider.
       const { error } = await signIn.sso({
         providerId,
         callbackURL,
@@ -48,91 +50,68 @@
   <title>Continue with {providerLabel}</title>
 </svelte:head>
 
-<div class="flex min-h-screen items-center justify-center bg-gray-100 px-4 py-12">
-  <main class="w-full max-w-md">
-    <div class="space-y-6 rounded-2xl bg-white p-6 shadow-lg">
-      <div class="space-y-2">
-        <p class="text-xs font-semibold uppercase tracking-widest text-gray-500">
-          Secure sign in
-        </p>
-        <h1 class="text-2xl font-bold text-gray-800">
-          Continue with {providerLabel}
-        </h1>
-        <p class="text-sm text-gray-600">
-          We'll send you to {providerLabel} to verify your identity and then
-          bring you right back to Xinity.
-        </p>
-      </div>
-
+<div class="flex min-h-screen items-center justify-center bg-background px-4 py-12">
+  <Card.Root class="w-full max-w-md">
+    <Card.Header>
+      <p class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+        Secure sign in
+      </p>
+      <Card.Title class="text-2xl">Continue with {providerLabel}</Card.Title>
+      <Card.Description>
+        We'll send you to {providerLabel} to verify your identity and then
+        bring you right back to Xinity.
+      </Card.Description>
+    </Card.Header>
+    <Card.Content class="space-y-6">
       <div class="space-y-4">
-        <button
-          type="button"
+        <Button
+          class="w-full"
           onclick={handleSignIn}
           disabled={!hasProvider || isLoading}
-          class="flex w-full items-center justify-center gap-2 rounded-lg bg-xinity-purple py-2 font-semibold text-white hover:bg-xinity-purple/80 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
         >
           {#if isLoading}
-            <svg
-              class="h-5 w-5 animate-spin"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                class="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                stroke-width="4"
-              ></circle>
-              <path
-                class="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 100 16 8 8 0 008-8h-4l3 3 3-3h-4a8 8 0 01-8 8 8 8 0 01-8-8z"
-              ></path>
-            </svg>
+            <Loader2 class="w-4 h-4 animate-spin" />
             Connecting...
           {:else}
             Continue with {providerLabel}
           {/if}
-        </button>
+        </Button>
 
         {#if errorMessage}
-          <p class="text-sm text-red-600">{errorMessage}</p>
+          <p class="text-sm text-destructive">{errorMessage}</p>
         {/if}
 
         {#if !hasProvider}
-          <p class="text-sm text-red-600">
+          <p class="text-sm text-destructive">
             Missing provider ID. Return to the login page and choose a provider
             to continue.
           </p>
         {/if}
       </div>
 
-      <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
-        <h2 class="text-xs font-semibold uppercase tracking-widest text-gray-500">
+      <div class="rounded-xl border bg-muted/50 p-4">
+        <h2 class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
           What happens next
         </h2>
-        <ul class="mt-3 space-y-3 text-sm text-gray-600">
+        <ul class="mt-3 space-y-3 text-sm text-muted-foreground">
           <li class="flex items-start gap-2">
-            <span class="mt-1 inline-block h-2 w-2 rounded-full bg-xinity-purple"></span>
+            <span class="mt-1 inline-block h-2 w-2 rounded-full bg-primary"></span>
             We'll request only the basic profile information you share with
             {providerLabel}.
           </li>
           <li class="flex items-start gap-2">
-            <span class="mt-1 inline-block h-2 w-2 rounded-full bg-xinity-purple"></span>
+            <span class="mt-1 inline-block h-2 w-2 rounded-full bg-primary"></span>
             You'll be redirected back here once authentication completes.
           </li>
         </ul>
       </div>
 
-      <div class="text-center text-xs text-gray-500">
+      <div class="text-center text-xs text-muted-foreground">
         <p>By continuing you agree to Xinity's security policies.</p>
-        <a class="text-xinity-magenta hover:text-xinity-pink" href="/login">
+        <a class="text-primary hover:text-primary/80 transition-colors" href="/login">
           Choose a different sign-in method
         </a>
       </div>
-    </div>
-  </main>
+    </Card.Content>
+  </Card.Root>
 </div>
