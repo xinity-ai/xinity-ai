@@ -48,6 +48,49 @@
   <!-- Error cards -->
   <div class="space-y-4 mb-8">
 
+    <!-- GPU Memory Utilization Too High -->
+    <section class="p-6 bg-white rounded-lg shadow-md">
+      <div class="flex items-start gap-3 mb-3">
+        <span class="mt-0.5 inline-block px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 shrink-0">GPU</span>
+        <div>
+          <h3 class="text-lg font-semibold">GPU memory utilization too high</h3>
+          <p class="text-sm text-gray-500 mt-0.5">
+            Look for: <code class="bg-gray-100 px-1 rounded">Free memory on device ... is less than desired GPU memory utilization</code>
+          </p>
+        </div>
+      </div>
+      <p class="text-gray-600 mb-3">
+        The configured GPU memory utilization percentage requires more VRAM than is
+        currently free on the GPU. Other processes may be using some of the memory.
+      </p>
+      <p class="text-sm font-semibold text-gray-700 mb-1">Likely fix:</p>
+      <ul class="list-disc pl-6 space-y-1 text-sm text-gray-600 mb-3">
+        <li>Lower the <strong>GPU memory utilization</strong> in Expert Settings (e.g. from 0.95 to 0.85).</li>
+        <li>Stop other GPU processes on the node to free VRAM.</li>
+        <li>Reduce the <strong>KV cache size</strong> to lower overall memory demand.</li>
+      </ul>
+      <Collapsible.Root>
+        <Collapsible.Trigger class="flex items-center gap-1 text-xs text-muted-foreground hover:underline cursor-pointer group">
+          <ChevronRight class="w-3 h-3 transition-transform group-data-[state=open]:rotate-90" />
+          Technical details
+        </Collapsible.Trigger>
+        <Collapsible.Content>
+          <div class="mt-3 p-3 bg-gray-50 rounded text-sm text-gray-600 space-y-2">
+            <p>
+              vLLM's <code class="bg-gray-100 px-1 rounded">--gpu-memory-utilization</code> flag
+              (default 0.90) tells it to claim a percentage of <em>total</em> GPU memory. If the
+              free memory at startup is less than that amount (e.g. because the display driver or
+              another process is using some), vLLM refuses to start rather than risk an OOM later.
+            </p>
+            <p>
+              The error message shows exactly how much is free vs. how much was requested, making
+              it easy to pick a lower value.
+            </p>
+          </div>
+        </Collapsible.Content>
+      </Collapsible.Root>
+    </section>
+
     <!-- GPU OOM -->
     <section class="p-6 bg-white rounded-lg shadow-md">
       <div class="flex items-start gap-3 mb-3">
@@ -204,15 +247,210 @@
       </Collapsible.Root>
     </section>
 
+    <!-- BFloat16 Not Supported -->
+    <section class="p-6 bg-white rounded-lg shadow-md">
+      <div class="flex items-start gap-3 mb-3">
+        <span class="mt-0.5 inline-block px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 shrink-0">GPU</span>
+        <div>
+          <h3 class="text-lg font-semibold">GPU does not support bfloat16</h3>
+          <p class="text-sm text-gray-500 mt-0.5">
+            Look for: <code class="bg-gray-100 px-1 rounded">Bfloat16 is not supported</code>
+          </p>
+        </div>
+      </div>
+      <p class="text-gray-600 mb-3">
+        The GPU is too old to run this model's default data type (bfloat16 requires
+        compute capability 8.0+, i.e. Ampere or newer).
+      </p>
+      <p class="text-sm font-semibold text-gray-700 mb-1">Likely fix:</p>
+      <ul class="list-disc pl-6 space-y-1 text-sm text-gray-600 mb-3">
+        <li>Add <code class="bg-gray-100 px-1 rounded">--dtype float16</code> to Extra Args in Expert Settings.</li>
+        <li>Or deploy to a node with a newer GPU (Ampere / Ada / Hopper).</li>
+      </ul>
+    </section>
+
+    <!-- CUDA/Driver Mismatch -->
+    <section class="p-6 bg-white rounded-lg shadow-md">
+      <div class="flex items-start gap-3 mb-3">
+        <span class="mt-0.5 inline-block px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 shrink-0">GPU</span>
+        <div>
+          <h3 class="text-lg font-semibold">CUDA/driver version mismatch</h3>
+          <p class="text-sm text-gray-500 mt-0.5">
+            Look for: <code class="bg-gray-100 px-1 rounded">NVIDIA driver on your system is too old</code>
+            or <code class="bg-gray-100 px-1 rounded">unsupported toolchain</code>
+          </p>
+        </div>
+      </div>
+      <p class="text-gray-600 mb-3">
+        The inference engine was built against a newer CUDA version than your GPU driver supports.
+      </p>
+      <p class="text-sm font-semibold text-gray-700 mb-1">Likely fix:</p>
+      <ul class="list-disc pl-6 space-y-1 text-sm text-gray-600 mb-3">
+        <li>Update the NVIDIA driver on the inference node.</li>
+        <li>Or use a vLLM image that matches the installed CUDA version.</li>
+      </ul>
+    </section>
+
+    <!-- Invalid GPU Device -->
+    <section class="p-6 bg-white rounded-lg shadow-md">
+      <div class="flex items-start gap-3 mb-3">
+        <span class="mt-0.5 inline-block px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 shrink-0">GPU</span>
+        <div>
+          <h3 class="text-lg font-semibold">Invalid GPU device index</h3>
+          <p class="text-sm text-gray-500 mt-0.5">
+            Look for: <code class="bg-gray-100 px-1 rounded">CUDA error: invalid device ordinal</code>
+          </p>
+        </div>
+      </div>
+      <p class="text-gray-600 mb-3">
+        The process is trying to use a GPU index that does not exist on this node.
+      </p>
+      <p class="text-sm font-semibold text-gray-700 mb-1">Likely fix:</p>
+      <ul class="list-disc pl-6 space-y-1 text-sm text-gray-600 mb-3">
+        <li>Check that <code class="bg-gray-100 px-1 rounded">CUDA_VISIBLE_DEVICES</code> is set correctly.</li>
+        <li>Ensure <code class="bg-gray-100 px-1 rounded">--tensor-parallel-size</code> does not exceed the number of GPUs.</li>
+      </ul>
+    </section>
+
+    <!-- NVIDIA Runtime Missing -->
+    <section class="p-6 bg-white rounded-lg shadow-md">
+      <div class="flex items-start gap-3 mb-3">
+        <span class="mt-0.5 inline-block px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800 shrink-0">Runtime</span>
+        <div>
+          <h3 class="text-lg font-semibold">NVIDIA container runtime missing</h3>
+          <p class="text-sm text-gray-500 mt-0.5">
+            Look for: <code class="bg-gray-100 px-1 rounded">could not select device driver</code>
+            or <code class="bg-gray-100 px-1 rounded">unknown or invalid runtime name: nvidia</code>
+          </p>
+        </div>
+      </div>
+      <p class="text-gray-600 mb-3">
+        Docker cannot access the GPU because the NVIDIA container toolkit is not installed.
+      </p>
+      <p class="text-sm font-semibold text-gray-700 mb-1">Likely fix:</p>
+      <ul class="list-disc pl-6 space-y-1 text-sm text-gray-600 mb-3">
+        <li>Install <code class="bg-gray-100 px-1 rounded">nvidia-container-toolkit</code> on the node.</li>
+        <li>Run <code class="bg-gray-100 px-1 rounded">nvidia-ctk runtime configure --runtime=docker</code> and restart Docker.</li>
+      </ul>
+    </section>
+
+    <!-- NCCL Error -->
+    <section class="p-6 bg-white rounded-lg shadow-md">
+      <div class="flex items-start gap-3 mb-3">
+        <span class="mt-0.5 inline-block px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800 shrink-0">Runtime</span>
+        <div>
+          <h3 class="text-lg font-semibold">NCCL communication error</h3>
+          <p class="text-sm text-gray-500 mt-0.5">
+            Look for: <code class="bg-gray-100 px-1 rounded">ncclSystemError</code>
+            or <code class="bg-gray-100 px-1 rounded">NCCL error</code>
+          </p>
+        </div>
+      </div>
+      <p class="text-gray-600 mb-3">
+        GPU-to-GPU communication failed during multi-GPU initialization.
+      </p>
+      <p class="text-sm font-semibold text-gray-700 mb-1">Likely fix:</p>
+      <ul class="list-disc pl-6 space-y-1 text-sm text-gray-600 mb-3">
+        <li>Ensure Docker is running with <code class="bg-gray-100 px-1 rounded">--ipc=host</code> (the daemon does this automatically).</li>
+        <li>Check that <code class="bg-gray-100 px-1 rounded">/dev/shm</code> is large enough (at least a few GB).</li>
+        <li>Verify GPUs are not assigned to conflicting processes.</li>
+      </ul>
+    </section>
+
+    <!-- Port Conflict -->
+    <section class="p-6 bg-white rounded-lg shadow-md">
+      <div class="flex items-start gap-3 mb-3">
+        <span class="mt-0.5 inline-block px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800 shrink-0">Runtime</span>
+        <div>
+          <h3 class="text-lg font-semibold">Port already in use</h3>
+          <p class="text-sm text-gray-500 mt-0.5">
+            Look for: <code class="bg-gray-100 px-1 rounded">Address already in use</code>
+          </p>
+        </div>
+      </div>
+      <p class="text-gray-600 mb-3">
+        Another process is already using the port assigned to this deployment.
+      </p>
+      <p class="text-sm font-semibold text-gray-700 mb-1">Likely fix:</p>
+      <ul class="list-disc pl-6 space-y-1 text-sm text-gray-600 mb-3">
+        <li>Stop the conflicting process, or delete and re-deploy (a new port will be assigned).</li>
+        <li>Check for zombie vLLM processes with <code class="bg-gray-100 px-1 rounded">lsof -i :&lt;port&gt;</code>.</li>
+      </ul>
+    </section>
+
+    <!-- Unsupported Architecture -->
+    <section class="p-6 bg-white rounded-lg shadow-md">
+      <div class="flex items-start gap-3 mb-3">
+        <span class="mt-0.5 inline-block px-2 py-0.5 rounded text-xs font-medium bg-xinity-purple/15 text-xinity-pink shrink-0">Config</span>
+        <div>
+          <h3 class="text-lg font-semibold">Unsupported model architecture</h3>
+          <p class="text-sm text-gray-500 mt-0.5">
+            Look for: <code class="bg-gray-100 px-1 rounded">Model architectures [...] are not supported</code>
+          </p>
+        </div>
+      </div>
+      <p class="text-gray-600 mb-3">
+        This model uses an architecture that the installed vLLM version does not support yet.
+      </p>
+      <p class="text-sm font-semibold text-gray-700 mb-1">Likely fix:</p>
+      <ul class="list-disc pl-6 space-y-1 text-sm text-gray-600 mb-3">
+        <li>Upgrade to a newer vLLM version that supports this architecture.</li>
+        <li>Or choose a model with a supported architecture.</li>
+      </ul>
+    </section>
+
+    <!-- Context Length Too Large -->
+    <section class="p-6 bg-white rounded-lg shadow-md">
+      <div class="flex items-start gap-3 mb-3">
+        <span class="mt-0.5 inline-block px-2 py-0.5 rounded text-xs font-medium bg-xinity-purple/15 text-xinity-pink shrink-0">Config</span>
+        <div>
+          <h3 class="text-lg font-semibold">Configured context length too large</h3>
+          <p class="text-sm text-gray-500 mt-0.5">
+            Look for: <code class="bg-gray-100 px-1 rounded">max_model_len ... is too large</code>
+          </p>
+        </div>
+      </div>
+      <p class="text-gray-600 mb-3">
+        The requested maximum sequence length exceeds what the model supports or what fits in GPU memory.
+      </p>
+      <p class="text-sm font-semibold text-gray-700 mb-1">Likely fix:</p>
+      <ul class="list-disc pl-6 space-y-1 text-sm text-gray-600 mb-3">
+        <li>Reduce <code class="bg-gray-100 px-1 rounded">--max-model-len</code> in Extra Args, or remove it to use the model's default.</li>
+        <li>Deploy to a node with more VRAM if you need the full context window.</li>
+      </ul>
+    </section>
+
+    <!-- HuggingFace Auth -->
+    <section class="p-6 bg-white rounded-lg shadow-md">
+      <div class="flex items-start gap-3 mb-3">
+        <span class="mt-0.5 inline-block px-2 py-0.5 rounded text-xs font-medium bg-xinity-purple/15 text-xinity-pink shrink-0">Config</span>
+        <div>
+          <h3 class="text-lg font-semibold">HuggingFace authentication required</h3>
+          <p class="text-sm text-gray-500 mt-0.5">
+            Look for: <code class="bg-gray-100 px-1 rounded">Access to model ... is restricted</code>
+            or <code class="bg-gray-100 px-1 rounded">gated repo</code>
+          </p>
+        </div>
+      </div>
+      <p class="text-gray-600 mb-3">
+        The model is gated or private on HuggingFace and requires an access token.
+      </p>
+      <p class="text-sm font-semibold text-gray-700 mb-1">Likely fix:</p>
+      <ul class="list-disc pl-6 space-y-1 text-sm text-gray-600 mb-3">
+        <li>Set the <code class="bg-gray-100 px-1 rounded">HF_TOKEN</code> environment variable on the inference node.</li>
+        <li>Make sure you have accepted the model's license on HuggingFace.</li>
+      </ul>
+    </section>
+
     <!-- Model Not Found -->
     <section class="p-6 bg-white rounded-lg shadow-md">
       <div class="flex items-start gap-3 mb-3">
         <span class="mt-0.5 inline-block px-2 py-0.5 rounded text-xs font-medium bg-xinity-purple/15 text-xinity-pink shrink-0">Config</span>
         <div>
-          <h3 class="text-lg font-semibold">Model not found</h3>
+          <h3 class="text-lg font-semibold">Model files missing or not found</h3>
           <p class="text-sm text-gray-500 mt-0.5">
             Look for: <code class="bg-gray-100 px-1 rounded">does not appear to have a file named</code>
-            or <code class="bg-gray-100 px-1 rounded">not found</code>
+            or <code class="bg-gray-100 px-1 rounded">does not exist on the Hub</code>
           </p>
         </div>
       </div>
@@ -222,7 +460,7 @@
       </p>
       <p class="text-sm font-semibold text-gray-700 mb-1">Likely fix:</p>
       <ul class="list-disc pl-6 space-y-1 text-sm text-gray-600 mb-3">
-        <li>Double-check the model name matches a valid model identifier.</li>
+        <li>Double-check the model name matches a valid HuggingFace model identifier.</li>
         <li>If the model is private, make sure authentication is configured.</li>
         <li>Try deleting and re-deploying to trigger a fresh download.</li>
       </ul>
@@ -249,6 +487,70 @@
         <li>Expand <strong>View logs</strong> in the Model Hub to find the real error.</li>
         <li>The root cause is usually one of the other errors on this page.</li>
         <li>Fix the underlying issue, then delete and re-create the deployment.</li>
+      </ul>
+    </section>
+
+    <!-- Missing Shared Library -->
+    <section class="p-6 bg-white rounded-lg shadow-md">
+      <div class="flex items-start gap-3 mb-3">
+        <span class="mt-0.5 inline-block px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-800 shrink-0">System</span>
+        <div>
+          <h3 class="text-lg font-semibold">Missing shared library</h3>
+          <p class="text-sm text-gray-500 mt-0.5">
+            Look for: <code class="bg-gray-100 px-1 rounded">error while loading shared libraries</code>
+          </p>
+        </div>
+      </div>
+      <p class="text-gray-600 mb-3">
+        A required system library (CUDA, NCCL, etc.) is not installed or not in the library path.
+      </p>
+      <p class="text-sm font-semibold text-gray-700 mb-1">Likely fix:</p>
+      <ul class="list-disc pl-6 space-y-1 text-sm text-gray-600 mb-3">
+        <li>Verify the CUDA toolkit and NVIDIA libraries are installed on the node.</li>
+        <li>For Docker deployments, ensure the NVIDIA container runtime is configured.</li>
+      </ul>
+    </section>
+
+    <!-- Insufficient Swap Space -->
+    <section class="p-6 bg-white rounded-lg shadow-md">
+      <div class="flex items-start gap-3 mb-3">
+        <span class="mt-0.5 inline-block px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-800 shrink-0">System</span>
+        <div>
+          <h3 class="text-lg font-semibold">Insufficient CPU swap space</h3>
+          <p class="text-sm text-gray-500 mt-0.5">
+            Look for: <code class="bg-gray-100 px-1 rounded">Aborted due to the lack of CPU swap space</code>
+          </p>
+        </div>
+      </div>
+      <p class="text-gray-600 mb-3">
+        The system ran out of CPU swap space for request scheduling.
+      </p>
+      <p class="text-sm font-semibold text-gray-700 mb-1">Likely fix:</p>
+      <ul class="list-disc pl-6 space-y-1 text-sm text-gray-600 mb-3">
+        <li>Increase the system swap space on the node.</li>
+        <li>Reduce the number of concurrent sequences or swap space allocation.</li>
+      </ul>
+    </section>
+
+    <!-- Engine Init Failed -->
+    <section class="p-6 bg-white rounded-lg shadow-md">
+      <div class="flex items-start gap-3 mb-3">
+        <span class="mt-0.5 inline-block px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-800 shrink-0">General</span>
+        <div>
+          <h3 class="text-lg font-semibold">Engine initialization failed</h3>
+          <p class="text-sm text-gray-500 mt-0.5">
+            Look for: <code class="bg-gray-100 px-1 rounded">Engine core initialization failed</code>
+          </p>
+        </div>
+      </div>
+      <p class="text-gray-600 mb-3">
+        The vLLM engine process crashed during startup. This is a wrapper error &mdash;
+        the real cause is usually one of the other errors on this page.
+      </p>
+      <p class="text-sm font-semibold text-gray-700 mb-1">Likely fix:</p>
+      <ul class="list-disc pl-6 space-y-1 text-sm text-gray-600 mb-3">
+        <li>Expand <strong>View logs</strong> and scroll up to find the root cause error.</li>
+        <li>Match the underlying error to another pattern on this page.</li>
       </ul>
     </section>
   </div>
