@@ -51,22 +51,23 @@ export async function testRedisConnection(url: string, host: Host): Promise<bool
       : null;
 
     const ok = await new Promise<boolean>((resolve) => {
-      const timer = setTimeout(() => resolve(false), 5000);
-
-      const fail = () => {
+      let settled = false;
+      const done = (value: boolean) => {
+        if (settled) return;
+        settled = true;
         clearTimeout(timer);
-        resolve(false);
+        resolve(value);
       };
+      const timer = setTimeout(() => done(false), 5000);
 
       Bun.connect({
         hostname,
         port,
         socket: {
           data(_socket, data) {
-            clearTimeout(timer);
             const response = new TextDecoder().decode(data);
             _socket.end();
-            resolve(response.includes("+PONG") || response.includes("+OK"));
+            done(response.includes("+PONG") || response.includes("+OK"));
           },
           open(socket) {
             if (password) {
@@ -75,10 +76,10 @@ export async function testRedisConnection(url: string, host: Host): Promise<bool
               socket.write("PING\r\n");
             }
           },
-          error() { fail(); },
-          connectError() { fail(); },
+          error(_socket) { _socket.end(); done(false); },
+          connectError() { done(false); },
         },
-      }).catch(fail);
+      }).catch(() => done(false));
     });
 
     if (ok) {
