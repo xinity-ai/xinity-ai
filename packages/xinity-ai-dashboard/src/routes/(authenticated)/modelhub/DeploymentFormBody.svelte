@@ -7,6 +7,8 @@
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
   import { Checkbox } from "$lib/components/ui/checkbox";
+  import * as Select from "$lib/components/ui/select";
+  import * as Collapsible from "$lib/components/ui/collapsible";
   import { ChevronDown } from "@lucide/svelte";
 
   let {
@@ -100,6 +102,18 @@
 
   function driverLabel(d: string) { return d === "vllm" ? "vLLM" : "Ollama"; }
 
+  const advancementStrategyLabels: Record<string, string> = {
+    manual: "Manual",
+    "time-based": "Time-Based",
+  };
+  const advancementStrategyLabel = $derived(advancementStrategyLabels[advancementStrategy] ?? "Select...");
+
+  // Use "" as sentinel for null since bits-ui Select values must be strings
+  let preferredDriverStr = $derived(preferredDriver ?? "");
+  const preferredDriverLabel = $derived(
+    preferredDriverStr === "" ? "Auto" : driverLabel(preferredDriverStr),
+  );
+
   function openSelector(mode: "primary" | "canary") {
     selectorMode = mode;
     showModelSelector = true;
@@ -115,14 +129,13 @@
   }
 </script>
 
-{#snippet sectionHeader(title: string, show: boolean, toggle: () => void)}
-  <button
-    class="flex items-center gap-2 text-lg font-medium mb-4 compact:mb-2 hover:text-primary transition-colors"
-    onclick={toggle}
+{#snippet sectionHeader(title: string, open: boolean)}
+  <Collapsible.Trigger
+    class="flex items-center gap-2 text-lg font-medium mb-4 compact:mb-2 hover:text-primary transition-colors cursor-pointer"
   >
-    <ChevronDown class="w-5 h-5 transition-transform {show ? 'rotate-0' : '-rotate-90'}" />
+    <ChevronDown class="w-5 h-5 transition-transform {open ? 'rotate-0' : '-rotate-90'}" />
     {title}
-  </button>
+  </Collapsible.Trigger>
 {/snippet}
 
 {#snippet modelTile(model: ModelWithSpecifier | undefined, specifier: string | null, color: "blue" | "purple", mode: "primary" | "canary", disabledSpec?: string | null)}
@@ -166,31 +179,29 @@
 {/snippet}
 
 <!-- 1. Model Selection -->
-<section>
-  {@render sectionHeader(
-    editMode ? "1. Model" : "1. Select Model",
-    showSelectModel,
-    () => showSelectModel = !showSelectModel,
-  )}
-  {#if showSelectModel}
-    <div transition:slide={{ duration: 300 }}>
+<Collapsible.Root bind:open={showSelectModel}>
+  <section>
+    {@render sectionHeader(
+      editMode ? "1. Model" : "1. Select Model",
+      showSelectModel,
+    )}
+    <Collapsible.Content>
       {@render modelTile(selectedPrimaryModel, primarySpecifier, "blue", "primary")}
       {#if readonlyModels}
         <p class="text-sm text-muted-foreground mt-2">Disable the deployment to change models.</p>
       {/if}
-    </div>
-  {/if}
-</section>
+    </Collapsible.Content>
+  </section>
+</Collapsible.Root>
 
 <!-- 2. Deployment Configuration -->
-<section>
-  {@render sectionHeader(
-    editMode ? "2. Deployment Configuration" : "2. Configure Deployment",
-    showConfigureDeployment,
-    () => showConfigureDeployment = !showConfigureDeployment,
-  )}
-  {#if showConfigureDeployment}
-    <div transition:slide={{ duration: 300 }} class="space-y-4">
+<Collapsible.Root bind:open={showConfigureDeployment}>
+  <section>
+    {@render sectionHeader(
+      editMode ? "2. Deployment Configuration" : "2. Configure Deployment",
+      showConfigureDeployment,
+    )}
+    <Collapsible.Content class="space-y-4">
       <div class="space-y-2">
         <Label for="public-specifier{idSuffix}">
           Public Specifier <span class="text-destructive">*</span>
@@ -223,134 +234,133 @@
           This is the name used to list the model.
         </p>
       </div>
-    </div>
-  {/if}
-</section>
+    </Collapsible.Content>
+  </section>
+</Collapsible.Root>
 
 <!-- 3. Canary Deployment -->
-<section>
-  {@render sectionHeader(
-    editMode ? "3. Canary Deployment" : "3. Canary Deployment (Optional)",
-    showCanaryDeployment,
-    () => showCanaryDeployment = !showCanaryDeployment,
-  )}
-  {#if showCanaryDeployment}
-  <div transition:slide={{ duration: 300 }}>
-    <div class="flex items-center space-x-3 bg-muted/50 p-4 compact:p-2 rounded-lg">
-      <Checkbox
-        id="canary-toggle{idSuffix}"
-        checked={isCanaryEnabled}
-        onCheckedChange={(checked) => {
-          const enabled = checked === true;
-          isCanaryEnabled = enabled;
-          onCanaryEnabledChange?.(enabled);
-        }}
-      />
-      <Label for="canary-toggle{idSuffix}" class="cursor-pointer">
-        Enable Canary Deployment
-      </Label>
-    </div>
+<Collapsible.Root bind:open={showCanaryDeployment}>
+  <section>
+    {@render sectionHeader(
+      editMode ? "3. Canary Deployment" : "3. Canary Deployment (Optional)",
+      showCanaryDeployment,
+    )}
+    <Collapsible.Content>
+      <div class="flex items-center space-x-3 bg-muted/50 p-4 compact:p-2 rounded-lg">
+        <Checkbox
+          id="canary-toggle{idSuffix}"
+          checked={isCanaryEnabled}
+          onCheckedChange={(checked) => {
+            const enabled = checked === true;
+            isCanaryEnabled = enabled;
+            onCanaryEnabledChange?.(enabled);
+          }}
+        />
+        <Label for="canary-toggle{idSuffix}" class="cursor-pointer">
+          Enable Canary Deployment
+        </Label>
+      </div>
 
-    {#if isCanaryEnabled}
-      <div
-        transition:slide={{ duration: 300 }}
-        class="mt-4 compact:mt-2 space-y-6 compact:space-y-3 pt-4 compact:pt-2 border-t"
-      >
-        <div>
-          <h4 class="font-medium mb-2">Select Canary Model</h4>
-          {@render modelTile(selectedCanaryModel, canarySpecifier ?? null, "purple", "canary", primarySpecifier)}
-          {#if canaryTypeMismatch}
-            <p class="text-sm text-destructive mt-2">
-              Model types do not match: primary is "{selectedPrimaryModel?.type}" but canary is "{selectedCanaryModel?.type}".
-              Canary deployments require both models to be of the same type.
-            </p>
+      {#if isCanaryEnabled}
+        <div
+          transition:slide={{ duration: 300 }}
+          class="mt-4 compact:mt-2 space-y-6 compact:space-y-3 pt-4 compact:pt-2 border-t"
+        >
+          <div>
+            <h4 class="font-medium mb-2">Select Canary Model</h4>
+            {@render modelTile(selectedCanaryModel, canarySpecifier ?? null, "purple", "canary", primarySpecifier)}
+            {#if canaryTypeMismatch}
+              <p class="text-sm text-destructive mt-2">
+                Model types do not match: primary is "{selectedPrimaryModel?.type}" but canary is "{selectedCanaryModel?.type}".
+                Canary deployments require both models to be of the same type.
+              </p>
+            {/if}
+          </div>
+
+          {#if selectedCanaryModel}
+            <div class="space-y-2">
+              <Label for="canary-kv-cache-size{idSuffix}">
+                Canary KV Cache Size: <span class="font-bold text-primary">{earlyKvCacheSize ?? minCanaryKvCache} GB</span>
+              </Label>
+              {#if requiresDisabled}
+                <input
+                  id="canary-kv-cache-size{idSuffix}"
+                  type="range" min={minCanaryKvCache} max={maxCanaryKvCache || minCanaryKvCache + 1} step="1"
+                  value={earlyKvCacheSize ?? minCanaryKvCache}
+                  disabled
+                  class="w-full h-2 bg-muted rounded-lg appearance-none cursor-not-allowed opacity-50"
+                />
+                <p class="text-sm text-muted-foreground">Disable the deployment to change the KV cache size.</p>
+              {:else}
+                <input
+                  id="canary-kv-cache-size{idSuffix}"
+                  type="range" min={minCanaryKvCache} max={maxCanaryKvCache || minCanaryKvCache + 1} step="1"
+                  bind:value={earlyKvCacheSize}
+                  class="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
+                />
+                <p class="text-sm text-muted-foreground">
+                  Min: {minCanaryKvCache} GB · Max: {maxCanaryKvCache} GB.
+                </p>
+              {/if}
+              {#if earlyKvCacheSize !== null && earlyKvCacheSize < minCanaryKvCache}
+                <p class="text-sm text-destructive">Value must be at least {minCanaryKvCache} GB for the canary model.</p>
+              {/if}
+            </div>
           {/if}
-        </div>
 
-        {#if selectedCanaryModel}
-          <div class="space-y-2">
-            <Label for="canary-kv-cache-size{idSuffix}">
-              Canary KV Cache Size: <span class="font-bold text-primary">{earlyKvCacheSize ?? minCanaryKvCache} GB</span>
-            </Label>
-            {#if requiresDisabled}
+          {#if showTrafficSlider}
+            <div class="space-y-2">
+              <Label for="canary-traffic{idSuffix}">
+                Initial Traffic to Canary: <span class="font-bold text-primary">{canaryTraffic}%</span>
+              </Label>
               <input
-                id="canary-kv-cache-size{idSuffix}"
-                type="range" min={minCanaryKvCache} max={maxCanaryKvCache || minCanaryKvCache + 1} step="1"
-                value={earlyKvCacheSize ?? minCanaryKvCache}
-                disabled
-                class="w-full h-2 bg-muted rounded-lg appearance-none cursor-not-allowed opacity-50"
-              />
-              <p class="text-sm text-muted-foreground">Disable the deployment to change the KV cache size.</p>
-            {:else}
-              <input
-                id="canary-kv-cache-size{idSuffix}"
-                type="range" min={minCanaryKvCache} max={maxCanaryKvCache || minCanaryKvCache + 1} step="1"
-                bind:value={earlyKvCacheSize}
+                id="canary-traffic{idSuffix}"
+                type="range" min="0" max="100" step="1"
+                bind:value={canaryTraffic}
                 class="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
               />
-              <p class="text-sm text-muted-foreground">
-                Min: {minCanaryKvCache} GB · Max: {maxCanaryKvCache} GB.
-              </p>
-            {/if}
-            {#if earlyKvCacheSize !== null && earlyKvCacheSize < minCanaryKvCache}
-              <p class="text-sm text-destructive">Value must be at least {minCanaryKvCache} GB for the canary model.</p>
-            {/if}
-          </div>
-        {/if}
-
-        {#if showTrafficSlider}
-          <div class="space-y-2">
-            <Label for="canary-traffic{idSuffix}">
-              Initial Traffic to Canary: <span class="font-bold text-primary">{canaryTraffic}%</span>
-            </Label>
-            <input
-              id="canary-traffic{idSuffix}"
-              type="range" min="0" max="100" step="1"
-              bind:value={canaryTraffic}
-              class="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
-            />
-          </div>
-        {/if}
-
-        <div class="space-y-2">
-          <Label for="advancement-strategy{idSuffix}">Advancement Strategy</Label>
-          <select
-            id="advancement-strategy{idSuffix}"
-            bind:value={advancementStrategy}
-            class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            <option value="manual">Manual</option>
-            <option value="time-based">Time-Based</option>
-          </select>
-          {#if advancementStrategy === "time-based"}
-            <div class="mt-4 space-y-2">
-              <Label for="time-duration{idSuffix}">Ramp-up Duration (hours)</Label>
-              <Input id="time-duration{idSuffix}" type="number" min="1" bind:value={timeBasedDurationHours} placeholder="e.g., 48" />
-              <p class="text-sm text-muted-foreground">
-                Traffic will reach 100% on the canary model after this many hours.
-              </p>
             </div>
-          {:else}
-            <!-- Spacer. Do not remove -->
-            <div class="h-24"></div>
           {/if}
+
+          <div class="space-y-2">
+            <Label for="advancement-strategy{idSuffix}">Advancement Strategy</Label>
+            <Select.Root type="single" bind:value={advancementStrategy}>
+              <Select.Trigger id="advancement-strategy{idSuffix}" class="w-full">
+                {advancementStrategyLabel}
+              </Select.Trigger>
+              <Select.Content portalProps={{ disabled: true }}>
+                <Select.Item value="manual" label="Manual" />
+                <Select.Item value="time-based" label="Time-Based" />
+              </Select.Content>
+            </Select.Root>
+            {#if advancementStrategy === "time-based"}
+              <div class="mt-4 space-y-2">
+                <Label for="time-duration{idSuffix}">Ramp-up Duration (hours)</Label>
+                <Input id="time-duration{idSuffix}" type="number" min="1" bind:value={timeBasedDurationHours} placeholder="e.g., 48" />
+                <p class="text-sm text-muted-foreground">
+                  Traffic will reach 100% on the canary model after this many hours.
+                </p>
+              </div>
+            {:else}
+              <!-- Spacer. Do not remove -->
+              <div class="h-24"></div>
+            {/if}
+          </div>
         </div>
-      </div>
-    {/if}
-  </div>
-  {/if}
-</section>
+      {/if}
+    </Collapsible.Content>
+  </section>
+</Collapsible.Root>
 
 <!-- 4. Expert Settings -->
 {#if selectedPrimaryModel}
-  <section>
-    {@render sectionHeader(
-      editMode ? "4. Expert Settings" : "4. Expert Settings (Optional)",
-      showExpertSettings,
-      () => showExpertSettings = !showExpertSettings,
-    )}
-    {#if showExpertSettings}
-      <div transition:slide={{ duration: 300 }} class="space-y-4">
+  <Collapsible.Root bind:open={showExpertSettings}>
+    <section>
+      {@render sectionHeader(
+        editMode ? "4. Expert Settings" : "4. Expert Settings (Optional)",
+        showExpertSettings,
+      )}
+      <Collapsible.Content class="space-y-4">
         <div class="space-y-2">
           <Label for="replicas{idSuffix}">Replicas</Label>
           <Input id="replicas{idSuffix}" type="number" min={1} step="1" bind:value={replicas} placeholder="1" />
@@ -402,13 +412,22 @@
               <Input id="preferred-driver{idSuffix}" type="text" value={driverLabel(modelDriverOptions[0])} readonly />
               <p class="text-sm text-muted-foreground">This is the only available driver for this model.</p>
             {:else}
-              <select id="preferred-driver{idSuffix}" bind:value={preferredDriver} disabled={requiresDisabled}
-                class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed">
-                <option value={null}>Auto</option>
-                {#each modelDriverOptions as driver}
-                  <option value={driver}>{driverLabel(driver)}</option>
-                {/each}
-              </select>
+              <Select.Root
+                type="single"
+                value={preferredDriverStr}
+                onValueChange={(v) => { preferredDriver = v === "" ? null : v as "ollama" | "vllm"; }}
+                disabled={requiresDisabled}
+              >
+                <Select.Trigger id="preferred-driver{idSuffix}" class="w-full">
+                  {preferredDriverLabel}
+                </Select.Trigger>
+                <Select.Content portalProps={{ disabled: true }}>
+                  <Select.Item value="" label="Auto" />
+                  {#each modelDriverOptions as driver}
+                    <Select.Item value={driver} label={driverLabel(driver)} />
+                  {/each}
+                </Select.Content>
+              </Select.Root>
               <p class="text-sm text-muted-foreground">
                 {#if requiresDisabled}
                   Disable the deployment to change the preferred driver.
@@ -420,9 +439,9 @@
             {/if}
           </div>
         {/if}
-      </div>
-    {/if}
-  </section>
+      </Collapsible.Content>
+    </section>
+  </Collapsible.Root>
 {/if}
 
 <ModelSelectorModal

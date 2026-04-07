@@ -3,6 +3,7 @@
   import { orpc } from "$lib/orpc/orpc-client";
   import { updateOptimistically } from "$lib/util";
   import Modal from "$lib/components/Modal.svelte";
+  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import { toastState } from "$lib/state/toast.svelte";
   import type { ApplicationDto } from "$lib/orpc/dtos/application.dto";
   import { permissions } from "$lib/state/permissions.svelte";
@@ -272,102 +273,93 @@
 <!-- Edit Application Modal -->
 {#if editingApp}
   <Modal open={true} onClose={cancelEditApp}>
+    <div class="bg-card rounded-xl border shadow-2xl max-w-md w-full p-6">
+      <form
+        onsubmit={(e) => { e.preventDefault(); void saveApplication(); }}
+        class="space-y-4"
+        data-appid={editingApp.id}
+      >
+        <h2 class="text-lg font-semibold">Edit Application</h2>
+
+        <div class="space-y-2">
+          <Label for="appName">Application Name</Label>
+          <Input
+            type="text"
+            id="appName"
+            bind:value={editingApp.name}
+            required
+          />
+        </div>
+
+        <div class="space-y-2">
+          <Label for="appDescription">Description</Label>
+          <textarea
+            id="appDescription"
+            rows="3"
+            class="flex min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            bind:value={editingApp.description}
+          ></textarea>
+        </div>
+
+        <div class="flex justify-end gap-2">
+          <Button type="button" variant="outline" onclick={cancelEditApp}>
+            Cancel
+          </Button>
+          <Button type="submit">Save</Button>
+        </div>
+      </form>
+    </div>
+  </Modal>
+{/if}
+
+<!-- Delete Application Modal -->
+<ConfirmDialog
+  bind:open={showDeleteModal}
+  title="Delete Application"
+  description="Are you sure you want to delete {applicationToDelete?.name ?? 'this application'}? This will not delete associated API keys, but they will become inaccessible."
+  confirmLabel="Delete"
+  onConfirm={() => void confirmDeleteApp()}
+  onCancel={cancelDeleteApp}
+/>
+
+<!-- Create Application Modal -->
+<Modal bind:open={showCreateModal} onClose={cancelCreate}>
+  <div class="bg-card rounded-xl border shadow-2xl max-w-md w-full p-6">
     <form
-      onsubmit={(e) => { e.preventDefault(); saveApplication(); }}
-      class="w-full max-w-md p-6 bg-card rounded-xl shadow-2xl space-y-4"
-      data-appid={editingApp.id}
+      onsubmit={(e) => { e.preventDefault(); void createApplication(); }}
+      class="space-y-4"
     >
-      <h3 class="text-lg font-semibold">Edit Application</h3>
+      <h2 class="text-lg font-semibold">Create Application</h2>
 
       <div class="space-y-2">
-        <Label for="appName">Application Name</Label>
+        <Label for="newAppName">Application Name</Label>
         <Input
           type="text"
-          id="appName"
-          bind:value={editingApp.name}
+          id="newAppName"
+          bind:value={newApp.name}
+          placeholder="e.g., Customer Chatbot, Doc Summarizer"
           required
         />
       </div>
 
       <div class="space-y-2">
-        <Label for="appDescription">Description</Label>
+        <Label for="newAppDescription">Description (optional)</Label>
         <textarea
-          id="appDescription"
+          id="newAppDescription"
           rows="3"
           class="flex min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          bind:value={editingApp.description}
+          bind:value={newApp.description}
+          placeholder="Describe the purpose of this application..."
         ></textarea>
       </div>
 
       <div class="flex justify-end gap-2">
-        <Button type="button" variant="outline" onclick={cancelEditApp}>
+        <Button type="button" variant="outline" onclick={cancelCreate}>
           Cancel
         </Button>
-        <Button type="submit">Save</Button>
+        <Button type="submit">Create</Button>
       </div>
     </form>
-  </Modal>
-{/if}
-
-<!-- Delete Application Modal -->
-<Modal open={showDeleteModal} onClose={cancelDeleteApp}>
-  <div class="w-full max-w-md p-6 bg-card rounded-xl shadow-2xl space-y-4">
-    <div>
-      <h3 class="text-lg font-semibold">Delete Application</h3>
-      <p class="text-sm text-muted-foreground mt-2">
-        Are you sure you want to delete
-        <span class="font-semibold text-foreground">
-          {applicationToDelete?.name ?? "this application"}
-        </span>? This will not delete associated API keys, but they will become inaccessible.
-      </p>
-    </div>
-    <div class="flex justify-end gap-2">
-      <Button variant="outline" onclick={cancelDeleteApp}>
-        Cancel
-      </Button>
-      <Button variant="destructive" onclick={confirmDeleteApp}>
-        Delete
-      </Button>
-    </div>
   </div>
-</Modal>
-
-<!-- Create Application Modal -->
-<Modal open={showCreateModal} onClose={cancelCreate}>
-  <form
-    onsubmit={(e) => { e.preventDefault(); createApplication(); }}
-    class="w-full max-w-md p-6 bg-card rounded-xl shadow-2xl space-y-4"
-  >
-    <h3 class="text-lg font-semibold">Create Application</h3>
-
-    <div class="space-y-2">
-      <Label for="newAppName">Application Name</Label>
-      <Input
-        type="text"
-        id="newAppName"
-        bind:value={newApp.name}
-        placeholder="e.g., Customer Chatbot, Doc Summarizer"
-        required
-      />
-    </div>
-
-    <div class="space-y-2">
-      <Label for="newAppDescription">Description (optional)</Label>
-      <textarea
-        id="newAppDescription"
-        rows="3"
-        class="flex min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-        bind:value={newApp.description}
-        placeholder="Describe the purpose of this application..."
-      ></textarea>
-    </div>
-
-    <div class="flex justify-end gap-2">
-      <Button type="button" variant="outline" onclick={cancelCreate}>
-        Cancel
-      </Button>
-      <Button type="submit">Create</Button>
-    </div>
-  </form>
 </Modal>
 {/if}

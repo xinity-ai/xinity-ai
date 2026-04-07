@@ -3,6 +3,7 @@
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
   import { Checkbox } from "$lib/components/ui/checkbox";
+  import * as Collapsible from "$lib/components/ui/collapsible";
   import { orpc } from "$lib/orpc/orpc-client";
 
   let { organizationId, onCreated }: {
@@ -261,51 +262,57 @@
     ></textarea>
   </div>
 
-  <Button
-    variant="ghost"
-    size="sm"
-    type="button"
-    onclick={() => (showAdvanced = !showAdvanced)}
-  >
-    {showAdvanced ? "Hide advanced settings" : "Show advanced settings"}
-  </Button>
+  <Collapsible.Root bind:open={showAdvanced}>
+    <Collapsible.Trigger>
+      {#snippet child({ props })}
+        <Button
+          {...props}
+          variant="ghost"
+          size="sm"
+          type="button"
+        >
+          {showAdvanced ? "Hide advanced settings" : "Show advanced settings"}
+        </Button>
+      {/snippet}
+    </Collapsible.Trigger>
 
-  {#if showAdvanced}
-    <div class="rounded-lg border bg-muted/50 p-4">
-      <div class="grid gap-4 md:grid-cols-2">
-        <div class="space-y-2">
-          <Label for="saml-identifier-format">Identifier format</Label>
-          <Input
-            id="saml-identifier-format"
-            bind:value={samlIdentifierFormat}
-            placeholder="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
-          />
-        </div>
-        <div class="space-y-2">
-          <Label for="saml-signature-algorithm">Signature algorithm</Label>
-          <Input
-            id="saml-signature-algorithm"
-            bind:value={samlSignatureAlgorithm}
-            placeholder="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"
-          />
-        </div>
-        <div class="space-y-2">
-          <Label for="saml-digest-algorithm">Digest algorithm</Label>
-          <Input
-            id="saml-digest-algorithm"
-            bind:value={samlDigestAlgorithm}
-            placeholder="http://www.w3.org/2001/04/xmlenc#sha256"
-          />
-        </div>
-        <div class="flex items-center gap-3">
-          <label class="inline-flex items-center gap-2 text-sm text-muted-foreground">
-            <Checkbox bind:checked={samlWantAssertionsSigned} />
-            Require signed assertions
-          </label>
+    <Collapsible.Content>
+      <div class="rounded-lg border bg-muted/50 p-4">
+        <div class="grid gap-4 md:grid-cols-2">
+          <div class="space-y-2">
+            <Label for="saml-identifier-format">Identifier format</Label>
+            <Input
+              id="saml-identifier-format"
+              bind:value={samlIdentifierFormat}
+              placeholder="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
+            />
+          </div>
+          <div class="space-y-2">
+            <Label for="saml-signature-algorithm">Signature algorithm</Label>
+            <Input
+              id="saml-signature-algorithm"
+              bind:value={samlSignatureAlgorithm}
+              placeholder="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"
+            />
+          </div>
+          <div class="space-y-2">
+            <Label for="saml-digest-algorithm">Digest algorithm</Label>
+            <Input
+              id="saml-digest-algorithm"
+              bind:value={samlDigestAlgorithm}
+              placeholder="http://www.w3.org/2001/04/xmlenc#sha256"
+            />
+          </div>
+          <div class="flex items-center gap-3">
+            <label class="inline-flex items-center gap-2 text-sm text-muted-foreground">
+              <Checkbox bind:checked={samlWantAssertionsSigned} />
+              Require signed assertions
+            </label>
+          </div>
         </div>
       </div>
-    </div>
-  {/if}
+    </Collapsible.Content>
+  </Collapsible.Root>
 
   {#if formError}
     <p class="text-sm text-destructive">{formError}</p>

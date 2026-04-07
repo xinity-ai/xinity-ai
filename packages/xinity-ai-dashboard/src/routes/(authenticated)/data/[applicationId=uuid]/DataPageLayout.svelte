@@ -13,7 +13,7 @@
     type ApiCallReactionSummary,
   } from "./data.remote";
   import type { ApiCall, ApiCallResponse } from "common-db";
-  import Modal from "$lib/components/Modal.svelte";
+  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import { permissions } from "$lib/state/permissions.svelte";
   import { useDebouncedValue } from "$lib/state/debounced.svelte";
   import { Button } from "$lib/components/ui/button";
@@ -279,36 +279,18 @@
   </div>
 </div>
 
-<Modal bind:open={deleteModalOpen} onClose={closeDeleteModal}>
-  <div class="w-full max-w-md rounded-xl bg-card p-6 shadow-2xl space-y-4">
-    <div>
-      <h2 class="text-lg font-semibold">Delete API call?</h2>
-      <p class="mt-2 text-sm text-muted-foreground">
-        This will permanently remove the call and its reactions. This action
-        cannot be undone.
-      </p>
+<ConfirmDialog
+  bind:open={deleteModalOpen}
+  title="Delete API call?"
+  description="This will permanently remove the call and its reactions. This action cannot be undone."
+  confirmLabel={deleting ? "Deleting..." : "Delete Call"}
+  onConfirm={() => void confirmDelete()}
+  onCancel={closeDeleteModal}
+>
+  {#if deleteTarget}
+    <div class="rounded border bg-muted/50 p-3 text-xs">
+      <div class="font-semibold">Call ID</div>
+      <div class="break-all text-muted-foreground">{deleteTarget.id}</div>
     </div>
-    {#if deleteTarget}
-      <div class="rounded border bg-muted/50 p-3 text-xs">
-        <div class="font-semibold">Call ID</div>
-        <div class="break-all text-muted-foreground">{deleteTarget.id}</div>
-      </div>
-    {/if}
-    <div class="flex justify-end gap-2">
-      <Button
-        variant="outline"
-        onclick={closeDeleteModal}
-        disabled={deleting}
-      >
-        Cancel
-      </Button>
-      <Button
-        variant="destructive"
-        onclick={confirmDelete}
-        disabled={deleting}
-      >
-        {deleting ? "Deleting..." : "Delete Call"}
-      </Button>
-    </div>
-  </div>
-</Modal>
+  {/if}
+</ConfirmDialog>

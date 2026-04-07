@@ -2,7 +2,7 @@
   import { ApiKeyDto } from "$lib/orpc/dtos/api-key.dto";
   import { orpc } from "$lib/orpc/orpc-client";
   import { updateOptimistically } from "$lib/util";
-  import Modal from "$lib/components/Modal.svelte";
+  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import { toastState } from "$lib/state/toast.svelte";
   import type { ApplicationDto } from "$lib/orpc/dtos/application.dto";
   import { permissions } from "$lib/state/permissions.svelte";
@@ -275,24 +275,11 @@
   </Card.Content>
 </Card.Root>
 
-<Modal open={Boolean(keyToDelete)} onClose={cancelDelete}>
-  <div class="w-full max-w-md p-6 bg-card rounded-xl shadow-2xl space-y-4">
-    <div>
-      <h3 class="text-lg font-semibold">Delete API Key</h3>
-      <p class="text-sm text-muted-foreground mt-2">
-        Are you sure you want to delete
-        <span class="font-semibold text-foreground">
-          {keyToDelete?.name ?? "this key"}
-        </span>? This action cannot be undone.
-      </p>
-    </div>
-    <div class="flex justify-end gap-2">
-      <Button variant="outline" onclick={cancelDelete}>
-        Cancel
-      </Button>
-      <Button variant="destructive" onclick={confirmDelete}>
-        Delete
-      </Button>
-    </div>
-  </div>
-</Modal>
+<ConfirmDialog
+  open={Boolean(keyToDelete)}
+  title="Delete API Key"
+  description="Are you sure you want to delete {keyToDelete?.name ?? 'this key'}? This action cannot be undone."
+  confirmLabel="Delete"
+  onConfirm={() => void confirmDelete()}
+  onCancel={cancelDelete}
+/>

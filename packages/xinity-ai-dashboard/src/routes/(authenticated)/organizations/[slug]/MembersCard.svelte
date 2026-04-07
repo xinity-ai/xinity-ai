@@ -12,7 +12,7 @@
   import { Label } from "$lib/components/ui/label";
   import { Separator } from "$lib/components/ui/separator";
   import { UserPlus, X, Mail, Info } from "@lucide/svelte";
-  import Modal from "$lib/components/Modal.svelte";
+  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import {
     getInitials,
     getAvailableRoles,
@@ -290,39 +290,11 @@
   </Card.Content>
 </Card.Root>
 
-<Modal open={Boolean(memberToRemove)} onClose={() => (memberToRemove = null)}>
-  <div
-    class="p-6 compact:p-4 bg-card rounded-xl border shadow-2xl max-w-md w-full"
-  >
-    <div class="flex items-center gap-3 compact:gap-2 mb-4 compact:mb-3">
-      <div class="p-2 rounded-full bg-destructive/10 text-destructive">
-        <X class="w-6 h-6 compact:w-5 compact:h-5" />
-      </div>
-      <h3 class="text-xl compact:text-lg font-semibold">Remove Member</h3>
-    </div>
-
-    <p class="text-muted-foreground mb-6 compact:mb-3">
-      Are you sure you want to remove <span
-        class="font-semibold text-foreground"
-        >{memberToRemove?.user?.name || memberToRemove?.user?.email}</span
-      >? They will lose all access to this organization immediately.
-    </p>
-
-    <div class="flex justify-end gap-3 compact:gap-2">
-      <Button
-        variant="outline"
-        onclick={() => (memberToRemove = null)}
-        disabled={isRemoving}
-      >
-        Cancel
-      </Button>
-      <Button variant="destructive" disabled={isRemoving} onclick={handleRemoveMember}>
-        {#if isRemoving}
-          Removing...
-        {:else}
-          Remove Member
-        {/if}
-      </Button>
-    </div>
-  </div>
-</Modal>
+<ConfirmDialog
+  open={Boolean(memberToRemove)}
+  title="Remove Member"
+  description="Are you sure you want to remove {memberToRemove?.user?.name || memberToRemove?.user?.email}? They will lose all access to this organization immediately."
+  confirmLabel={isRemoving ? "Removing..." : "Remove Member"}
+  onConfirm={() => void handleRemoveMember()}
+  onCancel={() => (memberToRemove = null)}
+/>

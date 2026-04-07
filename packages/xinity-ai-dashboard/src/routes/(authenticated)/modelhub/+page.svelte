@@ -18,7 +18,7 @@
   import { Plus, Pencil, Trash2, Copy, Rocket } from "@lucide/svelte";
   import { browser } from "$app/environment";
   import { permissions } from "$lib/state/permissions.svelte";
-  import Modal from "$lib/components/Modal.svelte";
+  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import NoOrganization from "$lib/components/NoOrganization.svelte";
 
   let {data}: {
@@ -349,24 +349,11 @@
   />
 {/if}
 
-<Modal open={Boolean(deploymentToDelete)} onClose={() => (deploymentToDelete = null)}>
-  <div class="w-full max-w-md p-6 bg-card rounded-xl shadow-2xl space-y-4">
-    <div>
-      <h3 class="text-lg font-semibold">Delete Deployment</h3>
-      <p class="text-sm text-muted-foreground mt-2">
-        Are you sure you want to delete
-        <span class="font-semibold text-foreground">
-          {deploymentToDelete?.name ?? "this deployment"}
-        </span>? This action cannot be undone.
-      </p>
-    </div>
-    <div class="flex justify-end gap-2">
-      <Button variant="outline" onclick={() => (deploymentToDelete = null)}>
-        Cancel
-      </Button>
-      <Button variant="destructive" onclick={confirmDelete}>
-        Delete
-      </Button>
-    </div>
-  </div>
-</Modal>
+<ConfirmDialog
+  open={Boolean(deploymentToDelete)}
+  title="Delete Deployment"
+  description="Are you sure you want to delete {deploymentToDelete?.name ?? 'this deployment'}? This action cannot be undone."
+  confirmLabel="Delete"
+  onConfirm={() => void confirmDelete()}
+  onCancel={() => (deploymentToDelete = null)}
+/>

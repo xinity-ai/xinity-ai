@@ -32,6 +32,41 @@ export function getGreenlitCallId() {
   return id;
 }
 
+// Admin-initiated password resets: suppress the email and capture the token.
+// The sendResetPassword callback resolves the pending promise with the token
+// instead of sending an email, keyed by a one-time resetId passed via redirectTo.
+const pendingAdminResets = new Map<string, (token: string) => void>();
+
+/**
+ * Resets a user's password via Better Auth's standard reset flow without
+ * sending the reset email. Works by:
+ * 1. Calling requestPasswordReset with a special redirectTo containing a resetId
+ * 2. The sendResetPassword callback detects the prefix, captures the token, skips the email
+ * 3. Immediately consuming the token with resetPassword to set the new password
+ *
+ * This preserves Better Auth's password hashing, session revocation, and
+ * verification token lifecycle.
+ */
+export async function adminResetPassword(email: string, newPassword: string) {
+  const resetId = crypto.randomUUID();
+  const tokenPromise = new Promise<string>((resolve, reject) => {
+    pendingAdminResets.set(resetId, resolve);
+    // Safety timeout: if the callback never fires, clean up and reject
+    setTimeout(() => {
+      if (pendingAdminResets.delete(resetId)) {
+        reject(new Error("Admin password reset timed out waiting for token"));
+      }
+    }, 10_000);
+  });
+  await auth.api.requestPasswordReset({
+    body: { email, redirectTo: `__admin_reset__:${resetId}` },
+  });
+  const token = await tokenPromise;
+  await auth.api.resetPassword({
+    body: { newPassword, token },
+  });
+}
+
 const sendWelcomeNotification = createAuthMiddleware(async (ctx) => {
   if (ctx.path !== "/verify-email") return;
 
@@ -101,7 +136,19 @@ export const auth = betterAuth({
     revokeSessionsOnPasswordReset: true,
     requireEmailVerification: !!serverEnv.MAIL_URL,
     disableSignUp: false,
-    async sendResetPassword({ url, user }, request) {
+    async sendResetPassword({ url, user, token }, request) {
+      // Admin-initiated resets use a special redirectTo prefix to suppress email
+      const redirectTo = new URL(url).searchParams.get("callbackURL") ?? "";
+      const adminResetMatch = decodeURIComponent(redirectTo).match(/^__admin_reset__:(.+)$/);
+      if (adminResetMatch) {
+        const resetId = adminResetMatch[1];
+        const resolve = pendingAdminResets.get(resetId);
+        if (resolve) {
+          resolve(token);
+          pendingAdminResets.delete(resetId);
+        }
+        return;
+      }
       log.info({ url, user: pick(user, "email", "id") }, "Send reset password");
       void sendEmail({
         to: user.email,

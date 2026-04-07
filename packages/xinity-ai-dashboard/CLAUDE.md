@@ -86,3 +86,20 @@ Configured in `svelte.config.js`:
 - UI permission gating: check permissions client-side via `permissions.svelte.ts` before showing controls
 - `updateOptimistically()` in `src/lib/util.ts` for optimistic UI updates with server rollback
 - Environment config validated with Zod in `src/lib/server/serverenv.ts`, add new env vars there
+- Clipboard: use `copyToClipboard()` from `$lib/copy.ts` (handles errors + toast feedback)
+- Select inside Modal: pass `portalProps={{ disabled: true }}` to `Select.Content` so the dropdown renders inside the `<dialog>` top layer instead of behind it
+
+### Instance Admin
+
+Instance admin procedures live in `src/lib/server/orpc/procedures/instance-admin.procedure.ts`, protected by `withInstanceAdmin` middleware (checks `INSTANCE_ADMIN_EMAILS` env var). Admin UI is at `/instance-settings/`.
+
+### Better Auth Bypass Patterns
+
+Two mechanisms exist for server-initiated Better Auth actions that need to skip normal guards:
+
+- **Greenlit call IDs** (`getGreenlitCallId()`): one-time tokens passed as query params to bypass the signup gate when `SIGNUP_ENABLED=false`. Used by admin user creation.
+- **Admin password reset** (`adminResetPassword()`): uses `requestPasswordReset` + `resetPassword` internally, with the `sendResetPassword` callback intercepting the token via a special `redirectTo` prefix (`__admin_reset__:<id>`) to suppress the email. This preserves Better Auth's password hashing and session revocation. See `src/lib/server/auth-server.ts`.
+
+### Temporary Passwords
+
+Admin-created users and admin-reset passwords set `userT.temporaryPassword = true`. The authenticated layout (`(authenticated)/+layout.server.ts`) checks this flag and redirects to `/settings/auth` until the user changes their password via the standard `changePassword` flow. The flag is cleared in `account.procedure.ts` after a successful password change.

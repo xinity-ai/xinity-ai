@@ -44,7 +44,8 @@ describe("API key CRUD", () => {
       // Select "Create new application" if app select is visible
       const appSelect = page.locator("#appSelect");
       if (await appSelect.isVisible({ timeout: 2_000 }).catch(() => false)) {
-        await appSelect.selectOption("__new__");
+        await appSelect.click();
+        await page.getByRole("option", { name: /Create new application/ }).click();
         const appDesc = page.locator("#appDesc");
         if (await appDesc.isVisible({ timeout: 1_000 }).catch(() => false)) {
           await appDesc.fill("E2E test application");
