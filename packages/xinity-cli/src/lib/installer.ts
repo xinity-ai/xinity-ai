@@ -549,7 +549,10 @@ async function configureEnv(
       if (content !== null) {
         existingSecrets[key] = content.trim();
       } else {
-        needsElevation = true;
+        // Only flag for elevation if the file actually exists (permission denied).
+        // If the file doesn't exist (fresh install), there's nothing to read.
+        const exists = await host.fileExists(`${SECRETS_DIR}/${key}`);
+        if (exists) needsElevation = true;
       }
     }
     if (needsElevation && Object.keys(existingSecrets).length < secretKeys.length) {
