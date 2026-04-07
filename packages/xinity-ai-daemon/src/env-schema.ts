@@ -37,6 +37,7 @@ export const daemonEnvSchema = z.object({
     ),
   VLLM_HF_CACHE_DIR: z.string().default("/var/lib/vllm/hf-cache").describe("HuggingFace cache directory").meta(expert()),
   VLLM_TRITON_CACHE_DIR: z.string().default("/var/lib/vllm/triton-cache").describe("Triton cache directory").meta(expert()),
+  VLLM_HF_TOKEN: z.string().optional().describe("HuggingFace token for downloading private or gated models").meta(secret()),
   VLLM_HEALTH_TIMEOUT_MS: z.coerce
     .number()
     .default(60 * 60 * 1000)
