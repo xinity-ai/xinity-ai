@@ -142,11 +142,17 @@ export function createSystemdVllmOps(): VllmOps {
       const existing = await Bun.file(targetPath).text().catch(() => null);
       if (existing != null) {
         log.debug({ targetPath }, "vLLM systemd template already present, skipping");
-        return;
+      } else {
+        await Bun.write(targetPath, templateUnit);
+        await $`systemctl daemon-reload`;
+        log.info("Installed vLLM systemd template unit");
       }
-      await Bun.write(targetPath, templateUnit);
-      await $`systemctl daemon-reload`;
-      log.info("Installed vLLM systemd template unit");
+
+      // Ensure cache and env directories exist with correct ownership.
+      // The vllm-driver@ template runs as User=vllm with
+      // ReadWritePaths=/var/lib/vllm, so these must be pre-created.
+      await $`mkdir -p ${env.VLLM_HF_CACHE_DIR} ${env.VLLM_TRITON_CACHE_DIR} ${env.VLLM_ENV_DIR}`;
+      await $`chown -R vllm:vllm ${env.VLLM_HF_CACHE_DIR} ${env.VLLM_TRITON_CACHE_DIR}`.nothrow();
     },
   };
 }
