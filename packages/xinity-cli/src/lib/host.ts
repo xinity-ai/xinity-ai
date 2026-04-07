@@ -132,6 +132,15 @@ async function localWithElevation(
     if (sensitive) {
       // Capture stdout to prevent secret values from leaking to the terminal.
       // sudo prompts on /dev/tty, so stdin/stderr inheritance is sufficient.
+      // We must pause/resume stdin around the child process (same as
+      // localRunInteractive) to prevent Bun from leaving the stream in an
+      // ended state, which would cause all subsequent clack prompts to
+      // immediately resolve with EOF and silently exit the CLI.
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(false);
+      }
+      process.stdin.pause();
+
       const proc = Bun.spawn(["sudo", "sh", "-c", command], {
         stdin: "inherit",
         stdout: "pipe",
@@ -141,6 +150,12 @@ async function localWithElevation(
         proc.exited,
         new Response(proc.stdout).text(),
       ]);
+
+      process.stdin.resume();
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(false);
+      }
+
       return {
         success: exitCode === 0,
         output: stdout,
