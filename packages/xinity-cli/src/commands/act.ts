@@ -251,7 +251,12 @@ export const actCommand: CommandModule = {
         process.exit(1);
       }
     } else if (rawData) {
-      data = JSON.parse(rawData);
+      try {
+        data = JSON.parse(rawData);
+      } catch {
+        p.log.error("Invalid JSON in --data argument.");
+        process.exit(1);
+      }
     } else if (route.input) {
       // No data provided, prompt interactively for each field
       p.intro(`${pc.cyan(routeName)} ${pc.dim(`(${route.summary})`)}`);
