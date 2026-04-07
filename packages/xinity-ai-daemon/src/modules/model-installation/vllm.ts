@@ -32,12 +32,35 @@ const infoClient = createInfoserverClient({ baseUrl: env.INFOSERVER_URL, cacheTt
 const log = rootLogger.child({ name: "vllm" });
 
 const FATAL_LOG_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
-  { pattern: /torch\.cuda\.OutOfMemoryError|CUDA out of memory/i, label: "GPU out of memory" },
+  // ── GPU / VRAM ───────────────────────────────────────────────────────────
+  { pattern: /Free memory on device.*is less than desired GPU memory utilization|Decrease GPU memory utilization/i, label: "GPU memory utilization too high" },
+  { pattern: /torch\.cuda\.OutOfMemoryError|torch\.OutOfMemoryError|CUDA out of memory/i, label: "GPU out of memory" },
+  { pattern: /Bfloat16 is not supported|bfloat16.*not supported/i, label: "GPU does not support bfloat16" },
+
+  // ── CUDA / driver ────────────────────────────────────────────────────────
+  { pattern: /CUDA error: invalid device ordinal/i, label: "Invalid GPU device index" },
+  { pattern: /NVIDIA driver on your system is too old|provided PTX was compiled with an unsupported toolchain|cuda capability.*not compatible/i, label: "CUDA/driver version mismatch" },
   { pattern: /RuntimeError:.*CUDA error/i, label: "CUDA runtime error" },
+
+  // ── Container / runtime ──────────────────────────────────────────────────
+  { pattern: /could not select device driver|unknown or invalid runtime name: nvidia|Found no NVIDIA driver/i, label: "NVIDIA container runtime missing" },
+  { pattern: /ncclSystemError|ncclInternalError|NCCL error/i, label: "NCCL communication error" },
+  { pattern: /address already in use|Address already in use/i, label: "Port already in use" },
+
+  // ── Model / config ───────────────────────────────────────────────────────
+  { pattern: /Model architectures \[.*\] are not supported/i, label: "Unsupported model architecture" },
+  { pattern: /max_model_len.*is too large|the model's max seq_len/i, label: "Configured context length too large" },
+  { pattern: /Access to model.*is restricted|gated repo|Cannot access gated repo/i, label: "HuggingFace authentication required" },
+  { pattern: /OSError:.*does not appear to have a file named|repository.*not found|does not exist on the Hub/i, label: "Model files missing or not found" },
+
+  // ── Permissions ──────────────────────────────────────────────────────────
   { pattern: /PermissionError:.*triton|triton.*PermissionError/i, label: "Triton cache permission error" },
   { pattern: /PermissionError|Permission denied/i, label: "Permission error" },
-  { pattern: /OSError:.*does not appear to have a file named/i, label: "Model files missing or corrupt" },
+
+  // ── System / process ─────────────────────────────────────────────────────
   { pattern: /error while loading shared libraries/i, label: "Missing shared library" },
+  { pattern: /Aborted due to the lack of CPU swap space/i, label: "Insufficient CPU swap space" },
+  { pattern: /Engine core initialization failed|EngineCore failed to start/i, label: "Engine initialization failed" },
 ];
 
 function matchFatalPattern(logs: string): string | null {
