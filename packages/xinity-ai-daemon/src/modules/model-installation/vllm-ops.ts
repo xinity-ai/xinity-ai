@@ -140,11 +140,13 @@ export function createSystemdVllmOps(): VllmOps {
     async ensureSetup() {
       const targetPath = env.VLLM_TEMPLATE_UNIT_PATH;
       const existing = await Bun.file(targetPath).text().catch(() => null);
-      if (existing !== templateUnit) {
-        await Bun.write(targetPath, templateUnit);
-        await $`systemctl daemon-reload`;
-        log.info("Installed/updated vLLM systemd template unit");
+      if (existing != null) {
+        log.debug({ targetPath }, "vLLM systemd template already present, skipping");
+        return;
       }
+      await Bun.write(targetPath, templateUnit);
+      await $`systemctl daemon-reload`;
+      log.info("Installed vLLM systemd template unit");
     },
   };
 }
