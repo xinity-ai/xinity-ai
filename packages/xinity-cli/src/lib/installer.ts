@@ -23,6 +23,8 @@ import {
   ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, BIN_DIR, DASHBOARD_DIR, UNIT_DIR,
   binaryBaseName, getAutoDefaults,
 } from "./component-meta.ts";
+// @ts-ignore
+import vllmTemplateUnit from "xinity-ai-daemon/src/assets/vllm-driver@.service" with { type: "text" };
 
 export type { Release } from "./github.ts";
 
@@ -87,6 +89,27 @@ export async function preflightCheck(
 async function preChecks(component: Component, host: Host): Promise<string[]> {
   const issues = await preflightCheck([component], host);
   return issues.map((i) => `${i.reason}${i.hint ? `. Install it: ${i.hint}` : ""}`);
+}
+
+// ─── vLLM systemd template install ─────────────────────────────────────────
+
+async function installVllmTemplate(host: Host, templatePath: string): Promise<void> {
+  const exists = await host.fileExists(templatePath);
+  if (exists) {
+    pass("vLLM template", `Already installed at ${templatePath}`);
+    return;
+  }
+
+  const result = await host.withElevation(
+    `cat > ${templatePath} << 'VLLMEOF'\n${vllmTemplateUnit}VLLMEOF\nsystemctl daemon-reload`,
+    "Install vLLM systemd template unit",
+  );
+
+  if (result.success) {
+    pass("vLLM template", `Installed at ${templatePath}`);
+  } else if (!result.skipped) {
+    warn("vLLM template", `Failed to install: ${result.output}`);
+  }
 }
 
 // ─── Driver tool checks (daemon only) ───────────────────────────────────────
@@ -210,6 +233,9 @@ async function ensureDriverTools(
       warn("vLLM", `vllm binary not found at ${vllmPath}`);
       p.log.info(pc.dim("  Ensure vLLM is installed: pip install vllm"));
     }
+
+    const templatePath = all.VLLM_TEMPLATE_UNIT_PATH ?? "/etc/systemd/system/vllm-driver@.service";
+    await installVllmTemplate(host, templatePath);
   }
 }
 
