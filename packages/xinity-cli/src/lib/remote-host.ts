@@ -170,9 +170,12 @@ export class RemoteHost implements Host {
   async fileExists(path: string): Promise<boolean> {
     const result = await localRun([
       "ssh", ...this.ctrlArgs, this.hostname,
-      `test -e ${shellEscape(path)} && echo yes || echo no`,
+      // stat exits 0 when the file exists. If it fails with "Permission denied"
+      // the file exists but the current user cannot access it (needs elevation).
+      `s=$(stat ${shellEscape(path)} 2>&1) && echo yes || (echo "$s" | grep -qi 'permission denied' && echo perm || echo no)`,
     ]);
-    return result.ok && result.output.trim() === "yes";
+    const out = result.output.trim();
+    return out === "yes" || out === "perm";
   }
 
   async uploadFile(localPath: string, destPath: string): Promise<string> {

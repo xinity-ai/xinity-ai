@@ -8,7 +8,7 @@
  * RemoteHost (which executes SSH commands on the local machine). Consumer code
  * should NEVER import them; always use a Host instance instead.
  */
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync, statSync } from "fs";
 import * as p from "./clack.ts";
 import pc from "picocolors";
 
@@ -316,7 +316,14 @@ export class LocalHost implements Host {
   }
 
   async fileExists(path: string): Promise<boolean> {
-    return existsSync(path);
+    try {
+      statSync(path);
+      return true;
+    } catch (err: any) {
+      // EACCES means the file exists but isn't readable by the current user.
+      // Treat that as "exists" so the caller can decide to elevate.
+      return err?.code === "EACCES";
+    }
   }
 
   /** No-op: caller already has the file at localPath on the local filesystem. */
