@@ -26,6 +26,7 @@ import {
 import { createInfoserverClient } from "xinity-infoserver";
 import { rootLogger } from "../../logger";
 import { getHardwareProfile } from "../statekeeper";
+import { getFreeMemoryMb } from "../hardware-detect";
 
 const infoClient = createInfoserverClient({ baseUrl: env.INFOSERVER_URL, cacheTtlMs: env.INFOSERVER_CACHE_TTL_MS });
 
@@ -399,15 +400,24 @@ export function syncVllmInstallations$(
                         infoClient.resolveDriverArgs(installation.model),
                         infoClient.fetchModel(installation.model),
                         getHardwareProfile(),
-                      ]).then(([trustRemoteCode, hasToolsTag, extraArgs, modelInfo, profile]) => {
+                      ]).then(async ([trustRemoteCode, hasToolsTag, extraArgs, modelInfo, profile]) => {
                         let gpuMemoryUtilization: number | undefined;
                         if (profile.gpuCount > 0 && profile.detectedCapacityGb > 0) {
-                          gpuMemoryUtilization = Math.min(
-                            (installation.estCapacity * 1.1) / profile.detectedCapacityGb,
-                            0.95,
-                          );
+                          const totalCapacityGb = profile.detectedCapacityGb;
+                          const requiredGb = installation.estCapacity * 1.1;
+                          const freeMemoryMb = await getFreeMemoryMb(profile.source);
+
+                          if (freeMemoryMb != null) {
+                            const freeGb = freeMemoryMb / 1024;
+                            const safetyMarginGb = 1.0;
+                            const maxClaimGb = Math.max(freeGb - safetyMarginGb, requiredGb);
+                            gpuMemoryUtilization = Math.min(maxClaimGb / totalCapacityGb, 0.90);
+                          } else {
+                            gpuMemoryUtilization = Math.min(requiredGb / totalCapacityGb, 0.90);
+                          }
+
                           log.info(
-                            { model: installation.model, gpuMemoryUtilization: gpuMemoryUtilization.toFixed(3), estCapacityGb: installation.estCapacity, totalCapacityGb: profile.detectedCapacityGb },
+                            { model: installation.model, gpuMemoryUtilization: gpuMemoryUtilization.toFixed(3), estCapacityGb: installation.estCapacity, totalCapacityGb, freeMemoryMb },
                             "Calculated GPU memory utilization",
                           );
                         }

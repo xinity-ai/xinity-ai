@@ -87,6 +87,12 @@ mock.module("../statekeeper", () => ({
   }),
 }));
 
+// Mock free memory query (20 GiB free on a 24 GiB GPU)
+const mockGetFreeMemoryMb = mock(() => Promise.resolve(20480 as number | null));
+mock.module("../hardware-detect", () => ({
+  getFreeMemoryMb: mockGetFreeMemoryMb,
+}));
+
 const { syncVllmInstallations$ } = await import("./vllm");
 
 // ---------------------------------------------------------------------------
@@ -137,6 +143,7 @@ describe("syncVllmInstallations$", () => {
     mockHasTag.mockImplementation(() => Promise.resolve(false));
     mockResolveDriverArgs.mockImplementation(() => Promise.resolve([]));
     mockFetchModel.mockImplementation(() => Promise.resolve({ type: "chat" }));
+    mockGetFreeMemoryMb.mockImplementation(() => Promise.resolve(20480));
   });
 
   test("completes with no changes when desired matches running", async () => {
@@ -507,5 +514,67 @@ describe("syncVllmInstallations$", () => {
     expect((failedWrite![0].errorMessage as string)).toContain("crash-looping");
     expect(failedWrite![0].failureLogs).toBe(sampleLogs);
     expect(ops.stop).toHaveBeenCalled();
+  });
+
+  test("calculates gpuMemoryUtilization from free VRAM, not total", async () => {
+    const id = crypto.randomUUID();
+    const inst = makeInstallation("mem-test-model", id, 9100);
+    // estCapacity=16, totalCapacity=24, freeMemory=20480 MB (20 GiB)
+    // requiredGb = 16 * 1.1 = 17.6
+    // maxClaimGb = max(20 - 1, 17.6) = 19
+    // utilization = min(19 / 24, 0.90) = min(0.7917, 0.90) ≈ 0.792
+    mockGetFreeMemoryMb.mockImplementation(() => Promise.resolve(20480));
+    const ops = createMockOps({
+      listRunning: mock(() => Promise.resolve([])),
+      checkHealth: mock(() => Promise.resolve(true)),
+      isAlive: mock(() => Promise.resolve(true)),
+    });
+
+    await firstValueFrom(syncVllmInstallations$([inst], ops));
+
+    const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
+    const util = startCall[1].gpuMemoryUtilization as number;
+    expect(util).toBeCloseTo(19 / 24, 2);
+  });
+
+  test("falls back to estCapacity-based calculation when free memory unavailable", async () => {
+    const id = crypto.randomUUID();
+    const inst = makeInstallation("fallback-model", id, 9101);
+    // estCapacity=16, totalCapacity=24, freeMemory=null (query failed)
+    // requiredGb = 16 * 1.1 = 17.6
+    // utilization = min(17.6 / 24, 0.90) = min(0.733, 0.90) ≈ 0.733
+    mockGetFreeMemoryMb.mockImplementation(() => Promise.resolve(null));
+    const ops = createMockOps({
+      listRunning: mock(() => Promise.resolve([])),
+      checkHealth: mock(() => Promise.resolve(true)),
+      isAlive: mock(() => Promise.resolve(true)),
+    });
+
+    await firstValueFrom(syncVllmInstallations$([inst], ops));
+
+    const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
+    const util = startCall[1].gpuMemoryUtilization as number;
+    expect(util).toBeCloseTo((16 * 1.1) / 24, 2);
+  });
+
+  test("caps gpuMemoryUtilization at 0.90", async () => {
+    const id = crypto.randomUUID();
+    // High free memory — without the cap, utilization would exceed 0.90
+    const inst = makeInstallation("cap-model", id, 9102);
+    // freeMemory = 23552 MB (23 GiB), total = 24 GiB
+    // maxClaimGb = max(23 - 1, 17.6) = 22
+    // utilization = min(22 / 24, 0.90) = min(0.917, 0.90) = 0.90
+    mockGetFreeMemoryMb.mockImplementation(() => Promise.resolve(23552));
+    const ops = createMockOps({
+      listRunning: mock(() => Promise.resolve([])),
+      checkHealth: mock(() => Promise.resolve(true)),
+      isAlive: mock(() => Promise.resolve(true)),
+    });
+
+    await firstValueFrom(syncVllmInstallations$([inst], ops));
+
+    const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
+    const util = startCall[1].gpuMemoryUtilization as number;
+    expect(util).toBe(0.90);
   });
 });

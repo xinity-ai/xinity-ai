@@ -1,5 +1,5 @@
 import { $ } from "bun";
-import { totalmem } from "node:os";
+import { freemem, totalmem } from "node:os";
 import { readdir, readFile } from "node:fs/promises";
 import { rootLogger } from "../logger";
 
@@ -387,4 +387,32 @@ export async function detectHardwareProfile(): Promise<HardwareProfile> {
     detectedCapacityGb: mbToGb(getSystemRamMb()),
     source: "system-ram",
   };
+}
+
+/**
+ * Query current free memory in MB for the given capacity source.
+ *
+ * - nvidia: queries nvidia-smi for live free VRAM (works for both dedicated and unified memory GPUs like GB10)
+ * - amd: queries rocm-smi for live free VRAM
+ * - unified-memory / system-ram / intel / mixed: uses OS free memory
+ *
+ * Returns null only if the underlying query fails (e.g. nvidia-smi crashes).
+ */
+export async function getFreeMemoryMb(source: CapacitySource): Promise<number | null> {
+  try {
+    if (source === "nvidia") {
+      const stats = await getNvidiaRuntimeStats();
+      if (stats.length === 0) return null;
+      return stats.reduce((sum, s) => sum + s.freeMemory, 0);
+    }
+    if (source === "amd") {
+      const stats = await getAmdRuntimeStats();
+      if (stats.length === 0) return null;
+      return stats.reduce((sum, s) => sum + s.freeMemory, 0);
+    }
+    // unified-memory, system-ram, intel, mixed: use OS free memory
+    return bytesToMb(freemem());
+  } catch {
+    return null;
+  }
 }
