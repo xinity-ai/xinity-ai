@@ -8,7 +8,10 @@ export const DeploymentDto = CommonDto.extend({
   name: z.string().trim(),
 
   enabled: z.boolean(),
-  publicSpecifier: z.string().trim(),
+  publicSpecifier: z.string().trim()
+    .refine(s => !s.endsWith("-deep-research"), {
+      message: "Deployment names cannot end with '-deep-research' (reserved suffix)",
+    }),
   /** Canonical model identifier. Required server-side at create time. */
   specifier: z.string().trim().nullish(),
   earlySpecifier: z.string().trim().nullish(),

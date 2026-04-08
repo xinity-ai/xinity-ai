@@ -62,7 +62,11 @@ const setupOnboarding = rootOs
     orgName: z.string().min(1).describe("Name of the organization to create"),
     specifier: z.string().describe("The canonical model identifier"),
     modelSpecifier: z.string().describe("The driver-specific provider model string"),
-    publicSpecifier: z.string().describe("The public-facing model name"),
+    publicSpecifier: z.string()
+      .refine(s => !s.endsWith("-deep-research"), {
+        message: "Deployment names cannot end with '-deep-research' (reserved suffix)",
+      })
+      .describe("The public-facing model name"),
   }))
   .output(z.object({
     apiKey: z.string().describe("The full API key (shown once)"),
