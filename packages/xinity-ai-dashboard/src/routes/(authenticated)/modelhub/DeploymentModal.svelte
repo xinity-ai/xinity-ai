@@ -11,7 +11,6 @@
   import type { DeploymentDefinition } from "./+page.server";
 
   import { Button } from "$lib/components/ui/button";
-  import { Label } from "$lib/components/ui/label";
   import { Checkbox } from "$lib/components/ui/checkbox";
   import { X } from "@lucide/svelte";
   import { isDefinedError } from "@orpc/client";
@@ -391,21 +390,23 @@
       </main>
 
       <footer class="p-6 border-t bg-muted/50 rounded-b-xl flex justify-between items-center gap-4">
-        <div class="flex items-center gap-2">
+        <label
+          for="enabled{idSuffix}"
+          class="flex items-center gap-2 py-1.5 px-1 -ml-1 rounded select-none {isEditMode && cannotReEnable && !enabled ? 'cursor-not-allowed' : 'cursor-pointer'}"
+        >
           <Checkbox
             id="enabled{idSuffix}"
             checked={enabled}
             disabled={isEditMode && cannotReEnable && !enabled}
             onCheckedChange={(checked) => enabled = checked === true}
           />
-          <Label for="enabled{idSuffix}"
-            class="text-sm cursor-pointer {isEditMode && cannotReEnable ? 'text-muted-foreground' : ''}">
+          <span class="text-sm {isEditMode && cannotReEnable ? 'text-muted-foreground' : ''}">
             {isEditMode ? "Enabled" : "Start deployment in enabled state"}
-          </Label>
+          </span>
           {#if isEditMode && cannotReEnable && !enabled}
             <span class="text-sm text-destructive">{cannotReEnableReason ?? "Insufficient cluster capacity"}</span>
           {/if}
-        </div>
+        </label>
         <div class="flex items-center gap-3">
           <Button variant="outline" onclick={close}>Cancel</Button>
           <Button onclick={handleSubmit} disabled={!isFormValid || (isEditMode && !hasChanges)}>
