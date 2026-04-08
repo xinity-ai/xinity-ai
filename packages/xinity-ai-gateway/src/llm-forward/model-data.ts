@@ -79,6 +79,8 @@ type ModelInfo = {
   type?: string;
   /** Model tags from the catalog (e.g. "tools", "custom_code", "vision"). */
   tags: string[];
+  /** Maximum context window size in tokens (from model catalog). */
+  contextLength?: number;
   /** Allowed request-level passthrough params: dot-path to primitive type. */
   requestParams: Record<string, string>;
   /** Call when the request completes to release load-balancer resources. */
@@ -128,7 +130,7 @@ export async function getModelInfo(orgId: string, modelSpecifier: string, keyId:
     ?? earlySources.tlsMap.get(result.host)
     ?? false;
 
-  const [{ type, tags }, requestParams] = await Promise.all([
+  const [{ type, tags, contextLength }, requestParams] = await Promise.all([
     infoClient.resolveModelMeta(resolvedModel),
     infoClient.resolveRequestParams(resolvedModel),
   ]);
@@ -141,6 +143,7 @@ export async function getModelInfo(orgId: string, modelSpecifier: string, keyId:
     tls,
     type,
     tags,
+    contextLength,
     requestParams,
     release: result.release,
   };

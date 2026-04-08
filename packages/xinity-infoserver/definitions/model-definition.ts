@@ -120,6 +120,7 @@ export const ModelSchema = z.looseObject({
     ollama: z.array(GpuVendorEnum).optional(),
   }).optional().describe("Per-driver GPU platform requirements. Only nodes with a matching GPU vendor can serve. Absent = any platform"),
   entryVersion: z.string().optional().describe("Version of xinity-ai this model was introduced in"),
+  contextLength: z.number().positive().optional().describe("Maximum context window size in tokens"),
   custom: z.looseObject({
     baseModel: z.string(),
     extraFacts: z.record(z.string(), z.any())

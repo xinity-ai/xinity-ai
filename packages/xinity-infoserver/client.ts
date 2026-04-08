@@ -134,12 +134,12 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
 
   // Convenience methods that combine a fetch with pure tag helpers
 
-  async function resolveModelMeta(specifier: string): Promise<{ type: string | undefined; tags: string[] }> {
+  async function resolveModelMeta(specifier: string): Promise<{ type: string | undefined; tags: string[]; contextLength?: number }> {
     const model = await fetchModel(specifier);
     if (!model) return { type: undefined, tags: [] };
     const driver = resolveDriverForProviderModel(model, specifier);
     const tags = driver ? resolveTagsForDriver(model, driver) : (model.tags ?? []);
-    return { type: model.type, tags };
+    return { type: model.type, tags, contextLength: model.contextLength };
   }
 
   async function hasTag(specifier: string, tag: string): Promise<boolean> {
