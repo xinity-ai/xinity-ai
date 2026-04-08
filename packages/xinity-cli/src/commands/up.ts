@@ -9,8 +9,9 @@ import { createLocalHost } from "../lib/host.ts";
 import { connectRemoteHost } from "../lib/remote-host.ts";
 import { seaweedfsSetup } from "../lib/seaweedfs-setup.ts";
 import { discoverRedisUrl } from "../lib/redis-setup.ts";
+import { runUpdateFlow } from "./update.ts";
 
-const COMPONENTS = ["gateway", "dashboard", "daemon", "infoserver", "db", "redis", "seaweedfs", "all"] as const;
+const COMPONENTS = ["gateway", "dashboard", "daemon", "infoserver", "db", "redis", "seaweedfs", "cli", "all"] as const;
 
 export const upCommand: CommandModule = {
   command: "up <component>",
@@ -65,6 +66,11 @@ export const upCommand: CommandModule = {
         p.outro("Aborted");
         return;
       }
+    }
+
+    if (component === "cli") {
+      await runUpdateFlow({ checkOnly: false, targetVersion });
+      return;
     }
 
     if (component === "db") {

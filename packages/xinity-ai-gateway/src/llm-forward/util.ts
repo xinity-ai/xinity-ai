@@ -191,6 +191,57 @@ export const logChatUsage = ({
   }
 };
 
+// ---------------------------------------------------------------------------
+// SSE streaming helpers
+// ---------------------------------------------------------------------------
+
+/** Standard headers for SSE streaming responses. */
+export const SSE_RESPONSE_HEADERS = {
+  "Content-Type": "text/event-stream",
+  "Cache-Control": "no-cache",
+  "Connection": "keep-alive",
+} as const;
+
+/** Shared TextEncoder for SSE frame encoding. */
+export const sseEncoder = new TextEncoder();
+
+/**
+ * Handles errors inside an OpenAI-compatible streaming ReadableStream.
+ * Emits an error event + [DONE] sentinel and closes the controller.
+ */
+export function handleStreamError(
+  e: unknown,
+  controller: ReadableStreamDefaultController,
+  log: { info: (obj: Record<string, unknown>, msg: string) => void; error: (obj: Record<string, unknown>, msg: string) => void },
+): void {
+  if (isAbortError(e)) {
+    log.info({ err: e }, "Client disconnected during stream");
+    try { controller.close(); } catch {}
+    return;
+  }
+  log.error({ err: e }, "Stream error");
+  try {
+    controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify({ error: { message: "Internal stream error", type: "server_error" } })}\n\n`));
+    controller.enqueue(sseEncoder.encode("data: [DONE]\n\n"));
+    controller.close();
+  } catch {
+    try { controller.error(e as Error); } catch {}
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Validation helpers
+// ---------------------------------------------------------------------------
+
+/** Returns a 400 error response with formatted Zod validation issues. */
+export function validationError(error: { issues: { message: string }[] }): Response {
+  return errorResponse(`Invalid request body: ${error.issues.map((i) => i.message).join(", ")}`, 400);
+}
+
+// ---------------------------------------------------------------------------
+// SSE parsing
+// ---------------------------------------------------------------------------
+
 export async function* readSSEStream(response: Response) {
   if (!response.body) throw new Error("ReadableStream not available");
 
@@ -371,6 +422,34 @@ export function isConnectionRefused(error: unknown): boolean {
 
 /** Seconds to advertise in Retry-After when a backend node is unreachable (covers typical vLLM restart time). */
 export const BACKEND_RESTART_RETRY_AFTER = 120;
+
+/**
+ * Shared top-level error handler for endpoint catch blocks.
+ * Maps common fetch errors to appropriate HTTP status codes.
+ */
+export function handleEndpointError(
+  error: unknown,
+  log: { info: (obj: Record<string, unknown>, msg: string) => void; warn: (obj: Record<string, unknown>, msg: string) => void; error: (obj: Record<string, unknown>, msg: string) => void },
+): Response {
+  if (isAbortError(error)) {
+    log.info({ err: error }, "Client disconnected");
+    return new Response(null, { status: 499 });
+  }
+  if (isTimeoutError(error)) {
+    log.warn({ err: error }, "Backend timeout");
+    return errorResponse("Backend timeout", 504);
+  }
+  if (isConnectionRefused(error)) {
+    log.warn({ err: error }, "Backend unreachable");
+    return errorResponse(
+      "Service temporarily unavailable — consider adding cluster capacity",
+      503,
+      { "Retry-After": String(BACKEND_RESTART_RETRY_AFTER) },
+    );
+  }
+  log.error({ err: error }, "Internal gateway error");
+  return errorResponse(error instanceof Error ? error.message : "Internal Server Error", 500);
+}
 
 export function validateModelType(
   modelInfo: { type?: string },

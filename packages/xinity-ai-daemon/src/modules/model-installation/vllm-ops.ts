@@ -57,6 +57,9 @@ function buildEnvFileContent(config: VllmInstanceConfig): string {
   if (config.extraArgs && config.extraArgs.length > 0) {
     lines.push(`VLLM_EXTRA_ARGS=${config.extraArgs.join(" ")}`);
   }
+  if (env.VLLM_HF_TOKEN) {
+    lines.push(`HF_TOKEN=${env.VLLM_HF_TOKEN}`);
+  }
   return lines.join("\n") + "\n";
 }
 
@@ -137,11 +140,19 @@ export function createSystemdVllmOps(): VllmOps {
     async ensureSetup() {
       const targetPath = env.VLLM_TEMPLATE_UNIT_PATH;
       const existing = await Bun.file(targetPath).text().catch(() => null);
-      if (existing !== templateUnit) {
+      if (existing != null) {
+        log.debug({ targetPath }, "vLLM systemd template already present, skipping");
+      } else {
         await Bun.write(targetPath, templateUnit);
         await $`systemctl daemon-reload`;
-        log.info("Installed/updated vLLM systemd template unit");
+        log.info("Installed vLLM systemd template unit");
       }
+
+      // Ensure cache and env directories exist with correct ownership.
+      // The vllm-driver@ template runs as User=vllm with
+      // ReadWritePaths=/var/lib/vllm, so these must be pre-created.
+      await $`mkdir -p ${env.VLLM_HF_CACHE_DIR} ${env.VLLM_TRITON_CACHE_DIR} ${env.VLLM_ENV_DIR}`;
+      await $`chown -R vllm:vllm ${env.VLLM_HF_CACHE_DIR} ${env.VLLM_TRITON_CACHE_DIR}`.nothrow();
     },
   };
 }
@@ -179,6 +190,7 @@ export function createDockerVllmOps(): VllmOps {
         "-p", `${config.port}:8000`,
         "-e", "HF_HOME=/data/hf-cache",
         "-e", "TRITON_CACHE_DIR=/data/triton-cache",
+        ...(env.VLLM_HF_TOKEN ? ["-e", `HF_TOKEN=${env.VLLM_HF_TOKEN}`] : []),
         "-v", `${env.VLLM_HF_CACHE_DIR}:/data/hf-cache`,
         "-v", `${env.VLLM_TRITON_CACHE_DIR}:/data/triton-cache`,
         "--restart", "unless-stopped",

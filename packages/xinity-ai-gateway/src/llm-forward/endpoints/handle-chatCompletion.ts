@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { errorResponse, forwardBackendError, logChatUsage, validateModelType, extractAllowedRequestParams, readSSEStream, isConnectionRefused, isAbortError, isTimeoutError, BACKEND_RESTART_RETRY_AFTER } from "../util";
+import { errorResponse, forwardBackendError, logChatUsage, validateModelType, extractAllowedRequestParams, readSSEStream, handleEndpointError, SSE_RESPONSE_HEADERS, sseEncoder, handleStreamError, validationError } from "../util";
 import { resolveModel } from "../ai-sdk";
 import { BackendChatChunkSchema, BackendUsageSchema } from "../backend-schemas";
 import type { ApiCallInputMessage } from "common-db";
@@ -8,8 +8,6 @@ import { processMessageImages, imageStore } from "../../image-store";
 import { env } from "../../env";
 
 const log = rootLogger.child({ name: "handle-chatCompletion" });
-
-const encoder = new TextEncoder();
 
 const ChatCompletionBodySchema = z.looseObject({
   model: z.string(),
@@ -64,7 +62,7 @@ export async function handleChatCompletion(req: Request) {
 
     const parseResult = ChatCompletionBodySchema.safeParse(rawBody);
     if (!parseResult.success) {
-      return errorResponse(`Invalid request body: ${parseResult.error.issues.map((i) => i.message).join(", ")}`, 400);
+      return validationError(parseResult.error);
     }
     const body = parseResult.data;
 
@@ -144,7 +142,7 @@ export async function handleChatCompletion(req: Request) {
           try {
             for await (const event of readSSEStream(backendResponse)) {
               if (event.data === "[DONE]") {
-                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                controller.enqueue(sseEncoder.encode("data: [DONE]\n\n"));
                 break;
               }
 
@@ -174,7 +172,7 @@ export async function handleChatCompletion(req: Request) {
                 }
               }
 
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+              controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
             }
             controller.close();
 
@@ -194,30 +192,12 @@ export async function handleChatCompletion(req: Request) {
               stream: true,
             });
           } catch (e) {
-            if (isAbortError(e)) {
-              log.info({ err: e }, "Client disconnected during stream");
-              try { controller.close(); } catch {}
-              return;
-            }
-            log.error({ err: e }, "Stream error");
-            try {
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: { message: "Internal stream error", type: "server_error" } })}\n\n`));
-              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-              controller.close();
-            } catch {
-              try { controller.error(e as Error); } catch {}
-            }
+            handleStreamError(e, controller, log);
           }
         },
       });
 
-      return new Response(stream, {
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          "Connection": "keep-alive",
-        },
-      });
+      return new Response(stream, { headers: SSE_RESPONSE_HEADERS });
 
     } else {
       // Non-streaming: always forward, extract logging data field-by-field
@@ -264,19 +244,6 @@ export async function handleChatCompletion(req: Request) {
     }
 
   } catch (error) {
-    if (isAbortError(error)) {
-      log.info({ err: error }, "Client disconnected");
-      return new Response(null, { status: 499 });
-    }
-    if (isTimeoutError(error)) {
-      log.warn({ err: error }, "Backend timeout");
-      return errorResponse("Backend timeout", 504);
-    }
-    if (isConnectionRefused(error)) {
-      log.warn({ err: error }, "Backend unreachable");
-      return errorResponse("Service temporarily unavailable — consider adding cluster capacity", 503, { "Retry-After": String(BACKEND_RESTART_RETRY_AFTER) });
-    }
-    log.error({ err: error }, "Internal gateway error");
-    return errorResponse(error instanceof Error ? error.message : "Internal Server Error", 500);
+    return handleEndpointError(error, log);
   }
 }
