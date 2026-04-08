@@ -201,7 +201,7 @@ const updateDeployment = rootOs
   })
   .input(DeploymentDto.omit(commonInputFilter))
   .output(DeploymentDto)
-  .errors({ NOT_FOUND: {}, BAD_REQUEST: {}, INSUFFICIENT_CAPACITY: {} })
+  .errors({ NOT_FOUND: {}, BAD_REQUEST: {}, INSUFFICIENT_CAPACITY: {}, CONFLICT: {} })
   .handler(async ({ context, input, errors }) => {
     if (input.modelSpecifier && input.earlyModelSpecifier) {
       try {
@@ -249,7 +249,13 @@ const updateDeployment = rootOs
       }
     }
 
-    const deployment = await internalUpdateDeployment(context.activeOrganizationId, input.id, input);
+    let deployment;
+    try {
+      deployment = await internalUpdateDeployment(context.activeOrganizationId, input.id, input);
+    } catch (err) {
+      log.error(err);
+      throw errors.CONFLICT({ message: "A deployment with this specifier already exists in your organization" });
+    }
     if (!deployment) {
       throw errors.NOT_FOUND();
     }
@@ -415,7 +421,7 @@ export const createDeployment = rootOs
       return deployment;
     } catch (err) {
       log.error(err);
-      throw errors.CONFLICT({ message: "A deployment of the same name already exists in your organization" })
+      throw errors.CONFLICT({ message: "A deployment with this specifier already exists in your organization" })
     }
   });
 

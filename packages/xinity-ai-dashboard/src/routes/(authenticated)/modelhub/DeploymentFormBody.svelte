@@ -40,6 +40,7 @@
     onDeploymentNameInput,
     onCanaryEnabledChange,
     idSuffix = "",
+    publicSpecifierError,
   }: {
     selectedPrimaryModel: ModelWithSpecifier | undefined;
     selectedCanaryModel: ModelWithSpecifier | undefined;
@@ -65,6 +66,7 @@
     showTrafficSlider?: boolean;
     maxNodeFreeCapacity?: number;
     availableDrivers?: string[];
+    publicSpecifierError?: string;
     onPublicSpecifierInput?: () => void;
     onDeploymentNameInput?: () => void;
     onCanaryEnabledChange?: (enabled: boolean) => void;
@@ -213,10 +215,15 @@
           oninput={() => onPublicSpecifierInput?.()}
           placeholder="e.g., my-chatbot or company/translator-en-de"
           required
+          aria-invalid={publicSpecifierError ? true : undefined}
         />
-        <p class="text-sm text-muted-foreground">
-          This is the public-facing name used to invoke the model via the API.
-        </p>
+        {#if publicSpecifierError}
+          <p class="text-sm text-destructive">{publicSpecifierError}</p>
+        {:else}
+          <p class="text-sm text-muted-foreground">
+            This is the public-facing name used to invoke the model via the API.
+          </p>
+        {/if}
       </div>
       <div class="space-y-2">
         <Label for="deployment-name{idSuffix}">
