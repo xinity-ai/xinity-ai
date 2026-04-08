@@ -1,4 +1,4 @@
-import { generateText, streamText } from "ai";
+import { generateText, streamText, isLoopFinished, stepCountIs } from "ai";
 import { resolveAuthorizedModel } from "../ai-sdk";
 import { errorResponse, logChatUsage, validateModelType, toModelMessages, SSE_RESPONSE_HEADERS, validationError, isUpstreamError, upstreamHttpStatus, clientFacingErrorMessage, modelLacksToolSupport } from "../util";
 import type { ApiCallInputMessage } from "common-db";
@@ -6,6 +6,8 @@ import { checkAuth, type AuthResult } from "../auth";
 import { deleteResponse, getResponse, saveResponse } from "../response-store";
 import { rootLogger } from "../../logger";
 import { processMessageImages, imageStore } from "../../image-store";
+import { env } from "../../env";
+import { DEEP_RESEARCH_SYSTEM_PROMPT, createCompactionStep } from "../deep-research";
 import {
   CreateResponseBodySchema,
   type CreateResponseBody,
@@ -181,7 +183,7 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
 
     const authorized = await resolveAuthorizedModel(req);
     if (authorized instanceof Response) return authorized;
-    const { auth, body: rawBody, originalModel, modelInfo, provider } = authorized;
+    const { auth, body: rawBody, originalModel, baseModelName, deepResearch, modelInfo, provider } = authorized;
 
     const typeError = validateModelType(modelInfo, ["chat"]);
     if (typeError) return typeError;
@@ -245,6 +247,58 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
 
     if (outputConfig.usesStructuredOutput && modelLacksToolSupport(modelInfo)) {
       return errorResponse("Model does not support structured output", 400);
+    }
+
+    // -------------------------------------------------------------------
+    // Deep research mode
+    // -------------------------------------------------------------------
+    if (deepResearch) {
+      if (body.stream) {
+        return errorResponse(
+          "Streaming is not supported for deep research requests. Deep research runs in background mode. Poll the response ID for results.",
+          400,
+        );
+      }
+      if (!env.WEB_SEARCH_ENGINE_URL) {
+        return errorResponse("Deep research requires web search to be configured (WEB_SEARCH_ENGINE_URL)", 501);
+      }
+      if (modelLacksToolSupport(modelInfo)) {
+        return errorResponse(
+          `Model '${baseModelName}' does not support tool calling, which is required for deep research.`,
+          400,
+        );
+      }
+
+      // Inject research system prompt
+      const systemPrompt = DEEP_RESEARCH_SYSTEM_PROMPT + (body.instructions ? "\n\n" + body.instructions : "");
+      messagesForLLM.unshift({ role: "system", content: systemPrompt });
+
+      // Force web_search + web_fetch into active tools (merge with user-provided tools)
+      const { activeTools: deepTools } = resolveActiveTools(
+        [...(body.tools ?? []), { type: "web_search" }],
+        body.tool_choice ?? "auto",
+      );
+
+      const maxSteps = (body as Record<string, unknown>).max_tool_calls as number | undefined ?? env.DEEP_RESEARCH_MAX_STEPS;
+      const contextLimit = modelInfo.contextLength ?? 8192;
+      const userQuery = extractText(input) ?? "";
+
+      const deepGenParams = {
+        ...buildGenerationParams(body, modelInfo, provider, toModelMessages(messagesForLLM), deepTools, true, outputConfig),
+        stopWhen: [isLoopFinished(), stepCountIs(maxSteps)],
+        prepareStep: createCompactionStep(
+          provider, modelInfo.model, contextLimit,
+          env.DEEP_RESEARCH_COMPACTION_THRESHOLD, userQuery,
+        ),
+        abortSignal: AbortSignal.timeout(env.DEEP_RESEARCH_TIMEOUT_MS),
+      };
+
+      const baseResponse = await createAndSaveInProgressResponse(auth.orgId, responseId, createdAt, originalModel, body);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      void runBackground({ orgId: auth.orgId, responseId, createdAt, originalModel, body, genParams: deepGenParams as any, include, outputConfig, logFields });
+
+      return Response.json(baseResponse, { status: 202 });
     }
 
     const genParams = buildGenerationParams(body, modelInfo, provider, toModelMessages(messagesForLLM), activeTools, hasTools, outputConfig, req.signal);
