@@ -150,12 +150,17 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
     return undefined;
   }
 
-  async function resolveModelMeta(lookup: ModelLookup, driver?: "vllm" | "ollama"): Promise<{ type: string | undefined; tags: string[] }> {
+  type ModelMetadata = { 
+    type: string | undefined; 
+    tags: string[];
+    contextLength: number | undefined
+  };
+  async function resolveModelMeta(lookup: ModelLookup, driver?: "vllm" | "ollama"): Promise<ModelMetadata> {
     const model = await fetchModel(lookup);
-    if (!model) return { type: undefined, tags: [] };
+    if (!model) return { type: undefined, tags: [], contextLength: undefined };
     const d = driverFor(model, lookup, driver);
     const tags = d ? resolveTagsForDriver(model, d) : (model.tags ?? []);
-    return { type: model.type, tags };
+    return { type: model.type, tags, contextLength: model.contextLength };
   }
 
   async function hasTag(lookup: ModelLookup, tag: string, driver?: "vllm" | "ollama"): Promise<boolean> {
