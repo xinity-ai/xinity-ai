@@ -83,9 +83,8 @@ type ModelInfo = {
   tls: boolean;
   /** Model type from the catalog (chat, embedding, rerank, transcription). Undefined if catalog entry is unavailable. */
   type?: string;
-  /** Model tags from the catalog (e.g. "tools", "custom_code", "vision"). Undefined if catalog entry is unavailable. */
   tags?: string[];
-  /** Allowed request-level passthrough params: dot-path to primitive type. Undefined if catalog entry is unavailable. */
+  contextLength?: number;
   requestParams?: Record<string, string>;
   /** Call when the request completes to release load-balancer resources. */
   release: () => void;
@@ -137,6 +136,7 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, keyId
 
   const type = model?.type;
   const tags = model ? resolveTagsForDriver(model, driverProvider) : undefined;
+  const contextLength = model?.contextLength;
   const requestParams = model ? resolveRequestParamsForDriver(model, driverProvider) : undefined;
 
   return {
@@ -148,6 +148,7 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, keyId
     tls,
     type,
     tags,
+    contextLength,
     requestParams,
     release: result.release,
   };

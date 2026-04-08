@@ -129,6 +129,7 @@ export const ModelSchema = z.looseObject({
     "Arrays are deeply flattened to support YAML anchors. " +
     "Example: [\"*.gguf\", \"!consolidated.safetensors\"]"
   ),
+  contextLength: z.number().positive().optional().describe("Maximum context window size in tokens"),
   custom: z.looseObject({
     baseModel: z.string(),
     extraFacts: z.record(z.string(), z.any())
