@@ -14,6 +14,7 @@
   import { Label } from "$lib/components/ui/label";
   import { Checkbox } from "$lib/components/ui/checkbox";
   import { X } from "@lucide/svelte";
+  import { isDefinedError } from "@orpc/client";
 
   // --- Props ---
   let {
@@ -38,6 +39,7 @@
   // --- Form State ---
   let publicSpecifier = $state("");
   let publicSpecifierEdited = $state(false);
+  let publicSpecifierError = $state<string | undefined>(undefined);
   let deploymentName = $state("");
   let deploymentNameEdited = $state(false);
   let enabled = $state(true);
@@ -314,7 +316,11 @@
         });
 
     if (error) {
-      toastState.add(`Failed to ${isEditMode ? "update" : "create"} deployment: ${error.message}`, "error");
+      if(isDefinedError(error) && error.code === "CONFLICT") {
+        publicSpecifierError = error.message ?? "A deployment with this specifier already exists in your organization";
+      } else {
+        toastState.add(`Failed to ${isEditMode ? "update" : "create"} deployment: ${error.message}`, "error");
+      }
     } else {
       close();
       if (!isEditMode) clearState();
@@ -323,7 +329,7 @@
   }
 
   function clearState() {
-    publicSpecifier = ""; publicSpecifierEdited = false;
+    publicSpecifier = ""; publicSpecifierEdited = false; publicSpecifierError = undefined;
     deploymentName = ""; deploymentNameEdited = false;
     enabled = true;
     selectedPrimarySpecifier = null; selectedCanarySpecifier = null;
@@ -372,7 +378,8 @@
           bind:preferredDriver
           {canaryTypeMismatch}
           {showTrafficSlider}
-          onPublicSpecifierInput={() => (publicSpecifierEdited = true)}
+          {publicSpecifierError}
+          onPublicSpecifierInput={() => { publicSpecifierEdited = true; publicSpecifierError = undefined; }}
           onDeploymentNameInput={() => (deploymentNameEdited = true)}
           onCanaryEnabledChange={isEditMode ? () => (shouldAutoSelectCanary = false) : undefined}
           {idSuffix}
