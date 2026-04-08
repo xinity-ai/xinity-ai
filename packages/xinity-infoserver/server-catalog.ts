@@ -4,6 +4,8 @@
  * in-memory index for the API endpoints.
  */
 import { type Model, type ModelWithSpecifier, ModelFileDefinitionSchema } from "./definitions/model-definition";
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import { rootLogger } from "./logger";
 
 const log = rootLogger.child({ name: "catalog" });
@@ -15,14 +17,16 @@ let providerModelIndex = new Map<string, string>();
 let mergedData: { models: Record<string, Model> } = { models: {} };
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
-let configuredFilePath: string;
+let configuredFilePath: string | undefined;
 let configuredMaxDepth: number;
+let configuredDirPath: string | undefined;
 
 // ── Init ───────────────────────────────────────────────────────────────
 
-export function configure(modelFilePath: string, maxIncludeDepth = 10) {
+export function configure(maxIncludeDepth = 10, modelFilePath?: string, modelDirPath?: string) {
   configuredFilePath = modelFilePath;
   configuredMaxDepth = maxIncludeDepth;
+  configuredDirPath = modelDirPath;
 }
 
 // ── Refresh ────────────────────────────────────────────────────────────
@@ -36,18 +40,25 @@ export async function refresh(): Promise<void> {
   const newProviderIndex = new Map<string, string>();
   const newMerged: Record<string, Model> = {};
 
-  const yamlText = await Bun.file(configuredFilePath).text();
-  const yamlData = Bun.YAML.parse(yamlText);
-  const { success, data } = ModelFileDefinitionSchema.safeParse(yamlData);
-  if (!success) {
-    throw new Error("Failed to validate model file during refresh");
+  const visited = new Set<string>();
+
+  if (configuredFilePath) {
+    const yamlText = await Bun.file(configuredFilePath).text();
+    const yamlData = Bun.YAML.parse(yamlText);
+    const { success, data } = ModelFileDefinitionSchema.safeParse(yamlData);
+    if (!success) {
+      throw new Error("Failed to validate model file during refresh");
+    }
+
+    indexModels(data.models, newModels, newProviderIndex, newMerged);
+
+    for (const includeUrl of data.includes ?? []) {
+      await resolveIncludes(includeUrl, visited, 0, newModels, newProviderIndex, newMerged);
+    }
   }
 
-  indexModels(data.models, newModels, newProviderIndex, newMerged);
-
-  const visited = new Set<string>();
-  for (const includeUrl of data.includes ?? []) {
-    await resolveIncludes(includeUrl, visited, 0, newModels, newProviderIndex, newMerged);
+  if (configuredDirPath) {
+    await loadDirectoryFiles(configuredDirPath, visited, newModels, newProviderIndex, newMerged);
   }
 
   // Atomic swap
@@ -98,6 +109,51 @@ async function resolveIncludes(
     }
   } catch (err) {
     log.warn({ url, err }, "Include fetch error");
+  }
+}
+
+async function loadDirectoryFiles(
+  dirPath: string,
+  visited: Set<string>,
+  models: Map<string, ModelWithSpecifier>,
+  providerIndex: Map<string, string>,
+  merged: Record<string, Model>,
+): Promise<void> {
+  let entries: string[];
+  try {
+    entries = readdirSync(dirPath)
+      .filter(f => f.endsWith(".yaml") || f.endsWith(".yml"))
+      .sort();
+  } catch (err) {
+    log.warn({ dirPath, err }, "Could not read model info directory, skipping");
+    return;
+  }
+
+  if (entries.length === 0) {
+    log.debug({ dirPath }, "Model info directory is empty");
+    return;
+  }
+
+  for (const filename of entries) {
+    const filePath = join(dirPath, filename);
+    try {
+      const yamlText = await Bun.file(filePath).text();
+      const yamlData = Bun.YAML.parse(yamlText);
+      const { success, data } = ModelFileDefinitionSchema.safeParse(yamlData);
+      if (!success) {
+        log.warn({ filePath }, "Model file validation failed, skipping");
+        continue;
+      }
+
+      log.info({ filePath, modelCount: Object.keys(data.models).length }, "Loaded model file from directory");
+      indexModels(data.models, models, providerIndex, merged);
+
+      for (const includeUrl of data.includes ?? []) {
+        await resolveIncludes(includeUrl, visited, 0, models, providerIndex, merged);
+      }
+    } catch (err) {
+      log.warn({ filePath, err }, "Failed to load model file from directory, skipping");
+    }
   }
 }
 

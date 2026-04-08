@@ -6,9 +6,14 @@ import * as catalog from "./server-catalog";
 import { handleModelList, handleModelsByFamily, handleModelBySpecifier, handleBatchResolve } from "./api-handlers";
 
 const modelFile = env.MODEL_INFO_FILE;
+const modelDir = env.MODEL_INFO_DIR;
 const port = env.PORT;
 
-catalog.configure(modelFile, env.MAX_INCLUDE_DEPTH);
+if (!modelFile && !modelDir) {
+  throw new Error("At least one of MODEL_INFO_FILE or MODEL_INFO_DIR must be set");
+}
+
+catalog.configure(env.MAX_INCLUDE_DEPTH, modelFile, modelDir);
 await catalog.refresh();
 catalog.startAutoRefresh(env.REFRESH_INTERVAL_MS);
 

@@ -22,8 +22,15 @@ in {
         };
 
         modelInfoFile = lib.mkOption {
-          type = lib.types.path;
+          type = lib.types.nullOr lib.types.path;
+          default = null;
           description = "Path to the models YAML file on the host. Will be mounted into the container.";
+        };
+
+        modelInfoDir = lib.mkOption {
+          type = lib.types.nullOr lib.types.path;
+          default = null;
+          description = "Path to a directory of additional model YAML files on the host. Will be mounted into the container at /data/models.d/.";
         };
 
         refreshIntervalMs = lib.mkOption {
@@ -74,22 +81,34 @@ in {
       };
 
       config = lib.mkIf cfg.enable {
+        assertions = [{
+          assertion = cfg.modelInfoFile != null || cfg.modelInfoDir != null;
+          message = "services.xinity-infoserver: at least one of modelInfoFile or modelInfoDir must be set.";
+        }];
+
         virtualisation.oci-containers.containers.xinity-infoserver = {
           image = cfg.image;
           ports = [ "${toString cfg.port}:${toString cfg.port}" ];
           environment = {
             PORT = toString cfg.port;
-            MODEL_INFO_FILE = "/data/models.yaml";
             REFRESH_INTERVAL_MS = toString cfg.refreshIntervalMs;
             MAX_INCLUDE_DEPTH = toString cfg.maxIncludeDepth;
             LOG_LEVEL = cfg.logLevel;
           }
+          // lib.optionalAttrs (cfg.modelInfoFile != null) {
+            MODEL_INFO_FILE = "/data/models.yaml";
+          }
           // lib.optionalAttrs (cfg.logDir != null) {
             LOG_DIR = cfg.logDir;
           }
+          // lib.optionalAttrs (cfg.modelInfoDir != null) {
+            MODEL_INFO_DIR = "/data/models.d";
+          }
           // cfg.extraEnvironment;
-          volumes = [
+          volumes = lib.optionals (cfg.modelInfoFile != null) [
             "${cfg.modelInfoFile}:/data/models.yaml:ro"
+          ] ++ lib.optionals (cfg.modelInfoDir != null) [
+            "${cfg.modelInfoDir}:/data/models.d:ro"
           ];
           environmentFiles = cfg.environmentFiles;
           extraOptions = cfg.extraOptions;

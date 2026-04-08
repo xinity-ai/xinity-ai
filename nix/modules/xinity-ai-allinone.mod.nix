@@ -279,8 +279,14 @@
             description = "Port for the infoserver.";
           };
           modelInfoFile = lib.mkOption {
-            type = lib.types.path;
+            type = lib.types.nullOr lib.types.path;
+            default = null;
             description = "Path to the models YAML file on the host.";
+          };
+          modelInfoDir = lib.mkOption {
+            type = lib.types.nullOr lib.types.path;
+            default = null;
+            description = "Path to a directory of additional model YAML files on the host.";
           };
         };
 
@@ -500,6 +506,7 @@
             enable = true;
             port = lib.mkDefault cfg.infoserver.port;
             modelInfoFile = lib.mkDefault cfg.infoserver.modelInfoFile;
+            modelInfoDir = lib.mkDefault cfg.infoserver.modelInfoDir;
             environmentFiles = lib.mkDefault envFiles;
             extraOptions = lib.mkDefault networkOptions;
           };
