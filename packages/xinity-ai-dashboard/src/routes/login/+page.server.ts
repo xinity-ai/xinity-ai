@@ -25,5 +25,6 @@ export const load: PageServerLoad = async ({ request, url }) => {
     callbackUrl,
     ssoProviders,
     signupEnabled: serverEnv.SIGNUP_ENABLED,
+    emailVerificationRequired: Boolean(serverEnv.MAIL_URL),
   };
 };
