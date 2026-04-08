@@ -6,11 +6,16 @@ import { errorResponse } from "./util";
 import { resolveApplicationByName } from "./application-resolver";
 import { releaseCallbacks } from "./release-registry";
 import { backendUrl, hasCustomCa, backendFetch } from "./backend-fetch";
+import { isDeepResearchRequest, stripDeepResearchSuffix } from "./deep-research/detect";
 
 export type ResolvedModel = {
   auth: AuthResult;
   body: Record<string, unknown>;
   originalModel: string;
+  /** The model name used for resolution (suffix stripped if deep research). */
+  baseModelName: string;
+  /** Whether the request targets deep research mode. */
+  deepResearch: boolean;
   modelInfo: NonNullable<Awaited<ReturnType<typeof getModelInfo>>>;
 };
 
@@ -59,7 +64,11 @@ export async function resolveModel(
   if (typeof originalModel !== "string" || originalModel.length === 0) {
     return errorResponse("Missing or invalid 'model' field", 400);
   }
-  const modelInfo = await getModelInfo(auth.orgId, originalModel, auth.keyId);
+
+  const deepResearch = isDeepResearchRequest(originalModel);
+  const baseModelName = deepResearch ? stripDeepResearchSuffix(originalModel) : originalModel;
+
+  const modelInfo = await getModelInfo(auth.orgId, baseModelName, auth.keyId);
   if (!modelInfo) {
     return errorResponse("Model not found", 404);
   }
@@ -70,6 +79,8 @@ export async function resolveModel(
     auth,
     body,
     originalModel,
+    baseModelName,
+    deepResearch,
     modelInfo,
   };
 }

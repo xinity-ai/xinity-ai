@@ -31,9 +31,20 @@ export const gatewayEnvSchema = z.object({
   S3_SECRET_ACCESS_KEY: z.string().optional().describe("S3 secret access key").meta(secret()).meta(expert()),
   S3_BUCKET: z.string().default("xinity-media").describe("S3 bucket for media objects").meta(expert()),
   S3_REGION: z.string().default("us-east-1").describe("S3 region (use 'us-east-1' for SeaweedFS)").meta(expert()),
-
   // Inference backend TLS
   XINITY_INFERENCE_CA: z.string().optional()
     .describe("PEM-encoded CA certificate for verifying daemon TLS. When set, gateway connects to daemons via HTTPS. See docs/security/tls.md")
     .meta({ ...secret(), ...expert() }),
+  DEEP_RESEARCH_MAX_STEPS: z.coerce.number().positive().default(30)
+    .describe("Maximum tool-call steps for deep research mode")
+    .meta(expert()),
+  DEEP_RESEARCH_TIMEOUT_MS: z.coerce.number().positive().default(600_000)
+    .describe("Timeout for deep research background jobs (default: 10 minutes)")
+    .meta(expert()),
+  DEEP_RESEARCH_COMPACTION_THRESHOLD: z.coerce.number().min(0.1).max(0.95).default(0.70)
+    .describe("Fraction of model context window at which compaction triggers")
+    .meta(expert()),
+  DEEP_RESEARCH_WEB_FETCH_MAX_TOKENS: z.coerce.number().positive().default(4000)
+    .describe("Max characters to retain from a single web_fetch in deep research")
+    .meta(expert()),
 }).extend(tlsEnvSchema.shape).extend(logEnvSchema.shape);
