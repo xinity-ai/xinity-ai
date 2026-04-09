@@ -187,10 +187,6 @@ export async function resolveDirectUrl(asset: ReleaseAsset): Promise<string> {
 
 /** Determine the expected asset filename for a component on the given platform. */
 export function getAssetName(component: string, arch?: string): string {
-  if (component === "dashboard") {
-    return "xinity-ai-dashboard.tar.gz";
-  }
-
   const resolved = (arch ?? process.arch) === "arm64" ? "arm64" : "x64";
 
   if (component === "cli") {
