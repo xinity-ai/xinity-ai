@@ -74,7 +74,7 @@ graph TB
 
 ### Dashboard
 
-**Package:** `packages/xinity-ai-dashboard` | **Runtime:** SvelteKit 2 + Svelte 5 on Bun
+**Package:** `packages/xinity-ai-dashboard` | **Runtime:** SvelteKit 2 + Svelte 5, compiled to a self-contained binary (Bun runtime embedded)
 
 The dashboard is the central management surface. It serves three distinct roles within a single process:
 
