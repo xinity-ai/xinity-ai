@@ -125,9 +125,21 @@ describe("Password change via UI", () => {
       throw new Error(`Sign-up failed: ${signUpRes.status} ${await signUpRes.text()}`);
     }
 
-    // 3. Verify email via Mailhog
-    const verifyUrl = await getVerificationUrl(TEST_USER.email);
-    await fetch(verifyUrl, { redirect: "manual" });
+    // 3. Try to sign in immediately -- if email verification is not required
+    //    (MAIL_URL not set), the account is already active after sign-up.
+    //    Only fall back to Mailhog verification if the sign-in fails.
+    const quickSignIn = await fetch(`${BASE_URL}/api/auth/sign-in/email`, {
+      method: "POST",
+      headers: AUTH_HEADERS,
+      body: JSON.stringify({ email: TEST_USER.email, password: TEST_USER.password }),
+      redirect: "manual",
+    });
+
+    if (!quickSignIn.ok && quickSignIn.status !== 302) {
+      // Email verification required -- fetch the link from Mailhog
+      const verifyUrl = await getVerificationUrl(TEST_USER.email);
+      await fetch(verifyUrl, { redirect: "manual" });
+    }
 
     // 4. Sign in and save storage state for browser tests
     await signInAndSaveState(TEST_USER.email, TEST_USER.password);
