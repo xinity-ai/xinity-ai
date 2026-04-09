@@ -251,43 +251,20 @@ function probeTcpService(opts: TcpProbeOptions): Promise<CheckResult> {
 
 async function checkRedis(url: string, host: Host): Promise<CheckResult> {
   const tunnel = await host.openTunnel(url);
+  let client: import("bun").RedisClient | undefined;
   try {
-    const parsed = new URL(tunnel.localUrl);
-    const hostname = parsed.hostname;
-    const port = parseInt(parsed.port || "6379");
-    const password = parsed.password
-      ? decodeURIComponent(parsed.password)
-      : null;
-
-    return await probeTcpService({
-      hostname,
-      port,
-      label: "Redis",
-      onOpen(socket) {
-        if (password) {
-          socket.write(`AUTH ${password}\r\nPING\r\n`);
-        } else {
-          socket.write("PING\r\n");
-        }
-      },
-      onData(response) {
-        if (response.includes("+PONG")) {
-          return { status: "pass", message: "PING/PONG successful" };
-        }
-        if (response.includes("-NOAUTH")) {
-          return { status: "pass", message: "Reachable (auth required)" };
-        }
-        return { status: "warn", message: `Unexpected response: ${response.trim()}` };
-      },
-    });
+    client = new Bun.RedisClient(tunnel.localUrl);
+    await client.ping();
+    return { label: "Redis", status: "pass", message: "PING/PONG successful" };
   } catch (err) {
     return {
       label: "Redis",
       status: "fail",
-      message: "Invalid Redis URL",
+      message: "Connection failed",
       detail: String(err),
     };
   } finally {
+    client?.close();
     await tunnel.close();
   }
 }
