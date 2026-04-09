@@ -4,8 +4,9 @@ import { createTempDir, type TempDir } from "../helpers/temp-config.ts";
 
 describe("github", () => {
   describe("getAssetName", () => {
-    test("returns tar.gz for dashboard", () => {
-      expect(getAssetName("dashboard")).toBe("xinity-ai-dashboard.tar.gz");
+    test("returns platform-specific zip for dashboard", () => {
+      const name = getAssetName("dashboard");
+      expect(name).toMatch(/^xinity-ai-dashboard-linux-(x64|arm64)\.zip$/);
     });
 
     test("returns tar.gz for db migrations", () => {
@@ -33,9 +34,10 @@ describe("github", () => {
       expect(name).toContain(expectedArch);
     });
 
-    test("dashboard asset name is architecture-independent", () => {
-      expect(getAssetName("dashboard")).not.toContain("x64");
-      expect(getAssetName("dashboard")).not.toContain("arm64");
+    test("dashboard asset name is architecture-specific", () => {
+      const name = getAssetName("dashboard");
+      const expectedArch = process.arch === "arm64" ? "arm64" : "x64";
+      expect(name).toContain(expectedArch);
     });
 
     test("db asset name is architecture-independent", () => {
@@ -58,8 +60,9 @@ describe("github", () => {
       expect(getAssetName("gateway", "x86_64")).toBe("xinity-ai-gateway-linux-x64.zip");
     });
 
-    test("dashboard and db ignore explicit arch parameter", () => {
-      expect(getAssetName("dashboard", "arm64")).toBe("xinity-ai-dashboard.tar.gz");
+    test("dashboard respects explicit arch parameter, db does not", () => {
+      expect(getAssetName("dashboard", "arm64")).toBe("xinity-ai-dashboard-linux-arm64.zip");
+      expect(getAssetName("dashboard", "x64")).toBe("xinity-ai-dashboard-linux-x64.zip");
       expect(getAssetName("db", "arm64")).toBe("db-migrations.tar.gz");
     });
   });

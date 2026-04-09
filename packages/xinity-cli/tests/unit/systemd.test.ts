@@ -26,11 +26,10 @@ describe("systemd", () => {
       expect(config.afterUnits).toContain("network-online.target");
     });
 
-    test("returns dashboard config with bun runner", () => {
+    test("returns dashboard config with binary runner", () => {
       const config = getComponentConfig("dashboard");
       expect(config.component).toBe("dashboard");
-      expect(config.execStart).toContain("bun");
-      expect(config.execStart).toContain("/opt/xinity/dashboard/");
+      expect(config.execStart).toBe("/opt/xinity/bin/xinity-ai-dashboard");
     });
 
     test("returns daemon config", () => {
