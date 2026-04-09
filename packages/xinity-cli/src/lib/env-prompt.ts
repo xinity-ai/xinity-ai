@@ -236,11 +236,12 @@ async function promptField(
 }
 
 /** Format a field's current value for display in the menu. */
-function displayValue(field: EnvField, value: string | undefined): string {
+function displayValue(field: EnvField, value: string | undefined, locked = false): string {
   if (value !== undefined && value !== "") {
     if (field.isSecret) return pc.dim("••••••");
     return pc.cyan(value);
   }
+  if (locked && field.isSecret) return pc.dim("(locked)");
   if (field.hasDefault) return pc.dim(`(default: ${field.defaultValue})`);
   if (field.isOptional) return pc.dim("(not set)");
   return pc.yellow("(not set)");
@@ -270,19 +271,14 @@ export async function menuConfigureEnv(
   const envContent = await h.readFile(envPath);
   const existingConfig = envContent ? parseEnvString(envContent) : {};
   const existingSecrets: Record<string, string> = {};
+  let secretsLocked = false;
   if (secretKeys.length > 0) {
-    // Secret files are root-only (chmod 600), try direct read first, then elevate
-    let needsElevation = false;
     for (const key of secretKeys) {
       const content = await h.readFile(`${SECRETS_DIR}/${key}`);
-      if (content !== null) {
-        existingSecrets[key] = content.trim();
-      } else {
-        needsElevation = true;
-      }
+      if (content !== null) existingSecrets[key] = content.trim();
     }
-    if (needsElevation && Object.keys(existingSecrets).length < secretKeys.length) {
-      const missing = secretKeys.filter((k) => !(k in existingSecrets));
+    const missing = secretKeys.filter((k) => !(k in existingSecrets));
+    if (missing.length > 0) {
       const script = missing
         .map((k) => `[ -f '${SECRETS_DIR}/${k}' ] && printf '%s\\0%s\\0' '${k}' "$(cat '${SECRETS_DIR}/${k}')"`)
         .join("; ");
@@ -292,6 +288,8 @@ export async function menuConfigureEnv(
         for (let i = 0; i < parts.length - 1; i += 2) {
           existingSecrets[parts[i]!] = parts[i + 1]!.trim();
         }
+      } else if (result.skipped) {
+        secretsLocked = true;
       }
     }
   }
@@ -301,7 +299,7 @@ export async function menuConfigureEnv(
   while (true) {
     const options = fields.map((field) => ({
       value: field.key,
-      label: `${field.key}  ${displayValue(field, values[field.key])}`,
+      label: `${field.key}  ${displayValue(field, values[field.key], secretsLocked && field.isSecret)}`,
       hint: field.description,
     }));
     options.push({ value: "__save__", label: pc.green("Save & exit"), hint: undefined });

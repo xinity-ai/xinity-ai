@@ -536,23 +536,38 @@ async function checkConfiguration(
     });
   }
 
-  // Read secrets with optional elevation
+  // Read all secrets in a single elevated call
   let secretsPermDenied = false;
   let secretsSkipped = false;
   const secrets: Record<string, string> = {};
 
-  for (const field of secretFields) {
-    const result = await readFileWithElevation(
-      `${SECRETS_DIR}/${field.key}`,
-      `Read ${component} secret: ${field.key}`,
-      opts,
-    );
-    if (result.permissionDenied) {
+  if (secretFields.length > 0) {
+    const host = opts.host ?? createLocalHost();
+    // Try direct read first (works if already root or files are world-readable)
+    for (const field of secretFields) {
+      const content = await host.readFile(`${SECRETS_DIR}/${field.key}`);
+      if (content !== null) secrets[field.key] = content.trim();
+    }
+    // Batch-read any that were inaccessible via a single elevation prompt
+    const missing = secretFields.filter((f) => !(f.key in secrets));
+    if (missing.length > 0 && opts.interactive) {
+      opts.spinner?.stop();
+      const script = missing
+        .map((f) => `[ -f '${SECRETS_DIR}/${f.key}' ] && printf '%s\\0%s\\0' '${f.key}' "$(cat '${SECRETS_DIR}/${f.key}')"`)
+        .join("; ");
+      const result = await host.withElevation(script, `Read ${component} secrets`, { sensitive: true });
+      if (result.skipped) {
+        secretsSkipped = true;
+      } else if (!result.success) {
+        secretsPermDenied = true;
+      } else {
+        const parts = result.output.split("\0").filter(Boolean);
+        for (let i = 0; i < parts.length - 1; i += 2) {
+          secrets[parts[i]!] = parts[i + 1]!.trim();
+        }
+      }
+    } else if (missing.length > 0) {
       secretsPermDenied = true;
-    } else if (result.skipped) {
-      secretsSkipped = true;
-    } else if (result.content !== null) {
-      secrets[field.key] = result.content.trim();
     }
   }
 
