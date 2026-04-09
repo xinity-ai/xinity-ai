@@ -37,6 +37,7 @@ export const serverStubs: Record<string, Record<string, unknown>> = {
   "$lib/server/auth-server": {
     auth: { api: { getSession: asyncNoop, hasPermission: asyncNoop } },
     getGreenlitCallId: () => "",
+    adminResetPassword: asyncNoop,
   },
   "$lib/server/roles": {
     ac: { statements: {} },
