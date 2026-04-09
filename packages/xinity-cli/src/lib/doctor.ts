@@ -732,8 +732,8 @@ async function checkDashboardConnectivity(
   await pushInfoserverCheck(checks, values, host);
   if (values.MAIL_URL) checks.push(await checkSmtp(values.MAIL_URL, host));
   if (serviceActive) {
-    const origin = values.ORIGIN || "http://localhost:5173";
-    checks.push(await checkServiceHealth(host, "Health endpoint", origin));
+    const port = values.HTTP_PORT || "5173";
+    checks.push(await checkServiceHealth(host, "Health endpoint", `http://localhost:${port}/api/health`));
   }
   return checks;
 }
