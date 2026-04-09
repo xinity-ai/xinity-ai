@@ -94,18 +94,38 @@ describe("API key CRUD", () => {
       await page.goto("/ai-api-keys/");
       await page.waitForLoadState("networkidle");
 
-      const deleteBtn = page.getByRole("button", { name: "Delete" }).first();
-      if (await deleteBtn.isVisible({ timeout: 5_000 }).catch(() => false)) {
-        await deleteBtn.click();
+      // Create a key specifically for this test so deletion is guaranteed to have a target
+      await page.getByRole("button", { name: /Generate New Key/ }).click();
+      await page.locator("#keyName").waitFor({ state: "visible", timeout: 5_000 });
+      await page.locator("#keyName").fill(`e2e-delete-${Date.now()}`);
 
-        // Confirmation modal
-        const confirmDelete = page.getByRole("dialog").getByRole("button", { name: "Delete" });
-        await confirmDelete.waitFor({ state: "visible", timeout: 15_000 });
-        await confirmDelete.click();
-
-        // Toast confirmation
-        await page.getByRole("alert").getByText(/Deleted API key/).waitFor({ state: "visible", timeout: 15_000 });
+      const appSelect = page.locator("#appSelect");
+      if (await appSelect.isVisible({ timeout: 2_000 }).catch(() => false)) {
+        await appSelect.click();
+        await page.getByRole("option", { name: /Create new application/ }).click();
+        const appDesc = page.locator("#appDesc");
+        if (await appDesc.isVisible({ timeout: 1_000 }).catch(() => false)) {
+          await appDesc.fill("E2E test application");
+        }
       }
+
+      await page.getByRole("button", { name: "Create", exact: true }).click();
+      await page.locator("#fullKey").waitFor({ state: "visible", timeout: 10_000 });
+      await page.getByRole("button", { name: "OK", exact: true }).click();
+      await page.locator("#keyName").waitFor({ state: "hidden", timeout: 5_000 });
+
+      // Now delete it
+      const deleteBtn = page.getByRole("button", { name: "Delete" }).first();
+      await deleteBtn.waitFor({ state: "visible", timeout: 5_000 });
+      await deleteBtn.click();
+
+      // Confirmation modal
+      const confirmDelete = page.getByRole("dialog").getByRole("button", { name: "Delete" });
+      await confirmDelete.waitFor({ state: "visible", timeout: 15_000 });
+      await confirmDelete.click();
+
+      // Toast confirmation
+      await page.getByRole("alert").getByText(/Deleted API key/).waitFor({ state: "visible", timeout: 15_000 });
     } finally {
       await context.close();
     }
