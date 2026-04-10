@@ -14,6 +14,8 @@ export interface ComponentEntry {
 
 export interface Manifest {
   components: Partial<Record<string, ComponentEntry>>;
+  /** Non-secret metadata about the configured DB connection. */
+  db?: { hint: string };
 }
 
 const MANIFEST_PATH = "/opt/xinity/manifest.json";
@@ -46,6 +48,13 @@ export async function writeManifest(manifest: Manifest, host?: Host): Promise<vo
   const json = JSON.stringify(manifest, null, 2);
   const cmd = `mkdir -p /opt/xinity && cat > ${MANIFEST_PATH} << 'MANIFEST_EOF'\n${json}\nMANIFEST_EOF`;
   await h.withElevation(cmd, "Write install manifest");
+}
+
+/** Persist a non-secret DB hint (user@host:port/dbname) into the manifest. */
+export async function saveDbHint(hint: string, host?: Host): Promise<void> {
+  const manifest = await readManifest(host);
+  manifest.db = { hint };
+  await writeManifest(manifest, host);
 }
 
 /** Update a single component entry in the manifest. */
