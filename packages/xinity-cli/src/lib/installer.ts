@@ -11,6 +11,7 @@ import * as p from "./clack.ts";
 import pc from "picocolors";
 
 import { fetchRelease, downloadAsset, fetchChecksums, verifySha256, getAssetName, resolveDirectUrl, type Release } from "./github.ts";
+import { buildLocalArtifact } from "./local-build.ts";
 import { readManifest, updateManifestEntry, writeManifest } from "./manifest.ts";
 import { generateUnit, getComponentConfig, unitName, type UnitConfig } from "./systemd.ts";
 import { analyzeEnvSchema, categorizeFields, promptForEnv } from "./env-prompt.ts";
@@ -627,43 +628,73 @@ async function installUnit(component: Component, secretKeys: string[], host: Hos
 
 // ─── Main orchestrator ─────────────────────────────────────────────────────
 
-export async function installComponent(opts: {
-  component: Component;
-  targetVersion: string;
-  dryRun?: boolean;
-  hardReset?: boolean;
-  host?: Host;
-  /** Extra env defaults carried from prior setup steps (e.g. DB_CONNECTION_URL, REDIS_URL). */
-  envOverrides?: Record<string, string>;
-}): Promise<InstallResult> {
-  const { component, targetVersion, dryRun = false, hardReset = false } = opts;
-  const host = opts.host ?? createLocalHost();
-  const errors: string[] = [];
+type ArtifactResult =
+  | { status: "ready"; archivePath: string; versionString: string; isUpdate: boolean }
+  | { status: "skipped"; version: string }
+  | { status: "failed"; version: string };
 
-  // 1. Pre-checks
-  const preErrors = await preChecks(component, host);
-  if (preErrors.length > 0) {
-    for (const err of preErrors) fail("Pre-check", err);
-    return { success: false, version: "", errors: preErrors };
+/**
+ * Resolve what to install: either build from a local repo (local: prefix) or
+ * fetch the appropriate zip from a GitHub release. Returns a ready archive path
+ * on the target host plus the version label and update flag.
+ */
+async function resolveArtifact(
+  component: Component,
+  targetVersion: string,
+  dryRun: boolean,
+  host: Host,
+): Promise<ArtifactResult> {
+  if (targetVersion.startsWith("local:")) {
+    const repoPath = targetVersion.slice(6);
+    const hostArch = await host.getArch();
+
+    if (dryRun) {
+      pass("Local build", `Would build ${component} from ${repoPath} for linux/${hostArch}`);
+      return { status: "skipped", version: "local" };
+    }
+
+    const buildResult = await buildLocalArtifact(component, repoPath, hostArch as "x64" | "arm64");
+    if (!buildResult) return { status: "failed", version: "" };
+
+    const isUpdate = !!(await readManifest(host)).components[component];
+
+    if (!host.isRemote) {
+      return { status: "ready", archivePath: buildResult.archivePath, versionString: buildResult.version, isUpdate };
+    }
+
+    const remoteTmp = `/tmp/xinity-local-${Date.now()}.zip`;
+    const uploadSpinner = p.spinner();
+    uploadSpinner.start("Uploading artifact...");
+    try {
+      await host.uploadFile(buildResult.archivePath, remoteTmp);
+    } catch (err) {
+      uploadSpinner.stop("Upload failed");
+      fail("Upload", (err as Error).message);
+      return { status: "failed", version: buildResult.version };
+    }
+    uploadSpinner.stop("Uploaded");
+
+    const remoteHash = await host.computeSha256(remoteTmp);
+    if (remoteHash && remoteHash !== buildResult.sha256) {
+      fail("Verify", `Checksum mismatch after upload (local: ${buildResult.sha256}, remote: ${remoteHash})`);
+      return { status: "failed", version: buildResult.version };
+    }
+    pass("Verify", "Checksum matched");
+    return { status: "ready", archivePath: remoteTmp, versionString: buildResult.version, isUpdate };
   }
-  if (dryRun) pass("Pre-checks", "passed");
 
-  // 2. Resolve version
+  // GitHub release path
   const versionResult = await resolveVersion(component, targetVersion, host);
-  if (versionResult.status === "skipped") {
-    return { success: true, version: versionResult.version, errors: [] };
-  }
-  if (versionResult.status === "failed") {
-    return { success: false, version: "", errors: ["Version resolution failed"] };
-  }
+  if (versionResult.status === "skipped") return { status: "skipped", version: versionResult.version };
+  if (versionResult.status === "failed") return { status: "failed", version: "" };
+
   const { release, isUpdate } = versionResult;
 
   if (dryRun) {
     const hostArch = await host.getArch();
-    return dryRunSummary(component, release, isUpdate, hostArch);
+    return { status: "skipped", version: dryRunSummary(component, release, isUpdate, hostArch).version };
   }
 
-  // 3. Download & verify (on the target host)
   const hostArch = await host.getArch();
   const assetName = getAssetName(component, hostArch);
   let archivePath: string | null;
@@ -676,15 +707,101 @@ export async function installComponent(opts: {
     archivePath = await downloadAndVerify(release, assetName, tmpDir);
   }
 
-  if (!archivePath) {
-    return { success: false, version: release.tagName, errors: [] };
-  }
+  if (!archivePath) return { status: "failed", version: release.tagName };
+  return { status: "ready", archivePath, versionString: release.tagName, isUpdate };
+}
 
-  // 4. Stop existing service if updating
+/**
+ * Configure env, write unit, and start the service. Loops on failure to allow
+ * the user to reconfigure and retry without re-downloading the binary.
+ * Returns accumulated non-fatal errors (or null on a hard cancel/abort).
+ */
+async function configureAndStart(
+  component: Component,
+  autoDefaults: Record<string, string>,
+  host: Host,
+): Promise<string[] | null> {
+  const errors: string[] = [];
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const envResult = await configureEnv(component, host, autoDefaults);
+    if (!envResult) return null; // user cancelled
+
+    const wrote = await writeEnvConfig(component, envResult.config, envResult.secrets, host);
+    if (!wrote) errors.push("Failed to write configuration (may need manual setup)");
+
+    if (component === "daemon") {
+      await ensureDriverTools(envResult.config, envResult.secrets, host);
+    }
+
+    const secretKeys = Object.keys(envResult.secrets);
+    const unitInstalled = await installUnit(component, secretKeys, host);
+    if (!unitInstalled) errors.push("Systemd unit not installed (may need manual setup)");
+
+    const started = await startService(component, host);
+    if (started) return errors;
+
+    // Service failed - show diagnostics and offer retry
+    const unit = unitName(component);
+    p.log.warn(pc.yellow("Service failed to start. Diagnostic commands:"));
+    p.log.info(`  ${pc.cyan(`systemctl status ${unit}`)}`);
+    p.log.info(`  ${pc.cyan(`journalctl -u ${unit} -e --no-pager`)}`);
+
+    await host.withElevation(
+      `systemctl disable --now ${unit} 2>/dev/null; systemctl reset-failed ${unit} 2>/dev/null`,
+      `Disable ${unit}`,
+    );
+
+    const action = await p.select({
+      message: "How would you like to proceed?",
+      options: [
+        { value: "retry", label: "Reconfigure and try again" },
+        { value: "continue", label: "Continue anyway (service not running)" },
+        { value: "abort", label: "Abort" },
+      ],
+    });
+
+    if (p.isCancel(action) || action === "abort") return null;
+    if (action === "continue") {
+      errors.push("Service did not start successfully");
+      return errors;
+    }
+    // retry → loop back to configureEnv
+  }
+}
+
+export async function installComponent(opts: {
+  component: Component;
+  targetVersion: string;
+  dryRun?: boolean;
+  hardReset?: boolean;
+  host?: Host;
+  /** Extra env defaults carried from prior setup steps (e.g. DB_CONNECTION_URL, REDIS_URL). */
+  envOverrides?: Record<string, string>;
+}): Promise<InstallResult> {
+  const { component, targetVersion, dryRun = false, hardReset = false } = opts;
+  const host = opts.host ?? createLocalHost();
+
+  // 1. Pre-checks
+  const preErrors = await preChecks(component, host);
+  if (preErrors.length > 0) {
+    for (const err of preErrors) fail("Pre-check", err);
+    return { success: false, version: "", errors: preErrors };
+  }
+  if (dryRun) pass("Pre-checks", "passed");
+
+  // 2. Resolve version and download / build archive
+  const artifact = await resolveArtifact(component, targetVersion, dryRun, host);
+  if (artifact.status === "skipped") return { success: true, version: artifact.version, errors: [] };
+  if (artifact.status === "failed") return { success: false, version: artifact.version, errors: ["Artifact resolution failed"] };
+
+  const { archivePath, versionString, isUpdate } = artifact;
+
+  // 3. Stop existing service if updating
   if (isUpdate) {
     await stopService(component, host);
 
-    // Hard reset: wipe systemd-managed state directory
     if (hardReset) {
       const unit = unitName(component);
       info("Hard reset", `Cleaning state for ${unit}…`);
@@ -700,82 +817,20 @@ export async function installComponent(opts: {
     }
   }
 
-  // 5. Install binary/files
+  // 4. Install binary
   const installed = await installBinary(component, archivePath, host);
-  if (!installed) {
-    return { success: false, version: release.tagName, errors: ["Installation failed or skipped"] };
-  }
+  if (!installed) return { success: false, version: versionString, errors: ["Installation failed or skipped"] };
 
-  // 6-8. Configure → install unit → start (with retry on failure)
+  // 5. Configure env, install unit, start service (with retry loop)
   const autoDefaults = { ...getAutoDefaults(component), ...(opts.envOverrides ?? {}) };
+  const errors = await configureAndStart(component, autoDefaults, host);
+  if (errors === null) return { success: false, version: versionString, errors: ["Aborted"] };
 
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    // 6. Configure environment
-    const envResult = await configureEnv(component, host, autoDefaults);
-    if (!envResult) {
-      return { success: false, version: release.tagName, errors: ["Configuration cancelled"] };
-    }
-
-    const wrote = await writeEnvConfig(component, envResult.config, envResult.secrets, host);
-    if (!wrote) {
-      errors.push("Failed to write configuration (may need manual setup)");
-    }
-
-    // 6b. Ensure driver tools are available (daemon only)
-    if (component === "daemon") {
-      await ensureDriverTools(envResult.config, envResult.secrets, host);
-    }
-
-    // 7. Generate and install systemd unit
-    const secretKeys = Object.keys(envResult.secrets);
-    const unitInstalled = await installUnit(component, secretKeys, host);
-    if (!unitInstalled) {
-      errors.push("Systemd unit not installed (may need manual setup)");
-    }
-
-    // 8. Start service
-    const started = await startService(component, host);
-    if (started) break;
-
-    // Service failed, show diagnostic commands and offer retry
-    const unit = unitName(component);
-    p.log.warn(pc.yellow("Service failed to start. Diagnostic commands:"));
-    p.log.info(`  ${pc.cyan(`systemctl status ${unit}`)}`);
-    p.log.info(`  ${pc.cyan(`journalctl -u ${unit} -e --no-pager`)}`);
-
-    // Disable the unit so it doesn't keep trying to restart
-    await host.withElevation(
-      `systemctl disable --now ${unit} 2>/dev/null; systemctl reset-failed ${unit} 2>/dev/null`,
-      `Disable ${unit}`,
-    );
-
-    const action = await p.select({
-      message: "How would you like to proceed?",
-      options: [
-        { value: "retry", label: "Reconfigure and try again" },
-        { value: "continue", label: "Continue anyway (service not running)" },
-        { value: "abort", label: "Abort" },
-      ],
-    });
-
-    if (p.isCancel(action) || action === "abort") {
-      return { success: false, version: release.tagName, errors: ["Service failed to start"] };
-    }
-    if (action === "continue") {
-      errors.push("Service did not start successfully");
-      break;
-    }
-    // retry → loop back to configureEnv
-  }
-
-  // 9. Update manifest
+  // 6. Update manifest
   const binaryPath = `${BIN_DIR}/${binaryBaseName(component)}`;
-
   const binaryChecksum = (await host.computeSha256(binaryPath)) ?? undefined;
-
   await updateManifestEntry(component, {
-    version: release.tagName,
+    version: versionString,
     installedAt: new Date().toISOString(),
     binaryPath,
     unitName: unitName(component),
@@ -783,11 +838,8 @@ export async function installComponent(opts: {
   }, host);
 
   const success = errors.length === 0;
-  if (success) {
-    pass("Done", `${component} ${release.tagName} installed successfully`);
-  }
-
-  return { success, version: release.tagName, errors };
+  if (success) pass("Done", `${component} ${versionString} installed successfully`);
+  return { success, version: versionString, errors };
 }
 
 /** Show onboarding hints after a dashboard install. */
@@ -880,10 +932,11 @@ function dryRunSummary(
 }
 
 /** Run an action for each component in sequence, prompting to continue on failure. */
+/** Returns true if all components completed, false if the user aborted mid-sequence. */
 async function runComponentSequence<T extends { success: boolean; errors: string[] }>(
   components: Component[],
   action: (component: Component) => Promise<T>,
-): Promise<void> {
+): Promise<boolean> {
   for (const component of components) {
     p.log.step(pc.bold(`\n── ${component} ──`));
     const result = await action(component);
@@ -893,13 +946,19 @@ async function runComponentSequence<T extends { success: boolean; errors: string
         message: "Continue with remaining components?",
         initialValue: true,
       });
-      if (p.isCancel(cont) || !cont) return;
+      if (p.isCancel(cont) || !cont) return false;
     }
   }
+  return true;
 }
 
 /** Install all components in sequence, carrying shared env vars forward. */
 export async function installAll(targetVersion: string, dryRun = false, hardReset = false, host?: Host): Promise<void> {
+  if (targetVersion.startsWith("local:")) {
+    fail("Local build", "'xinity up all' does not support local: builds. Run 'xinity up <component>' for each component individually.");
+    return;
+  }
+
   const resolvedHost = host ?? createLocalHost();
 
   // Shared env vars accumulated across setup steps
@@ -951,31 +1010,11 @@ export async function installAll(targetVersion: string, dryRun = false, hardRese
     }
   }
 
-  // ── 4. Gateway ─────────────────────────────────────────────────────────
-  p.log.step(pc.bold("\n── gateway ──"));
-  const gwResult = await installComponent({
-    component: "gateway",
-    targetVersion, dryRun, hardReset, host: resolvedHost,
-    envOverrides: shared,
-  });
-  if (!gwResult.success) {
-    warn("Partial", `gateway had issues: ${gwResult.errors.join(", ")}`);
-    const cont = await p.confirm({ message: "Continue with remaining components?", initialValue: true });
-    if (p.isCancel(cont) || !cont) return;
-  }
-
-  // ── 5. Dashboard ───────────────────────────────────────────────────────
-  p.log.step(pc.bold("\n── dashboard ──"));
-  const dashResult = await installComponent({
-    component: "dashboard",
-    targetVersion, dryRun, hardReset, host: resolvedHost,
-    envOverrides: shared,
-  });
-  if (!dashResult.success) {
-    warn("Partial", `dashboard had issues: ${dashResult.errors.join(", ")}`);
-    const cont = await p.confirm({ message: "Continue with remaining components?", initialValue: true });
-    if (p.isCancel(cont) || !cont) return;
-  }
+  // ── 4+5. Gateway + Dashboard ───────────────────────────────────────────
+  const coreOk = await runComponentSequence(["gateway", "dashboard"], (component) =>
+    installComponent({ component, targetVersion, dryRun, hardReset, host: resolvedHost, envOverrides: shared }),
+  );
+  if (!coreOk) return;
 
   // ── 6. Daemon (optional) ──────────────────────────────────────────────
   const installDaemon = await p.confirm({
@@ -1149,7 +1188,27 @@ export async function removeComponent(opts: {
     }
   }
 
-  // 6. Purge state data if requested
+  // 6. Remove daemon-specific extras: vLLM template unit (always) and /etc/vllm (on purge)
+  if (component === "daemon") {
+    const vllmTemplatePath = "/etc/systemd/system/vllm-driver@.service";
+    const rmTemplate = await host.withElevation(
+      `rm -f ${vllmTemplatePath} && systemctl daemon-reload`,
+      "Remove vLLM systemd template unit",
+    );
+    if (rmTemplate.success) pass("vLLM", `Removed ${vllmTemplatePath}`);
+    else if (!rmTemplate.skipped) errors.push(`Failed to remove vLLM template: ${rmTemplate.output}`);
+
+    if (purge) {
+      const rmVllmEnv = await host.withElevation(
+        "rm -rf /etc/vllm",
+        "Purge vLLM environment config",
+      );
+      if (rmVllmEnv.success) pass("Purge", "Removed /etc/vllm");
+      else if (!rmVllmEnv.skipped) errors.push(`Failed to purge /etc/vllm: ${rmVllmEnv.output}`);
+    }
+  }
+
+  // 7. Purge state data if requested
   if (purge) {
     const stateDir = `/var/lib/xinity-ai-${component}`;
     const rmState = await host.withElevation(
@@ -1163,7 +1222,7 @@ export async function removeComponent(opts: {
     }
   }
 
-  // 7. Remove manifest entry
+  // 8. Remove manifest entry
   delete manifest.components[component];
   await writeManifest(manifest, host);
   pass("Manifest", `Removed ${component} from manifest`);
