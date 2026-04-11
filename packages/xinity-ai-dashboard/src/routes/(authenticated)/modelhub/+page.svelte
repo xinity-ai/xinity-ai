@@ -216,7 +216,7 @@
                     </span>
                   {/if}
                   {#if deployment.status.progress != null}
-                    <div class="w-full bg-muted rounded-full h-2 mt-2">
+                    <div title="{deployment.status.progress * 100}%" class="w-full bg-muted rounded-full h-2 mt-2">
                       <div
                         class="bg-primary h-2 rounded-full transition-all"
                         style="width: {deployment.status.progress * 100}%"

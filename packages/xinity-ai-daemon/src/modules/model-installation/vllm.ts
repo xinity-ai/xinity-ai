@@ -388,7 +388,7 @@ export function syncVllmInstallations$(
               return defer(() =>
                 from(
                   (async () => {
-                    // Phase: downloading -- pre-fetch model weights before starting the server
+                    // Download model weights before starting the server
                     await updateInstallationState(installation.id, "downloading", {
                       statusMessage: "Downloading model",
                       progress: 0,
@@ -403,7 +403,7 @@ export function syncVllmInstallations$(
                       }
                     });
 
-                    // Phase: installing -- start the server (weights are already cached)
+                    // Weights are cached, start the vLLM server
                     await updateInstallationState(installation.id, "installing", {
                       statusMessage: "Starting vLLM service",
                     });

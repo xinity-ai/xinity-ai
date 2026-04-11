@@ -1,93 +1,167 @@
-import { listFiles, downloadFileToCacheDir } from "@huggingface/hub";
 import { env } from "../../env";
 import { rootLogger } from "../../logger";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 const log = rootLogger.child({ name: "vllm-download" });
 
+const HF_API_URL = "https://huggingface.co";
+
+interface HfFileEntry {
+  path: string;
+  size: number;
+  lfs: { size: number } | null;
+}
+
+function authHeaders(): Record<string, string> {
+  return env.VLLM_HF_TOKEN ? { Authorization: `Bearer ${env.VLLM_HF_TOKEN}` } : {};
+}
+
+function cleanEtag(raw: string): string {
+  return raw.replace(/^W\//, "").replace(/"/g, "");
+}
+
+function fileSize(f: HfFileEntry): number {
+  return f.lfs?.size ?? f.size;
+}
+
+async function hfFetch(url: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(url, { ...init, headers: { ...authHeaders(), ...init?.headers } });
+  if (!res.ok && res.status !== 206) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`${res.status} ${res.statusText}. ${body}. URL: ${url}`);
+  }
+  return res;
+}
+
 /**
- * Downloads a model's files into the HuggingFace cache directory using
- * the @huggingface/hub SDK. Reports byte-level progress via onProgress.
- *
- * The SDK writes to the standard HF cache layout (blobs/ + snapshots/),
- * which vllm reads on startup without needing to re-download.
+ * Downloads model files into the HuggingFace cache directory, writing the
+ * standard blob/snapshot/ref layout that vllm reads on startup. Supports
+ * resuming partial downloads via Range headers and .incomplete files.
  */
 export async function downloadModel(
   model: string,
   onProgress: (progress: number) => Promise<void>,
 ): Promise<void> {
-  const credentials = env.VLLM_HF_TOKEN ? { accessToken: env.VLLM_HF_TOKEN } : undefined;
-  const cacheDir = env.VLLM_HF_CACHE_DIR;
+  const repoDir = path.join(env.VLLM_HF_CACHE_DIR, "hub", `models--${model.replace("/", "--")}`);
+  const blobsDir = path.join(repoDir, "blobs");
+  const refsDir = path.join(repoDir, "refs");
 
-  // 1. Enumerate files and compute total bytes
-  const files: Array<{ path: string; size: number }> = [];
-  for await (const entry of listFiles({ repo: model, recursive: true, ...credentials })) {
-    if (entry.type !== "file") continue;
-    files.push({ path: entry.path, size: entry.lfs?.size ?? entry.size });
-  }
+  fs.mkdirSync(blobsDir, { recursive: true });
+  fs.mkdirSync(refsDir, { recursive: true });
 
-  const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
-  log.info({ model, fileCount: files.length, totalBytes }, "Starting model download");
+  const { files, commitHash } = await listRepoFiles(model);
+  const totalBytes = files.reduce((sum, f) => sum + fileSize(f), 0);
+  log.info({ model, fileCount: files.length, totalBytes, commitHash }, "Starting model download");
 
   if (totalBytes === 0) {
     await onProgress(1);
     return;
   }
 
-  // 2. Download each file, tracking byte-level progress via a fetch wrapper
+  const snapshotDir = path.join(repoDir, "snapshots", commitHash);
+  fs.mkdirSync(snapshotDir, { recursive: true });
+
   let downloadedBytes = 0;
 
   for (const file of files) {
-    const progressFetch = createProgressFetch((bytes) => {
+    const { etag, bytesDownloaded } = await downloadFileToCache(model, file.path, blobsDir, commitHash, (bytes) => {
       downloadedBytes += bytes;
       return onProgress(downloadedBytes / totalBytes);
     });
 
-    await downloadFileToCacheDir({
-      repo: model,
-      path: file.path,
-      cacheDir,
-      fetch: progressFetch as typeof globalThis.fetch,
-      ...credentials,
-    });
+    linkSnapshot(snapshotDir, file.path, path.join(blobsDir, etag));
 
-    // If the file was already cached, downloadFileToCacheDir skips the
-    // download entirely and our fetch wrapper never fires.  Advance
-    // progress by the file's full size to keep the counter accurate.
-    const expectedEnd = files
-      .slice(0, files.indexOf(file) + 1)
-      .reduce((s, f) => s + f.size, 0);
-    if (downloadedBytes < expectedEnd) {
-      downloadedBytes = expectedEnd;
+    if (bytesDownloaded === 0) {
+      downloadedBytes += fileSize(file);
       await onProgress(downloadedBytes / totalBytes);
     }
   }
 
+  fs.writeFileSync(path.join(refsDir, "main"), commitHash);
   log.info({ model }, "Model download complete");
 }
 
-/**
- * Creates a fetch wrapper that intercepts response bodies to count bytes
- * flowing through. Calls `onBytes(chunkLength)` for each chunk read.
- */
-function createProgressFetch(
-  onBytes: (bytes: number) => Promise<void>,
-): (input: string | URL | Request, init?: RequestInit) => Promise<Response> {
-  return async (input, init) => {
-    const response = await fetch(input, init);
+function linkSnapshot(snapshotDir: string, filePath: string, blobPath: string): void {
+  const snapshotPath = path.join(snapshotDir, filePath);
+  const parentDir = path.dirname(snapshotPath);
+  fs.mkdirSync(parentDir, { recursive: true });
+  try { fs.unlinkSync(snapshotPath); } catch { /* no existing link */ }
+  fs.symlinkSync(path.relative(parentDir, blobPath), snapshotPath);
+}
 
-    if (!response.body) return response;
+async function listRepoFiles(model: string): Promise<{ files: HfFileEntry[]; commitHash: string }> {
+  const info = (await (await hfFetch(`${HF_API_URL}/api/models/${model}`)).json()) as { sha: string };
 
-    const transform = new TransformStream<Uint8Array, Uint8Array>({
-      async transform(chunk, controller) {
-        controller.enqueue(chunk);
-        await onBytes(chunk.byteLength);
-      },
-    });
+  const entries = (await (await hfFetch(
+    `${HF_API_URL}/api/models/${model}/tree/${info.sha}?recursive=true`,
+  )).json()) as Array<{ type: string; path: string; size: number; lfs?: { size: number } }>;
 
-    return new Response(response.body.pipeThrough(transform), {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
-    });
+  return {
+    commitHash: info.sha,
+    files: entries
+      .filter((e) => e.type === "file")
+      .map((e) => ({ path: e.path, size: e.size, lfs: e.lfs ?? null })),
   };
+}
+
+async function downloadFileToCache(
+  model: string,
+  filePath: string,
+  blobsDir: string,
+  commitHash: string,
+  onBytes: (bytes: number) => Promise<void>,
+): Promise<{ etag: string; bytesDownloaded: number }> {
+  const resolveUrl = `${HF_API_URL}/${model}/resolve/${commitHash}/${filePath}`;
+
+  // Resolve etag (blob filename) via HEAD, preferring x-linked-etag
+  const headRes = await hfFetch(resolveUrl, { method: "HEAD", redirect: "follow" });
+  const rawEtag = headRes.headers.get("x-linked-etag") ?? headRes.headers.get("etag");
+  if (!rawEtag) throw new Error(`No etag returned for ${filePath}`);
+
+  const etag = cleanEtag(rawEtag);
+  const blobPath = path.join(blobsDir, etag);
+
+  if (fs.existsSync(blobPath)) return { etag, bytesDownloaded: 0 };
+
+  const incompletePath = `${blobPath}.incomplete`;
+  const existingBytes = getFileSize(incompletePath);
+
+  const dlRes = await hfFetch(resolveUrl, {
+    headers: existingBytes > 0 ? { Range: `bytes=${existingBytes}-` } : {},
+    redirect: "follow",
+  });
+
+  if (!dlRes.body) throw new Error(`No response body for ${filePath}`);
+
+  const bytesDownloaded = await streamToFile(incompletePath, dlRes.body, existingBytes > 0 && dlRes.status === 206, onBytes);
+  fs.renameSync(incompletePath, blobPath);
+
+  return { etag, bytesDownloaded: bytesDownloaded + existingBytes };
+}
+
+function getFileSize(filePath: string): number {
+  try { return fs.statSync(filePath).size; }
+  catch { return 0; }
+}
+
+async function streamToFile(
+  filePath: string,
+  body: ReadableStream<Uint8Array>,
+  append: boolean,
+  onBytes: (bytes: number) => Promise<void>,
+): Promise<number> {
+  const fd = fs.openSync(filePath, append ? "a" : "w");
+  let total = 0;
+  try {
+    for await (const chunk of body) {
+      const buf = chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk);
+      fs.writeSync(fd, buf);
+      total += buf.byteLength;
+      await onBytes(buf.byteLength);
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+  return total;
 }
