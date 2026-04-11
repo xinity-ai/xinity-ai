@@ -190,7 +190,6 @@ export function createDockerVllmOps(): VllmOps {
         "-p", `${config.port}:8000`,
         "-e", "HF_HOME=/data/hf-cache",
         "-e", "TRITON_CACHE_DIR=/data/triton-cache",
-        ...(env.VLLM_HF_TOKEN ? ["-e", `HF_TOKEN=${env.VLLM_HF_TOKEN}`] : []),
         "-v", `${env.VLLM_HF_CACHE_DIR}:/data/hf-cache`,
         "-v", `${env.VLLM_TRITON_CACHE_DIR}:/data/triton-cache`,
         "--restart", "unless-stopped",

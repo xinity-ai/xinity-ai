@@ -489,6 +489,14 @@
     url = "https://registry.npmjs.org/@hexagon/base64/-/base64-1.1.28.tgz";
     hash = "sha512-lhqDEAvWixy3bZ+UOYbPwUbBkwBq5C1LAJ/xPC8Oi+lL54oyakv/npbA0aU2hgCsx/1NUd4IBvV03+aUBWxerw==";
   };
+  "@huggingface/hub@2.11.0" = fetchurl {
+    url = "https://registry.npmjs.org/@huggingface/hub/-/hub-2.11.0.tgz";
+    hash = "sha512-WS6QGaXYeBVFlaB4SOn6z4LGUpLB5kRZNL08uUni4izX353KxiwwZMK5+/AWX86MJh8SMZNa/JFcvFCcQsbszQ==";
+  };
+  "@huggingface/tasks@0.19.90" = fetchurl {
+    url = "https://registry.npmjs.org/@huggingface/tasks/-/tasks-0.19.90.tgz";
+    hash = "sha512-nfV9luJbvwGQ/5oKXkKhCV9h4X7mwh1YaGG3ORd6UMLDSwr1OFSSatcBX0O9OtBtmNK19aGSjbLFqqgcIR6+IA==";
+  };
   "@internationalized/date@3.12.0" = fetchurl {
     url = "https://registry.npmjs.org/@internationalized/date/-/date-3.12.0.tgz";
     hash = "sha512-/PyIMzK29jtXaGU23qTvNZxvBXRtKbNnGDFD+PY6CZw/Y8Ex8pFUzkuCJCG9aOqmShjqhS9mPqP6Dk5onQY8rQ==";
@@ -1148,6 +1156,10 @@
   "clean-css@4.2.4" = fetchurl {
     url = "https://registry.npmjs.org/clean-css/-/clean-css-4.2.4.tgz";
     hash = "sha512-EJUDT7nDVFDvaQgAo2G/PJvxmp1o/c6iXLbswsBbUFXi1Nr+AjA2cKmfbKDMjMvzEe75g3P6JkaDDAKk96A85A==";
+  };
+  "cli-progress@3.12.0" = fetchurl {
+    url = "https://registry.npmjs.org/cli-progress/-/cli-progress-3.12.0.tgz";
+    hash = "sha512-tRkV3HJ1ASwm19THiiLIXLO7Im7wlTuKnvkYaTkyoAPefqjNg7W7DHKUlGRxy9vxDvbyCYQkQozvptuMkGCg8A==";
   };
   "cliui@8.0.1" = fetchurl {
     url = "https://registry.npmjs.org/cliui/-/cliui-8.0.1.tgz";

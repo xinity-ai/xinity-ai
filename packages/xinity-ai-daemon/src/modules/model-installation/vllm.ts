@@ -7,7 +7,6 @@ import {
   filter,
   from,
   ignoreElements,
-  map,
   mergeMap,
   Observable,
   switchMap,
@@ -27,6 +26,7 @@ import { createInfoserverClient } from "xinity-infoserver";
 import { rootLogger } from "../../logger";
 import { getHardwareProfile } from "../statekeeper";
 import { getFreeMemoryMb } from "../hardware-detect";
+import { downloadModel } from "./vllm-download";
 
 const infoClient = createInfoserverClient({ baseUrl: env.INFOSERVER_URL, cacheTtlMs: env.INFOSERVER_CACHE_TTL_MS });
 
@@ -51,7 +51,7 @@ const FATAL_LOG_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
   // ── Model / config ───────────────────────────────────────────────────────
   { pattern: /Model architectures \[.*\] are not supported/i, label: "Unsupported model architecture" },
   { pattern: /max_model_len.*is too large|the model's max seq_len/i, label: "Configured context length too large" },
-  { pattern: /Access to model.*is restricted|gated repo|Cannot access gated repo/i, label: "HuggingFace authentication required" },
+  { pattern: /Access to model.*is restricted|gated repo|Cannot access gated repo|You must have access to it and be authenticated/i, label: "HuggingFace authentication required" },
   { pattern: /OSError:.*does not appear to have a file named|repository.*not found|does not exist on the Hub/i, label: "Model files missing or not found" },
 
   // ── Permissions ──────────────────────────────────────────────────────────
@@ -382,90 +382,107 @@ export function syncVllmInstallations$(
             );
           }
 
-          const start$ = from(toAdd).pipe(
-            mergeMap(
-              (installation) =>
-                defer(() =>
-                  from(
-                    updateInstallationState(installation.id, "installing", {
+          return from(toAdd).pipe(
+            mergeMap((installation) => {
+              let containerStarted = false;
+              return defer(() =>
+                from(
+                  (async () => {
+                    // Phase: downloading -- pre-fetch model weights before starting the server
+                    await updateInstallationState(installation.id, "downloading", {
+                      statusMessage: "Downloading model",
+                      progress: 0,
+                    });
+
+                    let lastProgressAt = 0;
+                    await downloadModel(installation.model, async (progress) => {
+                      const now = Date.now();
+                      if (now - lastProgressAt >= 5000) {
+                        lastProgressAt = now;
+                        await updateInstallationState(installation.id, "downloading", { progress });
+                      }
+                    });
+
+                    // Phase: installing -- start the server (weights are already cached)
+                    await updateInstallationState(installation.id, "installing", {
                       statusMessage: "Starting vLLM service",
-                    }),
-                  ),
-                ).pipe(
-                  switchMap(() =>
-                    from(
-                      Promise.all([
-                        infoClient.hasTag(installation.model, "custom_code"),
-                        infoClient.hasTag(installation.model, "tools"),
-                        infoClient.resolveDriverArgs(installation.model),
-                        infoClient.fetchModel(installation.model),
-                        getHardwareProfile(),
-                      ]).then(async ([trustRemoteCode, hasToolsTag, extraArgs, modelInfo, profile]) => {
-                        let gpuMemoryUtilization: number | undefined;
-                        if (profile.gpuCount > 0 && profile.detectedCapacityGb > 0) {
-                          const totalCapacityGb = profile.detectedCapacityGb;
-                          const requiredGb = installation.estCapacity * 1.1;
-                          const freeMemoryMb = await getFreeMemoryMb(profile.source);
+                    });
 
-                          if (freeMemoryMb != null) {
-                            const freeGb = freeMemoryMb / 1024;
-                            const safetyMarginGb = 1.0;
-                            const maxClaimGb = Math.max(freeGb - safetyMarginGb, requiredGb);
-                            gpuMemoryUtilization = Math.min(maxClaimGb / totalCapacityGb, 0.90);
-                          } else {
-                            gpuMemoryUtilization = Math.min(requiredGb / totalCapacityGb, 0.90);
-                          }
+                    const [trustRemoteCode, hasToolsTag, extraArgs, modelInfo, profile] = await Promise.all([
+                      infoClient.hasTag(installation.model, "custom_code"),
+                      infoClient.hasTag(installation.model, "tools"),
+                      infoClient.resolveDriverArgs(installation.model),
+                      infoClient.fetchModel(installation.model),
+                      getHardwareProfile(),
+                    ]);
 
-                          log.info(
-                            { model: installation.model, gpuMemoryUtilization: gpuMemoryUtilization.toFixed(3), estCapacityGb: installation.estCapacity, totalCapacityGb, freeMemoryMb },
-                            "Calculated GPU memory utilization",
-                          );
-                        }
-                        const modelType = modelInfo?.type;
-                        const resolvedExtraArgs = [
-                          ...(modelType === "embedding" || modelType === "rerank" ? ["--runner", "pooling"] : []),
-                          ...(hasToolsTag ? ["--enable-auto-tool-choice"] : []),
-                          ...extraArgs,
-                        ];
-                        return ops.start(installation.id, {
-                          model: installation.model,
-                          port: installation.port,
-                          kvCacheBytes: `${installation.kvCacheCapacity}G`,
-                          trustRemoteCode,
-                          gpuMemoryUtilization,
-                          extraArgs: resolvedExtraArgs,
-                        }).then(() => modelType);
-                      }),
-                    ),
-                  ),
-                  map((modelType) => ({ installation, modelType })),
+                    let gpuMemoryUtilization: number | undefined;
+                    if (profile.gpuCount > 0 && profile.detectedCapacityGb > 0) {
+                      const totalCapacityGb = profile.detectedCapacityGb;
+                      const requiredGb = installation.estCapacity * 1.1;
+                      const freeMemoryMb = await getFreeMemoryMb(profile.source);
+
+                      if (freeMemoryMb != null) {
+                        const freeGb = freeMemoryMb / 1024;
+                        const safetyMarginGb = 1.0;
+                        const maxClaimGb = Math.max(freeGb - safetyMarginGb, requiredGb);
+                        gpuMemoryUtilization = Math.min(maxClaimGb / totalCapacityGb, 0.90);
+                      } else {
+                        gpuMemoryUtilization = Math.min(requiredGb / totalCapacityGb, 0.90);
+                      }
+
+                      log.info(
+                        { model: installation.model, gpuMemoryUtilization: gpuMemoryUtilization.toFixed(3), estCapacityGb: installation.estCapacity, totalCapacityGb, freeMemoryMb },
+                        "Calculated GPU memory utilization",
+                      );
+                    }
+
+                    const modelType = modelInfo?.type;
+                    const resolvedExtraArgs = [
+                      ...(modelType === "embedding" || modelType === "rerank" ? ["--runner", "pooling"] : []),
+                      ...(hasToolsTag ? ["--enable-auto-tool-choice"] : []),
+                      ...extraArgs,
+                    ];
+                    await ops.start(installation.id, {
+                      model: installation.model,
+                      port: installation.port,
+                      kvCacheBytes: `${installation.kvCacheCapacity}G`,
+                      trustRemoteCode,
+                      gpuMemoryUtilization,
+                      extraArgs: resolvedExtraArgs,
+                    });
+                    containerStarted = true;
+                    return modelType;
+                  })(),
                 ),
-            ),
-          );
-
-          return start$.pipe(
-            mergeMap(({ installation, modelType }) =>
-              pollUntilHealthy$(installation, ops, modelType).pipe(
+              ).pipe(
+                switchMap((modelType) => pollUntilHealthy$(installation, ops, modelType)),
                 catchError((err) => {
                   log.error(
                     { err, model: installation.model, installationId: installation.id },
                     "vLLM failed to start",
                   );
-                  const preCapturedLogs: string | undefined = (err as { preCapturedLogs?: string })?.preCapturedLogs;
+                  const preCapturedLogs: string | undefined =
+                    (err as { preCapturedLogs?: string })?.preCapturedLogs ??
+                    (err as { downloadLogs?: string })?.downloadLogs;
                   return from(
                     (async () => {
-                      const logs = preCapturedLogs || await ops.getLogs(installation.id).catch(() => "");
+                      const logs = preCapturedLogs ||
+                        (containerStarted ? await ops.getLogs(installation.id).catch(() => "") : "");
+                      const fatalMatch = logs ? matchFatalPattern(logs) : null;
                       await updateInstallationState(installation.id, "failed", {
-                        errorMessage: String(err?.message ?? err),
+                        errorMessage: fatalMatch ?? String(err?.message ?? err),
                         statusMessage: "Failed to start",
                         failureLogs: logs || null,
                       });
-                      await ops.stop(installation.id).catch(() => {});
+                      if (containerStarted) {
+                        await ops.stop(installation.id).catch(() => {});
+                      }
                     })().catch(() => {}),
                   ).pipe(ignoreElements());
                 }),
-              ),
-            ),
+              );
+            }),
           );
         }),
       );
