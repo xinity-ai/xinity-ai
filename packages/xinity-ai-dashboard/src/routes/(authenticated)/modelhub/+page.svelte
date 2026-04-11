@@ -215,7 +215,7 @@
                       {deployment.status.phase === 'downloading' ? 'Downloading' : 'Installing'}
                     </span>
                   {/if}
-                  {#if deployment.status.progress}
+                  {#if deployment.status.progress != null}
                     <div class="w-full bg-muted rounded-full h-2 mt-2">
                       <div
                         class="bg-primary h-2 rounded-full transition-all"
