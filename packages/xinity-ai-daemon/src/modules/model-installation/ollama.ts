@@ -1,9 +1,9 @@
 import { Ollama } from "ollama";
 import { bufferTime, concatMap, defer, endWith, from, ignoreElements, map, merge, mergeMap, Observable, switchMap, tap } from "rxjs";
 import { env } from "../../env";
-import { getDB } from "../../db/connection";
-import { ModelInstallation, modelInstallationStateT } from "common-db";
+import { ModelInstallation } from "common-db";
 import { rootLogger } from "../../logger";
+import { updateInstallationState } from "./state";
 
 const log = rootLogger.child({ name: "ollama" });
 
@@ -32,14 +32,7 @@ function consumePull$({model, id}: ModelInstallation): Observable<void> {
         const lifecycleState = isDone ? "ready" : isInstalling ? "installing" : "downloading";
 
         try {
-          await getDB().insert(modelInstallationStateT)
-            .values({
-              id, lifecycleState, progress, statusMessage: newest.status,
-            })
-            .onConflictDoUpdate({
-            set: {lifecycleState, progress, statusMessage: newest.status},
-            target: modelInstallationStateT.id,
-          })
+          await updateInstallationState(id, lifecycleState, { progress, statusMessage: newest.status });
         } catch (err) {
           log.error({ err, model, installationId: id }, "Failed to update pull progress");
         }

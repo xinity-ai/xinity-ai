@@ -34,6 +34,15 @@ export interface VllmOps {
   ensureSetup(): Promise<void>;
 }
 
+async function checkHealth(port: number): Promise<boolean> {
+  try {
+    const res = await fetch(`http://localhost:${port}/health`);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Systemd implementation
 // ---------------------------------------------------------------------------
@@ -102,14 +111,7 @@ export function createSystemdVllmOps(): VllmOps {
       await $`rm -f ${env.VLLM_ENV_DIR}/${id}.env`;
     },
 
-    async checkHealth(port) {
-      try {
-        const res = await fetch(`http://localhost:${port}/health`);
-        return res.ok;
-      } catch {
-        return false;
-      }
-    },
+    checkHealth,
 
     async isAlive(id) {
       const result = await $`systemctl is-active vllm-driver@${id}.service`
@@ -221,14 +223,7 @@ export function createDockerVllmOps(): VllmOps {
       await $`docker rm ${containerName}`.nothrow();
     },
 
-    async checkHealth(port) {
-      try {
-        const res = await fetch(`http://localhost:${port}/health`);
-        return res.ok;
-      } catch {
-        return false;
-      }
-    },
+    checkHealth,
 
     async isAlive(id) {
       const containerName = `${DOCKER_CONTAINER_PREFIX}${id}`;
