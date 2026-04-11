@@ -146,10 +146,10 @@
   const minCanaryKvCache = $derived(selectedCanaryModel?.minKvCache ?? 0);
 
   const maxKvCache = $derived(
-    selectedPrimaryModel ? Math.max(minKvCache, Math.floor((maxNodeFreeCapacity - selectedPrimaryModel.weight) * 2) / 2) : 0,
+    selectedPrimaryModel ? Math.max(minKvCache, Math.floor((maxNodeFreeCapacity - selectedPrimaryModel.weight) * 10) / 10) : 0,
   );
   const maxCanaryKvCache = $derived(
-    selectedCanaryModel ? Math.max(minCanaryKvCache, Math.floor((maxNodeFreeCapacity - selectedCanaryModel.weight) * 2) / 2) : 0,
+    selectedCanaryModel ? Math.max(minCanaryKvCache, Math.floor((maxNodeFreeCapacity - selectedCanaryModel.weight) * 10) / 10) : 0,
   );
 
   const canaryTypeMismatch = $derived(

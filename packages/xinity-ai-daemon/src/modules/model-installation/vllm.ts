@@ -172,7 +172,7 @@ async function downloadAndStart(installation: ModelInstallation, ops: VllmOps): 
   await ops.start(installation.id, {
     model: installation.model,
     port: installation.port,
-    kvCacheBytes: `${installation.kvCacheCapacity}G`,
+    kvCacheBytes: `${installation.kvCacheCapacity}g`,
     trustRemoteCode,
     gpuMemoryUtilization,
     extraArgs: [
