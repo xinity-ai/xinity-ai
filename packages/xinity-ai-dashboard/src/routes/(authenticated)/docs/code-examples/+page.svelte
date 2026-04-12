@@ -183,7 +183,7 @@
             <span class="text-xinity-magenta font-bold">&#8226;</span>
             <span
               >Use streaming for long-form content to improve perceived
-              performance</span
+              performance and avoid request timeouts from long waiting times</span
             >
           </li>
           <li class="flex items-start gap-2">

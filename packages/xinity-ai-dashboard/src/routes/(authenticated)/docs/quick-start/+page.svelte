@@ -13,7 +13,7 @@ client = OpenAI(
 
 # Create a chat completion
 response = client.chat.completions.create(
-    model="<your-model>",
+    model=os.getenv("MODEL"),
     messages=[
         { "role": "system", "content": "You are a helpful assistant." },
         { "role": "user", "content": "Hello! What can you help me with?" }
@@ -26,16 +26,14 @@ print(response.choices[0].message.content)`;
 
   const javascriptExample = `import { OpenAI } from "openai";
 
-// Configure the client
 const openai = new OpenAI({
     baseURL: "${apiBase}",
     apiKey: process.env.API_KEY,
 });
 
-// Create a chat completion
 async function chat() {
     const completion = await openai.chat.completions.create({
-        model: "<your-model>",
+        model: process.env.MODEL,
         messages: [
             { role: "system", content: "You are a helpful assistant." },
             { role: "user", content: "Hello! What can you help me with?" }
@@ -63,7 +61,7 @@ client = OpenAI(
 # All requests from this client will be tagged
 # under the "my-chatbot" application
 response = client.chat.completions.create(
-    model="<your-model>",
+    model=os.getenv("MODEL"),
     messages=[
         { "role": "user", "content": "Hello!" }
     ],
@@ -84,7 +82,7 @@ const openai = new OpenAI({
 // All requests from this client will be tagged
 // under the "my-chatbot" application
 const completion = await openai.chat.completions.create({
-    model: "<your-model>",
+    model: process.env.MODEL,
     messages: [
         { role: "user", content: "Hello!" }
     ],
@@ -94,10 +92,10 @@ console.log(completion.choices[0].message.content);`;
 
   const curlXAppExample = `curl ${apiBase}/chat/completions \\
   -H "Content-Type: application/json" \\
-  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "Authorization: Bearer $API_KEY" \\
   -H "X-Application: my-chatbot" \\
   -d '{
-    "model": "<your-model>",
+    "model": "'"'$MODEL'"'",
     "messages": [
       {"role": "user", "content": "Hello!"}
     ]

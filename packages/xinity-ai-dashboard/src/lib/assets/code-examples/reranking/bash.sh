@@ -1,10 +1,8 @@
-MODEL="<your-rerank-model>"
-
 curl {{API_BASE}}/rerank \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $API_KEY" \
   -d '{
-    "model": "'$MODEL'",
+    "model": "'"$MODEL"'",
     "query": "What is the capital of France?",
     "documents": [
       "Paris is the capital and most populous city of France.",

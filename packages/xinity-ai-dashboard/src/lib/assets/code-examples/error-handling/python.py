@@ -3,18 +3,16 @@ import time
 from openai import OpenAI
 from openai.error import RateLimitError, APIError
 
-MODEL = "<your-model>"
-
 client = OpenAI(
-  api_key = os.getenv("API_KEY"),
-  base_url = "{{API_BASE}}",
+  api_key=os.getenv("API_KEY"),
+  base_url="{{API_BASE}}",
 )
 
 def chat_with_retry(messages, max_retries=3):
     for attempt in range(max_retries):
         try:
             response = client.chat.completions.create(
-                model=MODEL,
+                model=os.getenv("MODEL"),
                 messages=messages,
                 temperature=0.7,
                 max_tokens=1500

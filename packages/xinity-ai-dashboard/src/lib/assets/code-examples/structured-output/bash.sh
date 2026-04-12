@@ -1,10 +1,8 @@
-MODEL="<your-model>"
-
 curl {{API_BASE}}/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $API_KEY" \
   -d '{
-    "model": "'$MODEL'",
+    "model": "'"$MODEL"'",
     "messages": [
       {"role": "system", "content": "Extract structured data from the text."},
       {"role": "user", "content": "John Smith is 32 years old and works as a software engineer at Acme Corp in Berlin."}

@@ -1,15 +1,12 @@
-const MODEL = "<your-rerank-model>";
-const API_BASE = "{{API_BASE}}";
-
 async function rerank() {
-  const response = await fetch(`${API_BASE}/rerank`, {
+  const response = await fetch("{{API_BASE}}/rerank", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${process.env.API_KEY}`,
     },
     body: JSON.stringify({
-      model: MODEL,
+      model: process.env.MODEL,
       query: "What is the capital of France?",
       documents: [
         "Paris is the capital and most populous city of France.",

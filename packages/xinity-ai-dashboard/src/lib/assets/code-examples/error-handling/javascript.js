@@ -1,7 +1,5 @@
 import { OpenAI } from "openai";
 
-const MODEL = "<your-model>";
-
 const openai = new OpenAI({
     baseURL: "{{API_BASE}}",
     apiKey: process.env.API_KEY,
@@ -11,7 +9,7 @@ async function chatWithRetry(messages, maxRetries = 3) {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       const completion = await openai.chat.completions.create({
-        model: MODEL,
+        model: process.env.MODEL,
         messages: messages,
         temperature: 0.7,
         max_tokens: 1500,

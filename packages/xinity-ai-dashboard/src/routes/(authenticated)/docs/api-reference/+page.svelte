@@ -2,29 +2,68 @@
   import { getClientEnv } from "$lib/clientEnv";
   import CodeExample from "$lib/components/CodeExample.svelte";
   const { GATEWAY_URL: apiBase } = getClientEnv();
-  function highlightAll() {
-    if (typeof window !== "undefined" && "Prism" in window && window.Prism) {
-      (window.Prism as any).highlightAll();
-    }
+
+  const authHeader = `Authorization: Bearer YOUR_API_KEY`;
+
+  const exampleRequest = `{
+  "model": "<your-model>",
+  "messages": [
+    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "What is the capital of France?"}
+  ],
+  "temperature": 0.7,
+  "max_tokens": 1500,
+  "metadata": {
+    "env": "production",
+    "feature": "geography-qa"
   }
+}`;
+
+  const exampleResponse = `{
+  "id": "chatcmpl-abc123",
+  "object": "chat.completion",
+  "created": 1677652288,
+  "model": "<your-model>",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "The capital of France is Paris."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 20,
+    "completion_tokens": 8,
+    "total_tokens": 28
+  }
+}`;
+
+  const modelsResponse = `{
+  "object": "list",
+  "data": [
+    {
+      "id": "<your-model>",
+      "object": "model",
+      "created": 1677610602,
+      "owned_by": "xinity-ai"
+    }
+  ]
+}`;
+
+  const errorResponse = `{
+  "error": {
+    "message": "Invalid API key provided",
+    "type": "invalid_request_error",
+    "code": "invalid_api_key"
+  }
+}`;
 </script>
 
 <svelte:head>
   <title>API Reference - API Documentation</title>
-  <link
-    rel="stylesheet"
-    href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.min.css"
-  />
-  <script
-    onload={highlightAll}
-    defer
-    src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"
-  ></script>
-  <script
-    onload={highlightAll}
-    defer
-    src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-javascript.min.js"
-  ></script>
 </svelte:head>
 
 <div class="container px-4 py-8 mx-auto max-w-5xl">
@@ -57,9 +96,7 @@
   <!-- Base URL -->
   <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
     <h2 class="text-2xl font-semibold mb-4">Base URL</h2>
-    <pre class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto"><code
-        >{apiBase}</code
-      ></pre>
+    <CodeExample code={apiBase} language="bash" withCopy />
   </section>
 
   <!-- Authentication -->
@@ -69,9 +106,7 @@
       All API requests require authentication using an API key. Include your API
       key in the request headers:
     </p>
-    <pre class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto"><code
-        >Authorization: Bearer YOUR_API_KEY</code
-      ></pre>
+    <CodeExample code={authHeader} language="bash" withCopy />
     <div class="mt-4 p-4 bg-xinity-purple/10 border-l-4 border-xinity-purple rounded">
       <p class="text-sm text-xinity-pink">
         <strong>Tip:</strong> Store your API key securely and never commit it to
@@ -209,50 +244,10 @@
     </div>
 
     <h3 class="text-lg font-semibold mb-3">Example Request</h3>
-    <pre
-      class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-sm mb-4"><code
-        class="language-javascript"
-        >{`{
-  "model": "<your-model>",
-  "messages": [
-    {{"role": "system", "content": "You are a helpful assistant."}},
-    {{"role": "user", "content": "What is the capital of France?"}}
-  ],
-  "temperature": 0.7,
-  "max_tokens": 1500,
-  "metadata": {{
-    "env": "production",
-    "feature": "geography-qa"
-  }}
-}`}</code
-      ></pre>
+    <CodeExample code={exampleRequest} language="javascript" withCopy />
 
-    <h3 class="text-lg font-semibold mb-3">Response</h3>
-    <pre
-      class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-sm"><code
-        class="language-javascript"
-        >{`{
-  "id": "chatcmpl-abc123",
-  "object": "chat.completion",
-  "created": 1677652288,
-  "model": "<your-model>",
-  "choices": [
-    {{
-      "index": 0,
-      "message": {{
-        "role": "assistant",
-        "content": "The capital of France is Paris."
-      }},
-      "finish_reason": "stop"
-    }}
-  ],
-  "usage": {{
-    "prompt_tokens": 20,
-    "completion_tokens": 8,
-    "total_tokens": 28
-  }`}
-}}</code
-      ></pre>
+    <h3 class="text-lg font-semibold mt-4 mb-3">Response</h3>
+    <CodeExample code={exampleResponse} language="javascript" />
   </section>
 
   <!-- Models Endpoint -->
@@ -269,21 +264,7 @@
     </p>
 
     <h3 class="text-lg font-semibold mb-3">Example Response</h3>
-    <pre
-      class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-sm"><code
-        class="language-javascript"
-        >{`{
-  "object": "list",
-  "data": [
-    {{
-      "id": "<your-model>",
-      "object": "model",
-      "created": 1677610602,
-      "owned_by": "xinity-ai"
-    }}
-  ]
-}`}</code
-      ></pre>
+    <CodeExample code={modelsResponse} language="javascript" />
   </section>
 
   <!-- Error Codes -->
@@ -349,17 +330,7 @@
     </div>
 
     <h3 class="text-lg font-semibold mb-3 mt-6">Error Response Format</h3>
-    <pre
-      class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-sm"><code
-        class="language-javascript"
-        >{`{
-  "error": {{
-    "message": "Invalid API key provided",
-    "type": "invalid_request_error",
-    "code": "invalid_api_key"
-  }}
-}`}</code
-      ></pre>
+    <CodeExample code={errorResponse} language="javascript" />
   </section>
 
   <!-- Best Practices -->

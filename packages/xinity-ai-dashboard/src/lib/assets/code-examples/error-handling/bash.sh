@@ -1,6 +1,5 @@
 #!/bin/bash
 
-MODEL="<your-model>"
 MAX_RETRIES=3
 RETRY_DELAY=1
 
@@ -9,7 +8,7 @@ for i in $(seq 1 $MAX_RETRIES); do
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $API_KEY" \
     -d '{
-      "model": "'$MODEL'",
+      "model": "'"$MODEL"'",
       "messages": [
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": "Hello!"}
