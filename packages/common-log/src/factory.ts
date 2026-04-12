@@ -24,7 +24,6 @@ function dayStamp(): string {
 export function createLogger(opts: LoggerOptions): pino.Logger {
   const pinoOpts: pino.LoggerOptions = {
     level: opts.level,
-    base: { service: opts.service },
   };
 
   if (!opts.logDir) {

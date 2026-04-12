@@ -5,13 +5,11 @@
   import Sidebar from "./Sidebar.svelte";
   import { permissions } from "$lib/state/permissions.svelte";
   import type { LayoutServerData } from "./$types";
-  import { browser } from "$app/environment";
 
-  export let data: LayoutServerData;
+  let { data, children }: { data: LayoutServerData; children: import("svelte").Snippet } = $props();
 
-  // Set role from server-loaded data (more reliable than client-side fetch)
-  $: permissions.setRole(data.memberRole);
-  $: if (browser) document.body.classList.toggle("compact", data.displaySettings.compactView);
+  $effect(()=> { document.body.classList.toggle("compact", data.displaySettings.compactView); });
+  $effect(()=> { permissions.setRole(data.memberRole); });
 </script>
 
 {#if data.license.originMismatch}
@@ -21,7 +19,7 @@
   <main class="sm:ml-64 ml-14 min-w-0">
     <VersionNotice versioning={data.versioning} />
     <LicenseBanner license={data.license} totalVramGb={data.totalVramGb} />
-    <slot />
+    {@render children()}
   </main>
 
   <ToastContainer />

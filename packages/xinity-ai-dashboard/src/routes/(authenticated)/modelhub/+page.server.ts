@@ -1,26 +1,27 @@
-import type { PageData, PageServerLoad } from "./$types";
+import type { PageServerLoad } from "./$types";
 import { router } from "$lib/server/orpc/router";
 import { call } from "@orpc/server";
 import { aiNodeT, modelInstallationT, sql } from "common-db";
 import { getDB } from "$lib/server/db";
+import type { DeploymentWithStatus } from "$lib/server/orpc/procedures/deployment.procedure";
 
-export const load: PageServerLoad = async ({ parent, depends, request }) => {
-  const { user, session } = await parent();
+export const load: PageServerLoad = async ({ parent, request }) => {
+  const { session } = await parent();
   const activeOrgId = session.activeOrganizationId;
 
   if (!activeOrgId) {
-    return { deployments: [], maxNodeFreeCapacity: 0, availableDrivers: [], nodeFreeCapacities: [] as number[] };
+    return {
+      deployments: Promise.resolve([] as DeploymentWithStatus[]),
+      maxNodeFreeCapacity: 0,
+      availableDrivers: [] as string[],
+      nodeFreeCapacities: [] as number[],
+    };
   }
 
-  const deployments = await call(router.deployment.list, { withStatus: true }, {
-    context: {
-      request,
-    } // Provide initial context if needed
-  })
+  // Stream deployments - page renders immediately with skeletons while this resolves
+  const deployments = call(router.deployment.list, { withStatus: true }, { context: { request } });
 
-  depends("resource:deployments");
-
-  // Compute cluster capacity for model selection shading
+  // Compute cluster capacity for model selection shading (fast, needed for modal)
   const nodes = await getDB().select().from(aiNodeT).where(sql`${aiNodeT.available} AND ${aiNodeT.deletedAt} IS NULL`);
   const installations = await getDB().select().from(modelInstallationT).where(sql`${modelInstallationT.deletedAt} IS NULL`);
 
@@ -41,7 +42,6 @@ export const load: PageServerLoad = async ({ parent, depends, request }) => {
     ),
   ];
 
-  // Per-node free capacities sorted descending, used to validate replica counts
   const nodeFreeCapacities = nodes
     .map(n => n.estCapacity - (nodeUsed.get(n.id) ?? 0))
     .filter(c => c > 0)
@@ -55,4 +55,4 @@ export const load: PageServerLoad = async ({ parent, depends, request }) => {
   };
 };
 
-export type DeploymentDefinition = PageData["deployments"][number]
+export type { DeploymentWithStatus as DeploymentDefinition };

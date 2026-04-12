@@ -4,7 +4,7 @@
   import DeploymentFormBody from "./DeploymentFormBody.svelte";
   import { driverHasTag } from "xinity-infoserver";
   import { orpc } from "$lib/orpc/orpc-client";
-  import { invalidate } from "$app/navigation";
+
   import { toastState } from "$lib/state/toast.svelte";
   import { browserLogger } from "$lib/browserLogging";
   import CustomCodeConsent from "./CustomCodeConsent.svelte";
@@ -23,6 +23,7 @@
     maxNodeFreeCapacity = Infinity,
     availableDrivers = [],
     nodeFreeCapacities = [],
+    onSaved = async () => {},
   }: {
     open: boolean;
     deployment?: DeploymentDefinition;
@@ -30,6 +31,7 @@
     maxNodeFreeCapacity?: number;
     availableDrivers?: string[];
     nodeFreeCapacities?: number[];
+    onSaved?: () => Promise<void>;
   } = $props();
 
   const isEditMode = $derived(Boolean(deployment));
@@ -324,7 +326,7 @@
       close();
       if (!isEditMode) clearState();
     }
-    await invalidate("resource:deployments");
+    await onSaved();
   }
 
   function clearState() {

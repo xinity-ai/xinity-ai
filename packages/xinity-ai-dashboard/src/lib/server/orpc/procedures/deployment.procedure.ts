@@ -122,75 +122,80 @@ async function internalUpdateDeployment(orgId: string, id: string, params: Parti
   return deployment;
 }
 
+// ---------------------------------------------------------------------------
+// Shared status schema and query helper
+// ---------------------------------------------------------------------------
+
+const DeploymentStatusSchema = z.object({
+  phase: z.enum(["ready", "downloading", "installing", "failed", "scheduling"]),
+  progress: z.number().nullable(),
+  error: z.string().nullable().optional(),
+  failureLogs: z.string().nullable().optional(),
+});
+
+export const DeploymentWithStatusDto = DeploymentDto.extend({ status: DeploymentStatusSchema.optional() });
+export type DeploymentWithStatus = z.infer<typeof DeploymentWithStatusDto>;
+type StatusPhase = "ready" | "downloading" | "installing" | "failed" | "scheduling";
+
+/**
+ * Runs the status join query and aggregates installation phase info for the given deployments.
+ * `where` should narrow to the specific deployment rows you want (org condition + optional id filter).
+ */
+async function queryDeploymentsWithStatus(where: ReturnType<typeof sql>): Promise<DeploymentWithStatus[]> {
+  const rows = await getDB()
+    .select()
+    .from(modelDeploymentT)
+    .leftJoin(modelInstallationT, sql`
+      (${modelDeploymentT.modelSpecifier} = ${modelInstallationT.model}
+      OR
+      ${modelDeploymentT.earlyModelSpecifier} = ${modelInstallationT.model})
+      AND ${modelInstallationT.deletedAt} IS NULL`)
+    .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`)
+    .where(where);
+
+  const deploymentMap = new Map<string, { deployment: ModelDeployment; phaseInfo?: PhaseInfo }>();
+
+  for (const row of rows) {
+    const deployment = row.model_deployment;
+    let entry = deploymentMap.get(deployment.id);
+    if (!entry) {
+      entry = { deployment };
+      deploymentMap.set(deployment.id, entry);
+    }
+
+    const installation = row.model_installation;
+    const state = row.model_installation_state;
+
+    if (installation && !state) {
+      entry.phaseInfo = aggregatePhase(entry.phaseInfo, "scheduling", null, null);
+      continue;
+    }
+    if (!state) continue;
+
+    const phase = state.lifecycleState;
+    const progress = (phase === "downloading" || phase === "installing") ? (state.progress ?? null) : null;
+    entry.phaseInfo = aggregatePhase(entry.phaseInfo, phase, progress, state.errorMessage, state.failureLogs);
+  }
+
+  return Array.from(deploymentMap.values()).map(({ deployment, phaseInfo }) => {
+    const status = phaseInfo
+      ? { phase: phaseInfo.phase as StatusPhase, progress: phaseInfo.progress, error: phaseInfo.error, failureLogs: phaseInfo.failureLogs }
+      : undefined;
+    return status ? { ...deployment, status } : deployment;
+  });
+}
+
 const listDeployments = rootOs.use(withOrganization)
   .use(requirePermission({ modelDeployment: ["read"] }))
   .route({ path: "/", method: "GET", tags, summary: "List Deployments", description: "Lists deployments accessible to the current user" })
   .input(z.object({ withStatus: z.coerce.boolean().default(false) }))
-  .output(DeploymentDto.extend({
-    status: z.object({
-      phase: z.enum(["ready", "downloading", "installing", "failed", "scheduling"]),
-      progress: z.number().nullable(),
-      error: z.string().nullable().optional(),
-      failureLogs: z.string().nullable().optional(),
-    }).optional(),
-  }).array())
+  .output(DeploymentWithStatusDto.array())
   .handler(async ({ context, input }) => {
     const orgCondition = sql`${modelDeploymentT.organizationId} = ${context.activeOrganizationId} AND ${modelDeploymentT.deletedAt} IS NULL`;
     if (input?.withStatus) {
-      const rows = await getDB()
-        .select()
-        .from(modelDeploymentT)
-        .leftJoin(modelInstallationT, sql`
-          (${modelDeploymentT.modelSpecifier} = ${modelInstallationT.model}
-          OR
-          ${modelDeploymentT.earlyModelSpecifier} = ${modelInstallationT.model})
-          AND ${modelInstallationT.deletedAt} IS NULL`)
-        .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`)
-        .where(orgCondition);
-
-      type StatusPhase = "ready" | "downloading" | "installing" | "failed" | "scheduling";
-      const deployments: Array<{ deployment: ModelDeployment; status?: { phase: StatusPhase; progress: number | null } }> = [];
-      const deploymentMap = new Map<string, { deployment: ModelDeployment; phaseInfo?: PhaseInfo }>();
-
-      for (const row of rows) {
-        const deployment = row.model_deployment;
-        let entry = deploymentMap.get(deployment.id);
-        if (!entry) {
-          entry = { deployment };
-          deploymentMap.set(deployment.id, entry);
-        }
-
-        const installation = row.model_installation;
-        const state = row.model_installation_state;
-
-        // Installation exists but daemon hasn't reported state yet → scheduling phase
-        if (installation && !state) {
-          entry.phaseInfo = aggregatePhase(entry.phaseInfo, "scheduling", null, null);
-          continue;
-        }
-
-        if (!state) continue;
-
-        const phase = state.lifecycleState;
-        const progress = (phase === "downloading" || phase === "installing") ? (state.progress ?? null) : null;
-        entry.phaseInfo = aggregatePhase(entry.phaseInfo, phase, progress, state.errorMessage, state.failureLogs);
-      }
-
-      for (const entry of deploymentMap.values()) {
-        const status = entry.phaseInfo
-          ? {
-              phase: entry.phaseInfo.phase as StatusPhase,
-              progress: entry.phaseInfo.progress,
-              error: entry.phaseInfo.error,
-              failureLogs: entry.phaseInfo.failureLogs,
-            }
-          : undefined;
-        deployments.push({ deployment: entry.deployment, status });
-      }
-
-      return deployments.map(({ deployment, status }) => status ? { ...deployment, status } : deployment);
+      return queryDeploymentsWithStatus(orgCondition);
     }
-    return await getDB().select().from(modelDeploymentT).where(orgCondition)
+    return await getDB().select().from(modelDeploymentT).where(orgCondition);
   });
 /** Updates a deployment and triggers a sync. */
 const updateDeployment = rootOs
@@ -308,21 +313,24 @@ const getDeployment = rootOs
     Unlike other deployment related endpoints, this one also returns computed properties such as those
     relevant for canary deployments, and exact deployment transition state`,
   })
-  .input(z.object({ id: z.uuid() }))
-  .output(DeploymentDto)
+  .input(z.object({ id: z.uuid(), withStatus: z.coerce.boolean().default(false) }))
+  .output(DeploymentWithStatusDto)
   .errors({ NOT_FOUND: {} })
   .handler(async ({ context, input, errors }) => {
-    const [deployment] = await getDB().select().from(modelDeploymentT)
-      .where(sql`
-        ${modelDeploymentT.id} = ${input.id}
-      AND
-        ${modelDeploymentT.organizationId} = ${context.activeOrganizationId}
-      AND
-        ${modelDeploymentT.deletedAt} IS NULL`).limit(1);
-    if (!deployment) {
-      throw errors.NOT_FOUND();
+    const condition = sql`
+      ${modelDeploymentT.id} = ${input.id}
+      AND ${modelDeploymentT.organizationId} = ${context.activeOrganizationId}
+      AND ${modelDeploymentT.deletedAt} IS NULL`;
+
+    if (input.withStatus) {
+      const results = await queryDeploymentsWithStatus(condition);
+      if (results.length === 0) throw errors.NOT_FOUND();
+      return results[0];
     }
-    return deployment as z.infer<typeof DeploymentDto>;
+
+    const [deployment] = await getDB().select().from(modelDeploymentT).where(condition).limit(1);
+    if (!deployment) throw errors.NOT_FOUND();
+    return deployment;
   });
 const deleteDeployment = rootOs
   .use(withOrganization)
