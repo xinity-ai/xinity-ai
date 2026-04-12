@@ -24,7 +24,7 @@
     },
     "error-handling": {
       title: "Error Handling",
-      description: "Properly handle API errors and retries",
+      description: "Handle API errors and retries. A 429 can occur when the inference backend's request queue is full and it cannot accept more load. Implement exponential backoff to recover gracefully.",
     },
     "tool-calling": {
       title: "Tool Calling",
@@ -36,7 +36,7 @@
     },
     reranking: {
       title: "Reranking",
-      description: "Rerank documents by relevance to a query",
+      description: "Rerank documents by relevance to a query. The /v1/rerank endpoint follows the Cohere rerank API standard, which has become the community convention.",
     },
   };
 

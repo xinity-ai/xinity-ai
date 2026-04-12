@@ -151,7 +151,7 @@
       <h2 class="text-2xl font-semibold">/v1/chat/completions</h2>
     </div>
     <p class="text-gray-600 mb-4">
-      Create a chat completion using your fine-tuned model.
+      Create a chat completion using your fine-tuned model. This endpoint is compatible with the OpenAI Chat Completions API. See the <a href="https://platform.openai.com/docs/api-reference/chat/create" class="text-xinity-magenta hover:underline" target="_blank" rel="noopener">OpenAI API reference</a> for the full list of supported parameters.
     </p>
 
     <h3 class="text-lg font-semibold mb-3">Request Body</h3>
@@ -267,6 +267,66 @@
     <CodeExample code={modelsResponse} language="javascript" />
   </section>
 
+  <!-- Rerank Endpoint -->
+  <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
+    <div class="flex items-center gap-2 mb-4">
+      <span
+        class="px-3 py-1 bg-green-100 text-green-800 rounded font-mono text-sm font-semibold"
+        >POST</span
+      >
+      <h2 class="text-2xl font-semibold">/v1/rerank</h2>
+    </div>
+    <p class="text-gray-600 mb-4">
+      Rerank a list of documents by relevance to a query. This endpoint follows the Cohere v1 rerank API, which has become the community standard for reranking. See the <a href="https://docs.cohere.com/v1/reference/rerank" class="text-xinity-magenta hover:underline" target="_blank" rel="noopener">Cohere v1 rerank reference</a> for full details.
+    </p>
+
+    <h3 class="text-lg font-semibold mb-3">Request Body</h3>
+    <div class="overflow-x-auto">
+      <table class="w-full border-collapse border border-gray-300 mb-4">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="border border-gray-300 px-4 py-2 text-left">Parameter</th>
+            <th class="border border-gray-300 px-4 py-2 text-left">Type</th>
+            <th class="border border-gray-300 px-4 py-2 text-left">Required</th>
+            <th class="border border-gray-300 px-4 py-2 text-left">Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="border border-gray-300 px-4 py-2 font-mono text-sm">model</td>
+            <td class="border border-gray-300 px-4 py-2">string</td>
+            <td class="border border-gray-300 px-4 py-2">Yes</td>
+            <td class="border border-gray-300 px-4 py-2">Model identifier. Must be a rerank-type model.</td>
+          </tr>
+          <tr class="bg-gray-50">
+            <td class="border border-gray-300 px-4 py-2 font-mono text-sm">query</td>
+            <td class="border border-gray-300 px-4 py-2">string</td>
+            <td class="border border-gray-300 px-4 py-2">Yes</td>
+            <td class="border border-gray-300 px-4 py-2">The search query to rank documents against.</td>
+          </tr>
+          <tr>
+            <td class="border border-gray-300 px-4 py-2 font-mono text-sm">documents</td>
+            <td class="border border-gray-300 px-4 py-2">string[] | object[]</td>
+            <td class="border border-gray-300 px-4 py-2">Yes</td>
+            <td class="border border-gray-300 px-4 py-2">Documents to rerank. Can be plain strings or objects.</td>
+          </tr>
+          <tr class="bg-gray-50">
+            <td class="border border-gray-300 px-4 py-2 font-mono text-sm">top_n</td>
+            <td class="border border-gray-300 px-4 py-2">integer</td>
+            <td class="border border-gray-300 px-4 py-2">No</td>
+            <td class="border border-gray-300 px-4 py-2">Number of top results to return. Defaults to all documents.</td>
+          </tr>
+          <tr>
+            <td class="border border-gray-300 px-4 py-2 font-mono text-sm">return_documents</td>
+            <td class="border border-gray-300 px-4 py-2">boolean</td>
+            <td class="border border-gray-300 px-4 py-2">No</td>
+            <td class="border border-gray-300 px-4 py-2">Whether to include the document content in the response. Default: true</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
   <!-- Error Codes -->
   <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
     <h2 class="text-2xl font-semibold mb-4">Error Codes</h2>
@@ -298,7 +358,7 @@
               >400</td
             >
             <td class="border border-gray-300 px-4 py-2"
-              >Bad Request - Invalid parameters</td
+              >Bad Request: invalid parameters</td
             >
           </tr>
           <tr>
@@ -306,7 +366,7 @@
               >401</td
             >
             <td class="border border-gray-300 px-4 py-2"
-              >Unauthorized - Invalid or missing API key</td
+              >Unauthorized: invalid or missing API key</td
             >
           </tr>
           <tr class="bg-gray-50">
@@ -314,7 +374,7 @@
               >429</td
             >
             <td class="border border-gray-300 px-4 py-2"
-              >Too Many Requests - Rate limit exceeded</td
+              >Too Many Requests: the inference backend queue is full. Retry with exponential backoff.</td
             >
           </tr>
           <tr>
@@ -323,6 +383,22 @@
             >
             <td class="border border-gray-300 px-4 py-2"
               >Internal Server Error</td
+            >
+          </tr>
+          <tr class="bg-gray-50">
+            <td class="border border-gray-300 px-4 py-2 font-mono text-sm"
+              >503</td
+            >
+            <td class="border border-gray-300 px-4 py-2"
+              >Service Unavailable: backend is unreachable (e.g. restarting). Retry after the duration in the <code class="text-xs font-mono bg-gray-100 px-1 rounded">Retry-After</code> header.</td
+            >
+          </tr>
+          <tr>
+            <td class="border border-gray-300 px-4 py-2 font-mono text-sm"
+              >504</td
+            >
+            <td class="border border-gray-300 px-4 py-2"
+              >Gateway Timeout: backend took too long to respond. Retry with exponential backoff.</td
             >
           </tr>
         </tbody>

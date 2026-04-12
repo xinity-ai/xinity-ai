@@ -18,10 +18,14 @@ async function chatWithRetry(messages, maxRetries = 3) {
       return completion.choices[0].message.content;
 
     } catch (error) {
-      if (error.response?.status === 429) {
+      const status = error.response?.status;
+      if (status === 429 || status === 503 || status === 504) {
+        // 429: backend queue full, not a gateway rate limit
+        // 503: backend unreachable (starting up or restarting)
+        // 504: backend took too long to respond
         if (attempt < maxRetries - 1) {
           const waitTime = Math.pow(2, attempt) * 1000;
-          console.log(`Rate limit hit. Waiting ${waitTime}ms...`);
+          console.log(`Service unavailable (${status}). Waiting ${waitTime}ms...`);
           await new Promise(resolve => setTimeout(resolve, waitTime));
         } else {
           throw error;
