@@ -50,68 +50,72 @@ export const upCommand: CommandModule = {
 
     const host = targetHostArg ? await connectRemoteHost(targetHostArg) : createLocalHost();
 
-    // ── Upfront pre-flight checks ──────────────────────────────────────
-    const issues = await preflightCheck([component], host);
-    if (issues.length > 0) {
-      p.log.step(pc.bold("Pre-flight checks"));
-      for (const issue of issues) {
-        warn(issue.tool, issue.reason);
-        if (issue.hint) p.log.info(`  ${pc.dim("Install:")} ${pc.cyan(issue.hint)}`);
+    try {
+      // ── Upfront pre-flight checks ──────────────────────────────────────
+      const issues = await preflightCheck([component], host);
+      if (issues.length > 0) {
+        p.log.step(pc.bold("Pre-flight checks"));
+        for (const issue of issues) {
+          warn(issue.tool, issue.reason);
+          if (issue.hint) p.log.info(`  ${pc.dim("Install:")} ${pc.cyan(issue.hint)}`);
+        }
+        const cont = await p.confirm({
+          message: "Some requirements are missing. Continue anyway?",
+          initialValue: false,
+        });
+        if (p.isCancel(cont) || !cont) {
+          p.outro("Aborted");
+          return;
+        }
       }
-      const cont = await p.confirm({
-        message: "Some requirements are missing. Continue anyway?",
-        initialValue: false,
-      });
-      if (p.isCancel(cont) || !cont) {
-        p.outro("Aborted");
+
+      if (component === "cli") {
+        await runUpdateFlow({ checkOnly: false, targetVersion });
         return;
       }
-    }
 
-    if (component === "cli") {
-      await runUpdateFlow({ checkOnly: false, targetVersion });
-      return;
-    }
+      if (component === "db") {
+        const result = await runMigrations({ targetVersion, dryRun, host });
+        logErrors(result);
+        p.outro("Done");
+        return;
+      }
 
-    if (component === "db") {
-      const result = await runMigrations({ targetVersion, dryRun, host });
+      if (component === "redis") {
+        await discoverRedisUrl(host, dryRun);
+        p.outro("Done");
+        return;
+      }
+
+      if (component === "seaweedfs") {
+        await seaweedfsSetup(host, dryRun);
+        p.outro("Done");
+        return;
+      }
+
+      if (component === "all") {
+        await installAll(targetVersion, dryRun, hardReset, host);
+        p.outro("Done");
+        return;
+      }
+
+      const result = await installComponent({
+        component: component as Component,
+        targetVersion,
+        dryRun,
+        hardReset,
+        host,
+      });
+
       logErrors(result);
+
+      if (component === "dashboard" && result.success && !dryRun) {
+        await showDashboardHints(host);
+      }
+
       p.outro("Done");
-      return;
+    } finally {
+      await host.dispose();
     }
-
-    if (component === "redis") {
-      await discoverRedisUrl(host, dryRun);
-      p.outro("Done");
-      return;
-    }
-
-    if (component === "seaweedfs") {
-      await seaweedfsSetup(host, dryRun);
-      p.outro("Done");
-      return;
-    }
-
-    if (component === "all") {
-      await installAll(targetVersion, dryRun, hardReset, host);
-      p.outro("Done");
-      return;
-    }
-
-    const result = await installComponent({
-      component: component as Component,
-      targetVersion,
-      dryRun,
-      hardReset,
-      host,
-    });
-
-    logErrors(result);
-
-    if (component === "dashboard" && result.success && !dryRun) {
-      await showDashboardHints(host);
-    }
-
-    p.outro("Done");
   },
 };

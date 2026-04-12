@@ -536,38 +536,27 @@ async function checkConfiguration(
     });
   }
 
-  // Read all secrets in a single elevated call
+  // Read all secrets, elevating if needed
   let secretsPermDenied = false;
   let secretsSkipped = false;
-  const secrets: Record<string, string> = {};
+  let secrets: Record<string, string> = {};
 
   if (secretFields.length > 0) {
     const host = opts.host ?? createLocalHost();
-    // Try direct read first (works if already root or files are world-readable)
-    for (const field of secretFields) {
-      const content = await host.readFile(`${SECRETS_DIR}/${field.key}`);
-      if (content !== null) secrets[field.key] = content.trim();
-    }
-    // Batch-read any that were inaccessible via a single elevation prompt
-    const missing = secretFields.filter((f) => !(f.key in secrets));
-    if (missing.length > 0 && opts.interactive) {
+    if (opts.interactive) {
       opts.spinner?.stop();
-      const script = missing
-        .map((f) => `[ -f '${SECRETS_DIR}/${f.key}' ] && printf '%s\\0%s\\0' '${f.key}' "$(cat '${SECRETS_DIR}/${f.key}')"`)
-        .join("; ");
-      const result = await host.withElevation(script, `Read ${component} secrets`, { sensitive: true });
-      if (result.skipped) {
-        secretsSkipped = true;
-      } else if (!result.success) {
-        secretsPermDenied = true;
-      } else {
-        const parts = result.output.split("\0").filter(Boolean);
-        for (let i = 0; i < parts.length - 1; i += 2) {
-          secrets[parts[i]!] = parts[i + 1]!.trim();
-        }
+      const sr = await readSecrets(host, SECRETS_DIR, secretFields.map((f) => f.key), `Read ${component} secrets`);
+      secrets = sr.secrets;
+      secretsPermDenied = sr.permissionDenied;
+      secretsSkipped = sr.skipped;
+    } else {
+      // Non-interactive: only try unelevated reads
+      for (const field of secretFields) {
+        const content = await host.readFile(`${SECRETS_DIR}/${field.key}`);
+        if (content !== null) secrets[field.key] = content.trim();
       }
-    } else if (missing.length > 0) {
-      secretsPermDenied = true;
+      const missing = secretFields.filter((f) => !(f.key in secrets));
+      if (missing.length > 0) secretsPermDenied = true;
     }
   }
 

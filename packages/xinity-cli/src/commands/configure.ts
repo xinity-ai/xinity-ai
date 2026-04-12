@@ -53,7 +53,11 @@ export const configureCommand: CommandModule = {
       await menuConfigureCli();
     } else {
       const host = targetHostArg ? await connectRemoteHost(targetHostArg) : createLocalHost();
-      await menuConfigureEnv(component as Component, host);
+      try {
+        await menuConfigureEnv(component as Component, host);
+      } finally {
+        await host.dispose();
+      }
     }
   },
 };

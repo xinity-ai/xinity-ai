@@ -28,7 +28,18 @@ export async function readManifest(host?: Host): Promise<Manifest> {
   const empty: Manifest = { components: {} };
   const h = host ?? createLocalHost();
 
-  const content = await h.readFile(MANIFEST_PATH);
+  let content = await h.readFile(MANIFEST_PATH);
+
+  // The manifest may be root-owned from an older install. Try an elevated
+  // read if the direct read failed but the file exists.
+  if (!content && await h.fileExists(MANIFEST_PATH)) {
+    const result = await h.withElevation(
+      `cat '${MANIFEST_PATH}'`,
+      "Read install manifest",
+    );
+    if (result.success) content = result.output;
+  }
+
   if (!content) return empty;
   try {
     return JSON.parse(content) as Manifest;
@@ -46,7 +57,7 @@ export async function getInstalledVersion(component: string, host?: Host): Promi
 export async function writeManifest(manifest: Manifest, host?: Host): Promise<void> {
   const h = host ?? createLocalHost();
   const json = JSON.stringify(manifest, null, 2);
-  const cmd = `mkdir -p /opt/xinity && cat > ${MANIFEST_PATH} << 'MANIFEST_EOF'\n${json}\nMANIFEST_EOF`;
+  const cmd = `mkdir -p /opt/xinity && cat > ${MANIFEST_PATH} << 'MANIFEST_EOF'\n${json}\nMANIFEST_EOF\nchmod 644 ${MANIFEST_PATH}`;
   await h.withElevation(cmd, "Write install manifest");
 }
 

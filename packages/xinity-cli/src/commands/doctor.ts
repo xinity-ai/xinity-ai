@@ -30,7 +30,8 @@ function renderReport(report: DoctorReport, verbose: boolean): void {
 
 function renderComponentSection(comp: ComponentReport, verbose: boolean): void {
   const name = pc.bold(comp.component.toUpperCase());
-  const version = comp.version ? pc.dim(`  v${comp.version}`) : "";
+  const ver = comp.version?.replace(/^v/, "") ?? null;
+  const version = ver ? pc.dim(`  v${ver}`) : "";
   process.stdout.write(`  ${name}${version}\n`);
   process.stdout.write(`  ${pc.dim("─".repeat(SEP_WIDTH))}\n`);
 
@@ -100,30 +101,34 @@ export const doctorCommand: CommandModule = {
 
     const host = targetHostArg ? await connectRemoteHost(targetHostArg) : createLocalHost();
 
-    const clackSpinner = p.spinner();
-    clackSpinner.start("Collecting diagnostics…");
+    try {
+      const clackSpinner = p.spinner();
+      clackSpinner.start("Collecting diagnostics…");
 
-    const report = await runDoctor({
-      interactive,
-      host,
-      spinner: {
-        message: (msg) => clackSpinner.message(msg),
-        stop: () => clackSpinner.stop(""),
-      },
-    });
+      const report = await runDoctor({
+        interactive,
+        host,
+        spinner: {
+          message: (msg) => clackSpinner.message(msg),
+          stop: () => clackSpinner.stop(""),
+        },
+      });
 
-    clackSpinner.stop("");
+      clackSpinner.stop("");
 
-    if (format === "json") {
-      process.stdout.write(JSON.stringify(report, null, 2) + "\n");
-      process.exit(report.summary.fail > 0 ? 1 : 0);
-    } else if (format === "yaml") {
-      process.stdout.write(Bun.YAML.stringify(report, null, 2));
-      process.exit(report.summary.fail > 0 ? 1 : 0);
-    } else {
-      renderReport(report, verbose);
-      p.outro(buildSummaryLine(report.summary));
-      if (report.summary.fail > 0) process.exit(1);
+      if (format === "json") {
+        process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+        process.exit(report.summary.fail > 0 ? 1 : 0);
+      } else if (format === "yaml") {
+        process.stdout.write(Bun.YAML.stringify(report, null, 2));
+        process.exit(report.summary.fail > 0 ? 1 : 0);
+      } else {
+        renderReport(report, verbose);
+        p.outro(buildSummaryLine(report.summary));
+        if (report.summary.fail > 0) process.exit(1);
+      }
+    } finally {
+      await host.dispose();
     }
   },
 };

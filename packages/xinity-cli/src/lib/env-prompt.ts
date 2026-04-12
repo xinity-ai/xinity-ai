@@ -5,7 +5,7 @@ import { cancelAndExit } from "./output.ts";
 import { parseEnvString } from "./env-file.ts";
 import { type Component, ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, getAutoDefaults } from "./component-meta.ts";
 import { writeEnvConfig, restartService } from "./service.ts";
-import { createLocalHost, type Host } from "./host.ts";
+import { createLocalHost, readSecrets, type Host } from "./host.ts";
 
 export interface EnvField {
   key: string;
@@ -270,28 +270,12 @@ export async function menuConfigureEnv(
   const envPath = `${ENV_DIR}/${component}.env`;
   const envContent = await h.readFile(envPath);
   const existingConfig = envContent ? parseEnvString(envContent) : {};
-  const existingSecrets: Record<string, string> = {};
   let secretsLocked = false;
+  let existingSecrets: Record<string, string> = {};
   if (secretKeys.length > 0) {
-    for (const key of secretKeys) {
-      const content = await h.readFile(`${SECRETS_DIR}/${key}`);
-      if (content !== null) existingSecrets[key] = content.trim();
-    }
-    const missing = secretKeys.filter((k) => !(k in existingSecrets));
-    if (missing.length > 0) {
-      const script = missing
-        .map((k) => `[ -f '${SECRETS_DIR}/${k}' ] && printf '%s\\0%s\\0' '${k}' "$(cat '${SECRETS_DIR}/${k}')"`)
-        .join("; ");
-      const result = await h.withElevation(script, "Read existing secrets", { sensitive: true });
-      if (result.success) {
-        const parts = result.output.split("\0").filter(Boolean);
-        for (let i = 0; i < parts.length - 1; i += 2) {
-          existingSecrets[parts[i]!] = parts[i + 1]!.trim();
-        }
-      } else if (result.skipped) {
-        secretsLocked = true;
-      }
-    }
+    const sr = await readSecrets(h, SECRETS_DIR, secretKeys, "Read existing secrets");
+    existingSecrets = sr.secrets;
+    secretsLocked = sr.skipped;
   }
   const autoDefaults = getAutoDefaults(component);
   const values: Record<string, string | undefined> = { ...autoDefaults, ...existingConfig, ...existingSecrets };

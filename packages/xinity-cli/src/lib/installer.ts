@@ -17,7 +17,7 @@ import { generateUnit, getComponentConfig, unitName, type UnitConfig } from "./s
 import { analyzeEnvSchema, categorizeFields, promptForEnv } from "./env-prompt.ts";
 import { parseEnvString } from "./env-file.ts";
 import { pass, fail, warn, info, cancelAndExit } from "./output.ts";
-import { type Host, createLocalHost, commandExistsOn, isUnitActiveOn } from "./host.ts";
+import { type Host, createLocalHost, commandExistsOn, isUnitActiveOn, readSecrets } from "./host.ts";
 import { writeEnvConfig, stopService, startService } from "./service.ts";
 import {
   type Component, type InstallResult, type RemoveResult,
@@ -205,13 +205,20 @@ async function ensureDriverTools(
     if (hasDocker) {
       pass("vLLM", "docker found (vllm-docker mode)");
 
-      // Check for nvidia container runtime
-      const dockerInfo = await host.run(["docker", "info", "--format", "{{.Runtimes}}"]);
-      if (dockerInfo.ok && dockerInfo.output.includes("nvidia")) {
-        pass("vLLM", "nvidia container runtime detected");
+      // Check for GPU container runtime matching the detected GPU vendor
+      const hasNvidiaSmi = await commandExistsOn(host, "nvidia-smi");
+      if (hasNvidiaSmi) {
+        const rtResult = await host.run(["nvidia-container-runtime", "--version"]);
+        if (rtResult.ok) {
+          pass("vLLM", "NVIDIA container runtime detected");
+        } else {
+          warn("vLLM", "NVIDIA container runtime not found, GPU passthrough may not work");
+          p.log.info(pc.dim("  Install nvidia-container-toolkit: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html"));
+        }
+      } else if (await commandExistsOn(host, "rocm-smi")) {
+        pass("vLLM", "AMD GPU detected (ROCm)");
       } else {
-        warn("vLLM", "nvidia container runtime not detected, GPU passthrough may not work");
-        p.log.info(pc.dim("  Install nvidia-container-toolkit: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html"));
+        warn("vLLM", "No GPU tools detected (nvidia-smi / rocm-smi), GPU passthrough may not work");
       }
     } else {
       warn("vLLM", "docker not found but VLLM_DOCKER_IMAGE is set");
@@ -428,7 +435,8 @@ async function installBinary(component: Component, archivePath: string, host: Ho
     const tmpExtract = archivePath.replace(/\.zip$/, "");
     const result = await host.withElevation(
       `mkdir -p ${tmpExtract} && unzip -o ${archivePath} -d ${tmpExtract}` +
-      ` && mkdir -p ${BIN_DIR} && cp ${tmpExtract}/${binName} ${BIN_DIR}/${binName}` +
+      ` && mkdir -p ${BIN_DIR} && rm -f ${BIN_DIR}/${binName}` +
+      ` && cp ${tmpExtract}/${binName} ${BIN_DIR}/${binName}` +
       ` && chmod +x ${BIN_DIR}/${binName}` +
       ` && rm -rf ${tmpExtract} ${archivePath}`,
       `Install ${binName} binary`,
@@ -466,7 +474,7 @@ async function installBinary(component: Component, archivePath: string, host: Ho
     extractSpinner.stop("Extracted");
 
     const result = await host.withElevation(
-      `mkdir -p ${BIN_DIR} && cp ${effectivePath} ${BIN_DIR}/${binName} && chmod +x ${BIN_DIR}/${binName}` +
+      `mkdir -p ${BIN_DIR} && rm -f ${BIN_DIR}/${binName} && cp ${effectivePath} ${BIN_DIR}/${binName} && chmod +x ${BIN_DIR}/${binName}` +
         (effectivePath !== localBinPath ? ` && rm -f ${effectivePath}` : ""),
       `Install ${binName} binary`,
     );
@@ -505,34 +513,10 @@ async function configureEnv(
   const envPath = `${ENV_DIR}/${component}.env`;
   const envContent = await host.readFile(envPath);
   const existingConfig = envContent ? parseEnvString(envContent) : {};
-  const existingSecrets: Record<string, string> = {};
+  let existingSecrets: Record<string, string> = {};
   if (secretKeys.length > 0) {
-    // Secret files are root-only (chmod 600), try direct read first, then elevate
-    let needsElevation = false;
-    for (const key of secretKeys) {
-      const content = await host.readFile(`${SECRETS_DIR}/${key}`);
-      if (content !== null) {
-        existingSecrets[key] = content.trim();
-      } else {
-        // Only flag for elevation if the file actually exists (permission denied).
-        // If the file doesn't exist (fresh install), there's nothing to read.
-        const exists = await host.fileExists(`${SECRETS_DIR}/${key}`);
-        if (exists) needsElevation = true;
-      }
-    }
-    if (needsElevation && Object.keys(existingSecrets).length < secretKeys.length) {
-      const missing = secretKeys.filter((k) => !(k in existingSecrets));
-      const script = missing
-        .map((k) => `[ -f '${SECRETS_DIR}/${k}' ] && printf '%s\\0%s\\0' '${k}' "$(cat '${SECRETS_DIR}/${k}')"`)
-        .join("; ");
-      const result = await host.withElevation(script, "Read existing secrets", { sensitive: true });
-      if (result.success) {
-        const parts = result.output.split("\0").filter(Boolean);
-        for (let i = 0; i < parts.length - 1; i += 2) {
-          existingSecrets[parts[i]!] = parts[i + 1]!.trim();
-        }
-      }
-    }
+    const sr = await readSecrets(host, SECRETS_DIR, secretKeys, "Read existing secrets");
+    existingSecrets = sr.secrets;
   }
   const hasExistingConfig = Object.keys(existingConfig).length > 0 || Object.keys(existingSecrets).length > 0;
   const existing = { ...(autoDefaults ?? {}), ...existingConfig, ...existingSecrets };
@@ -1169,22 +1153,39 @@ export async function removeComponent(opts: {
     errors.push(`Failed to remove env config: ${rmEnv.output}`);
   }
 
-  // 5. Remove component-specific secret files
+  // 5. Remove secret files that no other installed component needs.
   const schema = ENV_SCHEMAS[component];
   const fields = analyzeEnvSchema(schema);
   const { secretFields } = categorizeFields(fields);
   if (secretFields.length > 0) {
-    const secretPaths = secretFields
-      .map((f) => `${SECRETS_DIR}/${f.key}`)
-      .join(" ");
-    const rmSecrets = await host.withElevation(
-      `rm -f ${secretPaths}`,
-      `Remove ${component} secret files`,
+    const manifest = await readManifest(host);
+    const otherComponents = (Object.keys(ENV_SCHEMAS) as Component[])
+      .filter((c) => c !== component && manifest.components[c]);
+    const sharedKeys = new Set(
+      otherComponents.flatMap((c) => {
+        const { secretFields: sf } = categorizeFields(analyzeEnvSchema(ENV_SCHEMAS[c]));
+        return sf.map((f) => f.key);
+      }),
     );
-    if (rmSecrets.success) {
-      pass("Secrets", `Removed ${secretFields.length} secret file(s)`);
-    } else if (!rmSecrets.skipped) {
-      errors.push(`Failed to remove secrets: ${rmSecrets.output}`);
+
+    const toDelete = secretFields.filter((f) => !sharedKeys.has(f.key));
+    const kept = secretFields.filter((f) => sharedKeys.has(f.key));
+
+    if (kept.length > 0) {
+      info("Secrets", `Keeping ${kept.map((f) => f.key).join(", ")} (used by other components)`);
+    }
+
+    if (toDelete.length > 0) {
+      const secretPaths = toDelete.map((f) => `${SECRETS_DIR}/${f.key}`).join(" ");
+      const rmSecrets = await host.withElevation(
+        `rm -f ${secretPaths}`,
+        `Remove ${component} secret files`,
+      );
+      if (rmSecrets.success) {
+        pass("Secrets", `Removed ${toDelete.length} secret file(s)`);
+      } else if (!rmSecrets.skipped) {
+        errors.push(`Failed to remove secrets: ${rmSecrets.output}`);
+      }
     }
   }
 
