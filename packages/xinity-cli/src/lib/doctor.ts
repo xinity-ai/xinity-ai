@@ -2,7 +2,7 @@ import postgres from "postgres";
 
 import { expectedMigrationCount } from "common-db";
 import { readManifest, type Manifest, type ComponentEntry } from "./manifest.ts";
-import { commandExistsOn, isUnitActiveOn, getUnitStatusOn, type Host, createLocalHost } from "./host.ts";
+import { commandExistsOn, isUnitActiveOn, getUnitStatusOn, readSecrets, type Host, createLocalHost } from "./host.ts";
 import { analyzeEnvSchema, categorizeFields } from "./env-prompt.ts";
 import { parseEnvString } from "./env-file.ts";
 import { unitName } from "./systemd.ts";
@@ -849,26 +849,21 @@ async function checkDaemonDrivers(
         message: "Found",
       });
 
-      // NVIDIA container runtime
-      const dockerInfo = await host.run([
-        "docker",
-        "info",
-        "--format",
-        "{{json .Runtimes}}",
-      ]);
-      if (dockerInfo.ok && dockerInfo.output.includes("nvidia")) {
-        checks.push({
-          label: "NVIDIA container runtime",
-          status: "pass",
-          message: "Available in Docker",
-        });
-      } else {
-        checks.push({
-          label: "NVIDIA container runtime",
-          status: "warn",
-          message: "Not found in Docker runtimes",
-          detail: dockerInfo.output || undefined,
-        });
+      // GPU container runtime (only check for the vendor actually present)
+      const hasNvidiaSmi = await commandExistsOn(host, "nvidia-smi");
+      if (hasNvidiaSmi) {
+        const rtResult = await host.run(["nvidia-container-runtime", "--version"]);
+        if (rtResult.ok) {
+          const ver = rtResult.output.split("\n")[0]?.trim() ?? "";
+          checks.push({ label: "NVIDIA container runtime", status: "pass", message: ver || "Available" });
+        } else {
+          checks.push({
+            label: "NVIDIA container runtime",
+            status: "warn",
+            message: "nvidia-container-runtime not found",
+            detail: "Install nvidia-container-toolkit: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html",
+          });
+        }
       }
     } else {
       checks.push({
@@ -879,13 +874,16 @@ async function checkDaemonDrivers(
     }
   }
 
-  // NVIDIA GPU (check if any driver is configured that may need GPU)
+  // GPU detection (check if any driver is configured that may need GPU)
   if (
     values.VLLM_PATH ||
     values.VLLM_DOCKER_IMAGE ||
     values.XINITY_OLLAMA_ENDPOINT
   ) {
-    if (await commandExistsOn(host, "nvidia-smi")) {
+    const hasNvidiaSmi = await commandExistsOn(host, "nvidia-smi");
+    const hasRocmSmi = await commandExistsOn(host, "rocm-smi");
+
+    if (hasNvidiaSmi) {
       const smiResult = await host.run([
         "nvidia-smi",
         "--query-gpu=name",
@@ -896,11 +894,7 @@ async function checkDaemonDrivers(
           .split("\n")
           .filter((l) => l.trim())
           .join(", ");
-        checks.push({
-          label: "NVIDIA GPU",
-          status: "pass",
-          message: gpus || "Detected",
-        });
+        checks.push({ label: "NVIDIA GPU", status: "pass", message: gpus || "Detected" });
       } else {
         checks.push({
           label: "NVIDIA GPU",
@@ -909,11 +903,19 @@ async function checkDaemonDrivers(
           detail: smiResult.output,
         });
       }
+    } else if (hasRocmSmi) {
+      const smiResult = await host.run(["rocm-smi", "--showproductname"]);
+      if (smiResult.ok) {
+        const gpuLine = smiResult.output.split("\n").find((l) => /GPU\[/.test(l) || /Card series/.test(l));
+        checks.push({ label: "AMD GPU", status: "pass", message: gpuLine?.trim() || "Detected (ROCm)" });
+      } else {
+        checks.push({ label: "AMD GPU", status: "warn", message: "rocm-smi found but query failed", detail: smiResult.output });
+      }
     } else {
       checks.push({
-        label: "NVIDIA GPU",
+        label: "GPU",
         status: "warn",
-        message: "nvidia-smi not found",
+        message: "Neither nvidia-smi nor rocm-smi found",
       });
     }
   }
