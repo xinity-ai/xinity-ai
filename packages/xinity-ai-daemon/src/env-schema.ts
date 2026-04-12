@@ -3,7 +3,7 @@ import { secret, expert } from "common-env";
 import { logEnvSchema } from "common-log";
 
 export const daemonEnvSchema = z.object({
-  PORT: z.coerce.number().default(4010).describe("Listen port"),
+  PORT: z.coerce.number().default(4044).describe("Listen port"),
   HOST: z.string().default("0.0.0.0").describe("Bind address (use 0.0.0.0 to listen on all interfaces)"),
   XINITY_OLLAMA_ENDPOINT: z.url().optional().describe("Ollama API endpoint, typically http://localhost:11434 (enables ollama driver)"),
   DB_CONNECTION_URL: z.url().describe("PostgreSQL connection string (e.g. postgresql://user:pass@host:5432/dbname)").meta(secret()),

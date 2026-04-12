@@ -15,17 +15,19 @@ export interface EnvField {
   isOptional: boolean;
   isSecret: boolean;
   isExpert: boolean;
+  isPublic: boolean;
   isEnum: boolean;
   enumValues?: string[];
   isNumber: boolean;
   isBoolean: boolean;
 }
 
-function readFieldMeta(field: z.ZodType): { secret: boolean; expert: boolean } {
+function readFieldMeta(field: z.ZodType): { secret: boolean; expert: boolean; public: boolean } {
   const meta = z.globalRegistry.get(field);
   return {
     secret: meta?.secret === true,
     expert: meta?.expert === true,
+    public: meta?.public === true,
   };
 }
 
@@ -62,6 +64,7 @@ export function analyzeEnvSchema(
       isOptional: !requiredKeys.has(key),
       isSecret: meta.secret,
       isExpert: meta.expert,
+      isPublic: meta.public,
       isEnum: !!enumValues,
       enumValues,
       isNumber: resolvedType === "number" || resolvedType === "integer",

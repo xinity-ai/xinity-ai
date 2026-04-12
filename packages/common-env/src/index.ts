@@ -73,6 +73,18 @@ export function expert() {
   return { expert: true as const };
 }
 
+/**
+ * Zod `.meta()` marker for env vars that should be forwarded to the client
+ * via SvelteKit layout data. These fields are read on the server and passed
+ * through as layout data, then made available via `getClientEnv()` in
+ * Svelte components. Values must be safe to expose to the browser.
+ *
+ * Usage: `GATEWAY_URL: z.url().meta(clientPublic())`
+ */
+export function clientPublic() {
+  return { public: true as const };
+}
+
 export function parseEnv<T extends ZodObjectWithShape>(
   schema: T,
   env: Record<string, string | undefined> = process.env as Record<

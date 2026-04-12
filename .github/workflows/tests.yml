@@ -157,8 +157,6 @@ jobs:
           cp example.env .env
           bun run build
         working-directory: packages/xinity-ai-dashboard
-        env:
-          PUBLIC_LLM_API_URL: http://localhost:8080/v1
 
       - name: Start dashboard
         run: bun build/index.js &
@@ -170,7 +168,7 @@ jobs:
           MAIL_FROM: "Auth Service <noreply@example.com>"
           BETTER_AUTH_SECRET: secret_key
           BETTER_AUTH_URL: http://localhost:5173
-          PUBLIC_LLM_API_URL: http://localhost:8080/v1
+          GATEWAY_URL: http://localhost:8080
           APP_NAME: "Xinity Admin"
           SIGNUP_ENABLED: "true"
           METRICS_AUTH: "user:pass"

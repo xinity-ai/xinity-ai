@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { clientEnv } from "$lib/clientEnv";
+  import { getClientEnv } from "$lib/clientEnv";
   import CodeExample from "$lib/components/CodeExample.svelte";
-  const apiBase = clientEnv.PUBLIC_LLM_API_URL;
+  const { GATEWAY_URL: apiBase } = getClientEnv();
   function highlightAll() {
     if (typeof window !== "undefined" && "Prism" in window && window.Prism) {
       (window.Prism as any).highlightAll();

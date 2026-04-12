@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { clientEnv } from "$lib/clientEnv";
+  import { getClientEnv } from "$lib/clientEnv";
   import CodeExample from "$lib/components/CodeExample.svelte";
   import { getApiKeyExamples } from "$lib/assets/code-examples/loader";
 
@@ -7,9 +7,8 @@
   import * as Card from "$lib/components/ui/card";
   import { Separator } from "$lib/components/ui/separator";
 
-  const apiBase = clientEnv.PUBLIC_LLM_API_URL.endsWith("/v1")
-    ? clientEnv.PUBLIC_LLM_API_URL
-    : `${clientEnv.PUBLIC_LLM_API_URL}/v1`;
+  const { GATEWAY_URL } = getClientEnv();
+  const apiBase = GATEWAY_URL.endsWith("/v1") ? GATEWAY_URL : `${GATEWAY_URL}/v1`;
 
   const examples = getApiKeyExamples(apiBase);
 

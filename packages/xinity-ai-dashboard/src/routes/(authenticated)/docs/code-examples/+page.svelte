@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { clientEnv } from "$lib/clientEnv";
+  import { getClientEnv } from "$lib/clientEnv";
   import CodeExample from "$lib/components/CodeExample.svelte";
   import { getExamples, type Language } from "$lib/assets/code-examples/loader";
 
-  const apiBase = clientEnv.PUBLIC_LLM_API_URL;
+  const { GATEWAY_URL: apiBase } = getClientEnv();
   const examples = getExamples(apiBase);
 
   let selectedLanguage: Language = $state("python");

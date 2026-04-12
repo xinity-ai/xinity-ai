@@ -64,7 +64,7 @@ in {
         publicLlmApiUrl = lib.mkOption {  
           type = lib.types.str;
           default = "http://localhost:4121";
-          description = "Client-side URL to the gateway API (PUBLIC_LLM_API_URL).";
+          description = "Gateway base URL shown to users in docs and code examples (GATEWAY_URL).";
         };
 
         # --- Optional settings ---
@@ -330,7 +330,7 @@ in {
             MCP_ENABLED = lib.boolToString cfg.mcpEnabled;
             INFOSERVER_CACHE_TTL_MS = toString cfg.infoserverCacheTtlMs;
             LOG_LEVEL = cfg.logLevel;
-            PUBLIC_LLM_API_URL = cfg.publicLlmApiUrl;
+            GATEWAY_URL = cfg.publicLlmApiUrl;
             S3_BUCKET = cfg.s3Bucket;
             S3_REGION = cfg.s3Region;
           }
