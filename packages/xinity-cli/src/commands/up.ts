@@ -115,8 +115,14 @@ export const upCommand: CommandModule = {
         return;
       }
 
+      if (component === "infra-ollama") {
+        const { ollamaSetup } = await import("../lib/ollama-setup.ts");
+        await ollamaSetup(host, dryRun);
+        p.outro("Done");
+        return;
+      }
+
       if (
-        component === "infra-ollama" ||
         component === "infra-vllm" ||
         component === "infra-searxng"
       ) {
