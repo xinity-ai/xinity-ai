@@ -8,10 +8,20 @@ import { logErrors, warn } from "../lib/output.ts";
 import { createLocalHost } from "../lib/host.ts";
 import { connectRemoteHost } from "../lib/remote-host.ts";
 import { seaweedfsSetup } from "../lib/seaweedfs-setup.ts";
-import { discoverRedisUrl } from "../lib/redis-setup.ts";
+import { infraRedis } from "../lib/redis-setup.ts";
 import { runUpdateFlow } from "./update.ts";
 
-const COMPONENTS = ["gateway", "dashboard", "daemon", "infoserver", "db", "redis", "seaweedfs", "cli", "all"] as const;
+const COMPONENTS = [
+  // Core application components
+  "gateway", "dashboard", "daemon", "infoserver",
+  // Shared infrastructure (Postgres migrations + Redis discovery)
+  "db",
+  // Infrastructure utilities
+  "infra-redis", "infra-seaweedfs", "infra-postgres",
+  "infra-ollama", "infra-vllm", "infra-searxng",
+  // Meta
+  "cli", "all",
+] as const;
 
 export const upCommand: CommandModule = {
   command: "up <component>",
@@ -81,15 +91,37 @@ export const upCommand: CommandModule = {
         return;
       }
 
-      if (component === "redis") {
-        await discoverRedisUrl(host, dryRun);
+      if (component === "infra-redis") {
+        const url = await infraRedis(host, dryRun);
+        if (url) {
+          p.log.success("Redis connection configured.");
+        } else {
+          warn("Redis", "No Redis URL configured");
+        }
         p.outro("Done");
         return;
       }
 
-      if (component === "seaweedfs") {
+      if (component === "infra-seaweedfs") {
         await seaweedfsSetup(host, dryRun);
         p.outro("Done");
+        return;
+      }
+
+      if (component === "infra-postgres") {
+        const { postgresSetup } = await import("../lib/postgres-setup.ts");
+        await postgresSetup(host, dryRun);
+        p.outro("Done");
+        return;
+      }
+
+      if (
+        component === "infra-ollama" ||
+        component === "infra-vllm" ||
+        component === "infra-searxng"
+      ) {
+        p.log.warn(`${pc.cyan(component)} is not yet implemented.`);
+        p.outro("Coming soon");
         return;
       }
 

@@ -293,5 +293,16 @@ export async function runMigrations(opts: {
     }, opts.host);
   }
 
+  // 6. Redis discovery (shared infrastructure dependency).
+  //    Non-fatal: warn but don't fail the db command if Redis is skipped.
+  p.log.step(pc.bold("\nRedis"));
+  const { discoverRedisUrl } = await import("./redis-setup.ts");
+  const redisUrl = await discoverRedisUrl(opts.host, opts.dryRun);
+  if (redisUrl) {
+    pass("Redis", "Connection configured");
+  } else {
+    warn("Redis", "No Redis URL configured (can be set up later with xinity up infra-redis)");
+  }
+
   return { success: true, errors, connectionUrl };
 }
