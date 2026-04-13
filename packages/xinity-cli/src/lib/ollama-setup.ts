@@ -1,17 +1,20 @@
 /**
  * Interactive Ollama setup assistant for `xinity up infra-ollama`.
  *
- * Handles detection, installation, service management, and endpoint
- * configuration. The ollama endpoint is not a secret (just host:port),
- * so it is written into the daemon's env file rather than a secret file.
+ * Handles detection, installation, service management, and bind-address
+ * configuration via systemd override. After setup, ollama listens on all
+ * interfaces so other nodes (gateway, daemon) can reach it.
  */
 import * as p from "./clack.ts";
 import pc from "picocolors";
 import { type Host, commandExistsOn, isUnitActiveOn } from "./host.ts";
 import { pass, fail, info, warn } from "./output.ts";
+import { parseEnvString, serializeEnvFile } from "./env-file.ts";
+import { ENV_DIR } from "./component-meta.ts";
 
-const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = "11434";
+const OVERRIDE_DIR = "/etc/systemd/system/ollama.service.d";
+const OVERRIDE_PATH = `${OVERRIDE_DIR}/override.conf`;
 
 // ─── Detection ──────────────────────────────────────────────────────────────
 
@@ -29,9 +32,15 @@ async function isOllamaRunning(host: Host): Promise<boolean> {
 async function getOllamaVersion(host: Host): Promise<string | null> {
   const result = await host.run(["ollama", "--version"]);
   if (!result.ok) return null;
-  // Output is typically "ollama version is 0.6.2" or similar
   const match = result.output.match(/(\d+\.\d+\.\d+)/);
   return match?.[1] ?? result.output.trim();
+}
+
+async function getCurrentBindAddress(host: Host): Promise<string | null> {
+  const content = await host.readFile(OVERRIDE_PATH);
+  if (!content) return null;
+  const match = content.match(/OLLAMA_HOST=(\S+)/);
+  return match?.[1] ?? null;
 }
 
 // ─── Install / Update ───────────────────────────────────────────────────────
@@ -87,40 +96,167 @@ async function startOllamaService(host: Host): Promise<boolean> {
   return false;
 }
 
-// ─── Endpoint configuration ─────────────────────────────────────────────────
+// ─── Bind address configuration ─────────────────────────────────────────────
 
-async function configureEndpoint(): Promise<string> {
-  const hostInput = await p.text({
-    message: "Ollama host",
-    placeholder: DEFAULT_HOST,
-    defaultValue: DEFAULT_HOST,
-  });
-  if (p.isCancel(hostInput)) return `http://${DEFAULT_HOST}:${DEFAULT_PORT}`;
+/**
+ * Write a systemd override so ollama listens on the given address,
+ * then reload and restart the service.
+ */
+async function applyBindAddress(host: Host, bindAddress: string): Promise<boolean> {
+  const overrideContent = `[Service]\nEnvironment="OLLAMA_HOST=${bindAddress}"\n`;
+  const result = await host.withElevation(
+    `mkdir -p '${OVERRIDE_DIR}'` +
+    ` && printf '%s' '${overrideContent}' > '${OVERRIDE_PATH}'` +
+    ` && systemctl daemon-reload` +
+    ` && systemctl restart ollama`,
+    "Configure ollama bind address",
+  );
+  if (result.success) {
+    pass("Ollama", `Listening on ${bindAddress}`);
+    return true;
+  }
+  if (!result.skipped) {
+    fail("Ollama", result.output || "Failed to configure bind address");
+  }
+  return false;
+}
+
+async function configureBindAddress(host: Host, dryRun: boolean): Promise<void> {
+  const current = await getCurrentBindAddress(host);
 
   const portInput = await p.text({
     message: "Ollama port",
     placeholder: DEFAULT_PORT,
     defaultValue: DEFAULT_PORT,
   });
-  if (p.isCancel(portInput)) return `http://${hostInput}:${DEFAULT_PORT}`;
+  if (p.isCancel(portInput)) return;
 
-  return `http://${hostInput}:${portInput}`;
-}
+  const bindAddress = `0.0.0.0:${portInput}`;
 
-async function testEndpoint(url: string): Promise<boolean> {
-  try {
-    const res = await fetch(url);
-    return res.ok;
-  } catch {
-    return false;
+  if (current === bindAddress) {
+    info("Ollama", `Already configured to listen on ${bindAddress}`);
+    return;
   }
-}
 
-// ─── Main entry points ─────────────────────────────────────────────────────
+  if (dryRun) {
+    info("Dry run", `Would set OLLAMA_HOST=${bindAddress} via systemd override`);
+    return;
+  }
+
+  await applyBindAddress(host, bindAddress);
+}
 
 /**
- * Full interactive Ollama setup for `xinity up infra-ollama`.
+ * Ensure ollama listens on all interfaces. Called automatically after
+ * install so remote nodes can reach this instance.
  */
+async function ensurePublicBinding(host: Host, dryRun: boolean): Promise<void> {
+  const current = await getCurrentBindAddress(host);
+  if (current && current.startsWith("0.0.0.0:")) {
+    pass("Ollama", `Listening on ${current}`);
+    return;
+  }
+
+  info("Ollama", "Ollama defaults to localhost only, which is unreachable from other nodes.");
+  const bind = await p.confirm({
+    message: "Make ollama accessible on the network (0.0.0.0:11434)?",
+    initialValue: true,
+  });
+  if (p.isCancel(bind) || !bind) return;
+
+  if (dryRun) {
+    info("Dry run", `Would set OLLAMA_HOST=0.0.0.0:${DEFAULT_PORT} via systemd override`);
+    return;
+  }
+
+  await applyBindAddress(host, `0.0.0.0:${DEFAULT_PORT}`);
+}
+
+// ─── End-to-end: test endpoint + write daemon env ───────────────────────────
+
+/**
+ * Resolve the ollama endpoint URL reachable from the network.
+ * Uses the bind address port from the systemd override, combined with the
+ * host's LAN IP (since 0.0.0.0 isn't a routable address).
+ */
+async function resolveEndpointUrl(host: Host): Promise<string> {
+  const current = await getCurrentBindAddress(host);
+  const port = current?.split(":")[1] ?? DEFAULT_PORT;
+
+  // Get the host's network-facing IP
+  const result = await host.runShell(
+    `hostname -I 2>/dev/null | awk '{print $1}' || echo 127.0.0.1`,
+  );
+  const ip = result.ok ? result.output.trim() : "127.0.0.1";
+  return `http://${ip}:${port}`;
+}
+
+async function testEndpoint(url: string, host: Host): Promise<boolean> {
+  // Test from the host itself (the gateway/daemon will reach it over the network)
+  const result = await host.runShell(`curl -sf --connect-timeout 5 '${url}/api/tags' > /dev/null`);
+  return result.ok;
+}
+
+/**
+ * Write XINITY_OLLAMA_ENDPOINT into the daemon's env file.
+ * Reads the existing file, adds/updates the key, and writes it back.
+ */
+async function writeDaemonEndpoint(host: Host, endpoint: string): Promise<boolean> {
+  const envPath = `${ENV_DIR}/daemon.env`;
+  const existing = await host.readFile(envPath);
+  const env = existing ? parseEnvString(existing) : {};
+
+  if (env.XINITY_OLLAMA_ENDPOINT === endpoint) {
+    pass("Daemon config", `XINITY_OLLAMA_ENDPOINT already set to ${endpoint}`);
+    return true;
+  }
+
+  env.XINITY_OLLAMA_ENDPOINT = endpoint;
+  const content = serializeEnvFile(env);
+
+  const result = await host.withElevation(
+    `mkdir -p '${ENV_DIR}' && cat > '${envPath}' << 'ENVEOF'\n${content}ENVEOF\nchmod 644 '${envPath}'`,
+    "Write XINITY_OLLAMA_ENDPOINT to daemon config",
+  );
+  if (result.success) {
+    pass("Daemon config", `XINITY_OLLAMA_ENDPOINT=${endpoint}`);
+    return true;
+  }
+  if (!result.skipped) {
+    fail("Daemon config", result.output || "Failed to write daemon env");
+  }
+  return false;
+}
+
+/**
+ * After ollama is installed and bound, verify the endpoint is reachable
+ * and persist the endpoint URL into the daemon's env file.
+ */
+async function finalizeSetup(host: Host, dryRun: boolean): Promise<void> {
+  const endpoint = await resolveEndpointUrl(host);
+
+  if (dryRun) {
+    info("Dry run", `Would test endpoint ${endpoint} and write to daemon.env`);
+    return;
+  }
+
+  const ok = await testEndpoint(endpoint, host);
+  if (ok) {
+    pass("Ollama", `Endpoint reachable at ${endpoint}`);
+  } else {
+    warn("Ollama", `Endpoint not reachable at ${endpoint}. The daemon may not be able to connect.`);
+    const proceed = await p.confirm({
+      message: "Save this endpoint anyway?",
+      initialValue: true,
+    });
+    if (p.isCancel(proceed) || !proceed) return;
+  }
+
+  await writeDaemonEndpoint(host, endpoint);
+}
+
+// ─── Main entry point ───────────────────────────────────────────────────────
+
 export async function ollamaSetup(host: Host, dryRun: boolean): Promise<void> {
   p.log.step(pc.bold("Ollama setup"));
 
@@ -140,7 +276,7 @@ export async function ollamaSetup(host: Host, dryRun: boolean): Promise<void> {
         options: [
           { value: "keep", label: "Keep current setup" },
           { value: "update", label: "Update ollama to latest version" },
-          { value: "configure", label: "Configure endpoint" },
+          { value: "configure", label: "Configure bind address and port" },
         ],
       });
       if (p.isCancel(action) || action === "keep") return;
@@ -151,18 +287,14 @@ export async function ollamaSetup(host: Host, dryRun: boolean): Promise<void> {
           return;
         }
         await installOrUpdateOllama(host);
+        await ensurePublicBinding(host, dryRun);
+        await finalizeSetup(host, dryRun);
         return;
       }
 
       if (action === "configure") {
-        const endpoint = await configureEndpoint();
-        const ok = await testEndpoint(endpoint);
-        if (ok) {
-          pass("Ollama", `Endpoint reachable: ${endpoint}`);
-        } else {
-          warn("Ollama", `Endpoint not reachable: ${endpoint}`);
-        }
-        p.note(endpoint, "XINITY_OLLAMA_ENDPOINT");
+        await configureBindAddress(host, dryRun);
+        await finalizeSetup(host, dryRun);
         return;
       }
     } else {
@@ -187,6 +319,8 @@ export async function ollamaSetup(host: Host, dryRun: boolean): Promise<void> {
       } else {
         await startOllamaService(host);
       }
+      await ensurePublicBinding(host, dryRun);
+      await finalizeSetup(host, dryRun);
       return;
     }
   } else {
@@ -207,5 +341,7 @@ export async function ollamaSetup(host: Host, dryRun: boolean): Promise<void> {
     }
 
     await installOrUpdateOllama(host);
+    await ensurePublicBinding(host, dryRun);
+    await finalizeSetup(host, dryRun);
   }
 }
