@@ -178,9 +178,18 @@ async function ensureDriverTools(
         if (result.success) {
           pass("Ollama", "ollama installed successfully");
 
-          // The install script usually starts the service, but verify
-          await Bun.sleep(2000);
-          if (!(await isUnitActiveOn(host, "ollama.service")) && !(await isUnitActiveOn(host, "ollama"))) {
+          // Poll until the service comes up (install script usually starts it)
+          const ollamaSpinner = p.spinner();
+          ollamaSpinner.start("Waiting for ollama service…");
+          let ollamaRunning = false;
+          for (let i = 0; i < 10; i++) {
+            await Bun.sleep(500);
+            ollamaRunning = (await isUnitActiveOn(host, "ollama.service")) || (await isUnitActiveOn(host, "ollama"));
+            if (ollamaRunning) break;
+          }
+          ollamaSpinner.stop(ollamaRunning ? "Service running" : "Service not started automatically");
+
+          if (!ollamaRunning) {
             const startResult = await host.withElevation(
               "systemctl enable --now ollama",
               "Start ollama service",
@@ -514,16 +523,28 @@ async function configureEnv(
   const envContent = await host.readFile(envPath);
   const existingConfig = envContent ? parseEnvString(envContent) : {};
   let existingSecrets: Record<string, string> = {};
+  // Track which secret keys should be treated as "already set" even if we
+  // couldn't read their values. When elevation is skipped or denied, we
+  // can't stat the files either (the secrets dir is root-only), so we
+  // conservatively assume all secrets exist. Re-prompting for secrets the
+  // user chose not to unlock would be worse than skipping a truly missing one.
+  const secretsOnDisk = new Set<string>();
   if (secretKeys.length > 0) {
     const sr = await readSecrets(host, SECRETS_DIR, secretKeys, "Read existing secrets");
     existingSecrets = sr.secrets;
+    if (sr.skipped || sr.permissionDenied) {
+      for (const key of secretKeys) secretsOnDisk.add(key);
+    } else {
+      for (const key of Object.keys(sr.secrets)) secretsOnDisk.add(key);
+    }
   }
-  const hasExistingConfig = Object.keys(existingConfig).length > 0 || Object.keys(existingSecrets).length > 0;
+  const hasExistingConfig = Object.keys(existingConfig).length > 0 || secretsOnDisk.size > 0;
   const existing = { ...(autoDefaults ?? {}), ...existingConfig, ...existingSecrets };
 
-  // Check if all required fields already have values
+  // Check if all required fields already have values.
+  // Secrets on disk count as "have a value" even if we couldn't read them.
   const missingRequired = fields.filter(
-    (f) => !f.isOptional && !f.hasDefault && !existing[f.key],
+    (f) => !f.isOptional && !f.hasDefault && !existing[f.key] && !secretsOnDisk.has(f.key),
   );
 
   // Helper to return existing values split by config/secrets
@@ -557,7 +578,7 @@ async function configureEnv(
       if (action === "skip") return useExisting();
     } else {
       // Some new variables need to be configured, offer to skip the rest
-      const alreadySetCount = fields.filter((f) => existing[f.key] !== undefined).length;
+      const alreadySetCount = fields.filter((f) => existing[f.key] !== undefined || secretsOnDisk.has(f.key)).length;
       const action = await p.select({
         message: `${alreadySetCount} of ${fields.length} variables are already configured. ${missingRequired.length} new variable(s) need to be set.`,
         options: [
@@ -568,7 +589,7 @@ async function configureEnv(
       if (p.isCancel(action)) cancelAndExit();
       if (action === "new-only") {
         const skipKeys = new Set(
-          fields.filter((f) => existing[f.key] !== undefined).map((f) => f.key),
+          fields.filter((f) => existing[f.key] !== undefined || secretsOnDisk.has(f.key)).map((f) => f.key),
         );
         return promptForEnv(component, schema, existing, skipKeys);
       }

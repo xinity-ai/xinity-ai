@@ -54,9 +54,18 @@ async function installOrUpdateOllama(host: Host): Promise<boolean> {
   if (result.success) {
     pass("Ollama", "Installed successfully");
 
-    // The install script usually starts the service. Give it a moment, then verify.
-    await Bun.sleep(2000);
-    if (!(await isOllamaRunning(host))) {
+    // The install script usually starts the service. Poll until it's active.
+    const spinner = p.spinner();
+    spinner.start("Waiting for ollama service…");
+    let running = false;
+    for (let i = 0; i < 10; i++) {
+      await Bun.sleep(500);
+      running = await isOllamaRunning(host);
+      if (running) break;
+    }
+    spinner.stop(running ? "Service running" : "Service not started automatically");
+
+    if (!running) {
       const startResult = await host.withElevation(
         "systemctl enable --now ollama",
         "Start ollama service",

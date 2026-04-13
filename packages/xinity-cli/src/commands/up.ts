@@ -87,7 +87,8 @@ export const upCommand: CommandModule = {
       if (component === "db") {
         const result = await runMigrations({ targetVersion, dryRun, host });
         logErrors(result);
-        p.outro("Done");
+        p.outro(result.success ? "Done" : "Failed");
+        if (!result.success) process.exit(1);
         return;
       }
 
@@ -151,7 +152,8 @@ export const upCommand: CommandModule = {
         await showDashboardHints(host);
       }
 
-      p.outro("Done");
+      p.outro(result.success ? "Done" : "Failed");
+      if (!result.success) process.exit(1);
     } finally {
       await host.dispose();
     }

@@ -75,12 +75,15 @@ export async function startService(component: Component, host: Host): Promise<bo
   }
   if (result.skipped) return false;
 
-  // Wait a few seconds for the service to stabilize
+  // Poll until the service is active or we've waited long enough
   const spinner = p.spinner();
   spinner.start("Waiting for service to start…");
-  await Bun.sleep(3000);
-
-  const active = await isUnitActiveOn(host, unit);
+  let active = false;
+  for (let i = 0; i < 10; i++) {
+    await Bun.sleep(500);
+    active = await isUnitActiveOn(host, unit);
+    if (active) break;
+  }
   if (active) {
     spinner.stop("Service running");
     pass("Service", `${unit} is active`);
@@ -121,9 +124,12 @@ export async function restartService(component: Component, host: Host): Promise<
 
   const spinner = p.spinner();
   spinner.start("Waiting for service to restart…");
-  await Bun.sleep(3000);
-
-  const active = await isUnitActiveOn(host, unit);
+  let active = false;
+  for (let i = 0; i < 10; i++) {
+    await Bun.sleep(500);
+    active = await isUnitActiveOn(host, unit);
+    if (active) break;
+  }
   if (active) {
     spinner.stop("Service restarted");
     pass("Service", `${unit} restarted with new configuration`);
