@@ -140,8 +140,9 @@ The daemon also subscribes to PostgreSQL `NOTIFY` on channel `aiNode:<nodeId>`, 
 
 The CLI is the operator's tool for installing, configuring, and managing Xinity services on Linux hosts. Key capabilities:
 
-- **`xinity up <component>`**: Installs or updates gateway, dashboard, daemon, infoserver, or database. Handles the full lifecycle: downloads the binary from GitHub Releases with SHA256 verification, prompts for environment configuration (reading Zod schemas from each component's `env-schema.ts`), generates systemd unit files with security hardening, and starts the service. Supports `--target-host` for remote installation over SSH.
-- **`xinity rm <component>`**: Cleanly removes a component (stops service, removes unit file, binary, and config).
+- **`xinity up <component>`**: Installs or updates gateway, dashboard, daemon, infoserver, or database. Handles the full lifecycle: downloads the binary from GitHub Releases with SHA256 verification, prompts for environment configuration (reading Zod schemas from each component's `env-schema.ts`), generates systemd unit files with security hardening, and starts the service. Supports `--target-host` for remote installation over SSH. The `db` subcommand also bundles Redis discovery after running Postgres migrations.
+- **`xinity up infra-<tool>`**: Infrastructure setup utilities for dependencies like Redis, SeaweedFS, Postgres, and Ollama. These handle detection, installation, service management, and configuration. For example, `infra-ollama` installs ollama, configures it to listen on the network, tests the endpoint, and writes `XINITY_OLLAMA_ENDPOINT` into the daemon env file.
+- **`xinity rm <component>`**: Cleanly removes a component (stops service, removes unit file, binary, and config). Preserves secrets that are still needed by other installed components.
 - **`xinity update`**: Self-updates the CLI binary.
 - **`xinity act [route] [data]`**: Calls any dashboard API route directly. Dynamically discovers available routes by loading the dashboard's oRPC router at runtime. Supports interactive schema-driven prompts when data is omitted.
 - **`xinity configure`**: Manages CLI settings or interactively reconfigures components when run as `xinity configure <component>`.
@@ -172,7 +173,7 @@ The package also provides `preconfigureDB()`, which returns lazy database access
 
 ### SeaweedFS
 
-**External service** | **Managed by:** `xinity up seaweedfs`
+**External service** | **Managed by:** `xinity up infra-seaweedfs`
 
 SeaweedFS is an optional self-hosted S3-compatible object store used for multimodal image storage. It replaces the alternative of embedding base64 image data directly in the PostgreSQL `apiCall.inputMessages` JSONB column, which would cause significant database bloat.
 
@@ -187,7 +188,7 @@ The dashboard resolves `xinity-media://` references:
 - **Display:** A server-side `/api/media/[sha256]` endpoint generates a short-lived presigned URL (15 minutes) and returns a 302 redirect.
 - **Export:** The `/api/call-export/[callId]` endpoint resolves references to data URIs before serializing, producing fully self-contained JSON downloads.
 
-SeaweedFS ships as a single static `weed` binary with no external dependencies. It is installed and managed via `xinity up seaweedfs`, which downloads the binary, writes an S3 identity config to `/etc/xinity-ai/seaweedfs-s3.json`, installs a systemd unit, and starts the service. The gateway can also function without SeaweedFS configured, in which case, data URIs are stripped from call logs entirely and external URLs are stored as-is.
+SeaweedFS ships as a single static `weed` binary with no external dependencies. It is installed and managed via `xinity up infra-seaweedfs`, which downloads the binary, writes an S3 identity config to `/etc/xinity-ai/seaweedfs-s3.json`, installs a systemd unit, and starts the service. The gateway can also function without SeaweedFS configured, in which case, data URIs are stripped from call logs entirely and external URLs are stored as-is.
 
 ### Info Server
 
