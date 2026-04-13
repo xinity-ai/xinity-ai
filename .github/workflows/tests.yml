@@ -28,7 +28,7 @@ jobs:
             cmd: bun run test -- --reporter=default --reporter=junit --reporter-outfile=results.xml
             cwd: packages/xinity-ai-gateway
           - name: Daemon
-            cmd: bun run test -- --reporter=default --reporter=junit --reporter-outfile=results.xml
+            cmd: SKIP_NETWORK_TESTS=1 bun run test -- --reporter=default --reporter=junit --reporter-outfile=results.xml
             cwd: packages/xinity-ai-daemon
           - name: Infoserver
             cmd: bun run test -- --reporter=default --reporter=junit --reporter-outfile=results.xml
