@@ -76,7 +76,8 @@
         !searchLower ||
         m.name.toLowerCase().includes(searchLower) ||
         m.description.toLowerCase().includes(searchLower) ||
-        m.publicSpecifier.toLowerCase().includes(searchLower);
+        m.publicSpecifier.toLowerCase().includes(searchLower) ||
+        (m.family && m.family.toLowerCase().includes(searchLower));
 
       let matchesType = true;
       if (selectedType === "chat") matchesType = m.type === "chat";

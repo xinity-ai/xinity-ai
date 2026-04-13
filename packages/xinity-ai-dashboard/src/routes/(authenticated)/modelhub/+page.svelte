@@ -22,9 +22,21 @@
   import NoOrganization from "$lib/components/NoOrganization.svelte";
 
   let { data }: { data: PageData } = $props();
-  const maxNodeFreeCapacity = $derived(data.maxNodeFreeCapacity);
-  const availableDrivers = $derived(data.availableDrivers);
-  const nodeFreeCapacities = $derived(data.nodeFreeCapacities);
+  let maxNodeFreeCapacity = $derived(data.maxNodeFreeCapacity);
+  let availableDrivers = $derived(data.availableDrivers);
+  let nodeFreeCapacities = $derived(data.nodeFreeCapacities);
+
+  // Mutable overrides updated by refreshCapacity() after mutations.
+  // When set, these take precedence over the load-function values.
+  let capacityOverride = $state<{ maxNodeFreeCapacity: number; availableDrivers: string[]; nodeFreeCapacities: number[] } | null>(null);
+  const activeMaxCapacity = $derived(capacityOverride?.maxNodeFreeCapacity ?? maxNodeFreeCapacity);
+  const activeDrivers = $derived(capacityOverride?.availableDrivers ?? availableDrivers);
+  const activeNodeCapacities = $derived(capacityOverride?.nodeFreeCapacities ?? nodeFreeCapacities);
+
+  async function refreshCapacity() {
+    const [err, cap] = await orpc.deployment.clusterCapacity({});
+    if (!err && cap) capacityOverride = cap;
+  }
 
   // ---------------------------------------------------------------------------
   // Local deployment state - driven by streamed initial load then updated in place
@@ -91,7 +103,11 @@
   let deploymentToDelete: DeploymentDefinition | null = $state(null);
   const editDeployment = $derived(deployments.find((d) => d.id === editDeploymentModalId));
 
-  const visibleDeployments = $derived(deployments.filter(d => !deletedIds.has(d.id)));
+  const visibleDeployments = $derived(
+    deployments
+      .filter(d => !deletedIds.has(d.id))
+      .toSorted((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })),
+  );
 
   function deploymentTypeLabel(deployment: DeploymentDefinition): string {
     if (!deployment?.earlyModelSpecifier) return "Static";
@@ -113,6 +129,7 @@
       return;
     }
     deployments = deps;
+    refreshCapacity();
   }
 
   // Status chip colors/labels by phase
@@ -143,9 +160,9 @@
 
     if (!failed) {
       toastState.add(`Deleted deployment "${deleting.name}"`, "success");
-      // Remove from deployments array so it's gone after undo window too
       deployments = deployments.filter(d => d.id !== deleting.id);
       deletedIds.delete(deleting.id);
+      refreshCapacity();
     }
   }
 </script>
@@ -399,9 +416,9 @@
 
 <DeploymentModal
   open={showCreateDeploymentModal}
-  {maxNodeFreeCapacity}
-  {availableDrivers}
-  {nodeFreeCapacities}
+  maxNodeFreeCapacity={activeMaxCapacity}
+  availableDrivers={activeDrivers}
+  nodeFreeCapacities={activeNodeCapacities}
   close={() => (showCreateDeploymentModal = false)}
   onSaved={refreshDeployments}
 />
@@ -410,9 +427,9 @@
   <DeploymentModal
     open={true}
     deployment={editDeployment}
-    {maxNodeFreeCapacity}
-    {availableDrivers}
-    {nodeFreeCapacities}
+    maxNodeFreeCapacity={activeMaxCapacity}
+    availableDrivers={activeDrivers}
+    nodeFreeCapacities={activeNodeCapacities}
     close={() => (editDeploymentModalId = null)}
     onSaved={refreshDeployments}
   />
