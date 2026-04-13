@@ -1,62 +1,64 @@
 <script lang="ts">
-  import { clientEnv } from "$lib/clientEnv";
+  import { getClientEnv } from "$lib/clientEnv";
   import CodeExample from "$lib/components/CodeExample.svelte";
-  const apiBase = clientEnv.PUBLIC_LLM_API_URL;
+  const { GATEWAY_URL: apiBase } = getClientEnv();
 
   const pythonMultiApp = `import os
 from openai import OpenAI
 
+base_url = "${apiBase}"
 api_key = os.getenv("API_KEY")
 
 # One client per application
 chatbot = OpenAI(
     api_key=api_key,
-    base_url="${apiBase}",
+    base_url=base_url,
     default_headers={"X-Application": "customer-chatbot"},
 )
 
 summarizer = OpenAI(
     api_key=api_key,
-    base_url="${apiBase}",
+    base_url=base_url,
     default_headers={"X-Application": "doc-summarizer"},
 )
 
 # Calls are automatically routed to the right application
 chatbot.chat.completions.create(
-    model="<your-model>",
+    model=os.getenv("MODEL"),
     messages=[{"role": "user", "content": "How do I reset my password?"}],
 )
 
 summarizer.chat.completions.create(
-    model="<your-model>",
+    model=os.getenv("MODEL"),
     messages=[{"role": "user", "content": "Summarize this report..."}],
 )`;
 
   const jsMultiApp = `import { OpenAI } from "openai";
 
+const baseURL = "${apiBase}";
 const apiKey = process.env.API_KEY;
 
 // One client per application
 const chatbot = new OpenAI({
     apiKey,
-    baseURL: "${apiBase}",
+    baseURL,
     defaultHeaders: { "X-Application": "customer-chatbot" },
 });
 
 const summarizer = new OpenAI({
     apiKey,
-    baseURL: "${apiBase}",
+    baseURL,
     defaultHeaders: { "X-Application": "doc-summarizer" },
 });
 
 // Calls are automatically routed to the right application
 await chatbot.chat.completions.create({
-    model: "<your-model>",
+    model: process.env.MODEL,
     messages: [{ role: "user", content: "How do I reset my password?" }],
 });
 
 await summarizer.chat.completions.create({
-    model: "<your-model>",
+    model: process.env.MODEL,
     messages: [{ role: "user", content: "Summarize this report..." }],
 });`;
 

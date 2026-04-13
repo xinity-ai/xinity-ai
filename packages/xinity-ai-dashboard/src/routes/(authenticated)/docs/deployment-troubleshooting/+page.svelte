@@ -437,7 +437,7 @@
       </p>
       <p class="text-sm font-semibold text-gray-700 mb-1">Likely fix:</p>
       <ul class="list-disc pl-6 space-y-1 text-sm text-gray-600 mb-3">
-        <li>Set the <code class="bg-gray-100 px-1 rounded">HF_TOKEN</code> environment variable on the inference node.</li>
+        <li>Set the <code class="bg-gray-100 px-1 rounded">VLLM_HF_TOKEN</code> environment variable on the inference node.</li>
         <li>Make sure you have accepted the model's license on HuggingFace.</li>
       </ul>
     </section>

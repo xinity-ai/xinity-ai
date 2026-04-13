@@ -1,18 +1,16 @@
 import os
 import requests
 
-MODEL = "<your-rerank-model>"
-API_BASE = "{{API_BASE}}"
 API_KEY = os.getenv("API_KEY")
 
 response = requests.post(
-    f"{API_BASE}/rerank",
+    "{{API_BASE}}/rerank",
     headers={
         "Content-Type": "application/json",
         "Authorization": f"Bearer {API_KEY}",
     },
     json={
-        "model": MODEL,
+        "model": os.getenv("MODEL"),
         "query": "What is the capital of France?",
         "documents": [
             "Paris is the capital and most populous city of France.",

@@ -1,6 +1,5 @@
 #!/bin/bash
 
-MODEL="<your-model>"
 MAX_RETRIES=3
 RETRY_DELAY=1
 
@@ -9,7 +8,7 @@ for i in $(seq 1 $MAX_RETRIES); do
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $API_KEY" \
     -d '{
-      "model": "'$MODEL'",
+      "model": "'"$MODEL"'",
       "messages": [
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": "Hello!"}
@@ -22,8 +21,9 @@ for i in $(seq 1 $MAX_RETRIES); do
   if [ "$http_code" -eq 200 ]; then
     echo "$body"
     exit 0
-  elif [ "$http_code" -eq 429 ]; then
-    echo "Rate limit hit. Retrying in ${RETRY_DELAY}s..."
+  elif [ "$http_code" -eq 429 ] || [ "$http_code" -eq 503 ] || [ "$http_code" -eq 504 ]; then
+    # 429: backend queue full  503: backend unreachable  504: backend timeout
+    echo "Service unavailable ($http_code). Retrying in ${RETRY_DELAY}s..."
     sleep $RETRY_DELAY
     RETRY_DELAY=$((RETRY_DELAY * 2))
   else

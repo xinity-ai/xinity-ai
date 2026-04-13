@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { clientEnv } from "$lib/clientEnv";
+  import { getClientEnv } from "$lib/clientEnv";
   import CodeExample from "$lib/components/CodeExample.svelte";
   import { getExamples, type Language } from "$lib/assets/code-examples/loader";
 
-  const apiBase = clientEnv.PUBLIC_LLM_API_URL;
+  const { GATEWAY_URL: apiBase } = getClientEnv();
   const examples = getExamples(apiBase);
 
   let selectedLanguage: Language = $state("python");
@@ -24,7 +24,7 @@
     },
     "error-handling": {
       title: "Error Handling",
-      description: "Properly handle API errors and retries",
+      description: "Handle API errors and retries. A 429 can occur when the inference backend's request queue is full and it cannot accept more load. Implement exponential backoff to recover gracefully.",
     },
     "tool-calling": {
       title: "Tool Calling",
@@ -36,7 +36,7 @@
     },
     reranking: {
       title: "Reranking",
-      description: "Rerank documents by relevance to a query",
+      description: "Rerank documents by relevance to a query. The /v1/rerank endpoint follows the Cohere rerank API standard, which has become the community convention.",
     },
   };
 
@@ -183,7 +183,7 @@
             <span class="text-xinity-magenta font-bold">&#8226;</span>
             <span
               >Use streaming for long-form content to improve perceived
-              performance</span
+              performance and avoid request timeouts from long waiting times</span
             >
           </li>
           <li class="flex items-start gap-2">

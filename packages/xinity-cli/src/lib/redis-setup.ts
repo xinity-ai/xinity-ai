@@ -11,9 +11,10 @@
 import { randomBytes } from "crypto";
 import * as p from "./clack.ts";
 import pc from "picocolors";
-import { type Host, commandExistsOn } from "./host.ts";
+import { type Host, commandExistsOn, readSecrets } from "./host.ts";
 import { pass, fail, info, warn } from "./output.ts";
 import { parseEnvString } from "./env-file.ts";
+import { SECRETS_DIR, ENV_DIR } from "./component-meta.ts";
 
 // ─── Package-manager definitions ────────────────────────────────────────────
 
@@ -83,8 +84,6 @@ const PACKAGE_MANAGERS: PackageManager[] = [
 ];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-const ENV_DIR = "/etc/xinity-ai";
 
 async function detectPackageManager(host: Host): Promise<PackageManager | undefined> {
   for (const pm of PACKAGE_MANAGERS) {
@@ -157,7 +156,7 @@ async function startRedis(
   if (result.skipped) {
     warn(variant, "Skipped starting the service");
   } else {
-    fail(variant, "Failed to start service");
+    fail(variant, result.output || "Failed to start service");
   }
   return false;
 }
@@ -205,7 +204,7 @@ async function installRedis(
   if (result.skipped) {
     warn("Install", "Skipped installation");
   } else {
-    fail("Install", "Installation failed");
+    fail("Install", result.output || "Installation failed");
   }
   return false;
 }
@@ -325,10 +324,35 @@ async function configureRedisUrl(
 
 // ─── Main entry point ───────────────────────────────────────────────────────
 
+function redactRedisUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.password) parsed.password = "****";
+    return parsed.toString();
+  } catch {
+    return url.replace(/:([^@]+)@/, ":****@");
+  }
+}
+
+async function persistRedisUrl(host: Host, url: string): Promise<void> {
+  // Only write if the value actually changed.
+  const existing = await readSecrets(host, SECRETS_DIR, ["REDIS_URL"], "Read stored Redis URL");
+  if (existing.secrets.REDIS_URL === url) return;
+
+  const escaped = url.replace(/'/g, "'\\''");
+  await host.withElevation(
+    `mkdir -p '${SECRETS_DIR}' && chmod 700 '${SECRETS_DIR}'` +
+    ` && printf '%s' '${escaped}' > '${SECRETS_DIR}/REDIS_URL' && chmod 600 '${SECRETS_DIR}/REDIS_URL'`,
+    "Store Redis connection URL",
+    { sensitive: true },
+  );
+}
+
 /**
- * Discover REDIS_URL from environment or installed component configs.
+ * Discover REDIS_URL from stored secrets, environment, or component configs.
  * If no existing URL is found, guides the user through an interactive
  * setup that can detect, install, and configure Redis/Valkey automatically.
+ * Persists the result to the secrets directory for future runs.
  *
  * Returns a Redis URL if setup completed, or `undefined` if the user cancelled.
  */
@@ -336,14 +360,50 @@ export async function discoverRedisUrl(
   host: Host,
   dryRun: boolean,
 ): Promise<string | undefined> {
-  // 1. Check environment variable
+  const { testRedisConnection } = await import("./connectivity.ts");
+
+  // 1. Check stored secret
+  const stored = await readSecrets(host, SECRETS_DIR, ["REDIS_URL"], "Read stored Redis URL");
+  if (stored.secrets.REDIS_URL) {
+    const url = stored.secrets.REDIS_URL;
+    info("Redis connection", `Found stored URL: ${redactRedisUrl(url)}`);
+    const ok = await testRedisConnection(url, host);
+    if (ok) return url;
+
+    // Stored URL is stale, offer to reconfigure
+    const action = await p.select({
+      message: "Stored Redis URL failed connectivity test.",
+      options: [
+        { value: "reenter", label: "Enter a new URL" },
+        { value: "setup", label: "Set up a new Redis instance" },
+        { value: "keep", label: "Use the stored URL anyway" },
+      ],
+    });
+    if (p.isCancel(action)) { p.cancel("Cancelled."); return undefined; }
+    if (action === "keep") return url;
+    if (action === "setup") {
+      const newUrl = await redisSetup(host, dryRun);
+      if (newUrl) {
+        await testRedisConnection(newUrl, host);
+        if (!dryRun) await persistRedisUrl(host, newUrl);
+      }
+      return newUrl;
+    }
+    // reenter: fall through to promptAndValidateRedisUrl below
+    const newUrl = await promptAndValidateRedisUrl(host);
+    if (newUrl && !dryRun) await persistRedisUrl(host, newUrl);
+    return newUrl;
+  }
+
+  // 2. Check environment variable
   if (process.env.REDIS_URL) {
     info("Redis connection", "Using REDIS_URL from environment");
+    if (!dryRun) await persistRedisUrl(host, process.env.REDIS_URL);
     return process.env.REDIS_URL;
   }
 
-  // 2. Check installed component env files on the target host
-  for (const component of ["gateway"]) {
+  // 3. Check installed component env files on the target host
+  for (const component of ["gateway", "dashboard", "daemon"]) {
     const envPath = `${ENV_DIR}/${component}.env`;
     if (await host.fileExists(envPath)) {
       const content = await host.readFile(envPath);
@@ -351,13 +411,14 @@ export async function discoverRedisUrl(
         const env = parseEnvString(content);
         if (env.REDIS_URL) {
           info("Redis connection", `Found in ${component}.env`);
+          if (!dryRun) await persistRedisUrl(host, env.REDIS_URL);
           return env.REDIS_URL;
         }
       }
     }
   }
 
-  // 3. No existing connection found, ask user how to proceed
+  // 4. No existing connection found, ask user how to proceed
   const choice = await p.select({
     message: "No existing Redis connection found. Do you already have a Redis/Valkey instance?",
     options: [
@@ -382,14 +443,16 @@ export async function discoverRedisUrl(
   if (choice === "setup") {
     const url = await redisSetup(host, dryRun);
     if (url) {
-      const { testRedisConnection } = await import("./connectivity.ts");
       await testRedisConnection(url, host);
+      if (!dryRun) await persistRedisUrl(host, url);
     }
     return url;
   }
 
   // Existing instance, prompt for URL then validate connectivity
-  return promptAndValidateRedisUrl(host);
+  const url = await promptAndValidateRedisUrl(host);
+  if (url && !dryRun) await persistRedisUrl(host, url);
+  return url;
 }
 
 /**
@@ -491,4 +554,48 @@ export async function redisSetup(host: Host, dryRun: boolean): Promise<string | 
   if (!started) return undefined;
 
   return configureRedisUrl(host, dryRun);
+}
+
+/**
+ * Entry point for `xinity up infra-redis`. If a working connection already
+ * exists, offers to keep it or reconfigure. Otherwise falls through to the
+ * normal discovery flow.
+ */
+export async function infraRedis(host: Host, dryRun: boolean): Promise<string | undefined> {
+  const { testRedisConnection } = await import("./connectivity.ts");
+
+  const stored = await readSecrets(host, SECRETS_DIR, ["REDIS_URL"], "Read stored Redis URL");
+  if (stored.secrets.REDIS_URL) {
+    const url = stored.secrets.REDIS_URL;
+    const ok = await testRedisConnection(url, host);
+
+    if (ok) {
+      info("Redis connection", `Current: ${redactRedisUrl(url)}`);
+      const action = await p.select({
+        message: "Redis is configured and reachable.",
+        options: [
+          { value: "keep", label: "Keep current configuration" },
+          { value: "reenter", label: "Enter a different URL" },
+          { value: "setup", label: "Set up a new Redis instance" },
+        ],
+      });
+      if (p.isCancel(action) || action === "keep") return url;
+      if (action === "reenter") {
+        const newUrl = await promptAndValidateRedisUrl(host);
+        if (newUrl && !dryRun) await persistRedisUrl(host, newUrl);
+        return newUrl;
+      }
+      // setup: fall through to full setup
+      const newUrl = await redisSetup(host, dryRun);
+      if (newUrl) {
+        await testRedisConnection(newUrl, host);
+        if (!dryRun) await persistRedisUrl(host, newUrl);
+      }
+      return newUrl;
+    }
+
+    // Stored but not reachable, delegate to the stale-URL flow in discoverRedisUrl
+  }
+
+  return discoverRedisUrl(host, dryRun);
 }

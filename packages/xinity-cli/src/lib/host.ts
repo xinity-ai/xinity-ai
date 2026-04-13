@@ -72,6 +72,8 @@ export async function localRunInteractive(args: string[]): Promise<RunResult> {
 
 // ─── Elevation (sudo) ──────────────────────────────────────────────────────
 
+export type ElevationPolicy = "sudo" | "manual" | null;
+
 export interface ElevationResult {
   success: boolean;
   output: string;
@@ -82,13 +84,74 @@ function isRoot(): boolean {
   return process.getuid?.() === 0;
 }
 
-/**
- * Run a shell command that requires root privileges (local variant).
- *
- * If already running as root, executes directly. Otherwise uses
- * @clack/prompts to ask the user to either run with sudo, get the
- * command printed for manual execution, or skip.
- */
+let localElevationPolicy: ElevationPolicy = null;
+
+function buildElevationMenu(sensitive: boolean): { value: string; label: string }[] {
+  const options: { value: string; label: string }[] = [
+    { value: "sudo-all", label: "Run with sudo (all remaining)" },
+    { value: "sudo-once", label: "Run with sudo (this time only)" },
+  ];
+  if (!sensitive) {
+    options.push(
+      { value: "manual-all", label: "Show me the commands (all remaining)" },
+      { value: "manual-once", label: "Show me the command (this time only)" },
+    );
+  }
+  return options;
+}
+
+function showManualCommand(command: string): void {
+  p.log.info(`Run manually:\n  ${pc.cyan(`sudo sh -c '${command}'`)}`);
+}
+
+async function confirmManualRun(): Promise<ElevationResult> {
+  const done = await p.confirm({ message: "Have you run the command?", initialValue: true });
+  if (p.isCancel(done) || !done) {
+    const abort = await p.confirm({ message: "Abort?", initialValue: false });
+    if (p.isCancel(abort) || abort) {
+      p.cancel("Aborted.");
+      return { success: false, output: "", skipped: true };
+    }
+    return { success: false, output: "", skipped: true };
+  }
+  return { success: true, output: "", skipped: false };
+}
+
+async function runLocalSudo(
+  command: string,
+  sensitive: boolean,
+): Promise<ElevationResult> {
+  process.stderr.write("\x1b[?25h\x1b[0m");
+  p.log.step(pc.dim("Enter your sudo password when prompted:"));
+
+  if (sensitive) {
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(false);
+    }
+    process.stdin.pause();
+
+    const proc = Bun.spawn(["sudo", "sh", "-c", command], {
+      stdin: "inherit",
+      stdout: "pipe",
+      stderr: "inherit",
+    });
+    const [exitCode, stdout] = await Promise.all([
+      proc.exited,
+      new Response(proc.stdout).text(),
+    ]);
+
+    process.stdin.resume();
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(false);
+    }
+
+    return { success: exitCode === 0, output: stdout, skipped: false };
+  }
+
+  const result = await localRunInteractive(["sudo", "sh", "-c", command]);
+  return { success: result.ok, output: result.output, skipped: false };
+}
+
 async function localWithElevation(
   command: string,
   description: string,
@@ -98,24 +161,24 @@ async function localWithElevation(
 
   if (isRoot()) {
     const result = await localRun(["sh", "-c", command]);
-    return {
-      success: result.ok,
-      output: result.output,
-      skipped: false,
-    };
+    return { success: result.ok, output: result.output, skipped: false };
   }
 
-  const menuOptions: { value: string; label: string }[] = [
-    { value: "sudo", label: "Run with sudo" },
-  ];
-  if (!sensitive) {
-    menuOptions.push({ value: "print", label: "Show me the command (I'll run it myself)" });
+  // Apply remembered policy if set.
+  if (localElevationPolicy === "sudo") {
+    p.log.step(pc.dim(description));
+    return runLocalSudo(command, sensitive);
   }
-  menuOptions.push({ value: "skip", label: "Skip" });
+  if (localElevationPolicy === "manual" && !sensitive) {
+    p.log.step(pc.dim(description));
+    showManualCommand(command);
+    return confirmManualRun();
+  }
 
+  // First time (or sensitive command with manual policy): show menu.
   const action = await p.select({
     message: `${pc.yellow(description)} requires elevated privileges.`,
-    options: menuOptions,
+    options: buildElevationMenu(sensitive),
   });
 
   if (p.isCancel(action)) {
@@ -123,65 +186,21 @@ async function localWithElevation(
     return { success: false, output: "", skipped: true };
   }
 
-  if (action === "sudo") {
-    // Reset terminal state after clack's interactive prompt so
-    // sudo's password prompt is visible on the TTY.
-    process.stderr.write("\x1b[?25h\x1b[0m");
-    p.log.step(pc.dim("Enter your sudo password when prompted:"));
-
-    if (sensitive) {
-      // Capture stdout to prevent secret values from leaking to the terminal.
-      // sudo prompts on /dev/tty, so stdin/stderr inheritance is sufficient.
-      // We must pause/resume stdin around the child process (same as
-      // localRunInteractive) to prevent Bun from leaving the stream in an
-      // ended state, which would cause all subsequent clack prompts to
-      // immediately resolve with EOF and silently exit the CLI.
-      if (process.stdin.isTTY) {
-        process.stdin.setRawMode(false);
-      }
-      process.stdin.pause();
-
-      const proc = Bun.spawn(["sudo", "sh", "-c", command], {
-        stdin: "inherit",
-        stdout: "pipe",
-        stderr: "inherit",
-      });
-      const [exitCode, stdout] = await Promise.all([
-        proc.exited,
-        new Response(proc.stdout).text(),
-      ]);
-
-      process.stdin.resume();
-      if (process.stdin.isTTY) {
-        process.stdin.setRawMode(false);
-      }
-
-      return {
-        success: exitCode === 0,
-        output: stdout,
-        skipped: false,
-      };
-    }
-
-    const result = await localRunInteractive(["sudo", "sh", "-c", command]);
-    return {
-      success: result.ok,
-      output: result.output,
-      skipped: false,
-    };
+  if (action === "sudo-all") {
+    localElevationPolicy = "sudo";
+    return runLocalSudo(command, sensitive);
   }
-
-  if (action === "print") {
-    p.log.info(`Run manually:\n  ${pc.cyan(`sudo sh -c '${command}'`)}`);
-    // Wait for user to confirm they've run it before continuing
-    const done = await p.confirm({
-      message: "Have you run the command?",
-      initialValue: true,
-    });
-    if (p.isCancel(done) || !done) {
-      return { success: false, output: "", skipped: true };
-    }
-    return { success: true, output: "", skipped: false };
+  if (action === "sudo-once") {
+    return runLocalSudo(command, sensitive);
+  }
+  if (action === "manual-all") {
+    localElevationPolicy = "manual";
+    showManualCommand(command);
+    return confirmManualRun();
+  }
+  if (action === "manual-once") {
+    showManualCommand(command);
+    return confirmManualRun();
   }
 
   return { success: false, output: "", skipped: true };
@@ -260,6 +279,63 @@ export interface Host {
    * Returns the rewritten URL and a cleanup function to tear down the tunnel.
    */
   openTunnel(url: string): Promise<{ localUrl: string; close: () => Promise<void> }>;
+
+  /** Release any long-lived resources (persistent sessions, connections). */
+  dispose(): Promise<void>;
+}
+
+export interface ReadSecretsResult {
+  secrets: Record<string, string>;
+  permissionDenied: boolean;
+  skipped: boolean;
+}
+
+/**
+ * Read multiple secret files from a directory, elevating if necessary.
+ *
+ * Tries an unelevated read first for each key. Any that fail (permission
+ * denied) are batch-read via a single `withElevation` call. Returns a map
+ * of key -> file content for files that were successfully read.
+ */
+export async function readSecrets(
+  host: Host,
+  dir: string,
+  keys: string[],
+  description: string,
+): Promise<ReadSecretsResult> {
+  const secrets: Record<string, string> = {};
+
+  // Try unelevated reads first.
+  for (const key of keys) {
+    const content = await host.readFile(`${dir}/${key}`);
+    if (content !== null) secrets[key] = content.trim();
+  }
+
+  const missing = keys.filter((k) => !(k in secrets));
+  if (missing.length === 0) {
+    return { secrets, permissionDenied: false, skipped: false };
+  }
+
+  // Batch-read the rest via elevation.
+  const script = missing
+    .map((k) => `[ -f '${dir}/${k}' ] && printf '%s\\0%s\\0' '${k}' "$(cat '${dir}/${k}')"`)
+    .join("; ") + "; true";
+
+  const result = await host.withElevation(script, description, { sensitive: true });
+
+  if (result.skipped) {
+    return { secrets, permissionDenied: false, skipped: true };
+  }
+  if (!result.success) {
+    return { secrets, permissionDenied: true, skipped: false };
+  }
+
+  const parts = result.output.split("\0").filter(Boolean);
+  for (let i = 0; i < parts.length - 1; i += 2) {
+    secrets[parts[i]!] = parts[i + 1]!.trim();
+  }
+
+  return { secrets, permissionDenied: false, skipped: false };
 }
 
 // ─── Convenience helpers ─────────────────────────────────────────────────────
@@ -360,6 +436,8 @@ export class LocalHost implements Host {
   async openTunnel(url: string): Promise<{ localUrl: string; close: () => Promise<void> }> {
     return { localUrl: url, close: async () => {} };
   }
+
+  async dispose(): Promise<void> {}
 }
 
 export function createLocalHost(): Host {

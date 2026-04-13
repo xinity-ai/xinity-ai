@@ -28,4 +28,4 @@ services:
       BETTER_AUTH_URL: http://localhost:${DASHBOARD_PORT:-5121}
       ORIGIN: http://localhost:${DASHBOARD_PORT:-5121}
       HTTP_OVERRIDE_ORIGIN: http://localhost:${DASHBOARD_PORT:-5121}
-      PUBLIC_LLM_API_URL: http://localhost:${GATEWAY_PORT:-4121}/v1
+      GATEWAY_URL: http://localhost:${GATEWAY_PORT:-4121}

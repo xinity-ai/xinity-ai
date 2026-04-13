@@ -34,6 +34,15 @@ export interface VllmOps {
   ensureSetup(): Promise<void>;
 }
 
+async function checkHealth(port: number): Promise<boolean> {
+  try {
+    const res = await fetch(`http://localhost:${port}/health`);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Systemd implementation
 // ---------------------------------------------------------------------------
@@ -102,14 +111,7 @@ export function createSystemdVllmOps(): VllmOps {
       await $`rm -f ${env.VLLM_ENV_DIR}/${id}.env`;
     },
 
-    async checkHealth(port) {
-      try {
-        const res = await fetch(`http://localhost:${port}/health`);
-        return res.ok;
-      } catch {
-        return false;
-      }
-    },
+    checkHealth,
 
     async isAlive(id) {
       const result = await $`systemctl is-active vllm-driver@${id}.service`
@@ -190,7 +192,6 @@ export function createDockerVllmOps(): VllmOps {
         "-p", `${config.port}:8000`,
         "-e", "HF_HOME=/data/hf-cache",
         "-e", "TRITON_CACHE_DIR=/data/triton-cache",
-        ...(env.VLLM_HF_TOKEN ? ["-e", `HF_TOKEN=${env.VLLM_HF_TOKEN}`] : []),
         "-v", `${env.VLLM_HF_CACHE_DIR}:/data/hf-cache`,
         "-v", `${env.VLLM_TRITON_CACHE_DIR}:/data/triton-cache`,
         "--restart", "unless-stopped",
@@ -222,14 +223,7 @@ export function createDockerVllmOps(): VllmOps {
       await $`docker rm ${containerName}`.nothrow();
     },
 
-    async checkHealth(port) {
-      try {
-        const res = await fetch(`http://localhost:${port}/health`);
-        return res.ok;
-      } catch {
-        return false;
-      }
-    },
+    checkHealth,
 
     async isAlive(id) {
       const containerName = `${DOCKER_CONTAINER_PREFIX}${id}`;

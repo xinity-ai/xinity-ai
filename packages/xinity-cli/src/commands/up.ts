@@ -8,10 +8,20 @@ import { logErrors, warn } from "../lib/output.ts";
 import { createLocalHost } from "../lib/host.ts";
 import { connectRemoteHost } from "../lib/remote-host.ts";
 import { seaweedfsSetup } from "../lib/seaweedfs-setup.ts";
-import { discoverRedisUrl } from "../lib/redis-setup.ts";
+import { infraRedis } from "../lib/redis-setup.ts";
 import { runUpdateFlow } from "./update.ts";
 
-const COMPONENTS = ["gateway", "dashboard", "daemon", "infoserver", "db", "redis", "seaweedfs", "cli", "all"] as const;
+const COMPONENTS = [
+  // Core application components
+  "gateway", "dashboard", "daemon", "infoserver",
+  // Shared infrastructure (Postgres migrations + Redis discovery)
+  "db",
+  // Infrastructure utilities
+  "infra-redis", "infra-seaweedfs", "infra-postgres",
+  "infra-ollama", "infra-vllm", "infra-searxng",
+  // Meta
+  "cli", "all",
+] as const;
 
 export const upCommand: CommandModule = {
   command: "up <component>",
@@ -50,68 +60,102 @@ export const upCommand: CommandModule = {
 
     const host = targetHostArg ? await connectRemoteHost(targetHostArg) : createLocalHost();
 
-    // ── Upfront pre-flight checks ──────────────────────────────────────
-    const issues = await preflightCheck([component], host);
-    if (issues.length > 0) {
-      p.log.step(pc.bold("Pre-flight checks"));
-      for (const issue of issues) {
-        warn(issue.tool, issue.reason);
-        if (issue.hint) p.log.info(`  ${pc.dim("Install:")} ${pc.cyan(issue.hint)}`);
+    try {
+      // ── Upfront pre-flight checks ──────────────────────────────────────
+      const issues = await preflightCheck([component], host);
+      if (issues.length > 0) {
+        p.log.step(pc.bold("Pre-flight checks"));
+        for (const issue of issues) {
+          warn(issue.tool, issue.reason);
+          if (issue.hint) p.log.info(`  ${pc.dim("Install:")} ${pc.cyan(issue.hint)}`);
+        }
+        const cont = await p.confirm({
+          message: "Some requirements are missing. Continue anyway?",
+          initialValue: false,
+        });
+        if (p.isCancel(cont) || !cont) {
+          p.outro("Aborted");
+          return;
+        }
       }
-      const cont = await p.confirm({
-        message: "Some requirements are missing. Continue anyway?",
-        initialValue: false,
-      });
-      if (p.isCancel(cont) || !cont) {
-        p.outro("Aborted");
+
+      if (component === "cli") {
+        await runUpdateFlow({ checkOnly: false, targetVersion });
         return;
       }
-    }
 
-    if (component === "cli") {
-      await runUpdateFlow({ checkOnly: false, targetVersion });
-      return;
-    }
+      if (component === "db") {
+        const result = await runMigrations({ targetVersion, dryRun, host });
+        logErrors(result);
+        p.outro(result.success ? "Done" : "Failed");
+        if (!result.success) process.exit(1);
+        return;
+      }
 
-    if (component === "db") {
-      const result = await runMigrations({ targetVersion, dryRun, host });
+      if (component === "infra-redis") {
+        const url = await infraRedis(host, dryRun);
+        if (url) {
+          p.log.success("Redis connection configured.");
+        } else {
+          warn("Redis", "No Redis URL configured");
+        }
+        p.outro("Done");
+        return;
+      }
+
+      if (component === "infra-seaweedfs") {
+        await seaweedfsSetup(host, dryRun);
+        p.outro("Done");
+        return;
+      }
+
+      if (component === "infra-postgres") {
+        const { postgresSetup } = await import("../lib/postgres-setup.ts");
+        await postgresSetup(host, dryRun);
+        p.outro("Done");
+        return;
+      }
+
+      if (component === "infra-ollama") {
+        const { ollamaSetup } = await import("../lib/ollama-setup.ts");
+        await ollamaSetup(host, dryRun);
+        p.outro("Done");
+        return;
+      }
+
+      if (
+        component === "infra-vllm" ||
+        component === "infra-searxng"
+      ) {
+        p.log.warn(`${pc.cyan(component)} is not yet implemented.`);
+        p.outro("Coming soon");
+        return;
+      }
+
+      if (component === "all") {
+        await installAll(targetVersion, dryRun, hardReset, host);
+        p.outro("Done");
+        return;
+      }
+
+      const result = await installComponent({
+        component: component as Component,
+        targetVersion,
+        dryRun,
+        hardReset,
+        host,
+      });
+
       logErrors(result);
-      p.outro("Done");
-      return;
+
+      if (component === "dashboard" && result.success && !dryRun) {
+        await showDashboardHints(host);
+      }
+
+      p.outro(result.success ? "Done" : "Failed");
+      if (!result.success) process.exit(1);
+    } finally {
+      await host.dispose();
     }
-
-    if (component === "redis") {
-      await discoverRedisUrl(host, dryRun);
-      p.outro("Done");
-      return;
-    }
-
-    if (component === "seaweedfs") {
-      await seaweedfsSetup(host, dryRun);
-      p.outro("Done");
-      return;
-    }
-
-    if (component === "all") {
-      await installAll(targetVersion, dryRun, hardReset, host);
-      p.outro("Done");
-      return;
-    }
-
-    const result = await installComponent({
-      component: component as Component,
-      targetVersion,
-      dryRun,
-      hardReset,
-      host,
-    });
-
-    logErrors(result);
-
-    if (component === "dashboard" && result.success && !dryRun) {
-      await showDashboardHints(host);
-    }
-
-    p.outro("Done");
   },
 };

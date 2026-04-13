@@ -442,7 +442,7 @@ export function handleEndpointError(
   if (isConnectionRefused(error)) {
     log.warn({ err: error }, "Backend unreachable");
     return errorResponse(
-      "Service temporarily unavailable — consider adding cluster capacity",
+      "Service temporarily unavailable. Consider adding cluster capacity",
       503,
       { "Retry-After": String(BACKEND_RESTART_RETRY_AFTER) },
     );

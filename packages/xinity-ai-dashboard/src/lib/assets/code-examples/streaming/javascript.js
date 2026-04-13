@@ -1,7 +1,5 @@
 import { OpenAI } from "openai";
 
-const MODEL = "<your-model>";
-
 const openai = new OpenAI({
     baseURL: "{{API_BASE}}",
     apiKey: process.env.API_KEY,
@@ -9,7 +7,7 @@ const openai = new OpenAI({
 
 async function streamChat() {
   const response = await openai.chat.completions.create({
-    model: MODEL,
+    model: process.env.MODEL,
     messages: [
       { role: "system", content: "You are a helpful assistant." },
       { role: "user", content: "Write a short story about a robot." }

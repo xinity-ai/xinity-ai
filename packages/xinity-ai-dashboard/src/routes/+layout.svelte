@@ -1,8 +1,10 @@
 <script lang="ts">
 	import "../app.css";
+	import { setContext } from "svelte";
 	// import favicon from "$lib/assets/favicon.svg";
 
-	let { children } = $props();
+	let { data, children } = $props();
+	setContext("clientEnv", data.clientEnv);
 </script>
 
 <!-- <svelte:head>
