@@ -210,13 +210,19 @@ function probeTcpService(opts: TcpProbeOptions): Promise<CheckResult> {
   const failStatus = opts.failStatus ?? "fail";
 
   return new Promise<CheckResult>((resolve) => {
+    let settled = false;
+    const done = (result: CheckResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
     const timer = setTimeout(() => {
-      resolve({ label, status: failStatus, message: "Connection timed out" });
+      done({ label, status: failStatus, message: "Connection timed out" });
     }, timeoutMs);
 
     const fail = (error: unknown) => {
-      clearTimeout(timer);
-      resolve({ label, status: failStatus, message: "Connection failed", detail: String(error) });
+      done({ label, status: failStatus, message: "Connection failed", detail: String(error) });
     };
 
     Bun.connect({
@@ -225,14 +231,14 @@ function probeTcpService(opts: TcpProbeOptions): Promise<CheckResult> {
       socket: {
         data(_socket, data) {
           const response = new TextDecoder().decode(data);
-          clearTimeout(timer);
           _socket.end();
-          resolve({ label, ...opts.onData(response) });
+          done({ label, ...opts.onData(response) });
         },
         open(socket) {
           opts.onOpen?.(socket);
         },
         error(_socket, error) {
+          _socket.end();
           fail(error);
         },
         connectError(_socket, error) {

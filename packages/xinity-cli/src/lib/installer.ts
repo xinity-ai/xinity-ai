@@ -23,6 +23,8 @@ import {
   ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, BIN_DIR, DASHBOARD_DIR, UNIT_DIR,
   binaryBaseName, getAutoDefaults,
 } from "./component-meta.ts";
+// @ts-ignore
+import vllmTemplateUnit from "xinity-ai-daemon/src/assets/vllm-driver@.service" with { type: "text" };
 
 export type { Release } from "./github.ts";
 
@@ -61,9 +63,9 @@ export async function preflightCheck(
     await check("systemctl", "systemd is required to manage services");
   }
 
-  // unzip is needed for binary extraction (all service components except dashboard)
+  // unzip is needed for binary extraction (all service components)
   const needsUnzip = components.some(
-    (c) => c === "all" || (serviceComponents.includes(c) && c !== "dashboard"),
+    (c) => c === "all" || serviceComponents.includes(c),
   );
   if (needsUnzip) {
     const target = host.isRemote ? "the remote host" : "this machine";
@@ -75,11 +77,6 @@ export async function preflightCheck(
     await check("curl", "required on the remote host for downloading release assets");
   }
 
-  // bun is needed for the dashboard
-  if (components.includes("dashboard") || components.includes("all")) {
-    await check("bun", "required for the dashboard", "curl -fsSL https://bun.sh/install | bash");
-  }
-
   return issues;
 }
 
@@ -87,6 +84,27 @@ export async function preflightCheck(
 async function preChecks(component: Component, host: Host): Promise<string[]> {
   const issues = await preflightCheck([component], host);
   return issues.map((i) => `${i.reason}${i.hint ? `. Install it: ${i.hint}` : ""}`);
+}
+
+// ─── vLLM systemd template install ─────────────────────────────────────────
+
+async function installVllmTemplate(host: Host, templatePath: string): Promise<void> {
+  const exists = await host.fileExists(templatePath);
+  if (exists) {
+    pass("vLLM template", `Already installed at ${templatePath}`);
+    return;
+  }
+
+  const result = await host.withElevation(
+    `cat > ${templatePath} << 'VLLMEOF'\n${vllmTemplateUnit}VLLMEOF\nsystemctl daemon-reload`,
+    "Install vLLM systemd template unit",
+  );
+
+  if (result.success) {
+    pass("vLLM template", `Installed at ${templatePath}`);
+  } else if (!result.skipped) {
+    warn("vLLM template", `Failed to install: ${result.output}`);
+  }
 }
 
 // ─── Driver tool checks (daemon only) ───────────────────────────────────────
@@ -210,6 +228,9 @@ async function ensureDriverTools(
       warn("vLLM", `vllm binary not found at ${vllmPath}`);
       p.log.info(pc.dim("  Ensure vLLM is installed: pip install vllm"));
     }
+
+    const templatePath = all.VLLM_TEMPLATE_UNIT_PATH ?? "/etc/systemd/system/vllm-driver@.service";
+    await installVllmTemplate(host, templatePath);
   }
 }
 
@@ -245,8 +266,8 @@ async function resolveVersion(
   if (installedVersion === release.tagName) {
     spinner.stop(`${release.tagName} already installed`);
 
-    // For binary components, verify the installed binary is intact before deciding.
-    if (component !== "dashboard" && installedEntry?.binaryChecksum && installedEntry.binaryPath) {
+    // Verify the installed binary is intact before deciding.
+    if (installedEntry?.binaryChecksum && installedEntry.binaryPath) {
       const checksumSpinner = p.spinner();
       checksumSpinner.start("Verifying installed binary…");
       const currentHash = await host.computeSha256(installedEntry.binaryPath);
@@ -259,7 +280,7 @@ async function resolveVersion(
       return { status: "proceed", release, isUpdate: true };
     }
 
-    // No stored checksum (legacy install) or dashboard, prompt the user.
+    // No stored checksum (legacy install), prompt the user.
     const reinstall = await p.confirm({
       message: `${component} ${release.tagName} is already installed. Reinstall?`,
       initialValue: false,
@@ -399,99 +420,68 @@ async function downloadAndVerifyOnHost(
 // ─── Install binary ────────────────────────────────────────────────────────
 
 async function installBinary(component: Component, archivePath: string, host: Host): Promise<boolean> {
-  if (component === "dashboard") {
-    if (host.isRemote) {
-      // Archive already on remote, extract directly
-      const result = await host.withElevation(
-        `mkdir -p ${DASHBOARD_DIR} && tar xzf ${archivePath} -C ${DASHBOARD_DIR} && rm -f ${archivePath}`,
-        "Install dashboard files",
-      );
-      if (!result.success && !result.skipped) {
-        fail("Install", result.output);
-        return false;
-      }
-      if (result.skipped) return false;
-    } else {
-      // Local: upload archive to host, extract on host
-      const remoteTar = "/tmp/xinity-dashboard.tar.gz";
-      let effectiveTar: string;
-      const uploadSpinner = p.spinner();
-      uploadSpinner.start("Uploading…");
-      try {
-        effectiveTar = await host.uploadFile(archivePath, remoteTar);
-      } catch (err) {
-        uploadSpinner.stop("Upload failed");
-        fail("Upload", (err as Error).message);
-        return false;
-      }
-      uploadSpinner.stop("Uploaded");
-      const result = await host.withElevation(
-        `mkdir -p ${DASHBOARD_DIR} && tar xzf ${effectiveTar} -C ${DASHBOARD_DIR}` +
-          (effectiveTar !== archivePath ? ` && rm -f ${effectiveTar}` : ""),
-        "Install dashboard files",
-      );
-      if (!result.success && !result.skipped) {
-        fail("Install", result.output);
-        return false;
-      }
-      if (result.skipped) return false;
+  const binName = binaryBaseName(component);
+
+  if (host.isRemote) {
+    // Archive already on remote, extract and install directly
+    const tmpExtract = archivePath.replace(/\.zip$/, "");
+    const result = await host.withElevation(
+      `mkdir -p ${tmpExtract} && unzip -o ${archivePath} -d ${tmpExtract}` +
+      ` && mkdir -p ${BIN_DIR} && cp ${tmpExtract}/${binName} ${BIN_DIR}/${binName}` +
+      ` && chmod +x ${BIN_DIR}/${binName}` +
+      ` && rm -rf ${tmpExtract} ${archivePath}`,
+      `Install ${binName} binary`,
+    );
+    if (!result.success && !result.skipped) {
+      fail("Install", result.output);
+      return false;
     }
+    if (result.skipped) return false;
   } else {
-    const binName = binaryBaseName(component);
+    // Local: extract locally, upload binary, place on host
+    const tmpExtract = archivePath.replace(/\.zip$/, "");
+    mkdirSync(tmpExtract, { recursive: true });
 
-    if (host.isRemote) {
-      // Archive already on remote, extract and install directly
-      const tmpExtract = archivePath.replace(/\.zip$/, "");
-      const result = await host.withElevation(
-        `mkdir -p ${tmpExtract} && unzip -o ${archivePath} -d ${tmpExtract}` +
-        ` && mkdir -p ${BIN_DIR} && cp ${tmpExtract}/${binName} ${BIN_DIR}/${binName}` +
-        ` && chmod +x ${BIN_DIR}/${binName}` +
-        ` && rm -rf ${tmpExtract} ${archivePath}`,
-        `Install ${binName} binary`,
-      );
-      if (!result.success && !result.skipped) {
-        fail("Install", result.output);
-        return false;
-      }
-      if (result.skipped) return false;
-    } else {
-      // Local: extract locally, upload binary, place on host
-      const tmpExtract = archivePath.replace(/\.zip$/, "");
-      mkdirSync(tmpExtract, { recursive: true });
-
-      const extractSpinner = p.spinner();
-      extractSpinner.start("Extracting…");
-      const local = createLocalHost();
-      const unzip = await local.run(["unzip", "-o", archivePath, "-d", tmpExtract]);
-      if (!unzip.ok) {
-        extractSpinner.stop("Extract failed");
-        fail("Extract", unzip.output);
-        return false;
-      }
-
-      const localBinPath = `${tmpExtract}/${binName}`;
-      const remoteTmpPath = `/tmp/xinity-upload-${binName}`;
-      let effectivePath: string;
-      try {
-        effectivePath = await host.uploadFile(localBinPath, remoteTmpPath);
-      } catch (err) {
-        extractSpinner.stop("Upload failed");
-        fail("Upload", (err as Error).message);
-        return false;
-      }
-      extractSpinner.stop("Extracted");
-
-      const result = await host.withElevation(
-        `mkdir -p ${BIN_DIR} && cp ${effectivePath} ${BIN_DIR}/${binName} && chmod +x ${BIN_DIR}/${binName}` +
-          (effectivePath !== localBinPath ? ` && rm -f ${effectivePath}` : ""),
-        `Install ${binName} binary`,
-      );
-      if (!result.success && !result.skipped) {
-        fail("Install", result.output);
-        return false;
-      }
-      if (result.skipped) return false;
+    const extractSpinner = p.spinner();
+    extractSpinner.start("Extracting…");
+    const local = createLocalHost();
+    const unzip = await local.run(["unzip", "-o", archivePath, "-d", tmpExtract]);
+    if (!unzip.ok) {
+      extractSpinner.stop("Extract failed");
+      fail("Extract", unzip.output);
+      return false;
     }
+
+    const localBinPath = `${tmpExtract}/${binName}`;
+    const remoteTmpPath = `/tmp/xinity-upload-${binName}`;
+    let effectivePath: string;
+    try {
+      effectivePath = await host.uploadFile(localBinPath, remoteTmpPath);
+    } catch (err) {
+      extractSpinner.stop("Upload failed");
+      fail("Upload", (err as Error).message);
+      return false;
+    }
+    extractSpinner.stop("Extracted");
+
+    const result = await host.withElevation(
+      `mkdir -p ${BIN_DIR} && cp ${effectivePath} ${BIN_DIR}/${binName} && chmod +x ${BIN_DIR}/${binName}` +
+        (effectivePath !== localBinPath ? ` && rm -f ${effectivePath}` : ""),
+      `Install ${binName} binary`,
+    );
+    if (!result.success && !result.skipped) {
+      fail("Install", result.output);
+      return false;
+    }
+    if (result.skipped) return false;
+  }
+
+  // Best-effort cleanup of the legacy tarball installation directory
+  if (component === "dashboard") {
+    await host.withElevation(
+      `rm -rf ${DASHBOARD_DIR} 2>/dev/null || true`,
+      "Remove legacy dashboard directory",
+    );
   }
 
   pass("Install", "Installed");
@@ -523,7 +513,10 @@ async function configureEnv(
       if (content !== null) {
         existingSecrets[key] = content.trim();
       } else {
-        needsElevation = true;
+        // Only flag for elevation if the file actually exists (permission denied).
+        // If the file doesn't exist (fresh install), there's nothing to read.
+        const exists = await host.fileExists(`${SECRETS_DIR}/${key}`);
+        if (exists) needsElevation = true;
       }
     }
     if (needsElevation && Object.keys(existingSecrets).length < secretKeys.length) {
@@ -608,26 +601,11 @@ async function configureEnv(
   return promptForEnv(component, schema, existing);
 }
 
-// ─── Bun path resolution ──────────────────────────────────────────────────
-
-async function resolveBunPath(host: Host): Promise<string> {
-  const result = await host.runShell(
-    `command -v bun || echo "$HOME/.bun/bin/bun"`,
-  );
-  return result.output.trim();
-}
-
 // ─── Systemd unit ──────────────────────────────────────────────────────────
 
 async function installUnit(component: Component, secretKeys: string[], host: Host): Promise<boolean> {
   const baseConfig = getComponentConfig(component);
   const config: UnitConfig = { ...baseConfig, secretKeys };
-
-  // Dashboard runs via bun, resolve its actual path on the target host
-  if (component === "dashboard") {
-    const bunPath = await resolveBunPath(host);
-    config.execStart = `${bunPath} run /opt/xinity/dashboard/`;
-  }
 
   const unitContent = generateUnit(config);
   const unitPath = `${UNIT_DIR}/${unitName(component)}`;
@@ -792,15 +770,9 @@ export async function installComponent(opts: {
   }
 
   // 9. Update manifest
-  const binaryPath =
-    component === "dashboard"
-      ? DASHBOARD_DIR
-      : `${BIN_DIR}/${binaryBaseName(component)}`;
+  const binaryPath = `${BIN_DIR}/${binaryBaseName(component)}`;
 
-  const binaryChecksum =
-    component !== "dashboard"
-      ? (await host.computeSha256(binaryPath)) ?? undefined
-      : undefined;
+  const binaryChecksum = (await host.computeSha256(binaryPath)) ?? undefined;
 
   await updateManifestEntry(component, {
     version: release.tagName,
@@ -876,11 +848,7 @@ function dryRunSummary(
   }
 
   // Install path
-  if (component === "dashboard") {
-    info("Install", `Extract to ${DASHBOARD_DIR}`);
-  } else {
-    info("Install", `Binary → ${BIN_DIR}/${binaryBaseName(component)}`);
-  }
+  info("Install", `Binary → ${BIN_DIR}/${binaryBaseName(component)}`);
 
   // Env config
   info("Config", `${configFields.length} config fields → ${ENV_DIR}/${component}.env`);
@@ -1136,28 +1104,18 @@ export async function removeComponent(opts: {
     errors.push(`Failed to remove unit: ${rmUnit.output}`);
   }
 
-  // 3. Remove binary / dashboard files
-  if (component === "dashboard") {
-    const rmDash = await host.withElevation(
-      `rm -rf ${DASHBOARD_DIR}`,
-      "Remove dashboard files",
-    );
-    if (rmDash.success) {
-      pass("Files", `Removed ${DASHBOARD_DIR}`);
-    } else if (!rmDash.skipped) {
-      errors.push(`Failed to remove dashboard: ${rmDash.output}`);
-    }
-  } else {
-    const binaryPath = `${BIN_DIR}/${binaryBaseName(component)}`;
-    const rmBin = await host.withElevation(
-      `rm -f ${binaryPath}`,
-      `Remove ${component} binary`,
-    );
-    if (rmBin.success) {
-      pass("Files", `Removed ${binaryPath}`);
-    } else if (!rmBin.skipped) {
-      errors.push(`Failed to remove binary: ${rmBin.output}`);
-    }
+  // 3. Remove binary and (for dashboard) any legacy tarball directory
+  const binaryPath = `${BIN_DIR}/${binaryBaseName(component)}`;
+  const rmBin = await host.withElevation(
+    component === "dashboard"
+      ? `rm -f ${binaryPath} && rm -rf ${DASHBOARD_DIR} 2>/dev/null || true`
+      : `rm -f ${binaryPath}`,
+    `Remove ${component} binary`,
+  );
+  if (rmBin.success) {
+    pass("Files", `Removed ${binaryPath}`);
+  } else if (!rmBin.skipped) {
+    errors.push(`Failed to remove binary: ${rmBin.output}`);
   }
 
   // 4. Remove env config file

@@ -28,7 +28,7 @@ const COMPONENT_CONFIGS: Record<string, Omit<UnitConfig, "secretKeys">> = {
   dashboard: {
     component: "dashboard",
     description: "Xinity AI Dashboard",
-    execStart: "bun run /opt/xinity/dashboard/",
+    execStart: "/opt/xinity/bin/xinity-ai-dashboard",
     afterUnits: ["network-online.target"],
   },
   daemon: {

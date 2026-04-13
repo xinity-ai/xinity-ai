@@ -42,6 +42,7 @@ Environment=CUDA_VISIBLE_DEVICES=0
 # HuggingFace cache: ensure models are downloaded here
 Environment=HF_HOME=/var/lib/vllm/hf-cache
 Environment=TRITON_CACHE_DIR=/var/lib/vllm/triton-cache
+Environment=HF_TOKEN=
 
 ExecStart=/bin/bash -c '\
     ARGS=""; \

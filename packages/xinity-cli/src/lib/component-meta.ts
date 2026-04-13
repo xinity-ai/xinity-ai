@@ -26,6 +26,7 @@ export const ENV_SCHEMAS: Record<Component, z.ZodObject<any>> = {
 export const ENV_DIR = "/etc/xinity-ai";
 export const SECRETS_DIR = "/etc/xinity-ai/secrets";
 export const BIN_DIR = "/opt/xinity/bin";
+/** Legacy install path used by the tarball-based installer. Kept for migration/uninstall cleanup. */
 export const DASHBOARD_DIR = "/opt/xinity/dashboard";
 export const UNIT_DIR = "/etc/systemd/system";
 

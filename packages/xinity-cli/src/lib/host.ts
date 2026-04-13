@@ -8,7 +8,7 @@
  * RemoteHost (which executes SSH commands on the local machine). Consumer code
  * should NEVER import them; always use a Host instance instead.
  */
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync, statSync } from "fs";
 import * as p from "./clack.ts";
 import pc from "picocolors";
 
@@ -132,6 +132,15 @@ async function localWithElevation(
     if (sensitive) {
       // Capture stdout to prevent secret values from leaking to the terminal.
       // sudo prompts on /dev/tty, so stdin/stderr inheritance is sufficient.
+      // We must pause/resume stdin around the child process (same as
+      // localRunInteractive) to prevent Bun from leaving the stream in an
+      // ended state, which would cause all subsequent clack prompts to
+      // immediately resolve with EOF and silently exit the CLI.
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(false);
+      }
+      process.stdin.pause();
+
       const proc = Bun.spawn(["sudo", "sh", "-c", command], {
         stdin: "inherit",
         stdout: "pipe",
@@ -141,6 +150,12 @@ async function localWithElevation(
         proc.exited,
         new Response(proc.stdout).text(),
       ]);
+
+      process.stdin.resume();
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(false);
+      }
+
       return {
         success: exitCode === 0,
         output: stdout,
@@ -301,7 +316,14 @@ export class LocalHost implements Host {
   }
 
   async fileExists(path: string): Promise<boolean> {
-    return existsSync(path);
+    try {
+      statSync(path);
+      return true;
+    } catch (err: any) {
+      // EACCES means the file exists but isn't readable by the current user.
+      // Treat that as "exists" so the caller can decide to elevate.
+      return err?.code === "EACCES";
+    }
   }
 
   /** No-op: caller already has the file at localPath on the local filesystem. */

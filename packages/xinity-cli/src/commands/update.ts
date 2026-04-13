@@ -82,6 +82,60 @@ async function selfUpdate(release: Release): Promise<boolean> {
   }
 }
 
+// ─── Shared update flow ─────────────────────────────────────────────────────
+
+export async function runUpdateFlow(opts: { checkOnly: boolean; targetVersion: string }): Promise<void> {
+  const { checkOnly, targetVersion } = opts;
+
+  p.intro(`xinity update${checkOnly ? pc.yellow(" (check only)") : ""}`);
+
+  // Fetch latest release
+  const spinner = p.spinner();
+  spinner.start("Checking for updates…");
+
+  let release: Release;
+  try {
+    release = await fetchRelease(targetVersion);
+  } catch (err) {
+    spinner.stop("Failed");
+    fail("GitHub API", (err as Error).message);
+    p.outro("Done");
+    return;
+  }
+  spinner.stop(`Latest release: ${release.tagName}`);
+
+  // Compare versions
+  const needsUpdate = CLI_VERSION !== release.tagName && CLI_VERSION !== "dev";
+  const status = needsUpdate
+    ? pc.yellow(`${CLI_VERSION} → ${release.tagName}`)
+    : pc.green(`${CLI_VERSION} (up to date)`);
+  p.log.info(`  ${pc.cyan("cli")}  ${status}`);
+
+  if (!needsUpdate) {
+    p.log.success("Already up to date");
+    p.outro("Done");
+    return;
+  }
+
+  if (checkOnly) {
+    p.outro("Run " + pc.cyan("xinity update") + " to apply the update");
+    return;
+  }
+
+  // Confirm
+  const proceed = await p.confirm({
+    message: `Update CLI to ${release.tagName}?`,
+    initialValue: true,
+  });
+  if (p.isCancel(proceed) || !proceed) {
+    p.cancel("Cancelled.");
+    return;
+  }
+
+  await selfUpdate(release);
+  p.outro("Done");
+}
+
 // ─── Command ────────────────────────────────────────────────────────────────
 
 export const updateCommand: CommandModule = {
@@ -100,55 +154,9 @@ export const updateCommand: CommandModule = {
         default: "latest",
       }),
   handler: async (argv) => {
-    const checkOnly = argv.check as boolean;
-    const targetVersion = argv["target-version"] as string;
-
-    p.intro(`xinity update${checkOnly ? pc.yellow(" (check only)") : ""}`);
-
-    // Fetch latest release
-    const spinner = p.spinner();
-    spinner.start("Checking for updates…");
-
-    let release: Release;
-    try {
-      release = await fetchRelease(targetVersion);
-    } catch (err) {
-      spinner.stop("Failed");
-      fail("GitHub API", (err as Error).message);
-      p.outro("Done");
-      return;
-    }
-    spinner.stop(`Latest release: ${release.tagName}`);
-
-    // Compare versions
-    const needsUpdate = CLI_VERSION !== release.tagName && CLI_VERSION !== "dev";
-    const status = needsUpdate
-      ? pc.yellow(`${CLI_VERSION} → ${release.tagName}`)
-      : pc.green(`${CLI_VERSION} (up to date)`);
-    p.log.info(`  ${pc.cyan("cli")}  ${status}`);
-
-    if (!needsUpdate) {
-      p.log.success("Already up to date");
-      p.outro("Done");
-      return;
-    }
-
-    if (checkOnly) {
-      p.outro("Run " + pc.cyan("xinity update") + " to apply the update");
-      return;
-    }
-
-    // Confirm
-    const proceed = await p.confirm({
-      message: `Update CLI to ${release.tagName}?`,
-      initialValue: true,
+    await runUpdateFlow({
+      checkOnly: argv.check as boolean,
+      targetVersion: argv["target-version"] as string,
     });
-    if (p.isCancel(proceed) || !proceed) {
-      p.cancel("Cancelled.");
-      return;
-    }
-
-    await selfUpdate(release);
-    p.outro("Done");
   },
 };

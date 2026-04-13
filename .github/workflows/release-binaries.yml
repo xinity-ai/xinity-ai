@@ -44,6 +44,11 @@ jobs:
             binary_name: xinity
             workdir: packages/xinity-cli
             custom_build: true
+          - package: xinity-ai-dashboard
+            workdir: packages/xinity-ai-dashboard
+            custom_build: true
+            pre_build: true
+            build_flags: "--no-vite"
 
     steps:
       - name: Checkout repository
@@ -57,10 +62,17 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Compile all targets and zip
+      - name: Pre-build (platform-independent step)
+        if: ${{ matrix.pre_build }}
         working-directory: ${{ matrix.workdir }}
         run: |
           if [ -f example.env ]; then cp example.env .env; fi
+          bun run build
+
+      - name: Compile all targets and zip
+        working-directory: ${{ matrix.workdir }}
+        run: |
+          if [ -f example.env ] && [ ! -f .env ]; then cp example.env .env; fi
           BINARY_NAME="${{ matrix.binary_name || matrix.package }}"
 
           for target in bun-linux-x64 bun-linux-x64-baseline bun-linux-arm64; do
@@ -69,7 +81,7 @@ jobs:
 
             if [ "${{ matrix.custom_build || 'false' }}" = "true" ]; then
               # Custom two-step build (bundle with plugins, then compile)
-              bun run build.ts --target "$target" --outfile "${BINARY_NAME}"
+              bun run build.ts --target "$target" --outfile "${BINARY_NAME}" ${{ matrix.build_flags }}
             else
               bun build --compile --minify \
                 --sourcemap=external \
@@ -93,13 +105,11 @@ jobs:
           retention-days: 1
 
   # ---------------------------------------------------------------------------
-  # JS bundles (platform-independent) + Dashboard tarball
+  # JS bundles (platform-independent)
   # Single-file bundles that run on any OS with `bun run <file>.js`.
-  # Dashboard is a SvelteKit app (server + static assets) so it ships as a
-  # tarball: extract and run with `bun run ./`.
   # ---------------------------------------------------------------------------
   build-bundles:
-    name: JS bundles + dashboard
+    name: JS bundles
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -137,13 +147,6 @@ jobs:
             --outfile xinity-infoserver.js \
             ./server.ts
 
-      - name: Build dashboard
-        working-directory: packages/xinity-ai-dashboard
-        run: |
-          cp example.env .env
-          bun run build
-          tar czf xinity-ai-dashboard.tar.gz -C build .
-
       - name: Package database migrations
         run: tar czf db-migrations.tar.gz -C packages/common-db/db-migration .
 
@@ -153,7 +156,6 @@ jobs:
           cp packages/xinity-ai-gateway/xinity-ai-gateway.js staging/
           cp packages/xinity-ai-daemon/xinity-ai-daemon.js staging/
           cp packages/xinity-infoserver/xinity-infoserver.js staging/
-          cp packages/xinity-ai-dashboard/xinity-ai-dashboard.tar.gz staging/
           cp db-migrations.tar.gz staging/
 
       - name: Upload artifacts
@@ -256,7 +258,7 @@ jobs:
               -o gateway.zip
             ```
 
-            Replace `xinity-ai-gateway` with `xinity-ai-daemon` or `xinity-infoserver` as needed.
+            Replace `xinity-ai-gateway` with `xinity-ai-daemon`, `xinity-infoserver`, or `xinity-ai-dashboard` as needed.
 
             **JS bundle** (requires [Bun](https://bun.sh)):
 
@@ -264,14 +266,6 @@ jobs:
             curl -fSL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/xinity-ai-gateway.js" \
               -o xinity-ai-gateway.js
             bun run xinity-ai-gateway.js
-            ```
-
-            **Dashboard** (requires [Bun](https://bun.sh)):
-
-            ```bash
-            curl -fSL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/xinity-ai-dashboard.tar.gz" \
-              | tar xz -C dashboard
-            bun run dashboard/
             ```
 
             ## Verify

@@ -78,9 +78,11 @@
 
       if (res?.error) {
         errorSignUp = friendlyError(res.error.message);
-      } else {
+      } else if (data.emailVerificationRequired) {
         signUpSuccess = true;
         setTimeout(() => window.close(), 3000);
+      } else {
+        await goto(data.callbackUrl);
       }
     } catch (e) {
       errorSignUp = (e as Error).message ?? "Unexpected error";
