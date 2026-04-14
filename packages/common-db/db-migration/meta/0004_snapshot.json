@@ -1,5 +1,5 @@
 {
-  "id": "57d19274-5729-4bb8-8c93-ae95c61c0c04",
+  "id": "99f5b58c-7f24-4306-8b67-4b30a4f49fc3",
   "prevId": "52c18eed-7ea7-4a44-9acf-4f1826815fc3",
   "version": "7",
   "dialect": "postgresql",
@@ -2048,6 +2048,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'{}'::jsonb"
+        },
+        "gpus": {
+          "name": "gpus",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
         },
         "deleted_at": {
           "name": "deleted_at",
