@@ -11,6 +11,7 @@ function makeNode(overrides: Partial<AiNode> & { id: string }): AiNode {
     available: true,
     drivers: ["ollama"],
     driverVersions: {},
+    gpus: [],
     gpuCount: 1,
     deletedAt: null,
     createdAt: new Date(),
@@ -99,5 +100,26 @@ describe("orchestration: node goes unavailable", () => {
     const state = buildClusterState([], [unknownNode]);
 
     expect(findServerForModel("new-model", "vllm", 8, state, [], "0.19.1")).toBe("node-g");
+  });
+
+  test("findServerForModel skips nodes with wrong GPU platform", () => {
+    const amdNode = makeNode({ id: "node-h", host: "10.0.0.8", drivers: ["vllm"], gpus: [{ vendor: "amd", name: "MI300X", vramMb: 196608 }] });
+    const state = buildClusterState([], [amdNode]);
+
+    expect(findServerForModel("mxfp4-model", "vllm", 8, state, [], undefined, ["nvidia"])).toBeNull();
+  });
+
+  test("findServerForModel accepts nodes with matching GPU platform", () => {
+    const nvidiaNode = makeNode({ id: "node-i", host: "10.0.0.9", drivers: ["vllm"], gpus: [{ vendor: "nvidia", name: "A100", vramMb: 81920 }] });
+    const state = buildClusterState([], [nvidiaNode]);
+
+    expect(findServerForModel("mxfp4-model", "vllm", 8, state, [], undefined, ["nvidia"])).toBe("node-i");
+  });
+
+  test("findServerForModel rejects nodes with no GPUs when platform is required", () => {
+    const cpuNode = makeNode({ id: "node-j", host: "10.0.0.10", drivers: ["vllm"], gpus: [] });
+    const state = buildClusterState([], [cpuNode]);
+
+    expect(findServerForModel("mxfp4-model", "vllm", 8, state, [], undefined, ["nvidia"])).toBeNull();
   });
 });

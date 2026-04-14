@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { PageData } from "./$types";
   import type { DeploymentDefinition } from "./+page.server";
+  import type { NodeCapability } from "xinity-infoserver";
   import DeploymentModal from "./DeploymentModal.svelte";
   import { orpc } from "$lib/orpc/orpc-client";
   import { humanDate, humanDuration, updateOptimistically } from "$lib/util";
@@ -27,17 +28,16 @@
   let nodeFreeCapacities = $derived(data.nodeFreeCapacities);
   let nodeCapabilities = $derived(data.nodeCapabilities);
 
-  type NodeCap = { free: number; drivers: string[]; driverVersions: Record<string, string> };
   // Mutable overrides updated by refreshCapacity() after mutations.
   // When set, these take precedence over the load-function values.
-  let capacityOverride = $state<{ maxNodeFreeCapacity: number; availableDrivers: string[]; nodeFreeCapacities: number[]; nodeCapabilities: NodeCap[] } | null>(null);
+  let capacityOverride = $state<{ maxNodeFreeCapacity: number; availableDrivers: string[]; nodeFreeCapacities: number[]; nodeCapabilities: NodeCapability[] } | null>(null);
   const activeMaxCapacity = $derived(capacityOverride?.maxNodeFreeCapacity ?? maxNodeFreeCapacity);
   const activeDrivers = $derived(capacityOverride?.availableDrivers ?? availableDrivers);
   const activeNodeCapacities = $derived(capacityOverride?.nodeFreeCapacities ?? nodeFreeCapacities);
   const activeNodeCapabilities = $derived(capacityOverride?.nodeCapabilities ?? nodeCapabilities);
 
   async function refreshCapacity() {
-    const [err, cap] = await orpc.deployment.clusterCapacity({});
+    const [err, cap] = await orpc.cluster.capacity({});
     if (!err && cap) capacityOverride = cap;
   }
 
