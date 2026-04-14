@@ -109,6 +109,10 @@ export const ModelSchema = z.looseObject({
     ollama: z.string().describe("Ollama model specifier").optional(),
   }).refine(obj => Object.values(obj).some(v => v !== undefined), { message: "At least one provider must be specified" })
     .describe("Map from supported provider names to the provider-specific model specifier"),
+  providerMinVersions: z.object({
+    vllm: z.string().optional(),
+    ollama: z.string().optional(),
+  }).optional().describe("Per-driver minimum version requirements (semver). Nodes with older driver versions are excluded from scheduling"),
   entryVersion: z.string().describe("Version number at which version of xinity-ai this model was introduced. Used for compatibility checks"),
   custom: z.looseObject({
     baseModel: z.string(),
