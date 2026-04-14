@@ -10,6 +10,7 @@ function makeNode(overrides: Partial<AiNode> & { id: string }): AiNode {
     estCapacity: 24,
     available: true,
     drivers: ["ollama"],
+    driverVersions: {},
     gpuCount: 1,
     deletedAt: null,
     createdAt: new Date(),
@@ -77,5 +78,26 @@ describe("orchestration: node goes unavailable", () => {
     const state = buildClusterState([], [tinyNode]);
 
     expect(findServerForModel("big-model", "ollama", 16, state, [])).toBeNull();
+  });
+
+  test("findServerForModel skips nodes with incompatible driver version", () => {
+    const oldNode = makeNode({ id: "node-e", host: "10.0.0.5", drivers: ["vllm"], driverVersions: { vllm: "0.18.0" } });
+    const state = buildClusterState([], [oldNode]);
+
+    expect(findServerForModel("new-model", "vllm", 8, state, [], "0.19.1")).toBeNull();
+  });
+
+  test("findServerForModel accepts nodes with sufficient driver version", () => {
+    const newNode = makeNode({ id: "node-f", host: "10.0.0.6", drivers: ["vllm"], driverVersions: { vllm: "0.20.0" } });
+    const state = buildClusterState([], [newNode]);
+
+    expect(findServerForModel("new-model", "vllm", 8, state, [], "0.19.1")).toBe("node-f");
+  });
+
+  test("findServerForModel allows nodes with unknown version (fail-open)", () => {
+    const unknownNode = makeNode({ id: "node-g", host: "10.0.0.7", drivers: ["vllm"], driverVersions: {} });
+    const state = buildClusterState([], [unknownNode]);
+
+    expect(findServerForModel("new-model", "vllm", 8, state, [], "0.19.1")).toBe("node-g");
   });
 });

@@ -23,6 +23,7 @@
     maxNodeFreeCapacity = Infinity,
     availableDrivers = [],
     nodeFreeCapacities = [],
+    nodeCapabilities = [],
     onSaved = async () => {},
   }: {
     open: boolean;
@@ -31,6 +32,7 @@
     maxNodeFreeCapacity?: number;
     availableDrivers?: string[];
     nodeFreeCapacities?: number[];
+    nodeCapabilities?: { free: number; drivers: string[]; driverVersions: Record<string, string> }[];
     onSaved?: () => Promise<void>;
   } = $props();
 
@@ -359,6 +361,7 @@
           selectedCanaryModel={selectedCanaryModel ?? undefined}
           {maxNodeFreeCapacity}
           {availableDrivers}
+          {nodeCapabilities}
           {maxReplicas}
           editMode={isEditMode}
           readonlyModels={requiresDisabled}
