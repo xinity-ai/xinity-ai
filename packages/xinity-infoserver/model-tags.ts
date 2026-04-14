@@ -69,6 +69,15 @@ export function driverHasTag(model: Model, driver: Provider, tag: string): boole
 }
 
 // ---------------------------------------------------------------------------
+// Version requirements
+// ---------------------------------------------------------------------------
+
+/** Returns the minimum driver version required for a specific driver, or undefined. */
+export function resolveMinVersionForDriver(model: Model, driver: Provider): string | undefined {
+  return model.providerMinVersions?.[driver];
+}
+
+// ---------------------------------------------------------------------------
 // Provider args resolution
 // ---------------------------------------------------------------------------
 

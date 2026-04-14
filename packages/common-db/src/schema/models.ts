@@ -1,5 +1,5 @@
 import { type InferSelectModel, sql } from "drizzle-orm";
-import { pgEnum, pgTable, real, text, timestamp, uuid, boolean, integer, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgEnum, pgTable, real, text, timestamp, uuid, boolean, integer, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { organizationT } from "./orgSchema";
 
 export const lifecycleStateEnum = pgEnum("lifecycle_state", ["downloading", "installing", "ready", "failed"]);
@@ -75,6 +75,8 @@ export const aiNodeT = pgTable("ai_node", {
   drivers: text().array().notNull().default(["ollama"]),
   /** Number of GPUs detected on this node. 0 means CPU-only. */
   gpuCount: integer("gpu_count").notNull().default(0),
+  /** Maps driver name to its detected version string, e.g. {"vllm": "0.19.1", "ollama": "0.6.3"} */
+  driverVersions: jsonb("driver_versions").$type<Record<string, string>>().notNull().default({}),
 
   deletedAt,
   createdAt,
