@@ -36,6 +36,7 @@
     showTrafficSlider = true,
     maxNodeFreeCapacity = Infinity,
     availableDrivers = [],
+    nodeCapabilities = [],
     onPublicSpecifierInput,
     onDeploymentNameInput,
     onCanaryEnabledChange,
@@ -66,6 +67,7 @@
     showTrafficSlider?: boolean;
     maxNodeFreeCapacity?: number;
     availableDrivers?: string[];
+    nodeCapabilities?: { free: number; drivers: string[]; driverVersions: Record<string, string> }[];
     publicSpecifierError?: string;
     onPublicSpecifierInput?: () => void;
     onDeploymentNameInput?: () => void;
@@ -454,6 +456,7 @@
 <ModelSelectorModal
   bind:open={showModelSelector}
   maxNodeFreeCapacity={selectorCapacity}
+  {nodeCapabilities}
   onSelect={handleModelSelect}
   onClose={() => (showModelSelector = false)}
 />

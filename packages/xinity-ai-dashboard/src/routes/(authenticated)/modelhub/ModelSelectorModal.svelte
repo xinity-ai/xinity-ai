@@ -1,7 +1,7 @@
 <script lang="ts">
   import Modal from "$lib/components/Modal.svelte";
   import type { ModelWithSpecifier } from "xinity-infoserver";
-  import { resolveAllTags, resolveTagsForDriver, driverHasTag } from "xinity-infoserver";
+  import { resolveAllTags, resolveTagsForDriver, driverHasTag, satisfiesMinVersion } from "xinity-infoserver";
   import { modelCatalog } from "$lib/state/model-catalog.svelte";
 
   // shadcn components
@@ -16,16 +16,20 @@
   const MIN_RESULTS_THRESHOLD = 10;
 
   // --- Props ---
+  type NodeCap = { free: number; drivers: string[]; driverVersions: Record<string, string> };
+
   let {
     open = $bindable(false),
     onSelect,
     onClose,
     maxNodeFreeCapacity = Infinity,
+    nodeCapabilities = [],
   }: {
     open: boolean;
     onSelect: (model: ModelWithSpecifier) => void;
     onClose: () => void;
     maxNodeFreeCapacity?: number;
+    nodeCapabilities?: NodeCap[];
   } = $props();
 
   // --- Filter State ---
@@ -113,12 +117,47 @@
       : new Set([...selectedTags, tag]);
   }
 
+  /**
+   * Checks whether any node can serve a given model considering driver, version,
+   * and capacity constraints together. Returns true if no compatible node exists.
+   */
+  function isUndeployable(model: ModelWithSpecifier): boolean {
+    const needed = model.weight + model.minKvCache;
+    const drivers = Object.keys(model.providers) as Array<"vllm" | "ollama">;
+    if (nodeCapabilities.length === 0) return needed > maxNodeFreeCapacity;
+
+    return !nodeCapabilities.some((node) => {
+      if (node.free < needed) return false;
+      return drivers.some((driver) => {
+        if (!node.drivers.includes(driver)) return false;
+        const minVersion = model.providerMinVersions?.[driver];
+        if (!minVersion) return true;
+        const nodeVersion = node.driverVersions[driver];
+        // fail-open: if node hasn't reported a version, don't exclude it
+        if (!nodeVersion) return true;
+        return satisfiesMinVersion(nodeVersion, minVersion);
+      });
+    });
+  }
+
+  /** Returns true when the issue is specifically a version constraint (not just capacity). */
+  function hasVersionIncompatibility(model: ModelWithSpecifier): boolean {
+    if (!model.providerMinVersions) return false;
+    // Only flag version issues for models that would otherwise fit capacity-wise
+    const needed = model.weight + model.minKvCache;
+    const drivers = Object.keys(model.providers) as Array<"vllm" | "ollama">;
+    const hasCapacityNode = nodeCapabilities.some((n) => n.free >= needed && drivers.some(d => n.drivers.includes(d)));
+    if (!hasCapacityNode) return false;
+    // Has capacity somewhere, but the combined check fails - it's a version issue
+    return isUndeployable(model);
+  }
+
   function exceedsCapacity(model: ModelWithSpecifier): boolean {
     return model.weight + model.minKvCache > maxNodeFreeCapacity;
   }
 
   function handleSelect(model: ModelWithSpecifier) {
-    if (exceedsCapacity(model)) return;
+    if (isUndeployable(model)) return;
     onSelect(model);
     onClose();
   }
@@ -228,7 +267,8 @@
               </h3>
               <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {#each groupedModels[family] as model (model.publicSpecifier)}
-                  {@const undeployable = exceedsCapacity(model)}
+                  {@const undeployable = isUndeployable(model)}
+                  {@const versionIssue = hasVersionIncompatibility(model)}
                   {@const modelTags = resolveAllTags(model)}
                   {@const modelDrivers = Object.keys(model.providers) as Array<"vllm" | "ollama">}
                   {@const hasDriverDiffs = model.providerTags !== undefined}
@@ -273,7 +313,12 @@
                       <span class="opacity-50">({model.weight} model + {model.minKvCache} kv-cache)</span>
                     </div>
 
-                    {#if undeployable}
+                    {#if undeployable && versionIssue}
+                      <div class="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive mb-1">
+                        <ShieldAlert class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                        <span>No node with a compatible driver version has enough capacity</span>
+                      </div>
+                    {:else if undeployable}
                       <div class="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive mb-1">
                         <ShieldAlert class="w-3.5 h-3.5 shrink-0 mt-0.5" />
                         <span>Exceeds available node capacity ({model.weight + model.minKvCache} GB required, {maxNodeFreeCapacity} GB available)</span>

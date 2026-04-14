@@ -15,6 +15,7 @@ export const load: PageServerLoad = async ({ parent, request }) => {
       maxNodeFreeCapacity: 0,
       availableDrivers: [] as string[],
       nodeFreeCapacities: [] as number[],
+      nodeCapabilities: [] as { free: number; drivers: string[]; driverVersions: Record<string, string> }[],
     };
   }
 
@@ -47,11 +48,18 @@ export const load: PageServerLoad = async ({ parent, request }) => {
     .filter(c => c > 0)
     .sort((a, b) => b - a);
 
+  const nodeCapabilities = nodes.map(n => ({
+    free: n.estCapacity - (nodeUsed.get(n.id) ?? 0),
+    drivers: n.drivers,
+    driverVersions: (n.driverVersions ?? {}) as Record<string, string>,
+  }));
+
   return {
     deployments,
     maxNodeFreeCapacity,
     availableDrivers,
     nodeFreeCapacities,
+    nodeCapabilities,
   };
 };
 

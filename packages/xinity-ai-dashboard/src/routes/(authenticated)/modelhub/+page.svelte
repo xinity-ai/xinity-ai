@@ -25,13 +25,16 @@
   let maxNodeFreeCapacity = $derived(data.maxNodeFreeCapacity);
   let availableDrivers = $derived(data.availableDrivers);
   let nodeFreeCapacities = $derived(data.nodeFreeCapacities);
+  let nodeCapabilities = $derived(data.nodeCapabilities);
 
+  type NodeCap = { free: number; drivers: string[]; driverVersions: Record<string, string> };
   // Mutable overrides updated by refreshCapacity() after mutations.
   // When set, these take precedence over the load-function values.
-  let capacityOverride = $state<{ maxNodeFreeCapacity: number; availableDrivers: string[]; nodeFreeCapacities: number[] } | null>(null);
+  let capacityOverride = $state<{ maxNodeFreeCapacity: number; availableDrivers: string[]; nodeFreeCapacities: number[]; nodeCapabilities: NodeCap[] } | null>(null);
   const activeMaxCapacity = $derived(capacityOverride?.maxNodeFreeCapacity ?? maxNodeFreeCapacity);
   const activeDrivers = $derived(capacityOverride?.availableDrivers ?? availableDrivers);
   const activeNodeCapacities = $derived(capacityOverride?.nodeFreeCapacities ?? nodeFreeCapacities);
+  const activeNodeCapabilities = $derived(capacityOverride?.nodeCapabilities ?? nodeCapabilities);
 
   async function refreshCapacity() {
     const [err, cap] = await orpc.deployment.clusterCapacity({});
@@ -419,6 +422,7 @@
   maxNodeFreeCapacity={activeMaxCapacity}
   availableDrivers={activeDrivers}
   nodeFreeCapacities={activeNodeCapacities}
+  nodeCapabilities={activeNodeCapabilities}
   close={() => (showCreateDeploymentModal = false)}
   onSaved={refreshDeployments}
 />
@@ -430,6 +434,7 @@
     maxNodeFreeCapacity={activeMaxCapacity}
     availableDrivers={activeDrivers}
     nodeFreeCapacities={activeNodeCapacities}
+    nodeCapabilities={activeNodeCapabilities}
     close={() => (editDeploymentModalId = null)}
     onSaved={refreshDeployments}
   />

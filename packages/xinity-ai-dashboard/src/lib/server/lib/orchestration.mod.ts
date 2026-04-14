@@ -1,7 +1,7 @@
 import { inArray, isNull, modelDeploymentT, sql, calcCanaryProgress, modelInstallationT, aiNodeT, type ModelInstallation, type AiNode, type InferInsertModel } from "common-db";
 import { getDB } from "../db";
 import { infoClient } from "../info-client";
-import { resolveDriverForProviderModel } from "xinity-infoserver";
+import { resolveDriverForProviderModel, resolveMinVersionForDriver, satisfiesMinVersion } from "xinity-infoserver";
 import { rootLogger } from "../logging";
 import { building } from "$app/environment";
 import { maxVramGb } from "$lib/server/license";
@@ -125,7 +125,8 @@ export function collectExcessInstallations(requiredModels: ModelRequirementTable
 
 /**
  * Picks a server for a new model installation using a first-fit strategy.
- * Skips nodes that already host the model, lack the required driver, or have insufficient capacity.
+ * Skips nodes that already host the model, lack the required driver,
+ * have an incompatible driver version, or have insufficient capacity.
  */
 export function findServerForModel(
   model: string,
@@ -133,6 +134,7 @@ export function findServerForModel(
   weight: number,
   state: ClusterState,
   pending: NewInstallation[],
+  minVersion?: string,
 ): string | null {
   for (const server of state.availableServers) {
     const cap = state.serverCapacity.get(server.id);
@@ -144,6 +146,11 @@ export function findServerForModel(
     if (alreadyHasModel) continue;
 
     if (!server.drivers.includes(driver)) continue;
+
+    if (minVersion) {
+      const nodeVersion = server.driverVersions?.[driver];
+      if (nodeVersion && !satisfiesMinVersion(nodeVersion, minVersion)) continue;
+    }
 
     if (cap.total - cap.used >= weight) return server.id;
   }
@@ -182,13 +189,14 @@ async function planNewInstallations(requiredModels: ModelRequirementTable, state
     }
 
     const driver = resolveDriverForProviderModel(modelInfo, model) ?? "ollama";
+    const minVersion = resolveMinVersionForDriver(modelInfo, driver);
     const needed = requirement.replicas - current;
 
     const effectiveKvCache = Math.max(requirement.kvCacheSize ?? 0, modelInfo.minKvCache);
     const totalCapacity = modelInfo.weight + effectiveKvCache;
 
     for (let i = 0; i < needed; i++) {
-      const nodeId = findServerForModel(model, driver, totalCapacity, state, toInstall);
+      const nodeId = findServerForModel(model, driver, totalCapacity, state, toInstall, minVersion);
       if (!nodeId) {
         log.warn({ model }, "No server with enough capacity for additional replica");
         break;

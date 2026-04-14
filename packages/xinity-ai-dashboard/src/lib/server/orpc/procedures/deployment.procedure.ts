@@ -6,6 +6,7 @@ import { DeploymentDto } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { syncDeployedModels } from "$lib/server/lib/orchestration.mod";
 import { infoClient } from "$lib/server/info-client";
+import { resolveDriverForProviderModel, resolveMinVersionForDriver, satisfiesMinVersion } from "xinity-infoserver";
 import { rootLogger } from "$lib/server/logging";
 import { aggregatePhase, type PhaseInfo } from "$lib/server/lib/deployment-phase";
 import { notifyOrgMembers } from "$lib/server/notifications/notification.service";
@@ -63,13 +64,15 @@ async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>
     modelsToCheck.push({ specifier: input.modelSpecifier, replicas: input.replicas, kvCacheSize: input.kvCacheSize });
   }
 
-  // Fetch model info for all models
+  // Fetch model info for all models (including driver/version requirements)
   const modelInfos = await Promise.all(
     modelsToCheck.map(async (m) => {
       const info = await infoClient?.fetchModel(m.specifier);
       if (!info) return null;
       const effectiveKvCache = Math.max(m.kvCacheSize ?? 0, info.minKvCache);
-      return { ...m, perReplica: info.weight + effectiveKvCache };
+      const driver = resolveDriverForProviderModel(info, m.specifier);
+      const minVersion = driver ? resolveMinVersionForDriver(info, driver) : undefined;
+      return { ...m, perReplica: info.weight + effectiveKvCache, driver, minVersion };
     }),
   );
   const resolved = modelInfos.filter((m): m is NonNullable<typeof m> => m !== null);
@@ -85,14 +88,26 @@ async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>
   }
 
   const nodeFree = nodes
-    .map((n) => ({ id: n.id, free: n.estCapacity - (nodeUsed.get(n.id) ?? 0) }))
+    .map((n) => ({ id: n.id, free: n.estCapacity - (nodeUsed.get(n.id) ?? 0), node: n }))
     .sort((a, b) => b.free - a.free);
 
-  // Greedily allocate replicas across nodes (models can share nodes but each replica consumes capacity)
+  // Check driver version compatibility and greedily allocate replicas across nodes
   const remaining = nodeFree.map((n) => ({ ...n }));
   for (const model of resolved) {
+    // Filter nodes that can run this model (driver + version compatibility)
+    const compatible = model.driver
+      ? remaining.filter((n) => {
+          if (!n.node.drivers.includes(model.driver!)) return false;
+          if (model.minVersion) {
+            const nodeVersion = (n.node.driverVersions as Record<string, string>)?.[model.driver!];
+            if (nodeVersion && !satisfiesMinVersion(nodeVersion, model.minVersion)) return false;
+          }
+          return true;
+        })
+      : remaining;
+
     let placed = 0;
-    for (const node of remaining) {
+    for (const node of compatible) {
       if (placed >= model.replicas) break;
       if (node.free >= model.perReplica) {
         node.free -= model.perReplica;
@@ -100,10 +115,11 @@ async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>
       }
     }
     if (placed < model.replicas) {
-      return {
-        deployable: false,
-        reason: `Insufficient cluster capacity: cannot place ${model.replicas} ${model.replicas === 1 ? "replica" : "replicas"} of "${model.specifier}" (${model.perReplica.toFixed(1)} GB each). Only ${placed} ${placed === 1 ? "node has" : "nodes have"} enough free capacity`,
-      };
+      const hasVersionConstraint = model.minVersion && model.driver;
+      const reason = compatible.length === 0 && hasVersionConstraint
+        ? `No node has ${model.driver} >= ${model.minVersion} with enough capacity for "${model.specifier}" (${model.perReplica.toFixed(1)} GB)`
+        : `Insufficient cluster capacity: cannot place ${model.replicas} ${model.replicas === 1 ? "replica" : "replicas"} of "${model.specifier}" (${model.perReplica.toFixed(1)} GB each). Only ${placed} compatible ${placed === 1 ? "node has" : "nodes have"} enough free capacity`;
+      return { deployable: false, reason };
     }
   }
   return { deployable: true };
@@ -447,10 +463,19 @@ const checkCapacity = rootOs
     return checkDeploymentCapacity(input);
   });
 
+const NodeCapability = z.object({
+  free: z.number(),
+  drivers: z.array(z.string()),
+  driverVersions: z.record(z.string(), z.string()),
+});
+export type NodeCapability = z.infer<typeof NodeCapability>;
+
 const ClusterCapacityOutput = z.object({
   maxNodeFreeCapacity: z.number(),
   availableDrivers: z.array(z.string()),
   nodeFreeCapacities: z.array(z.number()),
+  /** Per-node capability info for combined driver+version+capacity checks */
+  nodeCapabilities: z.array(NodeCapability),
 });
 
 const clusterCapacity = rootOs
@@ -475,7 +500,13 @@ const clusterCapacity = rootOs
     const availableDrivers = [...new Set(nodes.filter(n => n.estCapacity - (nodeUsed.get(n.id) ?? 0) > 0).flatMap(n => n.drivers))];
     const nodeFreeCapacities = nodes.map(n => n.estCapacity - (nodeUsed.get(n.id) ?? 0)).filter(c => c > 0).sort((a, b) => b - a);
 
-    return { maxNodeFreeCapacity, availableDrivers, nodeFreeCapacities };
+    const nodeCapabilities = nodes.map(n => ({
+      free: n.estCapacity - (nodeUsed.get(n.id) ?? 0),
+      drivers: n.drivers,
+      driverVersions: (n.driverVersions ?? {}) as Record<string, string>,
+    }));
+
+    return { maxNodeFreeCapacity, availableDrivers, nodeFreeCapacities, nodeCapabilities };
   });
 
 export const deploymentRouter = rootOs.prefix("/deployment").router({
