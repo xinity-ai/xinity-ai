@@ -77,6 +77,11 @@ export function resolveMinVersionForDriver(model: Model, driver: Provider): stri
   return model.providerMinVersions?.[driver];
 }
 
+/** Returns the GPU platforms required for a specific driver, or empty array (= any). */
+export function resolveRequiredPlatformsForDriver(model: Model, driver: Provider): string[] {
+  return model.providerPlatforms?.[driver] ?? [];
+}
+
 // ---------------------------------------------------------------------------
 // Provider args resolution
 // ---------------------------------------------------------------------------

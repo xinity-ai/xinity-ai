@@ -6,6 +6,9 @@ export type Provider = z.infer<typeof ProviderEnum>;
 export const TagEnum = z.enum(["tools", "custom_code", "vision"]);
 export type Tag = z.infer<typeof TagEnum>;
 
+export const GpuVendorEnum = z.enum(["nvidia", "amd", "intel"]);
+export type GpuVendor = z.infer<typeof GpuVendorEnum>;
+
 /**
  * vLLM args that must not appear in providerArgs because they are either
  * auto-derived from tags or managed by the system.
@@ -113,6 +116,10 @@ export const ModelSchema = z.looseObject({
     vllm: z.string().optional(),
     ollama: z.string().optional(),
   }).optional().describe("Per-driver minimum version requirements (semver). Nodes with older driver versions are excluded from scheduling"),
+  providerPlatforms: z.object({
+    vllm: z.array(GpuVendorEnum).optional(),
+    ollama: z.array(GpuVendorEnum).optional(),
+  }).optional().describe("Per-driver GPU platform requirements. Only nodes with a matching GPU vendor can serve. Absent = any platform"),
   entryVersion: z.string().describe("Version number at which version of xinity-ai this model was introduced. Used for compatibility checks"),
   custom: z.looseObject({
     baseModel: z.string(),
