@@ -1,9 +1,11 @@
 import { getDB } from "../db/connection";
 import { aiNodeT, eq, sql } from "common-db";
+import { $ } from "bun";
 import { env } from "../env";
 import { join } from "path";
 import { networkInterfaces } from "node:os";
 import { detectHardwareProfile, type HardwareProfile } from "./hardware-detect";
+import { normalizePep440 } from "xinity-infoserver";
 import { rootLogger } from "../logger";
 
 const log = rootLogger.child({ name: "statekeeper" });
@@ -30,6 +32,44 @@ export function getNodeDrivers(): string[] {
   return drivers;
 }
 
+/** Detects driver versions from configured endpoints/binaries. Best-effort: missing = empty. */
+export async function getNodeDriverVersions(): Promise<Record<string, string>> {
+  const versions: Record<string, string> = {};
+
+  if (env.XINITY_OLLAMA_ENDPOINT) {
+    try {
+      const res = await fetch(`${env.XINITY_OLLAMA_ENDPOINT}/api/version`);
+      if (res.ok) {
+        const data = await res.json() as { version?: string };
+        if (data.version) versions["ollama"] = data.version;
+      }
+    } catch (err) {
+      log.debug({ err }, "Failed to detect Ollama version");
+    }
+  }
+
+  if (env.VLLM_DOCKER_IMAGE) {
+    try {
+      const output = await $`docker run --rm --entrypoint vllm ${env.VLLM_DOCKER_IMAGE} version`
+        .throws(false).text();
+      const match = output.match(/(\d+\.\d+\.\d+\S*)/);
+      if (match) versions["vllm"] = normalizePep440(match[1]);
+    } catch (err) {
+      log.debug({ err }, "Failed to detect vLLM Docker version");
+    }
+  } else if (env.VLLM_PATH) {
+    try {
+      const output = await $`${env.VLLM_PATH} version`.throws(false).text();
+      const match = output.match(/(\d+\.\d+\.\d+\S*)/);
+      if (match) versions["vllm"] = normalizePep440(match[1]);
+    } catch (err) {
+      log.debug({ err }, "Failed to detect vLLM version");
+    }
+  }
+
+  return versions;
+}
+
 /** Retrieves the nodeID of this ai node. If it is not recorded in the database yet, it will be created */
 export async function getNodeId(){
   if (cachedNodeId) return cachedNodeId;
@@ -44,6 +84,7 @@ export async function getNodeId(){
         )?.address || '127.0.0.1';
 
     const { detectedCapacityGb, gpuCount } = await getHardwareProfile();
+    const driverVersions = await getNodeDriverVersions();
 
     const [row] = await getDB().insert(aiNodeT).values({
       estCapacity: detectedCapacityGb,
@@ -52,6 +93,7 @@ export async function getNodeId(){
       port: 11434,
       available: true,
       drivers: getNodeDrivers(),
+      driverVersions,
     }).onConflictDoUpdate({
       target: [aiNodeT.host, aiNodeT.port],
       targetWhere: sql`${aiNodeT.deletedAt} IS NULL`,
@@ -60,6 +102,7 @@ export async function getNodeId(){
         gpuCount,
         available: true,
         drivers: getNodeDrivers(),
+        driverVersions,
       },
     }).returning({id: aiNodeT.id});
 
@@ -76,12 +119,14 @@ export async function getNodeId(){
 export async function setOnline(){
   const nodeId = await getNodeId();
   const { detectedCapacityGb, gpuCount } = await getHardwareProfile();
+  const driverVersions = await getNodeDriverVersions();
 
   await getDB()
     .update(aiNodeT)
     .set({
       available: true,
       drivers: getNodeDrivers(),
+      driverVersions,
       estCapacity: detectedCapacityGb,
       gpuCount,
     })
