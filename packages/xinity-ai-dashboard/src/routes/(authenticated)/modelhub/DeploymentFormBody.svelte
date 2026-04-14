@@ -1,6 +1,6 @@
 <script lang="ts">
   import { slide } from "svelte/transition";
-  import type { ModelWithSpecifier } from "xinity-infoserver";
+  import type { ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
   import ModelSelectorModal from "./ModelSelectorModal.svelte";
   import DeploymentModelTile from "./DeploymentModelTile.svelte";
   import { Button } from "$lib/components/ui/button";
@@ -67,7 +67,7 @@
     showTrafficSlider?: boolean;
     maxNodeFreeCapacity?: number;
     availableDrivers?: string[];
-    nodeCapabilities?: { free: number; drivers: string[]; driverVersions: Record<string, string> }[];
+    nodeCapabilities?: NodeCapability[];
     publicSpecifierError?: string;
     onPublicSpecifierInput?: () => void;
     onDeploymentNameInput?: () => void;

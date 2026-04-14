@@ -11,6 +11,7 @@ import { userRouter } from "./procedures/user.procedure";
 import { onboardingRouter } from "./procedures/onboarding.procedure";
 import { modelRouter } from "./procedures/model.procedure";
 import { instanceAdminRouter } from "./procedures/instance-admin.procedure";
+import { clusterRouter } from "./procedures/cluster.procedure";
 import z from "zod";
 
 const health = os.route({
@@ -36,5 +37,6 @@ export const router = {
   onboarding: onboardingRouter,
   model: modelRouter,
   instanceAdmin: instanceAdminRouter,
+  cluster: clusterRouter,
   health,
 };

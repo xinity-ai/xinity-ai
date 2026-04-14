@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ModelWithSpecifier } from "xinity-infoserver";
+  import type { ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
   import Modal from "$lib/components/Modal.svelte";
   import DeploymentFormBody from "./DeploymentFormBody.svelte";
   import { driverHasTag } from "xinity-infoserver";
@@ -32,7 +32,7 @@
     maxNodeFreeCapacity?: number;
     availableDrivers?: string[];
     nodeFreeCapacities?: number[];
-    nodeCapabilities?: { free: number; drivers: string[]; driverVersions: Record<string, string> }[];
+    nodeCapabilities?: NodeCapability[];
     onSaved?: () => Promise<void>;
   } = $props();
 
