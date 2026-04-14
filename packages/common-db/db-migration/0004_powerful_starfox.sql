@@ -1,1 +1,0 @@
-ALTER TABLE "ai_node" ADD COLUMN "driver_versions" jsonb DEFAULT '{}'::jsonb NOT NULL;
