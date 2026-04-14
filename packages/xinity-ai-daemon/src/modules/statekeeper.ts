@@ -83,8 +83,9 @@ export async function getNodeId(){
           !n.internal
         )?.address || '127.0.0.1';
 
-    const { detectedCapacityGb, gpuCount } = await getHardwareProfile();
-    const driverVersions = await getNodeDriverVersions();
+    const driverVersions = getNodeDriverVersions();
+    const { detectedCapacityGb, gpuCount, gpus: detectedGpus } = await getHardwareProfile();
+    const gpus = detectedGpus.map(g => ({ vendor: g.vendor, name: g.name, vramMb: g.vramMb }));
 
     const [row] = await getDB().insert(aiNodeT).values({
       estCapacity: detectedCapacityGb,
@@ -93,7 +94,8 @@ export async function getNodeId(){
       port: 11434,
       available: true,
       drivers: getNodeDrivers(),
-      driverVersions,
+      driverVersions: await driverVersions,
+      gpus,
     }).onConflictDoUpdate({
       target: [aiNodeT.host, aiNodeT.port],
       targetWhere: sql`${aiNodeT.deletedAt} IS NULL`,
@@ -102,7 +104,8 @@ export async function getNodeId(){
         gpuCount,
         available: true,
         drivers: getNodeDrivers(),
-        driverVersions,
+        driverVersions: await driverVersions,
+        gpus,
       },
     }).returning({id: aiNodeT.id});
 
@@ -118,8 +121,9 @@ export async function getNodeId(){
 /** Sets the node to available, and updates driver capabilities and hardware profile */
 export async function setOnline(){
   const nodeId = await getNodeId();
-  const { detectedCapacityGb, gpuCount } = await getHardwareProfile();
+  const { detectedCapacityGb, gpuCount, gpus: detectedGpus } = await getHardwareProfile();
   const driverVersions = await getNodeDriverVersions();
+  const gpus = detectedGpus.map(g => ({ vendor: g.vendor, name: g.name, vramMb: g.vramMb }));
 
   await getDB()
     .update(aiNodeT)
@@ -127,6 +131,7 @@ export async function setOnline(){
       available: true,
       drivers: getNodeDrivers(),
       driverVersions,
+      gpus,
       estCapacity: detectedCapacityGb,
       gpuCount,
     })

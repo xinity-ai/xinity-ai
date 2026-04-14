@@ -323,9 +323,6 @@ async function detectAllGpus(): Promise<DetectedGpu[]> {
   return [...nvidia, ...amd, ...intel];
 }
 
-function sumTotalVramMb(gpus: DetectedGpu[]): number {
-  return gpus.reduce((sum, gpu) => sum + gpu.vramMb, 0);
-}
 
 export function classifyCapacitySource(gpus: DetectedGpu[]): CapacitySource {
   if (gpus.length === 0) return "system-ram";
@@ -354,7 +351,7 @@ export function classifyCapacitySource(gpus: DetectedGpu[]): CapacitySource {
 export async function detectHardwareProfile(): Promise<HardwareProfile> {
   const gpus = await detectAllGpus();
   const gpuCount = gpus.length;
-  const totalVramMb = sumTotalVramMb(gpus);
+  const totalVramMb = gpus.reduce((sum, gpu) => sum + gpu.vramMb, 0);
 
   if (gpuCount > 0 && totalVramMb > 0) {
     return {
