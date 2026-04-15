@@ -15,6 +15,11 @@ function sanitizeHost(hostname: string): string {
  * Returns null on Ctrl-C / Ctrl-D.
  */
 async function readSudoPassword(prompt: string): Promise<string | null> {
+  // Drain any stale keystrokes left in stdin from previous prompts (e.g. clack menus).
+  // Without this, a buffered Enter from the menu confirmation can be read as an
+  // immediate empty-password submission.
+  await drainStdinBuffer();
+
   return new Promise((resolve) => {
     process.stderr.write(prompt);
 
@@ -41,24 +46,44 @@ async function readSudoPassword(prompt: string): Promise<string | null> {
     const onData = (chunk: Buffer) => {
       for (const byte of chunk) {
         if (byte === 0x03 || byte === 0x04) {
-          // Ctrl-C or Ctrl-D
           return finish(null);
         }
         if (byte === 0x0D || byte === 0x0A) {
-          // Enter
           return finish(buf);
         }
         if (byte === 0x7F || byte === 0x08) {
-          // Backspace / Delete
           buf = buf.slice(0, -1);
         } else if (byte >= 0x20) {
-          // Printable character
           buf += String.fromCharCode(byte);
         }
       }
     };
 
     process.stdin.on("data", onData);
+  });
+}
+
+/** Consume any bytes already sitting in the stdin buffer (e.g. from prior prompts). */
+function drainStdinBuffer(): Promise<void> {
+  return new Promise((resolve) => {
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true);
+    }
+    process.stdin.resume();
+
+    // Read and discard any immediately available data
+    const onData = () => {};
+    process.stdin.on("data", onData);
+
+    // After a tick, nothing more is buffered - stop draining
+    setTimeout(() => {
+      process.stdin.removeListener("data", onData);
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(false);
+      }
+      process.stdin.pause();
+      resolve();
+    }, 50);
   });
 }
 
@@ -96,6 +121,10 @@ export class RemoteHost implements Host {
   }
 
   async connect(): Promise<void> {
+    // Kill any stale control socket from a previous CLI run. Reusing a stale
+    // socket can corrupt stdin piping for sudo sessions.
+    await localRun(["ssh", "-O", "exit", ...this.ctrlArgs, this.hostname]).catch(() => {});
+
     const result = await localRun([
       "ssh",
       ...this.ctrlArgs,
