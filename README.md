@@ -37,26 +37,33 @@ Xinity gives them a complete AI platform: model orchestration, an OpenAI-compati
 
 ## See it in action
 
-<!-- TODO: replace with asciinema embed or GIF -->
+[![asciicast](https://asciinema.org/a/quSaPbFf9aqlQcqf.svg)](https://asciinema.org/a/quSaPbFf9aqlQcqf)
+
 ```bash
 # Install the CLI
-curl -fsSL https://github.com/xinity-ai/xinity-ai/releases/latest/download/install.sh | bash
+curl -fsSL https://get.xinity.ai/install.sh | bash
 
 # Set up everything (Postgres, inference engine, dashboard)
-xinity up all
+xinity up all   # add --target-host to supply a ssh available server to operate on
 
 # Create your admin account right from the terminal (no browser needed)
 xinity configure dashboardUrl http://localhost:3100
 xinity act onboarding.cli
 
+# Deploy a model (Phi-3 Mini as a quick start example)
+xinity act deployment.create '{"name": "Phi-3 Mini", "publicSpecifier": "phi-3-mini", "modelSpecifier": "phi3:mini", "enabled": true}'
+
+# Wait for the model to download and become ready
+xinity act deployment.list '{"withStatus": true}'
+
 # Check system health
 xinity doctor
 
-# You're live. Hit your local OpenAI-compatible API:
+# Once the deployment shows "ready", hit your local OpenAI-compatible API:
 curl http://localhost:3000/v1/chat/completions \
   -H "Authorization: Bearer sk_..." \
   -H "Content-Type: application/json" \
-  -d '{"model": "qwen3.5", "messages": [{"role": "user", "content": "Hello from on-prem."}]}'
+  -d '{"model": "phi-3-mini", "messages": [{"role": "user", "content": "Hello from on-prem."}]}'
 ```
 
 Your existing OpenAI SDK code works unchanged, just point the base URL to your Xinity instance.
