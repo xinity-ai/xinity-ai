@@ -75,7 +75,6 @@ export const ModelSchema = z.looseObject({
     "2 * num_hidden_layers * num_key_value_heads * head_dim * dtype_bytes * total_tokens, " +
     "where total_tokens is chosen based on desired concurrent capacity."
   ),
-  registeredAt: z.string().describe("Time of registering the model in question"),
   url: z.url().describe("External documentation url, for curious users that want to know more"),
   type: z.enum(["embedding", "chat", "rerank"]).default("chat").optional().describe("Usage type of the model in question"),
   family: z.string().default("unknown").optional().describe("Family of the model. May be unknown"),
@@ -120,7 +119,7 @@ export const ModelSchema = z.looseObject({
     vllm: z.array(GpuVendorEnum).optional(),
     ollama: z.array(GpuVendorEnum).optional(),
   }).optional().describe("Per-driver GPU platform requirements. Only nodes with a matching GPU vendor can serve. Absent = any platform"),
-  entryVersion: z.string().describe("Version number at which version of xinity-ai this model was introduced. Used for compatibility checks"),
+  entryVersion: z.string().optional().describe("Version of xinity-ai this model was introduced in"),
   custom: z.looseObject({
     baseModel: z.string(),
     extraFacts: z.record(z.string(), z.any())

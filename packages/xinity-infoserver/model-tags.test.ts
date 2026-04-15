@@ -17,7 +17,6 @@ function makeModel(overrides: Partial<Model> = {}): Model {
     description: "A test model",
     weight: 10,
     minKvCache: 2,
-    registeredAt: "2025-01-01",
     url: "https://example.com",
     entryVersion: "0.1.0",
     providers: { vllm: "org/test-vllm", ollama: "test-ollama" },
@@ -159,7 +158,7 @@ describe("ModelSchema vllm providerArgs filtering", () => {
   function parseModel(providerArgs: string[]) {
     return ModelSchema.parse({
       name: "Test", description: "test", weight: 1, minKvCache: 1,
-      registeredAt: "2025-01-01", url: "https://example.com", entryVersion: "0.1.0",
+      url: "https://example.com",
       providers: { vllm: "org/test" },
       providerArgs: { vllm: providerArgs },
     });

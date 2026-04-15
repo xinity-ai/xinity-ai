@@ -65,7 +65,7 @@ const baseModel = {
   description: "A test model",
   weight: 10,
   minKvCache: 2,
-  registeredAt: "2025-01-01",
+
   url: "https://example.com",
   entryVersion: "0.1.0",
   providers: { vllm: "org/llama-vllm", ollama: "llama-ollama" },
@@ -76,7 +76,7 @@ const embeddingModel = {
   description: "An embedding model",
   weight: 5,
   minKvCache: 1,
-  registeredAt: "2025-01-01",
+
   url: "https://example.com",
   entryVersion: "0.1.0",
   type: "embedding",
@@ -189,7 +189,6 @@ describe("server-catalog", () => {
         description: "From include",
         weight: 8,
         minKvCache: 1,
-        registeredAt: "2025-02-01",
         url: "https://example.com",
         entryVersion: "0.1.0",
         providers: { vllm: "org/remote-vllm" },
