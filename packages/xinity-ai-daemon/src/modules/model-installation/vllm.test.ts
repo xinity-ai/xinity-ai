@@ -93,6 +93,11 @@ mock.module("../hardware-detect", () => ({
   getFreeMemoryMb: mockGetFreeMemoryMb,
 }));
 
+// Mock the native HF downloader (no-op in tests)
+mock.module("./vllm-download", () => ({
+  downloadModel: mock(() => Promise.resolve()),
+}));
+
 const { syncVllmInstallations$ } = await import("./vllm");
 
 // ---------------------------------------------------------------------------
@@ -361,7 +366,8 @@ describe("syncVllmInstallations$", () => {
     );
     expect(failedWrite).toBeDefined();
     expect(failedWrite![0].failureLogs).toBe(sampleLogs);
-    expect((failedWrite![0].errorMessage as string)).toContain("crash-looping");
+    // Fatal pattern match overrides the raw crash-loop message with a user-friendly label
+    expect((failedWrite![0].errorMessage as string)).toContain("GPU out of memory");
     expect(ops.stop).toHaveBeenCalled();
   });
 

@@ -1,7 +1,5 @@
 import { OpenAI } from "openai";
 
-const MODEL = "<your-model>";
-
 const openai = new OpenAI({
     baseURL: "{{API_BASE}}",
     apiKey: process.env.API_KEY,
@@ -9,7 +7,7 @@ const openai = new OpenAI({
 
 async function extractPerson() {
   const response = await openai.chat.completions.create({
-    model: MODEL,
+    model: process.env.MODEL,
     messages: [
       { role: "system", content: "Extract structured data from the text." },
       { role: "user", content: "John Smith is 32 years old and works as a software engineer at Acme Corp in Berlin." }

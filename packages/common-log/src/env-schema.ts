@@ -5,7 +5,7 @@ import { expert } from "common-env";
 export const logEnvSchema = z.object({
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace"])
-    .default("info")
+    .default("debug")
     .describe("Log level")
     .meta(expert()),
   LOG_DIR: z.string().optional().describe("Log file directory (enables file logging)").meta(expert()),

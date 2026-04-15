@@ -63,7 +63,7 @@ export function getAutoDefaults(component: Component): Record<string, string> {
     case "daemon":
       return { ...common, STATE_DIR: stateDir };
     case "dashboard":
-      return { ...common, NODE_ENV: "production" };
+      return { ...common, NODE_ENV: "production", HTTP_PORT: "5173" };
     case "infoserver":
       return {};
     default:

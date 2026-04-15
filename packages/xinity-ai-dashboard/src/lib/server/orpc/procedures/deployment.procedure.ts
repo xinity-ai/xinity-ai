@@ -1,11 +1,13 @@
 import { rootOs, withOrganization, requirePermission } from "../root";
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
-import { sql, isNull, modelDeploymentT, modelInstallationT, modelInstallationStateT, organizationT, aiNodeT, type ModelDeployment } from "common-db";
+import { sql, modelDeploymentT, modelInstallationT, modelInstallationStateT, organizationT, type ModelDeployment } from "common-db";
 import z from "zod";
 import { DeploymentDto } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { syncDeployedModels } from "$lib/server/lib/orchestration.mod";
 import { infoClient } from "$lib/server/info-client";
+import { buildClusterCapacity } from "./cluster.procedure";
+import { resolveDriverForProviderModel, resolveMinVersionForDriver, resolveRequiredPlatformsForDriver, checkNodeCompatibility, type ModelNodeRequirements } from "xinity-infoserver";
 import { rootLogger } from "$lib/server/logging";
 import { aggregatePhase, type PhaseInfo } from "$lib/server/lib/deployment-phase";
 import { notifyOrgMembers } from "$lib/server/notifications/notification.service";
@@ -63,36 +65,41 @@ async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>
     modelsToCheck.push({ specifier: input.modelSpecifier, replicas: input.replicas, kvCacheSize: input.kvCacheSize });
   }
 
-  // Fetch model info for all models
+  // Fetch model info for all models (including driver/version/platform requirements)
   const modelInfos = await Promise.all(
     modelsToCheck.map(async (m) => {
       const info = await infoClient?.fetchModel(m.specifier);
       if (!info) return null;
       const effectiveKvCache = Math.max(m.kvCacheSize ?? 0, info.minKvCache);
-      return { ...m, perReplica: info.weight + effectiveKvCache };
+      const driver = resolveDriverForProviderModel(info, m.specifier);
+      const minVersion = driver ? resolveMinVersionForDriver(info, driver) : undefined;
+      const requiredPlatforms = driver ? resolveRequiredPlatformsForDriver(info, driver) : [];
+      return { ...m, perReplica: info.weight + effectiveKvCache, driver, minVersion, requiredPlatforms };
     }),
   );
   const resolved = modelInfos.filter((m): m is NonNullable<typeof m> => m !== null);
   if (resolved.length === 0) return { deployable: true }; // Can't validate without model info; let orchestration handle it
 
-  // Get current cluster free capacity per node (sorted descending for greedy allocation)
-  const nodes = await getDB().select().from(aiNodeT).where(sql`${aiNodeT.available} AND ${aiNodeT.deletedAt} IS NULL`);
-  const installations = await getDB().select().from(modelInstallationT).where(isNull(modelInstallationT.deletedAt));
-
-  const nodeUsed = new Map<string, number>();
-  for (const inst of installations) {
-    nodeUsed.set(inst.nodeId, (nodeUsed.get(inst.nodeId) ?? 0) + inst.estCapacity);
-  }
-
-  const nodeFree = nodes
-    .map((n) => ({ id: n.id, free: n.estCapacity - (nodeUsed.get(n.id) ?? 0) }))
+  const { nodeCapabilities } = await buildClusterCapacity();
+  const remaining = nodeCapabilities
+    .map(n => ({ ...n }))
     .sort((a, b) => b.free - a.free);
 
-  // Greedily allocate replicas across nodes (models can share nodes but each replica consumes capacity)
-  const remaining = nodeFree.map((n) => ({ ...n }));
   for (const model of resolved) {
+    // Filter nodes that are structurally compatible (driver, version, platform) - capacity checked in allocation loop
+    const compatible = model.driver
+      ? remaining.filter(n => {
+          const req: ModelNodeRequirements = {
+            driver: model.driver!, capacityGb: 0,
+            minVersion: model.minVersion, requiredPlatforms: model.requiredPlatforms,
+          };
+          const reason = checkNodeCompatibility(n, req);
+          return reason === null || reason === "insufficient_capacity";
+        })
+      : remaining;
+
     let placed = 0;
-    for (const node of remaining) {
+    for (const node of compatible) {
       if (placed >= model.replicas) break;
       if (node.free >= model.perReplica) {
         node.free -= model.perReplica;
@@ -100,10 +107,10 @@ async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>
       }
     }
     if (placed < model.replicas) {
-      return {
-        deployable: false,
-        reason: `Insufficient cluster capacity: cannot place ${model.replicas} ${model.replicas === 1 ? "replica" : "replicas"} of "${model.specifier}" (${model.perReplica.toFixed(1)} GB each). Only ${placed} ${placed === 1 ? "node has" : "nodes have"} enough free capacity`,
-      };
+      const reason = compatible.length === 0 && model.driver
+        ? `No compatible node for "${model.specifier}" (requires ${model.driver}${model.minVersion ? ` >= ${model.minVersion}` : ""}${model.requiredPlatforms.length ? `, platform: ${model.requiredPlatforms.join("/")}` : ""})`
+        : `Insufficient cluster capacity: cannot place ${model.replicas} ${model.replicas === 1 ? "replica" : "replicas"} of "${model.specifier}" (${model.perReplica.toFixed(1)} GB each). Only ${placed} compatible ${placed === 1 ? "node has" : "nodes have"} enough free capacity`;
+      return { deployable: false, reason };
     }
   }
   return { deployable: true };
@@ -122,75 +129,80 @@ async function internalUpdateDeployment(orgId: string, id: string, params: Parti
   return deployment;
 }
 
+// ---------------------------------------------------------------------------
+// Shared status schema and query helper
+// ---------------------------------------------------------------------------
+
+const DeploymentStatusSchema = z.object({
+  phase: z.enum(["ready", "downloading", "installing", "failed", "scheduling"]),
+  progress: z.number().nullable(),
+  error: z.string().nullable().optional(),
+  failureLogs: z.string().nullable().optional(),
+});
+
+export const DeploymentWithStatusDto = DeploymentDto.extend({ status: DeploymentStatusSchema.optional() });
+export type DeploymentWithStatus = z.infer<typeof DeploymentWithStatusDto>;
+type StatusPhase = "ready" | "downloading" | "installing" | "failed" | "scheduling";
+
+/**
+ * Runs the status join query and aggregates installation phase info for the given deployments.
+ * `where` should narrow to the specific deployment rows you want (org condition + optional id filter).
+ */
+async function queryDeploymentsWithStatus(where: ReturnType<typeof sql>): Promise<DeploymentWithStatus[]> {
+  const rows = await getDB()
+    .select()
+    .from(modelDeploymentT)
+    .leftJoin(modelInstallationT, sql`
+      (${modelDeploymentT.modelSpecifier} = ${modelInstallationT.model}
+      OR
+      ${modelDeploymentT.earlyModelSpecifier} = ${modelInstallationT.model})
+      AND ${modelInstallationT.deletedAt} IS NULL`)
+    .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`)
+    .where(where);
+
+  const deploymentMap = new Map<string, { deployment: ModelDeployment; phaseInfo?: PhaseInfo }>();
+
+  for (const row of rows) {
+    const deployment = row.model_deployment;
+    let entry = deploymentMap.get(deployment.id);
+    if (!entry) {
+      entry = { deployment };
+      deploymentMap.set(deployment.id, entry);
+    }
+
+    const installation = row.model_installation;
+    const state = row.model_installation_state;
+
+    if (installation && !state) {
+      entry.phaseInfo = aggregatePhase(entry.phaseInfo, "scheduling", null, null);
+      continue;
+    }
+    if (!state) continue;
+
+    const phase = state.lifecycleState;
+    const progress = (phase === "downloading" || phase === "installing") ? (state.progress ?? null) : null;
+    entry.phaseInfo = aggregatePhase(entry.phaseInfo, phase, progress, state.errorMessage, state.failureLogs);
+  }
+
+  return Array.from(deploymentMap.values()).map(({ deployment, phaseInfo }) => {
+    const status = phaseInfo
+      ? { phase: phaseInfo.phase as StatusPhase, progress: phaseInfo.progress, error: phaseInfo.error, failureLogs: phaseInfo.failureLogs }
+      : undefined;
+    return status ? { ...deployment, status } : deployment;
+  });
+}
+
 const listDeployments = rootOs.use(withOrganization)
   .use(requirePermission({ modelDeployment: ["read"] }))
   .route({ path: "/", method: "GET", tags, summary: "List Deployments", description: "Lists deployments accessible to the current user" })
   .input(z.object({ withStatus: z.coerce.boolean().default(false) }))
-  .output(DeploymentDto.extend({
-    status: z.object({
-      phase: z.enum(["ready", "downloading", "installing", "failed", "scheduling"]),
-      progress: z.number().nullable(),
-      error: z.string().nullable().optional(),
-      failureLogs: z.string().nullable().optional(),
-    }).optional(),
-  }).array())
+  .output(DeploymentWithStatusDto.array())
   .handler(async ({ context, input }) => {
     const orgCondition = sql`${modelDeploymentT.organizationId} = ${context.activeOrganizationId} AND ${modelDeploymentT.deletedAt} IS NULL`;
     if (input?.withStatus) {
-      const rows = await getDB()
-        .select()
-        .from(modelDeploymentT)
-        .leftJoin(modelInstallationT, sql`
-          (${modelDeploymentT.modelSpecifier} = ${modelInstallationT.model}
-          OR
-          ${modelDeploymentT.earlyModelSpecifier} = ${modelInstallationT.model})
-          AND ${modelInstallationT.deletedAt} IS NULL`)
-        .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`)
-        .where(orgCondition);
-
-      type StatusPhase = "ready" | "downloading" | "installing" | "failed" | "scheduling";
-      const deployments: Array<{ deployment: ModelDeployment; status?: { phase: StatusPhase; progress: number | null } }> = [];
-      const deploymentMap = new Map<string, { deployment: ModelDeployment; phaseInfo?: PhaseInfo }>();
-
-      for (const row of rows) {
-        const deployment = row.model_deployment;
-        let entry = deploymentMap.get(deployment.id);
-        if (!entry) {
-          entry = { deployment };
-          deploymentMap.set(deployment.id, entry);
-        }
-
-        const installation = row.model_installation;
-        const state = row.model_installation_state;
-
-        // Installation exists but daemon hasn't reported state yet → scheduling phase
-        if (installation && !state) {
-          entry.phaseInfo = aggregatePhase(entry.phaseInfo, "scheduling", null, null);
-          continue;
-        }
-
-        if (!state) continue;
-
-        const phase = state.lifecycleState;
-        const progress = (phase === "downloading" || phase === "installing") ? (state.progress ?? null) : null;
-        entry.phaseInfo = aggregatePhase(entry.phaseInfo, phase, progress, state.errorMessage, state.failureLogs);
-      }
-
-      for (const entry of deploymentMap.values()) {
-        const status = entry.phaseInfo
-          ? {
-              phase: entry.phaseInfo.phase as StatusPhase,
-              progress: entry.phaseInfo.progress,
-              error: entry.phaseInfo.error,
-              failureLogs: entry.phaseInfo.failureLogs,
-            }
-          : undefined;
-        deployments.push({ deployment: entry.deployment, status });
-      }
-
-      return deployments.map(({ deployment, status }) => status ? { ...deployment, status } : deployment);
+      return queryDeploymentsWithStatus(orgCondition);
     }
-    return await getDB().select().from(modelDeploymentT).where(orgCondition)
+    return await getDB().select().from(modelDeploymentT).where(orgCondition);
   });
 /** Updates a deployment and triggers a sync. */
 const updateDeployment = rootOs
@@ -308,21 +320,24 @@ const getDeployment = rootOs
     Unlike other deployment related endpoints, this one also returns computed properties such as those
     relevant for canary deployments, and exact deployment transition state`,
   })
-  .input(z.object({ id: z.uuid() }))
-  .output(DeploymentDto)
+  .input(z.object({ id: z.uuid(), withStatus: z.coerce.boolean().default(false) }))
+  .output(DeploymentWithStatusDto)
   .errors({ NOT_FOUND: {} })
   .handler(async ({ context, input, errors }) => {
-    const [deployment] = await getDB().select().from(modelDeploymentT)
-      .where(sql`
-        ${modelDeploymentT.id} = ${input.id}
-      AND
-        ${modelDeploymentT.organizationId} = ${context.activeOrganizationId}
-      AND
-        ${modelDeploymentT.deletedAt} IS NULL`).limit(1);
-    if (!deployment) {
-      throw errors.NOT_FOUND();
+    const condition = sql`
+      ${modelDeploymentT.id} = ${input.id}
+      AND ${modelDeploymentT.organizationId} = ${context.activeOrganizationId}
+      AND ${modelDeploymentT.deletedAt} IS NULL`;
+
+    if (input.withStatus) {
+      const results = await queryDeploymentsWithStatus(condition);
+      if (results.length === 0) throw errors.NOT_FOUND();
+      return results[0];
     }
-    return deployment as z.infer<typeof DeploymentDto>;
+
+    const [deployment] = await getDB().select().from(modelDeploymentT).where(condition).limit(1);
+    if (!deployment) throw errors.NOT_FOUND();
+    return deployment;
   });
 const deleteDeployment = rootOs
   .use(withOrganization)

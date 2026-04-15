@@ -8,7 +8,7 @@ const testModel: ModelWithSpecifier = {
   description: "A test model",
   weight: 10,
   minKvCache: 2,
-  registeredAt: "2025-01-01",
+
   url: "https://example.com",
   entryVersion: "0.1.0",
   type: "chat",
@@ -23,7 +23,7 @@ const embedModel: ModelWithSpecifier = {
   description: "An embedding model",
   weight: 5,
   minKvCache: 1,
-  registeredAt: "2025-01-01",
+
   url: "https://example.com",
   entryVersion: "0.1.0",
   type: "embedding",

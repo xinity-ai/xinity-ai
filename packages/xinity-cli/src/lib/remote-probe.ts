@@ -212,5 +212,9 @@ export function createCachedHost(realHost: Host, state: RemoteState): Host {
     openTunnel(url: string): Promise<{ localUrl: string; close: () => Promise<void> }> {
       return realHost.openTunnel(url);
     },
+
+    dispose(): Promise<void> {
+      return realHost.dispose();
+    },
   };
 }

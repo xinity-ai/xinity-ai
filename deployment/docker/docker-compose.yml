@@ -92,7 +92,7 @@ services:
       BETTER_AUTH_URL: https://${DASHBOARD_SUBDOMAIN:-dashboard}.${DOMAIN:?DOMAIN is required}
       ORIGIN: https://${DASHBOARD_SUBDOMAIN:-dashboard}.${DOMAIN}
       HTTP_OVERRIDE_ORIGIN: https://${DASHBOARD_SUBDOMAIN:-dashboard}.${DOMAIN}
-      PUBLIC_LLM_API_URL: https://${GATEWAY_SUBDOMAIN:-api}.${DOMAIN}/v1
+      GATEWAY_URL: https://${GATEWAY_SUBDOMAIN:-api}.${DOMAIN}
       INFOSERVER_URL: ${INFOSERVER_URL:-https://sysinfo.xinity.ai}
       APP_NAME: ${APP_NAME:-Xinity Admin}
       SIGNUP_ENABLED: ${SIGNUP_ENABLED:-true}

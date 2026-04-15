@@ -1,13 +1,6 @@
 {
   "name": "xinity-ai-daemon",
   "main": "src/index.ts",
-  "type": "module",
-  "scripts": {
-    "dev": "bun run --watch src/index | pino-pretty",
-    "build": "bun build --production --target=bun --outdir=dist ./src/index.ts",
-    "build:compile": "bun build --compile --minify --target=bun ./src/index.ts --outfile xinity-ai-daemon",
-    "test": "bun test src/"
-  },
   "devDependencies": {
     "@orpc/openapi": "^1.7.4",
     "@orpc/server": "^1.7.4",
@@ -23,5 +16,12 @@
     "rambdax": "^11.3.1",
     "rxjs": "^7.8.2",
     "zod": "^4.1.8"
-  }
+  },
+  "scripts": {
+    "dev": "bun run --watch src/index | pino-pretty",
+    "build": "bun build --production --target=bun --outdir=dist ./src/index.ts",
+    "build:compile": "bun build --compile --minify --target=bun ./src/index.ts --outfile xinity-ai-daemon",
+    "test": "bun test src/"
+  },
+  "type": "module"
 }

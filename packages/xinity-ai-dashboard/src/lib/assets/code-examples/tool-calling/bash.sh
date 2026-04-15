@@ -1,11 +1,9 @@
-MODEL="<your-model>"
-
 # Step 1: Send a request with tool definitions
 curl {{API_BASE}}/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $API_KEY" \
   -d '{
-    "model": "'$MODEL'",
+    "model": "'"$MODEL"'",
     "messages": [
       {"role": "user", "content": "What'\''s the weather like in Berlin?"}
     ],
@@ -34,7 +32,7 @@ curl {{API_BASE}}/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $API_KEY" \
   -d '{
-    "model": "'$MODEL'",
+    "model": "'"$MODEL"'",
     "messages": [
       {"role": "user", "content": "What'\''s the weather like in Berlin?"},
       {"role": "assistant", "tool_calls": [{"id": "call_abc123", "type": "function", "function": {"name": "get_weather", "arguments": "{\"location\":\"Berlin\"}"}}]},

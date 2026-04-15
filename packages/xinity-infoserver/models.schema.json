@@ -35,10 +35,6 @@
             "type": "number",
             "description": "Minimum KV-cache allocation in GB. Should be precomputed from the model's config.json (if available) as roughly: 2 * num_hidden_layers * num_key_value_heads * head_dim * dtype_bytes * total_tokens, where total_tokens is chosen based on desired concurrent capacity."
           },
-          "registeredAt": {
-            "type": "string",
-            "description": "Time of registering the model in question"
-          },
           "url": {
             "type": "string",
             "format": "uri",
@@ -170,9 +166,49 @@
             },
             "description": "Map from supported provider names to the provider-specific model specifier"
           },
+          "providerMinVersions": {
+            "description": "Per-driver minimum version requirements (semver). Nodes with older driver versions are excluded from scheduling",
+            "type": "object",
+            "properties": {
+              "vllm": {
+                "type": "string"
+              },
+              "ollama": {
+                "type": "string"
+              }
+            }
+          },
+          "providerPlatforms": {
+            "description": "Per-driver GPU platform requirements. Only nodes with a matching GPU vendor can serve. Absent = any platform",
+            "type": "object",
+            "properties": {
+              "vllm": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "nvidia",
+                    "amd",
+                    "intel"
+                  ]
+                }
+              },
+              "ollama": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "nvidia",
+                    "amd",
+                    "intel"
+                  ]
+                }
+              }
+            }
+          },
           "entryVersion": {
-            "type": "string",
-            "description": "Version number at which version of xinity-ai this model was introduced. Used for compatibility checks"
+            "description": "Version of xinity-ai this model was introduced in",
+            "type": "string"
           },
           "custom": {
             "description": "Info for fine tuned custom models",
@@ -201,10 +237,8 @@
           "description",
           "weight",
           "minKvCache",
-          "registeredAt",
           "url",
-          "providers",
-          "entryVersion"
+          "providers"
         ],
         "additionalProperties": {}
       }

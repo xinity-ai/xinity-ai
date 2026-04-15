@@ -5,7 +5,7 @@ import { cancelAndExit } from "./output.ts";
 import { parseEnvString } from "./env-file.ts";
 import { type Component, ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, getAutoDefaults } from "./component-meta.ts";
 import { writeEnvConfig, restartService } from "./service.ts";
-import { createLocalHost, type Host } from "./host.ts";
+import { createLocalHost, readSecrets, type Host } from "./host.ts";
 
 export interface EnvField {
   key: string;
@@ -15,17 +15,19 @@ export interface EnvField {
   isOptional: boolean;
   isSecret: boolean;
   isExpert: boolean;
+  isPublic: boolean;
   isEnum: boolean;
   enumValues?: string[];
   isNumber: boolean;
   isBoolean: boolean;
 }
 
-function readFieldMeta(field: z.ZodType): { secret: boolean; expert: boolean } {
+function readFieldMeta(field: z.ZodType): { secret: boolean; expert: boolean; public: boolean } {
   const meta = z.globalRegistry.get(field);
   return {
     secret: meta?.secret === true,
     expert: meta?.expert === true,
+    public: meta?.public === true,
   };
 }
 
@@ -62,6 +64,7 @@ export function analyzeEnvSchema(
       isOptional: !requiredKeys.has(key),
       isSecret: meta.secret,
       isExpert: meta.expert,
+      isPublic: meta.public,
       isEnum: !!enumValues,
       enumValues,
       isNumber: resolvedType === "number" || resolvedType === "integer",
@@ -236,11 +239,12 @@ async function promptField(
 }
 
 /** Format a field's current value for display in the menu. */
-function displayValue(field: EnvField, value: string | undefined): string {
+function displayValue(field: EnvField, value: string | undefined, locked = false): string {
   if (value !== undefined && value !== "") {
     if (field.isSecret) return pc.dim("••••••");
     return pc.cyan(value);
   }
+  if (locked && field.isSecret) return pc.dim("(locked)");
   if (field.hasDefault) return pc.dim(`(default: ${field.defaultValue})`);
   if (field.isOptional) return pc.dim("(not set)");
   return pc.yellow("(not set)");
@@ -269,31 +273,12 @@ export async function menuConfigureEnv(
   const envPath = `${ENV_DIR}/${component}.env`;
   const envContent = await h.readFile(envPath);
   const existingConfig = envContent ? parseEnvString(envContent) : {};
-  const existingSecrets: Record<string, string> = {};
+  let secretsLocked = false;
+  let existingSecrets: Record<string, string> = {};
   if (secretKeys.length > 0) {
-    // Secret files are root-only (chmod 600), try direct read first, then elevate
-    let needsElevation = false;
-    for (const key of secretKeys) {
-      const content = await h.readFile(`${SECRETS_DIR}/${key}`);
-      if (content !== null) {
-        existingSecrets[key] = content.trim();
-      } else {
-        needsElevation = true;
-      }
-    }
-    if (needsElevation && Object.keys(existingSecrets).length < secretKeys.length) {
-      const missing = secretKeys.filter((k) => !(k in existingSecrets));
-      const script = missing
-        .map((k) => `[ -f '${SECRETS_DIR}/${k}' ] && printf '%s\\0%s\\0' '${k}' "$(cat '${SECRETS_DIR}/${k}')"`)
-        .join("; ");
-      const result = await h.withElevation(script, "Read existing secrets", { sensitive: true });
-      if (result.success) {
-        const parts = result.output.split("\0").filter(Boolean);
-        for (let i = 0; i < parts.length - 1; i += 2) {
-          existingSecrets[parts[i]!] = parts[i + 1]!.trim();
-        }
-      }
-    }
+    const sr = await readSecrets(h, SECRETS_DIR, secretKeys, "Read existing secrets");
+    existingSecrets = sr.secrets;
+    secretsLocked = sr.skipped;
   }
   const autoDefaults = getAutoDefaults(component);
   const values: Record<string, string | undefined> = { ...autoDefaults, ...existingConfig, ...existingSecrets };
@@ -301,7 +286,7 @@ export async function menuConfigureEnv(
   while (true) {
     const options = fields.map((field) => ({
       value: field.key,
-      label: `${field.key}  ${displayValue(field, values[field.key])}`,
+      label: `${field.key}  ${displayValue(field, values[field.key], secretsLocked && field.isSecret)}`,
       hint: field.description,
     }));
     options.push({ value: "__save__", label: pc.green("Save & exit"), hint: undefined });

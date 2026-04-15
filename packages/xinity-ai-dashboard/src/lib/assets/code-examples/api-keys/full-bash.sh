@@ -1,10 +1,8 @@
-MODEL="<your-model>"
-
 curl {{API_BASE}}/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $API_KEY" \
   -d '{
-    "model": "'$MODEL'",
+    "model": "'"$MODEL"'",
     "messages": [
       {"role": "system", "content": "You are a helpful assistant."},
       {"role": "user", "content": "Tell a joke"}

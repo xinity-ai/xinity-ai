@@ -2,7 +2,7 @@ import postgres from "postgres";
 
 import { expectedMigrationCount } from "common-db";
 import { readManifest, type Manifest, type ComponentEntry } from "./manifest.ts";
-import { commandExistsOn, isUnitActiveOn, getUnitStatusOn, type Host, createLocalHost } from "./host.ts";
+import { commandExistsOn, isUnitActiveOn, getUnitStatusOn, readSecrets, type Host, createLocalHost } from "./host.ts";
 import { analyzeEnvSchema, categorizeFields } from "./env-prompt.ts";
 import { parseEnvString } from "./env-file.ts";
 import { unitName } from "./systemd.ts";
@@ -251,43 +251,20 @@ function probeTcpService(opts: TcpProbeOptions): Promise<CheckResult> {
 
 async function checkRedis(url: string, host: Host): Promise<CheckResult> {
   const tunnel = await host.openTunnel(url);
+  let client: import("bun").RedisClient | undefined;
   try {
-    const parsed = new URL(tunnel.localUrl);
-    const hostname = parsed.hostname;
-    const port = parseInt(parsed.port || "6379");
-    const password = parsed.password
-      ? decodeURIComponent(parsed.password)
-      : null;
-
-    return await probeTcpService({
-      hostname,
-      port,
-      label: "Redis",
-      onOpen(socket) {
-        if (password) {
-          socket.write(`AUTH ${password}\r\nPING\r\n`);
-        } else {
-          socket.write("PING\r\n");
-        }
-      },
-      onData(response) {
-        if (response.includes("+PONG")) {
-          return { status: "pass", message: "PING/PONG successful" };
-        }
-        if (response.includes("-NOAUTH")) {
-          return { status: "pass", message: "Reachable (auth required)" };
-        }
-        return { status: "warn", message: `Unexpected response: ${response.trim()}` };
-      },
-    });
+    client = new Bun.RedisClient(tunnel.localUrl);
+    await client.ping();
+    return { label: "Redis", status: "pass", message: "PING/PONG successful" };
   } catch (err) {
     return {
       label: "Redis",
       status: "fail",
-      message: "Invalid Redis URL",
+      message: "Connection failed",
       detail: String(err),
     };
   } finally {
+    client?.close();
     await tunnel.close();
   }
 }
@@ -559,23 +536,27 @@ async function checkConfiguration(
     });
   }
 
-  // Read secrets with optional elevation
+  // Read all secrets, elevating if needed
   let secretsPermDenied = false;
   let secretsSkipped = false;
-  const secrets: Record<string, string> = {};
+  let secrets: Record<string, string> = {};
 
-  for (const field of secretFields) {
-    const result = await readFileWithElevation(
-      `${SECRETS_DIR}/${field.key}`,
-      `Read ${component} secret: ${field.key}`,
-      opts,
-    );
-    if (result.permissionDenied) {
-      secretsPermDenied = true;
-    } else if (result.skipped) {
-      secretsSkipped = true;
-    } else if (result.content !== null) {
-      secrets[field.key] = result.content.trim();
+  if (secretFields.length > 0) {
+    const host = opts.host ?? createLocalHost();
+    if (opts.interactive) {
+      opts.spinner?.stop();
+      const sr = await readSecrets(host, SECRETS_DIR, secretFields.map((f) => f.key), `Read ${component} secrets`);
+      secrets = sr.secrets;
+      secretsPermDenied = sr.permissionDenied;
+      secretsSkipped = sr.skipped;
+    } else {
+      // Non-interactive: only try unelevated reads
+      for (const field of secretFields) {
+        const content = await host.readFile(`${SECRETS_DIR}/${field.key}`);
+        if (content !== null) secrets[field.key] = content.trim();
+      }
+      const missing = secretFields.filter((f) => !(f.key in secrets));
+      if (missing.length > 0) secretsPermDenied = true;
     }
   }
 
@@ -732,8 +713,8 @@ async function checkDashboardConnectivity(
   await pushInfoserverCheck(checks, values, host);
   if (values.MAIL_URL) checks.push(await checkSmtp(values.MAIL_URL, host));
   if (serviceActive) {
-    const origin = values.ORIGIN || "http://localhost:5173";
-    checks.push(await checkServiceHealth(host, "Health endpoint", origin));
+    const port = values.HTTP_PORT || "5173";
+    checks.push(await checkServiceHealth(host, "Health endpoint", `http://localhost:${port}/api/health`));
   }
   return checks;
 }
@@ -868,26 +849,21 @@ async function checkDaemonDrivers(
         message: "Found",
       });
 
-      // NVIDIA container runtime
-      const dockerInfo = await host.run([
-        "docker",
-        "info",
-        "--format",
-        "{{json .Runtimes}}",
-      ]);
-      if (dockerInfo.ok && dockerInfo.output.includes("nvidia")) {
-        checks.push({
-          label: "NVIDIA container runtime",
-          status: "pass",
-          message: "Available in Docker",
-        });
-      } else {
-        checks.push({
-          label: "NVIDIA container runtime",
-          status: "warn",
-          message: "Not found in Docker runtimes",
-          detail: dockerInfo.output || undefined,
-        });
+      // GPU container runtime (only check for the vendor actually present)
+      const hasNvidiaSmi = await commandExistsOn(host, "nvidia-smi");
+      if (hasNvidiaSmi) {
+        const rtResult = await host.run(["nvidia-container-runtime", "--version"]);
+        if (rtResult.ok) {
+          const ver = rtResult.output.split("\n")[0]?.trim() ?? "";
+          checks.push({ label: "NVIDIA container runtime", status: "pass", message: ver || "Available" });
+        } else {
+          checks.push({
+            label: "NVIDIA container runtime",
+            status: "warn",
+            message: "nvidia-container-runtime not found",
+            detail: "Install nvidia-container-toolkit: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html",
+          });
+        }
       }
     } else {
       checks.push({
@@ -898,13 +874,16 @@ async function checkDaemonDrivers(
     }
   }
 
-  // NVIDIA GPU (check if any driver is configured that may need GPU)
+  // GPU detection (check if any driver is configured that may need GPU)
   if (
     values.VLLM_PATH ||
     values.VLLM_DOCKER_IMAGE ||
     values.XINITY_OLLAMA_ENDPOINT
   ) {
-    if (await commandExistsOn(host, "nvidia-smi")) {
+    const hasNvidiaSmi = await commandExistsOn(host, "nvidia-smi");
+    const hasRocmSmi = await commandExistsOn(host, "rocm-smi");
+
+    if (hasNvidiaSmi) {
       const smiResult = await host.run([
         "nvidia-smi",
         "--query-gpu=name",
@@ -915,11 +894,7 @@ async function checkDaemonDrivers(
           .split("\n")
           .filter((l) => l.trim())
           .join(", ");
-        checks.push({
-          label: "NVIDIA GPU",
-          status: "pass",
-          message: gpus || "Detected",
-        });
+        checks.push({ label: "NVIDIA GPU", status: "pass", message: gpus || "Detected" });
       } else {
         checks.push({
           label: "NVIDIA GPU",
@@ -928,11 +903,19 @@ async function checkDaemonDrivers(
           detail: smiResult.output,
         });
       }
+    } else if (hasRocmSmi) {
+      const smiResult = await host.run(["rocm-smi", "--showproductname"]);
+      if (smiResult.ok) {
+        const gpuLine = smiResult.output.split("\n").find((l) => /GPU\[/.test(l) || /Card series/.test(l));
+        checks.push({ label: "AMD GPU", status: "pass", message: gpuLine?.trim() || "Detected (ROCm)" });
+      } else {
+        checks.push({ label: "AMD GPU", status: "warn", message: "rocm-smi found but query failed", detail: smiResult.output });
+      }
     } else {
       checks.push({
-        label: "NVIDIA GPU",
+        label: "GPU",
         status: "warn",
-        message: "nvidia-smi not found",
+        message: "Neither nvidia-smi nor rocm-smi found",
       });
     }
   }

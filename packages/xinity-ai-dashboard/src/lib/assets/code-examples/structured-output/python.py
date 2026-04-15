@@ -2,15 +2,13 @@ import os
 import json
 from openai import OpenAI
 
-MODEL = "<your-model>"
-
 client = OpenAI(
-  api_key = os.getenv("API_KEY"),
-  base_url = "{{API_BASE}}",
+  api_key=os.getenv("API_KEY"),
+  base_url="{{API_BASE}}",
 )
 
 response = client.chat.completions.create(
-    model=MODEL,
+    model=os.getenv("MODEL"),
     messages=[
         {"role": "system", "content": "Extract structured data from the text."},
         {"role": "user", "content": "John Smith is 32 years old and works as a software engineer at Acme Corp in Berlin."}

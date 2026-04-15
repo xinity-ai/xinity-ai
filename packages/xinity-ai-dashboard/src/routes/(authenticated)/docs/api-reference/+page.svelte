@@ -1,30 +1,69 @@
 <script lang="ts">
-  import { clientEnv } from "$lib/clientEnv";
+  import { getClientEnv } from "$lib/clientEnv";
   import CodeExample from "$lib/components/CodeExample.svelte";
-  const apiBase = clientEnv.PUBLIC_LLM_API_URL;
-  function highlightAll() {
-    if (typeof window !== "undefined" && "Prism" in window && window.Prism) {
-      (window.Prism as any).highlightAll();
-    }
+  const { GATEWAY_URL: apiBase } = getClientEnv();
+
+  const authHeader = `Authorization: Bearer YOUR_API_KEY`;
+
+  const exampleRequest = `{
+  "model": "<your-model>",
+  "messages": [
+    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "What is the capital of France?"}
+  ],
+  "temperature": 0.7,
+  "max_tokens": 1500,
+  "metadata": {
+    "env": "production",
+    "feature": "geography-qa"
   }
+}`;
+
+  const exampleResponse = `{
+  "id": "chatcmpl-abc123",
+  "object": "chat.completion",
+  "created": 1677652288,
+  "model": "<your-model>",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "The capital of France is Paris."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 20,
+    "completion_tokens": 8,
+    "total_tokens": 28
+  }
+}`;
+
+  const modelsResponse = `{
+  "object": "list",
+  "data": [
+    {
+      "id": "<your-model>",
+      "object": "model",
+      "created": 1677610602,
+      "owned_by": "xinity-ai"
+    }
+  ]
+}`;
+
+  const errorResponse = `{
+  "error": {
+    "message": "Invalid API key provided",
+    "type": "invalid_request_error",
+    "code": "invalid_api_key"
+  }
+}`;
 </script>
 
 <svelte:head>
   <title>API Reference - API Documentation</title>
-  <link
-    rel="stylesheet"
-    href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.min.css"
-  />
-  <script
-    onload={highlightAll}
-    defer
-    src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"
-  ></script>
-  <script
-    onload={highlightAll}
-    defer
-    src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-javascript.min.js"
-  ></script>
 </svelte:head>
 
 <div class="container px-4 py-8 mx-auto max-w-5xl">
@@ -57,9 +96,7 @@
   <!-- Base URL -->
   <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
     <h2 class="text-2xl font-semibold mb-4">Base URL</h2>
-    <pre class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto"><code
-        >{apiBase}</code
-      ></pre>
+    <CodeExample code={apiBase} language="bash" withCopy />
   </section>
 
   <!-- Authentication -->
@@ -69,9 +106,7 @@
       All API requests require authentication using an API key. Include your API
       key in the request headers:
     </p>
-    <pre class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto"><code
-        >Authorization: Bearer YOUR_API_KEY</code
-      ></pre>
+    <CodeExample code={authHeader} language="bash" withCopy />
     <div class="mt-4 p-4 bg-xinity-purple/10 border-l-4 border-xinity-purple rounded">
       <p class="text-sm text-xinity-pink">
         <strong>Tip:</strong> Store your API key securely and never commit it to
@@ -116,7 +151,7 @@
       <h2 class="text-2xl font-semibold">/v1/chat/completions</h2>
     </div>
     <p class="text-gray-600 mb-4">
-      Create a chat completion using your fine-tuned model.
+      Create a chat completion using your fine-tuned model. This endpoint is compatible with the OpenAI Chat Completions API. See the <a href="https://platform.openai.com/docs/api-reference/chat/create" class="text-xinity-magenta hover:underline" target="_blank" rel="noopener">OpenAI API reference</a> for the full list of supported parameters.
     </p>
 
     <h3 class="text-lg font-semibold mb-3">Request Body</h3>
@@ -209,50 +244,10 @@
     </div>
 
     <h3 class="text-lg font-semibold mb-3">Example Request</h3>
-    <pre
-      class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-sm mb-4"><code
-        class="language-javascript"
-        >{`{
-  "model": "<your-model>",
-  "messages": [
-    {{"role": "system", "content": "You are a helpful assistant."}},
-    {{"role": "user", "content": "What is the capital of France?"}}
-  ],
-  "temperature": 0.7,
-  "max_tokens": 1500,
-  "metadata": {{
-    "env": "production",
-    "feature": "geography-qa"
-  }}
-}`}</code
-      ></pre>
+    <CodeExample code={exampleRequest} language="javascript" withCopy />
 
-    <h3 class="text-lg font-semibold mb-3">Response</h3>
-    <pre
-      class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-sm"><code
-        class="language-javascript"
-        >{`{
-  "id": "chatcmpl-abc123",
-  "object": "chat.completion",
-  "created": 1677652288,
-  "model": "<your-model>",
-  "choices": [
-    {{
-      "index": 0,
-      "message": {{
-        "role": "assistant",
-        "content": "The capital of France is Paris."
-      }},
-      "finish_reason": "stop"
-    }}
-  ],
-  "usage": {{
-    "prompt_tokens": 20,
-    "completion_tokens": 8,
-    "total_tokens": 28
-  }`}
-}}</code
-      ></pre>
+    <h3 class="text-lg font-semibold mt-4 mb-3">Response</h3>
+    <CodeExample code={exampleResponse} language="javascript" />
   </section>
 
   <!-- Models Endpoint -->
@@ -269,21 +264,67 @@
     </p>
 
     <h3 class="text-lg font-semibold mb-3">Example Response</h3>
-    <pre
-      class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-sm"><code
-        class="language-javascript"
-        >{`{
-  "object": "list",
-  "data": [
-    {{
-      "id": "<your-model>",
-      "object": "model",
-      "created": 1677610602,
-      "owned_by": "xinity-ai"
-    }}
-  ]
-}`}</code
-      ></pre>
+    <CodeExample code={modelsResponse} language="javascript" />
+  </section>
+
+  <!-- Rerank Endpoint -->
+  <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
+    <div class="flex items-center gap-2 mb-4">
+      <span
+        class="px-3 py-1 bg-green-100 text-green-800 rounded font-mono text-sm font-semibold"
+        >POST</span
+      >
+      <h2 class="text-2xl font-semibold">/v1/rerank</h2>
+    </div>
+    <p class="text-gray-600 mb-4">
+      Rerank a list of documents by relevance to a query. This endpoint follows the Cohere v1 rerank API, which has become the community standard for reranking. See the <a href="https://docs.cohere.com/v1/reference/rerank" class="text-xinity-magenta hover:underline" target="_blank" rel="noopener">Cohere v1 rerank reference</a> for full details.
+    </p>
+
+    <h3 class="text-lg font-semibold mb-3">Request Body</h3>
+    <div class="overflow-x-auto">
+      <table class="w-full border-collapse border border-gray-300 mb-4">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="border border-gray-300 px-4 py-2 text-left">Parameter</th>
+            <th class="border border-gray-300 px-4 py-2 text-left">Type</th>
+            <th class="border border-gray-300 px-4 py-2 text-left">Required</th>
+            <th class="border border-gray-300 px-4 py-2 text-left">Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="border border-gray-300 px-4 py-2 font-mono text-sm">model</td>
+            <td class="border border-gray-300 px-4 py-2">string</td>
+            <td class="border border-gray-300 px-4 py-2">Yes</td>
+            <td class="border border-gray-300 px-4 py-2">Model identifier. Must be a rerank-type model.</td>
+          </tr>
+          <tr class="bg-gray-50">
+            <td class="border border-gray-300 px-4 py-2 font-mono text-sm">query</td>
+            <td class="border border-gray-300 px-4 py-2">string</td>
+            <td class="border border-gray-300 px-4 py-2">Yes</td>
+            <td class="border border-gray-300 px-4 py-2">The search query to rank documents against.</td>
+          </tr>
+          <tr>
+            <td class="border border-gray-300 px-4 py-2 font-mono text-sm">documents</td>
+            <td class="border border-gray-300 px-4 py-2">string[] | object[]</td>
+            <td class="border border-gray-300 px-4 py-2">Yes</td>
+            <td class="border border-gray-300 px-4 py-2">Documents to rerank. Can be plain strings or objects.</td>
+          </tr>
+          <tr class="bg-gray-50">
+            <td class="border border-gray-300 px-4 py-2 font-mono text-sm">top_n</td>
+            <td class="border border-gray-300 px-4 py-2">integer</td>
+            <td class="border border-gray-300 px-4 py-2">No</td>
+            <td class="border border-gray-300 px-4 py-2">Number of top results to return. Defaults to all documents.</td>
+          </tr>
+          <tr>
+            <td class="border border-gray-300 px-4 py-2 font-mono text-sm">return_documents</td>
+            <td class="border border-gray-300 px-4 py-2">boolean</td>
+            <td class="border border-gray-300 px-4 py-2">No</td>
+            <td class="border border-gray-300 px-4 py-2">Whether to include the document content in the response. Default: true</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </section>
 
   <!-- Error Codes -->
@@ -317,7 +358,7 @@
               >400</td
             >
             <td class="border border-gray-300 px-4 py-2"
-              >Bad Request - Invalid parameters</td
+              >Bad Request: invalid parameters</td
             >
           </tr>
           <tr>
@@ -325,7 +366,7 @@
               >401</td
             >
             <td class="border border-gray-300 px-4 py-2"
-              >Unauthorized - Invalid or missing API key</td
+              >Unauthorized: invalid or missing API key</td
             >
           </tr>
           <tr class="bg-gray-50">
@@ -333,7 +374,7 @@
               >429</td
             >
             <td class="border border-gray-300 px-4 py-2"
-              >Too Many Requests - Rate limit exceeded</td
+              >Too Many Requests: the inference backend queue is full. Retry with exponential backoff.</td
             >
           </tr>
           <tr>
@@ -344,22 +385,28 @@
               >Internal Server Error</td
             >
           </tr>
+          <tr class="bg-gray-50">
+            <td class="border border-gray-300 px-4 py-2 font-mono text-sm"
+              >503</td
+            >
+            <td class="border border-gray-300 px-4 py-2"
+              >Service Unavailable: backend is unreachable (e.g. restarting). Retry after the duration in the <code class="text-xs font-mono bg-gray-100 px-1 rounded">Retry-After</code> header.</td
+            >
+          </tr>
+          <tr>
+            <td class="border border-gray-300 px-4 py-2 font-mono text-sm"
+              >504</td
+            >
+            <td class="border border-gray-300 px-4 py-2"
+              >Gateway Timeout: backend took too long to respond. Retry with exponential backoff.</td
+            >
+          </tr>
         </tbody>
       </table>
     </div>
 
     <h3 class="text-lg font-semibold mb-3 mt-6">Error Response Format</h3>
-    <pre
-      class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-sm"><code
-        class="language-javascript"
-        >{`{
-  "error": {{
-    "message": "Invalid API key provided",
-    "type": "invalid_request_error",
-    "code": "invalid_api_key"
-  }}
-}`}</code
-      ></pre>
+    <CodeExample code={errorResponse} language="javascript" />
   </section>
 
   <!-- Best Practices -->

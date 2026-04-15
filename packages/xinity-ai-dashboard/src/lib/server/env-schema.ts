@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { secret, expert } from "common-env";
+import { secret, expert, clientPublic } from "common-env";
 
 export const dashboardEnvSchema = z.object({
   DB_CONNECTION_URL: z.url().describe("PostgreSQL connection string (e.g. postgresql://user:pass@host:5432/dbname)").meta(secret()),
@@ -29,4 +29,5 @@ export const dashboardEnvSchema = z.object({
   MCP_ENABLED: z.stringbool().default(true).describe("Enable the /mcp Model Context Protocol endpoint"),
   LICENSE_KEY: z.string().optional().describe("License key for unlocking paid features (Ed25519-signed token)").meta(secret()),
   TRUSTED_ORIGINS: z.string().optional().describe("Comma-separated additional trusted origins for CSRF validation behind reverse proxies").meta(expert()),
+  GATEWAY_URL: z.url().default("http://localhost:4010").describe("Gateway base URL shown to users in docs and code examples").meta(clientPublic()),
 });

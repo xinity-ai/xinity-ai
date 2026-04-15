@@ -1,7 +1,5 @@
 import { OpenAI } from "openai";
 
-const MODEL = "<your-model>";
-
 const openai = new OpenAI({
     baseURL: "{{API_BASE}}",
     apiKey: process.env.API_KEY,
@@ -36,7 +34,7 @@ const tools = [
 async function main() {
   // First request: let the model decide whether to call a tool
   const response = await openai.chat.completions.create({
-    model: MODEL,
+    model: process.env.MODEL,
     messages: [
       { role: "user", content: "What's the weather like in Berlin?" }
     ],
@@ -59,7 +57,7 @@ async function main() {
 
     // Second request: send the tool result back
     const followUp = await openai.chat.completions.create({
-      model: MODEL,
+      model: process.env.MODEL,
       messages: [
         { role: "user", content: "What's the weather like in Berlin?" },
         message,

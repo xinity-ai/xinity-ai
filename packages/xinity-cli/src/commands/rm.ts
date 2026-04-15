@@ -34,36 +34,40 @@ export const rmCommand: CommandModule = {
 
     const host = targetHostArg ? await connectRemoteHost(targetHostArg) : createLocalHost();
 
-    // Confirm before any destructive removal.
-    const target = targetHostArg ? pc.cyan(targetHostArg) : "this machine";
-    const confirmMessage =
-      component === "all" && purge
-        ? `Remove ALL Xinity components and permanently delete all state data on ${target}? This cannot be undone.`
-        : component === "all"
-          ? `Remove ALL Xinity components on ${target}?`
-          : purge
-            ? `Remove ${pc.cyan(component)} and permanently delete its state data on ${target}?`
-            : `Remove ${pc.cyan(component)} on ${target}?`;
+    try {
+      // Confirm before any destructive removal.
+      const target = targetHostArg ? pc.cyan(targetHostArg) : "this machine";
+      const confirmMessage =
+        component === "all" && purge
+          ? `Remove ALL Xinity components and permanently delete all state data on ${target}? This cannot be undone.`
+          : component === "all"
+            ? `Remove ALL Xinity components on ${target}?`
+            : purge
+              ? `Remove ${pc.cyan(component)} and permanently delete its state data on ${target}?`
+              : `Remove ${pc.cyan(component)} on ${target}?`;
 
-    const confirmed = await p.confirm({ message: confirmMessage, initialValue: false });
-    if (p.isCancel(confirmed) || !confirmed) {
-      p.cancel("Cancelled.");
-      return;
-    }
+      const confirmed = await p.confirm({ message: confirmMessage, initialValue: false });
+      if (p.isCancel(confirmed) || !confirmed) {
+        p.cancel("Cancelled.");
+        return;
+      }
 
-    if (component === "all") {
-      await removeAll(purge, host);
+      if (component === "all") {
+        await removeAll(purge, host);
+        p.outro("Done");
+        return;
+      }
+
+      const result = await removeComponent({
+        component: component as Component,
+        purge,
+        host,
+      });
+
+      logErrors(result);
       p.outro("Done");
-      return;
+    } finally {
+      await host.dispose();
     }
-
-    const result = await removeComponent({
-      component: component as Component,
-      purge,
-      host,
-    });
-
-    logErrors(result);
-    p.outro("Done");
   },
 };

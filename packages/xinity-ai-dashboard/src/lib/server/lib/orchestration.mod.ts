@@ -1,7 +1,7 @@
 import { inArray, isNull, modelDeploymentT, sql, calcCanaryProgress, modelInstallationT, aiNodeT, type ModelInstallation, type AiNode, type InferInsertModel } from "common-db";
 import { getDB } from "../db";
 import { infoClient } from "../info-client";
-import { resolveDriverForProviderModel } from "xinity-infoserver";
+import { resolveDriverForProviderModel, resolveMinVersionForDriver, resolveRequiredPlatformsForDriver, checkNodeCompatibility, type ModelNodeRequirements, type NodeCapability } from "xinity-infoserver";
 import { rootLogger } from "../logging";
 import { building } from "$app/environment";
 import { maxVramGb } from "$lib/server/license";
@@ -125,7 +125,8 @@ export function collectExcessInstallations(requiredModels: ModelRequirementTable
 
 /**
  * Picks a server for a new model installation using a first-fit strategy.
- * Skips nodes that already host the model, lack the required driver, or have insufficient capacity.
+ * Uses checkNodeCompatibility for driver, version, platform, and capacity checks.
+ * Also skips nodes that already host the model.
  */
 export function findServerForModel(
   model: string,
@@ -133,7 +134,14 @@ export function findServerForModel(
   weight: number,
   state: ClusterState,
   pending: NewInstallation[],
+  minVersion?: string,
+  requiredPlatforms?: string[],
 ): string | null {
+  const req: ModelNodeRequirements = {
+    driver, capacityGb: weight,
+    minVersion, requiredPlatforms: requiredPlatforms ?? [],
+  };
+
   for (const server of state.availableServers) {
     const cap = state.serverCapacity.get(server.id);
     if (!cap) continue;
@@ -143,9 +151,16 @@ export function findServerForModel(
       || pending.some(p => p.nodeId === server.id && p.model === model);
     if (alreadyHasModel) continue;
 
-    if (!server.drivers.includes(driver)) continue;
+    const nodeCap: NodeCapability = {
+      free: cap.total - cap.used,
+      drivers: server.drivers,
+      driverVersions: (server.driverVersions ?? {}) as Record<string, string>,
+      gpus: (server.gpus ?? []) as { vendor: string; name: string; vramMb: number }[],
+    };
 
-    if (cap.total - cap.used >= weight) return server.id;
+    if (checkNodeCompatibility(nodeCap, req) !== null) continue;
+
+    return server.id;
   }
   return null;
 }
@@ -182,13 +197,15 @@ async function planNewInstallations(requiredModels: ModelRequirementTable, state
     }
 
     const driver = resolveDriverForProviderModel(modelInfo, model) ?? "ollama";
+    const minVersion = resolveMinVersionForDriver(modelInfo, driver);
+    const requiredPlatforms = resolveRequiredPlatformsForDriver(modelInfo, driver);
     const needed = requirement.replicas - current;
 
     const effectiveKvCache = Math.max(requirement.kvCacheSize ?? 0, modelInfo.minKvCache);
     const totalCapacity = modelInfo.weight + effectiveKvCache;
 
     for (let i = 0; i < needed; i++) {
-      const nodeId = findServerForModel(model, driver, totalCapacity, state, toInstall);
+      const nodeId = findServerForModel(model, driver, totalCapacity, state, toInstall, minVersion, requiredPlatforms);
       if (!nodeId) {
         log.warn({ model }, "No server with enough capacity for additional replica");
         break;

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { slide } from "svelte/transition";
-  import type { ModelWithSpecifier } from "xinity-infoserver";
+  import type { ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
   import ModelSelectorModal from "./ModelSelectorModal.svelte";
   import DeploymentModelTile from "./DeploymentModelTile.svelte";
   import { Button } from "$lib/components/ui/button";
@@ -36,6 +36,7 @@
     showTrafficSlider = true,
     maxNodeFreeCapacity = Infinity,
     availableDrivers = [],
+    nodeCapabilities = [],
     onPublicSpecifierInput,
     onDeploymentNameInput,
     onCanaryEnabledChange,
@@ -66,6 +67,7 @@
     showTrafficSlider?: boolean;
     maxNodeFreeCapacity?: number;
     availableDrivers?: string[];
+    nodeCapabilities?: NodeCapability[];
     publicSpecifierError?: string;
     onPublicSpecifierInput?: () => void;
     onDeploymentNameInput?: () => void;
@@ -292,7 +294,7 @@
               {#if requiresDisabled}
                 <input
                   id="canary-kv-cache-size{idSuffix}"
-                  type="range" min={minCanaryKvCache} max={maxCanaryKvCache || minCanaryKvCache + 1} step="1"
+                  type="range" min={minCanaryKvCache} max={maxCanaryKvCache || minCanaryKvCache + 1} step="0.1"
                   value={earlyKvCacheSize ?? minCanaryKvCache}
                   disabled
                   class="w-full h-2 bg-muted rounded-lg appearance-none cursor-not-allowed opacity-50"
@@ -301,7 +303,7 @@
               {:else}
                 <input
                   id="canary-kv-cache-size{idSuffix}"
-                  type="range" min={minCanaryKvCache} max={maxCanaryKvCache || minCanaryKvCache + 1} step="1"
+                  type="range" min={minCanaryKvCache} max={maxCanaryKvCache || minCanaryKvCache + 1} step="0.1"
                   bind:value={earlyKvCacheSize}
                   class="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
                 />
@@ -390,7 +392,7 @@
           {#if requiresDisabled}
             <input
               id="kv-cache-size{idSuffix}"
-              type="range" min={minKvCache} max={maxKvCache || minKvCache + 1} step="1"
+              type="range" min={minKvCache} max={maxKvCache || minKvCache + 1} step="0.1"
               value={kvCacheSize ?? minKvCache}
               disabled
               class="w-full h-2 bg-muted rounded-lg appearance-none cursor-not-allowed opacity-50"
@@ -399,7 +401,7 @@
           {:else}
             <input
               id="kv-cache-size{idSuffix}"
-              type="range" min={minKvCache} max={maxKvCache || minKvCache + 1} step="1"
+              type="range" min={minKvCache} max={maxKvCache || minKvCache + 1} step="0.1"
               bind:value={kvCacheSize}
               class="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
             />
@@ -454,6 +456,7 @@
 <ModelSelectorModal
   bind:open={showModelSelector}
   maxNodeFreeCapacity={selectorCapacity}
+  {nodeCapabilities}
   onSelect={handleModelSelect}
   onClose={() => (showModelSelector = false)}
 />

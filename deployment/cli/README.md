@@ -50,7 +50,7 @@ This installs and configures gateway, dashboard, and the database as systemd ser
 To install components individually:
 
 ```bash
-xinity up db          # PostgreSQL + migrations
+xinity up db          # PostgreSQL migrations + Redis discovery
 xinity up gateway     # API gateway
 xinity up dashboard   # Admin dashboard
 ```
@@ -63,7 +63,32 @@ Run this on each machine with GPU capacity:
 xinity up daemon
 ```
 
-The daemon connects to the shared database and receives deployment instructions from the dashboard. Ollama must be installed and running on the same machine.
+The daemon connects to the shared database and receives deployment instructions from the dashboard. Ollama must be installed and running on the same machine. Use `xinity up infra-ollama` to install and configure it (handles network binding and daemon env setup).
+
+## Infrastructure Utilities
+
+Infrastructure dependencies are managed with `xinity up infra-<tool>`:
+
+```bash
+xinity up infra-ollama      # Install/update ollama, configure network binding, write daemon env
+xinity up infra-redis       # Detect/install Redis or Valkey, configure, persist connection URL
+xinity up infra-seaweedfs   # Install SeaweedFS S3-compatible object store
+xinity up infra-postgres    # Standalone PostgreSQL install/start (without migrations)
+```
+
+These commands handle detection, installation, service management, and connectivity testing. They support `--target-host` for remote setup.
+
+## Remote Management
+
+All commands support `--target-host` for managing a remote Linux server over SSH:
+
+```bash
+xinity up all --target-host user@server
+xinity doctor --target-host user@server
+xinity configure dashboard --target-host user@server
+```
+
+The CLI establishes a persistent SSH connection and caches sudo credentials for the session, so you authenticate once regardless of how many elevated operations are needed.
 
 ## Secrets Management
 

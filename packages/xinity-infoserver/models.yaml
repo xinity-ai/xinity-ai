@@ -9,7 +9,6 @@ models:
     family: phi3
     weight: 8
     minKvCache: 2
-    registeredAt: 2026.02.17
     type: chat
     description: Lightweight model with vision capabilities
     entryVersion: 0.5.4
@@ -26,7 +25,6 @@ models:
     tags: [tools]
     weight: 14
     minKvCache: 4
-    registeredAt: 2026.02.18
     entryVersion: 0.6.0
     providers:
       ollama: "ministral-3:14b-instruct-2512-fp16"
@@ -39,7 +37,6 @@ models:
     type: chat
     weight: 14
     minKvCache: 4
-    registeredAt: 2026.02.18
     entryVersion: 0.6.0
     providers:
       ollama: "qwen3-coder-next:q8_0"

@@ -1,7 +1,7 @@
 <script lang="ts">
   import Modal from "$lib/components/Modal.svelte";
-  import type { ModelWithSpecifier } from "xinity-infoserver";
-  import { resolveAllTags, resolveTagsForDriver, driverHasTag } from "xinity-infoserver";
+  import type { ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
+  import { resolveAllTags, resolveTagsForDriver, driverHasTag, isDeployableOnCluster } from "xinity-infoserver";
   import { modelCatalog } from "$lib/state/model-catalog.svelte";
 
   // shadcn components
@@ -21,11 +21,13 @@
     onSelect,
     onClose,
     maxNodeFreeCapacity = Infinity,
+    nodeCapabilities = [],
   }: {
     open: boolean;
     onSelect: (model: ModelWithSpecifier) => void;
     onClose: () => void;
     maxNodeFreeCapacity?: number;
+    nodeCapabilities?: NodeCapability[];
   } = $props();
 
   // --- Filter State ---
@@ -76,7 +78,8 @@
         !searchLower ||
         m.name.toLowerCase().includes(searchLower) ||
         m.description.toLowerCase().includes(searchLower) ||
-        m.publicSpecifier.toLowerCase().includes(searchLower);
+        m.publicSpecifier.toLowerCase().includes(searchLower) ||
+        (m.family && m.family.toLowerCase().includes(searchLower));
 
       let matchesType = true;
       if (selectedType === "chat") matchesType = m.type === "chat";
@@ -112,12 +115,25 @@
       : new Set([...selectedTags, tag]);
   }
 
-  function exceedsCapacity(model: ModelWithSpecifier): boolean {
-    return model.weight + model.minKvCache > maxNodeFreeCapacity;
+  function isUndeployable(model: ModelWithSpecifier): boolean {
+    if (nodeCapabilities.length === 0) return model.weight + model.minKvCache > maxNodeFreeCapacity;
+    return !isDeployableOnCluster(nodeCapabilities, model);
+  }
+
+  /** Returns true when the issue is specifically a non-capacity constraint (version/platform). */
+  /** Returns true when the model is blocked by a non-capacity constraint (version/platform). */
+  function hasConstraintIncompatibility(model: ModelWithSpecifier): boolean {
+    if (!model.providerMinVersions && !model.providerPlatforms) return false;
+    if (!isUndeployable(model)) return false;
+    // Only flag as constraint issue if some node has the right driver + enough capacity
+    // (meaning it would work if not for the version/platform mismatch)
+    const needed = model.weight + model.minKvCache;
+    const drivers = Object.keys(model.providers).filter(d => model.providers[d as keyof typeof model.providers] !== undefined);
+    return nodeCapabilities.some(n => n.free >= needed && drivers.some(d => n.drivers.includes(d)));
   }
 
   function handleSelect(model: ModelWithSpecifier) {
-    if (exceedsCapacity(model)) return;
+    if (isUndeployable(model)) return;
     onSelect(model);
     onClose();
   }
@@ -227,7 +243,8 @@
               </h3>
               <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {#each groupedModels[family] as model (model.publicSpecifier)}
-                  {@const undeployable = exceedsCapacity(model)}
+                  {@const undeployable = isUndeployable(model)}
+                  {@const constraintIssue = hasConstraintIncompatibility(model)}
                   {@const modelTags = resolveAllTags(model)}
                   {@const modelDrivers = Object.keys(model.providers) as Array<"vllm" | "ollama">}
                   {@const hasDriverDiffs = model.providerTags !== undefined}
@@ -272,7 +289,12 @@
                       <span class="opacity-50">({model.weight} model + {model.minKvCache} kv-cache)</span>
                     </div>
 
-                    {#if undeployable}
+                    {#if undeployable && constraintIssue}
+                      <div class="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive mb-1">
+                        <ShieldAlert class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                        <span>No compatible node available (driver version or platform mismatch)</span>
+                      </div>
+                    {:else if undeployable}
                       <div class="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive mb-1">
                         <ShieldAlert class="w-3.5 h-3.5 shrink-0 mt-0.5" />
                         <span>Exceeds available node capacity ({model.weight + model.minKvCache} GB required, {maxNodeFreeCapacity} GB available)</span>

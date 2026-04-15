@@ -1,9 +1,90 @@
-import { localRun, localRunInteractive, type Host, type RunResult, type ElevationResult } from "./host.ts";
+import { localRun, localRunInteractive, type Host, type RunResult, type ElevationResult, type ElevationPolicy } from "./host.ts";
 import * as p from "./clack.ts";
 import pc from "picocolors";
+import { SudoSession, checkPasswordlessSudo } from "./sudo-session.ts";
 
 function sanitizeHost(hostname: string): string {
   return hostname.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+/**
+ * Read a password from the terminal with echo fully disabled.
+ *
+ * Handles raw keystrokes manually so backspace works while revealing
+ * nothing about the input (no mask characters, no length indication).
+ * Returns null on Ctrl-C / Ctrl-D.
+ */
+async function readSudoPassword(prompt: string): Promise<string | null> {
+  // Drain any stale keystrokes left in stdin from previous prompts (e.g. clack menus).
+  // Without this, a buffered Enter from the menu confirmation can be read as an
+  // immediate empty-password submission.
+  await drainStdinBuffer();
+
+  return new Promise((resolve) => {
+    process.stderr.write(prompt);
+
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true);
+    }
+    process.stdin.resume();
+
+    let buf = "";
+    let resolved = false;
+
+    const finish = (value: string | null) => {
+      if (resolved) return;
+      resolved = true;
+      process.stdin.removeListener("data", onData);
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(false);
+      }
+      process.stdin.pause();
+      process.stderr.write("\n");
+      resolve(value);
+    };
+
+    const onData = (chunk: Buffer) => {
+      for (const byte of chunk) {
+        if (byte === 0x03 || byte === 0x04) {
+          return finish(null);
+        }
+        if (byte === 0x0D || byte === 0x0A) {
+          return finish(buf);
+        }
+        if (byte === 0x7F || byte === 0x08) {
+          buf = buf.slice(0, -1);
+        } else if (byte >= 0x20) {
+          buf += String.fromCharCode(byte);
+        }
+      }
+    };
+
+    process.stdin.on("data", onData);
+  });
+}
+
+/** Consume any bytes already sitting in the stdin buffer (e.g. from prior prompts). */
+function drainStdinBuffer(): Promise<void> {
+  return new Promise((resolve) => {
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true);
+    }
+    process.stdin.resume();
+
+    // Read and discard any immediately available data
+    const onData = () => {};
+    process.stdin.on("data", onData);
+
+    // After a tick, nothing more is buffered - stop draining
+    setTimeout(() => {
+      process.stdin.removeListener("data", onData);
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(false);
+      }
+      process.stdin.pause();
+      resolve();
+    }, 50);
+  });
 }
 
 export function socketPath(hostname: string): string {
@@ -25,6 +106,10 @@ export class RemoteHost implements Host {
   /** SSH args that enable ControlMaster reuse. Inserted before the host. */
   private readonly ctrlArgs: string[];
 
+  private sudoSession: SudoSession | null = null;
+  private isRootCached: boolean | null = null;
+  private elevationPolicy: ElevationPolicy = null;
+
   constructor(hostname: string) {
     this.hostname = hostname;
     this.socket = socketPath(hostname);
@@ -36,6 +121,10 @@ export class RemoteHost implements Host {
   }
 
   async connect(): Promise<void> {
+    // Kill any stale control socket from a previous CLI run. Reusing a stale
+    // socket can corrupt stdin piping for sudo sessions.
+    await localRun(["ssh", "-O", "exit", ...this.ctrlArgs, this.hostname]).catch(() => {});
+
     const result = await localRun([
       "ssh",
       ...this.ctrlArgs,
@@ -61,11 +150,15 @@ export class RemoteHost implements Host {
   }
 
   async withElevation(command: string, description: string, options?: { sensitive?: boolean }): Promise<ElevationResult> {
-    // Check if we're already root on the remote
-    const whoami = await localRun(["ssh", ...this.ctrlArgs, this.hostname, "id -u"]);
-    const isRoot = whoami.ok && whoami.output.trim() === "0";
+    const sensitive = options?.sensitive ?? false;
 
-    if (isRoot) {
+    // Cache the root check so we don't run `id -u` on every call.
+    if (this.isRootCached === null) {
+      const whoami = await localRun(["ssh", ...this.ctrlArgs, this.hostname, "id -u"]);
+      this.isRootCached = whoami.ok && whoami.output.trim() === "0";
+    }
+
+    if (this.isRootCached) {
       const b64 = b64Cmd(command);
       const result = await localRun([
         "ssh", ...this.ctrlArgs, this.hostname,
@@ -74,15 +167,28 @@ export class RemoteHost implements Host {
       return { success: result.ok, output: result.output, skipped: false };
     }
 
-    // Non-root: offer the same options as the local sudo flow
-    const sensitive = options?.sensitive ?? false;
+    // Apply remembered policy if set.
+    if (this.elevationPolicy === "sudo") {
+      p.log.step(pc.dim(description));
+      return this.executeViaSudoSession(command);
+    }
+    if (this.elevationPolicy === "manual" && !sensitive) {
+      p.log.step(pc.dim(description));
+      this.showManualCommand(command);
+      return this.confirmManualRun();
+    }
+
+    // First time (or sensitive command with manual policy): show menu.
     const menuOptions: { value: string; label: string }[] = [
-      { value: "sudo", label: "Run with sudo (on remote)" },
+      { value: "sudo-all", label: "Run with sudo (all remaining)" },
+      { value: "sudo-once", label: "Run with sudo (this time only)" },
     ];
     if (!sensitive) {
-      menuOptions.push({ value: "print", label: "Show me the command (I'll run it myself)" });
+      menuOptions.push(
+        { value: "manual-all", label: "Show me the commands (all remaining)" },
+        { value: "manual-once", label: "Show me the command (this time only)" },
+      );
     }
-    menuOptions.push({ value: "skip", label: "Skip" });
 
     const action = await p.select({
       message: `${pc.yellow(description)} requires elevated privileges on ${pc.cyan(this.hostname)}.`,
@@ -94,69 +200,113 @@ export class RemoteHost implements Host {
       return { success: false, output: "", skipped: true };
     }
 
-    if (action === "sudo") {
-      process.stderr.write("\x1b[?25h\x1b[0m");
-      p.log.step(pc.dim("Enter your sudo password on the remote when prompted:"));
-
-      // We need both a real TTY (for sudo's password prompt) and captured stdout
-      // (for callers to read output). We use `ssh -t` with output redirected to a
-      // temp file: the redirect is set up by the non-root shell so the file is
-      // readable without elevation, while sudo's prompt goes through /dev/tty
-      // independently. LogLevel=QUIET suppresses SSH's "connection closed" message
-      // (the ControlMaster socket stays alive via ControlPersist=yes).
-      const tmpFile = `/tmp/xinity-elev-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const b64 = b64Cmd(command);
-
-      // The remote command writes its output to a tmp file and appends an exit-code
-      // marker on the last line ("::exit:N"). This lets us distinguish a failed
-      // command from a failed SSH connection even when the PTY exit-code path is
-      // unreliable (some SSH/OS combinations do not propagate the remote exit code
-      // correctly with -t).
-      const authResult = await localRunInteractive([
-        "ssh", "-t", "-o", "LogLevel=QUIET", ...this.ctrlArgs, this.hostname,
-        `echo '${b64}' | base64 -d | sudo sh > '${tmpFile}' 2>&1; echo "::exit::$?" >> '${tmpFile}'`,
-      ]);
-
-      if (!authResult.ok) {
-        await localRun(["ssh", ...this.ctrlArgs, this.hostname, `rm -f '${tmpFile}'`]);
-        p.log.warn("Sudo command failed or authentication was rejected.");
-        return { success: false, output: "", skipped: false };
-      }
-
-      // Read the captured output, extract the exit-code marker, and clean up.
-      const readResult = await localRun([
-        "ssh", ...this.ctrlArgs, this.hostname,
-        `cat '${tmpFile}'; rm -f '${tmpFile}'`,
-      ]);
-
-      const lines = readResult.output.split("\n");
-      const markerLine = lines.findLast((l) => l.startsWith("::exit::"));
-      const output = lines.filter((l) => !l.startsWith("::exit::")).join("\n").trimEnd();
-      const remoteExitCode = markerLine ? parseInt(markerLine.slice(8), 10) : 0;
-      const success = remoteExitCode === 0;
-
-      if (!success) {
-        p.log.warn(`Remote command exited with code ${remoteExitCode}.`);
-      }
-
-      return { success, output, skipped: false };
+    if (action === "sudo-all" || action === "sudo-once") {
+      if (action === "sudo-all") this.elevationPolicy = "sudo";
+      return this.ensureSudoSessionAndExecute(command);
     }
 
-    if (action === "print") {
-      const b64 = b64Cmd(command);
-      p.log.info(
-        `Run manually on ${pc.cyan(this.hostname)}:\n  ${pc.cyan(`echo '${b64}' | base64 -d | sudo sh`)}`,
-      );
-      p.log.info(`Or the equivalent plain command:\n  ${pc.dim(command.replace(/\n/g, "\n  "))}`);
-      const done = await p.confirm({
-        message: "Have you run the command?",
-        initialValue: true,
-      });
-      if (p.isCancel(done) || !done) return { success: false, output: "", skipped: true };
-      return { success: true, output: "", skipped: false };
+    if (action === "manual-all" || action === "manual-once") {
+      if (action === "manual-all") this.elevationPolicy = "manual";
+      this.showManualCommand(command);
+      return this.confirmManualRun();
     }
 
     return { success: false, output: "", skipped: true };
+  }
+
+  async dispose(): Promise<void> {
+    if (this.sudoSession) {
+      await this.sudoSession.close();
+      this.sudoSession = null;
+    }
+  }
+
+  // -- sudo session helpers ---------------------------------------------------
+
+  private async ensureSudoSessionAndExecute(command: string): Promise<ElevationResult> {
+    if (!this.sudoSession || !this.sudoSession.isAlive) {
+      this.sudoSession = null;
+
+      // Check if passwordless sudo is available.
+      const passwordless = await checkPasswordlessSudo(this.ctrlArgs, this.hostname);
+
+      if (passwordless) {
+        try {
+          this.sudoSession = await SudoSession.create(this.ctrlArgs, this.hostname, "");
+          p.log.success("Passwordless sudo detected.");
+        } catch (err) {
+          p.log.warn(`Failed to establish sudo session: ${(err as Error).message}`);
+          this.elevationPolicy = null;
+          return { success: false, output: "", skipped: false };
+        }
+      } else {
+        // Prompt for password with up to 3 attempts. The fixed-length mask
+        // prevents leaking the password length via the terminal output.
+        const MAX_ATTEMPTS = 3;
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+          const input = await readSudoPassword(
+            attempt === 1
+              ? `Sudo password for ${pc.cyan(this.hostname)}: `
+              : `Wrong password. Try again (${attempt}/${MAX_ATTEMPTS}): `,
+          );
+          if (input === null) {
+            p.cancel("Cancelled.");
+            return { success: false, output: "", skipped: true };
+          }
+
+          try {
+            this.sudoSession = await SudoSession.create(this.ctrlArgs, this.hostname, input);
+            p.log.success("Sudo session established.");
+            break;
+          } catch {
+            if (attempt === MAX_ATTEMPTS) {
+              p.log.error("Failed to authenticate after 3 attempts.");
+              this.elevationPolicy = null;
+              return { success: false, output: "", skipped: false };
+            }
+          }
+        }
+      }
+    }
+
+    return this.executeViaSudoSession(command);
+  }
+
+  private async executeViaSudoSession(command: string): Promise<ElevationResult> {
+    if (!this.sudoSession || !this.sudoSession.isAlive) {
+      // Session died, try to re-establish.
+      return this.ensureSudoSessionAndExecute(command);
+    }
+
+    try {
+      const { exitCode, output } = await this.sudoSession.execute(command);
+      return { success: exitCode === 0, output, skipped: false };
+    } catch (err) {
+      p.log.warn(`Sudo session error: ${(err as Error).message}`);
+      this.sudoSession = null;
+      return { success: false, output: "", skipped: false };
+    }
+  }
+
+  private showManualCommand(command: string): void {
+    const b64 = b64Cmd(command);
+    p.log.info(
+      `Run manually on ${pc.cyan(this.hostname)}:\n  ${pc.cyan(`echo '${b64}' | base64 -d | sudo sh`)}`,
+    );
+    p.log.info(`Or the equivalent plain command:\n  ${pc.dim(command.replace(/\n/g, "\n  "))}`);
+  }
+
+  private async confirmManualRun(): Promise<ElevationResult> {
+    const done = await p.confirm({ message: "Have you run the command?", initialValue: true });
+    if (p.isCancel(done) || !done) {
+      const abort = await p.confirm({ message: "Abort?", initialValue: false });
+      if (p.isCancel(abort) || abort) {
+        p.cancel("Aborted.");
+        return { success: false, output: "", skipped: true };
+      }
+      return { success: false, output: "", skipped: true };
+    }
+    return { success: true, output: "", skipped: false };
   }
 
   async readFile(path: string): Promise<string | null> {
