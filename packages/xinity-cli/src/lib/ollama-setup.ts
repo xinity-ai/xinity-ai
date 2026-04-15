@@ -11,6 +11,7 @@ import { type Host, commandExistsOn, isUnitActiveOn } from "./host.ts";
 import { pass, fail, info, warn } from "./output.ts";
 import { parseEnvString, serializeEnvFile } from "./env-file.ts";
 import { ENV_DIR } from "./component-meta.ts";
+import { restartService } from "./service.ts";
 
 const DEFAULT_PORT = "11434";
 const OVERRIDE_DIR = "/etc/systemd/system/ollama.service.d";
@@ -229,6 +230,7 @@ async function writeDaemonEndpoint(host: Host, endpoint: string): Promise<boolea
   );
   if (result.success) {
     pass("Daemon config", `XINITY_OLLAMA_ENDPOINT=${endpoint}`);
+    await restartService("daemon", host);
     return true;
   }
   if (!result.skipped) {
