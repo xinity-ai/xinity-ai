@@ -110,6 +110,8 @@ export type RecordUsageContext = {
   modelInfo: { model: string };
   callStartTime: number;
   logCalls?: boolean;
+  /** The deployment's public specifier, used for per-deployment metrics. */
+  deployment?: string;
 };
 
 /** Record token metrics and a usage event. Shared by all endpoint types. */
@@ -119,8 +121,10 @@ export const recordUsage = ({
   modelInfo,
   callStartTime,
   logCalls = true,
+  deployment,
 }: RecordUsageContext): boolean => {
-  recordTokenUsage(modelInfo.model, auth.keyId, usage);
+  const durationMs = Date.now() - callStartTime;
+  recordTokenUsage(modelInfo.model, auth.keyId, usage, { deployment, durationMs });
   if (!usage) return false;
 
   const shouldLog = auth.collectData && logCalls;
@@ -167,7 +171,7 @@ export const logChatUsage = ({
   logCalls = true,
   metadata,
 }: UsageLogContext) => {
-  const shouldLog = recordUsage({ usage, auth, modelInfo, callStartTime, logCalls });
+  const shouldLog = recordUsage({ usage, auth, modelInfo, callStartTime, logCalls, deployment: modelSpecifier });
   if (!shouldLog) return;
 
   const commonFields = {
