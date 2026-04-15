@@ -35,11 +35,11 @@ async function main() {
   process.once("SIGINT", () => shutdown(subscription));
   process.once("uncaughtException", (err) => {
     rootLogger.fatal({ err }, "Uncaught exception");
-    void shutdown(subscription);
+    void shutdown(subscription).finally(() => process.exit(1));
   });
   process.once("unhandledRejection", (err) => {
     rootLogger.fatal({ err }, "Unhandled rejection");
-    void shutdown(subscription);
+    void shutdown(subscription).finally(() => process.exit(1));
   });
 
   const nodeId = await getNodeId();
