@@ -9,7 +9,7 @@ export const daemonEnvSchema = z.object({
   DB_CONNECTION_URL: z.url().describe("PostgreSQL connection string (e.g. postgresql://user:pass@host:5432/dbname)").meta(secret()),
   INFOSERVER_URL: z.url().default("https://sysinfo.xinity.ai").describe("Infoserver URL (default hosted: https://sysinfo.xinity.ai, or your self-hosted instance)"),
   STATE_DIR: z.string().default("./.local").describe("Local state directory for daemon runtime data").meta(expert()),
-  CIDR_PREFIX: z.string().default("").describe("Network CIDR prefix for filtering which local IPs the daemon advertises to the cluster"),
+  CIDR_PREFIX: z.string().default("").describe("Network CIDR prefix (e.g. '192.168') to filter which local IP the daemon advertises. Empty = first non-internal IPv4 address"),
   SYNC_INTERVAL_MS: z.coerce
     .number()
     .default(1000 * 60 * 5)
