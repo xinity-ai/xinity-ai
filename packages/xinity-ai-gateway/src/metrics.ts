@@ -187,6 +187,14 @@ export const outputTokens = createHistogram(
   TOKEN_BUCKETS,
 );
 
+const TPS_BUCKETS = [1, 5, 10, 20, 40, 60, 80, 100, 150, 200, 300, 500];
+
+export const generationTokensPerSecond = createHistogram(
+  "gateway_generation_tokens_per_second",
+  "Output tokens per second by deployment",
+  TPS_BUCKETS,
+);
+
 const allMetrics = [
   requestsTotal,
   requestErrorsTotal,
@@ -194,17 +202,24 @@ const allMetrics = [
   requestDurationMs,
   inputTokens,
   outputTokens,
+  generationTokensPerSecond,
 ];
 
 export function recordTokenUsage(
   model: string,
   keyId: string,
   usage: { inputTokens?: number; outputTokens?: number } | null | undefined,
+  opts?: { deployment?: string; durationMs?: number },
 ) {
   if (!usage) return;
   const labels = { model, key_id: keyId };
   if (usage.inputTokens) inputTokens.observe(labels, usage.inputTokens);
   if (usage.outputTokens) outputTokens.observe(labels, usage.outputTokens);
+
+  if (usage.outputTokens && opts?.deployment && opts.durationMs && opts.durationMs > 0) {
+    const tps = usage.outputTokens / (opts.durationMs / 1000);
+    generationTokensPerSecond.observe({ deployment: opts.deployment }, tps);
+  }
 }
 
 export function withMetrics(

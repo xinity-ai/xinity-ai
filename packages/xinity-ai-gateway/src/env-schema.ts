@@ -15,7 +15,7 @@ export const gatewayEnvSchema = z.object({
     .default(3600)
     .describe("Response cache TTL in seconds")
     .meta(expert()),
-  METRICS_AUTH: z.string().optional().describe("Metrics basic auth (comma-separated user:pass pairs)").meta({ ...secret(), ...expert() }),
+  METRICS_AUTH: z.string().optional().describe("Basic auth for the /metrics endpoint (format: user:pass, comma-separated for multiple)").meta(secret()),
   INFOSERVER_CACHE_TTL_MS: z.coerce.number().default(30_000).describe("How long to cache infoserver responses locally (ms)").meta(expert()),
   LOAD_BALANCE_STRATEGY: z.enum(["random", "round-robin", "least-connections"])
     .default("least-connections")
