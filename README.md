@@ -297,7 +297,7 @@ packages/
 ├── xinity-ai-dashboard/   # SvelteKit admin dashboard
 ├── xinity-ai-daemon/      # Model runtime agent (runs on GPU hardware)
 ├── xinity-cli/            # Operator CLI
-└── xinity-infoserver/     # Model metadata schema + YAML server
+└── xinity-infoserver/     # Model registry + YAML server ([model authoring guide](packages/xinity-infoserver/README.md))
 ```
 
 ## Licensing
