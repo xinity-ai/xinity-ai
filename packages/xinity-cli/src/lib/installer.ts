@@ -544,7 +544,9 @@ async function configureEnv(
       for (const key of Object.keys(sr.secrets)) secretsOnDisk.add(key);
     }
   }
-  const hasExistingConfig = Object.keys(existingConfig).length > 0 || secretsOnDisk.size > 0;
+  // Only count config as "existing" based on actual values we read, not
+  // phantom secrets assumed present because elevation was skipped.
+  const hasExistingConfig = Object.keys(existingConfig).length > 0 || Object.keys(existingSecrets).length > 0;
   const existing = { ...(autoDefaults ?? {}), ...existingConfig, ...existingSecrets };
 
   // Check if all required fields already have values.
