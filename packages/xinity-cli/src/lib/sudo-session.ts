@@ -5,23 +5,39 @@
  * the CLI session. Commands are piped through stdin with delimiter-based
  * output parsing, so the user only authenticates once.
  */
+import type { ReadableStreamReader } from "bun";
 import { localRun } from "./host.ts";
 
 const AUTH_TIMEOUT_MS = 15_000;
 const AUTH_MARKER = "__SUDO_AUTH_OK__";
 
+/**
+ * Bun's subprocess streams are standard ReadableStreams, but @types/node's
+ * overload resolution can pick the BYOB reader signature (which requires a
+ * view argument) instead of the default reader (which takes none). This
+ * interface matches what getReader() actually returns at runtime.
+ */
+// interface StreamReader<T> {
+//   read(): Promise<{ done: boolean; value?: T }>;
+// }
+
+function getStreamReader(stream: ReadableStream<Uint8Array>): ReadableStreamReader<Uint8Array> {
+  return stream.getReader() as ReadableStreamReader<Uint8Array>;
+}
+
 export class SudoSession {
   private proc: import("bun").Subprocess;
-  private stdout: AsyncIterableIterator<Uint8Array> & { read(): Promise<{ done: boolean; value?: Uint8Array }> };
+  private stdout: ReadableStreamReader<Uint8Array>;
   private buffer = "";
   private dead = false;
   private decoder = new TextDecoder();
 
+  private stderrReader: ReadableStreamReader<Uint8Array> | null = null;
+
   private constructor(proc: import("bun").Subprocess) {
     this.proc = proc;
-    // Cast to a simpler type to avoid Bun's ReadableStreamDefaultReader
-    // requiring a pre-allocated buffer argument.
-    this.stdout = (proc.stdout as ReadableStream<Uint8Array>).getReader() as any;
+    this.stdout = getStreamReader(proc.stdout as ReadableStream<Uint8Array>);
+    this.stderrReader = proc.stderr ? getStreamReader(proc.stderr as ReadableStream<Uint8Array>) : null;
 
     // Watch for unexpected death.
     proc.exited.then(() => {
@@ -56,14 +72,22 @@ export class SudoSession {
     );
 
     const session = new SudoSession(proc);
+    const writer = proc.stdin as unknown as { write(data: Uint8Array): void; flush(): void };
 
-    // Drain stderr in the background so it never blocks.
-    session.drainStderr();
+    // Wait for sudo's password prompt on stderr before sending the password.
+    // Without this, the password can arrive before sudo is ready to read stdin,
+    // causing it to be lost or misinterpreted.
+    if (password) {
+      await session.waitForSudoPrompt();
+    }
 
     // Send password (even if empty, the newline triggers sudo to proceed).
-    const writer = proc.stdin as unknown as { write(data: Uint8Array): void; flush(): void };
-    writer.write(new TextEncoder().encode(password + "\n"));
+    const passwordPayload = password + "\n";
+    writer.write(new TextEncoder().encode(passwordPayload));
     writer.flush();
+
+    // Switch stderr to background drain now that the prompt has passed.
+    session.drainStderr();
 
     // Probe whether authentication succeeded.
     writer.write(new TextEncoder().encode(`echo ${AUTH_MARKER}\n`));
@@ -145,13 +169,42 @@ export class SudoSession {
 
   // -- internal helpers -------------------------------------------------------
 
+  /**
+   * Wait for sudo's password prompt to appear on stderr.
+   * Sudo writes "[sudo] password for <user>:" (or similar) to stderr
+   * before reading the password from stdin. We wait for this to ensure
+   * the password isn't sent before sudo is ready to read it.
+   */
+  private async waitForSudoPrompt(): Promise<void> {
+    if (!this.stderrReader) return;
+    const decoder = new TextDecoder();
+    let stderrBuf = "";
+    const deadline = Date.now() + AUTH_TIMEOUT_MS;
+
+    while (Date.now() < deadline) {
+      const remaining = deadline - Date.now();
+      const chunk = await Promise.race([
+        this.stderrReader.read(),
+        new Promise<null>((r) => setTimeout(() => r(null), remaining)),
+      ]);
+      if (chunk === null) break;
+      const result = chunk as { done: boolean; value?: Uint8Array };
+      if (result.done) break;
+
+      stderrBuf += decoder.decode(result.value!, { stream: true });
+      // Sudo prompts typically end with ": " (e.g. "[sudo] password for user: ")
+      if (stderrBuf.includes(": ")) return;
+    }
+  }
+
+  /** Drain remaining stderr in the background so it never blocks. */
   private drainStderr(): void {
-    const stderr = (this.proc.stderr as ReadableStream<Uint8Array>)?.getReader();
-    if (!stderr) return;
+    if (!this.stderrReader) return;
+    const reader = this.stderrReader;
     const drain = async () => {
       try {
         while (true) {
-          const { done } = await stderr.read();
+          const { done } = await reader.read();
           if (done) break;
         }
       } catch {
@@ -172,7 +225,7 @@ export class SudoSession {
         new Promise<null>((r) => setTimeout(() => r(null), remaining)),
       ]);
 
-      if (chunk === null) break; // timed out
+      if (chunk === null) break;
       const result = chunk as { done: boolean; value?: Uint8Array };
       if (result.done) {
         this.dead = true;
