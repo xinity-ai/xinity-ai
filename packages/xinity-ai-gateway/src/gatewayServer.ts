@@ -38,7 +38,7 @@ const handler = new OpenAPIHandler(serverRouter, {
   plugins: [],
 });
 
-Bun.serve({
+const serveOptions = {
   routes: {
     "/docs": createScalarPage(),
     "/openapi.json": await createOpenapiSpec(),
@@ -52,11 +52,16 @@ Bun.serve({
     "/v1/responses/:responseId": withMetrics("/v1/responses/:responseId", handleGetOrDeleteResponseRequest),
   },
   fetch: handleRequest,
-  port: env.PORT,
-  hostname: env.HOST,
-  idleTimeout: 255,
-});
-rootLogger.info({ host: env.HOST, port: env.PORT }, "Gateway started")
+  idleTimeout: env.IDLE_TIMEOUT,
+} as const;
+
+if (env.UNIX_SOCKET) {
+  Bun.serve({ ...serveOptions, unix: env.UNIX_SOCKET, idleTimeout: undefined });
+  rootLogger.info({ unix: env.UNIX_SOCKET }, "Gateway started");
+} else {
+  Bun.serve({ ...serveOptions, port: env.PORT, hostname: env.HOST });
+  rootLogger.info({ host: env.HOST, port: env.PORT }, "Gateway started");
+}
 
 async function handleRequest(req: Request): Promise<Response> {
   const { matched, response } = await handler.handle(req, {

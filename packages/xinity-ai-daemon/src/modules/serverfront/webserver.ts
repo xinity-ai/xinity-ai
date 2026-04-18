@@ -1,9 +1,4 @@
-import {
-  createServer,
-  type IncomingMessage,
-  type ServerResponse,
-} from "node:http";
-import { OpenAPIHandler } from "@orpc/openapi/node";
+import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { router } from "../../rpc/router";
 import { env } from "../../env";
 import { rootLogger } from "../../logger";
@@ -14,36 +9,33 @@ export async function startServer() {
     plugins: [],
   });
 
-  createServer(handleRequest).listen(env.PORT, env.HOST, () =>
-    rootLogger.info({ host: env.HOST, port: env.PORT }, "Daemon server started")
-  );
+  const spec = await createOpenapiSpec();
 
-  async function handleRequest(
-    req: IncomingMessage,
-    res: ServerResponse<IncomingMessage>
-  ) {
-    const { matched } = await handler.handle(req, res, {
-      prefix: "/",
-      context: { headers: req.headers }, // Provide initial context if needed
-    });
+  const serveOptions = {
+    idleTimeout: env.IDLE_TIMEOUT,
+    routes: {
+      "/": () => createScalarPage(),
+      "/openapi.json": () => Response.json(spec),
+    },
+    async fetch(req: Request) {
+      const { matched, response } = await handler.handle(req, {
+        prefix: "/",
+        context: { headers: req.headers },
+      });
 
-    if (matched) {
-      return;
-    }
+      if (matched) {
+        return response;
+      }
 
-    if (req.url === "/") {
-      return createScalarPage(res);
-    }
-    if (req.url === "/openapi.json") {
-      const spec = await createOpenapiSpec();
-      res.setHeader("content-type", "application/json");
+      return new Response("Not found", { status: 404 });
+    },
+  } as const;
 
-      res.statusCode = 200;
-      res.end(JSON.stringify(spec));
-      return;
-    }
-
-    res.statusCode = 404;
-    res.end("Not found");
+  if (env.UNIX_SOCKET) {
+    Bun.serve({ ...serveOptions, unix: env.UNIX_SOCKET });
+    rootLogger.info({ unix: env.UNIX_SOCKET }, "Daemon server started");
+  } else {
+    Bun.serve({ ...serveOptions, port: env.PORT, hostname: env.HOST });
+    rootLogger.info({ host: env.HOST, port: env.PORT }, "Daemon server started");
   }
 }
