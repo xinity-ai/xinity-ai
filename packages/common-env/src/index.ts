@@ -111,7 +111,7 @@ export const tlsEnvSchema = z.object({
 });
 
 /** Returns `{ cert, key }` if TLS is fully configured, `undefined` otherwise. Throws on partial config. */
-export function parseTlsConfig(env: { XINITY_TLS_CERT?: string; XINITY_TLS_KEY?: string }) {
+export function getTlsConfig(env: { XINITY_TLS_CERT?: string; XINITY_TLS_KEY?: string }) {
   const hasCert = !!env.XINITY_TLS_CERT;
   const hasKey = !!env.XINITY_TLS_KEY;
   if (hasCert !== hasKey) {

@@ -51,6 +51,7 @@ function buildEnvFileContent(config: VllmInstanceConfig): string {
   const lines = [
     `VLLM_MODEL=${config.model}`,
     `VLLM_PORT=${config.port}`,
+    `VLLM_HOST=127.0.0.1`,
     `VLLM_SERVED_MODEL_NAME=${config.model}`,
     `VLLM_KV_CACHE_BYTES=${config.kvCacheBytes}`,
   ];
@@ -189,7 +190,7 @@ export function createDockerVllmOps(): VllmOps {
         "--name", containerName,
         "--gpus", "all",
         "--ipc=host",
-        "-p", `${config.port}:8000`,
+        "-p", `127.0.0.1:${config.port}:8000`,
         "-e", "HF_HOME=/data/hf-cache",
         "-e", "TRITON_CACHE_DIR=/data/triton-cache",
         "-v", `${env.VLLM_HF_CACHE_DIR}:/data/hf-cache`,

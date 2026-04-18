@@ -91,7 +91,7 @@ export async function getNodeId(){
       estCapacity: detectedCapacityGb,
       gpuCount,
       host,
-      port: 11434,
+      port: env.PORT,
       available: true,
       drivers: getNodeDrivers(),
       driverVersions: await driverVersions,
@@ -129,6 +129,7 @@ export async function setOnline(){
     .update(aiNodeT)
     .set({
       available: true,
+      port: env.PORT,
       drivers: getNodeDrivers(),
       driverVersions,
       gpus,
