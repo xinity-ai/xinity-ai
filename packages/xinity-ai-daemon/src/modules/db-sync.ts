@@ -14,6 +14,7 @@ import { createWorkflowCoordinator } from "./sync-coordinator";
 import { env } from "../env";
 import { rootLogger } from "../logger";
 import { groupInstallationsByDriver } from "./driver-grouping";
+import { updateRegistry } from "./model-registry";
 export { groupInstallationsByDriver };
 
 const log = rootLogger.child({ name: "db-sync" });
@@ -87,6 +88,7 @@ function sync(): Observable<void> {
       )
     ),
     switchMap((installations) => {
+      updateRegistry(installations);
       const buckets = groupInstallationsByDriver(installations);
       // Include empty buckets for supported drivers to clean up stale models
       const supportedDrivers = getNodeDrivers();

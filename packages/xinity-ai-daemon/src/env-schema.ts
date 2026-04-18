@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { secret, expert } from "common-env";
+import { secret, expert, tlsEnvSchema } from "common-env";
 import { logEnvSchema } from "common-log";
 
 export const daemonEnvSchema = z.object({
@@ -55,4 +55,9 @@ export const daemonEnvSchema = z.object({
     .default(3)
     .describe("Max container restarts before marking installation as permanently failed")
     .meta(expert()),
-}).extend(logEnvSchema.shape);
+
+  // mTLS
+  XINITY_TLS_CLIENT_CA: z.string().optional()
+    .describe("PEM-encoded CA certificate for mTLS client verification. See docs/security/mtls.md")
+    .meta(secret()),
+}).extend(tlsEnvSchema.shape).extend(logEnvSchema.shape);
