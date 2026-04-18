@@ -2,10 +2,6 @@ import { router } from "../../rpc/router";
 import { version } from "../../../../../package.json";
 import scalar from "../../assets/scalar.html" with { type: "text" };
 
-import {
-  type ServerResponse,
-} from "node:http";
-
 export async function createOpenapiSpec() {
   const { OpenAPIGenerator } = await import("@orpc/openapi");
   const { ZodToJsonSchemaConverter } = await import("@orpc/zod/zod4");
@@ -37,7 +33,6 @@ export async function createOpenapiSpec() {
   return spec;
 }
 
-export async function createScalarPage(res: ServerResponse) {
-  res.writeHead(200, { "Content-Type": "text/html" });
-  res.end(scalar);
+export function createScalarPage() {
+  return new Response(scalar as unknown as string, { headers: { "Content-Type": "text/html" } });
 }

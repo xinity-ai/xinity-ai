@@ -5,6 +5,8 @@ import { logEnvSchema } from "common-log";
 export const daemonEnvSchema = z.object({
   PORT: z.coerce.number().default(4044).describe("Listen port"),
   HOST: z.string().default("0.0.0.0").describe("Bind address (use 0.0.0.0 to listen on all interfaces)"),
+  UNIX_SOCKET: z.string().optional().describe("Unix socket path (overrides HOST/PORT)").meta(expert()),
+  IDLE_TIMEOUT: z.coerce.number().default(255).describe("Timeout in seconds after which idle connections are closed").meta(expert()),
   XINITY_OLLAMA_ENDPOINT: z.url().optional().describe("Ollama API endpoint, typically http://localhost:11434 (enables ollama driver)"),
   DB_CONNECTION_URL: z.url().describe("PostgreSQL connection string (e.g. postgresql://user:pass@host:5432/dbname)").meta(secret()),
   INFOSERVER_URL: z.url().default("https://sysinfo.xinity.ai").describe("Infoserver URL (default hosted: https://sysinfo.xinity.ai, or your self-hosted instance)"),

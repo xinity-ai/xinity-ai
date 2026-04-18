@@ -5,6 +5,8 @@ import { logEnvSchema } from "common-log";
 export const gatewayEnvSchema = z.object({
   HOST: z.string().default("localhost").describe("Bind address (use 0.0.0.0 to listen on all interfaces)"),
   PORT: z.coerce.number().default(4010).describe("Listen port"),
+  IDLE_TIMEOUT: z.coerce.number().default(300).describe("Timeout in seconds after which the request is assumed to be stalled and interrupted"),
+  UNIX_SOCKET: z.string().optional().describe("Unix socket path (overrides HOST/PORT when set)").meta(expert()),
   DB_CONNECTION_URL: z.url().describe("PostgreSQL connection string (e.g. postgresql://user:pass@host:5432/dbname)").meta(secret()),
   REDIS_URL: z.url().describe("Redis connection URL (e.g. redis://localhost:6379)").meta(secret()),
   INFOSERVER_URL: z.url().describe("Infoserver URL (default hosted: https://sysinfo.xinity.ai, or your self-hosted instance)"),

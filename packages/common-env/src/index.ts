@@ -9,7 +9,7 @@
  *   const env = parseEnv(z.object({ DB_CONNECTION_URL: z.url(), ... }));
  */
 import { readFileSync } from "node:fs";
-import type { z } from "zod";
+import { z } from "zod";
 
 /**
  * For each key, check if a corresponding KEY_FILE env var is set.
@@ -95,4 +95,28 @@ export function parseEnv<T extends ZodObjectWithShape>(
   const keys = Object.keys(schema.shape);
   const resolved = resolveSecretFiles(env, keys);
   return schema.parse(resolved);
+}
+
+/**
+ * Reusable TLS env vars for opt-in HTTPS on any service.
+ * Extend your service's env schema with `.extend(tlsEnvSchema.shape)`.
+ */
+export const tlsEnvSchema = z.object({
+  XINITY_TLS_CERT: z.string().optional()
+    .describe("PEM-encoded TLS certificate (enables HTTPS). See docs/security/mtls.md")
+    .meta(secret()),
+  XINITY_TLS_KEY: z.string().optional()
+    .describe("PEM-encoded TLS private key (enables HTTPS). See docs/security/mtls.md")
+    .meta(secret()),
+});
+
+/** Returns `{ cert, key }` if TLS is fully configured, `undefined` otherwise. Throws on partial config. */
+export function parseTlsConfig(env: { XINITY_TLS_CERT?: string; XINITY_TLS_KEY?: string }) {
+  const hasCert = !!env.XINITY_TLS_CERT;
+  const hasKey = !!env.XINITY_TLS_KEY;
+  if (hasCert !== hasKey) {
+    throw new Error("XINITY_TLS_CERT and XINITY_TLS_KEY must both be set or both be unset");
+  }
+  if (!hasCert) return undefined;
+  return { cert: env.XINITY_TLS_CERT!, key: env.XINITY_TLS_KEY! };
 }
