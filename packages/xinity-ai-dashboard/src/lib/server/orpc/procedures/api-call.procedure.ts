@@ -20,6 +20,7 @@ const addExampleCalls = rootOs
   .input(z.object({ apiKeyId: z.uuid(), applicationId: z.uuid() }))
   .errors({ NOT_FOUND: { message: "API key not found" }, NOT_ACCEPTABLE: { message: "Environment mismatch. This is not available in production" } })
   .handler(async ({ context, input, errors }) => {
+    const rlog = log.child({ traceId: context.traceId });
     if (process.env.NODE_ENV === "production") {
       throw errors.NOT_ACCEPTABLE();
     }
@@ -58,7 +59,7 @@ const addExampleCalls = rootOs
         );
 
     } catch (e) {
-      log.error({ err: e }, "Error inserting example calls");
+      rlog.error({ err: e }, "Error inserting example calls");
       throw e;
     }
   });

@@ -34,8 +34,8 @@ export const createApiKey = rootOs
     NOT_FOUND: {},
   })
   .handler(async ({ input, context, errors }) => {
-
-    log.info({ keyName: input.name, org: context.activeOrganizationId }, "Creating new API key")
+    const rlog = log.child({ traceId: context.traceId });
+    rlog.info({ keyName: input.name, org: context.activeOrganizationId }, "Creating new API key")
 
     let applicationId: string | null = input.applicationId ?? null;
 
@@ -150,7 +150,8 @@ const deleteApiKey = rootOs
   .route({ method: "DELETE", path: "/{id}", tags, summary: "Soft Delete LLM API Key" })
   .input(ApiKeyDto.pick({ id: true }))
   .handler(async ({ context, input }) => {
-    log.info(input, "Soft deleting api key")
+    const rlog = log.child({ traceId: context.traceId });
+    rlog.info(input, "Soft deleting api key")
     await getDB()
       .update(aiApiKeyT)
       .set({ deletedAt: new Date() })

@@ -19,7 +19,8 @@ const createApplication = rootOs
   .route({ path: "/", method: "POST", tags, summary: "Create Application" })
   .input(ApplicationDto.omit({ id: true, organizationId: true, ...commonInputFilter }))
   .handler(async ({ input, context }) => {
-    log.info({ name: input.name, org: context.activeOrganizationId }, "Creating new Application");
+    const rlog = log.child({ traceId: context.traceId });
+    rlog.info({ name: input.name, org: context.activeOrganizationId }, "Creating new Application");
 
     const [newApp] = await getDB()
       .insert(aiApplicationT)
@@ -103,7 +104,8 @@ const softDeleteApplication = rootOs
   .route({ method: "DELETE", path: "/{id}", tags, summary: "Soft Delete Application" })
   .input(ApplicationDto.pick({ id: true }))
   .handler(async ({ context, input }) => {
-    log.info({ id: input.id }, "Soft deleting Application");
+    const rlog = log.child({ traceId: context.traceId });
+    rlog.info({ id: input.id }, "Soft deleting Application");
 
     await getDB()
       .update(aiApplicationT)

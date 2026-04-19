@@ -111,6 +111,7 @@ const registerOidc = rootOs
     }),
   }))
   .handler(async ({ input, context, errors }) => {
+    const rlog = log.child({ traceId: context.traceId });
     await requireSsoAccess(context.session.user.email, input.organizationId, context.request.headers, errors);
 
     const result = await auth.api.registerSSOProvider({
@@ -124,7 +125,7 @@ const registerOidc = rootOs
       headers: context.request.headers,
     });
 
-    log.info({ providerId: input.providerId, organizationId: input.organizationId }, "OIDC provider registered");
+    rlog.info({ providerId: input.providerId, organizationId: input.organizationId }, "OIDC provider registered");
     return result;
   });
 
@@ -155,6 +156,7 @@ const registerSaml = rootOs
     }),
   }))
   .handler(async ({ input, context, errors }) => {
+    const rlog = log.child({ traceId: context.traceId });
     await requireSsoAccess(context.session.user.email, input.organizationId, context.request.headers, errors);
 
     const result = await auth.api.registerSSOProvider({
@@ -168,7 +170,7 @@ const registerSaml = rootOs
       headers: context.request.headers,
     });
 
-    log.info({ providerId: input.providerId, organizationId: input.organizationId }, "SAML provider registered");
+    rlog.info({ providerId: input.providerId, organizationId: input.organizationId }, "SAML provider registered");
     return result;
   });
 
@@ -180,6 +182,7 @@ const deleteProvider = rootOs
     providerId: z.string(),
   }))
   .handler(async ({ input, context, errors }) => {
+    const rlog = log.child({ traceId: context.traceId });
     const [provider] = await getDB().select().from(ssoProviderT).where(eq(ssoProviderT.providerId, input.providerId)).limit(1);
     if (!provider) {
       throw errors.NOT_FOUND({ message: "Provider not found" });
@@ -188,7 +191,7 @@ const deleteProvider = rootOs
     await requireSsoAccess(context.session.user.email, provider.organizationId, context.request.headers, errors);
 
     await getDB().delete(ssoProviderT).where(eq(ssoProviderT.providerId, input.providerId));
-    log.info({ providerId: input.providerId }, "SSO provider deleted");
+    rlog.info({ providerId: input.providerId }, "SSO provider deleted");
     return { success: true };
   });
 

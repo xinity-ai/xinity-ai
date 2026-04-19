@@ -251,6 +251,7 @@ const updateDeployment = rootOs
   .output(DeploymentDto)
   .errors({ NOT_FOUND: {}, BAD_REQUEST: {}, INSUFFICIENT_CAPACITY: {}, CONFLICT: {} })
   .handler(async ({ context, input, errors }) => {
+    const rlog = log.child({ traceId: context.traceId });
     if (input.modelSpecifier && input.earlyModelSpecifier) {
       try {
         await validateCanaryModelTypes(input.modelSpecifier, input.earlyModelSpecifier);
@@ -301,7 +302,7 @@ const updateDeployment = rootOs
     try {
       deployment = await internalUpdateDeployment(context.activeOrganizationId, input.id, input);
     } catch (err) {
-      log.error(err);
+      rlog.error(err);
       throw errors.CONFLICT({ message: "A deployment with this specifier already exists in your organization" });
     }
     if (!deployment) {
@@ -454,6 +455,7 @@ export const createDeployment = rootOs
       }
     }
 
+    const rlog = log.child({ traceId: context.traceId });
     try {
       await validateCanaryModelTypes(input.modelSpecifier, input.earlyModelSpecifier);
     } catch (err: any) {
@@ -484,10 +486,10 @@ export const createDeployment = rootOs
           orgName: org?.name ?? "",
           dashboardUrl: `${serverEnv.ORIGIN}/modelhub`,
         },
-      }).catch((err: unknown) => log.error({ err }, "Failed to send deployment created notification"));
+      }).catch((err: unknown) => rlog.error({ err }, "Failed to send deployment created notification"));
       return deployment;
     } catch (err) {
-      log.error(err);
+      rlog.error(err);
       throw errors.CONFLICT({ message: "A deployment with this specifier already exists in your organization" })
     }
   });
