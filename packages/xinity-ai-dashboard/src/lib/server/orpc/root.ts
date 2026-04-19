@@ -47,6 +47,7 @@ export const withAuth = rootOs.middleware(async ({ context, next, signal, errors
  * For API key auth, falls back to the organizationId stored in the key's metadata.
  */
 export const withOrganization = rootOs.middleware(async ({ context, next, signal, errors }) => {
+  const rlog = log.child({ traceId: context.traceId });
   const session = await auth.api.getSession(context.request);
   if (!session) {
     throw errors.UNAUTHORIZED();
@@ -61,12 +62,12 @@ export const withOrganization = rootOs.middleware(async ({ context, next, signal
     if (apiKey) {
       try {
         const result = await auth.api.verifyApiKey({ body: { key: apiKey } });
-        log.debug({ result }, "API key verification result");
+        rlog.debug({ result }, "API key verification result");
         if (result.valid && result.key?.metadata?.organizationId) {
           activeOrganizationId = result.key.metadata.organizationId as string;
         }
       } catch (err) {
-        log.warn(err, "Failed to verify API key for organization resolution");
+        rlog.warn(err, "Failed to verify API key for organization resolution");
       }
     }
   }
@@ -111,16 +112,17 @@ export function requirePermission(permissions: PermissionSpec) {
     session: Session,
     activeOrganizationId: string,
   }>().middleware(async ({ context, next, errors }) => {
+    const rlog = log.child({ traceId: context.traceId });
     const result = await auth.api.hasPermission({
       headers: context.request.headers,
-      body: { 
-        permissions,  
+      body: {
+        permissions,
         organizationId: context.activeOrganizationId,
       },
     });
 
     if (!result.success) {
-      log.warn({ permissions, userId: context.session?.user?.id }, "Permission denied");
+      rlog.warn({ permissions, userId: context.session?.user?.id }, "Permission denied");
       throw errors.FORBIDDEN();
     }
 

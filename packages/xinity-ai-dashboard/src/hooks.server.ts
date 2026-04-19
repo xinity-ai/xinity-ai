@@ -45,6 +45,12 @@ const migrationGuard: Handle = ({ event, resolve }) => {
  */
 const fillLocals: Handle = ({ event, resolve }) => {
   event.locals.request = event.request;
+  let incoming = event.request.headers.get("x-trace-id");
+  if(incoming && incoming.length > 300){
+    incoming = incoming.slice(0, 300);
+  }
+  const traceId = incoming || `trc_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  event.locals.traceId = traceId;
   return resolve(event);
 };
 /**
@@ -70,8 +76,9 @@ export const handle: Handle = sequence(migrationGuard, fillLocals, handleAuth, (
  * Catch unexpected errors so they don't crash the process.
  */
 export const handleError: HandleServerError = ({ error, event, status, message }) => {
-  log.error({ err: error, path: event?.url?.pathname, status }, "Unhandled server error");
-  return { message: message ?? "Internal error" };
+  const traceId = event.locals.traceId;
+  log.error({ err: error, path: event?.url?.pathname, status, traceId }, "Unhandled server error");
+  return { message: message ?? "Internal error", traceId };
 };
 
 /**
