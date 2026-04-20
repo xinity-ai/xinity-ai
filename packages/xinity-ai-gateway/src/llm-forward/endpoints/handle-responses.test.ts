@@ -34,12 +34,20 @@ const getModelInfo = jest.fn(async () => ({
   host: `localhost:${mockPort}`,
   model: "test-model",
   driver: "vllm",
+  authToken: null,
+  tls: false,
   tags: ["tools"],
   release: () => {},
 }));
 
 mock.module("../model-data", () => ({
   getModelInfo,
+}));
+
+mock.module("../backend-fetch", () => ({
+  backendUrl: (host: string, _model: string, path: string, _tls: boolean) => `http://${host}${path}`,
+  backendFetch: (url: string | URL | Request, init?: RequestInit) => fetch(url, init),
+  hasCustomCa: false,
 }));
 
 const responseStore = new Map<string, any>();

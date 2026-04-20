@@ -5,6 +5,7 @@ import { BackendCompletionChunkSchema, BackendUsageSchema } from "../backend-sch
 import type { ApiCallInputMessage } from "common-db";
 import { rootLogger } from "../../logger";
 import { env } from "../../env";
+import { backendFetch, backendUrl } from "../backend-fetch";
 
 const log = rootLogger.child({ name: "handle-completions" });
 
@@ -85,11 +86,12 @@ export async function handleCompletion(req: Request): Promise<Response> {
     };
     if (body.stream) fetchBody.stream_options = { include_usage: true };
 
-    const backendResponse = await fetch(`http://${modelInfo.host}/v1/completions`, {
+    const backendResponse = await backendFetch(backendUrl(modelInfo.host, modelInfo.model, "/v1/completions", modelInfo.tls), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(fetchBody),
       signal: AbortSignal.any([req.signal, AbortSignal.timeout(env.BACKEND_TIMEOUT_MS)]),
+      authToken: modelInfo.authToken ?? undefined,
     });
 
     if (!backendResponse.ok) {

@@ -6,6 +6,7 @@ import type { ApiCallInputMessage } from "common-db";
 import { rootLogger } from "../../logger";
 import { processMessageImages, imageStore } from "../../image-store";
 import { env } from "../../env";
+import { backendFetch, backendUrl } from "../backend-fetch";
 
 const log = rootLogger.child({ name: "handle-chatCompletion" });
 
@@ -118,11 +119,12 @@ export async function handleChatCompletion(req: Request) {
       metadata: body.metadata ?? undefined,
     } as const;
 
-    const backendResponse = await fetch(`http://${modelInfo.host}/v1/chat/completions`, {
+    const backendResponse = await backendFetch(backendUrl(modelInfo.host, modelInfo.model, "/v1/chat/completions", modelInfo.tls), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(fetchBody),
       signal: AbortSignal.any([req.signal, AbortSignal.timeout(env.BACKEND_TIMEOUT_MS)]),
+      authToken: modelInfo.authToken ?? undefined,
     });
 
     if (!backendResponse.ok) {
