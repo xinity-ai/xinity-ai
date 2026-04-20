@@ -13,17 +13,7 @@ export async function startServer() {
 
   const spec = await createOpenapiSpec();
 
-  const tlsConfig = getTlsConfig(env);
-  const tls = tlsConfig
-    ? {
-        cert: tlsConfig.cert,
-        key: tlsConfig.key,
-        ...(env.XINITY_TLS_CLIENT_CA
-          ? { ca: env.XINITY_TLS_CLIENT_CA, requestCert: true, rejectUnauthorized: true }
-          : {}),
-      }
-    : undefined;
-
+  const tls = getTlsConfig(env);
   const serveOptions = {
     tls,
     idleTimeout: env.IDLE_TIMEOUT,
@@ -50,12 +40,12 @@ export async function startServer() {
     },
   } as const;
 
-  const proto = tlsConfig ? "https" : "http";
+  const proto = tls ? "https" : "http";
   if (env.UNIX_SOCKET) {
     Bun.serve({ ...serveOptions, unix: env.UNIX_SOCKET });
-    rootLogger.info({ unix: env.UNIX_SOCKET, tls: !!tlsConfig }, `Daemon server started (${proto})`);
+    rootLogger.info({ unix: env.UNIX_SOCKET, tls: !!tls }, `Daemon server started (${proto})`);
   } else {
     Bun.serve({ ...serveOptions, port: env.PORT, hostname: env.HOST });
-    rootLogger.info({ host: env.HOST, port: env.PORT, tls: !!tlsConfig }, `Daemon server started (${proto})`);
+    rootLogger.info({ host: env.HOST, port: env.PORT, tls: !!tls }, `Daemon server started (${proto})`);
   }
 }

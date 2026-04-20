@@ -12,6 +12,7 @@ import { handleModelsRequest } from "./llm-forward/endpoints/handle-models";
 import { handleCreateResponseRequest, handleGetOrDeleteResponseRequest } from "./llm-forward/endpoints/handle-responses";
 import { handleRerank } from "./llm-forward/endpoints/handle-rerank";
 import { handleMetrics, withMetrics } from "./metrics";
+import { getTlsConfig } from "common-env";
 
 process.on("unhandledRejection", (reason) => {
   rootLogger.error({ err: reason }, "Unhandled promise rejection");
@@ -38,7 +39,10 @@ const handler = new OpenAPIHandler(serverRouter, {
   plugins: [],
 });
 
+const tls = getTlsConfig(env);
+
 const serveOptions = {
+  tls,
   routes: {
     "/docs": createScalarPage(),
     "/openapi.json": await createOpenapiSpec(),
@@ -55,12 +59,13 @@ const serveOptions = {
   idleTimeout: env.IDLE_TIMEOUT,
 } as const;
 
+const proto = tls ? "https" : "http";
 if (env.UNIX_SOCKET) {
   Bun.serve({ ...serveOptions, unix: env.UNIX_SOCKET, idleTimeout: undefined });
-  rootLogger.info({ unix: env.UNIX_SOCKET }, "Gateway started");
+  rootLogger.info({ unix: env.UNIX_SOCKET, tls: !!tls }, `Gateway started (${proto})`);
 } else {
   Bun.serve({ ...serveOptions, port: env.PORT, hostname: env.HOST });
-  rootLogger.info({ host: env.HOST, port: env.PORT }, "Gateway started");
+  rootLogger.info({ host: env.HOST, port: env.PORT, tls: !!tls }, `Gateway started (${proto})`);
 }
 
 async function handleRequest(req: Request): Promise<Response> {
