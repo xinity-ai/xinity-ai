@@ -3,6 +3,7 @@ import { resolveModel } from "../ai-sdk";
 import { errorResponse, forwardBackendError, recordUsage, validateModelType, handleEndpointError, validationError } from "../util";
 import { rootLogger } from "../../logger";
 import { env } from "../../env";
+import { backendFetch, backendUrl } from "../backend-fetch";
 
 const log = rootLogger.child({ name: "handle-embeddings" });
 
@@ -40,11 +41,12 @@ export async function handleEmbeddingGeneration(req: Request): Promise<Response>
     if (body.dimensions != null) fetchBody.dimensions = body.dimensions;
     if (body.user != null) fetchBody.user = body.user;
 
-    const backendResponse = await fetch(`http://${modelInfo.host}/v1/embeddings`, {
+    const backendResponse = await backendFetch(backendUrl(modelInfo.host, modelInfo.model, "/v1/embeddings", modelInfo.tls), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(fetchBody),
       signal: AbortSignal.any([req.signal, AbortSignal.timeout(env.BACKEND_TIMEOUT_MS)]),
+      authToken: modelInfo.authToken ?? undefined,
     });
 
     if (!backendResponse.ok) {

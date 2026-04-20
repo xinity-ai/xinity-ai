@@ -38,6 +38,8 @@ const getModelInfo = jest.fn<typeof getModelInfoT>(async () => ({
   host: `localhost:${mockPort}`,
   model: "test-embedding",
   driver: "vllm",
+  authToken: null,
+  tls: false,
   type: "embedding",
   tags: [],
   requestParams: {},
@@ -46,6 +48,12 @@ const getModelInfo = jest.fn<typeof getModelInfoT>(async () => ({
 
 mock.module("../model-data", () => ({
   getModelInfo,
+}));
+
+mock.module("../backend-fetch", () => ({
+  backendUrl: (host: string, _model: string, path: string, _tls: boolean) => `http://${host}${path}`,
+  backendFetch: (url: string | URL | Request, init?: RequestInit) => fetch(url, init),
+  hasCustomCa: false,
 }));
 
 mock.module("../../usageRecorder", () => ({
