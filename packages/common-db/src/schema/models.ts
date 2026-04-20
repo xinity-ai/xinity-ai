@@ -103,6 +103,7 @@ export const modelInstallationT = pgTable("model_installation", {
   estCapacity: real("est_capacity").notNull(),
   /** KV-cache allocation in GB, used by the daemon for vLLM's --kv-cache-memory-bytes */
   kvCacheCapacity: real("kv_cache_capacity").notNull().default(0),
+  /** @deprecated Internal to the daemon. The gateway routes through the daemon proxy and does not use this field. */
   port: integer().notNull(),
   driver: inferenceDriverEnum().notNull(),
 
