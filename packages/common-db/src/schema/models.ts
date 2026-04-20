@@ -79,6 +79,10 @@ export const aiNodeT = pgTable("ai_node", {
   driverVersions: jsonb("driver_versions").$type<Record<string, string>>().notNull().default({}),
   /** Detected GPUs with vendor, name, and VRAM. Empty = unknown/CPU-only. */
   gpus: jsonb().$type<{ vendor: string; name: string; vramMb: number }[]>().notNull().default([]),
+  /** Random token generated on daemon startup, used by the gateway to authenticate requests to this node. */
+  authToken: text("auth_token"),
+  /** Whether this node serves over TLS. Set by the daemon based on its config. */
+  tls: boolean().notNull().default(false),
 
   deletedAt,
   createdAt,

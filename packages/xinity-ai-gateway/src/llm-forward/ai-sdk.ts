@@ -5,6 +5,7 @@ import { getModelInfo } from "./model-data";
 import { errorResponse } from "./util";
 import { resolveApplicationByName } from "./application-resolver";
 import { releaseCallbacks } from "./release-registry";
+import { backendUrl, hasCustomCa, backendFetch } from "./backend-fetch";
 
 export type ResolvedModel = {
   auth: AuthResult;
@@ -81,10 +82,11 @@ export async function resolveAuthorizedModel(
 
   const provider = createOpenAICompatible({
     name: resolved.modelInfo.driver,
-    baseURL: `http://${resolved.modelInfo.host}/v1`,
-    apiKey: "not-needed",
+    baseURL: backendUrl(resolved.modelInfo.host, resolved.modelInfo.model, "/v1", resolved.modelInfo.tls),
+    apiKey: resolved.modelInfo.authToken ?? "none",
     includeUsage: true,
     supportsStructuredOutputs: resolved.modelInfo.driver === "vllm",
+    ...(hasCustomCa ? { fetch: backendFetch as typeof globalThis.fetch } : {}),
   });
 
   return { ...resolved, provider };

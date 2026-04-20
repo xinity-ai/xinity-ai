@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { secret, expert } from "common-env";
+import { secret, expert, tlsEnvSchema } from "common-env";
 import { logEnvSchema } from "common-log";
 
 export const gatewayEnvSchema = z.object({
@@ -31,4 +31,9 @@ export const gatewayEnvSchema = z.object({
   S3_SECRET_ACCESS_KEY: z.string().optional().describe("S3 secret access key").meta(secret()).meta(expert()),
   S3_BUCKET: z.string().default("xinity-media").describe("S3 bucket for media objects").meta(expert()),
   S3_REGION: z.string().default("us-east-1").describe("S3 region (use 'us-east-1' for SeaweedFS)").meta(expert()),
-}).extend(logEnvSchema.shape);
+
+  // Inference backend TLS
+  XINITY_INFERENCE_CA: z.string().optional()
+    .describe("PEM-encoded CA certificate for verifying daemon TLS. When set, gateway connects to daemons via HTTPS. See docs/security/tls.md")
+    .meta({ ...secret(), ...expert() }),
+}).extend(tlsEnvSchema.shape).extend(logEnvSchema.shape);

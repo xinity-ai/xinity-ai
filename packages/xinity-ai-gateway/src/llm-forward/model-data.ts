@@ -42,30 +42,39 @@ async function getModelSources(modelSpecifier: string) {
   const modelLocations = await getDB().select({
     host: aiNodeT.host,
     nodePort: aiNodeT.port,
-    modelPort: modelInstallationT.port,
     driver: modelInstallationT.driver,
+    authToken: aiNodeT.authToken,
+    tls: aiNodeT.tls,
   }).from(modelInstallationT)
     .innerJoin(aiNodeT, sql`${modelInstallationT.nodeId} = ${aiNodeT.id} AND ${aiNodeT.deletedAt} IS NULL`)
     .where(sql`${modelInstallationT.model} = ${modelSpecifier} AND ${modelInstallationT.deletedAt} IS NULL`);
 
   const driverMap = new Map<string, string>();
+  const authTokenMap = new Map<string, string | null>();
+  const tlsMap = new Map<string, boolean>();
   const hosts: string[] = [];
   for (const loc of modelLocations) {
-    const key = `${loc.host}:${loc.modelPort}`;
+    const key = `${loc.host}:${loc.nodePort}`;
     driverMap.set(key, loc.driver);
+    authTokenMap.set(key, loc.authToken);
+    tlsMap.set(key, loc.tls);
     hosts.push(key);
   }
 
-  return { hosts: Array.from(new Set(hosts)), driverMap };
+  return { hosts: Array.from(new Set(hosts)), driverMap, authTokenMap, tlsMap };
 }
 
 type ModelInfo = {
-  /** host info to send completion requests to. I.e. 192.168.0.190:11434 */
+  /** Daemon host:port to route requests through. */
   host: string;
   /** origin model name. I.e. gemma3:latest */
   model: string;
   /** Inference driver for this model installation (e.g. "ollama", "vllm"). */
   driver: string;
+  /** Per-node auth token for authenticating requests to the daemon. */
+  authToken: string | null;
+  /** Whether this daemon node serves over TLS. */
+  tls: boolean;
   /** Model type from the catalog (chat, embedding, rerank). Undefined if catalog is unavailable. */
   type?: string;
   /** Model tags from the catalog (e.g. "tools", "custom_code", "vision"). */
@@ -88,7 +97,7 @@ export async function getModelInfo(orgId: string, modelSpecifier: string, keyId:
     getModelSources(accessInfo.modelSpecifier),
     accessInfo.earlyModelSpecifier
       ? getModelSources(accessInfo.earlyModelSpecifier)
-      : Promise.resolve({ hosts: [], driverMap: new Map<string, string>() }),
+      : Promise.resolve({ hosts: [], driverMap: new Map<string, string>(), authTokenMap: new Map<string, string | null>(), tlsMap: new Map<string, boolean>() }),
   ]);
 
   const result = await _deps.selectHost(env.LOAD_BALANCE_STRATEGY as LoadBalanceStrategy, {
@@ -108,10 +117,16 @@ export async function getModelInfo(orgId: string, modelSpecifier: string, keyId:
     ? accessInfo.modelSpecifier
     : (accessInfo.earlyModelSpecifier ?? accessInfo.modelSpecifier);
 
-  // Look up driver from whichever source set the host came from
+  // Look up driver and auth token from whichever source set the host came from
   const driver = finalSources.driverMap.get(result.host)
     ?? earlySources.driverMap.get(result.host)
     ?? "ollama";
+  const authToken = finalSources.authTokenMap.get(result.host)
+    ?? earlySources.authTokenMap.get(result.host)
+    ?? null;
+  const tls = finalSources.tlsMap.get(result.host)
+    ?? earlySources.tlsMap.get(result.host)
+    ?? false;
 
   const [{ type, tags }, requestParams] = await Promise.all([
     infoClient.resolveModelMeta(resolvedModel),
@@ -122,6 +137,8 @@ export async function getModelInfo(orgId: string, modelSpecifier: string, keyId:
     host: result.host,
     model: resolvedModel,
     driver,
+    authToken,
+    tls,
     type,
     tags,
     requestParams,
