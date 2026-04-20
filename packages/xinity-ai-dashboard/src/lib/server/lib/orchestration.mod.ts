@@ -190,11 +190,19 @@ async function planNewInstallations(requiredModels: ModelRequirementTable, state
     const current = (state.installationsByModel.get(model) || []).length;
     if (current >= requirement.replicas) continue;
 
-    const modelInfo = await infoClient?.fetchModel(model);
-    if (!modelInfo) {
-      log.warn({ model }, `Model not found`);
+    const modelStatus = await infoClient?.fetchModelStatus(model);
+    if (!modelStatus || modelStatus.status === "unavailable") {
+      log.warn({ model, error: modelStatus?.status === "unavailable" ? modelStatus.error : undefined },
+        "Info server unreachable; skipping installation planning for this sync cycle");
       continue;
     }
+    if (modelStatus.status === "not_found") {
+      log.warn({ model },
+        "Model not found in catalog; installations cannot be scheduled. " +
+        "If this model has been intentionally removed, disable or delete the deployment.");
+      continue;
+    }
+    const modelInfo = modelStatus.model;
 
     const driver = resolveDriverForProviderModel(modelInfo, model) ?? "ollama";
     const minVersion = resolveMinVersionForDriver(modelInfo, driver);

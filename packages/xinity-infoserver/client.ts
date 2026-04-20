@@ -12,6 +12,18 @@ export interface InfoserverClientConfig {
   cacheTtlMs: number;
 }
 
+/**
+ * Typed result from a single-model lookup.
+ * Distinguishes between a found model, a model that genuinely does not exist in
+ * the catalog (404), and an unreachable info server (network error / 5xx).
+ * Only `found` results are cached. `not_found` is intentionally never cached
+ * so a re-added model is picked up within the next TTL window.
+ */
+export type FetchModelStatus =
+  | { status: "found"; model: ModelWithSpecifier }
+  | { status: "not_found" }
+  | { status: "unavailable"; error: string };
+
 export interface PaginatedModels {
   models: ModelWithSpecifier[];
   total: number;
@@ -49,14 +61,35 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
     return data;
   }
 
-  async function fetchModel(specifier: string): Promise<ModelWithSpecifier | undefined> {
+  /**
+   * Fetches a model and returns a typed status result.
+   * - `found`: model exists; result is cached for `cacheTtlMs`
+   * - `not_found`: server returned 404; result is NOT cached so a re-added model
+   *   is visible on the next request without waiting for TTL expiry
+   * - `unavailable`: network error or non-404 HTTP error; result is NOT cached
+   */
+  async function fetchModelStatus(specifier: string): Promise<FetchModelStatus> {
     const key = `model:${specifier}`;
-    return cachedFetch(key, async () => {
+    const existing = cache.get(key);
+    if (isFresh(existing)) return { status: "found", model: existing.data };
+
+    try {
       const res = await fetch(`${baseUrl}/api/v1/models/${encodeURIComponent(specifier)}`);
-      if (res.status === 404) return undefined;
-      if (!res.ok) throw new Error(`Infoserver error: ${res.status}`);
-      return res.json() as Promise<ModelWithSpecifier>;
-    });
+      if (res.status === 404) return { status: "not_found" };
+      if (!res.ok) return { status: "unavailable", error: `HTTP ${res.status}` };
+      const model = await res.json() as ModelWithSpecifier;
+      cache.set(key, { data: model, fetchedAt: Date.now() });
+      return { status: "found", model };
+    } catch (err) {
+      return { status: "unavailable", error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  async function fetchModel(specifier: string): Promise<ModelWithSpecifier | undefined> {
+    const result = await fetchModelStatus(specifier);
+    if (result.status === "found") return result.model;
+    if (result.status === "unavailable") throw new Error(`Infoserver unavailable for "${specifier}": ${result.error}`);
+    return undefined;
   }
 
   async function fetchModelsByFamily(family: string): Promise<ModelWithSpecifier[]> {
@@ -132,6 +165,7 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
 
   return {
     fetchModel,
+    fetchModelStatus,
     fetchModelsBatch,
     fetchModelsByFamily,
     fetchModels,

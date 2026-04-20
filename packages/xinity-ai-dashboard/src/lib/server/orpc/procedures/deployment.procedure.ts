@@ -65,20 +65,26 @@ async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>
     modelsToCheck.push({ specifier: input.modelSpecifier, replicas: input.replicas, kvCacheSize: input.kvCacheSize });
   }
 
-  // Fetch model info for all models (including driver/version/platform requirements)
+  // Fetch model info for all models, distinguishing not_found from unavailable
   const modelInfos = await Promise.all(
     modelsToCheck.map(async (m) => {
-      const info = await infoClient?.fetchModel(m.specifier);
-      if (!info) return null;
+      const status = await infoClient?.fetchModelStatus(m.specifier);
+      if (!status || status.status === "unavailable") return { kind: "unavailable" as const, specifier: m.specifier };
+      if (status.status === "not_found") return { kind: "not_found" as const, specifier: m.specifier };
+      const info = status.model;
       const effectiveKvCache = Math.max(m.kvCacheSize ?? 0, info.minKvCache);
       const driver = resolveDriverForProviderModel(info, m.specifier);
       const minVersion = driver ? resolveMinVersionForDriver(info, driver) : undefined;
       const requiredPlatforms = driver ? resolveRequiredPlatformsForDriver(info, driver) : [];
-      return { ...m, perReplica: info.weight + effectiveKvCache, driver, minVersion, requiredPlatforms };
+      return { kind: "found" as const, specifier: m.specifier, replicas: m.replicas, perReplica: info.weight + effectiveKvCache, driver, minVersion, requiredPlatforms };
     }),
   );
-  const resolved = modelInfos.filter((m): m is NonNullable<typeof m> => m !== null);
-  if (resolved.length === 0) return { deployable: true }; // Can't validate without model info; let orchestration handle it
+
+  const notFound = modelInfos.find(m => m.kind === "not_found");
+  if (notFound) return { deployable: false, reason: `Model "${notFound.specifier}" was not found in the model catalog` };
+
+  const resolved = modelInfos.filter((m): m is Extract<typeof modelInfos[number], { kind: "found" }> => m.kind === "found");
+  if (resolved.length === 0) return { deployable: true, reason: "Capacity could not be verified: model catalog is unavailable" };
 
   const { nodeCapabilities } = await buildClusterCapacity();
   const remaining = nodeCapabilities
@@ -134,7 +140,7 @@ async function internalUpdateDeployment(orgId: string, id: string, params: Parti
 // ---------------------------------------------------------------------------
 
 const DeploymentStatusSchema = z.object({
-  phase: z.enum(["ready", "downloading", "installing", "failed", "scheduling"]),
+  phase: z.enum(["ready", "downloading", "installing", "failed", "scheduling", "not_in_catalog"]),
   progress: z.number().nullable(),
   error: z.string().nullable().optional(),
   failureLogs: z.string().nullable().optional(),
@@ -142,7 +148,7 @@ const DeploymentStatusSchema = z.object({
 
 export const DeploymentWithStatusDto = DeploymentDto.extend({ status: DeploymentStatusSchema.optional() });
 export type DeploymentWithStatus = z.infer<typeof DeploymentWithStatusDto>;
-type StatusPhase = "ready" | "downloading" | "installing" | "failed" | "scheduling";
+type StatusPhase = "ready" | "downloading" | "installing" | "failed" | "scheduling" | "not_in_catalog";
 
 /**
  * Runs the status join query and aggregates installation phase info for the given deployments.
@@ -200,7 +206,37 @@ const listDeployments = rootOs.use(withOrganization)
   .handler(async ({ context, input }) => {
     const orgCondition = sql`${modelDeploymentT.organizationId} = ${context.activeOrganizationId} AND ${modelDeploymentT.deletedAt} IS NULL`;
     if (input?.withStatus) {
-      return queryDeploymentsWithStatus(orgCondition);
+      const results = await queryDeploymentsWithStatus(orgCondition);
+
+      // For enabled deployments with no installations at all, check whether the
+      // model still exists in the catalog. If it has been removed, surface that
+      // as a distinct "not_in_catalog" phase so the UI can warn the operator.
+      const noStatusEnabled = results.filter(r => !r.status && r.enabled);
+      if (noStatusEnabled.length > 0 && infoClient) {
+        const specifiers = [...new Set(
+          noStatusEnabled.flatMap(e => [
+            e.modelSpecifier,
+            ...(e.earlyModelSpecifier ? [e.earlyModelSpecifier] : []),
+          ]),
+        )];
+        try {
+          const batchResult = await infoClient.fetchModelsBatch(specifiers);
+          for (const entry of noStatusEnabled) {
+            const primaryMissing = batchResult[entry.modelSpecifier] === null;
+            const earlyMissing = entry.earlyModelSpecifier
+              ? batchResult[entry.earlyModelSpecifier] === null
+              : false;
+            if (primaryMissing || earlyMissing) {
+              (entry as any).status = { phase: "not_in_catalog" as const, progress: null, error: null };
+            }
+          }
+        } catch {
+          // Info server unreachable: leave status as undefined rather than
+          // falsely marking deployments as not_in_catalog.
+        }
+      }
+
+      return results;
     }
     return await getDB().select().from(modelDeploymentT).where(orgCondition);
   });
@@ -402,6 +438,22 @@ export const createDeployment = rootOs
   .output(DeploymentDto)
   .errors({ CONFLICT: {}, BAD_REQUEST: {} })
   .handler(async ({ context, input, errors }) => {
+    // Validate that the requested model specifiers exist in the catalog.
+    // If the info server is unreachable we let the request through. An outage
+    // should not prevent operators from managing deployments.
+    if (infoClient) {
+      const client = infoClient;
+      const specsToCheck = [
+        { field: "modelSpecifier", specifier: input.modelSpecifier },
+        ...(input.earlyModelSpecifier ? [{ field: "earlyModelSpecifier", specifier: input.earlyModelSpecifier }] : []),
+      ];
+      const statuses = await Promise.all(specsToCheck.map(async s => ({ ...s, status: await client.fetchModelStatus(s.specifier) })));
+      const missing = statuses.find(s => s.status.status === "not_found");
+      if (missing) {
+        throw errors.BAD_REQUEST({ message: `Model "${missing.specifier}" was not found in the model catalog` });
+      }
+    }
+
     try {
       await validateCanaryModelTypes(input.modelSpecifier, input.earlyModelSpecifier);
     } catch (err: any) {

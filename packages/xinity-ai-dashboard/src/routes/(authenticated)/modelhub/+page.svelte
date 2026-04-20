@@ -137,11 +137,12 @@
 
   // Status chip colors/labels by phase
   const phaseConfig = {
-    ready:       { dot: "bg-[#4ade80]",      chip: "bg-[#4ade80]/15 text-[#16a34a]",  pulse: false, label: "Ready" },
-    failed:      { dot: "bg-destructive",     chip: "bg-destructive/15 text-destructive", pulse: false, label: "Failed" },
-    scheduling:  { dot: "bg-[#98B9FD]",      chip: "bg-[#98B9FD]/15 text-[#5b8ae6]", pulse: true,  label: "Scheduling" },
-    downloading: { dot: "bg-primary",         chip: "bg-primary/15 text-primary",      pulse: true,  label: "Downloading" },
-    installing:  { dot: "bg-primary",         chip: "bg-primary/15 text-primary",      pulse: true,  label: "Installing" },
+    ready:          { dot: "bg-[#4ade80]",      chip: "bg-[#4ade80]/15 text-[#16a34a]",        pulse: false, label: "Ready" },
+    failed:         { dot: "bg-destructive",     chip: "bg-destructive/15 text-destructive",   pulse: false, label: "Failed" },
+    scheduling:     { dot: "bg-[#98B9FD]",      chip: "bg-[#98B9FD]/15 text-[#5b8ae6]",      pulse: true,  label: "Scheduling" },
+    downloading:    { dot: "bg-primary",         chip: "bg-primary/15 text-primary",            pulse: true,  label: "Downloading" },
+    installing:     { dot: "bg-primary",         chip: "bg-primary/15 text-primary",            pulse: true,  label: "Installing" },
+    not_in_catalog: { dot: "bg-[#f59e0b]",      chip: "bg-[#f59e0b]/15 text-[#d97706]",      pulse: false, label: "Not in Catalog" },
   } as const;
 
   async function confirmDelete() {
