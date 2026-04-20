@@ -38,6 +38,7 @@ export async function handleProxyRequest(req: Request, url: URL): Promise<Respon
       method: req.method,
       headers: req.headers,
       body: req.body,
+      signal: req.signal,
     });
   } catch (err) {
     log.error({ err, model, port: installation.port, path: backendPath }, "Proxy backend error");
