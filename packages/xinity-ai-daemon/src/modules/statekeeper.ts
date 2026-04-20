@@ -158,7 +158,7 @@ export async function setOffline(){
 
   await getDB()
     .update(aiNodeT)
-    .set({available: false})
+    .set({ available: false, authToken: null })
     .where(eq(aiNodeT.id, nodeId));
 
 }
