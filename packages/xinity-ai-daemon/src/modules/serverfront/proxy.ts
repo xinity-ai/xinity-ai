@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "crypto";
 import { resolveModel } from "../model-registry";
 import { getAuthToken } from "../statekeeper";
 import { rootLogger } from "../../logger";
@@ -6,9 +7,15 @@ const log = rootLogger.child({ name: "proxy" });
 
 const PROXY_ROUTE_RE = /^\/proxy\/([^/]+)\/v1\/(.*)/;
 
-export async function handleProxyRequest(req: Request, url: URL): Promise<Response> {
+function verifyAuth(req: Request): boolean {
+  const actual = req.headers.get("authorization") ?? "";
   const expected = `Bearer ${getAuthToken()}`;
-  if (req.headers.get("authorization") !== expected) {
+  if (actual.length !== expected.length) return false;
+  return timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
+}
+
+export async function handleProxyRequest(req: Request, url: URL): Promise<Response> {
+  if (!verifyAuth(req)) {
     return new Response(null, { status: 401 });
   }
 
