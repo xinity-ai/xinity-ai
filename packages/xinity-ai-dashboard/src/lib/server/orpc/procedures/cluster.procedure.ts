@@ -33,7 +33,13 @@ export type ClusterCapacity = z.infer<typeof ClusterCapacityOutput>;
  * can call it directly without HTTP overhead.
  */
 export async function buildClusterCapacity(): Promise<ClusterCapacity> {
-  const nodes = await getDB().select().from(aiNodeT)
+  const nodes = await getDB().select({
+    id: aiNodeT.id,
+    estCapacity: aiNodeT.estCapacity,
+    drivers: aiNodeT.drivers,
+    driverVersions: aiNodeT.driverVersions,
+    gpus: aiNodeT.gpus,
+  }).from(aiNodeT)
     .where(sql`${aiNodeT.available} AND ${aiNodeT.deletedAt} IS NULL`);
   const installations = await getDB().select().from(modelInstallationT)
     .where(isNull(modelInstallationT.deletedAt));
