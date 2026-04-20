@@ -150,6 +150,20 @@
           description = "Max container restarts before marking installation as permanently failed.";
         };
 
+        # --- TLS ---
+
+        tlsCertFile = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Path to a file containing the PEM-encoded TLS certificate. Enables HTTPS on the daemon.";
+        };
+
+        tlsKeyFile = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Path to a file containing the PEM-encoded TLS private key.";
+        };
+
         # --- Logging ---
 
         logLevel = lib.mkOption {
@@ -217,14 +231,23 @@
           // lib.optionalAttrs (cfg.logDir != null) {
             LOG_DIR = cfg.logDir;
           }
+          // lib.optionalAttrs (cfg.tlsCertFile != null) {
+            XINITY_TLS_CERT_FILE = "%d/tls-cert";
+          }
+          // lib.optionalAttrs (cfg.tlsKeyFile != null) {
+            XINITY_TLS_KEY_FILE = "%d/tls-key";
+          }
           // cfg.extraEnvironment;
           serviceConfig = {
             EnvironmentFile = cfg.envFiles;
             ExecStart = "${cfg.package}/bin/xinity-ai-daemon";
             Restart = "always";
             StateDirectory = "xinity-ai-daemon";
-          } // lib.optionalAttrs (cfg.dbConnectionUrlFile != null) {
-            LoadCredential = [ "db-connection-url:${cfg.dbConnectionUrlFile}" ];
+          } // lib.optionalAttrs (cfg.dbConnectionUrlFile != null || cfg.tlsCertFile != null || cfg.tlsKeyFile != null) {
+            LoadCredential =
+              lib.optional (cfg.dbConnectionUrlFile != null) "db-connection-url:${cfg.dbConnectionUrlFile}"
+              ++ lib.optional (cfg.tlsCertFile != null) "tls-cert:${cfg.tlsCertFile}"
+              ++ lib.optional (cfg.tlsKeyFile != null) "tls-key:${cfg.tlsKeyFile}";
           };
         };
       };
