@@ -145,6 +145,26 @@ in {
           description = "S3 region (use 'us-east-1' for SeaweedFS).";
         };
 
+        # --- TLS settings ---
+
+        tlsCertFile = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Path to a file containing the PEM-encoded TLS certificate. Enables HTTPS on the gateway.";
+        };
+
+        tlsKeyFile = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Path to a file containing the PEM-encoded TLS private key.";
+        };
+
+        inferenceCaFile = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Path to a file containing the PEM CA certificate for verifying daemon TLS (for self-signed certs).";
+        };
+
         # --- Secret file options (recommended for production) ---
         # These use the _FILE env var pattern: the app reads the secret from the file at runtime.
         # Files are mounted read-only into the container at /run/secrets/*.
@@ -250,6 +270,16 @@ in {
           // lib.optionalAttrs (cfg.s3SecretAccessKey != null) {
             S3_SECRET_ACCESS_KEY = cfg.s3SecretAccessKey;
           }
+          # --- TLS file env vars ---
+          // lib.optionalAttrs (cfg.tlsCertFile != null) {
+            XINITY_TLS_CERT_FILE = "/run/secrets/tls-cert";
+          }
+          // lib.optionalAttrs (cfg.tlsKeyFile != null) {
+            XINITY_TLS_KEY_FILE = "/run/secrets/tls-key";
+          }
+          // lib.optionalAttrs (cfg.inferenceCaFile != null) {
+            XINITY_INFERENCE_CA_FILE = "/run/secrets/inference-ca";
+          }
           # --- Secret file env vars (_FILE pattern) ---
           // lib.optionalAttrs (cfg.dbConnectionUrlFile != null) {
             DB_CONNECTION_URL_FILE = "/run/secrets/db-connection-url";
@@ -273,7 +303,10 @@ in {
             ++ lib.optional (cfg.redisUrlFile != null) "${cfg.redisUrlFile}:/run/secrets/redis-url:ro"
             ++ lib.optional (cfg.metricsAuthFile != null) "${cfg.metricsAuthFile}:/run/secrets/metrics-auth:ro"
             ++ lib.optional (cfg.s3AccessKeyIdFile != null) "${cfg.s3AccessKeyIdFile}:/run/secrets/s3-access-key-id:ro"
-            ++ lib.optional (cfg.s3SecretAccessKeyFile != null) "${cfg.s3SecretAccessKeyFile}:/run/secrets/s3-secret-access-key:ro";
+            ++ lib.optional (cfg.s3SecretAccessKeyFile != null) "${cfg.s3SecretAccessKeyFile}:/run/secrets/s3-secret-access-key:ro"
+            ++ lib.optional (cfg.tlsCertFile != null) "${cfg.tlsCertFile}:/run/secrets/tls-cert:ro"
+            ++ lib.optional (cfg.tlsKeyFile != null) "${cfg.tlsKeyFile}:/run/secrets/tls-key:ro"
+            ++ lib.optional (cfg.inferenceCaFile != null) "${cfg.inferenceCaFile}:/run/secrets/inference-ca:ro";
           extraOptions = [ "--user=${toString cfg.containerUid}:${toString cfg.containerUid}" ] ++ cfg.extraOptions;
         };
       };
