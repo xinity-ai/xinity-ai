@@ -150,7 +150,7 @@ describe("createInfoserverClient", () => {
 
     it("throws on server error", async () => {
       const client = makeClient();
-      await expect(client.fetchModel("server-error")).rejects.toThrow("Infoserver error: 500");
+      await expect(client.fetchModel("server-error")).rejects.toThrow('Infoserver unavailable for "server-error": HTTP 500');
     });
   });
 
