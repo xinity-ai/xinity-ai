@@ -1,4 +1,5 @@
 import { resolveModel } from "../model-registry";
+import { getAuthToken } from "../statekeeper";
 import { rootLogger } from "../../logger";
 
 const log = rootLogger.child({ name: "proxy" });
@@ -6,6 +7,11 @@ const log = rootLogger.child({ name: "proxy" });
 const PROXY_ROUTE_RE = /^\/proxy\/([^/]+)\/v1\/(.*)/;
 
 export async function handleProxyRequest(req: Request, url: URL): Promise<Response> {
+  const expected = `Bearer ${getAuthToken()}`;
+  if (req.headers.get("authorization") !== expected) {
+    return new Response(null, { status: 401 });
+  }
+
   const match = url.pathname.match(PROXY_ROUTE_RE);
   if (!match) {
     return new Response(null, { status: 400 });

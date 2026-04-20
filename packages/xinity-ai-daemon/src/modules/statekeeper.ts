@@ -1,5 +1,6 @@
 import { getDB } from "../db/connection";
 import { aiNodeT, eq, sql } from "common-db";
+import { getTlsConfig } from "common-env";
 import { $ } from "bun";
 import { env } from "../env";
 import { join } from "path";
@@ -12,6 +13,12 @@ const log = rootLogger.child({ name: "statekeeper" });
 
 let cachedProfile: HardwareProfile | null = null;
 let cachedNodeId: string | null = null;
+const authToken = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64url");
+
+/** Returns the auth token generated for this daemon instance. */
+export function getAuthToken() {
+  return authToken;
+}
 
 export async function getHardwareProfile(): Promise<HardwareProfile> {
   if (!cachedProfile) {
@@ -86,6 +93,7 @@ export async function getNodeId(){
     const driverVersions = getNodeDriverVersions();
     const { detectedCapacityGb, gpuCount, gpus: detectedGpus } = await getHardwareProfile();
     const gpus = detectedGpus.map(g => ({ vendor: g.vendor, name: g.name, vramMb: g.vramMb }));
+    const tls = getTlsConfig(env);
 
     const [row] = await getDB().insert(aiNodeT).values({
       estCapacity: detectedCapacityGb,
@@ -96,6 +104,8 @@ export async function getNodeId(){
       drivers: getNodeDrivers(),
       driverVersions: await driverVersions,
       gpus,
+      authToken,
+      tls: !!tls,
     }).onConflictDoUpdate({
       target: [aiNodeT.host, aiNodeT.port],
       targetWhere: sql`${aiNodeT.deletedAt} IS NULL`,
@@ -106,6 +116,8 @@ export async function getNodeId(){
         drivers: getNodeDrivers(),
         driverVersions: await driverVersions,
         gpus,
+        authToken,
+        tls: !!getTlsConfig(env),
       },
     }).returning({id: aiNodeT.id});
 
@@ -130,11 +142,13 @@ export async function setOnline(){
     .set({
       available: true,
       port: env.PORT,
+      tls: !!getTlsConfig(env),
       drivers: getNodeDrivers(),
       driverVersions,
       gpus,
       estCapacity: detectedCapacityGb,
       gpuCount,
+      authToken,
     })
     .where(eq(aiNodeT.id, nodeId));
 }

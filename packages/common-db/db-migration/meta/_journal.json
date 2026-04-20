@@ -36,6 +36,13 @@
       "when": 1776167208534,
       "tag": "0004_dapper_talkback",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1776685738293,
+      "tag": "0005_bumpy_stryfe",
+      "breakpoints": true
     }
   ]
 }

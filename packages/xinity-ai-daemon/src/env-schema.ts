@@ -55,9 +55,4 @@ export const daemonEnvSchema = z.object({
     .default(3)
     .describe("Max container restarts before marking installation as permanently failed")
     .meta(expert()),
-
-  // mTLS
-  XINITY_TLS_CLIENT_CA: z.string().optional()
-    .describe("PEM-encoded CA certificate for mTLS client verification. See docs/security/mtls.md")
-    .meta(secret()),
 }).extend(tlsEnvSchema.shape).extend(logEnvSchema.shape);
