@@ -87,5 +87,5 @@ These appear at the top level of the YAML file, not inside a model definition.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `includes` | URL[] | List of remote model source URLs to merge. Later entries override earlier ones with the same specifier. Recursive includes are supported with cycle detection |
+| `includes` | URL[] | List of remote model source URLs to merge. Local models take precedence over remote includes with the same specifier. Recursive includes are supported with cycle detection |
 | `models` | Record\<string, Model\> | Map of public specifier to model definition |

@@ -50,6 +50,6 @@ WORKDIR /usr/src/app/packages/xinity-infoserver
 COPY --from=build /usr/src/app/packages/xinity-infoserver/dist ./dist
 
 USER bun
-ENV MODEL_INFO_FILE=/data/models.yaml PORT=8090
+ENV MODEL_INFO_DIR=/data/models.d PORT=8090
 EXPOSE 8090/tcp
 CMD [ "bun", "run", "dist/server.js" ]

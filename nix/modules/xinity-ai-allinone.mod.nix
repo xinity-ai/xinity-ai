@@ -281,12 +281,12 @@
           modelInfoFile = lib.mkOption {
             type = lib.types.nullOr lib.types.path;
             default = null;
-            description = "Path to the models YAML file on the host.";
+            description = "Deprecated: use modelInfoDir instead. Path to a single models YAML file. Will be removed in 1.0.0.";
           };
           modelInfoDir = lib.mkOption {
             type = lib.types.nullOr lib.types.path;
             default = null;
-            description = "Path to a directory of additional model YAML files on the host.";
+            description = "Path to a directory of model YAML files on the host.";
           };
         };
 

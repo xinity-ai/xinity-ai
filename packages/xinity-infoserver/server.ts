@@ -10,7 +10,11 @@ const modelDir = env.MODEL_INFO_DIR;
 const port = env.PORT;
 
 if (!modelFile && !modelDir) {
-  throw new Error("At least one of MODEL_INFO_FILE or MODEL_INFO_DIR must be set");
+  throw new Error("MODEL_INFO_DIR must be set (or the deprecated MODEL_INFO_FILE)");
+}
+
+if (modelFile) {
+  rootLogger.warn("MODEL_INFO_FILE is deprecated and will be removed in 1.0.0. Migrate to MODEL_INFO_DIR instead");
 }
 
 catalog.configure(env.MAX_INCLUDE_DEPTH, modelFile, modelDir);

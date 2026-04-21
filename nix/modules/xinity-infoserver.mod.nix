@@ -24,13 +24,13 @@ in {
         modelInfoFile = lib.mkOption {
           type = lib.types.nullOr lib.types.path;
           default = null;
-          description = "Path to the models YAML file on the host. Will be mounted into the container.";
+          description = "Deprecated: use modelInfoDir instead. Path to a single models YAML file on the host. Will be removed in 1.0.0.";
         };
 
         modelInfoDir = lib.mkOption {
           type = lib.types.nullOr lib.types.path;
           default = null;
-          description = "Path to a directory of additional model YAML files on the host. Will be mounted into the container at /data/models.d/.";
+          description = "Path to a directory of model YAML files on the host. Mounted into the container at /data/models.d/. This is the preferred way to configure model sources.";
         };
 
         refreshIntervalMs = lib.mkOption {
@@ -83,7 +83,7 @@ in {
       config = lib.mkIf cfg.enable {
         assertions = [{
           assertion = cfg.modelInfoFile != null || cfg.modelInfoDir != null;
-          message = "services.xinity-infoserver: at least one of modelInfoFile or modelInfoDir must be set.";
+          message = "services.xinity-infoserver: modelInfoDir must be set (or the deprecated modelInfoFile).";
         }];
 
         virtualisation.oci-containers.containers.xinity-infoserver = {
