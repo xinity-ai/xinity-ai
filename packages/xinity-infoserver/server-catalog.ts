@@ -4,7 +4,7 @@
  * in-memory index for the API endpoints.
  */
 import { type Model, type ModelWithSpecifier, ModelFileDefinitionSchema } from "./definitions/model-definition";
-import { readdirSync } from "node:fs";
+import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { rootLogger } from "./logger";
 
@@ -121,7 +121,7 @@ async function loadDirectoryFiles(
 ): Promise<void> {
   let entries: string[];
   try {
-    entries = readdirSync(dirPath)
+    entries = (await readdir(dirPath))
       .filter(f => f.endsWith(".yaml") || f.endsWith(".yml"))
       .sort();
   } catch (err) {
