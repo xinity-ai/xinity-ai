@@ -172,7 +172,7 @@ describe("multimodal image storage (SeaweedFS S3)", () => {
       usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
     });
 
-    const node = await createAiNode();
+    const node = await createAiNode({ port: mockServer.port });
     await createModelInstallation({ nodeId: node.id, model: internalModel, port: mockServer.port });
 
     const messages = [
@@ -253,7 +253,7 @@ describe("multimodal image storage (SeaweedFS S3)", () => {
     await createModelDeployment({ orgId, publicSpecifier, modelSpecifier: internalModel });
 
     const mockServer = await startMockChatCompletionServer();
-    const node = await createAiNode({ port: 9998 });
+    const node = await createAiNode({ port: mockServer.port });
     await createModelInstallation({ nodeId: node.id, model: internalModel, port: mockServer.port });
 
     // Send two requests with the same image
@@ -325,7 +325,7 @@ describe("multimodal image storage (SeaweedFS S3)", () => {
 
       await createModelDeployment({ orgId, publicSpecifier, modelSpecifier: internalModel });
       const mockServer = await startMockChatCompletionServer();
-      const node = await createAiNode({ port: 9997 });
+      const node = await createAiNode({ port: mockServer.port });
       await createModelInstallation({ nodeId: node.id, model: internalModel, port: mockServer.port });
 
       const res = await fetch(noS3Url("/v1/chat/completions"), {
