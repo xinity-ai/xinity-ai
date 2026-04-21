@@ -1,5 +1,7 @@
 {
   imports = [
+    ./docs.mod.nix
+
     ./xinity-ai-database.mod.nix
     ./xinity-ai-daemon.mod.nix
     ./xinity-ai-gateway.mod.nix

@@ -1,6 +1,5 @@
 { withSystem, self, inputs, ... }: {
-  flake.nixosModules.default = self.nixosModules.server;
-  flake.nixosModules.server = { config, lib, pkgs, ... }:
+  flake.nixosModules.daemon = { config, lib, pkgs, ... }:
     let
       withHostSystem = withSystem pkgs.stdenv.hostPlatform.system;
       cfg = config.services.xinity-ai-daemon;
@@ -258,7 +257,7 @@
   flake.nixosConfigurations.container = inputs.nixpkgs.lib.nixosSystem {
     system = "x86_64-linux";
     modules = [
-      self.nixosModules.server
+      self.nixosModules.daemon
       {
         services.xinity-ai-daemon.enable = true;
         services.xinity-ai-daemon.envFiles = [ "/etc/.env" ];

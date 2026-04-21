@@ -47,7 +47,7 @@ in {
 
         logLevel = lib.mkOption {
           type = lib.types.enum [ "fatal" "error" "warn" "info" "debug" "trace" ];
-          default = "info";
+          default = "debug";
           description = "Pino log level. Controls the verbosity of structured JSON logs emitted by the infoserver.";
         };
 
