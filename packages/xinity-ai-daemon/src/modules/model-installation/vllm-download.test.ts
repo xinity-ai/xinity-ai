@@ -40,7 +40,7 @@ function skipIfNoNetwork() {
   return false;
 }
 
-describe("downloadModel (integration, real HF API)", () => {
+describe.skip("downloadModel (integration, real HF API)", () => {
   beforeEach(() => {
     fs.mkdirSync(testCacheDir, { recursive: true });
   });
