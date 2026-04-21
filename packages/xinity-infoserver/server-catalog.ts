@@ -21,6 +21,9 @@ let configuredFilePath: string | undefined;
 let configuredMaxDepth: number;
 let configuredDirPath: string | undefined;
 
+let lastRefreshAt: Date | null = null;
+let lastRefreshError: string | null = null;
+
 // ── Init ───────────────────────────────────────────────────────────────
 
 export function configure(maxIncludeDepth = 10, modelFilePath?: string, modelDirPath?: string) {
@@ -39,32 +42,39 @@ export async function refresh(): Promise<void> {
   const newModels = new Map<string, ModelWithSpecifier>();
   const newProviderIndex = new Map<string, string>();
   const newMerged: Record<string, Model> = {};
-
+  const localSpecifiers = new Set<string>();
   const visited = new Set<string>();
 
-  if (configuredFilePath) {
-    const yamlText = await Bun.file(configuredFilePath).text();
-    const yamlData = Bun.YAML.parse(yamlText);
-    const { success, data } = ModelFileDefinitionSchema.safeParse(yamlData);
-    if (!success) {
-      throw new Error("Failed to validate model file during refresh");
+  try {
+    if (configuredFilePath) {
+      const yamlText = await Bun.file(configuredFilePath).text();
+      const yamlData = Bun.YAML.parse(yamlText);
+      const result = ModelFileDefinitionSchema.safeParse(yamlData);
+      if (!result.success) {
+        throw new Error(`Model file validation failed (${configuredFilePath}): ${result.error.message}`);
+      }
+
+      indexModels(result.data.models, newModels, newProviderIndex, newMerged, configuredFilePath, true, localSpecifiers);
+
+      for (const includeUrl of result.data.includes ?? []) {
+        await resolveIncludes(includeUrl, visited, 0, newModels, newProviderIndex, newMerged, localSpecifiers);
+      }
     }
 
-    indexModels(data.models, newModels, newProviderIndex, newMerged);
-
-    for (const includeUrl of data.includes ?? []) {
-      await resolveIncludes(includeUrl, visited, 0, newModels, newProviderIndex, newMerged);
+    if (configuredDirPath) {
+      await loadDirectoryFiles(configuredDirPath, visited, newModels, newProviderIndex, newMerged, localSpecifiers);
     }
-  }
 
-  if (configuredDirPath) {
-    await loadDirectoryFiles(configuredDirPath, visited, newModels, newProviderIndex, newMerged);
+    // Atomic swap
+    modelData = newModels;
+    providerModelIndex = newProviderIndex;
+    mergedData = { models: newMerged };
+    lastRefreshAt = new Date();
+    lastRefreshError = null;
+  } catch (err) {
+    lastRefreshError = err instanceof Error ? err.message : String(err);
+    throw err;
   }
-
-  // Atomic swap
-  modelData = newModels;
-  providerModelIndex = newProviderIndex;
-  mergedData = { models: newMerged };
 }
 
 async function resolveIncludes(
@@ -74,6 +84,7 @@ async function resolveIncludes(
   models: Map<string, ModelWithSpecifier>,
   providerIndex: Map<string, string>,
   merged: Record<string, Model>,
+  localSpecifiers: Set<string>,
 ): Promise<void> {
   if (depth >= configuredMaxDepth) {
     log.warn({ url, maxDepth: configuredMaxDepth }, "Max include depth reached, skipping");
@@ -96,16 +107,16 @@ async function resolveIncludes(
 
     const text = await response.text();
     const yamlData = Bun.YAML.parse(text);
-    const { success, data } = ModelFileDefinitionSchema.safeParse(yamlData);
-    if (!success) {
-      log.warn({ url }, "Include validation failed");
+    const result = ModelFileDefinitionSchema.safeParse(yamlData);
+    if (!result.success) {
+      log.warn({ url, issues: result.error.issues }, "Include validation failed");
       return;
     }
 
-    indexModels(data.models, models, providerIndex, merged);
+    indexModels(result.data.models, models, providerIndex, merged, url, false, localSpecifiers);
 
-    for (const nestedUrl of data.includes ?? []) {
-      await resolveIncludes(nestedUrl, visited, depth + 1, models, providerIndex, merged);
+    for (const nestedUrl of result.data.includes ?? []) {
+      await resolveIncludes(nestedUrl, visited, depth + 1, models, providerIndex, merged, localSpecifiers);
     }
   } catch (err) {
     log.warn({ url, err }, "Include fetch error");
@@ -118,6 +129,7 @@ async function loadDirectoryFiles(
   models: Map<string, ModelWithSpecifier>,
   providerIndex: Map<string, string>,
   merged: Record<string, Model>,
+  localSpecifiers: Set<string>,
 ): Promise<void> {
   let entries: string[];
   try {
@@ -139,17 +151,17 @@ async function loadDirectoryFiles(
     try {
       const yamlText = await Bun.file(filePath).text();
       const yamlData = Bun.YAML.parse(yamlText);
-      const { success, data } = ModelFileDefinitionSchema.safeParse(yamlData);
-      if (!success) {
-        log.warn({ filePath }, "Model file validation failed, skipping");
+      const result = ModelFileDefinitionSchema.safeParse(yamlData);
+      if (!result.success) {
+        log.warn({ filePath, issues: result.error.issues }, "Model file validation failed, skipping");
         continue;
       }
 
-      log.info({ filePath, modelCount: Object.keys(data.models).length }, "Loaded model file from directory");
-      indexModels(data.models, models, providerIndex, merged);
+      log.info({ filePath, modelCount: Object.keys(result.data.models).length }, "Loaded model file from directory");
+      indexModels(result.data.models, models, providerIndex, merged, filePath, true, localSpecifiers);
 
-      for (const includeUrl of data.includes ?? []) {
-        await resolveIncludes(includeUrl, visited, 0, models, providerIndex, merged);
+      for (const includeUrl of result.data.includes ?? []) {
+        await resolveIncludes(includeUrl, visited, 0, models, providerIndex, merged, localSpecifiers);
       }
     } catch (err) {
       log.warn({ filePath, err }, "Failed to load model file from directory, skipping");
@@ -162,6 +174,9 @@ function indexModels(
   map: Map<string, ModelWithSpecifier>,
   providerIndex: Map<string, string>,
   merged: Record<string, Model>,
+  sourceLabel: string,
+  isLocal: boolean,
+  localSpecifiers: Set<string>,
 ): void {
   for (const [specifier, model] of Object.entries(source)) {
     if (map.has(specifier)) {
@@ -176,6 +191,8 @@ function indexModels(
     const entry: ModelWithSpecifier = { publicSpecifier: specifier, _source: sourceLabel, ...model };
     map.set(specifier, entry);
     merged[specifier] = model;
+
+    if (isLocal) localSpecifiers.add(specifier);
 
     for (const providerModel of Object.values(model.providers)) {
       if (providerModel) {
@@ -235,4 +252,12 @@ export function stopAutoRefresh(): void {
     clearInterval(refreshTimer);
     refreshTimer = null;
   }
+}
+
+export function getCatalogHealth() {
+  return {
+    modelCount: modelData.size,
+    lastRefreshAt: lastRefreshAt?.toISOString() ?? null,
+    lastRefreshError,
+  };
 }

@@ -20,7 +20,10 @@ catalog.startAutoRefresh(env.REFRESH_INTERVAL_MS);
 const server = Bun.serve({
   port,
   routes: {
-    "/health": Response.json({ ok: true }),
+    "/health": () => {
+      const health = catalog.getCatalogHealth();
+      return Response.json({ ok: health.modelCount > 0, catalog: health });
+    },
     "/version.json": Response.json({ version }),
     "/models/v1.yaml": () => new Response(Bun.YAML.stringify(catalog.getMergedData()), {
       headers: { "Content-Type": "application/yaml" },
