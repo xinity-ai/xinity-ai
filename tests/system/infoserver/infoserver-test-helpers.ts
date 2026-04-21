@@ -16,8 +16,11 @@ async function readProcessOutput(proc: Bun.Subprocess): Promise<{ stdout: string
 
 /** Starts the info server once and waits for its health endpoint. */
 export async function ensureInfoServerRunning(): Promise<void> {
-  if (infoReady) {
-    return infoReady;
+  if (infoReady && infoProcess) {
+    const alive = !infoProcess.killed && infoProcess.exitCode === null;
+    if (alive) return infoReady;
+    infoProcess = null;
+    infoReady = null;
   }
 
   infoReady = (async () => {

@@ -111,7 +111,7 @@ describe("xinity-ai-gateway chat completion", () => {
     });
 
     const mockServer = await startMockChatCompletionServer();
-    const node = await createAiNode();
+    const node = await createAiNode({ port: mockServer.port });
     await createModelInstallation({
       nodeId: node.id,
       model: internalModel,
@@ -201,7 +201,7 @@ describe("xinity-ai-gateway chat completion", () => {
       usage: { prompt_tokens: 3, completion_tokens: 4, total_tokens: 7 },
     });
 
-    const node = await createAiNode();
+    const node = await createAiNode({ port: mockServer.port });
     await createModelInstallation({
       nodeId: node.id,
       model: internalModel,

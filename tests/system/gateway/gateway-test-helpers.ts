@@ -68,8 +68,17 @@ let gatewayProcess: Bun.Subprocess | null = null;
 let gatewayReady: Promise<void> | null = null;
 
 export async function ensureGatewayRunning(): Promise<void> {
-  if (gatewayReady) {
-    return gatewayReady;
+  // If we have a cached promise, check the process is actually still alive.
+  // Bun's test runner kills dangling child processes between test files,
+  // so we must be prepared to restart.
+  if (gatewayReady && gatewayProcess) {
+    const alive = !gatewayProcess.killed && gatewayProcess.exitCode === null;
+    if (alive) {
+      return gatewayReady;
+    }
+    // Process was killed externally, reset and restart.
+    gatewayProcess = null;
+    gatewayReady = null;
   }
 
   gatewayReady = (async () => {
@@ -104,7 +113,7 @@ export async function ensureGatewayRunning(): Promise<void> {
     const exitWait = gatewayProcess.exited.then(async (code) => {
       const output = await readProcessOutput(gatewayProcess!);
       throw new Error(
-        `Gateway exited before health check (code ${code}). stderr: ${output.stderr || "<empty>"}`
+        `Gateway exited before health check (code ${code}). stdout: ${output.stdout?.slice(-500) || "<empty>"} stderr: ${output.stderr || "<empty>"}`
       );
     });
     await Promise.race([healthWait, exitWait]);
@@ -218,7 +227,7 @@ export async function createModelInstallation(input: {
   model: string;
   port: number;
   estCapacity?: number;
-  driver?: string;
+  driver?: "ollama" | "vllm";
   deletedAt?: Date;
 }): Promise<{ id: string }> {
   const [installation] = await getDB().insert(modelInstallationT).values({
@@ -269,8 +278,32 @@ async function startMockJsonServer(defaultBody: Record<string, unknown>, respons
   return { port, stop: () => server.stop() };
 }
 
+/**
+ * Starts a mock server that acts as a daemon proxy, handling
+ * `/proxy/{model}/v1/...` paths and returning the given response body.
+ * The returned port should be used as the aiNodeT port.
+ */
+async function startMockProxyServer(defaultBody: Record<string, unknown>, responseBody?: Record<string, unknown>): Promise<{
+  port: number;
+  stop: () => void;
+}> {
+  const port = await getAvailablePort();
+  const body = responseBody ?? defaultBody;
+  const server = Bun.serve({
+    port,
+    fetch: async (req) => {
+      const url = new URL(req.url);
+      if (url.pathname.startsWith("/proxy/")) {
+        return Response.json(body);
+      }
+      return new Response("not found", { status: 404 });
+    },
+  });
+  return { port, stop: () => server.stop() };
+}
+
 export async function startMockChatCompletionServer(responseBody?: Record<string, unknown>) {
-  return startMockJsonServer({
+  return startMockProxyServer({
     id: `chatcmpl_${randomUUID()}`,
     object: "chat.completion",
     created: Math.floor(Date.now() / 1000),
@@ -283,7 +316,7 @@ export async function startMockChatCompletionServer(responseBody?: Record<string
 }
 
 export async function startMockEmbeddingServer(responseBody?: Record<string, unknown>) {
-  return startMockJsonServer({
+  return startMockProxyServer({
     object: "list",
     data: [{ object: "embedding", embedding: [0.1, 0.2, 0.3], index: 0 }],
     model: "internal-test-embedding-model",

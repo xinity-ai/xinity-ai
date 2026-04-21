@@ -122,7 +122,7 @@ describe("xinity-ai-gateway embeddings", () => {
       usage: { prompt_tokens: 2, total_tokens: 2 },
     });
 
-    const node = await createAiNode();
+    const node = await createAiNode({ port: mockServer.port });
     await createModelInstallation({
       nodeId: node.id,
       model: internalModel,
