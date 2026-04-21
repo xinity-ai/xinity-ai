@@ -14,8 +14,12 @@ describe("xinity-infoserver", () => {
   it("responds with health status", async () => {
     const res = await fetch(infoServerUrl("/health"));
     expect(res.ok).toBe(true);
-    const body = await res.json();
-    expect(body).toEqual({ ok: true });
+    const body = await res.json() as any;
+    expect(body.ok).toBe(true);
+    expect(body.catalog).toBeDefined();
+    expect(body.catalog.modelCount).toBeGreaterThanOrEqual(0);
+    expect(body.catalog.lastRefreshAt).toBeTruthy();
+    expect(body.catalog.lastRefreshError).toBeNull();
   });
 
   it("returns the current version", async () => {
