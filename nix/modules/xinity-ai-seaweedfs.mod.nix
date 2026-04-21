@@ -1,57 +1,57 @@
-{ self, ... }: {
+{ ... }: {
   flake.nixosModules.seaweedfs = { config, lib, pkgs, ... }:
     let
       cfg = config.services.xinity-ai-seaweedfs;
     in {
       options.services.xinity-ai-seaweedfs = {
-        enable = lib.mkEnableOption "SeaweedFS S3-compatible object storage for xinity-ai";
+        enable = lib.mkEnableOption "a bundled SeaweedFS instance providing S3-compatible object storage for xinity-ai media uploads (avatars, attachments, etc.)";
 
         package = lib.mkOption {
           type = lib.types.package;
           default = pkgs.seaweedfs;
-          description = "The SeaweedFS package to use.";
+          description = "The SeaweedFS package to use. Override this to pin a specific version or use a custom build.";
         };
 
         s3Port = lib.mkOption {
           type = lib.types.port;
           default = 8333;
-          description = "Port for the S3 API endpoint.";
+          description = "Port for the S3-compatible API endpoint. The gateway and dashboard connect to this port to store and retrieve media objects.";
         };
 
         masterPort = lib.mkOption {
           type = lib.types.port;
           default = 9333;
-          description = "Port for the SeaweedFS master.";
+          description = "Port for the SeaweedFS master server, which manages volume placement and cluster topology.";
         };
 
         volumePort = lib.mkOption {
           type = lib.types.port;
           default = 8080;
-          description = "Port for the SeaweedFS volume server.";
+          description = "Port for the SeaweedFS volume server, which handles the actual blob storage and retrieval.";
         };
 
         filerPort = lib.mkOption {
           type = lib.types.port;
           default = 8889;
-          description = "Port for the SeaweedFS filer (default 8889 to avoid conflict with SearXNG).";
+          description = "Port for the SeaweedFS filer, which provides a file-system-like interface on top of blob storage. Defaults to 8889 to avoid conflicting with SearXNG's default port.";
         };
 
         dataDir = lib.mkOption {
           type = lib.types.str;
           default = "/var/lib/seaweedfs";
-          description = "Directory for SeaweedFS data persistence.";
+          description = "Directory for SeaweedFS data persistence. All volume data, filer metadata, and master state are stored here. A systemd-tmpfiles rule ensures this directory exists with correct ownership.";
         };
 
         s3Config = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description = "Path to S3 config JSON file (for access keys). If null, anonymous access is allowed.";
+          description = "Path to an S3 configuration JSON file that defines access keys and permissions. When null, the S3 endpoint allows anonymous access. See the SeaweedFS documentation for the config file format.";
         };
 
         extraArgs = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           default = [ ];
-          description = "Additional arguments to pass to 'weed server'.";
+          description = "Additional command-line arguments appended to the 'weed server' invocation. Useful for tuning replication, compaction, or enabling additional sub-services.";
         };
       };
 

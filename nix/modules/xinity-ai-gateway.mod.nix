@@ -7,24 +7,24 @@ in {
       cfg = config.services.xinity-ai-gateway;
     in {
       options.services.xinity-ai-gateway = {
-        enable = lib.mkEnableOption "xinity-ai-gateway OCI container";
+        enable = lib.mkEnableOption "the xinity-ai gateway, an OpenAI-compatible API proxy that handles authentication, rate limiting, load balancing, and request routing across inference nodes";
 
         image = lib.mkOption {
           type = lib.types.str;
           default = "ghcr.io/xinity-ai/xinity-ai-gateway:${version}";
-          description = "OCI image for the gateway.";
+          description = "OCI image reference for the gateway container. Override this to pin a specific version or use a private registry.";
         };
 
         port = lib.mkOption {
           type = lib.types.port;
           default = 4121;
-          description = "Port the gateway listens on.";
+          description = "HTTP port the gateway listens on. This is the port clients send OpenAI-compatible API requests to.";
         };
 
         host = lib.mkOption {
           type = lib.types.str;
           default = "0.0.0.0";
-          description = "Host address the gateway binds to.";
+          description = "Host address the gateway binds to. Use 0.0.0.0 to accept connections on all interfaces, or 127.0.0.1 to restrict to localhost.";
         };
 
         dbConnectionUrl = lib.mkOption {
@@ -50,31 +50,36 @@ in {
         webSearchEngineUrl = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description = "URL to a web search engine (e.g. SearXNG).";
+          description = "URL of a web search engine instance (e.g. a SearXNG endpoint). When set, the gateway exposes web-search-augmented generation capabilities to clients.";
         };
 
         responseCacheTtlSeconds = lib.mkOption {
           type = lib.types.int;
           default = 3600;
-          description = "TTL in seconds for response caching.";
+          description = "Time-to-live in seconds for cached LLM responses. Identical requests within this window are served from cache without hitting the inference backend. Set to 0 to disable caching.";
         };
 
         infoserverUrl = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description = "URL of the xinity-infoserver instance.";
+          description = "Internal URL of the xinity-infoserver instance. The gateway queries this to discover available models and their routing information.";
         };
 
         infoserverCacheTtlMs = lib.mkOption {
           type = lib.types.int;
           default = 30000;
-          description = "How long to cache infoserver responses locally (ms).";
+          description = "Duration in milliseconds to cache responses from the infoserver. Reduces load on the infoserver when the gateway frequently queries model availability.";
         };
 
         loadBalanceStrategy = lib.mkOption {
           type = lib.types.enum [ "random" "round-robin" "least-connections" ];
           default = "least-connections";
-          description = "Load balancing strategy for inference nodes.";
+          description = ''
+            Strategy used to distribute requests across inference nodes.
+            - "random": pick a random healthy node for each request.
+            - "round-robin": cycle through healthy nodes in order.
+            - "least-connections": route to the node with the fewest active requests (recommended for heterogeneous hardware).
+          '';
         };
 
         metricsAuth = lib.mkOption {
@@ -90,7 +95,7 @@ in {
         logLevel = lib.mkOption {
           type = lib.types.enum [ "fatal" "error" "warn" "info" "debug" "trace" ];
           default = "info";
-          description = "Pino log level.";
+          description = "Pino log level. Controls the verbosity of structured JSON logs emitted by the gateway.";
         };
 
         logDir = lib.mkOption {
@@ -102,7 +107,7 @@ in {
         backendTimeoutMs = lib.mkOption {
           type = lib.types.int;
           default = 300000;
-          description = "Maximum time in ms to wait for a backend response.";
+          description = "Maximum time in milliseconds to wait for an inference backend to respond before the gateway returns a timeout error to the client. Increase this for models with long generation times.";
         };
 
         # --- S3 / SeaweedFS settings ---
@@ -110,7 +115,7 @@ in {
         s3Endpoint = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description = "SeaweedFS / S3-compatible endpoint URL.";
+          description = "URL of the SeaweedFS or S3-compatible object storage endpoint. Used for storing and retrieving media files attached to conversations.";
         };
 
         s3AccessKeyId = lib.mkOption {
@@ -118,7 +123,7 @@ in {
           default = null;
           description = ''
             S3 access key ID.
-            WARNING: DO NOT USE IN PRODUCTION. Use environmentFiles instead to keep credentials secure.
+            WARNING: DO NOT USE IN PRODUCTION. Use environmentFiles or s3AccessKeyIdFile instead to keep credentials secure.
             This option exposes secrets in the Nix store.
           '';
         };
@@ -128,7 +133,7 @@ in {
           default = null;
           description = ''
             S3 secret access key.
-            WARNING: DO NOT USE IN PRODUCTION. Use environmentFiles instead to keep credentials secure.
+            WARNING: DO NOT USE IN PRODUCTION. Use environmentFiles or s3SecretAccessKeyFile instead to keep credentials secure.
             This option exposes secrets in the Nix store.
           '';
         };
@@ -136,13 +141,13 @@ in {
         s3Bucket = lib.mkOption {
           type = lib.types.str;
           default = "xinity-media";
-          description = "S3 bucket for media objects.";
+          description = "S3 bucket name used for storing uploaded media objects such as conversation attachments.";
         };
 
         s3Region = lib.mkOption {
           type = lib.types.str;
           default = "us-east-1";
-          description = "S3 region (use 'us-east-1' for SeaweedFS).";
+          description = "S3 region for the object storage endpoint. For SeaweedFS or MinIO, the conventional value is 'us-east-1'.";
         };
 
         # --- TLS settings ---
@@ -162,7 +167,7 @@ in {
         inferenceCaFile = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description = "Path to a file containing the PEM CA certificate for verifying daemon TLS (for self-signed certs).";
+          description = "Path to a PEM-encoded CA certificate file used to verify TLS connections to inference daemons. Required when daemons use self-signed certificates.";
         };
 
         # --- Secret file options (recommended for production) ---
@@ -218,13 +223,13 @@ in {
         containerUid = lib.mkOption {
           type = lib.types.int;
           default = 6000;
-          description = "UID (and GID) the container process runs as. Secret files passed via *File options must be readable by this UID.";
+          description = "UID and GID the container process runs as. The container is started with --user=UID:UID. Any secret files passed via the *File options must be readable by this UID on the host.";
         };
 
         extraOptions = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           default = [ "--network=host" ];
-          description = "Extra options to pass to the container runtime.";
+          description = "Extra command-line options passed to the container runtime (podman/docker). Defaults to host networking; override with an empty list to use bridge networking.";
         };
       };
 

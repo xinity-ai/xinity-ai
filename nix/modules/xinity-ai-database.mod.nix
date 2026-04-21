@@ -43,19 +43,18 @@
         "${resolvedAddress} 127.0.0.1";
     in {
       options.services.xinity-ai-database = {
-        enable = lib.mkEnableOption
-          "xinity-ai database stack (PostgreSQL, Redis, migrations)";
+        enable = lib.mkEnableOption "the xinity-ai database stack, which provisions a PostgreSQL 17 instance for persistent data and a Redis instance for caching and rate limiting";
 
         name = lib.mkOption {
           type = lib.types.str;
           default = "xinity";
-          description = "PostgreSQL database name.";
+          description = "Name of the PostgreSQL database created for xinity-ai. Used in connection strings and pg_hba rules.";
         };
 
         user = lib.mkOption {
           type = lib.types.str;
           default = "xinity";
-          description = "PostgreSQL user.";
+          description = "PostgreSQL role name created for xinity-ai. This user is granted ownership of the database and is used in connection strings by the gateway and dashboard.";
         };
 
         listenMode = lib.mkOption {
@@ -74,7 +73,7 @@
           port = lib.mkOption {
             type = lib.types.port;
             default = 5432;
-            description = "Port for the PostgreSQL instance.";
+            description = "TCP port PostgreSQL listens on. Opened in the firewall automatically when listenMode is not \"local\".";
           };
         };
 
@@ -82,22 +81,20 @@
           port = lib.mkOption {
             type = lib.types.port;
             default = 6379;
-            description = "Port for the Redis instance.";
+            description = "TCP port Redis listens on. Opened in the firewall automatically when listenMode is not \"local\".";
           };
         };
 
         pgPasswordFile = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description =
-            "Path to a file containing the password for the PostgreSQL database user.";
+          description = "Path to a file containing the password for the PostgreSQL database user. When set, a one-shot systemd service runs after PostgreSQL starts to set the password via ALTER USER. The file is loaded securely through systemd's LoadCredential mechanism.";
         };
 
         redisPasswordFile = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description =
-            "Path to a file containing the password for the Redis instance.";
+          description = "Path to a file containing the password for the Redis instance. Passed directly to the Redis requirePassFile option. When null, Redis runs without authentication.";
         };
       };
 
@@ -180,27 +177,25 @@
       dbCfg = config.services.xinity-ai-database;
     in {
       options.services.xinity-ai-db-init = {
-        enable = lib.mkEnableOption "xinity-ai database migrations";
+        enable = lib.mkEnableOption "automatic xinity-ai database migrations. When enabled, a one-shot systemd service runs after PostgreSQL is ready, applies schema migrations, and grants the database user full privileges on all schemas";
 
         databaseName = lib.mkOption {
           type = lib.types.str;
           default = dbCfg.name;
-          description =
-            "PostgreSQL database name (defaults to xinity-ai-database.name).";
+          description = "PostgreSQL database name to run migrations against. Defaults to the value of services.xinity-ai-database.name.";
         };
 
         databaseUser = lib.mkOption {
           type = lib.types.str;
           default = dbCfg.user;
-          description =
-            "PostgreSQL user (defaults to xinity-ai-database.user).";
+          description = "PostgreSQL role that is granted privileges on all migrated schemas and tables. Defaults to the value of services.xinity-ai-database.user.";
         };
 
         migratePackage = lib.mkOption {
           type = lib.types.package;
           default =
             withHostSystem ({ config, ... }: config.packages.xinity-db-migrate);
-          description = "The xinity-db-migrate package to use.";
+          description = "The xinity-db-migrate package containing the Drizzle migration runner. Defaults to the package built from this flake for the current platform.";
         };
       };
 

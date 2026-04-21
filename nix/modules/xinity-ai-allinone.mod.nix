@@ -18,16 +18,16 @@
         else "localhost:${toString config.services.xinity-infoserver.port}";
     in {
       options.services.xinity-ai-caddy = {
-        enable = lib.mkEnableOption "Caddy reverse proxy for xinity-ai services";
+        enable = lib.mkEnableOption "a Caddy reverse proxy that terminates TLS via ACME/Let's Encrypt and routes traffic to the xinity-ai dashboard, gateway, and infoserver by subdomain";
 
         domain = lib.mkOption {
           type = lib.types.str;
-          description = "Base domain (e.g. example.com). Subdomains are derived from this.";
+          description = "Base domain for the xinity-ai deployment (e.g. example.com). Each service gets a subdomain: dashboard.example.com, api.example.com, etc.";
         };
 
         acmeEmail = lib.mkOption {
           type = lib.types.str;
-          description = "Email address for ACME / Let's Encrypt certificate registration.";
+          description = "Email address registered with ACME/Let's Encrypt for certificate expiry notifications and account recovery.";
         };
 
         dashboardSubdomain = lib.mkOption {
@@ -109,18 +109,18 @@
       cfg = config.services.xinity-ai-searxng;
     in {
       options.services.xinity-ai-searxng = {
-        enable = lib.mkEnableOption "SearXNG web search engine for xinity-ai";
+        enable = lib.mkEnableOption "a bundled SearXNG metasearch engine instance that the gateway uses for web-search-augmented generation";
 
         port = lib.mkOption {
           type = lib.types.port;
           default = 8888;
-          description = "Port SearXNG listens on.";
+          description = "HTTP port SearXNG listens on. The gateway connects to this port to perform web searches.";
         };
 
         host = lib.mkOption {
           type = lib.types.str;
           default = "127.0.0.1";
-          description = "Address SearXNG binds to.";
+          description = "Address SearXNG binds to. Use 127.0.0.1 to restrict access to localhost (recommended when behind the gateway), or 0.0.0.0 to allow external access.";
         };
 
         secretKey = lib.mkOption {
@@ -146,7 +146,7 @@
         extraSettings = lib.mkOption {
           type = lib.types.attrs;
           default = { };
-          description = "Additional SearXNG settings (deep-merged into the configuration).";
+          description = "Additional SearXNG settings deep-merged into the generated configuration. Use this to enable/disable search engines, configure rate limiting, or adjust result formatting.";
         };
       };
 
@@ -184,16 +184,16 @@
       ];
 
       options.services.xinity-ai = {
-        enable = lib.mkEnableOption "xinity-ai all-in-one deployment (PostgreSQL, Redis, gateway, dashboard, infoserver, Caddy)";
+        enable = lib.mkEnableOption "the xinity-ai all-in-one deployment, which provisions and wires together all services (PostgreSQL, Redis, gateway, dashboard, infoserver, Caddy, and optionally SearXNG and SeaweedFS) on a single machine with sensible defaults";
 
         domain = lib.mkOption {
           type = lib.types.str;
-          description = "Base domain (e.g. example.com). Caddy will handle HTTPS for *.domain.";
+          description = "Base domain for the deployment (e.g. example.com). Caddy provisions TLS certificates and routes traffic for each service's subdomain under this domain.";
         };
 
         acmeEmail = lib.mkOption {
           type = lib.types.str;
-          description = "Email for ACME/Let's Encrypt certificates.";
+          description = "Email address registered with ACME/Let's Encrypt for certificate expiry notifications. Forwarded to the Caddy module.";
         };
 
         dashboardSubdomain = lib.mkOption {
@@ -250,7 +250,7 @@
           backendTimeoutMs = lib.mkOption {
             type = lib.types.int;
             default = 300000;
-            description = "Maximum time in ms to wait for a backend response.";
+            description = "Maximum time in milliseconds to wait for an inference backend to respond. Forwarded to the gateway module.";
           };
         };
 
@@ -268,7 +268,7 @@
           licenseKey = lib.mkOption {
             type = lib.types.nullOr lib.types.str;
             default = null;
-            description = "License key (WARNING: exposes in Nix store, prefer secrets.licenseKeyFile).";
+            description = "License key for unlocking paid features (Ed25519-signed token). WARNING: exposes the key in the Nix store. Prefer secrets.licenseKeyFile for production.";
           };
         };
 
@@ -307,7 +307,7 @@
           enable = lib.mkOption {
             type = lib.types.bool;
             default = true;
-            description = "Enable the bundled SearXNG instance for web search.";
+            description = "Enable the bundled SearXNG metasearch engine. When enabled, the gateway automatically uses it for web-search-augmented generation.";
           };
           port = lib.mkOption {
             type = lib.types.port;
@@ -320,7 +320,7 @@
           enable = lib.mkOption {
             type = lib.types.bool;
             default = false;
-            description = "Enable the bundled SeaweedFS instance for S3-compatible object storage.";
+            description = "Enable the bundled SeaweedFS instance for S3-compatible object storage. When enabled, the gateway and dashboard automatically use it for media uploads.";
           };
           s3Port = lib.mkOption {
             type = lib.types.port;
@@ -330,14 +330,14 @@
           s3Config = lib.mkOption {
             type = lib.types.nullOr lib.types.str;
             default = null;
-            description = "Path to S3 access config JSON for SeaweedFS.";
+            description = "Path to an S3 configuration JSON file defining access keys and permissions for SeaweedFS. When null, anonymous S3 access is allowed.";
           };
         };
 
         containerUid = lib.mkOption {
           type = lib.types.int;
           default = 6000;
-          description = "UID (and GID) the container processes run as. Secret files passed via *File options must be readable by this UID.";
+          description = "UID and GID the OCI container processes (gateway, dashboard, infoserver) run as. Secret files passed via the secrets.*File options must be readable by this UID on the host.";
         };
 
         # --- Secret file options (recommended for production) ---
@@ -411,7 +411,7 @@
         migrateOnStart = lib.mkOption {
           type = lib.types.bool;
           default = true;
-          description = "Run database migrations automatically before starting services.";
+          description = "Run Drizzle database migrations automatically at boot before starting the gateway and dashboard. Disable this if you manage schema migrations out-of-band.";
         };
 
       };
