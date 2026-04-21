@@ -126,7 +126,7 @@ export const ModelSchema = z.looseObject({
   }).optional().describe("Info for fine tuned custom models"),
 });
 export type Model = z.infer<typeof ModelSchema>;
-export type ModelWithSpecifier = Model & { publicSpecifier: string };
+export type ModelWithSpecifier = Model & { publicSpecifier: string; _source: string };
 
 export const ModelFileDefinitionSchema = z.object({
   includes: z.url().array().describe([

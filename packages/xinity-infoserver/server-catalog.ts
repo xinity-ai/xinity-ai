@@ -165,10 +165,15 @@ function indexModels(
 ): void {
   for (const [specifier, model] of Object.entries(source)) {
     if (map.has(specifier)) {
-      log.warn({ specifier }, "Duplicate model specifier, overwriting with later entry");
+      if (localSpecifiers.has(specifier) && !isLocal) {
+        log.debug({ specifier, source: sourceLabel }, "Remote model skipped: local entry takes precedence");
+        continue;
+      }
+      const existing = map.get(specifier)!;
+      log.warn({ specifier, existingSource: existing._source, newSource: sourceLabel }, "Duplicate model specifier, overwriting");
     }
 
-    const entry: ModelWithSpecifier = { publicSpecifier: specifier, ...model };
+    const entry: ModelWithSpecifier = { publicSpecifier: specifier, _source: sourceLabel, ...model };
     map.set(specifier, entry);
     merged[specifier] = model;
 
