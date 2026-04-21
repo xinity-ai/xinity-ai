@@ -79,6 +79,7 @@ mock.module("xinity-infoserver", () => ({
 
 // Mock the statekeeper hardware profile
 mock.module("../statekeeper", () => ({
+  getAuthToken: () => "mock-token",
   getHardwareProfile: () => Promise.resolve({
     gpus: [{ vendor: "nvidia", name: "Test GPU", vramMb: 24576 }],
     gpuCount: 1,
