@@ -42,7 +42,8 @@ const setupOnboarding = rootOs
   }))
   .errors({ CONFLICT: {} })
   .handler(async ({ input, context, errors }) => {
-    log.info({ orgName: input.orgName, model: input.modelSpecifier }, "Running onboarding setup");
+    const rlog = log.child({ traceId: context.traceId });
+    rlog.info({ orgName: input.orgName, model: input.modelSpecifier }, "Running onboarding setup");
 
     const slug = createSlug(input.orgName);
 
@@ -108,7 +109,8 @@ const cli = rootOs
     orgSlug: z.string(),
   }))
   .errors({ FORBIDDEN: {}, CONFLICT: {} })
-  .handler(async ({ input, errors }) => {
+  .handler(async ({ input, context, errors }) => {
+    const rlog = log.child({ traceId: context.traceId });
     if (!serverEnv.SIGNUP_ENABLED) {
       throw errors.FORBIDDEN({ message: "User signup is currently disabled" });
     }
@@ -126,12 +128,12 @@ const cli = rootOs
         body: { email: input.email, password: input.password, name: input.name },
       });
     } catch (err) {
-      log.error({ err }, "CLI onboarding signup failed");
+      rlog.error({ err }, "CLI onboarding signup failed");
       throw errors.CONFLICT({ message: "Failed to create user, email may already be in use" });
     }
 
     const userId = signupResult.user.id;
-    log.info({ userId, email: input.email }, "CLI onboarding: user created");
+    rlog.info({ userId, email: input.email }, "CLI onboarding: user created");
 
     const db = getDB();
 
@@ -159,7 +161,7 @@ const cli = rootOs
       role: "owner",
     });
 
-    log.info({ userId, orgId, orgSlug: slug }, "CLI onboarding: organization created");
+    rlog.info({ userId, orgId, orgSlug: slug }, "CLI onboarding: organization created");
 
     // 4. Create a dashboard API key via Better Auth's apiKey plugin.
     //    Omitting headers makes this a server-side call, so Better Auth
@@ -176,7 +178,7 @@ const cli = rootOs
       },
     });
 
-    log.info({ userId }, "CLI onboarding: dashboard API key created");
+    rlog.info({ userId }, "CLI onboarding: dashboard API key created");
 
     return {
       dashboardApiKey: apiKeyResult.key,

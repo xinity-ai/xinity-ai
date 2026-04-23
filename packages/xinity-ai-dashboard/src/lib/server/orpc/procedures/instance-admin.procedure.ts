@@ -113,10 +113,11 @@ const banUser = rootOs
     expiresAt: z.string().datetime().optional(),
   }))
   .handler(async ({ input, context, errors }) => {
+    const rlog = log.child({ traceId: context.traceId });
     if (input.userId === context.session.user.id) {
       throw errors.FORBIDDEN({ message: "You cannot ban yourself" });
     }
-    log.info({ userId: input.userId, reason: input.reason }, "Banning user");
+    rlog.info({ userId: input.userId, reason: input.reason }, "Banning user");
     await getDB()
       .update(userT)
       .set({
@@ -133,8 +134,9 @@ const unbanUser = rootOs
   .use(withInstanceAdmin)
   .route({ method: "POST", path: "/users/unban", tags, summary: "Unban a user" })
   .input(z.object({ userId: z.string() }))
-  .handler(async ({ input }) => {
-    log.info({ userId: input.userId }, "Unbanning user");
+  .handler(async ({ input, context }) => {
+    const rlog = log.child({ traceId: context.traceId });
+    rlog.info({ userId: input.userId }, "Unbanning user");
     await getDB()
       .update(userT)
       .set({ banned: false, banReason: null, banExpires: null })
@@ -151,7 +153,8 @@ const addUserToOrganization = rootOs
     organizationId: z.string(),
     role: RoleSchema,
   }))
-  .handler(async ({ input, errors }) => {
+  .handler(async ({ input, context, errors }) => {
+    const rlog = log.child({ traceId: context.traceId });
     const db = getDB();
     // Check if already a member
     const [existing] = await db
@@ -162,7 +165,7 @@ const addUserToOrganization = rootOs
     if (existing) {
       throw errors.FORBIDDEN({ message: "User is already a member of this organization" });
     }
-    log.info(input, "Adding user to organization");
+    rlog.info(input, "Adding user to organization");
     await db.insert(memberT).values({
       id: crypto.randomUUID(),
       userId: input.userId,
@@ -180,7 +183,8 @@ const removeUserFromOrganization = rootOs
     userId: z.string(),
     organizationId: z.string(),
   }))
-  .handler(async ({ input, errors }) => {
+  .handler(async ({ input, context, errors }) => {
+    const rlog = log.child({ traceId: context.traceId });
     const db = getDB();
 
     // Check if the user is the sole owner of this organization
@@ -194,7 +198,7 @@ const removeUserFromOrganization = rootOs
       throw errors.FORBIDDEN({ message: "Cannot remove the sole owner of an organization. Transfer ownership first." });
     }
 
-    log.info(input, "Removing user from organization");
+    rlog.info(input, "Removing user from organization");
     await db
       .delete(memberT)
       .where(and(eq(memberT.userId, input.userId), eq(memberT.organizationId, input.organizationId)));
@@ -210,7 +214,8 @@ const updateUserRole = rootOs
     organizationId: z.string(),
     role: RoleSchema,
   }))
-  .handler(async ({ input, errors }) => {
+  .handler(async ({ input, context, errors }) => {
+    const rlog = log.child({ traceId: context.traceId });
     const db = getDB();
 
     // If demoting an owner, ensure at least one other owner remains
@@ -226,7 +231,7 @@ const updateUserRole = rootOs
       }
     }
 
-    log.info(input, "Updating user role");
+    rlog.info(input, "Updating user role");
     await db
       .update(memberT)
       .set({ role: input.role })
@@ -243,10 +248,11 @@ const setEmailVerified = rootOs
     verified: z.boolean(),
   }))
   .handler(async ({ input, context, errors }) => {
+    const rlog = log.child({ traceId: context.traceId });
     if (input.userId === context.session.user.id && !input.verified) {
       throw errors.FORBIDDEN({ message: "You cannot unverify your own email" });
     }
-    log.info({ userId: input.userId, verified: input.verified }, "Setting email verification status");
+    rlog.info({ userId: input.userId, verified: input.verified }, "Setting email verification status");
     await getDB()
       .update(userT)
       .set({ emailVerified: input.verified })
@@ -262,7 +268,8 @@ const createUser = rootOs
     name: z.string().min(1, "Name is required"),
     email: z.email("Invalid email address"),
   }))
-  .handler(async ({ input, errors }) => {
+  .handler(async ({ input, context, errors }) => {
+    const rlog = log.child({ traceId: context.traceId });
     const temporaryPassword = generateTempPassword();
     let signupResult: { user: { id: string } };
     try {
@@ -272,7 +279,7 @@ const createUser = rootOs
         query: { greenlitCallId },
       });
     } catch (err) {
-      log.error({ err, email: input.email }, "Admin user creation failed");
+      rlog.error({ err, email: input.email }, "Admin user creation failed");
       throw errors.FORBIDDEN({ message: "Failed to create user. Email may already be in use." });
     }
     // Admin-created users are considered verified
@@ -280,7 +287,7 @@ const createUser = rootOs
       .update(userT)
       .set({ emailVerified: true, temporaryPassword: true })
       .where(eq(userT.id, signupResult.user.id));
-    log.info({ userId: signupResult.user.id, email: input.email }, "Admin created user");
+    rlog.info({ userId: signupResult.user.id, email: input.email }, "Admin created user");
     return { success: true, userId: signupResult.user.id, temporaryPassword };
   });
 
@@ -289,7 +296,8 @@ const resetUserPassword = rootOs
   .use(withInstanceAdmin)
   .route({ method: "POST", path: "/users/reset-password", tags, summary: "Reset a user's password" })
   .input(z.object({ userId: z.string() }))
-  .handler(async ({ input, errors }) => {
+  .handler(async ({ input, context, errors }) => {
+    const rlog = log.child({ traceId: context.traceId });
     const db = getDB();
     // Look up the user's email and verify they have a credential-based account
     const [user] = await db
@@ -306,11 +314,11 @@ const resetUserPassword = rootOs
       // Uses Better Auth's full reset flow (hashing, session revocation)
       await adminResetPassword(user.email, temporaryPassword);
     } catch (err) {
-      log.error({ err, userId: input.userId }, "Admin password reset failed");
+      rlog.error({ err, userId: input.userId }, "Admin password reset failed");
       throw errors.INTERNAL_SERVER_ERROR({ message: "Failed to reset password." });
     }
     await db.update(userT).set({ temporaryPassword: true }).where(eq(userT.id, input.userId));
-    log.info({ userId: input.userId }, "Admin reset user password");
+    rlog.info({ userId: input.userId }, "Admin reset user password");
     return { success: true, temporaryPassword };
   });
 
@@ -395,8 +403,9 @@ const setSsoSelfManage = rootOs
     organizationId: z.string(),
     enabled: z.boolean(),
   }))
-  .handler(async ({ input }) => {
-    log.info({ organizationId: input.organizationId, enabled: input.enabled }, "Setting SSO self-manage");
+  .handler(async ({ input, context }) => {
+    const rlog = log.child({ traceId: context.traceId });
+    rlog.info({ organizationId: input.organizationId, enabled: input.enabled }, "Setting SSO self-manage");
     await getDB()
       .update(organizationT)
       .set({ ssoSelfManage: input.enabled })

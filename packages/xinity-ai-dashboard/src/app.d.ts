@@ -5,6 +5,7 @@ declare global {
 		// interface Error {}
 		interface Locals {
 			request: Request;
+			traceId: string;
 		}
 		// interface PageData {}
 		// interface PageState {}

@@ -17,6 +17,7 @@ const changePassword = rootOs
     newPassword: z.string().min(8),
   }))
   .handler(async ({ context, input, errors }) => {
+    const rlog = log.child({ traceId: context.traceId });
     try {
       await auth.api.changePassword({
         headers: context.request.headers,
@@ -26,7 +27,7 @@ const changePassword = rootOs
         },
       });
     } catch (error: any) {
-      log.error({ err: error }, "Error during password change");
+      rlog.error({ err: error }, "Error during password change");
       throw errors.UNAUTHORIZED({
         message: error?.body?.message || error?.message || "Failed to change password",
       });
@@ -51,6 +52,7 @@ const deletePasskey = rootOs
   .route({ path: "/passkeys", method: "DELETE", tags, summary: "Delete Passkey" })
   .input(z.object({ id: z.string() }))
   .handler(async ({ context, input, errors }) => {
+    const rlog = log.child({ traceId: context.traceId });
     try {
       await auth.api.deletePasskey({
         headers: context.request.headers,
@@ -58,7 +60,7 @@ const deletePasskey = rootOs
       });
       return { success: true };
     } catch (error) {
-      log.error({ err: error }, "Error deleting passkey");
+      rlog.error({ err: error }, "Error deleting passkey");
       throw errors.INTERNAL_SERVER_ERROR({ message: "Failed to delete passkey" });
     }
   });
@@ -82,6 +84,7 @@ const createDashboardApiKey = rootOs
     organizationId: z.string().min(1),
   }))
   .handler(async ({ context, input, errors }) => {
+    const rlog = log.child({ traceId: context.traceId });
     const userId = context.session.user.id;
 
     const [member] = await getDB().select().from(memberT).where(sql`
@@ -105,7 +108,7 @@ const createDashboardApiKey = rootOs
       });
       return { key: apiKey.key, id: apiKey.id };
     } catch (error) {
-      log.error({ err: error }, "Error during dashboard API key creation");
+      rlog.error({ err: error }, "Error during dashboard API key creation");
       throw errors.INTERNAL_SERVER_ERROR({ message: "Failed to create API key" });
     }
   });
@@ -116,6 +119,7 @@ const deleteDashboardApiKey = rootOs
   .route({ path: "/dashboard-api-keys", method: "DELETE", tags, summary: "Delete Dashboard API Key" })
   .input(z.object({ id: z.string() }))
   .handler(async ({ context, input, errors }) => {
+    const rlog = log.child({ traceId: context.traceId });
     try {
       await auth.api.deleteApiKey({
         headers: context.request.headers,
@@ -123,7 +127,7 @@ const deleteDashboardApiKey = rootOs
       });
       return { success: true };
     } catch (error) {
-      log.error({ err: error }, "Error during dashboard API key deletion");
+      rlog.error({ err: error }, "Error during dashboard API key deletion");
       throw errors.INTERNAL_SERVER_ERROR({ message: "Failed to delete API key" });
     }
   });

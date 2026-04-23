@@ -32,7 +32,11 @@ const handle: RequestHandler = async ({ request, locals }) => {
     context: locals,
   });
 
-  return response ?? new Response("Not Found", { status: 404 });
+  const res = response ?? new Response("Not Found", { status: 404 });
+  if (locals.traceId) {
+    res.headers.set("X-Trace-Id", locals.traceId);
+  }
+  return res;
 };
 
 export const GET = handle;

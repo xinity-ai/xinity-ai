@@ -29,6 +29,7 @@ export const createOrganization = rootOs
     slug: z.string(),
   }))
   .handler(async ({ input, context, errors }) => {
+    const rlog = log.child({ traceId: context.traceId });
     if (!serverEnv.MULTI_TENANT_MODE && !isInstanceAdmin(context.session.user.email)) {
       throw errors.FORBIDDEN({ message: "Only instance admins can create organizations." });
     }
@@ -44,7 +45,7 @@ export const createOrganization = rootOs
       }
     }
 
-    log.info({ name: input.name, slug: input.slug }, "Creating organization");
+    rlog.info({ name: input.name, slug: input.slug }, "Creating organization");
 
     const org = await auth.api.createOrganization({
       body: {
@@ -154,6 +155,7 @@ const removeMember = rootOs
     memberId: z.string(),
   }))
   .handler(async ({ input, context }) => {
+    const rlog = log.child({ traceId: context.traceId });
     // Look up member name and org name before removal; the member row is deleted by Better Auth
     const [[member], [org]] = await Promise.all([
       getDB()
@@ -188,7 +190,7 @@ const removeMember = rootOs
           orgName: org?.name ?? "",
           dashboardUrl: `${serverEnv.ORIGIN}/organizations`,
         },
-      }).catch((err: unknown) => log.error({ err }, "Failed to send member removed notification"));
+      }).catch((err: unknown) => rlog.error({ err }, "Failed to send member removed notification"));
     }
 
     return { success: true };
@@ -203,6 +205,7 @@ const updateMemberRole = rootOs
     role: RoleSchema,
   }))
   .handler(async ({ input, context, errors }) => {
+    const rlog = log.child({ traceId: context.traceId });
     if (!isRoleAvailable(input.role)) {
       throw errors.FORBIDDEN({ message: `The "${input.role}" role requires a paid license. Upgrade at xinity.ai/xinity-pricing.` });
     }
@@ -245,7 +248,7 @@ const updateMemberRole = rootOs
           orgName: org?.name ?? "",
           dashboardUrl: `${serverEnv.ORIGIN}/organizations`,
         },
-      }).catch((err: unknown) => log.error({ err }, "Failed to send member role changed notification"));
+      }).catch((err: unknown) => rlog.error({ err }, "Failed to send member role changed notification"));
     }
 
     return { success: true };
@@ -279,7 +282,8 @@ const deleteOrganization = rootOs
   .use(requirePermission({ organization: ["delete"] }))
   .route({ path: "/", method: "DELETE", tags, summary: "Delete Organization" })
   .handler(async ({ context }) => {
-    log.info({ organizationId: context.activeOrganizationId }, "Deleting organization");
+    const rlog = log.child({ traceId: context.traceId });
+    rlog.info({ organizationId: context.activeOrganizationId }, "Deleting organization");
     await auth.api.deleteOrganization({
       body: {
         organizationId: context.activeOrganizationId,
