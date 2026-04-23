@@ -7,18 +7,18 @@ in {
       cfg = config.services.xinity-ai-dashboard;
     in {
       options.services.xinity-ai-dashboard = {
-        enable = lib.mkEnableOption "xinity-ai-dashboard OCI container";
+        enable = lib.mkEnableOption "the xinity-ai dashboard, a SvelteKit web application that provides the admin UI for managing organizations, API keys, model routing, and user accounts";
 
         image = lib.mkOption {
           type = lib.types.str;
           default = "ghcr.io/xinity-ai/xinity-ai-dashboard:${version}";
-          description = "OCI image for the dashboard.";
+          description = "OCI image reference for the dashboard container. Override this to pin a specific version or use a private registry.";
         };
 
         port = lib.mkOption {
           type = lib.types.port;
           default = 5121;
-          description = "Port the dashboard listens on.";
+          description = "HTTP port the dashboard listens on inside the container. This port is also published to the host.";
         };
 
         # --- Required settings ---
@@ -46,25 +46,25 @@ in {
         betterAuthUrl = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description = "Public URL of the auth service (e.g. https://dashboard.example.com).";
+          description = "Public URL of the auth service (e.g. https://dashboard.example.com). Used by Better Auth for OAuth callbacks and session cookie domains.";
         };
 
         origin = lib.mkOption {
           type = lib.types.str;
           default = "http://localhost:5173";
-          description = "Allowed origin for CORS / SvelteKit ORIGIN.";
+          description = "Allowed origin for CORS headers and SvelteKit's ORIGIN check. Must match the URL users visit in their browser, including the scheme (e.g. https://dashboard.example.com).";
         };
 
         infoserverUrl = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = "https://sysinfo.xinity.at";
-          description = "URL of the xinity-infoserver instance.";
+          description = "Internal URL of the xinity-infoserver instance. The dashboard uses this server-side to fetch available model information.";
         };
 
-        publicLlmApiUrl = lib.mkOption {  
+        publicLlmApiUrl = lib.mkOption {
           type = lib.types.str;
           default = "http://localhost:4121";
-          description = "Gateway base URL shown to users in docs and code examples (GATEWAY_URL).";
+          description = "Public-facing gateway base URL shown to users in documentation and code examples. This is the URL end-users will use in their API clients to reach the LLM gateway.";
         };
 
         # --- Optional settings ---
@@ -78,55 +78,55 @@ in {
         signupEnabled = lib.mkOption {
           type = lib.types.bool;
           default = true;
-          description = "Whether user self-registration is enabled.";
+          description = "Whether user self-registration is enabled. When disabled, only existing users or those invited by an admin can sign in.";
         };
 
         computeManagementEnabled = lib.mkOption {
           type = lib.types.bool;
           default = true;
-          description = "Enable compute management features.";
+          description = "Enable the compute management UI, which allows administrators to register, monitor, and manage inference nodes directly from the dashboard.";
         };
 
         notificationsEnabled = lib.mkOption {
           type = lib.types.bool;
           default = true;
-          description = "Enable the notification scheduler.";
+          description = "Enable the background notification scheduler that sends email alerts for events such as usage limits, node health changes, and system announcements.";
         };
 
         multiTenantMode = lib.mkOption {
           type = lib.types.bool;
           default = false;
-          description = "Allow any authenticated user to create organizations.";
+          description = "When enabled, any authenticated user can create new organizations. When disabled, only instance administrators can create organizations, and regular users must be invited.";
         };
 
         infoserverCacheTtlMs = lib.mkOption {
           type = lib.types.int;
           default = 30000;
-          description = "How long to cache infoserver responses locally (ms).";
+          description = "Duration in milliseconds to cache responses from the infoserver. Reduces load on the infoserver when the dashboard frequently queries model availability.";
         };
 
         nodeEnv = lib.mkOption {
           type = lib.types.enum [ "production" "development" "test" ];
           default = "production";
-          description = "Node environment.";
+          description = "Node.js runtime environment. Use \"production\" for optimized builds, \"development\" for verbose error pages and hot-reload support.";
         };
 
         logLevel = lib.mkOption {
           type = lib.types.str;
           default = "debug";
-          description = "Pino log level.";
+          description = "Pino log level. Valid values from most to least verbose: trace, debug, info, warn, error, fatal.";
         };
 
         logDir = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description = "Directory for log files inside the container. If null, only stdout logging is used.";
+          description = "Directory for persistent log files inside the container. When set, the dashboard writes structured JSON logs to this directory in addition to stdout. If null, only stdout logging is used.";
         };
 
         mountLogDir = lib.mkOption {
           type = lib.types.bool;
           default = false;
-          description = "Whether to mount logDir as a volume from the host. Requires logDir to be set and an absolute path.";
+          description = "Whether to bind-mount logDir from the host into the container, making log files accessible outside the container. Requires logDir to be set to an absolute path. A systemd-tmpfiles rule is created to ensure the directory exists on the host.";
         };
 
         mailUrl = lib.mkOption {
@@ -186,19 +186,19 @@ in {
         s3Bucket = lib.mkOption {
           type = lib.types.str;
           default = "xinity-media";
-          description = "S3 bucket for media objects.";
+          description = "S3 bucket name used for storing uploaded media objects such as user avatars and organization logos.";
         };
 
         s3Region = lib.mkOption {
           type = lib.types.str;
           default = "us-east-1";
-          description = "S3 region (use 'us-east-1' for SeaweedFS).";
+          description = "S3 region for the object storage endpoint. For SeaweedFS or MinIO, the conventional value is 'us-east-1'.";
         };
 
         mcpEnabled = lib.mkOption {
           type = lib.types.bool;
           default = true;
-          description = "Enable the /mcp Model Context Protocol endpoint.";
+          description = "Enable the /mcp endpoint implementing the Model Context Protocol (MCP). This allows AI coding assistants and other MCP-compatible clients to interact with the dashboard programmatically.";
         };
 
         licenseKey = lib.mkOption {
@@ -214,7 +214,7 @@ in {
         instanceAdminEmails = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description = "Comma-separated list of instance admin emails (enables single-tenant mode).";
+          description = "Comma-separated list of email addresses that are granted instance-admin privileges. Setting this enables single-tenant mode, where these users have full control and no organizations are needed.";
         };
 
         # --- Secret file options (recommended for production) ---
@@ -284,19 +284,19 @@ in {
         containerUid = lib.mkOption {
           type = lib.types.int;
           default = 6000;
-          description = "UID (and GID) the container process runs as. Secret files passed via *File options must be readable by this UID.";
+          description = "UID and GID the container process runs as. The container is started with --user=UID:UID. Any secret files passed via the *File options must be readable by this UID on the host.";
         };
 
         extraOptions = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           default = [ "--network=host" ];
-          description = "Extra options to pass to the container runtime.";
+          description = "Extra command-line options passed to the container runtime (podman/docker). Defaults to host networking; override with an empty list to use bridge networking.";
         };
 
         volumes = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           default = [ ];
-          description = "Extra volume mounts (e.g. ./logs:/usr/src/app/packages/xinity-ai-dashboard/logs).";
+          description = "Extra OCI volume mounts in host:container[:options] format (e.g. /srv/logs:/usr/src/app/logs:ro). Secret file mounts are added automatically when *File options are set.";
         };
       };
 

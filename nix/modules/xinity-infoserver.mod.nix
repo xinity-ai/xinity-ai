@@ -7,18 +7,18 @@ in {
       cfg = config.services.xinity-infoserver;
     in {
       options.services.xinity-infoserver = {
-        enable = lib.mkEnableOption "xinity-infoserver OCI container";
+        enable = lib.mkEnableOption "the xinity-infoserver, a lightweight service that reads a YAML model definition file and serves model metadata (pricing, capabilities, routing) to the gateway and dashboard";
 
         image = lib.mkOption {
           type = lib.types.str;
           default = "ghcr.io/xinity-ai/xinity-infoserver:${version}";
-          description = "OCI image for the infoserver.";
+          description = "OCI image reference for the infoserver container. Override this to pin a specific version or use a private registry.";
         };
 
         port = lib.mkOption {
           type = lib.types.port;
           default = 8090;
-          description = "Port the infoserver listens on.";
+          description = "HTTP port the infoserver listens on inside the container. This port is also published to the host.";
         };
 
         modelInfoFile = lib.mkOption {
@@ -36,25 +36,25 @@ in {
         refreshIntervalMs = lib.mkOption {
           type = lib.types.int;
           default = 300000;
-          description = "How often to re-read model file and re-fetch includes (ms).";
+          description = "Interval in milliseconds between automatic refreshes. On each cycle the infoserver re-reads the model YAML file from disk and re-fetches any remote include URLs, picking up changes without a restart.";
         };
 
         maxIncludeDepth = lib.mkOption {
           type = lib.types.int;
           default = 10;
-          description = "Maximum recursion depth when resolving include URLs.";
+          description = "Maximum recursion depth when resolving remote include URLs in the model YAML. Prevents infinite loops if included files reference each other. Increase only if you have a deeply nested include hierarchy.";
         };
 
         logLevel = lib.mkOption {
           type = lib.types.enum [ "fatal" "error" "warn" "info" "debug" "trace" ];
-          default = "info";
-          description = "Pino log level.";
+          default = "debug";
+          description = "Pino log level. Controls the verbosity of structured JSON logs emitted by the infoserver.";
         };
 
         logDir = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description = "Directory for log files. If null, only stdout logging is used.";
+          description = "Directory for persistent log files. When set, the infoserver writes structured JSON logs to this directory in addition to stdout. If null, only stdout logging is used.";
         };
 
         environmentFiles = lib.mkOption {
@@ -76,7 +76,7 @@ in {
         extraOptions = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           default = [ "--network=host" ];
-          description = "Extra options to pass to the container runtime.";
+          description = "Extra command-line options passed to the container runtime (podman/docker). Defaults to host networking; override with an empty list to use bridge networking.";
         };
       };
 
