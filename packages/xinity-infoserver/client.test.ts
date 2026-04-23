@@ -4,6 +4,7 @@ import type { ModelWithSpecifier } from "./definitions/model-definition";
 
 const testModel: ModelWithSpecifier = {
   publicSpecifier: "llama-3.3-70b",
+  _source: "test",
   name: "Test Llama",
   description: "A test model",
   weight: 10,
@@ -19,6 +20,7 @@ const testModel: ModelWithSpecifier = {
 
 const embedModel: ModelWithSpecifier = {
   publicSpecifier: "nomic-embed",
+  _source: "test",
   name: "Nomic Embed",
   description: "An embedding model",
   weight: 5,

@@ -6,16 +6,28 @@ import * as catalog from "./server-catalog";
 import { handleModelList, handleModelsByFamily, handleModelBySpecifier, handleBatchResolve } from "./api-handlers";
 
 const modelFile = env.MODEL_INFO_FILE;
+const modelDir = env.MODEL_INFO_DIR;
 const port = env.PORT;
 
-catalog.configure(modelFile, env.MAX_INCLUDE_DEPTH);
+if (!modelFile && !modelDir) {
+  throw new Error("MODEL_INFO_DIR must be set (or the deprecated MODEL_INFO_FILE)");
+}
+
+if (modelFile) {
+  rootLogger.warn("MODEL_INFO_FILE is deprecated and will be removed in 1.0.0. Migrate to MODEL_INFO_DIR instead");
+}
+
+catalog.configure(env.MAX_INCLUDE_DEPTH, modelFile, modelDir);
 await catalog.refresh();
 catalog.startAutoRefresh(env.REFRESH_INTERVAL_MS);
 
 const server = Bun.serve({
   port,
   routes: {
-    "/health": Response.json({ ok: true }),
+    "/health": () => {
+      const health = catalog.getCatalogHealth();
+      return Response.json({ ok: health.modelCount > 0, catalog: health });
+    },
     "/version.json": Response.json({ version }),
     "/models/v1.yaml": () => new Response(Bun.YAML.stringify(catalog.getMergedData()), {
       headers: { "Content-Type": "application/yaml" },

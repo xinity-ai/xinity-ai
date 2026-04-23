@@ -111,7 +111,7 @@ models:
     # ... your model definition
 ```
 
-Models from included sources are merged. If the same specifier appears in multiple sources, later entries override earlier ones. Recursive includes are supported with cycle detection.
+Models from included sources are merged. Local models (from the main file or `MODEL_INFO_DIR`) take precedence over remote includes with the same specifier. Recursive includes are supported with cycle detection.
 
 ## Self-hosting
 
@@ -121,12 +121,14 @@ Most deployments use the public registry and don't need this section. Self-host 
 
 ```bash
 docker run -d \
-  -v /path/to/your/models.yaml:/data/models.yaml:ro \
-  -e MODEL_INFO_FILE=/data/models.yaml \
+  -v /path/to/models.d:/data/models.d:ro \
+  -e MODEL_INFO_DIR=/data/models.d \
   -e PORT=8090 \
   -p 8090:8090 \
   ghcr.io/xinity-ai/xinity-infoserver:latest
 ```
+
+> **Deprecation notice:** `MODEL_INFO_FILE` (single-file mode) is deprecated and will be removed in 1.0.0. Migrate to `MODEL_INFO_DIR` by placing your YAML files in a directory. Both options still work during the transition period, and when both are set, models from all sources are merged with local definitions taking precedence over remote includes.
 
 ### Pointing the cluster at your registry
 
@@ -161,7 +163,7 @@ curl http://localhost:8090/api/v1/models/my-private-model
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/health` | GET | Health check |
+| `/health` | GET | Health check (includes model count, last refresh time, last error) |
 | `/version.json` | GET | Server version info |
 | `/api/v1/models` | GET | Paginated model list (query: `page`, `pageSize`, `type`, `family`, `tag`) |
 | `/api/v1/models/:specifier` | GET | Single model lookup |
@@ -187,7 +189,7 @@ All four checks must pass on a single node. If no node qualifies, the model stay
 Run the HTTP server locally:
 
 ```bash
-MODEL_INFO_FILE=./models.yaml bun run start
+MODEL_INFO_DIR=./models.d bun run start
 ```
 
 Export the JSON Schema to stdout:
