@@ -87,8 +87,9 @@ async function objectExists(bucket: string, key: string): Promise<boolean> {
 
 beforeAll(async () => {
   await ensureSystemReady();
+  await ensureInfoServerRunning();
 
-  // Skip entire suite if SeaweedFS is not available
+  // Skip S3-specific setup if SeaweedFS is not available
   if (!(await isSeaweedFSReachable())) {
     console.warn(
       `\nSkipping multimodal S3 system tests, SeaweedFS not reachable at ${S3_ENDPOINT}\n` +
@@ -98,7 +99,6 @@ beforeAll(async () => {
   }
 
   await ensureBucket(S3_BUCKET);
-  await ensureInfoServerRunning();
 
   // Spawn a gateway instance with S3 configured
   gatewayProcess = Bun.spawn(["bun", "run", "src/gatewayServer.ts"], {
