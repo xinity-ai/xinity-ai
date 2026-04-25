@@ -43,6 +43,13 @@
       "when": 1776685738293,
       "tag": "0005_bumpy_stryfe",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1777108273101,
+      "tag": "0006_absurd_dagger",
+      "breakpoints": true
     }
   ]
 }

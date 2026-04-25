@@ -9,6 +9,7 @@ export {
   isExpired,
   isInGracePeriod,
   hasOriginMismatch,
+  hasInstanceMismatch,
   getLicenseSummary,
   type LicenseSummary,
 } from "./license";
