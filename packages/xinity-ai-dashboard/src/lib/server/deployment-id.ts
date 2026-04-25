@@ -12,24 +12,45 @@ let loadPromise: Promise<string> | null = null;
  * and caches the resulting instance ID for the process lifetime.
  *
  * Safe to call multiple times - concurrent callers share the same in-flight load.
+ * On failure the in-flight promise is cleared so transient DB errors can be retried.
  */
 export async function loadDeploymentId(): Promise<string> {
   if (cachedInstanceId) return cachedInstanceId;
   if (loadPromise) return loadPromise;
 
   loadPromise = (async () => {
-    const db = getDB();
-    const existing = await db.select().from(deploymentConfigT).limit(1);
-    if (existing.length > 0) {
-      cachedInstanceId = existing[0].instanceId;
-      log.info({ instanceId: cachedInstanceId }, "Loaded deployment instance ID");
-      return cachedInstanceId;
-    }
+    try {
+      const db = getDB();
+      const existing = await db.select().from(deploymentConfigT).limit(1);
+      if (existing.length > 0) {
+        cachedInstanceId = existing[0].instanceId;
+        log.info({ instanceId: cachedInstanceId }, "Loaded deployment instance ID");
+        return cachedInstanceId;
+      }
 
-    const inserted = await db.insert(deploymentConfigT).values({}).returning();
-    cachedInstanceId = inserted[0].instanceId;
-    log.info({ instanceId: cachedInstanceId }, "Generated deployment instance ID");
-    return cachedInstanceId;
+      // Atomic upsert + re-select so concurrent multi-process startups converge on
+      // the same row instead of one losing to a primary-key conflict.
+      const inserted = await db
+        .insert(deploymentConfigT)
+        .values({ singleton: 1 })
+        .onConflictDoNothing({ target: deploymentConfigT.singleton })
+        .returning();
+      const rows = inserted.length > 0
+        ? inserted
+        : await db.select().from(deploymentConfigT).limit(1);
+      if (rows.length === 0) {
+        throw new Error("deployment_config row missing after singleton upsert");
+      }
+
+      cachedInstanceId = rows[0].instanceId;
+      log.info(
+        { instanceId: cachedInstanceId },
+        inserted.length > 0 ? "Generated deployment instance ID" : "Loaded deployment instance ID",
+      );
+      return cachedInstanceId;
+    } finally {
+      loadPromise = null;
+    }
   })();
 
   return loadPromise;
