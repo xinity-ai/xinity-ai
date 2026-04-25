@@ -24,10 +24,8 @@ mock.module("$lib/server/logging", () => ({
 }));
 
 // Mock the deployment-id module so we can control the local instance ID.
-// Mocked under the same relative specifier license.ts uses, so the import binding
-// in license.ts resolves to this fake.
 const deploymentIdMock = { id: null as string | null };
-mock.module("../deployment-id", () => ({
+mock.module("$lib/server/deployment-id", () => ({
   getDeploymentId: () => deploymentIdMock.id,
 }));
 
