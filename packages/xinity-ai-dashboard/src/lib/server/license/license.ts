@@ -3,6 +3,7 @@ import { LicensePayloadSchema, type LicenseInfo, type LicenseFeature } from "./t
 import { PUBLIC_KEY_BASE64 } from "./public-key";
 import { rootLogger } from "$lib/server/logging";
 import { serverEnv } from "../serverenv";
+import { getDeploymentId } from "../deployment-id";
 
 const log = rootLogger.child({ name: "license" });
 
@@ -73,6 +74,25 @@ export function hasOriginMismatch(): boolean {
 }
 
 /**
+ * Returns true if a paid license is active and carries an instanceId claim
+ * that does not match this dashboard's deployment instance ID.
+ *
+ * Licenses without an instanceId claim are unbounded and always pass.
+ * If the deployment ID has not yet loaded (cold start, DB unreachable),
+ * we cannot verify - return false to avoid false positives, the warmup
+ * pass in hooks.server.ts triggers a re-evaluation on the next call.
+ */
+export function hasInstanceMismatch(): boolean {
+  const license = getLicense();
+  if (!license.valid) return false;
+  const claim = license.payload.instanceId;
+  if (!claim) return false;
+  const local = getDeploymentId();
+  if (!local) return false;
+  return claim !== local;
+}
+
+/**
  * Returns the current license info. Reads from LICENSE_KEY env var on first call, then caches.
  * Returns a free-tier fallback if no key is set or if the key is invalid.
  */
@@ -102,6 +122,14 @@ export function getLicense(): LicenseInfo {
       log.error(
         { allowedOrigins: cachedLicense.payload.origins, actual: serverEnv.ORIGIN },
         "LICENSE ORIGIN MISMATCH: The dashboard ORIGIN does not match the licensed origin. The dashboard will idle until this is corrected.",
+      );
+    }
+
+    // Check instance ID mismatch (only when the license carries an instanceId claim)
+    if (hasInstanceMismatch()) {
+      log.error(
+        { licensedInstanceId: cachedLicense.payload.instanceId, actual: getDeploymentId() },
+        "LICENSE INSTANCE MISMATCH: The dashboard instance ID does not match the licensed instance ID. The dashboard will idle until this is corrected.",
       );
     }
   } else {
@@ -174,6 +202,7 @@ export function getLicenseSummary() {
     expired: isExpired(),
     inGracePeriod: isInGracePeriod(),
     originMismatch: hasOriginMismatch(),
+    instanceMismatch: hasInstanceMismatch(),
     maxVramGb: maxVramGb(),
     features: {
       sso: hasFeature("sso"),

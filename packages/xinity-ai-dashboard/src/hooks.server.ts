@@ -10,6 +10,7 @@ import { startDeploymentSyncService } from "$lib/server/lib/orchestration.mod";
 import { startNotificationScheduler } from "$lib/server/notifications/scheduler";
 import { serverEnv } from "$lib/server/serverenv";
 import { checkMigrationState, isMigrationOk } from "$lib/server/migration-check";
+import { loadDeploymentId } from "$lib/server/deployment-id";
 
 const log = rootLogger.child({ name: "hooks" });
 
@@ -17,6 +18,19 @@ const log = rootLogger.child({ name: "hooks" });
  * Verify database migrations are up to date before serving any requests.
  */
 await checkMigrationState();
+
+/**
+ * Warm the deployment instance ID cache so the license module can verify
+ * the optional instanceId claim synchronously. Only when migrations are ok -
+ * the table won't exist otherwise.
+ */
+if (isMigrationOk()) {
+  try {
+    await loadDeploymentId();
+  } catch (err) {
+    log.error({ err }, "Failed to load deployment instance ID; instance binding will be skipped");
+  }
+}
 
 /**
  * Redirects all page requests to /migration-error/ when migrations are outdated.
