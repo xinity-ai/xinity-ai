@@ -71,6 +71,7 @@
             variant="outline"
             size="icon"
             title="Copy instance ID"
+            aria-label="Copy instance ID"
             onclick={() => copyToClipboard(data.instanceId!)}
           >
             <Copy class="w-4 h-4" />
