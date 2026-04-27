@@ -5,6 +5,7 @@
   import DeploymentModal from "./DeploymentModal.svelte";
   import TestChatModal from "./TestChatModal.svelte";
   import TestEmbeddingModal from "./TestEmbeddingModal.svelte";
+  import TestRerankModal from "./TestRerankModal.svelte";
   import { orpc } from "$lib/orpc/orpc-client";
   import { humanDate, humanDuration, updateOptimistically } from "$lib/util";
   import { browserLogger } from "$lib/browserLogging";
@@ -106,14 +107,14 @@
   let showCreateDeploymentModal = $state(false);
   let editDeploymentModalId: string | null = $state(null);
   let testDeploymentModalId: string | null = $state(null);
-  let testModelType: "chat" | "embedding" | null = $state(null);
+  let testModelType: "chat" | "embedding" | "rerank" | null = $state(null);
   let deploymentToDelete: DeploymentDefinition | null = $state(null);
   const editDeployment = $derived(deployments.find((d) => d.id === editDeploymentModalId));
   const testDeployment = $derived(deployments.find((d) => d.id === testDeploymentModalId) ?? null);
 
   // Cached model type per modelSpecifier. Stays "loading" until we know, then
   // either the resolved type or "unknown" (catalog miss / fetch error). The
-  // Test button only renders for entries we resolved to "chat" or "embedding".
+  // Test button only renders for entries we resolved to a supported type.
   type ModelTypeKnowledge =
     | { status: "loading" }
     | { status: "known"; type: "chat" | "embedding" | "rerank" }
@@ -139,13 +140,18 @@
     modelKnowledge[specifier] = { status: "known", type: model.type ?? "chat" };
   }
 
-  function testableType(deployment: DeploymentDefinition): "chat" | "embedding" | null {
+  function testableType(
+    deployment: DeploymentDefinition,
+  ): "chat" | "embedding" | "rerank" | null {
     const k = modelKnowledge[deployment.modelSpecifier];
     if (k?.status !== "known") return null;
-    return k.type === "chat" || k.type === "embedding" ? k.type : null;
+    return k.type === "chat" || k.type === "embedding" || k.type === "rerank" ? k.type : null;
   }
 
-  function openTest(deployment: DeploymentDefinition, type: "chat" | "embedding") {
+  function openTest(
+    deployment: DeploymentDefinition,
+    type: "chat" | "embedding" | "rerank",
+  ) {
     testModelType = type;
     testDeploymentModalId = deployment.id;
   }
@@ -514,6 +520,12 @@
   />
 {:else if testModelType === "embedding"}
   <TestEmbeddingModal
+    open={testDeployment !== null}
+    deployment={testDeployment}
+    close={closeTest}
+  />
+{:else if testModelType === "rerank"}
+  <TestRerankModal
     open={testDeployment !== null}
     deployment={testDeployment}
     close={closeTest}
