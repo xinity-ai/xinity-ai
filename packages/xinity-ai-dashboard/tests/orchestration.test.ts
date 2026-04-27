@@ -13,6 +13,8 @@ function makeNode(overrides: Partial<AiNode> & { id: string }): AiNode {
     driverVersions: {},
     gpus: [],
     gpuCount: 1,
+    authToken: null,
+    tls: false,
     deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
