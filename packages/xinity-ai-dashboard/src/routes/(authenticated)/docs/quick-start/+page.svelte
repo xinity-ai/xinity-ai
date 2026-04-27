@@ -165,7 +165,7 @@ const completion = await openai.chat.completions.create({
   <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
     <div class="flex items-start gap-3 mb-4">
       <div
-        class="flex-shrink-0 w-8 h-8 bg-xinity-purple text-white rounded-full flex items-center justify-center font-bold"
+        class="shrink-0 w-8 h-8 bg-xinity-purple text-white rounded-full flex items-center justify-center font-bold"
       >
         1
       </div>
@@ -188,6 +188,16 @@ const completion = await openai.chat.completions.create({
             take a few minutes depending on the model size.
           </li>
         </ol>
+        <div class="mt-4 p-4 bg-xinity-purple/10 border-l-4 border-xinity-purple rounded">
+          <p class="text-sm text-xinity-pink">
+            <strong>Tip:</strong> Once the deployment is in the "Ready" state,
+            click the <strong>Test</strong> button on its card to try it out
+            directly from the Model Hub. Chat, embedding, and rerank models all
+            get a tailored input/output panel. You can paste an existing API
+            key or generate a temporary one that is cleaned up automatically
+            when you close the dialog.
+          </p>
+        </div>
       </div>
     </div>
   </section>
@@ -196,7 +206,7 @@ const completion = await openai.chat.completions.create({
   <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
     <div class="flex items-start gap-3 mb-4">
       <div
-        class="flex-shrink-0 w-8 h-8 bg-xinity-purple text-white rounded-full flex items-center justify-center font-bold"
+        class="shrink-0 w-8 h-8 bg-xinity-purple text-white rounded-full flex items-center justify-center font-bold"
       >
         2
       </div>
@@ -233,7 +243,7 @@ const completion = await openai.chat.completions.create({
   <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
     <div class="flex items-start gap-3 mb-4">
       <div
-        class="flex-shrink-0 w-8 h-8 bg-xinity-purple text-white rounded-full flex items-center justify-center font-bold"
+        class="shrink-0 w-8 h-8 bg-xinity-purple text-white rounded-full flex items-center justify-center font-bold"
       >
         3
       </div>
@@ -267,7 +277,7 @@ const completion = await openai.chat.completions.create({
   <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
     <div class="flex items-start gap-3 mb-4">
       <div
-        class="flex-shrink-0 w-8 h-8 bg-xinity-purple text-white rounded-full flex items-center justify-center font-bold"
+        class="shrink-0 w-8 h-8 bg-xinity-purple text-white rounded-full flex items-center justify-center font-bold"
       >
         4
       </div>
@@ -298,7 +308,7 @@ const completion = await openai.chat.completions.create({
   <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
     <div class="flex items-start gap-3 mb-4">
       <div
-        class="flex-shrink-0 w-8 h-8 bg-xinity-purple text-white rounded-full flex items-center justify-center font-bold"
+        class="shrink-0 w-8 h-8 bg-xinity-purple text-white rounded-full flex items-center justify-center font-bold"
       >
         5
       </div>
@@ -336,7 +346,7 @@ const completion = await openai.chat.completions.create({
   <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
     <div class="flex items-start gap-3 mb-4">
       <div
-        class="flex-shrink-0 w-8 h-8 bg-xinity-purple text-white rounded-full flex items-center justify-center font-bold"
+        class="shrink-0 w-8 h-8 bg-xinity-purple text-white rounded-full flex items-center justify-center font-bold"
       >
         6
       </div>
@@ -369,7 +379,7 @@ const completion = await openai.chat.completions.create({
   <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
     <div class="flex items-start gap-3 mb-4">
       <div
-        class="flex-shrink-0 w-8 h-8 bg-xinity-purple text-white rounded-full flex items-center justify-center font-bold"
+        class="shrink-0 w-8 h-8 bg-xinity-purple text-white rounded-full flex items-center justify-center font-bold"
       >
         7
       </div>
@@ -412,7 +422,7 @@ const completion = await openai.chat.completions.create({
   </section>
 
   <!-- Next Steps -->
-  <section class="p-6 bg-gradient-to-r from-xinity-purple/10 to-xinity-coral/10 rounded-lg">
+  <section class="p-6 bg-linear-to-r from-xinity-purple/10 to-xinity-coral/10 rounded-lg">
     <h2 class="text-2xl font-semibold mb-4">Next Steps</h2>
     <div class="space-y-3">
       <a

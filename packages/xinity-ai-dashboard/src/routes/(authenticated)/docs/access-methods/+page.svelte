@@ -87,9 +87,10 @@
     <h3 class="mb-1 text-xl font-semibold">Dashboard UI</h3>
     <p class="mb-4 text-gray-600">
       The web interface you are using right now. Covers day-to-day operations: managing deployments, API keys,
-      applications, organizations, and reviewing recorded LLM calls. No credentials or tooling required beyond a browser.
+      applications, organizations, reviewing recorded LLM calls, and testing chat / embedding / rerank deployments
+      directly from the Model Hub without writing any client code. No credentials or tooling required beyond a browser.
     </p>
-    <p class="text-sm text-gray-500">Best for: visual exploration, one-off administrative tasks, reviewing call history.</p>
+    <p class="text-sm text-gray-500">Best for: visual exploration, one-off administrative tasks, reviewing call history, smoke-testing a freshly-deployed model.</p>
   </div>
 
   <!-- Management REST API -->
