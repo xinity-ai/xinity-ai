@@ -3,7 +3,10 @@ import z from "zod";
 import { ModelSchema } from "xinity-infoserver";
 import { infoClient } from "$lib/server/info-client";
 
-const ModelWithSpecifierSchema = ModelSchema.extend({ publicSpecifier: z.string() });
+const ModelWithSpecifierSchema = ModelSchema.extend({
+  publicSpecifier: z.string(),
+  _source: z.string(),
+});
 
 const PaginatedModelsSchema = z.object({
   models: ModelWithSpecifierSchema.array(),

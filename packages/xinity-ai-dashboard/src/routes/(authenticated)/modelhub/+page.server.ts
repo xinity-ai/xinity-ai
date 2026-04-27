@@ -13,7 +13,7 @@ const emptyCapacity: ClusterCapacity = {
   nodeCapabilities: [],
 };
 
-export const load: PageServerLoad = async ({ parent, locals, request }) => {
+export const load: PageServerLoad = async ({ parent, locals }) => {
   const { session } = await parent();
   const activeOrgId = session.activeOrganizationId;
 
@@ -26,7 +26,7 @@ export const load: PageServerLoad = async ({ parent, locals, request }) => {
   }
 
   // Stream deployments - page renders immediately with skeletons while this resolves
-  const deployments = call(router.deployment.list, { withStatus: true }, { context: { request } });
+  const deployments = call(router.deployment.list, { withStatus: true }, { context: locals });
   const capacity = await buildClusterCapacity();
   const applications = await call(router.application.list, {}, { context: locals })
     .then((r) => r as ApplicationDto[])
