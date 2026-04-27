@@ -65,12 +65,18 @@
   }
 
   // Soft-delete the generated temp key when this section unmounts (modal
-  // close). Fire-and-forget; the user is gone, so failures only get logged.
+  // close). Fire-and-forget so the modal can close without waiting; toast on
+  // both success and failure so the user sees the cleanup happened.
   onDestroy(() => {
     if (!temporaryKeyId) return;
     const id = temporaryKeyId;
     void orpc.apiKey.delete({ id }).then(([error]) => {
-      if (error) browserLogger.warn({ error, id }, "Failed to delete temporary test key on close");
+      if (error) {
+        browserLogger.warn({ error, id }, "Failed to delete temporary test key on close");
+        toastState.add("Failed to delete temporary test key", "error");
+      } else {
+        toastState.add("Temporary test key deleted", "success");
+      }
     });
   });
 </script>
