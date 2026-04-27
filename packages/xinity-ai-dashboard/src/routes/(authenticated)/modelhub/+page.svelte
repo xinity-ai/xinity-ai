@@ -3,7 +3,8 @@
   import type { DeploymentDefinition } from "./+page.server";
   import type { NodeCapability } from "xinity-infoserver";
   import DeploymentModal from "./DeploymentModal.svelte";
-  import TestModelModal from "./TestModelModal.svelte";
+  import TestChatModal from "./TestChatModal.svelte";
+  import TestEmbeddingModal from "./TestEmbeddingModal.svelte";
   import { orpc } from "$lib/orpc/orpc-client";
   import { humanDate, humanDuration, updateOptimistically } from "$lib/util";
   import { browserLogger } from "$lib/browserLogging";
@@ -105,9 +106,54 @@
   let showCreateDeploymentModal = $state(false);
   let editDeploymentModalId: string | null = $state(null);
   let testDeploymentModalId: string | null = $state(null);
+  let testModelType: "chat" | "embedding" | null = $state(null);
   let deploymentToDelete: DeploymentDefinition | null = $state(null);
   const editDeployment = $derived(deployments.find((d) => d.id === editDeploymentModalId));
   const testDeployment = $derived(deployments.find((d) => d.id === testDeploymentModalId) ?? null);
+
+  // Cached model type per modelSpecifier. Stays "loading" until we know, then
+  // either the resolved type or "unknown" (catalog miss / fetch error). The
+  // Test button only renders for entries we resolved to "chat" or "embedding".
+  type ModelTypeKnowledge =
+    | { status: "loading" }
+    | { status: "known"; type: "chat" | "embedding" | "rerank" }
+    | { status: "unknown" };
+  let modelKnowledge = $state<Record<string, ModelTypeKnowledge>>({});
+
+  $effect(() => {
+    if (!browser || !deploymentsLoaded) return;
+    for (const d of deployments) {
+      if (d.status?.phase !== "ready") continue;
+      if (modelKnowledge[d.modelSpecifier] !== undefined) continue;
+      modelKnowledge[d.modelSpecifier] = { status: "loading" };
+      void fetchModelType(d.modelSpecifier);
+    }
+  });
+
+  async function fetchModelType(specifier: string) {
+    const [err, model] = await orpc.model.get({ specifier });
+    if (err || !model) {
+      modelKnowledge[specifier] = { status: "unknown" };
+      return;
+    }
+    modelKnowledge[specifier] = { status: "known", type: model.type ?? "chat" };
+  }
+
+  function testableType(deployment: DeploymentDefinition): "chat" | "embedding" | null {
+    const k = modelKnowledge[deployment.modelSpecifier];
+    if (k?.status !== "known") return null;
+    return k.type === "chat" || k.type === "embedding" ? k.type : null;
+  }
+
+  function openTest(deployment: DeploymentDefinition, type: "chat" | "embedding") {
+    testModelType = type;
+    testDeploymentModalId = deployment.id;
+  }
+
+  function closeTest() {
+    testDeploymentModalId = null;
+    testModelType = null;
+  }
 
   const visibleDeployments = $derived(
     deployments
@@ -374,10 +420,17 @@
             {#if permissions.canManageDeployments || deployment.status?.phase === "ready"}
               <Card.Footer class="pt-4 border-t flex justify-end gap-2">
                 {#if deployment.status?.phase === "ready"}
-                  <Button variant="outline" size="sm" onclick={() => (testDeploymentModalId = deployment.id)}>
-                    <MessageSquare class="w-4 h-4" />
-                    Test
-                  </Button>
+                  {@const type = testableType(deployment)}
+                  {#if type}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onclick={() => openTest(deployment, type)}
+                    >
+                      <MessageSquare class="w-4 h-4" />
+                      Test
+                    </Button>
+                  {/if}
                 {/if}
                 {#if permissions.canManageDeployments}
                   <Button variant="outline" size="sm" onclick={() => (editDeploymentModalId = deployment.id)}>
@@ -452,12 +505,20 @@
   />
 {/if}
 
-<TestModelModal
-  open={testDeployment !== null}
-  deployment={testDeployment}
-  applications={data.applications}
-  close={() => (testDeploymentModalId = null)}
-/>
+{#if testModelType === "chat"}
+  <TestChatModal
+    open={testDeployment !== null}
+    deployment={testDeployment}
+    applications={data.applications}
+    close={closeTest}
+  />
+{:else if testModelType === "embedding"}
+  <TestEmbeddingModal
+    open={testDeployment !== null}
+    deployment={testDeployment}
+    close={closeTest}
+  />
+{/if}
 
 <ConfirmDialog
   open={Boolean(deploymentToDelete)}
