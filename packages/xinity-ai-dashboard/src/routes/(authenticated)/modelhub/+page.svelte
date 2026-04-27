@@ -3,6 +3,7 @@
   import type { DeploymentDefinition } from "./+page.server";
   import type { NodeCapability } from "xinity-infoserver";
   import DeploymentModal from "./DeploymentModal.svelte";
+  import TestModelModal from "./TestModelModal.svelte";
   import { orpc } from "$lib/orpc/orpc-client";
   import { humanDate, humanDuration, updateOptimistically } from "$lib/util";
   import { browserLogger } from "$lib/browserLogging";
@@ -16,7 +17,7 @@
   import { Badge } from "$lib/components/ui/badge";
 
   // Icons
-  import { Plus, Pencil, Trash2, Copy, Rocket, Info } from "@lucide/svelte";
+  import { Plus, Pencil, Trash2, Copy, Rocket, Info, MessageSquare } from "@lucide/svelte";
   import { browser } from "$app/environment";
   import { permissions } from "$lib/state/permissions.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
@@ -103,8 +104,10 @@
 
   let showCreateDeploymentModal = $state(false);
   let editDeploymentModalId: string | null = $state(null);
+  let testDeploymentModalId: string | null = $state(null);
   let deploymentToDelete: DeploymentDefinition | null = $state(null);
   const editDeployment = $derived(deployments.find((d) => d.id === editDeploymentModalId));
+  const testDeployment = $derived(deployments.find((d) => d.id === testDeploymentModalId) ?? null);
 
   const visibleDeployments = $derived(
     deployments
@@ -368,16 +371,24 @@
               {/if}
             </Card.Content>
 
-            {#if permissions.canManageDeployments}
+            {#if permissions.canManageDeployments || deployment.status?.phase === "ready"}
               <Card.Footer class="pt-4 border-t flex justify-end gap-2">
-                <Button variant="outline" size="sm" onclick={() => (editDeploymentModalId = deployment.id)}>
-                  <Pencil class="w-4 h-4" />
-                  Edit
-                </Button>
-                <Button variant="destructive" size="sm" onclick={() => requestDelete(deployment)}>
-                  <Trash2 class="w-4 h-4" />
-                  Delete
-                </Button>
+                {#if deployment.status?.phase === "ready"}
+                  <Button variant="outline" size="sm" onclick={() => (testDeploymentModalId = deployment.id)}>
+                    <MessageSquare class="w-4 h-4" />
+                    Test
+                  </Button>
+                {/if}
+                {#if permissions.canManageDeployments}
+                  <Button variant="outline" size="sm" onclick={() => (editDeploymentModalId = deployment.id)}>
+                    <Pencil class="w-4 h-4" />
+                    Edit
+                  </Button>
+                  <Button variant="destructive" size="sm" onclick={() => requestDelete(deployment)}>
+                    <Trash2 class="w-4 h-4" />
+                    Delete
+                  </Button>
+                {/if}
               </Card.Footer>
             {/if}
           </Card.Root>
@@ -440,6 +451,13 @@
     onSaved={refreshDeployments}
   />
 {/if}
+
+<TestModelModal
+  open={testDeployment !== null}
+  deployment={testDeployment}
+  applications={data.applications}
+  close={() => (testDeploymentModalId = null)}
+/>
 
 <ConfirmDialog
   open={Boolean(deploymentToDelete)}
