@@ -1,20 +1,17 @@
 <script lang="ts">
   import Modal from "$lib/components/Modal.svelte";
   import { Button } from "$lib/components/ui/button";
-  import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
   import { Badge } from "$lib/components/ui/badge";
   import { Checkbox } from "$lib/components/ui/checkbox";
   import * as Select from "$lib/components/ui/select";
   import * as Alert from "$lib/components/ui/alert";
-  import { X, Send, Sparkles, Trash2, Eye, EyeOff, RotateCcw } from "@lucide/svelte";
+  import { X, Send, RotateCcw } from "@lucide/svelte";
 
-  import { orpc } from "$lib/orpc/orpc-client";
   import type { ApplicationDto } from "$lib/orpc/dtos/application.dto";
   import type { DeploymentDefinition } from "./+page.server";
-  import { toastState } from "$lib/state/toast.svelte";
   import { browserLogger } from "$lib/browserLogging";
-  import { permissions } from "$lib/state/permissions.svelte";
+  import TestApiKeySection from "./TestApiKeySection.svelte";
 
   type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -33,14 +30,7 @@
     close: () => void;
   } = $props();
 
-  const canCreateKey = $derived(permissions.can("apiKey", "create"));
-
-  // API key. Either pasted by the user or pre-filled by "Generate temporary
-  // key", in which case it is soft-deleted automatically on close.
   let apiKey = $state("");
-  let showKey = $state(false);
-  let temporaryKeyId = $state<string | null>(null);
-  let creatingKey = $state(false);
 
   // Call settings
   let storeCall = $state(false);
@@ -106,48 +96,8 @@
   function resetState() {
     clearTranscript();
     apiKey = "";
-    showKey = false;
-    temporaryKeyId = null;
     storeCall = false;
     selectedApplicationId = NO_APPLICATION;
-  }
-
-  async function generateTemporaryKey() {
-    if (!deployment || creatingKey) return;
-    creatingKey = true;
-    const stamp = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 12);
-    const [error, result] = await orpc.apiKey.create({
-      name: `Test - ${deployment.name} - ${stamp}`,
-      enabled: true,
-    });
-    creatingKey = false;
-    if (error) {
-      browserLogger.warn({ error }, "Failed to create temporary test key");
-      toastState.add("Failed to create temporary test key", "error");
-      return;
-    }
-    apiKey = result.fullKey;
-    showKey = true;
-    // create() returns the specifier but not the id; resolve via list so we
-    // can soft-delete the key on close.
-    const [listError, list] = await orpc.apiKey.list({});
-    if (!listError) {
-      const created = list.find((k) => k.specifier === result.specifier);
-      temporaryKeyId = created?.id ?? null;
-    }
-  }
-
-  async function deleteTemporaryKey(silent = false) {
-    if (!temporaryKeyId) return;
-    const id = temporaryKeyId;
-    temporaryKeyId = null;
-    const [error] = await orpc.apiKey.delete({ id });
-    if (error) {
-      browserLogger.warn({ error, id }, "Failed to delete temporary test key");
-      if (!silent) toastState.add("Failed to clean up temporary test key", "error");
-    } else if (!silent) {
-      toastState.add("Temporary test key deleted", "success");
-    }
   }
 
   async function handleSend() {
@@ -257,11 +207,8 @@
     );
   }
 
-  async function handleClose() {
+  function handleClose() {
     inflight?.abort();
-    if (temporaryKeyId) {
-      await deleteTemporaryKey(true);
-    }
     close();
   }
 </script>
@@ -271,7 +218,7 @@
     <div class="bg-card rounded-xl shadow-2xl w-full max-w-3xl min-w-[min(48rem,90vw)] max-h-[90vh] flex flex-col">
       <header class="p-6 border-b flex justify-between items-center">
         <div>
-          <h2 class="text-2xl font-semibold">Test Model</h2>
+          <h2 class="text-2xl font-semibold">Test Chat Model</h2>
           <p class="text-sm text-muted-foreground mt-1">
             <span class="font-mono">{deployment.publicSpecifier}</span>
           </p>
@@ -282,59 +229,7 @@
       </header>
 
       <main class="p-6 flex-1 overflow-y-auto space-y-5">
-        <section class="space-y-2">
-          <div class="flex items-center justify-between">
-            <Label for="testApiKey" class="text-sm font-semibold">API Key</Label>
-            {#if canCreateKey}
-              <Button
-                variant="ghost"
-                size="sm"
-                onclick={generateTemporaryKey}
-                disabled={creatingKey}
-              >
-                <Sparkles class="w-4 h-4" />
-                {creatingKey ? "Creating..." : "Generate temporary key"}
-              </Button>
-            {/if}
-          </div>
-          <div class="flex items-center gap-2">
-            <Input
-              id="testApiKey"
-              type={showKey ? "text" : "password"}
-              bind:value={apiKey}
-              placeholder="Paste an API key (sk_...)"
-              class="font-mono text-xs"
-              autocomplete="off"
-            />
-            <Button
-              variant="outline"
-              size="icon"
-              onclick={() => (showKey = !showKey)}
-              title={showKey ? "Hide" : "Show"}
-            >
-              {#if showKey}
-                <EyeOff class="w-4 h-4" />
-              {:else}
-                <Eye class="w-4 h-4" />
-              {/if}
-            </Button>
-            {#if temporaryKeyId}
-              <Button
-                variant="outline"
-                size="icon"
-                onclick={() => deleteTemporaryKey(false)}
-                title="Delete generated key now"
-              >
-                <Trash2 class="w-4 h-4" />
-              </Button>
-            {/if}
-          </div>
-          {#if temporaryKeyId}
-            <p class="text-xs text-muted-foreground">
-              Temporary key created. It will be deleted automatically when you close this dialog.
-            </p>
-          {/if}
-        </section>
+        <TestApiKeySection bind:apiKey deploymentName={deployment.name} />
 
         <section class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div class="space-y-2">
