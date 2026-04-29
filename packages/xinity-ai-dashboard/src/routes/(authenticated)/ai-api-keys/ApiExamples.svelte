@@ -8,7 +8,7 @@
   import { Separator } from "$lib/components/ui/separator";
 
   const { GATEWAY_URL } = getClientEnv();
-  const apiBase = GATEWAY_URL.endsWith("/v1") ? GATEWAY_URL : `${GATEWAY_URL}/v1`;
+  const apiBase = `${GATEWAY_URL.replace(/\/$/, "")}/v1`;
 
   const examples = getApiKeyExamples(apiBase);
 
