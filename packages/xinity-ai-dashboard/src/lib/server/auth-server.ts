@@ -1,5 +1,7 @@
 import { APIError, betterAuth } from "better-auth";
-import { bearer, twoFactor, organization, apiKey, createAuthMiddleware } from "better-auth/plugins";
+import { bearer, twoFactor, organization } from "better-auth/plugins";
+import { createAuthMiddleware } from "better-auth/api";
+import { apiKey } from "@better-auth/api-key";
 import { passkey } from "@better-auth/passkey";
 import { sso } from "@better-auth/sso";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -119,7 +121,7 @@ export const auth = betterAuth({
   user: {
     changeEmail: {
       enabled: false,
-      async sendChangeEmailVerification({ user, newEmail, url, token }, request) {
+      async sendChangeEmailConfirmation({ user, newEmail, url, token }, request) {
         log.info({ url, newEmail, user: pick(user, "email", "id") }, "Send change email");
         void sendEmail({
           to: user.email,
@@ -233,6 +235,13 @@ export const auth = betterAuth({
       rateLimit: { enabled: false },
       enableMetadata: true,
       enableSessionForAPIKeys: true,
+      schema: {
+        apikey: {
+          fields: {
+            referenceId: "userId",
+          },
+        },
+      },
     }),
     sso({
       organizationProvisioning: {

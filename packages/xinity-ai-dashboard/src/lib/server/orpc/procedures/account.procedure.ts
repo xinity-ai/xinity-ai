@@ -70,9 +70,10 @@ const listDashboardApiKeys = rootOs
   .use(withAuth)
   .route({ path: "/dashboard-api-keys", method: "GET", tags, summary: "List Dashboard API Keys" })
   .handler(async ({ context }) => {
-    return await auth.api.listApiKeys({
+    const result = await auth.api.listApiKeys({
       headers: context.request.headers,
     });
+    return result.apiKeys;
   });
 
 const createDashboardApiKey = rootOs
