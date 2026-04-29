@@ -21,7 +21,7 @@ export async function renderEmailTemplate<Props extends Record<string, unknown>>
     props,
   });
 
-  return mjml(e.body, {
+  return await mjml(e.body, {
     keepComments: false,
   });
 }
