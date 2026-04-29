@@ -148,6 +148,7 @@ export const passkeyT = pgTable("passkey", {
 
 export const dashboardApiKeyT = pgTable("dashboard_api_key", {
   id: text().primaryKey(),
+  configId: text("config_id").notNull().default("default"),
   name: text(),
   start: text(),
   prefix: text(),
@@ -171,6 +172,7 @@ export const dashboardApiKeyT = pgTable("dashboard_api_key", {
 }, table => [
   index("dashboard_api_key_user_id_idx").on(table.userId),
   index("dashboard_api_key_prefix_idx").on(table.prefix),
+  index("dashboard_api_key_config_id_idx").on(table.configId),
 ])
 
 export const ssoProviderT = pgTable("sso_provider", {

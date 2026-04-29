@@ -50,6 +50,13 @@
       "when": 1777108273101,
       "tag": "0006_absurd_dagger",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1777457650674,
+      "tag": "0007_cute_starhawk",
+      "breakpoints": true
     }
   ]
 }

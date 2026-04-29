@@ -1,0 +1,2 @@
+ALTER TABLE "dashboard_api_key" ADD COLUMN "config_id" text DEFAULT 'default' NOT NULL;--> statement-breakpoint
+CREATE INDEX "dashboard_api_key_config_id_idx" ON "dashboard_api_key" USING btree ("config_id");

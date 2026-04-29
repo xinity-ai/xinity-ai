@@ -1,5 +1,6 @@
 import { createAuthClient } from "better-auth/svelte";
-import { twoFactorClient, organizationClient, apiKeyClient } from "better-auth/client/plugins";
+import { twoFactorClient, organizationClient } from "better-auth/client/plugins";
+import { apiKeyClient } from "@better-auth/api-key/client";
 import { passkeyClient } from "@better-auth/passkey/client";
 import { ssoClient } from "@better-auth/sso/client";
 import { ac, roles } from "$lib/roles";
