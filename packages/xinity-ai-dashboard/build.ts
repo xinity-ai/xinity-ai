@@ -40,15 +40,6 @@ if (!values["no-vite"]) {
 }
 
 // ── Step 2: Compile to standalone binary ────────────────────────────────────
-//
-// mjml-core (a dep of mjml) requires html-minifier at the top of its module,
-// and html-minifier in turn requires uglify-js. We never call mjml with
-// `minify: true`, so neither is ever actually used at runtime. However, Bun's
-// bundler converts CJS to ESM, and uglify-js uses its own JS parser internally
-// which chokes on the resulting `export` keyword.
-//
-// Fix: use the programmatic Bun build API with a plugin that replaces
-// html-minifier with a no-op stub, so uglify-js is never pulled in at all.
 
 // compile mode derives the output filename from the entrypoint path, ignoring
 // naming/outfile options. Output to a temp dir then rename to the desired name.
@@ -61,23 +52,6 @@ const buildResult = await Bun.build({
   compile: true,
   minify: true,
   target: target as Parameters<typeof Bun.build>[0]["target"],
-  plugins: [
-    {
-      name: "stub-html-minifier",
-      setup(build) {
-        // html-minifier is only used by mjml-core when minify:true (which we never pass).
-        // Replace it with a pass-through stub to avoid pulling in uglify-js.
-        build.onResolve({ filter: /^html-minifier$/ }, () => ({
-          path: "html-minifier",
-          namespace: "stub",
-        }));
-        build.onLoad({ filter: /.*/, namespace: "stub" }, () => ({
-          contents: `export function minify(html) { return html; }`,
-          loader: "js",
-        }));
-      },
-    },
-  ],
 });
 
 if (!buildResult.success) {
