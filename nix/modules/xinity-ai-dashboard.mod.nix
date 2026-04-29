@@ -61,10 +61,10 @@ in {
           description = "Internal URL of the xinity-infoserver instance. The dashboard uses this server-side to fetch available model information.";
         };
 
-        publicLlmApiUrl = lib.mkOption {
+        gatewayUrl = lib.mkOption {
           type = lib.types.str;
           default = "http://localhost:4121";
-          description = "Public-facing gateway base URL shown to users in documentation and code examples. This is the URL end-users will use in their API clients to reach the LLM gateway.";
+          description = "Public-facing gateway base URL shown to users in documentation and code examples (e.g. https://api.example.com). Must NOT include the /v1 path segment - that is appended by the dashboard and code examples as needed.";
         };
 
         # --- Optional settings ---
@@ -330,7 +330,7 @@ in {
             MCP_ENABLED = lib.boolToString cfg.mcpEnabled;
             INFOSERVER_CACHE_TTL_MS = toString cfg.infoserverCacheTtlMs;
             LOG_LEVEL = cfg.logLevel;
-            GATEWAY_URL = cfg.publicLlmApiUrl;
+            GATEWAY_URL = cfg.gatewayUrl;
             S3_BUCKET = cfg.s3Bucket;
             S3_REGION = cfg.s3Region;
           }

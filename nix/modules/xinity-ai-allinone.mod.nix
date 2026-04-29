@@ -482,7 +482,7 @@
             betterAuthUrl = lib.mkDefault publicDashboardUrl;  # Public URL for auth redirects
             origin = lib.mkDefault publicDashboardUrl;          # Public URL for CORS
             infoserverUrl = lib.mkDefault infoserverUrl;        # Internal URL for server-side fetching
-            publicLlmApiUrl = lib.mkDefault "${publicGatewayUrl}/v1";  # Public URL for client-side API calls
+            gatewayUrl = lib.mkDefault publicGatewayUrl;        # Public gateway base URL (no /v1 suffix)
             nodeEnv = lib.mkDefault "production";
             s3Endpoint = lib.mkDefault (
               if cfg.seaweedfs.enable
