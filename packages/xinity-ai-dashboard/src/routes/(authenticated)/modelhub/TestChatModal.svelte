@@ -13,7 +13,7 @@
   import { browserLogger } from "$lib/browserLogging";
   import TestApiKeySection from "./TestApiKeySection.svelte";
 
-  type ChatMessage = { role: "user" | "assistant"; content: string };
+  type ChatMessage = { role: "user" | "assistant"; content: string; reasoning?: string };
 
   const DEFAULT_PROMPT = "Hi, introduce yourself";
   const NO_APPLICATION = "__none__";
@@ -57,7 +57,7 @@
   // Re-scroll on every streamed chunk; depending on total content length
   // (rather than messages.length) so chunks that don't change message count
   // also fire the effect.
-  const totalContentLen = $derived(messages.reduce((n, m) => n + m.content.length, 0));
+  const totalContentLen = $derived(messages.reduce((n, m) => n + m.content.length + (m.reasoning?.length ?? 0), 0));
   $effect(() => {
     void totalContentLen;
     if (chatScroll && messages.length > 0) {
@@ -179,9 +179,16 @@
         const payload = line.slice(5).trim();
         if (payload === "[DONE]") return;
         try {
-          const delta = JSON.parse(payload)?.choices?.[0]?.delta?.content;
-          if (typeof delta === "string" && delta.length > 0) {
-            appendToAssistant(assistantIdx, delta);
+          const delta = JSON.parse(payload)?.choices?.[0]?.delta;
+          // Different backends emit thinking under different field names;
+          // accept both reasoning_content (DeepSeek/QwQ/vLLM) and reasoning (OpenRouter, etc.).
+          const reasoning = delta?.reasoning_content ?? delta?.reasoning;
+          if (typeof reasoning === "string" && reasoning.length > 0) {
+            appendToAssistant(assistantIdx, reasoning, "reasoning");
+          }
+          const content = delta?.content;
+          if (typeof content === "string" && content.length > 0) {
+            appendToAssistant(assistantIdx, content, "content");
           }
         } catch (err) {
           browserLogger.warn({ err, payload }, "Failed to parse SSE chunk");
@@ -201,10 +208,14 @@
     return text || `Request failed (${res.status})`;
   }
 
-  function appendToAssistant(idx: number, text: string) {
-    messages = messages.map((m, i) =>
-      i === idx ? { ...m, content: m.content + text } : m,
-    );
+  function appendToAssistant(idx: number, text: string, channel: "content" | "reasoning" = "content") {
+    messages = messages.map((m, i) => {
+      if (i !== idx) return m;
+      if (channel === "reasoning") {
+        return { ...m, reasoning: (m.reasoning ?? "") + text };
+      }
+      return { ...m, content: m.content + text };
+    });
   }
 
   function handleClose() {
@@ -291,9 +302,15 @@
                     <div class="text-[10px] uppercase tracking-wider opacity-70 mb-1">
                       {msg.role}
                     </div>
+                    {#if msg.reasoning}
+                      <div class="opacity-60 italic border-l-2 border-current/30 pl-2 mb-2 text-xs">
+                        <div class="text-[9px] uppercase tracking-wider not-italic mb-1 opacity-80">Reasoning</div>
+                        {msg.reasoning}
+                      </div>
+                    {/if}
                     {#if msg.content}
                       {msg.content}
-                    {:else if sending && i === messages.length - 1}
+                    {:else if sending && i === messages.length - 1 && !msg.reasoning}
                       <Badge variant="secondary">thinking...</Badge>
                     {/if}
                   </div>
