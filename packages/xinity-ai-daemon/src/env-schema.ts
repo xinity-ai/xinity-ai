@@ -35,7 +35,7 @@ export const daemonEnvSchema = z.object({
       "vLLM Docker image (enables vllm-docker driver). " +
       "Options: vllm/vllm-openai (https://hub.docker.com/r/vllm/vllm-openai), " +
       "nvcr.io/nvidia/vllm (https://catalog.ngc.nvidia.com/orgs/nvidia/containers/vllm), " +
-      "nvcr.io/nvidia/igx-dgx/vllm (for DGX Spark devices)",
+      "vllm/vllm-openai:cu130-nightly (for DGX Spark / Blackwell devices)",
     ),
   VLLM_HF_CACHE_DIR: z.string().default("/var/lib/vllm/hf-cache").describe("HuggingFace cache directory").meta(expert()),
   VLLM_TRITON_CACHE_DIR: z.string().default("/var/lib/vllm/triton-cache").describe("Triton cache directory").meta(expert()),

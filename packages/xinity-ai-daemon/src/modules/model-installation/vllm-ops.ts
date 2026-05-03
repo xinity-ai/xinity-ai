@@ -47,7 +47,7 @@ async function checkHealth(port: number): Promise<boolean> {
 // Systemd implementation
 // ---------------------------------------------------------------------------
 
-function buildEnvFileContent(config: VllmInstanceConfig): string {
+export function buildSystemdEnvFile(config: VllmInstanceConfig): string {
   const lines = [
     `VLLM_MODEL=${config.model}`,
     `VLLM_PORT=${config.port}`,
@@ -71,6 +71,29 @@ function buildEnvFileContent(config: VllmInstanceConfig): string {
     lines.push(`HF_TOKEN=${env.VLLM_HF_TOKEN}`);
   }
   return lines.join("\n") + "\n";
+}
+
+// Mirror of the ExecStart logic in src/assets/vllm-driver@.service; keep in sync.
+export function buildSystemdServeArgv(config: VllmInstanceConfig): string[] {
+  const binary = env.VLLM_PATH || "/usr/bin/vllm";
+  const argv = [binary, "serve", config.model,
+    "--host", "127.0.0.1",
+    "--port", String(config.port),
+  ];
+  if (config.kvCacheBytes) {
+    argv.push("--kv-cache-memory-bytes", config.kvCacheBytes);
+  }
+  argv.push("--served-model-name", config.model);
+  if (config.gpuMemoryUtilization != null) {
+    argv.push("--gpu-memory-utilization", String(config.gpuMemoryUtilization));
+  }
+  if (config.trustRemoteCode) {
+    argv.push("--trust-remote-code");
+  }
+  if (config.extraArgs && config.extraArgs.length > 0) {
+    argv.push(...config.extraArgs);
+  }
+  return argv;
 }
 
 export function createSystemdVllmOps(): VllmOps {
@@ -97,7 +120,7 @@ export function createSystemdVllmOps(): VllmOps {
     async start(id, config) {
       await $`mkdir -p ${env.VLLM_ENV_DIR}`;
       const envPath = `${env.VLLM_ENV_DIR}/${id}.env`;
-      const envContent = buildEnvFileContent(config);
+      const envContent = buildSystemdEnvFile(config);
       log.info(
         { id, envPath, config },
         "Starting vLLM systemd service",
@@ -166,6 +189,42 @@ export function createSystemdVllmOps(): VllmOps {
 
 const DOCKER_CONTAINER_PREFIX = "vllm-";
 
+/** "daemon" runs detached with a restart policy; "preview" runs interactive with --rm. */
+export function buildDockerRunArgs(
+  id: string,
+  config: VllmInstanceConfig,
+  mode: "daemon" | "preview" = "daemon",
+): string[] {
+  const containerName = `${DOCKER_CONTAINER_PREFIX}${id}`;
+  const lifecycleFlags = mode === "daemon" ? ["-d"] : ["-it", "--rm"];
+  const args = [
+    "docker", "run", ...lifecycleFlags,
+    "--name", containerName,
+    "--gpus", "all",
+    "--ipc=host",
+    "-p", `127.0.0.1:${config.port}:8000`,
+    "-e", "HF_HOME=/data/hf-cache",
+    "-e", "TRITON_CACHE_DIR=/data/triton-cache",
+    "-v", `${env.VLLM_HF_CACHE_DIR}:/data/hf-cache`,
+    "-v", `${env.VLLM_TRITON_CACHE_DIR}:/data/triton-cache`,
+    ...(mode === "daemon" ? ["--restart", "unless-stopped"] : []),
+    env.VLLM_DOCKER_IMAGE,
+    "--model", config.model,
+    "--served-model-name", config.model,
+    "--kv-cache-memory-bytes", config.kvCacheBytes,
+  ];
+  if (config.gpuMemoryUtilization != null) {
+    args.push("--gpu-memory-utilization", String(config.gpuMemoryUtilization));
+  }
+  if (config.trustRemoteCode) {
+    args.push("--trust-remote-code");
+  }
+  if (config.extraArgs && config.extraArgs.length > 0) {
+    args.push(...config.extraArgs);
+  }
+  return args;
+}
+
 export function createDockerVllmOps(): VllmOps {
   return {
     async listRunning() {
@@ -185,31 +244,7 @@ export function createDockerVllmOps(): VllmOps {
       // Remove any existing stopped/exited container with this name
       await $`docker rm -f ${containerName}`.nothrow();
 
-      const args = [
-        "docker", "run", "-d",
-        "--name", containerName,
-        "--gpus", "all",
-        "--ipc=host",
-        "-p", `127.0.0.1:${config.port}:8000`,
-        "-e", "HF_HOME=/data/hf-cache",
-        "-e", "TRITON_CACHE_DIR=/data/triton-cache",
-        "-v", `${env.VLLM_HF_CACHE_DIR}:/data/hf-cache`,
-        "-v", `${env.VLLM_TRITON_CACHE_DIR}:/data/triton-cache`,
-        "--restart", "unless-stopped",
-        env.VLLM_DOCKER_IMAGE,
-        "--model", config.model,
-        "--served-model-name", config.model,
-        "--kv-cache-memory-bytes", config.kvCacheBytes,
-      ];
-      if (config.gpuMemoryUtilization != null) {
-        args.push("--gpu-memory-utilization", String(config.gpuMemoryUtilization));
-      }
-      if (config.trustRemoteCode) {
-        args.push("--trust-remote-code");
-      }
-      if (config.extraArgs && config.extraArgs.length > 0) {
-        args.push(...config.extraArgs);
-      }
+      const args = buildDockerRunArgs(id, config);
 
       log.info(
         { id, containerName, config, cmd: args.join(" ") },

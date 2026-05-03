@@ -1,0 +1,28 @@
+# Example state file for src/scripts/print-vllm-command.ts.
+# Models an NVIDIA DGX Spark (GB10 Grace Blackwell Superchip) with unified
+# memory: nvidia-smi reports 0 VRAM, so capacity comes from system RAM.
+# Copy this file, edit values to match the target machine, and pass it via --state.
+
+backend: docker            # docker | systemd
+port: 8000                 # vLLM listen port (mapped to 127.0.0.1:<port>:8000 in docker)
+id: dev                    # container name suffix / systemd instance. Optional, default "dev".
+
+dockerImage: vllm/vllm-openai:cu130-nightly
+# vllmPath: /usr/local/bin/vllm   # systemd backend; defaults to /usr/bin/vllm
+
+# Mirror of the daemon's DetectedGpu[]. The script sums vramMb, classifies the
+# capacity source, and applies the unified-memory / CPU-only fallbacks via the
+# same buildHardwareProfile() the daemon uses at runtime. With vramMb=0 we hit
+# the unified-memory branch and use 90% of systemRamMb as detectedCapacityGb.
+gpus:
+  - vendor: nvidia         # nvidia | amd | intel
+    name: NVIDIA GB10
+    vramMb: 0              # unified memory: nvidia-smi reports no dedicated VRAM
+
+# ~120 GB unified system RAM on DGX Spark.
+systemRamMb: 122880
+
+# Optional. Total free memory at the time of the snapshot. For unified-memory
+# devices the daemon queries nvidia-smi (which reports live free system RAM).
+# Omit to take the requiredGb-only branch in computeGpuUtilization.
+# freeMemoryMb: 102400
