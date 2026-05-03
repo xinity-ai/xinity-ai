@@ -11,7 +11,7 @@
   "devDependencies": {
     "@types/bun": "^1.3.6",
     "drizzle-kit": "^0.31.5",
-    "drizzle-orm": "^0.44.6",
+    "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.7"
   },
   "peerDependencies": {

@@ -20,7 +20,7 @@
     "@types/yargs": "^17.0.33",
     "common-db": "workspace:*",
     "common-env": "workspace:*",
-    "drizzle-orm": "^0.44.6",
+    "drizzle-orm": "^0.45.2",
     "picocolors": "^1.1.1",
     "postgres": "^3.4.7",
     "xinity-ai-daemon": "workspace:*",
