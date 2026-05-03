@@ -2,7 +2,7 @@
   "name": "xinity-ai",
   "version": "0.19.0",
   "peerDependencies": {
-    "typescript": "^5"
+    "typescript": "^5.9.3"
   },
   "private": true,
   "scripts": {
@@ -23,8 +23,8 @@
     ]
   },
   "devDependencies": {
-    "@commitlint/cli": "^20.4.2",
-    "@commitlint/config-conventional": "^20.4.2",
+    "@commitlint/cli": "^20.5.3",
+    "@commitlint/config-conventional": "^20.5.3",
     "bumpp": "^11.0.1"
   }
 }
