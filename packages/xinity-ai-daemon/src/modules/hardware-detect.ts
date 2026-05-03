@@ -340,16 +340,12 @@ export function classifyCapacitySource(gpus: DetectedGpu[]): CapacitySource {
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 /**
- * Detects GPU hardware and determines the node's usable capacity.
- *
- * Detection strategy:
- *  1. Probe NVIDIA, AMD, and Intel GPUs in parallel
- *  2. If GPUs are found with reported VRAM, sum VRAM across all GPUs
- *  3. If GPUs are found but report 0 VRAM: unified memory architecture, use system RAM
- *  4. If no GPUs are found: CPU-only mode, use system RAM
+ * Builds a HardwareProfile from a known GPU list + system RAM:
+ *  1. GPUs with reported VRAM → sum VRAM as capacity, classify by vendor
+ *  2. GPUs with 0 VRAM → unified memory, use 90% of system RAM
+ *  3. No GPUs → CPU-only, use full system RAM
  */
-export async function detectHardwareProfile(): Promise<HardwareProfile> {
-  const gpus = await detectAllGpus();
+export function buildHardwareProfile(gpus: DetectedGpu[], systemRamMb: number): HardwareProfile {
   const gpuCount = gpus.length;
   const totalVramMb = gpus.reduce((sum, gpu) => sum + gpu.vramMb, 0);
 
@@ -363,27 +359,29 @@ export async function detectHardwareProfile(): Promise<HardwareProfile> {
   }
 
   if (gpuCount > 0 && totalVramMb === 0) {
-    // GPUs detected but no VRAM reported, likely unified memory (e.g. NVIDIA Grace Hopper).
-    // Fall back to system RAM as capacity, but preserve the GPU count.
     log.warn({ gpuCount }, "GPUs detected but no VRAM reported, assuming unified memory, using system RAM as capacity");
     return {
       gpus,
       gpuCount,
-      detectedCapacityGb: 
-        // reducing to 90% to ensure enough ram remains for the system
-        mbToGb(Math.floor(getSystemRamMb() * 0.9)),
+      // reducing to 90% to ensure enough ram remains for the system
+      detectedCapacityGb: mbToGb(Math.floor(systemRamMb * 0.9)),
       source: "unified-memory",
     };
   }
 
-  // No GPUs detected, CPU-only node
   log.warn("No GPUs detected, falling back to system RAM for capacity estimation (CPU-only mode)");
   return {
     gpus: [],
     gpuCount: 0,
-    detectedCapacityGb: mbToGb(getSystemRamMb()),
+    detectedCapacityGb: mbToGb(systemRamMb),
     source: "system-ram",
   };
+}
+
+/** Probes NVIDIA / AMD / Intel GPUs and returns the node's usable capacity. */
+export async function detectHardwareProfile(): Promise<HardwareProfile> {
+  const gpus = await detectAllGpus();
+  return buildHardwareProfile(gpus, getSystemRamMb());
 }
 
 /**

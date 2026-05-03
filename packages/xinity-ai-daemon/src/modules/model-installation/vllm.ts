@@ -185,8 +185,8 @@ async function downloadAndStart(installation: ModelInstallation, ops: VllmOps): 
   return modelType;
 }
 
-function computeGpuUtilization(
-  installation: ModelInstallation,
+export function computeGpuUtilization(
+  installation: Pick<ModelInstallation, "model" | "estCapacity">,
   profile: { gpuCount: number; detectedCapacityGb: number },
   freeMemoryMb: number | null,
 ): number | undefined {
