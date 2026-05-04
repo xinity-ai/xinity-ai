@@ -1,14 +1,5 @@
-/**
- * Gitignore-style file selection backed by Bun.Glob.
- *
- * Rules are processed in order. A leading "!" re-includes; everything else
- * excludes. The LAST matching rule wins. Files that match no rule at all
- * are excluded (allow-list semantics, mirroring vLLM's `allow_patterns`).
- *
- * Glob syntax follows Bun.Glob: `*` is path-segment, `**` is recursive,
- * `?` is single char, `[]` is char class, `{}` is brace expansion.
- */
-
+// Allow-list semantics (default exclude); a leading "!" re-includes; last
+// matching rule wins. Globs are Bun.Glob.
 interface CompiledRule {
   glob: Bun.Glob;
   negated: boolean;
@@ -66,11 +57,6 @@ export function isMistralRepo(paths: readonly string[]): boolean {
   return paths.some((p) => /^consolidated.*\.safetensors$/.test(p));
 }
 
-/**
- * Builds the full ordered rule list for a repo: defaults (Mistral or HF),
- * optional `*.bin` fallback when no safetensors survive in HF mode, then
- * user-supplied overrides. User rules come last.
- */
 export function buildRules<T extends { path: string }>(
   files: readonly T[],
   userPatterns: readonly string[],
