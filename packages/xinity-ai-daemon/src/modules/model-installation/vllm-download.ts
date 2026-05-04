@@ -2,6 +2,7 @@ import { env } from "../../env";
 import { rootLogger } from "../../logger";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { buildRules, selectFiles } from "./file-filter";
 
 const log = rootLogger.child({ name: "vllm-download" });
 
@@ -42,6 +43,7 @@ async function hfFetch(url: string, init?: RequestInit): Promise<Response> {
 export async function downloadModel(
   model: string,
   onProgress: (progress: number) => Promise<void>,
+  userPatterns: readonly string[] = [],
 ): Promise<void> {
   const repoDir = path.join(env.VLLM_HF_CACHE_DIR, "hub", `models--${model.replace("/", "--")}`);
   const blobsDir = path.join(repoDir, "blobs");
@@ -50,9 +52,16 @@ export async function downloadModel(
   fs.mkdirSync(blobsDir, { recursive: true });
   fs.mkdirSync(refsDir, { recursive: true });
 
-  const { files, commitHash } = await listRepoFiles(model);
+  const { files: allFiles, commitHash } = await listRepoFiles(model);
+  const { rules, mode } = buildRules(allFiles, userPatterns);
+  const files = selectFiles(allFiles, rules);
   const totalBytes = files.reduce((sum, f) => sum + fileSize(f), 0);
-  log.info({ model, fileCount: files.length, totalBytes, commitHash }, "Starting model download");
+  const droppedFiles = allFiles.length - files.length;
+  const droppedBytes = allFiles.reduce((sum, f) => sum + fileSize(f), 0) - totalBytes;
+  log.info(
+    { model, fileCount: files.length, totalBytes, commitHash, mode, droppedFiles, droppedBytes },
+    "Starting model download",
+  );
 
   if (totalBytes === 0) {
     await onProgress(1);

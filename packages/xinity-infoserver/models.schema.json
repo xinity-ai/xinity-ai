@@ -210,6 +210,13 @@
             "description": "Version of xinity-ai this model was introduced in",
             "type": "string"
           },
+          "downloadFilter": {
+            "description": "Gitignore-style glob patterns appended to the daemon's default HuggingFace download filter. Patterns starting with `!` re-include; the last matching rule wins. Arrays are deeply flattened to support YAML anchors. Example: [\"*.gguf\", \"!consolidated.safetensors\"]",
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema0"
+            }
+          },
           "custom": {
             "description": "Info for fine tuned custom models",
             "type": "object",
