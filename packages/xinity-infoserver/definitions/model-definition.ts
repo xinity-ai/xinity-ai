@@ -120,6 +120,12 @@ export const ModelSchema = z.looseObject({
     ollama: z.array(GpuVendorEnum).optional(),
   }).optional().describe("Per-driver GPU platform requirements. Only nodes with a matching GPU vendor can serve. Absent = any platform"),
   entryVersion: z.string().optional().describe("Version of xinity-ai this model was introduced in"),
+  downloadFilter: flatStringArray.optional().describe(
+    "Gitignore-style glob patterns appended to the daemon's default HuggingFace download filter. " +
+    "Patterns starting with `!` re-include; the last matching rule wins. " +
+    "Arrays are deeply flattened to support YAML anchors. " +
+    "Example: [\"*.gguf\", \"!consolidated.safetensors\"]"
+  ),
   custom: z.looseObject({
     baseModel: z.string(),
     extraFacts: z.record(z.string(), z.any())

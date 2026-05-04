@@ -145,24 +145,29 @@ function pollUntilHealthy$(
 
 /** Downloads weights, starts the container, and returns the model type for health polling. */
 async function downloadAndStart(installation: ModelInstallation, ops: VllmOps): Promise<string | undefined> {
+  const modelInfo = await infoClient.fetchModel(installation.model);
+
   await updateInstallationState(installation.id, "downloading", { statusMessage: "Downloading model", progress: 0 });
 
   let lastProgressAt = 0;
-  await downloadModel(installation.model, async (progress) => {
-    const now = Date.now();
-    if (now - lastProgressAt >= 5000) {
-      lastProgressAt = now;
-      await updateInstallationState(installation.id, "downloading", { progress });
-    }
-  });
+  await downloadModel(
+    installation.model,
+    async (progress) => {
+      const now = Date.now();
+      if (now - lastProgressAt >= 5000) {
+        lastProgressAt = now;
+        await updateInstallationState(installation.id, "downloading", { progress });
+      }
+    },
+    modelInfo?.downloadFilter ?? [],
+  );
 
   await updateInstallationState(installation.id, "installing", { statusMessage: "Starting vLLM service" });
 
-  const [trustRemoteCode, hasToolsTag, extraArgs, modelInfo, profile] = await Promise.all([
+  const [trustRemoteCode, hasToolsTag, extraArgs, profile] = await Promise.all([
     infoClient.hasTag(installation.model, "custom_code"),
     infoClient.hasTag(installation.model, "tools"),
     infoClient.resolveDriverArgs(installation.model),
-    infoClient.fetchModel(installation.model),
     getHardwareProfile(),
   ]);
 
