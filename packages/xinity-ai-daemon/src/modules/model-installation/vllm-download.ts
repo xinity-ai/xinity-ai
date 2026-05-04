@@ -3,6 +3,7 @@ import { rootLogger } from "../../logger";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { buildRules, selectFiles } from "./file-filter";
+import { ensureCacheSpace, getDirSize } from "./cache-eviction";
 
 const log = rootLogger.child({ name: "vllm-download" });
 
@@ -66,6 +67,16 @@ export async function downloadModel(
   if (totalBytes === 0) {
     await onProgress(1);
     return;
+  }
+
+  const alreadyCachedBytes = getDirSize(repoDir);
+  const requiredBytes = Math.max(0, totalBytes - alreadyCachedBytes);
+  const eviction = await ensureCacheSpace({ requiredBytes, reservedModel: model });
+  if (eviction.evicted.length > 0) {
+    log.info(
+      { model, evicted: eviction.evicted, freeBefore: eviction.freeBefore, freeAfter: eviction.freeAfter },
+      "Evicted stale cache to make room for download",
+    );
   }
 
   const snapshotDir = path.join(repoDir, "snapshots", commitHash);
