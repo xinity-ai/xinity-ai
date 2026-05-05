@@ -32,9 +32,17 @@ export const modelDeploymentT = pgTable("model_deployment", {
    * This indirection enables project scoping, and canary deployments.
    * Tbs, by default it will simply reflect the specifier of the deployed model */
   publicSpecifier: text("public_specifier").notNull(),
-  /** The model to actually deploy. In case of canary deployments, this represents the end-state */
+  /** Canonical model identifier (infoserver publicSpecifier today; per-org custom model id in the future).
+   * Used for all infoserver lookups and deployment ↔ installation joins. Nullable for legacy rows
+   * created before this column existed; new rows always populate it. */
+  specifier: text(),
+  /** Canary counterpart of {@link specifier}. */
+  earlySpecifier: text("early_specifier"),
+  /** @deprecated Use {@link specifier}. This is the driver-specific provider string and is preserved
+   * only for back-compat with rows that pre-date the specifier migration, and as the model name actually
+   * passed to vLLM/Ollama at launch time. */
   modelSpecifier: text("model_specifier").notNull(),
-  /** The model to start with in terms of canary deployment. Once progress has reached 100, this falls away */
+  /** @deprecated Use {@link earlySpecifier}. See {@link modelSpecifier}. */
   earlyModelSpecifier: text("early_model_specifier"),
   replicas: integer().notNull().default(1),
   /** When present, marks the point at which progress should reach 100 */
@@ -98,6 +106,12 @@ export type AiNode = InferSelectModel<typeof aiNodeT>;
 export const modelInstallationT = pgTable("model_installation", {
   id: uuid().primaryKey().defaultRandom(),
   nodeId: uuid("node_id").notNull().references(() => aiNodeT.id, { onDelete: "cascade" }),
+  /** Canonical model identifier (see {@link modelDeploymentT.specifier}). Nullable for legacy
+   * installations; new installations always populate it. */
+  specifier: text(),
+  /** @deprecated Use {@link specifier} for catalog identity. This is the driver-specific provider
+   * string actually passed to vLLM/Ollama at launch and is preserved both for back-compat and as
+   * the value the daemon needs to invoke the underlying server. */
   model: text().notNull(),
   /** estimated total GPU capacity required (model weights + KV cache), taken up on the selected node */
   estCapacity: real("est_capacity").notNull(),
@@ -112,6 +126,7 @@ export const modelInstallationT = pgTable("model_installation", {
   updatedAt,
 }, table => [
   index("model_installation_node_id_idx").on(table.nodeId),
+  index("model_installation_specifier_idx").on(table.specifier),
   index("model_installation_model_idx").on(table.model),
   index("model_installation_deleted_at_idx").on(table.deletedAt),
 ]);
