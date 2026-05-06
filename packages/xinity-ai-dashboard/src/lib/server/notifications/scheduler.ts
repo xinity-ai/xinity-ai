@@ -9,6 +9,7 @@ import {
   organizationT,
   userT,
   count,
+  deploymentMatchesInstallation,
 } from "common-db";
 import { serverEnv } from "$lib/server/serverenv";
 import { getDB } from "$lib/server/db";
@@ -55,10 +56,7 @@ async function getDeploymentPhases(): Promise<Map<string, { phase: DeploymentPha
     .from(modelDeploymentT)
     .where(sql`${modelDeploymentT.enabled} = true AND ${modelDeploymentT.deletedAt} IS NULL`)
     .leftJoin(organizationT, sql`${organizationT.id} = ${modelDeploymentT.organizationId}`)
-    .leftJoin(modelInstallationT, sql`
-      (${modelDeploymentT.modelSpecifier} = ${modelInstallationT.model}
-      OR ${modelDeploymentT.earlyModelSpecifier} = ${modelInstallationT.model})
-      AND ${modelInstallationT.deletedAt} IS NULL`)
+    .leftJoin(modelInstallationT, sql`${deploymentMatchesInstallation} AND ${modelInstallationT.deletedAt} IS NULL`)
     .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`);
 
   type DeploymentInfo = { phase: DeploymentPhase; orgId: string; orgName: string; name: string; model: string; error: string | null };

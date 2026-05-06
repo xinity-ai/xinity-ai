@@ -1,7 +1,7 @@
 import { inArray, isNull, modelDeploymentT, sql, calcCanaryProgress, modelInstallationT, aiNodeT, type ModelInstallation, type AiNode, type InferInsertModel } from "common-db";
 import { getDB } from "../db";
 import { infoClient } from "../info-client";
-import { resolveDriverForProviderModel, resolveMinVersionForDriver, resolveRequiredPlatformsForDriver, checkNodeCompatibility, type ModelNodeRequirements, type NodeCapability } from "xinity-infoserver";
+import { resolveDefaultProvider, resolveMinVersionForDriver, resolveRequiredPlatformsForDriver, checkNodeCompatibility, deploymentLookup, deploymentEarlyLookup, installationKey, lookupKey, type ModelNodeRequirements, type NodeCapability, type Provider, type ModelLookup } from "xinity-infoserver";
 import { rootLogger } from "../logging";
 import { building } from "$app/environment";
 import { maxVramGb } from "$lib/server/license";
@@ -21,55 +21,59 @@ interface ClusterState {
   availableServers: AiNode[];
 }
 
-/** Represents required replicas and optional kvCacheSize per model specifier. */
-export type ModelRequirement = { replicas: number; kvCacheSize: number | null };
+export type ModelRequirement = { lookup: ModelLookup; replicas: number; kvCacheSize: number | null; preferredDriver: Provider | null };
 export type ModelRequirementTable = Record<string, ModelRequirement>;
 
 /** Builds the replica requirement table based on enabled deployments. */
 export async function assembleModelRequirementTable(): Promise<ModelRequirementTable> {
   const enabledDeployments = await getDB().select().from(modelDeploymentT).where(sql`
-    ${modelDeploymentT.enabled} 
-  AND 
+    ${modelDeploymentT.enabled}
+  AND
     ${modelDeploymentT.deletedAt} IS NULL
   `);
   const models = enabledDeployments.flatMap((deployment) => {
     const progress = calcCanaryProgress(deployment);
-    const isNotCanary = progress === 100 || !deployment.earlyModelSpecifier;
+    const earlyLookup = deploymentEarlyLookup(deployment);
+    const isNotCanary = progress === 100 || !earlyLookup;
     if (isNotCanary) {
       return [{
-        spec: deployment.modelSpecifier,
+        lookup: deploymentLookup(deployment),
         replicas: deployment.replicas,
         kvCacheSize: deployment.kvCacheSize,
+        preferredDriver: deployment.preferredDriver,
       }]
     }
     const replicas = deployment.replicas;
     return [{
-      spec: deployment.modelSpecifier,
+      lookup: deploymentLookup(deployment),
       replicas: Math.ceil(replicas * (progress / 100)),
       kvCacheSize: deployment.kvCacheSize,
+      preferredDriver: deployment.preferredDriver,
     }, {
-      spec: deployment.earlyModelSpecifier!,
+      lookup: earlyLookup!,
       replicas: Math.ceil(replicas * ((100 - progress) / 100)),
       kvCacheSize: deployment.earlyKvCacheSize,
+      preferredDriver: deployment.preferredDriver,
     }]
   });
-  // Take the maximum replica count and kvCacheSize when the same specifier appears in multiple deployments
-  const modelRequirements = models.reduce((agg, { spec, replicas, kvCacheSize }) => {
-    const existing = agg[spec];
+  // Take the maximum replica count and kvCacheSize when the same lookup key appears in multiple deployments
+  const modelRequirements = models.reduce((agg, entry) => {
+    const key = lookupKey(entry.lookup);
+    const existing = agg[key];
     if (existing) {
-      if (replicas > existing.replicas) existing.replicas = replicas;
-      if (kvCacheSize != null && (existing.kvCacheSize == null || kvCacheSize > existing.kvCacheSize)) {
-        existing.kvCacheSize = kvCacheSize;
+      if (entry.replicas > existing.replicas) existing.replicas = entry.replicas;
+      if (entry.kvCacheSize != null && (existing.kvCacheSize == null || entry.kvCacheSize > existing.kvCacheSize)) {
+        existing.kvCacheSize = entry.kvCacheSize;
       }
     } else {
-      agg[spec] = { replicas, kvCacheSize };
+      agg[key] = entry;
     }
     return agg;
   }, {} as ModelRequirementTable);
   return modelRequirements;
 }
 
-/** Indexes existing installations by model and by server, and initialises capacity tracking. */
+/** Indexes existing installations by lookup key and by server, and initialises capacity tracking. */
 export function buildClusterState(existing: ModelInstallation[], availableServers: AiNode[]): ClusterState {
   const installationsByModel = new Map<string, ModelInstallation[]>();
   const installationsByServer = new Map<string, ModelInstallation[]>();
@@ -81,9 +85,10 @@ export function buildClusterState(existing: ModelInstallation[], availableServer
   }
 
   for (const install of existing) {
-    const modelInstalls = installationsByModel.get(install.model) || [];
+    const key = installationKey(install);
+    const modelInstalls = installationsByModel.get(key) || [];
     modelInstalls.push(install);
-    installationsByModel.set(install.model, modelInstalls);
+    installationsByModel.set(key, modelInstalls);
 
     const serverInstalls = installationsByServer.get(install.nodeId);
     if (serverInstalls) {
@@ -129,7 +134,7 @@ export function collectExcessInstallations(requiredModels: ModelRequirementTable
  * Also skips nodes that already host the model.
  */
 export function findServerForModel(
-  model: string,
+  specifier: string,
   driver: string,
   weight: number,
   state: ClusterState,
@@ -147,8 +152,8 @@ export function findServerForModel(
     if (!cap) continue;
 
     const serverInstalls = state.installationsByServer.get(server.id) || [];
-    const alreadyHasModel = serverInstalls.some(inst => inst.model === model)
-      || pending.some(p => p.nodeId === server.id && p.model === model);
+    const alreadyHasModel = serverInstalls.some(inst => installationKey(inst) === specifier)
+      || pending.some(p => p.nodeId === server.id && installationKey({ specifier: p.specifier ?? null, model: p.model }) === specifier);
     if (alreadyHasModel) continue;
 
     const nodeCap: NodeCapability = {
@@ -186,25 +191,33 @@ function allocatePort(driver: string, nodeId: string, state: ClusterState, pendi
 async function planNewInstallations(requiredModels: ModelRequirementTable, state: ClusterState): Promise<NewInstallation[]> {
   const toInstall: NewInstallation[] = [];
 
-  for (const [model, requirement] of Object.entries(requiredModels)) {
-    const current = (state.installationsByModel.get(model) || []).length;
+  for (const [key, requirement] of Object.entries(requiredModels)) {
+    const current = (state.installationsByModel.get(key) || []).length;
     if (current >= requirement.replicas) continue;
 
-    const modelStatus = await infoClient?.fetchModelStatus(model);
+    const modelStatus = await infoClient?.fetchModelStatus(requirement.lookup);
     if (!modelStatus || modelStatus.status === "unavailable") {
-      log.warn({ model, error: modelStatus?.status === "unavailable" ? modelStatus.error : undefined },
+      log.warn({ lookup: requirement.lookup, error: modelStatus?.status === "unavailable" ? modelStatus.error : undefined },
         "Info server unreachable; skipping installation planning for this sync cycle");
       continue;
     }
     if (modelStatus.status === "not_found") {
-      log.warn({ model },
+      log.warn({ lookup: requirement.lookup },
         "Model not found in catalog; installations cannot be scheduled. " +
         "If this model has been intentionally removed, disable or delete the deployment.");
       continue;
     }
     const modelInfo = modelStatus.model;
 
-    const driver = resolveDriverForProviderModel(modelInfo, model) ?? "ollama";
+    const fallback = resolveDefaultProvider(modelInfo);
+    const driver: Provider = (requirement.preferredDriver && modelInfo.providers[requirement.preferredDriver])
+      ? requirement.preferredDriver
+      : (fallback?.driver ?? "ollama");
+    const providerModel = modelInfo.providers[driver];
+    if (!providerModel) {
+      log.warn({ lookup: requirement.lookup, driver }, "Catalog entry has no provider string for the chosen driver; skipping");
+      continue;
+    }
     const minVersion = resolveMinVersionForDriver(modelInfo, driver);
     const requiredPlatforms = resolveRequiredPlatformsForDriver(modelInfo, driver);
     const needed = requirement.replicas - current;
@@ -212,15 +225,25 @@ async function planNewInstallations(requiredModels: ModelRequirementTable, state
     const effectiveKvCache = Math.max(requirement.kvCacheSize ?? 0, modelInfo.minKvCache);
     const totalCapacity = modelInfo.weight + effectiveKvCache;
 
+    const installSpecifier = requirement.lookup.kind === "canonical" ? requirement.lookup.specifier : null;
+
     for (let i = 0; i < needed; i++) {
-      const nodeId = findServerForModel(model, driver, totalCapacity, state, toInstall, minVersion, requiredPlatforms);
+      const nodeId = findServerForModel(key, driver, totalCapacity, state, toInstall, minVersion, requiredPlatforms);
       if (!nodeId) {
-        log.warn({ model }, "No server with enough capacity for additional replica");
+        log.warn({ lookup: requirement.lookup }, "No server with enough capacity for additional replica");
         break;
       }
 
       const port = allocatePort(driver, nodeId, state, toInstall);
-      toInstall.push({ nodeId, model, estCapacity: totalCapacity, kvCacheCapacity: effectiveKvCache, driver, port });
+      toInstall.push({
+        nodeId,
+        specifier: installSpecifier,
+        model: providerModel,
+        estCapacity: totalCapacity,
+        kvCacheCapacity: effectiveKvCache,
+        driver,
+        port,
+      });
 
       const cap = state.serverCapacity.get(nodeId)!;
       cap.used += totalCapacity;

@@ -302,7 +302,7 @@ docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
 - Dashboard: `http://localhost:5121`
 - Gateway API: `http://localhost:4121`
 
-The overlay disables Caddy, exposes the gateway and dashboard ports directly, and rewrites `ORIGIN`, `BETTER_AUTH_URL`, and `GATEWAY_URL` for localhost.
+The overlay disables Caddy, exposes the gateway and dashboard ports directly, and rewrites `ORIGIN` and `GATEWAY_URL` for localhost.
 
 ## Advanced Configuration
 
@@ -367,7 +367,7 @@ For development without HTTPS:
 
 1. Comment out Caddy service
 2. Access services directly via ports (see `docker-compose.yml`)
-3. Update `BETTER_AUTH_URL` and `ORIGIN` to use `http://localhost`
+3. Update `ORIGIN` to use `http://localhost`
 
 ## Support
 

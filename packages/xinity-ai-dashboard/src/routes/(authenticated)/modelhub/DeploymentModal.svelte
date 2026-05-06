@@ -112,8 +112,8 @@
     deploymentName = d.name;
     deploymentNameEdited = true;
     enabled = d.enabled;
-    selectedPrimarySpecifier = d.modelSpecifier;
-    selectedCanarySpecifier = d.earlyModelSpecifier ?? null;
+    selectedPrimarySpecifier = d.specifier ?? d.modelSpecifier;
+    selectedCanarySpecifier = d.earlySpecifier ?? d.earlyModelSpecifier ?? null;
     isCanaryEnabled = Boolean(d.earlyModelSpecifier);
     canaryTraffic = d.progress ?? 100;
     kvCacheSize = d.kvCacheSize ?? null;
@@ -286,12 +286,21 @@
   async function handleSubmit() {
     if (!isFormValid || !selectedPrimaryModel) return;
 
+    const primarySpecifier = selectedPrimaryModel.publicSpecifier;
+    const earlySpecifier = isCanaryEnabled && selectedCanaryModel ? selectedCanaryModel.publicSpecifier : null;
+    // Ollama has no KV-cache knob; clear any value carried over from a different driver
+    const effectiveDriver = preferredDriver ?? (selectedPrimaryModel.providers.vllm ? "vllm" : "ollama");
+    const submittedKvCacheSize = effectiveDriver === "ollama" ? null : kvCacheSize;
+    const submittedEarlyKvCacheSize = effectiveDriver === "ollama" ? null : earlyKvCacheSize;
+
     const [error] = isEditMode
       ? await orpc.deployment.update({
           ...deployment!,
           name: deploymentName.trim(),
           publicSpecifier: publicSpecifier.trim(),
           enabled,
+          specifier: primarySpecifier,
+          earlySpecifier,
           earlyModelSpecifier: isCanaryEnabled ? (selectedCanarySpecifier ?? null) : null,
           progress: isCanaryEnabled ? canaryTraffic : 100,
           canaryProgressWithFeedback: isCanaryEnabled && advancementStrategy === "smart-auto",
@@ -299,16 +308,18 @@
             ? (deployment!.canaryProgressFrom ?? new Date()) : null,
           canaryProgressUntil: isCanaryEnabled && advancementStrategy === "time-based"
             ? new Date(Date.now() + timeBasedDurationHours * 3_600_000) : null,
-          kvCacheSize,
-          earlyKvCacheSize: isCanaryEnabled ? earlyKvCacheSize : null,
+          kvCacheSize: submittedKvCacheSize,
+          earlyKvCacheSize: isCanaryEnabled ? submittedEarlyKvCacheSize : null,
           preferredDriver: preferredDriver || null, replicas,
         })
       : await orpc.deployment.create({
           enabled, name: deploymentName.trim(), publicSpecifier: publicSpecifier.trim(),
+          specifier: primarySpecifier,
+          earlySpecifier: earlySpecifier ?? undefined,
           modelSpecifier: resolveProviderModel(selectedPrimaryModel, preferredDriver),
           replicas, canaryProgressWithFeedback: advancementStrategy === "smart-auto",
-          kvCacheSize: kvCacheSize && kvCacheSize > minKvCache ? kvCacheSize : undefined,
-          earlyKvCacheSize: isCanaryEnabled && selectedCanaryModel && earlyKvCacheSize && earlyKvCacheSize > minCanaryKvCache ? earlyKvCacheSize : undefined,
+          kvCacheSize: submittedKvCacheSize && submittedKvCacheSize > minKvCache ? submittedKvCacheSize : undefined,
+          earlyKvCacheSize: isCanaryEnabled && selectedCanaryModel && submittedEarlyKvCacheSize && submittedEarlyKvCacheSize > minCanaryKvCache ? submittedEarlyKvCacheSize : undefined,
           preferredDriver: preferredDriver || null,
           earlyModelSpecifier: isCanaryEnabled && selectedCanaryModel
             ? resolveProviderModel(selectedCanaryModel, preferredDriver) : undefined,

@@ -11,11 +11,17 @@
   import { Search, ChevronDown, ChevronRight, ChevronLeft, X, Users, Shield, HardDrive } from "@lucide/svelte";
   import { toastState } from "$lib/state/toast.svelte";
   import { createUrlSearchParamsStore } from "$lib/urlSearchParamsStore";
+  import { humanDateShort } from "$lib/util";
+
+  type ListOrgsData = NonNullable<Awaited<ReturnType<typeof orpc.instanceAdmin.listOrganizations>>["data"]>;
+  type AdminOrganization = ListOrgsData["organizations"][number];
+  type GetOrgMembersData = NonNullable<Awaited<ReturnType<typeof orpc.instanceAdmin.getOrganizationMembers>>["data"]>;
+  type OrgMember = GetOrgMembersData["members"][number];
 
   const searchParams = createUrlSearchParamsStore();
   const LIMIT = 25;
 
-  let orgs = $state<any[]>([]);
+  let orgs = $state<AdminOrganization[]>([]);
   let total = $state(0);
 
   const currentPage = $derived(Number($searchParams.page) || 1);
@@ -24,7 +30,7 @@
   let searchInputValue = $state($searchParams.search ?? "");
   let searchTimeout: ReturnType<typeof setTimeout> | undefined;
   let expandedOrg = $state<string | null>(null);
-  let orgMembers = $state<Record<string, any[]>>({});
+  let orgMembers = $state<Record<string, OrgMember[]>>({});
   let loadingMembers = $state<Set<string>>(new Set());
 
   async function fetchOrgs() {
@@ -181,7 +187,7 @@
                   <span class="text-sm text-muted-foreground">{org.deploymentCount} deployments &middot; {org.totalCapacity.toFixed(1)} GB</span>
                 </div>
                 <span class="text-xs text-muted-foreground">
-                  {new Date(org.createdAt).toLocaleDateString()}
+                  {humanDateShort(org.createdAt)}
                 </span>
               </div>
             </Collapsible.Trigger>
