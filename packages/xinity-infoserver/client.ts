@@ -4,12 +4,17 @@
  */
 import type { ModelWithSpecifier } from "./definitions/model-definition";
 import { resolveDriverForProviderModel, resolveTagsForDriver, resolveArgsForDriver, resolveRequestParamsForDriver, type RequestParamMap } from "./model-tags";
+import { lookupKey, type ModelLookup } from "./lookup-helpers";
 
 export interface InfoserverClientConfig {
   /** Base URL of the infoserver (e.g. "http://localhost:8090"). */
   baseUrl: string;
   /** How long cached responses remain valid before re-fetching (ms). */
   cacheTtlMs: number;
+}
+
+function lookupCacheKey(lookup: ModelLookup): string {
+  return `${lookup.kind}:${lookupKey(lookup)}`;
 }
 
 /**
@@ -62,19 +67,22 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
   }
 
   /**
-   * Fetches a model and returns a typed status result.
+   * Fetches a model via the requested resolution path and returns a typed status result.
    * - `found`: model exists; result is cached for `cacheTtlMs`
    * - `not_found`: server returned 404; result is NOT cached so a re-added model
    *   is visible on the next request without waiting for TTL expiry
    * - `unavailable`: network error or non-404 HTTP error; result is NOT cached
+   *
+   * Canonical and legacy lookups are cached under separate keys; results never cross over.
    */
-  async function fetchModelStatus(specifier: string): Promise<FetchModelStatus> {
-    const key = `model:${specifier}`;
+  async function fetchModelStatus(lookup: ModelLookup): Promise<FetchModelStatus> {
+    const key = `model:${lookupCacheKey(lookup)}`;
     const existing = cache.get(key);
     if (isFresh(existing)) return { status: "found", model: existing.data };
 
+    const url = `${baseUrl}/api/v1/models/${encodeURIComponent(lookupKey(lookup))}?lookup=${lookup.kind === "canonical" ? "canonical" : "provider"}`;
     try {
-      const res = await fetch(`${baseUrl}/api/v1/models/${encodeURIComponent(specifier)}`);
+      const res = await fetch(url);
       if (res.status === 404) return { status: "not_found" };
       if (!res.ok) return { status: "unavailable", error: `HTTP ${res.status}` };
       const model = await res.json() as ModelWithSpecifier;
@@ -85,10 +93,10 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
     }
   }
 
-  async function fetchModel(specifier: string): Promise<ModelWithSpecifier | undefined> {
-    const result = await fetchModelStatus(specifier);
+  async function fetchModel(lookup: ModelLookup): Promise<ModelWithSpecifier | undefined> {
+    const result = await fetchModelStatus(lookup);
     if (result.status === "found") return result.model;
-    if (result.status === "unavailable") throw new Error(`Infoserver unavailable for "${specifier}": ${result.error}`);
+    if (result.status === "unavailable") throw new Error(`Infoserver unavailable for ${lookup.kind} "${lookupKey(lookup)}": ${result.error}`);
     return undefined;
   }
 
@@ -132,35 +140,43 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
     });
   }
 
-  // Convenience methods that combine a fetch with pure tag helpers
+  // Convenience methods that combine a fetch with pure tag helpers.
+  // The driver-tag/args/params helpers need a Provider; for canonical lookups the caller passes
+  // the chosen driver, for legacy lookups it's reverse-derived from the provider string.
 
-  async function resolveModelMeta(specifier: string): Promise<{ type: string | undefined; tags: string[] }> {
-    const model = await fetchModel(specifier);
+  function driverFor(model: ModelWithSpecifier, lookup: ModelLookup, override?: "vllm" | "ollama") {
+    if (override) return override;
+    if (lookup.kind === "legacy") return resolveDriverForProviderModel(model, lookup.providerModel);
+    return undefined;
+  }
+
+  async function resolveModelMeta(lookup: ModelLookup, driver?: "vllm" | "ollama"): Promise<{ type: string | undefined; tags: string[] }> {
+    const model = await fetchModel(lookup);
     if (!model) return { type: undefined, tags: [] };
-    const driver = resolveDriverForProviderModel(model, specifier);
-    const tags = driver ? resolveTagsForDriver(model, driver) : (model.tags ?? []);
+    const d = driverFor(model, lookup, driver);
+    const tags = d ? resolveTagsForDriver(model, d) : (model.tags ?? []);
     return { type: model.type, tags };
   }
 
-  async function hasTag(specifier: string, tag: string): Promise<boolean> {
-    const { tags } = await resolveModelMeta(specifier);
+  async function hasTag(lookup: ModelLookup, tag: string, driver?: "vllm" | "ollama"): Promise<boolean> {
+    const { tags } = await resolveModelMeta(lookup, driver);
     return tags.includes(tag);
   }
 
-  async function resolveDriverArgs(specifier: string): Promise<string[]> {
-    const model = await fetchModel(specifier);
+  async function resolveDriverArgs(lookup: ModelLookup, driver?: "vllm" | "ollama"): Promise<string[]> {
+    const model = await fetchModel(lookup);
     if (!model) return [];
-    const driver = resolveDriverForProviderModel(model, specifier);
-    if (!driver) return [];
-    return resolveArgsForDriver(model, driver);
+    const d = driverFor(model, lookup, driver);
+    if (!d) return [];
+    return resolveArgsForDriver(model, d);
   }
 
-  async function resolveRequestParams(specifier: string): Promise<RequestParamMap> {
-    const model = await fetchModel(specifier);
+  async function resolveRequestParams(lookup: ModelLookup, driver?: "vllm" | "ollama"): Promise<RequestParamMap> {
+    const model = await fetchModel(lookup);
     if (!model) return {};
-    const driver = resolveDriverForProviderModel(model, specifier);
-    if (!driver) return {};
-    return resolveRequestParamsForDriver(model, driver);
+    const d = driverFor(model, lookup, driver);
+    if (!d) return {};
+    return resolveRequestParamsForDriver(model, d);
   }
 
   return {
