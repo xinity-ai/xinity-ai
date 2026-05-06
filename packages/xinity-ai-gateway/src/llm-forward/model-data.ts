@@ -130,7 +130,8 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, keyId
     ?? false;
 
   const model = await infoClient.fetchModel(resolvedLookup);
-  const providerModel = model?.providers[driver as "vllm" | "ollama"];
+  const providerModel = model?.providers[driver as "vllm" | "ollama"]
+    ?? (resolvedLookup.kind === "legacy" ? resolvedLookup.providerModel : undefined);
   if (!providerModel) {
     result.release();
     return;
