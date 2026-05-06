@@ -1,5 +1,6 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
+  import { page } from "$app/stores";
   import { signIn, signUp } from "$lib/auth";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
@@ -32,7 +33,11 @@
 
   /** Turn raw Better Auth / Zod validation errors into user-friendly text. */
   function friendlyError(raw: string | undefined): string {
-    if (!raw) return "An unknown error occurred.";
+    const originMisconfigured = `This dashboard is configured for a different URL than the one you used to reach it, so authentication cannot complete. Contact your administrator for the correct URL and how to access it.`;
+    if (!raw) return originMisconfigured;
+    if (/invalid origin|missing or null origin|cross-site navigation login blocked/i.test(raw)) {
+      return originMisconfigured;
+    }
     const match = raw.match(/^\[body\.(\w+)\]\s*(.+)/);
     if (!match) return raw;
     const [, field, detail] = match;
@@ -57,6 +62,7 @@
 
       if (res?.error) {
         errorSignIn = friendlyError(res.error.message);
+        console.log(res.error)
       }
     } catch (e) {
       errorSignIn = (e as Error).message ?? "Unexpected error";
@@ -102,7 +108,21 @@
       <img src="/xinity-logo.png" alt="Xinity" class="h-10 w-auto" />
     </Card.Header>
     <Card.Content class="space-y-6">
-      {#if signUpSuccess}
+      {#if data.hostMismatch}
+        <div role="alert" class="space-y-2 p-4 text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-lg">
+          <p class="font-semibold">Wrong dashboard URL</p>
+          <p>
+            This dashboard is configured for
+            <span class="font-mono break-all">{data.configuredOrigin}</span>,
+            but you reached it via
+            <span class="font-mono break-all">{$page.url.origin}</span>.
+            Authentication will not work here.
+          </p>
+          <p>
+            Contact your administrator for the correct URL and how to access it.
+          </p>
+        </div>
+      {:else if signUpSuccess}
         <div class="space-y-4 text-center">
           <h2 class="text-xl font-bold">Check your email</h2>
           <p class="text-muted-foreground">
