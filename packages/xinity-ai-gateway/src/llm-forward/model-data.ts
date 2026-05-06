@@ -1,7 +1,7 @@
-import { calcCanaryProgress, sql, modelDeploymentT, modelInstallationT, aiNodeT } from "common-db";
+import { calcCanaryProgress, sql, modelDeploymentT, aiNodeT, modelInstallationT, installationMatchesLookup } from "common-db";
 import { getDB } from "../db";
 import { env } from "../env";
-import { createInfoserverClient } from "xinity-infoserver";
+import { createInfoserverClient, deploymentLookup, deploymentEarlyLookup, lookupKey, type ModelLookup } from "xinity-infoserver";
 import { selectHost as _selectHost, type LoadBalanceStrategy } from "./load-balancer";
 
 /** Indirection for testability. tests can swap this without mock.module. */
@@ -26,19 +26,14 @@ async function publicModelSpecifierToModelSource(orgId: string, specifier: strin
   }
 
   return {
-    /**
-     * Proportion of traffic that should be sent to the target model, as specified via modelSpecifier.
-     * The rest goes to the early model as specified via earlyModelSpecifier
-     */
     progress: calcCanaryProgress(deployment),
-    earlyModelSpecifier: deployment.earlyModelSpecifier,
-    modelSpecifier: deployment.modelSpecifier,
+    primary: deploymentLookup(deployment),
+    early: deploymentEarlyLookup(deployment),
   }
 }
 
-/** Retrieves the servers under which the model going by the given specifier is available */
-async function getModelSources(modelSpecifier: string) {
-
+/** Retrieves the servers under which the model identified by the given lookup is available. */
+async function getModelSources(lookup: ModelLookup) {
   const modelLocations = await getDB().select({
     host: aiNodeT.host,
     nodePort: aiNodeT.port,
@@ -47,7 +42,7 @@ async function getModelSources(modelSpecifier: string) {
     tls: aiNodeT.tls,
   }).from(modelInstallationT)
     .innerJoin(aiNodeT, sql`${modelInstallationT.nodeId} = ${aiNodeT.id} AND ${aiNodeT.deletedAt} IS NULL`)
-    .where(sql`${modelInstallationT.model} = ${modelSpecifier} AND ${modelInstallationT.deletedAt} IS NULL`);
+    .where(sql`${installationMatchesLookup(lookupKey(lookup))} AND ${modelInstallationT.deletedAt} IS NULL`);
 
   const driverMap = new Map<string, string>();
   const authTokenMap = new Map<string, string | null>();
@@ -85,37 +80,43 @@ type ModelInfo = {
   release: () => void;
 }
 
-/** Retrieves the up to date model data for the specified api user id, and model specifier.
- * If no model can be found, returns undefined
+/** Retrieves the up to date model data for the specified api user id, and public deployment specifier.
+ * If no deployment can be found, returns undefined.
  */
-export async function getModelInfo(orgId: string, modelSpecifier: string, keyId: string): Promise<ModelInfo | undefined> {
-  const accessInfo = await publicModelSpecifierToModelSource(orgId, modelSpecifier);
+export async function getModelInfo(orgId: string, publicSpecifier: string, keyId: string): Promise<ModelInfo | undefined> {
+  const accessInfo = await publicModelSpecifierToModelSource(orgId, publicSpecifier);
   if (!accessInfo) {
     return;
   }
+  const emptySources = {
+    hosts: [] as string[],
+    driverMap: new Map<string, string>(),
+    authTokenMap: new Map<string, string | null>(),
+    tlsMap: new Map<string, boolean>(),
+  };
   const [finalSources, earlySources] = await Promise.all([
-    getModelSources(accessInfo.modelSpecifier),
-    accessInfo.earlyModelSpecifier
-      ? getModelSources(accessInfo.earlyModelSpecifier)
-      : Promise.resolve({ hosts: [], driverMap: new Map<string, string>(), authTokenMap: new Map<string, string | null>(), tlsMap: new Map<string, boolean>() }),
+    getModelSources(accessInfo.primary),
+    accessInfo.early
+      ? getModelSources(accessInfo.early)
+      : Promise.resolve(emptySources),
   ]);
 
   const result = await _deps.selectHost(env.LOAD_BALANCE_STRATEGY as LoadBalanceStrategy, {
     hosts: finalSources.hosts,
     earlyHosts: earlySources.hosts,
     canaryProgress: accessInfo.progress,
-    hasEarlyModel: !!accessInfo.earlyModelSpecifier,
+    hasEarlyModel: !!accessInfo.early,
     keyId,
-    publicModel: modelSpecifier,
+    publicModel: publicSpecifier,
   });
 
   if (!result) {
     return;
   }
 
-  const resolvedModel = result.useFinalModel
-    ? accessInfo.modelSpecifier
-    : (accessInfo.earlyModelSpecifier ?? accessInfo.modelSpecifier);
+  const resolvedLookup = result.useFinalModel
+    ? accessInfo.primary
+    : (accessInfo.early ?? accessInfo.primary);
 
   // Look up driver and auth token from whichever source set the host came from
   const driver = finalSources.driverMap.get(result.host)
@@ -128,14 +129,21 @@ export async function getModelInfo(orgId: string, modelSpecifier: string, keyId:
     ?? earlySources.tlsMap.get(result.host)
     ?? false;
 
+  const model = await infoClient.fetchModel(resolvedLookup);
+  const providerModel = model?.providers[driver as "vllm" | "ollama"];
+  if (!providerModel) {
+    result.release();
+    return;
+  }
+
   const [{ type, tags }, requestParams] = await Promise.all([
-    infoClient.resolveModelMeta(resolvedModel),
-    infoClient.resolveRequestParams(resolvedModel),
+    infoClient.resolveModelMeta(resolvedLookup, driver as "vllm" | "ollama"),
+    infoClient.resolveRequestParams(resolvedLookup, driver as "vllm" | "ollama"),
   ]);
 
   return {
     host: result.host,
-    model: resolvedModel,
+    model: providerModel,
     driver,
     authToken,
     tls,
