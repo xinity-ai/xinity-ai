@@ -24,6 +24,7 @@ function makeNode(overrides: Partial<AiNode> & { id: string }): AiNode {
 
 function makeInstallation(overrides: Partial<ModelInstallation> & { id: string; nodeId: string; model: string }): ModelInstallation {
   return {
+    specifier: null,
     estCapacity: 8,
     kvCacheCapacity: 2,
     port: 11434,
@@ -60,7 +61,9 @@ describe("orchestration: node goes unavailable", () => {
     expect(state.installationsByModel.has("llama2:7b")).toBe(false);
 
     // No excess to trim (nothing active)
-    const requiredModels: ModelRequirementTable = { "llama2:7b": { replicas: 1, kvCacheSize: 2 } };
+    const requiredModels: ModelRequirementTable = {
+      "llama2:7b": { lookup: { kind: "legacy", providerModel: "llama2:7b" }, replicas: 1, kvCacheSize: 2, preferredDriver: null },
+    };
     const excess = collectExcessInstallations(requiredModels, state);
     expect(excess).toHaveLength(0);
 
@@ -123,5 +126,30 @@ describe("orchestration: node goes unavailable", () => {
     const state = buildClusterState([], [cpuNode]);
 
     expect(findServerForModel("mxfp4-model", "vllm", 8, state, [], undefined, ["nvidia"])).toBeNull();
+  });
+});
+
+describe("orchestration: lookup-key correlation", () => {
+  const node = makeNode({ id: "node-1" });
+
+  test("canonical installation indexes under its specifier, not the legacy provider model", () => {
+    const inst = makeInstallation({ id: "i1", nodeId: "node-1", specifier: "llama-3.3-70b", model: "legacy-name" });
+    const state = buildClusterState([inst], [node]);
+    expect(state.installationsByModel.has("llama-3.3-70b")).toBe(true);
+    expect(state.installationsByModel.has("legacy-name")).toBe(false);
+  });
+
+  test("canonical and legacy installations of the same provider model do not correlate", () => {
+    const canonical = makeInstallation({ id: "c", nodeId: "node-1", specifier: "llama-3.3-70b", model: "llama" });
+    const legacy = makeInstallation({ id: "l", nodeId: "node-1", specifier: null, model: "llama" });
+    const state = buildClusterState([canonical, legacy], [node]);
+    expect(state.installationsByModel.get("llama-3.3-70b")).toHaveLength(1);
+    expect(state.installationsByModel.get("llama")).toHaveLength(1);
+  });
+
+  test("findServerForModel skips a node that already hosts the canonical specifier", () => {
+    const inst = makeInstallation({ id: "i1", nodeId: "node-1", specifier: "llama-3.3-70b", model: "llama" });
+    const state = buildClusterState([inst], [node]);
+    expect(findServerForModel("llama-3.3-70b", "ollama", 8, state, [])).toBeNull();
   });
 });
