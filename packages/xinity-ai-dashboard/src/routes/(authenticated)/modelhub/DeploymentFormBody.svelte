@@ -118,6 +118,11 @@
     preferredDriverStr === "" ? "Auto" : driverLabel(preferredDriverStr),
   );
 
+  const effectiveDriver = $derived(
+    preferredDriver ?? (selectedPrimaryModel?.providers.vllm ? "vllm" : "ollama"),
+  );
+  const showKvCacheSliders = $derived(effectiveDriver !== "ollama");
+
   function openSelector(mode: "primary" | "canary") {
     selectorMode = mode;
     showModelSelector = true;
@@ -286,7 +291,7 @@
             {/if}
           </div>
 
-          {#if selectedCanaryModel}
+          {#if selectedCanaryModel && showKvCacheSliders}
             <div class="space-y-2">
               <Label for="canary-kv-cache-size{idSuffix}">
                 Canary KV Cache Size: <span class="font-bold text-primary">{earlyKvCacheSize ?? minCanaryKvCache} GB</span>
@@ -385,34 +390,36 @@
           {/if}
         </div>
 
-        <div class="space-y-2">
-          <Label for="kv-cache-size{idSuffix}">
-            {isCanaryEnabled ? "Primary " : ""}KV Cache Size: <span class="font-bold text-primary">{kvCacheSize ?? minKvCache} GB</span>
-          </Label>
-          {#if requiresDisabled}
-            <input
-              id="kv-cache-size{idSuffix}"
-              type="range" min={minKvCache} max={maxKvCache || minKvCache + 1} step="0.1"
-              value={kvCacheSize ?? minKvCache}
-              disabled
-              class="w-full h-2 bg-muted rounded-lg appearance-none cursor-not-allowed opacity-50"
-            />
-            <p class="text-sm text-muted-foreground">Disable the deployment to change the KV cache size.</p>
-          {:else}
-            <input
-              id="kv-cache-size{idSuffix}"
-              type="range" min={minKvCache} max={maxKvCache || minKvCache + 1} step="0.1"
-              bind:value={kvCacheSize}
-              class="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
-            />
-            <p class="text-sm text-muted-foreground">
-              Min: {minKvCache} GB · Max: {maxKvCache} GB. Larger values improve throughput for concurrent requests.
-            </p>
-          {/if}
-          {#if kvCacheSize !== null && kvCacheSize < minKvCache}
-            <p class="text-sm text-destructive">Value must be at least {minKvCache} GB for this model.</p>
-          {/if}
-        </div>
+        {#if showKvCacheSliders}
+          <div class="space-y-2">
+            <Label for="kv-cache-size{idSuffix}">
+              {isCanaryEnabled ? "Primary " : ""}KV Cache Size: <span class="font-bold text-primary">{kvCacheSize ?? minKvCache} GB</span>
+            </Label>
+            {#if requiresDisabled}
+              <input
+                id="kv-cache-size{idSuffix}"
+                type="range" min={minKvCache} max={maxKvCache || minKvCache + 1} step="0.1"
+                value={kvCacheSize ?? minKvCache}
+                disabled
+                class="w-full h-2 bg-muted rounded-lg appearance-none cursor-not-allowed opacity-50"
+              />
+              <p class="text-sm text-muted-foreground">Disable the deployment to change the KV cache size.</p>
+            {:else}
+              <input
+                id="kv-cache-size{idSuffix}"
+                type="range" min={minKvCache} max={maxKvCache || minKvCache + 1} step="0.1"
+                bind:value={kvCacheSize}
+                class="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
+              />
+              <p class="text-sm text-muted-foreground">
+                Min: {minKvCache} GB · Max: {maxKvCache} GB. Larger values improve throughput for concurrent requests.
+              </p>
+            {/if}
+            {#if kvCacheSize !== null && kvCacheSize < minKvCache}
+              <p class="text-sm text-destructive">Value must be at least {minKvCache} GB for this model.</p>
+            {/if}
+          </div>
+        {/if}
 
         {#if modelDriverOptions.length > 0}
           <div class="space-y-2">

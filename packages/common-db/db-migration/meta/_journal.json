@@ -57,6 +57,13 @@
       "when": 1777457650674,
       "tag": "0007_cute_starhawk",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1777972698032,
+      "tag": "0008_outstanding_dazzler",
+      "breakpoints": true
     }
   ]
 }

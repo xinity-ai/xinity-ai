@@ -25,7 +25,6 @@ services:
     ports:
       - "${DASHBOARD_PORT:-5121}:${DASHBOARD_PORT:-5121}"
     environment:
-      BETTER_AUTH_URL: http://localhost:${DASHBOARD_PORT:-5121}
       ORIGIN: http://localhost:${DASHBOARD_PORT:-5121}
       HTTP_OVERRIDE_ORIGIN: http://localhost:${DASHBOARD_PORT:-5121}
       GATEWAY_URL: http://localhost:${GATEWAY_PORT:-4121}

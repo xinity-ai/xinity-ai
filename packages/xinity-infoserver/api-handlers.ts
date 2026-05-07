@@ -51,14 +51,21 @@ export function handleModelsByFamily(req: Request): Response {
 }
 
 /**
- * GET /api/v1/models/:specifier: single model lookup.
+ * GET /api/v1/models/:specifier
+ * `?lookup=canonical` forces primary-key resolution; `?lookup=provider` forces
+ * provider-string reverse lookup. Omitting falls back to `resolve()` (back-compat).
  */
 export function handleModelBySpecifier(req: Request): Response {
   const specifier = (req as any).params?.specifier as string | undefined;
   if (!specifier) {
     return Response.json({ error: "Missing specifier parameter" }, { status: 400 });
   }
-  const model = catalog.resolve(specifier);
+  const lookup = new URL(req.url).searchParams.get("lookup");
+  const model = lookup === "canonical"
+    ? catalog.get(specifier)
+    : lookup === "provider"
+      ? catalog.getByProviderModel(specifier)
+      : catalog.resolve(specifier);
   if (!model) {
     return Response.json({ error: "Model not found" }, { status: 404 });
   }

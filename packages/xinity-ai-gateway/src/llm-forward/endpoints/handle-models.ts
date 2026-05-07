@@ -1,4 +1,4 @@
-import { modelDeploymentT, modelInstallationT, organizationT, sql, type ModelDeployment, type ModelInstallation } from "common-db";
+import { modelDeploymentT, modelInstallationT, organizationT, sql, deploymentMatchesInstallation, type ModelDeployment, type ModelInstallation } from "common-db";
 import { getDB } from "../../db";
 import { checkAuth } from "../auth";
 
@@ -14,10 +14,7 @@ export async function handleModelsRequest(req: Request): Promise<Response> {
   const models = await getDB()
     .select()
     .from(modelDeploymentT)
-    .leftJoin(modelInstallationT, sql`
-      (${modelDeploymentT.modelSpecifier} = ${modelInstallationT.model}
-      OR ${modelDeploymentT.earlyModelSpecifier} = ${modelInstallationT.model})
-      AND ${modelInstallationT.deletedAt} IS NULL`)
+    .leftJoin(modelInstallationT, sql`${deploymentMatchesInstallation} AND ${modelInstallationT.deletedAt} IS NULL`)
     .where(sql`${modelDeploymentT.organizationId} = ${orgId} AND ${modelDeploymentT.deletedAt} IS NULL`);
 
   const modelMap = new Map<string, { modelDeployment: ModelDeployment, modelInstallations: ModelInstallation[] }>();

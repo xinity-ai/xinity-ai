@@ -1,13 +1,13 @@
 import { rootOs, withOrganization, requirePermission } from "../root";
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
-import { sql, modelDeploymentT, modelInstallationT, modelInstallationStateT, organizationT, type ModelDeployment } from "common-db";
+import { sql, modelDeploymentT, modelInstallationT, modelInstallationStateT, organizationT, deploymentMatchesInstallation, type ModelDeployment } from "common-db";
 import z from "zod";
 import { DeploymentDto } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { syncDeployedModels } from "$lib/server/lib/orchestration.mod";
 import { infoClient } from "$lib/server/info-client";
 import { buildClusterCapacity } from "./cluster.procedure";
-import { resolveDriverForProviderModel, resolveMinVersionForDriver, resolveRequiredPlatformsForDriver, checkNodeCompatibility, type ModelNodeRequirements } from "xinity-infoserver";
+import { resolveDefaultProvider, resolveMinVersionForDriver, resolveRequiredPlatformsForDriver, checkNodeCompatibility, deploymentLookup, deploymentEarlyLookup, lookupKey, type ModelNodeRequirements, type Provider, type ModelLookup } from "xinity-infoserver";
 import { rootLogger } from "$lib/server/logging";
 import { aggregatePhase, type PhaseInfo } from "$lib/server/lib/deployment-phase";
 import { notifyOrgMembers } from "$lib/server/notifications/notification.service";
@@ -19,25 +19,38 @@ const tags = ["Deployment"];
 const SuccessDto = z.object({ success: z.literal(true) });
 const successObject = { success: true } as const;
 
+async function deriveProviderModel(lookup: ModelLookup, preferredDriver: Provider | null): Promise<string | undefined> {
+  if (!infoClient) return undefined;
+  const status = await infoClient.fetchModelStatus(lookup);
+  if (status.status !== "found") return undefined;
+  const model = status.model;
+  if (preferredDriver && model.providers[preferredDriver]) return model.providers[preferredDriver];
+  return resolveDefaultProvider(model)?.providerModel;
+}
+
 /** Validates that primary and canary models share the same type. */
-async function validateCanaryModelTypes(modelSpecifier: string, earlyModelSpecifier: string | null | undefined) {
-  if (!earlyModelSpecifier) return;
-  const primary = await infoClient?.fetchModel(modelSpecifier);
-  const canary = await infoClient?.fetchModel(earlyModelSpecifier);
-  if (primary?.type && canary?.type && primary.type !== canary.type) {
-    throw new Error(`Cannot mix model types in a canary deployment: primary is "${primary.type}" but canary is "${canary.type}"`);
+async function validateCanaryModelTypes(primary: ModelLookup, early: ModelLookup | null) {
+  if (!early) return;
+  const primaryModel = await infoClient?.fetchModel(primary);
+  const earlyModel = await infoClient?.fetchModel(early);
+  if (primaryModel?.type && earlyModel?.type && primaryModel.type !== earlyModel.type) {
+    throw new Error(`Cannot mix model types in a canary deployment: primary is "${primaryModel.type}" but canary is "${earlyModel.type}"`);
   }
 }
 
-/** Input shape for capacity checking, matches the deployment fields that affect capacity. */
 const CapacityCheckInput = z.object({
-  modelSpecifier: z.string().trim(),
+  specifier: z.string().trim().nullish(),
+  earlySpecifier: z.string().trim().nullish(),
+  /** @deprecated Pass the canonical {@link specifier} instead. */
+  modelSpecifier: z.string().trim().optional(),
+  /** @deprecated Pass {@link earlySpecifier} instead. */
   earlyModelSpecifier: z.string().trim().nullish(),
   replicas: z.number().default(1),
   progress: z.number().default(100),
   kvCacheSize: z.number().nullish(),
   earlyKvCacheSize: z.number().nullish(),
-});
+  preferredDriver: z.enum(["ollama", "vllm"]).nullish(),
+}).refine(d => d.specifier || d.modelSpecifier, { message: "Either `specifier` or `modelSpecifier` must be provided", path: ["specifier"] });
 
 const CapacityCheckOutput = z.object({
   deployable: z.boolean(),
@@ -52,36 +65,41 @@ type CapacityCheckResult = z.infer<typeof CapacityCheckOutput>;
  * accounting for the fact that they share the same pool of node capacity.
  */
 async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>): Promise<CapacityCheckResult> {
-  const isCanary = input.progress < 100 && !!input.earlyModelSpecifier;
+  const primaryLookup = deploymentLookup(input);
+  if (!primaryLookup) {
+    return { deployable: false, reason: "Capacity check requires a model identifier" };
+  }
+  const earlyLookup = deploymentEarlyLookup(input);
+  const isCanary = input.progress < 100 && !!earlyLookup;
 
   // Build the list of models that need capacity
-  const modelsToCheck: { specifier: string; replicas: number; kvCacheSize: number | null | undefined }[] = [];
+  const modelsToCheck: { lookup: ModelLookup; label: string; replicas: number; kvCacheSize: number | null | undefined }[] = [];
   if (isCanary) {
     modelsToCheck.push(
-      { specifier: input.modelSpecifier, replicas: Math.ceil(input.replicas * (input.progress / 100)), kvCacheSize: input.kvCacheSize },
-      { specifier: input.earlyModelSpecifier!, replicas: Math.ceil(input.replicas * ((100 - input.progress) / 100)), kvCacheSize: input.earlyKvCacheSize ?? input.kvCacheSize },
+      { lookup: primaryLookup, label: lookupKey(primaryLookup), replicas: Math.ceil(input.replicas * (input.progress / 100)), kvCacheSize: input.kvCacheSize },
+      { lookup: earlyLookup!, label: lookupKey(earlyLookup!), replicas: Math.ceil(input.replicas * ((100 - input.progress) / 100)), kvCacheSize: input.earlyKvCacheSize ?? input.kvCacheSize },
     );
   } else {
-    modelsToCheck.push({ specifier: input.modelSpecifier, replicas: input.replicas, kvCacheSize: input.kvCacheSize });
+    modelsToCheck.push({ lookup: primaryLookup, label: lookupKey(primaryLookup), replicas: input.replicas, kvCacheSize: input.kvCacheSize });
   }
 
   // Fetch model info for all models, distinguishing not_found from unavailable
   const modelInfos = await Promise.all(
     modelsToCheck.map(async (m) => {
-      const status = await infoClient?.fetchModelStatus(m.specifier);
-      if (!status || status.status === "unavailable") return { kind: "unavailable" as const, specifier: m.specifier };
-      if (status.status === "not_found") return { kind: "not_found" as const, specifier: m.specifier };
+      const status = await infoClient?.fetchModelStatus(m.lookup);
+      if (!status || status.status === "unavailable") return { kind: "unavailable" as const, label: m.label };
+      if (status.status === "not_found") return { kind: "not_found" as const, label: m.label };
       const info = status.model;
       const effectiveKvCache = Math.max(m.kvCacheSize ?? 0, info.minKvCache);
-      const driver = resolveDriverForProviderModel(info, m.specifier);
+      const driver: Provider | undefined = input.preferredDriver ?? resolveDefaultProvider(info)?.driver;
       const minVersion = driver ? resolveMinVersionForDriver(info, driver) : undefined;
       const requiredPlatforms = driver ? resolveRequiredPlatformsForDriver(info, driver) : [];
-      return { kind: "found" as const, specifier: m.specifier, replicas: m.replicas, perReplica: info.weight + effectiveKvCache, driver, minVersion, requiredPlatforms };
+      return { kind: "found" as const, label: m.label, replicas: m.replicas, perReplica: info.weight + effectiveKvCache, driver, minVersion, requiredPlatforms };
     }),
   );
 
   const notFound = modelInfos.find(m => m.kind === "not_found");
-  if (notFound) return { deployable: false, reason: `Model "${notFound.specifier}" was not found in the model catalog` };
+  if (notFound) return { deployable: false, reason: `Model "${notFound.label}" was not found in the model catalog` };
 
   const resolved = modelInfos.filter((m): m is Extract<typeof modelInfos[number], { kind: "found" }> => m.kind === "found");
   if (resolved.length === 0) return { deployable: true, reason: "Capacity could not be verified: model catalog is unavailable" };
@@ -114,8 +132,8 @@ async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>
     }
     if (placed < model.replicas) {
       const reason = compatible.length === 0 && model.driver
-        ? `No compatible node for "${model.specifier}" (requires ${model.driver}${model.minVersion ? ` >= ${model.minVersion}` : ""}${model.requiredPlatforms.length ? `, platform: ${model.requiredPlatforms.join("/")}` : ""})`
-        : `Insufficient cluster capacity: cannot place ${model.replicas} ${model.replicas === 1 ? "replica" : "replicas"} of "${model.specifier}" (${model.perReplica.toFixed(1)} GB each). Only ${placed} compatible ${placed === 1 ? "node has" : "nodes have"} enough free capacity`;
+        ? `No compatible node for "${model.label}" (requires ${model.driver}${model.minVersion ? ` >= ${model.minVersion}` : ""}${model.requiredPlatforms.length ? `, platform: ${model.requiredPlatforms.join("/")}` : ""})`
+        : `Insufficient cluster capacity: cannot place ${model.replicas} ${model.replicas === 1 ? "replica" : "replicas"} of "${model.label}" (${model.perReplica.toFixed(1)} GB each). Only ${placed} compatible ${placed === 1 ? "node has" : "nodes have"} enough free capacity`;
       return { deployable: false, reason };
     }
   }
@@ -158,11 +176,7 @@ async function queryDeploymentsWithStatus(where: ReturnType<typeof sql>): Promis
   const rows = await getDB()
     .select()
     .from(modelDeploymentT)
-    .leftJoin(modelInstallationT, sql`
-      (${modelDeploymentT.modelSpecifier} = ${modelInstallationT.model}
-      OR
-      ${modelDeploymentT.earlyModelSpecifier} = ${modelInstallationT.model})
-      AND ${modelInstallationT.deletedAt} IS NULL`)
+    .leftJoin(modelInstallationT, sql`${deploymentMatchesInstallation} AND ${modelInstallationT.deletedAt} IS NULL`)
     .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`)
     .where(where);
 
@@ -213,27 +227,25 @@ const listDeployments = rootOs.use(withOrganization)
       // as a distinct "not_in_catalog" phase so the UI can warn the operator.
       const noStatusEnabled = results.filter(r => !r.status && r.enabled);
       if (noStatusEnabled.length > 0 && infoClient) {
-        const specifiers = [...new Set(
-          noStatusEnabled.flatMap(e => [
-            e.modelSpecifier,
-            ...(e.earlyModelSpecifier ? [e.earlyModelSpecifier] : []),
-          ]),
-        )];
-        try {
-          const batchResult = await infoClient.fetchModelsBatch(specifiers);
-          for (const entry of noStatusEnabled) {
-            const primaryMissing = batchResult[entry.modelSpecifier] === null;
-            const earlyMissing = entry.earlyModelSpecifier
-              ? batchResult[entry.earlyModelSpecifier] === null
-              : false;
-            if (primaryMissing || earlyMissing) {
-              (entry as any).status = { phase: "not_in_catalog" as const, progress: null, error: null };
-            }
+        const client = infoClient;
+        const isMissing = async (lookup: ModelLookup | null): Promise<boolean> => {
+          if (!lookup) return false;
+          try {
+            const status = await client.fetchModelStatus(lookup);
+            return status.status === "not_found";
+          } catch {
+            return false;
           }
-        } catch {
-          // Info server unreachable: leave status as undefined rather than
-          // falsely marking deployments as not_in_catalog.
-        }
+        };
+        await Promise.all(noStatusEnabled.map(async (entry) => {
+          const [primaryMissing, earlyMissing] = await Promise.all([
+            isMissing(deploymentLookup(entry)),
+            isMissing(deploymentEarlyLookup(entry)),
+          ]);
+          if (primaryMissing || earlyMissing) {
+            entry.status = { phase: "not_in_catalog", progress: null, error: null };
+          }
+        }));
       }
 
       return results;
@@ -252,9 +264,9 @@ const updateDeployment = rootOs
   .errors({ NOT_FOUND: {}, BAD_REQUEST: {}, INSUFFICIENT_CAPACITY: {}, CONFLICT: {} })
   .handler(async ({ context, input, errors }) => {
     const rlog = log.child({ traceId: context.traceId });
-    if (input.modelSpecifier && input.earlyModelSpecifier) {
+    if (input.modelSpecifier) {
       try {
-        await validateCanaryModelTypes(input.modelSpecifier, input.earlyModelSpecifier);
+        await validateCanaryModelTypes(deploymentLookup(input), deploymentEarlyLookup(input));
       } catch (err: unknown) {
         throw errors.BAD_REQUEST({ message: err instanceof Error ? err.message : String(err) });
       }
@@ -278,6 +290,8 @@ const updateDeployment = rootOs
         { field: "kvCacheSize", changed: input.kvCacheSize !== undefined && input.kvCacheSize !== current.kvCacheSize },
         { field: "earlyKvCacheSize", changed: input.earlyKvCacheSize !== undefined && input.earlyKvCacheSize !== current.earlyKvCacheSize },
         { field: "preferredDriver", changed: input.preferredDriver !== undefined && input.preferredDriver !== current.preferredDriver },
+        { field: "specifier", changed: input.specifier !== undefined && input.specifier !== current.specifier },
+        { field: "earlySpecifier", changed: input.earlySpecifier !== undefined && input.earlySpecifier !== current.earlySpecifier },
         { field: "modelSpecifier", changed: input.modelSpecifier !== undefined && input.modelSpecifier !== current.modelSpecifier },
         { field: "earlyModelSpecifier", changed: input.earlyModelSpecifier !== undefined && input.earlyModelSpecifier !== current.earlyModelSpecifier },
       ];
@@ -439,34 +453,48 @@ export const createDeployment = rootOs
   .output(DeploymentDto)
   .errors({ CONFLICT: {}, BAD_REQUEST: {} })
   .handler(async ({ context, input, errors }) => {
-    // Validate that the requested model specifiers exist in the catalog.
-    // If the info server is unreachable we let the request through. An outage
-    // should not prevent operators from managing deployments.
+    if (!input.specifier) {
+      throw errors.BAD_REQUEST({ message: "specifier is required when creating a deployment" });
+    }
+    const primaryLookup: ModelLookup = { kind: "canonical", specifier: input.specifier };
+    const earlyLookup: ModelLookup | null = input.earlySpecifier
+      ? { kind: "canonical", specifier: input.earlySpecifier }
+      : null;
+
     if (infoClient) {
       const client = infoClient;
-      const specsToCheck = [
-        { field: "modelSpecifier", specifier: input.modelSpecifier },
-        ...(input.earlyModelSpecifier ? [{ field: "earlyModelSpecifier", specifier: input.earlyModelSpecifier }] : []),
+      const checks: { label: string; lookup: ModelLookup }[] = [
+        { label: input.specifier, lookup: primaryLookup },
+        ...(earlyLookup ? [{ label: input.earlySpecifier!, lookup: earlyLookup }] : []),
       ];
-      const statuses = await Promise.all(specsToCheck.map(async s => ({ ...s, status: await client.fetchModelStatus(s.specifier) })));
+      const statuses = await Promise.all(checks.map(async c => ({ ...c, status: await client.fetchModelStatus(c.lookup) })));
       const missing = statuses.find(s => s.status.status === "not_found");
       if (missing) {
-        throw errors.BAD_REQUEST({ message: `Model "${missing.specifier}" was not found in the model catalog` });
+        throw errors.BAD_REQUEST({ message: `Model "${missing.label}" was not found in the model catalog` });
       }
     }
 
     const rlog = log.child({ traceId: context.traceId });
     try {
-      await validateCanaryModelTypes(input.modelSpecifier, input.earlyModelSpecifier);
+      await validateCanaryModelTypes(primaryLookup, earlyLookup);
     } catch (err: any) {
       throw errors.BAD_REQUEST({ message: err.message });
     }
+
+    const derivedModelSpecifier = await deriveProviderModel(primaryLookup, input.preferredDriver ?? null) ?? input.modelSpecifier;
+    const derivedEarlyModelSpecifier = earlyLookup
+      ? (await deriveProviderModel(earlyLookup, input.preferredDriver ?? null) ?? input.earlyModelSpecifier ?? null)
+      : null;
 
     try {
       const [deployment] = await getDB()
         .insert(modelDeploymentT)
         .values({
           ...input,
+          specifier: input.specifier,
+          earlySpecifier: input.earlySpecifier ?? null,
+          modelSpecifier: derivedModelSpecifier,
+          earlyModelSpecifier: derivedEarlyModelSpecifier,
           organizationId: context.activeOrganizationId,
         })
         .returning();

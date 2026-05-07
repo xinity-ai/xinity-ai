@@ -120,6 +120,12 @@ export function humanDate(d: Date | undefined) {
   });
 }
 
+/** Formats a date (no time) using the "de" locale for consistent UI display. */
+export function humanDateShort(d: Date | undefined) {
+  if (!d || !d.toLocaleDateString) return "Unknown date";
+  return d.toLocaleDateString("de", { dateStyle: "medium" });
+}
+
 /** Formats a duration expressed in hours into a human-readable label. */
 export function humanDuration(hours: number) {
   if (hours < 1) {

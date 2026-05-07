@@ -22,7 +22,7 @@ import {
   createSystemdVllmOps,
   type VllmOps,
 } from "./vllm-ops";
-import { createInfoserverClient } from "xinity-infoserver";
+import { createInfoserverClient, installationLookup } from "xinity-infoserver";
 import { rootLogger } from "../../logger";
 import { getHardwareProfile } from "../statekeeper";
 import { getFreeMemoryMb } from "../hardware-detect";
@@ -90,6 +90,7 @@ async function warmupChatModel(port: number, model: string): Promise<void> {
 function pollUntilHealthy$(
   installation: ModelInstallation,
   ops: VllmOps,
+  providerModel: string,
   modelType?: string,
 ): Observable<void> {
   const deadline = Date.now() + env.VLLM_HEALTH_TIMEOUT_MS;
@@ -133,7 +134,7 @@ function pollUntilHealthy$(
     switchMap(() =>
       from((async () => {
         if (modelType !== "embedding" && modelType !== "rerank") {
-          await warmupChatModel(installation.port, installation.model);
+          await warmupChatModel(installation.port, providerModel);
         }
         await updateInstallationState(installation.id, "ready", { statusMessage: "vLLM server healthy" });
       })()),
@@ -143,15 +144,20 @@ function pollUntilHealthy$(
   );
 }
 
-/** Downloads weights, starts the container, and returns the model type for health polling. */
-async function downloadAndStart(installation: ModelInstallation, ops: VllmOps): Promise<string | undefined> {
-  const modelInfo = await infoClient.fetchModel(installation.model);
+/** Downloads weights, starts the container, and returns metadata used for health polling and warmup. */
+async function downloadAndStart(installation: ModelInstallation, ops: VllmOps): Promise<{ modelType: string | undefined; providerModel: string }> {
+  const lookup = installationLookup(installation);
+  const modelInfo = await infoClient.fetchModel(lookup);
+  const providerModel = modelInfo?.providers.vllm;
+  if (!providerModel) {
+    throw new Error(`Catalog entry has no vllm provider for installation ${installation.id}`);
+  }
 
   await updateInstallationState(installation.id, "downloading", { statusMessage: "Downloading model", progress: 0 });
 
   let lastProgressAt = 0;
   await downloadModel(
-    installation.model,
+    providerModel,
     async (progress) => {
       const now = Date.now();
       if (now - lastProgressAt >= 5000) {
@@ -165,9 +171,9 @@ async function downloadAndStart(installation: ModelInstallation, ops: VllmOps): 
   await updateInstallationState(installation.id, "installing", { statusMessage: "Starting vLLM service" });
 
   const [trustRemoteCode, hasToolsTag, extraArgs, profile] = await Promise.all([
-    infoClient.hasTag(installation.model, "custom_code"),
-    infoClient.hasTag(installation.model, "tools"),
-    infoClient.resolveDriverArgs(installation.model),
+    infoClient.hasTag(lookup, "custom_code", "vllm"),
+    infoClient.hasTag(lookup, "tools", "vllm"),
+    infoClient.resolveDriverArgs(lookup, "vllm"),
     getHardwareProfile(),
   ]);
 
@@ -175,7 +181,7 @@ async function downloadAndStart(installation: ModelInstallation, ops: VllmOps): 
   const modelType = modelInfo?.type;
 
   await ops.start(installation.id, {
-    model: installation.model,
+    model: providerModel,
     port: installation.port,
     kvCacheBytes: `${installation.kvCacheCapacity}g`,
     trustRemoteCode,
@@ -187,7 +193,7 @@ async function downloadAndStart(installation: ModelInstallation, ops: VllmOps): 
     ],
   });
 
-  return modelType;
+  return { modelType, providerModel };
 }
 
 export function computeGpuUtilization(
@@ -372,12 +378,12 @@ function startNewInstallations$(candidates: ModelInstallation[], ops: VllmOps): 
         mergeMap((installation) => {
           let containerStarted = false;
           return defer(() =>
-            from(downloadAndStart(installation, ops).then((modelType) => {
+            from(downloadAndStart(installation, ops).then((res) => {
               containerStarted = true;
-              return modelType;
+              return res;
             })),
           ).pipe(
-            switchMap((modelType) => pollUntilHealthy$(installation, ops, modelType)),
+            switchMap(({ modelType, providerModel }) => pollUntilHealthy$(installation, ops, providerModel, modelType)),
             catchError((err) => handleInstallationError(err, installation, ops, containerStarted)),
           );
         }),

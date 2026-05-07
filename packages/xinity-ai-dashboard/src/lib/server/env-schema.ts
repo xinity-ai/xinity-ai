@@ -7,7 +7,8 @@ export const dashboardEnvSchema = z.object({
   ORIGIN: z.url().default("http://localhost:5173").describe("Public origin URL, no trailing slash (e.g. https://xinity.mydomain.com)"),
   HTTP_PORT: z.coerce.number().int().default(5173).describe("TCP port the server listens on (use a reverse proxy if deploying behind HTTPS)").meta(expert()),
   BETTER_AUTH_SECRET: z.string().describe("Better Auth secret key, generate with: openssl rand -base64 33").meta(secret()),
-  BETTER_AUTH_URL: z.string().describe("Better Auth URL, usually the same as ORIGIN (e.g. https://xinity.mydomain.com)"),
+  /** @deprecated */
+  BETTER_AUTH_URL: z.string().optional().describe("DEPRECATED: no longer used. ORIGIN is used as the Better Auth base URL.").meta(expert()),
   INFOSERVER_URL: z.url().describe("Infoserver URL (default hosted: https://sysinfo.xinity.ai, or your self-hosted instance)"),
   SIGNUP_ENABLED: z.stringbool().default(true).describe("Enable user signup"),
   COMPUTE_MANAGEMENT_ENABLED: z.stringbool().default(true).describe("Enable compute management").meta(expert()),

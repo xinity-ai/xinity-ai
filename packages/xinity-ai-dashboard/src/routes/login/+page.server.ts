@@ -12,6 +12,10 @@ export const load: PageServerLoad = async ({ request, url }) => {
     redirect(303, "/");
   }
 
+  const configuredOrigin = new URL(serverEnv.ORIGIN);
+  const hostMismatch =
+    serverEnv.NODE_ENV !== "development" && url.host !== configuredOrigin.host;
+
   let ssoProviders: { providerId: string; domain: string }[] = [];
   if (!serverEnv.MULTI_TENANT_MODE) {
     ssoProviders = await getDB().select({
@@ -26,5 +30,7 @@ export const load: PageServerLoad = async ({ request, url }) => {
     ssoProviders,
     signupEnabled: serverEnv.SIGNUP_ENABLED,
     emailVerificationRequired: Boolean(serverEnv.MAIL_URL),
+    hostMismatch,
+    configuredOrigin: configuredOrigin.origin,
   };
 };

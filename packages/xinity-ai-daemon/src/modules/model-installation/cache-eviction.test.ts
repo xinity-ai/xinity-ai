@@ -24,6 +24,7 @@ function inst(model: string, opts: { deletedAt?: Date | null } = {}): ModelInsta
   return {
     id: crypto.randomUUID(),
     nodeId: "node-1",
+    specifier: null,
     model,
     estCapacity: 16,
     kvCacheCapacity: 4,

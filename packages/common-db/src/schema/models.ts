@@ -32,9 +32,13 @@ export const modelDeploymentT = pgTable("model_deployment", {
    * This indirection enables project scoping, and canary deployments.
    * Tbs, by default it will simply reflect the specifier of the deployed model */
   publicSpecifier: text("public_specifier").notNull(),
-  /** The model to actually deploy. In case of canary deployments, this represents the end-state */
+  /** Canonical model identifier. Nullable for legacy rows. */
+  specifier: text(),
+  earlySpecifier: text("early_specifier"),
+  /** @deprecated Will be removed in the next major version. The value is not trusted; the
+   * canonical {@link specifier} is the only source of identity. */
   modelSpecifier: text("model_specifier").notNull(),
-  /** The model to start with in terms of canary deployment. Once progress has reached 100, this falls away */
+  /** @deprecated Will be removed in the next major version. */
   earlyModelSpecifier: text("early_model_specifier"),
   replicas: integer().notNull().default(1),
   /** When present, marks the point at which progress should reach 100 */
@@ -98,6 +102,10 @@ export type AiNode = InferSelectModel<typeof aiNodeT>;
 export const modelInstallationT = pgTable("model_installation", {
   id: uuid().primaryKey().defaultRandom(),
   nodeId: uuid("node_id").notNull().references(() => aiNodeT.id, { onDelete: "cascade" }),
+  /** Canonical model identifier. Nullable for legacy rows. */
+  specifier: text(),
+  /** @deprecated Will be removed in the next major version. The value is not trusted; the
+   * provider-model name is derived from the catalog via {@link specifier}. */
   model: text().notNull(),
   /** estimated total GPU capacity required (model weights + KV cache), taken up on the selected node */
   estCapacity: real("est_capacity").notNull(),
@@ -112,10 +120,25 @@ export const modelInstallationT = pgTable("model_installation", {
   updatedAt,
 }, table => [
   index("model_installation_node_id_idx").on(table.nodeId),
+  index("model_installation_specifier_idx").on(table.specifier),
   index("model_installation_model_idx").on(table.model),
   index("model_installation_deleted_at_idx").on(table.deletedAt),
 ]);
 export type ModelInstallation = InferSelectModel<typeof modelInstallationT>;
+
+/** SQL: deployment matches an installation by canonical specifier with legacy-string fallback.
+ * Use as the JOIN ON condition between modelDeploymentT and modelInstallationT. */
+export const deploymentMatchesInstallation = sql`
+  (COALESCE(${modelDeploymentT.specifier}, ${modelDeploymentT.modelSpecifier})
+    = COALESCE(${modelInstallationT.specifier}, ${modelInstallationT.model})
+  OR COALESCE(${modelDeploymentT.earlySpecifier}, ${modelDeploymentT.earlyModelSpecifier})
+    = COALESCE(${modelInstallationT.specifier}, ${modelInstallationT.model}))
+`;
+
+/** SQL: installation matches the given lookup value (specifier or providerModel). */
+export function installationMatchesLookup(value: string) {
+  return sql`COALESCE(${modelInstallationT.specifier}, ${modelInstallationT.model}) = ${value}`;
+}
 
 /**
  * Represents known additional info about any particular model installation. This is a 1-on-1 mapping, but kept

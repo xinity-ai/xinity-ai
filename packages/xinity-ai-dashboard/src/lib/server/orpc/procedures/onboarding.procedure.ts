@@ -32,7 +32,8 @@ const setupOnboarding = rootOs
   .route({ path: "/onboarding/setup", method: "POST", tags: ["Onboarding"], summary: "Complete onboarding setup" })
   .input(z.object({
     orgName: z.string().min(1).describe("Name of the organization to create"),
-    modelSpecifier: z.string().describe("The model specifier to deploy"),
+    specifier: z.string().describe("The canonical model identifier"),
+    modelSpecifier: z.string().describe("The driver-specific provider model string"),
     publicSpecifier: z.string().describe("The public-facing model name"),
   }))
   .output(z.object({
@@ -70,6 +71,7 @@ const setupOnboarding = rootOs
     // 3. Deploy the selected model
     await call(createDeployment, {
       name: input.publicSpecifier,
+      specifier: input.specifier,
       modelSpecifier: input.modelSpecifier,
       publicSpecifier: input.publicSpecifier,
       enabled: true,

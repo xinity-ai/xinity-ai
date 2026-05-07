@@ -112,7 +112,7 @@ describe("createInfoserverClient", () => {
   describe("fetchModel", () => {
     it("fetches a model from the server on cache miss", async () => {
       const client = makeClient();
-      const model = await client.fetchModel("llama-3.3-70b");
+      const model = await client.fetchModel({ kind: "canonical", specifier: "llama-3.3-70b" });
       expect(model).toBeDefined();
       expect(model!.publicSpecifier).toBe("llama-3.3-70b");
       expect(requestLog).toHaveLength(1);
@@ -120,9 +120,9 @@ describe("createInfoserverClient", () => {
 
     it("returns cached data on subsequent calls within TTL", async () => {
       const client = makeClient();
-      await client.fetchModel("llama-3.3-70b");
-      await client.fetchModel("llama-3.3-70b");
-      await client.fetchModel("llama-3.3-70b");
+      await client.fetchModel({ kind: "canonical", specifier: "llama-3.3-70b" });
+      await client.fetchModel({ kind: "canonical", specifier: "llama-3.3-70b" });
+      await client.fetchModel({ kind: "canonical", specifier: "llama-3.3-70b" });
       // Only one server request
       expect(requestLog).toHaveLength(1);
     });
@@ -133,12 +133,12 @@ describe("createInfoserverClient", () => {
       nowSpy.mockReturnValue(start);
 
       const client = makeClient(1000); // 1 second TTL
-      await client.fetchModel("llama-3.3-70b");
+      await client.fetchModel({ kind: "canonical", specifier: "llama-3.3-70b" });
       expect(requestLog).toHaveLength(1);
 
       // Advance past TTL
       nowSpy.mockReturnValue(start + 1500);
-      await client.fetchModel("llama-3.3-70b");
+      await client.fetchModel({ kind: "canonical", specifier: "llama-3.3-70b" });
       expect(requestLog).toHaveLength(2);
 
       nowSpy.mockRestore();
@@ -146,13 +146,32 @@ describe("createInfoserverClient", () => {
 
     it("returns undefined for 404", async () => {
       const client = makeClient();
-      const model = await client.fetchModel("not-found");
+      const model = await client.fetchModel({ kind: "canonical", specifier: "not-found" });
       expect(model).toBeUndefined();
     });
 
     it("throws on server error", async () => {
       const client = makeClient();
-      await expect(client.fetchModel("server-error")).rejects.toThrow('Infoserver unavailable for "server-error": HTTP 500');
+      await expect(client.fetchModel({ kind: "canonical", specifier: "server-error" })).rejects.toThrow('Infoserver unavailable for canonical "server-error": HTTP 500');
+    });
+
+    it("sends `lookup=canonical` for canonical lookups", async () => {
+      const client = makeClient();
+      await client.fetchModel({ kind: "canonical", specifier: "llama-3.3-70b" });
+      expect(requestLog[0]!.url).toContain("lookup=canonical");
+    });
+
+    it("sends `lookup=provider` for legacy lookups", async () => {
+      const client = makeClient();
+      await client.fetchModel({ kind: "legacy", providerModel: "llama-3.3-70b" });
+      expect(requestLog[0]!.url).toContain("lookup=provider");
+    });
+
+    it("caches canonical and legacy lookups under separate keys", async () => {
+      const client = makeClient();
+      await client.fetchModel({ kind: "canonical", specifier: "llama-3.3-70b" });
+      await client.fetchModel({ kind: "legacy", providerModel: "llama-3.3-70b" });
+      expect(requestLog).toHaveLength(2);
     });
   });
 
@@ -194,19 +213,19 @@ describe("createInfoserverClient", () => {
   describe("hasTag", () => {
     it("returns true when model has the tag", async () => {
       const client = makeClient();
-      expect(await client.hasTag("llama-3.3-70b", "tools")).toBe(true);
+      expect(await client.hasTag({ kind: "canonical", specifier: "llama-3.3-70b" }, "tools")).toBe(true);
     });
 
     it("returns false when model does not have the tag", async () => {
       const client = makeClient();
-      expect(await client.hasTag("llama-3.3-70b", "custom_code")).toBe(false);
+      expect(await client.hasTag({ kind: "canonical", specifier: "llama-3.3-70b" }, "custom_code")).toBe(false);
     });
   });
 
   describe("resolveDriverArgs", () => {
     it("returns empty array when model has no providerArgs", async () => {
       const client = makeClient();
-      const args = await client.resolveDriverArgs("llama-3.3-70b");
+      const args = await client.resolveDriverArgs({ kind: "canonical", specifier: "llama-3.3-70b" });
       expect(args).toEqual([]);
     });
   });

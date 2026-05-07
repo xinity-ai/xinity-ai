@@ -14,13 +14,19 @@
   import { toastState } from "$lib/state/toast.svelte";
   import { copyToClipboard } from "$lib/copy";
   import { createUrlSearchParamsStore } from "$lib/urlSearchParamsStore";
+  import { humanDateShort } from "$lib/util";
+
+  type ListUsersData = NonNullable<Awaited<ReturnType<typeof orpc.instanceAdmin.listUsers>>["data"]>;
+  type AdminUser = ListUsersData["users"][number];
+  type ListOrgsData = NonNullable<Awaited<ReturnType<typeof orpc.instanceAdmin.listOrganizations>>["data"]>;
+  type AdminOrganization = ListOrgsData["organizations"][number];
 
   const searchParams = createUrlSearchParamsStore();
   const LIMIT = 25;
 
-  let users = $state<any[]>([]);
+  let users = $state<AdminUser[]>([]);
   let total = $state(0);
-  let organizations = $state<any[]>([]);
+  let organizations = $state<AdminOrganization[]>([]);
 
   const currentPage = $derived(Number($searchParams.page) || 1);
   const searchValue = $derived($searchParams.search ?? "");
@@ -94,7 +100,7 @@
   const addOrgOrgLabel = $derived(
     addOrgSelectedOrg === ""
       ? "Select organization..."
-      : organizations.find((o: any) => o.id === addOrgSelectedOrg)?.name ?? "Select organization...",
+      : organizations.find((o) => o.id === addOrgSelectedOrg)?.name ?? "Select organization...",
   );
   const addOrgRoleLabel = $derived(roleLabels[addOrgSelectedRole] ?? "Select role...");
 
@@ -292,7 +298,7 @@
                   </div>
                 </td>
                 <td class="py-3 pr-4 text-muted-foreground text-xs whitespace-nowrap">
-                  {new Date(user.createdAt).toLocaleDateString()}
+                  {humanDateShort(user.createdAt)}
                 </td>
                 <td class="py-3">
                   <DropdownMenu.Root>

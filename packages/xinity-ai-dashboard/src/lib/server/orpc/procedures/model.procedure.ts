@@ -36,7 +36,7 @@ const getModel = rootOs
   .input(z.object({ specifier: z.string() }))
   .output(ModelWithSpecifierSchema.nullable())
   .handler(async ({ input }) => {
-    return await infoClient?.fetchModel(input.specifier) ?? null;
+    return await infoClient?.fetchModel({ kind: "canonical", specifier: input.specifier }) ?? null;
   });
 
 export const modelRouter = rootOs.prefix("/model").router({ 

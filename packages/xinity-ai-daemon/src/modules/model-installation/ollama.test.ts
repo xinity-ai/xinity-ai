@@ -64,6 +64,7 @@ function makeInstallation(model: string, id = crypto.randomUUID()) {
   return {
     id,
     nodeId: "node-1",
+    specifier: null,
     model,
     estCapacity: 8,
     kvCacheCapacity: 0,

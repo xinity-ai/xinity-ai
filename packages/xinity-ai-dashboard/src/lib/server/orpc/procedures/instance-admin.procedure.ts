@@ -357,7 +357,9 @@ const listOrganizations = rootOs
           totalCapacity: sql<number>`(
             SELECT coalesce(sum("model_installation"."est_capacity"), 0)
             FROM "model_deployment" md
-            INNER JOIN "model_installation" ON "model_installation"."model" = md."model_specifier"
+            INNER JOIN "model_installation"
+              ON COALESCE("model_installation"."specifier", "model_installation"."model")
+               = COALESCE(md."specifier", md."model_specifier")
             WHERE md."organization_id" = "organization"."id"
               AND md."deleted_at" IS NULL
           )`.as("total_capacity"),

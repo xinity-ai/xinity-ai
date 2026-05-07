@@ -343,9 +343,6 @@ in {
           // lib.optionalAttrs (cfg.betterAuthSecret != null) {
             BETTER_AUTH_SECRET = cfg.betterAuthSecret;
           }
-          // lib.optionalAttrs (cfg.betterAuthUrl != null) {
-            BETTER_AUTH_URL = cfg.betterAuthUrl;
-          }
           // lib.optionalAttrs (cfg.infoserverUrl != null) {
             INFOSERVER_URL = cfg.infoserverUrl;
           }

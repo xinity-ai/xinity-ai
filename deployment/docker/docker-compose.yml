@@ -89,8 +89,7 @@ services:
       NODE_ENV: production
       DB_CONNECTION_URL: postgresql://${POSTGRES_USER:-xinity}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-xinity}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
-      BETTER_AUTH_URL: https://${DASHBOARD_SUBDOMAIN:-dashboard}.${DOMAIN:?DOMAIN is required}
-      ORIGIN: https://${DASHBOARD_SUBDOMAIN:-dashboard}.${DOMAIN}
+      ORIGIN: https://${DASHBOARD_SUBDOMAIN:-dashboard}.${DOMAIN:?DOMAIN is required}
       HTTP_OVERRIDE_ORIGIN: https://${DASHBOARD_SUBDOMAIN:-dashboard}.${DOMAIN}
       GATEWAY_URL: https://${GATEWAY_SUBDOMAIN:-api}.${DOMAIN}
       INFOSERVER_URL: ${INFOSERVER_URL:-https://sysinfo.xinity.ai}

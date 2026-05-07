@@ -1,5 +1,6 @@
 import { describe, test, expect, mock, jest, beforeEach } from "bun:test";
 import { drizzle, modelDeploymentT } from "common-db";
+import { deploymentLookup, deploymentEarlyLookup, lookupKey } from "xinity-infoserver";
 
 mock.module("../env", () => ({
   env: {
@@ -30,13 +31,21 @@ mock.module("../db", () => ({
 
 const mockResolveModelMeta = jest.fn(async () => ({ type: "chat" as string | undefined, tags: ["tools"] as string[] }));
 const mockResolveRequestParams = jest.fn(async () => ({} as Record<string, string>));
+const mockFetchModel = jest.fn(async (lookup: { kind: "canonical"; specifier: string } | { kind: "legacy"; providerModel: string }) => {
+  const value = lookup.kind === "canonical" ? lookup.specifier : lookup.providerModel;
+  return { providers: { ollama: value, vllm: value } as { ollama?: string; vllm?: string } };
+});
 
 mock.module("xinity-infoserver", () => ({
   createInfoserverClient: () => ({
     resolveModelMeta: mockResolveModelMeta,
     resolveRequestParams: mockResolveRequestParams,
+    fetchModel: mockFetchModel,
   }),
   BLOCKED_REQUEST_PARAM_PREFIXES: ["chat_template", "tokenize", "prompt", "api_key"],
+  deploymentLookup,
+  deploymentEarlyLookup,
+  lookupKey,
 }));
 
 const { getModelInfo, _deps } = await import("./model-data");
@@ -84,6 +93,11 @@ beforeEach(() => {
   mockResolveModelMeta.mockResolvedValue({ type: "chat", tags: ["tools"] });
   mockResolveRequestParams.mockReset();
   mockResolveRequestParams.mockResolvedValue({});
+  mockFetchModel.mockReset();
+  mockFetchModel.mockImplementation(async (lookup) => {
+    const value = lookup.kind === "canonical" ? lookup.specifier : lookup.providerModel;
+    return { providers: { ollama: value, vllm: value } };
+  });
 });
 
 describe("getModelInfo", () => {
@@ -197,8 +211,8 @@ describe("getModelInfo", () => {
     expect(result!.type).toBe("embedding");
     expect(result!.tags).toEqual(["multilingual"]);
     expect(result!.requestParams).toEqual({ "top_k": "number" });
-    expect(mockResolveModelMeta).toHaveBeenCalledWith("llama3:latest");
-    expect(mockResolveRequestParams).toHaveBeenCalledWith("llama3:latest");
+    expect(mockResolveModelMeta).toHaveBeenCalledWith({ kind: "legacy", providerModel: "llama3:latest" }, "ollama");
+    expect(mockResolveRequestParams).toHaveBeenCalledWith({ kind: "legacy", providerModel: "llama3:latest" }, "ollama");
   });
 
   test("skips early model lookup when earlyModelSpecifier is null", async () => {
