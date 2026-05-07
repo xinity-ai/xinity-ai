@@ -62,7 +62,7 @@ function makeBearerHeader(prefix?: string): string {
 
 // --- Redis spies ---
 
-let mockRedisGetex: ReturnType<typeof spyOn>;
+let mockRedisGet: ReturnType<typeof spyOn>;
 let mockRedisSet: ReturnType<typeof spyOn>;
 
 // --- Helpers ---
@@ -86,12 +86,12 @@ describe("checkAuth", () => {
     mockQueryResult.length = 0;
 
     // Default: cache miss, set succeeds
-    mockRedisGetex = spyOn(redis, "getex").mockResolvedValue(null);
+    mockRedisGet = spyOn(redis, "get").mockResolvedValue(null);
     mockRedisSet = spyOn(redis, "set").mockResolvedValue("OK" as any);
   });
 
   afterEach(() => {
-    mockRedisGetex.mockRestore();
+    mockRedisGet.mockRestore();
     mockRedisSet.mockRestore();
   });
 
@@ -112,7 +112,7 @@ describe("checkAuth", () => {
       applicationId: "cached-app",
       collectData: false,
     };
-    mockRedisGetex.mockResolvedValue(JSON.stringify(cached));
+    mockRedisGet.mockResolvedValue(JSON.stringify(cached));
 
     const result = await checkAuth(makeBearerHeader());
 
@@ -133,7 +133,7 @@ describe("checkAuth", () => {
       applicationId: null,
       // collectData intentionally omitted
     };
-    mockRedisGetex.mockResolvedValue(JSON.stringify(cached));
+    mockRedisGet.mockResolvedValue(JSON.stringify(cached));
 
     const result = await checkAuth(makeBearerHeader());
 

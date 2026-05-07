@@ -79,20 +79,22 @@ export async function checkAuth(authHeader: string): Promise<Response | AuthResu
 
 type PartialApiKey = Pick<AIAPIKeyT, "organizationId" | "id" | "applicationId" | "collectData">;
 const pickAttrs = pick(["organizationId", "id", "applicationId", "collectData"] satisfies (keyof AIAPIKeyT)[]);
+const API_KEY_CACHE_TTL_SECONDS = 120;
+
 function setApiKeyCache(
   identifier: string,
   data: AIAPIKeyT,
-  ttlSeconds: number = 60 * 60,
+  ttlSeconds: number = API_KEY_CACHE_TTL_SECONDS,
 ): void {
   const key = `apikey:${identifier}`;
   void redis.set(key, JSON.stringify(pickAttrs(data)), "EX", ttlSeconds)
     .catch((err: unknown) => log.warn({ err }, "Redis error in setApiKeyCache"));
 }
 
-async function getApiKeyCache(identifier: string, ttlSeconds = 60 * 60): Promise<PartialApiKey | null> {
+async function getApiKeyCache(identifier: string): Promise<PartialApiKey | null> {
   try {
     const key = `apikey:${identifier}`;
-    const result = await redis.getex(key, "EX", ttlSeconds);
+    const result = await redis.get(key);
     if (!result) return null;
     const parsed = JSON.parse(result);
     // Handle old cache entries missing collectData (safe default during rolling deploy)
