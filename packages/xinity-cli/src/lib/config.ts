@@ -1,7 +1,7 @@
 /**
  * Persistent CLI configuration stored at ~/.config/xinity/config.json.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import * as p from "./clack.ts";
@@ -68,8 +68,10 @@ export function loadConfig(): CliConfig {
 
 /** Write the full config object to disk, creating the directory if needed. */
 export function saveConfig(config: CliConfig): void {
-  mkdirSync(CONFIG_DIR, { recursive: true });
-  writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n");
+  mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
+  chmodSync(CONFIG_DIR, 0o700);
+  writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
+  chmodSync(CONFIG_PATH, 0o600);
 }
 
 /** Merge partial updates into the existing config and persist. */
