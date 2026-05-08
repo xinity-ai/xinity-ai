@@ -6,7 +6,7 @@ import { isInstanceAdmin, serverEnv } from "$lib/server/serverenv";
 import { getDB } from "$lib/server/db";
 import { notifyOrgMembers } from "$lib/server/notifications/notification.service";
 import { NotificationType } from "$lib/server/notifications/events";
-import { memberT, userT, organizationT, sql } from "common-db";
+import { memberT, userT, organizationT, invitationT, sql } from "common-db";
 import { isRoleAvailable } from "$lib/server/roles";
 import { hasFeature } from "$lib/server/license";
 
@@ -261,7 +261,13 @@ const cancelInvitation = rootOs
   .input(z.object({
     invitationId: z.string(),
   }))
+  .errors({ NOT_FOUND: {} })
   .handler(async ({ input, context, errors }) => {
+    const invitation = await findInvitationInOrg(input.invitationId, context.activeOrganizationId);
+    if (!invitation) {
+      throw errors.NOT_FOUND({ message: "Invitation not found" });
+    }
+
     const result = await auth.api.cancelInvitation({
       body: {
         invitationId: input.invitationId,
@@ -313,3 +319,12 @@ export const organizationRouter = rootOs.prefix("/organization").router({
   cancelInvitation,
   delete: deleteOrganization,
 });
+
+async function findInvitationInOrg(invitationId: string, organizationId: string): Promise<{ id: string } | null> {
+  const [row] = await getDB()
+    .select({ id: invitationT.id })
+    .from(invitationT)
+    .where(sql`${invitationT.id} = ${invitationId} AND ${invitationT.organizationId} = ${organizationId}`)
+    .limit(1);
+  return row ?? null;
+}
