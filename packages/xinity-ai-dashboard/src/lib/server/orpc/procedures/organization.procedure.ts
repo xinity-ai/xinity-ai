@@ -9,6 +9,7 @@ import { NotificationType } from "$lib/server/notifications/events";
 import { memberT, userT, organizationT, invitationT, sql } from "common-db";
 import { isRoleAvailable } from "$lib/server/roles";
 import { hasFeature } from "$lib/server/license";
+import { betterAuthErrorBody } from "$lib/server/better-auth-errors";
 
 const log = rootLogger.child({ name: "organization.procedure" });
 const tags = ["Organization"];
@@ -124,11 +125,9 @@ const inviteMember = rootOs
       }
 
       return { success: true };
-    } catch (err: unknown) {
-      const body = (err as Record<string, any>)?.body;
-      const code = body?.code as string | undefined;
-
-      switch (code) {
+    } catch (err) {
+      const body = betterAuthErrorBody(err);
+      switch (body?.code) {
         case "USER_IS_ALREADY_INVITED_TO_THIS_ORGANIZATION":
           throw errors.CONFLICT({ message: "This email already has a pending invitation to this organization" });
         case "USER_IS_ALREADY_A_MEMBER_OF_THIS_ORGANIZATION":
@@ -139,10 +138,10 @@ const inviteMember = rootOs
           throw errors.FORBIDDEN({ message: "You are not allowed to invite users with this role" });
         case "ROLE_NOT_FOUND":
           throw errors.BAD_REQUEST({ message: "The specified role does not exist" });
-        default: {
-          const message = (body?.message ?? (err as Error)?.message) as string | undefined;
-          throw errors.INTERNAL_SERVER_ERROR({ message: message || "Failed to send invitation" });
-        }
+        default:
+          throw errors.INTERNAL_SERVER_ERROR({
+            message: body?.message ?? (err instanceof Error ? err.message : null) ?? "Failed to send invitation",
+          });
       }
     }
   });
