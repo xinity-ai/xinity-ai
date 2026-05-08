@@ -31,6 +31,7 @@ export type ModelNodeRequirements = {
 export type IncompatibilityReason =
   | "missing_driver"
   | "version_too_old"
+  | "version_unknown"
   | "wrong_platform"
   | "insufficient_capacity";
 
@@ -42,8 +43,6 @@ export type IncompatibilityReason =
  * This lets callers separate "structurally incompatible" from "just no capacity"
  * for greedy allocation loops.
  *
- * Fail-open for driverVersions: nodes that haven't reported a version
- * are not excluded (may be mid-upgrade).
  * Fail-closed for gpus: if a model requires specific GPU platforms,
  * nodes with no GPUs or wrong vendors are excluded.
  */
@@ -51,11 +50,16 @@ export function checkNodeCompatibility(
   node: NodeCapability,
   req: ModelNodeRequirements,
 ): IncompatibilityReason | null {
+  // TODO v1.0.0 This setting will be switched to true
+  const requireKnownVersion = false;
+
   if (!node.drivers.includes(req.driver)) return "missing_driver";
 
   if (req.minVersion) {
     const nodeVersion = node.driverVersions[req.driver];
-    if (nodeVersion && !satisfiesMinVersion(nodeVersion, req.minVersion)) {
+    if (!nodeVersion) {
+      if (requireKnownVersion) return "version_unknown";
+    } else if (!satisfiesMinVersion(nodeVersion, req.minVersion)) {
       return "version_too_old";
     }
   }
