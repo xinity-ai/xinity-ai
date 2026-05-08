@@ -28,6 +28,9 @@ export type AuthResult = {
   collectData: boolean;
 }
 
+/** map to keep track of ongoing auth checks, to deal with sudden bursts of requests from the same key */
+const inflightAuth = new Map<string, Promise<Response | AuthResult>>();
+
 export async function checkAuth(authHeader: string): Promise<Response | AuthResult> {
   if (!authHeader.startsWith("Bearer ")) {
     return genericUnauthorized("Missing API Key");
@@ -43,6 +46,14 @@ export async function checkAuth(authHeader: string): Promise<Response | AuthResu
       collectData: secret.collectData ?? true,
     };
   }
+  const inflight = inflightAuth.get(key);
+  if (inflight) return inflight;
+  const promise = verifyKeyAgainstDb(key, prefix).finally(() => inflightAuth.delete(key));
+  inflightAuth.set(key, promise);
+  return promise;
+}
+
+async function verifyKeyAgainstDb(key: string, prefix: string): Promise<Response | AuthResult> {
   const [apiKeyObj] = await getDB()
     .select()
     .from(aiApiKeyT)
