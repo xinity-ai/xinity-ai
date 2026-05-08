@@ -14,6 +14,13 @@ import { unitName } from "./systemd.ts";
 import { pass, fail, info } from "./output.ts";
 import { type Host, createLocalHost, isUnitActiveOn, getUnitStatusOn } from "./host.ts";
 
+function applyEnvDerivations(component: Component, config: Record<string, string>): Record<string, string> {
+  if (component === "dashboard" && config.ORIGIN) {
+    return { ...config, HTTP_OVERRIDE_ORIGIN: config.ORIGIN };
+  }
+  return config;
+}
+
 /** Write component env config and secret files to disk via host elevation. */
 export async function writeEnvConfig(
   component: Component,
@@ -22,7 +29,7 @@ export async function writeEnvConfig(
   host: Host = createLocalHost(),
 ): Promise<boolean> {
   // Write config env file
-  const envContent = serializeEnvFile(config);
+  const envContent = serializeEnvFile(applyEnvDerivations(component, config));
   const envPath = `${ENV_DIR}/${component}.env`;
   let result = await host.withElevation(
     `mkdir -p ${ENV_DIR} && cat > ${envPath} << 'ENVEOF'\n${envContent}ENVEOF\nchmod 644 ${envPath}`,
