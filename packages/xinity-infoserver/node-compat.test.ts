@@ -49,10 +49,42 @@ describe("checkNodeCompatibility", () => {
     )).toBeNull();
   });
 
-  test("skips version check when node has no version info (fail-open)", () => {
+  test("skips version check when node has no version info (fail-open by default)", () => {
     expect(checkNodeCompatibility(
       makeNode({ driverVersions: {} }),
       makeReq({ minVersion: "0.19.1" }),
+    )).toBeNull();
+  });
+
+  test("returns version_unknown when requireKnownVersion is true and node has no version", () => {
+    expect(checkNodeCompatibility(
+      makeNode({ driverVersions: {} }),
+      makeReq({ minVersion: "0.19.1" }),
+      { requireKnownVersion: true },
+    )).toBe("version_unknown");
+  });
+
+  test("requireKnownVersion does not affect nodes whose reported version is sufficient", () => {
+    expect(checkNodeCompatibility(
+      makeNode({ driverVersions: { vllm: "0.20.0" } }),
+      makeReq({ minVersion: "0.19.1" }),
+      { requireKnownVersion: true },
+    )).toBeNull();
+  });
+
+  test("requireKnownVersion still returns version_too_old when reported version is too low", () => {
+    expect(checkNodeCompatibility(
+      makeNode({ driverVersions: { vllm: "0.18.0" } }),
+      makeReq({ minVersion: "0.19.1" }),
+      { requireKnownVersion: true },
+    )).toBe("version_too_old");
+  });
+
+  test("requireKnownVersion is ignored when the model has no minVersion", () => {
+    expect(checkNodeCompatibility(
+      makeNode({ driverVersions: {} }),
+      makeReq(),
+      { requireKnownVersion: true },
     )).toBeNull();
   });
 
