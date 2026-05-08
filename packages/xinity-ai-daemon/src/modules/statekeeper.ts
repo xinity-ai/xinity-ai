@@ -57,18 +57,20 @@ export async function getNodeDriverVersions(): Promise<Record<string, string>> {
 
   if (env.VLLM_DOCKER_IMAGE) {
     try {
-      const output = await $`docker run --rm --entrypoint vllm ${env.VLLM_DOCKER_IMAGE} version`
+      const output = await $`docker run --rm --gpus all --entrypoint vllm ${env.VLLM_DOCKER_IMAGE} --version`
         .throws(false).text();
       const match = output.match(/(\d+\.\d+\.\d+\S*)/);
       if (match) versions["vllm"] = normalizePep440(match[1]);
+      else log.warn({ output }, "vLLM Docker version output did not match expected format");
     } catch (err) {
       log.debug({ err }, "Failed to detect vLLM Docker version");
     }
   } else if (env.VLLM_PATH) {
     try {
-      const output = await $`${env.VLLM_PATH} version`.throws(false).text();
+      const output = await $`${env.VLLM_PATH} --version`.throws(false).text();
       const match = output.match(/(\d+\.\d+\.\d+\S*)/);
       if (match) versions["vllm"] = normalizePep440(match[1]);
+      else log.warn({ output }, "vLLM version output did not match expected format");
     } catch (err) {
       log.debug({ err }, "Failed to detect vLLM version");
     }
