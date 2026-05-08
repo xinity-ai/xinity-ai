@@ -51,6 +51,39 @@ const ChatCompletionBodySchema = z.looseObject({
   ]).optional(),
 });
 
+const NonStreamingChoicesSchema = z.array(z.looseObject({
+  index: z.number(),
+  message: z.looseObject({
+    role: z.string(),
+    content: z.string().nullable().optional(),
+    tool_calls: z.array(z.looseObject({
+      id: z.string(),
+      type: z.string(),
+      function: z.looseObject({ name: z.string(), arguments: z.string() }),
+    })).optional(),
+  }),
+  finish_reason: z.string().nullable().optional(),
+}));
+
+function logNonStreamingChatResponse(
+  raw: Record<string, unknown>,
+  originalModel: string,
+  logFields: Omit<Parameters<typeof logChatUsage>[0], "usage" | "outputData" | "stream">,
+): void {
+  const choicesResult = NonStreamingChoicesSchema.safeParse(raw.choices);
+  const usageResult = BackendUsageSchema.safeParse(raw.usage);
+  if (!choicesResult.success) {
+    log.warn({ issues: choicesResult.error.issues }, "Could not extract choices for logging");
+    return;
+  }
+  logChatUsage({
+    ...logFields,
+    usage: usageResult.success ? usageResult.data : undefined,
+    outputData: { model: originalModel, choices: choicesResult.data },
+    stream: false,
+  });
+}
+
 export async function handleChatCompletion(req: Request) {
   try {
     const resolved = await resolveModel(req);
@@ -79,8 +112,6 @@ export async function handleChatCompletion(req: Request) {
 
     const callStartTime = Date.now();
 
-    // Process images: resolve to data URIs for the inference node, store S3
-    // refs (or original URLs) in the DB version.
     const { messagesForLLM, messagesForDB } = await processMessageImages(
       body.messages as ApiCallInputMessage[],
       auth.orgId,
@@ -210,38 +241,8 @@ export async function handleChatCompletion(req: Request) {
         return errorResponse("Backend returned an invalid response", 502);
       }
 
-      // Override model with the user-facing specifier
       raw.model = originalModel;
-
-      // Field-by-field extraction for logging each field independent so one
-      // malformed field can't block extraction of the others
-      const choicesResult = z.array(z.looseObject({
-        index: z.number(),
-        message: z.looseObject({
-          role: z.string(),
-          content: z.string().nullable().optional(),
-          tool_calls: z.array(z.looseObject({
-            id: z.string(),
-            type: z.string(),
-            function: z.looseObject({ name: z.string(), arguments: z.string() }),
-          })).optional(),
-        }),
-        finish_reason: z.string().nullable().optional(),
-      })).safeParse(raw.choices);
-
-      const usageResult = BackendUsageSchema.safeParse(raw.usage);
-
-      if (choicesResult.success) {
-        logChatUsage({
-          ...logFields,
-          usage: usageResult.success ? usageResult.data : undefined,
-          outputData: { model: originalModel, choices: choicesResult.data },
-          stream: false,
-        });
-      } else {
-        log.warn({ issues: choicesResult.error.issues }, "Could not extract choices for logging");
-      }
-
+      logNonStreamingChatResponse(raw, originalModel, logFields);
       return Response.json(raw);
     }
 

@@ -213,6 +213,30 @@ async function queryDeploymentsWithStatus(where: ReturnType<typeof sql>): Promis
   });
 }
 
+async function lookupIsMissingFromCatalog(lookup: ModelLookup | null): Promise<boolean> {
+  if (!lookup || !infoClient) return false;
+  try {
+    const status = await infoClient.fetchModelStatus(lookup);
+    return status.status === "not_found";
+  } catch {
+    return false;
+  }
+}
+
+async function markDeploymentsMissingFromCatalog(deployments: DeploymentWithStatus[]): Promise<void> {
+  if (!infoClient) return;
+  const candidates = deployments.filter(d => !d.status && d.enabled);
+  await Promise.all(candidates.map(async (entry) => {
+    const [primaryMissing, earlyMissing] = await Promise.all([
+      lookupIsMissingFromCatalog(deploymentLookup(entry)),
+      lookupIsMissingFromCatalog(deploymentEarlyLookup(entry)),
+    ]);
+    if (primaryMissing || earlyMissing) {
+      entry.status = { phase: "not_in_catalog", progress: null, error: null };
+    }
+  }));
+}
+
 const listDeployments = rootOs.use(withOrganization)
   .use(requirePermission({ modelDeployment: ["read"] }))
   .route({ path: "/", method: "GET", tags, summary: "List Deployments", description: "Lists deployments accessible to the current user" })
@@ -222,33 +246,7 @@ const listDeployments = rootOs.use(withOrganization)
     const orgCondition = sql`${modelDeploymentT.organizationId} = ${context.activeOrganizationId} AND ${modelDeploymentT.deletedAt} IS NULL`;
     if (input?.withStatus) {
       const results = await queryDeploymentsWithStatus(orgCondition);
-
-      // For enabled deployments with no installations at all, check whether the
-      // model still exists in the catalog. If it has been removed, surface that
-      // as a distinct "not_in_catalog" phase so the UI can warn the operator.
-      const noStatusEnabled = results.filter(r => !r.status && r.enabled);
-      if (noStatusEnabled.length > 0 && infoClient) {
-        const client = infoClient;
-        const isMissing = async (lookup: ModelLookup | null): Promise<boolean> => {
-          if (!lookup) return false;
-          try {
-            const status = await client.fetchModelStatus(lookup);
-            return status.status === "not_found";
-          } catch {
-            return false;
-          }
-        };
-        await Promise.all(noStatusEnabled.map(async (entry) => {
-          const [primaryMissing, earlyMissing] = await Promise.all([
-            isMissing(deploymentLookup(entry)),
-            isMissing(deploymentEarlyLookup(entry)),
-          ]);
-          if (primaryMissing || earlyMissing) {
-            entry.status = { phase: "not_in_catalog", progress: null, error: null };
-          }
-        }));
-      }
-
+      await markDeploymentsMissingFromCatalog(results);
       return results;
     }
     return await getDB().select().from(modelDeploymentT).where(orgCondition);

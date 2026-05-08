@@ -26,6 +26,40 @@ async function assertSlugAvailable(slug: string, errors: { CONFLICT: (opts: { me
   }
 }
 
+async function markEmailVerified(userId: string): Promise<void> {
+  await getDB().update(userT).set({ emailVerified: true }).where(eq(userT.id, userId));
+}
+
+async function createOrgWithOwnerMembership(
+  orgName: string,
+  ownerUserId: string,
+  errors: { CONFLICT: (opts: { message: string }) => Error },
+): Promise<{ orgId: string; orgSlug: string }> {
+  const slug = createSlug(orgName);
+  await assertSlugAvailable(slug, errors);
+  const orgId = crypto.randomUUID();
+  const db = getDB();
+  await db.insert(organizationT).values({ id: orgId, name: orgName, slug });
+  await db.insert(memberT).values({
+    id: crypto.randomUUID(),
+    userId: ownerUserId,
+    organizationId: orgId,
+    role: "owner",
+  });
+  return { orgId, orgSlug: slug };
+}
+
+async function issueServerSideDashboardApiKey(userId: string, organizationId: string) {
+  return await auth.api.createApiKey({
+    query: { greenlitCallId: getGreenlitCallId() },
+    body: {
+      name: "Xinity CLI",
+      userId,
+      metadata: { organizationId },
+    },
+  });
+}
+
 const setupOnboarding = rootOs
   .meta({ mcp: false })
   .use(withAuth)
@@ -137,56 +171,18 @@ const cli = rootOs
     const userId = signupResult.user.id;
     rlog.info({ userId, email: input.email }, "CLI onboarding: user created");
 
-    const db = getDB();
+    await markEmailVerified(userId);
+    const { orgId, orgSlug } = await createOrgWithOwnerMembership(input.orgName, userId, errors);
+    rlog.info({ userId, orgId, orgSlug }, "CLI onboarding: organization created");
 
-    // 2. Mark email as verified (CLI setup bypasses email verification flow)
-    await db.update(userT).set({ emailVerified: true }).where(eq(userT.id, userId));
-
-    // 3. Create organization + owner membership directly via DB
-    //    (Better Auth's createOrganization API requires session headers
-    //    which we don't have in this unauthenticated context)
-    const slug = createSlug(input.orgName);
-
-    // Check slug availability before creating
-    await assertSlugAvailable(slug, errors);
-
-    const orgId = crypto.randomUUID();
-    await db.insert(organizationT).values({
-      id: orgId,
-      name: input.orgName,
-      slug,
-    });
-    await db.insert(memberT).values({
-      id: crypto.randomUUID(),
-      userId,
-      organizationId: orgId,
-      role: "owner",
-    });
-
-    rlog.info({ userId, orgId, orgSlug: slug }, "CLI onboarding: organization created");
-
-    // 4. Create a dashboard API key via Better Auth's apiKey plugin.
-    //    Omitting headers makes this a server-side call, so Better Auth
-    //    resolves the user from the body's userId instead of a session cookie.
-    //    greenlitCallId bypasses the "API Key Creation only Serverside" hook guard.
-    const apiKeyResult = await auth.api.createApiKey({
-      query: { greenlitCallId: getGreenlitCallId() },
-      body: {
-        name: "Xinity CLI",
-        userId,
-        metadata: {
-          organizationId: orgId,
-        },
-      },
-    });
-
+    const apiKeyResult = await issueServerSideDashboardApiKey(userId, orgId);
     rlog.info({ userId }, "CLI onboarding: dashboard API key created");
 
     return {
       dashboardApiKey: apiKeyResult.key,
       userId,
       orgId,
-      orgSlug: slug,
+      orgSlug,
     };
   });
 

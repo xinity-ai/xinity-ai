@@ -7,6 +7,22 @@ const log = rootLogger.child({ name: "deployment-id" });
 let cachedInstanceId: string | null = null;
 let loadPromise: Promise<string> | null = null;
 
+async function raceSafeInsertSingleton(): Promise<{ row: { instanceId: string }; inserted: boolean }> {
+  const db = getDB();
+  const inserted = await db
+    .insert(deploymentConfigT)
+    .values({ singleton: 1 })
+    .onConflictDoNothing({ target: deploymentConfigT.singleton })
+    .returning();
+  if (inserted.length > 0) return { row: inserted[0], inserted: true };
+
+  const existing = await db.select().from(deploymentConfigT).limit(1);
+  if (existing.length === 0) {
+    throw new Error("deployment_config row missing after singleton upsert");
+  }
+  return { row: existing[0], inserted: false };
+}
+
 /**
  * Reads the singleton row from `deployment_config`, inserting one if missing,
  * and caches the resulting instance ID for the process lifetime.
@@ -28,24 +44,11 @@ export async function loadDeploymentId(): Promise<string> {
         return cachedInstanceId;
       }
 
-      // Atomic upsert + re-select so concurrent multi-process startups converge on
-      // the same row instead of one losing to a primary-key conflict.
-      const inserted = await db
-        .insert(deploymentConfigT)
-        .values({ singleton: 1 })
-        .onConflictDoNothing({ target: deploymentConfigT.singleton })
-        .returning();
-      const rows = inserted.length > 0
-        ? inserted
-        : await db.select().from(deploymentConfigT).limit(1);
-      if (rows.length === 0) {
-        throw new Error("deployment_config row missing after singleton upsert");
-      }
-
-      cachedInstanceId = rows[0].instanceId;
+      const { row, inserted } = await raceSafeInsertSingleton();
+      cachedInstanceId = row.instanceId;
       log.info(
         { instanceId: cachedInstanceId },
-        inserted.length > 0 ? "Generated deployment instance ID" : "Loaded deployment instance ID",
+        inserted ? "Generated deployment instance ID" : "Loaded deployment instance ID",
       );
       return cachedInstanceId;
     } finally {
