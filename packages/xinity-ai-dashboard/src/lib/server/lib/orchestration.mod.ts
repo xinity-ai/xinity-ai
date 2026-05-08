@@ -24,6 +24,22 @@ interface ClusterState {
 export type ModelRequirement = { lookup: ModelLookup; replicas: number; kvCacheSize: number | null; preferredDriver: Provider | null };
 export type ModelRequirementTable = Record<string, ModelRequirement>;
 
+function mergeRequirementsByLookupKey(entries: ModelRequirement[]): ModelRequirementTable {
+  return entries.reduce((agg, entry) => {
+    const key = lookupKey(entry.lookup);
+    const existing = agg[key];
+    if (!existing) {
+      agg[key] = entry;
+      return agg;
+    }
+    if (entry.replicas > existing.replicas) existing.replicas = entry.replicas;
+    if (entry.kvCacheSize != null && (existing.kvCacheSize == null || entry.kvCacheSize > existing.kvCacheSize)) {
+      existing.kvCacheSize = entry.kvCacheSize;
+    }
+    return agg;
+  }, {} as ModelRequirementTable);
+}
+
 /** Builds the replica requirement table based on enabled deployments. */
 export async function assembleModelRequirementTable(): Promise<ModelRequirementTable> {
   const enabledDeployments = await getDB().select().from(modelDeploymentT).where(sql`
@@ -56,21 +72,7 @@ export async function assembleModelRequirementTable(): Promise<ModelRequirementT
       preferredDriver: deployment.preferredDriver,
     }]
   });
-  // Take the maximum replica count and kvCacheSize when the same lookup key appears in multiple deployments
-  const modelRequirements = models.reduce((agg, entry) => {
-    const key = lookupKey(entry.lookup);
-    const existing = agg[key];
-    if (existing) {
-      if (entry.replicas > existing.replicas) existing.replicas = entry.replicas;
-      if (entry.kvCacheSize != null && (existing.kvCacheSize == null || entry.kvCacheSize > existing.kvCacheSize)) {
-        existing.kvCacheSize = entry.kvCacheSize;
-      }
-    } else {
-      agg[key] = entry;
-    }
-    return agg;
-  }, {} as ModelRequirementTable);
-  return modelRequirements;
+  return mergeRequirementsByLookupKey(models);
 }
 
 /** Indexes existing installations by lookup key and by server, and initialises capacity tracking. */
