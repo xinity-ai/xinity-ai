@@ -424,6 +424,12 @@ export function isConnectionRefused(error: unknown): boolean {
   return error instanceof Error && (error as { code?: string }).code === "ConnectionRefused";
 }
 
+export function isUpstreamError(error: unknown): boolean {
+  return error instanceof Error && (
+    "statusCode" in error || "status" in error || error.name === "APICallError"
+  );
+}
+
 /** Seconds to advertise in Retry-After when a backend node is unreachable (covers typical vLLM restart time). */
 export const BACKEND_RESTART_RETRY_AFTER = 120;
 
@@ -452,7 +458,9 @@ export function handleEndpointError(
     );
   }
   log.error({ err: error }, "Internal gateway error");
-  return errorResponse(error instanceof Error ? error.message : "Internal Server Error", 500);
+  // Generic message: error.message can include DB/SDK internals that must not
+  // reach the client. Full error is logged above for debugging.
+  return errorResponse("Internal Server Error", 500);
 }
 
 export function validateModelType(

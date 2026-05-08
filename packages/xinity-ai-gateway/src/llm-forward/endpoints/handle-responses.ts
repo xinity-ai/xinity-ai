@@ -1,6 +1,6 @@
 import { generateText, streamText } from "ai";
 import { resolveAuthorizedModel } from "../ai-sdk";
-import { errorResponse, logChatUsage, validateModelType, toModelMessages, SSE_RESPONSE_HEADERS, validationError } from "../util";
+import { errorResponse, logChatUsage, validateModelType, toModelMessages, SSE_RESPONSE_HEADERS, validationError, isUpstreamError } from "../util";
 import type { ApiCallInputMessage } from "common-db";
 import { checkAuth, type AuthResult } from "../auth";
 import { deleteResponse, getResponse, saveResponse } from "../response-store";
@@ -318,17 +318,15 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
 
     return Response.json(responseBody);
   } catch (error) {
-    const isUpstreamError = error instanceof Error && (
-      "statusCode" in error || "status" in error || error.name === "APICallError"
-    );
-    if (isUpstreamError) {
-      const status = (error as Record<string, unknown>).statusCode ?? (error as Record<string, unknown>).status;
+    if (isUpstreamError(error) && error instanceof Error) {
+      const errObj = error as unknown as Record<string, unknown>;
+      const status = errObj.statusCode ?? errObj.status;
       const code = typeof status === "number" && status >= 400 && status < 600 ? status : 502;
       log.error({ err: error }, "Upstream error");
       return errorResponse(error.message || "Bad Gateway", code as number);
     }
     log.error({ err: error }, "Internal gateway error");
-    return errorResponse(error instanceof Error ? error.message : "Internal Server Error", 500);
+    return errorResponse("Internal Server Error", 500);
   }
 }
 
@@ -378,9 +376,15 @@ async function runBackground(
       stream: false,
     });
   } catch (error) {
+    if (!isUpstreamError(error)) {
+      log.error({ err: error, responseId }, "Background response generation failed");
+    }
+    const message = isUpstreamError(error) && error instanceof Error
+      ? error.message
+      : "Gateway error";
     const failedResponse = markResponseFailed(
       createResponseObject({ responseId, createdAt, model: originalModel, status: "failed", body }),
-      error instanceof Error ? error.message : "Gateway error",
+      message,
     );
     await saveResponse(orgId, responseId, failedResponse)
       .catch((err) => log.error({ err, responseId }, "Failed to persist failed response"));

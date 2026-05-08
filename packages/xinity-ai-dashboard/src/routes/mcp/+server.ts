@@ -10,8 +10,12 @@
  *   { "url": "https://dashboard.example.com/mcp", "headers": { "x-api-key": "sk_..." } }
  */
 import { json, type RequestHandler } from "@sveltejs/kit";
+import { toORPCError } from "@orpc/client";
 import { mcpTools, callMcpTool, type McpTool } from "$lib/server/mcp";
 import { serverEnv } from "$lib/server/serverenv";
+import { rootLogger } from "$lib/server/logging";
+
+const log = rootLogger.child({ name: "mcp" });
 
 const SERVER_INFO = { name: "xinity-ai", version: "0.1.0" };
 const PROTOCOL_VERSION = "2024-11-05";
@@ -74,6 +78,16 @@ async function handleMessage(
 			if (!name) {
 				return { jsonrpc, id, error: { code: -32602, message: "Invalid params: missing name" } };
 			}
+			if (!mcpTools.some((t) => t.name === name)) {
+				return {
+					jsonrpc,
+					id,
+					result: {
+						content: [{ type: "text", text: `Unknown tool: ${name}` }],
+						isError: true,
+					},
+				};
+			}
 			try {
 				const result = await callMcpTool(name, args, apiKey);
 				return {
@@ -82,11 +96,26 @@ async function handleMessage(
 					result: { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] },
 				};
 			} catch (err) {
+				// Surface developer-declared errors (e.g. NOT_FOUND, FORBIDDEN with curated
+				// messages) verbatim. Everything else is logged server-side and returned as
+				// a generic message so DB/validation internals don't leak to clients.
+				const orpcErr = toORPCError(err);
+				if (orpcErr.defined) {
+					return {
+						jsonrpc,
+						id,
+						result: {
+							content: [{ type: "text", text: `${orpcErr.code}: ${orpcErr.message}` }],
+							isError: true,
+						},
+					};
+				}
+				log.error({ err, tool: name }, "MCP tool execution failed");
 				return {
 					jsonrpc,
 					id,
 					result: {
-						content: [{ type: "text", text: String(err) }],
+						content: [{ type: "text", text: "Tool execution failed" }],
 						isError: true,
 					},
 				};

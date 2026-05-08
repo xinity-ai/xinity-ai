@@ -17,7 +17,7 @@ import {
 } from "./builders";
 import { saveResponse } from "../response-store";
 import { rootLogger } from "../../logger";
-import { isAbortError, isTimeoutError } from "../util";
+import { isAbortError, isTimeoutError, isUpstreamError } from "../util";
 
 const log = rootLogger.child({ name: "response-stream" });
 
@@ -190,7 +190,12 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
           try { controller.close(); } catch {}
           return;
         }
-        const message = error instanceof Error ? error.message : "Gateway error";
+        if (!isUpstreamError(error)) {
+          log.error({ err: error, responseId }, "Internal error in response stream");
+        }
+        const message = isUpstreamError(error) && error instanceof Error
+          ? error.message
+          : "Gateway error";
         try {
           emitStreamError(controller, message, seq);
           emitResponseFailed(controller, markResponseFailed(baseResponse, message), seq);

@@ -28,14 +28,15 @@ async function deriveProviderModel(lookup: ModelLookup, preferredDriver: Provide
   return resolveDefaultProvider(model)?.providerModel;
 }
 
-/** Validates that primary and canary models share the same type. */
-async function validateCanaryModelTypes(primary: ModelLookup, early: ModelLookup | null) {
-  if (!early) return;
+/** Validates that primary and canary models share the same type. Returns an error message or null. */
+async function validateCanaryModelTypes(primary: ModelLookup, early: ModelLookup | null): Promise<string | null> {
+  if (!early) return null;
   const primaryModel = await infoClient?.fetchModel(primary);
   const earlyModel = await infoClient?.fetchModel(early);
   if (primaryModel?.type && earlyModel?.type && primaryModel.type !== earlyModel.type) {
-    throw new Error(`Cannot mix model types in a canary deployment: primary is "${primaryModel.type}" but canary is "${earlyModel.type}"`);
+    return `Cannot mix model types in a canary deployment: primary is "${primaryModel.type}" but canary is "${earlyModel.type}"`;
   }
+  return null;
 }
 
 const CapacityCheckInput = z.object({
@@ -265,11 +266,8 @@ const updateDeployment = rootOs
   .handler(async ({ context, input, errors }) => {
     const rlog = log.child({ traceId: context.traceId });
     if (input.modelSpecifier) {
-      try {
-        await validateCanaryModelTypes(deploymentLookup(input), deploymentEarlyLookup(input));
-      } catch (err: unknown) {
-        throw errors.BAD_REQUEST({ message: err instanceof Error ? err.message : String(err) });
-      }
+      const mismatch = await validateCanaryModelTypes(deploymentLookup(input), deploymentEarlyLookup(input));
+      if (mismatch) throw errors.BAD_REQUEST({ message: mismatch });
     }
 
     // Fetch current state for validation
@@ -475,11 +473,8 @@ export const createDeployment = rootOs
     }
 
     const rlog = log.child({ traceId: context.traceId });
-    try {
-      await validateCanaryModelTypes(primaryLookup, earlyLookup);
-    } catch (err: any) {
-      throw errors.BAD_REQUEST({ message: err.message });
-    }
+    const mismatch = await validateCanaryModelTypes(primaryLookup, earlyLookup);
+    if (mismatch) throw errors.BAD_REQUEST({ message: mismatch });
 
     const derivedModelSpecifier = await deriveProviderModel(primaryLookup, input.preferredDriver ?? null) ?? input.modelSpecifier;
     const derivedEarlyModelSpecifier = earlyLookup
