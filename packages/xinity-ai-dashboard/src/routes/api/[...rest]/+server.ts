@@ -2,6 +2,7 @@
  * OpenAPI-compatible REST handler for ORPC procedures under `/api`.
  */
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
+import { BodyLimitPlugin } from "@orpc/server/fetch";
 import type { RequestHandler } from "./$types";
 import { router } from "$lib/server/orpc/router";
 import { onError, ORPCError } from "@orpc/server";
@@ -10,7 +11,7 @@ import { rootLogger } from "$lib/server/logging";
 const log = rootLogger.child({ name: "orpc.api.root" });
 
 const handler = new OpenAPIHandler<App.Locals>(router, {
-  // plugins: [new BodyLimitPlugin({ maxBodySize: 1024 * 1024 })],
+  plugins: [new BodyLimitPlugin({ maxBodySize: 1024 * 1024 })],
   interceptors: [
     onError(err => {
       if (err instanceof ORPCError) {
