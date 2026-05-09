@@ -250,12 +250,95 @@ function displayValue(field: EnvField, value: string | undefined, locked = false
   return pc.yellow("(not set)");
 }
 
+export interface MenuEditOptions {
+  /** Keys flagged as "new" — highlighted in label and required to be set before save. */
+  newKeys?: Set<string>;
+  /** Secrets we couldn't read because elevation was skipped — shown as (locked). */
+  secretsLocked?: boolean;
+  /** Message displayed above the menu. */
+  message?: string;
+}
+
+/**
+ * Menu-based env editor. Returns the merged { config, secrets } without
+ * persisting anything. Returns null if the user cancels.
+ *
+ * Used by both `xinity configure` (where the caller writes to disk and
+ * restarts the service) and the `xinity up` update flow (where the caller
+ * passes the result through the installer's existing write path).
+ */
+export async function menuEditEnv(
+  schema: z.ZodObject<any>,
+  existing: Record<string, string>,
+  opts?: MenuEditOptions,
+): Promise<{ config: Record<string, string>; secrets: Record<string, string> } | null> {
+  const fields = analyzeEnvSchema(schema);
+  const newKeys = opts?.newKeys ?? new Set<string>();
+  const secretsLocked = opts?.secretsLocked ?? false;
+  const values: Record<string, string | undefined> = { ...existing };
+
+  const newMarker = pc.yellow("● new ");
+
+  while (true) {
+    const options = fields.map((field) => {
+      const marker = newKeys.has(field.key) ? newMarker : "";
+      return {
+        value: field.key,
+        label: `${marker}${field.key}  ${displayValue(field, values[field.key], secretsLocked && field.isSecret)}`,
+        hint: field.description,
+      };
+    });
+    options.push({ value: "__save__", label: pc.green("Save & exit"), hint: undefined });
+
+    const choice = await p.select({
+      message: opts?.message ?? "Select a value to update",
+      options,
+    });
+
+    if (p.isCancel(choice)) return null;
+
+    if (choice === "__save__") {
+      const unsetRequiredNew = fields.filter(
+        (f) =>
+          newKeys.has(f.key) &&
+          !f.isOptional &&
+          !f.hasDefault &&
+          (values[f.key] === undefined || values[f.key] === ""),
+      );
+      if (unsetRequiredNew.length > 0) {
+        p.log.warn(
+          `These new variables are required and not set: ${unsetRequiredNew.map((f) => f.key).join(", ")}`,
+        );
+        continue;
+      }
+      break;
+    }
+
+    const field = fields.find((f) => f.key === choice)!;
+    const newValue = await promptField(field, values[field.key]);
+    if (newValue !== undefined) {
+      values[field.key] = newValue;
+    } else {
+      delete values[field.key];
+    }
+  }
+
+  const config: Record<string, string> = {};
+  const secrets: Record<string, string> = {};
+  for (const field of fields) {
+    const val = values[field.key];
+    if (val === undefined) continue;
+    if (field.isSecret) secrets[field.key] = val;
+    else config[field.key] = val;
+  }
+  return { config, secrets };
+}
+
 /**
  * Menu-based interactive configuration for a component's env vars.
  *
- * Shows all fields in a select menu with current values. The user picks
- * a field to edit, updates it, then returns to the menu. "Save & exit"
- * persists the config to disk.
+ * Loads current values from disk, opens the menu editor, and on save
+ * persists the result and restarts the service.
  */
 export async function menuConfigureEnv(
   component: Component,
@@ -269,7 +352,6 @@ export async function menuConfigureEnv(
 
   p.intro(`xinity configure ${pc.cyan(component)}`);
 
-  // Load existing values from the host
   const envPath = `${ENV_DIR}/${component}.env`;
   const envContent = await h.readFile(envPath);
   const existingConfig = envContent ? parseEnvString(envContent) : {};
@@ -281,49 +363,15 @@ export async function menuConfigureEnv(
     secretsLocked = sr.skipped;
   }
   const autoDefaults = getAutoDefaults(component);
-  const values: Record<string, string | undefined> = { ...autoDefaults, ...existingConfig, ...existingSecrets };
+  const existing: Record<string, string> = { ...autoDefaults, ...existingConfig, ...existingSecrets };
 
-  while (true) {
-    const options = fields.map((field) => ({
-      value: field.key,
-      label: `${field.key}  ${displayValue(field, values[field.key], secretsLocked && field.isSecret)}`,
-      hint: field.description,
-    }));
-    options.push({ value: "__save__", label: pc.green("Save & exit"), hint: undefined });
-
-    const choice = await p.select({
-      message: "Select a value to update",
-      options,
-    });
-
-    if (p.isCancel(choice)) {
-      p.cancel("Cancelled, no changes saved.");
-      return;
-    }
-
-    if (choice === "__save__") break;
-
-    const field = fields.find((f) => f.key === choice)!;
-    const newValue = await promptField(field, values[field.key]);
-    if (newValue !== undefined) {
-      values[field.key] = newValue;
-    } else {
-      // User cleared the value (empty input on optional field)
-      delete values[field.key];
-    }
+  const result = await menuEditEnv(schema, existing, { secretsLocked });
+  if (result === null) {
+    p.cancel("Cancelled, no changes saved.");
+    return;
   }
 
-  // Split into config and secrets for writing
-  const config: Record<string, string> = {};
-  const secrets: Record<string, string> = {};
-  for (const field of fields) {
-    const val = values[field.key];
-    if (val === undefined) continue;
-    if (field.isSecret) secrets[field.key] = val;
-    else config[field.key] = val;
-  }
-
-  const wrote = await writeEnvConfig(component, config, secrets, h);
+  const wrote = await writeEnvConfig(component, result.config, result.secrets, h);
   if (wrote) {
     await restartService(component, h);
   }

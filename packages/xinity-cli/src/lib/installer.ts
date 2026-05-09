@@ -15,7 +15,7 @@ import { loadConfig } from "./config.ts";
 import { buildLocalArtifact } from "./local-build.ts";
 import { readManifest, updateManifestEntry, writeManifest } from "./manifest.ts";
 import { generateUnit, getComponentConfig, unitName, type UnitConfig } from "./systemd.ts";
-import { analyzeEnvSchema, categorizeFields, promptForEnv } from "./env-prompt.ts";
+import { analyzeEnvSchema, categorizeFields, menuEditEnv, promptForEnv } from "./env-prompt.ts";
 import { parseEnvString } from "./env-file.ts";
 import { pass, fail, warn, info, cancelAndExit } from "./output.ts";
 import { type Host, createLocalHost, commandExistsOn, isUnitActiveOn, readSecrets } from "./host.ts";
@@ -535,10 +535,12 @@ async function configureEnv(
   // conservatively assume all secrets exist. Re-prompting for secrets the
   // user chose not to unlock would be worse than skipping a truly missing one.
   const secretsOnDisk = new Set<string>();
+  let secretsLocked = false;
   if (secretKeys.length > 0) {
     const sr = await readSecrets(host, SECRETS_DIR, secretKeys, "Read existing secrets");
     existingSecrets = sr.secrets;
     if (sr.skipped || sr.permissionDenied) {
+      secretsLocked = true;
       for (const key of secretKeys) secretsOnDisk.add(key);
     } else {
       for (const key of Object.keys(sr.secrets)) secretsOnDisk.add(key);
@@ -570,37 +572,27 @@ async function configureEnv(
 
   const isInstalled = !!(await readManifest(host)).components[component];
 
-  // If the component is already installed and has existing config,
-  // offer to skip re-entering already-configured variables
   if (isInstalled && hasExistingConfig) {
     if (missingRequired.length === 0) {
-      // All config variables are already set, offer to keep current configuration
       const action = await p.select({
         message: "All configuration variables are already set.",
         options: [
           { value: "skip", label: "Keep current configuration" },
-          { value: "reconfigure", label: "Reconfigure all variables" },
+          { value: "edit", label: "Edit configuration" },
         ],
       });
       if (p.isCancel(action)) cancelAndExit();
       if (action === "skip") return useExisting();
+      const result = await menuEditEnv(schema, existing, { secretsLocked });
+      return result ?? useExisting();
     } else {
-      // Some new variables need to be configured, offer to skip the rest
-      const alreadySetCount = fields.filter((f) => existing[f.key] !== undefined || secretsOnDisk.has(f.key)).length;
-      const action = await p.select({
-        message: `${alreadySetCount} of ${fields.length} variables are already configured. ${missingRequired.length} new variable(s) need to be set.`,
-        options: [
-          { value: "new-only", label: "Only configure new variables" },
-          { value: "reconfigure", label: "Reconfigure all variables" },
-        ],
-      });
-      if (p.isCancel(action)) cancelAndExit();
-      if (action === "new-only") {
-        const skipKeys = new Set(
-          fields.filter((f) => existing[f.key] !== undefined || secretsOnDisk.has(f.key)).map((f) => f.key),
-        );
-        return promptForEnv(component, schema, existing, skipKeys);
-      }
+      p.log.info(
+        `${missingRequired.length} new variable(s) need to be set. Edit any other values too if you like.`,
+      );
+      const newKeys = new Set(missingRequired.map((f) => f.key));
+      const result = await menuEditEnv(schema, existing, { newKeys, secretsLocked });
+      if (result === null) cancelAndExit();
+      return result;
     }
   } else if (hasExistingConfig && missingRequired.length === 0) {
     // Not in manifest but has existing config, preserve original behavior
