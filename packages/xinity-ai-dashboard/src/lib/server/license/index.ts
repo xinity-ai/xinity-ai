@@ -2,6 +2,7 @@ export {
   parseLicense,
   getLicense,
   resetLicenseCache,
+  isLicenseEffective,
   hasFeature,
   maxVramGb,
   tierName,

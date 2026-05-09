@@ -121,7 +121,7 @@ export function getLicense(): LicenseInfo {
     if (hasOriginMismatch()) {
       log.error(
         { allowedOrigins: cachedLicense.payload.origins, actual: serverEnv.ORIGIN },
-        "LICENSE ORIGIN MISMATCH: The dashboard ORIGIN does not match the licensed origin. The dashboard will idle until this is corrected.",
+        "LICENSE ORIGIN MISMATCH: The dashboard ORIGIN does not match the licensed origin. Treating as free tier until this is corrected.",
       );
     }
 
@@ -129,7 +129,7 @@ export function getLicense(): LicenseInfo {
     if (hasInstanceMismatch()) {
       log.error(
         { licensedInstanceId: cachedLicense.payload.instanceId, actual: getDeploymentId() },
-        "LICENSE INSTANCE MISMATCH: The dashboard instance ID does not match the licensed instance ID. The dashboard will idle until this is corrected.",
+        "LICENSE INSTANCE MISMATCH: The dashboard instance ID does not match the licensed instance ID. Treating as free tier until this is corrected.",
       );
     }
   } else {
@@ -145,38 +145,50 @@ export function resetLicenseCache(): void {
 }
 
 /**
+ * Returns true when the parsed license is considered to be fully valid.
+ */
+export function isLicenseEffective(): boolean {
+  const license = getLicense();
+  if (!license.valid) return false;
+  if (license.expired && !license.inGracePeriod) return false;
+  if (hasOriginMismatch()) return false;
+  if (hasInstanceMismatch()) return false;
+  return true;
+}
+
+/**
  * Returns true if the active license includes the given feature.
  * Expired licenses beyond grace period are treated as free tier (no features).
  */
 export function hasFeature(feature: LicenseFeature): boolean {
+  if (!isLicenseEffective()) return false;
   const license = getLicense();
   if (!license.valid) return false;
-  if (license.expired && !license.inGracePeriod) return false;
   return license.payload.features.includes(feature);
 }
 
 /** Returns the maximum total VRAM (in GB) allowed by the current license. */
 export function maxVramGb(): number {
+  if (!isLicenseEffective()) return FREE_MAX_VRAM_GB;
   const license = getLicense();
   if (!license.valid) return FREE_MAX_VRAM_GB;
-  if (license.expired && !license.inGracePeriod) return FREE_MAX_VRAM_GB;
   if (license.payload.maxVramGb === -1) return Infinity;
   return license.payload.maxVramGb;
 }
 
 /** Returns the current tier name. */
 export function tierName(): "free" | "startup" | "enterprise-sm" | "enterprise-lg" {
+  if (!isLicenseEffective()) return "free";
   const license = getLicense();
   if (!license.valid) return "free";
-  if (license.expired && !license.inGracePeriod) return "free";
   return license.payload.tier;
 }
 
 /** Returns the licensee name, or null if on free tier. */
 export function licenseeName(): string | null {
+  if (!isLicenseEffective()) return null;
   const license = getLicense();
   if (!license.valid) return null;
-  if (license.expired && !license.inGracePeriod) return null;
   return license.payload.licensee;
 }
 
