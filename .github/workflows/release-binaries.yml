@@ -92,6 +92,9 @@ jobs:
 
             zip "${{ matrix.package }}-${suffix}.zip" "${BINARY_NAME}" *.map 2>/dev/null || \
               zip "${{ matrix.package }}-${suffix}.zip" "${BINARY_NAME}"
+            # v1.0.0+ packaging (TODO flip on at 1.0.0, drop the zip lines above):
+            # tar -czf "${{ matrix.package }}-${suffix}.tar.gz" "${BINARY_NAME}" *.map 2>/dev/null || \
+            #   tar -czf "${{ matrix.package }}-${suffix}.tar.gz" "${BINARY_NAME}"
             rm -f "${BINARY_NAME}" *.map
 
             echo "::endgroup::"
@@ -101,7 +104,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.package }}
-          path: ${{ matrix.workdir }}/*.zip
+          path: |
+            ${{ matrix.workdir }}/*.zip
+            ${{ matrix.workdir }}/*.tar.gz
           retention-days: 1
 
   # ---------------------------------------------------------------------------

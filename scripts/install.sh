@@ -70,7 +70,8 @@ case "$ARCH" in
   *)        fail "Unsupported architecture: $ARCH" ;;
 esac
 
-ASSET_NAME="xinity-cli-${SUFFIX}.zip"
+ASSET_PREFIX="xinity-cli-${SUFFIX}"
+ASSET_NAME=""
 
 # ── Auth (for private repos) ────────────────────────────────────────────────
 
@@ -111,6 +112,14 @@ RELEASE_JSON="$(curl_auth -H "Accept: application/vnd.github+json" "$RELEASE_URL
 
 TAG="$(printf '%s' "$RELEASE_JSON" | grep '"tag_name"' | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/')"
 [[ -n "$TAG" ]] || fail "Could not parse release tag"
+
+if printf '%s' "$RELEASE_JSON" | grep -q "\"name\": *\"${ASSET_PREFIX}.tar.gz\""; then
+  ASSET_NAME="${ASSET_PREFIX}.tar.gz"
+elif printf '%s' "$RELEASE_JSON" | grep -q "\"name\": *\"${ASSET_PREFIX}.zip\""; then
+  ASSET_NAME="${ASSET_PREFIX}.zip"
+else
+  fail "Neither ${ASSET_PREFIX}.tar.gz nor ${ASSET_PREFIX}.zip found in release ${TAG}"
+fi
 
 info "Installing xinity CLI ${TAG} (${SUFFIX})"
 
@@ -167,10 +176,22 @@ fi
 
 # ── Extract and install ─────────────────────────────────────────────────────
 
-command -v unzip &>/dev/null || fail "'unzip' is required but not found"
+mkdir -p "${TMP_DIR}/extracted"
+case "$ASSET_NAME" in
+  *.tar.gz)
+    command -v tar &>/dev/null || fail "'tar' is required but not found"
+    tar -xzf "${TMP_DIR}/${ASSET_NAME}" -C "${TMP_DIR}/extracted"
+    ;;
+  *.zip)
+    command -v unzip &>/dev/null || fail "'unzip' is required but not found"
+    unzip -o "${TMP_DIR}/${ASSET_NAME}" -d "${TMP_DIR}/extracted" >/dev/null
+    ;;
+  *)
+    fail "Unknown archive format: ${ASSET_NAME}"
+    ;;
+esac
 
 mkdir -p "$INSTALL_DIR"
-unzip -o "${TMP_DIR}/${ASSET_NAME}" -d "${TMP_DIR}/extracted" >/dev/null
 mv "${TMP_DIR}/extracted/xinity" "${INSTALL_DIR}/xinity"
 chmod +x "${INSTALL_DIR}/xinity"
 

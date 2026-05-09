@@ -14,7 +14,7 @@ import { migrate } from "drizzle-orm/postgres-js/migrator";
 import * as p from "./clack.ts";
 import pc from "picocolors";
 
-import { fetchRelease, getAssetName, type Release } from "./github.ts";
+import { fetchRelease, pickReleaseAsset, type Release } from "./github.ts";
 import { downloadAndVerify } from "./installer.ts";
 import { parseEnvString } from "./env-file.ts";
 import { fail, pass, info, warn } from "./output.ts";
@@ -221,7 +221,7 @@ export async function runMigrations(opts: {
   }
 
   // 3. Download & verify
-  const assetName = getAssetName("db");
+  const assetName = pickReleaseAsset(release, "db");
   const tmpDir = join(tmpdir(), `xinity-db-migrate-${Date.now()}`);
   mkdirSync(tmpDir, { recursive: true });
 
