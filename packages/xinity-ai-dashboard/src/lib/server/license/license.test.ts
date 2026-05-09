@@ -30,7 +30,7 @@ mock.module("$lib/server/deployment-id", () => ({
 }));
 
 // Now import the module under test (after mocks are in place).
-const { parseLicense, resetLicenseCache, hasFeature, maxVramGb, tierName, licenseeName, isExpired, isInGracePeriod, hasOriginMismatch, hasInstanceMismatch, getLicenseSummary } = await import("./license");
+const { parseLicense, resetLicenseCache, isLicenseEffective, hasFeature, maxVramGb, tierName, licenseeName, isExpired, isInGracePeriod, hasOriginMismatch, hasInstanceMismatch, getLicenseSummary } = await import("./license");
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -378,5 +378,73 @@ describe("getLicenseSummary", () => {
 
     const summary = getLicenseSummary();
     expect(summary.instanceMismatch).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Mismatch enforcement: a mismatched key must behave as free tier server-side
+// while still surfacing the mismatch in the summary so the banner can appear.
+// ---------------------------------------------------------------------------
+
+describe("mismatch enforcement", () => {
+  const ID_A = "11111111-1111-4111-8111-111111111111";
+  const ID_B = "22222222-2222-4222-8222-222222222222";
+
+  beforeEach(() => {
+    resetLicenseCache();
+    const { serverEnv } = require("$lib/server/serverenv");
+    serverEnv.LICENSE_KEY = undefined;
+    serverEnv.ORIGIN = "https://dashboard.example.com";
+    deploymentIdMock.id = null;
+  });
+
+  test("origin mismatch downgrades feature gates to free tier", () => {
+    const { serverEnv } = require("$lib/server/serverenv");
+    serverEnv.LICENSE_KEY = signLicense(validPayload({
+      origins: ["https://other.example.com"],
+    }));
+
+    expect(isLicenseEffective()).toBe(false);
+    expect(tierName()).toBe("free");
+    expect(maxVramGb()).toBe(120);
+    expect(licenseeName()).toBeNull();
+    expect(hasFeature("multi-org")).toBe(false);
+    expect(hasFeature("sso")).toBe(false);
+    expect(hasFeature("all-roles")).toBe(false);
+
+    const summary = getLicenseSummary();
+    expect(summary.originMismatch).toBe(true);
+    expect(summary.tier).toBe("free");
+    expect(summary.features.multiOrg).toBe(false);
+  });
+
+  test("instance mismatch downgrades feature gates to free tier", () => {
+    const { serverEnv } = require("$lib/server/serverenv");
+    serverEnv.LICENSE_KEY = signLicense(validPayload({ instanceId: ID_A }));
+    deploymentIdMock.id = ID_B;
+
+    expect(isLicenseEffective()).toBe(false);
+    expect(tierName()).toBe("free");
+    expect(maxVramGb()).toBe(120);
+    expect(licenseeName()).toBeNull();
+    expect(hasFeature("multi-org")).toBe(false);
+    expect(hasFeature("sso")).toBe(false);
+    expect(hasFeature("all-roles")).toBe(false);
+
+    const summary = getLicenseSummary();
+    expect(summary.instanceMismatch).toBe(true);
+    expect(summary.tier).toBe("free");
+    expect(summary.features.multiOrg).toBe(false);
+  });
+
+  test("matching origin and instance keeps the paid tier effective", () => {
+    const { serverEnv } = require("$lib/server/serverenv");
+    serverEnv.LICENSE_KEY = signLicense(validPayload({ instanceId: ID_A }));
+    deploymentIdMock.id = ID_A;
+
+    expect(isLicenseEffective()).toBe(true);
+    expect(tierName()).toBe("enterprise-sm");
+    expect(hasFeature("multi-org")).toBe(true);
+    expect(maxVramGb()).toBe(500);
   });
 });
