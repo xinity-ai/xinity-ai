@@ -107,7 +107,7 @@ export const tlsEnvSchema = z.object({
     .meta(secret()),
   XINITY_TLS_KEY: z.string().optional()
     .describe("PEM-encoded TLS private key (enables HTTPS). See docs/security/mtls.md")
-    .meta(secret()),
+    .meta({...secret(), ...expert()}),
 });
 
 /** Returns `{ cert, key }` if TLS is fully configured, `undefined` otherwise. Throws on partial config. */
