@@ -7,7 +7,7 @@ import pc from "picocolors";
 
 import { version } from "../../../../package.json";
 const CLI_VERSION = `v${version}`;
-import { fetchRelease, getAssetName, type Release } from "../lib/github.ts";
+import { fetchRelease, pickReleaseAsset, type Release } from "../lib/github.ts";
 import { downloadAndVerify } from "../lib/installer.ts";
 import { pass, fail } from "../lib/output.ts";
 import { createLocalHost } from "../lib/host.ts";
@@ -15,7 +15,13 @@ import { createLocalHost } from "../lib/host.ts";
 // ─── Self-update ────────────────────────────────────────────────────────────
 
 async function selfUpdate(release: Release): Promise<boolean> {
-  const assetName = getAssetName("cli");
+  let assetName: string;
+  try {
+    assetName = pickReleaseAsset(release, "cli");
+  } catch (err) {
+    fail("Self-update", (err as Error).message);
+    return false;
+  }
 
   const tmpDir = join(tmpdir(), `xinity-cli-update-${Date.now()}`);
   mkdirSync(tmpDir, { recursive: true });
@@ -23,13 +29,15 @@ async function selfUpdate(release: Release): Promise<boolean> {
   const filePath = await downloadAndVerify(release, assetName, tmpDir);
   if (!filePath) return false;
 
-  // Extract zip
   const extractDir = join(tmpDir, "extracted");
   mkdirSync(extractDir, { recursive: true });
   const local = createLocalHost();
-  const unzip = await local.run(["unzip", "-o", filePath, "-d", extractDir]);
-  if (!unzip.ok) {
-    fail("Extract", "Failed to extract zip archive");
+  const extractCmd = filePath.endsWith(".tar.gz")
+    ? ["tar", "-xzf", filePath, "-C", extractDir]
+    : ["unzip", "-o", filePath, "-d", extractDir];
+  const extracted = await local.run(extractCmd);
+  if (!extracted.ok) {
+    fail("Extract", "Failed to extract archive");
     return false;
   }
 

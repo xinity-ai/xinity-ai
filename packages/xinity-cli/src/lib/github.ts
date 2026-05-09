@@ -185,21 +185,25 @@ export async function resolveDirectUrl(asset: ReleaseAsset): Promise<string> {
   throw new Error(`Failed to resolve download URL: ${res.status} ${res.statusText}`);
 }
 
-/** Determine the expected asset filename for a component on the given platform. */
-export function getAssetName(component: string, arch?: string): string {
+function assetPrefix(component: string, arch?: string): string {
   const resolved = (arch ?? process.arch) === "arm64" ? "arm64" : "x64";
+  if (component === "cli") return `xinity-cli-linux-${resolved}`;
+  if (component === "infoserver") return `xinity-infoserver-linux-${resolved}`;
+  return `xinity-ai-${component}-linux-${resolved}`;
+}
 
-  if (component === "cli") {
-    return `xinity-cli-linux-${resolved}.zip`;
-  }
-
+export function pickReleaseAsset(release: Release, component: string, arch?: string): string {
   if (component === "db") {
     return "db-migrations.tar.gz";
   }
 
-  if (component === "infoserver") {
-    return `xinity-infoserver-linux-${resolved}.zip`;
-  }
-
-  return `xinity-ai-${component}-linux-${resolved}.zip`;
+  const prefix = assetPrefix(component, arch);
+  const tarName = `${prefix}.tar.gz`;
+  const zipName = `${prefix}.zip`;
+  const names = new Set(release.assets.map((a) => a.name));
+  if (names.has(tarName)) return tarName;
+  if (names.has(zipName)) return zipName;
+  throw new Error(
+    `Neither ${tarName} nor ${zipName} found in release ${release.tagName}`,
+  );
 }

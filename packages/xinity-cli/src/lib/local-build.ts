@@ -2,7 +2,7 @@
  * Build a component binary from a local monorepo checkout and package it
  * as a zip archive ready for installation via installBinary().
  */
-import { resolve, join } from "path";
+import { resolve, join, dirname, basename } from "path";
 import { existsSync } from "fs";
 import { tmpdir } from "os";
 import { $ } from "bun";
@@ -101,28 +101,26 @@ export async function buildLocalArtifact(
 
   spinner.stop(`Built ${binName}`);
 
-  // Package into zip (matches the format installBinary() expects)
-  const tmpZip = join(tmpdir(), `xinity-local-${component}-${Date.now()}.zip`);
-  const zipSpinner = p.spinner();
-  zipSpinner.start("Packaging...");
+  const tmpArchive = join(tmpdir(), `xinity-local-${component}-${Date.now()}.tar.gz`);
+  const packageSpinner = p.spinner();
+  packageSpinner.start("Packaging...");
 
-  const zipResult = await $`zip -j ${tmpZip} ${binPath}`.nothrow().quiet();
-  if (zipResult.exitCode !== 0) {
-    zipSpinner.stop("Packaging failed");
-    fail("Zip", zipResult.stderr.toString().trim());
+  const tarResult = await $`tar -czf ${tmpArchive} -C ${dirname(binPath)} ${basename(binPath)}`.nothrow().quiet();
+  if (tarResult.exitCode !== 0) {
+    packageSpinner.stop("Packaging failed");
+    fail("Tar", tarResult.stderr.toString().trim());
     return null;
   }
-  zipSpinner.stop("Packaged");
+  packageSpinner.stop("Packaged");
 
-  // Compute SHA256 of the zip
   const hasher = new Bun.CryptoHasher("sha256");
-  const zipBytes = await Bun.file(tmpZip).arrayBuffer();
-  hasher.update(zipBytes);
+  const archiveBytes = await Bun.file(tmpArchive).arrayBuffer();
+  hasher.update(archiveBytes);
   const sha256 = hasher.digest("hex");
 
   const version = await readVersion(absRepoPath);
   const versionString = `local-${version}`;
 
   pass("Local build", `${component} ${versionString} (${targetArch})`);
-  return { archivePath: tmpZip, version: versionString, sha256 };
+  return { archivePath: tmpArchive, version: versionString, sha256 };
 }

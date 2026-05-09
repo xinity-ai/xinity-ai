@@ -10,7 +10,7 @@ import { mkdirSync } from "fs";
 import * as p from "./clack.ts";
 import pc from "picocolors";
 
-import { fetchRelease, downloadAsset, fetchChecksums, verifySha256, getAssetName, resolveDirectUrl, type Release } from "./github.ts";
+import { fetchRelease, downloadAsset, fetchChecksums, verifySha256, pickReleaseAsset, resolveDirectUrl, type Release } from "./github.ts";
 import { loadConfig } from "./config.ts";
 import { buildLocalArtifact } from "./local-build.ts";
 import { readManifest, updateManifestEntry, writeManifest } from "./manifest.ts";
@@ -70,13 +70,14 @@ export async function preflightCheck(
     await check("systemctl", "systemd is required to manage services");
   }
 
-  // unzip is needed for binary extraction (all service components)
-  const needsUnzip = components.some(
+  const needsExtractor = components.some(
     (c) => c === "all" || serviceComponents.includes(c),
   );
-  if (needsUnzip) {
+  if (needsExtractor) {
     const target = host.isRemote ? "the remote host" : "this machine";
-    await check("unzip", `required on ${target} for binary extraction`, "apt install unzip / dnf install unzip / pacman -S unzip");
+    await check("tar", `required on ${target} for binary extraction`, "apt install tar / dnf install tar / pacman -S tar");
+    // TODO drop unzip on v1.0.0
+    await check("unzip", `required on ${target} to install pre-1.0.0 releases`, "apt install unzip / dnf install unzip / pacman -S unzip");
   }
 
   // curl is needed on remote hosts for downloading release assets
@@ -442,14 +443,24 @@ async function downloadAndVerifyOnHost(
 
 // ─── Install binary ────────────────────────────────────────────────────────
 
+function extractCommand(archivePath: string, destDir: string): string {
+  if (archivePath.endsWith(".tar.gz")) return `tar -xzf ${archivePath} -C ${destDir}`;
+  if (archivePath.endsWith(".zip")) return `unzip -o ${archivePath} -d ${destDir}`;
+  throw new Error(`Unsupported archive format: ${archivePath}`);
+}
+
+function stripArchiveSuffix(path: string): string {
+  return path.replace(/\.tar\.gz$|\.zip$/, "");
+}
+
 async function installBinary(component: Component, archivePath: string, host: Host): Promise<boolean> {
   const binName = binaryBaseName(component);
 
   if (host.isRemote) {
     // Archive already on remote, extract and install directly
-    const tmpExtract = archivePath.replace(/\.zip$/, "");
+    const tmpExtract = stripArchiveSuffix(archivePath);
     const result = await host.withElevation(
-      `mkdir -p ${tmpExtract} && unzip -o ${archivePath} -d ${tmpExtract}` +
+      `mkdir -p ${tmpExtract} && ${extractCommand(archivePath, tmpExtract)}` +
       ` && mkdir -p ${BIN_DIR} && rm -f ${BIN_DIR}/${binName}` +
       ` && cp ${tmpExtract}/${binName} ${BIN_DIR}/${binName}` +
       ` && chmod +x ${BIN_DIR}/${binName}` +
@@ -463,16 +474,19 @@ async function installBinary(component: Component, archivePath: string, host: Ho
     if (result.skipped) return false;
   } else {
     // Local: extract locally, upload binary, place on host
-    const tmpExtract = archivePath.replace(/\.zip$/, "");
+    const tmpExtract = stripArchiveSuffix(archivePath);
     mkdirSync(tmpExtract, { recursive: true });
 
     const extractSpinner = p.spinner();
     extractSpinner.start("Extracting…");
     const local = createLocalHost();
-    const unzip = await local.run(["unzip", "-o", archivePath, "-d", tmpExtract]);
-    if (!unzip.ok) {
+    const extractCmd = archivePath.endsWith(".tar.gz")
+      ? ["tar", "-xzf", archivePath, "-C", tmpExtract]
+      : ["unzip", "-o", archivePath, "-d", tmpExtract];
+    const extracted = await local.run(extractCmd);
+    if (!extracted.ok) {
       extractSpinner.stop("Extract failed");
-      fail("Extract", unzip.output);
+      fail("Extract", extracted.output);
       return false;
     }
 
@@ -667,7 +681,7 @@ async function resolveArtifact(
       return { status: "ready", archivePath: buildResult.archivePath, versionString: buildResult.version, isUpdate };
     }
 
-    const remoteTmp = `/tmp/xinity-local-${Date.now()}.zip`;
+    const remoteTmp = `/tmp/xinity-local-${Date.now()}.tar.gz`;
     const uploadSpinner = p.spinner();
     uploadSpinner.start("Uploading artifact...");
     try {
@@ -701,7 +715,13 @@ async function resolveArtifact(
   }
 
   const hostArch = await host.getArch();
-  const assetName = getAssetName(component, hostArch);
+  let assetName: string;
+  try {
+    assetName = pickReleaseAsset(release, component, hostArch);
+  } catch (err) {
+    fail("Download", (err as Error).message);
+    return { status: "failed", version: release.tagName };
+  }
   let archivePath: string | null;
 
   if (host.isRemote) {
@@ -879,7 +899,12 @@ function dryRunSummary(
   isUpdate: boolean,
   arch?: string,
 ): InstallResult {
-  const assetName = getAssetName(component, arch);
+  let assetName: string;
+  try {
+    assetName = pickReleaseAsset(release, component, arch);
+  } catch {
+    assetName = `xinity-ai-${component}-linux-${arch ?? "x64"}.tar.gz`;
+  }
   const asset = release.assets.find((a) => a.name === assetName);
   const schema = ENV_SCHEMAS[component];
   const fields = analyzeEnvSchema(schema);
