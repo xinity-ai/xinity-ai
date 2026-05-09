@@ -49,9 +49,10 @@ export type IncompatibilityReason =
 export function checkNodeCompatibility(
   node: NodeCapability,
   req: ModelNodeRequirements,
+  options: { requireKnownVersion?: boolean } = {},
 ): IncompatibilityReason | null {
-  // TODO v1.0.0 This setting will be switched to true
-  const requireKnownVersion = false;
+  // TODO v1.0.0 default this to true
+  const requireKnownVersion = options.requireKnownVersion ?? false;
 
   if (!node.drivers.includes(req.driver)) return "missing_driver";
 
