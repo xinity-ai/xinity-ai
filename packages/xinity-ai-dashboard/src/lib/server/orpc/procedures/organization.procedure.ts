@@ -150,18 +150,23 @@ const removeMember = rootOs
   .use(withOrganization)
   .use(requirePermission({ member: ["delete"] }))
   .route({ path: "/remove-member", method: "POST", tags, summary: "Remove Member" })
+  .errors({ NOT_FOUND: {} })
   .input(z.object({
     memberId: z.string(),
   }))
-  .handler(async ({ input, context }) => {
+  .handler(async ({ input, context, errors }) => {
     const rlog = log.child({ traceId: context.traceId });
-    // Look up member name and org name before removal; the member row is deleted by Better Auth
+    // Member lookup must be scoped to the active org: a memberId from another org would otherwise reach Better Auth and surface as 500.
     const [[member], [org]] = await Promise.all([
       getDB()
         .select({ name: userT.name })
         .from(memberT)
         .innerJoin(userT, sql`${userT.id} = ${memberT.userId}`)
-        .where(sql`${memberT.id} = ${input.memberId}`)
+        .where(sql`
+            ${memberT.id} = ${input.memberId} 
+          AND 
+            ${memberT.organizationId} = ${context.activeOrganizationId}
+        `)
         .limit(1),
       getDB()
         .select({ name: organizationT.name })
@@ -169,6 +174,10 @@ const removeMember = rootOs
         .where(sql`${organizationT.id} = ${context.activeOrganizationId}`)
         .limit(1),
     ]);
+
+    if (!member) {
+      throw errors.NOT_FOUND({ message: "Member not found in this organization" });
+    }
 
     await auth.api.removeMember({
       body: {
