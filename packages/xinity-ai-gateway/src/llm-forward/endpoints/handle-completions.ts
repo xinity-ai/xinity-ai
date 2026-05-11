@@ -1,11 +1,23 @@
 import { z } from "zod";
 import { resolveModel } from "../ai-sdk";
-import { errorResponse, forwardBackendError, logChatUsage, readSSEStream, validateModelType, handleEndpointError, SSE_RESPONSE_HEADERS, sseEncoder, handleStreamError, validationError } from "../util";
-import { BackendCompletionChunkSchema, BackendUsageSchema } from "../backend-schemas";
+import {
+  errorResponse,
+  forwardBackendError,
+  validateModelType,
+  handleEndpointError,
+  validationError,
+} from "../util";
+import { BackendCompletionChunkSchema } from "../backend-schemas";
 import type { ApiCallInputMessage } from "common-db";
 import { rootLogger } from "../../logger";
 import { env } from "../../env";
 import { backendFetch, backendUrl } from "../backend-fetch";
+import {
+  forwardOpenAINonStream,
+  forwardOpenAIStream,
+  type NonStreamSpec,
+  type StreamSpec,
+} from "../openai-forward";
 
 const log = rootLogger.child({ name: "handle-completions" });
 
@@ -24,15 +36,56 @@ export const CompletionBodySchema = z.looseObject({
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
-const normalizePrompt = (prompt: string | string[] | undefined): string | null => {
-  if (typeof prompt === "string") return prompt;
-  if (Array.isArray(prompt)) return prompt.join("\n");
+function normalizePrompt(prompt: string | string[] | undefined): string | null {
+  if (typeof prompt === "string") {
+    return prompt;
+  }
+  if (Array.isArray(prompt)) {
+    return prompt.join("\n");
+  }
   return null;
+}
+
+type CompletionAcc = {
+  content: string;
+  finish_reason?: string | null;
 };
 
-// ---------------------------------------------------------------------------
-// Handler
-// ---------------------------------------------------------------------------
+const completionStreamSpec: StreamSpec<z.infer<typeof BackendCompletionChunkSchema>, CompletionAcc> = {
+  chunkSchema: BackendCompletionChunkSchema,
+  initAcc: () => ({ content: "" }),
+  applyChoice: (acc, choice) => {
+    acc.content += choice.text ?? "";
+    if (choice.finish_reason) {
+      acc.finish_reason = choice.finish_reason;
+    }
+  },
+  toLogEntry: (acc, index, model) => ({
+    model,
+    choices: [{
+      index,
+      delta: { role: "assistant", content: acc.content },
+      finish_reason: acc.finish_reason ?? null,
+    }],
+  }),
+};
+
+const CompletionSyncChoiceSchema = z.looseObject({
+  index: z.number(),
+  text: z.string(),
+  finish_reason: z.string().nullable().optional(),
+});
+
+const completionNonStreamSpec: NonStreamSpec<z.infer<typeof CompletionSyncChoiceSchema>> = {
+  choicesSchema: z.array(CompletionSyncChoiceSchema),
+  toLogOutput: (choices, model) => ({
+    model,
+    choices: choices.map((ch) => ({
+      index: ch.index,
+      message: { role: "assistant", content: ch.text },
+    })),
+  }),
+};
 
 export async function handleCompletion(req: Request): Promise<Response> {
   try {
@@ -41,12 +94,16 @@ export async function handleCompletion(req: Request): Promise<Response> {
     }
 
     const resolved = await resolveModel(req);
-    if (resolved instanceof Response) return resolved;
+    if (resolved instanceof Response) {
+      return resolved;
+    }
 
     const { auth, body: rawBody, originalModel, modelInfo } = resolved;
 
     const typeError = validateModelType(modelInfo, ["chat"]);
-    if (typeError) return typeError;
+    if (typeError) {
+      return typeError;
+    }
 
     const parseResult = CompletionBodySchema.safeParse(rawBody);
     if (!parseResult.success) {
@@ -70,7 +127,7 @@ export async function handleCompletion(req: Request): Promise<Response> {
       callStartTime,
       logCalls: body.store,
       metadata: body.metadata ?? undefined,
-    } as const;
+    };
 
     const fetchBody: Record<string, unknown> = {
       model: modelInfo.model,
@@ -84,7 +141,9 @@ export async function handleCompletion(req: Request): Promise<Response> {
       stop: body.stop,
       stream: body.stream,
     };
-    if (body.stream) fetchBody.stream_options = { include_usage: true };
+    if (body.stream) {
+      fetchBody.stream_options = { include_usage: true };
+    }
 
     const backendResponse = await backendFetch(backendUrl(modelInfo.host, modelInfo.model, "/v1/completions", modelInfo.tls), {
       method: "POST",
@@ -99,107 +158,22 @@ export async function handleCompletion(req: Request): Promise<Response> {
     }
 
     if (body.stream) {
-      let collectedUsage: z.infer<typeof BackendUsageSchema> | undefined = undefined;
-      let deltaModel = originalModel;
-      const accumByChoice = new Map<number, { content: string; finish_reason?: string | null }>();
-
-      const stream = new ReadableStream({
-        async start(controller) {
-          try {
-            for await (const event of readSSEStream(backendResponse)) {
-              if (event.data === "[DONE]") {
-                controller.enqueue(sseEncoder.encode("data: [DONE]\n\n"));
-                break;
-              }
-
-              let json: unknown;
-              try { json = JSON.parse(event.data); } catch {
-                log.warn({ data: event.data }, "Non-JSON SSE chunk from backend, skipping");
-                continue;
-              }
-              const parsed = BackendCompletionChunkSchema.safeParse(json);
-              if (!parsed.success) {
-                log.warn({ issues: parsed.error.issues }, "Malformed backend SSE chunk, skipping");
-                continue;
-              }
-              const chunk = { ...parsed.data, model: originalModel };
-
-              if (chunk.usage) collectedUsage = chunk.usage;
-              if (chunk.choices.length) {
-                deltaModel = chunk.model;
-                for (const choice of chunk.choices) {
-                  const acc = accumByChoice.get(choice.index) ?? { content: "" };
-                  acc.content += choice.text ?? "";
-                  if (choice.finish_reason) acc.finish_reason = choice.finish_reason;
-                  accumByChoice.set(choice.index, acc);
-                }
-              }
-
-              controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
-            }
-            controller.close();
-
-            // Translate completions format (choices[].text) to chat delta format for logging
-            logChatUsage({
-              ...logFields,
-              usage: collectedUsage,
-              outputData: [...accumByChoice.entries()]
-                .sort(([a], [b]) => a - b)
-                .map(([idx, acc]) => ({
-                  model: deltaModel,
-                  choices: [{
-                    index: idx,
-                    delta: { role: "assistant" as const, content: acc.content },
-                    finish_reason: acc.finish_reason ?? null,
-                  }],
-                })),
-              stream: true,
-            });
-          } catch (e) {
-            handleStreamError(e, controller, log);
-          }
-        },
+      return forwardOpenAIStream({
+        backendResponse,
+        originalModel,
+        spec: completionStreamSpec,
+        logFields,
+        log,
       });
-
-      return new Response(stream, { headers: SSE_RESPONSE_HEADERS });
     }
 
-    // Non-streaming: always forward, extract logging data field-by-field
-    let raw: Record<string, unknown>;
-    try {
-      raw = await backendResponse.json() as Record<string, unknown>;
-    } catch {
-      return errorResponse("Backend returned an invalid response", 502);
-    }
-
-    raw.model = originalModel;
-
-    const choicesResult = z.array(z.looseObject({
-      index: z.number(),
-      text: z.string(),
-      finish_reason: z.string().nullable().optional(),
-    })).safeParse(raw.choices);
-
-    const usageResult = BackendUsageSchema.safeParse(raw.usage);
-
-    if (choicesResult.success) {
-      logChatUsage({
-        ...logFields,
-        usage: usageResult.success ? usageResult.data : undefined,
-        outputData: {
-          model: originalModel,
-          choices: choicesResult.data.map((ch) => ({
-            index: ch.index,
-            message: { role: "assistant", content: ch.text },
-          })),
-        },
-        stream: false,
-      });
-    } else {
-      log.warn({ issues: choicesResult.error.issues }, "Could not extract choices for logging");
-    }
-
-    return Response.json(raw);
+    return forwardOpenAINonStream({
+      backendResponse,
+      originalModel,
+      spec: completionNonStreamSpec,
+      logFields,
+      log,
+    });
   } catch (error) {
     return handleEndpointError(error, log);
   }
