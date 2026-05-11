@@ -19,7 +19,7 @@ import { analyzeEnvSchema, categorizeFields, menuEditEnv, promptForEnv } from ".
 import { parseEnvString } from "./env-file.ts";
 import { pass, fail, warn, info, cancelAndExit } from "./output.ts";
 import { type Host, createLocalHost, commandExistsOn, isUnitActiveOn, readSecrets } from "./host.ts";
-import { writeEnvConfig, stopService, startService } from "./service.ts";
+import { writeEnvConfig, writeSystemdUnit, stopService, startService } from "./service.ts";
 import {
   type Component, type InstallResult, type RemoveResult,
   ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, BIN_DIR, DASHBOARD_DIR, UNIT_DIR,
@@ -621,30 +621,6 @@ async function configureEnv(
   return promptForEnv(component, schema, existing);
 }
 
-// ─── Systemd unit ──────────────────────────────────────────────────────────
-
-async function installUnit(component: Component, secretKeys: string[], host: Host): Promise<boolean> {
-  const baseConfig = getComponentConfig(component);
-  const config: UnitConfig = { ...baseConfig, secretKeys };
-
-  const unitContent = generateUnit(config);
-  const unitPath = `${UNIT_DIR}/${unitName(component)}`;
-
-  const result = await host.withElevation(
-    `cat > ${unitPath} << 'UNITEOF'\n${unitContent}UNITEOF\nsystemctl daemon-reload`,
-    `Install ${component} systemd unit`,
-  );
-
-  if (!result.success && !result.skipped) {
-    fail("Systemd", result.output);
-    return false;
-  }
-  if (result.skipped) return false;
-
-  pass("Systemd", `Unit installed at ${unitPath}`);
-  return true;
-}
-
 // ─── Main orchestrator ─────────────────────────────────────────────────────
 
 type ArtifactResult =
@@ -761,8 +737,10 @@ async function configureAndStart(
     }
 
     const secretKeys = Object.keys(envResult.secrets);
-    const unitInstalled = await installUnit(component, secretKeys, host);
-    if (!unitInstalled) errors.push("Systemd unit not installed (may need manual setup)");
+    const unitInstalled = await writeSystemdUnit(component, secretKeys, host);
+    if (!unitInstalled) {
+      errors.push("Systemd unit not installed (may need manual setup)");
+    }
 
     const started = await startService(component, host);
     if (started) return errors;
