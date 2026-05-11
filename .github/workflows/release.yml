@@ -35,6 +35,9 @@ jobs:
           - package: xinity-infoserver
             entry: server.ts
             workdir: packages/xinity-infoserver
+          - package: xinity-conductor
+            entry: src/index.ts
+            workdir: packages/xinity-conductor
           - package: xinity-cli
             binary_name: xinity
             workdir: packages/xinity-cli
@@ -139,6 +142,14 @@ jobs:
             --outfile xinity-infoserver.js \
             ./server.ts
 
+      - name: Build conductor bundle
+        working-directory: packages/xinity-conductor
+        run: |
+          if [ -f example.env ]; then cp example.env .env; fi
+          bun build --minify --target=bun \
+            --outfile xinity-conductor.js \
+            ./src/index.ts
+
       - name: Package database migrations
         run: tar czf db-migrations.tar.gz -C packages/common-db/db-migration .
 
@@ -148,6 +159,7 @@ jobs:
           cp packages/xinity-ai-gateway/xinity-ai-gateway.js staging/
           cp packages/xinity-ai-daemon/xinity-ai-daemon.js staging/
           cp packages/xinity-infoserver/xinity-infoserver.js staging/
+          cp packages/xinity-conductor/xinity-conductor.js staging/
           cp db-migrations.tar.gz staging/
 
       - name: Upload artifacts
@@ -329,7 +341,7 @@ jobs:
               -o gateway.tar.gz
             ```
 
-            Replace `xinity-ai-gateway` with `xinity-ai-daemon`, `xinity-infoserver`, or `xinity-ai-dashboard` as needed.
+            Replace `xinity-ai-gateway` with `xinity-ai-daemon`, `xinity-infoserver`, `xinity-conductor`, or `xinity-ai-dashboard` as needed.
 
             **JS bundle** (requires [Bun](https://bun.sh)):
 
