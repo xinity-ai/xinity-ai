@@ -5,27 +5,7 @@
 import { parseEnv } from "common-env";
 import { dashboardEnvSchema } from "./env-schema";
 
-/**
- * Parsed environment variables. Avoid reading from `process.env` elsewhere.
- */
-type RawEnv = Record<string, string | undefined>;
-
-const TRAILING_V1_SEGMENT = /\/v1\/?$/;
-
-function normalizeGatewayUrl(env: RawEnv): void {
-  if (!env.GATEWAY_URL) return;
-  let url = env.GATEWAY_URL;
-  if (TRAILING_V1_SEGMENT.test(url)) {
-    console.warn("GATEWAY_URL must not end with /v1 - the /v1 segment is appended by the dashboard where needed. Stripping for compatibility, but please update your configuration.");
-    url = url.replace(TRAILING_V1_SEGMENT, "");
-  }
-  env.GATEWAY_URL = url.replace(/\/$/, "");
-}
-
-const rawEnv: RawEnv = { ...process.env };
-normalizeGatewayUrl(rawEnv);
-
-export const serverEnv = parseEnv(dashboardEnvSchema, rawEnv);
+export const serverEnv = parseEnv(dashboardEnvSchema, process.env);
 
 /** Parse a comma-separated env value into a trimmed, non-empty list. */
 export function parseCsvEnvList(value: string | undefined | null): string[] {

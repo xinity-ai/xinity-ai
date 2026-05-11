@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { secret, expert, clientPublic } from "common-env";
 
+const isBareOrigin = (v: string) => v === new URL(v).origin;
+
 export const dashboardEnvSchema = z.object({
   DB_CONNECTION_URL: z.url().describe("PostgreSQL connection string (e.g. postgresql://user:pass@host:5432/dbname)").meta(secret()),
   NODE_ENV: z.enum(["production", "development", "test"]).describe("Node environment").meta(expert()),
@@ -28,6 +30,6 @@ export const dashboardEnvSchema = z.object({
   MCP_ENABLED: z.stringbool().default(true).describe("Enable the /mcp Model Context Protocol endpoint"),
   LICENSE_KEY: z.string().optional().describe("License key for unlocking paid features (Ed25519-signed token)").meta(secret()),
   TRUSTED_ORIGINS: z.string().optional().describe("Comma-separated additional trusted origins for CSRF validation behind reverse proxies").meta(expert()),
-  GATEWAY_URL: z.url().default("http://localhost:4010").describe("Gateway base URL shown to users in docs and code examples (e.g. https://api.example.com). Must NOT include the /v1 path segment - that is appended where needed.").meta(clientPublic()),
+  GATEWAY_URL: z.url().refine(isBareOrigin, { message: "GATEWAY_URL must be a bare URL (no path, no trailing slash)" }).default("http://localhost:4010").describe("Gateway base URL shown to users in docs and code examples (e.g. https://api.example.com). Must be a bare URL with no path or trailing slash; paths are appended where needed.").meta(clientPublic()),
   DEPLOYMENT_STRATEGY: z.enum(["first-fit", "balanced", "bin-pack", "proportional"]).default("balanced").describe("Node selection strategy for new model installations. 'first-fit' picks the first node that fits (deterministic). 'balanced' picks the node with the most absolute free VRAM (spread for HA). 'bin-pack' picks the tightest fit (consolidate so idle nodes stay drainable). 'proportional' picks the node with the lowest percent utilization (fair spread across heterogeneous fleets).").meta(expert()),
 });
