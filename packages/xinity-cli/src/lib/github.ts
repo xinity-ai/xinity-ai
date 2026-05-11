@@ -195,7 +195,7 @@ export async function resolveDirectUrl(asset: ReleaseAsset): Promise<string> {
 }
 
 function productSlug(component: string): string {
-  if (component === "cli" || component === "infoserver") return `xinity-${component}`;
+  if (component === "cli" || component === "infoserver" || component === "conductor") return `xinity-${component}`;
   return `xinity-ai-${component}`;
 }
 

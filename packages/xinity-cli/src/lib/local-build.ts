@@ -10,7 +10,7 @@ import * as p from "./clack.ts";
 import { fail, pass } from "./output.ts";
 import { binaryBaseName, type Component } from "./component-meta.ts";
 
-const BUILDABLE_COMPONENTS = ["daemon", "gateway", "dashboard", "infoserver"] as const;
+const BUILDABLE_COMPONENTS = ["daemon", "gateway", "dashboard", "infoserver", "conductor"] as const;
 type BuildableComponent = (typeof BUILDABLE_COMPONENTS)[number];
 
 function isBuildable(component: Component): component is BuildableComponent {
@@ -22,6 +22,7 @@ const PACKAGE_DIRS: Record<BuildableComponent, string> = {
   gateway: "packages/xinity-ai-gateway",
   dashboard: "packages/xinity-ai-dashboard",
   infoserver: "packages/xinity-infoserver",
+  conductor: "packages/xinity-conductor",
 };
 
 /** Entry file passed to `bun build --compile`. Dashboard runs its own build script instead. */
@@ -29,6 +30,7 @@ const BUN_BUILD_ENTRYPOINTS: Record<Exclude<BuildableComponent, "dashboard">, st
   daemon: "./src/index.ts",
   gateway: "./src/gatewayServer.ts",
   infoserver: "./server.ts",
+  conductor: "./src/index.ts",
 };
 
 function buildCommand(component: BuildableComponent, arch: "x64" | "arm64"): string[] {

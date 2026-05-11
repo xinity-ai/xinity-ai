@@ -7,7 +7,7 @@ import { logErrors } from "../lib/output.ts";
 import { createLocalHost } from "../lib/host.ts";
 import { connectRemoteHost } from "../lib/remote-host.ts";
 
-const COMPONENTS = ["gateway", "dashboard", "daemon", "infoserver", "all"] as const;
+const COMPONENTS = ["gateway", "dashboard", "daemon", "infoserver", "conductor", "all"] as const;
 
 function buildRemovalConfirmMessage(component: string, purge: boolean, target: string): string {
   if (component === "all") {

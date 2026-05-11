@@ -59,7 +59,7 @@ export async function preflightCheck(
   };
 
   // systemd is required for any service component
-  const serviceComponents: string[] = ["gateway", "dashboard", "daemon", "infoserver"];
+  const serviceComponents: string[] = ["gateway", "dashboard", "daemon", "infoserver", "conductor"];
   if (components.some((c) => serviceComponents.includes(c) || c === "all")) {
     await check("systemctl", "systemd is required to manage services");
   }
@@ -1312,7 +1312,7 @@ export async function removeComponent(opts: {
 export async function removeAll(purge = false, host?: Host): Promise<void> {
   const h = host ?? createLocalHost();
   await runComponentSequence(
-    ["gateway", "dashboard", "daemon", "infoserver"],
+    ["gateway", "dashboard", "daemon", "infoserver", "conductor"],
     (component) => removeComponent({ component, purge, host: h }),
   );
 

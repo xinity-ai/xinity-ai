@@ -39,6 +39,12 @@ const COMPONENT_CONFIGS: Record<Component, ComponentDefaults> = {
     description: "Xinity Infoserver",
     afterUnits: ["network-online.target"],
   },
+  conductor: {
+    component: "conductor",
+    description: "Xinity Conductor",
+    execStart: "/opt/xinity/bin/xinity-conductor",
+    afterUnits: ["network-online.target"],
+  },
 };
 
 /** Get the base config for a known component. */

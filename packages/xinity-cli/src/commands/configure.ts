@@ -7,7 +7,7 @@ import { createLocalHost } from "../lib/host.ts";
 import { connectRemoteHost } from "../lib/remote-host.ts";
 
 const CLI_CONFIG_KEYS = ["apiKey", "dashboardUrl", "githubProjectUrl", "githubToken"] as const;
-const COMPONENTS = ["cli", "gateway", "dashboard", "daemon", "infoserver"] as const;
+const COMPONENTS = ["cli", "gateway", "dashboard", "daemon", "infoserver", "conductor"] as const;
 
 export const configureCommand: CommandModule = {
   command: "configure [key] [value]",
