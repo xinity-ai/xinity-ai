@@ -26,6 +26,7 @@
     "xinity-ai-daemon": "workspace:*",
     "xinity-ai-dashboard": "workspace:*",
     "xinity-ai-gateway": "workspace:*",
+    "xinity-conductor": "workspace:*",
     "xinity-infoserver": "workspace:*",
     "yargs": "^17.7.2",
     "zod": "^4.4.3"

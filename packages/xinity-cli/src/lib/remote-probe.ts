@@ -39,7 +39,7 @@ export async function collectRemoteState(
   filesToCheck.push("/etc/systemd/system/xinity-ai-seaweedfs.service");
 
   // Per component
-  const components: Component[] = ["gateway", "dashboard", "daemon", "infoserver"];
+  const components: Component[] = ["gateway", "dashboard", "daemon", "infoserver", "conductor"];
   for (const comp of components) {
     const entry = manifest.components[comp];
     if (!entry) continue;

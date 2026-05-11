@@ -10,7 +10,7 @@ import * as p from "./clack.ts";
 import { fail, pass } from "./output.ts";
 import { binaryBaseName, type Component } from "./component-meta.ts";
 
-const BUILDABLE_COMPONENTS = ["daemon", "gateway", "dashboard", "infoserver"] as const;
+const BUILDABLE_COMPONENTS = ["daemon", "gateway", "dashboard", "infoserver", "conductor"] as const;
 type BuildableComponent = (typeof BUILDABLE_COMPONENTS)[number];
 
 function isBuildable(component: Component): component is BuildableComponent {
@@ -22,6 +22,7 @@ const PACKAGE_DIRS: Record<BuildableComponent, string> = {
   gateway: "packages/xinity-ai-gateway",
   dashboard: "packages/xinity-ai-dashboard",
   infoserver: "packages/xinity-infoserver",
+  conductor: "packages/xinity-conductor",
 };
 
 function buildCommand(component: BuildableComponent, arch: "x64" | "arm64"): string[] {
@@ -35,6 +36,8 @@ function buildCommand(component: BuildableComponent, arch: "x64" | "arm64"): str
       return ["bun", "build", "--compile", "--minify", `--target=${target}`, "./src/gatewayServer.ts", "--outfile", binName];
     case "infoserver":
       return ["bun", "build", "--compile", "--minify", `--target=${target}`, "./server.ts", "--outfile", binName];
+    case "conductor":
+      return ["bun", "build", "--compile", "--minify", `--target=${target}`, "./src/index.ts", "--outfile", binName];
     case "dashboard":
       return ["bun", "run", "build.ts", "--target", target, "--outfile", binName];
   }

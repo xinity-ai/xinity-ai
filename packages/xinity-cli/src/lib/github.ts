@@ -189,6 +189,7 @@ function assetPrefix(component: string, arch?: string): string {
   const resolved = (arch ?? process.arch) === "arm64" ? "arm64" : "x64";
   if (component === "cli") return `xinity-cli-linux-${resolved}`;
   if (component === "infoserver") return `xinity-infoserver-linux-${resolved}`;
+  if (component === "conductor") return `xinity-conductor-linux-${resolved}`;
   return `xinity-ai-${component}-linux-${resolved}`;
 }
 

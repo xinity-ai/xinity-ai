@@ -101,7 +101,7 @@ async function discoverConnectionUrl(
   }
 
   // 3. Component env files on the target host.
-  for (const component of ["gateway", "dashboard", "daemon"]) {
+  for (const component of ["gateway", "dashboard", "daemon", "conductor"]) {
     const envPath = `${ENV_DIR}/${component}.env`;
     if (await host.fileExists(envPath)) {
       const content = await host.readFile(envPath);
