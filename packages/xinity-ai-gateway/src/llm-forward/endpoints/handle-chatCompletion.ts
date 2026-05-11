@@ -10,14 +10,14 @@ import { backendFetch, backendUrl } from "../backend-fetch";
 
 const log = rootLogger.child({ name: "handle-chatCompletion" });
 
-const ChatCompletionBodySchema = z.looseObject({
+export const ChatCompletionBodySchema = z.looseObject({
   model: z.string(),
   messages: z.array(z.looseObject({
     role: z.string(),
     content: z.unknown(),
   })),
   stream: z.boolean().optional().default(false),
-  store: z.boolean().optional().default(true),
+  store: z.boolean().optional(),
   temperature: z.number().optional(),
   max_tokens: z.number().optional(),
   top_p: z.number().optional(),

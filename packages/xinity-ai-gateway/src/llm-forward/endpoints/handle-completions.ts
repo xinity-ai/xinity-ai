@@ -9,7 +9,7 @@ import { backendFetch, backendUrl } from "../backend-fetch";
 
 const log = rootLogger.child({ name: "handle-completions" });
 
-const CompletionBodySchema = z.looseObject({
+export const CompletionBodySchema = z.looseObject({
   model: z.string(),
   prompt: z.union([z.string(), z.array(z.string())]).optional(),
   max_tokens: z.number().optional(),
@@ -20,7 +20,7 @@ const CompletionBodySchema = z.looseObject({
   stream: z.boolean().optional().default(false),
   seed: z.number().optional(),
   stop: z.union([z.string(), z.array(z.string())]).optional(),
-  store: z.boolean().optional().default(true),
+  store: z.boolean().optional(),
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 

@@ -11,7 +11,7 @@ const log = rootLogger.child({ name: "handle-rerank" });
 // Request body schema
 // ---------------------------------------------------------------------------
 
-const RerankBodySchema = z.looseObject({
+export const RerankBodySchema = z.looseObject({
   model: z.string(),
   query: z.string(),
   documents: z.array(z.union([z.string(), z.record(z.string(), z.unknown())])),

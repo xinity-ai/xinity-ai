@@ -7,7 +7,7 @@ import { backendFetch, backendUrl } from "../backend-fetch";
 
 const log = rootLogger.child({ name: "handle-embeddings" });
 
-const EmbeddingBodySchema = z.looseObject({
+export const EmbeddingBodySchema = z.looseObject({
   model: z.string(),
   input: z.union([z.string(), z.array(z.string())]),
   encoding_format: z.enum(["float", "base64"]).optional().default("float"),

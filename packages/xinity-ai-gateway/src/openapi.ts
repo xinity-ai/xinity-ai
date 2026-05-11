@@ -1,6 +1,12 @@
 import { version } from "../../../package.json";
 import scalar from "./assets/scalar.html" with { type: "text" };
 import { serverRouter } from "./rpc/gatewayRouter";
+import {
+  openaiCompatPaths,
+  openaiCompatSchemas,
+  openaiCompatSecuritySchemes,
+  openaiCompatTags,
+} from "./openai-compat-openapi";
 
 export async function createOpenapiSpec() {
   const { OpenAPIGenerator } = await import("@orpc/openapi");
@@ -12,25 +18,20 @@ export async function createOpenapiSpec() {
     info: {
       title: "Xinity AI Gateway",
       version,
-      description: `The gateway represents one of the central pieces of xinity infrastructure. It    
+      description: `The gateway represents one of the central pieces of xinity infrastructure. It
       - forwards calls to the respective target nodes running models
       - records usage and api call contents / messages
       - provides metrics about model usage, for observability
 
-      All capabilities are presented via an OpenAI-compatible API focusing on embeddings and chat completion, which is not individually documented here.
-      Simply point the baseUrl of an OpenAI client toward /v1
+      OpenAI-compatible endpoints are listed below under the "OpenAI Compatible" tag.
+      Point the baseUrl of an OpenAI client toward /v1 to use them.
       `,
     },
-    tags: [],
-    commonSchemas: {},
+    tags: openaiCompatTags,
+    paths: openaiCompatPaths,
     components: {
-      // securitySchemes: {
-      //   apiKeyAuth: {
-      //     type: "apiKey",
-      //     in: "header",
-      //     name: "x-apikey",
-      //   },
-      // },
+      schemas: openaiCompatSchemas,
+      securitySchemes: openaiCompatSecuritySchemes,
     },
   });
   return new Response(JSON.stringify(spec), {

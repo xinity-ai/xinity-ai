@@ -109,6 +109,11 @@ export type RecordUsageContext = {
   auth: AuthResult;
   modelInfo: { model: string };
   callStartTime: number;
+  /**
+   * Per-request override for whether the call body is stored:
+   *   `undefined` defers to the API key's `collectData` policy,
+   *   `true`/`false` ignore the policy and force the outcome.
+   */
   logCalls?: boolean;
   /** The deployment's public specifier, used for per-deployment metrics. */
   deployment?: string;
@@ -120,14 +125,16 @@ export const recordUsage = ({
   auth,
   modelInfo,
   callStartTime,
-  logCalls = true,
+  logCalls,
   deployment,
 }: RecordUsageContext): boolean => {
   const durationMs = Date.now() - callStartTime;
   recordTokenUsage(modelInfo.model, auth.keyId, usage, { deployment, durationMs });
-  if (!usage) return false;
+  if (!usage) {
+    return false;
+  }
 
-  const shouldLog = auth.collectData && logCalls;
+  const shouldLog = logCalls ?? auth.collectData;
 
   recordUsageEvent({
     organizationId: auth.orgId,
@@ -168,11 +175,13 @@ export const logChatUsage = ({
   modelSpecifier,
   inputMessages,
   callStartTime,
-  logCalls = true,
+  logCalls,
   metadata,
 }: UsageLogContext) => {
   const shouldLog = recordUsage({ usage, auth, modelInfo, callStartTime, logCalls, deployment: modelSpecifier });
-  if (!shouldLog) return;
+  if (!shouldLog) {
+    return;
+  }
 
   const commonFields = {
     keyId: auth.keyId,
