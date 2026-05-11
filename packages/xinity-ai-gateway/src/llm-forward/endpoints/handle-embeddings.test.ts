@@ -225,6 +225,8 @@ describe("handleEmbeddingGeneration", () => {
       host: `localhost:${mockPort}`,
       model: "test-chat-model",
       driver: "vllm",
+      authToken: null,
+      tls: false,
       type: "chat",
       tags: [],
       requestParams: {},
