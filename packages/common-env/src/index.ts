@@ -120,3 +120,16 @@ export function getTlsConfig(env: { XINITY_TLS_CERT?: string; XINITY_TLS_KEY?: s
   if (!hasCert) return undefined;
   return { cert: env.XINITY_TLS_CERT!, key: env.XINITY_TLS_KEY! };
 }
+
+/** POSIX-safe single-quote shell escape. Strings made of only `[A-Za-z0-9@%+=:,./_-]` are returned as-is. */
+export function quoteShellArg(s: string): string {
+  if (/^[A-Za-z0-9@%+=:,./_-]+$/.test(s)) {
+    return s;
+  }
+  return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
+/** Join an argv array into a single shell-safe command string. */
+export function quoteShellArgv(argv: string[]): string {
+  return argv.map(quoteShellArg).join(" ");
+}
