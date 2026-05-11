@@ -4,7 +4,7 @@ import pc from "picocolors";
 import { cancelAndExit } from "./output.ts";
 import { parseEnvString } from "./env-file.ts";
 import { type Component, ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, getAutoDefaults } from "./component-meta.ts";
-import { writeEnvConfig, restartService } from "./service.ts";
+import { writeEnvConfig, writeSystemdUnit, restartService } from "./service.ts";
 import { createLocalHost, readSecrets, type Host } from "./host.ts";
 
 export interface EnvField {
@@ -373,6 +373,7 @@ export async function menuConfigureEnv(
 
   const wrote = await writeEnvConfig(component, result.config, result.secrets, h);
   if (wrote) {
+    await writeSystemdUnit(component, Object.keys(result.secrets), h);
     await restartService(component, h);
   }
   p.outro("Done");

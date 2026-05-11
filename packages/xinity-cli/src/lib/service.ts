@@ -8,9 +8,9 @@
 import * as p from "./clack.ts";
 import pc from "picocolors";
 
-import { type Component, ENV_DIR, SECRETS_DIR } from "./component-meta.ts";
+import { type Component, ENV_DIR, SECRETS_DIR, UNIT_DIR } from "./component-meta.ts";
 import { serializeEnvFile } from "./env-file.ts";
-import { unitName } from "./systemd.ts";
+import { generateUnit, getComponentConfig, unitName, type UnitConfig } from "./systemd.ts";
 import { pass, fail, info } from "./output.ts";
 import { type Host, createLocalHost, isUnitActiveOn, getUnitStatusOn } from "./host.ts";
 
@@ -56,6 +56,38 @@ export async function writeEnvConfig(
   }
 
   pass("Config", "Environment configured");
+  return true;
+}
+
+/**
+ * Generate the systemd unit for a component and write it to /etc/systemd/system,
+ * then daemon-reload. 
+ */
+export async function writeSystemdUnit(
+  component: Component,
+  secretKeys: string[],
+  host: Host = createLocalHost(),
+): Promise<boolean> {
+  const baseConfig = getComponentConfig(component);
+  const config: UnitConfig = { ...baseConfig, secretKeys };
+
+  const unitContent = generateUnit(config);
+  const unitPath = `${UNIT_DIR}/${unitName(component)}`;
+
+  const result = await host.withElevation(
+    `cat > ${unitPath} << 'UNITEOF'\n${unitContent}UNITEOF\nsystemctl daemon-reload`,
+    `Install ${component} systemd unit`,
+  );
+
+  if (!result.success && !result.skipped) {
+    fail("Systemd", result.output);
+    return false;
+  }
+  if (result.skipped) {
+    return false;
+  }
+
+  pass("Systemd", `Unit installed at ${unitPath}`);
   return true;
 }
 
