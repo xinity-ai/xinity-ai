@@ -12,12 +12,6 @@ type RawEnv = Record<string, string | undefined>;
 
 const TRAILING_V1_SEGMENT = /\/v1\/?$/;
 
-function migrateLegacyPublicLlmApiUrl(env: RawEnv): void {
-  if (env.GATEWAY_URL || !env.PUBLIC_LLM_API_URL) return;
-  console.warn("PUBLIC_LLM_API_URL is deprecated and will be removed in 1.0.0. Change the variable to GATEWAY_URL (without the /v1 suffix)");
-  env.GATEWAY_URL = env.PUBLIC_LLM_API_URL.replace(TRAILING_V1_SEGMENT, "");
-}
-
 function normalizeGatewayUrl(env: RawEnv): void {
   if (!env.GATEWAY_URL) return;
   let url = env.GATEWAY_URL;
@@ -29,7 +23,6 @@ function normalizeGatewayUrl(env: RawEnv): void {
 }
 
 const rawEnv: RawEnv = { ...process.env };
-migrateLegacyPublicLlmApiUrl(rawEnv);
 normalizeGatewayUrl(rawEnv);
 
 export const serverEnv = parseEnv(dashboardEnvSchema, rawEnv);
