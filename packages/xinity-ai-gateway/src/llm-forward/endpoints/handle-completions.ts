@@ -1,12 +1,6 @@
 import { z } from "zod";
-import { resolveModel } from "../ai-sdk";
-import {
-  errorResponse,
-  forwardBackendError,
-  validateModelType,
-  handleEndpointError,
-  validationError,
-} from "../util";
+import { errorResponse, forwardBackendError } from "../util";
+import { withEndpointGuards } from "../endpoint-guards";
 import { BackendCompletionChunkSchema } from "../backend-schemas";
 import type { ApiCallInputMessage } from "common-db";
 import { rootLogger } from "../../logger";
@@ -87,30 +81,12 @@ const completionNonStreamSpec: NonStreamSpec<z.infer<typeof CompletionSyncChoice
   }),
 };
 
-export async function handleCompletion(req: Request): Promise<Response> {
-  try {
-    if (req.method !== "POST") {
-      return errorResponse("Method not allowed", 405);
-    }
-
-    const resolved = await resolveModel(req);
-    if (resolved instanceof Response) {
-      return resolved;
-    }
-
-    const { auth, body: rawBody, originalModel, modelInfo } = resolved;
-
-    const typeError = validateModelType(modelInfo, ["chat"]);
-    if (typeError) {
-      return typeError;
-    }
-
-    const parseResult = CompletionBodySchema.safeParse(rawBody);
-    if (!parseResult.success) {
-      return validationError(parseResult.error);
-    }
-    const body = parseResult.data;
-
+export const handleCompletion = withEndpointGuards({
+  modelTypes: ["chat"],
+  bodySchema: CompletionBodySchema,
+  log,
+  method: "POST",
+  handler: async ({ auth, body, modelInfo, originalModel, req }) => {
     const promptText = normalizePrompt(body.prompt);
     if (!promptText) {
       return errorResponse("Unsupported data type", 422);
@@ -174,7 +150,5 @@ export async function handleCompletion(req: Request): Promise<Response> {
       logFields,
       log,
     });
-  } catch (error) {
-    return handleEndpointError(error, log);
-  }
-}
+  },
+});
