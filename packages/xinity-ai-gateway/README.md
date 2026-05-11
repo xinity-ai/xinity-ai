@@ -23,6 +23,15 @@ bun run dev
 - Call logging writes usage and call metadata directly to the database via
   functions in `src/callLogger.ts`.
 
+## Live API documentation
+
+The gateway serves its own OpenAPI documentation:
+
+- `GET /openapi.json` — the OpenAPI 3.1 spec, generated from the oRPC router plus hand-authored fragments for the `/v1/*` OpenAI-compatible routes (`src/openai-compat-openapi.ts`).
+- `GET /docs` — Scalar UI rendering of the same spec.
+
+When extending or modifying the OpenAI-compatible routes, update the hand-authored fragments in `src/openai-compat-openapi.ts` so the documentation stays in sync.
+
 ## Build
 
 ```bash

@@ -244,7 +244,7 @@ Point any OpenAI SDK or tool at your gateway:
 from openai import OpenAI
 
 client = OpenAI(
-    base_url="https://your-xinity-instance/v1",
+    base_url="https://your-dashboard/v1",
     api_key="sk_..."
 )
 
@@ -253,6 +253,8 @@ response = client.chat.completions.create(
     messages=[{"role": "user", "content": "Summarize this contract."}]
 )
 ```
+
+The gateway serves a live, schema-derived API reference at `https://your-xinity-gateway/docs` (rendered with Scalar) and the raw OpenAPI document at `https://your-xinity-gateway-instance/openapi.json`. The dashboard's Documentation page links to it as **Live OpenAPI Spec**.
 
 ### Dashboard UI
 
