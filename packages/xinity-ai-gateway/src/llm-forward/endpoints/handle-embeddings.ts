@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { resolveModel } from "../ai-sdk";
-import { errorResponse, forwardBackendError, recordUsage, validateModelType, handleEndpointError, validationError } from "../util";
+import { errorResponse, forwardBackendError, recordUsage } from "../util";
+import { withEndpointGuards } from "../endpoint-guards";
 import { rootLogger } from "../../logger";
 import { env } from "../../env";
 import { backendFetch, backendUrl } from "../backend-fetch";
@@ -15,22 +15,11 @@ export const EmbeddingBodySchema = z.looseObject({
   user: z.string().optional(),
 });
 
-export async function handleEmbeddingGeneration(req: Request): Promise<Response> {
-  try {
-    const resolved = await resolveModel(req);
-    if (resolved instanceof Response) return resolved;
-
-    const { auth, body: rawBody, modelInfo, originalModel } = resolved;
-
-    const typeError = validateModelType(modelInfo, ["embedding"]);
-    if (typeError) return typeError;
-
-    const parseResult = EmbeddingBodySchema.safeParse(rawBody);
-    if (!parseResult.success) {
-      return validationError(parseResult.error);
-    }
-    const body = parseResult.data;
-
+export const handleEmbeddingGeneration = withEndpointGuards({
+  modelTypes: ["embedding"],
+  bodySchema: EmbeddingBodySchema,
+  log,
+  handler: async ({ auth, body, modelInfo, originalModel, req }) => {
     const callStartTime = Date.now();
 
     const fetchBody: Record<string, unknown> = {
@@ -38,8 +27,12 @@ export async function handleEmbeddingGeneration(req: Request): Promise<Response>
       input: body.input,
       encoding_format: body.encoding_format,
     };
-    if (body.dimensions != null) fetchBody.dimensions = body.dimensions;
-    if (body.user != null) fetchBody.user = body.user;
+    if (body.dimensions != null) {
+      fetchBody.dimensions = body.dimensions;
+    }
+    if (body.user != null) {
+      fetchBody.user = body.user;
+    }
 
     const backendResponse = await backendFetch(backendUrl(modelInfo.host, modelInfo.model, "/v1/embeddings", modelInfo.tls), {
       method: "POST",
@@ -53,7 +46,6 @@ export async function handleEmbeddingGeneration(req: Request): Promise<Response>
       return forwardBackendError(backendResponse, log);
     }
 
-    // Always forward, extract usage best-effort
     let raw: Record<string, unknown>;
     try {
       raw = await backendResponse.json() as Record<string, unknown>;
@@ -81,7 +73,5 @@ export async function handleEmbeddingGeneration(req: Request): Promise<Response>
     }
 
     return Response.json(raw);
-  } catch (error) {
-    return handleEndpointError(error, log);
-  }
-}
+  },
+});

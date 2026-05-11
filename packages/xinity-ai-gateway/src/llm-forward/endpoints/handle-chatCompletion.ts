@@ -2,12 +2,9 @@ import { z } from "zod";
 import {
   errorResponse,
   forwardBackendError,
-  validateModelType,
   extractAllowedRequestParams,
-  handleEndpointError,
-  validationError,
 } from "../util";
-import { resolveModel } from "../ai-sdk";
+import { withEndpointGuards } from "../endpoint-guards";
 import { BackendChatChunkSchema } from "../backend-schemas";
 import type { ApiCallInputMessage } from "common-db";
 import { rootLogger } from "../../logger";
@@ -121,26 +118,11 @@ const chatNonStreamSpec: NonStreamSpec<z.infer<typeof ChatSyncChoiceSchema>> = {
   toLogOutput: (choices, model) => ({ model, choices }),
 };
 
-export async function handleChatCompletion(req: Request) {
-  try {
-    const resolved = await resolveModel(req);
-    if (resolved instanceof Response) {
-      return resolved;
-    }
-
-    const { auth, body: rawBody, originalModel, modelInfo } = resolved;
-
-    const typeError = validateModelType(modelInfo, ["chat"]);
-    if (typeError) {
-      return typeError;
-    }
-
-    const parseResult = ChatCompletionBodySchema.safeParse(rawBody);
-    if (!parseResult.success) {
-      return validationError(parseResult.error);
-    }
-    const body = parseResult.data;
-
+export const handleChatCompletion = withEndpointGuards({
+  modelTypes: ["chat"],
+  bodySchema: ChatCompletionBodySchema,
+  log,
+  handler: async ({ auth, body, rawBody, modelInfo, originalModel, req }) => {
     if (body.structured_outputs && modelInfo.driver !== "vllm") {
       return errorResponse("structured_outputs is only supported with the vLLM driver", 400);
     }
@@ -222,7 +204,5 @@ export async function handleChatCompletion(req: Request) {
       logFields,
       log,
     });
-  } catch (error) {
-    return handleEndpointError(error, log);
-  }
-}
+  },
+});
