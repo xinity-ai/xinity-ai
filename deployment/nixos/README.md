@@ -50,7 +50,7 @@ The `allinone` module is the easiest way to deploy the full control plane on a s
     # Path to a secrets file, kept outside the Nix store
     environmentFile = "/run/secrets/xinity";
 
-    infoserver.modelInfoFile = /etc/xinity/models.yaml;
+    infoserver.modelInfoDir = /etc/xinity/models.d;
   };
 }
 ```

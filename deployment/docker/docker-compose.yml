@@ -89,7 +89,7 @@ services:
         required: false
     environment:
       PORT: ${INFOSERVER_PORT:-8090}
-      MODEL_INFO_FILE: /data/models.yaml
+      MODEL_INFO_DIR: /data
     volumes:
       - ./models.yaml:/data/models.yaml:ro
     networks:
