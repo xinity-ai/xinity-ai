@@ -211,11 +211,9 @@ export function pickReleaseAsset(release: Release, component: string, arch?: str
 
   const prefix = assetPrefix(component, arch);
   const tarName = `${prefix}.tar.gz`;
-  const zipName = `${prefix}.zip`;
   const names = new Set(release.assets.map((a) => a.name));
   if (names.has(tarName)) return tarName;
-  if (names.has(zipName)) return zipName;
   throw new Error(
-    `Neither ${tarName} nor ${zipName} found in release ${release.tagName}`,
+    `${tarName} not found in release ${release.tagName}`,
   );
 }

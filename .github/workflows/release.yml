@@ -64,7 +64,7 @@ jobs:
           if [ -f example.env ]; then cp example.env .env; fi
           bun run build
 
-      - name: Compile all targets and zip
+      - name: Compile all targets and package
         working-directory: ${{ matrix.workdir }}
         run: |
           if [ -f example.env ] && [ ! -f .env ]; then cp example.env .env; fi
@@ -85,11 +85,8 @@ jobs:
                 --outfile "${BINARY_NAME}"
             fi
 
-            zip "${{ matrix.package }}-${suffix}.zip" "${BINARY_NAME}" *.map 2>/dev/null || \
-              zip "${{ matrix.package }}-${suffix}.zip" "${BINARY_NAME}"
-            # v1.0.0+ packaging (TODO flip on at 1.0.0, drop the zip lines above):
-            # tar -czf "${{ matrix.package }}-${suffix}.tar.gz" "${BINARY_NAME}" *.map 2>/dev/null || \
-            #   tar -czf "${{ matrix.package }}-${suffix}.tar.gz" "${BINARY_NAME}"
+            tar -czf "${{ matrix.package }}-${suffix}.tar.gz" "${BINARY_NAME}" *.map 2>/dev/null || \
+              tar -czf "${{ matrix.package }}-${suffix}.tar.gz" "${BINARY_NAME}"
             rm -f "${BINARY_NAME}" *.map
 
             echo "::endgroup::"
@@ -100,7 +97,6 @@ jobs:
         with:
           name: ${{ matrix.package }}
           path: |
-            ${{ matrix.workdir }}/*.zip
             ${{ matrix.workdir }}/*.tar.gz
           retention-days: 1
 
@@ -305,9 +301,9 @@ jobs:
             Or manually:
 
             ```bash
-            curl -fSL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/xinity-cli-linux-x64.zip" \
-              -o cli.zip
-            unzip cli.zip
+            curl -fSL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/xinity-cli-linux-x64.tar.gz" \
+              -o cli.tar.gz
+            tar -xzf cli.tar.gz
             mv xinity ~/.local/bin/xinity
             chmod +x ~/.local/bin/xinity
             ```
@@ -318,19 +314,19 @@ jobs:
 
             ```bash
             # x64 (Haswell+, 2013 and later, recommended)
-            curl -fSL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/xinity-ai-gateway-linux-x64.zip" \
-              -o gateway.zip
-            unzip gateway.zip
+            curl -fSL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/xinity-ai-gateway-linux-x64.tar.gz" \
+              -o gateway.tar.gz
+            tar -xzf gateway.tar.gz
             chmod +x xinity-ai-gateway
             ./xinity-ai-gateway
 
             # x64-baseline (Nehalem+, maximum compatibility)
-            curl -fSL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/xinity-ai-gateway-linux-x64-baseline.zip" \
-              -o gateway.zip
+            curl -fSL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/xinity-ai-gateway-linux-x64-baseline.tar.gz" \
+              -o gateway.tar.gz
 
             # arm64
-            curl -fSL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/xinity-ai-gateway-linux-arm64.zip" \
-              -o gateway.zip
+            curl -fSL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/xinity-ai-gateway-linux-arm64.tar.gz" \
+              -o gateway.tar.gz
             ```
 
             Replace `xinity-ai-gateway` with `xinity-ai-daemon`, `xinity-infoserver`, or `xinity-ai-dashboard` as needed.
