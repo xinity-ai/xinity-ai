@@ -5,19 +5,9 @@ import { rootLogger } from "./logger";
 import * as catalog from "./server-catalog";
 import { handleModelList, handleModelsByFamily, handleModelBySpecifier, handleBatchResolve } from "./api-handlers";
 
-const modelFile = env.MODEL_INFO_FILE;
-const modelDir = env.MODEL_INFO_DIR;
 const port = env.PORT;
 
-if (!modelFile && !modelDir) {
-  throw new Error("MODEL_INFO_DIR must be set (or the deprecated MODEL_INFO_FILE)");
-}
-
-if (modelFile) {
-  rootLogger.warn("MODEL_INFO_FILE is deprecated and will be removed in 1.0.0. Migrate to MODEL_INFO_DIR instead");
-}
-
-catalog.configure(env.MAX_INCLUDE_DEPTH, modelFile, modelDir);
+catalog.configure(env.MAX_INCLUDE_DEPTH, env.MODEL_INFO_DIR);
 await catalog.refresh();
 catalog.startAutoRefresh(env.REFRESH_INTERVAL_MS);
 

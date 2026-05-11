@@ -8,7 +8,7 @@ import { join } from "path";
 
 mock.module("./env", () => ({
   env: {
-    MODEL_INFO_FILE: "/tmp/test-models.yaml",
+    MODEL_INFO_DIR: "/tmp/test-models",
     PORT: 8090,
     REFRESH_INTERVAL_MS: 300_000,
     MAX_INCLUDE_DEPTH: 10,
@@ -51,14 +51,17 @@ const testDir = join(tmpdir(), `catalog-test-${Date.now()}`);
 
 function makeModelYaml(models: Record<string, object>, includes?: string[]): string {
   const obj: Record<string, unknown> = { models };
-  if (includes) obj.includes = includes;
+  if (includes) {
+    obj.includes = includes;
+  }
   return Bun.YAML.stringify(obj);
 }
 
-async function writeYamlFile(content: string, index: number): Promise<string> {
-  const path = join(testDir, `models-${index}.yaml`);
-  await Bun.write(path, content);
-  return path;
+async function writeYamlInOwnDir(content: string, index: number): Promise<{ dirPath: string; filePath: string }> {
+  const dirPath = join(testDir, `models-${index}`);
+  const filePath = join(dirPath, "models.yaml");
+  await Bun.write(filePath, content);
+  return { dirPath, filePath };
 }
 
 const baseModel = {
@@ -100,8 +103,8 @@ describe("server-catalog", () => {
         "llama-3.3-70b": baseModel,
         "nomic-embed-text": embeddingModel,
       });
-      const path = await writeYamlFile(yaml, fileIndex++);
-      configure(10, path);
+      const { dirPath } = await writeYamlInOwnDir(yaml, fileIndex++);
+      configure(10, dirPath);
       await refresh();
     });
 
@@ -170,8 +173,8 @@ describe("server-catalog", () => {
   describe("duplicate handling", () => {
     it("later entry overwrites earlier with same specifier", async () => {
       const yaml = makeModelYaml({ "llama-3.3-70b": baseModel });
-      const path = await writeYamlFile(yaml, fileIndex++);
-      configure(10, path);
+      const { dirPath } = await writeYamlInOwnDir(yaml, fileIndex++);
+      configure(10, dirPath);
       await refresh();
       expect(get("llama-3.3-70b")?.name).toBe("Test Llama");
     });
@@ -205,8 +208,8 @@ describe("server-catalog", () => {
         { "local-model": baseModel },
         [`http://localhost:${includeServer.port}/models.yaml`],
       );
-      const path = await writeYamlFile(localYaml, fileIndex++);
-      configure(10, path);
+      const { dirPath } = await writeYamlInOwnDir(localYaml, fileIndex++);
+      configure(10, dirPath);
       await refresh();
 
       expect(get("local-model")).toBeDefined();
@@ -231,8 +234,8 @@ describe("server-catalog", () => {
         { "local-model": baseModel },
         [`http://localhost:${includeServer.port}/self.yaml`],
       );
-      const path = await writeYamlFile(localYaml, fileIndex++);
-      configure(10, path);
+      const { dirPath } = await writeYamlInOwnDir(localYaml, fileIndex++);
+      configure(10, dirPath);
       await refresh();
 
       expect(get("local-model")).toBeDefined();
@@ -258,8 +261,8 @@ describe("server-catalog", () => {
         { "root-model": baseModel },
         [`http://localhost:${includeServer.port}/start.yaml`],
       );
-      const path = await writeYamlFile(localYaml, fileIndex++);
-      configure(2, path);
+      const { dirPath } = await writeYamlInOwnDir(localYaml, fileIndex++);
+      configure(2, dirPath);
       await refresh();
 
       expect(get("root-model")).toBeDefined();
@@ -276,8 +279,8 @@ describe("server-catalog", () => {
         { "local-model": baseModel },
         [`http://localhost:${includeServer.port}/bad.yaml`],
       );
-      const path = await writeYamlFile(localYaml, fileIndex++);
-      configure(10, path);
+      const { dirPath } = await writeYamlInOwnDir(localYaml, fileIndex++);
+      configure(10, dirPath);
       await refresh();
 
       expect(get("local-model")).toBeDefined();
@@ -285,16 +288,26 @@ describe("server-catalog", () => {
   });
 
   describe("validation", () => {
-    it("throws on invalid YAML that fails parsing", async () => {
-      const path = await writeYamlFile("not: valid: model: file:", fileIndex++);
-      configure(10, path);
-      await expect(refresh()).rejects.toThrow();
+    it("skips files with unparseable YAML and continues with the rest", async () => {
+      const dirPath = join(testDir, `dir-${fileIndex++}`);
+      await Bun.write(join(dirPath, "a-bad.yaml"), "not: valid: model: file:");
+      await Bun.write(join(dirPath, "b-good.yaml"), makeModelYaml({ "good-model": baseModel }));
+      configure(10, dirPath);
+      await refresh();
+
+      expect(get("good-model")).toBeDefined();
+      expect(getAll()).toHaveLength(1);
     });
 
-    it("throws when YAML is valid but fails schema validation", async () => {
-      const path = await writeYamlFile("someKey: someValue\n", fileIndex++);
-      configure(10, path);
-      await expect(refresh()).rejects.toThrow("Model file validation failed");
+    it("skips files that fail schema validation and continues with the rest", async () => {
+      const dirPath = join(testDir, `dir-${fileIndex++}`);
+      await Bun.write(join(dirPath, "a-bad.yaml"), "someKey: someValue\n");
+      await Bun.write(join(dirPath, "b-good.yaml"), makeModelYaml({ "good-model": baseModel }));
+      configure(10, dirPath);
+      await refresh();
+
+      expect(get("good-model")).toBeDefined();
+      expect(getAll()).toHaveLength(1);
     });
   });
 
@@ -304,7 +317,7 @@ describe("server-catalog", () => {
       await Bun.write(join(dirPath, "a-models.yaml"), makeModelYaml({ "dir-model-a": baseModel }));
       await Bun.write(join(dirPath, "b-models.yaml"), makeModelYaml({ "dir-model-b": embeddingModel }));
 
-      configure(10, undefined, dirPath);
+      configure(10, dirPath);
       await refresh();
 
       expect(get("dir-model-a")).toBeDefined();
@@ -318,48 +331,18 @@ describe("server-catalog", () => {
       await Bun.write(join(dirPath, "readme.txt"), "not yaml");
       await Bun.write(join(dirPath, "config.json"), "{}");
 
-      configure(10, undefined, dirPath);
+      configure(10, dirPath);
       await refresh();
 
       expect(getAll()).toHaveLength(1);
       expect(get("yaml-model")).toBeDefined();
     });
 
-    it("skips invalid files and continues loading valid ones", async () => {
-      const dirPath = join(testDir, `dir-${fileIndex++}`);
-      await Bun.write(join(dirPath, "a-bad.yaml"), "someKey: someValue\n");
-      await Bun.write(join(dirPath, "b-good.yaml"), makeModelYaml({ "good-model": baseModel }));
-
-      configure(10, undefined, dirPath);
+    it("loads catalog as empty when the configured directory is missing", async () => {
+      configure(10, "/nonexistent/dir/path");
       await refresh();
 
-      expect(get("good-model")).toBeDefined();
-      expect(getAll()).toHaveLength(1);
-    });
-
-    it("combines main file and directory models", async () => {
-      const mainYaml = makeModelYaml({ "main-model": baseModel });
-      const mainPath = await writeYamlFile(mainYaml, fileIndex++);
-
-      const dirPath = join(testDir, `dir-${fileIndex++}`);
-      await Bun.write(join(dirPath, "extra.yaml"), makeModelYaml({ "dir-model": embeddingModel }));
-
-      configure(10, mainPath, dirPath);
-      await refresh();
-
-      expect(get("main-model")).toBeDefined();
-      expect(get("dir-model")).toBeDefined();
-      expect(getAll()).toHaveLength(2);
-    });
-
-    it("gracefully handles missing directory", async () => {
-      const mainYaml = makeModelYaml({ "main-model": baseModel });
-      const mainPath = await writeYamlFile(mainYaml, fileIndex++);
-
-      configure(10, mainPath, "/nonexistent/dir/path");
-      await refresh();
-
-      expect(get("main-model")).toBeDefined();
+      expect(getAll()).toHaveLength(0);
     });
   });
 
@@ -384,8 +367,8 @@ describe("server-catalog", () => {
         { "shared-model": localModel },
         [`http://localhost:${includeServer.port}/models.yaml`],
       );
-      const path = await writeYamlFile(localYaml, fileIndex++);
-      configure(10, path);
+      const { dirPath } = await writeYamlInOwnDir(localYaml, fileIndex++);
+      configure(10, dirPath);
       await refresh();
 
       expect(get("shared-model")!.name).toBe("Local Version");
@@ -407,7 +390,7 @@ describe("server-catalog", () => {
         makeModelYaml({ "dir-local": dirModel }, [`http://localhost:${includeServer.port}/models.yaml`]),
       );
 
-      configure(10, undefined, dirPath);
+      configure(10, dirPath);
       await refresh();
 
       expect(get("dir-local")!.name).toBe("Dir Local");
@@ -417,11 +400,11 @@ describe("server-catalog", () => {
   describe("_source tracking", () => {
     it("tracks source file path for locally loaded models", async () => {
       const yaml = makeModelYaml({ "tracked-model": baseModel });
-      const path = await writeYamlFile(yaml, fileIndex++);
-      configure(10, path);
+      const { dirPath, filePath } = await writeYamlInOwnDir(yaml, fileIndex++);
+      configure(10, dirPath);
       await refresh();
 
-      expect(get("tracked-model")!._source).toBe(path);
+      expect(get("tracked-model")!._source).toBe(filePath);
     });
 
     it("tracks source URL for remotely included models", async () => {
@@ -435,12 +418,12 @@ describe("server-catalog", () => {
 
       const includeUrl = `http://localhost:${includeServer.port}/models.yaml`;
       const localYaml = makeModelYaml({ "local-tracked": baseModel }, [includeUrl]);
-      const path = await writeYamlFile(localYaml, fileIndex++);
-      configure(10, path);
+      const { dirPath, filePath } = await writeYamlInOwnDir(localYaml, fileIndex++);
+      configure(10, dirPath);
       await refresh();
 
       expect(get("remote-tracked")!._source).toBe(includeUrl);
-      expect(get("local-tracked")!._source).toBe(path);
+      expect(get("local-tracked")!._source).toBe(filePath);
 
       includeServer.stop(true);
     });
@@ -449,8 +432,8 @@ describe("server-catalog", () => {
   describe("catalog health", () => {
     it("reports model count and refresh time after successful load", async () => {
       const yaml = makeModelYaml({ "health-model": baseModel });
-      const path = await writeYamlFile(yaml, fileIndex++);
-      configure(10, path);
+      const { dirPath } = await writeYamlInOwnDir(yaml, fileIndex++);
+      configure(10, dirPath);
       await refresh();
 
       const health = getCatalogHealth();
@@ -459,14 +442,16 @@ describe("server-catalog", () => {
       expect(health.lastRefreshError).toBeNull();
     });
 
-    it("records error message on failed refresh", async () => {
-      const path = await writeYamlFile("someKey: someValue\n", fileIndex++);
-      configure(10, path);
+    it("keeps lastRefreshError null when individual files fail (skip-and-continue)", async () => {
+      const dirPath = join(testDir, `dir-${fileIndex++}`);
+      await Bun.write(join(dirPath, "bad.yaml"), "someKey: someValue\n");
+      configure(10, dirPath);
 
-      try { await refresh(); } catch {}
+      await refresh();
 
       const health = getCatalogHealth();
-      expect(health.lastRefreshError).toContain("Model file validation failed");
+      expect(health.lastRefreshError).toBeNull();
+      expect(health.modelCount).toBe(0);
     });
   });
 });

@@ -160,7 +160,7 @@ jobs:
         run: bun run server.ts &
         working-directory: packages/xinity-infoserver
         env:
-          MODEL_INFO_FILE: ./models.yaml
+          MODEL_INFO_DIR: .
           PORT: "8393"
 
       - name: Build dashboard

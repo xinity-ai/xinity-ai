@@ -128,8 +128,6 @@ docker run -d \
   ghcr.io/xinity-ai/xinity-infoserver:latest
 ```
 
-> **Deprecation notice:** `MODEL_INFO_FILE` (single-file mode) is deprecated and will be removed in 1.0.0. Migrate to `MODEL_INFO_DIR` by placing your YAML files in a directory. Both options still work during the transition period, and when both are set, models from all sources are merged with local definitions taking precedence over remote includes.
-
 ### Pointing the cluster at your registry
 
 Set `INFOSERVER_URL` on each component that needs model metadata:
