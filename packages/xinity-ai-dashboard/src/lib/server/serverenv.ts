@@ -5,21 +5,7 @@
 import { parseEnv } from "common-env";
 import { dashboardEnvSchema } from "./env-schema.ts";
 
-/**
- * Parsed environment variables. Avoid reading from `process.env` elsewhere.
- */
-type RawEnv = Record<string, string | undefined>;
-
-function stripV1SuffixFromGatewayUrl(env: RawEnv): void {
-  if (!env.GATEWAY_URL || !/\/v1\/?$/.test(env.GATEWAY_URL)) return;
-  console.warn("GATEWAY_URL must not end with /v1 - the /v1 segment is appended by the dashboard where needed. Stripping for compatibility, but please update your configuration.");
-  env.GATEWAY_URL = env.GATEWAY_URL.replace(/\/v1\/?$/, "");
-}
-
-const rawEnv: RawEnv = { ...process.env };
-stripV1SuffixFromGatewayUrl(rawEnv);
-
-export const serverEnv = parseEnv(dashboardEnvSchema, rawEnv);
+export const serverEnv = parseEnv(dashboardEnvSchema, process.env);
 
 /**
  * Check if an email address belongs to an instance admin.
