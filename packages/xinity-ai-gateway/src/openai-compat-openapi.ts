@@ -58,9 +58,9 @@ const modelObjectSchema = {
     created: { type: "integer" },
     owned_by: { type: "string" },
     status: {
-      type: "string",
-      enum: ["ready", "loading", "not_ready"],
-      description: "Xinity extension. Readiness of the deployment. Default `/v1/models` only returns `ready`; pass `?include_unavailable=true` to see the rest.",
+      type: ["string", "null"],
+      enum: ["downloading", "installing", "ready", "failed", null],
+      description: "Xinity extension. Aggregated installation lifecycle state across the deployment's replicas (best-state wins). `null` when no installation exists. Default `/v1/models` only returns deployments with `status: ready`; pass `?include_unavailable=true` to see the rest.",
     },
     canary: {
       type: "boolean",

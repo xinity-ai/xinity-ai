@@ -1,9 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
   cleanupTestData,
+  createAiNode,
   createApiKey,
   createModelDeployment,
+  createModelInstallation,
   createOrganizationAndApp,
+  createReadyInstallationFor,
   ensureGatewayRunning,
   gatewayUrl,
 } from "./gateway-test-helpers";
@@ -33,6 +36,7 @@ describe("xinity-ai-gateway models", () => {
     const { orgId, appId } = await createOrganizationAndApp();
     const { fullKey } = await createApiKey({ orgId, appId });
     const deployment = await createModelDeployment({ orgId });
+    await createReadyInstallationFor(deployment);
 
     const res = await fetch(gatewayUrl("/v1/models"), {
       headers: { authorization: `Bearer ${fullKey}` },
@@ -45,6 +49,7 @@ describe("xinity-ai-gateway models", () => {
         {
           id: deployment.publicSpecifier,
           object: "model",
+          status: "ready",
         },
       ],
     });
@@ -77,6 +82,8 @@ describe("xinity-ai-gateway models", () => {
       orgId: orgB.orgId,
       publicSpecifier: `org-b-${orgB.orgId}`,
     });
+    await createReadyInstallationFor(deploymentA);
+    await createReadyInstallationFor(deploymentB);
 
     const resA = await fetch(gatewayUrl("/v1/models"), {
       headers: { authorization: `Bearer ${keyA.fullKey}` },
@@ -107,5 +114,96 @@ describe("xinity-ai-gateway models", () => {
         },
       ],
     });
+  });
+
+  it("hides non-ready deployments by default", async () => {
+    const { orgId, appId } = await createOrganizationAndApp();
+    const { fullKey } = await createApiKey({ orgId, appId });
+
+    const readyDeployment = await createModelDeployment({ orgId, publicSpecifier: `ready-${orgId}` });
+    await createReadyInstallationFor(readyDeployment);
+
+    const downloadingDeployment = await createModelDeployment({ orgId, publicSpecifier: `downloading-${orgId}` });
+    const installingDeployment = await createModelDeployment({ orgId, publicSpecifier: `installing-${orgId}` });
+    const failedDeployment = await createModelDeployment({ orgId, publicSpecifier: `failed-${orgId}` });
+    const node = await createAiNode();
+    await createModelInstallation({
+      nodeId: node.id,
+      model: downloadingDeployment.publicSpecifier,
+      port: 19990,
+      lifecycleState: "downloading",
+    });
+    await createModelInstallation({
+      nodeId: node.id,
+      model: installingDeployment.publicSpecifier,
+      port: 19991,
+      lifecycleState: "installing",
+    });
+    await createModelInstallation({
+      nodeId: node.id,
+      model: failedDeployment.publicSpecifier,
+      port: 19992,
+      lifecycleState: "failed",
+    });
+
+    await createModelDeployment({ orgId, publicSpecifier: `noinstall-${orgId}` });
+
+    const res = await fetch(gatewayUrl("/v1/models"), {
+      headers: { authorization: `Bearer ${fullKey}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { data: Array<{ id: string; status: string }> };
+    const ids = body.data.map((m) => m.id);
+    expect(ids).toContain(readyDeployment.publicSpecifier);
+    expect(ids).not.toContain(downloadingDeployment.publicSpecifier);
+    expect(ids).not.toContain(installingDeployment.publicSpecifier);
+    expect(ids).not.toContain(failedDeployment.publicSpecifier);
+    expect(ids).not.toContain(`noinstall-${orgId}`);
+    for (const m of body.data) expect(m.status).toBe("ready");
+  });
+
+  it("surfaces raw lifecycle states when include_unavailable=true", async () => {
+    const { orgId, appId } = await createOrganizationAndApp();
+    const { fullKey } = await createApiKey({ orgId, appId });
+
+    const readyDeployment = await createModelDeployment({ orgId, publicSpecifier: `ready-${orgId}` });
+    await createReadyInstallationFor(readyDeployment);
+
+    const downloadingDeployment = await createModelDeployment({ orgId, publicSpecifier: `downloading-${orgId}` });
+    const installingDeployment = await createModelDeployment({ orgId, publicSpecifier: `installing-${orgId}` });
+    const failedDeployment = await createModelDeployment({ orgId, publicSpecifier: `failed-${orgId}` });
+    const node = await createAiNode();
+    await createModelInstallation({
+      nodeId: node.id,
+      model: downloadingDeployment.publicSpecifier,
+      port: 19980,
+      lifecycleState: "downloading",
+    });
+    await createModelInstallation({
+      nodeId: node.id,
+      model: installingDeployment.publicSpecifier,
+      port: 19981,
+      lifecycleState: "installing",
+    });
+    await createModelInstallation({
+      nodeId: node.id,
+      model: failedDeployment.publicSpecifier,
+      port: 19982,
+      lifecycleState: "failed",
+    });
+
+    const noInstallDeployment = await createModelDeployment({ orgId, publicSpecifier: `noinstall-${orgId}` });
+
+    const res = await fetch(gatewayUrl("/v1/models?include_unavailable=true"), {
+      headers: { authorization: `Bearer ${fullKey}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { data: Array<{ id: string; status: string | null }> };
+    const byId = new Map(body.data.map((m) => [m.id, m.status]));
+    expect(byId.get(readyDeployment.publicSpecifier)).toBe("ready");
+    expect(byId.get(downloadingDeployment.publicSpecifier)).toBe("downloading");
+    expect(byId.get(installingDeployment.publicSpecifier)).toBe("installing");
+    expect(byId.get(failedDeployment.publicSpecifier)).toBe("failed");
+    expect(byId.get(noInstallDeployment.publicSpecifier)).toBe(null);
   });
 });

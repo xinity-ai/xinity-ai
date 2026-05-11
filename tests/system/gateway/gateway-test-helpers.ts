@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from "crypto";
 import { createServer } from "net";
-import { aiApiKeyT, aiApplicationT, aiNodeT, modelDeploymentT, modelInstallationT, organizationT, preconfigureDB, sql } from "common-db";
+import { aiApiKeyT, aiApplicationT, aiNodeT, modelDeploymentT, modelInstallationStateT, modelInstallationT, organizationT, preconfigureDB, sql } from "common-db";
 import { readProcessOutput, waitForHttp } from "../test-helpers";
 import { ensureInfoServerRunning, infoServerUrl } from "../infoserver/infoserver-test-helpers";
 import { ensureSystemReady } from "../guard";
@@ -229,6 +229,7 @@ export async function createModelInstallation(input: {
   estCapacity?: number;
   driver?: "ollama" | "vllm";
   deletedAt?: Date;
+  lifecycleState?: "downloading" | "installing" | "ready" | "failed";
 }): Promise<{ id: string }> {
   const [installation] = await getDB().insert(modelInstallationT).values({
     nodeId: input.nodeId,
@@ -239,8 +240,25 @@ export async function createModelInstallation(input: {
     deletedAt: input.deletedAt,
   }).returning();
 
+  if (input.lifecycleState) {
+    await getDB().insert(modelInstallationStateT).values({
+      id: installation!.id,
+      lifecycleState: input.lifecycleState,
+    });
+  }
+
   createdInstallationIds.push(installation!.id);
   return { id: installation!.id };
+}
+
+export async function createReadyInstallationFor(deployment: { publicSpecifier: string }): Promise<{ id: string }> {
+  const node = await createAiNode();
+  return createModelInstallation({
+    nodeId: node.id,
+    model: deployment.publicSpecifier,
+    port: await getAvailablePort(),
+    lifecycleState: "ready",
+  });
 }
 
 export function makeUnknownKey(): string {
