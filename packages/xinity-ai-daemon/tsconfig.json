@@ -9,6 +9,7 @@
     "types": ["bun"],
     "paths": {
       "common-db": ["../common-db/src/"],
+      "common-env": ["../common-env/src/"],
       "common-log": ["../common-log/src/"]
     }
   }
