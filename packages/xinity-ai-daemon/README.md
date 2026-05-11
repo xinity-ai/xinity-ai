@@ -21,7 +21,7 @@ The installation can be started like this:
 curl -fsSL https://ollama.com/install.sh | sh
 systemctl edit ollama
 ```
-Enter the following in the service override that opened due to `syst4emctl edit ollama`
+Enter the following in the service override that opened due to `systemctl edit ollama`
 ```ini
 [Service]
 Environment="OLLAMA_HOST=0.0.0.0"

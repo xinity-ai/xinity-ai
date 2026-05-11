@@ -111,4 +111,4 @@ This package is licensed under the **Elastic License 2.0 (ELv2)**, which differs
 ## Notes
 
 - Mailhog UI runs at `http://localhost:8025` when the dev Docker stack is up.
-- `MODEL_CONFIG_URL` points at `http://localhost:8090/models/v1.yaml` in the dev Docker stack.
+- `INFOSERVER_URL` points at `http://localhost:8393` for a locally-run infoserver (default in `example.env`).
