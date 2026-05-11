@@ -100,11 +100,11 @@ describe("orchestration: node goes unavailable", () => {
     expect(findServerForModel("new-model", "vllm", 8, state, [], "0.19.1")).toBe("node-f");
   });
 
-  test("findServerForModel allows nodes with unknown version (fail-open)", () => {
+  test("findServerForModel skips nodes with unknown version (fail-closed)", () => {
     const unknownNode = makeNode({ id: "node-g", host: "10.0.0.7", drivers: ["vllm"], driverVersions: {} });
     const state = buildClusterState([], [unknownNode]);
 
-    expect(findServerForModel("new-model", "vllm", 8, state, [], "0.19.1")).toBe("node-g");
+    expect(findServerForModel("new-model", "vllm", 8, state, [], "0.19.1")).toBeNull();
   });
 
   test("findServerForModel skips nodes with wrong GPU platform", () => {

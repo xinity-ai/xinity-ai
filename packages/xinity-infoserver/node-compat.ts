@@ -35,32 +35,21 @@ export type IncompatibilityReason =
   | "wrong_platform"
   | "insufficient_capacity";
 
-/**
- * Checks whether a single node can serve a model.
- * Returns null if compatible, or the first failing reason.
- *
- * Check order: driver, version, platform, capacity.
- * This lets callers separate "structurally incompatible" from "just no capacity"
- * for greedy allocation loops.
- *
- * Fail-closed for gpus: if a model requires specific GPU platforms,
- * nodes with no GPUs or wrong vendors are excluded.
- */
+/** Returns null if the node can serve the model, otherwise the first failing reason. */
 export function checkNodeCompatibility(
   node: NodeCapability,
   req: ModelNodeRequirements,
-  options: { requireKnownVersion?: boolean } = {},
 ): IncompatibilityReason | null {
-  // TODO v1.0.0 default this to true
-  const requireKnownVersion = options.requireKnownVersion ?? false;
-
-  if (!node.drivers.includes(req.driver)) return "missing_driver";
+  if (!node.drivers.includes(req.driver)) {
+    return "missing_driver";
+  }
 
   if (req.minVersion) {
     const nodeVersion = node.driverVersions[req.driver];
     if (!nodeVersion) {
-      if (requireKnownVersion) return "version_unknown";
-    } else if (!satisfiesMinVersion(nodeVersion, req.minVersion)) {
+      return "version_unknown";
+    }
+    if (!satisfiesMinVersion(nodeVersion, req.minVersion)) {
       return "version_too_old";
     }
   }
@@ -72,7 +61,9 @@ export function checkNodeCompatibility(
     }
   }
 
-  if (node.free < req.capacityGb) return "insufficient_capacity";
+  if (node.free < req.capacityGb) {
+    return "insufficient_capacity";
+  }
 
   return null;
 }
