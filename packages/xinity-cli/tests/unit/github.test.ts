@@ -17,25 +17,17 @@ function makeRelease(assetNames: string[], tagName = "v0.1.0"): Release {
 
 describe("github", () => {
   describe("pickReleaseAsset", () => {
-    test("prefers tar.gz when both formats are present", () => {
-      const release = makeRelease([
-        "xinity-ai-gateway-linux-x64.zip",
-        "xinity-ai-gateway-linux-x64.tar.gz",
-      ]);
+    test("picks tar.gz when present", () => {
+      const release = makeRelease(["xinity-ai-gateway-linux-x64.tar.gz"]);
       expect(pickReleaseAsset(release, "gateway", "x64")).toBe("xinity-ai-gateway-linux-x64.tar.gz");
     });
 
-    test("falls back to zip for pre-1.0.0 releases", () => {
-      const release = makeRelease(["xinity-ai-gateway-linux-x64.zip"]);
-      expect(pickReleaseAsset(release, "gateway", "x64")).toBe("xinity-ai-gateway-linux-x64.zip");
-    });
-
-    test("picks tar.gz when only tar.gz is present", () => {
+    test("picks tar.gz for arm64 builds", () => {
       const release = makeRelease(["xinity-ai-gateway-linux-arm64.tar.gz"]);
       expect(pickReleaseAsset(release, "gateway", "arm64")).toBe("xinity-ai-gateway-linux-arm64.tar.gz");
     });
 
-    test("throws when neither format is present", () => {
+    test("throws when the expected tar.gz is absent", () => {
       const release = makeRelease(["unrelated.txt"], "v0.5.0");
       expect(() => pickReleaseAsset(release, "gateway", "x64")).toThrow(/v0\.5\.0/);
     });
@@ -48,15 +40,15 @@ describe("github", () => {
 
     test("uses correct prefix per component", () => {
       const release = makeRelease([
-        "xinity-cli-linux-x64.zip",
-        "xinity-infoserver-linux-x64.zip",
-        "xinity-ai-daemon-linux-x64.zip",
-        "xinity-ai-dashboard-linux-x64.zip",
+        "xinity-cli-linux-x64.tar.gz",
+        "xinity-infoserver-linux-x64.tar.gz",
+        "xinity-ai-daemon-linux-x64.tar.gz",
+        "xinity-ai-dashboard-linux-x64.tar.gz",
       ]);
-      expect(pickReleaseAsset(release, "cli", "x64")).toBe("xinity-cli-linux-x64.zip");
-      expect(pickReleaseAsset(release, "infoserver", "x64")).toBe("xinity-infoserver-linux-x64.zip");
-      expect(pickReleaseAsset(release, "daemon", "x64")).toBe("xinity-ai-daemon-linux-x64.zip");
-      expect(pickReleaseAsset(release, "dashboard", "x64")).toBe("xinity-ai-dashboard-linux-x64.zip");
+      expect(pickReleaseAsset(release, "cli", "x64")).toBe("xinity-cli-linux-x64.tar.gz");
+      expect(pickReleaseAsset(release, "infoserver", "x64")).toBe("xinity-infoserver-linux-x64.tar.gz");
+      expect(pickReleaseAsset(release, "daemon", "x64")).toBe("xinity-ai-daemon-linux-x64.tar.gz");
+      expect(pickReleaseAsset(release, "dashboard", "x64")).toBe("xinity-ai-dashboard-linux-x64.tar.gz");
     });
 
     test("only 'arm64' maps to arm64; everything else becomes x64", () => {

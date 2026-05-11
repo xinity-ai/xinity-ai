@@ -128,10 +128,8 @@ TAG="$(printf '%s' "$RELEASE_JSON" | grep '"tag_name"' | head -1 | sed 's/.*: *"
 
 if printf '%s' "$RELEASE_JSON" | grep -q "\"name\": *\"${ASSET_PREFIX}.tar.gz\""; then
   ASSET_NAME="${ASSET_PREFIX}.tar.gz"
-elif printf '%s' "$RELEASE_JSON" | grep -q "\"name\": *\"${ASSET_PREFIX}.zip\""; then
-  ASSET_NAME="${ASSET_PREFIX}.zip"
 else
-  fail "Neither ${ASSET_PREFIX}.tar.gz nor ${ASSET_PREFIX}.zip found in release ${TAG}"
+  fail "${ASSET_PREFIX}.tar.gz not found in release ${TAG}"
 fi
 
 info "Installing xinity CLI ${TAG} (${SUFFIX})"
@@ -190,19 +188,8 @@ fi
 # ── Extract and install ─────────────────────────────────────────────────────
 
 mkdir -p "${TMP_DIR}/extracted"
-case "$ASSET_NAME" in
-  *.tar.gz)
-    command -v tar &>/dev/null || fail "'tar' is required but not found"
-    tar -xzf "${TMP_DIR}/${ASSET_NAME}" -C "${TMP_DIR}/extracted"
-    ;;
-  *.zip)
-    command -v unzip &>/dev/null || fail "'unzip' is required but not found"
-    unzip -o "${TMP_DIR}/${ASSET_NAME}" -d "${TMP_DIR}/extracted" >/dev/null
-    ;;
-  *)
-    fail "Unknown archive format: ${ASSET_NAME}"
-    ;;
-esac
+command -v tar &>/dev/null || fail "'tar' is required but not found"
+tar -xzf "${TMP_DIR}/${ASSET_NAME}" -C "${TMP_DIR}/extracted"
 
 mkdir -p "$INSTALL_DIR"
 mv "${TMP_DIR}/extracted/xinity" "${INSTALL_DIR}/xinity"

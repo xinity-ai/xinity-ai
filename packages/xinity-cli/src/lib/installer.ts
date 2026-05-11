@@ -76,8 +76,6 @@ export async function preflightCheck(
   if (needsExtractor) {
     const target = host.isRemote ? "the remote host" : "this machine";
     await check("tar", `required on ${target} for binary extraction`, "apt install tar / dnf install tar / pacman -S tar");
-    // TODO drop unzip on v1.0.0
-    await check("unzip", `required on ${target} to install pre-1.0.0 releases`, "apt install unzip / dnf install unzip / pacman -S unzip");
   }
 
   // curl is needed on remote hosts for downloading release assets
@@ -445,12 +443,11 @@ async function downloadAndVerifyOnHost(
 
 function extractCommand(archivePath: string, destDir: string): string {
   if (archivePath.endsWith(".tar.gz")) return `tar -xzf ${archivePath} -C ${destDir}`;
-  if (archivePath.endsWith(".zip")) return `unzip -o ${archivePath} -d ${destDir}`;
   throw new Error(`Unsupported archive format: ${archivePath}`);
 }
 
 function stripArchiveSuffix(path: string): string {
-  return path.replace(/\.tar\.gz$|\.zip$/, "");
+  return path.replace(/\.tar\.gz$/, "");
 }
 
 async function installBinary(component: Component, archivePath: string, host: Host): Promise<boolean> {
@@ -480,10 +477,7 @@ async function installBinary(component: Component, archivePath: string, host: Ho
     const extractSpinner = p.spinner();
     extractSpinner.start("Extracting…");
     const local = createLocalHost();
-    const extractCmd = archivePath.endsWith(".tar.gz")
-      ? ["tar", "-xzf", archivePath, "-C", tmpExtract]
-      : ["unzip", "-o", archivePath, "-d", tmpExtract];
-    const extracted = await local.run(extractCmd);
+    const extracted = await local.run(["tar", "-xzf", archivePath, "-C", tmpExtract]);
     if (!extracted.ok) {
       extractSpinner.stop("Extract failed");
       fail("Extract", extracted.output);

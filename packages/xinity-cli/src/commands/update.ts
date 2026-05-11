@@ -32,10 +32,7 @@ async function selfUpdate(release: Release): Promise<boolean> {
   const extractDir = join(tmpDir, "extracted");
   mkdirSync(extractDir, { recursive: true });
   const local = createLocalHost();
-  const extractCmd = filePath.endsWith(".tar.gz")
-    ? ["tar", "-xzf", filePath, "-C", extractDir]
-    : ["unzip", "-o", filePath, "-d", extractDir];
-  const extracted = await local.run(extractCmd);
+  const extracted = await local.run(["tar", "-xzf", filePath, "-C", extractDir]);
   if (!extracted.ok) {
     fail("Extract", "Failed to extract archive");
     return false;
