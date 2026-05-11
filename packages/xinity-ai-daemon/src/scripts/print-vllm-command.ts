@@ -9,6 +9,7 @@
 
 import { parseArgs } from "node:util";
 import { z } from "zod";
+import { quoteShellArgv } from "common-env";
 import {
   ModelFileDefinitionSchema,
   resolveDriverForProviderModel,
@@ -129,15 +130,6 @@ function findModel(
   }
   const known = Object.keys(parsed.models).join(", ");
   die(`model "${name}" not found in model file (looked at public specifiers and providers.vllm). Known: ${known}`);
-}
-
-function quoteShellArg(s: string): string {
-  if (/^[A-Za-z0-9@%+=:,./_-]+$/.test(s)) return s;
-  return `'${s.replace(/'/g, `'\\''`)}'`;
-}
-
-function quoteShellArgv(argv: string[]): string {
-  return argv.map(quoteShellArg).join(" ");
 }
 
 function buildVllmInstanceConfig(

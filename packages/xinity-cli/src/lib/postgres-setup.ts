@@ -8,6 +8,7 @@
  * identically for local and remote (--target-host) execution.
  */
 import { randomBytes } from "crypto";
+import { quoteShellArg } from "common-env";
 import * as p from "./clack.ts";
 import pc from "picocolors";
 import { type Host, commandExistsOn } from "./host.ts";
@@ -217,7 +218,7 @@ async function createDatabase(
     p.log.step("Creating user and database requires access to the postgres system user.");
 
     const result = await host.withElevation(
-      `su - postgres -c "psql -c ${shellQuote(createUserSql)}" && su - postgres -c "psql -c ${shellQuote(createDbSql)}"`,
+      `su - postgres -c "psql -c ${quoteShellArg(createUserSql)}" && su - postgres -c "psql -c ${quoteShellArg(createDbSql)}"`,
       "Create PostgreSQL user and database",
     );
     if (!result.success) {
@@ -238,10 +239,6 @@ async function createDatabase(
   p.note(connectionUrl, "Connection URL");
 
   return connectionUrl;
-}
-
-function shellQuote(s: string): string {
-  return `'${s.replace(/'/g, "'\\''")}'`;
 }
 
 // ─── Install flow ───────────────────────────────────────────────────────────

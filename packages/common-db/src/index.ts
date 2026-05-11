@@ -13,3 +13,4 @@ export * from "./migrations";
 export * from "./connection";
 export { drizzle } from "drizzle-orm/postgres-js";
 export * from "drizzle-orm";
+export type { PgColumn, PgTable } from "drizzle-orm/pg-core";
