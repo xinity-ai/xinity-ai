@@ -230,7 +230,7 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
       modelSpecifier: originalModel,
       inputMessages: messagesForDB,
       callStartTime,
-      logCalls: body.store ?? true,
+      logCalls: body.store,
       metadata: body.metadata as Record<string, unknown> | undefined,
     } as const;
 
@@ -340,7 +340,7 @@ type LogFields = {
   readonly modelSpecifier: string;
   readonly inputMessages: ApiCallInputMessage[];
   readonly callStartTime: number;
-  readonly logCalls: boolean;
+  readonly logCalls: boolean | undefined;
   readonly metadata: Record<string, unknown> | undefined;
 };
 

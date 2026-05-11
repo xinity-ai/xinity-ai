@@ -42,7 +42,7 @@ export const CreateResponseBodySchema = z.object({
   input: z.unknown(),
   stream: z.boolean().optional().default(false),
   background: z.boolean().optional().default(false),
-  store: z.boolean().optional().default(true),
+  store: z.boolean().optional(),
   temperature: z.number().optional(),
   top_p: z.number().optional(),
   max_output_tokens: z.number().nullable().optional(),

@@ -1,0 +1,347 @@
+import { z } from "zod";
+import type { OpenAPI } from "@orpc/openapi";
+import { ChatCompletionBodySchema } from "./llm-forward/endpoints/handle-chatCompletion";
+import { CompletionBodySchema } from "./llm-forward/endpoints/handle-completions";
+import { EmbeddingBodySchema } from "./llm-forward/endpoints/handle-embeddings";
+import { RerankBodySchema } from "./llm-forward/endpoints/handle-rerank";
+import { CreateResponseBodySchema } from "./llm-forward/responses/schemas";
+
+const TAG = "OpenAI Compatible";
+const SECURITY = [{ bearerAuth: [] }];
+
+const STORE_NOTE =
+  "`store` (Xinity semantics): omit to defer to the API key's data-collection policy. `true`/`false` are explicit overrides that ignore the per-key policy.";
+const APP_HEADER_NOTE =
+  "`X-Application` request header (optional, Xinity extension): routes the call to a named application for organizing usage in the dashboard.";
+const METADATA_NOTE =
+  "`metadata` is surfaced in the Xinity dashboard as filterable tags on each call.";
+
+function toSchema(schema: z.ZodTypeAny): OpenAPI.SchemaObject {
+  const json = z.toJSONSchema(schema, { unrepresentable: "any" }) as Record<string, unknown>;
+  delete json.$schema;
+  return json as OpenAPI.SchemaObject;
+}
+
+const errorResponseSchema = {
+  type: "object",
+  required: ["error"],
+  properties: {
+    error: {
+      type: "object",
+      required: ["message", "type"],
+      properties: {
+        message: { type: "string" },
+        type: { type: "string" },
+        code: { type: ["string", "null"] },
+      },
+    },
+  },
+};
+
+const usageSchema = {
+  type: "object",
+  additionalProperties: true,
+  properties: {
+    prompt_tokens: { type: "integer" },
+    completion_tokens: { type: "integer" },
+    total_tokens: { type: "integer" },
+  },
+};
+
+const modelObjectSchema = {
+  type: "object",
+  additionalProperties: true,
+  required: ["id", "object", "created", "owned_by", "status", "canary"],
+  properties: {
+    id: { type: "string" },
+    object: { type: "string", enum: ["model"] },
+    created: { type: "integer" },
+    owned_by: { type: "string" },
+    status: {
+      type: "string",
+      enum: ["ready", "loading", "not_ready"],
+      description: "Xinity extension. Readiness of the deployment. Default `/v1/models` only returns `ready`; pass `?include_unavailable=true` to see the rest.",
+    },
+    canary: {
+      type: "boolean",
+      description: "Xinity extension. True while a canary rollout's progress is below 100%.",
+    },
+  },
+};
+
+const modelsListResponseSchema = {
+  type: "object",
+  required: ["object", "data"],
+  properties: {
+    object: { type: "string", enum: ["list"] },
+    data: { type: "array", items: { $ref: "#/components/schemas/ModelObject" } },
+  },
+};
+
+const passthroughObject = { type: "object", additionalProperties: true };
+
+const errorJsonContent = { "application/json": { schema: { $ref: "#/components/schemas/Error" } } };
+const errorResponses = {
+  "400": { description: "Bad request", content: errorJsonContent },
+  "401": { description: "Missing or invalid API key", content: errorJsonContent },
+  "403": { description: "Forbidden", content: errorJsonContent },
+  "404": { description: "Not found", content: errorJsonContent },
+  "429": { description: "Backend queue is full; retry with backoff", content: errorJsonContent },
+  "500": { description: "Internal server error", content: errorJsonContent },
+  "502": { description: "Bad gateway from inference backend", content: errorJsonContent },
+  "503": { description: "Backend unavailable", content: errorJsonContent },
+  "504": { description: "Backend timed out", content: errorJsonContent },
+};
+
+const sseContent = {
+  "text/event-stream": { schema: { type: "string" } },
+};
+
+function jsonRequest(schemaRef: string) {
+  return {
+    required: true,
+    content: { "application/json": { schema: { $ref: schemaRef } } },
+  };
+}
+
+export const openaiCompatSchemas = {
+  Error: errorResponseSchema,
+  Usage: usageSchema,
+  ModelObject: modelObjectSchema,
+  ModelsListResponse: modelsListResponseSchema,
+  ChatCompletionRequest: toSchema(ChatCompletionBodySchema),
+  ChatCompletionResponse: passthroughObject,
+  CompletionRequest: toSchema(CompletionBodySchema),
+  CompletionResponse: passthroughObject,
+  EmbeddingRequest: toSchema(EmbeddingBodySchema),
+  EmbeddingResponse: passthroughObject,
+  RerankRequest: toSchema(RerankBodySchema),
+  RerankResponse: passthroughObject,
+  CreateResponseRequest: toSchema(CreateResponseBodySchema),
+  ResponseObject: passthroughObject,
+} as Record<string, OpenAPI.SchemaObject>;
+
+export const openaiCompatPaths = {
+  "/v1/models": {
+    get: {
+      tags: [TAG],
+      summary: "List models",
+      description: [
+        "OpenAI: https://platform.openai.com/docs/api-reference/models/list",
+        "",
+        "Xinity differences:",
+        "- Defaults to filtering for `status: ready` deployments. Pass `?include_unavailable=true` to also receive `loading` and `not_ready` deployments.",
+        "- Each item carries Xinity extension fields `status` and `canary` (see ModelObject).",
+      ].join("\n"),
+      security: SECURITY,
+      parameters: [
+        {
+          name: "include_unavailable",
+          in: "query",
+          required: false,
+          description: "Include deployments whose lifecycle state is not `ready`. Accepts `true` or `1`.",
+          schema: { type: "boolean", default: false },
+        },
+      ],
+      responses: {
+        "200": {
+          description: "List of models",
+          content: { "application/json": { schema: { $ref: "#/components/schemas/ModelsListResponse" } } },
+        },
+        ...errorResponses,
+      },
+    },
+  },
+  "/v1/chat/completions": {
+    post: {
+      tags: [TAG],
+      summary: "Create a chat completion",
+      description: [
+        "OpenAI: https://platform.openai.com/docs/api-reference/chat/create",
+        "",
+        "Xinity differences:",
+        `- ${STORE_NOTE}`,
+        `- ${METADATA_NOTE}`,
+        "- `structured_outputs` is only honored for vLLM-driven models; rejected with 400 otherwise.",
+        `- ${APP_HEADER_NOTE}`,
+      ].join("\n"),
+      security: SECURITY,
+      requestBody: jsonRequest("#/components/schemas/ChatCompletionRequest"),
+      responses: {
+        "200": {
+          description: "Chat completion, or SSE stream when `stream: true`",
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/ChatCompletionResponse" } },
+            ...sseContent,
+          },
+        },
+        ...errorResponses,
+      },
+    },
+  },
+  "/v1/completions": {
+    post: {
+      tags: [TAG],
+      summary: "Create a text completion (legacy)",
+      description: [
+        "OpenAI: https://platform.openai.com/docs/api-reference/completions/create",
+        "",
+        "Xinity differences:",
+        `- ${STORE_NOTE}`,
+        `- ${METADATA_NOTE}`,
+        `- ${APP_HEADER_NOTE}`,
+      ].join("\n"),
+      security: SECURITY,
+      requestBody: jsonRequest("#/components/schemas/CompletionRequest"),
+      responses: {
+        "200": {
+          description: "Text completion, or SSE stream when `stream: true`",
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/CompletionResponse" } },
+            ...sseContent,
+          },
+        },
+        ...errorResponses,
+      },
+    },
+  },
+  "/v1/embeddings": {
+    post: {
+      tags: [TAG],
+      summary: "Create embeddings",
+      description: [
+        "OpenAI: https://platform.openai.com/docs/api-reference/embeddings/create",
+        "",
+        "Xinity differences:",
+        `- ${APP_HEADER_NOTE}`,
+        "- Embedding call payloads are never persisted regardless of API key policy.",
+      ].join("\n"),
+      security: SECURITY,
+      requestBody: jsonRequest("#/components/schemas/EmbeddingRequest"),
+      responses: {
+        "200": {
+          description: "Embedding vectors",
+          content: { "application/json": { schema: { $ref: "#/components/schemas/EmbeddingResponse" } } },
+        },
+        ...errorResponses,
+      },
+    },
+  },
+  "/v1/rerank": {
+    post: {
+      tags: [TAG],
+      summary: "Rerank documents by relevance to a query",
+      description: [
+        "Cohere v1 rerank: https://docs.cohere.com/v1/reference/rerank",
+        "",
+        "Xinity notes:",
+        "- Only available for deployments whose model type is `rerank`.",
+        `- ${APP_HEADER_NOTE}`,
+      ].join("\n"),
+      security: SECURITY,
+      requestBody: jsonRequest("#/components/schemas/RerankRequest"),
+      responses: {
+        "200": {
+          description: "Reranked documents",
+          content: { "application/json": { schema: { $ref: "#/components/schemas/RerankResponse" } } },
+        },
+        ...errorResponses,
+      },
+    },
+  },
+  "/v1/responses": {
+    post: {
+      tags: [TAG],
+      summary: "Create a response",
+      description: [
+        "OpenAI: https://platform.openai.com/docs/api-reference/responses/create",
+        "",
+        "Xinity differences:",
+        `- ${STORE_NOTE}`,
+        `- ${METADATA_NOTE}`,
+        "- Supported tool types: `function`, plus `web_search` (and the `web_search_preview*` aliases). Other built-in tools are not implemented.",
+        `- ${APP_HEADER_NOTE}`,
+      ].join("\n"),
+      security: SECURITY,
+      requestBody: jsonRequest("#/components/schemas/CreateResponseRequest"),
+      responses: {
+        "200": {
+          description: "Completed response, or SSE stream when `stream: true`",
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/ResponseObject" } },
+            ...sseContent,
+          },
+        },
+        "202": {
+          description: "Accepted; response is being generated in the background (`background: true`)",
+          content: { "application/json": { schema: { $ref: "#/components/schemas/ResponseObject" } } },
+        },
+        ...errorResponses,
+      },
+    },
+  },
+  "/v1/responses/{responseId}": {
+    parameters: [
+      {
+        name: "responseId",
+        in: "path",
+        required: true,
+        schema: { type: "string" },
+      },
+    ],
+    get: {
+      tags: [TAG],
+      summary: "Retrieve a stored response",
+      description: "OpenAI: https://platform.openai.com/docs/api-reference/responses/get",
+      security: SECURITY,
+      responses: {
+        "200": {
+          description: "The stored response object",
+          content: { "application/json": { schema: { $ref: "#/components/schemas/ResponseObject" } } },
+        },
+        ...errorResponses,
+      },
+    },
+    delete: {
+      tags: [TAG],
+      summary: "Delete a stored response",
+      description: "OpenAI: https://platform.openai.com/docs/api-reference/responses/delete",
+      security: SECURITY,
+      responses: {
+        "200": {
+          description: "Deletion confirmation",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["id", "object", "deleted"],
+                properties: {
+                  id: { type: "string" },
+                  object: { type: "string", enum: ["response"] },
+                  deleted: { type: "boolean" },
+                },
+              },
+            },
+          },
+        },
+        ...errorResponses,
+      },
+    },
+  },
+} as unknown as OpenAPI.PathsObject;
+
+export const openaiCompatTags: OpenAPI.TagObject[] = [
+  {
+    name: TAG,
+    description:
+      "Endpoints under `/v1/*` that mirror the OpenAI (and, for `/v1/rerank`, Cohere v1) APIs. Point an OpenAI client's `baseURL` at this gateway's `/v1`. Each operation links to the upstream reference; only Xinity-specific differences are documented inline.",
+  },
+];
+
+export const openaiCompatSecuritySchemes: Record<string, OpenAPI.SecuritySchemeObject> = {
+  bearerAuth: {
+    type: "http",
+    scheme: "bearer",
+    description: "Xinity API key, sent as `Authorization: Bearer <key>`.",
+  },
+};
