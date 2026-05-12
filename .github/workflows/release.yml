@@ -206,6 +206,9 @@ jobs:
           - image: xinity-infoserver
             context: .
             dockerfile: packages/xinity-infoserver/Dockerfile
+          - image: xinity-conductor
+            context: .
+            dockerfile: packages/xinity-conductor/Dockerfile
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

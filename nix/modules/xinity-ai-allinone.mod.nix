@@ -291,6 +291,19 @@
           };
         };
 
+        conductor = {
+          port = lib.mkOption {
+            type = lib.types.port;
+            default = 4020;
+            description = "Port for the conductor.";
+          };
+          dbConnectionUrlFile = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = "Path to file containing the PostgreSQL connection URL for the conductor. Defaults to secrets.dbConnectionUrlFile if unset.";
+          };
+        };
+
         redis = {
           port = lib.mkOption {
             type = lib.types.port;
@@ -484,6 +497,19 @@
             port = lib.mkDefault cfg.infoserver.port;
             modelInfoDir = lib.mkDefault cfg.infoserver.modelInfoDir;
             environmentFiles = lib.mkDefault envFiles;
+          };
+
+          # --- Conductor ---
+          services.xinity-conductor = {
+            enable = true;
+            port = lib.mkDefault cfg.conductor.port;
+            dbConnectionUrlFile = lib.mkDefault (
+              if cfg.conductor.dbConnectionUrlFile != null
+              then cfg.conductor.dbConnectionUrlFile
+              else cfg.secrets.dbConnectionUrlFile
+            );
+            environmentFiles = lib.mkDefault envFiles;
+            extraOptions = lib.mkDefault networkOptions;
           };
 
           # --- SearXNG ---
