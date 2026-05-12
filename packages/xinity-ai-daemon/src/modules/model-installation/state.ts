@@ -1,5 +1,7 @@
 import { getDB } from "../../db/connection";
 import { lifecycleStateEnum, modelInstallationStateT } from "common-db";
+import { reportStatus } from "../conductor-client";
+import { getNodeId } from "../statekeeper";
 
 type LifecycleState = typeof lifecycleStateEnum.enumValues[number];
 
@@ -19,4 +21,9 @@ export async function updateInstallationState(
     .insert(modelInstallationStateT)
     .values({ id, ...fields })
     .onConflictDoUpdate({ set: fields, target: modelInstallationStateT.id });
+
+  void reportStatus({
+    nodeId: await getNodeId(),
+    installations: [{ installationId: id, ...fields }],
+  });
 }
