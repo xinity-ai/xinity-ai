@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # ── PostgreSQL Database ────────────────────────────────────────────────
   postgres:
@@ -14,6 +12,8 @@ services:
       - postgres-data:/var/lib/postgresql/data
     networks:
       - xinity-network
+    ports:
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-xinity}"]
       interval: 10s
@@ -36,19 +36,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Database Migration ─────────────────────────────────────────────────
-  db-migrate:
-    image: ghcr.io/xinity-ai/xinity-db-migrate:${VERSION:-latest}
-    container_name: xinity-db-migrate
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      DB_CONNECTION_URL: postgresql://${POSTGRES_USER:-xinity}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-xinity}
-    networks:
-      - xinity-network
-    restart: "no"
-
   # ── Gateway API ────────────────────────────────────────────────────────
   gateway:
     image: ghcr.io/xinity-ai/xinity-ai-gateway:${VERSION:-latest}
@@ -59,8 +46,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      db-migrate:
-        condition: service_completed_successfully
     environment:
       HOST: 0.0.0.0
       PORT: ${GATEWAY_PORT:-4121}
@@ -82,8 +67,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      db-migrate:
-        condition: service_completed_successfully
     environment:
       HTTP_PORT: ${DASHBOARD_PORT:-5121}
       NODE_ENV: production
@@ -150,7 +133,6 @@ services:
     depends_on:
       - gateway
       - dashboard
-      - infoserver
     ports:
       - "80:80"
       - "443:443"

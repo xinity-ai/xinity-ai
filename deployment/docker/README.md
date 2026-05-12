@@ -26,6 +26,7 @@ All services communicate via Docker bridge networking and are exposed through Ca
 - Docker Compose 2.20+
 - A domain name pointing to your server (for automatic HTTPS)
 - Ports 80 and 443 available
+- The `xinity` CLI available to run migrations against this stack (see [deployment/cli/README.md](../cli/README.md)). The CLI is already required to deploy daemons on inference hardware, so most operators will have it.
 
 ## Quick Start
 
@@ -49,7 +50,18 @@ Edit `.env` and set:
 - Enable/disable SearXNG
 - Customize subdomains
 
-### 2. Start services
+### 2. Run database migrations
+
+The gateway and dashboard expect the schema to be in place before they start. Bring Postgres up on its own and then run the `xinity` CLI against it:
+
+```bash
+docker compose up -d postgres
+xinity up db
+```
+
+`xinity up db` is interactive: it asks whether a database is already running and prompts for the connection URL. Postgres is exposed on `127.0.0.1:5432` by the Compose file, so the URL is `postgresql://<POSTGRES_USER>:<POSTGRES_PASSWORD>@127.0.0.1:5432/<POSTGRES_DB>` using the credentials from your `.env`. Migrations are tracked, so re-running `xinity up db` after future releases is safe.
+
+### 3. Start services
 
 **Note:** The dashboard uses the public Xinity model registry at `https://sysinfo.xinity.ai` by default. You don't need to create `models.yaml` unless you want to host a custom model registry (see Advanced Configuration below).
 
@@ -64,7 +76,14 @@ docker compose logs -f
 docker compose ps
 ```
 
-### 3. Access services
+**Optional services with profiles:** SearXNG and the optional infoserver are gated behind Compose profiles and are not started by `docker compose up -d` alone. Enable them explicitly:
+
+```bash
+# Include SearXNG and a self-hosted infoserver
+docker compose --profile searxng --profile infoserver up -d
+```
+
+### 4. Access services
 
 Once running, access via:
 
@@ -73,9 +92,8 @@ Once running, access via:
 - Model Registry: `https://sysinfo.xinity.ai` (public registry)
 
 The first startup will:
-1. Initialize the database
-2. Run migrations
-3. Obtain SSL certificates (may take 1-2 minutes)
+1. Initialize the database (already migrated in step 2)
+2. Obtain SSL certificates (may take 1-2 minutes)
 
 Model information is fetched from the public registry at `https://sysinfo.xinity.ai` by default.
 
@@ -203,11 +221,7 @@ docker image prune
 
 ### Database migrations
 
-Migrations run automatically on startup. To run manually:
-
-```bash
-docker compose run --rm gateway bun run migrate
-```
+Migrations are applied with the `xinity` CLI. After upgrading to a release that ships new migrations, run `xinity up db` again (or `xinity up db --target-host user@compose-host` for remote Compose hosts; the CLI tunnels the connection over SSH). The CLI downloads the matching migration tarball, applies anything pending, and tracks state, so re-runs are idempotent.
 
 ### Backup database
 
@@ -352,14 +366,6 @@ DASHBOARD_SUBDOMAIN=admin
 GATEWAY_SUBDOMAIN=gateway
 INFOSERVER_SUBDOMAIN=models
 ```
-
-### External database
-
-To use an external PostgreSQL instance:
-
-1. Remove `postgres` service from `docker-compose.yml`
-2. Update `DB_CONNECTION_URL` in `.env`
-3. Run migrations manually
 
 ### Development mode
 
