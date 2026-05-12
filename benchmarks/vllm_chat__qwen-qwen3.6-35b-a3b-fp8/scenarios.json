@@ -1,0 +1,2317 @@
+{
+  "scenarios": [
+    {
+      "id": "chat__in-tiny__out-short__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "short",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-short__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "short",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-short__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "short",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-short__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "short",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-short__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "short",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-short__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "short",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-short__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "short",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-short__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "short",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "medium",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "medium",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "medium",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "medium",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "medium",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "medium",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "medium",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "medium",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-long__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "long",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-long__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "long",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-long__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "long",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-long__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "long",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-long__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "long",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-long__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "long",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-long__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "long",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-long__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "long",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-short__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "short",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-short__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "short",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-short__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "short",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-short__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "short",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-short__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "short",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-short__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "short",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-short__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "short",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-short__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "short",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-medium__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "medium",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-medium__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "medium",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-medium__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "medium",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-medium__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "medium",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-medium__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "medium",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-medium__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "medium",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-medium__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "medium",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-medium__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "medium",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-long__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "long",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-long__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "long",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-long__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "long",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-long__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "long",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-long__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "long",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-long__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "long",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-long__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "long",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-long__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "long",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-short__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "short",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-short__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "short",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-short__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "short",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-short__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "short",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-short__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "short",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-short__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "short",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-short__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "short",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-short__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "short",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-medium__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "medium",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-medium__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "medium",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-medium__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "medium",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-medium__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "medium",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-medium__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "medium",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-medium__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "medium",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-medium__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "medium",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-medium__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "medium",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-long__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "long",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-long__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "long",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-long__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "long",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-long__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "long",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-long__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "long",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-long__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "long",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-long__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "long",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-long__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "long",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-short__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "short",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-short__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "short",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-short__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "short",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-short__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "short",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-short__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "short",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-short__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "short",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-short__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "short",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-short__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "short",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-medium__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "medium",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-medium__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "medium",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-medium__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "medium",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-medium__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "medium",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-medium__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "medium",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-medium__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "medium",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-medium__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "medium",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-medium__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "medium",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-long__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "long",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-long__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "long",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-long__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "long",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-long__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "long",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-long__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "long",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-long__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "long",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-long__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "long",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-long__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "long",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-short__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "short",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-short__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "short",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-short__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "short",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-short__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "short",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-short__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "short",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-short__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "short",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-short__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "short",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-short__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "short",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-medium__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "medium",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-medium__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "medium",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-medium__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "medium",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-medium__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "medium",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-medium__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "medium",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-medium__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "medium",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-medium__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "medium",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-medium__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "medium",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-long__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "long",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-long__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "long",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-long__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "long",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-long__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "long",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-long__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "long",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-long__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "long",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-long__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "long",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-long__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "long",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    }
+  ],
+  "states": [
+    {
+      "id": "chat__in-tiny__out-short__c1",
+      "status": "done",
+      "startedAt": 1778443607926,
+      "endedAt": 1778443639946
+    },
+    {
+      "id": "chat__in-tiny__out-short__c4",
+      "status": "done",
+      "startedAt": 1778443639953,
+      "endedAt": 1778443655633
+    },
+    {
+      "id": "chat__in-tiny__out-short__c8",
+      "status": "done",
+      "startedAt": 1778443655638,
+      "endedAt": 1778443667316
+    },
+    {
+      "id": "chat__in-tiny__out-short__c32",
+      "status": "done",
+      "startedAt": 1778443667320,
+      "endedAt": 1778443679822
+    },
+    {
+      "id": "chat__in-tiny__out-short__c64",
+      "status": "done",
+      "startedAt": 1778443679827,
+      "endedAt": 1778443703335
+    },
+    {
+      "id": "chat__in-tiny__out-short__c128",
+      "status": "done",
+      "startedAt": 1778443703339,
+      "endedAt": 1778443745680
+    },
+    {
+      "id": "chat__in-tiny__out-short__c256",
+      "status": "done",
+      "startedAt": 1778443745686,
+      "endedAt": 1778443829070
+    },
+    {
+      "id": "chat__in-tiny__out-short__c512",
+      "status": "done",
+      "startedAt": 1778443829076,
+      "endedAt": 1778443991227
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c1",
+      "status": "done",
+      "startedAt": 1778443991233,
+      "endedAt": 1778444379815
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c4",
+      "status": "done",
+      "startedAt": 1778444379820,
+      "endedAt": 1778444544807
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c8",
+      "status": "done",
+      "startedAt": 1778444544811,
+      "endedAt": 1778444665548
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c32",
+      "status": "done",
+      "startedAt": 1778444665553,
+      "endedAt": 1778444801788
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c64",
+      "status": "done",
+      "startedAt": 1778444801793,
+      "endedAt": 1778445041168
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c128",
+      "status": "done",
+      "startedAt": 1778445041173,
+      "endedAt": 1778445482245
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c256",
+      "status": "done",
+      "startedAt": 1778445482250,
+      "endedAt": 1778446104981
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c512",
+      "status": "done",
+      "startedAt": 1778446104987,
+      "endedAt": 1778447228804
+    },
+    {
+      "id": "chat__in-tiny__out-long__c1",
+      "status": "done",
+      "startedAt": 1778447228813,
+      "endedAt": 1778448571532
+    },
+    {
+      "id": "chat__in-tiny__out-long__c4",
+      "status": "done",
+      "startedAt": 1778448571536,
+      "endedAt": 1778449139506
+    },
+    {
+      "id": "chat__in-tiny__out-long__c8",
+      "status": "done",
+      "startedAt": 1778449139510,
+      "endedAt": 1778449551298
+    },
+    {
+      "id": "chat__in-tiny__out-long__c32",
+      "status": "done",
+      "startedAt": 1778449551303,
+      "endedAt": 1778450014197
+    },
+    {
+      "id": "chat__in-tiny__out-long__c64",
+      "status": "done",
+      "startedAt": 1778450014202,
+      "endedAt": 1778450846826
+    },
+    {
+      "id": "chat__in-tiny__out-long__c128",
+      "status": "degraded",
+      "startedAt": 1778450846831,
+      "reason": "131/256 failed",
+      "endedAt": 1778451701161
+    },
+    {
+      "id": "chat__in-tiny__out-long__c256",
+      "status": "degraded",
+      "startedAt": 1778451701166,
+      "reason": "390/512 failed",
+      "endedAt": 1778452538701
+    },
+    {
+      "id": "chat__in-tiny__out-long__c512",
+      "status": "degraded",
+      "startedAt": 1778452538706,
+      "reason": "782/1024 failed",
+      "endedAt": 1778454100700
+    },
+    {
+      "id": "chat__in-small__out-short__c1",
+      "status": "done",
+      "startedAt": 1778454100704,
+      "endedAt": 1778454134562
+    },
+    {
+      "id": "chat__in-small__out-short__c4",
+      "status": "done",
+      "startedAt": 1778454134567,
+      "endedAt": 1778454151912
+    },
+    {
+      "id": "chat__in-small__out-short__c8",
+      "status": "done",
+      "startedAt": 1778454151917,
+      "endedAt": 1778454165486
+    },
+    {
+      "id": "chat__in-small__out-short__c32",
+      "status": "done",
+      "startedAt": 1778454165491,
+      "endedAt": 1778454183252
+    },
+    {
+      "id": "chat__in-small__out-short__c64",
+      "status": "done",
+      "startedAt": 1778454183256,
+      "endedAt": 1778454215763
+    },
+    {
+      "id": "chat__in-small__out-short__c128",
+      "status": "done",
+      "startedAt": 1778454215769,
+      "endedAt": 1778454277862
+    },
+    {
+      "id": "chat__in-small__out-short__c256",
+      "status": "done",
+      "startedAt": 1778454277867,
+      "endedAt": 1778454397219
+    },
+    {
+      "id": "chat__in-small__out-short__c512",
+      "status": "done",
+      "startedAt": 1778454397225,
+      "endedAt": 1778454633482
+    },
+    {
+      "id": "chat__in-small__out-medium__c1",
+      "status": "done",
+      "startedAt": 1778454633493,
+      "endedAt": 1778455035306
+    },
+    {
+      "id": "chat__in-small__out-medium__c4",
+      "status": "done",
+      "startedAt": 1778455035310,
+      "endedAt": 1778455200162
+    },
+    {
+      "id": "chat__in-small__out-medium__c8",
+      "status": "done",
+      "startedAt": 1778455200166,
+      "endedAt": 1778455323817
+    },
+    {
+      "id": "chat__in-small__out-medium__c32",
+      "status": "done",
+      "startedAt": 1778455323825,
+      "endedAt": 1778455475468
+    },
+    {
+      "id": "chat__in-small__out-medium__c64",
+      "status": "done",
+      "startedAt": 1778455475474,
+      "endedAt": 1778455743406
+    },
+    {
+      "id": "chat__in-small__out-medium__c128",
+      "status": "done",
+      "startedAt": 1778455743414,
+      "endedAt": 1778456235935
+    },
+    {
+      "id": "chat__in-small__out-medium__c256",
+      "status": "done",
+      "startedAt": 1778456235939,
+      "endedAt": 1778456841877
+    },
+    {
+      "id": "chat__in-small__out-medium__c512",
+      "status": "done",
+      "startedAt": 1778456841885,
+      "endedAt": 1778457990795
+    },
+    {
+      "id": "chat__in-small__out-long__c1",
+      "status": "done",
+      "startedAt": 1778457990802,
+      "endedAt": 1778459320748
+    },
+    {
+      "id": "chat__in-small__out-long__c4",
+      "status": "done",
+      "startedAt": 1778459320752,
+      "endedAt": 1778459876931
+    },
+    {
+      "id": "chat__in-small__out-long__c8",
+      "status": "done",
+      "startedAt": 1778459876936,
+      "endedAt": 1778460273284
+    },
+    {
+      "id": "chat__in-small__out-long__c32",
+      "status": "done",
+      "startedAt": 1778460273289,
+      "endedAt": 1778460801152
+    },
+    {
+      "id": "chat__in-small__out-long__c64",
+      "status": "done",
+      "startedAt": 1778460801159,
+      "endedAt": 1778461645022
+    },
+    {
+      "id": "chat__in-small__out-long__c128",
+      "status": "degraded",
+      "startedAt": 1778461645027,
+      "reason": "137/256 failed",
+      "endedAt": 1778462498491
+    },
+    {
+      "id": "chat__in-small__out-long__c256",
+      "status": "degraded",
+      "startedAt": 1778462498496,
+      "reason": "394/512 failed",
+      "endedAt": 1778463336539
+    },
+    {
+      "id": "chat__in-small__out-long__c512",
+      "status": "degraded",
+      "startedAt": 1778463336547,
+      "reason": "795/1024 failed",
+      "endedAt": 1778464882928
+    },
+    {
+      "id": "chat__in-medium__out-short__c1",
+      "status": "done",
+      "startedAt": 1778464882936,
+      "endedAt": 1778464941991
+    },
+    {
+      "id": "chat__in-medium__out-short__c4",
+      "status": "done",
+      "startedAt": 1778464941995,
+      "endedAt": 1778464973222
+    },
+    {
+      "id": "chat__in-medium__out-short__c8",
+      "status": "done",
+      "startedAt": 1778464973229,
+      "endedAt": 1778465001178
+    },
+    {
+      "id": "chat__in-medium__out-short__c32",
+      "status": "done",
+      "startedAt": 1778465001190,
+      "endedAt": 1778465045622
+    },
+    {
+      "id": "chat__in-medium__out-short__c64",
+      "status": "done",
+      "startedAt": 1778465045628,
+      "endedAt": 1778465128844
+    },
+    {
+      "id": "chat__in-medium__out-short__c128",
+      "status": "done",
+      "startedAt": 1778465128849,
+      "endedAt": 1778465287613
+    },
+    {
+      "id": "chat__in-medium__out-short__c256",
+      "status": "done",
+      "startedAt": 1778465287621,
+      "endedAt": 1778465600227
+    },
+    {
+      "id": "chat__in-medium__out-short__c512",
+      "status": "done",
+      "startedAt": 1778465600233,
+      "endedAt": 1778466217301
+    },
+    {
+      "id": "chat__in-medium__out-medium__c1",
+      "status": "done",
+      "startedAt": 1778466217311,
+      "endedAt": 1778466648714
+    },
+    {
+      "id": "chat__in-medium__out-medium__c4",
+      "status": "done",
+      "startedAt": 1778466648719,
+      "endedAt": 1778466839899
+    },
+    {
+      "id": "chat__in-medium__out-medium__c8",
+      "status": "done",
+      "startedAt": 1778466839904,
+      "endedAt": 1778466979974
+    },
+    {
+      "id": "chat__in-medium__out-medium__c32",
+      "status": "done",
+      "startedAt": 1778466979980,
+      "endedAt": 1778467180796
+    },
+    {
+      "id": "chat__in-medium__out-medium__c64",
+      "status": "done",
+      "startedAt": 1778467180803,
+      "endedAt": 1778467533161
+    },
+    {
+      "id": "chat__in-medium__out-medium__c128",
+      "status": "done",
+      "startedAt": 1778467533169,
+      "endedAt": 1778468149631
+    },
+    {
+      "id": "chat__in-medium__out-medium__c256",
+      "status": "degraded",
+      "startedAt": 1778468149638,
+      "reason": "267/512 failed",
+      "endedAt": 1778468779385
+    },
+    {
+      "id": "chat__in-medium__out-medium__c512",
+      "status": "degraded",
+      "startedAt": 1778468779394,
+      "reason": "542/1024 failed",
+      "endedAt": 1778469985597
+    },
+    {
+      "id": "chat__in-medium__out-long__c1",
+      "status": "done",
+      "startedAt": 1778469985604,
+      "endedAt": 1778471337180
+    },
+    {
+      "id": "chat__in-medium__out-long__c4",
+      "status": "done",
+      "startedAt": 1778471337188,
+      "endedAt": 1778471920894
+    },
+    {
+      "id": "chat__in-medium__out-long__c8",
+      "status": "done",
+      "startedAt": 1778471920899,
+      "endedAt": 1778472359305
+    },
+    {
+      "id": "chat__in-medium__out-long__c32",
+      "status": "done",
+      "startedAt": 1778472359311,
+      "endedAt": 1778472971199
+    },
+    {
+      "id": "chat__in-medium__out-long__c64",
+      "status": "done",
+      "startedAt": 1778472971207,
+      "endedAt": 1778473745931
+    },
+    {
+      "id": "chat__in-medium__out-long__c128",
+      "status": "degraded",
+      "startedAt": 1778473745939,
+      "reason": "165/256 failed",
+      "endedAt": 1778474538692
+    },
+    {
+      "id": "chat__in-medium__out-long__c256",
+      "status": "degraded",
+      "startedAt": 1778474538700,
+      "reason": "417/512 failed",
+      "endedAt": 1778475404360
+    },
+    {
+      "id": "chat__in-medium__out-long__c512",
+      "status": "degraded",
+      "startedAt": 1778475404366,
+      "reason": "846/1024 failed",
+      "endedAt": 1778476886830
+    },
+    {
+      "id": "chat__in-large__out-short__c1",
+      "status": "done",
+      "startedAt": 1778476886837,
+      "endedAt": 1778477008685
+    },
+    {
+      "id": "chat__in-large__out-short__c4",
+      "status": "done",
+      "startedAt": 1778477008694,
+      "endedAt": 1778477093375
+    },
+    {
+      "id": "chat__in-large__out-short__c8",
+      "status": "done",
+      "startedAt": 1778477093382,
+      "endedAt": 1778477176129
+    },
+    {
+      "id": "chat__in-large__out-short__c32",
+      "status": "done",
+      "startedAt": 1778477176136,
+      "endedAt": 1778477330642
+    },
+    {
+      "id": "chat__in-large__out-short__c64",
+      "status": "done",
+      "startedAt": 1778477330650,
+      "endedAt": 1778477629142
+    },
+    {
+      "id": "chat__in-large__out-short__c128",
+      "status": "done",
+      "startedAt": 1778477629150,
+      "endedAt": 1778478173100
+    },
+    {
+      "id": "chat__in-large__out-short__c256",
+      "status": "done",
+      "startedAt": 1778478173106,
+      "endedAt": 1778478779589
+    },
+    {
+      "id": "chat__in-large__out-short__c512",
+      "status": "done",
+      "startedAt": 1778478779597,
+      "endedAt": 1778479979360
+    },
+    {
+      "id": "chat__in-large__out-medium__c1",
+      "status": "done",
+      "startedAt": 1778479979368,
+      "endedAt": 1778480516251
+    },
+    {
+      "id": "chat__in-large__out-medium__c4",
+      "status": "done",
+      "startedAt": 1778480516256,
+      "endedAt": 1778480779305
+    },
+    {
+      "id": "chat__in-large__out-medium__c8",
+      "status": "done",
+      "startedAt": 1778480779310,
+      "endedAt": 1778480996004
+    },
+    {
+      "id": "chat__in-large__out-medium__c32",
+      "status": "done",
+      "startedAt": 1778480996010,
+      "endedAt": 1778481352153
+    },
+    {
+      "id": "chat__in-large__out-medium__c64",
+      "status": "done",
+      "startedAt": 1778481352159,
+      "endedAt": 1778481978955
+    },
+    {
+      "id": "chat__in-large__out-medium__c128",
+      "status": "degraded",
+      "startedAt": 1778481978963,
+      "reason": "129/256 failed",
+      "endedAt": 1778482638936
+    },
+    {
+      "id": "chat__in-large__out-medium__c256",
+      "status": "degraded",
+      "startedAt": 1778482638941,
+      "reason": "388/512 failed",
+      "endedAt": 1778483299067
+    },
+    {
+      "id": "chat__in-large__out-medium__c512",
+      "status": "degraded",
+      "startedAt": 1778483299077,
+      "reason": "769/1024 failed",
+      "endedAt": 1778484561548
+    },
+    {
+      "id": "chat__in-large__out-long__c1",
+      "status": "done",
+      "startedAt": 1778484561555,
+      "endedAt": 1778485984797
+    },
+    {
+      "id": "chat__in-large__out-long__c4",
+      "status": "done",
+      "startedAt": 1778485984805,
+      "endedAt": 1778486670305
+    },
+    {
+      "id": "chat__in-large__out-long__c8",
+      "status": "done",
+      "startedAt": 1778486670313,
+      "endedAt": 1778487205162
+    },
+    {
+      "id": "chat__in-large__out-long__c32",
+      "status": "done",
+      "startedAt": 1778487205174,
+      "endedAt": 1778488009795
+    },
+    {
+      "id": "chat__in-large__out-long__c64",
+      "status": "degraded",
+      "startedAt": 1778488009802,
+      "reason": "64/128 failed",
+      "endedAt": 1778488887355
+    },
+    {
+      "id": "chat__in-large__out-long__c128",
+      "status": "degraded",
+      "startedAt": 1778488887365,
+      "reason": "194/256 failed",
+      "endedAt": 1778489712207
+    },
+    {
+      "id": "chat__in-large__out-long__c256",
+      "status": "degraded",
+      "startedAt": 1778489712223,
+      "reason": "447/512 failed",
+      "endedAt": 1778490582331
+    },
+    {
+      "id": "chat__in-large__out-long__c512",
+      "status": "degraded",
+      "startedAt": 1778490582338,
+      "reason": "901/1024 failed",
+      "endedAt": 1778492115699
+    },
+    {
+      "id": "chat__in-huge__out-short__c1",
+      "status": "done",
+      "startedAt": 1778492115705,
+      "endedAt": 1778492533631
+    },
+    {
+      "id": "chat__in-huge__out-short__c4",
+      "status": "done",
+      "startedAt": 1778492533637,
+      "endedAt": 1778492903908
+    },
+    {
+      "id": "chat__in-huge__out-short__c8",
+      "status": "done",
+      "startedAt": 1778492903915,
+      "endedAt": 1778493272444
+    },
+    {
+      "id": "chat__in-huge__out-short__c32",
+      "status": "done",
+      "startedAt": 1778493272450,
+      "endedAt": 1778493890730
+    },
+    {
+      "id": "chat__in-huge__out-short__c64",
+      "status": "degraded",
+      "startedAt": 1778493890738,
+      "reason": "74/128 failed",
+      "endedAt": 1778494500017
+    },
+    {
+      "id": "chat__in-huge__out-short__c128",
+      "status": "degraded",
+      "startedAt": 1778494500027,
+      "reason": "204/256 failed",
+      "endedAt": 1778495099964
+    },
+    {
+      "id": "chat__in-huge__out-short__c256",
+      "status": "degraded",
+      "startedAt": 1778495099971,
+      "reason": "461/512 failed",
+      "endedAt": 1778495698752
+    },
+    {
+      "id": "chat__in-huge__out-short__c512",
+      "status": "degraded",
+      "startedAt": 1778495698759,
+      "reason": "920/1024 failed",
+      "endedAt": 1778496899906
+    },
+    {
+      "id": "chat__in-huge__out-medium__c1",
+      "status": "done",
+      "startedAt": 1778496899915,
+      "endedAt": 1778497830434
+    },
+    {
+      "id": "chat__in-huge__out-medium__c4",
+      "status": "done",
+      "startedAt": 1778497830442,
+      "endedAt": 1778498429398
+    },
+    {
+      "id": "chat__in-huge__out-medium__c8",
+      "status": "done",
+      "startedAt": 1778498429406,
+      "endedAt": 1778499023230
+    },
+    {
+      "id": "chat__in-huge__out-medium__c32",
+      "status": "done",
+      "startedAt": 1778499023236,
+      "endedAt": 1778499696388
+    },
+    {
+      "id": "chat__in-huge__out-medium__c64",
+      "status": "degraded",
+      "startedAt": 1778499696395,
+      "reason": "94/128 failed",
+      "endedAt": 1778500335078
+    },
+    {
+      "id": "chat__in-huge__out-medium__c128",
+      "status": "degraded",
+      "startedAt": 1778500335085,
+      "reason": "220/256 failed",
+      "endedAt": 1778501011324
+    },
+    {
+      "id": "chat__in-huge__out-medium__c256",
+      "status": "degraded",
+      "startedAt": 1778501011332,
+      "reason": "478/512 failed",
+      "endedAt": 1778501656255
+    },
+    {
+      "id": "chat__in-huge__out-medium__c512",
+      "status": "degraded",
+      "startedAt": 1778501656261,
+      "reason": "952/1024 failed",
+      "endedAt": 1778502947631
+    },
+    {
+      "id": "chat__in-huge__out-long__c1",
+      "status": "done",
+      "startedAt": 1778502947637,
+      "endedAt": 1778504904946
+    },
+    {
+      "id": "chat__in-huge__out-long__c4",
+      "status": "done",
+      "startedAt": 1778504904955,
+      "endedAt": 1778506046072
+    },
+    {
+      "id": "chat__in-huge__out-long__c8",
+      "status": "done",
+      "startedAt": 1778506046079,
+      "endedAt": 1778507164125
+    },
+    {
+      "id": "chat__in-huge__out-long__c32",
+      "status": "degraded",
+      "startedAt": 1778507164135,
+      "reason": "39/64 failed",
+      "endedAt": 1778508038849
+    },
+    {
+      "id": "chat__in-huge__out-long__c64",
+      "status": "degraded",
+      "startedAt": 1778508038861,
+      "reason": "104/128 failed",
+      "endedAt": 1778508876286
+    },
+    {
+      "id": "chat__in-huge__out-long__c128",
+      "status": "degraded",
+      "startedAt": 1778508876295,
+      "reason": "235/256 failed",
+      "endedAt": 1778509719669
+    },
+    {
+      "id": "chat__in-huge__out-long__c256",
+      "status": "degraded",
+      "startedAt": 1778509719676,
+      "reason": "490/512 failed",
+      "endedAt": 1778510553454
+    },
+    {
+      "id": "chat__in-huge__out-long__c512",
+      "status": "degraded",
+      "startedAt": 1778510553464,
+      "reason": "977/1024 failed",
+      "endedAt": 1778512121577
+    }
+  ]
+}

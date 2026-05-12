@@ -1,0 +1,70 @@
+{
+  "runId": "2026-05-09T12-18-49Z__chat__qwen3.6-35b-a3b-fp8",
+  "suite": "chat",
+  "startedAt": "2026-05-09T12:18:49.930Z",
+  "baseUrlHost": "dev-api.xinity.ai",
+  "model": "qwen3.6-35b-a3b-fp8",
+  "bunVersion": "1.3.1",
+  "platform": "linux",
+  "cpus": 12,
+  "memMb": 57,
+  "envSnapshot": {
+    "BASE_URL": "https://dev-api.xinity.ai/v1",
+    "MODEL": "qwen3.6-35b-a3b-fp8"
+  },
+  "gitCommit": "c84e7ff15e5867372ccf05d40fe3d678a2c0181d",
+  "preflight": {
+    "reachable": true,
+    "smokeOk": true,
+    "modelsEndpoint": {
+      "ok": true,
+      "raw": {
+        "object": "list",
+        "data": [
+          {
+            "id": "ministral-3b",
+            "object": "model",
+            "created": 1776448256,
+            "owned_by": "xinity",
+            "status": "ready",
+            "canary": false
+          },
+          {
+            "id": "qwen3.5-35b-a3b",
+            "object": "model",
+            "created": 1773767862,
+            "owned_by": "xinity",
+            "status": "not_ready",
+            "canary": false
+          },
+          {
+            "id": "qwen3.6-35b-a3b-fp8",
+            "object": "model",
+            "created": 1777970329,
+            "owned_by": "xinity",
+            "status": "ready",
+            "canary": false
+          }
+        ]
+      }
+    },
+    "contextProbe": {
+      "triedTokens": [
+        8192,
+        32768,
+        131072,
+        262144,
+        524288
+      ],
+      "largestOk": 262144,
+      "smallestFail": 524288,
+      "cappedAtCeiling": false
+    },
+    "cacheProbe": {
+      "firstMs": 279.94514500000514,
+      "secondMs": 254.90203199999814,
+      "ratio": 0.9105427850873908
+    }
+  },
+  "endedAt": "2026-05-10T15:06:00.528Z"
+}
