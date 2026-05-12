@@ -17,6 +17,7 @@ const statement = {
   modelDeployment: ["create", "update", "delete", "read"],
   model: ["create", "update", "delete", "read"],
   aiApplication: ["create", "update", "delete", "read"],
+  runnerToken: ["create", "delete", "read"],
 } as const;
 
 export const ac = createAccessControl(statement);
@@ -28,6 +29,7 @@ export const owner = ac.newRole({
   modelDeployment: ["create", "update", "delete", "read"],
   model: ["create", "update", "delete", "read"],
   aiApplication: ["create", "update", "delete", "read"],
+  runnerToken: ["create", "delete", "read"],
   ...ownerAc.statements,
 });
 
@@ -38,6 +40,7 @@ export const admin = ac.newRole({
   modelDeployment: ["create", "update", "delete", "read"],
   model: ["create", "update", "delete", "read"],
   aiApplication: ["create", "update", "delete", "read"],
+  runnerToken: ["create", "delete", "read"],
   ...adminAc.statements,
 });
 
