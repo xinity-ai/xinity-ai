@@ -2,6 +2,7 @@ import { env } from "./env";
 import { rootLogger } from "./logger";
 import { checkMigrations } from "./db";
 import { handleProbe } from "./routes/probe";
+import { handleStatus } from "./routes/status";
 
 process.on("unhandledRejection", (reason) => {
   rootLogger.error({ err: reason }, "Unhandled promise rejection");
@@ -28,6 +29,7 @@ const serveOptions = {
   routes: {
     "/health": () => Response.json({ ok: true }),
     "/probe": handleProbe,
+    "/status": { POST: handleStatus },
   },
   fetch() {
     return new Response("Not Found", { status: 404 });
