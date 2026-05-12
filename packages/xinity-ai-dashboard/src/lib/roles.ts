@@ -21,15 +21,16 @@ const customResourcePermissions = {
 const statement = {
   ...defaultStatements,
   ...customResourcePermissions,
+  runnerToken: ["create", "delete", "read"],
 } as const;
 
 export const ac = createAccessControl(statement);
 
-const fullAccessPermissions = customResourcePermissions;
+const fullAccessPermissions = { ...customResourcePermissions, runnerToken: ["create", "delete", "read"] } as const;
 
 export const owner = ac.newRole({ ...fullAccessPermissions, ...ownerAc.statements });
 export const admin = ac.newRole({ ...fullAccessPermissions, ...adminAc.statements });
-export const member = ac.newRole({ ...fullAccessPermissions, ...memberAc.statements });
+export const member = ac.newRole({ ...customResourcePermissions, ...memberAc.statements });
 
 export const labeler = ac.newRole({
   apiCallResponse: ["create", "delete", "update", "read"],

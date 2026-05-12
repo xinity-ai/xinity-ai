@@ -6,6 +6,7 @@ export * from "./schema/models";
 export * from "./schema/orgSchema";
 export * from "./schema/notification";
 export * from "./schema/deployment-config";
+export * from "./schema/runner-token";
 export * from "./model-calc";
 
 export * from "./migrations";
