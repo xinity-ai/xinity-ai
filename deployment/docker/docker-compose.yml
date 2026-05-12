@@ -81,6 +81,27 @@ services:
     ports:
       - "127.0.0.1:${DASHBOARD_PORT:-5121}:${DASHBOARD_PORT:-5121}"
 
+  # ── Conductor (Runner Coordinator) ─────────────────────────────────────
+  conductor:
+    image: ghcr.io/xinity-ai/xinity-conductor:${VERSION:-latest}
+    container_name: xinity-conductor
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+    environment:
+      HOST: 0.0.0.0
+      PORT: ${CONDUCTOR_PORT:-4020}
+      DB_CONNECTION_URL: postgresql://${POSTGRES_USER:-xinity}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-xinity}
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+    networks:
+      - xinity-network
+    # Expose port for direct access (if not using Caddy)
+    # ports:
+    #   - "${CONDUCTOR_PORT:-4020}:4020"
+
   infoserver:
     image: ghcr.io/xinity-ai/xinity-infoserver:${VERSION:?VERSION is required (set in .env)}
     restart: unless-stopped

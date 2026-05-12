@@ -17,6 +17,7 @@ COPY packages/xinity-ai-daemon/package.json packages/xinity-ai-daemon/package.js
 COPY packages/xinity-ai-dashboard/package.json packages/xinity-ai-dashboard/package.json
 COPY packages/xinity-ai-gateway/package.json packages/xinity-ai-gateway/package.json
 COPY packages/xinity-cli/package.json packages/xinity-cli/package.json
+COPY packages/xinity-conductor/package.json packages/xinity-conductor/package.json
 COPY packages/xinity-infoserver/package.json packages/xinity-infoserver/package.json
 # [/sync:workspace-manifests]
 

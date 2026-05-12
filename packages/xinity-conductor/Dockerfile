@@ -30,10 +30,9 @@ FROM deps AS build
 WORKDIR /usr/src/app
 COPY . .
 
-WORKDIR /usr/src/app/packages/xinity-ai-gateway
+WORKDIR /usr/src/app/packages/xinity-conductor
 ENV NODE_ENV=production
-RUN mv example.env .env \
- && bun run build
+RUN bun build src/index.ts --outdir dist --target bun
 
 
 # ---------- runtime (small) ----------
@@ -43,15 +42,15 @@ WORKDIR /usr/src/app
 ENV NODE_ENV=production
 
 RUN --mount=type=cache,target=/root/.bun \
-  cd packages/xinity-ai-gateway \
+  cd packages/xinity-conductor \
   && bun install --frozen-lockfile --production \
   && rm -rf /tmp/*
 
 # Copy only built artifacts (not the whole repo, not dev node_modules)
-WORKDIR /usr/src/app/packages/xinity-ai-gateway
-COPY --from=build /usr/src/app/packages/xinity-ai-gateway/dist ./dist
+WORKDIR /usr/src/app/packages/xinity-conductor
+COPY --from=build /usr/src/app/packages/xinity-conductor/dist ./dist
 
 USER bun
-ENV PORT=3418
-EXPOSE 3418/tcp
-CMD [ "bun", "run", "dist/gatewayServer" ]
+ENV PORT=4020 HOST=0.0.0.0
+EXPOSE 4020/tcp
+CMD [ "bun", "run", "dist/index.js" ]
