@@ -8,6 +8,7 @@ import { networkInterfaces } from "node:os";
 import { detectHardwareProfile, type HardwareProfile } from "./hardware-detect";
 import { normalizePep440 } from "xinity-infoserver";
 import { rootLogger } from "../logger";
+import { reportStatus } from "./conductor-client";
 
 const log = rootLogger.child({ name: "statekeeper" });
 
@@ -153,6 +154,22 @@ export async function setOnline(){
       authToken,
     })
     .where(eq(aiNodeT.id, nodeId));
+
+  const [row] = await getDB().select({ host: aiNodeT.host }).from(aiNodeT).where(eq(aiNodeT.id, nodeId)).limit(1);
+  void reportStatus({
+    nodeId,
+    registration: {
+      host: row?.host ?? "127.0.0.1",
+      port: env.PORT,
+      estCapacity: detectedCapacityGb,
+      drivers: getNodeDrivers(),
+      driverVersions,
+      gpuCount,
+      gpus,
+      tls: !!getTlsConfig(env),
+    },
+    installations: [],
+  });
 }
 
 export async function setOffline(){

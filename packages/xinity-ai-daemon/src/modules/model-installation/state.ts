@@ -1,5 +1,7 @@
 import { getDB } from "../../db/connection";
 import { modelInstallationStateT } from "common-db";
+import { reportStatus } from "../conductor-client";
+import { getNodeId } from "../statekeeper";
 
 export async function updateInstallationState(
   id: string,
@@ -17,4 +19,9 @@ export async function updateInstallationState(
     .insert(modelInstallationStateT)
     .values({ id, ...fields })
     .onConflictDoUpdate({ set: fields, target: modelInstallationStateT.id });
+
+  void reportStatus({
+    nodeId: await getNodeId(),
+    installations: [{ installationId: id, ...fields }],
+  });
 }
