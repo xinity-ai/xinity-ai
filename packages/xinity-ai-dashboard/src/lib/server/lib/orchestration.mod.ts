@@ -75,7 +75,6 @@ export async function assembleModelRequirementTable(): Promise<ModelRequirementT
   return mergeRequirementsByLookupKey(models);
 }
 
-/** Indexes existing installations by lookup key and by server, and initialises capacity tracking. */
 export function buildClusterState(existing: ModelInstallation[], availableServers: AiNode[]): ClusterState {
   const installationsByModel = new Map<string, ModelInstallation[]>();
   const installationsByServer = new Map<string, ModelInstallation[]>();
@@ -103,7 +102,7 @@ export function buildClusterState(existing: ModelInstallation[], availableServer
   return { installationsByModel, installationsByServer, serverCapacity, availableServers };
 }
 
-/** Finds installations that exceed the required replica count and frees their capacity. */
+/** Trims installations that exceed required replica count; mutates state to free their capacity. */
 export function collectExcessInstallations(requiredModels: ModelRequirementTable, state: ClusterState): string[] {
   const toUninstall: string[] = [];
 
@@ -130,11 +129,7 @@ export function collectExcessInstallations(requiredModels: ModelRequirementTable
   return toUninstall;
 }
 
-/**
- * Picks a server for a new model installation using a first-fit strategy.
- * Uses checkNodeCompatibility for driver, version, platform, and capacity checks.
- * Also skips nodes that already host the model.
- */
+/** First-fit placement; skips nodes that already host the model. */
 export function findServerForModel(
   specifier: string,
   driver: string,
@@ -172,10 +167,7 @@ export function findServerForModel(
   return null;
 }
 
-/**
- * Allocates a port for an installation on a given node.
- * Ollama shares a single port; vLLM (and other drivers) each get a unique port.
- */
+/** Ollama installations share OLLAMA_PORT; every other driver gets a fresh port. */
 function allocatePort(driver: string, nodeId: string, state: ClusterState, pending: NewInstallation[]): number {
   if (driver === "ollama") return OLLAMA_PORT;
 
@@ -189,9 +181,23 @@ function allocatePort(driver: string, nodeId: string, state: ClusterState, pendi
   return port;
 }
 
-/** Plans installations needed to satisfy replica requirements that aren't yet met. */
-async function planNewInstallations(requiredModels: ModelRequirementTable, state: ClusterState): Promise<NewInstallation[]> {
+function totalVramUsed(state: ClusterState): number {
+  let used = 0;
+  for (const cap of state.serverCapacity.values()) {
+    used += cap.used;
+  }
+  return used;
+}
+
+/** Plans installations needed to satisfy replica requirements that aren't yet met,
+ * stopping a replica loop early when the next install would exceed the license VRAM cap. */
+async function planNewInstallations(
+  requiredModels: ModelRequirementTable,
+  state: ClusterState,
+  licenseVramLimit: number,
+): Promise<NewInstallation[]> {
   const toInstall: NewInstallation[] = [];
+  let usedVram = totalVramUsed(state);
 
   for (const [key, requirement] of Object.entries(requiredModels)) {
     const current = (state.installationsByModel.get(key) || []).length;
@@ -230,6 +236,14 @@ async function planNewInstallations(requiredModels: ModelRequirementTable, state
     const installSpecifier = requirement.lookup.kind === "canonical" ? requirement.lookup.specifier : null;
 
     for (let i = 0; i < needed; i++) {
+      if (usedVram + totalCapacity > licenseVramLimit) {
+        log.warn(
+          { lookup: requirement.lookup, usedVram, licenseVramLimit, additional: totalCapacity },
+          "License VRAM limit reached; skipping additional replica",
+        );
+        break;
+      }
+
       const nodeId = findServerForModel(key, driver, totalCapacity, state, toInstall, minVersion, requiredPlatforms);
       if (!nodeId) {
         log.warn({ lookup: requirement.lookup }, "No server with enough capacity for additional replica");
@@ -249,13 +263,13 @@ async function planNewInstallations(requiredModels: ModelRequirementTable, state
 
       const cap = state.serverCapacity.get(nodeId)!;
       cap.used += totalCapacity;
+      usedVram += totalCapacity;
     }
   }
 
   return toInstall;
 }
 
-/** Applies planned installation and uninstallation changes to the database. */
 async function applyChanges(toUninstall: string[], toInstall: NewInstallation[]) {
   if (toUninstall.length > 0) {
     await getDB().update(modelInstallationT).set({ deletedAt: new Date() }).where(inArray(modelInstallationT.id, toUninstall));
@@ -267,34 +281,11 @@ async function applyChanges(toUninstall: string[], toInstall: NewInstallation[])
   }
 }
 
-/**
- * Syncs the state of model deployments as a "should" set of instructions, to the
- * "is" state of the system described by AINodeT and ModelInstallationT.
- *
- * May very well be called in cases where no changes have to be made at all.
- */
-export async function syncDeployedModels() {
+async function runSyncDeployedModels() {
   const requiredModels = await assembleModelRequirementTable();
   const existing: ModelInstallation[] = await getDB().select().from(modelInstallationT).where(isNull(modelInstallationT.deletedAt));
-  let availableServers: AiNode[] = await getDB().select().from(aiNodeT).where(sql`${aiNodeT.available} AND ${aiNodeT.deletedAt} IS NULL`);
+  const availableServers: AiNode[] = await getDB().select().from(aiNodeT).where(sql`${aiNodeT.available} AND ${aiNodeT.deletedAt} IS NULL`);
 
-  // Enforce license VRAM limit: include nodes in descending capacity order until the limit is reached
-  const vramLimit = maxVramGb();
-  const totalVram = availableServers.reduce((sum, s) => sum + s.estCapacity, 0);
-  if (totalVram > vramLimit) {
-    availableServers.sort((a, b) => b.estCapacity - a.estCapacity);
-    let accumulated = 0;
-    const included: typeof availableServers = [];
-    for (const server of availableServers) {
-      if (accumulated + server.estCapacity > vramLimit) continue;
-      included.push(server);
-      accumulated += server.estCapacity;
-    }
-    log.warn({ vramLimit, totalVram, includedNodes: included.length, totalNodes: availableServers.length }, "Total VRAM (%d GB) exceeds license limit (%d GB). Using %d of %d nodes", totalVram, vramLimit, included.length, availableServers.length);
-    availableServers = included;
-  }
-
-  // Installations on unavailable nodes must be removed and rescheduled
   const availableServerIds = new Set(availableServers.map(s => s.id));
   const orphaned = existing.filter(i => !availableServerIds.has(i.nodeId));
   const active = existing.filter(i => availableServerIds.has(i.nodeId));
@@ -306,8 +297,32 @@ export async function syncDeployedModels() {
     ...orphaned.map(i => i.id),
     ...collectExcessInstallations(requiredModels, state),
   ];
-  const toInstall = await planNewInstallations(requiredModels, state);
+  const toInstall = await planNewInstallations(requiredModels, state, maxVramGb());
   await applyChanges(toUninstall, toInstall);
+}
+
+let activeSync: Promise<void> | null = null;
+let rerunRequested = false;
+
+/** Single-flight + trailing rerun: prevents two parallel runs from picking the same (node, port). */
+export function syncDeployedModels(): Promise<void> {
+  if (activeSync) {
+    rerunRequested = true;
+    return activeSync;
+  }
+  activeSync = (async () => {
+    try {
+      await runSyncDeployedModels();
+      while (rerunRequested) {
+        rerunRequested = false;
+        await runSyncDeployedModels();
+      }
+    } finally {
+      activeSync = null;
+      rerunRequested = false;
+    }
+  })();
+  return activeSync;
 }
 
 /** Starts the background deployment sync loop. */

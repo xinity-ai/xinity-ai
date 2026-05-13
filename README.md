@@ -12,6 +12,7 @@
 <p align="center">
   <a href="https://github.com/xinity-ai/xinity-ai/actions/workflows/tests.yml"><img src="https://github.com/xinity-ai/xinity-ai/actions/workflows/tests.yml/badge.svg" alt="CI" /></a>
   <a href="#licensing"><img src="https://img.shields.io/badge/license-Apache%202.0%20%2F%20ELv2-blue" alt="License" /></a>
+  <a href="https://deepwiki.com/xinity-ai/xinity-ai"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
   <a href="https://get.xinity.ai/discord"><img src="https://img.shields.io/badge/Discord-Join%20Us-5865F2?logo=discord&logoColor=white" alt="Discord" /></a>
   <a href="https://github.com/xinity-ai/xinity-ai/stargazers"><img src="https://img.shields.io/github/stars/xinity-ai/xinity-ai?style=social" alt="GitHub Stars" /></a>
   <br/>
