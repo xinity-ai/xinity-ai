@@ -154,7 +154,7 @@ function buildVllmInstanceConfig(
 
   const profile = buildHardwareProfile(state.gpus as DetectedGpu[], state.systemRamMb);
   const gpuMemoryUtilization = computeGpuUtilization(
-    { model: modelName, estCapacity },
+    { specifier: modelName, estCapacity },
     profile,
   );
 
