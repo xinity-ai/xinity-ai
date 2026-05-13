@@ -73,6 +73,19 @@ esac
 ASSET_PREFIX="xinity-cli-${SUFFIX}"
 ASSET_NAME=""
 
+# Required tools (checked up front, before any network IO)
+
+require_tool() {
+  local tool="$1" install_hint="$2"
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    fail "'$tool' is required but not installed. Install it first: $install_hint"
+  fi
+}
+
+require_tool curl  "apt install curl  |  dnf install curl  |  pacman -S curl"
+# Release assets are zip on Linux today; check upfront so we fail before downloading.
+require_tool unzip "apt install unzip  |  dnf install unzip  |  pacman -S unzip"
+
 # ── Auth (for private repos) ────────────────────────────────────────────────
 
 AUTH_HEADER=""

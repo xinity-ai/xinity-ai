@@ -94,7 +94,12 @@ export function parseEnv<T extends ZodObjectWithShape>(
 ): z.infer<T> {
   const keys = Object.keys(schema.shape);
   const resolved = resolveSecretFiles(env, keys);
-  return schema.parse(resolved);
+  // Treat "" as unset so Compose's ${VAR:-} interpolation doesn't trip zod.
+  const coerced: Record<string, string | undefined> = {};
+  for (const k of Object.keys(resolved)) {
+    coerced[k] = resolved[k] === "" ? undefined : resolved[k];
+  }
+  return schema.parse(coerced);
 }
 
 /**

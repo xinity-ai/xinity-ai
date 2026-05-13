@@ -285,6 +285,9 @@ export const auth = betterAuth({
   ],
 });
 
-log.info(omit(auth.options,"plugins"), "Starting with better-auth options")
+log.info(
+  { ...omit(auth.options, "plugins", "secret"), secret: auth.options.secret ? "[redacted]" : "[unset]" },
+  "Starting with better-auth options",
+)
 
 export type Session = typeof auth.$Infer.Session;
