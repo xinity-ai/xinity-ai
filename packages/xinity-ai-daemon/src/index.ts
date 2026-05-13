@@ -5,8 +5,10 @@ import { getNodeId, setOffline, setOnline } from "./modules/statekeeper";
 import { getDB, listen, checkMigrations } from "./db/connection";
 import { sql } from "common-db";
 import { rootLogger } from "./logger";
+import { conductorConfigured, streamDesiredState } from "./modules/conductor-client";
 
 let shuttingDown = false;
+const conductorStreamAbort = new AbortController();
 
 if (import.meta.main) {
   main();
@@ -43,6 +45,13 @@ async function main() {
   });
 
   const nodeId = await getNodeId();
+
+  if (conductorConfigured()) {
+    void streamDesiredState(nodeId, (state) => {
+      rootLogger.debug({ installations: state.installations.length }, "Conductor stream: received state");
+    }, conductorStreamAbort.signal);
+  }
+
   for await (const _notification of listen(`ai_node:${nodeId}`)) {
     if (shuttingDown) break;
     rootLogger.debug("Responding to DB notification");
@@ -53,6 +62,7 @@ async function main() {
 async function shutdown(subscription: SubscriptionLike) {
   if (shuttingDown) return;
   shuttingDown = true;
+  conductorStreamAbort.abort();
 
   // Wake the listen loop so it can break out and release the connection.
   try {
