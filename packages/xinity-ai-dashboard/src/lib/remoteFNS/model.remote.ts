@@ -21,5 +21,5 @@ async function getRemoteSession() {
 /** Resolves a single model's full metadata by public specifier. */
 export const getModelInfoR = query(z.string(), async (specifier) => {
   await getRemoteSession();
-  return await infoClient?.fetchModel({ kind: "canonical", specifier }) ?? null;
+  return await infoClient?.fetchModel(specifier) ?? null;
 });

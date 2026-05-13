@@ -67,7 +67,6 @@ const setupOnboarding = rootOs
   .input(z.object({
     orgName: z.string().min(1).describe("Name of the organization to create"),
     specifier: z.string().describe("The canonical model identifier"),
-    modelSpecifier: z.string().describe("The driver-specific provider model string"),
     publicSpecifier: z.string().describe("The public-facing model name"),
   }))
   .output(z.object({
@@ -78,7 +77,7 @@ const setupOnboarding = rootOs
   .errors({ CONFLICT: {} })
   .handler(async ({ input, context, errors }) => {
     const rlog = log.child({ traceId: context.traceId });
-    rlog.info({ orgName: input.orgName, model: input.modelSpecifier }, "Running onboarding setup");
+    rlog.info({ orgName: input.orgName, specifier: input.specifier }, "Running onboarding setup");
 
     const slug = createSlug(input.orgName);
 
@@ -106,7 +105,6 @@ const setupOnboarding = rootOs
     await call(createDeployment, {
       name: input.publicSpecifier,
       specifier: input.specifier,
-      modelSpecifier: input.modelSpecifier,
       publicSpecifier: input.publicSpecifier,
       enabled: true,
       replicas: 1,

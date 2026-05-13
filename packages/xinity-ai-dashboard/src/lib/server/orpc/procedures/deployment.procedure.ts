@@ -7,7 +7,7 @@ import { getDB } from "$lib/server/db";
 import { syncDeployedModels } from "$lib/server/lib/orchestration.mod";
 import { infoClient } from "$lib/server/info-client";
 import { buildClusterCapacity } from "./cluster.procedure";
-import { resolveDefaultProvider, resolveMinVersionForDriver, resolveRequiredPlatformsForDriver, checkNodeCompatibility, deploymentLookup, deploymentEarlyLookup, lookupKey, type ModelNodeRequirements, type Provider, type ModelLookup } from "xinity-infoserver";
+import { resolveDefaultProvider, resolveMinVersionForDriver, resolveRequiredPlatformsForDriver, checkNodeCompatibility, type ModelNodeRequirements, type Provider } from "xinity-infoserver";
 import { rootLogger } from "$lib/server/logging";
 import { aggregatePhase, type PhaseInfo } from "$lib/server/lib/deployment-phase";
 import { notifyOrgMembers } from "$lib/server/notifications/notification.service";
@@ -19,20 +19,11 @@ const tags = ["Deployment"];
 const SuccessDto = z.object({ success: z.literal(true) });
 const successObject = { success: true } as const;
 
-async function deriveProviderModel(lookup: ModelLookup, preferredDriver: Provider | null): Promise<string | undefined> {
-  if (!infoClient) return undefined;
-  const status = await infoClient.fetchModelStatus(lookup);
-  if (status.status !== "found") return undefined;
-  const model = status.model;
-  if (preferredDriver && model.providers[preferredDriver]) return model.providers[preferredDriver];
-  return resolveDefaultProvider(model)?.providerModel;
-}
-
 /** Validates that primary and canary models share the same type. Returns an error message or null. */
-async function validateCanaryModelTypes(primary: ModelLookup, early: ModelLookup | null): Promise<string | null> {
-  if (!early) return null;
-  const primaryModel = await infoClient?.fetchModel(primary);
-  const earlyModel = await infoClient?.fetchModel(early);
+async function validateCanaryModelTypes(primarySpecifier: string, earlySpecifier: string | null): Promise<string | null> {
+  if (!earlySpecifier) return null;
+  const primaryModel = await infoClient?.fetchModel(primarySpecifier);
+  const earlyModel = await infoClient?.fetchModel(earlySpecifier);
   if (primaryModel?.type && earlyModel?.type && primaryModel.type !== earlyModel.type) {
     return `Cannot mix model types in a canary deployment: primary is "${primaryModel.type}" but canary is "${earlyModel.type}"`;
   }
@@ -40,18 +31,14 @@ async function validateCanaryModelTypes(primary: ModelLookup, early: ModelLookup
 }
 
 const CapacityCheckInput = z.object({
-  specifier: z.string().trim().nullish(),
+  specifier: z.string().trim(),
   earlySpecifier: z.string().trim().nullish(),
-  /** @deprecated Pass the canonical {@link specifier} instead. */
-  modelSpecifier: z.string().trim().optional(),
-  /** @deprecated Pass {@link earlySpecifier} instead. */
-  earlyModelSpecifier: z.string().trim().nullish(),
   replicas: z.number().default(1),
   progress: z.number().default(100),
   kvCacheSize: z.number().nullish(),
   earlyKvCacheSize: z.number().nullish(),
   preferredDriver: z.enum(["ollama", "vllm"]).nullish(),
-}).refine(d => d.specifier || d.modelSpecifier, { message: "Either `specifier` or `modelSpecifier` must be provided", path: ["specifier"] });
+});
 
 const CapacityCheckOutput = z.object({
   deployable: z.boolean(),
@@ -66,36 +53,33 @@ type CapacityCheckResult = z.infer<typeof CapacityCheckOutput>;
  * accounting for the fact that they share the same pool of node capacity.
  */
 async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>): Promise<CapacityCheckResult> {
-  const primaryLookup = deploymentLookup(input);
-  if (!primaryLookup) {
-    return { deployable: false, reason: "Capacity check requires a model identifier" };
-  }
-  const earlyLookup = deploymentEarlyLookup(input);
-  const isCanary = input.progress < 100 && !!earlyLookup;
+  const primarySpecifier = input.specifier;
+  const earlySpecifier = input.earlySpecifier ?? null;
+  const isCanary = input.progress < 100 && !!earlySpecifier;
 
   // Build the list of models that need capacity
-  const modelsToCheck: { lookup: ModelLookup; label: string; replicas: number; kvCacheSize: number | null | undefined }[] = [];
+  const modelsToCheck: { specifier: string; replicas: number; kvCacheSize: number | null | undefined }[] = [];
   if (isCanary) {
     modelsToCheck.push(
-      { lookup: primaryLookup, label: lookupKey(primaryLookup), replicas: Math.ceil(input.replicas * (input.progress / 100)), kvCacheSize: input.kvCacheSize },
-      { lookup: earlyLookup!, label: lookupKey(earlyLookup!), replicas: Math.ceil(input.replicas * ((100 - input.progress) / 100)), kvCacheSize: input.earlyKvCacheSize ?? input.kvCacheSize },
+      { specifier: primarySpecifier, replicas: Math.ceil(input.replicas * (input.progress / 100)), kvCacheSize: input.kvCacheSize },
+      { specifier: earlySpecifier!, replicas: Math.ceil(input.replicas * ((100 - input.progress) / 100)), kvCacheSize: input.earlyKvCacheSize ?? input.kvCacheSize },
     );
   } else {
-    modelsToCheck.push({ lookup: primaryLookup, label: lookupKey(primaryLookup), replicas: input.replicas, kvCacheSize: input.kvCacheSize });
+    modelsToCheck.push({ specifier: primarySpecifier, replicas: input.replicas, kvCacheSize: input.kvCacheSize });
   }
 
   // Fetch model info for all models, distinguishing not_found from unavailable
   const modelInfos = await Promise.all(
     modelsToCheck.map(async (m) => {
-      const status = await infoClient?.fetchModelStatus(m.lookup);
-      if (!status || status.status === "unavailable") return { kind: "unavailable" as const, label: m.label };
-      if (status.status === "not_found") return { kind: "not_found" as const, label: m.label };
+      const status = await infoClient?.fetchModelStatus(m.specifier);
+      if (!status || status.status === "unavailable") return { kind: "unavailable" as const, label: m.specifier };
+      if (status.status === "not_found") return { kind: "not_found" as const, label: m.specifier };
       const info = status.model;
       const effectiveKvCache = Math.max(m.kvCacheSize ?? 0, info.minKvCache);
       const driver: Provider | undefined = input.preferredDriver ?? resolveDefaultProvider(info)?.driver;
       const minVersion = driver ? resolveMinVersionForDriver(info, driver) : undefined;
       const requiredPlatforms = driver ? resolveRequiredPlatformsForDriver(info, driver) : [];
-      return { kind: "found" as const, label: m.label, replicas: m.replicas, perReplica: info.weight + effectiveKvCache, driver, minVersion, requiredPlatforms };
+      return { kind: "found" as const, label: m.specifier, replicas: m.replicas, perReplica: info.weight + effectiveKvCache, driver, minVersion, requiredPlatforms };
     }),
   );
 
@@ -213,10 +197,10 @@ async function queryDeploymentsWithStatus(where: ReturnType<typeof sql>): Promis
   });
 }
 
-async function lookupIsMissingFromCatalog(lookup: ModelLookup | null): Promise<boolean> {
-  if (!lookup || !infoClient) return false;
+async function lookupIsMissingFromCatalog(specifier: string | null): Promise<boolean> {
+  if (!specifier || !infoClient) return false;
   try {
-    const status = await infoClient.fetchModelStatus(lookup);
+    const status = await infoClient.fetchModelStatus(specifier);
     return status.status === "not_found";
   } catch {
     return false;
@@ -228,8 +212,8 @@ async function markDeploymentsMissingFromCatalog(deployments: DeploymentWithStat
   const candidates = deployments.filter(d => !d.status && d.enabled);
   await Promise.all(candidates.map(async (entry) => {
     const [primaryMissing, earlyMissing] = await Promise.all([
-      lookupIsMissingFromCatalog(deploymentLookup(entry)),
-      lookupIsMissingFromCatalog(deploymentEarlyLookup(entry)),
+      lookupIsMissingFromCatalog(entry.specifier ?? null),
+      lookupIsMissingFromCatalog(entry.earlySpecifier ?? null),
     ]);
     if (primaryMissing || earlyMissing) {
       entry.status = { phase: "not_in_catalog", progress: null, error: null };
@@ -263,8 +247,8 @@ const updateDeployment = rootOs
   .errors({ NOT_FOUND: {}, BAD_REQUEST: {}, INSUFFICIENT_CAPACITY: {}, CONFLICT: {} })
   .handler(async ({ context, input, errors }) => {
     const rlog = log.child({ traceId: context.traceId });
-    if (input.modelSpecifier) {
-      const mismatch = await validateCanaryModelTypes(deploymentLookup(input), deploymentEarlyLookup(input));
+    if (input.specifier) {
+      const mismatch = await validateCanaryModelTypes(input.specifier, input.earlySpecifier ?? null);
       if (mismatch) throw errors.BAD_REQUEST({ message: mismatch });
     }
 
@@ -288,8 +272,6 @@ const updateDeployment = rootOs
         { field: "preferredDriver", changed: input.preferredDriver !== undefined && input.preferredDriver !== current.preferredDriver },
         { field: "specifier", changed: input.specifier !== undefined && input.specifier !== current.specifier },
         { field: "earlySpecifier", changed: input.earlySpecifier !== undefined && input.earlySpecifier !== current.earlySpecifier },
-        { field: "modelSpecifier", changed: input.modelSpecifier !== undefined && input.modelSpecifier !== current.modelSpecifier },
-        { field: "earlyModelSpecifier", changed: input.earlyModelSpecifier !== undefined && input.earlyModelSpecifier !== current.earlyModelSpecifier },
       ];
       const changed = restricted.filter(r => r.changed).map(r => r.field);
       if (changed.length > 0) {
@@ -452,42 +434,30 @@ export const createDeployment = rootOs
     if (!input.specifier) {
       throw errors.BAD_REQUEST({ message: "specifier is required when creating a deployment" });
     }
-    const primaryLookup: ModelLookup = { kind: "canonical", specifier: input.specifier };
-    const earlyLookup: ModelLookup | null = input.earlySpecifier
-      ? { kind: "canonical", specifier: input.earlySpecifier }
-      : null;
+    const primarySpecifier = input.specifier;
+    const earlySpecifier = input.earlySpecifier ?? null;
 
     if (infoClient) {
       const client = infoClient;
-      const checks: { label: string; lookup: ModelLookup }[] = [
-        { label: input.specifier, lookup: primaryLookup },
-        ...(earlyLookup ? [{ label: input.earlySpecifier!, lookup: earlyLookup }] : []),
-      ];
-      const statuses = await Promise.all(checks.map(async c => ({ ...c, status: await client.fetchModelStatus(c.lookup) })));
+      const checks: string[] = [primarySpecifier, ...(earlySpecifier ? [earlySpecifier] : [])];
+      const statuses = await Promise.all(checks.map(async (specifier) => ({ specifier, status: await client.fetchModelStatus(specifier) })));
       const missing = statuses.find(s => s.status.status === "not_found");
       if (missing) {
-        throw errors.BAD_REQUEST({ message: `Model "${missing.label}" was not found in the model catalog` });
+        throw errors.BAD_REQUEST({ message: `Model "${missing.specifier}" was not found in the model catalog` });
       }
     }
 
     const rlog = log.child({ traceId: context.traceId });
-    const mismatch = await validateCanaryModelTypes(primaryLookup, earlyLookup);
+    const mismatch = await validateCanaryModelTypes(primarySpecifier, earlySpecifier);
     if (mismatch) throw errors.BAD_REQUEST({ message: mismatch });
-
-    const derivedModelSpecifier = await deriveProviderModel(primaryLookup, input.preferredDriver ?? null) ?? input.modelSpecifier;
-    const derivedEarlyModelSpecifier = earlyLookup
-      ? (await deriveProviderModel(earlyLookup, input.preferredDriver ?? null) ?? input.earlyModelSpecifier ?? null)
-      : null;
 
     try {
       const [deployment] = await getDB()
         .insert(modelDeploymentT)
         .values({
           ...input,
-          specifier: input.specifier,
-          earlySpecifier: input.earlySpecifier ?? null,
-          modelSpecifier: derivedModelSpecifier,
-          earlyModelSpecifier: derivedEarlyModelSpecifier,
+          specifier: primarySpecifier,
+          earlySpecifier,
           organizationId: context.activeOrganizationId,
         })
         .returning();
