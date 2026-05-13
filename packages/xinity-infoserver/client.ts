@@ -3,18 +3,13 @@
  * with time-limited in-memory caching. Replaces the old ModelCatalog class.
  */
 import type { ModelWithSpecifier } from "./definitions/model-definition";
-import { resolveDriverForProviderModel, resolveTagsForDriver, resolveAllTags, resolveArgsForDriver, resolveRequestParamsForDriver, type RequestParamMap } from "./model-tags";
-import { lookupKey, type ModelLookup } from "./lookup-helpers";
+import { resolveTagsForDriver, resolveAllTags, resolveArgsForDriver, resolveRequestParamsForDriver, type RequestParamMap } from "./model-tags";
 
 export interface InfoserverClientConfig {
   /** Base URL of the infoserver (e.g. "http://localhost:8090"). */
   baseUrl: string;
   /** How long cached responses remain valid before re-fetching (ms). */
   cacheTtlMs: number;
-}
-
-function lookupCacheKey(lookup: ModelLookup): string {
-  return `${lookup.kind}:${lookupKey(lookup)}`;
 }
 
 /**
@@ -73,20 +68,18 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
   }
 
   /**
-   * Fetches a model via the requested resolution path and returns a typed status result.
+   * Fetches a model by canonical specifier and returns a typed status result.
    * - `found`: model exists; result is cached for `cacheTtlMs`
    * - `not_found`: server returned 404; result is NOT cached so a re-added model
    *   is visible on the next request without waiting for TTL expiry
    * - `unavailable`: network error or non-404 HTTP error; result is NOT cached
-   *
-   * Canonical and legacy lookups are cached under separate keys; results never cross over.
    */
-  async function fetchModelStatus(lookup: ModelLookup): Promise<FetchModelStatus> {
-    const key = `model:${lookupCacheKey(lookup)}`;
+  async function fetchModelStatus(specifier: string): Promise<FetchModelStatus> {
+    const key = `model:${specifier}`;
     const existing = cache.get(key);
     if (isFresh(existing)) return { status: "found", model: existing.data };
 
-    const url = `${baseUrl}/api/v1/models/${encodeURIComponent(lookupKey(lookup))}?lookup=${lookup.kind === "canonical" ? "canonical" : "provider"}`;
+    const url = `${baseUrl}/api/v1/models/${encodeURIComponent(specifier)}?lookup=canonical`;
     try {
       const res = await fetch(url);
       if (res.status === 404) return { status: "not_found" };
@@ -99,10 +92,10 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
     }
   }
 
-  async function fetchModel(lookup: ModelLookup): Promise<ModelWithSpecifier | undefined> {
-    const result = await fetchModelStatus(lookup);
+  async function fetchModel(specifier: string): Promise<ModelWithSpecifier | undefined> {
+    const result = await fetchModelStatus(specifier);
     if (result.status === "found") return result.model;
-    if (result.status === "unavailable") throw new Error(`Infoserver unavailable for ${lookup.kind} "${lookupKey(lookup)}": ${result.error}`);
+    if (result.status === "unavailable") throw new Error(`Infoserver unavailable for "${specifier}": ${result.error}`);
     return undefined;
   }
 
@@ -140,48 +133,35 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
     );
   }
 
-  // Convenience methods that combine a fetch with pure tag helpers.
-  // The driver-tag/args/params helpers need a Provider; for canonical lookups the caller passes
-  // the chosen driver, for legacy lookups it's reverse-derived from the provider string.
-
-  function driverFor(model: ModelWithSpecifier, lookup: ModelLookup, override?: "vllm" | "ollama") {
-    if (override) return override;
-    if (lookup.kind === "legacy") return resolveDriverForProviderModel(model, lookup.providerModel);
-    return undefined;
-  }
-
-  async function resolveModelMeta(lookup: ModelLookup, driver?: "vllm" | "ollama"): Promise<{ type: string | undefined; tags: string[] }> {
-    const model = await fetchModel(lookup);
+  async function resolveModelMeta(specifier: string, driver?: "vllm" | "ollama"): Promise<{ type: string | undefined; tags: string[] }> {
+    const model = await fetchModel(specifier);
     if (!model) return { type: undefined, tags: [] };
-    const d = driverFor(model, lookup, driver);
-    const tags = d ? resolveTagsForDriver(model, d) : resolveAllTags(model);
+    const tags = driver ? resolveTagsForDriver(model, driver) : resolveAllTags(model);
     return { type: model.type, tags };
   }
 
-  async function hasTag(lookup: ModelLookup, tag: string, driver?: "vllm" | "ollama"): Promise<boolean> {
-    const { tags } = await resolveModelMeta(lookup, driver);
+  async function hasTag(specifier: string, tag: string, driver?: "vllm" | "ollama"): Promise<boolean> {
+    const { tags } = await resolveModelMeta(specifier, driver);
     return tags.includes(tag);
   }
 
   async function withResolvedDriver<T>(
-    lookup: ModelLookup,
+    specifier: string,
     driver: "vllm" | "ollama" | undefined,
     empty: T,
     pick: (model: ModelWithSpecifier, driver: "vllm" | "ollama") => T,
   ): Promise<T> {
-    const model = await fetchModel(lookup);
-    if (!model) return empty;
-    const resolved = driverFor(model, lookup, driver);
-    if (!resolved) return empty;
-    return pick(model, resolved);
+    const model = await fetchModel(specifier);
+    if (!model || !driver) return empty;
+    return pick(model, driver);
   }
 
-  async function resolveDriverArgs(lookup: ModelLookup, driver?: "vllm" | "ollama"): Promise<string[]> {
-    return withResolvedDriver(lookup, driver, [], resolveArgsForDriver);
+  async function resolveDriverArgs(specifier: string, driver?: "vllm" | "ollama"): Promise<string[]> {
+    return withResolvedDriver(specifier, driver, [], resolveArgsForDriver);
   }
 
-  async function resolveRequestParams(lookup: ModelLookup, driver?: "vllm" | "ollama"): Promise<RequestParamMap> {
-    return withResolvedDriver(lookup, driver, {}, resolveRequestParamsForDriver);
+  async function resolveRequestParams(specifier: string, driver?: "vllm" | "ollama"): Promise<RequestParamMap> {
+    return withResolvedDriver(specifier, driver, {}, resolveRequestParamsForDriver);
   }
 
   return {
