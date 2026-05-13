@@ -1,110 +1,117 @@
 #!/bin/bash
+# First-run setup for the Xinity Docker Compose deployment.
+# Creates .env from example.env, generates secrets, prompts for the few
+# values that have no useful default.
 set -e
 
-# Xinity AI Docker Compose Setup Script
-# This script helps set up the deployment for the first time
+# Portable in-place sed (works on GNU sed and BSD/macOS sed).
+sed_inplace() {
+    sed -i.bak "$1" "$2" && rm -f "${2}.bak"
+}
 
-echo "🚀 Xinity AI Docker Compose Setup"
-echo "=================================="
-echo ""
+# Hex secret: URL-safe, used for values that get embedded in connection URLs.
+gen_url_safe() { openssl rand -hex 32; }
 
-# Check prerequisites
-echo "📋 Checking prerequisites..."
+# Base64 secret: opaque key, used for BETTER_AUTH_SECRET (Better Auth treats
+# the value as opaque, and base64 is the format the docs have always shown).
+gen_base64() { openssl rand -base64 32; }
 
-if ! command -v docker &> /dev/null; then
-    echo "❌ Docker is not installed. Please install Docker first."
+echo "Xinity AI Docker Compose Setup"
+echo
+
+for tool in docker openssl; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+        echo "$tool is required. Install it and re-run."
+        exit 1
+    fi
+done
+if ! docker compose version >/dev/null 2>&1; then
+    echo "Docker Compose v2 is required ('docker compose version' failed)."
     exit 1
 fi
 
-if ! command -v docker compose &> /dev/null; then
-    echo "❌ Docker Compose is not installed. Please install Docker Compose first."
-    exit 1
-fi
-
-echo "✅ Docker and Docker Compose are installed"
-echo ""
-
-# Check if .env exists
+fresh_env=false
 if [ -f .env ]; then
-    echo "⚠️  .env file already exists."
-    read -p "Do you want to overwrite it? (y/N): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "Keeping existing .env file."
-        echo ""
-    else
+    echo -n ".env already exists. Overwrite? (y/N): "
+    read -r REPLY
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
         rm .env
+        fresh_env=true
+    else
+        echo "Keeping existing .env. Secrets will NOT be regenerated."
+    fi
+else
+    fresh_env=true
+fi
+
+if [ ! -f .env ]; then
+    cp example.env .env
+fi
+
+# Regenerate secrets only on fresh .env, so we never clobber live credentials.
+if [ "$fresh_env" = true ]; then
+    POSTGRES_PASSWORD=$(gen_url_safe)
+    REDIS_PASSWORD=$(gen_url_safe)
+    SEARXNG_SECRET=$(gen_url_safe)
+    BETTER_AUTH_SECRET=$(gen_base64)
+
+    sed_inplace "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${POSTGRES_PASSWORD}|" .env
+    sed_inplace "s|^REDIS_PASSWORD=.*|REDIS_PASSWORD=${REDIS_PASSWORD}|" .env
+    sed_inplace "s|^# SEARXNG_SECRET=.*|SEARXNG_SECRET=${SEARXNG_SECRET}|" .env
+    # BETTER_AUTH_SECRET may contain = / +; use a delimiter sed will not misread.
+    sed_inplace "s#^BETTER_AUTH_SECRET=.*#BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}#" .env
+    echo "Generated POSTGRES_PASSWORD, REDIS_PASSWORD, SEARXNG_SECRET, BETTER_AUTH_SECRET."
+fi
+
+echo
+echo "Instance admin email(s) (comma-separated). Required for a usable instance"
+echo "in the default single-tenant mode."
+echo -n "Admin email(s): "
+read -r INSTANCE_ADMIN_EMAILS
+if [ -n "$INSTANCE_ADMIN_EMAILS" ]; then
+    sed_inplace "s|^INSTANCE_ADMIN_EMAILS=.*|INSTANCE_ADMIN_EMAILS=${INSTANCE_ADMIN_EMAILS}|" .env
+fi
+
+echo -n "Open the instance to self-service signup for any user? (y/N): "
+read -r REPLY
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    sed_inplace "s|^MULTI_TENANT_MODE=.*|MULTI_TENANT_MODE=true|" .env
+fi
+
+echo
+echo "Caddy / HTTPS deployment is optional (activated with --profile caddy)."
+echo -n "Configure it now? (y/N): "
+read -r REPLY
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo -n "  Domain (e.g. example.com): "
+    read -r DOMAIN
+    echo -n "  Let's Encrypt email: "
+    read -r ACME_EMAIL
+    if [ -n "$DOMAIN" ]; then
+        sed_inplace "s|^# DOMAIN=.*|DOMAIN=${DOMAIN}|" .env
+        sed_inplace "s|^# ORIGIN=.*|ORIGIN=https://dashboard.${DOMAIN}|" .env
+        sed_inplace "s|^# HTTP_OVERRIDE_ORIGIN=.*|HTTP_OVERRIDE_ORIGIN=https://dashboard.${DOMAIN}|" .env
+        sed_inplace "s|^# GATEWAY_URL=.*|GATEWAY_URL=https://api.${DOMAIN}|" .env
+    fi
+    if [ -n "$ACME_EMAIL" ]; then
+        sed_inplace "s|^# ACME_EMAIL=.*|ACME_EMAIL=${ACME_EMAIL}|" .env
     fi
 fi
 
-# Create .env from example if it doesn't exist
-if [ ! -f .env ]; then
-    echo "📝 Creating .env file from template..."
-    cp .env.example .env
-    echo "✅ .env file created"
-    echo ""
-fi
-
-# Note about models.yaml
-echo "ℹ️  Note: The dashboard uses the public Xinity model registry by default."
-echo "   You only need models.yaml if hosting a custom model registry."
-echo ""
-
-# Generate secure passwords and secrets
-echo "🔐 Generating secure credentials..."
-
-if command -v openssl &> /dev/null; then
-    POSTGRES_PASSWORD=$(openssl rand -base64 32)
-    REDIS_PASSWORD=$(openssl rand -base64 32)
-    BETTER_AUTH_SECRET=$(openssl rand -base64 32)
-
-    # Update .env file with generated passwords
-    sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${POSTGRES_PASSWORD}|" .env
-    sed -i "s|^REDIS_PASSWORD=.*|REDIS_PASSWORD=${REDIS_PASSWORD}|" .env
-    sed -i "s|^BETTER_AUTH_SECRET=.*|BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}|" .env
-
-    echo "✅ Secure credentials generated and saved to .env"
-else
-    echo "⚠️  openssl not found. Please manually set passwords in .env"
-fi
-echo ""
-
-# Prompt for required settings
-echo "⚙️  Configuration"
-echo "----------------"
-echo "Please configure the following required settings in .env:"
-echo ""
-
-read -p "Enter your domain (e.g., example.com): " DOMAIN
-if [ ! -z "$DOMAIN" ]; then
-    sed -i "s|^DOMAIN=.*|DOMAIN=${DOMAIN}|" .env
-fi
-
-read -p "Enter your email for SSL certificates: " ACME_EMAIL
-if [ ! -z "$ACME_EMAIL" ]; then
-    sed -i "s|^ACME_EMAIL=.*|ACME_EMAIL=${ACME_EMAIL}|" .env
-fi
-
-echo ""
-echo "✅ Configuration updated"
-echo ""
-
-# Set proper permissions
-echo "🔒 Setting secure file permissions..."
 chmod 600 .env
-echo "✅ .env file secured (chmod 600)"
-echo ""
 
-# Summary
-echo "✅ Setup complete!"
-echo ""
-echo "📝 Next steps:"
-echo "1. Review and edit .env file if needed"
-echo "2. Configure your models in models.yaml"
-echo "3. Ensure your domain DNS points to this server"
-echo "4. Start services with: docker compose up -d"
-echo "5. View logs with: docker compose logs -f"
-echo ""
-echo "📚 For more information, see README.md"
-echo ""
-echo "🔐 Important: Keep your .env file secure and never commit it to version control!"
+cat <<'EOF'
+
+Setup complete. Next:
+  1. Run migrations against the Compose Postgres:
+       docker compose up -d postgres
+       xinity up db    # press Esc when prompted for Redis
+  2. Bring up the rest of the stack:
+       docker compose up -d                          # localhost (default)
+       docker compose --profile caddy up -d          # HTTPS via Caddy
+       docker compose --profile searxng up -d        # add SearXNG web search
+       docker compose --profile infoserver up -d     # self-hosted model registry
+  3. Connect the CLI to the instance: see README.md.
+
+Keep .env out of version control.
+EOF

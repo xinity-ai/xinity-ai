@@ -1,382 +1,229 @@
 # Xinity AI Docker Compose Deployment
 
-This directory contains Docker Compose configuration for deploying the full Xinity AI stack.
+Single Compose file that brings up the full Xinity control plane. Two modes:
 
-## Architecture
+- **Localhost evaluation** (default): `docker compose up -d`. Gateway and dashboard reachable on `127.0.0.1:4121` and `127.0.0.1:5121`. No domain or TLS needed.
+- **HTTPS deployment**: `docker compose --profile caddy up -d`. Caddy fronts the stack with Let's Encrypt certificates on a real domain.
 
-The deployment includes:
+Optional services live behind their own profiles:
 
-- **PostgreSQL 17** - Primary database
-- **Redis** - Caching and job queue
-- **Gateway** - API gateway for model requests
-- **Dashboard** - Web UI for administration
-- **Infoserver** - Model information service (optional, defaults to public registry)
-- **SearXNG** - Web search engine (optional)
-- **Caddy** - Reverse proxy with automatic HTTPS
+- `--profile searxng` adds web search.
+- `--profile infoserver` adds a self-hosted model registry (the dashboard otherwise uses the public one at `https://sysinfo.xinity.ai`).
 
-All services communicate via Docker bridge networking and are exposed through Caddy with automatic SSL certificates.
-
-**Note:** By default, the dashboard uses the public Xinity model registry at `https://sysinfo.xinity.ai`. You only need to run a local infoserver if you want to host a custom model registry.
-
-> **Daemon not included:** The daemon runs on inference hardware (GPU machines) and is not part of this stack. Install it separately on each inference node using the Xinity CLI. See [deployment/cli/README.md](../cli/README.md).
+Daemons (the GPU inference workers) are not in this stack. Install them per inference node with the Xinity CLI: see [deployment/cli/README.md](../cli/README.md).
 
 ## Prerequisites
 
 - Docker Engine 24.0+
-- Docker Compose 2.20+
-- A domain name pointing to your server (for automatic HTTPS)
-- Ports 80 and 443 available
-- The `xinity` CLI available to run migrations against this stack (see [deployment/cli/README.md](../cli/README.md)). The CLI is already required to deploy daemons on inference hardware, so most operators will have it.
+- Docker Compose v2
+- The `xinity` CLI on a host that can reach the Compose Postgres on `127.0.0.1:5432`. Required to run migrations and to manage the running instance.
+- For the `caddy` profile: a domain pointing at this host plus ports 80/443 free.
 
 ## Quick Start
 
-### 1. Copy and configure environment file
+### 1. Configure environment
 
 ```bash
-cp .env.example .env
+cp example.env .env
+./setup.sh    # generates secrets, prompts for admin emails and optional Caddy settings
 ```
 
-Edit `.env` and set:
+What you must set in `.env` (the setup script handles most of these):
 
-**Required:**
-- `DOMAIN` - Your domain (e.g., `example.com`)
-- `ACME_EMAIL` - Email for Let's Encrypt certificates
-- `POSTGRES_PASSWORD` - Secure password for PostgreSQL
-- `REDIS_PASSWORD` - Secure password for Redis
-- `BETTER_AUTH_SECRET` - Generate with `openssl rand -base64 32`
+- `POSTGRES_PASSWORD`, `REDIS_PASSWORD`: `openssl rand -hex 32`
+- `BETTER_AUTH_SECRET`: `openssl rand -base64 32`
+- `INSTANCE_ADMIN_EMAILS`: at least one email. Required for a usable instance in the default single-tenant mode.
+- For HTTPS: `DOMAIN`, `ACME_EMAIL`, `ORIGIN`, `HTTP_OVERRIDE_ORIGIN`, `GATEWAY_URL`.
+- For SearXNG: `SEARXNG_SECRET` (`openssl rand -hex 32`).
 
-**Optional:**
-- Adjust ports if needed (defaults are usually fine)
-- Enable/disable SearXNG
-- Customize subdomains
+See `example.env` for everything else: multi-tenancy toggle, mail, S3 object storage, metrics auth, gateway tuning.
 
 ### 2. Run database migrations
 
-The gateway and dashboard expect the schema to be in place before they start. Bring Postgres up on its own and then run the `xinity` CLI against it:
+The gateway and dashboard expect the schema to exist before they start. Bring Postgres up alone, then migrate with the CLI:
 
 ```bash
 docker compose up -d postgres
 xinity up db
 ```
 
-`xinity up db` is interactive: it asks whether a database is already running and prompts for the connection URL. Postgres is exposed on `127.0.0.1:5432` by the Compose file, so the URL is `postgresql://<POSTGRES_USER>:<POSTGRES_PASSWORD>@127.0.0.1:5432/<POSTGRES_DB>` using the credentials from your `.env`. Migrations are tracked, so re-running `xinity up db` after future releases is safe.
+`xinity up db` is interactive:
 
-### 3. Start services
+- Answer **yes** to "Do you have a connection URL for an existing database?", then enter `postgresql://<POSTGRES_USER>:<POSTGRES_PASSWORD>@127.0.0.1:5432/<POSTGRES_DB>` using values from your `.env`. Do **not** pick "No, help me set one up". That path installs a native PostgreSQL on the host.
+- After applying migrations, the command moves on to a Redis discovery step. Press **Esc** to dismiss it; Redis has no schema and the Compose stack already configures its own Redis from `.env`.
 
-**Note:** The dashboard uses the public Xinity model registry at `https://sysinfo.xinity.ai` by default. You don't need to create `models.yaml` unless you want to host a custom model registry (see Advanced Configuration below).
+Migrations are tracked, so re-running `xinity up db` after a release upgrade is safe.
+
+### 3. Start the stack
 
 ```bash
-# Start all services
+# Localhost evaluation (default)
 docker compose up -d
 
-# View logs
-docker compose logs -f
+# HTTPS production
+docker compose --profile caddy up -d
 
-# Check status
-docker compose ps
+# Add optional services
+docker compose --profile caddy --profile searxng --profile infoserver up -d
 ```
 
-**Optional services with profiles:** SearXNG and the optional infoserver are gated behind Compose profiles and are not started by `docker compose up -d` alone. Enable them explicitly:
+### 4. Access the dashboard
+
+- Localhost: `http://localhost:5121`
+- HTTPS:    `https://dashboard.<DOMAIN>`
+
+Caddy obtains certificates on first start; allow a minute or two.
+
+### 5. Connect the CLI to this instance
+
+The CLI is how you manage daemons, run migrations on upgrade, smoke-check the stack, and script against the API. The fastest path is one command that creates the first user, the first organization, mints a dashboard API key, and writes both the key and the dashboard URL into the CLI's config:
 
 ```bash
-# Include SearXNG and a self-hosted infoserver
-docker compose --profile searxng --profile infoserver up -d
+xinity configure dashboardUrl https://dashboard.<DOMAIN>   # or http://localhost:5121
+xinity act onboarding.cli
 ```
 
-### 4. Access services
+It prompts for name, email (must be in `INSTANCE_ADMIN_EMAILS` assuming `MULTI_TENANT_MODE=false`), password, and organization name. The resulting `apiKey` is persisted to `~/.config/xinity/config.json`, so subsequent CLI commands need no further setup. No browser required, safe for headless / SSH-only hosts.
 
-Once running, access via:
+Then smoke-check:
 
-- Dashboard: `https://dashboard.yourdomain.com`
-- API Gateway: `https://api.yourdomain.com`
-- Model Registry: `https://sysinfo.xinity.ai` (public registry)
+```bash
+xinity doctor       # health report across the stack
+xinity act --list   # every dashboard API route the CLI can call
+```
 
-The first startup will:
-1. Initialize the database (already migrated in step 2)
-2. Obtain SSL certificates (may take 1-2 minutes)
+**Alternative (browser flow):** if you'd rather click through the dashboard for the first user and key, sign in at the dashboard URL with an address from `INSTANCE_ADMIN_EMAILS`, mint a key under **Settings -> API Keys** (shown only once, so copy it before closing the dialog), and wire the CLI:
 
-Model information is fetched from the public registry at `https://sysinfo.xinity.ai` by default.
+```bash
+xinity configure dashboardUrl https://dashboard.<DOMAIN>
+xinity configure apiKey <paste-key-here>
+```
+
+`XINITY_DASHBOARD_URL` and `XINITY_API_KEY` env vars also work for one-off invocations without persisting.
 
 ## Configuration
 
-### Database
+### Secrets
 
-PostgreSQL data is persisted in the `postgres-data` volume. Automatic backups are not included - configure separately if needed.
+For single-server deployments, plain `.env` (mode 600) is fine. Container env shows up in `docker inspect`, which is acceptable when the operator owns the host.
 
-### Secrets Management
-
-**CRITICAL:** Never commit `.env` to version control.
-
-#### Option A: `.env` file (simplest)
-
-Store all secrets in `.env` alongside the compose file:
-
-```bash
-chmod 600 .env
-```
-
-This is fine for single-server deployments. Secrets end up as container environment variables, which are visible via `docker inspect`.
-
-#### Option B: Docker secrets with `_FILE` (recommended for production)
-
-Every Xinity service supports a `_FILE` convention: for any environment variable `VAR`, you can set `VAR_FILE` to a file path instead. The service reads the file at startup and uses its trimmed contents as the value. Direct environment variables take precedence over `_FILE` variants.
-
-1. Create secret files:
+For production where you want secrets off-disk-in-env, every Xinity service supports a `_FILE` convention. For any env var `VAR`, set `VAR_FILE` to a file path; the service reads the file at startup. Direct env vars take precedence over the `_FILE` variant.
 
 ```bash
 mkdir -p secrets
-openssl rand -base64 32 > secrets/postgres_password
-openssl rand -base64 32 > secrets/redis_password
+openssl rand -hex 32   > secrets/postgres_password
+openssl rand -hex 32   > secrets/redis_password
 openssl rand -base64 32 > secrets/better_auth_secret
 chmod 600 secrets/*
 ```
 
-2. Reference them in your compose override or environment:
-
-```yaml
-# docker-compose.override.yml
-services:
-  gateway:
-    environment:
-      DB_CONNECTION_URL_FILE: /run/secrets/db_connection_url
-    secrets:
-      - db_connection_url
-      - redis_url
-
-  dashboard:
-    environment:
-      DB_CONNECTION_URL_FILE: /run/secrets/db_connection_url
-      BETTER_AUTH_SECRET_FILE: /run/secrets/better_auth_secret
-    secrets:
-      - db_connection_url
-      - better_auth_secret
-
-secrets:
-  db_connection_url:
-    file: ./secrets/db_connection_url
-  redis_url:
-    file: ./secrets/redis_url
-  better_auth_secret:
-    file: ./secrets/better_auth_secret
-```
-
-With this approach, secrets are mounted as in-memory files at `/run/secrets/` inside each container and are never exposed as environment variables.
-
-#### Rotating secrets
-
-1. Update the secret file(s) in `secrets/`
-2. Restart affected services: `docker compose restart gateway dashboard`
-
-### Network Mode
-
-By default, services use Docker bridge networking. This provides:
-- Service isolation
-- Automatic DNS resolution between containers
-- Port mapping control
-
-If you need host networking (advanced), edit `docker-compose.yml` and add `network_mode: host` to relevant services.
+Then wire them in via a `docker-compose.override.yml` using Compose's `secrets:` block, or set the `*_FILE` env vars directly.
 
 ### Volumes
 
-Persistent data locations:
-- `postgres-data` - PostgreSQL database
-- `redis-data` - Redis persistence (optional)
-- `./models.yaml` - Model definitions (mounted read-only)
-- `./logs/` - Application logs (optional)
+- `postgres-data`: Postgres data
+- `redis-data`: Redis persistence
+- `caddy-data`, `caddy-config`: Caddy's ACME account, issued certs, runtime config
+- `./models.yaml`: mounted read-only into the infoserver container when the profile is active
+
+### Custom subdomains
+
+Override in `.env`:
+
+```env
+DASHBOARD_SUBDOMAIN=admin
+GATEWAY_SUBDOMAIN=gateway
+INFOSERVER_SUBDOMAIN=models
+```
+
+### Self-hosted model registry
+
+The dashboard reads model info from `INFOSERVER_URL` (default: public `https://sysinfo.xinity.ai`). To run your own:
+
+1. `cp models.yaml.example models.yaml` and edit.
+2. Set `INFOSERVER_URL=http://infoserver:8090` in `.env`.
+3. Start with the profile: `docker compose --profile infoserver up -d`.
+
+Your `models.yaml` can extend the public registry:
+
+```yaml
+includes:
+  - https://sysinfo.xinity.ai/models.yaml
+models:
+  my-custom-model:
+    # ...
+```
 
 ## Maintenance
 
-### View logs
+### Logs and restart
 
 ```bash
-# All services
-docker compose logs -f
-
-# Specific service
-docker compose logs -f dashboard
+docker compose logs -f                 # all
+docker compose logs -f dashboard       # one service
+docker compose restart gateway         # rolling
 ```
 
-### Restart services
+### Upgrade
 
 ```bash
-# Restart all
-docker compose restart
-
-# Restart specific service
-docker compose restart gateway
-```
-
-### Update to new version
-
-```bash
-# Pull latest images
+# Bump VERSION in .env to the new tag, then:
 docker compose pull
-
-# Restart with new images
-docker compose up -d
-
-# Remove old images
-docker image prune
+xinity up db          # apply any new migrations
+docker compose up -d  # picks up the new images
 ```
 
-### Database migrations
-
-Migrations are applied with the `xinity` CLI. After upgrading to a release that ships new migrations, run `xinity up db` again (or `xinity up db --target-host user@compose-host` for remote Compose hosts; the CLI tunnels the connection over SSH). The CLI downloads the matching migration tarball, applies anything pending, and tracks state, so re-runs are idempotent.
-
-### Backup database
+### Backup Postgres
 
 ```bash
-# Create backup
 docker compose exec postgres pg_dump -U xinity xinity > backup.sql
-
-# Restore backup
 docker compose exec -T postgres psql -U xinity xinity < backup.sql
 ```
 
-## Troubleshooting
+### Reset application data
 
-### Services won't start
-
-1. Check logs: `docker compose logs`
-2. Verify `.env` file exists and has all required variables
-3. Ensure ports 80 and 443 are not in use
-4. Check DNS: domain must resolve to server IP
-
-### SSL certificate issues
-
-Caddy obtains certificates automatically. If failing:
-
-1. Verify domain DNS is correct
-2. Ensure ports 80/443 are publicly accessible
-3. Check Caddy logs: `docker compose logs caddy`
-4. Let's Encrypt rate limits: wait if you've restarted too many times
-
-### Database connection errors
-
-1. Wait for PostgreSQL to fully start (check logs)
-2. Verify `DB_CONNECTION_URL` in `.env` is correct
-3. Check PostgreSQL logs: `docker compose logs postgres`
-
-### Permission errors
-
-If containers can't write logs:
+Wipes Postgres and Redis. Migrations must be re-run afterward.
 
 ```bash
-mkdir -p logs
-chmod 777 logs
+docker compose down
+docker volume rm $(basename "$PWD")_postgres-data $(basename "$PWD")_redis-data
+docker compose up -d postgres
+xinity up db
+docker compose up -d
 ```
 
-### Auth routes return 404 (sign-in, sign-up, etc.)
+Do **not** use `docker compose down -v`. That also wipes `caddy-data`, which holds the Let's Encrypt account; re-issuing certs can hit rate limits and lock you out for hours.
 
-The `@eslym/sveltekit-adapter-bun` adapter does **not** use SvelteKit's `ORIGIN` env var to rewrite request URLs. It uses its own `HTTP_OVERRIDE_ORIGIN` env var instead. Without it, Better Auth sees the Bun server's internal origin (e.g., `http://0.0.0.0:5121`) which doesn't match the configured `ORIGIN`, so all `/api/auth/*` requests fall through unhandled and return 404.
+## Troubleshooting
 
-**Fix:** Set `HTTP_OVERRIDE_ORIGIN` to the same value as `ORIGIN`:
+### Auth routes 404 (sign-in, sign-up)
+
+`@eslym/sveltekit-adapter-bun` does not use SvelteKit's `ORIGIN` for request URL rewriting. It uses `HTTP_OVERRIDE_ORIGIN`. Without it, Better Auth sees the Bun server's internal origin (e.g. `http://0.0.0.0:5121`) which doesn't match `ORIGIN`, and `/api/auth/*` falls through to a 404.
+
+Fix: set both to the same public URL.
 
 ```env
 ORIGIN=https://dashboard.example.com
 HTTP_OVERRIDE_ORIGIN=https://dashboard.example.com
 ```
 
-This only affects production builds. In development, Vite serves on the same address as `ORIGIN` so they naturally match.
+### SSL certificate issues (caddy profile)
 
-### Reset everything
+1. Verify domain DNS points at this host.
+2. Ports 80 and 443 must be publicly reachable.
+3. `docker compose logs caddy`.
+4. Let's Encrypt has rate limits; restarting Caddy in a loop will get you blocked for hours.
 
-**WARNING:** This deletes all data!
+## Security checklist
 
-```bash
-docker compose down -v
-docker compose up -d
-```
-
-## Security Considerations
-
-- Change all default passwords in `.env`
-- Use strong secrets (minimum 32 characters)
-- Keep `.env` file permissions restricted: `chmod 600 .env`
-- Use Docker secrets with the `_FILE` pattern for production (see Secrets Management above)
-- Regularly update images: `docker compose pull`
-- Monitor logs for suspicious activity
-- Enable firewall rules (allow only 80/443)
-- Regular database backups
-
-## Local Evaluation (No Domain Required)
-
-A compose overlay is included for trying Xinity on `localhost` without a domain or HTTPS:
-
-```bash
-cp .env.example .env
-# Fill in POSTGRES_PASSWORD, REDIS_PASSWORD, BETTER_AUTH_SECRET
-# DOMAIN and ACME_EMAIL can be any value (Caddy is disabled by the overlay)
-```
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
-```
-
-- Dashboard: `http://localhost:5121`
-- Gateway API: `http://localhost:4121`
-
-The overlay disables Caddy, exposes the gateway and dashboard ports directly, and rewrites `ORIGIN` and `GATEWAY_URL` for localhost.
-
-## Advanced Configuration
-
-### Disable SearXNG
-
-Set in `.env`:
-```
-SEARXNG_ENABLED=false
-```
-
-### Use custom infoserver
-
-By default, the dashboard uses the public model registry at `https://sysinfo.xinity.ai`. To host your own:
-
-1. Create `models.yaml` from the example:
-   ```bash
-   cp models.yaml.example models.yaml
-   # Edit models.yaml with your custom models
-   ```
-
-2. Enable the infoserver profile in `.env`:
-   ```
-   INFOSERVER_PROFILE=infoserver
-   INFOSERVER_URL=http://infoserver:8090
-   ```
-
-3. Start with the infoserver profile:
-   ```bash
-   docker compose --profile infoserver up -d
-   ```
-
-Your custom models can include the public registry:
-```yaml
-includes:
-  - https://sysinfo.xinity.ai/models.yaml
-
-models:
-  my-custom-model:
-    # ... your model configuration
-```
-
-### Custom subdomains
-
-Edit `.env`:
-```
-DASHBOARD_SUBDOMAIN=admin
-GATEWAY_SUBDOMAIN=gateway
-INFOSERVER_SUBDOMAIN=models
-```
-
-### Development mode
-
-For development without HTTPS:
-
-1. Comment out Caddy service
-2. Access services directly via ports (see `docker-compose.yml`)
-3. Update `ORIGIN` to use `http://localhost`
+- Strong `.env` (the setup script handles secret generation).
+- `chmod 600 .env`.
+- Consider `_FILE` secrets for production (see above).
+- Firewall: allow only 80 / 443 publicly (everything else should be internal).
+- `docker compose pull` on a schedule and re-`up -d` to pick up image updates.
+- Regular Postgres backups.
 
 ## Support
 
-For issues and questions:
-- GitHub Issues: https://github.com/xinity-ai/xinity-ai/issues
-- Documentation: https://docs.xinity.ai
+- GitHub: https://github.com/xinity-ai/xinity-ai/issues
+- Docs: https://docs.xinity.ai
