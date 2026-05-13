@@ -25,9 +25,8 @@ function makeNode(overrides: Partial<AiNode> & { id: string }): AiNode {
   };
 }
 
-function makeInstallation(overrides: Partial<ModelInstallation> & { id: string; nodeId: string; model: string }): ModelInstallation {
+function makeInstallation(overrides: Partial<ModelInstallation> & { id: string; nodeId: string; specifier: string }): ModelInstallation {
   return {
-    specifier: null,
     estCapacity: 8,
     kvCacheCapacity: 2,
     port: 11434,
@@ -41,14 +40,13 @@ function makeInstallation(overrides: Partial<ModelInstallation> & { id: string; 
 
 describe("orchestration: node goes unavailable", () => {
   const nodeA = makeNode({ id: "node-a", host: "10.0.0.1" });
-  const nodeB = makeNode({ id: "node-b", host: "10.0.0.2" });
 
   test("installations on a downed node are not counted, and replacement is planned on a healthy node", () => {
     // node-b just went offline — syncDeployedModels filters it out of availableServers
     // and partitions its installations as orphaned. We simulate that here:
     const availableServers = [nodeA];
     const allInstallations = [
-      makeInstallation({ id: "inst-1", nodeId: "node-b", model: "llama2:7b" }),
+      makeInstallation({ id: "inst-1", nodeId: "node-b", specifier: "llama2:7b" }),
     ];
 
     const availableServerIds = new Set(availableServers.map(s => s.id));
@@ -65,7 +63,7 @@ describe("orchestration: node goes unavailable", () => {
 
     // No excess to trim (nothing active)
     const requiredModels: ModelRequirementTable = {
-      "llama2:7b": { lookup: { kind: "legacy", providerModel: "llama2:7b" }, replicas: 1, kvCacheSize: 2, preferredDriver: null },
+      "llama2:7b": { specifier: "llama2:7b", replicas: 1, kvCacheSize: 2, preferredDriver: null },
     };
     const excess = collectExcessInstallations(requiredModels, state);
     expect(excess).toHaveLength(0);
@@ -132,26 +130,17 @@ describe("orchestration: node goes unavailable", () => {
   });
 });
 
-describe("orchestration: lookup-key correlation", () => {
+describe("orchestration: specifier indexing", () => {
   const node = makeNode({ id: "node-1" });
 
-  test("canonical installation indexes under its specifier, not the legacy provider model", () => {
-    const inst = makeInstallation({ id: "i1", nodeId: "node-1", specifier: "llama-3.3-70b", model: "legacy-name" });
+  test("installation indexes under its specifier", () => {
+    const inst = makeInstallation({ id: "i1", nodeId: "node-1", specifier: "llama-3.3-70b" });
     const state = buildClusterState([inst], [node]);
     expect(state.installationsByModel.has("llama-3.3-70b")).toBe(true);
-    expect(state.installationsByModel.has("legacy-name")).toBe(false);
   });
 
-  test("canonical and legacy installations of the same provider model do not correlate", () => {
-    const canonical = makeInstallation({ id: "c", nodeId: "node-1", specifier: "llama-3.3-70b", model: "llama" });
-    const legacy = makeInstallation({ id: "l", nodeId: "node-1", specifier: null, model: "llama" });
-    const state = buildClusterState([canonical, legacy], [node]);
-    expect(state.installationsByModel.get("llama-3.3-70b")).toHaveLength(1);
-    expect(state.installationsByModel.get("llama")).toHaveLength(1);
-  });
-
-  test("findServerForModel skips a node that already hosts the canonical specifier", () => {
-    const inst = makeInstallation({ id: "i1", nodeId: "node-1", specifier: "llama-3.3-70b", model: "llama" });
+  test("findServerForModel skips a node that already hosts the specifier", () => {
+    const inst = makeInstallation({ id: "i1", nodeId: "node-1", specifier: "llama-3.3-70b" });
     const state = buildClusterState([inst], [node]);
     expect(findServerForModel("llama-3.3-70b", "ollama", 8, state, [], FF)).toBeNull();
   });
@@ -165,9 +154,9 @@ describe("orchestration: deployment strategies", () => {
   // Pre-load A with 4GB used, B with 16GB used, C with 24GB used.
   // Free: A=20, B=8, C=24. Ratio used: A=4/24≈0.167, B=16/24≈0.667, C=24/48=0.5.
   const preinstalls = [
-    makeInstallation({ id: "p-a", nodeId: "node-a", model: "x", estCapacity: 4 }),
-    makeInstallation({ id: "p-b", nodeId: "node-b", model: "y", estCapacity: 16 }),
-    makeInstallation({ id: "p-c", nodeId: "node-c", model: "z", estCapacity: 24 }),
+    makeInstallation({ id: "p-a", nodeId: "node-a", specifier: "x", estCapacity: 4 }),
+    makeInstallation({ id: "p-b", nodeId: "node-b", specifier: "y", estCapacity: 16 }),
+    makeInstallation({ id: "p-c", nodeId: "node-c", specifier: "z", estCapacity: 24 }),
   ];
 
   test("rankServers first-fit preserves DB order", () => {
@@ -224,11 +213,11 @@ describe("orchestration: deployment strategies", () => {
 
     const first = findServerForModel("m", "ollama", 4, empty, pending, "balanced")!;
     empty.serverCapacity.get(first)!.used += 4;
-    pending.push({ nodeId: first, specifier: null, model: "m", estCapacity: 4, kvCacheCapacity: 0, driver: "ollama", port: 11434 });
+    pending.push({ nodeId: first, specifier: "m", estCapacity: 4, kvCacheCapacity: 0, driver: "ollama", port: 11434 });
 
     const second = findServerForModel("m", "ollama", 4, empty, pending, "balanced")!;
     empty.serverCapacity.get(second)!.used += 4;
-    pending.push({ nodeId: second, specifier: null, model: "m", estCapacity: 4, kvCacheCapacity: 0, driver: "ollama", port: 11434 });
+    pending.push({ nodeId: second, specifier: "m", estCapacity: 4, kvCacheCapacity: 0, driver: "ollama", port: 11434 });
 
     const third = findServerForModel("m", "ollama", 4, empty, pending, "balanced")!;
 

@@ -9,13 +9,10 @@ export const DeploymentDto = CommonDto.extend({
 
   enabled: z.boolean(),
   publicSpecifier: z.string().trim(),
-  /** Canonical model identifier. Required server-side at create time. */
-  specifier: z.string().trim().nullish(),
+  /** Canonical model identifier. */
+  specifier: z.string().trim(),
+  /** Canonical identifier for the canary (early) model in a canary deployment. */
   earlySpecifier: z.string().trim().nullish(),
-  /** @deprecated Driver-specific provider string; derived server-side from {@link specifier}. */
-  modelSpecifier: z.string().trim(),
-  /** @deprecated */
-  earlyModelSpecifier: z.string().trim().nullish(),
   replicas: z.number().default(1),
   canaryProgressUntil: z.date().nullish(),
   canaryProgressFrom: z.date().nullish(),
