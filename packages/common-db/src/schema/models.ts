@@ -2,6 +2,22 @@ import { type InferSelectModel, sql } from "drizzle-orm";
 import { pgEnum, pgTable, real, text, timestamp, uuid, boolean, integer, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { organizationT } from "./orgSchema";
 
+/*
+ * TODO: in the next custom migration hand-edit the SQL, adding the following:
+ *
+ *   UPDATE "model_deployment" SET "specifier" = "model_specifier" WHERE "specifier" IS NULL;
+ *   UPDATE "model_deployment" SET "early_specifier" = "early_model_specifier"
+ *     WHERE "early_specifier" IS NULL AND "early_model_specifier" IS NOT NULL;
+ *   DELETE FROM "model_deployment" WHERE "specifier" IS NULL;
+ *     -- defensive: after the UPDATE above this only deletes rows whose model_specifier
+ *     -- was also NULL, which the pre-migration schema disallows, so a no-op in practice
+ *   DELETE FROM "model_installation";
+ *     -- cascades to model_installation_state via onDelete: cascade
+ *     -- orchestrator recreates installations on the next sync tick
+ *   ALTER TABLE "model_deployment" ALTER COLUMN "specifier" SET NOT NULL;
+ *   ALTER TABLE "model_installation" ALTER COLUMN "specifier" SET NOT NULL;
+ */
+
 export const lifecycleStateEnum = pgEnum("lifecycle_state", ["downloading", "installing", "ready", "failed"]);
 export const inferenceDriverEnum = pgEnum("inference_driver", ["ollama", "vllm"]);
 
@@ -32,14 +48,10 @@ export const modelDeploymentT = pgTable("model_deployment", {
    * This indirection enables project scoping, and canary deployments.
    * Tbs, by default it will simply reflect the specifier of the deployed model */
   publicSpecifier: text("public_specifier").notNull(),
-  /** Canonical model identifier. Nullable for legacy rows. */
-  specifier: text(),
+  /** Canonical model identifier. */
+  specifier: text().notNull(),
+  /** Canonical identifier for the canary (early) model in a canary deployment. */
   earlySpecifier: text("early_specifier"),
-  /** @deprecated Will be removed in the next major version. The value is not trusted; the
-   * canonical {@link specifier} is the only source of identity. */
-  modelSpecifier: text("model_specifier").notNull(),
-  /** @deprecated Will be removed in the next major version. */
-  earlyModelSpecifier: text("early_model_specifier"),
   replicas: integer().notNull().default(1),
   /** When present, marks the point at which progress should reach 100 */
   canaryProgressUntil: timestamp("canary_progress_until", { withTimezone: true }),
@@ -107,11 +119,8 @@ export type AiNode = InferSelectModel<typeof aiNodeT>;
 export const modelInstallationT = pgTable("model_installation", {
   id: uuid().primaryKey().defaultRandom(),
   nodeId: uuid("node_id").notNull().references(() => aiNodeT.id, { onDelete: "cascade" }),
-  /** Canonical model identifier. Nullable for legacy rows. */
-  specifier: text(),
-  /** @deprecated Will be removed in the next major version. The value is not trusted; the
-   * provider-model name is derived from the catalog via {@link specifier}. */
-  model: text().notNull(),
+  /** Canonical model identifier. */
+  specifier: text().notNull(),
   /** estimated total GPU capacity required (model weights + KV cache), taken up on the selected node */
   estCapacity: real("est_capacity").notNull(),
   /** KV-cache allocation in GB, used by the daemon for vLLM's --kv-cache-memory-bytes */
@@ -126,23 +135,20 @@ export const modelInstallationT = pgTable("model_installation", {
 }, table => [
   index("model_installation_node_id_idx").on(table.nodeId),
   index("model_installation_specifier_idx").on(table.specifier),
-  index("model_installation_model_idx").on(table.model),
   index("model_installation_deleted_at_idx").on(table.deletedAt),
 ]);
 export type ModelInstallation = InferSelectModel<typeof modelInstallationT>;
 
-/** SQL: deployment matches an installation by canonical specifier with legacy-string fallback.
+/** SQL: deployment matches an installation by canonical specifier.
  * Use as the JOIN ON condition between modelDeploymentT and modelInstallationT. */
 export const deploymentMatchesInstallation = sql`
-  (COALESCE(${modelDeploymentT.specifier}, ${modelDeploymentT.modelSpecifier})
-    = COALESCE(${modelInstallationT.specifier}, ${modelInstallationT.model})
-  OR COALESCE(${modelDeploymentT.earlySpecifier}, ${modelDeploymentT.earlyModelSpecifier})
-    = COALESCE(${modelInstallationT.specifier}, ${modelInstallationT.model}))
+  (${modelDeploymentT.specifier} = ${modelInstallationT.specifier}
+  OR ${modelDeploymentT.earlySpecifier} = ${modelInstallationT.specifier})
 `;
 
-/** SQL: installation matches the given lookup value (specifier or providerModel). */
+/** SQL: installation matches the given canonical specifier. */
 export function installationMatchesLookup(value: string) {
-  return sql`COALESCE(${modelInstallationT.specifier}, ${modelInstallationT.model}) = ${value}`;
+  return sql`${modelInstallationT.specifier} = ${value}`;
 }
 
 /**

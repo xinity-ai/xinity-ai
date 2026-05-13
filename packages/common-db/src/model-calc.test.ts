@@ -10,10 +10,8 @@ function makeDeployment(overrides: Partial<ModelDeployment> = {}): ModelDeployme
     description: null,
     enabled: true,
     publicSpecifier: "test-model",
-    specifier: null,
-    earlySpecifier: null,
-    modelSpecifier: "new-model",
-    earlyModelSpecifier: "old-model",
+    specifier: "new-model",
+    earlySpecifier: "old-model",
     replicas: 1,
     progress: 50,
     canaryProgressFrom: null,
@@ -44,12 +42,12 @@ describe("calcCanaryProgress", () => {
   });
 
   it("returns 100 when progress is already 100", () => {
-    const d = makeDeployment({ progress: 100, earlyModelSpecifier: "old" });
+    const d = makeDeployment({ progress: 100, earlySpecifier: "old" });
     expect(calcCanaryProgress(d)).toBe(100);
   });
 
-  it("returns 100 when earlyModelSpecifier is null (not a canary)", () => {
-    const d = makeDeployment({ earlyModelSpecifier: null, progress: 30 });
+  it("returns 100 when earlySpecifier is null (not a canary)", () => {
+    const d = makeDeployment({ earlySpecifier: null, progress: 30 });
     expect(calcCanaryProgress(d)).toBe(100);
   });
 
