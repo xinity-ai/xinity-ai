@@ -161,19 +161,19 @@ describe("multimodal image storage (SeaweedFS S3)", () => {
     const publicSpecifier = `model-s3-test-${randomUUID()}`;
     const internalModel = `internal-s3-${randomUUID()}`;
 
-    await createModelDeployment({ orgId, publicSpecifier, modelSpecifier: internalModel });
+    await createModelDeployment({ orgId, publicSpecifier, specifier: internalModel });
 
     const mockServer = await startMockChatCompletionServer({
       id: "chatcmpl_s3test",
       object: "chat.completion",
       created: Math.floor(Date.now() / 1000),
-      model: internalModel,
+      specifier: internalModel,
       choices: [{ index: 0, message: { role: "assistant", content: "got it" }, finish_reason: "stop" }],
       usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
     });
 
     const node = await createAiNode({ port: mockServer.port });
-    await createModelInstallation({ nodeId: node.id, model: internalModel, port: mockServer.port });
+    await createModelInstallation({ nodeId: node.id, specifier: internalModel, port: mockServer.port });
 
     const messages = [
       {
@@ -250,11 +250,11 @@ describe("multimodal image storage (SeaweedFS S3)", () => {
     const publicSpecifier = `model-dedup-${randomUUID()}`;
     const internalModel = `internal-dedup-${randomUUID()}`;
 
-    await createModelDeployment({ orgId, publicSpecifier, modelSpecifier: internalModel });
+    await createModelDeployment({ orgId, publicSpecifier, specifier: internalModel });
 
     const mockServer = await startMockChatCompletionServer();
     const node = await createAiNode({ port: mockServer.port });
-    await createModelInstallation({ nodeId: node.id, model: internalModel, port: mockServer.port });
+    await createModelInstallation({ nodeId: node.id, specifier: internalModel, port: mockServer.port });
 
     // Send two requests with the same image
     const makeRequest = () =>
@@ -323,10 +323,10 @@ describe("multimodal image storage (SeaweedFS S3)", () => {
       const publicSpecifier = `model-nos3-${randomUUID()}`;
       const internalModel = `internal-nos3-${randomUUID()}`;
 
-      await createModelDeployment({ orgId, publicSpecifier, modelSpecifier: internalModel });
+      await createModelDeployment({ orgId, publicSpecifier, specifier: internalModel });
       const mockServer = await startMockChatCompletionServer();
       const node = await createAiNode({ port: mockServer.port });
-      await createModelInstallation({ nodeId: node.id, model: internalModel, port: mockServer.port });
+      await createModelInstallation({ nodeId: node.id, specifier: internalModel, port: mockServer.port });
 
       const res = await fetch(noS3Url("/v1/chat/completions"), {
         method: "POST",
