@@ -1,7 +1,6 @@
 import { describe, test, expect, mock, beforeEach } from "bun:test";
 import { firstValueFrom } from "rxjs";
 import type { VllmOps } from "./vllm-ops";
-import { installationLookup } from "xinity-infoserver";
 
 // ---------------------------------------------------------------------------
 // Mocks: must be set up before importing the module under test
@@ -66,10 +65,8 @@ const mockHasTag = mock<(specifier: string, tag: string) => Promise<boolean>>(
 const mockResolveDriverArgs = mock<(specifier: string) => Promise<string[]>>(
   () => Promise.resolve([]),
 );
-type Lookup = { kind: "canonical"; specifier: string } | { kind: "legacy"; providerModel: string };
-const lookupValue = (l: Lookup) => l.kind === "canonical" ? l.specifier : l.providerModel;
-const mockFetchModel = mock<(lookup: Lookup) => Promise<{ type?: string; providers: { vllm?: string; ollama?: string } } | undefined>>(
-  (lookup) => Promise.resolve({ type: "chat", providers: { vllm: lookupValue(lookup) } }),
+const mockFetchModel = mock<(specifier: string) => Promise<{ type?: string; providers: { vllm?: string; ollama?: string } } | undefined>>(
+  (specifier) => Promise.resolve({ type: "chat", providers: { vllm: specifier } }),
 );
 
 mock.module("xinity-infoserver", () => ({
@@ -78,7 +75,6 @@ mock.module("xinity-infoserver", () => ({
     resolveDriverArgs: mockResolveDriverArgs,
     fetchModel: mockFetchModel,
   }),
-  installationLookup,
 }));
 
 // Mock the statekeeper hardware profile
@@ -109,12 +105,11 @@ const { syncVllmInstallations$ } = await import("./vllm");
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeInstallation(model: string, id: string = crypto.randomUUID(), port = 8080) {
+function makeInstallation(specifier: string, id: string = crypto.randomUUID(), port = 8080) {
   return {
     id,
     nodeId: "node-1",
-    specifier: null,
-    model,
+    specifier,
     estCapacity: 16,
     kvCacheCapacity: 4,
     port,
@@ -153,7 +148,7 @@ describe("syncVllmInstallations$", () => {
     mockSelectWhere.mockImplementation(() => Promise.resolve([]));
     mockHasTag.mockImplementation(() => Promise.resolve(false));
     mockResolveDriverArgs.mockImplementation(() => Promise.resolve([]));
-    mockFetchModel.mockImplementation((lookup) => Promise.resolve({ type: "chat", providers: { vllm: lookupValue(lookup) } }));
+    mockFetchModel.mockImplementation((specifier) => Promise.resolve({ type: "chat", providers: { vllm: specifier } }));
     mockGetFreeMemoryMb.mockImplementation(() => Promise.resolve(20480));
   });
 
@@ -443,7 +438,7 @@ describe("syncVllmInstallations$", () => {
   test("adds --runner pooling for embedding models", async () => {
     const id = crypto.randomUUID();
     const inst = makeInstallation("embed-model", id, 9102);
-    mockFetchModel.mockImplementation((lookup) => Promise.resolve({ type: "embedding", providers: { vllm: lookupValue(lookup) } }));
+    mockFetchModel.mockImplementation((specifier) => Promise.resolve({ type: "embedding", providers: { vllm: specifier } }));
     const ops = createMockOps({
       listRunning: mock(() => Promise.resolve([])),
       checkHealth: mock(() => Promise.resolve(true)),
@@ -460,7 +455,7 @@ describe("syncVllmInstallations$", () => {
   test("adds --runner pooling for rerank models", async () => {
     const id = crypto.randomUUID();
     const inst = makeInstallation("rerank-model", id, 9103);
-    mockFetchModel.mockImplementation((lookup) => Promise.resolve({ type: "rerank", providers: { vllm: lookupValue(lookup) } }));
+    mockFetchModel.mockImplementation((specifier) => Promise.resolve({ type: "rerank", providers: { vllm: specifier } }));
     const ops = createMockOps({
       listRunning: mock(() => Promise.resolve([])),
       checkHealth: mock(() => Promise.resolve(true)),
@@ -477,7 +472,7 @@ describe("syncVllmInstallations$", () => {
   test("does not add --runner pooling for chat models", async () => {
     const id = crypto.randomUUID();
     const inst = makeInstallation("chat-model", id, 9104);
-    mockFetchModel.mockImplementation((lookup) => Promise.resolve({ type: "chat", providers: { vllm: lookupValue(lookup) } }));
+    mockFetchModel.mockImplementation((specifier) => Promise.resolve({ type: "chat", providers: { vllm: specifier } }));
     const ops = createMockOps({
       listRunning: mock(() => Promise.resolve([])),
       checkHealth: mock(() => Promise.resolve(true)),
@@ -490,9 +485,9 @@ describe("syncVllmInstallations$", () => {
     expect(startCall[1].extraArgs).not.toContain("--runner");
   });
 
-  test("uses providers.vllm from the catalog rather than the installation row's model column", async () => {
+  test("uses providers.vllm from the catalog as the model name passed to ops.start", async () => {
     const id = crypto.randomUUID();
-    const inst = { ...makeInstallation("legacy-stale-name", id, 9105), specifier: "canonical-x" };
+    const inst = makeInstallation("canonical-x", id, 9105);
     mockFetchModel.mockImplementation(() => Promise.resolve({ type: "chat", providers: { vllm: "real-vllm-name" } }));
     const ops = createMockOps({
       listRunning: mock(() => Promise.resolve([])),

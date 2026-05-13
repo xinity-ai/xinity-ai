@@ -42,11 +42,11 @@ const DRIVER_SYNC_CONCURRENCY = 1;
  */
 function syncUnsupportedDriver$(
   driver: string,
-  installations: Array<{ id: string; model: string }>
+  installations: Array<{ id: string; specifier: string }>
 ): Observable<void> {
   return defer(() => {
     log.warn(
-      { driver, models: installations.map((i) => i.model) },
+      { driver, models: installations.map((i) => i.specifier) },
       "Skipping unsupported driver"
     );
     return from(
@@ -97,7 +97,7 @@ function sync(): Observable<void> {
           buckets.push({ driver, installations: [] });
         }
       }
-      const models = installations.map(({ driver, model, estCapacity }) => ({ driver, model, estCapacity }));
+      const models = installations.map(({ driver, specifier, estCapacity }) => ({ driver, specifier, estCapacity }));
       const snapshot = JSON.stringify(models);
       if (snapshot !== previousInstallationsSnapshot) {
         previousInstallationsSnapshot = snapshot;

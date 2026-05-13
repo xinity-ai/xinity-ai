@@ -12,6 +12,8 @@ mock.module("../../env", () => ({ env: {
   SYNC_INTERVAL_MS: 60_000,
   STATE_DIR: "/tmp/test-state",
   VLLM_MAX_RESTART_COUNT: 3,
+  INFOSERVER_URL: "http://localhost:8393",
+  INFOSERVER_CACHE_TTL_MS: 0,
 }}));
 
 // Mock DB connection
@@ -40,6 +42,18 @@ mock.module("../../logger", () => ({
   },
 }));
 
+// Mock the infoserver client: returns the specifier as the ollama tag so test
+// expectations can use specifier and tag interchangeably.
+const mockFetchModel = mock<(specifier: string) => Promise<{ providers: { ollama?: string; vllm?: string } } | undefined>>(
+  (specifier) => Promise.resolve({ providers: { ollama: specifier } }),
+);
+
+mock.module("xinity-infoserver", () => ({
+  createInfoserverClient: () => ({
+    fetchModel: mockFetchModel,
+  }),
+}));
+
 // Track Ollama client calls
 let mockOllamaList = mock<() => Promise<{ models: Array<{ model: string }> }>>();
 let mockOllamaDelete = mock<(params: { model: string }) => Promise<void>>();
@@ -60,12 +74,11 @@ const { syncOllamaInstallations$ } = await import("./ollama");
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeInstallation(model: string, id = crypto.randomUUID()) {
+function makeInstallation(specifier: string, id = crypto.randomUUID()) {
   return {
     id,
     nodeId: "node-1",
-    specifier: null,
-    model,
+    specifier,
     estCapacity: 8,
     kvCacheCapacity: 0,
     port: 8080,
@@ -88,6 +101,8 @@ describe("syncOllamaInstallations$", () => {
     mockInsert.mockClear();
     mockInsertChain.values.mockClear();
     mockInsertChain.onConflictDoUpdate.mockClear();
+    mockFetchModel.mockReset();
+    mockFetchModel.mockImplementation((specifier) => Promise.resolve({ providers: { ollama: specifier } }));
   });
 
   test("does nothing when desired and existing models match", async () => {
@@ -193,5 +208,14 @@ describe("syncOllamaInstallations$", () => {
     // The DB insert should have been called to update state
     // (bufferTime may batch these, but at least one call should happen)
     expect(mockInsert).toHaveBeenCalled();
+  });
+
+  test("skips installations the catalog has no ollama provider for", async () => {
+    mockOllamaList.mockResolvedValue({ models: [] });
+    mockFetchModel.mockImplementation(() => Promise.resolve({ providers: { vllm: "vllm-only-model" } }));
+
+    await firstValueFrom(syncOllamaInstallations$([makeInstallation("vllm-only")]));
+
+    expect(mockOllamaPull).not.toHaveBeenCalled();
   });
 });

@@ -1,12 +1,21 @@
 import { promises as fsp, readdirSync, rmSync, statSync, type Dirent } from "node:fs";
 import * as path from "node:path";
-import { modelInstallationT, sql, type ModelInstallation } from "common-db";
+import { modelInstallationT, sql } from "common-db";
+import { createInfoserverClient } from "xinity-infoserver";
 import { env } from "../../env";
 import { rootLogger } from "../../logger";
 
 const log = rootLogger.child({ name: "cache-eviction" });
 
 const SAFETY_MARGIN_BYTES = 1 * 1024 ** 3;
+
+let _infoClient: ReturnType<typeof createInfoserverClient> | null = null;
+function getInfoClient(): ReturnType<typeof createInfoserverClient> {
+  if (!_infoClient) {
+    _infoClient = createInfoserverClient({ baseUrl: env.INFOSERVER_URL, cacheTtlMs: env.INFOSERVER_CACHE_TTL_MS });
+  }
+  return _infoClient;
+}
 
 export interface CacheEntry {
   slug: string;
@@ -20,6 +29,12 @@ export interface EvictionPlan {
   evict: CacheEntry[];
   freedBytes: number;
   sufficient: boolean;
+}
+
+/** Installation row reduced to what cache eviction needs. */
+export interface InstallationCacheRecord {
+  providerModel: string;
+  deletedAt: Date | null;
 }
 
 export function slugForModel(model: string): string {
@@ -73,7 +88,7 @@ export function listCacheEntries(hubDir: string): CacheEntry[] {
 
 export function planEviction(input: {
   entries: readonly CacheEntry[];
-  installations: readonly ModelInstallation[];
+  installations: readonly InstallationCacheRecord[];
   requiredBytes: number;
   reservedModel: string;
   freeBytes: number;
@@ -86,11 +101,11 @@ export function planEviction(input: {
     return { evict: [], freedBytes: 0, sufficient: true };
   }
 
-  const byModel = new Map<string, ModelInstallation[]>();
+  const byProviderModel = new Map<string, InstallationCacheRecord[]>();
   for (const inst of input.installations) {
-    const arr = byModel.get(inst.model) ?? [];
+    const arr = byProviderModel.get(inst.providerModel) ?? [];
     arr.push(inst);
-    byModel.set(inst.model, arr);
+    byProviderModel.set(inst.providerModel, arr);
   }
 
   type Candidate = CacheEntry & { lastNeededAt: Date };
@@ -99,7 +114,7 @@ export function planEviction(input: {
   for (const entry of input.entries) {
     if (entry.model === input.reservedModel) continue;
 
-    const matches = byModel.get(entry.model) ?? [];
+    const matches = byProviderModel.get(entry.model) ?? [];
     if (matches.some((m) => m.deletedAt === null)) continue;
 
     let lastNeededAt = entry.mtime;
@@ -146,9 +161,20 @@ export async function ensureCacheSpace(input: {
     .from(modelInstallationT)
     .where(sql`${modelInstallationT.nodeId} = ${nodeId}`);
 
+  // Resolve each installation's canonical specifier to its provider-side cache key.
+  // Installations the catalog cannot resolve are dropped from the eviction view:
+  // their cache directories will be treated as orphaned and ranked by mtime.
+  const cacheRecords: InstallationCacheRecord[] = [];
+  for (const i of installations) {
+    const model = await getInfoClient().fetchModel(i.specifier);
+    const providerModel = model?.providers.vllm;
+    if (!providerModel) continue;
+    cacheRecords.push({ providerModel, deletedAt: i.deletedAt });
+  }
+
   const plan = planEviction({
     entries,
-    installations,
+    installations: cacheRecords,
     requiredBytes: input.requiredBytes,
     reservedModel: input.reservedModel,
     freeBytes: freeBefore,

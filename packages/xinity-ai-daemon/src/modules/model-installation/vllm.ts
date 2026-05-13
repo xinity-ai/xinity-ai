@@ -22,7 +22,7 @@ import {
   createSystemdVllmOps,
   type VllmOps,
 } from "./vllm-ops";
-import { createInfoserverClient, installationLookup } from "xinity-infoserver";
+import { createInfoserverClient } from "xinity-infoserver";
 import { rootLogger } from "../../logger";
 import { getHardwareProfile } from "../statekeeper";
 import { getFreeMemoryMb } from "../hardware-detect";
@@ -99,7 +99,7 @@ function pollUntilHealthy$(
     mergeMap(async () => {
       const alive = await ops.isAlive(installation.id);
       if (!alive) {
-        throw new Error(`Container for ${installation.model} (${installation.id}) died before becoming healthy`);
+        throw new Error(`Container for ${installation.specifier} (${installation.id}) died before becoming healthy`);
       }
 
       const restartCount = await ops.getRestartCount(installation.id);
@@ -107,7 +107,7 @@ function pollUntilHealthy$(
       if (restartCount >= env.VLLM_MAX_RESTART_COUNT) {
         const { logs, fatalMatch } = await captureLogsAndMatch(installation.id, ops);
         throw Object.assign(
-          new Error(`Container crash-looping (${restartCount} restarts, ${fatalMatch ?? "unknown reason"}): ${installation.model}`),
+          new Error(`Container crash-looping (${restartCount} restarts, ${fatalMatch ?? "unknown reason"}): ${installation.specifier}`),
           { preCapturedLogs: logs },
         );
       }
@@ -116,7 +116,7 @@ function pollUntilHealthy$(
         const { logs, fatalMatch } = await captureLogsAndMatch(installation.id, ops);
         if (fatalMatch) {
           throw Object.assign(
-            new Error(`Fatal error detected (${fatalMatch}): ${installation.model}`),
+            new Error(`Fatal error detected (${fatalMatch}): ${installation.specifier}`),
             { preCapturedLogs: logs },
           );
         }
@@ -126,7 +126,7 @@ function pollUntilHealthy$(
     }),
     tap((healthy) => {
       if (!healthy && Date.now() > deadline) {
-        throw new Error(`Health check timed out after ${env.VLLM_HEALTH_TIMEOUT_MS}ms for ${installation.model} (${installation.id})`);
+        throw new Error(`Health check timed out after ${env.VLLM_HEALTH_TIMEOUT_MS}ms for ${installation.specifier} (${installation.id})`);
       }
     }),
     filter((healthy): healthy is true => healthy),
@@ -146,8 +146,7 @@ function pollUntilHealthy$(
 
 /** Downloads weights, starts the container, and returns metadata used for health polling and warmup. */
 async function downloadAndStart(installation: ModelInstallation, ops: VllmOps): Promise<{ modelType: string | undefined; providerModel: string }> {
-  const lookup = installationLookup(installation);
-  const modelInfo = await infoClient.fetchModel(lookup);
+  const modelInfo = await infoClient.fetchModel(installation.specifier);
   const providerModel = modelInfo?.providers.vllm;
   if (!providerModel) {
     throw new Error(`Catalog entry has no vllm provider for installation ${installation.id}`);
@@ -171,9 +170,9 @@ async function downloadAndStart(installation: ModelInstallation, ops: VllmOps): 
   await updateInstallationState(installation.id, "installing", { statusMessage: "Starting vLLM service" });
 
   const [trustRemoteCode, hasToolsTag, extraArgs, profile] = await Promise.all([
-    infoClient.hasTag(lookup, "custom_code", "vllm"),
-    infoClient.hasTag(lookup, "tools", "vllm"),
-    infoClient.resolveDriverArgs(lookup, "vllm"),
+    infoClient.hasTag(installation.specifier, "custom_code", "vllm"),
+    infoClient.hasTag(installation.specifier, "tools", "vllm"),
+    infoClient.resolveDriverArgs(installation.specifier, "vllm"),
     getHardwareProfile(),
   ]);
 
@@ -197,7 +196,7 @@ async function downloadAndStart(installation: ModelInstallation, ops: VllmOps): 
 }
 
 export function computeGpuUtilization(
-  installation: Pick<ModelInstallation, "model" | "estCapacity">,
+  installation: Pick<ModelInstallation, "specifier" | "estCapacity">,
   profile: { gpuCount: number; detectedCapacityGb: number },
   freeMemoryMb: number | null,
 ): number | undefined {
@@ -216,7 +215,7 @@ export function computeGpuUtilization(
   }
 
   log.info(
-    { model: installation.model, gpuMemoryUtilization: utilization.toFixed(3), estCapacityGb: installation.estCapacity, totalCapacityGb, freeMemoryMb },
+    { specifier: installation.specifier, gpuMemoryUtilization: utilization.toFixed(3), estCapacityGb: installation.estCapacity, totalCapacityGb, freeMemoryMb },
     "Calculated GPU memory utilization",
   );
   return utilization;
@@ -250,7 +249,7 @@ function reconcileStaleStates$(
       if (needsReconciliation.length === 0) return EMPTY;
 
       log.info(
-        { instances: needsReconciliation.map((i) => `${i.model} (${i.id})`) },
+        { instances: needsReconciliation.map((i) => `${i.specifier} (${i.id})`) },
         "vLLM reconciling stale state for running instances",
       );
 
@@ -274,7 +273,7 @@ async function reconcileOne(
   const healthy = await ops.checkHealth(installation.port);
   if (healthy) {
     await updateInstallationState(installation.id, "ready", { statusMessage: "vLLM server healthy (reconciled)" });
-    log.info({ model: installation.model, installationId: installation.id }, "vLLM reconciled to ready");
+    log.info({ specifier: installation.specifier, installationId: installation.id }, "vLLM reconciled to ready");
     return;
   }
 
@@ -290,14 +289,14 @@ async function reconcileOne(
         failureLogs: logs || null,
       });
       await ops.stop(installation.id).catch(() => {});
-      log.warn({ model: installation.model, installationId: installation.id, restartCount }, "vLLM reconciled to failed (crash-loop)");
+      log.warn({ specifier: installation.specifier, installationId: installation.id, restartCount }, "vLLM reconciled to failed (crash-loop)");
     } else if (currentState?.lifecycleState === "failed") {
       await updateInstallationState(installation.id, "installing", {
         statusMessage: "Container still running, awaiting health",
         errorMessage: null,
         failureLogs: null,
       });
-      log.info({ model: installation.model, installationId: installation.id }, "vLLM reconciled to installing (alive, not yet healthy)");
+      log.info({ specifier: installation.specifier, installationId: installation.id }, "vLLM reconciled to installing (alive, not yet healthy)");
     }
   } else {
     const logs = await ops.getLogs(installation.id).catch(() => "");
@@ -306,7 +305,7 @@ async function reconcileOne(
       statusMessage: "Container not running",
       failureLogs: logs || null,
     });
-    log.warn({ model: installation.model, installationId: installation.id }, "vLLM reconciled to failed (container dead)");
+    log.warn({ specifier: installation.specifier, installationId: installation.id }, "vLLM reconciled to failed (container dead)");
   }
 }
 
@@ -331,7 +330,7 @@ export function syncVllmInstallations$(
       const candidates = installations.filter((i) => !activeSet.has(i.id));
 
       if (toRemove.length) log.info({ ids: toRemove }, "vLLM removing stale instances");
-      if (candidates.length) log.info({ instances: candidates.map((i) => `${i.model} (${i.id})`) }, "vLLM adding instances");
+      if (candidates.length) log.info({ instances: candidates.map((i) => `${i.specifier} (${i.id})`) }, "vLLM adding instances");
 
       const reconcile$ = reconcileStaleStates$(installations, activeSet, ops);
       const remove$ = removeStaleContainers$(toRemove, ops);
@@ -400,7 +399,7 @@ function handleInstallationError(
   ops: VllmOps,
   containerStarted: boolean,
 ): Observable<never> {
-  log.error({ err, model: installation.model, installationId: installation.id }, "vLLM failed to start");
+  log.error({ err, specifier: installation.specifier, installationId: installation.id }, "vLLM failed to start");
 
   const preCapturedLogs: string | undefined =
     (err as { preCapturedLogs?: string })?.preCapturedLogs ??
