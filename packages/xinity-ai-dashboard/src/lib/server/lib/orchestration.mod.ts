@@ -181,9 +181,23 @@ function allocatePort(driver: string, nodeId: string, state: ClusterState, pendi
   return port;
 }
 
-/** Plans installations needed to satisfy replica requirements that aren't yet met. */
-async function planNewInstallations(requiredModels: ModelRequirementTable, state: ClusterState): Promise<NewInstallation[]> {
+function totalVramUsed(state: ClusterState): number {
+  let used = 0;
+  for (const cap of state.serverCapacity.values()) {
+    used += cap.used;
+  }
+  return used;
+}
+
+/** Plans installations needed to satisfy replica requirements that aren't yet met,
+ * stopping a replica loop early when the next install would exceed the license VRAM cap. */
+async function planNewInstallations(
+  requiredModels: ModelRequirementTable,
+  state: ClusterState,
+  licenseVramLimit: number,
+): Promise<NewInstallation[]> {
   const toInstall: NewInstallation[] = [];
+  let usedVram = totalVramUsed(state);
 
   for (const [key, requirement] of Object.entries(requiredModels)) {
     const current = (state.installationsByModel.get(key) || []).length;
@@ -222,6 +236,14 @@ async function planNewInstallations(requiredModels: ModelRequirementTable, state
     const installSpecifier = requirement.lookup.kind === "canonical" ? requirement.lookup.specifier : null;
 
     for (let i = 0; i < needed; i++) {
+      if (usedVram + totalCapacity > licenseVramLimit) {
+        log.warn(
+          { lookup: requirement.lookup, usedVram, licenseVramLimit, additional: totalCapacity },
+          "License VRAM limit reached; skipping additional replica",
+        );
+        break;
+      }
+
       const nodeId = findServerForModel(key, driver, totalCapacity, state, toInstall, minVersion, requiredPlatforms);
       if (!nodeId) {
         log.warn({ lookup: requirement.lookup }, "No server with enough capacity for additional replica");
@@ -241,6 +263,7 @@ async function planNewInstallations(requiredModels: ModelRequirementTable, state
 
       const cap = state.serverCapacity.get(nodeId)!;
       cap.used += totalCapacity;
+      usedVram += totalCapacity;
     }
   }
 
@@ -258,38 +281,10 @@ async function applyChanges(toUninstall: string[], toInstall: NewInstallation[])
   }
 }
 
-/** Drops smallest nodes until total VRAM fits within the license limit. */
-function applyLicenseVramLimit(servers: AiNode[]): AiNode[] {
-  const vramLimit = maxVramGb();
-  const totalVram = servers.reduce((sum, s) => sum + s.estCapacity, 0);
-  if (totalVram <= vramLimit) {
-    return servers;
-  }
-
-  const sorted = [...servers].sort((a, b) => b.estCapacity - a.estCapacity);
-  const included: AiNode[] = [];
-  let accumulated = 0;
-  for (const server of sorted) {
-    if (accumulated + server.estCapacity > vramLimit) {
-      continue;
-    }
-    included.push(server);
-    accumulated += server.estCapacity;
-  }
-  log.warn(
-    { vramLimit, totalVram, includedNodes: included.length, totalNodes: servers.length },
-    "Total VRAM (%d GB) exceeds license limit (%d GB). Using %d of %d nodes",
-    totalVram, vramLimit, included.length, servers.length,
-  );
-  return included;
-}
-
 async function runSyncDeployedModels() {
   const requiredModels = await assembleModelRequirementTable();
   const existing: ModelInstallation[] = await getDB().select().from(modelInstallationT).where(isNull(modelInstallationT.deletedAt));
-  const availableServers = applyLicenseVramLimit(
-    await getDB().select().from(aiNodeT).where(sql`${aiNodeT.available} AND ${aiNodeT.deletedAt} IS NULL`),
-  );
+  const availableServers: AiNode[] = await getDB().select().from(aiNodeT).where(sql`${aiNodeT.available} AND ${aiNodeT.deletedAt} IS NULL`);
 
   const availableServerIds = new Set(availableServers.map(s => s.id));
   const orphaned = existing.filter(i => !availableServerIds.has(i.nodeId));
@@ -302,7 +297,7 @@ async function runSyncDeployedModels() {
     ...orphaned.map(i => i.id),
     ...collectExcessInstallations(requiredModels, state),
   ];
-  const toInstall = await planNewInstallations(requiredModels, state);
+  const toInstall = await planNewInstallations(requiredModels, state, maxVramGb());
   await applyChanges(toUninstall, toInstall);
 }
 
