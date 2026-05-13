@@ -106,14 +106,14 @@ Your existing OpenAI SDK code works unchanged, just point the base URL to your X
 **Why the gateway is _faster_ under load.** The ~56 ms TTFT delta is just the network path; per-stream token rate is identical. Peak aggregate throughput is higher through the gateway because bounded request admission keeps vLLM's scheduler in its efficient operating range. Under sustained overload, bare vLLM emits malformed streaming chunks (`stream_parse` errors), the gateway's internal retry layer catches these and transparently re-dispatches before the client ever sees a failure. The result: **18× higher completion rate** at extreme concurrency, which is the difference between a usable production system and one that falls over.
  
 <details>
-<summary>Full methodology & raw data</summary>
+<summary>Full methodology & data</summary>
 Both runs used identical benchmark harness code, identical hardware, and identical model weights. The only variable is the network path.
  
 - **Xinity run:** `dev-api.xinity.ai` → public internet → WireGuard → DGX Spark, 2026-05-09 12:18 – 2026-05-10 15:06 UTC
 - **vLLM run:** `localhost:11435` → loopback, 2026-05-10 20:04 – 2026-05-11 15:08 UTC
 - **Scenarios:** 5 input sizes × 3 output sizes × 8 concurrency levels = 120
-- **Requests per scenario:** 32 – 1 024 (scaled with concurrency), 31 200 total per run
-Raw CSVs and JSON summaries are available in [`benchmarks/`](benchmarks/).
+- **Requests per scenario:** 32 – 1024 (scaled with concurrency), 31 200 total per run
+Full per-scenario reports and aggregate summaries are in [`benchmarks/`](benchmarks/).
  
 </details>
 
