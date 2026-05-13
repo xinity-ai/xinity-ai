@@ -86,7 +86,36 @@ Your existing OpenAI SDK code works unchanged, just point the base URL to your X
 | Fully auditable source code | ✅ | ✅ | ✅ | ✅ |
 
 **Xinity isn't a model runner: it's the full operations layer.** Ollama and vLLM are excellent inference engines (Xinity uses them under the hood). Xinity adds everything else an enterprise needs to actually run AI in production: orchestration, access control, observability, and governance.
-**Xinity isn't a orchestration layer only either.** It's a complete platform that gives you everything you need to run AI in production. We aim to have an AI-cloud experience on your own hardware.
+
+## Performance under load
+ 
+> The gateway layer adds enterprise features. Does it cost you speed? We measured.
+
+<p align="center"><img src="docs/assets/completaion-rate-graph.png" alt="Xinity Performance under load" width="720" /></p>
+ 
+**Setup:** A single NVIDIA DGX Spark (128 GB), Qwen 3.6-35B-A3B-FP8, 120 benchmark scenarios sweeping prompt size (256 – 65 536 tokens), output length (64 – 2 048 tokens), and concurrency (1 – 512 in-flight requests), 31 200 requests per run. The Xinity path traverses the public internet, a WireGuard tunnel, and TLS termination (~60 IP hops); the vLLM baseline runs on loopback.
+ 
+| Metric | Xinity gateway | Plain vLLM (loopback) |
+|---|---|---|
+| Time-to-first-token p50 / p95 (single stream) | 321 / 512 ms | 265 / 269 ms |
+| Per-stream generation rate (p50) | 50.0 tok/s | 50.0 tok/s |
+| Peak aggregate throughput | 352 tok/s | 325 tok/s |
+| Max validated context length | 262 144 tokens | 262 144 tokens |
+| **Completion rate at 512 concurrent × 65k-token prompts** | **85.0 %** (870 / 1024) | **4.6 %** (47 / 1024) |
+ 
+**Why the gateway is _faster_ under load.** The ~56 ms TTFT delta is just the network path; per-stream token rate is identical. Peak aggregate throughput is higher through the gateway because bounded request admission keeps vLLM's scheduler in its efficient operating range. Under sustained overload, bare vLLM emits malformed streaming chunks (`stream_parse` errors), the gateway's internal retry layer catches these and transparently re-dispatches before the client ever sees a failure. The result: **18× higher completion rate** at extreme concurrency, which is the difference between a usable production system and one that falls over.
+ 
+<details>
+<summary>Full methodology & data</summary>
+Both runs used identical benchmark harness code, identical hardware, and identical model weights. The only variable is the network path.
+ 
+- **Xinity run:** `dev-api.xinity.ai` → public internet → WireGuard → DGX Spark, 2026-05-09 12:18 – 2026-05-10 15:06 UTC
+- **vLLM run:** `localhost:11435` → loopback, 2026-05-10 20:04 – 2026-05-11 15:08 UTC
+- **Scenarios:** 5 input sizes × 3 output sizes × 8 concurrency levels = 120
+- **Requests per scenario:** 32 – 1024 (scaled with concurrency), 31 200 total per run
+Full per-scenario reports and aggregate summaries are in [`benchmarks/`](benchmarks/).
+ 
+</details>
 
 ## Architecture
 
@@ -377,7 +406,7 @@ See the [public roadmap](https://github.com/orgs/xinity-ai/projects/1) for what'
 - 🔬 Distributed split inference (MoE across nodes with privacy-preserving encoding)
 - 🔄 One-click migration from OpenAI / Azure OpenAI
 - 📊 Advanced usage analytics and cost attribution
-- 🇪🇺 EU compliance reporting templates (GDPR, Digital Networks Act)
+- 🇪🇺 EU compliance reporting templates (GDPR, EU AI Act, NIS2, ...)
 
 ## Security
 
@@ -444,6 +473,6 @@ Dashboard tests have additional prerequisites — see the [dashboard README](pac
 ---
 
 <p align="center">
-  <strong>Contracts are paper. Infrastructure is Physics.</strong><br/>
+  <strong>Contracts are paper. Infrastructure is Reality.</strong><br/>
   <sub>Built in Vienna. Open to the world.</sub>
 </p>

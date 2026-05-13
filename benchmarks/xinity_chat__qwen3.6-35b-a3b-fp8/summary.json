@@ -1,0 +1,6932 @@
+{
+  "runId": "2026-05-09T12-18-49Z__chat__qwen3.6-35b-a3b-fp8",
+  "meta": {
+    "runId": "2026-05-09T12-18-49Z__chat__qwen3.6-35b-a3b-fp8",
+    "suite": "chat",
+    "startedAt": "2026-05-09T12:18:49.930Z",
+    "baseUrlHost": "dev-api.xinity.ai",
+    "model": "qwen3.6-35b-a3b-fp8",
+    "bunVersion": "1.3.1",
+    "platform": "linux",
+    "cpus": 12,
+    "memMb": 57,
+    "envSnapshot": {
+      "BASE_URL": "https://dev-api.xinity.ai/v1",
+      "MODEL": "qwen3.6-35b-a3b-fp8"
+    },
+    "gitCommit": "c84e7ff15e5867372ccf05d40fe3d678a2c0181d",
+    "preflight": {
+      "reachable": true,
+      "smokeOk": true,
+      "modelsEndpoint": {
+        "ok": true,
+        "raw": {
+          "object": "list",
+          "data": [
+            {
+              "id": "ministral-3b",
+              "object": "model",
+              "created": 1776448256,
+              "owned_by": "xinity",
+              "status": "ready",
+              "canary": false
+            },
+            {
+              "id": "qwen3.5-35b-a3b",
+              "object": "model",
+              "created": 1773767862,
+              "owned_by": "xinity",
+              "status": "not_ready",
+              "canary": false
+            },
+            {
+              "id": "qwen3.6-35b-a3b-fp8",
+              "object": "model",
+              "created": 1777970329,
+              "owned_by": "xinity",
+              "status": "ready",
+              "canary": false
+            }
+          ]
+        }
+      },
+      "contextProbe": {
+        "triedTokens": [
+          8192,
+          32768,
+          131072,
+          262144,
+          524288
+        ],
+        "largestOk": 262144,
+        "smallestFail": 524288,
+        "cappedAtCeiling": false
+      },
+      "cacheProbe": {
+        "firstMs": 279.94514500000514,
+        "secondMs": 254.90203199999814,
+        "ratio": 0.9105427850873908
+      }
+    },
+    "endedAt": "2026-05-10T15:06:00.528Z"
+  },
+  "scenarios": [
+    {
+      "id": "chat__in-tiny__out-short__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "short",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-short__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "short",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-short__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "short",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-short__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "short",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-short__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "short",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-short__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "short",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-short__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "short",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-short__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "short",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "medium",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "medium",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "medium",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "medium",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "medium",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "medium",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "medium",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "medium",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-long__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "long",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-long__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "long",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-long__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "long",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-long__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "long",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-long__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "long",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-long__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "long",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-long__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "long",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-tiny__out-long__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "tiny",
+        "outputSize": "long",
+        "approxInputTokens": 256,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-short__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "short",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-short__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "short",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-short__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "short",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-short__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "short",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-short__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "short",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-short__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "short",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-short__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "short",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-short__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "short",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-medium__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "medium",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-medium__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "medium",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-medium__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "medium",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-medium__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "medium",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-medium__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "medium",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-medium__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "medium",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-medium__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "medium",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-medium__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "medium",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-long__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "long",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-long__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "long",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-long__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "long",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-long__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "long",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-long__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "long",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-long__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "long",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-long__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "long",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-small__out-long__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "small",
+        "outputSize": "long",
+        "approxInputTokens": 1024,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-short__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "short",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-short__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "short",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-short__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "short",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-short__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "short",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-short__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "short",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-short__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "short",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-short__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "short",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-short__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "short",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-medium__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "medium",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-medium__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "medium",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-medium__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "medium",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-medium__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "medium",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-medium__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "medium",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-medium__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "medium",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-medium__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "medium",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-medium__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "medium",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-long__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "long",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-long__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "long",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-long__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "long",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-long__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "long",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-long__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "long",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-long__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "long",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-long__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "long",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-medium__out-long__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "medium",
+        "outputSize": "long",
+        "approxInputTokens": 4096,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-short__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "short",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-short__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "short",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-short__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "short",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-short__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "short",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-short__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "short",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-short__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "short",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-short__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "short",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-short__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "short",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-medium__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "medium",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-medium__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "medium",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-medium__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "medium",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-medium__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "medium",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-medium__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "medium",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-medium__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "medium",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-medium__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "medium",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-medium__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "medium",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-long__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "long",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-long__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "long",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-long__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "long",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-long__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "long",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-long__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "long",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-long__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "long",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-long__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "long",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-large__out-long__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "large",
+        "outputSize": "long",
+        "approxInputTokens": 16384,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-short__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "short",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-short__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "short",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-short__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "short",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-short__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "short",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-short__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "short",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-short__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "short",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-short__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "short",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-short__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "short",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 64
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-medium__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "medium",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-medium__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "medium",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-medium__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "medium",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-medium__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "medium",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-medium__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "medium",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-medium__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "medium",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-medium__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "medium",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-medium__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "medium",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 512
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-long__c1",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "long",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 1,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-long__c4",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "long",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 4,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-long__c8",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "long",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 8,
+      "requests": 32,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-long__c32",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "long",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 32,
+      "requests": 64,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-long__c64",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "long",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 64,
+      "requests": 128,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-long__c128",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "long",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 128,
+      "requests": 256,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-long__c256",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "long",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 256,
+      "requests": 512,
+      "warmup": 3
+    },
+    {
+      "id": "chat__in-huge__out-long__c512",
+      "suite": "chat",
+      "params": {
+        "inputSize": "huge",
+        "outputSize": "long",
+        "approxInputTokens": 65536,
+        "maxOutputTokens": 2048
+      },
+      "concurrency": 512,
+      "requests": 1024,
+      "warmup": 3
+    }
+  ],
+  "states": [
+    {
+      "id": "chat__in-tiny__out-short__c1",
+      "status": "done",
+      "startedAt": 1778329248440,
+      "endedAt": 1778329285535
+    },
+    {
+      "id": "chat__in-tiny__out-short__c4",
+      "status": "done",
+      "startedAt": 1778329285546,
+      "endedAt": 1778329305837
+    },
+    {
+      "id": "chat__in-tiny__out-short__c8",
+      "status": "done",
+      "startedAt": 1778329305844,
+      "endedAt": 1778329317313
+    },
+    {
+      "id": "chat__in-tiny__out-short__c32",
+      "status": "done",
+      "startedAt": 1778329317318,
+      "endedAt": 1778329330456
+    },
+    {
+      "id": "chat__in-tiny__out-short__c64",
+      "status": "done",
+      "startedAt": 1778329330460,
+      "endedAt": 1778329353192
+    },
+    {
+      "id": "chat__in-tiny__out-short__c128",
+      "status": "done",
+      "startedAt": 1778329353198,
+      "endedAt": 1778329397535
+    },
+    {
+      "id": "chat__in-tiny__out-short__c256",
+      "status": "done",
+      "startedAt": 1778329397544,
+      "endedAt": 1778329480301
+    },
+    {
+      "id": "chat__in-tiny__out-short__c512",
+      "status": "done",
+      "startedAt": 1778329480309,
+      "endedAt": 1778329642883
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c1",
+      "status": "done",
+      "startedAt": 1778329642892,
+      "endedAt": 1778330045699
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c4",
+      "status": "done",
+      "startedAt": 1778330045703,
+      "endedAt": 1778330217340
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c8",
+      "status": "done",
+      "startedAt": 1778330217345,
+      "endedAt": 1778330342231
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c32",
+      "status": "done",
+      "startedAt": 1778330342238,
+      "endedAt": 1778330478749
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c64",
+      "status": "done",
+      "startedAt": 1778330478753,
+      "endedAt": 1778330718100
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c128",
+      "status": "degraded",
+      "startedAt": 1778330718105,
+      "reason": "128/256 failed",
+      "endedAt": 1778331616725
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c256",
+      "status": "degraded",
+      "startedAt": 1778331616739,
+      "reason": "424/512 failed",
+      "endedAt": 1778332616120
+    },
+    {
+      "id": "chat__in-tiny__out-medium__c512",
+      "status": "degraded",
+      "startedAt": 1778332616128,
+      "reason": "881/1024 failed",
+      "endedAt": 1778333803325
+    },
+    {
+      "id": "chat__in-tiny__out-long__c1",
+      "status": "done",
+      "startedAt": 1778333803333,
+      "endedAt": 1778335076569
+    },
+    {
+      "id": "chat__in-tiny__out-long__c4",
+      "status": "done",
+      "startedAt": 1778335076579,
+      "endedAt": 1778335628700
+    },
+    {
+      "id": "chat__in-tiny__out-long__c8",
+      "status": "done",
+      "startedAt": 1778335628705,
+      "endedAt": 1778336046412
+    },
+    {
+      "id": "chat__in-tiny__out-long__c32",
+      "status": "done",
+      "startedAt": 1778336046421,
+      "endedAt": 1778336530725
+    },
+    {
+      "id": "chat__in-tiny__out-long__c64",
+      "status": "done",
+      "startedAt": 1778336530732,
+      "endedAt": 1778337357245
+    },
+    {
+      "id": "chat__in-tiny__out-long__c128",
+      "status": "done",
+      "startedAt": 1778337357262,
+      "endedAt": 1778338649974
+    },
+    {
+      "id": "chat__in-tiny__out-long__c256",
+      "status": "done",
+      "startedAt": 1778338649981,
+      "endedAt": 1778340593278
+    },
+    {
+      "id": "chat__in-tiny__out-long__c512",
+      "status": "degraded",
+      "startedAt": 1778340593285,
+      "reason": "883/1024 failed",
+      "endedAt": 1778342440113
+    },
+    {
+      "id": "chat__in-small__out-short__c1",
+      "status": "done",
+      "startedAt": 1778342440118,
+      "endedAt": 1778342489100
+    },
+    {
+      "id": "chat__in-small__out-short__c4",
+      "status": "done",
+      "startedAt": 1778342489107,
+      "endedAt": 1778342508437
+    },
+    {
+      "id": "chat__in-small__out-short__c8",
+      "status": "done",
+      "startedAt": 1778342508442,
+      "endedAt": 1778342522363
+    },
+    {
+      "id": "chat__in-small__out-short__c32",
+      "status": "done",
+      "startedAt": 1778342522368,
+      "endedAt": 1778342540973
+    },
+    {
+      "id": "chat__in-small__out-short__c64",
+      "status": "done",
+      "startedAt": 1778342540979,
+      "endedAt": 1778342574345
+    },
+    {
+      "id": "chat__in-small__out-short__c128",
+      "status": "done",
+      "startedAt": 1778342574351,
+      "endedAt": 1778342635526
+    },
+    {
+      "id": "chat__in-small__out-short__c256",
+      "status": "done",
+      "startedAt": 1778342635532,
+      "endedAt": 1778342756281
+    },
+    {
+      "id": "chat__in-small__out-short__c512",
+      "status": "done",
+      "startedAt": 1778342756287,
+      "endedAt": 1778342991606
+    },
+    {
+      "id": "chat__in-small__out-medium__c1",
+      "status": "done",
+      "startedAt": 1778342991615,
+      "endedAt": 1778343397710
+    },
+    {
+      "id": "chat__in-small__out-medium__c4",
+      "status": "done",
+      "startedAt": 1778343397715,
+      "endedAt": 1778343567083
+    },
+    {
+      "id": "chat__in-small__out-medium__c8",
+      "status": "done",
+      "startedAt": 1778343567090,
+      "endedAt": 1778343691896
+    },
+    {
+      "id": "chat__in-small__out-medium__c32",
+      "status": "done",
+      "startedAt": 1778343691902,
+      "endedAt": 1778343847940
+    },
+    {
+      "id": "chat__in-small__out-medium__c64",
+      "status": "done",
+      "startedAt": 1778343847945,
+      "endedAt": 1778344116570
+    },
+    {
+      "id": "chat__in-small__out-medium__c128",
+      "status": "degraded",
+      "startedAt": 1778344116577,
+      "reason": "128/256 failed",
+      "endedAt": 1778345076697
+    },
+    {
+      "id": "chat__in-small__out-medium__c256",
+      "status": "degraded",
+      "startedAt": 1778345076705,
+      "reason": "427/512 failed",
+      "endedAt": 1778346074335
+    },
+    {
+      "id": "chat__in-small__out-medium__c512",
+      "status": "degraded",
+      "startedAt": 1778346074340,
+      "reason": "935/1024 failed",
+      "endedAt": 1778346951774
+    },
+    {
+      "id": "chat__in-small__out-long__c1",
+      "status": "done",
+      "startedAt": 1778346951781,
+      "endedAt": 1778348221474
+    },
+    {
+      "id": "chat__in-small__out-long__c4",
+      "status": "done",
+      "startedAt": 1778348221480,
+      "endedAt": 1778348790593
+    },
+    {
+      "id": "chat__in-small__out-long__c8",
+      "status": "done",
+      "startedAt": 1778348790598,
+      "endedAt": 1778349201326
+    },
+    {
+      "id": "chat__in-small__out-long__c32",
+      "status": "done",
+      "startedAt": 1778349201331,
+      "endedAt": 1778349722649
+    },
+    {
+      "id": "chat__in-small__out-long__c64",
+      "status": "done",
+      "startedAt": 1778349722654,
+      "endedAt": 1778350530181
+    },
+    {
+      "id": "chat__in-small__out-long__c128",
+      "status": "done",
+      "startedAt": 1778350530187,
+      "endedAt": 1778351935227
+    },
+    {
+      "id": "chat__in-small__out-long__c256",
+      "status": "done",
+      "startedAt": 1778351935233,
+      "endedAt": 1778354031407
+    },
+    {
+      "id": "chat__in-small__out-long__c512",
+      "status": "degraded",
+      "startedAt": 1778354031417,
+      "reason": "898/1024 failed",
+      "endedAt": 1778355888961
+    },
+    {
+      "id": "chat__in-medium__out-short__c1",
+      "status": "done",
+      "startedAt": 1778355888967,
+      "endedAt": 1778355950919
+    },
+    {
+      "id": "chat__in-medium__out-short__c4",
+      "status": "done",
+      "startedAt": 1778355950925,
+      "endedAt": 1778355981268
+    },
+    {
+      "id": "chat__in-medium__out-short__c8",
+      "status": "done",
+      "startedAt": 1778355981274,
+      "endedAt": 1778356007642
+    },
+    {
+      "id": "chat__in-medium__out-short__c32",
+      "status": "done",
+      "startedAt": 1778356007649,
+      "endedAt": 1778356051795
+    },
+    {
+      "id": "chat__in-medium__out-short__c64",
+      "status": "done",
+      "startedAt": 1778356051803,
+      "endedAt": 1778356134213
+    },
+    {
+      "id": "chat__in-medium__out-short__c128",
+      "status": "done",
+      "startedAt": 1778356134221,
+      "endedAt": 1778356292478
+    },
+    {
+      "id": "chat__in-medium__out-short__c256",
+      "status": "done",
+      "startedAt": 1778356292485,
+      "endedAt": 1778356792411
+    },
+    {
+      "id": "chat__in-medium__out-short__c512",
+      "status": "degraded",
+      "startedAt": 1778356792418,
+      "reason": "730/1024 failed",
+      "endedAt": 1778357295187
+    },
+    {
+      "id": "chat__in-medium__out-medium__c1",
+      "status": "done",
+      "startedAt": 1778357295194,
+      "endedAt": 1778357726668
+    },
+    {
+      "id": "chat__in-medium__out-medium__c4",
+      "status": "done",
+      "startedAt": 1778357726674,
+      "endedAt": 1778357913148
+    },
+    {
+      "id": "chat__in-medium__out-medium__c8",
+      "status": "done",
+      "startedAt": 1778357913153,
+      "endedAt": 1778358054824
+    },
+    {
+      "id": "chat__in-medium__out-medium__c32",
+      "status": "done",
+      "startedAt": 1778358054829,
+      "endedAt": 1778358256523
+    },
+    {
+      "id": "chat__in-medium__out-medium__c64",
+      "status": "done",
+      "startedAt": 1778358256530,
+      "endedAt": 1778358620300
+    },
+    {
+      "id": "chat__in-medium__out-medium__c128",
+      "status": "degraded",
+      "startedAt": 1778358620306,
+      "reason": "195/256 failed",
+      "endedAt": 1778359661752
+    },
+    {
+      "id": "chat__in-medium__out-medium__c256",
+      "status": "degraded",
+      "startedAt": 1778359661759,
+      "reason": "455/512 failed",
+      "endedAt": 1778360730256
+    },
+    {
+      "id": "chat__in-medium__out-medium__c512",
+      "status": "degraded",
+      "startedAt": 1778360730261,
+      "reason": "963/1024 failed",
+      "endedAt": 1778361602104
+    },
+    {
+      "id": "chat__in-medium__out-long__c1",
+      "status": "done",
+      "startedAt": 1778361602111,
+      "endedAt": 1778362973026
+    },
+    {
+      "id": "chat__in-medium__out-long__c4",
+      "status": "done",
+      "startedAt": 1778362973034,
+      "endedAt": 1778363555165
+    },
+    {
+      "id": "chat__in-medium__out-long__c8",
+      "status": "done",
+      "startedAt": 1778363555171,
+      "endedAt": 1778364002027
+    },
+    {
+      "id": "chat__in-medium__out-long__c32",
+      "status": "done",
+      "startedAt": 1778364002034,
+      "endedAt": 1778364616292
+    },
+    {
+      "id": "chat__in-medium__out-long__c64",
+      "status": "done",
+      "startedAt": 1778364616297,
+      "endedAt": 1778365639651
+    },
+    {
+      "id": "chat__in-medium__out-long__c128",
+      "status": "done",
+      "startedAt": 1778365639660,
+      "endedAt": 1778367186185
+    },
+    {
+      "id": "chat__in-medium__out-long__c256",
+      "status": "degraded",
+      "startedAt": 1778367186191,
+      "reason": "271/512 failed",
+      "endedAt": 1778369284972
+    },
+    {
+      "id": "chat__in-medium__out-long__c512",
+      "status": "degraded",
+      "startedAt": 1778369284979,
+      "reason": "921/1024 failed",
+      "endedAt": 1778371143429
+    },
+    {
+      "id": "chat__in-large__out-short__c1",
+      "status": "done",
+      "startedAt": 1778371143435,
+      "endedAt": 1778371282799
+    },
+    {
+      "id": "chat__in-large__out-short__c4",
+      "status": "done",
+      "startedAt": 1778371282804,
+      "endedAt": 1778371366871
+    },
+    {
+      "id": "chat__in-large__out-short__c8",
+      "status": "done",
+      "startedAt": 1778371366876,
+      "endedAt": 1778371449200
+    },
+    {
+      "id": "chat__in-large__out-short__c32",
+      "status": "done",
+      "startedAt": 1778371449205,
+      "endedAt": 1778371604135
+    },
+    {
+      "id": "chat__in-large__out-short__c64",
+      "status": "done",
+      "startedAt": 1778371604142,
+      "endedAt": 1778371901709
+    },
+    {
+      "id": "chat__in-large__out-short__c128",
+      "status": "done",
+      "startedAt": 1778371901714,
+      "endedAt": 1778372570025
+    },
+    {
+      "id": "chat__in-large__out-short__c256",
+      "status": "done",
+      "startedAt": 1778372570031,
+      "endedAt": 1778373742081
+    },
+    {
+      "id": "chat__in-large__out-short__c512",
+      "status": "degraded",
+      "startedAt": 1778373742089,
+      "reason": "713/1024 failed",
+      "endedAt": 1778375671550
+    },
+    {
+      "id": "chat__in-large__out-medium__c1",
+      "status": "done",
+      "startedAt": 1778375671556,
+      "endedAt": 1778376204494
+    },
+    {
+      "id": "chat__in-large__out-medium__c4",
+      "status": "done",
+      "startedAt": 1778376204500,
+      "endedAt": 1778376467020
+    },
+    {
+      "id": "chat__in-large__out-medium__c8",
+      "status": "done",
+      "startedAt": 1778376467025,
+      "endedAt": 1778376680752
+    },
+    {
+      "id": "chat__in-large__out-medium__c32",
+      "status": "done",
+      "startedAt": 1778376680759,
+      "endedAt": 1778377033874
+    },
+    {
+      "id": "chat__in-large__out-medium__c64",
+      "status": "done",
+      "startedAt": 1778377033879,
+      "endedAt": 1778377711900
+    },
+    {
+      "id": "chat__in-large__out-medium__c128",
+      "status": "done",
+      "startedAt": 1778377711906,
+      "endedAt": 1778378838490
+    },
+    {
+      "id": "chat__in-large__out-medium__c256",
+      "status": "done",
+      "startedAt": 1778378838498,
+      "endedAt": 1778380615375
+    },
+    {
+      "id": "chat__in-large__out-medium__c512",
+      "status": "degraded",
+      "startedAt": 1778380615383,
+      "reason": "867/1024 failed",
+      "endedAt": 1778382468370
+    },
+    {
+      "id": "chat__in-large__out-long__c1",
+      "status": "done",
+      "startedAt": 1778382468376,
+      "endedAt": 1778383975367
+    },
+    {
+      "id": "chat__in-large__out-long__c4",
+      "status": "done",
+      "startedAt": 1778383975375,
+      "endedAt": 1778384677277
+    },
+    {
+      "id": "chat__in-large__out-long__c8",
+      "status": "done",
+      "startedAt": 1778384677283,
+      "endedAt": 1778385229995
+    },
+    {
+      "id": "chat__in-large__out-long__c32",
+      "status": "done",
+      "startedAt": 1778385230001,
+      "endedAt": 1778385965664
+    },
+    {
+      "id": "chat__in-large__out-long__c64",
+      "status": "done",
+      "startedAt": 1778385965669,
+      "endedAt": 1778387259312
+    },
+    {
+      "id": "chat__in-large__out-long__c128",
+      "status": "done",
+      "startedAt": 1778387259322,
+      "endedAt": 1778388962215
+    },
+    {
+      "id": "chat__in-large__out-long__c256",
+      "status": "done",
+      "startedAt": 1778388962222,
+      "endedAt": 1778390443974
+    },
+    {
+      "id": "chat__in-large__out-long__c512",
+      "status": "degraded",
+      "startedAt": 1778390443982,
+      "reason": "580/1024 failed",
+      "endedAt": 1778394053245
+    },
+    {
+      "id": "chat__in-huge__out-short__c1",
+      "status": "done",
+      "startedAt": 1778394053253,
+      "endedAt": 1778394474621
+    },
+    {
+      "id": "chat__in-huge__out-short__c4",
+      "status": "done",
+      "startedAt": 1778394474629,
+      "endedAt": 1778394843930
+    },
+    {
+      "id": "chat__in-huge__out-short__c8",
+      "status": "done",
+      "startedAt": 1778394843938,
+      "endedAt": 1778395214752
+    },
+    {
+      "id": "chat__in-huge__out-short__c32",
+      "status": "done",
+      "startedAt": 1778395214759,
+      "endedAt": 1778395929475
+    },
+    {
+      "id": "chat__in-huge__out-short__c64",
+      "status": "done",
+      "startedAt": 1778395929480,
+      "endedAt": 1778396959675
+    },
+    {
+      "id": "chat__in-huge__out-short__c128",
+      "status": "done",
+      "startedAt": 1778396959684,
+      "endedAt": 1778398010930
+    },
+    {
+      "id": "chat__in-huge__out-short__c256",
+      "status": "done",
+      "startedAt": 1778398010942,
+      "endedAt": 1778399495550
+    },
+    {
+      "id": "chat__in-huge__out-short__c512",
+      "status": "done",
+      "startedAt": 1778399495557,
+      "endedAt": 1778402231360
+    },
+    {
+      "id": "chat__in-huge__out-medium__c1",
+      "status": "done",
+      "startedAt": 1778402231371,
+      "endedAt": 1778403140044
+    },
+    {
+      "id": "chat__in-huge__out-medium__c4",
+      "status": "done",
+      "startedAt": 1778403140052,
+      "endedAt": 1778403741771
+    },
+    {
+      "id": "chat__in-huge__out-medium__c8",
+      "status": "done",
+      "startedAt": 1778403741787,
+      "endedAt": 1778404338965
+    },
+    {
+      "id": "chat__in-huge__out-medium__c32",
+      "status": "done",
+      "startedAt": 1778404338972,
+      "endedAt": 1778405253779
+    },
+    {
+      "id": "chat__in-huge__out-medium__c64",
+      "status": "done",
+      "startedAt": 1778405253787,
+      "endedAt": 1778406386843
+    },
+    {
+      "id": "chat__in-huge__out-medium__c128",
+      "status": "done",
+      "startedAt": 1778406386852,
+      "endedAt": 1778407766580
+    },
+    {
+      "id": "chat__in-huge__out-medium__c256",
+      "status": "done",
+      "startedAt": 1778407766587,
+      "endedAt": 1778409445331
+    },
+    {
+      "id": "chat__in-huge__out-medium__c512",
+      "status": "done",
+      "startedAt": 1778409445341,
+      "endedAt": 1778412204039
+    },
+    {
+      "id": "chat__in-huge__out-long__c1",
+      "status": "done",
+      "startedAt": 1778412204048,
+      "endedAt": 1778414174785
+    },
+    {
+      "id": "chat__in-huge__out-long__c4",
+      "status": "done",
+      "startedAt": 1778414174794,
+      "endedAt": 1778415302498
+    },
+    {
+      "id": "chat__in-huge__out-long__c8",
+      "status": "done",
+      "startedAt": 1778415302504,
+      "endedAt": 1778416420146
+    },
+    {
+      "id": "chat__in-huge__out-long__c32",
+      "status": "done",
+      "startedAt": 1778416420153,
+      "endedAt": 1778417935496
+    },
+    {
+      "id": "chat__in-huge__out-long__c64",
+      "status": "done",
+      "startedAt": 1778417935504,
+      "endedAt": 1778419198965
+    },
+    {
+      "id": "chat__in-huge__out-long__c128",
+      "status": "done",
+      "startedAt": 1778419198973,
+      "endedAt": 1778420459869
+    },
+    {
+      "id": "chat__in-huge__out-long__c256",
+      "status": "done",
+      "startedAt": 1778420459880,
+      "endedAt": 1778422655704
+    },
+    {
+      "id": "chat__in-huge__out-long__c512",
+      "status": "done",
+      "startedAt": 1778422655711,
+      "endedAt": 1778425560520
+    }
+  ],
+  "aggregates": [
+    {
+      "scenarioId": "chat__in-tiny__out-short__c1",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 1077.6120160937494,
+        "p50": 1032.422796999992,
+        "p90": 1236.9299005999856,
+        "p95": 1359.0011947000035,
+        "p99": 1420.4767185399974,
+        "min": 755.81558699999,
+        "max": 1432.7480269999942
+      },
+      "scenarioWallMs": 34508.96295399999,
+      "effectiveConcurrency": 1,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 363.5436247187513,
+        "p50": 321.04367400000046,
+        "p90": 508.9331852999982,
+        "p95": 511.91327385000477,
+        "p99": 583.5073156399917,
+        "min": 274.2635949999967,
+        "max": 615.4165319999884
+      },
+      "outputTokensPerSec": {
+        "mean": 36.546618657010484,
+        "p50": 35.47981979014498,
+        "p95": 47.89427070178052
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 23.44318492208493,
+      "goodputOutputTokensPerSec": 23.44318492208493
+    },
+    {
+      "scenarioId": "chat__in-tiny__out-short__c4",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 2045.9595453749998,
+        "p50": 1561.3639589999948,
+        "p90": 4636.708889800017,
+        "p95": 5720.8021998499835,
+        "p99": 6031.8129555499945,
+        "min": 1127.7942570000014,
+        "max": 6076.210441000003
+      },
+      "scenarioWallMs": 16924.256790000014,
+      "effectiveConcurrency": 3.891886860613163,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 846.1388290624982,
+        "p50": 402.7304005000042,
+        "p90": 523.9815884000011,
+        "p95": 4921.258341799998,
+        "p99": 4922.1066965899945,
+        "min": 340.52203200000804,
+        "max": 4922.224375999998
+      },
+      "outputTokensPerSec": {
+        "mean": 22.131456130423867,
+        "p50": 21.952632448033576,
+        "p95": 27.901322395392803
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 46.08769588398565,
+      "goodputOutputTokensPerSec": 46.08769588398565
+    },
+    {
+      "scenarioId": "chat__in-tiny__out-short__c8",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 2161.981261031251,
+        "p50": 2212.617954000001,
+        "p90": 2840.570830900019,
+        "p95": 2882.997631700001,
+        "p99": 3047.1805923999955,
+        "min": 1351.911723999976,
+        "max": 3117.0424899999925
+      },
+      "scenarioWallMs": 9148.316253000026,
+      "effectiveConcurrency": 7.6678105376804275,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 571.2459490937554,
+        "p50": 526.8960800000059,
+        "p90": 872.1645325000052,
+        "p95": 886.8774762500034,
+        "p99": 889.2448487900142,
+        "min": 432.2159790000005,
+        "max": 889.4825230000133
+      },
+      "outputTokensPerSec": {
+        "mean": 17.048151764745022,
+        "p50": 16.53740973315866,
+        "p95": 24.361044182996263
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 89.9619096279178,
+      "goodputOutputTokensPerSec": 89.9619096279178
+    },
+    {
+      "scenarioId": "chat__in-tiny__out-short__c32",
+      "status": "done",
+      "total": 64,
+      "successful": 64,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 4559.39401646875,
+        "p50": 4374.158353999999,
+        "p90": 6194.687240500012,
+        "p95": 6459.533598949999,
+        "p99": 7391.073062839998,
+        "min": 2324.055210999999,
+        "max": 7391.498837000021
+      },
+      "scenarioWallMs": 10412.510802000004,
+      "effectiveConcurrency": 28.303328062428804,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 2101.686505609375,
+        "p50": 2047.7828819999995,
+        "p90": 3826.016729599994,
+        "p95": 3950.9688216999966,
+        "p99": 4124.209009500005,
+        "min": 734.9433779999963,
+        "max": 4381.285959000001
+      },
+      "outputTokensPerSec": {
+        "mean": 10.626863747922448,
+        "p50": 9.677975156159654,
+        "p95": 16.027398855028956
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 152.60488370343776,
+      "goodputOutputTokensPerSec": 152.60488370343776
+    },
+    {
+      "scenarioId": "chat__in-tiny__out-short__c64",
+      "status": "done",
+      "total": 128,
+      "successful": 128,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 8257.564772734375,
+        "p50": 9238.309976999997,
+        "p90": 10770.3423409,
+        "p95": 11046.790323000001,
+        "p99": 11427.54853792,
+        "min": 2628.9428520000074,
+        "max": 12380.894456000009
+      },
+      "scenarioWallMs": 20131.48649000001,
+      "effectiveConcurrency": 52.76542792394816,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 5580.4956246406255,
+        "p50": 6747.259228500014,
+        "p90": 7460.138685300012,
+        "p95": 7641.6998872999975,
+        "p99": 8391.985112809994,
+        "min": 535.3854310000024,
+        "max": 8521.939022999984
+      },
+      "outputTokensPerSec": {
+        "mean": 9.956110439644299,
+        "p50": 9.08994107831418,
+        "p95": 14.992889130853298
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 160.29616102134136,
+      "goodputOutputTokensPerSec": 160.29616102134136
+    },
+    {
+      "scenarioId": "chat__in-tiny__out-short__c128",
+      "status": "done",
+      "total": 256,
+      "successful": 256,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 16257.320597730466,
+        "p50": 19434.295555500008,
+        "p90": 21206.268509500005,
+        "p95": 21767.475640499993,
+        "p99": 22617.827811900006,
+        "min": 2200.70410599999,
+        "max": 22982.716476
+      },
+      "scenarioWallMs": 41260.951384000015,
+      "effectiveConcurrency": 101.03185551384124,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 13359.311470843753,
+        "p50": 17120.346863999992,
+        "p90": 17807.782934499992,
+        "p95": 17953.6591825,
+        "p99": 18938.321025400008,
+        "min": 608.595484999998,
+        "max": 18940.867312000017
+      },
+      "outputTokensPerSec": {
+        "mean": 8.995717362420978,
+        "p50": 8.489902801178458,
+        "p95": 12.420510819674927
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 155.30422312280626,
+      "goodputOutputTokensPerSec": 155.30422312280626
+    },
+    {
+      "scenarioId": "chat__in-tiny__out-short__c256",
+      "status": "done",
+      "total": 512,
+      "successful": 512,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 30878.14034253906,
+        "p50": 38719.612565999996,
+        "p90": 40574.748528300006,
+        "p95": 41056.71208704998,
+        "p99": 41768.44686486998,
+        "min": 2335.5922579999897,
+        "max": 42405.01644100004
+      },
+      "scenarioWallMs": 80213.92787000001,
+      "effectiveConcurrency": 197.36001235544651,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 28020.776189416018,
+        "p50": 36476.00510899999,
+        "p90": 37321.53395590002,
+        "p95": 37483.21140065001,
+        "p99": 38221.47300776995,
+        "min": 565.8375339999911,
+        "max": 38727.68729300005
+      },
+      "outputTokensPerSec": {
+        "mean": 8.966882639989816,
+        "p50": 8.668236606109485,
+        "p95": 12.00383127426389
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 158.8751522136376,
+      "goodputOutputTokensPerSec": 158.8751522136376
+    },
+    {
+      "scenarioId": "chat__in-tiny__out-short__c512",
+      "status": "done",
+      "total": 1024,
+      "successful": 1024,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 60545.927368716824,
+        "p50": 78090.42013699998,
+        "p90": 80077.3007326,
+        "p95": 80472.85739089997,
+        "p99": 81276.60870935002,
+        "min": 2670.2376550000045,
+        "max": 82470.306583
+      },
+      "scenarioWallMs": 159739.746231,
+      "effectiveConcurrency": 388.3824290191482,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 57665.79737648641,
+        "p50": 75735.51258899999,
+        "p90": 76868.32654549998,
+        "p95": 77069.14480175,
+        "p99": 77405.73662710996,
+        "min": 578.964937999961,
+        "max": 78670.73375900002
+      },
+      "outputTokensPerSec": {
+        "mean": 8.82758006882866,
+        "p50": 8.552534142545625,
+        "p95": 11.694402419080628
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 158.3012405906318,
+      "goodputOutputTokensPerSec": 158.3012405906318
+    },
+    {
+      "scenarioId": "chat__in-tiny__out-medium__c1",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 11468.317378031246,
+        "p50": 11430.909098999982,
+        "p90": 12287.310237500002,
+        "p95": 12337.107488749974,
+        "p99": 12601.933127320046,
+        "min": 10127.790187999955,
+        "max": 12697.238606000086
+      },
+      "scenarioWallMs": 367015.58733600006,
+      "effectiveConcurrency": 1,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 333.25857571874803,
+        "p50": 303.91401950008003,
+        "p90": 410.3358079999918,
+        "p95": 451.45320745003403,
+        "p99": 572.4840548599618,
+        "min": 265.597231999971,
+        "max": 612.9224059999688
+      },
+      "outputTokensPerSec": {
+        "mean": 45.990406689211554,
+        "p50": 45.5651321366516,
+        "p95": 49.77363803823824
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 44.53761792148451,
+      "goodputOutputTokensPerSec": 44.53761792148451
+    },
+    {
+      "scenarioId": "chat__in-tiny__out-medium__c4",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 16868.899761656256,
+        "p50": 17058.370080500084,
+        "p90": 17731.03359200002,
+        "p95": 18080.463856250008,
+        "p99": 18154.26463576997,
+        "min": 14548.760746000102,
+        "max": 18157.723346999963
+      },
+      "scenarioWallMs": 137271.72037799994,
+      "effectiveConcurrency": 3.933822354751443,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 505.4084188437664,
+        "p50": 390.65608400001656,
+        "p90": 489.39463149996016,
+        "p95": 1536.367254349991,
+        "p99": 1536.955944729992,
+        "min": 356.3729989998974,
+        "max": 1536.9618710000068
+      },
+      "outputTokensPerSec": {
+        "mean": 31.37024351279443,
+        "p50": 30.865491287769824,
+        "p95": 34.687047240739716
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 119.2816696324016,
+      "goodputOutputTokensPerSec": 119.2816696324016
+    },
+    {
+      "scenarioId": "chat__in-tiny__out-medium__c8",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 21432.221751249992,
+        "p50": 21528.04341949988,
+        "p90": 23357.764972500154,
+        "p95": 23657.117673349996,
+        "p99": 23998.39032205997,
+        "min": 18050.28080199985,
+        "max": 24067.68284699996
+      },
+      "scenarioWallMs": 88181.91606299998,
+      "effectiveConcurrency": 7.787572509198822,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 641.8076983437422,
+        "p50": 492.1804809998721,
+        "p90": 1481.1146632998966,
+        "p95": 1566.8892435499351,
+        "p99": 1567.2853226699842,
+        "min": 452.0365480000619,
+        "max": 1567.4119090000167
+      },
+      "outputTokensPerSec": {
+        "mean": 24.498788077416712,
+        "p50": 24.26788669122867,
+        "p95": 26.81974200232361
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 184.10804306408124,
+      "goodputOutputTokensPerSec": 184.10804306408124
+    },
+    {
+      "scenarioId": "chat__in-tiny__out-medium__c32",
+      "status": "done",
+      "total": 64,
+      "successful": 64,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 43902.77032537502,
+        "p50": 37137.27587100002,
+        "p90": 64072.9946449999,
+        "p95": 66111.49813024995,
+        "p99": 68696.31129343006,
+        "min": 28966.867331000045,
+        "max": 70184.66943400004
+      },
+      "scenarioWallMs": 103048.10876700003,
+      "effectiveConcurrency": 27.2979958103242,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 11543.093895046874,
+        "p50": 4624.550437500118,
+        "p90": 31492.355110499917,
+        "p95": 33030.23739755013,
+        "p99": 33440.71162767998,
+        "min": 628.5088969999924,
+        "max": 33585.83601099998
+      },
+      "outputTokensPerSec": {
+        "mean": 15.74113987929869,
+        "p50": 15.732187208398537,
+        "p95": 17.434469038830123
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 315.19258711908884,
+      "goodputOutputTokensPerSec": 315.19258711908884
+    },
+    {
+      "scenarioId": "chat__in-tiny__out-medium__c64",
+      "status": "done",
+      "total": 128,
+      "successful": 128,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 83046.16081130467,
+        "p50": 97283.16247749992,
+        "p90": 103986.44520470004,
+        "p95": 104886.21278540012,
+        "p99": 106721.20886907991,
+        "min": 30281.190334999934,
+        "max": 108184.874297
+      },
+      "scenarioWallMs": 205074.17274200008,
+      "effectiveConcurrency": 51.86329687419213,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 49785.45609271093,
+        "p50": 66843.57176600001,
+        "p90": 69041.6175687999,
+        "p95": 69835.29685384984,
+        "p99": 72486.41424972992,
+        "min": 508.44150600000285,
+        "max": 73077.43987599993
+      },
+      "outputTokensPerSec": {
+        "mean": 15.421057256196542,
+        "p50": 15.154050150105055,
+        "p95": 17.704192648988382
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 318.2994675888379,
+      "goodputOutputTokensPerSec": 318.2994675888379
+    },
+    {
+      "scenarioId": "chat__in-tiny__out-medium__c128",
+      "status": "degraded",
+      "reason": "128/256 failed",
+      "total": 256,
+      "successful": 128,
+      "byErrorKind": {
+        "timeout": 128
+      },
+      "wallMs": {
+        "mean": 164240.6967942344,
+        "p50": 108945.5926485,
+        "p90": 345359.9633735001,
+        "p95": 347731.51446334994,
+        "p99": 382440.25367379014,
+        "min": 30453.299909000052,
+        "max": 383444.8099869997
+      },
+      "scenarioWallMs": 864907.0348899998,
+      "effectiveConcurrency": 95.55262363874063,
+      "retryRate": 0.15625,
+      "failureRate": 0.5,
+      "ttftMs": {
+        "mean": 131068.35183239849,
+        "p50": 73384.30131300003,
+        "p90": 313130.39968219964,
+        "p95": 318933.37188550015,
+        "p99": 362226.2735147899,
+        "min": 471.2708419999108,
+        "max": 362397.0979940002
+      },
+      "outputTokensPerSec": {
+        "mean": 15.637831049866449,
+        "p50": 15.137191263470164,
+        "p95": 18.740917276606236
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 75.5214113945869,
+      "goodputOutputTokensPerSec": 75.5214113945869
+    },
+    {
+      "scenarioId": "chat__in-tiny__out-medium__c256",
+      "status": "degraded",
+      "reason": "424/512 failed",
+      "total": 512,
+      "successful": 88,
+      "byErrorKind": {
+        "timeout": 424
+      },
+      "wallMs": {
+        "mean": 86232.74518569316,
+        "p50": 85904.2478435,
+        "p90": 138457.97578370004,
+        "p95": 141901.291705,
+        "p99": 147290.26946875989,
+        "min": 27181.71576299984,
+        "max": 147607.8561409996
+      },
+      "scenarioWallMs": 963207.4815179999,
+      "effectiveConcurrency": 219.77635787904754,
+      "retryRate": 0,
+      "failureRate": 0.828125,
+      "ttftMs": {
+        "mean": 52339.3824453523,
+        "p50": 51417.49755950016,
+        "p90": 103569.99580890001,
+        "p95": 107232.50505419992,
+        "p99": 111078.80023267995,
+        "min": 543.4705690001138,
+        "max": 112973.80885999976
+      },
+      "outputTokensPerSec": {
+        "mean": 15.102445994424267,
+        "p50": 14.975397282273038,
+        "p95": 16.912570329101502
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 46.52372501236908,
+      "goodputOutputTokensPerSec": 46.52372501236908
+    },
+    {
+      "scenarioId": "chat__in-tiny__out-medium__c512",
+      "status": "degraded",
+      "reason": "881/1024 failed",
+      "total": 1024,
+      "successful": 143,
+      "byErrorKind": {
+        "network": 537,
+        "timeout": 344
+      },
+      "wallMs": {
+        "mean": 174472.3630544475,
+        "p50": 135119.3842369998,
+        "p90": 491189.39634220005,
+        "p95": 501971.23492969974,
+        "p99": 509372.73662284017,
+        "min": 30600.211094000377,
+        "max": 513394.5543789994
+      },
+      "scenarioWallMs": 994671.6132619996,
+      "effectiveConcurrency": 304.4718197394628,
+      "retryRate": 0.05078125,
+      "failureRate": 0.8603515625,
+      "ttftMs": {
+        "mean": 140615.84241628667,
+        "p50": 101110.35762300016,
+        "p90": 456858.48390520026,
+        "p95": 468242.5782844999,
+        "p99": 480440.4244666402,
+        "min": 281.02145900018513,
+        "max": 480998.42398099974
+      },
+      "outputTokensPerSec": {
+        "mean": 15.079931802686136,
+        "p50": 14.977924655713046,
+        "p95": 16.726095800942204
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 73.11458277320317,
+      "goodputOutputTokensPerSec": 73.11458277320317
+    },
+    {
+      "scenarioId": "chat__in-tiny__out-long__c1",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 36457.914420843794,
+        "p50": 36728.756369499955,
+        "p90": 42095.67098290054,
+        "p95": 42496.08340624995,
+        "p99": 43074.24234545018,
+        "min": 19925.829615999945,
+        "max": 43203.52533600014
+      },
+      "scenarioWallMs": 1166676.9613740006,
+      "effectiveConcurrency": 1,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 357.0886190626479,
+        "p50": 308.7811714997515,
+        "p90": 510.1992358003743,
+        "p95": 511.2996420499403,
+        "p99": 515.1552863305528,
+        "min": 274.9023989997804,
+        "max": 516.6882230006158
+      },
+      "outputTokensPerSec": {
+        "mean": 50.6224741998517,
+        "p50": 49.87300409179704,
+        "p95": 55.39596868919902
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 50.030987096254464,
+      "goodputOutputTokensPerSec": 50.030987096254464
+    },
+    {
+      "scenarioId": "chat__in-tiny__out-long__c4",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 54384.74134887493,
+        "p50": 55180.197260499466,
+        "p90": 59885.18748809993,
+        "p95": 60315.56898280005,
+        "p99": 61510.990642940444,
+        "min": 44466.01340499986,
+        "max": 61938.84818700049
+      },
+      "scenarioWallMs": 444010.05721999984,
+      "effectiveConcurrency": 3.920397373030139,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 483.84630137492786,
+        "p50": 402.05068049998954,
+        "p90": 507.8631370999851,
+        "p95": 1226.6365437501577,
+        "p99": 1227.2968178101814,
+        "min": 384.80829399917275,
+        "max": 1227.5036030001938
+      },
+      "outputTokensPerSec": {
+        "mean": 35.06460970935026,
+        "p50": 35.011399597033474,
+        "p95": 37.98335835898482
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 136.0734943219177,
+      "goodputOutputTokensPerSec": 136.0734943219177
+    },
+    {
+      "scenarioId": "chat__in-tiny__out-long__c8",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 70107.96221090635,
+        "p50": 69317.22242300026,
+        "p90": 78846.63796620005,
+        "p95": 80892.06881245035,
+        "p99": 82194.67174539987,
+        "min": 50220.93926099967,
+        "max": 82632.80102599971
+      },
+      "scenarioWallMs": 294508.2909440007,
+      "effectiveConcurrency": 7.621051240849106,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 582.5102727500489,
+        "p50": 509.68266849964857,
+        "p90": 981.2524307999767,
+        "p95": 1011.426078750426,
+        "p99": 1011.7712443902343,
+        "min": 421.14326999988407,
+        "max": 1011.8701440002769
+      },
+      "outputTokensPerSec": {
+        "mean": 26.623514456497848,
+        "p50": 26.30853295483402,
+        "p95": 29.092782552944122
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 200.8975700152704,
+      "goodputOutputTokensPerSec": 200.8975700152704
+    },
+    {
+      "scenarioId": "chat__in-tiny__out-long__c32",
+      "status": "done",
+      "total": 64,
+      "successful": 64,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 160828.78504412493,
+        "p50": 142694.16394350026,
+        "p90": 235393.0245559996,
+        "p95": 237371.9775946499,
+        "p99": 250842.90940718036,
+        "min": 95529.89878500067,
+        "max": 251960.00746100023
+      },
+      "scenarioWallMs": 379540.5349429995,
+      "effectiveConcurrency": 27.127703657640062,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 43087.61873651559,
+        "p50": 20343.35967649985,
+        "p90": 111221.35964009985,
+        "p95": 115298.4052836507,
+        "p99": 117078.23797278978,
+        "min": 551.2092249998823,
+        "max": 117373.28944299929
+      },
+      "outputTokensPerSec": {
+        "mean": 16.144216339140637,
+        "p50": 16.41801341968207,
+        "p95": 17.603051472916878
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 318.90137905343244,
+      "goodputOutputTokensPerSec": 318.90137905343244
+    },
+    {
+      "scenarioId": "chat__in-tiny__out-long__c64",
+      "status": "done",
+      "total": 128,
+      "successful": 128,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 286539.8870893439,
+        "p50": 282189.057761,
+        "p90": 452659.2454554002,
+        "p95": 540320.1410130002,
+        "p99": 540411.2593986101,
+        "min": 95339.44293899927,
+        "max": 540412.9093659995
+      },
+      "scenarioWallMs": 721215.6860450003,
+      "effectiveConcurrency": 50.86142981863124,
+      "retryRate": 0.171875,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 176977.40331685933,
+        "p50": 163558.2033485002,
+        "p90": 347870.3634044002,
+        "p95": 420108.51006820024,
+        "p99": 428569.94641422003,
+        "min": 713.6854059994221,
+        "max": 469876.1142889997
+      },
+      "outputTokensPerSec": {
+        "mean": 17.88813354493005,
+        "p50": 16.802247591910216,
+        "p95": 22.84775346004256
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 340.1617640145068,
+      "goodputOutputTokensPerSec": 340.1617640145068
+    },
+    {
+      "scenarioId": "chat__in-tiny__out-long__c128",
+      "status": "done",
+      "total": 256,
+      "successful": 218,
+      "byErrorKind": {
+        "timeout": 38
+      },
+      "wallMs": {
+        "mean": 391625.92002966965,
+        "p50": 300057.7198695,
+        "p90": 780647.0895338007,
+        "p95": 874005.4883827994,
+        "p99": 1021324.8505038704,
+        "min": 89094.42096000072,
+        "max": 1021339.4370949995
+      },
+      "scenarioWallMs": 1171175.811826,
+      "effectiveConcurrency": 104.09645904607075,
+      "retryRate": 0.2421875,
+      "failureRate": 0.1484375,
+      "ttftMs": {
+        "mean": 289123.26186030736,
+        "p50": 185225.1581144994,
+        "p90": 707339.8096883999,
+        "p95": 780922.3394512504,
+        "p99": 939541.9095575609,
+        "min": 521.1839009998366,
+        "max": 957514.4810119998
+      },
+      "outputTokensPerSec": {
+        "mean": 18.34902526795821,
+        "p50": 18.42170182859178,
+        "p95": 23.853138293061207
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 342.63941924683405,
+      "goodputOutputTokensPerSec": 342.63941924683405
+    },
+    {
+      "scenarioId": "chat__in-tiny__out-long__c256",
+      "status": "done",
+      "total": 512,
+      "successful": 307,
+      "byErrorKind": {
+        "timeout": 205
+      },
+      "wallMs": {
+        "mean": 433254.8186102996,
+        "p50": 300067.64918399975,
+        "p90": 780767.7729700003,
+        "p95": 1018906.5330344992,
+        "p99": 1021260.39362304,
+        "min": 92859.94039899856,
+        "max": 1021839.8254630007
+      },
+      "scenarioWallMs": 1825662.272460999,
+      "effectiveConcurrency": 180.81278896695812,
+      "retryRate": 0.23046875,
+      "failureRate": 0.400390625,
+      "ttftMs": {
+        "mean": 328228.43764193804,
+        "p50": 217638.089133,
+        "p90": 707867.0249602005,
+        "p95": 901053.6318215007,
+        "p99": 956500.9026751597,
+        "min": 341.5173320006579,
+        "max": 961043.425511999
+      },
+      "outputTokensPerSec": {
+        "mean": 18.90939075875044,
+        "p50": 17.72132252496098,
+        "p95": 23.589015283358023
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 327.1437488790846,
+      "goodputOutputTokensPerSec": 327.1437488790846
+    },
+    {
+      "scenarioId": "chat__in-tiny__out-long__c512",
+      "status": "degraded",
+      "reason": "883/1024 failed",
+      "total": 1024,
+      "successful": 141,
+      "byErrorKind": {
+        "network": 404,
+        "timeout": 479
+      },
+      "wallMs": {
+        "mean": 482953.2908077945,
+        "p50": 300320.96106800064,
+        "p90": 931443.4985240009,
+        "p95": 1021753.304161001,
+        "p99": 1044712.4750489999,
+        "min": 98424.4839859996,
+        "max": 1044729.5580139998
+      },
+      "scenarioWallMs": 1743249.399572,
+      "effectiveConcurrency": 374.12586374410324,
+      "retryRate": 0.0634765625,
+      "failureRate": 0.8623046875,
+      "ttftMs": {
+        "mean": 375065.8335005744,
+        "p50": 230977.87820200063,
+        "p90": 840899.6480689999,
+        "p95": 933037.5640409999,
+        "p99": 933176.0409015995,
+        "min": 326.13223100081086,
+        "max": 934182.543525001
+      },
+      "outputTokensPerSec": {
+        "mean": 18.312059234618854,
+        "p50": 16.76380800192611,
+        "p95": 24.460565821564547
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 156.16468880863434,
+      "goodputOutputTokensPerSec": 156.16468880863434
+    },
+    {
+      "scenarioId": "chat__in-small__out-short__c1",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 1406.2500112498528,
+        "p50": 1405.110057500191,
+        "p90": 1660.683144001104,
+        "p95": 1746.2541714994236,
+        "p99": 1936.745030469932,
+        "min": 1023.5359729994088,
+        "max": 2020.202909000218
+      },
+      "scenarioWallMs": 45023.88197300024,
+      "effectiveConcurrency": 1,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 542.5331184374518,
+        "p50": 511.51977700088173,
+        "p90": 716.4196539992466,
+        "p95": 717.4670433498919,
+        "p99": 786.2299347501063,
+        "min": 427.17459600046277,
+        "max": 816.8569970000535
+      },
+      "outputTokensPerSec": {
+        "mean": 29.189525629642002,
+        "p50": 28.17696435940873,
+        "p95": 41.75145170856874
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 17.324139230547637,
+      "goodputOutputTokensPerSec": 17.324139230547637
+    },
+    {
+      "scenarioId": "chat__in-small__out-short__c4",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 1810.673343937262,
+        "p50": 1759.5106515008956,
+        "p90": 2256.7053862992675,
+        "p95": 2526.6491071496157,
+        "p99": 2999.069363800698,
+        "min": 1118.2544090002775,
+        "max": 3172.509751001373
+      },
+      "scenarioWallMs": 14830.643198998645,
+      "effectiveConcurrency": 3.9339026854848145,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 634.8283768748515,
+        "p50": 636.0014439998195,
+        "p90": 902.6570053989071,
+        "p95": 924.7084490505047,
+        "p99": 929.5724454206601,
+        "min": 437.13044000044465,
+        "max": 929.8901390004903
+      },
+      "outputTokensPerSec": {
+        "mean": 21.21693425211209,
+        "p50": 20.38885613412656,
+        "p95": 30.657539517699846
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 50.84068100639826,
+      "goodputOutputTokensPerSec": 50.84068100639826
+    },
+    {
+      "scenarioId": "chat__in-small__out-short__c8",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 2482.658626312623,
+        "p50": 2312.6665970003232,
+        "p90": 3344.4992399999874,
+        "p95": 3426.4694414004684,
+        "p99": 4077.480485779663,
+        "min": 1677.653586000204,
+        "max": 4368.433949999511
+      },
+      "scenarioWallMs": 10712.850185999647,
+      "effectiveConcurrency": 7.492102263861008,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 918.2957386873895,
+        "p50": 846.5272999992594,
+        "p90": 1426.172839200683,
+        "p95": 1469.2732800992205,
+        "p99": 1522.3208995996974,
+        "min": 475.39501200057566,
+        "max": 1522.5881939996034
+      },
+      "outputTokensPerSec": {
+        "mean": 16.346565154330726,
+        "p50": 14.765900846707567,
+        "p95": 27.03590686314661
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 70.47610924184214,
+      "goodputOutputTokensPerSec": 70.47610924184214
+    },
+    {
+      "scenarioId": "chat__in-small__out-short__c32",
+      "status": "done",
+      "total": 64,
+      "successful": 64,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 6835.9606533125625,
+        "p50": 6571.851422499865,
+        "p90": 9816.896201099271,
+        "p95": 10604.542967549804,
+        "p99": 11659.276032849995,
+        "min": 3695.9101280011237,
+        "max": 12061.712980000302
+      },
+      "scenarioWallMs": 15215.34163399972,
+      "effectiveConcurrency": 28.973930226736115,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 3320.0307937186735,
+        "p50": 3048.8444090001285,
+        "p90": 5787.1828823003925,
+        "p95": 6333.042748249415,
+        "p99": 6931.494659209176,
+        "min": 618.2746070008725,
+        "max": 7211.3991439994425
+      },
+      "outputTokensPerSec": {
+        "mean": 7.932650170281053,
+        "p50": 6.507314089401164,
+        "p95": 19.60924909380525
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 102.26520293984143,
+      "goodputOutputTokensPerSec": 102.26520293984143
+    },
+    {
+      "scenarioId": "chat__in-small__out-short__c64",
+      "status": "done",
+      "total": 128,
+      "successful": 128,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 12827.17979522665,
+        "p50": 13804.986855000257,
+        "p90": 15954.19384399969,
+        "p95": 17632.607108700366,
+        "p99": 19506.477532509154,
+        "min": 3967.1021369993687,
+        "max": 23745.740965999663
+      },
+      "scenarioWallMs": 30356.981505000964,
+      "effectiveConcurrency": 54.291611336259486,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 8862.02114117972,
+        "p50": 10320.69029599987,
+        "p90": 11387.256446100957,
+        "p95": 13434.637941049785,
+        "p99": 14308.000394320152,
+        "min": 818.9380459990352,
+        "max": 14750.0802609995
+      },
+      "outputTokensPerSec": {
+        "mean": 6.6300514256227565,
+        "p50": 6.1144682404849435,
+        "p95": 11.188097975580947
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 102.480544697354,
+      "goodputOutputTokensPerSec": 102.480544697354
+    },
+    {
+      "scenarioId": "chat__in-small__out-short__c128",
+      "status": "done",
+      "total": 256,
+      "successful": 256,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 23267.119796117244,
+        "p50": 27600.42590250075,
+        "p90": 29509.021287499927,
+        "p95": 30315.988401250448,
+        "p99": 31917.95220829937,
+        "min": 3876.6745480000973,
+        "max": 32459.979919999838
+      },
+      "scenarioWallMs": 58378.15988100134,
+      "effectiveConcurrency": 102.23975622075436,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 19354.21963963675,
+        "p50": 24237.376110499725,
+        "p90": 25167.786797000095,
+        "p95": 25568.600510749966,
+        "p99": 27505.25220815008,
+        "min": 602.2223809994757,
+        "max": 28199.67727299966
+      },
+      "outputTokensPerSec": {
+        "mean": 6.495976346804925,
+        "p50": 6.191792226126311,
+        "p95": 8.665179948879652
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 106.6494732394982,
+      "goodputOutputTokensPerSec": 106.6494732394982
+    },
+    {
+      "scenarioId": "chat__in-small__out-short__c256",
+      "status": "done",
+      "total": 512,
+      "successful": 512,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 45755.61859790629,
+        "p50": 56756.21873049997,
+        "p90": 59127.097696699944,
+        "p95": 59842.721445950214,
+        "p99": 62109.17689238036,
+        "min": 4240.315237998962,
+        "max": 63325.196227999404
+      },
+      "scenarioWallMs": 117779.30469600111,
+      "effectiveConcurrency": 199.09436517950365,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 41650.47707979876,
+        "p50": 53389.22716649994,
+        "p90": 54655.52444989998,
+        "p95": 55149.15929559981,
+        "p99": 57262.00961959011,
+        "min": 616.7226229999214,
+        "max": 58916.85448099859
+      },
+      "outputTokensPerSec": {
+        "mean": 6.2596376449995,
+        "p50": 6.059094577448516,
+        "p95": 8.116896719972898
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 107.83728119963362,
+      "goodputOutputTokensPerSec": 107.83728119963362
+    },
+    {
+      "scenarioId": "chat__in-small__out-short__c512",
+      "status": "done",
+      "total": 1024,
+      "successful": 1024,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 88430.90202463961,
+        "p50": 113673.4948979998,
+        "p90": 116446.1918395998,
+        "p95": 116929.47837149995,
+        "p99": 118030.3617971314,
+        "min": 4107.207219000906,
+        "max": 119192.70095099881
+      },
+      "scenarioWallMs": 231984.71857899986,
+      "effectiveConcurrency": 390.58999172487273,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 84358.21798382718,
+        "p50": 110760.3865670003,
+        "p90": 111812.41680999883,
+        "p95": 112006.14339330056,
+        "p99": 112719.12544739137,
+        "min": 638.8441139999777,
+        "max": 115160.70311799832
+      },
+      "outputTokensPerSec": {
+        "mean": 6.13499110492341,
+        "p50": 5.941293762133648,
+        "p95": 7.973527178031974
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 106.963942073408,
+      "goodputOutputTokensPerSec": 106.963942073408
+    },
+    {
+      "scenarioId": "chat__in-small__out-medium__c1",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 11595.318169656442,
+        "p50": 11571.757695999928,
+        "p90": 12424.96139220018,
+        "p95": 12627.72116805045,
+        "p99": 13250.161067410225,
+        "min": 10076.726335000247,
+        "max": 13452.732300000265
+      },
+      "scenarioWallMs": 371078.27569800057,
+      "effectiveConcurrency": 1,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 474.9056954066036,
+        "p50": 441.7505339998752,
+        "p90": 613.7761694001034,
+        "p95": 620.9063929506577,
+        "p99": 731.5214923105018,
+        "min": 339.7121930010617,
+        "max": 777.4765429999679
+      },
+      "outputTokensPerSec": {
+        "mean": 45.768972216719014,
+        "p50": 45.565725520974134,
+        "p95": 51.03814022958607
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 43.74009761005111,
+      "goodputOutputTokensPerSec": 43.74009761005111
+    },
+    {
+      "scenarioId": "chat__in-small__out-medium__c4",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 16505.475225999777,
+        "p50": 16581.86786299944,
+        "p90": 18040.14434949979,
+        "p95": 18262.75505359983,
+        "p99": 18524.445983650592,
+        "min": 13838.709160998464,
+        "max": 18621.37160200067
+      },
+      "scenarioWallMs": 135375.8940249998,
+      "effectiveConcurrency": 3.9038562848075857,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 517.8612916874699,
+        "p50": 453.68135299906135,
+        "p90": 564.6385063007474,
+        "p95": 1124.627511649113,
+        "p99": 1125.2795223404094,
+        "min": 341.05491299927235,
+        "max": 1125.3340470008552
+      },
+      "outputTokensPerSec": {
+        "mean": 32.08171565870063,
+        "p50": 31.441723042015198,
+        "p95": 37.74073371255876
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 120.51628628201055,
+      "goodputOutputTokensPerSec": 120.51628628201055
+    },
+    {
+      "scenarioId": "chat__in-small__out-medium__c8",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 22006.02871518786,
+        "p50": 21999.901751500554,
+        "p90": 23906.045862700605,
+        "p95": 25078.699381401017,
+        "p99": 25224.509435870386,
+        "min": 18331.22954099998,
+        "max": 25280.790749000385
+      },
+      "scenarioWallMs": 89585.83769099973,
+      "effectiveConcurrency": 7.868879847755941,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 768.5441459064023,
+        "p50": 585.4498865008354,
+        "p90": 1530.307110999897,
+        "p95": 1531.663363399636,
+        "p99": 1532.2878597593867,
+        "min": 469.18844499997795,
+        "max": 1532.4018169995397
+      },
+      "outputTokensPerSec": {
+        "mean": 23.96029001169114,
+        "p50": 23.879202563212147,
+        "p95": 26.59193761409625
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 180.7651791553983,
+      "goodputOutputTokensPerSec": 180.7651791553983
+    },
+    {
+      "scenarioId": "chat__in-small__out-medium__c32",
+      "status": "done",
+      "total": 64,
+      "successful": 64,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 49819.28314281252,
+        "p50": 41437.02070350014,
+        "p90": 72245.6075333001,
+        "p95": 74917.54539459953,
+        "p99": 76552.20329726042,
+        "min": 32252.511399000883,
+        "max": 76913.08518799953
+      },
+      "scenarioWallMs": 119200.05393199995,
+      "effectiveConcurrency": 26.76934145557044,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 14016.15994751564,
+        "p50": 6202.715992500074,
+        "p90": 35915.29722559899,
+        "p95": 36605.404742599465,
+        "p99": 37795.831016590164,
+        "min": 657.8361920006573,
+        "max": 37925.33325400017
+      },
+      "outputTokensPerSec": {
+        "mean": 14.329569410616323,
+        "p50": 14.298365292964593,
+        "p95": 16.37690829661332
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 272.3572593223851,
+      "goodputOutputTokensPerSec": 272.3572593223851
+    },
+    {
+      "scenarioId": "chat__in-small__out-medium__c64",
+      "status": "done",
+      "total": 128,
+      "successful": 128,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 92910.74806807023,
+        "p50": 108213.24380199984,
+        "p90": 114696.37293930053,
+        "p95": 117823.01349069923,
+        "p99": 127916.38857114085,
+        "min": 32741.65818200074,
+        "max": 133243.60573399998
+      },
+      "scenarioWallMs": 232257.31737899967,
+      "effectiveConcurrency": 51.22647614219873,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 56716.141647124954,
+        "p50": 73982.17407300044,
+        "p90": 77462.44776449986,
+        "p95": 79172.2931240999,
+        "p99": 86413.07820900949,
+        "min": 725.7915420010686,
+        "max": 91694.75595699996
+      },
+      "outputTokensPerSec": {
+        "mean": 14.175476179814781,
+        "p50": 14.234695056918913,
+        "p95": 15.957877923658348
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 279.35395419264637,
+      "goodputOutputTokensPerSec": 279.35395419264637
+    },
+    {
+      "scenarioId": "chat__in-small__out-medium__c128",
+      "status": "degraded",
+      "reason": "128/256 failed",
+      "total": 256,
+      "successful": 128,
+      "byErrorKind": {
+        "timeout": 128
+      },
+      "wallMs": {
+        "mean": 199970.37098284368,
+        "p50": 139346.831452501,
+        "p90": 436825.3974795995,
+        "p95": 441083.05171725026,
+        "p99": 443396.5733068109,
+        "min": 28580.923146000132,
+        "max": 443843.48094800115
+      },
+      "scenarioWallMs": 925415.4812819995,
+      "effectiveConcurrency": 94.23976974223147,
+      "retryRate": 0.171875,
+      "failureRate": 0.5,
+      "ttftMs": {
+        "mean": 163784.34867402352,
+        "p50": 93994.97193500027,
+        "p90": 396201.33743609965,
+        "p95": 411519.5243288503,
+        "p99": 415807.2456933,
+        "min": 581.2557379994541,
+        "max": 417823.9002550002
+      },
+      "outputTokensPerSec": {
+        "mean": 14.32320586030492,
+        "p50": 13.973173691491958,
+        "p95": 17.80444897756887
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 70.41810010539702,
+      "goodputOutputTokensPerSec": 70.41810010539702
+    },
+    {
+      "scenarioId": "chat__in-small__out-medium__c256",
+      "status": "degraded",
+      "reason": "427/512 failed",
+      "total": 512,
+      "successful": 85,
+      "byErrorKind": {
+        "timeout": 427
+      },
+      "wallMs": {
+        "mean": 92943.82204874106,
+        "p50": 91330.2675509993,
+        "p90": 149909.9658096008,
+        "p95": 152161.41716500037,
+        "p99": 155176.39499135982,
+        "min": 29334.875831000507,
+        "max": 163174.45320300013
+      },
+      "scenarioWallMs": 963136.3771460019,
+      "effectiveConcurrency": 221.6213994704667,
+      "retryRate": 0,
+      "failureRate": 0.833984375,
+      "ttftMs": {
+        "mean": 56437.53804502365,
+        "p50": 50012.62670500018,
+        "p90": 113952.42639979944,
+        "p95": 115431.31278160028,
+        "p99": 116885.43040067925,
+        "min": 630.110687000677,
+        "max": 118546.5438180007
+      },
+      "outputTokensPerSec": {
+        "mean": 14.08867200913034,
+        "p50": 14.106912345397962,
+        "p95": 16.767854235692834
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 44.90433652621126,
+      "goodputOutputTokensPerSec": 44.90433652621126
+    },
+    {
+      "scenarioId": "chat__in-small__out-medium__c512",
+      "status": "degraded",
+      "reason": "935/1024 failed",
+      "total": 1024,
+      "successful": 89,
+      "byErrorKind": {
+        "network": 709,
+        "timeout": 226
+      },
+      "wallMs": {
+        "mean": 107296.55839762924,
+        "p50": 106773.10847299919,
+        "p90": 151434.1134162016,
+        "p95": 160446.89431440082,
+        "p99": 404614.61186548084,
+        "min": 32557.25606000051,
+        "max": 406098.037417002
+      },
+      "scenarioWallMs": 684246.8388149999,
+      "effectiveConcurrency": 291.0951385298229,
+      "retryRate": 0.00390625,
+      "failureRate": 0.9130859375,
+      "ttftMs": {
+        "mean": 70926.25730592133,
+        "p50": 70850.067667,
+        "p90": 115639.16801599934,
+        "p95": 118899.91316159963,
+        "p99": 384129.03890672,
+        "min": 362.0748849995434,
+        "max": 385618.77672199905
+      },
+      "outputTokensPerSec": {
+        "mean": 14.2665920419792,
+        "p50": 14.20733219732538,
+        "p95": 15.960100795046326
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 66.25825276520975,
+      "goodputOutputTokensPerSec": 66.25825276520975
+    },
+    {
+      "scenarioId": "chat__in-small__out-long__c1",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 36818.22421184357,
+        "p50": 37354.67815949954,
+        "p90": 40301.485783302785,
+        "p95": 41433.97862129919,
+        "p99": 42711.573646419085,
+        "min": 29495.900486003608,
+        "max": 42800.36351099983
+      },
+      "scenarioWallMs": 1178212.9810349979,
+      "effectiveConcurrency": 1,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 432.7590584689751,
+        "p50": 408.40352800115943,
+        "p90": 513.1887247011066,
+        "p95": 570.4058425992727,
+        "p99": 624.2865315275267,
+        "min": 335.84628100320697,
+        "max": 627.3616499975324
+      },
+      "outputTokensPerSec": {
+        "mean": 51.26825323064513,
+        "p50": 51.40061199492537,
+        "p95": 56.06766748361486
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 50.64449378887598,
+      "goodputOutputTokensPerSec": 50.64449378887598
+    },
+    {
+      "scenarioId": "chat__in-small__out-long__c4",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 54946.92036078137,
+        "p50": 54918.4263805002,
+        "p90": 62188.77212779932,
+        "p95": 62973.93206179906,
+        "p99": 64714.69840387024,
+        "min": 43941.349394999444,
+        "max": 65290.93930700049
+      },
+      "scenarioWallMs": 462173.98221699893,
+      "effectiveConcurrency": 3.8054849203025327,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 499.619806062663,
+        "p50": 464.5906680021435,
+        "p90": 514.834911603108,
+        "p95": 799.24204824958,
+        "p99": 913.6730677892269,
+        "min": 348.2734079994261,
+        "max": 964.8230959996581
+      },
+      "outputTokensPerSec": {
+        "mean": 35.456280093577604,
+        "p50": 34.74920473590444,
+        "p95": 41.24964461010664
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 132.95642412676662,
+      "goodputOutputTokensPerSec": 132.95642412676662
+    },
+    {
+      "scenarioId": "chat__in-small__out-long__c8",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 71650.83237140602,
+        "p50": 72148.17789999954,
+        "p90": 79854.44922089727,
+        "p95": 81711.01092995032,
+        "p99": 82995.087108399,
+        "min": 50735.473317001015,
+        "max": 83094.15373399854
+      },
+      "scenarioWallMs": 302012.98786599934,
+      "effectiveConcurrency": 7.5937926535728755,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 730.7417938752333,
+        "p50": 575.5966850016266,
+        "p90": 1335.001086000353,
+        "p95": 1411.6980926478282,
+        "p99": 1504.5250462716074,
+        "min": 546.7243980020285,
+        "max": 1504.689310003072
+      },
+      "outputTokensPerSec": {
+        "mean": 26.419085176086043,
+        "p50": 26.38830103197637,
+        "p95": 28.48648948737864
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 198.17028540029196,
+      "goodputOutputTokensPerSec": 198.17028540029196
+    },
+    {
+      "scenarioId": "chat__in-small__out-long__c32",
+      "status": "done",
+      "total": 64,
+      "successful": 64,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 167850.49044464057,
+        "p50": 157066.37417650037,
+        "p90": 232513.06743349807,
+        "p95": 236082.24519499985,
+        "p99": 255845.26811713737,
+        "min": 85094.11145299673,
+        "max": 266178.9519949965
+      },
+      "scenarioWallMs": 407816.90701500326,
+      "effectiveConcurrency": 26.348847681023283,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 49655.461625749944,
+        "p50": 33182.26395449974,
+        "p90": 111958.71289039963,
+        "p95": 118605.16860864848,
+        "p99": 124175.4586513992,
+        "min": 746.1369109973311,
+        "max": 127352.04938899726
+      },
+      "outputTokensPerSec": {
+        "mean": 16.07413987573836,
+        "p50": 15.758007531440764,
+        "p95": 20.276437012761424
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 291.36114260125225,
+      "goodputOutputTokensPerSec": 291.36114260125225
+    },
+    {
+      "scenarioId": "chat__in-small__out-long__c64",
+      "status": "done",
+      "total": 128,
+      "successful": 128,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 275954.65582300775,
+        "p50": 294805.5304790009,
+        "p90": 333155.326731198,
+        "p95": 524967.645157199,
+        "p99": 540377.440919241,
+        "min": 99053.80962700024,
+        "max": 681205.4378810003
+      },
+      "scenarioWallMs": 685161.1324030012,
+      "effectiveConcurrency": 51.561732925665616,
+      "retryRate": 0.1015625,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 172795.93111378112,
+        "p50": 179982.57375350036,
+        "p90": 266694.7714530983,
+        "p95": 416116.6553022476,
+        "p99": 429434.15074444073,
+        "min": 625.1733900010586,
+        "max": 602311.6213029996
+      },
+      "outputTokensPerSec": {
+        "mean": 18.886177797568383,
+        "p50": 18.34760939903245,
+        "p95": 24.667658576082232
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 352.1098739998277,
+      "goodputOutputTokensPerSec": 352.1098739998277
+    },
+    {
+      "scenarioId": "chat__in-small__out-long__c128",
+      "status": "done",
+      "total": 256,
+      "successful": 217,
+      "byErrorKind": {
+        "timeout": 39
+      },
+      "wallMs": {
+        "mean": 433055.7241916496,
+        "p50": 300059.5350960009,
+        "p90": 906719.1703382009,
+        "p95": 1021344.6724770002,
+        "p99": 1021490.9999140386,
+        "min": 84084.00320899859,
+        "max": 1021502.5069839992
+      },
+      "scenarioWallMs": 1300590.8252030015,
+      "effectiveConcurrency": 101.09151651942376,
+      "retryRate": 0.296875,
+      "failureRate": 0.15234375,
+      "ttftMs": {
+        "mean": 319798.31878522114,
+        "p50": 184519.9366420023,
+        "p90": 775571.8828102008,
+        "p95": 901854.1510354005,
+        "p99": 912695.9630975618,
+        "min": 923.3348409980536,
+        "max": 921753.6043259986
+      },
+      "outputTokensPerSec": {
+        "mean": 18.322426315011338,
+        "p50": 17.408806588419484,
+        "p95": 23.598971926918335
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 339.4641815430985,
+      "goodputOutputTokensPerSec": 339.4641815430985
+    },
+    {
+      "scenarioId": "chat__in-small__out-long__c256",
+      "status": "done",
+      "total": 512,
+      "successful": 305,
+      "byErrorKind": {
+        "network": 1,
+        "timeout": 206
+      },
+      "wallMs": {
+        "mean": 546448.705783649,
+        "p50": 540288.3337519988,
+        "p90": 966324.8516634011,
+        "p95": 1021234.6677662,
+        "p99": 1021596.7605753199,
+        "min": 94402.24777900055,
+        "max": 1021699.178317003
+      },
+      "scenarioWallMs": 1983047.9169839993,
+      "effectiveConcurrency": 184.35431229623015,
+      "retryRate": 0.375,
+      "failureRate": 0.404296875,
+      "ttftMs": {
+        "mean": 439885.6613982791,
+        "p50": 413906.85151300207,
+        "p90": 842182.5834384002,
+        "p95": 911877.1912596009,
+        "p99": 957179.9083593211,
+        "min": 672.9669960029423,
+        "max": 960798.2912850007
+      },
+      "outputTokensPerSec": {
+        "mean": 18.650979308362807,
+        "p50": 17.98376906821102,
+        "p95": 23.90662452128641
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 297.655439863364,
+      "goodputOutputTokensPerSec": 297.655439863364
+    },
+    {
+      "scenarioId": "chat__in-small__out-long__c512",
+      "status": "degraded",
+      "reason": "898/1024 failed",
+      "total": 1024,
+      "successful": 126,
+      "byErrorKind": {
+        "timeout": 651,
+        "network": 247
+      },
+      "wallMs": {
+        "mean": 443655.66889352363,
+        "p50": 300578.8501194995,
+        "p90": 824478.3118099999,
+        "p95": 1020645.5882984996,
+        "p99": 1021413.6098569985,
+        "min": 88190.38327400014,
+        "max": 1045371.6276739985
+      },
+      "scenarioWallMs": 1742966.4575119987,
+      "effectiveConcurrency": 402.69027304264165,
+      "retryRate": 0.06640625,
+      "failureRate": 0.876953125,
+      "ttftMs": {
+        "mean": 333955.09792553977,
+        "p50": 225249.0299015008,
+        "p90": 718857.9262415003,
+        "p95": 897056.518506499,
+        "p99": 923934.5935842488,
+        "min": 709.540205001831,
+        "max": 942050.5475809984
+      },
+      "outputTokensPerSec": {
+        "mean": 18.52441211965589,
+        "p50": 17.566900415625483,
+        "p95": 23.887398149354993
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 142.9109544400313,
+      "goodputOutputTokensPerSec": 142.9109544400313
+    },
+    {
+      "scenarioId": "chat__in-medium__out-short__c1",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 1714.2159174375702,
+        "p50": 1736.7869665008038,
+        "p90": 1946.0298913002014,
+        "p95": 2037.0370212009175,
+        "p99": 2148.5601695412397,
+        "min": 1190.0698360018432,
+        "max": 2149.0506720021367
+      },
+      "scenarioWallMs": 54888.62287399918,
+      "effectiveConcurrency": 1,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 1047.694806500338,
+        "p50": 1021.7092709988356,
+        "p90": 1228.1584188006818,
+        "p95": 1275.20945615191,
+        "p99": 1402.763801549934,
+        "min": 806.7732529975474,
+        "max": 1436.1702679991722
+      },
+      "outputTokensPerSec": {
+        "mean": 39.90032035533205,
+        "p50": 36.79826796506187,
+        "p95": 64.23687813656427
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 14.520313286590765,
+      "goodputOutputTokensPerSec": 14.520313286590765
+    },
+    {
+      "scenarioId": "chat__in-medium__out-short__c4",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 3148.879622062552,
+        "p50": 3120.8974230010062,
+        "p90": 3333.281311799213,
+        "p95": 3459.826549801603,
+        "p99": 3790.9549439388147,
+        "min": 2492.9543909989297,
+        "max": 3932.2963209971786
+      },
+      "scenarioWallMs": 25332.10610099882,
+      "effectiveConcurrency": 3.9855956159247574,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 1863.3641800626647,
+        "p50": 1783.0362609978765,
+        "p90": 2386.0992708001286,
+        "p95": 2454.8868159502745,
+        "p99": 2526.12560740903,
+        "min": 1246.7763379998505,
+        "max": 2558.102754998952
+      },
+      "outputTokensPerSec": {
+        "mean": 19.6907773491582,
+        "p50": 17.34326876983353,
+        "p95": 29.870594562224504
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 28.935612265223323,
+      "goodputOutputTokensPerSec": 28.935612265223323
+    },
+    {
+      "scenarioId": "chat__in-medium__out-short__c8",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 5321.913575562066,
+        "p50": 5093.2789589986205,
+        "p90": 7285.3300002988435,
+        "p95": 7792.448498350567,
+        "p99": 9718.189818391094,
+        "min": 2858.6939220018685,
+        "max": 10339.630460001528
+      },
+      "scenarioWallMs": 21803.59521599859,
+      "effectiveConcurrency": 7.8549946090217775,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 2169.659442781238,
+        "p50": 1799.6400009989738,
+        "p90": 3205.573575701192,
+        "p95": 4277.696227299235,
+        "p99": 4974.563363670931,
+        "min": 1030.1123990006745,
+        "max": 5187.2327390015125
+      },
+      "outputTokensPerSec": {
+        "mean": 9.06627031625857,
+        "p50": 7.594274372628727,
+        "p95": 20.119723334646935
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 35.95737272836237,
+      "goodputOutputTokensPerSec": 35.95737272836237
+    },
+    {
+      "scenarioId": "chat__in-medium__out-short__c32",
+      "status": "done",
+      "total": 64,
+      "successful": 64,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 17053.71701432776,
+        "p50": 18030.566227499396,
+        "p90": 21368.19888350032,
+        "p95": 24049.572659347756,
+        "p99": 25648.152455330226,
+        "min": 5838.0802180022,
+        "max": 26457.777809001505
+      },
+      "scenarioWallMs": 40152.45912599936,
+      "effectiveConcurrency": 27.254305517507117,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 12099.298460812133,
+        "p50": 13576.763375999406,
+        "p90": 15682.594385597484,
+        "p95": 17452.791092848216,
+        "p99": 19086.01114166062,
+        "min": 1332.1940670013428,
+        "max": 19624.4487169981
+      },
+      "outputTokensPerSec": {
+        "mean": 5.732396904955469,
+        "p50": 4.853622954485001,
+        "p95": 8.3799144132348
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 40.44584155864152,
+      "goodputOutputTokensPerSec": 40.44584155864152
+    },
+    {
+      "scenarioId": "chat__in-medium__out-short__c64",
+      "status": "done",
+      "total": 128,
+      "successful": 128,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 31501.97277940638,
+        "p50": 36731.19110449962,
+        "p90": 40096.458595301585,
+        "p95": 40794.45147725139,
+        "p99": 44393.62560626809,
+        "min": 4704.988285001367,
+        "max": 44737.863646000624
+      },
+      "scenarioWallMs": 77510.72866700217,
+      "effectiveConcurrency": 52.09532162964361,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 26566.07118466415,
+        "p50": 32505.77331050113,
+        "p90": 34259.63528940156,
+        "p95": 35323.33464240115,
+        "p99": 38197.59471365076,
+        "min": 1463.60059799999,
+        "max": 38842.17505899817
+      },
+      "outputTokensPerSec": {
+        "mean": 5.303127351496909,
+        "p50": 4.938278641437716,
+        "p95": 6.8963184257572525
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 39.92995619092408,
+      "goodputOutputTokensPerSec": 39.92995619092408
+    },
+    {
+      "scenarioId": "chat__in-medium__out-short__c128",
+      "status": "done",
+      "total": 256,
+      "successful": 256,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 60020.75562974607,
+        "p50": 74247.26420800015,
+        "p90": 77793.23997550085,
+        "p95": 78844.22229824867,
+        "p99": 81174.75964895077,
+        "min": 4461.993041999638,
+        "max": 82085.25112200156
+      },
+      "scenarioWallMs": 153957.37816900015,
+      "effectiveConcurrency": 99.9037695454445,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 55073.42356925401,
+        "p50": 70538.7086095009,
+        "p90": 71861.2970320005,
+        "p95": 72254.99946275167,
+        "p99": 75110.71577155012,
+        "min": 1261.6812539994717,
+        "max": 76591.13973399997
+      },
+      "outputTokensPerSec": {
+        "mean": 5.075194430992693,
+        "p50": 4.803165335045343,
+        "p95": 6.329397649484579
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 39.55640237855286,
+      "goodputOutputTokensPerSec": 39.55640237855286
+    },
+    {
+      "scenarioId": "chat__in-medium__out-short__c256",
+      "status": "done",
+      "total": 512,
+      "successful": 512,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 200690.41112683213,
+        "p50": 123208.30847799964,
+        "p90": 450141.5041821998,
+        "p95": 451614.7212143011,
+        "p99": 453773.3774841991,
+        "min": 6135.961883999407,
+        "max": 457111.56102400273
+      },
+      "scenarioWallMs": 495700.729479,
+      "effectiveConcurrency": 207.3669751535137,
+      "retryRate": 0.400390625,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 195671.60817738093,
+        "p50": 118609.58923599869,
+        "p90": 445769.5131052993,
+        "p95": 446542.575940649,
+        "p99": 447454.2864972968,
+        "min": 1270.724047999829,
+        "max": 450035.4847689979
+      },
+      "outputTokensPerSec": {
+        "mean": 5.001993571071233,
+        "p50": 4.772406720954644,
+        "p95": 6.248113611666658
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 24.924312725917446,
+      "goodputOutputTokensPerSec": 24.924312725917446
+    },
+    {
+      "scenarioId": "chat__in-medium__out-short__c512",
+      "status": "degraded",
+      "reason": "730/1024 failed",
+      "total": 1024,
+      "successful": 294,
+      "byErrorKind": {
+        "network": 692,
+        "timeout": 38
+      },
+      "wallMs": {
+        "mean": 160187.96916058482,
+        "p50": 93856.17753400095,
+        "p90": 450334.2675928008,
+        "p95": 463632.40096920147,
+        "p99": 472140.785628992,
+        "min": 5177.219886999577,
+        "max": 475363.86316899955
+      },
+      "scenarioWallMs": 498081.12004999816,
+      "effectiveConcurrency": 330.5912253598561,
+      "retryRate": 0.091796875,
+      "failureRate": 0.712890625,
+      "ttftMs": {
+        "mean": 155136.03755570741,
+        "p50": 88350.92875250056,
+        "p90": 445897.7285291977,
+        "p95": 459515.13262935187,
+        "p99": 467415.1944473915,
+        "min": 1442.6393679976463,
+        "max": 469918.74276600033
+      },
+      "outputTokensPerSec": {
+        "mean": 5.040918998337985,
+        "p50": 4.779468797106098,
+        "p95": 6.083579568279608
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 14.308914177041244,
+      "goodputOutputTokensPerSec": 14.308914177041244
+    },
+    {
+      "scenarioId": "chat__in-medium__out-medium__c1",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 12318.93869121885,
+        "p50": 12514.265208000317,
+        "p90": 13238.30793729946,
+        "p95": 13269.436046400107,
+        "p99": 13414.052151979693,
+        "min": 9982.596865002066,
+        "max": 13477.14971999824
+      },
+      "scenarioWallMs": 394244.6650989987,
+      "effectiveConcurrency": 1,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 1036.7978239376098,
+        "p50": 1030.185429500416,
+        "p90": 1230.3177410006524,
+        "p95": 1266.7367393001914,
+        "p99": 1319.9747277297452,
+        "min": 806.0841540023685,
+        "max": 1325.463964998722
+      },
+      "outputTokensPerSec": {
+        "mean": 45.01613793160309,
+        "p50": 44.53656179764853,
+        "p95": 50.47579752685664
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 41.037968125547856,
+      "goodputOutputTokensPerSec": 41.037968125547856
+    },
+    {
+      "scenarioId": "chat__in-medium__out-medium__c4",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 18116.35354343755,
+        "p50": 18261.347664000466,
+        "p90": 20570.1401062008,
+        "p95": 21055.07547484897,
+        "p99": 21450.400292559974,
+        "min": 12605.958023000509,
+        "max": 21506.516809999943
+      },
+      "scenarioWallMs": 149107.38851900026,
+      "effectiveConcurrency": 3.8903829181893803,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 1141.0192096560495,
+        "p50": 961.6796055007726,
+        "p90": 1522.4185755997898,
+        "p95": 2138.619000300392,
+        "p99": 2611.169996188842,
+        "min": 901.3739739991724,
+        "max": 2647.4538379982114
+      },
+      "outputTokensPerSec": {
+        "mean": 30.302510707868286,
+        "p50": 29.51781187994099,
+        "p95": 37.30407055922206
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 108.72700649528281,
+      "goodputOutputTokensPerSec": 108.72700649528281
+    },
+    {
+      "scenarioId": "chat__in-medium__out-medium__c8",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 25688.529647968942,
+        "p50": 25697.20032349974,
+        "p90": 28666.059561100607,
+        "p95": 29792.43799685072,
+        "p99": 31366.558414848114,
+        "min": 20424.286407001317,
+        "max": 31784.71030499786
+      },
+      "scenarioWallMs": 104819.05443499982,
+      "effectiveConcurrency": 7.852598092192161,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 1785.3450710002799,
+        "p50": 1381.0310350004584,
+        "p90": 3250.8603251002737,
+        "p95": 4585.230321398563,
+        "p99": 4950.868828249089,
+        "min": 976.7306040003896,
+        "max": 5014.826237998903
+      },
+      "outputTokensPerSec": {
+        "mean": 21.384595317106925,
+        "p50": 21.089473267290202,
+        "p95": 25.181371067178357
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 154.83825996603045,
+      "goodputOutputTokensPerSec": 154.83825996603045
+    },
+    {
+      "scenarioId": "chat__in-medium__out-medium__c32",
+      "status": "done",
+      "total": 64,
+      "successful": 64,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 68846.77428150002,
+        "p50": 63112.02759499848,
+        "p90": 94307.07636579945,
+        "p95": 97512.9712283479,
+        "p99": 100782.27904873934,
+        "min": 37586.40045199916,
+        "max": 101799.53450599685
+      },
+      "scenarioWallMs": 162379.89987500012,
+      "effectiveConcurrency": 27.15199470791865,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 27961.032449296676,
+        "p50": 34721.082149498165,
+        "p90": 49402.69213459828,
+        "p95": 52069.991260999625,
+        "p99": 53713.30537830058,
+        "min": 1472.2796800024807,
+        "max": 54000.961167000234
+      },
+      "outputTokensPerSec": {
+        "mean": 13.034782815878417,
+        "p50": 11.858106217504606,
+        "p95": 20.823058474325435
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 199.66141144906268,
+      "goodputOutputTokensPerSec": 199.66141144906268
+    },
+    {
+      "scenarioId": "chat__in-medium__out-medium__c64",
+      "status": "done",
+      "total": 128,
+      "successful": 128,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 128691.92101978126,
+        "p50": 136320.48001649976,
+        "p90": 175392.35825960114,
+        "p95": 233331.42673459783,
+        "p99": 270483.8634175201,
+        "min": 39623.367974001914,
+        "max": 275523.543227002
+      },
+      "scenarioWallMs": 327555.23554899916,
+      "effectiveConcurrency": 50.30883700961972,
+      "retryRate": 0.109375,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 86370.12066054688,
+        "p50": 93437.92364400066,
+        "p90": 141543.35535470062,
+        "p95": 200684.3557292499,
+        "p99": 229126.61207107012,
+        "min": 1223.3712569996715,
+        "max": 230414.754505001
+      },
+      "outputTokensPerSec": {
+        "mean": 12.259092525733012,
+        "p50": 11.866497213861724,
+        "p95": 15.119265030404199
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 198.0490401604213,
+      "goodputOutputTokensPerSec": 198.0490401604213
+    },
+    {
+      "scenarioId": "chat__in-medium__out-medium__c128",
+      "status": "degraded",
+      "reason": "195/256 failed",
+      "total": 256,
+      "successful": 61,
+      "byErrorKind": {
+        "timeout": 195
+      },
+      "wallMs": {
+        "mean": 122313.18410560641,
+        "p50": 95865.40289099887,
+        "p90": 147441.9642470032,
+        "p95": 514831.58229599893,
+        "p99": 524592.6236405999,
+        "min": 35619.9199789986,
+        "max": 525958.1944559999
+      },
+      "scenarioWallMs": 1007120.6788389981,
+      "effectiveConcurrency": 100.61690479145915,
+      "retryRate": 0.015625,
+      "failureRate": 0.76171875,
+      "ttftMs": {
+        "mean": 79393.59202768843,
+        "p50": 53103.04552099854,
+        "p90": 102949.50100900233,
+        "p95": 477452.58732100204,
+        "p99": 480815.94873320014,
+        "min": 1267.2336170002818,
+        "max": 480907.8955520019
+      },
+      "outputTokensPerSec": {
+        "mean": 11.848640341261818,
+        "p50": 11.749448626929174,
+        "p95": 13.879033610157807
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 30.523650885053833,
+      "goodputOutputTokensPerSec": 30.523650885053833
+    },
+    {
+      "scenarioId": "chat__in-medium__out-medium__c256",
+      "status": "degraded",
+      "reason": "455/512 failed",
+      "total": 512,
+      "successful": 57,
+      "byErrorKind": {
+        "timeout": 455
+      },
+      "wallMs": {
+        "mean": 94988.96595177204,
+        "p50": 94609.56313199922,
+        "p90": 142750.89026139973,
+        "p95": 146125.04484460055,
+        "p99": 157967.09612207767,
+        "min": 41762.570732001215,
+        "max": 168344.44820199907
+      },
+      "scenarioWallMs": 963335.4681859985,
+      "effectiveConcurrency": 233.00938429517043,
+      "retryRate": 0,
+      "failureRate": 0.888671875,
+      "ttftMs": {
+        "mean": 51607.72665115779,
+        "p50": 50980.432954996824,
+        "p90": 99278.93923819884,
+        "p95": 101930.03398120105,
+        "p99": 109960.84033055839,
+        "min": 1181.29393100366,
+        "max": 117563.23715999722
+      },
+      "outputTokensPerSec": {
+        "mean": 11.810713049932096,
+        "p50": 11.491029003772795,
+        "p95": 14.674490126051932
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 29.99162903698009,
+      "goodputOutputTokensPerSec": 29.99162903698009
+    },
+    {
+      "scenarioId": "chat__in-medium__out-medium__c512",
+      "status": "degraded",
+      "reason": "963/1024 failed",
+      "total": 1024,
+      "successful": 61,
+      "byErrorKind": {
+        "network": 732,
+        "timeout": 231
+      },
+      "wallMs": {
+        "mean": 115752.99568403304,
+        "p50": 94927.52795600146,
+        "p90": 148053.83679699898,
+        "p95": 416955.39517300203,
+        "p99": 424933.4887394011,
+        "min": 38405.451020002365,
+        "max": 425226.84721400216
+      },
+      "scenarioWallMs": 680093.2977969982,
+      "effectiveConcurrency": 284.48776367845153,
+      "retryRate": 0.00390625,
+      "failureRate": 0.9404296875,
+      "ttftMs": {
+        "mean": 73722.58616306547,
+        "p50": 52305.66177500039,
+        "p90": 100986.32389099896,
+        "p95": 392626.9196610004,
+        "p99": 395087.3774349995,
+        "min": 1197.2372420020401,
+        "max": 395388.96387399733
+      },
+      "outputTokensPerSec": {
+        "mean": 12.222111375616343,
+        "p50": 11.748580470002889,
+        "p95": 16.875118654516328
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 45.15115808296903,
+      "goodputOutputTokensPerSec": 45.15115808296903
+    },
+    {
+      "scenarioId": "chat__in-medium__out-long__c1",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 39084.58524771873,
+        "p50": 40106.70607599802,
+        "p90": 43722.368790302426,
+        "p95": 44112.136763249895,
+        "p99": 45966.24208854228,
+        "min": 28125.128155000508,
+        "max": 46691.389769002795
+      },
+      "scenarioWallMs": 1250750.2842489965,
+      "effectiveConcurrency": 1,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 1106.2889831248904,
+        "p50": 1128.1436829995364,
+        "p90": 1327.2520860008894,
+        "p95": 1356.164315699786,
+        "p99": 1419.8856844614447,
+        "min": 785.1552149988711,
+        "max": 1434.216251000762
+      },
+      "outputTokensPerSec": {
+        "mean": 50.41397187459941,
+        "p50": 49.255715828876525,
+        "p95": 60.36809426412961
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 48.79311303666327,
+      "goodputOutputTokensPerSec": 48.79311303666327
+    },
+    {
+      "scenarioId": "chat__in-medium__out-long__c4",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 57350.742595656775,
+        "p50": 57416.420281499624,
+        "p90": 64048.13743270114,
+        "p95": 65008.28265100122,
+        "p99": 67549.96962106987,
+        "min": 45676.097635000944,
+        "max": 68258.08836200088
+      },
+      "scenarioWallMs": 464084.2886150032,
+      "effectiveConcurrency": 3.95545807900105,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 1083.8562776255421,
+        "p50": 934.8342225030065,
+        "p90": 1134.2045981019737,
+        "p95": 2099.9097928490487,
+        "p99": 2620.1187711908674,
+        "min": 903.0786739960313,
+        "max": 2763.384419001639
+      },
+      "outputTokensPerSec": {
+        "mean": 33.593816177431,
+        "p50": 32.83479275808914,
+        "p95": 39.49307260573413
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 129.94191244863973,
+      "goodputOutputTokensPerSec": 129.94191244863973
+    },
+    {
+      "scenarioId": "chat__in-medium__out-long__c8",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 77199.18916621897,
+        "p50": 78418.1973420009,
+        "p90": 88536.59470179751,
+        "p95": 91742.38968904987,
+        "p99": 96667.82824040025,
+        "min": 57231.17615099996,
+        "max": 97640.3992260024
+      },
+      "scenarioWallMs": 321211.61602099985,
+      "effectiveConcurrency": 7.691737867264647,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 1615.6316625317559,
+        "p50": 1091.9660145007074,
+        "p90": 3744.507432600858,
+        "p95": 4375.923678099363,
+        "p99": 4799.486258082614,
+        "min": 980.2375520020723,
+        "max": 4888.770887002349
+      },
+      "outputTokensPerSec": {
+        "mean": 24.449482342420826,
+        "p50": 23.973993855600558,
+        "p95": 28.49272382386823
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 183.55500566998603,
+      "goodputOutputTokensPerSec": 183.55500566998603
+    },
+    {
+      "scenarioId": "chat__in-medium__out-long__c32",
+      "status": "done",
+      "total": 64,
+      "successful": 64,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 208999.137771672,
+        "p50": 224047.83898600563,
+        "p90": 272966.2383343995,
+        "p95": 280485.68155725114,
+        "p99": 288326.889794768,
+        "min": 101232.81436600536,
+        "max": 289990.2375429943
+      },
+      "scenarioWallMs": 500708.33636300266,
+      "effectiveConcurrency": 26.720395757162716,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 80767.25226787501,
+        "p50": 112636.69605049863,
+        "p90": 133039.60932149738,
+        "p95": 136466.3515034001,
+        "p99": 140130.3395404335,
+        "min": 1356.965612001717,
+        "max": 143362.58430100232
+      },
+      "outputTokensPerSec": {
+        "mean": 14.766540021979036,
+        "p50": 14.31814031931654,
+        "p95": 18.414534273687128
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 238.74377820091928,
+      "goodputOutputTokensPerSec": 238.74377820091928
+    },
+    {
+      "scenarioId": "chat__in-medium__out-long__c64",
+      "status": "done",
+      "total": 128,
+      "successful": 128,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 365572.8103835,
+        "p50": 294969.7681834996,
+        "p90": 612223.4595465049,
+        "p95": 780515.9922162034,
+        "p99": 780901.6987060509,
+        "min": 87325.71171099693,
+        "max": 780930.9109049961
+      },
+      "scenarioWallMs": 909934.463854,
+      "effectiveConcurrency": 51.43121654553499,
+      "retryRate": 0.359375,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 246369.40845691413,
+        "p50": 155753.09383499995,
+        "p90": 508013.7421441018,
+        "p95": 669270.73987885,
+        "p99": 673888.9389337396,
+        "min": 1321.9909840002656,
+        "max": 674650.6032599956
+      },
+      "outputTokensPerSec": {
+        "mean": 16.251296192511045,
+        "p50": 15.690788549354082,
+        "p95": 21.290164157533543
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 268.23580125344324,
+      "goodputOutputTokensPerSec": 268.23580125344324
+    },
+    {
+      "scenarioId": "chat__in-medium__out-long__c128",
+      "status": "done",
+      "total": 256,
+      "successful": 199,
+      "byErrorKind": {
+        "network": 2,
+        "timeout": 55
+      },
+      "wallMs": {
+        "mean": 446285.3466038187,
+        "p50": 300110.5025240034,
+        "p90": 781232.5132883951,
+        "p95": 881834.9473323971,
+        "p99": 1021392.2529490392,
+        "min": 92338.78998100013,
+        "max": 1021530.8343480006
+      },
+      "scenarioWallMs": 1425285.565805003,
+      "effectiveConcurrency": 100.61775969287693,
+      "retryRate": 0.33203125,
+      "failureRate": 0.22265625,
+      "ttftMs": {
+        "mean": 337214.9377423416,
+        "p50": 225182.8328249976,
+        "p90": 696455.3996546045,
+        "p95": 784507.998508896,
+        "p99": 951232.2105202625,
+        "min": 1191.250147998333,
+        "max": 960443.7995129973
+      },
+      "outputTokensPerSec": {
+        "mean": 17.582880516085748,
+        "p50": 17.879493514011752,
+        "p95": 21.59925306034912
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 262.0169662555135,
+      "goodputOutputTokensPerSec": 262.0169662555135
+    },
+    {
+      "scenarioId": "chat__in-medium__out-long__c256",
+      "status": "degraded",
+      "reason": "271/512 failed",
+      "total": 512,
+      "successful": 241,
+      "byErrorKind": {
+        "timeout": 271
+      },
+      "wallMs": {
+        "mean": 510889.8610701743,
+        "p50": 447540.51835600287,
+        "p90": 984702.1232339963,
+        "p95": 1021250.773010999,
+        "p99": 1021434.8862689987,
+        "min": 86271.41134699434,
+        "max": 1021633.5537060052
+      },
+      "scenarioWallMs": 1982928.673024997,
+      "effectiveConcurrency": 193.49503674188782,
+      "retryRate": 0.244140625,
+      "failureRate": 0.529296875,
+      "ttftMs": {
+        "mean": 390805.87532572594,
+        "p50": 312306.933528997,
+        "p90": 848006.5112670064,
+        "p95": 925774.3686039969,
+        "p99": 954932.1902795985,
+        "min": 1186.7480809986591,
+        "max": 959735.6542869955
+      },
+      "outputTokensPerSec": {
+        "mean": 16.520239830080346,
+        "p50": 15.85077031087497,
+        "p95": 21.457845066227577
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 236.92228893100364,
+      "goodputOutputTokensPerSec": 236.92228893100364
+    },
+    {
+      "scenarioId": "chat__in-medium__out-long__c512",
+      "status": "degraded",
+      "reason": "921/1024 failed",
+      "total": 1024,
+      "successful": 103,
+      "byErrorKind": {
+        "network": 24,
+        "timeout": 897
+      },
+      "wallMs": {
+        "mean": 488051.45591595134,
+        "p50": 540860.0451869965,
+        "p90": 781489.2638180002,
+        "p95": 781584.4090144954,
+        "p99": 781715.5952991161,
+        "min": 101392.42356399447,
+        "max": 781779.5913930014
+      },
+      "scenarioWallMs": 1742997.1864680052,
+      "effectiveConcurrency": 388.7743631178951,
+      "retryRate": 0.060546875,
+      "failureRate": 0.8994140625,
+      "ttftMs": {
+        "mean": 369985.8980893592,
+        "p50": 419599.9433550015,
+        "p90": 694855.5322639957,
+        "p95": 698774.3433093965,
+        "p99": 705156.1046844159,
+        "min": 1206.103261999786,
+        "max": 715197.3884409964
+      },
+      "outputTokensPerSec": {
+        "mean": 17.118968751669925,
+        "p50": 16.683644061935674,
+        "p95": 22.816321246398637
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 116.34614305427192,
+      "goodputOutputTokensPerSec": 116.34614305427192
+    },
+    {
+      "scenarioId": "chat__in-large__out-short__c1",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 3831.187989280792,
+        "p50": 3685.4689469970763,
+        "p90": 4665.618662898243,
+        "p95": 4998.810845200717,
+        "p99": 5467.209694809541,
+        "min": 3067.8166380003095,
+        "max": 5630.001373998821
+      },
+      "scenarioWallMs": 122675.35740099847,
+      "effectiveConcurrency": 1,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 2951.1182301563676,
+        "p50": 2955.194159504026,
+        "p90": 3208.2316123992205,
+        "p95": 3372.7985352501273,
+        "p99": 3446.7255904342237,
+        "min": 2530.8258069977164,
+        "max": 3479.880601003766
+      },
+      "outputTokensPerSec": {
+        "mean": 33.00057372497681,
+        "p50": 33.98959418771486,
+        "p95": 49.639434850386934
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 6.741370210944003,
+      "goodputOutputTokensPerSec": 6.741370210944003
+    },
+    {
+      "scenarioId": "chat__in-large__out-short__c4",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 9022.686896530446,
+        "p50": 8793.138428997248,
+        "p90": 11442.897313497217,
+        "p95": 12125.444523348287,
+        "p99": 13663.260416501093,
+        "min": 5429.524971999228,
+        "max": 14333.959072001278
+      },
+      "scenarioWallMs": 73937.48680499941,
+      "effectiveConcurrency": 3.911707496060069,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 5012.1298326880205,
+        "p50": 4833.148053001612,
+        "p90": 6962.166670598835,
+        "p95": 8308.958776649832,
+        "p99": 9292.516196217239,
+        "min": 3251.067761003971,
+        "max": 9418.026558995247
+      },
+      "outputTokensPerSec": {
+        "mean": 6.994343089802343,
+        "p50": 5.237951464982121,
+        "p95": 16.12584495256248
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 9.913780298391707,
+      "goodputOutputTokensPerSec": 9.913780298391707
+    },
+    {
+      "scenarioId": "chat__in-large__out-short__c8",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 16905.709002219373,
+        "p50": 17153.02381100133,
+        "p90": 20563.201367003472,
+        "p95": 20882.88240395114,
+        "p99": 22040.637282463686,
+        "min": 7387.8534149974585,
+        "max": 22549.08782300353
+      },
+      "scenarioWallMs": 72214.1401129961,
+      "effectiveConcurrency": 7.499657949067289,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 12642.362840656424,
+        "p50": 13257.880849998444,
+        "p90": 14693.445745301247,
+        "p95": 15540.556292449683,
+        "p99": 17778.890072901253,
+        "min": 2981.5508110001683,
+        "max": 18582.995976001024
+      },
+      "outputTokensPerSec": {
+        "mean": 6.19266594446544,
+        "p50": 5.289889655961458,
+        "p95": 9.90594703263648
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 10.330386802815994,
+      "goodputOutputTokensPerSec": 10.330386802815994
+    },
+    {
+      "scenarioId": "chat__in-large__out-short__c32",
+      "status": "done",
+      "total": 64,
+      "successful": 64,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 56773.04379462532,
+        "p50": 69265.81746000051,
+        "p90": 72670.02124219909,
+        "p95": 73194.23205060065,
+        "p99": 76648.57773438923,
+        "min": 8307.890817001462,
+        "max": 79059.57283299416
+      },
+      "scenarioWallMs": 144109.0079369992,
+      "effectiveConcurrency": 25.240892660612207,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 51817.66540126549,
+        "p50": 65119.943128500134,
+        "p90": 67053.70410550087,
+        "p95": 67260.55237380117,
+        "p99": 70593.48534550874,
+        "min": 2907.7448860034347,
+        "max": 71989.474702999
+      },
+      "outputTokensPerSec": {
+        "mean": 5.2376767765668895,
+        "p50": 4.985164131419362,
+        "p95": 6.394876936025389
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 10.845956282505975,
+      "goodputOutputTokensPerSec": 10.845956282505975
+    },
+    {
+      "scenarioId": "chat__in-large__out-short__c64",
+      "status": "done",
+      "total": 128,
+      "successful": 128,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 110399.27254328114,
+        "p50": 140186.52132500336,
+        "p90": 143777.66593180224,
+        "p95": 145061.4947240524,
+        "p99": 146361.68935975613,
+        "min": 7120.964777000248,
+        "max": 149281.4534379989
+      },
+      "scenarioWallMs": 286681.86785600334,
+      "effectiveConcurrency": 49.32137889394331,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 105438.59526419529,
+        "p50": 136092.26904200017,
+        "p90": 138591.6748209998,
+        "p95": 139149.77711775005,
+        "p99": 140677.78108314038,
+        "min": 3079.6455280035734,
+        "max": 143544.81455799937
+      },
+      "outputTokensPerSec": {
+        "mean": 5.202809862256346,
+        "p50": 4.889874027684915,
+        "p95": 6.3541993063896465
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 11.026159497424965,
+      "goodputOutputTokensPerSec": 11.026159497424965
+    },
+    {
+      "scenarioId": "chat__in-large__out-short__c128",
+      "status": "done",
+      "total": 256,
+      "successful": 256,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 250834.32781335548,
+        "p50": 242069.7369129993,
+        "p90": 596025.8866029978,
+        "p95": 624781.2919702493,
+        "p99": 631819.3751041527,
+        "min": 9162.960040993989,
+        "max": 634578.2808860019
+      },
+      "scenarioWallMs": 658177.3315420002,
+      "effectiveConcurrency": 97.59444202651102,
+      "retryRate": 0.18359375,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 245838.14696856652,
+        "p50": 237212.55033700168,
+        "p90": 592083.0477389991,
+        "p95": 619959.7839862462,
+        "p99": 627270.9451876029,
+        "min": 3430.6327909976244,
+        "max": 627591.6400729939
+      },
+      "outputTokensPerSec": {
+        "mean": 4.981819187872796,
+        "p50": 4.814685770967342,
+        "p95": 6.340883502721756
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 9.35462177886797,
+      "goodputOutputTokensPerSec": 9.35462177886797
+    },
+    {
+      "scenarioId": "chat__in-large__out-short__c256",
+      "status": "done",
+      "total": 512,
+      "successful": 357,
+      "byErrorKind": {
+        "timeout": 145,
+        "network": 10
+      },
+      "wallMs": {
+        "mean": 282715.8593422324,
+        "p50": 242775.96386500448,
+        "p90": 483911.55156280554,
+        "p95": 718872.0814933985,
+        "p99": 961645.5810949573,
+        "min": 6918.735355004668,
+        "max": 967766.9171100035
+      },
+      "scenarioWallMs": 1162978.7641610056,
+      "effectiveConcurrency": 211.58673239938022,
+      "retryRate": 0.154296875,
+      "failureRate": 0.302734375,
+      "ttftMs": {
+        "mean": 277677.8902432212,
+        "p50": 237883.59780700505,
+        "p90": 479027.8000508011,
+        "p95": 714883.3831772,
+        "p99": 955403.3697347626,
+        "min": 3253.083301000297,
+        "max": 960355.6291600019
+      },
+      "outputTokensPerSec": {
+        "mean": 4.970535749549311,
+        "p50": 4.854842543780203,
+        "p95": 6.346875444476282
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 7.447255501907815,
+      "goodputOutputTokensPerSec": 7.447255501907815
+    },
+    {
+      "scenarioId": "chat__in-large__out-short__c512",
+      "status": "degraded",
+      "reason": "713/1024 failed",
+      "total": 1024,
+      "successful": 311,
+      "byErrorKind": {
+        "network": 33,
+        "timeout": 680
+      },
+      "wallMs": {
+        "mean": 447928.1084112473,
+        "p50": 417080.7564830035,
+        "p90": 897466.3464199975,
+        "p95": 929188.1388364993,
+        "p99": 957631.5410982958,
+        "min": 7670.683418996632,
+        "max": 964557.9683939964
+      },
+      "scenarioWallMs": 1920086.5592680052,
+      "effectiveConcurrency": 375.7538344915059,
+      "retryRate": 0.162109375,
+      "failureRate": 0.6962890625,
+      "ttftMs": {
+        "mean": 443051.45874341467,
+        "p50": 412922.66444999725,
+        "p90": 893163.1345309988,
+        "p95": 925300.4348790012,
+        "p99": 953161.9974900945,
+        "min": 3196.2353039979935,
+        "max": 960398.3948310018
+      },
+      "outputTokensPerSec": {
+        "mean": 5.0047408454118685,
+        "p50": 4.919454392888805,
+        "p95": 6.380641781336252
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 3.83107728372638,
+      "goodputOutputTokensPerSec": 3.83107728372638
+    },
+    {
+      "scenarioId": "chat__in-large__out-medium__c1",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 15200.198148562573,
+        "p50": 15308.493701998144,
+        "p90": 15970.971752402187,
+        "p95": 15999.149342350289,
+        "p99": 16413.11922610298,
+        "min": 12898.132671006024,
+        "max": 16585.195015005767
+      },
+      "scenarioWallMs": 486479.0237379968,
+      "effectiveConcurrency": 1,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 2803.307461718563,
+        "p50": 2774.129362002015,
+        "p90": 2970.3136746987702,
+        "p95": 3111.0300176460296,
+        "p99": 3171.561081537083,
+        "min": 2491.269208997488,
+        "max": 3172.0541879981756
+      },
+      "outputTokensPerSec": {
+        "mean": 40.13396445379297,
+        "p50": 40.400099971746755,
+        "p95": 42.11649638955901
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 32.66739000972621,
+      "goodputOutputTokensPerSec": 32.66739000972621
+    },
+    {
+      "scenarioId": "chat__in-large__out-medium__c4",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 26879.855712875724,
+        "p50": 26593.231794502586,
+        "p90": 29743.73887830079,
+        "p95": 31517.392306699603,
+        "p99": 32046.00713707127,
+        "min": 22450.21801300347,
+        "max": 32048.778011001647
+      },
+      "scenarioWallMs": 217933.61629699916,
+      "effectiveConcurrency": 3.9486076761590385,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 3854.116185561754,
+        "p50": 3215.249090000987,
+        "p90": 5068.920597694814,
+        "p95": 6378.1655178986475,
+        "p99": 8613.017832280995,
+        "min": 2782.7102110013366,
+        "max": 9087.975408002734
+      },
+      "outputTokensPerSec": {
+        "mean": 22.07193456430209,
+        "p50": 22.038174635710448,
+        "p95": 27.39939450960772
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 73.80229022621633,
+      "goodputOutputTokensPerSec": 73.80229022621633
+    },
+    {
+      "scenarioId": "chat__in-large__out-medium__c8",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 41439.7108569073,
+        "p50": 41521.14048550278,
+        "p90": 49024.475903699546,
+        "p95": 50480.25079625211,
+        "p99": 56337.752893326215,
+        "min": 27383.181083001196,
+        "max": 58344.52035600692
+      },
+      "scenarioWallMs": 168703.48087400198,
+      "effectiveConcurrency": 7.867368699735658,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 6360.418452594196,
+        "p50": 4855.922450002283,
+        "p90": 11454.371668396894,
+        "p95": 15454.114419950543,
+        "p99": 18165.37721761443,
+        "min": 2868.27295999974,
+        "max": 18815.86614200473
+      },
+      "outputTokensPerSec": {
+        "mean": 14.691048671330721,
+        "p50": 13.746494880284743,
+        "p95": 18.936785455670208
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 95.48706355401868,
+      "goodputOutputTokensPerSec": 95.48706355401868
+    },
+    {
+      "scenarioId": "chat__in-large__out-medium__c32",
+      "status": "done",
+      "total": 64,
+      "successful": 64,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 129476.2291217969,
+        "p50": 137135.35313050076,
+        "p90": 165178.23971269804,
+        "p95": 173341.00081255322,
+        "p99": 182759.3794089531,
+        "min": 50927.43261799961,
+        "max": 184787.0154050067
+      },
+      "scenarioWallMs": 308741.6792500019,
+      "effectiveConcurrency": 26.852962989978074,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 79767.47231721855,
+        "p50": 88458.51242999732,
+        "p90": 111039.25890129805,
+        "p95": 121608.89466465003,
+        "p99": 129261.79603326469,
+        "min": 3271.927401997149,
+        "max": 131494.98853200674
+      },
+      "outputTokensPerSec": {
+        "mean": 10.70097760758398,
+        "p50": 9.784892807018318,
+        "p95": 16.717698311772512
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 104.86112558124853,
+      "goodputOutputTokensPerSec": 104.86112558124853
+    },
+    {
+      "scenarioId": "chat__in-large__out-medium__c64",
+      "status": "done",
+      "total": 128,
+      "successful": 128,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 253815.25619268697,
+        "p50": 264786.4223305024,
+        "p90": 297006.7141762018,
+        "p95": 532893.7519369993,
+        "p99": 629943.1143584491,
+        "min": 49260.19090600312,
+        "max": 631123.3304960057
+      },
+      "scenarioWallMs": 632276.437128,
+      "effectiveConcurrency": 51.39718369375945,
+      "retryRate": 0.09375,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 202207.274573203,
+        "p50": 211704.5328680016,
+        "p90": 239103.4605383992,
+        "p95": 476685.11006995174,
+        "p99": 594309.3783179206,
+        "min": 3130.9195639938116,
+        "max": 598000.3432480022
+      },
+      "outputTokensPerSec": {
+        "mean": 10.010379612139287,
+        "p50": 9.51412842371815,
+        "p95": 14.075208725457994
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 102.05978937490652,
+      "goodputOutputTokensPerSec": 102.05978937490652
+    },
+    {
+      "scenarioId": "chat__in-large__out-medium__c128",
+      "status": "done",
+      "total": 256,
+      "successful": 206,
+      "byErrorKind": {
+        "timeout": 50
+      },
+      "wallMs": {
+        "mean": 336290.20054242725,
+        "p50": 275825.6830055006,
+        "p90": 758925.7356749997,
+        "p95": 969153.1419220027,
+        "p99": 1011603.4861462992,
+        "min": 47369.453547000885,
+        "max": 1021508.033964999
+      },
+      "scenarioWallMs": 1084188.927979,
+      "effectiveConcurrency": 108.2577466690002,
+      "retryRate": 0.140625,
+      "failureRate": 0.1953125,
+      "ttftMs": {
+        "mean": 284705.72041779605,
+        "p50": 222995.7790955007,
+        "p90": 702380.201371003,
+        "p95": 915236.8341729995,
+        "p99": 953198.4072851021,
+        "min": 3331.995482005179,
+        "max": 960993.6599450037
+      },
+      "outputTokensPerSec": {
+        "mean": 9.9832675640771,
+        "p50": 9.514528030278655,
+        "p95": 12.949953713312313
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 95.73977129012938,
+      "goodputOutputTokensPerSec": 95.73977129012938
+    },
+    {
+      "scenarioId": "chat__in-large__out-medium__c256",
+      "status": "done",
+      "total": 512,
+      "successful": 309,
+      "byErrorKind": {
+        "timeout": 203
+      },
+      "wallMs": {
+        "mean": 378053.1689282107,
+        "p50": 276980.3292609975,
+        "p90": 731882.9012922033,
+        "p95": 961446.9077506035,
+        "p99": 1012136.9656138009,
+        "min": 45985.0634310022,
+        "max": 1016015.7506599948
+      },
+      "scenarioWallMs": 1732228.5411719978,
+      "effectiveConcurrency": 180.13303482298053,
+      "retryRate": 0.208984375,
+      "failureRate": 0.396484375,
+      "ttftMs": {
+        "mean": 325935.5487769517,
+        "p50": 223762.67637500167,
+        "p90": 676448.7182336017,
+        "p95": 926692.4580401987,
+        "p99": 957985.181151836,
+        "min": 3288.314250998199,
+        "max": 960561.638172999
+      },
+      "outputTokensPerSec": {
+        "mean": 9.81077202783105,
+        "p50": 9.403035177705705,
+        "p95": 12.828516137135642
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 89.43739022749249,
+      "goodputOutputTokensPerSec": 89.43739022749249
+    },
+    {
+      "scenarioId": "chat__in-large__out-medium__c512",
+      "status": "degraded",
+      "reason": "867/1024 failed",
+      "total": 1024,
+      "successful": 157,
+      "byErrorKind": {
+        "timeout": 859,
+        "network": 8
+      },
+      "wallMs": {
+        "mean": 429506.82706339477,
+        "p50": 281711.48081199825,
+        "p90": 768252.3483788014,
+        "p95": 950534.8893108024,
+        "p99": 977470.0861409965,
+        "min": 51399.01119399816,
+        "max": 998145.1757820025
+      },
+      "scenarioWallMs": 1810810.1957379952,
+      "effectiveConcurrency": 412.1697841466358,
+      "retryRate": 0.0908203125,
+      "failureRate": 0.8466796875,
+      "ttftMs": {
+        "mean": 378392.64279543335,
+        "p50": 227195.18239799887,
+        "p90": 715625.958653599,
+        "p95": 913092.2666692018,
+        "p99": 924333.7020756364,
+        "min": 3350.7966530025005,
+        "max": 941427.9024240002
+      },
+      "outputTokensPerSec": {
+        "mean": 9.990571059370575,
+        "p50": 9.611336749866648,
+        "p95": 12.380469386109336
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 43.34247740857979,
+      "goodputOutputTokensPerSec": 43.34247740857979
+    },
+    {
+      "scenarioId": "chat__in-large__out-long__c1",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 42788.361648843624,
+        "p50": 43416.385373000056,
+        "p90": 48209.84030219987,
+        "p95": 48660.36583159752,
+        "p99": 50214.75411355138,
+        "min": 32670.922292001545,
+        "max": 50788.84267800301
+      },
+      "scenarioWallMs": 1369309.294046998,
+      "effectiveConcurrency": 1,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 2826.6290769060142,
+        "p50": 2763.313979998231,
+        "p90": 2971.1433738015594,
+        "p95": 3112.45894065164,
+        "p99": 3309.050210580826,
+        "min": 2585.0510560050607,
+        "max": 3372.635669000447
+      },
+      "outputTokensPerSec": {
+        "mean": 46.560493424534286,
+        "p50": 44.93795254944682,
+        "p95": 56.495545958303715
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 43.36492876967352,
+      "goodputOutputTokensPerSec": 43.36492876967352
+    },
+    {
+      "scenarioId": "chat__in-large__out-long__c4",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 68049.99963221862,
+        "p50": 67890.59385500103,
+        "p90": 78793.55666120202,
+        "p95": 81571.51178240031,
+        "p99": 82291.40501533933,
+        "min": 52917.20312600583,
+        "max": 82607.73657499999
+      },
+      "scenarioWallMs": 563953.7245690003,
+      "effectiveConcurrency": 3.862434938207882,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 3395.1924352191854,
+        "p50": 2852.4840954989195,
+        "p90": 4692.671947797391,
+        "p95": 6223.675224803013,
+        "p99": 8823.23499487214,
+        "min": 2734.4008449986577,
+        "max": 9400.889095000923
+      },
+      "outputTokensPerSec": {
+        "mean": 28.12277207131063,
+        "p50": 27.737269209232448,
+        "p95": 32.67061164929375
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 102.90028679986109,
+      "goodputOutputTokensPerSec": 102.90028679986109
+    },
+    {
+      "scenarioId": "chat__in-large__out-long__c8",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 98846.04650093708,
+        "p50": 101118.12721849605,
+        "p90": 120370.20952069611,
+        "p95": 123981.84486520178,
+        "p99": 131280.1793209565,
+        "min": 56680.9429159984,
+        "max": 134032.02302799374
+      },
+      "scenarioWallMs": 417285.2853859961,
+      "effectiveConcurrency": 7.58272185339663,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 5354.91810468724,
+        "p50": 3339.51979399845,
+        "p90": 11957.108496101206,
+        "p95": 15519.034723949431,
+        "p99": 18387.471272456874,
+        "min": 3125.6611730009317,
+        "max": 19131.8364629969
+      },
+      "outputTokensPerSec": {
+        "mean": 19.582368771910485,
+        "p50": 18.418928201858968,
+        "p95": 23.670649822535044
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 138.57186444164165,
+      "goodputOutputTokensPerSec": 138.57186444164165
+    },
+    {
+      "scenarioId": "chat__in-large__out-long__c32",
+      "status": "done",
+      "total": 64,
+      "successful": 64,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 250484.2376799219,
+        "p50": 267288.8109109998,
+        "p90": 300196.1156985022,
+        "p95": 300310.76767870225,
+        "p99": 300322.9778667097,
+        "min": 102925.56091099977,
+        "max": 300328.1292400062
+      },
+      "scenarioWallMs": 600502.0927060023,
+      "effectiveConcurrency": 26.701744200091902,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 149524.3123252188,
+        "p50": 157659.7938105017,
+        "p90": 246146.99807379916,
+        "p95": 246156.33531249763,
+        "p99": 246161.0726985641,
+        "min": 3115.1438089981675,
+        "max": 246161.97819000483
+      },
+      "outputTokensPerSec": {
+        "mean": 16.342577511513863,
+        "p50": 14.591078531720576,
+        "p95": 22.47011340700222
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 171.328295520812,
+      "goodputOutputTokensPerSec": 171.328295520812
+    },
+    {
+      "scenarioId": "chat__in-large__out-long__c64",
+      "status": "done",
+      "total": 128,
+      "successful": 122,
+      "byErrorKind": {
+        "http_5xx": 6
+      },
+      "wallMs": {
+        "mean": 446730.3586845655,
+        "p50": 300149.1054404974,
+        "p90": 812580.3210737973,
+        "p95": 1059675.6246368042,
+        "p99": 1060645.5827867398,
+        "min": 87948.2727219984,
+        "max": 1060655.2861929983
+      },
+      "scenarioWallMs": 1160443.221401997,
+      "effectiveConcurrency": 52.15746895571065,
+      "retryRate": 0.3671875,
+      "failureRate": 0.046875,
+      "ttftMs": {
+        "mean": 333139.1679652131,
+        "p50": 225721.66871149838,
+        "p90": 748342.8610975989,
+        "p95": 937812.7394927017,
+        "p99": 984783.0614436629,
+        "min": 3016.592140994966,
+        "max": 987908.2921539992
+      },
+      "outputTokensPerSec": {
+        "mean": 16.62815969469347,
+        "p50": 16.261292207694353,
+        "p95": 21.854431840562416
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 178.90836550294208,
+      "goodputOutputTokensPerSec": 178.90836550294208
+    },
+    {
+      "scenarioId": "chat__in-large__out-long__c128",
+      "status": "done",
+      "total": 256,
+      "successful": 256,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 591517.4787687574,
+        "p50": 665751.4300994985,
+        "p90": 993580.3561259955,
+        "p95": 993645.5725965016,
+        "p99": 1044564.5614183024,
+        "min": 109158.84743800014,
+        "max": 1044628.8672029972
+      },
+      "scenarioWallMs": 1584606.0083049983,
+      "effectiveConcurrency": 95.57806903202128,
+      "retryRate": 0.6796875,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 324317.12259541766,
+        "p50": 252407.19205299765,
+        "p90": 690802.0450119972,
+        "p95": 730359.8949647527,
+        "p99": 967070.1358398526,
+        "min": 3568.194337002933,
+        "max": 981092.540027
+      },
+      "outputTokensPerSec": {
+        "mean": 16.39344450844545,
+        "p50": 15.353384126905269,
+        "p95": 22.559729599946284
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 181.95753296961072,
+      "goodputOutputTokensPerSec": 181.95753296961072
+    },
+    {
+      "scenarioId": "chat__in-large__out-long__c256",
+      "status": "done",
+      "total": 512,
+      "successful": 442,
+      "byErrorKind": {
+        "http_5xx": 49,
+        "timeout": 21
+      },
+      "wallMs": {
+        "mean": 460017.2016585342,
+        "p50": 251240.0326444991,
+        "p90": 1019850.4675463043,
+        "p95": 1020025.696620255,
+        "p99": 1067802.7173885903,
+        "min": 88828.6848069951,
+        "max": 1112390.1821030006
+      },
+      "scenarioWallMs": 1363680.7726690024,
+      "effectiveConcurrency": 202.04949279437443,
+      "retryRate": 0.3046875,
+      "failureRate": 0.13671875,
+      "ttftMs": {
+        "mean": 306676.60270771495,
+        "p50": 251094.6164010018,
+        "p90": 576150.2249130012,
+        "p95": 823859.4046491046,
+        "p99": 980185.0869009704,
+        "min": 3240.5017329975963,
+        "max": 1055721.5362199992
+      },
+      "outputTokensPerSec": {
+        "mean": 15.915202345606692,
+        "p50": 14.919698296668248,
+        "p95": 21.248645877293235
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 173.75327477577622,
+      "goodputOutputTokensPerSec": 173.75327477577622
+    },
+    {
+      "scenarioId": "chat__in-large__out-long__c512",
+      "status": "degraded",
+      "reason": "580/1024 failed",
+      "total": 1024,
+      "successful": 444,
+      "byErrorKind": {
+        "network": 3,
+        "timeout": 455,
+        "http_5xx": 122
+      },
+      "wallMs": {
+        "mean": 1115930.1973183965,
+        "p50": 1260466.7948885001,
+        "p90": 1680253.4255584024,
+        "p95": 1739865.6365005998,
+        "p99": 1905941.5897645324,
+        "min": 102940.7835989967,
+        "max": 1940302.5564820021
+      },
+      "scenarioWallMs": 3487616.042962,
+      "effectiveConcurrency": 433.9597375259143,
+      "retryRate": 0.3349609375,
+      "failureRate": 0.56640625,
+      "ttftMs": {
+        "mean": 795400.367850673,
+        "p50": 712675.0209524967,
+        "p90": 1571430.604587599,
+        "p95": 1652118.3953823503,
+        "p99": 1819364.1734596093,
+        "min": 3368.8292660042644,
+        "max": 1897239.9984900057
+      },
+      "outputTokensPerSec": {
+        "mean": 18.388962069095413,
+        "p50": 18.273682999521167,
+        "p95": 25.049170287073334
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 131.7900234251813,
+      "goodputOutputTokensPerSec": 131.7900234251813
+    },
+    {
+      "scenarioId": "chat__in-huge__out-short__c1",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 11964.367114906432,
+        "p50": 11974.839785002172,
+        "p90": 12296.855261100829,
+        "p95": 12447.107686100528,
+        "p99": 12653.844030102715,
+        "min": 11165.640087999403,
+        "max": 12729.823012001812
+      },
+      "scenarioWallMs": 383080.50673499703,
+      "effectiveConcurrency": 1,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 11118.394275312545,
+        "p50": 11126.767441499978,
+        "p90": 11543.485009400547,
+        "p95": 11566.008553349227,
+        "p99": 11635.131710341573,
+        "min": 10614.12200500071,
+        "max": 11665.794550001621
+      },
+      "outputTokensPerSec": {
+        "mean": 30.487655594202174,
+        "p50": 30.326284168819257,
+        "p95": 41.637568359494566
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 2.0778922080487057,
+      "goodputOutputTokensPerSec": 2.0778922080487057
+    },
+    {
+      "scenarioId": "chat__in-huge__out-short__c4",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 40089.80133706145,
+        "p50": 40643.42071750015,
+        "p90": 44569.218311795594,
+        "p95": 44902.39618320092,
+        "p99": 49819.627461892895,
+        "min": 18787.798584997654,
+        "max": 51948.03996400535
+      },
+      "scenarioWallMs": 332839.6472700015,
+      "effectiveConcurrency": 3.8564359343052304,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 34323.68526178063,
+        "p50": 35088.496211998165,
+        "p90": 37068.10598479658,
+        "p95": 38506.041617098075,
+        "p99": 41166.56479701214,
+        "min": 11205.55489499867,
+        "max": 42352.03856500238
+      },
+      "outputTokensPerSec": {
+        "mean": 5.358993369094925,
+        "p50": 4.439512695975303,
+        "p95": 6.478369935758398
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 2.4456221086536556,
+      "goodputOutputTokensPerSec": 2.4456221086536556
+    },
+    {
+      "scenarioId": "chat__in-huge__out-short__c8",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 75297.3609932193,
+        "p50": 82110.90355850011,
+        "p90": 84839.79236760215,
+        "p95": 85872.54141430146,
+        "p99": 89049.1242771615,
+        "min": 17763.442774005234,
+        "max": 90199.68529800326
+      },
+      "scenarioWallMs": 333112.0595080033,
+      "effectiveConcurrency": 7.237071992204456,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 69565.55861662445,
+        "p50": 76433.44366299734,
+        "p90": 78764.93587510064,
+        "p95": 79410.03376644515,
+        "p99": 82477.70798220039,
+        "min": 11199.479125998914,
+        "max": 83710.0661040023
+      },
+      "outputTokensPerSec": {
+        "mean": 4.934320834945635,
+        "p50": 4.28212254764216,
+        "p95": 5.60202344439661
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 2.3775782875281086,
+      "goodputOutputTokensPerSec": 2.3775782875281086
+    },
+    {
+      "scenarioId": "chat__in-huge__out-short__c32",
+      "status": "done",
+      "total": 64,
+      "successful": 64,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 260570.07914510963,
+        "p50": 244369.01322549954,
+        "p90": 618522.8406293996,
+        "p95": 652934.1333242978,
+        "p99": 676661.7269928897,
+        "min": 17766.144726000726,
+        "max": 678355.1795910001
+      },
+      "scenarioWallMs": 678472.9084229991,
+      "effectiveConcurrency": 24.587331221718813,
+      "retryRate": 0.140625,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 254944.07115834393,
+        "p50": 240137.49930449948,
+        "p90": 612552.8687074967,
+        "p95": 644979.4277835521,
+        "p99": 671270.3535227902,
+        "min": 11844.528760001063,
+        "max": 677669.6296579987
+      },
+      "outputTokensPerSec": {
+        "mean": 5.048134239891301,
+        "p50": 4.535905520084058,
+        "p95": 6.303012651251436
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 2.37592390202703,
+      "goodputOutputTokensPerSec": 2.37592390202703
+    },
+    {
+      "scenarioId": "chat__in-huge__out-short__c64",
+      "status": "done",
+      "total": 128,
+      "successful": 128,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 347885.0835747185,
+        "p50": 256145.40563649684,
+        "p90": 506202.6972684011,
+        "p95": 506309.77460430487,
+        "p99": 746131.6429650547,
+        "min": 15354.049166999757,
+        "max": 746201.6064159945
+      },
+      "scenarioWallMs": 994423.2683439925,
+      "effectiveConcurrency": 44.790876833858,
+      "retryRate": 0.484375,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 259356.20282564778,
+        "p50": 249693.99042248726,
+        "p90": 408378.30426810234,
+        "p95": 463501.23027994775,
+        "p99": 649555.1086893583,
+        "min": 11837.631126001477,
+        "max": 740434.6535380036
+      },
+      "outputTokensPerSec": {
+        "mean": 4.92995602458013,
+        "p50": 4.353922764664841,
+        "p95": 6.071476826205636
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 2.1932310610873045,
+      "goodputOutputTokensPerSec": 2.1932310610873045
+    },
+    {
+      "scenarioId": "chat__in-huge__out-short__c128",
+      "status": "done",
+      "total": 256,
+      "successful": 256,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 377925.6130096095,
+        "p50": 341169.97489900887,
+        "p90": 539901.3094414994,
+        "p95": 539990.1069715023,
+        "p99": 735631.4434421472,
+        "min": 18242.95178499818,
+        "max": 736872.6245820075
+      },
+      "scenarioWallMs": 1015350.1947380006,
+      "effectiveConcurrency": 95.32698042083925,
+      "retryRate": 0.5078125,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 259974.9603697692,
+        "p50": 252747.2098279968,
+        "p90": 255840.0730279982,
+        "p95": 438184.46710675955,
+        "p99": 524214.5646572581,
+        "min": 12407.373568996787,
+        "max": 730364.2133460045
+      },
+      "outputTokensPerSec": {
+        "mean": 4.693549450138585,
+        "p50": 4.46785491840663,
+        "p95": 5.713377500122809
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 2.3666711371637312,
+      "goodputOutputTokensPerSec": 2.3666711371637312
+    },
+    {
+      "scenarioId": "chat__in-huge__out-short__c256",
+      "status": "done",
+      "total": 512,
+      "successful": 511,
+      "byErrorKind": {
+        "http_5xx": 1
+      },
+      "wallMs": {
+        "mean": 575704.0776961835,
+        "p50": 539898.7650000006,
+        "p90": 823475.3608539999,
+        "p95": 823853.5183340088,
+        "p99": 838165.6091673907,
+        "min": 16526.302311003208,
+        "max": 1080177.263824001
+      },
+      "scenarioWallMs": 1448241.6201899946,
+      "effectiveConcurrency": 204.01374984002132,
+      "retryRate": 0.83984375,
+      "failureRate": 0.001953125,
+      "ttftMs": {
+        "mean": 268916.7553604968,
+        "p50": 252727.59088799357,
+        "p90": 253258.73005899787,
+        "p95": 499952.5109589994,
+        "p99": 759135.8724556026,
+        "min": 11944.257726997137,
+        "max": 844271.1311389953
+      },
+      "outputTokensPerSec": {
+        "mean": 4.69167468808242,
+        "p50": 4.442056218339587,
+        "p95": 5.791756780118615
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 2.2703393923789097,
+      "goodputOutputTokensPerSec": 2.2703393923789097
+    },
+    {
+      "scenarioId": "chat__in-huge__out-short__c512",
+      "status": "done",
+      "total": 1024,
+      "successful": 857,
+      "byErrorKind": {
+        "timeout": 89,
+        "http_5xx": 73,
+        "network": 5
+      },
+      "wallMs": {
+        "mean": 866293.1774889776,
+        "p50": 539985.9599509984,
+        "p90": 1823485.8612076044,
+        "p95": 1859665.288437596,
+        "p99": 1912223.736403672,
+        "min": 19331.121839001775,
+        "max": 2154069.1620049924
+      },
+      "scenarioWallMs": 2695872.4407919943,
+      "effectiveConcurrency": 395.3740093180313,
+      "retryRate": 0.3681640625,
+      "failureRate": 0.1630859375,
+      "ttftMs": {
+        "mean": 524983.966255954,
+        "p50": 533126.5808019936,
+        "p90": 542306.0266876011,
+        "p95": 1005706.7381156086,
+        "p99": 1648582.6025603155,
+        "min": 11926.44104500115,
+        "max": 2136793.320276007
+      },
+      "outputTokensPerSec": {
+        "mean": 4.4098001761494485,
+        "p50": 4.36648091317569,
+        "p95": 5.539669206529733
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 1.8190771661879155,
+      "goodputOutputTokensPerSec": 1.8190771661879155
+    },
+    {
+      "scenarioId": "chat__in-huge__out-medium__c1",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 25907.036356030963,
+        "p50": 26247.114950999618,
+        "p90": 28018.098437803983,
+        "p95": 28189.11926129237,
+        "p99": 28934.23140540123,
+        "min": 21241.90804000199,
+        "max": 29196.466725990176
+      },
+      "scenarioWallMs": 829213.9128720015,
+      "effectiveConcurrency": 1,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 10829.14912806265,
+        "p50": 10809.01884650439,
+        "p90": 10979.795897103846,
+        "p95": 11021.406700847298,
+        "p99": 11169.796141889095,
+        "min": 10655.656378000975,
+        "max": 11221.450784996152
+      },
+      "outputTokensPerSec": {
+        "mean": 31.909023450981614,
+        "p50": 31.29348234488661,
+        "p95": 39.875484847958695
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 18.419854952865116,
+      "goodputOutputTokensPerSec": 18.419854952865116
+    },
+    {
+      "scenarioId": "chat__in-huge__out-medium__c4",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 63567.47904162714,
+        "p50": 64358.6757485047,
+        "p90": 75799.3967680052,
+        "p95": 78694.54079450369,
+        "p99": 80994.3082062082,
+        "min": 35537.59022401273,
+        "max": 81503.22566099465
+      },
+      "scenarioWallMs": 520720.3653970063,
+      "effectiveConcurrency": 3.907304815283571,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 16720.730717938393,
+        "p50": 12942.143843501806,
+        "p90": 23458.867158809306,
+        "p95": 29977.258720704165,
+        "p99": 40698.02468495519,
+        "min": 11109.39195099473,
+        "max": 44186.867444992065
+      },
+      "outputTokensPerSec": {
+        "mean": 10.457473818171326,
+        "p50": 9.59479548992498,
+        "p95": 14.260711677866926
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 28.316541813681813,
+      "goodputOutputTokensPerSec": 28.316541813681813
+    },
+    {
+      "scenarioId": "chat__in-huge__out-medium__c8",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 122926.41208168725,
+        "p50": 122716.56778500229,
+        "p90": 146724.05619479567,
+        "p95": 158766.9347823955,
+        "p99": 176407.74163509088,
+        "min": 73821.64729100466,
+        "max": 180995.88593699038
+      },
+      "scenarioWallMs": 514370.5900619924,
+      "effectiveConcurrency": 7.649279339746362,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 62335.556720186025,
+        "p50": 62037.257637001574,
+        "p90": 86307.98137289436,
+        "p95": 93821.08518030419,
+        "p99": 108523.80493369239,
+        "min": 11165.937795996666,
+        "max": 112203.51151499152
+      },
+      "outputTokensPerSec": {
+        "mean": 8.081642059071896,
+        "p50": 7.461219811250661,
+        "p95": 12.12781882381722
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 29.058815353728864,
+      "goodputOutputTokensPerSec": 29.058815353728864
+    },
+    {
+      "scenarioId": "chat__in-huge__out-medium__c32",
+      "status": "done",
+      "total": 64,
+      "successful": 64,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 370297.04396084393,
+        "p50": 284740.7829485014,
+        "p90": 758830.5213926018,
+        "p95": 758849.6469480119,
+        "p99": 776554.8792459401,
+        "min": 76357.65759199858,
+        "max": 806660.2358739972
+      },
+      "scenarioWallMs": 841365.3584849983,
+      "effectiveConcurrency": 28.174754373264378,
+      "retryRate": 0.265625,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 217559.6250530479,
+        "p50": 221294.81095799804,
+        "p90": 252547.1725934997,
+        "p95": 258805.74911020618,
+        "p99": 594131.1797338211,
+        "min": 11709.235579997301,
+        "max": 748444.34765701
+      },
+      "outputTokensPerSec": {
+        "mean": 8.229512498528955,
+        "p50": 7.557610283856382,
+        "p95": 11.085482927072984
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 29.831273354532247,
+      "goodputOutputTokensPerSec": 29.831273354532247
+    },
+    {
+      "scenarioId": "chat__in-huge__out-medium__c64",
+      "status": "done",
+      "total": 128,
+      "successful": 128,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 426447.585000437,
+        "p50": 495884.9032204971,
+        "p90": 540030.5781310096,
+        "p95": 545032.4093122438,
+        "p99": 643987.1922451804,
+        "min": 78473.25280700624,
+        "max": 735758.8005490005
+      },
+      "scenarioWallMs": 1051471.6277350038,
+      "effectiveConcurrency": 51.929261309295285,
+      "retryRate": 0.6875,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 261823.1117669295,
+        "p50": 252733.39697500318,
+        "p90": 426730.3489877924,
+        "p95": 476005.9831339992,
+        "p99": 530212.3680421785,
+        "min": 11989.642830997705,
+        "max": 605696.8423219919
+      },
+      "outputTokensPerSec": {
+        "mean": 8.311116336855058,
+        "p50": 7.809127797008769,
+        "p95": 11.075801309786977
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 29.294180829540032,
+      "goodputOutputTokensPerSec": 29.294180829540032
+    },
+    {
+      "scenarioId": "chat__in-huge__out-medium__c128",
+      "status": "done",
+      "total": 256,
+      "successful": 256,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 492411.68088835233,
+        "p50": 504447.0804785043,
+        "p90": 638461.098418504,
+        "p95": 779586.8558970056,
+        "p99": 789078.0030933946,
+        "min": 76832.10564599931,
+        "max": 794799.5966539979
+      },
+      "scenarioWallMs": 1299592.1409809887,
+      "effectiveConcurrency": 97.02033699040895,
+      "retryRate": 0.82421875,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 277863.43458707526,
+        "p50": 252761.0905679986,
+        "p90": 421187.37080349773,
+        "p95": 572821.6244915053,
+        "p99": 734476.8928360058,
+        "min": 12319.438927009702,
+        "max": 768245.0815569907
+      },
+      "outputTokensPerSec": {
+        "mean": 7.932635596073263,
+        "p50": 7.380103819430841,
+        "p95": 10.342253811590291
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 28.854437340390596,
+      "goodputOutputTokensPerSec": 28.854437340390596
+    },
+    {
+      "scenarioId": "chat__in-huge__out-medium__c256",
+      "status": "done",
+      "total": 512,
+      "successful": 500,
+      "byErrorKind": {
+        "http_5xx": 6,
+        "timeout": 6
+      },
+      "wallMs": {
+        "mean": 628658.26459874,
+        "p50": 540337.7928719968,
+        "p90": 808659.9547839001,
+        "p95": 839487.1750361957,
+        "p99": 922234.5419315462,
+        "min": 74660.62354199588,
+        "max": 949897.5254919976
+      },
+      "scenarioWallMs": 1602720.8662400097,
+      "effectiveConcurrency": 203.57143100176606,
+      "retryRate": 0.888671875,
+      "failureRate": 0.0234375,
+      "ttftMs": {
+        "mean": 283151.29232383013,
+        "p50": 252713.60427200794,
+        "p90": 253262.13583990635,
+        "p95": 635334.1377425494,
+        "p99": 842231.2247511103,
+        "min": 11966.122897997499,
+        "max": 887421.580054
+      },
+      "outputTokensPerSec": {
+        "mean": 8.29905604312957,
+        "p50": 7.764323856075426,
+        "p95": 10.999703687928537
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 27.713497050925955,
+      "goodputOutputTokensPerSec": 27.713497050925955
+    },
+    {
+      "scenarioId": "chat__in-huge__out-medium__c512",
+      "status": "done",
+      "total": 1024,
+      "successful": 881,
+      "byErrorKind": {
+        "timeout": 97,
+        "http_5xx": 46
+      },
+      "wallMs": {
+        "mean": 880412.42474131,
+        "p50": 539998.8256639987,
+        "p90": 1828514.589508012,
+        "p95": 1859260.799153,
+        "p99": 2128263.2955412,
+        "min": 78448.02743899822,
+        "max": 2178244.0851909965
+      },
+      "scenarioWallMs": 2682455.5169939995,
+      "effectiveConcurrency": 389.84366097052646,
+      "retryRate": 0.3525390625,
+      "failureRate": 0.1396484375,
+      "ttftMs": {
+        "mean": 533339.0426966053,
+        "p50": 508527.9959260076,
+        "p90": 552597.5689069927,
+        "p95": 1115876.8011589944,
+        "p99": 1691269.7934082048,
+        "min": 12046.019767999649,
+        "max": 2149156.604811996
+      },
+      "outputTokensPerSec": {
+        "mean": 7.858097913520307,
+        "p50": 7.4075625349021195,
+        "p95": 11.47115446185762
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 24.534982810731627,
+      "goodputOutputTokensPerSec": 24.534982810731627
+    },
+    {
+      "scenarioId": "chat__in-huge__out-long__c1",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 56232.64370181365,
+        "p50": 56073.28640200198,
+        "p90": 68154.71994910241,
+        "p95": 70027.10506375432,
+        "p99": 74533.49337066413,
+        "min": 40154.50292699039,
+        "max": 76544.33441500366
+      },
+      "scenarioWallMs": 1799626.7140820026,
+      "effectiveConcurrency": 1,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 10684.964927407447,
+        "p50": 10648.912602491677,
+        "p90": 10843.929252801836,
+        "p95": 10880.652562139929,
+        "p99": 10973.936195296645,
+        "min": 10533.116484999657,
+        "max": 10998.997391998768
+      },
+      "outputTokensPerSec": {
+        "mean": 34.83583243122422,
+        "p50": 33.79381139131822,
+        "p95": 44.59459987337818
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 28.24474631447589,
+      "goodputOutputTokensPerSec": 28.24474631447589
+    },
+    {
+      "scenarioId": "chat__in-huge__out-long__c4",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 119935.75275674928,
+        "p50": 115865.04258699715,
+        "p90": 163280.53394909503,
+        "p95": 164802.6947689019,
+        "p99": 176493.720696733,
+        "min": 77486.90077799559,
+        "max": 181718.66350400448
+      },
+      "scenarioWallMs": 969013.3915469944,
+      "effectiveConcurrency": 3.9611444834739293,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 15481.595191718545,
+        "p50": 12777.566611997783,
+        "p90": 21813.382269088925,
+        "p95": 27462.784964399034,
+        "p99": 40493.060964532655,
+        "min": 11118.417796999216,
+        "max": 43930.83310100436
+      },
+      "outputTokensPerSec": {
+        "mean": 16.588185174909054,
+        "p50": 15.785357943189798,
+        "p95": 21.721034460946704
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 55.75155149688145,
+      "goodputOutputTokensPerSec": 55.75155149688145
+    },
+    {
+      "scenarioId": "chat__in-huge__out-long__c8",
+      "status": "done",
+      "total": 32,
+      "successful": 32,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 220398.4331758446,
+        "p50": 218838.22411300242,
+        "p90": 281985.4128427029,
+        "p95": 293889.3678952977,
+        "p99": 299210.46961110487,
+        "min": 128315.87912200391,
+        "max": 300259.9611939937
+      },
+      "scenarioWallMs": 934115.6926579922,
+      "effectiveConcurrency": 7.551433012996154,
+      "retryRate": 0,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 95033.4046446248,
+        "p50": 101821.46701749414,
+        "p90": 140241.72459400893,
+        "p95": 154858.06960664838,
+        "p99": 162575.0585442683,
+        "min": 11219.184890002012,
+        "max": 164697.42356699705
+      },
+      "outputTokensPerSec": {
+        "mean": 13.695992778758184,
+        "p50": 12.863768145201142,
+        "p95": 17.88802840930466
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 58.17052472952595,
+      "goodputOutputTokensPerSec": 58.17052472952595
+    },
+    {
+      "scenarioId": "chat__in-huge__out-long__c32",
+      "status": "done",
+      "total": 64,
+      "successful": 61,
+      "byErrorKind": {
+        "http_5xx": 3
+      },
+      "wallMs": {
+        "mean": 517430.45513111376,
+        "p50": 378170.62640200555,
+        "p90": 1016299.9225030094,
+        "p95": 1016389.7235080004,
+        "p99": 1064439.3431239962,
+        "min": 118706.39537999034,
+        "max": 1064502.0930590034
+      },
+      "scenarioWallMs": 1360584.7121659964,
+      "effectiveConcurrency": 25.421575410391217,
+      "retryRate": 0.484375,
+      "failureRate": 0.046875,
+      "ttftMs": {
+        "mean": 334053.20259819634,
+        "p50": 249505.61822800338,
+        "p90": 723711.0285439938,
+        "p95": 751520.5988219976,
+        "p99": 986167.3089125991,
+        "min": 11657.166611999273,
+        "max": 998889.5731350034
+      },
+      "outputTokensPerSec": {
+        "mean": 14.648266644034205,
+        "p50": 13.542947150784045,
+        "p95": 21.721839686657926
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 59.383292548816016,
+      "goodputOutputTokensPerSec": 59.383292548816016
+    },
+    {
+      "scenarioId": "chat__in-huge__out-long__c64",
+      "status": "done",
+      "total": 128,
+      "successful": 128,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 470414.5255038359,
+        "p50": 495287.3784924969,
+        "p90": 543535.8277443021,
+        "p95": 583280.9748324432,
+        "p99": 737160.7614992078,
+        "min": 126178.58019700646,
+        "max": 779987.8786619902
+      },
+      "scenarioWallMs": 1082909.915734008,
+      "effectiveConcurrency": 55.61760089350428,
+      "retryRate": 0.7890625,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 251359.68361292244,
+        "p50": 252686.44916100055,
+        "p90": 328729.5317636951,
+        "p95": 452942.63795929326,
+        "p99": 487514.6184793842,
+        "min": 11662.165481999516,
+        "max": 513107.68327100575
+      },
+      "outputTokensPerSec": {
+        "mean": 14.936505714959003,
+        "p50": 14.865378253032203,
+        "p95": 19.707832628091392
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 60.05208656337891,
+      "goodputOutputTokensPerSec": 60.05208656337891
+    },
+    {
+      "scenarioId": "chat__in-huge__out-long__c128",
+      "status": "done",
+      "total": 256,
+      "successful": 256,
+      "byErrorKind": {},
+      "wallMs": {
+        "mean": 435233.15418753144,
+        "p50": 493327.9986014962,
+        "p90": 660842.464590989,
+        "p95": 779723.4061210044,
+        "p99": 779885.885106498,
+        "min": 117864.46387299895,
+        "max": 784139.3063630015
+      },
+      "scenarioWallMs": 1081909.961988002,
+      "effectiveConcurrency": 103.01882243960408,
+      "retryRate": 0.5703125,
+      "failureRate": 0,
+      "ttftMs": {
+        "mean": 255265.17271987902,
+        "p50": 252728.96107199788,
+        "p90": 253439.12701399624,
+        "p95": 338546.99754300714,
+        "p99": 510185.3625402942,
+        "min": 12084.530707001686,
+        "max": 716882.5909279883
+      },
+      "outputTokensPerSec": {
+        "mean": 14.454984990496637,
+        "p50": 14.367907940711833,
+        "p95": 18.94533108051133
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 58.39395348935756,
+      "goodputOutputTokensPerSec": 58.39395348935756
+    },
+    {
+      "scenarioId": "chat__in-huge__out-long__c256",
+      "status": "done",
+      "total": 512,
+      "successful": 463,
+      "byErrorKind": {
+        "http_5xx": 13,
+        "timeout": 36
+      },
+      "wallMs": {
+        "mean": 696273.0581388057,
+        "p50": 772629.0617060065,
+        "p90": 1013480.2726363987,
+        "p95": 1079737.184288092,
+        "p99": 1079940.9758097122,
+        "min": 118712.65687400103,
+        "max": 1127779.8584209979
+      },
+      "scenarioWallMs": 1997968.4143899977,
+      "effectiveConcurrency": 188.03306003748156,
+      "retryRate": 0.859375,
+      "failureRate": 0.095703125,
+      "ttftMs": {
+        "mean": 290853.1062632631,
+        "p50": 252684.97092799842,
+        "p90": 444376.414052996,
+        "p95": 623375.771839699,
+        "p99": 846541.6817637199,
+        "min": 12090.847162991762,
+        "max": 1053376.072739005
+      },
+      "outputTokensPerSec": {
+        "mean": 14.12168808624711,
+        "p50": 13.12075857746062,
+        "p95": 25.29390600273167
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 52.87721229179453,
+      "goodputOutputTokensPerSec": 52.87721229179453
+    },
+    {
+      "scenarioId": "chat__in-huge__out-long__c512",
+      "status": "done",
+      "total": 1024,
+      "successful": 870,
+      "byErrorKind": {
+        "http_5xx": 74,
+        "timeout": 80
+      },
+      "wallMs": {
+        "mean": 879634.8874736897,
+        "p50": 541915.4454240054,
+        "p90": 1619355.101037696,
+        "p95": 1859892.26295895,
+        "p99": 2124846.326776938,
+        "min": 113737.9394659996,
+        "max": 2124940.6502159983
+      },
+      "scenarioWallMs": 2715471.6797909886,
+      "effectiveConcurrency": 391.17235559655325,
+      "retryRate": 0.3857421875,
+      "failureRate": 0.150390625,
+      "ttftMs": {
+        "mean": 505858.9910756261,
+        "p50": 504909.19193501025,
+        "p90": 552840.4947620898,
+        "p95": 758092.4745900081,
+        "p99": 1415768.4873132952,
+        "min": 11740.820305988193,
+        "max": 1871983.8401799947
+      },
+      "outputTokensPerSec": {
+        "mean": 14.4848667621704,
+        "p50": 14.30841351251724,
+        "p95": 22.600593566484942
+      },
+      "tbtMs": null,
+      "aggregateOutputTokensPerSec": 56.456121837293466,
+      "goodputOutputTokensPerSec": 56.456121837293466
+    }
+  ],
+  "rollup": {
+    "totalScenarios": 120,
+    "completed": 103,
+    "skipped": 0,
+    "degraded": 17,
+    "aborted": 0,
+    "totalRequests": 31200,
+    "totalSuccessful": 19242,
+    "totalFailed": 11958
+  }
+}
