@@ -6,10 +6,12 @@ import { getNodeId, setOffline, setOnline } from "./modules/statekeeper";
 import { getDB, listen, checkMigrations } from "./db/connection";
 import { sql, logMigrationFailureFatal } from "common-db";
 import { rootLogger } from "./logger";
+import { conductorConfigured, streamDesiredState } from "./modules/conductor-client";
 
 let shuttingDown = false;
 let subscription: SubscriptionLike | undefined;
 let metricsSampler: MetricsSampler | undefined;
+const conductorStreamAbort = new AbortController();
 
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.once(signal, () => void shutdown());
@@ -43,6 +45,13 @@ async function main() {
   process.once("unhandledRejection", onFatal("Unhandled rejection"));
 
   const nodeId = await getNodeId();
+
+  if (conductorConfigured()) {
+    void streamDesiredState(nodeId, (state) => {
+      rootLogger.debug({ installations: state.installations.length }, "Conductor stream: received state");
+    }, conductorStreamAbort.signal);
+  }
+
   for await (const _notification of listen(`ai_node:${nodeId}`)) {
     if (shuttingDown) break;
     rootLogger.debug("Responding to DB notification");
@@ -53,6 +62,7 @@ async function main() {
 async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
+  conductorStreamAbort.abort();
 
   // Wake the listen loop so it sees shuttingDown === true and breaks.
   try {
