@@ -121,7 +121,7 @@ export const handleCompletion = withEndpointGuards({
       fetchBody.stream_options = { include_usage: true };
     }
 
-    const backendResponse = await backendFetch(backendUrl(modelInfo.host, modelInfo.model, "/v1/completions", modelInfo.tls), {
+    const backendResponse = await backendFetch(backendUrl(modelInfo.host, modelInfo.specifier, "/v1/completions", modelInfo.tls), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(fetchBody),

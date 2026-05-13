@@ -41,6 +41,7 @@ mock.module("../auth", () => ({
 let mockPort = 0;
 const getModelInfo = jest.fn<typeof getModelInfoT>(async () => ({
   host: `localhost:${mockPort}`,
+  specifier: "test-model",
   model: "test-model",
   driver: "vllm",
   authToken: null,
@@ -310,6 +311,7 @@ describe("handleChatCompletion", () => {
   test("should reject structured_outputs for non-vLLM driver", async () => {
     getModelInfo.mockImplementationOnce(async () => ({
       host: `localhost:${mockPort}`,
+      specifier: "test-model",
       model: "test-model",
       driver: "ollama",
       authToken: null,
@@ -469,6 +471,7 @@ describe("handleChatCompletion, tool calling", () => {
   test("should reject tools when model does not support them", async () => {
     getModelInfo.mockImplementationOnce(async () => ({
       host: `localhost:${mockPort}`,
+      specifier: "test-model",
       model: "test-model",
       driver: "vllm",
       authToken: null,

@@ -1,7 +1,7 @@
 import { calcCanaryProgress, sql, modelDeploymentT, aiNodeT, modelInstallationT, installationMatchesLookup } from "common-db";
 import { getDB } from "../db";
 import { env } from "../env";
-import { createInfoserverClient, deploymentLookup, deploymentEarlyLookup, lookupKey, type ModelLookup } from "xinity-infoserver";
+import { createInfoserverClient } from "xinity-infoserver";
 import { selectHost as _selectHost, type LoadBalanceStrategy } from "./load-balancer";
 
 /** Indirection for testability. tests can swap this without mock.module. */
@@ -27,13 +27,13 @@ async function publicModelSpecifierToModelSource(orgId: string, specifier: strin
 
   return {
     progress: calcCanaryProgress(deployment),
-    primary: deploymentLookup(deployment),
-    early: deploymentEarlyLookup(deployment),
+    primary: deployment.specifier,
+    early: deployment.earlySpecifier,
   }
 }
 
-/** Retrieves the servers under which the model identified by the given lookup is available. */
-async function getModelSources(lookup: ModelLookup) {
+/** Retrieves the servers under which the model identified by the given specifier is available. */
+async function getModelSources(specifier: string) {
   const modelLocations = await getDB().select({
     host: aiNodeT.host,
     nodePort: aiNodeT.port,
@@ -42,7 +42,7 @@ async function getModelSources(lookup: ModelLookup) {
     tls: aiNodeT.tls,
   }).from(modelInstallationT)
     .innerJoin(aiNodeT, sql`${modelInstallationT.nodeId} = ${aiNodeT.id} AND ${aiNodeT.deletedAt} IS NULL`)
-    .where(sql`${installationMatchesLookup(lookupKey(lookup))} AND ${modelInstallationT.deletedAt} IS NULL`);
+    .where(sql`${installationMatchesLookup(specifier)} AND ${modelInstallationT.deletedAt} IS NULL`);
 
   const driverMap = new Map<string, string>();
   const authTokenMap = new Map<string, string | null>();
@@ -62,7 +62,9 @@ async function getModelSources(lookup: ModelLookup) {
 type ModelInfo = {
   /** Daemon host:port to route requests through. */
   host: string;
-  /** origin model name. I.e. gemma3:latest */
+  /** Canonical model identifier; used to route to the right daemon installation. */
+  specifier: string;
+  /** Driver-side provider model name (e.g. gemma3:latest); used as the OpenAI body's `model` field. */
   model: string;
   /** Inference driver for this model installation (e.g. "ollama", "vllm"). */
   driver: string;
@@ -114,7 +116,7 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, keyId
     return;
   }
 
-  const resolvedLookup = result.useFinalModel
+  const resolvedSpecifier = result.useFinalModel
     ? accessInfo.primary
     : (accessInfo.early ?? accessInfo.primary);
 
@@ -129,21 +131,21 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, keyId
     ?? earlySources.tlsMap.get(result.host)
     ?? false;
 
-  const model = await infoClient.fetchModel(resolvedLookup);
-  const providerModel = model?.providers[driver as "vllm" | "ollama"]
-    ?? (resolvedLookup.kind === "legacy" ? resolvedLookup.providerModel : undefined);
+  const model = await infoClient.fetchModel(resolvedSpecifier);
+  const providerModel = model?.providers[driver as "vllm" | "ollama"];
   if (!providerModel) {
     result.release();
     return;
   }
 
   const [{ type, tags }, requestParams] = await Promise.all([
-    infoClient.resolveModelMeta(resolvedLookup, driver as "vllm" | "ollama"),
-    infoClient.resolveRequestParams(resolvedLookup, driver as "vllm" | "ollama"),
+    infoClient.resolveModelMeta(resolvedSpecifier, driver as "vllm" | "ollama"),
+    infoClient.resolveRequestParams(resolvedSpecifier, driver as "vllm" | "ollama"),
   ]);
 
   return {
     host: result.host,
+    specifier: resolvedSpecifier,
     model: providerModel,
     driver,
     authToken,

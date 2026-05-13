@@ -34,7 +34,7 @@ export const handleEmbeddingGeneration = withEndpointGuards({
       fetchBody.user = body.user;
     }
 
-    const backendResponse = await backendFetch(backendUrl(modelInfo.host, modelInfo.model, "/v1/embeddings", modelInfo.tls), {
+    const backendResponse = await backendFetch(backendUrl(modelInfo.host, modelInfo.specifier, "/v1/embeddings", modelInfo.tls), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(fetchBody),

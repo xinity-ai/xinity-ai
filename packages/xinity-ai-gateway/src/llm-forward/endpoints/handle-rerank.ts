@@ -20,7 +20,7 @@ export const handleRerank = withEndpointGuards({
   bodySchema: RerankBodySchema,
   log,
   handler: async ({ body, modelInfo, originalModel, req }) => {
-    const backendResponse = await backendFetch(backendUrl(modelInfo.host, modelInfo.model, "/v1/rerank", modelInfo.tls), {
+    const backendResponse = await backendFetch(backendUrl(modelInfo.host, modelInfo.specifier, "/v1/rerank", modelInfo.tls), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

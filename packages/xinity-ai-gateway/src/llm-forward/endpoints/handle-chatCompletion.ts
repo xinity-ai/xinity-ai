@@ -175,7 +175,7 @@ export const handleChatCompletion = withEndpointGuards({
       metadata: body.metadata ?? undefined,
     };
 
-    const backendResponse = await backendFetch(backendUrl(modelInfo.host, modelInfo.model, "/v1/chat/completions", modelInfo.tls), {
+    const backendResponse = await backendFetch(backendUrl(modelInfo.host, modelInfo.specifier, "/v1/chat/completions", modelInfo.tls), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(fetchBody),
