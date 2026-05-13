@@ -67,7 +67,6 @@
     const { error: setupError, data } = await orpc.onboarding.setup({
       orgName,
       specifier: selectedModel.publicSpecifier,
-      modelSpecifier: Object.values(selectedModel.providers)[0] ?? selectedModel.publicSpecifier,
       publicSpecifier: selectedModel.publicSpecifier,
     });
 

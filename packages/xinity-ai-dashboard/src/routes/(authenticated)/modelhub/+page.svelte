@@ -112,7 +112,7 @@
   const editDeployment = $derived(deployments.find((d) => d.id === editDeploymentModalId));
   const testDeployment = $derived(deployments.find((d) => d.id === testDeploymentModalId) ?? null);
 
-  // Cached model type per modelSpecifier. Stays "loading" until we know, then
+  // Cached model type per specifier. Stays "loading" until we know, then
   // either the resolved type or "unknown" (catalog miss / fetch error). The
   // Test button only renders for entries we resolved to a supported type.
   type ModelTypeKnowledge =
@@ -125,9 +125,9 @@
     if (!browser || !deploymentsLoaded) return;
     for (const d of deployments) {
       if (d.status?.phase !== "ready") continue;
-      if (modelKnowledge[d.modelSpecifier] !== undefined) continue;
-      modelKnowledge[d.modelSpecifier] = { status: "loading" };
-      void fetchModelType(d.modelSpecifier);
+      if (modelKnowledge[d.specifier] !== undefined) continue;
+      modelKnowledge[d.specifier] = { status: "loading" };
+      void fetchModelType(d.specifier);
     }
   });
 
@@ -143,7 +143,7 @@
   function testableType(
     deployment: DeploymentDefinition,
   ): "chat" | "embedding" | "rerank" | null {
-    const k = modelKnowledge[deployment.modelSpecifier];
+    const k = modelKnowledge[deployment.specifier];
     if (k?.status !== "known") return null;
     return k.type === "chat" || k.type === "embedding" || k.type === "rerank" ? k.type : null;
   }
@@ -168,7 +168,7 @@
   );
 
   function deploymentTypeLabel(deployment: DeploymentDefinition): string {
-    if (!deployment?.earlyModelSpecifier) return "Static";
+    if (!deployment?.earlySpecifier) return "Static";
     if (deployment.canaryProgressWithFeedback) return "Canary (smart-auto)";
     if (deployment.canaryProgressUntil) return "Canary (time-based)";
     if (deployment.canaryProgressFrom) return "Canary (manual)";
@@ -349,9 +349,9 @@
                   </div>
                   <div class="flex flex-wrap mt-1.5 text-xs text-muted-foreground">
                     <span>{deployment.progress}% to {deployment.publicSpecifier}</span>
-                    {#if deployment.earlyModelSpecifier && 100 - deployment.progress > 0}
+                    {#if deployment.earlySpecifier && 100 - deployment.progress > 0}
                       <span class="ml-auto">
-                        {100 - deployment.progress}% to {deployment.earlyModelSpecifier}
+                        {100 - deployment.progress}% to {deployment.earlySpecifier}
                       </span>
                     {/if}
                   </div>

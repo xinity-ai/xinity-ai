@@ -62,7 +62,7 @@
   // --- Edit mode tracking ---
   type Snapshot = {
     name: string; publicSpecifier: string; enabled: boolean;
-    earlyModelSpecifier: string | null; progress: number;
+    earlySpecifier: string | null; progress: number;
     canaryProgressWithFeedback: boolean;
     preferredDriver: string | null; replicas: number; kvCacheSize: number | null;
     earlyKvCacheSize: number | null;
@@ -83,19 +83,8 @@
     });
   }
 
-  function resolveProviderModel(
-    model: { providers: { vllm?: string; ollama?: string }; publicSpecifier: string },
-    driver?: string | null,
-  ): string {
-    if (driver) {
-      const specific = model.providers[driver as keyof typeof model.providers];
-      if (specific) return specific;
-    }
-    return Object.values(model.providers)[0] ?? model.publicSpecifier;
-  }
-
   function deriveAdvancementStrategy(d: DeploymentDefinition) {
-    if (!d.earlyModelSpecifier) return "manual" as const;
+    if (!d.earlySpecifier) return "manual" as const;
     if (d.canaryProgressWithFeedback) return "smart-auto" as const;
     if (d.canaryProgressUntil) return "time-based" as const;
     return "manual" as const;
@@ -112,9 +101,9 @@
     deploymentName = d.name;
     deploymentNameEdited = true;
     enabled = d.enabled;
-    selectedPrimarySpecifier = d.specifier ?? d.modelSpecifier;
-    selectedCanarySpecifier = d.earlySpecifier ?? d.earlyModelSpecifier ?? null;
-    isCanaryEnabled = Boolean(d.earlyModelSpecifier);
+    selectedPrimarySpecifier = d.specifier;
+    selectedCanarySpecifier = d.earlySpecifier ?? null;
+    isCanaryEnabled = Boolean(d.earlySpecifier);
     canaryTraffic = d.progress ?? 100;
     kvCacheSize = d.kvCacheSize ?? null;
     earlyKvCacheSize = d.earlyKvCacheSize ?? null;
@@ -130,7 +119,7 @@
 
     initialSnapshot = {
       name: d.name, publicSpecifier: d.publicSpecifier, enabled: d.enabled,
-      earlyModelSpecifier: d.earlyModelSpecifier ?? null, progress: d.progress,
+      earlySpecifier: d.earlySpecifier ?? null, progress: d.progress,
       canaryProgressWithFeedback: d.canaryProgressWithFeedback,
       preferredDriver: d.preferredDriver ?? null, replicas: d.replicas,
       kvCacheSize: d.kvCacheSize ?? null, earlyKvCacheSize: d.earlyKvCacheSize ?? null,
@@ -182,8 +171,8 @@
     }
     const abort = new AbortController();
     orpc.deployment.checkCapacity({
-      modelSpecifier: selectedPrimarySpecifier!,
-      earlyModelSpecifier: isCanaryEnabled ? selectedCanarySpecifier : null,
+      specifier: selectedPrimarySpecifier!,
+      earlySpecifier: isCanaryEnabled ? selectedCanarySpecifier : null,
       replicas, progress: isCanaryEnabled ? canaryTraffic : 100, kvCacheSize,
       earlyKvCacheSize: isCanaryEnabled ? earlyKvCacheSize : null,
     }, { signal: abort.signal }).then(([error, data]) => {
@@ -222,7 +211,7 @@
       deploymentName.trim() !== s.name.trim() ||
       publicSpecifier.trim() !== s.publicSpecifier.trim() ||
       enabled !== s.enabled ||
-      (isCanaryEnabled ? (selectedCanarySpecifier ?? null) : null) !== s.earlyModelSpecifier ||
+      (isCanaryEnabled ? (selectedCanarySpecifier ?? null) : null) !== s.earlySpecifier ||
       (isCanaryEnabled ? canaryTraffic : 100) !== s.progress ||
       (isCanaryEnabled && advancementStrategy === "smart-auto") !== s.canaryProgressWithFeedback ||
       (preferredDriver ?? null) !== s.preferredDriver ||
@@ -300,8 +289,7 @@
           publicSpecifier: publicSpecifier.trim(),
           enabled,
           specifier: primarySpecifier,
-          earlySpecifier,
-          earlyModelSpecifier: isCanaryEnabled ? (selectedCanarySpecifier ?? null) : null,
+          earlySpecifier: isCanaryEnabled ? (selectedCanarySpecifier ?? null) : null,
           progress: isCanaryEnabled ? canaryTraffic : 100,
           canaryProgressWithFeedback: isCanaryEnabled && advancementStrategy === "smart-auto",
           canaryProgressFrom: isCanaryEnabled && advancementStrategy !== "manual"
@@ -316,13 +304,10 @@
           enabled, name: deploymentName.trim(), publicSpecifier: publicSpecifier.trim(),
           specifier: primarySpecifier,
           earlySpecifier: earlySpecifier ?? undefined,
-          modelSpecifier: resolveProviderModel(selectedPrimaryModel, preferredDriver),
           replicas, canaryProgressWithFeedback: advancementStrategy === "smart-auto",
           kvCacheSize: submittedKvCacheSize && submittedKvCacheSize > minKvCache ? submittedKvCacheSize : undefined,
           earlyKvCacheSize: isCanaryEnabled && selectedCanaryModel && submittedEarlyKvCacheSize && submittedEarlyKvCacheSize > minCanaryKvCache ? submittedEarlyKvCacheSize : undefined,
           preferredDriver: preferredDriver || null,
-          earlyModelSpecifier: isCanaryEnabled && selectedCanaryModel
-            ? resolveProviderModel(selectedCanaryModel, preferredDriver) : undefined,
           progress: isCanaryEnabled && selectedCanaryModel ? canaryTraffic : undefined,
           canaryProgressFrom: isCanaryEnabled && selectedCanaryModel ? new Date() : undefined,
           canaryProgressUntil: isCanaryEnabled && selectedCanaryModel && advancementStrategy === "time-based"
