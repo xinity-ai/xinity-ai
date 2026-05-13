@@ -20,7 +20,7 @@ export function backendFetch(url: string | URL | Request, init?: RequestInit & {
   return fetch(url, { ...init, headers, ...(tlsOptions ? { tls: tlsOptions } : {}) });
 }
 
-type BackendTarget = { host: string; model: string; tls: boolean; authToken: string | null };
+type BackendTarget = { host: string; specifier: string; tls: boolean; authToken: string | null };
 
 /** Post a JSON body to a daemon-proxied backend endpoint with the standard timeout. */
 export function backendPostJson(
@@ -29,7 +29,7 @@ export function backendPostJson(
   body: unknown,
   clientSignal: AbortSignal,
 ): Promise<Response> {
-  return backendFetch(backendUrl(target.host, target.model, path, target.tls), {
+  return backendFetch(backendUrl(target.host, target.specifier, path, target.tls), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

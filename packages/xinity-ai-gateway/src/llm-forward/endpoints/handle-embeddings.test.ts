@@ -37,6 +37,7 @@ let mockPort = 0;
 const getModelInfo = jest.fn<typeof getModelInfoT>(async () => ({
   nodeId: "node-1",
   host: `localhost:${mockPort}`,
+  specifier: "test-embedding",
   model: "test-embedding",
   driver: "vllm",
   authToken: null,
@@ -232,6 +233,7 @@ describe("handleEmbeddingGeneration", () => {
     getModelInfo.mockImplementationOnce(async () => ({
       nodeId: "node-1",
       host: `localhost:${mockPort}`,
+      specifier: "test-chat-model",
       model: "test-chat-model",
       driver: "vllm",
       authToken: null,

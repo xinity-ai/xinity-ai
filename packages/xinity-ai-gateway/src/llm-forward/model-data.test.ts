@@ -1,6 +1,5 @@
 import { describe, test, expect, mock, jest, beforeEach } from "bun:test";
 import { drizzle, modelDeploymentT } from "common-db";
-import { deploymentLookup, deploymentEarlyLookup, lookupKey } from "xinity-infoserver";
 
 mock.module("../env", () => ({
   env: {
@@ -37,7 +36,7 @@ type MockModel = {
   providers: { ollama?: string; vllm?: string };
 };
 
-const mockFetchModel = jest.fn<(lookup: { kind: "canonical"; specifier: string } | { kind: "legacy"; providerModel: string }) => Promise<MockModel | undefined>>();
+const mockFetchModel = jest.fn<(specifier: string) => Promise<MockModel | undefined>>();
 
 function resolveTagsForDriver(model: MockModel, driver: "vllm" | "ollama"): string[] {
   return model.providerTags?.[driver] ?? model.tags ?? [];
@@ -54,9 +53,6 @@ mock.module("xinity-infoserver", () => ({
   resolveTagsForDriver,
   resolveRequestParamsForDriver,
   BLOCKED_REQUEST_PARAM_PREFIXES: ["chat_template", "tokenize", "prompt", "api_key"],
-  deploymentLookup,
-  deploymentEarlyLookup,
-  lookupKey,
 }));
 
 const { getModelInfo, _deps } = await import("./model-data");
@@ -64,8 +60,8 @@ const mockSelectHost = jest.fn<() => Promise<{ host: string; useFinalModel: bool
 _deps.selectHost = mockSelectHost as any;
 
 function deploymentResult(d: {
-  modelSpecifier: string;
-  earlyModelSpecifier?: string | null;
+  specifier: string;
+  earlySpecifier?: string | null;
   progress?: number;
 }): Record<string, unknown> {
   return {
@@ -75,8 +71,8 @@ function deploymentResult(d: {
     description: null,
     enabled: true,
     publicSpecifier: "my-model",
-    modelSpecifier: d.modelSpecifier,
-    earlyModelSpecifier: d.earlyModelSpecifier ?? null,
+    specifier: d.specifier,
+    earlySpecifier: d.earlySpecifier ?? null,
     replicas: 1,
     canaryProgressUntil: null,
     canaryProgressFrom: null,
@@ -101,9 +97,8 @@ beforeEach(() => {
   queryQueue.length = 0;
   mockSelectHost.mockReset();
   mockFetchModel.mockReset();
-  mockFetchModel.mockImplementation(async (lookup) => {
-    const value = lookup.kind === "canonical" ? lookup.specifier : lookup.providerModel;
-    return { type: "chat", tags: ["tools"], providers: { ollama: value, vllm: value } };
+  mockFetchModel.mockImplementation(async (specifier) => {
+    return { type: "chat", tags: ["tools"], providers: { ollama: specifier, vllm: specifier } };
   });
 });
 
@@ -115,7 +110,7 @@ describe("getModelInfo", () => {
   });
 
   test("returns undefined when selectHost returns null (no available hosts)", async () => {
-    queryQueue.push([deploymentResult({ modelSpecifier: "llama3:latest" })]);
+    queryQueue.push([deploymentResult({ specifier: "llama3:latest" })]);
     queryQueue.push([]);
     mockSelectHost.mockResolvedValue(null);
 
@@ -124,7 +119,7 @@ describe("getModelInfo", () => {
   });
 
   test("resolves model info for a simple deployment (no canary)", async () => {
-    queryQueue.push([deploymentResult({ modelSpecifier: "llama3:latest", earlyModelSpecifier: null })]);
+    queryQueue.push([deploymentResult({ specifier: "llama3:latest", earlySpecifier: null })]);
     queryQueue.push([installationResult({ host: "192.168.1.10", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
     mockSelectHost.mockResolvedValue({ host: "192.168.1.10:11434", useFinalModel: true, release: noop });
 
@@ -140,7 +135,7 @@ describe("getModelInfo", () => {
   });
 
   test("resolves early model when canary routes to it", async () => {
-    queryQueue.push([deploymentResult({ modelSpecifier: "llama3:latest", earlyModelSpecifier: "llama2:latest", progress: 30 })]);
+    queryQueue.push([deploymentResult({ specifier: "llama3:latest", earlySpecifier: "llama2:latest", progress: 30 })]);
     queryQueue.push([installationResult({ host: "node-a", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
     queryQueue.push([installationResult({ host: "node-b", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
     mockSelectHost.mockResolvedValue({ host: "node-b:11434", useFinalModel: false, release: noop });
@@ -153,7 +148,7 @@ describe("getModelInfo", () => {
   });
 
   test("falls back to 'ollama' driver when host not in either driver map", async () => {
-    queryQueue.push([deploymentResult({ modelSpecifier: "llama3:latest" })]);
+    queryQueue.push([deploymentResult({ specifier: "llama3:latest" })]);
     queryQueue.push([installationResult({ host: "192.168.1.10", nodePort: 11434, modelPort: 11434, driver: "vllm" })]);
     mockSelectHost.mockResolvedValue({ host: "unknown-host:8000", useFinalModel: true, release: noop });
 
@@ -164,7 +159,7 @@ describe("getModelInfo", () => {
   });
 
   test("correctly resolves vllm driver from driver map", async () => {
-    queryQueue.push([deploymentResult({ modelSpecifier: "mistral:latest" })]);
+    queryQueue.push([deploymentResult({ specifier: "mistral:latest" })]);
     queryQueue.push([installationResult({ host: "gpu-node", nodePort: 8000, modelPort: 8000, driver: "vllm" })]);
     mockSelectHost.mockResolvedValue({ host: "gpu-node:8000", useFinalModel: true, release: noop });
 
@@ -175,7 +170,7 @@ describe("getModelInfo", () => {
   });
 
   test("passes canary progress and host lists to selectHost", async () => {
-    queryQueue.push([deploymentResult({ modelSpecifier: "llama3:latest", earlyModelSpecifier: "llama2:latest", progress: 50 })]);
+    queryQueue.push([deploymentResult({ specifier: "llama3:latest", earlySpecifier: "llama2:latest", progress: 50 })]);
     queryQueue.push([installationResult({ host: "final-node", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
     queryQueue.push([installationResult({ host: "early-node", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
     mockSelectHost.mockResolvedValue({ host: "final-node:11434", useFinalModel: true, release: noop });
@@ -193,7 +188,7 @@ describe("getModelInfo", () => {
   });
 
   test("deduplicates hosts from installations", async () => {
-    queryQueue.push([deploymentResult({ modelSpecifier: "llama3:latest" })]);
+    queryQueue.push([deploymentResult({ specifier: "llama3:latest" })]);
     queryQueue.push([
       installationResult({ host: "node-a", nodePort: 11434, modelPort: 11434, driver: "ollama" }),
       installationResult({ host: "node-a", nodePort: 11434, modelPort: 11434, driver: "ollama" }),
@@ -207,7 +202,7 @@ describe("getModelInfo", () => {
   });
 
   test("queries infoserver for model metadata", async () => {
-    queryQueue.push([deploymentResult({ modelSpecifier: "llama3:latest" })]);
+    queryQueue.push([deploymentResult({ specifier: "llama3:latest" })]);
     queryQueue.push([installationResult({ host: "node-a", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
     mockSelectHost.mockResolvedValue({ host: "node-a:11434", useFinalModel: true, release: noop });
     mockFetchModel.mockResolvedValueOnce({
@@ -222,26 +217,22 @@ describe("getModelInfo", () => {
     expect(result!.type).toBe("embedding");
     expect(result!.tags).toEqual(["multilingual"]);
     expect(result!.requestParams).toEqual({ "top_k": "number" });
-    expect(mockFetchModel).toHaveBeenCalledWith({ kind: "legacy", providerModel: "llama3:latest" });
+    expect(mockFetchModel).toHaveBeenCalledWith("llama3:latest");
   });
 
-  test("returns tags and requestParams undefined when model is not in the infoserver catalog (legacy fallback)", async () => {
-    queryQueue.push([deploymentResult({ modelSpecifier: "llama3:latest" })]);
+  test("returns undefined when model is not in the infoserver catalog", async () => {
+    queryQueue.push([deploymentResult({ specifier: "llama3:latest" })]);
     queryQueue.push([installationResult({ host: "node-a", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
     mockSelectHost.mockResolvedValue({ host: "node-a:11434", useFinalModel: true, release: noop });
     mockFetchModel.mockResolvedValueOnce(undefined);
 
     const result = await getModelInfo("org-1", "my-model", "key-1");
 
-    expect(result).toBeDefined();
-    expect(result!.model).toBe("llama3:latest");
-    expect(result!.type).toBeUndefined();
-    expect(result!.tags).toBeUndefined();
-    expect(result!.requestParams).toBeUndefined();
+    expect(result).toBeUndefined();
   });
 
   test("uses providerTags for the resolved driver when present", async () => {
-    queryQueue.push([deploymentResult({ modelSpecifier: "mistral:latest" })]);
+    queryQueue.push([deploymentResult({ specifier: "mistral:latest" })]);
     queryQueue.push([installationResult({ host: "gpu-node", nodePort: 8000, modelPort: 8000, driver: "vllm" })]);
     mockSelectHost.mockResolvedValue({ host: "gpu-node:8000", useFinalModel: true, release: noop });
     mockFetchModel.mockResolvedValueOnce({
@@ -257,8 +248,8 @@ describe("getModelInfo", () => {
     expect(result!.tags).toEqual(["tools", "vision"]);
   });
 
-  test("skips early model lookup when earlyModelSpecifier is null", async () => {
-    queryQueue.push([deploymentResult({ modelSpecifier: "llama3:latest", earlyModelSpecifier: null })]);
+  test("skips early model lookup when earlySpecifier is null", async () => {
+    queryQueue.push([deploymentResult({ specifier: "llama3:latest", earlySpecifier: null })]);
     queryQueue.push([installationResult({ host: "node-a", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
     mockSelectHost.mockResolvedValue({ host: "node-a:11434", useFinalModel: true, release: noop });
 

@@ -82,7 +82,7 @@ export async function resolveAuthorizedModel(
 
   const provider = createOpenAICompatible({
     name: resolved.modelInfo.driver,
-    baseURL: backendUrl(resolved.modelInfo.host, resolved.modelInfo.model, "/v1", resolved.modelInfo.tls),
+    baseURL: backendUrl(resolved.modelInfo.host, resolved.modelInfo.specifier, "/v1", resolved.modelInfo.tls),
     apiKey: resolved.modelInfo.authToken ?? "none",
     includeUsage: true,
     supportsStructuredOutputs: resolved.modelInfo.driver === "vllm",
