@@ -81,8 +81,6 @@ services:
     ports:
       - "127.0.0.1:${DASHBOARD_PORT:-5121}:${DASHBOARD_PORT:-5121}"
 
-  # Optional self-hosted model registry. Defaults off; dashboard uses the public
-  # sysinfo.xinity.ai registry unless INFOSERVER_URL is overridden.
   infoserver:
     image: ghcr.io/xinity-ai/xinity-infoserver:${VERSION:?VERSION is required (set in .env)}
     restart: unless-stopped
@@ -98,9 +96,6 @@ services:
       - xinity-network
     profiles: [infoserver]
 
-  # SEARXNG_SECRET must be set in .env before activating this profile. Compose
-  # cannot enforce it via :?required because interpolation happens for all
-  # services regardless of which profile is active.
   searxng:
     image: searxng/searxng:2026.2.6-b5bb27f23
     restart: unless-stopped
@@ -111,9 +106,6 @@ services:
       - xinity-network
     profiles: [searxng]
 
-  # Reverse proxy with automatic HTTPS. Activate with `--profile caddy` for a
-  # public, domain-backed deployment. Without it, gateway and dashboard are
-  # reachable on 127.0.0.1 for local evaluation.
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -125,10 +117,6 @@ services:
       - "443:443"
       - "443:443/udp"
     environment:
-      # DOMAIN and ACME_EMAIL must be set in .env before activating this
-      # profile. Compose cannot enforce it via :?required because interpolation
-      # happens for all services regardless of which profile is active. Caddy
-      # itself will fail loudly with an empty DOMAIN or ACME_EMAIL.
       DOMAIN: ${DOMAIN:-}
       DASHBOARD_SUBDOMAIN: ${DASHBOARD_SUBDOMAIN:-dashboard}
       GATEWAY_SUBDOMAIN: ${GATEWAY_SUBDOMAIN:-api}

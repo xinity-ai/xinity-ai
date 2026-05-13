@@ -1,19 +1,12 @@
 #!/bin/bash
-# First-run setup for the Xinity Docker Compose deployment.
-# Creates .env from example.env, generates secrets, prompts for the few
-# values that have no useful default.
 set -e
 
-# Portable in-place sed (works on GNU sed and BSD/macOS sed).
+# Portable on GNU and BSD/macOS sed.
 sed_inplace() {
     sed -i.bak "$1" "$2" && rm -f "${2}.bak"
 }
 
-# Hex secret: URL-safe, used for values that get embedded in connection URLs.
 gen_url_safe() { openssl rand -hex 32; }
-
-# Base64 secret: opaque key, used for BETTER_AUTH_SECRET (Better Auth treats
-# the value as opaque, and base64 is the format the docs have always shown).
 gen_base64() { openssl rand -base64 32; }
 
 echo "Xinity AI Docker Compose Setup"
@@ -48,7 +41,6 @@ if [ ! -f .env ]; then
     cp example.env .env
 fi
 
-# Regenerate secrets only on fresh .env, so we never clobber live credentials.
 if [ "$fresh_env" = true ]; then
     POSTGRES_PASSWORD=$(gen_url_safe)
     REDIS_PASSWORD=$(gen_url_safe)
@@ -58,7 +50,7 @@ if [ "$fresh_env" = true ]; then
     sed_inplace "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${POSTGRES_PASSWORD}|" .env
     sed_inplace "s|^REDIS_PASSWORD=.*|REDIS_PASSWORD=${REDIS_PASSWORD}|" .env
     sed_inplace "s|^# SEARXNG_SECRET=.*|SEARXNG_SECRET=${SEARXNG_SECRET}|" .env
-    # BETTER_AUTH_SECRET may contain = / +; use a delimiter sed will not misread.
+    # base64 contains =/+, use # delimiter instead of |.
     sed_inplace "s#^BETTER_AUTH_SECRET=.*#BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}#" .env
     echo "Generated POSTGRES_PASSWORD, REDIS_PASSWORD, SEARXNG_SECRET, BETTER_AUTH_SECRET."
 fi

@@ -94,10 +94,7 @@ export function parseEnv<T extends ZodObjectWithShape>(
 ): z.infer<T> {
   const keys = Object.keys(schema.shape);
   const resolved = resolveSecretFiles(env, keys);
-  // Compose interpolates unset variables to empty strings (e.g. ${VAR:-}),
-  // which zod then validates against the field's type and rejects (URL,
-  // enum, number, stringbool, etc). Treat empty strings as unset so that
-  // .optional() and .default() still apply.
+  // Treat "" as unset so Compose's ${VAR:-} interpolation doesn't trip zod.
   const coerced: Record<string, string | undefined> = {};
   for (const k of Object.keys(resolved)) {
     coerced[k] = resolved[k] === "" ? undefined : resolved[k];
