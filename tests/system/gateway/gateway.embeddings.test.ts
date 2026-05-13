@@ -106,7 +106,7 @@ describe("xinity-ai-gateway embeddings", () => {
     await createModelDeployment({
       orgId,
       publicSpecifier,
-      modelSpecifier: internalModel,
+      specifier: internalModel,
     });
 
     const mockServer = await startMockEmbeddingServer({
@@ -125,7 +125,7 @@ describe("xinity-ai-gateway embeddings", () => {
     const node = await createAiNode({ port: mockServer.port });
     await createModelInstallation({
       nodeId: node.id,
-      model: internalModel,
+      specifier: internalModel,
       port: mockServer.port,
     });
 

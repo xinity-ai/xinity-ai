@@ -106,7 +106,7 @@ describe("xinity-ai-gateway chat completion", () => {
     await createModelDeployment({
       orgId,
       publicSpecifier,
-      modelSpecifier: internalModel,
+      specifier: internalModel,
       deletedAt: new Date(),
     });
 
@@ -114,7 +114,7 @@ describe("xinity-ai-gateway chat completion", () => {
     const node = await createAiNode({ port: mockServer.port });
     await createModelInstallation({
       nodeId: node.id,
-      model: internalModel,
+      specifier: internalModel,
       port: mockServer.port,
     });
 
@@ -145,14 +145,14 @@ describe("xinity-ai-gateway chat completion", () => {
     await createModelDeployment({
       orgId,
       publicSpecifier,
-      modelSpecifier: internalModel,
+      specifier: internalModel,
     });
 
     const mockServer = await startMockChatCompletionServer();
     const node = await createAiNode({ deletedAt: new Date() });
     await createModelInstallation({
       nodeId: node.id,
-      model: internalModel,
+      specifier: internalModel,
       port: mockServer.port,
     });
 
@@ -183,7 +183,7 @@ describe("xinity-ai-gateway chat completion", () => {
     await createModelDeployment({
       orgId,
       publicSpecifier,
-      modelSpecifier: internalModel,
+      specifier: internalModel,
     });
 
     const mockServer = await startMockChatCompletionServer({
@@ -204,7 +204,7 @@ describe("xinity-ai-gateway chat completion", () => {
     const node = await createAiNode({ port: mockServer.port });
     await createModelInstallation({
       nodeId: node.id,
-      model: internalModel,
+      specifier: internalModel,
       port: mockServer.port,
     });
 

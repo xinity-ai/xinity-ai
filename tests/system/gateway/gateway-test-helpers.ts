@@ -186,16 +186,16 @@ export async function createModelDeployment(input: {
   orgId: string;
   name?: string;
   publicSpecifier?: string;
-  modelSpecifier?: string;
+  specifier?: string;
   deletedAt?: Date;
 }): Promise<{ id: string; publicSpecifier: string }> {
   const publicSpecifier = input.publicSpecifier ?? `model-${randomUUID()}`;
-  const modelSpecifier = input.modelSpecifier ?? publicSpecifier;
+  const specifier = input.specifier ?? publicSpecifier;
   const [deployment] = await getDB().insert(modelDeploymentT).values({
     organizationId: input.orgId,
     name: input.name ?? "Gateway Test Model",
     publicSpecifier,
-    modelSpecifier,
+    specifier,
     deletedAt: input.deletedAt,
   }).returning();
 
@@ -224,7 +224,7 @@ export async function createAiNode(input: { host?: string; port?: number; estCap
 
 export async function createModelInstallation(input: {
   nodeId: string;
-  model: string;
+  specifier: string;
   port: number;
   estCapacity?: number;
   driver?: "ollama" | "vllm";
@@ -233,7 +233,7 @@ export async function createModelInstallation(input: {
 }): Promise<{ id: string }> {
   const [installation] = await getDB().insert(modelInstallationT).values({
     nodeId: input.nodeId,
-    model: input.model,
+    specifier: input.specifier,
     estCapacity: input.estCapacity ?? 1,
     port: input.port,
     driver: input.driver ?? "ollama",
@@ -255,7 +255,7 @@ export async function createReadyInstallationFor(deployment: { publicSpecifier: 
   const node = await createAiNode();
   return createModelInstallation({
     nodeId: node.id,
-    model: deployment.publicSpecifier,
+    specifier: deployment.publicSpecifier,
     port: await getAvailablePort(),
     lifecycleState: "ready",
   });
