@@ -109,7 +109,7 @@ async function checkDeploymentStatus() {
           organizationId: info.orgId,
           data: {
             deploymentName: info.name,
-            modelSpecifier: info.model,
+            publicSpecifier: info.model,
             orgName: info.orgName,
             dashboardUrl: `${serverEnv.ORIGIN}/modelhub`,
           },
@@ -123,7 +123,7 @@ async function checkDeploymentStatus() {
           organizationId: info.orgId,
           data: {
             deploymentName: info.name,
-            modelSpecifier: info.model,
+            publicSpecifier: info.model,
             errorMessage: info.error ?? "An unknown error occurred during installation",
             orgName: info.orgName,
             dashboardUrl: `${serverEnv.ORIGIN}/modelhub`,
