@@ -28,7 +28,7 @@ type ChatLogFields = {
   applicationId: string | null;
   organizationId: string;
   durationInMS: number;
-  modelSpecifier: string;
+  publicSpecifier: string;
   inputMessages: ApiCallInputMessage[];
   metadata?: Record<string, unknown>;
 };
@@ -51,7 +51,7 @@ export async function logChatSync(input: ChatSyncInput) {
       apiKeyId: input.keyId,
       applicationId: input.applicationId,
       organizationId: input.organizationId,
-      specifiedModel: input.modelSpecifier,
+      specifiedModel: input.publicSpecifier,
       duration: input.durationInMS,
       model: input.data.model,
       outputMessage,
@@ -87,7 +87,7 @@ export async function logChatStream(input: ChatStreamInput) {
       apiKeyId: input.keyId,
       applicationId: input.applicationId,
       organizationId: input.organizationId,
-      specifiedModel: input.modelSpecifier,
+      specifiedModel: input.publicSpecifier,
       duration: input.durationInMS,
       model: messageModel,
       outputMessage,

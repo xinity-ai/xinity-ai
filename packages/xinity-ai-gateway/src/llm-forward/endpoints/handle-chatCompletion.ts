@@ -168,7 +168,7 @@ export const handleChatCompletion = withEndpointGuards({
     const logFields = {
       auth,
       modelInfo,
-      modelSpecifier: originalModel,
+      publicSpecifier: originalModel,
       inputMessages: messagesForDB,
       callStartTime,
       logCalls: body.store,

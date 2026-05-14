@@ -154,7 +154,7 @@ type UsageLogContextBase = {
   usage: UsageData | null | undefined;
   auth: AuthResult;
   modelInfo: { model: string };
-  modelSpecifier: string;
+  publicSpecifier: string;
   inputMessages: ApiCallInputMessage[];
   callStartTime: number;
   logCalls?: boolean;
@@ -172,13 +172,13 @@ export const logChatUsage = ({
   stream,
   auth,
   modelInfo,
-  modelSpecifier,
+  publicSpecifier,
   inputMessages,
   callStartTime,
   logCalls,
   metadata,
 }: UsageLogContext) => {
-  const shouldLog = recordUsage({ usage, auth, modelInfo, callStartTime, logCalls, deployment: modelSpecifier });
+  const shouldLog = recordUsage({ usage, auth, modelInfo, callStartTime, logCalls, deployment: publicSpecifier });
   if (!shouldLog) {
     return;
   }
@@ -187,7 +187,7 @@ export const logChatUsage = ({
     keyId: auth.keyId,
     applicationId: auth.applicationId,
     organizationId: auth.orgId,
-    modelSpecifier,
+    publicSpecifier,
     durationInMS: Date.now() - callStartTime,
     inputMessages,
     metadata,
