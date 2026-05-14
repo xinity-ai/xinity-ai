@@ -24,7 +24,7 @@ type Logger = {
 export type OpenAIForwardLogFields = {
   auth: AuthResult;
   modelInfo: { model: string; nodeId?: string | null };
-  modelSpecifier: string;
+  publicSpecifier: string;
   inputMessages: ApiCallInputMessage[];
   callStartTime: number;
   logCalls?: boolean;
