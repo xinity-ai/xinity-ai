@@ -130,7 +130,7 @@ function dispatchDeploymentPhaseNotification(
     organizationId: info.orgId,
     data: {
       deploymentName: info.name,
-      modelSpecifier: info.model,
+      publicSpecifier: info.model,
       orgName: info.orgName,
       dashboardUrl: MODELHUB_URL,
       ...extraData,
