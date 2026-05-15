@@ -1,3 +1,8 @@
+---
+name: code-quality-control
+description: Apply repo quality standards (comments, naming, simplicity, structure) when reviewing or writing code. Use as a checklist before completing work on any file.
+---
+
 # Code Quality Control
 
 When reviewing or writing code in this codebase, apply these quality standards. This skill can be triggered explicitly or used as a checklist before completing work on any file.
