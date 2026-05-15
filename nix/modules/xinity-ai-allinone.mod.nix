@@ -509,7 +509,6 @@
               else cfg.secrets.dbConnectionUrlFile
             );
             environmentFiles = lib.mkDefault envFiles;
-            extraOptions = lib.mkDefault networkOptions;
           };
 
           # --- SearXNG ---
