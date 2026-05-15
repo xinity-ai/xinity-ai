@@ -95,8 +95,8 @@ const next: ReleaseInfo = {
           [
             pname,
             {
-              "x86_64-linux": lookup(hashes, `${pname}-linux-x64.zip`, `binaries.${pname}.x86_64-linux`),
-              "aarch64-linux": lookup(hashes, `${pname}-linux-arm64.zip`, `binaries.${pname}.aarch64-linux`),
+              "x86_64-linux": lookup(hashes, `${pname}-linux-x64.tar.gz`, `binaries.${pname}.x86_64-linux`),
+              "aarch64-linux": lookup(hashes, `${pname}-linux-arm64.tar.gz`, `binaries.${pname}.aarch64-linux`),
             },
           ] as const,
       ),

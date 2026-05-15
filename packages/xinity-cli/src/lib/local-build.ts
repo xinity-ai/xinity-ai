@@ -1,6 +1,6 @@
 /**
  * Build a component binary from a local monorepo checkout and package it
- * as a zip archive ready for installation via installBinary().
+ * as a tar.gz archive ready for installation via installBinary().
  */
 import { resolve, join, dirname, basename } from "path";
 import { existsSync } from "fs";

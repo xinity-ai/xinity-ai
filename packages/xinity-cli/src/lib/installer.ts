@@ -624,8 +624,8 @@ type ArtifactResult =
 
 /**
  * Resolve what to install: either build from a local repo (local: prefix) or
- * fetch the appropriate zip from a GitHub release. Returns a ready archive path
- * on the target host plus the version label and update flag.
+ * fetch the appropriate tarball from a GitHub release. Returns a ready archive
+ * path on the target host plus the version label and update flag.
  */
 async function resolveArtifact(
   component: Component,
