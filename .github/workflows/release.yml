@@ -1,4 +1,4 @@
-name: Build and release binaries
+name: Release
 
 on:
   push:
@@ -6,26 +6,21 @@ on:
       - "v*"
   workflow_dispatch:
 
+# One release run per ref at a time. cancel-in-progress is off so we never
+# interrupt a half-finished publish; a second push to the same tag queues.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
 env:
   BUN_VERSION: "1.3.1"
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # Standalone binaries via `bun build --compile`
-  # Embeds the Bun runtime, zero runtime dependencies on the target machine.
-  # One job per package compiles all architecture variants in a loop, so
-  # `bun install` only runs once per package (not once per target).
-  #
-  # Targets:
-  #   linux-x64           Haswell+ (2013 and later, default)
-  #   linux-x64-baseline  Nehalem+ (pre-2013, maximum compatibility)
-  #   linux-arm64          AArch64
-  #
-  # Each binary is zipped following the Bun convention:
-  #   xinity-ai-gateway-linux-x64.zip  →  contains `xinity-ai-gateway`
-  # ---------------------------------------------------------------------------
+  # Standalone binaries via `bun build --compile` for linux x64/x64-baseline/arm64.
   build-binaries:
-    name: ${{ matrix.package }}
+    name: "Binary: ${{ matrix.package }}"
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -109,10 +104,6 @@ jobs:
             ${{ matrix.workdir }}/*.tar.gz
           retention-days: 1
 
-  # ---------------------------------------------------------------------------
-  # JS bundles (platform-independent)
-  # Single-file bundles that run on any OS with `bun run <file>.js`.
-  # ---------------------------------------------------------------------------
   build-bundles:
     name: JS bundles
     runs-on: ubuntu-latest
@@ -132,7 +123,7 @@ jobs:
         working-directory: packages/xinity-ai-gateway
         run: |
           if [ -f example.env ]; then cp example.env .env; fi
-          bun build --minify --target=bun \
+          bun build --production --target=bun \
             --outfile xinity-ai-gateway.js \
             ./src/gatewayServer.ts
 
@@ -140,7 +131,7 @@ jobs:
         working-directory: packages/xinity-ai-daemon
         run: |
           if [ -f example.env ]; then cp example.env .env; fi
-          bun build --minify --target=bun \
+          bun build --production --target=bun \
             --outfile xinity-ai-daemon.js \
             ./src/index.ts
 
@@ -148,7 +139,7 @@ jobs:
         working-directory: packages/xinity-infoserver
         run: |
           if [ -f example.env ]; then cp example.env .env; fi
-          bun build --minify --target=bun \
+          bun build --production --target=bun \
             --outfile xinity-infoserver.js \
             ./server.ts
 
@@ -170,17 +161,96 @@ jobs:
           path: staging/
           retention-days: 1
 
-  # ---------------------------------------------------------------------------
-  # Collect all artifacts, generate a single SHASUMS256.txt, publish release.
-  # Follows the convention used by Bun, Terraform, and other CLI tools:
-  #   - Clean filenames (version is in the release tag, not the filename)
-  #   - One checksums file for easy `sha256sum -c` verification
-  #   - Quick-install instructions in the release body
-  # ---------------------------------------------------------------------------
+  # Catch out-of-sync Dockerfiles before paying for a multi-arch build.
+  check-dockerfile-sync:
+    name: Verify Dockerfile sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun scripts/sync-dockerfile-manifests.ts --check
+
+  # Tag-gated so `workflow_dispatch` from a branch can't push `:latest`.
+  build-images:
+    name: "Image: ${{ matrix.image }}"
+    needs: check-dockerfile-sync
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAMESPACE: ghcr.io/${{ github.repository_owner }}
+      VERSION: ${{ github.ref_name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: xinity-ai-gateway
+            context: .
+            dockerfile: packages/xinity-ai-gateway/Dockerfile
+          - image: xinity-ai-dashboard
+            context: .
+            dockerfile: packages/xinity-ai-dashboard/Dockerfile
+          - image: xinity-infoserver
+            context: .
+            dockerfile: packages/xinity-infoserver/Dockerfile
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=ref,event=branch
+            type=raw,latest
+            type=ref,event=pr
+            type=sha
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.vendor=Xinity AI
+            org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}#readme
+
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false  # Disable attestation manifests; GHCR rejects cross-blob HEAD requests they trigger on multi-arch pushes (403)
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # `needs:` every build job so a missing artifact can't produce a partial release.
   release:
     name: Create GitHub Release
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [build-binaries, build-bundles]
+    needs: [build-binaries, build-bundles, build-images]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -271,6 +341,14 @@ jobs:
             curl -fSL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/xinity-ai-gateway.js" \
               -o xinity-ai-gateway.js
             bun run xinity-ai-gateway.js
+            ```
+
+            **Container image** (multi-arch, `linux/amd64` and `linux/arm64`):
+
+            ```bash
+            docker pull ghcr.io/${{ github.repository_owner }}/xinity-ai-gateway:${{ github.ref_name }}
+            docker pull ghcr.io/${{ github.repository_owner }}/xinity-ai-dashboard:${{ github.ref_name }}
+            docker pull ghcr.io/${{ github.repository_owner }}/xinity-infoserver:${{ github.ref_name }}
             ```
 
             ## Verify
