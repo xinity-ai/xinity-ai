@@ -181,6 +181,13 @@
         self.nixosModules.searxng
         self.nixosModules.seaweedfs
         self.nixosModules.caddy
+
+        (lib.mkRemovedOptionModule
+          [ "services" "xinity-ai" "containerUid" ]
+          "The gateway and dashboard now run as native systemd services, not OCI containers. Remove this option from your configuration.")
+        (lib.mkRemovedOptionModule
+          [ "services" "xinity-ai" "useHostNetwork" ]
+          "The services now run as native systemd processes that always use the host network. Remove this option from your configuration.")
       ];
 
       options.services.xinity-ai = {
@@ -334,12 +341,6 @@
           };
         };
 
-        containerUid = lib.mkOption {
-          type = lib.types.int;
-          default = 6000;
-          description = "UID and GID the OCI container processes (gateway, dashboard, infoserver) run as. Secret files passed via the secrets.*File options must be readable by this UID on the host.";
-        };
-
         # --- Secret file options (recommended for production) ---
         # These use the _FILE env var pattern for secure secret injection.
 
@@ -398,16 +399,6 @@
           '';
         };
 
-        useHostNetwork = lib.mkOption {
-          type = lib.types.bool;
-          default = true;
-          description = ''
-            Use host networking mode for containers (--network=host).
-            When true, containers use localhost to communicate.
-            When false, containers use Docker bridge networking and can reach each other by container name.
-          '';
-        };
-
         migrateOnStart = lib.mkOption {
           type = lib.types.bool;
           default = true;
@@ -418,16 +409,12 @@
 
       config =
         let
-          # INTERNAL URLs - for backend-to-backend communication
-          infoserverHost = if cfg.useHostNetwork then "127.0.0.1" else "xinity-infoserver";
-          infoserverUrl = "http://${infoserverHost}:${toString cfg.infoserver.port}";
+          infoserverUrl = "http://127.0.0.1:${toString cfg.infoserver.port}";
 
-          # PUBLIC URLs - always HTTPS via Caddy
           publicDashboardUrl = "https://${cfg.dashboardSubdomain}.${cfg.domain}";
           publicGatewayUrl = "https://${cfg.gatewaySubdomain}.${cfg.domain}";
 
           envFiles = lib.optional (cfg.environmentFile != null) cfg.environmentFile;
-          networkOptions = lib.optional cfg.useHostNetwork "--network=host";
         in
         lib.mkIf cfg.enable {
 
@@ -448,7 +435,6 @@
           # --- Gateway ---
           services.xinity-ai-gateway = {
             enable = true;
-            containerUid = lib.mkDefault cfg.containerUid;
             port = lib.mkDefault cfg.gateway.port;
             backendTimeoutMs = lib.mkDefault cfg.gateway.backendTimeoutMs;
             infoserverUrl = lib.mkDefault infoserverUrl;
@@ -469,13 +455,11 @@
             s3AccessKeyIdFile = lib.mkDefault cfg.secrets.s3AccessKeyIdFile;
             s3SecretAccessKeyFile = lib.mkDefault cfg.secrets.s3SecretAccessKeyFile;
             environmentFiles = lib.mkDefault envFiles;
-            extraOptions = lib.mkDefault networkOptions;
           };
 
           # --- Dashboard ---
           services.xinity-ai-dashboard = {
             enable = true;
-            containerUid = lib.mkDefault cfg.containerUid;
             port = lib.mkDefault cfg.dashboard.port;
             mcpEnabled = lib.mkDefault cfg.dashboard.mcpEnabled;
             licenseKey = lib.mkDefault cfg.dashboard.licenseKey;
@@ -498,7 +482,6 @@
             s3SecretAccessKeyFile = lib.mkDefault cfg.secrets.s3SecretAccessKeyFile;
             licenseKeyFile = lib.mkDefault cfg.secrets.licenseKeyFile;
             environmentFiles = lib.mkDefault envFiles;
-            extraOptions = lib.mkDefault networkOptions;
           };
 
           # --- InfoServer ---
@@ -508,7 +491,6 @@
             modelInfoFile = lib.mkDefault cfg.infoserver.modelInfoFile;
             modelInfoDir = lib.mkDefault cfg.infoserver.modelInfoDir;
             environmentFiles = lib.mkDefault envFiles;
-            extraOptions = lib.mkDefault networkOptions;
           };
 
           # --- SearXNG ---

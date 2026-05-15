@@ -1,24 +1,49 @@
-{ self, ... }:
-let
-  version = (builtins.fromJSON (builtins.readFile "${self}/package.json")).version;
-in {
-  flake.nixosModules.dashboard = { config, lib, ... }:
+{ withSystem, ... }: {
+  flake.nixosModules.dashboard = { config, lib, pkgs, ... }:
     let
+      withHostSystem = withSystem pkgs.stdenv.hostPlatform.system;
       cfg = config.services.xinity-ai-dashboard;
+
+      removed = path: message:
+        lib.mkRemovedOptionModule
+          ([ "services" "xinity-ai-dashboard" ] ++ path)
+          message;
+
+      loadCredentialEntries =
+        lib.optional (cfg.dbConnectionUrlFile != null) "db-connection-url:${cfg.dbConnectionUrlFile}"
+        ++ lib.optional (cfg.betterAuthSecretFile != null) "better-auth-secret:${cfg.betterAuthSecretFile}"
+        ++ lib.optional (cfg.mailUrlFile != null) "mail-url:${cfg.mailUrlFile}"
+        ++ lib.optional (cfg.metricsAuthFile != null) "metrics-auth:${cfg.metricsAuthFile}"
+        ++ lib.optional (cfg.s3AccessKeyIdFile != null) "s3-access-key-id:${cfg.s3AccessKeyIdFile}"
+        ++ lib.optional (cfg.s3SecretAccessKeyFile != null) "s3-secret-access-key:${cfg.s3SecretAccessKeyFile}"
+        ++ lib.optional (cfg.licenseKeyFile != null) "license-key:${cfg.licenseKeyFile}";
     in {
+      imports = [
+        (removed [ "image" ]
+          "The dashboard now runs as a native systemd service backed by `services.xinity-ai-dashboard.package`, not an OCI container. Remove this option from your configuration.")
+        (removed [ "containerUid" ]
+          "The dashboard now runs as a native systemd service, not an OCI container. Remove this option from your configuration.")
+        (removed [ "extraOptions" ]
+          "OCI container runtime arguments don't apply to the systemd service the dashboard now runs as. Remove this option from your configuration.")
+        (removed [ "volumes" ]
+          "OCI volume mounts don't apply to the systemd service the dashboard now runs as. Secrets are exposed via `LoadCredential` driven by the `*File` options instead. Remove this option from your configuration.")
+        (removed [ "mountLogDir" ]
+          "The dashboard now writes directly to the host path set in `logDir`; no bind-mount is needed. Remove this option from your configuration.")
+      ];
+
       options.services.xinity-ai-dashboard = {
         enable = lib.mkEnableOption "the xinity-ai dashboard, a SvelteKit web application that provides the admin UI for managing organizations, API keys, model routing, and user accounts";
 
-        image = lib.mkOption {
-          type = lib.types.str;
-          default = "ghcr.io/xinity-ai/xinity-ai-dashboard:${version}";
-          description = "OCI image reference for the dashboard container. Override this to pin a specific version or use a private registry.";
+        package = lib.mkOption {
+          type = lib.types.package;
+          default = withHostSystem ({ config, ... }: config.packages.xinity-ai-dashboard);
+          description = "The xinity-ai-dashboard package to use. Defaults to the prebuilt release binary for the current platform.";
         };
 
         port = lib.mkOption {
           type = lib.types.port;
           default = 5121;
-          description = "HTTP port the dashboard listens on inside the container. This port is also published to the host.";
+          description = "HTTP port the dashboard listens on.";
         };
 
         # --- Required settings ---
@@ -120,13 +145,7 @@ in {
         logDir = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description = "Directory for persistent log files inside the container. When set, the dashboard writes structured JSON logs to this directory in addition to stdout. If null, only stdout logging is used.";
-        };
-
-        mountLogDir = lib.mkOption {
-          type = lib.types.bool;
-          default = false;
-          description = "Whether to bind-mount logDir from the host into the container, making log files accessible outside the container. Requires logDir to be set to an absolute path. A systemd-tmpfiles rule is created to ensure the directory exists on the host.";
+          description = "Directory for persistent log files. When set, the dashboard writes structured JSON logs to this directory in addition to stdout/journald.";
         };
 
         mailUrl = lib.mkOption {
@@ -218,8 +237,7 @@ in {
         };
 
         # --- Secret file options (recommended for production) ---
-        # These use the _FILE env var pattern: the app reads the secret from the file at runtime.
-        # Files are mounted read-only into the container at /run/secrets/*.
+        # Loaded via systemd's LoadCredential mechanism and exposed under %d/.
 
         dbConnectionUrlFile = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
@@ -269,8 +287,9 @@ in {
           type = lib.types.listOf lib.types.str;
           default = [ ];
           description = ''
-            Environment files for sensitive values (BETTER_AUTH_SECRET, DB_CONNECTION_URL, etc.).
-            This is the RECOMMENDED and SECURE way to provide credentials.
+            systemd EnvironmentFile paths loaded at service start for sensitive values
+            (BETTER_AUTH_SECRET, DB_CONNECTION_URL, etc.). This is the RECOMMENDED and
+            SECURE way to provide credentials.
             Secrets in environment files are not exposed in the Nix store.
           '';
         };
@@ -278,46 +297,16 @@ in {
         extraEnvironment = lib.mkOption {
           type = lib.types.attrsOf lib.types.str;
           default = { };
-          description = "Additional environment variables to pass to the container.";
-        };
-
-        containerUid = lib.mkOption {
-          type = lib.types.int;
-          default = 6000;
-          description = "UID and GID the container process runs as. The container is started with --user=UID:UID. Any secret files passed via the *File options must be readable by this UID on the host.";
-        };
-
-        extraOptions = lib.mkOption {
-          type = lib.types.listOf lib.types.str;
-          default = [ "--network=host" ];
-          description = "Extra command-line options passed to the container runtime (podman/docker). Defaults to host networking; override with an empty list to use bridge networking.";
-        };
-
-        volumes = lib.mkOption {
-          type = lib.types.listOf lib.types.str;
-          default = [ ];
-          description = "Extra OCI volume mounts in host:container[:options] format (e.g. /srv/logs:/usr/src/app/logs:ro). Secret file mounts are added automatically when *File options are set.";
+          description = "Additional environment variables to pass to the service.";
         };
       };
 
       config = lib.mkIf cfg.enable {
-        assertions = [
-          {
-            assertion = !cfg.mountLogDir || (cfg.logDir != null && lib.hasPrefix "/" cfg.logDir);
-            message = ''
-              services.xinity-ai-dashboard.mountLogDir is enabled, but logDir is ${if cfg.logDir == null then "null" else "\"${cfg.logDir}\" (not an absolute path)"}.
-              Set logDir to an absolute path (starting with /) when using mountLogDir.
-            '';
-          }
-        ];
-
-        # Ensure log directory exists with correct permissions when mounting
-        systemd.tmpfiles.rules = lib.optional cfg.mountLogDir
-          "d ${cfg.logDir} 0777 - - - -";
-
-        virtualisation.oci-containers.containers.xinity-ai-dashboard = {
-          image = cfg.image;
-          ports = [ "${toString cfg.port}:${toString cfg.port}" ];
+        systemd.services.xinity-ai-dashboard = {
+          description = "Xinity AI Dashboard";
+          wantedBy = [ "multi-user.target" ];
+          after = [ "network-online.target" ];
+          wants = [ "network-online.target" ];
           environment = {
             HTTP_PORT = toString cfg.port;
             ORIGIN = cfg.origin;
@@ -370,40 +359,36 @@ in {
           // lib.optionalAttrs (cfg.licenseKey != null) {
             LICENSE_KEY = cfg.licenseKey;
           }
-          # --- Secret file env vars (_FILE pattern) ---
           // lib.optionalAttrs (cfg.dbConnectionUrlFile != null) {
-            DB_CONNECTION_URL_FILE = "/run/secrets/db-connection-url";
+            DB_CONNECTION_URL_FILE = "%d/db-connection-url";
           }
           // lib.optionalAttrs (cfg.betterAuthSecretFile != null) {
-            BETTER_AUTH_SECRET_FILE = "/run/secrets/better-auth-secret";
+            BETTER_AUTH_SECRET_FILE = "%d/better-auth-secret";
           }
           // lib.optionalAttrs (cfg.mailUrlFile != null) {
-            MAIL_URL_FILE = "/run/secrets/mail-url";
+            MAIL_URL_FILE = "%d/mail-url";
           }
           // lib.optionalAttrs (cfg.metricsAuthFile != null) {
-            METRICS_AUTH_FILE = "/run/secrets/metrics-auth";
+            METRICS_AUTH_FILE = "%d/metrics-auth";
           }
           // lib.optionalAttrs (cfg.s3AccessKeyIdFile != null) {
-            S3_ACCESS_KEY_ID_FILE = "/run/secrets/s3-access-key-id";
+            S3_ACCESS_KEY_ID_FILE = "%d/s3-access-key-id";
           }
           // lib.optionalAttrs (cfg.s3SecretAccessKeyFile != null) {
-            S3_SECRET_ACCESS_KEY_FILE = "/run/secrets/s3-secret-access-key";
+            S3_SECRET_ACCESS_KEY_FILE = "%d/s3-secret-access-key";
           }
           // lib.optionalAttrs (cfg.licenseKeyFile != null) {
-            LICENSE_KEY_FILE = "/run/secrets/license-key";
+            LICENSE_KEY_FILE = "%d/license-key";
           }
           // cfg.extraEnvironment;
-          environmentFiles = cfg.environmentFiles;
-          volumes = cfg.volumes
-            ++ lib.optional cfg.mountLogDir "${cfg.logDir}:${cfg.logDir}"
-            ++ lib.optional (cfg.dbConnectionUrlFile != null) "${cfg.dbConnectionUrlFile}:/run/secrets/db-connection-url:ro"
-            ++ lib.optional (cfg.betterAuthSecretFile != null) "${cfg.betterAuthSecretFile}:/run/secrets/better-auth-secret:ro"
-            ++ lib.optional (cfg.mailUrlFile != null) "${cfg.mailUrlFile}:/run/secrets/mail-url:ro"
-            ++ lib.optional (cfg.metricsAuthFile != null) "${cfg.metricsAuthFile}:/run/secrets/metrics-auth:ro"
-            ++ lib.optional (cfg.s3AccessKeyIdFile != null) "${cfg.s3AccessKeyIdFile}:/run/secrets/s3-access-key-id:ro"
-            ++ lib.optional (cfg.s3SecretAccessKeyFile != null) "${cfg.s3SecretAccessKeyFile}:/run/secrets/s3-secret-access-key:ro"
-            ++ lib.optional (cfg.licenseKeyFile != null) "${cfg.licenseKeyFile}:/run/secrets/license-key:ro";
-          extraOptions = [ "--user=${toString cfg.containerUid}:${toString cfg.containerUid}" ] ++ cfg.extraOptions;
+          serviceConfig = {
+            EnvironmentFile = cfg.environmentFiles;
+            ExecStart = "${cfg.package}/bin/xinity-ai-dashboard";
+            Restart = "always";
+            RestartSec = 5;
+          } // lib.optionalAttrs (loadCredentialEntries != [ ]) {
+            LoadCredential = loadCredentialEntries;
+          };
         };
       };
     };

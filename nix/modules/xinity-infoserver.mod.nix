@@ -1,24 +1,34 @@
-{ self, ... }:
-let
-  version = (builtins.fromJSON (builtins.readFile "${self}/package.json")).version;
-in {
-  flake.nixosModules.infoserver = { config, lib, ... }:
+{ withSystem, ... }: {
+  flake.nixosModules.infoserver = { config, lib, pkgs, ... }:
     let
+      withHostSystem = withSystem pkgs.stdenv.hostPlatform.system;
       cfg = config.services.xinity-infoserver;
+
+      removed = path: message:
+        lib.mkRemovedOptionModule
+          ([ "services" "xinity-infoserver" ] ++ path)
+          message;
     in {
+      imports = [
+        (removed [ "image" ]
+          "The infoserver now runs as a native systemd service backed by `services.xinity-infoserver.package`, not an OCI container. Remove this option from your configuration.")
+        (removed [ "extraOptions" ]
+          "OCI container runtime arguments don't apply to the systemd service the infoserver now runs as. Remove this option from your configuration.")
+      ];
+
       options.services.xinity-infoserver = {
         enable = lib.mkEnableOption "the xinity-infoserver, a lightweight service that reads a YAML model definition file and serves model metadata (pricing, capabilities, routing) to the gateway and dashboard";
 
-        image = lib.mkOption {
-          type = lib.types.str;
-          default = "ghcr.io/xinity-ai/xinity-infoserver:${version}";
-          description = "OCI image reference for the infoserver container. Override this to pin a specific version or use a private registry.";
+        package = lib.mkOption {
+          type = lib.types.package;
+          default = withHostSystem ({ config, ... }: config.packages.xinity-infoserver);
+          description = "The xinity-infoserver package to use. Defaults to the prebuilt release binary for the current platform.";
         };
 
         port = lib.mkOption {
           type = lib.types.port;
           default = 8090;
-          description = "HTTP port the infoserver listens on inside the container. This port is also published to the host.";
+          description = "HTTP port the infoserver listens on.";
         };
 
         modelInfoFile = lib.mkOption {
@@ -30,7 +40,7 @@ in {
         modelInfoDir = lib.mkOption {
           type = lib.types.nullOr lib.types.path;
           default = null;
-          description = "Path to a directory of model YAML files on the host. Mounted into the container at /data/models.d/. This is the preferred way to configure model sources.";
+          description = "Path to a directory of model YAML files on the host. This is the preferred way to configure model sources.";
         };
 
         refreshIntervalMs = lib.mkOption {
@@ -54,14 +64,14 @@ in {
         logDir = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description = "Directory for persistent log files. When set, the infoserver writes structured JSON logs to this directory in addition to stdout. If null, only stdout logging is used.";
+          description = "Directory for persistent log files. When set, the infoserver writes structured JSON logs to this directory in addition to stdout/journald.";
         };
 
         environmentFiles = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           default = [ ];
           description = ''
-            Environment files to pass to the container.
+            systemd EnvironmentFile paths loaded at service start.
             This is the RECOMMENDED and SECURE way to provide credentials.
             Secrets in environment files are not exposed in the Nix store.
           '';
@@ -70,13 +80,7 @@ in {
         extraEnvironment = lib.mkOption {
           type = lib.types.attrsOf lib.types.str;
           default = { };
-          description = "Additional environment variables to pass to the container.";
-        };
-
-        extraOptions = lib.mkOption {
-          type = lib.types.listOf lib.types.str;
-          default = [ "--network=host" ];
-          description = "Extra command-line options passed to the container runtime (podman/docker). Defaults to host networking; override with an empty list to use bridge networking.";
+          description = "Additional environment variables to pass to the service.";
         };
       };
 
@@ -86,9 +90,11 @@ in {
           message = "services.xinity-infoserver: modelInfoDir must be set (or the deprecated modelInfoFile).";
         }];
 
-        virtualisation.oci-containers.containers.xinity-infoserver = {
-          image = cfg.image;
-          ports = [ "${toString cfg.port}:${toString cfg.port}" ];
+        systemd.services.xinity-infoserver = {
+          description = "Xinity Infoserver";
+          wantedBy = [ "multi-user.target" ];
+          after = [ "network-online.target" ];
+          wants = [ "network-online.target" ];
           environment = {
             PORT = toString cfg.port;
             REFRESH_INTERVAL_MS = toString cfg.refreshIntervalMs;
@@ -96,22 +102,21 @@ in {
             LOG_LEVEL = cfg.logLevel;
           }
           // lib.optionalAttrs (cfg.modelInfoFile != null) {
-            MODEL_INFO_FILE = "/data/models.yaml";
+            MODEL_INFO_FILE = toString cfg.modelInfoFile;
           }
           // lib.optionalAttrs (cfg.logDir != null) {
             LOG_DIR = cfg.logDir;
           }
           // lib.optionalAttrs (cfg.modelInfoDir != null) {
-            MODEL_INFO_DIR = "/data/models.d";
+            MODEL_INFO_DIR = toString cfg.modelInfoDir;
           }
           // cfg.extraEnvironment;
-          volumes = lib.optionals (cfg.modelInfoFile != null) [
-            "${cfg.modelInfoFile}:/data/models.yaml:ro"
-          ] ++ lib.optionals (cfg.modelInfoDir != null) [
-            "${cfg.modelInfoDir}:/data/models.d:ro"
-          ];
-          environmentFiles = cfg.environmentFiles;
-          extraOptions = cfg.extraOptions;
+          serviceConfig = {
+            EnvironmentFile = cfg.environmentFiles;
+            ExecStart = "${cfg.package}/bin/xinity-infoserver";
+            Restart = "always";
+            RestartSec = 5;
+          };
         };
       };
     };

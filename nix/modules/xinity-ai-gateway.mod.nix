@@ -1,18 +1,40 @@
-{ self, ... }:
-let
-  version = (builtins.fromJSON (builtins.readFile "${self}/package.json")).version;
-in {
-  flake.nixosModules.gateway = { config, lib, ... }:
+{ withSystem, ... }: {
+  flake.nixosModules.gateway = { config, lib, pkgs, ... }:
     let
+      withHostSystem = withSystem pkgs.stdenv.hostPlatform.system;
       cfg = config.services.xinity-ai-gateway;
+
+      removed = path: message:
+        lib.mkRemovedOptionModule
+          ([ "services" "xinity-ai-gateway" ] ++ path)
+          message;
+
+      loadCredentialEntries =
+        lib.optional (cfg.dbConnectionUrlFile != null) "db-connection-url:${cfg.dbConnectionUrlFile}"
+        ++ lib.optional (cfg.redisUrlFile != null) "redis-url:${cfg.redisUrlFile}"
+        ++ lib.optional (cfg.metricsAuthFile != null) "metrics-auth:${cfg.metricsAuthFile}"
+        ++ lib.optional (cfg.s3AccessKeyIdFile != null) "s3-access-key-id:${cfg.s3AccessKeyIdFile}"
+        ++ lib.optional (cfg.s3SecretAccessKeyFile != null) "s3-secret-access-key:${cfg.s3SecretAccessKeyFile}"
+        ++ lib.optional (cfg.tlsCertFile != null) "tls-cert:${cfg.tlsCertFile}"
+        ++ lib.optional (cfg.tlsKeyFile != null) "tls-key:${cfg.tlsKeyFile}"
+        ++ lib.optional (cfg.inferenceCaFile != null) "inference-ca:${cfg.inferenceCaFile}";
     in {
+      imports = [
+        (removed [ "image" ]
+          "The gateway now runs as a native systemd service backed by `services.xinity-ai-gateway.package`, not an OCI container. Remove this option from your configuration.")
+        (removed [ "containerUid" ]
+          "The gateway now runs as a native systemd service, not an OCI container. Remove this option from your configuration.")
+        (removed [ "extraOptions" ]
+          "OCI container runtime arguments don't apply to the systemd service the gateway now runs as. Remove this option from your configuration.")
+      ];
+
       options.services.xinity-ai-gateway = {
         enable = lib.mkEnableOption "the xinity-ai gateway, an OpenAI-compatible API proxy that handles authentication, rate limiting, load balancing, and request routing across inference nodes";
 
-        image = lib.mkOption {
-          type = lib.types.str;
-          default = "ghcr.io/xinity-ai/xinity-ai-gateway:${version}";
-          description = "OCI image reference for the gateway container. Override this to pin a specific version or use a private registry.";
+        package = lib.mkOption {
+          type = lib.types.package;
+          default = withHostSystem ({ config, ... }: config.packages.xinity-ai-gateway);
+          description = "The xinity-ai-gateway package to use. Defaults to the prebuilt release binary for the current platform.";
         };
 
         port = lib.mkOption {
@@ -101,7 +123,7 @@ in {
         logDir = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description = "Directory for log files. If null, only stdout logging is used.";
+          description = "Directory for log files. If null, only stdout/journald logging is used.";
         };
 
         backendTimeoutMs = lib.mkOption {
@@ -155,7 +177,7 @@ in {
         tlsCertFile = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description = "Path to a file containing the PEM-encoded TLS certificate. Enables HTTPS on the gateway.";
+          description = "Path to a file containing the PEM-encoded TLS certificate. Loaded via systemd LoadCredential and exposed as XINITY_TLS_CERT_FILE. Enables HTTPS on the gateway.";
         };
 
         tlsKeyFile = lib.mkOption {
@@ -172,7 +194,7 @@ in {
 
         # --- Secret file options (recommended for production) ---
         # These use the _FILE env var pattern: the app reads the secret from the file at runtime.
-        # Files are mounted read-only into the container at /run/secrets/*.
+        # Files are loaded via systemd's LoadCredential mechanism and exposed under %d/.
 
         dbConnectionUrlFile = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
@@ -208,8 +230,9 @@ in {
           type = lib.types.listOf lib.types.str;
           default = [ ];
           description = ''
-            Environment files for sensitive values (DB_CONNECTION_URL, REDIS_URL, etc.).
-            This is the RECOMMENDED and SECURE way to provide credentials.
+            systemd EnvironmentFile paths loaded at service start for sensitive values
+            (DB_CONNECTION_URL, REDIS_URL, etc.). This is the RECOMMENDED and SECURE
+            way to provide credentials.
             Secrets in environment files are not exposed in the Nix store.
           '';
         };
@@ -217,26 +240,16 @@ in {
         extraEnvironment = lib.mkOption {
           type = lib.types.attrsOf lib.types.str;
           default = { };
-          description = "Additional environment variables to pass to the container.";
-        };
-
-        containerUid = lib.mkOption {
-          type = lib.types.int;
-          default = 6000;
-          description = "UID and GID the container process runs as. The container is started with --user=UID:UID. Any secret files passed via the *File options must be readable by this UID on the host.";
-        };
-
-        extraOptions = lib.mkOption {
-          type = lib.types.listOf lib.types.str;
-          default = [ "--network=host" ];
-          description = "Extra command-line options passed to the container runtime (podman/docker). Defaults to host networking; override with an empty list to use bridge networking.";
+          description = "Additional environment variables to pass to the service.";
         };
       };
 
       config = lib.mkIf cfg.enable {
-        virtualisation.oci-containers.containers.xinity-ai-gateway = {
-          image = cfg.image;
-          ports = [ "${toString cfg.port}:${toString cfg.port}" ];
+        systemd.services.xinity-ai-gateway = {
+          description = "Xinity AI Gateway";
+          wantedBy = [ "multi-user.target" ];
+          after = [ "network-online.target" ];
+          wants = [ "network-online.target" ];
           environment = {
             HOST = cfg.host;
             PORT = toString cfg.port;
@@ -275,44 +288,39 @@ in {
           // lib.optionalAttrs (cfg.s3SecretAccessKey != null) {
             S3_SECRET_ACCESS_KEY = cfg.s3SecretAccessKey;
           }
-          # --- TLS file env vars ---
           // lib.optionalAttrs (cfg.tlsCertFile != null) {
-            XINITY_TLS_CERT_FILE = "/run/secrets/tls-cert";
+            XINITY_TLS_CERT_FILE = "%d/tls-cert";
           }
           // lib.optionalAttrs (cfg.tlsKeyFile != null) {
-            XINITY_TLS_KEY_FILE = "/run/secrets/tls-key";
+            XINITY_TLS_KEY_FILE = "%d/tls-key";
           }
           // lib.optionalAttrs (cfg.inferenceCaFile != null) {
-            XINITY_INFERENCE_CA_FILE = "/run/secrets/inference-ca";
+            XINITY_INFERENCE_CA_FILE = "%d/inference-ca";
           }
-          # --- Secret file env vars (_FILE pattern) ---
           // lib.optionalAttrs (cfg.dbConnectionUrlFile != null) {
-            DB_CONNECTION_URL_FILE = "/run/secrets/db-connection-url";
+            DB_CONNECTION_URL_FILE = "%d/db-connection-url";
           }
           // lib.optionalAttrs (cfg.redisUrlFile != null) {
-            REDIS_URL_FILE = "/run/secrets/redis-url";
+            REDIS_URL_FILE = "%d/redis-url";
           }
           // lib.optionalAttrs (cfg.metricsAuthFile != null) {
-            METRICS_AUTH_FILE = "/run/secrets/metrics-auth";
+            METRICS_AUTH_FILE = "%d/metrics-auth";
           }
           // lib.optionalAttrs (cfg.s3AccessKeyIdFile != null) {
-            S3_ACCESS_KEY_ID_FILE = "/run/secrets/s3-access-key-id";
+            S3_ACCESS_KEY_ID_FILE = "%d/s3-access-key-id";
           }
           // lib.optionalAttrs (cfg.s3SecretAccessKeyFile != null) {
-            S3_SECRET_ACCESS_KEY_FILE = "/run/secrets/s3-secret-access-key";
+            S3_SECRET_ACCESS_KEY_FILE = "%d/s3-secret-access-key";
           }
           // cfg.extraEnvironment;
-          environmentFiles = cfg.environmentFiles;
-          volumes =
-            lib.optional (cfg.dbConnectionUrlFile != null) "${cfg.dbConnectionUrlFile}:/run/secrets/db-connection-url:ro"
-            ++ lib.optional (cfg.redisUrlFile != null) "${cfg.redisUrlFile}:/run/secrets/redis-url:ro"
-            ++ lib.optional (cfg.metricsAuthFile != null) "${cfg.metricsAuthFile}:/run/secrets/metrics-auth:ro"
-            ++ lib.optional (cfg.s3AccessKeyIdFile != null) "${cfg.s3AccessKeyIdFile}:/run/secrets/s3-access-key-id:ro"
-            ++ lib.optional (cfg.s3SecretAccessKeyFile != null) "${cfg.s3SecretAccessKeyFile}:/run/secrets/s3-secret-access-key:ro"
-            ++ lib.optional (cfg.tlsCertFile != null) "${cfg.tlsCertFile}:/run/secrets/tls-cert:ro"
-            ++ lib.optional (cfg.tlsKeyFile != null) "${cfg.tlsKeyFile}:/run/secrets/tls-key:ro"
-            ++ lib.optional (cfg.inferenceCaFile != null) "${cfg.inferenceCaFile}:/run/secrets/inference-ca:ro";
-          extraOptions = [ "--user=${toString cfg.containerUid}:${toString cfg.containerUid}" ] ++ cfg.extraOptions;
+          serviceConfig = {
+            EnvironmentFile = cfg.environmentFiles;
+            ExecStart = "${cfg.package}/bin/xinity-ai-gateway";
+            Restart = "always";
+            RestartSec = 5;
+          } // lib.optionalAttrs (loadCredentialEntries != [ ]) {
+            LoadCredential = loadCredentialEntries;
+          };
         };
       };
     };
