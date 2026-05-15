@@ -14,11 +14,6 @@
                   default = {};
                   internal = true;
                 };
-                virtualisation.oci-containers.containers = lib.mkOption {
-                  type = lib.types.attrsOf lib.types.unspecified;
-                  default = {};
-                  internal = true;
-                };
                 networking = lib.mkOption {
                   type = lib.types.attrsOf lib.types.unspecified;
                   default = {};

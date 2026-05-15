@@ -1,6 +1,7 @@
 {
   imports = [
     ./modules
-    ./packages
+    ./packages.mod.nix
+    ./db-migrate.mod.nix
   ];
 }

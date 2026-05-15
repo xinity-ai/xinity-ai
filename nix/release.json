@@ -1,0 +1,19 @@
+{
+  "tag": "v0.19.3",
+  "version": "0.19.3",
+  "bundles": {
+    "xinity-ai-daemon": "sha256-9nuHQ8kg9LC99fWt//v69Al8yMpB2QpNbg5VqY1z2hw=",
+    "xinity-ai-gateway": "sha256-Ozl4tC7SGxxlZw9+UgWPowMiHHnleBnvWEbHQVbIG94=",
+    "xinity-infoserver": "sha256-buTmMPGlrDGa8/xZTK7Ifs/DXmzTmwmxVfJFMHGepMg="
+  },
+  "binaries": {
+    "xinity-ai-dashboard": {
+      "x86_64-linux": "sha256-ObvkPGHagLmoJGG4IotjtTGD0TK1ZlT290hiTwJHwTA=",
+      "aarch64-linux": "sha256-BmaINpQvoQuR+vvyxoQ2NOgrKUil5gKOObrtntZtSFA="
+    },
+    "xinity-cli": {
+      "x86_64-linux": "sha256-Dvn2NBmeEP06jKefurCFcn2LgJDSilqNmBdlMLl+/xc=",
+      "aarch64-linux": "sha256-6IZsgfocW2n2rhs7+sdLTbQyRgZgZvo1DXTJ+IKvkj8="
+    }
+  }
+}
