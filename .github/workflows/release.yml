@@ -360,3 +360,48 @@ jobs:
             ```
 
             ---
+
+  update-nix-release:
+    name: Update nix/release.json
+    needs: [release]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Download SHASUMS256.txt
+        run: |
+          curl -fsSL \
+            "https://github.com/${{ github.repository }}/releases/download/${TAG}/SHASUMS256.txt" \
+            -o SHASUMS256.txt
+
+      - name: Regenerate nix/release.json
+        run: |
+          bun scripts/update-nix-release.ts \
+            --tag "${TAG}" \
+            --shasums SHASUMS256.txt \
+            --release-json nix/release.json
+          rm SHASUMS256.txt
+
+      - name: Commit and push to main
+        run: |
+          if git diff --quiet nix/release.json; then
+            echo "release.json already up to date for ${TAG}; nothing to do."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add nix/release.json
+          git commit -m "chore(nix): release.json -> ${TAG}"
+          git pull --rebase origin main
+          git push origin HEAD:main
