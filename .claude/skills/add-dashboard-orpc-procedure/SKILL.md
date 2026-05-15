@@ -1,3 +1,8 @@
+---
+name: add-dashboard-orpc-procedure
+description: Verify permission guards when creating, modifying, or reviewing any oRPC procedure file in `packages/xinity-ai-dashboard/src/lib/server/orpc/procedures/`.
+---
+
 # Verify Procedure Permissions
 
 When creating, modifying, or reviewing any oRPC procedure file in `packages/xinity-ai-dashboard/src/lib/server/orpc/procedures/`, verify that permission guards are correct.

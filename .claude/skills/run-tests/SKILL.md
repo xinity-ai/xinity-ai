@@ -1,3 +1,8 @@
+---
+name: run-tests
+description: End-to-end verification that every test suite in the workspace runs green locally. Use when validating dependency changes, refactors, or anything else that could plausibly affect runtime behavior across packages.
+---
+
 # Run Tests
 
 End-to-end procedure for verifying every test suite in the workspace runs green locally. Use when validating dependency changes, refactors, or anything else that could plausibly affect runtime behavior across packages. Runs in three sequential phases: non-dashboard package tests, system tests, then dashboard tests.

@@ -1,3 +1,8 @@
+---
+name: add-env-variable
+description: Add a new environment variable to any service package following the env-schema / parseEnv pattern with Zod schema, describe(), and meta(secret()) annotations.
+---
+
 # Add Environment Variable
 
 When adding a new environment variable to any service package, follow this pattern.
