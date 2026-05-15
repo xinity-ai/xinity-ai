@@ -2,7 +2,7 @@
 
 This repository is a Nix flake. Add it to your NixOS configuration to deploy Xinity services declaratively.
 
-> **Current state:** The control plane services (gateway, dashboard, infoserver) run as OCI containers via the NixOS `oci-containers` module. The daemon is a native systemd service. Direct systemd service definitions for all components are planned.
+All services (gateway, dashboard, infoserver, daemon) run as native `systemd` services. Binaries are pulled from the GitHub Release: JS bundles run via a shared `pkgs.bun` runtime for gateway/daemon/infoserver, and standalone `bun --compile` binaries for dashboard and cli.
 
 ## Architecture
 
@@ -81,7 +81,7 @@ services.xinity-ai-gateway.dbConnectionUrl = "postgresql://...";
 services.xinity-ai.environmentFile = "/run/secrets/xinity";
 ```
 
-**3. Per-secret files with `_FILE` (recommended)** — each secret gets its own file, mounted read-only into the container at `/run/secrets/`. The application reads the file at startup; the value never appears as an environment variable.
+**3. Per-secret files with `_FILE` (recommended)** — each secret gets its own file on the host. The service loads them into its runtime credential directory via systemd's `LoadCredential`, and the application reads them at startup; the value never appears as an environment variable.
 
 ```nix
 services.xinity-ai.secrets = {
@@ -95,20 +95,13 @@ services.xinity-ai.secrets = {
 };
 ```
 
-**File permissions:** Secret files are bind-mounted into the container. The container process runs as UID 6000 by default (configurable via `containerUid`). The secret file just needs to be readable by this UID. With agenix:
+**File permissions:** Each host file just needs to be readable by the user the service runs as. The services run as `root` by default (override via `systemd.services.<name>.serviceConfig.User`), so any file readable by root is sufficient. With agenix:
 
 ```nix
 age.secrets.xinity-db-url = {
   file = ./secrets/db-url.age;
-  owner = "6000";
   mode = "0400";
 };
-```
-
-The UID is configurable to avoid clashes with existing users:
-
-```nix
-services.xinity-ai.containerUid = 7000;
 ```
 
 All three tiers can be mixed. Direct values and `environmentFile` entries take precedence over `_FILE` variants. For the full list of per-secret options, see the module source in [nix/modules/](../../nix/modules/).
