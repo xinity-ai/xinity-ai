@@ -1,7 +1,7 @@
 {
   perSystem = { pkgs, ... }:
     let
-      migrationDir = ../../packages/common-db/db-migration;
+      migrationDir = ../packages/common-db/db-migration;
 
       migrateScript = pkgs.writeShellScriptBin "xinity-db-migrate" ''
         set -euo pipefail
