@@ -75,7 +75,10 @@ export const aiNodeT = pgTable("ai_node", {
   /** estimated capacity available on the node, as GB of estimated usable model capacity */
   estCapacity: real("est_capacity").notNull(),
   available: boolean().notNull().default(true),
-  /** Represents drivers supported on this node */
+  /** @deprecated Use {@link driverVersions}. The presence of a key in driverVersions
+   * is the source of truth for driver availability. The daemon still writes this
+   * column for backward compatibility, but the dashboard no longer reads it.
+   * Will be removed in a future migration. */
   drivers: text().array().notNull().default(["ollama"]),
   /** Number of GPUs detected on this node. 0 means CPU-only. */
   gpuCount: integer("gpu_count").notNull().default(0),

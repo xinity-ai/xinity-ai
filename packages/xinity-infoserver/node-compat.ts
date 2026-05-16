@@ -12,10 +12,11 @@ export type GpuInfo = {
   vramMb: number;
 };
 
-/** Minimal representation of a node's capabilities. */
+/** Minimal representation of a node's capabilities.
+ * Driver availability is determined by keys present in `driverVersions`:
+ * if the daemon couldn't probe a version for a driver, that driver is unusable. */
 export type NodeCapability = {
   free: number;
-  drivers: string[];
   driverVersions: Record<string, string>;
   gpus: GpuInfo[];
 };
@@ -54,7 +55,7 @@ export function checkNodeCompatibility(
   // TODO v1.0.0 default this to true
   const requireKnownVersion = options.requireKnownVersion ?? false;
 
-  if (!node.drivers.includes(req.driver)) return "missing_driver";
+  if (!(req.driver in node.driverVersions)) return "missing_driver";
 
   if (req.minVersion) {
     const nodeVersion = node.driverVersions[req.driver];

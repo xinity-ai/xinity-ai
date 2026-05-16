@@ -179,7 +179,6 @@ export function findServerForModel(
 
     const nodeCap: NodeCapability = {
       free: cap.total - cap.used,
-      drivers: server.drivers,
       driverVersions: (server.driverVersions ?? {}) as Record<string, string>,
       gpus: (server.gpus ?? []) as { vendor: string; name: string; vramMb: number }[],
     };

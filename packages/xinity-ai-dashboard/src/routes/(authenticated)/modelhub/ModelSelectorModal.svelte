@@ -129,7 +129,7 @@
     // (meaning it would work if not for the version/platform mismatch)
     const needed = model.weight + model.minKvCache;
     const drivers = Object.keys(model.providers).filter(d => model.providers[d as keyof typeof model.providers] !== undefined);
-    return nodeCapabilities.some(n => n.free >= needed && drivers.some(d => n.drivers.includes(d)));
+    return nodeCapabilities.some(n => n.free >= needed && drivers.some(d => d in n.driverVersions));
   }
 
   function handleSelect(model: ModelWithSpecifier) {

@@ -12,7 +12,7 @@ function makeNode(overrides: Partial<AiNode> & { id: string }): AiNode {
     estCapacity: 24,
     available: true,
     drivers: ["ollama"],
-    driverVersions: {},
+    driverVersions: { ollama: "0.6.3" },
     gpus: [],
     gpuCount: 1,
     authToken: null,
@@ -102,29 +102,29 @@ describe("orchestration: node goes unavailable", () => {
     expect(findServerForModel("new-model", "vllm", 8, state, [], FF, "0.19.1")).toBe("node-f");
   });
 
-  test("findServerForModel allows nodes with unknown version (fail-open)", () => {
-    const unknownNode = makeNode({ id: "node-g", host: "10.0.0.7", drivers: ["vllm"], driverVersions: {} });
+  test("findServerForModel allows nodes whose driver version is recorded as empty (fail-open)", () => {
+    const unknownNode = makeNode({ id: "node-g", host: "10.0.0.7", drivers: ["vllm"], driverVersions: { vllm: "" } });
     const state = buildClusterState([], [unknownNode]);
 
     expect(findServerForModel("new-model", "vllm", 8, state, [], FF, "0.19.1")).toBe("node-g");
   });
 
   test("findServerForModel skips nodes with wrong GPU platform", () => {
-    const amdNode = makeNode({ id: "node-h", host: "10.0.0.8", drivers: ["vllm"], gpus: [{ vendor: "amd", name: "MI300X", vramMb: 196608 }] });
+    const amdNode = makeNode({ id: "node-h", host: "10.0.0.8", drivers: ["vllm"], driverVersions: { vllm: "0.20.0" }, gpus: [{ vendor: "amd", name: "MI300X", vramMb: 196608 }] });
     const state = buildClusterState([], [amdNode]);
 
     expect(findServerForModel("mxfp4-model", "vllm", 8, state, [], FF, undefined, ["nvidia"])).toBeNull();
   });
 
   test("findServerForModel accepts nodes with matching GPU platform", () => {
-    const nvidiaNode = makeNode({ id: "node-i", host: "10.0.0.9", drivers: ["vllm"], gpus: [{ vendor: "nvidia", name: "A100", vramMb: 81920 }] });
+    const nvidiaNode = makeNode({ id: "node-i", host: "10.0.0.9", drivers: ["vllm"], driverVersions: { vllm: "0.20.0" }, gpus: [{ vendor: "nvidia", name: "A100", vramMb: 81920 }] });
     const state = buildClusterState([], [nvidiaNode]);
 
     expect(findServerForModel("mxfp4-model", "vllm", 8, state, [], FF, undefined, ["nvidia"])).toBe("node-i");
   });
 
   test("findServerForModel rejects nodes with no GPUs when platform is required", () => {
-    const cpuNode = makeNode({ id: "node-j", host: "10.0.0.10", drivers: ["vllm"], gpus: [] });
+    const cpuNode = makeNode({ id: "node-j", host: "10.0.0.10", drivers: ["vllm"], driverVersions: { vllm: "0.20.0" }, gpus: [] });
     const state = buildClusterState([], [cpuNode]);
 
     expect(findServerForModel("mxfp4-model", "vllm", 8, state, [], FF, undefined, ["nvidia"])).toBeNull();
