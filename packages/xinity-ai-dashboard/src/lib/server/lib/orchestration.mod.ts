@@ -5,6 +5,7 @@ import { resolveDefaultProvider, resolveMinVersionForDriver, resolveRequiredPlat
 import { rootLogger } from "../logging";
 import { building } from "$app/environment";
 import { maxVramGb } from "$lib/server/license";
+import { serverEnv } from "$lib/server/serverenv";
 
 const log = rootLogger.child({ name: "orchestration.mod" })
 
@@ -23,6 +24,28 @@ interface ClusterState {
 
 export type ModelRequirement = { lookup: ModelLookup; replicas: number; kvCacheSize: number | null; preferredDriver: Provider | null };
 export type ModelRequirementTable = Record<string, ModelRequirement>;
+
+export type DeploymentStrategy = "first-fit" | "balanced" | "bin-pack" | "proportional";
+
+/** Returns availableServers ordered by the given strategy's preference.
+ * Re-evaluated per placement so spread strategies see updated `used` after each replica. */
+export function rankServers(strategy: DeploymentStrategy, state: ClusterState): AiNode[] {
+  const free = (s: AiNode) => {
+    const cap = state.serverCapacity.get(s.id);
+    return cap ? cap.total - cap.used : 0;
+  };
+  const ratio = (s: AiNode) => {
+    const cap = state.serverCapacity.get(s.id);
+    return cap && cap.total > 0 ? cap.used / cap.total : 1;
+  };
+  const servers = [...state.availableServers];
+  switch (strategy) {
+    case "first-fit":    return servers;
+    case "balanced":     return servers.sort((a, b) => free(b) - free(a));
+    case "bin-pack":     return servers.sort((a, b) => free(a) - free(b));
+    case "proportional": return servers.sort((a, b) => ratio(a) - ratio(b));
+  }
+}
 
 function mergeRequirementsByLookupKey(entries: ModelRequirement[]): ModelRequirementTable {
   return entries.reduce((agg, entry) => {
@@ -129,13 +152,14 @@ export function collectExcessInstallations(requiredModels: ModelRequirementTable
   return toUninstall;
 }
 
-/** First-fit placement; skips nodes that already host the model. */
+/** Picks a node according to the configured strategy; skips nodes that already host the model. */
 export function findServerForModel(
   specifier: string,
   driver: string,
   weight: number,
   state: ClusterState,
   pending: NewInstallation[],
+  strategy: DeploymentStrategy,
   minVersion?: string,
   requiredPlatforms?: string[],
 ): string | null {
@@ -144,7 +168,7 @@ export function findServerForModel(
     minVersion, requiredPlatforms: requiredPlatforms ?? [],
   };
 
-  for (const server of state.availableServers) {
+  for (const server of rankServers(strategy, state)) {
     const cap = state.serverCapacity.get(server.id);
     if (!cap) continue;
 
@@ -195,6 +219,7 @@ async function planNewInstallations(
   requiredModels: ModelRequirementTable,
   state: ClusterState,
   licenseVramLimit: number,
+  strategy: DeploymentStrategy,
 ): Promise<NewInstallation[]> {
   const toInstall: NewInstallation[] = [];
   let usedVram = totalVramUsed(state);
@@ -244,7 +269,7 @@ async function planNewInstallations(
         break;
       }
 
-      const nodeId = findServerForModel(key, driver, totalCapacity, state, toInstall, minVersion, requiredPlatforms);
+      const nodeId = findServerForModel(key, driver, totalCapacity, state, toInstall, strategy, minVersion, requiredPlatforms);
       if (!nodeId) {
         log.warn({ lookup: requirement.lookup }, "No server with enough capacity for additional replica");
         break;
@@ -297,7 +322,7 @@ async function runSyncDeployedModels() {
     ...orphaned.map(i => i.id),
     ...collectExcessInstallations(requiredModels, state),
   ];
-  const toInstall = await planNewInstallations(requiredModels, state, maxVramGb());
+  const toInstall = await planNewInstallations(requiredModels, state, maxVramGb(), serverEnv.DEPLOYMENT_STRATEGY);
   await applyChanges(toUninstall, toInstall);
 }
 

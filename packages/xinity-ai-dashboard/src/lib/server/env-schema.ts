@@ -31,4 +31,5 @@ export const dashboardEnvSchema = z.object({
   LICENSE_KEY: z.string().optional().describe("License key for unlocking paid features (Ed25519-signed token)").meta(secret()),
   TRUSTED_ORIGINS: z.string().optional().describe("Comma-separated additional trusted origins for CSRF validation behind reverse proxies").meta(expert()),
   GATEWAY_URL: z.url().default("http://localhost:4010").describe("Gateway base URL shown to users in docs and code examples (e.g. https://api.example.com). Must NOT include the /v1 path segment - that is appended where needed. The deprecated PUBLIC_LLM_API_URL did include /v1; double-check after migrating.").meta(clientPublic()),
+  DEPLOYMENT_STRATEGY: z.enum(["first-fit", "balanced", "bin-pack", "proportional"]).default("balanced").describe("Node selection strategy for new model installations. 'first-fit' picks the first node that fits (deterministic). 'balanced' picks the node with the most absolute free VRAM (spread for HA). 'bin-pack' picks the tightest fit (consolidate so idle nodes stay drainable). 'proportional' picks the node with the lowest percent utilization (fair spread across heterogeneous fleets).").meta(expert()),
 });
