@@ -14,7 +14,6 @@ const GpuInfoSchema = z.object({
 
 const NodeCapabilitySchema = z.object({
   free: z.number(),
-  drivers: z.array(z.string()),
   driverVersions: z.record(z.string(), z.string()),
   gpus: z.array(GpuInfoSchema),
 });
@@ -36,7 +35,6 @@ export async function buildClusterCapacity(): Promise<ClusterCapacity> {
   const nodes = await getDB().select({
     id: aiNodeT.id,
     estCapacity: aiNodeT.estCapacity,
-    drivers: aiNodeT.drivers,
     driverVersions: aiNodeT.driverVersions,
     gpus: aiNodeT.gpus,
   }).from(aiNodeT)
@@ -51,14 +49,13 @@ export async function buildClusterCapacity(): Promise<ClusterCapacity> {
 
   const nodeCapabilities: NodeCapability[] = nodes.map(n => ({
     free: n.estCapacity - (nodeUsed.get(n.id) ?? 0),
-    drivers: n.drivers,
     driverVersions: (n.driverVersions ?? {}) as Record<string, string>,
     gpus: (n.gpus ?? []) as { vendor: string; name: string; vramMb: number }[],
   }));
 
   const maxNodeFreeCapacity = Math.max(0, ...nodeCapabilities.map(n => n.free));
   const availableDrivers = [...new Set(
-    nodeCapabilities.filter(n => n.free > 0).flatMap(n => n.drivers),
+    nodeCapabilities.filter(n => n.free > 0).flatMap(n => Object.keys(n.driverVersions)),
   )];
   const nodeFreeCapacities = nodeCapabilities
     .map(n => n.free).filter(c => c > 0).sort((a, b) => b - a);

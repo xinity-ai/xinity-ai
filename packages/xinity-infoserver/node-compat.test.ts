@@ -7,7 +7,6 @@ const amdGpu: GpuInfo = { vendor: "amd", name: "MI300X", vramMb: 196608 };
 function makeNode(overrides?: Partial<NodeCapability>): NodeCapability {
   return {
     free: 24,
-    drivers: ["vllm", "ollama"],
     driverVersions: { vllm: "0.20.0", ollama: "0.6.3" },
     gpus: [nvidiaGpu],
     ...overrides,
@@ -30,7 +29,14 @@ describe("checkNodeCompatibility", () => {
 
   test("returns missing_driver when driver not available", () => {
     expect(checkNodeCompatibility(
-      makeNode({ drivers: ["ollama"] }),
+      makeNode({ driverVersions: { ollama: "0.6.3" } }),
+      makeReq({ driver: "vllm" }),
+    )).toBe("missing_driver");
+  });
+
+  test("returns missing_driver when driverVersions is empty (no successful probes)", () => {
+    expect(checkNodeCompatibility(
+      makeNode({ driverVersions: {} }),
       makeReq({ driver: "vllm" }),
     )).toBe("missing_driver");
   });
@@ -49,16 +55,16 @@ describe("checkNodeCompatibility", () => {
     )).toBeNull();
   });
 
-  test("skips version check when node has no version info (fail-open by default)", () => {
+  test("skips version check when driver is present but its version is empty (fail-open by default)", () => {
     expect(checkNodeCompatibility(
-      makeNode({ driverVersions: {} }),
+      makeNode({ driverVersions: { vllm: "" } }),
       makeReq({ minVersion: "0.19.1" }),
     )).toBeNull();
   });
 
-  test("returns version_unknown when requireKnownVersion is true and node has no version", () => {
+  test("returns version_unknown when requireKnownVersion is true and the driver's version is empty", () => {
     expect(checkNodeCompatibility(
-      makeNode({ driverVersions: {} }),
+      makeNode({ driverVersions: { vllm: "" } }),
       makeReq({ minVersion: "0.19.1" }),
       { requireKnownVersion: true },
     )).toBe("version_unknown");
@@ -82,7 +88,7 @@ describe("checkNodeCompatibility", () => {
 
   test("requireKnownVersion is ignored when the model has no minVersion", () => {
     expect(checkNodeCompatibility(
-      makeNode({ driverVersions: {} }),
+      makeNode({ driverVersions: { vllm: "" } }),
       makeReq(),
       { requireKnownVersion: true },
     )).toBeNull();
@@ -132,7 +138,7 @@ describe("checkNodeCompatibility", () => {
 
   test("checks constraints in order: driver before version before platform before capacity", () => {
     expect(checkNodeCompatibility(
-      makeNode({ drivers: [], driverVersions: {}, gpus: [amdGpu], free: 0 }),
+      makeNode({ driverVersions: {}, gpus: [amdGpu], free: 0 }),
       makeReq({ minVersion: "0.19.1", requiredPlatforms: ["nvidia"], capacityGb: 100 }),
     )).toBe("missing_driver");
   });
@@ -193,7 +199,7 @@ describe("isDeployableOnCluster", () => {
       providers: { vllm: "org/model" as string | undefined, ollama: "model" as string | undefined },
     };
     expect(isDeployableOnCluster(
-      [makeNode({ drivers: ["ollama"], driverVersions: {} })],
+      [makeNode({ driverVersions: { ollama: "0.6.3" } })],
       multiProviderModel,
     )).toBe(true);
   });
@@ -206,7 +212,7 @@ describe("isDeployableOnCluster", () => {
   test("model without providerMinVersions or providerPlatforms works on any node", () => {
     const simpleModel = { weight: 8, minKvCache: 2, providers: { ollama: "m" as string | undefined } };
     expect(isDeployableOnCluster(
-      [makeNode({ drivers: ["ollama"], gpus: [amdGpu], driverVersions: {} })],
+      [makeNode({ driverVersions: { ollama: "0.6.3" }, gpus: [amdGpu] })],
       simpleModel,
     )).toBe(true);
   });
