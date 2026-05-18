@@ -102,13 +102,13 @@
             LOG_LEVEL = cfg.logLevel;
           }
           // lib.optionalAttrs (cfg.modelInfoFile != null) {
-            MODEL_INFO_FILE = toString cfg.modelInfoFile;
+            MODEL_INFO_FILE = cfg.modelInfoFile;
           }
           // lib.optionalAttrs (cfg.logDir != null) {
             LOG_DIR = cfg.logDir;
           }
           // lib.optionalAttrs (cfg.modelInfoDir != null) {
-            MODEL_INFO_DIR = toString cfg.modelInfoDir;
+            MODEL_INFO_DIR = cfg.modelInfoDir;
           }
           // cfg.extraEnvironment;
           serviceConfig = {
