@@ -525,7 +525,7 @@ const checkCapacity = rootOs
   })
   .input(CapacityCheckInput)
   .output(CapacityCheckOutput)
-  .handler(async ({ input }) => {
+  .handler(async ({ input }): Promise<CapacityCheckResult> =>  {
     return checkDeploymentCapacity(input);
   });
 

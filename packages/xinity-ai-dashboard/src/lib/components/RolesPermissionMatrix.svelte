@@ -5,7 +5,7 @@
 
   type ResourcePermissions = {
     label: string;
-    actions: Record<RoleName, string[]>;
+    actions: Record<RoleName, readonly string[]>;
   };
 
   const permissionObjects = {
@@ -22,8 +22,8 @@
   const resources: ResourcePermissions[] = Object.entries(permissionObjects).map(([object, label]) => ({
     label,
     actions: Object.fromEntries(Object.entries(roles).map(([role, values]) =>
-      [role, values.statements[object as keyof typeof values.statements] as string[]] as [RoleName, string[]]
-    )) as Record<RoleName, string[]>,
+      [role, values.statements[object as keyof typeof values.statements] ?? []] as [RoleName, readonly string[]]
+    )) as Record<RoleName, readonly string[]>,
   }))
 
   const roleOrder: RoleName[] = Object.keys(roleLabels) as RoleName[];
@@ -37,8 +37,8 @@
     pending: "Can sign in and manage their own account. No access to organization resources.",
   };
 
-  function formatActions(actions: string[]): string {
-    if (actions.length === 0) return "\u2014";
+  function formatActions(actions: readonly string[]): string {
+    if (actions.length === 0) return "-";
     return actions.join(", ");
   }
 </script>
