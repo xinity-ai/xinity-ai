@@ -128,7 +128,7 @@ export const handleChatCompletion = withEndpointGuards({
     }
 
     const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
-    if (hasTools && !modelInfo.tags.includes("tools")) {
+    if (hasTools && modelInfo.tags !== undefined && !modelInfo.tags.includes("tools")) {
       return errorResponse("Model does not support tool use", 400);
     }
 

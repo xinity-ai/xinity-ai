@@ -29,14 +29,17 @@ mock.module("../auth", () => ({
   checkAuth,
 }));
 
+import type { getModelInfo as getModelInfoT } from "../model-data";
+
 let mockPort = 0;
-const getModelInfo = jest.fn(async () => ({
+const getModelInfo = jest.fn<typeof getModelInfoT>(async () => ({
   host: `localhost:${mockPort}`,
   model: "test-model",
   driver: "vllm",
   authToken: null,
   tls: false,
   tags: ["tools"],
+  requestParams: {},
   release: () => {},
 }));
 
@@ -493,6 +496,134 @@ describe("handleResponses", () => {
     expect(functionCallItem.status).toBe("completed");
     expect(functionCallItem.call_id).toBeDefined();
     expect(functionCallItem.arguments).toBe('{"city":"Berlin"}');
+  });
+
+  test("should reject function tools when catalog explicitly says model does not support them", async () => {
+    getModelInfo.mockImplementationOnce(async () => ({
+      host: `localhost:${mockPort}`,
+      model: "test-model",
+      driver: "vllm",
+      authToken: null,
+      tls: false,
+      tags: [],
+      release: () => {},
+    }));
+
+    const req = new Request("http://localhost:4000/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        input: "Hi",
+        tools: [{
+          type: "function",
+          name: "get_weather",
+          parameters: { type: "object", properties: { city: { type: "string" } } },
+        }],
+      }),
+    });
+
+    const res = await handleCreateResponseRequest(req);
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as any;
+    expect(body.error.message).toContain("tool use");
+  });
+
+  test("should allow function tools when catalog entry is missing (legacy fallback, tags undefined)", async () => {
+    getModelInfo.mockImplementationOnce(async () => ({
+      host: `localhost:${mockPort}`,
+      model: "test-model",
+      driver: "vllm",
+      authToken: null,
+      tls: false,
+      tags: undefined,
+      release: () => {},
+    }));
+
+    const req = new Request("http://localhost:4000/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        input: "What is the weather in Berlin?",
+        tools: [{
+          type: "function",
+          name: "get_weather",
+          parameters: { type: "object", properties: { city: { type: "string" } } },
+        }],
+      }),
+    });
+
+    const res = await handleCreateResponseRequest(req);
+    expect(res.status).toBe(200);
+  });
+
+  test("should reject structured output when catalog explicitly says model does not support tools", async () => {
+    getModelInfo.mockImplementationOnce(async () => ({
+      host: `localhost:${mockPort}`,
+      model: "test-model",
+      driver: "vllm",
+      authToken: null,
+      tls: false,
+      tags: [],
+      release: () => {},
+    }));
+
+    const req = new Request("http://localhost:4000/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        input: "Hi",
+        text: {
+          format: {
+            type: "json_schema",
+            json_schema: {
+              name: "TestSchema",
+              schema: { type: "object", properties: { greeting: { type: "string" } } },
+            },
+          },
+        },
+      }),
+    });
+
+    const res = await handleCreateResponseRequest(req);
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as any;
+    expect(body.error.message).toContain("structured output");
+  });
+
+  test("should allow structured output when catalog entry is missing (legacy fallback, tags undefined)", async () => {
+    getModelInfo.mockImplementationOnce(async () => ({
+      host: `localhost:${mockPort}`,
+      model: "test-model",
+      driver: "vllm",
+      authToken: null,
+      tls: false,
+      tags: undefined,
+      release: () => {},
+    }));
+
+    const req = new Request("http://localhost:4000/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        input: "Hi",
+        text: {
+          format: {
+            type: "json_schema",
+            json_schema: {
+              name: "TestSchema",
+              schema: { type: "object", properties: { greeting: { type: "string" } } },
+            },
+          },
+        },
+      }),
+    });
+
+    const res = await handleCreateResponseRequest(req);
+    expect(res.status).toBe(200);
   });
 
   test("should accept function_call_output in input for multi-turn tool use", async () => {
