@@ -59,7 +59,9 @@ const getApplication = rootOs
   .use(requirePermission({ aiApplication: ["read"] }))
   .route({ method: "GET", path: "/{id}", tags, summary: "Get Application" })
   .input(ApplicationDto.pick({ id: true }))
-  .handler(async ({ context, input }) => {
+  .output(ApplicationDto)
+  .errors({ NOT_FOUND: {} })
+  .handler(async ({ context, input, errors }) => {
     const [app] = await getDB()
       .select()
       .from(aiApplicationT)
@@ -72,6 +74,7 @@ const getApplication = rootOs
       )
       .limit(1);
 
+    if (!app) throw errors.NOT_FOUND();
     return app;
   });
 
