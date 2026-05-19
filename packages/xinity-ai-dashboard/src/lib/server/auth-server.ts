@@ -5,6 +5,8 @@ import { apiKey } from "@better-auth/api-key";
 import { passkey } from "@better-auth/passkey";
 import { sso } from "@better-auth/sso";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { sveltekitCookies } from "better-auth/svelte-kit";
+import { getRequestEvent } from "$app/server";
 import { twoFactorT, userT, accountT, verificationT, sessionT, passkeyT, dashboardApiKeyT, ssoProviderT } from "common-db";
 import { organizationT, memberT, invitationT, sql, eq, and } from "common-db";
 import { rootLogger } from "./logging";
@@ -282,6 +284,7 @@ export const auth = betterAuth({
         });
       },
     }),
+    sveltekitCookies(getRequestEvent),
   ],
 });
 
