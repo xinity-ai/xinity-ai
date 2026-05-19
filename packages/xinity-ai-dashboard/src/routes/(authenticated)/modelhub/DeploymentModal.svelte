@@ -182,8 +182,8 @@
     }
     const abort = new AbortController();
     orpc.deployment.checkCapacity({
-      modelSpecifier: selectedPrimarySpecifier!,
-      earlyModelSpecifier: isCanaryEnabled ? selectedCanarySpecifier : null,
+      specifier: selectedPrimarySpecifier!,
+      earlySpecifier: isCanaryEnabled ? selectedCanarySpecifier : null,
       replicas, progress: isCanaryEnabled ? canaryTraffic : 100, kvCacheSize,
       earlyKvCacheSize: isCanaryEnabled ? earlyKvCacheSize : null,
     }, { signal: abort.signal }).then(([error, data]) => {
