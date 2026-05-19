@@ -29,19 +29,30 @@ mock.module("../db", () => ({
   getDB: () => db,
 }));
 
-const mockResolveModelMeta = jest.fn(async () => ({ type: "chat" as string | undefined, tags: ["tools"] as string[] }));
-const mockResolveRequestParams = jest.fn(async () => ({} as Record<string, string>));
-const mockFetchModel = jest.fn(async (lookup: { kind: "canonical"; specifier: string } | { kind: "legacy"; providerModel: string }) => {
-  const value = lookup.kind === "canonical" ? lookup.specifier : lookup.providerModel;
-  return { providers: { ollama: value, vllm: value } as { ollama?: string; vllm?: string } };
-});
+type MockModel = {
+  type?: string;
+  tags?: string[];
+  providerTags?: { ollama?: string[]; vllm?: string[] };
+  requestParams?: { ollama?: Record<string, string>; vllm?: Record<string, string> };
+  providers: { ollama?: string; vllm?: string };
+};
+
+const mockFetchModel = jest.fn<(lookup: { kind: "canonical"; specifier: string } | { kind: "legacy"; providerModel: string }) => Promise<MockModel | undefined>>();
+
+function resolveTagsForDriver(model: MockModel, driver: "vllm" | "ollama"): string[] {
+  return model.providerTags?.[driver] ?? model.tags ?? [];
+}
+
+function resolveRequestParamsForDriver(model: MockModel, driver: "vllm" | "ollama"): Record<string, string> {
+  return model.requestParams?.[driver] ?? {};
+}
 
 mock.module("xinity-infoserver", () => ({
   createInfoserverClient: () => ({
-    resolveModelMeta: mockResolveModelMeta,
-    resolveRequestParams: mockResolveRequestParams,
     fetchModel: mockFetchModel,
   }),
+  resolveTagsForDriver,
+  resolveRequestParamsForDriver,
   BLOCKED_REQUEST_PARAM_PREFIXES: ["chat_template", "tokenize", "prompt", "api_key"],
   deploymentLookup,
   deploymentEarlyLookup,
@@ -89,14 +100,10 @@ const noop = () => {};
 beforeEach(() => {
   queryQueue.length = 0;
   mockSelectHost.mockReset();
-  mockResolveModelMeta.mockReset();
-  mockResolveModelMeta.mockResolvedValue({ type: "chat", tags: ["tools"] });
-  mockResolveRequestParams.mockReset();
-  mockResolveRequestParams.mockResolvedValue({});
   mockFetchModel.mockReset();
   mockFetchModel.mockImplementation(async (lookup) => {
     const value = lookup.kind === "canonical" ? lookup.specifier : lookup.providerModel;
-    return { providers: { ollama: value, vllm: value } };
+    return { type: "chat", tags: ["tools"], providers: { ollama: value, vllm: value } };
   });
 });
 
@@ -203,16 +210,51 @@ describe("getModelInfo", () => {
     queryQueue.push([deploymentResult({ modelSpecifier: "llama3:latest" })]);
     queryQueue.push([installationResult({ host: "node-a", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
     mockSelectHost.mockResolvedValue({ host: "node-a:11434", useFinalModel: true, release: noop });
-    mockResolveModelMeta.mockResolvedValue({ type: "embedding", tags: ["multilingual"] });
-    mockResolveRequestParams.mockResolvedValue({ "top_k": "number" });
+    mockFetchModel.mockResolvedValueOnce({
+      type: "embedding",
+      tags: ["multilingual"],
+      requestParams: { ollama: { "top_k": "number" } },
+      providers: { ollama: "llama3:latest", vllm: "llama3:latest" },
+    });
 
     const result = await getModelInfo("org-1", "my-model", "key-1");
 
     expect(result!.type).toBe("embedding");
     expect(result!.tags).toEqual(["multilingual"]);
     expect(result!.requestParams).toEqual({ "top_k": "number" });
-    expect(mockResolveModelMeta).toHaveBeenCalledWith({ kind: "legacy", providerModel: "llama3:latest" }, "ollama");
-    expect(mockResolveRequestParams).toHaveBeenCalledWith({ kind: "legacy", providerModel: "llama3:latest" }, "ollama");
+    expect(mockFetchModel).toHaveBeenCalledWith({ kind: "legacy", providerModel: "llama3:latest" });
+  });
+
+  test("returns tags and requestParams undefined when model is not in the infoserver catalog (legacy fallback)", async () => {
+    queryQueue.push([deploymentResult({ modelSpecifier: "llama3:latest" })]);
+    queryQueue.push([installationResult({ host: "node-a", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
+    mockSelectHost.mockResolvedValue({ host: "node-a:11434", useFinalModel: true, release: noop });
+    mockFetchModel.mockResolvedValueOnce(undefined);
+
+    const result = await getModelInfo("org-1", "my-model", "key-1");
+
+    expect(result).toBeDefined();
+    expect(result!.model).toBe("llama3:latest");
+    expect(result!.type).toBeUndefined();
+    expect(result!.tags).toBeUndefined();
+    expect(result!.requestParams).toBeUndefined();
+  });
+
+  test("uses providerTags for the resolved driver when present", async () => {
+    queryQueue.push([deploymentResult({ modelSpecifier: "mistral:latest" })]);
+    queryQueue.push([installationResult({ host: "gpu-node", nodePort: 8000, modelPort: 8000, driver: "vllm" })]);
+    mockSelectHost.mockResolvedValue({ host: "gpu-node:8000", useFinalModel: true, release: noop });
+    mockFetchModel.mockResolvedValueOnce({
+      type: "chat",
+      tags: ["tools"],
+      providerTags: { vllm: ["tools", "vision"], ollama: ["tools"] },
+      providers: { vllm: "mistral:latest", ollama: "mistral:latest" },
+    });
+
+    const result = await getModelInfo("org-1", "my-model", "key-1");
+
+    expect(result!.driver).toBe("vllm");
+    expect(result!.tags).toEqual(["tools", "vision"]);
   });
 
   test("skips early model lookup when earlyModelSpecifier is null", async () => {

@@ -1,7 +1,7 @@
 import { calcCanaryProgress, sql, modelDeploymentT, aiNodeT, modelInstallationT, installationMatchesLookup } from "common-db";
 import { getDB } from "../db";
 import { env } from "../env";
-import { createInfoserverClient, deploymentLookup, deploymentEarlyLookup, lookupKey, type ModelLookup } from "xinity-infoserver";
+import { createInfoserverClient, deploymentLookup, deploymentEarlyLookup, lookupKey, resolveTagsForDriver, resolveRequestParamsForDriver, type ModelLookup } from "xinity-infoserver";
 import { selectHost as _selectHost, type LoadBalanceStrategy } from "./load-balancer";
 
 /** Indirection for testability. tests can swap this without mock.module. */
@@ -9,7 +9,6 @@ export const _deps = { selectHost: _selectHost };
 
 const infoClient = createInfoserverClient({ baseUrl: env.INFOSERVER_URL, cacheTtlMs: env.INFOSERVER_CACHE_TTL_MS });
 
-/** Retrieves the mapping from public model string to internal split model representation */
 async function publicModelSpecifierToModelSource(orgId: string, specifier: string) {
 
   const [deployment] = await getDB().select().from(modelDeploymentT).where(sql`
@@ -32,7 +31,6 @@ async function publicModelSpecifierToModelSource(orgId: string, specifier: strin
   }
 }
 
-/** Retrieves the servers under which the model identified by the given lookup is available. */
 async function getModelSources(lookup: ModelLookup) {
   const modelLocations = await getDB().select({
     host: aiNodeT.host,
@@ -68,21 +66,17 @@ type ModelInfo = {
   driver: string;
   /** Per-node auth token for authenticating requests to the daemon. */
   authToken: string | null;
-  /** Whether this daemon node serves over TLS. */
   tls: boolean;
-  /** Model type from the catalog (chat, embedding, rerank). Undefined if catalog is unavailable. */
+  /** Model type from the catalog (chat, embedding, rerank). Undefined if catalog entry is unavailable. */
   type?: string;
-  /** Model tags from the catalog (e.g. "tools", "custom_code", "vision"). */
-  tags: string[];
-  /** Allowed request-level passthrough params: dot-path to primitive type. */
-  requestParams: Record<string, string>;
+  /** Model tags from the catalog (e.g. "tools", "custom_code", "vision"). Undefined if catalog entry is unavailable. */
+  tags?: string[];
+  /** Allowed request-level passthrough params: dot-path to primitive type. Undefined if catalog entry is unavailable. */
+  requestParams?: Record<string, string>;
   /** Call when the request completes to release load-balancer resources. */
   release: () => void;
 }
 
-/** Retrieves the up to date model data for the specified api user id, and public deployment specifier.
- * If no deployment can be found, returns undefined.
- */
 export async function getModelInfo(orgId: string, publicSpecifier: string, keyId: string): Promise<ModelInfo | undefined> {
   const accessInfo = await publicModelSpecifierToModelSource(orgId, publicSpecifier);
   if (!accessInfo) {
@@ -137,10 +131,9 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, keyId
     return;
   }
 
-  const [{ type, tags }, requestParams] = await Promise.all([
-    infoClient.resolveModelMeta(resolvedLookup, driver as "vllm" | "ollama"),
-    infoClient.resolveRequestParams(resolvedLookup, driver as "vllm" | "ollama"),
-  ]);
+  const type = model?.type;
+  const tags = model ? resolveTagsForDriver(model, driver as "vllm" | "ollama") : undefined;
+  const requestParams = model ? resolveRequestParamsForDriver(model, driver as "vllm" | "ollama") : undefined;
 
   return {
     host: result.host,

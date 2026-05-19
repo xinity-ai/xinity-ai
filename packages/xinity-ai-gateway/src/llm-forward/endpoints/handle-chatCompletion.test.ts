@@ -466,7 +466,7 @@ describe("handleChatCompletion, tool calling", () => {
     expect(lastUpstreamBody?.tool_choice).toEqual({ type: "function", function: { name: "get_weather" } });
   });
 
-  test("should reject tools when model does not support them", async () => {
+  test("should reject tools when catalog explicitly says model does not support them", async () => {
     getModelInfo.mockImplementationOnce(async () => ({
       host: `localhost:${mockPort}`,
       model: "test-model",
@@ -493,6 +493,33 @@ describe("handleChatCompletion, tool calling", () => {
 
     const body = await res.json() as any;
     expect(body.error.message).toContain("tool use");
+  });
+
+  test("should allow tools when catalog entry is missing (legacy fallback, tags undefined)", async () => {
+    getModelInfo.mockImplementationOnce(async () => ({
+      host: `localhost:${mockPort}`,
+      model: "test-model",
+      driver: "vllm",
+      authToken: null,
+      tls: false,
+      tags: undefined,
+      requestParams: undefined,
+      release: () => {},
+    }));
+
+    const req = new Request("http://localhost:4000/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        messages: [{ role: "user", content: "Hello" }],
+        tools: SAMPLE_TOOLS,
+      }),
+    });
+
+    const res = await handleChatCompletion(req);
+    expect(res.status).toBe(200);
+    expect(lastUpstreamBody?.tools).toEqual(SAMPLE_TOOLS);
   });
 
   test("should work without tools (backward compatibility)", async () => {

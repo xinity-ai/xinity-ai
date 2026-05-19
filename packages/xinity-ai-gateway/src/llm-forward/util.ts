@@ -323,7 +323,7 @@ const TYPE_VALIDATORS: Record<string, (v: unknown) => boolean> = {
  */
 export function extractAllowedRequestParams(
   rawBody: Record<string, unknown>,
-  allowedParams: Record<string, string>,
+  allowedParams: Record<string, string> | undefined,
 ): Record<string, unknown> | undefined {
   if (!allowedParams || Object.keys(allowedParams).length === 0) return undefined;
 

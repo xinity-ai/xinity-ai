@@ -234,11 +234,11 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
       metadata: body.metadata as Record<string, unknown> | undefined,
     } as const;
 
-    if (hasTools && !modelInfo.tags.includes("tools")) {
+    if (hasTools && modelInfo.tags !== undefined && !modelInfo.tags.includes("tools")) {
       return errorResponse("Model does not support tool use", 400);
     }
 
-    if (outputConfig.usesStructuredOutput && !modelInfo.tags.includes("tools")) {
+    if (outputConfig.usesStructuredOutput && modelInfo.tags !== undefined && !modelInfo.tags.includes("tools")) {
       return errorResponse("Model does not support structured output", 400);
     }
 
