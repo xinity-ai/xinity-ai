@@ -125,9 +125,10 @@
     if (!browser || !deploymentsLoaded) return;
     for (const d of deployments) {
       if (d.status?.phase !== "ready") continue;
-      if (modelKnowledge[d.modelSpecifier] !== undefined) continue;
-      modelKnowledge[d.modelSpecifier] = { status: "loading" };
-      void fetchModelType(d.modelSpecifier);
+      const key = d.specifier ?? d.modelSpecifier;
+      if (modelKnowledge[key] !== undefined) continue;
+      modelKnowledge[key] = { status: "loading" };
+      void fetchModelType(key);
     }
   });
 
@@ -143,7 +144,7 @@
   function testableType(
     deployment: DeploymentDefinition,
   ): "chat" | "embedding" | "rerank" | null {
-    const k = modelKnowledge[deployment.modelSpecifier];
+    const k = modelKnowledge[deployment.specifier ?? deployment.modelSpecifier];
     if (k?.status !== "known") return null;
     return k.type === "chat" || k.type === "embedding" || k.type === "rerank" ? k.type : null;
   }
