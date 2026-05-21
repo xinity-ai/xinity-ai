@@ -81,9 +81,9 @@
         {sortLabel}
       </Select.Trigger>
       <Select.Content>
-        <Select.Item value="newest" label="Newest First" />
-        <Select.Item value="oldest" label="Oldest First" />
-        <Select.Item value="duration" label="Duration (Longest First)" />
+        {#each Object.entries(sortLabels) as [value, label]}
+          <Select.Item {value} {label} />
+        {/each}
       </Select.Content>
     </Select.Root>
 

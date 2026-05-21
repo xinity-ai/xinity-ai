@@ -6,6 +6,7 @@
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { Checkbox } from "$lib/components/ui/checkbox";
   import { orpc } from "$lib/orpc/orpc-client";
+  import { trimOrUndefined } from "$lib/util";
 
   let { organizationId, onCreated }: {
     organizationId?: string;
@@ -30,13 +31,9 @@
   let formError = $state("");
   let submitting = $state(false);
 
+  const requiredFields = $derived([providerId, issuer, domain, clientId, clientSecret]);
   const canSubmit = $derived(
-    providerId.trim().length > 0 &&
-      issuer.trim().length > 0 &&
-      domain.trim().length > 0 &&
-      clientId.trim().length > 0 &&
-      clientSecret.trim().length > 0 &&
-      !submitting,
+    !submitting && requiredFields.every(value => value.trim().length > 0),
   );
 
   async function submit() {
@@ -53,12 +50,12 @@
         clientSecret,
         scopes: ["openid", "email", "profile"],
         pkce,
-        discoveryEndpoint: discoveryEndpoint.trim() || undefined,
+        discoveryEndpoint: trimOrUndefined(discoveryEndpoint),
         tokenEndpointAuthentication: (tokenEndpointAuthentication as "client_secret_basic" | "client_secret_post") || undefined,
-        authorizationEndpoint: authorizationEndpoint.trim() || undefined,
-        tokenEndpoint: tokenEndpoint.trim() || undefined,
-        jwksEndpoint: jwksEndpoint.trim() || undefined,
-        userInfoEndpoint: userInfoEndpoint.trim() || undefined,
+        authorizationEndpoint: trimOrUndefined(authorizationEndpoint),
+        tokenEndpoint: trimOrUndefined(tokenEndpoint),
+        jwksEndpoint: trimOrUndefined(jwksEndpoint),
+        userInfoEndpoint: trimOrUndefined(userInfoEndpoint),
       },
     });
 

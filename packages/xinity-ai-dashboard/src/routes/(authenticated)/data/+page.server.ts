@@ -2,7 +2,7 @@ import { call } from '@orpc/server';
 import type { PageServerLoad } from './$types';
 import { applicationRouter } from '$lib/server/orpc/procedures/application.procedure';
 import { getDB } from '$lib/server/db';
-import { apiCallT, sql, isNull } from 'common-db';
+import { apiCallT, sql, and, eq, isNull } from 'common-db';
 import { auth } from '$lib/server/auth-server';
 
 export const load: PageServerLoad = async ({ locals, request }) => {
@@ -16,9 +16,10 @@ export const load: PageServerLoad = async ({ locals, request }) => {
   const [result] = await getDB()
     .select({ count: sql<number>`COUNT(*)::int` })
     .from(apiCallT)
-    .where(
-      sql`${apiCallT.organizationId} = ${session.session.activeOrganizationId} AND ${isNull(apiCallT.applicationId)}`
-    );
+    .where(and(
+      eq(apiCallT.organizationId, session.session.activeOrganizationId),
+      isNull(apiCallT.applicationId),
+    ));
   const uncategorizedCount = result?.count ?? 0;
 
   return {

@@ -63,7 +63,11 @@ if (!buildResult.success) {
 }
 
 // Rename the compiled binary from its auto-derived name to the desired outfile.
-const compiledPath = buildResult.outputs[0]!.path;
-await $`mv ${compiledPath} ${outfile} && chmod +x ${outfile}`;
+const [compiledOutput] = buildResult.outputs;
+if (!compiledOutput) {
+  console.error("Compile succeeded but produced no outputs");
+  process.exit(1);
+}
+await $`mv ${compiledOutput.path} ${outfile} && chmod +x ${outfile}`;
 
 console.log(`Done: ${outfile} (${target})`);

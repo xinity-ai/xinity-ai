@@ -1,11 +1,8 @@
 /**
  * Maps notification event types to their email templates and subject line generators.
  */
-import type { Component } from "svelte";
+import type { AnyComponent } from "$lib/server/email";
 import { NotificationType } from "./events";
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- template props vary per notification type
-type AnyComponent = Component<any>;
 
 import EmailWelcomeTemplate from "$lib/components/mailTemplates/EmailWelcomeTemplate.svelte";
 import EmailDeploymentReadyTemplate from "$lib/components/mailTemplates/EmailDeploymentReadyTemplate.svelte";

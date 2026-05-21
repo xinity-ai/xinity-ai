@@ -4,13 +4,20 @@
 import { rootOs, withOrganization, requirePermission } from "../root";
 import { ApplicationDto } from "$lib/orpc/dtos/application.dto";
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
-import { aiApplicationT, sql, isNull, and } from "common-db";
+import { aiApplicationT, eq, isNull, and } from "common-db";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
 
 const log = rootLogger.child({ name: "application.procedure" });
 
 const tags = ["Application"];
+
+const matchActiveAppInOrg = (id: string, orgId: string) =>
+  and(
+    eq(aiApplicationT.id, id),
+    eq(aiApplicationT.organizationId, orgId),
+    isNull(aiApplicationT.deletedAt),
+  );
 
 /** Creates a new Application. */
 const createApplication = rootOs
@@ -29,7 +36,7 @@ const createApplication = rootOs
         organizationId: context.activeOrganizationId,
       })
       .returning();
-
+    if (!newApp) throw new Error("Insert into aiApplicationT returned no row");
     return newApp;
   });
 
@@ -44,7 +51,7 @@ const listApplications = rootOs
       .from(aiApplicationT)
       .where(
         and(
-          sql`${aiApplicationT.organizationId} = ${context.activeOrganizationId}`,
+          eq(aiApplicationT.organizationId, context.activeOrganizationId),
           isNull(aiApplicationT.deletedAt)
         )
       )
@@ -65,13 +72,7 @@ const getApplication = rootOs
     const [app] = await getDB()
       .select()
       .from(aiApplicationT)
-      .where(
-        and(
-          sql`${aiApplicationT.id} = ${input.id}`,
-          sql`${aiApplicationT.organizationId} = ${context.activeOrganizationId}`,
-          isNull(aiApplicationT.deletedAt)
-        )
-      )
+      .where(matchActiveAppInOrg(input.id, context.activeOrganizationId))
       .limit(1);
 
     if (!app) throw errors.NOT_FOUND();
@@ -91,13 +92,7 @@ const updateApplication = rootOs
         name: input.name,
         description: input.description
       })
-      .where(
-        and(
-          sql`${aiApplicationT.id} = ${input.id}`,
-          sql`${aiApplicationT.organizationId} = ${context.activeOrganizationId}`,
-          isNull(aiApplicationT.deletedAt)
-        )
-      );
+      .where(matchActiveAppInOrg(input.id, context.activeOrganizationId));
   });
 
 /** Soft deletes an Application (sets deletedAt). */
@@ -113,13 +108,7 @@ const softDeleteApplication = rootOs
     await getDB()
       .update(aiApplicationT)
       .set({ deletedAt: new Date() })
-      .where(
-        and(
-          sql`${aiApplicationT.id} = ${input.id}`,
-          sql`${aiApplicationT.organizationId} = ${context.activeOrganizationId}`,
-          isNull(aiApplicationT.deletedAt)
-        )
-      );
+      .where(matchActiveAppInOrg(input.id, context.activeOrganizationId));
   });
 
 export const applicationRouter = rootOs.prefix("/application").router({

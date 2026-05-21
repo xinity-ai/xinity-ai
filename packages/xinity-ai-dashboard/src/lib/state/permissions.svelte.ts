@@ -73,15 +73,9 @@ function can(resource: Resource, action: Action): boolean {
  */
 function canAny(perms: Partial<Record<Resource, Action[]>>): boolean {
   if (!role) return false;
-
-  for (const [resource, actions] of Object.entries(perms)) {
-    for (const action of actions || []) {
-      if (can(resource as Resource, action as Action)) {
-        return true;
-      }
-    }
-  }
-  return false;
+  return Object.entries(perms).some(([resource, actions]) =>
+    (actions ?? []).some((action) => can(resource as Resource, action)),
+  );
 }
 
 /**
@@ -89,15 +83,9 @@ function canAny(perms: Partial<Record<Resource, Action[]>>): boolean {
  */
 function canAll(perms: Partial<Record<Resource, Action[]>>): boolean {
   if (!role) return false;
-
-  for (const [resource, actions] of Object.entries(perms)) {
-    for (const action of actions || []) {
-      if (!can(resource as Resource, action as Action)) {
-        return false;
-      }
-    }
-  }
-  return true;
+  return Object.entries(perms).every(([resource, actions]) =>
+    (actions ?? []).every((action) => can(resource as Resource, action)),
+  );
 }
 
 // Export as a reactive object with getters for convenience properties

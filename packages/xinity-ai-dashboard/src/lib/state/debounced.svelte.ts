@@ -16,7 +16,6 @@ export function useDebouncedValue<T>(
 
   $effect(() => {
     const value = source();
-    if (timer) clearTimeout(timer);
     if (value === resolvedImmediate) {
       current = resolvedImmediate;
     } else {

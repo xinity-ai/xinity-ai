@@ -19,7 +19,7 @@ The flow is as follows:
 - The user is redirected to the final destination 
  */
 
-export const GET: RequestHandler = async ({ url, locals, request }) => {
+export const GET: RequestHandler = async ({ url, request }) => {
   const session = await auth.api.getSession(request);
   if (!session) {
     error(403, "Not authorized");

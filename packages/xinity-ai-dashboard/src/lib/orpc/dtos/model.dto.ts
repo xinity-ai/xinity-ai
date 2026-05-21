@@ -5,7 +5,6 @@ import { z } from "zod";
 import { CommonDto } from "./common.dto";
 
 export const DeploymentDto = CommonDto.extend({
-  id: z.uuid(),
   name: z.string().trim(),
 
   enabled: z.boolean(),

@@ -61,21 +61,6 @@
     if (!first) return "";
     return messageContentToString(first.content);
   }
-
-  function reactionSummaryFor(callId: string) {
-    return (
-      getReactionSummary?.(callId) ?? {
-        apiCallId: callId,
-        likes: 0,
-        dislikes: 0,
-        total: 0,
-      }
-    );
-  }
-
-  function userResponseFor(callId: string) {
-    return getUserResponse?.(callId) ?? null;
-  }
 </script>
 
 <div class="lg:col-span-1">
@@ -95,8 +80,8 @@
         {#if calls.length > 0}
           <div role="list">
             {#each calls as call (call.id)}
-              {@const summary = reactionSummaryFor(call.id)}
-              {@const userResponse = userResponseFor(call.id)}
+              {@const summary = getReactionSummary(call.id)}
+              {@const userResponse = getUserResponse(call.id)}
               <div
                 role="listitem"
                 class:selected={selectedCallId === call.id}

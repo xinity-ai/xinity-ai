@@ -9,15 +9,9 @@ import { auth, getGreenlitCallId } from "$lib/server/auth-server";
 import { serverEnv, isInstanceAdmin } from "$lib/server/serverenv";
 import { getDB } from "$lib/server/db";
 import { userT, organizationT, memberT, eq } from "common-db";
+import { slugify } from "$lib/util";
 
 const log = rootLogger.child({ name: "onboarding.procedure" });
-
-function createSlug(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
 
 async function assertSlugAvailable(slug: string, errors: { CONFLICT: (opts: { message: string }) => Error }): Promise<void> {
   const existing = await getDB().select({ id: organizationT.id }).from(organizationT).where(eq(organizationT.slug, slug)).limit(1);
@@ -35,7 +29,7 @@ async function createOrgWithOwnerMembership(
   ownerUserId: string,
   errors: { CONFLICT: (opts: { message: string }) => Error },
 ): Promise<{ orgId: string; orgSlug: string }> {
-  const slug = createSlug(orgName);
+  const slug = slugify(orgName);
   await assertSlugAvailable(slug, errors);
   const orgId = crypto.randomUUID();
   const db = getDB();
@@ -80,29 +74,25 @@ const setupOnboarding = rootOs
     const rlog = log.child({ traceId: context.traceId });
     rlog.info({ orgName: input.orgName, model: input.modelSpecifier }, "Running onboarding setup");
 
-    const slug = createSlug(input.orgName);
-
-    // Check slug availability before creating
-    const db = getDB();
+    const slug = slugify(input.orgName);
     await assertSlugAvailable(slug, errors);
 
-    // 1. Create organization and set it as active
+    const defaultApplicationName = "Default";
+
     await call(createOrganization, {
       name: input.orgName,
       slug,
     }, { context });
 
-    // 2. Create an API key with a default application
     const apiKeyResult = await call(createApiKey, {
       name: "Default API Key",
       enabled: true,
       createApplication: {
-        name: "Default",
+        name: defaultApplicationName,
         description: "Default application created during onboarding",
       },
     }, { context });
 
-    // 3. Deploy the selected model
     await call(createDeployment, {
       name: input.publicSpecifier,
       specifier: input.specifier,
@@ -114,7 +104,7 @@ const setupOnboarding = rootOs
 
     return {
       apiKey: apiKeyResult.fullKey,
-      applicationName: "Default",
+      applicationName: defaultApplicationName,
       deploymentName: input.publicSpecifier,
     };
   });

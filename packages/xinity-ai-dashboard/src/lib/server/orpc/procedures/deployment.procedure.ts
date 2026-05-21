@@ -1,6 +1,6 @@
 import { rootOs, withOrganization, requirePermission } from "../root";
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
-import { sql, modelDeploymentT, modelInstallationT, modelInstallationStateT, organizationT, deploymentMatchesInstallation, type ModelDeployment } from "common-db";
+import { and, eq, isNull, modelDeploymentT, modelInstallationT, modelInstallationStateT, organizationT, deploymentMatchesInstallation, type ModelDeployment, type SQL } from "common-db";
 import z from "zod";
 import { DeploymentDto } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
@@ -9,7 +9,8 @@ import { infoClient } from "$lib/server/info-client";
 import { buildClusterCapacity } from "./cluster.procedure";
 import { resolveDefaultProvider, resolveMinVersionForDriver, resolveRequiredPlatformsForDriver, checkNodeCompatibility, deploymentLookup, deploymentEarlyLookup, lookupKey, type ModelNodeRequirements, type Provider, type ModelLookup } from "xinity-infoserver";
 import { rootLogger } from "$lib/server/logging";
-import { aggregatePhase, type PhaseInfo } from "$lib/server/lib/deployment-phase";
+import { aggregatePhase, isProgressBearingPhase, type PhaseInfo } from "$lib/server/lib/deployment-phase";
+import { findOrgName } from "$lib/server/lib/org-queries";
 import { notifyOrgMembers } from "$lib/server/notifications/notification.service";
 import { NotificationType } from "$lib/server/notifications/events";
 import { serverEnv } from "$lib/server/serverenv";
@@ -26,6 +27,21 @@ async function deriveProviderModel(lookup: ModelLookup, preferredDriver: Provide
   const model = status.model;
   if (preferredDriver && model.providers[preferredDriver]) return model.providers[preferredDriver];
   return resolveDefaultProvider(model)?.providerModel;
+}
+
+async function assertModelsInCatalog(
+  models: Array<{ label: string; lookup: ModelLookup }>,
+  errors: { BAD_REQUEST: (opts: { message: string }) => Error },
+): Promise<void> {
+  if (!infoClient) return;
+  const client = infoClient;
+  const statuses = await Promise.all(
+    models.map(async (m) => ({ ...m, status: await client.fetchModelStatus(m.lookup) })),
+  );
+  const missing = statuses.find((s) => s.status.status === "not_found");
+  if (missing) {
+    throw errors.BAD_REQUEST({ message: `Model "${missing.label}" was not found in the model catalog` });
+  }
 }
 
 /** Validates that primary and canary models share the same type. Returns an error message or null. */
@@ -60,6 +76,28 @@ const CapacityCheckOutput = z.object({
 
 type CapacityCheckResult = z.infer<typeof CapacityCheckOutput>;
 
+function noCompatibleNodeReason(
+  label: string,
+  driver: string,
+  minVersion: string | undefined,
+  requiredPlatforms: string[],
+): string {
+  const versionRequirement = minVersion ? ` >= ${minVersion}` : "";
+  const platformRequirement = requiredPlatforms.length ? `, platform: ${requiredPlatforms.join("/")}` : "";
+  return `No compatible node for "${label}" (requires ${driver}${versionRequirement}${platformRequirement})`;
+}
+
+function insufficientCapacityReason(
+  label: string,
+  replicas: number,
+  perReplica: number,
+  placed: number,
+): string {
+  const replicaWord = replicas === 1 ? "replica" : "replicas";
+  const nodeWord = placed === 1 ? "node has" : "nodes have";
+  return `Insufficient cluster capacity: cannot place ${replicas} ${replicaWord} of "${label}" (${perReplica.toFixed(1)} GB each). Only ${placed} compatible ${nodeWord} enough free capacity`;
+}
+
 /**
  * Checks whether the cluster has enough free capacity to host a deployment configuration.
  * For canary deployments, validates that both primary and canary models can be placed,
@@ -71,14 +109,13 @@ async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>
     return { deployable: false, reason: "Capacity check requires a model identifier" };
   }
   const earlyLookup = deploymentEarlyLookup(input);
-  const isCanary = input.progress < 100 && !!earlyLookup;
 
   // Build the list of models that need capacity
   const modelsToCheck: { lookup: ModelLookup; label: string; replicas: number; kvCacheSize: number | null | undefined }[] = [];
-  if (isCanary) {
+  if (input.progress < 100 && earlyLookup) {
     modelsToCheck.push(
       { lookup: primaryLookup, label: lookupKey(primaryLookup), replicas: Math.ceil(input.replicas * (input.progress / 100)), kvCacheSize: input.kvCacheSize },
-      { lookup: earlyLookup!, label: lookupKey(earlyLookup!), replicas: Math.ceil(input.replicas * ((100 - input.progress) / 100)), kvCacheSize: input.earlyKvCacheSize ?? input.kvCacheSize },
+      { lookup: earlyLookup, label: lookupKey(earlyLookup), replicas: Math.ceil(input.replicas * ((100 - input.progress) / 100)), kvCacheSize: input.earlyKvCacheSize ?? input.kvCacheSize },
     );
   } else {
     modelsToCheck.push({ lookup: primaryLookup, label: lookupKey(primaryLookup), replicas: input.replicas, kvCacheSize: input.kvCacheSize });
@@ -133,24 +170,33 @@ async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>
     }
     if (placed < model.replicas) {
       const reason = compatible.length === 0 && model.driver
-        ? `No compatible node for "${model.label}" (requires ${model.driver}${model.minVersion ? ` >= ${model.minVersion}` : ""}${model.requiredPlatforms.length ? `, platform: ${model.requiredPlatforms.join("/")}` : ""})`
-        : `Insufficient cluster capacity: cannot place ${model.replicas} ${model.replicas === 1 ? "replica" : "replicas"} of "${model.label}" (${model.perReplica.toFixed(1)} GB each). Only ${placed} compatible ${placed === 1 ? "node has" : "nodes have"} enough free capacity`;
+        ? noCompatibleNodeReason(model.label, model.driver, model.minVersion, model.requiredPlatforms)
+        : insufficientCapacityReason(model.label, model.replicas, model.perReplica, placed);
       return { deployable: false, reason };
     }
   }
   return { deployable: true };
 }
 
+const matchActiveDeploymentInOrg = (id: string, orgId: string) =>
+  and(
+    eq(modelDeploymentT.id, id),
+    eq(modelDeploymentT.organizationId, orgId),
+    isNull(modelDeploymentT.deletedAt),
+  );
+
 async function internalUpdateDeployment(orgId: string, id: string, params: Partial<ModelDeployment>): Promise<ModelDeployment | undefined> {
   const [deployment] = await getDB().update(modelDeploymentT)
     .set(params)
-    .where(sql`
-      ${modelDeploymentT.id} = ${id}
-      AND
-      ${modelDeploymentT.organizationId} = ${orgId}
-      AND
-      ${modelDeploymentT.deletedAt} IS NULL`)
+    .where(matchActiveDeploymentInOrg(id, orgId))
     .returning();
+  return deployment;
+}
+
+async function findActiveDeploymentInOrg(id: string, orgId: string): Promise<ModelDeployment | undefined> {
+  const [deployment] = await getDB().select().from(modelDeploymentT)
+    .where(matchActiveDeploymentInOrg(id, orgId))
+    .limit(1);
   return deployment;
 }
 
@@ -167,18 +213,18 @@ const DeploymentStatusSchema = z.object({
 
 export const DeploymentWithStatusDto = DeploymentDto.extend({ status: DeploymentStatusSchema.optional() });
 export type DeploymentWithStatus = z.infer<typeof DeploymentWithStatusDto>;
-type StatusPhase = "ready" | "downloading" | "installing" | "failed" | "scheduling" | "not_in_catalog";
+type StatusPhase = z.infer<typeof DeploymentStatusSchema>["phase"];
 
 /**
  * Runs the status join query and aggregates installation phase info for the given deployments.
  * `where` should narrow to the specific deployment rows you want (org condition + optional id filter).
  */
-async function queryDeploymentsWithStatus(where: ReturnType<typeof sql>): Promise<DeploymentWithStatus[]> {
+async function queryDeploymentsWithStatus(where: SQL | undefined): Promise<DeploymentWithStatus[]> {
   const rows = await getDB()
     .select()
     .from(modelDeploymentT)
-    .leftJoin(modelInstallationT, sql`${deploymentMatchesInstallation} AND ${modelInstallationT.deletedAt} IS NULL`)
-    .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`)
+    .leftJoin(modelInstallationT, and(deploymentMatchesInstallation, isNull(modelInstallationT.deletedAt)))
+    .leftJoin(modelInstallationStateT, eq(modelInstallationStateT.id, modelInstallationT.id))
     .where(where);
 
   const deploymentMap = new Map<string, { deployment: ModelDeployment; phaseInfo?: PhaseInfo }>();
@@ -201,15 +247,14 @@ async function queryDeploymentsWithStatus(where: ReturnType<typeof sql>): Promis
     if (!state) continue;
 
     const phase = state.lifecycleState;
-    const progress = (phase === "downloading" || phase === "installing") ? (state.progress ?? null) : null;
+    const progress = isProgressBearingPhase(phase) ? (state.progress ?? null) : null;
     entry.phaseInfo = aggregatePhase(entry.phaseInfo, phase, progress, state.errorMessage, state.failureLogs);
   }
 
   return Array.from(deploymentMap.values()).map(({ deployment, phaseInfo }) => {
-    const status = phaseInfo
-      ? { phase: phaseInfo.phase as StatusPhase, progress: phaseInfo.progress, error: phaseInfo.error, failureLogs: phaseInfo.failureLogs }
-      : undefined;
-    return status ? { ...deployment, status } : deployment;
+    if (!phaseInfo) return deployment;
+    const status = { phase: phaseInfo.phase as StatusPhase, progress: phaseInfo.progress, error: phaseInfo.error, failureLogs: phaseInfo.failureLogs };
+    return { ...deployment, status };
   });
 }
 
@@ -243,7 +288,10 @@ const listDeployments = rootOs.use(withOrganization)
   .input(z.object({ withStatus: z.coerce.boolean().default(false) }))
   .output(DeploymentWithStatusDto.array())
   .handler(async ({ context, input }) => {
-    const orgCondition = sql`${modelDeploymentT.organizationId} = ${context.activeOrganizationId} AND ${modelDeploymentT.deletedAt} IS NULL`;
+    const orgCondition = and(
+      eq(modelDeploymentT.organizationId, context.activeOrganizationId),
+      isNull(modelDeploymentT.deletedAt),
+    );
     if (input?.withStatus) {
       const results = await queryDeploymentsWithStatus(orgCondition);
       await markDeploymentsMissingFromCatalog(results);
@@ -268,30 +316,19 @@ const updateDeployment = rootOs
       if (mismatch) throw errors.BAD_REQUEST({ message: mismatch });
     }
 
-    // Fetch current state for validation
-    const [current] = await getDB().select().from(modelDeploymentT)
-      .where(sql`
-        ${modelDeploymentT.id} = ${input.id}
-      AND
-        ${modelDeploymentT.organizationId} = ${context.activeOrganizationId}
-      AND
-        ${modelDeploymentT.deletedAt} IS NULL
-      `).limit(1);
+    const current = await findActiveDeploymentInOrg(input.id, context.activeOrganizationId);
     if (!current) throw errors.NOT_FOUND();
 
     // When the deployment is enabled and not being disabled, block changes to restricted fields
     const staysEnabled = current.enabled && input.enabled !== false;
     if (staysEnabled) {
-      const restricted: { field: string; changed: boolean }[] = [
-        { field: "kvCacheSize", changed: input.kvCacheSize !== undefined && input.kvCacheSize !== current.kvCacheSize },
-        { field: "earlyKvCacheSize", changed: input.earlyKvCacheSize !== undefined && input.earlyKvCacheSize !== current.earlyKvCacheSize },
-        { field: "preferredDriver", changed: input.preferredDriver !== undefined && input.preferredDriver !== current.preferredDriver },
-        { field: "specifier", changed: input.specifier !== undefined && input.specifier !== current.specifier },
-        { field: "earlySpecifier", changed: input.earlySpecifier !== undefined && input.earlySpecifier !== current.earlySpecifier },
-        { field: "modelSpecifier", changed: input.modelSpecifier !== undefined && input.modelSpecifier !== current.modelSpecifier },
-        { field: "earlyModelSpecifier", changed: input.earlyModelSpecifier !== undefined && input.earlyModelSpecifier !== current.earlyModelSpecifier },
-      ];
-      const changed = restricted.filter(r => r.changed).map(r => r.field);
+      const restrictedFields = [
+        "kvCacheSize", "earlyKvCacheSize", "preferredDriver",
+        "specifier", "earlySpecifier", "modelSpecifier", "earlyModelSpecifier",
+      ] as const;
+      const changed = restrictedFields.filter(field =>
+        input[field] !== undefined && input[field] !== current[field],
+      );
       if (changed.length > 0) {
         throw errors.BAD_REQUEST({
           message: `Cannot change ${changed.join(", ")} while the deployment is enabled. Disable it first.`,
@@ -334,15 +371,7 @@ const toggleEnabled = rootOs
   .errors({ NOT_FOUND: {}, INSUFFICIENT_CAPACITY: {} })
   .handler(async ({ context, input, errors }) => {
     if (input.enabled) {
-      // Fetch current state to check if we're re-enabling a disabled deployment
-      const [current] = await getDB().select().from(modelDeploymentT)
-        .where(sql`
-          ${modelDeploymentT.id} = ${input.id}
-        AND
-          ${modelDeploymentT.organizationId} = ${context.activeOrganizationId}
-        AND
-          ${modelDeploymentT.deletedAt} IS NULL
-        `).limit(1);
+      const current = await findActiveDeploymentInOrg(input.id, context.activeOrganizationId);
       if (!current) throw errors.NOT_FOUND();
       if (!current.enabled) {
         const result = await checkDeploymentCapacity(current);
@@ -371,18 +400,15 @@ const getDeployment = rootOs
   .output(DeploymentWithStatusDto)
   .errors({ NOT_FOUND: {} })
   .handler(async ({ context, input, errors }) => {
-    const condition = sql`
-      ${modelDeploymentT.id} = ${input.id}
-      AND ${modelDeploymentT.organizationId} = ${context.activeOrganizationId}
-      AND ${modelDeploymentT.deletedAt} IS NULL`;
-
     if (input.withStatus) {
-      const results = await queryDeploymentsWithStatus(condition);
-      if (results.length === 0) throw errors.NOT_FOUND();
-      return results[0];
+      const results = await queryDeploymentsWithStatus(matchActiveDeploymentInOrg(input.id, context.activeOrganizationId));
+      const [first] = results;
+      if (!first) throw errors.NOT_FOUND();
+      await markDeploymentsMissingFromCatalog(results);
+      return first;
     }
 
-    const [deployment] = await getDB().select().from(modelDeploymentT).where(condition).limit(1);
+    const deployment = await findActiveDeploymentInOrg(input.id, context.activeOrganizationId);
     if (!deployment) throw errors.NOT_FOUND();
     return deployment;
   });
@@ -400,13 +426,7 @@ Immediately unregisters it, and drops it completely.
   .handler(async ({ context, input, errors }) => {
     const [deployment] = await getDB().update(modelDeploymentT)
       .set({ deletedAt: new Date() })
-      .where(sql`
-        ${modelDeploymentT.id} = ${input.id}
-      AND
-        ${modelDeploymentT.organizationId} = ${context.activeOrganizationId}
-      AND
-        ${modelDeploymentT.deletedAt} IS NULL
-      `)
+      .where(matchActiveDeploymentInOrg(input.id, context.activeOrganizationId))
       .returning();
     if (!deployment) {
       throw errors.NOT_FOUND();
@@ -426,13 +446,11 @@ const findDeployment = rootOs
   .errors({ NOT_FOUND: {} })
   .handler(async ({ context, input, errors }) => {
     const [deployment] = await getDB().select().from(modelDeploymentT)
-      .where(sql`
-      ${modelDeploymentT.publicSpecifier} = ${input.publicSpecifier}
-      AND
-        ${modelDeploymentT.organizationId} = ${context.activeOrganizationId}
-      AND
-        ${modelDeploymentT.deletedAt} IS NULL
-      `).limit(1);
+      .where(and(
+        eq(modelDeploymentT.publicSpecifier, input.publicSpecifier),
+        eq(modelDeploymentT.organizationId, context.activeOrganizationId),
+        isNull(modelDeploymentT.deletedAt),
+      )).limit(1);
     if (!deployment) {
       throw errors.NOT_FOUND();
     }
@@ -457,18 +475,13 @@ export const createDeployment = rootOs
       ? { kind: "canonical", specifier: input.earlySpecifier }
       : null;
 
-    if (infoClient) {
-      const client = infoClient;
-      const checks: { label: string; lookup: ModelLookup }[] = [
+    await assertModelsInCatalog(
+      [
         { label: input.specifier, lookup: primaryLookup },
         ...(earlyLookup ? [{ label: input.earlySpecifier!, lookup: earlyLookup }] : []),
-      ];
-      const statuses = await Promise.all(checks.map(async c => ({ ...c, status: await client.fetchModelStatus(c.lookup) })));
-      const missing = statuses.find(s => s.status.status === "not_found");
-      if (missing) {
-        throw errors.BAD_REQUEST({ message: `Model "${missing.label}" was not found in the model catalog` });
-      }
-    }
+      ],
+      errors,
+    );
 
     const rlog = log.child({ traceId: context.traceId });
     const mismatch = await validateCanaryModelTypes(primaryLookup, earlyLookup);
@@ -491,12 +504,9 @@ export const createDeployment = rootOs
           organizationId: context.activeOrganizationId,
         })
         .returning();
+      if (!deployment) throw new Error("Insert into modelDeploymentT returned no row");
       void syncDeployedModels();
-      const [org] = await getDB()
-        .select({ name: organizationT.name })
-        .from(organizationT)
-        .where(sql`${organizationT.id} = ${context.activeOrganizationId}`)
-        .limit(1);
+      const orgName = await findOrgName(context.activeOrganizationId);
       void notifyOrgMembers({
         type: NotificationType.deployment_created,
         organizationId: context.activeOrganizationId,
@@ -504,7 +514,7 @@ export const createDeployment = rootOs
           deploymentName: deployment.name,
           modelSpecifier: deployment.publicSpecifier,
           creatorName: context.session.user.name || context.session.user.email,
-          orgName: org?.name ?? "",
+          orgName: orgName ?? "",
           dashboardUrl: `${serverEnv.ORIGIN}/modelhub`,
         },
       }).catch((err: unknown) => rlog.error({ err }, "Failed to send deployment created notification"));

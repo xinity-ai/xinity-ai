@@ -27,7 +27,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   if (typeof model !== "string" || !model) error(400, "Missing model");
   if (typeof input !== "string" || !input) error(400, "Missing input");
 
-  const upstream = await fetch(`${serverEnv.GATEWAY_URL.replace(/\/$/, "")}/v1/embeddings`, {
+  const upstream = await fetch(`${serverEnv.GATEWAY_URL}/v1/embeddings`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

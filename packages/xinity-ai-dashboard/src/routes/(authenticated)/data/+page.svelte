@@ -45,16 +45,17 @@
 
   async function saveApplication() {
     if (!editingApp) return;
+    const app = editingApp;
 
-    const appBefore = applications.find((a) => a.id === editingApp!.id);
-    const updatedApp = { ...editingApp };
+    const appBefore = applications.find((a) => a.id === app.id);
+    const updatedApp = { ...app };
 
     await updateOptimistically({
       apiPromise: () =>
         orpc.application.update({
-          id: editingApp!.id,
-          name: editingApp!.name,
-          description: editingApp!.description || null,
+          id: app.id,
+          name: app.name,
+          description: app.description || null,
         }),
       update: () => {
         applications = applications.map((a) =>

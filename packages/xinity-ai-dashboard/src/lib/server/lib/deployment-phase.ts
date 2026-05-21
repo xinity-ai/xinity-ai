@@ -6,10 +6,13 @@
  * This module provides the common types and aggregation function.
  */
 
-export type DeploymentPhase = "ready" | "downloading" | "installing" | "failed" | "pending" | "scheduling" | "not_in_catalog";
+import type { lifecycleStateEnum } from "common-db";
+type LifecycleState = typeof lifecycleStateEnum.enumValues[number];
 
-/** Higher number = worse state. Used to pick the "worst" phase across installations. */
-export const PHASE_PRIORITY: Record<string, number> = {
+export type DeploymentPhase = LifecycleState | "pending" | "scheduling" | "not_in_catalog";
+
+const PHASE_PRIORITY: Record<DeploymentPhase, number> = {
+  pending: 0,
   ready: 1,
   installing: 2,
   downloading: 3,
@@ -24,6 +27,16 @@ export type PhaseInfo = {
   error: string | null;
   failureLogs: string | null;
 };
+
+export function isProgressBearingPhase(phase: DeploymentPhase): boolean {
+  return phase === "downloading" || phase === "installing";
+}
+
+function maxNullableProgress(current: number | null, incoming: number | null): number | null {
+  if (current == null) return incoming;
+  if (incoming == null) return current;
+  return Math.max(current, incoming);
+}
 
 /**
  * Merges a new installation's phase into the current aggregate for a deployment.
@@ -40,24 +53,24 @@ export function aggregatePhase(
   error: string | null,
   failureLogs: string | null = null,
 ): PhaseInfo {
-  const newPriority = PHASE_PRIORITY[newPhase] ?? 0;
-
   if (!current) {
     return { phase: newPhase, progress, error, failureLogs };
   }
 
-  const currentPriority = PHASE_PRIORITY[current.phase] ?? 0;
+  const newPriority = PHASE_PRIORITY[newPhase];
+  const currentPriority = PHASE_PRIORITY[current.phase];
 
   if (newPriority > currentPriority) {
     return { phase: newPhase, progress, error: error ?? current.error, failureLogs: failureLogs ?? current.failureLogs };
   }
 
-  if (newPriority === currentPriority && (newPhase === "downloading" || newPhase === "installing")) {
-    const mergedProgress =
-      current.progress == null ? progress
-        : progress != null && progress > current.progress ? progress
-          : current.progress;
-    return { phase: current.phase, progress: mergedProgress, error: error ?? current.error, failureLogs: failureLogs ?? current.failureLogs };
+  if (newPriority === currentPriority && isProgressBearingPhase(newPhase)) {
+    return {
+      phase: current.phase,
+      progress: maxNullableProgress(current.progress, progress),
+      error: error ?? current.error,
+      failureLogs: failureLogs ?? current.failureLogs,
+    };
   }
 
   return current;

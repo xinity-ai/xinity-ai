@@ -25,6 +25,26 @@ type OrpcInternals = {
 	inputSchema?: Parameters<typeof toJSONSchema>[0];
 };
 
+function isProcedureExcludedFromMcp(orpc: OrpcInternals): boolean {
+	const tags = orpc.route?.tags ?? [];
+	const isInternalOutsideDev = tags.includes(".internal") && Bun.env.NODE_ENV !== "development";
+	const isOptedOut = orpc.meta?.mcp === false;
+	return isInternalOutsideDev || isOptedOut;
+}
+
+function procedureInputJsonSchema(orpc: OrpcInternals): Record<string, unknown> {
+	if (!orpc.inputSchema) return { type: "object", properties: {} };
+	return toJSONSchema(orpc.inputSchema, {
+		unrepresentable: "any",
+		override({ zodSchema, jsonSchema }) {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			if ((zodSchema as any)._zod?.def?.type === "date") {
+				Object.assign(jsonSchema, { type: "string", format: "date-time" });
+			}
+		},
+	}) as Record<string, unknown>;
+}
+
 function buildToolList(
 	routerObj: AnyRouter,
 	prefix: string[] = [],
@@ -37,30 +57,12 @@ function buildToolList(
 		if (isProcedure(value)) {
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			const orpc = (value as any)["~orpc"] as OrpcInternals;
-			const tags = orpc.route?.tags ?? [];
-			// Skip .internal-tagged procedures outside development (matches openapi.json behaviour)
-			if (tags.includes(".internal") && Bun.env.NODE_ENV !== "development") continue;
-			// Skip procedures explicitly opted out of MCP via meta({ mcp: false })
-			if (orpc.meta?.mcp === false) continue;
-
-			const inputSchema: Record<string, unknown> = orpc.inputSchema
-				? (toJSONSchema(orpc.inputSchema, {
-						unrepresentable: "any",
-						override({ zodSchema, jsonSchema }) {
-							// Map z.date() to { type: "string", format: "date-time" } so callers
-							// know to pass ISO 8601 strings rather than getting an opaque {} schema.
-							// eslint-disable-next-line @typescript-eslint/no-explicit-any
-							if ((zodSchema as any)._zod?.def?.type === "date") {
-								Object.assign(jsonSchema, { type: "string", format: "date-time" });
-							}
-						},
-					}) as Record<string, unknown>)
-				: { type: "object", properties: {} };
+			if (isProcedureExcludedFromMcp(orpc)) continue;
 
 			tools.push({
 				name: path.join("_"),
 				description: orpc.route?.summary ?? orpc.route?.description ?? path.join(" "),
-				inputSchema,
+				inputSchema: procedureInputJsonSchema(orpc),
 				path,
 			});
 		} else if (typeof value === "object" && value !== null) {

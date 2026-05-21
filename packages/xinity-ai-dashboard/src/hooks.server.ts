@@ -32,6 +32,15 @@ if (isMigrationOk()) {
   }
 }
 
+const MIGRATION_ERROR_ALLOWED_PATH_PREFIXES = [
+  "/migration-error",
+  "/api/",
+  "/rpc/",
+  "/metrics",
+  "/log",
+  "/_app/",
+];
+
 /**
  * Redirects all page requests to /migration-error/ when migrations are outdated.
  * API, RPC, metrics, and static asset paths are allowed through.
@@ -39,13 +48,9 @@ if (isMigrationOk()) {
 const migrationGuard: Handle = ({ event, resolve }) => {
   if (!isMigrationOk()) {
     const path = event.url.pathname;
-    const allowed =
-      path.startsWith("/migration-error") ||
-      path.startsWith("/api/") ||
-      path.startsWith("/rpc/") ||
-      path.startsWith("/metrics") ||
-      path.startsWith("/log") ||
-      path.startsWith("/_app/");
+    const allowed = MIGRATION_ERROR_ALLOWED_PATH_PREFIXES.some((prefix) =>
+      path.startsWith(prefix),
+    );
 
     if (!allowed) {
       redirect(302, "/migration-error/");
@@ -72,17 +77,20 @@ const handleAuth: Handle = ({ event, resolve }) => {
   return svelteKitHandler({ event, resolve, auth, building });
 };
 
+const UUID_IN_PATH = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g;
+
+const recordRequestMetric: Handle = ({ event, resolve }) => {
+  httpRequestCountMetric.inc({
+    method: event.request.method,
+    route: event.url.pathname.replace(UUID_IN_PATH, "[uuid]"),
+  });
+  return resolve(event);
+};
+
 /**
  * Combined handler chain.
  */
-export const handle: Handle = sequence(migrationGuard, fillLocals, handleAuth, ({ event, resolve }) => {
-  const uuid = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g;
-  httpRequestCountMetric.inc({
-    method: event.request.method,
-    route: event.url.pathname.replace(uuid, "[uuid]"),
-  });
-  return resolve(event);
-});
+export const handle: Handle = sequence(migrationGuard, fillLocals, handleAuth, recordRequestMetric);
 
 /**
  * Catch unexpected errors so they don't crash the process.

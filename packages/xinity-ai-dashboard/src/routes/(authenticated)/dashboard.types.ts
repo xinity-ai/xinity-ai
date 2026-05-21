@@ -61,7 +61,7 @@ export type RecentActivity = {
 
 export type RecentModel = {
   name: string;
-  status: string;
+  status: "deployed";
 };
 
 export type KeyMetrics = {

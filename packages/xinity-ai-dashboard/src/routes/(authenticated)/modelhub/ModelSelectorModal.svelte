@@ -33,7 +33,7 @@
   // --- Filter State ---
   let searchTerm = $state("");
   let selectedType = $state<"all" | "chat" | "embedding" | "rerank">("all");
-  let selectedTags = $state<Set<string>>(new Set());
+  const selectedTags = $state<Set<string>>(new Set());
   let sentinel = $state<HTMLElement | null>(null);
 
   // Trigger initial load when modal opens
@@ -81,10 +81,7 @@
         m.publicSpecifier.toLowerCase().includes(searchLower) ||
         (m.family && m.family.toLowerCase().includes(searchLower));
 
-      let matchesType = true;
-      if (selectedType === "chat") matchesType = m.type === "chat";
-      else if (selectedType === "embedding") matchesType = m.type === "embedding";
-      else if (selectedType === "rerank") matchesType = m.type === "rerank";
+      const matchesType = selectedType === "all" || m.type === selectedType;
 
       const matchesTags =
         selectedTags.size === 0 ||
@@ -110,9 +107,11 @@
 
   // --- Functions ---
   function toggleTag(tag: string) {
-    selectedTags = selectedTags.has(tag)
-      ? new Set([...selectedTags].filter((t) => t !== tag))
-      : new Set([...selectedTags, tag]);
+    if (selectedTags.has(tag)) {
+      selectedTags.delete(tag);
+    } else {
+      selectedTags.add(tag);
+    }
   }
 
   function isUndeployable(model: ModelWithSpecifier): boolean {
@@ -120,13 +119,10 @@
     return !isDeployableOnCluster(nodeCapabilities, model);
   }
 
-  /** Returns true when the issue is specifically a non-capacity constraint (version/platform). */
-  /** Returns true when the model is blocked by a non-capacity constraint (version/platform). */
+  // Only flag as a constraint issue when a node would otherwise have room: pure capacity shortfalls are surfaced elsewhere.
   function hasConstraintIncompatibility(model: ModelWithSpecifier): boolean {
     if (!model.providerMinVersions && !model.providerPlatforms) return false;
     if (!isUndeployable(model)) return false;
-    // Only flag as constraint issue if some node has the right driver + enough capacity
-    // (meaning it would work if not for the version/platform mismatch)
     const needed = model.weight + model.minKvCache;
     const drivers = Object.keys(model.providers).filter(d => model.providers[d as keyof typeof model.providers] !== undefined);
     return nodeCapabilities.some(n => n.free >= needed && drivers.some(d => d in n.driverVersions));
@@ -228,7 +224,7 @@
           <Info class="w-12 h-12 mb-4 opacity-50" />
           <p class="text-lg font-medium">No models found</p>
           <p class="text-sm">Try adjusting your search or filters</p>
-          <Button variant="link" class="mt-4" onclick={() => { searchTerm = ""; selectedType = "all"; selectedTags = new Set(); }}>
+          <Button variant="link" class="mt-4" onclick={() => { searchTerm = ""; selectedType = "all"; selectedTags.clear(); }}>
             Clear all filters
           </Button>
         </div>

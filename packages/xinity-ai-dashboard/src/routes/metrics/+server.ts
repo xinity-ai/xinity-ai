@@ -6,19 +6,15 @@ import { metricRegister } from "$lib/server/metrics";
 import { error } from "@sveltejs/kit";
 import { serverEnv } from "$lib/server/serverenv";
 
+const BASIC_PREFIX = "Basic ";
+
 /** Validates the request's basic auth header against server config. */
 function checkBasicAuth(request: Request) {
-  // Get the Authorization header
   const authHeader = request.headers.get("Authorization");
-
-  // Ensure the Authorization header exists and starts with 'Basic '
-  if (!authHeader || !authHeader.startsWith("Basic ")) {
+  if (!authHeader?.startsWith(BASIC_PREFIX)) {
     return false;
   }
-  // Decode the base64 part of the header (remove 'Basic ' prefix)
-  const base64Credentials = authHeader.slice(6);
-  const decodedCredentials = Buffer.from(base64Credentials, "base64").toString();
-
+  const decodedCredentials = Buffer.from(authHeader.slice(BASIC_PREFIX.length), "base64").toString();
   return decodedCredentials === serverEnv.METRICS_AUTH;
 }
 

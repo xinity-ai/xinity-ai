@@ -8,21 +8,42 @@
   import { Separator } from "$lib/components/ui/separator";
 
   const { GATEWAY_URL } = getClientEnv();
-  const apiBase = `${GATEWAY_URL.replace(/\/$/, "")}/v1`;
+  const apiBase = `${GATEWAY_URL}/v1`;
 
   const examples = getApiKeyExamples(apiBase);
 
-  let selectedTab = $state("python");
+  type Language = "python" | "javascript" | "bash";
+  type Section = { heading: string; code: string; language: Language };
+  type Tab = { id: Language; label: string; sections: Section[] };
 
-  const tabs = [
-    { id: "python", label: "Python" },
-    { id: "javascript", label: "JavaScript" },
-    { id: "bash", label: "cURL" },
+  const tabs: Tab[] = [
+    {
+      id: "python",
+      label: "Python",
+      sections: [
+        { heading: "API Base URL", code: examples["base-url-python"], language: "python" },
+        { heading: "Complete Example", code: examples["full-python"], language: "python" },
+      ],
+    },
+    {
+      id: "javascript",
+      label: "JavaScript",
+      sections: [
+        { heading: "API Base URL", code: examples["base-url-javascript"], language: "javascript" },
+        { heading: "Complete Example", code: examples["full-javascript"], language: "javascript" },
+      ],
+    },
+    {
+      id: "bash",
+      label: "cURL",
+      sections: [
+        { heading: "Complete Example", code: examples["full-bash"], language: "bash" },
+      ],
+    },
   ];
 
-  function handleTabChange(tab: string) {
-    selectedTab = tab;
-  }
+  let selectedTab: Language = $state("python");
+  const activeSections = $derived(tabs.find((t) => t.id === selectedTab)?.sections ?? []);
 </script>
 
 <Card.Root class="lg:col-span-3">
@@ -42,7 +63,7 @@
             tab.id
               ? 'text-primary border-primary'
               : 'text-muted-foreground border-transparent hover:text-foreground hover:border-border'}"
-            onclick={() => handleTabChange(tab.id)}
+            onclick={() => (selectedTab = tab.id)}
           >
             {tab.label}
           </button>
@@ -52,58 +73,13 @@
 
     <!-- Tab Content -->
     <div class="space-y-6">
-      {#if selectedTab === "python"}
-        <div class="space-y-6">
-          <div>
-            <h3 class="text-base font-medium mb-2">API Base URL</h3>
-            <CodeExample
-              code={examples["base-url-python"]}
-              language="python"
-              withCopy
-            />
-          </div>
-          <Separator />
-          <div>
-            <h3 class="text-base font-medium mb-2">Complete Example</h3>
-            <CodeExample
-              code={examples["full-python"]}
-              language="python"
-              withCopy
-            />
-          </div>
+      {#each activeSections as section, i (section.heading)}
+        {#if i > 0}<Separator />{/if}
+        <div>
+          <h3 class="text-base font-medium mb-2">{section.heading}</h3>
+          <CodeExample code={section.code} language={section.language} withCopy />
         </div>
-      {:else if selectedTab === "javascript"}
-        <div class="space-y-6">
-          <div>
-            <h3 class="text-base font-medium mb-2">API Base URL</h3>
-            <CodeExample
-              code={examples["base-url-javascript"]}
-              language="javascript"
-              withCopy
-            />
-          </div>
-          <Separator />
-          <div>
-            <h3 class="text-base font-medium mb-2">Complete Example</h3>
-            <CodeExample
-              code={examples["full-javascript"]}
-              language="javascript"
-              withCopy
-            />
-          </div>
-        </div>
-      {:else if selectedTab === "bash"}
-        <div class="space-y-6">
-          <div>
-            <h3 class="text-base font-medium mb-2">Complete Example</h3>
-            <CodeExample
-              code={examples["full-bash"]}
-              language="bash"
-              withCopy
-            />
-          </div>
-        </div>
-      {/if}
+      {/each}
     </div>
   </Card.Content>
 </Card.Root>

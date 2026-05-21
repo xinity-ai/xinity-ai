@@ -226,10 +226,7 @@
       <div class="space-y-2">
         <Label class="text-sm font-semibold">Logging</Label>
         <label class="flex items-center gap-2 h-9 cursor-pointer select-none">
-          <Checkbox
-            checked={storeCall}
-            onCheckedChange={(checked) => (storeCall = checked === true)}
-          />
+          <Checkbox bind:checked={storeCall} />
           <span class="text-sm">Store calls</span>
         </label>
       </div>

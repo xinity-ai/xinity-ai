@@ -31,7 +31,7 @@
   let searchTimeout: ReturnType<typeof setTimeout> | undefined;
   let expandedOrg = $state<string | null>(null);
   let orgMembers = $state<Record<string, OrgMember[]>>({});
-  let loadingMembers = $state<Set<string>>(new Set());
+  const loadingMembers = $state<Set<string>>(new Set());
 
   async function fetchOrgs() {
     const result = await orpc.instanceAdmin.listOrganizations({
@@ -66,12 +66,12 @@
 
   async function loadMembers(orgId: string) {
     if (!orgMembers[orgId]) {
-      loadingMembers = new Set([...loadingMembers, orgId]);
+      loadingMembers.add(orgId);
       const result = await orpc.instanceAdmin.getOrganizationMembers({ organizationId: orgId });
       if (result.data) {
         orgMembers[orgId] = result.data.members;
       }
-      loadingMembers = new Set([...loadingMembers].filter((id) => id !== orgId));
+      loadingMembers.delete(orgId);
     }
   }
 

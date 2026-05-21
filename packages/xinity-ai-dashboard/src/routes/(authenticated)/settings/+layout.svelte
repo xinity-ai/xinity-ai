@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from "$app/stores";
+  import { page } from "$app/state";
   import type { Snippet } from "svelte";
   import * as Card from "$lib/components/ui/card";
   import { Button } from "$lib/components/ui/button";
@@ -14,7 +14,7 @@
     { href: "/settings/auth", label: "Authentication", icon: Shield },
   ];
 
-  const currentPath = $derived($page.url.pathname);
+  const currentPath = $derived(page.url.pathname);
 </script>
 
 <svelte:head>
@@ -31,7 +31,7 @@
         <Card.Content class="p-2">
           <nav class="flex flex-col gap-1">
             {#each navItems as item (item.href)}
-              {@const isActive = currentPath === item.href}
+              {@const isActive = currentPath.startsWith(item.href)}
               <Button
                 variant={isActive ? "secondary" : "ghost"}
                 href={item.href}

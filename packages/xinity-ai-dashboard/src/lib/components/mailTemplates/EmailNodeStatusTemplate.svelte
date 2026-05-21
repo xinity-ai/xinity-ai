@@ -16,7 +16,7 @@
 
 <mjml>
   <mj-head>
-    <mj-title>Node {status === "online" ? "Online" : "Offline"}</mj-title>
+    <mj-title>Node {isOnline ? "Online" : "Offline"}</mj-title>
     <mj-preview>AI node {nodeHost} is now {status}</mj-preview>
   </mj-head>
 

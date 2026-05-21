@@ -23,14 +23,16 @@ export const POST: RequestHandler = async ({ request }) => {
     log.warn({ issues: logs.error.issues }, "Invalid browser log request");
     error(400, { message: "Invalid log request" });
   }
-  if (logs.data && logs.data.messages.length > 1) {
-    const obj = logs.data.messages[0] as Record<string, any>;
+
+  const { level, messages } = logs.data;
+  if (messages.length > 1) {
+    const obj = messages[0] as Record<string, any>;
     if ("name" in obj) {
       obj.name = `browser.${obj.name}`;
     }
-    log[logs.data.level](obj, logs.data.messages[1]);
-  } else if (logs.data) {
-    log[logs.data.level](logs.data.messages[0]);
+    log[level](obj, messages[1]);
+  } else {
+    log[level](messages[0]);
   }
 
   return new Response("Ok");

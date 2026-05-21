@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   import gettingStarted from './screenshots/0-getting-started.webp';
   import generalRating from './screenshots/1-general-rating.webp';
   import rateSections from './screenshots/2-rate-sections.webp';

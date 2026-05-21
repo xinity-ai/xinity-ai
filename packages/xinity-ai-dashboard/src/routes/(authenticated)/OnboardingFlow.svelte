@@ -3,6 +3,7 @@
   import { organization } from "$lib/auth";
   import { goto, invalidateAll } from "$app/navigation";
   import { copyToClipboard } from "$lib/copy";
+  import { slugify } from "$lib/util";
   import type { ModelWithSpecifier } from "xinity-infoserver";
 
   import { Button } from "$lib/components/ui/button";
@@ -23,13 +24,7 @@
   let slugAvailable = $state<boolean | null>(null);
   let checkingSlug = $state(false);
 
-  // Auto-generate slug from org name
-  const slug = $derived(
-    orgName
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "")
-  );
+  const slug = $derived(slugify(orgName));
 
   // Debounced slug availability check
   let slugCheckTimeout: ReturnType<typeof setTimeout>;
@@ -40,12 +35,10 @@
     }
 
     checkingSlug = true;
-    clearTimeout(slugCheckTimeout);
-
-    slugCheckTimeout = setTimeout(async () => {
-      const result = await organization.checkSlug({ slug });
-      if (result.data) {
-        slugAvailable = result.data.status;
+    const timer = setTimeout(async () => {
+      const slugCheck = await organization.checkSlug({ slug });
+      if (slugCheck.data) {
+        slugAvailable = slugCheck.data.status;
       }
       checkingSlug = false;
     }, 500);

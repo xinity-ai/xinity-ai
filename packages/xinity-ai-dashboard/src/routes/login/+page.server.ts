@@ -3,29 +3,27 @@ import { redirect } from "@sveltejs/kit";
 import type { PageServerLoad } from "./$types";
 import { serverEnv } from "$lib/server/serverenv";
 import { getDB } from "$lib/server/db";
-import { ssoProviderT, isNull } from "common-db";
+import { ssoProviderT, sql } from "common-db";
 
 export const load: PageServerLoad = async ({ request, url }) => {
-  let session = await auth.api.getSession(request);
-  let callbackUrl = url.searchParams.get("callbackUrl") || "/";
+  const session = await auth.api.getSession(request);
   if (session) {
     redirect(303, "/");
   }
 
+  const callbackUrl = url.searchParams.get("callbackUrl") || "/";
   const configuredOrigin = new URL(serverEnv.ORIGIN);
   const hostMismatch =
     serverEnv.NODE_ENV !== "development" && url.host !== configuredOrigin.host;
 
-  let ssoProviders: { providerId: string; domain: string }[] = [];
-  if (!serverEnv.MULTI_TENANT_MODE) {
-    ssoProviders = await getDB().select({
-      providerId: ssoProviderT.providerId,
-      domain: ssoProviderT.domain,
-    }).from(ssoProviderT).where(isNull(ssoProviderT.organizationId));
-  }
+  const ssoProviders = serverEnv.MULTI_TENANT_MODE
+    ? []
+    : await getDB().select({
+        providerId: ssoProviderT.providerId,
+        domain: ssoProviderT.domain,
+      }).from(ssoProviderT).where(sql`${ssoProviderT.organizationId} IS NULL`);
 
   return {
-    auth: Boolean(session),
     callbackUrl,
     ssoProviders,
     signupEnabled: serverEnv.SIGNUP_ENABLED,

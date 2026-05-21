@@ -49,16 +49,16 @@ export async function buildClusterCapacity(): Promise<ClusterCapacity> {
 
   const nodeCapabilities: NodeCapability[] = nodes.map(n => ({
     free: n.estCapacity - (nodeUsed.get(n.id) ?? 0),
-    driverVersions: (n.driverVersions ?? {}) as Record<string, string>,
-    gpus: (n.gpus ?? []) as { vendor: string; name: string; vramMb: number }[],
+    driverVersions: n.driverVersions,
+    gpus: n.gpus,
   }));
 
+  const nodesWithFreeCapacity = nodeCapabilities.filter(n => n.free > 0);
   const maxNodeFreeCapacity = Math.max(0, ...nodeCapabilities.map(n => n.free));
   const availableDrivers = [...new Set(
-    nodeCapabilities.filter(n => n.free > 0).flatMap(n => Object.keys(n.driverVersions)),
+    nodesWithFreeCapacity.flatMap(n => Object.keys(n.driverVersions)),
   )];
-  const nodeFreeCapacities = nodeCapabilities
-    .map(n => n.free).filter(c => c > 0).sort((a, b) => b - a);
+  const nodeFreeCapacities = nodesWithFreeCapacity.map(n => n.free).sort((a, b) => b - a);
 
   return { maxNodeFreeCapacity, availableDrivers, nodeFreeCapacities, nodeCapabilities };
 }

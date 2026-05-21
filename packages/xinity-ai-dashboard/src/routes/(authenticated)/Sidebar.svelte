@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from "$app/stores";
+  import { page } from "$app/state";
   import LogoutIcon from "$lib/components/icons/LogoutIcon.svelte";
   import { signOut } from "$lib/auth";
   import HomeIcon from "$lib/components/icons/HomeIcon.svelte";
@@ -36,13 +36,13 @@
     docs: "/docs/",
   };
 
-  const pathname = $derived($page.url.pathname);
+  const pathname = $derived(page.url.pathname);
   const activeLink = $derived(
     pathname === "/"
       ? "home"
       : Object.entries(links)
-          .filter(([key, path]) => key !== "home") // Skip home for non-root paths
-          .find(([key, path]) => pathname.startsWith(path))?.[0] || "home",
+          .filter(([key]) => key !== "home")
+          .find(([, path]) => pathname.startsWith(path))?.[0] || "home",
   );
 </script>
 

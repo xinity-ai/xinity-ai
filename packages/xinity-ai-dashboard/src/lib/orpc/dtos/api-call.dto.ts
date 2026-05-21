@@ -7,7 +7,7 @@ import { CommonDto } from "./common.dto";
 /** Describes a single message in an API call transcript. */
 const CallMessageDto = z.object({
   content: z.string(),
-  role: z.enum(["user", "assistent", "system"]),
+  role: z.enum(["user", "assistant", "system"]),
 });
 
 /** Describes an API call record. */
