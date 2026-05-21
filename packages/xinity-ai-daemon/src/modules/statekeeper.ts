@@ -134,7 +134,7 @@ export async function getNodeId(){
       set: { ...runtimeState, available: true },
     }).returning({id: aiNodeT.id});
 
-    idFile.write(row.id);
+    await idFile.write(row.id);
     cachedNodeId = row.id;
     return cachedNodeId;
   }
