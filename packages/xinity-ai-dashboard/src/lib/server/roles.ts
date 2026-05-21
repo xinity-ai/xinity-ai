@@ -6,20 +6,23 @@ export { ac, owner, admin, member, labeler, viewer, pending, roles } from "$lib/
 export type { RoleName } from "$lib/roles";
 import type { RoleName } from "$lib/roles";
 import { hasFeature } from "$lib/server/license";
+import { z } from "zod";
 
-/** Roles available without a license (free tier). */
+/** All roles unlocked by the "all-roles" license feature. */
+const ALL_ROLES = ["owner", "admin", "member", "labeler", "viewer", "pending"] as const satisfies readonly RoleName[];
+
+/** Roles available without a license (free tier). "pending" is always included for SSO provisioning. */
 const FREE_ROLES: readonly RoleName[] = ["owner", "admin", "pending"];
+
+/** Zod schema for any valid role name. */
+export const RoleSchema = z.enum(ALL_ROLES);
 
 /**
  * Returns the set of assignable role names for the current license.
  * Free tier: owner, admin. Paid tiers with "all-roles": all five roles.
- * "pending" is always included (used internally for SSO provisioning).
  */
 export function getAvailableRoles(): readonly RoleName[] {
-  if (hasFeature("all-roles")) {
-    return ["owner", "admin", "member", "labeler", "viewer", "pending"];
-  }
-  return FREE_ROLES;
+  return hasFeature("all-roles") ? ALL_ROLES : FREE_ROLES;
 }
 
 /** Returns true if the given role is available under the current license. */

@@ -123,11 +123,7 @@
             </Tooltip.Trigger>
             {#if !data.canCreateOrganization}
               <Tooltip.Content>
-                {#if !data.license.features.multiOrg}
-                  Multiple organizations require an Enterprise license.
-                {:else}
-                  Only instance admins can create organizations.
-                {/if}
+                Only instance admins can create organizations.
               </Tooltip.Content>
             {/if}
           </Tooltip.Root>

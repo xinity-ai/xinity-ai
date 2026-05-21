@@ -33,7 +33,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   if (typeof query !== "string" || !query) error(400, "Missing query");
   if (!Array.isArray(documents) || documents.length === 0) error(400, "Missing documents");
 
-  const upstream = await fetch(`${serverEnv.GATEWAY_URL.replace(/\/$/, "")}/v1/rerank`, {
+  const upstream = await fetch(`${serverEnv.GATEWAY_URL}/v1/rerank`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

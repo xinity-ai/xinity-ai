@@ -43,7 +43,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     headers["X-Application"] = applicationName;
   }
 
-  const upstream = await fetch(`${serverEnv.GATEWAY_URL.replace(/\/$/, "")}/v1/chat/completions`, {
+  const upstream = await fetch(`${serverEnv.GATEWAY_URL}/v1/chat/completions`, {
     method: "POST",
     headers,
     body: JSON.stringify({

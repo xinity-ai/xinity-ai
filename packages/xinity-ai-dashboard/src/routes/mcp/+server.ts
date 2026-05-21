@@ -19,10 +19,11 @@ const log = rootLogger.child({ name: "mcp" });
 
 const SERVER_INFO = { name: "xinity-ai", version: "0.1.0" };
 const PROTOCOL_VERSION = "2024-11-05";
+const BEARER_PREFIX = "Bearer ";
 
 function extractApiKey(request: Request): string | null {
 	const bearer = request.headers.get("Authorization");
-	if (bearer?.startsWith("Bearer ")) return bearer.slice(7);
+	if (bearer?.startsWith(BEARER_PREFIX)) return bearer.slice(BEARER_PREFIX.length);
 	return request.headers.get("x-api-key");
 }
 
@@ -40,6 +41,21 @@ type JsonRpcMessage = {
 	method: string;
 	params?: Record<string, unknown>;
 };
+
+function mcpToolError(jsonrpc: string, id: JsonRpcMessage["id"], message: string) {
+	return {
+		jsonrpc,
+		id,
+		result: {
+			content: [{ type: "text", text: message }],
+			isError: true,
+		},
+	};
+}
+
+function jsonRpcError(jsonrpc: string, id: JsonRpcMessage["id"], code: number, message: string) {
+	return { jsonrpc, id, error: { code, message } };
+}
 
 async function handleMessage(
 	msg: JsonRpcMessage,
@@ -67,26 +83,15 @@ async function handleMessage(
 
 		case "tools/call": {
 			if (!apiKey) {
-				return {
-					jsonrpc,
-					id,
-					error: { code: -32001, message: "Unauthorized: missing x-api-key or Authorization header" },
-				};
+				return jsonRpcError(jsonrpc, id, -32001, "Unauthorized: missing x-api-key or Authorization header");
 			}
 			const name = params?.name as string | undefined;
 			const args = params?.arguments;
 			if (!name) {
-				return { jsonrpc, id, error: { code: -32602, message: "Invalid params: missing name" } };
+				return jsonRpcError(jsonrpc, id, -32602, "Invalid params: missing name");
 			}
 			if (!mcpTools.some((t) => t.name === name)) {
-				return {
-					jsonrpc,
-					id,
-					result: {
-						content: [{ type: "text", text: `Unknown tool: ${name}` }],
-						isError: true,
-					},
-				};
+				return mcpToolError(jsonrpc, id, `Unknown tool: ${name}`);
 			}
 			try {
 				const result = await callMcpTool(name, args, apiKey);
@@ -101,29 +106,15 @@ async function handleMessage(
 				// a generic message so DB/validation internals don't leak to clients.
 				const orpcErr = toORPCError(err);
 				if (orpcErr.defined) {
-					return {
-						jsonrpc,
-						id,
-						result: {
-							content: [{ type: "text", text: `${orpcErr.code}: ${orpcErr.message}` }],
-							isError: true,
-						},
-					};
+					return mcpToolError(jsonrpc, id, `${orpcErr.code}: ${orpcErr.message}`);
 				}
 				log.error({ err, tool: name }, "MCP tool execution failed");
-				return {
-					jsonrpc,
-					id,
-					result: {
-						content: [{ type: "text", text: "Tool execution failed" }],
-						isError: true,
-					},
-				};
+				return mcpToolError(jsonrpc, id, "Tool execution failed");
 			}
 		}
 
 		default:
-			return { jsonrpc, id, error: { code: -32601, message: `Method not found: ${method}` } };
+			return jsonRpcError(jsonrpc, id, -32601, `Method not found: ${method}`);
 	}
 }
 

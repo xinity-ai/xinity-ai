@@ -2,7 +2,7 @@
   import { getClientEnv } from "$lib/clientEnv";
   import CodeExample from "$lib/components/CodeExample.svelte";
   const { GATEWAY_URL } = getClientEnv();
-  const apiBase = `${GATEWAY_URL.replace(/\/$/, "")}/v1`;
+  const apiBase = `${GATEWAY_URL}/v1`;
 
   const pythonExample = `import os
 from openai import OpenAI

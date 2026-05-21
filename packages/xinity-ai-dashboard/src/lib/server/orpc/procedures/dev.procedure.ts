@@ -2,13 +2,21 @@
  * Internal-only dev procedures.
  */
 import { sql } from "common-db";
-import z from "zod";
 import { rootOs, withAuth } from "../root";
 import { getDB } from "$lib/server/db";
 
 
 
 const tags = [".internal"];
+
+type QueryStatisticsRow = {
+  queryid: string;
+  calls: string;
+  total_exec_time: number;
+  mean_exec_time: number;
+  rows: string;
+  query: string;
+};
 
 /** Returns top query statistics from `pg_stat_statements`. */
 const queryQueryStatistics = rootOs
@@ -33,7 +41,7 @@ const queryQueryStatistics = rootOs
       ORDER BY total_exec_time DESC
       LIMIT 20;
     `;
-    const rows = await getDB().execute<Record<"queryid" | "calls", string>>(query);
+    const rows = await getDB().execute<QueryStatisticsRow>(query);
     return {
       rows: Array.from(rows),
     }

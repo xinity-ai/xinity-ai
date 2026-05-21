@@ -3,19 +3,19 @@
   import type { ChartConfiguration } from "chart.js";
   import type { KeyMetrics, ChartsData, TablesData } from "./dashboard.types";
 
-  export let keyMetrics: Promise<KeyMetrics>;
-  export let charts: Promise<ChartsData>;
-  export let tables: Promise<TablesData>;
+  let { keyMetrics, charts, tables }: {
+    keyMetrics: Promise<KeyMetrics>;
+    charts: Promise<ChartsData>;
+    tables: Promise<TablesData>;
+  } = $props();
 
-  function getLast30Days() {
-    const dates = [];
+  function getLast30Days(): string[] {
     const today = new Date();
-    for (let i = 29; i >= 0; i--) {
+    return Array.from({ length: 30 }, (_, i) => {
       const date = new Date(today);
-      date.setDate(today.getDate() - i);
-      dates.push(date.getDate() + "/" + (date.getMonth() + 1));
-    }
-    return dates;
+      date.setDate(today.getDate() - (29 - i));
+      return `${date.getDate()}/${date.getMonth() + 1}`;
+    });
   }
 
   function formatDate(dateString: string) {
@@ -36,7 +36,7 @@
   }
 
   function formatDuration(ms: number | null): string {
-    if (ms == null) return "\u2014";
+    if (ms == null) return "-";
     return (ms / 1000).toFixed(1) + "s";
   }
 </script>

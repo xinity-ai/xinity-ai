@@ -5,6 +5,7 @@
   import { Checkbox } from "$lib/components/ui/checkbox";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { orpc } from "$lib/orpc/orpc-client";
+  import { trimOrUndefined } from "$lib/util";
 
   let { organizationId, onCreated }: {
     organizationId?: string;
@@ -33,13 +34,9 @@
   const filledSamlCallbackPath = $derived(samlCallbackPath.replace("{providerId}", providerId || "{providerId}"));
   const filledSamlMetadataPath = $derived(samlMetadataPath.replace("{providerId}", providerId || "{providerId}"));
 
+  const requiredFields = $derived([providerId, issuer, domain, samlEntryPoint, samlCert]);
   const canSubmit = $derived(
-    providerId.trim().length > 0 &&
-      issuer.trim().length > 0 &&
-      domain.trim().length > 0 &&
-      samlEntryPoint.trim().length > 0 &&
-      samlCert.trim().length > 0 &&
-      !submitting,
+    !submitting && requiredFields.every(value => value.trim().length > 0),
   );
 
   function extractMetadata() {
@@ -113,15 +110,15 @@
           "{providerId}",
           providerId || "{providerId}",
         ),
-        audience: samlAudience.trim() || undefined,
+        audience: trimOrUndefined(samlAudience),
         idpMetadata: samlIdpMetadata.trim()
           ? { metadata: samlIdpMetadata.trim() }
           : undefined,
         spMetadata: {},
         wantAssertionsSigned: samlWantAssertionsSigned,
-        signatureAlgorithm: samlSignatureAlgorithm.trim() || undefined,
-        digestAlgorithm: samlDigestAlgorithm.trim() || undefined,
-        identifierFormat: samlIdentifierFormat.trim() || undefined,
+        signatureAlgorithm: trimOrUndefined(samlSignatureAlgorithm),
+        digestAlgorithm: trimOrUndefined(samlDigestAlgorithm),
+        identifierFormat: trimOrUndefined(samlIdentifierFormat),
       },
     });
 

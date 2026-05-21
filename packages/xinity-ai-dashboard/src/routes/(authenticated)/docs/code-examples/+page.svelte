@@ -4,7 +4,7 @@
   import { getExamples, type Language } from "$lib/assets/code-examples/loader";
 
   const { GATEWAY_URL } = getClientEnv();
-  const apiBase = `${GATEWAY_URL.replace(/\/$/, "")}/v1`;
+  const apiBase = `${GATEWAY_URL}/v1`;
   const examples = getExamples(apiBase);
 
   let selectedLanguage: Language = $state("python");

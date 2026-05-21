@@ -49,35 +49,30 @@
     }
   }
 
-  async function deleteNow() {
-    if (!temporaryKeyId) return;
-    const id = temporaryKeyId;
-    temporaryKeyId = null;
-    apiKey = "";
-    showKey = false;
+  async function deleteTemporaryKey(id: string, contextSuffix: string) {
     const [error] = await orpc.apiKey.delete({ id });
     if (error) {
-      browserLogger.warn({ error, id }, "Failed to delete temporary test key");
+      browserLogger.warn({ error, id }, `Failed to delete temporary test key${contextSuffix}`);
       toastState.add("Failed to delete temporary test key", "error");
     } else {
       toastState.add("Temporary test key deleted", "success");
     }
   }
 
-  // Soft-delete the generated temp key when this section unmounts (modal
-  // close). Fire-and-forget so the modal can close without waiting; toast on
-  // both success and failure so the user sees the cleanup happened.
-  onDestroy(() => {
+  async function deleteNow() {
     if (!temporaryKeyId) return;
     const id = temporaryKeyId;
-    void orpc.apiKey.delete({ id }).then(([error]) => {
-      if (error) {
-        browserLogger.warn({ error, id }, "Failed to delete temporary test key on close");
-        toastState.add("Failed to delete temporary test key", "error");
-      } else {
-        toastState.add("Temporary test key deleted", "success");
-      }
-    });
+    temporaryKeyId = null;
+    apiKey = "";
+    showKey = false;
+    await deleteTemporaryKey(id, "");
+  }
+
+  // Fire-and-forget so the modal can close without waiting; toasts on both
+  // outcomes so the user sees the cleanup happened.
+  onDestroy(() => {
+    if (!temporaryKeyId) return;
+    void deleteTemporaryKey(temporaryKeyId, " on close");
   });
 </script>
 

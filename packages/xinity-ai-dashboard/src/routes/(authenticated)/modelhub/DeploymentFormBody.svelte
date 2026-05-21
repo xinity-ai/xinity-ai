@@ -264,8 +264,7 @@
         <Checkbox
           id="canary-toggle{idSuffix}"
           checked={isCanaryEnabled}
-          onCheckedChange={(checked) => {
-            const enabled = checked === true;
+          onCheckedChange={(enabled) => {
             isCanaryEnabled = enabled;
             onCanaryEnabledChange?.(enabled);
           }}

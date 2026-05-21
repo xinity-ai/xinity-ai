@@ -26,6 +26,14 @@
     userSettings = structuredClone(data.fullUser);
   });
 
+  type NotificationKey = keyof User["notificationSettings"];
+  const notificationToggles: Array<{ id: string; label: string; description: string; field: NotificationKey }> = [
+    { id: "email-notifications", label: "Email Notifications", description: "Receive notifications via email", field: "emailNotifications" },
+    { id: "training-alerts", label: "Model Training Alerts", description: "Get notified when model training completes", field: "modelTrainingAlerts" },
+    { id: "weekly-reports", label: "Weekly Reports", description: "Receive weekly usage summaries", field: "weeklyReports" },
+    { id: "api-alerts", label: "API Usage Alerts", description: "Get notified about API usage thresholds", field: "apiUsageAlerts" },
+  ];
+
   async function saveSettings() {
     isSaving = true;
 
@@ -51,59 +59,19 @@
   <Separator />
 
   <div class="space-y-4">
-    <div class="flex items-center justify-between">
-      <div class="space-y-0.5">
-        <Label for="email-notifications">Email Notifications</Label>
-        <p class="text-sm text-muted-foreground">Receive notifications via email</p>
+    {#each notificationToggles as toggle, i (toggle.id)}
+      {#if i > 0}<Separator />{/if}
+      <div class="flex items-center justify-between">
+        <div class="space-y-0.5">
+          <Label for={toggle.id}>{toggle.label}</Label>
+          <p class="text-sm text-muted-foreground">{toggle.description}</p>
+        </div>
+        <Switch
+          id={toggle.id}
+          bind:checked={userSettings.notificationSettings[toggle.field]}
+        />
       </div>
-      <Switch
-        id="email-notifications"
-        checked={userSettings.notificationSettings.emailNotifications}
-        onCheckedChange={(checked) => userSettings.notificationSettings.emailNotifications = checked}
-      />
-    </div>
-
-    <Separator />
-
-    <div class="flex items-center justify-between">
-      <div class="space-y-0.5">
-        <Label for="training-alerts">Model Training Alerts</Label>
-        <p class="text-sm text-muted-foreground">Get notified when model training completes</p>
-      </div>
-      <Switch
-        id="training-alerts"
-        checked={userSettings.notificationSettings.modelTrainingAlerts}
-        onCheckedChange={(checked) => userSettings.notificationSettings.modelTrainingAlerts = checked}
-      />
-    </div>
-
-    <Separator />
-
-    <div class="flex items-center justify-between">
-      <div class="space-y-0.5">
-        <Label for="weekly-reports">Weekly Reports</Label>
-        <p class="text-sm text-muted-foreground">Receive weekly usage summaries</p>
-      </div>
-      <Switch
-        id="weekly-reports"
-        checked={userSettings.notificationSettings.weeklyReports}
-        onCheckedChange={(checked) => userSettings.notificationSettings.weeklyReports = checked}
-      />
-    </div>
-
-    <Separator />
-
-    <div class="flex items-center justify-between">
-      <div class="space-y-0.5">
-        <Label for="api-alerts">API Usage Alerts</Label>
-        <p class="text-sm text-muted-foreground">Get notified about API usage thresholds</p>
-      </div>
-      <Switch
-        id="api-alerts"
-        checked={userSettings.notificationSettings.apiUsageAlerts}
-        onCheckedChange={(checked) => userSettings.notificationSettings.apiUsageAlerts = checked}
-      />
-    </div>
+    {/each}
   </div>
 
   <Separator />

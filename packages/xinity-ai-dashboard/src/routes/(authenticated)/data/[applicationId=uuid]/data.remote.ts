@@ -3,7 +3,7 @@ import { auth } from '$lib/server/auth-server';
 import { getDB } from '$lib/server/db';
 import { pick } from '$lib/util';
 import { error } from '@sveltejs/kit';
-import { apiCallResponseT, apiCallT, aiApiKeyT, sql, type ApiCall, type AIAPIKeyT, isNull, and } from 'common-db';
+import { apiCallResponseT, apiCallT, aiApiKeyT, sql, type ApiCall, type AIAPIKeyT, isNull, and, eq, inArray } from 'common-db';
 import z from 'zod';
 
 async function getSession() {
@@ -19,6 +19,15 @@ function escapeLikePattern(s: string): string {
   return s.replace(/[%_\\]/g, "\\$&");
 }
 
+async function apiCallExistsInOrg(apiCallId: string, organizationId: string | null | undefined): Promise<boolean> {
+  const [apiCall] = await getDB()
+    .select({ id: apiCallT.id })
+    .from(apiCallT)
+    .where(sql`${apiCallT.id} = ${apiCallId} AND ${apiCallT.organizationId} = ${organizationId}`)
+    .limit(1);
+  return !!apiCall;
+}
+
 function buildApiCallConditions(opts: {
   organizationId: string;
   applicationId: string | null;
@@ -28,15 +37,15 @@ function buildApiCallConditions(opts: {
   searchQuery?: string;
 }) {
   const conditions = [
-    sql`${apiCallT.organizationId} = ${opts.organizationId}`,
+    eq(apiCallT.organizationId, opts.organizationId),
   ];
   if (opts.applicationId) {
-    conditions.push(sql`${apiCallT.applicationId} = ${opts.applicationId}`);
+    conditions.push(eq(apiCallT.applicationId, opts.applicationId));
   } else {
     conditions.push(isNull(apiCallT.applicationId));
   }
   if (opts.apiKeyId) {
-    conditions.push(sql`${apiCallT.apiKeyId} = ${opts.apiKeyId}`);
+    conditions.push(eq(apiCallT.apiKeyId, opts.apiKeyId));
   }
   if (opts.metadataKey && opts.metadataValue) {
     conditions.push(sql`${apiCallT.metadata} @> ${JSON.stringify({ [opts.metadataKey]: opts.metadataValue })}::jsonb`);
@@ -87,6 +96,14 @@ const apiCallFilters = z.object({
   offset: z.number().int().min(0).optional(),
 })
 
+type ApiCallSortOption = z.infer<typeof apiCallFilters>["sortOption"];
+
+function apiCallOrderBy(sortOption: ApiCallSortOption) {
+  if (sortOption === "oldest") return sql`${apiCallT.createdAt} ASC`;
+  if (sortOption === "duration") return sql`${apiCallT.duration} DESC`;
+  return sql`${apiCallT.createdAt} DESC`;
+}
+
 export const getApiCalls = query(apiCallFilters, async ({ applicationId, apiKeyId, sortOption, metadataKey, metadataValue, searchQuery, limit = 50, offset = 0 }) => {
   const { session } = await getSession();
   if (!session.activeOrganizationId) {
@@ -107,7 +124,7 @@ export const getApiCalls = query(apiCallFilters, async ({ applicationId, apiKeyI
     .select(select)
     .from(apiCallT)
     .where(and(...conditions))
-    .orderBy(sortOption === "newest" ? sql`${apiCallT.createdAt} DESC` : sortOption === "oldest" ? sql`${apiCallT.createdAt} ASC` : sql`${apiCallT.duration} DESC`)
+    .orderBy(apiCallOrderBy(sortOption))
     .limit(limit)
     .offset(offset);
   return apiCalls as ApiCall[];
@@ -154,7 +171,7 @@ export const getApiCallReactionSummary = query.batch(z.uuid(), async (ids) => {
       total: sql<number>`COUNT(CASE WHEN ${apiCallResponseT.response} IS NOT NULL THEN 1 END)::int`,
     })
     .from(apiCallResponseT)
-    .where(sql`${apiCallResponseT.apiCallId} IN ${ids}`)
+    .where(inArray(apiCallResponseT.apiCallId, ids))
     .groupBy(apiCallResponseT.apiCallId);
 
   return (id) =>
@@ -171,10 +188,10 @@ export const getAPICallResponse = query.batch(z.uuid(), async (ids) => {
   const userId = session.user.id;
 
   const responses = await getDB().select().from(apiCallResponseT)
-    .where(sql`
-    ${apiCallResponseT.apiCallId} IN ${ids}
-    AND
-    ${apiCallResponseT.userId} = ${userId}`);
+    .where(and(
+      inArray(apiCallResponseT.apiCallId, ids),
+      eq(apiCallResponseT.userId, userId),
+    ));
 
   return id => responses.find(v => v.apiCallId === id);
 
@@ -202,16 +219,7 @@ export const upsertApiCallResponse = command(z.object({
 }), async ({ apiCallId, payload }) => {
   const { session, user } = await getSession();
 
-  const [apiCall] = await getDB()
-    .select({ id: apiCallT.id })
-    .from(apiCallT)
-    .where(
-      and(
-        sql`${apiCallT.id} = ${apiCallId}`,
-        sql`${apiCallT.organizationId} = ${session.activeOrganizationId}`
-      )
-    ).limit(1);
-  if (!apiCall) {
+  if (!await apiCallExistsInOrg(apiCallId, session.activeOrganizationId)) {
     error(404, { message: "The api Call was not found" });
   }
 
@@ -232,18 +240,7 @@ export const deleteApiCall = command(z.object({ apiCallId: z.uuid() }), async ({
     throw error(403, { message: "No active organization" });
   }
 
-  const [apiCall] = await getDB()
-    .select({ id: apiCallT.id })
-    .from(apiCallT)
-    .where(
-      and(
-        sql`${apiCallT.id} = ${apiCallId}`,
-        sql`${apiCallT.organizationId} = ${session.activeOrganizationId}`
-      )
-    )
-    .limit(1);
-
-  if (!apiCall) {
+  if (!await apiCallExistsInOrg(apiCallId, session.activeOrganizationId)) {
     throw error(404, { message: "The api Call was not found" });
   }
 

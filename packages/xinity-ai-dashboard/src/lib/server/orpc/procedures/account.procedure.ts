@@ -4,6 +4,7 @@ import { auth, getGreenlitCallId } from "$lib/server/auth-server";
 import { rootLogger } from "$lib/server/logging";
 import { getDB } from "$lib/server/db";
 import { memberT, userT, sql, eq } from "common-db";
+import { betterAuthErrorBody } from "$lib/server/better-auth-errors";
 
 const log = rootLogger.child({ name: "account.procedure" });
 const tags = ["Auth"];
@@ -26,11 +27,11 @@ const changePassword = rootOs
           newPassword: input.newPassword,
         },
       });
-    } catch (error: any) {
+    } catch (error) {
       rlog.error({ err: error }, "Error during password change");
-      throw errors.UNAUTHORIZED({
-        message: error?.body?.message || error?.message || "Failed to change password",
-      });
+      const detail = betterAuthErrorBody(error)?.message
+        ?? (error instanceof Error ? error.message : null);
+      throw errors.UNAUTHORIZED({ message: detail ?? "Failed to change password" });
     }
     await getDB().update(userT).set({ temporaryPassword: false }).where(eq(userT.id, context.session.user.id));
     return { success: true };

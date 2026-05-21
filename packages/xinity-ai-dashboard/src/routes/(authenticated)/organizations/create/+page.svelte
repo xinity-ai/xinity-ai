@@ -2,6 +2,7 @@
   import { goto } from "$app/navigation";
   import { organization } from "$lib/auth";
   import { orpc } from "$lib/orpc/orpc-client";
+  import { slugify } from "$lib/util";
 
   // shadcn components
   import { Button } from "$lib/components/ui/button";
@@ -25,10 +26,7 @@
   // Auto-generate slug from name
   $effect(() => {
     if (slugNotYetEdited) {
-      slug = name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "");
+      slug = slugify(name);
     }
   });
 

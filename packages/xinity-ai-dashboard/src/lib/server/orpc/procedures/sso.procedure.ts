@@ -31,23 +31,25 @@ async function requireSsoAccess(
     throw errors.FORBIDDEN({ message: "SSO requires an Enterprise license. Upgrade at xinity.ai/xinity-pricing." });
   }
 
+  const userIsInstanceAdmin = isInstanceAdmin(email);
+
   // License gate: org-level SSO self-management requires the feature
   if (organizationId && !hasFeature("sso-self-manage")) {
     // Allow instance admins to manage org SSO even without sso-self-manage
-    if (!isInstanceAdmin(email)) {
+    if (!userIsInstanceAdmin) {
       throw errors.FORBIDDEN({ message: "Organization SSO self-management requires an Enterprise license with SSO self-manage enabled." });
     }
   }
 
   if (!organizationId) {
-    if (!isInstanceAdmin(email)) {
+    if (!userIsInstanceAdmin) {
       throw errors.FORBIDDEN({ message: "Instance admin required" });
     }
     return;
   }
 
   // Instance admin can manage SSO for any org
-  if (isInstanceAdmin(email)) return;
+  if (userIsInstanceAdmin) return;
 
   // Org-level: check that the org allows self-management
   const [org] = await getDB()
@@ -82,11 +84,32 @@ const listProviders = rootOs
   }))
   .handler(async ({ input, context, errors }) => {
     await requireSsoAccess(context.session.user.email, input.organizationId, context.request.headers, errors);
-    if (!input.organizationId) {
-      return getDB().select().from(ssoProviderT).where(sql`${ssoProviderT.organizationId} IS NULL`);
-    }
-    return getDB().select().from(ssoProviderT).where(eq(ssoProviderT.organizationId, input.organizationId));
+    const scope = input.organizationId
+      ? sql`${ssoProviderT.organizationId} = ${input.organizationId}`
+      : sql`${ssoProviderT.organizationId} IS NULL`;
+    return getDB().select().from(ssoProviderT).where(scope);
   });
+
+async function dispatchSsoRegistration(
+  input: { providerId: string; issuer: string; domain: string; organizationId?: string },
+  config: { oidcConfig?: unknown } | { samlConfig?: unknown },
+  context: { request: Request; traceId?: string },
+  kind: "OIDC" | "SAML",
+) {
+  const rlog = log.child({ traceId: context.traceId });
+  const result = await auth.api.registerSSOProvider({
+    body: {
+      providerId: input.providerId,
+      issuer: input.issuer,
+      domain: input.domain,
+      organizationId: input.organizationId,
+      ...config,
+    } as any,
+    headers: context.request.headers,
+  });
+  rlog.info({ providerId: input.providerId, organizationId: input.organizationId }, `${kind} provider registered`);
+  return result;
+}
 
 const registerOidc = rootOs
   .meta({ mcp: false })
@@ -111,22 +134,8 @@ const registerOidc = rootOs
     }),
   }))
   .handler(async ({ input, context, errors }) => {
-    const rlog = log.child({ traceId: context.traceId });
     await requireSsoAccess(context.session.user.email, input.organizationId, context.request.headers, errors);
-
-    const result = await auth.api.registerSSOProvider({
-      body: {
-        providerId: input.providerId,
-        issuer: input.issuer,
-        domain: input.domain,
-        organizationId: input.organizationId,
-        oidcConfig: input.oidcConfig,
-      },
-      headers: context.request.headers,
-    });
-
-    rlog.info({ providerId: input.providerId, organizationId: input.organizationId }, "OIDC provider registered");
-    return result;
+    return dispatchSsoRegistration(input, { oidcConfig: input.oidcConfig }, context, "OIDC");
   });
 
 const registerSaml = rootOs
@@ -156,22 +165,8 @@ const registerSaml = rootOs
     }),
   }))
   .handler(async ({ input, context, errors }) => {
-    const rlog = log.child({ traceId: context.traceId });
     await requireSsoAccess(context.session.user.email, input.organizationId, context.request.headers, errors);
-
-    const result = await auth.api.registerSSOProvider({
-      body: {
-        providerId: input.providerId,
-        issuer: input.issuer,
-        domain: input.domain,
-        organizationId: input.organizationId,
-        samlConfig: input.samlConfig as any,
-      },
-      headers: context.request.headers,
-    });
-
-    rlog.info({ providerId: input.providerId, organizationId: input.organizationId }, "SAML provider registered");
-    return result;
+    return dispatchSsoRegistration(input, { samlConfig: input.samlConfig }, context, "SAML");
   });
 
 const deleteProvider = rootOs

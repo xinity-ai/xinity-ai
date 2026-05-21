@@ -48,25 +48,27 @@ export const GET = async () => {
   })
 }
 
-type proc = Procedure<any, any, any, any, any, any>;
-type RouterMap = { [k: string]: proc | RouterMap };
+type Proc = Procedure<any, any, any, any, any, any>;
+type RouterMap = { [k: string]: Proc | RouterMap };
+
+function isProc(obj: Proc | RouterMap): obj is Proc {
+  return Boolean(obj['~orpc']);
+}
+
+function isInternalProc(p: Proc): boolean {
+  return Bun.env.NODE_ENV !== "development"
+    && p['~orpc'].route.tags?.includes(".internal") === true;
+}
+
 /** Removes procedures tagged with `.internal` from the OpenAPI output. */
 function removeInternalRecursively(router: RouterMap): RouterMap {
-  function isProc(obj: proc | RouterMap): obj is proc {
-    return Boolean(obj['~orpc'])
-  }
-
   const copy: RouterMap = {};
-  for (let key in router) {
-    if (isProc(router[key])) {
-      // In this case, the value at key is a procedure
-      if (router[key]['~orpc'].route.tags?.includes(".internal") && Bun.env.NODE_ENV !== "development") {
-        continue;
-      }
-      copy[key] = router[key];
+  for (const key in router) {
+    const value = router[key];
+    if (isProc(value)) {
+      if (!isInternalProc(value)) copy[key] = value;
     } else {
-      // In this case, the value at key is another router
-      copy[key] = removeInternalRecursively(router[key] as RouterMap);
+      copy[key] = removeInternalRecursively(value);
     }
   }
   return copy;

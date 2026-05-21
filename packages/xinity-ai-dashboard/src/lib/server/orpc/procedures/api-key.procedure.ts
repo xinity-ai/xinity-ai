@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ApiKeyDto } from "$lib/orpc/dtos/api-key.dto";
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
 import { randomBytes } from "node:crypto";
-import { and, eq, sql, aiApiKeyT, aiApplicationT, isNull } from "common-db";
+import { and, eq, aiApiKeyT, aiApplicationT, isNull } from "common-db";
 import { pick } from "$lib/util";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
@@ -13,6 +13,11 @@ const log = rootLogger.child({ name: "api-key.procedure" });
 function generateRandomKey(length = 64) {
   return randomBytes(length).toString("base64url"); // URL-safe base64 string
 }
+
+const matchApiKeyInOrg = (keyId: string, orgId: string) => and(
+  eq(aiApiKeyT.id, keyId),
+  eq(aiApiKeyT.organizationId, orgId),
+);
 
 const tags = ["LLM API Key"];
 
@@ -41,11 +46,13 @@ export const createApiKey = rootOs
 
     if (applicationId) {
       const [application] = await getDB()
-        .select().from(aiApplicationT).where(sql`
-        ${aiApplicationT.id} = ${applicationId}
-        AND
-        ${aiApplicationT.organizationId} = ${context.activeOrganizationId}
-        `).limit(1);
+        .select({ id: aiApplicationT.id })
+        .from(aiApplicationT)
+        .where(and(
+          eq(aiApplicationT.id, applicationId),
+          eq(aiApplicationT.organizationId, context.activeOrganizationId),
+        ))
+        .limit(1);
       if (!application) {
         throw errors.NOT_FOUND({ message: "Application not found" })
       }
@@ -58,16 +65,16 @@ export const createApiKey = rootOs
           organizationId: context.activeOrganizationId,
         })
         .returning();
+      if (!newApp) throw new Error("Insert into aiApplicationT returned no row");
       applicationId = newApp.id;
     }
-    // If neither applicationId nor createApplication: key has no default application
 
     const specifier = "sk_" + generateRandomKey(16);
     const secretKey = generateRandomKey();
 
     const fullKey = `${specifier}${secretKey}`;
     const hash = await Bun.password.hash(fullKey);
-    const [newKey] = await getDB()
+    await getDB()
       .insert(aiApiKeyT)
       .values({
         name: input.name,
@@ -77,12 +84,12 @@ export const createApiKey = rootOs
         createdByUserId: context.session.user.id,
         specifier,
         hash: hash,
-      }).returning();
+      });
     return {
       fullKey,
       name: input.name,
       specifier,
-      applicationId: newKey.applicationId,
+      applicationId,
     };
   });
 
@@ -95,7 +102,7 @@ const listApiKey = rootOs.use(withOrganization)
       .from(aiApiKeyT)
       .where(
         and(
-          sql`${aiApiKeyT.organizationId} = ${context.activeOrganizationId}`,
+          eq(aiApiKeyT.organizationId, context.activeOrganizationId),
           isNull(aiApiKeyT.deletedAt)
         )
       )
@@ -123,7 +130,7 @@ const updateApiKey = rootOs
           .from(aiApplicationT)
           .where(and(
             eq(aiApplicationT.id, input.applicationId),
-            sql`${aiApplicationT.organizationId} = ${context.activeOrganizationId}`,
+            eq(aiApplicationT.organizationId, context.activeOrganizationId),
             isNull(aiApplicationT.deletedAt),
           ))
           .limit(1);
@@ -137,11 +144,7 @@ const updateApiKey = rootOs
     await getDB()
       .update(aiApiKeyT)
       .set(set)
-      .where(sql`
-          ${aiApiKeyT.id} = ${input.id}
-        AND
-          ${aiApiKeyT.organizationId} = ${context.activeOrganizationId}
-      `);
+      .where(matchApiKeyInOrg(input.id, context.activeOrganizationId));
   });
 
 const deleteApiKey = rootOs
@@ -155,13 +158,10 @@ const deleteApiKey = rootOs
     await getDB()
       .update(aiApiKeyT)
       .set({ deletedAt: new Date() })
-      .where(
-        and(
-          sql`${aiApiKeyT.id} = ${input.id}`,
-          sql`${aiApiKeyT.organizationId} = ${context.activeOrganizationId}`,
-          isNull(aiApiKeyT.deletedAt)
-        )
-      );
+      .where(and(
+        matchApiKeyInOrg(input.id, context.activeOrganizationId),
+        isNull(aiApiKeyT.deletedAt),
+      ));
   });
 
 const toggleEnabled = rootOs
@@ -171,10 +171,7 @@ const toggleEnabled = rootOs
   .input(ApiKeyDto.pick({ id: true }).extend({ enabled: z.boolean().optional() }))
   .handler(async ({ context, input, errors }) => {
     let enabled = input.enabled;
-    const keySelector = sql`
-      ${aiApiKeyT.id} = ${input.id}
-      AND
-      ${aiApiKeyT.organizationId} = ${context.activeOrganizationId}`;
+    const keySelector = matchApiKeyInOrg(input.id, context.activeOrganizationId);
     if (typeof enabled !== "boolean") {
       const [apiKey] = await getDB()
         .select(pick(aiApiKeyT, "enabled"))
@@ -196,12 +193,7 @@ const toggleCollectData = rootOs
     await getDB()
       .update(aiApiKeyT)
       .set({ collectData: input.collectData })
-      .where(
-        and(
-          sql`${aiApiKeyT.id} = ${input.id}`,
-          sql`${aiApiKeyT.organizationId} = ${context.activeOrganizationId}`,
-        )
-      );
+      .where(matchApiKeyInOrg(input.id, context.activeOrganizationId));
   });
 
 export const apiKeyRouter = rootOs.prefix("/api-key").router({

@@ -14,12 +14,10 @@ import { instanceAdminRouter } from "./procedures/instance-admin.procedure";
 import { clusterRouter } from "./procedures/cluster.procedure";
 import z from "zod";
 
-const health = os.route({
-    method: "GET",
-    path: "/health",
-  })
-  .output(z.object({status: z.string()}))
-  .handler(()=> ({status: "ok"}));
+const health = os
+  .route({ method: "GET", path: "/health" })
+  .output(z.object({ status: z.string() }))
+  .handler(() => ({ status: "ok" }));
 
 /**
  * Exported router object mounted by the ORPC server.

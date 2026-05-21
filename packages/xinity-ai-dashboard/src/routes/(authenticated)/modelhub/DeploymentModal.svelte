@@ -123,9 +123,9 @@
     customCodeConsent = false;
     shouldAutoSelectCanary = true;
     advancementStrategy = deriveAdvancementStrategy(d);
-    if (advancementStrategy === "time-based") {
+    if (advancementStrategy === "time-based" && d.canaryProgressUntil) {
       const from = d.canaryProgressFrom ?? new Date();
-      timeBasedDurationHours = Math.max(1, Math.round((d.canaryProgressUntil!.getTime() - from.getTime()) / 3_600_000));
+      timeBasedDurationHours = Math.max(1, Math.round((d.canaryProgressUntil.getTime() - from.getTime()) / 3_600_000));
     }
 
     initialSnapshot = {
@@ -293,9 +293,9 @@
     const submittedKvCacheSize = effectiveDriver === "ollama" ? null : kvCacheSize;
     const submittedEarlyKvCacheSize = effectiveDriver === "ollama" ? null : earlyKvCacheSize;
 
-    const [error] = isEditMode
+    const [error] = deployment
       ? await orpc.deployment.update({
-          ...deployment!,
+          ...deployment,
           name: deploymentName.trim(),
           publicSpecifier: publicSpecifier.trim(),
           enabled,
@@ -305,7 +305,7 @@
           progress: isCanaryEnabled ? canaryTraffic : 100,
           canaryProgressWithFeedback: isCanaryEnabled && advancementStrategy === "smart-auto",
           canaryProgressFrom: isCanaryEnabled && advancementStrategy !== "manual"
-            ? (deployment!.canaryProgressFrom ?? new Date()) : null,
+            ? (deployment.canaryProgressFrom ?? new Date()) : null,
           canaryProgressUntil: isCanaryEnabled && advancementStrategy === "time-based"
             ? new Date(Date.now() + timeBasedDurationHours * 3_600_000) : null,
           kvCacheSize: submittedKvCacheSize,
@@ -412,9 +412,8 @@
         >
           <Checkbox
             id="enabled{idSuffix}"
-            checked={enabled}
+            bind:checked={enabled}
             disabled={isEditMode && cannotReEnable && !enabled}
-            onCheckedChange={(checked) => enabled = checked === true}
           />
           <span class="text-sm {isEditMode && cannotReEnable ? 'text-muted-foreground' : ''}">
             {isEditMode ? "Enabled" : "Start deployment in enabled state"}

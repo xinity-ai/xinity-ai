@@ -45,21 +45,15 @@ export function createUrlSearchParamsStore(): Writable<Record<string, string>> {
   if (!browser) {
     return writable(Object.fromEntries(page.url.searchParams.entries()));
   }
-  const getParamsObject = () => {
-    const params = new URLSearchParams(window.location.search);
-    const obj: Record<string, string> = {};
-    for (const [key, value] of params.entries()) {
-      obj[key] = value;
-    }
-    return obj;
-  };
+  const getParamsObject = () =>
+    Object.fromEntries(new URLSearchParams(window.location.search).entries());
 
   const setUrlFromParams = (paramsObj: Record<string, string>) => {
     const url = new URL(window.location.href);
     url.search = "";
-    for (const key in paramsObj) {
-      if (paramsObj[key] != null && paramsObj[key] !== "") {
-        url.searchParams.set(key, paramsObj[key]);
+    for (const [key, value] of Object.entries(paramsObj)) {
+      if (value != null && value !== "") {
+        url.searchParams.set(key, value);
       }
     }
     pushState(url.pathname + url.search + url.hash, {});

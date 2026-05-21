@@ -24,6 +24,8 @@ const errorMessages: Record<string, string> = {
   BAD_REQUEST: "Invalid request. Please check your input.",
 };
 
+const PERMISSION_ERROR_CODES = new Set(["FORBIDDEN", "UNAUTHORIZED"]);
+
 /**
  * Extract error code from oRPC error response
  */
@@ -70,14 +72,7 @@ function getErrorMessage(error: unknown): string {
  */
 export function handleError(error: unknown, customMessage?: string): void {
   const message = customMessage || getErrorMessage(error);
-  const code = getErrorCode(error);
-
-  // Use different toast types based on error code
-  if (code === "FORBIDDEN" || code === "UNAUTHORIZED") {
-    toastState.add(message, "warning");
-  } else {
-    toastState.add(message, "error");
-  }
+  toastState.add(message, isPermissionError(error) ? "warning" : "error");
 }
 
 /**
@@ -109,5 +104,5 @@ export async function withErrorHandling<T>(
  */
 export function isPermissionError(error: unknown): boolean {
   const code = getErrorCode(error);
-  return code === "FORBIDDEN" || code === "UNAUTHORIZED";
+  return code !== undefined && PERMISSION_ERROR_CODES.has(code);
 }

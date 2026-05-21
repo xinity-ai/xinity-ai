@@ -56,7 +56,7 @@
 
   // Optimistic state for member role changes
   let memberRoleOverrides = $state<Record<string, RoleName>>({});
-  let savingMemberIds = $state<Set<string>>(new Set());
+  const savingMemberIds = $state<Set<string>>(new Set());
   let memberToRemove = $state<Member | null>(null);
   let isRemoving = $state(false);
 
@@ -111,7 +111,7 @@
 
   async function handleRoleChange(memberId: string, newRole: RoleName) {
     memberRoleOverrides[memberId] = newRole;
-    savingMemberIds = new Set([...savingMemberIds, memberId]);
+    savingMemberIds.add(memberId);
 
     const { error } = await orpc.organization.updateMemberRole({
       memberId,
@@ -128,9 +128,7 @@
       delete memberRoleOverrides[memberId];
     }
 
-    savingMemberIds = new Set(
-      [...savingMemberIds].filter((id) => id !== memberId),
-    );
+    savingMemberIds.delete(memberId);
   }
 </script>
 

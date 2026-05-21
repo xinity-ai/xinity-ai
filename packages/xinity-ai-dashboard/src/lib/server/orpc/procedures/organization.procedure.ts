@@ -6,15 +6,14 @@ import { isInstanceAdmin, serverEnv } from "$lib/server/serverenv";
 import { getDB } from "$lib/server/db";
 import { notifyOrgMembers } from "$lib/server/notifications/notification.service";
 import { NotificationType } from "$lib/server/notifications/events";
-import { memberT, userT, organizationT, invitationT, sql } from "common-db";
-import { isRoleAvailable } from "$lib/server/roles";
+import { memberT, userT, organizationT, invitationT, and, eq } from "common-db";
+import { isRoleAvailable, RoleSchema } from "$lib/server/roles";
 import { hasFeature } from "$lib/server/license";
 import { betterAuthErrorBody } from "$lib/server/better-auth-errors";
+import { findOrgName } from "$lib/server/lib/org-queries";
 
 const log = rootLogger.child({ name: "organization.procedure" });
 const tags = ["Organization"];
-
-const RoleSchema = z.enum(["owner", "admin", "member", "labeler", "viewer", "pending"]);
 
 export const createOrganization = rootOs
   .use(withAuth)
@@ -157,25 +156,12 @@ const removeMember = rootOs
   .handler(async ({ input, context, errors }) => {
     const rlog = log.child({ traceId: context.traceId });
     // Member lookup must be scoped to the active org: a memberId from another org would otherwise reach Better Auth and surface as 500.
-    const [[member], [org]] = await Promise.all([
-      getDB()
-        .select({ name: userT.name })
-        .from(memberT)
-        .innerJoin(userT, sql`${userT.id} = ${memberT.userId}`)
-        .where(sql`
-            ${memberT.id} = ${input.memberId} 
-          AND 
-            ${memberT.organizationId} = ${context.activeOrganizationId}
-        `)
-        .limit(1),
-      getDB()
-        .select({ name: organizationT.name })
-        .from(organizationT)
-        .where(sql`${organizationT.id} = ${context.activeOrganizationId}`)
-        .limit(1),
+    const [memberName, orgName] = await Promise.all([
+      findMemberNameInOrg(input.memberId, context.activeOrganizationId),
+      findOrgName(context.activeOrganizationId),
     ]);
 
-    if (!member) {
+    if (memberName === undefined) {
       throw errors.NOT_FOUND({ message: "Member not found in this organization" });
     }
 
@@ -187,19 +173,13 @@ const removeMember = rootOs
       headers: context.request.headers,
     });
 
-    if (member) {
-      void notifyOrgMembers({
-        type: NotificationType.member_removed,
-        organizationId: context.activeOrganizationId,
-        data: {
-          memberName: member.name,
-          eventType: "removed",
-          role: "",
-          orgName: org?.name ?? "",
-          dashboardUrl: `${serverEnv.ORIGIN}/organizations`,
-        },
-      }).catch((err: unknown) => rlog.error({ err }, "Failed to send member removed notification"));
-    }
+    dispatchMemberEventNotification(rlog, context.activeOrganizationId, {
+      type: NotificationType.member_removed,
+      eventType: "removed",
+      role: "",
+      memberName,
+      orgName: orgName ?? "",
+    });
 
     return { success: true };
   });
@@ -231,32 +211,19 @@ const updateMemberRole = rootOs
       throw errors.INTERNAL_SERVER_ERROR({ message: "Failed to update member role" });
     }
 
-    const [[member], [org]] = await Promise.all([
-      getDB()
-        .select({ name: userT.name })
-        .from(memberT)
-        .innerJoin(userT, sql`${userT.id} = ${memberT.userId}`)
-        .where(sql`${memberT.id} = ${input.memberId}`)
-        .limit(1),
-      getDB()
-        .select({ name: organizationT.name })
-        .from(organizationT)
-        .where(sql`${organizationT.id} = ${context.activeOrganizationId}`)
-        .limit(1),
+    const [memberName, orgName] = await Promise.all([
+      findMemberNameInOrg(input.memberId, context.activeOrganizationId),
+      findOrgName(context.activeOrganizationId),
     ]);
 
-    if (member) {
-      void notifyOrgMembers({
+    if (memberName !== undefined) {
+      dispatchMemberEventNotification(rlog, context.activeOrganizationId, {
         type: NotificationType.member_role_changed,
-        organizationId: context.activeOrganizationId,
-        data: {
-          memberName: member.name,
-          eventType: "role_changed",
-          role: input.role,
-          orgName: org?.name ?? "",
-          dashboardUrl: `${serverEnv.ORIGIN}/organizations`,
-        },
-      }).catch((err: unknown) => rlog.error({ err }, "Failed to send member role changed notification"));
+        eventType: "role_changed",
+        role: input.role,
+        memberName,
+        orgName: orgName ?? "",
+      });
     }
 
     return { success: true };
@@ -328,11 +295,54 @@ export const organizationRouter = rootOs.prefix("/organization").router({
   delete: deleteOrganization,
 });
 
+type MemberEventNotification = {
+  type: NotificationType;
+  eventType: "removed" | "role_changed";
+  role: string;
+  memberName: string;
+  orgName: string;
+};
+
+function dispatchMemberEventNotification(
+  rlog: { error: (obj: object, msg: string) => void },
+  organizationId: string,
+  spec: MemberEventNotification,
+): void {
+  const eventLabel = spec.eventType.replace(/_/g, " ");
+  void notifyOrgMembers({
+    type: spec.type,
+    organizationId,
+    data: {
+      memberName: spec.memberName,
+      eventType: spec.eventType,
+      role: spec.role,
+      orgName: spec.orgName,
+      dashboardUrl: `${serverEnv.ORIGIN}/organizations`,
+    },
+  }).catch((err: unknown) => rlog.error({ err }, `Failed to send member ${eventLabel} notification`));
+}
+
 async function findInvitationInOrg(invitationId: string, organizationId: string): Promise<{ id: string } | null> {
   const [row] = await getDB()
     .select({ id: invitationT.id })
     .from(invitationT)
-    .where(sql`${invitationT.id} = ${invitationId} AND ${invitationT.organizationId} = ${organizationId}`)
+    .where(and(
+      eq(invitationT.id, invitationId),
+      eq(invitationT.organizationId, organizationId),
+    ))
     .limit(1);
   return row ?? null;
+}
+
+async function findMemberNameInOrg(memberId: string, organizationId: string): Promise<string | undefined> {
+  const [row] = await getDB()
+    .select({ name: userT.name })
+    .from(memberT)
+    .innerJoin(userT, eq(userT.id, memberT.userId))
+    .where(and(
+      eq(memberT.id, memberId),
+      eq(memberT.organizationId, organizationId),
+    ))
+    .limit(1);
+  return row?.name;
 }

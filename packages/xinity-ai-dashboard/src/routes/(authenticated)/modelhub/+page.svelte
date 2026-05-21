@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PageData } from "./$types";
   import type { DeploymentDefinition } from "./+page.server";
-  import type { NodeCapability } from "xinity-infoserver";
+  import type { ClusterCapacity } from "$lib/server/orpc/procedures/cluster.procedure";
   import DeploymentModal from "./DeploymentModal.svelte";
   import TestChatModal from "./TestChatModal.svelte";
   import TestEmbeddingModal from "./TestEmbeddingModal.svelte";
@@ -33,7 +33,7 @@
 
   // Mutable overrides updated by refreshCapacity() after mutations.
   // When set, these take precedence over the load-function values.
-  let capacityOverride = $state<{ maxNodeFreeCapacity: number; availableDrivers: string[]; nodeFreeCapacities: number[]; nodeCapabilities: NodeCapability[] } | null>(null);
+  let capacityOverride = $state<ClusterCapacity | null>(null);
   const activeMaxCapacity = $derived(capacityOverride?.maxNodeFreeCapacity ?? maxNodeFreeCapacity);
   const activeDrivers = $derived(capacityOverride?.availableDrivers ?? availableDrivers);
   const activeNodeCapacities = $derived(capacityOverride?.nodeFreeCapacities ?? nodeFreeCapacities);
@@ -145,8 +145,7 @@
     deployment: DeploymentDefinition,
   ): "chat" | "embedding" | "rerank" | null {
     const k = modelKnowledge[deployment.specifier ?? deployment.modelSpecifier];
-    if (k?.status !== "known") return null;
-    return k.type === "chat" || k.type === "embedding" || k.type === "rerank" ? k.type : null;
+    return k?.status === "known" ? k.type : null;
   }
 
   function openTest(

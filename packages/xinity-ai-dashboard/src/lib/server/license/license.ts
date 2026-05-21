@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { LicensePayloadSchema, type LicenseInfo, type LicenseFeature } from "./types";
+import { LicensePayloadSchema, type LicenseInfo, type LicenseFeature, type LicensePayload, type LicenseTier } from "./types";
 import { PUBLIC_KEY_BASE64 } from "./public-key";
 import { rootLogger } from "$lib/server/logging";
 import { serverEnv } from "../serverenv";
@@ -92,6 +92,37 @@ export function hasInstanceMismatch(): boolean {
   return claim !== local;
 }
 
+function logLicenseLifecycle(license: LicenseInfo): void {
+  if (!license.valid) {
+    log.warn({ reason: license.reason }, "Invalid license key. Running in free tier");
+    return;
+  }
+
+  const { licensee, tier, expiresAt } = license.payload;
+  if (license.expired && !license.inGracePeriod) {
+    log.warn({ licensee }, "License expired beyond grace period. Falling back to free tier");
+  } else if (license.inGracePeriod) {
+    const daysLeft = Math.ceil((expiresAt + GRACE_PERIOD_DAYS * MS_PER_DAY - Date.now()) / MS_PER_DAY);
+    log.warn({ licensee, daysLeft }, "License expired. Grace period active");
+  } else {
+    log.info({ tier, licensee }, "License validated");
+  }
+
+  if (hasOriginMismatch()) {
+    log.error(
+      { allowedOrigins: license.payload.origins, actual: serverEnv.ORIGIN },
+      "LICENSE ORIGIN MISMATCH: The dashboard ORIGIN does not match the licensed origin. Treating as free tier until this is corrected.",
+    );
+  }
+
+  if (hasInstanceMismatch()) {
+    log.error(
+      { licensedInstanceId: license.payload.instanceId, actual: getDeploymentId() },
+      "LICENSE INSTANCE MISMATCH: The dashboard instance ID does not match the licensed instance ID. Treating as free tier until this is corrected.",
+    );
+  }
+}
+
 /**
  * Returns the current license info. Reads from LICENSE_KEY env var on first call, then caches.
  * Returns a free-tier fallback if no key is set or if the key is invalid.
@@ -107,35 +138,7 @@ export function getLicense(): LicenseInfo {
   }
 
   cachedLicense = parseLicense(key);
-  if (cachedLicense.valid) {
-    if (cachedLicense.expired && !cachedLicense.inGracePeriod) {
-      log.warn({ licensee: cachedLicense.payload.licensee }, "License expired beyond grace period. Falling back to free tier");
-    } else if (cachedLicense.inGracePeriod) {
-      const daysLeft = Math.ceil((cachedLicense.payload.expiresAt + GRACE_PERIOD_DAYS * MS_PER_DAY - Date.now()) / MS_PER_DAY);
-      log.warn({ licensee: cachedLicense.payload.licensee, daysLeft }, "License expired. Grace period active");
-    } else {
-      log.info({ tier: cachedLicense.payload.tier, licensee: cachedLicense.payload.licensee }, "License validated");
-    }
-
-    // Check origin mismatch
-    if (hasOriginMismatch()) {
-      log.error(
-        { allowedOrigins: cachedLicense.payload.origins, actual: serverEnv.ORIGIN },
-        "LICENSE ORIGIN MISMATCH: The dashboard ORIGIN does not match the licensed origin. Treating as free tier until this is corrected.",
-      );
-    }
-
-    // Check instance ID mismatch (only when the license carries an instanceId claim)
-    if (hasInstanceMismatch()) {
-      log.error(
-        { licensedInstanceId: cachedLicense.payload.instanceId, actual: getDeploymentId() },
-        "LICENSE INSTANCE MISMATCH: The dashboard instance ID does not match the licensed instance ID. Treating as free tier until this is corrected.",
-      );
-    }
-  } else {
-    log.warn({ reason: cachedLicense.reason }, "Invalid license key. Running in free tier");
-  }
-
+  logLicenseLifecycle(cachedLicense);
   return cachedLicense;
 }
 
@@ -144,16 +147,20 @@ export function resetLicenseCache(): void {
   cachedLicense = null;
 }
 
+function effectiveLicensePayload(): LicensePayload | null {
+  const license = getLicense();
+  if (!license.valid) return null;
+  if (license.expired && !license.inGracePeriod) return null;
+  if (hasOriginMismatch()) return null;
+  if (hasInstanceMismatch()) return null;
+  return license.payload;
+}
+
 /**
  * Returns true when the parsed license is considered to be fully valid.
  */
 export function isLicenseEffective(): boolean {
-  const license = getLicense();
-  if (!license.valid) return false;
-  if (license.expired && !license.inGracePeriod) return false;
-  if (hasOriginMismatch()) return false;
-  if (hasInstanceMismatch()) return false;
-  return true;
+  return effectiveLicensePayload() !== null;
 }
 
 /**
@@ -161,49 +168,37 @@ export function isLicenseEffective(): boolean {
  * Expired licenses beyond grace period are treated as free tier (no features).
  */
 export function hasFeature(feature: LicenseFeature): boolean {
-  if (!isLicenseEffective()) return false;
-  const license = getLicense();
-  if (!license.valid) return false;
-  return license.payload.features.includes(feature);
+  return effectiveLicensePayload()?.features.includes(feature) ?? false;
 }
 
 /** Returns the maximum total VRAM (in GB) allowed by the current license. */
 export function maxVramGb(): number {
-  if (!isLicenseEffective()) return FREE_MAX_VRAM_GB;
-  const license = getLicense();
-  if (!license.valid) return FREE_MAX_VRAM_GB;
-  if (license.payload.maxVramGb === -1) return Infinity;
-  return license.payload.maxVramGb;
+  const payload = effectiveLicensePayload();
+  if (!payload) return FREE_MAX_VRAM_GB;
+  if (payload.maxVramGb === -1) return Infinity;
+  return payload.maxVramGb;
 }
 
 /** Returns the current tier name. */
-export function tierName(): "free" | "startup" | "enterprise-sm" | "enterprise-lg" {
-  if (!isLicenseEffective()) return "free";
-  const license = getLicense();
-  if (!license.valid) return "free";
-  return license.payload.tier;
+export function tierName(): LicenseTier | "free" {
+  return effectiveLicensePayload()?.tier ?? "free";
 }
 
 /** Returns the licensee name, or null if on free tier. */
 export function licenseeName(): string | null {
-  if (!isLicenseEffective()) return null;
-  const license = getLicense();
-  if (!license.valid) return null;
-  return license.payload.licensee;
+  return effectiveLicensePayload()?.licensee ?? null;
 }
 
 /** Returns true if the license is expired (regardless of grace period). */
 export function isExpired(): boolean {
   const license = getLicense();
-  if (!license.valid) return false;
-  return license.expired;
+  return license.valid && license.expired;
 }
 
 /** Returns true if the license is in the grace period (expired < 30 days). */
 export function isInGracePeriod(): boolean {
   const license = getLicense();
-  if (!license.valid) return false;
-  return license.inGracePeriod;
+  return license.valid && license.inGracePeriod;
 }
 
 /** Returns license summary data safe to expose to the client (layout data). */

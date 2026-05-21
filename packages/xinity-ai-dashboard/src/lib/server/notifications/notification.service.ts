@@ -2,13 +2,13 @@
  * Core notification service.
  * Handles preference checking, channel dispatch, and DB logging.
  */
-import { userT, memberT, notificationT, sql } from "common-db";
+import { userT, memberT, notificationT, eq } from "common-db";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
 import { type NotificationType, isNotificationEnabled } from "./events";
 import { emailChannel } from "./channels";
 import { getTemplateForType, getSubjectForType } from "./templates";
-import { serverEnv } from "$lib/server/serverenv";
+import { commonEmailProps } from "$lib/server/email";
 
 const log = rootLogger.child({ name: "notification.service" });
 
@@ -30,7 +30,7 @@ export async function notify(params: NotifyParams): Promise<void> {
     const [user] = await getDB()
       .select({ email: userT.email, name: userT.name, notificationSettings: userT.notificationSettings })
       .from(userT)
-      .where(sql`${userT.id} = ${userId}`)
+      .where(eq(userT.id, userId))
       .limit(1);
 
     if (!user) {
@@ -47,8 +47,7 @@ export async function notify(params: NotifyParams): Promise<void> {
     const subject = getSubjectForType(type, data);
     const props = {
       ...data,
-      appName: serverEnv.APP_NAME,
-      preferencesUrl: `${serverEnv.ORIGIN}/settings/notifications/`,
+      ...commonEmailProps,
     };
 
     await emailChannel.send({
@@ -68,7 +67,7 @@ export async function notify(params: NotifyParams): Promise<void> {
       metadata: data,
     });
 
-    log.info({ userId, type, channel: "email" }, "Notification sent");
+    log.info({ userId, type, channel: emailChannel.name }, "Notification sent");
   } catch (err) {
     log.error({ err, userId, type }, "Failed to send notification");
   }
@@ -90,7 +89,7 @@ export async function notifyOrgMembers(params: {
     const members = await getDB()
       .select({ userId: memberT.userId })
       .from(memberT)
-      .where(sql`${memberT.organizationId} = ${organizationId}`);
+      .where(eq(memberT.organizationId, organizationId));
 
     const tasks = members
       .filter(m => m.userId !== excludeUserId)

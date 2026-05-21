@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
-  import { page } from "$app/stores";
+  import { page } from "$app/state";
   import { signIn, signUp } from "$lib/auth";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
@@ -62,7 +62,6 @@
 
       if (res?.error) {
         errorSignIn = friendlyError(res.error.message);
-        console.log(res.error)
       }
     } catch (e) {
       errorSignIn = (e as Error).message ?? "Unexpected error";
@@ -115,7 +114,7 @@
             This dashboard is configured for
             <span class="font-mono break-all">{data.configuredOrigin}</span>,
             but you reached it via
-            <span class="font-mono break-all">{$page.url.origin}</span>.
+            <span class="font-mono break-all">{page.url.origin}</span>.
             Authentication will not work here.
           </p>
           <p>

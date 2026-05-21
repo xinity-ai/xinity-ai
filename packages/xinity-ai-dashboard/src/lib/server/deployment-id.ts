@@ -9,18 +9,18 @@ let loadPromise: Promise<string> | null = null;
 
 async function raceSafeInsertSingleton(): Promise<{ row: { instanceId: string }; inserted: boolean }> {
   const db = getDB();
-  const inserted = await db
+  const [insertedRow] = await db
     .insert(deploymentConfigT)
     .values({ singleton: 1 })
     .onConflictDoNothing({ target: deploymentConfigT.singleton })
     .returning();
-  if (inserted.length > 0) return { row: inserted[0], inserted: true };
+  if (insertedRow) return { row: insertedRow, inserted: true };
 
-  const existing = await db.select().from(deploymentConfigT).limit(1);
-  if (existing.length === 0) {
+  const [existingRow] = await db.select().from(deploymentConfigT).limit(1);
+  if (!existingRow) {
     throw new Error("deployment_config row missing after singleton upsert");
   }
-  return { row: existing[0], inserted: false };
+  return { row: existingRow, inserted: false };
 }
 
 /**
@@ -37,9 +37,9 @@ export async function loadDeploymentId(): Promise<string> {
   loadPromise = (async () => {
     try {
       const db = getDB();
-      const existing = await db.select().from(deploymentConfigT).limit(1);
-      if (existing.length > 0) {
-        cachedInstanceId = existing[0].instanceId;
+      const [existing] = await db.select().from(deploymentConfigT).limit(1);
+      if (existing) {
+        cachedInstanceId = existing.instanceId;
         log.info({ instanceId: cachedInstanceId }, "Loaded deployment instance ID");
         return cachedInstanceId;
       }
@@ -65,10 +65,4 @@ export async function loadDeploymentId(): Promise<string> {
  */
 export function getDeploymentId(): string | null {
   return cachedInstanceId;
-}
-
-/** Resets the cached deployment ID (test-only). */
-export function resetDeploymentIdCache(): void {
-  cachedInstanceId = null;
-  loadPromise = null;
 }

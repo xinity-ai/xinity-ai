@@ -29,10 +29,10 @@
 
   const pendingInvitations = $derived(invitations.filter(i => i.status === "pending"));
 
-  let cancellingIds = $state<Set<string>>(new Set());
+  const cancellingIds = $state<Set<string>>(new Set());
 
   async function handleCancel(invitationId: string) {
-    cancellingIds = new Set([...cancellingIds, invitationId]);
+    cancellingIds.add(invitationId);
 
     const { error } = await orpc.organization.cancelInvitation({ invitationId });
 
@@ -44,7 +44,7 @@
       toastState.add("Invitation cancelled", "success");
     }
 
-    cancellingIds = new Set([...cancellingIds].filter(id => id !== invitationId));
+    cancellingIds.delete(invitationId);
   }
 </script>
 

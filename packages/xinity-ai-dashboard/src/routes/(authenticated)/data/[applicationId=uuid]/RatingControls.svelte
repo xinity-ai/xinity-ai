@@ -1,11 +1,11 @@
 <script lang="ts">
   import { ThumbsUp, ThumbsDown } from "@lucide/svelte";
 
-  let { value = null, isEdited = false, onRate } = $props<{
+  let { value = null, isEdited = false, onRate }: {
     value?: boolean | null;
     isEdited?: boolean;
     onRate: (rating: boolean) => void;
-  }>();
+  } = $props();
 </script>
 
 <div class="rating-controls">

@@ -1,6 +1,6 @@
 <script lang="ts">
   import Modal from "$lib/components/Modal.svelte";
-  import { Button } from "$lib/components/ui/button";
+  import { Button, type ButtonVariant } from "$lib/components/ui/button";
   import type { Snippet } from "svelte";
 
   let {
@@ -8,7 +8,7 @@
     title,
     description,
     confirmLabel = "Confirm",
-    confirmVariant = "destructive" as "destructive" | "default" | "outline" | "secondary" | "ghost" | "link",
+    confirmVariant = "destructive",
     onConfirm,
     onCancel,
     children,
@@ -17,7 +17,7 @@
     title: string;
     description?: string;
     confirmLabel?: string;
-    confirmVariant?: "destructive" | "default" | "outline" | "secondary" | "ghost" | "link";
+    confirmVariant?: ButtonVariant;
     onConfirm: () => void;
     onCancel?: () => void;
     children?: Snippet;

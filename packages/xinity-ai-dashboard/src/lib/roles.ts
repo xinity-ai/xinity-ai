@@ -9,8 +9,7 @@ import { adminAc, defaultStatements, memberAc, ownerAc } from "better-auth/plugi
  * Define the resources and actions for the application.
  * This extends the default organization resources (organization, member, invitation).
  */
-const statement = {
-  ...defaultStatements,
+const customResourcePermissions = {
   apiKey: ["create", "update", "delete", "read"],
   apiCall: ["read", "delete"],
   apiCallResponse: ["create", "update", "delete", "read"],
@@ -19,37 +18,18 @@ const statement = {
   aiApplication: ["create", "update", "delete", "read"],
 } as const;
 
+const statement = {
+  ...defaultStatements,
+  ...customResourcePermissions,
+} as const;
+
 export const ac = createAccessControl(statement);
 
-export const owner = ac.newRole({
-  apiKey: ["create", "update", "delete", "read"],
-  apiCall: ["read", "delete"],
-  apiCallResponse: ["create", "update", "delete"],
-  modelDeployment: ["create", "update", "delete", "read"],
-  model: ["create", "update", "delete", "read"],
-  aiApplication: ["create", "update", "delete", "read"],
-  ...ownerAc.statements,
-});
+const fullAccessPermissions = customResourcePermissions;
 
-export const admin = ac.newRole({
-  apiKey: ["create", "update", "delete", "read"],
-  apiCall: ["read", "delete"],
-  apiCallResponse: ["create", "update", "delete"],
-  modelDeployment: ["create", "update", "delete", "read"],
-  model: ["create", "update", "delete", "read"],
-  aiApplication: ["create", "update", "delete", "read"],
-  ...adminAc.statements,
-});
-
-export const member = ac.newRole({
-  apiKey: ["create", "update", "delete", "read"],
-  apiCall: ["read", "delete"],
-  apiCallResponse: ["create", "update", "delete"],
-  modelDeployment: ["create", "update", "delete", "read"],
-  model: ["create", "update", "delete", "read"],
-  aiApplication: ["create", "update", "delete", "read"],
-  ...memberAc.statements,
-});
+export const owner = ac.newRole({ ...fullAccessPermissions, ...ownerAc.statements });
+export const admin = ac.newRole({ ...fullAccessPermissions, ...adminAc.statements });
+export const member = ac.newRole({ ...fullAccessPermissions, ...memberAc.statements });
 
 export const labeler = ac.newRole({
   apiCallResponse: ["create", "delete", "update"],

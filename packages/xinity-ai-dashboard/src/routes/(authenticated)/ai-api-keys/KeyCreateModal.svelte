@@ -2,7 +2,7 @@
   import { invalidate } from "$app/navigation";
   import Modal from "$lib/components/Modal.svelte";
   import { copyToClipboard } from "$lib/copy";
-  import { ApiKeyDto } from "$lib/orpc/dtos/api-key.dto";
+  import type { ApiKeyDto } from "$lib/orpc/dtos/api-key.dto";
   import { orpc } from "$lib/orpc/orpc-client";
   import { toastState } from "$lib/state/toast.svelte";
 
@@ -16,46 +16,43 @@
   // Icons
   import { Copy } from "@lucide/svelte";
 
-  // Variable declarations
-  export let editingKey: Pick<ApiKeyDto, "name" | "specifier" | "id" | "applicationId"> = {
-    name: "",
-    specifier: "",
-    id: "",
-    applicationId: null,
-  };
-  export let showModal = false;
-  export let applications: {
-    id: string;
-    name: string;
-    description?: string | null;
-  }[] = [];
+  type EditingKey = Pick<ApiKeyDto, "name" | "specifier" | "id" | "applicationId">;
+  type Application = { id: string; name: string; description?: string | null };
 
-  $: isNew = !editingKey?.id;
+  let {
+    editingKey = $bindable({ name: "", specifier: "", id: "", applicationId: null }),
+    showModal = $bindable(false),
+    applications = [],
+  }: {
+    editingKey?: EditingKey;
+    showModal?: boolean;
+    applications?: Application[];
+  } = $props();
 
-  let fullCreatedKeyValue = "";
-  let saving = false;
+  const isNew = $derived(!editingKey?.id);
 
-  // Application selection state
-  let selectedApplicationId = "__none__";
-  let newApplicationDescription = "";
+  let fullCreatedKeyValue = $state("");
+  let saving = $state(false);
 
-  // Sync selectedApplicationId when opening the modal for editing
-  $: if (showModal && !isNew) {
-    selectedApplicationId = editingKey.applicationId ?? "__none__";
-  }
+  let selectedApplicationId = $state("__none__");
+  let newApplicationDescription = $state("");
 
-  // Smart defaults
-  $: willCreateApplication = selectedApplicationId === "__new__";
-  $: noApplication = selectedApplicationId === "" || selectedApplicationId === "__none__";
+  $effect(() => {
+    if (showModal && !isNew) {
+      selectedApplicationId = editingKey.applicationId ?? "__none__";
+    }
+  });
 
-  // Sync application name with key name when creating new application
-  $: newApplicationName = willCreateApplication ? editingKey.name : "";
+  const willCreateApplication = $derived(selectedApplicationId === "__new__");
+  const noApplication = $derived(selectedApplicationId === "__none__");
 
-  $: applicationLabel = selectedApplicationId === "__none__"
-    ? "No default application"
-    : selectedApplicationId === "__new__"
-      ? `Create new application "${editingKey.name || "..."}"`
-      : applications.find((a) => a.id === selectedApplicationId)?.name ?? "Select...";
+  const applicationLabel = $derived(
+    selectedApplicationId === "__none__"
+      ? "No default application"
+      : selectedApplicationId === "__new__"
+        ? `Create new application "${editingKey.name || "..."}"`
+        : applications.find((a) => a.id === selectedApplicationId)?.name ?? "Select...",
+  );
 
   async function createKey() {
     saving = true;
@@ -120,16 +117,17 @@
   function cancelEdit() {
     showModal = false;
     fullCreatedKeyValue = "";
-    // Reset state
-    selectedApplicationId = "";
+    selectedApplicationId = "__none__";
     newApplicationDescription = "";
   }
 
-  let nameInput: HTMLElement;
+  let nameInput: HTMLElement | undefined = $state();
 
-  $: if (showModal && nameInput) {
-    nameInput.focus();
-  }
+  $effect(() => {
+    if (showModal && nameInput) {
+      nameInput.focus();
+    }
+  });
 </script>
 
 <!-- Key Edit Modal -->

@@ -10,7 +10,7 @@
     onClear,
     onMouseEnter,
     onMouseLeave,
-  } = $props<{
+  }: {
     visible?: boolean;
     x?: number;
     y?: number;
@@ -19,7 +19,7 @@
     onClear?: () => void;
     onMouseEnter?: () => void;
     onMouseLeave?: () => void;
-  }>();
+  } = $props();
 </script>
 
 {#if visible}

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ApiKeyDto } from "$lib/orpc/dtos/api-key.dto";
+  import type { ApiKeyDto } from "$lib/orpc/dtos/api-key.dto";
   import { orpc } from "$lib/orpc/orpc-client";
   import { updateOptimistically } from "$lib/util";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
@@ -18,18 +18,24 @@
   const locale = "de";
   type EditingKey = Pick<ApiKeyDto, "name" | "specifier" | "id" | "applicationId">;
 
-  export let apiKeys: ApiKeyDto[];
-  export let applications: ApplicationDto[];
-  export let showModal = false;
-  export let editingKey: EditingKey;
-  export let userId: string;
-  let keyToDelete: ApiKeyDto | null = null;
+  let {
+    apiKeys = $bindable(),
+    applications,
+    showModal = $bindable(false),
+    editingKey = $bindable(),
+    userId,
+  }: {
+    apiKeys: ApiKeyDto[];
+    applications: ApplicationDto[];
+    showModal: boolean;
+    editingKey: EditingKey;
+    userId: string;
+  } = $props();
+  let keyToDelete: ApiKeyDto | null = $state(null);
 
-  // Group API keys by ownership
-  $: myKeys = apiKeys.filter((key) => key.createdByUserId === userId);
-  $: orgKeys = apiKeys.filter((key) => key.createdByUserId !== userId);
-
-  $: appMap = new Map(applications.map((app) => [app.id, app.name]));
+  const myKeys = $derived(apiKeys.filter((key) => key.createdByUserId === userId));
+  const orgKeys = $derived(apiKeys.filter((key) => key.createdByUserId !== userId));
+  const appMap = $derived(new Map(applications.map((app) => [app.id, app.name])));
 
   function generateNewKey() {
     editingKey = {
@@ -42,10 +48,8 @@
   }
 
   function editKey(key: EditingKey) {
-    if (key) {
-      editingKey = { name: key.name, specifier: key.specifier, id: key.id, applicationId: key.applicationId };
-      showModal = true;
-    }
+    editingKey = { ...key };
+    showModal = true;
   }
 
   function requestDelete(key: ApiKeyDto) {
@@ -76,6 +80,24 @@
     if (!failed) {
       toastState.add(`Deleted API key "${deletingKey.name}"`, "success");
     }
+  }
+
+  function toggleEnabled(key: ApiKeyDto) {
+    const newState = !key.enabled;
+    updateOptimistically({
+      apiPromise: () => orpc.apiKey.toggleEnabled({ id: key.id, enabled: newState }),
+      update: () => (key.enabled = newState),
+      undo: () => (key.enabled = !newState),
+    });
+  }
+
+  function toggleCollectData(key: ApiKeyDto) {
+    const newState = !key.collectData;
+    updateOptimistically({
+      apiPromise: () => orpc.apiKey.toggleCollectData({ id: key.id, collectData: newState }),
+      update: () => (key.collectData = newState),
+      undo: () => (key.collectData = !newState),
+    });
   }
 </script>
 
@@ -169,36 +191,14 @@
                   <Button
                     variant="ghost"
                     size="sm"
-                    onclick={async () => {
-                      const newState = !key.enabled;
-                      updateOptimistically({
-                        apiPromise: () =>
-                          orpc.apiKey.toggleEnabled({
-                            id: key.id,
-                            enabled: newState,
-                          }),
-                        update: () => (key.enabled = newState),
-                        undo: () => (key.enabled = !newState),
-                      });
-                    }}
+                    onclick={() => toggleEnabled(key)}
                   >
                     {key.enabled ? "Deactivate" : "Activate"}
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
-                    onclick={async () => {
-                      const newState = !key.collectData;
-                      updateOptimistically({
-                        apiPromise: () =>
-                          orpc.apiKey.toggleCollectData({
-                            id: key.id,
-                            collectData: newState,
-                          }),
-                        update: () => (key.collectData = newState),
-                        undo: () => (key.collectData = !newState),
-                      });
-                    }}
+                    onclick={() => toggleCollectData(key)}
                   >
                     {key.collectData ? "Stop Logging" : "Start Logging"}
                   </Button>

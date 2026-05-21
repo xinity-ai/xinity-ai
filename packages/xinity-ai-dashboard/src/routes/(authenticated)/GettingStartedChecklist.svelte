@@ -84,8 +84,9 @@
     },
   ] : null);
 
+  const STEP_COUNT = 6;
   const completedCount = $derived(steps ? steps.filter((s) => s.complete).length : 0);
-  const totalSteps = $derived(steps ? steps.length : 6);
+  const totalSteps = $derived(steps ? steps.length : STEP_COUNT);
   const progressPercent = $derived(Math.round((completedCount / totalSteps) * 100));
   const allComplete = $derived(steps != null && completedCount === totalSteps);
 
@@ -157,7 +158,7 @@
 
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5 compact:gap-1">
       {#if steps == null}
-        {#each Array(6) as _}
+        {#each Array(STEP_COUNT) as _}
           <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-dashed animate-pulse">
             <div class="w-4 h-4 bg-gray-200 rounded-full shrink-0"></div>
             <div class="h-3 bg-gray-200 rounded w-28"></div>

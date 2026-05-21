@@ -1,5 +1,9 @@
 import {
   sql,
+  and,
+  eq,
+  gte,
+  isNull,
   modelDeploymentT,
   modelInstallationT,
   modelInstallationStateT,
@@ -17,13 +21,14 @@ import { rootLogger } from "$lib/server/logging";
 import { building } from "$app/environment";
 import { notify, notifyOrgMembers } from "./notification.service";
 import { NotificationType } from "./events";
-import { type DeploymentPhase, PHASE_PRIORITY, aggregatePhase } from "$lib/server/lib/deployment-phase";
+import { type DeploymentPhase, aggregatePhase } from "$lib/server/lib/deployment-phase";
 
 const log = rootLogger.child({ name: "notification.scheduler" });
 
 const CHECK_INTERVAL_MS = 5 * 60_000; // 5 minutes
 const WEEKLY_CHECK_INTERVAL_MS = 60 * 60_000; // 1 hour
 const CAPACITY_WARNING_THRESHOLD = 0.8; // 80%
+const MODELHUB_URL = `${serverEnv.ORIGIN}/modelhub`;
 
 // ── In-memory state caches ──────────────────────────────────────────
 
@@ -39,9 +44,30 @@ let initialized = false;
 /** Track if capacity warning was already sent (reset when capacity drops below threshold). */
 let capacityWarningActive = false;
 
+function pruneStaleCacheEntries<T>(cache: Map<string, T>, currentIds: Iterable<string>): void {
+  const currentIdSet = currentIds instanceof Set ? currentIds : new Set(currentIds);
+  for (const id of cache.keys()) {
+    if (!currentIdSet.has(id)) cache.delete(id);
+  }
+}
+
+async function notifyAllOrgs(
+  type: NotificationType,
+  data: Record<string, unknown>,
+  failureLogMessage: string,
+): Promise<void> {
+  const orgs = await getDB().select({ id: organizationT.id }).from(organizationT);
+  for (const org of orgs) {
+    void notifyOrgMembers({ type, organizationId: org.id, data })
+      .catch((err: unknown) => log.error({ err }, failureLogMessage));
+  }
+}
+
 // ── Deployment status check ─────────────────────────────────────────
 
-async function getDeploymentPhases(): Promise<Map<string, { phase: DeploymentPhase; orgId: string; orgName: string; name: string; model: string; error: string | null }>> {
+type DeploymentInfo = { phase: DeploymentPhase; orgId: string; orgName: string; name: string; model: string; error: string | null };
+
+async function getDeploymentPhases(): Promise<Map<string, DeploymentInfo>> {
   const rows = await getDB()
     .select({
       deploymentId: modelDeploymentT.id,
@@ -54,12 +80,11 @@ async function getDeploymentPhases(): Promise<Map<string, { phase: DeploymentPha
       errorMessage: modelInstallationStateT.errorMessage,
     })
     .from(modelDeploymentT)
-    .where(sql`${modelDeploymentT.enabled} = true AND ${modelDeploymentT.deletedAt} IS NULL`)
-    .leftJoin(organizationT, sql`${organizationT.id} = ${modelDeploymentT.organizationId}`)
-    .leftJoin(modelInstallationT, sql`${deploymentMatchesInstallation} AND ${modelInstallationT.deletedAt} IS NULL`)
-    .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`);
+    .where(and(eq(modelDeploymentT.enabled, true), isNull(modelDeploymentT.deletedAt)))
+    .leftJoin(organizationT, eq(organizationT.id, modelDeploymentT.organizationId))
+    .leftJoin(modelInstallationT, and(deploymentMatchesInstallation, isNull(modelInstallationT.deletedAt)))
+    .leftJoin(modelInstallationStateT, eq(modelInstallationStateT.id, modelInstallationT.id));
 
-  type DeploymentInfo = { phase: DeploymentPhase; orgId: string; orgName: string; name: string; model: string; error: string | null };
   const result = new Map<string, DeploymentInfo>();
 
   for (const row of rows) {
@@ -92,6 +117,27 @@ async function getDeploymentPhases(): Promise<Map<string, { phase: DeploymentPha
   return result;
 }
 
+function dispatchDeploymentPhaseNotification(
+  deploymentId: string,
+  info: DeploymentInfo,
+  type: NotificationType,
+  label: string,
+  extraData: Record<string, unknown> = {},
+): void {
+  void notifyOrgMembers({
+    type,
+    organizationId: info.orgId,
+    data: {
+      deploymentName: info.name,
+      modelSpecifier: info.model,
+      orgName: info.orgName,
+      dashboardUrl: MODELHUB_URL,
+      ...extraData,
+    },
+  }).catch((err: unknown) => log.error({ err }, `Failed to send deployment ${label} notification`));
+  log.info({ deploymentId, name: info.name }, `Deployment ${label} notification sent`);
+}
+
 async function checkDeploymentStatus() {
   try {
     const currentPhases = await getDeploymentPhases();
@@ -103,42 +149,16 @@ async function checkDeploymentStatus() {
       if (!initialized || previousPhase === undefined) continue;
       if (previousPhase === info.phase) continue;
 
-      if (info.phase === "ready" && previousPhase !== "ready") {
-        void notifyOrgMembers({
-          type: NotificationType.deployment_ready,
-          organizationId: info.orgId,
-          data: {
-            deploymentName: info.name,
-            modelSpecifier: info.model,
-            orgName: info.orgName,
-            dashboardUrl: `${serverEnv.ORIGIN}/modelhub`,
-          },
-        }).catch((err: unknown) => log.error({ err }, "Failed to send deployment ready notification"));
-        log.info({ deploymentId, name: info.name }, "Deployment ready notification sent");
-      }
-
-      if (info.phase === "failed" && previousPhase !== "failed") {
-        void notifyOrgMembers({
-          type: NotificationType.deployment_failed,
-          organizationId: info.orgId,
-          data: {
-            deploymentName: info.name,
-            modelSpecifier: info.model,
-            errorMessage: info.error ?? "An unknown error occurred during installation",
-            orgName: info.orgName,
-            dashboardUrl: `${serverEnv.ORIGIN}/modelhub`,
-          },
-        }).catch((err: unknown) => log.error({ err }, "Failed to send deployment failed notification"));
-        log.info({ deploymentId, name: info.name }, "Deployment failed notification sent");
+      if (info.phase === "ready") {
+        dispatchDeploymentPhaseNotification(deploymentId, info, NotificationType.deployment_ready, "ready");
+      } else if (info.phase === "failed") {
+        dispatchDeploymentPhaseNotification(deploymentId, info, NotificationType.deployment_failed, "failed", {
+          errorMessage: info.error ?? "An unknown error occurred during installation",
+        });
       }
     }
 
-    // Clean up stale entries for deployments that no longer exist
-    for (const id of deploymentPhaseCache.keys()) {
-      if (!currentPhases.has(id)) {
-        deploymentPhaseCache.delete(id);
-      }
-    }
+    pruneStaleCacheEntries(deploymentPhaseCache, currentPhases.keys());
   } catch (err) {
     log.error({ err }, "Failed to check deployment status");
   }
@@ -151,7 +171,7 @@ async function checkNodeHealth() {
     const nodes = await getDB()
       .select({ id: aiNodeT.id, host: aiNodeT.host, port: aiNodeT.port, available: aiNodeT.available })
       .from(aiNodeT)
-      .where(sql`${aiNodeT.deletedAt} IS NULL`);
+      .where(isNull(aiNodeT.deletedAt));
 
     for (const node of nodes) {
       const previousAvailable = nodeAvailabilityCache.get(node.id);
@@ -163,30 +183,20 @@ async function checkNodeHealth() {
       const nodeHost = `${node.host}:${node.port}`;
       const type = node.available ? NotificationType.node_online : NotificationType.node_offline;
 
-      // Node health is instance-wide, notify all admin/owner members across all orgs
-      const orgs = await getDB().select({ id: organizationT.id }).from(organizationT);
-      for (const org of orgs) {
-        void notifyOrgMembers({
-          type,
-          organizationId: org.id,
-          data: {
-            nodeHost,
-            status: node.available ? "online" : "offline",
-            dashboardUrl: `${serverEnv.ORIGIN}/modelhub`,
-          },
-        }).catch((err: unknown) => log.error({ err }, "Failed to send node status notification"));
-      }
+      await notifyAllOrgs(
+        type,
+        {
+          nodeHost,
+          status: node.available ? "online" : "offline",
+          dashboardUrl: MODELHUB_URL,
+        },
+        "Failed to send node status notification",
+      );
 
       log.info({ nodeId: node.id, host: nodeHost, available: node.available }, "Node status change notification sent");
     }
 
-    // Clean up stale entries
-    const currentIds = new Set(nodes.map(n => n.id));
-    for (const id of nodeAvailabilityCache.keys()) {
-      if (!currentIds.has(id)) {
-        nodeAvailabilityCache.delete(id);
-      }
-    }
+    pruneStaleCacheEntries(nodeAvailabilityCache, nodes.map(n => n.id));
   } catch (err) {
     log.error({ err }, "Failed to check node health");
   }
@@ -199,46 +209,52 @@ async function checkCapacity() {
     const nodes = await getDB()
       .select({ id: aiNodeT.id, estCapacity: aiNodeT.estCapacity, available: aiNodeT.available })
       .from(aiNodeT)
-      .where(sql`${aiNodeT.available} = true AND ${aiNodeT.deletedAt} IS NULL`);
+      .where(and(eq(aiNodeT.available, true), isNull(aiNodeT.deletedAt)));
 
     const installations = await getDB()
       .select({ nodeId: modelInstallationT.nodeId, estCapacity: modelInstallationT.estCapacity })
       .from(modelInstallationT)
-      .where(sql`${modelInstallationT.deletedAt} IS NULL`);
+      .where(isNull(modelInstallationT.deletedAt));
 
     const totalCapacity = nodes.reduce((sum, n) => sum + n.estCapacity, 0);
     if (totalCapacity === 0) return;
 
-    const usedByNode = new Map<string, number>();
-    for (const inst of installations) {
-      usedByNode.set(inst.nodeId, (usedByNode.get(inst.nodeId) ?? 0) + inst.estCapacity);
-    }
-    const usedCapacity = Array.from(usedByNode.values()).reduce((sum, v) => sum + v, 0);
+    const usedCapacity = installations.reduce((sum, inst) => sum + inst.estCapacity, 0);
     const usedPercent = Math.round((usedCapacity / totalCapacity) * 100);
 
     if (usedPercent >= CAPACITY_WARNING_THRESHOLD * 100) {
       if (!capacityWarningActive) {
         capacityWarningActive = true;
-
-        // Notify all orgs
-        const orgs = await getDB().select({ id: organizationT.id }).from(organizationT);
-        for (const org of orgs) {
-          void notifyOrgMembers({
-            type: NotificationType.capacity_warning,
-            organizationId: org.id,
-            data: {
-              usedPercent,
-              totalCapacityGb: Math.round(totalCapacity * 10) / 10,
-              usedCapacityGb: Math.round(usedCapacity * 10) / 10,
-              dashboardUrl: `${serverEnv.ORIGIN}/modelhub`,
-            },
-          }).catch((err: unknown) => log.error({ err }, "Failed to send capacity warning notification"));
-        }
+        await notifyAllOrgs(
+          NotificationType.capacity_warning,
+          {
+            usedPercent,
+            totalCapacityGb: Math.round(totalCapacity * 10) / 10,
+            usedCapacityGb: Math.round(usedCapacity * 10) / 10,
+            dashboardUrl: `${serverEnv.ORIGIN}/modelhub`,
+          },
+          "Failed to send capacity warning notification",
+        );
         log.info({ usedPercent, totalCapacity, usedCapacity }, "Capacity warning notification sent");
       }
     } else {
       capacityWarningActive = false;
     }
+    if (capacityWarningActive) return;
+    capacityWarningActive = true;
+
+    const usedPercent = Math.round(usedRatio * 100);
+    await notifyAllOrgs(
+      NotificationType.capacity_warning,
+      {
+        usedPercent,
+        totalCapacityGb: Math.round(totalCapacity * 10) / 10,
+        usedCapacityGb: Math.round(usedCapacity * 10) / 10,
+        dashboardUrl: MODELHUB_URL,
+      },
+      "Failed to send capacity warning notification",
+    );
+    log.info({ usedPercent, totalCapacity, usedCapacity }, "Capacity warning notification sent");
   } catch (err) {
     log.error({ err }, "Failed to check capacity");
   }
@@ -246,57 +262,70 @@ async function checkCapacity() {
 
 // ── Weekly report ───────────────────────────────────────────────────
 
+async function countActiveDeployments(orgId: string): Promise<number> {
+  const [row] = await getDB()
+    .select({ count: count() })
+    .from(modelDeploymentT)
+    .where(and(
+      eq(modelDeploymentT.organizationId, orgId),
+      eq(modelDeploymentT.enabled, true),
+      isNull(modelDeploymentT.deletedAt),
+    ));
+  return row?.count ?? 0;
+}
+
+async function countApiCallsSince(orgId: string, since: Date): Promise<number> {
+  const [row] = await getDB()
+    .select({ count: count() })
+    .from(apiCallT)
+    .where(and(eq(apiCallT.organizationId, orgId), gte(apiCallT.createdAt, since)));
+  return row?.count ?? 0;
+}
+
+async function topModelsByCallsSince(orgId: string, since: Date, limit = 5): Promise<Array<{ name: string; calls: number }>> {
+  return await getDB()
+    .select({ name: apiCallT.model, calls: count() })
+    .from(apiCallT)
+    .where(and(eq(apiCallT.organizationId, orgId), gte(apiCallT.createdAt, since)))
+    .groupBy(apiCallT.model)
+    .orderBy(sql`count(*) DESC`)
+    .limit(limit);
+}
+
+function formatReportPeriod(start: Date, end: Date): string {
+  const startLabel = start.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const endLabel = end.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return `${startLabel} to ${endLabel}`;
+}
+
+const WEEKLY_REPORT_DOW_UTC = 1;
+const WEEKLY_REPORT_HOUR_UTC = 8;
+
+function isWeeklyReportSlot(now: Date): boolean {
+  return now.getUTCDay() === WEEKLY_REPORT_DOW_UTC
+    && now.getUTCHours() === WEEKLY_REPORT_HOUR_UTC;
+}
+
 async function checkWeeklyReport() {
   try {
     const now = new Date();
-    // Only fire on Monday between 8:00-8:59 UTC
-    if (now.getUTCDay() !== 1 || now.getUTCHours() !== 8) return;
+    if (!isWeeklyReportSlot(now)) return;
 
     const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60_000);
     const [orgs, nodeResult] = await Promise.all([
       getDB().select({ id: organizationT.id, name: organizationT.name }).from(organizationT),
-      // Count active nodes (instance-wide, same for all orgs)
-      getDB().select({ count: count() }).from(aiNodeT).where(sql`
-        ${aiNodeT.available} = true AND ${aiNodeT.deletedAt} IS NULL
-      `),
+      getDB().select({ count: count() }).from(aiNodeT)
+        .where(and(eq(aiNodeT.available, true), isNull(aiNodeT.deletedAt))),
     ]);
     const activeNodes = nodeResult[0]?.count ?? 0;
+    const period = formatReportPeriod(oneWeekAgo, now);
 
     for (const org of orgs) {
-      // Count active deployments
-      const [deploymentResult] = await getDB()
-        .select({ count: count() })
-        .from(modelDeploymentT)
-        .where(sql`
-          ${modelDeploymentT.organizationId} = ${org.id}
-        AND
-          ${modelDeploymentT.enabled} = true
-        AND
-          ${modelDeploymentT.deletedAt} IS NULL`);
-      const deploymentCount = deploymentResult?.count ?? 0;
-
-      // Count API calls this week
-      const [callResult] = await getDB()
-        .select({ count: count() })
-        .from(apiCallT)
-        .where(sql`${apiCallT.organizationId} = ${org.id} AND ${apiCallT.createdAt} >= ${oneWeekAgo}`);
-      const totalApiCalls = callResult?.count ?? 0;
-
-      // Top models by call count
-      const topModelsRows = await getDB()
-        .select({
-          model: apiCallT.model,
-          calls: count(),
-        })
-        .from(apiCallT)
-        .where(sql`${apiCallT.organizationId} = ${org.id} AND ${apiCallT.createdAt} >= ${oneWeekAgo}`)
-        .groupBy(apiCallT.model)
-        .orderBy(sql`count(*) DESC`)
-        .limit(5);
-
-      const topModels = topModelsRows.map(r => ({ name: r.model, calls: r.calls }));
-
-      const period = `${oneWeekAgo.toLocaleDateString("en-US", { month: "short", day: "numeric" })} to ${now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+      const [deploymentCount, totalApiCalls, topModels] = await Promise.all([
+        countActiveDeployments(org.id),
+        countApiCallsSince(org.id, oneWeekAgo),
+        topModelsByCallsSince(org.id, oneWeekAgo),
+      ]);
 
       void notifyOrgMembers({
         type: NotificationType.weekly_report,
@@ -334,6 +363,11 @@ async function runChecks() {
 
 // ── Public API ──────────────────────────────────────────────────────
 
+function scheduleRecurring(fn: () => unknown, intervalMs: number): void {
+  const handle = setInterval(fn, intervalMs);
+  process.on("beforeExit", () => clearInterval(handle));
+}
+
 export async function startNotificationScheduler() {
   if (building) return;
 
@@ -343,11 +377,7 @@ export async function startNotificationScheduler() {
   await Bun.sleep(2_000);
   await runChecks();
 
-  // Periodic checks (deployment status, node health, capacity)
-  const checkInterval = setInterval(runChecks, CHECK_INTERVAL_MS);
-  process.on("beforeExit", () => clearInterval(checkInterval));
-
-  // Weekly report check (runs hourly, fires on Monday 8 AM UTC)
-  const weeklyInterval = setInterval(checkWeeklyReport, WEEKLY_CHECK_INTERVAL_MS);
-  process.on("beforeExit", () => clearInterval(weeklyInterval));
+  scheduleRecurring(runChecks, CHECK_INTERVAL_MS);
+  // Weekly report check runs hourly; checkWeeklyReport gates on Monday 8 AM UTC.
+  scheduleRecurring(checkWeeklyReport, WEEKLY_CHECK_INTERVAL_MS);
 }

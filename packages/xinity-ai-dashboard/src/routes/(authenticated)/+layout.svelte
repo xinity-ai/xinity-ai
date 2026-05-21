@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import ToastContainer from "$lib/components/ToastContainer.svelte";
   import VersionNotice from "$lib/components/VersionNotice.svelte";
   import LicenseBanner from "$lib/components/LicenseBanner.svelte";
@@ -6,7 +7,7 @@
   import { permissions } from "$lib/state/permissions.svelte";
   import type { LayoutServerData } from "./$types";
 
-  let { data, children }: { data: LayoutServerData; children: import("svelte").Snippet } = $props();
+  let { data, children }: { data: LayoutServerData; children: Snippet } = $props();
 
   $effect(()=> { document.body.classList.toggle("compact", data.displaySettings.compactView); });
   $effect(()=> { permissions.setRole(data.memberRole); });

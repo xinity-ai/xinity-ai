@@ -60,8 +60,7 @@
       </div>
       <Switch
         id="compact-view"
-        checked={userSettings.displaySettings.compactView}
-        onCheckedChange={(checked) => userSettings.displaySettings.compactView = checked}
+        bind:checked={userSettings.displaySettings.compactView}
       />
     </div>
   </div>

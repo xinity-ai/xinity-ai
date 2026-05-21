@@ -29,10 +29,13 @@ function betterAuthOAuth2Fix(): Plugin {
 			const re = /import\s*\{([^}]+)\}\s*from\s*["']better-auth["']/g;
 			let transformed = false;
 
+			const importedBindingOf = (name: string) => name.split(' as ')[0].trim();
+			const isOauth2Only = (name: string) => OAUTH2_ONLY_NAMES.includes(importedBindingOf(name));
+
 			const result = code.replace(re, (match, specifiers: string) => {
 				const names = specifiers.split(',').map((s: string) => s.trim());
-				const oauth2 = names.filter((n: string) => OAUTH2_ONLY_NAMES.includes(n.split(' as ')[0].trim()));
-				const rest = names.filter((n: string) => !OAUTH2_ONLY_NAMES.includes(n.split(' as ')[0].trim()));
+				const oauth2 = names.filter(isOauth2Only);
+				const rest = names.filter((n: string) => !isOauth2Only(n));
 
 				if (oauth2.length === 0) return match;
 				transformed = true;

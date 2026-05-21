@@ -10,13 +10,6 @@
     info: "bg-xinity-magenta/10 border-xinity-purple text-xinity-pink",
     warning: "bg-yellow-50 border-yellow-500 text-yellow-800",
   };
-
-  const iconStyles = {
-    success: "text-green-500",
-    error: "text-red-500",
-    info: "text-xinity-magenta",
-    warning: "text-yellow-500",
-  };
 </script>
 
 <div

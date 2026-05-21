@@ -3,25 +3,28 @@
   import { Chart, type ChartConfiguration, registerables, registry } from "chart.js";
   import { onMount } from "svelte";
 
-  /**
-   * Chart options. Notice: only the data section will induce updates
-   */
-  export let config: ChartConfiguration;
-  export let className: string = "size-full";
+  let {
+    config,
+    className = "size-full",
+  }: { config: ChartConfiguration; className?: string } = $props();
 
   if (browser) registry.add(...registerables);
 
   let canvas: HTMLCanvasElement;
-  let chart: Chart;
+  let chart: Chart | undefined = $state();
+
   onMount(() => {
     chart = new Chart(canvas, config);
     chart.render();
   });
-  $: if (browser && canvas && chart) {
-    chart.data.datasets = config.data.datasets;
-    Object.assign(chart.options, config.options);
-    chart.update();
-  }
+
+  $effect(() => {
+    if (browser && canvas && chart) {
+      chart.data.datasets = config.data.datasets;
+      Object.assign(chart.options, config.options);
+      chart.update();
+    }
+  });
 </script>
 
 <div class={className}>

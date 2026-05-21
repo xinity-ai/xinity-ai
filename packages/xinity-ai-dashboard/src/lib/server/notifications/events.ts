@@ -58,12 +58,8 @@ export function isNotificationEnabled(
   settings: NotificationSettings,
   type: NotificationType,
 ): boolean {
-  // Master toggle: blocks everything except always-sent types
-  if (!settings.emailNotifications && notificationSettingsKey[type] !== null) {
-    return false;
-  }
-
   const key = notificationSettingsKey[type];
   if (key === null) return true;
+  if (!settings.emailNotifications) return false;
   return settings[key];
 }

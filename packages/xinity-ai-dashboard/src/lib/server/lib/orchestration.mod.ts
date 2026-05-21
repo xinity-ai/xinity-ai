@@ -1,7 +1,7 @@
 import { inArray, isNull, modelDeploymentT, sql, calcCanaryProgress, modelInstallationT, aiNodeT, type ModelInstallation, type AiNode, type InferInsertModel } from "common-db";
 import { getDB } from "../db";
 import { infoClient } from "../info-client";
-import { resolveDefaultProvider, resolveMinVersionForDriver, resolveRequiredPlatformsForDriver, checkNodeCompatibility, deploymentLookup, deploymentEarlyLookup, installationKey, lookupKey, type ModelNodeRequirements, type NodeCapability, type Provider, type ModelLookup } from "xinity-infoserver";
+import { resolveDefaultProvider, resolveMinVersionForDriver, resolveRequiredPlatformsForDriver, checkNodeCompatibility, deploymentLookup, deploymentEarlyLookup, installationKey, lookupKey, type Model, type ModelNodeRequirements, type NodeCapability, type Provider, type ModelLookup } from "xinity-infoserver";
 import { rootLogger } from "../logging";
 import { building } from "$app/environment";
 import { maxVramGb } from "$lib/server/license";
@@ -70,32 +70,29 @@ export async function assembleModelRequirementTable(): Promise<ModelRequirementT
   AND
     ${modelDeploymentT.deletedAt} IS NULL
   `);
-  const models = enabledDeployments.flatMap((deployment) => {
+  const models = enabledDeployments.flatMap((deployment): ModelRequirement[] => {
     const progress = calcCanaryProgress(deployment);
     const earlyLookup = deploymentEarlyLookup(deployment);
+    const driver = deployment.preferredDriver;
     const isNotCanary = progress === 100 || !earlyLookup;
     if (isNotCanary) {
-      return [{
-        lookup: deploymentLookup(deployment),
-        replicas: deployment.replicas,
-        kvCacheSize: deployment.kvCacheSize,
-        preferredDriver: deployment.preferredDriver,
-      }]
+      return [requirementFor(deploymentLookup(deployment), deployment.replicas, deployment.kvCacheSize, driver)];
     }
-    const replicas = deployment.replicas;
-    return [{
-      lookup: deploymentLookup(deployment),
-      replicas: Math.ceil(replicas * (progress / 100)),
-      kvCacheSize: deployment.kvCacheSize,
-      preferredDriver: deployment.preferredDriver,
-    }, {
-      lookup: earlyLookup!,
-      replicas: Math.ceil(replicas * ((100 - progress) / 100)),
-      kvCacheSize: deployment.earlyKvCacheSize,
-      preferredDriver: deployment.preferredDriver,
-    }]
+    return [
+      requirementFor(deploymentLookup(deployment), Math.ceil(deployment.replicas * (progress / 100)), deployment.kvCacheSize, driver),
+      requirementFor(earlyLookup, Math.ceil(deployment.replicas * ((100 - progress) / 100)), deployment.earlyKvCacheSize, driver),
+    ];
   });
   return mergeRequirementsByLookupKey(models);
+}
+
+function requirementFor(
+  lookup: ModelLookup,
+  replicas: number,
+  kvCacheSize: number | null,
+  preferredDriver: Provider | null,
+): ModelRequirement {
+  return { lookup, replicas, kvCacheSize, preferredDriver };
 }
 
 export function buildClusterState(existing: ModelInstallation[], availableServers: AiNode[]): ClusterState {
@@ -125,6 +122,17 @@ export function buildClusterState(existing: ModelInstallation[], availableServer
   return { installationsByModel, installationsByServer, serverCapacity, availableServers };
 }
 
+function releaseInstallationFromState(state: ClusterState, installation: ModelInstallation): void {
+  const cap = state.serverCapacity.get(installation.nodeId);
+  if (cap) cap.used -= installation.estCapacity;
+
+  const serverInstalls = state.installationsByServer.get(installation.nodeId);
+  if (serverInstalls) {
+    const idx = serverInstalls.findIndex(i => i.id === installation.id);
+    if (idx !== -1) serverInstalls.splice(idx, 1);
+  }
+}
+
 /** Trims installations that exceed required replica count; mutates state to free their capacity. */
 export function collectExcessInstallations(requiredModels: ModelRequirementTable, state: ClusterState): string[] {
   const toUninstall: string[] = [];
@@ -137,19 +145,23 @@ export function collectExcessInstallations(requiredModels: ModelRequirementTable
     const removing = installs.slice(0, excess);
     for (const rem of removing) {
       toUninstall.push(rem.id);
-      const cap = state.serverCapacity.get(rem.nodeId);
-      if (cap) cap.used -= rem.estCapacity;
-
-      const serverInstalls = state.installationsByServer.get(rem.nodeId);
-      if (serverInstalls) {
-        const idx = serverInstalls.findIndex(i => i.id === rem.id);
-        if (idx !== -1) serverInstalls.splice(idx, 1);
-      }
+      releaseInstallationFromState(state, rem);
     }
     state.installationsByModel.set(model, installs.slice(excess));
   }
 
   return toUninstall;
+}
+
+function nodeAlreadyHostsModel(
+  nodeId: string,
+  specifier: string,
+  state: ClusterState,
+  pending: NewInstallation[],
+): boolean {
+  const existing = state.installationsByServer.get(nodeId) ?? [];
+  if (existing.some(inst => installationKey(inst) === specifier)) return true;
+  return pending.some(p => p.nodeId === nodeId && installationKey(p) === specifier);
 }
 
 /** Picks a node according to the configured strategy; skips nodes that already host the model. */
@@ -172,15 +184,12 @@ export function findServerForModel(
     const cap = state.serverCapacity.get(server.id);
     if (!cap) continue;
 
-    const serverInstalls = state.installationsByServer.get(server.id) || [];
-    const alreadyHasModel = serverInstalls.some(inst => installationKey(inst) === specifier)
-      || pending.some(p => p.nodeId === server.id && installationKey({ specifier: p.specifier ?? null, model: p.model }) === specifier);
-    if (alreadyHasModel) continue;
+    if (nodeAlreadyHostsModel(server.id, specifier, state, pending)) continue;
 
     const nodeCap: NodeCapability = {
       free: cap.total - cap.used,
-      driverVersions: (server.driverVersions ?? {}) as Record<string, string>,
-      gpus: (server.gpus ?? []) as { vendor: string; name: string; vramMb: number }[],
+      driverVersions: server.driverVersions,
+      gpus: server.gpus,
     };
 
     if (checkNodeCompatibility(nodeCap, req) !== null) continue;
@@ -212,6 +221,11 @@ function totalVramUsed(state: ClusterState): number {
   return used;
 }
 
+function pickDriver(modelInfo: Model, preferred: Provider | null): Provider {
+  if (preferred && modelInfo.providers[preferred]) return preferred;
+  return resolveDefaultProvider(modelInfo)?.driver ?? "ollama";
+}
+
 /** Plans installations needed to satisfy replica requirements that aren't yet met,
  * stopping a replica loop early when the next install would exceed the license VRAM cap. */
 async function planNewInstallations(
@@ -241,10 +255,7 @@ async function planNewInstallations(
     }
     const modelInfo = modelStatus.model;
 
-    const fallback = resolveDefaultProvider(modelInfo);
-    const driver: Provider = (requirement.preferredDriver && modelInfo.providers[requirement.preferredDriver])
-      ? requirement.preferredDriver
-      : (fallback?.driver ?? "ollama");
+    const driver = pickDriver(modelInfo, requirement.preferredDriver);
     const providerModel = modelInfo.providers[driver];
     if (!providerModel) {
       log.warn({ lookup: requirement.lookup, driver }, "Catalog entry has no provider string for the chosen driver; skipping");

@@ -3,14 +3,28 @@
  */
 import { rootOs, withOrganization, requirePermission } from "../root";
 import { z } from "zod";
-import exampleCalls from "./example.call.data.json" assert {type: "json"};
-import { sql, aiApiKeyT, apiCallT, type ApiCallInputMessage } from "common-db";
+import exampleCalls from "./example.call.data.json" with { type: "json" };
+import { and, eq, aiApiKeyT, apiCallT, type ApiCallInputMessage } from "common-db";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
 
 const log = rootLogger.child({ name: "api-call.procedure" });
 
 const tags = ["API Call"];
+
+const matchKeyInOrg = (keyId: string, orgId: string) => and(
+  eq(aiApiKeyT.id, keyId),
+  eq(aiApiKeyT.organizationId, orgId),
+);
+
+async function findApiKeyInOrg(keyId: string, orgId: string) {
+  const [key] = await getDB()
+    .select()
+    .from(aiApiKeyT)
+    .where(matchKeyInOrg(keyId, orgId))
+    .limit(1);
+  return key;
+}
 
 /** Adds seeded example API calls for a specific API key (dev-only). */
 const addExampleCalls = rootOs
@@ -26,34 +40,22 @@ const addExampleCalls = rootOs
     }
 
     const orgId = context.activeOrganizationId;
-    const [key] = await getDB()
-      .select()
-      .from(aiApiKeyT)
-      .where(
-        sql`
-        ${aiApiKeyT.id} = ${input.apiKeyId} 
-        AND 
-        ${aiApiKeyT.organizationId} = ${orgId}`)
-      .limit(1);
-
+    const key = await findApiKeyInOrg(input.apiKeyId, orgId);
     if (!key) {
       throw errors.NOT_FOUND();
     }
 
     try {
-      const data = exampleCalls;
       await getDB()
         .insert(apiCallT)
         .values(
-          data.map((v) => ({
+          exampleCalls.map((v) => ({
             ...v,
             apiKeyId: key.id,
             applicationId: input.applicationId,
             organizationId: orgId,
             specifiedModel: v.model,
-            duration: v.duration,
             inputMessages: v.inputMessages as ApiCallInputMessage[],
-            model: v.model,
             outputMessage: v.outputMessage as ApiCallInputMessage,
           })),
         );
@@ -73,20 +75,14 @@ const listApiCalls = rootOs
   .route({ path: "/", method: "GET", tags, summary: "List API Calls" })
   .input(z.object({ apiKeyId: z.uuid() }))
   .handler(async ({ context, input, errors }) => {
-    const [apiKey] = await getDB().select({ id: aiApiKeyT.id })
-      .from(aiApiKeyT)
-      .where(sql`
-        ${aiApiKeyT.id} = ${input.apiKeyId} 
-        AND 
-        ${aiApiKeyT.organizationId} = ${context.activeOrganizationId}`)
-      .limit(1);
+    const apiKey = await findApiKeyInOrg(input.apiKeyId, context.activeOrganizationId);
     if (!apiKey) {
       throw errors.NOT_FOUND({ message: "No such api key found" });
     }
 
     const apiCalls = await getDB().select()
       .from(apiCallT).orderBy(apiCallT.createdAt)
-      .where(sql`${apiCallT.apiKeyId} = ${input.apiKeyId}`).limit(5000);
+      .where(eq(apiCallT.apiKeyId, input.apiKeyId)).limit(5000);
 
     return apiCalls;
   });

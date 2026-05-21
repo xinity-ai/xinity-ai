@@ -11,10 +11,10 @@ import { twoFactorT, userT, accountT, verificationT, sessionT, passkeyT, dashboa
 import { organizationT, memberT, invitationT, sql, eq, and } from "common-db";
 import { rootLogger } from "./logging";
 import { omit, pick } from "$lib/util";
-import { serverEnv, isInstanceAdmin } from "./serverenv";
+import { serverEnv, isInstanceAdmin, parseCsvEnvList } from "./serverenv";
 import { getDB } from "./db";
-import { ac, labeler, admin, owner, member, viewer, pending } from "./roles";
-import { sendEmail } from "./email";
+import { ac, roles } from "./roles";
+import { sendEmail, commonEmailProps, type AnyComponent } from "./email";
 import { notify } from "./notifications/notification.service";
 import { NotificationType } from "./notifications/events";
 import EmailVerificationTemplate from "$lib/components/mailTemplates/EmailVerificationTemplate.svelte";
@@ -23,6 +23,23 @@ import EmailInvitationTemplate from "$lib/components/mailTemplates/EmailInvitati
 import EmailEmailChangeConfirmationTemplate from "$lib/components/mailTemplates/EmailEmailChangeConfirmationTemplate.svelte";
 
 const log = rootLogger.child({ name: "server.auth" });
+
+function dispatchAuthEmail(args: {
+  user: { email: string; id: string };
+  url: string;
+  logLabel: string;
+  subject: string;
+  template: AnyComponent;
+  extraProps?: Record<string, unknown>;
+}): void {
+  log.info({ url: args.url, user: pick(args.user, "email", "id") }, args.logLabel);
+  void sendEmail({
+    to: args.user.email,
+    subject: args.subject,
+    template: args.template,
+    props: { ...commonEmailProps, url: args.url, ...args.extraProps },
+  });
+}
 
 // One-time tokens to allow specific server-initiated API key calls to pass through auth hooks.
 const greenlitCallIds = new Set<string>();
@@ -40,6 +57,7 @@ export function getGreenlitCallId() {
 // The sendResetPassword callback resolves the pending promise with the token
 // instead of sending an email, keyed by a one-time resetId passed via redirectTo.
 const pendingAdminResets = new Map<string, (token: string) => void>();
+const ADMIN_RESET_TOKEN_TIMEOUT_MS = 10_000;
 
 /**
  * Resets a user's password via Better Auth's standard reset flow without
@@ -60,7 +78,7 @@ export async function adminResetPassword(email: string, newPassword: string) {
       if (pendingAdminResets.delete(resetId)) {
         reject(new Error("Admin password reset timed out waiting for token"));
       }
-    }, 10_000);
+    }, ADMIN_RESET_TOKEN_TIMEOUT_MS);
   });
   await auth.api.requestPasswordReset({
     body: { email, redirectTo: `__admin_reset__:${resetId}` },
@@ -123,13 +141,13 @@ export const auth = betterAuth({
   user: {
     changeEmail: {
       enabled: false,
-      async sendChangeEmailConfirmation({ user, newEmail, url, token }, request) {
-        log.info({ url, newEmail, user: pick(user, "email", "id") }, "Send change email");
-        void sendEmail({
-          to: user.email,
+      async sendChangeEmailConfirmation({ user, newEmail, url }) {
+        dispatchAuthEmail({
+          user, url,
+          logLabel: "Send change email",
           subject: "Confirm your email change",
           template: EmailEmailChangeConfirmationTemplate,
-          props: { url, newEmail, appName: serverEnv.APP_NAME, preferencesUrl: `${serverEnv.ORIGIN}/settings/notifications/` },
+          extraProps: { newEmail },
         });
       },
     }
@@ -141,11 +159,9 @@ export const auth = betterAuth({
     requireEmailVerification: !!serverEnv.MAIL_URL,
     disableSignUp: false,
     async sendResetPassword({ url, user, token }, request) {
-      // Admin-initiated resets use a special redirectTo prefix to suppress email
       const redirectTo = new URL(url).searchParams.get("callbackURL") ?? "";
-      const adminResetMatch = decodeURIComponent(redirectTo).match(/^__admin_reset__:(.+)$/);
-      if (adminResetMatch) {
-        const resetId = adminResetMatch[1];
+      const [, resetId] = decodeURIComponent(redirectTo).match(/^__admin_reset__:(.+)$/) ?? [];
+      if (resetId) {
         const resolve = pendingAdminResets.get(resetId);
         if (resolve) {
           resolve(token);
@@ -153,25 +169,23 @@ export const auth = betterAuth({
         }
         return;
       }
-      log.info({ url, user: pick(user, "email", "id") }, "Send reset password");
-      void sendEmail({
-        to: user.email,
+      dispatchAuthEmail({
+        user, url,
+        logLabel: "Send reset password",
         subject: "Reset your password",
         template: EmailForgotPasswordTemplate,
-        props: { url, appName: serverEnv.APP_NAME, preferencesUrl: `${serverEnv.ORIGIN}/settings/notifications/` },
       });
     },
   },
   emailVerification: {
     sendOnSignUp: !!serverEnv.MAIL_URL,
     autoSignInAfterVerification: true,
-    async sendVerificationEmail({ user, url }, request) {
-      log.info({ url, user: pick(user, "email", "id") }, "Send verification Email");
-      void sendEmail({
-        to: user.email,
+    async sendVerificationEmail({ user, url }) {
+      dispatchAuthEmail({
+        user, url,
+        logLabel: "Send verification Email",
         subject: "Verify your email",
         template: EmailVerificationTemplate,
-        props: { url, appName: serverEnv.APP_NAME, preferencesUrl: `${serverEnv.ORIGIN}/settings/notifications/` },
       });
     },
 
@@ -210,10 +224,9 @@ export const auth = betterAuth({
         });
       }
 
-      // Optional: also prevent users from setting orgId on create
       if (ctx.path === "/api-key/create") {
         throw new APIError("BAD_REQUEST", {
-          message: "API Key Creation only Serverside.",
+          message: "API key creation is only allowed server-side.",
         });
       }
     }),
@@ -222,7 +235,7 @@ export const auth = betterAuth({
   trustedOrigins: serverEnv.NODE_ENV === "development" ? ["*"] : [
     serverEnv.ORIGIN,
     "*.google.com",
-    ...(serverEnv.TRUSTED_ORIGINS?.split(",").map(s => s.trim()).filter(Boolean) ?? []),
+    ...parseCsvEnvList(serverEnv.TRUSTED_ORIGINS),
   ],
 
   plugins: [
@@ -254,14 +267,7 @@ export const auth = betterAuth({
     organization({
       allowUserToCreateOrganization: (user) => serverEnv.MULTI_TENANT_MODE || isInstanceAdmin(user.email),
       ac,
-      roles: {
-        owner,
-        admin,
-        member,
-        labeler,
-        viewer,
-        pending,
-      },
+      roles,
       cancelPendingInvitationsOnReInvite: true,
       requireEmailVerificationOnInvitation: true,
       // disableOrganizationDeletion: true,
@@ -274,12 +280,11 @@ export const auth = betterAuth({
           subject: `You've been invited to join ${data.organization.name}`,
           template: EmailInvitationTemplate,
           props: {
+            ...commonEmailProps,
             url,
             inviterName: data.inviter.user.name || data.inviter.user.email,
             orgName: data.organization.name,
             loginUrl: `${serverEnv.ORIGIN}/login?email=${encodedEmail}&tab=signup`,
-            appName: serverEnv.APP_NAME,
-            preferencesUrl: `${serverEnv.ORIGIN}/settings/notifications/`,
           },
         });
       },

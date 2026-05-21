@@ -26,8 +26,7 @@
     <div class="flex items-center gap-2">
       <Checkbox
         id="custom-code-consent{idSuffix}"
-        checked={consented}
-        onCheckedChange={(checked) => consented = checked === true}
+        bind:checked={consented}
       />
       <Label for="custom-code-consent{idSuffix}" class="text-sm text-amber-700 dark:text-amber-300 cursor-pointer">
         I understand and accept the risks of running custom code

@@ -3,12 +3,12 @@ import { z } from "zod";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
 import { auth, getGreenlitCallId, adminResetPassword } from "$lib/server/auth-server";
-import { userT, accountT, memberT, organizationT, sql, eq, or, ilike, count, and } from "common-db";
+import { userT, accountT, memberT, organizationT, sql, eq, or, ilike, count, and, inArray } from "common-db";
+import { RoleSchema } from "$lib/server/roles";
 
 const log = rootLogger.child({ name: "instance-admin.procedure" });
 const tags = ["Instance Admin"];
 
-const RoleSchema = z.enum(["owner", "admin", "member", "labeler", "viewer", "pending"]);
 
 /** Generates a random 16-char temporary password (ambiguous characters like 0/O/l/1/I excluded). */
 function generateTempPassword(): string {
@@ -16,6 +16,9 @@ function generateTempPassword(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   return Array.from(bytes, (b) => chars[b % chars.length]).join("");
 }
+
+const memberByUserAndOrg = (userId: string, organizationId: string) =>
+  and(eq(memberT.userId, userId), eq(memberT.organizationId, organizationId));
 
 /** Returns true when the organization has only one owner (removing or demoting them would leave it ownerless). */
 async function isSoleOwner(organizationId: string): Promise<boolean> {
@@ -25,6 +28,15 @@ async function isSoleOwner(organizationId: string): Promise<boolean> {
     .where(and(eq(memberT.organizationId, organizationId), eq(memberT.role, "owner")))
     .limit(2);
   return owners.length <= 1;
+}
+
+async function isOnlyRemainingOwner(userId: string, organizationId: string): Promise<boolean> {
+  const [membership] = await getDB()
+    .select({ role: memberT.role })
+    .from(memberT)
+    .where(memberByUserAndOrg(userId, organizationId))
+    .limit(1);
+  return membership?.role === "owner" && await isSoleOwner(organizationId);
 }
 
 // ── Users ────────────────────────────────────────────────────────────────
@@ -48,7 +60,7 @@ const listUsers = rootOs
         )
       : undefined;
 
-    const [users, [{ total }]] = await Promise.all([
+    const [users, userCountRows] = await Promise.all([
       db
         .select({
           id: userT.id,
@@ -81,7 +93,7 @@ const listUsers = rootOs
           })
           .from(memberT)
           .innerJoin(organizationT, eq(memberT.organizationId, organizationT.id))
-          .where(sql`${memberT.userId} IN ${userIds}`)
+          .where(inArray(memberT.userId, userIds))
       : [];
 
     // Group memberships by userId
@@ -97,7 +109,7 @@ const listUsers = rootOs
         ...u,
         memberships: membershipsByUser.get(u.id) ?? [],
       })),
-      total,
+      total: userCountRows[0]?.total ?? 0,
       page: input.page,
       limit: input.limit,
     };
@@ -160,7 +172,7 @@ const addUserToOrganization = rootOs
     const [existing] = await db
       .select({ id: memberT.id })
       .from(memberT)
-      .where(and(eq(memberT.userId, input.userId), eq(memberT.organizationId, input.organizationId)))
+      .where(memberByUserAndOrg(input.userId, input.organizationId))
       .limit(1);
     if (existing) {
       throw errors.FORBIDDEN({ message: "User is already a member of this organization" });
@@ -187,21 +199,14 @@ const removeUserFromOrganization = rootOs
     const rlog = log.child({ traceId: context.traceId });
     const db = getDB();
 
-    // Check if the user is the sole owner of this organization
-    const [membership] = await db
-      .select({ role: memberT.role })
-      .from(memberT)
-      .where(and(eq(memberT.userId, input.userId), eq(memberT.organizationId, input.organizationId)))
-      .limit(1);
-
-    if (membership?.role === "owner" && await isSoleOwner(input.organizationId)) {
+    if (await isOnlyRemainingOwner(input.userId, input.organizationId)) {
       throw errors.FORBIDDEN({ message: "Cannot remove the sole owner of an organization. Transfer ownership first." });
     }
 
     rlog.info(input, "Removing user from organization");
     await db
       .delete(memberT)
-      .where(and(eq(memberT.userId, input.userId), eq(memberT.organizationId, input.organizationId)));
+      .where(memberByUserAndOrg(input.userId, input.organizationId));
     return { success: true };
   });
 
@@ -218,24 +223,15 @@ const updateUserRole = rootOs
     const rlog = log.child({ traceId: context.traceId });
     const db = getDB();
 
-    // If demoting an owner, ensure at least one other owner remains
-    if (input.role !== "owner") {
-      const [current] = await db
-        .select({ role: memberT.role })
-        .from(memberT)
-        .where(and(eq(memberT.userId, input.userId), eq(memberT.organizationId, input.organizationId)))
-        .limit(1);
-
-      if (current?.role === "owner" && await isSoleOwner(input.organizationId)) {
-        throw errors.FORBIDDEN({ message: "Cannot demote the sole owner of an organization. Transfer ownership first." });
-      }
+    if (input.role !== "owner" && await isOnlyRemainingOwner(input.userId, input.organizationId)) {
+      throw errors.FORBIDDEN({ message: "Cannot demote the sole owner of an organization. Transfer ownership first." });
     }
 
     rlog.info(input, "Updating user role");
     await db
       .update(memberT)
       .set({ role: input.role })
-      .where(and(eq(memberT.userId, input.userId), eq(memberT.organizationId, input.organizationId)));
+      .where(memberByUserAndOrg(input.userId, input.organizationId));
     return { success: true };
   });
 
@@ -343,7 +339,7 @@ const listOrganizations = rootOs
         )
       : undefined;
 
-    const [orgs, [{ total }]] = await Promise.all([
+    const [orgs, orgCountRows] = await Promise.all([
       db
         .select({
           id: organizationT.id,
@@ -372,7 +368,12 @@ const listOrganizations = rootOs
       db.select({ total: count() }).from(organizationT).where(searchFilter),
     ]);
 
-    return { organizations: orgs, total, page: input.page, limit: input.limit };
+    return {
+      organizations: orgs,
+      total: orgCountRows[0]?.total ?? 0,
+      page: input.page,
+      limit: input.limit,
+    };
   });
 
 const getOrganizationMembers = rootOs

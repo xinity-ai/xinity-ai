@@ -26,14 +26,37 @@ type Resource = keyof typeof ac.statements;
 type Action<R extends Resource> = (typeof ac.statements)[R][number];
 type PermissionSpec = { [R in Resource]?: Action<R>[] };
 
+async function loadSessionOrThrow(
+  context: App.Locals,
+  errors: { UNAUTHORIZED: () => Error },
+): Promise<Session> {
+  const session = await auth.api.getSession(context.request);
+  if (!session) throw errors.UNAUTHORIZED();
+  return session;
+}
+
+type ResolverLogger = { debug: (obj: object, msg: string) => void; warn: (obj: unknown, msg: string) => void };
+
+async function resolveOrgFromApiKey(request: Request, log: ResolverLogger): Promise<string | undefined> {
+  const apiKey = request.headers.get("x-api-key");
+  if (!apiKey) return undefined;
+  try {
+    const result = await auth.api.verifyApiKey({ body: { key: apiKey } });
+    log.debug({ result }, "API key verification result");
+    if (result.valid && result.key?.metadata?.organizationId) {
+      return result.key.metadata.organizationId as string;
+    }
+  } catch (err) {
+    log.warn(err, "Failed to verify API key for organization resolution");
+  }
+  return undefined;
+}
+
 /**
  * Require an authenticated session and attach it to the ORPC context.
  */
-export const withAuth = rootOs.middleware(async ({ context, next, signal, errors }) => {
-  const session = await auth.api.getSession(context.request);
-  if (!session) {
-    throw errors.UNAUTHORIZED();
-  }
+export const withAuth = rootOs.middleware(async ({ context, next, errors }) => {
+  const session = await loadSessionOrThrow(context, errors);
   return next({
     context: {
       ...context,
@@ -46,31 +69,12 @@ export const withAuth = rootOs.middleware(async ({ context, next, signal, errors
  * Require an authenticated session with an active organization id.
  * For API key auth, falls back to the organizationId stored in the key's metadata.
  */
-export const withOrganization = rootOs.middleware(async ({ context, next, signal, errors }) => {
+export const withOrganization = rootOs.middleware(async ({ context, next, errors }) => {
   const rlog = log.child({ traceId: context.traceId });
-  const session = await auth.api.getSession(context.request);
-  if (!session) {
-    throw errors.UNAUTHORIZED();
-  }
+  const session = await loadSessionOrThrow(context, errors);
 
   let activeOrganizationId = session.session.activeOrganizationId;
-
-  // For API key auth the synthetic session has no activeOrganizationId,
-  // so resolve it from the key's metadata instead.
-  if (!activeOrganizationId) {
-    const apiKey = context.request.headers.get("x-api-key");
-    if (apiKey) {
-      try {
-        const result = await auth.api.verifyApiKey({ body: { key: apiKey } });
-        rlog.debug({ result }, "API key verification result");
-        if (result.valid && result.key?.metadata?.organizationId) {
-          activeOrganizationId = result.key.metadata.organizationId as string;
-        }
-      } catch (err) {
-        rlog.warn(err, "Failed to verify API key for organization resolution");
-      }
-    }
-  }
+  activeOrganizationId ??= await resolveOrgFromApiKey(context.request, rlog);
 
   if (!activeOrganizationId) {
     throw errors.UNAUTHORIZED({ message: "No organization is set to active" });
@@ -88,10 +92,7 @@ export const withOrganization = rootOs.middleware(async ({ context, next, signal
  * Require an authenticated session with instance admin privileges.
  */
 export const withInstanceAdmin = rootOs.middleware(async ({ context, next, errors }) => {
-  const session = await auth.api.getSession(context.request);
-  if (!session) {
-    throw errors.UNAUTHORIZED();
-  }
+  const session = await loadSessionOrThrow(context, errors);
   if (!isInstanceAdmin(session.user.email)) {
     throw errors.FORBIDDEN();
   }

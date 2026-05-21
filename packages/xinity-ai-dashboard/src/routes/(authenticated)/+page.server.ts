@@ -12,6 +12,34 @@ const log = rootLogger.child({ name: "dashboard-home" });
 
 type DB = ReturnType<typeof getDB>;
 
+const roundOrNull = (n: number | null | undefined): number | null =>
+  n != null ? Math.round(n) : null;
+
+const isUncategorizedApp = (id: string | null | undefined): boolean =>
+  id == null || id === NIL_APP_UUID;
+
+type DailyTrendEntry = { totalCalls: number; loggedCalls: number; inputTokens: number; outputTokens: number };
+
+function fillDailyTrendSeries(
+  trendData: Array<{ date: string } & DailyTrendEntry>,
+  days: number,
+): DailyTrendEntry[] {
+  const trendMap = new Map(trendData.map(d => [d.date, d]));
+  const today = new Date();
+  return Array.from({ length: days }, (_, i) => {
+    const date = new Date(today);
+    date.setDate(date.getDate() - (days - 1 - i));
+    const dateStr = date.toISOString().split('T')[0]!;
+    const dayData = trendMap.get(dateStr);
+    return {
+      totalCalls: dayData?.totalCalls ?? 0,
+      loggedCalls: dayData?.loggedCalls ?? 0,
+      inputTokens: dayData?.inputTokens ?? 0,
+      outputTokens: dayData?.outputTokens ?? 0,
+    };
+  });
+}
+
 /** Roll up usageEvent rows older than 30 days into usageSummary, then delete them. */
 async function rollupUsageEvents(db: DB, orgId: string) {
   await db.execute(sql`
@@ -19,7 +47,7 @@ async function rollupUsageEvents(db: DB, orgId: string) {
       ("date", "organization_id", "application_id", "api_key_id", "model",
        "total_calls", "logged_calls", "input_tokens", "output_tokens", "total_duration")
     SELECT
-      DATE("created_at"), "organization_id", COALESCE("application_id", '00000000-0000-0000-0000-000000000000'::uuid), "api_key_id", "model",
+      DATE("created_at"), "organization_id", COALESCE("application_id", ${NIL_APP_UUID}::uuid), "api_key_id", "model",
       COUNT(*)::int,
       COUNT(*) FILTER (WHERE "logged")::int,
       COALESCE(SUM("input_tokens"), 0),
@@ -108,11 +136,13 @@ async function loadKeyMetrics(db: DB, orgId: string, userId: string): Promise<Ke
   const loggedCalls = (eventTotalsResult?.loggedCalls || 0) + (summaryTotalsResult?.loggedCalls || 0);
   const avgDuration = eventTotalsResult?.avgDuration ?? null;
   const avgResponseTime = avgDuration ? Number((avgDuration / 1000).toFixed(1)) : 0;
-  const totalRated = (responseDataResult?.liked || 0) + (responseDataResult?.disliked || 0);
+  const totalRated = responseDataResult?.rated || 0;
   const approvalRate = totalRated === 0 ? 0 : Number((((responseDataResult?.liked || 0) / totalRated) * 100).toFixed(1));
   const totalDatapoints = responseDataResult?.total || 0;
   const editedCount = responseDataResult?.edited || 0;
   const ratedCount = responseDataResult?.rated || 0;
+  const percentOfDatapoints = (count: number) =>
+    totalDatapoints > 0 ? Math.round((count / totalDatapoints) * 100) : 0;
 
   return {
     apiCallStats: {
@@ -124,12 +154,12 @@ async function loadKeyMetrics(db: DB, orgId: string, userId: string): Promise<Ke
       avgResponseTime,
     },
     tokenStats: {
-      avgInput1m: tokenAvgResult?.avgInput1m != null ? Math.round(tokenAvgResult.avgInput1m) : null,
-      avgOutput1m: tokenAvgResult?.avgOutput1m != null ? Math.round(tokenAvgResult.avgOutput1m) : null,
-      avgInput10m: tokenAvgResult?.avgInput10m != null ? Math.round(tokenAvgResult.avgInput10m) : null,
-      avgOutput10m: tokenAvgResult?.avgOutput10m != null ? Math.round(tokenAvgResult.avgOutput10m) : null,
-      avgInput1h: tokenAvgResult?.avgInput1h != null ? Math.round(tokenAvgResult.avgInput1h) : null,
-      avgOutput1h: tokenAvgResult?.avgOutput1h != null ? Math.round(tokenAvgResult.avgOutput1h) : null,
+      avgInput1m: roundOrNull(tokenAvgResult?.avgInput1m),
+      avgOutput1m: roundOrNull(tokenAvgResult?.avgOutput1m),
+      avgInput10m: roundOrNull(tokenAvgResult?.avgInput10m),
+      avgOutput10m: roundOrNull(tokenAvgResult?.avgOutput10m),
+      avgInput1h: roundOrNull(tokenAvgResult?.avgInput1h),
+      avgOutput1h: roundOrNull(tokenAvgResult?.avgOutput1h),
     },
     responseRatings: {
       liked: responseDataResult?.liked || 0,
@@ -138,10 +168,19 @@ async function loadKeyMetrics(db: DB, orgId: string, userId: string): Promise<Ke
     },
     trainingData: {
       datapoints: totalDatapoints,
-      edited: totalDatapoints > 0 ? Math.round((editedCount / totalDatapoints) * 100) : 0,
-      rated: totalDatapoints > 0 ? Math.round((ratedCount / totalDatapoints) * 100) : 0,
+      edited: percentOfDatapoints(editedCount),
+      rated: percentOfDatapoints(ratedCount),
     },
   };
+}
+
+async function fetchApplicationNames(db: DB, ids: string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const apps = await db
+    .select({ id: aiApplicationT.id, name: aiApplicationT.name })
+    .from(aiApplicationT)
+    .where(inArray(aiApplicationT.id, ids));
+  return new Map(apps.map(a => [a.id, a.name]));
 }
 
 async function loadCharts(db: DB, orgId: string): Promise<ChartsData> {
@@ -176,37 +215,15 @@ async function loadCharts(db: DB, orgId: string): Promise<ChartsData> {
       .limit(5),
   ]);
 
-  // Fill in missing days with zeros for the 30-day trend
-  const trendMap = new Map(trendData.map(d => [d.date, d]));
-  const usageTrend: Array<{ totalCalls: number; loggedCalls: number; inputTokens: number; outputTokens: number }> = [];
-  for (let i = 29; i >= 0; i--) {
-    const date = new Date();
-    date.setDate(date.getDate() - i);
-    const dateStr = date.toISOString().split('T')[0];
-    const dayData = trendMap.get(dateStr);
-    usageTrend.push({
-      totalCalls: dayData?.totalCalls || 0,
-      loggedCalls: dayData?.loggedCalls || 0,
-      inputTokens: dayData?.inputTokens || 0,
-      outputTokens: dayData?.outputTokens || 0,
-    });
-  }
+  const usageTrend = fillDailyTrendSeries(trendData, 30);
 
-  // Resolve application names for top apps
-  const appIds = topAppsRaw.map(a => a.applicationId).filter(id => id != null && id !== NIL_APP_UUID) as string[];
-  let appNameMap = new Map<string, string>();
-  if (appIds.length > 0) {
-    const apps = await db
-      .select({ id: aiApplicationT.id, name: aiApplicationT.name })
-      .from(aiApplicationT)
-      .where(inArray(aiApplicationT.id, appIds));
-    appNameMap = new Map(apps.map(a => [a.id, a.name]));
-  }
+  const appIds = topAppsRaw.map(a => a.applicationId).filter((id): id is string => !isUncategorizedApp(id));
+  const appNameMap = await fetchApplicationNames(db, appIds);
 
   return {
     usageTrend,
     topApplications: topAppsRaw.map(a => ({
-      name: (a.applicationId == null || a.applicationId === NIL_APP_UUID) ? 'Uncategorized' : (appNameMap.get(a.applicationId) ?? 'Unknown'),
+      name: isUncategorizedApp(a.applicationId) ? 'Uncategorized' : (appNameMap.get(a.applicationId!) ?? 'Unknown'),
       totalCalls: a.totalCalls,
       totalTokens: a.totalTokens,
     })),
@@ -230,7 +247,6 @@ async function loadTables(db: DB, orgId: string): Promise<TablesData> {
 
     db.select({
       name: modelDeploymentT.name,
-      status: sql<string>`'deployed'`,
     })
       .from(modelDeploymentT)
       .where(sql`
@@ -243,15 +259,11 @@ async function loadTables(db: DB, orgId: string): Promise<TablesData> {
   ]);
 
   return {
-    recentActivities: recentActivitiesResult.map(a => ({
-      model: a.model,
-      timestamp: a.timestamp.toISOString(),
-      inputTokens: a.inputTokens,
-      outputTokens: a.outputTokens,
-      duration: a.duration,
-      logged: a.logged,
+    recentActivities: recentActivitiesResult.map(({ timestamp, ...rest }) => ({
+      ...rest,
+      timestamp: timestamp.toISOString(),
     })),
-    recentModels: recentModels.map(m => ({ name: m.name, status: m.status })),
+    recentModels: recentModels.map(m => ({ name: m.name, status: "deployed" as const })),
   };
 }
 
