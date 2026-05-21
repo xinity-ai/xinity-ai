@@ -95,20 +95,18 @@ export function humanDuration(hours: number) {
 }
 
 /** Creates a function, that caches a generated value for the indicated milliseconds for future calls */
-export function timeCache<T>(ms: number, getter: ()=> Promise<T>): ()=> Promise<T>{
-  let cache: T | null = null;
-  let recency: number = Date.now();
+export function timeCache<T>(ms: number, getter: () => Promise<T>): () => Promise<T> {
+  let cachedValue: T;
+  let cachedAt = -Infinity;
 
+  const isCacheFresh = () => Date.now() - cachedAt < ms;
 
-  return async ()=> {
-      const now = Date.now();
-      if(cache && recency + ms > now){
-        return cache;
-      }
-
-      const value = await getter();
-      recency = Date.now();
-      cache = value;
-      return value;
-  }
+  return async () => {
+    if (isCacheFresh()) {
+      return cachedValue;
+    }
+    cachedValue = await getter();
+    cachedAt = Date.now();
+    return cachedValue;
+  };
 }
