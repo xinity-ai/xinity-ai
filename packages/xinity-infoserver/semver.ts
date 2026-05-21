@@ -13,8 +13,7 @@ export function normalizePep440(version: string): string {
   let v = version.trim();
   if (v.startsWith("v")) v = v.slice(1);
   // Extract major.minor.patch, dropping PEP440 suffixes (.postN, .devN, +local)
-  const match = v.match(/^(\d+\.\d+\.\d+)/);
-  return match?.[1] ? match[1] : v;
+  return v.match(/^(\d+\.\d+\.\d+)/)?.[1] ?? v;
 }
 
 /**

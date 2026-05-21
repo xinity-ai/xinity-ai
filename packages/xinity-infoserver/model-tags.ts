@@ -42,8 +42,7 @@ export function resolveDriverForProviderModel(model: Model, providerModel: strin
  * that driver, uses those; otherwise falls back to model-level tags.
  */
 export function resolveTagsForDriver(model: Model, driver: Provider): string[] {
-  const driverKey = driver as Provider;
-  return model.providerTags?.[driverKey] ?? model.tags ?? [];
+  return model.providerTags?.[driver] ?? model.tags ?? [];
 }
 
 /**
@@ -52,10 +51,8 @@ export function resolveTagsForDriver(model: Model, driver: Provider): string[] {
  * driver is not yet known.
  */
 export function resolveAllTags(model: Model): string[] {
-  if (!model.providerTags) return model.tags ?? [];
-
   const tagSet = new Set(model.tags ?? []);
-  for (const driverTags of Object.values(model.providerTags)) {
+  for (const driverTags of Object.values(model.providerTags ?? {})) {
     if (driverTags) {
       for (const tag of driverTags) tagSet.add(tag);
     }
@@ -91,7 +88,7 @@ export function resolveRequiredPlatformsForDriver(model: Model, driver: Provider
  * Returns an empty array if providerArgs is absent or has no entry for the driver.
  */
 export function resolveArgsForDriver(model: Model, driver: Provider): string[] {
-  return model.providerArgs?.[driver as Provider] ?? [];
+  return model.providerArgs?.[driver] ?? [];
 }
 
 // ---------------------------------------------------------------------------
@@ -106,5 +103,5 @@ export type RequestParamMap = Record<string, RequestParamType>;
  * Returns an empty record if requestParams is absent or has no entry for the driver.
  */
 export function resolveRequestParamsForDriver(model: Model, driver: Provider): RequestParamMap {
-  return model.requestParams?.[driver as Provider] ?? {};
+  return model.requestParams?.[driver] ?? {};
 }

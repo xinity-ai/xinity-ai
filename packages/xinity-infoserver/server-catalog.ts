@@ -38,37 +38,45 @@ export function configure(maxIncludeDepth = 10, modelFilePath?: string, modelDir
  * Reads the local YAML file, validates it, then recursively fetches
  * and merges all remote include URLs. Rebuilds all indexes atomically.
  */
+type CatalogIndexState = {
+  models: Map<string, ModelWithSpecifier>;
+  providerIndex: Map<string, string>;
+  merged: Record<string, Model>;
+  localSpecifiers: Set<string>;
+};
+
 export async function refresh(): Promise<void> {
-  const newModels = new Map<string, ModelWithSpecifier>();
-  const newProviderIndex = new Map<string, string>();
-  const newMerged: Record<string, Model> = {};
-  const localSpecifiers = new Set<string>();
+  const state: CatalogIndexState = {
+    models: new Map<string, ModelWithSpecifier>(),
+    providerIndex: new Map<string, string>(),
+    merged: {},
+    localSpecifiers: new Set<string>(),
+  };
   const visited = new Set<string>();
 
   try {
     if (configuredFilePath) {
       const yamlText = await Bun.file(configuredFilePath).text();
-      const yamlData = Bun.YAML.parse(yamlText);
-      const result = ModelFileDefinitionSchema.safeParse(yamlData);
+      const result = parseModelFileYaml(yamlText);
       if (!result.success) {
         throw new Error(`Model file validation failed (${configuredFilePath}): ${result.error.message}`);
       }
 
-      indexModels(result.data.models, newModels, newProviderIndex, newMerged, configuredFilePath, true, localSpecifiers);
+      indexModels(result.data.models, configuredFilePath, true, state);
 
       for (const includeUrl of result.data.includes ?? []) {
-        await resolveIncludes(includeUrl, visited, 0, newModels, newProviderIndex, newMerged, localSpecifiers);
+        await resolveIncludes(includeUrl, visited, 0, state);
       }
     }
 
     if (configuredDirPath) {
-      await loadDirectoryFiles(configuredDirPath, visited, newModels, newProviderIndex, newMerged, localSpecifiers);
+      await loadDirectoryFiles(configuredDirPath, visited, state);
     }
 
     // Atomic swap
-    modelData = newModels;
-    providerModelIndex = newProviderIndex;
-    mergedData = { models: newMerged };
+    modelData = state.models;
+    providerModelIndex = state.providerIndex;
+    mergedData = { models: state.merged };
     lastRefreshAt = new Date();
     lastRefreshError = null;
   } catch (err) {
@@ -81,10 +89,7 @@ async function resolveIncludes(
   url: string,
   visited: Set<string>,
   depth: number,
-  models: Map<string, ModelWithSpecifier>,
-  providerIndex: Map<string, string>,
-  merged: Record<string, Model>,
-  localSpecifiers: Set<string>,
+  state: CatalogIndexState,
 ): Promise<void> {
   if (depth >= configuredMaxDepth) {
     log.warn({ url, maxDepth: configuredMaxDepth }, "Max include depth reached, skipping");
@@ -106,17 +111,16 @@ async function resolveIncludes(
     }
 
     const text = await response.text();
-    const yamlData = Bun.YAML.parse(text);
-    const result = ModelFileDefinitionSchema.safeParse(yamlData);
+    const result = parseModelFileYaml(text);
     if (!result.success) {
       log.warn({ url, issues: result.error.issues }, "Include validation failed");
       return;
     }
 
-    indexModels(result.data.models, models, providerIndex, merged, url, false, localSpecifiers);
+    indexModels(result.data.models, url, false, state);
 
     for (const nestedUrl of result.data.includes ?? []) {
-      await resolveIncludes(nestedUrl, visited, depth + 1, models, providerIndex, merged, localSpecifiers);
+      await resolveIncludes(nestedUrl, visited, depth + 1, state);
     }
   } catch (err) {
     log.warn({ url, err }, "Include fetch error");
@@ -126,10 +130,7 @@ async function resolveIncludes(
 async function loadDirectoryFiles(
   dirPath: string,
   visited: Set<string>,
-  models: Map<string, ModelWithSpecifier>,
-  providerIndex: Map<string, string>,
-  merged: Record<string, Model>,
-  localSpecifiers: Set<string>,
+  state: CatalogIndexState,
 ): Promise<void> {
   let entries: string[];
   try {
@@ -150,18 +151,17 @@ async function loadDirectoryFiles(
     const filePath = join(dirPath, filename);
     try {
       const yamlText = await Bun.file(filePath).text();
-      const yamlData = Bun.YAML.parse(yamlText);
-      const result = ModelFileDefinitionSchema.safeParse(yamlData);
+      const result = parseModelFileYaml(yamlText);
       if (!result.success) {
         log.warn({ filePath, issues: result.error.issues }, "Model file validation failed, skipping");
         continue;
       }
 
       log.info({ filePath, modelCount: Object.keys(result.data.models).length }, "Loaded model file from directory");
-      indexModels(result.data.models, models, providerIndex, merged, filePath, true, localSpecifiers);
+      indexModels(result.data.models, filePath, true, state);
 
       for (const includeUrl of result.data.includes ?? []) {
-        await resolveIncludes(includeUrl, visited, 0, models, providerIndex, merged, localSpecifiers);
+        await resolveIncludes(includeUrl, visited, 0, state);
       }
     } catch (err) {
       log.warn({ filePath, err }, "Failed to load model file from directory, skipping");
@@ -169,34 +169,35 @@ async function loadDirectoryFiles(
   }
 }
 
+function parseModelFileYaml(text: string) {
+  return ModelFileDefinitionSchema.safeParse(Bun.YAML.parse(text));
+}
+
 function indexModels(
   source: Record<string, Model>,
-  map: Map<string, ModelWithSpecifier>,
-  providerIndex: Map<string, string>,
-  merged: Record<string, Model>,
   sourceLabel: string,
   isLocal: boolean,
-  localSpecifiers: Set<string>,
+  state: CatalogIndexState,
 ): void {
   for (const [specifier, model] of Object.entries(source)) {
-    if (map.has(specifier)) {
-      if (localSpecifiers.has(specifier) && !isLocal) {
+    const existing = state.models.get(specifier);
+    if (existing) {
+      if (state.localSpecifiers.has(specifier) && !isLocal) {
         log.debug({ specifier, source: sourceLabel }, "Remote model skipped: local entry takes precedence");
         continue;
       }
-      const existing = map.get(specifier)!;
       log.warn({ specifier, existingSource: existing._source, newSource: sourceLabel }, "Duplicate model specifier, overwriting");
     }
 
     const entry: ModelWithSpecifier = { publicSpecifier: specifier, _source: sourceLabel, ...model };
-    map.set(specifier, entry);
-    merged[specifier] = model;
+    state.models.set(specifier, entry);
+    state.merged[specifier] = model;
 
-    if (isLocal) localSpecifiers.add(specifier);
+    if (isLocal) state.localSpecifiers.add(specifier);
 
     for (const providerModel of Object.values(model.providers)) {
       if (providerModel) {
-        providerIndex.set(providerModel, specifier);
+        state.providerIndex.set(providerModel, specifier);
       }
     }
   }
@@ -218,11 +219,7 @@ export function resolve(specifier: string): ModelWithSpecifier | undefined {
 }
 
 export function resolveBatch(specifiers: string[]): Record<string, ModelWithSpecifier | null> {
-  const result: Record<string, ModelWithSpecifier | null> = {};
-  for (const spec of specifiers) {
-    result[spec] = resolve(spec) ?? null;
-  }
-  return result;
+  return Object.fromEntries(specifiers.map((spec) => [spec, resolve(spec) ?? null]));
 }
 
 export function getAll(): ModelWithSpecifier[] {

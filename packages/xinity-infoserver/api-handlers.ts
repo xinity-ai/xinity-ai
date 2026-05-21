@@ -1,6 +1,21 @@
 import * as catalog from "./server-catalog";
 import { ModelListQuerySchema } from "./api-schemas";
+import type { ModelWithSpecifier } from "./definitions/model-definition";
 import { z } from "zod";
+
+const lookupResolvers: Record<string, (specifier: string) => ModelWithSpecifier | undefined> = {
+  canonical: catalog.get,
+  provider: catalog.getByProviderModel,
+};
+
+function resolveBySpecifier(specifier: string, lookupMode: string | null): ModelWithSpecifier | undefined {
+  const resolver = lookupMode ? lookupResolvers[lookupMode] : undefined;
+  return resolver ? resolver(specifier) : catalog.resolve(specifier);
+}
+
+function getRouteParam(req: Request, key: string): string | undefined {
+  return (req as { params?: Record<string, string | undefined> }).params?.[key];
+}
 
 /**
  * GET /api/v1/models: paginated, filterable model list.
@@ -26,8 +41,8 @@ export function handleModelList(req: Request): Response {
   if (family) models = models.filter(m => (m.family ?? "unknown") === family);
   if (tag && tag.length > 0) {
     models = models.filter(m => {
-      const modelTags = m.tags ?? [];
-      return tag.every(t => modelTags.includes(t as any));
+      const modelTags: readonly string[] = m.tags ?? [];
+      return tag.every(t => modelTags.includes(t));
     });
   }
 
@@ -42,7 +57,7 @@ export function handleModelList(req: Request): Response {
  * GET /api/v1/models/family/:family: all models in a family.
  */
 export function handleModelsByFamily(req: Request): Response {
-  const family = (req as any).params?.family as string | undefined;
+  const family = getRouteParam(req, "family");
   if (!family) {
     return Response.json({ error: "Missing family parameter" }, { status: 400 });
   }
@@ -56,16 +71,12 @@ export function handleModelsByFamily(req: Request): Response {
  * provider-string reverse lookup. Omitting falls back to `resolve()` (back-compat).
  */
 export function handleModelBySpecifier(req: Request): Response {
-  const specifier = (req as any).params?.specifier as string | undefined;
+  const specifier = getRouteParam(req, "specifier");
   if (!specifier) {
     return Response.json({ error: "Missing specifier parameter" }, { status: 400 });
   }
   const lookup = new URL(req.url).searchParams.get("lookup");
-  const model = lookup === "canonical"
-    ? catalog.get(specifier)
-    : lookup === "provider"
-      ? catalog.getByProviderModel(specifier)
-      : catalog.resolve(specifier);
+  const model = resolveBySpecifier(specifier, lookup);
   if (!model) {
     return Response.json({ error: "Model not found" }, { status: 404 });
   }
