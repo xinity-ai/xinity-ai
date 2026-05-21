@@ -105,7 +105,7 @@ if (state.dockerImage) process.env.VLLM_DOCKER_IMAGE = state.dockerImage;
 
 const [
   { buildDockerRunArgs, buildSystemdEnvFile, buildSystemdServeArgv },
-  { computeGpuUtilization },
+  { computeGpuUtilization, buildVllmExtraArgs },
   { buildHardwareProfile },
 ] = await Promise.all([
   import("../modules/model-installation/vllm-ops"),
@@ -165,11 +165,7 @@ function buildVllmInstanceConfig(
     kvCacheBytes: `${kvCacheGb}g`,
     trustRemoteCode,
     gpuMemoryUtilization,
-    extraArgs: [
-      ...(modelType === "embedding" || modelType === "rerank" ? ["--runner", "pooling"] : []),
-      ...(hasToolsTag ? ["--enable-auto-tool-choice"] : []),
-      ...providerArgs,
-    ],
+    extraArgs: buildVllmExtraArgs(modelType, hasToolsTag, providerArgs),
   };
 }
 

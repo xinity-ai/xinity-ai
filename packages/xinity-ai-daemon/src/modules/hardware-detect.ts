@@ -66,12 +66,16 @@ async function detectNvidiaGpus(): Promise<DetectedGpu[]> {
   return parseNvidiaSmiOutput(output);
 }
 
-export function parseNvidiaSmiOutput(csv: string): DetectedGpu[] {
+function parseNvidiaCsvLines<T>(csv: string, parseLine: (line: string) => T | null): T[] {
   return csv
     .split("\n")
     .filter((line) => line.trim().length > 0)
-    .map(parseNvidiaSmiLine)
-    .filter((gpu): gpu is DetectedGpu => gpu !== null);
+    .map(parseLine)
+    .filter((x): x is T => x !== null);
+}
+
+export function parseNvidiaSmiOutput(csv: string): DetectedGpu[] {
+  return parseNvidiaCsvLines(csv, parseNvidiaSmiLine);
 }
 
 function parseNvidiaSmiLine(line: string): DetectedGpu | null {
@@ -94,11 +98,11 @@ export async function getNvidiaRuntimeStats(): Promise<GpuRuntimeStats[]> {
 
   if (!output.trim()) return [];
 
-  return output
-    .split("\n")
-    .filter((line) => line.trim().length > 0)
-    .map(parseNvidiaRuntimeLine)
-    .filter((s): s is GpuRuntimeStats => s !== null);
+  return parseNvidiaRuntimeOutput(output);
+}
+
+export function parseNvidiaRuntimeOutput(csv: string): GpuRuntimeStats[] {
+  return parseNvidiaCsvLines(csv, parseNvidiaRuntimeLine);
 }
 
 function parseNvidiaRuntimeLine(line: string): GpuRuntimeStats | null {
@@ -193,12 +197,16 @@ async function detectAmdGpusRocmSmi(): Promise<DetectedGpu[]> {
   return parseRocmSmiOutput(output);
 }
 
-export function parseRocmSmiOutput(text: string): DetectedGpu[] {
+function parseRocmSmiGpuLines<T>(text: string, parseLine: (line: string) => T | null): T[] {
   return text
     .split("\n")
     .filter((line) => line.startsWith("GPU["))
-    .map(parseRocmSmiLine)
-    .filter((gpu): gpu is DetectedGpu => gpu !== null);
+    .map(parseLine)
+    .filter((x): x is T => x !== null);
+}
+
+export function parseRocmSmiOutput(text: string): DetectedGpu[] {
+  return parseRocmSmiGpuLines(text, parseRocmSmiLine);
 }
 
 function parseRocmSmiLine(line: string): DetectedGpu | null {
@@ -221,11 +229,11 @@ export async function getAmdRuntimeStats(): Promise<GpuRuntimeStats[]> {
 
   if (!output.trim()) return [];
 
-  return output
-    .split("\n")
-    .filter((line) => line.startsWith("GPU["))
-    .map(parseRocmSmiRuntimeLine)
-    .filter((s): s is GpuRuntimeStats => s !== null);
+  return parseRocmSmiRuntimeOutput(output);
+}
+
+export function parseRocmSmiRuntimeOutput(text: string): GpuRuntimeStats[] {
+  return parseRocmSmiGpuLines(text, parseRocmSmiRuntimeLine);
 }
 
 function parseRocmSmiRuntimeLine(line: string): GpuRuntimeStats | null {
@@ -284,17 +292,14 @@ async function queryIntelGpuDetails(deviceId: number): Promise<DetectedGpu | nul
 
 export function parseXpuSmiDeviceDetails(text: string, deviceId: number): DetectedGpu | null {
   const name = extractXpuSmiField(text, "Device Name") ?? `Intel GPU ${deviceId}`;
-  const memorySizeStr = extractXpuSmiField(text, "Memory Physical Size");
-
-  let vramMb = 0;
-  if (memorySizeStr) {
-    const match = memorySizeStr.match(/([\d.]+)\s*MiB/i);
-    if (match) {
-      vramMb = Math.floor(Number(match[1]));
-    }
-  }
-
+  const vramMb = parseMibValue(extractXpuSmiField(text, "Memory Physical Size"));
   return { vendor: "intel", name, vramMb };
+}
+
+function parseMibValue(value: string | null): number {
+  if (!value) return 0;
+  const match = value.match(/([\d.]+)\s*MiB/i);
+  return match ? Math.floor(Number(match[1])) : 0;
 }
 
 function extractXpuSmiField(text: string, fieldName: string): string | null {
@@ -339,6 +344,9 @@ export function classifyCapacitySource(gpus: DetectedGpu[]): CapacitySource {
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
+/** Fraction of system RAM advertised as model capacity when GPUs use unified memory; the rest is reserved for the OS. */
+const UNIFIED_MEM_USABLE_FRACTION = 0.9;
+
 /**
  * Builds a HardwareProfile from a known GPU list + system RAM:
  *  1. GPUs with reported VRAM → sum VRAM as capacity, classify by vendor
@@ -363,8 +371,7 @@ export function buildHardwareProfile(gpus: DetectedGpu[], systemRamMb: number): 
     return {
       gpus,
       gpuCount,
-      // reducing to 90% to ensure enough ram remains for the system
-      detectedCapacityGb: mbToGb(Math.floor(systemRamMb * 0.9)),
+      detectedCapacityGb: mbToGb(Math.floor(systemRamMb * UNIFIED_MEM_USABLE_FRACTION)),
       source: "unified-memory",
     };
   }
@@ -384,6 +391,11 @@ export async function detectHardwareProfile(): Promise<HardwareProfile> {
   return buildHardwareProfile(gpus, getSystemRamMb());
 }
 
+function sumFreeMemoryFromStats(stats: GpuRuntimeStats[]): number | null {
+  if (stats.length === 0) return null;
+  return stats.reduce((sum, s) => sum + s.freeMemory, 0);
+}
+
 /**
  * Query current free memory in MB for the given capacity source.
  *
@@ -395,17 +407,8 @@ export async function detectHardwareProfile(): Promise<HardwareProfile> {
  */
 export async function getFreeMemoryMb(source: CapacitySource): Promise<number | null> {
   try {
-    if (source === "nvidia") {
-      const stats = await getNvidiaRuntimeStats();
-      if (stats.length === 0) return null;
-      return stats.reduce((sum, s) => sum + s.freeMemory, 0);
-    }
-    if (source === "amd") {
-      const stats = await getAmdRuntimeStats();
-      if (stats.length === 0) return null;
-      return stats.reduce((sum, s) => sum + s.freeMemory, 0);
-    }
-    // unified-memory, system-ram, intel, mixed: use OS free memory
+    if (source === "nvidia") return sumFreeMemoryFromStats(await getNvidiaRuntimeStats());
+    if (source === "amd") return sumFreeMemoryFromStats(await getAmdRuntimeStats());
     return bytesToMb(freemem());
   } catch {
     return null;

@@ -17,9 +17,6 @@ export async function createOpenapiSpec() {
     },
     security: [{ apiKeyAuth: [] }],
     tags: [],
-    commonSchemas: {
-      // ChatRequestDto: { schema: ChatRequestDto },
-    },
     components: {
       securitySchemes: {
         apiKeyAuth: {
@@ -34,5 +31,5 @@ export async function createOpenapiSpec() {
 }
 
 export function createScalarPage() {
-  return new Response(scalar as unknown as string, { headers: { "Content-Type": "text/html" } });
+  return new Response(scalar.toString(), { headers: { "Content-Type": "text/html" } });
 }

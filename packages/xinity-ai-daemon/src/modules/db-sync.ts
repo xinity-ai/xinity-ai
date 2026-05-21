@@ -1,7 +1,7 @@
 import { getDB, listen } from "../db/connection";
-import { modelInstallationT, modelInstallationStateT, sql } from "common-db";
+import { modelInstallationT, modelInstallationStateT, sql, type ModelInstallation } from "common-db";
 import { getNodeId, getNodeDrivers } from "./statekeeper";
-import { defer, from, merge, Observable } from "rxjs";
+import { defer, from, Observable } from "rxjs";
 import {
   endWith,
   ignoreElements,
@@ -15,11 +15,18 @@ import { env } from "../env";
 import { rootLogger } from "../logger";
 import { groupInstallationsByDriver } from "./driver-grouping";
 import { updateRegistry } from "./model-registry";
-export { groupInstallationsByDriver };
 
 const log = rootLogger.child({ name: "db-sync" });
 
 let previousInstallationsSnapshot: string | null = null;
+
+function logInstallationsIfChanged(installations: ModelInstallation[]): void {
+  const models = installations.map(({ driver, model, estCapacity }) => ({ driver, model, estCapacity }));
+  const snapshot = JSON.stringify(models);
+  if (snapshot === previousInstallationsSnapshot) return;
+  previousInstallationsSnapshot = snapshot;
+  log.info({ models }, "Installations changed");
+}
 
 export function dbSync(){
   return createWorkflowCoordinator({
@@ -36,10 +43,19 @@ export function dbSync(){
 
 const DRIVER_SYNC_CONCURRENCY = 1;
 
-/**
- * Placeholder for unsupported drivers. We explicitly no-op to keep the extension
- * point obvious and avoid silently dropping non-ollama installations.
- */
+/** Appends an empty bucket for every supported driver missing from the existing buckets, so stale models on those drivers get cleaned up. */
+function ensureBucketsForSupportedDrivers<T>(
+  buckets: Array<{ driver: string; installations: T[] }>,
+  supportedDrivers: readonly string[],
+): void {
+  for (const driver of supportedDrivers) {
+    if (!buckets.some((b) => b.driver === driver)) {
+      buckets.push({ driver, installations: [] });
+    }
+  }
+}
+
+/** Mark installations on an unsupported driver as failed so they aren't retried indefinitely. */
 function syncUnsupportedDriver$(
   driver: string,
   installations: Array<{ id: string; model: string }>
@@ -49,33 +65,29 @@ function syncUnsupportedDriver$(
       { driver, models: installations.map((i) => i.model) },
       "Skipping unsupported driver"
     );
+    const failedState = {
+      lifecycleState: "failed" as const,
+      errorMessage: `Unsupported driver: ${driver}`,
+    };
     return from(
       Promise.all(
         installations.map((i) =>
           getDB()
             .insert(modelInstallationStateT)
-            .values({
-              id: i.id,
-              lifecycleState: "failed",
-              errorMessage: `Unsupported driver: ${driver}`,
-            })
-            .onConflictDoUpdate({
-              set: {
-                lifecycleState: "failed",
-                errorMessage: `Unsupported driver: ${driver}`,
-              },
-              target: modelInstallationStateT.id,
-            })
+            .values({ id: i.id, ...failedState })
+            .onConflictDoUpdate({ set: failedState, target: modelInstallationStateT.id })
         )
       )
     );
   }).pipe(ignoreElements(), endWith(void 0));
 }
 
-/**
- * Synchronizes all model installations by delegating to per-driver handlers.
- * Non-ollama drivers are explicitly no-ops for now.
- */
+function syncForDriver$(driver: string, installations: ModelInstallation[]): Observable<void> {
+  if (driver === "ollama") return syncOllamaInstallations$(installations);
+  if (driver === "vllm") return syncVllmInstallations$(installations);
+  return syncUnsupportedDriver$(driver, installations);
+}
+
 function sync(): Observable<void> {
   log.debug("Performing sync");
 
@@ -90,30 +102,11 @@ function sync(): Observable<void> {
     switchMap((installations) => {
       updateRegistry(installations);
       const buckets = groupInstallationsByDriver(installations);
-      // Include empty buckets for supported drivers to clean up stale models
-      const supportedDrivers = getNodeDrivers();
-      for (const driver of supportedDrivers) {
-        if (!buckets.some(b => b.driver === driver)) {
-          buckets.push({ driver, installations: [] });
-        }
-      }
-      const models = installations.map(({ driver, model, estCapacity }) => ({ driver, model, estCapacity }));
-      const snapshot = JSON.stringify(models);
-      if (snapshot !== previousInstallationsSnapshot) {
-        previousInstallationsSnapshot = snapshot;
-        log.info({ models }, "Installations changed");
-      }
+      ensureBucketsForSupportedDrivers(buckets, getNodeDrivers());
+      logInstallationsIfChanged(installations);
       return from(buckets).pipe(
-        mergeMap(({ driver, installations: driverInstallations }) => {
-          if (driver === "ollama") {
-            return syncOllamaInstallations$(driverInstallations);
-          }
-          if (driver === "vllm") {
-            return syncVllmInstallations$(driverInstallations);
-          }
-
-          return syncUnsupportedDriver$(driver, driverInstallations);
-        }, DRIVER_SYNC_CONCURRENCY),
+        mergeMap(({ driver, installations: driverInstallations }) =>
+          syncForDriver$(driver, driverInstallations), DRIVER_SYNC_CONCURRENCY),
         ignoreElements(),
         endWith(void 0)
       );

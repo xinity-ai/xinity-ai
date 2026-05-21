@@ -36,17 +36,22 @@ export function modelForSlug(slug: string): string {
   return `${stripped.slice(0, idx)}/${stripped.slice(idx + 2)}`;
 }
 
+function readDirEntriesOrEmpty(dir: string): Dirent[] {
+  try { return readdirSync(dir, { withFileTypes: true }); } catch { return []; }
+}
+
+function safeFileSize(filePath: string): number {
+  try { return statSync(filePath).size; } catch { return 0; }
+}
+
 export function getDirSize(dir: string): number {
   let total = 0;
   function walk(current: string): void {
-    let entries: Dirent[];
-    try { entries = readdirSync(current, { withFileTypes: true }); }
-    catch { return; }
-    for (const entry of entries) {
+    for (const entry of readDirEntriesOrEmpty(current)) {
       if (entry.isSymbolicLink()) continue;
       const p = path.join(current, entry.name);
-      if (entry.isDirectory()) { walk(p); continue; }
-      try { total += statSync(p).size; } catch { /* ignore */ }
+      if (entry.isDirectory()) walk(p);
+      else total += safeFileSize(p);
     }
   }
   walk(dir);
@@ -58,6 +63,10 @@ export async function getDiskFree(targetPath: string): Promise<number> {
   return Number(stat.bsize) * Number(stat.bavail);
 }
 
+function safeMtime(dir: string): Date {
+  try { return statSync(dir).mtime; } catch { return new Date(0); }
+}
+
 export function listCacheEntries(hubDir: string): CacheEntry[] {
   let names: string[];
   try { names = readdirSync(hubDir); } catch { return []; }
@@ -65,10 +74,16 @@ export function listCacheEntries(hubDir: string): CacheEntry[] {
     .filter((n) => n.startsWith("models--"))
     .map((slug): CacheEntry => {
       const dir = path.join(hubDir, slug);
-      let mtime = new Date(0);
-      try { mtime = statSync(dir).mtime; } catch { /* keep epoch */ }
-      return { slug, model: modelForSlug(slug), dir, sizeBytes: getDirSize(dir), mtime };
+      return { slug, model: modelForSlug(slug), dir, sizeBytes: getDirSize(dir), mtime: safeMtime(dir) };
     });
+}
+
+function latestDeletionDate(installations: readonly ModelInstallation[], fallback: Date): Date {
+  if (installations.length === 0) return fallback;
+  return installations.reduce<Date>(
+    (latest, m) => (m.deletedAt && m.deletedAt > latest ? m.deletedAt : latest),
+    new Date(0),
+  );
 }
 
 export function planEviction(input: {
@@ -102,13 +117,7 @@ export function planEviction(input: {
     const matches = byModel.get(entry.model) ?? [];
     if (matches.some((m) => m.deletedAt === null)) continue;
 
-    let lastNeededAt = entry.mtime;
-    if (matches.length > 0) {
-      lastNeededAt = matches.reduce<Date>(
-        (latest, m) => (m.deletedAt && m.deletedAt > latest ? m.deletedAt : latest),
-        new Date(0),
-      );
-    }
+    const lastNeededAt = latestDeletionDate(matches, entry.mtime);
     candidates.push({ ...entry, lastNeededAt });
   }
 
