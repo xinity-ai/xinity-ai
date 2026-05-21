@@ -55,10 +55,16 @@ export function preconfigureDB(DB_CONNECTION_URL: string, pinoLogger?: PinoLike)
       }
     : undefined;
 
-  function ensureConnection() {
-    if (db) return db;
-    connection ??= postgres(DB_CONNECTION_URL);
-    return (db ??= drizzleLogger ? drizzle(connection, { logger: drizzleLogger }) : drizzle(connection));
+  function ensurePostgresConnection(): postgres.Sql {
+    return connection ??= postgres(DB_CONNECTION_URL);
+  }
+
+  function ensureConnection(): PostgresJsDatabase {
+    if (!db) {
+      const sql = ensurePostgresConnection();
+      db = drizzleLogger ? drizzle(sql, { logger: drizzleLogger }) : drizzle(sql);
+    }
+    return db;
   }
 
   return {
@@ -75,8 +81,8 @@ export function preconfigureDB(DB_CONNECTION_URL: string, pinoLogger?: PinoLike)
     },
 
     async* listen(channel: string) {
-      connection ??= postgres(DB_CONNECTION_URL);
-      yield* fromCallback(callback => connection.listen(channel, callback), async x => {
+      const sql = ensurePostgresConnection();
+      yield* fromCallback(callback => sql.listen(channel, callback), async x => {
         const o = await x;
         process.on("beforeExit", () => o.unlisten());
       })
@@ -85,34 +91,31 @@ export function preconfigureDB(DB_CONNECTION_URL: string, pinoLogger?: PinoLike)
 }
 
 /**
- * Bridges a callback-based subscription into an async generator.
+ * Bridges a callback-based subscription into an async generator. The subscription
+ * is set up via `register`; the returned handle is forwarded to `postRegister` so
+ * the caller can wire up teardown (e.g. process.on("beforeExit", ...)).
  */
-async function* fromCallback<T, K>(register: (callback: (val: T) => void) => K, postRegister: (k: K) => void = () => { }) {
-  type Phe = { value: T, done: boolean };
+async function* fromCallback<T, K>(
+  register: (callback: (val: T) => void) => K,
+  postRegister: (handle: K) => void = () => { },
+) {
   const queue: T[] = [];
-  let resolveNext: ((_: Phe) => void) | undefined;
-  let done = false;
+  let resolveNext: ((value: T) => void) | undefined;
 
   postRegister(register(value => {
     if (resolveNext) {
-      resolveNext({ value, done: false });
+      resolveNext(value);
       resolveNext = undefined;
     } else {
       queue.push(value);
     }
   }));
 
-  try {
-    while (!done) {
-      if (queue.length) {
-        yield queue.shift()!;
-      } else {
-        const result = await new Promise<Phe>(resolve => (resolveNext = resolve));
-        if (result.done) break;
-        yield result.value;
-      }
+  while (true) {
+    if (queue.length) {
+      yield queue.shift()!;
+    } else {
+      yield await new Promise<T>(resolve => { resolveNext = resolve; });
     }
-  } finally {
-    done = true;
   }
 }

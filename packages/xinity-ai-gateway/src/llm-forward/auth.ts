@@ -1,5 +1,5 @@
 import { pick } from "rambda";
-import { aiApiKeyT, sql, type AIAPIKeyT } from "common-db";
+import { aiApiKeyT, sql, type AiApiKey } from "common-db";
 import { getDB } from "../db";
 import { redis } from "bun";
 import { rootLogger } from "../logger";
@@ -89,15 +89,15 @@ async function verifyKeyAgainstDb(key: string, prefix: string): Promise<Response
   return toAuthResult(apiKeyObj);
 }
 
-type PartialApiKey = Pick<AIAPIKeyT, "organizationId" | "id" | "applicationId" | "collectData">;
-const pickAttrs = pick(["organizationId", "id", "applicationId", "collectData"] satisfies (keyof AIAPIKeyT)[]);
+type PartialApiKey = Pick<AiApiKey, "organizationId" | "id" | "applicationId" | "collectData">;
+const pickAttrs = pick(["organizationId", "id", "applicationId", "collectData"] satisfies (keyof AiApiKey)[]);
 const API_KEY_CACHE_TTL_SECONDS = 120;
 
 const apiKeyCacheKey = (identifier: string) => `apikey:${identifier}`;
 
 function setApiKeyCache(
   identifier: string,
-  data: AIAPIKeyT,
+  data: AiApiKey,
   ttlSeconds: number = API_KEY_CACHE_TTL_SECONDS,
 ): void {
   void redis.set(apiKeyCacheKey(identifier), JSON.stringify(pickAttrs(data)), "EX", ttlSeconds)

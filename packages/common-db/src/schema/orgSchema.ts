@@ -23,7 +23,7 @@ export const organizationT = pgTable("organization", {
   slug: text("slug").notNull().unique(),
   logo: text("logo"),
   metadata: text("metadata"), // JSON string
-  ssoSelfManage: boolean("sso_self_manage").default(false).notNull(),
+  ssoSelfManage: boolean("sso_self_manage").notNull().default(false),
   createdAt,
   updatedAt,
 });

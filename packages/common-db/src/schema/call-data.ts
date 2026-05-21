@@ -46,7 +46,6 @@ export type ApiCallInputMessage = {
   /** Present on tool result messages (role: "tool"). */
   tool_call_id?: string;
 };
-export type ApiCall = InferSelectModel<typeof apiCallT>;
 export const apiCallT = callDataSchema.table("api_call", {
   id: uuid().primaryKey().defaultRandom(),
   apiKeyId: uuid("api_key_id")
@@ -72,6 +71,7 @@ export const apiCallT = callDataSchema.table("api_call", {
   index("api_call_organization_id_created_at_idx").on(table.organizationId, table.createdAt),
   index("api_call_model_idx").on(table.model),
 ]);
+export type ApiCall = InferSelectModel<typeof apiCallT>;
 
 export type Highlight = {
   start: number;
@@ -84,7 +84,6 @@ export type InputExclusion = {
   start: number;
   end: number;
 };
-export type ApiCallResponse = InferSelectModel<typeof apiCallResponseT>;
 /** Table containing responses by users to a logged api call. */
 export const apiCallResponseT = callDataSchema.table("api_call_response", {
   /** id of the user creating the response. Can be null if the response comes from an external user */
@@ -107,12 +106,12 @@ export const apiCallResponseT = callDataSchema.table("api_call_response", {
 }, table => [
   primaryKey({ columns: [table.userId, table.apiCallId] }),
 ]);
+export type ApiCallResponse = InferSelectModel<typeof apiCallResponseT>;
 
 /** Per-call usage event. One row for every API call (including unlogged and embeddings). */
 export type UsageEvent = InferSelectModel<typeof usageEventT>;
 export const usageEventT = callDataSchema.table("usage_event", {
   id: uuid().primaryKey().defaultRandom(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   organizationId: text("organization_id")
     .notNull()
     .references(() => organizationT.id, { onDelete: "cascade" }),
@@ -126,6 +125,7 @@ export const usageEventT = callDataSchema.table("usage_event", {
   /** Duration in milliseconds. Nullable for endpoints that don't track it. */
   duration: integer(),
   logged: boolean().notNull().default(false),
+  createdAt,
 }, table => [
   index("usage_event_organization_id_created_at_idx").on(table.organizationId, table.createdAt),
   index("usage_event_created_at_idx").on(table.createdAt),

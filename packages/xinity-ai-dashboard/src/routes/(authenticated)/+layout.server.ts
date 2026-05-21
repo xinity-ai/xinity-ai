@@ -9,7 +9,7 @@ import {version} from "../../../../../package.json";
 import { semver } from "bun";
 import { timeCache } from "$lib/util";
 import type { RoleName } from "$lib/roles";
-import { sql, and, eq, isNull, userT, aiNodeT, type DisplaySettings } from "common-db";
+import { sql, and, eq, isNull, userT, aiNodeT, defaultDisplaySettings, type DisplaySettings } from "common-db";
 import { getLicenseSummary, hasFeature } from "$lib/server/license";
 
 const log = rootLogger.child({name: "+layout.root"})
@@ -124,13 +124,6 @@ function clearBetterAuthSessionCacheCookies(cookies: Cookies): void {
     }
   }
 }
-
-const defaultDisplaySettings: DisplaySettings = {
-  darkMode: false,
-  compactView: false,
-  showDetailedMetrics: true,
-  gettingStartedDismissed: false,
-};
 
 async function fetchUserSettings(userId: string): Promise<{ displaySettings: DisplaySettings; temporaryPassword: boolean }> {
   try {

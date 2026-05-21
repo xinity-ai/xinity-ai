@@ -3,7 +3,7 @@ import { auth } from '$lib/server/auth-server';
 import { getDB } from '$lib/server/db';
 import { pick } from '$lib/util';
 import { error } from '@sveltejs/kit';
-import { apiCallResponseT, apiCallT, aiApiKeyT, sql, type ApiCall, type AIAPIKeyT, isNull, and, eq, inArray } from 'common-db';
+import { apiCallResponseT, apiCallT, aiApiKeyT, sql, type ApiCall, type AiApiKey, isNull, and, eq, inArray } from 'common-db';
 import z from 'zod';
 
 async function getSession() {
@@ -197,7 +197,7 @@ export const getAPICallResponse = query.batch(z.uuid(), async (ids) => {
 
 })
 
-export type PartialPublicApiKey = Pick<AIAPIKeyT, "name" | "enabled" | "specifier" | "createdAt" | "id" | "applicationId">;
+export type PartialPublicApiKey = Pick<AiApiKey, "name" | "enabled" | "specifier" | "createdAt" | "id" | "applicationId">;
 
 export const upsertApiCallResponse = command(z.object({
   apiCallId: z.uuid(),
