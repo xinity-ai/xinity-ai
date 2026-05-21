@@ -1,4 +1,4 @@
-import { Ollama } from "ollama";
+import { Ollama, ProgressResponse } from "ollama";
 import { bufferTime, concatMap, defer, endWith, from, ignoreElements, map, merge, mergeMap, Observable, switchMap, tap } from "rxjs";
 import { env } from "../../env";
 import { ModelInstallation } from "common-db";
@@ -18,6 +18,20 @@ export function getOllamaClient(): Ollama {
 
 const OLLAMA_CONCURRENCY = 2;
 
+type OllamaPullLifecycle = "downloading" | "installing" | "ready";
+
+function lifecycleStateForOllamaStatus(status: string): OllamaPullLifecycle {
+  if (status === "success") return "ready";
+  if (status.startsWith("verifying")) return "installing";
+  return "downloading";
+}
+
+function derivePullProgress(chunk: ProgressResponse): { lifecycleState: OllamaPullLifecycle; progress: number | null } {
+  const hasProgress = chunk.completed != null && chunk.total != null && chunk.total > 0;
+  const progress = hasProgress ? chunk.completed / chunk.total : null;
+  return { lifecycleState: lifecycleStateForOllamaStatus(chunk.status), progress };
+}
+
 function consumePull$({model, id}: ModelInstallation): Observable<void> {
   return defer(() => from(getOllamaClient().pull({ model, stream: true }))).pipe(
     switchMap((res) => from(res)),
@@ -25,12 +39,7 @@ function consumePull$({model, id}: ModelInstallation): Observable<void> {
     concatMap(async (chunk) => {
       const newest = chunk.at(-1);
       if (newest){
-        const isDownloading = newest.completed != null && newest.total != null && newest.total > 0;
-        const progress = isDownloading ? (newest.completed / newest.total) : null;
-        const isDone = newest.status === "success";
-        const isInstalling = newest.status.startsWith("verifying");
-        const lifecycleState = isDone ? "ready" : isInstalling ? "installing" : "downloading";
-
+        const { lifecycleState, progress } = derivePullProgress(newest);
         try {
           await updateInstallationState(id, lifecycleState, { progress, statusMessage: newest.status });
         } catch (err) {

@@ -43,6 +43,15 @@ async function checkHealth(port: number): Promise<boolean> {
   }
 }
 
+function parseRestartCount(raw: string): number {
+  const count = parseInt(raw.trim(), 10);
+  return Number.isNaN(count) ? 0 : count;
+}
+
+function nonEmptyLines(raw: string): string[] {
+  return raw.split("\n").map((line) => line.trim()).filter(Boolean);
+}
+
 // ---------------------------------------------------------------------------
 // Systemd implementation
 // ---------------------------------------------------------------------------
@@ -73,6 +82,19 @@ export function buildSystemdEnvFile(config: VllmInstanceConfig): string {
   return lines.join("\n") + "\n";
 }
 
+/** Append CLI flags that are identical between the systemd and docker vLLM commands. */
+function appendVllmCommonArgs(args: string[], config: VllmInstanceConfig): void {
+  if (config.gpuMemoryUtilization != null) {
+    args.push("--gpu-memory-utilization", String(config.gpuMemoryUtilization));
+  }
+  if (config.trustRemoteCode) {
+    args.push("--trust-remote-code");
+  }
+  if (config.extraArgs && config.extraArgs.length > 0) {
+    args.push(...config.extraArgs);
+  }
+}
+
 // Mirror of the ExecStart logic in src/assets/vllm-driver@.service; keep in sync.
 export function buildSystemdServeArgv(config: VllmInstanceConfig): string[] {
   const binary = env.VLLM_PATH || "/usr/bin/vllm";
@@ -84,17 +106,12 @@ export function buildSystemdServeArgv(config: VllmInstanceConfig): string[] {
     argv.push("--kv-cache-memory-bytes", config.kvCacheBytes);
   }
   argv.push("--served-model-name", config.model);
-  if (config.gpuMemoryUtilization != null) {
-    argv.push("--gpu-memory-utilization", String(config.gpuMemoryUtilization));
-  }
-  if (config.trustRemoteCode) {
-    argv.push("--trust-remote-code");
-  }
-  if (config.extraArgs && config.extraArgs.length > 0) {
-    argv.push(...config.extraArgs);
-  }
+  appendVllmCommonArgs(argv, config);
   return argv;
 }
+
+const SYSTEMD_UNIT_INSTANCE_RE = /^vllm-driver@(.+)\.service$/;
+const systemdUnitFor = (id: string) => `vllm-driver@${id}.service`;
 
 export function createSystemdVllmOps(): VllmOps {
   return {
@@ -104,14 +121,10 @@ export function createSystemdVllmOps(): VllmOps {
           .nothrow()
           .text();
 
-      // Each line looks like: vllm-driver@<id>.service loaded active running ...
-      return result
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean)
+      return nonEmptyLines(result)
         .map((line) => {
           const unit = line.split(/\s+/)[0];
-          const match = unit.match(/^vllm-driver@(.+)\.service$/);
+          const match = unit.match(SYSTEMD_UNIT_INSTANCE_RE);
           return match?.[1];
         })
         .filter((id): id is string => id != null);
@@ -127,18 +140,18 @@ export function createSystemdVllmOps(): VllmOps {
       );
       await Bun.write(envPath, envContent);
       await $`chmod 644 ${envPath}`;
-      await $`systemctl enable --now vllm-driver@${id}.service`;
+      await $`systemctl enable --now ${systemdUnitFor(id)}`;
     },
 
     async stop(id) {
-      await $`systemctl disable --now vllm-driver@${id}.service`.nothrow();
+      await $`systemctl disable --now ${systemdUnitFor(id)}`.nothrow();
       await $`rm -f ${env.VLLM_ENV_DIR}/${id}.env`;
     },
 
     checkHealth,
 
     async isAlive(id) {
-      const result = await $`systemctl is-active vllm-driver@${id}.service`
+      const result = await $`systemctl is-active ${systemdUnitFor(id)}`
         .nothrow()
         .text();
       return result.trim() === "active";
@@ -146,7 +159,7 @@ export function createSystemdVllmOps(): VllmOps {
 
     async getLogs(id, tailLines = 200) {
       try {
-        const result = await $`journalctl -u vllm-driver@${id}.service --no-pager -n ${tailLines} --output=short-iso`
+        const result = await $`journalctl -u ${systemdUnitFor(id)} --no-pager -n ${tailLines} --output=short-iso`
           .nothrow()
           .text();
         return result.trim();
@@ -156,11 +169,10 @@ export function createSystemdVllmOps(): VllmOps {
     },
 
     async getRestartCount(id) {
-      const result = await $`systemctl show -p NRestarts --value vllm-driver@${id}.service`
+      const result = await $`systemctl show -p NRestarts --value ${systemdUnitFor(id)}`
         .nothrow()
         .text();
-      const count = parseInt(result.trim(), 10);
-      return Number.isNaN(count) ? 0 : count;
+      return parseRestartCount(result);
     },
 
     async ensureSetup() {
@@ -188,6 +200,7 @@ export function createSystemdVllmOps(): VllmOps {
 // ---------------------------------------------------------------------------
 
 const DOCKER_CONTAINER_PREFIX = "vllm-";
+const dockerContainerNameFor = (id: string) => `${DOCKER_CONTAINER_PREFIX}${id}`;
 
 /** "daemon" runs detached with a restart policy; "preview" runs interactive with --rm. */
 export function buildDockerRunArgs(
@@ -195,7 +208,11 @@ export function buildDockerRunArgs(
   config: VllmInstanceConfig,
   mode: "daemon" | "preview" = "daemon",
 ): string[] {
-  const containerName = `${DOCKER_CONTAINER_PREFIX}${id}`;
+  const dockerImage = env.VLLM_DOCKER_IMAGE;
+  if (!dockerImage) {
+    throw new Error("VLLM_DOCKER_IMAGE must be set to build a docker run command");
+  }
+  const containerName = dockerContainerNameFor(id);
   const lifecycleFlags = mode === "daemon" ? ["-d"] : ["-it", "--rm"];
   const args = [
     "docker", "run", ...lifecycleFlags,
@@ -208,20 +225,12 @@ export function buildDockerRunArgs(
     "-v", `${env.VLLM_HF_CACHE_DIR}:/data/hf-cache`,
     "-v", `${env.VLLM_TRITON_CACHE_DIR}:/data/triton-cache`,
     ...(mode === "daemon" ? ["--restart", "unless-stopped"] : []),
-    env.VLLM_DOCKER_IMAGE,
+    dockerImage,
     "--model", config.model,
     "--served-model-name", config.model,
     "--kv-cache-memory-bytes", config.kvCacheBytes,
   ];
-  if (config.gpuMemoryUtilization != null) {
-    args.push("--gpu-memory-utilization", String(config.gpuMemoryUtilization));
-  }
-  if (config.trustRemoteCode) {
-    args.push("--trust-remote-code");
-  }
-  if (config.extraArgs && config.extraArgs.length > 0) {
-    args.push(...config.extraArgs);
-  }
+  appendVllmCommonArgs(args, config);
   return args;
 }
 
@@ -232,15 +241,12 @@ export function createDockerVllmOps(): VllmOps {
         await $`docker ps --filter name=${DOCKER_CONTAINER_PREFIX} --format '{{.Names}}'`
           .text();
 
-      return result
-        .split("\n")
-        .map((name) => name.trim())
-        .filter(Boolean)
+      return nonEmptyLines(result)
         .map((name) => name.startsWith(DOCKER_CONTAINER_PREFIX) ? name.slice(DOCKER_CONTAINER_PREFIX.length) : name);
     },
 
     async start(id, config) {
-      const containerName = `${DOCKER_CONTAINER_PREFIX}${id}`;
+      const containerName = dockerContainerNameFor(id);
       // Remove any existing stopped/exited container with this name
       await $`docker rm -f ${containerName}`.nothrow();
 
@@ -254,7 +260,7 @@ export function createDockerVllmOps(): VllmOps {
     },
 
     async stop(id) {
-      const containerName = `${DOCKER_CONTAINER_PREFIX}${id}`;
+      const containerName = dockerContainerNameFor(id);
       await $`docker stop ${containerName}`.nothrow();
       await $`docker rm ${containerName}`.nothrow();
     },
@@ -262,8 +268,7 @@ export function createDockerVllmOps(): VllmOps {
     checkHealth,
 
     async isAlive(id) {
-      const containerName = `${DOCKER_CONTAINER_PREFIX}${id}`;
-      const result = await $`docker inspect --format={{.State.Status}} ${containerName}`
+      const result = await $`docker inspect --format={{.State.Status}} ${dockerContainerNameFor(id)}`
         .nothrow()
         .text();
       return result.trim() === "running";
@@ -271,8 +276,7 @@ export function createDockerVllmOps(): VllmOps {
 
     async getLogs(id, tailLines = 200) {
       try {
-        const containerName = `${DOCKER_CONTAINER_PREFIX}${id}`;
-        const result = await $`docker logs --tail ${tailLines} ${containerName} 2>&1`
+        const result = await $`docker logs --tail ${tailLines} ${dockerContainerNameFor(id)} 2>&1`
           .nothrow()
           .text();
         return result.trim();
@@ -282,12 +286,10 @@ export function createDockerVllmOps(): VllmOps {
     },
 
     async getRestartCount(id) {
-      const containerName = `${DOCKER_CONTAINER_PREFIX}${id}`;
-      const result = await $`docker inspect --format={{.RestartCount}} ${containerName}`
+      const result = await $`docker inspect --format={{.RestartCount}} ${dockerContainerNameFor(id)}`
         .nothrow()
         .text();
-      const count = parseInt(result.trim(), 10);
-      return Number.isNaN(count) ? 0 : count;
+      return parseRestartCount(result);
     },
 
     async ensureSetup() {

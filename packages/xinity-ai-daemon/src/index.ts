@@ -9,7 +9,10 @@ import { rootLogger } from "./logger";
 let shuttingDown = false;
 
 if (import.meta.main) {
-  main();
+  main().catch((err) => {
+    rootLogger.fatal({ err }, "Daemon failed to start");
+    process.exit(1);
+  });
 }
 
 async function main() {
@@ -31,16 +34,17 @@ async function main() {
   await setOnline();
   const coordinator = dbSync();
   const subscription = coordinator.start();
-  process.once("SIGTERM", () => shutdown(subscription));
-  process.once("SIGINT", () => shutdown(subscription));
-  process.once("uncaughtException", (err) => {
-    rootLogger.fatal({ err }, "Uncaught exception");
+
+  for (const signal of ["SIGTERM", "SIGINT"] as const) {
+    process.once(signal, () => shutdown(subscription));
+  }
+
+  const onFatal = (label: string) => (err: unknown) => {
+    rootLogger.fatal({ err }, label);
     void shutdown(subscription).finally(() => process.exit(1));
-  });
-  process.once("unhandledRejection", (err) => {
-    rootLogger.fatal({ err }, "Unhandled rejection");
-    void shutdown(subscription).finally(() => process.exit(1));
-  });
+  };
+  process.once("uncaughtException", onFatal("Uncaught exception"));
+  process.once("unhandledRejection", onFatal("Unhandled rejection"));
 
   const nodeId = await getNodeId();
   for await (const _notification of listen(`ai_node:${nodeId}`)) {

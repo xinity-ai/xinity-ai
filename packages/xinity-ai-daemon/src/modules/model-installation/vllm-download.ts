@@ -27,6 +27,10 @@ function fileSize(f: HfFileEntry): number {
   return f.lfs?.size ?? f.size;
 }
 
+function sumFileSizes(files: readonly HfFileEntry[]): number {
+  return files.reduce((sum, f) => sum + fileSize(f), 0);
+}
+
 async function hfFetch(url: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(url, { ...init, headers: { ...authHeaders(), ...init?.headers } });
   if (!res.ok && res.status !== 206) {
@@ -34,6 +38,10 @@ async function hfFetch(url: string, init?: RequestInit): Promise<Response> {
     throw new Error(`${res.status} ${res.statusText}. ${body}. URL: ${url}`);
   }
   return res;
+}
+
+async function hfFetchJson<T>(url: string): Promise<T> {
+  return (await hfFetch(url)).json() as Promise<T>;
 }
 
 /**
@@ -56,9 +64,9 @@ export async function downloadModel(
   const { files: allFiles, commitHash } = await listRepoFiles(model);
   const { rules, mode } = buildRules(allFiles, userPatterns);
   const files = selectFiles(allFiles, rules);
-  const totalBytes = files.reduce((sum, f) => sum + fileSize(f), 0);
+  const totalBytes = sumFileSizes(files);
   const droppedFiles = allFiles.length - files.length;
-  const droppedBytes = allFiles.reduce((sum, f) => sum + fileSize(f), 0) - totalBytes;
+  const droppedBytes = sumFileSizes(allFiles) - totalBytes;
   log.info(
     { model, fileCount: files.length, totalBytes, commitHash, mode, droppedFiles, droppedBytes },
     "Starting model download",
@@ -111,11 +119,11 @@ function linkSnapshot(snapshotDir: string, filePath: string, blobPath: string): 
 }
 
 async function listRepoFiles(model: string): Promise<{ files: HfFileEntry[]; commitHash: string }> {
-  const info = (await (await hfFetch(`${HF_API_URL}/api/models/${model}`)).json()) as { sha: string };
+  const info = await hfFetchJson<{ sha: string }>(`${HF_API_URL}/api/models/${model}`);
 
-  const entries = (await (await hfFetch(
+  const entries = await hfFetchJson<Array<{ type: string; path: string; size: number; lfs?: { size: number } }>>(
     `${HF_API_URL}/api/models/${model}/tree/${info.sha}?recursive=true`,
-  )).json()) as Array<{ type: string; path: string; size: number; lfs?: { size: number } }>;
+  );
 
   return {
     commitHash: info.sha,

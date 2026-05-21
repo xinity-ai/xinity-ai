@@ -39,44 +39,81 @@ export function getNodeDrivers(): string[] {
   return drivers;
 }
 
+async function detectVllmVersion(
+  source: "docker" | "binary",
+  runVersionCommand: () => Promise<string>,
+): Promise<string | undefined> {
+  try {
+    const output = await runVersionCommand();
+    const match = output.match(/(\d+\.\d+\.\d+\S*)/);
+    if (match) return normalizePep440(match[1]);
+    log.warn({ output, source }, "vLLM version output did not match expected format");
+  } catch (err) {
+    log.debug({ err, source }, "Failed to detect vLLM version");
+  }
+  return undefined;
+}
+
+async function detectOllamaVersion(endpoint: string): Promise<string | undefined> {
+  try {
+    const res = await fetch(`${endpoint}/api/version`);
+    if (!res.ok) return undefined;
+    const data = await res.json() as { version?: string };
+    return data.version;
+  } catch (err) {
+    log.debug({ err }, "Failed to detect Ollama version");
+    return undefined;
+  }
+}
+
 /** Detects driver versions from configured endpoints/binaries. Best-effort: missing = empty. */
 export async function getNodeDriverVersions(): Promise<Record<string, string>> {
   const versions: Record<string, string> = {};
 
   if (env.XINITY_OLLAMA_ENDPOINT) {
-    try {
-      const res = await fetch(`${env.XINITY_OLLAMA_ENDPOINT}/api/version`);
-      if (res.ok) {
-        const data = await res.json() as { version?: string };
-        if (data.version) versions["ollama"] = data.version;
-      }
-    } catch (err) {
-      log.debug({ err }, "Failed to detect Ollama version");
-    }
+    const ollama = await detectOllamaVersion(env.XINITY_OLLAMA_ENDPOINT);
+    if (ollama) versions["ollama"] = ollama;
   }
 
   if (env.VLLM_DOCKER_IMAGE) {
-    try {
-      const output = await $`docker run --rm --gpus all --entrypoint vllm ${env.VLLM_DOCKER_IMAGE} --version`
-        .throws(false).text();
-      const match = output.match(/(\d+\.\d+\.\d+\S*)/);
-      if (match) versions["vllm"] = normalizePep440(match[1]);
-      else log.warn({ output }, "vLLM Docker version output did not match expected format");
-    } catch (err) {
-      log.debug({ err }, "Failed to detect vLLM Docker version");
-    }
+    const vllm = await detectVllmVersion("docker", () =>
+      $`docker run --rm --gpus all --entrypoint vllm ${env.VLLM_DOCKER_IMAGE} --version`.throws(false).text(),
+    );
+    if (vllm) versions["vllm"] = vllm;
   } else if (env.VLLM_PATH) {
-    try {
-      const output = await $`${env.VLLM_PATH} --version`.throws(false).text();
-      const match = output.match(/(\d+\.\d+\.\d+\S*)/);
-      if (match) versions["vllm"] = normalizePep440(match[1]);
-      else log.warn({ output }, "vLLM version output did not match expected format");
-    } catch (err) {
-      log.debug({ err }, "Failed to detect vLLM version");
-    }
+    const vllm = await detectVllmVersion("binary", () =>
+      $`${env.VLLM_PATH} --version`.throws(false).text(),
+    );
+    if (vllm) versions["vllm"] = vllm;
   }
 
   return versions;
+}
+
+function findHostIPv4Address(): string {
+  const isMatchingExternalIPv4 = (iface: { family: string; cidr?: string | null; internal: boolean }) =>
+    iface.family === 'IPv4' &&
+    (!iface.cidr || iface.cidr.startsWith(env.CIDR_PREFIX)) &&
+    !iface.internal;
+
+  const match = Object.values(networkInterfaces())
+    .flatMap(n => n ?? [])
+    .find(isMatchingExternalIPv4);
+  return match?.address || '127.0.0.1';
+}
+
+async function collectNodeRuntimeState() {
+  const { detectedCapacityGb, gpuCount, gpus: detectedGpus } = await getHardwareProfile();
+  const driverVersions = await getNodeDriverVersions();
+  return {
+    estCapacity: detectedCapacityGb,
+    gpuCount,
+    drivers: getNodeDrivers(),
+    driverVersions,
+    gpus: detectedGpus.map(g => ({ vendor: g.vendor, name: g.name, vramMb: g.vramMb })),
+    authToken,
+    tls: !!getTlsConfig(env),
+  };
 }
 
 /** Retrieves the nodeID of this ai node. If it is not recorded in the database yet, it will be created */
@@ -85,42 +122,16 @@ export async function getNodeId(){
 
   const idFile = Bun.file(join(env.STATE_DIR, "node_id"));
   if(!await idFile.exists()){
-    const host = Object.values(networkInterfaces())
-      .flatMap(n => n ?? [])
-      .find(n =>  n.family === 'IPv4' &&
-          (!n.cidr || n.cidr.startsWith(env.CIDR_PREFIX)) &&
-          !n.internal
-        )?.address || '127.0.0.1';
-
-    const driverVersions = getNodeDriverVersions();
-    const { detectedCapacityGb, gpuCount, gpus: detectedGpus } = await getHardwareProfile();
-    const gpus = detectedGpus.map(g => ({ vendor: g.vendor, name: g.name, vramMb: g.vramMb }));
-    const tls = getTlsConfig(env);
-
+    const runtimeState = await collectNodeRuntimeState();
     const [row] = await getDB().insert(aiNodeT).values({
-      estCapacity: detectedCapacityGb,
-      gpuCount,
-      host,
+      ...runtimeState,
+      host: findHostIPv4Address(),
       port: env.PORT,
       available: true,
-      drivers: getNodeDrivers(),
-      driverVersions: await driverVersions,
-      gpus,
-      authToken,
-      tls: !!tls,
     }).onConflictDoUpdate({
       target: [aiNodeT.host, aiNodeT.port],
       targetWhere: sql`${aiNodeT.deletedAt} IS NULL`,
-      set: {
-        estCapacity: detectedCapacityGb,
-        gpuCount,
-        available: true,
-        drivers: getNodeDrivers(),
-        driverVersions: await driverVersions,
-        gpus,
-        authToken,
-        tls: !!getTlsConfig(env),
-      },
+      set: { ...runtimeState, available: true },
     }).returning({id: aiNodeT.id});
 
     idFile.write(row.id);
@@ -135,22 +146,14 @@ export async function getNodeId(){
 /** Sets the node to available, and updates driver capabilities and hardware profile */
 export async function setOnline(){
   const nodeId = await getNodeId();
-  const { detectedCapacityGb, gpuCount, gpus: detectedGpus } = await getHardwareProfile();
-  const driverVersions = await getNodeDriverVersions();
-  const gpus = detectedGpus.map(g => ({ vendor: g.vendor, name: g.name, vramMb: g.vramMb }));
+  const runtimeState = await collectNodeRuntimeState();
 
   await getDB()
     .update(aiNodeT)
     .set({
+      ...runtimeState,
       available: true,
       port: env.PORT,
-      tls: !!getTlsConfig(env),
-      drivers: getNodeDrivers(),
-      driverVersions,
-      gpus,
-      estCapacity: detectedCapacityGb,
-      gpuCount,
-      authToken,
     })
     .where(eq(aiNodeT.id, nodeId));
 }

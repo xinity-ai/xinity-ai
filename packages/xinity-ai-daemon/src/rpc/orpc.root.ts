@@ -1,5 +1,3 @@
 import { os } from "@orpc/server";
 
-const o = os.$context<{ headers: Headers }>();
-
-export const privateProcedure = o
+export const privateProcedure = os.$context<{ headers: Headers }>();

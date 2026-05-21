@@ -31,6 +31,7 @@ beforeAll(() => {
       return new Response("not found", { status: 404 });
     },
   });
+  if (server.port == null) throw new Error("Bun.serve did not allocate a TCP port");
   mockPort = server.port;
 });
 

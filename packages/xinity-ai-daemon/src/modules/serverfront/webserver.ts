@@ -41,11 +41,9 @@ export async function startServer() {
   } as const;
 
   const proto = tls ? "https" : "http";
-  if (env.UNIX_SOCKET) {
-    Bun.serve({ ...serveOptions, unix: env.UNIX_SOCKET });
-    rootLogger.info({ unix: env.UNIX_SOCKET, tls: !!tls }, `Daemon server started (${proto})`);
-  } else {
-    Bun.serve({ ...serveOptions, port: env.PORT, hostname: env.HOST });
-    rootLogger.info({ host: env.HOST, port: env.PORT, tls: !!tls }, `Daemon server started (${proto})`);
-  }
+  const serveTarget = env.UNIX_SOCKET
+    ? { unix: env.UNIX_SOCKET, idleTimeout: undefined }
+    : { port: env.PORT, hostname: env.HOST };
+  Bun.serve({ ...serveOptions, ...serveTarget });
+  rootLogger.info({ ...serveTarget, tls: !!tls }, `Daemon server started (${proto})`);
 }

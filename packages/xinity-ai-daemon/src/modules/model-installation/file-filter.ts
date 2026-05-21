@@ -2,20 +2,20 @@
 // matching rule wins. Globs are Bun.Glob.
 interface CompiledRule {
   glob: Bun.Glob;
-  negated: boolean;
+  includes: boolean;
 }
 
 function compile(rules: readonly string[]): CompiledRule[] {
   return rules.map((raw) => {
-    const negated = raw.startsWith("!");
-    return { glob: new Bun.Glob(negated ? raw.slice(1) : raw), negated };
+    const includes = raw.startsWith("!");
+    return { glob: new Bun.Glob(includes ? raw.slice(1) : raw), includes };
   });
 }
 
 export function isIncluded(path: string, compiled: readonly CompiledRule[]): boolean {
   let included = false;
   for (const rule of compiled) {
-    if (rule.glob.match(path)) included = rule.negated;
+    if (rule.glob.match(path)) included = rule.includes;
   }
   return included;
 }

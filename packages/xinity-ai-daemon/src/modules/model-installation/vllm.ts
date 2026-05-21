@@ -66,6 +66,10 @@ async function captureLogsAndMatch(id: string, ops: VllmOps): Promise<{ logs: st
   return { logs, fatalMatch: matchFatalPattern(logs) };
 }
 
+function errorWithPreCapturedLogs(message: string, logs: string): Error {
+  return Object.assign(new Error(message), { preCapturedLogs: logs });
+}
+
 function resolveDefaultOps(): VllmOps {
   return env.VLLM_BACKEND === "docker"
     ? createDockerVllmOps()
@@ -87,6 +91,24 @@ async function warmupChatModel(port: number, model: string): Promise<void> {
   } catch { /* best-effort */ }
 }
 
+async function markInstallationReady(installation: ModelInstallation, providerModel: string, modelType?: string): Promise<void> {
+  if (modelType !== "embedding" && modelType !== "rerank") {
+    await warmupChatModel(installation.port, providerModel);
+  }
+  await updateInstallationState(installation.id, "ready", { statusMessage: "vLLM server healthy" });
+}
+
+function throttledDownloadProgress(installationId: string, intervalMs: number): (progress: number) => Promise<void> {
+  let lastProgressAt = 0;
+  return async (progress) => {
+    const now = Date.now();
+    if (now - lastProgressAt >= intervalMs) {
+      lastProgressAt = now;
+      await updateInstallationState(installationId, "downloading", { progress });
+    }
+  };
+}
+
 function pollUntilHealthy$(
   installation: ModelInstallation,
   ops: VllmOps,
@@ -104,20 +126,18 @@ function pollUntilHealthy$(
 
       const restartCount = await ops.getRestartCount(installation.id);
 
-      if (restartCount >= env.VLLM_MAX_RESTART_COUNT) {
-        const { logs, fatalMatch } = await captureLogsAndMatch(installation.id, ops);
-        throw Object.assign(
-          new Error(`Container crash-looping (${restartCount} restarts, ${fatalMatch ?? "unknown reason"}): ${installation.model}`),
-          { preCapturedLogs: logs },
-        );
-      }
-
       if (restartCount > 0) {
         const { logs, fatalMatch } = await captureLogsAndMatch(installation.id, ops);
+        if (restartCount >= env.VLLM_MAX_RESTART_COUNT) {
+          throw errorWithPreCapturedLogs(
+            `Container crash-looping (${restartCount} restarts, ${fatalMatch ?? "unknown reason"}): ${installation.model}`,
+            logs,
+          );
+        }
         if (fatalMatch) {
-          throw Object.assign(
-            new Error(`Fatal error detected (${fatalMatch}): ${installation.model}`),
-            { preCapturedLogs: logs },
+          throw errorWithPreCapturedLogs(
+            `Fatal error detected (${fatalMatch}): ${installation.model}`,
+            logs,
           );
         }
       }
@@ -131,14 +151,7 @@ function pollUntilHealthy$(
     }),
     filter((healthy): healthy is true => healthy),
     take(1),
-    switchMap(() =>
-      from((async () => {
-        if (modelType !== "embedding" && modelType !== "rerank") {
-          await warmupChatModel(installation.port, providerModel);
-        }
-        await updateInstallationState(installation.id, "ready", { statusMessage: "vLLM server healthy" });
-      })()),
-    ),
+    switchMap(() => from(markInstallationReady(installation, providerModel, modelType))),
     ignoreElements(),
     endWith(void 0 as void),
   );
@@ -155,16 +168,9 @@ async function downloadAndStart(installation: ModelInstallation, ops: VllmOps): 
 
   await updateInstallationState(installation.id, "downloading", { statusMessage: "Downloading model", progress: 0 });
 
-  let lastProgressAt = 0;
   await downloadModel(
     providerModel,
-    async (progress) => {
-      const now = Date.now();
-      if (now - lastProgressAt >= 5000) {
-        lastProgressAt = now;
-        await updateInstallationState(installation.id, "downloading", { progress });
-      }
-    },
+    throttledDownloadProgress(installation.id, 5000),
     modelInfo?.downloadFilter ?? [],
   );
 
@@ -186,15 +192,30 @@ async function downloadAndStart(installation: ModelInstallation, ops: VllmOps): 
     kvCacheBytes: `${installation.kvCacheCapacity}g`,
     trustRemoteCode,
     gpuMemoryUtilization,
-    extraArgs: [
-      ...(modelType === "embedding" || modelType === "rerank" ? ["--runner", "pooling"] : []),
-      ...(hasToolsTag ? ["--enable-auto-tool-choice"] : []),
-      ...extraArgs,
-    ],
+    extraArgs: buildVllmExtraArgs(modelType, hasToolsTag, extraArgs),
   });
 
   return { modelType, providerModel };
 }
+
+export function buildVllmExtraArgs(
+  modelType: string | undefined,
+  hasToolsTag: boolean,
+  providerArgs: readonly string[],
+): string[] {
+  return [
+    ...(modelType === "embedding" || modelType === "rerank" ? ["--runner", "pooling"] : []),
+    ...(hasToolsTag ? ["--enable-auto-tool-choice"] : []),
+    ...providerArgs,
+  ];
+}
+
+/** Multiplier applied to estimated capacity to leave headroom for activations and fragmentation. */
+const CAPACITY_OVERHEAD_FACTOR = 1.1;
+/** GB of free GPU memory reserved for the OS / other processes when sizing a vLLM instance. */
+const FREE_MEM_RESERVE_GB = 1.0;
+/** Hard cap on vLLM's --gpu-memory-utilization so the driver never claims the whole device. */
+const MAX_GPU_UTILIZATION = 0.90;
 
 export function computeGpuUtilization(
   installation: Pick<ModelInstallation, "model" | "estCapacity">,
@@ -204,16 +225,12 @@ export function computeGpuUtilization(
   if (profile.gpuCount === 0 || profile.detectedCapacityGb === 0) return undefined;
 
   const totalCapacityGb = profile.detectedCapacityGb;
-  const requiredGb = installation.estCapacity * 1.1;
+  const requiredGb = installation.estCapacity * CAPACITY_OVERHEAD_FACTOR;
 
-  let utilization: number;
-  if (freeMemoryMb != null) {
-    const freeGb = freeMemoryMb / 1024;
-    const maxClaimGb = Math.max(freeGb - 1.0, requiredGb);
-    utilization = Math.min(maxClaimGb / totalCapacityGb, 0.90);
-  } else {
-    utilization = Math.min(requiredGb / totalCapacityGb, 0.90);
-  }
+  const claimGb = freeMemoryMb != null
+    ? Math.max(freeMemoryMb / 1024 - FREE_MEM_RESERVE_GB, requiredGb)
+    : requiredGb;
+  const utilization = Math.min(claimGb / totalCapacityGb, MAX_GPU_UTILIZATION);
 
   log.info(
     { model: installation.model, gpuMemoryUtilization: utilization.toFixed(3), estCapacityGb: installation.estCapacity, totalCapacityGb, freeMemoryMb },
@@ -402,9 +419,7 @@ function handleInstallationError(
 ): Observable<never> {
   log.error({ err, model: installation.model, installationId: installation.id }, "vLLM failed to start");
 
-  const preCapturedLogs: string | undefined =
-    (err as { preCapturedLogs?: string })?.preCapturedLogs ??
-    (err as { downloadLogs?: string })?.downloadLogs;
+  const preCapturedLogs = (err as { preCapturedLogs?: string })?.preCapturedLogs;
 
   return from(
     (async () => {
