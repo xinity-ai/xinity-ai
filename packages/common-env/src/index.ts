@@ -23,13 +23,13 @@ function resolveSecretFiles(
   const resolved: Record<string, string | undefined> = {};
 
   for (const key of keys) {
-    if (env[key] !== undefined && env[key] !== "") {
-      resolved[key] = env[key];
+    const direct = env[key];
+    if (direct !== undefined && direct !== "") {
+      resolved[key] = direct;
       continue;
     }
 
-    const fileKey = `${key}_FILE`;
-    const filePath = env[fileKey];
+    const filePath = env[`${key}_FILE`];
     if (filePath) {
       try {
         resolved[key] = readFileSync(filePath, "utf-8").trim();
@@ -46,11 +46,6 @@ function resolveSecretFiles(
 
 type ZodObjectWithShape = z.ZodType & { shape: Record<string, unknown> };
 
-/**
- * Parse environment variables through a Zod object schema with _FILE secret
- * support. Each key in the schema can be provided either directly or via a
- * KEY_FILE env var pointing to a file containing the value.
- */
 /**
  * Zod `.meta()` marker for env vars that should be treated as secrets.
  * Used by the CLI to decide which values go into LoadCredential files
@@ -85,6 +80,22 @@ export function clientPublic() {
   return { public: true as const };
 }
 
+/**
+ * Parse environment variables through a Zod object schema with _FILE secret
+ * support. Each key in the schema can be provided either directly or via a
+ * KEY_FILE env var pointing to a file containing the value.
+ */
+// Treat "" as unset so Compose's ${VAR:-} interpolation doesn't trip zod.
+function emptyStringsAsUndefined(
+  env: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  const out: Record<string, string | undefined> = {};
+  for (const [k, v] of Object.entries(env)) {
+    out[k] = v === "" ? undefined : v;
+  }
+  return out;
+}
+
 export function parseEnv<T extends ZodObjectWithShape>(
   schema: T,
   env: Record<string, string | undefined> = process.env as Record<
@@ -94,12 +105,7 @@ export function parseEnv<T extends ZodObjectWithShape>(
 ): z.infer<T> {
   const keys = Object.keys(schema.shape);
   const resolved = resolveSecretFiles(env, keys);
-  // Treat "" as unset so Compose's ${VAR:-} interpolation doesn't trip zod.
-  const coerced: Record<string, string | undefined> = {};
-  for (const k of Object.keys(resolved)) {
-    coerced[k] = resolved[k] === "" ? undefined : resolved[k];
-  }
-  return schema.parse(coerced);
+  return schema.parse(emptyStringsAsUndefined(resolved));
 }
 
 /**
@@ -117,13 +123,13 @@ export const tlsEnvSchema = z.object({
 
 /** Returns `{ cert, key }` if TLS is fully configured, `undefined` otherwise. Throws on partial config. */
 export function getTlsConfig(env: { XINITY_TLS_CERT?: string; XINITY_TLS_KEY?: string }) {
-  const hasCert = !!env.XINITY_TLS_CERT;
-  const hasKey = !!env.XINITY_TLS_KEY;
-  if (hasCert !== hasKey) {
+  const cert = env.XINITY_TLS_CERT;
+  const key = env.XINITY_TLS_KEY;
+  if (!cert && !key) return undefined;
+  if (!cert || !key) {
     throw new Error("XINITY_TLS_CERT and XINITY_TLS_KEY must both be set or both be unset");
   }
-  if (!hasCert) return undefined;
-  return { cert: env.XINITY_TLS_CERT!, key: env.XINITY_TLS_KEY! };
+  return { cert, key };
 }
 
 /** POSIX-safe single-quote shell escape. Strings made of only `[A-Za-z0-9@%+=:,./_-]` are returned as-is. */
