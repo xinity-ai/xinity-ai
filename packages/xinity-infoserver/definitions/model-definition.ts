@@ -96,8 +96,7 @@ export const ModelSchema = z.looseObject({
       for (const driverParams of Object.values(obj)) {
         if (!driverParams) continue;
         for (const dotPath of Object.keys(driverParams)) {
-          const topLevel = dotPath.split(".")[0];
-          if (BLOCKED_REQUEST_PARAM_PREFIXES.some(prefix => topLevel === prefix)) {
+          if (BLOCKED_REQUEST_PARAM_PREFIXES.includes(dotPath.split(".")[0]!)) {
             return false;
           }
         }

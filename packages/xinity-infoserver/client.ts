@@ -66,6 +66,12 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
     return data;
   }
 
+  async function fetchJsonOrThrow<T>(path: string, init?: RequestInit): Promise<T> {
+    const res = await fetch(`${baseUrl}${path}`, init);
+    if (!res.ok) throw new Error(`Infoserver error: ${res.status}`);
+    return res.json() as Promise<T>;
+  }
+
   /**
    * Fetches a model via the requested resolution path and returns a typed status result.
    * - `found`: model exists; result is cached for `cacheTtlMs`
@@ -102,11 +108,9 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
 
   async function fetchModelsByFamily(family: string): Promise<ModelWithSpecifier[]> {
     const key = `family:${family}`;
-    return cachedFetch(key, async () => {
-      const res = await fetch(`${baseUrl}/api/v1/models/family/${encodeURIComponent(family)}`);
-      if (!res.ok) throw new Error(`Infoserver error: ${res.status}`);
-      return res.json() as Promise<ModelWithSpecifier[]>;
-    });
+    return cachedFetch(key, () =>
+      fetchJsonOrThrow<ModelWithSpecifier[]>(`/api/v1/models/family/${encodeURIComponent(family)}`),
+    );
   }
 
   async function fetchModels(params?: FetchModelsParams): Promise<PaginatedModels> {
@@ -120,24 +124,20 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
     }
 
     const key = `list:${qs.toString()}`;
-    return cachedFetch(key, async () => {
-      const res = await fetch(`${baseUrl}/api/v1/models?${qs}`);
-      if (!res.ok) throw new Error(`Infoserver error: ${res.status}`);
-      return res.json() as Promise<PaginatedModels>;
-    });
+    return cachedFetch(key, () =>
+      fetchJsonOrThrow<PaginatedModels>(`/api/v1/models?${qs}`),
+    );
   }
 
   async function fetchModelsBatch(specifiers: string[]): Promise<Record<string, ModelWithSpecifier | null>> {
     const key = `batch:${specifiers.slice().sort().join(",")}`;
-    return cachedFetch(key, async () => {
-      const res = await fetch(`${baseUrl}/api/v1/models/resolve`, {
+    return cachedFetch(key, () =>
+      fetchJsonOrThrow<Record<string, ModelWithSpecifier | null>>(`/api/v1/models/resolve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ specifiers }),
-      });
-      if (!res.ok) throw new Error(`Infoserver error: ${res.status}`);
-      return res.json() as Promise<Record<string, ModelWithSpecifier | null>>;
-    });
+      }),
+    );
   }
 
   // Convenience methods that combine a fetch with pure tag helpers.
@@ -163,20 +163,25 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
     return tags.includes(tag);
   }
 
-  async function resolveDriverArgs(lookup: ModelLookup, driver?: "vllm" | "ollama"): Promise<string[]> {
+  async function withResolvedDriver<T>(
+    lookup: ModelLookup,
+    driver: "vllm" | "ollama" | undefined,
+    empty: T,
+    pick: (model: ModelWithSpecifier, driver: "vllm" | "ollama") => T,
+  ): Promise<T> {
     const model = await fetchModel(lookup);
-    if (!model) return [];
-    const d = driverFor(model, lookup, driver);
-    if (!d) return [];
-    return resolveArgsForDriver(model, d);
+    if (!model) return empty;
+    const resolved = driverFor(model, lookup, driver);
+    if (!resolved) return empty;
+    return pick(model, resolved);
+  }
+
+  async function resolveDriverArgs(lookup: ModelLookup, driver?: "vllm" | "ollama"): Promise<string[]> {
+    return withResolvedDriver(lookup, driver, [], resolveArgsForDriver);
   }
 
   async function resolveRequestParams(lookup: ModelLookup, driver?: "vllm" | "ollama"): Promise<RequestParamMap> {
-    const model = await fetchModel(lookup);
-    if (!model) return {};
-    const d = driverFor(model, lookup, driver);
-    if (!d) return {};
-    return resolveRequestParamsForDriver(model, d);
+    return withResolvedDriver(lookup, driver, {}, resolveRequestParamsForDriver);
   }
 
   return {

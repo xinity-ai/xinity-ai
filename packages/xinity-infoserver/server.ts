@@ -36,10 +36,10 @@ const server = Bun.serve({
     "/schemas/model.v1.json": Response.json(createModelJsonSchema()),
 
     // Programmatic API
-    "/api/v1/models": (req) => handleModelList(req),
-    "/api/v1/models/resolve": (req) => handleBatchResolve(req),
-    "/api/v1/models/family/:family": (req) => handleModelsByFamily(req),
-    "/api/v1/models/:specifier": (req) => handleModelBySpecifier(req),
+    "/api/v1/models": handleModelList,
+    "/api/v1/models/resolve": handleBatchResolve,
+    "/api/v1/models/family/:family": handleModelsByFamily,
+    "/api/v1/models/:specifier": handleModelBySpecifier,
   },
   fetch() {
     return new Response("Not Found", { status: 404 });
