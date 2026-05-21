@@ -28,24 +28,30 @@ export type AuthResult = {
   collectData: boolean;
 }
 
+function toAuthResult(key: { id: string; organizationId: string; applicationId: string | null; collectData: boolean }): AuthResult {
+  return {
+    keyId: key.id,
+    orgId: key.organizationId,
+    applicationId: key.applicationId,
+    collectData: key.collectData,
+  };
+}
+
 /** map to keep track of ongoing auth checks, to deal with sudden bursts of requests from the same key */
 const inflightAuth = new Map<string, Promise<Response | AuthResult>>();
 
+const BEARER_PREFIX = "Bearer ";
+const API_KEY_SPECIFIER_LENGTH = 25;
+
 export async function checkAuth(authHeader: string): Promise<Response | AuthResult> {
-  if (!authHeader.startsWith("Bearer ")) {
+  if (!authHeader.startsWith(BEARER_PREFIX)) {
     return genericUnauthorized("Missing API Key");
   }
-  const key = authHeader.substring(7);
-  const prefix = key.substring(0, 25);
+  const key = authHeader.substring(BEARER_PREFIX.length);
+  const prefix = key.substring(0, API_KEY_SPECIFIER_LENGTH);
   const secret = await getApiKeyCache(prefix);
-  if (secret) {
-    return {
-      keyId: secret.id,
-      orgId: secret.organizationId,
-      applicationId: secret.applicationId,
-      collectData: secret.collectData ?? true,
-    };
-  }
+  if (secret) return toAuthResult(secret);
+
   const inflight = inflightAuth.get(key);
   if (inflight) return inflight;
   const promise = verifyKeyAgainstDb(key, prefix).finally(() => inflightAuth.delete(key));
@@ -80,32 +86,27 @@ async function verifyKeyAgainstDb(key: string, prefix: string): Promise<Response
     return genericUnauthorized()
   }
   setApiKeyCache(prefix, apiKeyObj);
-  return {
-    keyId: apiKeyObj.id,
-    orgId: apiKeyObj.organizationId,
-    applicationId: apiKeyObj.applicationId,
-    collectData: apiKeyObj.collectData,
-  };
+  return toAuthResult(apiKeyObj);
 }
 
 type PartialApiKey = Pick<AIAPIKeyT, "organizationId" | "id" | "applicationId" | "collectData">;
 const pickAttrs = pick(["organizationId", "id", "applicationId", "collectData"] satisfies (keyof AIAPIKeyT)[]);
 const API_KEY_CACHE_TTL_SECONDS = 120;
 
+const apiKeyCacheKey = (identifier: string) => `apikey:${identifier}`;
+
 function setApiKeyCache(
   identifier: string,
   data: AIAPIKeyT,
   ttlSeconds: number = API_KEY_CACHE_TTL_SECONDS,
 ): void {
-  const key = `apikey:${identifier}`;
-  void redis.set(key, JSON.stringify(pickAttrs(data)), "EX", ttlSeconds)
+  void redis.set(apiKeyCacheKey(identifier), JSON.stringify(pickAttrs(data)), "EX", ttlSeconds)
     .catch((err: unknown) => log.warn({ err }, "Redis error in setApiKeyCache"));
 }
 
 async function getApiKeyCache(identifier: string): Promise<PartialApiKey | null> {
   try {
-    const key = `apikey:${identifier}`;
-    const result = await redis.get(key);
+    const result = await redis.get(apiKeyCacheKey(identifier));
     if (!result) return null;
     const parsed = JSON.parse(result);
     // Handle old cache entries missing collectData (safe default during rolling deploy)

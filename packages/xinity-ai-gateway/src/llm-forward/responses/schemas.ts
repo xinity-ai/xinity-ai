@@ -37,6 +37,11 @@ const ReasoningSchema = z.object({
   summary: z.enum(["auto", "concise", "detailed"]).nullable().optional(),
 }).optional();
 
+const ToolChoiceSchema = z.union([
+  z.enum(["auto", "none", "required"]),
+  z.looseObject({ type: z.string() }),
+]);
+
 export const CreateResponseBodySchema = z.object({
   model: z.string(),
   input: z.unknown(),
@@ -52,10 +57,7 @@ export const CreateResponseBodySchema = z.object({
   seed: z.number().optional(),
   instructions: z.string().nullable().optional(),
   tools: z.array(ToolDefinitionSchema).optional().default([]),
-  tool_choice: z.union([
-    z.enum(["auto", "none", "required"]),
-    z.looseObject({ type: z.string() }),
-  ]).optional().default("auto"),
+  tool_choice: ToolChoiceSchema.optional().default("auto"),
   text: TextFormatSchema,
   include: z.array(z.string()).optional().default([]),
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
@@ -191,10 +193,7 @@ export const ResponseObjectSchema = z.object({
   text: z.object({
     format: z.looseObject({ type: z.string() }),
   }).nullable(),
-  tool_choice: z.union([
-    z.enum(["auto", "none", "required"]),
-    z.looseObject({ type: z.string() }),
-  ]),
+  tool_choice: ToolChoiceSchema,
   tools: z.array(ToolDefinitionSchema),
   top_p: z.number().nullable(),
   truncation: z.string().nullable(),
@@ -205,67 +204,45 @@ export const ResponseObjectSchema = z.object({
 
 export type ResponseObject = z.infer<typeof ResponseObjectSchema>;
 
-export const ResponseCreatedEventSchema = z.object({
-  type: z.literal("response.created"),
-  response: ResponseObjectSchema,
-  sequence_number: z.number(),
-});
+function responseLifecycleEventSchema<T extends string>(type: T) {
+  return z.object({
+    type: z.literal(type),
+    response: ResponseObjectSchema,
+    sequence_number: z.number(),
+  });
+}
 
-export const ResponseInProgressEventSchema = z.object({
-  type: z.literal("response.in_progress"),
-  response: ResponseObjectSchema,
-  sequence_number: z.number(),
-});
+export const ResponseCreatedEventSchema = responseLifecycleEventSchema("response.created");
+export const ResponseInProgressEventSchema = responseLifecycleEventSchema("response.in_progress");
+export const ResponseCompletedEventSchema = responseLifecycleEventSchema("response.completed");
+export const ResponseFailedEventSchema = responseLifecycleEventSchema("response.failed");
+export const ResponseIncompleteEventSchema = responseLifecycleEventSchema("response.incomplete");
 
-export const ResponseCompletedEventSchema = z.object({
-  type: z.literal("response.completed"),
-  response: ResponseObjectSchema,
-  sequence_number: z.number(),
-});
+function outputItemEventSchema<T extends string>(type: T) {
+  return z.object({
+    type: z.literal(type),
+    output_index: z.number(),
+    item: OutputItemSchema,
+    sequence_number: z.number(),
+  });
+}
 
-export const ResponseFailedEventSchema = z.object({
-  type: z.literal("response.failed"),
-  response: ResponseObjectSchema,
-  sequence_number: z.number(),
-});
+export const OutputItemAddedEventSchema = outputItemEventSchema("response.output_item.added");
+export const OutputItemDoneEventSchema = outputItemEventSchema("response.output_item.done");
 
-export const ResponseIncompleteEventSchema = z.object({
-  type: z.literal("response.incomplete"),
-  response: ResponseObjectSchema,
-  sequence_number: z.number(),
-});
+function contentPartEventSchema<T extends string>(type: T) {
+  return z.object({
+    type: z.literal(type),
+    item_id: z.string(),
+    output_index: z.number(),
+    content_index: z.number(),
+    part: ContentPartSchema,
+    sequence_number: z.number(),
+  });
+}
 
-export const OutputItemAddedEventSchema = z.object({
-  type: z.literal("response.output_item.added"),
-  output_index: z.number(),
-  item: OutputItemSchema,
-  sequence_number: z.number(),
-});
-
-export const OutputItemDoneEventSchema = z.object({
-  type: z.literal("response.output_item.done"),
-  output_index: z.number(),
-  item: OutputItemSchema,
-  sequence_number: z.number(),
-});
-
-export const ContentPartAddedEventSchema = z.object({
-  type: z.literal("response.content_part.added"),
-  item_id: z.string(),
-  output_index: z.number(),
-  content_index: z.number(),
-  part: ContentPartSchema,
-  sequence_number: z.number(),
-});
-
-export const ContentPartDoneEventSchema = z.object({
-  type: z.literal("response.content_part.done"),
-  item_id: z.string(),
-  output_index: z.number(),
-  content_index: z.number(),
-  part: ContentPartSchema,
-  sequence_number: z.number(),
-});
+export const ContentPartAddedEventSchema = contentPartEventSchema("response.content_part.added");
+export const ContentPartDoneEventSchema = contentPartEventSchema("response.content_part.done");
 
 export const OutputTextDeltaEventSchema = z.object({
   type: z.literal("response.output_text.delta"),
@@ -295,19 +272,17 @@ export const OutputTextAnnotationAddedEventSchema = z.object({
   sequence_number: z.number(),
 });
 
-export const WebSearchCallInProgressEventSchema = z.object({
-  type: z.literal("response.web_search_call.in_progress"),
-  item_id: z.string(),
-  output_index: z.number(),
-  sequence_number: z.number(),
-});
+function webSearchCallProgressEventSchema<T extends string>(type: T) {
+  return z.object({
+    type: z.literal(type),
+    item_id: z.string(),
+    output_index: z.number(),
+    sequence_number: z.number(),
+  });
+}
 
-export const WebSearchCallSearchingEventSchema = z.object({
-  type: z.literal("response.web_search_call.searching"),
-  item_id: z.string(),
-  output_index: z.number(),
-  sequence_number: z.number(),
-});
+export const WebSearchCallInProgressEventSchema = webSearchCallProgressEventSchema("response.web_search_call.in_progress");
+export const WebSearchCallSearchingEventSchema = webSearchCallProgressEventSchema("response.web_search_call.searching");
 
 export const WebSearchCallDoneEventSchema = z.object({
   type: z.literal("response.web_search_call.done"),

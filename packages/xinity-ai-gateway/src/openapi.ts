@@ -34,15 +34,11 @@ export async function createOpenapiSpec() {
       securitySchemes: openaiCompatSecuritySchemes,
     },
   });
-  return new Response(JSON.stringify(spec), {
-    headers: { "content-type": "application/json" },
-    status: 200,
-  })
+  return Response.json(spec);
 }
 
 export function createScalarPage() {
   return new Response(scalar.toString(), {
     headers: { "Content-Type": "text/html" },
-    status: 200,
-  })
+  });
 }

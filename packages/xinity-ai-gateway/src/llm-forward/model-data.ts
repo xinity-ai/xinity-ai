@@ -31,7 +31,18 @@ async function publicModelSpecifierToModelSource(orgId: string, specifier: strin
   }
 }
 
-async function getModelSources(lookup: ModelLookup) {
+type HostLocation = {
+  driver: string;
+  authToken: string | null;
+  tls: boolean;
+};
+
+type ModelSources = {
+  hosts: string[];
+  byHost: Map<string, HostLocation>;
+};
+
+async function getModelSources(lookup: ModelLookup): Promise<ModelSources> {
   const modelLocations = await getDB().select({
     host: aiNodeT.host,
     nodePort: aiNodeT.port,
@@ -42,19 +53,13 @@ async function getModelSources(lookup: ModelLookup) {
     .innerJoin(aiNodeT, sql`${modelInstallationT.nodeId} = ${aiNodeT.id} AND ${aiNodeT.deletedAt} IS NULL`)
     .where(sql`${installationMatchesLookup(lookupKey(lookup))} AND ${modelInstallationT.deletedAt} IS NULL`);
 
-  const driverMap = new Map<string, string>();
-  const authTokenMap = new Map<string, string | null>();
-  const tlsMap = new Map<string, boolean>();
-  const hosts: string[] = [];
+  const byHost = new Map<string, HostLocation>();
   for (const loc of modelLocations) {
     const key = `${loc.host}:${loc.nodePort}`;
-    driverMap.set(key, loc.driver);
-    authTokenMap.set(key, loc.authToken);
-    tlsMap.set(key, loc.tls);
-    hosts.push(key);
+    byHost.set(key, { driver: loc.driver, authToken: loc.authToken, tls: loc.tls });
   }
 
-  return { hosts: Array.from(new Set(hosts)), driverMap, authTokenMap, tlsMap };
+  return { hosts: [...byHost.keys()], byHost };
 }
 
 type ModelInfo = {
@@ -82,12 +87,7 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, keyId
   if (!accessInfo) {
     return;
   }
-  const emptySources = {
-    hosts: [] as string[],
-    driverMap: new Map<string, string>(),
-    authTokenMap: new Map<string, string | null>(),
-    tlsMap: new Map<string, boolean>(),
-  };
+  const emptySources: ModelSources = { hosts: [], byHost: new Map() };
   const [finalSources, earlySources] = await Promise.all([
     getModelSources(accessInfo.primary),
     accessInfo.early
@@ -112,19 +112,14 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, keyId
     ? accessInfo.primary
     : (accessInfo.early ?? accessInfo.primary);
 
-  // Look up driver and auth token from whichever source set the host came from
-  const driver = finalSources.driverMap.get(result.host)
-    ?? earlySources.driverMap.get(result.host)
-    ?? "ollama";
-  const authToken = finalSources.authTokenMap.get(result.host)
-    ?? earlySources.authTokenMap.get(result.host)
-    ?? null;
-  const tls = finalSources.tlsMap.get(result.host)
-    ?? earlySources.tlsMap.get(result.host)
-    ?? false;
+  const location = finalSources.byHost.get(result.host) ?? earlySources.byHost.get(result.host);
+  const driver = location?.driver ?? "ollama";
+  const authToken = location?.authToken ?? null;
+  const tls = location?.tls ?? false;
+  const driverProvider = driver as "vllm" | "ollama";
 
   const model = await infoClient.fetchModel(resolvedLookup);
-  const providerModel = model?.providers[driver as "vllm" | "ollama"]
+  const providerModel = model?.providers[driverProvider]
     ?? (resolvedLookup.kind === "legacy" ? resolvedLookup.providerModel : undefined);
   if (!providerModel) {
     result.release();
@@ -132,8 +127,8 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, keyId
   }
 
   const type = model?.type;
-  const tags = model ? resolveTagsForDriver(model, driver as "vllm" | "ollama") : undefined;
-  const requestParams = model ? resolveRequestParamsForDriver(model, driver as "vllm" | "ollama") : undefined;
+  const tags = model ? resolveTagsForDriver(model, driverProvider) : undefined;
+  const requestParams = model ? resolveRequestParamsForDriver(model, driverProvider) : undefined;
 
   return {
     host: result.host,

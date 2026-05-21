@@ -15,21 +15,10 @@ type UsageRecord = {
   logged: boolean;
 };
 
-export function recordUsageEvent(record: UsageRecord): Promise<void> {
-  return getDB()
-    .insert(usageEventT)
-    .values({
-      organizationId: record.organizationId,
-      applicationId: record.applicationId ?? undefined,
-      apiKeyId: record.apiKeyId,
-      model: record.model,
-      inputTokens: record.inputTokens,
-      outputTokens: record.outputTokens,
-      duration: record.duration,
-      logged: record.logged,
-    })
-    .then(() => {})
-    .catch((err) => {
-      log.error({ err }, "Usage recording error");
-    });
+export async function recordUsageEvent(record: UsageRecord): Promise<void> {
+  try {
+    await getDB().insert(usageEventT).values(record);
+  } catch (err) {
+    log.error({ err }, "Usage recording error");
+  }
 }

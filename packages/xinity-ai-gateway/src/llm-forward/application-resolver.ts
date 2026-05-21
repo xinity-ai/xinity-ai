@@ -1,4 +1,4 @@
-import { aiApplicationT, sql, isNull } from "common-db";
+import { aiApplicationT, sql } from "common-db";
 import { getDB } from "../db";
 import { redis } from "bun";
 import { rootLogger } from "../logger";
@@ -29,7 +29,7 @@ export async function resolveApplicationByName(
     .select({ id: aiApplicationT.id })
     .from(aiApplicationT)
     .where(
-      sql`${aiApplicationT.name} = ${name} AND ${aiApplicationT.organizationId} = ${organizationId} AND ${isNull(aiApplicationT.deletedAt)}`
+      sql`${aiApplicationT.name} = ${name} AND ${aiApplicationT.organizationId} = ${organizationId} AND ${aiApplicationT.deletedAt} IS NULL`
     )
     .limit(1);
 

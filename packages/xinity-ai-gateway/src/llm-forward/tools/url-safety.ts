@@ -65,14 +65,8 @@ export function validateUrl(rawUrl: string): string | null {
 
   const hostname = parsed.hostname.toLowerCase();
 
-  if (BLOCKED_HOSTNAMES.has(hostname)) {
+  if (BLOCKED_HOSTNAMES.has(hostname) || BLOCKED_HOSTNAME_SUFFIXES.some(s => hostname.endsWith(s))) {
     return `Blocked hostname: ${hostname}`;
-  }
-
-  for (const suffix of BLOCKED_HOSTNAME_SUFFIXES) {
-    if (hostname.endsWith(suffix)) {
-      return `Blocked hostname: ${hostname}`;
-    }
   }
 
   // Check if hostname is an IP address

@@ -1,13 +1,11 @@
 import { generateText, streamText } from "ai";
 import { resolveAuthorizedModel } from "../ai-sdk";
-import { errorResponse, logChatUsage, validateModelType, toModelMessages, SSE_RESPONSE_HEADERS, validationError, isUpstreamError } from "../util";
+import { errorResponse, logChatUsage, validateModelType, toModelMessages, SSE_RESPONSE_HEADERS, validationError, isUpstreamError, upstreamHttpStatus, clientFacingErrorMessage, modelLacksToolSupport } from "../util";
 import type { ApiCallInputMessage } from "common-db";
 import { checkAuth, type AuthResult } from "../auth";
 import { deleteResponse, getResponse, saveResponse } from "../response-store";
 import { rootLogger } from "../../logger";
 import { processMessageImages, imageStore } from "../../image-store";
-
-const log = rootLogger.child({ name: "handle-responses" });
 import {
   CreateResponseBodySchema,
   type CreateResponseBody,
@@ -26,6 +24,8 @@ import {
   buildGenerationParams,
 } from "../responses/builders";
 import { createResponseStream } from "../responses/stream";
+
+const log = rootLogger.child({ name: "handle-responses" });
 
 // ---------------------------------------------------------------------------
 // Message normalisation
@@ -234,11 +234,11 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
       metadata: body.metadata as Record<string, unknown> | undefined,
     } as const;
 
-    if (hasTools && modelInfo.tags !== undefined && !modelInfo.tags.includes("tools")) {
+    if (hasTools && modelLacksToolSupport(modelInfo)) {
       return errorResponse("Model does not support tool use", 400);
     }
 
-    if (outputConfig.usesStructuredOutput && modelInfo.tags !== undefined && !modelInfo.tags.includes("tools")) {
+    if (outputConfig.usesStructuredOutput && modelLacksToolSupport(modelInfo)) {
       return errorResponse("Model does not support structured output", 400);
     }
 
@@ -248,12 +248,9 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
     // Background mode
     // -------------------------------------------------------------------
     if (background) {
-      const baseResponse = createResponseObject({
-        responseId, createdAt, model: originalModel, status: "in_progress", body,
-      });
-      await saveResponse(auth.orgId, responseId, baseResponse);
+      const baseResponse = await createAndSaveInProgressResponse(auth.orgId, responseId, createdAt, originalModel, body);
 
-      void runBackground(auth.orgId, responseId, createdAt, originalModel, body, genParams, include, outputConfig, logFields);
+      void runBackground({ orgId: auth.orgId, responseId, createdAt, originalModel, body, genParams, include, outputConfig, logFields });
 
       return Response.json(baseResponse, { status: 202 });
     }
@@ -266,10 +263,7 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
       const toolCalls: ToolCallItem[] = [];
       const toolResults: ToolResultData[] = [];
 
-      const baseResponse = createResponseObject({
-        responseId, createdAt, model: originalModel, status: "in_progress", body,
-      });
-      await saveResponse(auth.orgId, responseId, baseResponse);
+      const baseResponse = await createAndSaveInProgressResponse(auth.orgId, responseId, createdAt, originalModel, body);
 
       // Tool tracking happens inline in the stream for consistent IDs
       const result = streamText(genParams);
@@ -293,41 +287,33 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
     // -------------------------------------------------------------------
     // Non-streaming mode (default)
     // -------------------------------------------------------------------
-    const toolCalls: ToolCallItem[] = [];
-    const toolResults: ToolResultData[] = [];
-
-    const result = await generateText({
-      ...genParams,
-      onStepFinish: createToolTracker(toolCalls, toolResults),
+    const responseBody = await generateAndPersistCompletedResponse({
+      orgId: auth.orgId, responseId, createdAt, originalModel,
+      body, genParams, include, outputConfig, logFields,
     });
-
-    const responseText = resolveResponseText(result.text, () => result.output, outputConfig.usesStructuredOutput);
-    const responseBody = createResponseObject({
-      responseId, createdAt, model: originalModel, status: "completed",
-      output: buildOutputItems(responseId, responseText, toolCalls, toolResults, include),
-      usage: result.usage, body,
-    });
-
-    await saveResponse(auth.orgId, responseId, responseBody);
-    logChatUsage({
-      ...logFields,
-      usage: result.usage,
-      outputData: { model: originalModel, choices: [{ index: 0, message: { role: "assistant", content: responseText } }] },
-      stream: false,
-    });
-
     return Response.json(responseBody);
   } catch (error) {
-    if (isUpstreamError(error) && error instanceof Error) {
-      const errObj = error as unknown as Record<string, unknown>;
-      const status = errObj.statusCode ?? errObj.status;
-      const code = typeof status === "number" && status >= 400 && status < 600 ? status : 502;
+    if (isUpstreamError(error)) {
       log.error({ err: error }, "Upstream error");
-      return errorResponse(error.message || "Bad Gateway", code as number);
+      return errorResponse(error.message || "Bad Gateway", upstreamHttpStatus(error));
     }
     log.error({ err: error }, "Internal gateway error");
     return errorResponse("Internal Server Error", 500);
   }
+}
+
+async function createAndSaveInProgressResponse(
+  orgId: string,
+  responseId: string,
+  createdAt: number,
+  originalModel: string,
+  body: CreateResponseBody,
+) {
+  const baseResponse = createResponseObject({
+    responseId, createdAt, model: originalModel, status: "in_progress", body,
+  });
+  await saveResponse(orgId, responseId, baseResponse);
+  return baseResponse;
 }
 
 // ---------------------------------------------------------------------------
@@ -344,44 +330,52 @@ type LogFields = {
   readonly metadata: Record<string, unknown> | undefined;
 };
 
-async function runBackground(
-  orgId: string,
-  responseId: string,
-  createdAt: number,
-  originalModel: string,
-  body: CreateResponseBody,
-  genParams: ReturnType<typeof buildGenerationParams>,
-  include: IncludeValue[],
-  outputConfig: ReturnType<typeof buildOutputConfig>,
-  logFields: LogFields,
-) {
+type GeneratePersistArgs = {
+  orgId: string;
+  responseId: string;
+  createdAt: number;
+  originalModel: string;
+  body: CreateResponseBody;
+  genParams: ReturnType<typeof buildGenerationParams>;
+  include: IncludeValue[];
+  outputConfig: ReturnType<typeof buildOutputConfig>;
+  logFields: LogFields;
+};
+
+async function generateAndPersistCompletedResponse(args: GeneratePersistArgs) {
+  const { orgId, responseId, createdAt, originalModel, body, genParams, include, outputConfig, logFields } = args;
   const toolCalls: ToolCallItem[] = [];
   const toolResults: ToolResultData[] = [];
+
+  const result = await generateText({
+    ...genParams,
+    onStepFinish: createToolTracker(toolCalls, toolResults),
+  });
+  const responseText = resolveResponseText(result.text, () => result.output, outputConfig.usesStructuredOutput);
+  const completedResponse = createResponseObject({
+    responseId, createdAt, model: originalModel, status: "completed",
+    output: buildOutputItems(responseId, responseText, toolCalls, toolResults, include),
+    usage: result.usage, body,
+  });
+  await saveResponse(orgId, responseId, completedResponse);
+  logChatUsage({
+    ...logFields,
+    usage: result.usage,
+    outputData: { model: originalModel, choices: [{ index: 0, message: { role: "assistant", content: responseText } }] },
+    stream: false,
+  });
+  return completedResponse;
+}
+
+async function runBackground(args: GeneratePersistArgs) {
+  const { orgId, responseId, createdAt, originalModel, body } = args;
   try {
-    const result = await generateText({
-      ...genParams,
-      onStepFinish: createToolTracker(toolCalls, toolResults),
-    });
-    const responseText = resolveResponseText(result.text, () => result.output, outputConfig.usesStructuredOutput);
-    const completedResponse = createResponseObject({
-      responseId, createdAt, model: originalModel, status: "completed",
-      output: buildOutputItems(responseId, responseText, toolCalls, toolResults, include),
-      usage: result.usage, body,
-    });
-    await saveResponse(orgId, responseId, completedResponse);
-    logChatUsage({
-      ...logFields,
-      usage: result.usage,
-      outputData: { model: originalModel, choices: [{ index: 0, message: { role: "assistant", content: responseText } }] },
-      stream: false,
-    });
+    await generateAndPersistCompletedResponse(args);
   } catch (error) {
     if (!isUpstreamError(error)) {
       log.error({ err: error, responseId }, "Background response generation failed");
     }
-    const message = isUpstreamError(error) && error instanceof Error
-      ? error.message
-      : "Gateway error";
+    const message = clientFacingErrorMessage(error);
     const failedResponse = markResponseFailed(
       createResponseObject({ responseId, createdAt, model: originalModel, status: "failed", body }),
       message,

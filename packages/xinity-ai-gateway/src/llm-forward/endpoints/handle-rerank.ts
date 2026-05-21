@@ -2,8 +2,7 @@ import { z } from "zod";
 import { forwardBackendError } from "../util";
 import { withEndpointGuards } from "../endpoint-guards";
 import { rootLogger } from "../../logger";
-import { env } from "../../env";
-import { backendFetch, backendUrl } from "../backend-fetch";
+import { backendPostJson } from "../backend-fetch";
 
 const log = rootLogger.child({ name: "handle-rerank" });
 
@@ -20,19 +19,13 @@ export const handleRerank = withEndpointGuards({
   bodySchema: RerankBodySchema,
   log,
   handler: async ({ body, modelInfo, originalModel, req }) => {
-    const backendResponse = await backendFetch(backendUrl(modelInfo.host, modelInfo.model, "/v1/rerank", modelInfo.tls), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: modelInfo.model,
-        query: body.query,
-        documents: body.documents,
-        top_n: body.top_n,
-        return_documents: body.return_documents,
-      }),
-      signal: AbortSignal.any([req.signal, AbortSignal.timeout(env.BACKEND_TIMEOUT_MS)]),
-      authToken: modelInfo.authToken ?? undefined,
-    });
+    const backendResponse = await backendPostJson(modelInfo, "/v1/rerank", {
+      model: modelInfo.model,
+      query: body.query,
+      documents: body.documents,
+      top_n: body.top_n,
+      return_documents: body.return_documents,
+    }, req.signal);
 
     if (!backendResponse.ok) {
       return forwardBackendError(backendResponse, log);

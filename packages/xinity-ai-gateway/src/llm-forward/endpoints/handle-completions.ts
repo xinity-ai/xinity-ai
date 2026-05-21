@@ -1,14 +1,12 @@
 import { z } from "zod";
-import { errorResponse, forwardBackendError } from "../util";
+import { errorResponse } from "../util";
 import { withEndpointGuards } from "../endpoint-guards";
 import { BackendCompletionChunkSchema } from "../backend-schemas";
 import type { ApiCallInputMessage } from "common-db";
 import { rootLogger } from "../../logger";
-import { env } from "../../env";
-import { backendFetch, backendUrl } from "../backend-fetch";
+import { backendPostJson } from "../backend-fetch";
 import {
-  forwardOpenAINonStream,
-  forwardOpenAIStream,
+  forwardOpenAIResponse,
   type NonStreamSpec,
   type StreamSpec,
 } from "../openai-forward";
@@ -89,7 +87,7 @@ export const handleCompletion = withEndpointGuards({
   handler: async ({ auth, body, modelInfo, originalModel, req }) => {
     const promptText = normalizePrompt(body.prompt);
     if (!promptText) {
-      return errorResponse("Unsupported data type", 422);
+      return errorResponse("Missing or empty 'prompt' field", 400);
     }
 
     const callStartTime = Date.now();
@@ -121,32 +119,14 @@ export const handleCompletion = withEndpointGuards({
       fetchBody.stream_options = { include_usage: true };
     }
 
-    const backendResponse = await backendFetch(backendUrl(modelInfo.host, modelInfo.model, "/v1/completions", modelInfo.tls), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(fetchBody),
-      signal: AbortSignal.any([req.signal, AbortSignal.timeout(env.BACKEND_TIMEOUT_MS)]),
-      authToken: modelInfo.authToken ?? undefined,
-    });
+    const backendResponse = await backendPostJson(modelInfo, "/v1/completions", fetchBody, req.signal);
 
-    if (!backendResponse.ok) {
-      return forwardBackendError(backendResponse, log);
-    }
-
-    if (body.stream) {
-      return forwardOpenAIStream({
-        backendResponse,
-        originalModel,
-        spec: completionStreamSpec,
-        logFields,
-        log,
-      });
-    }
-
-    return forwardOpenAINonStream({
+    return forwardOpenAIResponse({
       backendResponse,
       originalModel,
-      spec: completionNonStreamSpec,
+      stream: body.stream,
+      streamSpec: completionStreamSpec,
+      nonStreamSpec: completionNonStreamSpec,
       logFields,
       log,
     });

@@ -137,15 +137,17 @@ export type FunctionToolDefinition = {
   strict?: boolean;
 };
 
+function isBuiltinToolName(value: unknown): value is ResponseToolName {
+  return typeof value === "string" && RESPONSE_TOOL_NAMES.includes(value as ResponseToolName);
+}
+
 function parseBuiltinToolNames(tools: unknown[]): ResponseToolName[] {
   if (!Array.isArray(tools)) return [];
   return tools
     .map((t) => {
-      if (typeof t === "string" && RESPONSE_TOOL_NAMES.includes(t as ResponseToolName))
-        return t as ResponseToolName;
-      if (typeof t === "object" && t !== null && "type" in t) {
-        const type = (t as { type: string }).type;
-        if (RESPONSE_TOOL_NAMES.includes(type as ResponseToolName)) return type as ResponseToolName;
+      if (isBuiltinToolName(t)) return t;
+      if (typeof t === "object" && t !== null && "type" in t && isBuiltinToolName((t as { type: unknown }).type)) {
+        return (t as { type: ResponseToolName }).type;
       }
       return null;
     })
@@ -191,22 +193,22 @@ export type ResolvedTools = {
   hasBuiltinTools: boolean;
 };
 
+function resolveBuiltinNames(tools: unknown[], toolChoice: unknown): ResponseToolName[] {
+  if (toolChoice === "none") return [];
+  if (isBuiltinToolName(toolChoice)) return [toolChoice];
+  if (typeof toolChoice === "object" && toolChoice !== null && "type" in toolChoice) {
+    const t = (toolChoice as { type: unknown }).type;
+    if (isBuiltinToolName(t)) return [t];
+  }
+  return parseBuiltinToolNames(tools);
+}
+
 /** Determines which tools to activate based on `tools` and `tool_choice`. */
 export function resolveActiveTools(
   tools: unknown[],
   toolChoice: unknown,
 ): ResolvedTools {
-  let builtinNames: ResponseToolName[];
-  if (toolChoice === "none") {
-    builtinNames = [];
-  } else if (typeof toolChoice === "string" && RESPONSE_TOOL_NAMES.includes(toolChoice as ResponseToolName)) {
-    builtinNames = [toolChoice as ResponseToolName];
-  } else if (typeof toolChoice === "object" && toolChoice !== null && "type" in toolChoice) {
-    const t = (toolChoice as { type: string }).type;
-    builtinNames = RESPONSE_TOOL_NAMES.includes(t as ResponseToolName) ? [t as ResponseToolName] : parseBuiltinToolNames(tools);
-  } else {
-    builtinNames = parseBuiltinToolNames(tools);
-  }
+  const builtinNames = resolveBuiltinNames(tools, toolChoice);
 
   const activeTools: ToolSet = {};
 
@@ -354,7 +356,7 @@ export function createResponseObject(params: ResponsePayloadParams): ResponseObj
       : null,
     store: body.store ?? true,
     temperature: body.temperature ?? null,
-    text: body.text ? { format: body.text.format ?? { type: "text" } } : { format: { type: "text" } },
+    text: { format: body.text?.format ?? { type: "text" } },
     tool_choice: body.tool_choice ?? "auto",
     tools: body.tools ?? [],
     top_p: body.top_p ?? null,
@@ -374,18 +376,24 @@ export function markResponseFailed(response: ResponseObject, message: string): R
 // Output item construction
 // ---------------------------------------------------------------------------
 
+type WebSearchResultEntry = { url: string; title?: string };
+
+function readWebSearchResults(value: unknown): WebSearchResultEntry[] | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  return (value as { results?: WebSearchResultEntry[] }).results;
+}
+
+export function readWebSearchQuery(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  return (value as { query?: string }).query;
+}
+
 /** Extracts URL-citation annotations from web search tool results. */
 export function extractSearchAnnotations(toolResults: ToolResultData[]): OutputTextContentPart["annotations"] {
-  const annotations: OutputTextContentPart["annotations"] = [];
-  for (const r of toolResults.filter((r) => r.toolName === "web_search")) {
-    if (r.result && typeof r.result === "object") {
-      const data = r.result as { results?: Array<{ url: string; title?: string }> };
-      for (const item of data.results ?? []) {
-        annotations.push({ type: "url_citation", url: item.url, title: item.title || "" });
-      }
-    }
-  }
-  return annotations;
+  return toolResults
+    .filter((r) => r.toolName === "web_search")
+    .flatMap((r) => readWebSearchResults(r.result) ?? [])
+    .map((item) => ({ type: "url_citation" as const, url: item.url, title: item.title || "" }));
 }
 
 /**
@@ -395,6 +403,39 @@ export function extractSearchAnnotations(toolResults: ToolResultData[]): OutputT
  * an `aiToolCallId` (the AI SDK's internal identifier). Results are matched
  * via `aiToolCallId` since that's what the AI SDK attaches to tool results.
  */
+function buildWebSearchCallItem(
+  toolCall: ToolCallItem,
+  toolResults: ToolResultData[],
+  include?: IncludeValue[],
+): WebSearchCallOutputItem {
+  const result = toolResults.find((r) => r.toolCallId === toolCall.aiToolCallId);
+  const searchResults = readWebSearchResults(result?.result);
+  const item: WebSearchCallOutputItem = {
+    id: toolCall.id,
+    type: "web_search_call",
+    status: toolCall.status,
+    action: { type: "search", query: readWebSearchQuery(result?.args) ?? "" },
+  };
+  if (searchResults && shouldInclude(include, "web_search_call.results")) {
+    item.results = searchResults;
+  }
+  if (searchResults && shouldInclude(include, "web_search_call.action.sources")) {
+    item.action!.sources = searchResults.map((r) => ({ type: "url_citation" as const, url: r.url, title: r.title ?? "" }));
+  }
+  return item;
+}
+
+function buildFunctionCallItem(toolCall: ToolCallItem): FunctionCallOutputItem {
+  return {
+    id: toolCall.id,
+    type: "function_call",
+    status: toolCall.status,
+    call_id: toolCall.callId ?? toolCall.aiToolCallId,
+    name: toolCall.name ?? "",
+    arguments: toolCall.arguments ?? "{}",
+  };
+}
+
 export function buildOutputItems(
   responseId: string,
   text: string,
@@ -406,41 +447,9 @@ export function buildOutputItems(
 
   for (const toolCall of toolCalls) {
     if (toolCall.type === "web_search_call") {
-      const item: WebSearchCallOutputItem = { id: toolCall.id, type: "web_search_call", status: toolCall.status };
-      const result = toolResults.find((r) => r.toolCallId === toolCall.aiToolCallId);
-
-      // Always populate action with type and query so consumers know what was searched
-      const query = result?.args && typeof result.args === "object"
-        ? (result.args as { query?: string }).query : undefined;
-      item.action = { type: "search", query: query ?? "" };
-
-      if (shouldInclude(include, "web_search_call.results")) {
-        if (result?.result && typeof result.result === "object") {
-          const data = result.result as { results?: unknown[] };
-          if (data.results) item.results = data.results;
-        }
-      }
-
-      if (shouldInclude(include, "web_search_call.action.sources")) {
-        if (result?.result && typeof result.result === "object") {
-          const data = result.result as { results?: Array<{ url: string; title: string }> };
-          if (data.results) {
-            item.action.sources = data.results.map((r) => ({ type: "url_citation" as const, url: r.url, title: r.title }));
-          }
-        }
-      }
-
-      output.push(item);
+      output.push(buildWebSearchCallItem(toolCall, toolResults, include));
     } else if (toolCall.type === "function_call") {
-      const item: FunctionCallOutputItem = {
-        id: toolCall.id,
-        type: "function_call",
-        status: toolCall.status,
-        call_id: toolCall.callId ?? toolCall.aiToolCallId,
-        name: toolCall.name ?? "",
-        arguments: toolCall.arguments ?? "{}",
-      };
-      output.push(item);
+      output.push(buildFunctionCallItem(toolCall));
     }
   }
 

@@ -34,6 +34,11 @@ const CONN_PREFIX = "lb:conn:";
 const AFFINITY_TTL = 300;
 const CONN_SAFETY_TTL = 600;
 
+const connKey = (host: string) => `${CONN_PREFIX}${host}`;
+const roundRobinKey = (resolvedModel: string) => `${ROUND_ROBIN_PREFIX}${resolvedModel}`;
+
+const noOpRelease = (): void => {};
+
 /** Atomically INCR a key and set its EXPIRE in one round-trip. */
 const INCR_WITH_EXPIRE_SCRIPT = `
 local v = redis.call('INCR', KEYS[1])
@@ -49,50 +54,53 @@ function incrWithExpire(key: string, ttl: number): Promise<boolean> {
 
 /** Atomically track a connection for least-connections balancing. Returns a release function. */
 function trackConnection(host: string): { release: () => void } {
-  const connKey = `${CONN_PREFIX}${host}`;
-  const incrPromise = incrWithExpire(connKey, CONN_SAFETY_TTL);
+  const key = connKey(host);
+  const incrPromise = incrWithExpire(key, CONN_SAFETY_TTL);
   let released = false;
   return {
     release: () => {
       if (released) return;
       released = true;
       incrPromise.then((ok) => {
-        if (ok) redis.send("DECR", [connKey]).catch((err: unknown) => log.warn({ err }, "Redis DECR error"));
+        if (ok) redis.send("DECR", [key]).catch((err: unknown) => log.warn({ err }, "Redis DECR error"));
       });
     },
   };
 }
 
-function selectRandom(hosts: string[]): { host: string; release: () => void } {
+type HostSelection = { host: string; release: () => void };
+
+function selectRandom(hosts: string[]): HostSelection {
   return {
     host: hosts[Math.floor(Math.random() * hosts.length)]!,
-    release: () => {},
+    release: noOpRelease,
   };
 }
 
-async function selectRoundRobin(
+async function withRandomFallback(
   hosts: string[],
-  resolvedModel: string,
-): Promise<{ host: string; release: () => void }> {
+  strategyLabel: string,
+  body: () => Promise<HostSelection>,
+): Promise<HostSelection> {
   try {
-    const key = `${ROUND_ROBIN_PREFIX}${resolvedModel}`;
-    const counter = await redis.send("INCR", [key]) as number;
-    const index = counter % hosts.length;
-    return {
-      host: hosts[index]!,
-      release: () => {},
-    };
+    return await body();
   } catch (err) {
-    log.warn({ err }, "Redis error in selectRoundRobin, falling back to random");
+    log.warn({ err }, `Redis error in ${strategyLabel}, falling back to random`);
     return selectRandom(hosts);
   }
 }
 
-async function selectLeastConnections(
-  hosts: string[],
-): Promise<{ host: string; release: () => void }> {
-  try {
-    const keys = hosts.map((h) => `${CONN_PREFIX}${h}`);
+function selectRoundRobin(hosts: string[], resolvedModel: string): Promise<HostSelection> {
+  return withRandomFallback(hosts, "selectRoundRobin", async () => {
+    const counter = await redis.send("INCR", [roundRobinKey(resolvedModel)]) as number;
+    const index = counter % hosts.length;
+    return { host: hosts[index]!, release: noOpRelease };
+  });
+}
+
+function selectLeastConnections(hosts: string[]): Promise<HostSelection> {
+  return withRandomFallback(hosts, "selectLeastConnections", async () => {
+    const keys = hosts.map(connKey);
     const counts = (await redis.send("MGET", keys)) as (string | null)[];
 
     let minCount = Infinity;
@@ -108,10 +116,7 @@ async function selectLeastConnections(
     const chosen = hosts[minIndex]!;
     const { release } = trackConnection(chosen);
     return { host: chosen, release };
-  } catch (err) {
-    log.warn({ err }, "Redis error in selectLeastConnections, falling back to random");
-    return selectRandom(hosts);
-  }
+  });
 }
 
 async function selectByStrategy(
@@ -120,7 +125,7 @@ async function selectByStrategy(
   resolvedModel: string,
 ): Promise<{ host: string; release: () => void }> {
   if (hosts.length === 1) {
-    return { host: hosts[0]!, release: () => {} };
+    return { host: hosts[0]!, release: noOpRelease };
   }
 
   switch (strategy) {
@@ -176,7 +181,7 @@ export async function selectHost(
       // Affinity hit, still need to track connection for least-connections
       const { release } = (strategy === "least-connections" && pool.length > 1)
         ? trackConnection(cached.host)
-        : { release: () => {} };
+        : { release: noOpRelease };
       return { host: cached.host, useFinalModel: cached.useFinalModel, release };
     }
     // Cached host gone from pool, fall through to fresh selection

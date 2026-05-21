@@ -17,9 +17,23 @@ export function backendFetch(url: string | URL | Request, init?: RequestInit & {
   if (init?.authToken) {
     headers.set("authorization", `Bearer ${init.authToken}`);
   }
-  const fetchInit = { ...init, headers };
-  if (tlsOptions) {
-    (fetchInit as Record<string, unknown>).tls = tlsOptions;
-  }
-  return fetch(url, fetchInit);
+  return fetch(url, { ...init, headers, ...(tlsOptions ? { tls: tlsOptions } : {}) });
+}
+
+type BackendTarget = { host: string; model: string; tls: boolean; authToken: string | null };
+
+/** Post a JSON body to a daemon-proxied backend endpoint with the standard timeout. */
+export function backendPostJson(
+  target: BackendTarget,
+  path: string,
+  body: unknown,
+  clientSignal: AbortSignal,
+): Promise<Response> {
+  return backendFetch(backendUrl(target.host, target.model, path, target.tls), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.any([clientSignal, AbortSignal.timeout(env.BACKEND_TIMEOUT_MS)]),
+    authToken: target.authToken ?? undefined,
+  });
 }
