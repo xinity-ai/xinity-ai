@@ -1,5 +1,5 @@
-import { createServer } from "net";
-import { waitForHttp } from "../test-helpers";
+import { getAvailablePort, readProcessOutput, waitForHttp } from "../test-helpers";
+export { getAvailablePort };
 
 const HOST = process.env.INFOSERVER_HOST ?? "127.0.0.1";
 const MODEL_INFO_FILE = process.env.MODEL_INFO_FILE ?? "models.yaml";
@@ -7,12 +7,6 @@ const MODEL_INFO_FILE = process.env.MODEL_INFO_FILE ?? "models.yaml";
 let allocatedPort: string | null = null;
 let infoProcess: Bun.Subprocess | null = null;
 let infoReady: Promise<void> | null = null;
-
-async function readProcessOutput(proc: Bun.Subprocess): Promise<{ stdout: string; stderr: string }> {
-  const stdout = proc.stdout instanceof ReadableStream ? await new Response(proc.stdout).text() : "";
-  const stderr = proc.stderr  instanceof ReadableStream ? await new Response(proc.stderr).text() : "";
-  return { stdout, stderr };
-}
 
 /** Starts the info server once and waits for its health endpoint. */
 export async function ensureInfoServerRunning(): Promise<void> {
@@ -85,21 +79,3 @@ export function infoServerUrl(path: string): string {
   return `http://${HOST}:${allocatedPort}${path}`;
 }
 
-/** Allocates a free local port. */
-export async function getAvailablePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = createServer();
-    server.unref();
-    server.on("error", reject);
-    server.listen(0, () => {
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        server.close();
-        reject(new Error("Failed to allocate port"));
-        return;
-      }
-      const port = address.port;
-      server.close(() => resolve(port));
-    });
-  });
-}

@@ -1,7 +1,6 @@
 import { randomBytes, randomUUID } from "crypto";
-import { createServer } from "net";
 import { aiApiKeyT, aiApplicationT, aiNodeT, modelDeploymentT, modelInstallationStateT, modelInstallationT, organizationT, preconfigureDB, sql } from "common-db";
-import { readProcessOutput, waitForHttp } from "../test-helpers";
+import { getAvailablePort, readProcessOutput, waitForHttp } from "../test-helpers";
 import { ensureInfoServerRunning, infoServerUrl } from "../infoserver/infoserver-test-helpers";
 import { ensureSystemReady } from "../guard";
 
@@ -28,31 +27,23 @@ export async function cleanupTestData(): Promise<void> {
   const now = new Date();
 
   // Reverse order of dependencies: installations → nodes → deployments → keys → apps → orgs
-  for (const id of createdInstallationIds) {
-    try { await database.update(modelInstallationT).set({ deletedAt: now }).where(sql`${modelInstallationT.id} = ${id}`); } catch {}
-  }
-  for (const id of createdNodeIds) {
-    try { await database.update(aiNodeT).set({ deletedAt: now }).where(sql`${aiNodeT.id} = ${id}`); } catch {}
-  }
-  for (const id of createdDeploymentIds) {
-    try { await database.update(modelDeploymentT).set({ deletedAt: now }).where(sql`${modelDeploymentT.id} = ${id}`); } catch {}
-  }
-  for (const id of createdApiKeyIds) {
-    try { await database.update(aiApiKeyT).set({ deletedAt: now }).where(sql`${aiApiKeyT.id} = ${id}`); } catch {}
-  }
-  for (const id of createdAppIds) {
-    try { await database.update(aiApplicationT).set({ deletedAt: now }).where(sql`${aiApplicationT.id} = ${id}`); } catch {}
+  const softDeletes: Array<[any, string[]]> = [
+    [modelInstallationT, createdInstallationIds],
+    [aiNodeT, createdNodeIds],
+    [modelDeploymentT, createdDeploymentIds],
+    [aiApiKeyT, createdApiKeyIds],
+    [aiApplicationT, createdAppIds],
+  ];
+  for (const [table, ids] of softDeletes) {
+    for (const id of ids) {
+      try { await database.update(table).set({ deletedAt: now }).where(sql`${table.id} = ${id}`); } catch {}
+    }
   }
   for (const id of createdOrgIds) {
     try { await database.delete(organizationT).where(sql`${organizationT.id} = ${id}`); } catch {}
   }
 
-  // Clear arrays
-  createdInstallationIds.length = 0;
-  createdNodeIds.length = 0;
-  createdDeploymentIds.length = 0;
-  createdApiKeyIds.length = 0;
-  createdAppIds.length = 0;
+  for (const [, ids] of softDeletes) ids.length = 0;
   createdOrgIds.length = 0;
 }
 
@@ -263,37 +254,6 @@ export async function createReadyInstallationFor(deployment: { publicSpecifier: 
 
 export function makeUnknownKey(): string {
   return `sk_${randomBytes(16).toString("base64url")}${randomBytes(16).toString("base64url")}`;
-}
-
-async function getAvailablePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = createServer();
-    server.unref();
-    server.on("error", reject);
-    server.listen(0, () => {
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        server.close();
-        reject(new Error("Failed to allocate port"));
-        return;
-      }
-      const port = address.port;
-      server.close(() => resolve(port));
-    });
-  });
-}
-
-async function startMockJsonServer(defaultBody: Record<string, unknown>, responseBody?: Record<string, unknown>): Promise<{
-  port: number;
-  stop: () => void;
-}> {
-  const port = await getAvailablePort();
-  const body = responseBody ?? defaultBody;
-  const server = Bun.serve({
-    port,
-    fetch: async () => Response.json(body),
-  });
-  return { port, stop: () => server.stop() };
 }
 
 /**

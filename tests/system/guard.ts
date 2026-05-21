@@ -4,6 +4,16 @@ import { sql, preconfigureDB } from "common-db";
 const ROOT_DIR = join(import.meta.dir, "../..");
 let ready = false;
 
+function requireDockerEnv(name: string): string {
+  const value = process.env[name];
+  if (value) return value;
+  throw new Error(
+    `${name} is not set.\n` +
+      "  1. Copy example.env to .env (or set the var)\n" +
+      "  2. Run: docker compose up -d",
+  );
+}
+
 /**
  * Ensures system test prerequisites are met:
  * 1. Loads .env if env vars aren't set
@@ -35,21 +45,8 @@ export async function ensureSystemReady(): Promise<void> {
     }
   }
 
-  const dbUrl = process.env.DB_CONNECTION_URL;
-  if (!dbUrl) {
-    throw new Error(
-      "DB_CONNECTION_URL is not set.\n" +
-        "  1. Copy example.env to .env (or set the var)\n" +
-        "  2. Run: docker compose up -d",
-    );
-  }
-  if (!process.env.REDIS_URL) {
-    throw new Error(
-      "REDIS_URL is not set.\n" +
-        "  1. Copy example.env to .env (or set the var)\n" +
-        "  2. Run: docker compose up -d",
-    );
-  }
+  const dbUrl = requireDockerEnv("DB_CONNECTION_URL");
+  requireDockerEnv("REDIS_URL");
 
   // Verify Postgres is reachable
   const { getDB } = preconfigureDB(dbUrl);

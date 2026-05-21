@@ -1,8 +1,9 @@
-import { createServer } from "net";
 import { aiNodeT, eq, modelInstallationStateT, preconfigureDB } from "common-db";
-import { readProcessOutput } from "../test-helpers";
+import { getAvailablePort, readProcessOutput } from "../test-helpers";
 import { ensureInfoServerRunning, infoServerUrl } from "../infoserver/infoserver-test-helpers";
 import { ensureSystemReady } from "../guard";
+
+export { getAvailablePort };
 
 let db: ReturnType<ReturnType<typeof preconfigureDB>["getDB"]>;
 
@@ -12,24 +13,6 @@ function getDB() {
     db = init();
   }
   return db;
-}
-
-export async function getAvailablePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = createServer();
-    server.unref();
-    server.on("error", reject);
-    server.listen(0, () => {
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        server.close();
-        reject(new Error("Failed to allocate port"));
-        return;
-      }
-      const port = address.port;
-      server.close(() => resolve(port));
-    });
-  });
 }
 
 export function createTempStateDir(): string {
@@ -120,45 +103,43 @@ export async function stopDaemon(proc: Bun.Subprocess): Promise<void> {
   await proc.exited;
 }
 
-export async function waitForNodeIdFile(stateDir: string, timeoutMs: number): Promise<string> {
+async function pollUntil<T>(
+  check: () => Promise<T | undefined>,
+  opts: { timeoutMs: number; intervalMs: number; timeoutMessage: string },
+): Promise<T> {
   const start = Date.now();
-  const path = `${stateDir}/node_id`;
-  while (Date.now() - start < timeoutMs) {
-    const file = Bun.file(path);
-    if (await file.exists()) {
-      return (await file.text()).trim();
-    }
-    await Bun.sleep(100)
+  while (Date.now() - start < opts.timeoutMs) {
+    const result = await check();
+    if (result !== undefined) return result;
+    await Bun.sleep(opts.intervalMs);
   }
-  throw new Error("Timed out waiting for node_id file");
+  throw new Error(opts.timeoutMessage);
+}
+
+export function waitForNodeIdFile(stateDir: string, timeoutMs: number): Promise<string> {
+  return pollUntil(async () => {
+    const file = Bun.file(`${stateDir}/node_id`);
+    if (await file.exists()) return (await file.text()).trim();
+    return undefined;
+  }, { timeoutMs, intervalMs: 100, timeoutMessage: "Timed out waiting for node_id file" });
 }
 
 export async function waitForNodeAvailability(nodeId: string, available: boolean, timeoutMs = 10_000): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
+  await pollUntil(async () => {
     const [node] = await getDB().select().from(aiNodeT).where(eq(aiNodeT.id, nodeId)).limit(1);
-    if (node && node.available === available) {
-      return;
-    }
-    await Bun.sleep(200)
-  }
-  throw new Error(`Timed out waiting for node ${nodeId} available=${available}`);
+    return node?.available === available ? true : undefined;
+  }, { timeoutMs, intervalMs: 200, timeoutMessage: `Timed out waiting for node ${nodeId} available=${available}` });
 }
 
 export async function waitForInstallationState(installationId: string, timeoutMs = 15_000): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
+  await pollUntil(async () => {
     const [state] = await getDB()
       .select()
       .from(modelInstallationStateT)
       .where(eq(modelInstallationStateT.id, installationId))
       .limit(1);
-    if (state && state.lifecycleState === "ready") {
-      return;
-    }
-    await Bun.sleep(250)
-  }
-  throw new Error(`Timed out waiting for installation state for ${installationId}`);
+    return state?.lifecycleState === "ready" ? true : undefined;
+  }, { timeoutMs, intervalMs: 250, timeoutMessage: `Timed out waiting for installation state for ${installationId}` });
 }
 
 export type OllamaMock = {
