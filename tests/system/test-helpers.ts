@@ -1,9 +1,30 @@
+import { createServer } from "net";
+
 export function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
     throw new Error(`Missing required env var: ${name}`);
   }
   return value;
+}
+
+/** Allocates a free local TCP port by binding a server to 0 and immediately closing it. */
+export async function getAvailablePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.unref();
+    server.on("error", reject);
+    server.listen(0, () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close();
+        reject(new Error("Failed to allocate port"));
+        return;
+      }
+      const port = address.port;
+      server.close(() => resolve(port));
+    });
+  });
 }
 
 export async function readProcessOutput(proc: Bun.Subprocess): Promise<{ stdout: string; stderr: string }> {
