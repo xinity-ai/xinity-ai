@@ -12,7 +12,7 @@ import { randomBytes } from "crypto";
 import * as p from "./clack.ts";
 import pc from "picocolors";
 import { type Host, commandExistsOn, readSecrets } from "./host.ts";
-import { pass, fail, info, warn } from "./output.ts";
+import { pass, fail, info, promptOrUndefined, reportElevationOutcome, warn } from "./output.ts";
 import { parseEnvString } from "./env-file.ts";
 import { SECRETS_DIR, ENV_DIR } from "./component-meta.ts";
 
@@ -24,13 +24,10 @@ interface PackageManager {
   name: string;
   /** The binary on PATH that indicates this PM is available. */
   bin: string;
-  /** Shell command to install Redis. */
-  installRedisCmd: string;
-  /** Shell command to install Valkey. */
-  installValkeyCmd: string;
-  /** Shell command to start the service. */
-  startRedisCmd: string;
-  startValkeyCmd: string;
+  /** Shell command to install each variant. */
+  install: Record<RedisVariant, string>;
+  /** Shell command to start the service for each variant. */
+  start: Record<RedisVariant, string>;
   /** True when `sudo` is NOT needed (e.g. macOS Homebrew). */
   userIsSuper: boolean;
 }
@@ -39,46 +36,36 @@ const PACKAGE_MANAGERS: PackageManager[] = [
   {
     name: "apt",
     bin: "apt-get",
-    installRedisCmd: "apt-get install -y redis-server",
-    installValkeyCmd: "apt-get install -y valkey",
-    startRedisCmd: "systemctl start redis-server",
-    startValkeyCmd: "systemctl start valkey",
+    install: { redis: "apt-get install -y redis-server", valkey: "apt-get install -y valkey" },
+    start: { redis: "systemctl start redis-server", valkey: "systemctl start valkey" },
     userIsSuper: false,
   },
   {
     name: "dnf",
     bin: "dnf",
-    installRedisCmd: "dnf install -y redis",
-    installValkeyCmd: "dnf install -y valkey",
-    startRedisCmd: "systemctl start redis",
-    startValkeyCmd: "systemctl start valkey",
+    install: { redis: "dnf install -y redis", valkey: "dnf install -y valkey" },
+    start: { redis: "systemctl start redis", valkey: "systemctl start valkey" },
     userIsSuper: false,
   },
   {
     name: "pacman",
     bin: "pacman",
-    installRedisCmd: "pacman -S --noconfirm redis",
-    installValkeyCmd: "pacman -S --noconfirm valkey",
-    startRedisCmd: "systemctl start redis",
-    startValkeyCmd: "systemctl start valkey",
+    install: { redis: "pacman -S --noconfirm redis", valkey: "pacman -S --noconfirm valkey" },
+    start: { redis: "systemctl start redis", valkey: "systemctl start valkey" },
     userIsSuper: false,
   },
   {
     name: "zypper",
     bin: "zypper",
-    installRedisCmd: "zypper install -y redis",
-    installValkeyCmd: "zypper install -y valkey",
-    startRedisCmd: "systemctl start redis",
-    startValkeyCmd: "systemctl start valkey",
+    install: { redis: "zypper install -y redis", valkey: "zypper install -y valkey" },
+    start: { redis: "systemctl start redis", valkey: "systemctl start valkey" },
     userIsSuper: false,
   },
   {
     name: "brew",
     bin: "brew",
-    installRedisCmd: "brew install redis",
-    installValkeyCmd: "brew install valkey",
-    startRedisCmd: "brew services start redis",
-    startValkeyCmd: "brew services start valkey",
+    install: { redis: "brew install redis", valkey: "brew install valkey" },
+    start: { redis: "brew services start redis", valkey: "brew services start valkey" },
     userIsSuper: true,
   },
 ];
@@ -122,6 +109,15 @@ async function isRedisRunning(host: Host): Promise<boolean> {
   return false;
 }
 
+const SYSTEMD_START_FALLBACK: Record<RedisVariant, string> = {
+  redis: "systemctl start redis-server",
+  valkey: "systemctl start valkey",
+};
+
+function startCommandFor(variant: RedisVariant, pm: PackageManager | undefined): string {
+  return pm?.start[variant] ?? SYSTEMD_START_FALLBACK[variant];
+}
+
 /** Try to start the Redis/Valkey service. */
 async function startRedis(
   host: Host,
@@ -129,9 +125,7 @@ async function startRedis(
   pm: PackageManager | undefined,
   dryRun: boolean,
 ): Promise<boolean> {
-  const startCmd = pm
-    ? variant === "valkey" ? pm.startValkeyCmd : pm.startRedisCmd
-    : variant === "valkey" ? "systemctl start valkey" : "systemctl start redis-server";
+  const startCmd = startCommandFor(variant, pm);
 
   if (dryRun) {
     info("Dry run", `Would start ${variant}: ${pc.dim(startCmd)}`);
@@ -149,16 +143,11 @@ async function startRedis(
   }
 
   const result = await host.withElevation(startCmd, `Start ${variant}`);
-  if (result.success) {
-    pass(variant, "Service started");
-    return true;
-  }
-  if (result.skipped) {
-    warn(variant, "Skipped starting the service");
-  } else {
-    fail(variant, result.output || "Failed to start service");
-  }
-  return false;
+  return reportElevationOutcome(result, variant, {
+    success: "Service started",
+    skipped: "Skipped starting the service",
+    failed: result.output || "Failed to start service",
+  });
 }
 
 // ─── Install flow ───────────────────────────────────────────────────────────
@@ -169,7 +158,7 @@ async function installRedis(
   pm: PackageManager,
   dryRun: boolean,
 ): Promise<boolean> {
-  const installCmd = variant === "valkey" ? pm.installValkeyCmd : pm.installRedisCmd;
+  const installCmd = pm.install[variant];
 
   const proceed = await p.confirm({
     message: `Install ${variant} using ${pc.cyan(pm.name)}?`,
@@ -197,16 +186,11 @@ async function installRedis(
   }
 
   const result = await host.withElevation(installCmd, `Install ${variant}`);
-  if (result.success) {
-    pass("Install", `${variant} installed`);
-    return true;
-  }
-  if (result.skipped) {
-    warn("Install", "Skipped installation");
-  } else {
-    fail("Install", result.output || "Installation failed");
-  }
-  return false;
+  return reportElevationOutcome(result, "Install", {
+    success: `${variant} installed`,
+    skipped: "Skipped installation",
+    failed: result.output || "Installation failed",
+  });
 }
 
 async function waitForManualInstall(host: Host): Promise<boolean> {
@@ -263,52 +247,52 @@ async function configureRedisUrl(
 ): Promise<string | undefined> {
   p.log.step(pc.bold("Configure Redis connection"));
 
-  const hostInput = await p.text({
+  const hostInput = await promptOrUndefined(p.text({
     message: "Redis host",
     placeholder: "localhost",
     defaultValue: "localhost",
-  });
-  if (p.isCancel(hostInput)) return undefined;
+  }));
+  if (hostInput === undefined) return undefined;
 
-  const portInput = await p.text({
+  const portInput = await promptOrUndefined(p.text({
     message: "Redis port",
     placeholder: "6379",
     defaultValue: "6379",
     validate: (val) => {
       if (!val) return undefined;
-      const n = parseInt(val);
+      const n = parseInt(val, 10);
       if (isNaN(n) || n < 1 || n > 65535) return "Must be a valid port number";
       return undefined;
     },
-  });
-  if (p.isCancel(portInput)) return undefined;
+  }));
+  if (portInput === undefined) return undefined;
 
-  const setPassword = await p.confirm({
+  const setPassword = await promptOrUndefined(p.confirm({
     message: "Set a password for Redis?",
     initialValue: false,
-  });
-  if (p.isCancel(setPassword)) return undefined;
+  }));
+  if (setPassword === undefined) return undefined;
 
   let password: string | undefined;
   if (setPassword) {
-    const useGenerated = await p.confirm({
+    const useGenerated = await promptOrUndefined(p.confirm({
       message: "Generate a random password?",
       initialValue: true,
-    });
-    if (p.isCancel(useGenerated)) return undefined;
+    }));
+    if (useGenerated === undefined) return undefined;
 
     if (useGenerated) {
       password = generatePassword();
       info("Password", `Generated: ${pc.cyan(password)}`);
     } else {
-      const pw = await p.password({
+      const pw = await promptOrUndefined(p.password({
         message: "Redis password",
         validate: (val) => {
           if (!val || val.length < 4) return "Password must be at least 4 characters";
           return undefined;
         },
-      });
-      if (p.isCancel(pw)) return undefined;
+      }));
+      if (pw === undefined) return undefined;
       password = pw;
     }
   }

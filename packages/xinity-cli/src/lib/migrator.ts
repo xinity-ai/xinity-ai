@@ -21,9 +21,9 @@ import { fail, pass, info, warn } from "./output.ts";
 import { postgresSetup } from "./postgres-setup.ts";
 import { type Host, createLocalHost } from "./host.ts";
 import { readManifest, saveDbHint, updateManifestEntry } from "./manifest.ts";
+import { ENV_DIR, SECRETS_DIR } from "./component-meta.ts";
 
-const ENV_DIR = "/etc/xinity-ai";
-const DB_SECRET_PATH = "/etc/xinity-ai/secrets/DB_CONNECTION_URL";
+const DB_SECRET_PATH = `${SECRETS_DIR}/DB_CONNECTION_URL`;
 
 /**
  * Return a safe display string for a postgres URL: user@host:port/dbname.
@@ -277,7 +277,7 @@ export async function runMigrations(opts: {
   if (freshManifest.db?.hint !== hint) {
     const escaped = connectionUrl.replace(/'/g, "'\\''");
     await opts.host.withElevation(
-      `mkdir -p /etc/xinity-ai/secrets && chmod 700 /etc/xinity-ai/secrets` +
+      `mkdir -p ${SECRETS_DIR} && chmod 700 ${SECRETS_DIR}` +
       ` && printf '%s' '${escaped}' > '${DB_SECRET_PATH}' && chmod 600 '${DB_SECRET_PATH}'`,
       "Store DB connection URL secret",
     );

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import * as p from "./clack.ts";
 import pc from "picocolors";
-import { cancelAndExit } from "./output.ts";
+import { promptOrExit } from "./output.ts";
 import { parseEnvString } from "./env-file.ts";
 import { type Component, ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, getAutoDefaults } from "./component-meta.ts";
 import { writeEnvConfig, writeSystemdUnit, restartService } from "./service.ts";
@@ -16,7 +16,6 @@ export interface EnvField {
   isSecret: boolean;
   isExpert: boolean;
   isPublic: boolean;
-  isEnum: boolean;
   enumValues?: string[];
   isNumber: boolean;
   isBoolean: boolean;
@@ -31,12 +30,30 @@ function readFieldMeta(field: z.ZodType): { secret: boolean; expert: boolean; pu
   };
 }
 
+type JsonSchemaProp = {
+  type?: string;
+  enum?: string[];
+  anyOf?: Array<{ type?: string; enum?: string[] }>;
+  description?: string;
+  default?: unknown;
+};
+
+function extractEnumValues(prop: JsonSchemaProp): string[] | undefined {
+  return prop.enum ?? prop.anyOf?.find((a) => a.enum)?.enum;
+}
+
+function resolveJsonSchemaType(prop: JsonSchemaProp): string | undefined {
+  if (!prop.anyOf) return prop.type;
+  const nonNull = prop.anyOf.find((a) => a.type !== "null");
+  return nonNull?.type ?? "string";
+}
+
 /** Analyze a Zod env schema into structured field metadata. */
 export function analyzeEnvSchema(
   schema: z.ZodObject<any>,
 ): EnvField[] {
   const jsonSchema = z.toJSONSchema(schema) as {
-    properties: Record<string, any>;
+    properties: Record<string, JsonSchemaProp>;
     required?: string[];
   };
   const requiredKeys = new Set(jsonSchema.required ?? []);
@@ -45,16 +62,8 @@ export function analyzeEnvSchema(
   for (const [key, zodField] of Object.entries(schema.shape)) {
     const prop = jsonSchema.properties[key] ?? {};
     const meta = readFieldMeta(zodField as z.ZodType);
-
-    // Detect enum
-    const enumValues: string[] | undefined = prop.enum ?? prop.anyOf?.find((a: any) => a.enum)?.enum;
-
-    // Detect type (handle anyOf for nullable)
-    let resolvedType = prop.type;
-    if (prop.anyOf) {
-      const nonNull = prop.anyOf.find((a: any) => a.type !== "null");
-      resolvedType = nonNull?.type ?? "string";
-    }
+    const enumValues = extractEnumValues(prop);
+    const resolvedType = resolveJsonSchemaType(prop);
 
     fields.push({
       key,
@@ -65,7 +74,6 @@ export function analyzeEnvSchema(
       isSecret: meta.secret,
       isExpert: meta.expert,
       isPublic: meta.public,
-      isEnum: !!enumValues,
       enumValues,
       isNumber: resolvedType === "number" || resolvedType === "integer",
       isBoolean: resolvedType === "boolean",
@@ -83,6 +91,42 @@ export function categorizeFields(fields: EnvField[]): {
     configFields: fields.filter((f) => !f.isSecret),
     secretFields: fields.filter((f) => f.isSecret),
   };
+}
+
+function assignByCategory(
+  field: EnvField,
+  value: string,
+  config: Record<string, string>,
+  secrets: Record<string, string>,
+): void {
+  if (field.isSecret) secrets[field.key] = value;
+  else config[field.key] = value;
+}
+
+/** Splits a flat values map into separate config and secret records based on each field's category. */
+export function splitValuesByCategory(
+  fields: EnvField[],
+  values: Record<string, string | undefined>,
+): { config: Record<string, string>; secrets: Record<string, string> } {
+  const config: Record<string, string> = {};
+  const secrets: Record<string, string> = {};
+  for (const field of fields) {
+    const val = values[field.key];
+    if (val !== undefined) assignByCategory(field, val, config, secrets);
+  }
+  return { config, secrets };
+}
+
+function prefillFromExisting(
+  fields: EnvField[],
+  existing: Record<string, string> | undefined,
+  config: Record<string, string>,
+  secrets: Record<string, string>,
+): void {
+  for (const field of fields) {
+    const val = existing?.[field.key];
+    if (val !== undefined) assignByCategory(field, val, config, secrets);
+  }
 }
 
 /**
@@ -114,63 +158,38 @@ export async function promptForEnv(
   const config: Record<string, string> = {};
   const secrets: Record<string, string> = {};
 
-  // Pre-fill expert fields from existing values (includes auto-defaults)
-  for (const field of expertFields) {
-    const val = existingValues?.[field.key];
-    if (val !== undefined) {
-      if (field.isSecret) secrets[field.key] = val;
-      else config[field.key] = val;
-    }
-  }
+  prefillFromExisting([...expertFields, ...skippedFields], existingValues, config, secrets);
 
-  // Pre-fill skipped fields from existing values (already configured)
-  for (const field of skippedFields) {
-    const val = existingValues?.[field.key];
-    if (val !== undefined) {
-      if (field.isSecret) secrets[field.key] = val;
-      else config[field.key] = val;
-    }
-  }
+  await promptFieldsUnderHeading(visibleConfig, "Configuration", existingValues, config, secrets);
+  await promptFieldsUnderHeading(visibleSecrets, "Secrets", existingValues, config, secrets);
 
-  // Prompt visible config fields
-  if (visibleConfig.length > 0) {
-    p.log.step(pc.bold("Configuration"));
-    for (const field of visibleConfig) {
-      const value = await promptField(field, existingValues?.[field.key]);
-      if (value !== undefined) config[field.key] = value;
-    }
-  }
-
-  // Prompt visible secret fields
-  if (visibleSecrets.length > 0) {
-    p.log.step(pc.bold("Secrets"));
-    for (const field of visibleSecrets) {
-      const value = await promptField(field, existingValues?.[field.key]);
-      if (value !== undefined) secrets[field.key] = value;
-    }
-  }
-
-  // Offer advanced settings if there are expert fields
   if (expertFields.length > 0) {
-    const showAdvanced = await p.confirm({
+    const showAdvanced = await promptOrExit(p.confirm({
       message: "Configure advanced settings?",
       initialValue: false,
-    });
-    if (p.isCancel(showAdvanced)) cancelAndExit();
+    }));
 
     if (showAdvanced) {
-      p.log.step(pc.bold("Advanced Settings"));
-      for (const field of expertFields) {
-        const value = await promptField(field, existingValues?.[field.key]);
-        if (value !== undefined) {
-          if (field.isSecret) secrets[field.key] = value;
-          else config[field.key] = value;
-        }
-      }
+      await promptFieldsUnderHeading(expertFields, "Advanced Settings", existingValues, config, secrets);
     }
   }
 
   return { config, secrets };
+}
+
+async function promptFieldsUnderHeading(
+  fields: EnvField[],
+  heading: string,
+  existingValues: Record<string, string> | undefined,
+  config: Record<string, string>,
+  secrets: Record<string, string>,
+): Promise<void> {
+  if (fields.length === 0) return;
+  p.log.step(pc.bold(heading));
+  for (const field of fields) {
+    const value = await promptField(field, existingValues?.[field.key]);
+    if (value !== undefined) assignByCategory(field, value, config, secrets);
+  }
 }
 
 /** Prompt for a single field value. Returns undefined if skipped. */
@@ -185,46 +204,41 @@ async function promptField(
   // Secret → masked password input
   if (field.isSecret) {
     const keepHint = existing ? pc.dim(" [Enter to keep current]") : "";
-    const value = await p.password({
+    const value = await promptOrExit(p.password({
       message: `${field.key}${hint}${optTag}${keepHint}`,
       validate: (val) => {
         if (!val && !existing && !field.isOptional && !field.hasDefault) return "This field is required";
         return undefined;
       },
-    });
-    if (p.isCancel(value)) cancelAndExit();
+    }));
     return value || existing || undefined;
   }
 
   // Enum → select
-  if (field.isEnum && field.enumValues) {
-    const options = [
-      ...field.enumValues.map((v) => ({ value: v, label: v })),
-    ];
+  if (field.enumValues) {
+    const options = field.enumValues.map((v) => ({ value: v, label: v }));
     if (field.isOptional) {
       options.unshift({ value: "__skip__", label: pc.dim("skip") });
     }
-    const value = await p.select({
+    const value = await promptOrExit(p.select({
       message: `${field.key}${hint}${optTag}`,
       options,
       initialValue: existing,
-    });
-    if (p.isCancel(value)) cancelAndExit();
+    }));
     return value === "__skip__" ? undefined : value;
   }
 
   // Boolean → confirm
   if (field.isBoolean) {
-    const value = await p.confirm({
+    const value = await promptOrExit(p.confirm({
       message: `${field.key}${hint}`,
       initialValue: existing === "true" || existing === "1" || (field.hasDefault && field.defaultValue === true),
-    });
-    if (p.isCancel(value)) cancelAndExit();
+    }));
     return String(value);
   }
 
   // Number or string → text input
-  const value = await p.text({
+  const value = await promptOrExit(p.text({
     message: `${field.key}${hint}${optTag}`,
     placeholder: existing ?? undefined,
     defaultValue: existing ?? undefined,
@@ -233,8 +247,7 @@ async function promptField(
       if (val && field.isNumber && Number.isNaN(Number(val))) return "Must be a number";
       return undefined;
     },
-  });
-  if (p.isCancel(value)) cancelAndExit();
+  }));
   return value || undefined;
 }
 
@@ -323,15 +336,7 @@ export async function menuEditEnv(
     }
   }
 
-  const config: Record<string, string> = {};
-  const secrets: Record<string, string> = {};
-  for (const field of fields) {
-    const val = values[field.key];
-    if (val === undefined) continue;
-    if (field.isSecret) secrets[field.key] = val;
-    else config[field.key] = val;
-  }
-  return { config, secrets };
+  return splitValuesByCategory(fields, values);
 }
 
 /**

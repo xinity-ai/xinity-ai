@@ -12,15 +12,14 @@ import { randomBytes, createHmac } from "crypto";
 import * as p from "./clack.ts";
 import pc from "picocolors";
 import { type Host, commandExistsOn } from "./host.ts";
-import { pass, fail, info, warn } from "./output.ts";
-import { generateUnit } from "./systemd.ts";
+import { pass, fail, info, promptOrUndefined, warn } from "./output.ts";
+import { BIN_DIR, ENV_DIR, UNIT_DIR } from "./component-meta.ts";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const BIN_DIR = "/opt/xinity/bin";
 const WEED_BIN = `${BIN_DIR}/weed`;
 const SEAWEEDFS_UNIT = "xinity-ai-seaweedfs.service";
-const S3_CONFIG_PATH = "/etc/xinity-ai/seaweedfs-s3.json";
+const S3_CONFIG_PATH = `${ENV_DIR}/seaweedfs-s3.json`;
 const S3_PORT = 8333;
 const S3_ENDPOINT = `http://127.0.0.1:${S3_PORT}`;
 
@@ -44,6 +43,28 @@ function generateSecret(length = 40): string {
   return randomBytes(length).toString("base64url").slice(0, length);
 }
 
+async function promptOrGenerateS3Credentials(): Promise<{ accessKeyId: string; secretAccessKey: string } | undefined> {
+  const useGenerated = await promptOrUndefined(p.confirm({
+    message: "Generate random S3 credentials?",
+    initialValue: true,
+  }));
+  if (useGenerated === undefined) return undefined;
+
+  if (useGenerated) {
+    const accessKeyId = generateKey();
+    const secretAccessKey = generateSecret();
+    info("Access key", pc.cyan(accessKeyId));
+    info("Secret key", pc.cyan(secretAccessKey));
+    return { accessKeyId, secretAccessKey };
+  }
+
+  const accessKeyId = await promptOrUndefined(p.text({ message: "Access key ID" }));
+  if (accessKeyId === undefined) return undefined;
+  const secretAccessKey = await promptOrUndefined(p.password({ message: "Secret access key" }));
+  if (secretAccessKey === undefined) return undefined;
+  return { accessKeyId, secretAccessKey };
+}
+
 /** Detect OS architecture for binary download. */
 async function detectArch(host: Host): Promise<"amd64" | "arm64" | null> {
   const res = await host.run(["uname", "-m"]);
@@ -58,6 +79,17 @@ async function detectArch(host: Host): Promise<"amd64" | "arm64" | null> {
 async function isSeaweedFSRunning(host: Host): Promise<boolean> {
   const res = await host.run(["curl", "-sf", "-o", "/dev/null", `${S3_ENDPOINT}/`]);
   return res.ok;
+}
+
+const SEAWEEDFS_POLL_INTERVAL_MS = 1000;
+const SEAWEEDFS_POLL_ATTEMPTS = 30;
+
+async function waitForSeaweedFSRunning(host: Host): Promise<boolean> {
+  for (let i = 0; i < SEAWEEDFS_POLL_ATTEMPTS; i++) {
+    if (await isSeaweedFSRunning(host)) return true;
+    await Bun.sleep(SEAWEEDFS_POLL_INTERVAL_MS);
+  }
+  return false;
 }
 
 /** Fetch the latest SeaweedFS release version tag from GitHub. */
@@ -156,7 +188,7 @@ async function writeS3Config(
     return true;
   }
 
-  await host.withElevation(`mkdir -p /etc/xinity-ai`, "Create config directory");
+  await host.withElevation(`mkdir -p ${ENV_DIR}`, "Create config directory");
   const result = await host.withElevation(
     `cat > ${S3_CONFIG_PATH} << 'SEAWEEDFS_CONFIG_EOF'\n${config}\nSEAWEEDFS_CONFIG_EOF`,
     "Write SeaweedFS S3 config",
@@ -199,7 +231,7 @@ async function installSystemdUnit(
     return true;
   }
 
-  const unitPath = `/etc/systemd/system/${SEAWEEDFS_UNIT}`;
+  const unitPath = `${UNIT_DIR}/${SEAWEEDFS_UNIT}`;
   const result = await host.withElevation(
     `cat > ${unitPath} << 'UNIT_EOF'\n${unitContent}\nUNIT_EOF\nsystemctl daemon-reload`,
     "Install SeaweedFS systemd unit",
@@ -229,18 +261,14 @@ async function startAndWait(host: Host, dryRun: boolean): Promise<boolean> {
     return false;
   }
 
-  // Poll for readiness
   const spinner = p.spinner();
   spinner.start("Waiting for SeaweedFS to start…");
-  for (let i = 0; i < 30; i++) {
-    if (await isSeaweedFSRunning(host)) {
-      spinner.stop("SeaweedFS is ready");
-      pass("Health", `S3 endpoint reachable at ${S3_ENDPOINT}`);
-      return true;
-    }
-    await new Promise((res) => setTimeout(res, 1000));
+  const ready = await waitForSeaweedFSRunning(host);
+  if (ready) {
+    spinner.stop("SeaweedFS is ready");
+    pass("Health", `S3 endpoint reachable at ${S3_ENDPOINT}`);
+    return true;
   }
-
   spinner.stop("Timed out");
   fail("Health", "SeaweedFS did not become ready within 30 seconds");
   return false;
@@ -317,44 +345,23 @@ export async function seaweedfsSetup(
   // ── Step 2: Prompt for configuration ────────────────────────────────────
   p.log.step(pc.bold("Configure SeaweedFS"));
 
-  const dataDirInput = await p.text({
+  const dataDir = await promptOrUndefined(p.text({
     message: "Data directory",
     placeholder: "/var/lib/xinity-ai-seaweedfs/data",
     defaultValue: "/var/lib/xinity-ai-seaweedfs/data",
-  });
-  if (p.isCancel(dataDirInput)) return undefined;
-  const dataDir = dataDirInput;
+  }));
+  if (dataDir === undefined) return undefined;
 
-  const bucketInput = await p.text({
+  const bucket = await promptOrUndefined(p.text({
     message: "S3 bucket name",
     placeholder: "xinity-media",
     defaultValue: "xinity-media",
-  });
-  if (p.isCancel(bucketInput)) return undefined;
-  const bucket = bucketInput;
+  }));
+  if (bucket === undefined) return undefined;
 
-  const useGenerated = await p.confirm({
-    message: "Generate random S3 credentials?",
-    initialValue: true,
-  });
-  if (p.isCancel(useGenerated)) return undefined;
-
-  let accessKeyId: string;
-  let secretAccessKey: string;
-
-  if (useGenerated) {
-    accessKeyId = generateKey();
-    secretAccessKey = generateSecret();
-    info("Access key", pc.cyan(accessKeyId));
-    info("Secret key", pc.cyan(secretAccessKey));
-  } else {
-    const ak = await p.text({ message: "Access key ID" });
-    if (p.isCancel(ak)) return undefined;
-    const sk = await p.password({ message: "Secret access key" });
-    if (p.isCancel(sk)) return undefined;
-    accessKeyId = ak;
-    secretAccessKey = sk;
-  }
+  const keyPair = await promptOrGenerateS3Credentials();
+  if (!keyPair) return undefined;
+  const { accessKeyId, secretAccessKey } = keyPair;
 
   // ── Step 3: Write S3 identity config ────────────────────────────────────
   const configured = await writeS3Config(host, accessKeyId, secretAccessKey, dryRun);

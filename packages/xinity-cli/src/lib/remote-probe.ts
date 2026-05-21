@@ -5,10 +5,10 @@
  * and parses a simple line-based output format. Reduces 50+ SSH
  * round-trips to 1-2.
  */
-import type { Host, RunResult, ElevationResult } from "./host.ts";
+import { COMMAND_FALLBACK_BIN_DIRS, type Host, type RunResult } from "./host.ts";
 import type { Manifest } from "./manifest.ts";
 import { unitName } from "./systemd.ts";
-import { type Component, ENV_DIR, SECRETS_DIR, ENV_SCHEMAS } from "./component-meta.ts";
+import { type Component, ENV_DIR, SECRETS_DIR, ENV_SCHEMAS, BIN_DIR, UNIT_DIR } from "./component-meta.ts";
 import { analyzeEnvSchema, categorizeFields } from "./env-prompt.ts";
 
 export interface RemoteState {
@@ -36,8 +36,8 @@ export async function collectRemoteState(
   const unitsToCheck: string[] = ["xinity-ai-seaweedfs.service", "ollama.service", "ollama"];
 
   // SeaweedFS paths
-  filesToCheck.push("/opt/xinity/bin/weed");
-  filesToCheck.push("/etc/systemd/system/xinity-ai-seaweedfs.service");
+  filesToCheck.push(`${BIN_DIR}/weed`);
+  filesToCheck.push(`${UNIT_DIR}/xinity-ai-seaweedfs.service`);
 
   // Per component
   const components: Component[] = ["gateway", "dashboard", "daemon", "infoserver"];
@@ -46,7 +46,7 @@ export async function collectRemoteState(
     if (!entry) continue;
 
     filesToCheck.push(entry.binaryPath);
-    filesToCheck.push(`/etc/systemd/system/${unitName(comp)}`);
+    filesToCheck.push(`${UNIT_DIR}/${unitName(comp)}`);
     unitsToCheck.push(unitName(comp));
 
     const envPath = `${ENV_DIR}/${comp}.env`;
@@ -76,17 +76,16 @@ export async function collectRemoteState(
 
   // Parse line-based output: TYPE::KEY::VALUE
   for (const line of result.output.split("\n")) {
-    const parts = line.split(SEPARATOR);
-    if (parts.length < 3) continue;
-    const [type, key, ...rest] = parts;
+    const [type, key, ...rest] = line.split(SEPARATOR);
+    if (type == null || key == null || rest.length === 0) continue;
     const value = rest.join(SEPARATOR); // rejoin in case value contained separator
 
     switch (type) {
-      case "P": state.platform = value!; break;
-      case "F": state.files[key!] = value === "1"; break;
-      case "R": state.fileContents[key!] = value === "NULL" ? null : value!; break;
-      case "C": state.commands[key!] = value === "1"; break;
-      case "U": state.units[key!] = value!; break;
+      case "P": state.platform = value; break;
+      case "F": state.files[key] = value === "1"; break;
+      case "R": state.fileContents[key] = value === "NULL" ? null : value; break;
+      case "C": state.commands[key] = value === "1"; break;
+      case "U": state.units[key] = value; break;
     }
   }
 
@@ -117,7 +116,8 @@ function buildProbeScript(
 
   // Command existence
   for (const c of commands) {
-    lines.push(`(command -v '${c}' >/dev/null 2>&1 || [ -x "$HOME/.bun/bin/${c}" ] || [ -x "$HOME/.local/bin/${c}" ] || [ -x "$HOME/.cargo/bin/${c}" ] || [ -x "/usr/local/bin/${c}" ]) && echo 'C${S}${c}${S}1' || echo 'C${S}${c}${S}0'`);
+    const fallback = COMMAND_FALLBACK_BIN_DIRS.map((dir) => `[ -x "${dir}/${c}" ]`).join(" || ");
+    lines.push(`(command -v '${c}' >/dev/null 2>&1 || ${fallback}) && echo 'C${S}${c}${S}1' || echo 'C${S}${c}${S}0'`);
   }
 
   // Unit status
@@ -172,10 +172,6 @@ export function createCachedHost(realHost: Host, state: RemoteState): Host {
       return realHost.runShell(command);
     },
 
-    withElevation(command: string, description: string, options?: { sensitive?: boolean }): Promise<ElevationResult> {
-      return realHost.withElevation(command, description, options);
-    },
-
     async readFile(path: string): Promise<string | null> {
       if (path in state.fileContents) {
         const val = state.fileContents[path];
@@ -190,32 +186,13 @@ export function createCachedHost(realHost: Host, state: RemoteState): Host {
       return realHost.fileExists(path);
     },
 
-    uploadFile(localPath: string, destPath: string): Promise<string> {
-      return realHost.uploadFile(localPath, destPath);
-    },
-
-    downloadFile(url: string, destPath: string): Promise<void> {
-      return realHost.downloadFile(url, destPath);
-    },
-
-    verifySha256(filePath: string, expectedHash: string): Promise<boolean> {
-      return realHost.verifySha256(filePath, expectedHash);
-    },
-
-    computeSha256(filePath: string): Promise<string | null> {
-      return realHost.computeSha256(filePath);
-    },
-
-    getArch(): Promise<string> {
-      return realHost.getArch();
-    },
-
-    openTunnel(url: string): Promise<{ localUrl: string; close: () => Promise<void> }> {
-      return realHost.openTunnel(url);
-    },
-
-    dispose(): Promise<void> {
-      return realHost.dispose();
-    },
+    withElevation: realHost.withElevation.bind(realHost),
+    uploadFile: realHost.uploadFile.bind(realHost),
+    downloadFile: realHost.downloadFile.bind(realHost),
+    verifySha256: realHost.verifySha256.bind(realHost),
+    computeSha256: realHost.computeSha256.bind(realHost),
+    getArch: realHost.getArch.bind(realHost),
+    openTunnel: realHost.openTunnel.bind(realHost),
+    dispose: realHost.dispose.bind(realHost),
   };
 }

@@ -11,7 +11,7 @@ import pc from "picocolors";
 import { type Component, ENV_DIR, SECRETS_DIR, UNIT_DIR } from "./component-meta.ts";
 import { serializeEnvFile } from "./env-file.ts";
 import { generateUnit, getComponentConfig, unitName, type UnitConfig } from "./systemd.ts";
-import { pass, fail, info } from "./output.ts";
+import { pass, fail, info, elevationHardFailed } from "./output.ts";
 import { type Host, createLocalHost, isUnitActiveOn, getUnitStatusOn } from "./host.ts";
 
 function applyEnvDerivations(component: Component, config: Record<string, string>): Record<string, string> {
@@ -35,10 +35,7 @@ export async function writeEnvConfig(
     `mkdir -p ${ENV_DIR} && cat > ${envPath} << 'ENVEOF'\n${envContent}ENVEOF\nchmod 644 ${envPath}`,
     `Write ${component} configuration`,
   );
-  if (!result.success && !result.skipped) {
-    fail("Config", result.output);
-    return false;
-  }
+  if (elevationHardFailed(result, "Config")) return false;
 
   // Write secret files
   if (Object.keys(secrets).length > 0) {
@@ -49,10 +46,7 @@ export async function writeEnvConfig(
       cmds.push(`chmod 600 ${SECRETS_DIR}/${key}`);
     }
     result = await host.withElevation(cmds.join(" && "), "Write secrets", { sensitive: true });
-    if (!result.success && !result.skipped) {
-      fail("Secrets", result.output);
-      return false;
-    }
+    if (elevationHardFailed(result, "Secrets")) return false;
   }
 
   pass("Config", "Environment configured");
@@ -79,13 +73,8 @@ export async function writeSystemdUnit(
     `Install ${component} systemd unit`,
   );
 
-  if (!result.success && !result.skipped) {
-    fail("Systemd", result.output);
-    return false;
-  }
-  if (result.skipped) {
-    return false;
-  }
+  if (elevationHardFailed(result, "Systemd")) return false;
+  if (result.skipped) return false;
 
   pass("Systemd", `Unit installed at ${unitPath}`);
   return true;
@@ -100,6 +89,41 @@ export async function stopService(component: Component, host: Host): Promise<voi
   }
 }
 
+const UNIT_ACTIVE_POLL_INTERVAL_MS = 500;
+const UNIT_ACTIVE_POLL_ATTEMPTS = 10;
+
+async function waitForUnitActive(host: Host, unit: string): Promise<boolean> {
+  for (let i = 0; i < UNIT_ACTIVE_POLL_ATTEMPTS; i++) {
+    await Bun.sleep(UNIT_ACTIVE_POLL_INTERVAL_MS);
+    if (await isUnitActiveOn(host, unit)) return true;
+  }
+  return false;
+}
+
+async function reportUnitFailure(host: Host, unit: string, contextSuffix: string): Promise<void> {
+  const status = await getUnitStatusOn(host, unit);
+  fail("Service", `${unit} is ${status}${contextSuffix}`);
+  const journal = await host.run(["journalctl", "-u", unit, "--no-pager", "-n", "20"]);
+  if (journal.ok) {
+    p.log.info(pc.dim(journal.output));
+  }
+}
+
+async function awaitUnitActiveWithSpinner(
+  host: Host,
+  unit: string,
+  messages: { pending: string; succeeded: string; failed: string },
+): Promise<boolean> {
+  const spinner = p.spinner();
+  spinner.start(messages.pending);
+  if (await waitForUnitActive(host, unit)) {
+    spinner.stop(messages.succeeded);
+    return true;
+  }
+  spinner.stop(messages.failed);
+  return false;
+}
+
 /** Enable and start a service, wait for it to stabilize. */
 export async function startService(component: Component, host: Host): Promise<boolean> {
   const unit = unitName(component);
@@ -108,36 +132,19 @@ export async function startService(component: Component, host: Host): Promise<bo
     `Enable and start ${unit}`,
   );
 
-  if (!result.success && !result.skipped) {
-    fail("Service", result.output);
-    return false;
-  }
+  if (elevationHardFailed(result, "Service")) return false;
   if (result.skipped) return false;
 
-  // Poll until the service is active or we've waited long enough
-  const spinner = p.spinner();
-  spinner.start("Waiting for service to start…");
-  let active = false;
-  for (let i = 0; i < 10; i++) {
-    await Bun.sleep(500);
-    active = await isUnitActiveOn(host, unit);
-    if (active) break;
-  }
+  const active = await awaitUnitActiveWithSpinner(host, unit, {
+    pending: "Waiting for service to start…",
+    succeeded: "Service running",
+    failed: "Service failed to start",
+  });
   if (active) {
-    spinner.stop("Service running");
     pass("Service", `${unit} is active`);
     return true;
   }
-
-  spinner.stop("Service failed to start");
-  const status = await getUnitStatusOn(host, unit);
-  fail("Service", `${unit} is ${status}`);
-
-  // Show recent journal output
-  const journal = await host.run(["journalctl", "-u", unit, "--no-pager", "-n", "20"]);
-  if (journal.ok) {
-    p.log.info(pc.dim(journal.output));
-  }
+  await reportUnitFailure(host, unit, "");
   return false;
 }
 
@@ -161,26 +168,15 @@ export async function restartService(component: Component, host: Host): Promise<
     return false;
   }
 
-  const spinner = p.spinner();
-  spinner.start("Waiting for service to restart…");
-  let active = false;
-  for (let i = 0; i < 10; i++) {
-    await Bun.sleep(500);
-    active = await isUnitActiveOn(host, unit);
-    if (active) break;
-  }
+  const active = await awaitUnitActiveWithSpinner(host, unit, {
+    pending: "Waiting for service to restart…",
+    succeeded: "Service restarted",
+    failed: "Service failed to restart",
+  });
   if (active) {
-    spinner.stop("Service restarted");
     pass("Service", `${unit} restarted with new configuration`);
     return true;
   }
-
-  spinner.stop("Service failed to restart");
-  const status = await getUnitStatusOn(host, unit);
-  fail("Service", `${unit} is ${status} after restart`);
-  const journal = await host.run(["journalctl", "-u", unit, "--no-pager", "-n", "20"]);
-  if (journal.ok) {
-    p.log.info(pc.dim(journal.output));
-  }
+  await reportUnitFailure(host, unit, " after restart");
   return false;
 }

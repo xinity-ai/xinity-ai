@@ -6,6 +6,7 @@
  *
  * When adding a new export to a stubbed dashboard module, add it HERE.
  */
+import { z } from "zod";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -41,20 +42,12 @@ export const serverStubs: Record<string, Record<string, unknown>> = {
   },
   "$lib/server/roles": {
     ac: { statements: {} },
-    labeler: {},
-    admin: {},
-    owner: {},
-    member: {},
-    viewer: {},
+    roles: {},
+    RoleSchema: z.string(),
     isRoleAvailable: () => true,
   },
   "$lib/server/email": {
     sendEmail: asyncNoop,
-  },
-  "$lib/server/lib/modelloader.mod": {
-    loadModelData: () => [],
-    getModelInfo: () => null,
-    InvalidModelInfo: class extends Error {},
   },
   "$lib/server/lib/orchestration.mod": {
     assembleModelRequirementTable: asyncNoop,
@@ -72,12 +65,15 @@ export const serverStubs: Record<string, Record<string, unknown>> = {
     isExpired: () => false,
     isInGracePeriod: () => false,
     hasOriginMismatch: () => false,
+    hasInstanceMismatch: () => false,
     getLicenseSummary: () => ({
       tier: "free",
       licensee: null,
       expired: false,
       inGracePeriod: false,
       originMismatch: false,
+      instanceMismatch: false,
+      maxVramGb: 120,
       features: { sso: false, multiOrg: false, ssoSelfManage: false, allRoles: false },
     }),
   },
@@ -135,6 +131,13 @@ const sourceOverrides: Record<string, string> = {
       level: "silent",
     };
     export const rootLogger = dummyLogger;
+  `,
+  "$lib/server/roles": `
+    import { z } from "zod";
+    export const ac = { statements: {} };
+    export const roles = {};
+    export const RoleSchema = z.string();
+    export const isRoleAvailable = () => true;
   `,
 };
 

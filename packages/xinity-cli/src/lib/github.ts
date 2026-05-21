@@ -33,22 +33,26 @@ function getApiBase(): string {
   return `https://api.github.com/repos/${match[1]}`;
 }
 
-/**
- * Resolve a GitHub token for API authentication.
- * Priority: config > `gh auth token` > none.
- */
-async function resolveToken(): Promise<string | undefined> {
+async function discoverToken(): Promise<string | undefined> {
   const config = loadConfig();
   if (config.githubToken) return config.githubToken;
-
-  // Try the GitHub CLI (always a local check)
   try {
     const local = createLocalHost();
     const result = await local.run(["gh", "auth", "token"]);
     if (result.ok && result.output) return result.output;
   } catch { /* gh not installed or not authenticated */ }
-
   return undefined;
+}
+
+let tokenPromise: Promise<string | undefined> | undefined;
+
+/**
+ * Resolve a GitHub token for API authentication.
+ * Priority: config > `gh auth token` > none.
+ * Memoized for the lifetime of the process so `gh auth token` is only spawned once.
+ */
+async function resolveToken(): Promise<string | undefined> {
+  return tokenPromise ??= discoverToken();
 }
 
 /** Build common headers for GitHub API requests. */
@@ -138,8 +142,8 @@ export async function fetchChecksums(
   const text = await res.text();
   const checksums = new Map<string, string>();
   for (const line of text.split("\n")) {
-    const match = line.match(/^([a-f0-9]{64})\s+(.+)$/);
-    if (match) checksums.set(match[2]!.trim(), match[1]!);
+    const [, hash, name] = line.match(/^([a-f0-9]{64})\s+(.+)$/) ?? [];
+    if (hash && name) checksums.set(name.trim(), hash);
   }
   return checksums;
 }
@@ -178,18 +182,21 @@ export async function resolveDirectUrl(asset: ReleaseAsset): Promise<string> {
   }
 
   // Public repo served the content directly, use the browser URL instead
-  if (res.ok || res.status === 200) {
+  if (res.ok) {
     return asset.browserDownloadUrl;
   }
 
   throw new Error(`Failed to resolve download URL: ${res.status} ${res.statusText}`);
 }
 
-function assetPrefix(component: string, arch?: string): string {
+function productSlug(component: string): string {
+  if (component === "cli" || component === "infoserver") return `xinity-${component}`;
+  return `xinity-ai-${component}`;
+}
+
+export function assetPrefix(component: string, arch?: string): string {
   const resolved = (arch ?? process.arch) === "arm64" ? "arm64" : "x64";
-  if (component === "cli") return `xinity-cli-linux-${resolved}`;
-  if (component === "infoserver") return `xinity-infoserver-linux-${resolved}`;
-  return `xinity-ai-${component}-linux-${resolved}`;
+  return `${productSlug(component)}-linux-${resolved}`;
 }
 
 export function pickReleaseAsset(release: Release, component: string, arch?: string): string {

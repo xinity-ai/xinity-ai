@@ -10,11 +10,11 @@ import pc from "picocolors";
 import { type Host, commandExistsOn, isUnitActiveOn } from "./host.ts";
 import { pass, fail, info, warn } from "./output.ts";
 import { parseEnvString, serializeEnvFile } from "./env-file.ts";
-import { ENV_DIR } from "./component-meta.ts";
+import { ENV_DIR, UNIT_DIR } from "./component-meta.ts";
 import { restartService } from "./service.ts";
 
 const DEFAULT_PORT = "11434";
-const OVERRIDE_DIR = "/etc/systemd/system/ollama.service.d";
+const OVERRIDE_DIR = `${UNIT_DIR}/ollama.service.d`;
 const OVERRIDE_PATH = `${OVERRIDE_DIR}/override.conf`;
 
 // ─── Detection ──────────────────────────────────────────────────────────────
@@ -23,11 +23,24 @@ async function isOllamaInstalled(host: Host): Promise<boolean> {
   return commandExistsOn(host, "ollama");
 }
 
-async function isOllamaRunning(host: Host): Promise<boolean> {
+/** Check whether the ollama systemd service is active, accepting either unit name. */
+export async function isOllamaRunning(host: Host): Promise<boolean> {
   return (
     (await isUnitActiveOn(host, "ollama.service")) ||
     (await isUnitActiveOn(host, "ollama"))
   );
+}
+
+const OLLAMA_POLL_INTERVAL_MS = 500;
+const OLLAMA_POLL_ATTEMPTS = 10;
+
+/** Poll up to ~5 seconds for the ollama service to become active. Returns true on success. */
+export async function waitForOllamaRunning(host: Host): Promise<boolean> {
+  for (let i = 0; i < OLLAMA_POLL_ATTEMPTS; i++) {
+    await Bun.sleep(OLLAMA_POLL_INTERVAL_MS);
+    if (await isOllamaRunning(host)) return true;
+  }
+  return false;
 }
 
 async function getOllamaVersion(host: Host): Promise<string | null> {
@@ -58,24 +71,11 @@ async function installOrUpdateOllama(host: Host): Promise<boolean> {
     // The install script usually starts the service. Poll until it's active.
     const spinner = p.spinner();
     spinner.start("Waiting for ollama service…");
-    let running = false;
-    for (let i = 0; i < 10; i++) {
-      await Bun.sleep(500);
-      running = await isOllamaRunning(host);
-      if (running) break;
-    }
+    const running = await waitForOllamaRunning(host);
     spinner.stop(running ? "Service running" : "Service not started automatically");
 
     if (!running) {
-      const startResult = await host.withElevation(
-        "systemctl enable --now ollama",
-        "Start ollama service",
-      );
-      if (startResult.success) {
-        pass("Ollama", "Service started");
-      } else if (!startResult.skipped) {
-        warn("Ollama", startResult.output || "Failed to start service");
-      }
+      await startOllamaService(host, { warnOnFail: true });
     } else {
       pass("Ollama", "Service is running");
     }
@@ -91,7 +91,7 @@ async function installOrUpdateOllama(host: Host): Promise<boolean> {
 
 // ─── Service management ─────────────────────────────────────────────────────
 
-async function startOllamaService(host: Host): Promise<boolean> {
+async function startOllamaService(host: Host, opts: { warnOnFail?: boolean } = {}): Promise<boolean> {
   const result = await host.withElevation(
     "systemctl enable --now ollama",
     "Start ollama service",
@@ -101,7 +101,8 @@ async function startOllamaService(host: Host): Promise<boolean> {
     return true;
   }
   if (!result.skipped) {
-    fail("Ollama", result.output || "Failed to start service");
+    const report = opts.warnOnFail ? warn : fail;
+    report("Ollama", result.output || "Failed to start service");
   }
   return false;
 }

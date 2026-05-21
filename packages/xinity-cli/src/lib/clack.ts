@@ -7,18 +7,6 @@
  * Usage: `import * as p from "./clack.ts"`, same API as @clack/prompts.
  */
 import * as clack from "@clack/prompts";
-export type {
-  CommonOptions,
-  SpinnerOptions,
-  SpinnerResult,
-  LogMessageOptions,
-  SelectOptions,
-  ConfirmOptions,
-  TextOptions,
-  PasswordOptions,
-  NoteOptions,
-  Option,
-} from "@clack/prompts";
 export { isCancel } from "@clack/prompts";
 
 const OUT = process.stderr;
@@ -49,8 +37,6 @@ export const log = {
     clack.log.step(message, { output: OUT, ...opts }),
   warn: (message: string, opts?: clack.LogMessageOptions) =>
     clack.log.warn(message, { output: OUT, ...opts }),
-  warning: (message: string, opts?: clack.LogMessageOptions) =>
-    clack.log.warning(message, { output: OUT, ...opts }),
   error: (message: string, opts?: clack.LogMessageOptions) =>
     clack.log.error(message, { output: OUT, ...opts }),
 };
