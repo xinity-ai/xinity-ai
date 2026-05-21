@@ -45,23 +45,17 @@ export async function handleModelsRequest(req: Request): Promise<Response> {
     .where(sql`${modelDeploymentT.organizationId} = ${orgId} AND ${modelDeploymentT.deletedAt} IS NULL`);
 
   const modelMap = new Map<string, { modelDeployment: ModelDeployment; lifecycles: InstallationLifecycle[] }>();
-  models.forEach(row => {
+  for (const row of models) {
     const key = row.model_deployment.publicSpecifier;
-    const lifecycle: InstallationLifecycle = row.model_installation
-      ? (row.model_installation_state?.lifecycleState ?? null)
-      : null;
-    const entry = modelMap.get(key);
-    if (entry) {
-      if (row.model_installation) {
-        entry.lifecycles.push(lifecycle);
-      }
-    } else {
-      modelMap.set(key, {
-        modelDeployment: row.model_deployment,
-        lifecycles: row.model_installation ? [lifecycle] : [],
-      });
+    let entry = modelMap.get(key);
+    if (!entry) {
+      entry = { modelDeployment: row.model_deployment, lifecycles: [] };
+      modelMap.set(key, entry);
     }
-  });
+    if (row.model_installation) {
+      entry.lifecycles.push(row.model_installation_state?.lifecycleState ?? null);
+    }
+  }
 
   const modelOutput = Array.from(modelMap.values()).map(model => ({
     id: model.modelDeployment.publicSpecifier,
@@ -75,13 +69,5 @@ export async function handleModelsRequest(req: Request): Promise<Response> {
     ? modelOutput
     : modelOutput.filter(model => model.status === "ready");
 
-  return new Response(JSON.stringify({
-    object: "list",
-    data: visibleModels,
-  }), {
-    headers: {
-      "Content-Type": "application/json",
-    },
-    status: 200,
-  })
+  return Response.json({ object: "list", data: visibleModels });
 }

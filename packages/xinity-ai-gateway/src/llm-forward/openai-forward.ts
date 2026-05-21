@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   errorResponse,
+  forwardBackendError,
   handleStreamError,
   logChatUsage,
   readSSEStream,
@@ -83,15 +84,13 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
           if (chunk.usage) {
             collectedUsage = chunk.usage;
           }
-          if (chunk.choices.length) {
-            for (const choice of chunk.choices) {
-              let acc = accumByChoice.get(choice.index);
-              if (!acc) {
-                acc = spec.initAcc();
-                accumByChoice.set(choice.index, acc);
-              }
-              spec.applyChoice(acc, choice);
+          for (const choice of chunk.choices) {
+            let acc = accumByChoice.get(choice.index);
+            if (!acc) {
+              acc = spec.initAcc();
+              accumByChoice.set(choice.index, acc);
             }
+            spec.applyChoice(acc, choice);
           }
 
           controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
@@ -156,4 +155,30 @@ export async function forwardOpenAINonStream<Choice>({
     log.warn({ issues: choicesResult.error.issues }, "Could not extract choices for logging");
   }
   return Response.json(raw);
+}
+
+export function forwardOpenAIResponse<Chunk extends StreamChunkLike, Acc, Choice>({
+  backendResponse,
+  originalModel,
+  stream,
+  streamSpec,
+  nonStreamSpec,
+  logFields,
+  log,
+}: {
+  backendResponse: Response;
+  originalModel: string;
+  stream: boolean;
+  streamSpec: StreamSpec<Chunk, Acc>;
+  nonStreamSpec: NonStreamSpec<Choice>;
+  logFields: OpenAIForwardLogFields;
+  log: Logger;
+}): Response | Promise<Response> {
+  if (!backendResponse.ok) {
+    return forwardBackendError(backendResponse, log);
+  }
+  if (stream) {
+    return forwardOpenAIStream({ backendResponse, originalModel, spec: streamSpec, logFields, log });
+  }
+  return forwardOpenAINonStream({ backendResponse, originalModel, spec: nonStreamSpec, logFields, log });
 }

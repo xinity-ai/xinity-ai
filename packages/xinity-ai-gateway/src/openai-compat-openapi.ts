@@ -80,7 +80,15 @@ const modelsListResponseSchema = {
 
 const passthroughObject = { type: "object", additionalProperties: true };
 
-const errorJsonContent = { "application/json": { schema: { $ref: "#/components/schemas/Error" } } };
+function jsonContent(schemaRef: string) {
+  return { "application/json": { schema: { $ref: schemaRef } } };
+}
+
+function jsonResponse(description: string, schemaRef: string) {
+  return { description, content: jsonContent(schemaRef) };
+}
+
+const errorJsonContent = jsonContent("#/components/schemas/Error");
 const errorResponses = {
   "400": { description: "Bad request", content: errorJsonContent },
   "401": { description: "Missing or invalid API key", content: errorJsonContent },
@@ -100,7 +108,14 @@ const sseContent = {
 function jsonRequest(schemaRef: string) {
   return {
     required: true,
-    content: { "application/json": { schema: { $ref: schemaRef } } },
+    content: jsonContent(schemaRef),
+  };
+}
+
+function streamableJsonResponse(description: string, schemaRef: string) {
+  return {
+    description,
+    content: { ...jsonContent(schemaRef), ...sseContent },
   };
 }
 
@@ -130,7 +145,7 @@ export const openaiCompatPaths = {
         "OpenAI: https://platform.openai.com/docs/api-reference/models/list",
         "",
         "Xinity differences:",
-        "- Defaults to filtering for `status: ready` deployments. Pass `?include_unavailable=true` to also receive `loading` and `not_ready` deployments.",
+        "- Defaults to filtering for `status: ready` deployments. Pass `?include_unavailable=true` to also receive `downloading`, `installing`, `failed`, and pending deployments.",
         "- Each item carries Xinity extension fields `status` and `canary` (see ModelObject).",
       ].join("\n"),
       security: SECURITY,
@@ -144,10 +159,7 @@ export const openaiCompatPaths = {
         },
       ],
       responses: {
-        "200": {
-          description: "List of models",
-          content: { "application/json": { schema: { $ref: "#/components/schemas/ModelsListResponse" } } },
-        },
+        "200": jsonResponse("List of models", "#/components/schemas/ModelsListResponse"),
         ...errorResponses,
       },
     },
@@ -168,13 +180,10 @@ export const openaiCompatPaths = {
       security: SECURITY,
       requestBody: jsonRequest("#/components/schemas/ChatCompletionRequest"),
       responses: {
-        "200": {
-          description: "Chat completion, or SSE stream when `stream: true`",
-          content: {
-            "application/json": { schema: { $ref: "#/components/schemas/ChatCompletionResponse" } },
-            ...sseContent,
-          },
-        },
+        "200": streamableJsonResponse(
+          "Chat completion, or SSE stream when `stream: true`",
+          "#/components/schemas/ChatCompletionResponse",
+        ),
         ...errorResponses,
       },
     },
@@ -194,13 +203,10 @@ export const openaiCompatPaths = {
       security: SECURITY,
       requestBody: jsonRequest("#/components/schemas/CompletionRequest"),
       responses: {
-        "200": {
-          description: "Text completion, or SSE stream when `stream: true`",
-          content: {
-            "application/json": { schema: { $ref: "#/components/schemas/CompletionResponse" } },
-            ...sseContent,
-          },
-        },
+        "200": streamableJsonResponse(
+          "Text completion, or SSE stream when `stream: true`",
+          "#/components/schemas/CompletionResponse",
+        ),
         ...errorResponses,
       },
     },
@@ -219,10 +225,7 @@ export const openaiCompatPaths = {
       security: SECURITY,
       requestBody: jsonRequest("#/components/schemas/EmbeddingRequest"),
       responses: {
-        "200": {
-          description: "Embedding vectors",
-          content: { "application/json": { schema: { $ref: "#/components/schemas/EmbeddingResponse" } } },
-        },
+        "200": jsonResponse("Embedding vectors", "#/components/schemas/EmbeddingResponse"),
         ...errorResponses,
       },
     },
@@ -241,10 +244,7 @@ export const openaiCompatPaths = {
       security: SECURITY,
       requestBody: jsonRequest("#/components/schemas/RerankRequest"),
       responses: {
-        "200": {
-          description: "Reranked documents",
-          content: { "application/json": { schema: { $ref: "#/components/schemas/RerankResponse" } } },
-        },
+        "200": jsonResponse("Reranked documents", "#/components/schemas/RerankResponse"),
         ...errorResponses,
       },
     },
@@ -265,17 +265,11 @@ export const openaiCompatPaths = {
       security: SECURITY,
       requestBody: jsonRequest("#/components/schemas/CreateResponseRequest"),
       responses: {
-        "200": {
-          description: "Completed response, or SSE stream when `stream: true`",
-          content: {
-            "application/json": { schema: { $ref: "#/components/schemas/ResponseObject" } },
-            ...sseContent,
-          },
-        },
-        "202": {
-          description: "Accepted; response is being generated in the background (`background: true`)",
-          content: { "application/json": { schema: { $ref: "#/components/schemas/ResponseObject" } } },
-        },
+        "200": streamableJsonResponse(
+          "Completed response, or SSE stream when `stream: true`",
+          "#/components/schemas/ResponseObject",
+        ),
+        "202": jsonResponse("Accepted; response is being generated in the background (`background: true`)", "#/components/schemas/ResponseObject"),
         ...errorResponses,
       },
     },
@@ -295,10 +289,7 @@ export const openaiCompatPaths = {
       description: "OpenAI: https://platform.openai.com/docs/api-reference/responses/get",
       security: SECURITY,
       responses: {
-        "200": {
-          description: "The stored response object",
-          content: { "application/json": { schema: { $ref: "#/components/schemas/ResponseObject" } } },
-        },
+        "200": jsonResponse("The stored response object", "#/components/schemas/ResponseObject"),
         ...errorResponses,
       },
     },

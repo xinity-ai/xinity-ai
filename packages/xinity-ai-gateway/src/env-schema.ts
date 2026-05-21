@@ -27,8 +27,8 @@ export const gatewayEnvSchema = z.object({
     .describe("Maximum time in ms to wait for a backend response (default: 5 minutes)")
     .meta(expert()),
   S3_ENDPOINT: z.url().optional().describe("SeaweedFS / S3-compatible endpoint URL (enables multimodal image storage)").meta(expert()),
-  S3_ACCESS_KEY_ID: z.string().optional().describe("S3 access key ID").meta(secret()).meta(expert()),
-  S3_SECRET_ACCESS_KEY: z.string().optional().describe("S3 secret access key").meta(secret()).meta(expert()),
+  S3_ACCESS_KEY_ID: z.string().optional().describe("S3 access key ID").meta({ ...secret(), ...expert() }),
+  S3_SECRET_ACCESS_KEY: z.string().optional().describe("S3 secret access key").meta({ ...secret(), ...expert() }),
   S3_BUCKET: z.string().default("xinity-media").describe("S3 bucket for media objects").meta(expert()),
   S3_REGION: z.string().default("us-east-1").describe("S3 region (use 'us-east-1' for SeaweedFS)").meta(expert()),
 

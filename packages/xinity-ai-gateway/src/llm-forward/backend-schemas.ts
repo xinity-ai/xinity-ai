@@ -23,6 +23,15 @@ export const BackendUsageSchema = z.looseObject({
   }).nullable().optional(),
 }).nullable().optional();
 
+/** Common OpenAI-compatible response envelope shared across chat, completion, and their streaming chunks. */
+const backendResponseEnvelope = {
+  id: z.string(),
+  object: z.string(),
+  created: z.number(),
+  model: z.string(),
+  system_fingerprint: z.string().nullable().optional(),
+};
+
 // ---------------------------------------------------------------------------
 // Chat completions (/v1/chat/completions)
 // ---------------------------------------------------------------------------
@@ -48,11 +57,7 @@ const BackendMessageSchema = z.looseObject({
 });
 
 export const BackendChatResponseSchema = z.looseObject({
-  id: z.string(),
-  object: z.string(),
-  created: z.number(),
-  model: z.string(),
-  system_fingerprint: z.string().nullable().optional(),
+  ...backendResponseEnvelope,
   choices: z.array(z.looseObject({
     index: z.number(),
     message: BackendMessageSchema,
@@ -82,11 +87,7 @@ const BackendDeltaSchema = z.looseObject({
 });
 
 export const BackendChatChunkSchema = z.looseObject({
-  id: z.string(),
-  object: z.string(),
-  created: z.number(),
-  model: z.string(),
-  system_fingerprint: z.string().nullable().optional(),
+  ...backendResponseEnvelope,
   choices: z.array(z.looseObject({
     index: z.number(),
     delta: BackendDeltaSchema,
@@ -101,11 +102,7 @@ export const BackendChatChunkSchema = z.looseObject({
 // ---------------------------------------------------------------------------
 
 export const BackendCompletionResponseSchema = z.looseObject({
-  id: z.string(),
-  object: z.string(),
-  created: z.number(),
-  model: z.string(),
-  system_fingerprint: z.string().nullable().optional(),
+  ...backendResponseEnvelope,
   choices: z.array(z.looseObject({
     index: z.number(),
     text: z.string(),
@@ -116,11 +113,7 @@ export const BackendCompletionResponseSchema = z.looseObject({
 });
 
 export const BackendCompletionChunkSchema = z.looseObject({
-  id: z.string(),
-  object: z.string(),
-  created: z.number(),
-  model: z.string(),
-  system_fingerprint: z.string().nullable().optional(),
+  ...backendResponseEnvelope,
   choices: z.array(z.looseObject({
     index: z.number(),
     text: z.string().default(""),

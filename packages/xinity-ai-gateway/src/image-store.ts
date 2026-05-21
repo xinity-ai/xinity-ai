@@ -47,8 +47,10 @@ export function createImageStore(config: {
   };
 }
 
+type ResolvedImage = { mimeType: string; bytes: Uint8Array };
+
 /** Parse a data URI into its mime type and raw bytes. */
-function parseDataUri(url: string): { mimeType: string; bytes: Uint8Array } | null {
+function parseDataUri(url: string): ResolvedImage | null {
   // data:[<mediatype>][;base64],<data>
   const match = url.match(/^data:([^;,]+)(?:;base64)?,(.+)$/s);
   if (!match) return null;
@@ -62,25 +64,29 @@ function parseDataUri(url: string): { mimeType: string; bytes: Uint8Array } | nu
   }
 }
 
-const MAX_IMAGE_BYTES = 40 * 1024 * 1024; 
+const MAX_IMAGE_BYTES = 40 * 1024 * 1024;
+
+function warnImageTooLarge(url: string, size: number): void {
+  log.warn({ url: url.slice(0, 200), size }, "Image exceeds size limit, skipping");
+}
 
 /** Fetch an external URL and return its bytes and mime type. */
-async function fetchExternalImage(url: string): Promise<{ mimeType: string; bytes: Uint8Array } | null> {
+async function fetchExternalImage(url: string): Promise<ResolvedImage | null> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
     if (!res.ok) return null;
     const contentType = res.headers.get("content-type") ?? "application/octet-stream";
     const mimeType = contentType.split(";")[0]!.trim();
 
-    const contentLength = res.headers.get("content-length");
-    if (contentLength && parseInt(contentLength, 10) > MAX_IMAGE_BYTES) {
-      log.warn({ url: url.slice(0, 200), contentLength }, "Image exceeds size limit, skipping");
+    const declaredSize = parseInt(res.headers.get("content-length") ?? "", 10);
+    if (Number.isFinite(declaredSize) && declaredSize > MAX_IMAGE_BYTES) {
+      warnImageTooLarge(url, declaredSize);
       return null;
     }
 
     const buffer = await res.arrayBuffer();
     if (buffer.byteLength > MAX_IMAGE_BYTES) {
-      log.warn({ url: url.slice(0, 200), size: buffer.byteLength }, "Image exceeds size limit, skipping");
+      warnImageTooLarge(url, buffer.byteLength);
       return null;
     }
 
@@ -116,18 +122,10 @@ function mimeToExtension(mimeType: string): string {
 async function processImage(
   imageUrl: string,
   orgId: string,
-  originalUrl: string | null,
   imageStore: ImageStore | null,
 ): Promise<{ dataUri: string | null; dbUrl: string | null }> {
   const isDataUri = imageUrl.startsWith("data:");
-
-  // Resolve to bytes + mimeType
-  let resolved: { mimeType: string; bytes: Uint8Array } | null;
-  if (isDataUri) {
-    resolved = parseDataUri(imageUrl);
-  } else {
-    resolved = await fetchExternalImage(imageUrl);
-  }
+  const resolved = isDataUri ? parseDataUri(imageUrl) : await fetchExternalImage(imageUrl);
 
   if (!resolved) {
     log.warn({ imageUrl: imageUrl.slice(0, 100) }, "Failed to resolve image, skipping");
@@ -135,16 +133,16 @@ async function processImage(
   }
 
   const { mimeType, bytes } = resolved;
-
-  // Build data URI for the inference node
   const dataUri = isDataUri
     ? imageUrl
     : `data:${mimeType};base64,${Buffer.from(bytes).toString("base64")}`;
 
+  // Used both for the media_object.originalUrl column and as the fallback dbUrl
+  // when S3 storage is unavailable. Data URIs are stripped (no remote source).
+  const loggedExternalUrl = isDataUri ? null : imageUrl;
+
   if (!imageStore) {
-    // S3 disabled: log original external URL, strip data URIs
-    const dbUrl = isDataUri ? null : (originalUrl ?? imageUrl);
-    return { dataUri, dbUrl };
+    return { dataUri, dbUrl: loggedExternalUrl };
   }
 
   // S3 enabled: upload and create media_object record
@@ -159,7 +157,7 @@ async function processImage(
       .values({
         sha256,
         mimeType,
-        originalUrl: isDataUri ? null : (originalUrl ?? imageUrl),
+        originalUrl: loggedExternalUrl,
         s3Bucket: imageStore.bucket,
         s3Key,
         organizationId: orgId,
@@ -174,9 +172,7 @@ async function processImage(
     return { dataUri, dbUrl: `xinity-media://${sha256}` };
   } catch (err) {
     log.error({ err }, "Failed to store image in S3, falling back to original URL");
-    // Fallback: for data URIs we can't store inline, omit from DB
-    const dbUrl = isDataUri ? null : (originalUrl ?? imageUrl);
-    return { dataUri, dbUrl };
+    return { dataUri, dbUrl: loggedExternalUrl };
   }
 }
 
@@ -218,12 +214,7 @@ export async function processMessageImages(
       }
 
       const imageUrl = part.image_url.url;
-      const { dataUri, dbUrl } = await processImage(
-        imageUrl,
-        orgId,
-        imageUrl.startsWith("data:") ? null : imageUrl,
-        imageStore,
-      );
+      const { dataUri, dbUrl } = await processImage(imageUrl, orgId, imageStore);
 
       if (dataUri) {
         llmParts.push({ type: "image_url", image_url: { url: dataUri } });

@@ -14,10 +14,11 @@ import {
   extractSearchAnnotations,
   markResponseFailed,
   generateCallId,
+  readWebSearchQuery,
 } from "./builders";
 import { saveResponse } from "../response-store";
 import { rootLogger } from "../../logger";
-import { isAbortError, isTimeoutError, isUpstreamError } from "../util";
+import { isAbortError, isTimeoutError, isUpstreamError, clientFacingErrorMessage } from "../util";
 
 const log = rootLogger.child({ name: "response-stream" });
 
@@ -27,8 +28,9 @@ const log = rootLogger.child({ name: "response-stream" });
 
 const encoder = new TextEncoder();
 
-function emit(controller: ReadableStreamDefaultController, event: string, data: unknown) {
-  controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+function emit(controller: ReadableStreamDefaultController, event: string, data: Record<string, unknown>) {
+  const payload = JSON.stringify({ type: event, ...data });
+  controller.enqueue(encoder.encode(`event: ${event}\ndata: ${payload}\n\n`));
 }
 
 // ---------------------------------------------------------------------------
@@ -97,8 +99,8 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
       const streamToolCalls: StreamToolCall[] = [];
 
       try {
-        emitResponseCreated(controller, baseResponse, seq);
-        emitResponseInProgress(controller, baseResponse, seq);
+        emitResponseLifecycle(controller, "response.created", baseResponse, seq);
+        emitResponseLifecycle(controller, "response.in_progress", baseResponse, seq);
 
         for await (const part of result.fullStream) {
           if (part.type === "text-delta") {
@@ -152,8 +154,7 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
             // Emit completed events only for tracked web_search calls
             const match = streamToolCalls.find((tc) => tc.aiToolCallId === part.toolCallId);
             if (match && match.toolName === "web_search") {
-              const query = part.input && typeof part.input === "object"
-                ? (part.input as { query?: string }).query : undefined;
+              const query = readWebSearchQuery(part.input);
               match.query = query;
               toolCalls.push({ id: match.id, aiToolCallId: match.aiToolCallId, type: "web_search_call", status: "completed" });
               emitToolCallCompleted(controller, match.id, match.outputIndex, query, seq);
@@ -183,7 +184,7 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
           .catch((err) => log.error({ err, responseId }, "Failed to persist completed response"));
         onFinished(finalUsage, finalText);
 
-        emitResponseCompleted(controller, completedResponse, seq);
+        emitResponseLifecycle(controller, "response.completed", completedResponse, seq);
         controller.close();
       } catch (error) {
         if (isAbortError(error) || isTimeoutError(error)) {
@@ -193,12 +194,10 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
         if (!isUpstreamError(error)) {
           log.error({ err: error, responseId }, "Internal error in response stream");
         }
-        const message = isUpstreamError(error) && error instanceof Error
-          ? error.message
-          : "Gateway error";
+        const message = clientFacingErrorMessage(error);
         try {
           emitStreamError(controller, message, seq);
-          emitResponseFailed(controller, markResponseFailed(baseResponse, message), seq);
+          emitResponseLifecycle(controller, "response.failed", markResponseFailed(baseResponse, message), seq);
           controller.close();
         } catch {
           try { controller.error(error as Error); } catch {}
@@ -212,28 +211,15 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
 // Individual event emitters, one per spec event type
 // ---------------------------------------------------------------------------
 
-function emitResponseCreated(
-  ctrl: ReadableStreamDefaultController,
-  response: ResponseObject,
-  seq: () => number,
-) {
-  emit(ctrl, "response.created", {
-    type: "response.created",
-    response,
-    sequence_number: seq(),
-  });
-}
+type ResponseLifecycleEvent = "response.created" | "response.in_progress" | "response.completed" | "response.failed";
 
-function emitResponseInProgress(
+function emitResponseLifecycle(
   ctrl: ReadableStreamDefaultController,
+  event: ResponseLifecycleEvent,
   response: ResponseObject,
   seq: () => number,
 ) {
-  emit(ctrl, "response.in_progress", {
-    type: "response.in_progress",
-    response,
-    sequence_number: seq(),
-  });
+  emit(ctrl, event, { response, sequence_number: seq() });
 }
 
 function emitMessageItemAdded(
@@ -243,7 +229,6 @@ function emitMessageItemAdded(
   seq: () => number,
 ) {
   emit(ctrl, "response.output_item.added", {
-    type: "response.output_item.added",
     output_index: outputIndex,
     item: { id: messageItemId, type: "message", status: "in_progress", role: "assistant", content: [] },
     sequence_number: seq(),
@@ -257,7 +242,6 @@ function emitContentPartAdded(
   seq: () => number,
 ) {
   emit(ctrl, "response.content_part.added", {
-    type: "response.content_part.added",
     item_id: messageItemId,
     output_index: outputIndex,
     content_index: 0,
@@ -274,7 +258,6 @@ function emitTextDelta(
   seq: () => number,
 ) {
   emit(ctrl, "response.output_text.delta", {
-    type: "response.output_text.delta",
     item_id: messageItemId,
     output_index: outputIndex,
     content_index: 0,
@@ -292,19 +275,16 @@ function emitToolCallStarted(
   const toolItem: WebSearchCallOutputItem = { id: toolCallId, type: "web_search_call", status: "in_progress" };
 
   emit(ctrl, "response.output_item.added", {
-    type: "response.output_item.added",
     output_index: outputIndex,
     item: toolItem,
     sequence_number: seq(),
   });
   emit(ctrl, "response.web_search_call.in_progress", {
-    type: "response.web_search_call.in_progress",
     item_id: toolCallId,
     output_index: outputIndex,
     sequence_number: seq(),
   });
   emit(ctrl, "response.web_search_call.searching", {
-    type: "response.web_search_call.searching",
     item_id: toolCallId,
     output_index: outputIndex,
     sequence_number: seq(),
@@ -324,14 +304,12 @@ function emitToolCallCompleted(
   };
 
   emit(ctrl, "response.web_search_call.done", {
-    type: "response.web_search_call.done",
     item_id: toolCallId,
     output_index: outputIndex,
     item: completedItem,
     sequence_number: seq(),
   });
   emit(ctrl, "response.output_item.done", {
-    type: "response.output_item.done",
     output_index: outputIndex,
     item: completedItem,
     sequence_number: seq(),
@@ -346,27 +324,23 @@ function emitFunctionCallEvents(
   seq: () => number,
 ) {
   emit(ctrl, "response.output_item.added", {
-    type: "response.output_item.added",
     output_index: outputIndex,
     item: { ...item, status: "in_progress", arguments: "" },
     sequence_number: seq(),
   });
   emit(ctrl, "response.function_call_arguments.delta", {
-    type: "response.function_call_arguments.delta",
     item_id: item.id,
     output_index: outputIndex,
     delta: item.arguments,
     sequence_number: seq(),
   });
   emit(ctrl, "response.function_call_arguments.done", {
-    type: "response.function_call_arguments.done",
     item_id: item.id,
     output_index: outputIndex,
     arguments: item.arguments,
     sequence_number: seq(),
   });
   emit(ctrl, "response.output_item.done", {
-    type: "response.output_item.done",
     output_index: outputIndex,
     item,
     sequence_number: seq(),
@@ -383,7 +357,6 @@ function emitMessageFinished(
   seq: () => number,
 ) {
   emit(ctrl, "response.output_text.done", {
-    type: "response.output_text.done",
     item_id: messageItemId,
     output_index: outputIndex,
     content_index: 0,
@@ -393,7 +366,6 @@ function emitMessageFinished(
 
   for (let i = 0; i < annotations.length; i++) {
     emit(ctrl, "response.output_text.annotation.added", {
-      type: "response.output_text.annotation.added",
       item_id: messageItemId,
       output_index: outputIndex,
       content_index: 0,
@@ -406,7 +378,6 @@ function emitMessageFinished(
   const completedPart: OutputTextContentPart = { type: "output_text", text, annotations, logprobs: null };
 
   emit(ctrl, "response.content_part.done", {
-    type: "response.content_part.done",
     item_id: messageItemId,
     output_index: outputIndex,
     content_index: 0,
@@ -423,21 +394,8 @@ function emitMessageFinished(
   };
 
   emit(ctrl, "response.output_item.done", {
-    type: "response.output_item.done",
     output_index: outputIndex,
     item: completedMessage,
-    sequence_number: seq(),
-  });
-}
-
-function emitResponseCompleted(
-  ctrl: ReadableStreamDefaultController,
-  response: ResponseObject,
-  seq: () => number,
-) {
-  emit(ctrl, "response.completed", {
-    type: "response.completed",
-    response,
     sequence_number: seq(),
   });
 }
@@ -448,21 +406,8 @@ function emitStreamError(
   seq: () => number,
 ) {
   emit(ctrl, "error", {
-    type: "error",
     code: "server_error",
     message,
-    sequence_number: seq(),
-  });
-}
-
-function emitResponseFailed(
-  ctrl: ReadableStreamDefaultController,
-  response: ResponseObject,
-  seq: () => number,
-) {
-  emit(ctrl, "response.failed", {
-    type: "response.failed",
-    response,
     sequence_number: seq(),
   });
 }

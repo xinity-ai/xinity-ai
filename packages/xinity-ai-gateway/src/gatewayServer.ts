@@ -41,32 +41,38 @@ const handler = new OpenAPIHandler(serverRouter, {
 
 const tls = getTlsConfig(env);
 
+const meteredEndpoints: Array<[string, (req: Request) => Promise<Response> | Response]> = [
+  ["/v1/chat/completions", handleChatCompletion],
+  ["/v1/completions", handleCompletion],
+  ["/v1/embeddings", handleEmbeddingGeneration],
+  ["/v1/models", handleModelsRequest],
+  ["/v1/rerank", handleRerank],
+  ["/v1/responses", handleCreateResponseRequest],
+  ["/v1/responses/:responseId", handleGetOrDeleteResponseRequest],
+];
+
+const meteredRoutes = Object.fromEntries(
+  meteredEndpoints.map(([path, handler]) => [path, withMetrics(path, handler)]),
+);
+
 const serveOptions = {
   tls,
   routes: {
     "/docs": createScalarPage(),
     "/openapi.json": await createOpenapiSpec(),
     "/metrics": handleMetrics,
-    "/v1/chat/completions": withMetrics("/v1/chat/completions", handleChatCompletion),
-    "/v1/completions": withMetrics("/v1/completions", handleCompletion),
-    "/v1/embeddings": withMetrics("/v1/embeddings", handleEmbeddingGeneration),
-    "/v1/models": withMetrics("/v1/models", handleModelsRequest),
-    "/v1/rerank": withMetrics("/v1/rerank", handleRerank),
-    "/v1/responses": withMetrics("/v1/responses", handleCreateResponseRequest),
-    "/v1/responses/:responseId": withMetrics("/v1/responses/:responseId", handleGetOrDeleteResponseRequest),
+    ...meteredRoutes,
   },
   fetch: handleRequest,
   idleTimeout: env.IDLE_TIMEOUT,
 } as const;
 
 const proto = tls ? "https" : "http";
-if (env.UNIX_SOCKET) {
-  Bun.serve({ ...serveOptions, unix: env.UNIX_SOCKET, idleTimeout: undefined });
-  rootLogger.info({ unix: env.UNIX_SOCKET, tls: !!tls }, `Gateway started (${proto})`);
-} else {
-  Bun.serve({ ...serveOptions, port: env.PORT, hostname: env.HOST });
-  rootLogger.info({ host: env.HOST, port: env.PORT, tls: !!tls }, `Gateway started (${proto})`);
-}
+const serveTarget = env.UNIX_SOCKET
+  ? { unix: env.UNIX_SOCKET, idleTimeout: undefined }
+  : { port: env.PORT, hostname: env.HOST };
+Bun.serve({ ...serveOptions, ...serveTarget });
+rootLogger.info({ ...serveTarget, tls: !!tls }, `Gateway started (${proto})`);
 
 async function handleRequest(req: Request): Promise<Response> {
   const { matched, response } = await handler.handle(req, {

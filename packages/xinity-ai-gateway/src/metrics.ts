@@ -3,15 +3,20 @@ import { releaseCallbacks } from "./llm-forward/release-registry";
 import { isAbortError } from "./llm-forward/util";
 import { rootLogger } from "./logger";
 
+function parseUserPass(value: string): { user: string; pass: string } | null {
+  const sep = value.indexOf(":");
+  if (sep === -1) return null;
+  return { user: value.slice(0, sep), pass: value.slice(sep + 1) };
+}
+
 // Metrics basic auth: comma-separated "user:pass" pairs, e.g. "admin:secret,reader:abc123"
 const METRICS_AUTH: Array<{ user: string; pass: string }> = (() => {
   const raw = env.METRICS_AUTH;
   if (!raw) return [];
   return raw.split(",").map((pair) => {
-    const sep = pair.indexOf(":");
-    if (sep === -1)
-      throw new Error(`Invalid METRICS_AUTH entry (missing ':'): "${pair}"`);
-    return { user: pair.slice(0, sep), pass: pair.slice(sep + 1) };
+    const parsed = parseUserPass(pair);
+    if (!parsed) throw new Error(`Invalid METRICS_AUTH entry (missing ':'): "${pair}"`);
+    return parsed;
   });
 })();
 
@@ -34,17 +39,14 @@ function checkMetricsAuth(req: Request): Response | null {
     return UNAUTHORIZED();
   }
 
-  const sep = decoded.indexOf(":");
-  if (sep === -1) return UNAUTHORIZED();
+  const credentials = parseUserPass(decoded);
+  if (!credentials) return UNAUTHORIZED();
 
-  const user = decoded.slice(0, sep);
-  const pass = decoded.slice(sep + 1);
-
-  if (!METRICS_AUTH.some((a) => a.user === user && a.pass === pass)) {
+  if (!METRICS_AUTH.some((a) => a.user === credentials.user && a.pass === credentials.pass)) {
     return UNAUTHORIZED();
   }
 
-  return null; // authorized
+  return null;
 }
 
 type Labels = Record<string, string>;
@@ -112,18 +114,24 @@ function createHistogram(name: string, help: string, boundaries: number[]) {
   };
 }
 
+type ScalarValues = Map<string, { labels: Labels; value: number }>;
+
+function addToLabelGroup(values: ScalarValues, labels: Labels, amount: number) {
+  const key = labelKey(labels);
+  const existing = values.get(key);
+  if (existing) {
+    existing.value += amount;
+  } else {
+    values.set(key, { labels, value: amount });
+  }
+}
+
 function createCounter(name: string, help: string) {
-  const values = new Map<string, { labels: Labels; value: number }>();
+  const values: ScalarValues = new Map();
 
   return {
     inc(labels: Labels, amount = 1) {
-      const key = labelKey(labels);
-      const existing = values.get(key);
-      if (existing) {
-        existing.value += amount;
-      } else {
-        values.set(key, { labels, value: amount });
-      }
+      addToLabelGroup(values, labels, amount);
     },
     serialize(): string {
       return serializeMetric(name, help, "counter", values);
@@ -132,20 +140,14 @@ function createCounter(name: string, help: string) {
 }
 
 function createGauge(name: string, help: string) {
-  const values = new Map<string, { labels: Labels; value: number }>();
+  const values: ScalarValues = new Map();
 
   return {
     inc(labels: Labels, amount = 1) {
-      const key = labelKey(labels);
-      const existing = values.get(key);
-      if (existing) {
-        existing.value += amount;
-      } else {
-        values.set(key, { labels, value: amount });
-      }
+      addToLabelGroup(values, labels, amount);
     },
     dec(labels: Labels, amount = 1) {
-      this.inc(labels, -amount);
+      addToLabelGroup(values, labels, -amount);
     },
     serialize(): string {
       return serializeMetric(name, help, "gauge", values);

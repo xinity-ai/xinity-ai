@@ -1,19 +1,17 @@
 import { z } from "zod";
 import {
   errorResponse,
-  forwardBackendError,
   extractAllowedRequestParams,
+  modelLacksToolSupport,
 } from "../util";
 import { withEndpointGuards } from "../endpoint-guards";
 import { BackendChatChunkSchema } from "../backend-schemas";
 import type { ApiCallInputMessage } from "common-db";
 import { rootLogger } from "../../logger";
 import { processMessageImages, imageStore } from "../../image-store";
-import { env } from "../../env";
-import { backendFetch, backendUrl } from "../backend-fetch";
+import { backendPostJson } from "../backend-fetch";
 import {
-  forwardOpenAINonStream,
-  forwardOpenAIStream,
+  forwardOpenAIResponse,
   type NonStreamSpec,
   type StreamSpec,
 } from "../openai-forward";
@@ -128,7 +126,7 @@ export const handleChatCompletion = withEndpointGuards({
     }
 
     const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
-    if (hasTools && modelInfo.tags !== undefined && !modelInfo.tags.includes("tools")) {
+    if (hasTools && modelLacksToolSupport(modelInfo)) {
       return errorResponse("Model does not support tool use", 400);
     }
 
@@ -175,32 +173,14 @@ export const handleChatCompletion = withEndpointGuards({
       metadata: body.metadata ?? undefined,
     };
 
-    const backendResponse = await backendFetch(backendUrl(modelInfo.host, modelInfo.model, "/v1/chat/completions", modelInfo.tls), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(fetchBody),
-      signal: AbortSignal.any([req.signal, AbortSignal.timeout(env.BACKEND_TIMEOUT_MS)]),
-      authToken: modelInfo.authToken ?? undefined,
-    });
+    const backendResponse = await backendPostJson(modelInfo, "/v1/chat/completions", fetchBody, req.signal);
 
-    if (!backendResponse.ok) {
-      return forwardBackendError(backendResponse, log);
-    }
-
-    if (body.stream) {
-      return forwardOpenAIStream({
-        backendResponse,
-        originalModel,
-        spec: chatStreamSpec,
-        logFields,
-        log,
-      });
-    }
-
-    return forwardOpenAINonStream({
+    return forwardOpenAIResponse({
       backendResponse,
       originalModel,
-      spec: chatNonStreamSpec,
+      stream: body.stream,
+      streamSpec: chatStreamSpec,
+      nonStreamSpec: chatNonStreamSpec,
       logFields,
       log,
     });

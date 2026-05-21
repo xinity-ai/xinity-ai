@@ -14,10 +14,7 @@ export async function searchSearxng(query: string, maxResults = 5): Promise<Sear
   }
 
   const baseUrl = new URL(env.WEB_SEARCH_ENGINE_URL);
-  const path = baseUrl.pathname.endsWith("/")
-    ? `${baseUrl.pathname}search`
-    : `${baseUrl.pathname}/search`;
-  baseUrl.pathname = path;
+  baseUrl.pathname = baseUrl.pathname.replace(/\/$/, "") + "/search";
   baseUrl.searchParams.set("q", query);
   baseUrl.searchParams.set("format", "json");
 

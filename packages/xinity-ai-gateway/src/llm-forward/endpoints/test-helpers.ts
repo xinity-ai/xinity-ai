@@ -11,6 +11,16 @@
 const MOCK_ID = "test-id";
 const MOCK_CREATED = 123;
 
+const SSE_HEADERS = { "Content-Type": "text/event-stream" };
+
+function chatCompletionEnvelope(model: string) {
+  return { id: MOCK_ID, object: "chat.completion", created: MOCK_CREATED, model };
+}
+
+function sseResponse(body: string): Response {
+  return new Response(body, { headers: SSE_HEADERS });
+}
+
 function sseChunk(
   model: string,
   delta: Record<string, unknown>,
@@ -41,9 +51,7 @@ export function makeChatSseBody(model: string, contentChunks: string[]): string 
 }
 
 export function makeChatSseResponse(model: string, contentChunks: string[]): Response {
-  return new Response(makeChatSseBody(model, contentChunks), {
-    headers: { "Content-Type": "text/event-stream" },
-  });
+  return sseResponse(makeChatSseBody(model, contentChunks));
 }
 
 export function makeChatJsonResponse(
@@ -52,10 +60,7 @@ export function makeChatJsonResponse(
   usage = { total_tokens: 10, prompt_tokens: 5, completion_tokens: 5 },
 ): Response {
   return Response.json({
-    id: MOCK_ID,
-    object: "chat.completion",
-    created: MOCK_CREATED,
-    model,
+    ...chatCompletionEnvelope(model),
     choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
     usage,
   });
@@ -74,10 +79,7 @@ export function makeChatJsonResponseWithToolCalls(
   usage = { total_tokens: 15, prompt_tokens: 10, completion_tokens: 5 },
 ): Response {
   return Response.json({
-    id: MOCK_ID,
-    object: "chat.completion",
-    created: MOCK_CREATED,
-    model,
+    ...chatCompletionEnvelope(model),
     choices: [{
       index: 0,
       message: {
@@ -122,15 +124,10 @@ export function makeChatSseResponseWithToolCalls(
   model: string,
   toolCalls: MockToolCall[],
 ): Response {
-  return new Response(makeChatSseBodyWithToolCalls(model, toolCalls), {
-    headers: { "Content-Type": "text/event-stream" },
-  });
+  return sseResponse(makeChatSseBodyWithToolCalls(model, toolCalls));
 }
 
 /** Builds a raw JSON response with arbitrary body, for testing schema resilience. */
 export function makeRawJsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
+  return Response.json(body, { status });
 }
