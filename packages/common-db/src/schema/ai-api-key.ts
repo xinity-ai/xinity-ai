@@ -34,4 +34,4 @@ export const aiApiKeyT = pgTable("ai_api_key", {
   index("ai_api_key_application_id_idx").on(table.applicationId),
   index("ai_api_key_deleted_at_idx").on(table.deletedAt),
 ]);
-export type AIAPIKeyT = InferSelectModel<typeof aiApiKeyT>;
+export type AiApiKey = InferSelectModel<typeof aiApiKeyT>;

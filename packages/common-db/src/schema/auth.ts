@@ -20,7 +20,12 @@ export type DisplaySettings = {
   showDetailedMetrics: boolean;
   gettingStartedDismissed: boolean;
 };
-export type User = InferSelectModel<typeof userT>;
+export const defaultDisplaySettings: DisplaySettings = {
+  darkMode: false,
+  compactView: false,
+  showDetailedMetrics: true,
+  gettingStartedDismissed: false,
+};
 export const userT = pgTable("user", {
   id: text().primaryKey(),
   name: text().notNull(),
@@ -39,16 +44,8 @@ export const userT = pgTable("user", {
   displaySettings: jsonb("display_settings")
     .notNull()
     .$type<DisplaySettings>()
-    .$defaultFn(() => ({
-      darkMode: false,
-      compactView: false,
-      showDetailedMetrics: true,
-      gettingStartedDismissed: false,
-    })),
-  twoFactorEnabled: boolean("two_factor_enabled")
-    .notNull()
-    .default(false)
-    .$default(() => false),
+    .$defaultFn(() => defaultDisplaySettings),
+  twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),
 
   // Admin fields (unused for the time being)
   role: text().notNull().default("user"),
@@ -60,6 +57,7 @@ export const userT = pgTable("user", {
   createdAt,
   updatedAt,
 });
+export type User = InferSelectModel<typeof userT>;
 
 const userId = text("user_id")
   .notNull()

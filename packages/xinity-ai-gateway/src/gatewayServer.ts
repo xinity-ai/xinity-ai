@@ -13,6 +13,7 @@ import { handleCreateResponseRequest, handleGetOrDeleteResponseRequest } from ".
 import { handleRerank } from "./llm-forward/endpoints/handle-rerank";
 import { handleMetrics, withMetrics } from "./metrics";
 import { getTlsConfig } from "common-env";
+import { logMigrationFailureFatal } from "common-db";
 
 process.on("unhandledRejection", (reason) => {
   rootLogger.error({ err: reason }, "Unhandled promise rejection");
@@ -23,15 +24,7 @@ process.on("uncaughtException", (err) => {
 
 const migrationState = await checkMigrations();
 if (migrationState.status !== "ok") {
-  rootLogger.fatal("Database migrations are not up to date, gateway cannot start.");
-  if (migrationState.status === "pending") {
-    rootLogger.fatal(`${migrationState.applied} of ${migrationState.expected} migrations applied, ${migrationState.expected - migrationState.applied} pending.`);
-  } else if (migrationState.status === "no_table") {
-    rootLogger.fatal("Migrations table not found, database not initialized.");
-  } else {
-    rootLogger.fatal(migrationState.message);
-  }
-  rootLogger.fatal('Run "xinity up db" or "cd packages/common-db && bun run migrate" to apply migrations.');
+  logMigrationFailureFatal(migrationState, rootLogger, "gateway");
   process.exit(1);
 }
 
