@@ -9,6 +9,17 @@ import { connectRemoteHost } from "../lib/remote-host.ts";
 
 const COMPONENTS = ["gateway", "dashboard", "daemon", "infoserver", "all"] as const;
 
+function buildRemovalConfirmMessage(component: string, purge: boolean, target: string): string {
+  if (component === "all") {
+    return purge
+      ? `Remove ALL Xinity components and permanently delete all state data on ${target}? This cannot be undone.`
+      : `Remove ALL Xinity components on ${target}?`;
+  }
+  return purge
+    ? `Remove ${pc.cyan(component)} and permanently delete its state data on ${target}?`
+    : `Remove ${pc.cyan(component)} on ${target}?`;
+}
+
 export const rmCommand: CommandModule = {
   command: "rm <component>",
   describe: "Remove an installed Xinity service component",
@@ -35,18 +46,11 @@ export const rmCommand: CommandModule = {
     const host = targetHostArg ? await connectRemoteHost(targetHostArg) : createLocalHost();
 
     try {
-      // Confirm before any destructive removal.
       const target = targetHostArg ? pc.cyan(targetHostArg) : "this machine";
-      const confirmMessage =
-        component === "all" && purge
-          ? `Remove ALL Xinity components and permanently delete all state data on ${target}? This cannot be undone.`
-          : component === "all"
-            ? `Remove ALL Xinity components on ${target}?`
-            : purge
-              ? `Remove ${pc.cyan(component)} and permanently delete its state data on ${target}?`
-              : `Remove ${pc.cyan(component)} on ${target}?`;
-
-      const confirmed = await p.confirm({ message: confirmMessage, initialValue: false });
+      const confirmed = await p.confirm({
+        message: buildRemovalConfirmMessage(component, purge, target),
+        initialValue: false,
+      });
       if (p.isCancel(confirmed) || !confirmed) {
         p.cancel("Cancelled.");
         return;

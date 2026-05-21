@@ -47,26 +47,20 @@ export interface RemoveResult {
   errors: string[];
 }
 
+const COMMON_DEFAULTS = { INFOSERVER_URL: "https://sysinfo.xinity.ai" };
+
+const AUTO_DEFAULTS: Record<Component, Record<string, string>> = {
+  gateway: { ...COMMON_DEFAULTS },
+  daemon: { ...COMMON_DEFAULTS, STATE_DIR: "/var/lib/xinity-ai-daemon" },
+  dashboard: { ...COMMON_DEFAULTS, NODE_ENV: "production", HTTP_PORT: "5173" },
+  infoserver: {},
+};
+
 /**
  * Sensible auto-defaults derived from the systemd unit configuration.
- * These are used as lowest-priority defaults during env prompting;
- * existing config file values always take precedence.
+ * Used as lowest-priority defaults during env prompting; existing config
+ * file values always take precedence.
  */
 export function getAutoDefaults(component: Component): Record<string, string> {
-  // systemd StateDirectory=xinity-ai-{component} → /var/lib/xinity-ai-{component}
-  const stateDir = `/var/lib/xinity-ai-${component}`;
-  const common: Record<string, string> = {
-    INFOSERVER_URL: "https://sysinfo.xinity.ai",
-  };
-
-  switch (component) {
-    case "daemon":
-      return { ...common, STATE_DIR: stateDir };
-    case "dashboard":
-      return { ...common, NODE_ENV: "production", HTTP_PORT: "5173" };
-    case "infoserver":
-      return {};
-    default:
-      return common;
-  }
+  return AUTO_DEFAULTS[component];
 }

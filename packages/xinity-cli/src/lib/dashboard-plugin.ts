@@ -34,15 +34,10 @@ plugin({
       build.module(specifier, () => ({ exports, loader: "object" }));
     }
 
-    // --- Server module stubs (by $lib/ specifier) ---
+    // --- Server module stubs: register by $lib/ specifier AND by absolute path (for relative imports) ---
     for (const [specifier, exports] of Object.entries(serverStubs)) {
       build.module(specifier, () => ({ exports, loader: "object" }));
-    }
-
-    // --- Also register stubs by absolute path (for relative imports) ---
-    for (const [specifier, exports] of Object.entries(serverStubs)) {
-      const relPath = specifier.replace("$lib/", "");
-      const absPath = resolve(DASHBOARD_SRC, relPath);
+      const absPath = resolve(DASHBOARD_SRC, specifier.replace("$lib/", ""));
       build.module(absPath + ".ts", () => ({ exports, loader: "object" }));
       build.module(absPath, () => ({ exports, loader: "object" }));
     }

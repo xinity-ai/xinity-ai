@@ -1,11 +1,41 @@
-import { localRun, localRunInteractive, type Host, type RunResult, type ElevationResult, type ElevationPolicy } from "./host.ts";
+import { createServer } from "net";
+import { localRun, localRunInteractive, buildElevationMenu, confirmManualRun, type Host, type RunResult, type ElevationResult, type ElevationPolicy } from "./host.ts";
 import * as p from "./clack.ts";
 import pc from "picocolors";
 import { SudoSession, checkPasswordlessSudo } from "./sudo-session.ts";
+import { quoteShellArg, quoteShellArgv } from "common-env";
+
+async function findAvailableLoopbackPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close();
+        reject(new Error("Failed to allocate port"));
+        return;
+      }
+      const port = address.port;
+      server.close(() => resolve(port));
+    });
+  });
+}
 
 function sanitizeHost(hostname: string): string {
   return hostname.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
+
+const CTRL_C = 0x03;
+const CTRL_D = 0x04;
+const CARRIAGE_RETURN = 0x0D;
+const LINE_FEED = 0x0A;
+const DEL = 0x7F;
+const BACKSPACE = 0x08;
+const FIRST_PRINTABLE_ASCII = 0x20;
+
+const DEFAULT_REDIS_PORT = "6379";
+const DEFAULT_POSTGRES_PORT = "5432";
 
 /**
  * Read a password from the terminal with echo fully disabled.
@@ -45,15 +75,15 @@ async function readSudoPassword(prompt: string): Promise<string | null> {
 
     const onData = (chunk: Buffer) => {
       for (const byte of chunk) {
-        if (byte === 0x03 || byte === 0x04) {
+        if (byte === CTRL_C || byte === CTRL_D) {
           return finish(null);
         }
-        if (byte === 0x0D || byte === 0x0A) {
+        if (byte === CARRIAGE_RETURN || byte === LINE_FEED) {
           return finish(buf);
         }
-        if (byte === 0x7F || byte === 0x08) {
+        if (byte === DEL || byte === BACKSPACE) {
           buf = buf.slice(0, -1);
-        } else if (byte >= 0x20) {
+        } else if (byte >= FIRST_PRINTABLE_ASCII) {
           buf += String.fromCharCode(byte);
         }
       }
@@ -89,10 +119,6 @@ function drainStdinBuffer(): Promise<void> {
 
 export function socketPath(hostname: string): string {
   return `/tmp/xinity-ssh-${sanitizeHost(hostname)}`;
-}
-
-function shellEscape(s: string): string {
-  return `'${s.replace(/'/g, "'\\''")}'`;
 }
 
 function b64Cmd(command: string): string {
@@ -141,8 +167,7 @@ export class RemoteHost implements Host {
   }
 
   async run(args: string[]): Promise<RunResult> {
-    const remoteCmd = args.map(shellEscape).join(" ");
-    return localRun(["ssh", ...this.ctrlArgs, this.hostname, remoteCmd]);
+    return localRun(["ssh", ...this.ctrlArgs, this.hostname, quoteShellArgv(args)]);
   }
 
   async runShell(command: string): Promise<RunResult> {
@@ -175,24 +200,13 @@ export class RemoteHost implements Host {
     if (this.elevationPolicy === "manual" && !sensitive) {
       p.log.step(pc.dim(description));
       this.showManualCommand(command);
-      return this.confirmManualRun();
+      return confirmManualRun();
     }
 
     // First time (or sensitive command with manual policy): show menu.
-    const menuOptions: { value: string; label: string }[] = [
-      { value: "sudo-all", label: "Run with sudo (all remaining)" },
-      { value: "sudo-once", label: "Run with sudo (this time only)" },
-    ];
-    if (!sensitive) {
-      menuOptions.push(
-        { value: "manual-all", label: "Show me the commands (all remaining)" },
-        { value: "manual-once", label: "Show me the command (this time only)" },
-      );
-    }
-
     const action = await p.select({
       message: `${pc.yellow(description)} requires elevated privileges on ${pc.cyan(this.hostname)}.`,
-      options: menuOptions,
+      options: buildElevationMenu(sensitive),
     });
 
     if (p.isCancel(action)) {
@@ -208,7 +222,7 @@ export class RemoteHost implements Host {
     if (action === "manual-all" || action === "manual-once") {
       if (action === "manual-all") this.elevationPolicy = "manual";
       this.showManualCommand(command);
-      return this.confirmManualRun();
+      return confirmManualRun();
     }
 
     return { success: false, output: "", skipped: true };
@@ -260,7 +274,7 @@ export class RemoteHost implements Host {
             break;
           } catch {
             if (attempt === MAX_ATTEMPTS) {
-              p.log.error("Failed to authenticate after 3 attempts.");
+              p.log.error(`Failed to authenticate after ${MAX_ATTEMPTS} attempts.`);
               this.elevationPolicy = null;
               return { success: false, output: "", skipped: false };
             }
@@ -296,23 +310,10 @@ export class RemoteHost implements Host {
     p.log.info(`Or the equivalent plain command:\n  ${pc.dim(command.replace(/\n/g, "\n  "))}`);
   }
 
-  private async confirmManualRun(): Promise<ElevationResult> {
-    const done = await p.confirm({ message: "Have you run the command?", initialValue: true });
-    if (p.isCancel(done) || !done) {
-      const abort = await p.confirm({ message: "Abort?", initialValue: false });
-      if (p.isCancel(abort) || abort) {
-        p.cancel("Aborted.");
-        return { success: false, output: "", skipped: true };
-      }
-      return { success: false, output: "", skipped: true };
-    }
-    return { success: true, output: "", skipped: false };
-  }
-
   async readFile(path: string): Promise<string | null> {
     const result = await localRun([
       "ssh", ...this.ctrlArgs, this.hostname,
-      `cat ${shellEscape(path)}`,
+      `cat ${quoteShellArg(path)}`,
     ]);
     return result.ok ? result.output : null;
   }
@@ -322,7 +323,7 @@ export class RemoteHost implements Host {
       "ssh", ...this.ctrlArgs, this.hostname,
       // stat exits 0 when the file exists. If it fails with "Permission denied"
       // the file exists but the current user cannot access it (needs elevation).
-      `s=$(stat ${shellEscape(path)} 2>&1) && echo yes || (echo "$s" | grep -qi 'permission denied' && echo perm || echo no)`,
+      `s=$(stat ${quoteShellArg(path)} 2>&1) && echo yes || (echo "$s" | grep -qi 'permission denied' && echo perm || echo no)`,
     ]);
     const out = result.output.trim();
     return out === "yes" || out === "perm";
@@ -344,7 +345,7 @@ export class RemoteHost implements Host {
   async downloadFile(url: string, destPath: string): Promise<void> {
     const result = await localRun([
       "ssh", ...this.ctrlArgs, this.hostname,
-      `curl -fsSL -o ${shellEscape(destPath)} ${shellEscape(url)}`,
+      `curl -fsSL -o ${quoteShellArg(destPath)} ${quoteShellArg(url)}`,
     ]);
     if (!result.ok) {
       throw new Error(`Remote download failed: ${result.output}`);
@@ -359,7 +360,7 @@ export class RemoteHost implements Host {
   async computeSha256(filePath: string): Promise<string | null> {
     const result = await localRun([
       "ssh", ...this.ctrlArgs, this.hostname,
-      `sha256sum ${shellEscape(filePath)}`,
+      `sha256sum ${quoteShellArg(filePath)}`,
     ]);
     if (!result.ok) return null;
     // sha256sum output format: "hash  filename"
@@ -382,20 +383,12 @@ export class RemoteHost implements Host {
   async openTunnel(url: string): Promise<{ localUrl: string; close: () => Promise<void> }> {
     const parsed = new URL(url);
     const remoteHost = parsed.hostname;
-    const remotePort = parsed.port || (parsed.protocol === "redis:" ? "6379" : "5432");
+    const remotePort = parsed.port || (parsed.protocol === "redis:" ? DEFAULT_REDIS_PORT : DEFAULT_POSTGRES_PORT);
 
-    // Use SSH dynamic port allocation (local port 0 lets SSH pick a free port).
-    // -f backgrounds after auth, -o ExitOnForwardFailure=yes ensures we fail fast.
-    // SSH writes the allocated port info when using 0 as local port, but we can't
-    // easily capture it. Instead, find a free port via the OS.
-    const { port: localPort } = await new Promise<{ port: number }>((resolve, reject) => {
-      const server = require("net").createServer();
-      server.listen(0, "127.0.0.1", () => {
-        const port = server.address().port;
-        server.close(() => resolve({ port }));
-      });
-      server.on("error", reject);
-    });
+    // SSH local-port forwarding needs us to pick a free local port before opening
+    // the tunnel; SSH can pick one with "-L 0:..." but doesn't surface which port
+    // it chose, so we allocate ourselves and pass an explicit port.
+    const localPort = await findAvailableLoopbackPort();
 
     // Set up SSH local port forwarding using the existing control socket.
     // -f sends SSH to the background after connection, -N means no remote command.

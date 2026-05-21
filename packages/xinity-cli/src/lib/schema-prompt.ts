@@ -1,7 +1,7 @@
 import { z } from "zod";
 import * as p from "./clack.ts";
 import pc from "picocolors";
-import { cancelAndExit } from "./output.ts";
+import { promptOrExit } from "./output.ts";
 
 interface JsonSchemaProperty {
   type?: string;
@@ -9,7 +9,7 @@ interface JsonSchemaProperty {
   default?: unknown;
   enum?: string[];
   format?: string;
-  anyOf?: { type: string }[];
+  anyOf?: Array<{ type: string; enum?: string[] }>;
   properties?: Record<string, JsonSchemaProperty>;
   required?: string[];
 }
@@ -33,7 +33,7 @@ function resolveType(prop: JsonSchemaProperty): {
     return {
       type: nonNull?.type ?? "string",
       nullable,
-      enumValues: (nonNull as JsonSchemaProperty)?.enum,
+      enumValues: nonNull?.enum,
     };
   }
   return {
@@ -79,7 +79,7 @@ export async function promptForSchema(
 
     // Enum → select
     if (enumValues) {
-      const value = await p.select({
+      const value = await promptOrExit(p.select({
         message: `${label}${requiredTag}`,
         options: [
           ...((!isRequired || nullable)
@@ -87,48 +87,32 @@ export async function promptForSchema(
             : []),
           ...enumValues.map((v) => ({ value: v, label: v })),
         ],
-      });
-      if (p.isCancel(value)) {
-        cancelAndExit();
-      }
+      }));
       if (value !== "__skip__") result[key] = value;
       continue;
     }
 
     // Boolean → confirm
     if (type === "boolean") {
-      const value = await p.confirm({
+      result[key] = await promptOrExit(p.confirm({
         message: `${label}?${hint ? ` ${pc.dim(`(${hint})`)}` : ""}`,
         initialValue: typeof defaultVal === "boolean" ? defaultVal : false,
-      });
-      if (p.isCancel(value)) {
-        cancelAndExit();
-      }
-      result[key] = value;
+      }));
       continue;
     }
 
     // Number → text with validation
     if (type === "number" || type === "integer") {
-      const value = await p.text({
+      const value = await promptOrExit(p.text({
         message: `${label}${requiredTag}`,
         placeholder: hint ?? (defaultVal !== undefined ? String(defaultVal) : undefined),
         defaultValue: defaultVal !== undefined ? String(defaultVal) : undefined,
         validate: (val) => {
-          if (!val) {
-            return (
-              (isRequired && defaultVal === undefined) 
-              ? "This field is required" 
-              : undefined
-            );
-          }
+          if (!val) return isRequired && defaultVal === undefined ? "This field is required" : undefined;
           if (Number.isNaN(Number(val))) return "Must be a number";
           return undefined;
         },
-      });
-      if (p.isCancel(value)) {
-        cancelAndExit();
-      }
+      }));
       if (value) result[key] = Number(value);
       continue;
     }
@@ -145,23 +129,16 @@ export async function promptForSchema(
         const nIsRequired = nestedRequired.has(nKey);
 
         if (nResolved.type === "boolean") {
-          const val = await p.confirm({
+          nested[nKey] = await promptOrExit(p.confirm({
             message: `${nLabel}?`,
             initialValue:
               typeof nProp.default === "boolean" ? nProp.default : false,
-          });
-          if (p.isCancel(val)) {
-            cancelAndExit();
-          }
-          nested[nKey] = val;
+          }));
         } else {
-          const val = await p.text({
+          const val = await promptOrExit(p.text({
             message: `${nLabel}${nIsRequired ? "" : pc.dim(" (optional)")}`,
             placeholder: nProp.description,
-          });
-          if (p.isCancel(val)) {
-            cancelAndExit();
-          }
+          }));
           if (val) nested[nKey] = val;
         }
       }
@@ -170,7 +147,7 @@ export async function promptForSchema(
     }
 
     // String (default) → text input
-    const value = await p.text({
+    const value = await promptOrExit(p.text({
       message: `${label}${requiredTag}`,
       placeholder: hint,
       defaultValue: typeof defaultVal === "string" ? defaultVal : undefined,
@@ -178,10 +155,7 @@ export async function promptForSchema(
         if (!val && isRequired && defaultVal === undefined) return "This field is required";
         return undefined;
       },
-    });
-    if (p.isCancel(value)) {
-      cancelAndExit();
-    }
+    }));
     if (value) {
       result[key] = nullable && value === "null" ? null : value;
     }

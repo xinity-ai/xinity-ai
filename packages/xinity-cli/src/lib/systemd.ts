@@ -7,6 +7,7 @@
  * All services use EnvironmentFile for config and LoadCredential for secrets
  * (wired to common-env's KEY_FILE resolution via %d).
  */
+import { BIN_DIR, ENV_DIR, SECRETS_DIR, binaryBaseName, type Component } from "./component-meta.ts";
 
 export interface UnitConfig {
   component: string;
@@ -18,39 +19,35 @@ export interface UnitConfig {
   runAsRoot?: boolean;
 }
 
-const COMPONENT_CONFIGS: Record<string, Omit<UnitConfig, "secretKeys">> = {
+type ComponentDefaults = Omit<UnitConfig, "component" | "secretKeys" | "execStart">;
+
+const COMPONENT_CONFIGS: Record<Component, ComponentDefaults> = {
   gateway: {
-    component: "gateway",
     description: "Xinity AI Gateway",
-    execStart: "/opt/xinity/bin/xinity-ai-gateway",
     afterUnits: ["network-online.target"],
   },
   dashboard: {
-    component: "dashboard",
     description: "Xinity AI Dashboard",
-    execStart: "/opt/xinity/bin/xinity-ai-dashboard",
     afterUnits: ["network-online.target"],
   },
   daemon: {
-    component: "daemon",
     description: "Xinity AI Daemon",
-    execStart: "/opt/xinity/bin/xinity-ai-daemon",
     afterUnits: ["network-online.target"],
     runAsRoot: true,
   },
   infoserver: {
-    component: "infoserver",
     description: "Xinity Infoserver",
-    execStart: "/opt/xinity/bin/xinity-infoserver",
     afterUnits: ["network-online.target"],
   },
 };
 
 /** Get the base config for a known component. */
-export function getComponentConfig(component: string): Omit<UnitConfig, "secretKeys"> {
-  const config = COMPONENT_CONFIGS[component];
-  if (!config) throw new Error(`Unknown component: ${component}`);
-  return config;
+export function getComponentConfig(component: Component): Omit<UnitConfig, "secretKeys"> {
+  return {
+    component,
+    execStart: `${BIN_DIR}/${binaryBaseName(component)}`,
+    ...COMPONENT_CONFIGS[component],
+  };
 }
 
 /** Generate a complete systemd unit file string. */
@@ -72,15 +69,15 @@ export function generateUnit(config: UnitConfig): string {
   lines.push(`StateDirectory=xinity-ai-${config.component}`);
 
   // Non-secret config via EnvironmentFile (read by PID 1, no permission issues)
-  lines.push(`EnvironmentFile=/etc/xinity-ai/${config.component}.env`);
+  lines.push(`EnvironmentFile=${ENV_DIR}/${config.component}.env`);
 
-  // Secrets via LoadCredential (read by PID 1 from /etc/xinity-ai/secrets/)
+  // LoadCredential reads each secret file as PID 1; the matching Environment wires it
+  // to common-env's _FILE resolution (%d = credentials dir at runtime).
   for (const key of config.secretKeys) {
-    lines.push(`LoadCredential=${key}:/etc/xinity-ai/secrets/${key}`);
-  }
-  // Wire LoadCredential to common-env's _FILE resolution (%d = credentials dir)
-  for (const key of config.secretKeys) {
-    lines.push(`Environment=${key}_FILE=%d/${key}`);
+    lines.push(
+      `LoadCredential=${key}:${SECRETS_DIR}/${key}`,
+      `Environment=${key}_FILE=%d/${key}`,
+    );
   }
 
   lines.push(`ExecStart=${config.execStart}`);
@@ -104,6 +101,6 @@ export function generateUnit(config: UnitConfig): string {
 }
 
 /** Systemd unit name for a component. */
-export function unitName(component: string): string {
+export function unitName(component: Component): string {
   return `xinity-ai-${component}.service`;
 }

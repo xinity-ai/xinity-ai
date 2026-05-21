@@ -27,7 +27,10 @@
     "paths": {
       "common-db": ["../common-db/src/"],
       "common-env": ["../common-env/src/"],
-      "xinity-ai-dashboard/*": ["../xinity-ai-dashboard/*"]
+      "common-log": ["../common-log/src/"],
+      "xinity-ai-dashboard/*": ["../xinity-ai-dashboard/*"],
+      "$lib/*": ["../xinity-ai-dashboard/src/lib/*"]
     }
-  }
+  },
+  "include": ["src/**/*", "build.ts", "../xinity-ai-dashboard/src/app.d.ts"]
 }

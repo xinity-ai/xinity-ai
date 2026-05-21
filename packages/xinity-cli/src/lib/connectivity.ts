@@ -10,6 +10,13 @@ import * as p from "./clack.ts";
 import pc from "picocolors";
 import type { Host } from "./host.ts";
 
+const okMark = (message: string) => `${pc.green("✓")}  ${message}`;
+const failMark = (message: string) => `${pc.red("✗")}  ${message}`;
+
+const POSTGRES_CONNECT_TIMEOUT_SECONDS = 5;
+const REDIS_PING_TIMEOUT_MS = 5000;
+const DEFAULT_REDIS_PORT = 6379;
+
 /**
  * Test PostgreSQL connectivity with a `SELECT 1`.
  * Shows a spinner while connecting. Returns true on success.
@@ -20,12 +27,12 @@ export async function testPostgresConnection(url: string, host: Host): Promise<b
   spinner.start("Testing database connection…");
   let sql: postgres.Sql | undefined;
   try {
-    sql = postgres(tunnel.localUrl, { max: 1, connect_timeout: 5 });
+    sql = postgres(tunnel.localUrl, { max: 1, connect_timeout: POSTGRES_CONNECT_TIMEOUT_SECONDS });
     await sql`SELECT 1`;
-    spinner.stop(pc.green("✓") + "  Database connection successful");
+    spinner.stop(okMark("Database connection successful"));
     return true;
   } catch (err) {
-    spinner.stop(pc.red("✗") + "  Database connection failed");
+    spinner.stop(failMark("Database connection failed"));
     p.log.error(pc.dim(String(err)));
     return false;
   } finally {
@@ -45,7 +52,7 @@ export async function testRedisConnection(url: string, host: Host): Promise<bool
   try {
     const parsed = new URL(tunnel.localUrl);
     const hostname = parsed.hostname;
-    const port = parseInt(parsed.port || "6379");
+    const port = parseInt(parsed.port || String(DEFAULT_REDIS_PORT), 10);
     const password = parsed.password
       ? decodeURIComponent(parsed.password)
       : null;
@@ -58,7 +65,7 @@ export async function testRedisConnection(url: string, host: Host): Promise<bool
         clearTimeout(timer);
         resolve(value);
       };
-      const timer = setTimeout(() => done(false), 5000);
+      const timer = setTimeout(() => done(false), REDIS_PING_TIMEOUT_MS);
 
       Bun.connect({
         hostname,
@@ -83,13 +90,13 @@ export async function testRedisConnection(url: string, host: Host): Promise<bool
     });
 
     if (ok) {
-      spinner.stop(pc.green("✓") + "  Redis connection successful");
+      spinner.stop(okMark("Redis connection successful"));
     } else {
-      spinner.stop(pc.red("✗") + "  Redis connection failed");
+      spinner.stop(failMark("Redis connection failed"));
     }
     return ok;
   } catch (err) {
-    spinner.stop(pc.red("✗") + "  Redis connection failed");
+    spinner.stop(failMark("Redis connection failed"));
     p.log.error(pc.dim(String(err)));
     return false;
   } finally {

@@ -8,7 +8,7 @@ import pc from "picocolors";
 import { version } from "../../../../package.json";
 const CLI_VERSION = `v${version}`;
 import { fetchRelease, pickReleaseAsset, type Release } from "../lib/github.ts";
-import { downloadAndVerify } from "../lib/installer.ts";
+import { downloadAndVerify, extractCommandArgv } from "../lib/installer.ts";
 import { pass, fail } from "../lib/output.ts";
 import { createLocalHost } from "../lib/host.ts";
 
@@ -32,22 +32,14 @@ async function selfUpdate(release: Release): Promise<boolean> {
   const extractDir = join(tmpDir, "extracted");
   mkdirSync(extractDir, { recursive: true });
   const local = createLocalHost();
-  const extractCmd = filePath.endsWith(".tar.gz")
-    ? ["tar", "-xzf", filePath, "-C", extractDir]
-    : ["unzip", "-o", filePath, "-d", extractDir];
-  const extracted = await local.run(extractCmd);
+  const extracted = await local.run(extractCommandArgv(filePath, extractDir));
   if (!extracted.ok) {
     fail("Extract", "Failed to extract archive");
     return false;
   }
 
-  // Detect the running binary path. In compiled mode process.execPath IS the binary.
-  // Fall back to the conventional install location for dev/test environments.
   const fallbackPath = join(homedir(), ".local", "bin", "xinity");
-  const execPath = process.execPath;
-  const currentPath = existsSync(execPath) && execPath === process.argv[0] ? execPath
-    : existsSync(fallbackPath) ? fallbackPath
-    : null;
+  const currentPath = locateRunningBinary(fallbackPath);
 
   if (!currentPath) {
     fail(
@@ -62,8 +54,8 @@ async function selfUpdate(release: Release): Promise<boolean> {
   const newBinary = join(extractDir, "xinity");
   const backupPath = currentPath + ".bak";
 
-  const spinner2 = p.spinner();
-  spinner2.start("Replacing binary…");
+  const replaceSpinner = p.spinner();
+  replaceSpinner.start("Replacing binary…");
 
   try {
     chmodSync(newBinary, 0o755);
@@ -80,14 +72,26 @@ async function selfUpdate(release: Release): Promise<boolean> {
       throw err;
     }
 
-    spinner2.stop("Binary replaced");
+    replaceSpinner.stop("Binary replaced");
     pass("Self-update", `Updated CLI to ${release.tagName}`);
     return true;
   } catch (err) {
-    spinner2.stop("Replace failed");
+    replaceSpinner.stop("Replace failed");
     fail("Self-update", (err as Error).message);
     return false;
   }
+}
+
+/**
+ * Locate the currently-running xinity binary. In compiled mode `process.execPath`
+ * IS the binary; in dev/test environments, fall back to the conventional install
+ * location.
+ */
+function locateRunningBinary(fallbackPath: string): string | null {
+  const execPath = process.execPath;
+  if (existsSync(execPath) && execPath === process.argv[0]) return execPath;
+  if (existsSync(fallbackPath)) return fallbackPath;
+  return null;
 }
 
 // ─── Shared update flow ─────────────────────────────────────────────────────

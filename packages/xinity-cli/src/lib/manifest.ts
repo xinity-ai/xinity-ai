@@ -20,26 +20,22 @@ export interface Manifest {
 
 const MANIFEST_PATH = "/opt/xinity/manifest.json";
 
+async function readManifestContent(h: Host): Promise<string | null> {
+  const direct = await h.readFile(MANIFEST_PATH);
+  if (direct) return direct;
+  // The manifest may be root-owned from an older install; retry via elevation.
+  if (!(await h.fileExists(MANIFEST_PATH))) return null;
+  const elevated = await h.withElevation(`cat '${MANIFEST_PATH}'`, "Read install manifest");
+  return elevated.success ? elevated.output : null;
+}
+
 /**
  * Read the manifest from the given host.
  * Returns an empty manifest if the file doesn't exist.
  */
 export async function readManifest(host?: Host): Promise<Manifest> {
   const empty: Manifest = { components: {} };
-  const h = host ?? createLocalHost();
-
-  let content = await h.readFile(MANIFEST_PATH);
-
-  // The manifest may be root-owned from an older install. Try an elevated
-  // read if the direct read failed but the file exists.
-  if (!content && await h.fileExists(MANIFEST_PATH)) {
-    const result = await h.withElevation(
-      `cat '${MANIFEST_PATH}'`,
-      "Read install manifest",
-    );
-    if (result.success) content = result.output;
-  }
-
+  const content = await readManifestContent(host ?? createLocalHost());
   if (!content) return empty;
   try {
     return JSON.parse(content) as Manifest;

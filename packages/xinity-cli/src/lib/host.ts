@@ -39,14 +39,24 @@ export async function localRun(args: string[]): Promise<RunResult> {
   };
 }
 
+/**
+ * Hand stdin over to a child process. Without this Bun's stream state can
+ * get corrupted when the child exits, breaking subsequent clack prompts.
+ */
+function detachStdinForChild(): void {
+  if (process.stdin.isTTY) process.stdin.setRawMode(false);
+  process.stdin.pause();
+}
+
+/** Re-attach stdin after a child exits so clack prompts work again. */
+function reattachStdinAfterChild(): void {
+  process.stdin.resume();
+  if (process.stdin.isTTY) process.stdin.setRawMode(false);
+}
+
 /** Run a command with inherited stdio (for interactive prompts like sudo). */
 export async function localRunInteractive(args: string[]): Promise<RunResult> {
-  // Pause stdin before handing it to the child process so Bun's internal
-  // stream state doesn't get corrupted when the child exits.
-  if (process.stdin.isTTY) {
-    process.stdin.setRawMode(false);
-  }
-  process.stdin.pause();
+  detachStdinForChild();
 
   const proc = Bun.spawn(args, {
     stdin: "inherit",
@@ -55,13 +65,7 @@ export async function localRunInteractive(args: string[]): Promise<RunResult> {
   });
   const exitCode = await proc.exited;
 
-  // Restore stdin for subsequent @clack/prompts usage.
-  // Without this, the next interactive prompt may read EOF and
-  // immediately cancel because Bun left the stream paused/ended.
-  process.stdin.resume();
-  if (process.stdin.isTTY) {
-    process.stdin.setRawMode(false);
-  }
+  reattachStdinAfterChild();
 
   return {
     ok: exitCode === 0,
@@ -86,7 +90,7 @@ function isRoot(): boolean {
 
 let localElevationPolicy: ElevationPolicy = null;
 
-function buildElevationMenu(sensitive: boolean): { value: string; label: string }[] {
+export function buildElevationMenu(sensitive: boolean): { value: string; label: string }[] {
   const options: { value: string; label: string }[] = [
     { value: "sudo-all", label: "Run with sudo (all remaining)" },
     { value: "sudo-once", label: "Run with sudo (this time only)" },
@@ -104,17 +108,14 @@ function showManualCommand(command: string): void {
   p.log.info(`Run manually:\n  ${pc.cyan(`sudo sh -c '${command}'`)}`);
 }
 
-async function confirmManualRun(): Promise<ElevationResult> {
+export async function confirmManualRun(): Promise<ElevationResult> {
   const done = await p.confirm({ message: "Have you run the command?", initialValue: true });
-  if (p.isCancel(done) || !done) {
-    const abort = await p.confirm({ message: "Abort?", initialValue: false });
-    if (p.isCancel(abort) || abort) {
-      p.cancel("Aborted.");
-      return { success: false, output: "", skipped: true };
-    }
-    return { success: false, output: "", skipped: true };
+  if (!p.isCancel(done) && done) {
+    return { success: true, output: "", skipped: false };
   }
-  return { success: true, output: "", skipped: false };
+  const abort = await p.confirm({ message: "Abort?", initialValue: false });
+  if (p.isCancel(abort) || abort) p.cancel("Aborted.");
+  return { success: false, output: "", skipped: true };
 }
 
 async function runLocalSudo(
@@ -125,10 +126,7 @@ async function runLocalSudo(
   p.log.step(pc.dim("Enter your sudo password when prompted:"));
 
   if (sensitive) {
-    if (process.stdin.isTTY) {
-      process.stdin.setRawMode(false);
-    }
-    process.stdin.pause();
+    detachStdinForChild();
 
     const proc = Bun.spawn(["sudo", "sh", "-c", command], {
       stdin: "inherit",
@@ -140,10 +138,7 @@ async function runLocalSudo(
       new Response(proc.stdout).text(),
     ]);
 
-    process.stdin.resume();
-    if (process.stdin.isTTY) {
-      process.stdin.setRawMode(false);
-    }
+    reattachStdinAfterChild();
 
     return { success: exitCode === 0, output: stdout, skipped: false };
   }
@@ -186,19 +181,13 @@ async function localWithElevation(
     return { success: false, output: "", skipped: true };
   }
 
-  if (action === "sudo-all") {
-    localElevationPolicy = "sudo";
+  if (action === "sudo-all" || action === "sudo-once") {
+    if (action === "sudo-all") localElevationPolicy = "sudo";
     return runLocalSudo(command, sensitive);
   }
-  if (action === "sudo-once") {
-    return runLocalSudo(command, sensitive);
-  }
-  if (action === "manual-all") {
-    localElevationPolicy = "manual";
-    showManualCommand(command);
-    return confirmManualRun();
-  }
-  if (action === "manual-once") {
+
+  if (action === "manual-all" || action === "manual-once") {
+    if (action === "manual-all") localElevationPolicy = "manual";
     showManualCommand(command);
     return confirmManualRun();
   }
@@ -331,8 +320,10 @@ export async function readSecrets(
   }
 
   const parts = result.output.split("\0").filter(Boolean);
-  for (let i = 0; i < parts.length - 1; i += 2) {
-    secrets[parts[i]!] = parts[i + 1]!.trim();
+  for (let i = 0; i + 1 < parts.length; i += 2) {
+    const key = parts[i];
+    const value = parts[i + 1];
+    if (key && value !== undefined) secrets[key] = value.trim();
   }
 
   return { secrets, permissionDenied: false, skipped: false };
@@ -340,18 +331,23 @@ export async function readSecrets(
 
 // ─── Convenience helpers ─────────────────────────────────────────────────────
 
+export const COMMAND_FALLBACK_BIN_DIRS = [
+  "$HOME/.bun/bin",
+  "$HOME/.local/bin",
+  "$HOME/.cargo/bin",
+  "/usr/local/bin",
+];
+
 /**
  * Check whether a command exists on the given host.
  *
  * Uses `command -v` first, then falls back to checking common user-local
  * bin directories that may not be in PATH during non-interactive SSH
- * sessions (e.g. ~/.bun/bin, ~/.local/bin, ~/.cargo/bin).
- * Done in a single shell invocation to minimise SSH round-trips.
+ * sessions. Done in a single shell invocation to minimise SSH round-trips.
  */
 export async function commandExistsOn(host: Host, name: string): Promise<boolean> {
-  const result = await host.runShell(
-    `command -v ${name} || test -x "$HOME/.bun/bin/${name}" || test -x "$HOME/.local/bin/${name}" || test -x "$HOME/.cargo/bin/${name}" || test -x "/usr/local/bin/${name}"`,
-  );
+  const fallbacks = COMMAND_FALLBACK_BIN_DIRS.map((dir) => `test -x "${dir}/${name}"`).join(" || ");
+  const result = await host.runShell(`command -v ${name} || ${fallbacks}`);
   return result.ok;
 }
 

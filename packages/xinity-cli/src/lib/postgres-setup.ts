@@ -12,7 +12,7 @@ import { quoteShellArg } from "common-env";
 import * as p from "./clack.ts";
 import pc from "picocolors";
 import { type Host, commandExistsOn } from "./host.ts";
-import { pass, fail, info, warn } from "./output.ts";
+import { pass, fail, info, promptOrUndefined, reportElevationOutcome, warn } from "./output.ts";
 
 // ─── Package-manager definitions ────────────────────────────────────────────
 
@@ -84,6 +84,21 @@ function generatePassword(length = 24): string {
   return randomBytes(length).toString("base64url").slice(0, length);
 }
 
+async function runPsqlIgnoringExisting(
+  host: Host,
+  sql: string,
+  failLabel: string,
+  spinner: ReturnType<typeof p.spinner>,
+): Promise<boolean> {
+  const res = await host.run(["psql", "-d", "postgres", "-c", sql]);
+  if (!res.ok && !res.output.includes("already exists")) {
+    spinner.stop("Failed");
+    fail(failLabel, res.output);
+    return false;
+  }
+  return true;
+}
+
 /**
  * Check whether the PostgreSQL server is reachable on the host.
  * Tries `pg_isready` first (most reliable), falls back to systemd.
@@ -106,8 +121,7 @@ async function startPostgres(
   pm: PackageManager | undefined,
   dryRun: boolean,
 ): Promise<boolean> {
-  const startCmd =
-    pm?.name === "brew" ? pm.startCmd : "systemctl start postgresql";
+  const startCmd = pm?.startCmd ?? "systemctl start postgresql";
 
   if (dryRun) {
     info("Dry run", `Would start PostgreSQL: ${pc.dim(startCmd)}`);
@@ -126,16 +140,11 @@ async function startPostgres(
   }
 
   const result = await host.withElevation(startCmd, "Start PostgreSQL");
-  if (result.success) {
-    pass("PostgreSQL", "Service started");
-    return true;
-  }
-  if (result.skipped) {
-    warn("PostgreSQL", "Skipped starting the service");
-  } else {
-    fail("PostgreSQL", "Failed to start service");
-  }
-  return false;
+  return reportElevationOutcome(result, "PostgreSQL", {
+    success: "Service started",
+    skipped: "Skipped starting the service",
+    failed: "Failed to start service",
+  });
 }
 
 /** Create a PostgreSQL user and database, returning the connection URL. */
@@ -146,39 +155,39 @@ async function createDatabase(
 ): Promise<string | undefined> {
   p.log.step(pc.bold("Create a new PostgreSQL database"));
 
-  const dbName = await p.text({
+  const dbName = await promptOrUndefined(p.text({
     message: "Database name",
     placeholder: "xinity",
     defaultValue: "xinity",
-  });
-  if (p.isCancel(dbName)) return undefined;
+  }));
+  if (dbName === undefined) return undefined;
 
-  const dbUser = await p.text({
+  const dbUser = await promptOrUndefined(p.text({
     message: "Database user",
     placeholder: "xinity",
     defaultValue: "xinity",
-  });
-  if (p.isCancel(dbUser)) return undefined;
+  }));
+  if (dbUser === undefined) return undefined;
 
-  const useGenerated = await p.confirm({
+  const useGenerated = await promptOrUndefined(p.confirm({
     message: "Generate a random password?",
     initialValue: true,
-  });
-  if (p.isCancel(useGenerated)) return undefined;
+  }));
+  if (useGenerated === undefined) return undefined;
 
   let dbPassword: string;
   if (useGenerated) {
     dbPassword = generatePassword();
     info("Password", `Generated: ${pc.cyan(dbPassword)}`);
   } else {
-    const pw = await p.password({
+    const pw = await promptOrUndefined(p.password({
       message: "Database password",
       validate: (val) => {
         if (!val || val.length < 4) return "Password must be at least 4 characters";
         return undefined;
       },
-    });
-    if (p.isCancel(pw)) return undefined;
+    }));
+    if (pw === undefined) return undefined;
     dbPassword = pw;
   }
 
@@ -200,18 +209,8 @@ async function createDatabase(
   if (pm?.userIsSuper) {
     // macOS Homebrew: current user is the superuser
     spinner.start("Creating user and database…");
-    const userRes = await host.run(["psql", "-d", "postgres", "-c", createUserSql]);
-    if (!userRes.ok && !userRes.output.includes("already exists")) {
-      spinner.stop("Failed");
-      fail("Create user", userRes.output);
-      return undefined;
-    }
-    const dbRes = await host.run(["psql", "-d", "postgres", "-c", createDbSql]);
-    if (!dbRes.ok && !dbRes.output.includes("already exists")) {
-      spinner.stop("Failed");
-      fail("Create database", dbRes.output);
-      return undefined;
-    }
+    if (!await runPsqlIgnoringExisting(host, createUserSql, "Create user", spinner)) return undefined;
+    if (!await runPsqlIgnoringExisting(host, createDbSql, "Create database", spinner)) return undefined;
     spinner.stop("Database created");
   } else {
     // Linux: use sudo -u postgres
@@ -221,18 +220,14 @@ async function createDatabase(
       `su - postgres -c "psql -c ${quoteShellArg(createUserSql)}" && su - postgres -c "psql -c ${quoteShellArg(createDbSql)}"`,
       "Create PostgreSQL user and database",
     );
-    if (!result.success) {
-      if (result.skipped) {
-        warn("Database", "Skipped database creation");
-        return undefined;
-      } else if (result.output.includes("already exists")) {
-        pass("Database", `${pc.cyan(dbName)} already exists`);
-      } else {
-        fail("Database", "Failed to create user/database");
-        return undefined;
-      }
-    } else {
+    if (result.success) {
       pass("Database", `Created ${pc.cyan(dbName)} owned by ${pc.cyan(dbUser)}`);
+    } else if (result.output.includes("already exists")) {
+      pass("Database", `${pc.cyan(dbName)} already exists`);
+    } else {
+      if (result.skipped) warn("Database", "Skipped database creation");
+      else fail("Database", "Failed to create user/database");
+      return undefined;
     }
   }
 
@@ -282,16 +277,11 @@ async function installPostgres(
   }
 
   const result = await host.withElevation(cmd, "Install PostgreSQL");
-  if (result.success) {
-    pass("Install", "PostgreSQL installed");
-    return true;
-  }
-  if (result.skipped) {
-    warn("Install", "Skipped installation");
-  } else {
-    fail("Install", "Installation failed");
-  }
-  return false;
+  return reportElevationOutcome(result, "Install", {
+    success: "PostgreSQL installed",
+    skipped: "Skipped installation",
+    failed: "Installation failed",
+  });
 }
 
 async function waitForManualInstall(host: Host): Promise<boolean> {

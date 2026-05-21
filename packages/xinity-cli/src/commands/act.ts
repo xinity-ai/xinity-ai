@@ -9,9 +9,6 @@ import { workflows, workflowNames } from "../lib/workflows.ts";
 const DEFAULT_DASHBOARD_URL = "http://localhost:5173";
 const REQUEST_TIMEOUT_MS = 15_000;
 
-/** Routes that are known to not require an API key. */
-const UNAUTHENTICATED_ROUTES = new Set(workflowNames);
-
 function getDashboardUrl(argv: { url?: string }): string {
   return argv.url ?? resolveConfigValue("dashboardUrl") ?? DEFAULT_DASHBOARD_URL;
 }
@@ -55,17 +52,13 @@ function buildUrl(basePath: string, data: Record<string, unknown>): {
   url: string;
   remainingData: Record<string, unknown>;
 } {
-  let url = basePath;
   const remaining = { ...data };
-  const paramRegex = /\{(\w+)\}/g;
-  let match;
-  while ((match = paramRegex.exec(basePath)) !== null) {
-    const param = match[1]!;
-    if (param in remaining) {
-      url = url.replace(`{${param}}`, encodeURIComponent(String(remaining[param])));
-      delete remaining[param];
-    }
-  }
+  const url = basePath.replace(/\{(\w+)\}/g, (literal, param) => {
+    if (!(param in remaining)) return literal;
+    const value = encodeURIComponent(String(remaining[param]));
+    delete remaining[param];
+    return value;
+  });
   return { url, remainingData: remaining };
 }
 
@@ -133,6 +126,15 @@ async function callRoute(
   spin.stop(`${route.method} ${path}`);
   const json = await res.json();
   console.log(JSON.stringify(json, null, 2));
+}
+
+function parseJsonOrExit(text: string, source: string): Record<string, unknown> {
+  try {
+    return JSON.parse(text);
+  } catch {
+    p.log.error(`Invalid JSON in ${source}.`);
+    process.exit(1);
+  }
 }
 
 /** Pre-loaded route choices for shell completion (populated before yargs runs). */
@@ -223,11 +225,7 @@ export const actCommand: CommandModule = {
       process.exit(1);
     }
 
-    // Require API key for authenticated routes
-    const isUnauthenticated = UNAUTHENTICATED_ROUTES.has(routeName);
-    const apiKey = isUnauthenticated
-      ? getApiKey(argv as { "api-key"?: string })
-      : requireApiKey(argv as { "api-key"?: string }, routeName);
+    const apiKey = requireApiKey(argv as { "api-key"?: string }, routeName);
 
     // Resolve input data
     let data: Record<string, unknown> = {};
@@ -244,19 +242,9 @@ export const actCommand: CommandModule = {
         p.log.error("Empty stdin input.");
         process.exit(1);
       }
-      try {
-        data = JSON.parse(input);
-      } catch {
-        p.log.error("Invalid JSON from stdin.");
-        process.exit(1);
-      }
+      data = parseJsonOrExit(input, "stdin");
     } else if (rawData) {
-      try {
-        data = JSON.parse(rawData);
-      } catch {
-        p.log.error("Invalid JSON in --data argument.");
-        process.exit(1);
-      }
+      data = parseJsonOrExit(rawData, "--data argument");
     } else if (route.input) {
       // No data provided, prompt interactively for each field
       p.intro(`${pc.cyan(routeName)} ${pc.dim(`(${route.summary})`)}`);

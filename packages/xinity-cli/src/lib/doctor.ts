@@ -3,10 +3,11 @@ import postgres from "postgres";
 import { expectedMigrationCount } from "common-db";
 import { readManifest, type Manifest, type ComponentEntry } from "./manifest.ts";
 import { commandExistsOn, isUnitActiveOn, getUnitStatusOn, readSecrets, type Host, createLocalHost } from "./host.ts";
-import { analyzeEnvSchema, categorizeFields } from "./env-prompt.ts";
+import { isOllamaRunning } from "./ollama-setup.ts";
+import { analyzeEnvSchema, categorizeFields, type EnvField } from "./env-prompt.ts";
 import { parseEnvString } from "./env-file.ts";
 import { unitName } from "./systemd.ts";
-import { type Component, ENV_SCHEMAS, ENV_DIR, SECRETS_DIR } from "./component-meta.ts";
+import { type Component, ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, BIN_DIR, UNIT_DIR } from "./component-meta.ts";
 import { collectRemoteState, createCachedHost } from "./remote-probe.ts";
 
 // Types
@@ -45,6 +46,15 @@ export interface DoctorReport {
   timestamp: string;
   components: ComponentReport[];
   summary: { pass: number; warn: number; fail: number; skip: number };
+}
+
+function notInstalledReport(component: string, message = "Not installed"): ComponentReport {
+  return {
+    component,
+    installed: false,
+    version: null,
+    checks: [{ label: "Installed", status: "skip", message }],
+  };
 }
 
 // File helpers
@@ -136,6 +146,39 @@ async function checkSystem(host: Host): Promise<ComponentReport> {
 
 // Connectivity helpers
 
+async function probeMigrationState(sql: postgres.Sql): Promise<CheckResult> {
+  const expected = expectedMigrationCount;
+  try {
+    const rows = await sql`SELECT count(*)::int AS count FROM "drizzle"."__drizzle_migrations"`;
+    const applied = rows[0]?.count ?? 0;
+
+    if (applied === expected) {
+      return { label: "DB Migrations", status: "pass", message: `All ${expected} migrations applied` };
+    }
+    if (applied < expected) {
+      return {
+        label: "DB Migrations", status: "fail",
+        message: `${applied} of ${expected} applied, ${expected - applied} pending`,
+        detail: `Run "xinity up db" to apply pending migrations`,
+      };
+    }
+    return {
+      label: "DB Migrations", status: "warn",
+      message: `${applied} applied but only ${expected} expected, CLI may be outdated`,
+    };
+  } catch (err) {
+    const msg = String(err);
+    if (msg.includes("does not exist")) {
+      return {
+        label: "DB Migrations", status: "fail",
+        message: "Migrations table not found, database not initialized",
+        detail: `Run "xinity up db" to initialize the database`,
+      };
+    }
+    return { label: "DB Migrations", status: "fail", message: "Could not check migration state", detail: msg };
+  }
+}
+
 /**
  * Check Postgres connectivity and migration state in one tunnel + connection.
  */
@@ -147,42 +190,7 @@ async function checkPostgresAndMigrations(url: string, host: Host): Promise<Chec
     sql = postgres(tunnel.localUrl, { max: 1, connect_timeout: 5 });
     await sql`SELECT 1`;
     results.push({ label: "PostgreSQL", status: "pass", message: "Connection successful" });
-
-    // Connection worked. Check migrations with the same connection
-    const expectedCount = expectedMigrationCount;
-    try {
-      const rows = await sql`
-        SELECT count(*)::int AS count FROM "drizzle"."__drizzle_migrations"
-      `;
-      const appliedCount = rows[0]?.count ?? 0;
-
-      if (appliedCount === expectedCount) {
-        results.push({ label: "DB Migrations", status: "pass", message: `All ${expectedCount} migrations applied` });
-      } else if (appliedCount < expectedCount) {
-        const pending = expectedCount - appliedCount;
-        results.push({
-          label: "DB Migrations", status: "fail",
-          message: `${appliedCount} of ${expectedCount} applied, ${pending} pending`,
-          detail: `Run "xinity up db" to apply pending migrations`,
-        });
-      } else {
-        results.push({
-          label: "DB Migrations", status: "warn",
-          message: `${appliedCount} applied but only ${expectedCount} expected, CLI may be outdated`,
-        });
-      }
-    } catch (err) {
-      const msg = String(err);
-      if (msg.includes("does not exist")) {
-        results.push({
-          label: "DB Migrations", status: "fail",
-          message: "Migrations table not found, database not initialized",
-          detail: `Run "xinity up db" to initialize the database`,
-        });
-      } else {
-        results.push({ label: "DB Migrations", status: "fail", message: "Could not check migration state", detail: msg });
-      }
-    }
+    results.push(await probeMigrationState(sql));
   } catch (err) {
     results.push({ label: "PostgreSQL", status: "fail", message: "Connection failed", detail: String(err) });
   } finally {
@@ -286,7 +294,7 @@ async function checkServiceHealth(
     "--connect-timeout", "5", "--max-time", "5",
     url,
   ]);
-  const statusCode = parseInt(result.output.trim());
+  const statusCode = parseInt(result.output.trim(), 10);
   if (isNaN(statusCode) || statusCode === 0) {
     return {
       label,
@@ -318,7 +326,7 @@ async function checkSmtp(url: string, host: Host): Promise<CheckResult> {
   try {
     const parsed = new URL(tunnel.localUrl);
     const hostname = parsed.hostname;
-    const port = parseInt(parsed.port || "587");
+    const port = parseInt(parsed.port || "587", 10);
 
     return await probeTcpService({
       hostname,
@@ -344,50 +352,55 @@ async function checkSmtp(url: string, host: Host): Promise<CheckResult> {
   }
 }
 
+async function probeInfoserverVersion(host: Host, baseUrl: string, label: string): Promise<CheckResult> {
+  const result = await host.run([
+    "curl", "-sf", "--connect-timeout", "5", "--max-time", "5", `${baseUrl}/version.json`,
+  ]);
+  if (!result.ok) {
+    return { label, status: "warn", message: "Could not fetch version" };
+  }
+  try {
+    const data = JSON.parse(result.output) as { version?: string };
+    return { label, status: "pass", message: data.version ?? "unknown" };
+  } catch {
+    return { label, status: "warn", message: "Could not parse version response" };
+  }
+}
+
 async function checkInfoserverUrl(
   url: string,
   host: Host,
   labelSuffix?: string,
 ): Promise<CheckResult[]> {
-  const checks: CheckResult[] = [];
   const suffix = labelSuffix ? ` (${labelSuffix})` : "";
-
-  // Health
-  checks.push(await checkServiceHealth(host, `Health${suffix}`, `${url}/health`));
-
-  // Version - use curl on the target host to fetch JSON
-  const versionResult = await host.run([
-    "curl", "-sf", "--connect-timeout", "5", "--max-time", "5", `${url}/version.json`,
-  ]);
-  if (versionResult.ok) {
-    try {
-      const data = JSON.parse(versionResult.output) as { version?: string };
-      checks.push({
-        label: `Version${suffix}`,
-        status: "pass",
-        message: data.version ?? "unknown",
-      });
-    } catch {
-      checks.push({
-        label: `Version${suffix}`,
-        status: "warn",
-        message: "Could not parse version response",
-      });
-    }
-  } else {
-    checks.push({
-      label: `Version${suffix}`,
-      status: "warn",
-      message: "Could not fetch version",
-    });
-  }
-
-  // Model catalog
-  checks.push(
+  return [
+    await checkServiceHealth(host, `Health${suffix}`, `${url}/health`),
+    await probeInfoserverVersion(host, url, `Version${suffix}`),
     await checkServiceHealth(host, `Model catalog${suffix}`, `${url}/models/v1.json`),
-  );
+  ];
+}
 
-  return checks;
+async function fileExistsCheck(
+  host: Host,
+  label: string,
+  path: string,
+  presentMessage: string = path,
+  missingMessage: string = `Not found at ${path}`,
+): Promise<CheckResult> {
+  return (await host.fileExists(path))
+    ? { label, status: "pass", message: presentMessage }
+    : { label, status: "fail", message: missingMessage };
+}
+
+async function serviceActiveCheck(host: Host, unit: string, hasSystemd: boolean): Promise<CheckResult> {
+  if (!hasSystemd) {
+    return { label: "Service", status: "skip", message: "systemd not available" };
+  }
+  const status = await getUnitStatusOn(host, unit);
+  if (status === "active") {
+    return { label: "Service", status: "pass", message: "active" };
+  }
+  return { label: "Service", status: "fail", message: status || "inactive" };
 }
 
 /**
@@ -401,56 +414,16 @@ async function checkInstallation(
   const checks: CheckResult[] = [];
   const hasSystemd = await commandExistsOn(host, "systemctl");
 
-  // Binary / files exist
-  if (await host.fileExists(entry.binaryPath)) {
-    checks.push({
-      label: "Binary",
-      status: "pass",
-      message: entry.binaryPath,
-    });
-  } else {
-    checks.push({
-      label: "Binary",
-      status: "fail",
-      message: `Not found at ${entry.binaryPath}`,
-    });
-  }
+  checks.push(await fileExistsCheck(host, "Binary", entry.binaryPath));
 
-  // Systemd unit file
-  const unitPath = `/etc/systemd/system/${unitName(component)}`;
-  if (await host.fileExists(unitPath)) {
-    checks.push({
-      label: "Systemd unit",
-      status: "pass",
-      message: unitName(component),
-    });
-  } else {
-    checks.push({
-      label: "Systemd unit",
-      status: "fail",
-      message: `Unit file not found at ${unitPath}`,
-    });
-  }
+  const unitPath = `${UNIT_DIR}/${unitName(component)}`;
+  checks.push(await fileExistsCheck(
+    host, "Systemd unit", unitPath,
+    unitName(component),
+    `Unit file not found at ${unitPath}`,
+  ));
 
-  // Service active
-  if (hasSystemd) {
-    const status = await getUnitStatusOn(host, unitName(component));
-    if (status === "active") {
-      checks.push({ label: "Service", status: "pass", message: "active" });
-    } else {
-      checks.push({
-        label: "Service",
-        status: "fail",
-        message: status || "inactive",
-      });
-    }
-  } else {
-    checks.push({
-      label: "Service",
-      status: "skip",
-      message: "systemd not available",
-    });
-  }
+  checks.push(await serviceActiveCheck(host, unitName(component), hasSystemd));
 
   return checks;
 }
@@ -515,26 +488,7 @@ async function checkConfiguration(
   const fields = analyzeEnvSchema(schema);
   const { configFields, secretFields } = categorizeFields(fields);
 
-  const missingRequired: string[] = [];
-  for (const field of configFields) {
-    if (!field.isOptional && !field.hasDefault && !config[field.key]) {
-      missingRequired.push(field.key);
-    }
-  }
-
-  if (missingRequired.length > 0) {
-    checks.push({
-      label: "Config keys",
-      status: "fail",
-      message: `Missing required: ${missingRequired.join(", ")}`,
-    });
-  } else {
-    checks.push({
-      label: "Config keys",
-      status: "pass",
-      message: "All required config keys set",
-    });
-  }
+  checks.push(requiredFieldsPresenceCheck("Config keys", "All required config keys set", configFields, config));
 
   // Read all secrets, elevating if needed
   let secretsPermDenied = false;
@@ -542,7 +496,6 @@ async function checkConfiguration(
   let secrets: Record<string, string> = {};
 
   if (secretFields.length > 0) {
-    const host = opts.host ?? createLocalHost();
     if (opts.interactive) {
       opts.spinner?.stop();
       const sr = await readSecrets(host, SECRETS_DIR, secretFields.map((f) => f.key), `Read ${component} secrets`);
@@ -562,42 +515,30 @@ async function checkConfiguration(
 
   const values = { ...config, ...secrets };
 
-  // Check secrets completeness
   if (secretsPermDenied) {
-    checks.push({
-      label: "Secrets",
-      status: "skip",
-      message: "Permission denied, rerun with sudo for full checks",
-    });
+    checks.push({ label: "Secrets", status: "skip", message: "Permission denied, rerun with sudo for full checks" });
   } else if (secretsSkipped) {
-    checks.push({
-      label: "Secrets",
-      status: "skip",
-      message: "Skipped by user",
-    });
+    checks.push({ label: "Secrets", status: "skip", message: "Skipped by user" });
   } else {
-    const missingSecrets: string[] = [];
-    for (const field of secretFields) {
-      if (!field.isOptional && !field.hasDefault && !values[field.key]) {
-        missingSecrets.push(field.key);
-      }
-    }
-    if (missingSecrets.length > 0) {
-      checks.push({
-        label: "Secrets",
-        status: "fail",
-        message: `Missing required: ${missingSecrets.join(", ")}`,
-      });
-    } else {
-      checks.push({
-        label: "Secrets",
-        status: "pass",
-        message: "All required secrets set",
-      });
-    }
+    checks.push(requiredFieldsPresenceCheck("Secrets", "All required secrets set", secretFields, values));
   }
 
   return { checks, values, permissionDenied: secretsPermDenied };
+}
+
+function requiredFieldsPresenceCheck(
+  label: string,
+  whenSetMessage: string,
+  fields: EnvField[],
+  values: Record<string, string>,
+): CheckResult {
+  const missing = fields
+    .filter(f => !f.isOptional && !f.hasDefault && !values[f.key])
+    .map(f => f.key);
+  if (missing.length > 0) {
+    return { label, status: "fail", message: `Missing required: ${missing.join(", ")}` };
+  }
+  return { label, status: "pass", message: whenSetMessage };
 }
 
 /** Cache for DB check results - avoids re-tunneling and re-querying the same DB multiple times. */
@@ -659,8 +600,8 @@ async function checkGatewayConnectivity(
 
 async function checkSeaweedFSComponent(host: Host): Promise<ComponentReport> {
   const checks: CheckResult[] = [];
-  const weedBin = "/opt/xinity/bin/weed";
-  const unitFile = "/etc/systemd/system/xinity-ai-seaweedfs.service";
+  const weedBin = `${BIN_DIR}/weed`;
+  const unitFile = `${UNIT_DIR}/xinity-ai-seaweedfs.service`;
   const hasSystemd = await commandExistsOn(host, "systemctl");
 
   // Binary
@@ -684,17 +625,7 @@ async function checkSeaweedFSComponent(host: Host): Promise<ComponentReport> {
     checks.push({ label: "Systemd unit", status: "fail", message: "Unit file not found" });
   }
 
-  // Service active
-  if (hasSystemd) {
-    const status = await getUnitStatusOn(host, "xinity-ai-seaweedfs.service");
-    if (status === "active") {
-      checks.push({ label: "Service", status: "pass", message: "active" });
-    } else {
-      checks.push({ label: "Service", status: "fail", message: status || "inactive" });
-    }
-  } else {
-    checks.push({ label: "Service", status: "skip", message: "systemd not available" });
-  }
+  checks.push(await serviceActiveCheck(host, "xinity-ai-seaweedfs.service", hasSystemd));
 
   // S3 endpoint reachability
   checks.push(await checkServiceHealth(host, "S3 endpoint", "http://127.0.0.1:8333/"));
@@ -799,10 +730,7 @@ async function checkDaemonDrivers(
     }
 
     // Service running
-    if (
-      (await isUnitActiveOn(host, "ollama.service")) ||
-      (await isUnitActiveOn(host, "ollama"))
-    ) {
+    if (await isOllamaRunning(host)) {
       checks.push({
         label: "Ollama service",
         status: "pass",
@@ -1013,34 +941,16 @@ export async function runDoctor(opts: DoctorRunOptions = {}): Promise<DoctorRepo
   if (seaweedInstalled) {
     components.push(await checkSeaweedFSComponent(host));
   } else {
-    components.push({
-      component: "seaweedfs",
-      installed: false,
-      version: null,
-      checks: [{ label: "Installed", status: "skip", message: "Not installed (optional, required for multimodal image storage)" }],
-    });
+    components.push(notInstalledReport("seaweedfs", "Not installed (optional, required for multimodal image storage)"));
   }
 
   for (const comp of ["gateway", "dashboard", "daemon", "infoserver"] as const) {
     const entry = manifest.components[comp];
     if (!entry) {
-      if (comp === "infoserver") {
-        // Show remote checks accumulated from other components, or just "Not installed"
-        components.push({
-          component: "infoserver",
-          installed: false,
-          version: null,
-          checks: remoteInfoserverChecks.length > 0
-            ? remoteInfoserverChecks
-            : [{ label: "Installed", status: "skip", message: "Not installed" }],
-        });
+      if (comp === "infoserver" && remoteInfoserverChecks.length > 0) {
+        components.push({ component: "infoserver", installed: false, version: null, checks: remoteInfoserverChecks });
       } else {
-        components.push({
-          component: comp,
-          installed: false,
-          version: null,
-          checks: [{ label: "Installed", status: "skip", message: "Not installed" }],
-        });
+        components.push(notInstalledReport(comp));
       }
       continue;
     }

@@ -10,15 +10,16 @@ import { mkdirSync } from "fs";
 import * as p from "./clack.ts";
 import pc from "picocolors";
 
-import { fetchRelease, downloadAsset, fetchChecksums, verifySha256, pickReleaseAsset, resolveDirectUrl, type Release } from "./github.ts";
+import { fetchRelease, downloadAsset, fetchChecksums, verifySha256, pickReleaseAsset, assetPrefix, resolveDirectUrl, type Release } from "./github.ts";
 import { loadConfig } from "./config.ts";
 import { buildLocalArtifact } from "./local-build.ts";
 import { readManifest, updateManifestEntry, writeManifest } from "./manifest.ts";
 import { generateUnit, getComponentConfig, unitName, type UnitConfig } from "./systemd.ts";
-import { analyzeEnvSchema, categorizeFields, menuEditEnv, promptForEnv } from "./env-prompt.ts";
+import { analyzeEnvSchema, categorizeFields, menuEditEnv, promptForEnv, splitValuesByCategory } from "./env-prompt.ts";
 import { parseEnvString } from "./env-file.ts";
-import { pass, fail, warn, info, cancelAndExit } from "./output.ts";
+import { pass, fail, warn, info, cancelAndExit, elevationHardFailed, promptOrExit } from "./output.ts";
 import { type Host, createLocalHost, commandExistsOn, isUnitActiveOn, readSecrets } from "./host.ts";
+import { isOllamaRunning, waitForOllamaRunning } from "./ollama-setup.ts";
 import { writeEnvConfig, writeSystemdUnit, stopService, startService } from "./service.ts";
 import {
   type Component, type InstallResult, type RemoveResult,
@@ -108,14 +109,18 @@ async function installVllmTemplate(host: Host, templatePath: string): Promise<vo
     "Install vLLM systemd template unit",
   );
 
-  if (result.success) {
-    pass("vLLM template", `Installed at ${templatePath}`);
-  } else if (!result.skipped) {
-    warn("vLLM template", `Failed to install: ${result.output}`);
-  }
+  reportElevationWarning(result, "vLLM template", `Installed at ${templatePath}`, "Failed to install");
 }
 
 // ─── Driver tool checks (daemon only) ───────────────────────────────────────
+
+async function enableOllamaService(host: Host): Promise<void> {
+  const result = await host.withElevation(
+    "systemctl enable --now ollama",
+    "Start ollama service",
+  );
+  reportElevationWarning(result, "Ollama", "ollama service started", "Failed to start ollama");
+}
 
 /**
  * Detects which drivers are enabled from the configured env values and ensures
@@ -150,7 +155,7 @@ async function ensureDriverTools(
       pass("Ollama", "ollama binary found");
 
       // Check if ollama service is running
-      if (await isUnitActiveOn(host, "ollama.service") || await isUnitActiveOn(host, "ollama")) {
+      if (await isOllamaRunning(host)) {
         pass("Ollama", "ollama service is running");
       } else {
         const startIt = await p.confirm({
@@ -158,15 +163,7 @@ async function ensureDriverTools(
           initialValue: true,
         });
         if (!p.isCancel(startIt) && startIt) {
-          const result = await host.withElevation(
-            "systemctl enable --now ollama",
-            "Start ollama service",
-          );
-          if (result.success) {
-            pass("Ollama", "ollama service started");
-          } else if (!result.skipped) {
-            warn("Ollama", `Failed to start ollama: ${result.output}`);
-          }
+          await enableOllamaService(host);
         }
       }
     } else {
@@ -188,22 +185,11 @@ async function ensureDriverTools(
           // Poll until the service comes up (install script usually starts it)
           const ollamaSpinner = p.spinner();
           ollamaSpinner.start("Waiting for ollama service…");
-          let ollamaRunning = false;
-          for (let i = 0; i < 10; i++) {
-            await Bun.sleep(500);
-            ollamaRunning = (await isUnitActiveOn(host, "ollama.service")) || (await isUnitActiveOn(host, "ollama"));
-            if (ollamaRunning) break;
-          }
+          const ollamaRunning = await waitForOllamaRunning(host);
           ollamaSpinner.stop(ollamaRunning ? "Service running" : "Service not started automatically");
 
           if (!ollamaRunning) {
-            const startResult = await host.withElevation(
-              "systemctl enable --now ollama",
-              "Start ollama service",
-            );
-            if (startResult.success) {
-              pass("Ollama", "ollama service started");
-            }
+            await enableOllamaService(host);
           } else {
             pass("Ollama", "ollama service is running");
           }
@@ -253,7 +239,7 @@ async function ensureDriverTools(
       p.log.info(pc.dim("  Ensure vLLM is installed: pip install vllm"));
     }
 
-    const templatePath = all.VLLM_TEMPLATE_UNIT_PATH ?? "/etc/systemd/system/vllm-driver@.service";
+    const templatePath = all.VLLM_TEMPLATE_UNIT_PATH ?? `${UNIT_DIR}/vllm-driver@.service`;
     await installVllmTemplate(host, templatePath);
   }
 }
@@ -321,6 +307,50 @@ async function resolveVersion(
 
 // ─── Download & verify ─────────────────────────────────────────────────────
 
+function findReleaseAssetOrFail(release: Release, assetName: string): Release["assets"][number] | null {
+  const asset = release.assets.find((a) => a.name === assetName);
+  if (!asset) {
+    fail("Download", `Asset ${assetName} not found in release ${release.tagName}`);
+    return null;
+  }
+  return asset;
+}
+
+function assetSizeMb(asset: { size: number }): string {
+  return (asset.size / 1024 / 1024).toFixed(1);
+}
+
+async function verifyReleaseChecksum(
+  release: Release,
+  assetName: string,
+  filePath: string,
+  verify: (path: string, expected: string) => Promise<boolean>,
+  successLabel: string,
+): Promise<boolean> {
+  const checksumSpinner = p.spinner();
+  checksumSpinner.start("Verifying checksum…");
+  const checksums = await fetchChecksums(release);
+  if (checksums.size === 0) {
+    checksumSpinner.stop("No checksums available");
+    warn("Checksum", "No SHASUMS256.txt found in release, skipping verification");
+    return true;
+  }
+  const expected = checksums.get(assetName);
+  if (!expected) {
+    checksumSpinner.stop("No checksum entry");
+    warn("Checksum", `No checksum entry for ${assetName} in SHASUMS256.txt, skipping verification`);
+    return true;
+  }
+  const valid = await verify(filePath, expected);
+  if (!valid) {
+    checksumSpinner.stop("Verification failed");
+    fail("Checksum", "SHA256 mismatch, the download may be corrupted");
+    return false;
+  }
+  checksumSpinner.stop(successLabel);
+  return true;
+}
+
 /**
  * Download a named release asset to `destDir`, verify its SHA256 checksum,
  * and return the local file path. Returns null on any failure.
@@ -331,15 +361,11 @@ export async function downloadAndVerify(
   assetName: string,
   destDir: string,
 ): Promise<string | null> {
-  const asset = release.assets.find((a) => a.name === assetName);
-  if (!asset) {
-    fail("Download", `Asset ${assetName} not found in release ${release.tagName}`);
-    return null;
-  }
+  const asset = findReleaseAssetOrFail(release, assetName);
+  if (!asset) return null;
 
   const spinner = p.spinner();
-  const sizeMb = (asset.size / 1024 / 1024).toFixed(1);
-  spinner.start(`Downloading ${assetName} (${sizeMb} MB)…`);
+  spinner.start(`Downloading ${assetName} (${assetSizeMb(asset)} MB)…`);
 
   let filePath: string;
   try {
@@ -351,25 +377,8 @@ export async function downloadAndVerify(
   }
   spinner.stop("Downloaded");
 
-  // Verify checksum
-  const checksumSpinner = p.spinner();
-  checksumSpinner.start("Verifying checksum…");
-  const checksums = await fetchChecksums(release);
-  const expected = checksums.get(assetName);
-  if (expected) {
-    const valid = await verifySha256(filePath, expected);
-    if (!valid) {
-      checksumSpinner.stop("Verification failed");
-      fail("Checksum", "SHA256 mismatch, the download may be corrupted");
-      return null;
-    }
-    checksumSpinner.stop("Checksum verified");
-  } else {
-    checksumSpinner.stop("No checksums available");
-    warn("Checksum", "No SHASUMS256.txt found in release, skipping verification");
-  }
-
-  return filePath;
+  const verified = await verifyReleaseChecksum(release, assetName, filePath, verifySha256, "Checksum verified");
+  return verified ? filePath : null;
 }
 
 /**
@@ -383,13 +392,8 @@ async function downloadAndVerifyOnHost(
   assetName: string,
   host: Host,
 ): Promise<string | null> {
-  const asset = release.assets.find((a) => a.name === assetName);
-  if (!asset) {
-    fail("Download", `Asset ${assetName} not found in release ${release.tagName}`);
-    return null;
-  }
-
-  const sizeMb = (asset.size / 1024 / 1024).toFixed(1);
+  const asset = findReleaseAssetOrFail(release, assetName);
+  if (!asset) return null;
 
   // Resolve a direct URL locally (handles private repo auth + redirect)
   const urlSpinner = p.spinner();
@@ -409,7 +413,7 @@ async function downloadAndVerifyOnHost(
   const remotePath = `${remoteTmpDir}/${assetName}`;
 
   const dlSpinner = p.spinner();
-  dlSpinner.start(`Downloading ${assetName} on remote host (${sizeMb} MB)…`);
+  dlSpinner.start(`Downloading ${assetName} on remote host (${assetSizeMb(asset)} MB)…`);
   try {
     await host.run(["mkdir", "-p", remoteTmpDir]);
     await host.downloadFile(directUrl, remotePath);
@@ -420,33 +424,24 @@ async function downloadAndVerifyOnHost(
   }
   dlSpinner.stop("Downloaded on remote");
 
-  // Verify checksum on the remote host
-  const checksumSpinner = p.spinner();
-  checksumSpinner.start("Verifying checksum on remote…");
-  const checksums = await fetchChecksums(release);
-  const expected = checksums.get(assetName);
-  if (expected) {
-    const valid = await host.verifySha256(remotePath, expected);
-    if (!valid) {
-      checksumSpinner.stop("Verification failed");
-      fail("Checksum", "SHA256 mismatch, the download may be corrupted");
-      return null;
-    }
-    checksumSpinner.stop("Checksum verified on remote");
-  } else {
-    checksumSpinner.stop("No checksums available");
-    warn("Checksum", "No SHASUMS256.txt found in release, skipping verification");
-  }
-
-  return remotePath;
+  const verified = await verifyReleaseChecksum(
+    release, assetName, remotePath,
+    (path, expected) => host.verifySha256(path, expected),
+    "Checksum verified on remote",
+  );
+  return verified ? remotePath : null;
 }
 
 // ─── Install binary ────────────────────────────────────────────────────────
 
-function extractCommand(archivePath: string, destDir: string): string {
-  if (archivePath.endsWith(".tar.gz")) return `tar -xzf ${archivePath} -C ${destDir}`;
-  if (archivePath.endsWith(".zip")) return `unzip -o ${archivePath} -d ${destDir}`;
+export function extractCommandArgv(archivePath: string, destDir: string): string[] {
+  if (archivePath.endsWith(".tar.gz")) return ["tar", "-xzf", archivePath, "-C", destDir];
+  if (archivePath.endsWith(".zip")) return ["unzip", "-o", archivePath, "-d", destDir];
   throw new Error(`Unsupported archive format: ${archivePath}`);
+}
+
+function extractCommand(archivePath: string, destDir: string): string {
+  return extractCommandArgv(archivePath, destDir).join(" ");
 }
 
 function stripArchiveSuffix(path: string): string {
@@ -467,10 +462,7 @@ async function installBinary(component: Component, archivePath: string, host: Ho
       ` && rm -rf ${tmpExtract} ${archivePath}`,
       `Install ${binName} binary`,
     );
-    if (!result.success && !result.skipped) {
-      fail("Install", result.output);
-      return false;
-    }
+    if (elevationHardFailed(result, "Install")) return false;
     if (result.skipped) return false;
   } else {
     // Local: extract locally, upload binary, place on host
@@ -480,10 +472,7 @@ async function installBinary(component: Component, archivePath: string, host: Ho
     const extractSpinner = p.spinner();
     extractSpinner.start("Extracting…");
     const local = createLocalHost();
-    const extractCmd = archivePath.endsWith(".tar.gz")
-      ? ["tar", "-xzf", archivePath, "-C", tmpExtract]
-      : ["unzip", "-o", archivePath, "-d", tmpExtract];
-    const extracted = await local.run(extractCmd);
+    const extracted = await local.run(extractCommandArgv(archivePath, tmpExtract));
     if (!extracted.ok) {
       extractSpinner.stop("Extract failed");
       fail("Extract", extracted.output);
@@ -507,10 +496,7 @@ async function installBinary(component: Component, archivePath: string, host: Ho
         (effectivePath !== localBinPath ? ` && rm -f ${effectivePath}` : ""),
       `Install ${binName} binary`,
     );
-    if (!result.success && !result.skipped) {
-      fail("Install", result.output);
-      return false;
-    }
+    if (elevationHardFailed(result, "Install")) return false;
     if (result.skipped) return false;
   }
 
@@ -571,31 +557,19 @@ async function configureEnv(
     (f) => !f.isOptional && !f.hasDefault && !existing[f.key] && !secretsOnDisk.has(f.key),
   );
 
-  // Helper to return existing values split by config/secrets
-  const useExisting = (): { config: Record<string, string>; secrets: Record<string, string> } => {
-    const config: Record<string, string> = {};
-    const secrets: Record<string, string> = {};
-    for (const field of fields) {
-      const val = existing[field.key];
-      if (val === undefined) continue;
-      if (field.isSecret) secrets[field.key] = val;
-      else config[field.key] = val;
-    }
-    return { config, secrets };
-  };
+  const useExisting = () => splitValuesByCategory(fields, existing);
 
   const isInstalled = !!(await readManifest(host)).components[component];
 
   if (isInstalled && hasExistingConfig) {
     if (missingRequired.length === 0) {
-      const action = await p.select({
+      const action = await promptOrExit(p.select({
         message: "All configuration variables are already set.",
         options: [
           { value: "skip", label: "Keep current configuration" },
           { value: "edit", label: "Edit configuration" },
         ],
-      });
-      if (p.isCancel(action)) cancelAndExit();
+      }));
       if (action === "skip") return useExisting();
       const result = await menuEditEnv(schema, existing, { secretsLocked });
       return result ?? useExisting();
@@ -610,11 +584,10 @@ async function configureEnv(
     }
   } else if (hasExistingConfig && missingRequired.length === 0) {
     // Not in manifest but has existing config, preserve original behavior
-    const reconfigure = await p.confirm({
+    const reconfigure = await promptOrExit(p.confirm({
       message: "Existing configuration found. Reconfigure?",
       initialValue: false,
-    });
-    if (p.isCancel(reconfigure)) cancelAndExit();
+    }));
     if (!reconfigure) return useExisting();
   }
 
@@ -628,6 +601,49 @@ type ArtifactResult =
   | { status: "skipped"; version: string }
   | { status: "failed"; version: string };
 
+async function resolveLocalArtifact(
+  component: Component,
+  repoPath: string,
+  dryRun: boolean,
+  host: Host,
+): Promise<ArtifactResult> {
+  const hostArch = await host.getArch();
+
+  if (dryRun) {
+    pass("Local build", `Would build ${component} from ${repoPath} for linux/${hostArch}`);
+    return { status: "skipped", version: "local" };
+  }
+
+  const buildResult = await buildLocalArtifact(component, repoPath, hostArch as "x64" | "arm64");
+  if (!buildResult) return { status: "failed", version: "" };
+
+  const isUpdate = !!(await readManifest(host)).components[component];
+
+  if (!host.isRemote) {
+    return { status: "ready", archivePath: buildResult.archivePath, versionString: buildResult.version, isUpdate };
+  }
+
+  const remoteTmp = `/tmp/xinity-local-${Date.now()}.tar.gz`;
+  const uploadSpinner = p.spinner();
+  uploadSpinner.start("Uploading artifact...");
+  try {
+    await host.uploadFile(buildResult.archivePath, remoteTmp);
+  } catch (err) {
+    uploadSpinner.stop("Upload failed");
+    fail("Upload", (err as Error).message);
+    return { status: "failed", version: buildResult.version };
+  }
+  uploadSpinner.stop("Uploaded");
+
+  const remoteHash = await host.computeSha256(remoteTmp);
+  if (remoteHash && remoteHash !== buildResult.sha256) {
+    fail("Verify", `Checksum mismatch after upload (local: ${buildResult.sha256}, remote: ${remoteHash})`);
+    return { status: "failed", version: buildResult.version };
+  }
+  pass("Verify", "Checksum matched");
+  return { status: "ready", archivePath: remoteTmp, versionString: buildResult.version, isUpdate };
+}
+
 /**
  * Resolve what to install: either build from a local repo (local: prefix) or
  * fetch the appropriate zip from a GitHub release. Returns a ready archive path
@@ -640,42 +656,7 @@ async function resolveArtifact(
   host: Host,
 ): Promise<ArtifactResult> {
   if (targetVersion.startsWith("local:")) {
-    const repoPath = targetVersion.slice(6);
-    const hostArch = await host.getArch();
-
-    if (dryRun) {
-      pass("Local build", `Would build ${component} from ${repoPath} for linux/${hostArch}`);
-      return { status: "skipped", version: "local" };
-    }
-
-    const buildResult = await buildLocalArtifact(component, repoPath, hostArch as "x64" | "arm64");
-    if (!buildResult) return { status: "failed", version: "" };
-
-    const isUpdate = !!(await readManifest(host)).components[component];
-
-    if (!host.isRemote) {
-      return { status: "ready", archivePath: buildResult.archivePath, versionString: buildResult.version, isUpdate };
-    }
-
-    const remoteTmp = `/tmp/xinity-local-${Date.now()}.tar.gz`;
-    const uploadSpinner = p.spinner();
-    uploadSpinner.start("Uploading artifact...");
-    try {
-      await host.uploadFile(buildResult.archivePath, remoteTmp);
-    } catch (err) {
-      uploadSpinner.stop("Upload failed");
-      fail("Upload", (err as Error).message);
-      return { status: "failed", version: buildResult.version };
-    }
-    uploadSpinner.stop("Uploaded");
-
-    const remoteHash = await host.computeSha256(remoteTmp);
-    if (remoteHash && remoteHash !== buildResult.sha256) {
-      fail("Verify", `Checksum mismatch after upload (local: ${buildResult.sha256}, remote: ${remoteHash})`);
-      return { status: "failed", version: buildResult.version };
-    }
-    pass("Verify", "Checksum matched");
-    return { status: "ready", archivePath: remoteTmp, versionString: buildResult.version, isUpdate };
+    return resolveLocalArtifact(component, targetVersion.slice(6), dryRun, host);
   }
 
   // GitHub release path
@@ -712,6 +693,12 @@ async function resolveArtifact(
   return { status: "ready", archivePath, versionString: release.tagName, isUpdate };
 }
 
+function printServiceFailureDiagnostics(unit: string): void {
+  p.log.warn(pc.yellow("Service failed to start. Diagnostic commands:"));
+  p.log.info(`  ${pc.cyan(`systemctl status ${unit}`)}`);
+  p.log.info(`  ${pc.cyan(`journalctl -u ${unit} -e --no-pager`)}`);
+}
+
 /**
  * Configure env, write unit, and start the service. Loops on failure to allow
  * the user to reconfigure and retry without re-downloading the binary.
@@ -745,11 +732,8 @@ async function configureAndStart(
     const started = await startService(component, host);
     if (started) return errors;
 
-    // Service failed - show diagnostics and offer retry
     const unit = unitName(component);
-    p.log.warn(pc.yellow("Service failed to start. Diagnostic commands:"));
-    p.log.info(`  ${pc.cyan(`systemctl status ${unit}`)}`);
-    p.log.info(`  ${pc.cyan(`journalctl -u ${unit} -e --no-pager`)}`);
+    printServiceFailureDiagnostics(unit);
 
     await host.withElevation(
       `systemctl disable --now ${unit} 2>/dev/null; systemctl reset-failed ${unit} 2>/dev/null`,
@@ -812,11 +796,7 @@ export async function installComponent(opts: {
         `systemctl clean --what=state ${unit}`,
         `Clean state for ${unit}`,
       );
-      if (result.success) {
-        pass("Hard reset", `State cleaned for ${unit}`);
-      } else if (!result.skipped) {
-        warn("Hard reset", `Failed to clean state: ${result.output}`);
-      }
+      reportElevationWarning(result, "Hard reset", `State cleaned for ${unit}`, "Failed to clean state");
     }
   }
 
@@ -881,7 +861,7 @@ function dryRunSummary(
   try {
     assetName = pickReleaseAsset(release, component, arch);
   } catch {
-    assetName = `xinity-ai-${component}-linux-${arch ?? "x64"}.tar.gz`;
+    assetName = `${assetPrefix(component, arch)}.tar.gz`;
   }
   const asset = release.assets.find((a) => a.name === assetName);
   const schema = ENV_SCHEMAS[component];
@@ -901,8 +881,7 @@ function dryRunSummary(
 
   // Download
   if (asset) {
-    const sizeMb = (asset.size / 1024 / 1024).toFixed(1);
-    info("Download", `${assetName} (${sizeMb} MB)`);
+    info("Download", `${assetName} (${assetSizeMb(asset)} MB)`);
   } else {
     warn("Download", `Asset ${assetName} not found in release`);
   }
@@ -939,8 +918,16 @@ function dryRunSummary(
   return { success: true, version: release.tagName, errors: [] };
 }
 
-/** Run an action for each component in sequence, prompting to continue on failure. */
-/** Returns true if all components completed, false if the user aborted mid-sequence. */
+async function confirmContinueAfterFailure(warnLabel: string, warnDetail: string): Promise<boolean> {
+  warn(warnLabel, warnDetail);
+  const cont = await p.confirm({ message: "Continue with remaining components?", initialValue: true });
+  return !p.isCancel(cont) && cont;
+}
+
+/**
+ * Run an action for each component in sequence, prompting to continue on failure.
+ * Returns true if all components completed, false if the user aborted mid-sequence.
+ */
 async function runComponentSequence<T extends { success: boolean; errors: string[] }>(
   components: Component[],
   action: (component: Component) => Promise<T>,
@@ -949,12 +936,8 @@ async function runComponentSequence<T extends { success: boolean; errors: string
     p.log.step(pc.bold(`\n── ${component} ──`));
     const result = await action(component);
     if (!result.success) {
-      warn("Partial", `${component} had issues: ${result.errors.join(", ")}`);
-      const cont = await p.confirm({
-        message: "Continue with remaining components?",
-        initialValue: true,
-      });
-      if (p.isCancel(cont) || !cont) return false;
+      const proceed = await confirmContinueAfterFailure("Partial", `${component} had issues: ${result.errors.join(", ")}`);
+      if (!proceed) return false;
     }
   }
   return true;
@@ -977,9 +960,8 @@ export async function installAll(targetVersion: string, dryRun = false, hardRese
   const { runMigrations } = await import("./migrator.ts");
   const dbResult = await runMigrations({ targetVersion, dryRun, host: resolvedHost });
   if (!dbResult.success) {
-    warn("Database", `Had issues: ${dbResult.errors.join(", ")}`);
-    const cont = await p.confirm({ message: "Continue with remaining components?", initialValue: true });
-    if (p.isCancel(cont) || !cont) return;
+    const proceed = await confirmContinueAfterFailure("Database", `Had issues: ${dbResult.errors.join(", ")}`);
+    if (!proceed) return;
   }
   if (dbResult.connectionUrl) {
     shared.DB_CONNECTION_URL = dbResult.connectionUrl;
@@ -1013,9 +995,8 @@ export async function installAll(targetVersion: string, dryRun = false, hardRese
       envOverrides: shared,
     });
     if (!result.success) {
-      warn("Partial", `infoserver had issues: ${result.errors.join(", ")}`);
-      const cont = await p.confirm({ message: "Continue with remaining components?", initialValue: true });
-      if (p.isCancel(cont) || !cont) return;
+      const proceed = await confirmContinueAfterFailure("Partial", `infoserver had issues: ${result.errors.join(", ")}`);
+      if (!proceed) return;
     }
   }
 
@@ -1106,6 +1087,33 @@ export async function installAll(targetVersion: string, dryRun = false, hardRese
 // ─── Remove ─────────────────────────────────────────────────────────────────
 
 
+function reportElevationStep(
+  result: { success: boolean; skipped: boolean; output: string },
+  label: string,
+  successMsg: string,
+  failurePrefix: string,
+  errors: string[],
+): void {
+  if (result.success) {
+    pass(label, successMsg);
+  } else if (!result.skipped) {
+    errors.push(`${failurePrefix}: ${result.output}`);
+  }
+}
+
+function reportElevationWarning(
+  result: { success: boolean; skipped: boolean; output: string },
+  label: string,
+  successMsg: string,
+  failurePrefix: string,
+): void {
+  if (result.success) {
+    pass(label, successMsg);
+  } else if (!result.skipped) {
+    warn(label, `${failurePrefix}: ${result.output}`);
+  }
+}
+
 export async function removeComponent(opts: {
   component: Component;
   purge?: boolean;
@@ -1131,11 +1139,7 @@ export async function removeComponent(opts: {
       `systemctl disable --now ${unit}`,
       `Stop and disable ${unit}`,
     );
-    if (result.success) {
-      pass("Service", `${unit} stopped and disabled`);
-    } else if (!result.skipped) {
-      errors.push(`Failed to stop ${unit}: ${result.output}`);
-    }
+    reportElevationStep(result, "Service", `${unit} stopped and disabled`, `Failed to stop ${unit}`, errors);
   } else {
     // Try to disable even if not active (might be enabled but failed)
     await host.withElevation(`systemctl disable ${unit} 2>/dev/null || true`, `Disable ${unit}`);
@@ -1148,11 +1152,7 @@ export async function removeComponent(opts: {
     `rm -f ${unitPath} && systemctl daemon-reload`,
     `Remove ${unit} unit file`,
   );
-  if (rmUnit.success) {
-    pass("Systemd", `Removed ${unitPath}`);
-  } else if (!rmUnit.skipped) {
-    errors.push(`Failed to remove unit: ${rmUnit.output}`);
-  }
+  reportElevationStep(rmUnit, "Systemd", `Removed ${unitPath}`, "Failed to remove unit", errors);
 
   // 3. Remove binary and (for dashboard) any legacy tarball directory
   const binaryPath = `${BIN_DIR}/${binaryBaseName(component)}`;
@@ -1162,11 +1162,7 @@ export async function removeComponent(opts: {
       : `rm -f ${binaryPath}`,
     `Remove ${component} binary`,
   );
-  if (rmBin.success) {
-    pass("Files", `Removed ${binaryPath}`);
-  } else if (!rmBin.skipped) {
-    errors.push(`Failed to remove binary: ${rmBin.output}`);
-  }
+  reportElevationStep(rmBin, "Files", `Removed ${binaryPath}`, "Failed to remove binary", errors);
 
   // 4. Remove env config file
   const envPath = `${ENV_DIR}/${component}.env`;
@@ -1174,11 +1170,7 @@ export async function removeComponent(opts: {
     `rm -f ${envPath}`,
     `Remove ${component} env config`,
   );
-  if (rmEnv.success) {
-    pass("Config", `Removed ${envPath}`);
-  } else if (!rmEnv.skipped) {
-    errors.push(`Failed to remove env config: ${rmEnv.output}`);
-  }
+  reportElevationStep(rmEnv, "Config", `Removed ${envPath}`, "Failed to remove env config", errors);
 
   // 5. Remove secret files that no other installed component needs.
   const schema = ENV_SCHEMAS[component];
@@ -1208,31 +1200,25 @@ export async function removeComponent(opts: {
         `rm -f ${secretPaths}`,
         `Remove ${component} secret files`,
       );
-      if (rmSecrets.success) {
-        pass("Secrets", `Removed ${toDelete.length} secret file(s)`);
-      } else if (!rmSecrets.skipped) {
-        errors.push(`Failed to remove secrets: ${rmSecrets.output}`);
-      }
+      reportElevationStep(rmSecrets, "Secrets", `Removed ${toDelete.length} secret file(s)`, "Failed to remove secrets", errors);
     }
   }
 
   // 6. Remove daemon-specific extras: vLLM template unit (always) and /etc/vllm (on purge)
   if (component === "daemon") {
-    const vllmTemplatePath = "/etc/systemd/system/vllm-driver@.service";
+    const vllmTemplatePath = `${UNIT_DIR}/vllm-driver@.service`;
     const rmTemplate = await host.withElevation(
       `rm -f ${vllmTemplatePath} && systemctl daemon-reload`,
       "Remove vLLM systemd template unit",
     );
-    if (rmTemplate.success) pass("vLLM", `Removed ${vllmTemplatePath}`);
-    else if (!rmTemplate.skipped) errors.push(`Failed to remove vLLM template: ${rmTemplate.output}`);
+    reportElevationStep(rmTemplate, "vLLM", `Removed ${vllmTemplatePath}`, "Failed to remove vLLM template", errors);
 
     if (purge) {
       const rmVllmEnv = await host.withElevation(
         "rm -rf /etc/vllm",
         "Purge vLLM environment config",
       );
-      if (rmVllmEnv.success) pass("Purge", "Removed /etc/vllm");
-      else if (!rmVllmEnv.skipped) errors.push(`Failed to purge /etc/vllm: ${rmVllmEnv.output}`);
+      reportElevationStep(rmVllmEnv, "Purge", "Removed /etc/vllm", "Failed to purge /etc/vllm", errors);
     }
   }
 
@@ -1243,11 +1229,7 @@ export async function removeComponent(opts: {
       `rm -rf ${stateDir}`,
       `Purge ${component} state data`,
     );
-    if (rmState.success) {
-      pass("Purge", `Removed ${stateDir}`);
-    } else if (!rmState.skipped) {
-      errors.push(`Failed to purge state: ${rmState.output}`);
-    }
+    reportElevationStep(rmState, "Purge", `Removed ${stateDir}`, "Failed to purge state", errors);
   }
 
   // 8. Remove manifest entry

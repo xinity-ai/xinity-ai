@@ -9,7 +9,7 @@
 import * as p from "./clack.ts";
 import pc from "picocolors";
 import { updateConfig } from "./config.ts";
-import { cancelAndExit } from "./output.ts";
+import { promptOrExit } from "./output.ts";
 
 const REQUEST_TIMEOUT_MS = 15_000;
 
@@ -37,26 +37,22 @@ export async function runOnboardingCliWorkflow(dashboardUrl: string) {
 
   p.intro(`${pc.cyan("xinity onboarding")} ${pc.dim("(first-time setup)")}`);
 
-  const name = await p.text({ message: "Name" });
-  if (p.isCancel(name)) return cancelAndExit();
+  const name = await promptOrExit(p.text({ message: "Name" }));
 
-  const email = await p.text({
+  const email = await promptOrExit(p.text({
     message: "Email",
     validate: (v) => (v?.includes("@") ? undefined : "Enter a valid email"),
-  });
-  if (p.isCancel(email)) return cancelAndExit();
+  }));
 
-  const password = await p.password({
+  const password = await promptOrExit(p.password({
     message: "Password",
     validate: (v) => (!v || v.length >= 8 ? undefined : "Must be at least 8 characters"),
-  });
-  if (p.isCancel(password)) return cancelAndExit();
+  }));
 
-  const orgName = await p.text({
+  const orgName = await promptOrExit(p.text({
     message: "Organization name",
     placeholder: "My Organization",
-  });
-  if (p.isCancel(orgName)) return cancelAndExit();
+  }));
 
   const spin = p.spinner();
   spin.start("Running onboarding");

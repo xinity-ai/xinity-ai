@@ -5,28 +5,57 @@
  * the CLI session. Commands are piped through stdin with delimiter-based
  * output parsing, so the user only authenticates once.
  */
-import type { ReadableStreamReader } from "bun";
+import type { ReadableStreamReader, Subprocess } from "bun";
 import { localRun } from "./host.ts";
 
 const AUTH_TIMEOUT_MS = 15_000;
+const GRACEFUL_EXIT_TIMEOUT_MS = 3000;
 const AUTH_MARKER = "__SUDO_AUTH_OK__";
 
 /**
+ * Wraps stream.getReader() with an explicit cast to the default-reader signature.
  * Bun's subprocess streams are standard ReadableStreams, but @types/node's
  * overload resolution can pick the BYOB reader signature (which requires a
- * view argument) instead of the default reader (which takes none). This
- * interface matches what getReader() actually returns at runtime.
+ * view argument) instead of the default reader (which takes none).
  */
-// interface StreamReader<T> {
-//   read(): Promise<{ done: boolean; value?: T }>;
-// }
-
 function getStreamReader(stream: ReadableStream<Uint8Array>): ReadableStreamReader<Uint8Array> {
   return stream.getReader() as ReadableStreamReader<Uint8Array>;
 }
 
+type StdinWriter = { write(data: Uint8Array): void; flush(): void; end(): void };
+
+function getStdinWriter(proc: Subprocess): StdinWriter {
+  return proc.stdin as unknown as StdinWriter;
+}
+
+const encoder = new TextEncoder();
+
+function writeAndFlush(proc: Subprocess, data: string): void {
+  const writer = getStdinWriter(proc);
+  writer.write(encoder.encode(data));
+  writer.flush();
+}
+
+type ReadResult = { done: boolean; value?: Uint8Array };
+
+/**
+ * Read the next chunk from a stream, racing against a fixed deadline.
+ * Returns null on timeout (deadline already passed or new chunk didn't arrive in time).
+ */
+async function readBeforeDeadline(
+  reader: ReadableStreamReader<Uint8Array>,
+  deadline: number,
+): Promise<ReadResult | null> {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) return null;
+  return await Promise.race([
+    reader.read() as Promise<ReadResult>,
+    new Promise<null>((r) => setTimeout(() => r(null), remaining)),
+  ]);
+}
+
 export class SudoSession {
-  private proc: import("bun").Subprocess;
+  private proc: Subprocess;
   private stdout: ReadableStreamReader<Uint8Array>;
   private buffer = "";
   private dead = false;
@@ -34,7 +63,7 @@ export class SudoSession {
 
   private stderrReader: ReadableStreamReader<Uint8Array> | null = null;
 
-  private constructor(proc: import("bun").Subprocess) {
+  private constructor(proc: Subprocess) {
     this.proc = proc;
     this.stdout = getStreamReader(proc.stdout as ReadableStream<Uint8Array>);
     this.stderrReader = proc.stderr ? getStreamReader(proc.stderr as ReadableStream<Uint8Array>) : null;
@@ -72,7 +101,6 @@ export class SudoSession {
     );
 
     const session = new SudoSession(proc);
-    const writer = proc.stdin as unknown as { write(data: Uint8Array): void; flush(): void };
 
     // Wait for sudo's password prompt on stderr before sending the password.
     // Without this, the password can arrive before sudo is ready to read stdin,
@@ -82,16 +110,13 @@ export class SudoSession {
     }
 
     // Send password (even if empty, the newline triggers sudo to proceed).
-    const passwordPayload = password + "\n";
-    writer.write(new TextEncoder().encode(passwordPayload));
-    writer.flush();
+    writeAndFlush(proc, password + "\n");
 
     // Switch stderr to background drain now that the prompt has passed.
     session.drainStderr();
 
     // Probe whether authentication succeeded.
-    writer.write(new TextEncoder().encode(`echo ${AUTH_MARKER}\n`));
-    writer.flush();
+    writeAndFlush(proc, `echo ${AUTH_MARKER}\n`);
 
     const ok = await session.waitForMarker(AUTH_MARKER, AUTH_TIMEOUT_MS);
     if (!ok) {
@@ -123,21 +148,14 @@ export class SudoSession {
 
     const delimiter = `__XINITY_END_${crypto.randomUUID().replace(/-/g, "")}__`;
 
-    // Wrap the command so it cannot consume our stdin pipe, and merge
-    // stderr into stdout for unified capture. We store the exit code in a
-    // variable first, then echo the delimiter on its own line so that it
-    // is always on a clean line even if the command output lacks a
-    // trailing newline.
-    // Store exit code in a variable, ensure a trailing newline, then print
-    // the delimiter with the exit code on a clean line. Using printf avoids
-    // echo's inconsistent newline handling across shells.
+    // `< /dev/null` stops the command consuming our stdin pipe, `2>&1` merges stderr for unified capture,
+    // and the leading `\n` in printf guarantees the delimiter lands on its own line regardless of whether
+    // the command output ended with a newline.
     const wrapped =
       `( ${command} ) < /dev/null 2>&1; __xrc=$?\n` +
       `printf '\\n${delimiter}%s\\n' "$__xrc"\n`;
 
-    const writer = this.proc.stdin as unknown as { write(data: Uint8Array): void; flush(): void };
-    writer.write(new TextEncoder().encode(wrapped));
-    writer.flush();
+    writeAndFlush(this.proc, wrapped);
 
     // Read until we see the delimiter line.
     return this.readUntilDelimiter(delimiter);
@@ -146,8 +164,8 @@ export class SudoSession {
   async close(): Promise<void> {
     if (this.dead) return;
     try {
-      const writer = this.proc.stdin as unknown as { write(data: Uint8Array): void; end(): void };
-      writer.write(new TextEncoder().encode("exit\n"));
+      const writer = getStdinWriter(this.proc);
+      writer.write(encoder.encode("exit\n"));
       writer.end();
     } catch {
       // stdin may already be closed
@@ -156,7 +174,7 @@ export class SudoSession {
     // Give it a moment to exit gracefully, then force-kill.
     const exited = Promise.race([
       this.proc.exited,
-      new Promise((r) => setTimeout(r, 3000)),
+      new Promise((r) => setTimeout(r, GRACEFUL_EXIT_TIMEOUT_MS)),
     ]);
     await exited;
     try {
@@ -182,14 +200,8 @@ export class SudoSession {
     const deadline = Date.now() + AUTH_TIMEOUT_MS;
 
     while (Date.now() < deadline) {
-      const remaining = deadline - Date.now();
-      const chunk = await Promise.race([
-        this.stderrReader.read(),
-        new Promise<null>((r) => setTimeout(() => r(null), remaining)),
-      ]);
-      if (chunk === null) break;
-      const result = chunk as { done: boolean; value?: Uint8Array };
-      if (result.done) break;
+      const result = await readBeforeDeadline(this.stderrReader, deadline);
+      if (result === null || result.done) break;
 
       stderrBuf += decoder.decode(result.value!, { stream: true });
       // Sudo prompts typically end with ": " (e.g. "[sudo] password for user: ")
@@ -217,16 +229,8 @@ export class SudoSession {
   private async waitForMarker(marker: string, timeoutMs: number): Promise<boolean> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      const remaining = deadline - Date.now();
-      if (remaining <= 0) break;
-
-      const chunk = await Promise.race([
-        this.stdout.read(),
-        new Promise<null>((r) => setTimeout(() => r(null), remaining)),
-      ]);
-
-      if (chunk === null) break;
-      const result = chunk as { done: boolean; value?: Uint8Array };
+      const result = await readBeforeDeadline(this.stdout, deadline);
+      if (result === null) break;
       if (result.done) {
         this.dead = true;
         break;

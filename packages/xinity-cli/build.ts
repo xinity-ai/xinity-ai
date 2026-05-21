@@ -36,9 +36,9 @@ const DASHBOARD_SRC = resolve(import.meta.dirname, "../xinity-ai-dashboard/src/l
 
 /** Absolute-path map for catching relative imports that resolve to stub files. */
 const stubsByAbsPath = new Map<string, string>();
-for (const specifier of Object.keys(serverStubs)) {
+for (const [specifier, source] of Object.entries(serverStubSources)) {
   const relPath = specifier.replace("$lib/", "");
-  stubsByAbsPath.set(resolve(DASHBOARD_SRC, relPath + ".ts"), serverStubSources[specifier]);
+  stubsByAbsPath.set(resolve(DASHBOARD_SRC, relPath + ".ts"), source);
 }
 
 /** Regex matching filenames of stub targets (for the onLoad filter). */

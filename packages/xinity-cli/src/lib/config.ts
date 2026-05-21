@@ -52,9 +52,7 @@ const CLI_FIELDS: ConfigField[] = [
 ];
 
 const CONFIG_DIR = join(homedir(), ".config", "xinity");
-const CONFIG_PATH = join(CONFIG_DIR, "config.json");
-
-export { CONFIG_PATH };
+export const CONFIG_PATH = join(CONFIG_DIR, "config.json");
 
 /** Read the config file, returning an empty object if it doesn't exist. */
 export function loadConfig(): CliConfig {

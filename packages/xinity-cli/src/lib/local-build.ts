@@ -24,20 +24,21 @@ const PACKAGE_DIRS: Record<BuildableComponent, string> = {
   infoserver: "packages/xinity-infoserver",
 };
 
+/** Entry file passed to `bun build --compile`. Dashboard runs its own build script instead. */
+const BUN_BUILD_ENTRYPOINTS: Record<Exclude<BuildableComponent, "dashboard">, string> = {
+  daemon: "./src/index.ts",
+  gateway: "./src/gatewayServer.ts",
+  infoserver: "./server.ts",
+};
+
 function buildCommand(component: BuildableComponent, arch: "x64" | "arm64"): string[] {
   const target = `bun-linux-${arch}`;
-  const binName = binaryBaseName(component as Component);
+  const binName = binaryBaseName(component);
 
-  switch (component) {
-    case "daemon":
-      return ["bun", "build", "--compile", "--minify", `--target=${target}`, "./src/index.ts", "--outfile", binName];
-    case "gateway":
-      return ["bun", "build", "--compile", "--minify", `--target=${target}`, "./src/gatewayServer.ts", "--outfile", binName];
-    case "infoserver":
-      return ["bun", "build", "--compile", "--minify", `--target=${target}`, "./server.ts", "--outfile", binName];
-    case "dashboard":
-      return ["bun", "run", "build.ts", "--target", target, "--outfile", binName];
+  if (component === "dashboard") {
+    return ["bun", "run", "build.ts", "--target", target, "--outfile", binName];
   }
+  return ["bun", "build", "--compile", "--minify", `--target=${target}`, BUN_BUILD_ENTRYPOINTS[component], "--outfile", binName];
 }
 
 async function readVersion(repoPath: string): Promise<string> {
@@ -79,7 +80,7 @@ export async function buildLocalArtifact(
   }
 
   const cmd = buildCommand(component, targetArch);
-  const binName = binaryBaseName(component as Component);
+  const binName = binaryBaseName(component);
   const binPath = join(pkgDir, binName);
 
   const spinner = p.spinner();
@@ -114,8 +115,9 @@ export async function buildLocalArtifact(
   packageSpinner.stop("Packaged");
 
   const hasher = new Bun.CryptoHasher("sha256");
-  const archiveBytes = await Bun.file(tmpArchive).arrayBuffer();
-  hasher.update(archiveBytes);
+  for await (const chunk of Bun.file(tmpArchive).stream()) {
+    hasher.update(chunk);
+  }
   const sha256 = hasher.digest("hex");
 
   const version = await readVersion(absRepoPath);
