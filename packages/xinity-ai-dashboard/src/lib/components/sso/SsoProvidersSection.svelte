@@ -124,18 +124,6 @@
         {organizationId}
         onCreated={handleProviderCreated}
       />
-
-      <!-- {#if providerType === "oidc"}
-        <OidcProviderForm
-          {organizationId}
-          onCreated={handleProviderCreated}
-        />
-      {:else}
-        <SamlProviderForm
-          {organizationId}
-          onCreated={handleProviderCreated}
-        />
-      {/if} -->
     </div>
   </Card.Content>
 </Card.Root>

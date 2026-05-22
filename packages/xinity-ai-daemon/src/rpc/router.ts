@@ -8,13 +8,8 @@ const healthCheck = os
     tags: ["Util"],
     description: "Endpoint to allow checks into the health of the service",
   })
-  // .input(z.undefined())
   .output(z.object({ ready: z.boolean() }))
-  .handler(() => {
-    return {
-      ready: true,
-    };
-  });
+  .handler(() => ({ ready: true }));
 
 export const router = {
   healthCheck,
