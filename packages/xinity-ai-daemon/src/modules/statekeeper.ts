@@ -66,27 +66,35 @@ async function detectOllamaVersion(endpoint: string): Promise<string | undefined
   }
 }
 
-/** Detects driver versions from configured endpoints/binaries. Best-effort: missing = empty. */
-export async function getNodeDriverVersions(): Promise<Record<string, string>> {
-  const versions: Record<string, string> = {};
+async function detectConfiguredOllamaVersion(): Promise<string | undefined> {
+  if (!env.XINITY_OLLAMA_ENDPOINT) return undefined;
+  return detectOllamaVersion(env.XINITY_OLLAMA_ENDPOINT);
+}
 
-  if (env.XINITY_OLLAMA_ENDPOINT) {
-    const ollama = await detectOllamaVersion(env.XINITY_OLLAMA_ENDPOINT);
-    if (ollama) versions["ollama"] = ollama;
-  }
-
+async function detectConfiguredVllmVersion(): Promise<string | undefined> {
   if (env.VLLM_DOCKER_IMAGE) {
-    const vllm = await detectVllmVersion("docker", () =>
+    return detectVllmVersion("docker", () =>
       $`docker run --rm --gpus all --entrypoint vllm ${env.VLLM_DOCKER_IMAGE} --version`.throws(false).text(),
     );
-    if (vllm) versions["vllm"] = vllm;
-  } else if (env.VLLM_PATH) {
-    const vllm = await detectVllmVersion("binary", () =>
+  }
+  if (env.VLLM_PATH) {
+    return detectVllmVersion("binary", () =>
       $`${env.VLLM_PATH} --version`.throws(false).text(),
     );
-    if (vllm) versions["vllm"] = vllm;
   }
+  return undefined;
+}
 
+/** Detects driver versions from configured endpoints/binaries. Best-effort: missing = empty. */
+export async function getNodeDriverVersions(): Promise<Record<string, string>> {
+  const [ollama, vllm] = await Promise.all([
+    detectConfiguredOllamaVersion(),
+    detectConfiguredVllmVersion(),
+  ]);
+
+  const versions: Record<string, string> = {};
+  if (ollama) versions["ollama"] = ollama;
+  if (vllm) versions["vllm"] = vllm;
   return versions;
 }
 

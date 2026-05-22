@@ -27,13 +27,15 @@ export const load: PageServerLoad = async ({ parent, locals }) => {
 
   // Stream deployments - page renders immediately with skeletons while this resolves
   const deployments = call(router.deployment.list, { withStatus: true }, { context: locals });
-  const capacity = await buildClusterCapacity();
-  const applications = await call(router.application.list, {}, { context: locals })
-    .then((r) => r as ApplicationDto[])
-    .catch((err) => {
-      if (isRedirect(err) || isHttpError(err)) throw err;
-      return [] as ApplicationDto[];
-    });
+  const [capacity, applications] = await Promise.all([
+    buildClusterCapacity(),
+    call(router.application.list, {}, { context: locals })
+      .then((r) => r as ApplicationDto[])
+      .catch((err) => {
+        if (isRedirect(err) || isHttpError(err)) throw err;
+        return [] as ApplicationDto[];
+      }),
+  ]);
 
   return { deployments, applications, ...capacity };
 };

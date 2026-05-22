@@ -318,8 +318,10 @@ async function applyChanges(toUninstall: string[], toInstall: NewInstallation[])
 
 async function runSyncDeployedModels() {
   const requiredModels = await assembleModelRequirementTable();
-  const existing: ModelInstallation[] = await getDB().select().from(modelInstallationT).where(isNull(modelInstallationT.deletedAt));
-  const availableServers: AiNode[] = await getDB().select().from(aiNodeT).where(sql`${aiNodeT.available} AND ${aiNodeT.deletedAt} IS NULL`);
+  const [existing, availableServers]: [ModelInstallation[], AiNode[]] = await Promise.all([
+    getDB().select().from(modelInstallationT).where(isNull(modelInstallationT.deletedAt)),
+    getDB().select().from(aiNodeT).where(sql`${aiNodeT.available} AND ${aiNodeT.deletedAt} IS NULL`),
+  ]);
 
   const availableServerIds = new Set(availableServers.map(s => s.id));
   const orphaned = existing.filter(i => !availableServerIds.has(i.nodeId));

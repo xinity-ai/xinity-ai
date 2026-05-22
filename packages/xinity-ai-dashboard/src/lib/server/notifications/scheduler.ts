@@ -351,9 +351,7 @@ async function checkWeeklyReport() {
 // ── Combined check ──────────────────────────────────────────────────
 
 async function runChecks() {
-  await checkDeploymentStatus();
-  await checkNodeHealth();
-  await checkCapacity();
+  await Promise.all([checkDeploymentStatus(), checkNodeHealth(), checkCapacity()]);
 
   if (!initialized) {
     initialized = true;

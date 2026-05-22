@@ -36,13 +36,16 @@ export async function handleModelsRequest(req: Request): Promise<Response> {
     (new URL(req.url).searchParams.get("include_unavailable") ?? "").toLowerCase(),
   );
 
-  const [organization] = await getDB().select().from(organizationT).where(sql`${organizationT.id} = ${orgId}`).limit(1);
-  const models = await getDB()
-    .select()
-    .from(modelDeploymentT)
-    .leftJoin(modelInstallationT, sql`${deploymentMatchesInstallation} AND ${modelInstallationT.deletedAt} IS NULL`)
-    .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`)
-    .where(sql`${modelDeploymentT.organizationId} = ${orgId} AND ${modelDeploymentT.deletedAt} IS NULL`);
+  const [orgRows, models] = await Promise.all([
+    getDB().select().from(organizationT).where(sql`${organizationT.id} = ${orgId}`).limit(1),
+    getDB()
+      .select()
+      .from(modelDeploymentT)
+      .leftJoin(modelInstallationT, sql`${deploymentMatchesInstallation} AND ${modelInstallationT.deletedAt} IS NULL`)
+      .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`)
+      .where(sql`${modelDeploymentT.organizationId} = ${orgId} AND ${modelDeploymentT.deletedAt} IS NULL`),
+  ]);
+  const [organization] = orgRows;
 
   const modelMap = new Map<string, { modelDeployment: ModelDeployment; lifecycles: InstallationLifecycle[] }>();
   for (const row of models) {

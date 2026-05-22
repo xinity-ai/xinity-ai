@@ -47,8 +47,10 @@ async function assertModelsInCatalog(
 /** Validates that primary and canary models share the same type. Returns an error message or null. */
 async function validateCanaryModelTypes(primary: ModelLookup, early: ModelLookup | null): Promise<string | null> {
   if (!early) return null;
-  const primaryModel = await infoClient?.fetchModel(primary);
-  const earlyModel = await infoClient?.fetchModel(early);
+  const [primaryModel, earlyModel] = await Promise.all([
+    infoClient?.fetchModel(primary),
+    infoClient?.fetchModel(early),
+  ]);
   if (primaryModel?.type && earlyModel?.type && primaryModel.type !== earlyModel.type) {
     return `Cannot mix model types in a canary deployment: primary is "${primaryModel.type}" but canary is "${earlyModel.type}"`;
   }
@@ -121,28 +123,30 @@ async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>
     modelsToCheck.push({ lookup: primaryLookup, label: lookupKey(primaryLookup), replicas: input.replicas, kvCacheSize: input.kvCacheSize });
   }
 
-  // Fetch model info for all models, distinguishing not_found from unavailable
-  const modelInfos = await Promise.all(
-    modelsToCheck.map(async (m) => {
-      const status = await infoClient?.fetchModelStatus(m.lookup);
-      if (!status || status.status === "unavailable") return { kind: "unavailable" as const, label: m.label };
-      if (status.status === "not_found") return { kind: "not_found" as const, label: m.label };
-      const info = status.model;
-      const effectiveKvCache = Math.max(m.kvCacheSize ?? 0, info.minKvCache);
-      const driver: Provider | undefined = input.preferredDriver ?? resolveDefaultProvider(info)?.driver;
-      const minVersion = driver ? resolveMinVersionForDriver(info, driver) : undefined;
-      const requiredPlatforms = driver ? resolveRequiredPlatformsForDriver(info, driver) : [];
-      return { kind: "found" as const, label: m.label, replicas: m.replicas, perReplica: info.weight + effectiveKvCache, driver, minVersion, requiredPlatforms };
-    }),
-  );
+  // Fetch model info for all models in parallel with the cluster snapshot; both
+  // are independent inputs to the placement check below.
+  const [modelInfos, { nodeCapabilities }] = await Promise.all([
+    Promise.all(
+      modelsToCheck.map(async (m) => {
+        const status = await infoClient?.fetchModelStatus(m.lookup);
+        if (!status || status.status === "unavailable") return { kind: "unavailable" as const, label: m.label };
+        if (status.status === "not_found") return { kind: "not_found" as const, label: m.label };
+        const info = status.model;
+        const effectiveKvCache = Math.max(m.kvCacheSize ?? 0, info.minKvCache);
+        const driver: Provider | undefined = input.preferredDriver ?? resolveDefaultProvider(info)?.driver;
+        const minVersion = driver ? resolveMinVersionForDriver(info, driver) : undefined;
+        const requiredPlatforms = driver ? resolveRequiredPlatformsForDriver(info, driver) : [];
+        return { kind: "found" as const, label: m.label, replicas: m.replicas, perReplica: info.weight + effectiveKvCache, driver, minVersion, requiredPlatforms };
+      }),
+    ),
+    buildClusterCapacity(),
+  ]);
 
   const notFound = modelInfos.find(m => m.kind === "not_found");
   if (notFound) return { deployable: false, reason: `Model "${notFound.label}" was not found in the model catalog` };
 
   const resolved = modelInfos.filter((m): m is Extract<typeof modelInfos[number], { kind: "found" }> => m.kind === "found");
   if (resolved.length === 0) return { deployable: true, reason: "Capacity could not be verified: model catalog is unavailable" };
-
-  const { nodeCapabilities } = await buildClusterCapacity();
   const remaining = nodeCapabilities
     .map(n => ({ ...n }))
     .sort((a, b) => b.free - a.free);
@@ -487,9 +491,13 @@ export const createDeployment = rootOs
     const mismatch = await validateCanaryModelTypes(primaryLookup, earlyLookup);
     if (mismatch) throw errors.BAD_REQUEST({ message: mismatch });
 
-    const derivedModelSpecifier = await deriveProviderModel(primaryLookup, input.preferredDriver ?? null) ?? input.modelSpecifier;
+    const [primaryDerived, earlyDerived] = await Promise.all([
+      deriveProviderModel(primaryLookup, input.preferredDriver ?? null),
+      earlyLookup ? deriveProviderModel(earlyLookup, input.preferredDriver ?? null) : Promise.resolve(undefined),
+    ]);
+    const derivedModelSpecifier = primaryDerived ?? input.modelSpecifier;
     const derivedEarlyModelSpecifier = earlyLookup
-      ? (await deriveProviderModel(earlyLookup, input.preferredDriver ?? null) ?? input.earlyModelSpecifier ?? null)
+      ? (earlyDerived ?? input.earlyModelSpecifier ?? null)
       : null;
 
     try {
