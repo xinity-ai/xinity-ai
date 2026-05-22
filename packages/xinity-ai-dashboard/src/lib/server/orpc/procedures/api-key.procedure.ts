@@ -177,7 +177,7 @@ const toggleEnabled = rootOs
         .select(pick(aiApiKeyT, "enabled"))
         .from(aiApiKeyT)
         .where(keySelector)
-        .orderBy(aiApiKeyT.name);
+        .limit(1);
       if (!apiKey) throw errors.NOT_FOUND({ message: "API key not found" });
       enabled = !apiKey.enabled;
     }
