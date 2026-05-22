@@ -1,5 +1,5 @@
 import { rootOs, withOrganization, requirePermission } from "../root";
-import { sql, isNull, aiNodeT, modelInstallationT } from "common-db";
+import { sql, aiNodeT, modelInstallationT } from "common-db";
 import { getDB } from "$lib/server/db";
 import z from "zod";
 import type { NodeCapability } from "xinity-infoserver";
@@ -32,15 +32,17 @@ export type ClusterCapacity = z.infer<typeof ClusterCapacityOutput>;
  * can call it directly without HTTP overhead.
  */
 export async function buildClusterCapacity(): Promise<ClusterCapacity> {
-  const nodes = await getDB().select({
-    id: aiNodeT.id,
-    estCapacity: aiNodeT.estCapacity,
-    driverVersions: aiNodeT.driverVersions,
-    gpus: aiNodeT.gpus,
-  }).from(aiNodeT)
-    .where(sql`${aiNodeT.available} AND ${aiNodeT.deletedAt} IS NULL`);
-  const installations = await getDB().select().from(modelInstallationT)
-    .where(isNull(modelInstallationT.deletedAt));
+  const [nodes, installations] = await Promise.all([
+    getDB().select({
+      id: aiNodeT.id,
+      estCapacity: aiNodeT.estCapacity,
+      driverVersions: aiNodeT.driverVersions,
+      gpus: aiNodeT.gpus,
+    }).from(aiNodeT)
+      .where(sql`${aiNodeT.available} AND ${aiNodeT.deletedAt} IS NULL`),
+    getDB().select().from(modelInstallationT)
+      .where(sql`${modelInstallationT.deletedAt} IS NULL`),
+  ]);
 
   const nodeUsed = new Map<string, number>();
   for (const inst of installations) {

@@ -20,26 +20,15 @@ export const load: PageServerLoad = async ({ params, request, parent }) => {
     throw redirect(302, "/organizations");
   }
 
-  // Get full organization details with members
-  const fullOrg = await auth.api.getFullOrganization({
-    headers: request.headers,
-    query: {
-      organizationId: organization.id,
-    },
-  });
-  if (!fullOrg) {
-    throw redirect(302, "/organizations");
-  }
-
-  // Get pending invitations
-  const invitations = await auth.api.listInvitations({
-    headers: request.headers,
-    query: {
-      organizationId: organization.id,
-    },
-  });
-
-  const [[activeMember], [orgRow]] = await Promise.all([
+  const [fullOrg, invitations, [activeMember], [orgRow]] = await Promise.all([
+    auth.api.getFullOrganization({
+      headers: request.headers,
+      query: { organizationId: organization.id },
+    }),
+    auth.api.listInvitations({
+      headers: request.headers,
+      query: { organizationId: organization.id },
+    }),
     getDB().select({ role: memberT.role }).from(memberT).where(sql`
       ${memberT.userId} = ${user.id}
       AND
@@ -47,6 +36,10 @@ export const load: PageServerLoad = async ({ params, request, parent }) => {
     `).limit(1),
     getDB().select({ ssoSelfManage: organizationT.ssoSelfManage }).from(organizationT).where(eq(organizationT.id, organization.id)).limit(1),
   ]);
+
+  if (!fullOrg) {
+    throw redirect(302, "/organizations");
+  }
 
   return {
     organization: fullOrg,

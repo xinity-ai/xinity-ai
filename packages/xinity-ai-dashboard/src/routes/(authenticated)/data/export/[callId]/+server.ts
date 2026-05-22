@@ -26,21 +26,25 @@ export const GET: RequestHandler = async ({ params, locals }) => {
 
   const { callId } = params;
 
-  const [call] = await getDB()
-    .select()
-    .from(apiCallT)
-    .where(and(eq(apiCallT.id, callId), eq(apiCallT.organizationId, orgId)))
-    .limit(1);
+  const [callRows, ratingRows] = await Promise.all([
+    getDB()
+      .select()
+      .from(apiCallT)
+      .where(and(eq(apiCallT.id, callId), eq(apiCallT.organizationId, orgId)))
+      .limit(1),
+    getDB()
+      .select()
+      .from(apiCallResponseT)
+      .where(eq(apiCallResponseT.apiCallId, callId))
+      .limit(1),
+  ]);
+
+  const [call] = callRows;
+  const [rating] = ratingRows;
 
   if (!call) {
     error(404, "Call not found");
   }
-
-  const [rating] = await getDB()
-    .select()
-    .from(apiCallResponseT)
-    .where(eq(apiCallResponseT.apiCallId, callId))
-    .limit(1);
 
   const resolvedMessages = await resolveMessagesImages(call.inputMessages, orgId);
 

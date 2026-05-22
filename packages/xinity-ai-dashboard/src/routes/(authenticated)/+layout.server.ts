@@ -28,16 +28,17 @@ export const load: LayoutServerLoad = async ({ request, url, cookies }) => {
     }
   }
 
-  const memberRole = await loadActiveMemberRole(session.session.activeOrganizationId, request.headers);
-
-  const { displaySettings, temporaryPassword } = await fetchUserSettings(session.user.id);
+  const [memberRole, userSettings, totalVramGb] = await Promise.all([
+    loadActiveMemberRole(session.session.activeOrganizationId, request.headers),
+    fetchUserSettings(session.user.id),
+    fetchTotalAvailableVramGb(),
+  ]);
+  const { displaySettings, temporaryPassword } = userSettings;
 
   // Force users with temporary passwords to the password change page
   if (temporaryPassword && !url.pathname.startsWith("/settings/auth")) {
     redirect(302, "/settings/auth");
   }
-
-  const totalVramGb = await fetchTotalAvailableVramGb();
 
   return {
     user: session.user,

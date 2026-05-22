@@ -11,15 +11,16 @@ export const load: PageServerLoad = async ({ locals, request }) => {
     return { applications: [], uncategorizedCount: 0 };
   }
 
-  const applications = await call(applicationRouter.list, {}, { context: locals });
-
-  const [result] = await getDB()
-    .select({ count: sql<number>`COUNT(*)::int` })
-    .from(apiCallT)
-    .where(and(
-      eq(apiCallT.organizationId, session.session.activeOrganizationId),
-      isNull(apiCallT.applicationId),
-    ));
+  const [applications, [result]] = await Promise.all([
+    call(applicationRouter.list, {}, { context: locals }),
+    getDB()
+      .select({ count: sql<number>`COUNT(*)::int` })
+      .from(apiCallT)
+      .where(and(
+        eq(apiCallT.organizationId, session.session.activeOrganizationId),
+        isNull(apiCallT.applicationId),
+      )),
+  ]);
   const uncategorizedCount = result?.count ?? 0;
 
   return {
