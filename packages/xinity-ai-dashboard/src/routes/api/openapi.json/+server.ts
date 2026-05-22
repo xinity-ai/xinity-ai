@@ -3,7 +3,6 @@
  */
 import { OpenAPIGenerator } from '@orpc/openapi'
 import { ZodToJsonSchemaConverter } from '@orpc/zod/zod4'
-// import { router } from '../[...rest]/shared'
 import { text } from '@sveltejs/kit'
 import { os, Procedure } from '@orpc/server'
 import { router } from '$lib/server/orpc/router'
