@@ -101,6 +101,7 @@ export const doctorCommand: CommandModule = {
 
     const host = targetHostArg ? await connectRemoteHost(targetHostArg) : createLocalHost();
 
+    let hasFailures = false;
     try {
       const clackSpinner = p.spinner();
       clackSpinner.start("Collecting diagnostics…");
@@ -118,17 +119,16 @@ export const doctorCommand: CommandModule = {
 
       if (format === "json") {
         process.stdout.write(JSON.stringify(report, null, 2) + "\n");
-        process.exit(report.summary.fail > 0 ? 1 : 0);
       } else if (format === "yaml") {
         process.stdout.write(Bun.YAML.stringify(report, null, 2));
-        process.exit(report.summary.fail > 0 ? 1 : 0);
       } else {
         renderReport(report, verbose);
         p.outro(buildSummaryLine(report.summary));
-        if (report.summary.fail > 0) process.exit(1);
       }
+      hasFailures = report.summary.fail > 0;
     } finally {
       await host.dispose();
     }
+    if (hasFailures) process.exit(1);
   },
 };
