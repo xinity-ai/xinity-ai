@@ -60,6 +60,7 @@ export const upCommand: CommandModule = {
 
     const host = targetHostArg ? await connectRemoteHost(targetHostArg) : createLocalHost();
 
+    let hasFailure = false;
     try {
       // ── Upfront pre-flight checks ──────────────────────────────────────
       const issues = await preflightCheck([component], host);
@@ -88,7 +89,7 @@ export const upCommand: CommandModule = {
         const result = await runMigrations({ targetVersion, dryRun, host });
         logErrors(result);
         p.outro(result.success ? "Done" : "Failed");
-        if (!result.success) process.exit(1);
+        hasFailure = !result.success;
         return;
       }
 
@@ -153,9 +154,10 @@ export const upCommand: CommandModule = {
       }
 
       p.outro(result.success ? "Done" : "Failed");
-      if (!result.success) process.exit(1);
+      hasFailure = !result.success;
     } finally {
       await host.dispose();
     }
+    if (hasFailure) process.exit(1);
   },
 };
