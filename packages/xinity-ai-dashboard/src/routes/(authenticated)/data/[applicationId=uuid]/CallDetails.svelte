@@ -28,13 +28,13 @@
     formatDate = (date: Date) => new Date(date).toLocaleString("de-AT"),
     onDelete = () => {},
     canDelete = false,
-  } = $props<{
+  }: {
     call?: ApiCall | null;
     apiKeyNameMap: Map<string, string>;
     formatDate?: (date: Date) => string;
     onDelete?: (call: ApiCall) => void;
     canDelete?: boolean;
-  }>();
+  } = $props();
 
   let activeCall = $state<ApiCall | null>(null);
   let currentRating = $state<ApiCallResponse | null>(null);
@@ -1080,7 +1080,7 @@
           <div class="min-w-30 flex-1">
             <p class="text-xs text-muted-foreground">API Key</p>
             <p class="font-medium">
-              {apiKeyNameMap.get(activeCall.apiKeyId) || "Unknown Key"}
+              {(activeCall.apiKeyId && apiKeyNameMap.get(activeCall.apiKeyId)) || "Unknown Key"}
             </p>
           </div>
           <div class="min-w-20 flex-1">
