@@ -56,6 +56,7 @@
   onMount(() => {
     void fetchUsers();
     void fetchOrganizations();
+    return () => clearTimeout(searchTimeout);
   });
 
   function onSearchInput(e: Event) {

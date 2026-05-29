@@ -12,20 +12,17 @@ export function useDebouncedValue<T>(
 ) {
   const resolvedImmediate = immediate ?? source();
   let current = $state(resolvedImmediate);
-  let timer: ReturnType<typeof setTimeout> | null = null;
 
   $effect(() => {
     const value = source();
     if (value === resolvedImmediate) {
       current = resolvedImmediate;
-    } else {
-      timer = setTimeout(() => {
-        current = value;
-      }, delay);
+      return;
     }
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
+    const handle = setTimeout(() => {
+      current = value;
+    }, delay);
+    return () => clearTimeout(handle);
   });
 
   return {
