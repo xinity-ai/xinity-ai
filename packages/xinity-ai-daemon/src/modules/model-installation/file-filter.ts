@@ -12,7 +12,7 @@ function compile(rules: readonly string[]): CompiledRule[] {
   });
 }
 
-export function isIncluded(path: string, compiled: readonly CompiledRule[]): boolean {
+function isIncluded(path: string, compiled: readonly CompiledRule[]): boolean {
   let included = false;
   for (const rule of compiled) {
     if (rule.glob.match(path)) included = rule.includes;

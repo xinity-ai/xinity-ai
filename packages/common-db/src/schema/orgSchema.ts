@@ -60,6 +60,5 @@ export const invitationT = pgTable("invitation", {
   index("invitation_email_idx").on(table.email),
 ]);
 
-export type Organization = typeof organizationT.$inferSelect;
 export type Member = typeof memberT.$inferSelect;
 export type Invitation = typeof invitationT.$inferSelect;

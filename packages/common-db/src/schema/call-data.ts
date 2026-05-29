@@ -109,7 +109,6 @@ export const apiCallResponseT = callDataSchema.table("api_call_response", {
 export type ApiCallResponse = InferSelectModel<typeof apiCallResponseT>;
 
 /** Per-call usage event. One row for every API call (including unlogged and embeddings). */
-export type UsageEvent = InferSelectModel<typeof usageEventT>;
 export const usageEventT = callDataSchema.table("usage_event", {
   id: uuid().primaryKey().defaultRandom(),
   organizationId: text("organization_id")
@@ -133,7 +132,6 @@ export const usageEventT = callDataSchema.table("usage_event", {
 ]);
 
 /** A media object (image) stored in S3. Referenced from apiCall.inputMessages via xinity-media://{sha256} URLs. */
-export type MediaObject = InferSelectModel<typeof mediaObjectT>;
 export const mediaObjectT = callDataSchema.table("media_object", {
   id: uuid().primaryKey().defaultRandom(),
   /** Hex-encoded SHA-256 of the raw image bytes. Used as the xinity-media:// URL identifier. */
@@ -156,11 +154,10 @@ export const mediaObjectT = callDataSchema.table("media_object", {
   index("media_object_organization_id_idx").on(table.organizationId),
 ]);
 
-/** Daily usage summary. Produced by rolling up old usageEvent rows. */
-export type UsageSummary = InferSelectModel<typeof usageSummaryT>;
 /** Nil UUID used as sentinel for "no application" in summary composite key. */
 export const NIL_APP_UUID = "00000000-0000-0000-0000-000000000000";
 
+/** Daily usage summary. Produced by rolling up old usageEvent rows. */
 // organizationId, applicationId, and apiKeyId should have foreign key references,
 // but they are part of the composite PK (NOT NULL) and the desired onDelete behavior is "set null".
 export const usageSummaryT = callDataSchema.table("usage_summary", {

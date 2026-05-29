@@ -36,37 +36,6 @@ const backendResponseEnvelope = {
 // Chat completions (/v1/chat/completions)
 // ---------------------------------------------------------------------------
 
-const ToolCallSchema = z.looseObject({
-  id: z.string(),
-  type: z.string(),
-  index: z.number().optional(),
-  function: z.looseObject({
-    name: z.string(),
-    arguments: z.string(),
-  }),
-});
-
-const BackendMessageSchema = z.looseObject({
-  role: z.string(),
-  content: z.string().nullable().optional(),
-  tool_calls: z.array(ToolCallSchema).optional(),
-  refusal: z.string().nullable().optional(),
-  reasoning_content: z.string().nullable().optional(),
-  reasoning: z.string().optional(),
-  annotations: z.array(z.unknown()).optional(),
-});
-
-export const BackendChatResponseSchema = z.looseObject({
-  ...backendResponseEnvelope,
-  choices: z.array(z.looseObject({
-    index: z.number(),
-    message: BackendMessageSchema,
-    finish_reason: z.string().nullable().optional(),
-    logprobs: z.unknown().nullable().optional(),
-  })),
-  usage: BackendUsageSchema,
-});
-
 const DeltaToolCallSchema = z.looseObject({
   id: z.string().optional(),
   type: z.string().optional(),
@@ -101,17 +70,6 @@ export const BackendChatChunkSchema = z.looseObject({
 // Legacy completions (/v1/completions)
 // ---------------------------------------------------------------------------
 
-export const BackendCompletionResponseSchema = z.looseObject({
-  ...backendResponseEnvelope,
-  choices: z.array(z.looseObject({
-    index: z.number(),
-    text: z.string(),
-    logprobs: z.unknown().nullable().optional(),
-    finish_reason: z.string().nullable().optional(),
-  })),
-  usage: BackendUsageSchema,
-});
-
 export const BackendCompletionChunkSchema = z.looseObject({
   ...backendResponseEnvelope,
   choices: z.array(z.looseObject({
@@ -123,20 +81,3 @@ export const BackendCompletionChunkSchema = z.looseObject({
   usage: BackendUsageSchema,
 });
 
-// ---------------------------------------------------------------------------
-// Embeddings (/v1/embeddings)
-// ---------------------------------------------------------------------------
-
-export const BackendEmbeddingResponseSchema = z.looseObject({
-  object: z.string(),
-  data: z.array(z.looseObject({
-    object: z.string(),
-    embedding: z.unknown(),
-    index: z.number(),
-  })),
-  model: z.string(),
-  usage: z.looseObject({
-    prompt_tokens: z.number(),
-    total_tokens: z.number(),
-  }).optional(),
-});
