@@ -16,8 +16,13 @@
 
   const { data }: { data: PageData } = $props();
 
-  let userSettings: User = $derived(data.fullUser);
+  // svelte-ignore state_referenced_locally
+  let userSettings = $state<User>(structuredClone(data.fullUser));
   let isSaving = $state(false);
+
+  $effect(() => {
+    userSettings = structuredClone(data.fullUser);
+  });
 
   async function saveSettings() {
     isSaving = true;
