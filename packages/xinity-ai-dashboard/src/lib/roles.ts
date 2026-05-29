@@ -32,7 +32,7 @@ export const admin = ac.newRole({ ...fullAccessPermissions, ...adminAc.statement
 export const member = ac.newRole({ ...fullAccessPermissions, ...memberAc.statements });
 
 export const labeler = ac.newRole({
-  apiCallResponse: ["create", "delete", "update"],
+  apiCallResponse: ["create", "delete", "update", "read"],
   apiCall: ["read"],
   model: ["read"],
   aiApplication: ["read"],
