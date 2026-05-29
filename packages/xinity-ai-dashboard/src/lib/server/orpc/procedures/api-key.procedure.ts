@@ -51,6 +51,7 @@ export const createApiKey = rootOs
         .where(and(
           eq(aiApplicationT.id, applicationId),
           eq(aiApplicationT.organizationId, context.activeOrganizationId),
+          isNull(aiApplicationT.deletedAt),
         ))
         .limit(1);
       if (!application) {
