@@ -1,5 +1,4 @@
 import { pgTable, text, timestamp, uuid, jsonb, index } from "drizzle-orm/pg-core";
-import type { InferSelectModel } from "drizzle-orm";
 import { userT } from "./auth";
 import { organizationT } from "./orgSchema";
 
@@ -23,5 +22,3 @@ export const notificationT = pgTable("notification", {
   index("notification_type_idx").on(table.type),
   index("notification_deleted_at_idx").on(table.deletedAt),
 ]);
-
-export type Notification = InferSelectModel<typeof notificationT>;

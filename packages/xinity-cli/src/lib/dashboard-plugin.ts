@@ -22,7 +22,6 @@ const safeRedirects = [
   "orpc/dtos/api-key.dto",
   "orpc/dtos/application.dto",
   "orpc/dtos/user.dto",
-  "orpc/dtos/api-call.dto",
   "util",
 ];
 

@@ -1,9 +1,8 @@
 /**
- * Server-side re-export of roles.
- * The actual definitions are in $lib/roles.ts for client-safe access.
+ * Server-side license-aware role helpers.
+ * The shared client/server role definitions live in $lib/roles.
  */
-export { ac, owner, admin, member, labeler, viewer, pending, roles } from "$lib/roles";
-export type { RoleName } from "$lib/roles";
+export { ac, roles } from "$lib/roles";
 import type { RoleName } from "$lib/roles";
 import { hasFeature } from "$lib/server/license";
 import { z } from "zod";
@@ -17,11 +16,7 @@ const FREE_ROLES: readonly RoleName[] = ["owner", "admin", "pending"];
 /** Zod schema for any valid role name. */
 export const RoleSchema = z.enum(ALL_ROLES);
 
-/**
- * Returns the set of assignable role names for the current license.
- * Free tier: owner, admin. Paid tiers with "all-roles": all five roles.
- */
-export function getAvailableRoles(): readonly RoleName[] {
+function getAvailableRoles(): readonly RoleName[] {
   return hasFeature("all-roles") ? ALL_ROLES : FREE_ROLES;
 }
 

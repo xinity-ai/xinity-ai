@@ -81,7 +81,7 @@ const AnnotationSchema = z.looseObject({
   end_index: z.number().optional(),
 });
 
-export const OutputTextContentPartSchema = z.object({
+const OutputTextContentPartSchema = z.object({
   type: z.literal("output_text"),
   text: z.string(),
   annotations: z.array(AnnotationSchema).default([]),
@@ -90,21 +90,17 @@ export const OutputTextContentPartSchema = z.object({
 
 export type OutputTextContentPart = z.infer<typeof OutputTextContentPartSchema>;
 
-export const RefusalContentPartSchema = z.object({
+const RefusalContentPartSchema = z.object({
   type: z.literal("refusal"),
   refusal: z.string(),
 });
 
-export type RefusalContentPart = z.infer<typeof RefusalContentPartSchema>;
-
-export const ContentPartSchema = z.discriminatedUnion("type", [
+const ContentPartSchema = z.discriminatedUnion("type", [
   OutputTextContentPartSchema,
   RefusalContentPartSchema,
 ]);
 
-export type ContentPart = z.infer<typeof ContentPartSchema>;
-
-export const MessageOutputItemSchema = z.object({
+const MessageOutputItemSchema = z.object({
   id: z.string(),
   type: z.literal("message"),
   status: z.enum(["in_progress", "completed", "incomplete"]),
@@ -114,7 +110,7 @@ export const MessageOutputItemSchema = z.object({
 
 export type MessageOutputItem = z.infer<typeof MessageOutputItemSchema>;
 
-export const WebSearchCallOutputItemSchema = z.object({
+const WebSearchCallOutputItemSchema = z.object({
   id: z.string(),
   type: z.literal("web_search_call"),
   status: z.enum(["in_progress", "searching", "completed", "failed"]),
@@ -132,7 +128,7 @@ export const WebSearchCallOutputItemSchema = z.object({
 
 export type WebSearchCallOutputItem = z.infer<typeof WebSearchCallOutputItemSchema>;
 
-export const FunctionCallOutputItemSchema = z.object({
+const FunctionCallOutputItemSchema = z.object({
   id: z.string(),
   type: z.literal("function_call"),
   status: z.enum(["in_progress", "completed", "failed"]),
@@ -143,7 +139,7 @@ export const FunctionCallOutputItemSchema = z.object({
 
 export type FunctionCallOutputItem = z.infer<typeof FunctionCallOutputItemSchema>;
 
-export const OutputItemSchema = z.discriminatedUnion("type", [
+const OutputItemSchema = z.discriminatedUnion("type", [
   MessageOutputItemSchema,
   WebSearchCallOutputItemSchema,
   FunctionCallOutputItemSchema,
@@ -151,7 +147,7 @@ export const OutputItemSchema = z.discriminatedUnion("type", [
 
 export type OutputItem = z.infer<typeof OutputItemSchema>;
 
-export const UsageSchema = z.object({
+const UsageSchema = z.object({
   input_tokens: z.number(),
   output_tokens: z.number(),
   total_tokens: z.number(),
@@ -165,7 +161,7 @@ export const UsageSchema = z.object({
 
 export type Usage = z.infer<typeof UsageSchema>;
 
-export const ResponseObjectSchema = z.object({
+const ResponseObjectSchema = z.object({
   id: z.string(),
   object: z.literal("response"),
   created_at: z.number(),
@@ -203,98 +199,3 @@ export const ResponseObjectSchema = z.object({
 });
 
 export type ResponseObject = z.infer<typeof ResponseObjectSchema>;
-
-function responseLifecycleEventSchema<T extends string>(type: T) {
-  return z.object({
-    type: z.literal(type),
-    response: ResponseObjectSchema,
-    sequence_number: z.number(),
-  });
-}
-
-export const ResponseCreatedEventSchema = responseLifecycleEventSchema("response.created");
-export const ResponseInProgressEventSchema = responseLifecycleEventSchema("response.in_progress");
-export const ResponseCompletedEventSchema = responseLifecycleEventSchema("response.completed");
-export const ResponseFailedEventSchema = responseLifecycleEventSchema("response.failed");
-export const ResponseIncompleteEventSchema = responseLifecycleEventSchema("response.incomplete");
-
-function outputItemEventSchema<T extends string>(type: T) {
-  return z.object({
-    type: z.literal(type),
-    output_index: z.number(),
-    item: OutputItemSchema,
-    sequence_number: z.number(),
-  });
-}
-
-export const OutputItemAddedEventSchema = outputItemEventSchema("response.output_item.added");
-export const OutputItemDoneEventSchema = outputItemEventSchema("response.output_item.done");
-
-function contentPartEventSchema<T extends string>(type: T) {
-  return z.object({
-    type: z.literal(type),
-    item_id: z.string(),
-    output_index: z.number(),
-    content_index: z.number(),
-    part: ContentPartSchema,
-    sequence_number: z.number(),
-  });
-}
-
-export const ContentPartAddedEventSchema = contentPartEventSchema("response.content_part.added");
-export const ContentPartDoneEventSchema = contentPartEventSchema("response.content_part.done");
-
-export const OutputTextDeltaEventSchema = z.object({
-  type: z.literal("response.output_text.delta"),
-  item_id: z.string(),
-  output_index: z.number(),
-  content_index: z.number(),
-  delta: z.string(),
-  sequence_number: z.number(),
-});
-
-export const OutputTextDoneEventSchema = z.object({
-  type: z.literal("response.output_text.done"),
-  item_id: z.string(),
-  output_index: z.number(),
-  content_index: z.number(),
-  text: z.string(),
-  sequence_number: z.number(),
-});
-
-export const OutputTextAnnotationAddedEventSchema = z.object({
-  type: z.literal("response.output_text.annotation.added"),
-  item_id: z.string(),
-  output_index: z.number(),
-  content_index: z.number(),
-  annotation: AnnotationSchema,
-  annotation_index: z.number(),
-  sequence_number: z.number(),
-});
-
-function webSearchCallProgressEventSchema<T extends string>(type: T) {
-  return z.object({
-    type: z.literal(type),
-    item_id: z.string(),
-    output_index: z.number(),
-    sequence_number: z.number(),
-  });
-}
-
-export const WebSearchCallInProgressEventSchema = webSearchCallProgressEventSchema("response.web_search_call.in_progress");
-export const WebSearchCallSearchingEventSchema = webSearchCallProgressEventSchema("response.web_search_call.searching");
-
-export const WebSearchCallDoneEventSchema = z.object({
-  type: z.literal("response.web_search_call.done"),
-  item_id: z.string(),
-  output_index: z.number(),
-  item: WebSearchCallOutputItemSchema,
-  sequence_number: z.number(),
-});
-
-export const ErrorEventSchema = z.object({
-  type: z.literal("error"),
-  code: z.string(),
-  message: z.string(),
-  sequence_number: z.number(),
-});

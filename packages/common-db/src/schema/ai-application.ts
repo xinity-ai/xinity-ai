@@ -1,4 +1,4 @@
-import { sql, type InferSelectModel } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { organizationT } from "./orgSchema";
 
@@ -26,5 +26,3 @@ export const aiApplicationT = pgTable("ai_application", {
     .on(table.name, table.organizationId)
     .where(sql`${table.deletedAt} IS NULL`),
 ]);
-
-export type AIApplicationT = InferSelectModel<typeof aiApplicationT>;
