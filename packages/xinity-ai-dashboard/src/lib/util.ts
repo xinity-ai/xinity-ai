@@ -64,7 +64,7 @@ export async function updateOptimistically<E>({
 
 /** Formats a date using the "de" locale for consistent UI display. */
 export function humanDate(d: Date | undefined) {
-  if (!d || !d.toLocaleDateString) return "Unknown date";
+  if (!d || !d.toLocaleString) return "Unknown date";
   return d.toLocaleString("de", {
     day: "2-digit",
     month: "2-digit",
