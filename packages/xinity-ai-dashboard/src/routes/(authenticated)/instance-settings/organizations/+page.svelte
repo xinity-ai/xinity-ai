@@ -47,6 +47,7 @@
 
   onMount(() => {
     void fetchOrgs();
+    return () => clearTimeout(searchTimeout);
   });
 
   function onSearchInput(e: Event) {

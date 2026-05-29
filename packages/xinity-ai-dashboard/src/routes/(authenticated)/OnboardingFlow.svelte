@@ -27,10 +27,10 @@
   const slug = $derived(slugify(orgName));
 
   // Debounced slug availability check
-  let slugCheckTimeout: ReturnType<typeof setTimeout>;
   $effect(() => {
     if (!slug || slug.length < 2) {
       slugAvailable = null;
+      checkingSlug = false;
       return;
     }
 
@@ -42,6 +42,8 @@
       }
       checkingSlug = false;
     }, 500);
+
+    return () => clearTimeout(timer);
   });
 
   const canSubmit = $derived(orgName.trim().length > 0 && selectedModel && slugAvailable !== false && !isSubmitting);

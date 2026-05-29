@@ -31,29 +31,22 @@
   });
 
   // Debounced slug availability check
-  let slugCheckTimeout: ReturnType<typeof setTimeout>;
-  async function checkSlugAvailability() {
+  $effect(() => {
     if (!slug || slug.length < 2) {
       slugAvailable = null;
       return;
     }
 
     checkingSlug = true;
-    clearTimeout(slugCheckTimeout);
-
-    slugCheckTimeout = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       const result = await organization.checkSlug({ slug });
       if (result.data) {
         slugAvailable = result.data.status;
       }
       checkingSlug = false;
     }, 500);
-  }
 
-  $effect(() => {
-    if (slug) {
-      checkSlugAvailability();
-    }
+    return () => clearTimeout(timer);
   });
 
   async function handleSubmit(e: Event) {
