@@ -44,16 +44,16 @@ export async function sendEmail<Props extends Record<string, unknown>>({
   template: AnyComponent;
   props: Props;
 }) {
+  if (!transporter || !serverEnv.MAIL_FROM) {
+    log.warn({ to, subject, props }, "Email not sent: No transporter or from address");
+    return;
+  }
+
   try {
     const { html, errors } = await renderEmailTemplate(template, props);
 
     if (errors.length > 0) {
       log.warn({ errors }, "MJML rendering produced errors");
-    }
-
-    if (!transporter || !serverEnv.MAIL_FROM) {
-      log.warn({ to, subject, props }, "Email not sent: No transporter or from address");
-      return;
     }
 
     const info = await transporter.sendMail({
