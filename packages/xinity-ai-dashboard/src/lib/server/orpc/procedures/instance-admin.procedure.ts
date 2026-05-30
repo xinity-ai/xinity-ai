@@ -96,13 +96,7 @@ const listUsers = rootOs
           .where(inArray(memberT.userId, userIds))
       : [];
 
-    // Group memberships by userId
-    const membershipsByUser = new Map<string, typeof memberships>();
-    for (const m of memberships) {
-      const list = membershipsByUser.get(m.userId) ?? [];
-      list.push(m);
-      membershipsByUser.set(m.userId, list);
-    }
+    const membershipsByUser = Map.groupBy(memberships, (m) => m.userId);
 
     return {
       users: users.map((u) => ({
