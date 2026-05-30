@@ -20,14 +20,14 @@ function generateTempPassword(): string {
 const memberByUserAndOrg = (userId: string, organizationId: string) =>
   and(eq(memberT.userId, userId), eq(memberT.organizationId, organizationId));
 
-/** Returns true when the organization has only one owner (removing or demoting them would leave it ownerless). */
+/** Returns true when the organization has exactly one owner (removing or demoting them would leave it ownerless). */
 async function isSoleOwner(organizationId: string): Promise<boolean> {
   const owners = await getDB()
     .select({ userId: memberT.userId })
     .from(memberT)
     .where(and(eq(memberT.organizationId, organizationId), eq(memberT.role, "owner")))
     .limit(2);
-  return owners.length <= 1;
+  return owners.length === 1;
 }
 
 async function isOnlyRemainingOwner(userId: string, organizationId: string): Promise<boolean> {
