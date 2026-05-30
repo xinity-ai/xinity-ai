@@ -1,4 +1,4 @@
-import { modelDeploymentT, modelInstallationT, modelInstallationStateT, organizationT, sql, deploymentMatchesInstallation, type ModelDeployment, lifecycleStateEnum } from "common-db";
+import { modelDeploymentT, modelInstallationT, modelInstallationStateT, organizationT, sql, deploymentMatchesInstallation, lifecycleStateEnum } from "common-db";
 import { getDB } from "../../db";
 import { checkAuth } from "../auth";
 
@@ -47,27 +47,21 @@ export async function handleModelsRequest(req: Request): Promise<Response> {
   ]);
   const [organization] = orgRows;
 
-  const modelMap = new Map<string, { modelDeployment: ModelDeployment; lifecycles: InstallationLifecycle[] }>();
-  for (const row of models) {
-    const key = row.model_deployment.publicSpecifier;
-    let entry = modelMap.get(key);
-    if (!entry) {
-      entry = { modelDeployment: row.model_deployment, lifecycles: [] };
-      modelMap.set(key, entry);
-    }
-    if (row.model_installation) {
-      entry.lifecycles.push(row.model_installation_state?.lifecycleState ?? null);
-    }
-  }
-
-  const modelOutput = Array.from(modelMap.values()).map(model => ({
-    id: model.modelDeployment.publicSpecifier,
-    object: "model",
-    created: Math.floor(model.modelDeployment.createdAt.valueOf() / 1000),
-    owned_by: organization?.slug || "organization",
-    status: deriveStatus(model.lifecycles),
-    canary: model.modelDeployment.progress !== 100,
-  }));
+  const rowsByDeployment = Map.groupBy(models, (row) => row.model_deployment.publicSpecifier);
+  const modelOutput = [...rowsByDeployment.values()].map((rows) => {
+    const deployment = rows[0]!.model_deployment;
+    const lifecycles: InstallationLifecycle[] = rows
+      .filter((r) => r.model_installation)
+      .map((r) => r.model_installation_state?.lifecycleState ?? null);
+    return {
+      id: deployment.publicSpecifier,
+      object: "model",
+      created: Math.floor(deployment.createdAt.valueOf() / 1000),
+      owned_by: organization?.slug || "organization",
+      status: deriveStatus(lifecycles),
+      canary: deployment.progress !== 100,
+    };
+  });
   const visibleModels = includeUnavailable
     ? modelOutput
     : modelOutput.filter(model => model.status === "ready");

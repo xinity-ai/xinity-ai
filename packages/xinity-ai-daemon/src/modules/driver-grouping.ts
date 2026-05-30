@@ -8,14 +8,8 @@
 export function groupInstallationsByDriver<T extends { driver: string }>(
   installations: T[]
 ): Array<{ driver: string; installations: T[] }> {
-  const grouped = new Map<string, T[]>();
-  for (const installation of installations) {
-    const bucket = grouped.get(installation.driver) ?? [];
-    bucket.push(installation);
-    grouped.set(installation.driver, bucket);
-  }
-  return Array.from(grouped, ([driver, group]) => ({
-    driver,
-    installations: group,
-  }));
+  return Array.from(
+    Map.groupBy(installations, (i) => i.driver),
+    ([driver, group]) => ({ driver, installations: group }),
+  );
 }

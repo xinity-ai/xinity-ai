@@ -101,12 +101,7 @@ export function planEviction(input: {
     return { evict: [], freedBytes: 0, sufficient: true };
   }
 
-  const byModel = new Map<string, ModelInstallation[]>();
-  for (const inst of input.installations) {
-    const arr = byModel.get(inst.model) ?? [];
-    arr.push(inst);
-    byModel.set(inst.model, arr);
-  }
+  const byModel = Map.groupBy(input.installations, (i) => i.model);
 
   type Candidate = CacheEntry & { lastNeededAt: Date };
   const candidates: Candidate[] = [];
