@@ -35,10 +35,13 @@ export const load: LayoutServerLoad = async ({ request, url, cookies }) => {
   ]);
   const { displaySettings, temporaryPassword } = userSettings;
 
-  // Force users with temporary passwords to the password change page
   if (temporaryPassword && !url.pathname.startsWith("/settings/auth")) {
     redirect(302, "/settings/auth");
   }
+
+  const userIsInstanceAdmin = isInstanceAdmin(session.user.email);
+  const multiTenantMode = serverEnv.MULTI_TENANT_MODE;
+  const hasActiveOrg = !!session.session.activeOrganizationId;
 
   return {
     user: session.user,
@@ -47,9 +50,9 @@ export const load: LayoutServerLoad = async ({ request, url, cookies }) => {
     memberRole,
     displaySettings,
     temporaryPassword,
-    isInstanceAdmin: isInstanceAdmin(session.user.email),
-    singleTenantMode: !serverEnv.MULTI_TENANT_MODE,
-    canCreateOrganization: (serverEnv.MULTI_TENANT_MODE || isInstanceAdmin(session.user.email)) && (hasFeature("multi-org") || !session.session.activeOrganizationId),
+    isInstanceAdmin: userIsInstanceAdmin,
+    singleTenantMode: !multiTenantMode,
+    canCreateOrganization: (multiTenantMode || userIsInstanceAdmin) && (hasFeature("multi-org") || !hasActiveOrg),
     versioning: interpretVersion(),
     license: getLicenseSummary(),
     totalVramGb,
