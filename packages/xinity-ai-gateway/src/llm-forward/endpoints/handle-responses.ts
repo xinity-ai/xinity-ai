@@ -203,8 +203,11 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
     const { activeTools } = resolveActiveTools(body.tools ?? [], body.tool_choice);
     const hasTools = Object.keys(activeTools).length > 0;
 
-    const background = body.background && !body.stream;
-    const stream = body.stream && !body.background;
+    if (body.background && body.stream) {
+      return errorResponse("'background' and 'stream' cannot both be true", 400);
+    }
+    const background = body.background;
+    const stream = body.stream;
 
     const callStartTime = Date.now();
 
