@@ -83,15 +83,19 @@ export function humanDateShort(d: Date | undefined) {
 
 /** Formats a duration expressed in hours into a human-readable label. */
 export function humanDuration(hours: number) {
-  if (hours < 1) {
-    return `${Math.round(hours * 60)}m`;
-  }
-  const days = Math.floor(hours / 24);
-  const remHours = Math.floor(hours % 24);
-  const parts: string[] = [];
-  if (days > 0) parts.push(`${days}d`);
-  if (remHours > 0 || days === 0) parts.push(`${remHours}h`);
-  return parts.join(" ");
+  const totalMinutes = Math.round(hours * 60);
+  if (totalMinutes < 60) return `${totalMinutes}m`;
+
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const remainingHours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const remainingMinutes = totalMinutes % 60;
+
+  const segments = [
+    days > 0 && `${days}d`,
+    remainingHours > 0 && `${remainingHours}h`,
+    remainingMinutes > 0 && `${remainingMinutes}m`,
+  ].filter(Boolean);
+  return segments.join(" ");
 }
 
 /** Creates a function, that caches a generated value for the indicated milliseconds for future calls */
