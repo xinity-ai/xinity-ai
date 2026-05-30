@@ -14,9 +14,10 @@ function generateRandomKey(length = 64) {
   return randomBytes(length).toString("base64url"); // URL-safe base64 string
 }
 
-const matchApiKeyInOrg = (keyId: string, orgId: string) => and(
+const matchActiveApiKeyInOrg = (keyId: string, orgId: string) => and(
   eq(aiApiKeyT.id, keyId),
   eq(aiApiKeyT.organizationId, orgId),
+  isNull(aiApiKeyT.deletedAt),
 );
 
 const tags = ["LLM API Key"];
@@ -145,7 +146,7 @@ const updateApiKey = rootOs
     await getDB()
       .update(aiApiKeyT)
       .set(set)
-      .where(matchApiKeyInOrg(input.id, context.activeOrganizationId));
+      .where(matchActiveApiKeyInOrg(input.id, context.activeOrganizationId));
   });
 
 const deleteApiKey = rootOs
@@ -159,10 +160,7 @@ const deleteApiKey = rootOs
     await getDB()
       .update(aiApiKeyT)
       .set({ deletedAt: new Date() })
-      .where(and(
-        matchApiKeyInOrg(input.id, context.activeOrganizationId),
-        isNull(aiApiKeyT.deletedAt),
-      ));
+      .where(matchActiveApiKeyInOrg(input.id, context.activeOrganizationId));
   });
 
 const toggleEnabled = rootOs
@@ -172,7 +170,7 @@ const toggleEnabled = rootOs
   .input(ApiKeyDto.pick({ id: true }).extend({ enabled: z.boolean().optional() }))
   .handler(async ({ context, input, errors }) => {
     let enabled = input.enabled;
-    const keySelector = matchApiKeyInOrg(input.id, context.activeOrganizationId);
+    const keySelector = matchActiveApiKeyInOrg(input.id, context.activeOrganizationId);
     if (typeof enabled !== "boolean") {
       const [apiKey] = await getDB()
         .select(pick(aiApiKeyT, "enabled"))
@@ -194,7 +192,7 @@ const toggleCollectData = rootOs
     await getDB()
       .update(aiApiKeyT)
       .set({ collectData: input.collectData })
-      .where(matchApiKeyInOrg(input.id, context.activeOrganizationId));
+      .where(matchActiveApiKeyInOrg(input.id, context.activeOrganizationId));
   });
 
 export const apiKeyRouter = rootOs.prefix("/api-key").router({
