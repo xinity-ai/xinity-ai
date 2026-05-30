@@ -42,9 +42,13 @@ for (const [specifier, source] of Object.entries(serverStubSources)) {
 }
 
 /** Regex matching filenames of stub targets (for the onLoad filter). */
-const stubFileNames = Object.keys(serverStubs).map(
-  (s) => s.split("/").pop()!.replace(".", "\\."),
-);
+function escapeRegexLiteral(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+const stubFileNames = Object.keys(serverStubs).map((s) => {
+  const filename = s.split("/").at(-1) ?? s;
+  return escapeRegexLiteral(filename);
+});
 const stubFileRegex = new RegExp(`(?:${stubFileNames.join("|")})\\.ts$`);
 
 const dashboardStubPlugin: import("bun").BunPlugin = {
