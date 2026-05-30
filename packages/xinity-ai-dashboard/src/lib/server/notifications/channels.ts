@@ -21,17 +21,24 @@ export interface NotificationChannel {
 /**
  * Email channel: delegates to the existing sendEmail() utility.
  */
+function formatEmailRecipient(recipient: { email: string; name: string }): string {
+  return recipient.name
+    ? `${JSON.stringify(recipient.name)} <${recipient.email}>`
+    : recipient.email;
+}
+
 export const emailChannel: NotificationChannel = {
   name: "email",
 
   async send({ recipient, subject, template, props }) {
+    const to = formatEmailRecipient(recipient);
     await sendEmail({
-      to: recipient.email,
+      to,
       subject,
       template,
       props,
     });
-    log.debug({ to: recipient.email, subject }, "Notification email dispatched");
+    log.debug({ to, subject }, "Notification email dispatched");
   },
 };
 
