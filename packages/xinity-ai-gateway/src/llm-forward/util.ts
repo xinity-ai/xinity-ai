@@ -386,16 +386,13 @@ export function isTimeoutError(e: unknown): boolean {
 }
 
 function errorTypeFromStatus(status: number): string {
-  switch (status) {
-    case 401: return "authentication_error";
-    case 403: return "permission_error";
-    case 404: return "not_found_error";
-    case 405: return "method_not_allowed";
-    case 429: return "rate_limit_error";
-    case 500:
-    case 502: return "server_error";
-    default: return "invalid_request_error";
-  }
+  if (status === 401) return "authentication_error";
+  if (status === 403) return "permission_error";
+  if (status === 404) return "not_found_error";
+  if (status === 405) return "method_not_allowed";
+  if (status === 429) return "rate_limit_error";
+  if (status >= 500) return "server_error";
+  return "invalid_request_error";
 }
 
 export function errorResponse(message: string, statusCode = 500, headers?: Record<string, string>) {
