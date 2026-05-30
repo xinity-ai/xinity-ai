@@ -145,9 +145,8 @@ describe("selectHost", () => {
     mockRedisSend.mockImplementation(
       ((cmd: string, _args: string[]) => {
         if (cmd === "GETEX") return Promise.resolve(null);
-        if (cmd === "INCR") return Promise.resolve(3);
         if (cmd === "SET") return Promise.resolve("OK");
-        if (cmd === "EVAL") return Promise.resolve(1);
+        if (cmd === "EVAL") return Promise.resolve(3);
         return Promise.resolve(null);
       }) as any,
     );
@@ -208,9 +207,8 @@ describe("selectHost", () => {
     mockRedisSend.mockImplementation(
       ((cmd: string, _args: string[]) => {
         if (cmd === "GETEX") return Promise.resolve(null);
-        if (cmd === "INCR") return Promise.reject(new Error("Redis down"));
         if (cmd === "SET") return Promise.resolve("OK");
-        if (cmd === "EVAL") return Promise.resolve(1);
+        if (cmd === "EVAL") return Promise.reject(new Error("Redis down"));
         return Promise.resolve(null);
       }) as any,
     );

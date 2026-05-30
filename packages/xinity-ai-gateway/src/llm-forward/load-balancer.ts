@@ -33,6 +33,7 @@ const CONN_PREFIX = "lb:conn:";
 
 const AFFINITY_TTL = 300;
 const CONN_SAFETY_TTL = 600;
+const ROUND_ROBIN_TTL = 3600;
 
 const connKey = (host: string) => `${CONN_PREFIX}${host}`;
 const roundRobinKey = (resolvedModel: string) => `${ROUND_ROBIN_PREFIX}${resolvedModel}`;
@@ -92,7 +93,10 @@ async function withRandomFallback(
 
 function selectRoundRobin(hosts: string[], resolvedModel: string): Promise<HostSelection> {
   return withRandomFallback(hosts, "selectRoundRobin", async () => {
-    const counter = await redis.send("INCR", [roundRobinKey(resolvedModel)]) as number;
+    const counter = await redis.send(
+      "EVAL",
+      [INCR_WITH_EXPIRE_SCRIPT, "1", roundRobinKey(resolvedModel), String(ROUND_ROBIN_TTL)],
+    ) as number;
     const index = counter % hosts.length;
     return { host: hosts[index]!, release: noOpRelease };
   });
