@@ -91,6 +91,7 @@ function createHistogram(name: string, help: string, boundaries: number[]) {
       for (let i = 0; i < sorted.length; i++) {
         if (value <= sorted[i]!) {
           entry.buckets[i]! += 1;
+          break;
         }
       }
     },
