@@ -1,4 +1,4 @@
-import { modelDeploymentT, modelInstallationT, modelInstallationStateT, organizationT, sql, deploymentMatchesInstallation, lifecycleStateEnum } from "common-db";
+import { calcCanaryProgress, modelDeploymentT, modelInstallationT, modelInstallationStateT, organizationT, sql, deploymentMatchesInstallation, lifecycleStateEnum } from "common-db";
 import { getDB } from "../../db";
 import { checkAuth } from "../auth";
 
@@ -59,7 +59,7 @@ export async function handleModelsRequest(req: Request): Promise<Response> {
       created: Math.floor(deployment.createdAt.valueOf() / 1000),
       owned_by: organization?.slug || "organization",
       status: deriveStatus(lifecycles),
-      canary: deployment.progress !== 100,
+      canary: calcCanaryProgress(deployment) !== 100,
     };
   });
   const visibleModels = includeUnavailable
