@@ -221,25 +221,11 @@ async function checkCapacity() {
     if (totalCapacity === 0) return;
 
     const usedCapacity = installations.reduce((sum, inst) => sum + inst.estCapacity, 0);
-    const usedPercent = Math.round((usedCapacity / totalCapacity) * 100);
+    const usedRatio = usedCapacity / totalCapacity;
 
-    if (usedPercent >= CAPACITY_WARNING_THRESHOLD * 100) {
-      if (!capacityWarningActive) {
-        capacityWarningActive = true;
-        await notifyAllOrgs(
-          NotificationType.capacity_warning,
-          {
-            usedPercent,
-            totalCapacityGb: Math.round(totalCapacity * 10) / 10,
-            usedCapacityGb: Math.round(usedCapacity * 10) / 10,
-            dashboardUrl: `${serverEnv.ORIGIN}/modelhub`,
-          },
-          "Failed to send capacity warning notification",
-        );
-        log.info({ usedPercent, totalCapacity, usedCapacity }, "Capacity warning notification sent");
-      }
-    } else {
+    if (usedRatio < CAPACITY_WARNING_THRESHOLD) {
       capacityWarningActive = false;
+      return;
     }
     if (capacityWarningActive) return;
     capacityWarningActive = true;
