@@ -139,6 +139,12 @@ async function configureBindAddress(host: Host, dryRun: boolean): Promise<void> 
     message: "Ollama port",
     placeholder: DEFAULT_PORT,
     defaultValue: DEFAULT_PORT,
+    validate: (val) => {
+      if (!val) return undefined;
+      const n = parseInt(val, 10);
+      if (Number.isNaN(n) || n < 1 || n > 65535) return "Must be a valid port number";
+      return undefined;
+    },
   });
   if (p.isCancel(portInput)) return;
 
