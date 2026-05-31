@@ -33,13 +33,15 @@ export function readEnvFile(path: string): Record<string, string> {
 export function serializeEnvFile(values: Record<string, string>): string {
   return (
     Object.entries(values)
-      .map(([k, v]) => {
-        // Quote values that contain spaces or special chars
-        if (/[\s#"']/.test(v)) return `${k}="${v}"`;
-        return `${k}=${v}`;
-      })
+      .map(([k, v]) => `${k}=${quoteEnvValue(v)}`)
       .join("\n") + "\n"
   );
+}
+
+function quoteEnvValue(value: string): string {
+  if (!/[\s#"']/.test(value)) return value;
+  if (value.includes('"') && !value.includes("'")) return `'${value}'`;
+  return `"${value}"`;
 }
 
 /** Read existing secret files from a directory into a key-value record. */
