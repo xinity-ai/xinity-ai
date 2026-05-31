@@ -28,7 +28,6 @@ export async function writeEnvConfig(
   secrets: Record<string, string>,
   host: Host = createLocalHost(),
 ): Promise<boolean> {
-  // Write config env file
   const envContent = serializeEnvFile(applyEnvDerivations(component, config));
   const envPath = `${ENV_DIR}/${component}.env`;
   let result = await host.withElevation(
@@ -37,7 +36,6 @@ export async function writeEnvConfig(
   );
   if (elevationHardFailed(result, "Config")) return false;
 
-  // Write secret files
   if (Object.keys(secrets).length > 0) {
     const cmds = [`mkdir -p ${SECRETS_DIR}`, `chmod 700 ${SECRETS_DIR}`];
     for (const [key, value] of Object.entries(secrets)) {

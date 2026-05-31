@@ -57,7 +57,6 @@ export async function notify(params: NotifyParams): Promise<void> {
       props,
     });
 
-    // Log to DB
     await getDB().insert(notificationT).values({
       userId,
       organizationId: organizationId ?? null,

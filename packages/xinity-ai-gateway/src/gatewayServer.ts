@@ -70,7 +70,7 @@ rootLogger.info({ ...serveTarget, tls: !!tls }, `Gateway started (${proto})`);
 async function handleRequest(req: Request): Promise<Response> {
   const { matched, response } = await handler.handle(req, {
     prefix: "/",
-    context: { headers: req.headers }, // Provide initial context if needed
+    context: { headers: req.headers },
   });
 
   if (matched) {
