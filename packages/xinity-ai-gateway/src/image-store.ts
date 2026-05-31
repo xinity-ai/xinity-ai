@@ -63,6 +63,7 @@ function parseDataUri(url: string): ResolvedImage | null {
 }
 
 const MAX_IMAGE_BYTES = 40 * 1024 * 1024;
+const FETCH_TIMEOUT_MS = 10_000;
 
 function warnImageTooLarge(url: string, size: number): void {
   log.warn({ url: url.slice(0, 200), size }, "Image exceeds size limit, skipping");
@@ -71,7 +72,7 @@ function warnImageTooLarge(url: string, size: number): void {
 /** Fetch an external URL and return its bytes and mime type. */
 async function fetchExternalImage(url: string): Promise<ResolvedImage | null> {
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!res.ok) return null;
     const contentType = res.headers.get("content-type") ?? "application/octet-stream";
     const [rawMimeType = ""] = contentType.split(";");

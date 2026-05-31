@@ -1,5 +1,7 @@
 import { env } from "../../env";
 
+const SEARCH_TIMEOUT_MS = 10_000;
+
 export type SearxngResult = {
   title: string;
   url: string;
@@ -18,7 +20,7 @@ export async function searchSearxng(query: string, maxResults = 5): Promise<Sear
   baseUrl.searchParams.set("q", query);
   baseUrl.searchParams.set("format", "json");
 
-  const response = await fetch(baseUrl.toString(), { signal: AbortSignal.timeout(10_000) });
+  const response = await fetch(baseUrl.toString(), { signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS) });
   if (!response.ok) {
     throw new Error(`Search request failed: ${response.status}`);
   }

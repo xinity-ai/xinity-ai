@@ -27,6 +27,7 @@ const log = rootLogger.child({ name: "notification.scheduler" });
 
 const CHECK_INTERVAL_MS = 5 * 60_000; // 5 minutes
 const WEEKLY_CHECK_INTERVAL_MS = 60 * 60_000; // 1 hour
+const WARMUP_DELAY_MS = 2_000;
 const CAPACITY_WARNING_THRESHOLD = 0.8; // 80%
 const MODELHUB_URL = `${serverEnv.ORIGIN}/modelhub`;
 
@@ -371,8 +372,7 @@ export async function startNotificationScheduler() {
 
   log.info("Starting notification scheduler");
 
-  // Warmup: take initial snapshot after a brief delay
-  await Bun.sleep(2_000);
+  await Bun.sleep(WARMUP_DELAY_MS);
   await runChecks();
 
   scheduleRecurring(runChecks, CHECK_INTERVAL_MS);
