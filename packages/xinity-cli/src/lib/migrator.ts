@@ -176,7 +176,11 @@ async function promptAndValidateDbUrl(host: Host): Promise<string | undefined> {
         { value: "proceed", label: "Use this URL anyway" },
       ],
     });
-    if (p.isCancel(action) || action === "proceed") return value;
+    if (p.isCancel(action)) {
+      p.cancel("Cancelled.");
+      return undefined;
+    }
+    if (action === "proceed") return value;
   }
 }
 
