@@ -57,15 +57,12 @@ export async function runOnboardingCliWorkflow(dashboardUrl: string) {
   const spin = p.spinner();
   spin.start("Running onboarding");
 
-  let res: Response;
-  try {
-    res = await post(`${base}/api/onboarding/cli`, {
-      name, email, password, orgName,
-    });
-  } catch {
+  const res = await post(`${base}/api/onboarding/cli`, {
+    name, email, password, orgName,
+  }).catch(() => {
     spin.error("Failed");
     connectionError(base);
-  }
+  });
 
   if (!res.ok) {
     spin.error("Onboarding failed");

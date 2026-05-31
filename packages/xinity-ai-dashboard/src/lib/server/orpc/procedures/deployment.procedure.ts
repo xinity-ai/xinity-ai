@@ -349,13 +349,11 @@ const updateDeployment = rootOs
       }
     }
 
-    let deployment;
-    try {
-      deployment = await internalUpdateDeployment(context.activeOrganizationId, input.id, input);
-    } catch (err) {
-      rlog.error(err);
-      throw errors.CONFLICT({ message: "A deployment with this specifier already exists in your organization" });
-    }
+    const deployment = await internalUpdateDeployment(context.activeOrganizationId, input.id, input)
+      .catch((err: unknown) => {
+        rlog.error(err);
+        throw errors.CONFLICT({ message: "A deployment with this specifier already exists in your organization" });
+      });
     if (!deployment) {
       throw errors.NOT_FOUND();
     }

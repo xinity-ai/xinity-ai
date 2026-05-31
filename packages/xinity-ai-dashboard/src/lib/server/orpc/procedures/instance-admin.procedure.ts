@@ -261,17 +261,13 @@ const createUser = rootOs
   .handler(async ({ input, context, errors }) => {
     const rlog = log.child({ traceId: context.traceId });
     const temporaryPassword = generateTempPassword();
-    let signupResult: { user: { id: string } };
-    try {
-      const greenlitCallId = getGreenlitCallId();
-      signupResult = await auth.api.signUpEmail({
-        body: { email: input.email, password: temporaryPassword, name: input.name },
-        query: { greenlitCallId },
-      });
-    } catch (err) {
+    const signupResult = await auth.api.signUpEmail({
+      body: { email: input.email, password: temporaryPassword, name: input.name },
+      query: { greenlitCallId: getGreenlitCallId() },
+    }).catch((err: unknown) => {
       rlog.error({ err, email: input.email }, "Admin user creation failed");
       throw errors.FORBIDDEN({ message: "Failed to create user. Email may already be in use." });
-    }
+    });
     // Admin-created users are considered verified
     await getDB()
       .update(userT)
