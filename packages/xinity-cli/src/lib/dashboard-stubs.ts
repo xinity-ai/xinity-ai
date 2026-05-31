@@ -143,7 +143,8 @@ const sourceOverrides: Record<string, string> = {
 
 /** Convert an object-form stub to ESM source string for Bun.build's onLoad. */
 function toJsSource(specifier: string, exports: Record<string, unknown>): string {
-  if (specifier in sourceOverrides) return sourceOverrides[specifier]!;
+  const override = sourceOverrides[specifier];
+  if (override !== undefined) return override;
 
   const lines: string[] = [];
   for (const [name, value] of Object.entries(exports)) {

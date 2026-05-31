@@ -52,10 +52,8 @@ type ResolvedImage = { mimeType: string; bytes: Uint8Array };
 /** Parse a data URI into its mime type and raw bytes. */
 function parseDataUri(url: string): ResolvedImage | null {
   // data:[<mediatype>][;base64],<data>
-  const match = url.match(/^data:([^;,]+)(?:;base64)?,(.+)$/s);
-  if (!match) return null;
-  const mimeType = match[1]!;
-  const data = match[2]!;
+  const [, mimeType, data] = url.match(/^data:([^;,]+)(?:;base64)?,(.+)$/s) ?? [];
+  if (!mimeType || !data) return null;
   try {
     const bytes = Buffer.from(data, "base64");
     return { mimeType, bytes };
@@ -76,7 +74,8 @@ async function fetchExternalImage(url: string): Promise<ResolvedImage | null> {
     const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
     if (!res.ok) return null;
     const contentType = res.headers.get("content-type") ?? "application/octet-stream";
-    const mimeType = contentType.split(";")[0]!.trim();
+    const [rawMimeType = ""] = contentType.split(";");
+    const mimeType = rawMimeType.trim();
 
     const declaredSize = parseInt(res.headers.get("content-length") ?? "", 10);
     if (Number.isFinite(declaredSize) && declaredSize > MAX_IMAGE_BYTES) {

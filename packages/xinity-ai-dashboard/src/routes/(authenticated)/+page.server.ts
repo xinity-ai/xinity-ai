@@ -29,7 +29,7 @@ function fillDailyTrendSeries(
   return Array.from({ length: days }, (_, i) => {
     const date = new Date(today);
     date.setDate(date.getDate() - (days - 1 - i));
-    const dateStr = date.toISOString().split('T')[0]!;
+    const [dateStr = ""] = date.toISOString().split('T');
     const dayData = trendMap.get(dateStr);
     return {
       totalCalls: dayData?.totalCalls ?? 0,

@@ -54,12 +54,15 @@ const vllmArgs = flatStringArray
   .transform((args: string[]) => {
     const result: string[] = [];
     for (let i = 0; i < args.length; i++) {
-      if (BLOCKED_VLLM_ARGS.has(args[i]!)) {
-        if (args[i + 1] && !args[i + 1]!.startsWith("--")) {
+      const arg = args[i];
+      if (arg === undefined) continue;
+      if (BLOCKED_VLLM_ARGS.has(arg)) {
+        const next = args[i + 1];
+        if (next && !next.startsWith("--")) {
           i++;
         }
       } else {
-        result.push(args[i]!);
+        result.push(arg);
       }
     }
     return result;
@@ -96,7 +99,8 @@ export const ModelSchema = z.looseObject({
       for (const driverParams of Object.values(obj)) {
         if (!driverParams) continue;
         for (const dotPath of Object.keys(driverParams)) {
-          if (BLOCKED_REQUEST_PARAM_PREFIXES.includes(dotPath.split(".")[0]!)) {
+          const [prefix = ""] = dotPath.split(".");
+          if (BLOCKED_REQUEST_PARAM_PREFIXES.includes(prefix)) {
             return false;
           }
         }

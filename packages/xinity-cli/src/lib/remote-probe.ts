@@ -163,9 +163,8 @@ export function createCachedHost(realHost: Host, state: RemoteState): Host {
 
     runShell(command: string): Promise<RunResult> {
       // Intercept commandExistsOn pattern: `command -v <name> || test -x ...`
-      const cmdMatch = command.match(/^command -v (\S+)/);
-      if (cmdMatch) {
-        const name = cmdMatch[1]!;
+      const [, name] = command.match(/^command -v (\S+)/) ?? [];
+      if (name) {
         const found = state.commands[name] ?? false;
         return Promise.resolve({ ok: found, output: found ? name : "", exitCode: found ? 0 : 1 });
       }

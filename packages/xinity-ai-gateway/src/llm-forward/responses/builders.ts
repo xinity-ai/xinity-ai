@@ -410,17 +410,21 @@ function buildWebSearchCallItem(
 ): WebSearchCallOutputItem {
   const result = toolResults.find((r) => r.toolCallId === toolCall.aiToolCallId);
   const searchResults = readWebSearchResults(result?.result);
+  const action: NonNullable<WebSearchCallOutputItem["action"]> = {
+    type: "search",
+    query: readWebSearchQuery(result?.args) ?? "",
+  };
+  if (searchResults && shouldInclude(include, "web_search_call.action.sources")) {
+    action.sources = searchResults.map((r) => ({ type: "url_citation" as const, url: r.url, title: r.title ?? "" }));
+  }
   const item: WebSearchCallOutputItem = {
     id: toolCall.id,
     type: "web_search_call",
     status: toolCall.status,
-    action: { type: "search", query: readWebSearchQuery(result?.args) ?? "" },
+    action,
   };
   if (searchResults && shouldInclude(include, "web_search_call.results")) {
     item.results = searchResults;
-  }
-  if (searchResults && shouldInclude(include, "web_search_call.action.sources")) {
-    item.action!.sources = searchResults.map((r) => ({ type: "url_citation" as const, url: r.url, title: r.title ?? "" }));
   }
   return item;
 }

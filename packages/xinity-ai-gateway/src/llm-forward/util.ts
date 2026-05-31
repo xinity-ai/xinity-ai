@@ -322,13 +322,15 @@ function readAtDotPath(source: Record<string, unknown>, segments: string[]): unk
 }
 
 function writeAtDotPath(target: Record<string, unknown>, segments: string[], value: unknown): void {
+  const leaf = segments.at(-1);
+  if (leaf === undefined) return;
+  const ancestors = segments.slice(0, -1);
   let cursor = target;
-  for (let i = 0; i < segments.length - 1; i++) {
-    const key = segments[i]!;
+  for (const key of ancestors) {
     if (!(key in cursor)) cursor[key] = {};
     cursor = cursor[key] as Record<string, unknown>;
   }
-  cursor[segments[segments.length - 1]!] = value;
+  cursor[leaf] = value;
 }
 
 /**
@@ -349,7 +351,7 @@ export function extractAllowedRequestParams(
 
   for (const [dotPath, typeName] of Object.entries(allowedParams)) {
     const segments = dotPath.split(".");
-    if (BLOCKED_REQUEST_PARAM_PREFIXES.includes(segments[0]!)) continue;
+    if (BLOCKED_REQUEST_PARAM_PREFIXES.includes(segments[0] ?? "")) continue;
 
     const validator = TYPE_VALIDATORS[typeName];
     if (!validator) continue;
