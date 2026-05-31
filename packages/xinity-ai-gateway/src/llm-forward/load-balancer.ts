@@ -128,8 +128,9 @@ async function selectByStrategy(
   hosts: string[],
   resolvedModel: string,
 ): Promise<{ host: string; release: () => void }> {
-  if (hosts.length === 1) {
-    return { host: hosts[0]!, release: noOpRelease };
+  const [single] = hosts;
+  if (single && hosts.length === 1) {
+    return { host: single, release: noOpRelease };
   }
 
   switch (strategy) {

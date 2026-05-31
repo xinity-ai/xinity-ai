@@ -78,7 +78,9 @@ function extractContent(raw: unknown): string | ApiCallInputMessage["content"] |
       else if (typeof p.content === "string") parts.push({ type: "text", text: p.content });
     }
     if (!parts.length) return null;
-    return parts.length === 1 && parts[0]!.type === "text" ? parts[0]!.text : parts;
+    const [first] = parts;
+    if (parts.length === 1 && first?.type === "text") return first.text;
+    return parts;
   }
   return extractText(raw);
 }

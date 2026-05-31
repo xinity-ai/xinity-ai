@@ -79,6 +79,7 @@
 <div class="flex items-center justify-center min-h-[80vh] px-4">
   <div class="w-full max-w-xl">
     {#if result}
+      {@const apiKey = result.apiKey}
       <!-- Success -->
       <Card.Root>
         <Card.Header class="text-center">
@@ -96,14 +97,14 @@
             <div class="flex items-center gap-2">
               <Input
                 type="text"
-                value={result.apiKey}
+                value={apiKey}
                 readonly
                 class="font-mono text-sm"
               />
               <Button
                 variant="outline"
                 size="icon"
-                onclick={() => copyToClipboard(result!.apiKey)}
+                onclick={() => copyToClipboard(apiKey)}
                 title="Copy API key"
               >
                 <Copy class="w-4 h-4" />

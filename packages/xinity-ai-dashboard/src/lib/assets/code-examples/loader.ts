@@ -39,8 +39,7 @@ function buildExampleMap(
 
     if (!dir || !lang) continue;
 
-    if (!map[dir]) map[dir] = {};
-    map[dir]![lang] = content.replaceAll(API_BASE_PLACEHOLDER, apiBase);
+    (map[dir] ??= {})[lang] = content.replaceAll(API_BASE_PLACEHOLDER, apiBase);
   }
 
   return map;
@@ -57,7 +56,8 @@ export function getApiKeyExamples(apiBase: string): Record<string, string> {
   const result: Record<string, string> = {};
   for (const [path, content] of Object.entries(rawFiles)) {
     if (!path.startsWith("./api-keys/")) continue;
-    const filename = path.split("/").pop()!;
+    const filename = path.split("/").at(-1);
+    if (!filename) continue;
     const key = filename.substring(0, filename.lastIndexOf("."));
     result[key] = content.replaceAll(API_BASE_PLACEHOLDER, apiBase);
   }

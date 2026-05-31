@@ -11,7 +11,8 @@ export type LoggerOptions = {
 };
 
 function dayStamp(): string {
-  return new Date().toISOString().split("T")[0]!.replace(/-/g, ".");
+  const [datePart = ""] = new Date().toISOString().split("T");
+  return datePart.replace(/-/g, ".");
 }
 
 function stdoutStream() {
