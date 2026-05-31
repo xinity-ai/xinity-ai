@@ -64,8 +64,11 @@ function fallbackToCurrentVersion(reason: string): string {
   return version;
 }
 
-const fetchVersion = timeCache(1000 * 60 * 5, async () => {
-  const res = await fetch(new URL("/version.json", serverEnv.INFOSERVER_URL), { signal: AbortSignal.timeout(5000) });
+const VERSION_CACHE_TTL_MS = 5 * 60 * 1000;
+const VERSION_FETCH_TIMEOUT_MS = 5_000;
+
+const fetchVersion = timeCache(VERSION_CACHE_TTL_MS, async () => {
+  const res = await fetch(new URL("/version.json", serverEnv.INFOSERVER_URL), { signal: AbortSignal.timeout(VERSION_FETCH_TIMEOUT_MS) });
   if (!res.ok) {
     return fallbackToCurrentVersion("Unable to reach infoserver to retrieve version");
   }

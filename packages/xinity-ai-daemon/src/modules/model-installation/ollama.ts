@@ -17,6 +17,7 @@ export function getOllamaClient(): Ollama {
 }
 
 const OLLAMA_CONCURRENCY = 2;
+const PULL_PROGRESS_DEBOUNCE_MS = 15_000;
 
 type OllamaPullLifecycle = "downloading" | "installing" | "ready";
 
@@ -35,7 +36,7 @@ function derivePullProgress(chunk: ProgressResponse): { lifecycleState: OllamaPu
 function consumePull$({model, id}: ModelInstallation): Observable<void> {
   return defer(() => from(getOllamaClient().pull({ model, stream: true }))).pipe(
     switchMap((res) => from(res)),
-    bufferTime(15 * 1000),
+    bufferTime(PULL_PROGRESS_DEBOUNCE_MS),
     concatMap(async (chunk) => {
       const newest = chunk.at(-1);
       if (newest){

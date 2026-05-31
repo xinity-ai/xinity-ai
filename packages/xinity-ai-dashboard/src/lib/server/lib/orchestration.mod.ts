@@ -362,14 +362,16 @@ export function syncDeployedModels(): Promise<void> {
   return activeSync;
 }
 
+const SYNC_WARMUP_MS = 1_000;
+const SYNC_INTERVAL_MS = 5 * 60_000;
+
 /** Starts the background deployment sync loop. */
 export async function startDeploymentSyncService() {
   log.info("Starting deployment sync service")
   if (!building) {
-    // Warmup period
-    await Bun.sleep(1_000);
+    await Bun.sleep(SYNC_WARMUP_MS);
     await syncDeployedModels();
-    const interval = setInterval(syncDeployedModels, 5 * 60_000);
+    const interval = setInterval(syncDeployedModels, SYNC_INTERVAL_MS);
     process.on("beforeExit", () => clearInterval(interval));
   }
 }
