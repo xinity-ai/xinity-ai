@@ -17,7 +17,7 @@ export const load: PageServerLoad = async ({ locals, depends, parent }) => {
 
   const [apiKeys, applications] = await Promise.all([
     call(router.apiKey.list, {}, { context: locals }) as Promise<ApiKeyDto[]>,
-    call(router.application.list, {}, { context: locals }) as Promise<ApplicationDto[]>,
+    call(router.application.list, {}, { context: locals }),
   ]);
 
   return {

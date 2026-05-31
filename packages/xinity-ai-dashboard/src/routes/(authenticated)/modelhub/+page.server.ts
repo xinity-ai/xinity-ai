@@ -30,10 +30,9 @@ export const load: PageServerLoad = async ({ parent, locals }) => {
   const [capacity, applications] = await Promise.all([
     buildClusterCapacity(),
     call(router.application.list, {}, { context: locals })
-      .then((r) => r as ApplicationDto[])
-      .catch((err) => {
+      .catch((err): ApplicationDto[] => {
         if (isRedirect(err) || isHttpError(err)) throw err;
-        return [] as ApplicationDto[];
+        return [];
       }),
   ]);
 
