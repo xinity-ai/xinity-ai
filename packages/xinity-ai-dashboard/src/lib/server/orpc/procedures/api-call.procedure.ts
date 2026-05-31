@@ -77,7 +77,7 @@ const listApiCalls = rootOs
   .handler(async ({ context, input, errors }) => {
     const apiKey = await findApiKeyInOrg(input.apiKeyId, context.activeOrganizationId);
     if (!apiKey) {
-      throw errors.NOT_FOUND({ message: "No such api key found" });
+      throw errors.NOT_FOUND();
     }
 
     const apiCalls = await getDB().select()
