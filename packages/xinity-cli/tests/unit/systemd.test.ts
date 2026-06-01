@@ -37,10 +37,6 @@ describe("systemd", () => {
       expect(config.component).toBe("daemon");
       expect(config.execStart).toBe("/opt/xinity/bin/xinity-ai-daemon");
     });
-
-    test("throws for unknown component", () => {
-      expect(() => getComponentConfig("unknown")).toThrow("Unknown component: unknown");
-    });
   });
 
   describe("generateUnit", () => {

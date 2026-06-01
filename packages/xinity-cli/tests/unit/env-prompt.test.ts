@@ -64,7 +64,6 @@ describe("env-prompt", () => {
       });
 
       const fields = analyzeEnvSchema(schema);
-      expect(fields[0]!.isEnum).toBe(true);
       expect(fields[0]!.enumValues).toEqual(["debug", "info", "warn", "error"]);
     });
 

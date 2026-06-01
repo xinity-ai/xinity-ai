@@ -1,6 +1,12 @@
 {
   "name": "common-log",
   "module": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
   "type": "module",
   "private": true,
   "dependencies": {
