@@ -15,7 +15,6 @@ const failMark = (message: string) => `${pc.red("✗")}  ${message}`;
 
 const POSTGRES_CONNECT_TIMEOUT_SECONDS = 5;
 const REDIS_PING_TIMEOUT_MS = 5000;
-const DEFAULT_REDIS_PORT = 6379;
 
 /**
  * Test PostgreSQL connectivity with a `SELECT 1`.
@@ -49,57 +48,18 @@ export async function testRedisConnection(url: string, host: Host): Promise<bool
   const tunnel = await host.openTunnel(url);
   const spinner = p.spinner();
   spinner.start("Testing Redis connection…");
+  let client: import("bun").RedisClient | undefined;
   try {
-    const parsed = new URL(tunnel.localUrl);
-    const hostname = parsed.hostname;
-    const port = parseInt(parsed.port || String(DEFAULT_REDIS_PORT), 10);
-    const password = parsed.password
-      ? decodeURIComponent(parsed.password)
-      : null;
-
-    const ok = await new Promise<boolean>((resolve) => {
-      let settled = false;
-      const done = (value: boolean) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        resolve(value);
-      };
-      const timer = setTimeout(() => done(false), REDIS_PING_TIMEOUT_MS);
-
-      Bun.connect({
-        hostname,
-        port,
-        socket: {
-          data(_socket, data) {
-            const response = new TextDecoder().decode(data);
-            _socket.end();
-            done(response.includes("+PONG") || response.includes("+OK"));
-          },
-          open(socket) {
-            if (password) {
-              socket.write(`AUTH ${password}\r\nPING\r\n`);
-            } else {
-              socket.write("PING\r\n");
-            }
-          },
-          error(_socket) { _socket.end(); done(false); },
-          connectError() { done(false); },
-        },
-      }).catch(() => done(false));
-    });
-
-    if (ok) {
-      spinner.stop(okMark("Redis connection successful"));
-    } else {
-      spinner.stop(failMark("Redis connection failed"));
-    }
-    return ok;
+    client = new Bun.RedisClient(tunnel.localUrl, { connectionTimeout: REDIS_PING_TIMEOUT_MS });
+    await client.ping();
+    spinner.stop(okMark("Redis connection successful"));
+    return true;
   } catch (err) {
     spinner.stop(failMark("Redis connection failed"));
     p.log.error(pc.dim(String(err)));
     return false;
   } finally {
+    client?.close();
     await tunnel.close();
   }
 }
