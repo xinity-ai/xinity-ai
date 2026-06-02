@@ -1,4 +1,4 @@
-import { getDB, listen } from "../db/connection";
+import { getDB } from "../db/connection";
 import { modelInstallationT, modelInstallationStateT, sql, type ModelInstallation } from "common-db";
 import { getNodeId, getNodeDrivers } from "./statekeeper";
 import { defer, from, Observable } from "rxjs";

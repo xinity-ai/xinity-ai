@@ -46,10 +46,9 @@ export function createLogger(opts: LoggerOptions): pino.Logger {
     return pino(pinoOpts, stdoutStream());
   }
 
-  const level = opts.level as pino.Level;
   const streams: StreamEntry[] = [
-    { level, stream: stdoutStream() },
-    { level, stream: dailyFileStream(opts.logDir) },
+    { stream: stdoutStream() },
+    { stream: dailyFileStream(opts.logDir) },
   ];
 
   return pino(pinoOpts, pino.multistream(streams));
