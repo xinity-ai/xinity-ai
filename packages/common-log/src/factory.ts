@@ -3,7 +3,7 @@ import { hostname } from "os";
 
 export type LoggerOptions = {
   /** Pino log level. */
-  level: string;
+  level: pino.Level;
   /** Service name, added to every log line as `service`. */
   service: string;
   /** If set, write JSONL log files to this directory (one per day). */
