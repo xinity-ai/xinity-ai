@@ -1,4 +1,5 @@
 import * as catalog from "./server-catalog";
+import { resolveAllTags } from "./model-tags";
 import { ModelListQuerySchema } from "./api-schemas";
 import type { ModelWithSpecifier } from "./definitions/model-definition";
 import { z } from "zod";
@@ -41,7 +42,7 @@ export function handleModelList(req: Request): Response {
   if (family) models = models.filter(m => (m.family ?? "unknown") === family);
   if (tag && tag.length > 0) {
     models = models.filter(m => {
-      const modelTags: readonly string[] = m.tags ?? [];
+      const modelTags = resolveAllTags(m);
       return tag.every(t => modelTags.includes(t));
     });
   }

@@ -3,7 +3,7 @@
  * with time-limited in-memory caching. Replaces the old ModelCatalog class.
  */
 import type { ModelWithSpecifier } from "./definitions/model-definition";
-import { resolveDriverForProviderModel, resolveTagsForDriver, resolveArgsForDriver, resolveRequestParamsForDriver, type RequestParamMap } from "./model-tags";
+import { resolveDriverForProviderModel, resolveTagsForDriver, resolveAllTags, resolveArgsForDriver, resolveRequestParamsForDriver, type RequestParamMap } from "./model-tags";
 import { lookupKey, type ModelLookup } from "./lookup-helpers";
 
 export interface InfoserverClientConfig {
@@ -154,7 +154,7 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
     const model = await fetchModel(lookup);
     if (!model) return { type: undefined, tags: [] };
     const d = driverFor(model, lookup, driver);
-    const tags = d ? resolveTagsForDriver(model, d) : (model.tags ?? []);
+    const tags = d ? resolveTagsForDriver(model, d) : resolveAllTags(model);
     return { type: model.type, tags };
   }
 
