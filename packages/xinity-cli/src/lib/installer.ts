@@ -10,8 +10,7 @@ import { mkdirSync } from "fs";
 import * as p from "./clack.ts";
 import pc from "picocolors";
 
-import { fetchRelease, downloadAsset, fetchChecksums, verifySha256, pickReleaseAsset, assetPrefix, resolveDirectUrl, type Release } from "./github.ts";
-import { loadConfig } from "./config.ts";
+import { fetchRelease, downloadAsset, fetchChecksums, verifySha256, pickReleaseAsset, assetPrefix, resolveDirectUrl, getProjectUrl, type Release } from "./github.ts";
 import { buildLocalArtifact } from "./local-build.ts";
 import { readManifest, updateManifestEntry, writeManifest } from "./manifest.ts";
 import { generateUnit, getComponentConfig, unitName, type UnitConfig } from "./systemd.ts";
@@ -30,12 +29,6 @@ import {
 import vllmTemplateUnit from "xinity-ai-daemon/src/assets/vllm-driver@.service" with { type: "text" };
 
 export type { Release } from "./github.ts";
-
-const DEFAULT_PROJECT_URL = "https://github.com/xinity-ai/xinity-ai";
-
-function projectUrl(): string {
-  return loadConfig().githubProjectUrl ?? DEFAULT_PROJECT_URL;
-}
 
 // ─── Pre-checks ────────────────────────────────────────────────────────────
 
@@ -980,7 +973,7 @@ export async function installAll(targetVersion: string, dryRun = false, hardRese
   }
 
   // ── 3. Infoserver (optional) ───────────────────────────────────────────
-  p.log.info(pc.dim(`Model registry guide: ${projectUrl()}/tree/main/packages/xinity-infoserver#readme`));
+  p.log.info(pc.dim(`Model registry guide: ${getProjectUrl()}/tree/main/packages/xinity-infoserver#readme`));
   const installInfoserver = await p.confirm({
     message: "Install the info server? (optional - most installations use the default at sysinfo.xinity.ai)",
     initialValue: false,
@@ -1079,7 +1072,7 @@ export async function installAll(targetVersion: string, dryRun = false, hardRese
   summaryLines.push(`  ${dashboardOrigin ? "3" : "2"}. Add inference nodes: ${pc.cyan("xinity up daemon")} on each GPU machine`);
   summaryLines.push(`  ${dashboardOrigin ? "4" : "3"}. Check health anytime: ${pc.cyan("xinity doctor")}`);
   summaryLines.push("");
-  summaryLines.push(pc.dim(`Model registry guide: ${projectUrl()}/tree/main/packages/xinity-infoserver#readme`));
+  summaryLines.push(pc.dim(`Model registry guide: ${getProjectUrl()}/tree/main/packages/xinity-infoserver#readme`));
 
   p.note(summaryLines.join("\n"), "Installation complete");
 }

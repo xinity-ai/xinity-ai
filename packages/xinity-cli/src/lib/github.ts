@@ -25,9 +25,14 @@ export interface Release {
   assets: ReleaseAsset[];
 }
 
+/** Resolve the configured GitHub project URL, falling back to the default. */
+export function getProjectUrl(): string {
+  return loadConfig().githubProjectUrl ?? DEFAULT_PROJECT_URL;
+}
+
 /** Extract "owner/repo" from a GitHub URL and return the API base. */
 function getApiBase(): string {
-  const url = loadConfig().githubProjectUrl ?? DEFAULT_PROJECT_URL;
+  const url = getProjectUrl();
   const match = url.match(/github\.com\/([^/]+\/[^/]+)/);
   if (!match) throw new Error(`Invalid GitHub project URL: ${url}`);
   return `https://api.github.com/repos/${match[1]}`;
