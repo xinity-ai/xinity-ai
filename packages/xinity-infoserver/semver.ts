@@ -24,10 +24,11 @@ export function normalizePep440(version: string): string {
 export function satisfiesMinVersion(actual: string, minRequired: string): boolean {
   if (!actual || !minRequired) return true;
   const normalized = normalizePep440(actual);
+  const normalizedMin = normalizePep440(minRequired);
   // If normalization didn't produce a valid semver prefix, fail-open
   if (!/^\d+\.\d+\.\d+/.test(normalized)) return true;
   try {
-    return Bun.semver.satisfies(normalized, `>=${minRequired}`);
+    return Bun.semver.satisfies(normalized, `>=${normalizedMin}`);
   } catch {
     return true;
   }
