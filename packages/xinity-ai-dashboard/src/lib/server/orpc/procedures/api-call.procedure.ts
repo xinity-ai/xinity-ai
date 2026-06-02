@@ -30,6 +30,7 @@ async function findApiKeyInOrg(keyId: string, orgId: string) {
 const addExampleCalls = rootOs
   .meta({mcp: false})
   .use(withOrganization)
+  .use(requirePermission({ apiCall: ["delete"] }))
   .route({ method: "POST", path: "/add-example-data", tags: [...tags, ".internal"], summary: "Add example api calls (dev)" })
   .input(z.object({ apiKeyId: z.uuid(), applicationId: z.uuid() }))
   .errors({ NOT_FOUND: { message: "API key not found" }, NOT_ACCEPTABLE: { message: "Environment mismatch. This is not available in production" } })
