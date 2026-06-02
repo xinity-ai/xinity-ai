@@ -40,6 +40,8 @@ const ALLOWED_PROTOCOLS = new Set(["http:", "https:"]);
 
 const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
 
+const MAX_REDIRECTS = 5;
+
 export type SafeFetchOptions = {
   /** Timeout in milliseconds. Defaults to 15s. */
   timeoutMs?: number;
@@ -97,23 +99,37 @@ export async function safeFetch(
   rawUrl: string,
   options: SafeFetchOptions = {},
 ): Promise<Response> {
-  const error = validateUrl(rawUrl);
-  if (error) {
-    log.warn({ url: rawUrl, reason: error }, "Blocked outbound request");
-    throw new Error(`URL blocked: ${error}`);
-  }
-
   const { timeoutMs = DEFAULT_FETCH_TIMEOUT_MS, headers = {} } = options;
-  try {
-    return await fetch(rawUrl, {
-      signal: AbortSignal.timeout(timeoutMs),
-      headers,
-      redirect: "follow",
-    });
-  } catch (e) {
-    if (e instanceof DOMException && e.name === "AbortError") {
-      throw new Error(`Fetch timed out after ${timeoutMs}ms`);
+  const signal = AbortSignal.timeout(timeoutMs);
+
+  let currentUrl = rawUrl;
+  for (let redirects = 0; ; redirects++) {
+    const error = validateUrl(currentUrl);
+    if (error) {
+      log.warn({ url: currentUrl, reason: error }, "Blocked outbound request");
+      throw new Error(`URL blocked: ${error}`);
     }
-    throw e;
+
+    let response: Response;
+    try {
+      response = await fetch(currentUrl, { signal, headers, redirect: "manual" });
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        throw new Error(`Fetch timed out after ${timeoutMs}ms`);
+      }
+      throw e;
+    }
+
+    const location = response.headers.get("location");
+    if (response.status >= 300 && response.status < 400 && location) {
+      if (redirects >= MAX_REDIRECTS) {
+        throw new Error(`Too many redirects (>${MAX_REDIRECTS})`);
+      }
+      await response.body?.cancel();
+      currentUrl = new URL(location, currentUrl).toString();
+      continue;
+    }
+
+    return response;
   }
 }
