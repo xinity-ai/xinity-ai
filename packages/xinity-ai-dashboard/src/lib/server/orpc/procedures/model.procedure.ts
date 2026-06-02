@@ -32,7 +32,7 @@ const listModels = rootOs
 
 const getModel = rootOs
   .use(withAuth)
-  .route({ path: "/:specifier", method: "GET", tags: ["Model"], summary: "Get Model" })
+  .route({ path: "/{specifier}", method: "GET", tags: ["Model"], summary: "Get Model" })
   .input(z.object({ specifier: z.string() }))
   .output(ModelWithSpecifierSchema.nullable())
   .handler(async ({ input }) => {
