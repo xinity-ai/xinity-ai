@@ -115,7 +115,7 @@ export function parseEnv<T extends ZodObjectWithShape>(
 export const tlsEnvSchema = z.object({
   XINITY_TLS_CERT: z.string().optional()
     .describe("PEM-encoded TLS certificate (enables HTTPS). See docs/security/mtls.md")
-    .meta(secret()),
+    .meta({...secret(), ...expert()}),
   XINITY_TLS_KEY: z.string().optional()
     .describe("PEM-encoded TLS private key (enables HTTPS). See docs/security/mtls.md")
     .meta({...secret(), ...expert()}),
