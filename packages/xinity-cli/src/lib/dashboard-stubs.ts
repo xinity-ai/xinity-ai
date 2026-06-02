@@ -48,6 +48,7 @@ export const serverStubs: Record<string, Record<string, unknown>> = {
   },
   "$lib/server/email": {
     sendEmail: asyncNoop,
+    commonEmailProps: {},
   },
   "$lib/server/lib/orchestration.mod": {
     assembleModelRequirementTable: asyncNoop,
