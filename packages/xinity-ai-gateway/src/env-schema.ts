@@ -34,6 +34,6 @@ export const gatewayEnvSchema = z.object({
 
   // Inference backend TLS
   XINITY_INFERENCE_CA: z.string().optional()
-    .describe("PEM-encoded CA certificate for verifying daemon TLS. When set, gateway connects to daemons via HTTPS. See docs/security/tls.md")
+    .describe("PEM-encoded CA certificate for verifying daemon TLS. When set, gateway connects to daemons via HTTPS. See https://github.com/xinity-ai/xinity-ai/blob/main/docs/security/tls.md")
     .meta({ ...secret(), ...expert() }),
 }).extend(tlsEnvSchema.shape).extend(logEnvSchema.shape);
