@@ -16,7 +16,7 @@ export const dashboardEnvSchema = z.object({
   INSTANCE_ADMIN_EMAILS: z.string().optional().describe("Comma-separated emails of users who get instance-wide admin privileges (can manage all orgs)"),
   MULTI_TENANT_MODE: z.stringbool().default(false).describe("Allow any authenticated user to create organizations. Required when INSTANCE_ADMIN_EMAILS is not set."),
   LOG_DIR: z.string().optional().describe("Log file directory").meta(expert()),
-  LOG_LEVEL: z.string().default("debug").describe("Log level").meta(expert()),
+  LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("debug").describe("Log level").meta(expert()),
   MAIL_URL: z.url().optional().describe("SMTP mail server URL (e.g. smtp://user:pass@mail.example.com:587)").meta(secret()),
   MAIL_FROM: z.string().optional().describe("Email sender address (e.g. noreply@mydomain.com)"),
   METRICS_AUTH: z.string().describe("Metrics basic auth (user:pass)").optional().meta({ ...secret(), ...expert() }),
