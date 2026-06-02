@@ -59,10 +59,16 @@ export const ChatCompletionBodySchema = z.looseObject({
   ]).optional(),
 });
 
+type ToolCallAcc = {
+  id?: string;
+  type?: string;
+  function: { name?: string; arguments: string };
+};
+
 type ChatAcc = {
   content: string;
   role: string;
-  tool_calls?: unknown[];
+  tool_calls?: ToolCallAcc[];
   finish_reason?: string | null;
 };
 
@@ -76,8 +82,17 @@ const chatStreamSpec: StreamSpec<z.infer<typeof BackendChatChunkSchema>, ChatAcc
     if (choice.delta.role) {
       acc.role = choice.delta.role;
     }
-    if (Array.isArray(choice.delta.tool_calls) && choice.delta.tool_calls.length > 0) {
-      acc.tool_calls = choice.delta.tool_calls;
+    if (Array.isArray(choice.delta.tool_calls)) {
+      const calls = (acc.tool_calls ??= []);
+      for (const fragment of choice.delta.tool_calls) {
+        const existing = (calls[fragment.index] ??= { function: { arguments: "" } });
+        if (fragment.id) existing.id = fragment.id;
+        if (fragment.type) existing.type = fragment.type;
+        if (fragment.function?.name) existing.function.name = fragment.function.name;
+        if (typeof fragment.function?.arguments === "string") {
+          existing.function.arguments += fragment.function.arguments;
+        }
+      }
     }
     if (choice.finish_reason) {
       acc.finish_reason = choice.finish_reason;
