@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { forwardBackendError } from "../util";
+import { errorResponse, forwardBackendError } from "../util";
 import { withEndpointGuards } from "../endpoint-guards";
 import { rootLogger } from "../../logger";
 import { backendPostJson } from "../backend-fetch";
@@ -31,7 +31,12 @@ export const handleRerank = withEndpointGuards({
       return forwardBackendError(backendResponse, log);
     }
 
-    const result = await backendResponse.json() as Record<string, unknown>;
+    let result: Record<string, unknown>;
+    try {
+      result = await backendResponse.json() as Record<string, unknown>;
+    } catch {
+      return errorResponse("Backend returned an invalid response", 502);
+    }
 
     return Response.json({
       ...result,
