@@ -86,7 +86,6 @@ export type InputExclusion = {
 };
 /** Table containing responses by users to a logged api call. */
 export const apiCallResponseT = callDataSchema.table("api_call_response", {
-  /** id of the user creating the response. Can be null if the response comes from an external user */
   userId: text("user_id").notNull().references(() => userT.id, { onDelete: "cascade" }),
   apiCallId: uuid("api_call_id")
     .notNull()
