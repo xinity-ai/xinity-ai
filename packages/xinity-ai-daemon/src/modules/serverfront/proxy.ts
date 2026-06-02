@@ -8,10 +8,10 @@ const log = rootLogger.child({ name: "proxy" });
 const PROXY_ROUTE_RE = /^\/proxy\/([^/]+)\/v1\/(.*)/;
 
 function verifyAuth(req: Request): boolean {
-  const actual = req.headers.get("authorization") ?? "";
-  const expected = `Bearer ${getAuthToken()}`;
+  const actual = Buffer.from(req.headers.get("authorization") ?? "");
+  const expected = Buffer.from(`Bearer ${getAuthToken()}`);
   if (actual.length !== expected.length) return false;
-  return timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
+  return timingSafeEqual(actual, expected);
 }
 
 export async function handleProxyRequest(req: Request, url: URL): Promise<Response> {
