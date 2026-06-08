@@ -24,7 +24,7 @@ export async function getHardwareProfile(): Promise<HardwareProfile> {
   if (!cachedProfile) {
     cachedProfile = await detectHardwareProfile();
     log.info(
-      { gpuCount: cachedProfile.gpuCount, capacityGb: cachedProfile.detectedCapacityGb, source: cachedProfile.source },
+      { gpuCount: cachedProfile.gpuCount, detectedCapacityGb: cachedProfile.detectedCapacityGb, physicalCapacityGb: cachedProfile.physicalCapacityGb, source: cachedProfile.source },
       "Hardware profile detected",
     );
   }

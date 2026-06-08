@@ -156,7 +156,6 @@ function buildVllmInstanceConfig(
   const gpuMemoryUtilization = computeGpuUtilization(
     { model: modelName, estCapacity },
     profile,
-    state.freeMemoryMb ?? null,
   );
 
   return {
