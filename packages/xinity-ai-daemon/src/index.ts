@@ -7,6 +7,11 @@ import { sql, logMigrationFailureFatal } from "common-db";
 import { rootLogger } from "./logger";
 
 let shuttingDown = false;
+let subscription: SubscriptionLike | undefined;
+
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.once(signal, () => void shutdown());
+}
 
 if (import.meta.main) {
   main().catch((err) => {
@@ -25,15 +30,11 @@ async function main() {
   await startServer();
   await setOnline();
   const coordinator = dbSync();
-  const subscription = coordinator.start();
-
-  for (const signal of ["SIGTERM", "SIGINT"] as const) {
-    process.once(signal, () => shutdown(subscription));
-  }
+  subscription = coordinator.start();
 
   const onFatal = (label: string) => (err: unknown) => {
     rootLogger.fatal({ err }, label);
-    void shutdown(subscription).finally(() => process.exit(1));
+    void shutdown().finally(() => process.exit(1));
   };
   process.once("uncaughtException", onFatal("Uncaught exception"));
   process.once("unhandledRejection", onFatal("Unhandled rejection"));
@@ -46,17 +47,15 @@ async function main() {
   }
 }
 
-async function shutdown(subscription: SubscriptionLike) {
+async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
 
-  // Wake the listen loop so it can break out and release the connection.
+  // Wake the listen loop so it sees shuttingDown === true and breaks.
   try {
     const nodeId = await getNodeId();
     await getDB().execute(sql.raw(`NOTIFY "ai_node:${nodeId}"`));
-  } catch {
-    // best-effort
-  }
+  } catch {}
 
   try {
     await setOffline();
@@ -64,7 +63,6 @@ async function shutdown(subscription: SubscriptionLike) {
     rootLogger.error({ err }, "Failed to set node offline during shutdown");
   }
 
-  subscription.unsubscribe();
+  subscription?.unsubscribe();
   process.exit(0);
 }
-
