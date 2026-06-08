@@ -25,7 +25,6 @@ import {
 import { createInfoserverClient, installationLookup } from "xinity-infoserver";
 import { rootLogger } from "../../logger";
 import { getHardwareProfile } from "../statekeeper";
-import { getFreeMemoryMb } from "../hardware-detect";
 import { downloadModel } from "./vllm-download";
 import { updateInstallationState } from "./state";
 
@@ -157,7 +156,6 @@ function pollUntilHealthy$(
   );
 }
 
-/** Downloads weights, starts the container, and returns metadata used for health polling and warmup. */
 async function downloadAndStart(installation: ModelInstallation, ops: VllmOps): Promise<{ modelType: string | undefined; providerModel: string }> {
   const lookup = installationLookup(installation);
   const modelInfo = await infoClient.fetchModel(lookup);
@@ -183,7 +181,7 @@ async function downloadAndStart(installation: ModelInstallation, ops: VllmOps): 
     getHardwareProfile(),
   ]);
 
-  const gpuMemoryUtilization = computeGpuUtilization(installation, profile, await getFreeMemoryMb(profile.source));
+  const gpuMemoryUtilization = computeGpuUtilization(installation, profile);
   const modelType = modelInfo?.type;
 
   await ops.start(installation.id, {
@@ -212,28 +210,31 @@ export function buildVllmExtraArgs(
 
 /** Multiplier applied to estimated capacity to leave headroom for activations and fragmentation. */
 const CAPACITY_OVERHEAD_FACTOR = 1.1;
-/** GB of free GPU memory reserved for the OS / other processes when sizing a vLLM instance. */
-const FREE_MEM_RESERVE_GB = 1.0;
 /** Hard cap on vLLM's --gpu-memory-utilization so the driver never claims the whole device. */
 const MAX_GPU_UTILIZATION = 0.90;
 
 export function computeGpuUtilization(
   installation: Pick<ModelInstallation, "model" | "estCapacity">,
-  profile: { gpuCount: number; detectedCapacityGb: number },
-  freeMemoryMb: number | null,
+  profile: { gpuCount: number; detectedCapacityGb: number; physicalCapacityGb: number },
 ): number | undefined {
-  if (profile.gpuCount === 0 || profile.detectedCapacityGb === 0) return undefined;
+  if (profile.gpuCount === 0 || profile.physicalCapacityGb === 0) return undefined;
 
-  const totalCapacityGb = profile.detectedCapacityGb;
   const requiredGb = installation.estCapacity * CAPACITY_OVERHEAD_FACTOR;
-
-  const claimGb = freeMemoryMb != null
-    ? Math.max(freeMemoryMb / 1024 - FREE_MEM_RESERVE_GB, requiredGb)
-    : requiredGb;
-  const utilization = Math.min(claimGb / totalCapacityGb, MAX_GPU_UTILIZATION);
+  const headroomCap = profile.detectedCapacityGb / profile.physicalCapacityGb;
+  const utilization = Math.min(
+    requiredGb / profile.physicalCapacityGb,
+    headroomCap,
+    MAX_GPU_UTILIZATION,
+  );
 
   log.info(
-    { model: installation.model, gpuMemoryUtilization: utilization.toFixed(3), estCapacityGb: installation.estCapacity, totalCapacityGb, freeMemoryMb },
+    {
+      model: installation.model,
+      gpuMemoryUtilization: utilization.toFixed(3),
+      estCapacityGb: installation.estCapacity,
+      physicalCapacityGb: profile.physicalCapacityGb,
+      detectedCapacityGb: profile.detectedCapacityGb,
+    },
     "Calculated GPU memory utilization",
   );
   return utilization;
@@ -331,10 +332,6 @@ async function reconcileOne(
 // Sync entry point
 // ---------------------------------------------------------------------------
 
-/**
- * Synchronizes vLLM installations against running instances in three phases:
- * reconcile stale DB state, remove unwanted containers, then download + start new ones.
- */
 export function syncVllmInstallations$(
   installations: Array<ModelInstallation>,
   ops: VllmOps = resolveDefaultOps(),

@@ -1,5 +1,5 @@
 import { $ } from "bun";
-import { freemem, totalmem } from "node:os";
+import { totalmem } from "node:os";
 import { readdir, readFile } from "node:fs/promises";
 import { rootLogger } from "../logger";
 
@@ -12,11 +12,10 @@ export type GpuVendor = "nvidia" | "amd" | "intel";
 export type DetectedGpu = {
   vendor: GpuVendor;
   name: string;
-  /** Total VRAM in megabytes. 0 when detection succeeded but VRAM is unknown (e.g. unified memory). */
+  /** 0 when VRAM is not separately addressable (e.g. unified memory). */
   vramMb: number;
 };
 
-/** Runtime GPU statistics with current usage information. */
 export type GpuRuntimeStats = {
   name: string;
   totalMemory: number;
@@ -35,8 +34,10 @@ export type CapacitySource =
 export type HardwareProfile = {
   gpus: DetectedGpu[];
   gpuCount: number;
-  /** Estimated usable model capacity in GB. */
+  /** Usable model capacity in GB; stored in DB and used for scheduling. */
   detectedCapacityGb: number;
+  /** Full physical VRAM or system RAM in GB; denominator for vLLM --gpu-memory-utilization. */
+  physicalCapacityGb: number;
   source: CapacitySource;
 };
 
@@ -89,7 +90,6 @@ function parseNvidiaSmiLine(line: string): DetectedGpu | null {
   };
 }
 
-/** Fetches live NVIDIA GPU stats including usage info. Used by the systemInfo RPC endpoint. */
 export async function getNvidiaRuntimeStats(): Promise<GpuRuntimeStats[]> {
   const output =
     await $`nvidia-smi --query-gpu=index,name,memory.total,memory.used,memory.free --format=csv,noheader,nounits`
@@ -223,7 +223,6 @@ function parseRocmSmiLine(line: string): DetectedGpu | null {
   };
 }
 
-/** Fetches live AMD GPU stats including usage info. Used by the systemInfo RPC endpoint. */
 export async function getAmdRuntimeStats(): Promise<GpuRuntimeStats[]> {
   const output = await $`rocm-smi --showmeminfo vram`.throws(false).text();
 
@@ -344,15 +343,9 @@ export function classifyCapacitySource(gpus: DetectedGpu[]): CapacitySource {
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
-/** Fraction of system RAM advertised as model capacity when GPUs use unified memory; the rest is reserved for the OS. */
+/** Fraction of system RAM usable for models on unified-memory GPUs; remainder keeps the OS responsive. */
 const UNIFIED_MEM_USABLE_FRACTION = 0.9;
 
-/**
- * Builds a HardwareProfile from a known GPU list + system RAM:
- *  1. GPUs with reported VRAM → sum VRAM as capacity, classify by vendor
- *  2. GPUs with 0 VRAM → unified memory, use 90% of system RAM
- *  3. No GPUs → CPU-only, use full system RAM
- */
 export function buildHardwareProfile(gpus: DetectedGpu[], systemRamMb: number): HardwareProfile {
   const gpuCount = gpus.length;
   const totalVramMb = gpus.reduce((sum, gpu) => sum + gpu.vramMb, 0);
@@ -362,6 +355,7 @@ export function buildHardwareProfile(gpus: DetectedGpu[], systemRamMb: number): 
       gpus,
       gpuCount,
       detectedCapacityGb: mbToGb(totalVramMb),
+      physicalCapacityGb: mbToGb(totalVramMb),
       source: classifyCapacitySource(gpus),
     };
   }
@@ -372,6 +366,7 @@ export function buildHardwareProfile(gpus: DetectedGpu[], systemRamMb: number): 
       gpus,
       gpuCount,
       detectedCapacityGb: mbToGb(Math.floor(systemRamMb * UNIFIED_MEM_USABLE_FRACTION)),
+      physicalCapacityGb: mbToGb(systemRamMb),
       source: "unified-memory",
     };
   }
@@ -381,36 +376,13 @@ export function buildHardwareProfile(gpus: DetectedGpu[], systemRamMb: number): 
     gpus: [],
     gpuCount: 0,
     detectedCapacityGb: mbToGb(systemRamMb),
+    physicalCapacityGb: mbToGb(systemRamMb),
     source: "system-ram",
   };
 }
 
-/** Probes NVIDIA / AMD / Intel GPUs and returns the node's usable capacity. */
 export async function detectHardwareProfile(): Promise<HardwareProfile> {
   const gpus = await detectAllGpus();
   return buildHardwareProfile(gpus, getSystemRamMb());
 }
 
-function sumFreeMemoryFromStats(stats: GpuRuntimeStats[]): number | null {
-  if (stats.length === 0) return null;
-  return stats.reduce((sum, s) => sum + s.freeMemory, 0);
-}
-
-/**
- * Query current free memory in MB for the given capacity source.
- *
- * - nvidia: queries nvidia-smi for live free VRAM (works for both dedicated and unified memory GPUs like GB10)
- * - amd: queries rocm-smi for live free VRAM
- * - unified-memory / system-ram / intel / mixed: uses OS free memory
- *
- * Returns null only if the underlying query fails (e.g. nvidia-smi crashes).
- */
-export async function getFreeMemoryMb(source: CapacitySource): Promise<number | null> {
-  try {
-    if (source === "nvidia") return sumFreeMemoryFromStats(await getNvidiaRuntimeStats());
-    if (source === "amd") return sumFreeMemoryFromStats(await getAmdRuntimeStats());
-    return bytesToMb(freemem());
-  } catch {
-    return null;
-  }
-}

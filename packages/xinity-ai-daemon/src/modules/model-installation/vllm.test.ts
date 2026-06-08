@@ -88,14 +88,9 @@ mock.module("../statekeeper", () => ({
     gpus: [{ vendor: "nvidia", name: "Test GPU", vramMb: 24576 }],
     gpuCount: 1,
     detectedCapacityGb: 24,
+    physicalCapacityGb: 24,
     source: "nvidia",
   }),
-}));
-
-// Mock free memory query (20 GiB free on a 24 GiB GPU)
-const mockGetFreeMemoryMb = mock(() => Promise.resolve(20480 as number | null));
-mock.module("../hardware-detect", () => ({
-  getFreeMemoryMb: mockGetFreeMemoryMb,
 }));
 
 // Mock the native HF downloader (no-op in tests)
@@ -103,7 +98,7 @@ mock.module("./vllm-download", () => ({
   downloadModel: mock(() => Promise.resolve()),
 }));
 
-const { syncVllmInstallations$ } = await import("./vllm");
+const { syncVllmInstallations$, computeGpuUtilization } = await import("./vllm");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -154,7 +149,6 @@ describe("syncVllmInstallations$", () => {
     mockHasTag.mockImplementation(() => Promise.resolve(false));
     mockResolveDriverArgs.mockImplementation(() => Promise.resolve([]));
     mockFetchModel.mockImplementation((lookup) => Promise.resolve({ type: "chat", providers: { vllm: lookupValue(lookup) } }));
-    mockGetFreeMemoryMb.mockImplementation(() => Promise.resolve(20480));
   });
 
   test("completes with no changes when desired matches running", async () => {
@@ -559,14 +553,9 @@ describe("syncVllmInstallations$", () => {
     expect(ops.stop).toHaveBeenCalled();
   });
 
-  test("calculates gpuMemoryUtilization from free VRAM, not total", async () => {
+  test("calculates gpuMemoryUtilization as requiredGb / physicalCapacityGb", async () => {
     const id = crypto.randomUUID();
     const inst = makeInstallation("mem-test-model", id, 9100);
-    // estCapacity=16, totalCapacity=24, freeMemory=20480 MB (20 GiB)
-    // requiredGb = 16 * 1.1 = 17.6
-    // maxClaimGb = max(20 - 1, 17.6) = 19
-    // utilization = min(19 / 24, 0.90) = min(0.7917, 0.90) ≈ 0.792
-    mockGetFreeMemoryMb.mockImplementation(() => Promise.resolve(20480));
     const ops = createMockOps({
       listRunning: mock(() => Promise.resolve([])),
       checkHealth: mock(() => Promise.resolve(true)),
@@ -577,47 +566,30 @@ describe("syncVllmInstallations$", () => {
 
     const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
     const util = startCall[1].gpuMemoryUtilization as number;
-    expect(util).toBeCloseTo(19 / 24, 2);
+    expect(util).toBeCloseTo((16 * 1.1) / 24, 4);
   });
 
-  test("falls back to estCapacity-based calculation when free memory unavailable", async () => {
-    const id = crypto.randomUUID();
-    const inst = makeInstallation("fallback-model", id, 9101);
-    // estCapacity=16, totalCapacity=24, freeMemory=null (query failed)
-    // requiredGb = 16 * 1.1 = 17.6
-    // utilization = min(17.6 / 24, 0.90) = min(0.733, 0.90) ≈ 0.733
-    mockGetFreeMemoryMb.mockImplementation(() => Promise.resolve(null));
-    const ops = createMockOps({
-      listRunning: mock(() => Promise.resolve([])),
-      checkHealth: mock(() => Promise.resolve(true)),
-      isAlive: mock(() => Promise.resolve(true)),
-    });
-
-    await firstValueFrom(syncVllmInstallations$([inst], ops));
-
-    const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
-    const util = startCall[1].gpuMemoryUtilization as number;
-    expect(util).toBeCloseTo((16 * 1.1) / 24, 2);
-  });
-
-  test("caps gpuMemoryUtilization at 0.90", async () => {
-    const id = crypto.randomUUID();
-    // High free memory — without the cap, utilization would exceed 0.90
-    const inst = makeInstallation("cap-model", id, 9102);
-    // freeMemory = 23552 MB (23 GiB), total = 24 GiB
-    // maxClaimGb = max(23 - 1, 17.6) = 22
-    // utilization = min(22 / 24, 0.90) = min(0.917, 0.90) = 0.90
-    mockGetFreeMemoryMb.mockImplementation(() => Promise.resolve(23552));
-    const ops = createMockOps({
-      listRunning: mock(() => Promise.resolve([])),
-      checkHealth: mock(() => Promise.resolve(true)),
-      isAlive: mock(() => Promise.resolve(true)),
-    });
-
-    await firstValueFrom(syncVllmInstallations$([inst], ops));
-
-    const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
-    const util = startCall[1].gpuMemoryUtilization as number;
+  test("caps gpuMemoryUtilization at MAX_GPU_UTILIZATION (0.90)", () => {
+    const util = computeGpuUtilization(
+      { model: "cap-model", estCapacity: 22 },
+      { gpuCount: 1, detectedCapacityGb: 24, physicalCapacityGb: 24 },
+    );
     expect(util).toBe(0.90);
+  });
+
+  test("caps gpuMemoryUtilization at unified-memory headroom fraction", () => {
+    const util = computeGpuUtilization(
+      { model: "large-unified-model", estCapacity: 100 },
+      { gpuCount: 1, detectedCapacityGb: 107, physicalCapacityGb: 120 },
+    );
+    expect(util).toBeCloseTo(107 / 120, 4);
+  });
+
+  test("allocates exactly requiredGb for a small model on unified memory", () => {
+    const util = computeGpuUtilization(
+      { model: "small-unified-model", estCapacity: 16 },
+      { gpuCount: 1, detectedCapacityGb: 107, physicalCapacityGb: 120 },
+    );
+    expect(util).toBeCloseTo((16 * 1.1) / 120, 4);
   });
 });
