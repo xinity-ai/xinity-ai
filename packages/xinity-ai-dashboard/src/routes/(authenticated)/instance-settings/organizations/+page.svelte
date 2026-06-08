@@ -11,7 +11,7 @@
   import { Search, ChevronDown, ChevronRight, ChevronLeft, X, Users, Shield, HardDrive } from "@lucide/svelte";
   import { toastState } from "$lib/state/toast.svelte";
   import { createUrlSearchParamsStore } from "$lib/urlSearchParamsStore";
-  import { humanDateShort } from "$lib/util";
+  import { humanDateShort, formatGb } from "$lib/util";
 
   type ListOrgsData = NonNullable<Awaited<ReturnType<typeof orpc.instanceAdmin.listOrganizations>>["data"]>;
   type AdminOrganization = ListOrgsData["organizations"][number];
@@ -183,9 +183,9 @@
                   <Users class="w-4 h-4 text-muted-foreground" />
                   <span class="text-sm text-muted-foreground">{org.memberCount} members</span>
                 </div>
-                <div class="flex items-center gap-2" title="{org.deploymentCount} deployments using {org.totalCapacity.toFixed(1)} GB">
+                <div class="flex items-center gap-2" title="{org.deploymentCount} deployments using {formatGb(org.totalCapacity)}">
                   <HardDrive class="w-4 h-4 text-muted-foreground" />
-                  <span class="text-sm text-muted-foreground">{org.deploymentCount} deployments &middot; {org.totalCapacity.toFixed(1)} GB</span>
+                  <span class="text-sm text-muted-foreground">{org.deploymentCount} deployments &middot; {formatGb(org.totalCapacity)}</span>
                 </div>
                 <span class="text-xs text-muted-foreground">
                   {humanDateShort(org.createdAt)}

@@ -5,6 +5,7 @@
   import { Copy } from "@lucide/svelte";
   import { copyToClipboard } from "$lib/copy";
   import type { PageData } from "./$types";
+  import { formatGb } from "$lib/util";
 
   const { data }: { data: PageData } = $props();
 
@@ -34,7 +35,7 @@
       <div>
         <p class="text-sm text-muted-foreground">Max VRAM</p>
         <p class="font-medium">
-          {data.license.maxVramGb === Infinity ? "Unlimited" : `${data.license.maxVramGb} GB`}
+          {data.license.maxVramGb === Infinity ? "Unlimited" : formatGb(data.license.maxVramGb)}
         </p>
       </div>
       <div>
