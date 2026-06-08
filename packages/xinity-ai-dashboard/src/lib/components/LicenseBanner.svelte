@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { LicenseSummary } from "$lib/server/license";
+  import { formatGb } from "$lib/util";
 
   let { license, totalVramGb = 0 }: { license: LicenseSummary; totalVramGb?: number } = $props();
 
@@ -55,7 +56,7 @@
     >
       <span class="h-2 w-2 shrink-0 rounded-full bg-amber-500"></span>
       <span>
-        {totalVramGb} GB of VRAM detected across your instances but your license allows {license.maxVramGb} GB. Some instances will be excluded from deployments.
+        {formatGb(totalVramGb)} of VRAM detected across your instances but your license allows {formatGb(license.maxVramGb)}. Some instances will be excluded from deployments.
         <a href="https://xinity.ai/xinity-pricing" target="_blank" rel="noopener noreferrer" class="underline hover:text-amber-900">Upgrade</a> to use all capacity.
       </span>
       <button

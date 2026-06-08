@@ -3,6 +3,7 @@
   import type { ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
   import { resolveAllTags, resolveTagsForDriver, driverHasTag, isDeployableOnCluster } from "xinity-infoserver";
   import { modelCatalog } from "$lib/state/model-catalog.svelte";
+  import { formatGb } from "$lib/util";
 
   // shadcn components
   import { Button } from "$lib/components/ui/button";
@@ -201,7 +202,7 @@
       <div class="px-5 py-3 border-b bg-muted/30 flex items-center gap-2 text-sm">
         <HardDrive class="w-4 h-4 text-muted-foreground shrink-0" />
         <span class="text-muted-foreground">Available node capacity:</span>
-        <span class="font-semibold">{maxNodeFreeCapacity.toFixed(1)} GB</span>
+        <span class="font-semibold">{formatGb(maxNodeFreeCapacity)}</span>
       </div>
     {/if}
 
@@ -281,8 +282,8 @@
 
                     <div class="flex items-center gap-1.5 text-xs text-muted-foreground mb-3">
                       <HardDrive class="w-3 h-3" />
-                      <span>{model.weight + model.minKvCache} GB</span>
-                      <span class="opacity-50">({model.weight} model + {model.minKvCache} kv-cache)</span>
+                      <span>{formatGb(model.weight + model.minKvCache)}</span>
+                      <span class="opacity-50">({parseFloat(model.weight.toFixed(2))} model + {parseFloat(model.minKvCache.toFixed(2))} kv-cache)</span>
                     </div>
 
                     {#if undeployable && constraintIssue}
@@ -293,7 +294,7 @@
                     {:else if undeployable}
                       <div class="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive mb-1">
                         <ShieldAlert class="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                        <span>Exceeds available node capacity ({model.weight + model.minKvCache} GB required, {maxNodeFreeCapacity} GB available)</span>
+                        <span>Exceeds available node capacity ({formatGb(model.weight + model.minKvCache)} required, {formatGb(maxNodeFreeCapacity)} available)</span>
                       </div>
                     {/if}
 

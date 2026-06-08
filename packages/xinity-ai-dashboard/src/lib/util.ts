@@ -62,6 +62,11 @@ export async function updateOptimistically<E>({
   return data;
 }
 
+/** Formats a GB value, trimming insignificant decimal places (e.g. 8.333... -> "8.33 GB", 230 -> "230 GB"). */
+export function formatGb(value: number): string {
+  return `${parseFloat(value.toFixed(2))} GB`;
+}
+
 /** Formats a date using the "de" locale for consistent UI display. */
 export function humanDate(d: Date | undefined) {
   if (!d || !d.toLocaleString) return "Unknown date";

@@ -1,4 +1,5 @@
 import { rootOs, withOrganization, requirePermission } from "../root";
+import { formatGb } from "$lib/util";
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
 import { and, eq, isNull, modelDeploymentT, modelInstallationT, modelInstallationStateT, organizationT, deploymentMatchesInstallation, type ModelDeployment, type SQL } from "common-db";
 import z from "zod";
@@ -97,7 +98,7 @@ function insufficientCapacityReason(
 ): string {
   const replicaWord = replicas === 1 ? "replica" : "replicas";
   const nodeWord = placed === 1 ? "node has" : "nodes have";
-  return `Insufficient cluster capacity: cannot place ${replicas} ${replicaWord} of "${label}" (${perReplica.toFixed(1)} GB each). Only ${placed} compatible ${nodeWord} enough free capacity`;
+  return `Insufficient cluster capacity: cannot place ${replicas} ${replicaWord} of "${label}" (${formatGb(perReplica)} each). Only ${placed} compatible ${nodeWord} enough free capacity`;
 }
 
 /**
