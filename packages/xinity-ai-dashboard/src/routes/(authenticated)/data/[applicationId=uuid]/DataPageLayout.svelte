@@ -88,7 +88,8 @@
       searchQuery: debouncedSearch.current || undefined,
     }),
   );
-  let totalCount = $derived(apiCallCount.current ?? null);
+  let deletedCount = $state(0);
+  let totalCount = $derived(apiCallCount.current != null ? apiCallCount.current - deletedCount : null);
 
   // Reset pagination when server-side filters change
   $effect(() => {
@@ -97,6 +98,7 @@
       prevFilterKey = key;
       offset = 0;
       allCalls = [];
+      deletedCount = 0;
       reactionSummaryRequests = new Map();
       responseRequests = new Map();
       hasMore = true;
@@ -207,6 +209,7 @@
       const result = await deleteApiCall({ apiCallId: deleteTarget.id });
       if (result?.success) {
         allCalls = allCalls.filter((c) => c.id !== deleteTarget!.id);
+        deletedCount++;
         if (selectedCall?.id === deleteTarget.id) {
           selectedCall = null;
         }
