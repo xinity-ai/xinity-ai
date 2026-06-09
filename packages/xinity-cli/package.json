@@ -27,7 +27,7 @@
     "xinity-ai-dashboard": "workspace:*",
     "xinity-ai-gateway": "workspace:*",
     "xinity-infoserver": "workspace:*",
-    "yargs": "^17.7.2",
+    "yargs": "^18.0.0",
     "zod": "^4.4.3"
   },
   "peerDependencies": {
