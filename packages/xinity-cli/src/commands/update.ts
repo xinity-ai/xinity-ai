@@ -117,7 +117,7 @@ export async function runUpdateFlow(opts: { checkOnly: boolean; targetVersion: s
   spinner.stop(`Latest release: ${release.tagName}`);
 
   // Compare versions
-  const needsUpdate = CLI_VERSION !== release.tagName && CLI_VERSION !== "dev";
+  const needsUpdate = CLI_VERSION !== release.tagName;
   const status = needsUpdate
     ? pc.yellow(`${CLI_VERSION} → ${release.tagName}`)
     : pc.green(`${CLI_VERSION} (up to date)`);
