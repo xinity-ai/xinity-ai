@@ -319,7 +319,9 @@ export async function readSecrets(
     return { secrets, permissionDenied: true, skipped: false };
   }
 
-  const parts = result.output.split("\0").filter(Boolean);
+  // NUL-delimited key\0value pairs with a trailing NUL. Don't drop empty
+  // tokens, or an empty value would misalign every later pair.
+  const parts = result.output.split("\0");
   for (let i = 0; i + 1 < parts.length; i += 2) {
     const key = parts[i];
     const value = parts[i + 1];
