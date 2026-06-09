@@ -232,7 +232,9 @@ async function promptField(
   if (field.isBoolean) {
     const value = await promptOrExit(p.confirm({
       message: `${field.key}${hint}`,
-      initialValue: existing === "true" || existing === "1" || (field.hasDefault && field.defaultValue === true),
+      initialValue: existingValue !== undefined
+        ? existingValue === "true" || existingValue === "1"
+        : field.hasDefault && field.defaultValue === true,
     }));
     return String(value);
   }
