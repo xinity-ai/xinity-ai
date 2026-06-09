@@ -1,3 +1,4 @@
+import { $ } from "bun";
 import {
   catchError,
   concat,
@@ -156,6 +157,13 @@ function pollUntilHealthy$(
   );
 }
 
+async function dropPageCache(): Promise<void> {
+  const result = await $`sh -c 'sync && echo 3 > /proc/sys/vm/drop_caches'`.quiet().nothrow();
+  if (result.exitCode !== 0) {
+    log.warn({ stderr: result.stderr.toString() }, "Failed to drop page cache before model start");
+  }
+}
+
 async function downloadAndStart(installation: ModelInstallation, ops: VllmOps): Promise<{ modelType: string | undefined; providerModel: string }> {
   const lookup = installationLookup(installation);
   const modelInfo = await infoClient.fetchModel(lookup);
@@ -183,6 +191,8 @@ async function downloadAndStart(installation: ModelInstallation, ops: VllmOps): 
 
   const gpuMemoryUtilization = computeGpuUtilization(installation, profile);
   const modelType = modelInfo?.type;
+
+  await dropPageCache();
 
   await ops.start(installation.id, {
     model: providerModel,
