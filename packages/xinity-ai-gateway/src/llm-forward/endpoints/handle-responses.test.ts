@@ -33,6 +33,7 @@ import type { getModelInfo as getModelInfoT } from "../model-data";
 
 let mockPort = 0;
 const getModelInfo = jest.fn<typeof getModelInfoT>(async () => ({
+  nodeId: "node-1",
   host: `localhost:${mockPort}`,
   model: "test-model",
   driver: "vllm",
@@ -507,6 +508,7 @@ describe("handleResponses", () => {
 
   test("should reject function tools when catalog explicitly says model does not support them", async () => {
     getModelInfo.mockImplementationOnce(async () => ({
+      nodeId: "node-1",
       host: `localhost:${mockPort}`,
       model: "test-model",
       driver: "vllm",
@@ -538,6 +540,7 @@ describe("handleResponses", () => {
 
   test("should allow function tools when catalog entry is missing (legacy fallback, tags undefined)", async () => {
     getModelInfo.mockImplementationOnce(async () => ({
+      nodeId: "node-1",
       host: `localhost:${mockPort}`,
       model: "test-model",
       driver: "vllm",
@@ -567,6 +570,7 @@ describe("handleResponses", () => {
 
   test("should reject structured output when catalog explicitly says model does not support tools", async () => {
     getModelInfo.mockImplementationOnce(async () => ({
+      nodeId: "node-1",
       host: `localhost:${mockPort}`,
       model: "test-model",
       driver: "vllm",
@@ -602,6 +606,7 @@ describe("handleResponses", () => {
 
   test("should allow structured output when catalog entry is missing (legacy fallback, tags undefined)", async () => {
     getModelInfo.mockImplementationOnce(async () => ({
+      nodeId: "node-1",
       host: `localhost:${mockPort}`,
       model: "test-model",
       driver: "vllm",

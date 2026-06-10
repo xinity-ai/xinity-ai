@@ -13,6 +13,9 @@ type UsageRecord = {
   outputTokens: number;
   duration: number | null;
   logged: boolean;
+  /** Node that served the request; null when none was selected. */
+  nodeId: string | null;
+  success: boolean;
 };
 
 export async function recordUsageEvent(record: UsageRecord): Promise<void> {

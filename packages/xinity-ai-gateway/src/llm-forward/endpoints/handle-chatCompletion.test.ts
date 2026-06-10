@@ -40,6 +40,7 @@ mock.module("../auth", () => ({
 
 let mockPort = 0;
 const getModelInfo = jest.fn<typeof getModelInfoT>(async () => ({
+  nodeId: "node-1",
   host: `localhost:${mockPort}`,
   model: "test-model",
   driver: "vllm",
@@ -316,6 +317,7 @@ describe("handleChatCompletion", () => {
 
   test("should reject structured_outputs for non-vLLM driver", async () => {
     getModelInfo.mockImplementationOnce(async () => ({
+      nodeId: "node-1",
       host: `localhost:${mockPort}`,
       model: "test-model",
       driver: "ollama",
@@ -475,6 +477,7 @@ describe("handleChatCompletion, tool calling", () => {
 
   test("should reject tools when catalog explicitly says model does not support them", async () => {
     getModelInfo.mockImplementationOnce(async () => ({
+      nodeId: "node-1",
       host: `localhost:${mockPort}`,
       model: "test-model",
       driver: "vllm",
@@ -504,6 +507,7 @@ describe("handleChatCompletion, tool calling", () => {
 
   test("should allow tools when catalog entry is missing (legacy fallback, tags undefined)", async () => {
     getModelInfo.mockImplementationOnce(async () => ({
+      nodeId: "node-1",
       host: `localhost:${mockPort}`,
       model: "test-model",
       driver: "vllm",

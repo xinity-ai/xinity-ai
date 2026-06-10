@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { resolveModel, type ResolvedModel } from "./ai-sdk";
-import { errorResponse, handleEndpointError, validateModelType, validationError } from "./util";
+import { errorResponse, handleEndpointError, recordFailedRequest, validateModelType, validationError } from "./util";
 import type { AuthResult } from "./auth";
 
 type EndpointLogger = {
@@ -35,36 +35,49 @@ export function withEndpointGuards<TBody>(
   opts: EndpointGuardOptions<TBody>,
 ): (req: Request) => Promise<Response> {
   return async (req) => {
+    const callStartTime = Date.now();
+    let resolved: ResolvedModel | undefined;
+
+    // Once a node was selected, any error response counts against it on the
+    // fleet page. 499 (client disconnect) is not a backend failure.
+    const noteFailedRequest = (res: Response): Response => {
+      if (resolved && res.status >= 400 && res.status !== 499) {
+        recordFailedRequest({ auth: resolved.auth, modelInfo: resolved.modelInfo, callStartTime });
+      }
+      return res;
+    };
+
     try {
       if (opts.method && req.method !== opts.method) {
         return errorResponse("Method not allowed", 405);
       }
 
-      const resolved = await resolveModel(req);
-      if (resolved instanceof Response) {
-        return resolved;
+      const resolveResult = await resolveModel(req);
+      if (resolveResult instanceof Response) {
+        return resolveResult;
       }
+      resolved = resolveResult;
 
       const typeError = validateModelType(resolved.modelInfo, opts.modelTypes);
       if (typeError) {
-        return typeError;
+        return noteFailedRequest(typeError);
       }
 
       const parseResult = opts.bodySchema.safeParse(resolved.body);
       if (!parseResult.success) {
-        return validationError(parseResult.error);
+        return noteFailedRequest(validationError(parseResult.error));
       }
 
-      return await opts.handler({
+      return noteFailedRequest(await opts.handler({
         auth: resolved.auth,
         body: parseResult.data,
         rawBody: resolved.body,
         modelInfo: resolved.modelInfo,
         originalModel: resolved.originalModel,
         req,
-      });
+      }));
     } catch (error) {
-      return handleEndpointError(error, opts.log);
+      return noteFailedRequest(handleEndpointError(error, opts.log));
     }
   };
 }

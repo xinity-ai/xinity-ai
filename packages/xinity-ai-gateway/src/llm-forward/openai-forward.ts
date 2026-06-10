@@ -3,8 +3,10 @@ import {
   errorResponse,
   forwardBackendError,
   handleStreamError,
+  isAbortError,
   logChatUsage,
   readSSEStream,
+  recordFailedRequest,
   SSE_RESPONSE_HEADERS,
   sseEncoder,
 } from "./util";
@@ -21,7 +23,7 @@ type Logger = {
 
 export type OpenAIForwardLogFields = {
   auth: AuthResult;
-  modelInfo: { model: string };
+  modelInfo: { model: string; nodeId?: string | null };
   modelSpecifier: string;
   inputMessages: ApiCallInputMessage[];
   callStartTime: number;
@@ -56,6 +58,7 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
   log: Logger;
 }): Response {
   let collectedUsage: z.infer<typeof BackendUsageSchema> | undefined;
+  let sawDone = false;
   const accumByChoice = new Map<number, Acc>();
 
   const stream = new ReadableStream({
@@ -63,6 +66,7 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
       try {
         for await (const event of readSSEStream(backendResponse)) {
           if (event.data === "[DONE]") {
+            sawDone = true;
             controller.enqueue(sseEncoder.encode("data: [DONE]\n\n"));
             break;
           }
@@ -97,6 +101,14 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
         }
         controller.close();
 
+        if (!sawDone) {
+          // Upstream ended without the [DONE] sentinel: the backend died
+          // mid-stream and delivered a truncated response.
+          log.error({ model: originalModel }, "Backend stream ended without [DONE]");
+          recordFailedRequest(logFields);
+          return;
+        }
+
         const outputData: ChatStreamData = [...accumByChoice.entries()]
           .sort(([a], [b]) => a - b)
           .map(([idx, acc]) => spec.toLogEntry(acc, idx, originalModel));
@@ -108,6 +120,11 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
           stream: true,
         });
       } catch (e) {
+        // The 200 header is already sent, so the endpoint guard can't see this
+        // failure; record it here. Client aborts don't count against the node.
+        if (!isAbortError(e)) {
+          recordFailedRequest(logFields);
+        }
         handleStreamError(e, controller, log);
       }
     },
