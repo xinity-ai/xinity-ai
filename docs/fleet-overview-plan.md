@@ -134,6 +134,21 @@ Each phase is independently shippable and tested; we review together between pha
 - Visual pass: dark/light themes, mobile breakpoints, reduced-motion respect for pulse/tween animations.
 - Docs touch-up (`architecture.md` note on node telemetry), CHANGELOG entry, screenshots → PR.
 
+## Approximation tolerances (as built)
+
+| Dashboard value | Deviation from exact | Dominant error source |
+|---|---|---|
+| Machine load % | ±3–5 pts steady, up to ±10 pts bursty; ≤ ~5 min stale | `utilization.gpu` is a "kernel active" flag sampled every 20 s, bucketed per 5 min |
+| Fleet load | Same, plus weighting skew | Unweighted mean — a small GPU counts like an H100 |
+| Energy (measured) | ±5–10% of **GPU** energy; excludes CPU/PSU (~30–50% of wall draw) | NVML sensor ±5%, 20 s integration |
+| Energy (TDP fallback) | ±30–50% | Linear `TDP × (10% + 90%·util)` model, TDP table ambiguity |
+| Tokens | Effectively exact | Backend tokenizer counts; failures record 0 tokens |
+| Requests / success | Exact counts; definitional choices | Client aborts excluded, post-selection 400s count as failures |
+| Online/offline | Lags reality by up to 15 min | Heartbeat window = 3 missed 5-minute flushes |
+
+The two roughest values (energy) are the ones labeled "≈" in the UI; the values a
+customer could cross-check against their own logs (tokens, requests) are exact.
+
 ## Out of scope (deliberately)
 - Exact billing-grade accounting, per-GPU drill-down pages, alerting/notifications,
   temperature/fan telemetry, historical retention beyond 90 days. All can layer on

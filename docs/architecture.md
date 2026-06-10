@@ -134,6 +134,8 @@ The daemon is a lightweight process that runs on every machine with inference ha
 
 The daemon also subscribes to PostgreSQL `NOTIFY` on channel `aiNode:<nodeId>`, allowing the dashboard to trigger immediate resync after deployment changes rather than waiting for the next poll interval.
 
+**Node telemetry:** The daemon samples GPU utilization, power draw, and memory via `nvidia-smi` every 20 seconds and flushes one pre-aggregated `nodeMetric` row per ~5-minute bucket (avg/max utilization, mean watts, integrated watt-hours). Each flush doubles as the node heartbeat (`aiNode.lastSeenAt`) — it runs even on machines without supported GPU telemetry — increments the lifetime `aiNode.totalEnergyWh` counter, and prunes buckets past the retention window (90 days by default). When the driver doesn't report power (e.g. unified-memory devices), watts are estimated from utilization against a rough TDP table; the dashboard labels energy as approximate accordingly. The gateway complements this by stamping every `usageEvent` with the serving `nodeId` and a success flag, which is what powers the per-machine token and success-rate statistics on the dashboard's Compute page. Telemetry values are deliberately coarse — designed to answer "is this machine healthy and busy?", not for billing-grade accounting.
+
 ### Xinity CLI
 
 **Package:** `packages/xinity-cli` | **Runtime:** Standalone compiled binary

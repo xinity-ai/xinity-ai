@@ -24,7 +24,7 @@
 
 <p align="center"><img src="docs/assets/dashboard-screenshot.png" alt="Xinity Dashboard" width="720" /></p>
 
-> **Deployed in production** by regulated European enterprises: media companies, manufacturers, and public institutions running AI on their own infrastructure with zero data egress.
+> **Deployed in production** by regulated enterprises: media companies, manufacturers, and public institutions running AI on their own infrastructure with zero data egress.
 
 ---
 
@@ -81,12 +81,21 @@ Your existing OpenAI SDK code works unchanged, just point the base URL to your X
 | Enterprise auth (SSO/SAML/2FA) | ✅ | ❌ | ❌ | ❌ |
 | Multi-org tenant isolation | ✅ | ❌ | ❌ | ❌ |
 | Usage tracking & data collection | ✅ | ❌ | ❌ | ❌ |
+| Fleet & energy observability | ✅ | ❌ | ❌ | ❌ |
 | Fine-tuning / distillation pipeline | ✅ | ❌ | ❌ | ❌ |
 | MCP server (AI-managed infra) | ✅ | ❌ | ❌ | ❌ |
 | EU Governance & Audit trail | ✅ | ❌ | ❌ | ❌ |
 | Fully auditable source code | ✅ | ✅ | ✅ | ✅ |
 
 **Xinity isn't a model runner: it's the full operations layer.** Ollama and vLLM are excellent inference engines (Xinity uses them under the hood). Xinity adds everything else an enterprise needs to actually run AI in production: orchestration, access control, observability, and governance.
+
+## See your fleet, live
+
+The **Compute** page shows every connected machine at a glance: liveness, GPU load, installed models, energy consumption, token throughput, and request success rates — refreshed live while you watch. Mixed fleets are first-class citizens: an Ascent GX10 next to an H100 next to an RTX PRO 6000, each reporting through the same daemon that runs your models.
+
+<p align="center"><img src="docs/assets/fleet-screenshot.png" alt="Xinity Compute fleet overview" width="720" /></p>
+
+Statistics are intentionally approximate (energy is estimated from GPU power draw, or TDP when the driver doesn't report it) — the page answers "is my compute healthy and earning its keep?", not billing questions.
 
 ## Performance under load
  
@@ -474,6 +483,6 @@ Dashboard tests have additional prerequisites — see the [dashboard README](pac
 ---
 
 <p align="center">
-  <strong>Contracts are paper. Infrastructure is Reality.</strong><br/>
+  <strong>Contracts are paper. Infrastructure is reality.</strong><br/>
   <sub>Built in Vienna. Open to the world.</sub>
 </p>
