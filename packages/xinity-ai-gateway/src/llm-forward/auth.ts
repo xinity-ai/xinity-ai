@@ -1,4 +1,3 @@
-import { pick } from "rambda";
 import { aiApiKeyT, sql, type AiApiKey } from "common-db";
 import { getDB } from "../db";
 import { redis } from "bun";
@@ -90,6 +89,16 @@ async function verifyKeyAgainstDb(key: string, prefix: string): Promise<Response
 }
 
 type PartialApiKey = Pick<AiApiKey, "organizationId" | "id" | "applicationId" | "collectData">;
+
+/** Curried pick: returns a fn that copies the given keys from an object. */
+function pick<K extends PropertyKey>(keys: readonly K[]) {
+  return <T extends Record<K, unknown>>(obj: T): Pick<T, K> => {
+    const result = {} as Pick<T, K>;
+    for (const key of keys) result[key] = obj[key];
+    return result;
+  };
+}
+
 const pickAttrs = pick(["organizationId", "id", "applicationId", "collectData"] satisfies (keyof AiApiKey)[]);
 const API_KEY_CACHE_TTL_SECONDS = 120;
 
