@@ -13,7 +13,8 @@
 		"test:api": "bun test --timeout 60000 e2e/api/",
 		"test:headed": "HEADED=1 bun test --timeout 60000 e2e/",
 		"test:setup": "bun run e2e/global-setup.ts",
-		"seed:fleet": "bun run scripts/seed-fleet.ts"
+		"seed:fleet": "bun run scripts/seed-fleet.ts",
+		"simulate:fleet": "bun run scripts/simulate-fleet.ts"
 	},
 	"devDependencies": {
 		"@better-auth/passkey": "^1.6.11",
