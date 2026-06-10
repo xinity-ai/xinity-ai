@@ -5,8 +5,8 @@
  *   2. Compile the bundle into a standalone binary with bun build --compile
  *
  * Usage:
- *   CLI_VERSION=v1.0.0 bun run build.ts --target bun-linux-x64
- *   bun run build.ts                           # defaults: target=bun-linux-x64, version=dev
+ *   bun run build.ts --target bun-linux-x64 --outfile dist/xinity
+ *   bun run build.ts                           # defaults: target=bun-linux-x64, outfile=dist/xinity
  */
 import { resolve } from "path";
 import { parseArgs } from "util";

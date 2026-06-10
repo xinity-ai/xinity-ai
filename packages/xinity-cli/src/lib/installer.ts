@@ -19,7 +19,7 @@ import { parseEnvString } from "./env-file.ts";
 import { pass, fail, warn, info, cancelAndExit, elevationHardFailed, promptOrExit } from "./output.ts";
 import { type Host, createLocalHost, commandExistsOn, isUnitActiveOn, readSecrets } from "./host.ts";
 import { isOllamaRunning, waitForOllamaRunning } from "./ollama-setup.ts";
-import { writeEnvConfig, writeSystemdUnit, stopService, startService } from "./service.ts";
+import { writeEnvConfig, writeSystemdUnit, stopService, startService, restartService } from "./service.ts";
 import {
   type Component, type InstallResult, type RemoveResult,
   ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, BIN_DIR, DASHBOARD_DIR, UNIT_DIR,
@@ -692,17 +692,79 @@ function printServiceFailureDiagnostics(unit: string): void {
   p.log.info(`  ${pc.cyan(`journalctl -u ${unit} -e --no-pager`)}`);
 }
 
+/** Move the current binary aside to <path>.bak before installing the new one. */
+async function backupCurrentBinary(component: Component, host: Host): Promise<void> {
+  const binPath = `${BIN_DIR}/${binaryBaseName(component)}`;
+  const result = await host.withElevation(
+    `[ -f ${binPath} ] && mv -f ${binPath} ${binPath}.bak || true`,
+    `Back up ${component} binary`,
+  );
+  if (result.success && !result.skipped) info("Backup", `Previous binary saved to ${binPath}.bak`);
+}
+
+/** Copy the current env file and secrets aside to .bak before reconfiguring. */
+async function backupCurrentConfig(component: Component, host: Host): Promise<void> {
+  const envPath = `${ENV_DIR}/${component}.env`;
+  const result = await host.withElevation(
+    [
+      `[ -f ${envPath} ] && cp -p ${envPath} ${envPath}.bak || true`,
+      `[ -d ${SECRETS_DIR} ] && cp -ap ${SECRETS_DIR} ${SECRETS_DIR}.bak 2>/dev/null || true`,
+    ].join(" && "),
+    `Back up ${component} configuration`,
+  );
+  if (result.success && !result.skipped) info("Backup", `Previous configuration saved to ${envPath}.bak`);
+}
+
+/** Restart the service if it's already running, otherwise start it. */
+async function bringServiceUp(component: Component, host: Host): Promise<boolean> {
+  return (await isUnitActiveOn(host, unitName(component)))
+    ? restartService(component, host)
+    : startService(component, host);
+}
+
+/** Restore the .bak binary and configuration, then bring the service back up. */
+async function performRollback(component: Component, host: Host): Promise<void> {
+  const binPath = `${BIN_DIR}/${binaryBaseName(component)}`;
+  const envPath = `${ENV_DIR}/${component}.env`;
+  const unit = unitName(component);
+
+  info("Rollback", "Restoring previous version…");
+  await host.withElevation(
+    `[ -f ${binPath}.bak ] && cp -p ${binPath}.bak ${binPath} && chmod +x ${binPath} || true`,
+    `Restore ${component} binary`,
+  );
+  await host.withElevation(
+    [
+      `[ -f ${envPath}.bak ] && cp -p ${envPath}.bak ${envPath} || true`,
+      `[ -d ${SECRETS_DIR}.bak ] && cp -ap ${SECRETS_DIR}.bak/. ${SECRETS_DIR}/ 2>/dev/null || true`,
+    ].join(" && "),
+    `Restore ${component} configuration`,
+  );
+  pass("Rollback", "Previous binary and configuration restored");
+
+  if (await bringServiceUp(component, host)) {
+    pass("Rollback", `${unit} is back on the previous version`);
+  } else {
+    warn("Rollback", "Service did not restart after rollback. Manual intervention may be needed");
+    p.log.info(`  ${pc.cyan(`systemctl start ${unit}`)}`);
+  }
+}
+
 /**
- * Configure env, write unit, and start the service. Loops on failure to allow
- * the user to reconfigure and retry without re-downloading the binary.
- * Returns accumulated non-fatal errors (or null on a hard cancel/abort).
+ * Configure env, write unit, and bring the service up, looping on failure so
+ * the user can reconfigure and retry without re-downloading the binary.
+ * On an update the service is restarted and a rollback option is offered if it
+ * fails. Returns accumulated non-fatal errors (or null on a hard cancel/abort).
  */
 async function configureAndStart(
   component: Component,
   autoDefaults: Record<string, string>,
   host: Host,
+  isUpdate = false,
 ): Promise<string[] | null> {
   const errors: string[] = [];
+  const unit = unitName(component);
+  const verb = isUpdate ? "restart" : "start";
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
@@ -722,20 +784,25 @@ async function configureAndStart(
       errors.push("Systemd unit not installed (may need manual setup)");
     }
 
-    const started = await startService(component, host);
-    if (started) return errors;
+    if (await bringServiceUp(component, host)) return errors;
 
-    const unit = unitName(component);
     printServiceFailureDiagnostics(unit);
 
+    // On a fresh install, disable the broken unit so it doesn't start on boot.
+    // On an update, leave it enabled so a rollback can bring the old version back.
     await host.withElevation(
-      `systemctl disable --now ${unit} 2>/dev/null; systemctl reset-failed ${unit} 2>/dev/null`,
-      `Disable ${unit}`,
+      isUpdate
+        ? `systemctl reset-failed ${unit} 2>/dev/null || true`
+        : `systemctl disable --now ${unit} 2>/dev/null; systemctl reset-failed ${unit} 2>/dev/null`,
+      isUpdate ? `Reset failed state for ${unit}` : `Disable ${unit}`,
     );
 
     const action = await p.select({
       message: "How would you like to proceed?",
       options: [
+        ...(isUpdate
+          ? [{ value: "rollback", label: "Roll back to previous version (restore backup)" }]
+          : []),
         { value: "retry", label: "Reconfigure and try again" },
         { value: "continue", label: "Continue anyway (service not running)" },
         { value: "abort", label: "Abort" },
@@ -743,8 +810,12 @@ async function configureAndStart(
     });
 
     if (p.isCancel(action) || action === "abort") return null;
+    if (action === "rollback") {
+      await performRollback(component, host);
+      return null;
+    }
     if (action === "continue") {
-      errors.push("Service did not start successfully");
+      errors.push(`Service did not ${verb} successfully`);
       return errors;
     }
     // retry → loop back to configureEnv
@@ -778,11 +849,13 @@ export async function installComponent(opts: {
 
   const { archivePath, versionString, isUpdate } = artifact;
 
-  // 3. Stop existing service if updating
+  // 3. Prepare for update: back up binary + config, then optionally hard-reset state
   if (isUpdate) {
-    await stopService(component, host);
+    await backupCurrentBinary(component, host);
+    await backupCurrentConfig(component, host);
 
     if (hardReset) {
+      await stopService(component, host);
       const unit = unitName(component);
       info("Hard reset", `Cleaning state for ${unit}…`);
       const result = await host.withElevation(
@@ -797,9 +870,9 @@ export async function installComponent(opts: {
   const installed = await installBinary(component, archivePath, host);
   if (!installed) return { success: false, version: versionString, errors: ["Installation failed or skipped"] };
 
-  // 5. Configure env, install unit, start service (with retry loop)
+  // 5. Configure env, install unit, restart (update) or start (fresh install)
   const autoDefaults = { ...getAutoDefaults(component), ...(opts.envOverrides ?? {}) };
-  const errors = await configureAndStart(component, autoDefaults, host);
+  const errors = await configureAndStart(component, autoDefaults, host, isUpdate);
   if (errors === null) return { success: false, version: versionString, errors: ["Aborted"] };
 
   // 6. Update manifest
