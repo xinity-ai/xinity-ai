@@ -5,7 +5,7 @@ import { $ } from "bun";
 import { env } from "../env";
 import { join } from "path";
 import { networkInterfaces } from "node:os";
-import { detectHardwareProfile, type HardwareProfile } from "./hardware-detect";
+import { detectHardwareProfile, detectMachineName, type HardwareProfile } from "./hardware-detect";
 import { normalizePep440 } from "xinity-infoserver";
 import { rootLogger } from "../logger";
 
@@ -112,13 +112,17 @@ function findHostIPv4Address(): string {
 
 async function collectNodeRuntimeState() {
   const { detectedCapacityGb, gpuCount, gpus: detectedGpus } = await getHardwareProfile();
-  const driverVersions = await getNodeDriverVersions();
+  const [driverVersions, machineName] = await Promise.all([
+    getNodeDriverVersions(),
+    detectMachineName(),
+  ]);
   return {
     estCapacity: detectedCapacityGb,
     gpuCount,
     drivers: getNodeDrivers(),
     driverVersions,
     gpus: detectedGpus.map(g => ({ vendor: g.vendor, name: g.name, vramMb: g.vramMb })),
+    machineName,
     authToken,
     tls: !!getTlsConfig(env),
   };

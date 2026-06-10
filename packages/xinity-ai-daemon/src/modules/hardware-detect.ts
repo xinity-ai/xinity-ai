@@ -315,6 +315,31 @@ function extractXpuSmiField(text: string, fieldName: string): string | null {
   return null;
 }
 
+// ─── Machine identity (DMI) ─────────────────────────────────────────────────
+
+const DMI_PRODUCT_NAME_PATH = "/sys/class/dmi/id/product_name";
+
+/** Vendor placeholder strings that firmware ships instead of a real product name. */
+const DMI_PLACEHOLDER_NAMES = [
+  "to be filled by o.e.m.",
+  "system product name",
+  "default string",
+  "not specified",
+  "none",
+];
+
+export function normalizeDmiProductName(raw: string | null): string | null {
+  const name = raw?.trim();
+  if (!name) return null;
+  if (DMI_PLACEHOLDER_NAMES.includes(name.toLowerCase())) return null;
+  return name;
+}
+
+/** Reads the machine product name (e.g. "Ascent GX10") from DMI. Null on non-Linux or placeholder firmware values. */
+export async function detectMachineName(): Promise<string | null> {
+  return normalizeDmiProductName(await readSysfsFile(DMI_PRODUCT_NAME_PATH));
+}
+
 // ─── Aggregate detection ────────────────────────────────────────────────────
 
 async function detectAllGpus(): Promise<DetectedGpu[]> {
