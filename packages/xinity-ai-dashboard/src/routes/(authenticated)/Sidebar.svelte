@@ -9,7 +9,7 @@
   import ModelIcon from "$lib/components/icons/ModelIcon.svelte";
   import OrganizationIcon from "$lib/components/icons/OrganizationIcon.svelte";
   import GearIcon from "$lib/components/icons/GearIcon.svelte";
-  import { Shield, BookOpen } from "@lucide/svelte";
+  import { Shield, BookOpen, Cpu } from "@lucide/svelte";
   import { goto } from "$app/navigation";
   import { permissions } from "$lib/state/permissions.svelte";
 
@@ -30,6 +30,7 @@
     data: "/data/",
     training: "/training/",
     modelhub: "/modelhub/",
+    fleet: "/fleet/",
     organizations: "/organizations/",
     instanceSettings: "/instance-settings/",
     settings: "/settings/",
@@ -156,6 +157,25 @@
                 <ModelIcon class="w-5 h-5" />
               </span>
               <span class="ml-2 text-sm tracking-wide truncate">Model Hub</span>
+            </a>
+          </li>
+        {/if}
+        {#if permissions.canViewDeployments}
+          <li>
+            <a
+              href={links.fleet}
+              aria-label="Compute"
+              class="{linkClasses} {activeLink === 'fleet'
+                ? activeLinkClasses
+                : ''}"
+            >
+              <span
+                title="Compute"
+                class="inline-flex items-center justify-center ml-4"
+              >
+                <Cpu class="w-5 h-5" />
+              </span>
+              <span class="ml-2 text-sm tracking-wide truncate">Compute</span>
             </a>
           </li>
         {/if}
