@@ -11,6 +11,7 @@ import { handleEmbeddingGeneration } from "./llm-forward/endpoints/handle-embedd
 import { handleModelsRequest } from "./llm-forward/endpoints/handle-models";
 import { handleCreateResponseRequest, handleGetOrDeleteResponseRequest } from "./llm-forward/endpoints/handle-responses";
 import { handleRerank } from "./llm-forward/endpoints/handle-rerank";
+import { handleTranscription } from "./llm-forward/endpoints/handle-transcription";
 import { handleMetrics, withMetrics } from "./metrics";
 import { getTlsConfig } from "common-env";
 import { logMigrationFailureFatal } from "common-db";
@@ -38,6 +39,7 @@ const meteredEndpoints: Array<[string, (req: Request) => Promise<Response> | Res
   ["/v1/chat/completions", handleChatCompletion],
   ["/v1/completions", handleCompletion],
   ["/v1/embeddings", handleEmbeddingGeneration],
+  ["/v1/audio/transcriptions", handleTranscription],
   ["/v1/models", handleModelsRequest],
   ["/v1/rerank", handleRerank],
   ["/v1/responses", handleCreateResponseRequest],

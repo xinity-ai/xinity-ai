@@ -53,6 +53,8 @@ mock.module("../model-data", () => ({
 mock.module("../backend-fetch", () => ({
   backendUrl: (host: string, _model: string, path: string, _tls: boolean) => `http://${host}${path}`,
   backendFetch: (url: string | URL | Request, init?: RequestInit) => fetch(url, init),
+  backendPostForm: (target: { host: string }, path: string, form: FormData, clientSignal: AbortSignal) =>
+    fetch(`http://${target.host}${path}`, { method: "POST", body: form, signal: clientSignal }),
   backendPostJson: (target: { host: string }, path: string, body: unknown, clientSignal: AbortSignal) =>
     fetch(`http://${target.host}${path}`, {
       method: "POST",

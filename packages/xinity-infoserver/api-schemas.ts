@@ -6,7 +6,7 @@ export const PaginationSchema = z.object({
 });
 
 export const ModelListQuerySchema = PaginationSchema.extend({
-  type: z.enum(["embedding", "chat", "rerank"]).optional(),
+  type: z.enum(["embedding", "chat", "rerank", "transcription"]).optional(),
   family: z.string().optional(),
   tag: z
     .union([z.string(), z.array(z.string())])

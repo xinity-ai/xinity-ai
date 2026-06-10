@@ -39,7 +39,7 @@ export interface PaginatedModels {
 export interface FetchModelsParams {
   page?: number;
   pageSize?: number;
-  type?: "chat" | "embedding" | "rerank";
+  type?: "chat" | "embedding" | "rerank" | "transcription";
   family?: string;
   tags?: string[];
 }

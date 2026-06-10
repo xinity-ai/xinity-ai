@@ -79,7 +79,7 @@ export const ModelSchema = z.looseObject({
     "where total_tokens is chosen based on desired concurrent capacity."
   ),
   url: z.url().describe("External documentation url, for curious users that want to know more"),
-  type: z.enum(["embedding", "chat", "rerank"]).default("chat").optional().describe("Usage type of the model in question"),
+  type: z.enum(["embedding", "chat", "rerank", "transcription"]).default("chat").optional().describe("Usage type of the model in question"),
   family: z.string().default("unknown").optional().describe("Family of the model. May be unknown"),
   tags: z.array(TagEnum).default([]).optional().describe("Default tags, used when providerTags is absent for a given driver. Also the searchable superset"),
   isCustom: z.boolean().default(false).optional(),

@@ -139,6 +139,39 @@ const RerankResponseSchema = z.looseObject({
   usage: ChatUsageSchema.optional(),
 });
 
+const TranscriptionResponseSchema = z.looseObject({
+  text: z.string(),
+  language: z.string().optional(),
+  duration: z.number().optional(),
+  segments: z.array(z.looseObject({
+    id: z.number().int(),
+    start: z.number(),
+    end: z.number(),
+    text: z.string(),
+  })).optional(),
+  words: z.array(z.looseObject({
+    word: z.string(),
+    start: z.number(),
+    end: z.number(),
+  })).optional(),
+});
+
+// SSE events emitted when `stream: true`.
+const TranscriptTextDeltaEventSchema = z.looseObject({
+  type: z.literal("transcript.text.delta"),
+  delta: z.string(),
+});
+const TranscriptTextDoneEventSchema = z.looseObject({
+  type: z.literal("transcript.text.done"),
+  text: z.string(),
+  usage: z.looseObject({
+    type: z.literal("tokens"),
+    input_tokens: z.number().int(),
+    output_tokens: z.number().int(),
+    total_tokens: z.number().int(),
+  }).optional(),
+});
+
 function jsonContent(schemaRef: string) {
   return { "application/json": { schema: { $ref: schemaRef } } };
 }
@@ -190,6 +223,9 @@ export const openaiCompatSchemas = {
   EmbeddingResponse: toSchema(EmbeddingResponseSchema),
   RerankRequest: toSchema(RerankBodySchema),
   RerankResponse: toSchema(RerankResponseSchema),
+  TranscriptionResponse: toSchema(TranscriptionResponseSchema),
+  TranscriptTextDeltaEvent: toSchema(TranscriptTextDeltaEventSchema),
+  TranscriptTextDoneEvent: toSchema(TranscriptTextDoneEventSchema),
   CreateResponseRequest: toSchema(CreateResponseBodySchema),
   ResponseObject: toSchema(ResponseObjectSchema),
 } as Record<string, OpenAPI.SchemaObject>;
@@ -303,6 +339,60 @@ export const openaiCompatPaths = {
       requestBody: jsonRequest("#/components/schemas/RerankRequest"),
       responses: {
         "200": jsonResponse("Reranked documents", "#/components/schemas/RerankResponse"),
+        ...errorResponses,
+      },
+    },
+  },
+  "/v1/audio/transcriptions": {
+    post: {
+      tags: [TAG],
+      summary: "Transcribe audio to text",
+      description: [
+        "OpenAI: https://platform.openai.com/docs/api-reference/audio/createTranscription",
+        "",
+        "Xinity notes:",
+        "- Only available for deployments whose model type is `transcription` (e.g. Whisper).",
+        `- ${APP_HEADER_NOTE}`,
+        "- `response_format` `json` (default) and `verbose_json` return JSON; `text`/`srt`/`vtt` return the raw text body.",
+      ].join("\n"),
+      security: SECURITY,
+      // Hand-written: a multipart binary upload can't be derived from a Zod schema.
+      requestBody: {
+        required: true,
+        content: {
+          "multipart/form-data": {
+            schema: {
+              type: "object",
+              required: ["file", "model"],
+              properties: {
+                file: { type: "string", format: "binary", description: "The audio file to transcribe." },
+                model: { type: "string" },
+                language: { type: "string", description: "Input language as an ISO-639-1 code (optional; improves accuracy)." },
+                prompt: { type: "string", description: "Optional text to guide the model's style or continue a prior segment." },
+                response_format: { type: "string", enum: ["json", "text", "srt", "verbose_json", "vtt"], default: "json" },
+                temperature: { type: "number" },
+                stream: { type: "boolean", default: false, description: "Stream the transcription as SSE `transcript.text.delta` then `transcript.text.done` events." },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        "200": {
+          description: "Transcription. JSON for `json`/`verbose_json`; the raw `text`/`srt`/`vtt` body; or, when `stream: true`, an SSE stream of `transcript.text.delta` events ending with `transcript.text.done`.",
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/TranscriptionResponse" } },
+            "text/plain": { schema: { type: "string" } },
+            "text/event-stream": {
+              schema: {
+                oneOf: [
+                  { $ref: "#/components/schemas/TranscriptTextDeltaEvent" },
+                  { $ref: "#/components/schemas/TranscriptTextDoneEvent" },
+                ],
+              },
+            },
+          },
+        },
         ...errorResponses,
       },
     },

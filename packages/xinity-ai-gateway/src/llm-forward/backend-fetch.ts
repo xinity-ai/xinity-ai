@@ -37,3 +37,21 @@ export function backendPostJson(
     authToken: target.authToken ?? undefined,
   });
 }
+
+/**
+ * Post a multipart form to a daemon-proxied backend endpoint with the standard
+ * timeout. No Content-Type is set so fetch derives the multipart boundary.
+ */
+export function backendPostForm(
+  target: BackendTarget,
+  path: string,
+  form: FormData,
+  clientSignal: AbortSignal,
+): Promise<Response> {
+  return backendFetch(backendUrl(target.host, target.model, path, target.tls), {
+    method: "POST",
+    body: form,
+    signal: AbortSignal.any([clientSignal, AbortSignal.timeout(env.BACKEND_TIMEOUT_MS)]),
+    authToken: target.authToken ?? undefined,
+  });
+}
