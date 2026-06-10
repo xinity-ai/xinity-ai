@@ -277,6 +277,8 @@ export async function buildFleetHistory(rangeHours: number): Promise<FleetHistor
   const metricBucket = sql`floor(extract(epoch from ${nodeMetricT.bucketStart}) / ${width}) * ${width}`;
   const usageBucket = sql`floor(extract(epoch from ${usageEventT.createdAt}) / ${width}) * ${width}`;
 
+  // Join against ai_node so series from deleted machines (e.g. cleaned-up test
+  // nodes whose events linger) don't appear as ghost entries in the chart.
   const [metricRows, usageRows] = await Promise.all([
     db.select({
       nodeId: nodeMetricT.nodeId,
@@ -284,6 +286,7 @@ export async function buildFleetHistory(rangeHours: number): Promise<FleetHistor
       utilizationAvg: sql<number>`avg(${nodeMetricT.gpuUtilizationAvg})`.mapWith(Number),
       energyWh: sumNumber(nodeMetricT.energyWh),
     }).from(nodeMetricT)
+      .innerJoin(aiNodeT, and(eq(aiNodeT.id, nodeMetricT.nodeId), isNull(aiNodeT.deletedAt)))
       .where(gte(nodeMetricT.bucketStart, since))
       .groupBy(nodeMetricT.nodeId, metricBucket),
 
@@ -293,6 +296,7 @@ export async function buildFleetHistory(rangeHours: number): Promise<FleetHistor
       tokens: sql<number>`coalesce(sum(${usageEventT.inputTokens} + ${usageEventT.outputTokens}), 0)`.mapWith(Number),
       requests: count(),
     }).from(usageEventT)
+      .innerJoin(aiNodeT, and(eq(aiNodeT.id, usageEventT.nodeId), isNull(aiNodeT.deletedAt)))
       .where(and(gte(usageEventT.createdAt, since), isNotNull(usageEventT.nodeId)))
       .groupBy(usageEventT.nodeId, usageBucket),
   ]);
