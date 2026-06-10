@@ -91,7 +91,7 @@ Your existing OpenAI SDK code works unchanged, just point the base URL to your X
 
 ## See your fleet, live
 
-The **Compute** page shows every connected machine at a glance: liveness, GPU load, installed models, energy consumption, token throughput, and request success rates — refreshed live while you watch. Mixed fleets are first-class citizens: an Ascent GX10 next to an H100 next to an RTX PRO 6000, each reporting through the same daemon that runs your models.
+The **Compute** page shows every connected machine at a glance: liveness, GPU load, installed models, energy consumption, token throughput, and request success rates, refreshed live while you watch. Mixed fleets are first-class citizens: an Ascent GX10 next to an H100 next to an RTX PRO 6000, each reporting through the same daemon that runs your models.
 
 <p align="center"><img src="docs/assets/fleet-screenshot.png" alt="Xinity Compute fleet overview" width="720" /></p>
 
