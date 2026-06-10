@@ -158,12 +158,16 @@ describe("usage event node attribution", () => {
   });
 
   test("mid-stream backend failure records a failed event", async () => {
+    // A dying backend shows up to the gateway as a stream that ends without the
+    // [DONE] sentinel. Closing (not erroring) the mock stream models that
+    // deterministically across platforms; controller.error() escapes Bun.serve
+    // as an unhandled error on Linux.
     nextUpstreamResponse = () =>
       new Response(
         new ReadableStream({
           start(controller) {
             controller.enqueue(new TextEncoder().encode('data: {"id":"x","object":"chat.completion.chunk","created":1,"model":"test-model","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}\n\n'));
-            controller.error(new Error("upstream died"));
+            controller.close();
           },
         }),
         { headers: { "Content-Type": "text/event-stream" } },
