@@ -32,6 +32,8 @@ export const ChatCompletionBodySchema = z.looseObject({
   frequency_penalty: z.number().optional(),
   presence_penalty: z.number().optional(),
   seed: z.number().optional(),
+  logprobs: z.boolean().optional(),
+  top_logprobs: z.number().optional(),
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
   response_format: z.object({
     type: z.enum(["text", "json_object", "json_schema"]),
@@ -112,7 +114,7 @@ const chatStreamSpec: StreamSpec<z.infer<typeof BackendChatChunkSchema>, ChatAcc
   }),
 };
 
-const ChatSyncChoiceSchema = z.looseObject({
+export const ChatSyncChoiceSchema = z.looseObject({
   index: z.number(),
   message: z.looseObject({
     role: z.string(),
@@ -163,6 +165,8 @@ export const handleChatCompletion = withEndpointGuards({
       frequency_penalty: body.frequency_penalty,
       presence_penalty: body.presence_penalty,
       seed: body.seed,
+      logprobs: body.logprobs,
+      top_logprobs: body.top_logprobs,
       response_format: body.response_format,
       tools: body.tools,
       tool_choice: body.tool_choice,

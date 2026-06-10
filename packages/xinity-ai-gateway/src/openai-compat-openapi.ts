@@ -1,10 +1,10 @@
 import { z } from "zod";
 import type { OpenAPI } from "@orpc/openapi";
-import { ChatCompletionBodySchema } from "./llm-forward/endpoints/handle-chatCompletion";
-import { CompletionBodySchema } from "./llm-forward/endpoints/handle-completions";
+import { ChatCompletionBodySchema, ChatSyncChoiceSchema } from "./llm-forward/endpoints/handle-chatCompletion";
+import { CompletionBodySchema, CompletionSyncChoiceSchema } from "./llm-forward/endpoints/handle-completions";
 import { EmbeddingBodySchema } from "./llm-forward/endpoints/handle-embeddings";
 import { RerankBodySchema } from "./llm-forward/endpoints/handle-rerank";
-import { CreateResponseBodySchema } from "./llm-forward/responses/schemas";
+import { CreateResponseBodySchema, ResponseObjectSchema } from "./llm-forward/responses/schemas";
 
 const TAG = "OpenAI Compatible";
 const SECURITY = [{ bearerAuth: [] }];
@@ -38,16 +38,6 @@ const errorResponseSchema = {
   },
 };
 
-const usageSchema = {
-  type: "object",
-  additionalProperties: true,
-  properties: {
-    prompt_tokens: { type: "integer" },
-    completion_tokens: { type: "integer" },
-    total_tokens: { type: "integer" },
-  },
-};
-
 const modelObjectSchema = {
   type: "object",
   additionalProperties: true,
@@ -78,7 +68,76 @@ const modelsListResponseSchema = {
   },
 };
 
-const passthroughObject = { type: "object", additionalProperties: true };
+// Response shapes for the spec: authored in Zod, converted via `toSchema` like
+// the requests. `looseObject` keeps them open (documentation, not validation).
+const ChatTokenLogprobSchema = z.looseObject({
+  token: z.string(),
+  logprob: z.number(),
+  bytes: z.array(z.number().int()).nullable(),
+  top_logprobs: z.array(z.looseObject({
+    token: z.string(),
+    logprob: z.number(),
+    bytes: z.array(z.number().int()).nullable(),
+  })),
+});
+const ChatLogprobsSchema = z.looseObject({
+  content: z.array(ChatTokenLogprobSchema).nullable(),
+  refusal: z.array(ChatTokenLogprobSchema).nullable(),
+});
+
+// Legacy completions logprobs: parallel arrays, not chat's per-token objects.
+const CompletionLogprobsSchema = z.looseObject({
+  tokens: z.array(z.string()),
+  token_logprobs: z.array(z.number()),
+  top_logprobs: z.array(z.record(z.string(), z.number())).nullable(),
+  text_offset: z.array(z.number().int()),
+});
+
+const ChatUsageSchema = z.looseObject({
+  prompt_tokens: z.number().int(),
+  completion_tokens: z.number().int(),
+  total_tokens: z.number().int(),
+});
+
+const ChatCompletionResponseSchema = z.looseObject({
+  id: z.string(),
+  object: z.literal("chat.completion"),
+  created: z.number().int(),
+  model: z.string(),
+  choices: z.array(z.looseObject({ ...ChatSyncChoiceSchema.shape, logprobs: ChatLogprobsSchema.nullable().optional() })),
+  usage: ChatUsageSchema.optional(),
+});
+
+const CompletionResponseSchema = z.looseObject({
+  id: z.string(),
+  object: z.literal("text_completion"),
+  created: z.number().int(),
+  model: z.string(),
+  choices: z.array(z.looseObject({ ...CompletionSyncChoiceSchema.shape, logprobs: CompletionLogprobsSchema.nullable().optional() })),
+  usage: ChatUsageSchema.optional(),
+});
+
+const EmbeddingResponseSchema = z.looseObject({
+  object: z.literal("list"),
+  data: z.array(z.looseObject({
+    object: z.literal("embedding"),
+    index: z.number().int(),
+    embedding: z.array(z.number()),
+  })),
+  model: z.string(),
+  usage: ChatUsageSchema.optional(),
+});
+
+const RerankResponseSchema = z.looseObject({
+  id: z.string().optional(),
+  model: z.string().optional(),
+  results: z.array(z.looseObject({
+    index: z.number().int(),
+    relevance_score: z.number(),
+    document: z.looseObject({ text: z.string() }).optional(),
+  })),
+  usage: ChatUsageSchema.optional(),
+});
 
 function jsonContent(schemaRef: string) {
   return { "application/json": { schema: { $ref: schemaRef } } };
@@ -121,19 +180,18 @@ function streamableJsonResponse(description: string, schemaRef: string) {
 
 export const openaiCompatSchemas = {
   Error: errorResponseSchema,
-  Usage: usageSchema,
   ModelObject: modelObjectSchema,
   ModelsListResponse: modelsListResponseSchema,
   ChatCompletionRequest: toSchema(ChatCompletionBodySchema),
-  ChatCompletionResponse: passthroughObject,
+  ChatCompletionResponse: toSchema(ChatCompletionResponseSchema),
   CompletionRequest: toSchema(CompletionBodySchema),
-  CompletionResponse: passthroughObject,
+  CompletionResponse: toSchema(CompletionResponseSchema),
   EmbeddingRequest: toSchema(EmbeddingBodySchema),
-  EmbeddingResponse: passthroughObject,
+  EmbeddingResponse: toSchema(EmbeddingResponseSchema),
   RerankRequest: toSchema(RerankBodySchema),
-  RerankResponse: passthroughObject,
+  RerankResponse: toSchema(RerankResponseSchema),
   CreateResponseRequest: toSchema(CreateResponseBodySchema),
-  ResponseObject: passthroughObject,
+  ResponseObject: toSchema(ResponseObjectSchema),
 } as Record<string, OpenAPI.SchemaObject>;
 
 export const openaiCompatPaths = {

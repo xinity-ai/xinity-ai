@@ -111,6 +111,7 @@ function makeCompletionJsonResponse(model: string, text: string): Response {
 
 let server: ReturnType<typeof Bun.serve>;
 let nextUpstreamResponse: Response | null = null;
+let lastUpstreamBody: Record<string, unknown> | null = null;
 
 beforeAll(() => {
   server = Bun.serve({
@@ -123,7 +124,8 @@ beforeAll(() => {
           nextUpstreamResponse = null;
           return r;
         }
-        const body = (await req.json()) as { stream?: boolean };
+        const body = (await req.json()) as Record<string, unknown>;
+        lastUpstreamBody = body;
         if (body.stream) return makeCompletionSseResponse("test-model", ["Hello"]);
         return makeCompletionJsonResponse("test-model", "Hello");
       }
@@ -139,6 +141,7 @@ afterEach(() => {
   mockLogChatStream.mockClear();
   mockLogChatSync.mockClear();
   nextUpstreamResponse = null;
+  lastUpstreamBody = null;
 });
 
 afterAll(() => {
@@ -165,6 +168,36 @@ describe("handleCompletion", () => {
     expect(text).toContain('"object":"text_completion"');
     expect(text).toContain('"text":"Hello"');
     expect(text).toContain("data: [DONE]");
+  });
+
+  test("forwards logprobs to the backend", async () => {
+    const req = new Request("http://localhost:4000/v1/completions", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({ model: "test-model", prompt: "Hi", logprobs: 5 }),
+    });
+
+    const res = await handleCompletion(req);
+    expect(res.status).toBe(200);
+    expect(lastUpstreamBody?.logprobs).toBe(5);
+  });
+
+  test("passes backend logprobs through to the client", async () => {
+    nextUpstreamResponse = Response.json({
+      id: "test-id", object: "text_completion", created: 123, model: "test-model",
+      choices: [{ index: 0, text: "Hello", finish_reason: "stop", logprobs: { tokens: ["Hello"], token_logprobs: [-0.1] } }],
+      usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
+    });
+    const req = new Request("http://localhost:4000/v1/completions", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({ model: "test-model", prompt: "Hi" }),
+    });
+
+    const res = await handleCompletion(req);
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.choices[0].logprobs).toEqual({ tokens: ["Hello"], token_logprobs: [-0.1] });
   });
 
   test("should handle non-streaming completion", async () => {

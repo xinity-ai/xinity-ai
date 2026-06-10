@@ -161,7 +161,7 @@ const UsageSchema = z.object({
 
 export type Usage = z.infer<typeof UsageSchema>;
 
-const ResponseObjectSchema = z.object({
+export const ResponseObjectSchema = z.object({
   id: z.string(),
   object: z.literal("response"),
   created_at: z.number(),
