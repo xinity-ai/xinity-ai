@@ -13,6 +13,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { aiApiKeyT } from "./ai-api-key";
 import { aiApplicationT } from "./ai-application";
+import { aiNodeT } from "./models";
 import { organizationT } from "./orgSchema";
 import { userT } from "./auth";
 import type { InferSelectModel } from "drizzle-orm";
@@ -123,11 +124,17 @@ export const usageEventT = callDataSchema.table("usage_event", {
   /** Duration in milliseconds. Nullable for endpoints that don't track it. */
   duration: integer(),
   logged: boolean().notNull().default(false),
+  /** Node that served the request. Null for rows that predate attribution and for
+   * requests that failed before a node was selected. */
+  nodeId: uuid("node_id").references(() => aiNodeT.id, { onDelete: "set null" }),
+  /** False for requests that errored (upstream failure, timeout, bad response). */
+  success: boolean().notNull().default(true),
   createdAt,
 }, table => [
   index("usage_event_organization_id_created_at_idx").on(table.organizationId, table.createdAt),
   index("usage_event_created_at_idx").on(table.createdAt),
   index("usage_event_api_key_id_idx").on(table.apiKeyId),
+  index("usage_event_node_id_created_at_idx").on(table.nodeId, table.createdAt),
 ]);
 
 /** A media object (image) stored in S3. Referenced from apiCall.inputMessages via xinity-media://{sha256} URLs. */
