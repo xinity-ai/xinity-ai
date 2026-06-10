@@ -1,0 +1,9 @@
+# Bun configuration. See https://bun.com/docs/runtime/bunfig
+
+[install]
+# Supply-chain hardening: refuse npm package versions published less than
+# 24h ago (86400s), so a freshly-published compromised version can't be
+# pulled in before it's caught. Existing lockfile pins are unaffected.
+minimumReleaseAge = 86400
+# Packages allowed to bypass the age gate (none for now).
+minimumReleaseAgeExcludes = []
