@@ -23,16 +23,7 @@ export const daemonEnvSchema = z.object({
     .default(20_000)
     .describe("GPU telemetry sampling interval in milliseconds")
     .meta(expert()),
-  METRICS_FLUSH_INTERVAL_MS: z.coerce
-    .number()
-    .default(1000 * 60 * 5)
-    .describe("Interval for flushing aggregated node metrics to the database in milliseconds")
-    .meta(expert()),
-  METRICS_RETENTION_DAYS: z.coerce
-    .number()
-    .default(90)
-    .describe("Days to keep per-node metric history before pruning")
-    .meta(expert()),
+  MACHINE_NAME: z.string().optional().describe("Display name for this node (defaults to hostname)").meta(expert()),
 
   // vLLM configuration
   VLLM_BACKEND: z.enum(["systemd", "docker"]).default("systemd").describe("vLLM backend type"),

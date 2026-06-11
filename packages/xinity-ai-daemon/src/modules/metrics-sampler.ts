@@ -1,9 +1,7 @@
 import { $ } from "bun";
-import { aiNodeT, and, eq, lt, nodeMetricT, sql } from "common-db";
-import { getDB } from "../db/connection";
 import { env } from "../env";
 import { rootLogger } from "../logger";
-import { getHardwareProfile, getNodeId } from "./statekeeper";
+import { getHardwareProfile } from "./statekeeper";
 
 const log = rootLogger.child({ name: "metrics-sampler" });
 
@@ -153,13 +151,12 @@ export class MetricsAccumulator {
 export type MetricsSampler = { stop: () => Promise<void> };
 
 /**
- * Starts periodic GPU sampling and metric flushing. Every flush also serves as
- * the node heartbeat (lastSeenAt), so it runs even on nodes without supported
- * GPU telemetry. Returns a handle whose stop() flushes the open bucket.
+ * Starts periodic GPU sampling and in-memory aggregation. Accumulated data will
+ * feed the Prometheus metrics endpoint when that is added. Returns a handle
+ * whose stop() clears the sampling timer.
  */
 export function startMetricsSampler(): MetricsSampler {
   const accumulator = new MetricsAccumulator();
-  let bucketStart = new Date();
   let lastSampleAt = Date.now();
   let sampling = false;
   let sampleTimer: ReturnType<typeof setInterval> | undefined;
@@ -180,45 +177,6 @@ export function startMetricsSampler(): MetricsSampler {
     }
   }
 
-  async function flush() {
-    const nodeId = await getNodeId();
-    const now = new Date();
-    const bucket = accumulator.snapshot();
-    accumulator.reset();
-
-    if (bucket) {
-      await getDB()
-        .insert(nodeMetricT)
-        .values({ nodeId, bucketStart, ...bucket })
-        .onConflictDoUpdate({
-          target: [nodeMetricT.nodeId, nodeMetricT.bucketStart],
-          set: bucket,
-        });
-    }
-    bucketStart = now;
-
-    await getDB()
-      .update(aiNodeT)
-      .set({
-        lastSeenAt: now,
-        ...(bucket ? { totalEnergyWh: sql`${aiNodeT.totalEnergyWh} + ${bucket.energyWh}` } : {}),
-      })
-      .where(eq(aiNodeT.id, nodeId));
-
-    const pruneBefore = new Date(now.getTime() - env.METRICS_RETENTION_DAYS * 24 * 60 * 60 * 1000);
-    await getDB()
-      .delete(nodeMetricT)
-      .where(and(eq(nodeMetricT.nodeId, nodeId), lt(nodeMetricT.bucketStart, pruneBefore)));
-  }
-
-  async function safeFlush() {
-    try {
-      await flush();
-    } catch (err) {
-      log.warn({ err }, "Metrics flush failed");
-    }
-  }
-
   void (async () => {
     const profile = await getHardwareProfile();
     const hasNvidia = profile.gpus.some((g) => g.vendor === "nvidia");
@@ -226,17 +184,13 @@ export function startMetricsSampler(): MetricsSampler {
       sampleTimer = setInterval(() => void sampleOnce(), env.METRICS_SAMPLE_INTERVAL_MS);
       void sampleOnce();
     } else if (profile.gpuCount > 0) {
-      log.info("GPU telemetry not yet supported for this vendor; reporting heartbeat only");
+      log.info("GPU telemetry not yet supported for this vendor; sampling deferred");
     }
   })();
-
-  const flushTimer = setInterval(() => void safeFlush(), env.METRICS_FLUSH_INTERVAL_MS);
 
   return {
     async stop() {
       clearInterval(sampleTimer);
-      clearInterval(flushTimer);
-      await safeFlush();
     },
   };
 }

@@ -12,8 +12,6 @@ mock.module("../env", () => ({ env: {
   INFOSERVER_URL: "http://localhost:19090",
   INFOSERVER_CACHE_TTL_MS: 30_000,
   METRICS_SAMPLE_INTERVAL_MS: 20_000,
-  METRICS_FLUSH_INTERVAL_MS: 300_000,
-  METRICS_RETENTION_DAYS: 90,
   VLLM_BACKEND: "systemd",
   VLLM_ENV_DIR: "/etc/vllm",
   VLLM_TEMPLATE_UNIT_PATH: "/etc/systemd/system/vllm-driver@.service",
