@@ -1,5 +1,5 @@
 import { type InferSelectModel, sql } from "drizzle-orm";
-import { pgEnum, pgTable, real, doublePrecision, text, timestamp, uuid, boolean, integer, jsonb, index, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
+import { pgEnum, pgTable, real, text, timestamp, uuid, boolean, integer, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { organizationT } from "./orgSchema";
 
 export const lifecycleStateEnum = pgEnum("lifecycle_state", ["downloading", "installing", "ready", "failed"]);
@@ -90,13 +90,8 @@ export const aiNodeT = pgTable("ai_node", {
   authToken: text("auth_token"),
   /** Whether this node serves over TLS. Set by the daemon based on its config. */
   tls: boolean().notNull().default(false),
-  /** Machine product name from DMI (e.g. "Asus Ascent GX10"). Null when not detectable. */
+  /** Operator-assigned display name for this node (from MACHINE_NAME env var, falls back to hostname). */
   machineName: text("machine_name"),
-  /** Last time the daemon reported metrics or a heartbeat. Null for nodes that predate telemetry. */
-  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
-  /** Lifetime energy consumption estimate in watt-hours, incremented by the daemon on every
-   * metrics flush. Survives nodeMetric pruning. */
-  totalEnergyWh: doublePrecision("total_energy_wh").notNull().default(0),
 
   deletedAt,
   createdAt,
@@ -108,32 +103,6 @@ export const aiNodeT = pgTable("ai_node", {
     .where(sql`${table.deletedAt} IS NULL`),
 ]);
 export type AiNode = InferSelectModel<typeof aiNodeT>;
-
-/**
- * Coarse per-node telemetry, written by the daemon as one pre-aggregated row per node per
- * flush interval (~5 minutes). Values are approximations for the fleet overview page, not
- * billing-grade measurements. Rows older than the retention window are pruned by the daemon;
- * lifetime totals live on {@link aiNodeT}.
- */
-export const nodeMetricT = pgTable("node_metric", {
-  nodeId: uuid("node_id").notNull().references(() => aiNodeT.id, { onDelete: "cascade" }),
-  /** Start of the aggregation bucket this row covers. */
-  bucketStart: timestamp("bucket_start", { withTimezone: true }).notNull(),
-  /** Mean GPU utilization in percent (0-100), averaged across samples and GPUs. */
-  gpuUtilizationAvg: real("gpu_utilization_avg").notNull().default(0),
-  /** Peak GPU utilization in percent (0-100) observed in the bucket. */
-  gpuUtilizationMax: real("gpu_utilization_max").notNull().default(0),
-  /** Mean GPU memory in use across the bucket, summed over all GPUs. */
-  memoryUsedMb: integer("memory_used_mb").notNull().default(0),
-  /** Mean power draw in watts, summed over all GPUs. Null when neither measured nor estimable. */
-  powerWattsAvg: real("power_watts_avg"),
-  /** Energy consumed during the bucket in watt-hours (power integrated over the bucket). */
-  energyWh: real("energy_wh").notNull().default(0),
-}, table => [
-  primaryKey({ columns: [table.nodeId, table.bucketStart] }),
-  index("node_metric_bucket_start_idx").on(table.bucketStart),
-]);
-export type NodeMetric = InferSelectModel<typeof nodeMetricT>;
 
 export const modelInstallationT = pgTable("model_installation", {
   id: uuid().primaryKey().defaultRandom(),

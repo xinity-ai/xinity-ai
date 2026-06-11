@@ -3,24 +3,17 @@ import {
   aiNodeT,
   modelInstallationT,
   modelInstallationStateT,
-  nodeMetricT,
   usageEventT,
   sql,
   and,
-  desc,
+  count,
   eq,
   gte,
   isNull,
   isNotNull,
-  count,
 } from "common-db";
 import { getDB } from "$lib/server/db";
-import {
-  HEARTBEAT_FRESH_MS,
-  isNodeOnline,
-  mergeHistorySeries,
-  pickBucketSeconds,
-} from "$lib/server/fleet/fleet";
+import { mergeHistorySeries, pickBucketSeconds } from "$lib/server/fleet/fleet";
 import z from "zod";
 
 const tags = ["Fleet"];
@@ -38,15 +31,6 @@ const GpuInfoSchema = z.object({
   vendor: z.string(),
   name: z.string(),
   vramMb: z.number(),
-});
-
-const NodeMetricsSchema = z.object({
-  /** Epoch ms of the metric bucket start; lets the UI judge freshness. */
-  bucketStart: z.number(),
-  gpuUtilizationAvg: z.number(),
-  gpuUtilizationMax: z.number(),
-  memoryUsedMb: z.number(),
-  powerWattsAvg: z.number().nullable(),
 });
 
 const FleetModelSchema = z.object({
@@ -68,16 +52,9 @@ const FleetNodeSchema = z.object({
   host: z.string(),
   machineName: z.string().nullable(),
   online: z.boolean(),
-  /** Epoch ms of the last daemon heartbeat. Null for nodes that predate telemetry. */
-  lastSeenAt: z.number().nullable(),
   gpuCount: z.number(),
   gpus: z.array(GpuInfoSchema),
   estCapacity: z.number(),
-  totalEnergyWh: z.number(),
-  /** Energy consumed within the requested range (approximate). */
-  energyWh: z.number(),
-  /** Latest reported metrics; null while a node hasn't reported yet ("warming up"). */
-  metrics: NodeMetricsSchema.nullable(),
   models: z.array(FleetModelSchema),
   usage: FleetUsageSchema,
 });
@@ -90,9 +67,6 @@ const FleetTotalsSchema = z.object({
   failedRequests: z.number(),
   inputTokens: z.number(),
   outputTokens: z.number(),
-  energyWh: z.number(),
-  /** Current fleet-wide utilization averaged over online nodes with fresh metrics. */
-  utilizationAvg: z.number().nullable(),
 });
 
 const FleetOverviewOutput = z.object({
@@ -106,8 +80,6 @@ export type FleetNode = z.infer<typeof FleetNodeSchema>;
 const HistoryPointSchema = z.object({
   /** Bucket start in epoch seconds. */
   t: z.number(),
-  utilizationAvg: z.number().nullable(),
-  energyWh: z.number(),
   tokens: z.number(),
   requests: z.number(),
 });
@@ -125,21 +97,18 @@ export type FleetHistory = z.infer<typeof FleetHistoryOutput>;
 const sumNumber = (column: unknown) => sql<number>`coalesce(sum(${column}), 0)`.mapWith(Number);
 
 export async function buildFleetOverview(rangeHours: number): Promise<FleetOverview> {
-  const now = Date.now();
-  const since = new Date(now - rangeHours * 60 * 60 * 1000);
+  const since = new Date(Date.now() - rangeHours * 60 * 60 * 1000);
   const db = getDB();
 
-  const [nodes, installations, usageRows, latestMetrics, rangeMetrics] = await Promise.all([
+  const [nodes, installations, usageRows] = await Promise.all([
     db.select({
       id: aiNodeT.id,
       host: aiNodeT.host,
       machineName: aiNodeT.machineName,
       available: aiNodeT.available,
-      lastSeenAt: aiNodeT.lastSeenAt,
       gpuCount: aiNodeT.gpuCount,
       gpus: aiNodeT.gpus,
       estCapacity: aiNodeT.estCapacity,
-      totalEnergyWh: aiNodeT.totalEnergyWh,
     }).from(aiNodeT).where(isNull(aiNodeT.deletedAt)),
 
     db.select({
@@ -162,28 +131,9 @@ export async function buildFleetOverview(rangeHours: number): Promise<FleetOverv
     }).from(usageEventT)
       .where(gte(usageEventT.createdAt, since))
       .groupBy(usageEventT.nodeId),
-
-    db.selectDistinctOn([nodeMetricT.nodeId], {
-      nodeId: nodeMetricT.nodeId,
-      bucketStart: nodeMetricT.bucketStart,
-      gpuUtilizationAvg: nodeMetricT.gpuUtilizationAvg,
-      gpuUtilizationMax: nodeMetricT.gpuUtilizationMax,
-      memoryUsedMb: nodeMetricT.memoryUsedMb,
-      powerWattsAvg: nodeMetricT.powerWattsAvg,
-    }).from(nodeMetricT)
-      .orderBy(nodeMetricT.nodeId, desc(nodeMetricT.bucketStart)),
-
-    db.select({
-      nodeId: nodeMetricT.nodeId,
-      energyWh: sumNumber(nodeMetricT.energyWh),
-    }).from(nodeMetricT)
-      .where(gte(nodeMetricT.bucketStart, since))
-      .groupBy(nodeMetricT.nodeId),
   ]);
 
   const usageByNode = new Map(usageRows.map((r) => [r.nodeId, r]));
-  const metricsByNode = new Map(latestMetrics.map((r) => [r.nodeId, r]));
-  const energyByNode = new Map(rangeMetrics.map((r) => [r.nodeId, r.energyWh]));
   const modelsByNode = new Map<string, typeof installations>();
   for (const inst of installations) {
     const list = modelsByNode.get(inst.nodeId) ?? [];
@@ -194,28 +144,15 @@ export async function buildFleetOverview(rangeHours: number): Promise<FleetOverv
   const emptyUsage = { requests: 0, failedRequests: 0, inputTokens: 0, outputTokens: 0 };
 
   const fleetNodes: FleetNode[] = nodes.map((node) => {
-    const metric = metricsByNode.get(node.id);
     const usage = usageByNode.get(node.id);
     return {
       id: node.id,
       host: node.host,
       machineName: node.machineName,
-      online: isNodeOnline(node.available, node.lastSeenAt, now),
-      lastSeenAt: node.lastSeenAt?.getTime() ?? null,
+      online: node.available,
       gpuCount: node.gpuCount,
       gpus: node.gpus,
       estCapacity: node.estCapacity,
-      totalEnergyWh: node.totalEnergyWh,
-      energyWh: energyByNode.get(node.id) ?? 0,
-      metrics: metric
-        ? {
-            bucketStart: metric.bucketStart.getTime(),
-            gpuUtilizationAvg: metric.gpuUtilizationAvg,
-            gpuUtilizationMax: metric.gpuUtilizationMax,
-            memoryUsedMb: metric.memoryUsedMb,
-            powerWattsAvg: metric.powerWattsAvg,
-          }
-        : null,
       models: (modelsByNode.get(node.id) ?? []).map((m) => ({
         name: m.specifier ?? m.model,
         driver: m.driver,
@@ -245,10 +182,6 @@ export async function buildFleetOverview(rangeHours: number): Promise<FleetOverv
     emptyUsage,
   );
 
-  const freshUtilizations = fleetNodes
-    .filter((n) => n.online && n.metrics && now - n.metrics.bucketStart <= HEARTBEAT_FRESH_MS)
-    .map((n) => n.metrics!.gpuUtilizationAvg);
-
   return {
     rangeHours,
     nodes: fleetNodes,
@@ -257,10 +190,6 @@ export async function buildFleetOverview(rangeHours: number): Promise<FleetOverv
       machinesTotal: fleetNodes.length,
       gpuCount: fleetNodes.reduce((acc, n) => acc + n.gpuCount, 0),
       ...totalUsage,
-      energyWh: rangeMetrics.reduce((acc, r) => acc + r.energyWh, 0),
-      utilizationAvg: freshUtilizations.length > 0
-        ? freshUtilizations.reduce((a, b) => a + b, 0) / freshUtilizations.length
-        : null,
     },
   };
 }
@@ -274,37 +203,24 @@ export async function buildFleetHistory(rangeHours: number): Promise<FleetHistor
   // inlined as a literal so the SELECT and GROUP BY expressions are textually
   // identical — with bound parameters Postgres treats them as different expressions.
   const width = sql.raw(String(bucketSeconds));
-  const metricBucket = sql`floor(extract(epoch from ${nodeMetricT.bucketStart}) / ${width}) * ${width}`;
   const usageBucket = sql`floor(extract(epoch from ${usageEventT.createdAt}) / ${width}) * ${width}`;
 
   // Join against ai_node so series from deleted machines (e.g. cleaned-up test
   // nodes whose events linger) don't appear as ghost entries in the chart.
-  const [metricRows, usageRows] = await Promise.all([
-    db.select({
-      nodeId: nodeMetricT.nodeId,
-      t: sql<number>`${metricBucket}`.mapWith(Number),
-      utilizationAvg: sql<number>`avg(${nodeMetricT.gpuUtilizationAvg})`.mapWith(Number),
-      energyWh: sumNumber(nodeMetricT.energyWh),
-    }).from(nodeMetricT)
-      .innerJoin(aiNodeT, and(eq(aiNodeT.id, nodeMetricT.nodeId), isNull(aiNodeT.deletedAt)))
-      .where(gte(nodeMetricT.bucketStart, since))
-      .groupBy(nodeMetricT.nodeId, metricBucket),
-
-    db.select({
-      nodeId: sql<string>`${usageEventT.nodeId}`,
-      t: sql<number>`${usageBucket}`.mapWith(Number),
-      tokens: sql<number>`coalesce(sum(${usageEventT.inputTokens} + ${usageEventT.outputTokens}), 0)`.mapWith(Number),
-      requests: count(),
-    }).from(usageEventT)
-      .innerJoin(aiNodeT, and(eq(aiNodeT.id, usageEventT.nodeId), isNull(aiNodeT.deletedAt)))
-      .where(and(gte(usageEventT.createdAt, since), isNotNull(usageEventT.nodeId)))
-      .groupBy(usageEventT.nodeId, usageBucket),
-  ]);
+  const usageRows = await db.select({
+    nodeId: sql<string>`${usageEventT.nodeId}`,
+    t: sql<number>`${usageBucket}`.mapWith(Number),
+    tokens: sql<number>`coalesce(sum(${usageEventT.inputTokens} + ${usageEventT.outputTokens}), 0)`.mapWith(Number),
+    requests: count(),
+  }).from(usageEventT)
+    .innerJoin(aiNodeT, and(eq(aiNodeT.id, usageEventT.nodeId), isNull(aiNodeT.deletedAt)))
+    .where(and(gte(usageEventT.createdAt, since), isNotNull(usageEventT.nodeId)))
+    .groupBy(usageEventT.nodeId, usageBucket);
 
   return {
     rangeHours,
     bucketSeconds,
-    series: mergeHistorySeries(metricRows, usageRows),
+    series: mergeHistorySeries(usageRows),
   };
 }
 
@@ -314,7 +230,7 @@ const fleetOverview = rootOs
   .route({
     path: "/overview", method: "GET", tags,
     summary: "Get Fleet Overview",
-    description: "Returns all compute nodes with hardware inventory, liveness, installed models, and approximate utilization, energy, and request statistics",
+    description: "Returns all compute nodes with hardware inventory, liveness, installed models, and request statistics",
   })
   .input(RangeInputSchema.optional())
   .output(FleetOverviewOutput)
@@ -326,7 +242,7 @@ const fleetHistory = rootOs
   .route({
     path: "/history", method: "GET", tags,
     summary: "Get Fleet History",
-    description: "Returns bucketed per-node time series of utilization, energy, and token throughput for charts",
+    description: "Returns bucketed per-node time series of token throughput for charts",
   })
   .input(RangeInputSchema.optional())
   .output(FleetHistoryOutput)

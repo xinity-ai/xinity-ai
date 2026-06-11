@@ -1,5 +1,5 @@
 {
-  "id": "143ce781-c017-4072-bb25-fb5b280e82ba",
+  "id": "fe8633bb-59fa-4011-9e41-4ba16812287d",
   "prevId": "dd977b44-fa79-4368-b4ea-ade03632ad2d",
   "version": "7",
   "dialect": "postgresql",
@@ -2183,19 +2183,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "last_seen_at": {
-          "name": "last_seen_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "total_energy_wh": {
-          "name": "total_energy_wh",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
         "deleted_at": {
           "name": "deleted_at",
           "type": "timestamp with time zone",
@@ -2694,103 +2681,6 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.node_metric": {
-      "name": "node_metric",
-      "schema": "",
-      "columns": {
-        "node_id": {
-          "name": "node_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "bucket_start": {
-          "name": "bucket_start",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "gpu_utilization_avg": {
-          "name": "gpu_utilization_avg",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "gpu_utilization_max": {
-          "name": "gpu_utilization_max",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "memory_used_mb": {
-          "name": "memory_used_mb",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "power_watts_avg": {
-          "name": "power_watts_avg",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "energy_wh": {
-          "name": "energy_wh",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        }
-      },
-      "indexes": {
-        "node_metric_bucket_start_idx": {
-          "name": "node_metric_bucket_start_idx",
-          "columns": [
-            {
-              "expression": "bucket_start",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "node_metric_node_id_ai_node_id_fk": {
-          "name": "node_metric_node_id_ai_node_id_fk",
-          "tableFrom": "node_metric",
-          "tableTo": "ai_node",
-          "columnsFrom": [
-            "node_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "node_metric_node_id_bucket_start_pk": {
-          "name": "node_metric_node_id_bucket_start_pk",
-          "columns": [
-            "node_id",
-            "bucket_start"
-          ]
-        }
-      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},

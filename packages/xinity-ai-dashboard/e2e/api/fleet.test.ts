@@ -4,7 +4,6 @@ import { join } from "path";
 import { randomUUID } from "crypto";
 import {
   aiNodeT,
-  nodeMetricT,
   usageEventT,
   preconfigureDB,
   eq,
@@ -17,10 +16,8 @@ type FleetNode = {
   id: string;
   machineName: string | null;
   online: boolean;
-  metrics: { gpuUtilizationAvg: number } | null;
   models: unknown[];
   usage: { requests: number; failedRequests: number; inputTokens: number; outputTokens: number };
-  energyWh: number;
 };
 type FleetOverview = {
   nodes: FleetNode[];
@@ -28,7 +25,7 @@ type FleetOverview = {
 };
 type FleetHistory = {
   bucketSeconds: number;
-  series: { nodeId: string; points: { t: number; tokens: number; utilizationAvg: number | null }[] }[];
+  series: { nodeId: string; points: { t: number; tokens: number }[] }[];
 };
 
 let db: ReturnType<ReturnType<typeof preconfigureDB>["getDB"]>;
@@ -67,21 +64,9 @@ beforeAll(async () => {
       gpuCount: 1,
       machineName: "Fleet E2E Test Machine",
       gpus: [{ vendor: "nvidia", name: "NVIDIA H100 80GB HBM3", vramMb: 81559 }],
-      lastSeenAt: new Date(),
-      totalEnergyWh: 1000,
     })
     .returning();
   nodeId = node.id;
-
-  await db.insert(nodeMetricT).values({
-    nodeId,
-    bucketStart: new Date(Date.now() - 5 * 60 * 1000),
-    gpuUtilizationAvg: 42,
-    gpuUtilizationMax: 80,
-    memoryUsedMb: 60000,
-    powerWattsAvg: 320,
-    energyWh: 26.5,
-  });
 
   await db.insert(usageEventT).values([
     { organizationId: orgId, model: "fleet-e2e-model", nodeId, inputTokens: 100, outputTokens: 50, success: true },
@@ -99,7 +84,7 @@ afterAll(async () => {
 });
 
 describe("fleet API", () => {
-  test("overview returns the node with inventory, metrics, and range-scoped usage", async () => {
+  test("overview returns the node with inventory and range-scoped usage", async () => {
     const res = await ownerFetch("/api/fleet/overview");
     expect(res.status).toBe(200);
     const body = (await res.json()) as FleetOverview;
@@ -108,8 +93,6 @@ describe("fleet API", () => {
     expect(node).toBeTruthy();
     expect(node!.machineName).toBe("Fleet E2E Test Machine");
     expect(node!.online).toBe(true);
-    expect(node!.metrics?.gpuUtilizationAvg).toBe(42);
-    expect(node!.energyWh).toBeCloseTo(26.5);
     expect(node!.usage.requests).toBe(3);
     expect(node!.usage.failedRequests).toBe(1);
     expect(node!.usage.inputTokens).toBe(300);
@@ -128,7 +111,7 @@ describe("fleet API", () => {
     expect(node.usage.inputTokens).toBe(300 + 9999);
   });
 
-  test("history returns bucketed tokens and utilization for the node", async () => {
+  test("history returns bucketed tokens for the node", async () => {
     const res = await ownerFetch("/api/fleet/history?rangeHours=24");
     expect(res.status).toBe(200);
     const body = (await res.json()) as FleetHistory;
@@ -138,7 +121,6 @@ describe("fleet API", () => {
     expect(series).toBeTruthy();
     const totalTokens = series!.points.reduce((acc, p) => acc + p.tokens, 0);
     expect(totalTokens).toBe(300 + 120);
-    expect(series!.points.some((p) => p.utilizationAvg !== null)).toBe(true);
   });
 
   test("unauthenticated requests are rejected", async () => {
