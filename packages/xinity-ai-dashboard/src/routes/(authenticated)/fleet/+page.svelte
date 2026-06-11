@@ -5,8 +5,8 @@
   import MachineCard from "./MachineCard.svelte";
   import FleetActivityChart from "./FleetActivityChart.svelte";
   import AnimatedNumber from "./AnimatedNumber.svelte";
-  import { formatTokens, formatEnergy, formatPercent } from "$lib/fleet/format";
-  import { Server, Cpu, Gauge, ArrowRightLeft, Zap, CircleCheck } from "@lucide/svelte";
+  import { formatTokens, formatPercent } from "$lib/fleet/format";
+  import { Server, Cpu, ArrowRightLeft, CircleCheck } from "@lucide/svelte";
 
   let { data }: { data: PageData } = $props();
 
@@ -22,8 +22,6 @@
   // svelte-ignore state_referenced_locally -- same as above
   let history = $state(data.history);
   let rangeHours = $state(24);
-  let nowMs = $state(Date.now());
-
   async function refresh(hours: number) {
     const [overviewResult, historyResult] = await Promise.all([
       orpc.fleet.overview({ rangeHours: hours }),
@@ -32,7 +30,6 @@
     // Polling is best-effort; on error keep showing the last good data.
     if (!overviewResult[0] && overviewResult[1]) overview = overviewResult[1];
     if (!historyResult[0] && historyResult[1]) history = historyResult[1];
-    nowMs = Date.now();
   }
 
   function setRange(hours: number) {
@@ -59,14 +56,6 @@
   const nodeNames = $derived(
     new Map(overview.nodes.map((n) => [n.id, n.machineName ?? n.host])),
   );
-
-  const sparklines = $derived.by(() => {
-    const map = new Map<string, { t: number; v: number | null }[]>();
-    for (const series of history.series) {
-      map.set(series.nodeId, series.points.map((p) => ({ t: p.t, v: p.utilizationAvg })));
-    }
-    return map;
-  });
 
   const successRate = $derived(
     overview.totals.requests > 0
@@ -111,6 +100,7 @@
     </div>
   {:else}
     <!-- Fleet totals -->
+    <!-- TODO(prometheus): restore Gauge + Zap imports and sparklines derived state when Prometheus metrics land -->
     <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4 compact:gap-2 mb-6 compact:mb-3">
       <div class="bg-white rounded-lg shadow p-4 compact:p-3">
         <p class="text-xs text-gray-500 mb-1 flex items-center gap-1"><Server class="w-3.5 h-3.5" /> Machines</p>
@@ -126,17 +116,19 @@
         <p class="text-2xl font-bold">{overview.totals.gpuCount}</p>
         <p class="text-xs text-gray-400 mt-1">across the fleet</p>
       </div>
+      <!--
       <div class="bg-white rounded-lg shadow p-4 compact:p-3">
         <p class="text-xs text-gray-500 mb-1 flex items-center gap-1"><Gauge class="w-3.5 h-3.5" /> Fleet load</p>
         <p class="text-2xl font-bold">
           {#if overview.totals.utilizationAvg === null}
-            <span class="text-gray-300">—</span>
+            <span class="text-gray-300">--</span>
           {:else}
             <AnimatedNumber value={overview.totals.utilizationAvg} format={(v) => `${Math.round(v)}%`} />
           {/if}
         </p>
         <p class="text-xs text-gray-400 mt-1">right now</p>
       </div>
+      -->
       <div class="bg-white rounded-lg shadow p-4 compact:p-3">
         <p class="text-xs text-gray-500 mb-1 flex items-center gap-1"><ArrowRightLeft class="w-3.5 h-3.5" /> Tokens</p>
         <p class="text-2xl font-bold">
@@ -146,11 +138,13 @@
           {formatTokens(overview.totals.inputTokens)} in · {formatTokens(overview.totals.outputTokens)} out
         </p>
       </div>
+      <!--
       <div class="bg-white rounded-lg shadow p-4 compact:p-3">
         <p class="text-xs text-gray-500 mb-1 flex items-center gap-1"><Zap class="w-3.5 h-3.5" /> Energy</p>
-        <p class="text-2xl font-bold">≈ <AnimatedNumber value={overview.totals.energyWh} format={formatEnergy} /></p>
+        <p class="text-2xl font-bold">~ <AnimatedNumber value={overview.totals.energyWh} format={formatEnergy} /></p>
         <p class="text-xs text-gray-400 mt-1">last {rangeLabel}</p>
       </div>
+      -->
       <div class="bg-white rounded-lg shadow p-4 compact:p-3">
         <p class="text-xs text-gray-500 mb-1 flex items-center gap-1"><CircleCheck class="w-3.5 h-3.5" /> Success</p>
         <p class="text-2xl font-bold">
@@ -175,12 +169,7 @@
     <!-- Machines -->
     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 compact:gap-2">
       {#each sortedNodes as node (node.id)}
-        <MachineCard
-          {node}
-          {nowMs}
-          {rangeLabel}
-          sparkline={sparklines.get(node.id) ?? []}
-        />
+        <MachineCard {node} {rangeLabel} />
       {/each}
     </div>
   {/if}

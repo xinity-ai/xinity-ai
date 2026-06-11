@@ -3,15 +3,13 @@
   import UtilizationRing from "./UtilizationRing.svelte";
   import Sparkline from "./Sparkline.svelte";
   import AnimatedNumber from "./AnimatedNumber.svelte";
-  import { formatTokens, formatEnergy, formatPercent, formatRelativeTime, gpuSummary } from "$lib/fleet/format";
+  import { formatTokens, formatPercent, gpuSummary } from "$lib/fleet/format";
   import { Zap, ArrowRightLeft, CircleCheck } from "@lucide/svelte";
 
   type FleetNode = PageData["overview"]["nodes"][number];
 
-  let { node, sparkline, nowMs, rangeLabel }: {
+  let { node, rangeLabel }: {
     node: FleetNode;
-    sparkline: { t: number; v: number | null }[];
-    nowMs: number;
     rangeLabel: string;
   } = $props();
 
@@ -20,8 +18,6 @@
       ? ((node.usage.requests - node.usage.failedRequests) / node.usage.requests) * 100
       : null,
   );
-  const warmingUp = $derived(node.online && node.metrics === null);
-
   const lifecycleBadge: Record<string, string> = {
     ready: "bg-gray-100 text-gray-700",
     downloading: "bg-xinity-purple/10 text-xinity-purple animate-pulse",
@@ -49,18 +45,22 @@
       </p>
     </div>
     {#if !node.online}
+      <!-- TODO(prometheus): restore "last seen" display once lastSeenAt is sourced from Prometheus
       <span class="text-xs text-gray-400 whitespace-nowrap shrink-0">
         {node.lastSeenAt ? `last seen ${formatRelativeTime(node.lastSeenAt, nowMs)}` : "offline"}
       </span>
+      -->
+      <span class="text-xs text-gray-400 whitespace-nowrap shrink-0">offline</span>
     {/if}
   </div>
 
+  <!-- TODO(prometheus): restore utilization ring + sparkline once Prometheus metrics land
   <div class="flex items-center gap-4">
     {#if warmingUp}
       <div class="flex items-center justify-center" style="width: 88px; height: 88px;">
         <div class="h-16 w-16 rounded-full border-[7px] border-gray-100 animate-pulse"></div>
       </div>
-      <div class="flex-1 text-sm text-gray-400 italic">warming up…</div>
+      <div class="flex-1 text-sm text-gray-400 italic">warming up...</div>
     {:else}
       <UtilizationRing value={node.online ? (node.metrics?.gpuUtilizationAvg ?? null) : null} />
       <div class="flex-1 min-w-0">
@@ -69,12 +69,15 @@
       </div>
     {/if}
   </div>
+  -->
 
   <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+    <!-- TODO(prometheus): restore energy display once Prometheus metrics land
     <div class="flex items-center gap-1.5 text-gray-600" title="Estimated energy consumed in the selected range">
       <Zap class="w-3.5 h-3.5 text-xinity-coral shrink-0" />
-      <span>≈ <AnimatedNumber value={node.energyWh} format={formatEnergy} /></span>
+      <span>~ <AnimatedNumber value={node.energyWh} format={formatEnergy} /></span>
     </div>
+    -->
     <div class="flex items-center gap-1.5 text-gray-600" title="{node.usage.inputTokens.toLocaleString()} input / {node.usage.outputTokens.toLocaleString()} output tokens">
       <ArrowRightLeft class="w-3.5 h-3.5 text-xinity-purple shrink-0" />
       <span>

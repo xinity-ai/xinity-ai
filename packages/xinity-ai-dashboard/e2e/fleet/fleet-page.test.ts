@@ -40,7 +40,6 @@ describe("Fleet page", () => {
       } else {
         // Hero tiles render with the fleet
         await expectVisible(page.locator("text=Machines").first());
-        await expectVisible(page.locator("text=Fleet load").first());
         await expectVisible(page.locator("text=Fleet activity").first());
         // Every card shows a success/requests line or the no-requests hint
         const firstCard = cards.first();
