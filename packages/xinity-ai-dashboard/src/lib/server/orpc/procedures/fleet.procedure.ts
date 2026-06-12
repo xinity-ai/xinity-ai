@@ -125,7 +125,8 @@ export async function buildFleetOverview(rangeHours: number): Promise<FleetOverv
       inputTokens: sumNumber(usageEventT.inputTokens),
       outputTokens: sumNumber(usageEventT.outputTokens),
     }).from(usageEventT)
-      .where(gte(usageEventT.createdAt, since))
+      .innerJoin(aiNodeT, and(eq(aiNodeT.id, usageEventT.nodeId), isNull(aiNodeT.deletedAt)))
+      .where(and(gte(usageEventT.createdAt, since), isNotNull(usageEventT.nodeId)))
       .groupBy(usageEventT.nodeId),
   ]);
 
@@ -166,8 +167,6 @@ export async function buildFleetOverview(rangeHours: number): Promise<FleetOverv
     };
   });
 
-  // Totals include events not attributable to a (still existing) node, so the
-  // fleet-wide numbers stay consistent with the org usage dashboard.
   const totalUsage = usageRows.reduce(
     (acc, r) => ({
       requests: acc.requests + r.requests,
