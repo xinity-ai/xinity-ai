@@ -53,6 +53,7 @@ export const load: LayoutServerLoad = async ({ request, url, cookies }) => {
     isInstanceAdmin: userIsInstanceAdmin,
     singleTenantMode: !multiTenantMode,
     canCreateOrganization: (multiTenantMode || userIsInstanceAdmin) && (hasFeature("multi-org") || !hasActiveOrg),
+    version,
     versioning: interpretVersion(),
     license: getLicenseSummary(),
     totalVramGb,
