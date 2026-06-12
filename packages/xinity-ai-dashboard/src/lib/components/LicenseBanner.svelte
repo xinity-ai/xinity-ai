@@ -29,8 +29,8 @@
   </div>
 {/if}
 
-{#if !dismissed && license.expired && license.inGracePeriod}
-  <div class="fixed right-4 top-4 z-40">
+<div class="fixed right-4 top-4 z-40 flex flex-col gap-2">
+  {#if !dismissed && license.expired && license.inGracePeriod}
     <div
       class="flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 shadow-sm"
       aria-live="polite"
@@ -45,11 +45,9 @@
         Dismiss
       </button>
     </div>
-  </div>
-{/if}
+  {/if}
 
-{#if !vramDismissed && totalVramGb > license.maxVramGb}
-  <div class="fixed right-4 top-4 z-40" style:top={!dismissed && license.expired && license.inGracePeriod ? "3.5rem" : "1rem"}>
+  {#if !vramDismissed && totalVramGb > license.maxVramGb}
     <div
       class="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 shadow-sm max-w-md"
       aria-live="polite"
@@ -67,5 +65,5 @@
         Dismiss
       </button>
     </div>
-  </div>
-{/if}
+  {/if}
+</div>
