@@ -24,7 +24,7 @@
 
 <p align="center"><img src="docs/assets/dashboard-screenshot.png" alt="Xinity Dashboard" width="720" /></p>
 
-> **Deployed in production** by regulated European enterprises: media companies, manufacturers, and public institutions running AI on their own infrastructure with zero data egress.
+> **Deployed in production** by regulated enterprises: media companies, manufacturers, and public institutions running AI on their own infrastructure with zero data egress.
 
 ---
 
@@ -474,6 +474,6 @@ Dashboard tests have additional prerequisites — see the [dashboard README](pac
 ---
 
 <p align="center">
-  <strong>Contracts are paper. Infrastructure is Reality.</strong><br/>
+  <strong>Contracts are paper. Infrastructure is reality.</strong><br/>
   <sub>Built in Vienna. Open to the world.</sub>
 </p>

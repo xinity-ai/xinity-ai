@@ -32,6 +32,7 @@ async function publicModelSpecifierToModelSource(orgId: string, specifier: strin
 }
 
 type HostLocation = {
+  nodeId: string;
   driver: string;
   authToken: string | null;
   tls: boolean;
@@ -44,6 +45,7 @@ type ModelSources = {
 
 async function getModelSources(lookup: ModelLookup): Promise<ModelSources> {
   const modelLocations = await getDB().select({
+    nodeId: aiNodeT.id,
     host: aiNodeT.host,
     nodePort: aiNodeT.port,
     driver: modelInstallationT.driver,
@@ -56,13 +58,15 @@ async function getModelSources(lookup: ModelLookup): Promise<ModelSources> {
   const byHost = new Map<string, HostLocation>();
   for (const loc of modelLocations) {
     const key = `${loc.host}:${loc.nodePort}`;
-    byHost.set(key, { driver: loc.driver, authToken: loc.authToken, tls: loc.tls });
+    byHost.set(key, { nodeId: loc.nodeId, driver: loc.driver, authToken: loc.authToken, tls: loc.tls });
   }
 
   return { hosts: [...byHost.keys()], byHost };
 }
 
 type ModelInfo = {
+  /** ai_node id serving this request. Recorded on usage events for fleet attribution. */
+  nodeId: string | null;
   /** Daemon host:port to route requests through. */
   host: string;
   /** origin model name. I.e. gemma3:latest */
@@ -131,6 +135,7 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, keyId
   const requestParams = model ? resolveRequestParamsForDriver(model, driverProvider) : undefined;
 
   return {
+    nodeId: location?.nodeId ?? null,
     host: result.host,
     model: providerModel,
     driver,

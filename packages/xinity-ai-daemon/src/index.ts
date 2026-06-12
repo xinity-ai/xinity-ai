@@ -1,5 +1,6 @@
 import { SubscriptionLike } from "rxjs";
 import { dbSync } from "./modules/db-sync";
+import { startMetricsSampler, type MetricsSampler } from "./modules/metrics-sampler";
 import { startServer } from "./modules/serverfront/webserver";
 import { getNodeId, setOffline, setOnline } from "./modules/statekeeper";
 import { getDB, listen, checkMigrations } from "./db/connection";
@@ -8,6 +9,7 @@ import { rootLogger } from "./logger";
 
 let shuttingDown = false;
 let subscription: SubscriptionLike | undefined;
+let metricsSampler: MetricsSampler | undefined;
 
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.once(signal, () => void shutdown());
@@ -29,6 +31,7 @@ async function main() {
 
   await startServer();
   await setOnline();
+  metricsSampler = startMetricsSampler();
   const coordinator = dbSync();
   subscription = coordinator.start();
 
@@ -56,6 +59,9 @@ async function shutdown() {
     const nodeId = await getNodeId();
     await getDB().execute(sql.raw(`NOTIFY "ai_node:${nodeId}"`));
   } catch {}
+
+  // Stop before setOffline so no flush writes to ai_node after it is marked offline.
+  await metricsSampler?.stop();
 
   try {
     await setOffline();

@@ -30,6 +30,7 @@ const {
   parseXpuSmiDeviceList,
   parseXpuSmiDeviceDetails,
   classifyCapacitySource,
+  normalizeDmiProductName,
 } = await import("./hardware-detect");
 type DetectedGpu = import("./hardware-detect").DetectedGpu;
 
@@ -251,5 +252,26 @@ describe("classifyCapacitySource", () => {
       { vendor: "amd", name: "MI300X", vramMb: 192000 },
     ];
     expect(classifyCapacitySource(gpus)).toBe("mixed");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// normalizeDmiProductName
+// ---------------------------------------------------------------------------
+
+describe("normalizeDmiProductName", () => {
+  test("returns trimmed real product names", () => {
+    expect(normalizeDmiProductName("Ascent GX10 \n")).toBe("Ascent GX10");
+  });
+
+  test("rejects firmware placeholder values case-insensitively", () => {
+    expect(normalizeDmiProductName("To Be Filled By O.E.M.")).toBeNull();
+    expect(normalizeDmiProductName("System Product Name")).toBeNull();
+    expect(normalizeDmiProductName("Default string")).toBeNull();
+  });
+
+  test("returns null for missing or empty input", () => {
+    expect(normalizeDmiProductName(null)).toBeNull();
+    expect(normalizeDmiProductName("  ")).toBeNull();
   });
 });

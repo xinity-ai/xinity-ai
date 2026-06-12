@@ -15,6 +15,7 @@ function makeNode(overrides: Partial<AiNode> & { id: string }): AiNode {
     driverVersions: { ollama: "0.6.3" },
     gpus: [],
     gpuCount: 1,
+    machineName: null,
     authToken: null,
     tls: false,
     deletedAt: null,

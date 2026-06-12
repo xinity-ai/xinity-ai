@@ -40,6 +40,7 @@ mock.module("../auth", () => ({
 
 let mockPort = 0;
 const getModelInfo = jest.fn<typeof getModelInfoT>(async () => ({
+  nodeId: "node-1",
   host: `localhost:${mockPort}`,
   model: "test-model",
   driver: "vllm",
@@ -74,9 +75,8 @@ mock.module("../../callLogger", () => ({
   logChatSync: mockLogChatSync,
 }));
 
-mock.module("../../usageRecorder", () => ({
-  recordUsageEvent: mock(() => {}),
-}));
+const recordUsageEvent = mock((_record: Record<string, unknown>) => {});
+mock.module("../../usageRecorder", () => ({ recordUsageEvent }));
 
 const { handleChatCompletion } = await import("./handle-chatCompletion");
 
@@ -143,6 +143,7 @@ afterEach(() => {
   getModelInfo.mockClear();
   mockLogChatStream.mockClear();
   mockLogChatSync.mockClear();
+  recordUsageEvent.mockClear();
   lastUpstreamBody = null;
   nextUpstreamResponse = null;
 })
@@ -316,6 +317,7 @@ describe("handleChatCompletion", () => {
 
   test("should reject structured_outputs for non-vLLM driver", async () => {
     getModelInfo.mockImplementationOnce(async () => ({
+      nodeId: "node-1",
       host: `localhost:${mockPort}`,
       model: "test-model",
       driver: "ollama",
@@ -475,6 +477,7 @@ describe("handleChatCompletion, tool calling", () => {
 
   test("should reject tools when catalog explicitly says model does not support them", async () => {
     getModelInfo.mockImplementationOnce(async () => ({
+      nodeId: "node-1",
       host: `localhost:${mockPort}`,
       model: "test-model",
       driver: "vllm",
@@ -504,6 +507,7 @@ describe("handleChatCompletion, tool calling", () => {
 
   test("should allow tools when catalog entry is missing (legacy fallback, tags undefined)", async () => {
     getModelInfo.mockImplementationOnce(async () => ({
+      nodeId: "node-1",
       host: `localhost:${mockPort}`,
       model: "test-model",
       driver: "vllm",
@@ -839,5 +843,105 @@ describe("handleChatCompletion, backend response resilience", () => {
     expect(body.choices[0].message.content).toBe("Hello");
     expect(body.model).toBe("test-model");
     expect(mockLogChatSync).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Usage event attribution tests
+// ---------------------------------------------------------------------------
+
+describe("handleChatCompletion, usage event attribution", () => {
+  function lastUsageEvent(): Record<string, unknown> {
+    expect(recordUsageEvent).toHaveBeenCalledTimes(1);
+    return recordUsageEvent.mock.calls[0]![0] as Record<string, unknown>;
+  }
+
+  test("successful non-stream request records nodeId and success", async () => {
+    const res = await handleChatCompletion(makeRequest());
+    expect(res.status).toBe(200);
+    await res.text();
+
+    const event = lastUsageEvent();
+    expect(event.nodeId).toBe("node-1");
+    expect(event.success).toBe(true);
+    expect(event.inputTokens).toBe(5);
+    expect(event.outputTokens).toBe(5);
+  });
+
+  test("successful stream request records nodeId and success", async () => {
+    const req = new Request("http://localhost:4000/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: "Bearer test" },
+      body: JSON.stringify({ model: "test-model", messages: [{ role: "user", content: "Hi" }], stream: true }),
+    });
+    const res = await handleChatCompletion(req);
+    expect(res.status).toBe(200);
+    await res.text();
+
+    const event = lastUsageEvent();
+    expect(event.nodeId).toBe("node-1");
+    expect(event.success).toBe(true);
+  });
+
+  test("backend error records a failed event with node attribution", async () => {
+    nextUpstreamResponse = new Response("boom", { status: 500 });
+    const res = await handleChatCompletion(makeRequest());
+    expect(res.status).toBe(502);
+
+    const event = lastUsageEvent();
+    expect(event.nodeId).toBe("node-1");
+    expect(event.success).toBe(false);
+    expect(event.inputTokens).toBe(0);
+    expect(event.outputTokens).toBe(0);
+  });
+
+  test("validation error after node selection records a failed event", async () => {
+    const req = new Request("http://localhost:4000/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: "Bearer test" },
+      body: JSON.stringify({ model: "test-model", messages: "not-an-array" }),
+    });
+    const res = await handleChatCompletion(req);
+    expect(res.status).toBe(400);
+
+    const event = lastUsageEvent();
+    expect(event.nodeId).toBe("node-1");
+    expect(event.success).toBe(false);
+  });
+
+  test("mid-stream backend failure records a failed event", async () => {
+    // A dying backend shows up to the gateway as a stream that ends without the
+    // [DONE] sentinel. Closing (not erroring) the mock stream models that
+    // deterministically across platforms; controller.error() escapes Bun.serve
+    // as an unhandled error on Linux.
+    nextUpstreamResponse = new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('data: {"id":"x","object":"chat.completion.chunk","created":1,"model":"test-model","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}\n\n'));
+          controller.close();
+        },
+      }),
+      { headers: { "Content-Type": "text/event-stream" } },
+    );
+
+    const req = new Request("http://localhost:4000/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: "Bearer test" },
+      body: JSON.stringify({ model: "test-model", messages: [{ role: "user", content: "Hi" }], stream: true }),
+    });
+    const res = await handleChatCompletion(req);
+    expect(res.status).toBe(200);
+    await res.text();
+
+    const event = lastUsageEvent();
+    expect(event.nodeId).toBe("node-1");
+    expect(event.success).toBe(false);
+  });
+
+  test("no usage event when the model is not found (no node selected)", async () => {
+    getModelInfo.mockImplementationOnce(async () => undefined);
+    const res = await handleChatCompletion(makeRequest());
+    expect(res.status).toBe(404);
+    expect(recordUsageEvent).not.toHaveBeenCalled();
   });
 });
