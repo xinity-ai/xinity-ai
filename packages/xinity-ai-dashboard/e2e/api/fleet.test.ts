@@ -131,12 +131,12 @@ describe("fleet API", () => {
     expect(res.status).toBeLessThan(500);
   });
 
-  test("viewer role can read the fleet overview", async () => {
+  test("viewer role is denied access to the fleet overview", async () => {
     const storageState = JSON.parse(readFileSync(STORAGE_STATE.viewer, "utf-8")) as StorageState;
     const cookies = storageState.cookies.map((c) => `${c.name}=${c.value}`).join("; ");
     const res = await fetch(apiUrl("/api/fleet/overview"), {
       headers: { "Content-Type": "application/json", Origin: BASE_URL, Cookie: cookies },
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
   });
 });
