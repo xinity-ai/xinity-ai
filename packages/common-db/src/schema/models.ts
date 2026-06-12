@@ -90,6 +90,8 @@ export const aiNodeT = pgTable("ai_node", {
   authToken: text("auth_token"),
   /** Whether this node serves over TLS. Set by the daemon based on its config. */
   tls: boolean().notNull().default(false),
+  /** Operator-assigned display name for this node (from MACHINE_NAME env var, falls back to hostname). */
+  machineName: text("machine_name"),
 
   deletedAt,
   createdAt,

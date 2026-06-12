@@ -13,7 +13,7 @@
   $effect(()=> { permissions.setRole(data.memberRole); });
 </script>
 
-<Sidebar isInstanceAdmin={data.isInstanceAdmin} license={data.license} />
+<Sidebar isInstanceAdmin={data.isInstanceAdmin} license={data.license} version={data.version} />
 <main class="sm:ml-64 ml-14 min-w-0">
   <VersionNotice versioning={data.versioning} />
   <LicenseBanner license={data.license} totalVramGb={data.totalVramGb} />

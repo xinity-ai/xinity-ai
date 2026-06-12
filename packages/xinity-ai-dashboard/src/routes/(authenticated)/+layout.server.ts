@@ -53,6 +53,7 @@ export const load: LayoutServerLoad = async ({ request, url, cookies }) => {
     isInstanceAdmin: userIsInstanceAdmin,
     singleTenantMode: !multiTenantMode,
     canCreateOrganization: (multiTenantMode || userIsInstanceAdmin) && (hasFeature("multi-org") || !hasActiveOrg),
+    version,
     versioning: interpretVersion(),
     license: getLicenseSummary(),
     totalVramGb,
@@ -68,15 +69,19 @@ const VERSION_CACHE_TTL_MS = 5 * 60 * 1000;
 const VERSION_FETCH_TIMEOUT_MS = 5_000;
 
 const fetchVersion = timeCache(VERSION_CACHE_TTL_MS, async () => {
-  const res = await fetch(new URL("/version.json", serverEnv.INFOSERVER_URL), { signal: AbortSignal.timeout(VERSION_FETCH_TIMEOUT_MS) });
-  if (!res.ok) {
+  try {
+    const res = await fetch(new URL("/version.json", serverEnv.INFOSERVER_URL), { signal: AbortSignal.timeout(VERSION_FETCH_TIMEOUT_MS) });
+    if (!res.ok) {
+      return fallbackToCurrentVersion("Unable to reach infoserver to retrieve version");
+    }
+    const json = await res.json();
+    if ("version" in json && typeof json.version === "string") {
+      return json.version as string;
+    }
+    return fallbackToCurrentVersion("Unable to extract version from version request output.");
+  } catch {
     return fallbackToCurrentVersion("Unable to reach infoserver to retrieve version");
   }
-  const json = await res.json();
-  if ("version" in json && typeof json.version === "string") {
-    return json.version as string;
-  }
-  return fallbackToCurrentVersion("Unable to extract version from version request output.");
 });
 
 function redirectToLogin(currentUrl: URL): never {

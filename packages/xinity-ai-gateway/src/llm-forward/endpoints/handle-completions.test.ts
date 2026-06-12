@@ -35,6 +35,7 @@ mock.module("../auth", () => ({
 
 let mockPort = 0;
 const getModelInfo = jest.fn<typeof getModelInfoT>(async () => ({
+  nodeId: "node-1",
   host: `localhost:${mockPort}`,
   model: "test-model",
   driver: "vllm",

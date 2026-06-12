@@ -107,7 +107,7 @@ function normalizeOutputTokens(usage: UsageData): number {
 export type RecordUsageContext = {
   usage: UsageData | null | undefined;
   auth: AuthResult;
-  modelInfo: { model: string };
+  modelInfo: { model: string; nodeId?: string | null };
   callStartTime: number;
   /**
    * Per-request override for whether the call body is stored:
@@ -145,10 +145,34 @@ export const recordUsage = ({
     outputTokens: normalizeOutputTokens(usage),
     duration: durationMs,
     logged: shouldLog,
+    nodeId: modelInfo.nodeId ?? null,
+    success: true,
   });
 
   return shouldLog;
 };
+
+export type FailedRequestContext = {
+  auth: AuthResult;
+  modelInfo: { model: string; nodeId?: string | null };
+  callStartTime: number;
+};
+
+/** Record a usage event for a request that failed after a node was selected. */
+export function recordFailedRequest({ auth, modelInfo, callStartTime }: FailedRequestContext): void {
+  recordUsageEvent({
+    organizationId: auth.orgId,
+    applicationId: auth.applicationId,
+    apiKeyId: auth.keyId,
+    model: modelInfo.model,
+    inputTokens: 0,
+    outputTokens: 0,
+    duration: Date.now() - callStartTime,
+    logged: false,
+    nodeId: modelInfo.nodeId ?? null,
+    success: false,
+  });
+}
 
 type UsageLogContextBase = {
   usage: UsageData | null | undefined;

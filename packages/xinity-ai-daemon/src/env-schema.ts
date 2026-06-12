@@ -18,6 +18,12 @@ export const daemonEnvSchema = z.object({
     .describe("Sync interval in milliseconds")
     .meta(expert()),
   INFOSERVER_CACHE_TTL_MS: z.coerce.number().default(30_000).describe("How long to cache infoserver responses locally (ms)").meta(expert()),
+  METRICS_SAMPLE_INTERVAL_MS: z.coerce
+    .number()
+    .default(20_000)
+    .describe("GPU telemetry sampling interval in milliseconds")
+    .meta(expert()),
+  MACHINE_NAME: z.string().optional().describe("Display name for this node (defaults to hostname)").meta(expert()),
 
   // vLLM configuration
   VLLM_BACKEND: z.enum(["systemd", "docker"]).default("systemd").describe("vLLM backend type"),

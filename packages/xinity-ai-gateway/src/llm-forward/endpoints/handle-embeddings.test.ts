@@ -35,6 +35,7 @@ mock.module("../auth", () => ({
 
 let mockPort = 0;
 const getModelInfo = jest.fn<typeof getModelInfoT>(async () => ({
+  nodeId: "node-1",
   host: `localhost:${mockPort}`,
   model: "test-embedding",
   driver: "vllm",
@@ -229,6 +230,7 @@ describe("handleEmbeddingGeneration", () => {
 
   test("returns 400 when model type is wrong", async () => {
     getModelInfo.mockImplementationOnce(async () => ({
+      nodeId: "node-1",
       host: `localhost:${mockPort}`,
       model: "test-chat-model",
       driver: "vllm",
