@@ -1,5 +1,8 @@
 /** Display formatters and shared types for the fleet overview page. */
 
+export type LiveMetricsNode = { nodeId: string; utilizationAvg: number; energyWh: number };
+export type LiveMetrics = { available: boolean; nodes: LiveMetricsNode[] };
+
 export type GpuInfo = { vendor: string; name: string; vramMb: number };
 export type FleetModel = { name: string; driver: string; lifecycleState: string | null; progress: number | null };
 export type FleetUsage = { requests: number; failedRequests: number; inputTokens: number; outputTokens: number };

@@ -2,12 +2,12 @@
   import { onMount } from "svelte";
   import { orpc } from "$lib/orpc/orpc-client";
   import { createUrlSearchParamsStore } from "$lib/urlSearchParamsStore";
-  import type { FleetOverview, FleetHistory } from "$lib/fleet/format";
+  import type { FleetOverview, FleetHistory, LiveMetrics } from "$lib/fleet/format";
   import MachineCard from "./MachineCard.svelte";
   import FleetActivityChart from "./FleetActivityChart.svelte";
   import AnimatedNumber from "./AnimatedNumber.svelte";
-  import { formatTokens, formatPercent } from "$lib/fleet/format";
-  import { Server, Cpu, ArrowRightLeft, CircleCheck } from "@lucide/svelte";
+  import { formatTokens, formatPercent, formatEnergy } from "$lib/fleet/format";
+  import { Server, Cpu, ArrowRightLeft, CircleCheck, Gauge, Zap } from "@lucide/svelte";
 
   const RANGES = [
     { label: "24h", hours: 24 },
@@ -21,16 +21,19 @@
 
   let overview = $state<FleetOverview | null>(null);
   let history = $state<FleetHistory | null>(null);
+  let liveMetrics = $state<LiveMetrics | null>(null);
   let loading = $state(true);
 
   async function refresh(hours: number) {
     try {
-      const [overviewResult, historyResult] = await Promise.all([
+      const [overviewResult, historyResult, liveMetricsResult] = await Promise.all([
         orpc.fleet.overview({ rangeHours: hours }),
         orpc.fleet.history({ rangeHours: hours }),
+        orpc.fleet.liveMetrics({}),
       ]);
       if (!overviewResult[0] && overviewResult[1]) overview = overviewResult[1];
       if (!historyResult[0] && historyResult[1]) history = historyResult[1];
+      if (!liveMetricsResult[0] && liveMetricsResult[1]) liveMetrics = liveMetricsResult[1];
     } finally {
       loading = false;
     }
@@ -64,9 +67,27 @@
     overview ? new Map(overview.nodes.map((n) => [n.id, n.machineName ?? n.host])) : new Map(),
   );
 
+  const liveByNodeId = $derived(
+    liveMetrics?.available
+      ? new Map(liveMetrics.nodes.map((n) => [n.nodeId, n]))
+      : new Map<string, { utilizationAvg: number; energyWh: number }>(),
+  );
+
   const successRate = $derived(
     overview && overview.totals.requests > 0
       ? ((overview.totals.requests - overview.totals.failedRequests) / overview.totals.requests) * 100
+      : null,
+  );
+
+  const fleetUtilizationAvg = $derived(
+    liveMetrics?.available && liveMetrics.nodes.length > 0
+      ? liveMetrics.nodes.reduce((sum, n) => sum + n.utilizationAvg, 0) / liveMetrics.nodes.length
+      : null,
+  );
+
+  const fleetEnergyWh = $derived(
+    liveMetrics?.available && liveMetrics.nodes.length > 0
+      ? liveMetrics.nodes.reduce((sum, n) => sum + n.energyWh, 0)
       : null,
   );
 </script>
@@ -116,7 +137,6 @@
     </div>
   {:else}
     <!-- Fleet totals -->
-    <!-- TODO(prometheus): restore Gauge + Zap imports and sparklines derived state when Prometheus metrics land -->
     <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4 compact:gap-2 mb-6 compact:mb-3">
       <div class="bg-white rounded-lg shadow p-4 compact:p-3">
         <p class="text-xs text-gray-500 mb-1 flex items-center gap-1"><Server class="w-3.5 h-3.5" /> Machines</p>
@@ -132,19 +152,15 @@
         <p class="text-2xl font-bold">{overview.totals.gpuCount}</p>
         <p class="text-xs text-gray-400 mt-1">across the fleet</p>
       </div>
-      <!--
-      <div class="bg-white rounded-lg shadow p-4 compact:p-3">
-        <p class="text-xs text-gray-500 mb-1 flex items-center gap-1"><Gauge class="w-3.5 h-3.5" /> Fleet load</p>
-        <p class="text-2xl font-bold">
-          {#if overview.totals.utilizationAvg === null}
-            <span class="text-gray-300">--</span>
-          {:else}
-            <AnimatedNumber value={overview.totals.utilizationAvg} format={(v) => `${Math.round(v)}%`} />
-          {/if}
-        </p>
-        <p class="text-xs text-gray-400 mt-1">right now</p>
-      </div>
-      -->
+      {#if fleetUtilizationAvg !== null}
+        <div class="bg-white rounded-lg shadow p-4 compact:p-3">
+          <p class="text-xs text-gray-500 mb-1 flex items-center gap-1"><Gauge class="w-3.5 h-3.5" /> Fleet load</p>
+          <p class="text-2xl font-bold">
+            <AnimatedNumber value={fleetUtilizationAvg} format={(v) => `${Math.round(v)}%`} />
+          </p>
+          <p class="text-xs text-gray-400 mt-1">right now</p>
+        </div>
+      {/if}
       <div class="bg-white rounded-lg shadow p-4 compact:p-3">
         <p class="text-xs text-gray-500 mb-1 flex items-center gap-1"><ArrowRightLeft class="w-3.5 h-3.5" /> Tokens</p>
         <p class="text-2xl font-bold">
@@ -154,13 +170,13 @@
           {formatTokens(overview.totals.inputTokens)} in · {formatTokens(overview.totals.outputTokens)} out
         </p>
       </div>
-      <!--
-      <div class="bg-white rounded-lg shadow p-4 compact:p-3">
-        <p class="text-xs text-gray-500 mb-1 flex items-center gap-1"><Zap class="w-3.5 h-3.5" /> Energy</p>
-        <p class="text-2xl font-bold">~ <AnimatedNumber value={overview.totals.energyWh} format={formatEnergy} /></p>
-        <p class="text-xs text-gray-400 mt-1">last {rangeLabel}</p>
-      </div>
-      -->
+      {#if fleetEnergyWh !== null}
+        <div class="bg-white rounded-lg shadow p-4 compact:p-3">
+          <p class="text-xs text-gray-500 mb-1 flex items-center gap-1"><Zap class="w-3.5 h-3.5" /> Energy</p>
+          <p class="text-2xl font-bold">~ <AnimatedNumber value={fleetEnergyWh} format={formatEnergy} /></p>
+          <p class="text-xs text-gray-400 mt-1">since daemon start</p>
+        </div>
+      {/if}
       <div class="bg-white rounded-lg shadow p-4 compact:p-3">
         <p class="text-xs text-gray-500 mb-1 flex items-center gap-1"><CircleCheck class="w-3.5 h-3.5" /> Success</p>
         <p class="text-2xl font-bold">
@@ -185,7 +201,7 @@
     <!-- Machines -->
     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 compact:gap-2">
       {#each sortedNodes as node (node.id)}
-        <MachineCard {node} {rangeLabel} />
+        <MachineCard {node} {rangeLabel} metrics={liveByNodeId.get(node.id) ?? null} />
       {/each}
     </div>
   {/if}

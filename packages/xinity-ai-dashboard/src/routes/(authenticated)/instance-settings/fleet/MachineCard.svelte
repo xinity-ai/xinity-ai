@@ -1,14 +1,14 @@
 <script lang="ts">
   import type { FleetNode } from "$lib/fleet/format";
   import UtilizationRing from "./UtilizationRing.svelte";
-  import Sparkline from "./Sparkline.svelte";
   import AnimatedNumber from "./AnimatedNumber.svelte";
-  import { formatTokens, formatPercent, gpuSummary } from "$lib/fleet/format";
+  import { formatTokens, formatPercent, formatEnergy, gpuSummary } from "$lib/fleet/format";
   import { Zap, ArrowRightLeft, CircleCheck } from "@lucide/svelte";
 
-  let { node, rangeLabel }: {
+  let { node, rangeLabel, metrics = null }: {
     node: FleetNode;
     rangeLabel: string;
+    metrics?: { utilizationAvg: number; energyWh: number } | null;
   } = $props();
 
   const successRate = $derived(
@@ -43,39 +43,25 @@
       </p>
     </div>
     {#if !node.online}
-      <!-- TODO(prometheus): restore "last seen" display once lastSeenAt is sourced from Prometheus
-      <span class="text-xs text-gray-400 whitespace-nowrap shrink-0">
-        {node.lastSeenAt ? `last seen ${formatRelativeTime(node.lastSeenAt, nowMs)}` : "offline"}
-      </span>
-      -->
       <span class="text-xs text-gray-400 whitespace-nowrap shrink-0">offline</span>
     {/if}
   </div>
 
-  <!-- TODO(prometheus): restore utilization ring + sparkline once Prometheus metrics land
-  <div class="flex items-center gap-4">
-    {#if warmingUp}
-      <div class="flex items-center justify-center" style="width: 88px; height: 88px;">
-        <div class="h-16 w-16 rounded-full border-[7px] border-gray-100 animate-pulse"></div>
+  {#if node.online && metrics !== null}
+    <div class="flex items-center gap-4">
+      <UtilizationRing value={metrics.utilizationAvg} />
+      <div class="flex-1 min-w-0 text-sm text-gray-500">
+        <p class="font-medium text-gray-700">
+          ~ <AnimatedNumber value={metrics.energyWh} format={formatEnergy} />
+        </p>
+        <p class="text-[10px] uppercase tracking-wide text-gray-400 mt-0.5 flex items-center gap-1">
+          <Zap class="w-3 h-3 text-xinity-coral" />energy since daemon start
+        </p>
       </div>
-      <div class="flex-1 text-sm text-gray-400 italic">warming up...</div>
-    {:else}
-      <UtilizationRing value={node.online ? (node.metrics?.gpuUtilizationAvg ?? null) : null} />
-      <div class="flex-1 min-w-0">
-        <Sparkline points={sparkline} />
-        <p class="text-[10px] uppercase tracking-wide text-gray-400 mt-1">load · last {rangeLabel}</p>
-      </div>
-    {/if}
-  </div>
-  -->
+    </div>
+  {/if}
 
   <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-    <!-- TODO(prometheus): restore energy display once Prometheus metrics land
-    <div class="flex items-center gap-1.5 text-gray-600" title="Estimated energy consumed in the selected range">
-      <Zap class="w-3.5 h-3.5 text-xinity-coral shrink-0" />
-      <span>~ <AnimatedNumber value={node.energyWh} format={formatEnergy} /></span>
-    </div>
-    -->
     <div class="flex items-center gap-1.5 text-gray-600" title="{node.usage.inputTokens.toLocaleString()} input / {node.usage.outputTokens.toLocaleString()} output tokens">
       <ArrowRightLeft class="w-3.5 h-3.5 text-xinity-purple shrink-0" />
       <span>

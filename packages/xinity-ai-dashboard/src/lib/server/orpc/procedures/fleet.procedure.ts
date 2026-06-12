@@ -14,6 +14,7 @@ import {
 } from "common-db";
 import { getDB } from "$lib/server/db";
 import { mergeHistorySeries, pickBucketSeconds } from "$lib/server/fleet/fleet";
+import { serverEnv } from "$lib/server/serverenv";
 import z from "zod";
 
 const tags = ["Fleet"];
@@ -241,7 +242,76 @@ const fleetHistory = rootOs
   .output(FleetHistoryOutput)
   .handler(({ input }) => buildFleetHistory(input?.rangeHours ?? 24));
 
+// ─── Live metrics from Prometheus ────────────────────────────────────────────
+
+type PromVectorResult = { metric: Record<string, string>; value: [number, string] };
+
+async function queryPrometheusInstant(prometheusUrl: string, query: string): Promise<PromVectorResult[]> {
+  const url = new URL("/api/v1/query", prometheusUrl);
+  url.searchParams.set("query", query);
+  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(5000) });
+  if (!res.ok) return [];
+  const json = await res.json() as { status: string; data: { resultType: string; result: PromVectorResult[] } };
+  if (json.status !== "success" || json.data.resultType !== "vector") return [];
+  return json.data.result;
+}
+
+const LiveMetricsNodeSchema = z.object({
+  nodeId: z.string(),
+  utilizationAvg: z.number(),
+  energyWh: z.number(),
+});
+
+const LiveMetricsOutput = z.object({
+  available: z.boolean(),
+  nodes: z.array(LiveMetricsNodeSchema),
+});
+
+const fleetLiveMetrics = rootOs
+  .use(withInstanceAdmin)
+  .route({
+    path: "/live-metrics", method: "GET", tags,
+    summary: "Get Fleet Live Metrics",
+    description: "Queries Prometheus for real-time GPU utilization and energy. Returns available=false when PROMETHEUS_URL is not configured or Prometheus is unreachable.",
+  })
+  .input(z.object({}).optional())
+  .output(LiveMetricsOutput)
+  .handler(async () => {
+    const prometheusUrl = serverEnv.PROMETHEUS_URL;
+    if (!prometheusUrl) return { available: false, nodes: [] };
+
+    try {
+      const [utilResults, energyResults] = await Promise.all([
+        queryPrometheusInstant(prometheusUrl, "daemon_gpu_utilization_avg"),
+        queryPrometheusInstant(prometheusUrl, "daemon_gpu_energy_wh_total"),
+      ]);
+
+      const nodeMap = new Map<string, { utilizationAvg: number; energyWh: number }>();
+
+      for (const r of utilResults) {
+        const nodeId = r.metric["node_id"];
+        if (nodeId) nodeMap.set(nodeId, { utilizationAvg: parseFloat(r.value[1]) || 0, energyWh: 0 });
+      }
+      for (const r of energyResults) {
+        const nodeId = r.metric["node_id"];
+        if (!nodeId) continue;
+        const existing = nodeMap.get(nodeId);
+        const energyWh = parseFloat(r.value[1]) || 0;
+        if (existing) existing.energyWh = energyWh;
+        else nodeMap.set(nodeId, { utilizationAvg: 0, energyWh });
+      }
+
+      return {
+        available: true,
+        nodes: [...nodeMap.entries()].map(([nodeId, m]) => ({ nodeId, ...m })),
+      };
+    } catch {
+      return { available: false, nodes: [] };
+    }
+  });
+
 export const fleetRouter = rootOs.prefix("/fleet").router({
   overview: fleetOverview,
   history: fleetHistory,
+  liveMetrics: fleetLiveMetrics,
 });
