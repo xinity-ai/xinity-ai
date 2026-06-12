@@ -1,0 +1,33 @@
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+scrape_configs:
+  - job_name: xinity-gateway
+    static_configs:
+      - targets:
+          - gateway:4121
+    metrics_path: /metrics
+    # basic_auth:
+    #   username: admin
+    #   password: <METRICS_AUTH password>
+
+  - job_name: xinity-dashboard
+    static_configs:
+      - targets:
+          - dashboard:5121
+    metrics_path: /metrics
+    # basic_auth:
+    #   username: admin
+    #   password: <METRICS_AUTH password>
+
+  - job_name: xinity-daemon
+    static_configs:
+      # Add one entry per daemon node: <host>:<port>
+      # Use Instance Settings > Monitoring in the dashboard to generate
+      # this block automatically from the live node registry.
+      - targets: []
+    metrics_path: /metrics
+    # basic_auth:
+    #   username: admin
+    #   password: <METRICS_AUTH password>

@@ -106,6 +106,39 @@ services:
       - xinity-network
     profiles: [searxng]
 
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    restart: unless-stopped
+    profiles: [monitoring]
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    networks:
+      - xinity-network
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    restart: unless-stopped
+    profiles: [monitoring]
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    networks:
+      - xinity-network
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -142,3 +175,5 @@ volumes:
   redis-data:
   caddy-data:
   caddy-config:
+  prometheus_data:
+  grafana_data:
