@@ -1,4 +1,4 @@
-import { rootOs, withOrganization, requirePermission } from "../root";
+import { rootOs, withInstanceAdmin } from "../root";
 import {
   aiNodeT,
   modelInstallationT,
@@ -18,10 +18,6 @@ import z from "zod";
 
 const tags = ["Fleet"];
 
-// Like /cluster/capacity, fleet data is instance-wide infrastructure state, not
-// org-scoped: machines serve all orgs, and the page shows hardware health plus
-// aggregate counters (no request content, no per-org breakdown). The guard
-// mirrors cluster.procedure: any role with modelDeployment read access.
 
 const RangeInputSchema = z.object({
   rangeHours: z.coerce.number().int().min(1).max(90 * 24).default(24),
@@ -225,8 +221,7 @@ export async function buildFleetHistory(rangeHours: number): Promise<FleetHistor
 }
 
 const fleetOverview = rootOs
-  .use(withOrganization)
-  .use(requirePermission({ modelDeployment: ["read"] }))
+  .use(withInstanceAdmin)
   .route({
     path: "/overview", method: "GET", tags,
     summary: "Get Fleet Overview",
@@ -237,8 +232,7 @@ const fleetOverview = rootOs
   .handler(({ input }) => buildFleetOverview(input?.rangeHours ?? 24));
 
 const fleetHistory = rootOs
-  .use(withOrganization)
-  .use(requirePermission({ modelDeployment: ["read"] }))
+  .use(withInstanceAdmin)
   .route({
     path: "/history", method: "GET", tags,
     summary: "Get Fleet History",

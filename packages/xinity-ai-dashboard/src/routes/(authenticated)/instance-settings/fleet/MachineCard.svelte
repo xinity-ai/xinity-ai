@@ -86,7 +86,7 @@
       </span>
     </div>
     <div class="flex items-center gap-1.5 text-gray-600 col-span-2" title="Successful requests in the selected range">
-      <CircleCheck class="w-3.5 h-3.5 {successRate !== null && successRate < 95 ? 'text-amber-500' : 'text-emerald-500'} shrink-0" />
+      <CircleCheck class="w-3.5 h-3.5 {successRate === null ? 'text-gray-300' : successRate < 95 ? 'text-amber-500' : 'text-emerald-500'} shrink-0" />
       {#if successRate === null}
         <span class="text-gray-400">no requests yet</span>
       {:else}

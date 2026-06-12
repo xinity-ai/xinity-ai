@@ -149,7 +149,7 @@
         <p class="text-xs text-gray-500 mb-1 flex items-center gap-1"><CircleCheck class="w-3.5 h-3.5" /> Success</p>
         <p class="text-2xl font-bold">
           {#if successRate === null}
-            <span class="text-gray-300">—</span>
+            <span class="text-gray-300">--</span>
           {:else}
             <AnimatedNumber value={successRate} format={formatPercent} />
           {/if}

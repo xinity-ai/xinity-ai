@@ -4,21 +4,21 @@ import { expectVisible } from "../utils/helpers";
 
 /**
  * Renders against whatever fleet exists in the dev database. Run
- * `bun run seed:fleet` first for the full experience; the page itself must
+ * `bun run simulate:fleet` first for the full experience; the page itself must
  * also render correctly with an empty fleet.
  */
 describe("Fleet page", () => {
-  test("sidebar shows Compute and navigates to the fleet page", async () => {
+  test("instance-settings nav shows Compute and navigates to the fleet page", async () => {
     const { page, context } = await ownerPage();
     try {
-      await page.goto("/");
+      await page.goto("/instance-settings/");
       await page.waitForLoadState("networkidle");
 
       const nav = page.locator("nav");
-      await expectVisible(nav.locator("span:text-is('Compute')"));
+      await expectVisible(nav.locator("text=Compute").first());
 
-      await nav.locator("span:text-is('Compute')").click();
-      await page.waitForURL(/\/fleet\//);
+      await nav.locator("text=Compute").first().click();
+      await page.waitForURL(/\/instance-settings\/fleet\//);
       await expectVisible(page.locator("h1:text-is('Compute')"));
     } finally {
       await context.close();
@@ -28,7 +28,7 @@ describe("Fleet page", () => {
   test("renders fleet totals and machine cards or the empty state", async () => {
     const { page, context } = await ownerPage();
     try {
-      await page.goto("/fleet/");
+      await page.goto("/instance-settings/fleet/");
       await page.waitForLoadState("networkidle");
 
       const cards = page.locator("[data-testid='machine-card']");
@@ -53,7 +53,7 @@ describe("Fleet page", () => {
   test("range selector switches without errors", async () => {
     const { page, context } = await ownerPage();
     try {
-      await page.goto("/fleet/");
+      await page.goto("/instance-settings/fleet/");
       await page.waitForLoadState("networkidle");
 
       const sevenDays = page.locator("button:text-is('7d')");
