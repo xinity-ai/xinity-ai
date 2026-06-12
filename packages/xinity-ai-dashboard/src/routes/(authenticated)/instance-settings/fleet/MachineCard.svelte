@@ -1,12 +1,10 @@
 <script lang="ts">
-  import type { PageData } from "./$types";
+  import type { FleetNode } from "$lib/fleet/format";
   import UtilizationRing from "./UtilizationRing.svelte";
   import Sparkline from "./Sparkline.svelte";
   import AnimatedNumber from "./AnimatedNumber.svelte";
   import { formatTokens, formatPercent, gpuSummary } from "$lib/fleet/format";
   import { Zap, ArrowRightLeft, CircleCheck } from "@lucide/svelte";
-
-  type FleetNode = NonNullable<PageData["overview"]>["nodes"][number];
 
   let { node, rangeLabel }: {
     node: FleetNode;

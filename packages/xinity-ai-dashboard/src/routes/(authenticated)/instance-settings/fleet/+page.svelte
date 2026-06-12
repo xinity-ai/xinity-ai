@@ -1,14 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { orpc } from "$lib/orpc/orpc-client";
-  import type { PageData } from "./$types";
+  import { createUrlSearchParamsStore } from "$lib/urlSearchParamsStore";
+  import type { FleetOverview, FleetHistory } from "$lib/fleet/format";
   import MachineCard from "./MachineCard.svelte";
   import FleetActivityChart from "./FleetActivityChart.svelte";
   import AnimatedNumber from "./AnimatedNumber.svelte";
   import { formatTokens, formatPercent } from "$lib/fleet/format";
-  import { Server, Cpu, ArrowRightLeft, CircleCheck, ShieldAlert } from "@lucide/svelte";
-
-  let { data }: { data: PageData } = $props();
+  import { Server, Cpu, ArrowRightLeft, CircleCheck } from "@lucide/svelte";
 
   const RANGES = [
     { label: "24h", hours: 24 },
@@ -17,28 +16,33 @@
   ];
   const POLL_INTERVAL_MS = 12_000;
 
-  // svelte-ignore state_referenced_locally -- server data only seeds the state; polling owns it afterwards
-  let overview = $state(data.authorized ? data.overview : null);
-  // svelte-ignore state_referenced_locally -- same as above
-  let history = $state(data.authorized ? data.history : null);
-  let rangeHours = $state(24);
+  const searchParams = createUrlSearchParamsStore();
+  const rangeHours = $derived(RANGES.find((r) => String(r.hours) === $searchParams.range)?.hours ?? 24);
+
+  let overview = $state<FleetOverview | null>(null);
+  let history = $state<FleetHistory | null>(null);
+  let loading = $state(true);
+
   async function refresh(hours: number) {
-    const [overviewResult, historyResult] = await Promise.all([
-      orpc.fleet.overview({ rangeHours: hours }),
-      orpc.fleet.history({ rangeHours: hours }),
-    ]);
-    // Polling is best-effort; on error keep showing the last good data.
-    if (!overviewResult[0] && overviewResult[1]) overview = overviewResult[1];
-    if (!historyResult[0] && historyResult[1]) history = historyResult[1];
+    try {
+      const [overviewResult, historyResult] = await Promise.all([
+        orpc.fleet.overview({ rangeHours: hours }),
+        orpc.fleet.history({ rangeHours: hours }),
+      ]);
+      if (!overviewResult[0] && overviewResult[1]) overview = overviewResult[1];
+      if (!historyResult[0] && historyResult[1]) history = historyResult[1];
+    } finally {
+      loading = false;
+    }
   }
 
   function setRange(hours: number) {
-    rangeHours = hours;
+    $searchParams.range = String(hours);
     void refresh(hours);
   }
 
   onMount(() => {
-    if (!data.authorized) return;
+    void refresh(rangeHours);
     const timer = setInterval(() => {
       if (!document.hidden) void refresh(rangeHours);
     }, POLL_INTERVAL_MS);
@@ -72,20 +76,6 @@
 </svelte:head>
 
 <div class="p-6 compact:p-3">
-  {#if !data.authorized}
-    <div class="bg-white rounded-lg shadow p-10 text-center max-w-lg mx-auto mt-10">
-      <ShieldAlert class="w-10 h-10 text-amber-400 mx-auto mb-3" />
-      <h2 class="text-lg font-medium text-gray-800">Instance administrators only</h2>
-      <p class="text-sm text-gray-500 mt-2">
-        This page shows infrastructure data (machines, GPUs, node health) that is not
-        scoped to any one organization. Access is restricted to instance administrators
-        to prevent users from seeing or inferring details about the underlying deployment.
-      </p>
-      <p class="text-sm text-gray-400 mt-3">
-        If you need access, ask your instance administrator.
-      </p>
-    </div>
-  {:else}
   <div class="flex flex-wrap items-center justify-between gap-3 mb-6 compact:mb-3">
     <div>
       <h1 class="text-3xl font-bold">Compute</h1>
@@ -107,7 +97,16 @@
     </div>
   </div>
 
-  {#if !overview || overview.nodes.length === 0}
+  {#if loading}
+    <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4 compact:gap-2 mb-6 compact:mb-3">
+      {#each { length: 4 } as _}
+        <div class="bg-white rounded-lg shadow p-4 compact:p-3 animate-pulse">
+          <div class="h-3 bg-gray-100 rounded w-2/3 mb-3"></div>
+          <div class="h-7 bg-gray-100 rounded w-1/2"></div>
+        </div>
+      {/each}
+    </div>
+  {:else if !overview || overview.nodes.length === 0}
     <div class="bg-white rounded-lg shadow p-10 text-center">
       <Server class="w-10 h-10 text-gray-300 mx-auto mb-3" />
       <h2 class="text-lg font-medium text-gray-700">No compute connected yet</h2>
@@ -189,6 +188,5 @@
         <MachineCard {node} {rangeLabel} />
       {/each}
     </div>
-  {/if}
   {/if}
 </div>
