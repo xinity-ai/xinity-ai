@@ -126,6 +126,11 @@ describe("compliance API", () => {
     expect(body.message).toContain("license");
   });
 
+  test("audit pack generation is license-gated (free tier gets 403)", async () => {
+    const res = await ownerFetch("/compliance/audit-pack");
+    expect(res.status).toBe(403);
+  });
+
   test("artifact upload is license-gated (free tier gets 403)", async () => {
     const storageState = JSON.parse(readFileSync(STORAGE_STATE.owner, "utf-8")) as StorageState;
     const cookies = storageState.cookies.map((c) => `${c.name}=${c.value}`).join("; ");

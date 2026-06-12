@@ -86,6 +86,14 @@
     postureLoading = false;
   }
 
+  // Audit pack generation
+  function isoDay(d: Date): string {
+    return d.toISOString().slice(0, 10);
+  }
+  let packFrom = $state(isoDay(new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)));
+  let packTo = $state(isoDay(new Date()));
+  const packUrl = $derived(`/compliance/audit-pack?from=${packFrom}&to=${packTo}`);
+
   // Audit log (licensed feature)
   const auditLogLicensed = $derived(Boolean(page.data.license?.features?.auditLog));
   type AuditCursor = { createdAt: Date; id: string };
@@ -206,6 +214,31 @@
             {#each organizationalChecks as check (check.id)}
               <PostureCheckRow {check} canManage={permissions.canManageCompliance} onChanged={loadPosture} />
             {/each}
+          </div>
+        </Card.Content>
+      </Card.Root>
+
+      <Card.Root>
+        <Card.Header>
+          <Card.Title>Audit Evidence Pack</Card.Title>
+          <Card.Description>
+            One self-contained ZIP for your auditor: a printable report (AI system register,
+            ROPA annex, TOMs, retention enforcement, access records, deployer classification),
+            machine-readable evidence, and your uploaded documents. Missing documents are
+            listed as explicit gaps. The pack is evidence, not a certification.
+          </Card.Description>
+        </Card.Header>
+        <Card.Content>
+          <div class="flex flex-wrap items-end gap-3">
+            <div class="space-y-1.5">
+              <Label for="pack-from">From</Label>
+              <Input id="pack-from" type="date" class="w-40" bind:value={packFrom} />
+            </div>
+            <div class="space-y-1.5">
+              <Label for="pack-to">To</Label>
+              <Input id="pack-to" type="date" class="w-40" bind:value={packTo} />
+            </div>
+            <Button href={packUrl} download>Generate Audit Pack</Button>
           </div>
         </Card.Content>
       </Card.Root>
