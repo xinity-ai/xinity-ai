@@ -18,18 +18,29 @@ const customResourcePermissions = {
   aiApplication: ["create", "update", "delete", "read"],
 } as const;
 
+/**
+ * Compliance resources are kept out of customResourcePermissions on purpose:
+ * that object grants full access to members, while retention settings and the
+ * audit trail must stay restricted to owner/admin (see DESIGN.md §0.1).
+ */
+const complianceResourcePermissions = {
+  compliance: ["read", "update"],
+  auditLog: ["read"],
+} as const;
+
 const statement = {
   ...defaultStatements,
   ...customResourcePermissions,
+  ...complianceResourcePermissions,
 } as const;
 
 export const ac = createAccessControl(statement);
 
 const fullAccessPermissions = customResourcePermissions;
 
-export const owner = ac.newRole({ ...fullAccessPermissions, ...ownerAc.statements });
-export const admin = ac.newRole({ ...fullAccessPermissions, ...adminAc.statements });
-export const member = ac.newRole({ ...fullAccessPermissions, ...memberAc.statements });
+export const owner = ac.newRole({ ...fullAccessPermissions, ...complianceResourcePermissions, ...ownerAc.statements });
+export const admin = ac.newRole({ ...fullAccessPermissions, ...complianceResourcePermissions, ...adminAc.statements });
+export const member = ac.newRole({ ...fullAccessPermissions, compliance: ["read"], ...memberAc.statements });
 
 export const labeler = ac.newRole({
   apiCallResponse: ["create", "delete", "update", "read"],

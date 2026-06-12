@@ -3,7 +3,7 @@ import { z } from "zod";
 export const LicenseTier = z.enum(["startup", "enterprise-sm", "enterprise-lg"]);
 export type LicenseTier = z.infer<typeof LicenseTier>;
 
-export const LicenseFeature = z.enum(["sso", "multi-org", "sso-self-manage", "all-roles", "audit-log", "scim"]);
+export const LicenseFeature = z.enum(["sso", "multi-org", "sso-self-manage", "all-roles", "audit-log", "scim", "compliance-reports"]);
 export type LicenseFeature = z.infer<typeof LicenseFeature>;
 
 export const LicensePayloadSchema = z.object({
