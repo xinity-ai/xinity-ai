@@ -114,6 +114,23 @@ export function resolveToDataUri(
   );
 }
 
+/**
+ * Delete a media object's blob from S3 by its key.
+ * Returns false when S3 is not configured or deletion fails, so callers
+ * can keep the database row and avoid orphaning blobs.
+ */
+export async function deleteS3Object(s3Key: string): Promise<boolean> {
+  const client = getClient();
+  if (!client) return false;
+  try {
+    await client.delete(s3Key);
+    return true;
+  } catch (err) {
+    log.error({ err, s3Key }, "Failed to delete S3 object");
+    return false;
+  }
+}
+
 /** Parse a xinity-media:// URL and return its SHA-256 hash, or null. */
 export function parseMediaRef(url: string): string | null {
   let parsed: URL;

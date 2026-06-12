@@ -10,7 +10,7 @@
   import ModelIcon from "$lib/components/icons/ModelIcon.svelte";
   import OrganizationIcon from "$lib/components/icons/OrganizationIcon.svelte";
   import GearIcon from "$lib/components/icons/GearIcon.svelte";
-  import { Shield, BookOpen } from "@lucide/svelte";
+  import { Shield, ShieldCheck, BookOpen } from "@lucide/svelte";
   import { goto } from "$app/navigation";
   import { permissions } from "$lib/state/permissions.svelte";
 
@@ -49,6 +49,7 @@
         { key: "data",     href: "/data/",         label: "Data",        icon: DataIcon,    show: permissions.canViewData },
         { key: "training", href: "/training/",     label: "Training",    icon: ThunderIcon, show: permissions.canViewModels },
         { key: "modelhub", href: "/modelhub/",     label: "Model Hub",   icon: ModelIcon,   show: permissions.canViewDeployments },
+        { key: "compliance", href: "/compliance/", label: "Compliance",  icon: ShieldCheck, show: permissions.canViewCompliance },
       ],
     },
     {

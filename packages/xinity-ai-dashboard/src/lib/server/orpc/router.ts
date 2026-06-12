@@ -12,6 +12,7 @@ import { onboardingRouter } from "./procedures/onboarding.procedure";
 import { modelRouter } from "./procedures/model.procedure";
 import { instanceAdminRouter } from "./procedures/instance-admin.procedure";
 import { clusterRouter } from "./procedures/cluster.procedure";
+import { complianceRouter } from "./procedures/compliance.procedure";
 import { fleetRouter } from "./procedures/fleet.procedure";
 import z from "zod";
 
@@ -37,6 +38,7 @@ export const router = {
   model: modelRouter,
   instanceAdmin: instanceAdminRouter,
   cluster: clusterRouter,
+  compliance: complianceRouter,
   fleet: fleetRouter,
   health,
 };

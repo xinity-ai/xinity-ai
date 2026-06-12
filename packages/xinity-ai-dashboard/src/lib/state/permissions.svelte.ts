@@ -8,7 +8,7 @@ import type { RoleName } from "$lib/roles";
 
 const log = browserLogger.child({ name: "permissions_manager" });
 
-type Resource = "apiKey" | "apiCall" | "apiCallResponse" | "modelDeployment" | "model" | "aiApplication" | "organization" | "member" | "invitation";
+type Resource = "apiKey" | "apiCall" | "apiCallResponse" | "modelDeployment" | "model" | "aiApplication" | "organization" | "member" | "invitation" | "compliance" | "auditLog";
 type Action = "create" | "read" | "update" | "delete";
 
 // Reactive state
@@ -128,6 +128,15 @@ export const permissions = {
   },
   get canManageOrganization() {
     return can("organization", "update");
+  },
+  get canViewCompliance() {
+    return can("compliance", "read");
+  },
+  get canManageCompliance() {
+    return can("compliance", "update");
+  },
+  get canViewAuditLog() {
+    return can("auditLog", "read");
   },
   get canInviteMembers() {
     return can("invitation", "create");

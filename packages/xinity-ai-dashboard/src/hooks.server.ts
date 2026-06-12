@@ -8,6 +8,7 @@ import { svelteKitHandler } from "better-auth/svelte-kit";
 import { building } from "$app/environment";
 import { startDeploymentSyncService } from "$lib/server/lib/orchestration.mod";
 import { startNotificationScheduler } from "$lib/server/notifications/scheduler";
+import { startRetentionService } from "$lib/server/compliance/retention.service";
 import { serverEnv } from "$lib/server/serverenv";
 import { checkMigrationState, isMigrationOk } from "$lib/server/migration-check";
 import { loadDeploymentId } from "$lib/server/deployment-id";
@@ -114,4 +115,13 @@ if (isMigrationOk() && serverEnv.COMPUTE_MANAGEMENT_ENABLED) {
  */
 if (isMigrationOk() && serverEnv.NOTIFICATIONS_ENABLED) {
   void startNotificationScheduler();
+}
+
+/**
+ * Start the data retention purge service. Not gated by an env flag:
+ * organizations without a configured retention policy are skipped, and
+ * enforcing a configured policy must not be silently disabled.
+ */
+if (isMigrationOk()) {
+  startRetentionService();
 }
