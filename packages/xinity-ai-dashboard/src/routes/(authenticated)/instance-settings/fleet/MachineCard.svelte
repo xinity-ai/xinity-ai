@@ -6,7 +6,7 @@
   import { formatTokens, formatPercent, gpuSummary } from "$lib/fleet/format";
   import { Zap, ArrowRightLeft, CircleCheck } from "@lucide/svelte";
 
-  type FleetNode = PageData["overview"]["nodes"][number];
+  type FleetNode = NonNullable<PageData["overview"]>["nodes"][number];
 
   let { node, rangeLabel }: {
     node: FleetNode;

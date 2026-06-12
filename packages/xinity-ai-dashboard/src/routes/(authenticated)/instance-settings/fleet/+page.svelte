@@ -6,7 +6,7 @@
   import FleetActivityChart from "./FleetActivityChart.svelte";
   import AnimatedNumber from "./AnimatedNumber.svelte";
   import { formatTokens, formatPercent } from "$lib/fleet/format";
-  import { Server, Cpu, ArrowRightLeft, CircleCheck } from "@lucide/svelte";
+  import { Server, Cpu, ArrowRightLeft, CircleCheck, ShieldAlert } from "@lucide/svelte";
 
   let { data }: { data: PageData } = $props();
 
@@ -18,9 +18,9 @@
   const POLL_INTERVAL_MS = 12_000;
 
   // svelte-ignore state_referenced_locally -- server data only seeds the state; polling owns it afterwards
-  let overview = $state(data.overview);
+  let overview = $state(data.authorized ? data.overview : null);
   // svelte-ignore state_referenced_locally -- same as above
-  let history = $state(data.history);
+  let history = $state(data.authorized ? data.history : null);
   let rangeHours = $state(24);
   async function refresh(hours: number) {
     const [overviewResult, historyResult] = await Promise.all([
@@ -38,6 +38,7 @@
   }
 
   onMount(() => {
+    if (!data.authorized) return;
     const timer = setInterval(() => {
       if (!document.hidden) void refresh(rangeHours);
     }, POLL_INTERVAL_MS);
@@ -47,18 +48,20 @@
   const rangeLabel = $derived(RANGES.find((r) => r.hours === rangeHours)?.label ?? `${rangeHours}h`);
 
   const sortedNodes = $derived(
-    [...overview.nodes].sort((a, b) =>
-      Number(b.online) - Number(a.online) ||
-      (a.machineName ?? a.host).localeCompare(b.machineName ?? b.host),
-    ),
+    overview
+      ? [...overview.nodes].sort((a, b) =>
+          Number(b.online) - Number(a.online) ||
+          (a.machineName ?? a.host).localeCompare(b.machineName ?? b.host),
+        )
+      : [],
   );
 
   const nodeNames = $derived(
-    new Map(overview.nodes.map((n) => [n.id, n.machineName ?? n.host])),
+    overview ? new Map(overview.nodes.map((n) => [n.id, n.machineName ?? n.host])) : new Map(),
   );
 
   const successRate = $derived(
-    overview.totals.requests > 0
+    overview && overview.totals.requests > 0
       ? ((overview.totals.requests - overview.totals.failedRequests) / overview.totals.requests) * 100
       : null,
   );
@@ -69,6 +72,20 @@
 </svelte:head>
 
 <div class="p-6 compact:p-3">
+  {#if !data.authorized}
+    <div class="bg-white rounded-lg shadow p-10 text-center max-w-lg mx-auto mt-10">
+      <ShieldAlert class="w-10 h-10 text-amber-400 mx-auto mb-3" />
+      <h2 class="text-lg font-medium text-gray-800">Instance administrators only</h2>
+      <p class="text-sm text-gray-500 mt-2">
+        This page shows infrastructure data (machines, GPUs, node health) that is not
+        scoped to any one organization. Access is restricted to instance administrators
+        to prevent users from seeing or inferring details about the underlying deployment.
+      </p>
+      <p class="text-sm text-gray-400 mt-3">
+        If you need access, ask your instance administrator.
+      </p>
+    </div>
+  {:else}
   <div class="flex flex-wrap items-center justify-between gap-3 mb-6 compact:mb-3">
     <div>
       <h1 class="text-3xl font-bold">Compute</h1>
@@ -90,7 +107,7 @@
     </div>
   </div>
 
-  {#if overview.nodes.length === 0}
+  {#if !overview || overview.nodes.length === 0}
     <div class="bg-white rounded-lg shadow p-10 text-center">
       <Server class="w-10 h-10 text-gray-300 mx-auto mb-3" />
       <h2 class="text-lg font-medium text-gray-700">No compute connected yet</h2>
@@ -163,7 +180,7 @@
     <!-- Fleet activity -->
     <div class="bg-white rounded-lg shadow p-5 compact:p-3 mb-6 compact:mb-3">
       <h2 class="text-lg font-medium mb-4 compact:mb-2">Fleet activity <span class="text-sm font-normal text-gray-400">tokens per machine · last {rangeLabel}</span></h2>
-      <FleetActivityChart {history} {nodeNames} />
+      <FleetActivityChart history={history ?? { rangeHours: 24, bucketSeconds: 3600, series: [] }} {nodeNames} />
     </div>
 
     <!-- Machines -->
@@ -172,5 +189,6 @@
         <MachineCard {node} {rangeLabel} />
       {/each}
     </div>
+  {/if}
   {/if}
 </div>

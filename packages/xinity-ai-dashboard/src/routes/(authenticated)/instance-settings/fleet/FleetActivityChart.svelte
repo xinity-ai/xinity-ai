@@ -4,7 +4,7 @@
   import { formatTokens } from "$lib/fleet/format";
 
   let { history, nodeNames }: {
-    history: PageData["history"];
+    history: NonNullable<PageData["history"]>;
     nodeNames: Map<string, string>;
   } = $props();
 
