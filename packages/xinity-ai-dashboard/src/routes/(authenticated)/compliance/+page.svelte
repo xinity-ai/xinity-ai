@@ -12,6 +12,7 @@
   import { Label } from "$lib/components/ui/label";
   import { Badge } from "$lib/components/ui/badge";
   import { Loader2, ShieldCheck } from "@lucide/svelte";
+  import PostureCheckRow, { type PostureCheckView } from "./PostureCheckRow.svelte";
 
   let loading = $state(true);
   let isSaving = $state(false);
@@ -63,6 +64,28 @@
     return Number.isFinite(n) && n >= 1 ? n : null;
   }
 
+  // Posture report (licensed feature)
+  const complianceReportsLicensed = $derived(Boolean(page.data.license?.features?.complianceReports));
+  type PostureSummary = { pass: number; warn: number; fail: number; total: number };
+  let postureChecks = $state<PostureCheckView[]>([]);
+  let postureSummary = $state<PostureSummary | null>(null);
+  let postureLoading = $state(false);
+
+  const automatedChecks = $derived(postureChecks.filter((c) => c.kind === "automated"));
+  const organizationalChecks = $derived(postureChecks.filter((c) => c.kind === "organizational"));
+
+  async function loadPosture() {
+    postureLoading = true;
+    const [error, report] = await orpc.compliance.getPosture();
+    if (error) {
+      toastState.add(error.message, "error");
+    } else {
+      postureChecks = report.checks as PostureCheckView[];
+      postureSummary = report.summary;
+    }
+    postureLoading = false;
+  }
+
   // Audit log (licensed feature)
   const auditLogLicensed = $derived(Boolean(page.data.license?.features?.auditLog));
   type AuditCursor = { createdAt: Date; id: string };
@@ -99,6 +122,7 @@
 
   onMount(() => {
     void loadData();
+    if (complianceReportsLicensed) void loadPosture();
     if (auditLogLicensed && permissions.canViewAuditLog) void loadAuditLog(false);
   });
 </script>
@@ -119,6 +143,74 @@
       <Loader2 class="w-4 h-4 animate-spin" /> Loading...
     </div>
   {:else}
+    {#if !complianceReportsLicensed}
+      <Card.Root>
+        <Card.Header>
+          <Card.Title>Compliance Posture</Card.Title>
+        </Card.Header>
+        <Card.Content>
+          <p class="text-sm text-muted-foreground">
+            The posture dashboard runs automated checks against your platform state and tracks
+            the organizational documents auditors ask for (DPIA, usage policy, training records).
+            It requires a license with the compliance-reports feature.
+            <a class="underline" href="https://xinity.ai/xinity-pricing" target="_blank" rel="noreferrer">
+              Upgrade to unlock it.
+            </a>
+          </p>
+        </Card.Content>
+      </Card.Root>
+    {:else}
+      <Card.Root>
+        <Card.Header>
+          <div class="flex items-center justify-between">
+            <div>
+              <Card.Title>Compliance Posture</Card.Title>
+              <Card.Description>
+                {#if postureSummary}
+                  {postureSummary.pass} of {postureSummary.total} checks evidence-complete
+                  {#if postureSummary.fail > 0}
+                    · <span class="text-red-600 font-medium">{postureSummary.fail} gaps</span>
+                  {/if}
+                  {#if postureSummary.warn > 0}
+                    · <span class="text-amber-600 font-medium">{postureSummary.warn} need attention</span>
+                  {/if}
+                {:else}
+                  Evidence status across automated platform checks and organizational documents
+                {/if}
+              </Card.Description>
+            </div>
+            <Button variant="secondary" size="sm" disabled={postureLoading} onclick={loadPosture}>
+              {#if postureLoading}
+                <Loader2 class="w-4 h-4 animate-spin" />
+              {:else}
+                Refresh
+              {/if}
+            </Button>
+          </div>
+        </Card.Header>
+        <Card.Content class="space-y-6">
+          <div>
+            <h3 class="text-sm font-semibold mb-1">Automated checks</h3>
+            <p class="text-xs text-muted-foreground mb-2">Computed live from platform state.</p>
+            {#each automatedChecks as check (check.id)}
+              <PostureCheckRow {check} canManage={permissions.canManageCompliance} onChanged={loadPosture} />
+            {/each}
+          </div>
+          <div>
+            <h3 class="text-sm font-semibold mb-1">Organizational evidence</h3>
+            <p class="text-xs text-muted-foreground mb-2">
+              Documents only your organization can produce. The platform tracks them and includes
+              them in the audit pack; it never authors them. A green status means evidence is
+              complete, not that you are compliant — that conclusion stays with your DPO.
+            </p>
+            {#each organizationalChecks as check (check.id)}
+              <PostureCheckRow {check} canManage={permissions.canManageCompliance} onChanged={loadPosture} />
+            {/each}
+          </div>
+        </Card.Content>
+      </Card.Root>
+    {/if}
+
     <Card.Root>
       <Card.Header>
         <Card.Title>Retention Policy</Card.Title>

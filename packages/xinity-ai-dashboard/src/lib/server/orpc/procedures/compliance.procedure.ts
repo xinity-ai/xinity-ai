@@ -4,6 +4,7 @@ import { and, auditLogT, desc, eq, gte, like, lt, lte, or, retentionPolicyT, ret
 import { getDB } from "$lib/server/db";
 import { recordAudit } from "$lib/server/audit";
 import { hasFeature } from "$lib/server/license";
+import { getPostureReport, invalidatePostureCache } from "$lib/server/compliance/checks";
 
 const tags = ["Compliance"];
 
@@ -52,6 +53,7 @@ const setRetentionPolicy = rootOs
         mediaRetentionDays: input.mediaRetentionDays,
       },
     });
+    invalidatePostureCache(context.activeOrganizationId);
     return policy;
   });
 
@@ -121,9 +123,23 @@ const listAuditLog = rootOs
     };
   });
 
+const getPosture = rootOs
+  .use(withOrganization)
+  .use(requirePermission({ compliance: ["read"] }))
+  .route({ method: "GET", path: "/posture", tags, summary: "Get compliance posture report" })
+  .handler(({ context, errors }) => {
+    if (!hasFeature("compliance-reports")) {
+      throw errors.FORBIDDEN({
+        message: "The compliance posture dashboard requires a license with the compliance-reports feature. Upgrade at xinity.ai/xinity-pricing.",
+      });
+    }
+    return getPostureReport(context.activeOrganizationId);
+  });
+
 export const complianceRouter = rootOs.prefix("/compliance").router({
   getRetentionPolicy,
   setRetentionPolicy,
   listRetentionRuns,
   listAuditLog,
+  getPosture,
 });

@@ -119,6 +119,27 @@ describe("compliance API", () => {
     expect(body.message).toContain("license");
   });
 
+  test("posture report is license-gated (free tier gets 403)", async () => {
+    const res = await ownerFetch("/api/compliance/posture");
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { message?: string };
+    expect(body.message).toContain("license");
+  });
+
+  test("artifact upload is license-gated (free tier gets 403)", async () => {
+    const storageState = JSON.parse(readFileSync(STORAGE_STATE.owner, "utf-8")) as StorageState;
+    const cookies = storageState.cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+    const form = new FormData();
+    form.set("file", new File(["demo"], "dpia.pdf", { type: "application/pdf" }));
+    form.set("kind", "dpia");
+    const res = await fetch(apiUrl("/compliance/artifact"), {
+      method: "POST",
+      headers: { Origin: BASE_URL, Cookie: cookies },
+      body: form,
+    });
+    expect(res.status).toBe(403);
+  });
+
   test("viewer role cannot read or change the retention policy", async () => {
     const storageState = JSON.parse(readFileSync(STORAGE_STATE.viewer, "utf-8")) as StorageState;
     const cookies = storageState.cookies.map((c) => `${c.name}=${c.value}`).join("; ");
