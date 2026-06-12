@@ -148,15 +148,26 @@ export class MetricsAccumulator {
 
 // ─── Sampler lifecycle ───────────────────────────────────────────────────────
 
-export type MetricsSampler = { stop: () => Promise<void> };
+export type MetricsSampler = {
+  stop: () => Promise<void>;
+  snapshot: () => MetricsBucket | null;
+};
+
+/** The accumulator from the currently running sampler, or null if not started. */
+let activeAccumulator: MetricsAccumulator | null = null;
+
+/** Returns the latest accumulated GPU metrics, or null if the sampler has not started. */
+export function getMetricsSnapshot(): MetricsBucket | null {
+  return activeAccumulator?.snapshot() ?? null;
+}
 
 /**
- * Starts periodic GPU sampling and in-memory aggregation. Accumulated data will
- * feed the Prometheus metrics endpoint when that is added. Returns a handle
- * whose stop() clears the sampling timer.
+ * Starts periodic GPU sampling and in-memory aggregation. Returns a handle
+ * whose stop() clears the sampling timer and snapshot() returns the latest data.
  */
 export function startMetricsSampler(): MetricsSampler {
   const accumulator = new MetricsAccumulator();
+  activeAccumulator = accumulator;
   let lastSampleAt = Date.now();
   let sampling = false;
   let sampleTimer: ReturnType<typeof setInterval> | undefined;
@@ -191,6 +202,10 @@ export function startMetricsSampler(): MetricsSampler {
   return {
     async stop() {
       clearInterval(sampleTimer);
+      activeAccumulator = null;
+    },
+    snapshot() {
+      return accumulator.snapshot();
     },
   };
 }
