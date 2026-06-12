@@ -21,13 +21,20 @@ import {
 import { getDB } from "$lib/server/db";
 import { hasFeature } from "$lib/server/license";
 import { infoClient } from "$lib/server/info-client";
+import { serverEnv } from "$lib/server/serverenv";
+import { semver } from "bun";
+import { version as currentVersion } from "../../../../../../package.json";
 
 export type CheckStatus = "pass" | "warn" | "fail";
 export type CheckResult = { status: CheckStatus; detail: string };
 
+export type ComplianceFramework = "GDPR" | "EU AI Act" | "NIS2";
+
 export type ComplianceCheckDefinition = {
   id: string;
   kind: "automated" | "organizational";
+  /** Regulatory frameworks this evidence item serves. */
+  frameworks: ComplianceFramework[];
   /** Evidence artifact ids from COMPLIANCE.md §4 (E1–E12). */
   evidenceIds: string[];
   articleRef: string;
@@ -209,9 +216,36 @@ async function checkNoStaleKeys(organizationId: string): Promise<CheckResult> {
   return { status: "pass", detail: "No enabled API keys older than one year." };
 }
 
+/**
+ * NIS2 Art. 21(2)(e): timely security updates are part of vulnerability
+ * handling. Compares the running version against the newest one published
+ * on the customer's infoserver (works air-gapped via the local mirror).
+ */
+async function checkPlatformUpToDate(): Promise<CheckResult> {
+  try {
+    const res = await fetch(new URL("/version.json", serverEnv.INFOSERVER_URL), {
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!res.ok) {
+      return { status: "warn", detail: "Update status could not be verified: infoserver did not report a version." };
+    }
+    const json = (await res.json()) as { version?: unknown };
+    if (typeof json.version !== "string") {
+      return { status: "warn", detail: "Update status could not be verified: invalid version response." };
+    }
+    if (semver.order(json.version, currentVersion) === 1) {
+      return { status: "warn", detail: `Version ${json.version} is available; this installation runs ${currentVersion}. Apply security updates in a timely manner.` };
+    }
+    return { status: "pass", detail: `Running the newest available version (${currentVersion}).` };
+  } catch {
+    return { status: "warn", detail: "Update status could not be verified: infoserver unreachable." };
+  }
+}
+
 export const COMPLIANCE_CHECKS: ComplianceCheckDefinition[] = [
   {
     id: "retention-configured",
+    frameworks: ["GDPR"],
     kind: "automated",
     evidenceIds: ["E4"],
     articleRef: "Art. 5(1)(e) GDPR",
@@ -221,6 +255,7 @@ export const COMPLIANCE_CHECKS: ComplianceCheckDefinition[] = [
   },
   {
     id: "retention-enforced",
+    frameworks: ["GDPR"],
     kind: "automated",
     evidenceIds: ["E4"],
     articleRef: "Art. 5(2) GDPR (accountability)",
@@ -230,33 +265,37 @@ export const COMPLIANCE_CHECKS: ComplianceCheckDefinition[] = [
   },
   {
     id: "audit-log-active",
+    frameworks: ["GDPR", "NIS2"],
     kind: "automated",
     evidenceIds: ["E11"],
-    articleRef: "Art. 32 GDPR",
+    articleRef: "Art. 32 GDPR · Art. 21(2)(b) NIS2",
     title: "Administrative audit trail active",
     explanation: "Auditors ask who can access and change the AI system, and for records proving it. The audit log records deployments, key management, member changes, and data exports.",
     run: checkAuditLogActive,
   },
   {
     id: "models-from-catalog",
+    frameworks: ["EU AI Act", "NIS2"],
     kind: "automated",
     evidenceIds: ["E10", "E12"],
-    articleRef: "Commission GPAI guidelines (July 2025)",
+    articleRef: "Commission GPAI guidelines (July 2025) · Art. 21(2)(i) NIS2 (asset management)",
     title: "Model provenance documented",
     explanation: "Your deployer (not GPAI provider) position under the EU AI Act rests on running unmodified models with documented provenance. Models outside the catalog have no documented upstream source.",
     run: checkModelsFromCatalog,
   },
   {
     id: "mfa-or-sso",
+    frameworks: ["GDPR", "NIS2"],
     kind: "automated",
     evidenceIds: ["E3", "E11"],
-    articleRef: "Art. 32 GDPR",
+    articleRef: "Art. 32 GDPR · Art. 21(2)(j) NIS2 (multi-factor authentication)",
     title: "Strong authentication",
     explanation: "Technical and organizational measures must match the risk of the processed data. Access to inference logs should require a second factor or be delegated to your identity provider via SSO.",
     run: checkMfaOrSso,
   },
   {
     id: "logging-consent-reviewed",
+    frameworks: ["GDPR"],
     kind: "automated",
     evidenceIds: ["E1"],
     articleRef: "Art. 5(1)(c) GDPR (data minimisation)",
@@ -266,15 +305,17 @@ export const COMPLIANCE_CHECKS: ComplianceCheckDefinition[] = [
   },
   {
     id: "no-stale-admin-keys",
+    frameworks: ["GDPR", "NIS2"],
     kind: "automated",
     evidenceIds: ["E3"],
-    articleRef: "Art. 32 GDPR",
+    articleRef: "Art. 32 GDPR · Art. 21(2)(i) NIS2 (access control)",
     title: "Credential hygiene",
     explanation: "Long-lived credentials accumulate exposure risk. Auditors check for rotation practices on keys that grant access to the AI system.",
     run: checkNoStaleKeys,
   },
   {
     id: "dpia",
+    frameworks: ["GDPR"],
     kind: "organizational",
     evidenceIds: ["E2"],
     articleRef: "Art. 35 GDPR",
@@ -283,6 +324,7 @@ export const COMPLIANCE_CHECKS: ComplianceCheckDefinition[] = [
   },
   {
     id: "usage-policy",
+    frameworks: ["GDPR", "EU AI Act"],
     kind: "organizational",
     evidenceIds: ["E8"],
     articleRef: "DSK Orientierungshilfe KI, Rn. 36",
@@ -291,14 +333,16 @@ export const COMPLIANCE_CHECKS: ComplianceCheckDefinition[] = [
   },
   {
     id: "training-records",
+    frameworks: ["EU AI Act", "GDPR", "NIS2"],
     kind: "organizational",
     evidenceIds: ["E9"],
-    articleRef: "Art. 4 EU AI Act",
-    title: "AI literacy training records",
-    explanation: "AI literacy is binding since February 2025 and requires role-tailored training. Generic awareness material is insufficient; keep internal training records as evidence.",
+    articleRef: "Art. 4 EU AI Act · Art. 20(2), 21(2)(g) NIS2",
+    title: "AI literacy & security training records",
+    explanation: "AI literacy is binding since February 2025 and requires role-tailored training. For NIS2-regulated entities, basic cyber hygiene training (including for management) is additionally mandatory. Generic awareness material is insufficient; keep internal training records as evidence.",
   },
   {
     id: "due-diligence",
+    frameworks: ["GDPR", "EU AI Act"],
     kind: "organizational",
     evidenceIds: ["E7"],
     articleRef: "EDPB Opinion 28/2024, paras 129–130",
@@ -307,6 +351,7 @@ export const COMPLIANCE_CHECKS: ComplianceCheckDefinition[] = [
   },
   {
     id: "breach-procedure",
+    frameworks: ["GDPR"],
     kind: "organizational",
     evidenceIds: ["E5"],
     articleRef: "Art. 33(5) GDPR",
@@ -315,11 +360,49 @@ export const COMPLIANCE_CHECKS: ComplianceCheckDefinition[] = [
   },
   {
     id: "dsr-procedure",
+    frameworks: ["GDPR"],
     kind: "organizational",
     evidenceIds: ["E6"],
     articleRef: "Art. 15–22 GDPR",
     title: "Data subject rights procedure",
     explanation: "Working procedures for access, rectification, and erasure requests covering inference logs. Note: per DSK guidance, suppressing outputs via filters does not generally constitute erasure.",
+  },
+  {
+    id: "platform-up-to-date",
+    frameworks: ["NIS2"],
+    kind: "automated",
+    evidenceIds: ["E16"],
+    articleRef: "Art. 21(2)(e) NIS2 (vulnerability handling)",
+    title: "Platform security updates",
+    explanation: "NIS2 requires security in maintenance, including vulnerability handling. Running the newest published platform version is the timely-update evidence; release integrity is verified via published SHA-256 checksums.",
+    run: checkPlatformUpToDate,
+  },
+  {
+    id: "incident-response-plan",
+    frameworks: ["NIS2"],
+    kind: "organizational",
+    evidenceIds: ["E13"],
+    articleRef: "Art. 21(2)(b), Art. 23 NIS2",
+    title: "Incident response & reporting plan",
+    explanation: "Applies if your organization is a NIS2 essential or important entity: a documented incident-handling procedure covering the staged reporting cascade — early warning within 24 hours, incident notification within 72 hours, final report within one month — to your CSIRT or national authority (BSI in Germany). The platform's audit trail and logs feed incident detection and the report timeline.",
+  },
+  {
+    id: "business-continuity",
+    frameworks: ["NIS2"],
+    kind: "organizational",
+    evidenceIds: ["E14"],
+    articleRef: "Art. 21(2)(c) NIS2",
+    title: "Business continuity & backup plan",
+    explanation: "Applies if your organization is a NIS2 essential or important entity: documented backup management, disaster recovery, and crisis management covering the AI platform's database and object store (both customer-managed).",
+  },
+  {
+    id: "risk-analysis-policy",
+    frameworks: ["NIS2"],
+    kind: "organizational",
+    evidenceIds: ["E15"],
+    articleRef: "Art. 21(2)(a), 21(2)(f) NIS2",
+    title: "Risk analysis & security policy (ISMS)",
+    explanation: "Applies if your organization is a NIS2 essential or important entity: the information-system security policy and risk analysis covering the AI platform, plus a procedure to assess the effectiveness of the measures. ENISA's Technical Implementation Guidance (June 2025) and ISO/IEC 27001 mappings define the expected evidence.",
   },
 ];
 

@@ -6,10 +6,13 @@
   const ORGANIZATIONAL_TITLES: Record<string, string> = {
     "dpia": "Data protection impact assessment (DPIA)",
     "usage-policy": "AI usage policy",
-    "training-records": "AI literacy training records",
+    "training-records": "AI literacy & security training records",
     "due-diligence": "Model due-diligence assessment",
     "breach-procedure": "Breach documentation procedure",
     "dsr-procedure": "Data subject rights procedure",
+    "incident-response-plan": "Incident response & reporting plan (NIS2)",
+    "business-continuity": "Business continuity & backup plan (NIS2)",
+    "risk-analysis-policy": "Risk analysis & security policy (NIS2)",
   };
 
   function fmtDate(d: Date | string): string {
@@ -177,6 +180,7 @@
     <li>Multi-tenancy: every record is scoped to an organization; cross-organization access is rejected at the API layer.</li>
     <li>Administrative audit trail: {data.toms.auditLogActive ? "active (see section 6)" : "no events in the reporting period"}.</li>
     <li>Transport security and at-rest encryption are operated by the customer (reverse proxy TLS, database encryption); see the Xinity Security Whitepaper for the reference architecture. Air-gapped operation is supported; the platform performs no vendor callbacks.</li>
+    <li>Supply chain security (Art. 21(2)(d)/(e) NIS2): platform releases are distributed with published SHA-256 checksums verified before installation; updates are operator-controlled (no auto-update); model provenance is documented in the AI system register (section 2). Product-level vendor obligations fall under the Cyber Resilience Act (Reg. (EU) 2024/2847).</li>
   </ul>
   <h3>Role-based access control matrix</h3>
   <table>

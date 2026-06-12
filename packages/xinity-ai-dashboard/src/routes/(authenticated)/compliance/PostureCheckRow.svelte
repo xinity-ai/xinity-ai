@@ -6,9 +6,12 @@
   import { Label } from "$lib/components/ui/label";
   import { ChevronDown, ChevronRight, Loader2 } from "@lucide/svelte";
 
+  export type ComplianceFramework = "GDPR" | "EU AI Act" | "NIS2";
+
   export type PostureCheckView = {
     id: string;
     kind: "automated" | "organizational";
+    frameworks: ComplianceFramework[];
     evidenceIds: string[];
     articleRef: string;
     title: string;
@@ -45,6 +48,12 @@
     pass: "Evidence complete",
     warn: "Needs attention",
     fail: "Gap",
+  };
+
+  const frameworkStyle: Record<ComplianceFramework, string> = {
+    "GDPR": "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800",
+    "EU AI Act": "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-800",
+    "NIS2": "bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950 dark:text-teal-300 dark:border-teal-800",
   };
 
   async function upload() {
@@ -95,6 +104,13 @@
     {/if}
     <span class={`w-2.5 h-2.5 rounded-full shrink-0 ${statusDot[check.status]}`}></span>
     <span class="flex-1 text-sm font-medium">{check.title}</span>
+    <span class="hidden sm:flex gap-1">
+      {#each check.frameworks as framework (framework)}
+        <span class={`rounded-full border px-2 py-0.5 text-[0.65rem] font-medium whitespace-nowrap ${frameworkStyle[framework]}`}>
+          {framework}
+        </span>
+      {/each}
+    </span>
     <Badge variant={check.status === "fail" ? "destructive" : check.status === "warn" ? "outline" : "secondary"}>
       {statusLabel[check.status]}
     </Badge>

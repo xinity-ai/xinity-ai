@@ -36,6 +36,19 @@ Your audit artifact for this question is a short, documented **classification an
 
 Note: if you expose a self-hosted assistant under your own name to users, you may qualify as the **provider of that AI system** (not of the model) for the Art. 50 transparency duties described below.
 
+### 2.3 Under NIS2: in scope if your organization is — and then the platform is too
+
+NIS2 (Directive (EU) 2022/2555) regulates **entities, not software products**: essential and important entities in the Annex I/II sectors (energy, health, banking, digital infrastructure, manufacturing, public administration, …) meeting the size thresholds. If your organization is in scope, the Art. 21 risk-management duties cover **all network and information systems used for your operations** (Art. 21(1), Art. 6(1)) — a self-hosted AI platform included, even when it is purely internal. Transposition is live: Germany's NIS2UmsG entered into force on 6 December 2025 (BSI registration deadline 6 March 2026), and most member states followed after the Commission's May 2025 infringement proceedings.
+
+The practical consequences for an in-scope operator:
+
+- **Art. 21(2)(a)–(j) minimum measures** — the platform directly evidences several of them: access control and asset management (RBAC, model register — (i)), multi-factor authentication coverage ((j)), incident-relevant logging and the audit trail ((b)), timely security updates with checksum-verified releases ((e)), and supply-chain inputs ((d)).
+- **Art. 23 incident reporting** — early warning within **24 hours**, incident notification within **72 hours**, final report within **one month**. The platform's logs and audit trail feed detection and the report timeline; the reporting procedure itself is organizational (evidence E13).
+- **Art. 20 management accountability** — management approves and oversees the measures, is personally liable, and must itself be trained (folds into evidence E9).
+- **Sanctions** — up to at least €10M / 2% of worldwide turnover (essential) or €7M / 1.4% (important entities).
+
+Xinity (the vendor) carries no direct NIS2 duties as a software supplier; it is reached indirectly through your supply-chain-security duty (Art. 21(2)(d), 21(3)) — supported by checksum-verified releases and the security whitepaper — while product-level vendor obligations arise under the complementary **Cyber Resilience Act** (vulnerability-reporting duties from September 2026).
+
 ---
 
 ## 3. What Applies When — EU AI Act Timeline (as of June 2026)
@@ -72,6 +85,10 @@ The EDPB ChatGPT taskforce report (May 2024) includes the questionnaire EU data 
 | E10 | **AI system inventory / register**: which AI systems are deployed, their versions, sources, capabilities, and risk classification | ISO/IEC 42001; Art. 26 readiness |
 | E11 | **Access control evidence**: who can access inference data and administration functions, authentication mechanisms | Art. 32 GDPR |
 | E12 | **GPAI / deployer classification analysis** (§2.2) | Commission GPAI guidelines, July 2025 |
+| E13 | **Incident response & reporting plan** with the 24h/72h/1-month cascade (NIS2 entities) | Art. 21(2)(b), Art. 23 NIS2 |
+| E14 | **Business continuity & backup plan** covering the platform's database and object store (NIS2 entities) | Art. 21(2)(c) NIS2 |
+| E15 | **Risk analysis & security policy (ISMS)** incl. effectiveness assessment (NIS2 entities) | Art. 21(2)(a), (f) NIS2; ENISA Technical Implementation Guidance (June 2025) |
+| E16 | **Timely security updates** — platform version vs. newest release, checksum-verified | Art. 21(2)(e) NIS2 |
 
 Two evidentiary principles auditors apply (EDPB taskforce report, paras 7 and 19): **technical impossibility is no excuse** — accountability and data protection by design apply fully to LLM processing — and **the burden of proving that safeguards work lies with you**, the controller. Documented effectiveness evidence is itself an audit requirement.
 
@@ -171,4 +188,5 @@ Gateway-level support for AI-interaction disclosure and machine-readable marking
 - EDPB, *Opinion 28/2024 on certain data protection aspects related to the processing of personal data in the context of AI models* (Dec 2024).
 - DSK (Konferenz der unabhängigen Datenschutzaufsichtsbehörden), *Orientierungshilfe KI und Datenschutz* (May 2024); *Orientierungshilfe TOMs für KI-Systeme* (June 2025).
 - ISO/IEC 42001:2023 — AI management systems (emerging audit framework for E10).
+- NIS2 Directive (Directive (EU) 2022/2555): Arts. 2, 6(1), 20, 21, 23, 34; German NIS2UmsG (in force 6 Dec 2025); ENISA, *Technical Implementation Guidance on Cybersecurity Risk Management Measures* (June 2025); Cyber Resilience Act (Reg. (EU) 2024/2847) for vendor-side product duties.
 - Related Xinity documents: [Security Whitepaper](docs/legal/security-whitepaper.md), [Data Processing Agreement](docs/legal/data-processing-agreement.md), [SECURITY.md](SECURITY.md).
