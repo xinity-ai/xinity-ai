@@ -220,6 +220,12 @@
           description = "Enable the /mcp endpoint implementing the Model Context Protocol (MCP). This allows AI coding assistants and other MCP-compatible clients to interact with the dashboard programmatically.";
         };
 
+        prometheusUrl = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "URL of a Prometheus instance the dashboard queries server-side for live GPU metrics (e.g. http://127.0.0.1:9090). When set, the Compute fleet page shows utilization rings and energy readouts. Leave null to keep the fleet page in its no-metrics mode.";
+        };
+
         licenseKey = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
@@ -355,6 +361,9 @@
           }
           // lib.optionalAttrs (cfg.instanceAdminEmails != null) {
             INSTANCE_ADMIN_EMAILS = cfg.instanceAdminEmails;
+          }
+          // lib.optionalAttrs (cfg.prometheusUrl != null) {
+            PROMETHEUS_URL = cfg.prometheusUrl;
           }
           // lib.optionalAttrs (cfg.licenseKey != null) {
             LICENSE_KEY = cfg.licenseKey;
