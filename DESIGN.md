@@ -43,7 +43,27 @@ const customResourcePermissions = {
 
 Practically: remove `compliance`/`auditLog` from the object spread into `member` (build the role statements so the new resources are only added to `owner` and `admin`, plus `compliance: ["read"]` for `member`).
 
-### 0.2 New schema files
+### 0.2 Licensing boundary — ELv2 premium feature
+
+The repository is dual-licensed: gateway, daemon, CLI, infoserver, and `common-db` are Apache 2.0; the **dashboard is Elastic License v2** with paid tiers unlocking `LicenseFeature` flags. The compliance features are a dashboard/ELv2 premium feature:
+
+- **All compliance logic lives in `packages/xinity-ai-dashboard`** (ELv2): the retention scheduler, `recordAudit`, the check engine, artifact routes, and the audit pack assembly/rendering. No compliance logic goes into Apache-licensed packages.
+- `common-db` carries **only the table definitions** — this matches the existing precedent (the `ssoProvider` table is Apache-licensed schema while SSO logic is ELv2-gated in the dashboard).
+- Add one new value to `LicenseFeature` in `src/lib/server/license/types.ts`: `"compliance-reports"`.
+
+Gating matrix:
+
+| Capability | License gate |
+|---|---|
+| Audit log **recording** | Always on (no holes in the trail — see Phase 2.2) |
+| Audit log **read/UI** | `audit-log` (existing feature flag) |
+| Posture dashboard, artifact storage, check engine | `compliance-reports` |
+| Audit pack generation | `compliance-reports` |
+| Retention engine (policy + purge) | **Free tier — deliberately not gated.** Charging customers to be able to delete personal data is GDPR-hostile and would undercut the entire compliance story; the purge capability is also the fix for the platform's own Art. 5(1)(e) liability (COMPLIANCE.md §5.2(1)) |
+
+Server-side: guard gated procedures/routes with `hasFeature(...)` → `FORBIDDEN` with a clear upgrade message. Client-side: surface gating the same way existing premium features do (see `LicenseBanner.svelte` and how `sso` gating reaches the client via the license summary).
+
+### 0.3 New schema files
 
 Two new files in `packages/common-db/src/schema/`, exported from the package index like the existing ones. Use the existing `createdAt`/`updatedAt` column helpers pattern from `call-data.ts`. Tables live in the default (public) schema — they are organizational/administrative data, not call data, so do **not** put them in `callDataSchema`.
 
@@ -239,6 +259,7 @@ Notes:
 
 ### 3.3 Procedure + UI
 
+- All Phase 3 procedures and artifact routes are gated by `hasFeature("compliance-reports")` in addition to RBAC (§0.2).
 - `getPostureReport` in `compliance.procedure.ts` (`compliance: ["read"]`): runs all automated checks, merges artifact status, returns the full check list with statuses. Cache per org for ~5 minutes in-memory (checks hit several tables).
 - UI on `(authenticated)/compliance/`: summary header ("12 of 14 checks evidence-complete"), two sections (Automated / Organizational), each check expandable to its explanation + article ref, upload slots on organizational items. shadcn-svelte components, permission-gated controls via `permissions.svelte.ts`.
 - **Wording rule (load-bearing):** the aggregate state is "evidence complete" / "gaps found" — never the word "compliant". See COMPLIANCE.md §6.3.
@@ -275,7 +296,7 @@ Every section carries its article references and a footer with generation timest
 
 - Template: a Svelte component rendered server-side to static HTML (the codebase already server-renders Svelte → MJML for emails in `src/lib/components/mailTemplates/`; reuse that render approach with a print stylesheet instead of MJML).
 - ZIP: Bun has no stdlib zip; add the small `fflate` dependency (pure JS, works in compiled binaries).
-- Endpoint: `generateAuditPack` — because the response is a binary download, implement as `(authenticated)/compliance/audit-pack/+server.ts` (GET with `from`/`to` query params) with manual session + `requirePermission`-equivalent check (`compliance: ["read"]`), like the artifact routes. Writes a `recordAudit` entry (`compliance.audit-pack.generate`).
+- Endpoint: `generateAuditPack` — because the response is a binary download, implement as `(authenticated)/compliance/audit-pack/+server.ts` (GET with `from`/`to` query params) with manual session + `requirePermission`-equivalent check (`compliance: ["read"]`) plus `hasFeature("compliance-reports")` (§0.2), like the artifact routes. Writes a `recordAudit` entry (`compliance.audit-pack.generate`).
 - UI: "Generate Audit Pack" button + date-range picker on the compliance page, with a visible note that the pack is evidence, not a certification.
 
 **Acceptance:** generated pack for a seeded org opens standalone in a browser, prints cleanly to PDF with one section per page-group, lists a missing DPIA under "Open gaps", and the ZIP's JSON files round-trip parse.
