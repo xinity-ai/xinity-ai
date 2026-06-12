@@ -15,7 +15,15 @@ import { findOrgName } from "$lib/server/lib/org-queries";
 import { notifyOrgMembers } from "$lib/server/notifications/notification.service";
 import { NotificationType } from "$lib/server/notifications/events";
 import { serverEnv } from "$lib/server/serverenv";
+import { recordAudit } from "$lib/server/audit";
 const log = rootLogger.child({ name: "deployment.orpc" });
+
+/** Input subset for audit details: defined scalar config fields, never the id. */
+function auditableChanges(input: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(input).filter(([key, value]) => key !== "id" && value !== undefined),
+  );
+}
 
 const tags = ["Deployment"];
 const SuccessDto = z.object({ success: z.literal(true) });
@@ -359,6 +367,12 @@ const updateDeployment = rootOs
       throw errors.NOT_FOUND();
     }
     syncDeployedModels();
+    await recordAudit(context, {
+      action: "deployment.update",
+      resourceType: "modelDeployment",
+      resourceId: deployment.id,
+      details: auditableChanges(input),
+    });
     return deployment;
   });
 
@@ -388,6 +402,12 @@ const toggleEnabled = rootOs
       throw errors.NOT_FOUND();
     }
     syncDeployedModels();
+    await recordAudit(context, {
+      action: "deployment.toggle-enabled",
+      resourceType: "modelDeployment",
+      resourceId: deployment.id,
+      details: { name: deployment.name, enabled: input.enabled },
+    });
     return successObject;
   });
 const getDeployment = rootOs
@@ -435,6 +455,12 @@ Immediately unregisters it, and drops it completely.
       throw errors.NOT_FOUND();
     }
     syncDeployedModels();
+    await recordAudit(context, {
+      action: "deployment.delete",
+      resourceType: "modelDeployment",
+      resourceId: deployment.id,
+      details: { name: deployment.name, publicSpecifier: deployment.publicSpecifier },
+    });
     return { success: true };
   });
 const findDeployment = rootOs
@@ -513,6 +539,17 @@ export const createDeployment = rootOs
         .returning();
       if (!deployment) throw new Error("Insert into modelDeploymentT returned no row");
       void syncDeployedModels();
+      await recordAudit(context, {
+        action: "deployment.create",
+        resourceType: "modelDeployment",
+        resourceId: deployment.id,
+        details: {
+          name: deployment.name,
+          publicSpecifier: deployment.publicSpecifier,
+          specifier: deployment.specifier,
+          replicas: deployment.replicas,
+        },
+      });
       const orgName = await findOrgName(context.activeOrganizationId);
       void notifyOrgMembers({
         type: NotificationType.deployment_created,

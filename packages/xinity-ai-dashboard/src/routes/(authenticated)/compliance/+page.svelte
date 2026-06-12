@@ -1,9 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { page } from "$app/state";
   import { orpc } from "$lib/orpc/orpc-client";
   import { toastState } from "$lib/state/toast.svelte";
   import { permissions } from "$lib/state/permissions.svelte";
-  import type { RetentionRun } from "common-db";
+  import type { AuditLog, RetentionRun } from "common-db";
 
   import * as Card from "$lib/components/ui/card";
   import { Button } from "$lib/components/ui/button";
@@ -62,7 +63,44 @@
     return Number.isFinite(n) && n >= 1 ? n : null;
   }
 
-  onMount(loadData);
+  // Audit log (licensed feature)
+  const auditLogLicensed = $derived(Boolean(page.data.license?.features?.auditLog));
+  type AuditCursor = { createdAt: Date; id: string };
+  let auditEntries = $state<AuditLog[]>([]);
+  let auditCursor = $state<AuditCursor | null>(null);
+  let auditActionFilter = $state("");
+  let auditLoading = $state(false);
+
+  async function loadAuditLog(append: boolean) {
+    auditLoading = true;
+    const [error, result] = await orpc.compliance.listAuditLog({
+      action: auditActionFilter || undefined,
+      cursor: append && auditCursor ? auditCursor : undefined,
+    });
+    if (error) {
+      toastState.add(error.message, "error");
+    } else {
+      const entries = result.entries.map((e) => ({ ...e, createdAt: new Date(e.createdAt) })) as AuditLog[];
+      auditEntries = append ? [...auditEntries, ...entries] : entries;
+      auditCursor = result.nextCursor
+        ? { createdAt: new Date(result.nextCursor.createdAt), id: result.nextCursor.id }
+        : null;
+    }
+    auditLoading = false;
+  }
+
+  function detailsSummary(details: Record<string, unknown> | null): string {
+    if (!details) return "";
+    return Object.entries(details)
+      .filter(([, v]) => v !== null && v !== undefined)
+      .map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`)
+      .join(", ");
+  }
+
+  onMount(() => {
+    void loadData();
+    if (auditLogLicensed && permissions.canViewAuditLog) void loadAuditLog(false);
+  });
 </script>
 
 <div class="space-y-6 p-6 max-w-4xl">
@@ -181,5 +219,78 @@
         {/if}
       </Card.Content>
     </Card.Root>
+
+    {#if permissions.canViewAuditLog}
+      <Card.Root>
+        <Card.Header>
+          <Card.Title>Audit Log</Card.Title>
+          <Card.Description>
+            Administrative actions: who did what, when. Events are always recorded;
+            viewing requires a license with the audit-log feature.
+          </Card.Description>
+        </Card.Header>
+        <Card.Content class="space-y-4">
+          {#if !auditLogLicensed}
+            <p class="text-sm text-muted-foreground">
+              Your license does not include the audit log.
+              <a class="underline" href="https://xinity.ai/xinity-pricing" target="_blank" rel="noreferrer">
+                Upgrade to unlock it.
+              </a>
+              Events are still being recorded, so the trail is complete once unlocked.
+            </p>
+          {:else}
+            <div class="flex items-end gap-3">
+              <div class="space-y-1.5">
+                <Label for="audit-action-filter">Filter by action</Label>
+                <Input
+                  id="audit-action-filter"
+                  placeholder='e.g. "deployment." or "member."'
+                  class="w-64"
+                  bind:value={auditActionFilter}
+                  onkeydown={(e) => e.key === "Enter" && loadAuditLog(false)}
+                />
+              </div>
+              <Button variant="secondary" disabled={auditLoading} onclick={() => loadAuditLog(false)}>
+                Apply
+              </Button>
+            </div>
+
+            {#if auditEntries.length === 0 && !auditLoading}
+              <p class="text-sm text-muted-foreground">No audit events recorded yet.</p>
+            {:else}
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b text-left text-muted-foreground">
+                    <th class="py-2 pr-4 font-medium">Time</th>
+                    <th class="py-2 pr-4 font-medium">Actor</th>
+                    <th class="py-2 pr-4 font-medium">Action</th>
+                    <th class="py-2 font-medium">Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each auditEntries as entry (entry.id)}
+                    <tr class="border-b last:border-0 align-top">
+                      <td class="py-2 pr-4 whitespace-nowrap">{entry.createdAt.toLocaleString()}</td>
+                      <td class="py-2 pr-4">{entry.actorEmail ?? "system"}</td>
+                      <td class="py-2 pr-4"><Badge variant="outline">{entry.action}</Badge></td>
+                      <td class="py-2 text-muted-foreground break-all">{detailsSummary(entry.details)}</td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+              {#if auditCursor}
+                <Button variant="secondary" disabled={auditLoading} onclick={() => loadAuditLog(true)}>
+                  {#if auditLoading}
+                    <Loader2 class="w-4 h-4 animate-spin" /> Loading...
+                  {:else}
+                    Load more
+                  {/if}
+                </Button>
+              {/if}
+            {/if}
+          {/if}
+        </Card.Content>
+      </Card.Root>
+    {/if}
   {/if}
 </div>

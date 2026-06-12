@@ -17,6 +17,7 @@ import { ac, roles } from "./roles";
 import { sendEmail, commonEmailProps, type AnyComponent } from "./email";
 import { notify } from "./notifications/notification.service";
 import { NotificationType } from "./notifications/events";
+import { recordAudit } from "./audit";
 import EmailVerificationTemplate from "$lib/components/mailTemplates/EmailVerificationTemplate.svelte";
 import EmailForgotPasswordTemplate from "$lib/components/mailTemplates/EmailForgotPasswordTemplate.svelte";
 import EmailInvitationTemplate from "$lib/components/mailTemplates/EmailInvitationTemplate.svelte";
@@ -89,25 +90,52 @@ export async function adminResetPassword(email: string, newPassword: string) {
   });
 }
 
-const sendWelcomeNotification = createAuthMiddleware(async (ctx) => {
-  if (ctx.path !== "/verify-email") return;
+/**
+ * Membership events that reach Better Auth directly (not through our oRPC
+ * procedures) and must still appear in the administrative audit trail.
+ */
+const AUDITED_AUTH_ACTIONS: Record<string, string> = {
+  "/organization/accept-invitation": "member.join",
+  "/organization/leave": "member.leave",
+};
 
-  const response = ctx.context?.returned as { status?: number; body?: Record<string, any> } | undefined;
-  if (response?.status !== 200) return;
+const afterAuthHooks = createAuthMiddleware(async (ctx) => {
+  const returned = ctx.context?.returned;
 
-  const user = response.body?.user as { id?: string; name?: string } | undefined;
-  if (!user?.id) return;
+  if (ctx.path === "/verify-email") {
+    const response = returned as { status?: number; body?: Record<string, any> } | undefined;
+    const user = response?.status === 200
+      ? response.body?.user as { id?: string; name?: string } | undefined
+      : undefined;
+    if (user?.id) {
+      log.info({ userId: user.id }, "Sending welcome notification after email verification");
+      void notify({
+        type: NotificationType.welcome,
+        userId: user.id,
+        data: {
+          userName: user.name || "",
+          appName: serverEnv.APP_NAME,
+          appUrl: serverEnv.ORIGIN,
+        },
+      });
+    }
+  }
 
-  log.info({ userId: user.id }, "Sending welcome notification after email verification");
-  void notify({
-    type: NotificationType.welcome,
-    userId: user.id,
-    data: {
-      userName: user.name || "",
-      appName: serverEnv.APP_NAME,
-      appUrl: serverEnv.ORIGIN,
-    },
-  });
+  const auditAction = AUDITED_AUTH_ACTIONS[ctx.path];
+  if (auditAction && !(returned instanceof Error)) {
+    const result = returned as { invitation?: { id?: string; organizationId?: string } } | undefined;
+    const sessionUser = ctx.context?.session?.user as { id: string; email: string } | undefined;
+    const organizationId = result?.invitation?.organizationId
+      ?? (ctx.body as { organizationId?: string } | undefined)?.organizationId
+      ?? null;
+    await recordAudit({}, {
+      action: auditAction,
+      resourceType: "member",
+      organizationId,
+      actor: sessionUser ? { id: sessionUser.id, email: sessionUser.email } : null,
+      details: result?.invitation?.id ? { invitationId: result.invitation.id } : undefined,
+    });
+  }
 });
 
 export const auth = betterAuth({
@@ -230,7 +258,7 @@ export const auth = betterAuth({
         });
       }
     }),
-    after: sendWelcomeNotification,
+    after: afterAuthHooks,
   },
   trustedOrigins: serverEnv.NODE_ENV === "development" ? ["*"] : [
     serverEnv.ORIGIN,

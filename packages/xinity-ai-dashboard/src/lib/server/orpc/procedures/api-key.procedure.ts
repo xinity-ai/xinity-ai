@@ -7,6 +7,7 @@ import { and, eq, aiApiKeyT, aiApplicationT, isNull } from "common-db";
 import { pick } from "$lib/util";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
+import { recordAudit } from "$lib/server/audit";
 
 const log = rootLogger.child({ name: "api-key.procedure" });
 
@@ -76,7 +77,7 @@ export const createApiKey = rootOs
 
     const fullKey = `${specifier}${secretKey}`;
     const hash = await Bun.password.hash(fullKey);
-    await getDB()
+    const [created] = await getDB()
       .insert(aiApiKeyT)
       .values({
         name: input.name,
@@ -86,7 +87,14 @@ export const createApiKey = rootOs
         createdByUserId: context.session.user.id,
         specifier,
         hash: hash,
-      });
+      })
+      .returning({ id: aiApiKeyT.id });
+    await recordAudit(context, {
+      action: "apiKey.create",
+      resourceType: "aiApiKey",
+      resourceId: created?.id,
+      details: { name: input.name, specifier, applicationId },
+    });
     return {
       fullKey,
       name: input.name,
@@ -147,6 +155,12 @@ const updateApiKey = rootOs
       .update(aiApiKeyT)
       .set(set)
       .where(matchActiveApiKeyInOrg(input.id, context.activeOrganizationId));
+    await recordAudit(context, {
+      action: "apiKey.update",
+      resourceType: "aiApiKey",
+      resourceId: input.id,
+      details: { name: input.name, applicationId: input.applicationId },
+    });
   });
 
 const deleteApiKey = rootOs
@@ -161,6 +175,11 @@ const deleteApiKey = rootOs
       .update(aiApiKeyT)
       .set({ deletedAt: new Date() })
       .where(matchActiveApiKeyInOrg(input.id, context.activeOrganizationId));
+    await recordAudit(context, {
+      action: "apiKey.delete",
+      resourceType: "aiApiKey",
+      resourceId: input.id,
+    });
   });
 
 const toggleEnabled = rootOs
@@ -181,6 +200,12 @@ const toggleEnabled = rootOs
       enabled = !apiKey.enabled;
     }
     await getDB().update(aiApiKeyT).set({ enabled }).where(keySelector);
+    await recordAudit(context, {
+      action: "apiKey.toggle-enabled",
+      resourceType: "aiApiKey",
+      resourceId: input.id,
+      details: { enabled },
+    });
   });
 
 const toggleCollectData = rootOs
@@ -193,6 +218,12 @@ const toggleCollectData = rootOs
       .update(aiApiKeyT)
       .set({ collectData: input.collectData })
       .where(matchActiveApiKeyInOrg(input.id, context.activeOrganizationId));
+    await recordAudit(context, {
+      action: "apiKey.toggle-collect-data",
+      resourceType: "aiApiKey",
+      resourceId: input.id,
+      details: { collectData: input.collectData },
+    });
   });
 
 export const apiKeyRouter = rootOs.prefix("/api-key").router({

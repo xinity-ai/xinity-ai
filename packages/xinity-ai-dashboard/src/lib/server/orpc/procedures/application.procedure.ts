@@ -7,6 +7,7 @@ import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
 import { aiApplicationT, eq, isNull, and } from "common-db";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
+import { recordAudit } from "$lib/server/audit";
 
 const log = rootLogger.child({ name: "application.procedure" });
 
@@ -37,6 +38,12 @@ const createApplication = rootOs
       })
       .returning();
     if (!newApp) throw new Error("Insert into aiApplicationT returned no row");
+    await recordAudit(context, {
+      action: "aiApplication.create",
+      resourceType: "aiApplication",
+      resourceId: newApp.id,
+      details: { name: newApp.name },
+    });
     return newApp;
   });
 
@@ -93,6 +100,12 @@ const updateApplication = rootOs
         description: input.description
       })
       .where(matchActiveAppInOrg(input.id, context.activeOrganizationId));
+    await recordAudit(context, {
+      action: "aiApplication.update",
+      resourceType: "aiApplication",
+      resourceId: input.id,
+      details: { name: input.name },
+    });
   });
 
 /** Soft deletes an Application (sets deletedAt). */
@@ -109,6 +122,11 @@ const softDeleteApplication = rootOs
       .update(aiApplicationT)
       .set({ deletedAt: new Date() })
       .where(matchActiveAppInOrg(input.id, context.activeOrganizationId));
+    await recordAudit(context, {
+      action: "aiApplication.delete",
+      resourceType: "aiApplication",
+      resourceId: input.id,
+    });
   });
 
 export const applicationRouter = rootOs.prefix("/application").router({

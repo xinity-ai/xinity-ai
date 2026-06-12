@@ -11,6 +11,7 @@ import { isRoleAvailable, RoleSchema } from "$lib/server/roles";
 import { hasFeature } from "$lib/server/license";
 import { betterAuthErrorBody } from "$lib/server/better-auth-errors";
 import { findOrgName } from "$lib/server/lib/org-queries";
+import { recordAudit } from "$lib/server/audit";
 
 const log = rootLogger.child({ name: "organization.procedure" });
 const tags = ["Organization"];
@@ -65,6 +66,14 @@ export const createOrganization = rootOs
       headers: context.request.headers,
     });
 
+    await recordAudit(context, {
+      action: "organization.create",
+      resourceType: "organization",
+      resourceId: org.id,
+      organizationId: org.id,
+      details: { name: org.name, slug: org.slug },
+    });
+
     return { id: org.id, name: org.name, slug: org.slug };
   });
 
@@ -91,6 +100,13 @@ const update = rootOs
     if (!result) {
       throw errors.INTERNAL_SERVER_ERROR({ message: "Failed to update organization" });
     }
+
+    await recordAudit(context, {
+      action: "organization.update",
+      resourceType: "organization",
+      resourceId: context.activeOrganizationId,
+      details: { name: input.name },
+    });
 
     return { success: true };
   });
@@ -122,6 +138,12 @@ const inviteMember = rootOs
       if (!result) {
         throw errors.INTERNAL_SERVER_ERROR({ message: "Failed to send invitation" });
       }
+
+      await recordAudit(context, {
+        action: "member.invite",
+        resourceType: "invitation",
+        details: { email: input.email, role: input.role },
+      });
 
       return { success: true };
     } catch (err) {
@@ -181,6 +203,13 @@ const removeMember = rootOs
       orgName: orgName ?? "",
     });
 
+    await recordAudit(context, {
+      action: "member.remove",
+      resourceType: "member",
+      resourceId: input.memberId,
+      details: { memberName },
+    });
+
     return { success: true };
   });
 
@@ -226,6 +255,13 @@ const updateMemberRole = rootOs
       });
     }
 
+    await recordAudit(context, {
+      action: "member.role-change",
+      resourceType: "member",
+      resourceId: input.memberId,
+      details: { role: input.role, memberName },
+    });
+
     return { success: true };
   });
 
@@ -254,6 +290,12 @@ const cancelInvitation = rootOs
       throw errors.INTERNAL_SERVER_ERROR({ message: "Failed to cancel invitation" });
     }
 
+    await recordAudit(context, {
+      action: "invitation.cancel",
+      resourceType: "invitation",
+      resourceId: input.invitationId,
+    });
+
     return { success: true };
   });
 
@@ -270,6 +312,16 @@ const deleteOrganization = rootOs
         organizationId: context.activeOrganizationId,
       },
       headers: context.request.headers,
+    });
+
+    // organizationId null: an entry scoped to the deleted org would be
+    // removed by its own FK cascade, erasing the evidence of the deletion.
+    await recordAudit(context, {
+      action: "organization.delete",
+      resourceType: "organization",
+      resourceId: context.activeOrganizationId,
+      organizationId: null,
+      details: { organizationId: context.activeOrganizationId },
     });
 
     return { success: true };

@@ -216,6 +216,8 @@ export function getLicenseSummary() {
       multiOrg: hasFeature("multi-org"),
       ssoSelfManage: hasFeature("sso-self-manage"),
       allRoles: hasFeature("all-roles"),
+      auditLog: hasFeature("audit-log"),
+      complianceReports: hasFeature("compliance-reports"),
     },
   };
 }

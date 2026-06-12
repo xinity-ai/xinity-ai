@@ -5,6 +5,7 @@ import { rootLogger } from "$lib/server/logging";
 import { auth, getGreenlitCallId, adminResetPassword } from "$lib/server/auth-server";
 import { userT, accountT, memberT, organizationT, sql, eq, or, ilike, count, and, inArray } from "common-db";
 import { RoleSchema } from "$lib/server/roles";
+import { recordAudit } from "$lib/server/audit";
 
 const log = rootLogger.child({ name: "instance-admin.procedure" });
 const tags = ["Instance Admin"];
@@ -132,6 +133,12 @@ const banUser = rootOs
         banExpires: input.expiresAt ? new Date(input.expiresAt) : null,
       })
       .where(eq(userT.id, input.userId));
+    await recordAudit(context, {
+      action: "user.ban",
+      resourceType: "user",
+      resourceId: input.userId,
+      details: { reason: input.reason, expiresAt: input.expiresAt },
+    });
     return { success: true };
   });
 
@@ -147,6 +154,11 @@ const unbanUser = rootOs
       .update(userT)
       .set({ banned: false, banReason: null, banExpires: null })
       .where(eq(userT.id, input.userId));
+    await recordAudit(context, {
+      action: "user.unban",
+      resourceType: "user",
+      resourceId: input.userId,
+    });
     return { success: true };
   });
 
@@ -178,6 +190,12 @@ const addUserToOrganization = rootOs
       organizationId: input.organizationId,
       role: input.role,
     });
+    await recordAudit(context, {
+      action: "member.add",
+      resourceType: "member",
+      organizationId: input.organizationId,
+      details: { userId: input.userId, role: input.role },
+    });
     return { success: true };
   });
 
@@ -201,6 +219,12 @@ const removeUserFromOrganization = rootOs
     await db
       .delete(memberT)
       .where(memberByUserAndOrg(input.userId, input.organizationId));
+    await recordAudit(context, {
+      action: "member.remove",
+      resourceType: "member",
+      organizationId: input.organizationId,
+      details: { userId: input.userId },
+    });
     return { success: true };
   });
 
@@ -226,6 +250,12 @@ const updateUserRole = rootOs
       .update(memberT)
       .set({ role: input.role })
       .where(memberByUserAndOrg(input.userId, input.organizationId));
+    await recordAudit(context, {
+      action: "member.role-change",
+      resourceType: "member",
+      organizationId: input.organizationId,
+      details: { userId: input.userId, role: input.role },
+    });
     return { success: true };
   });
 
@@ -247,6 +277,12 @@ const setEmailVerified = rootOs
       .update(userT)
       .set({ emailVerified: input.verified })
       .where(eq(userT.id, input.userId));
+    await recordAudit(context, {
+      action: "user.set-email-verified",
+      resourceType: "user",
+      resourceId: input.userId,
+      details: { verified: input.verified },
+    });
     return { success: true };
   });
 
@@ -274,6 +310,12 @@ const createUser = rootOs
       .set({ emailVerified: true, temporaryPassword: true })
       .where(eq(userT.id, signupResult.user.id));
     rlog.info({ userId: signupResult.user.id, email: input.email }, "Admin created user");
+    await recordAudit(context, {
+      action: "user.create",
+      resourceType: "user",
+      resourceId: signupResult.user.id,
+      details: { email: input.email, name: input.name },
+    });
     return { success: true, userId: signupResult.user.id, temporaryPassword };
   });
 
@@ -305,6 +347,11 @@ const resetUserPassword = rootOs
     }
     await db.update(userT).set({ temporaryPassword: true }).where(eq(userT.id, input.userId));
     rlog.info({ userId: input.userId }, "Admin reset user password");
+    await recordAudit(context, {
+      action: "user.reset-password",
+      resourceType: "user",
+      resourceId: input.userId,
+    });
     return { success: true, temporaryPassword };
   });
 
@@ -403,6 +450,13 @@ const setSsoSelfManage = rootOs
       .update(organizationT)
       .set({ ssoSelfManage: input.enabled })
       .where(eq(organizationT.id, input.organizationId));
+    await recordAudit(context, {
+      action: "organization.sso-self-manage",
+      resourceType: "organization",
+      resourceId: input.organizationId,
+      organizationId: input.organizationId,
+      details: { enabled: input.enabled },
+    });
     return { success: true };
   });
 

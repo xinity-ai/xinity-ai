@@ -10,6 +10,7 @@ import { isInstanceAdmin } from "$lib/server/serverenv";
 import { getDB } from "$lib/server/db";
 import { ssoProviderT, organizationT, sql, eq } from "common-db";
 import { hasFeature } from "$lib/server/license";
+import { recordAudit } from "$lib/server/audit";
 
 const log = rootLogger.child({ name: "sso.procedure" });
 const tags = ["SSO"];
@@ -135,7 +136,16 @@ const registerOidc = rootOs
   }))
   .handler(async ({ input, context, errors }) => {
     await requireSsoAccess(context.session.user.email, input.organizationId, context.request.headers, errors);
-    return dispatchSsoRegistration(input, { oidcConfig: input.oidcConfig }, context, "OIDC");
+    const result = await dispatchSsoRegistration(input, { oidcConfig: input.oidcConfig }, context, "OIDC");
+    // Details deliberately exclude oidcConfig: it contains the client secret.
+    await recordAudit(context, {
+      action: "sso.register",
+      resourceType: "ssoProvider",
+      resourceId: input.providerId,
+      organizationId: input.organizationId ?? null,
+      details: { providerId: input.providerId, issuer: input.issuer, domain: input.domain, kind: "oidc" },
+    });
+    return result;
   });
 
 const registerSaml = rootOs
@@ -166,7 +176,16 @@ const registerSaml = rootOs
   }))
   .handler(async ({ input, context, errors }) => {
     await requireSsoAccess(context.session.user.email, input.organizationId, context.request.headers, errors);
-    return dispatchSsoRegistration(input, { samlConfig: input.samlConfig }, context, "SAML");
+    const result = await dispatchSsoRegistration(input, { samlConfig: input.samlConfig }, context, "SAML");
+    // Details deliberately exclude samlConfig: it contains certificates and keys.
+    await recordAudit(context, {
+      action: "sso.register",
+      resourceType: "ssoProvider",
+      resourceId: input.providerId,
+      organizationId: input.organizationId ?? null,
+      details: { providerId: input.providerId, issuer: input.issuer, domain: input.domain, kind: "saml" },
+    });
+    return result;
   });
 
 const deleteProvider = rootOs
@@ -187,6 +206,13 @@ const deleteProvider = rootOs
 
     await getDB().delete(ssoProviderT).where(eq(ssoProviderT.providerId, input.providerId));
     rlog.info({ providerId: input.providerId }, "SSO provider deleted");
+    await recordAudit(context, {
+      action: "sso.delete",
+      resourceType: "ssoProvider",
+      resourceId: input.providerId,
+      organizationId: provider.organizationId ?? null,
+      details: { providerId: input.providerId },
+    });
     return { success: true };
   });
 

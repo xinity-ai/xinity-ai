@@ -12,6 +12,7 @@ import { apiCallT, apiCallResponseT, and, eq } from "common-db";
 import { resolveToDataUri, parseMediaRef } from "$lib/server/image-store";
 import type { ApiCallInputMessage, ApiCallInputMessageContent } from "common-db";
 import { error } from "@sveltejs/kit";
+import { recordAudit } from "$lib/server/audit";
 
 export const GET: RequestHandler = async ({ params, locals }) => {
   const session = await auth.api.getSession(locals.request);
@@ -47,6 +48,12 @@ export const GET: RequestHandler = async ({ params, locals }) => {
   }
 
   const resolvedMessages = await resolveMessagesImages(call.inputMessages, orgId);
+
+  // Auditors specifically ask who exported inference data (COMPLIANCE.md E11).
+  await recordAudit(
+    { traceId: locals.traceId, session, activeOrganizationId: orgId },
+    { action: "apiCall.export", resourceType: "apiCall", resourceId: callId },
+  );
 
   const payload = {
     call: { ...call, inputMessages: resolvedMessages },
