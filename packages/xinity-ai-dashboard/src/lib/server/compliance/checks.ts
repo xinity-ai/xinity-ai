@@ -413,6 +413,7 @@ export const ORGANIZATIONAL_KINDS = new Set(
 export type PostureCheck = {
   id: string;
   kind: "automated" | "organizational";
+  frameworks: ComplianceFramework[];
   evidenceIds: string[];
   articleRef: string;
   title: string;
