@@ -18,16 +18,23 @@
 
   const slug = $derived(framework.toLowerCase().replace(/[^a-z0-9]+/g, "-"));
 
-  // Accent gradients per framework, matching the posture tag colors.
-  const accent: Record<ComplianceFramework, [string, string]> = {
-    "GDPR": ["#60a5fa", "#2563eb"],
-    "EU AI Act": ["#c084fc", "#9333ea"],
-    "NIS2": ["#2dd4bf", "#0d9488"],
+  // Distinct slices of the Xinity brand gradient (violet -> fuchsia -> rose),
+  // so the three badges are on-brand yet still tell apart.
+  const brand: Record<ComplianceFramework, { grad: [string, string]; glow: string }> = {
+    "GDPR": { grad: ["#a78bfa", "#7c3aed"], glow: "#7c3aed" },
+    "EU AI Act": { grad: ["#e879f9", "#c026d3"], glow: "#c026d3" },
+    "NIS2": { grad: ["#fb7185", "#e11d48"], glow: "#e11d48" },
   };
-  const stops = $derived(complete ? ["#fde68a", "#f59e0b"] : accent[framework]);
+  const stops = $derived(brand[framework].grad);
+  const glow = $derived(brand[framework].glow);
 </script>
 
-<div class="fw-badge" class:complete title={`${framework}: ${pass} of ${total} evidence items complete`}>
+<div
+  class="fw-badge"
+  class:complete
+  style={`--fw-glow:${glow}`}
+  title={`${framework}: ${pass} of ${total} evidence items complete`}
+>
   {#if complete}
     <div class="shimmer" aria-hidden="true"></div>
   {/if}
@@ -85,20 +92,19 @@
     transition: border-color 0.4s ease, box-shadow 0.4s ease;
   }
   .fw-badge.complete {
-    border-color: #f59e0b;
-    box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.35);
+    border-color: var(--fw-glow);
     animation: breathe 3.2s ease-in-out infinite;
   }
   @keyframes breathe {
-    0%, 100% { box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.3), 0 0 14px -4px rgba(245, 158, 11, 0.45); }
-    50% { box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.55), 0 0 26px -2px rgba(245, 158, 11, 0.7); }
+    0%, 100% { box-shadow: 0 0 0 1px var(--fw-glow), 0 0 13px -5px var(--fw-glow); }
+    50% { box-shadow: 0 0 0 1px var(--fw-glow), 0 0 24px -2px var(--fw-glow); }
   }
 
-  /* Diagonal light sweep across earned badges. */
+  /* Diagonal light sweep across earned badges (hue-neutral, works on any brand color). */
   .shimmer {
     position: absolute;
     inset: 0;
-    background: linear-gradient(115deg, transparent 30%, rgba(255, 245, 200, 0.55) 50%, transparent 70%);
+    background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.5) 50%, transparent 70%);
     transform: translateX(-120%);
     animation: sweep 3.6s ease-in-out infinite;
     pointer-events: none;
@@ -123,7 +129,7 @@
     transition: stroke-dashoffset 1s cubic-bezier(0.22, 1, 0.36, 1);
   }
   .fw-badge.complete .progress {
-    filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.7));
+    filter: drop-shadow(0 0 4px var(--fw-glow));
   }
 
   .center {
@@ -138,8 +144,8 @@
   .center :global(.trophy) {
     width: 2rem;
     height: 2rem;
-    color: #f59e0b;
-    filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.6));
+    color: var(--fw-glow);
+    filter: drop-shadow(0 0 6px var(--fw-glow));
   }
 
   .meta { display: flex; flex-direction: column; align-items: center; gap: 0.15rem; }
@@ -149,10 +155,9 @@
     display: inline-flex;
     align-items: center;
     gap: 0.2rem;
-    color: #b45309;
+    color: var(--fw-glow);
     font-weight: 600;
   }
-  :global(.dark) .status.earned { color: #fbbf24; }
   .status.earned :global(.spark) { width: 0.8rem; height: 0.8rem; }
 
   @media (prefers-reduced-motion: reduce) {

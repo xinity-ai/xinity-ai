@@ -50,10 +50,11 @@
     fail: "Gap",
   };
 
+  // Matches the Xinity brand gradient (violet -> fuchsia -> rose) used by the badges.
   const frameworkStyle: Record<ComplianceFramework, string> = {
-    "GDPR": "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800",
-    "EU AI Act": "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-800",
-    "NIS2": "bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950 dark:text-teal-300 dark:border-teal-800",
+    "GDPR": "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950 dark:text-violet-300 dark:border-violet-800",
+    "EU AI Act": "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200 dark:bg-fuchsia-950 dark:text-fuchsia-300 dark:border-fuchsia-800",
+    "NIS2": "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800",
   };
 
   async function upload() {
