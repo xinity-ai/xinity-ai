@@ -41,3 +41,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Local-only notes and overrides
 /.local/
 CLAUDE.local.md
+
+# Internal-only marketing/positioning notes — never publish
+MARKETING_CLAIMS_INTERNAL.md

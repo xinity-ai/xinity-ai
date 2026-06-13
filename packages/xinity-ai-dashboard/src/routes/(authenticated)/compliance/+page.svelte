@@ -12,7 +12,8 @@
   import { Label } from "$lib/components/ui/label";
   import { Badge } from "$lib/components/ui/badge";
   import { Loader2, ShieldCheck } from "@lucide/svelte";
-  import PostureCheckRow, { type PostureCheckView } from "./PostureCheckRow.svelte";
+  import PostureCheckRow, { type PostureCheckView, type ComplianceFramework } from "./PostureCheckRow.svelte";
+  import FrameworkProgress from "./FrameworkProgress.svelte";
 
   let loading = $state(true);
   let isSaving = $state(false);
@@ -73,6 +74,14 @@
 
   const automatedChecks = $derived(postureChecks.filter((c) => c.kind === "automated"));
   const organizationalChecks = $derived(postureChecks.filter((c) => c.kind === "organizational"));
+
+  const FRAMEWORK_ORDER: ComplianceFramework[] = ["GDPR", "EU AI Act", "NIS2"];
+  const frameworkStats = $derived(
+    FRAMEWORK_ORDER.map((framework) => {
+      const checks = postureChecks.filter((c) => c.frameworks.includes(framework));
+      return { framework, pass: checks.filter((c) => c.status === "pass").length, total: checks.length };
+    }).filter((s) => s.total > 0),
+  );
 
   async function loadPosture() {
     postureLoading = true;
@@ -197,6 +206,16 @@
           </div>
         </Card.Header>
         <Card.Content class="space-y-6">
+          {#if frameworkStats.length > 0}
+            <div class="flex flex-wrap justify-center gap-4 sm:gap-6">
+              {#each frameworkStats as fw (fw.framework)}
+                <FrameworkProgress framework={fw.framework} pass={fw.pass} total={fw.total} />
+              {/each}
+            </div>
+            <p class="text-center text-xs text-muted-foreground -mt-2">
+              Complete every evidence item for a framework to earn its audit-ready badge.
+            </p>
+          {/if}
           <div>
             <h3 class="text-sm font-semibold mb-1">Automated checks</h3>
             <p class="text-xs text-muted-foreground mb-2">Computed live from platform state.</p>

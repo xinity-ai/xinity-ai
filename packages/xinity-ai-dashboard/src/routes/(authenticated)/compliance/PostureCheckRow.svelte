@@ -124,7 +124,7 @@
         {check.detail}
       </p>
       <p class="text-xs text-muted-foreground">
-        {check.articleRef} · Evidence {check.evidenceIds.join(", ")} (see COMPLIANCE.md)
+        {check.articleRef} · Evidence {check.evidenceIds.join(", ")} (see the Xinity compliance guide)
       </p>
 
       {#if check.kind === "organizational"}

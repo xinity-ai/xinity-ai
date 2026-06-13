@@ -21,7 +21,7 @@ const customResourcePermissions = {
 /**
  * Compliance resources are kept out of customResourcePermissions on purpose:
  * that object grants full access to members, while retention settings and the
- * audit trail must stay restricted to owner/admin (see DESIGN.md §0.1).
+ * audit trail must stay restricted to owner/admin.
  */
 const complianceResourcePermissions = {
   compliance: ["read", "update"],
