@@ -124,7 +124,7 @@ afterAll(async () => {
 });
 
 describe("audit-pack assembly", () => {
-  test("deployment register includes in-window deployments — including ones deleted within the window", async () => {
+  test("deployment register includes in-window deployments, including ones deleted within the window", async () => {
     const { data } = await assembleAuditPack(org, from, to);
     const names = data.modelRegister.deployments.map((d) => d.publicSpecifier).sort();
     expect(names).toEqual(["active-deploy", "removed-deploy"]);

@@ -40,7 +40,7 @@
   <div class="disclaimer">
     This document is machine-generated evidence assembled from the operational data of an
     on-premises Xinity AI installation, together with the organization's uploaded documents.
-    It supports — but does not replace — the controller's own compliance assessment.
+    It supports, but does not replace, the controller's own compliance assessment.
     A complete evidence set does not constitute a finding of compliance; that conclusion
     rests with the organization's data protection officer and legal counsel.
   </div>
@@ -127,14 +127,14 @@
 </section>
 
 <section>
-  <h2>3. Records of Processing — Technical Annex</h2>
+  <h2>3. Records of Processing: Technical Annex</h2>
   <p class="ref">Evidence E1 · GDPR Art. 30</p>
   <p>
     Data categories processed by the platform: inference content (prompts, completions, and
     request metadata, stored only for API keys with data collection enabled), usage accounting
     (token counts and durations, no content), uploaded images (customer object store),
     user account data (name, email, authentication factors), and administrative audit events.
-    Recipients: none — all processing occurs on customer-controlled infrastructure.
+    Recipients: none; all processing occurs on customer-controlled infrastructure.
     Storage location: customer-managed PostgreSQL{data.ropa.applications.length > 0 ? " serving the applications below" : ""}.
   </p>
   <h3>Purposes (AI applications)</h3>
@@ -142,7 +142,7 @@
     <thead><tr><th>Application</th><th>Description</th><th>Since</th></tr></thead>
     <tbody>
       {#each data.ropa.applications as a}
-        <tr><td>{a.name}</td><td>{a.description ?? "—"}</td><td>{fmtDate(a.createdAt)}</td></tr>
+        <tr><td>{a.name}</td><td>{a.description ?? "n/a"}</td><td>{fmtDate(a.createdAt)}</td></tr>
       {:else}
         <tr><td colspan="3"><em>No applications registered.</em></td></tr>
       {/each}
@@ -166,7 +166,7 @@
       images {data.ropa.retentionDays.media === null ? "follow the inference content period" : `deleted after ${data.ropa.retentionDays.media} days`};
       usage aggregates (no personal-data content) are retained for accounting.
     {:else}
-      <strong>no retention policy configured — open gap.</strong>
+      <strong>no retention policy configured (open gap).</strong>
     {/if}
   </p>
 </section>
@@ -206,7 +206,7 @@
       media {data.retention.policy.mediaRetentionDays === null ? "follows inference content" : `${data.retention.policy.mediaRetentionDays} days`}.
     </p>
   {:else}
-    <p><strong>No retention policy configured — open gap.</strong></p>
+    <p><strong>No retention policy configured (open gap).</strong></p>
   {/if}
   <h3>Purge runs in period (enforcement evidence)</h3>
   <table>
@@ -215,7 +215,7 @@
       {#each data.retention.runs as r}
         <tr>
           <td>{fmtDateTime(r.startedAt)}</td>
-          <td>{r.finishedAt ? fmtDateTime(r.finishedAt) : "—"}</td>
+          <td>{r.finishedAt ? fmtDateTime(r.finishedAt) : "n/a"}</td>
           <td>{r.deletedApiCalls}</td>
           <td>{r.deletedMediaObjects}</td>
           <td>{r.error ?? "ok"}</td>
@@ -243,7 +243,7 @@
     Dashboard sessions in period: {data.access.sessionStats.sessions} from
     {data.access.sessionStats.distinctIps} distinct IP addresses.
   </p>
-  <h3>Administrative audit trail ({data.access.auditTotalInRange} events in period{data.access.auditTotalInRange > data.access.auditEntries.length ? `, newest ${data.access.auditEntries.length} shown — full extract in evidence/access.json` : ""})</h3>
+  <h3>Administrative audit trail ({data.access.auditTotalInRange} events in period{data.access.auditTotalInRange > data.access.auditEntries.length ? `, newest ${data.access.auditEntries.length} shown, full extract in evidence/access.json` : ""})</h3>
   <table>
     <thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Details</th></tr></thead>
     <tbody>
@@ -268,7 +268,7 @@
     {data.cover.organizationName} operates pre-trained models obtained from documented upstream
     sources (section 2) without modification of the model weights through the platform. Under the
     European Commission's guidelines for providers of general-purpose AI models, a downstream
-    actor becomes a GPAI model provider only through a significant modification — indicatively,
+    actor becomes a GPAI model provider only through a significant modification, indicatively,
     fine-tuning exceeding one third of the original model's training compute. No such
     modification is performed by this platform. The organization's position for the deployed
     systems is therefore that of a <strong>deployer</strong> (and, where assistants are offered
@@ -277,7 +277,7 @@
   <ul>
     {#each enabledDeployments as d}
       <li>
-        <code>{d.publicSpecifier}</code> — {d.catalog.found ? `catalog model "${d.catalog.modelName}", upstream: ${d.catalog.sourceUrl ?? "n/a"}` : "not in catalog (provenance must be documented separately)"}
+        <code>{d.publicSpecifier}</code>: {d.catalog.found ? `catalog model "${d.catalog.modelName}", upstream: ${d.catalog.sourceUrl ?? "n/a"}` : "not in catalog (provenance must be documented separately)"}
       </li>
     {:else}
       <li><em>No enabled deployments at generation time.</em></li>
@@ -309,7 +309,7 @@
           <td>{ORGANIZATIONAL_TITLES[a.kind] ?? a.kind}</td>
           <td><code>{artifactEntryName(a.kind, a.fileName)}</code></td>
           <td>{fmtDate(a.updatedAt)}</td>
-          <td>{a.reviewBy ?? "—"}</td>
+          <td>{a.reviewBy ?? "n/a"}</td>
           <td>{a.note ?? ""}</td>
         </tr>
       {:else}

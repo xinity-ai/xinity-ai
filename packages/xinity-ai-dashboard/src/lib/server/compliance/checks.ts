@@ -384,7 +384,7 @@ export const COMPLIANCE_CHECKS: ComplianceCheckDefinition[] = [
     evidenceIds: ["E13"],
     articleRef: "Art. 21(2)(b), Art. 23 NIS2",
     title: "Incident response & reporting plan",
-    explanation: "Applies if your organization is a NIS2 essential or important entity: a documented incident-handling procedure covering the staged reporting cascade — early warning within 24 hours, incident notification within 72 hours, final report within one month — to your CSIRT or national authority (BSI in Germany). The platform's audit trail and logs feed incident detection and the report timeline.",
+    explanation: "Applies if your organization is a NIS2 essential or important entity: a documented incident-handling procedure covering the staged reporting cascade to your CSIRT or national authority (BSI in Germany): early warning within 24 hours, incident notification within 72 hours, and a final report within one month. The platform's audit trail and logs feed incident detection and the report timeline.",
   },
   {
     id: "business-continuity",

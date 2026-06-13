@@ -57,7 +57,7 @@ export function renderAuditPackHtml(data: AuditPackData): string {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Audit Evidence Pack — ${escapeHtml(data.cover.organizationName)}</title>
+<title>Audit Evidence Pack: ${escapeHtml(data.cover.organizationName)}</title>
 <style>${PRINT_CSS}</style>
 </head>
 <body>

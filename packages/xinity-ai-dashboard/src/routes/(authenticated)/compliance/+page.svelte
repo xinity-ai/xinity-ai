@@ -152,8 +152,8 @@
     <div>
       <h1 class="text-xl font-semibold tracking-tight">Compliance</h1>
       <p class="text-sm text-muted-foreground">
-        Prove your audit readiness for GDPR, the EU AI Act, and NIS2 — evidence generated
-        from your own on-premises deployment, never leaving your infrastructure.
+        Prove your audit readiness for GDPR, the EU AI Act, and NIS2. Evidence is generated
+        from your own on-premises deployment and never leaves your infrastructure.
       </p>
     </div>
   </div>
@@ -162,7 +162,8 @@
     <div class="flex items-center gap-2 text-muted-foreground">
       <Loader2 class="w-4 h-4 animate-spin" /> Loading...
     </div>
-  {:else if !complianceReportsLicensed}
+  {:else}
+    {#if !complianceReportsLicensed}
     <Card.Root>
       <Card.Content class="flex flex-col items-center gap-5 py-14 text-center">
         <ShieldCheck class="w-10 h-10 text-muted-foreground" />
@@ -227,7 +228,7 @@
             <p class="text-xs text-muted-foreground mb-2">
               Documents only your organization can produce. The platform tracks them and includes
               them in the audit pack; it never authors them. A green status means evidence is
-              complete, not that you are compliant — that conclusion stays with your DPO.
+              complete, not that you are compliant. That conclusion stays with your DPO.
             </p>
             {#each organizationalChecks as check (check.id)}
               <PostureCheckRow {check} canManage={permissions.canManageCompliance} onChanged={loadPosture} />
@@ -260,6 +261,7 @@
           </div>
         </Card.Content>
       </Card.Root>
+    {/if}
 
     <Card.Root>
       <Card.Header>
@@ -362,7 +364,7 @@
       </Card.Content>
     </Card.Root>
 
-    {#if permissions.canViewAuditLog}
+    {#if auditLogLicensed && permissions.canViewAuditLog}
       <Card.Root>
         <Card.Header>
           <Card.Title>Audit Log</Card.Title>
@@ -372,15 +374,6 @@
           </Card.Description>
         </Card.Header>
         <Card.Content class="space-y-4">
-          {#if !auditLogLicensed}
-            <p class="text-sm text-muted-foreground">
-              Your license does not include the audit log.
-              <a class="underline" href="https://xinity.ai/xinity-pricing" target="_blank" rel="noreferrer">
-                Upgrade to unlock it.
-              </a>
-              Events are still being recorded, so the trail is complete once unlocked.
-            </p>
-          {:else}
             <div class="flex items-end gap-3">
               <div class="space-y-1.5">
                 <Label for="audit-action-filter">Filter by action</Label>
@@ -430,7 +423,6 @@
                 </Button>
               {/if}
             {/if}
-          {/if}
         </Card.Content>
       </Card.Root>
     {/if}
