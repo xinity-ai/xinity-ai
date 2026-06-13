@@ -152,7 +152,8 @@
     <div>
       <h1 class="text-xl font-semibold tracking-tight">Compliance</h1>
       <p class="text-sm text-muted-foreground">
-        Data retention for inference logs (GDPR Art. 5(1)(e) storage limitation)
+        Prove your audit readiness for GDPR, the EU AI Act, and NIS2 — evidence generated
+        from your own on-premises deployment, never leaving your infrastructure.
       </p>
     </div>
   </div>
@@ -161,24 +162,20 @@
     <div class="flex items-center gap-2 text-muted-foreground">
       <Loader2 class="w-4 h-4 animate-spin" /> Loading...
     </div>
+  {:else if !complianceReportsLicensed}
+    <Card.Root>
+      <Card.Content class="flex flex-col items-center gap-5 py-14 text-center">
+        <ShieldCheck class="w-10 h-10 text-muted-foreground" />
+        <Button href="https://xinity.ai/xinity-pricing" target="_blank" rel="noreferrer" size="lg">
+          Get License Key to validate your compliance
+        </Button>
+        <p class="text-sm text-muted-foreground max-w-md">
+          Unlock the compliance posture dashboard, per-framework audit-ready badges, retention
+          enforcement, and the one-click Audit Evidence Pack for GDPR, the EU AI Act, and NIS2.
+        </p>
+      </Card.Content>
+    </Card.Root>
   {:else}
-    {#if !complianceReportsLicensed}
-      <Card.Root>
-        <Card.Header>
-          <Card.Title>Compliance Posture</Card.Title>
-        </Card.Header>
-        <Card.Content>
-          <p class="text-sm text-muted-foreground">
-            The posture dashboard runs automated checks against your platform state and tracks
-            the organizational documents auditors ask for (DPIA, usage policy, training records).
-            It requires a license with the compliance-reports feature.
-            <a class="underline" href="https://xinity.ai/xinity-pricing" target="_blank" rel="noreferrer">
-              Upgrade to unlock it.
-            </a>
-          </p>
-        </Card.Content>
-      </Card.Root>
-    {:else}
       <Card.Root>
         <Card.Header>
           <div class="flex items-center justify-between">
@@ -263,7 +260,6 @@
           </div>
         </Card.Content>
       </Card.Root>
-    {/if}
 
     <Card.Root>
       <Card.Header>
