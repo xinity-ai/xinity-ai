@@ -55,7 +55,9 @@
       toastState.add(error.message, "error");
     } else {
       toastState.add("Retention policy saved", "success");
-      await loadData();
+      // Refresh runs/policy and the posture report so the badges reflect the
+      // retention checks immediately (the server invalidates its cache on save).
+      await Promise.all([loadData(), complianceReportsLicensed ? loadPosture() : Promise.resolve()]);
     }
     isSaving = false;
   }
