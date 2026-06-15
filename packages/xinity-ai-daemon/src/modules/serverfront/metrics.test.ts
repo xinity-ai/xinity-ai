@@ -19,7 +19,10 @@ mock.module("../statekeeper", () => ({
   getHardwareProfile: async () => ({ gpus: [], gpuCount: 0 }),
 }));
 
-const mockSnapshot = mock(() => null as import("../metrics-sampler").MetricsBucket | null);
+type Snapshot = import("../metrics-sampler").MetricsSnapshot;
+type GpuSnapshot = import("../metrics-sampler").GpuSnapshot;
+
+const mockSnapshot = mock(() => null as Snapshot | null);
 
 mock.module("../metrics-sampler", () => ({
   getMetricsSnapshot: mockSnapshot,
@@ -27,11 +30,35 @@ mock.module("../metrics-sampler", () => ({
 
 const { handleDaemonMetrics } = await import("./metrics");
 
+function gpu(over: Partial<GpuSnapshot> = {}): GpuSnapshot {
+  return {
+    index: 0,
+    uuid: "GPU-aaaa",
+    name: "NVIDIA H100 80GB HBM3",
+    driverVersion: "560.35.03",
+    utilizationPct: 73.5,
+    memoryUtilizationPct: 41,
+    temperatureC: 62,
+    powerWatts: 320.25,
+    powerLimitWatts: 700,
+    memoryUsedMb: 32768,
+    memoryTotalMb: 81559,
+    eccUncorrected: 0,
+    eccCorrected: 2,
+    energyWh: 8.12,
+    throttled: false,
+    ...over,
+  };
+}
+
+function snapshot(gpus: GpuSnapshot[], sampleFailures = 0): Snapshot {
+  return { gpus, sampleFailures };
+}
+
 function makeReq(overrides?: { method?: string; auth?: string }) {
-  const method = overrides?.method ?? "GET";
   const headers = new Headers();
   if (overrides?.auth) headers.set("authorization", overrides.auth);
-  return new Request("http://daemon/metrics", { method, headers });
+  return new Request("http://daemon/metrics", { method: overrides?.method ?? "GET", headers });
 }
 
 describe("handleDaemonMetrics", () => {
@@ -41,11 +68,10 @@ describe("handleDaemonMetrics", () => {
   });
 
   test("returns 405 for non-GET requests", async () => {
-    const res = await handleDaemonMetrics(makeReq({ method: "POST" }));
-    expect(res.status).toBe(405);
+    expect((await handleDaemonMetrics(makeReq({ method: "POST" }))).status).toBe(405);
   });
 
-  test("includes daemon_up=1 with node_id label", async () => {
+  test("always emits daemon_up with the node_id label", async () => {
     const res = await handleDaemonMetrics(makeReq());
     expect(res.status).toBe(200);
     const body = await res.text();
@@ -53,68 +79,62 @@ describe("handleDaemonMetrics", () => {
     expect(res.headers.get("content-type")).toContain("text/plain");
   });
 
-  test("omits GPU metrics when no snapshot is available", async () => {
-    const res = await handleDaemonMetrics(makeReq());
-    const body = await res.text();
+  test("omits all GPU metrics when the sampler has not started", async () => {
+    const body = await (await handleDaemonMetrics(makeReq())).text();
     expect(body).not.toContain("daemon_gpu_");
   });
 
-  test("emits GPU gauge and counter metrics when snapshot is present", async () => {
-    mockSnapshot.mockReturnValue({
-      gpuUtilizationAvg: 73.5,
-      gpuUtilizationMax: 91.0,
-      memoryUsedMb: 32768,
-      powerWattsAvg: 320.25,
-      energyWh: 8.12,
-    });
+  test("emits per-GPU series labeled by gpu index and uuid", async () => {
+    mockSnapshot.mockReturnValue(snapshot([gpu()]));
+    const body = await (await handleDaemonMetrics(makeReq())).text();
 
-    const res = await handleDaemonMetrics(makeReq());
-    const body = await res.text();
+    const labels = 'node_id="test-node-uuid",gpu="0",uuid="GPU-aaaa"';
+    expect(body).toContain(`daemon_gpu_utilization_percent{${labels}} 73.5`);
+    expect(body).toContain(`daemon_gpu_memory_utilization_percent{${labels}} 41`);
+    expect(body).toContain(`daemon_gpu_memory_used_mb{${labels}} 32768`);
+    expect(body).toContain(`daemon_gpu_memory_total_mb{${labels}} 81559`);
+    expect(body).toContain(`daemon_gpu_temperature_celsius{${labels}} 62`);
+    expect(body).toContain(`daemon_gpu_power_draw_watts{${labels}} 320.25`);
+    expect(body).toContain(`daemon_gpu_power_limit_watts{${labels}} 700`);
+    expect(body).toContain(`daemon_gpu_throttled{${labels}} 0`);
+    expect(body).toContain(`daemon_gpu_energy_wh_total{${labels}} 8.12`);
+    expect(body).toContain(`daemon_gpu_info{${labels},name="NVIDIA H100 80GB HBM3",driver_version="560.35.03"} 1`);
+    expect(body).toContain(`daemon_gpu_ecc_errors_total{${labels},type="uncorrected"} 0`);
+    expect(body).toContain(`daemon_gpu_ecc_errors_total{${labels},type="corrected"} 2`);
+    expect(body).toContain('daemon_gpu_sample_failures_total{node_id="test-node-uuid"} 0');
+  });
 
-    expect(body).toContain('daemon_gpu_utilization_avg{node_id="test-node-uuid"} 73.5');
-    expect(body).toContain('daemon_gpu_utilization_max{node_id="test-node-uuid"} 91');
-    expect(body).toContain('daemon_gpu_memory_used_mb{node_id="test-node-uuid"} 32768');
-    expect(body).toContain('daemon_gpu_power_draw_watts{node_id="test-node-uuid"} 320.25');
-    expect(body).toContain('daemon_gpu_energy_wh_total{node_id="test-node-uuid"} 8.12');
-    expect(body).toContain("# TYPE daemon_gpu_utilization_avg gauge");
+  test("emits one HELP/TYPE header per family across multiple GPUs", async () => {
+    mockSnapshot.mockReturnValue(snapshot([gpu({ index: 0, uuid: "GPU-a" }), gpu({ index: 1, uuid: "GPU-b" })]));
+    const body = await (await handleDaemonMetrics(makeReq())).text();
+
+    expect(body.match(/# TYPE daemon_gpu_utilization_percent gauge/g)).toHaveLength(1);
+    expect(body).toContain('gpu="0",uuid="GPU-a"');
+    expect(body).toContain('gpu="1",uuid="GPU-b"');
     expect(body).toContain("# TYPE daemon_gpu_energy_wh_total counter");
   });
 
-  test("omits power draw metric when powerWattsAvg is null", async () => {
-    mockSnapshot.mockReturnValue({
-      gpuUtilizationAvg: 50,
-      gpuUtilizationMax: 50,
-      memoryUsedMb: 8192,
-      powerWattsAvg: null,
-      energyWh: 2.5,
-    });
-
+  test("skips fields the device does not report, but still counts energy", async () => {
+    mockSnapshot.mockReturnValue(snapshot([gpu({
+      powerWatts: null, powerLimitWatts: null, memoryTotalMb: null,
+      temperatureC: null, memoryUtilizationPct: null, eccUncorrected: null,
+      eccCorrected: null, throttled: null, energyWh: 2.5,
+    })]));
     const body = await (await handleDaemonMetrics(makeReq())).text();
+
     expect(body).not.toContain("daemon_gpu_power_draw_watts");
+    expect(body).not.toContain("daemon_gpu_power_limit_watts");
+    expect(body).not.toContain("daemon_gpu_memory_total_mb");
+    expect(body).not.toContain("daemon_gpu_temperature_celsius");
+    expect(body).not.toContain("daemon_gpu_throttled");
+    expect(body).not.toContain("daemon_gpu_ecc_errors_total");
     expect(body).toContain("daemon_gpu_energy_wh_total");
-  });
-});
-
-describe("handleDaemonMetrics, basic auth", () => {
-  beforeEach(() => mockSnapshot.mockReturnValue(null));
-
-  test("rejects when auth is configured and no header is sent", async () => {
-    mock.module("../../env", () => ({
-      env: {
-        PORT: 4044, HOST: "0.0.0.0", DB_CONNECTION_URL: "postgres://localhost/test",
-        STATE_DIR: "/tmp/test", CIDR_PREFIX: "", SYNC_INTERVAL_MS: 60_000,
-        INFOSERVER_URL: "http://localhost:19090", INFOSERVER_CACHE_TTL_MS: 30_000,
-        METRICS_SAMPLE_INTERVAL_MS: 20_000, VLLM_BACKEND: "systemd",
-        VLLM_ENV_DIR: "/etc/vllm", VLLM_TEMPLATE_UNIT_PATH: "/etc/systemd/system/vllm-driver@.service",
-        VLLM_HF_CACHE_DIR: "/var/lib/vllm/hf-cache", VLLM_TRITON_CACHE_DIR: "/var/lib/vllm/triton-cache",
-        VLLM_HEALTH_TIMEOUT_MS: 3_600_000, VLLM_HEALTH_POLL_INTERVAL_MS: 5_000,
-        LOG_LEVEL: "silent", LOG_DIR: undefined,
-        METRICS_AUTH: "admin:secret",
-      },
-    }));
+    expect(body).toContain("daemon_gpu_utilization_percent");
   });
 
-  // Note: because mock.module state is global and METRICS_AUTH is parsed at module load
-  // time, the auth tests are covered by the gateway's metrics.ts which has the same logic.
-  // The no-auth path is covered by the tests above (METRICS_AUTH: undefined → open).
+  test("reports the sample-failure count", async () => {
+    mockSnapshot.mockReturnValue(snapshot([], 4));
+    const body = await (await handleDaemonMetrics(makeReq())).text();
+    expect(body).toContain('daemon_gpu_sample_failures_total{node_id="test-node-uuid"} 4');
+  });
 });

@@ -1,5 +1,5 @@
 import { env } from "../../env";
-import { getMetricsSnapshot } from "../metrics-sampler";
+import { getMetricsSnapshot, type GpuSnapshot } from "../metrics-sampler";
 import { getNodeId } from "../statekeeper";
 
 function parseUserPass(value: string): { user: string; pass: string } | null {
@@ -47,12 +47,36 @@ function checkMetricsAuth(req: Request): Response | null {
   return null;
 }
 
-function gauge(name: string, help: string, labels: string, value: number): string {
-  return `# HELP ${name} ${help}\n# TYPE ${name} gauge\n${name}{${labels}} ${value}`;
+/** Escape a Prometheus label value (backslash and double-quote). */
+function esc(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
-function counter(name: string, help: string, labels: string, value: number): string {
-  return `# HELP ${name} ${help}\n# TYPE ${name} counter\n${name}{${labels}} ${value}`;
+/** Round to a fixed precision and drop trailing zeros. */
+function round(value: number, dp: number): number {
+  return Number(value.toFixed(dp));
+}
+
+/** A metric family: one HELP/TYPE header followed by its sample lines, or "" when empty. */
+function family(name: string, help: string, type: "gauge" | "counter", lines: string[]): string {
+  if (lines.length === 0) return "";
+  return [`# HELP ${name} ${help}`, `# TYPE ${name} ${type}`, ...lines].join("\n");
+}
+
+/** A per-GPU gauge that skips GPUs whose value isn't reported. */
+function gpuGauge(
+  name: string,
+  help: string,
+  gpus: GpuSnapshot[],
+  labelsFor: (g: GpuSnapshot) => string,
+  valueFor: (g: GpuSnapshot) => number | null,
+): string {
+  const lines: string[] = [];
+  for (const g of gpus) {
+    const value = valueFor(g);
+    if (value !== null) lines.push(`${name}{${labelsFor(g)}} ${value}`);
+  }
+  return family(name, help, "gauge", lines);
 }
 
 export async function handleDaemonMetrics(req: Request): Promise<Response> {
@@ -63,27 +87,59 @@ export async function handleDaemonMetrics(req: Request): Promise<Response> {
   const authErr = checkMetricsAuth(req);
   if (authErr) return authErr;
 
-  const nodeId = await getNodeId();
-  const labels = `node_id="${nodeId}"`;
+  const node = `node_id="${esc(await getNodeId())}"`;
   const snapshot = getMetricsSnapshot();
 
   const blocks: string[] = [
-    gauge("daemon_up", "1 when the daemon process is running.", labels, 1),
+    family("daemon_up", "1 when the daemon process is running.", "gauge", [`daemon_up{${node}} 1`]),
   ];
 
   if (snapshot !== null) {
+    blocks.push(family(
+      "daemon_gpu_sample_failures_total",
+      "GPU telemetry polls that returned no usable data since daemon start.",
+      "counter",
+      [`daemon_gpu_sample_failures_total{${node}} ${snapshot.sampleFailures}`],
+    ));
+
+    const gpus = snapshot.gpus;
+    const labels = (g: GpuSnapshot) => `${node},gpu="${g.index}",uuid="${esc(g.uuid)}"`;
+
     blocks.push(
-      gauge("daemon_gpu_utilization_avg", "Average GPU utilization across all GPUs (0-100).", labels, parseFloat(snapshot.gpuUtilizationAvg.toFixed(2))),
-      gauge("daemon_gpu_utilization_max", "Peak GPU utilization across all GPUs since last reset (0-100).", labels, parseFloat(snapshot.gpuUtilizationMax.toFixed(2))),
-      gauge("daemon_gpu_memory_used_mb", "Average GPU memory used across all GPUs (MiB).", labels, snapshot.memoryUsedMb),
+      family("daemon_gpu_info", "GPU identity; value is always 1.", "gauge",
+        gpus.map((g) => `daemon_gpu_info{${labels(g)},name="${esc(g.name)}",driver_version="${esc(g.driverVersion ?? "")}"} 1`)),
+
+      gpuGauge("daemon_gpu_utilization_percent", "GPU compute utilization (0-100).",
+        gpus, labels, (g) => round(g.utilizationPct, 2)),
+      gpuGauge("daemon_gpu_memory_utilization_percent", "GPU memory-controller utilization (0-100).",
+        gpus, labels, (g) => (g.memoryUtilizationPct === null ? null : round(g.memoryUtilizationPct, 2))),
+      gpuGauge("daemon_gpu_memory_used_mb", "GPU memory in use (MiB).",
+        gpus, labels, (g) => g.memoryUsedMb),
+      gpuGauge("daemon_gpu_memory_total_mb", "Total GPU memory (MiB).",
+        gpus, labels, (g) => g.memoryTotalMb),
+      gpuGauge("daemon_gpu_temperature_celsius", "GPU core temperature (°C).",
+        gpus, labels, (g) => g.temperatureC),
+      gpuGauge("daemon_gpu_power_draw_watts", "Measured GPU power draw (W).",
+        gpus, labels, (g) => (g.powerWatts === null ? null : round(g.powerWatts, 2))),
+      gpuGauge("daemon_gpu_power_limit_watts", "GPU power limit (W).",
+        gpus, labels, (g) => (g.powerLimitWatts === null ? null : round(g.powerLimitWatts, 2))),
+      gpuGauge("daemon_gpu_throttled", "1 when the GPU is currently throttling clocks.",
+        gpus, labels, (g) => (g.throttled === null ? null : g.throttled ? 1 : 0)),
+
+      family("daemon_gpu_ecc_errors_total", "GPU ECC error count by type.", "counter", [
+        ...gpus.filter((g) => g.eccUncorrected !== null)
+          .map((g) => `daemon_gpu_ecc_errors_total{${labels(g)},type="uncorrected"} ${g.eccUncorrected}`),
+        ...gpus.filter((g) => g.eccCorrected !== null)
+          .map((g) => `daemon_gpu_ecc_errors_total{${labels(g)},type="corrected"} ${g.eccCorrected}`),
+      ]),
+
+      family("daemon_gpu_energy_wh_total", "GPU energy consumed since daemon start (Wh).", "counter",
+        gpus.map((g) => `daemon_gpu_energy_wh_total{${labels(g)}} ${round(g.energyWh, 4)}`)),
     );
-    if (snapshot.powerWattsAvg !== null) {
-      blocks.push(gauge("daemon_gpu_power_draw_watts", "Average GPU power draw across all GPUs (W).", labels, parseFloat(snapshot.powerWattsAvg.toFixed(2))));
-    }
-    blocks.push(counter("daemon_gpu_energy_wh_total", "Total GPU energy consumed since daemon start (Wh).", labels, parseFloat(snapshot.energyWh.toFixed(4))));
   }
 
-  return new Response(blocks.join("\n\n") + "\n", {
+  const body = blocks.filter(Boolean).join("\n\n") + "\n";
+  return new Response(body, {
     headers: { "Content-Type": "text/plain; version=0.0.4; charset=utf-8" },
   });
 }

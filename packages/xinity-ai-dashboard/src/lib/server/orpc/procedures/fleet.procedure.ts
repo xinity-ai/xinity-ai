@@ -281,9 +281,10 @@ const fleetLiveMetrics = rootOs
     if (!prometheusUrl) return { available: false, nodes: [] };
 
     try {
+      // Metrics are per-GPU; roll them up to one value per node.
       const [utilResults, energyResults] = await Promise.all([
-        queryPrometheusInstant(prometheusUrl, "daemon_gpu_utilization_avg"),
-        queryPrometheusInstant(prometheusUrl, "daemon_gpu_energy_wh_total"),
+        queryPrometheusInstant(prometheusUrl, "avg by (node_id) (daemon_gpu_utilization_percent)"),
+        queryPrometheusInstant(prometheusUrl, "sum by (node_id) (daemon_gpu_energy_wh_total)"),
       ]);
 
       const nodeMap = new Map<string, { utilizationAvg: number; energyWh: number }>();
