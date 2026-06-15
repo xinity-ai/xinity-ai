@@ -8,7 +8,7 @@
   let copied = $state(false);
 
   function buildPrometheusYml(): string {
-    const lines: string[] = [
+    return [
       "global:",
       "  scrape_interval: 30s",
       "  evaluation_interval: 30s",
@@ -26,24 +26,22 @@
       `          - ${data.dashboardTarget}`,
       "    metrics_path: /metrics",
       "",
+      "  # Daemon targets are discovered dynamically from the dashboard's node",
+      "  # registry, so this never needs editing as the fleet changes.",
       "  - job_name: xinity-daemon",
-      "    static_configs:",
-      "      - targets:",
-    ];
-
-    if (data.nodes.length === 0) {
-      lines.push("          # No daemon nodes registered yet.");
-      lines.push("          []");
-    } else {
-      for (const node of data.nodes) {
-        const label = node.machineName ? ` # ${node.machineName}` : "";
-        lines.push(`          - ${node.target}${label}`);
-      }
-    }
-
-    lines.push("    metrics_path: /metrics");
-
-    return lines.join("\n");
+      "    metrics_path: /metrics",
+      "    http_sd_configs:",
+      `      - url: ${data.daemonSdUrl}`,
+      "        refresh_interval: 3m",
+      "        # If the dashboard's METRICS_AUTH is set, authenticate the SD request:",
+      "        # basic_auth:",
+      "        #   username: <dashboard METRICS_AUTH user>",
+      "        #   password: <dashboard METRICS_AUTH password>",
+      "    # If the daemons' METRICS_AUTH is set, authenticate the scrape:",
+      "    # basic_auth:",
+      "    #   username: <daemon METRICS_AUTH user>",
+      "    #   password: <daemon METRICS_AUTH password>",
+    ].join("\n");
   }
 
   const prometheusYml = $derived(buildPrometheusYml());
@@ -63,9 +61,10 @@
   <div>
     <h2 class="text-xl font-semibold">Prometheus Configuration</h2>
     <p class="text-sm text-muted-foreground mt-1">
-      Generated scrape config for all registered nodes. Copy this into your
-      <code class="font-mono text-xs bg-muted px-1 py-0.5 rounded">prometheus.yml</code>
-      or download it alongside the Docker Compose monitoring profile.
+      Copy this into your
+      <code class="font-mono text-xs bg-muted px-1 py-0.5 rounded">prometheus.yml</code>.
+      The gateway and dashboard are scraped directly; daemon targets are discovered dynamically
+      from this dashboard, so the config stays current as the fleet changes, no edits needed.
     </p>
   </div>
 
@@ -97,11 +96,10 @@
     </p>
     <pre class="bg-muted rounded p-3 text-xs font-mono">docker compose --profile monitoring up -d</pre>
     <p class="text-muted-foreground">
-      Replace the <code class="font-mono text-xs bg-muted px-1 py-0.5 rounded">xinity-daemon</code> targets
-      in <code class="font-mono text-xs bg-muted px-1 py-0.5 rounded">deployment/docker/monitoring/prometheus.yml</code>
-      with the content above, then reload Prometheus:
+      The bundled <code class="font-mono text-xs bg-muted px-1 py-0.5 rounded">deployment/docker/monitoring/prometheus.yml</code>
+      already discovers daemon targets from this dashboard, so no per-node edits or reloads are
+      needed as the fleet changes.
     </p>
-    <pre class="bg-muted rounded p-3 text-xs font-mono">curl -X POST http://localhost:9090/-/reload</pre>
   </div>
 
   <div class="rounded-lg border p-4 space-y-3 text-sm">
@@ -117,11 +115,11 @@
     </p>
   </div>
 
-  {#if data.nodes.length === 0}
+  {#if data.nodeCount === 0}
     <div class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
       No daemon nodes are registered yet. The
-      <code class="font-mono text-xs px-1">xinity-daemon</code> job targets will be empty until
-      nodes come online.
+      <code class="font-mono text-xs px-1">xinity-daemon</code> discovery endpoint will return an
+      empty list until nodes come online; Prometheus picks them up automatically once they do.
     </div>
   {/if}
 </div>

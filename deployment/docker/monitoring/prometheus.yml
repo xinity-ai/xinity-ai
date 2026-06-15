@@ -21,13 +21,18 @@ scrape_configs:
     #   username: admin
     #   password: <METRICS_AUTH password>
 
+  # Daemon targets are discovered dynamically from the dashboard's node registry,
+  # so this stays current as the fleet changes, no per-node edits or reloads.
   - job_name: xinity-daemon
-    static_configs:
-      # Add one entry per daemon node: <host>:<port>
-      # Use Instance Settings > Monitoring in the dashboard to generate
-      # this block automatically from the live node registry.
-      - targets: []
     metrics_path: /metrics
+    http_sd_configs:
+      - url: http://dashboard:5121/metrics/sd/daemons
+        refresh_interval: 3m
+        # Set if the dashboard's METRICS_AUTH is configured (authenticates the SD request):
+        # basic_auth:
+        #   username: admin
+        #   password: <dashboard METRICS_AUTH password>
+    # Set if the daemons' METRICS_AUTH is configured (authenticates the scrape):
     # basic_auth:
     #   username: admin
-    #   password: <METRICS_AUTH password>
+    #   password: <daemon METRICS_AUTH password>

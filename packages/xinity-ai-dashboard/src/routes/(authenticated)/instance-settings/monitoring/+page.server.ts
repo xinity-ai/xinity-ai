@@ -1,6 +1,6 @@
 import type { PageServerLoad } from "./$types";
 import { getDB } from "$lib/server/db";
-import { aiNodeT, isNull } from "common-db";
+import { aiNodeT, isNull, sql } from "common-db";
 import { serverEnv } from "$lib/server/serverenv";
 
 function hostPort(rawUrl: string, defaultPort: number): string {
@@ -15,18 +15,19 @@ function hostPort(rawUrl: string, defaultPort: number): string {
 
 export const load: PageServerLoad = async () => {
   const db = getDB();
-  const nodes = await db
-    .select({ id: aiNodeT.id, host: aiNodeT.host, port: aiNodeT.port, machineName: aiNodeT.machineName })
+  const [{ count: nodeCount }] = await db
+    .select({ count: sql<number>`count(*)`.mapWith(Number) })
     .from(aiNodeT)
     .where(isNull(aiNodeT.deletedAt));
 
+  const dashboardTarget = hostPort(serverEnv.ORIGIN, 5121);
+
   return {
-    nodes: nodes.map((n) => ({
-      id: n.id,
-      target: `${n.host}:${n.port}`,
-      machineName: n.machineName,
-    })),
+    nodeCount,
     gatewayTarget: hostPort(serverEnv.GATEWAY_URL, 4121),
-    dashboardTarget: hostPort(serverEnv.ORIGIN, 5121),
+    dashboardTarget,
+    // Daemon targets are discovered dynamically by Prometheus from this endpoint,
+    // so the generated config never needs regenerating as the fleet changes.
+    daemonSdUrl: `http://${dashboardTarget}/metrics/sd/daemons`,
   };
 };

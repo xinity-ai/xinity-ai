@@ -6,7 +6,7 @@ describe("buildPrometheusConfig", () => {
     scrapeInterval: "30s",
     gatewayTarget: "localhost:4121",
     dashboardTarget: "localhost:5121",
-    daemonTargets: [] as string[],
+    daemonSdUrl: "http://localhost:5121/metrics/sd/daemons",
   };
 
   test("emits the three xinity scrape jobs", () => {
@@ -17,23 +17,42 @@ describe("buildPrometheusConfig", () => {
     expect(yml).toContain("scrape_interval: 30s");
   });
 
-  test("includes the gateway and dashboard targets", () => {
+  test("scrapes gateway and dashboard statically", () => {
     const yml = buildPrometheusConfig(base);
     expect(yml).toContain("- localhost:4121");
     expect(yml).toContain("- localhost:5121");
   });
 
-  test("emits an empty daemon target list with a pointer when none are given", () => {
+  test("discovers daemons via http_sd, not a static list", () => {
     const yml = buildPrometheusConfig(base);
-    expect(yml).toContain("[]");
-    expect(yml).toContain("Instance Settings > Monitoring");
+    expect(yml).toContain("http_sd_configs:");
+    expect(yml).toContain("- url: http://localhost:5121/metrics/sd/daemons");
+    expect(yml).not.toContain("static_configs:\n      - targets:\n          - 10."); // no daemon static list
   });
 
-  test("lists each daemon target when provided", () => {
-    const yml = buildPrometheusConfig({ ...base, daemonTargets: ["10.0.0.5:4010", "10.0.0.6:4010"] });
-    expect(yml).toContain("- 10.0.0.5:4010");
-    expect(yml).toContain("- 10.0.0.6:4010");
-    expect(yml).not.toContain("[]");
+  test("re-discovers the daemon set on a coarse interval, separate from scrape_interval", () => {
+    const yml = buildPrometheusConfig(base);
+    expect(yml).toContain("refresh_interval: 3m");
+    expect(yml).toContain("scrape_interval: 30s"); // metric resolution stays fine-grained
+  });
+
+  test("omits basic_auth (as commented placeholders) when no creds are given", () => {
+    const yml = buildPrometheusConfig(base);
+    expect(yml).toContain("# basic_auth:");
+    expect(yml).not.toMatch(/^\s+basic_auth:/m); // no active basic_auth block
+  });
+
+  test("emits active basic_auth blocks for SD and daemon scrape when creds are given", () => {
+    const yml = buildPrometheusConfig({
+      ...base,
+      sdAuth: { username: "sd", password: "sdpass" },
+      daemonAuth: { username: "scrape", password: "scrapepass" },
+    });
+    expect(yml).toContain("username: sd");
+    expect(yml).toContain("password: sdpass");
+    expect(yml).toContain("username: scrape");
+    expect(yml).toContain("password: scrapepass");
+    expect(yml).toMatch(/^\s+basic_auth:/m);
   });
 });
 

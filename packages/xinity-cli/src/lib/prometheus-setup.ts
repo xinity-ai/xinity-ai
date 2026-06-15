@@ -24,9 +24,22 @@ const CONTAINER_NAME = "xinity-ai-prometheus";
 // Pinned to match the deployment/docker monitoring template so both paths run
 // the same Prometheus version.
 const PROMETHEUS_IMAGE = "prom/prometheus:v3.1.0";
+// How often Prometheus re-discovers the daemon set (membership only; metric
+// resolution is governed by scrape_interval). The fleet changes on the order of
+// deployments, so this is deliberately coarse.
+const SD_REFRESH_INTERVAL = "3m";
 
 function endpoint(port: number): string {
   return `http://127.0.0.1:${port}`;
+}
+
+/** Parse a METRICS_AUTH "user:pass" value into a BasicAuth, or undefined if blank. */
+function parseBasicAuth(value: string): BasicAuth | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const sep = trimmed.indexOf(":");
+  if (sep === -1) return { username: trimmed, password: "" };
+  return { username: trimmed.slice(0, sep), password: trimmed.slice(sep + 1) };
 }
 
 // ─── Health ────────────────────────────────────────────────────────────────
@@ -49,11 +62,35 @@ async function waitForPrometheusRunning(host: Host, port: number): Promise<boole
 
 // ─── Config generation ───────────────────────────────────────────────────────
 
+export type BasicAuth = { username: string; password: string };
+
+/** Render an indented `basic_auth:` block, or a commented placeholder when no creds are given. */
+function basicAuthLines(indent: string, auth: BasicAuth | undefined, hint: string): string[] {
+  if (!auth) {
+    return [
+      `${indent}# ${hint}`,
+      `${indent}# basic_auth:`,
+      `${indent}#   username: <user>`,
+      `${indent}#   password: <password>`,
+    ];
+  }
+  return [
+    `${indent}basic_auth:`,
+    `${indent}  username: ${auth.username}`,
+    `${indent}  password: ${auth.password}`,
+  ];
+}
+
 export function buildPrometheusConfig(opts: {
   scrapeInterval: string;
   gatewayTarget: string;
   dashboardTarget: string;
-  daemonTargets: string[];
+  /** URL of the dashboard's daemon service-discovery endpoint. */
+  daemonSdUrl: string;
+  /** Auth for the SD request to the dashboard (dashboard METRICS_AUTH). Omitted when absent. */
+  sdAuth?: BasicAuth;
+  /** Auth for scraping the daemons themselves (daemon METRICS_AUTH). Omitted when absent. */
+  daemonAuth?: BasicAuth;
 }): string {
   const lines: string[] = [
     "global:",
@@ -73,19 +110,16 @@ export function buildPrometheusConfig(opts: {
     "      - targets:",
     `          - ${opts.dashboardTarget}`,
     "",
+    "  # Daemon targets are discovered dynamically from the dashboard's node",
+    "  # registry; this stays current as the fleet changes, no edits needed.",
     "  - job_name: xinity-daemon",
     "    metrics_path: /metrics",
-    "    static_configs:",
-    "      - targets:",
+    "    http_sd_configs:",
+    `      - url: ${opts.daemonSdUrl}`,
+    `        refresh_interval: ${SD_REFRESH_INTERVAL}`,
+    ...basicAuthLines("        ", opts.sdAuth, "Set if the dashboard's METRICS_AUTH is configured (authenticates the SD request):"),
+    ...basicAuthLines("    ", opts.daemonAuth, "Set if the daemons' METRICS_AUTH is configured (authenticates the scrape):"),
   ];
-
-  if (opts.daemonTargets.length === 0) {
-    lines.push("          # Add daemon nodes here, or generate this list from");
-    lines.push("          # the dashboard's Instance Settings > Monitoring page.");
-    lines.push("          []");
-  } else {
-    for (const t of opts.daemonTargets) lines.push(`          - ${t}`);
-  }
 
   return lines.join("\n") + "\n";
 }
@@ -197,18 +231,32 @@ export async function prometheusSetup(
   }));
   if (dashboardTarget === undefined) return undefined;
 
-  const daemonTargetsRaw = await promptOrUndefined(p.text({
-    message: "Daemon /metrics targets (comma-separated host:port, optional)",
-    placeholder: "10.0.0.5:4010, 10.0.0.6:4010",
+  // Daemons are discovered dynamically from the dashboard, so there is no static
+  // target list to maintain. Auth is optional: the SD endpoint is often left open
+  // (internal only), while the daemon scrape is usually password-protected.
+  const sdAuthRaw = await promptOrUndefined(p.text({
+    message: "Dashboard METRICS_AUTH for the discovery request (user:pass, blank if none)",
+    placeholder: "",
     defaultValue: "",
   }));
-  if (daemonTargetsRaw === undefined) return undefined;
-  const daemonTargets = daemonTargetsRaw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  if (sdAuthRaw === undefined) return undefined;
 
-  const config = buildPrometheusConfig({ scrapeInterval: "30s", gatewayTarget, dashboardTarget, daemonTargets });
+  const daemonAuthRaw = await promptOrUndefined(p.text({
+    message: "Daemon METRICS_AUTH for scraping daemons (user:pass, blank if none)",
+    placeholder: "",
+    defaultValue: "",
+  }));
+  if (daemonAuthRaw === undefined) return undefined;
+
+  const daemonSdUrl = `http://${dashboardTarget}/metrics/sd/daemons`;
+  const config = buildPrometheusConfig({
+    scrapeInterval: "30s",
+    gatewayTarget,
+    dashboardTarget,
+    daemonSdUrl,
+    sdAuth: parseBasicAuth(sdAuthRaw),
+    daemonAuth: parseBasicAuth(daemonAuthRaw),
+  });
   const composeFile = buildComposeFile(port, CONFIG_PATH);
 
   // ── Step 3: Write the stack ─────────────────────────────────────────────
@@ -259,13 +307,10 @@ export async function prometheusSetup(
     `  ${pc.cyan(`${manageCmd} down`)}      (stop and remove the container)`,
   );
 
-  if (daemonTargets.length === 0) {
-    p.log.info(
-      `No daemon targets configured yet. Generate the list from the dashboard's\n` +
-      `Instance Settings > Monitoring page, add it to ${CONFIG_PATH}, then run:\n` +
-      `  ${pc.cyan(`curl -X POST ${promUrl}/-/reload`)}`,
-    );
-  }
+  p.log.info(
+    `Daemon targets are discovered from ${pc.cyan(daemonSdUrl)} and refresh automatically\n` +
+    `as nodes register or drop out, no edits or reloads needed.`,
+  );
 
   return promUrl;
 }
