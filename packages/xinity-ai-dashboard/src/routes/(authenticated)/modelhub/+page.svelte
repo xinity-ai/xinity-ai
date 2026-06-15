@@ -117,7 +117,7 @@
   // Test button only renders for entries we resolved to a supported type.
   type ModelTypeKnowledge =
     | { status: "loading" }
-    | { status: "known"; type: "chat" | "embedding" | "rerank" }
+    | { status: "known"; type: "chat" | "embedding" | "rerank" | "transcription" }
     | { status: "unknown" };
   let modelKnowledge = $state<Record<string, ModelTypeKnowledge>>({});
 
@@ -145,7 +145,8 @@
     deployment: DeploymentDefinition,
   ): "chat" | "embedding" | "rerank" | null {
     const k = modelKnowledge[deployment.specifier ?? deployment.modelSpecifier];
-    return k?.status === "known" ? k.type : null;
+    if (k?.status !== "known" || k.type === "transcription") return null;
+    return k.type;
   }
 
   function openTest(

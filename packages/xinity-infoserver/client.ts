@@ -2,15 +2,19 @@
  * Lightweight infoserver client that fetches from the API endpoints
  * with time-limited in-memory caching. Replaces the old ModelCatalog class.
  */
-import type { ModelWithSpecifier } from "./definitions/model-definition";
+import { ModelSchema, type ModelWithSpecifier } from "./definitions/model-definition";
 import { resolveDriverForProviderModel, resolveTagsForDriver, resolveAllTags, resolveArgsForDriver, resolveRequestParamsForDriver, type RequestParamMap } from "./model-tags";
 import { lookupKey, type ModelLookup } from "./lookup-helpers";
+import { satisfiesMinVersion } from "./semver";
+import { version } from "../../package.json";
 
 export interface InfoserverClientConfig {
   /** Base URL of the infoserver (e.g. "http://localhost:8090"). */
   baseUrl: string;
   /** How long cached responses remain valid before re-fetching (ms). */
   cacheTtlMs: number;
+  /** Optional logger; reports models dropped for failing content validation. */
+  logger?: import("common-log").Logger;
 }
 
 function lookupCacheKey(lookup: ModelLookup): string {
@@ -19,10 +23,11 @@ function lookupCacheKey(lookup: ModelLookup): string {
 
 /**
  * Typed result from a single-model lookup.
- * Distinguishes between a found model, a model that genuinely does not exist in
- * the catalog (404), and an unreachable info server (network error / 5xx).
- * Only `found` results are cached. `not_found` is intentionally never cached
- * so a re-added model is picked up within the next TTL window.
+ * Distinguishes between a found model, a model not available to this instance
+ * (absent from the catalog, unsupported by this version, or invalid), and an
+ * unreachable info server (network error / 5xx).
+ * Only `found` results are cached. `not_found` is intentionally never cached so a
+ * re-added or newly-supported model is picked up within the next TTL window.
  */
 export type FetchModelStatus =
   | { status: "found"; model: ModelWithSpecifier }
@@ -52,6 +57,27 @@ interface CacheEntry<T> {
 export function createInfoserverClient(config: InfoserverClientConfig) {
   const cache = new Map<string, CacheEntry<any>>();
   const baseUrl = config.baseUrl.replace(/\/$/, "");
+
+  /**
+   * Filters models this instance cannot use. Version-gates first, so a model built
+   * for a newer xinity is dropped before validation rather than rejected for shapes
+   * we don't yet understand; the rest are content-validated. Failures are dropped,
+   * not thrown, so one bad entry can't sink a whole listing. Fail-open: a model
+   * without `entryVersion` is kept.
+   */
+  function gateAndValidate(raw: unknown): ModelWithSpecifier | null {
+    if (raw === null || typeof raw !== "object") return null;
+    const { entryVersion } = raw as { entryVersion?: unknown };
+    if (typeof entryVersion === "string" && !satisfiesMinVersion(version, entryVersion)) {
+      return null;
+    }
+    const parsed = ModelSchema.safeParse(raw);
+    if (!parsed.success) {
+      config.logger?.warn({ issues: parsed.error.issues }, "Dropping model that failed content validation");
+      return null;
+    }
+    return parsed.data as ModelWithSpecifier;
+  }
 
   function isFresh(entry: CacheEntry<any> | undefined): entry is CacheEntry<any> {
     return entry !== undefined && Date.now() - entry.fetchedAt < config.cacheTtlMs;
@@ -91,7 +117,8 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
       const res = await fetch(url);
       if (res.status === 404) return { status: "not_found" };
       if (!res.ok) return { status: "unavailable", error: `HTTP ${res.status}` };
-      const model = await res.json() as ModelWithSpecifier;
+      const model = gateAndValidate(await res.json());
+      if (!model) return { status: "not_found" };
       cache.set(key, { data: model, fetchedAt: Date.now() });
       return { status: "found", model };
     } catch (err) {
@@ -108,9 +135,10 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
 
   async function fetchModelsByFamily(family: string): Promise<ModelWithSpecifier[]> {
     const key = `family:${family}`;
-    return cachedFetch(key, () =>
-      fetchJsonOrThrow<ModelWithSpecifier[]>(`/api/v1/models/family/${encodeURIComponent(family)}`),
-    );
+    return cachedFetch(key, async () => {
+      const models = await fetchJsonOrThrow<unknown[]>(`/api/v1/models/family/${encodeURIComponent(family)}`);
+      return models.map(gateAndValidate).filter((m): m is ModelWithSpecifier => m !== null);
+    });
   }
 
   async function fetchModels(params?: FetchModelsParams): Promise<PaginatedModels> {
@@ -124,20 +152,27 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
     }
 
     const key = `list:${qs.toString()}`;
-    return cachedFetch(key, () =>
-      fetchJsonOrThrow<PaginatedModels>(`/api/v1/models?${qs}`),
-    );
+    return cachedFetch(key, async () => {
+      const res = await fetchJsonOrThrow<PaginatedModels>(`/api/v1/models?${qs}`);
+      const models = res.models.map(gateAndValidate).filter((m): m is ModelWithSpecifier => m !== null);
+      return { ...res, models };
+    });
   }
 
   async function fetchModelsBatch(specifiers: string[]): Promise<Record<string, ModelWithSpecifier | null>> {
     const key = `batch:${specifiers.slice().sort().join(",")}`;
-    return cachedFetch(key, () =>
-      fetchJsonOrThrow<Record<string, ModelWithSpecifier | null>>(`/api/v1/models/resolve`, {
+    return cachedFetch(key, async () => {
+      const raw = await fetchJsonOrThrow<Record<string, unknown>>(`/api/v1/models/resolve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ specifiers }),
-      }),
-    );
+      });
+      const resolved: Record<string, ModelWithSpecifier | null> = {};
+      for (const [specifier, model] of Object.entries(raw)) {
+        resolved[specifier] = gateAndValidate(model);
+      }
+      return resolved;
+    });
   }
 
   // Convenience methods that combine a fetch with pure tag helpers.
