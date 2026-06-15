@@ -56,7 +56,8 @@ mock.module("../../callLogger", () => ({
   logChatStream: mock(() => Promise.resolve()),
   logChatSync: mock(() => Promise.resolve()),
 }));
-mock.module("../../usageRecorder", () => ({ recordUsageEvent: mock(() => {}) }));
+const recordUsageEvent = mock((_event: { inputTokens: number; outputTokens: number }) => {});
+mock.module("../../usageRecorder", () => ({ recordUsageEvent }));
 
 const { handleTranscription } = await import("./handle-transcription");
 
@@ -96,6 +97,7 @@ beforeAll(() => {
 afterEach(() => {
   checkAuth.mockClear();
   getModelInfo.mockClear();
+  recordUsageEvent.mockClear();
   lastForm = null;
   nextResponse = null;
 });
@@ -180,6 +182,29 @@ describe("handleTranscription", () => {
     const text = await res.text();
     expect(text).toContain('"delta":"OK"');
     expect(text).toContain('"type":"transcript.text.done"');
+  });
+
+  test("records usage from a streamed transcription", async () => {
+    const res = await handleTranscription(makeReq({ model: "whisper", stream: "true" }));
+    await res.text(); // drain the stream so its usage callback fires
+    expect(recordUsageEvent).toHaveBeenCalledTimes(1);
+    const event = recordUsageEvent.mock.calls[0]![0];
+    expect(event.inputTokens).toBe(5);
+    expect(event.outputTokens).toBe(2);
+  });
+
+  test("records usage from a non-streamed transcription when the backend reports it", async () => {
+    nextResponse = Response.json({ text: "hi", usage: { prompt_tokens: 3, completion_tokens: 4, total_tokens: 7 } });
+    await handleTranscription(makeReq({ model: "whisper" }));
+    expect(recordUsageEvent).toHaveBeenCalledTimes(1);
+    const event = recordUsageEvent.mock.calls[0]![0];
+    expect(event.inputTokens).toBe(3);
+    expect(event.outputTokens).toBe(4);
+  });
+
+  test("records no usage event when the backend omits usage", async () => {
+    await handleTranscription(makeReq({ model: "whisper" }));
+    expect(recordUsageEvent).not.toHaveBeenCalled();
   });
 
   test("forwards non-model form fields (language) to the backend", async () => {

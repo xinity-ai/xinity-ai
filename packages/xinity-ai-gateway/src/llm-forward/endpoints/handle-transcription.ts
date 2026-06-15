@@ -7,18 +7,22 @@ import {
   handleEndpointError,
   handleStreamError,
   readSSEStream,
+  recordUsage,
   SSE_RESPONSE_HEADERS,
   sseEncoder,
   validateModelType,
 } from "../util";
 import { backendPostForm } from "../backend-fetch";
-import { BackendTranscriptionChunkSchema } from "../backend-schemas";
+import { BackendTranscriptionChunkSchema, BackendUsageSchema } from "../backend-schemas";
 import { rootLogger } from "../../logger";
 
 const log = rootLogger.child({ name: "handle-transcription" });
 
 /** Translate vLLM's chat-completion-style transcription stream into OpenAI's `transcript.text.delta`/`transcript.text.done` events (no `[DONE]` sentinel). */
-function streamTranscriptionAsOpenAI(backendResponse: Response): Response {
+function streamTranscriptionAsOpenAI(
+  backendResponse: Response,
+  onUsage: (usage: { prompt_tokens: number; completion_tokens: number }) => void,
+): Response {
   const stream = new ReadableStream({
     async start(controller) {
       let fullText = "";
@@ -50,6 +54,7 @@ function streamTranscriptionAsOpenAI(backendResponse: Response): Response {
 
         const done: Record<string, unknown> = { type: "transcript.text.done", text: fullText };
         if (usage) {
+          onUsage({ prompt_tokens: usage.prompt_tokens, completion_tokens: usage.completion_tokens });
           done.usage = {
             type: "tokens",
             input_tokens: usage.prompt_tokens,
@@ -80,6 +85,7 @@ export async function handleTranscription(req: Request): Promise<Response> {
       return errorResponse("Method not allowed", 405);
     }
 
+    const callStartTime = Date.now();
     const auth = await resolveAuth(req);
     if (auth instanceof Response) {
       return auth;
@@ -124,14 +130,35 @@ export async function handleTranscription(req: Request): Promise<Response> {
     }
 
     if (wantsStream) {
-      return streamTranscriptionAsOpenAI(backendResponse);
+      return streamTranscriptionAsOpenAI(backendResponse, (usage) =>
+        recordUsage({ usage, auth, modelInfo, callStartTime, logCalls: false }),
+      );
     }
 
-    return new Response(backendResponse.body, {
+    const contentType = backendResponse.headers.get("content-type") ?? "application/json";
+    const body = await backendResponse.text();
+    if (contentType.includes("application/json")) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(body);
+      } catch {
+        parsed = undefined;
+      }
+      const usage = BackendUsageSchema.safeParse((parsed as { usage?: unknown } | undefined)?.usage);
+      if (usage.success && usage.data) {
+        recordUsage({
+          usage: { prompt_tokens: usage.data.prompt_tokens, completion_tokens: usage.data.completion_tokens },
+          auth,
+          modelInfo,
+          callStartTime,
+          logCalls: false,
+        });
+      }
+    }
+
+    return new Response(body, {
       status: backendResponse.status,
-      headers: {
-        "Content-Type": backendResponse.headers.get("content-type") ?? "application/json",
-      },
+      headers: { "Content-Type": contentType },
     });
   } catch (error) {
     return handleEndpointError(error, log);
