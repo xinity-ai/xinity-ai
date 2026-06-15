@@ -71,6 +71,13 @@
       "when": 1781175063700,
       "tag": "0009_right_living_mummy",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1781561144900,
+      "tag": "0010_past_thena",
+      "breakpoints": true
     }
   ]
 }
