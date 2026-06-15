@@ -18,7 +18,7 @@ const COMPONENTS = [
   "db",
   // Infrastructure utilities
   "infra-redis", "infra-seaweedfs", "infra-postgres",
-  "infra-ollama", "infra-vllm", "infra-searxng",
+  "infra-ollama", "infra-vllm", "infra-searxng", "infra-prometheus",
   // Meta
   "cli", "all",
 ] as const;
@@ -106,6 +106,13 @@ export const upCommand: CommandModule = {
 
       if (component === "infra-seaweedfs") {
         await seaweedfsSetup(host, dryRun);
+        p.outro("Done");
+        return;
+      }
+
+      if (component === "infra-prometheus") {
+        const { prometheusSetup } = await import("../lib/prometheus-setup.ts");
+        await prometheusSetup(host, dryRun);
         p.outro("Done");
         return;
       }
