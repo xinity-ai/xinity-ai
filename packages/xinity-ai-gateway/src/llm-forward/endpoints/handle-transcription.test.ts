@@ -57,8 +57,10 @@ mock.module("../../callLogger", () => ({
   logChatStream: mock(() => Promise.resolve()),
   logChatSync: mock(() => Promise.resolve()),
 }));
-const recordUsageEvent = mock((_event: { inputTokens: number; outputTokens: number }) => {});
+const recordUsageEvent = mock((_event: { inputTokens: number; outputTokens: number; success?: boolean }) => {});
 mock.module("../../usageRecorder", () => ({ recordUsageEvent }));
+
+const failedRequests = () => recordUsageEvent.mock.calls.filter(([e]) => e.success === false);
 
 const { handleTranscription } = await import("./handle-transcription");
 
@@ -240,5 +242,24 @@ describe("handleTranscription", () => {
     nextResponse = new Response("boom", { status: 500 });
     const res = await handleTranscription(makeReq({ model: "whisper" }));
     expect(res.status).toBe(502);
+  });
+
+  test("records a failed request when the backend returns 5xx", async () => {
+    nextResponse = new Response("boom", { status: 500 });
+    await handleTranscription(makeReq({ model: "whisper" }));
+    expect(failedRequests()).toHaveLength(1);
+  });
+
+  test("records a failed request for a non-transcription model type", async () => {
+    getModelInfo.mockImplementationOnce(async () => ({ ...transcriptionModel(), type: "chat" }));
+    await handleTranscription(makeReq({ model: "gpt" }));
+    expect(failedRequests()).toHaveLength(1);
+  });
+
+  test("does not record a failed request before a node is leased", async () => {
+    getModelInfo.mockImplementationOnce(async () => undefined);
+    const res = await handleTranscription(makeReq({ model: "nope" }));
+    expect(res.status).toBe(404);
+    expect(recordUsageEvent).not.toHaveBeenCalled();
   });
 });

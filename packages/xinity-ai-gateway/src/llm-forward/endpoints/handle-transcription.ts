@@ -6,11 +6,14 @@ import {
   forwardBackendError,
   handleEndpointError,
   handleStreamError,
+  isAbortError,
   readSSEStream,
+  recordFailedRequest,
   recordUsage,
   SSE_RESPONSE_HEADERS,
   sseEncoder,
   validateModelType,
+  type FailedRequestContext,
 } from "../util";
 import { backendPostForm } from "../backend-fetch";
 import { BackendTranscriptionChunkSchema, BackendUsageSchema } from "../backend-schemas";
@@ -21,7 +24,7 @@ const log = rootLogger.child({ name: "handle-transcription" });
 /** Translate vLLM's chat-completion-style transcription stream into OpenAI's `transcript.text.delta`/`transcript.text.done` events (no `[DONE]` sentinel). */
 function streamTranscriptionAsOpenAI(
   backendResponse: Response,
-  onUsage: (usage: { prompt_tokens: number; completion_tokens: number }) => void,
+  logFields: FailedRequestContext,
 ): Response {
   const stream = new ReadableStream({
     async start(controller) {
@@ -54,7 +57,11 @@ function streamTranscriptionAsOpenAI(
 
         const done: Record<string, unknown> = { type: "transcript.text.done", text: fullText };
         if (usage) {
-          onUsage({ prompt_tokens: usage.prompt_tokens, completion_tokens: usage.completion_tokens });
+          recordUsage({
+            ...logFields,
+            usage: { prompt_tokens: usage.prompt_tokens, completion_tokens: usage.completion_tokens },
+            logCalls: false,
+          });
           done.usage = {
             type: "tokens",
             input_tokens: usage.prompt_tokens,
@@ -65,6 +72,7 @@ function streamTranscriptionAsOpenAI(
         controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(done)}\n\n`));
         controller.close();
       } catch (e) {
+        if (!isAbortError(e)) recordFailedRequest(logFields);
         handleStreamError(e, controller, log);
       }
     },
@@ -80,12 +88,22 @@ export const TRANSCRIPTION_MODEL_TYPE = "transcription";
  * it resolves the model from the form rather than the JSON `resolveModel` path.
  */
 export async function handleTranscription(req: Request): Promise<Response> {
+  const callStartTime = Date.now();
+  let leased: FailedRequestContext | undefined;
+
+  // Counts a failure against the leased node, except 499 (client disconnect).
+  const noteFailedRequest = (res: Response): Response => {
+    if (leased && res.status >= 400 && res.status !== 499) {
+      recordFailedRequest(leased);
+    }
+    return res;
+  };
+
   try {
     if (req.method !== "POST") {
       return errorResponse("Method not allowed", 405);
     }
 
-    const callStartTime = Date.now();
     const auth = await resolveAuth(req);
     if (auth instanceof Response) {
       return auth;
@@ -109,10 +127,11 @@ export async function handleTranscription(req: Request): Promise<Response> {
       return errorResponse("Model not found", 404);
     }
     releaseCallbacks.set(req, modelInfo.release);
+    leased = { auth, modelInfo, callStartTime };
 
     const typeError = validateModelType(modelInfo, [TRANSCRIPTION_MODEL_TYPE]);
     if (typeError) {
-      return typeError;
+      return noteFailedRequest(typeError);
     }
 
     const wantsStream = form.get("stream") === "true" || form.get("stream") === "1";
@@ -126,13 +145,11 @@ export async function handleTranscription(req: Request): Promise<Response> {
     // `as FormData` bridges the global vs undici FormData type mismatch.
     const backendResponse = await backendPostForm(modelInfo, "/v1/audio/transcriptions", form as FormData, req.signal);
     if (!backendResponse.ok) {
-      return forwardBackendError(backendResponse, log);
+      return noteFailedRequest(await forwardBackendError(backendResponse, log));
     }
 
     if (wantsStream) {
-      return streamTranscriptionAsOpenAI(backendResponse, (usage) =>
-        recordUsage({ usage, auth, modelInfo, callStartTime, logCalls: false }),
-      );
+      return streamTranscriptionAsOpenAI(backendResponse, { auth, modelInfo, callStartTime });
     }
 
     const contentType = backendResponse.headers.get("content-type") ?? "application/json";
@@ -161,6 +178,6 @@ export async function handleTranscription(req: Request): Promise<Response> {
       headers: { "Content-Type": contentType },
     });
   } catch (error) {
-    return handleEndpointError(error, log);
+    return noteFailedRequest(handleEndpointError(error, log));
   }
 }
