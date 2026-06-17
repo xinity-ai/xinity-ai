@@ -3,22 +3,14 @@
  * Imported by server hooks/routes that report request activity.
  */
 import * as promClient from "prom-client";
+import { createMetricsAuth } from "common-env";
 import { serverEnv } from "$lib/server/serverenv";
 
-const BASIC_PREFIX = "Basic ";
+const metricsAuth = createMetricsAuth(serverEnv.METRICS_AUTH);
 
-/** Validate a request's Basic auth header against METRICS_AUTH ("user:pass"). */
-export function checkMetricsBasicAuth(request: Request): boolean {
-  const authHeader = request.headers.get("Authorization");
-  if (!authHeader?.startsWith(BASIC_PREFIX)) return false;
-  const decoded = Buffer.from(authHeader.slice(BASIC_PREFIX.length), "base64").toString();
-  return decoded === serverEnv.METRICS_AUTH;
-}
-
-/** Open when METRICS_AUTH is unset; otherwise requires a matching Basic auth header. */
+/** Open when METRICS_AUTH is unset; otherwise requires a matching Basic auth credential. */
 export function isMetricsAuthorized(request: Request): boolean {
-  if (!serverEnv.METRICS_AUTH) return true;
-  return checkMetricsBasicAuth(request);
+  return metricsAuth.isAuthorized(request.headers.get("authorization"));
 }
 
 export const metricRegister = new promClient.Registry();

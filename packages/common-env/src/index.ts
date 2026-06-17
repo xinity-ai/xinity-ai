@@ -144,3 +144,5 @@ export function quoteShellArg(s: string): string {
 export function quoteShellArgv(argv: string[]): string {
   return argv.map(quoteShellArg).join(" ");
 }
+
+export * from "./metrics-auth";
