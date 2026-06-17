@@ -13,7 +13,6 @@ const log = rootLogger.child({ name: "catalog" });
 // ── State ──────────────────────────────────────────────────────────────
 
 let modelData = new Map<string, ModelWithSpecifier>();
-let providerModelIndex = new Map<string, string>();
 let mergedData: { models: Record<string, Model> } = { models: {} };
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -39,7 +38,6 @@ export function configure(maxIncludeDepth = 10, modelDirPath?: string) {
  */
 type CatalogIndexState = {
   models: Map<string, ModelWithSpecifier>;
-  providerIndex: Map<string, string>;
   merged: Record<string, Model>;
   localSpecifiers: Set<string>;
 };
@@ -47,7 +45,6 @@ type CatalogIndexState = {
 export async function refresh(): Promise<void> {
   const state: CatalogIndexState = {
     models: new Map<string, ModelWithSpecifier>(),
-    providerIndex: new Map<string, string>(),
     merged: {},
     localSpecifiers: new Set<string>(),
   };
@@ -60,7 +57,6 @@ export async function refresh(): Promise<void> {
 
     // Atomic swap
     modelData = state.models;
-    providerModelIndex = state.providerIndex;
     mergedData = { models: state.merged };
     lastRefreshAt = new Date();
     lastRefreshError = null;
@@ -179,12 +175,6 @@ function indexModels(
     state.merged[specifier] = model;
 
     if (isLocal) state.localSpecifiers.add(specifier);
-
-    for (const providerModel of Object.values(model.providers)) {
-      if (providerModel) {
-        state.providerIndex.set(providerModel, specifier);
-      }
-    }
   }
 }
 
@@ -194,17 +184,8 @@ export function get(specifier: string): ModelWithSpecifier | undefined {
   return modelData.get(specifier);
 }
 
-export function getByProviderModel(providerModel: string): ModelWithSpecifier | undefined {
-  const spec = providerModelIndex.get(providerModel);
-  return spec ? modelData.get(spec) : undefined;
-}
-
-export function resolve(specifier: string): ModelWithSpecifier | undefined {
-  return get(specifier) ?? getByProviderModel(specifier);
-}
-
 export function resolveBatch(specifiers: string[]): Record<string, ModelWithSpecifier | null> {
-  return Object.fromEntries(specifiers.map((spec) => [spec, resolve(spec) ?? null]));
+  return Object.fromEntries(specifiers.map((spec) => [spec, get(spec) ?? null]));
 }
 
 export function getAll(): ModelWithSpecifier[] {

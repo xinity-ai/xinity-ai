@@ -25,14 +25,6 @@ export function resolveProvider(model: Model, driver: Provider): string | undefi
   return model.providers[driver];
 }
 
-/** Determines which driver a provider-specific model name belongs to. */
-export function resolveDriverForProviderModel(model: Model, providerModel: string): Provider | undefined {
-  for (const [driver, spec] of Object.entries(model.providers) as [Provider, string | undefined][]) {
-    if (spec === providerModel) return driver;
-  }
-  return undefined;
-}
-
 // ---------------------------------------------------------------------------
 // Tag resolution
 // ---------------------------------------------------------------------------

@@ -79,7 +79,7 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
     const existing = cache.get(key);
     if (isFresh(existing)) return { status: "found", model: existing.data };
 
-    const url = `${baseUrl}/api/v1/models/${encodeURIComponent(specifier)}?lookup=canonical`;
+    const url = `${baseUrl}/api/v1/models/${encodeURIComponent(specifier)}`;
     try {
       const res = await fetch(url);
       if (res.status === 404) return { status: "not_found" };

@@ -33,8 +33,6 @@ const {
   configure,
   refresh,
   get,
-  getByProviderModel,
-  resolve,
   resolveBatch,
   getAll,
   getByFamily,
@@ -119,28 +117,12 @@ describe("server-catalog", () => {
       expect(get("nonexistent")).toBeUndefined();
     });
 
-    it("looks up by provider model name", () => {
-      const m = getByProviderModel("org/llama-vllm");
-      expect(m).toBeDefined();
-      expect(m!.publicSpecifier).toBe("llama-3.3-70b");
-    });
-
-    it("returns undefined for unknown provider model", () => {
-      expect(getByProviderModel("unknown/model")).toBeUndefined();
-    });
-
-    it("resolve() tries specifier first, then falls back to provider model", () => {
-      expect(resolve("llama-3.3-70b")?.publicSpecifier).toBe("llama-3.3-70b");
-      expect(resolve("nomic-embed")?.publicSpecifier).toBe("nomic-embed-text");
-      expect(resolve("nothing")).toBeUndefined();
-    });
-
     it("resolveBatch() returns map with nulls for missing specifiers", () => {
-      const result = resolveBatch(["llama-3.3-70b", "missing", "nomic-embed"]);
+      const result = resolveBatch(["llama-3.3-70b", "missing", "nomic-embed-text"]);
       expect(result["llama-3.3-70b"]).toBeDefined();
       expect(result["llama-3.3-70b"]!.publicSpecifier).toBe("llama-3.3-70b");
       expect(result["missing"]).toBeNull();
-      expect(result["nomic-embed"]?.publicSpecifier).toBe("nomic-embed-text");
+      expect(result["nomic-embed-text"]?.publicSpecifier).toBe("nomic-embed-text");
     });
 
     it("getAll() returns all indexed models", () => {

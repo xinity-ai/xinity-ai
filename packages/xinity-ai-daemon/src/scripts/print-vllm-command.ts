@@ -12,7 +12,6 @@ import { z } from "zod";
 import { quoteShellArgv } from "common-env";
 import {
   ModelFileDefinitionSchema,
-  resolveDriverForProviderModel,
   resolveTagsForDriver,
   resolveArgsForDriver,
   type Model,
@@ -137,9 +136,8 @@ function buildVllmInstanceConfig(
   model: Model,
   state: State,
 ): VllmInstanceConfig {
-  const driver = resolveDriverForProviderModel(model, modelName);
-  if (driver !== "vllm") {
-    die(`model "${modelName}" does not have a vllm provider entry (resolved driver: ${driver ?? "none"}).`);
+  if (model.providers.vllm !== modelName) {
+    die(`model "${modelName}" does not have a vllm provider entry.`);
   }
 
   const tags = resolveTagsForDriver(model, "vllm");

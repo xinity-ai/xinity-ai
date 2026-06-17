@@ -155,10 +155,11 @@ describe("createInfoserverClient", () => {
       await expect(client.fetchModel("server-error")).rejects.toThrow('Infoserver unavailable for "server-error": HTTP 500');
     });
 
-    it("sends `lookup=canonical`", async () => {
+    it("requests the model by its canonical specifier", async () => {
       const client = makeClient();
       await client.fetchModel("llama-3.3-70b");
-      expect(requestLog[0]!.url).toContain("lookup=canonical");
+      expect(requestLog[0]!.url).toContain("/api/v1/models/llama-3.3-70b");
+      expect(requestLog[0]!.url).not.toContain("lookup");
     });
   });
 

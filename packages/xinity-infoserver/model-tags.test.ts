@@ -2,7 +2,6 @@ import { describe, it, expect } from "bun:test";
 import {
   resolveDefaultProvider,
   resolveProvider,
-  resolveDriverForProviderModel,
   resolveTagsForDriver,
   resolveAllTags,
   driverHasTag,
@@ -53,19 +52,6 @@ describe("resolveProvider", () => {
   it("returns undefined for a driver not in the model", () => {
     const m = makeModel({ providers: { vllm: "org/test-vllm" } });
     expect(resolveProvider(m, "ollama")).toBeUndefined();
-  });
-});
-
-describe("resolveDriverForProviderModel", () => {
-  it("finds the correct driver for a known provider model", () => {
-    const m = makeModel();
-    expect(resolveDriverForProviderModel(m, "org/test-vllm")).toBe("vllm");
-    expect(resolveDriverForProviderModel(m, "test-ollama")).toBe("ollama");
-  });
-
-  it("returns undefined for an unknown provider model", () => {
-    const m = makeModel();
-    expect(resolveDriverForProviderModel(m, "unknown-model")).toBeUndefined();
   });
 });
 
