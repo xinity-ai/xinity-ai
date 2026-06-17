@@ -385,7 +385,7 @@
                           variant="ghost"
                           size="sm"
                           class="h-6 px-2 text-xs text-muted-foreground"
-                          onclick={() => copyToClipboard(deployment.status.failureLogs ?? '')}
+                          onclick={() => copyToClipboard(deployment.status?.failureLogs ?? '')}
                           title="Copy all logs"
                         >
                           <Copy class="w-3.5 h-3.5" />
