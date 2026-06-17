@@ -8,7 +8,7 @@
  */
 import type { RequestHandler } from "./$types";
 import { auth } from "$lib/server/auth-server";
-import { serverEnv } from "$lib/server/serverenv";
+import { fetchGateway } from "$lib/server/gateway-proxy";
 import { error } from "@sveltejs/kit";
 
 export const POST: RequestHandler = async ({ request, locals }) => {
@@ -43,7 +43,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     headers["X-Application"] = applicationName;
   }
 
-  const upstream = await fetch(`${serverEnv.GATEWAY_URL}/v1/chat/completions`, {
+  const upstream = await fetchGateway("/v1/chat/completions", {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -53,7 +53,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
       store: typeof store === "boolean" ? store : false,
     }),
     signal: request.signal,
-  });
+  }, locals.traceId);
 
   // Pass the upstream response through unchanged (status + body). For SSE
   // success this streams chunks; for non-2xx the gateway returns a small JSON

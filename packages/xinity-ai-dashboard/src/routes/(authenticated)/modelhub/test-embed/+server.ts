@@ -7,7 +7,7 @@
  */
 import type { RequestHandler } from "./$types";
 import { auth } from "$lib/server/auth-server";
-import { serverEnv } from "$lib/server/serverenv";
+import { fetchGateway } from "$lib/server/gateway-proxy";
 import { error } from "@sveltejs/kit";
 
 export const POST: RequestHandler = async ({ request, locals }) => {
@@ -27,7 +27,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   if (typeof model !== "string" || !model) error(400, "Missing model");
   if (typeof input !== "string" || !input) error(400, "Missing input");
 
-  const upstream = await fetch(`${serverEnv.GATEWAY_URL}/v1/embeddings`, {
+  const upstream = await fetchGateway("/v1/embeddings", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -35,7 +35,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     },
     body: JSON.stringify({ model, input }),
     signal: request.signal,
-  });
+  }, locals.traceId);
 
   return new Response(upstream.body, {
     status: upstream.status,
