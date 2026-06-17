@@ -29,10 +29,11 @@ function streamTranscriptionAsOpenAI(
   const stream = new ReadableStream({
     async start(controller) {
       let fullText = "";
+      let completed = false;
       let usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | undefined;
       try {
         for await (const event of readSSEStream(backendResponse)) {
-          if (event.data === "[DONE]") break;
+          if (event.data === "[DONE]") { completed = true; break; }
           let json: unknown;
           try {
             json = JSON.parse(event.data);
@@ -47,7 +48,11 @@ function streamTranscriptionAsOpenAI(
           if (parsed.data.usage) {
             usage = parsed.data.usage;
           }
-          const content = parsed.data.choices[0]?.delta.content;
+          const choice = parsed.data.choices[0];
+          if (choice?.finish_reason) {
+            completed = true;
+          }
+          const content = choice?.delta.content;
           if (typeof content === "string" && content.length > 0) {
             fullText += content;
             const delta = { type: "transcript.text.delta", delta: content };
@@ -57,11 +62,6 @@ function streamTranscriptionAsOpenAI(
 
         const done: Record<string, unknown> = { type: "transcript.text.done", text: fullText };
         if (usage) {
-          recordUsage({
-            ...logFields,
-            usage: { prompt_tokens: usage.prompt_tokens, completion_tokens: usage.completion_tokens },
-            logCalls: false,
-          });
           done.usage = {
             type: "tokens",
             input_tokens: usage.prompt_tokens,
@@ -71,6 +71,17 @@ function streamTranscriptionAsOpenAI(
         }
         controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(done)}\n\n`));
         controller.close();
+
+        // No finish_reason or [DONE] means the backend stream was truncated, matching the chat path.
+        if (!completed) {
+          recordFailedRequest(logFields);
+        } else if (usage) {
+          recordUsage({
+            ...logFields,
+            usage: { prompt_tokens: usage.prompt_tokens, completion_tokens: usage.completion_tokens },
+            logCalls: false,
+          });
+        }
       } catch (e) {
         if (!isAbortError(e)) recordFailedRequest(logFields);
         handleStreamError(e, controller, log);

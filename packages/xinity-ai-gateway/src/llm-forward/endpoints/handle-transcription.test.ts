@@ -256,6 +256,16 @@ describe("handleTranscription", () => {
     expect(failedRequests()).toHaveLength(1);
   });
 
+  test("records a failed request when the stream ends without a terminal chunk", async () => {
+    nextResponse = new Response(
+      'data: {"id":"t","object":"transcription.chunk","created":1,"model":"m","choices":[{"delta":{"content":"partial"},"finish_reason":null}]}\n\n',
+      { headers: { "Content-Type": "text/event-stream" } },
+    );
+    const res = await handleTranscription(makeReq({ model: "whisper", stream: "true" }));
+    await res.text();
+    expect(failedRequests()).toHaveLength(1);
+  });
+
   test("does not record a failed request before a node is leased", async () => {
     getModelInfo.mockImplementationOnce(async () => undefined);
     const res = await handleTranscription(makeReq({ model: "nope" }));
