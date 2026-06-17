@@ -8,7 +8,6 @@ import { serverEnv } from "$lib/server/serverenv";
 
 const metricsAuth = createMetricsAuth(serverEnv.METRICS_AUTH);
 
-/** Open when METRICS_AUTH is unset; otherwise requires a matching Basic auth credential. */
 export function isMetricsAuthorized(request: Request): boolean {
   return metricsAuth.isAuthorized(request.headers.get("authorization"));
 }

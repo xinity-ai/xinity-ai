@@ -308,6 +308,15 @@
       };
 
       config = lib.mkIf cfg.enable {
+        # Require a METRICS_AUTH source: the service-discovery endpoint would
+        # otherwise expose fleet topology to anonymous callers.
+        assertions = [
+          {
+            assertion = cfg.metricsAuth != null || cfg.metricsAuthFile != null || cfg.environmentFiles != [ ];
+            message = "services.xinity-ai-dashboard: METRICS_AUTH is required. Set `metricsAuth`, `metricsAuthFile`, or provide METRICS_AUTH via `environmentFiles`.";
+          }
+        ];
+
         systemd.services.xinity-ai-dashboard = {
           description = "Xinity AI Dashboard";
           wantedBy = [ "multi-user.target" ];

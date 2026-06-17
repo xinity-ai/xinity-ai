@@ -70,6 +70,7 @@ services:
       NODE_ENV: production
       DB_CONNECTION_URL: postgresql://${POSTGRES_USER:-xinity}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-xinity}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+      METRICS_AUTH: ${METRICS_AUTH:?METRICS_AUTH is required}
       ORIGIN: ${ORIGIN:-http://localhost:${DASHBOARD_PORT:-5121}}
       HTTP_OVERRIDE_ORIGIN: ${HTTP_OVERRIDE_ORIGIN:-${ORIGIN:-http://localhost:${DASHBOARD_PORT:-5121}}}
       GATEWAY_URL: ${GATEWAY_URL:-http://localhost:${GATEWAY_PORT:-4121}}

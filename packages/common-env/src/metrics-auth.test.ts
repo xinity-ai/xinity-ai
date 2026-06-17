@@ -72,6 +72,13 @@ describe("metricsAuthSchema", () => {
     const parsed = schema.parse({ METRICS_AUTH: "admin:secret" });
     expect(parsed.METRICS_AUTH).toBe("admin:secret");
   });
+
+  test("required variant rejects unset and empty, accepts a valid value", () => {
+    const required = z.object({ METRICS_AUTH: metricsAuthSchema({ required: true }) });
+    expect(required.safeParse({}).success).toBe(false);
+    expect(required.safeParse({ METRICS_AUTH: "" }).success).toBe(false);
+    expect(required.safeParse({ METRICS_AUTH: "admin:secret" }).success).toBe(true);
+  });
 });
 
 describe("createMetricsAuth", () => {

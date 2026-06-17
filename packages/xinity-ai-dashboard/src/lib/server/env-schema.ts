@@ -19,7 +19,7 @@ export const dashboardEnvSchema = z.object({
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("debug").describe("Log level").meta(expert()),
   MAIL_URL: z.url().optional().describe("SMTP mail server URL (e.g. smtp://user:pass@mail.example.com:587)").meta(secret()),
   MAIL_FROM: z.string().optional().describe("Email sender address (e.g. noreply@mydomain.com)"),
-  METRICS_AUTH: metricsAuthSchema().describe("Basic auth for the /metrics endpoints (format: user:pass, comma-separated for multiple)").meta({ ...secret(), ...expert() }),
+  METRICS_AUTH: metricsAuthSchema({ required: true }).describe("Required. Basic auth for the /metrics endpoints (user:pass, comma-separated for multiple)").meta(secret()),
   INFOSERVER_CACHE_TTL_MS: z.coerce.number().default(30_000).describe("How long to cache infoserver responses locally (ms)").meta(expert()),
   NOTIFICATIONS_ENABLED: z.stringbool().default(true).describe("Enable the notification scheduler (deployment status, node health, capacity warnings, weekly reports)").meta(expert()),
   S3_ENDPOINT: z.url().optional().describe("SeaweedFS / S3-compatible endpoint URL (required for multimodal image display)").meta(expert()),

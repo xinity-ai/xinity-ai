@@ -1,11 +1,6 @@
 /**
- * Shared METRICS_AUTH handling for every service's /metrics endpoints, so they
- * all interpret the env var the same way: a comma-separated list of user:pass
- * pairs (e.g. "admin:secret,reader:abc123"). An empty/unset value leaves the
- * endpoint open.
- *
- * Services that emit raw `Response`s use `unauthorized()`; framework handlers
- * (e.g. SvelteKit) use the `isAuthorized()` boolean.
+ * Shared METRICS_AUTH handling: a comma-separated list of user:pass pairs
+ * (e.g. "admin:secret,reader:abc123"); empty/unset leaves the endpoint open.
  */
 
 import { z } from "zod";
@@ -22,27 +17,23 @@ function parseUserPass(value: string): MetricsCredential | null {
 }
 
 /**
- * Reusable env-schema field for METRICS_AUTH: an optional string validated as a
- * comma-separated list of user:pass pairs during env parsing, so misconfiguration
- * surfaces with the rest of the env errors rather than at the first request. The
- * value stays a string; runtime parsing is done by createMetricsAuth. Callers add
- * their own .describe()/.meta().
+ * Env-schema field validating METRICS_AUTH's user:pass[,…] format at parse time.
+ * Kept a string (not transformed) so the CLI's schema introspection still works.
+ * `required: true` rejects unset/empty for endpoints that must never be anonymous.
  */
-export function metricsAuthSchema() {
-  return z
-    .string()
-    .optional()
-    .refine(
-      (value) => {
-        try {
-          parseMetricsAuth(value);
-          return true;
-        } catch {
-          return false;
-        }
-      },
-      { message: 'METRICS_AUTH must be "user:pass", comma-separated for multiple pairs' },
-    );
+export function metricsAuthSchema(opts: { required?: boolean } = {}) {
+  const validate = (value: string | undefined): boolean => {
+    try {
+      parseMetricsAuth(value);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const message = 'METRICS_AUTH must be "user:pass", comma-separated for multiple pairs';
+  return opts.required
+    ? z.string().min(1).refine(validate, { message })
+    : z.string().optional().refine(validate, { message });
 }
 
 /** Parse METRICS_AUTH into credentials. Throws on a malformed entry so misconfiguration fails fast. */
@@ -55,7 +46,6 @@ export function parseMetricsAuth(raw: string | undefined): MetricsCredential[] {
   });
 }
 
-/** Whether an Authorization header carries one of the configured credentials. */
 export function authHeaderMatches(
   credentials: MetricsCredential[],
   authHeader: string | null | undefined,
@@ -74,13 +64,12 @@ export function authHeaderMatches(
 
 export type MetricsAuth = {
   credentials: MetricsCredential[];
-  /** Open when no credentials are configured, or the header carries a valid one. */
+  /** Open when no credentials are configured, else requires a matching header. */
   isAuthorized: (authHeader: string | null | undefined) => boolean;
-  /** A 401 `Response` when unauthorized, or null when allowed (for raw fetch handlers). */
+  /** 401 Response when unauthorized, null when allowed. */
   unauthorized: (authHeader: string | null | undefined) => Response | null;
 };
 
-/** Build a /metrics auth guard from a raw METRICS_AUTH value. */
 export function createMetricsAuth(raw: string | undefined): MetricsAuth {
   const credentials = parseMetricsAuth(raw);
   const isAuthorized = (authHeader: string | null | undefined): boolean =>
