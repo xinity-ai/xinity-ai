@@ -7,6 +7,9 @@
 
   let copied = $state(false);
 
+  // Prometheus defaults to http; only emit a scheme line when the target is https.
+  const schemeLine = (scheme: string) => (scheme === "https" ? ["    scheme: https"] : []);
+
   function buildPrometheusYml(): string {
     return [
       "global:",
@@ -15,16 +18,18 @@
       "",
       "scrape_configs:",
       "  - job_name: xinity-gateway",
+      "    metrics_path: /metrics",
+      ...schemeLine(data.gatewayScheme),
       "    static_configs:",
       "      - targets:",
       `          - ${data.gatewayTarget}`,
-      "    metrics_path: /metrics",
       "",
       "  - job_name: xinity-dashboard",
+      "    metrics_path: /metrics",
+      ...schemeLine(data.dashboardScheme),
       "    static_configs:",
       "      - targets:",
       `          - ${data.dashboardTarget}`,
-      "    metrics_path: /metrics",
       "",
       "  # Daemon targets are discovered dynamically from the dashboard's node",
       "  # registry, so this never needs editing as the fleet changes.",
@@ -63,8 +68,10 @@
     <p class="text-sm text-muted-foreground mt-1">
       Copy this into your
       <code class="font-mono text-xs bg-muted px-1 py-0.5 rounded">prometheus.yml</code>.
-      The gateway and dashboard are scraped directly; daemon targets are discovered dynamically
-      from this dashboard, so the config stays current as the fleet changes, no edits needed.
+      The gateway and dashboard targets are derived from this deployment's configured URLs;
+      adjust them if your Prometheus reaches the services on different addresses (e.g. internal
+      hostnames when co-located). Daemon targets are discovered dynamically, so that job tracks
+      the fleet without edits.
     </p>
   </div>
 
