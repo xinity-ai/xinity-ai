@@ -378,7 +378,19 @@
                   {/if}
                   {#if deployment.status.phase === 'failed' && deployment.status.failureLogs}
                     <Collapsible.Root class="mt-2">
-                      <Collapsible.Trigger class="text-xs text-muted-foreground hover:underline cursor-pointer">View logs</Collapsible.Trigger>
+                      <div class="flex items-center gap-2">
+                        <Collapsible.Trigger class="text-xs text-muted-foreground hover:underline cursor-pointer">View logs</Collapsible.Trigger>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          class="h-6 px-2 text-xs text-muted-foreground"
+                          onclick={() => copyToClipboard(deployment.status.failureLogs ?? '')}
+                          title="Copy all logs"
+                        >
+                          <Copy class="w-3.5 h-3.5" />
+                          Copy logs
+                        </Button>
+                      </div>
                       <Collapsible.Content>
                         <pre class="mt-2 p-3 bg-muted rounded text-xs font-mono overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap wrap-break-word">{deployment.status.failureLogs}</pre>
                       </Collapsible.Content>
