@@ -1,4 +1,4 @@
-import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { describe, test, expect, mock, beforeEach, spyOn } from "bun:test";
 import { firstValueFrom } from "rxjs";
 import type { VllmOps } from "./vllm-ops";
 import { installationLookup } from "xinity-infoserver";
@@ -482,6 +482,28 @@ describe("syncVllmInstallations$", () => {
 
     const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
     expect(startCall[1].extraArgs).not.toContain("--runner");
+  });
+
+  test("does not warm up transcription models with a chat completion", async () => {
+    const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}"));
+    try {
+      const id = crypto.randomUUID();
+      const inst = makeInstallation("whisper-model", id, 9106);
+      mockFetchModel.mockImplementation((lookup) => Promise.resolve({ type: "transcription", providers: { vllm: lookupValue(lookup) } }));
+      const ops = createMockOps({
+        listRunning: mock(() => Promise.resolve([])),
+        checkHealth: mock(() => Promise.resolve(true)),
+        isAlive: mock(() => Promise.resolve(true)),
+      });
+
+      await firstValueFrom(syncVllmInstallations$([inst], ops));
+
+      expect(ops.start).toHaveBeenCalled();
+      const warmupCalls = fetchSpy.mock.calls.filter(([url]) => String(url).includes("/v1/chat/completions"));
+      expect(warmupCalls).toHaveLength(0);
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   test("uses providers.vllm from the catalog rather than the installation row's model column", async () => {

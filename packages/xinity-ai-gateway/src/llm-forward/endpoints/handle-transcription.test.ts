@@ -31,6 +31,7 @@ mock.module("../auth", () => ({ checkAuth }));
 
 let mockPort = 0;
 const transcriptionModel = () => ({
+  nodeId: "node-1",
   host: `localhost:${mockPort}`,
   model: "whisper-backend",
   driver: "vllm",

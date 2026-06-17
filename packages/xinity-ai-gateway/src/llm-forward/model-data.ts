@@ -81,7 +81,7 @@ type ModelInfo = {
   /** Per-node auth token for authenticating requests to the daemon. */
   authToken: string | null;
   tls: boolean;
-  /** Model type from the catalog (chat, embedding, rerank). Undefined if catalog entry is unavailable. */
+  /** Model type from the catalog (chat, embedding, rerank, transcription). Undefined if catalog entry is unavailable. */
   type?: string;
   /** Model tags from the catalog (e.g. "tools", "custom_code", "vision"). Undefined if catalog entry is unavailable. */
   tags?: string[];

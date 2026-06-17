@@ -92,7 +92,7 @@ async function warmupChatModel(port: number, model: string): Promise<void> {
 }
 
 async function markInstallationReady(installation: ModelInstallation, providerModel: string, modelType?: string): Promise<void> {
-  if (modelType !== "embedding" && modelType !== "rerank") {
+  if (modelType !== "embedding" && modelType !== "rerank" && modelType !== "transcription") {
     await warmupChatModel(installation.port, providerModel);
   }
   await updateInstallationState(installation.id, "ready", { statusMessage: "vLLM server healthy" });
