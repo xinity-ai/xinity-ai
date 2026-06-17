@@ -82,12 +82,19 @@
     }
   }
 
+  // Reassign apiKeys (rather than mutating a key in place) so the derived list
+  // recomputes and the UI repaints; an in-place property write on the load data
+  // is not reactive.
+  function patchKey(id: string, patch: Partial<ApiKeyDto>) {
+    apiKeys = apiKeys.map((k) => (k.id === id ? { ...k, ...patch } : k));
+  }
+
   function toggleEnabled(key: ApiKeyDto) {
     const newState = !key.enabled;
     updateOptimistically({
       apiPromise: () => orpc.apiKey.toggleEnabled({ id: key.id, enabled: newState }),
-      update: () => (key.enabled = newState),
-      undo: () => (key.enabled = !newState),
+      update: () => patchKey(key.id, { enabled: newState }),
+      undo: () => patchKey(key.id, { enabled: !newState }),
     });
   }
 
@@ -95,8 +102,8 @@
     const newState = !key.collectData;
     updateOptimistically({
       apiPromise: () => orpc.apiKey.toggleCollectData({ id: key.id, collectData: newState }),
-      update: () => (key.collectData = newState),
-      undo: () => (key.collectData = !newState),
+      update: () => patchKey(key.id, { collectData: newState }),
+      undo: () => patchKey(key.id, { collectData: !newState }),
     });
   }
 </script>

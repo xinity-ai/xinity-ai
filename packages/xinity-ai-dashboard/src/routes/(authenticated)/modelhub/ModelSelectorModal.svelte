@@ -11,10 +11,23 @@
   import { Badge } from "$lib/components/ui/badge";
 
   // Icons
-  import { X, Search, ExternalLink, Info, ShieldAlert, HardDrive, Loader2, AlertCircle } from "@lucide/svelte";
+  import { X, Search, ExternalLink, Info, ShieldAlert, HardDrive, Loader2, AlertCircle,
+    LayoutGrid, MessageSquare, Boxes, ArrowUpDown } from "@lucide/svelte";
+  // Icons for the not-yet-available model types (see MODEL_TYPES below):
+  // import { Mic, Image as ImageIcon, AudioLines } from "@lucide/svelte";
 
   /** Minimum number of filtered results before auto-loading the next page. */
   const MIN_RESULTS_THRESHOLD = 10;
+
+  const MODEL_TYPES = [
+    { value: "all", label: "All", icon: LayoutGrid },
+    { value: "chat", label: "Chat", icon: MessageSquare },
+    { value: "embedding", label: "Embedding", icon: Boxes },
+    { value: "rerank", label: "Rerank", icon: ArrowUpDown },
+    // { value: "transcription", label: "Transcription", icon: Mic },
+    // { value: "image", label: "Image", icon: ImageIcon },
+    // { value: "tts", label: "Text to Speech", icon: AudioLines },
+  ] as const;
 
   // --- Props ---
   let {
@@ -33,7 +46,7 @@
 
   // --- Filter State ---
   let searchTerm = $state("");
-  let selectedType = $state<"all" | "chat" | "embedding" | "rerank">("all");
+  let selectedType = $state<(typeof MODEL_TYPES)[number]["value"]>("all");
   const selectedTags = $state<Set<string>>(new Set());
   let sentinel = $state<HTMLElement | null>(null);
 
@@ -157,29 +170,29 @@
 
     <!-- Controls -->
     <div class="p-5 border-b bg-card space-y-4">
-      <div class="flex flex-col md:flex-row gap-4">
-        <div class="relative grow">
-          <Input
-            type="text"
-            placeholder="Search by name, description, or ID..."
-            bind:value={searchTerm}
-            class="pr-10"
-          />
-          <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-muted-foreground">
-            <Search class="w-4 h-4" />
-          </div>
+      <div class="relative">
+        <Input
+          type="text"
+          placeholder="Search by name, description, or ID..."
+          bind:value={searchTerm}
+          class="pr-10"
+        />
+        <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-muted-foreground">
+          <Search class="w-4 h-4" />
         </div>
+      </div>
 
-        <div class="flex bg-muted p-1 rounded-lg shrink-0">
-          {#each ["all", "chat", "embedding", "rerank"] as type}
-            <button
-              class="px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 capitalize {selectedType === type ? 'bg-background text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
-              onclick={() => (selectedType = type as any)}
-            >
-              {type}
-            </button>
-          {/each}
-        </div>
+      <div class="flex flex-wrap gap-2 items-center">
+        <span class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mr-1">Type:</span>
+        {#each MODEL_TYPES as t}
+          <button
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors duration-200 {selectedType === t.value ? 'bg-primary text-primary-foreground border-primary shadow-sm' : 'bg-background text-muted-foreground border-border hover:border-primary/50 hover:text-foreground'}"
+            onclick={() => (selectedType = t.value)}
+          >
+            <t.icon class="w-3.5 h-3.5" />
+            {t.label}
+          </button>
+        {/each}
       </div>
 
       {#if allTags.length > 0}

@@ -8,6 +8,6 @@
   <div class="p-6 compact:p-3 bg-white rounded-lg shadow-md">
     <h2 class="mb-6 compact:mb-3 text-xl font-semibold">Training Configuration</h2>
 
-    <div>Coming mid 2026</div>
+    <div>Coming soon</div>
   </div>
 </div>

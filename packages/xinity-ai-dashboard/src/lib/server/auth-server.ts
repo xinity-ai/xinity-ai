@@ -269,7 +269,7 @@ export const auth = betterAuth({
       ac,
       roles,
       cancelPendingInvitationsOnReInvite: true,
-      requireEmailVerificationOnInvitation: true,
+      requireEmailVerificationOnInvitation: !!serverEnv.MAIL_URL,
       // disableOrganizationDeletion: true,
       async sendInvitationEmail(data, request) {
         const encodedEmail = encodeURIComponent(data.email);

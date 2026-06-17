@@ -7,7 +7,7 @@
  */
 import type { RequestHandler } from "./$types";
 import { auth } from "$lib/server/auth-server";
-import { serverEnv } from "$lib/server/serverenv";
+import { fetchGateway } from "$lib/server/gateway-proxy";
 import { error } from "@sveltejs/kit";
 
 export const POST: RequestHandler = async ({ request, locals }) => {
@@ -33,7 +33,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   if (typeof query !== "string" || !query) error(400, "Missing query");
   if (!Array.isArray(documents) || documents.length === 0) error(400, "Missing documents");
 
-  const upstream = await fetch(`${serverEnv.GATEWAY_URL}/v1/rerank`, {
+  const upstream = await fetchGateway("/v1/rerank", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -41,7 +41,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     },
     body: JSON.stringify({ model, query, documents }),
     signal: request.signal,
-  });
+  }, locals.traceId);
 
   return new Response(upstream.body, {
     status: upstream.status,
