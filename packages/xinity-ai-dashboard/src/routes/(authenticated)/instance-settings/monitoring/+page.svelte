@@ -10,6 +10,22 @@
   // Prometheus defaults to http; only emit a scheme line when the target is https.
   const schemeLine = (scheme: string) => (scheme === "https" ? ["    scheme: https"] : []);
 
+  const commentedAuth = (pad: string, label: string) => [
+    `${pad}# ${label}`,
+    `${pad}# basic_auth:`,
+    `${pad}#   username: <user>`,
+    `${pad}#   password: <password>`,
+  ];
+
+  // The dashboard's METRICS_AUTH is required, so the block is active; the operator
+  // fills in the credential they configured (it is not rendered server-side).
+  const dashboardAuth = (pad: string) => [
+    `${pad}# Replace with the dashboard's METRICS_AUTH credential (required):`,
+    `${pad}basic_auth:`,
+    `${pad}  username: <METRICS_AUTH user>`,
+    `${pad}  password: <METRICS_AUTH password>`,
+  ];
+
   function buildPrometheusYml(): string {
     return [
       "global:",
@@ -23,6 +39,7 @@
       "    static_configs:",
       "      - targets:",
       `          - ${data.gatewayTarget}`,
+      ...commentedAuth("    ", "Uncomment if the gateway has METRICS_AUTH set:"),
       "",
       "  - job_name: xinity-dashboard",
       "    metrics_path: /metrics",
@@ -30,6 +47,7 @@
       "    static_configs:",
       "      - targets:",
       `          - ${data.dashboardTarget}`,
+      ...dashboardAuth("    "),
       "",
       "  # Daemon targets are discovered dynamically from the dashboard's node",
       "  # registry, so this never needs editing as the fleet changes.",
@@ -38,14 +56,8 @@
       "    http_sd_configs:",
       `      - url: ${data.daemonSdUrl}`,
       "        refresh_interval: 3m",
-      "        # If the dashboard's METRICS_AUTH is set, authenticate the SD request:",
-      "        # basic_auth:",
-      "        #   username: <dashboard METRICS_AUTH user>",
-      "        #   password: <dashboard METRICS_AUTH password>",
-      "    # If the daemons' METRICS_AUTH is set, authenticate the scrape:",
-      "    # basic_auth:",
-      "    #   username: <daemon METRICS_AUTH user>",
-      "    #   password: <daemon METRICS_AUTH password>",
+      ...dashboardAuth("        "),
+      ...commentedAuth("    ", "Uncomment if the daemons have METRICS_AUTH set:"),
     ].join("\n");
   }
 
