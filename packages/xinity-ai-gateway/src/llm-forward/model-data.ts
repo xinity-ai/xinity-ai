@@ -3,11 +3,16 @@ import { getDB } from "../db";
 import { env } from "../env";
 import { createInfoserverClient, deploymentLookup, deploymentEarlyLookup, lookupKey, resolveTagsForDriver, resolveRequestParamsForDriver, type ModelLookup } from "xinity-infoserver";
 import { selectHost as _selectHost, type LoadBalanceStrategy } from "./load-balancer";
+import { rootLogger } from "../logger";
 
 /** Indirection for testability. tests can swap this without mock.module. */
 export const _deps = { selectHost: _selectHost };
 
-const infoClient = createInfoserverClient({ baseUrl: env.INFOSERVER_URL, cacheTtlMs: env.INFOSERVER_CACHE_TTL_MS });
+const infoClient = createInfoserverClient({
+  baseUrl: env.INFOSERVER_URL,
+  cacheTtlMs: env.INFOSERVER_CACHE_TTL_MS,
+  logger: rootLogger.child({ name: "infoserver-client" }),
+});
 
 async function publicModelSpecifierToModelSource(orgId: string, specifier: string) {
 
@@ -76,7 +81,7 @@ type ModelInfo = {
   /** Per-node auth token for authenticating requests to the daemon. */
   authToken: string | null;
   tls: boolean;
-  /** Model type from the catalog (chat, embedding, rerank). Undefined if catalog entry is unavailable. */
+  /** Model type from the catalog (chat, embedding, rerank, transcription). Undefined if catalog entry is unavailable. */
   type?: string;
   /** Model tags from the catalog (e.g. "tools", "custom_code", "vision"). Undefined if catalog entry is unavailable. */
   tags?: string[];

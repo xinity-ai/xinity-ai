@@ -18,31 +18,36 @@ export type AuthorizedModelContext = ResolvedModel & {
   provider: OpenAICompatibleProvider;
 };
 
-export async function resolveModel(
-  req: Request
-): Promise<Response | ResolvedModel> {
+/**
+ * Authenticate the request and resolve the active application (the
+ * `X-Application` header overrides the key's default). Shared by the JSON
+ * endpoints (via resolveModel) and the multipart transcription endpoint.
+ */
+export async function resolveAuth(req: Request): Promise<Response | AuthResult> {
   const authHeader = req.headers.get("authorization") || "";
   const authCheckResponse = await checkAuth(authHeader);
   if (authCheckResponse instanceof Response) {
     return authCheckResponse;
   }
 
-  // Resolve application: X-Application header overrides key's default
   const xAppHeader = req.headers.get("x-application");
-  let resolvedApplicationId = authCheckResponse.applicationId;
-
-  if (xAppHeader) {
-    const appId = await resolveApplicationByName(xAppHeader, authCheckResponse.orgId);
-    if (!appId) {
-      return errorResponse(`Application "${xAppHeader}" not found`, 404);
-    }
-    resolvedApplicationId = appId;
+  if (!xAppHeader) {
+    return authCheckResponse;
   }
+  const appId = await resolveApplicationByName(xAppHeader, authCheckResponse.orgId);
+  if (!appId) {
+    return errorResponse(`Application "${xAppHeader}" not found`, 404);
+  }
+  return { ...authCheckResponse, applicationId: appId };
+}
 
-  const auth: AuthResult = {
-    ...authCheckResponse,
-    applicationId: resolvedApplicationId,
-  };
+export async function resolveModel(
+  req: Request
+): Promise<Response | ResolvedModel> {
+  const auth = await resolveAuth(req);
+  if (auth instanceof Response) {
+    return auth;
+  }
 
   let body: Record<string, unknown>;
   try {

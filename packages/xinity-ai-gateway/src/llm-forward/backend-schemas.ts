@@ -81,3 +81,20 @@ export const BackendCompletionChunkSchema = z.looseObject({
   usage: BackendUsageSchema,
 });
 
+// ---------------------------------------------------------------------------
+// Transcriptions (/v1/audio/transcriptions)
+// ---------------------------------------------------------------------------
+
+/** vLLM streams transcriptions as chat-completion-style chunks (`object: "transcription.chunk"`). */
+export const BackendTranscriptionChunkSchema = z.looseObject({
+  ...backendResponseEnvelope,
+  choices: z.array(z.looseObject({
+    delta: z.looseObject({
+      content: z.string().nullable().optional(),
+    }),
+    finish_reason: z.string().nullable().optional(),
+    logprobs: z.unknown().nullable().optional(),
+  })).default([]),
+  usage: BackendUsageSchema,
+});
+

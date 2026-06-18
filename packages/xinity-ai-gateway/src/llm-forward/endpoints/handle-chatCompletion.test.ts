@@ -57,6 +57,8 @@ mock.module("../model-data", () => ({
 mock.module("../backend-fetch", () => ({
   backendUrl: (host: string, _model: string, path: string, _tls: boolean) => `http://${host}${path}`,
   backendFetch: (url: string | URL | Request, init?: RequestInit) => fetch(url, init),
+  backendPostForm: (target: { host: string }, path: string, form: FormData, clientSignal: AbortSignal) =>
+    fetch(`http://${target.host}${path}`, { method: "POST", body: form, signal: clientSignal }),
   backendPostJson: (target: { host: string }, path: string, body: unknown, clientSignal: AbortSignal) =>
     fetch(`http://${target.host}${path}`, {
       method: "POST",
@@ -342,6 +344,48 @@ describe("handleChatCompletion", () => {
     expect(res.status).toBe(400);
     const body = await res.json() as any;
     expect(body.error?.message).toContain("structured_outputs");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// logprobs
+// ---------------------------------------------------------------------------
+
+describe("handleChatCompletion, logprobs", () => {
+  test("forwards logprobs and top_logprobs to the backend", async () => {
+    const req = new Request("http://localhost:4000/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        messages: [{ role: "user", content: "Hi" }],
+        logprobs: true,
+        top_logprobs: 5,
+      }),
+    });
+
+    const res = await handleChatCompletion(req);
+    expect(res.status).toBe(200);
+    expect(lastUpstreamBody?.logprobs).toBe(true);
+    expect(lastUpstreamBody?.top_logprobs).toBe(5);
+  });
+
+  test("passes backend logprobs through to the client", async () => {
+    nextUpstreamResponse = makeRawJsonResponse({
+      id: "test-id", object: "chat.completion", created: 123, model: "test-model",
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: "Hello" },
+        finish_reason: "stop",
+        logprobs: { content: [{ token: "Hello", logprob: -0.1 }] },
+      }],
+      usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
+    });
+
+    const res = await handleChatCompletion(makeRequest());
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.choices[0].logprobs).toEqual({ content: [{ token: "Hello", logprob: -0.1 }] });
   });
 });
 

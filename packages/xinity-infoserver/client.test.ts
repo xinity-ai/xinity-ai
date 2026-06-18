@@ -33,6 +33,36 @@ const embedModel: ModelWithSpecifier = {
   providers: { ollama: "nomic-embed-text" },
 };
 
+// Declares an entryVersion far beyond any real release, so every running
+// instance is too old to use it and must filter it out.
+const futureModel: ModelWithSpecifier = {
+  publicSpecifier: "future-model",
+  _source: "test",
+  name: "Future Model",
+  description: "Requires a newer xinity than we run",
+  weight: 10,
+  minKvCache: 2,
+  url: "https://example.com",
+  entryVersion: "999.0.0",
+  type: "chat",
+  family: "llama",
+  providers: { vllm: "org/future" },
+};
+
+// Version-compatible but structurally invalid (`weight` is not a number), so it
+// must fail content validation and be dropped without poisoning the listing.
+const malformedModel = {
+  publicSpecifier: "malformed-model",
+  _source: "test",
+  name: "Malformed Model",
+  description: "Invalid content",
+  weight: "heavy",
+  minKvCache: 1,
+  url: "https://example.com",
+  entryVersion: "0.1.0",
+  providers: {},
+} as unknown as ModelWithSpecifier;
+
 describe("createInfoserverClient", () => {
   let server: ReturnType<typeof Bun.serve>;
   let requestLog: { method: string; url: string; body?: string }[];
@@ -59,6 +89,12 @@ describe("createInfoserverClient", () => {
         if (url.pathname === "/api/v1/models/nomic-embed") {
           return Response.json(embedModel);
         }
+        if (url.pathname === "/api/v1/models/future-model") {
+          return Response.json(futureModel);
+        }
+        if (url.pathname === "/api/v1/models/malformed-model") {
+          return Response.json(malformedModel);
+        }
         if (url.pathname === "/api/v1/models/not-found") {
           return new Response("Not Found", { status: 404 });
         }
@@ -73,12 +109,12 @@ describe("createInfoserverClient", () => {
 
         // GET /api/v1/models
         if (url.pathname === "/api/v1/models") {
-          return Response.json({
-            models: [testModel, embedModel],
-            total: 2,
-            page: 1,
-            pageSize: 20,
-          });
+          // `family=mixed` returns a list also containing an incompatible and a
+          // malformed model, so consumers can assert both get filtered out.
+          const models = url.searchParams.get("family") === "mixed"
+            ? [testModel, futureModel, malformedModel, embedModel]
+            : [testModel, embedModel];
+          return Response.json({ models, total: models.length, page: 1, pageSize: 20 });
         }
 
         // POST /api/v1/models/resolve
@@ -88,6 +124,8 @@ describe("createInfoserverClient", () => {
           for (const s of specifiers) {
             if (s === "llama-3.3-70b") result[s] = testModel;
             else if (s === "nomic-embed") result[s] = embedModel;
+            else if (s === "future-model") result[s] = futureModel;
+            else if (s === "malformed-model") result[s] = malformedModel;
             else result[s] = null;
           }
           return Response.json(result);
@@ -207,6 +245,45 @@ describe("createInfoserverClient", () => {
       expect(requestLog[0]!.url).toContain("pageSize=10");
       expect(requestLog[0]!.url).toContain("type=chat");
       expect(requestLog[0]!.url).toContain("family=llama");
+    });
+  });
+
+  describe("entryVersion gating and content validation", () => {
+    it("treats a model requiring a newer xinity as not found", async () => {
+      const client = makeClient();
+      const model = await client.fetchModel({ kind: "canonical", specifier: "future-model" });
+      expect(model).toBeUndefined();
+    });
+
+    it("does not cache a gated model, so it reappears once supported", async () => {
+      const client = makeClient();
+      await client.fetchModel({ kind: "canonical", specifier: "future-model" });
+      await client.fetchModel({ kind: "canonical", specifier: "future-model" });
+      // Both calls hit the server: a not_found result is never cached.
+      expect(requestLog).toHaveLength(2);
+    });
+
+    it("treats a model with invalid content as not found", async () => {
+      const client = makeClient();
+      const model = await client.fetchModel({ kind: "canonical", specifier: "malformed-model" });
+      expect(model).toBeUndefined();
+    });
+
+    it("drops incompatible and malformed models from a listing, keeping the rest", async () => {
+      const client = makeClient();
+      const result = await client.fetchModels({ family: "mixed" });
+      const specifiers = result.models.map((m) => m.publicSpecifier);
+      expect(specifiers).toEqual(["llama-3.3-70b", "nomic-embed"]);
+      expect(specifiers).not.toContain("future-model");
+      expect(specifiers).not.toContain("malformed-model");
+    });
+
+    it("maps gated and malformed batch entries to null", async () => {
+      const client = makeClient();
+      const result = await client.fetchModelsBatch(["llama-3.3-70b", "future-model", "malformed-model"]);
+      expect(result["llama-3.3-70b"]).toBeDefined();
+      expect(result["future-model"]).toBeNull();
+      expect(result["malformed-model"]).toBeNull();
     });
   });
 

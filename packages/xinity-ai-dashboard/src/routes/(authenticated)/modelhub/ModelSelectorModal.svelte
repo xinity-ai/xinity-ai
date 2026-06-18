@@ -12,9 +12,9 @@
 
   // Icons
   import { X, Search, ExternalLink, Info, ShieldAlert, HardDrive, Loader2, AlertCircle,
-    LayoutGrid, MessageSquare, Boxes, ArrowUpDown } from "@lucide/svelte";
+    LayoutGrid, MessageSquare, Boxes, ArrowUpDown, Mic } from "@lucide/svelte";
   // Icons for the not-yet-available model types (see MODEL_TYPES below):
-  // import { Mic, Image as ImageIcon, AudioLines } from "@lucide/svelte";
+  // import { Image as ImageIcon, AudioLines } from "@lucide/svelte";
 
   /** Minimum number of filtered results before auto-loading the next page. */
   const MIN_RESULTS_THRESHOLD = 10;
@@ -24,7 +24,7 @@
     { value: "chat", label: "Chat", icon: MessageSquare },
     { value: "embedding", label: "Embedding", icon: Boxes },
     { value: "rerank", label: "Rerank", icon: ArrowUpDown },
-    // { value: "transcription", label: "Transcription", icon: Mic },
+    { value: "transcription", label: "Transcription", icon: Mic },
     // { value: "image", label: "Image", icon: ImageIcon },
     // { value: "tts", label: "Text to Speech", icon: AudioLines },
   ] as const;

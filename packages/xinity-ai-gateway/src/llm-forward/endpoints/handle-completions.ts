@@ -23,6 +23,7 @@ export const CompletionBodySchema = z.looseObject({
   presence_penalty: z.number().optional(),
   stream: z.boolean().optional().default(false),
   seed: z.number().optional(),
+  logprobs: z.number().optional(),
   stop: z.union([z.string(), z.array(z.string())]).optional(),
   store: z.boolean().optional(),
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
@@ -62,7 +63,7 @@ const completionStreamSpec: StreamSpec<z.infer<typeof BackendCompletionChunkSche
   }),
 };
 
-const CompletionSyncChoiceSchema = z.looseObject({
+export const CompletionSyncChoiceSchema = z.looseObject({
   index: z.number(),
   text: z.string(),
   finish_reason: z.string().nullable().optional(),
@@ -112,6 +113,7 @@ export const handleCompletion = withEndpointGuards({
       frequency_penalty: body.frequency_penalty,
       presence_penalty: body.presence_penalty,
       seed: body.seed,
+      logprobs: body.logprobs,
       stop: body.stop,
       stream: body.stream,
     };
