@@ -128,46 +128,58 @@ async function collectNodeRuntimeState() {
   };
 }
 
-/** Retrieves the nodeID of this ai node. If it is not recorded in the database yet, it will be created */
-export async function getNodeId(){
-  if (cachedNodeId) return cachedNodeId;
-
+/** Reads the persisted node id from STATE_DIR, or null if it has not been written yet. */
+export async function readNodeIdFile(): Promise<string | null> {
   const idFile = Bun.file(join(env.STATE_DIR, "node_id"));
-  if(!await idFile.exists()){
-    const runtimeState = await collectNodeRuntimeState();
-    const [row] = await getDB().insert(aiNodeT).values({
-      ...runtimeState,
-      host: findHostIPv4Address(),
-      port: env.PORT,
-      available: true,
-    }).onConflictDoUpdate({
-      target: [aiNodeT.host, aiNodeT.port],
-      targetWhere: sql`${aiNodeT.deletedAt} IS NULL`,
-      set: { ...runtimeState, available: true },
-    }).returning({id: aiNodeT.id});
-
-    await idFile.write(row.id);
-    cachedNodeId = row.id;
-    return cachedNodeId;
-  }
-
-  cachedNodeId = (await idFile.text()).trim();
-  return cachedNodeId;
+  if (!(await idFile.exists())) return null;
+  const id = (await idFile.text()).trim();
+  return id.length > 0 ? id : null;
 }
 
-/** Sets the node to available, and updates driver capabilities and hardware profile */
-export async function setOnline(){
-  const nodeId = await getNodeId();
-  const runtimeState = await collectNodeRuntimeState();
+async function writeNodeIdFile(id: string): Promise<void> {
+  await Bun.file(join(env.STATE_DIR, "node_id")).write(id);
+}
 
-  await getDB()
-    .update(aiNodeT)
-    .set({
-      ...runtimeState,
-      available: true,
-      port: env.PORT,
-    })
-    .where(eq(aiNodeT.id, nodeId));
+async function registerNode(): Promise<string> {
+  const runtimeState = await collectNodeRuntimeState();
+  const host = findHostIPv4Address();
+  const port = env.PORT;
+
+  let id = await readNodeIdFile();
+  if (!id) {
+    id = crypto.randomUUID();
+    await writeNodeIdFile(id);
+  }
+
+  await getDB().transaction(async (tx) => {
+    // Retire a stale daemon left at this endpoint under a different id, so a reinstalled
+    // node registers fresh instead of tripping the (host, port) unique index.
+    await tx
+      .update(aiNodeT)
+      .set({ available: false, deletedAt: new Date() })
+      .where(sql`${aiNodeT.host} = ${host} AND ${aiNodeT.port} = ${port} AND ${aiNodeT.deletedAt} IS NULL AND ${aiNodeT.id} <> ${id}`);
+
+    await tx
+      .insert(aiNodeT)
+      .values({ id, ...runtimeState, host, port, available: true })
+      .onConflictDoUpdate({
+        target: aiNodeT.id,
+        set: { ...runtimeState, host, port, available: true, deletedAt: null },
+      });
+  });
+
+  cachedNodeId = id;
+  return id;
+}
+
+/** Retrieves the nodeID of this ai node, registering it if it has not happened yet this process. */
+export async function getNodeId(): Promise<string> {
+  return cachedNodeId ?? registerNode();
+}
+
+/** Re-registers the node with current runtime state and marks it available. */
+export async function setOnline(): Promise<string> {
+  return registerNode();
 }
 
 export async function setOffline(){
