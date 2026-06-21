@@ -15,6 +15,7 @@ import {
 import { getDB } from "$lib/server/db";
 import { mergeHistorySeries, pickBucketSeconds } from "$lib/server/fleet/fleet";
 import { serverEnv } from "$lib/server/serverenv";
+import { rootLogger } from "$lib/server/logging";
 import z from "zod";
 
 const tags = ["Fleet"];
@@ -306,7 +307,8 @@ const fleetLiveMetrics = rootOs
         available: true,
         nodes: [...nodeMap.entries()].map(([nodeId, m]) => ({ nodeId, ...m })),
       };
-    } catch {
+    } catch (err) {
+      rootLogger.warn({ err, prometheusUrl }, "Prometheus query failed; fleet live metrics unavailable");
       return { available: false, nodes: [] };
     }
   });
