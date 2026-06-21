@@ -46,13 +46,15 @@ if [ "$fresh_env" = true ]; then
     REDIS_PASSWORD=$(gen_url_safe)
     SEARXNG_SECRET=$(gen_url_safe)
     BETTER_AUTH_SECRET=$(gen_base64)
+    METRICS_AUTH="metrics:$(gen_url_safe)"
 
     sed_inplace "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${POSTGRES_PASSWORD}|" .env
     sed_inplace "s|^REDIS_PASSWORD=.*|REDIS_PASSWORD=${REDIS_PASSWORD}|" .env
     sed_inplace "s|^# SEARXNG_SECRET=.*|SEARXNG_SECRET=${SEARXNG_SECRET}|" .env
     # base64 contains =/+, use # delimiter instead of |.
     sed_inplace "s#^BETTER_AUTH_SECRET=.*#BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}#" .env
-    echo "Generated POSTGRES_PASSWORD, REDIS_PASSWORD, SEARXNG_SECRET, BETTER_AUTH_SECRET."
+    sed_inplace "s|^METRICS_AUTH=.*|METRICS_AUTH=${METRICS_AUTH}|" .env
+    echo "Generated POSTGRES_PASSWORD, REDIS_PASSWORD, SEARXNG_SECRET, BETTER_AUTH_SECRET, METRICS_AUTH."
 fi
 
 echo

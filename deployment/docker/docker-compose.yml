@@ -51,6 +51,7 @@ services:
       INFOSERVER_URL: ${INFOSERVER_URL:-https://sysinfo.xinity.ai}
       WEB_SEARCH_ENGINE_URL: ${WEB_SEARCH_ENGINE_URL:-http://searxng:${SEARXNG_PORT:-8888}}
       RESPONSE_CACHE_TTL_SECONDS: ${RESPONSE_CACHE_TTL:-3600}
+      METRICS_AUTH: ${METRICS_AUTH:-}
     networks:
       - xinity-network
     ports:
