@@ -3,11 +3,24 @@
  * (e.g. "admin:secret,reader:abc123"); empty/unset leaves the endpoint open.
  */
 
+import { createHash, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 
 const BASIC_PREFIX = "Basic ";
 
 export type MetricsCredential = { user: string; pass: string };
+
+/**
+ * Fixed-length digest of a credential: sha256(user) followed by sha256(pass).
+ * Hashing to a constant length lets timingSafeEqual run without leaking length,
+ * and the 32-byte split keeps user and pass from blurring together.
+ */
+function credentialDigest(c: MetricsCredential): Buffer {
+  return Buffer.concat([
+    createHash("sha256").update(c.user).digest(),
+    createHash("sha256").update(c.pass).digest(),
+  ]);
+}
 
 /** Split "user:pass" on the first colon, so passwords may contain colons. */
 function parseUserPass(value: string): MetricsCredential | null {
@@ -59,7 +72,16 @@ export function authHeaderMatches(
   }
   const sent = parseUserPass(decoded);
   if (!sent) return false;
-  return credentials.some((c) => c.user === sent.user && c.pass === sent.pass);
+
+  // Constant-time compare: equal-length digests via timingSafeEqual, and no early
+  // break, so response timing reveals neither which byte differs nor whether only
+  // the username was wrong.
+  const sentDigest = credentialDigest(sent);
+  let matched = false;
+  for (const c of credentials) {
+    if (timingSafeEqual(credentialDigest(c), sentDigest)) matched = true;
+  }
+  return matched;
 }
 
 export type MetricsAuth = {
