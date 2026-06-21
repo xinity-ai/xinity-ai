@@ -12,7 +12,7 @@ import * as p from "./clack.ts";
 import pc from "picocolors";
 import { type Host } from "./host.ts";
 import { pass, fail, info, warn, promptOrUndefined } from "./output.ts";
-import { resolveComposeCmd, composeArgs, composeName, stackDir, dockerDaemonReady } from "./docker-stack.ts";
+import { resolveComposeCmd, composeArgs, composeName, stackDir, dockerDaemonReady, tcpPortInUse } from "./docker-stack.ts";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -33,7 +33,13 @@ function endpoint(port: number): string {
   return `http://127.0.0.1:${port}`;
 }
 
-/** Parse a METRICS_AUTH "user:pass" value into a BasicAuth, or undefined if blank. */
+function scrapeTarget(rawUrl: string): { target: string; scheme: string } {
+  const u = new URL(rawUrl);
+  const scheme = u.protocol.replace(":", "");
+  const port = u.port || (scheme === "https" ? "443" : "80");
+  return { target: `${u.hostname}:${port}`, scheme };
+}
+
 function parseBasicAuth(value: string): BasicAuth | undefined {
   const trimmed = value.trim();
   if (!trimmed) return undefined;
@@ -81,15 +87,18 @@ function basicAuthLines(indent: string, auth: BasicAuth | undefined, hint: strin
   ];
 }
 
+function schemeLine(scheme: string | undefined): string[] {
+  return scheme === "https" ? ["    scheme: https"] : [];
+}
+
 export function buildPrometheusConfig(opts: {
   scrapeInterval: string;
   gatewayTarget: string;
+  gatewayScheme?: string;
   dashboardTarget: string;
-  /** URL of the dashboard's daemon service-discovery endpoint. */
+  dashboardScheme?: string;
   daemonSdUrl: string;
-  /** Auth for the SD request to the dashboard (dashboard METRICS_AUTH). Omitted when absent. */
   sdAuth?: BasicAuth;
-  /** Auth for scraping the daemons themselves (daemon METRICS_AUTH). Omitted when absent. */
   daemonAuth?: BasicAuth;
 }): string {
   const lines: string[] = [
@@ -99,12 +108,14 @@ export function buildPrometheusConfig(opts: {
     "",
     "scrape_configs:",
     "  - job_name: xinity-gateway",
+    ...schemeLine(opts.gatewayScheme),
     "    metrics_path: /metrics",
     "    static_configs:",
     "      - targets:",
     `          - ${opts.gatewayTarget}`,
     "",
     "  - job_name: xinity-dashboard",
+    ...schemeLine(opts.dashboardScheme),
     "    metrics_path: /metrics",
     "    static_configs:",
     "      - targets:",
@@ -217,19 +228,39 @@ export async function prometheusSetup(
   if (portStr === undefined) return undefined;
   const port = Number(portStr) || DEFAULT_PORT;
 
-  const gatewayTarget = await promptOrUndefined(p.text({
-    message: "Gateway /metrics target (host:port)",
-    placeholder: "localhost:4121",
-    defaultValue: "localhost:4121",
-  }));
-  if (gatewayTarget === undefined) return undefined;
+  if (!(await isPrometheusRunning(host, port)) && (await tcpPortInUse(host, port))) {
+    warn("Port", `Port ${port} is already in use. Prometheus may fail to start; choose a different port or stop the process using it.`);
+  }
 
-  const dashboardTarget = await promptOrUndefined(p.text({
-    message: "Dashboard /metrics target (host:port)",
-    placeholder: "localhost:5121",
-    defaultValue: "localhost:5121",
+  const validateUrl = (value: string | undefined): string | undefined => {
+    let u: URL;
+    try {
+      u = new URL(value ?? "");
+    } catch {
+      return "Enter a full URL, e.g. http://localhost:4121";
+    }
+    if (u.protocol !== "http:" && u.protocol !== "https:") return "URL must start with http:// or https://";
+    return undefined;
+  };
+
+  const gatewayUrl = await promptOrUndefined(p.text({
+    message: "Gateway base URL",
+    placeholder: "http://localhost:4121",
+    defaultValue: "http://localhost:4121",
+    validate: validateUrl,
   }));
-  if (dashboardTarget === undefined) return undefined;
+  if (gatewayUrl === undefined) return undefined;
+
+  const dashboardUrl = await promptOrUndefined(p.text({
+    message: "Dashboard base URL",
+    placeholder: "http://localhost:5121",
+    defaultValue: "http://localhost:5121",
+    validate: validateUrl,
+  }));
+  if (dashboardUrl === undefined) return undefined;
+
+  const gateway = scrapeTarget(gatewayUrl);
+  const dashboard = scrapeTarget(dashboardUrl);
 
   // Daemons are discovered dynamically from the dashboard, so there is no static
   // target list to maintain. Auth is optional: the SD endpoint is often left open
@@ -248,11 +279,13 @@ export async function prometheusSetup(
   }));
   if (daemonAuthRaw === undefined) return undefined;
 
-  const daemonSdUrl = `http://${dashboardTarget}/metrics/sd/daemons`;
+  const daemonSdUrl = new URL("/metrics/sd/daemons", dashboardUrl).href;
   const config = buildPrometheusConfig({
     scrapeInterval: "30s",
-    gatewayTarget,
-    dashboardTarget,
+    gatewayTarget: gateway.target,
+    gatewayScheme: gateway.scheme,
+    dashboardTarget: dashboard.target,
+    dashboardScheme: dashboard.scheme,
     daemonSdUrl,
     sdAuth: parseBasicAuth(sdAuthRaw),
     daemonAuth: parseBasicAuth(daemonAuthRaw),

@@ -42,6 +42,16 @@ describe("buildPrometheusConfig", () => {
     expect(yml).not.toMatch(/^\s+basic_auth:/m); // no active basic_auth block
   });
 
+  test("omits scheme for http targets (Prometheus default) and emits scheme: https for https ones", () => {
+    expect(buildPrometheusConfig(base)).not.toContain("scheme: https");
+    const httpsYml = buildPrometheusConfig({
+      ...base,
+      gatewayScheme: "https",
+      dashboardScheme: "https",
+    });
+    expect(httpsYml).toContain("scheme: https");
+  });
+
   test("emits active basic_auth blocks for SD and daemon scrape when creds are given", () => {
     const yml = buildPrometheusConfig({
       ...base,
