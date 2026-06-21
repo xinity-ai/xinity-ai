@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { buildDaemonServiceDiscovery, type SdNode } from "./prometheus-sd";
+import { buildDaemonServiceDiscovery, scrapeTarget, type SdNode } from "./prometheus-sd";
 
 const node = (over: Partial<SdNode> = {}): SdNode => ({
   id: "11111111-1111-1111-1111-111111111111",
@@ -37,5 +37,21 @@ describe("buildDaemonServiceDiscovery", () => {
 
   test("returns an empty array for an empty fleet", () => {
     expect(buildDaemonServiceDiscovery([])).toEqual([]);
+  });
+});
+
+describe("scrapeTarget", () => {
+  test("keeps an explicit port and scheme", () => {
+    expect(scrapeTarget("http://localhost:5121")).toEqual({ target: "localhost:5121", scheme: "http" });
+    expect(scrapeTarget("https://dash.example.com:8443")).toEqual({ target: "dash.example.com:8443", scheme: "https" });
+  });
+
+  test("falls back to 80 for http and 443 for https when no port is given", () => {
+    expect(scrapeTarget("http://dash.example.com")).toEqual({ target: "dash.example.com:80", scheme: "http" });
+    expect(scrapeTarget("https://dash.example.com")).toEqual({ target: "dash.example.com:443", scheme: "https" });
+  });
+
+  test("ignores path, query, and trailing slash", () => {
+    expect(scrapeTarget("https://dash.example.com/admin?x=1")).toEqual({ target: "dash.example.com:443", scheme: "https" });
   });
 });

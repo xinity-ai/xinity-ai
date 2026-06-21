@@ -45,3 +45,12 @@ export async function listDaemonSdNodes(): Promise<SdNode[]> {
     .from(aiNodeT)
     .where(isNull(aiNodeT.deletedAt));
 }
+
+export type ScrapeTarget = { target: string; scheme: string };
+
+export function scrapeTarget(rawUrl: string): ScrapeTarget {
+  const u = new URL(rawUrl);
+  const scheme = u.protocol.replace(":", "");
+  const port = u.port || (scheme === "https" ? "443" : "80");
+  return { target: `${u.hostname}:${port}`, scheme };
+}

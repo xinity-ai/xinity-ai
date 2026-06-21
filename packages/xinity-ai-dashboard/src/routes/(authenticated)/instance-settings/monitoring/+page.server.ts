@@ -2,18 +2,7 @@ import type { PageServerLoad } from "./$types";
 import { getDB } from "$lib/server/db";
 import { aiNodeT, isNull, sql } from "common-db";
 import { serverEnv } from "$lib/server/serverenv";
-
-/**
- * A Prometheus scrape target (host:port + scheme) derived from a service's
- * configured base URL. Port falls back to the scheme default (443/80), not an
- * internal port, so a reverse-proxied https URL yields a reachable target.
- */
-function scrapeTarget(rawUrl: string): { target: string; scheme: string } {
-  const u = new URL(rawUrl);
-  const scheme = u.protocol.replace(":", "");
-  const port = u.port || (scheme === "https" ? "443" : "80");
-  return { target: `${u.hostname}:${port}`, scheme };
-}
+import { scrapeTarget } from "$lib/server/fleet/prometheus-sd";
 
 export const load: PageServerLoad = async () => {
   const db = getDB();
