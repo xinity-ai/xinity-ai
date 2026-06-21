@@ -223,7 +223,7 @@
         prometheusUrl = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description = "URL of a Prometheus instance the dashboard queries server-side for live GPU metrics (e.g. http://127.0.0.1:9090). When set, the Compute fleet page shows utilization rings and energy readouts. Leave null to keep the fleet page in its no-metrics mode.";
+          description = "URL of a Prometheus instance the dashboard queries server-side for live GPU metrics (e.g. http://127.0.0.1:9090). When set, the Compute page shows utilization rings and energy readouts. Leave null to keep the Compute page in its no-metrics mode.";
         };
 
         licenseKey = lib.mkOption {
@@ -309,7 +309,7 @@
 
       config = lib.mkIf cfg.enable {
         # Require a METRICS_AUTH source: the service-discovery endpoint would
-        # otherwise expose fleet topology to anonymous callers.
+        # otherwise expose compute-node topology to anonymous callers.
         assertions = [
           {
             assertion = cfg.metricsAuth != null || cfg.metricsAuthFile != null || cfg.environmentFiles != [ ];

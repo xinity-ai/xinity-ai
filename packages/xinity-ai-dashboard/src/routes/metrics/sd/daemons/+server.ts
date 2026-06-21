@@ -8,7 +8,7 @@
 import type { RequestHandler } from "./$types";
 import { error } from "@sveltejs/kit";
 import { isMetricsAuthorized } from "$lib/server/metrics";
-import { buildDaemonServiceDiscovery, listDaemonSdNodes } from "$lib/server/fleet/prometheus-sd";
+import { buildDaemonServiceDiscovery, listDaemonSdNodes } from "$lib/server/compute/prometheus-sd";
 
 export const GET: RequestHandler = async ({ request }) => {
   if (!isMetricsAuthorized(request)) {

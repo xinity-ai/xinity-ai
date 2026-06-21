@@ -12,7 +12,7 @@
     { href: "/instance-settings/organizations", label: "Organizations", icon: Building2 },
     { href: "/instance-settings/sso", label: "SSO", icon: Shield },
     { href: "/instance-settings/license", label: "License", icon: KeyRound },
-    { href: "/instance-settings/fleet", label: "Compute", icon: Cpu },
+    { href: "/instance-settings/compute", label: "Compute", icon: Cpu },
     { href: "/instance-settings/monitoring", label: "Monitoring", icon: Activity },
   ];
 

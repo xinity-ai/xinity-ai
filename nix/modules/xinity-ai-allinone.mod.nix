@@ -346,7 +346,7 @@
           enable = lib.mkOption {
             type = lib.types.bool;
             default = false;
-            description = "Enable the bundled Prometheus instance, pre-wired to scrape the local gateway and dashboard. When enabled, the dashboard's PROMETHEUS_URL is set automatically so the Compute fleet page shows live GPU metrics.";
+            description = "Enable the bundled Prometheus instance, pre-wired to scrape the local gateway and dashboard. When enabled, the dashboard's PROMETHEUS_URL is set automatically so the Compute page shows live GPU metrics.";
           };
           port = lib.mkOption {
             type = lib.types.port;

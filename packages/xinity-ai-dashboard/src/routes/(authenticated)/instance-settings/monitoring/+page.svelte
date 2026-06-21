@@ -50,7 +50,7 @@
       ...dashboardAuth("    "),
       "",
       "  # Daemon targets are discovered dynamically from the dashboard's node",
-      "  # registry, so this never needs editing as the fleet changes.",
+      "  # registry, so this never needs editing as the node set changes.",
       "  - job_name: xinity-daemon",
       "    metrics_path: /metrics",
       "    http_sd_configs:",
@@ -83,7 +83,7 @@
       The gateway and dashboard targets are derived from this deployment's configured URLs;
       adjust them if your Prometheus reaches the services on different addresses (e.g. internal
       hostnames when co-located). Daemon targets are discovered dynamically, so that job tracks
-      the fleet without edits.
+      the nodes without edits.
     </p>
   </div>
 
@@ -117,15 +117,15 @@
     <p class="text-muted-foreground">
       The bundled <code class="font-mono text-xs bg-muted px-1 py-0.5 rounded">deployment/docker/monitoring/prometheus.yml</code>
       already discovers daemon targets from this dashboard, so no per-node edits or reloads are
-      needed as the fleet changes.
+      needed as the node set changes.
     </p>
   </div>
 
   <div class="rounded-lg border p-4 space-y-3 text-sm">
-    <h3 class="font-medium">Fleet metrics overlay</h3>
+    <h3 class="font-medium">Compute metrics overlay</h3>
     <p class="text-muted-foreground">
       Set <code class="font-mono text-xs bg-muted px-1 py-0.5 rounded">PROMETHEUS_URL</code> in the dashboard
-      environment to enable live GPU utilization and energy readings on the Compute fleet page.
+      environment to enable live GPU utilization and energy readings on the Compute page.
     </p>
     <pre class="bg-muted rounded p-3 text-xs font-mono">PROMETHEUS_URL=http://prometheus:9090</pre>
     <p class="text-muted-foreground">

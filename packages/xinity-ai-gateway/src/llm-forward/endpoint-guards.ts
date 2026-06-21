@@ -39,7 +39,7 @@ export function withEndpointGuards<TBody>(
     let resolved: ResolvedModel | undefined;
 
     // Once a node was selected, any error response counts against it on the
-    // fleet page. 499 (client disconnect) is not a backend failure.
+    // Compute page. 499 (client disconnect) is not a backend failure.
     const noteFailedRequest = (res: Response): Response => {
       if (resolved && res.status >= 400 && res.status !== 499) {
         recordFailedRequest({ auth: resolved.auth, modelInfo: resolved.modelInfo, callStartTime });

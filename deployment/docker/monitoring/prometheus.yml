@@ -22,7 +22,7 @@ scrape_configs:
     #   password: <METRICS_AUTH password>
 
   # Daemon targets are discovered dynamically from the dashboard's node registry,
-  # so this stays current as the fleet changes, no per-node edits or reloads.
+  # so this stays current as the node set changes, no per-node edits or reloads.
   - job_name: xinity-daemon
     metrics_path: /metrics
     http_sd_configs:

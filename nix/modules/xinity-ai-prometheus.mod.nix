@@ -20,7 +20,7 @@
       } // basicAuth);
     in {
       options.services.xinity-ai-prometheus = {
-        enable = lib.mkEnableOption "a bundled Prometheus instance pre-wired to scrape the xinity-ai gateway, dashboard, and daemon nodes. Pair it with services.xinity-ai-dashboard.prometheusUrl to light up the live GPU metrics overlay on the Compute fleet page";
+        enable = lib.mkEnableOption "a bundled Prometheus instance pre-wired to scrape the xinity-ai gateway, dashboard, and daemon nodes. Pair it with services.xinity-ai-dashboard.prometheusUrl to light up the live GPU metrics overlay on the Compute page";
 
         listenAddress = lib.mkOption {
           type = lib.types.str;

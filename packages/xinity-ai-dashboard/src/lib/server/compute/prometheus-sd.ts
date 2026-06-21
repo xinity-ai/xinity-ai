@@ -1,6 +1,6 @@
 /**
  * Prometheus HTTP service discovery: serves the live node registry as daemon
- * scrape targets, so Prometheus tracks the fleet without a static target list.
+ * scrape targets, so Prometheus tracks the nodes without a static target list.
  * https://prometheus.io/docs/prometheus/latest/http_sd/
  */
 import { getDB } from "$lib/server/db";

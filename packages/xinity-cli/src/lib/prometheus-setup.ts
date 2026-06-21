@@ -25,7 +25,7 @@ const CONTAINER_NAME = "xinity-ai-prometheus";
 // the same Prometheus version.
 const PROMETHEUS_IMAGE = "prom/prometheus:v3.1.0";
 // How often Prometheus re-discovers the daemon set (membership only; metric
-// resolution is governed by scrape_interval). The fleet changes on the order of
+// resolution is governed by scrape_interval). The node set changes on the order of
 // deployments, so this is deliberately coarse.
 const SD_REFRESH_INTERVAL = "3m";
 
@@ -122,7 +122,7 @@ export function buildPrometheusConfig(opts: {
     `          - ${opts.dashboardTarget}`,
     "",
     "  # Daemon targets are discovered dynamically from the dashboard's node",
-    "  # registry; this stays current as the fleet changes, no edits needed.",
+    "  # registry; this stays current as the node set changes, no edits needed.",
     "  - job_name: xinity-daemon",
     "    metrics_path: /metrics",
     "    http_sd_configs:",
@@ -193,7 +193,7 @@ export async function prometheusSetup(
   p.log.step(pc.bold("Prometheus metrics store setup"));
   p.log.info(
     "Prometheus scrapes the gateway, dashboard, and daemon /metrics endpoints.\n" +
-    "It runs as a Docker container and powers the live GPU overlay on the Compute fleet page.",
+    "It runs as a Docker container and powers the live GPU overlay on the Compute page.",
   );
 
   // ── Step 1: Require Docker + compose ────────────────────────────────────
@@ -331,7 +331,7 @@ export async function prometheusSetup(
 
   p.note(
     [`PROMETHEUS_URL=${promUrl}`].join("\n"),
-    "Add this to your dashboard env file to enable the fleet GPU overlay",
+    "Add this to your dashboard env file to enable the compute GPU overlay",
   );
 
   p.log.info(

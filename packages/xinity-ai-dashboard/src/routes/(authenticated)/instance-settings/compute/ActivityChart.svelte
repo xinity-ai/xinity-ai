@@ -1,10 +1,10 @@
 <script lang="ts">
   import Chart from "$lib/components/Chart.svelte";
-  import type { FleetHistory } from "$lib/fleet/format";
-  import { formatTokens } from "$lib/fleet/format";
+  import type { ComputeHistory } from "$lib/compute/format";
+  import { formatTokens } from "$lib/compute/format";
 
   let { history, nodeNames }: {
-    history: FleetHistory;
+    history: ComputeHistory;
     nodeNames: Map<string, string>;
   } = $props();
 

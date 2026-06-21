@@ -1,5 +1,5 @@
 /**
- * Pure helpers for the fleet overview API. Kept free of $lib/server imports so
+ * Pure helpers for the compute overview API. Kept free of $lib/server imports so
  * they are unit-testable with plain `bun test`.
  */
 

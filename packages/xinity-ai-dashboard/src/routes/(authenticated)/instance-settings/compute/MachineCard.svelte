@@ -1,12 +1,12 @@
 <script lang="ts">
-  import type { FleetNode } from "$lib/fleet/format";
+  import type { NodeSummary } from "$lib/compute/format";
   import UtilizationRing from "./UtilizationRing.svelte";
   import AnimatedNumber from "./AnimatedNumber.svelte";
-  import { formatTokens, formatPercent, formatEnergy, gpuSummary } from "$lib/fleet/format";
+  import { formatTokens, formatPercent, formatEnergy, gpuSummary } from "$lib/compute/format";
   import { Zap, ArrowRightLeft, CircleCheck } from "@lucide/svelte";
 
   let { node, rangeLabel, metrics = null }: {
-    node: FleetNode;
+    node: NodeSummary;
     rangeLabel: string;
     metrics?: { utilizationAvg: number; energyWh: number } | null;
   } = $props();

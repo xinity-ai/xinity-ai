@@ -70,7 +70,7 @@ async function getModelSources(lookup: ModelLookup): Promise<ModelSources> {
 }
 
 type ModelInfo = {
-  /** ai_node id serving this request. Recorded on usage events for fleet attribution. */
+  /** ai_node id serving this request. Recorded on usage events for per-node attribution. */
   nodeId: string | null;
   /** Daemon host:port to route requests through. */
   host: string;

@@ -2,7 +2,7 @@ import type { PageServerLoad } from "./$types";
 import { getDB } from "$lib/server/db";
 import { aiNodeT, isNull, sql } from "common-db";
 import { serverEnv } from "$lib/server/serverenv";
-import { scrapeTarget } from "$lib/server/fleet/prometheus-sd";
+import { scrapeTarget } from "$lib/server/compute/prometheus-sd";
 
 export const load: PageServerLoad = async () => {
   const db = getDB();

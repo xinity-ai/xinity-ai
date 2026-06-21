@@ -2,11 +2,11 @@
   import { onMount } from "svelte";
   import { orpc } from "$lib/orpc/orpc-client";
   import { createUrlSearchParamsStore } from "$lib/urlSearchParamsStore";
-  import type { FleetOverview, FleetHistory, LiveMetrics } from "$lib/fleet/format";
+  import type { ComputeOverview, ComputeHistory, LiveMetrics } from "$lib/compute/format";
   import MachineCard from "./MachineCard.svelte";
-  import FleetActivityChart from "./FleetActivityChart.svelte";
+  import ActivityChart from "./ActivityChart.svelte";
   import AnimatedNumber from "./AnimatedNumber.svelte";
-  import { formatTokens, formatPercent, formatEnergy } from "$lib/fleet/format";
+  import { formatTokens, formatPercent, formatEnergy } from "$lib/compute/format";
   import { Server, Cpu, ArrowRightLeft, CircleCheck, Gauge, Zap } from "@lucide/svelte";
 
   const RANGES = [
@@ -19,17 +19,17 @@
   const searchParams = createUrlSearchParamsStore();
   const rangeHours = $derived(RANGES.find((r) => String(r.hours) === $searchParams.range)?.hours ?? 24);
 
-  let overview = $state<FleetOverview | null>(null);
-  let history = $state<FleetHistory | null>(null);
+  let overview = $state<ComputeOverview | null>(null);
+  let history = $state<ComputeHistory | null>(null);
   let liveMetrics = $state<LiveMetrics | null>(null);
   let loading = $state(true);
 
   async function refresh(hours: number) {
     try {
       const [overviewResult, historyResult, liveMetricsResult] = await Promise.all([
-        orpc.fleet.overview({ rangeHours: hours }),
-        orpc.fleet.history({ rangeHours: hours }),
-        orpc.fleet.liveMetrics({}),
+        orpc.compute.overview({ rangeHours: hours }),
+        orpc.compute.history({ rangeHours: hours }),
+        orpc.compute.liveMetrics({}),
       ]);
       if (!overviewResult[0] && overviewResult[1]) overview = overviewResult[1];
       if (!historyResult[0] && historyResult[1]) history = historyResult[1];
@@ -79,13 +79,13 @@
       : null,
   );
 
-  const fleetUtilizationAvg = $derived(
+  const avgUtilization = $derived(
     liveMetrics?.available && liveMetrics.nodes.length > 0
       ? liveMetrics.nodes.reduce((sum, n) => sum + n.utilizationAvg, 0) / liveMetrics.nodes.length
       : null,
   );
 
-  const fleetEnergyWh = $derived(
+  const totalEnergyWh = $derived(
     liveMetrics?.available && liveMetrics.nodes.length > 0
       ? liveMetrics.nodes.reduce((sum, n) => sum + n.energyWh, 0)
       : null,
@@ -93,7 +93,7 @@
 </script>
 
 <svelte:head>
-  <title>Compute Fleet · Xinity</title>
+  <title>Compute · Xinity</title>
 </svelte:head>
 
 <div class="p-6 compact:p-3">
@@ -136,7 +136,7 @@
       </p>
     </div>
   {:else}
-    <!-- Fleet totals -->
+    <!-- Compute totals -->
     <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4 compact:gap-2 mb-6 compact:mb-3">
       <div class="bg-white rounded-lg shadow p-4 compact:p-3">
         <p class="text-xs text-gray-500 mb-1 flex items-center gap-1"><Server class="w-3.5 h-3.5" /> Machines</p>
@@ -150,13 +150,13 @@
       <div class="bg-white rounded-lg shadow p-4 compact:p-3">
         <p class="text-xs text-gray-500 mb-1 flex items-center gap-1"><Cpu class="w-3.5 h-3.5" /> GPUs</p>
         <p class="text-2xl font-bold">{overview.totals.gpuCount}</p>
-        <p class="text-xs text-gray-400 mt-1">across the fleet</p>
+        <p class="text-xs text-gray-400 mt-1">across all nodes</p>
       </div>
-      {#if fleetUtilizationAvg !== null}
+      {#if avgUtilization !== null}
         <div class="bg-white rounded-lg shadow p-4 compact:p-3">
-          <p class="text-xs text-gray-500 mb-1 flex items-center gap-1"><Gauge class="w-3.5 h-3.5" /> Fleet load</p>
+          <p class="text-xs text-gray-500 mb-1 flex items-center gap-1"><Gauge class="w-3.5 h-3.5" /> Compute load</p>
           <p class="text-2xl font-bold">
-            <AnimatedNumber value={fleetUtilizationAvg} format={(v) => `${Math.round(v)}%`} />
+            <AnimatedNumber value={avgUtilization} format={(v) => `${Math.round(v)}%`} />
           </p>
           <p class="text-xs text-gray-400 mt-1">right now</p>
         </div>
@@ -170,10 +170,10 @@
           {formatTokens(overview.totals.inputTokens)} in · {formatTokens(overview.totals.outputTokens)} out
         </p>
       </div>
-      {#if fleetEnergyWh !== null}
+      {#if totalEnergyWh !== null}
         <div class="bg-white rounded-lg shadow p-4 compact:p-3">
           <p class="text-xs text-gray-500 mb-1 flex items-center gap-1"><Zap class="w-3.5 h-3.5" /> Energy</p>
-          <p class="text-2xl font-bold">~ <AnimatedNumber value={fleetEnergyWh} format={formatEnergy} /></p>
+          <p class="text-2xl font-bold">~ <AnimatedNumber value={totalEnergyWh} format={formatEnergy} /></p>
           <p class="text-xs text-gray-400 mt-1">since daemon start</p>
         </div>
       {/if}
@@ -192,10 +192,10 @@
       </div>
     </div>
 
-    <!-- Fleet activity -->
+    <!-- Activity -->
     <div class="bg-white rounded-lg shadow p-5 compact:p-3 mb-6 compact:mb-3">
-      <h2 class="text-lg font-medium mb-4 compact:mb-2">Fleet activity <span class="text-sm font-normal text-gray-400">tokens per machine · last {rangeLabel}</span></h2>
-      <FleetActivityChart history={history ?? { rangeHours: 24, bucketSeconds: 3600, series: [] }} {nodeNames} />
+      <h2 class="text-lg font-medium mb-4 compact:mb-2">Activity <span class="text-sm font-normal text-gray-400">tokens per machine · last {rangeLabel}</span></h2>
+      <ActivityChart history={history ?? { rangeHours: 24, bucketSeconds: 3600, series: [] }} {nodeNames} />
     </div>
 
     <!-- Machines -->
