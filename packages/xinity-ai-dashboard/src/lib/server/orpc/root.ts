@@ -7,11 +7,14 @@ import { os } from "@orpc/server";
 import { rootLogger } from "../logging";
 import type { ac } from "../roles";
 import { isInstanceAdmin } from "../serverenv";
+import { runWithAudit, type AuditContext, type AuditTag } from "./audit";
 
 /** Metadata type available on all dashboard procedures. */
 export type ProcedureMeta = {
   /** Set to `false` to exclude this procedure from the MCP server endpoint. Defaults to included. */
   mcp?: boolean;
+  /** Opt a procedure into the audit trail. The middleware emits one event per call. */
+  audit?: AuditTag;
 };
 
 export const rootOs = os.$context<App.Locals>().$meta<ProcedureMeta>({}).errors({
@@ -131,3 +134,12 @@ export function requirePermission(permissions: PermissionSpec) {
     return next({ context });
   });
 }
+
+/**
+ * Emits an audit event for procedures tagged with `.meta({ audit })`. No-op
+ * otherwise. Apply per procedure with `.use(auditMiddleware)`, after the auth/org
+ * guards so actor and org are in context.
+ */
+export const auditMiddleware = rootOs.middleware(({ context, procedure, next }) =>
+  runWithAudit(context as AuditContext, procedure["~orpc"].meta.audit, () => next()),
+);
