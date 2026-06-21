@@ -61,7 +61,7 @@
         daemonTargets = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           default = [ ];
-          example = [ "10.0.0.5:4010" "10.0.0.6:4010" ];
+          example = [ "10.0.0.5:4044" "10.0.0.6:4044" ];
           description = "host:port entries for each daemon node's /metrics endpoint. Daemons usually run on separate machines, so this is empty by default. The dashboard's Instance Settings > Monitoring page generates this list from the live node registry.";
         };
 

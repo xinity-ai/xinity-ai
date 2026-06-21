@@ -356,7 +356,7 @@
           daemonTargets = lib.mkOption {
             type = lib.types.listOf lib.types.str;
             default = [ ];
-            example = [ "10.0.0.5:4010" "10.0.0.6:4010" ];
+            example = [ "10.0.0.5:4044" "10.0.0.6:4044" ];
             description = "host:port entries for each remote daemon node's /metrics endpoint. Generate this list from the dashboard's Instance Settings > Monitoring page.";
           };
         };

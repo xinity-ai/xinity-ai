@@ -40,7 +40,7 @@
         port = lib.mkOption {
           type = lib.types.port;
           description = "HTTP port the daemon API listens on. The gateway connects to this port to forward inference requests and manage models.";
-          default = 4010;
+          default = 4044;
         };
 
         host = lib.mkOption {
