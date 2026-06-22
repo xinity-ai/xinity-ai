@@ -180,7 +180,7 @@
         self.nixosModules.infoserver
         self.nixosModules.searxng
         self.nixosModules.seaweedfs
-        self.nixosModules.prometheus
+        self.nixosModules.monitoring
         self.nixosModules.caddy
 
         (lib.mkRemovedOptionModule
@@ -342,22 +342,31 @@
           };
         };
 
-        prometheus = {
+        monitoring = {
           enable = lib.mkOption {
             type = lib.types.bool;
             default = false;
-            description = "Enable the bundled Prometheus instance, pre-wired to scrape the local gateway and dashboard. When enabled, the dashboard's PROMETHEUS_URL is set automatically so the Compute page shows live GPU metrics.";
+            description = "Enable the bundled monitoring stack (Prometheus), pre-wired to scrape the local gateway and dashboard. When enabled, the dashboard's PROMETHEUS_URL is set automatically so the Compute page shows live GPU metrics.";
           };
           port = lib.mkOption {
             type = lib.types.port;
             default = 9090;
             description = "Port for the Prometheus query API and web UI. Bound to localhost; the dashboard queries it over loopback.";
           };
-          daemonTargets = lib.mkOption {
-            type = lib.types.listOf lib.types.str;
-            default = [ ];
-            example = [ "10.0.0.5:4044" "10.0.0.6:4044" ];
-            description = "host:port entries for each remote daemon node's /metrics endpoint. Generate this list from the dashboard's Instance Settings > Monitoring page.";
+          basicAuthUsername = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = "Username Prometheus authenticates as when scraping /metrics. Together with the password it forms a user:pass pair that MUST be present in METRICS_AUTH, or scrapes fail with 401 (add `prometheus:<password>` to METRICS_AUTH and set this to `prometheus`). Required when monitoring.enable is true.";
+          };
+          basicAuthPasswordFile = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = "Path to a file containing the scrape password for basicAuthUsername. Read at scrape time, so it never enters the Nix store. Recommended over basicAuthPassword.";
+          };
+          basicAuthPassword = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = "Scrape password for basicAuthUsername, inline. WARNING: exposes the secret in the Nix store; prefer basicAuthPasswordFile.";
           };
         };
 
@@ -489,8 +498,8 @@
             gatewayUrl = lib.mkDefault publicGatewayUrl;        # Public gateway base URL (no /v1 suffix)
             nodeEnv = lib.mkDefault "production";
             prometheusUrl = lib.mkDefault (
-              if cfg.prometheus.enable
-              then "http://127.0.0.1:${toString cfg.prometheus.port}"
+              if cfg.monitoring.enable
+              then "http://127.0.0.1:${toString cfg.monitoring.port}"
               else null
             );
             s3Endpoint = lib.mkDefault (
@@ -531,13 +540,15 @@
             s3Config = lib.mkDefault cfg.seaweedfs.s3Config;
           };
 
-          # --- Prometheus ---
-          services.xinity-ai-prometheus = lib.mkIf cfg.prometheus.enable {
+          # --- Monitoring ---
+          services.xinity-ai-monitoring = lib.mkIf cfg.monitoring.enable {
             enable = true;
-            port = lib.mkDefault cfg.prometheus.port;
+            port = lib.mkDefault cfg.monitoring.port;
             gatewayTarget = lib.mkDefault "localhost:${toString cfg.gateway.port}";
             dashboardTarget = lib.mkDefault "localhost:${toString cfg.dashboard.port}";
-            daemonTargets = lib.mkDefault cfg.prometheus.daemonTargets;
+            basicAuthUsername = lib.mkDefault cfg.monitoring.basicAuthUsername;
+            basicAuthPasswordFile = lib.mkDefault cfg.monitoring.basicAuthPasswordFile;
+            basicAuthPassword = lib.mkDefault cfg.monitoring.basicAuthPassword;
           };
 
           # --- Caddy (always enabled in allinone) ---

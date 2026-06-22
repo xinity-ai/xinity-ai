@@ -8,7 +8,7 @@
     ./xinity-ai-dashboard.mod.nix
     ./xinity-infoserver.mod.nix
     ./xinity-ai-seaweedfs.mod.nix
-    ./xinity-ai-prometheus.mod.nix
+    ./xinity-ai-monitoring.mod.nix
     ./xinity-ai-allinone.mod.nix
   ];
 }
