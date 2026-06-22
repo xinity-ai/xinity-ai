@@ -1,21 +1,23 @@
 /**
- * Interactive Ollama setup assistant for `xinity up infra-ollama`.
- *
- * Handles detection, installation, service management, and bind-address
- * configuration via systemd override. After setup, ollama listens on all
- * interfaces so other nodes (gateway, daemon) can reach it.
+ * Interactive Ollama setup for `xinity up infra-ollama` and the daemon step of
+ * `xinity up all`. Ollama runs alongside the daemon on the same host, so it is
+ * left on its default localhost binding.
  */
 import * as p from "./clack.ts";
 import pc from "picocolors";
 import { type Host, commandExistsOn, isUnitActiveOn } from "./host.ts";
 import { pass, fail, info, warn } from "./output.ts";
 import { parseEnvString, serializeEnvFile } from "./env-file.ts";
-import { ENV_DIR, UNIT_DIR } from "./component-meta.ts";
+import { ENV_DIR } from "./component-meta.ts";
 import { restartService } from "./service.ts";
 
 const DEFAULT_PORT = "11434";
-const OVERRIDE_DIR = `${UNIT_DIR}/ollama.service.d`;
-const OVERRIDE_PATH = `${OVERRIDE_DIR}/override.conf`;
+const INSTALL_COMMAND = "curl -fsSL https://ollama.com/install.sh | sh";
+
+/** Endpoint the daemon uses to reach the ollama instance running on the same host. */
+export const LOCAL_OLLAMA_ENDPOINT = `http://localhost:${DEFAULT_PORT}`;
+
+type OllamaStatus = "missing" | "stopped" | "running";
 
 // ─── Detection ──────────────────────────────────────────────────────────────
 
@@ -23,12 +25,17 @@ async function isOllamaInstalled(host: Host): Promise<boolean> {
   return commandExistsOn(host, "ollama");
 }
 
-/** Check whether the ollama systemd service is active, accepting either unit name. */
+/** Whether the ollama systemd service is active, accepting either unit name. */
 export async function isOllamaRunning(host: Host): Promise<boolean> {
   return (
     (await isUnitActiveOn(host, "ollama.service")) ||
     (await isUnitActiveOn(host, "ollama"))
   );
+}
+
+async function detectOllamaStatus(host: Host): Promise<OllamaStatus> {
+  if (!(await isOllamaInstalled(host))) return "missing";
+  return (await isOllamaRunning(host)) ? "running" : "stopped";
 }
 
 const OLLAMA_POLL_INTERVAL_MS = 500;
@@ -50,174 +57,133 @@ async function getOllamaVersion(host: Host): Promise<string | null> {
   return match?.[1] ?? result.output.trim();
 }
 
-async function getCurrentBindAddress(host: Host): Promise<string | null> {
-  const content = await host.readFile(OVERRIDE_PATH);
-  if (!content) return null;
-  const match = content.match(/OLLAMA_HOST=(\S+)/);
-  return match?.[1] ?? null;
-}
-
-// ─── Install / Update ───────────────────────────────────────────────────────
+// ─── Install / service control ──────────────────────────────────────────────
 
 async function installOrUpdateOllama(host: Host): Promise<boolean> {
-  const result = await host.withElevation(
-    "curl -fsSL https://ollama.com/install.sh | sh",
-    "Install/update ollama",
-  );
-
-  if (result.success) {
-    pass("Ollama", "Installed successfully");
-
-    // The install script usually starts the service. Poll until it's active.
-    const spinner = p.spinner();
-    spinner.start("Waiting for ollama service…");
-    const running = await waitForOllamaRunning(host);
-    spinner.stop(running ? "Service running" : "Service not started automatically");
-
-    if (!running) {
-      await startOllamaService(host, { warnOnFail: true });
-    } else {
-      pass("Ollama", "Service is running");
+  const result = await host.withElevation(INSTALL_COMMAND, "Install/update ollama");
+  if (!result.success) {
+    if (!result.skipped) {
+      fail("Ollama", result.output || "Installation failed");
+      p.log.info(pc.dim(`  Install manually: ${INSTALL_COMMAND}`));
     }
-    return true;
+    return false;
   }
 
-  if (!result.skipped) {
-    fail("Ollama", result.output || "Installation failed");
-    p.log.info(pc.dim("  Install manually: curl -fsSL https://ollama.com/install.sh | sh"));
+  pass("Ollama", "Installed successfully");
+
+  // The install script usually starts the service, but not always; wait, then start it ourselves.
+  const spinner = p.spinner();
+  spinner.start("Waiting for ollama service…");
+  const running = await waitForOllamaRunning(host);
+  spinner.stop(running ? "Service running" : "Service not started automatically");
+
+  if (running) {
+    pass("Ollama", "Service is running");
+  } else {
+    await startOllamaService(host, { warnOnFail: true });
   }
-  return false;
+  return true;
 }
 
-// ─── Service management ─────────────────────────────────────────────────────
-
 async function startOllamaService(host: Host, opts: { warnOnFail?: boolean } = {}): Promise<boolean> {
-  const result = await host.withElevation(
-    "systemctl enable --now ollama",
-    "Start ollama service",
-  );
+  const result = await host.withElevation("systemctl enable --now ollama", "Start ollama service");
   if (result.success) {
     pass("Ollama", "Service started");
     return true;
   }
   if (!result.skipped) {
-    const report = opts.warnOnFail ? warn : fail;
-    report("Ollama", result.output || "Failed to start service");
+    (opts.warnOnFail ? warn : fail)("Ollama", result.output || "Failed to start service");
   }
   return false;
 }
 
-// ─── Bind address configuration ─────────────────────────────────────────────
+// ─── Interactive flows, one per detected state ───────────────────────────────
 
-/**
- * Write a systemd override so ollama listens on the given address,
- * then reload and restart the service.
- */
-async function applyBindAddress(host: Host, bindAddress: string): Promise<boolean> {
-  const overrideContent = `[Service]\nEnvironment="OLLAMA_HOST=${bindAddress}"\n`;
-  const result = await host.withElevation(
-    `mkdir -p '${OVERRIDE_DIR}'` +
-    ` && printf '%s' '${overrideContent}' > '${OVERRIDE_PATH}'` +
-    ` && systemctl daemon-reload` +
-    ` && systemctl restart ollama`,
-    "Configure ollama bind address",
-  );
-  if (result.success) {
-    pass("Ollama", `Listening on ${bindAddress}`);
+async function promptInstallOllama(host: Host, dryRun: boolean): Promise<boolean> {
+  info("Ollama", "Not found on this system");
+
+  const action = await p.select({
+    message: "Ollama is not installed.",
+    options: [
+      { value: "install", label: "Install ollama", hint: "uses official install script" },
+      { value: "skip", label: "Skip" },
+    ],
+  });
+  if (p.isCancel(action) || action === "skip") return false;
+
+  if (dryRun) {
+    info("Dry run", `Would install ollama: ${INSTALL_COMMAND}`);
     return true;
   }
-  if (!result.skipped) {
-    fail("Ollama", result.output || "Failed to configure bind address");
-  }
-  return false;
+  return installOrUpdateOllama(host);
 }
 
-async function configureBindAddress(host: Host, dryRun: boolean): Promise<void> {
-  const current = await getCurrentBindAddress(host);
+async function promptUpdateRunningOllama(host: Host, dryRun: boolean): Promise<boolean> {
+  pass("Ollama", "Service is running");
 
-  const portInput = await p.text({
-    message: "Ollama port",
-    placeholder: DEFAULT_PORT,
-    defaultValue: DEFAULT_PORT,
-    validate: (val) => {
-      if (!val) return undefined;
-      const n = parseInt(val, 10);
-      if (Number.isNaN(n) || n < 1 || n > 65535) return "Must be a valid port number";
-      return undefined;
-    },
+  const action = await p.select({
+    message: "Ollama is installed and running.",
+    options: [
+      { value: "keep", label: "Keep current setup" },
+      { value: "update", label: "Update ollama to latest version" },
+    ],
   });
-  if (p.isCancel(portInput)) return;
-
-  const bindAddress = `0.0.0.0:${portInput}`;
-
-  if (current === bindAddress) {
-    info("Ollama", `Already configured to listen on ${bindAddress}`);
-    return;
-  }
+  if (p.isCancel(action) || action === "keep") return true;
 
   if (dryRun) {
-    info("Dry run", `Would set OLLAMA_HOST=${bindAddress} via systemd override`);
-    return;
+    info("Dry run", "Would update ollama");
+    return true;
   }
+  return installOrUpdateOllama(host);
+}
 
-  await applyBindAddress(host, bindAddress);
+async function promptStartStoppedOllama(host: Host, dryRun: boolean): Promise<boolean> {
+  warn("Ollama", "Installed but service is not running");
+
+  const action = await p.select({
+    message: "Ollama service is not running.",
+    options: [
+      { value: "start", label: "Start the service" },
+      { value: "update", label: "Update and start" },
+    ],
+  });
+  if (p.isCancel(action)) return false;
+
+  if (dryRun) {
+    info("Dry run", `Would ${action} ollama`);
+    return true;
+  }
+  return action === "update" ? installOrUpdateOllama(host) : startOllamaService(host);
 }
 
 /**
- * Ensure ollama listens on all interfaces. Called automatically after
- * install so remote nodes can reach this instance.
+ * Install/update ollama and ensure its service is running. Returns true when
+ * ollama is set up and expected to answer at {@link LOCAL_OLLAMA_ENDPOINT}.
  */
-async function ensurePublicBinding(host: Host, dryRun: boolean): Promise<void> {
-  const current = await getCurrentBindAddress(host);
-  if (current && current.startsWith("0.0.0.0:")) {
-    pass("Ollama", `Listening on ${current}`);
-    return;
-  }
+export async function provisionOllama(host: Host, dryRun: boolean): Promise<boolean> {
+  p.log.step(pc.bold("Ollama setup"));
 
-  info("Ollama", "Ollama defaults to localhost only, which is unreachable from other nodes.");
-  const bind = await p.confirm({
-    message: "Make ollama accessible on the network (0.0.0.0:11434)?",
-    initialValue: true,
-  });
-  if (p.isCancel(bind) || !bind) return;
+  const status = await detectOllamaStatus(host);
+  if (status === "missing") return promptInstallOllama(host, dryRun);
 
-  if (dryRun) {
-    info("Dry run", `Would set OLLAMA_HOST=0.0.0.0:${DEFAULT_PORT} via systemd override`);
-    return;
-  }
+  const version = await getOllamaVersion(host);
+  pass("Ollama", `Installed${version ? ` (v${version.replace(/^v/, "")})` : ""}`);
 
-  await applyBindAddress(host, `0.0.0.0:${DEFAULT_PORT}`);
+  return status === "running"
+    ? promptUpdateRunningOllama(host, dryRun)
+    : promptStartStoppedOllama(host, dryRun);
 }
 
-// ─── End-to-end: test endpoint + write daemon env ───────────────────────────
+// ─── Wiring the daemon to ollama (standalone `infra-ollama`) ──────────────────
 
-/**
- * Resolve the ollama endpoint URL reachable from the network.
- * Uses the bind address port from the systemd override, combined with the
- * host's LAN IP (since 0.0.0.0 isn't a routable address).
- */
-async function resolveEndpointUrl(host: Host): Promise<string> {
-  const current = await getCurrentBindAddress(host);
-  const port = current?.split(":")[1] ?? DEFAULT_PORT;
-
-  // Get the host's network-facing IP
+async function isOllamaEndpointReachable(host: Host): Promise<boolean> {
   const result = await host.runShell(
-    `hostname -I 2>/dev/null | awk '{print $1}' || echo 127.0.0.1`,
+    `curl -sf --connect-timeout 5 '${LOCAL_OLLAMA_ENDPOINT}/api/tags' > /dev/null`,
   );
-  const ip = result.ok ? result.output.trim() : "127.0.0.1";
-  return `http://${ip}:${port}`;
-}
-
-async function testEndpoint(url: string, host: Host): Promise<boolean> {
-  // Test from the host itself (the gateway/daemon will reach it over the network)
-  const result = await host.runShell(`curl -sf --connect-timeout 5 '${url}/api/tags' > /dev/null`);
   return result.ok;
 }
 
-/**
- * Write XINITY_OLLAMA_ENDPOINT into the daemon's env file.
- * Reads the existing file, adds/updates the key, and writes it back.
- */
+/** Sets XINITY_OLLAMA_ENDPOINT in the daemon env file and restarts the daemon. */
 async function writeDaemonEndpoint(host: Host, endpoint: string): Promise<boolean> {
   const envPath = `${ENV_DIR}/daemon.env`;
   const existing = await host.readFile(envPath);
@@ -230,7 +196,6 @@ async function writeDaemonEndpoint(host: Host, endpoint: string): Promise<boolea
 
   env.XINITY_OLLAMA_ENDPOINT = endpoint;
   const content = serializeEnvFile(env);
-
   const result = await host.withElevation(
     `mkdir -p '${ENV_DIR}' && cat > '${envPath}' << 'ENVEOF'\n${content}ENVEOF\nchmod 644 '${envPath}'`,
     "Write XINITY_OLLAMA_ENDPOINT to daemon config",
@@ -247,119 +212,22 @@ async function writeDaemonEndpoint(host: Host, endpoint: string): Promise<boolea
 }
 
 /**
- * After ollama is installed and bound, verify the endpoint is reachable
- * and persist the endpoint URL into the daemon's env file.
+ * Point an already-installed daemon at the local ollama instance: confirm the
+ * endpoint answers, then persist it to the daemon env.
  */
-async function finalizeSetup(host: Host, dryRun: boolean): Promise<void> {
-  const endpoint = await resolveEndpointUrl(host);
-
-  if (dryRun) {
-    info("Dry run", `Would test endpoint ${endpoint} and write to daemon.env`);
-    return;
-  }
-
-  const ok = await testEndpoint(endpoint, host);
-  if (ok) {
-    pass("Ollama", `Endpoint reachable at ${endpoint}`);
+async function pointDaemonAtOllama(host: Host): Promise<void> {
+  if (await isOllamaEndpointReachable(host)) {
+    pass("Ollama", `Endpoint reachable at ${LOCAL_OLLAMA_ENDPOINT}`);
   } else {
-    warn("Ollama", `Endpoint not reachable at ${endpoint}. The daemon may not be able to connect.`);
-    const proceed = await p.confirm({
-      message: "Save this endpoint anyway?",
-      initialValue: true,
-    });
+    warn("Ollama", `Endpoint not reachable at ${LOCAL_OLLAMA_ENDPOINT}. The daemon may not be able to connect.`);
+    const proceed = await p.confirm({ message: "Save this endpoint anyway?", initialValue: true });
     if (p.isCancel(proceed) || !proceed) return;
   }
-
-  await writeDaemonEndpoint(host, endpoint);
+  await writeDaemonEndpoint(host, LOCAL_OLLAMA_ENDPOINT);
 }
 
-// ─── Main entry point ───────────────────────────────────────────────────────
-
+/** Entry point for `xinity up infra-ollama`: provision ollama, then point the daemon at it. */
 export async function ollamaSetup(host: Host, dryRun: boolean): Promise<void> {
-  p.log.step(pc.bold("Ollama setup"));
-
-  const installed = await isOllamaInstalled(host);
-
-  if (installed) {
-    const version = await getOllamaVersion(host);
-    pass("Ollama", `Installed${version ? ` (v${version.replace(/^v/, "")})` : ""}`);
-
-    const running = await isOllamaRunning(host);
-
-    if (running) {
-      pass("Ollama", "Service is running");
-
-      const action = await p.select({
-        message: "Ollama is installed and running.",
-        options: [
-          { value: "keep", label: "Keep current setup" },
-          { value: "update", label: "Update ollama to latest version" },
-          { value: "configure", label: "Configure bind address and port" },
-        ],
-      });
-      if (p.isCancel(action) || action === "keep") return;
-
-      if (action === "update") {
-        if (dryRun) {
-          info("Dry run", "Would update ollama");
-          return;
-        }
-        await installOrUpdateOllama(host);
-        await ensurePublicBinding(host, dryRun);
-        await finalizeSetup(host, dryRun);
-        return;
-      }
-
-      if (action === "configure") {
-        await configureBindAddress(host, dryRun);
-        await finalizeSetup(host, dryRun);
-        return;
-      }
-    } else {
-      warn("Ollama", "Installed but service is not running");
-
-      const action = await p.select({
-        message: "Ollama service is not running.",
-        options: [
-          { value: "start", label: "Start the service" },
-          { value: "update", label: "Update and start" },
-        ],
-      });
-      if (p.isCancel(action)) return;
-
-      if (dryRun) {
-        info("Dry run", `Would ${action} ollama`);
-        return;
-      }
-
-      if (action === "update") {
-        await installOrUpdateOllama(host);
-      } else {
-        await startOllamaService(host);
-      }
-      await ensurePublicBinding(host, dryRun);
-      await finalizeSetup(host, dryRun);
-      return;
-    }
-  } else {
-    info("Ollama", "Not found on this system");
-
-    const action = await p.select({
-      message: "Ollama is not installed.",
-      options: [
-        { value: "install", label: "Install ollama", hint: "uses official install script" },
-        { value: "skip", label: "Skip" },
-      ],
-    });
-    if (p.isCancel(action) || action === "skip") return;
-
-    if (dryRun) {
-      info("Dry run", "Would install ollama: curl -fsSL https://ollama.com/install.sh | sh");
-      return;
-    }
-
-    await installOrUpdateOllama(host);
-    await ensurePublicBinding(host, dryRun);
-    await finalizeSetup(host, dryRun);
-  }
+  const ready = await provisionOllama(host, dryRun);
+  if (ready && !dryRun) await pointDaemonAtOllama(host);
 }
