@@ -3,6 +3,9 @@
 .env.local
 .env.*.local
 
+# Compose secrets (written by setup.sh)
+secrets/
+
 # Actual configuration files (copied from examples)
 models.yaml
 

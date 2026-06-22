@@ -45,16 +45,11 @@ if [ "$fresh_env" = true ]; then
     POSTGRES_PASSWORD=$(gen_url_safe)
     REDIS_PASSWORD=$(gen_url_safe)
     SEARXNG_SECRET=$(gen_url_safe)
-    BETTER_AUTH_SECRET=$(gen_base64)
-    METRICS_AUTH="metrics:$(gen_url_safe)"
 
     sed_inplace "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${POSTGRES_PASSWORD}|" .env
     sed_inplace "s|^REDIS_PASSWORD=.*|REDIS_PASSWORD=${REDIS_PASSWORD}|" .env
     sed_inplace "s|^# SEARXNG_SECRET=.*|SEARXNG_SECRET=${SEARXNG_SECRET}|" .env
-    # base64 contains =/+, use # delimiter instead of |.
-    sed_inplace "s#^BETTER_AUTH_SECRET=.*#BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}#" .env
-    sed_inplace "s|^METRICS_AUTH=.*|METRICS_AUTH=${METRICS_AUTH}|" .env
-    echo "Generated POSTGRES_PASSWORD, REDIS_PASSWORD, SEARXNG_SECRET, BETTER_AUTH_SECRET, METRICS_AUTH."
+    echo "Generated POSTGRES_PASSWORD, REDIS_PASSWORD, SEARXNG_SECRET."
 fi
 
 echo
@@ -91,6 +86,23 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         sed_inplace "s|^# ACME_EMAIL=.*|ACME_EMAIL=${ACME_EMAIL}|" .env
     fi
 fi
+
+# App secrets reach the containers as Docker secrets (the *_FILE convention), so
+# they live only here, never in .env. Generated once, reused on re-runs.
+mkdir -p secrets && chmod 700 secrets
+[ -f secrets/better_auth_secret ] || printf '%s' "$(gen_base64)" > secrets/better_auth_secret
+[ -f secrets/metrics_password ] || printf '%s' "$(gen_url_safe)" > secrets/metrics_password
+# Apps need the full user:pass; Prometheus's password_file needs the password only.
+printf 'metrics:%s' "$(cat secrets/metrics_password)" > secrets/metrics_auth
+chmod 600 secrets/better_auth_secret secrets/metrics_password secrets/metrics_auth
+
+# The connection URL carries the DB credentials, so the apps receive it as a
+# secret too. Derived from .env, rewritten each run to stay in sync.
+pg_user=$(grep -E '^POSTGRES_USER=' .env | head -n1 | cut -d= -f2-)
+pg_db=$(grep -E '^POSTGRES_DB=' .env | head -n1 | cut -d= -f2-)
+pg_pw=$(grep -E '^POSTGRES_PASSWORD=' .env | head -n1 | cut -d= -f2-)
+printf 'postgresql://%s:%s@postgres:5432/%s' "${pg_user:-xinity}" "$pg_pw" "${pg_db:-xinity}" > secrets/db_connection_url
+chmod 600 secrets/db_connection_url
 
 chmod 600 .env
 
