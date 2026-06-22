@@ -112,6 +112,17 @@ const chatStreamSpec: StreamSpec<z.infer<typeof BackendChatChunkSchema>, ChatAcc
       finish_reason: acc.finish_reason ?? null,
     }],
   }),
+  synthesizeFinal: (acc, index, template) => {
+    if (acc.finish_reason != null) return null;
+    if (!acc.tool_calls && acc.content === "") return null;
+    return {
+      id: template.id,
+      object: template.object,
+      created: template.created,
+      model: template.model,
+      choices: [{ index, delta: {}, finish_reason: acc.tool_calls ? "tool_calls" : "stop" }],
+    };
+  },
 };
 
 export const ChatSyncChoiceSchema = z.looseObject({

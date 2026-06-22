@@ -288,9 +288,8 @@ export async function* readSSEStream(response: Response) {
 
   while (true) {
     const { value, done } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
     if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
 
     let eventBoundary = buffer.indexOf("\n\n");
     while (eventBoundary !== -1) {
@@ -301,6 +300,9 @@ export async function* readSSEStream(response: Response) {
       eventBoundary = buffer.indexOf("\n\n");
     }
   }
+
+  // Emit a final event the upstream left unterminated before closing.
+  if (buffer.trim().length > 0) yield processEvent(buffer);
 }
 
 function parseSseField(line: string): { name: string; value: string } | null {

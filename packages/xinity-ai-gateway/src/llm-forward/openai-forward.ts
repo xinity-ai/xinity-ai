@@ -42,6 +42,8 @@ export type StreamSpec<Chunk extends StreamChunkLike, Acc> = {
   initAcc: () => Acc;
   applyChoice: (acc: Acc, choice: Chunk["choices"][number]) => void;
   toLogEntry: (acc: Acc, index: number, model: string) => ChatStreamData[number];
+  /** Terminal chunk to emit when the upstream omitted a finish_reason. */
+  synthesizeFinal?: (acc: Acc, index: number, template: Chunk) => Chunk | null;
 };
 
 export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
@@ -63,11 +65,11 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
 
   const stream = new ReadableStream({
     async start(controller) {
+      let lastChunk: Chunk | undefined;
       try {
         for await (const event of readSSEStream(backendResponse)) {
           if (event.data === "[DONE]") {
             sawDone = true;
-            controller.enqueue(sseEncoder.encode("data: [DONE]\n\n"));
             break;
           }
 
@@ -80,10 +82,16 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
           }
           const parsed = spec.chunkSchema.safeParse(json);
           if (!parsed.success) {
-            log.warn({ issues: parsed.error.issues }, "Malformed backend SSE chunk, skipping");
+            // Forward chunks we can't model instead of dropping them; they skip logging only.
+            log.warn({ issues: parsed.error.issues }, "Unrecognized backend SSE chunk, forwarding unlogged");
+            if (json && typeof json === "object") {
+              (json as Record<string, unknown>).model = originalModel;
+            }
+            controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(json)}\n\n`));
             continue;
           }
           const chunk = { ...parsed.data, model: originalModel };
+          lastChunk = chunk;
 
           if (chunk.usage) {
             collectedUsage = chunk.usage;
@@ -99,6 +107,19 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
 
           controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
         }
+
+        const sortedAccs = [...accumByChoice.entries()].sort(([a], [b]) => a - b);
+
+        if (sawDone) {
+          // Backfill a finish_reason the backend never sent.
+          if (spec.synthesizeFinal && lastChunk) {
+            for (const [index, acc] of sortedAccs) {
+              const extra = spec.synthesizeFinal(acc, index, lastChunk);
+              if (extra) controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(extra)}\n\n`));
+            }
+          }
+          controller.enqueue(sseEncoder.encode("data: [DONE]\n\n"));
+        }
         controller.close();
 
         if (!sawDone) {
@@ -109,9 +130,7 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
           return;
         }
 
-        const outputData: ChatStreamData = [...accumByChoice.entries()]
-          .sort(([a], [b]) => a - b)
-          .map(([idx, acc]) => spec.toLogEntry(acc, idx, originalModel));
+        const outputData: ChatStreamData = sortedAccs.map(([idx, acc]) => spec.toLogEntry(acc, idx, originalModel));
 
         logChatUsage({
           ...logFields,
