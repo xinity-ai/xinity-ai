@@ -1080,6 +1080,18 @@ export async function installAll(targetVersion: string, dryRun = false, hardRese
   if (p.isCancel(installDaemon)) return;
 
   if (installDaemon) {
+    const setupOllama = await p.confirm({
+      message: "Set up Ollama on this machine? (one inference driver the daemon can use)",
+      initialValue: false,
+    });
+    if (p.isCancel(setupOllama)) return;
+    if (setupOllama) {
+      const { provisionOllama, LOCAL_OLLAMA_ENDPOINT } = await import("./ollama-setup.ts");
+      if (await provisionOllama(resolvedHost, dryRun)) {
+        shared.XINITY_OLLAMA_ENDPOINT = LOCAL_OLLAMA_ENDPOINT;
+      }
+    }
+
     p.log.step(pc.bold("\n── daemon ──"));
     const result = await installComponent({
       component: "daemon",
