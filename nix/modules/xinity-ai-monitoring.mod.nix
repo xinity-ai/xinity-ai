@@ -95,6 +95,52 @@
           default = [ ];
           description = "Additional raw Prometheus scrape_configs entries appended to the generated set. Use this to scrape services outside the xinity stack.";
         };
+
+        grafana = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Provision a Grafana instance alongside Prometheus, pre-wired with the local Prometheus as its default datasource. On by default; set to false to run Prometheus alone.";
+          };
+
+          listenAddress = lib.mkOption {
+            type = lib.types.str;
+            default = "127.0.0.1";
+            description = "Address Grafana binds to. Defaults to 127.0.0.1; put a reverse proxy (e.g. Caddy) in front to expose the UI.";
+          };
+
+          port = lib.mkOption {
+            type = lib.types.port;
+            default = 6121;
+            description = "HTTP port Grafana listens on.";
+          };
+
+          domain = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = "Public domain Grafana is served under. Sets root_url so redirects and generated links work behind a reverse proxy. Leave null when reaching Grafana directly over the bound address.";
+          };
+        };
+
+        logs = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Collect this machine's systemd journal into a local Loki store (shipped by Promtail) and expose it as a Grafana datasource named \"Loki\". On by default; set to false to skip log collection.";
+          };
+
+          port = lib.mkOption {
+            type = lib.types.port;
+            default = 6122;
+            description = "HTTP port the local Loki log store listens on. Bound to loopback; queried by Grafana over 127.0.0.1.";
+          };
+
+          retentionPeriod = lib.mkOption {
+            type = lib.types.str;
+            default = "168h";
+            description = "How long Loki retains log lines before the compactor deletes them. Must be a multiple of 24h (e.g. \"168h\" for 7 days).";
+          };
+        };
       };
 
       config = lib.mkIf cfg.enable {
@@ -122,6 +168,103 @@
               daemonJob
             ]
             ++ cfg.extraScrapeConfigs;
+        };
+
+        services.grafana = lib.mkIf cfg.grafana.enable {
+          enable = true;
+          settings.server = {
+            http_addr = cfg.grafana.listenAddress;
+            http_port = cfg.grafana.port;
+          } // lib.optionalAttrs (cfg.grafana.domain != null) {
+            domain = cfg.grafana.domain;
+            root_url = "https://${cfg.grafana.domain}/";
+          };
+          provision.datasources.settings.datasources =
+            [
+              {
+                name = "Prometheus";
+                type = "prometheus";
+                access = "proxy";
+                url = "http://127.0.0.1:${toString cfg.port}";
+                isDefault = true;
+              }
+            ]
+            ++ lib.optional cfg.logs.enable {
+              name = "Loki";
+              type = "loki";
+              access = "proxy";
+              url = "http://127.0.0.1:${toString cfg.logs.port}";
+            };
+        };
+
+        services.loki = lib.mkIf cfg.logs.enable {
+          enable = true;
+          configuration = {
+            auth_enabled = false;
+            server = {
+              http_listen_address = "127.0.0.1";
+              http_listen_port = cfg.logs.port;
+              grpc_listen_address = "127.0.0.1";
+              grpc_listen_port = 9095;
+              log_level = "warn";
+            };
+            common = {
+              instance_addr = "127.0.0.1";
+              path_prefix = "/var/lib/loki";
+              storage.filesystem = {
+                chunks_directory = "/var/lib/loki/chunks";
+                rules_directory = "/var/lib/loki/rules";
+              };
+              replication_factor = 1;
+              ring.kvstore.store = "inmemory";
+            };
+            schema_config.configs = [
+              {
+                from = "2024-01-01";
+                store = "tsdb";
+                object_store = "filesystem";
+                schema = "v13";
+                index = {
+                  prefix = "index_";
+                  period = "24h";
+                };
+              }
+            ];
+            limits_config.retention_period = cfg.logs.retentionPeriod;
+            compactor = {
+              working_directory = "/var/lib/loki/compactor";
+              retention_enabled = true;
+              delete_request_store = "filesystem";
+            };
+          };
+        };
+
+        services.promtail = lib.mkIf cfg.logs.enable {
+          enable = true;
+          configuration = {
+            server = {
+              http_listen_address = "127.0.0.1";
+              http_listen_port = 9080;
+              grpc_listen_port = 0;
+            };
+            clients = [
+              { url = "http://127.0.0.1:${toString cfg.logs.port}/loki/api/v1/push"; }
+            ];
+            scrape_configs = [
+              {
+                job_name = "journal";
+                journal = {
+                  max_age = "12h";
+                  labels.job = "systemd-journal";
+                };
+                relabel_configs = [
+                  { source_labels = [ "__journal__systemd_unit" ]; target_label = "unit"; }
+                  { source_labels = [ "__journal__hostname" ]; target_label = "host"; }
+                  { source_labels = [ "__journal_priority_keyword" ]; target_label = "level"; }
+                ];
+              }
+            ];
+          };
         };
       };
     };

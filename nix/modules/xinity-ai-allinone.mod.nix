@@ -48,6 +48,12 @@
           description = "Subdomain prefix for the infoserver (e.g. models.example.com).";
         };
 
+        grafanaSubdomain = lib.mkOption {
+          type = lib.types.str;
+          default = "grafana";
+          description = "Subdomain prefix for Grafana (e.g. grafana.example.com).";
+        };
+
         dashboardOrigin = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
@@ -74,6 +80,15 @@
             If null, defaults to localhost:<port> using the resolved xinity-infoserver module config.
           '';
         };
+
+        grafanaOrigin = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = ''
+            Upstream origin for grafana (e.g. "http://10.0.0.5:6121" or "localhost:6121").
+            If null, no grafana virtualHost is created.
+          '';
+        };
       };
 
       config = lib.mkIf cfg.enable {
@@ -95,6 +110,11 @@
           virtualHosts."${cfg.infoserverSubdomain}.${cfg.domain}" = {
             extraConfig = lib.mkDefault ''
               reverse_proxy ${infoserverTarget}
+            '';
+          };
+          virtualHosts."${cfg.grafanaSubdomain}.${cfg.domain}" = lib.mkIf (cfg.grafanaOrigin != null) {
+            extraConfig = lib.mkDefault ''
+              reverse_proxy ${cfg.grafanaOrigin}
             '';
           };
         };
@@ -220,6 +240,12 @@
           type = lib.types.str;
           default = "sysinfo";
           description = "Subdomain for infoserver (results in sysinfo.example.com).";
+        };
+
+        grafanaSubdomain = lib.mkOption {
+          type = lib.types.str;
+          default = "grafana";
+          description = "Subdomain for Grafana (results in grafana.example.com). Only routed when monitoring and Grafana are enabled.";
         };
 
         database = {
@@ -367,6 +393,25 @@
             type = lib.types.nullOr lib.types.str;
             default = null;
             description = "Scrape password for basicAuthUsername, inline. WARNING: exposes the secret in the Nix store; prefer basicAuthPasswordFile.";
+          };
+          grafana = {
+            enable = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = "Provision Grafana alongside Prometheus, pre-wired with the local Prometheus datasource. On by default; set to false to run Prometheus alone.";
+            };
+            port = lib.mkOption {
+              type = lib.types.port;
+              default = 6121;
+              description = "Port for the Grafana UI. Bound to localhost; Caddy serves it at grafana.<domain>.";
+            };
+          };
+          logs = {
+            enable = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = "Collect the machine's systemd journal into a local Loki store and expose it as a Grafana datasource. On by default; set to false to skip log collection.";
+            };
           };
         };
 
@@ -549,6 +594,10 @@
             basicAuthUsername = lib.mkDefault cfg.monitoring.basicAuthUsername;
             basicAuthPasswordFile = lib.mkDefault cfg.monitoring.basicAuthPasswordFile;
             basicAuthPassword = lib.mkDefault cfg.monitoring.basicAuthPassword;
+            grafana.enable = lib.mkDefault cfg.monitoring.grafana.enable;
+            grafana.port = lib.mkDefault cfg.monitoring.grafana.port;
+            grafana.domain = lib.mkDefault "${cfg.grafanaSubdomain}.${cfg.domain}";
+            logs.enable = lib.mkDefault cfg.monitoring.logs.enable;
           };
 
           # --- Caddy (always enabled in allinone) ---
@@ -559,6 +608,11 @@
             dashboardSubdomain = lib.mkDefault cfg.dashboardSubdomain;
             gatewaySubdomain = lib.mkDefault cfg.gatewaySubdomain;
             infoserverSubdomain = lib.mkDefault cfg.infoserverSubdomain;
+            grafanaSubdomain = lib.mkDefault cfg.grafanaSubdomain;
+            grafanaOrigin =
+              if cfg.monitoring.enable && cfg.monitoring.grafana.enable
+              then "localhost:${toString cfg.monitoring.grafana.port}"
+              else null;
           };
         };
     };
