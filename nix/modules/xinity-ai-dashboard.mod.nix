@@ -220,6 +220,12 @@
           description = "Enable the /mcp endpoint implementing the Model Context Protocol (MCP). This allows AI coding assistants and other MCP-compatible clients to interact with the dashboard programmatically.";
         };
 
+        prometheusUrl = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "URL of a Prometheus instance the dashboard queries server-side for live GPU metrics (e.g. http://127.0.0.1:9090). When set, the Compute page shows utilization rings and energy readouts. Leave null to keep the Compute page in its no-metrics mode.";
+        };
+
         licenseKey = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
@@ -302,6 +308,15 @@
       };
 
       config = lib.mkIf cfg.enable {
+        # Require a METRICS_AUTH source: the service-discovery endpoint would
+        # otherwise expose compute-node topology to anonymous callers.
+        assertions = [
+          {
+            assertion = cfg.metricsAuth != null || cfg.metricsAuthFile != null || cfg.environmentFiles != [ ];
+            message = "services.xinity-ai-dashboard: METRICS_AUTH is required. Set `metricsAuth`, `metricsAuthFile`, or provide METRICS_AUTH via `environmentFiles`.";
+          }
+        ];
+
         systemd.services.xinity-ai-dashboard = {
           description = "Xinity AI Dashboard";
           wantedBy = [ "multi-user.target" ];
@@ -355,6 +370,9 @@
           }
           // lib.optionalAttrs (cfg.instanceAdminEmails != null) {
             INSTANCE_ADMIN_EMAILS = cfg.instanceAdminEmails;
+          }
+          // lib.optionalAttrs (cfg.prometheusUrl != null) {
+            PROMETHEUS_URL = cfg.prometheusUrl;
           }
           // lib.optionalAttrs (cfg.licenseKey != null) {
             LICENSE_KEY = cfg.licenseKey;

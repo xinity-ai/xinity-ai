@@ -81,6 +81,8 @@ const recordUsageEvent = mock((_record: Record<string, unknown>) => {});
 mock.module("../../usageRecorder", () => ({ recordUsageEvent }));
 
 const { handleChatCompletion } = await import("./handle-chatCompletion");
+// Imported after the module mocks above so util's transitive `env` import sees the mock.
+const { readSSEStream } = await import("../util");
 
 const MOCK_TOOL_CALLS = [{ id: "call_test123", name: "get_weather", arguments: '{"location":"Boston"}' }];
 
@@ -987,5 +989,100 @@ describe("handleChatCompletion, usage event attribution", () => {
     const res = await handleChatCompletion(makeRequest());
     expect(res.status).toBe(404);
     expect(recordUsageEvent).not.toHaveBeenCalled();
+  });
+});
+
+// Streaming tool-call resilience: the gateway must not corrupt a tool call
+// (drop its closing `}` or its finish_reason) on the way to the client.
+
+const MODEL = "test-model";
+
+const OPEN_TOOL = { tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "bash", arguments: "" } }] };
+const argFragment = (args: string, withIndex = true) =>
+  ({ tool_calls: [{ ...(withIndex ? { index: 0 } : {}), function: { arguments: args } }] });
+
+const event = (delta: Record<string, unknown>, finishReason: string | null = null, term = "\n\n") =>
+  `data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", created: 1, model: MODEL, choices: [{ index: 0, delta, finish_reason: finishReason }] })}${term}`;
+const sseResponse = (lines: string[]) =>
+  new Response(lines.join(""), { headers: { "Content-Type": "text/event-stream" } });
+
+const clientChunks = (text: string): any[] =>
+  text.split("\n\n").map((b) => b.replace(/^data: /, "").trim())
+    .filter((d) => d && d !== "[DONE]")
+    .flatMap((d) => { try { return [JSON.parse(d)]; } catch { return []; } });
+const toolArgs = (chunks: any[]): string =>
+  chunks.flatMap((c) => c.choices?.[0]?.delta?.tool_calls ?? []).map((tc: any) => tc.function?.arguments ?? "").join("");
+const finishReasons = (chunks: any[]): string[] =>
+  chunks.map((c) => c.choices?.[0]?.finish_reason).filter(Boolean);
+
+const toolStreamRequest = () => new Request("http://localhost:4000/v1/chat/completions", {
+  method: "POST",
+  headers: { Authorization: "Bearer test" },
+  body: JSON.stringify({ model: MODEL, messages: [{ role: "user", content: "list files" }], tools: SAMPLE_TOOLS, stream: true }),
+});
+
+describe("streaming tool-call resilience", () => {
+  test("preserves tool-call arguments when the closing fragment omits its index", async () => {
+    nextUpstreamResponse = sseResponse([
+      event({ role: "assistant", content: null }),
+      event(OPEN_TOOL),
+      event(argFragment('{"command":"ls -la"')),
+      event(argFragment("}", false)),
+      event({}, "tool_calls"),
+      "data: [DONE]\n\n",
+    ]);
+
+    const res = await handleChatCompletion(toolStreamRequest());
+    const chunks = clientChunks(await res.text());
+
+    expect(JSON.parse(toolArgs(chunks))).toEqual({ command: "ls -la" });
+  });
+
+  test("forwards the final events when the upstream stream omits the trailing blank line", async () => {
+    nextUpstreamResponse = sseResponse([
+      event({ role: "assistant", content: null }),
+      event(OPEN_TOOL),
+      event(argFragment('{"command":"ls -la"')),
+      event(argFragment("}")),
+      event({}, "tool_calls"),
+      "data: [DONE]",
+    ]);
+
+    const res = await handleChatCompletion(toolStreamRequest());
+    const text = await res.text();
+    const chunks = clientChunks(text);
+
+    expect(JSON.parse(toolArgs(chunks))).toEqual({ command: "ls -la" });
+    expect(finishReasons(chunks)).toContain("tool_calls");
+    expect(text).toContain("data: [DONE]");
+  });
+
+  test("readSSEStream yields the final event when the stream ends without a trailing blank line", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const enc = new TextEncoder();
+        controller.enqueue(enc.encode("data: first\n\n"));
+        controller.enqueue(enc.encode("data: second"));
+        controller.close();
+      },
+    });
+
+    const events: string[] = [];
+    for await (const e of readSSEStream(new Response(body))) events.push(e.data);
+
+    expect(events).toEqual(["first", "second"]);
+  });
+
+  test("emits a terminal finish_reason when the upstream tool-call stream omits it", async () => {
+    nextUpstreamResponse = sseResponse([
+      event({ role: "assistant", content: null }),
+      event({ tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "bash", arguments: '{"command":"ls"}' } }] }),
+      "data: [DONE]\n\n",
+    ]);
+
+    const res = await handleChatCompletion(toolStreamRequest());
+    const chunks = clientChunks(await res.text());
+
+    expect(finishReasons(chunks)).toContain("tool_calls");
   });
 });

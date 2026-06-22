@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { secret, expert, clientPublic } from "common-env";
+import { secret, expert, clientPublic, metricsAuthSchema } from "common-env";
 
 export const dashboardEnvSchema = z.object({
   DB_CONNECTION_URL: z.url().describe("PostgreSQL connection string (e.g. postgresql://user:pass@host:5432/dbname)").meta(secret()),
@@ -19,7 +19,7 @@ export const dashboardEnvSchema = z.object({
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("debug").describe("Log level").meta(expert()),
   MAIL_URL: z.url().optional().describe("SMTP mail server URL (e.g. smtp://user:pass@mail.example.com:587)").meta(secret()),
   MAIL_FROM: z.string().optional().describe("Email sender address (e.g. noreply@mydomain.com)"),
-  METRICS_AUTH: z.string().describe("Metrics basic auth (user:pass)").optional().meta({ ...secret(), ...expert() }),
+  METRICS_AUTH: metricsAuthSchema({ required: true }).describe("Required. Basic auth for the /metrics endpoints (user:pass, comma-separated for multiple)").meta(secret()),
   INFOSERVER_CACHE_TTL_MS: z.coerce.number().default(30_000).describe("How long to cache infoserver responses locally (ms)").meta(expert()),
   NOTIFICATIONS_ENABLED: z.stringbool().default(true).describe("Enable the notification scheduler (deployment status, node health, capacity warnings, weekly reports)").meta(expert()),
   S3_ENDPOINT: z.url().optional().describe("SeaweedFS / S3-compatible endpoint URL (required for multimodal image display)").meta(expert()),
@@ -31,5 +31,6 @@ export const dashboardEnvSchema = z.object({
   LICENSE_KEY: z.string().optional().describe("License key for unlocking paid features (Ed25519-signed token)").meta(secret()),
   TRUSTED_ORIGINS: z.string().optional().describe("Comma-separated additional trusted origins for CSRF validation behind reverse proxies").meta(expert()),
   GATEWAY_URL: z.url().default("http://localhost:4010").describe("Gateway base URL shown to users in docs and code examples (e.g. https://api.example.com). Must NOT include the /v1 path segment - that is appended where needed. The deprecated PUBLIC_LLM_API_URL did include /v1; double-check after migrating.").meta(clientPublic()),
-  DEPLOYMENT_STRATEGY: z.enum(["first-fit", "balanced", "bin-pack", "proportional"]).default("balanced").describe("Node selection strategy for new model installations. 'first-fit' picks the first node that fits (deterministic). 'balanced' picks the node with the most absolute free VRAM (spread for HA). 'bin-pack' picks the tightest fit (consolidate so idle nodes stay drainable). 'proportional' picks the node with the lowest percent utilization (fair spread across heterogeneous fleets).").meta(expert()),
+  DEPLOYMENT_STRATEGY: z.enum(["first-fit", "balanced", "bin-pack", "proportional"]).default("balanced").describe("Node selection strategy for new model installations. 'first-fit' picks the first node that fits (deterministic). 'balanced' picks the node with the most absolute free VRAM (spread for HA). 'bin-pack' picks the tightest fit (consolidate so idle nodes stay drainable). 'proportional' picks the node with the lowest percent utilization (fair spread across heterogeneous nodes).").meta(expert()),
+  PROMETHEUS_URL: z.url().optional().describe("Prometheus server URL for live GPU metrics overlay on the Compute page (e.g. http://prometheus:9090). Enables utilization rings and energy readouts on compute nodes.").meta(expert()),
 });

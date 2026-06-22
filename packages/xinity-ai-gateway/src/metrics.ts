@@ -1,53 +1,10 @@
+import { createMetricsAuth } from "common-env";
 import { env } from "./env";
 import { releaseCallbacks } from "./llm-forward/release-registry";
 import { isAbortError } from "./llm-forward/util";
 import { rootLogger } from "./logger";
 
-function parseUserPass(value: string): { user: string; pass: string } | null {
-  const sep = value.indexOf(":");
-  if (sep === -1) return null;
-  return { user: value.slice(0, sep), pass: value.slice(sep + 1) };
-}
-
-// Metrics basic auth: comma-separated "user:pass" pairs, e.g. "admin:secret,reader:abc123"
-const METRICS_AUTH: Array<{ user: string; pass: string }> = (() => {
-  const raw = env.METRICS_AUTH;
-  if (!raw) return [];
-  return raw.split(",").map((pair) => {
-    const parsed = parseUserPass(pair);
-    if (!parsed) throw new Error(`Invalid METRICS_AUTH entry (missing ':'): "${pair}"`);
-    return parsed;
-  });
-})();
-
-const UNAUTHORIZED = (message = "Unauthorized") =>
-  new Response(message, {
-    status: 401,
-    headers: { "WWW-Authenticate": 'Basic realm="metrics"' },
-  });
-
-function checkMetricsAuth(req: Request): Response | null {
-  if (METRICS_AUTH.length === 0) return null; // no auth configured → open
-
-  const header = req.headers.get("authorization") ?? "";
-  if (!header.startsWith("Basic ")) return UNAUTHORIZED();
-
-  let decoded: string;
-  try {
-    decoded = atob(header.slice(6));
-  } catch {
-    return UNAUTHORIZED();
-  }
-
-  const credentials = parseUserPass(decoded);
-  if (!credentials) return UNAUTHORIZED();
-
-  if (!METRICS_AUTH.some((a) => a.user === credentials.user && a.pass === credentials.pass)) {
-    return UNAUTHORIZED();
-  }
-
-  return null;
-}
+const metricsAuth = createMetricsAuth(env.METRICS_AUTH);
 
 type Labels = Record<string, string>;
 
@@ -276,7 +233,7 @@ export function withMetrics(
 }
 
 export function handleMetrics(req: Request): Response {
-  const authErr = checkMetricsAuth(req);
+  const authErr = metricsAuth.unauthorized(req.headers.get("authorization"));
   if (authErr) return authErr;
 
   const body =

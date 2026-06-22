@@ -3,12 +3,12 @@ import { ownerPage } from "../utils/browser";
 import { expectVisible } from "../utils/helpers";
 
 /**
- * Renders against whatever fleet exists in the dev database. Run
- * `bun run simulate:fleet` first for the full experience; the page itself must
- * also render correctly with an empty fleet.
+ * Renders against whatever node set exists in the dev database. Run
+ * `bun run simulate:compute` first for the full experience; the page itself must
+ * also render correctly with an empty node set.
  */
-describe("Fleet page", () => {
-  test("instance-settings nav shows Compute and navigates to the fleet page", async () => {
+describe("Compute page", () => {
+  test("instance-settings nav shows Compute and navigates to the Compute page", async () => {
     const { page, context } = await ownerPage();
     try {
       await page.goto("/instance-settings/");
@@ -18,17 +18,17 @@ describe("Fleet page", () => {
       await expectVisible(nav.locator("text=Compute").first());
 
       await nav.locator("text=Compute").first().click();
-      await page.waitForURL(/\/instance-settings\/fleet\//);
+      await page.waitForURL(/\/instance-settings\/compute\//);
       await expectVisible(page.locator("h1:text-is('Compute')"));
     } finally {
       await context.close();
     }
   });
 
-  test("renders fleet totals and machine cards or the empty state", async () => {
+  test("renders compute totals and machine cards or the empty state", async () => {
     const { page, context } = await ownerPage();
     try {
-      await page.goto("/instance-settings/fleet/");
+      await page.goto("/instance-settings/compute/");
       await page.waitForLoadState("networkidle");
 
       const cards = page.locator("[data-testid='machine-card']");
@@ -38,9 +38,9 @@ describe("Fleet page", () => {
       if (cardCount === 0) {
         await expectVisible(emptyState);
       } else {
-        // Hero tiles render with the fleet
+        // Hero tiles render with the node set
         await expectVisible(page.locator("text=Machines").first());
-        await expectVisible(page.locator("text=Fleet activity").first());
+        await expectVisible(page.locator("text=Activity").first());
         // Every card shows a success/requests line or the no-requests hint
         const firstCard = cards.first();
         await expectVisible(firstCard);
@@ -53,7 +53,7 @@ describe("Fleet page", () => {
   test("range selector switches without errors", async () => {
     const { page, context } = await ownerPage();
     try {
-      await page.goto("/instance-settings/fleet/");
+      await page.goto("/instance-settings/compute/");
       await page.waitForLoadState("networkidle");
 
       const sevenDays = page.locator("button:text-is('7d')");

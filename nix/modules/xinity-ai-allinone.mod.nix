@@ -180,6 +180,7 @@
         self.nixosModules.infoserver
         self.nixosModules.searxng
         self.nixosModules.seaweedfs
+        self.nixosModules.prometheus
         self.nixosModules.caddy
 
         (lib.mkRemovedOptionModule
@@ -341,6 +342,25 @@
           };
         };
 
+        prometheus = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = "Enable the bundled Prometheus instance, pre-wired to scrape the local gateway and dashboard. When enabled, the dashboard's PROMETHEUS_URL is set automatically so the Compute page shows live GPU metrics.";
+          };
+          port = lib.mkOption {
+            type = lib.types.port;
+            default = 9090;
+            description = "Port for the Prometheus query API and web UI. Bound to localhost; the dashboard queries it over loopback.";
+          };
+          daemonTargets = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [ ];
+            example = [ "10.0.0.5:4044" "10.0.0.6:4044" ];
+            description = "host:port entries for each remote daemon node's /metrics endpoint. Generate this list from the dashboard's Instance Settings > Monitoring page.";
+          };
+        };
+
         # --- Secret file options (recommended for production) ---
         # These use the _FILE env var pattern for secure secret injection.
 
@@ -468,6 +488,11 @@
             infoserverUrl = lib.mkDefault infoserverUrl;        # Internal URL for server-side fetching
             gatewayUrl = lib.mkDefault publicGatewayUrl;        # Public gateway base URL (no /v1 suffix)
             nodeEnv = lib.mkDefault "production";
+            prometheusUrl = lib.mkDefault (
+              if cfg.prometheus.enable
+              then "http://127.0.0.1:${toString cfg.prometheus.port}"
+              else null
+            );
             s3Endpoint = lib.mkDefault (
               if cfg.seaweedfs.enable
               then "http://127.0.0.1:${toString cfg.seaweedfs.s3Port}"
@@ -504,6 +529,15 @@
             enable = true;
             s3Port = lib.mkDefault cfg.seaweedfs.s3Port;
             s3Config = lib.mkDefault cfg.seaweedfs.s3Config;
+          };
+
+          # --- Prometheus ---
+          services.xinity-ai-prometheus = lib.mkIf cfg.prometheus.enable {
+            enable = true;
+            port = lib.mkDefault cfg.prometheus.port;
+            gatewayTarget = lib.mkDefault "localhost:${toString cfg.gateway.port}";
+            dashboardTarget = lib.mkDefault "localhost:${toString cfg.dashboard.port}";
+            daemonTargets = lib.mkDefault cfg.prometheus.daemonTargets;
           };
 
           # --- Caddy (always enabled in allinone) ---

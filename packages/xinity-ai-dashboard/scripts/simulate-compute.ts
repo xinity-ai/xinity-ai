@@ -1,5 +1,5 @@
 /**
- * Demo fleet simulator for local UI development. Creates a set of demo
+ * Demo compute simulator for local UI development. Creates a set of demo
  * machines, deployments, and model installations so the compute page shows
  * realistic data. Seeds an hour of backfill so charts are not empty, then
  * keeps online machines active with live events for the specified duration.
@@ -11,7 +11,7 @@
  *
  * Cleans up all created rows on exit so no stale state is left behind.
  *
- * Usage: bun run simulate:fleet [minutes]   (default 30)
+ * Usage: bun run simulate:compute [minutes]   (default 30)
  */
 import { join } from "path";
 import { readFileSync } from "fs";
@@ -220,7 +220,7 @@ async function main() {
   console.log(`Simulating for ${minutes} minutes (Ctrl-C to stop and clean up)...`);
 
   async function cleanup() {
-    console.log("\nCleaning up demo fleet...");
+    console.log("\nCleaning up demo nodes...");
     if (nodeIds.length > 0) {
       await db.delete(usageEventT).where(inArray(usageEventT.nodeId, nodeIds));
       await db.delete(aiNodeT).where(inArray(aiNodeT.id, nodeIds)); // cascades to installations + states

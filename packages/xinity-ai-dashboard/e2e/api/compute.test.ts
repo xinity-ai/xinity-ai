@@ -12,18 +12,18 @@ import { ownerFetch, getSetupState, apiUrl } from "./api-helpers";
 import { ensureE2EReady } from "../guard";
 import { STORAGE_STATE, BASE_URL, type StorageState } from "../utils/test-data";
 
-type FleetNode = {
+type NodeSummary = {
   id: string;
   machineName: string | null;
   online: boolean;
   models: unknown[];
   usage: { requests: number; failedRequests: number; inputTokens: number; outputTokens: number };
 };
-type FleetOverview = {
-  nodes: FleetNode[];
+type ComputeOverview = {
+  nodes: NodeSummary[];
   totals: { machinesTotal: number; requests: number; inputTokens: number };
 };
-type FleetHistory = {
+type ComputeHistory = {
   bucketSeconds: number;
   series: { nodeId: string; points: { t: number; tokens: number }[] }[];
 };
@@ -58,22 +58,22 @@ beforeAll(async () => {
   const [node] = await db
     .insert(aiNodeT)
     .values({
-      host: `fleet-e2e-${randomUUID()}`,
+      host: `compute-e2e-${randomUUID()}`,
       port: 9123,
       estCapacity: 80,
       gpuCount: 1,
-      machineName: "Fleet E2E Test Machine",
+      machineName: "Compute E2E Test Machine",
       gpus: [{ vendor: "nvidia", name: "NVIDIA H100 80GB HBM3", vramMb: 81559 }],
     })
     .returning();
   nodeId = node.id;
 
   await db.insert(usageEventT).values([
-    { organizationId: orgId, model: "fleet-e2e-model", nodeId, inputTokens: 100, outputTokens: 50, success: true },
-    { organizationId: orgId, model: "fleet-e2e-model", nodeId, inputTokens: 200, outputTokens: 70, success: true },
-    { organizationId: orgId, model: "fleet-e2e-model", nodeId, inputTokens: 0, outputTokens: 0, success: false },
+    { organizationId: orgId, model: "compute-e2e-model", nodeId, inputTokens: 100, outputTokens: 50, success: true },
+    { organizationId: orgId, model: "compute-e2e-model", nodeId, inputTokens: 200, outputTokens: 70, success: true },
+    { organizationId: orgId, model: "compute-e2e-model", nodeId, inputTokens: 0, outputTokens: 0, success: false },
     // Outside the default 24h range; must be excluded from range-scoped stats
-    { organizationId: orgId, model: "fleet-e2e-model", nodeId, inputTokens: 9999, outputTokens: 9999, success: true, createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000) },
+    { organizationId: orgId, model: "compute-e2e-model", nodeId, inputTokens: 9999, outputTokens: 9999, success: true, createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000) },
   ]);
 });
 
@@ -83,15 +83,15 @@ afterAll(async () => {
   await db.delete(aiNodeT).where(eq(aiNodeT.id, nodeId));
 });
 
-describe("fleet API", () => {
+describe("compute API", () => {
   test("overview returns the node with inventory and range-scoped usage", async () => {
-    const res = await ownerFetch("/api/fleet/overview");
+    const res = await ownerFetch("/api/compute/overview");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as FleetOverview;
+    const body = (await res.json()) as ComputeOverview;
 
     const node = body.nodes.find((n) => n.id === nodeId);
     expect(node).toBeTruthy();
-    expect(node!.machineName).toBe("Fleet E2E Test Machine");
+    expect(node!.machineName).toBe("Compute E2E Test Machine");
     expect(node!.online).toBe(true);
     expect(node!.usage.requests).toBe(3);
     expect(node!.usage.failedRequests).toBe(1);
@@ -103,18 +103,18 @@ describe("fleet API", () => {
   });
 
   test("overview range parameter widens the window", async () => {
-    const res = await ownerFetch("/api/fleet/overview?rangeHours=72");
+    const res = await ownerFetch("/api/compute/overview?rangeHours=72");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as FleetOverview;
+    const body = (await res.json()) as ComputeOverview;
     const node = body.nodes.find((n) => n.id === nodeId)!;
     expect(node.usage.requests).toBe(4);
     expect(node.usage.inputTokens).toBe(300 + 9999);
   });
 
   test("history returns bucketed tokens for the node", async () => {
-    const res = await ownerFetch("/api/fleet/history?rangeHours=24");
+    const res = await ownerFetch("/api/compute/history?rangeHours=24");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as FleetHistory;
+    const body = (await res.json()) as ComputeHistory;
     expect(body.bucketSeconds).toBe(1800);
 
     const series = body.series.find((s) => s.nodeId === nodeId);
@@ -124,17 +124,17 @@ describe("fleet API", () => {
   });
 
   test("unauthenticated requests are rejected", async () => {
-    const res = await fetch(apiUrl("/api/fleet/overview"), {
+    const res = await fetch(apiUrl("/api/compute/overview"), {
       headers: { Origin: BASE_URL },
     });
     expect(res.status).toBeGreaterThanOrEqual(401);
     expect(res.status).toBeLessThan(500);
   });
 
-  test("viewer role is denied access to the fleet overview", async () => {
+  test("viewer role is denied access to the compute overview", async () => {
     const storageState = JSON.parse(readFileSync(STORAGE_STATE.viewer, "utf-8")) as StorageState;
     const cookies = storageState.cookies.map((c) => `${c.name}=${c.value}`).join("; ");
-    const res = await fetch(apiUrl("/api/fleet/overview"), {
+    const res = await fetch(apiUrl("/api/compute/overview"), {
       headers: { "Content-Type": "application/json", Origin: BASE_URL, Cookie: cookies },
     });
     expect(res.status).toBe(403);

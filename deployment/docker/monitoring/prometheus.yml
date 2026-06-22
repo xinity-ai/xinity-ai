@@ -1,0 +1,37 @@
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+scrape_configs:
+  - job_name: xinity-gateway
+    static_configs:
+      - targets:
+          - gateway:4121
+    metrics_path: /metrics
+    basic_auth:
+      username: metrics
+      password_file: /run/secrets/metrics_password
+
+  - job_name: xinity-dashboard
+    static_configs:
+      - targets:
+          - dashboard:5121
+    metrics_path: /metrics
+    basic_auth:
+      username: metrics
+      password_file: /run/secrets/metrics_password
+
+  # Daemon targets are discovered dynamically from the dashboard's node registry,
+  # so this stays current as the node set changes, no per-node edits or reloads.
+  - job_name: xinity-daemon
+    metrics_path: /metrics
+    http_sd_configs:
+      - url: http://dashboard:5121/metrics/sd/daemons
+        refresh_interval: 3m
+        basic_auth:
+          username: metrics
+          password_file: /run/secrets/metrics_password
+    # Set if the daemons' METRICS_AUTH is configured (authenticates the scrape):
+    # basic_auth:
+    #   username: metrics
+    #   password: <daemon METRICS_AUTH password>

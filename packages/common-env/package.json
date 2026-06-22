@@ -1,6 +1,9 @@
 {
   "name": "common-env",
   "module": "src/index.ts",
+  "scripts": {
+    "test": "bun test src/"
+  },
   "exports": {
     ".": {
       "types": "./src/index.ts",

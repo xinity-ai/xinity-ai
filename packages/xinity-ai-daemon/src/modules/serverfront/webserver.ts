@@ -5,6 +5,7 @@ import { env } from "../../env";
 import { rootLogger } from "../../logger";
 import { createOpenapiSpec, createScalarPage } from "./openai";
 import { handleProxyRequest } from "./proxy";
+import { handleDaemonMetrics } from "./metrics";
 
 export async function startServer() {
   const handler = new OpenAPIHandler(router, {
@@ -23,6 +24,9 @@ export async function startServer() {
     },
     async fetch(req: Request) {
       const url = new URL(req.url);
+      if (url.pathname === "/metrics") {
+        return handleDaemonMetrics(req);
+      }
       if (url.pathname.startsWith("/proxy/")) {
         return handleProxyRequest(req, url);
       }

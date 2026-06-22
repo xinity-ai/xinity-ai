@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { pickBucketSeconds, mergeHistorySeries } from "./fleet";
+import { pickBucketSeconds, mergeHistorySeries } from "./compute";
 
 describe("pickBucketSeconds", () => {
   test("scales bucket width with range", () => {

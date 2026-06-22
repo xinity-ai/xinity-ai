@@ -13,10 +13,12 @@ import {
   isNotNull,
 } from "common-db";
 import { getDB } from "$lib/server/db";
-import { mergeHistorySeries, pickBucketSeconds } from "$lib/server/fleet/fleet";
+import { mergeHistorySeries, pickBucketSeconds } from "$lib/server/compute/compute";
+import { serverEnv } from "$lib/server/serverenv";
+import { rootLogger } from "$lib/server/logging";
 import z from "zod";
 
-const tags = ["Fleet"];
+const tags = ["Compute"];
 
 
 const RangeInputSchema = z.object({
@@ -29,21 +31,21 @@ const GpuInfoSchema = z.object({
   vramMb: z.number(),
 });
 
-const FleetModelSchema = z.object({
+const NodeModelSchema = z.object({
   name: z.string(),
   driver: z.string(),
   lifecycleState: z.string().nullable(),
   progress: z.number().nullable(),
 });
 
-const FleetUsageSchema = z.object({
+const NodeUsageSchema = z.object({
   requests: z.number(),
   failedRequests: z.number(),
   inputTokens: z.number(),
   outputTokens: z.number(),
 });
 
-const FleetNodeSchema = z.object({
+const NodeSummarySchema = z.object({
   id: z.string(),
   host: z.string(),
   machineName: z.string().nullable(),
@@ -51,11 +53,11 @@ const FleetNodeSchema = z.object({
   gpuCount: z.number(),
   gpus: z.array(GpuInfoSchema),
   estCapacity: z.number(),
-  models: z.array(FleetModelSchema),
-  usage: FleetUsageSchema,
+  models: z.array(NodeModelSchema),
+  usage: NodeUsageSchema,
 });
 
-const FleetTotalsSchema = z.object({
+const ComputeTotalsSchema = z.object({
   machinesOnline: z.number(),
   machinesTotal: z.number(),
   gpuCount: z.number(),
@@ -65,13 +67,13 @@ const FleetTotalsSchema = z.object({
   outputTokens: z.number(),
 });
 
-const FleetOverviewOutput = z.object({
+const ComputeOverviewOutput = z.object({
   rangeHours: z.number(),
-  nodes: z.array(FleetNodeSchema),
-  totals: FleetTotalsSchema,
+  nodes: z.array(NodeSummarySchema),
+  totals: ComputeTotalsSchema,
 });
-export type FleetOverview = z.infer<typeof FleetOverviewOutput>;
-export type FleetNode = z.infer<typeof FleetNodeSchema>;
+export type ComputeOverview = z.infer<typeof ComputeOverviewOutput>;
+export type NodeSummary = z.infer<typeof NodeSummarySchema>;
 
 const HistoryPointSchema = z.object({
   /** Bucket start in epoch seconds. */
@@ -80,7 +82,7 @@ const HistoryPointSchema = z.object({
   requests: z.number(),
 });
 
-const FleetHistoryOutput = z.object({
+const ComputeHistoryOutput = z.object({
   rangeHours: z.number(),
   bucketSeconds: z.number(),
   series: z.array(z.object({
@@ -88,11 +90,11 @@ const FleetHistoryOutput = z.object({
     points: z.array(HistoryPointSchema),
   })),
 });
-export type FleetHistory = z.infer<typeof FleetHistoryOutput>;
+export type ComputeHistory = z.infer<typeof ComputeHistoryOutput>;
 
 const sumNumber = (column: unknown) => sql<number>`coalesce(sum(${column}), 0)`.mapWith(Number);
 
-export async function buildFleetOverview(rangeHours: number): Promise<FleetOverview> {
+export async function buildComputeOverview(rangeHours: number): Promise<ComputeOverview> {
   const since = new Date(Date.now() - rangeHours * 60 * 60 * 1000);
   const db = getDB();
 
@@ -140,7 +142,7 @@ export async function buildFleetOverview(rangeHours: number): Promise<FleetOverv
 
   const emptyUsage = { requests: 0, failedRequests: 0, inputTokens: 0, outputTokens: 0 };
 
-  const fleetNodes: FleetNode[] = nodes.map((node) => {
+  const nodeSummaries: NodeSummary[] = nodes.map((node) => {
     const usage = usageByNode.get(node.id);
     return {
       id: node.id,
@@ -179,17 +181,17 @@ export async function buildFleetOverview(rangeHours: number): Promise<FleetOverv
 
   return {
     rangeHours,
-    nodes: fleetNodes,
+    nodes: nodeSummaries,
     totals: {
-      machinesOnline: fleetNodes.filter((n) => n.online).length,
-      machinesTotal: fleetNodes.length,
-      gpuCount: fleetNodes.reduce((acc, n) => acc + n.gpuCount, 0),
+      machinesOnline: nodeSummaries.filter((n) => n.online).length,
+      machinesTotal: nodeSummaries.length,
+      gpuCount: nodeSummaries.reduce((acc, n) => acc + n.gpuCount, 0),
       ...totalUsage,
     },
   };
 }
 
-export async function buildFleetHistory(rangeHours: number): Promise<FleetHistory> {
+export async function buildComputeHistory(rangeHours: number): Promise<ComputeHistory> {
   const bucketSeconds = pickBucketSeconds(rangeHours);
   const since = new Date(Date.now() - rangeHours * 60 * 60 * 1000);
   const db = getDB();
@@ -219,29 +221,100 @@ export async function buildFleetHistory(rangeHours: number): Promise<FleetHistor
   };
 }
 
-const fleetOverview = rootOs
+const computeOverview = rootOs
   .use(withInstanceAdmin)
   .route({
     path: "/overview", method: "GET", tags,
-    summary: "Get Fleet Overview",
+    summary: "Get Compute Overview",
     description: "Returns all compute nodes with hardware inventory, liveness, installed models, and request statistics",
   })
   .input(RangeInputSchema.optional())
-  .output(FleetOverviewOutput)
-  .handler(({ input }) => buildFleetOverview(input?.rangeHours ?? 24));
+  .output(ComputeOverviewOutput)
+  .handler(({ input }) => buildComputeOverview(input?.rangeHours ?? 24));
 
-const fleetHistory = rootOs
+const computeHistory = rootOs
   .use(withInstanceAdmin)
   .route({
     path: "/history", method: "GET", tags,
-    summary: "Get Fleet History",
+    summary: "Get Compute History",
     description: "Returns bucketed per-node time series of token throughput for charts",
   })
   .input(RangeInputSchema.optional())
-  .output(FleetHistoryOutput)
-  .handler(({ input }) => buildFleetHistory(input?.rangeHours ?? 24));
+  .output(ComputeHistoryOutput)
+  .handler(({ input }) => buildComputeHistory(input?.rangeHours ?? 24));
 
-export const fleetRouter = rootOs.prefix("/fleet").router({
-  overview: fleetOverview,
-  history: fleetHistory,
+// ─── Live metrics from Prometheus ────────────────────────────────────────────
+
+type PromVectorResult = { metric: Record<string, string>; value: [number, string] };
+
+async function queryPrometheusInstant(prometheusUrl: string, query: string): Promise<PromVectorResult[]> {
+  const url = new URL("/api/v1/query", prometheusUrl);
+  url.searchParams.set("query", query);
+  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(5000) });
+  if (!res.ok) return [];
+  const json = await res.json() as { status: string; data: { resultType: string; result: PromVectorResult[] } };
+  if (json.status !== "success" || json.data.resultType !== "vector") return [];
+  return json.data.result;
+}
+
+const LiveMetricsNodeSchema = z.object({
+  nodeId: z.string(),
+  utilizationAvg: z.number(),
+  energyWh: z.number(),
+});
+
+const LiveMetricsOutput = z.object({
+  available: z.boolean(),
+  nodes: z.array(LiveMetricsNodeSchema),
+});
+
+const computeLiveMetrics = rootOs
+  .use(withInstanceAdmin)
+  .route({
+    path: "/live-metrics", method: "GET", tags,
+    summary: "Get Compute Live Metrics",
+    description: "Queries Prometheus for real-time GPU utilization and energy. Returns available=false when PROMETHEUS_URL is not configured or Prometheus is unreachable.",
+  })
+  .input(z.object({}).optional())
+  .output(LiveMetricsOutput)
+  .handler(async () => {
+    const prometheusUrl = serverEnv.PROMETHEUS_URL;
+    if (!prometheusUrl) return { available: false, nodes: [] };
+
+    try {
+      // Metrics are per-GPU; roll them up to one value per node.
+      const [utilResults, energyResults] = await Promise.all([
+        queryPrometheusInstant(prometheusUrl, "avg by (node_id) (daemon_gpu_utilization_percent)"),
+        queryPrometheusInstant(prometheusUrl, "sum by (node_id) (daemon_gpu_energy_wh_total)"),
+      ]);
+
+      const nodeMap = new Map<string, { utilizationAvg: number; energyWh: number }>();
+
+      for (const r of utilResults) {
+        const nodeId = r.metric["node_id"];
+        if (nodeId) nodeMap.set(nodeId, { utilizationAvg: parseFloat(r.value[1]) || 0, energyWh: 0 });
+      }
+      for (const r of energyResults) {
+        const nodeId = r.metric["node_id"];
+        if (!nodeId) continue;
+        const existing = nodeMap.get(nodeId);
+        const energyWh = parseFloat(r.value[1]) || 0;
+        if (existing) existing.energyWh = energyWh;
+        else nodeMap.set(nodeId, { utilizationAvg: 0, energyWh });
+      }
+
+      return {
+        available: true,
+        nodes: [...nodeMap.entries()].map(([nodeId, m]) => ({ nodeId, ...m })),
+      };
+    } catch (err) {
+      rootLogger.warn({ err, prometheusUrl }, "Prometheus query failed; compute live metrics unavailable");
+      return { available: false, nodes: [] };
+    }
+  });
+
+export const computeRouter = rootOs.prefix("/compute").router({
+  overview: computeOverview,
+  history: computeHistory,
+  liveMetrics: computeLiveMetrics,
 });

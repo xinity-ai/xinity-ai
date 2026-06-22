@@ -1,8 +1,9 @@
 import { z } from "zod";
-import { secret, expert, tlsEnvSchema } from "common-env";
+import { secret, expert, tlsEnvSchema, metricsAuthSchema } from "common-env";
 import { logEnvSchema } from "common-log";
 
 export const daemonEnvSchema = z.object({
+  METRICS_AUTH: metricsAuthSchema().describe("Metrics basic auth, comma-separated user:pass pairs (e.g. admin:secret)").meta(secret()),
   PORT: z.coerce.number().default(4044).describe("Listen port"),
   HOST: z.string().default("0.0.0.0").describe("Bind address (use 0.0.0.0 to listen on all interfaces)"),
   UNIX_SOCKET: z.string().optional().describe("Unix socket path (overrides HOST/PORT)").meta(expert()),

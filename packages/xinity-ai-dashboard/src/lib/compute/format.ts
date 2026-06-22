@@ -1,20 +1,23 @@
-/** Display formatters and shared types for the fleet overview page. */
+/** Display formatters and shared types for the compute overview page. */
+
+export type LiveMetricsNode = { nodeId: string; utilizationAvg: number; energyWh: number };
+export type LiveMetrics = { available: boolean; nodes: LiveMetricsNode[] };
 
 export type GpuInfo = { vendor: string; name: string; vramMb: number };
-export type FleetModel = { name: string; driver: string; lifecycleState: string | null; progress: number | null };
-export type FleetUsage = { requests: number; failedRequests: number; inputTokens: number; outputTokens: number };
-export type FleetNode = {
+export type NodeModel = { name: string; driver: string; lifecycleState: string | null; progress: number | null };
+export type NodeUsage = { requests: number; failedRequests: number; inputTokens: number; outputTokens: number };
+export type NodeSummary = {
   id: string; host: string; machineName: string | null; online: boolean;
   gpuCount: number; gpus: GpuInfo[]; estCapacity: number;
-  models: FleetModel[]; usage: FleetUsage;
+  models: NodeModel[]; usage: NodeUsage;
 };
-export type FleetTotals = {
+export type ComputeTotals = {
   machinesOnline: number; machinesTotal: number; gpuCount: number;
   requests: number; failedRequests: number; inputTokens: number; outputTokens: number;
 };
-export type FleetOverview = { rangeHours: number; nodes: FleetNode[]; totals: FleetTotals };
+export type ComputeOverview = { rangeHours: number; nodes: NodeSummary[]; totals: ComputeTotals };
 export type HistoryPoint = { t: number; tokens: number; requests: number };
-export type FleetHistory = { rangeHours: number; bucketSeconds: number; series: { nodeId: string; points: HistoryPoint[] }[] };
+export type ComputeHistory = { rangeHours: number; bucketSeconds: number; series: { nodeId: string; points: HistoryPoint[] }[] };
 
 export function formatTokens(value: number): string {
   if (value >= 1_000_000_000) return trimZero((value / 1_000_000_000).toFixed(1)) + "B";

@@ -3,6 +3,14 @@
  * Imported by server hooks/routes that report request activity.
  */
 import * as promClient from "prom-client";
+import { createMetricsAuth } from "common-env";
+import { serverEnv } from "$lib/server/serverenv";
+
+const metricsAuth = createMetricsAuth(serverEnv.METRICS_AUTH);
+
+export function isMetricsAuthorized(request: Request): boolean {
+  return metricsAuth.isAuthorized(request.headers.get("authorization"));
+}
 
 export const metricRegister = new promClient.Registry();
 

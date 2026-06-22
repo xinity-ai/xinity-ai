@@ -46,15 +46,19 @@ services:
     environment:
       HOST: 0.0.0.0
       PORT: ${GATEWAY_PORT:-4121}
-      DB_CONNECTION_URL: postgresql://${POSTGRES_USER:-xinity}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-xinity}
+      DB_CONNECTION_URL_FILE: /run/secrets/db_connection_url
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       INFOSERVER_URL: ${INFOSERVER_URL:-https://sysinfo.xinity.ai}
       WEB_SEARCH_ENGINE_URL: ${WEB_SEARCH_ENGINE_URL:-http://searxng:${SEARXNG_PORT:-8888}}
       RESPONSE_CACHE_TTL_SECONDS: ${RESPONSE_CACHE_TTL:-3600}
+      METRICS_AUTH_FILE: /run/secrets/metrics_auth
     networks:
       - xinity-network
     ports:
       - "127.0.0.1:${GATEWAY_PORT:-4121}:${GATEWAY_PORT:-4121}"
+    secrets:
+      - db_connection_url
+      - metrics_auth
 
   dashboard:
     image: ghcr.io/xinity-ai/xinity-ai-dashboard:${VERSION:?VERSION is required (set in .env)}
@@ -68,8 +72,9 @@ services:
     environment:
       HTTP_PORT: ${DASHBOARD_PORT:-5121}
       NODE_ENV: production
-      DB_CONNECTION_URL: postgresql://${POSTGRES_USER:-xinity}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-xinity}
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+      DB_CONNECTION_URL_FILE: /run/secrets/db_connection_url
+      BETTER_AUTH_SECRET_FILE: /run/secrets/better_auth_secret
+      METRICS_AUTH_FILE: /run/secrets/metrics_auth
       ORIGIN: ${ORIGIN:-http://localhost:${DASHBOARD_PORT:-5121}}
       HTTP_OVERRIDE_ORIGIN: ${HTTP_OVERRIDE_ORIGIN:-${ORIGIN:-http://localhost:${DASHBOARD_PORT:-5121}}}
       GATEWAY_URL: ${GATEWAY_URL:-http://localhost:${GATEWAY_PORT:-4121}}
@@ -80,6 +85,10 @@ services:
       - xinity-network
     ports:
       - "127.0.0.1:${DASHBOARD_PORT:-5121}:${DASHBOARD_PORT:-5121}"
+    secrets:
+      - db_connection_url
+      - better_auth_secret
+      - metrics_auth
 
   infoserver:
     image: ghcr.io/xinity-ai/xinity-infoserver:${VERSION:?VERSION is required (set in .env)}
@@ -105,6 +114,42 @@ services:
     networks:
       - xinity-network
     profiles: [searxng]
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    restart: unless-stopped
+    profiles: [monitoring]
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    networks:
+      - xinity-network
+    secrets:
+      - metrics_password
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    restart: unless-stopped
+    profiles: [monitoring]
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    networks:
+      - xinity-network
 
   caddy:
     image: caddy:2-alpine
@@ -137,8 +182,20 @@ networks:
   xinity-network:
     driver: bridge
 
+secrets:
+  db_connection_url:
+    file: ./secrets/db_connection_url
+  better_auth_secret:
+    file: ./secrets/better_auth_secret
+  metrics_auth:
+    file: ./secrets/metrics_auth
+  metrics_password:
+    file: ./secrets/metrics_password
+
 volumes:
   postgres-data:
   redis-data:
   caddy-data:
   caddy-config:
+  prometheus_data:
+  grafana_data:

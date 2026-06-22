@@ -660,7 +660,7 @@ async function checkDaemonConnectivity(
   await pushInfoserverCheck(checks, values, host);
   if (serviceActive) {
     const bindHost = values.HOST || "0.0.0.0";
-    const port = values.PORT || "4010";
+    const port = values.PORT || "4044";
     const checkHost = bindHost === "0.0.0.0" ? "localhost" : bindHost;
     checks.push(await checkServiceHealth(host, "Health endpoint", `http://${checkHost}:${port}/healthCheck`));
   }

@@ -27,50 +27,80 @@ mock.module("../env", () => ({ env: {
 
 const {
   parseNvidiaMetricsOutput,
+  parseThrottleOutput,
   estimateTdpWatts,
   estimatePowerWatts,
-  MetricsAccumulator,
+  GpuMetricsStore,
 } = await import("./metrics-sampler");
 
+type GpuMetricSample = import("./metrics-sampler").GpuMetricSample;
+
+// Column order: index,uuid,name,driver_version,util.gpu,util.mem,temp,power.draw,power.limit,mem.used,mem.total,ecc.unc,ecc.cor
+const LINE = "0, GPU-abc, NVIDIA H100 80GB HBM3, 560.35.03, 87, 41, 62, 310.45, 700, 65321, 81559, 0, 3";
+
 describe("parseNvidiaMetricsOutput", () => {
-  test("parses utilization, power, and memory", () => {
-    const csv = "NVIDIA H100 PCIe, 87, 310.45, 65321\n";
-    const samples = parseNvidiaMetricsOutput(csv);
-    expect(samples).toHaveLength(1);
-    expect(samples[0]!.name).toBe("NVIDIA H100 PCIe");
-    expect(samples[0]!.utilizationPct).toBe(87);
-    expect(samples[0]!.powerWatts).toBeCloseTo(310.45);
-    expect(samples[0]!.memoryUsedMb).toBe(65321);
+  test("parses every queried field", () => {
+    const [s] = parseNvidiaMetricsOutput(LINE + "\n");
+    expect(s).toEqual({
+      index: 0,
+      uuid: "GPU-abc",
+      name: "NVIDIA H100 80GB HBM3",
+      driverVersion: "560.35.03",
+      utilizationPct: 87,
+      memoryUtilizationPct: 41,
+      temperatureC: 62,
+      powerWatts: 310.45,
+      powerLimitWatts: 700,
+      memoryUsedMb: 65321,
+      memoryTotalMb: 81559,
+      eccUncorrected: 0,
+      eccCorrected: 3,
+    });
   });
 
   test("parses multiple GPUs", () => {
-    const csv = [
-      "NVIDIA RTX PRO 6000 Blackwell, 71, 412.10, 49000",
-      "NVIDIA RTX PRO 6000 Blackwell, 12, 95.00, 2048",
-    ].join("\n");
+    const csv = [LINE, "1, GPU-def, NVIDIA H100 80GB HBM3, 560.35.03, 12, 5, 50, 95.0, 700, 2048, 81559, 0, 0"].join("\n");
     const samples = parseNvidiaMetricsOutput(csv);
     expect(samples).toHaveLength(2);
-    expect(samples[1]!.utilizationPct).toBe(12);
+    expect(samples[1]!.index).toBe(1);
+    expect(samples[1]!.uuid).toBe("GPU-def");
   });
 
-  test("maps [N/A] power to null and N/A fields to 0", () => {
-    const csv = "NVIDIA GB10, 45, [N/A], N/A\n";
+  test("maps [N/A] fields to null (numbers) and null (driver string)", () => {
+    const csv = "0, GPU-x, NVIDIA GB10, [N/A], 45, [N/A], [N/A], [N/A], [N/A], 1024, [N/A], [N/A], [N/A]";
+    const [s] = parseNvidiaMetricsOutput(csv);
+    expect(s!.driverVersion).toBeNull();
+    expect(s!.powerWatts).toBeNull();
+    expect(s!.temperatureC).toBeNull();
+    expect(s!.memoryTotalMb).toBeNull();
+    expect(s!.eccUncorrected).toBeNull();
+    expect(s!.utilizationPct).toBe(45);
+    expect(s!.memoryUsedMb).toBe(1024);
+  });
+
+  test("skips lines without a uuid or name", () => {
+    const csv = "0, , , 560, 10, 5, 50, 100, 700, 100, 200, 0, 0\n" + LINE;
     const samples = parseNvidiaMetricsOutput(csv);
-    expect(samples[0]!.powerWatts).toBeNull();
-    expect(samples[0]!.utilizationPct).toBe(45);
-    expect(samples[0]!.memoryUsedMb).toBe(0);
+    expect(samples).toHaveLength(1);
+    expect(samples[0]!.uuid).toBe("GPU-abc");
   });
 
-  test("returns empty array for empty or blank output", () => {
+  test("returns empty for empty or blank output", () => {
     expect(parseNvidiaMetricsOutput("")).toEqual([]);
     expect(parseNvidiaMetricsOutput("  \n \n")).toEqual([]);
   });
+});
 
-  test("skips lines without a name", () => {
-    const csv = ", 10, 50, 100\nNVIDIA T4, 5, 30, 200\n";
-    const samples = parseNvidiaMetricsOutput(csv);
-    expect(samples).toHaveLength(1);
-    expect(samples[0]!.name).toBe("NVIDIA T4");
+describe("parseThrottleOutput", () => {
+  test("reads the hex bitmask into a per-index boolean", () => {
+    const map = parseThrottleOutput("0, 0x0000000000000000\n1, 0x0000000000000004\n");
+    expect(map.get(0)).toBe(false);
+    expect(map.get(1)).toBe(true);
+  });
+
+  test("ignores unparseable lines (e.g. an nvidia-smi error)", () => {
+    const map = parseThrottleOutput("Field 'x' is not a valid field to query.\n");
+    expect(map.size).toBe(0);
   });
 });
 
@@ -87,7 +117,7 @@ describe("power estimation", () => {
   });
 
   test("scales between idle and TDP with utilization", () => {
-    expect(estimatePowerWatts("NVIDIA H100", 0)).toBeCloseTo(50); // 10% idle floor
+    expect(estimatePowerWatts("NVIDIA H100", 0)).toBeCloseTo(50);
     expect(estimatePowerWatts("NVIDIA H100", 100)).toBeCloseTo(500);
     expect(estimatePowerWatts("NVIDIA H100", 50)).toBeCloseTo(275);
   });
@@ -98,62 +128,66 @@ describe("power estimation", () => {
   });
 });
 
-describe("MetricsAccumulator", () => {
-  const gpu = (utilizationPct: number, powerWatts: number | null, memoryUsedMb = 1000) => ({
-    name: "NVIDIA H100",
-    utilizationPct,
-    powerWatts,
-    memoryUsedMb,
+describe("GpuMetricsStore", () => {
+  const gpu = (over: Partial<GpuMetricSample> = {}): GpuMetricSample => ({
+    index: 0, uuid: "GPU-a", name: "NVIDIA H100", driverVersion: "560",
+    utilizationPct: 50, memoryUtilizationPct: 20, temperatureC: 60,
+    powerWatts: 360, powerLimitWatts: 700, memoryUsedMb: 1000, memoryTotalMb: 81559,
+    eccUncorrected: 0, eccCorrected: 0, ...over,
   });
 
-  test("snapshot is null without samples", () => {
-    expect(new MetricsAccumulator().snapshot()).toBeNull();
+  test("starts empty", () => {
+    const snap = new GpuMetricsStore().snapshot();
+    expect(snap.gpus).toEqual([]);
+    expect(snap.sampleFailures).toBe(0);
   });
 
-  test("averages utilization across GPUs and samples, tracks per-GPU max", () => {
-    const acc = new MetricsAccumulator();
-    acc.add([gpu(20, 100), gpu(40, 100)], 20_000); // node avg 30
-    acc.add([gpu(60, 100), gpu(90, 100)], 20_000); // node avg 75
-    const bucket = acc.snapshot()!;
-    expect(bucket.gpuUtilizationAvg).toBeCloseTo(52.5);
-    expect(bucket.gpuUtilizationMax).toBe(90);
+  test("exposes the latest sample per GPU with integrated energy", () => {
+    const store = new GpuMetricsStore();
+    store.add([gpu({ powerWatts: 360 })], 60_000); // 360 W for 1 min = 6 Wh
+    const snap = store.snapshot();
+    expect(snap.gpus).toHaveLength(1);
+    expect(snap.gpus[0]!.uuid).toBe("GPU-a");
+    expect(snap.gpus[0]!.energyWh).toBeCloseTo(6);
   });
 
-  test("sums memory and power across GPUs, averages across samples", () => {
-    const acc = new MetricsAccumulator();
-    acc.add([gpu(50, 200, 30_000), gpu(50, 300, 10_000)], 20_000);
-    acc.add([gpu(50, 100, 20_000), gpu(50, 100, 20_000)], 20_000);
-    const bucket = acc.snapshot()!;
-    expect(bucket.memoryUsedMb).toBe(40_000);
-    expect(bucket.powerWattsAvg).toBeCloseTo(350);
+  test("accumulates energy across polls and keeps the newest readings", () => {
+    const store = new GpuMetricsStore();
+    store.add([gpu({ utilizationPct: 50, powerWatts: 360 })], 60_000);
+    store.add([gpu({ utilizationPct: 90, powerWatts: 360 })], 60_000);
+    const g = store.snapshot().gpus[0]!;
+    expect(g.energyWh).toBeCloseTo(12);
+    expect(g.utilizationPct).toBe(90); // latest wins
   });
 
-  test("integrates energy over sample durations", () => {
-    const acc = new MetricsAccumulator();
-    // 360 W for 1 minute = 6 Wh, twice = 12 Wh
-    acc.add([gpu(50, 360)], 60_000);
-    acc.add([gpu(50, 360)], 60_000);
-    expect(acc.snapshot()!.energyWh).toBeCloseTo(12);
+  test("tracks each GPU separately by uuid", () => {
+    const store = new GpuMetricsStore();
+    store.add([gpu({ uuid: "GPU-a", index: 0 }), gpu({ uuid: "GPU-b", index: 1 })], 60_000);
+    expect(store.snapshot().gpus.map((g) => g.uuid).sort()).toEqual(["GPU-a", "GPU-b"]);
   });
 
-  test("estimates power from utilization when not measured", () => {
-    const acc = new MetricsAccumulator();
-    acc.add([gpu(100, null)], 3_600_000); // 1 h at full load on an H100 → ~500 Wh
-    const bucket = acc.snapshot()!;
-    expect(bucket.powerWattsAvg).toBeCloseTo(500);
-    expect(bucket.energyWh).toBeCloseTo(500);
+  test("estimates power for energy when the driver reports none", () => {
+    const store = new GpuMetricsStore();
+    store.add([gpu({ powerWatts: null, utilizationPct: 100 })], 3_600_000); // 1 h at full load, H100 ~500 Wh
+    expect(store.snapshot().gpus[0]!.energyWh).toBeCloseTo(500);
   });
 
-  test("reset clears accumulated state", () => {
-    const acc = new MetricsAccumulator();
-    acc.add([gpu(50, 100)], 20_000);
-    acc.reset();
-    expect(acc.snapshot()).toBeNull();
+  test("applies throttle state by GPU index, null when unknown", () => {
+    const store = new GpuMetricsStore();
+    store.add([gpu({ index: 0, uuid: "GPU-a" }), gpu({ index: 1, uuid: "GPU-b" })], 60_000);
+    store.setThrottled(new Map([[0, true]]));
+    const byUuid = new Map(store.snapshot().gpus.map((g) => [g.uuid, g.throttled]));
+    expect(byUuid.get("GPU-a")).toBe(true);
+    expect(byUuid.get("GPU-b")).toBeNull();
   });
 
-  test("ignores polls that returned no GPUs", () => {
-    const acc = new MetricsAccumulator();
-    acc.add([], 20_000);
-    expect(acc.snapshot()).toBeNull();
+  test("counts failures and resets", () => {
+    const store = new GpuMetricsStore();
+    store.recordFailure();
+    store.recordFailure();
+    store.add([gpu()], 60_000);
+    expect(store.snapshot().sampleFailures).toBe(2);
+    store.reset();
+    expect(store.snapshot()).toEqual({ gpus: [], sampleFailures: 0 });
   });
 });
