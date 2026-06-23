@@ -6,7 +6,9 @@
   "refresh": "30s",
   "schemaVersion": 39,
   "tags": ["xinity-ai"],
-  "templating": { "list": [] },
+  "templating": { "list": [
+    { "current": {}, "hide": 0, "includeAll": false, "label": "Loki", "multi": false, "name": "DS_LOKI", "options": [], "query": "loki", "refresh": 1, "regex": "", "type": "datasource" }
+  ] },
   "time": { "from": "now-1h", "to": "now" },
   "timezone": "browser",
   "title": "Xinity Logs",
@@ -16,28 +18,28 @@
     { "type": "row", "id": 1, "title": "Logs (systemd journal)", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 } },
     {
       "type": "logs", "id": 2, "title": "Gateway",
-      "datasource": { "type": "loki", "uid": "xinity-loki" },
+      "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
       "gridPos": { "h": 11, "w": 12, "x": 0, "y": 1 },
       "options": { "showTime": true, "showLabels": false, "showCommonLabels": false, "wrapLogMessage": true, "prettifyLogMessage": false, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending" },
       "targets": [ { "refId": "A", "editorMode": "code", "queryType": "range", "range": true, "expr": "{job=\"systemd-journal\", unit=\"xinity-ai-gateway.service\"} | json | label_format level=`{{if eq .level \"50\"}}error{{else if eq .level \"40\"}}warn{{else if eq .level \"30\"}}info{{else if eq .level \"20\"}}debug{{else if eq .level \"10\"}}trace{{else if eq .level \"60\"}}fatal{{else}}{{.level}}{{end}}` | line_format `{{if .msg}}{{.msg}}{{else}}{{__line__}}{{end}}`" } ]
     },
     {
       "type": "logs", "id": 3, "title": "Dashboard",
-      "datasource": { "type": "loki", "uid": "xinity-loki" },
+      "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
       "gridPos": { "h": 11, "w": 12, "x": 12, "y": 1 },
       "options": { "showTime": true, "showLabels": false, "showCommonLabels": false, "wrapLogMessage": true, "prettifyLogMessage": false, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending" },
       "targets": [ { "refId": "A", "editorMode": "code", "queryType": "range", "range": true, "expr": "{job=\"systemd-journal\", unit=\"xinity-ai-dashboard.service\"} | json | label_format level=`{{if eq .level \"50\"}}error{{else if eq .level \"40\"}}warn{{else if eq .level \"30\"}}info{{else if eq .level \"20\"}}debug{{else if eq .level \"10\"}}trace{{else if eq .level \"60\"}}fatal{{else}}{{.level}}{{end}}` | line_format `{{if .msg}}{{.msg}}{{else}}{{__line__}}{{end}}`" } ]
     },
     {
       "type": "logs", "id": 4, "title": "Infoserver",
-      "datasource": { "type": "loki", "uid": "xinity-loki" },
+      "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
       "gridPos": { "h": 11, "w": 12, "x": 0, "y": 12 },
       "options": { "showTime": true, "showLabels": false, "showCommonLabels": false, "wrapLogMessage": true, "prettifyLogMessage": false, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending" },
       "targets": [ { "refId": "A", "editorMode": "code", "queryType": "range", "range": true, "expr": "{job=\"systemd-journal\", unit=\"xinity-infoserver.service\"} | json | label_format level=`{{if eq .level \"50\"}}error{{else if eq .level \"40\"}}warn{{else if eq .level \"30\"}}info{{else if eq .level \"20\"}}debug{{else if eq .level \"10\"}}trace{{else if eq .level \"60\"}}fatal{{else}}{{.level}}{{end}}` | line_format `{{if .msg}}{{.msg}}{{else}}{{__line__}}{{end}}`" } ]
     },
     {
       "type": "logs", "id": 5, "title": "Daemon",
-      "datasource": { "type": "loki", "uid": "xinity-loki" },
+      "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
       "gridPos": { "h": 11, "w": 12, "x": 12, "y": 12 },
       "options": { "showTime": true, "showLabels": false, "showCommonLabels": false, "wrapLogMessage": true, "prettifyLogMessage": false, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending" },
       "targets": [ { "refId": "A", "editorMode": "code", "queryType": "range", "range": true, "expr": "{job=\"systemd-journal\", unit=\"xinity-ai-daemon.service\"} | json | label_format level=`{{if eq .level \"50\"}}error{{else if eq .level \"40\"}}warn{{else if eq .level \"30\"}}info{{else if eq .level \"20\"}}debug{{else if eq .level \"10\"}}trace{{else if eq .level \"60\"}}fatal{{else}}{{.level}}{{end}}` | line_format `{{if .msg}}{{.msg}}{{else}}{{__line__}}{{end}}`" } ]
