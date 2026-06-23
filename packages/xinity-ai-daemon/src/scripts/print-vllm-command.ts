@@ -1,24 +1,11 @@
-// Prints the vLLM command the daemon would build for a model + state, without
-// spawning anything. Reuses the daemon's real command builders.
-//
-// Usage:
-//   bun run print-vllm-command -- \
-//     --models <path/to/models.yaml> \
-//     --model  <public-specifier-or-vllm-provider-name> \
-//     --state  <path/to/state.yaml>
+// Prints, without spawning anything, the vLLM command the daemon would build for a
+// model against a hand-authored machine state. Reuses the daemon's real builders. See --help.
 
 import { parseArgs } from "node:util";
 import { z } from "zod";
 import { quoteShellArgv } from "common-env";
-import {
-  ModelFileDefinitionSchema,
-  resolveDriverForProviderModel,
-  resolveTagsForDriver,
-  resolveArgsForDriver,
-  type Model,
-} from "xinity-infoserver";
-// Daemon modules are loaded via dynamic import below, after process.env is
-// seeded; static imports would parse env.ts before our overrides land.
+import { ModelFileDefinitionSchema } from "xinity-infoserver";
+import { resolveVllmModel, RunModelError, type ResolvedVllmModel } from "./lib/vllm-run";
 import type { VllmInstanceConfig } from "../modules/model-installation/vllm-ops";
 import type { DetectedGpu } from "../modules/hardware-detect";
 
@@ -113,64 +100,32 @@ const [
   import("../modules/hardware-detect"),
 ]);
 
-/** Accepts either a public specifier (key in `models:`) or a `providers.vllm` value, returning the HF-style provider name the daemon uses downstream. */
-function findModel(
-  parsed: { models: Record<string, Model> },
-  name: string,
-): { vllmProviderName: string; model: Model } {
-  const direct = parsed.models[name];
-  if (direct) {
-    if (!direct.providers.vllm) {
-      die(`model "${name}" has no providers.vllm entry; cannot build a vllm command for it.`);
-    }
-    return { vllmProviderName: direct.providers.vllm, model: direct };
-  }
-  for (const model of Object.values(parsed.models)) {
-    if (model.providers.vllm === name) return { vllmProviderName: name, model };
-  }
-  const known = Object.keys(parsed.models).join(", ");
-  die(`model "${name}" not found in model file (looked at public specifiers and providers.vllm). Known: ${known}`);
-}
-
-function buildVllmInstanceConfig(
-  modelName: string,
-  model: Model,
-  state: State,
-): VllmInstanceConfig {
-  const driver = resolveDriverForProviderModel(model, modelName);
-  if (driver !== "vllm") {
-    die(`model "${modelName}" does not have a vllm provider entry (resolved driver: ${driver ?? "none"}).`);
-  }
-
-  const tags = resolveTagsForDriver(model, "vllm");
-  const trustRemoteCode = tags.includes("custom_code");
-  const hasToolsTag = tags.includes("tools");
-  const providerArgs = resolveArgsForDriver(model, "vllm");
-  const modelType = model.type;
-
-  // estCapacity formula mirrors orchestration.mod.ts; kvCache uses minKvCache.
-  const kvCacheGb = model.minKvCache;
-  const estCapacity = model.weight + kvCacheGb;
-
+function buildVllmInstanceConfig(resolved: ResolvedVllmModel, state: State): VllmInstanceConfig {
   const profile = buildHardwareProfile(state.gpus as DetectedGpu[], state.systemRamMb);
   const gpuMemoryUtilization = computeGpuUtilization(
-    { model: modelName, estCapacity },
+    { model: resolved.vllmProviderName, estCapacity: resolved.estCapacity },
     profile,
   );
 
   return {
-    model: modelName,
+    model: resolved.vllmProviderName,
     port: state.port,
-    kvCacheBytes: `${kvCacheGb}g`,
-    trustRemoteCode,
+    kvCacheBytes: `${resolved.kvCacheGb}g`,
+    trustRemoteCode: resolved.trustRemoteCode,
     gpuMemoryUtilization,
-    extraArgs: buildVllmExtraArgs(modelType, hasToolsTag, providerArgs),
+    extraArgs: buildVllmExtraArgs(resolved.modelType, resolved.hasToolsTag, resolved.providerArgs),
   };
 }
 
 const parsedModels = await loadYaml(values.models, ModelFileDefinitionSchema, "model");
-const { vllmProviderName, model } = findModel(parsedModels, values.model);
-const config = buildVllmInstanceConfig(vllmProviderName, model, state);
+let resolved: ResolvedVllmModel;
+try {
+  resolved = resolveVllmModel(parsedModels, values.model);
+} catch (err) {
+  if (err instanceof RunModelError) die(err.message);
+  throw err;
+}
+const config = buildVllmInstanceConfig(resolved, state);
 
 if (state.backend === "docker") {
   const argv = buildDockerRunArgs(state.id, config, "preview");
