@@ -6,7 +6,9 @@
   "refresh": "30s",
   "schemaVersion": 39,
   "tags": ["xinity-ai"],
-  "templating": { "list": [] },
+  "templating": { "list": [
+    { "current": {}, "hide": 0, "includeAll": false, "label": "Prometheus", "multi": false, "name": "DS_PROMETHEUS", "options": [], "query": "prometheus", "refresh": 1, "regex": "", "type": "datasource" }
+  ] },
   "time": { "from": "now-6h", "to": "now" },
   "timezone": "browser",
   "title": "Xinity Gateway",
@@ -16,7 +18,7 @@
     { "type": "row", "id": 1, "title": "Traffic", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 } },
     {
       "type": "timeseries", "id": 2, "title": "Request rate by endpoint",
-      "datasource": { "type": "prometheus", "uid": "xinity-prometheus" },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
       "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 15, "showPoints": "never", "lineInterpolation": "smooth", "stacking": { "mode": "normal", "group": "A" } } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
@@ -24,7 +26,7 @@
     },
     {
       "type": "timeseries", "id": 3, "title": "Requests by status",
-      "datasource": { "type": "prometheus", "uid": "xinity-prometheus" },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
       "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 15, "showPoints": "never", "lineInterpolation": "smooth", "stacking": { "mode": "normal", "group": "A" } } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
@@ -32,7 +34,7 @@
     },
     {
       "type": "timeseries", "id": 4, "title": "Error rate by endpoint",
-      "datasource": { "type": "prometheus", "uid": "xinity-prometheus" },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 9 },
       "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10, "showPoints": "never", "lineInterpolation": "smooth" } }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
@@ -40,7 +42,7 @@
     },
     {
       "type": "timeseries", "id": 5, "title": "Avg latency by endpoint",
-      "datasource": { "type": "prometheus", "uid": "xinity-prometheus" },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 9 },
       "fieldConfig": { "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 0, "showPoints": "never", "lineInterpolation": "smooth" } }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
@@ -48,7 +50,7 @@
     },
     {
       "type": "timeseries", "id": 6, "title": "Active requests by endpoint",
-      "datasource": { "type": "prometheus", "uid": "xinity-prometheus" },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 9 },
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10, "showPoints": "never", "lineInterpolation": "stepAfter" } }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
@@ -56,7 +58,7 @@
     },
     {
       "type": "timeseries", "id": 7, "title": "Input tokens p95 by model",
-      "datasource": { "type": "prometheus", "uid": "xinity-prometheus" },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 17 },
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 0, "showPoints": "never", "lineInterpolation": "smooth" } }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
@@ -64,7 +66,7 @@
     },
     {
       "type": "timeseries", "id": 8, "title": "Output tokens p95 by model",
-      "datasource": { "type": "prometheus", "uid": "xinity-prometheus" },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 17 },
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 0, "showPoints": "never", "lineInterpolation": "smooth" } }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
@@ -72,7 +74,7 @@
     },
     {
       "type": "timeseries", "id": 9, "title": "Generation throughput (tokens/s) by deployment",
-      "datasource": { "type": "prometheus", "uid": "xinity-prometheus" },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 17 },
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 0, "showPoints": "never", "lineInterpolation": "smooth" } }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },

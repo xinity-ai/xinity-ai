@@ -183,7 +183,6 @@
             [
               {
                 name = "Prometheus";
-                uid = "xinity-prometheus";
                 type = "prometheus";
                 access = "proxy";
                 url = "http://127.0.0.1:${toString cfg.port}";
@@ -192,7 +191,6 @@
             ]
             ++ lib.optional cfg.logs.enable {
               name = "Loki";
-              uid = "xinity-loki";
               type = "loki";
               access = "proxy";
               url = "http://127.0.0.1:${toString cfg.logs.port}";

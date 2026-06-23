@@ -7,9 +7,10 @@
   "schemaVersion": 39,
   "tags": ["xinity-ai"],
   "templating": { "list": [
+    { "current": {}, "hide": 0, "includeAll": false, "label": "Prometheus", "multi": false, "name": "DS_PROMETHEUS", "options": [], "query": "prometheus", "refresh": 1, "regex": "", "type": "datasource" },
     {
       "current": { "text": "All", "value": "$__all" },
-      "datasource": { "type": "prometheus", "uid": "xinity-prometheus" },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "definition": "label_values(daemon_up, node_id)",
       "hide": 0,
       "includeAll": true,
@@ -34,7 +35,7 @@
     { "type": "row", "id": 1, "title": "GPU / Compute", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 } },
     {
       "type": "timeseries", "id": 2, "title": "GPU utilization",
-      "datasource": { "type": "prometheus", "uid": "xinity-prometheus" },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
       "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "drawStyle": "line", "fillOpacity": 10, "showPoints": "never", "lineInterpolation": "smooth" } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
@@ -42,7 +43,7 @@
     },
     {
       "type": "timeseries", "id": 3, "title": "GPU memory used",
-      "datasource": { "type": "prometheus", "uid": "xinity-prometheus" },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
       "fieldConfig": { "defaults": { "unit": "decmbytes", "min": 0, "custom": { "drawStyle": "line", "fillOpacity": 10, "showPoints": "never", "lineInterpolation": "smooth" } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
@@ -53,7 +54,7 @@
     },
     {
       "type": "timeseries", "id": 4, "title": "GPU temperature",
-      "datasource": { "type": "prometheus", "uid": "xinity-prometheus" },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 9 },
       "fieldConfig": { "defaults": { "unit": "celsius", "custom": { "drawStyle": "line", "fillOpacity": 0, "showPoints": "never", "lineInterpolation": "smooth" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 87 } ] } }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
@@ -61,7 +62,7 @@
     },
     {
       "type": "timeseries", "id": 5, "title": "GPU power draw vs limit",
-      "datasource": { "type": "prometheus", "uid": "xinity-prometheus" },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 9 },
       "fieldConfig": { "defaults": { "unit": "watt", "min": 0, "custom": { "drawStyle": "line", "fillOpacity": 10, "showPoints": "never", "lineInterpolation": "smooth" } }, "overrides": [ { "matcher": { "id": "byRegexp", "options": "limit.*" }, "properties": [ { "id": "custom.fillOpacity", "value": 0 }, { "id": "custom.lineStyle", "value": { "dash": [8, 4], "fill": "dash" } } ] } ] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
@@ -72,7 +73,7 @@
     },
     {
       "type": "state-timeline", "id": 6, "title": "GPU throttling",
-      "datasource": { "type": "prometheus", "uid": "xinity-prometheus" },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 9 },
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 80, "lineWidth": 0 }, "mappings": [ { "type": "value", "options": { "0": { "text": "OK", "color": "green" }, "1": { "text": "Throttled", "color": "red" } } } ], "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
       "options": { "mergeValues": true, "showValue": "never", "alignValue": "left", "rowHeight": 0.9, "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
