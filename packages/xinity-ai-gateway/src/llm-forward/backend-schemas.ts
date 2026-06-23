@@ -36,13 +36,18 @@ const backendResponseEnvelope = {
 // Chat completions (/v1/chat/completions)
 // ---------------------------------------------------------------------------
 
+// OpenAI sends a tool call's id/type/name only on the first delta and omits them
+// on continuation chunks. Some compatible backends send explicit null instead;
+// normalize null back to absent so the forwarded chunk matches OpenAI's shape.
+const droppedWhenNull = z.string().nullish().transform((v) => v ?? undefined);
+
 const DeltaToolCallSchema = z.looseObject({
-  id: z.string().optional(),
-  type: z.string().optional(),
+  id: droppedWhenNull,
+  type: droppedWhenNull,
   index: z.number(),
   function: z.looseObject({
-    name: z.string().optional(),
-    arguments: z.string().optional(),
+    name: droppedWhenNull,
+    arguments: droppedWhenNull,
   }).optional(),
 });
 
