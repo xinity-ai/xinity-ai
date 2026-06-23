@@ -123,7 +123,7 @@ export function createSystemdVllmOps(): VllmOps {
 
       return nonEmptyLines(result)
         .map((line) => {
-          const unit = line.split(/\s+/)[0];
+          const unit = line.split(/\s+/)[0] ?? "";
           const match = unit.match(SYSTEMD_UNIT_INSTANCE_RE);
           return match?.[1];
         })

@@ -45,8 +45,8 @@ async function detectVllmVersion(
 ): Promise<string | undefined> {
   try {
     const output = await runVersionCommand();
-    const match = output.match(/(\d+\.\d+\.\d+\S*)/);
-    if (match) return normalizePep440(match[1]);
+    const version = output.match(/(\d+\.\d+\.\d+\S*)/)?.[1];
+    if (version) return normalizePep440(version);
     log.warn({ output, source }, "vLLM version output did not match expected format");
   } catch (err) {
     log.debug({ err, source }, "Failed to detect vLLM version");

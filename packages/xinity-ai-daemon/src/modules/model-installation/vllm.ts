@@ -16,7 +16,7 @@ import {
   timer,
 } from "rxjs";
 import { getDB } from "../../db/connection";
-import { inArray, ModelInstallation, modelInstallationStateT } from "common-db";
+import { inArray, type ModelInstallation, modelInstallationStateT } from "common-db";
 import { env } from "../../env";
 import {
   createDockerVllmOps,
