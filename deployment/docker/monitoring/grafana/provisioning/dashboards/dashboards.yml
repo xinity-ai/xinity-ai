@@ -9,5 +9,5 @@ providers:
     updateIntervalSeconds: 30
     allowUiUpdates: false
     options:
-      path: /etc/grafana/provisioning/dashboards
+      path: /etc/grafana/xinity-dashboards
       foldersFromFilesStructure: false
