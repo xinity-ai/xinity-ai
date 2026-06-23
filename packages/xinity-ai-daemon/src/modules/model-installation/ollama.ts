@@ -1,7 +1,7 @@
-import { Ollama, ProgressResponse } from "ollama";
+import { Ollama, type ProgressResponse } from "ollama";
 import { bufferTime, concatMap, defer, endWith, from, ignoreElements, map, merge, mergeMap, Observable, switchMap, tap } from "rxjs";
 import { env } from "../../env";
-import { ModelInstallation } from "common-db";
+import type { ModelInstallation } from "common-db";
 import { rootLogger } from "../../logger";
 import { updateInstallationState } from "./state";
 

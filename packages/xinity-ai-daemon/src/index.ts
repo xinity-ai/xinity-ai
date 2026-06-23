@@ -1,4 +1,4 @@
-import { SubscriptionLike } from "rxjs";
+import type { SubscriptionLike } from "rxjs";
 import { dbSync } from "./modules/db-sync";
 import { startMetricsSampler, type MetricsSampler } from "./modules/metrics-sampler";
 import { startServer } from "./modules/serverfront/webserver";

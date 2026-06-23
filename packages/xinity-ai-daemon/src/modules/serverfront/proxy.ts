@@ -20,7 +20,7 @@ export async function handleProxyRequest(req: Request, url: URL): Promise<Respon
   }
 
   const match = url.pathname.match(PROXY_ROUTE_RE);
-  if (!match) {
+  if (!match || match[1] === undefined) {
     return new Response(null, { status: 400 });
   }
 
