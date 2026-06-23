@@ -2,7 +2,7 @@
 
 Complete reference for every field in the `ModelSchema`. See the [README](../README.md) for usage examples and guides.
 
-For IDE autocomplete, use the JSON Schema at `/schemas/model.v1.json` (served by the infoserver) or generate it locally with `bun run schema:json`.
+For IDE autocomplete, use the JSON Schema at `/schemas/model.v1.json` (served by the infoserver) or generate it locally with `bun run refresh-schema`.
 
 ## Required fields
 

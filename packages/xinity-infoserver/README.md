@@ -91,11 +91,33 @@ Add this comment as the first line of your YAML file to get autocomplete and val
 # yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v1.json
 ```
 
-Or generate the schema locally:
+Or generate the schema locally (writes `models.schema.json`):
 
 ```bash
-bun run schema:json > models.schema.json
+bun run refresh-schema
 ```
+
+## Trying a model on a node before publishing
+
+Before adding a model to the registry, you can verify the definition actually runs on a
+target machine with the daemon's `run-model` script. It reads the same model YAML, detects
+the host's hardware, gates on the installed vLLM version/platform, downloads the weights, and
+starts the server, all without a daemon, database, or cluster:
+
+```bash
+cd packages/xinity-ai-daemon
+# Inspect what would happen (no side effects); --json for machine-readable output
+bun run run-model -- --models ./your-models.yaml --model my-private-model --plan
+# Resolve files, gate, and start it (docker if --image is given, else a bare vllm process)
+bun run run-model -- --models ./your-models.yaml --model my-private-model --start
+```
+
+The `--plan` gate result tells you whether `weight`, `minKvCache`, `providerMinVersions`, and
+`providerPlatforms` are consistent with the hardware, so you can correct the definition before
+it ever reaches the cluster scheduler. See `run-model --help` for the full flag list.
+
+For the full end-to-end workflow (researching the fields, writing the entry, and iterating on
+failures), follow the step-by-step guide in [docs/integrating-a-model.md](docs/integrating-a-model.md).
 
 ## Composing registries with `includes`
 
@@ -195,5 +217,5 @@ MODEL_INFO_DIR=./models.d bun run start
 Export the JSON Schema to stdout:
 
 ```bash
-bun run schema:json
+bun run definitions/model-definition.ts
 ```

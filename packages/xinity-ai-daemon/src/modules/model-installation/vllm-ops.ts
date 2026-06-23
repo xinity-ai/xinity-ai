@@ -202,11 +202,17 @@ export function createSystemdVllmOps(): VllmOps {
 const DOCKER_CONTAINER_PREFIX = "vllm-";
 const dockerContainerNameFor = (id: string) => `${DOCKER_CONTAINER_PREFIX}${id}`;
 
+export interface DockerRunOptions {
+  network?: string;
+  extraEnv?: Record<string, string>;
+}
+
 /** "daemon" runs detached with a restart policy; "preview" runs interactive with --rm. */
 export function buildDockerRunArgs(
   id: string,
   config: VllmInstanceConfig,
   mode: "daemon" | "preview" = "daemon",
+  options: DockerRunOptions = {},
 ): string[] {
   const dockerImage = env.VLLM_DOCKER_IMAGE;
   if (!dockerImage) {
@@ -214,14 +220,17 @@ export function buildDockerRunArgs(
   }
   const containerName = dockerContainerNameFor(id);
   const lifecycleFlags = mode === "daemon" ? ["-d"] : ["-it", "--rm"];
+  const extraEnvFlags = Object.entries(options.extraEnv ?? {}).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
   const args = [
     "docker", "run", ...lifecycleFlags,
     "--name", containerName,
     "--gpus", "all",
     "--ipc=host",
+    ...(options.network ? ["--network", options.network] : []),
     "-p", `127.0.0.1:${config.port}:8000`,
     "-e", "HF_HOME=/data/hf-cache",
     "-e", "TRITON_CACHE_DIR=/data/triton-cache",
+    ...extraEnvFlags,
     "-v", `${env.VLLM_HF_CACHE_DIR}:/data/hf-cache`,
     "-v", `${env.VLLM_TRITON_CACHE_DIR}:/data/triton-cache`,
     ...(mode === "daemon" ? ["--restart", "unless-stopped"] : []),

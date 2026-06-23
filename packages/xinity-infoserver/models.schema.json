@@ -47,7 +47,8 @@
             "enum": [
               "embedding",
               "chat",
-              "rerank"
+              "rerank",
+              "transcription"
             ]
           },
           "family": {

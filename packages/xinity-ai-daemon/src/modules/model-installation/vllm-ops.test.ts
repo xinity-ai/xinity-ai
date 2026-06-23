@@ -68,6 +68,23 @@ describe("buildDockerRunArgs", () => {
     expect(argv).not.toContain("--restart");
     expect(argv).not.toContain("unless-stopped");
   });
+
+  test("network option inserts --network before the published port", () => {
+    const argv = buildDockerRunArgs("inst-1", baseConfig, "preview", { network: "isolated-net" });
+    const netIdx = argv.indexOf("--network");
+    expect(netIdx).toBeGreaterThan(-1);
+    expect(argv[netIdx + 1]).toBe("isolated-net");
+    expect(netIdx).toBeLessThan(argv.indexOf("-p"));
+  });
+
+  test("extraEnv adds -e flags without dropping the defaults", () => {
+    const argv = buildDockerRunArgs("inst-1", baseConfig, "preview", {
+      extraEnv: { HF_HUB_OFFLINE: "1", TRANSFORMERS_OFFLINE: "1" },
+    });
+    expect(argv).toContain("HF_HUB_OFFLINE=1");
+    expect(argv).toContain("TRANSFORMERS_OFFLINE=1");
+    expect(argv).toContain("HF_HOME=/data/hf-cache");
+  });
 });
 
 describe("buildSystemdEnvFile", () => {

@@ -21,7 +21,8 @@
     "build": "bun build --production --target=bun --outdir=dist ./src/index.ts",
     "build:compile": "bun build --compile --minify --target=bun ./src/index.ts --outfile xinity-ai-daemon",
     "test": "bun test src/",
-    "print-vllm-command": "bun run src/scripts/print-vllm-command.ts"
+    "print-vllm-command": "bun run src/scripts/print-vllm-command.ts",
+    "run-model": "bun run src/scripts/run-model.ts"
   },
   "type": "module"
 }
