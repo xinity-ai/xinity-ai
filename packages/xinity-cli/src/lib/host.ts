@@ -39,33 +39,15 @@ export async function localRun(args: string[]): Promise<RunResult> {
   };
 }
 
-/**
- * Hand stdin over to a child process. Without this Bun's stream state can
- * get corrupted when the child exits, breaking subsequent clack prompts.
- */
-function detachStdinForChild(): void {
-  if (process.stdin.isTTY) process.stdin.setRawMode(false);
-  process.stdin.pause();
-}
-
-/** Re-attach stdin after a child exits so clack prompts work again. */
-function reattachStdinAfterChild(): void {
-  process.stdin.resume();
-  if (process.stdin.isTTY) process.stdin.setRawMode(false);
-}
-
-/** Run a command with inherited stdio (for interactive prompts like sudo). */
+// stdin must not be inherited: Bun corrupts process.stdin when the child exits,
+// silently killing the next clack prompt. sudo reads its password from /dev/tty.
 export async function localRunInteractive(args: string[]): Promise<RunResult> {
-  detachStdinForChild();
-
   const proc = Bun.spawn(args, {
-    stdin: "inherit",
+    stdin: "ignore",
     stdout: "inherit",
     stderr: "inherit",
   });
   const exitCode = await proc.exited;
-
-  reattachStdinAfterChild();
 
   return {
     ok: exitCode === 0,
@@ -126,10 +108,8 @@ async function runLocalSudo(
   p.log.step(pc.dim("Enter your sudo password when prompted:"));
 
   if (sensitive) {
-    detachStdinForChild();
-
     const proc = Bun.spawn(["sudo", "sh", "-c", command], {
-      stdin: "inherit",
+      stdin: "ignore",
       stdout: "pipe",
       stderr: "inherit",
     });
@@ -137,8 +117,6 @@ async function runLocalSudo(
       proc.exited,
       new Response(proc.stdout).text(),
     ]);
-
-    reattachStdinAfterChild();
 
     return { success: exitCode === 0, output: stdout, skipped: false };
   }
