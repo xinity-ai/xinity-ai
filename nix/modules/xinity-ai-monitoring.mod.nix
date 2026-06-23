@@ -183,6 +183,7 @@
             [
               {
                 name = "Prometheus";
+                uid = "xinity-prometheus";
                 type = "prometheus";
                 access = "proxy";
                 url = "http://127.0.0.1:${toString cfg.port}";
@@ -191,9 +192,36 @@
             ]
             ++ lib.optional cfg.logs.enable {
               name = "Loki";
+              uid = "xinity-loki";
               type = "loki";
               access = "proxy";
               url = "http://127.0.0.1:${toString cfg.logs.port}";
+            };
+
+          # Dashboards reference the datasources by the fixed uids above, so the
+          # same JSON files provision identically here and in the docker stack.
+          provision.dashboards.settings.providers =
+            [
+              {
+                name = "xinity";
+                orgId = 1;
+                folder = "Xinity";
+                type = "file";
+                disableDeletion = false;
+                allowUiUpdates = false;
+                updateIntervalSeconds = 30;
+                options.path = ../../deployment/monitoring/dashboards;
+              }
+            ]
+            ++ lib.optional cfg.logs.enable {
+              name = "xinity-logs";
+              orgId = 1;
+              folder = "Xinity";
+              type = "file";
+              disableDeletion = false;
+              allowUiUpdates = false;
+              updateIntervalSeconds = 30;
+              options.path = ../../deployment/monitoring/dashboards-loki;
             };
         };
 
