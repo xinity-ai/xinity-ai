@@ -107,14 +107,17 @@ starts the server, all without a daemon, database, or cluster:
 ```bash
 cd packages/xinity-ai-daemon
 # Inspect what would happen (no side effects); --json for machine-readable output
-bun run run-model -- --models ./your-models.yaml --model my-private-model --plan
+bun run run-model -- --models ./your-models.yaml --model my-private-model --image <vllm-image> --plan
 # Resolve files, gate, and start it (docker if --image is given, else a bare vllm process)
-bun run run-model -- --models ./your-models.yaml --model my-private-model --start
+bun run run-model -- --models ./your-models.yaml --model my-private-model --image <vllm-image> --start
 ```
 
-The `--plan` gate result tells you whether `weight`, `minKvCache`, `providerMinVersions`, and
-`providerPlatforms` are consistent with the hardware, so you can correct the definition before
-it ever reaches the cluster scheduler. See `run-model --help` for the full flag list.
+With the docker backend the container always runs egress-blocked and offline (weights are
+pre-downloaded on the host first), and `--start` runs it detached, printing a `docker logs -f`
+command to follow the load and the stop command. The `--plan` gate result tells you whether
+`weight`, `minKvCache`, `providerMinVersions`, and `providerPlatforms` are consistent with the
+hardware, so you can correct the definition before it ever reaches the cluster scheduler. See
+`run-model --help` for the full flag list.
 
 For the full end-to-end workflow (researching the fields, writing the entry, and iterating on
 failures), follow the step-by-step guide in [docs/integrating-a-model.md](docs/integrating-a-model.md).

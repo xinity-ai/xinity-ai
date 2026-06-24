@@ -11,7 +11,7 @@ For IDE autocomplete, use the JSON Schema at `/schemas/model.v1.json` (served by
 | `name` | string | Display name shown in the dashboard model selector |
 | `description` | string | Brief description of the model's capabilities |
 | `weight` | number | VRAM consumed by model weights, in GB |
-| `minKvCache` | number | Minimum KV-cache allocation in GB |
+| `minKvCache` | number | Minimum KV-cache allocation in GB (decimal, 10⁹ - use a decimal, not a rounded integer). It is the floor below which vLLM refuses to start (KV for one request at full context). vLLM reports that floor in GiB, so the field value is `floor_GiB × 1.074`. Confirm it empirically - see "Confirm the KV-cache floor" in [integrating-a-model.md](./integrating-a-model.md) |
 | `url` | URL | External documentation link (e.g. HuggingFace page) |
 | `providers` | object | Map of driver name to model specifier (see below) |
 
@@ -31,7 +31,7 @@ These fields control what the model can do at runtime. Getting them wrong causes
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `type` | `"chat"` \| `"embedding"` \| `"rerank"` | `"chat"` | Determines which API endpoints accept the model. A rerank request to a chat model is rejected as incompatible |
-| `tags` | string[] | `[]` | Enables specific capabilities: `"tools"` (tool/function calling), `"vision"` (image inputs). Requests using a capability the model lacks are rejected. `"custom_code"` marks models that ship custom loading code requiring vLLM's `--trust-remote-code` flag; triggers an explicit approval step in the dashboard. Only add if the model fails to load without it |
+| `tags` | string[] | `[]` | Enables specific capabilities: `"tools"` (tool/function calling), `"vision"` (image inputs). Requests using a capability the model lacks are rejected. `"tools"` also requires a `providerArgs.vllm: ["--tool-call-parser", "<name>"]` (the daemon adds `--enable-auto-tool-choice` from the tag, but vLLM needs the model-specific parser too). Research and **validate** each capability against a running server before declaring it - see "Validate declared capabilities" in [integrating-a-model.md](./integrating-a-model.md). `"custom_code"` marks models that ship custom loading code requiring vLLM's `--trust-remote-code` flag; triggers an explicit approval step in the dashboard. Only add if the model fails to load without it |
 
 ## Optional fields
 
@@ -67,7 +67,7 @@ These prefixes are never forwarded regardless of `requestParams` configuration:
 
 | Field | Per-driver type | Description |
 |-------|-----------------|-------------|
-| `providerMinVersions` | string (semver) | Minimum driver version required. Nodes with older versions are excluded from scheduling. Example: `vllm: "0.19.1"` |
+| `providerMinVersions` | string (semver) | Minimum driver version required. Nodes with older versions are excluded from scheduling. Example: `vllm: "0.19.1"`. Establish the floor empirically rather than guessing - see "Confirm the version floor" in [integrating-a-model.md](./integrating-a-model.md). Enforced only when the node's driver version is detectable |
 | `providerPlatforms` | string[] (GPU vendors) | Required GPU vendors. Nodes without a matching GPU are excluded. Values: `"nvidia"`, `"amd"`, `"intel"`. Example: `vllm: [nvidia]` for models with CUDA-only kernels |
 
 When `providerMinVersions` is unset for a driver, any version is accepted. When `providerPlatforms` is unset, any platform is accepted.
