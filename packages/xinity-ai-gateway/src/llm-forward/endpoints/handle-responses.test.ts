@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, beforeAll, afterAll, jest, afterEach } from "bun:test";
-import { makeChatSseResponse, makeChatJsonResponse, makeChatJsonResponseWithToolCalls, makeChatSseResponseWithToolCalls } from "./test-helpers";
+import { makeChatSseResponse, makeChatJsonResponse, makeChatJsonResponseWithToolCalls, makeChatSseResponseWithToolCalls, mockBackendFetch } from "./test-helpers";
 
 mock.module("../../env", () => ({
   env: {
@@ -48,20 +48,7 @@ mock.module("../model-data", () => ({
   getModelInfo,
 }));
 
-mock.module("../backend-fetch", () => ({
-  backendUrl: (host: string, _model: string, path: string, _tls: boolean) => `http://${host}${path}`,
-  backendFetch: (url: string | URL | Request, init?: RequestInit) => fetch(url, init),
-  backendPostForm: (target: { host: string }, path: string, form: FormData, clientSignal: AbortSignal) =>
-    fetch(`http://${target.host}${path}`, { method: "POST", body: form, signal: clientSignal }),
-  backendPostJson: (target: { host: string }, path: string, body: unknown, clientSignal: AbortSignal) =>
-    fetch(`http://${target.host}${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: clientSignal,
-    }),
-  hasCustomCa: false,
-}));
+mockBackendFetch();
 
 const responseStore = new Map<string, any>();
 const saveResponse = jest.fn(async (_orgId: string, id: string, payload: any) => {
