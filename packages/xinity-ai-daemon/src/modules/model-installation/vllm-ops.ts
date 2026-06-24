@@ -202,40 +202,45 @@ export function createSystemdVllmOps(): VllmOps {
 const DOCKER_CONTAINER_PREFIX = "vllm-";
 const dockerContainerNameFor = (id: string) => `${DOCKER_CONTAINER_PREFIX}${id}`;
 
-export interface DockerRunOptions {
-  network?: string;
-  extraEnv?: Record<string, string>;
+// Egress-blocked (masquerade off). Bump the -vN suffix to roll out changed network settings.
+export const VLLM_NETWORK = "xinity-vllm-noegress-v1";
+
+export async function ensureVllmNetwork(): Promise<void> {
+  const present = await $`docker network inspect ${VLLM_NETWORK}`.quiet().nothrow();
+  if (present.exitCode === 0) return;
+  await $`docker network create -o com.docker.network.bridge.enable_ip_masquerade=false ${VLLM_NETWORK}`.quiet();
+  log.info({ network: VLLM_NETWORK }, "Created egress-blocked vLLM docker network");
 }
 
-/** "daemon" runs detached with a restart policy; "preview" runs interactive with --rm. */
 export function buildDockerRunArgs(
   id: string,
   config: VllmInstanceConfig,
   mode: "daemon" | "preview" = "daemon",
-  options: DockerRunOptions = {},
 ): string[] {
   const dockerImage = env.VLLM_DOCKER_IMAGE;
   if (!dockerImage) {
     throw new Error("VLLM_DOCKER_IMAGE must be set to build a docker run command");
   }
   const containerName = dockerContainerNameFor(id);
-  const lifecycleFlags = mode === "daemon" ? ["-d"] : ["-it", "--rm"];
-  const extraEnvFlags = Object.entries(options.extraEnv ?? {}).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
   const args = [
-    "docker", "run", ...lifecycleFlags,
+    "docker", "run", "-d",
     "--name", containerName,
     "--gpus", "all",
     "--ipc=host",
-    ...(options.network ? ["--network", options.network] : []),
+    "--network", VLLM_NETWORK,
     "-p", `127.0.0.1:${config.port}:8000`,
     "-e", "HF_HOME=/data/hf-cache",
     "-e", "TRITON_CACHE_DIR=/data/triton-cache",
-    ...extraEnvFlags,
+    "-e", "HF_HUB_OFFLINE=1",
+    "-e", "TRANSFORMERS_OFFLINE=1",
     "-v", `${env.VLLM_HF_CACHE_DIR}:/data/hf-cache`,
     "-v", `${env.VLLM_TRITON_CACHE_DIR}:/data/triton-cache`,
     ...(mode === "daemon" ? ["--restart", "unless-stopped"] : []),
+    "--entrypoint", env.VLLM_PATH ?? "vllm",
     dockerImage,
-    "--model", config.model,
+    "serve", config.model,
+    "--host", "0.0.0.0",
+    "--port", "8000",
     "--served-model-name", config.model,
     "--kv-cache-memory-bytes", config.kvCacheBytes,
   ];
@@ -260,6 +265,7 @@ export function createDockerVllmOps(): VllmOps {
       // Remove any existing stopped/exited container with this name
       await $`docker rm -f ${containerName}`.nothrow();
 
+      await ensureVllmNetwork();
       const args = buildDockerRunArgs(id, config);
 
       log.info(

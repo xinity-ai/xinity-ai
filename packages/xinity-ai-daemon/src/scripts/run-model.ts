@@ -50,7 +50,9 @@ const HELP = [
   "Verb (default --plan):",
   "  --plan              Print the plan (gate result, serve command, stop hint). No side effects.",
   "  --download          Resolve and download the model files into the HF cache.",
-  "  --start             Gate, ensure files are downloaded, then start the server (attached).",
+  "  --start             Gate, ensure files are downloaded, then start the server. With the docker",
+  "                      backend the container runs detached; the command prints a `docker logs -f`",
+  "                      line to follow the load and the stop command, then returns.",
   "  --stop              Stop a server previously started with the same --id.",
   "",
   "Flags:",
@@ -62,8 +64,6 @@ const HELP = [
   "  --cache-dir <path>  HF cache directory (default: $VLLM_HF_CACHE_DIR).",
   "  --hf-token <tok>    HuggingFace token for gated/private models (default: $VLLM_HF_TOKEN).",
   "  --id <id>           Instance id for container name / pidfile (default `dev`).",
-  "  --no-egress         (docker) Cut the container off from the internet, keeping only the",
-  "                      published port reachable. Weights are pre-downloaded on the host first.",
   "  --force             Start even if the compatibility gate fails.",
   "  --json              Emit machine-readable JSON on stdout (progress/diagnostics stay on stderr).",
 ].join("\n");
@@ -84,7 +84,6 @@ const { values } = parseArgs({
     "cache-dir": { type: "string" },
     "hf-token": { type: "string" },
     id: { type: "string" },
-    "no-egress": { type: "boolean" },
     force: { type: "boolean" },
     json: { type: "boolean" },
     help: { type: "boolean", short: "h" },
@@ -123,14 +122,6 @@ if (gpuUtilOverride !== undefined && (!(gpuUtilOverride > 0) || gpuUtilOverride 
 const backend: "docker" | "bare" = values.image ? "docker" : "bare";
 const bareVllmPath = backend === "bare" ? (values["vllm-path"] ?? Bun.which("vllm") ?? undefined) : undefined;
 
-const noEgress = values["no-egress"] ?? false;
-if (noEgress && backend === "bare") {
-  die("--no-egress requires the docker backend; supply --image.");
-}
-/** Bridge with IP masquerade off: published ports keep working (DNAT), but the
- * container has no SNAT and so cannot reach the internet. */
-const ISOLATED_NETWORK = "xinity-vllm-noegress";
-
 // The daemon modules read env.* at import, so seed it first. The placeholder DB url
 // satisfies the schema without opening a connection; LOG_LEVEL keeps the logger quiet.
 process.env.DB_CONNECTION_URL ??= "postgres://placeholder";
@@ -141,7 +132,7 @@ if (values["cache-dir"]) process.env.VLLM_HF_CACHE_DIR = values["cache-dir"];
 if (values["hf-token"]) process.env.VLLM_HF_TOKEN = values["hf-token"];
 
 const [
-  { buildDockerRunArgs, buildSystemdServeArgv },
+  { buildDockerRunArgs, buildSystemdServeArgv, ensureVllmNetwork, VLLM_NETWORK },
   { computeGpuUtilization, buildVllmExtraArgs },
   { detectHardwareProfile },
 ] = await Promise.all([
@@ -170,7 +161,8 @@ async function loadModelFile(path: string): Promise<{ models: Record<string, any
 async function detectVllmVersion(): Promise<string | undefined> {
   const run =
     backend === "docker"
-      ? () => $`docker run --rm --pull=never --entrypoint vllm ${values.image} --version`.throws(false).text()
+      ? // --gpus all: `vllm --version` needs a visible GPU or it aborts -> version_unknown.
+        () => $`docker run --rm --pull=never --gpus all --entrypoint ${process.env.VLLM_PATH ?? "vllm"} ${values.image} --version`.throws(false).text()
       : () => $`${bareVllmPath ?? "vllm"} --version`.throws(false).text();
   try {
     const out = await run();
@@ -196,18 +188,11 @@ function buildConfig(resolved: ResolvedVllmModel, profile: HardwareProfile): Vll
 
 function serveArgv(config: VllmInstanceConfig): string[] {
   if (backend !== "docker") return buildSystemdServeArgv(config);
-  const dockerOptions = noEgress
-    ? { network: ISOLATED_NETWORK, extraEnv: { HF_HUB_OFFLINE: "1", TRANSFORMERS_OFFLINE: "1" } }
-    : {};
-  return buildDockerRunArgs(id, config, "preview", dockerOptions);
+  return buildDockerRunArgs(id, config, "preview");
 }
 
-async function ensureIsolatedNetwork(): Promise<void> {
-  const present = await $`docker network inspect ${ISOLATED_NETWORK}`.quiet().nothrow();
-  if (present.exitCode === 0) return;
-  await $`docker network create -o com.docker.network.bridge.enable_ip_masquerade=false ${ISOLATED_NETWORK}`.quiet();
-  console.error(`Created egress-blocking docker network "${ISOLATED_NETWORK}".`);
-}
+const followLogsCommand = `docker logs -f vllm-${id}`;
+const stopCommand = `docker stop vllm-${id} && docker rm vllm-${id}`;
 
 const pidFile = join(tmpdir(), `xinity-run-model-${id}.pid`);
 
@@ -226,19 +211,33 @@ async function ensureDownloaded(resolved: ResolvedVllmModel): Promise<void> {
 }
 
 async function startServer(config: VllmInstanceConfig): Promise<never> {
-  if (backend === "docker" && noEgress) await ensureIsolatedNetwork();
   const argv = serveArgv(config);
-  console.error(`Starting (${backend}${noEgress ? ", no egress" : ""}):\n  ${quoteShellArgv(argv)}\n`);
-  const proc = Bun.spawn(argv, { stdin: "inherit", stdout: "inherit", stderr: "inherit" });
 
-  if (backend === "bare") await Bun.write(pidFile, String(proc.pid));
-  emit({ ok: true, event: "starting", backend, port, pid: proc.pid, noEgress, argv });
+  // docker run -d returns once the container is created; print the follow/stop hints and exit.
+  if (backend === "docker") {
+    await ensureVllmNetwork();
+    console.error(`Starting (docker, no egress):\n  ${quoteShellArgv(argv)}\n`);
+    const proc = Bun.spawn(argv, { stdin: "inherit", stdout: "inherit", stderr: "inherit" });
+    const code = await proc.exited;
+    if (code !== 0) process.exit(code);
+    console.error(`\nStarted container "vllm-${id}". The model is still loading inside it.`);
+    console.error(`Follow the load:  ${followLogsCommand}`);
+    console.error(`Stop & remove:    ${stopCommand}`);
+    emit({ ok: true, event: "started", backend, id, container: `vllm-${id}`, followLogsCommand, stopCommand });
+    process.exit(0);
+  }
+
+  console.error(`Starting (bare):\n  ${quoteShellArgv(argv)}\n`);
+  const proc = Bun.spawn(argv, { stdin: "inherit", stdout: "inherit", stderr: "inherit" });
+  await Bun.write(pidFile, String(proc.pid));
+  emit({ ok: true, event: "starting", backend, port, pid: proc.pid, argv });
+
   const cleanup = () => { try { proc.kill(); } catch { /* already gone */ } };
   process.on("SIGINT", cleanup);
   process.on("SIGTERM", cleanup);
 
   const code = await proc.exited;
-  if (backend === "bare") await $`rm -f ${pidFile}`.nothrow();
+  await $`rm -f ${pidFile}`.nothrow();
   process.exit(code);
 }
 
@@ -277,14 +276,15 @@ function printPlan(resolved: ResolvedVllmModel, profile: HardwareProfile, driver
       image: backend === "docker" ? values.image : undefined,
       vllmBinary: backend === "bare" ? (bareVllmPath ?? null) : undefined,
       vllm: { available: driver.available, version: driver.version ?? null, minVersion: resolved.minVersion ?? null },
-      noEgress,
       machine: { gpus: profile.gpus, capacityGb: profile.detectedCapacityGb },
       sizing: { kvCacheGb: resolved.kvCacheGb, estCapacityGb: resolved.estCapacity, gpuMemoryUtilization: config.gpuMemoryUtilization ?? null },
       gate: { ok: reason === null, reason: reason ?? null, message: reason ? describeIncompatibility(reason, resolved, profile, driver) : null },
       download: { filters: resolved.model.downloadFilter ?? [] },
-      network: backend === "docker" && noEgress ? { name: ISOLATED_NETWORK } : undefined,
+      network: backend === "docker" ? { name: VLLM_NETWORK } : undefined,
       port,
       startCommand: serveArgv(config),
+      followLogsCommand: backend === "docker" ? followLogsCommand : undefined,
+      stopCommand: backend === "docker" ? stopCommand : undefined,
     });
     return;
   }
@@ -292,7 +292,7 @@ function printPlan(resolved: ResolvedVllmModel, profile: HardwareProfile, driver
   const gpus = profile.gpus.map((g) => `${g.vendor} ${g.name}`).join(", ") || "none";
 
   console.log(`Model:    ${resolved.vllmProviderName}  (type=${resolved.modelType ?? "chat"})`);
-  console.log(`Backend:  ${backend}${backend === "docker" ? ` (${values.image})` : ` (${bareVllmPath ?? "vllm not found on PATH"})`}${noEgress ? "  [no egress: internet blocked, published port only]" : ""}`);
+  console.log(`Backend:  ${backend}${backend === "docker" ? ` (${values.image})  [no egress: internet blocked, published port only]` : ` (${bareVllmPath ?? "vllm not found on PATH"})`}`);
   console.log(`vLLM:     ${driver.available ? (driver.version ?? "version undetectable") : "not available"}${resolved.minVersion ? `  (model requires >= ${resolved.minVersion})` : ""}`);
   console.log(`Machine:  ${gpus}; ${profile.detectedCapacityGb}GB capacity`);
   console.log(`Sizing:   kvCache=${resolved.kvCacheGb}GB, estCapacity=${resolved.estCapacity}GB, gpuUtil=${config.gpuMemoryUtilization ?? "n/a"}`);
@@ -302,13 +302,18 @@ function printPlan(resolved: ResolvedVllmModel, profile: HardwareProfile, driver
   console.log(`#   files filtered by: ${resolved.model.downloadFilter?.length ? resolved.model.downloadFilter.join(" ") : "(daemon defaults only)"}`);
   console.log();
   console.log(`# Start command`);
-  if (backend === "docker" && noEgress) {
-    console.log(`docker network create -o com.docker.network.bridge.enable_ip_masquerade=false ${ISOLATED_NETWORK}  # once`);
+  if (backend === "docker") {
+    console.log(`docker network create -o com.docker.network.bridge.enable_ip_masquerade=false ${VLLM_NETWORK}  # once (egress-blocked)`);
   }
   console.log(quoteShellArgv(serveArgv(config)));
+  if (backend === "docker") {
+    console.log();
+    console.log(`# Follow logs (the container starts detached)`);
+    console.log(followLogsCommand);
+  }
   console.log();
   console.log(`# Stop`);
-  console.log(backend === "docker" ? `docker stop vllm-${id} && docker rm vllm-${id}` : `run-model --stop --id ${id}   (or Ctrl-C)`);
+  console.log(backend === "docker" ? stopCommand : `run-model --stop --id ${id}   (or Ctrl-C)`);
 }
 
 async function main(): Promise<void> {

@@ -74,7 +74,7 @@ async function detectConfiguredOllamaVersion(): Promise<string | undefined> {
 async function detectConfiguredVllmVersion(): Promise<string | undefined> {
   if (env.VLLM_DOCKER_IMAGE) {
     return detectVllmVersion("docker", () =>
-      $`docker run --rm --gpus all --entrypoint vllm ${env.VLLM_DOCKER_IMAGE} --version`.throws(false).text(),
+      $`docker run --rm --gpus all --entrypoint ${env.VLLM_PATH ?? "vllm"} ${env.VLLM_DOCKER_IMAGE} --version`.throws(false).text(),
     );
   }
   if (env.VLLM_PATH) {

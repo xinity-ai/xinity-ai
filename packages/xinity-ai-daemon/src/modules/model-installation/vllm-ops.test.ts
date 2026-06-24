@@ -25,24 +25,50 @@ const baseConfig: VllmInstanceConfig = {
 };
 
 describe("buildDockerRunArgs", () => {
-  test("base config emits stable argv", () => {
+  test("base config emits stable argv (always egress-blocked + offline)", () => {
     const argv = buildDockerRunArgs("inst-1", baseConfig);
     expect(argv).toEqual([
       "docker", "run", "-d",
       "--name", "vllm-inst-1",
       "--gpus", "all",
       "--ipc=host",
+      "--network", "xinity-vllm-noegress-v1",
       "-p", "127.0.0.1:8000:8000",
       "-e", "HF_HOME=/data/hf-cache",
       "-e", "TRITON_CACHE_DIR=/data/triton-cache",
+      "-e", "HF_HUB_OFFLINE=1",
+      "-e", "TRANSFORMERS_OFFLINE=1",
       "-v", "/var/lib/vllm/hf-cache:/data/hf-cache",
       "-v", "/var/lib/vllm/triton-cache:/data/triton-cache",
       "--restart", "unless-stopped",
+      "--entrypoint", "/usr/local/bin/vllm",
       "vllm/vllm-openai:latest",
-      "--model", "meta-llama/Llama-3.1-8B-Instruct",
+      "serve", "meta-llama/Llama-3.1-8B-Instruct",
+      "--host", "0.0.0.0",
+      "--port", "8000",
       "--served-model-name", "meta-llama/Llama-3.1-8B-Instruct",
       "--kv-cache-memory-bytes", "8g",
     ]);
+  });
+
+  test("every container is egress-blocked and offline; no mode lets it reach the internet", () => {
+    for (const mode of ["daemon", "preview"] as const) {
+      const argv = buildDockerRunArgs("inst-1", baseConfig, mode);
+      const netIdx = argv.indexOf("--network");
+      expect(argv[netIdx + 1]).toBe("xinity-vllm-noegress-v1");
+      expect(netIdx).toBeLessThan(argv.indexOf("-p")); // network before published port
+      expect(argv).toContain("HF_HUB_OFFLINE=1");
+      expect(argv).toContain("TRANSFORMERS_OFFLINE=1");
+    }
+  });
+
+  test("base image (vllm not the default command) is driven via --entrypoint + serve", () => {
+    const argv = buildDockerRunArgs("inst-1", baseConfig);
+    const entryIdx = argv.indexOf("--entrypoint");
+    expect(argv[entryIdx + 1]).toBe("/usr/local/bin/vllm");
+    expect(argv[entryIdx + 2]).toBe("vllm/vllm-openai:latest");
+    expect(argv[entryIdx + 3]).toBe("serve");
+    expect(argv).not.toContain("--model");
   });
 
   test("appends optional flags in the documented order", () => {
@@ -61,29 +87,13 @@ describe("buildDockerRunArgs", () => {
     ]);
   });
 
-  test("preview mode swaps -d for -it --rm and drops the restart policy", () => {
+  test("preview mode runs detached without a restart policy (one-off, kept for log inspection)", () => {
     const argv = buildDockerRunArgs("inst-1", baseConfig, "preview");
-    expect(argv.slice(0, 5)).toEqual(["docker", "run", "-it", "--rm", "--name"]);
-    expect(argv).not.toContain("-d");
+    expect(argv.slice(0, 3)).toEqual(["docker", "run", "-d"]);
+    expect(argv).not.toContain("-it");
+    expect(argv).not.toContain("--rm");
     expect(argv).not.toContain("--restart");
     expect(argv).not.toContain("unless-stopped");
-  });
-
-  test("network option inserts --network before the published port", () => {
-    const argv = buildDockerRunArgs("inst-1", baseConfig, "preview", { network: "isolated-net" });
-    const netIdx = argv.indexOf("--network");
-    expect(netIdx).toBeGreaterThan(-1);
-    expect(argv[netIdx + 1]).toBe("isolated-net");
-    expect(netIdx).toBeLessThan(argv.indexOf("-p"));
-  });
-
-  test("extraEnv adds -e flags without dropping the defaults", () => {
-    const argv = buildDockerRunArgs("inst-1", baseConfig, "preview", {
-      extraEnv: { HF_HUB_OFFLINE: "1", TRANSFORMERS_OFFLINE: "1" },
-    });
-    expect(argv).toContain("HF_HUB_OFFLINE=1");
-    expect(argv).toContain("TRANSFORMERS_OFFLINE=1");
-    expect(argv).toContain("HF_HOME=/data/hf-cache");
   });
 });
 
