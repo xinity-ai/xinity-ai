@@ -34,7 +34,7 @@ export const daemonEnvSchema = z.object({
     .default("/etc/systemd/system/vllm-driver@.service")
     .describe("vLLM systemd template unit path")
     .meta(expert()),
-  VLLM_PATH: z.string().optional().describe("Path to vllm binary (enables vllm-systemd driver). Install: https://docs.vllm.ai/en/latest/getting_started/installation/index.html"),
+  VLLM_PATH: z.string().optional().describe("Path to the vllm binary. With VLLM_BACKEND=systemd it is executed directly; with VLLM_BACKEND=docker it is the entrypoint used inside the image (default: vllm on the image PATH). Install: https://docs.vllm.ai/en/latest/getting_started/installation/index.html"),
   VLLM_DOCKER_IMAGE: z
     .string()
     .optional()
