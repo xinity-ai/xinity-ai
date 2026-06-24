@@ -1,3 +1,5 @@
+import { mock } from "bun:test";
+
 /**
  * OpenAI-compliant mock upstream response helpers for unit tests.
  *
@@ -130,4 +132,23 @@ export function makeChatSseResponseWithToolCalls(
 /** Builds a raw JSON response with arbitrary body, for testing schema resilience. */
 export function makeRawJsonResponse(body: unknown, status = 200): Response {
   return Response.json(body, { status });
+}
+
+// Must export the full backend-fetch surface: bun's mock.module is process-global,
+// so a partial mock leaks into later test files and breaks their imports.
+export function mockBackendFetch(): void {
+  mock.module("../backend-fetch", () => ({
+    backendUrl: (host: string, _model: string, path: string) => `http://${host}${path}`,
+    backendFetch: (url: string | URL | Request, init?: RequestInit) => fetch(url, init),
+    backendPostForm: (target: { host: string }, path: string, form: FormData, signal: AbortSignal) =>
+      fetch(`http://${target.host}${path}`, { method: "POST", body: form, signal }),
+    backendPostJson: (target: { host: string }, path: string, body: unknown, signal: AbortSignal) =>
+      fetch(`http://${target.host}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal,
+      }),
+    hasCustomCa: false,
+  }));
 }

@@ -1,4 +1,5 @@
 import { describe, test, expect, mock, beforeAll, afterAll, jest, afterEach } from "bun:test";
+import { mockBackendFetch } from "./test-helpers";
 
 mock.module("../../env", () => ({
   env: {
@@ -45,13 +46,7 @@ const transcriptionModel = () => ({
 const getModelInfo = jest.fn<typeof getModelInfoT>(async () => transcriptionModel());
 mock.module("../model-data", () => ({ getModelInfo }));
 
-mock.module("../backend-fetch", () => ({
-  backendUrl: (host: string, _model: string, path: string) => `http://${host}${path}`,
-  backendFetch: (url: string | URL | Request, init?: RequestInit) => fetch(url, init),
-  backendPostForm: (target: { host: string }, path: string, form: FormData, signal: AbortSignal) =>
-    fetch(`http://${target.host}${path}`, { method: "POST", body: form, signal }),
-  hasCustomCa: false,
-}));
+mockBackendFetch();
 
 mock.module("../../callLogger", () => ({
   logChatStream: mock(() => Promise.resolve()),
