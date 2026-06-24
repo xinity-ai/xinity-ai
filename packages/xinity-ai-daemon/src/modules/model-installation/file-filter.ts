@@ -31,6 +31,7 @@ const HF_DEFAULTS: readonly string[] = [
   "!tokenizer.*",
   "!merges.txt",
   "!*.txt",
+  "!*.jinja",
   "original/**",
   "*.gguf",
   "*.pt",
@@ -48,6 +49,7 @@ const MISTRAL_DEFAULTS: readonly string[] = [
   "!tekken.json",
   "!merges.txt",
   "!*.txt",
+  "!*.jinja",
   "original/**",
 ];
 

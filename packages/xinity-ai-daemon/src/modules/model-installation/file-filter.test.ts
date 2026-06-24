@@ -36,6 +36,7 @@ describe("buildRules / selectFiles - HF default mode", () => {
       "config.json",
       "tokenizer.json",
       "tokenizer.model",
+      "chat_template.jinja",
       "original/consolidated.00.pth",
       "original/tokenizer.model",
       "model.gguf",
@@ -49,6 +50,7 @@ describe("buildRules / selectFiles - HF default mode", () => {
     expect(mode).toBe("hf");
 
     expect(names(selectFiles(files, rules))).toEqual([
+      "chat_template.jinja",
       "config.json",
       "model-00001-of-00002.safetensors",
       "model-00002-of-00002.safetensors",
@@ -56,6 +58,12 @@ describe("buildRules / selectFiles - HF default mode", () => {
       "tokenizer.json",
       "tokenizer.model",
     ]);
+  });
+
+  test("keeps standalone chat_template.jinja (Gemma 4 style); needed for chat serving", () => {
+    const files = f("model.safetensors", "config.json", "chat_template.jinja");
+    const { rules } = buildRules(files, []);
+    expect(names(selectFiles(files, rules))).toContain("chat_template.jinja");
   });
 
   test("bin fallback kicks in when no safetensors are present", () => {
