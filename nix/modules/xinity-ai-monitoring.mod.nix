@@ -196,8 +196,9 @@
               url = "http://127.0.0.1:${toString cfg.logs.port}";
             };
 
-          # Dashboards reference the datasources by the fixed uids above, so the
-          # same JSON files provision identically here and in the docker stack.
+          # The dashboards select their datasource through a Grafana datasource
+          # variable (matched by type), so the same JSON files provision
+          # identically here and in the docker stack.
           provision.dashboards.settings.providers =
             [
               {
