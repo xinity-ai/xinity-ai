@@ -63,14 +63,14 @@ Run this on each machine with GPU capacity:
 xinity up daemon
 ```
 
-The daemon connects to the shared database and receives deployment instructions from the dashboard. Ollama must be installed and running on the same machine. Use `xinity up infra-ollama` to install and configure it (handles network binding and daemon env setup).
+The daemon connects to the shared database and receives deployment instructions from the dashboard. Ollama must be installed and running on the same machine. Use `xinity up infra-ollama` to install it and write the daemon env.
 
 ## Infrastructure Utilities
 
 Infrastructure dependencies are managed with `xinity up infra-<tool>`:
 
 ```bash
-xinity up infra-ollama      # Install/update ollama, configure network binding, write daemon env
+xinity up infra-ollama      # Install/update ollama, write daemon env
 xinity up infra-redis       # Detect/install Redis or Valkey, configure, persist connection URL
 xinity up infra-seaweedfs   # Install SeaweedFS S3-compatible object store
 xinity up infra-postgres    # Standalone PostgreSQL install/start (without migrations)
