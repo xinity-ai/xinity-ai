@@ -1,0 +1,37 @@
+name: OpenCode
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+jobs:
+  opencode-auto-review:
+    # Automatically review PRs opened/updated by a trusted author only.
+    # No @opencode mention trigger exists, so untrusted commenters cannot
+    # invoke the agent or inject prompts.
+    if: github.event_name == 'pull_request' && github.event.pull_request.user.login == 'JAAvander'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: anomalyco/opencode/github@latest
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          model: opencode-go/glm-5.2
+          use_github_token: true
+          prompt: |
+            Review this pull request thoroughly. Look for bugs, correctness
+            issues, security problems, and deviations from the repo's
+            conventions (see AGENTS.md, CONTRIBUTING.md, and the .claude/skills
+            directory). Verify changes with tests and typecheck where possible.
+            Leave your findings as a PR review.
