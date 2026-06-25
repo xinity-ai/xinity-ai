@@ -85,6 +85,19 @@ Map failures with the table below. If you are scripting this, add `--json`: it e
 as a structured object (`{ gate: { ok, reason }, sizing, startCommand, followLogsCommand, ... }`)
 and exits non-zero with an error `code` on failure.
 
+**Tip: check arch support before a big download.** New models can be tens of GB, and `--start`
+downloads before it loads - so for an unfamiliar architecture, first confirm the image's vLLM even
+registers it. Grep the registry inside the image for the `architectures` value from `config.json`:
+
+```bash
+docker run --rm --entrypoint sh <vllm-image> -c \
+  'P=$(python3 -c "import vllm,os;print(os.path.dirname(vllm.__file__))"); \
+   grep -c <ArchFromConfigJson> "$P/model_executor/models/registry.py"'
+```
+
+`0` means that build can't load it (treat like `version_too_old` - try a newer image); a match means
+it's worth downloading. Registration is necessary, not sufficient - still verify by serving.
+
 ### Confirm it actually serves (not just `/health`)
 
 A healthy `/health` is not proof - send a real request and read the output. This catches models that
@@ -205,6 +218,7 @@ official one doesn't yet cover your hardware, and then review the Dockerfile and
 | `insufficient_capacity` | `weight` + KV-cache exceeds available VRAM | Re-check the `weight` estimate, lower KV-cache via `--kv-cache`, or choose a smaller/quantized variant |
 | Server exits at load: "trust_remote_code" / "requires --trust-remote-code" | Model ships custom loading code | Add `custom_code` to `tags` (or `providerTags.vllm`) |
 | Server load: unknown/unsupported architecture | vLLM too old for this model | Set `providerMinVersions.vllm` and run on a newer node |
+| Server load aborts: `weights not initialized from checkpoint: {visual.*}` | A vision-language architecture shipped as a **text-only** checkpoint (`config.json` `language_model_only: true`, no vision weights), but vLLM built the vision tower | Pass `--language-model-only` in `providerArgs.vllm` - the config field is not the switch, the CLI flag is. Not a `custom_code` case. Vision is off, so no `vision` tag |
 | Request fails HTTP 400 "default chat template is no longer allowed" | Model ships its chat template as a standalone `chat_template.jinja` and it isn't in the cache | The host downloader keeps `*.jinja` by default; if missing, re-run `--download`. Surfaces only if you `/health`-check but never send a real request - see "Confirm it actually serves" |
 | Loads but output is gibberish | Quant format/kernel mismatch (e.g. some FP8 Gemma variants) | Try a different quant of the same model (e.g. compressed-tensors instead of ModelOpt FP8), or a newer vLLM |
 | Load aborts: `tie_weights` `NotImplementedError` | Quant method can't tie embeddings for a tied-embedding model (e.g. ModelOpt FP8 + Gemma) | Use a compressed-tensors FP8 build (keeps `lm_head` unquantized) instead |
