@@ -10,7 +10,7 @@ async function getSession() {
   const { locals, } = getRequestEvent();
   const session = await auth.api.getSession(locals.request);
   if (!session) {
-    throw error(407, "Not logged in")
+    throw error(401, "Not logged in")
   }
   return session;
 }
