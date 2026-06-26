@@ -15,7 +15,8 @@ import {
   validateModelType,
   type FailedRequestContext,
 } from "../util";
-import { backendPostForm } from "../backend-fetch";
+import { backendPostForm, createIdleTimeout, type IdleTimeout } from "../backend-fetch";
+import { env } from "../../env";
 import { BackendTranscriptionChunkSchema, BackendUsageSchema } from "../backend-schemas";
 import { rootLogger } from "../../logger";
 
@@ -25,6 +26,7 @@ const log = rootLogger.child({ name: "handle-transcription" });
 function streamTranscriptionAsOpenAI(
   backendResponse: Response,
   logFields: FailedRequestContext,
+  idle?: IdleTimeout,
 ): Response {
   const stream = new ReadableStream({
     async start(controller) {
@@ -33,6 +35,7 @@ function streamTranscriptionAsOpenAI(
       let usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | undefined;
       try {
         for await (const event of readSSEStream(backendResponse)) {
+          idle?.reset();
           if (event.data === "[DONE]") { completed = true; break; }
           let json: unknown;
           try {
@@ -85,6 +88,8 @@ function streamTranscriptionAsOpenAI(
       } catch (e) {
         if (!isAbortError(e)) recordFailedRequest(logFields);
         handleStreamError(e, controller, log);
+      } finally {
+        idle?.clear();
       }
     },
   });
@@ -154,13 +159,16 @@ export async function handleTranscription(req: Request): Promise<Response> {
     }
 
     // `as FormData` bridges the global vs undici FormData type mismatch.
-    const backendResponse = await backendPostForm(modelInfo, "/v1/audio/transcriptions", form as FormData, req.signal);
+    const idle = wantsStream ? createIdleTimeout() : undefined;
+    const timeoutSignal = idle?.signal ?? AbortSignal.timeout(env.BACKEND_TIMEOUT_MS);
+    const signal = AbortSignal.any([req.signal, timeoutSignal]);
+    const backendResponse = await backendPostForm(modelInfo, "/v1/audio/transcriptions", form as FormData, signal);
     if (!backendResponse.ok) {
       return noteFailedRequest(await forwardBackendError(backendResponse, log));
     }
 
     if (wantsStream) {
-      return streamTranscriptionAsOpenAI(backendResponse, { auth, modelInfo, callStartTime });
+      return streamTranscriptionAsOpenAI(backendResponse, { auth, modelInfo, callStartTime }, idle);
     }
 
     const contentType = backendResponse.headers.get("content-type") ?? "application/json";

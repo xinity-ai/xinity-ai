@@ -8,8 +8,9 @@ import { withEndpointGuards } from "../endpoint-guards";
 import { BackendChatChunkSchema } from "../backend-schemas";
 import type { ApiCallInputMessage } from "common-db";
 import { rootLogger } from "../../logger";
+import { env } from "../../env";
 import { processMessageImages, imageStore } from "../../image-store";
-import { backendPostJson } from "../backend-fetch";
+import { backendPostJson, createIdleTimeout } from "../backend-fetch";
 import {
   forwardOpenAIResponse,
   type NonStreamSpec,
@@ -203,7 +204,11 @@ export const handleChatCompletion = withEndpointGuards({
       metadata: body.metadata ?? undefined,
     };
 
-    const backendResponse = await backendPostJson(modelInfo, "/v1/chat/completions", fetchBody, req.signal);
+    const idle = body.stream ? createIdleTimeout() : undefined;
+    const timeoutSignal = idle?.signal ?? AbortSignal.timeout(env.BACKEND_TIMEOUT_MS);
+    const signal = AbortSignal.any([req.signal, timeoutSignal]);
+
+    const backendResponse = await backendPostJson(modelInfo, "/v1/chat/completions", fetchBody, signal);
 
     return forwardOpenAIResponse({
       backendResponse,
@@ -213,6 +218,8 @@ export const handleChatCompletion = withEndpointGuards({
       nonStreamSpec: chatNonStreamSpec,
       logFields,
       log,
+      onStreamChunk: idle?.reset,
+      onStreamEnd: idle?.clear,
     });
   },
 });

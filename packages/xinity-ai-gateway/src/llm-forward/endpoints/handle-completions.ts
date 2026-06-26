@@ -4,7 +4,8 @@ import { withEndpointGuards } from "../endpoint-guards";
 import { BackendCompletionChunkSchema } from "../backend-schemas";
 import type { ApiCallInputMessage } from "common-db";
 import { rootLogger } from "../../logger";
-import { backendPostJson } from "../backend-fetch";
+import { env } from "../../env";
+import { backendPostJson, createIdleTimeout } from "../backend-fetch";
 import {
   forwardOpenAIResponse,
   type NonStreamSpec,
@@ -121,7 +122,11 @@ export const handleCompletion = withEndpointGuards({
       fetchBody.stream_options = { include_usage: true };
     }
 
-    const backendResponse = await backendPostJson(modelInfo, "/v1/completions", fetchBody, req.signal);
+    const idle = body.stream ? createIdleTimeout() : undefined;
+    const timeoutSignal = idle?.signal ?? AbortSignal.timeout(env.BACKEND_TIMEOUT_MS);
+    const signal = AbortSignal.any([req.signal, timeoutSignal]);
+
+    const backendResponse = await backendPostJson(modelInfo, "/v1/completions", fetchBody, signal);
 
     return forwardOpenAIResponse({
       backendResponse,
@@ -131,6 +136,8 @@ export const handleCompletion = withEndpointGuards({
       nonStreamSpec: completionNonStreamSpec,
       logFields,
       log,
+      onStreamChunk: idle?.reset,
+      onStreamEnd: idle?.clear,
     });
   },
 });

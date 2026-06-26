@@ -24,7 +24,7 @@ export const gatewayEnvSchema = z.object({
     .describe("Load balancing strategy for distributing requests across inference nodes")
     .meta(expert()),
   BACKEND_TIMEOUT_MS: z.coerce.number().positive().default(300_000)
-    .describe("Maximum time in ms to wait for a backend response (default: 5 minutes)")
+    .describe("Backend timeout in ms (default: 5 min). For streaming requests this is an idle timeout that resets on each chunk; for non-streaming requests it is a wall-clock deadline.")
     .meta(expert()),
   S3_ENDPOINT: z.url().optional().describe("SeaweedFS / S3-compatible endpoint URL (enables multimodal image storage)").meta(expert()),
   S3_ACCESS_KEY_ID: z.string().optional().describe("S3 access key ID").meta({ ...secret(), ...expert() }),

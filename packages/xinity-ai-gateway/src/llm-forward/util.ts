@@ -249,16 +249,29 @@ export const sseEncoder = new TextEncoder();
 export function handleStreamError(
   e: unknown,
   controller: ReadableStreamDefaultController,
-  log: { info: (obj: Record<string, unknown>, msg: string) => void; error: (obj: Record<string, unknown>, msg: string) => void },
+  log: { info: (obj: Record<string, unknown>, msg: string) => void; warn?: (obj: Record<string, unknown>, msg: string) => void; error: (obj: Record<string, unknown>, msg: string) => void },
 ): void {
   if (isAbortError(e)) {
     log.info({ err: e }, "Client disconnected during stream");
     try { controller.close(); } catch {}
     return;
   }
-  log.error({ err: e }, "Stream error");
+
+  let message: string;
+  let errorType: string;
+
+  if (isTimeoutError(e)) {
+    (log.warn ?? log.error)({ err: e }, "Backend timeout during stream");
+    message = "Backend timed out while generating the response";
+    errorType = "timeout_error";
+  } else {
+    log.error({ err: e }, "Stream error");
+    message = "Internal stream error";
+    errorType = "server_error";
+  }
+
   try {
-    controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify({ error: { message: "Internal stream error", type: "server_error" } })}\n\n`));
+    controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify({ error: { message, type: errorType } })}\n\n`));
     controller.enqueue(sseEncoder.encode("data: [DONE]\n\n"));
     controller.close();
   } catch {

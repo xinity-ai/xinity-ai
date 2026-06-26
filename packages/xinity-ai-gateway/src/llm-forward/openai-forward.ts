@@ -52,12 +52,15 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
   spec,
   logFields,
   log,
+  onStreamChunk,
 }: {
   backendResponse: Response;
   originalModel: string;
   spec: StreamSpec<Chunk, Acc>;
   logFields: OpenAIForwardLogFields;
   log: Logger;
+  onStreamChunk?: () => void;
+  onStreamEnd?: () => void;
 }): Response {
   let collectedUsage: z.infer<typeof BackendUsageSchema> | undefined;
   let sawDone = false;
@@ -68,6 +71,7 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
       let lastChunk: Chunk | undefined;
       try {
         for await (const event of readSSEStream(backendResponse)) {
+          onStreamChunk?.();
           if (event.data === "[DONE]") {
             sawDone = true;
             break;
@@ -145,6 +149,8 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
           recordFailedRequest(logFields);
         }
         handleStreamError(e, controller, log);
+      } finally {
+        onStreamEnd?.();
       }
     },
   });
@@ -201,6 +207,8 @@ export function forwardOpenAIResponse<Chunk extends StreamChunkLike, Acc, Choice
   nonStreamSpec,
   logFields,
   log,
+  onStreamChunk,
+  onStreamEnd,
 }: {
   backendResponse: Response;
   originalModel: string;
@@ -209,12 +217,16 @@ export function forwardOpenAIResponse<Chunk extends StreamChunkLike, Acc, Choice
   nonStreamSpec: NonStreamSpec<Choice>;
   logFields: OpenAIForwardLogFields;
   log: Logger;
+  onStreamChunk?: () => void;
+  onStreamEnd?: () => void;
 }): Response | Promise<Response> {
   if (!backendResponse.ok) {
+    onStreamEnd?.();
     return forwardBackendError(backendResponse, log);
   }
   if (stream) {
-    return forwardOpenAIStream({ backendResponse, originalModel, spec: streamSpec, logFields, log });
+    return forwardOpenAIStream({ backendResponse, originalModel, spec: streamSpec, logFields, log, onStreamChunk, onStreamEnd });
   }
+  onStreamEnd?.();
   return forwardOpenAINonStream({ backendResponse, originalModel, spec: nonStreamSpec, logFields, log });
 }
