@@ -187,14 +187,22 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
         emitResponseLifecycle(controller, "response.completed", completedResponse, seq);
         controller.close();
       } catch (error) {
-        if (isAbortError(error) || isTimeoutError(error)) {
+        if (isAbortError(error)) {
           try { controller.close(); } catch {}
           return;
         }
-        if (!isUpstreamError(error)) {
+
+        let message: string;
+        if (isTimeoutError(error)) {
+          log.warn({ err: error, responseId }, "Backend timeout in response stream");
+          message = "Backend timed out while generating the response";
+        } else if (isUpstreamError(error)) {
+          message = clientFacingErrorMessage(error);
+        } else {
           log.error({ err: error, responseId }, "Internal error in response stream");
+          message = clientFacingErrorMessage(error);
         }
-        const message = clientFacingErrorMessage(error);
+
         try {
           emitStreamError(controller, message, seq);
           emitResponseLifecycle(controller, "response.failed", markResponseFailed(baseResponse, message), seq);
