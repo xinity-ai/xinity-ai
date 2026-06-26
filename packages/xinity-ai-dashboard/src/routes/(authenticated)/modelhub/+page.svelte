@@ -62,7 +62,7 @@
   function isUnclean(d: DeploymentDefinition): boolean {
     if (!d.enabled) return false;
     if (!d.status) return true; // enabled but no status reported yet = scheduling
-    return d.status.phase !== "ready" && d.status.phase !== "failed";
+    return d.status.phase !== "ready" && d.status.phase !== "failed" && d.status.phase !== "partial";
   }
 
   // Fast refresh: only deployments with unclean status, every 10 seconds
@@ -124,7 +124,7 @@
   $effect(() => {
     if (!browser || !deploymentsLoaded) return;
     for (const d of deployments) {
-      if (d.status?.phase !== "ready") continue;
+      if (d.status?.phase !== "ready" && d.status?.phase !== "partial") continue;
       const key = d.specifier ?? d.modelSpecifier;
       if (modelKnowledge[key] !== undefined) continue;
       modelKnowledge[key] = { status: "loading" };
@@ -194,6 +194,7 @@
   // Status chip colors/labels by phase
   const phaseConfig = {
     ready:          { dot: "bg-[#4ade80]",      chip: "bg-[#4ade80]/15 text-[#16a34a]",        pulse: false, label: "Ready" },
+    partial:        { dot: "bg-[#f59e0b]",      chip: "bg-[#f59e0b]/15 text-[#d97706]",      pulse: false, label: "Partial" },
     failed:         { dot: "bg-destructive",     chip: "bg-destructive/15 text-destructive",   pulse: false, label: "Failed" },
     scheduling:     { dot: "bg-[#98B9FD]",      chip: "bg-[#98B9FD]/15 text-[#5b8ae6]",      pulse: true,  label: "Scheduling" },
     downloading:    { dot: "bg-primary",         chip: "bg-primary/15 text-primary",            pulse: true,  label: "Downloading" },
@@ -381,16 +382,27 @@
                 {:else}
                   {@const cfg = phaseConfig[deployment.status.phase]}
                   {@render chip(cfg.dot, cfg.chip, cfg.label, cfg.pulse)}
+                  {#if deployment.status.replicas && deployment.status.replicas.length > 1}
+                    <div class="flex items-center gap-1 mt-1.5">
+                      {#each deployment.status.replicas as replica}
+                        {@const rcfg = phaseConfig[replica.phase]}
+                        <span
+                          class="w-2.5 h-2.5 rounded-full {rcfg.dot} {rcfg.pulse ? 'animate-pulse' : ''}"
+                          title="{replica.node ?? 'Unknown node'}: {rcfg.label}{replica.error ? ` (${replica.error})` : ''}"
+                        ></span>
+                      {/each}
+                    </div>
+                  {/if}
                   {#if deployment.status.progress != null}
                     <div title="{Math.round(deployment.status.progress * 100)}%" class="w-full bg-muted rounded-full h-2 mt-2">
                       <div class="bg-primary h-2 rounded-full transition-all" style="width: {deployment.status.progress * 100}%"></div>
                     </div>
                   {/if}
-                  {#if deployment.status.phase === 'failed' && deployment.status.error}
+                  {#if (deployment.status.phase === 'failed' || deployment.status.phase === 'partial') && deployment.status.error}
                     <p class="text-sm text-destructive mt-2">{deployment.status.error}</p>
                     <a href="/docs/deployment-troubleshooting" class="text-xs text-muted-foreground hover:underline mt-1 inline-block">Troubleshooting guide</a>
                   {/if}
-                  {#if deployment.status.phase === 'failed' && deployment.status.failureLogs}
+                  {#if (deployment.status.phase === 'failed' || deployment.status.phase === 'partial') && deployment.status.failureLogs}
                     <Collapsible.Root class="mt-2">
                       <div class="flex items-center gap-2">
                         <Collapsible.Trigger class="text-xs text-muted-foreground hover:underline cursor-pointer">View logs</Collapsible.Trigger>
@@ -449,9 +461,9 @@
               {/if}
             </Card.Content>
 
-            {#if permissions.canManageDeployments || deployment.status?.phase === "ready"}
+            {#if permissions.canManageDeployments || deployment.status?.phase === "ready" || deployment.status?.phase === "partial"}
               <Card.Footer class="pt-4 border-t flex justify-end gap-2">
-                {#if deployment.status?.phase === "ready"}
+                {#if deployment.status?.phase === "ready" || deployment.status?.phase === "partial"}
                   {@const type = testableType(deployment)}
                   {#if type}
                     <Button
@@ -465,7 +477,7 @@
                   {/if}
                 {/if}
                 {#if permissions.canManageDeployments}
-                  {#if deployment.status?.phase === "failed"}
+                  {#if deployment.status?.phase === "failed" || deployment.status?.phase === "partial"}
                     <Button variant="outline" size="sm" onclick={() => retryDeployment(deployment)}>
                       <RotateCcw class="w-4 h-4" />
                       Retry
