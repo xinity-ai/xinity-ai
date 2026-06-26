@@ -1,7 +1,7 @@
 import { rootOs, withOrganization, requirePermission } from "../root";
 import { formatGb } from "$lib/util";
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
-import { and, eq, isNull, modelDeploymentT, modelInstallationT, modelInstallationStateT, organizationT, deploymentMatchesInstallation, type ModelDeployment, type SQL } from "common-db";
+import { and, eq, inArray, isNull, modelDeploymentT, modelInstallationT, modelInstallationStateT, organizationT, deploymentMatchesInstallation, type ModelDeployment, type SQL } from "common-db";
 import z from "zod";
 import { DeploymentDto } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
@@ -437,6 +437,39 @@ Immediately unregisters it, and drops it completely.
     syncDeployedModels();
     return { success: true };
   });
+const retryDeployment = rootOs
+  .use(withOrganization)
+  .use(requirePermission({ modelDeployment: ["update"] }))
+  .route({
+    path: "/{id}/retry", method: "POST", tags, summary: "Retry Failed Installations",
+  })
+  .input(z.object({ id: z.uuid() }))
+  .output(SuccessDto)
+  .errors({ NOT_FOUND: {} })
+  .handler(async ({ context, input, errors }) => {
+    const deployment = await findActiveDeploymentInOrg(input.id, context.activeOrganizationId);
+    if (!deployment) throw errors.NOT_FOUND();
+
+    const failedStates = await getDB()
+      .select({ stateId: modelInstallationStateT.id })
+      .from(modelDeploymentT)
+      .innerJoin(modelInstallationT, and(deploymentMatchesInstallation, isNull(modelInstallationT.deletedAt)))
+      .innerJoin(modelInstallationStateT, and(
+        eq(modelInstallationStateT.id, modelInstallationT.id),
+        eq(modelInstallationStateT.lifecycleState, "failed"),
+      ))
+      .where(eq(modelDeploymentT.id, input.id));
+
+    if (failedStates.length > 0) {
+      await getDB()
+        .delete(modelInstallationStateT)
+        .where(inArray(modelInstallationStateT.id, failedStates.map(s => s.stateId)));
+    }
+
+    syncDeployedModels();
+    return successObject;
+  });
+
 const findDeployment = rootOs
   .use(withOrganization)
   .use(requirePermission({ modelDeployment: ["read"] }))
@@ -554,5 +587,6 @@ export const deploymentRouter = rootOs.prefix("/deployment").router({
   list: listDeployments,
   find: findDeployment,
   enable: toggleEnabled,
+  retry: retryDeployment,
   checkCapacity,
 });

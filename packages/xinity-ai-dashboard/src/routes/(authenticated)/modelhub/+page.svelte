@@ -19,7 +19,7 @@
   import { Badge } from "$lib/components/ui/badge";
 
   // Icons
-  import { Plus, Pencil, Trash2, Copy, Rocket, Info, MessageSquare } from "@lucide/svelte";
+  import { Plus, Pencil, Trash2, Copy, Rocket, Info, MessageSquare, RotateCcw } from "@lucide/svelte";
   import { browser } from "$app/environment";
   import { permissions } from "$lib/state/permissions.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
@@ -224,6 +224,19 @@
       deletedIds.delete(deleting.id);
       refreshCapacity();
     }
+  }
+  async function retryDeployment(deployment: DeploymentDefinition) {
+    const [err] = await orpc.deployment.retry({ id: deployment.id });
+    if (err) {
+      toastState.add("Failed to retry deployment", "error");
+      return;
+    }
+    toastState.add(`Retrying "${deployment.name}"`, "success");
+    deployments = deployments.map(d =>
+      d.id === deployment.id
+        ? { ...d, status: { phase: "scheduling" as const, progress: null, error: null } }
+        : d
+    );
   }
 </script>
 
@@ -452,6 +465,12 @@
                   {/if}
                 {/if}
                 {#if permissions.canManageDeployments}
+                  {#if deployment.status?.phase === "failed"}
+                    <Button variant="outline" size="sm" onclick={() => retryDeployment(deployment)}>
+                      <RotateCcw class="w-4 h-4" />
+                      Retry
+                    </Button>
+                  {/if}
                   <Button variant="outline" size="sm" onclick={() => (editDeploymentModalId = deployment.id)}>
                     <Pencil class="w-4 h-4" />
                     Edit
