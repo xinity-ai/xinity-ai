@@ -1,4 +1,4 @@
-import { calcCanaryProgress, sql, modelDeploymentT, aiNodeT, modelInstallationT, installationMatchesLookup } from "common-db";
+import { calcCanaryProgress, sql, modelDeploymentT, aiNodeT, modelInstallationT, modelInstallationStateT, installationMatchesLookup } from "common-db";
 import { getDB } from "../db";
 import { env } from "../env";
 import { createInfoserverClient, deploymentLookup, deploymentEarlyLookup, lookupKey, resolveTagsForDriver, resolveRequestParamsForDriver, type ModelLookup } from "xinity-infoserver";
@@ -58,6 +58,10 @@ async function getModelSources(lookup: ModelLookup): Promise<ModelSources> {
     tls: aiNodeT.tls,
   }).from(modelInstallationT)
     .innerJoin(aiNodeT, sql`${modelInstallationT.nodeId} = ${aiNodeT.id} AND ${aiNodeT.deletedAt} IS NULL`)
+    .innerJoin(modelInstallationStateT, sql`
+      ${modelInstallationStateT.id} = ${modelInstallationT.id}
+      AND ${modelInstallationStateT.lifecycleState} = 'ready'
+    `)
     .where(sql`${installationMatchesLookup(lookupKey(lookup))} AND ${modelInstallationT.deletedAt} IS NULL`);
 
   const byHost = new Map<string, HostLocation>();
