@@ -15,6 +15,7 @@
   import type { ApiCall, ApiCallResponse } from "common-db";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import { permissions } from "$lib/state/permissions.svelte";
+  import { untrack } from "svelte";
   import { useDebouncedValue } from "$lib/state/debounced.svelte";
   import { Button } from "$lib/components/ui/button";
   import { ArrowLeft, BookOpen } from "@lucide/svelte";
@@ -112,10 +113,11 @@
     if (offset === 0) {
       allCalls = data;
     } else {
-      // Deduplicate in case of overlapping fetches
-      const existingIds = new Set(allCalls.map((c) => c.id));
+      // untracked: this effect writes allCalls, so tracking the read would cycle
+      const existing = untrack(() => allCalls);
+      const existingIds = new Set(existing.map((c) => c.id));
       const newCalls = data.filter((c) => !existingIds.has(c.id));
-      allCalls = [...allCalls, ...newCalls];
+      allCalls = [...existing, ...newCalls];
     }
     hasMore = data.length >= PAGE_SIZE;
     loadingMore = false;
