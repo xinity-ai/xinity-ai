@@ -173,8 +173,8 @@ export function recordTokenUsage(
 ) {
   if (!usage) return;
   const labels = { model, key_id: keyId };
-  if (usage.inputTokens) inputTokens.observe(labels, usage.inputTokens);
-  if (usage.outputTokens) outputTokens.observe(labels, usage.outputTokens);
+  if (usage.inputTokens != null) inputTokens.observe(labels, usage.inputTokens);
+  if (usage.outputTokens != null) outputTokens.observe(labels, usage.outputTokens);
 
   if (usage.outputTokens && opts?.deployment && opts.durationMs && opts.durationMs > 0) {
     const tps = usage.outputTokens / (opts.durationMs / 1000);
