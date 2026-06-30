@@ -10,6 +10,7 @@ import {
   SSE_RESPONSE_HEADERS,
   sseEncoder,
 } from "./util";
+import { recordTimeToFirstToken } from "../metrics";
 import { BackendUsageSchema } from "./backend-schemas";
 import type { AuthResult } from "./auth";
 import type { ApiCallInputMessage } from "common-db";
@@ -65,6 +66,7 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
 }): Response {
   let collectedUsage: z.infer<typeof BackendUsageSchema> | undefined;
   let sawDone = false;
+  let ttftRecorded = false;
   const accumByChoice = new Map<number, Acc>();
 
   const stream = new ReadableStream({
@@ -97,6 +99,11 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
           }
           const chunk = { ...parsed.data, model: originalModel };
           lastChunk = chunk;
+
+          if (!ttftRecorded) {
+            ttftRecorded = true;
+            recordTimeToFirstToken(logFields.modelSpecifier, logFields.callStartTime);
+          }
 
           if (chunk.usage) {
             collectedUsage = chunk.usage;
