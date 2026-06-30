@@ -18,6 +18,7 @@ import {
 import { backendPostForm, createIdleTimeout, type IdleTimeout } from "../backend-fetch";
 import { env } from "../../env";
 import { BackendTranscriptionChunkSchema, BackendUsageSchema } from "../backend-schemas";
+import { recordTimeToFirstToken } from "../../metrics";
 import { rootLogger } from "../../logger";
 
 const log = rootLogger.child({ name: "handle-transcription" });
@@ -26,12 +27,14 @@ const log = rootLogger.child({ name: "handle-transcription" });
 function streamTranscriptionAsOpenAI(
   backendResponse: Response,
   logFields: FailedRequestContext,
+  deployment: string,
   idle?: IdleTimeout,
 ): Response {
   const stream = new ReadableStream({
     async start(controller) {
       let fullText = "";
       let completed = false;
+      let ttftRecorded = false;
       let usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | undefined;
       try {
         for await (const event of readSSEStream(backendResponse)) {
@@ -57,6 +60,10 @@ function streamTranscriptionAsOpenAI(
           }
           const content = choice?.delta.content;
           if (typeof content === "string" && content.length > 0) {
+            if (!ttftRecorded) {
+              ttftRecorded = true;
+              recordTimeToFirstToken(deployment, logFields.callStartTime);
+            }
             fullText += content;
             const delta = { type: "transcript.text.delta", delta: content };
             controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(delta)}\n\n`));
@@ -168,7 +175,7 @@ export async function handleTranscription(req: Request): Promise<Response> {
     }
 
     if (wantsStream) {
-      return streamTranscriptionAsOpenAI(backendResponse, { auth, modelInfo, callStartTime }, idle);
+      return streamTranscriptionAsOpenAI(backendResponse, { auth, modelInfo, callStartTime }, originalModel, idle);
     }
 
     const contentType = backendResponse.headers.get("content-type") ?? "application/json";

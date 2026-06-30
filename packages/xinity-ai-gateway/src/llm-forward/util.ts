@@ -1,5 +1,5 @@
 import { logChatSync, logChatStream, type ChatSyncData, type ChatStreamData } from "../callLogger";
-import { recordTokenUsage } from "../metrics";
+import { recordTokenUsage, recordModelRequest } from "../metrics";
 import { recordUsageEvent } from "../usageRecorder";
 import type { AuthResult } from "./auth";
 import type { ModelMessage, ImagePart, TextPart } from "ai";
@@ -130,6 +130,7 @@ export const recordUsage = ({
 }: RecordUsageContext): boolean => {
   const durationMs = Date.now() - callStartTime;
   recordTokenUsage(modelInfo.model, auth.keyId, usage, { deployment, durationMs });
+  recordModelRequest(modelInfo.model, true);
   if (!usage) {
     return false;
   }
@@ -160,6 +161,7 @@ export type FailedRequestContext = {
 
 /** Record a usage event for a request that failed after a node was selected. */
 export function recordFailedRequest({ auth, modelInfo, callStartTime }: FailedRequestContext): void {
+  recordModelRequest(modelInfo.model, false);
   recordUsageEvent({
     organizationId: auth.orgId,
     applicationId: auth.applicationId,

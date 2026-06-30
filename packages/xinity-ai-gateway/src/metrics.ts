@@ -128,9 +128,25 @@ export const activeRequests = createGauge(
   "Currently in-flight requests by endpoint",
 );
 
-export const requestDurationMs = createCounter(
-  "gateway_request_duration_milliseconds_total",
-  "Cumulative request duration in milliseconds by endpoint",
+const DURATION_BUCKETS = [50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000, 120000];
+
+export const requestDuration = createHistogram(
+  "gateway_request_duration_milliseconds",
+  "Request duration in milliseconds by endpoint",
+  DURATION_BUCKETS,
+);
+
+const TTFT_BUCKETS = [50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000];
+
+export const timeToFirstToken = createHistogram(
+  "gateway_time_to_first_token_milliseconds",
+  "Time to first token for streaming responses by deployment",
+  TTFT_BUCKETS,
+);
+
+export const modelRequestsTotal = createCounter(
+  "gateway_model_requests_total",
+  "Total requests by model and outcome",
 );
 
 const TOKEN_BUCKETS = [10, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000];
@@ -159,7 +175,9 @@ const allMetrics = [
   requestsTotal,
   requestErrorsTotal,
   activeRequests,
-  requestDurationMs,
+  requestDuration,
+  timeToFirstToken,
+  modelRequestsTotal,
   inputTokens,
   outputTokens,
   generationTokensPerSecond,
@@ -182,6 +200,14 @@ export function recordTokenUsage(
   }
 }
 
+export function recordTimeToFirstToken(deployment: string, callStartTime: number): void {
+  timeToFirstToken.observe({ deployment }, Date.now() - callStartTime);
+}
+
+export function recordModelRequest(model: string, success: boolean): void {
+  modelRequestsTotal.inc({ model, status: success ? "success" : "failure" });
+}
+
 export function withMetrics(
   endpoint: string,
   handler: (req: Request) => Promise<Response> | Response,
@@ -193,7 +219,7 @@ export function withMetrics(
 
     const cleanup = () => {
       activeRequests.dec(labels);
-      requestDurationMs.inc(labels, Date.now() - start);
+      requestDuration.observe(labels, Date.now() - start);
       releaseCallbacks.get(req)?.();
       releaseCallbacks.delete(req);
     };
