@@ -2,10 +2,12 @@
   import { onMount } from "svelte";
   import { orpc } from "$lib/orpc/orpc-client";
   import { createUrlSearchParamsStore } from "$lib/urlSearchParamsStore";
-  import type { ComputeOverview, ComputeHistory, LiveMetrics } from "$lib/compute/format";
+  import type { ComputeOverview, ComputeHistory, LiveMetrics, NodeSummary } from "$lib/compute/format";
   import MachineCard from "./MachineCard.svelte";
   import ActivityChart from "./ActivityChart.svelte";
   import AnimatedNumber from "./AnimatedNumber.svelte";
+  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
+  import { toastState } from "$lib/state/toast.svelte";
   import { formatTokens, formatPercent, formatEnergy } from "$lib/compute/format";
   import { Server, Cpu, ArrowRightLeft, CircleCheck, Gauge, Zap } from "@lucide/svelte";
 
@@ -90,6 +92,31 @@
       ? liveMetrics.nodes.reduce((sum, n) => sum + n.energyWh, 0)
       : null,
   );
+
+  let nodeToRemove = $state<NodeSummary | null>(null);
+  let removeDialogOpen = $state(false);
+
+  function requestRemoveNode(node: NodeSummary) {
+    nodeToRemove = node;
+    removeDialogOpen = true;
+  }
+
+  async function confirmRemoveNode() {
+    if (!nodeToRemove) {
+      return;
+    }
+    const node = nodeToRemove;
+    nodeToRemove = null;
+    removeDialogOpen = false;
+
+    const [error] = await orpc.compute.removeNode({ nodeId: node.id });
+    if (error) {
+      toastState.add("Failed to remove node", "error");
+      return;
+    }
+    toastState.add(`Removed "${node.machineName ?? node.host}"`, "success");
+    void refresh(rangeHours);
+  }
 </script>
 
 <svelte:head>
@@ -201,8 +228,17 @@
     <!-- Machines -->
     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 compact:gap-2">
       {#each sortedNodes as node (node.id)}
-        <MachineCard {node} {rangeLabel} metrics={liveByNodeId.get(node.id) ?? null} />
+        <MachineCard {node} {rangeLabel} metrics={liveByNodeId.get(node.id) ?? null} onRemove={requestRemoveNode} />
       {/each}
     </div>
   {/if}
 </div>
+
+<ConfirmDialog
+  bind:open={removeDialogOpen}
+  title="Remove Compute Node"
+  description="Are you sure you want to remove {nodeToRemove?.machineName ?? nodeToRemove?.host ?? 'this node'}? It will no longer appear in the dashboard. If the daemon is still running on this machine, it will restore itself on its next heartbeat."
+  confirmLabel="Remove"
+  onConfirm={() => void confirmRemoveNode()}
+  onCancel={() => (nodeToRemove = null)}
+/>

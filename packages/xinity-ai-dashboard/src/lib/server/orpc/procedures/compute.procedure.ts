@@ -313,8 +313,25 @@ const computeLiveMetrics = rootOs
     }
   });
 
+const removeNode = rootOs
+  .use(withInstanceAdmin)
+  .route({
+    path: "/{nodeId}", method: "DELETE", tags,
+    summary: "Remove Compute Node",
+    description: "Soft-deletes a compute node so it no longer appears in the dashboard",
+  })
+  .input(z.object({ nodeId: z.uuid() }))
+  .handler(async ({ input }) => {
+    const db = getDB();
+    await db
+      .update(aiNodeT)
+      .set({ deletedAt: new Date() })
+      .where(and(eq(aiNodeT.id, input.nodeId), isNull(aiNodeT.deletedAt)));
+  });
+
 export const computeRouter = rootOs.prefix("/compute").router({
   overview: computeOverview,
   history: computeHistory,
   liveMetrics: computeLiveMetrics,
+  removeNode,
 });
