@@ -194,6 +194,7 @@ function indexModels(
       log.warn({ model: specifier, source: sourceLabel }, "Model missing maxContextLength, defaulting to 131072");
     }
     state.models.set(specifier, entry);
+    state.merged[specifier] = model;
 
     if (isLocal) state.localSpecifiers.add(specifier);
 

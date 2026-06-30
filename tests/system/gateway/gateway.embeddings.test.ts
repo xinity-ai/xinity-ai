@@ -127,6 +127,7 @@ describe("xinity-ai-gateway embeddings", () => {
       nodeId: node.id,
       model: internalModel,
       port: mockServer.port,
+      lifecycleState: "ready",
     });
 
     const res = await fetch(gatewayUrl("/v1/embeddings"), {

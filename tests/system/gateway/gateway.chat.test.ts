@@ -206,6 +206,7 @@ describe("xinity-ai-gateway chat completion", () => {
       nodeId: node.id,
       model: internalModel,
       port: mockServer.port,
+      lifecycleState: "ready",
     });
 
     const res = await fetch(gatewayUrl("/v1/chat/completions"), {
