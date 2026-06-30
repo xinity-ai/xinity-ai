@@ -14,6 +14,8 @@ const infoClient = createInfoserverClient({
   logger: rootLogger.child({ name: "infoserver-client" }),
 });
 
+export { infoClient };
+
 async function publicModelSpecifierToModelSource(orgId: string, specifier: string) {
 
   const [deployment] = await getDB().select().from(modelDeploymentT).where(sql`
