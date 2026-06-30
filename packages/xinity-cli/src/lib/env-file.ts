@@ -41,7 +41,7 @@ export function serializeEnvFile(values: Record<string, string>): string {
 function quoteEnvValue(value: string): string {
   if (!/[\s#"']/.test(value)) return value;
   if (value.includes('"') && !value.includes("'")) return `'${value}'`;
-  return `"${value}"`;
+  return `"${value.replace(/"/g, '\\"')}"`;
 }
 
 /** Read existing secret files from a directory into a key-value record. */
