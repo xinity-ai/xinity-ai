@@ -49,11 +49,20 @@ export async function localRunInteractive(args: string[]): Promise<RunResult> {
   });
   const exitCode = await proc.exited;
 
+  resetStdin();
+
   return {
     ok: exitCode === 0,
     output: "",
     exitCode,
   };
+}
+
+function resetStdin(): void {
+  if (process.stdin.isTTY) {
+    process.stdin.setRawMode(false);
+  }
+  process.stdin.resume();
 }
 
 // ─── Elevation (sudo) ──────────────────────────────────────────────────────
@@ -117,6 +126,8 @@ async function runLocalSudo(
       proc.exited,
       new Response(proc.stdout).text(),
     ]);
+
+    resetStdin();
 
     return { success: exitCode === 0, output: stdout, skipped: false };
   }
