@@ -123,6 +123,7 @@ export const ModelSchema = z.looseObject({
     ollama: z.array(GpuVendorEnum).optional(),
   }).optional().describe("Per-driver GPU platform requirements. Only nodes with a matching GPU vendor can serve. Absent = any platform"),
   entryVersion: z.string().optional().describe("Version of xinity-ai this model was introduced in"),
+maxContextLength: z.number().int().positive().default(131072).describe("Maximum supported context window in tokens."),
   downloadFilter: flatStringArray.optional().describe(
     "Gitignore-style glob patterns appended to the daemon's default HuggingFace download filter. " +
     "Patterns starting with `!` re-include; the last matching rule wins. " +

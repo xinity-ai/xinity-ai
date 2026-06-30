@@ -50,6 +50,7 @@ describe("xinity-ai-gateway models", () => {
           id: deployment.publicSpecifier,
           object: "model",
           status: "ready",
+          max_model_len: expect.any(Number),
         },
       ],
     });
@@ -96,6 +97,9 @@ describe("xinity-ai-gateway models", () => {
         {
           id: deploymentA.publicSpecifier,
           object: "model",
+          object: "model",
+          id: deploymentA.publicSpecifier,
+          max_model_len: expect.any(Number),
         },
       ],
     });
@@ -111,6 +115,8 @@ describe("xinity-ai-gateway models", () => {
         {
           id: deploymentB.publicSpecifier,
           object: "model",
+          id: deploymentB.publicSpecifier,
+          max_model_len: expect.any(Number),
         },
       ],
     });
@@ -205,5 +211,34 @@ describe("xinity-ai-gateway models", () => {
     expect(byId.get(installingDeployment.publicSpecifier)).toBe("installing");
     expect(byId.get(failedDeployment.publicSpecifier)).toBe("failed");
     expect(byId.get(noInstallDeployment.publicSpecifier)).toBe(null);
+  });
+  it("includes max_model_len from infoserver catalog", async () => {
+    const { orgId, appId } = await createOrganizationAndApp();
+    const { fullKey } = await createApiKey({ orgId, appId });
+    const deployment = await createModelDeployment({ orgId, specifier: "bge-m3" });
+    await createReadyInstallationFor(deployment);
+
+    const res = await fetch(gatewayUrl("/v1/models"), {
+      headers: { authorization: `Bearer ${fullKey}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]!.max_model_len).toBe(8192);
+  });
+
+  it("defaults max_model_len to 131072 for unknown models", async () => {
+    const { orgId, appId } = await createOrganizationAndApp();
+    const { fullKey } = await createApiKey({ orgId, appId });
+    const deployment = await createModelDeployment({ orgId, specifier: "unknown-model-xyz-123" });
+    await createReadyInstallationFor(deployment);
+
+    const res = await fetch(gatewayUrl("/v1/models"), {
+      headers: { authorization: `Bearer ${fullKey}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]!.max_model_len).toBe(131072);
   });
 });

@@ -209,7 +209,7 @@ export function withMetrics(
         deferred = true;
         const { readable, writable } = new TransformStream();
         res.body.pipeTo(writable).catch((err) => {
-          // AbortErrors are routine client disconnections — already logged by
+          // AbortErrors are routine client disconnections, already logged by
           // the stream handler. Anything else is unexpected so log as warning.
           if (!isAbortError(err)) {
             rootLogger.warn({ err, endpoint }, "Stream pipe error");

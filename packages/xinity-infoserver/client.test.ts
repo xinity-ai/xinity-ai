@@ -9,6 +9,7 @@ const testModel: ModelWithSpecifier = {
   description: "A test model",
   weight: 10,
   minKvCache: 2,
+  maxContextLength: 131072,
 
   url: "https://example.com",
   entryVersion: "0.1.0",
@@ -25,6 +26,7 @@ const embedModel: ModelWithSpecifier = {
   description: "An embedding model",
   weight: 5,
   minKvCache: 1,
+  maxContextLength: 131072,
 
   url: "https://example.com",
   entryVersion: "0.1.0",
@@ -42,6 +44,7 @@ const futureModel: ModelWithSpecifier = {
   description: "Requires a newer xinity than we run",
   weight: 10,
   minKvCache: 2,
+  maxContextLength: 131072,
   url: "https://example.com",
   entryVersion: "999.0.0",
   type: "chat",

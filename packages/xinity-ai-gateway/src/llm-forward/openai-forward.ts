@@ -53,6 +53,7 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
   logFields,
   log,
   onStreamChunk,
+  onStreamEnd,
 }: {
   backendResponse: Response;
   originalModel: string;
