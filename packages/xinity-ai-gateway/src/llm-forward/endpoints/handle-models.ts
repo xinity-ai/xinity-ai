@@ -50,11 +50,13 @@ export async function handleModelsRequest(req: Request): Promise<Response> {
 
   const rowsByDeployment = Map.groupBy(models, (row) => row.model_deployment.publicSpecifier);
   const uniqueSpecifiers = [...rowsByDeployment.keys()];
-  const batchResult = await infoClient.fetchModelsBatch(uniqueSpecifiers);
   const metaMap = new Map<string, number>();
-  for (const [specifier, model] of Object.entries(batchResult)) {
-    if (model?.maxContextLength !== undefined) {
-      metaMap.set(specifier, model.maxContextLength);
+  if (uniqueSpecifiers.length > 0) {
+    const batchResult = await infoClient.fetchModelsBatch(uniqueSpecifiers);
+    for (const [specifier, model] of Object.entries(batchResult)) {
+      if (model?.maxContextLength !== undefined) {
+        metaMap.set(specifier, model.maxContextLength);
+      }
     }
   }
   const modelOutput = [...rowsByDeployment.values()].map((rows) => {

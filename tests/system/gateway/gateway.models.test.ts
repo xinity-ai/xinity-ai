@@ -97,8 +97,6 @@ describe("xinity-ai-gateway models", () => {
         {
           id: deploymentA.publicSpecifier,
           object: "model",
-          object: "model",
-          id: deploymentA.publicSpecifier,
           max_model_len: expect.any(Number),
         },
       ],
@@ -115,7 +113,6 @@ describe("xinity-ai-gateway models", () => {
         {
           id: deploymentB.publicSpecifier,
           object: "model",
-          id: deploymentB.publicSpecifier,
           max_model_len: expect.any(Number),
         },
       ],
@@ -215,7 +212,7 @@ describe("xinity-ai-gateway models", () => {
   it("includes max_model_len from infoserver catalog", async () => {
     const { orgId, appId } = await createOrganizationAndApp();
     const { fullKey } = await createApiKey({ orgId, appId });
-    const deployment = await createModelDeployment({ orgId, specifier: "bge-m3" });
+    const deployment = await createModelDeployment({ orgId, publicSpecifier: "bge-m3" });
     await createReadyInstallationFor(deployment);
 
     const res = await fetch(gatewayUrl("/v1/models"), {
@@ -230,7 +227,7 @@ describe("xinity-ai-gateway models", () => {
   it("defaults max_model_len to 131072 for unknown models", async () => {
     const { orgId, appId } = await createOrganizationAndApp();
     const { fullKey } = await createApiKey({ orgId, appId });
-    const deployment = await createModelDeployment({ orgId, specifier: "unknown-model-xyz-123" });
+    const deployment = await createModelDeployment({ orgId, publicSpecifier: "unknown-model-xyz-123" });
     await createReadyInstallationFor(deployment);
 
     const res = await fetch(gatewayUrl("/v1/models"), {

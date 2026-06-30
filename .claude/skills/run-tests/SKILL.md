@@ -25,7 +25,7 @@ Bring these up as needed; don't ask the user to do it.
 |---|---|---|
 | Phase 1 | nothing extra | (none) |
 | Phase 2 | docker compose stack (Postgres, Mailhog, etc.) | `docker compose up -d` from repo root |
-| Phase 3 | dashboard preview, infoserver dev, plus the docker stack from phase 2 | After phase 0's build finishes: `LOG_LEVEL=info bun run preview` in [packages/xinity-ai-dashboard](packages/xinity-ai-dashboard) (run in background); `bun run dev` in [packages/xinity-infoserver](packages/xinity-infoserver) (run in background) |
+| Phase 3 | dashboard preview, infoserver dev, plus the docker stack from phase 2 | After phase 0's build finishes: `NODE_ENV=test LOG_LEVEL=info bun run preview` in [packages/xinity-ai-dashboard](packages/xinity-ai-dashboard) (run in background); `bun run dev` in [packages/xinity-infoserver](packages/xinity-infoserver) (run in background) |
 
 `LOG_LEVEL=info` on the dashboard preview is important: the default log level is much noisier, and the volume of log output blows up Claude's context for no benefit.
 

@@ -25,7 +25,7 @@ const queryQueryStatistics = rootOs
     method: "GET", path: "/queryStatistics", tags, summary: "Get query statistics",
     description: "Endpoint to examine what queries ran, how often, what their mean and total times were, and from which to derive what indices we need next",
   })
-  .errors({ NOT_ACCEPTABLE: { message: "Only available in development mode" } })
+  .errors({ NOT_ACCEPTABLE: { message: "Dev-only procedure" } })
   .handler(async ({ errors }) => {
     if (process.env.NODE_ENV === "production") {
       throw errors.NOT_ACCEPTABLE();
