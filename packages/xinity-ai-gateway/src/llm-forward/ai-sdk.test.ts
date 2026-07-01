@@ -1,5 +1,8 @@
-import { describe, test, expect } from "bun:test";
-import { computePrefixHashes } from "./ai-sdk";
+import { describe, test, expect, mock } from "bun:test";
+
+mock.module("./model-data", () => ({ getModelInfo: async () => undefined }));
+
+const { computePrefixHashes } = await import("./ai-sdk");
 
 describe("computePrefixHashes", () => {
   test("returns empty for missing messages field", () => {
