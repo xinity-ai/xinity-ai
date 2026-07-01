@@ -171,7 +171,7 @@ export async function handleTranscription(req: Request): Promise<Response> {
     const signal = AbortSignal.any([req.signal, timeoutSignal]);
     const backendResponse = await backendPostForm(modelInfo, "/v1/audio/transcriptions", form as FormData, signal);
     if (!backendResponse.ok) {
-      return noteFailedRequest(await forwardBackendError(backendResponse, log));
+      return noteFailedRequest(await forwardBackendError(backendResponse, log, modelInfo.model));
     }
 
     if (wantsStream) {

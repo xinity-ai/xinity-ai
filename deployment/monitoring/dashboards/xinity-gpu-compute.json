@@ -11,14 +11,14 @@
     {
       "current": { "text": "All", "value": "$__all" },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "definition": "label_values(daemon_up, node_id)",
+      "definition": "label_values(daemon_up, machine_name)",
       "hide": 0,
       "includeAll": true,
       "label": "Node",
       "multi": true,
-      "name": "node_id",
+      "name": "node",
       "options": [],
-      "query": { "qryType": 1, "query": "label_values(daemon_up, node_id)", "refId": "PrometheusVariableQueryEditor-VariableQuery" },
+      "query": { "qryType": 1, "query": "label_values(daemon_up, machine_name)", "refId": "PrometheusVariableQueryEditor-VariableQuery" },
       "refresh": 2,
       "regex": "",
       "allValue": ".*",
@@ -39,7 +39,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
       "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "drawStyle": "line", "fillOpacity": 10, "showPoints": "never", "lineInterpolation": "smooth" } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "targets": [ { "refId": "A", "editorMode": "code", "expr": "daemon_gpu_utilization_percent{node_id=~\"$node_id\"}", "legendFormat": "{{node_id}} gpu{{gpu}}", "range": true } ]
+      "targets": [ { "refId": "A", "editorMode": "code", "expr": "daemon_gpu_utilization_percent{machine_name=~\"$node\"}", "legendFormat": "{{machine_name}} gpu{{gpu}}", "range": true } ]
     },
     {
       "type": "timeseries", "id": 3, "title": "GPU memory used",
@@ -48,8 +48,8 @@
       "fieldConfig": { "defaults": { "unit": "decmbytes", "min": 0, "custom": { "drawStyle": "line", "fillOpacity": 10, "showPoints": "never", "lineInterpolation": "smooth" } }, "overrides": [] },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
-        { "refId": "A", "editorMode": "code", "expr": "daemon_gpu_memory_used_mb{node_id=~\"$node_id\"}", "legendFormat": "used {{node_id}} gpu{{gpu}}", "range": true },
-        { "refId": "B", "editorMode": "code", "expr": "daemon_gpu_memory_total_mb{node_id=~\"$node_id\"}", "legendFormat": "total {{node_id}} gpu{{gpu}}", "range": true }
+        { "refId": "A", "editorMode": "code", "expr": "daemon_gpu_memory_used_mb{machine_name=~\"$node\"}", "legendFormat": "used {{machine_name}} gpu{{gpu}}", "range": true },
+        { "refId": "B", "editorMode": "code", "expr": "daemon_gpu_memory_total_mb{machine_name=~\"$node\"}", "legendFormat": "total {{machine_name}} gpu{{gpu}}", "range": true }
       ]
     },
     {
@@ -58,7 +58,7 @@
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 9 },
       "fieldConfig": { "defaults": { "unit": "celsius", "custom": { "drawStyle": "line", "fillOpacity": 0, "showPoints": "never", "lineInterpolation": "smooth" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 87 } ] } }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "targets": [ { "refId": "A", "editorMode": "code", "expr": "daemon_gpu_temperature_celsius{node_id=~\"$node_id\"}", "legendFormat": "{{node_id}} gpu{{gpu}}", "range": true } ]
+      "targets": [ { "refId": "A", "editorMode": "code", "expr": "daemon_gpu_temperature_celsius{machine_name=~\"$node\"}", "legendFormat": "{{machine_name}} gpu{{gpu}}", "range": true } ]
     },
     {
       "type": "timeseries", "id": 5, "title": "GPU power draw vs limit",
@@ -67,8 +67,8 @@
       "fieldConfig": { "defaults": { "unit": "watt", "min": 0, "custom": { "drawStyle": "line", "fillOpacity": 10, "showPoints": "never", "lineInterpolation": "smooth" } }, "overrides": [ { "matcher": { "id": "byRegexp", "options": "limit.*" }, "properties": [ { "id": "custom.fillOpacity", "value": 0 }, { "id": "custom.lineStyle", "value": { "dash": [8, 4], "fill": "dash" } } ] } ] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
-        { "refId": "A", "editorMode": "code", "expr": "daemon_gpu_power_draw_watts{node_id=~\"$node_id\"}", "legendFormat": "draw {{node_id}} gpu{{gpu}}", "range": true },
-        { "refId": "B", "editorMode": "code", "expr": "daemon_gpu_power_limit_watts{node_id=~\"$node_id\"}", "legendFormat": "limit {{node_id}} gpu{{gpu}}", "range": true }
+        { "refId": "A", "editorMode": "code", "expr": "daemon_gpu_power_draw_watts{machine_name=~\"$node\"}", "legendFormat": "draw {{machine_name}} gpu{{gpu}}", "range": true },
+        { "refId": "B", "editorMode": "code", "expr": "daemon_gpu_power_limit_watts{machine_name=~\"$node\"}", "legendFormat": "limit {{machine_name}} gpu{{gpu}}", "range": true }
       ]
     },
     {
@@ -77,7 +77,7 @@
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 9 },
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 80, "lineWidth": 0 }, "mappings": [ { "type": "value", "options": { "0": { "text": "OK", "color": "green" }, "1": { "text": "Throttled", "color": "red" } } } ], "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
       "options": { "mergeValues": true, "showValue": "never", "alignValue": "left", "rowHeight": 0.9, "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
-      "targets": [ { "refId": "A", "editorMode": "code", "expr": "daemon_gpu_throttled{node_id=~\"$node_id\"}", "legendFormat": "{{node_id}} gpu{{gpu}}", "range": true } ]
+      "targets": [ { "refId": "A", "editorMode": "code", "expr": "daemon_gpu_throttled{machine_name=~\"$node\"}", "legendFormat": "{{machine_name}} gpu{{gpu}}", "range": true } ]
     }
   ]
 }

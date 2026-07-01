@@ -13,11 +13,20 @@ const log = rootLogger.child({ name: "statekeeper" });
 
 let cachedProfile: HardwareProfile | null = null;
 let cachedNodeId: string | null = null;
+let cachedMachineName: string | null = null;
 const authToken = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64url");
 
 /** Returns the auth token generated for this daemon instance. */
 export function getAuthToken() {
   return authToken;
+}
+
+/** Returns the machine name (MACHINE_NAME env or OS hostname). */
+export function getMachineName(): string {
+  if (!cachedMachineName) {
+    cachedMachineName = detectNodeName(env.MACHINE_NAME);
+  }
+  return cachedMachineName;
 }
 
 export async function getHardwareProfile(): Promise<HardwareProfile> {
