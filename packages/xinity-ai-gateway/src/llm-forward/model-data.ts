@@ -8,13 +8,18 @@ import { rootLogger } from "../logger";
 /** Indirection for testability. tests can swap this without mock.module. */
 export const _deps = { selectHost: _selectHost };
 
-const infoClient = createInfoserverClient({
-  baseUrl: env.INFOSERVER_URL,
-  cacheTtlMs: env.INFOSERVER_CACHE_TTL_MS,
-  logger: rootLogger.child({ name: "infoserver-client" }),
-});
+let _infoClient: ReturnType<typeof createInfoserverClient> | undefined;
 
-export { infoClient };
+export function getInfoClient() {
+  if (!_infoClient) {
+    _infoClient = createInfoserverClient({
+      baseUrl: env.INFOSERVER_URL,
+      cacheTtlMs: env.INFOSERVER_CACHE_TTL_MS,
+      logger: rootLogger.child({ name: "infoserver-client" }),
+    });
+  }
+  return _infoClient;
+}
 
 async function publicModelSpecifierToModelSource(orgId: string, specifier: string) {
 
@@ -133,7 +138,7 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, prefi
   const tls = location?.tls ?? false;
   const driverProvider = driver as "vllm" | "ollama";
 
-  const model = await infoClient.fetchModel(resolvedLookup);
+  const model = await getInfoClient().fetchModel(resolvedLookup);
   const providerModel = model?.providers[driverProvider]
     ?? (resolvedLookup.kind === "legacy" ? resolvedLookup.providerModel : undefined);
   if (!providerModel) {
