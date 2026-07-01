@@ -164,7 +164,7 @@ describe("handleResponses", () => {
     expect(body.status).toBe("completed");
     expect(body.output?.[0]?.content?.[0]?.text).toBe("Hello");
     expect(checkAuth).toHaveBeenCalledWith("Bearer test");
-    expect(getModelInfo).toHaveBeenCalledWith("org-1", "test-model", "key-1");
+    expect(getModelInfo).toHaveBeenCalledWith("org-1", "test-model", undefined);
     expect(responseStore.get(body.id)?.status).toBe("completed");
   });
 

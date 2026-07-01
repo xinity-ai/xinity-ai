@@ -171,7 +171,7 @@ describe("handleChatCompletion", () => {
     // Terminator
     expect(text).toContain('data: [DONE]');
     expect(checkAuth).toHaveBeenCalledWith("Bearer test");
-    expect(getModelInfo).toHaveBeenCalledWith("org-1", "test-model", "key-1");
+    expect(getModelInfo).toHaveBeenCalledWith("org-1", "test-model", expect.any(Array));
   });
 
   test("should handle non-streaming request", async () => {
@@ -195,7 +195,7 @@ describe("handleChatCompletion", () => {
     expect(body.choices?.[0]?.message?.content).toBe("Hello");
     expect(body.choices?.[0]?.finish_reason).toBe("stop");
     expect(checkAuth).toHaveBeenCalledWith("Bearer test2");
-    expect(getModelInfo).toHaveBeenCalledWith("org-1", "test-model", "key-1");
+    expect(getModelInfo).toHaveBeenCalledWith("org-1", "test-model", expect.any(Array));
   });
 
   test("should skip call logging when store is false", async () => {

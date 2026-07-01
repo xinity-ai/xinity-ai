@@ -145,7 +145,7 @@ export async function handleTranscription(req: Request): Promise<Response> {
       return errorResponse("Missing 'file' field", 400);
     }
 
-    const modelInfo = await getModelInfo(auth.orgId, originalModel, auth.keyId);
+    const modelInfo = await getModelInfo(auth.orgId, originalModel);
     if (!modelInfo) {
       return errorResponse("Model not found", 404);
     }

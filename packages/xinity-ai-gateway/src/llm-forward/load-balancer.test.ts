@@ -30,7 +30,6 @@ function makeInput(overrides?: Partial<SelectHostInput>): SelectHostInput {
     earlyHosts: ["host-c:8080"],
     canaryProgress: 100,
     hasEarlyModel: false,
-    keyId: "key-1",
     publicModel: "my-model",
     ...overrides,
   };
@@ -39,7 +38,6 @@ function makeInput(overrides?: Partial<SelectHostInput>): SelectHostInput {
 beforeEach(() => {
   mockRedisSend = spyOn(redis, "send").mockImplementation(
     ((cmd: string, _args: string[]) => {
-      if (cmd === "GETEX") return Promise.resolve(null);
       if (cmd === "INCR") return Promise.resolve(1);
       if (cmd === "MGET") return Promise.resolve(["0", "0"]);
       if (cmd === "SET") return Promise.resolve("OK");
@@ -71,47 +69,14 @@ describe("selectHost", () => {
     }
   });
 
-  test("session affinity hit returns cached host", async () => {
-    mockRedisSend.mockImplementation(
-      ((cmd: string, _args: string[]) => {
-        if (cmd === "GETEX") {
-          return Promise.resolve(
-            JSON.stringify({ host: "host-a:8080", useFinalModel: true }),
-          );
-        }
-        if (cmd === "SET") return Promise.resolve("OK");
-        if (cmd === "EVAL") return Promise.resolve(1);
-        if (cmd === "DECR") return Promise.resolve(0);
-        return Promise.resolve(null);
-      }) as any,
-    );
-
-    const result = await selectHost("random", makeInput());
-    expect(result).toBeDefined();
-    expect(result!.host).toBe("host-a:8080");
-    expect(result!.useFinalModel).toBe(true);
-  });
-
-  test("session affinity miss when cached host is gone from pool", async () => {
-    mockRedisSend.mockImplementation(
-      ((cmd: string, _args: string[]) => {
-        if (cmd === "GETEX") {
-          return Promise.resolve(
-            JSON.stringify({ host: "host-gone:8080", useFinalModel: true }),
-          );
-        }
-        if (cmd === "INCR") return Promise.resolve(0);
-        if (cmd === "SET") return Promise.resolve("OK");
-        if (cmd === "EVAL") return Promise.resolve(1);
-        if (cmd === "DECR") return Promise.resolve(0);
-        if (cmd === "MGET") return Promise.resolve(["0", "0"]);
-        return Promise.resolve(null);
-      }) as any,
-    );
-
-    const result = await selectHost("random", makeInput());
-    expect(result).toBeDefined();
-    expect(["host-a:8080", "host-b:8080"]).toContain(result!.host);
+  test("random strategy distributes across hosts", async () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 50; i++) {
+      const result = await selectHost("random", makeInput());
+      expect(result).toBeDefined();
+      seen.add(result!.host);
+    }
+    expect(seen.size).toBe(2);
   });
 
   test("canary routing to final model when canaryProgress=100", async () => {
@@ -125,9 +90,6 @@ describe("selectHost", () => {
   });
 
   test("canary routing to early model when canaryProgress=0", async () => {
-    // Math.random() * 100 is always >= 0, so with canaryProgress=0
-    // the condition Math.random() * 100 < 0 is always false.
-    // Combined with hasEarlyModel=true: useFinalModel = !true || false = false
     const mathRandomSpy = spyOn(Math, "random").mockReturnValue(0.5);
 
     const result = await selectHost(
@@ -144,8 +106,6 @@ describe("selectHost", () => {
   test("round-robin strategy picks host by modulo of counter", async () => {
     mockRedisSend.mockImplementation(
       ((cmd: string, _args: string[]) => {
-        if (cmd === "GETEX") return Promise.resolve(null);
-        if (cmd === "SET") return Promise.resolve("OK");
         if (cmd === "EVAL") return Promise.resolve(3);
         return Promise.resolve(null);
       }) as any,
@@ -162,9 +122,7 @@ describe("selectHost", () => {
   test("least-connections strategy picks host with lowest count", async () => {
     mockRedisSend.mockImplementation(
       ((cmd: string, _args: string[]) => {
-        if (cmd === "GETEX") return Promise.resolve(null);
         if (cmd === "MGET") return Promise.resolve(["5", "2", "8"]);
-        if (cmd === "SET") return Promise.resolve("OK");
         if (cmd === "EVAL") return Promise.resolve(1);
         if (cmd === "DECR") return Promise.resolve(0);
         return Promise.resolve(null);
@@ -206,8 +164,6 @@ describe("selectHost", () => {
   test("redis failure in round-robin falls back to random", async () => {
     mockRedisSend.mockImplementation(
       ((cmd: string, _args: string[]) => {
-        if (cmd === "GETEX") return Promise.resolve(null);
-        if (cmd === "SET") return Promise.resolve("OK");
         if (cmd === "EVAL") return Promise.reject(new Error("Redis down"));
         return Promise.resolve(null);
       }) as any,
@@ -216,5 +172,226 @@ describe("selectHost", () => {
     const result = await selectHost("round-robin", makeInput());
     expect(result).toBeDefined();
     expect(["host-a:8080", "host-b:8080"]).toContain(result!.host);
+  });
+});
+
+describe("prefix hint routing", () => {
+  test("random strategy returns hint host when present", async () => {
+    mockRedisSend.mockImplementation(
+      ((cmd: string, args: string[]) => {
+        if (cmd === "MGET") {
+          const keys = args as string[];
+          if (keys[0]?.startsWith("lb:prefix:")) {
+            return Promise.resolve(["host-b:8080"]);
+          }
+          return Promise.resolve(["0", "0"]);
+        }
+        if (cmd === "SET") return Promise.resolve("OK");
+        return Promise.resolve(null);
+      }) as any,
+    );
+
+    const result = await selectHost("random", makeInput({
+      prefixHashes: ["abc123"],
+    }));
+    expect(result).toBeDefined();
+    expect(result!.host).toBe("host-b:8080");
+  });
+
+  test("random strategy ignores hint host not in pool", async () => {
+    mockRedisSend.mockImplementation(
+      ((cmd: string, args: string[]) => {
+        if (cmd === "MGET") {
+          const keys = args as string[];
+          if (keys[0]?.startsWith("lb:prefix:")) {
+            return Promise.resolve(["gone-host:8080"]);
+          }
+          return Promise.resolve(["0", "0"]);
+        }
+        if (cmd === "SET") return Promise.resolve("OK");
+        return Promise.resolve(null);
+      }) as any,
+    );
+
+    const seen = new Set<string>();
+    for (let i = 0; i < 30; i++) {
+      const result = await selectHost("random", makeInput({
+        prefixHashes: ["abc123"],
+      }));
+      seen.add(result!.host);
+    }
+    expect(seen).not.toContain("gone-host:8080");
+  });
+
+  test("least-connections prefers hint host within margin", async () => {
+    mockRedisSend.mockImplementation(
+      ((cmd: string, args: string[]) => {
+        if (cmd === "MGET") {
+          const keys = args as string[];
+          if (keys[0]?.startsWith("lb:prefix:")) {
+            return Promise.resolve(["host-b:8080"]);
+          }
+          // host-a=3, host-b=5 (within margin of 2 from min 3)
+          return Promise.resolve(["3", "5"]);
+        }
+        if (cmd === "SET") return Promise.resolve("OK");
+        if (cmd === "EVAL") return Promise.resolve(1);
+        if (cmd === "DECR") return Promise.resolve(0);
+        return Promise.resolve(null);
+      }) as any,
+    );
+
+    const result = await selectHost("least-connections", makeInput({
+      prefixHashes: ["abc123"],
+    }));
+    expect(result).toBeDefined();
+    expect(result!.host).toBe("host-b:8080");
+  });
+
+  test("least-connections ignores hint host over margin", async () => {
+    mockRedisSend.mockImplementation(
+      ((cmd: string, args: string[]) => {
+        if (cmd === "MGET") {
+          const keys = args as string[];
+          if (keys[0]?.startsWith("lb:prefix:")) {
+            return Promise.resolve(["host-b:8080"]);
+          }
+          // host-a=0, host-b=5 (over margin of 2 from min 0)
+          return Promise.resolve(["0", "5"]);
+        }
+        if (cmd === "SET") return Promise.resolve("OK");
+        if (cmd === "EVAL") return Promise.resolve(1);
+        if (cmd === "DECR") return Promise.resolve(0);
+        return Promise.resolve(null);
+      }) as any,
+    );
+
+    const result = await selectHost("least-connections", makeInput({
+      prefixHashes: ["abc123"],
+    }));
+    expect(result).toBeDefined();
+    expect(result!.host).toBe("host-a:8080");
+  });
+
+  test("round-robin ignores hint host", async () => {
+    mockRedisSend.mockImplementation(
+      ((cmd: string, args: string[]) => {
+        if (cmd === "MGET") {
+          const keys = args as string[];
+          if (keys[0]?.startsWith("lb:prefix:")) {
+            return Promise.resolve(["host-b:8080"]);
+          }
+          return Promise.resolve(["0", "0"]);
+        }
+        if (cmd === "SET") return Promise.resolve("OK");
+        if (cmd === "EVAL") return Promise.resolve(2);
+        return Promise.resolve(null);
+      }) as any,
+    );
+
+    const result = await selectHost("round-robin", makeInput({
+      prefixHashes: ["abc123"],
+    }));
+    expect(result).toBeDefined();
+    // counter=2, 2 % 2 = 0 -> host-a, not host-b (hint ignored)
+    expect(result!.host).toBe("host-a:8080");
+  });
+
+  test("cascade picks first matching hash (longest prefix)", async () => {
+    mockRedisSend.mockImplementation(
+      ((cmd: string, args: string[]) => {
+        if (cmd === "MGET") {
+          const keys = args as string[];
+          if (keys[0]?.startsWith("lb:prefix:")) {
+            // First hash (longest) misses, second hits
+            return Promise.resolve([null, "host-a:8080"]);
+          }
+          return Promise.resolve(["0", "0"]);
+        }
+        if (cmd === "SET") return Promise.resolve("OK");
+        return Promise.resolve(null);
+      }) as any,
+    );
+
+    const result = await selectHost("random", makeInput({
+      prefixHashes: ["long-hash", "short-hash"],
+    }));
+    expect(result).toBeDefined();
+    expect(result!.host).toBe("host-a:8080");
+  });
+
+  test("stores full hash after selection", async () => {
+    const setCalls: string[][] = [];
+    mockRedisSend.mockImplementation(
+      ((cmd: string, args: string[]) => {
+        if (cmd === "MGET") {
+          const keys = args as string[];
+          if (keys[0]?.startsWith("lb:prefix:")) {
+            return Promise.resolve([null]);
+          }
+          return Promise.resolve(["0", "0"]);
+        }
+        if (cmd === "SET") {
+          setCalls.push(args as string[]);
+          return Promise.resolve("OK");
+        }
+        return Promise.resolve(null);
+      }) as any,
+    );
+
+    const result = await selectHost("random", makeInput({
+      prefixHashes: ["full-hash", "partial-hash"],
+    }));
+    expect(result).toBeDefined();
+
+    const prefixSet = setCalls.find(a => a[0]?.startsWith("lb:prefix:"));
+    expect(prefixSet).toBeDefined();
+    expect(prefixSet![0]).toBe("lb:prefix:full-hash");
+    expect(prefixSet![1]).toBe(result!.host);
+    expect(prefixSet![2]).toBe("EX");
+    expect(prefixSet![3]).toBe("300");
+  });
+
+  test("redis failure in prefix lookup falls back to strategy", async () => {
+    let mgetCount = 0;
+    mockRedisSend.mockImplementation(
+      ((cmd: string, args: string[]) => {
+        if (cmd === "MGET") {
+          mgetCount++;
+          const keys = args as string[];
+          if (keys[0]?.startsWith("lb:prefix:")) {
+            return Promise.reject(new Error("Redis down"));
+          }
+          return Promise.resolve(["0", "0"]);
+        }
+        if (cmd === "SET") return Promise.resolve("OK");
+        return Promise.resolve(null);
+      }) as any,
+    );
+
+    const result = await selectHost("random", makeInput({
+      prefixHashes: ["abc123"],
+    }));
+    expect(result).toBeDefined();
+    expect(["host-a:8080", "host-b:8080"]).toContain(result!.host);
+  });
+
+  test("no prefixHashes skips prefix lookup entirely", async () => {
+    const mgetKeys: string[][] = [];
+    mockRedisSend.mockImplementation(
+      ((cmd: string, args: string[]) => {
+        if (cmd === "MGET") {
+          mgetKeys.push(args as string[]);
+          return Promise.resolve(["0", "0"]);
+        }
+        if (cmd === "SET") return Promise.resolve("OK");
+        return Promise.resolve(null);
+      }) as any,
+    );
+
+    await selectHost("random", makeInput());
+
+    const prefixMgets = mgetKeys.filter(k => k[0]?.startsWith("lb:prefix:"));
+    expect(prefixMgets).toHaveLength(0);
   });
 });

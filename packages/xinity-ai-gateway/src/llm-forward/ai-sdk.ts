@@ -18,11 +18,40 @@ export type AuthorizedModelContext = ResolvedModel & {
   provider: OpenAICompatibleProvider;
 };
 
-/**
- * Authenticate the request and resolve the active application (the
- * `X-Application` header overrides the key's default). Shared by the JSON
- * endpoints (via resolveModel) and the multipart transcription endpoint.
- */
+const MAX_CASCADE_LEVELS = 10;
+
+export function computePrefixHashes(model: string, body: Record<string, unknown>): string[] {
+  const messages = body.messages;
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return [];
+  }
+
+  const hasher = new Bun.CryptoHasher("sha256");
+  hasher.update(model);
+  hasher.update("\0");
+  const hashes: string[] = [];
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i] as Record<string, unknown> | null | undefined;
+    const role = String(msg?.role ?? "");
+    const content = String(msg?.content ?? "");
+    hasher.update(role);
+    hasher.update(":");
+    hasher.update(content);
+    hasher.update("\n");
+
+    if ((i + 1) % 2 === 0 || i === messages.length - 1) {
+      hashes.push(hasher.copy().digest("hex").slice(0, 16));
+    }
+  }
+
+  hashes.reverse();
+  if (hashes.length > MAX_CASCADE_LEVELS) {
+    hashes.length = MAX_CASCADE_LEVELS;
+  }
+  return hashes;
+}
+
 export async function resolveAuth(req: Request): Promise<Response | AuthResult> {
   const authHeader = req.headers.get("authorization") || "";
   const authCheckResponse = await checkAuth(authHeader);
@@ -64,7 +93,8 @@ export async function resolveModel(
   if (typeof originalModel !== "string" || originalModel.length === 0) {
     return errorResponse("Missing or invalid 'model' field", 400);
   }
-  const modelInfo = await getModelInfo(auth.orgId, originalModel, auth.keyId);
+  const prefixHashes = computePrefixHashes(originalModel, body);
+  const modelInfo = await getModelInfo(auth.orgId, originalModel, prefixHashes.length > 0 ? prefixHashes : undefined);
   if (!modelInfo) {
     return errorResponse("Model not found", 404);
   }
