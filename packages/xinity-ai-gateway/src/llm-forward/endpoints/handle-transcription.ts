@@ -15,8 +15,10 @@ import {
   validateModelType,
   type FailedRequestContext,
 } from "../util";
-import { backendPostForm } from "../backend-fetch";
+import { backendPostForm, createIdleTimeout, type IdleTimeout } from "../backend-fetch";
+import { env } from "../../env";
 import { BackendTranscriptionChunkSchema, BackendUsageSchema } from "../backend-schemas";
+import { recordTimeToFirstToken } from "../../metrics";
 import { rootLogger } from "../../logger";
 
 const log = rootLogger.child({ name: "handle-transcription" });
@@ -25,14 +27,18 @@ const log = rootLogger.child({ name: "handle-transcription" });
 function streamTranscriptionAsOpenAI(
   backendResponse: Response,
   logFields: FailedRequestContext,
+  deployment: string,
+  idle?: IdleTimeout,
 ): Response {
   const stream = new ReadableStream({
     async start(controller) {
       let fullText = "";
       let completed = false;
+      let ttftRecorded = false;
       let usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | undefined;
       try {
         for await (const event of readSSEStream(backendResponse)) {
+          idle?.reset();
           if (event.data === "[DONE]") { completed = true; break; }
           let json: unknown;
           try {
@@ -54,6 +60,10 @@ function streamTranscriptionAsOpenAI(
           }
           const content = choice?.delta.content;
           if (typeof content === "string" && content.length > 0) {
+            if (!ttftRecorded) {
+              ttftRecorded = true;
+              recordTimeToFirstToken(deployment, logFields.callStartTime);
+            }
             fullText += content;
             const delta = { type: "transcript.text.delta", delta: content };
             controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(delta)}\n\n`));
@@ -85,6 +95,8 @@ function streamTranscriptionAsOpenAI(
       } catch (e) {
         if (!isAbortError(e)) recordFailedRequest(logFields);
         handleStreamError(e, controller, log);
+      } finally {
+        idle?.clear();
       }
     },
   });
@@ -133,7 +145,7 @@ export async function handleTranscription(req: Request): Promise<Response> {
       return errorResponse("Missing 'file' field", 400);
     }
 
-    const modelInfo = await getModelInfo(auth.orgId, originalModel, auth.keyId);
+    const modelInfo = await getModelInfo(auth.orgId, originalModel);
     if (!modelInfo) {
       return errorResponse("Model not found", 404);
     }
@@ -154,13 +166,16 @@ export async function handleTranscription(req: Request): Promise<Response> {
     }
 
     // `as FormData` bridges the global vs undici FormData type mismatch.
-    const backendResponse = await backendPostForm(modelInfo, "/v1/audio/transcriptions", form as FormData, req.signal);
+    const idle = wantsStream ? createIdleTimeout() : undefined;
+    const timeoutSignal = idle?.signal ?? AbortSignal.timeout(env.BACKEND_TIMEOUT_MS);
+    const signal = AbortSignal.any([req.signal, timeoutSignal]);
+    const backendResponse = await backendPostForm(modelInfo, "/v1/audio/transcriptions", form as FormData, signal);
     if (!backendResponse.ok) {
-      return noteFailedRequest(await forwardBackendError(backendResponse, log));
+      return noteFailedRequest(await forwardBackendError(backendResponse, log, modelInfo.model));
     }
 
     if (wantsStream) {
-      return streamTranscriptionAsOpenAI(backendResponse, { auth, modelInfo, callStartTime });
+      return streamTranscriptionAsOpenAI(backendResponse, { auth, modelInfo, callStartTime }, originalModel, idle);
     }
 
     const contentType = backendResponse.headers.get("content-type") ?? "application/json";

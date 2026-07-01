@@ -1,5 +1,5 @@
 import { logChatSync, logChatStream, type ChatSyncData, type ChatStreamData } from "../callLogger";
-import { recordTokenUsage } from "../metrics";
+import { recordTokenUsage, recordModelRequest, recordBackendError } from "../metrics";
 import { recordUsageEvent } from "../usageRecorder";
 import type { AuthResult } from "./auth";
 import type { ModelMessage, ImagePart, TextPart } from "ai";
@@ -130,6 +130,7 @@ export const recordUsage = ({
 }: RecordUsageContext): boolean => {
   const durationMs = Date.now() - callStartTime;
   recordTokenUsage(modelInfo.model, auth.keyId, usage, { deployment, durationMs });
+  recordModelRequest(modelInfo.model, true);
   if (!usage) {
     return false;
   }
@@ -160,6 +161,7 @@ export type FailedRequestContext = {
 
 /** Record a usage event for a request that failed after a node was selected. */
 export function recordFailedRequest({ auth, modelInfo, callStartTime }: FailedRequestContext): void {
+  recordModelRequest(modelInfo.model, false);
   recordUsageEvent({
     organizationId: auth.orgId,
     applicationId: auth.applicationId,
@@ -249,16 +251,29 @@ export const sseEncoder = new TextEncoder();
 export function handleStreamError(
   e: unknown,
   controller: ReadableStreamDefaultController,
-  log: { info: (obj: Record<string, unknown>, msg: string) => void; error: (obj: Record<string, unknown>, msg: string) => void },
+  log: { info: (obj: Record<string, unknown>, msg: string) => void; warn?: (obj: Record<string, unknown>, msg: string) => void; error: (obj: Record<string, unknown>, msg: string) => void },
 ): void {
   if (isAbortError(e)) {
     log.info({ err: e }, "Client disconnected during stream");
     try { controller.close(); } catch {}
     return;
   }
-  log.error({ err: e }, "Stream error");
+
+  let message: string;
+  let errorType: string;
+
+  if (isTimeoutError(e)) {
+    (log.warn ?? log.error)({ err: e }, "Backend timeout during stream");
+    message = "Backend timed out while generating the response";
+    errorType = "timeout_error";
+  } else {
+    log.error({ err: e }, "Stream error");
+    message = "Internal stream error";
+    errorType = "server_error";
+  }
+
   try {
-    controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify({ error: { message: "Internal stream error", type: "server_error" } })}\n\n`));
+    controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify({ error: { message, type: errorType } })}\n\n`));
     controller.enqueue(sseEncoder.encode("data: [DONE]\n\n"));
     controller.close();
   } catch {
@@ -459,9 +474,11 @@ function isJsonString(text: string): boolean {
 export async function forwardBackendError(
   backendResponse: Response,
   log: { error: (obj: Record<string, unknown>, msg: string) => void },
+  model?: string,
 ): Promise<Response> {
   const text = await backendResponse.text().catch(() => "");
   log.error({ status: backendResponse.status, body: text }, "Backend error");
+  if (model) recordBackendError(model, backendResponse.status);
   const status = mapBackendStatusToClient(backendResponse.status);
   if (isJsonString(text)) {
     return new Response(text, { status, headers: { "Content-Type": "application/json" } });

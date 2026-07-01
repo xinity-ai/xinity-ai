@@ -33,13 +33,15 @@ const addExampleCalls = rootOs
   .use(requirePermission({ apiCall: ["delete"] }))
   .route({ method: "POST", path: "/add-example-data", tags: [...tags, ".internal"], summary: "Add example api calls (dev)" })
   .input(z.object({ apiKeyId: z.uuid(), applicationId: z.uuid() }))
-  .errors({ NOT_FOUND: { message: "API key not found" }, NOT_ACCEPTABLE: { message: "Environment mismatch. This is not available in production" } })
+  .errors({
+    NOT_FOUND: { message: "API key not found" },
+    NOT_ACCEPTABLE: { message: "Dev-only procedure" },
+  })
   .handler(async ({ context, input, errors }) => {
-    const rlog = log.child({ traceId: context.traceId });
     if (process.env.NODE_ENV === "production") {
       throw errors.NOT_ACCEPTABLE();
     }
-
+    const rlog = log.child({ traceId: context.traceId });
     const orgId = context.activeOrganizationId;
     const key = await findApiKeyInOrg(input.apiKeyId, orgId);
     if (!key) {

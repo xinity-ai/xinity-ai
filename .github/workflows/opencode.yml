@@ -1,8 +1,11 @@
 name: OpenCode
 
 on:
-  pull_request:
-    types: [opened, reopened, synchronize]
+  # Disabled: action attempts git commits instead of posting PR review comments.
+  # Re-enable once anomalyco/opencode/github supports review-only mode.
+  # pull_request:
+  #   types: [opened, reopened, synchronize]
+  workflow_dispatch:
 
 jobs:
   opencode-auto-review:
@@ -17,7 +20,7 @@ jobs:
       pull-requests: write
       issues: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 1
           persist-credentials: false

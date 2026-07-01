@@ -10,6 +10,7 @@ import type { lifecycleStateEnum } from "common-db";
 type LifecycleState = typeof lifecycleStateEnum.enumValues[number];
 
 export type DeploymentPhase = LifecycleState | "pending" | "scheduling" | "not_in_catalog";
+export type DisplayPhase = DeploymentPhase | "partial";
 
 const PHASE_PRIORITY: Record<DeploymentPhase, number> = {
   pending: 0,
@@ -26,10 +27,16 @@ export type PhaseInfo = {
   progress: number | null;
   error: string | null;
   failureLogs: string | null;
+  hasReady: boolean;
 };
 
 export function isProgressBearingPhase(phase: DeploymentPhase): boolean {
   return phase === "downloading" || phase === "installing";
+}
+
+export function toDisplayPhase(info: PhaseInfo): DisplayPhase {
+  if (info.phase === "failed" && info.hasReady) return "partial";
+  return info.phase;
 }
 
 function maxNullableProgress(current: number | null, incoming: number | null): number | null {
@@ -53,15 +60,18 @@ export function aggregatePhase(
   error: string | null,
   failureLogs: string | null = null,
 ): PhaseInfo {
+  const isReady = newPhase === "ready";
+
   if (!current) {
-    return { phase: newPhase, progress, error, failureLogs };
+    return { phase: newPhase, progress, error, failureLogs, hasReady: isReady };
   }
 
+  const hasReady = current.hasReady || isReady;
   const newPriority = PHASE_PRIORITY[newPhase];
   const currentPriority = PHASE_PRIORITY[current.phase];
 
   if (newPriority > currentPriority) {
-    return { phase: newPhase, progress, error: error ?? current.error, failureLogs: failureLogs ?? current.failureLogs };
+    return { phase: newPhase, progress, error: error ?? current.error, failureLogs: failureLogs ?? current.failureLogs, hasReady };
   }
 
   if (newPriority === currentPriority && isProgressBearingPhase(newPhase)) {
@@ -70,8 +80,12 @@ export function aggregatePhase(
       progress: maxNullableProgress(current.progress, progress),
       error: error ?? current.error,
       failureLogs: failureLogs ?? current.failureLogs,
+      hasReady,
     };
   }
 
+  if (hasReady !== current.hasReady) {
+    return { ...current, hasReady };
+  }
   return current;
 }

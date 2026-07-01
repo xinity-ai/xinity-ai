@@ -10,6 +10,7 @@ import {
   SSE_RESPONSE_HEADERS,
   sseEncoder,
 } from "./util";
+import { recordTimeToFirstToken } from "../metrics";
 import { BackendUsageSchema } from "./backend-schemas";
 import type { AuthResult } from "./auth";
 import type { ApiCallInputMessage } from "common-db";
@@ -52,15 +53,20 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
   spec,
   logFields,
   log,
+  onStreamChunk,
+  onStreamEnd,
 }: {
   backendResponse: Response;
   originalModel: string;
   spec: StreamSpec<Chunk, Acc>;
   logFields: OpenAIForwardLogFields;
   log: Logger;
+  onStreamChunk?: () => void;
+  onStreamEnd?: () => void;
 }): Response {
   let collectedUsage: z.infer<typeof BackendUsageSchema> | undefined;
   let sawDone = false;
+  let ttftRecorded = false;
   const accumByChoice = new Map<number, Acc>();
 
   const stream = new ReadableStream({
@@ -68,6 +74,7 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
       let lastChunk: Chunk | undefined;
       try {
         for await (const event of readSSEStream(backendResponse)) {
+          onStreamChunk?.();
           if (event.data === "[DONE]") {
             sawDone = true;
             break;
@@ -92,6 +99,11 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
           }
           const chunk = { ...parsed.data, model: originalModel };
           lastChunk = chunk;
+
+          if (!ttftRecorded) {
+            ttftRecorded = true;
+            recordTimeToFirstToken(logFields.modelSpecifier, logFields.callStartTime);
+          }
 
           if (chunk.usage) {
             collectedUsage = chunk.usage;
@@ -145,6 +157,8 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
           recordFailedRequest(logFields);
         }
         handleStreamError(e, controller, log);
+      } finally {
+        onStreamEnd?.();
       }
     },
   });
@@ -201,6 +215,8 @@ export function forwardOpenAIResponse<Chunk extends StreamChunkLike, Acc, Choice
   nonStreamSpec,
   logFields,
   log,
+  onStreamChunk,
+  onStreamEnd,
 }: {
   backendResponse: Response;
   originalModel: string;
@@ -209,12 +225,16 @@ export function forwardOpenAIResponse<Chunk extends StreamChunkLike, Acc, Choice
   nonStreamSpec: NonStreamSpec<Choice>;
   logFields: OpenAIForwardLogFields;
   log: Logger;
+  onStreamChunk?: () => void;
+  onStreamEnd?: () => void;
 }): Response | Promise<Response> {
   if (!backendResponse.ok) {
-    return forwardBackendError(backendResponse, log);
+    onStreamEnd?.();
+    return forwardBackendError(backendResponse, log, logFields.modelInfo.model);
   }
   if (stream) {
-    return forwardOpenAIStream({ backendResponse, originalModel, spec: streamSpec, logFields, log });
+    return forwardOpenAIStream({ backendResponse, originalModel, spec: streamSpec, logFields, log, onStreamChunk, onStreamEnd });
   }
+  onStreamEnd?.();
   return forwardOpenAINonStream({ backendResponse, originalModel, spec: nonStreamSpec, logFields, log });
 }

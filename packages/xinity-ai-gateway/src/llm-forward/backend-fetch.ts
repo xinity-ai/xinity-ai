@@ -22,36 +22,62 @@ export function backendFetch(url: string | URL | Request, init?: RequestInit & {
 
 type BackendTarget = { host: string; model: string; tls: boolean; authToken: string | null };
 
+export type IdleTimeout = { signal: AbortSignal; reset: () => void; clear: () => void };
+
+/**
+ * Create a resettable idle timeout. Each call to `reset()` restarts the
+ * countdown. If the timer fires, the returned signal aborts with a
+ * TimeoutError identical to AbortSignal.timeout().
+ */
+export function createIdleTimeout(ms: number = env.BACKEND_TIMEOUT_MS): IdleTimeout {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  function reset() {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      controller.abort(new DOMException("The operation timed out.", "TimeoutError"));
+    }, ms);
+  }
+
+  function clear() {
+    clearTimeout(timer);
+  }
+
+  reset();
+  return { signal: controller.signal, reset, clear };
+}
+
 /** Post a JSON body to a daemon-proxied backend endpoint with the standard timeout. */
 export function backendPostJson(
   target: BackendTarget,
   path: string,
   body: unknown,
-  clientSignal: AbortSignal,
+  signal: AbortSignal,
 ): Promise<Response> {
   return backendFetch(backendUrl(target.host, target.model, path, target.tls), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-    signal: AbortSignal.any([clientSignal, AbortSignal.timeout(env.BACKEND_TIMEOUT_MS)]),
+    signal,
     authToken: target.authToken ?? undefined,
   });
 }
 
 /**
- * Post a multipart form to a daemon-proxied backend endpoint with the standard
- * timeout. No Content-Type is set so fetch derives the multipart boundary.
+ * Post a multipart form to a daemon-proxied backend endpoint.
+ * No Content-Type is set so fetch derives the multipart boundary.
  */
 export function backendPostForm(
   target: BackendTarget,
   path: string,
   form: FormData,
-  clientSignal: AbortSignal,
+  signal: AbortSignal,
 ): Promise<Response> {
   return backendFetch(backendUrl(target.host, target.model, path, target.tls), {
     method: "POST",
     body: form,
-    signal: AbortSignal.any([clientSignal, AbortSignal.timeout(env.BACKEND_TIMEOUT_MS)]),
+    signal,
     authToken: target.authToken ?? undefined,
   });
 }

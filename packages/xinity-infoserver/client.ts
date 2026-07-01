@@ -67,9 +67,13 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
    */
   function gateAndValidate(raw: unknown): ModelWithSpecifier | null {
     if (raw === null || typeof raw !== "object") return null;
-    const { entryVersion } = raw as { entryVersion?: unknown };
+    const { entryVersion, maxContextLength: rawMaxContextLength } = raw as { entryVersion?: unknown; maxContextLength?: unknown };
     if (typeof entryVersion === "string" && !satisfiesMinVersion(version, entryVersion)) {
       return null;
+    }
+    if (rawMaxContextLength === undefined) {
+      const specifier = (raw as { name?: string }).name ?? JSON.stringify(raw);
+      config.logger?.warn({ model: specifier }, "Model missing maxContextLength, defaulting to 131072");
     }
     const parsed = ModelSchema.safeParse(raw);
     if (!parsed.success) {

@@ -17,6 +17,7 @@ function makeModel(overrides: Partial<Model> = {}): Model {
     description: "A test model",
     weight: 10,
     minKvCache: 2,
+    maxContextLength: 131072,
     url: "https://example.com",
     entryVersion: "0.1.0",
     providers: { vllm: "org/test-vllm", ollama: "test-ollama" },

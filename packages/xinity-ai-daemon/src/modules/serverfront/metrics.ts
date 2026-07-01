@@ -1,7 +1,7 @@
 import { createMetricsAuth } from "common-env";
 import { env } from "../../env";
 import { getMetricsSnapshot, type GpuSnapshot } from "../metrics-sampler";
-import { getNodeId } from "../statekeeper";
+import { getNodeId, getMachineName } from "../statekeeper";
 
 const metricsAuth = createMetricsAuth(env.METRICS_AUTH);
 
@@ -45,7 +45,8 @@ export async function handleDaemonMetrics(req: Request): Promise<Response> {
   const authErr = metricsAuth.unauthorized(req.headers.get("authorization"));
   if (authErr) return authErr;
 
-  const node = `node_id="${esc(await getNodeId())}"`;
+  const node = `node_id="${esc(await getNodeId())}",machine_name="${esc(getMachineName())}"`;
+
   const snapshot = getMetricsSnapshot();
 
   const blocks: string[] = [

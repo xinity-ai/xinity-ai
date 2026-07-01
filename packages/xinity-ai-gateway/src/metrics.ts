@@ -128,9 +128,35 @@ export const activeRequests = createGauge(
   "Currently in-flight requests by endpoint",
 );
 
-export const requestDurationMs = createCounter(
-  "gateway_request_duration_milliseconds_total",
-  "Cumulative request duration in milliseconds by endpoint",
+const DURATION_BUCKETS = [50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000, 120000];
+
+export const requestDuration = createHistogram(
+  "gateway_request_duration_milliseconds",
+  "Request duration in milliseconds by endpoint",
+  DURATION_BUCKETS,
+);
+
+const TTFT_BUCKETS = [50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000];
+
+export const timeToFirstToken = createHistogram(
+  "gateway_time_to_first_token_milliseconds",
+  "Time to first token for streaming responses by deployment",
+  TTFT_BUCKETS,
+);
+
+export const modelRequestsTotal = createCounter(
+  "gateway_model_requests_total",
+  "Total requests by model and outcome",
+);
+
+export const clientDisconnectsTotal = createCounter(
+  "gateway_client_disconnects_total",
+  "Total client disconnections by endpoint",
+);
+
+export const backendErrorsTotal = createCounter(
+  "gateway_backend_errors_total",
+  "Total backend errors by model and HTTP status",
 );
 
 const TOKEN_BUCKETS = [10, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000];
@@ -159,7 +185,11 @@ const allMetrics = [
   requestsTotal,
   requestErrorsTotal,
   activeRequests,
-  requestDurationMs,
+  requestDuration,
+  timeToFirstToken,
+  modelRequestsTotal,
+  clientDisconnectsTotal,
+  backendErrorsTotal,
   inputTokens,
   outputTokens,
   generationTokensPerSecond,
@@ -173,13 +203,25 @@ export function recordTokenUsage(
 ) {
   if (!usage) return;
   const labels = { model, key_id: keyId };
-  if (usage.inputTokens) inputTokens.observe(labels, usage.inputTokens);
-  if (usage.outputTokens) outputTokens.observe(labels, usage.outputTokens);
+  if (usage.inputTokens != null) inputTokens.observe(labels, usage.inputTokens);
+  if (usage.outputTokens != null) outputTokens.observe(labels, usage.outputTokens);
 
   if (usage.outputTokens && opts?.deployment && opts.durationMs && opts.durationMs > 0) {
     const tps = usage.outputTokens / (opts.durationMs / 1000);
     generationTokensPerSecond.observe({ deployment: opts.deployment }, tps);
   }
+}
+
+export function recordTimeToFirstToken(deployment: string, callStartTime: number): void {
+  timeToFirstToken.observe({ deployment }, Date.now() - callStartTime);
+}
+
+export function recordModelRequest(model: string, success: boolean): void {
+  modelRequestsTotal.inc({ model, status: success ? "success" : "failure" });
+}
+
+export function recordBackendError(model: string, status: number): void {
+  backendErrorsTotal.inc({ model, status: String(status) });
 }
 
 export function withMetrics(
@@ -193,7 +235,7 @@ export function withMetrics(
 
     const cleanup = () => {
       activeRequests.dec(labels);
-      requestDurationMs.inc(labels, Date.now() - start);
+      requestDuration.observe(labels, Date.now() - start);
       releaseCallbacks.get(req)?.();
       releaseCallbacks.delete(req);
     };
@@ -203,15 +245,18 @@ export function withMetrics(
       const res = await handler(req);
       requestsTotal.inc({ endpoint, status: String(res.status) });
       if (res.status >= 400) requestErrorsTotal.inc(labels);
+      if (res.status === 499) clientDisconnectsTotal.inc(labels);
 
       // For streaming responses, defer cleanup until the stream finishes
       if (res.body && res.headers.get("content-type")?.includes("text/event-stream")) {
         deferred = true;
         const { readable, writable } = new TransformStream();
         res.body.pipeTo(writable).catch((err) => {
-          // AbortErrors are routine client disconnections — already logged by
+          // AbortErrors are routine client disconnections, already logged by
           // the stream handler. Anything else is unexpected so log as warning.
-          if (!isAbortError(err)) {
+          if (isAbortError(err)) {
+            clientDisconnectsTotal.inc(labels);
+          } else {
             rootLogger.warn({ err, endpoint }, "Stream pipe error");
           }
         }).finally(cleanup);

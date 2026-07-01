@@ -173,7 +173,7 @@ describe("multimodal image storage (SeaweedFS S3)", () => {
     });
 
     const node = await createAiNode({ port: mockServer.port });
-    await createModelInstallation({ nodeId: node.id, model: internalModel, port: mockServer.port });
+    await createModelInstallation({ nodeId: node.id, model: internalModel, port: mockServer.port, lifecycleState: "ready" });
 
     const messages = [
       {
@@ -254,7 +254,7 @@ describe("multimodal image storage (SeaweedFS S3)", () => {
 
     const mockServer = await startMockChatCompletionServer();
     const node = await createAiNode({ port: mockServer.port });
-    await createModelInstallation({ nodeId: node.id, model: internalModel, port: mockServer.port });
+    await createModelInstallation({ nodeId: node.id, model: internalModel, port: mockServer.port, lifecycleState: "ready" });
 
     // Send two requests with the same image
     const makeRequest = () =>
@@ -326,7 +326,7 @@ describe("multimodal image storage (SeaweedFS S3)", () => {
       await createModelDeployment({ orgId, publicSpecifier, modelSpecifier: internalModel });
       const mockServer = await startMockChatCompletionServer();
       const node = await createAiNode({ port: mockServer.port });
-      await createModelInstallation({ nodeId: node.id, model: internalModel, port: mockServer.port });
+      await createModelInstallation({ nodeId: node.id, model: internalModel, port: mockServer.port, lifecycleState: "ready" });
 
       const res = await fetch(noS3Url("/v1/chat/completions"), {
         method: "POST",

@@ -75,9 +75,15 @@
   let selectedCanaryModel = $state<ModelWithSpecifier | null>(null);
 
   // --- Helpers ---
-  function fetchModel(specifier: string | null, set: (m: ModelWithSpecifier | null) => void) {
+  const primaryFetchGen = { v: 0 };
+  const canaryFetchGen = { v: 0 };
+  const canaryAutoSelectGen = { v: 0 };
+
+  function fetchModel(specifier: string | null, set: (m: ModelWithSpecifier | null) => void, gen: { v: number }) {
+    const seq = ++gen.v;
     if (!specifier) { set(null); return; }
     orpc.model.get({ specifier }).then(([error, data]) => {
+      if (seq !== gen.v) return;
       if (error) { toastState.add(`Failed to load model info: ${error.message}`, "error"); return; }
       set(data ?? null);
     });
@@ -142,8 +148,8 @@
   });
 
   // --- Model fetching ---
-  $effect(() => fetchModel(selectedPrimarySpecifier, m => selectedPrimaryModel = m));
-  $effect(() => fetchModel(selectedCanarySpecifier, m => selectedCanaryModel = m));
+  $effect(() => fetchModel(selectedPrimarySpecifier, m => selectedPrimaryModel = m, primaryFetchGen));
+  $effect(() => fetchModel(selectedCanarySpecifier, m => selectedCanaryModel = m, canaryFetchGen));
 
   // --- Derived values ---
   const minKvCache = $derived(selectedPrimaryModel?.minKvCache ?? 0);
@@ -269,7 +275,7 @@
       } else if (!isEditMode) {
         selectedCanarySpecifier = baseModel;
       }
-    });
+    }, canaryAutoSelectGen);
   });
 
   // Edit mode: clear canary when disabled

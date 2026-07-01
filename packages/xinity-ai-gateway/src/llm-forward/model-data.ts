@@ -1,4 +1,4 @@
-import { calcCanaryProgress, sql, modelDeploymentT, aiNodeT, modelInstallationT, installationMatchesLookup } from "common-db";
+import { calcCanaryProgress, sql, modelDeploymentT, aiNodeT, modelInstallationT, modelInstallationStateT, installationMatchesLookup } from "common-db";
 import { getDB } from "../db";
 import { env } from "../env";
 import { createInfoserverClient, deploymentLookup, deploymentEarlyLookup, lookupKey, resolveTagsForDriver, resolveRequestParamsForDriver, type ModelLookup } from "xinity-infoserver";
@@ -8,11 +8,18 @@ import { rootLogger } from "../logger";
 /** Indirection for testability. tests can swap this without mock.module. */
 export const _deps = { selectHost: _selectHost };
 
-const infoClient = createInfoserverClient({
-  baseUrl: env.INFOSERVER_URL,
-  cacheTtlMs: env.INFOSERVER_CACHE_TTL_MS,
-  logger: rootLogger.child({ name: "infoserver-client" }),
-});
+let _infoClient: ReturnType<typeof createInfoserverClient> | undefined;
+
+export function getInfoClient() {
+  if (!_infoClient) {
+    _infoClient = createInfoserverClient({
+      baseUrl: env.INFOSERVER_URL,
+      cacheTtlMs: env.INFOSERVER_CACHE_TTL_MS,
+      logger: rootLogger.child({ name: "infoserver-client" }),
+    });
+  }
+  return _infoClient;
+}
 
 async function publicModelSpecifierToModelSource(orgId: string, specifier: string) {
 
@@ -58,6 +65,10 @@ async function getModelSources(lookup: ModelLookup): Promise<ModelSources> {
     tls: aiNodeT.tls,
   }).from(modelInstallationT)
     .innerJoin(aiNodeT, sql`${modelInstallationT.nodeId} = ${aiNodeT.id} AND ${aiNodeT.deletedAt} IS NULL`)
+    .innerJoin(modelInstallationStateT, sql`
+      ${modelInstallationStateT.id} = ${modelInstallationT.id}
+      AND ${modelInstallationStateT.lifecycleState} = 'ready'
+    `)
     .where(sql`${installationMatchesLookup(lookupKey(lookup))} AND ${modelInstallationT.deletedAt} IS NULL`);
 
   const byHost = new Map<string, HostLocation>();
@@ -91,7 +102,7 @@ type ModelInfo = {
   release: () => void;
 }
 
-export async function getModelInfo(orgId: string, publicSpecifier: string, keyId: string): Promise<ModelInfo | undefined> {
+export async function getModelInfo(orgId: string, publicSpecifier: string, prefixHashes?: string[]): Promise<ModelInfo | undefined> {
   const accessInfo = await publicModelSpecifierToModelSource(orgId, publicSpecifier);
   if (!accessInfo) {
     return;
@@ -109,8 +120,8 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, keyId
     earlyHosts: earlySources.hosts,
     canaryProgress: accessInfo.progress,
     hasEarlyModel: !!accessInfo.early,
-    keyId,
     publicModel: publicSpecifier,
+    prefixHashes,
   });
 
   if (!result) {
@@ -127,7 +138,7 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, keyId
   const tls = location?.tls ?? false;
   const driverProvider = driver as "vllm" | "ollama";
 
-  const model = await infoClient.fetchModel(resolvedLookup);
+  const model = await getInfoClient().fetchModel(resolvedLookup);
   const providerModel = model?.providers[driverProvider]
     ?? (resolvedLookup.kind === "legacy" ? resolvedLookup.providerModel : undefined);
   if (!providerModel) {

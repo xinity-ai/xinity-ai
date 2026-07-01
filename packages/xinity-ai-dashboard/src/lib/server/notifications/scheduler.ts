@@ -21,7 +21,7 @@ import { rootLogger } from "$lib/server/logging";
 import { building } from "$app/environment";
 import { notify, notifyOrgMembers } from "./notification.service";
 import { NotificationType } from "./events";
-import { type DeploymentPhase, aggregatePhase } from "$lib/server/lib/deployment-phase";
+import { type DeploymentPhase, type DisplayPhase, aggregatePhase, toDisplayPhase } from "$lib/server/lib/deployment-phase";
 
 const log = rootLogger.child({ name: "notification.scheduler" });
 
@@ -34,7 +34,7 @@ const MODELHUB_URL = `${serverEnv.ORIGIN}/modelhub`;
 // ── In-memory state caches ──────────────────────────────────────────
 
 /** Tracks the last known aggregate phase per deployment. */
-const deploymentPhaseCache = new Map<string, DeploymentPhase>();
+const deploymentPhaseCache = new Map<string, DisplayPhase>();
 
 /** Tracks the last known availability per node. */
 const nodeAvailabilityCache = new Map<string, boolean>();
@@ -66,7 +66,9 @@ async function notifyAllOrgs(
 
 // ── Deployment status check ─────────────────────────────────────────
 
-type DeploymentInfo = { phase: DeploymentPhase; orgId: string; orgName: string; name: string; model: string; error: string | null };
+type DeploymentInfo = { phase: DisplayPhase; orgId: string; orgName: string; name: string; model: string; error: string | null };
+
+type DeploymentAcc = Omit<DeploymentInfo, "phase"> & { phase: DeploymentPhase; hasReady: boolean };
 
 async function getDeploymentPhases(): Promise<Map<string, DeploymentInfo>> {
   const rows = await getDB()
@@ -86,15 +88,16 @@ async function getDeploymentPhases(): Promise<Map<string, DeploymentInfo>> {
     .leftJoin(modelInstallationT, and(deploymentMatchesInstallation, isNull(modelInstallationT.deletedAt)))
     .leftJoin(modelInstallationStateT, eq(modelInstallationStateT.id, modelInstallationT.id));
 
-  const result = new Map<string, DeploymentInfo>();
+  const accumulators = new Map<string, DeploymentAcc>();
 
   for (const row of rows) {
-    const existing = result.get(row.deploymentId);
+    const existing = accumulators.get(row.deploymentId);
     const phase: DeploymentPhase = row.lifecycleState as DeploymentPhase ?? (row.installationId ? "scheduling" : "pending");
 
     if (!existing) {
-      result.set(row.deploymentId, {
+      accumulators.set(row.deploymentId, {
         phase,
+        hasReady: phase === "ready",
         orgId: row.organizationId,
         orgName: row.orgName ?? "",
         name: row.deploymentName,
@@ -103,18 +106,24 @@ async function getDeploymentPhases(): Promise<Map<string, DeploymentInfo>> {
       });
     } else {
       const agg = aggregatePhase(
-        { phase: existing.phase, progress: null, error: existing.error, failureLogs: null },
+        { phase: existing.phase, progress: null, error: existing.error, failureLogs: null, hasReady: existing.hasReady },
         phase, null, row.errorMessage,
       );
-      result.set(row.deploymentId, {
+      accumulators.set(row.deploymentId, {
         ...existing,
         phase: agg.phase,
+        hasReady: agg.hasReady,
         orgName: row.orgName ?? existing.orgName,
         error: agg.error,
       });
     }
   }
 
+  const result = new Map<string, DeploymentInfo>();
+  for (const [id, acc] of accumulators) {
+    const phase = acc.phase === "failed" && acc.hasReady ? "partial" : acc.phase;
+    result.set(id, { phase, orgId: acc.orgId, orgName: acc.orgName, name: acc.name, model: acc.model, error: acc.error });
+  }
   return result;
 }
 

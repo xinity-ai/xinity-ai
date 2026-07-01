@@ -2,6 +2,7 @@ import { z } from "zod";
 import { errorResponse, forwardBackendError, recordUsage } from "../util";
 import { withEndpointGuards } from "../endpoint-guards";
 import { rootLogger } from "../../logger";
+import { env } from "../../env";
 import { backendPostJson } from "../backend-fetch";
 
 const log = rootLogger.child({ name: "handle-embeddings" });
@@ -33,10 +34,11 @@ export const handleEmbeddingGeneration = withEndpointGuards({
       fetchBody.user = body.user;
     }
 
-    const backendResponse = await backendPostJson(modelInfo, "/v1/embeddings", fetchBody, req.signal);
+    const signal = AbortSignal.any([req.signal, AbortSignal.timeout(env.BACKEND_TIMEOUT_MS)]);
+    const backendResponse = await backendPostJson(modelInfo, "/v1/embeddings", fetchBody, signal);
 
     if (!backendResponse.ok) {
-      return forwardBackendError(backendResponse, log);
+      return forwardBackendError(backendResponse, log, modelInfo.model);
     }
 
     let raw: Record<string, unknown>;

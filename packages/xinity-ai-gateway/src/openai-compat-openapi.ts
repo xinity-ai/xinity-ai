@@ -56,6 +56,11 @@ const modelObjectSchema = {
       type: "boolean",
       description: "Xinity extension. True while a canary rollout's progress is below 100%.",
     },
+    max_model_len: {
+      type: "integer",
+      minimum: 1,
+      description: "Experimental. Maximum supported context length in tokens.",
+    },
   },
 };
 

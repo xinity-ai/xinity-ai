@@ -149,6 +149,7 @@ export function mockBackendFetch(): void {
         body: JSON.stringify(body),
         signal,
       }),
+    createIdleTimeout: () => ({ signal: new AbortController().signal, reset: () => {}, clear: () => {} }),
     hasCustomCa: false,
   }));
 }

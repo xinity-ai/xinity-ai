@@ -67,7 +67,10 @@ function removeInternalRecursively(router: RouterMap): RouterMap {
     if (isProc(value)) {
       if (!isInternalProc(value)) copy[key] = value;
     } else {
-      copy[key] = removeInternalRecursively(value);
+      const filtered = removeInternalRecursively(value);
+      if (Object.keys(filtered).length > 0) {
+        copy[key] = filtered;
+      }
     }
   }
   return copy;

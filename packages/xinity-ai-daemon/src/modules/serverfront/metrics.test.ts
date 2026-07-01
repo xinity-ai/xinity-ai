@@ -16,6 +16,7 @@ mock.module("../../env", () => ({
 
 mock.module("../statekeeper", () => ({
   getNodeId: async () => "test-node-uuid",
+  getMachineName: () => "test-machine",
   getHardwareProfile: async () => ({ gpus: [], gpuCount: 0 }),
 }));
 
@@ -75,7 +76,7 @@ describe("handleDaemonMetrics", () => {
     const res = await handleDaemonMetrics(makeReq());
     expect(res.status).toBe(200);
     const body = await res.text();
-    expect(body).toContain('daemon_up{node_id="test-node-uuid"} 1');
+    expect(body).toContain('daemon_up{node_id="test-node-uuid",machine_name="test-machine"} 1');
     expect(res.headers.get("content-type")).toContain("text/plain");
   });
 
@@ -88,7 +89,7 @@ describe("handleDaemonMetrics", () => {
     mockSnapshot.mockReturnValue(snapshot([gpu()]));
     const body = await (await handleDaemonMetrics(makeReq())).text();
 
-    const labels = 'node_id="test-node-uuid",gpu="0",uuid="GPU-aaaa"';
+    const labels = 'node_id="test-node-uuid",machine_name="test-machine",gpu="0",uuid="GPU-aaaa"';
     expect(body).toContain(`daemon_gpu_utilization_percent{${labels}} 73.5`);
     expect(body).toContain(`daemon_gpu_memory_utilization_percent{${labels}} 41`);
     expect(body).toContain(`daemon_gpu_memory_used_mb{${labels}} 32768`);
@@ -101,7 +102,7 @@ describe("handleDaemonMetrics", () => {
     expect(body).toContain(`daemon_gpu_info{${labels},name="NVIDIA H100 80GB HBM3",driver_version="560.35.03"} 1`);
     expect(body).toContain(`daemon_gpu_ecc_errors_total{${labels},type="uncorrected"} 0`);
     expect(body).toContain(`daemon_gpu_ecc_errors_total{${labels},type="corrected"} 2`);
-    expect(body).toContain('daemon_gpu_sample_failures_total{node_id="test-node-uuid"} 0');
+    expect(body).toContain('daemon_gpu_sample_failures_total{node_id="test-node-uuid",machine_name="test-machine"} 0');
   });
 
   test("emits one HELP/TYPE header per family across multiple GPUs", async () => {
@@ -135,6 +136,6 @@ describe("handleDaemonMetrics", () => {
   test("reports the sample-failure count", async () => {
     mockSnapshot.mockReturnValue(snapshot([], 4));
     const body = await (await handleDaemonMetrics(makeReq())).text();
-    expect(body).toContain('daemon_gpu_sample_failures_total{node_id="test-node-uuid"} 4');
+    expect(body).toContain('daemon_gpu_sample_failures_total{node_id="test-node-uuid",machine_name="test-machine"} 4');
   });
 });

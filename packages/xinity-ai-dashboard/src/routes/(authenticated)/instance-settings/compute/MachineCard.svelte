@@ -3,12 +3,13 @@
   import UtilizationRing from "./UtilizationRing.svelte";
   import AnimatedNumber from "./AnimatedNumber.svelte";
   import { formatTokens, formatPercent, formatEnergy, gpuSummary } from "$lib/compute/format";
-  import { Zap, ArrowRightLeft, CircleCheck } from "@lucide/svelte";
+  import { Zap, ArrowRightLeft, CircleCheck, Trash2 } from "@lucide/svelte";
 
-  let { node, rangeLabel, metrics = null }: {
+  let { node, rangeLabel, metrics = null, onRemove }: {
     node: NodeSummary;
     rangeLabel: string;
     metrics?: { utilizationAvg: number; energyWh: number } | null;
+    onRemove: (node: NodeSummary) => void;
   } = $props();
 
   const successRate = $derived(
@@ -42,9 +43,19 @@
         {node.machineName ? `${node.host} · ` : ""}{gpuSummary(node.gpus) || `${node.gpuCount || "no"} GPU`}
       </p>
     </div>
-    {#if !node.online}
-      <span class="text-xs text-gray-400 whitespace-nowrap shrink-0">offline</span>
-    {/if}
+    <div class="flex items-center gap-2 shrink-0">
+      {#if !node.online}
+        <span class="text-xs text-gray-400 whitespace-nowrap">offline</span>
+      {/if}
+      <button
+        type="button"
+        title="Remove node"
+        onclick={() => onRemove(node)}
+        class="text-muted-foreground hover:text-destructive transition-colors cursor-pointer p-1 -m-1 rounded"
+      >
+        <Trash2 class="w-4 h-4" />
+      </button>
+    </div>
   </div>
 
   {#if node.online && metrics !== null}

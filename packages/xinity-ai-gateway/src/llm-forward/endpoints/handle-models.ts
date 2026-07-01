@@ -1,6 +1,7 @@
 import { calcCanaryProgress, modelDeploymentT, modelInstallationT, modelInstallationStateT, organizationT, sql, deploymentMatchesInstallation, lifecycleStateEnum } from "common-db";
 import { getDB } from "../../db";
 import { checkAuth } from "../auth";
+import { getInfoClient } from "../model-data";
 
 const TRUTHY_QUERY_VALUES = new Set(["true", "1"]);
 
@@ -48,6 +49,16 @@ export async function handleModelsRequest(req: Request): Promise<Response> {
   const [organization] = orgRows;
 
   const rowsByDeployment = Map.groupBy(models, (row) => row.model_deployment.publicSpecifier);
+  const uniqueSpecifiers = [...rowsByDeployment.keys()];
+  const metaMap = new Map<string, number>();
+  if (uniqueSpecifiers.length > 0) {
+    const batchResult = await getInfoClient().fetchModelsBatch(uniqueSpecifiers);
+    for (const [specifier, model] of Object.entries(batchResult)) {
+      if (model?.maxContextLength !== undefined) {
+        metaMap.set(specifier, model.maxContextLength);
+      }
+    }
+  }
   const modelOutput = [...rowsByDeployment.values()].map((rows) => {
     const deployment = rows[0]!.model_deployment;
     const lifecycles: InstallationLifecycle[] = rows
@@ -60,6 +71,7 @@ export async function handleModelsRequest(req: Request): Promise<Response> {
       owned_by: organization?.slug || "organization",
       status: deriveStatus(lifecycles),
       canary: calcCanaryProgress(deployment) !== 100,
+      max_model_len: metaMap.get(deployment.publicSpecifier) ?? 131072,
     };
   });
   const visibleModels = includeUnavailable

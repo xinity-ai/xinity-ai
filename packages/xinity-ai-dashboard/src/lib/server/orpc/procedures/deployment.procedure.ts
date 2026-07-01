@@ -1,7 +1,7 @@
 import { rootOs, withOrganization, requirePermission } from "../root";
 import { formatGb } from "$lib/util";
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
-import { and, eq, isNull, modelDeploymentT, modelInstallationT, modelInstallationStateT, organizationT, deploymentMatchesInstallation, type ModelDeployment, type SQL } from "common-db";
+import { and, eq, inArray, isNull, modelDeploymentT, modelInstallationT, modelInstallationStateT, aiNodeT, organizationT, deploymentMatchesInstallation, type ModelDeployment, type SQL } from "common-db";
 import z from "zod";
 import { DeploymentDto } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
@@ -10,7 +10,7 @@ import { infoClient } from "$lib/server/info-client";
 import { buildClusterCapacity } from "./cluster.procedure";
 import { resolveDefaultProvider, resolveMinVersionForDriver, resolveRequiredPlatformsForDriver, checkNodeCompatibility, deploymentLookup, deploymentEarlyLookup, lookupKey, type ModelNodeRequirements, type Provider, type ModelLookup } from "xinity-infoserver";
 import { rootLogger } from "$lib/server/logging";
-import { aggregatePhase, isProgressBearingPhase, type PhaseInfo } from "$lib/server/lib/deployment-phase";
+import { aggregatePhase, isProgressBearingPhase, toDisplayPhase, type PhaseInfo } from "$lib/server/lib/deployment-phase";
 import { findOrgName } from "$lib/server/lib/org-queries";
 import { notifyOrgMembers } from "$lib/server/notifications/notification.service";
 import { NotificationType } from "$lib/server/notifications/events";
@@ -209,11 +209,18 @@ async function findActiveDeploymentInOrg(id: string, orgId: string): Promise<Mod
 // Shared status schema and query helper
 // ---------------------------------------------------------------------------
 
+const ReplicaStatusSchema = z.object({
+  phase: z.enum(["ready", "downloading", "installing", "failed", "scheduling"]),
+  node: z.string().nullable(),
+  error: z.string().nullable(),
+});
+
 const DeploymentStatusSchema = z.object({
-  phase: z.enum(["ready", "downloading", "installing", "failed", "scheduling", "not_in_catalog"]),
+  phase: z.enum(["ready", "downloading", "installing", "failed", "scheduling", "not_in_catalog", "partial"]),
   progress: z.number().nullable(),
   error: z.string().nullable().optional(),
   failureLogs: z.string().nullable().optional(),
+  replicas: ReplicaStatusSchema.array().optional(),
 });
 
 export const DeploymentWithStatusDto = DeploymentDto.extend({ status: DeploymentStatusSchema.optional() });
@@ -224,29 +231,34 @@ type StatusPhase = z.infer<typeof DeploymentStatusSchema>["phase"];
  * Runs the status join query and aggregates installation phase info for the given deployments.
  * `where` should narrow to the specific deployment rows you want (org condition + optional id filter).
  */
+type ReplicaStatus = z.infer<typeof ReplicaStatusSchema>;
+
 async function queryDeploymentsWithStatus(where: SQL | undefined): Promise<DeploymentWithStatus[]> {
   const rows = await getDB()
     .select()
     .from(modelDeploymentT)
     .leftJoin(modelInstallationT, and(deploymentMatchesInstallation, isNull(modelInstallationT.deletedAt)))
     .leftJoin(modelInstallationStateT, eq(modelInstallationStateT.id, modelInstallationT.id))
+    .leftJoin(aiNodeT, eq(aiNodeT.id, modelInstallationT.nodeId))
     .where(where);
 
-  const deploymentMap = new Map<string, { deployment: ModelDeployment; phaseInfo?: PhaseInfo }>();
+  const deploymentMap = new Map<string, { deployment: ModelDeployment; phaseInfo?: PhaseInfo; replicas: ReplicaStatus[] }>();
 
   for (const row of rows) {
     const deployment = row.model_deployment;
     let entry = deploymentMap.get(deployment.id);
     if (!entry) {
-      entry = { deployment };
+      entry = { deployment, replicas: [] };
       deploymentMap.set(deployment.id, entry);
     }
 
     const installation = row.model_installation;
     const state = row.model_installation_state;
+    const node = row.ai_node;
 
     if (installation && !state) {
       entry.phaseInfo = aggregatePhase(entry.phaseInfo, "scheduling", null, null);
+      entry.replicas.push({ phase: "scheduling", node: node?.machineName ?? node?.host ?? null, error: null });
       continue;
     }
     if (!state) continue;
@@ -254,11 +266,19 @@ async function queryDeploymentsWithStatus(where: SQL | undefined): Promise<Deplo
     const phase = state.lifecycleState;
     const progress = isProgressBearingPhase(phase) ? (state.progress ?? null) : null;
     entry.phaseInfo = aggregatePhase(entry.phaseInfo, phase, progress, state.errorMessage, state.failureLogs);
+    entry.replicas.push({ phase, node: node?.machineName ?? node?.host ?? null, error: state.errorMessage });
   }
 
-  return Array.from(deploymentMap.values()).map(({ deployment, phaseInfo }) => {
+  return Array.from(deploymentMap.values()).map(({ deployment, phaseInfo, replicas }) => {
     if (!phaseInfo) return deployment;
-    const status = { phase: phaseInfo.phase as StatusPhase, progress: phaseInfo.progress, error: phaseInfo.error, failureLogs: phaseInfo.failureLogs };
+    const phase = toDisplayPhase(phaseInfo);
+    const status = {
+      phase: phase as StatusPhase,
+      progress: phaseInfo.progress,
+      error: phaseInfo.error,
+      failureLogs: phaseInfo.failureLogs,
+      replicas: replicas.length > 0 ? replicas : undefined,
+    };
     return { ...deployment, status };
   });
 }
@@ -437,6 +457,39 @@ Immediately unregisters it, and drops it completely.
     syncDeployedModels();
     return { success: true };
   });
+const retryDeployment = rootOs
+  .use(withOrganization)
+  .use(requirePermission({ modelDeployment: ["update"] }))
+  .route({
+    path: "/{id}/retry", method: "POST", tags, summary: "Retry Failed Installations",
+  })
+  .input(z.object({ id: z.uuid() }))
+  .output(SuccessDto)
+  .errors({ NOT_FOUND: {} })
+  .handler(async ({ context, input, errors }) => {
+    const deployment = await findActiveDeploymentInOrg(input.id, context.activeOrganizationId);
+    if (!deployment) throw errors.NOT_FOUND();
+
+    const failedStates = await getDB()
+      .select({ stateId: modelInstallationStateT.id })
+      .from(modelDeploymentT)
+      .innerJoin(modelInstallationT, and(deploymentMatchesInstallation, isNull(modelInstallationT.deletedAt)))
+      .innerJoin(modelInstallationStateT, and(
+        eq(modelInstallationStateT.id, modelInstallationT.id),
+        eq(modelInstallationStateT.lifecycleState, "failed"),
+      ))
+      .where(eq(modelDeploymentT.id, input.id));
+
+    if (failedStates.length > 0) {
+      await getDB()
+        .delete(modelInstallationStateT)
+        .where(inArray(modelInstallationStateT.id, failedStates.map(s => s.stateId)));
+    }
+
+    syncDeployedModels();
+    return successObject;
+  });
+
 const findDeployment = rootOs
   .use(withOrganization)
   .use(requirePermission({ modelDeployment: ["read"] }))
@@ -554,5 +607,6 @@ export const deploymentRouter = rootOs.prefix("/deployment").router({
   list: listDeployments,
   find: findDeployment,
   enable: toggleEnabled,
+  retry: retryDeployment,
   checkCapacity,
 });
