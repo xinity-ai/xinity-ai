@@ -79,6 +79,8 @@
   });
 
   // --- Derived State ---
+  const totalFreeCapacity = $derived(nodeCapabilities.reduce((sum, n) => sum + n.free, 0));
+
   const allTags = $derived(
     Array.from(new Set(modelCatalog.models.flatMap((m) => resolveAllTags(m)))).sort(),
   );
@@ -211,10 +213,18 @@
 
     <!-- Capacity Info -->
     {#if maxNodeFreeCapacity !== Infinity}
-      <div class="px-5 py-3 border-b bg-muted/30 flex items-center gap-2 text-sm">
-        <HardDrive class="w-4 h-4 text-muted-foreground shrink-0" />
-        <span class="text-muted-foreground">Available node capacity:</span>
-        <span class="font-semibold">{formatGb(maxNodeFreeCapacity)}</span>
+      <div class="px-5 py-3 border-b bg-muted/30 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+        <div class="flex items-center gap-2">
+          <HardDrive class="w-4 h-4 text-muted-foreground shrink-0" />
+          <span class="text-muted-foreground">Largest node free:</span>
+          <span class="font-semibold">{formatGb(maxNodeFreeCapacity)}</span>
+        </div>
+        {#if nodeCapabilities.length > 0}
+          <div class="flex items-center gap-2">
+            <span class="text-muted-foreground">Total free:</span>
+            <span class="font-semibold">{formatGb(totalFreeCapacity)}</span>
+          </div>
+        {/if}
       </div>
     {/if}
 
@@ -305,7 +315,7 @@
                     {:else if undeployable}
                       <div class="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-400 mb-1">
                         <Info class="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                        <span>Exceeds current free capacity ({formatGb(model.weight + model.minKvCache)} required, {formatGb(maxNodeFreeCapacity)} available). You can still select it and deploy it disabled.</span>
+                        <span>Needs {formatGb(model.weight + model.minKvCache)}, more than the largest node's {formatGb(maxNodeFreeCapacity)} free. You can still select it and deploy it disabled.</span>
                       </div>
                     {/if}
 
