@@ -1,7 +1,7 @@
 import { calcCanaryProgress, modelDeploymentT, modelInstallationT, modelInstallationStateT, organizationT, sql, deploymentMatchesInstallation, lifecycleStateEnum } from "common-db";
 import { getDB } from "../../db";
 import { checkAuth } from "../auth";
-import { infoClient } from "../model-data";
+import { getInfoClient } from "../model-data";
 
 const TRUTHY_QUERY_VALUES = new Set(["true", "1"]);
 
@@ -52,7 +52,7 @@ export async function handleModelsRequest(req: Request): Promise<Response> {
   const uniqueSpecifiers = [...rowsByDeployment.keys()];
   const metaMap = new Map<string, number>();
   if (uniqueSpecifiers.length > 0) {
-    const batchResult = await infoClient.fetchModelsBatch(uniqueSpecifiers);
+    const batchResult = await getInfoClient().fetchModelsBatch(uniqueSpecifiers);
     for (const [specifier, model] of Object.entries(batchResult)) {
       if (model?.maxContextLength !== undefined) {
         metaMap.set(specifier, model.maxContextLength);
