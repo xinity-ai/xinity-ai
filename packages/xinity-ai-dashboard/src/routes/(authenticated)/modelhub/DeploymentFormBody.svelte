@@ -316,7 +316,8 @@
                 <input
                   id="canary-kv-cache-size{idSuffix}"
                   type="range" min={minCanaryKvCache} max={maxCanaryKvCache || minCanaryKvCache + 1} step="0.1"
-                  bind:value={earlyKvCacheSize}
+                  value={earlyKvCacheSize ?? minCanaryKvCache}
+                  oninput={(e) => (earlyKvCacheSize = e.currentTarget.valueAsNumber)}
                   class="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
                 />
                 <p class="text-sm text-muted-foreground">
@@ -409,7 +410,8 @@
               <input
                 id="kv-cache-size{idSuffix}"
                 type="range" min={minKvCache} max={maxKvCache || minKvCache + 1} step="0.1"
-                bind:value={kvCacheSize}
+                value={kvCacheSize ?? minKvCache}
+                oninput={(e) => (kvCacheSize = e.currentTarget.valueAsNumber)}
                 class="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
               />
               <p class="text-sm text-muted-foreground">
