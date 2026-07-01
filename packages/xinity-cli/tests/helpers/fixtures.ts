@@ -7,9 +7,9 @@ import type { CliConfig } from "../../src/lib/config.ts";
 
 export function makeAsset(overrides: Partial<ReleaseAsset> = {}): ReleaseAsset {
   return {
-    name: "xinity-ai-gateway-linux-x64.zip",
+    name: "xinity-ai-gateway-linux-x64.tar.gz",
     apiUrl: "https://api.github.com/repos/test/repo/releases/assets/123",
-    browserDownloadUrl: "https://github.com/test/repo/releases/download/v1.0.0/gateway.zip",
+    browserDownloadUrl: "https://github.com/test/repo/releases/download/v1.0.0/gateway.tar.gz",
     size: 1024 * 1024,
     ...overrides,
   };
@@ -20,10 +20,10 @@ export function makeRelease(overrides: Partial<Release> = {}): Release {
     tagName: "v1.0.0",
     name: "Release v1.0.0",
     assets: [
-      makeAsset({ name: "xinity-ai-gateway-linux-x64.zip" }),
+      makeAsset({ name: "xinity-ai-gateway-linux-x64.tar.gz" }),
       makeAsset({ name: "xinity-ai-dashboard.tar.gz" }),
-      makeAsset({ name: "xinity-ai-daemon-linux-x64.zip" }),
-      makeAsset({ name: "xinity-cli-linux-x64.zip" }),
+      makeAsset({ name: "xinity-ai-daemon-linux-x64.tar.gz" }),
+      makeAsset({ name: "xinity-cli-linux-x64.tar.gz" }),
       makeAsset({ name: "db-migrations.tar.gz" }),
       makeAsset({ name: "SHASUMS256.txt" }),
     ],
@@ -56,7 +56,7 @@ export function makeConfig(overrides: Partial<CliConfig> = {}): CliConfig {
 
 /** SHA256 checksum file content for testing. */
 export const SAMPLE_CHECKSUMS = [
-  "abc123def456abc123def456abc123def456abc123def456abc123def456abc12345  xinity-ai-gateway-linux-x64.zip",
+  "abc123def456abc123def456abc123def456abc123def456abc123def456abc12345  xinity-ai-gateway-linux-x64.tar.gz",
   "def456abc123def456abc123def456abc123def456abc123def456abc123def45678  xinity-ai-dashboard.tar.gz",
-  "789abcdef012789abcdef012789abcdef012789abcdef012789abcdef012789abc  xinity-cli-linux-x64.zip",
+  "789abcdef012789abcdef012789abcdef012789abcdef012789abcdef012789abc  xinity-cli-linux-x64.tar.gz",
 ].join("\n");
