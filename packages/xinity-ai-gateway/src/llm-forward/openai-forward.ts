@@ -230,7 +230,7 @@ export function forwardOpenAIResponse<Chunk extends StreamChunkLike, Acc, Choice
 }): Response | Promise<Response> {
   if (!backendResponse.ok) {
     onStreamEnd?.();
-    return forwardBackendError(backendResponse, log);
+    return forwardBackendError(backendResponse, log, logFields.modelInfo.model);
   }
   if (stream) {
     return forwardOpenAIStream({ backendResponse, originalModel, spec: streamSpec, logFields, log, onStreamChunk, onStreamEnd });

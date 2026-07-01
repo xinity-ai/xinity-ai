@@ -41,12 +41,15 @@
       "targets": [ { "refId": "A", "editorMode": "code", "expr": "sum by (endpoint) (rate(gateway_request_errors_total[$__rate_interval]))", "legendFormat": "{{endpoint}}", "range": true } ]
     },
     {
-      "type": "timeseries", "id": 5, "title": "Avg latency by endpoint",
+      "type": "timeseries", "id": 5, "title": "Request latency by endpoint",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 9 },
       "fieldConfig": { "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 0, "showPoints": "never", "lineInterpolation": "smooth" } }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "targets": [ { "refId": "A", "editorMode": "code", "expr": "sum by (endpoint) (rate(gateway_request_duration_milliseconds_total[$__rate_interval])) / clamp_min(sum by (endpoint) (rate(gateway_requests_total[$__rate_interval])), 1)", "legendFormat": "{{endpoint}}", "range": true } ]
+      "targets": [
+        { "refId": "A", "editorMode": "code", "expr": "histogram_quantile(0.5, sum by (le, endpoint) (rate(gateway_request_duration_milliseconds_bucket[$__rate_interval])))", "legendFormat": "p50 {{endpoint}}", "range": true },
+        { "refId": "B", "editorMode": "code", "expr": "histogram_quantile(0.95, sum by (le, endpoint) (rate(gateway_request_duration_milliseconds_bucket[$__rate_interval])))", "legendFormat": "p95 {{endpoint}}", "range": true }
+      ]
     },
     {
       "type": "timeseries", "id": 6, "title": "Active requests by endpoint",
@@ -82,6 +85,50 @@
         { "refId": "A", "editorMode": "code", "expr": "histogram_quantile(0.5, sum by (le, deployment) (rate(gateway_generation_tokens_per_second_bucket[$__rate_interval])))", "legendFormat": "p50 {{deployment}}", "range": true },
         { "refId": "B", "editorMode": "code", "expr": "histogram_quantile(0.95, sum by (le, deployment) (rate(gateway_generation_tokens_per_second_bucket[$__rate_interval])))", "legendFormat": "p95 {{deployment}}", "range": true }
       ]
+    },
+    { "type": "row", "id": 10, "title": "Model health", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 25 } },
+    {
+      "type": "timeseries", "id": 11, "title": "Request rate by model",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 26 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 15, "showPoints": "never", "lineInterpolation": "smooth", "stacking": { "mode": "normal", "group": "A" } } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [ { "refId": "A", "editorMode": "code", "expr": "sum by (model) (rate(gateway_model_requests_total[$__rate_interval]))", "legendFormat": "{{model}}", "range": true } ]
+    },
+    {
+      "type": "timeseries", "id": 12, "title": "Time to first token by deployment",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 26 },
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 0, "showPoints": "never", "lineInterpolation": "smooth" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "editorMode": "code", "expr": "histogram_quantile(0.5, sum by (le, deployment) (rate(gateway_time_to_first_token_milliseconds_bucket[$__rate_interval])))", "legendFormat": "p50 {{deployment}}", "range": true },
+        { "refId": "B", "editorMode": "code", "expr": "histogram_quantile(0.95, sum by (le, deployment) (rate(gateway_time_to_first_token_milliseconds_bucket[$__rate_interval])))", "legendFormat": "p95 {{deployment}}", "range": true }
+      ]
+    },
+    {
+      "type": "timeseries", "id": 13, "title": "Backend errors by model",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 26 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10, "showPoints": "never", "lineInterpolation": "smooth" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [ { "refId": "A", "editorMode": "code", "expr": "sum by (model, status) (rate(gateway_backend_errors_total[$__rate_interval]))", "legendFormat": "{{model}} {{status}}", "range": true } ]
+    },
+    {
+      "type": "timeseries", "id": 14, "title": "Client disconnects by endpoint",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 34 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10, "showPoints": "never", "lineInterpolation": "smooth" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [ { "refId": "A", "editorMode": "code", "expr": "sum by (endpoint) (rate(gateway_client_disconnects_total[$__rate_interval]))", "legendFormat": "{{endpoint}}", "range": true } ]
+    },
+    {
+      "type": "timeseries", "id": 15, "title": "Model failure rate",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 34 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "custom": { "drawStyle": "line", "fillOpacity": 0, "showPoints": "never", "lineInterpolation": "smooth" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 0.05 }, { "color": "red", "value": 0.1 } ] } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [ { "refId": "A", "editorMode": "code", "expr": "sum by (model) (rate(gateway_model_requests_total{status=\"failure\"}[$__rate_interval])) / clamp_min(sum by (model) (rate(gateway_model_requests_total[$__rate_interval])), 0.001)", "legendFormat": "{{model}}", "range": true } ]
     }
   ]
 }

@@ -149,6 +149,16 @@ export const modelRequestsTotal = createCounter(
   "Total requests by model and outcome",
 );
 
+export const clientDisconnectsTotal = createCounter(
+  "gateway_client_disconnects_total",
+  "Total client disconnections by endpoint",
+);
+
+export const backendErrorsTotal = createCounter(
+  "gateway_backend_errors_total",
+  "Total backend errors by model and HTTP status",
+);
+
 const TOKEN_BUCKETS = [10, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000];
 
 export const inputTokens = createHistogram(
@@ -178,6 +188,8 @@ const allMetrics = [
   requestDuration,
   timeToFirstToken,
   modelRequestsTotal,
+  clientDisconnectsTotal,
+  backendErrorsTotal,
   inputTokens,
   outputTokens,
   generationTokensPerSecond,
@@ -208,6 +220,10 @@ export function recordModelRequest(model: string, success: boolean): void {
   modelRequestsTotal.inc({ model, status: success ? "success" : "failure" });
 }
 
+export function recordBackendError(model: string, status: number): void {
+  backendErrorsTotal.inc({ model, status: String(status) });
+}
+
 export function withMetrics(
   endpoint: string,
   handler: (req: Request) => Promise<Response> | Response,
@@ -229,6 +245,7 @@ export function withMetrics(
       const res = await handler(req);
       requestsTotal.inc({ endpoint, status: String(res.status) });
       if (res.status >= 400) requestErrorsTotal.inc(labels);
+      if (res.status === 499) clientDisconnectsTotal.inc(labels);
 
       // For streaming responses, defer cleanup until the stream finishes
       if (res.body && res.headers.get("content-type")?.includes("text/event-stream")) {
@@ -237,7 +254,9 @@ export function withMetrics(
         res.body.pipeTo(writable).catch((err) => {
           // AbortErrors are routine client disconnections, already logged by
           // the stream handler. Anything else is unexpected so log as warning.
-          if (!isAbortError(err)) {
+          if (isAbortError(err)) {
+            clientDisconnectsTotal.inc(labels);
+          } else {
             rootLogger.warn({ err, endpoint }, "Stream pipe error");
           }
         }).finally(cleanup);

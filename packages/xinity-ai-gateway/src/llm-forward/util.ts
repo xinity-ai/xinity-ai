@@ -1,5 +1,5 @@
 import { logChatSync, logChatStream, type ChatSyncData, type ChatStreamData } from "../callLogger";
-import { recordTokenUsage, recordModelRequest } from "../metrics";
+import { recordTokenUsage, recordModelRequest, recordBackendError } from "../metrics";
 import { recordUsageEvent } from "../usageRecorder";
 import type { AuthResult } from "./auth";
 import type { ModelMessage, ImagePart, TextPart } from "ai";
@@ -474,9 +474,11 @@ function isJsonString(text: string): boolean {
 export async function forwardBackendError(
   backendResponse: Response,
   log: { error: (obj: Record<string, unknown>, msg: string) => void },
+  model?: string,
 ): Promise<Response> {
   const text = await backendResponse.text().catch(() => "");
   log.error({ status: backendResponse.status, body: text }, "Backend error");
+  if (model) recordBackendError(model, backendResponse.status);
   const status = mapBackendStatusToClient(backendResponse.status);
   if (isJsonString(text)) {
     return new Response(text, { status, headers: { "Content-Type": "application/json" } });
