@@ -35,7 +35,7 @@ export async function runCli(opts: RunCliOptions = {}): Promise<CliResult> {
     stdout: "pipe",
     stderr: "pipe",
     stdin: opts.stdin ? new Response(opts.stdin).body! : "ignore",
-    env: { ...process.env, ...env },
+    env: { ...process.env, LC_ALL: "C", ...env },
     cwd: join(import.meta.dir, "../.."),
   });
 
