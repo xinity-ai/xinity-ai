@@ -3,6 +3,7 @@
   import type { ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
   import ModelSelectorModal from "./ModelSelectorModal.svelte";
   import DeploymentModelTile from "./DeploymentModelTile.svelte";
+  import DeploymentCapacitySummary from "./DeploymentCapacitySummary.svelte";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
@@ -37,6 +38,10 @@
     maxNodeFreeCapacity = Infinity,
     availableDrivers = [],
     nodeCapabilities = [],
+    enabled = true,
+    capacityChecked = false,
+    capacityBlocked = false,
+    capacityReason,
     onPublicSpecifierInput,
     onDeploymentNameInput,
     onCanaryEnabledChange,
@@ -68,6 +73,10 @@
     maxNodeFreeCapacity?: number;
     availableDrivers?: string[];
     nodeCapabilities?: NodeCapability[];
+    enabled?: boolean;
+    capacityChecked?: boolean;
+    capacityBlocked?: boolean;
+    capacityReason?: string;
     publicSpecifierError?: string;
     onPublicSpecifierInput?: () => void;
     onDeploymentNameInput?: () => void;
@@ -85,7 +94,6 @@
   // --- Derived ---
   const minKvCache = $derived(selectedPrimaryModel?.minKvCache ?? 0);
   const minCanaryKvCache = $derived(selectedCanaryModel?.minKvCache ?? 0);
-  const replicasExceedCapacity = $derived(replicas > maxReplicas && selectedPrimaryModel !== undefined);
 
   const modelDriverOptions = $derived.by(() => {
     const m = selectedPrimaryModel;
@@ -381,12 +389,6 @@
             Number of model instances to deploy. Each replica uses additional hardware capacity.
             Up to {maxReplicas} {maxReplicas === 1 ? "replica" : "replicas"} can fit in the cluster.
           </p>
-          {#if replicasExceedCapacity}
-            <p class="text-sm text-destructive">
-              Not enough cluster capacity for {replicas} {replicas === 1 ? "replica" : "replicas"}.
-              Only {maxReplicas} {maxReplicas === 1 ? "node has" : "nodes have"} enough free capacity.
-            </p>
-          {/if}
         </div>
 
         {#if showKvCacheSliders}
@@ -457,6 +459,26 @@
       </Collapsible.Content>
     </section>
   </Collapsible.Root>
+{/if}
+
+<!-- Capacity summary -->
+{#if selectedPrimaryModel}
+  <DeploymentCapacitySummary
+    primaryModel={selectedPrimaryModel}
+    canaryModel={selectedCanaryModel}
+    {isCanaryEnabled}
+    progress={canaryTraffic}
+    {replicas}
+    {kvCacheSize}
+    {earlyKvCacheSize}
+    {effectiveDriver}
+    {maxNodeFreeCapacity}
+    {nodeCapabilities}
+    {enabled}
+    {capacityChecked}
+    {capacityBlocked}
+    {capacityReason}
+  />
 {/if}
 
 <ModelSelectorModal
