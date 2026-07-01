@@ -168,29 +168,39 @@
     return nodesWithSpace + (isEditMode && deployment ? (deployment.replicas ?? 0) : 0);
   });
 
-  const replicasExceedCapacity = $derived(replicas > maxReplicas && selectedPrimaryModel !== null);
   const showTrafficSlider = $derived(!isEditMode || advancementStrategy === "manual");
   const requiresDisabled = $derived(isEditMode && enabled);
 
-  // --- Capacity re-enable check (edit mode) ---
-  let cannotReEnable = $state(false);
-  let cannotReEnableReason = $state<string | undefined>(undefined);
+  // --- Capacity gate ---
+  // Capacity is only enforced when the resulting deployment would be enabled and is
+  // not already accounted for: that means create mode (enabled), or re-enabling a
+  // currently-disabled deployment. An already-enabled deployment is skipped so its
+  // own running installations are not double-counted against it.
+  const shouldGateCapacity = $derived(Boolean(
+    selectedPrimaryModel && enabled && (!isEditMode || (deployment && !deployment.enabled)),
+  ));
+
+  let capacityChecked = $state(false);
+  let capacityBlocked = $state(false);
+  let capacityReason = $state<string | undefined>(undefined);
 
   $effect(() => {
-    if (!isEditMode || !deployment || deployment.enabled) {
-      cannotReEnable = false; cannotReEnableReason = undefined; return;
+    if (!shouldGateCapacity || !selectedPrimarySpecifier) {
+      capacityChecked = false; capacityBlocked = false; capacityReason = undefined; return;
     }
     const abort = new AbortController();
     orpc.deployment.checkCapacity({
-      specifier: selectedPrimarySpecifier!,
+      specifier: selectedPrimarySpecifier,
       earlySpecifier: isCanaryEnabled ? selectedCanarySpecifier : null,
       replicas, progress: isCanaryEnabled ? canaryTraffic : 100, kvCacheSize,
       earlyKvCacheSize: isCanaryEnabled ? earlyKvCacheSize : null,
+      preferredDriver,
     }, { signal: abort.signal }).then(([error, data]) => {
       if (abort.signal.aborted) return;
-      if (error) { browserLogger.error({ error }, "Capacity check failed"); cannotReEnable = false; return; }
-      cannotReEnable = !data.deployable;
-      cannotReEnableReason = data.reason;
+      if (error) { browserLogger.error({ error }, "Capacity check failed"); capacityChecked = false; capacityBlocked = false; return; }
+      capacityChecked = true;
+      capacityBlocked = !data.deployable;
+      capacityReason = data.reason;
     });
     return () => abort.abort();
   });
@@ -212,7 +222,7 @@
     (kvCacheSize === null || kvCacheSize >= minKvCache) &&
     (!isCanaryEnabled || earlyKvCacheSize === null || earlyKvCacheSize >= minCanaryKvCache) &&
     (!requiresCustomCodeConsent || customCodeConsent) &&
-    !replicasExceedCapacity && !(isEditMode && enabled && cannotReEnable) && replicas >= 1,
+    !capacityBlocked && replicas >= 1,
   ));
 
   const hasChanges = $derived.by(() => {
@@ -374,6 +384,10 @@
           {availableDrivers}
           {nodeCapabilities}
           {maxReplicas}
+          {enabled}
+          {capacityChecked}
+          {capacityBlocked}
+          {capacityReason}
           editMode={isEditMode}
           readonlyModels={requiresDisabled}
           {requiresDisabled}
@@ -406,23 +420,25 @@
       </main>
 
       <footer class="p-6 border-t bg-muted/50 rounded-b-xl flex justify-between items-center gap-4">
-        <label
-          for="enabled{idSuffix}"
-          class="flex items-center gap-2 py-1.5 px-1 -ml-1 rounded select-none {isEditMode && cannotReEnable && !enabled ? 'cursor-not-allowed' : 'cursor-pointer'}"
-        >
-          <Checkbox
-            id="enabled{idSuffix}"
-            bind:checked={enabled}
-            disabled={isEditMode && cannotReEnable && !enabled}
-          />
-          <span class="text-sm {isEditMode && cannotReEnable ? 'text-muted-foreground' : ''}">
-            {isEditMode ? "Enabled" : "Start deployment in enabled state"}
-          </span>
-          {#if isEditMode && cannotReEnable && !enabled}
-            <span class="text-sm text-destructive">{cannotReEnableReason ?? "Insufficient cluster capacity"}</span>
+        <div class="flex flex-col gap-1 min-w-0">
+          <label
+            for="enabled{idSuffix}"
+            class="flex items-center gap-2 py-1.5 px-1 -ml-1 rounded select-none cursor-pointer"
+          >
+            <Checkbox id="enabled{idSuffix}" bind:checked={enabled} />
+            <span class="text-sm">
+              {isEditMode ? "Enabled" : "Start deployment in enabled state"}
+            </span>
+          </label>
+          {#if enabled && capacityBlocked}
+            <span class="text-sm text-destructive px-1">
+              {capacityReason ?? "This deployment needs more capacity than is currently available"}.
+              <br>
+              Uncheck "{isEditMode ? "Enabled" : "Start deployment in enabled state"}" to save it disabled.
+            </span>
           {/if}
-        </label>
-        <div class="flex items-center gap-3">
+        </div>
+        <div class="flex items-center gap-3 shrink-0">
           <Button variant="outline" onclick={close}>Cancel</Button>
           <Button onclick={handleSubmit} disabled={!isFormValid || (isEditMode && !hasChanges)}>
             {isEditMode ? "Save" : "Deploy Model"}

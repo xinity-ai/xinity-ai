@@ -1,5 +1,4 @@
 import { rootOs, withOrganization, requirePermission } from "../root";
-import { formatGb } from "$lib/util";
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
 import { and, eq, isNull, modelDeploymentT, modelInstallationT, modelInstallationStateT, organizationT, deploymentMatchesInstallation, type ModelDeployment, type SQL } from "common-db";
 import z from "zod";
@@ -90,15 +89,8 @@ function noCompatibleNodeReason(
   return `No compatible node for "${label}" (requires ${driver}${versionRequirement}${platformRequirement})`;
 }
 
-function insufficientCapacityReason(
-  label: string,
-  replicas: number,
-  perReplica: number,
-  placed: number,
-): string {
-  const replicaWord = replicas === 1 ? "replica" : "replicas";
-  const nodeWord = placed === 1 ? "node has" : "nodes have";
-  return `Insufficient cluster capacity: cannot place ${replicas} ${replicaWord} of "${label}" (${formatGb(perReplica)} each). Only ${placed} compatible ${nodeWord} enough free capacity`;
+function insufficientCapacityReason(label: string): string {
+  return `"${label}" needs more capacity than is currently available`;
 }
 
 /**
@@ -176,7 +168,7 @@ async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>
     if (placed < model.replicas) {
       const reason = compatible.length === 0 && model.driver
         ? noCompatibleNodeReason(model.label, model.driver, model.minVersion, model.requiredPlatforms)
-        : insufficientCapacityReason(model.label, model.replicas, model.perReplica, placed);
+        : insufficientCapacityReason(model.label);
       return { deployable: false, reason };
     }
   }
@@ -468,7 +460,7 @@ export const createDeployment = rootOs
   })
   .input(DeploymentDto.omit({ ...commonInputFilter, id: true }))
   .output(DeploymentDto)
-  .errors({ CONFLICT: {}, BAD_REQUEST: {} })
+  .errors({ CONFLICT: {}, BAD_REQUEST: {}, INSUFFICIENT_CAPACITY: {} })
   .handler(async ({ context, input, errors }) => {
     if (!input.specifier) {
       throw errors.BAD_REQUEST({ message: "specifier is required when creating a deployment" });
@@ -489,6 +481,13 @@ export const createDeployment = rootOs
     const rlog = log.child({ traceId: context.traceId });
     const mismatch = await validateCanaryModelTypes(primaryLookup, earlyLookup);
     if (mismatch) throw errors.BAD_REQUEST({ message: mismatch });
+
+    if (input.enabled) {
+      const result = await checkDeploymentCapacity(input);
+      if (!result.deployable) {
+        throw errors.INSUFFICIENT_CAPACITY({ message: result.reason });
+      }
+    }
 
     const [primaryDerived, earlyDerived] = await Promise.all([
       deriveProviderModel(primaryLookup, input.preferredDriver ?? null),

@@ -143,7 +143,6 @@
   }
 
   function handleSelect(model: ModelWithSpecifier) {
-    if (isUndeployable(model)) return;
     onSelect(model);
     onClose();
   }
@@ -260,9 +259,8 @@
                   {@const hasDriverDiffs = model.providerTags !== undefined}
                   <div
                     role="button"
-                    tabindex={undeployable ? -1 : 0}
-                    aria-disabled={undeployable}
-                    class="group relative flex flex-col text-left bg-card border rounded-xl p-4 transition-all duration-200 min-w-0 {undeployable ? 'opacity-40 cursor-not-allowed' : 'hover:shadow-lg hover:border-primary/50 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 cursor-pointer'}"
+                    tabindex={0}
+                    class="group relative flex flex-col text-left bg-card border rounded-xl p-4 transition-all duration-200 min-w-0 hover:shadow-lg hover:border-primary/50 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 cursor-pointer"
                     onclick={() => handleSelect(model)}
                     onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleSelect(model); } }}
                   >
@@ -300,14 +298,14 @@
                     </div>
 
                     {#if undeployable && constraintIssue}
-                      <div class="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive mb-1">
-                        <ShieldAlert class="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                        <span>No compatible node available (driver version or platform mismatch)</span>
+                      <div class="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-400 mb-1">
+                        <Info class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                        <span>No compatible node available (driver version or platform mismatch). You can still select it and deploy it disabled.</span>
                       </div>
                     {:else if undeployable}
-                      <div class="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive mb-1">
-                        <ShieldAlert class="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                        <span>Exceeds available node capacity ({formatGb(model.weight + model.minKvCache)} required, {formatGb(maxNodeFreeCapacity)} available)</span>
+                      <div class="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-400 mb-1">
+                        <Info class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                        <span>Exceeds current free capacity ({formatGb(model.weight + model.minKvCache)} required, {formatGb(maxNodeFreeCapacity)} available). You can still select it and deploy it disabled.</span>
                       </div>
                     {/if}
 
