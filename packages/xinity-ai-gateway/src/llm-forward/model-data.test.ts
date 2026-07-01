@@ -110,7 +110,7 @@ beforeEach(() => {
 describe("getModelInfo", () => {
   test("returns undefined when deployment is not found", async () => {
     queryQueue.push([]);
-    const result = await getModelInfo("org-1", "nonexistent", "key-1");
+    const result = await getModelInfo("org-1", "nonexistent");
     expect(result).toBeUndefined();
   });
 
@@ -119,7 +119,7 @@ describe("getModelInfo", () => {
     queryQueue.push([]);
     mockSelectHost.mockResolvedValue(null);
 
-    const result = await getModelInfo("org-1", "my-model", "key-1");
+    const result = await getModelInfo("org-1", "my-model");
     expect(result).toBeUndefined();
   });
 
@@ -128,7 +128,7 @@ describe("getModelInfo", () => {
     queryQueue.push([installationResult({ host: "192.168.1.10", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
     mockSelectHost.mockResolvedValue({ host: "192.168.1.10:11434", useFinalModel: true, release: noop });
 
-    const result = await getModelInfo("org-1", "my-model", "key-1");
+    const result = await getModelInfo("org-1", "my-model");
 
     expect(result).toBeDefined();
     expect(result!.host).toBe("192.168.1.10:11434");
@@ -145,7 +145,7 @@ describe("getModelInfo", () => {
     queryQueue.push([installationResult({ host: "node-b", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
     mockSelectHost.mockResolvedValue({ host: "node-b:11434", useFinalModel: false, release: noop });
 
-    const result = await getModelInfo("org-1", "my-model", "key-1");
+    const result = await getModelInfo("org-1", "my-model");
 
     expect(result).toBeDefined();
     expect(result!.model).toBe("llama2:latest");
@@ -157,7 +157,7 @@ describe("getModelInfo", () => {
     queryQueue.push([installationResult({ host: "192.168.1.10", nodePort: 11434, modelPort: 11434, driver: "vllm" })]);
     mockSelectHost.mockResolvedValue({ host: "unknown-host:8000", useFinalModel: true, release: noop });
 
-    const result = await getModelInfo("org-1", "my-model", "key-1");
+    const result = await getModelInfo("org-1", "my-model");
 
     expect(result).toBeDefined();
     expect(result!.driver).toBe("ollama");
@@ -168,7 +168,7 @@ describe("getModelInfo", () => {
     queryQueue.push([installationResult({ host: "gpu-node", nodePort: 8000, modelPort: 8000, driver: "vllm" })]);
     mockSelectHost.mockResolvedValue({ host: "gpu-node:8000", useFinalModel: true, release: noop });
 
-    const result = await getModelInfo("org-1", "my-model", "key-1");
+    const result = await getModelInfo("org-1", "my-model");
 
     expect(result).toBeDefined();
     expect(result!.driver).toBe("vllm");
@@ -180,15 +180,15 @@ describe("getModelInfo", () => {
     queryQueue.push([installationResult({ host: "early-node", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
     mockSelectHost.mockResolvedValue({ host: "final-node:11434", useFinalModel: true, release: noop });
 
-    await getModelInfo("org-1", "my-model", "key-1");
+    await getModelInfo("org-1", "my-model");
 
     expect(mockSelectHost).toHaveBeenCalledWith("random", {
       hosts: ["final-node:11434"],
       earlyHosts: ["early-node:11434"],
       canaryProgress: 50,
       hasEarlyModel: true,
-      keyId: "key-1",
       publicModel: "my-model",
+      prefixHashes: undefined,
     });
   });
 
@@ -200,7 +200,7 @@ describe("getModelInfo", () => {
     ]);
     mockSelectHost.mockResolvedValue({ host: "node-a:11434", useFinalModel: true, release: noop });
 
-    await getModelInfo("org-1", "my-model", "key-1");
+    await getModelInfo("org-1", "my-model");
 
     const call = mockSelectHost.mock.calls[0] as unknown as [string, Record<string, unknown>];
     expect(call[1].hosts).toEqual(["node-a:11434"]);
@@ -217,7 +217,7 @@ describe("getModelInfo", () => {
       providers: { ollama: "llama3:latest", vllm: "llama3:latest" },
     });
 
-    const result = await getModelInfo("org-1", "my-model", "key-1");
+    const result = await getModelInfo("org-1", "my-model");
 
     expect(result!.type).toBe("embedding");
     expect(result!.tags).toEqual(["multilingual"]);
@@ -231,7 +231,7 @@ describe("getModelInfo", () => {
     mockSelectHost.mockResolvedValue({ host: "node-a:11434", useFinalModel: true, release: noop });
     mockFetchModel.mockResolvedValueOnce(undefined);
 
-    const result = await getModelInfo("org-1", "my-model", "key-1");
+    const result = await getModelInfo("org-1", "my-model");
 
     expect(result).toBeDefined();
     expect(result!.model).toBe("llama3:latest");
@@ -251,7 +251,7 @@ describe("getModelInfo", () => {
       providers: { vllm: "mistral:latest", ollama: "mistral:latest" },
     });
 
-    const result = await getModelInfo("org-1", "my-model", "key-1");
+    const result = await getModelInfo("org-1", "my-model");
 
     expect(result!.driver).toBe("vllm");
     expect(result!.tags).toEqual(["tools", "vision"]);
@@ -262,7 +262,7 @@ describe("getModelInfo", () => {
     queryQueue.push([installationResult({ host: "node-a", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
     mockSelectHost.mockResolvedValue({ host: "node-a:11434", useFinalModel: true, release: noop });
 
-    await getModelInfo("org-1", "my-model", "key-1");
+    await getModelInfo("org-1", "my-model");
 
     const call = mockSelectHost.mock.calls[0] as unknown as [string, Record<string, unknown>];
     expect(call[1].earlyHosts).toEqual([]);

@@ -6,18 +6,12 @@ const log = rootLogger.child({ name: "load-balancer" });
 export type LoadBalanceStrategy = "random" | "round-robin" | "least-connections";
 
 export type SelectHostInput = {
-  /** Hosts serving the final (target) model */
   hosts: string[];
-  /** Hosts serving the early (canary) model */
   earlyHosts: string[];
-  /** Canary progress 0-100. 100 = all traffic to final model */
   canaryProgress: number;
-  /** Whether an early model specifier exists */
   hasEarlyModel: boolean;
-  /** API key ID, used for session affinity */
-  keyId: string;
-  /** Public model specifier, used for session affinity */
   publicModel: string;
+  prefixHashes?: string[];
 };
 
 export type SelectHostResult = {
@@ -27,11 +21,12 @@ export type SelectHostResult = {
   release: () => void;
 };
 
-const AFFINITY_PREFIX = "lb:affinity:";
 const ROUND_ROBIN_PREFIX = "lb:rr:";
 const CONN_PREFIX = "lb:conn:";
+const PREFIX_KEY_PREFIX = "lb:prefix:";
+const PREFIX_TTL = 300;
+const AFFINITY_MARGIN = 2;
 
-const AFFINITY_TTL = 300;
 const CONN_SAFETY_TTL = 600;
 const ROUND_ROBIN_TTL = 3600;
 
@@ -69,9 +64,31 @@ function trackConnection(host: string): { release: () => void } {
   };
 }
 
+async function lookupPrefixHint(hashes: string[], validHosts: string[]): Promise<string | null> {
+  if (hashes.length === 0) {
+    return null;
+  }
+  const keys = hashes.map(h => `${PREFIX_KEY_PREFIX}${h}`);
+  const values = (await redis.send("MGET", keys)) as (string | null)[];
+  for (const v of values) {
+    if (v && validHosts.includes(v)) {
+      return v;
+    }
+  }
+  return null;
+}
+
+function storePrefixHint(hash: string, host: string): void {
+  redis.send("SET", [`${PREFIX_KEY_PREFIX}${hash}`, host, "EX", String(PREFIX_TTL)])
+    .catch((err: unknown) => log.warn({ err }, "Redis prefix store error"));
+}
+
 type HostSelection = { host: string; release: () => void };
 
-function selectRandom(hosts: string[]): HostSelection {
+function selectRandom(hosts: string[], hintHost: string | null): HostSelection {
+  if (hintHost) {
+    return { host: hintHost, release: noOpRelease };
+  }
   return {
     host: hosts[Math.floor(Math.random() * hosts.length)]!,
     release: noOpRelease,
@@ -87,7 +104,7 @@ async function withRandomFallback(
     return await body();
   } catch (err) {
     log.warn({ err }, `Redis error in ${strategyLabel}, falling back to random`);
-    return selectRandom(hosts);
+    return selectRandom(hosts, null);
   }
 }
 
@@ -102,7 +119,7 @@ function selectRoundRobin(hosts: string[], resolvedModel: string): Promise<HostS
   });
 }
 
-function selectLeastConnections(hosts: string[]): Promise<HostSelection> {
+function selectLeastConnections(hosts: string[], hintHost: string | null): Promise<HostSelection> {
   return withRandomFallback(hosts, "selectLeastConnections", async () => {
     const keys = hosts.map(connKey);
     const counts = (await redis.send("MGET", keys)) as (string | null)[];
@@ -117,6 +134,17 @@ function selectLeastConnections(hosts: string[]): Promise<HostSelection> {
       }
     }
 
+    if (hintHost) {
+      const hintIndex = hosts.indexOf(hintHost);
+      if (hintIndex !== -1) {
+        const hintCount = parseInt(counts[hintIndex] ?? "0", 10) || 0;
+        if (hintCount <= minCount + AFFINITY_MARGIN) {
+          const { release } = trackConnection(hintHost);
+          return { host: hintHost, release };
+        }
+      }
+    }
+
     const chosen = hosts[minIndex]!;
     const { release } = trackConnection(chosen);
     return { host: chosen, release };
@@ -127,6 +155,7 @@ async function selectByStrategy(
   strategy: LoadBalanceStrategy,
   hosts: string[],
   resolvedModel: string,
+  hintHost: string | null,
 ): Promise<{ host: string; release: () => void }> {
   const [single] = hosts;
   if (single && hosts.length === 1) {
@@ -137,62 +166,18 @@ async function selectByStrategy(
     case "round-robin":
       return selectRoundRobin(hosts, resolvedModel);
     case "least-connections":
-      return selectLeastConnections(hosts);
+      return selectLeastConnections(hosts, hintHost);
     default:
-      return selectRandom(hosts);
+      return selectRandom(hosts, hintHost);
   }
-}
-
-type AffinityRecord = { host: string; useFinalModel: boolean };
-
-function affinityKey(keyId: string, publicModel: string): string {
-  return `${AFFINITY_PREFIX}${keyId}:${publicModel}`;
-}
-
-async function getAffinity(keyId: string, publicModel: string): Promise<AffinityRecord | null> {
-  try {
-    const key = affinityKey(keyId, publicModel);
-    const cached = await redis.send("GETEX", [key, "EX", String(AFFINITY_TTL)]) as string | null;
-    if (!cached) return null;
-    const parsed = JSON.parse(cached);
-    if (typeof parsed?.host !== "string" || typeof parsed?.useFinalModel !== "boolean") {
-      log.warn({ key }, "Malformed affinity record in cache, discarding");
-      return null;
-    }
-    return parsed as AffinityRecord;
-  } catch (err) {
-    log.warn({ err }, "Redis error in getAffinity");
-    return null;
-  }
-}
-
-function setAffinity(keyId: string, publicModel: string, record: AffinityRecord): void {
-  const key = affinityKey(keyId, publicModel);
-  redis.send("SET", [key, JSON.stringify(record), "EX", String(AFFINITY_TTL)])
-    .catch((err: unknown) => log.warn({ err }, "Redis error in setAffinity"));
 }
 
 export async function selectHost(
   strategy: LoadBalanceStrategy,
   input: SelectHostInput,
 ): Promise<SelectHostResult | undefined> {
-  const { hosts, earlyHosts, canaryProgress, hasEarlyModel, keyId, publicModel } = input;
+  const { hosts, earlyHosts, canaryProgress, hasEarlyModel, publicModel, prefixHashes } = input;
 
-  // Step 1: Check session affinity
-  const cached = await getAffinity(keyId, publicModel);
-  if (cached) {
-    const pool = cached.useFinalModel ? hosts : earlyHosts;
-    if (pool.includes(cached.host)) {
-      // Affinity hit, still need to track connection for least-connections
-      const { release } = (strategy === "least-connections" && pool.length > 1)
-        ? trackConnection(cached.host)
-        : { release: noOpRelease };
-      return { host: cached.host, useFinalModel: cached.useFinalModel, release };
-    }
-    // Cached host gone from pool, fall through to fresh selection
-  }
-
-  // Step 2: Canary decision
   const useFinalModel = !hasEarlyModel || Math.random() * 100 < canaryProgress;
   const targetHosts = useFinalModel ? hosts : earlyHosts;
 
@@ -200,12 +185,18 @@ export async function selectHost(
     return undefined;
   }
 
-  // Step 3: Select host via strategy
-  const resolvedModel = useFinalModel ? "final" : "early";
-  const selected = await selectByStrategy(strategy, targetHosts, `${publicModel}:${resolvedModel}`);
+  let hintHost: string | null = null;
+  if (prefixHashes && prefixHashes.length > 0) {
+    hintHost = await lookupPrefixHint(prefixHashes, targetHosts)
+      .catch((err: unknown) => { log.warn({ err }, "Redis prefix lookup error"); return null; });
+  }
 
-  // Step 4: Store affinity
-  setAffinity(keyId, publicModel, { host: selected.host, useFinalModel });
+  const resolvedModel = useFinalModel ? "final" : "early";
+  const selected = await selectByStrategy(strategy, targetHosts, `${publicModel}:${resolvedModel}`, hintHost);
+
+  if (prefixHashes && prefixHashes.length > 0) {
+    storePrefixHint(prefixHashes[0]!, selected.host);
+  }
 
   return {
     host: selected.host,

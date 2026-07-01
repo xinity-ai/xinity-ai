@@ -97,7 +97,7 @@ type ModelInfo = {
   release: () => void;
 }
 
-export async function getModelInfo(orgId: string, publicSpecifier: string, keyId: string): Promise<ModelInfo | undefined> {
+export async function getModelInfo(orgId: string, publicSpecifier: string, prefixHashes?: string[]): Promise<ModelInfo | undefined> {
   const accessInfo = await publicModelSpecifierToModelSource(orgId, publicSpecifier);
   if (!accessInfo) {
     return;
@@ -115,8 +115,8 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, keyId
     earlyHosts: earlySources.hosts,
     canaryProgress: accessInfo.progress,
     hasEarlyModel: !!accessInfo.early,
-    keyId,
     publicModel: publicSpecifier,
+    prefixHashes,
   });
 
   if (!result) {
