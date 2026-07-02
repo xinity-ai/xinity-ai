@@ -13,6 +13,7 @@ import { modelRouter } from "./procedures/model.procedure";
 import { instanceAdminRouter } from "./procedures/instance-admin.procedure";
 import { clusterRouter } from "./procedures/cluster.procedure";
 import { computeRouter } from "./procedures/compute.procedure";
+import { auditRouter } from "./procedures/audit.procedure";
 import z from "zod";
 
 const health = os
@@ -38,5 +39,6 @@ export const router = {
   instanceAdmin: instanceAdminRouter,
   cluster: clusterRouter,
   compute: computeRouter,
+  audit: auditRouter,
   health,
 };

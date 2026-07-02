@@ -18,17 +18,23 @@ const customResourcePermissions = {
   aiApplication: ["create", "update", "delete", "read"],
 } as const;
 
+/** Resources restricted to owner/admin, kept out of full member access. */
+const restrictedResourcePermissions = {
+  auditLog: ["read"],
+} as const;
+
 const statement = {
   ...defaultStatements,
   ...customResourcePermissions,
+  ...restrictedResourcePermissions,
 } as const;
 
 export const ac = createAccessControl(statement);
 
 const fullAccessPermissions = customResourcePermissions;
 
-export const owner = ac.newRole({ ...fullAccessPermissions, ...ownerAc.statements });
-export const admin = ac.newRole({ ...fullAccessPermissions, ...adminAc.statements });
+export const owner = ac.newRole({ ...fullAccessPermissions, ...restrictedResourcePermissions, ...ownerAc.statements });
+export const admin = ac.newRole({ ...fullAccessPermissions, ...restrictedResourcePermissions, ...adminAc.statements });
 export const member = ac.newRole({ ...fullAccessPermissions, ...memberAc.statements });
 
 export const labeler = ac.newRole({
