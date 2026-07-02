@@ -7,7 +7,7 @@ import { os } from "@orpc/server";
 import { rootLogger } from "../logging";
 import type { ac } from "../roles";
 import { isInstanceAdmin } from "../serverenv";
-import { runWithAudit, type AuditContext, type AuditTag } from "./audit";
+import { runWithAudit, type ActorInfo, type AuditContext, type AuditTag } from "./audit";
 
 /** Metadata type available on all dashboard procedures. */
 export type ProcedureMeta = {
@@ -39,21 +39,28 @@ async function loadSessionOrThrow(
   return session;
 }
 
-type ResolverLogger = { debug: (obj: object, msg: string) => void; warn: (obj: unknown, msg: string) => void };
+type ApiKeyInfo = { keyId: string; organizationId: string | null };
 
-async function resolveOrgFromApiKey(request: Request, log: ResolverLogger): Promise<string | undefined> {
+async function resolveApiKeyInfo(request: Request): Promise<ApiKeyInfo | null> {
   const apiKey = request.headers.get("x-api-key");
-  if (!apiKey) return undefined;
+  if (!apiKey) return null;
   try {
     const result = await auth.api.verifyApiKey({ body: { key: apiKey } });
-    log.debug({ result }, "API key verification result");
-    if (result.valid && result.key?.metadata?.organizationId) {
-      return result.key.metadata.organizationId as string;
+    if (result.valid && result.key?.id) {
+      return {
+        keyId: result.key.id,
+        organizationId: (result.key.metadata?.organizationId as string) ?? null,
+      };
     }
   } catch (err) {
-    log.warn(err, "Failed to verify API key for organization resolution");
+    log.warn(err, "Failed to verify API key");
   }
-  return undefined;
+  return null;
+}
+
+function actorFromSession(session: Session, apiKeyInfo: ApiKeyInfo | null): ActorInfo {
+  if (apiKeyInfo) return { actorType: "api_key", actorId: apiKeyInfo.keyId };
+  return { actorType: "user", actorId: session.user.id };
 }
 
 /**
@@ -61,11 +68,14 @@ async function resolveOrgFromApiKey(request: Request, log: ResolverLogger): Prom
  */
 export const withAuth = rootOs.middleware(async ({ context, next, errors }) => {
   const session = await loadSessionOrThrow(context, errors);
+  const apiKeyInfo = await resolveApiKeyInfo(context.request);
+  const actor = actorFromSession(session, apiKeyInfo);
   return next({
     context: {
       ...context,
       session,
-    } as App.Locals & { session: Session },
+      actor,
+    } as App.Locals & { session: Session; actor: ActorInfo },
   });
 });
 
@@ -74,11 +84,12 @@ export const withAuth = rootOs.middleware(async ({ context, next, errors }) => {
  * For API key auth, falls back to the organizationId stored in the key's metadata.
  */
 export const withOrganization = rootOs.middleware(async ({ context, next, errors }) => {
-  const rlog = log.child({ traceId: context.traceId });
   const session = await loadSessionOrThrow(context, errors);
+  const apiKeyInfo = await resolveApiKeyInfo(context.request);
+  const actor = actorFromSession(session, apiKeyInfo);
 
-  let activeOrganizationId = session.session.activeOrganizationId;
-  activeOrganizationId ??= await resolveOrgFromApiKey(context.request, rlog);
+  const activeOrganizationId =
+    session.session.activeOrganizationId ?? apiKeyInfo?.organizationId ?? null;
 
   if (!activeOrganizationId) {
     throw errors.UNAUTHORIZED({ message: "No organization is set to active" });
@@ -87,8 +98,9 @@ export const withOrganization = rootOs.middleware(async ({ context, next, errors
     context: {
       ...context,
       session,
+      actor,
       activeOrganizationId,
-    } as App.Locals & { session: Session, activeOrganizationId: string },
+    } as App.Locals & { session: Session; actor: ActorInfo; activeOrganizationId: string },
   });
 });
 
@@ -100,11 +112,16 @@ export const withInstanceAdmin = rootOs.middleware(async ({ context, next, error
   if (!isInstanceAdmin(session.user.email)) {
     throw errors.FORBIDDEN();
   }
+  const apiKeyInfo = await resolveApiKeyInfo(context.request);
+  const actor: ActorInfo = apiKeyInfo
+    ? { actorType: "api_key", actorId: apiKeyInfo.keyId }
+    : { actorType: "instance_admin", actorId: session.user.id };
   return next({
     context: {
       ...context,
       session,
-    } as App.Locals & { session: Session },
+      actor,
+    } as App.Locals & { session: Session; actor: ActorInfo },
   });
 });
 
@@ -137,9 +154,9 @@ export function requirePermission(permissions: PermissionSpec) {
 
 /**
  * Emits an audit event for procedures tagged with `.meta({ audit })`. No-op
- * otherwise. Apply per procedure with `.use(auditMiddleware)`, after the auth/org
- * guards so actor and org are in context.
+ * otherwise. Runs after auth/org guards so actor and org are already on context.
  */
-export const auditMiddleware = rootOs.middleware(({ context, procedure, next }) =>
-  runWithAudit(context as AuditContext, procedure["~orpc"].meta.audit, () => next()),
-);
+export const auditMiddleware = rootOs.middleware(({ context, procedure, next }) => {
+  const ctx = context as AuditContext;
+  return runWithAudit(ctx, procedure["~orpc"].meta.audit, () => next());
+});
