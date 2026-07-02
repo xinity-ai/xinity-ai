@@ -190,6 +190,8 @@
         systemd.services.xinity-ai-daemon = {
           description = "Xinity AI Daemon";
           wantedBy = [ "multi-user.target" ];
+          after = [ "network-online.target" ];
+          wants = [ "network-online.target" ];
           environment = {
             PORT = toString cfg.port;
             HOST = cfg.host;
