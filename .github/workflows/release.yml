@@ -98,7 +98,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v5
         with:
-          name: ${{ matrix.package }}
+          name: release-${{ matrix.package }}
           path: |
             ${{ matrix.workdir }}/*.zip
             ${{ matrix.workdir }}/*.tar.gz
@@ -157,7 +157,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v5
         with:
-          name: bundles
+          name: release-bundles
           path: staging/
           retention-days: 1
 
@@ -278,6 +278,7 @@ jobs:
         uses: actions/download-artifact@v5
         with:
           path: release
+          pattern: release-*
           merge-multiple: true
 
       - name: Add install script to release
