@@ -79,7 +79,8 @@
 >
   <div class="flex items-center justify-center px-3 py-4 compact:py-2 border-b border-gray-200">
     <a href="/" class="flex items-center">
-      <img src="/xinity-logo.png" alt="Xinity" class="h-8 sm:h-9 w-auto" />
+      <img src="/xinity-logo.png" alt="Xinity" class="h-9 w-auto hidden sm:block" />
+      <img src="/xinity-icon.png" alt="Xinity" class="h-6 w-auto sm:hidden" />
     </a>
   </div>
   <div class="flex flex-col justify-between grow overflow-x-hidden overflow-y-auto">
