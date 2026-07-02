@@ -16,12 +16,13 @@ export type AuditTag = { action: string; resource: string };
 export type AuditContext = {
   request: Request;
   clientAddress?: string;
-  session?: { user?: { id?: string | null }; session?: { activeOrganizationId?: string | null } };
+  session?: { user?: { id?: string | null } };
   activeOrganizationId?: string;
 };
 
+/** Only org-scoped procedures (via `withOrganization`) carry an org; instance/personal actions are null. */
 function resolveOrg(context: AuditContext): string | null {
-  return context.activeOrganizationId ?? context.session?.session?.activeOrganizationId ?? null;
+  return context.activeOrganizationId ?? null;
 }
 
 async function resolveActor(context: AuditContext): Promise<{ actorType: AuditActorType; actorId: string | null }> {

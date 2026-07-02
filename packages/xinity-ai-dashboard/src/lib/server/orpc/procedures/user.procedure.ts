@@ -1,4 +1,4 @@
-import { rootOs, withAuth } from "../root";
+import { rootOs, withAuth, auditMiddleware } from "../root";
 import { UserDto } from "$lib/orpc/dtos/user.dto";
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
 import { sql, userT } from "common-db";
@@ -28,6 +28,8 @@ const getSelf = rootOs.use(withAuth)
  */
 const updateSettings = rootOs
   .use(withAuth)
+  .use(auditMiddleware)
+  .meta({ audit: { action: "user.update_settings", resource: "user" } })
   .route({
     summary: "Update User Settings",
     path: "/self", method: "PATCH", tags, description: `Endpoint to update your own user

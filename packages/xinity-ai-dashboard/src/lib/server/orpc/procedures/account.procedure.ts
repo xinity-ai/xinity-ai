@@ -1,4 +1,4 @@
-import { rootOs, withAuth } from "../root";
+import { rootOs, withAuth, auditMiddleware } from "../root";
 import { z } from "zod";
 import { auth, getGreenlitCallId } from "$lib/server/auth-server";
 import { rootLogger } from "$lib/server/logging";
@@ -10,8 +10,9 @@ const log = rootLogger.child({ name: "account.procedure" });
 const tags = ["Auth"];
 
 const changePassword = rootOs
-  .meta({ mcp: false })
+  .meta({ mcp: false, audit: { action: "account.change_password", resource: "account" } })
   .use(withAuth)
+  .use(auditMiddleware)
   .route({ path: "/change-password", method: "POST", tags, summary: "Change Password" })
   .input(z.object({
     currentPassword: z.string().min(1),
@@ -48,8 +49,9 @@ const listPasskeys = rootOs
   });
 
 const deletePasskey = rootOs
-  .meta({ mcp: false })
+  .meta({ mcp: false, audit: { action: "account.delete_passkey", resource: "account" } })
   .use(withAuth)
+  .use(auditMiddleware)
   .route({ path: "/passkeys", method: "DELETE", tags, summary: "Delete Passkey" })
   .input(z.object({ id: z.string() }))
   .handler(async ({ context, input, errors }) => {
@@ -78,8 +80,9 @@ const listDashboardApiKeys = rootOs
   });
 
 const createDashboardApiKey = rootOs
-  .meta({ mcp: false })
+  .meta({ mcp: false, audit: { action: "account.create_dashboard_api_key", resource: "account" } })
   .use(withAuth)
+  .use(auditMiddleware)
   .route({ path: "/dashboard-api-keys", method: "POST", tags, summary: "Create Dashboard API Key" })
   .input(z.object({
     name: z.string().min(3),
@@ -116,8 +119,9 @@ const createDashboardApiKey = rootOs
   });
 
 const deleteDashboardApiKey = rootOs
-  .meta({ mcp: false })
+  .meta({ mcp: false, audit: { action: "account.delete_dashboard_api_key", resource: "account" } })
   .use(withAuth)
+  .use(auditMiddleware)
   .route({ path: "/dashboard-api-keys", method: "DELETE", tags, summary: "Delete Dashboard API Key" })
   .input(z.object({ id: z.string() }))
   .handler(async ({ context, input, errors }) => {

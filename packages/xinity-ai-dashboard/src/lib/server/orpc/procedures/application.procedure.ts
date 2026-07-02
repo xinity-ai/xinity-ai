@@ -1,7 +1,7 @@
 /**
  * ORPC procedures for Application management.
  */
-import { rootOs, withOrganization, requirePermission } from "../root";
+import { rootOs, withOrganization, requirePermission, auditMiddleware } from "../root";
 import { ApplicationDto } from "$lib/orpc/dtos/application.dto";
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
 import { aiApplicationT, sql } from "common-db";
@@ -21,6 +21,8 @@ const matchActiveAppInOrg = (id: string, orgId: string) =>
 const createApplication = rootOs
   .use(withOrganization)
   .use(requirePermission({ aiApplication: ["create"] }))
+  .use(auditMiddleware)
+  .meta({ audit: { action: "aiApplication.create", resource: "aiApplication" } })
   .route({ path: "/", method: "POST", tags, summary: "Create Application" })
   .input(ApplicationDto.omit({ id: true, organizationId: true, ...commonInputFilter }))
   .handler(async ({ input, context }) => {
@@ -79,6 +81,8 @@ const getApplication = rootOs
 const updateApplication = rootOs
   .use(withOrganization)
   .use(requirePermission({ aiApplication: ["update"] }))
+  .use(auditMiddleware)
+  .meta({ audit: { action: "aiApplication.update", resource: "aiApplication" } })
   .route({ method: "PATCH", path: "/{id}", tags, summary: "Update Application" })
   .input(ApplicationDto.pick({ id: true, name: true, description: true }))
   .handler(async ({ context, input }) => {
@@ -95,6 +99,8 @@ const updateApplication = rootOs
 const softDeleteApplication = rootOs
   .use(withOrganization)
   .use(requirePermission({ aiApplication: ["delete"] }))
+  .use(auditMiddleware)
+  .meta({ audit: { action: "aiApplication.delete", resource: "aiApplication" } })
   .route({ method: "DELETE", path: "/{id}", tags, summary: "Soft Delete Application" })
   .input(ApplicationDto.pick({ id: true }))
   .handler(async ({ context, input }) => {
