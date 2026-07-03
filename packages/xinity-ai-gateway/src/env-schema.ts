@@ -9,7 +9,7 @@ export const gatewayEnvSchema = z.object({
   UNIX_SOCKET: z.string().optional().describe("Unix socket path (overrides HOST/PORT when set)").meta(expert()),
   DB_CONNECTION_URL: z.url().describe("PostgreSQL connection string (e.g. postgresql://user:pass@host:5432/dbname)").meta(secret()),
   REDIS_URL: z.url().describe("Redis connection URL (e.g. redis://localhost:6379)").meta(secret()),
-  INFOSERVER_URL: z.url().describe("Infoserver URL (default hosted: https://sysinfo.xinity.ai, or your self-hosted instance)"),
+  INFOSERVER_URL: z.url().default("https://sysinfo.xinity.ai").describe("Infoserver URL (default hosted: https://sysinfo.xinity.ai, or your self-hosted instance)"),
   WEB_SEARCH_ENGINE_URL: z.url().optional().describe("SearXNG search engine URL").meta(expert()),
   RESPONSE_CACHE_TTL_SECONDS: z.coerce
     .number()
