@@ -19,6 +19,7 @@
   import { useDebouncedValue } from "$lib/state/debounced.svelte";
   import { Button } from "$lib/components/ui/button";
   import { ArrowLeft, BookOpen } from "@lucide/svelte";
+  import { humanDate } from "$lib/util";
 
   type SortOption = "newest" | "oldest" | "duration";
   type ReactionFilter =
@@ -180,10 +181,6 @@
     });
   }
 
-  function formatDate(date: Date) {
-    return date.toLocaleString("de-AT");
-  }
-
   function selectCall(call: ApiCall) {
     selectedCall = call;
   }
@@ -262,7 +259,7 @@
     <CallList
       calls={filteredCalls}
       selectedCallId={selectedCall ? selectedCall.id : null}
-      {formatDate}
+      formatDate={humanDate}
       onSelect={selectCall}
       onLoadMore={loadMoreData}
       {loadingMore}
@@ -276,7 +273,7 @@
       <CallDetails
         call={selectedCall}
         {apiKeyNameMap}
-        {formatDate}
+        formatDate={humanDate}
         onDelete={requestDelete}
         canDelete={permissions.can("apiCall", "delete")}
       />

@@ -6,6 +6,7 @@
     InputExclusion,
   } from "common-db";
   import { onDestroy } from "svelte";
+  import { humanDate, formatDurationMs } from "$lib/util";
   import { getAPICallResponse, upsertApiCallResponse } from "./data.remote";
   import { messageContentToString, getRoleStyle, resolveImageSrc } from "./data.utils";
   import HighlightPopup from "./HighlightPopup.svelte";
@@ -25,7 +26,7 @@
   let {
     call = null,
     apiKeyNameMap,
-    formatDate = (date: Date) => new Date(date).toLocaleString("de-AT"),
+    formatDate = humanDate,
     onDelete = () => {},
     canDelete = false,
   }: {
@@ -735,9 +736,6 @@
     }
   }
 
-  function formatDuration(durationMs: number) {
-    return `${(durationMs / 1000).toFixed(1)}s`;
-  }
 
   // Use the server-side export endpoint so xinity-media:// image refs
   // are resolved to data URIs in the downloaded file.
@@ -1085,7 +1083,7 @@
           </div>
           <div class="min-w-20 flex-1">
             <p class="text-xs text-muted-foreground">Duration</p>
-            <p class="font-medium">{formatDuration(activeCall.duration)}</p>
+            <p class="font-medium">{formatDurationMs(activeCall.duration)}</p>
           </div>
         </div>
       </div>

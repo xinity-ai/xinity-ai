@@ -67,10 +67,10 @@ export function formatGb(value: number): string {
   return `${parseFloat(value.toFixed(2))} GB`;
 }
 
-/** Formats a date using the "de" locale for consistent UI display. */
-export function humanDate(d: Date | undefined) {
-  if (!d || !d.toLocaleString) return "Unknown date";
-  return d.toLocaleString("de", {
+export function humanDate(d: Date | string | undefined) {
+  if (!d) return "Unknown date";
+  const date = typeof d === "string" ? new Date(d) : d;
+  return date.toLocaleString(undefined, {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -80,10 +80,14 @@ export function humanDate(d: Date | undefined) {
   });
 }
 
-/** Formats a date (no time) using the "de" locale for consistent UI display. */
 export function humanDateShort(d: Date | undefined) {
   if (!d || !d.toLocaleDateString) return "Unknown date";
-  return d.toLocaleDateString("de", { dateStyle: "medium" });
+  return d.toLocaleDateString(undefined, { dateStyle: "medium" });
+}
+
+export function formatDurationMs(ms: number | null): string {
+  if (ms == null) return "-";
+  return `${(ms / 1000).toFixed(1)}s`;
 }
 
 /** Formats a duration expressed in hours into a human-readable label. */
