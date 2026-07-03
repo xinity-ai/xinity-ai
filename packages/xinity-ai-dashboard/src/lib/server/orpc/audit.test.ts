@@ -18,7 +18,7 @@ function ctx(overrides: Partial<AuditContext> = {}): AuditContext {
   return {
     request: new Request("http://localhost/rpc", { headers: { "user-agent": "test-agent" } }),
     clientAddress: "1.2.3.4",
-    actor: { actorType: "user", actorId: "user-1" },
+    actor: { actorType: "user", actorId: "user-1", actorLabel: "user-1@example.com" },
     activeOrganizationId: "org-1",
     ...overrides,
   };
@@ -37,6 +37,7 @@ describe("runWithAudit", () => {
       organizationId: "org-1",
       actorType: "user",
       actorId: "user-1",
+      actorLabel: "user-1@example.com",
       action: "member.update_role",
       resource: "member",
       result: "success",
@@ -78,11 +79,12 @@ describe("runWithAudit", () => {
   });
 
   test("attributes the event to an API key when actor is api_key", async () => {
-    const c = ctx({ actor: { actorType: "api_key", actorId: "key-1" } });
+    const c = ctx({ actor: { actorType: "api_key", actorId: "key-1", actorLabel: "ci-key" } });
     await runWithAudit(c, auditTag, async () => "OK");
-    const row = insertValues.mock.calls[0]![0] as { actorType: string; actorId: string };
+    const row = insertValues.mock.calls[0]![0] as { actorType: string; actorId: string; actorLabel: string };
     expect(row.actorType).toBe("api_key");
     expect(row.actorId).toBe("key-1");
+    expect(row.actorLabel).toBe("ci-key");
   });
 
   test("falls back to system actor when no actor is on context", async () => {

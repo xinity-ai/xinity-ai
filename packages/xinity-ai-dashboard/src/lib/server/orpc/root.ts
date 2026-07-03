@@ -39,7 +39,7 @@ async function loadSessionOrThrow(
   return session;
 }
 
-type ApiKeyInfo = { keyId: string; organizationId: string | null };
+type ApiKeyInfo = { keyId: string; name: string | null; organizationId: string | null };
 
 async function resolveApiKeyInfo(request: Request): Promise<ApiKeyInfo | null> {
   const apiKey = request.headers.get("x-api-key");
@@ -49,6 +49,7 @@ async function resolveApiKeyInfo(request: Request): Promise<ApiKeyInfo | null> {
     if (result.valid && result.key?.id) {
       return {
         keyId: result.key.id,
+        name: result.key.name ?? null,
         organizationId: (result.key.metadata?.organizationId as string) ?? null,
       };
     }
@@ -65,8 +66,8 @@ async function resolveActor(
 ): Promise<{ actor: ActorInfo; apiKeyInfo: ApiKeyInfo | null }> {
   const apiKeyInfo = await resolveApiKeyInfo(request);
   const actor: ActorInfo = apiKeyInfo
-    ? { actorType: "api_key", actorId: apiKeyInfo.keyId }
-    : { actorType: isInstanceAdmin ? "instance_admin" : "user", actorId: session.user.id };
+    ? { actorType: "api_key", actorId: apiKeyInfo.keyId, actorLabel: apiKeyInfo.name ?? apiKeyInfo.keyId }
+    : { actorType: isInstanceAdmin ? "instance_admin" : "user", actorId: session.user.id, actorLabel: session.user.email };
   return { actor, apiKeyInfo };
 }
 

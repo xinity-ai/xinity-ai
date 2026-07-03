@@ -47,7 +47,7 @@ export type AuditAction =
 
 export type AuditTag = { action: AuditAction; resource: string };
 
-export type ActorInfo = { actorType: AuditActorType; actorId: string | null };
+export type ActorInfo = { actorType: AuditActorType; actorId: string | null; actorLabel: string | null };
 
 /** The subset of oRPC context the audit path reads. */
 export type AuditContext = {
@@ -71,11 +71,12 @@ async function emitAudit(
   result: "success" | "failure",
   extraContext?: Record<string, unknown>,
 ): Promise<void> {
-  const actor = context.actor ?? { actorType: "system" as const, actorId: null };
+  const actor = context.actor ?? { actorType: "system" as const, actorId: null, actorLabel: null };
   await writeAuditEvent({
     organizationId: context.activeOrganizationId ?? null,
     actorType: actor.actorType,
     actorId: actor.actorId,
+    actorLabel: actor.actorLabel,
     action: tag.action,
     resource: tag.resource,
     result,
