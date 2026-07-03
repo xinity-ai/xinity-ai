@@ -2,6 +2,7 @@
   import Chart from "$lib/components/Chart.svelte";
   import type { ChartConfiguration } from "chart.js";
   import type { KeyMetrics, ChartsData, TablesData } from "./dashboard.types";
+  import { humanDate, formatDurationMs } from "$lib/util";
 
   let { keyMetrics, charts, tables }: {
     keyMetrics: Promise<KeyMetrics>;
@@ -18,11 +19,6 @@
     });
   }
 
-  function formatDate(dateString: string) {
-    const date = new Date(dateString);
-    return date.toLocaleString();
-  }
-
   function formatTokenAvg(val: number | null): string {
     if (val == null) return "-";
     if (val >= 1000) return (val / 1000).toFixed(1) + "k";
@@ -35,10 +31,6 @@
     return String(val);
   }
 
-  function formatDuration(ms: number | null): string {
-    if (ms == null) return "-";
-    return (ms / 1000).toFixed(1) + "s";
-  }
 </script>
 
 <div class="p-6 compact:p-3">
@@ -395,10 +387,10 @@
                     <div class="text-sm text-gray-500">{formatTokens(activity.outputTokens)}</div>
                   </td>
                   <td class="px-6 py-4 compact:py-2 whitespace-nowrap text-right">
-                    <div class="text-sm text-gray-500">{formatDuration(activity.duration)}</div>
+                    <div class="text-sm text-gray-500">{formatDurationMs(activity.duration)}</div>
                   </td>
                   <td class="px-6 py-4 compact:py-2 whitespace-nowrap">
-                    <div class="text-sm text-gray-500">{formatDate(activity.timestamp)}</div>
+                    <div class="text-sm text-gray-500">{humanDate(activity.timestamp)}</div>
                   </td>
                   <td class="px-6 py-4 compact:py-2 whitespace-nowrap text-center">
                     {#if activity.logged}
