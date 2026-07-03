@@ -15,7 +15,7 @@ import * as p from "./clack.ts";
 import pc from "picocolors";
 
 import { fetchRelease, pickReleaseAsset, type Release } from "./github.ts";
-import { downloadAndVerify } from "./installer.ts";
+import { downloadAndVerify } from "./install-download.ts";
 import { parseEnvString } from "./env-file.ts";
 import { fail, pass, info, warn } from "./output.ts";
 import { postgresSetup } from "./postgres-setup.ts";
