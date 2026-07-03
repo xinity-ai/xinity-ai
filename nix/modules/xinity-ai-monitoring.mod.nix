@@ -289,6 +289,17 @@
                   { source_labels = [ "__journal__hostname" ]; target_label = "host"; }
                   { source_labels = [ "__journal_priority_keyword" ]; target_label = "level"; }
                 ];
+                pipeline_stages = [
+                  # For pino JSON logs: extract the numeric level and map to a string.
+                  # Non-JSON lines skip silently, keeping the syslog priority from relabel_configs.
+                  { json = { expressions = { pino_level = "level"; }; }; }
+                  { template = {
+                      source = "pino_level";
+                      template = "{{if eq .Value \"10\"}}trace{{else if eq .Value \"20\"}}debug{{else if eq .Value \"30\"}}info{{else if eq .Value \"40\"}}warn{{else if eq .Value \"50\"}}error{{else if eq .Value \"60\"}}fatal{{else}}{{.Value}}{{end}}";
+                    };
+                  }
+                  { labels = { level = "pino_level"; }; }
+                ];
               }
             ];
           };
