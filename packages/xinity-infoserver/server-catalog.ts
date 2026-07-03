@@ -157,7 +157,7 @@ async function loadDirectoryFiles(
         continue;
       }
 
-      log.info({ filePath, modelCount: Object.keys(result.data.models).length }, "Loaded model file from directory");
+      log.debug({ filePath, modelCount: Object.keys(result.data.models).length }, "Loaded model file from directory");
       indexModels(result.data.models, filePath, true, state);
 
       for (const includeUrl of result.data.includes ?? []) {
