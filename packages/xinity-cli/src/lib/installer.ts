@@ -16,7 +16,7 @@ import {
   ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, BIN_DIR, UNIT_DIR,
   binaryBaseName, getAutoDefaults,
 } from "./component-meta.ts";
-// @ts-ignore
+// @ts-expect-error Bun text import
 import vllmTemplateUnit from "xinity-ai-daemon/src/assets/vllm-driver@.service" with { type: "text" };
 
 export type { Release } from "./github.ts";

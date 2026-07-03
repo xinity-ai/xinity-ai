@@ -132,7 +132,7 @@ maxContextLength: z.number().int().positive().default(131072).describe("Maximum 
   ),
   custom: z.looseObject({
     baseModel: z.string(),
-    extraFacts: z.record(z.string(), z.any())
+    extraFacts: z.record(z.string(), z.unknown())
   }).optional().describe("Info for fine tuned custom models"),
 });
 export type Model = z.infer<typeof ModelSchema>;
