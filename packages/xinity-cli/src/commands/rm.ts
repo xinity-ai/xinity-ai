@@ -1,7 +1,7 @@
 import type { CommandModule } from "yargs";
 import * as p from "../lib/clack.ts";
 import pc from "picocolors";
-import { removeComponent, removeAll } from "../lib/installer.ts";
+import { removeComponent, removeAll } from "../lib/install-remove.ts";
 import type { Component } from "../lib/component-meta.ts";
 import { logErrors } from "../lib/output.ts";
 import { createLocalHost } from "../lib/host.ts";
