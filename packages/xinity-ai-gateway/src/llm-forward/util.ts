@@ -266,9 +266,17 @@ export function handleStreamError(
     (log.warn ?? log.error)({ err: e }, "Backend timeout during stream");
     message = "Backend timed out while generating the response";
     errorType = "timeout_error";
+  } else if (isConnectionRefused(e)) {
+    (log.warn ?? log.error)({ err: e }, "Backend unreachable during stream");
+    message = "Service temporarily unavailable";
+    errorType = "server_error";
+  } else if (isUpstreamError(e)) {
+    log.error({ err: e }, "Upstream error during stream");
+    message = clientFacingErrorMessage(e);
+    errorType = "server_error";
   } else {
-    log.error({ err: e }, "Stream error");
-    message = "Internal stream error";
+    log.error({ err: e }, "Internal error during stream");
+    message = "Internal server error";
     errorType = "server_error";
   }
 
@@ -425,7 +433,11 @@ export function isAbortError(e: unknown): boolean {
 }
 
 export function isTimeoutError(e: unknown): boolean {
-  return hasErrorName(e, "TimeoutError");
+  if (hasErrorName(e, "TimeoutError")) return true;
+  if (e != null && typeof e === "object" && "cause" in e) {
+    return isTimeoutError((e as { cause: unknown }).cause);
+  }
+  return false;
 }
 
 function errorTypeFromStatus(status: number): string {
