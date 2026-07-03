@@ -31,8 +31,7 @@ export async function collectRemoteState(
 ): Promise<RemoteState> {
   const filesToCheck: string[] = [];
   const filesToRead: string[] = [];
-  // TODO drop unzip on v1.0.0
-  const commandsToCheck: string[] = ["systemctl", "weed", "ollama", "docker", "nvidia-smi", "tar", "unzip", "curl"];
+  const commandsToCheck: string[] = ["systemctl", "weed", "ollama", "docker", "nvidia-smi", "tar", "curl"];
   const unitsToCheck: string[] = ["xinity-ai-seaweedfs.service", "ollama.service", "ollama"];
 
   // SeaweedFS paths

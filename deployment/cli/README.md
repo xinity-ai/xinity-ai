@@ -5,7 +5,7 @@ The Xinity CLI is the recommended way to deploy Xinity on any Linux server with 
 ## Prerequisites
 
 - Linux with systemd
-- `curl` and `unzip`
+- `curl` and `tar`
 - For the daemon: a machine with GPU capacity running Ollama
 
 ## Install the CLI
