@@ -58,9 +58,16 @@ async function resolveApiKeyInfo(request: Request): Promise<ApiKeyInfo | null> {
   return null;
 }
 
-function actorFromSession(session: Session, apiKeyInfo: ApiKeyInfo | null): ActorInfo {
-  if (apiKeyInfo) return { actorType: "api_key", actorId: apiKeyInfo.keyId };
-  return { actorType: "user", actorId: session.user.id };
+async function resolveActor(
+  request: Request,
+  session: Session,
+  isInstanceAdmin = false,
+): Promise<{ actor: ActorInfo; apiKeyInfo: ApiKeyInfo | null }> {
+  const apiKeyInfo = await resolveApiKeyInfo(request);
+  const actor: ActorInfo = apiKeyInfo
+    ? { actorType: "api_key", actorId: apiKeyInfo.keyId }
+    : { actorType: isInstanceAdmin ? "instance_admin" : "user", actorId: session.user.id };
+  return { actor, apiKeyInfo };
 }
 
 /**
@@ -68,8 +75,7 @@ function actorFromSession(session: Session, apiKeyInfo: ApiKeyInfo | null): Acto
  */
 export const withAuth = rootOs.middleware(async ({ context, next, errors }) => {
   const session = await loadSessionOrThrow(context, errors);
-  const apiKeyInfo = await resolveApiKeyInfo(context.request);
-  const actor = actorFromSession(session, apiKeyInfo);
+  const { actor } = await resolveActor(context.request, session);
   return next({
     context: {
       ...context,
@@ -85,8 +91,7 @@ export const withAuth = rootOs.middleware(async ({ context, next, errors }) => {
  */
 export const withOrganization = rootOs.middleware(async ({ context, next, errors }) => {
   const session = await loadSessionOrThrow(context, errors);
-  const apiKeyInfo = await resolveApiKeyInfo(context.request);
-  const actor = actorFromSession(session, apiKeyInfo);
+  const { actor, apiKeyInfo } = await resolveActor(context.request, session);
 
   const activeOrganizationId =
     session.session.activeOrganizationId ?? apiKeyInfo?.organizationId ?? null;
@@ -112,10 +117,7 @@ export const withInstanceAdmin = rootOs.middleware(async ({ context, next, error
   if (!isInstanceAdmin(session.user.email)) {
     throw errors.FORBIDDEN();
   }
-  const apiKeyInfo = await resolveApiKeyInfo(context.request);
-  const actor: ActorInfo = apiKeyInfo
-    ? { actorType: "api_key", actorId: apiKeyInfo.keyId }
-    : { actorType: "instance_admin", actorId: session.user.id };
+  const { actor } = await resolveActor(context.request, session, true);
   return next({
     context: {
       ...context,

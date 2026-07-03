@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, mock } from "bun:test";
-import type { AuditContext } from "./audit";
+import type { AuditContext, AuditTag } from "./audit";
 
 const insertValues = mock((_row: unknown) => Promise.resolve());
 mock.module("$lib/server/db", () => ({
@@ -12,7 +12,7 @@ mock.module("$lib/server/logging", () => ({
 
 const { runWithAudit } = await import("./audit");
 
-const auditTag = { action: "member.invite", resource: "member" };
+const auditTag: AuditTag = { action: "member.update_role", resource: "member" };
 
 function ctx(overrides: Partial<AuditContext> = {}): AuditContext {
   return {
@@ -37,7 +37,7 @@ describe("runWithAudit", () => {
       organizationId: "org-1",
       actorType: "user",
       actorId: "user-1",
-      action: "member.invite",
+      action: "member.update_role",
       resource: "member",
       result: "success",
       ipAddress: "1.2.3.4",
