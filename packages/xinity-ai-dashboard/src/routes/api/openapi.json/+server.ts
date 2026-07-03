@@ -18,7 +18,6 @@ const generator = new OpenAPIGenerator({
 
 /** Prefixes routes and removes internal procedures from public docs. */
 const apiRouter = os.prefix("/api").router(removeInternalRecursively(router));
-// @ts-ignore // type inaccuracy due to versions
 const spec = await generator.generate(apiRouter, {
   info: {
     title: 'Xinity Orchestrator API',

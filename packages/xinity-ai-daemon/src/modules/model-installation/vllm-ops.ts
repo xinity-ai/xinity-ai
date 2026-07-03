@@ -1,6 +1,6 @@
 import { $ } from "bun";
 import { env } from "../../env";
-// @ts-ignore
+// @ts-expect-error Bun text import
 import templateUnit from "../../assets/vllm-driver@.service" with { type: "text" };
 import { rootLogger } from "../../logger";
 

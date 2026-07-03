@@ -382,10 +382,8 @@ export class LocalHost implements Host {
     try {
       statSync(path);
       return true;
-    } catch (err: any) {
-      // EACCES means the file exists but isn't readable by the current user.
-      // Treat that as "exists" so the caller can decide to elevate.
-      return err?.code === "EACCES";
+    } catch (err: unknown) {
+      return (err as NodeJS.ErrnoException)?.code === "EACCES";
     }
   }
 

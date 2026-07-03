@@ -12,7 +12,7 @@ const log = rootLogger.child({ name: "browser" });
 
 const logSchema = z.object({
   level: z.enum(["debug", "trace", "error", "warn", "fatal", "info"]),
-  messages: z.tuple([z.record(z.string(), z.any()), z.string()]).or(z.tuple([z.string()])),
+  messages: z.tuple([z.record(z.string(), z.unknown()), z.string()]).or(z.tuple([z.string()])),
   ts: z.number(),
 });
 /** Handles log ingestion from the browser logger. */
@@ -26,7 +26,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
   const { level, messages } = logs.data;
   if (messages.length > 1) {
-    const obj = messages[0] as Record<string, any>;
+    const obj = messages[0] as Record<string, unknown>;
     if ("name" in obj) {
       obj.name = `browser.${obj.name}`;
     }
