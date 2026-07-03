@@ -51,9 +51,39 @@ function buildApiCallRow(input: ChatLogFields, model: string, outputMessage: Api
   };
 }
 
+// Characters that PostgreSQL cannot store in text/jsonb columns.
+// U+0000 (null) is the only codepoint PostgreSQL categorically rejects.
+const PG_UNSAFE_CHAR = /\0/g;
+
+function sanitizeForPg(value: unknown): unknown {
+  if (typeof value === "string") {
+    return value.replace(PG_UNSAFE_CHAR, "");
+  }
+  if (Array.isArray(value)) {
+    return value.map(sanitizeForPg);
+  }
+  if (value !== null && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      out[k] = sanitizeForPg(v);
+    }
+    return out;
+  }
+  return value;
+}
+
+function sanitizeRow(row: ApiCallRow): ApiCallRow {
+  return {
+    ...row,
+    inputMessages: sanitizeForPg(row.inputMessages) as ApiCallRow["inputMessages"],
+    outputMessage: sanitizeForPg(row.outputMessage) as ApiCallRow["outputMessage"],
+    metadata: row.metadata ? sanitizeForPg(row.metadata) as ApiCallRow["metadata"] : row.metadata,
+  };
+}
+
 async function insertApiCallRows(rows: ApiCallRow[]): Promise<void> {
   try {
-    await getDB().insert(apiCallT).values(rows);
+    await getDB().insert(apiCallT).values(rows.map(sanitizeRow));
   } catch (err) {
     log.error({ err }, "DB error writing API call");
   }
