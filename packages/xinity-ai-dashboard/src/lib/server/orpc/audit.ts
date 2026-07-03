@@ -86,10 +86,15 @@ async function emitAudit(
   });
 }
 
+/** Fire-and-forget the write so it never adds latency to the request. writeAuditEvent logs write failures; this catches anything else. */
+function fireAudit(context: AuditContext, tag: AuditTag, result: "success" | "failure", extraContext?: Record<string, unknown>): void {
+  void emitAudit(context, tag, result, extraContext).catch((err) => log.warn({ err }, "Failed to emit audit event"));
+}
+
 /**
- * Runs `next`, then emits one audit event reflecting the outcome. A handler
- * error still emits (result: failure) and is rethrown unchanged. No-op when the
- * procedure carries no audit tag.
+ * Runs `next`, then emits one audit event reflecting the outcome (fire-and-forget,
+ * so the write never blocks or breaks the request). A handler error still emits
+ * (result: failure) and is rethrown. No-op when the procedure carries no audit tag.
  */
 export async function runWithAudit<T>(
   context: AuditContext,
@@ -99,10 +104,10 @@ export async function runWithAudit<T>(
   if (!tag) return next();
   try {
     const result = await next();
-    await emitAudit(context, tag, "success");
+    fireAudit(context, tag, "success");
     return result;
   } catch (err) {
-    await emitAudit(context, tag, "failure", { error: err instanceof Error ? err.message : String(err) });
+    fireAudit(context, tag, "failure", { error: err instanceof Error ? err.message : String(err) });
     throw err;
   }
 }
