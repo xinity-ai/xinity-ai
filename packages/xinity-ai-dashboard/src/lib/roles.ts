@@ -11,7 +11,7 @@ import { adminAc, defaultStatements, memberAc, ownerAc } from "better-auth/plugi
  */
 const customResourcePermissions = {
   apiKey: ["create", "update", "delete", "read"],
-  apiCall: ["read", "delete"],
+  apiCall: ["read", "update", "delete"],
   apiCallResponse: ["create", "update", "delete", "read"],
   modelDeployment: ["create", "update", "delete", "read"],
   model: ["create", "update", "delete", "read"],
