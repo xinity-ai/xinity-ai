@@ -53,7 +53,7 @@ describe("API Key CRUD via /api/api-key", () => {
 
   test("toggle API key enabled state", async () => {
     const res = await ownerFetch(`/api/api-key/${createdKeyId}/toggle-enabled`, {
-      method: "POST",
+      method: "PATCH",
       body: JSON.stringify({ id: createdKeyId, enabled: false }),
     });
 

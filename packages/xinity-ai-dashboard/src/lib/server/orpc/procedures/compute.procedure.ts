@@ -90,7 +90,7 @@ export type ComputeHistory = z.infer<typeof ComputeHistoryOutput>;
 const sumNumber = (column: unknown) => sql<number>`coalesce(sum(${column}), 0)`.mapWith(Number);
 
 export async function buildComputeOverview(rangeHours: number): Promise<ComputeOverview> {
-  const since = new Date(Date.now() - rangeHours * 60 * 60 * 1000);
+  const since = new Date(Date.now() - rangeHours * 60 * 60 * 1000).toISOString();
   const db = getDB();
 
   const [nodes, installations, usageRows] = await Promise.all([
@@ -188,7 +188,7 @@ export async function buildComputeOverview(rangeHours: number): Promise<ComputeO
 
 export async function buildComputeHistory(rangeHours: number): Promise<ComputeHistory> {
   const bucketSeconds = pickBucketSeconds(rangeHours);
-  const since = new Date(Date.now() - rangeHours * 60 * 60 * 1000);
+  const since = new Date(Date.now() - rangeHours * 60 * 60 * 1000).toISOString();
   const db = getDB();
 
   // bucketSeconds is server-derived (pickBucketSeconds), never user input, and is
