@@ -8,20 +8,20 @@ import { rootLogger } from "$lib/server/logging";
 import { auth, getGreenlitCallId } from "$lib/server/auth-server";
 import { serverEnv, isInstanceAdmin } from "$lib/server/serverenv";
 import { getDB } from "$lib/server/db";
-import { userT, organizationT, memberT, eq } from "common-db";
+import { userT, organizationT, memberT, sql } from "common-db";
 import { slugify } from "$lib/util";
 
 const log = rootLogger.child({ name: "onboarding.procedure" });
 
 async function assertSlugAvailable(slug: string, errors: { CONFLICT: (opts: { message: string }) => Error }): Promise<void> {
-  const existing = await getDB().select({ id: organizationT.id }).from(organizationT).where(eq(organizationT.slug, slug)).limit(1);
+  const existing = await getDB().select({ id: organizationT.id }).from(organizationT).where(sql`${organizationT.slug} = ${slug}`).limit(1);
   if (existing.length > 0) {
     throw errors.CONFLICT({ message: "An organization with this name already exists. Please choose a different name." });
   }
 }
 
 async function markEmailVerified(userId: string): Promise<void> {
-  await getDB().update(userT).set({ emailVerified: true }).where(eq(userT.id, userId));
+  await getDB().update(userT).set({ emailVerified: true }).where(sql`${userT.id} = ${userId}`);
 }
 
 async function createOrgWithOwnerMembership(

@@ -1,6 +1,6 @@
 import { rootOs, withOrganization, requirePermission } from "../root";
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
-import { and, eq, inArray, isNull, modelDeploymentT, modelInstallationT, modelInstallationStateT, aiNodeT, organizationT, deploymentMatchesInstallation, type ModelDeployment, type SQL } from "common-db";
+import { sql, modelDeploymentT, modelInstallationT, modelInstallationStateT, aiNodeT, organizationT, deploymentMatchesInstallation, type ModelDeployment, type SQL } from "common-db";
 import z from "zod";
 import { DeploymentDto } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
@@ -176,11 +176,9 @@ async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>
 }
 
 const matchActiveDeploymentInOrg = (id: string, orgId: string) =>
-  and(
-    eq(modelDeploymentT.id, id),
-    eq(modelDeploymentT.organizationId, orgId),
-    isNull(modelDeploymentT.deletedAt),
-  );
+  sql`${modelDeploymentT.id} = ${id}
+    AND ${modelDeploymentT.organizationId} = ${orgId}
+    AND ${modelDeploymentT.deletedAt} IS NULL`;
 
 async function internalUpdateDeployment(orgId: string, id: string, params: Partial<ModelDeployment>): Promise<ModelDeployment | undefined> {
   const [deployment] = await getDB().update(modelDeploymentT)
@@ -229,9 +227,9 @@ async function queryDeploymentsWithStatus(where: SQL | undefined): Promise<Deplo
   const rows = await getDB()
     .select()
     .from(modelDeploymentT)
-    .leftJoin(modelInstallationT, and(deploymentMatchesInstallation, isNull(modelInstallationT.deletedAt)))
-    .leftJoin(modelInstallationStateT, eq(modelInstallationStateT.id, modelInstallationT.id))
-    .leftJoin(aiNodeT, eq(aiNodeT.id, modelInstallationT.nodeId))
+    .leftJoin(modelInstallationT, sql`${deploymentMatchesInstallation} AND ${modelInstallationT.deletedAt} IS NULL`)
+    .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`)
+    .leftJoin(aiNodeT, sql`${aiNodeT.id} = ${modelInstallationT.nodeId}`)
     .where(where);
 
   const deploymentMap = new Map<string, { deployment: ModelDeployment; phaseInfo?: PhaseInfo; replicas: ReplicaStatus[] }>();
@@ -305,10 +303,10 @@ const listDeployments = rootOs.use(withOrganization)
   .input(z.object({ withStatus: z.coerce.boolean().default(false) }))
   .output(DeploymentWithStatusDto.array())
   .handler(async ({ context, input }) => {
-    const orgCondition = and(
-      eq(modelDeploymentT.organizationId, context.activeOrganizationId),
-      isNull(modelDeploymentT.deletedAt),
-    );
+    const orgCondition = sql`
+      ${modelDeploymentT.organizationId} = ${context.activeOrganizationId}
+      AND ${modelDeploymentT.deletedAt} IS NULL
+    `;
     if (input?.withStatus) {
       const results = await queryDeploymentsWithStatus(orgCondition);
       await markDeploymentsMissingFromCatalog(results);
@@ -465,17 +463,17 @@ const retryDeployment = rootOs
     const failedStates = await getDB()
       .select({ stateId: modelInstallationStateT.id })
       .from(modelDeploymentT)
-      .innerJoin(modelInstallationT, and(deploymentMatchesInstallation, isNull(modelInstallationT.deletedAt)))
-      .innerJoin(modelInstallationStateT, and(
-        eq(modelInstallationStateT.id, modelInstallationT.id),
-        eq(modelInstallationStateT.lifecycleState, "failed"),
-      ))
-      .where(eq(modelDeploymentT.id, input.id));
+      .innerJoin(modelInstallationT, sql`${deploymentMatchesInstallation} AND ${modelInstallationT.deletedAt} IS NULL`)
+      .innerJoin(modelInstallationStateT, sql`
+        ${modelInstallationStateT.id} = ${modelInstallationT.id}
+        AND ${modelInstallationStateT.lifecycleState} = ${"failed"}
+      `)
+      .where(sql`${modelDeploymentT.id} = ${input.id}`);
 
     if (failedStates.length > 0) {
       await getDB()
         .delete(modelInstallationStateT)
-        .where(inArray(modelInstallationStateT.id, failedStates.map(s => s.stateId)));
+        .where(sql`${modelInstallationStateT.id} IN ${failedStates.map(s => s.stateId)}`);
     }
 
     syncDeployedModels();
@@ -494,11 +492,12 @@ const findDeployment = rootOs
   .errors({ NOT_FOUND: {} })
   .handler(async ({ context, input, errors }) => {
     const [deployment] = await getDB().select().from(modelDeploymentT)
-      .where(and(
-        eq(modelDeploymentT.publicSpecifier, input.publicSpecifier),
-        eq(modelDeploymentT.organizationId, context.activeOrganizationId),
-        isNull(modelDeploymentT.deletedAt),
-      )).limit(1);
+      .where(sql`
+        ${modelDeploymentT.publicSpecifier} = ${input.publicSpecifier}
+        AND ${modelDeploymentT.organizationId} = ${context.activeOrganizationId}
+        AND ${modelDeploymentT.deletedAt} IS NULL
+      `)
+      .limit(1);
     if (!deployment) {
       throw errors.NOT_FOUND();
     }

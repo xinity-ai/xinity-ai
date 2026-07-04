@@ -4,7 +4,7 @@
 import { rootOs, withOrganization, requirePermission } from "../root";
 import { ApplicationDto } from "$lib/orpc/dtos/application.dto";
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
-import { aiApplicationT, eq, isNull, and } from "common-db";
+import { aiApplicationT, sql } from "common-db";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
 
@@ -13,11 +13,9 @@ const log = rootLogger.child({ name: "application.procedure" });
 const tags = ["Application"];
 
 const matchActiveAppInOrg = (id: string, orgId: string) =>
-  and(
-    eq(aiApplicationT.id, id),
-    eq(aiApplicationT.organizationId, orgId),
-    isNull(aiApplicationT.deletedAt),
-  );
+  sql`${aiApplicationT.id} = ${id}
+    AND ${aiApplicationT.organizationId} = ${orgId}
+    AND ${aiApplicationT.deletedAt} IS NULL`;
 
 /** Creates a new Application. */
 const createApplication = rootOs
@@ -49,12 +47,10 @@ const listApplications = rootOs
     const apps = await getDB()
       .select()
       .from(aiApplicationT)
-      .where(
-        and(
-          eq(aiApplicationT.organizationId, context.activeOrganizationId),
-          isNull(aiApplicationT.deletedAt)
-        )
-      )
+      .where(sql`
+        ${aiApplicationT.organizationId} = ${context.activeOrganizationId}
+        AND ${aiApplicationT.deletedAt} IS NULL
+      `)
       .orderBy(aiApplicationT.createdAt);
 
     return apps;

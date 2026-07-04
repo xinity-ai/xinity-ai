@@ -6,7 +6,7 @@ import { isInstanceAdmin, serverEnv } from "$lib/server/serverenv";
 import { getDB } from "$lib/server/db";
 import { notifyOrgMembers } from "$lib/server/notifications/notification.service";
 import { NotificationType } from "$lib/server/notifications/events";
-import { memberT, userT, organizationT, invitationT, and, eq } from "common-db";
+import { memberT, userT, organizationT, invitationT, sql } from "common-db";
 import { isRoleAvailable, RoleSchema } from "$lib/server/roles";
 import { hasFeature } from "$lib/server/license";
 import { betterAuthErrorBody } from "$lib/server/better-auth-errors";
@@ -148,7 +148,7 @@ const inviteMember = rootOs
 const removeMember = rootOs
   .use(withOrganization)
   .use(requirePermission({ member: ["delete"] }))
-  .route({ path: "/remove-member", method: "POST", tags, summary: "Remove Member" })
+  .route({ path: "/member", method: "DELETE", tags, summary: "Remove Member" })
   .errors({ NOT_FOUND: {} })
   .input(z.object({
     memberId: z.string(),
@@ -187,7 +187,7 @@ const removeMember = rootOs
 const updateMemberRole = rootOs
   .use(withOrganization)
   .use(requirePermission({ member: ["update"] }))
-  .route({ path: "/update-role", method: "POST", tags, summary: "Update Member Role" })
+  .route({ path: "/member", method: "PATCH", tags, summary: "Update Member Role" })
   .input(z.object({
     memberId: z.string(),
     role: RoleSchema,
@@ -232,7 +232,7 @@ const updateMemberRole = rootOs
 const cancelInvitation = rootOs
   .use(withOrganization)
   .use(requirePermission({ invitation: ["cancel"] }))
-  .route({ path: "/cancel-invitation", method: "POST", tags, summary: "Cancel Invitation" })
+  .route({ path: "/invitation", method: "DELETE", tags, summary: "Cancel Invitation" })
   .input(z.object({
     invitationId: z.string(),
   }))
@@ -326,10 +326,7 @@ async function findInvitationInOrg(invitationId: string, organizationId: string)
   const [row] = await getDB()
     .select({ id: invitationT.id })
     .from(invitationT)
-    .where(and(
-      eq(invitationT.id, invitationId),
-      eq(invitationT.organizationId, organizationId),
-    ))
+    .where(sql`${invitationT.id} = ${invitationId} AND ${invitationT.organizationId} = ${organizationId}`)
     .limit(1);
   return row ?? null;
 }
@@ -338,11 +335,8 @@ async function findMemberNameInOrg(memberId: string, organizationId: string): Pr
   const [row] = await getDB()
     .select({ name: userT.name })
     .from(memberT)
-    .innerJoin(userT, eq(userT.id, memberT.userId))
-    .where(and(
-      eq(memberT.id, memberId),
-      eq(memberT.organizationId, organizationId),
-    ))
+    .innerJoin(userT, sql`${userT.id} = ${memberT.userId}`)
+    .where(sql`${memberT.id} = ${memberId} AND ${memberT.organizationId} = ${organizationId}`)
     .limit(1);
   return row?.name;
 }

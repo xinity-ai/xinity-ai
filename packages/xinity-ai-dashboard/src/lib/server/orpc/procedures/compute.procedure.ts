@@ -5,12 +5,7 @@ import {
   modelInstallationStateT,
   usageEventT,
   sql,
-  and,
   count,
-  eq,
-  gte,
-  isNull,
-  isNotNull,
 } from "common-db";
 import { getDB } from "$lib/server/db";
 import { mergeHistorySeries, pickBucketSeconds } from "$lib/server/compute/compute";
@@ -107,7 +102,7 @@ export async function buildComputeOverview(rangeHours: number): Promise<ComputeO
       gpuCount: aiNodeT.gpuCount,
       gpus: aiNodeT.gpus,
       estCapacity: aiNodeT.estCapacity,
-    }).from(aiNodeT).where(isNull(aiNodeT.deletedAt)),
+    }).from(aiNodeT).where(sql`${aiNodeT.deletedAt} IS NULL`),
 
     db.select({
       nodeId: modelInstallationT.nodeId,
@@ -117,8 +112,8 @@ export async function buildComputeOverview(rangeHours: number): Promise<ComputeO
       lifecycleState: modelInstallationStateT.lifecycleState,
       progress: modelInstallationStateT.progress,
     }).from(modelInstallationT)
-      .leftJoin(modelInstallationStateT, eq(modelInstallationStateT.id, modelInstallationT.id))
-      .where(isNull(modelInstallationT.deletedAt)),
+      .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`)
+      .where(sql`${modelInstallationT.deletedAt} IS NULL`),
 
     db.select({
       nodeId: usageEventT.nodeId,
@@ -127,8 +122,8 @@ export async function buildComputeOverview(rangeHours: number): Promise<ComputeO
       inputTokens: sumNumber(usageEventT.inputTokens),
       outputTokens: sumNumber(usageEventT.outputTokens),
     }).from(usageEventT)
-      .innerJoin(aiNodeT, and(eq(aiNodeT.id, usageEventT.nodeId), isNull(aiNodeT.deletedAt)))
-      .where(and(gte(usageEventT.createdAt, since), isNotNull(usageEventT.nodeId)))
+      .innerJoin(aiNodeT, sql`${aiNodeT.id} = ${usageEventT.nodeId} AND ${aiNodeT.deletedAt} IS NULL`)
+      .where(sql`${usageEventT.createdAt} >= ${since} AND ${usageEventT.nodeId} IS NOT NULL`)
       .groupBy(usageEventT.nodeId),
   ]);
 
@@ -210,8 +205,8 @@ export async function buildComputeHistory(rangeHours: number): Promise<ComputeHi
     tokens: sql<number>`coalesce(sum(${usageEventT.inputTokens} + ${usageEventT.outputTokens}), 0)`.mapWith(Number),
     requests: count(),
   }).from(usageEventT)
-    .innerJoin(aiNodeT, and(eq(aiNodeT.id, usageEventT.nodeId), isNull(aiNodeT.deletedAt)))
-    .where(and(gte(usageEventT.createdAt, since), isNotNull(usageEventT.nodeId)))
+    .innerJoin(aiNodeT, sql`${aiNodeT.id} = ${usageEventT.nodeId} AND ${aiNodeT.deletedAt} IS NULL`)
+    .where(sql`${usageEventT.createdAt} >= ${since} AND ${usageEventT.nodeId} IS NOT NULL`)
     .groupBy(usageEventT.nodeId, usageBucket);
 
   return {
@@ -326,7 +321,7 @@ const removeNode = rootOs
     await db
       .update(aiNodeT)
       .set({ deletedAt: new Date() })
-      .where(and(eq(aiNodeT.id, input.nodeId), isNull(aiNodeT.deletedAt)));
+      .where(sql`${aiNodeT.id} = ${input.nodeId} AND ${aiNodeT.deletedAt} IS NULL`);
   });
 
 export const computeRouter = rootOs.prefix("/compute").router({
