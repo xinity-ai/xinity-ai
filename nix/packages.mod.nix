@@ -43,16 +43,12 @@
           inherit pname;
           version = releaseInfo.version;
           src = pkgs.fetchurl {
-            url = releaseUrl "${pname}-${arch}.zip";
+            url = releaseUrl "${pname}-${arch}.tar.gz";
             inherit hash;
           };
-          nativeBuildInputs = [ pkgs.unzip pkgs.autoPatchelfHook ];
+          sourceRoot = ".";
+          nativeBuildInputs = [ pkgs.autoPatchelfHook ];
           buildInputs = [ pkgs.stdenv.cc.cc.lib ];
-          unpackPhase = ''
-            runHook preUnpack
-            unzip -q $src
-            runHook postUnpack
-          '';
           dontConfigure = true;
           dontBuild = true;
           dontStrip = true;
