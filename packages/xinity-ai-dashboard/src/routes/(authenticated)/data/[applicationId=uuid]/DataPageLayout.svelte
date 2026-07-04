@@ -2,6 +2,7 @@
   import CallDetails from "./CallDetails.svelte";
   import CallList from "./CallList.svelte";
   import SearchFilters from "./SearchFilters.svelte";
+  import BatchActionBar from "./BatchActionBar.svelte";
   import "./data.css";
   import {
     deleteApiCall,
@@ -15,6 +16,7 @@
   import type { ApiCall, ApiCallResponse } from "common-db";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import { permissions } from "$lib/state/permissions.svelte";
+  import { orpc } from "$lib/orpc/orpc-client";
   import { untrack } from "svelte";
   import { useDebouncedValue } from "$lib/state/debounced.svelte";
   import { Button } from "$lib/components/ui/button";
@@ -54,6 +56,33 @@
   let deleteTarget = $state<ApiCall | null>(null);
   let deleteModalOpen = $state(false);
   let deleting = $state(false);
+  let selectedCallIds = $state(new Set<string>());
+
+  function toggleSelectCall(callId: string, checked: boolean) {
+    const next = new Set(selectedCallIds);
+    if (checked) {
+      next.add(callId);
+    } else {
+      next.delete(callId);
+    }
+    selectedCallIds = next;
+  }
+
+  function handleSelectAll(checked: boolean) {
+    const next = new Set(selectedCallIds);
+    for (const call of filteredCalls) {
+      if (checked) {
+        next.add(call.id);
+      } else {
+        next.delete(call.id);
+      }
+    }
+    selectedCallIds = next;
+  }
+
+  function clearSelection() {
+    selectedCallIds = new Set();
+  }
 
   let allCalls = $state<ApiCall[]>([]);
   let offset = $state(0);
@@ -104,6 +133,7 @@
       reactionSummaryRequests = new Map();
       responseRequests = new Map();
       hasMore = true;
+      clearSelection();
     }
   });
 
@@ -141,7 +171,24 @@
   let apiKeyNameMap = $derived(
     new Map((apiKeys.current || []).map((key) => [key.id, key.name])),
   );
+  let applications = $state<{ id: string; name: string }[]>([]);
+  if (permissions.can("apiCall", "update")) {
+    orpc.application.list().then(([error, data]) => {
+      if (!error && data) {
+        applications = data.map((a) => ({ id: a.id, name: a.name }));
+      }
+    });
+  }
   let filteredCalls = $derived(getFilteredCalls(allCalls));
+
+  function handleBatchRemoved(ids: string[]) {
+    const removed = new Set(ids);
+    allCalls = allCalls.filter((c) => !removed.has(c.id));
+    deletedCount += ids.length;
+    if (selectedCall && removed.has(selectedCall.id)) {
+      selectedCall = null;
+    }
+  }
 
   function getReactionSummary(callId: string): ApiCallReactionSummary {
     return (
@@ -258,6 +305,7 @@
   <div class="grid grid-cols-1 gap-6 compact:gap-3 lg:grid-cols-3">
     <CallList
       calls={filteredCalls}
+      loading={apiCalls.loading && allCalls.length === 0}
       selectedCallId={selectedCall ? selectedCall.id : null}
       formatDate={humanDate}
       onSelect={selectCall}
@@ -267,6 +315,10 @@
       {totalCount}
       getReactionSummary={getReactionSummary}
       getUserResponse={getUserResponse}
+      showSelect={permissions.can("apiCall", "delete") || permissions.can("apiCall", "update")}
+      selectedCallIds={selectedCallIds}
+      onSelectToggle={toggleSelectCall}
+      onSelectAll={handleSelectAll}
     />
 
     <div class="lg:col-span-2">
@@ -276,10 +328,19 @@
         formatDate={humanDate}
         onDelete={requestDelete}
         canDelete={permissions.can("apiCall", "delete")}
+        canUpdate={permissions.can("apiCall", "update")}
       />
     </div>
   </div>
 </div>
+
+<BatchActionBar
+  {selectedCallIds}
+  {applications}
+  canMove={permissions.can("apiCall", "update")}
+  onClear={clearSelection}
+  onMoved={handleBatchRemoved}
+/>
 
 <ConfirmDialog
   bind:open={deleteModalOpen}

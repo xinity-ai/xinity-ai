@@ -4,10 +4,11 @@
   import { messageContentToString } from "./data.utils";
   import * as Card from "$lib/components/ui/card";
   import { Badge } from "$lib/components/ui/badge";
-  import { ThumbsUp, ThumbsDown, Loader2 } from "@lucide/svelte";
+  import { ThumbsUp, ThumbsDown, LoaderCircle } from "@lucide/svelte";
 
   let {
     calls = [],
+    loading = false,
     selectedCallId = null,
     formatDate,
     onSelect = () => {},
@@ -17,8 +18,13 @@
     totalCount = null as number | null,
     getReactionSummary,
     getUserResponse,
+    showSelect = false,
+    selectedCallIds = new Set<string>(),
+    onSelectToggle = () => {},
+    onSelectAll = (_checked: boolean) => {},
   }: {
     calls?: ApiCall[];
+    loading?: boolean;
     selectedCallId?: string | null;
     formatDate: (date: Date) => string;
     onSelect?: (call: ApiCall) => void;
@@ -28,6 +34,10 @@
     totalCount?: number | null;
     getReactionSummary: (callId: string) => ApiCallReactionSummary;
     getUserResponse: (callId: string) => ApiCallResponse | null;
+    showSelect?: boolean;
+    selectedCallIds?: Set<string>;
+    onSelectToggle?: (callId: string, checked: boolean) => void;
+    onSelectAll?: (checked: boolean) => void;
   } = $props();
 
   let sentinelEl = $state<HTMLDivElement | null>(null);
@@ -73,80 +83,117 @@
         {:else}
           Showing {calls.length} calls{hasMore ? " (scroll for more)" : ""}
         {/if}
+        {#if showSelect && selectedCallIds.size > 0}
+          <span class="text-xs font-medium text-primary ml-1">
+            · {selectedCallIds.size} selected
+          </span>
+        {/if}
       </Card.Description>
     </Card.Header>
     <Card.Content class="p-0">
       <div bind:this={scrollContainerEl} class="overflow-y-auto" style="max-height: 700px;">
         {#if calls.length > 0}
           <div role="list">
+            {#if showSelect}
+              <div class="p-4 compact:p-2 border-b bg-muted/30 border-l-3 border-l-transparent">
+                <div class="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="select-all"
+                    checked={calls.every(c => selectedCallIds.has(c.id)) && calls.length > 0}
+                    indeterminate={selectedCallIds.size > 0 && !calls.every(c => selectedCallIds.has(c.id))}
+                    onchange={(e) => onSelectAll(e.currentTarget.checked)}
+                    class="w-4 h-4 shrink-0"
+                  />
+                  <label for="select-all" class="text-xs text-muted-foreground">Select all on page</label>
+                </div>
+              </div>
+            {/if}
             {#each calls as call (call.id)}
               {@const summary = getReactionSummary(call.id)}
               {@const userResponse = getUserResponse(call.id)}
               <div
                 role="listitem"
                 class:selected={selectedCallId === call.id}
-                class="p-4 compact:p-2 border-b call-item"
+                class="relative p-4 compact:p-2 border-b call-item"
               >
                 <button
-                  class="w-full text-left cursor-pointer"
+                  class="absolute inset-0 cursor-pointer"
                   onclick={() => onSelect(call)}
-                  onkeydown={(e) => e.key === "Enter" && onSelect(call)}
                   aria-pressed={selectedCallId === call.id}
-                >
-                  <div class="flex items-center justify-between">
-                    <span class="font-medium truncate">{call.model}</span>
-                    <span class="text-xs text-muted-foreground">{formatDate(call.createdAt)}</span>
-                  </div>
-                  <p class="mt-1 text-sm text-muted-foreground line-clamp-2">
-                    {startOfPrompt(call)}
-                  </p>
-                  <div class="flex items-center mt-2 text-xs text-muted-foreground">
-                    <span class="flex items-center mr-3">
-                      <span class="status-indicator status-completed"></span>
-                      complete
-                    </span>
-                    <span>{(call.duration / 1000).toFixed(1)}s</span>
-                  </div>
-                  <div class="flex flex-wrap items-center gap-2 mt-2 text-xs text-muted-foreground">
-                    {#if summary.total > 0}
-                      <span class="flex items-center gap-1">
-                        <ThumbsUp class="w-3 h-3" />
-                        <span>{summary.likes}</span>
+                  aria-label="View call {call.model}"
+                ></button>
+                <div class="flex items-start gap-3 pointer-events-none">
+                  {#if showSelect}
+                    <input
+                      type="checkbox"
+                      checked={selectedCallIds.has(call.id)}
+                      onchange={(e) => onSelectToggle(call.id, e.currentTarget.checked)}
+                      onclick={(e) => e.stopPropagation()}
+                      class="w-4 h-4 shrink-0 mt-1 pointer-events-auto"
+                    />
+                  {/if}
+                  <div class="flex-1 text-left">
+                    <div class="flex items-center justify-between">
+                      <span class="font-medium truncate">{call.model}</span>
+                      <span class="text-xs text-muted-foreground">{formatDate(call.createdAt)}</span>
+                    </div>
+                    <p class="mt-1 text-sm text-muted-foreground line-clamp-2">
+                      {startOfPrompt(call)}
+                    </p>
+                    <div class="flex items-center mt-2 text-xs text-muted-foreground">
+                      <span class="flex items-center mr-3">
+                        <span class="status-indicator status-completed"></span>
+                        complete
                       </span>
-                      <span class="flex items-center gap-1">
-                        <ThumbsDown class="w-3 h-3" />
-                        <span>{summary.dislikes}</span>
-                      </span>
-                      <span class="text-muted-foreground/70">
-                        ({summary.total} reacted)
-                      </span>
-                    {:else}
-                      <span class="text-muted-foreground/70">No reactions yet</span>
-                    {/if}
-                    {#if userResponse?.response === true}
-                      <Badge variant="secondary" class="text-[10px] px-1.5 py-0">
-                        You liked
-                      </Badge>
-                    {:else if userResponse?.response === false}
-                      <Badge variant="secondary" class="text-[10px] px-1.5 py-0">
-                        You disliked
-                      </Badge>
-                    {/if}
+                      <span>{(call.duration / 1000).toFixed(1)}s</span>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2 mt-2 text-xs text-muted-foreground">
+                      {#if summary.total > 0}
+                        <span class="flex items-center gap-1">
+                          <ThumbsUp class="w-3 h-3" />
+                          <span>{summary.likes}</span>
+                        </span>
+                        <span class="flex items-center gap-1">
+                          <ThumbsDown class="w-3 h-3" />
+                          <span>{summary.dislikes}</span>
+                        </span>
+                        <span class="text-muted-foreground/70">
+                          ({summary.total} reacted)
+                        </span>
+                      {:else}
+                        <span class="text-muted-foreground/70">No reactions yet</span>
+                      {/if}
+                      {#if userResponse?.response === true}
+                        <Badge variant="secondary" class="text-[10px] px-1.5 py-0">
+                          You liked
+                        </Badge>
+                      {:else if userResponse?.response === false}
+                        <Badge variant="secondary" class="text-[10px] px-1.5 py-0">
+                          You disliked
+                        </Badge>
+                      {/if}
+                    </div>
                   </div>
-                </button>
+                </div>
               </div>
             {/each}
           </div>
           {#if hasMore}
             <div bind:this={sentinelEl} class="flex items-center justify-center p-4">
               {#if loadingMore}
-                <Loader2 class="w-5 h-5 animate-spin text-muted-foreground" />
+                <LoaderCircle class="w-5 h-5 animate-spin text-muted-foreground" />
               {/if}
             </div>
           {/if}
         {:else}
-          <div class="p-6 text-center text-muted-foreground">
-            No calls found matching your search criteria.
+          <div class="p-6 flex flex-col items-center justify-center text-muted-foreground">
+            {#if loading}
+              <LoaderCircle class="w-5 h-5 animate-spin mb-2" />
+              Loading calls...
+            {:else}
+              No calls found matching your search criteria.
+            {/if}
           </div>
         {/if}
       </div>

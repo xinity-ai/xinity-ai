@@ -8,6 +8,7 @@
   import { onDestroy } from "svelte";
   import { humanDate, formatDurationMs } from "$lib/util";
   import { getAPICallResponse, upsertApiCallResponse } from "./data.remote";
+  import { orpc } from "$lib/orpc/orpc-client";
   import { messageContentToString, getRoleStyle, resolveImageSrc } from "./data.utils";
   import HighlightPopup from "./HighlightPopup.svelte";
   import RatingControls from "./RatingControls.svelte";
@@ -16,6 +17,7 @@
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
   import { Download, Trash2, Pencil, Eye, EyeOff, Ban, X } from "@lucide/svelte";
+  import MetadataEditor from "./MetadataEditor.svelte";
 
   type Highlight = {
     start: number;
@@ -29,13 +31,29 @@
     formatDate = humanDate,
     onDelete = () => {},
     canDelete = false,
+    canUpdate = false,
   }: {
     call?: ApiCall | null;
     apiKeyNameMap: Map<string, string>;
     formatDate?: (date: Date) => string;
     onDelete?: (call: ApiCall) => void;
     canDelete?: boolean;
+    canUpdate?: boolean;
   } = $props();
+
+  let metadataEditorOpen = $state(false);
+
+  async function saveMetadata(metadata: Record<string, unknown> | null) {
+    if (!activeCall) {
+      return;
+    }
+    const [error] = await orpc.apiCall.updateMetadata({ callId: activeCall.id, metadata: metadata ?? undefined });
+    if (error) {
+      return;
+    }
+    activeCall = { ...activeCall, metadata };
+    metadataEditorOpen = false;
+  }
 
   let activeCall = $state<ApiCall | null>(null);
   let currentRating = $state<ApiCallResponse | null>(null);
@@ -222,6 +240,7 @@
   ) {
     activeCall = nextCall;
     currentRating = nextRating;
+    metadataEditorOpen = false;
     const baseResponse = deriveResponseText(nextCall, nextRating);
     editedResponse = baseResponse;
     lastSavedValue = baseResponse;
@@ -762,9 +781,21 @@
     <Card.Header class="border-b bg-muted/50">
       <div class="flex items-center justify-between">
         <Card.Title class="text-base">Call Details</Card.Title>
-        <Badge variant="secondary" class="font-mono text-xs">
-          ID: {activeCall.id}
-        </Badge>
+        <div class="flex items-center gap-2">
+          <Badge variant="secondary" class="font-mono text-xs">
+            ID: {activeCall.id}
+          </Badge>
+          {#if downloadUrl}
+            <Button variant="ghost" size="icon" href={downloadUrl} download={downloadFilename} title="Download JSON">
+              <Download class="w-4 h-4" />
+            </Button>
+          {/if}
+          {#if canDelete}
+            <Button variant="ghost" size="icon" onclick={() => activeCall && onDelete?.(activeCall)} title="Delete call">
+              <Trash2 class="w-4 h-4 text-destructive" />
+            </Button>
+          {/if}
+        </div>
       </div>
     </Card.Header>
     <Card.Content class="p-6 compact:p-3">
@@ -1088,36 +1119,39 @@
         </div>
       </div>
 
-      {#if activeCall.metadata && Object.keys(activeCall.metadata).length > 0}
+      {@const hasMetadata = activeCall.metadata && Object.keys(activeCall.metadata).length > 0}
+      {#if hasMetadata || canUpdate}
         <div class="mt-4 compact:mt-2">
-          <h3 class="mb-2 text-lg compact:mb-1 compact:text-base font-medium">Metadata</h3>
-          <div class="flex flex-wrap gap-2 p-4 compact:p-2 rounded bg-muted/50">
-            {#each Object.entries(activeCall.metadata) as [key, value]}
-              <Badge variant="outline" class="font-mono text-xs">
-                {key}: {typeof value === "object" ? JSON.stringify(value) : String(value)}
-              </Badge>
-            {/each}
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-lg compact:mb-1 compact:text-base font-medium">Metadata</h3>
+            {#if canUpdate}
+              <Button variant="outline" size="sm" onclick={() => (metadataEditorOpen = true)}>
+                <Pencil class="w-3 h-3" />
+                {hasMetadata ? "Edit" : "Add"}
+              </Button>
+            {/if}
           </div>
+          {#if hasMetadata}
+            <div class="flex flex-wrap gap-2 p-4 compact:p-2 rounded bg-muted/50">
+              {#each Object.entries(activeCall.metadata!) as [key, value]}
+                <Badge variant="outline" class="font-mono text-xs">
+                  {key}: {typeof value === "object" ? JSON.stringify(value) : String(value)}
+                </Badge>
+              {/each}
+            </div>
+          {:else}
+            <p class="text-sm text-muted-foreground">No metadata</p>
+          {/if}
         </div>
       {/if}
 
-      <div class="flex justify-end gap-2 mt-6 compact:mt-3">
-        {#if downloadUrl}
-          <Button variant="outline" href={downloadUrl} download={downloadFilename}>
-            <Download class="w-4 h-4" />
-            Download JSON
-          </Button>
-        {/if}
-        {#if canDelete}
-          <Button
-            variant="destructive"
-            onclick={() => activeCall && onDelete?.(activeCall)}
-          >
-            <Trash2 class="w-4 h-4" />
-            Delete Call
-          </Button>
-        {/if}
-      </div>
+      {#if canUpdate}
+        <MetadataEditor
+          metadata={activeCall?.metadata ?? {}}
+          bind:open={metadataEditorOpen}
+          onSave={(metadata) => void saveMetadata(metadata)}
+        />
+      {/if}
     </Card.Content>
   </Card.Root>
 {:else}

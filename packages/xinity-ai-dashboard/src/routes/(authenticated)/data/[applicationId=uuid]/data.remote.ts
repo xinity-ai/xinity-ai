@@ -244,10 +244,7 @@ export const deleteApiCall = command(z.object({ apiCallId: z.uuid() }), async ({
     throw error(404, { message: "The api Call was not found" });
   }
 
-  await getDB().transaction(async (tx) => {
-    await tx.delete(apiCallResponseT).where(sql`${apiCallResponseT.apiCallId} = ${apiCallId}`);
-    await tx.delete(apiCallT).where(sql`${apiCallT.id} = ${apiCallId}`);
-  });
+  await getDB().delete(apiCallT).where(eq(apiCallT.id, apiCallId));
 
   return { success: true };
 });
