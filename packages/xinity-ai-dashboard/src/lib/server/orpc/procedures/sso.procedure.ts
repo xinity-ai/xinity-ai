@@ -8,7 +8,7 @@ import { auth } from "$lib/server/auth-server";
 import { rootLogger } from "$lib/server/logging";
 import { isInstanceAdmin } from "$lib/server/serverenv";
 import { getDB } from "$lib/server/db";
-import { ssoProviderT, organizationT, sql, eq } from "common-db";
+import { ssoProviderT, organizationT, sql } from "common-db";
 import { hasFeature } from "$lib/server/license";
 
 const log = rootLogger.child({ name: "sso.procedure" });
@@ -55,7 +55,7 @@ async function requireSsoAccess(
   const [org] = await getDB()
     .select({ ssoSelfManage: organizationT.ssoSelfManage })
     .from(organizationT)
-    .where(eq(organizationT.id, organizationId))
+    .where(sql`${organizationT.id} = ${organizationId}`)
     .limit(1);
   if (!org) {
     throw errors.NOT_FOUND({ message: "Organization not found" });
@@ -178,14 +178,14 @@ const deleteProvider = rootOs
   }))
   .handler(async ({ input, context, errors }) => {
     const rlog = log.child({ traceId: context.traceId });
-    const [provider] = await getDB().select().from(ssoProviderT).where(eq(ssoProviderT.providerId, input.providerId)).limit(1);
+    const [provider] = await getDB().select().from(ssoProviderT).where(sql`${ssoProviderT.providerId} = ${input.providerId}`).limit(1);
     if (!provider) {
       throw errors.NOT_FOUND({ message: "Provider not found" });
     }
 
     await requireSsoAccess(context.session.user.email, provider.organizationId, context.request.headers, errors);
 
-    await getDB().delete(ssoProviderT).where(eq(ssoProviderT.providerId, input.providerId));
+    await getDB().delete(ssoProviderT).where(sql`${ssoProviderT.providerId} = ${input.providerId}`);
     rlog.info({ providerId: input.providerId }, "SSO provider deleted");
     return { success: true };
   });

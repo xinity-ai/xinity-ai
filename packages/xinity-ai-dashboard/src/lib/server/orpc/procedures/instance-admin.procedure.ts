@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
 import { auth, getGreenlitCallId, adminResetPassword } from "$lib/server/auth-server";
-import { userT, accountT, memberT, organizationT, sql, eq, or, ilike, count, and, inArray } from "common-db";
+import { userT, accountT, memberT, organizationT, sql, count } from "common-db";
 import { RoleSchema } from "$lib/server/roles";
 
 const log = rootLogger.child({ name: "instance-admin.procedure" });
@@ -18,14 +18,14 @@ function generateTempPassword(): string {
 }
 
 const memberByUserAndOrg = (userId: string, organizationId: string) =>
-  and(eq(memberT.userId, userId), eq(memberT.organizationId, organizationId));
+  sql`${memberT.userId} = ${userId} AND ${memberT.organizationId} = ${organizationId}`;
 
 /** Returns true when the organization has exactly one owner (removing or demoting them would leave it ownerless). */
 async function isSoleOwner(organizationId: string): Promise<boolean> {
   const owners = await getDB()
     .select({ userId: memberT.userId })
     .from(memberT)
-    .where(and(eq(memberT.organizationId, organizationId), eq(memberT.role, "owner")))
+    .where(sql`${memberT.organizationId} = ${organizationId} AND ${memberT.role} = ${"owner"}`)
     .limit(2);
   return owners.length === 1;
 }
@@ -54,10 +54,7 @@ const listUsers = rootOs
     const db = getDB();
     const offset = (input.page - 1) * input.limit;
     const searchFilter = input.search
-      ? or(
-          ilike(userT.name, `%${input.search}%`),
-          ilike(userT.email, `%${input.search}%`),
-        )
+      ? sql`(${userT.name} ILIKE ${`%${input.search}%`} OR ${userT.email} ILIKE ${`%${input.search}%`})`
       : undefined;
 
     const [users, userCountRows] = await Promise.all([
@@ -92,8 +89,8 @@ const listUsers = rootOs
             organizationSlug: organizationT.slug,
           })
           .from(memberT)
-          .innerJoin(organizationT, eq(memberT.organizationId, organizationT.id))
-          .where(inArray(memberT.userId, userIds))
+          .innerJoin(organizationT, sql`${memberT.organizationId} = ${organizationT.id}`)
+          .where(sql`${memberT.userId} IN ${userIds}`)
       : [];
 
     const membershipsByUser = Map.groupBy(memberships, (m) => m.userId);
@@ -112,7 +109,7 @@ const listUsers = rootOs
 const banUser = rootOs
   .meta({ mcp: false })
   .use(withInstanceAdmin)
-  .route({ method: "POST", path: "/users/ban", tags, summary: "Ban a user" })
+  .route({ method: "PATCH", path: "/users/ban", tags, summary: "Ban a user" })
   .input(z.object({
     userId: z.string(),
     reason: z.string().optional(),
@@ -131,14 +128,14 @@ const banUser = rootOs
         banReason: input.reason ?? null,
         banExpires: input.expiresAt ? new Date(input.expiresAt) : null,
       })
-      .where(eq(userT.id, input.userId));
+      .where(sql`${userT.id} = ${input.userId}`);
     return { success: true };
   });
 
 const unbanUser = rootOs
   .meta({ mcp: false })
   .use(withInstanceAdmin)
-  .route({ method: "POST", path: "/users/unban", tags, summary: "Unban a user" })
+  .route({ method: "PATCH", path: "/users/unban", tags, summary: "Unban a user" })
   .input(z.object({ userId: z.string() }))
   .handler(async ({ input, context }) => {
     const rlog = log.child({ traceId: context.traceId });
@@ -146,7 +143,7 @@ const unbanUser = rootOs
     await getDB()
       .update(userT)
       .set({ banned: false, banReason: null, banExpires: null })
-      .where(eq(userT.id, input.userId));
+      .where(sql`${userT.id} = ${input.userId}`);
     return { success: true };
   });
 
@@ -184,7 +181,7 @@ const addUserToOrganization = rootOs
 const removeUserFromOrganization = rootOs
   .meta({ mcp: false })
   .use(withInstanceAdmin)
-  .route({ method: "POST", path: "/users/remove-from-org", tags, summary: "Remove user from organization" })
+  .route({ method: "DELETE", path: "/users/membership", tags, summary: "Remove user from organization" })
   .input(z.object({
     userId: z.string(),
     organizationId: z.string(),
@@ -207,7 +204,7 @@ const removeUserFromOrganization = rootOs
 const updateUserRole = rootOs
   .meta({ mcp: false })
   .use(withInstanceAdmin)
-  .route({ method: "POST", path: "/users/update-role", tags, summary: "Update user role in organization" })
+  .route({ method: "PATCH", path: "/users/role", tags, summary: "Update user role in organization" })
   .input(z.object({
     userId: z.string(),
     organizationId: z.string(),
@@ -246,7 +243,7 @@ const setEmailVerified = rootOs
     await getDB()
       .update(userT)
       .set({ emailVerified: input.verified })
-      .where(eq(userT.id, input.userId));
+      .where(sql`${userT.id} = ${input.userId}`);
     return { success: true };
   });
 
@@ -272,7 +269,7 @@ const createUser = rootOs
     await getDB()
       .update(userT)
       .set({ emailVerified: true, temporaryPassword: true })
-      .where(eq(userT.id, signupResult.user.id));
+      .where(sql`${userT.id} = ${signupResult.user.id}`);
     rlog.info({ userId: signupResult.user.id, email: input.email }, "Admin created user");
     return { success: true, userId: signupResult.user.id, temporaryPassword };
   });
@@ -289,8 +286,11 @@ const resetUserPassword = rootOs
     const [user] = await db
       .select({ email: userT.email })
       .from(userT)
-      .innerJoin(accountT, and(eq(accountT.userId, userT.id), eq(accountT.providerId, "credential")))
-      .where(eq(userT.id, input.userId))
+      .innerJoin(accountT, sql`
+        ${accountT.userId} = ${userT.id}
+        AND ${accountT.providerId} = ${"credential"}
+      `)
+      .where(sql`${userT.id} = ${input.userId}`)
       .limit(1);
     if (!user) {
       throw errors.NOT_FOUND({ message: "User has no password-based account (may use SSO only)." });
@@ -303,7 +303,7 @@ const resetUserPassword = rootOs
       rlog.error({ err, userId: input.userId }, "Admin password reset failed");
       throw errors.INTERNAL_SERVER_ERROR({ message: "Failed to reset password." });
     }
-    await db.update(userT).set({ temporaryPassword: true }).where(eq(userT.id, input.userId));
+    await db.update(userT).set({ temporaryPassword: true }).where(sql`${userT.id} = ${input.userId}`);
     rlog.info({ userId: input.userId }, "Admin reset user password");
     return { success: true, temporaryPassword };
   });
@@ -323,10 +323,7 @@ const listOrganizations = rootOs
     const db = getDB();
     const offset = (input.page - 1) * input.limit;
     const searchFilter = input.search
-      ? or(
-          ilike(organizationT.name, `%${input.search}%`),
-          ilike(organizationT.slug, `%${input.search}%`),
-        )
+      ? sql`(${organizationT.name} ILIKE ${`%${input.search}%`} OR ${organizationT.slug} ILIKE ${`%${input.search}%`})`
       : undefined;
 
     const [orgs, orgCountRows] = await Promise.all([
@@ -382,8 +379,8 @@ const getOrganizationMembers = rootOs
         userBanned: userT.banned,
       })
       .from(memberT)
-      .innerJoin(userT, eq(memberT.userId, userT.id))
-      .where(eq(memberT.organizationId, input.organizationId))
+      .innerJoin(userT, sql`${memberT.userId} = ${userT.id}`)
+      .where(sql`${memberT.organizationId} = ${input.organizationId}`)
       .orderBy(memberT.createdAt);
     return { members };
   });
@@ -391,7 +388,7 @@ const getOrganizationMembers = rootOs
 const setSsoSelfManage = rootOs
   .meta({ mcp: false })
   .use(withInstanceAdmin)
-  .route({ method: "POST", path: "/organizations/sso-self-manage", tags, summary: "Set SSO self-management for an organization" })
+  .route({ method: "PATCH", path: "/organizations/sso-self-manage", tags, summary: "Set SSO self-management for an organization" })
   .input(z.object({
     organizationId: z.string(),
     enabled: z.boolean(),
@@ -402,7 +399,7 @@ const setSsoSelfManage = rootOs
     await getDB()
       .update(organizationT)
       .set({ ssoSelfManage: input.enabled })
-      .where(eq(organizationT.id, input.organizationId));
+      .where(sql`${organizationT.id} = ${input.organizationId}`);
     return { success: true };
   });
 

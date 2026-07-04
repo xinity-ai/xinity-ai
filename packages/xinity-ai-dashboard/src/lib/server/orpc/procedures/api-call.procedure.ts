@@ -4,7 +4,7 @@
 import { rootOs, withOrganization, requirePermission } from "../root";
 import { z } from "zod";
 import exampleCalls from "./example.call.data.json" with { type: "json" };
-import { and, eq, sql, aiApiKeyT, apiCallT, type ApiCallInputMessage } from "common-db";
+import { sql, aiApiKeyT, apiCallT, type ApiCallInputMessage } from "common-db";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
 
@@ -12,10 +12,8 @@ const log = rootLogger.child({ name: "api-call.procedure" });
 
 const tags = ["API Call"];
 
-const matchKeyInOrg = (keyId: string, orgId: string) => and(
-  eq(aiApiKeyT.id, keyId),
-  eq(aiApiKeyT.organizationId, orgId),
-);
+const matchKeyInOrg = (keyId: string, orgId: string) =>
+  sql`${aiApiKeyT.id} = ${keyId} AND ${aiApiKeyT.organizationId} = ${orgId}`;
 
 async function findApiKeyInOrg(keyId: string, orgId: string) {
   const [key] = await getDB()
@@ -85,7 +83,7 @@ const listApiCalls = rootOs
 
     const apiCalls = await getDB().select()
       .from(apiCallT).orderBy(apiCallT.createdAt)
-      .where(eq(apiCallT.apiKeyId, input.apiKeyId)).limit(5000);
+      .where(sql`${apiCallT.apiKeyId} = ${input.apiKeyId}`).limit(5000);
 
     return apiCalls;
   });

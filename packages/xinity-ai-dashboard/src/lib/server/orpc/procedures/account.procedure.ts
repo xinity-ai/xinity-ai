@@ -3,7 +3,7 @@ import { z } from "zod";
 import { auth, getGreenlitCallId } from "$lib/server/auth-server";
 import { rootLogger } from "$lib/server/logging";
 import { getDB } from "$lib/server/db";
-import { memberT, userT, sql, eq } from "common-db";
+import { memberT, userT, sql } from "common-db";
 import { betterAuthErrorBody } from "$lib/server/better-auth-errors";
 
 const log = rootLogger.child({ name: "account.procedure" });
@@ -33,7 +33,7 @@ const changePassword = rootOs
         ?? (error instanceof Error ? error.message : null);
       throw errors.UNAUTHORIZED({ message: detail ?? "Failed to change password" });
     }
-    await getDB().update(userT).set({ temporaryPassword: false }).where(eq(userT.id, context.session.user.id));
+    await getDB().update(userT).set({ temporaryPassword: false }).where(sql`${userT.id} = ${context.session.user.id}`);
     return { success: true };
   });
 

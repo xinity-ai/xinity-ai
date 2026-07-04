@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ApiKeyDto } from "$lib/orpc/dtos/api-key.dto";
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
 import { randomBytes } from "node:crypto";
-import { and, eq, aiApiKeyT, aiApplicationT, isNull } from "common-db";
+import { sql, aiApiKeyT, aiApplicationT } from "common-db";
 import { pick } from "$lib/util";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
@@ -14,11 +14,10 @@ function generateRandomKey(length = 64) {
   return randomBytes(length).toString("base64url"); // URL-safe base64 string
 }
 
-const matchActiveApiKeyInOrg = (keyId: string, orgId: string) => and(
-  eq(aiApiKeyT.id, keyId),
-  eq(aiApiKeyT.organizationId, orgId),
-  isNull(aiApiKeyT.deletedAt),
-);
+const matchActiveApiKeyInOrg = (keyId: string, orgId: string) =>
+  sql`${aiApiKeyT.id} = ${keyId}
+    AND ${aiApiKeyT.organizationId} = ${orgId}
+    AND ${aiApiKeyT.deletedAt} IS NULL`;
 
 const tags = ["LLM API Key"];
 
@@ -49,11 +48,11 @@ export const createApiKey = rootOs
       const [application] = await getDB()
         .select({ id: aiApplicationT.id })
         .from(aiApplicationT)
-        .where(and(
-          eq(aiApplicationT.id, applicationId),
-          eq(aiApplicationT.organizationId, context.activeOrganizationId),
-          isNull(aiApplicationT.deletedAt),
-        ))
+        .where(sql`
+          ${aiApplicationT.id} = ${applicationId}
+          AND ${aiApplicationT.organizationId} = ${context.activeOrganizationId}
+          AND ${aiApplicationT.deletedAt} IS NULL
+        `)
         .limit(1);
       if (!application) {
         throw errors.NOT_FOUND({ message: "Application not found" })
@@ -102,12 +101,10 @@ const listApiKey = rootOs.use(withOrganization)
     const keys = await getDB()
       .select(pick(aiApiKeyT, "name", "enabled", "collectData", "specifier", "createdAt", "id", "applicationId", "createdByUserId"))
       .from(aiApiKeyT)
-      .where(
-        and(
-          eq(aiApiKeyT.organizationId, context.activeOrganizationId),
-          isNull(aiApiKeyT.deletedAt)
-        )
-      )
+      .where(sql`
+        ${aiApiKeyT.organizationId} = ${context.activeOrganizationId}
+        AND ${aiApiKeyT.deletedAt} IS NULL
+      `)
       .limit(400);
     return keys;
   });
@@ -130,11 +127,11 @@ const updateApiKey = rootOs
         const [app] = await getDB()
           .select({ id: aiApplicationT.id })
           .from(aiApplicationT)
-          .where(and(
-            eq(aiApplicationT.id, input.applicationId),
-            eq(aiApplicationT.organizationId, context.activeOrganizationId),
-            isNull(aiApplicationT.deletedAt),
-          ))
+          .where(sql`
+            ${aiApplicationT.id} = ${input.applicationId}
+            AND ${aiApplicationT.organizationId} = ${context.activeOrganizationId}
+            AND ${aiApplicationT.deletedAt} IS NULL
+          `)
           .limit(1);
         if (!app) {
           throw errors.NOT_FOUND({ message: "Application not found" });
@@ -166,7 +163,7 @@ const deleteApiKey = rootOs
 const toggleEnabled = rootOs
   .use(withOrganization)
   .use(requirePermission({ apiKey: ["update"] }))
-  .route({ method: "POST", path: "/{id}/toggle-enabled", tags, summary: "Enable/Disable LLM API Key" })
+  .route({ method: "PATCH", path: "/{id}/toggle-enabled", tags, summary: "Enable/Disable LLM API Key" })
   .input(ApiKeyDto.pick({ id: true }).extend({ enabled: z.boolean().optional() }))
   .handler(async ({ context, input, errors }) => {
     let enabled = input.enabled;
@@ -186,7 +183,7 @@ const toggleEnabled = rootOs
 const toggleCollectData = rootOs
   .use(withOrganization)
   .use(requirePermission({ apiKey: ["update"] }))
-  .route({ method: "POST", path: "/{id}/toggle-collect-data", tags, summary: "Toggle data collection for API key" })
+  .route({ method: "PATCH", path: "/{id}/toggle-collect-data", tags, summary: "Toggle data collection for API key" })
   .input(ApiKeyDto.pick({ id: true }).extend({ collectData: z.boolean() }))
   .handler(async ({ context, input }) => {
     await getDB()
