@@ -115,7 +115,7 @@
         <p class="text-sm text-muted-foreground">
           Scan this QR code with your authenticator app (Google Authenticator, Authy, 1Password, etc.).
         </p>
-        <div class="flex justify-center p-4 bg-white rounded-lg w-fit mx-auto">
+        <div class="flex justify-center p-4 bg-white rounded-lg w-fit mx-auto [&>svg]:w-48 [&>svg]:h-48">
           {@html qrSvg}
         </div>
       </div>

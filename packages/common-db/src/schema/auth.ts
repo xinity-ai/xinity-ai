@@ -123,6 +123,7 @@ export const twoFactorT = pgTable("two_factor", {
   userId,
   secret: text().notNull(),
   backupCodes: text("backup_codes").notNull(),
+  verified: boolean().notNull().default(true),
 }, table => [
   index("two_factor_user_id_idx").on(table.userId),
 ]);
