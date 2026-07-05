@@ -1,65 +1,126 @@
 # Xinity AI Daemon
 
-A utility serivce to set up connected drivers, to run the raw model inference.
+The daemon runs on each GPU node in the cluster. It detects hardware, installs and manages models via Ollama or vLLM, reports node state to the database, and exposes a local proxy that the gateway routes inference requests through.
 
-### Project init
+## Development
+
 ```bash
 bun install
 bun run dev
 ```
 
-### Extra Init
-If you have direnv installed, set up a `.envrc` file for yourself, and populate it with `use flake .` to automatically load the devshell included in this flake.
+If you have direnv installed, set up a `.envrc` file with `use flake .` to automatically load the devshell.
 
+## Runtime Behavior
 
-### Node Preparation
-#### Drivers
-To ensure the ai node being prepared has the required capabilities, ensure that ollama is installed. It functions as the default driver, and is implicitly assumed to be present on all ai nodes (at least at this point).
+On startup, the daemon:
 
-The installation can be started like this:  
+1. Detects GPU hardware (NVIDIA via `nvidia-smi`, AMD via sysfs/`rocm-smi`, Intel via `xpu-smi`). Falls back to system RAM when no GPUs are found. Unified memory systems (e.g., DGX Spark) are detected and allocated at 90% of system RAM.
+2. Registers itself in the database with capacity, GPU details, supported drivers and versions, hostname, and port.
+3. Starts a sync loop (every `SYNC_INTERVAL_MS`, default 5 minutes) that reads deployment instructions from the database and installs/removes models accordingly. Also listens for PostgreSQL `NOTIFY` signals for immediate sync on dashboard changes.
+4. Starts GPU telemetry sampling (NVIDIA only, every `METRICS_SAMPLE_INTERVAL_MS`, default 20 seconds) for utilization, temperature, power, energy, ECC errors, and throttling.
+5. Exposes Prometheus metrics at `/metrics` and an OpenAI-compatible proxy at `/proxy/*`.
+
+On shutdown, the daemon marks itself as offline in the database.
+
+### Ollama Driver
+
+Models are pulled from the Ollama registry with progress tracking. Up to 2 concurrent pull/delete operations.
+
+### vLLM Driver
+
+Models go through: download from HuggingFace (resumable, with file filtering), start as a systemd unit or Docker container, health check polling (default timeout: 1 hour), and warmup request. GPU memory utilization is computed automatically with a 10% overhead factor, capped at 90%.
+
+Failed processes are restarted up to `VLLM_MAX_RESTART_COUNT` times. 14 fatal log patterns (GPU OOM, CUDA errors, unsupported architecture, etc.) trigger immediate failure.
+
+**Docker backend:** Containers run on a custom network with IP masquerade disabled (`xinity-vllm-noegress-v1`), plus `HF_HUB_OFFLINE=1`. This blocks all outbound internet access from the inference process. Ports are published only on `127.0.0.1`.
+
+### Cache Eviction
+
+Before downloading a new model, the daemon checks disk space and evicts orphaned model caches oldest-first (with a 1 GB safety margin). Active installations and the model being downloaded are never evicted.
+
+## Run-Model Script
+
+Standalone model testing without a full cluster:
+
+```bash
+bun run src/scripts/run-model.ts --model <specifier> --start
+bun run src/scripts/run-model.ts --model <specifier> --plan    # dry run
+bun run src/scripts/run-model.ts --model <specifier> --stop
+```
+
+Key flags: `--models <file>`, `--image <ref>` (Docker), `--vllm-path <path>`, `--port <n>` (default: 8000), `--kv-cache <gb>`, `--force` (bypass compatibility gate), `--json`.
+
+## Node Preparation
+
+### Ollama
+
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
-systemctl edit ollama
-```
-Enter the following in the service override that opened due to `systemctl edit ollama`
-```ini
-[Service]
-Environment="OLLAMA_HOST=0.0.0.0"
 ```
 
-```bash
-systemctl restart ollama
-```
+Or use `xinity up infra-ollama`.
 
+### vLLM
 
+Set either `VLLM_PATH` (path to binary, systemd backend) or `VLLM_DOCKER_IMAGE` (Docker backend) in the daemon's environment.
 
-## Deployments
+## Configuration
 
-Deployments are made possible via inclusion of this flake in any nixos configuration project. The required steps then are to add it as an input, to import the nixosModule.default into the system modules, and to set the required configuration values, i.e.
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `4044` | Listen port |
+| `HOST` | `0.0.0.0` | Bind address |
+| `UNIX_SOCKET` | (unset) | Unix socket path (overrides HOST/PORT) |
+| `DB_CONNECTION_URL` | (required) | PostgreSQL connection string |
+| `INFOSERVER_URL` | `https://sysinfo.xinity.ai` | Infoserver URL |
+| `XINITY_OLLAMA_ENDPOINT` | (unset) | Ollama API endpoint (enables Ollama driver) |
+| `VLLM_BACKEND` | `systemd` | `systemd` or `docker` |
+| `VLLM_PATH` | (unset) | Path to vLLM binary |
+| `VLLM_DOCKER_IMAGE` | (unset) | vLLM Docker image (enables Docker backend) |
+| `VLLM_HF_CACHE_DIR` | `/var/lib/vllm/hf-cache` | HuggingFace model cache directory |
+| `VLLM_HF_TOKEN` | (unset) | HuggingFace token for gated models |
+| `VLLM_HEALTH_TIMEOUT_MS` | `3600000` (1 hour) | Health check timeout |
+| `VLLM_HEALTH_POLL_INTERVAL_MS` | `5000` (5 seconds) | Health check poll interval |
+| `VLLM_MAX_RESTART_COUNT` | `3` | Max restarts before marking as failed |
+| `SYNC_INTERVAL_MS` | `300000` (5 minutes) | Database sync interval |
+| `METRICS_SAMPLE_INTERVAL_MS` | `20000` (20 seconds) | GPU telemetry sampling interval |
+| `MACHINE_NAME` | (hostname) | Display name for the node |
+| `CIDR_PREFIX` | (empty) | Network CIDR prefix for IP advertisement filtering |
+| `STATE_DIR` | `./.local` | Local state directory |
+| `METRICS_AUTH` | (unset) | Basic auth for `/metrics` (`user:pass`) |
+| `INFOSERVER_CACHE_TTL_MS` | `30000` | Infoserver response cache TTL in ms |
+
+### TLS
+
+| Variable | Description |
+|---|---|
+| `XINITY_TLS_CERT` | PEM-encoded TLS certificate |
+| `XINITY_TLS_KEY` | PEM-encoded TLS private key (must be set together with cert) |
+
+All secret variables support the `_FILE` suffix convention (e.g., `DB_CONNECTION_URL_FILE`) for reading values from files.
+
+## NixOS Deployment
 
 ```nix
 {
   services.xinity-ai-node = {
     enable = true;
     envFile = "/root/.env";
-    ...
   };
 }
 ```
-For exact options check `config.nix`
 
+See [`deployment/nixos/`](../../deployment/nixos/README.md) for full options.
 
 ## Testing
 
-Testing is done largely manually. You can create a development contianer in which to try the building the configuration, running the service, and seeing if everything works as expected. Here are relevant commands for this:
+Testing is done largely manually via NixOS containers:
 
 ```bash
-# to create a new container
 nixos-container create "xinity-ai-daemon-tester" --flake .#container
 nixos-container start "xinity-ai-daemon-tester"
-# to enter the container, and test interactively
-nixos-container root-login "xinity-ai-daemon-tester" 
-# to stop and remove the container
-nixos-container stop "xinity-ai-daemon-tester"; 
+nixos-container root-login "xinity-ai-daemon-tester"
+nixos-container stop "xinity-ai-daemon-tester"
 nixos-container destroy "xinity-ai-daemon-tester"
 ```

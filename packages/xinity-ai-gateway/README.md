@@ -1,8 +1,6 @@
 # xinity-ai-gateway
 
-API gateway service for Xinity AI. This service depends on Postgres and Redis.
-It runs an HTTP server that forwards LLM calls and logs usage and request
-metadata to the database.
+API gateway service for Xinity AI. Provides an OpenAI-compatible API, routes traffic across inference nodes, records usage, and exposes Prometheus metrics. Depends on PostgreSQL, Redis, and the infoserver.
 
 ## Requirements
 
@@ -16,12 +14,17 @@ metadata to the database.
 bun run dev
 ```
 
-## Architecture notes
+## Architecture
 
 - `src/gatewayServer.ts` starts the HTTP server and exposes `/v1/*` OpenAI-style endpoints.
-- `src/llm-forward/*` handles request validation, model resolution, and forwarding.
-- Call logging writes usage and call metadata directly to the database via
-  functions in `src/callLogger.ts`.
+- `src/llm-forward/*` handles request validation, model resolution, load balancing, and forwarding to inference nodes.
+- `src/callLogger.ts` writes call body (input/output messages) to the database.
+- `src/usageRecorder.ts` writes per-request usage events (tokens, duration, success).
+- `src/metrics.ts` exposes Prometheus metrics at `/metrics`.
+- `src/image-store.ts` handles multimodal image upload to S3 and deduplication.
+- `src/llm-forward/load-balancer.ts` implements three strategies: `random`, `round-robin`, and `least-connections` (default), with prefix-cache affinity for KV cache hit optimization.
+- `src/llm-forward/model-data.ts` handles canary deployment traffic splitting.
+- `src/llm-forward/endpoints/handle-responses.ts` implements the OpenAI Responses API with built-in web search and web fetch tools.
 
 ## Live API documentation
 
@@ -31,6 +34,44 @@ The gateway serves its own OpenAPI documentation:
 - `GET /docs` — Scalar UI rendering of the same spec.
 
 When extending or modifying the OpenAI-compatible routes, update the hand-authored fragments in `src/openai-compat-openapi.ts` so the documentation stays in sync.
+
+## Configuration
+
+| Variable | Default | Description |
+|---|---|---|
+| `HOST` | `localhost` | Bind address |
+| `PORT` | `4010` | Listen port |
+| `UNIX_SOCKET` | (unset) | Unix socket path (overrides HOST/PORT) |
+| `DB_CONNECTION_URL` | (required) | PostgreSQL connection string |
+| `REDIS_URL` | (required) | Redis connection URL |
+| `INFOSERVER_URL` | (required) | Infoserver URL |
+| `LOAD_BALANCE_STRATEGY` | `least-connections` | `random`, `round-robin`, or `least-connections` |
+| `BACKEND_TIMEOUT_MS` | `300000` | Backend timeout in ms. Idle timeout for streaming, wall-clock for non-streaming. |
+| `WEB_SEARCH_ENGINE_URL` | (unset) | SearXNG URL for Responses API web search |
+| `RESPONSE_CACHE_TTL_SECONDS` | `3600` | Responses API Redis cache TTL |
+| `INFOSERVER_CACHE_TTL_MS` | `30000` | Infoserver response cache TTL in ms |
+| `METRICS_AUTH` | (unset) | Basic auth for `/metrics` (format: `user:pass`, comma-separated for multiple) |
+| `IDLE_TIMEOUT` | `255` | Server-level idle connection timeout in seconds |
+
+### S3 (image storage)
+
+All three must be set to enable multimodal image storage.
+
+| Variable | Default | Description |
+|---|---|---|
+| `S3_ENDPOINT` | (unset) | S3-compatible endpoint (e.g., SeaweedFS) |
+| `S3_ACCESS_KEY_ID` | (unset) | S3 access key |
+| `S3_SECRET_ACCESS_KEY` | (unset) | S3 secret key |
+| `S3_BUCKET` | `xinity-media` | S3 bucket name |
+| `S3_REGION` | `us-east-1` | S3 region (use `us-east-1` for SeaweedFS) |
+
+### TLS
+
+| Variable | Description |
+|---|---|
+| `XINITY_TLS_CERT` | PEM-encoded TLS certificate for the gateway's listen socket |
+| `XINITY_TLS_KEY` | PEM-encoded TLS private key (must be set together with cert) |
+| `XINITY_INFERENCE_CA` | PEM-encoded CA certificate for verifying TLS connections to daemons |
 
 ## Build
 
