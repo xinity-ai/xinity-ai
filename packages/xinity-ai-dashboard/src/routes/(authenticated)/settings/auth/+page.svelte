@@ -1,14 +1,15 @@
 <script lang="ts">
   import PasswordChange from "../PasswordChange.svelte";
+  import TwoFactorManagement from "../TwoFactorManagement.svelte";
   import PasskeyManagement from "../PasskeyManagement.svelte";
   import DashboardApiKeyManagement from "../DashboardApiKeyManagement.svelte";
   import { Separator } from "$lib/components/ui/separator";
   import * as Collapsible from "$lib/components/ui/collapsible";
-  import { ChevronRight, Lock, Fingerprint, KeyRound } from "@lucide/svelte";
+  import { ChevronRight, Lock, ShieldCheck, Fingerprint, KeyRound } from "@lucide/svelte";
 
   let { data } = $props();
 
-  type Section = "password" | "passkeys" | "apiKeys";
+  type Section = "password" | "twoFactor" | "passkeys" | "apiKeys";
   let openSection = $state<Section | null>("password");
 
   function toggle(section: Section) {
@@ -19,7 +20,7 @@
 <div class="space-y-6">
   <div>
     <h2 class="text-lg font-semibold tracking-tight">Authentication Settings</h2>
-    <p class="text-sm text-muted-foreground">Manage your password, passkeys, and API keys</p>
+    <p class="text-sm text-muted-foreground">Manage your password, two-factor authentication, passkeys, and API keys</p>
   </div>
 
   <Separator />
@@ -36,6 +37,24 @@
     <Collapsible.Content>
       <div class="pt-4 pl-7">
         <PasswordChange temporaryPassword={data.fullUser?.temporaryPassword ?? false} />
+      </div>
+    </Collapsible.Content>
+  </Collapsible.Root>
+
+  <Separator />
+
+  <Collapsible.Root open={openSection === "twoFactor"} onOpenChange={() => toggle("twoFactor")}>
+    <Collapsible.Trigger class="flex w-full items-center gap-3 py-2 cursor-pointer">
+      <ChevronRight class="w-4 h-4 text-muted-foreground transition-transform duration-200 {openSection === 'twoFactor' ? 'rotate-90' : ''}" />
+      <ShieldCheck class="w-4 h-4 text-muted-foreground" />
+      <div class="text-left">
+        <h3 class="text-base font-semibold">Two-Factor Authentication</h3>
+        <p class="text-sm text-muted-foreground">Add an extra layer of security with TOTP</p>
+      </div>
+    </Collapsible.Trigger>
+    <Collapsible.Content>
+      <div class="pt-4 pl-7">
+        <TwoFactorManagement twoFactorEnabled={data.fullUser?.twoFactorEnabled ?? false} />
       </div>
     </Collapsible.Content>
   </Collapsible.Root>
