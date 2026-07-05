@@ -20,6 +20,14 @@ Enterprise single sign-on via SAML or OIDC identity providers. Providers can be 
 
 Users can register hardware security keys or platform authenticators (Touch ID, Windows Hello) for passwordless login. Passkeys are managed in Settings > Authentication.
 
+### Two-factor authentication (TOTP)
+
+Users can enable time-based one-time passwords as a second factor for email/password sign-in. Setup is in Settings > Authentication and requires scanning a QR code with an authenticator app (Google Authenticator, Authy, 1Password, etc.). Ten single-use backup codes are generated at setup time for recovery.
+
+When 2FA is enabled, the login flow prompts for a 6-digit code after entering credentials. Users can also authenticate with a backup code if the authenticator app is unavailable. Trusted device cookies are not currently configured.
+
+2FA applies to email/password sign-in only. SSO and passkey logins bypass it.
+
 ### API keys
 
 Two types of API keys serve different purposes:
