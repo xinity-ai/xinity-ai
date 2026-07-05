@@ -9,15 +9,15 @@
   import { Loader2 } from "@lucide/svelte";
 
   let {
-    email = $bindable(""),
-    name = $bindable(""),
+    email = $bindable(),
+    name = $bindable(),
     callbackUrl,
     signupEnabled,
     emailVerificationRequired,
     onVerificationSent,
   }: {
-    email: string;
-    name: string;
+    email: string | undefined;
+    name: string | undefined;
     callbackUrl: string;
     signupEnabled: boolean;
     emailVerificationRequired: boolean;
@@ -33,9 +33,9 @@
     isLoading = true;
     try {
       const res = await signUp.email({
-        email,
+        email: email ?? "",
         password,
-        name,
+        name: name ?? "",
         callbackURL: callbackUrl,
       });
 

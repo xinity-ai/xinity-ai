@@ -10,12 +10,12 @@
   import { Loader2 } from "@lucide/svelte";
 
   let {
-    email = $bindable(""),
+    email = $bindable(),
     callbackUrl,
     ssoProviders = [],
     onTwoFactorRedirect,
   }: {
-    email: string;
+    email: string | undefined;
     callbackUrl: string;
     ssoProviders?: { providerId: string; domain: string }[];
     onTwoFactorRedirect: () => void;
@@ -30,7 +30,7 @@
     isLoading = true;
     try {
       const res = await signIn.email({
-        email,
+        email: email ?? "",
         password,
         callbackURL: callbackUrl,
         rememberMe: true,
