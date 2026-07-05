@@ -55,6 +55,7 @@
 </script>
 
 <form
+  id="form-signup"
   onsubmit={(e) => { e.preventDefault(); submit(); }}
   class="space-y-4"
 >

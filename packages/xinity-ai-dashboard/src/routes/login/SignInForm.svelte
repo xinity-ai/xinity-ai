@@ -53,6 +53,7 @@
 </script>
 
 <form
+  id="form-signin"
   onsubmit={(e) => { e.preventDefault(); submit(); }}
   class="space-y-4"
 >
