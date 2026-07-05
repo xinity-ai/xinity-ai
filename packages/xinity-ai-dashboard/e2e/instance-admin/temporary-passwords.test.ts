@@ -127,6 +127,7 @@ describe("Temporary password flow", () => {
     const { page, context } = await pageWithState(STORAGE_PATH);
     try {
       await page.goto("/settings/auth");
+      await page.waitForLoadState("networkidle");
       await page.locator("#current-password").waitFor({ state: "visible", timeout: 10_000 });
       await page.locator("#current-password").fill(tempPassword);
       await page.locator("#new-password").fill(PERMANENT_PASSWORD);
