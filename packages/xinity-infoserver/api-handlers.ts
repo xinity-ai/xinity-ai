@@ -1,18 +1,7 @@
 import * as catalog from "./server-catalog";
 import { resolveAllTags } from "./model-tags";
 import { ModelListQuerySchema } from "./api-schemas";
-import type { ModelWithSpecifier } from "./definitions/model-definition";
 import { z } from "zod";
-
-const lookupResolvers: Record<string, (specifier: string) => ModelWithSpecifier | undefined> = {
-  canonical: catalog.get,
-  provider: catalog.getByProviderModel,
-};
-
-function resolveBySpecifier(specifier: string, lookupMode: string | null): ModelWithSpecifier | undefined {
-  const resolver = lookupMode ? lookupResolvers[lookupMode] : undefined;
-  return resolver ? resolver(specifier) : catalog.resolve(specifier);
-}
 
 function getRouteParam(req: Request, key: string): string | undefined {
   return (req as { params?: Record<string, string | undefined> }).params?.[key];
@@ -67,17 +56,14 @@ export function handleModelsByFamily(req: Request): Response {
 }
 
 /**
- * GET /api/v1/models/:specifier
- * `?lookup=canonical` forces primary-key resolution; `?lookup=provider` forces
- * provider-string reverse lookup. Omitting falls back to `resolve()` (back-compat).
+ * GET /api/v1/models/:specifier: resolve a model by its canonical specifier.
  */
 export function handleModelBySpecifier(req: Request): Response {
   const specifier = getRouteParam(req, "specifier");
   if (!specifier) {
     return Response.json({ error: "Missing specifier parameter" }, { status: 400 });
   }
-  const lookup = new URL(req.url).searchParams.get("lookup");
-  const model = resolveBySpecifier(specifier, lookup);
+  const model = catalog.get(specifier);
   if (!model) {
     return Response.json({ error: "Model not found" }, { status: 404 });
   }
