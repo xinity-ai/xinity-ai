@@ -10,6 +10,7 @@ import { pass, fail, info, warn } from "./output.ts";
 import { parseEnvString, serializeEnvFile } from "./env-file.ts";
 import { ENV_DIR } from "./component-meta.ts";
 import { restartService } from "./service.ts";
+import { runSteps } from "./step-runner.ts";
 
 const DEFAULT_PORT = "11434";
 const INSTALL_COMMAND = "curl -fsSL https://ollama.com/install.sh | sh";
@@ -202,7 +203,7 @@ async function writeDaemonEndpoint(host: Host, endpoint: string): Promise<boolea
   );
   if (result.success) {
     pass("Daemon config", `XINITY_OLLAMA_ENDPOINT=${endpoint}`);
-    await restartService("daemon", host);
+    await runSteps(restartService("daemon", host));
     return true;
   }
   if (!result.skipped) {

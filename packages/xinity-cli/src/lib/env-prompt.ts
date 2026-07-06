@@ -5,6 +5,7 @@ import { promptOrExit } from "./output.ts";
 import { parseEnvString } from "./env-file.ts";
 import { type Component, ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, getAutoDefaults } from "./component-meta.ts";
 import { writeEnvConfig, writeSystemdUnit, restartService } from "./service.ts";
+import { runSteps } from "./step-runner.ts";
 import { createLocalHost, readSecrets, type Host } from "./host.ts";
 
 export interface EnvField {
@@ -378,10 +379,13 @@ export async function menuConfigureEnv(
     return;
   }
 
-  const wrote = await writeEnvConfig(component, result.config, result.secrets, h);
-  if (wrote) {
+  const configResult = await writeEnvConfig(component, result.config, result.secrets, h);
+  if (configResult.success) {
+    p.log.success("Config – Environment configured");
     await writeSystemdUnit(component, Object.keys(result.secrets), h);
-    await restartService(component, h);
+    await runSteps(restartService(component, h));
+  } else if (configResult.error) {
+    p.log.error(`Config – ${configResult.error}`);
   }
   p.outro("Done");
 }

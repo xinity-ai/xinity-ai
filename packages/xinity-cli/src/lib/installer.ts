@@ -11,6 +11,7 @@ import { pass, fail, warn, info, cancelAndExit, promptOrExit } from "./output.ts
 import { type Host, createLocalHost, commandExistsOn, isUnitActiveOn, readSecrets } from "./host.ts";
 import { isOllamaRunning, waitForOllamaRunning } from "./ollama-setup.ts";
 import { writeEnvConfig, writeSystemdUnit, stopService, startService, restartService } from "./service.ts";
+import { runSteps } from "./step-runner.ts";
 import {
   type Component, type InstallResult,
   ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, BIN_DIR, UNIT_DIR,
@@ -390,7 +391,7 @@ async function resolveLocalArtifact(
     return { status: "skipped", version: "local" };
   }
 
-  const buildResult = await buildLocalArtifact(component, repoPath, hostArch as "x64" | "arm64");
+  const buildResult = await runSteps(buildLocalArtifact(component, repoPath, hostArch as "x64" | "arm64"));
   if (!buildResult) return { status: "failed", version: "" };
 
   const isUpdate = !!(await readManifest(host)).components[component];
@@ -447,7 +448,7 @@ async function resolveArtifact(
     return { status: "skipped", version: dryRunSummary(component, release, isUpdate, hostArch).version };
   }
 
-  const archivePath = await resolveRemoteArtifact(release, component, host);
+  const archivePath = await runSteps(resolveRemoteArtifact(release, component, host));
   if (!archivePath) return { status: "failed", version: release.tagName };
   return { status: "ready", archivePath, versionString: release.tagName, isUpdate };
 }
@@ -481,11 +482,10 @@ async function backupCurrentConfig(component: Component, host: Host): Promise<vo
   if (result.success && !result.skipped) info("Backup", `Previous configuration saved to ${envPath}.bak`);
 }
 
-/** Restart the service if it's already running, otherwise start it. */
 async function bringServiceUp(component: Component, host: Host): Promise<boolean> {
   return (await isUnitActiveOn(host, unitName(component)))
-    ? restartService(component, host)
-    : startService(component, host);
+    ? runSteps(restartService(component, host))
+    : runSteps(startService(component, host));
 }
 
 /** Restore the .bak binary and configuration, then bring the service back up. */
@@ -537,16 +537,26 @@ async function configureAndStart(
     const envResult = await configureEnv(component, host, autoDefaults);
     if (!envResult) return null; // user cancelled
 
-    const wrote = await writeEnvConfig(component, envResult.config, envResult.secrets, host);
-    if (!wrote) errors.push("Failed to write configuration (may need manual setup)");
+    const configResult = await writeEnvConfig(component, envResult.config, envResult.secrets, host);
+    if (configResult.success) {
+      pass("Config", "Environment configured");
+    } else if (configResult.error) {
+      fail("Config", configResult.error);
+      errors.push("Failed to write configuration (may need manual setup)");
+    }
 
     if (component === "daemon") {
       await ensureDriverTools(envResult.config, envResult.secrets, host);
     }
 
     const secretKeys = Object.keys(envResult.secrets);
-    const unitInstalled = await writeSystemdUnit(component, secretKeys, host);
-    if (!unitInstalled) {
+    const unitResult = await writeSystemdUnit(component, secretKeys, host);
+    if (unitResult.success) {
+      pass("Systemd", `Unit installed`);
+    } else if (!unitResult.skipped) {
+      if (unitResult.error) {
+        fail("Systemd", unitResult.error);
+      }
       errors.push("Systemd unit not installed (may need manual setup)");
     }
 
@@ -633,7 +643,7 @@ export async function installComponent(opts: {
   }
 
   // 4. Install binary
-  const installed = await installBinary(component, archivePath, host);
+  const installed = await runSteps(installBinary(component, archivePath, host));
   if (!installed) return { success: false, version: versionString, errors: ["Installation failed or skipped"] };
 
   // 5. Configure env, install unit, restart (update) or start (fresh install)

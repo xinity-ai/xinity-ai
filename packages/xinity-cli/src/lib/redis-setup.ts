@@ -15,6 +15,19 @@ import { type Host, commandExistsOn, readSecrets } from "./host.ts";
 import { pass, fail, info, promptOrUndefined, reportElevationOutcome, warn } from "./output.ts";
 import { parseEnvString } from "./env-file.ts";
 import { SECRETS_DIR, ENV_DIR } from "./component-meta.ts";
+import type { ConnectionResult } from "./connectivity.ts";
+
+async function testRedisWithSpinner(url: string, host: Host): Promise<ConnectionResult> {
+  const { testRedisConnection } = await import("./connectivity.ts");
+  const spinner = p.spinner();
+  spinner.start("Testing Redis connection…");
+  const result = await testRedisConnection(url, host);
+  spinner.stop(result.success ? "Redis connection successful" : "Redis connection failed");
+  if (!result.success && result.error) {
+    p.log.error(pc.dim(result.error));
+  }
+  return result;
+}
 
 // ─── Package-manager definitions ────────────────────────────────────────────
 
@@ -344,15 +357,15 @@ export async function discoverRedisUrl(
   host: Host,
   dryRun: boolean,
 ): Promise<string | undefined> {
-  const { testRedisConnection } = await import("./connectivity.ts");
-
   // 1. Check stored secret
   const stored = await readSecrets(host, SECRETS_DIR, ["REDIS_URL"], "Read stored Redis URL");
   if (stored.secrets.REDIS_URL) {
     const url = stored.secrets.REDIS_URL;
     info("Redis connection", `Found stored URL: ${redactRedisUrl(url)}`);
-    const ok = await testRedisConnection(url, host);
-    if (ok) return url;
+    const result = await testRedisWithSpinner(url, host);
+    if (result.success) {
+      return url;
+    }
 
     // Stored URL is stale, offer to reconfigure
     const action = await p.select({
@@ -368,7 +381,7 @@ export async function discoverRedisUrl(
     if (action === "setup") {
       const newUrl = await redisSetup(host, dryRun);
       if (newUrl) {
-        await testRedisConnection(newUrl, host);
+        await testRedisWithSpinner(newUrl, host);
         if (!dryRun) await persistRedisUrl(host, newUrl);
       }
       return newUrl;
@@ -427,7 +440,7 @@ export async function discoverRedisUrl(
   if (choice === "setup") {
     const url = await redisSetup(host, dryRun);
     if (url) {
-      await testRedisConnection(url, host);
+      await testRedisWithSpinner(url, host);
       if (!dryRun) await persistRedisUrl(host, url);
     }
     return url;
@@ -443,9 +456,6 @@ export async function discoverRedisUrl(
  * Prompt for a Redis connection URL and test connectivity, allowing retries.
  */
 async function promptAndValidateRedisUrl(host: Host): Promise<string | undefined> {
-  const { testRedisConnection } = await import("./connectivity.ts");
-
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     const value = await p.text({
       message: "REDIS_URL",
@@ -461,8 +471,10 @@ async function promptAndValidateRedisUrl(host: Host): Promise<string | undefined
       return undefined;
     }
 
-    const ok = await testRedisConnection(value, host);
-    if (ok) return value;
+    const result = await testRedisWithSpinner(value, host);
+    if (result.success) {
+      return value;
+    }
 
     const action = await p.select({
       message: "Could not connect to Redis.",
@@ -546,14 +558,12 @@ export async function redisSetup(host: Host, dryRun: boolean): Promise<string | 
  * normal discovery flow.
  */
 export async function infraRedis(host: Host, dryRun: boolean): Promise<string | undefined> {
-  const { testRedisConnection } = await import("./connectivity.ts");
-
   const stored = await readSecrets(host, SECRETS_DIR, ["REDIS_URL"], "Read stored Redis URL");
   if (stored.secrets.REDIS_URL) {
     const url = stored.secrets.REDIS_URL;
-    const ok = await testRedisConnection(url, host);
+    const result = await testRedisWithSpinner(url, host);
 
-    if (ok) {
+    if (result.success) {
       info("Redis connection", `Current: ${redactRedisUrl(url)}`);
       const action = await p.select({
         message: "Redis is configured and reachable.",
@@ -572,7 +582,7 @@ export async function infraRedis(host: Host, dryRun: boolean): Promise<string | 
       // setup: fall through to full setup
       const newUrl = await redisSetup(host, dryRun);
       if (newUrl) {
-        await testRedisConnection(newUrl, host);
+        await testRedisWithSpinner(newUrl, host);
         if (!dryRun) await persistRedisUrl(host, newUrl);
       }
       return newUrl;

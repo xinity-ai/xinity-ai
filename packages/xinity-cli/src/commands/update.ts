@@ -9,6 +9,7 @@ import { version } from "../../../../package.json";
 const CLI_VERSION = `v${version}`;
 import { fetchRelease, pickReleaseAsset, type Release } from "../lib/github.ts";
 import { downloadAndVerify, extractCommandArgv } from "../lib/install-download.ts";
+import { runSteps } from "../lib/step-runner.ts";
 import { pass, fail } from "../lib/output.ts";
 import { createLocalHost } from "../lib/host.ts";
 
@@ -26,7 +27,7 @@ async function selfUpdate(release: Release): Promise<boolean> {
   const tmpDir = join(tmpdir(), `xinity-cli-update-${Date.now()}`);
   mkdirSync(tmpDir, { recursive: true });
 
-  const filePath = await downloadAndVerify(release, assetName, tmpDir);
+  const filePath = await runSteps(downloadAndVerify(release, assetName, tmpDir));
   if (!filePath) return false;
 
   const extractDir = join(tmpDir, "extracted");
