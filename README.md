@@ -52,7 +52,7 @@ xinity configure dashboardUrl http://localhost:3100
 xinity act onboarding.cli
 
 # Deploy a model (Phi-3 Mini as a quick start example)
-xinity act deployment.create '{"name": "Phi-3 Mini", "publicSpecifier": "phi-3-mini", "modelSpecifier": "phi3:mini", "enabled": true}'
+xinity act deployment.create '{"name": "Phi-3 Mini", "publicSpecifier": "phi-3-mini", "specifier": "phi-3-mini", "enabled": true}'
 
 # Wait for the model to download and become ready
 xinity act deployment.list '{"withStatus": true}'

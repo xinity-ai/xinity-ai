@@ -117,7 +117,7 @@ describe("xinity-ai-daemon", () => {
 
     const [installation] = await db.insert(modelInstallationT).values({
       nodeId,
-      model: `test-model-${nodeId}`,
+      specifier: "ministral-3-m",
       estCapacity: 1,
       port: nodePort,
       driver: "ollama",
@@ -207,12 +207,15 @@ describe("xinity-ai-daemon", () => {
     await writeNodeId(stateDir, nodeId);
 
     const removeModel = `remove-${nodeId}`;
-    const addModel = `add-${nodeId}`;
+    // Catalog entry from packages/xinity-infoserver/models.yaml; the daemon
+    // resolves the specifier to this ollama tag before pulling.
+    const addSpecifier = "qwen3-coder-next-large";
+    const addModelTag = "qwen3-coder-next:q8_0";
     mock.addInstalledModel(removeModel);
 
     const [installation] = await db.insert(modelInstallationT).values({
       nodeId,
-      model: addModel,
+      specifier: addSpecifier,
       estCapacity: 1,
       port: nodePort,
       driver: "ollama",
@@ -231,6 +234,6 @@ describe("xinity-ai-daemon", () => {
       10_000
     );
     await waitForInstallationState(installation.id, 15_000);
-    expect(mock.calls.pull.some(call => call.model === addModel)).toBe(true);
+    expect(mock.calls.pull.some(call => call.model === addModelTag)).toBe(true);
   });
 });
