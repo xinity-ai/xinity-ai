@@ -220,7 +220,7 @@ describe("getModelInfo", () => {
     expect(mockFetchModel).toHaveBeenCalledWith("llama3:latest");
   });
 
-  test("returns undefined when model is not in the infoserver catalog", async () => {
+  test("passes the specifier through when the model is not in the infoserver catalog", async () => {
     queryQueue.push([deploymentResult({ specifier: "llama3:latest" })]);
     queryQueue.push([installationResult({ host: "node-a", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
     mockSelectHost.mockResolvedValue({ host: "node-a:11434", useFinalModel: true, release: noop });
@@ -228,7 +228,12 @@ describe("getModelInfo", () => {
 
     const result = await getModelInfo("org-1", "my-model");
 
-    expect(result).toBeUndefined();
+    expect(result).toBeDefined();
+    expect(result!.model).toBe("llama3:latest");
+    expect(result!.specifier).toBe("llama3:latest");
+    expect(result!.type).toBeUndefined();
+    expect(result!.tags).toBeUndefined();
+    expect(result!.requestParams).toBeUndefined();
   });
 
   test("uses providerTags for the resolved driver when present", async () => {
