@@ -4,7 +4,7 @@
 
   const {
     deploymentName = "Deployment",
-    modelSpecifier = "",
+    publicSpecifier = "",
     creatorName = "",
     orgName = "",
     dashboardUrl = "",
@@ -30,7 +30,7 @@
         </mj-text>
         <mj-text>
           Name: <strong>{deploymentName}</strong><br />
-          Model: <strong>{modelSpecifier}</strong>
+          Model: <strong>{publicSpecifier}</strong>
         </mj-text>
         <mj-text>
           The deployment is now being installed on available nodes.

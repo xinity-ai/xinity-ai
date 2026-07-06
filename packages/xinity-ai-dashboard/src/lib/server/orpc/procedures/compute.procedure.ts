@@ -107,7 +107,6 @@ export async function buildComputeOverview(rangeHours: number): Promise<ComputeO
     db.select({
       nodeId: modelInstallationT.nodeId,
       specifier: modelInstallationT.specifier,
-      model: modelInstallationT.model,
       driver: modelInstallationT.driver,
       lifecycleState: modelInstallationStateT.lifecycleState,
       progress: modelInstallationStateT.progress,
@@ -148,7 +147,7 @@ export async function buildComputeOverview(rangeHours: number): Promise<ComputeO
       gpus: node.gpus,
       estCapacity: node.estCapacity,
       models: (modelsByNode.get(node.id) ?? []).map((m) => ({
-        name: m.specifier ?? m.model,
+        name: m.specifier,
         driver: m.driver,
         lifecycleState: m.lifecycleState,
         progress: m.progress,

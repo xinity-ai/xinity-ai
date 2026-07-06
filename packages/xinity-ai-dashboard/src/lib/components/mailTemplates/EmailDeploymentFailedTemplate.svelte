@@ -4,7 +4,7 @@
 
   const {
     deploymentName = "Deployment",
-    modelSpecifier = "",
+    publicSpecifier = "",
     errorMessage = "An unknown error occurred",
     orgName = "",
     dashboardUrl = "",
@@ -29,7 +29,7 @@
           The deployment <strong>{deploymentName}</strong> in <strong>{orgName}</strong> has failed.
         </mj-text>
         <mj-text>
-          Model: <strong>{modelSpecifier}</strong>
+          Model: <strong>{publicSpecifier}</strong>
         </mj-text>
         <mj-text padding="10px 0" font-weight="bold">Error Details:</mj-text>
         <mj-text font-family="monospace" font-size="14px" background-color="#fef2f2" padding="15px" border-radius="5px">
