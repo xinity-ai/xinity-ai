@@ -20,7 +20,7 @@ The flow is as follows:
  */
 
 export const GET: RequestHandler = async ({ url, request }) => {
-  const session = await auth.api.getSession(request);
+  const session = await auth.api.getSession({ headers: request.headers });
   if (!session) {
     error(403, "Not authorized");
   }

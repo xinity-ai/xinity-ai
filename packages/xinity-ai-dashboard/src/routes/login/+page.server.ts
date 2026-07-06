@@ -6,7 +6,7 @@ import { getDB } from "$lib/server/db";
 import { ssoProviderT, sql } from "common-db";
 
 export const load: PageServerLoad = async ({ request, url }) => {
-  const session = await auth.api.getSession(request);
+  const session = await auth.api.getSession({ headers: request.headers });
   if (session) {
     redirect(303, "/");
   }

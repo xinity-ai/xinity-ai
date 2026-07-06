@@ -15,7 +15,7 @@ import { getLicenseSummary, hasFeature } from "$lib/server/license";
 const log = rootLogger.child({name: "+layout.root"})
 
 export const load: LayoutServerLoad = async ({ request, url, cookies }) => {
-  const session = await auth.api.getSession(request);
+  const session = await auth.api.getSession({ headers: request.headers });
   if (!session) redirectToLogin(url);
 
   if (!session.session.activeOrganizationId && !url.searchParams.has('_orgActivated')) {

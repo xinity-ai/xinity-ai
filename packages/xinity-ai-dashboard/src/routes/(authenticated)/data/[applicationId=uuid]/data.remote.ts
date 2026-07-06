@@ -8,7 +8,7 @@ import z from 'zod';
 
 async function getSession() {
   const { locals, } = getRequestEvent();
-  const session = await auth.api.getSession(locals.request);
+  const session = await auth.api.getSession({ headers: locals.request.headers });
   if (!session) {
     throw error(401, "Not logged in")
   }
