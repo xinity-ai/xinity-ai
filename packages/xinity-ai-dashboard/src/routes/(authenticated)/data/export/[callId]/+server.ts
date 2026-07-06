@@ -14,7 +14,7 @@ import type { ApiCallInputMessage, ApiCallInputMessageContent } from "common-db"
 import { error } from "@sveltejs/kit";
 
 export const GET: RequestHandler = async ({ params, locals }) => {
-  const session = await auth.api.getSession(locals.request);
+  const session = await auth.api.getSession({ headers: locals.request.headers });
   if (!session) {
     error(401, "Unauthorized");
   }

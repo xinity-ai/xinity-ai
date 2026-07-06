@@ -12,7 +12,7 @@ import { fetchGateway } from "$lib/server/gateway-proxy";
 import { error } from "@sveltejs/kit";
 
 export const POST: RequestHandler = async ({ request, locals }) => {
-  const session = await auth.api.getSession(locals.request);
+  const session = await auth.api.getSession({ headers: locals.request.headers });
   if (!session) error(401, "Unauthorized");
   if (!session.session.activeOrganizationId) error(403, "No active organization");
 

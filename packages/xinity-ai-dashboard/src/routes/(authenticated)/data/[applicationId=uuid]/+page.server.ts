@@ -5,7 +5,7 @@ import { call, ORPCError } from '@orpc/server';
 import { auth } from '$lib/server/auth-server';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
-  const session = await auth.api.getSession(locals.request);
+  const session = await auth.api.getSession({ headers: locals.request.headers });
   if (!session?.session?.activeOrganizationId) {
     return { application: null };
   }

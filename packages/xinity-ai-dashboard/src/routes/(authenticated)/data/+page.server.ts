@@ -6,7 +6,7 @@ import { apiCallT, sql, and, eq, isNull } from 'common-db';
 import { auth } from '$lib/server/auth-server';
 
 export const load: PageServerLoad = async ({ locals }) => {
-  const session = await auth.api.getSession(locals.request);
+  const session = await auth.api.getSession({ headers: locals.request.headers });
   if (!session?.session?.activeOrganizationId) {
     return { applications: [], uncategorizedCount: 0 };
   }

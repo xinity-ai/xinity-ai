@@ -30,7 +30,7 @@ async function loadSessionOrThrow(
   context: App.Locals,
   errors: { UNAUTHORIZED: () => Error },
 ): Promise<Session> {
-  const session = await auth.api.getSession(context.request);
+  const session = await auth.api.getSession({ headers: context.request.headers });
   if (!session) throw errors.UNAUTHORIZED();
   return session;
 }
