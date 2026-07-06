@@ -1,7 +1,7 @@
 import { calcCanaryProgress, sql, modelDeploymentT, aiNodeT, modelInstallationT, modelInstallationStateT, installationMatchesLookup } from "common-db";
 import { getDB } from "../db";
 import { env } from "../env";
-import { createInfoserverClient, deploymentLookup, deploymentEarlyLookup, lookupKey, resolveTagsForDriver, resolveRequestParamsForDriver, type ModelLookup } from "xinity-infoserver";
+import { createInfoserverClient, resolveTagsForDriver, resolveRequestParamsForDriver } from "xinity-infoserver";
 import { selectHost as _selectHost, type LoadBalanceStrategy } from "./load-balancer";
 import { rootLogger } from "../logger";
 
@@ -38,8 +38,8 @@ async function publicModelSpecifierToModelSource(orgId: string, specifier: strin
 
   return {
     progress: calcCanaryProgress(deployment),
-    primary: deploymentLookup(deployment),
-    early: deploymentEarlyLookup(deployment),
+    primary: deployment.specifier,
+    early: deployment.earlySpecifier,
   }
 }
 
@@ -55,7 +55,7 @@ type ModelSources = {
   byHost: Map<string, HostLocation>;
 };
 
-async function getModelSources(lookup: ModelLookup): Promise<ModelSources> {
+async function getModelSources(specifier: string): Promise<ModelSources> {
   const modelLocations = await getDB().select({
     nodeId: aiNodeT.id,
     host: aiNodeT.host,
@@ -69,7 +69,7 @@ async function getModelSources(lookup: ModelLookup): Promise<ModelSources> {
       ${modelInstallationStateT.id} = ${modelInstallationT.id}
       AND ${modelInstallationStateT.lifecycleState} = 'ready'
     `)
-    .where(sql`${installationMatchesLookup(lookupKey(lookup))} AND ${modelInstallationT.deletedAt} IS NULL`);
+    .where(sql`${installationMatchesLookup(specifier)} AND ${modelInstallationT.deletedAt} IS NULL`);
 
   const byHost = new Map<string, HostLocation>();
   for (const loc of modelLocations) {
@@ -85,7 +85,9 @@ type ModelInfo = {
   nodeId: string | null;
   /** Daemon host:port to route requests through. */
   host: string;
-  /** origin model name. I.e. gemma3:latest */
+  /** Canonical model identifier; used to route to the right daemon installation. */
+  specifier: string;
+  /** Driver-side provider model name (e.g. gemma3:latest); used as the OpenAI body's `model` field. */
   model: string;
   /** Inference driver for this model installation (e.g. "ollama", "vllm"). */
   driver: string;
@@ -128,7 +130,7 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, prefi
     return;
   }
 
-  const resolvedLookup = result.useFinalModel
+  const resolvedSpecifier = result.useFinalModel
     ? accessInfo.primary
     : (accessInfo.early ?? accessInfo.primary);
 
@@ -138,9 +140,8 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, prefi
   const tls = location?.tls ?? false;
   const driverProvider = driver as "vllm" | "ollama";
 
-  const model = await getInfoClient().fetchModel(resolvedLookup);
-  const providerModel = model?.providers[driverProvider]
-    ?? (resolvedLookup.kind === "legacy" ? resolvedLookup.providerModel : undefined);
+  const model = await getInfoClient().fetchModel(resolvedSpecifier);
+  const providerModel = model?.providers[driverProvider];
   if (!providerModel) {
     result.release();
     return;
@@ -153,6 +154,7 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, prefi
   return {
     nodeId: location?.nodeId ?? null,
     host: result.host,
+    specifier: resolvedSpecifier,
     model: providerModel,
     driver,
     authToken,

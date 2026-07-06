@@ -43,6 +43,7 @@ let mockPort = 0;
 const getModelInfo = jest.fn<typeof getModelInfoT>(async () => ({
   nodeId: "node-1",
   host: `localhost:${mockPort}`,
+  specifier: "test-model",
   model: "test-model",
   driver: "vllm",
   authToken: null,
@@ -311,6 +312,7 @@ describe("handleChatCompletion", () => {
     getModelInfo.mockImplementationOnce(async () => ({
       nodeId: "node-1",
       host: `localhost:${mockPort}`,
+      specifier: "test-model",
       model: "test-model",
       driver: "ollama",
       authToken: null,
@@ -513,6 +515,7 @@ describe("handleChatCompletion, tool calling", () => {
     getModelInfo.mockImplementationOnce(async () => ({
       nodeId: "node-1",
       host: `localhost:${mockPort}`,
+      specifier: "test-model",
       model: "test-model",
       driver: "vllm",
       authToken: null,
@@ -543,6 +546,7 @@ describe("handleChatCompletion, tool calling", () => {
     getModelInfo.mockImplementationOnce(async () => ({
       nodeId: "node-1",
       host: `localhost:${mockPort}`,
+      specifier: "test-model",
       model: "test-model",
       driver: "vllm",
       authToken: null,
