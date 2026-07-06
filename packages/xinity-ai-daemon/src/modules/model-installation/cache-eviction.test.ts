@@ -1,12 +1,11 @@
 import { describe, test, expect, mock } from "bun:test";
-import type { ModelInstallation } from "common-db";
 
-mock.module("../../env", () => ({ env: { VLLM_HF_CACHE_DIR: "/tmp/test" } }));
+mock.module("../../env", () => ({ env: { VLLM_HF_CACHE_DIR: "/tmp/test", INFOSERVER_URL: "http://localhost:8393", INFOSERVER_CACHE_TTL_MS: 0 } }));
 mock.module("../../logger", () => ({
   rootLogger: { child: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }) },
 }));
 
-import { planEviction, slugForModel, modelForSlug, type CacheEntry } from "./cache-eviction";
+import { planEviction, slugForModel, modelForSlug, type CacheEntry, type InstallationCacheRecord } from "./cache-eviction";
 
 const GB = 1024 ** 3;
 
@@ -20,19 +19,10 @@ function entry(model: string, sizeGb: number, mtime: Date = new Date()): CacheEn
   };
 }
 
-function inst(model: string, opts: { deletedAt?: Date | null } = {}): ModelInstallation {
+function inst(providerModel: string, opts: { deletedAt?: Date | null } = {}): InstallationCacheRecord {
   return {
-    id: crypto.randomUUID(),
-    nodeId: "node-1",
-    specifier: null,
-    model,
-    estCapacity: 16,
-    kvCacheCapacity: 4,
-    port: 8080,
-    driver: "vllm",
+    providerModel,
     deletedAt: opts.deletedAt ?? null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
   };
 }
 

@@ -7,7 +7,6 @@
  * runtime/db dependencies and is cheap to unit-test.
  */
 import {
-  resolveDriverForProviderModel,
   resolveTagsForDriver,
   resolveArgsForDriver,
   resolveMinVersionForDriver,
@@ -82,13 +81,6 @@ export function resolveVllmModel(
   options: { kvCacheGbOverride?: number } = {},
 ): ResolvedVllmModel {
   const { vllmProviderName, model } = findVllmModel(parsed, name);
-
-  const driver = resolveDriverForProviderModel(model, vllmProviderName);
-  if (driver !== "vllm") {
-    throw new RunModelError(
-      `Model "${name}" does not resolve to the vllm driver (resolved: ${driver ?? "none"}).`,
-    );
-  }
 
   const tags = resolveTagsForDriver(model, "vllm");
   const kvCacheGb = Math.max(options.kvCacheGbOverride ?? 0, model.minKvCache);

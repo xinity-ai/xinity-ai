@@ -146,7 +146,6 @@ async function collectNodeRuntimeState() {
   return {
     estCapacity: detectedCapacityGb,
     gpuCount,
-    drivers: getNodeDrivers(),
     driverVersions,
     driverFeatures,
     gpus: detectedGpus.map(g => ({ vendor: g.vendor, name: g.name, vramMb: g.vramMb })),

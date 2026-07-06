@@ -176,7 +176,7 @@ async function detectVllmVersion(): Promise<string | undefined> {
 
 function buildConfig(resolved: ResolvedVllmModel, profile: HardwareProfile): VllmInstanceConfig {
   const gpuMemoryUtilization =
-    gpuUtilOverride ?? computeGpuUtilization({ model: resolved.vllmProviderName, estCapacity: resolved.estCapacity }, profile);
+    gpuUtilOverride ?? computeGpuUtilization({ specifier: resolved.vllmProviderName, estCapacity: resolved.estCapacity }, profile);
   return {
     model: resolved.vllmProviderName,
     port,
