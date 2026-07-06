@@ -173,7 +173,7 @@ jobs:
         run: bun build/index.js &
         working-directory: packages/xinity-ai-dashboard
         env:
-          NODE_ENV: production
+          NODE_ENV: test
           HTTP_PORT: "5173"
           MAIL_URL: smtp://localhost:1025
           MAIL_FROM: "Auth Service <noreply@example.com>"
