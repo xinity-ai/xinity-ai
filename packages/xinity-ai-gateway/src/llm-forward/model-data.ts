@@ -140,12 +140,10 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, prefi
   const tls = location?.tls ?? false;
   const driverProvider = driver as "vllm" | "ollama";
 
+  // Best-effort pass-through: when the catalog cannot resolve the specifier,
+  // forward it as the model name and let the backend reject a mismatch.
   const model = await getInfoClient().fetchModel(resolvedSpecifier);
-  const providerModel = model?.providers[driverProvider];
-  if (!providerModel) {
-    result.release();
-    return;
-  }
+  const providerModel = model?.providers[driverProvider] ?? resolvedSpecifier;
 
   const type = model?.type;
   const tags = model ? resolveTagsForDriver(model, driverProvider) : undefined;
