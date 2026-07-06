@@ -253,7 +253,7 @@ describe("getModelInfo", () => {
     expect(result!.tags).toEqual(["tools", "vision"]);
   });
 
-  test("skips early model lookup when earlyModelSpecifier is null", async () => {
+  test("skips early model lookup when earlySpecifier is null", async () => {
     queryQueue.push([deploymentResult({ specifier: "llama3:latest", earlySpecifier: null })]);
     queryQueue.push([installationResult({ host: "node-a", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
     mockSelectHost.mockResolvedValue({ host: "node-a:11434", useFinalModel: true, release: noop });
