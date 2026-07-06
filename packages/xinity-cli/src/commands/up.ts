@@ -5,8 +5,7 @@ import { installComponent, installAll, preflightCheck, showDashboardHints } from
 import type { Component } from "../lib/component-meta.ts";
 import { runMigrations } from "../lib/migrator.ts";
 import { logErrors, warn } from "../lib/output.ts";
-import { createLocalHost } from "../lib/host.ts";
-import { connectRemoteHost } from "../lib/remote-host.ts";
+import { connectHost } from "../lib/remote-host.ts";
 import { seaweedfsSetup } from "../lib/seaweedfs-setup.ts";
 import { infraRedis } from "../lib/redis-setup.ts";
 import { runUpdateFlow } from "./update.ts";
@@ -58,7 +57,7 @@ export const upCommand: CommandModule = {
 
     p.intro(`xinity up ${pc.cyan(component)}${dryRun ? pc.yellow(" (dry run)") : ""}${targetHostArg ? pc.dim(` → ${targetHostArg}`) : ""}`);
 
-    const host = targetHostArg ? await connectRemoteHost(targetHostArg) : createLocalHost();
+    const host = await connectHost(targetHostArg);
 
     let hasFailure = false;
     try {

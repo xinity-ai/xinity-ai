@@ -6,7 +6,7 @@
  */
 import { join } from "path";
 import { loadConfig } from "./config.ts";
-import { createLocalHost } from "./host.ts";
+import { localRun } from "./host.ts";
 
 const DEFAULT_PROJECT_URL = "https://github.com/xinity-ai/xinity-ai";
 
@@ -42,8 +42,7 @@ async function discoverToken(): Promise<string | undefined> {
   const config = loadConfig();
   if (config.githubToken) return config.githubToken;
   try {
-    const local = createLocalHost();
-    const result = await local.run(["gh", "auth", "token"]);
+    const result = await localRun(["gh", "auth", "token"]);
     if (result.ok && result.output) return result.output;
   } catch { /* gh not installed or not authenticated */ }
   return undefined;

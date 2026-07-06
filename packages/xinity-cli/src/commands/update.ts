@@ -11,7 +11,7 @@ import { fetchRelease, pickReleaseAsset, type Release } from "../lib/github.ts";
 import { downloadAndVerify, extractCommandArgv } from "../lib/install-download.ts";
 import { runSteps } from "../lib/step-runner.ts";
 import { pass, fail } from "../lib/output.ts";
-import { createLocalHost } from "../lib/host.ts";
+import { localRun } from "../lib/host.ts";
 
 // ─── Self-update ────────────────────────────────────────────────────────────
 
@@ -32,8 +32,7 @@ async function selfUpdate(release: Release): Promise<boolean> {
 
   const extractDir = join(tmpDir, "extracted");
   mkdirSync(extractDir, { recursive: true });
-  const local = createLocalHost();
-  const extracted = await local.run(extractCommandArgv(filePath, extractDir));
+  const extracted = await localRun(extractCommandArgv(filePath, extractDir));
   if (!extracted.ok) {
     fail("Extract", "Failed to extract archive");
     return false;

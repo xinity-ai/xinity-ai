@@ -1,5 +1,5 @@
 import { readManifest, type ComponentEntry } from "./manifest.ts";
-import { commandExistsOn, isUnitActiveOn, readSecrets, type Host, createLocalHost } from "./host.ts";
+import { commandExistsOn, isUnitActiveOn, readSecrets, type Host } from "./host.ts";
 import { isOllamaRunning } from "./ollama-setup.ts";
 import { analyzeEnvSchema, categorizeFields, type EnvField } from "./env-prompt.ts";
 import { parseEnvString } from "./env-file.ts";
@@ -25,8 +25,8 @@ export interface DoctorRunOptions {
   interactive?: boolean;
   /** Spinner instance for progress updates during collection. */
   spinner?: DoctorSpinner;
-  /** Host to run diagnostics on. Defaults to local if not provided. */
-  host?: Host;
+  /** Host to run diagnostics on. */
+  host: Host;
 }
 
 export interface ComponentReport {
@@ -62,7 +62,7 @@ async function readFileWithElevation(
   description: string,
   opts: DoctorRunOptions,
 ): Promise<{ content: string | null; permissionDenied: boolean; skipped: boolean }> {
-  const host = opts.host ?? createLocalHost();
+  const host = opts.host;
   const content = await host.readFile(path);
   if (content !== null) {
     return { content, permissionDenied: false, skipped: false };
@@ -175,7 +175,7 @@ async function checkConfiguration(
   const checks: CheckResult[] = [];
   const envPath = `${ENV_DIR}/${component}.env`;
 
-  const host = opts.host ?? createLocalHost();
+  const host = opts.host;
 
   // Env file exists
   if (!(await host.fileExists(envPath))) {
@@ -581,7 +581,7 @@ async function checkComponent(
   entry: ComponentEntry,
   opts: DoctorRunOptions & { infoserverUrls?: { url: string; components: string[] }[] },
 ): Promise<{ report: ComponentReport; values: Record<string, string> }> {
-  const host = opts.host ?? createLocalHost();
+  const host = opts.host;
   const checks: CheckResult[] = [];
 
   // Installation
@@ -636,20 +636,16 @@ async function checkComponent(
 }
 
 
-export async function runDoctor(opts: DoctorRunOptions = {}): Promise<DoctorReport> {
-  let host = opts.host ?? createLocalHost();
+export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
   const components: ComponentReport[] = [];
 
   // 2. Read manifest (needed before probe to know which components to check)
-  const manifest = await readManifest(host);
+  const manifest = await readManifest(opts.host);
 
-  // For remote hosts, collect all state in a single SSH call to avoid
-  // dozens of individual round-trips (file checks, command checks, unit status).
-  if (host.isRemote) {
-    opts.spinner?.message("Collecting remote state…");
-    const state = await collectRemoteState(host, manifest);
-    host = createCachedHost(host, state);
-  }
+  // Collect all state in a single SSH call to avoid dozens of individual round-trips.
+  opts.spinner?.message("Collecting host state…");
+  const state = await collectRemoteState(opts.host, manifest);
+  const host = createCachedHost(opts.host, state);
 
   // 1. System checks
   opts.spinner?.message("Checking system…");

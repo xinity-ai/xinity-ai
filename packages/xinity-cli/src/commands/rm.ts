@@ -5,8 +5,7 @@ import { removeComponent, removeAll } from "../lib/install-remove.ts";
 import { runSteps } from "../lib/step-runner.ts";
 import type { Component } from "../lib/component-meta.ts";
 import { logErrors } from "../lib/output.ts";
-import { createLocalHost } from "../lib/host.ts";
-import { connectRemoteHost } from "../lib/remote-host.ts";
+import { connectHost } from "../lib/remote-host.ts";
 
 const COMPONENTS = ["gateway", "dashboard", "daemon", "infoserver", "all"] as const;
 
@@ -44,7 +43,7 @@ export const rmCommand: CommandModule = {
 
     p.intro(`xinity rm ${pc.cyan(component)}${purge ? pc.yellow(" --purge") : ""}${targetHostArg ? pc.dim(` → ${targetHostArg}`) : ""}`);
 
-    const host = targetHostArg ? await connectRemoteHost(targetHostArg) : createLocalHost();
+    const host = await connectHost(targetHostArg);
 
     try {
       const target = targetHostArg ? pc.cyan(targetHostArg) : "this machine";
