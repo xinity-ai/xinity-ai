@@ -3,23 +3,8 @@ import { redis } from "bun";
 
 // --- Mocks (hoisted by bun:test) ---
 
-mock.module("../env", () => ({
-  env: {
-    HOST: "localhost",
-    PORT: 4010,
-    DB_CONNECTION_URL: "postgresql://localhost/test",
-    REDIS_URL: "redis://localhost:6379",
-    WEB_SEARCH_ENGINE_URL: undefined,
-    RESPONSE_CACHE_TTL_SECONDS: 3600,
-    INFOSERVER_URL: "http://localhost:3000",
-    INFOSERVER_CACHE_TTL_MS: 30000,
-    LOAD_BALANCE_STRATEGY: "random",
-    BACKEND_TIMEOUT_MS: 300000,
-    LOG_LEVEL: "info",
-    LOG_DIR: undefined,
-    METRICS_AUTH: undefined,
-  },
-}));
+import { MOCK_GATEWAY_ENV } from "./mock-env";
+mock.module("../env", () => ({ env: { ...MOCK_GATEWAY_ENV } }));
 
 const mockQueryResult: any[] = [];
 const mockGetDB = jest.fn(() => ({

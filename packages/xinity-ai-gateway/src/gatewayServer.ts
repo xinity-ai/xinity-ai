@@ -15,6 +15,8 @@ import { handleTranscription } from "./llm-forward/endpoints/handle-transcriptio
 import { handleMetrics, withMetrics } from "./metrics";
 import { getTlsConfig } from "common-env";
 import { logMigrationFailureFatal } from "common-db";
+import { getSearchProvider } from "./llm-forward/tools/search-providers";
+import { setSearchProvider } from "./llm-forward/tools/response-tools";
 
 process.on("unhandledRejection", (reason) => {
   rootLogger.error({ err: reason }, "Unhandled promise rejection");
@@ -34,6 +36,7 @@ const handler = new OpenAPIHandler(serverRouter, {
 });
 
 const tls = getTlsConfig(env);
+setSearchProvider(getSearchProvider(env));
 
 const meteredEndpoints: Array<[string, (req: Request) => Promise<Response> | Response]> = [
   ["/v1/chat/completions", handleChatCompletion],

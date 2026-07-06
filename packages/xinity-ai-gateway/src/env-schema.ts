@@ -10,7 +10,15 @@ export const gatewayEnvSchema = z.object({
   DB_CONNECTION_URL: z.url().describe("PostgreSQL connection string (e.g. postgresql://user:pass@host:5432/dbname)").meta(secret()),
   REDIS_URL: z.url().describe("Redis connection URL (e.g. redis://localhost:6379)").meta(secret()),
   INFOSERVER_URL: z.url().default("https://sysinfo.xinity.ai").describe("Infoserver URL (default hosted: https://sysinfo.xinity.ai, or your self-hosted instance)"),
-  WEB_SEARCH_ENGINE_URL: z.url().optional().describe("SearXNG search engine URL").meta(expert()),
+  WEB_SEARCH_PROVIDER: z.enum(["searxng", "google", "bing", "brave", "serper"]).optional()
+    .describe("Web search backend. When unset, web search is disabled.")
+    .meta(expert()),
+  WEB_SEARCH_CREDENTIAL: z.string().optional()
+    .describe("Provider credential: searxng=instance URL, google=apikey:cx, bing/brave/serper=API key")
+    .meta({ ...secret(), ...expert() }),
+  WEB_SEARCH_ENGINE_URL: z.url().optional()
+    .describe("@deprecated Use WEB_SEARCH_PROVIDER + WEB_SEARCH_CREDENTIAL instead. SearXNG search engine URL.")
+    .meta(expert()),
   RESPONSE_CACHE_TTL_SECONDS: z.coerce
     .number()
     .positive()
