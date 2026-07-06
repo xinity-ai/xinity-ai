@@ -38,8 +38,6 @@ const BACKFILL_BUCKET_MS = 10 * 60 * 1000;
 type ModelSpec = {
   /** Public canonical identifier shown in the UI (e.g. "qwen3-8b"). */
   publicSpecifier: string;
-  /** Provider-specific model string used by the driver — deprecated column, not shown in UI. */
-  model: string;
   driver: "ollama" | "vllm";
   estCapacity: number;
 };
@@ -57,13 +55,13 @@ type DemoMachine = {
 
 const ASCENT_GPUS = [{ vendor: "nvidia", name: "NVIDIA GB10", vramMb: 0 }];
 const ASCENT_MODELS: ModelSpec[] = [
-  { publicSpecifier: "qwen3-8b", model: "qwen3:8b", driver: "ollama", estCapacity: 8 },
-  { publicSpecifier: "nomic-embed", model: "nomic-embed-text", driver: "ollama", estCapacity: 1 },
+  { publicSpecifier: "qwen3-8b", driver: "ollama", estCapacity: 8 },
+  { publicSpecifier: "nomic-embed", driver: "ollama", estCapacity: 1 },
 ];
 
 const RTX_GPUS = [{ vendor: "nvidia", name: "NVIDIA RTX PRO 6000 Blackwell", vramMb: 97887 }];
 const RTX_MODELS: ModelSpec[] = [
-  { publicSpecifier: "mistral-small-3.2-24b", model: "mistralai/Mistral-Small-3.2-24B-Instruct-2506", driver: "vllm", estCapacity: 48 },
+  { publicSpecifier: "mistral-small-3.2-24b", driver: "vllm", estCapacity: 48 },
 ];
 
 // 192.0.2.0/24 is IANA TEST-NET-1 (RFC 5737) — reserved for documentation,
@@ -74,7 +72,7 @@ const MACHINES: DemoMachine[] = [
   { host: "192.0.2.3", machineName: "Ascent GX10", gpus: ASCENT_GPUS, estCapacity: 110, baseUtilization: 59, models: ASCENT_MODELS, available: false },
   { host: "192.0.2.11", machineName: "RTX PRO 6000 Workstation", gpus: RTX_GPUS, estCapacity: 95, baseUtilization: 65, models: RTX_MODELS, available: true },
   { host: "192.0.2.12", machineName: "RTX PRO 6000 Workstation", gpus: RTX_GPUS, estCapacity: 95, baseUtilization: 75, models: RTX_MODELS, available: false, togglesOnOff: true },
-  { host: "192.0.2.21", machineName: "H100 Inference Server", gpus: [{ vendor: "nvidia", name: "NVIDIA H100 80GB HBM3", vramMb: 81559 }], estCapacity: 79, baseUtilization: 28, models: [{ publicSpecifier: "llama-3.3-70b", model: "meta-llama/Llama-3.3-70B-Instruct", driver: "vllm", estCapacity: 70 }], available: true },
+  { host: "192.0.2.21", machineName: "H100 Inference Server", gpus: [{ vendor: "nvidia", name: "NVIDIA H100 80GB HBM3", vramMb: 81559 }], estCapacity: 79, baseUtilization: 28, models: [{ publicSpecifier: "llama-3.3-70b", driver: "vllm", estCapacity: 70 }], available: true },
 ];
 
 function loadRootEnv() {
@@ -135,14 +133,13 @@ async function main() {
   }
 
   const deploymentIds: string[] = [];
-  for (const [publicSpecifier, modelSpec] of uniqueModels) {
+  for (const publicSpecifier of uniqueModels.keys()) {
     const replicaCount = MACHINES.filter((m) => m.models.some((m2) => m2.publicSpecifier === publicSpecifier)).length;
     const [dep] = await db.insert(modelDeploymentT).values({
       organizationId: org.id,
       name: publicSpecifier,
       publicSpecifier: `${SIM_DEPLOYMENT_PREFIX}${publicSpecifier}`,
       specifier: publicSpecifier,
-      modelSpecifier: modelSpec.model,
       replicas: replicaCount,
       enabled: true,
       progress: 100,
@@ -173,7 +170,6 @@ async function main() {
       const [installation] = await db.insert(modelInstallationT).values({
         nodeId: node!.id,
         specifier: model.publicSpecifier,
-        model: model.model,
         estCapacity: model.estCapacity,
         kvCacheCapacity: 0,
         port: model.driver === "ollama" ? 11434 : 8000,

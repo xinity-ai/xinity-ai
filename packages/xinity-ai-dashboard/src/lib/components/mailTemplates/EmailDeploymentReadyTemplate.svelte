@@ -4,7 +4,7 @@
 
   const {
     deploymentName = "Deployment",
-    modelSpecifier = "",
+    publicSpecifier = "",
     orgName = "",
     dashboardUrl = "",
     appName = "Xinity",
@@ -28,7 +28,7 @@
           Your deployment <strong>{deploymentName}</strong> in <strong>{orgName}</strong> is now fully operational.
         </mj-text>
         <mj-text>
-          Model: <strong>{modelSpecifier}</strong>
+          Model: <strong>{publicSpecifier}</strong>
         </mj-text>
         <mj-text>
           All requested replicas have been installed and are ready to serve requests.
