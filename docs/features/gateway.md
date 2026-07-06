@@ -45,7 +45,7 @@ The gateway implements the OpenAI Responses API at `/v1/responses`:
 - Streaming and non-streaming modes.
 - Background execution (returns 202 immediately, stores the result in Redis).
 - Conversation continuity via `previous_response_id`.
-- Built-in `web_search` tool (requires SearXNG) and `web_fetch` tool with SSRF protection.
+- Built-in `web_search` tool (supports Google, Bing, Brave, Serper, and SearXNG) and `web_fetch` tool with SSRF protection.
 - Function tools (model calls them, client receives the calls and can continue via `previous_response_id`).
 - Structured output via `text.format` (json_object, json_schema).
 - Reasoning effort control via `reasoning.effort`.
