@@ -1,7 +1,6 @@
 import { describe, test, expect, mock, beforeEach, spyOn } from "bun:test";
 import { firstValueFrom } from "rxjs";
 import type { VllmOps } from "./vllm-ops";
-import { installationLookup } from "xinity-infoserver";
 
 // ---------------------------------------------------------------------------
 // Mocks: must be set up before importing the module under test
@@ -66,10 +65,8 @@ const mockHasTag = mock<(specifier: string, tag: string) => Promise<boolean>>(
 const mockResolveDriverArgs = mock<(specifier: string) => Promise<string[]>>(
   () => Promise.resolve([]),
 );
-type Lookup = { kind: "canonical"; specifier: string } | { kind: "legacy"; providerModel: string };
-const lookupValue = (l: Lookup) => l.kind === "canonical" ? l.specifier : l.providerModel;
-const mockFetchModel = mock<(lookup: Lookup) => Promise<{ type?: string; providers: { vllm?: string; ollama?: string } } | undefined>>(
-  (lookup) => Promise.resolve({ type: "chat", providers: { vllm: lookupValue(lookup) } }),
+const mockFetchModel = mock<(specifier: string) => Promise<{ type?: string; providers: { vllm?: string; ollama?: string } } | undefined>>(
+  (specifier) => Promise.resolve({ type: "chat", providers: { vllm: specifier } }),
 );
 
 mock.module("xinity-infoserver", () => ({
@@ -78,7 +75,6 @@ mock.module("xinity-infoserver", () => ({
     resolveDriverArgs: mockResolveDriverArgs,
     fetchModel: mockFetchModel,
   }),
-  installationLookup,
 }));
 
 // Mock the statekeeper hardware profile
@@ -104,12 +100,11 @@ const { syncVllmInstallations$, computeGpuUtilization } = await import("./vllm")
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeInstallation(model: string, id: string = crypto.randomUUID(), port = 8080) {
+function makeInstallation(specifier: string, id: string = crypto.randomUUID(), port = 8080) {
   return {
     id,
     nodeId: "node-1",
-    specifier: null,
-    model,
+    specifier,
     estCapacity: 16,
     kvCacheCapacity: 4,
     port,
@@ -149,7 +144,7 @@ describe("syncVllmInstallations$", () => {
     mockSelectWhere.mockImplementation(() => Promise.resolve([]));
     mockHasTag.mockImplementation(() => Promise.resolve(false));
     mockResolveDriverArgs.mockImplementation(() => Promise.resolve([]));
-    mockFetchModel.mockImplementation((lookup) => Promise.resolve({ type: "chat", providers: { vllm: lookupValue(lookup) } }));
+    mockFetchModel.mockImplementation((specifier) => Promise.resolve({ type: "chat", providers: { vllm: specifier } }));
   });
 
   test("completes with no changes when desired matches running", async () => {
@@ -438,7 +433,7 @@ describe("syncVllmInstallations$", () => {
   test("adds --runner pooling for embedding models", async () => {
     const id = crypto.randomUUID();
     const inst = makeInstallation("embed-model", id, 9102);
-    mockFetchModel.mockImplementation((lookup) => Promise.resolve({ type: "embedding", providers: { vllm: lookupValue(lookup) } }));
+    mockFetchModel.mockImplementation((specifier) => Promise.resolve({ type: "embedding", providers: { vllm: specifier } }));
     const ops = createMockOps({
       listRunning: mock(() => Promise.resolve([])),
       checkHealth: mock(() => Promise.resolve(true)),
@@ -455,7 +450,7 @@ describe("syncVllmInstallations$", () => {
   test("adds --runner pooling for rerank models", async () => {
     const id = crypto.randomUUID();
     const inst = makeInstallation("rerank-model", id, 9103);
-    mockFetchModel.mockImplementation((lookup) => Promise.resolve({ type: "rerank", providers: { vllm: lookupValue(lookup) } }));
+    mockFetchModel.mockImplementation((specifier) => Promise.resolve({ type: "rerank", providers: { vllm: specifier } }));
     const ops = createMockOps({
       listRunning: mock(() => Promise.resolve([])),
       checkHealth: mock(() => Promise.resolve(true)),
@@ -472,7 +467,7 @@ describe("syncVllmInstallations$", () => {
   test("does not add --runner pooling for chat models", async () => {
     const id = crypto.randomUUID();
     const inst = makeInstallation("chat-model", id, 9104);
-    mockFetchModel.mockImplementation((lookup) => Promise.resolve({ type: "chat", providers: { vllm: lookupValue(lookup) } }));
+    mockFetchModel.mockImplementation((specifier) => Promise.resolve({ type: "chat", providers: { vllm: specifier } }));
     const ops = createMockOps({
       listRunning: mock(() => Promise.resolve([])),
       checkHealth: mock(() => Promise.resolve(true)),
@@ -490,7 +485,7 @@ describe("syncVllmInstallations$", () => {
     try {
       const id = crypto.randomUUID();
       const inst = makeInstallation("whisper-model", id, 9106);
-      mockFetchModel.mockImplementation((lookup) => Promise.resolve({ type: "transcription", providers: { vllm: lookupValue(lookup) } }));
+      mockFetchModel.mockImplementation((specifier) => Promise.resolve({ type: "transcription", providers: { vllm: specifier } }));
       const ops = createMockOps({
         listRunning: mock(() => Promise.resolve([])),
         checkHealth: mock(() => Promise.resolve(true)),
@@ -510,7 +505,7 @@ describe("syncVllmInstallations$", () => {
   test("translates the settings audio duration into the start config", async () => {
     const id = crypto.randomUUID();
     const inst = { ...makeInstallation("whisper-model", id, 9107), settings: { version: 1 as const, maxAudioInputDurationS: 1200 } };
-    mockFetchModel.mockImplementation((lookup) => Promise.resolve({ type: "transcription", providers: { vllm: lookupValue(lookup) } }));
+    mockFetchModel.mockImplementation((specifier) => Promise.resolve({ type: "transcription", providers: { vllm: specifier } }));
     const ops = createMockOps({
       listRunning: mock(() => Promise.resolve([])),
       checkHealth: mock(() => Promise.resolve(true)),
@@ -526,7 +521,7 @@ describe("syncVllmInstallations$", () => {
   test("leaves the audio duration unset when settings do not carry it", async () => {
     const id = crypto.randomUUID();
     const inst = makeInstallation("whisper-model", id, 9108);
-    mockFetchModel.mockImplementation((lookup) => Promise.resolve({ type: "transcription", providers: { vllm: lookupValue(lookup) } }));
+    mockFetchModel.mockImplementation((specifier) => Promise.resolve({ type: "transcription", providers: { vllm: specifier } }));
     const ops = createMockOps({
       listRunning: mock(() => Promise.resolve([])),
       checkHealth: mock(() => Promise.resolve(true)),
@@ -539,9 +534,9 @@ describe("syncVllmInstallations$", () => {
     expect(startCall[1].maxAudioDecodeDurationS).toBeUndefined();
   });
 
-  test("uses providers.vllm from the catalog rather than the installation row's model column", async () => {
+  test("uses providers.vllm from the catalog rather than the specifier itself", async () => {
     const id = crypto.randomUUID();
-    const inst = { ...makeInstallation("legacy-stale-name", id, 9105), specifier: "canonical-x" };
+    const inst = makeInstallation("canonical-x", id, 9105);
     mockFetchModel.mockImplementation(() => Promise.resolve({ type: "chat", providers: { vllm: "real-vllm-name" } }));
     const ops = createMockOps({
       listRunning: mock(() => Promise.resolve([])),
@@ -626,7 +621,7 @@ describe("syncVllmInstallations$", () => {
 
   test("caps gpuMemoryUtilization at MAX_GPU_UTILIZATION (0.90)", () => {
     const util = computeGpuUtilization(
-      { model: "cap-model", estCapacity: 22 },
+      { specifier: "cap-model", estCapacity: 22 },
       { gpuCount: 1, detectedCapacityGb: 24, physicalCapacityGb: 24 },
     );
     expect(util).toBe(0.90);
@@ -634,7 +629,7 @@ describe("syncVllmInstallations$", () => {
 
   test("caps gpuMemoryUtilization at unified-memory headroom fraction", () => {
     const util = computeGpuUtilization(
-      { model: "large-unified-model", estCapacity: 100 },
+      { specifier: "large-unified-model", estCapacity: 100 },
       { gpuCount: 1, detectedCapacityGb: 107, physicalCapacityGb: 120 },
     );
     expect(util).toBeCloseTo(107 / 120, 4);
@@ -642,7 +637,7 @@ describe("syncVllmInstallations$", () => {
 
   test("allocates exactly requiredGb for a small model on unified memory", () => {
     const util = computeGpuUtilization(
-      { model: "small-unified-model", estCapacity: 16 },
+      { specifier: "small-unified-model", estCapacity: 16 },
       { gpuCount: 1, detectedCapacityGb: 107, physicalCapacityGb: 120 },
     );
     expect(util).toBeCloseTo((16 * 1.1) / 120, 4);
