@@ -35,6 +35,7 @@ let mockPort = 0;
 const getModelInfo = jest.fn<typeof getModelInfoT>(async () => ({
   nodeId: "node-1",
   host: `localhost:${mockPort}`,
+  specifier: "test-model",
   model: "test-model",
   driver: "vllm",
   authToken: null,
@@ -499,6 +500,7 @@ describe("handleResponses", () => {
     getModelInfo.mockImplementationOnce(async () => ({
       nodeId: "node-1",
       host: `localhost:${mockPort}`,
+      specifier: "test-model",
       model: "test-model",
       driver: "vllm",
       authToken: null,
@@ -531,6 +533,7 @@ describe("handleResponses", () => {
     getModelInfo.mockImplementationOnce(async () => ({
       nodeId: "node-1",
       host: `localhost:${mockPort}`,
+      specifier: "test-model",
       model: "test-model",
       driver: "vllm",
       authToken: null,
@@ -561,6 +564,7 @@ describe("handleResponses", () => {
     getModelInfo.mockImplementationOnce(async () => ({
       nodeId: "node-1",
       host: `localhost:${mockPort}`,
+      specifier: "test-model",
       model: "test-model",
       driver: "vllm",
       authToken: null,
@@ -597,6 +601,7 @@ describe("handleResponses", () => {
     getModelInfo.mockImplementationOnce(async () => ({
       nodeId: "node-1",
       host: `localhost:${mockPort}`,
+      specifier: "test-model",
       model: "test-model",
       driver: "vllm",
       authToken: null,

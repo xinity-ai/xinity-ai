@@ -25,7 +25,7 @@ type Logger = {
 export type OpenAIForwardLogFields = {
   auth: AuthResult;
   modelInfo: { model: string; nodeId?: string | null };
-  modelSpecifier: string;
+  publicSpecifier: string;
   inputMessages: ApiCallInputMessage[];
   callStartTime: number;
   logCalls?: boolean;
@@ -102,7 +102,7 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
 
           if (!ttftRecorded) {
             ttftRecorded = true;
-            recordTimeToFirstToken(logFields.modelSpecifier, logFields.callStartTime);
+            recordTimeToFirstToken(logFields.publicSpecifier, logFields.callStartTime);
           }
 
           if (chunk.usage) {

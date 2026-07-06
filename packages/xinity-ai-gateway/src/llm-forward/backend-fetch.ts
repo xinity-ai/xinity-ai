@@ -5,10 +5,10 @@ const tlsOptions = customCa ? { ca: customCa } : undefined;
 
 export const hasCustomCa = !!customCa;
 
-/** Build the full URL for a request through the daemon proxy. */
-export function backendUrl(host: string, model: string, path: string, tls: boolean): string {
+/** Build the full URL for a request through the daemon proxy, addressed by canonical specifier. */
+export function backendUrl(host: string, specifier: string, path: string, tls: boolean): string {
   const protocol = tls ? "https" : "http";
-  return `${protocol}://${host}/proxy/${encodeURIComponent(model)}${path}`;
+  return `${protocol}://${host}/proxy/${encodeURIComponent(specifier)}${path}`;
 }
 
 /** Perform a fetch to a daemon inference proxy with auth token and optional custom CA. */
@@ -20,7 +20,7 @@ export function backendFetch(url: string | URL | Request, init?: RequestInit & {
   return fetch(url, { ...init, headers, ...(tlsOptions ? { tls: tlsOptions } : {}) });
 }
 
-type BackendTarget = { host: string; model: string; tls: boolean; authToken: string | null };
+type BackendTarget = { host: string; specifier: string; tls: boolean; authToken: string | null };
 
 export type IdleTimeout = { signal: AbortSignal; reset: () => void; clear: () => void };
 
@@ -55,7 +55,7 @@ export function backendPostJson(
   body: unknown,
   signal: AbortSignal,
 ): Promise<Response> {
-  return backendFetch(backendUrl(target.host, target.model, path, target.tls), {
+  return backendFetch(backendUrl(target.host, target.specifier, path, target.tls), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -74,7 +74,7 @@ export function backendPostForm(
   form: FormData,
   signal: AbortSignal,
 ): Promise<Response> {
-  return backendFetch(backendUrl(target.host, target.model, path, target.tls), {
+  return backendFetch(backendUrl(target.host, target.specifier, path, target.tls), {
     method: "POST",
     body: form,
     signal,

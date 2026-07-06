@@ -98,7 +98,7 @@ export const handleCompletion = withEndpointGuards({
     const logFields = {
       auth,
       modelInfo,
-      modelSpecifier: originalModel,
+      publicSpecifier: originalModel,
       inputMessages,
       callStartTime,
       logCalls: body.store,

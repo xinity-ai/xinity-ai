@@ -27,7 +27,7 @@ type ChatLogFields = {
   applicationId: string | null;
   organizationId: string;
   durationInMS: number;
-  modelSpecifier: string;
+  publicSpecifier: string;
   inputMessages: ApiCallInputMessage[];
   metadata?: Record<string, unknown>;
 };
@@ -42,7 +42,7 @@ function buildApiCallRow(input: ChatLogFields, model: string, outputMessage: Api
     apiKeyId: input.keyId,
     applicationId: input.applicationId,
     organizationId: input.organizationId,
-    specifiedModel: input.modelSpecifier,
+    specifiedModel: input.publicSpecifier,
     duration: input.durationInMS,
     model,
     outputMessage,
