@@ -1,5 +1,6 @@
 import { createServer } from "net";
-import { localRun, localRunInteractive, buildElevationMenu, confirmManualRun, type Host, type RunResult, type ElevationResult, type ElevationPolicy } from "./host.ts";
+import { hostname as osHostname } from "os";
+import { localRun, buildElevationMenu, confirmManualRun, type Host, type RunResult, type ElevationResult, type ElevationPolicy } from "./host.ts";
 import * as p from "./clack.ts";
 import pc from "picocolors";
 import { SudoSession, checkPasswordlessSudo } from "./sudo-session.ts";
@@ -125,11 +126,23 @@ function b64Cmd(command: string): string {
   return Buffer.from(command).toString("base64");
 }
 
+const LOCALHOST_NAMES = new Set(["localhost", "127.0.0.1", "::1"]);
+
+function detectLocalhost(hostname: string): boolean {
+  if (LOCALHOST_NAMES.has(hostname)) {
+    return true;
+  }
+  try {
+    return hostname === osHostname();
+  } catch {
+    return false;
+  }
+}
+
 export class RemoteHost implements Host {
-  readonly isRemote = true;
   private readonly hostname: string;
+  private readonly isLocalhost: boolean;
   private readonly socket: string;
-  /** SSH args that enable ControlMaster reuse. Inserted before the host. */
   private readonly ctrlArgs: string[];
 
   private sudoSession: SudoSession | null = null;
@@ -138,6 +151,7 @@ export class RemoteHost implements Host {
 
   constructor(hostname: string) {
     this.hostname = hostname;
+    this.isLocalhost = detectLocalhost(hostname);
     this.socket = socketPath(hostname);
     this.ctrlArgs = [
       "-o", "ControlMaster=auto",
@@ -330,6 +344,9 @@ export class RemoteHost implements Host {
   }
 
   async uploadFile(localPath: string, destPath: string): Promise<string> {
+    if (this.isLocalhost) {
+      return localPath;
+    }
     const result = await localRun([
       "scp",
       "-o", `ControlPath=${this.socket}`,
@@ -381,6 +398,9 @@ export class RemoteHost implements Host {
   }
 
   async openTunnel(url: string): Promise<{ localUrl: string; close: () => Promise<void> }> {
+    if (this.isLocalhost) {
+      return { localUrl: url, close: async () => {} };
+    }
     const parsed = new URL(url);
     const remoteHost = parsed.hostname;
     const remotePort = parsed.port || (parsed.protocol === "redis:" ? DEFAULT_REDIS_PORT : DEFAULT_POSTGRES_PORT);
@@ -425,9 +445,12 @@ export class RemoteHost implements Host {
   }
 }
 
-export async function connectRemoteHost(hostname: string): Promise<RemoteHost> {
-  const remote = new RemoteHost(hostname);
-  await remote.connect();
-  p.log.success(`Connected to ${pc.cyan(hostname)}`);
-  return remote;
+export async function connectHost(hostname?: string): Promise<RemoteHost> {
+  const target = hostname || "localhost";
+  const host = new RemoteHost(target);
+  await host.connect();
+  if (hostname) {
+    p.log.success(`Connected to ${pc.cyan(target)}`);
+  }
+  return host;
 }

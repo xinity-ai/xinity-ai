@@ -1,19 +1,12 @@
 /**
- * Host abstraction for local and remote (SSH) execution.
+ * Host abstraction for command execution via SSH.
  *
  * All operations that touch the filesystem or run commands go through a Host
- * instance, enabling transparent remote execution with --target-host.
- *
- * The raw `localRun` / `localRunInteractive` helpers are exported for use by
- * RemoteHost (which executes SSH commands on the local machine). Consumer code
- * should NEVER import them; always use a Host instance instead.
+ * instance. Use `connectHost()` from remote-host.ts to create one.
  */
-import { existsSync, readFileSync, statSync } from "fs";
 import * as p from "./clack.ts";
-import pc from "picocolors";
 
 // ─── Low-level shell primitives ─────────────────────────────────────────────
-// Used only by LocalHost / RemoteHost implementations.
 
 export interface RunResult {
   ok: boolean;
@@ -75,12 +68,6 @@ export interface ElevationResult {
   skipped: boolean;
 }
 
-function isRoot(): boolean {
-  return process.getuid?.() === 0;
-}
-
-let localElevationPolicy: ElevationPolicy = null;
-
 export function buildElevationMenu(sensitive: boolean): { value: string; label: string }[] {
   const options: { value: string; label: string }[] = [
     { value: "sudo-all", label: "Run with sudo (all remaining)" },
@@ -95,101 +82,21 @@ export function buildElevationMenu(sensitive: boolean): { value: string; label: 
   return options;
 }
 
-function showManualCommand(command: string): void {
-  p.log.info(`Run manually:\n  ${pc.cyan(`sudo sh -c '${command}'`)}`);
-}
-
 export async function confirmManualRun(): Promise<ElevationResult> {
   const done = await p.confirm({ message: "Have you run the command?", initialValue: true });
   if (!p.isCancel(done) && done) {
     return { success: true, output: "", skipped: false };
   }
   const abort = await p.confirm({ message: "Abort?", initialValue: false });
-  if (p.isCancel(abort) || abort) p.cancel("Aborted.");
-  return { success: false, output: "", skipped: true };
-}
-
-async function runLocalSudo(
-  command: string,
-  sensitive: boolean,
-): Promise<ElevationResult> {
-  process.stderr.write("\x1b[?25h\x1b[0m");
-  p.log.step(pc.dim("Enter your sudo password when prompted:"));
-
-  if (sensitive) {
-    const proc = Bun.spawn(["sudo", "sh", "-c", command], {
-      stdin: "ignore",
-      stdout: "pipe",
-      stderr: "inherit",
-    });
-    const [exitCode, stdout] = await Promise.all([
-      proc.exited,
-      new Response(proc.stdout).text(),
-    ]);
-
-    resetStdin();
-
-    return { success: exitCode === 0, output: stdout, skipped: false };
+  if (p.isCancel(abort) || abort) {
+    p.cancel("Aborted.");
   }
-
-  const result = await localRunInteractive(["sudo", "sh", "-c", command]);
-  return { success: result.ok, output: result.output, skipped: false };
-}
-
-async function localWithElevation(
-  command: string,
-  description: string,
-  options?: { sensitive?: boolean },
-): Promise<ElevationResult> {
-  const sensitive = options?.sensitive ?? false;
-
-  if (isRoot()) {
-    const result = await localRun(["sh", "-c", command]);
-    return { success: result.ok, output: result.output, skipped: false };
-  }
-
-  // Apply remembered policy if set.
-  if (localElevationPolicy === "sudo") {
-    p.log.step(pc.dim(description));
-    return runLocalSudo(command, sensitive);
-  }
-  if (localElevationPolicy === "manual" && !sensitive) {
-    p.log.step(pc.dim(description));
-    showManualCommand(command);
-    return confirmManualRun();
-  }
-
-  // First time (or sensitive command with manual policy): show menu.
-  const action = await p.select({
-    message: `${pc.yellow(description)} requires elevated privileges.`,
-    options: buildElevationMenu(sensitive),
-  });
-
-  if (p.isCancel(action)) {
-    p.cancel("Cancelled.");
-    return { success: false, output: "", skipped: true };
-  }
-
-  if (action === "sudo-all" || action === "sudo-once") {
-    if (action === "sudo-all") localElevationPolicy = "sudo";
-    return runLocalSudo(command, sensitive);
-  }
-
-  if (action === "manual-all" || action === "manual-once") {
-    if (action === "manual-all") localElevationPolicy = "manual";
-    showManualCommand(command);
-    return confirmManualRun();
-  }
-
   return { success: false, output: "", skipped: true };
 }
 
 // ─── Host interface ─────────────────────────────────────────────────────────
 
 export interface Host {
-  /** Whether this host is accessed over SSH (vs. local). */
-  readonly isRemote: boolean;
-
   /** Execute a command, returning a structured result. */
   run(args: string[]): Promise<RunResult>;
 
@@ -204,14 +111,11 @@ export interface Host {
    * May prompt the user for sudo, show the command, or skip.
    *
    * When `sensitive` is true the command involves secret values:
-   * - The sudo path captures stdout instead of inheriting it (prevents terminal leaks)
    * - The "show command" option is hidden (prevents printing secrets)
    */
   withElevation(command: string, description: string, options?: { sensitive?: boolean }): Promise<ElevationResult>;
 
-  /**
-   * Read a file, returning its content or null if not found / not accessible.
-   */
+  /** Read a file, returning its content or null if not found / not accessible. */
   readFile(path: string): Promise<string | null>;
 
   /** Return true if the path exists on this host. */
@@ -220,39 +124,29 @@ export interface Host {
   /**
    * Upload a local file to this host at destPath.
    * Returns the effective path of the file on the host.
-   * For LocalHost this is a no-op and returns localPath unchanged.
+   * For localhost this is a no-op and returns localPath unchanged.
    */
   uploadFile(localPath: string, destPath: string): Promise<string>;
 
-  /**
-   * Download a file from a URL to destPath on this host.
-   * For LocalHost uses fetch(). For RemoteHost uses curl over SSH.
-   */
+  /** Download a file from a URL to destPath on this host. */
   downloadFile(url: string, destPath: string): Promise<void>;
 
-  /**
-   * Verify a file's SHA256 checksum on this host.
-   * Returns true if the hash matches.
-   */
+  /** Verify a file's SHA256 checksum on this host. Returns true if the hash matches. */
   verifySha256(filePath: string, expectedHash: string): Promise<boolean>;
 
   /**
    * Compute the SHA256 hash of a file on this host.
-   * Returns the hex hash string, or null if the file doesn't exist or the operation fails.
+   * Returns the hex hash string, or null if the file doesn't exist.
    */
   computeSha256(filePath: string): Promise<string | null>;
 
-  /**
-   * Get the CPU architecture of this host (Node.js-style: "x64", "arm64").
-   */
+  /** Get the CPU architecture of this host (Node.js-style: "x64", "arm64"). */
   getArch(): Promise<string>;
 
   /**
-   * Open an SSH tunnel so that a service URL (e.g. postgres://localhost:5432)
-   * on the remote host becomes reachable from the local machine.
-   *
-   * For LocalHost this is a no-op, returns the URL unchanged.
-   * For RemoteHost this sets up SSH local port forwarding.
+   * Open a tunnel so that a service URL (e.g. postgres://remotehost:5432)
+   * becomes reachable from the local machine via SSH port forwarding.
+   * For localhost this is a no-op (services are already reachable).
    *
    * Returns the rewritten URL and a cleanup function to tear down the tunnel.
    */
@@ -272,8 +166,7 @@ export interface ReadSecretsResult {
  * Read multiple secret files from a directory, elevating if necessary.
  *
  * Tries an unelevated read first for each key. Any that fail (permission
- * denied) are batch-read via a single `withElevation` call. Returns a map
- * of key -> file content for files that were successfully read.
+ * denied) are batch-read via a single `withElevation` call.
  */
 export async function readSecrets(
   host: Host,
@@ -283,10 +176,11 @@ export async function readSecrets(
 ): Promise<ReadSecretsResult> {
   const secrets: Record<string, string> = {};
 
-  // Try unelevated reads first.
   for (const key of keys) {
     const content = await host.readFile(`${dir}/${key}`);
-    if (content !== null) secrets[key] = content.trim();
+    if (content !== null) {
+      secrets[key] = content.trim();
+    }
   }
 
   const missing = keys.filter((k) => !(k in secrets));
@@ -294,7 +188,6 @@ export async function readSecrets(
     return { secrets, permissionDenied: false, skipped: false };
   }
 
-  // Batch-read the rest via elevation.
   const script = missing
     .map((k) => `[ -f '${dir}/${k}' ] && printf '%s\\0%s\\0' '${k}' "$(cat '${dir}/${k}')"`)
     .join("; ") + "; true";
@@ -308,13 +201,13 @@ export async function readSecrets(
     return { secrets, permissionDenied: true, skipped: false };
   }
 
-  // NUL-delimited key\0value pairs with a trailing NUL. Don't drop empty
-  // tokens, or an empty value would misalign every later pair.
   const parts = result.output.split("\0");
   for (let i = 0; i + 1 < parts.length; i += 2) {
     const key = parts[i];
     const value = parts[i + 1];
-    if (key && value !== undefined) secrets[key] = value.trim();
+    if (key && value !== undefined) {
+      secrets[key] = value.trim();
+    }
   }
 
   return { secrets, permissionDenied: false, skipped: false };
@@ -329,102 +222,16 @@ export const COMMAND_FALLBACK_BIN_DIRS = [
   "/usr/local/bin",
 ];
 
-/**
- * Check whether a command exists on the given host.
- *
- * Uses `command -v` first, then falls back to checking common user-local
- * bin directories that may not be in PATH during non-interactive SSH
- * sessions. Done in a single shell invocation to minimise SSH round-trips.
- */
 export async function commandExistsOn(host: Host, name: string): Promise<boolean> {
   const fallbacks = COMMAND_FALLBACK_BIN_DIRS.map((dir) => `test -x "${dir}/${name}"`).join(" || ");
   const result = await host.runShell(`command -v ${name} || ${fallbacks}`);
   return result.ok;
 }
 
-/** Check whether a systemd unit is active on the given host. */
 export async function isUnitActiveOn(host: Host, unit: string): Promise<boolean> {
   return (await host.run(["systemctl", "is-active", unit])).ok;
 }
 
-/** Get the systemd unit state string on the given host. */
 export async function getUnitStatusOn(host: Host, unit: string): Promise<string> {
   return (await host.run(["systemctl", "is-active", unit])).output;
-}
-
-// ─── LocalHost ───────────────────────────────────────────────────────────────
-
-export class LocalHost implements Host {
-  readonly isRemote = false;
-
-  async run(args: string[]): Promise<RunResult> {
-    return localRun(args);
-  }
-
-  async runShell(command: string): Promise<RunResult> {
-    return localRun(["sh", "-c", command]);
-  }
-
-  async withElevation(command: string, description: string, options?: { sensitive?: boolean }): Promise<ElevationResult> {
-    return localWithElevation(command, description, options);
-  }
-
-  async readFile(path: string): Promise<string | null> {
-    if (!existsSync(path)) return null;
-    try {
-      return readFileSync(path, "utf-8");
-    } catch {
-      return null;
-    }
-  }
-
-  async fileExists(path: string): Promise<boolean> {
-    try {
-      statSync(path);
-      return true;
-    } catch (err: unknown) {
-      return (err as NodeJS.ErrnoException)?.code === "EACCES";
-    }
-  }
-
-  /** No-op: caller already has the file at localPath on the local filesystem. */
-  async uploadFile(localPath: string, _destPath: string): Promise<string> {
-    return localPath;
-  }
-
-  async downloadFile(url: string, destPath: string): Promise<void> {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Download failed: ${res.status} ${res.statusText}`);
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    await Bun.write(destPath, bytes);
-  }
-
-  async verifySha256(filePath: string, expectedHash: string): Promise<boolean> {
-    const hash = await this.computeSha256(filePath);
-    return hash === expectedHash;
-  }
-
-  async computeSha256(filePath: string): Promise<string | null> {
-    const file = Bun.file(filePath);
-    if (!(await file.exists())) return null;
-    const hasher = new Bun.CryptoHasher("sha256");
-    for await (const chunk of file.stream()) {
-      hasher.update(chunk);
-    }
-    return hasher.digest("hex");
-  }
-
-  async getArch(): Promise<string> {
-    return process.arch;
-  }
-
-  async openTunnel(url: string): Promise<{ localUrl: string; close: () => Promise<void> }> {
-    return { localUrl: url, close: async () => {} };
-  }
-
-  async dispose(): Promise<void> {}
-}
-
-export function createLocalHost(): Host {
-  return new LocalHost();
 }

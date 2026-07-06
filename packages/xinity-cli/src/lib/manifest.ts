@@ -1,7 +1,7 @@
 /**
  * Version manifest tracking installed components at /opt/xinity/manifest.json.
  */
-import { type Host, createLocalHost } from "./host.ts";
+import type { Host } from "./host.ts";
 
 export interface ComponentEntry {
   version: string;
@@ -20,12 +20,11 @@ export interface Manifest {
 
 const MANIFEST_PATH = "/opt/xinity/manifest.json";
 
-async function readManifestContent(h: Host): Promise<string | null> {
-  const direct = await h.readFile(MANIFEST_PATH);
+async function readManifestContent(host: Host): Promise<string | null> {
+  const direct = await host.readFile(MANIFEST_PATH);
   if (direct) return direct;
-  // The manifest may be root-owned from an older install; retry via elevation.
-  if (!(await h.fileExists(MANIFEST_PATH))) return null;
-  const elevated = await h.withElevation(`cat '${MANIFEST_PATH}'`, "Read install manifest");
+  if (!(await host.fileExists(MANIFEST_PATH))) return null;
+  const elevated = await host.withElevation(`cat '${MANIFEST_PATH}'`, "Read install manifest");
   return elevated.success ? elevated.output : null;
 }
 
@@ -33,9 +32,9 @@ async function readManifestContent(h: Host): Promise<string | null> {
  * Read the manifest from the given host.
  * Returns an empty manifest if the file doesn't exist.
  */
-export async function readManifest(host?: Host): Promise<Manifest> {
+export async function readManifest(host: Host): Promise<Manifest> {
   const empty: Manifest = { components: {} };
-  const content = await readManifestContent(host ?? createLocalHost());
+  const content = await readManifestContent(host);
   if (!content) return empty;
   try {
     return JSON.parse(content) as Manifest;
@@ -45,20 +44,19 @@ export async function readManifest(host?: Host): Promise<Manifest> {
 }
 
 /** Get the installed version for a component, or null if not installed. */
-export async function getInstalledVersion(component: string, host?: Host): Promise<string | null> {
+export async function getInstalledVersion(component: string, host: Host): Promise<string | null> {
   return (await readManifest(host)).components[component]?.version ?? null;
 }
 
 /** Write the manifest to disk (requires elevation). */
-export async function writeManifest(manifest: Manifest, host?: Host): Promise<void> {
-  const h = host ?? createLocalHost();
+export async function writeManifest(manifest: Manifest, host: Host): Promise<void> {
   const json = JSON.stringify(manifest, null, 2);
   const cmd = `mkdir -p /opt/xinity && cat > ${MANIFEST_PATH} << 'MANIFEST_EOF'\n${json}\nMANIFEST_EOF\nchmod 644 ${MANIFEST_PATH}`;
-  await h.withElevation(cmd, "Write install manifest");
+  await host.withElevation(cmd, "Write install manifest");
 }
 
 /** Persist a non-secret DB hint (user@host:port/dbname) into the manifest. */
-export async function saveDbHint(hint: string, host?: Host): Promise<void> {
+export async function saveDbHint(hint: string, host: Host): Promise<void> {
   const manifest = await readManifest(host);
   manifest.db = { hint };
   await writeManifest(manifest, host);
@@ -68,7 +66,7 @@ export async function saveDbHint(hint: string, host?: Host): Promise<void> {
 export async function updateManifestEntry(
   component: string,
   entry: ComponentEntry,
-  host?: Host,
+  host: Host,
 ): Promise<void> {
   const manifest = await readManifest(host);
   manifest.components[component] = entry;

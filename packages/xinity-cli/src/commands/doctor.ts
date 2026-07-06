@@ -2,8 +2,7 @@ import type { CommandModule } from "yargs";
 import * as p from "../lib/clack.ts";
 import pc from "picocolors";
 import { runDoctor, type CheckResult, type ComponentReport, type DoctorReport } from "../lib/doctor.ts";
-import { createLocalHost } from "../lib/host.ts";
-import { connectRemoteHost } from "../lib/remote-host.ts";
+import { connectHost } from "../lib/remote-host.ts";
 
 // ─── Status symbols ──────────────────────────────────────────────────────────
 
@@ -99,7 +98,32 @@ export const doctorCommand: CommandModule = {
 
     p.intro(`xinity doctor${targetHostArg ? pc.dim(` → ${targetHostArg}`) : ""}`);
 
-    const host = targetHostArg ? await connectRemoteHost(targetHostArg) : createLocalHost();
+    let host;
+    try {
+      host = await connectHost(targetHostArg);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const report: DoctorReport = {
+        timestamp: new Date().toISOString(),
+        components: [{
+          component: "connection",
+          installed: false,
+          version: null,
+          checks: [{ label: "SSH", status: "fail", message: `Cannot connect to target host: ${msg}` }],
+        }],
+        summary: { pass: 0, warn: 0, fail: 1, skip: 0 },
+      };
+      if (format === "json") {
+        process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+      } else if (format === "yaml") {
+        process.stdout.write(Bun.YAML.stringify(report, null, 2));
+      } else {
+        renderReport(report, verbose);
+        p.outro(buildSummaryLine(report.summary));
+      }
+      process.exit(1);
+      return;
+    }
 
     let hasFailures = false;
     try {

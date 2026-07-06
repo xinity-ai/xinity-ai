@@ -20,7 +20,7 @@ import { runSteps } from "./step-runner.ts";
 import { parseEnvString } from "./env-file.ts";
 import { fail, pass, info, warn } from "./output.ts";
 import { postgresSetup } from "./postgres-setup.ts";
-import { type Host, createLocalHost } from "./host.ts";
+import { type Host, localRun } from "./host.ts";
 import { readManifest, saveDbHint, updateManifestEntry } from "./manifest.ts";
 import { ENV_DIR, SECRETS_DIR } from "./component-meta.ts";
 
@@ -252,8 +252,7 @@ export async function runMigrations(opts: {
   // 4. Extract
   const extractDir = join(tmpDir, "db-migration");
   mkdirSync(extractDir, { recursive: true });
-  const local = createLocalHost();
-  const extract = await local.run(["tar", "xzf", archivePath, "-C", extractDir]);
+  const extract = await localRun(["tar", "xzf", archivePath, "-C", extractDir]);
   if (!extract.ok) {
     fail("Extract", "Failed to extract migration archive");
     return { success: false, errors: ["Extraction failed"], connectionUrl };

@@ -1,10 +1,6 @@
-import { fetchChecksums, verifySha256, resolveDirectUrl, type Release } from "./github.ts";
+import { fetchChecksums, verifySha256, resolveDirectUrl, downloadAsset, pickReleaseAsset, type Release } from "./github.ts";
 import { type Component, BIN_DIR, DASHBOARD_DIR, binaryBaseName } from "./component-meta.ts";
-import { type Host, createLocalHost } from "./host.ts";
-import { tmpdir } from "os";
-import { join } from "path";
-import { mkdirSync } from "fs";
-import { downloadAsset, pickReleaseAsset } from "./github.ts";
+import type { Host } from "./host.ts";
 import type { StepEvent } from "./step-event.ts";
 
 export type { Release } from "./github.ts";
@@ -47,6 +43,11 @@ async function* verifyReleaseChecksum(
   return true;
 }
 
+/**
+ * Download a release asset to a local directory using fetch().
+ * Used for CLI-machine operations (self-update, migration archive extraction)
+ * that always run on the machine where the CLI process lives.
+ */
 export async function* downloadAndVerify(
   release: Release,
   assetName: string,
@@ -74,7 +75,7 @@ export async function* downloadAndVerify(
   return verified ? filePath : null;
 }
 
-export async function* downloadAndVerifyOnHost(
+async function* downloadAndVerifyOnHost(
   release: Release,
   assetName: string,
   host: Host,
@@ -96,26 +97,26 @@ export async function* downloadAndVerifyOnHost(
   }
   yield { type: "spinner", id: "url-resolve", message: "URL resolved", done: true };
 
-  const remoteTmpDir = `/tmp/xinity-download-${Date.now()}`;
-  const remotePath = `${remoteTmpDir}/${assetName}`;
+  const tmpDir = `/tmp/xinity-download-${Date.now()}`;
+  const destPath = `${tmpDir}/${assetName}`;
 
-  yield { type: "spinner", id: "download", message: `Downloading ${assetName} on remote host (${assetSizeMb(asset)} MB)…` };
+  yield { type: "spinner", id: "download", message: `Downloading ${assetName} (${assetSizeMb(asset)} MB)…` };
   try {
-    await host.run(["mkdir", "-p", remoteTmpDir]);
-    await host.downloadFile(directUrl, remotePath);
+    await host.run(["mkdir", "-p", tmpDir]);
+    await host.downloadFile(directUrl, destPath);
   } catch (err) {
     yield { type: "spinner", id: "download", message: "Download failed", done: true };
     yield { type: "fail", label: "Download", detail: (err as Error).message };
     return null;
   }
-  yield { type: "spinner", id: "download", message: "Downloaded on remote", done: true };
+  yield { type: "spinner", id: "download", message: "Downloaded", done: true };
 
   const verified = yield* verifyReleaseChecksum(
-    release, assetName, remotePath,
+    release, assetName, destPath,
     (path, expected) => host.verifySha256(path, expected),
-    "Checksum verified on remote",
+    "Checksum verified",
   );
-  return verified ? remotePath : null;
+  return verified ? destPath : null;
 }
 
 export function extractCommandArgv(archivePath: string, destDir: string): string[] {
@@ -142,59 +143,21 @@ export async function* installBinary(
   host: Host,
 ): AsyncGenerator<StepEvent, boolean> {
   const binName = binaryBaseName(component);
+  const tmpExtract = stripArchiveSuffix(archivePath);
 
-  if (host.isRemote) {
-    const tmpExtract = stripArchiveSuffix(archivePath);
-    const result = await host.withElevation(
-      `mkdir -p ${tmpExtract} && ${extractCommand(archivePath, tmpExtract)}` +
-      ` && mkdir -p ${BIN_DIR} && rm -f ${BIN_DIR}/${binName}` +
-      ` && cp ${tmpExtract}/${binName} ${BIN_DIR}/${binName}` +
-      ` && chmod +x ${BIN_DIR}/${binName}` +
-      ` && rm -rf ${tmpExtract} ${archivePath}`,
-      `Install ${binName} binary`,
-    );
-    if (!result.success) {
-      if (!result.skipped) {
-        yield { type: "fail", label: "Install", detail: result.output };
-      }
-      return false;
+  const result = await host.withElevation(
+    `mkdir -p ${tmpExtract} && ${extractCommand(archivePath, tmpExtract)}` +
+    ` && mkdir -p ${BIN_DIR} && rm -f ${BIN_DIR}/${binName}` +
+    ` && cp ${tmpExtract}/${binName} ${BIN_DIR}/${binName}` +
+    ` && chmod +x ${BIN_DIR}/${binName}` +
+    ` && rm -rf ${tmpExtract} ${archivePath}`,
+    `Install ${binName} binary`,
+  );
+  if (!result.success) {
+    if (!result.skipped) {
+      yield { type: "fail", label: "Install", detail: result.output };
     }
-  } else {
-    const tmpExtract = stripArchiveSuffix(archivePath);
-    mkdirSync(tmpExtract, { recursive: true });
-
-    yield { type: "spinner", id: "extract", message: "Extracting…" };
-    const local = createLocalHost();
-    const extracted = await local.run(extractCommandArgv(archivePath, tmpExtract));
-    if (!extracted.ok) {
-      yield { type: "spinner", id: "extract", message: "Extract failed", done: true };
-      yield { type: "fail", label: "Extract", detail: extracted.output };
-      return false;
-    }
-
-    const localBinPath = `${tmpExtract}/${binName}`;
-    const remoteTmpPath = `/tmp/xinity-upload-${binName}`;
-    let effectivePath: string;
-    try {
-      effectivePath = await host.uploadFile(localBinPath, remoteTmpPath);
-    } catch (err) {
-      yield { type: "spinner", id: "extract", message: "Upload failed", done: true };
-      yield { type: "fail", label: "Upload", detail: (err as Error).message };
-      return false;
-    }
-    yield { type: "spinner", id: "extract", message: "Extracted", done: true };
-
-    const result = await host.withElevation(
-      `mkdir -p ${BIN_DIR} && rm -f ${BIN_DIR}/${binName} && cp ${effectivePath} ${BIN_DIR}/${binName} && chmod +x ${BIN_DIR}/${binName}` +
-        (effectivePath !== localBinPath ? ` && rm -f ${effectivePath}` : ""),
-      `Install ${binName} binary`,
-    );
-    if (!result.success) {
-      if (!result.skipped) {
-        yield { type: "fail", label: "Install", detail: result.output };
-      }
-      return false;
-    }
+    return false;
   }
 
   if (component === "dashboard") {
@@ -222,11 +185,5 @@ export async function* resolveRemoteArtifact(
     return null;
   }
 
-  if (host.isRemote) {
-    return yield* downloadAndVerifyOnHost(release, assetName, host);
-  }
-
-  const tmpDir = join(tmpdir(), `xinity-${Date.now()}`);
-  mkdirSync(tmpDir, { recursive: true });
-  return yield* downloadAndVerify(release, assetName, tmpDir);
+  return yield* downloadAndVerifyOnHost(release, assetName, host);
 }

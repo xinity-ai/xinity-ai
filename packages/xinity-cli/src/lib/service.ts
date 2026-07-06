@@ -1,7 +1,7 @@
 import { type Component, ENV_DIR, SECRETS_DIR, UNIT_DIR } from "./component-meta.ts";
 import { serializeEnvFile } from "./env-file.ts";
 import { generateUnit, getComponentConfig, unitName, type UnitConfig } from "./systemd.ts";
-import { type Host, createLocalHost, isUnitActiveOn, getUnitStatusOn } from "./host.ts";
+import { type Host, isUnitActiveOn, getUnitStatusOn } from "./host.ts";
 import type { StepEvent } from "./step-event.ts";
 
 export interface ServiceResult {
@@ -21,7 +21,7 @@ export async function writeEnvConfig(
   component: Component,
   config: Record<string, string>,
   secrets: Record<string, string>,
-  host: Host = createLocalHost(),
+  host: Host,
 ): Promise<ServiceResult> {
   const envContent = serializeEnvFile(applyEnvDerivations(component, config));
   const envPath = `${ENV_DIR}/${component}.env`;
@@ -51,7 +51,7 @@ export async function writeEnvConfig(
 export async function writeSystemdUnit(
   component: Component,
   secretKeys: string[],
-  host: Host = createLocalHost(),
+  host: Host,
 ): Promise<ServiceResult> {
   const baseConfig = getComponentConfig(component);
   const config: UnitConfig = { ...baseConfig, secretKeys };

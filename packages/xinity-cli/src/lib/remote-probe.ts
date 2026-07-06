@@ -134,8 +134,6 @@ function buildProbeScript(
  */
 export function createCachedHost(realHost: Host, state: RemoteState): Host {
   return {
-    isRemote: realHost.isRemote,
-
     run(args: string[]): Promise<RunResult> {
       // Intercept `systemctl is-active <unit>` and `uname -s`
       if (args[0] === "systemctl" && args[1] === "is-active" && args[2]) {

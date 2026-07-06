@@ -2,7 +2,7 @@ import * as p from "./clack.ts";
 import pc from "picocolors";
 import { readManifest, writeManifest } from "./manifest.ts";
 import { analyzeEnvSchema, categorizeFields } from "./env-prompt.ts";
-import { type Host, createLocalHost, isUnitActiveOn } from "./host.ts";
+import { type Host, isUnitActiveOn } from "./host.ts";
 import { unitName } from "./systemd.ts";
 import { runSteps } from "./step-runner.ts";
 import type { StepEvent } from "./step-event.ts";
@@ -31,10 +31,9 @@ function* elevationStep(
 export async function* removeComponent(opts: {
   component: Component;
   purge?: boolean;
-  host?: Host;
+  host: Host;
 }): AsyncGenerator<StepEvent, RemoveResult> {
-  const { component, purge = false } = opts;
-  const host = opts.host ?? createLocalHost();
+  const { component, purge = false, host } = opts;
   const errors: string[] = [];
   const manifest = await readManifest(host);
   const entry = manifest.components[component];
@@ -149,13 +148,12 @@ export async function* removeComponent(opts: {
   return { success, errors };
 }
 
-export async function removeAll(purge = false, host?: Host): Promise<void> {
-  const h = host ?? createLocalHost();
+export async function removeAll(purge = false, host: Host): Promise<void> {
   const { runComponentSequence } = await import("./installer.ts");
 
   await runComponentSequence(
     ["gateway", "dashboard", "daemon", "infoserver"],
-    (component) => runSteps(removeComponent({ component, purge, host: h })),
+    (component) => runSteps(removeComponent({ component, purge, host })),
   );
 
   p.log.step(pc.bold("\n── Cleanup ──"));
@@ -165,5 +163,5 @@ export async function removeAll(purge = false, host?: Host): Promise<void> {
     `rmdir ${BIN_DIR} 2>/dev/null || true`,
     `rmdir /opt/xinity 2>/dev/null || true`,
   ].join(" && ");
-  await h.withElevation(cleanDirs, "Clean up empty directories");
+  await host.withElevation(cleanDirs, "Clean up empty directories");
 }

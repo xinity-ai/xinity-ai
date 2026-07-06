@@ -21,20 +21,16 @@ export interface FakeHostConfig {
   withElevation?: ElevationHandler;
   /** Virtual filesystem for readFile/fileExists. */
   files?: Record<string, string>;
-  isRemote?: boolean;
 }
 
 const FAIL: RunResult = { ok: false, output: "", exitCode: 1 };
 const OK: RunResult = { ok: true, output: "", exitCode: 0 };
 
 export class FakeHost implements Host {
-  readonly isRemote: boolean;
   /** Every command string seen, in order, for assertions. */
   readonly calls: string[] = [];
 
-  constructor(private readonly config: FakeHostConfig = {}) {
-    this.isRemote = config.isRemote ?? false;
-  }
+  constructor(private readonly config: FakeHostConfig = {}) {}
 
   async run(args: string[]): Promise<RunResult> {
     this.calls.push(args.join(" "));

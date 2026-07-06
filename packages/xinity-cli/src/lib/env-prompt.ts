@@ -6,7 +6,7 @@ import { parseEnvString } from "./env-file.ts";
 import { type Component, ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, getAutoDefaults } from "./component-meta.ts";
 import { writeEnvConfig, writeSystemdUnit, restartService } from "./service.ts";
 import { runSteps } from "./step-runner.ts";
-import { createLocalHost, readSecrets, type Host } from "./host.ts";
+import { readSecrets, type Host } from "./host.ts";
 
 export interface EnvField {
   key: string;
@@ -350,9 +350,8 @@ export async function menuEditEnv(
  */
 export async function menuConfigureEnv(
   component: Component,
-  host?: Host,
+  host: Host,
 ): Promise<void> {
-  const h = host ?? createLocalHost();
   const schema = ENV_SCHEMAS[component];
   const fields = analyzeEnvSchema(schema);
   const { secretFields } = categorizeFields(fields);
@@ -361,12 +360,12 @@ export async function menuConfigureEnv(
   p.intro(`xinity configure ${pc.cyan(component)}`);
 
   const envPath = `${ENV_DIR}/${component}.env`;
-  const envContent = await h.readFile(envPath);
+  const envContent = await host.readFile(envPath);
   const existingConfig = envContent ? parseEnvString(envContent) : {};
   let secretsLocked = false;
   let existingSecrets: Record<string, string> = {};
   if (secretKeys.length > 0) {
-    const sr = await readSecrets(h, SECRETS_DIR, secretKeys, "Read existing secrets");
+    const sr = await readSecrets(host, SECRETS_DIR, secretKeys, "Read existing secrets");
     existingSecrets = sr.secrets;
     secretsLocked = sr.skipped;
   }
@@ -379,11 +378,11 @@ export async function menuConfigureEnv(
     return;
   }
 
-  const configResult = await writeEnvConfig(component, result.config, result.secrets, h);
+  const configResult = await writeEnvConfig(component, result.config, result.secrets, host);
   if (configResult.success) {
     p.log.success("Config – Environment configured");
-    await writeSystemdUnit(component, Object.keys(result.secrets), h);
-    await runSteps(restartService(component, h));
+    await writeSystemdUnit(component, Object.keys(result.secrets), host);
+    await runSteps(restartService(component, host));
   } else if (configResult.error) {
     p.log.error(`Config – ${configResult.error}`);
   }

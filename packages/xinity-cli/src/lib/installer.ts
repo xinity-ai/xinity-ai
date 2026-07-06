@@ -8,7 +8,7 @@ import { generateUnit, getComponentConfig, unitName } from "./systemd.ts";
 import { analyzeEnvSchema, categorizeFields, menuEditEnv, promptForEnv, splitValuesByCategory } from "./env-prompt.ts";
 import { parseEnvString } from "./env-file.ts";
 import { pass, fail, warn, info, cancelAndExit, promptOrExit } from "./output.ts";
-import { type Host, createLocalHost, commandExistsOn, isUnitActiveOn, readSecrets } from "./host.ts";
+import { type Host, commandExistsOn, isUnitActiveOn, readSecrets } from "./host.ts";
 import { isOllamaRunning, waitForOllamaRunning } from "./ollama-setup.ts";
 import { writeEnvConfig, writeSystemdUnit, stopService, startService, restartService } from "./service.ts";
 import { runSteps } from "./step-runner.ts";
@@ -61,13 +61,11 @@ export async function preflightCheck(
     (c) => c === "all" || serviceComponents.includes(c),
   );
   if (needsExtractor) {
-    const target = host.isRemote ? "the remote host" : "this machine";
-    await check("tar", `required on ${target} for binary extraction`, "apt install tar / dnf install tar / pacman -S tar");
+    await check("tar", "required on the target host for binary extraction", "apt install tar / dnf install tar / pacman -S tar");
   }
 
-  // curl is needed on remote hosts for downloading release assets
-  if (host.isRemote && components.some((c) => serviceComponents.includes(c) || c === "all" || c === "db")) {
-    await check("curl", "required on the remote host for downloading release assets");
+  if (components.some((c) => serviceComponents.includes(c) || c === "all" || c === "db")) {
+    await check("curl", "required on the target host for downloading release assets");
   }
 
   return issues;
@@ -396,15 +394,12 @@ async function resolveLocalArtifact(
 
   const isUpdate = !!(await readManifest(host)).components[component];
 
-  if (!host.isRemote) {
-    return { status: "ready", archivePath: buildResult.archivePath, versionString: buildResult.version, isUpdate };
-  }
-
   const remoteTmp = `/tmp/xinity-local-${Date.now()}.tar.gz`;
   const uploadSpinner = p.spinner();
   uploadSpinner.start("Uploading artifact...");
+  let effectivePath: string;
   try {
-    await host.uploadFile(buildResult.archivePath, remoteTmp);
+    effectivePath = await host.uploadFile(buildResult.archivePath, remoteTmp);
   } catch (err) {
     uploadSpinner.stop("Upload failed");
     fail("Upload", (err as Error).message);
@@ -412,13 +407,13 @@ async function resolveLocalArtifact(
   }
   uploadSpinner.stop("Uploaded");
 
-  const remoteHash = await host.computeSha256(remoteTmp);
-  if (remoteHash && remoteHash !== buildResult.sha256) {
-    fail("Verify", `Checksum mismatch after upload (local: ${buildResult.sha256}, remote: ${remoteHash})`);
+  const hostHash = await host.computeSha256(effectivePath);
+  if (hostHash && hostHash !== buildResult.sha256) {
+    fail("Verify", `Checksum mismatch after upload (local: ${buildResult.sha256}, host: ${hostHash})`);
     return { status: "failed", version: buildResult.version };
   }
   pass("Verify", "Checksum matched");
-  return { status: "ready", archivePath: remoteTmp, versionString: buildResult.version, isUpdate };
+  return { status: "ready", archivePath: effectivePath, versionString: buildResult.version, isUpdate };
 }
 
 /**
@@ -603,12 +598,11 @@ export async function installComponent(opts: {
   targetVersion: string;
   dryRun?: boolean;
   hardReset?: boolean;
-  host?: Host;
+  host: Host;
   /** Extra env defaults carried from prior setup steps (e.g. DB_CONNECTION_URL, REDIS_URL). */
   envOverrides?: Record<string, string>;
 }): Promise<InstallResult> {
-  const { component, targetVersion, dryRun = false, hardReset = false } = opts;
-  const host = opts.host ?? createLocalHost();
+  const { component, targetVersion, dryRun = false, hardReset = false, host } = opts;
 
   // 1. Pre-checks
   const preErrors = await preChecks(component, host);
@@ -786,13 +780,11 @@ export async function runComponentSequence<T extends { success: boolean; errors:
 }
 
 /** Install all components in sequence, carrying shared env vars forward. */
-export async function installAll(targetVersion: string, dryRun = false, hardReset = false, host?: Host): Promise<void> {
+export async function installAll(targetVersion: string, dryRun = false, hardReset = false, host: Host): Promise<void> {
   if (targetVersion.startsWith("local:")) {
     fail("Local build", "'xinity up all' does not support local: builds. Run 'xinity up <component>' for each component individually.");
     return;
   }
-
-  const resolvedHost = host ?? createLocalHost();
 
   // Shared env vars accumulated across setup steps
   const shared: Record<string, string> = {};
@@ -800,7 +792,7 @@ export async function installAll(targetVersion: string, dryRun = false, hardRese
   // ── 1. Database ────────────────────────────────────────────────────────
   p.log.step(pc.bold("\n── database ──"));
   const { runMigrations } = await import("./migrator.ts");
-  const dbResult = await runMigrations({ targetVersion, dryRun, host: resolvedHost });
+  const dbResult = await runMigrations({ targetVersion, dryRun, host: host });
   if (!dbResult.success) {
     const proceed = await confirmContinueAfterFailure("Database", `Had issues: ${dbResult.errors.join(", ")}`);
     if (!proceed) return;
@@ -812,7 +804,7 @@ export async function installAll(targetVersion: string, dryRun = false, hardRese
   // ── 2. Redis ───────────────────────────────────────────────────────────
   p.log.step(pc.bold("\n── redis ──"));
   const { discoverRedisUrl } = await import("./redis-setup.ts");
-  const redisUrl = await discoverRedisUrl(resolvedHost, dryRun);
+  const redisUrl = await discoverRedisUrl(host, dryRun);
   if (redisUrl) {
     shared.REDIS_URL = redisUrl;
   } else {
@@ -833,7 +825,7 @@ export async function installAll(targetVersion: string, dryRun = false, hardRese
     p.log.step(pc.bold("\n── infoserver ──"));
     const result = await installComponent({
       component: "infoserver",
-      targetVersion, dryRun, hardReset, host: resolvedHost,
+      targetVersion, dryRun, hardReset, host: host,
       envOverrides: shared,
     });
     if (!result.success) {
@@ -844,7 +836,7 @@ export async function installAll(targetVersion: string, dryRun = false, hardRese
 
   // ── 4+5. Gateway + Dashboard ───────────────────────────────────────────
   const coreOk = await runComponentSequence(["gateway", "dashboard"], (component) =>
-    installComponent({ component, targetVersion, dryRun, hardReset, host: resolvedHost, envOverrides: shared }),
+    installComponent({ component, targetVersion, dryRun, hardReset, host: host, envOverrides: shared }),
   );
   if (!coreOk) return;
 
@@ -863,7 +855,7 @@ export async function installAll(targetVersion: string, dryRun = false, hardRese
     if (p.isCancel(setupOllama)) return;
     if (setupOllama) {
       const { provisionOllama, LOCAL_OLLAMA_ENDPOINT } = await import("./ollama-setup.ts");
-      if (await provisionOllama(resolvedHost, dryRun)) {
+      if (await provisionOllama(host, dryRun)) {
         shared.XINITY_OLLAMA_ENDPOINT = LOCAL_OLLAMA_ENDPOINT;
       }
     }
@@ -871,7 +863,7 @@ export async function installAll(targetVersion: string, dryRun = false, hardRese
     p.log.step(pc.bold("\n── daemon ──"));
     const result = await installComponent({
       component: "daemon",
-      targetVersion, dryRun, hardReset, host: resolvedHost,
+      targetVersion, dryRun, hardReset, host: host,
       envOverrides: shared,
     });
     if (!result.success) {
@@ -886,7 +878,7 @@ export async function installAll(targetVersion: string, dryRun = false, hardRese
   doctorSpinner.start("Running diagnostics…");
   const report = await runDoctor({
     interactive: false,
-    host: resolvedHost,
+    host: host,
     spinner: {
       message: (msg: string) => doctorSpinner.message(msg),
       stop: () => doctorSpinner.stop(""),
@@ -906,11 +898,11 @@ export async function installAll(targetVersion: string, dryRun = false, hardRese
   // ── Post-install summary ──────────────────────────────────────────────
   const summaryLines: string[] = [];
 
-  const dashContent = await resolvedHost.readFile(`${ENV_DIR}/dashboard.env`);
+  const dashContent = await host.readFile(`${ENV_DIR}/dashboard.env`);
   const dashboardOrigin = dashContent ? parseEnvString(dashContent).ORIGIN : undefined;
   if (dashboardOrigin) summaryLines.push(`Dashboard:  ${pc.cyan(dashboardOrigin)}`);
 
-  const gwContent = await resolvedHost.readFile(`${ENV_DIR}/gateway.env`);
+  const gwContent = await host.readFile(`${ENV_DIR}/gateway.env`);
   if (gwContent) {
     const parsed = parseEnvString(gwContent);
     const gwHost = parsed.HOST || "localhost";

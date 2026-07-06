@@ -3,8 +3,7 @@ import { menuConfigureCli, loadConfig, saveConfig, updateConfig } from "../lib/c
 import { menuConfigureEnv } from "../lib/env-prompt.ts";
 import type { Component } from "../lib/component-meta.ts";
 import type { CliConfig } from "../lib/config.ts";
-import { createLocalHost } from "../lib/host.ts";
-import { connectRemoteHost } from "../lib/remote-host.ts";
+import { connectHost } from "../lib/remote-host.ts";
 
 const CLI_CONFIG_KEYS = ["apiKey", "dashboardUrl", "githubProjectUrl", "githubToken"] as const;
 const COMPONENTS = ["cli", "gateway", "dashboard", "daemon", "infoserver"] as const;
@@ -52,7 +51,7 @@ export const configureCommand: CommandModule = {
     if (component === "cli") {
       await menuConfigureCli();
     } else {
-      const host = targetHostArg ? await connectRemoteHost(targetHostArg) : createLocalHost();
+      const host = await connectHost(targetHostArg);
       try {
         await menuConfigureEnv(component as Component, host);
       } finally {
