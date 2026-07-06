@@ -16,6 +16,7 @@ import pc from "picocolors";
 
 import { fetchRelease, pickReleaseAsset, type Release } from "./github.ts";
 import { downloadAndVerify } from "./install-download.ts";
+import { runSteps } from "./step-runner.ts";
 import { parseEnvString } from "./env-file.ts";
 import { fail, pass, info, warn } from "./output.ts";
 import { postgresSetup } from "./postgres-setup.ts";
@@ -136,7 +137,13 @@ async function discoverConnectionUrl(
     const url = await postgresSetup(host, dryRun);
     if (url) {
       const { testPostgresConnection } = await import("./connectivity.ts");
-      await testPostgresConnection(url, host);
+      const spinner = p.spinner();
+      spinner.start("Testing database connection…");
+      const result = await testPostgresConnection(url, host);
+      spinner.stop(result.success ? "Database connection successful" : "Database connection failed");
+      if (!result.success && result.error) {
+        p.log.error(pc.dim(result.error));
+      }
     }
     return url;
   }
@@ -166,8 +173,16 @@ async function promptAndValidateDbUrl(host: Host): Promise<string | undefined> {
       return undefined;
     }
 
-    const ok = await testPostgresConnection(value, host);
-    if (ok) return value;
+    const spinner = p.spinner();
+    spinner.start("Testing database connection…");
+    const connResult = await testPostgresConnection(value, host);
+    spinner.stop(connResult.success ? "Database connection successful" : "Database connection failed");
+    if (!connResult.success && connResult.error) {
+      p.log.error(pc.dim(connResult.error));
+    }
+    if (connResult.success) {
+      return value;
+    }
 
     const action = await p.select({
       message: "Could not connect to the database.",
@@ -229,7 +244,7 @@ export async function runMigrations(opts: {
   const tmpDir = join(tmpdir(), `xinity-db-migrate-${Date.now()}`);
   mkdirSync(tmpDir, { recursive: true });
 
-  const archivePath = await downloadAndVerify(release, assetName, tmpDir);
+  const archivePath = await runSteps(downloadAndVerify(release, assetName, tmpDir));
   if (!archivePath) {
     return { success: false, errors: [], connectionUrl };
   }

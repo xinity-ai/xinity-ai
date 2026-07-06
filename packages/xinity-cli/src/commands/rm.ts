@@ -2,6 +2,7 @@ import type { CommandModule } from "yargs";
 import * as p from "../lib/clack.ts";
 import pc from "picocolors";
 import { removeComponent, removeAll } from "../lib/install-remove.ts";
+import { runSteps } from "../lib/step-runner.ts";
 import type { Component } from "../lib/component-meta.ts";
 import { logErrors } from "../lib/output.ts";
 import { createLocalHost } from "../lib/host.ts";
@@ -62,11 +63,11 @@ export const rmCommand: CommandModule = {
         return;
       }
 
-      const result = await removeComponent({
+      const result = await runSteps(removeComponent({
         component: component as Component,
         purge,
         host,
-      });
+      }));
 
       logErrors(result);
       p.outro("Done");

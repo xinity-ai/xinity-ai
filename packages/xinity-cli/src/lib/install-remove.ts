@@ -2,34 +2,37 @@ import * as p from "./clack.ts";
 import pc from "picocolors";
 import { readManifest, writeManifest } from "./manifest.ts";
 import { analyzeEnvSchema, categorizeFields } from "./env-prompt.ts";
-import { pass, warn, info } from "./output.ts";
 import { type Host, createLocalHost, isUnitActiveOn } from "./host.ts";
 import { unitName } from "./systemd.ts";
+import { runSteps } from "./step-runner.ts";
+import type { StepEvent } from "./step-event.ts";
 import {
   type Component, type RemoveResult,
   ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, BIN_DIR, DASHBOARD_DIR, UNIT_DIR,
   binaryBaseName,
 } from "./component-meta.ts";
 
-function reportElevationStep(
+function* elevationStep(
   result: { success: boolean; skipped: boolean; output: string },
   label: string,
   successMsg: string,
   failurePrefix: string,
   errors: string[],
-): void {
+): Generator<StepEvent> {
   if (result.success) {
-    pass(label, successMsg);
+    yield { type: "pass", label, detail: successMsg };
   } else if (!result.skipped) {
-    errors.push(`${failurePrefix}: ${result.output}`);
+    const error = `${failurePrefix}: ${result.output}`;
+    errors.push(error);
+    yield { type: "fail", label, detail: error };
   }
 }
 
-export async function removeComponent(opts: {
+export async function* removeComponent(opts: {
   component: Component;
   purge?: boolean;
   host?: Host;
-}): Promise<RemoveResult> {
+}): AsyncGenerator<StepEvent, RemoveResult> {
   const { component, purge = false } = opts;
   const host = opts.host ?? createLocalHost();
   const errors: string[] = [];
@@ -37,21 +40,21 @@ export async function removeComponent(opts: {
   const entry = manifest.components[component];
 
   if (!entry) {
-    warn("Not installed", `${component} is not in the manifest`);
+    yield { type: "warn", label: "Not installed", detail: `${component} is not in the manifest` };
   }
 
   const unit = unitName(component);
 
   if (await isUnitActiveOn(host, unit)) {
-    info("Service", `Stopping ${unit}…`);
+    yield { type: "info", label: "Service", detail: `Stopping ${unit}…` };
     const result = await host.withElevation(
       `systemctl disable --now ${unit}`,
       `Stop and disable ${unit}`,
     );
-    reportElevationStep(result, "Service", `${unit} stopped and disabled`, `Failed to stop ${unit}`, errors);
+    yield* elevationStep(result, "Service", `${unit} stopped and disabled`, `Failed to stop ${unit}`, errors);
   } else {
     await host.withElevation(`systemctl disable ${unit} 2>/dev/null || true`, `Disable ${unit}`);
-    info("Service", `${unit} was not running`);
+    yield { type: "info", label: "Service", detail: `${unit} was not running` };
   }
 
   const unitPath = `${UNIT_DIR}/${unit}`;
@@ -59,7 +62,7 @@ export async function removeComponent(opts: {
     `rm -f ${unitPath} && systemctl daemon-reload`,
     `Remove ${unit} unit file`,
   );
-  reportElevationStep(rmUnit, "Systemd", `Removed ${unitPath}`, "Failed to remove unit", errors);
+  yield* elevationStep(rmUnit, "Systemd", `Removed ${unitPath}`, "Failed to remove unit", errors);
 
   const binaryPath = `${BIN_DIR}/${binaryBaseName(component)}`;
   const rmBin = await host.withElevation(
@@ -68,14 +71,14 @@ export async function removeComponent(opts: {
       : `rm -f ${binaryPath}`,
     `Remove ${component} binary`,
   );
-  reportElevationStep(rmBin, "Files", `Removed ${binaryPath}`, "Failed to remove binary", errors);
+  yield* elevationStep(rmBin, "Files", `Removed ${binaryPath}`, "Failed to remove binary", errors);
 
   const envPath = `${ENV_DIR}/${component}.env`;
   const rmEnv = await host.withElevation(
     `rm -f ${envPath}`,
     `Remove ${component} env config`,
   );
-  reportElevationStep(rmEnv, "Config", `Removed ${envPath}`, "Failed to remove env config", errors);
+  yield* elevationStep(rmEnv, "Config", `Removed ${envPath}`, "Failed to remove env config", errors);
 
   const schema = ENV_SCHEMAS[component];
   const fields = analyzeEnvSchema(schema);
@@ -95,7 +98,7 @@ export async function removeComponent(opts: {
     const kept = secretFields.filter((f) => sharedKeys.has(f.key));
 
     if (kept.length > 0) {
-      info("Secrets", `Keeping ${kept.map((f) => f.key).join(", ")} (used by other components)`);
+      yield { type: "info", label: "Secrets", detail: `Keeping ${kept.map((f) => f.key).join(", ")} (used by other components)` };
     }
 
     if (toDelete.length > 0) {
@@ -104,7 +107,7 @@ export async function removeComponent(opts: {
         `rm -f ${secretPaths}`,
         `Remove ${component} secret files`,
       );
-      reportElevationStep(rmSecrets, "Secrets", `Removed ${toDelete.length} secret file(s)`, "Failed to remove secrets", errors);
+      yield* elevationStep(rmSecrets, "Secrets", `Removed ${toDelete.length} secret file(s)`, "Failed to remove secrets", errors);
     }
   }
 
@@ -114,14 +117,14 @@ export async function removeComponent(opts: {
       `rm -f ${vllmTemplatePath} && systemctl daemon-reload`,
       "Remove vLLM systemd template unit",
     );
-    reportElevationStep(rmTemplate, "vLLM", `Removed ${vllmTemplatePath}`, "Failed to remove vLLM template", errors);
+    yield* elevationStep(rmTemplate, "vLLM", `Removed ${vllmTemplatePath}`, "Failed to remove vLLM template", errors);
 
     if (purge) {
       const rmVllmEnv = await host.withElevation(
         "rm -rf /etc/vllm",
         "Purge vLLM environment config",
       );
-      reportElevationStep(rmVllmEnv, "Purge", "Removed /etc/vllm", "Failed to purge /etc/vllm", errors);
+      yield* elevationStep(rmVllmEnv, "Purge", "Removed /etc/vllm", "Failed to purge /etc/vllm", errors);
     }
   }
 
@@ -131,16 +134,16 @@ export async function removeComponent(opts: {
       `rm -rf ${stateDir}`,
       `Purge ${component} state data`,
     );
-    reportElevationStep(rmState, "Purge", `Removed ${stateDir}`, "Failed to purge state", errors);
+    yield* elevationStep(rmState, "Purge", `Removed ${stateDir}`, "Failed to purge state", errors);
   }
 
   delete manifest.components[component];
   await writeManifest(manifest, host);
-  pass("Manifest", `Removed ${component} from manifest`);
+  yield { type: "pass", label: "Manifest", detail: `Removed ${component} from manifest` };
 
   const success = errors.length === 0;
   if (success) {
-    pass("Done", `${component} removed successfully`);
+    yield { type: "pass", label: "Done", detail: `${component} removed successfully` };
   }
 
   return { success, errors };
@@ -152,7 +155,7 @@ export async function removeAll(purge = false, host?: Host): Promise<void> {
 
   await runComponentSequence(
     ["gateway", "dashboard", "daemon", "infoserver"],
-    (component) => removeComponent({ component, purge, host: h }),
+    (component) => runSteps(removeComponent({ component, purge, host: h })),
   );
 
   p.log.step(pc.bold("\n── Cleanup ──"));
