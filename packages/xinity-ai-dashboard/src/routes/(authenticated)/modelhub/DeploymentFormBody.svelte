@@ -11,7 +11,7 @@
   import * as Select from "$lib/components/ui/select";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { ChevronDown } from "@lucide/svelte";
-  import type { DeploymentSettings } from "common-db";
+  import type { DeploymentSettings } from "common-db/deployment-settings";
   import DeploymentSettingsSection from "./DeploymentSettingsSection.svelte";
 
   let {
@@ -396,8 +396,6 @@
           </p>
         </div>
 
-        <DeploymentSettingsSection bind:settings selectedPrimaryModel={selectedPrimaryModel} {idSuffix} />
-
         {#if showKvCacheSliders}
           <div class="space-y-2">
             <Label for="kv-cache-size{idSuffix}">
@@ -464,6 +462,8 @@
             {/if}
           </div>
         {/if}
+
+        <DeploymentSettingsSection bind:settings selectedPrimaryModel={selectedPrimaryModel} {idSuffix} />
       </Collapsible.Content>
     </section>
   </Collapsible.Root>
