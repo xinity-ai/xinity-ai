@@ -11,6 +11,7 @@ import { DEEP_RESEARCH_SYSTEM_PROMPT, createCompactionStep } from "../deep-resea
 import {
   CreateResponseBodySchema,
   type CreateResponseBody,
+  type OutputItem,
 } from "../responses/schemas";
 import {
   type IncludeValue,
@@ -23,6 +24,9 @@ import {
   createResponseObject,
   markResponseFailed,
   buildOutputItems,
+  buildStepOutputItems,
+  extractSearchAnnotations,
+  formatUsage,
   buildGenerationParams,
 } from "../responses/builders";
 import { createResponseStream } from "../responses/stream";
@@ -288,6 +292,8 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
       const contextLimit = modelInfo.maxContextLength;
       const userQuery = extractText(input) ?? "";
 
+      const compactionUsage = { inputTokens: 0, outputTokens: 0 };
+
       const deepGenParams = {
         ...buildGenerationParams(body, modelInfo, provider, toModelMessages(messagesForLLM), deepTools, true, outputConfig),
         stopWhen: [isLoopFinished(), stepCountIs(maxSteps)],
@@ -295,6 +301,8 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
           provider, modelInfo.model, contextLimit,
           env.DEEP_RESEARCH_COMPACTION_THRESHOLD, userQuery,
           (usage) => {
+            compactionUsage.inputTokens += usage.inputTokens;
+            compactionUsage.outputTokens += usage.outputTokens;
             recordUsage({
               usage,
               auth,
@@ -310,7 +318,7 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
       const baseResponse = await createAndSaveInProgressResponse(auth.orgId, responseId, createdAt, originalModel, body);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      void runBackground({ orgId: auth.orgId, responseId, createdAt, originalModel, body, genParams: deepGenParams as any, include, outputConfig, logFields });
+      void runBackground({ orgId: auth.orgId, responseId, createdAt, originalModel, body, genParams: deepGenParams as any, include, outputConfig, logFields, deepResearch: { compactionUsage } });
 
       return Response.json(baseResponse, { status: 202 });
     }
@@ -413,10 +421,25 @@ type GeneratePersistArgs = {
   include: IncludeValue[];
   outputConfig: ReturnType<typeof buildOutputConfig>;
   logFields: LogFields;
+  deepResearch?: {
+    compactionUsage: { inputTokens: number; outputTokens: number };
+  };
 };
 
+function createWriteQueue(onError: (err: unknown) => void) {
+  let tail = Promise.resolve();
+  return {
+    enqueue(write: () => Promise<void>) {
+      tail = tail.then(write).catch(onError);
+    },
+    flush() {
+      return tail;
+    },
+  };
+}
+
 async function generateAndPersistCompletedResponse(args: GeneratePersistArgs, background = false) {
-  const { orgId, responseId, createdAt, originalModel, body, genParams, include, outputConfig, logFields } = args;
+  const { orgId, responseId, createdAt, originalModel, body, genParams, include, outputConfig, logFields, deepResearch } = args;
   const toolCalls: ToolCallItem[] = [];
   const toolResults: ToolResultData[] = [];
 
@@ -426,26 +449,96 @@ async function generateAndPersistCompletedResponse(args: GeneratePersistArgs, ba
     ? (existingStop ? [existingStop, cancelCheck] : [cancelCheck])
     : existingStop;
 
+  const progressItems: OutputItem[] = [];
+  const progressWrites = createWriteQueue((err) => {
+    log.warn({ err, responseId }, "Failed to persist research progress");
+  });
+  const stepUsage = { inputTokens: 0, outputTokens: 0 };
+
+  type StepEvent = {
+    toolCalls?: Array<{ toolCallId: string; toolName: string; input?: unknown }>;
+    toolResults?: Array<Record<string, unknown>>;
+    usage?: { inputTokens?: number; outputTokens?: number };
+  };
+
+  const onStepFinish: (event: StepEvent) => void = deepResearch
+    ? (step) => {
+        stepUsage.inputTokens += step.usage?.inputTokens ?? 0;
+        stepUsage.outputTokens += step.usage?.outputTokens ?? 0;
+
+        if (step.toolResults) {
+          for (const tr of step.toolResults) {
+            const id = tr.toolCallId;
+            const name = tr.toolName;
+            if (typeof id === "string" && typeof name === "string") {
+              toolResults.push({ toolCallId: id, toolName: name, args: tr.input, result: tr.output });
+            }
+          }
+        }
+
+        const newItems = buildStepOutputItems(step.toolCalls, step.toolResults, include);
+        if (newItems.length === 0) return;
+        progressItems.push(...newItems);
+
+        const totalUsage = {
+          inputTokens: stepUsage.inputTokens + deepResearch.compactionUsage.inputTokens,
+          outputTokens: stepUsage.outputTokens + deepResearch.compactionUsage.outputTokens,
+        };
+        const snapshot = [...progressItems];
+        progressWrites.enqueue(async () => {
+          const stored = await getResponse(orgId, responseId) as Record<string, unknown> | null;
+          if (!stored || stored.status === "cancelled") return;
+          stored.output = snapshot;
+          stored.usage = formatUsage(totalUsage);
+          await saveResponse(orgId, responseId, stored);
+        });
+      }
+    : createToolTracker(toolCalls, toolResults);
+
   const result = await generateText({
     ...genParams,
     stopWhen: stopConditions as Parameters<typeof generateText>[0]["stopWhen"],
-    onStepFinish: createToolTracker(toolCalls, toolResults),
+    onStepFinish,
   });
 
   if (background && await checkCancelled(orgId, responseId)) {
     return;
   }
 
+  await progressWrites.flush();
+
   const responseText = resolveResponseText(result.text, () => result.output, outputConfig.usesStructuredOutput);
+
+  const finalUsage = deepResearch
+    ? {
+        inputTokens: (result.usage.inputTokens ?? 0) + deepResearch.compactionUsage.inputTokens,
+        outputTokens: (result.usage.outputTokens ?? 0) + deepResearch.compactionUsage.outputTokens,
+      }
+    : result.usage;
+
+  let finalOutput: OutputItem[];
+  if (deepResearch) {
+    const annotations = extractSearchAnnotations(toolResults);
+    progressItems.push({
+      id: `msg_${responseId}`,
+      type: "message",
+      status: "completed",
+      role: "assistant",
+      content: [{ type: "output_text", text: responseText, annotations, logprobs: null }],
+    });
+    finalOutput = progressItems;
+  } else {
+    finalOutput = buildOutputItems(responseId, responseText, toolCalls, toolResults, include);
+  }
+
   const completedResponse = createResponseObject({
     responseId, createdAt, model: originalModel, status: "completed",
-    output: buildOutputItems(responseId, responseText, toolCalls, toolResults, include),
-    usage: result.usage, body,
+    output: finalOutput, usage: finalUsage, body,
   });
   await saveResponse(orgId, responseId, completedResponse);
   logChatUsage({
     ...logFields,
-    usage: result.usage,
+    usage: finalUsage,
     outputData: { model: originalModel, choices: [{ index: 0, message: { role: "assistant", content: responseText } }] },
     stream: false,
   });
