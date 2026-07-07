@@ -131,21 +131,21 @@ describe("orchestration: node goes unavailable", () => {
   });
 
   test("findServerForModel skips nodes missing a required feature", () => {
-    const node = makeNode({ id: "node-k", host: "10.0.0.11", drivers: ["vllm"], driverVersions: { vllm: "0.20.0" }, driverFeatures: {} });
+    const node = makeNode({ id: "node-k", host: "10.0.0.11", driverVersions: { vllm: "0.20.0" }, driverFeatures: {} });
     const state = buildClusterState([], [node]);
 
     expect(findServerForModel("whisper", "vllm", 8, state, [], FF, undefined, undefined, ["audio"])).toBeNull();
   });
 
   test("findServerForModel accepts nodes with the required feature", () => {
-    const node = makeNode({ id: "node-l", host: "10.0.0.12", drivers: ["vllm"], driverVersions: { vllm: "0.20.0" }, driverFeatures: { vllm: ["audio"] } });
+    const node = makeNode({ id: "node-l", host: "10.0.0.12", driverVersions: { vllm: "0.20.0" }, driverFeatures: { vllm: ["audio"] } });
     const state = buildClusterState([], [node]);
 
     expect(findServerForModel("whisper", "vllm", 8, state, [], FF, undefined, undefined, ["audio"])).toBe("node-l");
   });
 
   test("findServerForModel without requiredFeatures does not filter by features", () => {
-    const node = makeNode({ id: "node-m", host: "10.0.0.13", drivers: ["vllm"], driverVersions: { vllm: "0.20.0" } });
+    const node = makeNode({ id: "node-m", host: "10.0.0.13", driverVersions: { vllm: "0.20.0" } });
     const state = buildClusterState([], [node]);
 
     expect(findServerForModel("chat-model", "vllm", 8, state, [], FF)).toBe("node-m");
