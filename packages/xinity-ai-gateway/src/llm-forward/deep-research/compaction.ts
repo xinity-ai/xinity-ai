@@ -18,20 +18,15 @@ function estimateStepTokens(steps: ReadonlyArray<StepWithUsage>): number {
   return total;
 }
 
-/**
- * Creates a `prepareStep` callback that compacts the conversation context
- * when accumulated token usage approaches the model's context limit.
- *
- * When usage exceeds `contextLimit * compactionThreshold`, the callback
- * summarises all research so far into a single message and replaces the
- * step history, freeing context for continued research.
- */
+export type CompactionUsageCallback = (usage: { inputTokens: number; outputTokens: number }) => void;
+
 export function createCompactionStep(
   provider: OpenAICompatibleProvider,
   modelId: string,
   contextLimit: number,
   compactionThreshold: number,
   originalUserQuery: string,
+  onCompactionUsage?: CompactionUsageCallback,
 ) {
   const threshold = Math.floor(contextLimit * compactionThreshold);
 
@@ -53,6 +48,13 @@ export function createCompactionStep(
         messages,
         maxRetries: 1,
       });
+
+      if (summary.usage && onCompactionUsage) {
+        onCompactionUsage({
+          inputTokens: summary.usage.inputTokens ?? 0,
+          outputTokens: summary.usage.outputTokens ?? 0,
+        });
+      }
 
       return {
         messages: [
