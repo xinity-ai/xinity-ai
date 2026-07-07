@@ -29,6 +29,7 @@ const getModelInfo = jest.fn<typeof getModelInfoT>(async () => ({
   tls: false,
   tags: [],
   requestParams: {},
+  maxContextLength: 131072,
   release: () => {},
 }));
 

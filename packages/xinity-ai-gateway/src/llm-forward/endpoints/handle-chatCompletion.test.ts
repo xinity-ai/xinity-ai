@@ -35,6 +35,7 @@ const getModelInfo = jest.fn<typeof getModelInfoT>(async () => ({
   tls: false,
   tags: ["tools"],
   requestParams: {},
+  maxContextLength: 131072,
   release: () => {},
 }))
 mock.module("../model-data", () => ({
@@ -304,6 +305,7 @@ describe("handleChatCompletion", () => {
       tls: false,
       tags: [],
       requestParams: {},
+      maxContextLength: 131072,
       release: () => {},
     }));
 
@@ -507,6 +509,7 @@ describe("handleChatCompletion, tool calling", () => {
       tls: false,
       tags: [],
       requestParams: {},
+      maxContextLength: 131072,
       release: () => {},
     }));
 
@@ -538,6 +541,7 @@ describe("handleChatCompletion, tool calling", () => {
       tls: false,
       tags: undefined,
       requestParams: undefined,
+      maxContextLength: 131072,
       release: () => {},
     }));
 

@@ -27,6 +27,7 @@ const transcriptionModel = () => ({
   type: "transcription",
   tags: [],
   requestParams: {},
+  maxContextLength: 131072,
   release: () => {},
 });
 const getModelInfo = jest.fn<typeof getModelInfoT>(async () => transcriptionModel());

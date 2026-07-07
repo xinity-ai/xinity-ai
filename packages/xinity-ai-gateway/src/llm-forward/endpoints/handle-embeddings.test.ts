@@ -30,6 +30,7 @@ const getModelInfo = jest.fn<typeof getModelInfoT>(async () => ({
   type: "embedding",
   tags: [],
   requestParams: {},
+  maxContextLength: 131072,
   release: () => {},
 }));
 
@@ -215,6 +216,7 @@ describe("handleEmbeddingGeneration", () => {
       type: "chat",
       tags: [],
       requestParams: {},
+      maxContextLength: 131072,
       release: () => {},
     }));
 

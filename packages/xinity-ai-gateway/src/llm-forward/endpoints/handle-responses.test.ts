@@ -27,6 +27,7 @@ const getModelInfo = jest.fn<typeof getModelInfoT>(async () => ({
   tls: false,
   tags: ["tools"],
   requestParams: {},
+  maxContextLength: 131072,
   release: () => {},
 }));
 
@@ -491,6 +492,7 @@ describe("handleResponses", () => {
       authToken: null,
       tls: false,
       tags: [],
+      maxContextLength: 131072,
       release: () => {},
     }));
 
@@ -524,6 +526,7 @@ describe("handleResponses", () => {
       authToken: null,
       tls: false,
       tags: undefined,
+      maxContextLength: 131072,
       release: () => {},
     }));
 
@@ -555,6 +558,7 @@ describe("handleResponses", () => {
       authToken: null,
       tls: false,
       tags: [],
+      maxContextLength: 131072,
       release: () => {},
     }));
 
@@ -592,6 +596,7 @@ describe("handleResponses", () => {
       authToken: null,
       tls: false,
       tags: undefined,
+      maxContextLength: 131072,
       release: () => {},
     }));
 

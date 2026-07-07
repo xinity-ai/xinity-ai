@@ -130,7 +130,6 @@ maxContextLength: z.number().int().positive().default(131072).describe("Maximum 
     "Arrays are deeply flattened to support YAML anchors. " +
     "Example: [\"*.gguf\", \"!consolidated.safetensors\"]"
   ),
-  contextLength: z.number().positive().optional().describe("Maximum context window size in tokens"),
   custom: z.looseObject({
     baseModel: z.string(),
     extraFacts: z.record(z.string(), z.unknown())

@@ -1,6 +1,6 @@
 import { generateText, streamText, isLoopFinished, stepCountIs } from "ai";
 import { resolveAuthorizedModel } from "../ai-sdk";
-import { errorResponse, logChatUsage, validateModelType, toModelMessages, SSE_RESPONSE_HEADERS, validationError, isUpstreamError, upstreamHttpStatus, clientFacingErrorMessage, modelLacksToolSupport } from "../util";
+import { errorResponse, logChatUsage, recordUsage, validateModelType, toModelMessages, SSE_RESPONSE_HEADERS, validationError, isUpstreamError, upstreamHttpStatus, clientFacingErrorMessage, modelLacksToolSupport } from "../util";
 import type { ApiCallInputMessage } from "common-db";
 import { checkAuth, type AuthResult } from "../auth";
 import { deleteResponse, getResponse, saveResponse } from "../response-store";
@@ -280,7 +280,7 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
       );
 
       const maxSteps = (body as Record<string, unknown>).max_tool_calls as number | undefined ?? env.DEEP_RESEARCH_MAX_STEPS;
-      const contextLimit = modelInfo.contextLength ?? 8192;
+      const contextLimit = modelInfo.maxContextLength;
       const userQuery = extractText(input) ?? "";
 
       const deepGenParams = {
@@ -289,6 +289,16 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
         prepareStep: createCompactionStep(
           provider, modelInfo.model, contextLimit,
           env.DEEP_RESEARCH_COMPACTION_THRESHOLD, userQuery,
+          (usage) => {
+            recordUsage({
+              usage,
+              auth,
+              modelInfo,
+              callStartTime,
+              logCalls: false,
+              deployment: originalModel,
+            });
+          },
         ),
         abortSignal: AbortSignal.timeout(env.DEEP_RESEARCH_TIMEOUT_MS),
       };
