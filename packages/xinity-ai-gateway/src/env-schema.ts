@@ -47,9 +47,6 @@ export const gatewayEnvSchema = z.object({
   DEEP_RESEARCH_MAX_STEPS: z.coerce.number().positive().default(30)
     .describe("Maximum tool-call steps for deep research mode")
     .meta(expert()),
-  DEEP_RESEARCH_TIMEOUT_MS: z.coerce.number().positive().default(600_000)
-    .describe("Timeout for deep research background jobs (default: 10 minutes)")
-    .meta(expert()),
   DEEP_RESEARCH_COMPACTION_THRESHOLD: z.coerce.number().min(0.1).max(0.95).default(0.70)
     .describe("Fraction of model context window at which compaction triggers")
     .meta(expert()),
