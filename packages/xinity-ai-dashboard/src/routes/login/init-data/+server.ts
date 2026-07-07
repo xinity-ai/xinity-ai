@@ -24,7 +24,10 @@ export const GET: RequestHandler = async ({ url, request }) => {
   if (!session) {
     error(403, "Not authorized");
   }
-  const callback = url.searchParams.get("callbackUrl");
+  const rawCallback = url.searchParams.get("callbackUrl");
+  const callback = rawCallback && rawCallback.startsWith("/") && !rawCallback.startsWith("//")
+    ? rawCallback
+    : "/";
   const name = url.searchParams.get("name");
 
   log.info({ callback, user: { name, id: session.user.id } }, "Entered user name");
@@ -33,5 +36,5 @@ export const GET: RequestHandler = async ({ url, request }) => {
     await getDB().update(userT).set({ name }).where(eq(userT.id, session.user.id));
   }
 
-  redirect(302, callback || "/");
+  redirect(302, callback);
 };

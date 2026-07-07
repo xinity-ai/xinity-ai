@@ -11,7 +11,10 @@ export const load: PageServerLoad = async ({ request, url }) => {
     redirect(303, "/");
   }
 
-  const callbackUrl = url.searchParams.get("callbackUrl") || "/";
+  const rawCallback = url.searchParams.get("callbackUrl");
+  const callbackUrl = rawCallback && rawCallback.startsWith("/") && !rawCallback.startsWith("//")
+    ? rawCallback
+    : "/";
   const configuredOrigin = new URL(serverEnv.ORIGIN);
   const hostMismatch =
     serverEnv.NODE_ENV !== "development" && url.host !== configuredOrigin.host;
