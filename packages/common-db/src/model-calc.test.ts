@@ -22,6 +22,7 @@ function makeDeployment(overrides: Partial<ModelDeployment> = {}): ModelDeployme
     kvCacheSize: null,
     earlyKvCacheSize: null,
     preferredDriver: null,
+    settings: { version: 1 },
     deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),

@@ -87,6 +87,17 @@ describe("buildDockerRunArgs", () => {
     ]);
   });
 
+  test("emits the audio decode duration env var only when set", () => {
+    const withDuration = buildDockerRunArgs("inst-1", { ...baseConfig, maxAudioDecodeDurationS: 1200 });
+    const envIdx = withDuration.indexOf("VLLM_MAX_AUDIO_DECODE_DURATION_S=1200");
+    expect(envIdx).toBeGreaterThan(0);
+    expect(withDuration[envIdx - 1]).toBe("-e");
+    expect(envIdx).toBeLessThan(withDuration.indexOf("-v"));
+
+    const without = buildDockerRunArgs("inst-1", baseConfig);
+    expect(without.some(a => a.startsWith("VLLM_MAX_AUDIO_DECODE_DURATION_S"))).toBe(false);
+  });
+
   test("preview mode runs detached without a restart policy (one-off, kept for log inspection)", () => {
     const argv = buildDockerRunArgs("inst-1", baseConfig, "preview");
     expect(argv.slice(0, 3)).toEqual(["docker", "run", "-d"]);
@@ -120,6 +131,12 @@ describe("buildSystemdEnvFile", () => {
     expect(out).toContain("VLLM_TRUST_REMOTE_CODE=true");
     expect(out).toContain("VLLM_GPU_MEMORY_UTILIZATION=0.85");
     expect(out).toContain("VLLM_EXTRA_ARGS=--runner pooling");
+  });
+
+  test("emits the audio decode duration env var only when set", () => {
+    const out = buildSystemdEnvFile({ ...baseConfig, maxAudioDecodeDurationS: 1200 });
+    expect(out).toContain("VLLM_MAX_AUDIO_DECODE_DURATION_S=1200");
+    expect(buildSystemdEnvFile(baseConfig)).not.toContain("VLLM_MAX_AUDIO_DECODE_DURATION_S");
   });
 });
 

@@ -11,6 +11,8 @@
   import * as Select from "$lib/components/ui/select";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { ChevronDown } from "@lucide/svelte";
+  import type { DeploymentSettings } from "common-db";
+  import DeploymentSettingsSection from "./DeploymentSettingsSection.svelte";
 
   let {
     selectedPrimaryModel,
@@ -26,6 +28,7 @@
     replicas = $bindable(),
     kvCacheSize = $bindable(),
     earlyKvCacheSize = $bindable(),
+    settings = $bindable<DeploymentSettings>({ version: 1 }),
     maxKvCache = 0,
     maxCanaryKvCache = 0,
     preferredDriver = $bindable(),
@@ -61,6 +64,7 @@
     replicas: number;
     kvCacheSize: number | null;
     earlyKvCacheSize: number | null;
+    settings: DeploymentSettings;
     maxKvCache: number;
     maxCanaryKvCache: number;
     preferredDriver: "ollama" | "vllm" | null;
@@ -391,6 +395,8 @@
             Up to {maxReplicas} {maxReplicas === 1 ? "replica" : "replicas"} can fit in the cluster.
           </p>
         </div>
+
+        <DeploymentSettingsSection bind:settings selectedPrimaryModel={selectedPrimaryModel} {idSuffix} />
 
         {#if showKvCacheSliders}
           <div class="space-y-2">

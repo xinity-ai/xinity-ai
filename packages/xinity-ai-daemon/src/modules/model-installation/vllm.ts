@@ -16,7 +16,7 @@ import {
   timer,
 } from "rxjs";
 import { getDB } from "../../db/connection";
-import { inArray, type ModelInstallation, modelInstallationStateT } from "common-db";
+import { inArray, resolveMaxAudioInputDurationS, type ModelInstallation, modelInstallationStateT } from "common-db";
 import { env } from "../../env";
 import {
   createDockerVllmOps,
@@ -201,6 +201,7 @@ async function downloadAndStart(installation: ModelInstallation, ops: VllmOps): 
     trustRemoteCode,
     gpuMemoryUtilization,
     extraArgs: buildVllmExtraArgs(modelType, hasToolsTag, extraArgs),
+    maxAudioDecodeDurationS: resolveMaxAudioInputDurationS(installation.settings),
   });
 
   return { modelType, providerModel };

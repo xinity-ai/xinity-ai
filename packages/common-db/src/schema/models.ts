@@ -1,6 +1,7 @@
 import { type InferSelectModel, sql } from "drizzle-orm";
 import { pgEnum, pgTable, real, text, timestamp, uuid, boolean, integer, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { organizationT } from "./orgSchema";
+import type { DeploymentSettings } from "../deployment-settings";
 
 export const lifecycleStateEnum = pgEnum("lifecycle_state", ["downloading", "installing", "ready", "failed"]);
 export const inferenceDriverEnum = pgEnum("inference_driver", ["ollama", "vllm"]);
@@ -53,6 +54,7 @@ export const modelDeploymentT = pgTable("model_deployment", {
   earlyKvCacheSize: real("early_kv_cache_size"),
   /** User-specified preferred inference driver. Null means auto (system default). */
   preferredDriver: inferenceDriverEnum("preferred_driver"),
+  settings: jsonb().notNull().$type<DeploymentSettings>().default({ version: 1 }),
 
   deletedAt,
   createdAt,
@@ -121,6 +123,7 @@ export const modelInstallationT = pgTable("model_installation", {
   /** @deprecated Internal to the daemon. The gateway routes through the daemon proxy and does not use this field. */
   port: integer().notNull(),
   driver: inferenceDriverEnum().notNull(),
+  settings: jsonb().notNull().$type<DeploymentSettings>().default({ version: 1 }),
 
   deletedAt,
   createdAt,

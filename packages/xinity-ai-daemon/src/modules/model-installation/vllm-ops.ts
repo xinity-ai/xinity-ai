@@ -13,6 +13,7 @@ export interface VllmInstanceConfig {
   trustRemoteCode?: boolean;
   extraArgs?: string[];
   gpuMemoryUtilization?: number;
+  maxAudioDecodeDurationS?: number;
 }
 
 export interface VllmOps {
@@ -75,6 +76,9 @@ export function buildSystemdEnvFile(config: VllmInstanceConfig): string {
   }
   if (config.extraArgs && config.extraArgs.length > 0) {
     lines.push(`VLLM_EXTRA_ARGS=${config.extraArgs.join(" ")}`);
+  }
+  if (config.maxAudioDecodeDurationS != null) {
+    lines.push(`VLLM_MAX_AUDIO_DECODE_DURATION_S=${config.maxAudioDecodeDurationS}`);
   }
   if (env.VLLM_HF_TOKEN) {
     lines.push(`HF_TOKEN=${env.VLLM_HF_TOKEN}`);
@@ -233,6 +237,9 @@ export function buildDockerRunArgs(
     "-e", "TRITON_CACHE_DIR=/data/triton-cache",
     "-e", "HF_HUB_OFFLINE=1",
     "-e", "TRANSFORMERS_OFFLINE=1",
+    ...(config.maxAudioDecodeDurationS != null
+      ? ["-e", `VLLM_MAX_AUDIO_DECODE_DURATION_S=${config.maxAudioDecodeDurationS}`]
+      : []),
     "-v", `${env.VLLM_HF_CACHE_DIR}:/data/hf-cache`,
     "-v", `${env.VLLM_TRITON_CACHE_DIR}:/data/triton-cache`,
     ...(mode === "daemon" ? ["--restart", "unless-stopped"] : []),
