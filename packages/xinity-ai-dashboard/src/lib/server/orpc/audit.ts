@@ -10,6 +10,8 @@ export type AuditAction =
   | "account.create_dashboard_api_key"
   | "account.delete_dashboard_api_key"
   | "account.delete_passkey"
+  | "account.disable_2fa"
+  | "account.enable_2fa"
   | "aiApplication.create"
   | "aiApplication.delete"
   | "aiApplication.update"
@@ -68,6 +70,32 @@ async function writeAuditEvent(row: typeof auditEventT.$inferInsert): Promise<vo
   } catch (err) {
     log.warn({ err, action: row.action, resource: row.resource }, "Failed to write audit event");
   }
+}
+
+/**
+ * Records an audit event for a Better Auth flow (e.g. 2FA) that bypasses oRPC.
+ * Fire-and-forget, personal scope (null org), always a user actor.
+ */
+export function emitAuthAuditEvent(params: {
+  action: AuditAction;
+  resource: string;
+  actorId: string;
+  actorLabel: string | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+}): void {
+  void writeAuditEvent({
+    organizationId: null,
+    actorType: "user",
+    actorId: params.actorId,
+    actorLabel: params.actorLabel,
+    action: params.action,
+    resource: params.resource,
+    result: "success",
+    ipAddress: params.ipAddress,
+    userAgent: params.userAgent,
+    context: null,
+  }).catch((err) => log.warn({ err, action: params.action }, "Failed to emit auth audit event"));
 }
 
 async function emitAudit(

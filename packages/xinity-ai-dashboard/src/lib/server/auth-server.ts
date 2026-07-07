@@ -17,6 +17,7 @@ import { ac, roles } from "./roles";
 import { sendEmail, commonEmailProps, type AnyComponent } from "./email";
 import { notify } from "./notifications/notification.service";
 import { NotificationType } from "./notifications/events";
+import { emitAuthAuditEvent, type AuditAction } from "./orpc/audit";
 import EmailVerificationTemplate from "$lib/components/mailTemplates/EmailVerificationTemplate.svelte";
 import EmailForgotPasswordTemplate from "$lib/components/mailTemplates/EmailForgotPasswordTemplate.svelte";
 import EmailInvitationTemplate from "$lib/components/mailTemplates/EmailInvitationTemplate.svelte";
@@ -151,6 +152,30 @@ const sendWelcomeNotification = createAuthMiddleware(async (ctx) => {
   });
 });
 
+/** Better Auth endpoints (2FA, etc.) that oRPC's audit middleware can't see, mapped to audit actions. */
+const AUTH_AUDIT_ACTIONS: Record<string, AuditAction> = {
+  "/two-factor/enable": "account.enable_2fa",
+  "/two-factor/disable": "account.disable_2fa",
+};
+
+const recordAuthAudit = createAuthMiddleware(async (ctx) => {
+  const action = AUTH_AUDIT_ACTIONS[ctx.path];
+  if (!action) return;
+  const response = ctx.context?.returned as { status?: number } | undefined;
+  if (response?.status !== 200) return;
+  const user = ctx.context?.session?.user as { id?: string; email?: string } | undefined;
+  if (!user?.id) return;
+  const headers = ctx.headers ?? ctx.request?.headers;
+  emitAuthAuditEvent({
+    action,
+    resource: "account",
+    actorId: user.id,
+    actorLabel: user.email ?? null,
+    ipAddress: headers?.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+    userAgent: headers?.get("user-agent") ?? null,
+  });
+});
+
 export const auth = betterAuth({
   appName: serverEnv.APP_NAME,
   baseURL: serverEnv.ORIGIN,
@@ -279,7 +304,10 @@ export const auth = betterAuth({
         });
       }
     }),
-    after: sendWelcomeNotification,
+    after: createAuthMiddleware(async (ctx) => {
+      await sendWelcomeNotification(ctx);
+      await recordAuthAudit(ctx);
+    }),
   },
   trustedOrigins: serverEnv.NODE_ENV === "development" ? ["*"] : [
     serverEnv.ORIGIN,
