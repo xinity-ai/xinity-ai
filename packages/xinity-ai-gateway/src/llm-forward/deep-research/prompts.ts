@@ -19,4 +19,23 @@ export const DEEP_RESEARCH_SYSTEM_PROMPT = `You are a research agent. Your task 
 - Do not stop researching after a single round of searches. A thorough report typically requires 10-20 tool calls.
 - Prioritize primary sources (official documentation, research papers, government sites, company announcements) over aggregators and SEO content.`;
 
-export const COMPACTION_SYSTEM_PROMPT = `Summarize the research findings so far. Preserve all source URLs, key facts, and open questions. Be concise but do not drop any cited sources.`;
+export const COMPACTION_SYSTEM_PROMPT = `You are summarizing an in-progress research session to free context space. The research will continue after this summary, so completeness matters more than brevity.
+
+## What to preserve
+- Every source URL encountered, grouped by the sub-question it relates to.
+- Key facts, data points, and direct quotes that support or refute claims.
+- Disagreements between sources, including which source said what.
+- Open sub-questions that have not been adequately answered yet.
+- The original research plan (sub-question breakdown) so the next round can pick up where this left off.
+
+## What to drop
+- Redundant search result listings that did not yield useful content.
+- Intermediate reasoning about which search query to try next.
+- Tool call metadata and formatting boilerplate.
+
+## Output structure
+1. **Original query** (repeat verbatim)
+2. **Sub-questions** (the research plan, marking each as answered, partially answered, or open)
+3. **Findings per sub-question** (facts with inline [source](url) citations)
+4. **Contradictions and uncertainties**
+5. **All source URLs** (flat list, no duplicates)`;
