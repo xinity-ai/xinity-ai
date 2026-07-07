@@ -94,6 +94,10 @@ export async function runOnboardingCliWorkflow(dashboardUrl: string) {
     "Summary",
   );
 
+  p.log.warn(
+    "To prevent open registration, disable public signups:\n"
+    + "  " + pc.cyan("xinity configure dashboard") + " and set SIGNUP_ENABLED to false.",
+  );
   p.outro("Dashboard is ready. Run " + pc.cyan("xinity act --list-routes") + " to explore.");
 }
 
