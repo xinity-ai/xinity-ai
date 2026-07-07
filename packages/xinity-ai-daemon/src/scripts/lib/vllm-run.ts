@@ -12,6 +12,7 @@ import {
   resolveArgsForDriver,
   resolveMinVersionForDriver,
   resolveRequiredPlatformsForDriver,
+  resolveRequiredFeaturesForDriver,
   checkNodeCompatibility,
   type Model,
   type NodeCapability,
@@ -41,6 +42,7 @@ export interface ResolvedVllmModel {
   estCapacity: number;
   minVersion: string | undefined;
   requiredPlatforms: string[];
+  requiredFeatures: string[];
 }
 
 export class RunModelError extends Error {}
@@ -102,6 +104,7 @@ export function resolveVllmModel(
     estCapacity: model.weight + kvCacheGb,
     minVersion: resolveMinVersionForDriver(model, "vllm"),
     requiredPlatforms: resolveRequiredPlatformsForDriver(model, "vllm"),
+    requiredFeatures: resolveRequiredFeaturesForDriver(model, "vllm"),
   };
 }
 
@@ -109,6 +112,7 @@ export function resolveVllmModel(
 export interface VllmDriverState {
   available: boolean;
   version?: string;
+  features?: string[];
 }
 
 /**
@@ -120,6 +124,7 @@ export function toNodeCapability(profile: MachineProfile, driver: VllmDriverStat
   return {
     free: profile.detectedCapacityGb,
     driverVersions: driver.available ? { vllm: driver.version ?? "" } : {},
+    driverFeatures: driver.available && driver.features?.length ? { vllm: driver.features } : {},
     gpus: profile.gpus,
   };
 }
@@ -130,6 +135,7 @@ export function toModelRequirements(resolved: ResolvedVllmModel): ModelNodeRequi
     capacityGb: resolved.estCapacity,
     minVersion: resolved.minVersion,
     requiredPlatforms: resolved.requiredPlatforms,
+    requiredFeatures: resolved.requiredFeatures,
   };
 }
 
@@ -164,6 +170,10 @@ export function describeIncompatibility(
       return `Could not detect the installed vLLM version, and this model requires >= ${resolved.minVersion}.`;
     case "version_too_old":
       return `Installed vLLM ${driver.version} is older than the required >= ${resolved.minVersion}.`;
+    case "missing_feature": {
+      const have = driver.features?.join(", ") || "none";
+      return `Model requires features [${resolved.requiredFeatures.join(", ")}]; this installation has [${have}].`;
+    }
     case "wrong_platform": {
       const have = profile.gpus.map(g => g.vendor).join(", ") || "none";
       return `Model requires GPU platform [${resolved.requiredPlatforms.join(", ")}]; this machine has [${have}].`;

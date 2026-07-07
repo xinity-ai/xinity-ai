@@ -21,6 +21,7 @@ import {
 } from "./lib/vllm-run";
 import type { VllmInstanceConfig } from "../modules/model-installation/vllm-ops";
 import type { HardwareProfile } from "../modules/hardware-detect";
+import { detectVllmFeatures } from "../modules/vllm-features";
 
 const DEFAULT_PORT = 8000;
 
@@ -328,9 +329,15 @@ async function main(): Promise<void> {
   }
 
   const profile = await detectHardwareProfile();
+  const source: "docker" | "binary" = backend === "docker" ? "docker" : "binary";
+  const [version, features] = await Promise.all([
+    detectVllmVersion(),
+    detectVllmFeatures(source, { dockerImage: values.image, vllmPath: bareVllmPath }),
+  ]);
   const driver: VllmDriverState = {
     available: backend === "docker" ? true : bareVllmPath !== undefined,
-    version: await detectVllmVersion(),
+    version,
+    features,
   };
   const config = buildConfig(resolved, profile);
 

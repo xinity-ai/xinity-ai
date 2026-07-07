@@ -63,6 +63,17 @@ describe("resolveVllmModel", () => {
     const below = resolveVllmModel(file({ m: baseModel }), "m", { kvCacheGbOverride: 4 });
     expect(below.kvCacheGb).toBe(8);
   });
+
+  test("transcription model includes requiredFeatures: [\"audio\"]", () => {
+    const transcription = { ...baseModel, type: "transcription" as const };
+    const r = resolveVllmModel(file({ m: transcription }), "m");
+    expect(r.requiredFeatures).toEqual(["audio"]);
+  });
+
+  test("chat model includes requiredFeatures: []", () => {
+    const r = resolveVllmModel(file({ m: baseModel }), "m");
+    expect(r.requiredFeatures).toEqual([]);
+  });
 });
 
 describe("checkVllmCompatibility", () => {
@@ -97,5 +108,17 @@ describe("checkVllmCompatibility", () => {
   test("flags insufficient_capacity when the model is too large", () => {
     const r = resolveVllmModel(file({ m: { ...baseModel, weight: 40 } }), "m");
     expect(checkVllmCompatibility(r, nvidia24, { available: true, version: "0.19.1" })).toBe("insufficient_capacity");
+  });
+
+  test("flags missing_feature for transcription model when audio feature is absent", () => {
+    const transcription = { ...baseModel, type: "transcription" as const };
+    const r = resolveVllmModel(file({ m: transcription }), "m");
+    expect(checkVllmCompatibility(r, nvidia24, { available: true, version: "0.19.1" })).toBe("missing_feature");
+  });
+
+  test("passes for transcription model when audio feature is present", () => {
+    const transcription = { ...baseModel, type: "transcription" as const };
+    const r = resolveVllmModel(file({ m: transcription }), "m");
+    expect(checkVllmCompatibility(r, nvidia24, { available: true, version: "0.19.1", features: ["audio"] })).toBeNull();
   });
 });

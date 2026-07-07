@@ -8,6 +8,7 @@ import { networkInterfaces } from "node:os";
 import { detectHardwareProfile, detectNodeName, type HardwareProfile } from "./hardware-detect";
 import { normalizePep440 } from "xinity-infoserver";
 import { rootLogger } from "../logger";
+import { detectVllmFeatures } from "./vllm-features";
 
 const log = rootLogger.child({ name: "statekeeper" });
 
@@ -107,6 +108,22 @@ export async function getNodeDriverVersions(): Promise<Record<string, string>> {
   return versions;
 }
 
+export async function getNodeDriverFeatures(): Promise<Record<string, string[]>> {
+  const features: Record<string, string[]> = {};
+  try {
+    if (env.VLLM_DOCKER_IMAGE || env.VLLM_PATH) {
+      const source: "docker" | "binary" = env.VLLM_DOCKER_IMAGE ? "docker" : "binary";
+      features["vllm"] = await detectVllmFeatures(source, {
+        dockerImage: env.VLLM_DOCKER_IMAGE,
+        vllmPath: env.VLLM_PATH,
+      });
+    }
+  } catch (err) {
+    log.warn({ err }, "Driver feature detection failed, continuing without features");
+  }
+  return features;
+}
+
 function findHostIPv4Address(): string {
   const isMatchingExternalIPv4 = (iface: { family: string; cidr?: string | null; internal: boolean }) =>
     iface.family === 'IPv4' &&
@@ -121,8 +138,9 @@ function findHostIPv4Address(): string {
 
 async function collectNodeRuntimeState() {
   const { detectedCapacityGb, gpuCount, gpus: detectedGpus } = await getHardwareProfile();
-  const [driverVersions] = await Promise.all([
+  const [driverVersions, driverFeatures] = await Promise.all([
     getNodeDriverVersions(),
+    getNodeDriverFeatures(),
   ]);
   const machineName = detectNodeName(env.MACHINE_NAME);
   return {
@@ -130,6 +148,7 @@ async function collectNodeRuntimeState() {
     gpuCount,
     drivers: getNodeDrivers(),
     driverVersions,
+    driverFeatures,
     gpus: detectedGpus.map(g => ({ vendor: g.vendor, name: g.name, vramMb: g.vramMb })),
     machineName,
     authToken,

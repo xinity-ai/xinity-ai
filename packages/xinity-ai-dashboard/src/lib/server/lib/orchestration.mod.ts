@@ -1,7 +1,7 @@
 import { inArray, isNull, modelDeploymentT, sql, calcCanaryProgress, modelInstallationT, aiNodeT, type ModelInstallation, type AiNode, type InferInsertModel } from "common-db";
 import { getDB } from "../db";
 import { infoClient } from "../info-client";
-import { resolveDefaultProvider, resolveMinVersionForDriver, resolveRequiredPlatformsForDriver, checkNodeCompatibility, deploymentLookup, deploymentEarlyLookup, installationKey, lookupKey, type Model, type ModelNodeRequirements, type NodeCapability, type Provider, type ModelLookup } from "xinity-infoserver";
+import { resolveDefaultProvider, resolveMinVersionForDriver, resolveRequiredPlatformsForDriver, resolveRequiredFeaturesForDriver, checkNodeCompatibility, deploymentLookup, deploymentEarlyLookup, installationKey, lookupKey, type Model, type ModelNodeRequirements, type NodeCapability, type Provider, type ModelLookup } from "xinity-infoserver";
 import { rootLogger } from "../logging";
 import { building } from "$app/environment";
 import { maxVramGb } from "$lib/server/license";
@@ -174,10 +174,12 @@ export function findServerForModel(
   strategy: DeploymentStrategy,
   minVersion?: string,
   requiredPlatforms?: string[],
+  requiredFeatures?: string[],
 ): string | null {
   const req: ModelNodeRequirements = {
     driver, capacityGb: weight,
     minVersion, requiredPlatforms: requiredPlatforms ?? [],
+    requiredFeatures,
   };
 
   for (const server of rankServers(strategy, state)) {
@@ -189,6 +191,7 @@ export function findServerForModel(
     const nodeCap: NodeCapability = {
       free: cap.total - cap.used,
       driverVersions: server.driverVersions,
+      driverFeatures: server.driverFeatures ?? {},
       gpus: server.gpus,
     };
 
@@ -263,6 +266,7 @@ async function planNewInstallations(
     }
     const minVersion = resolveMinVersionForDriver(modelInfo, driver);
     const requiredPlatforms = resolveRequiredPlatformsForDriver(modelInfo, driver);
+    const requiredFeatures = resolveRequiredFeaturesForDriver(modelInfo, driver);
     const needed = requirement.replicas - current;
 
     const effectiveKvCache = Math.max(requirement.kvCacheSize ?? 0, modelInfo.minKvCache);
@@ -279,7 +283,7 @@ async function planNewInstallations(
         break;
       }
 
-      const nodeId = findServerForModel(key, driver, totalCapacity, state, toInstall, strategy, minVersion, requiredPlatforms);
+      const nodeId = findServerForModel(key, driver, totalCapacity, state, toInstall, strategy, minVersion, requiredPlatforms, requiredFeatures);
       if (!nodeId) {
         log.warn({ lookup: requirement.lookup }, "No server with enough capacity for additional replica");
         break;

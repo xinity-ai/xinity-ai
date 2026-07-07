@@ -80,6 +80,16 @@ export function resolveRequiredPlatformsForDriver(model: Model, driver: Provider
 }
 
 // ---------------------------------------------------------------------------
+// Required features resolution
+// ---------------------------------------------------------------------------
+
+/** Returns driver features required by the model's type, or empty array. */
+export function resolveRequiredFeaturesForDriver(model: Model, driver: Provider): string[] {
+  if (driver === "vllm" && model.type === "transcription") return ["audio"];
+  return [];
+}
+
+// ---------------------------------------------------------------------------
 // Provider args resolution
 // ---------------------------------------------------------------------------
 
