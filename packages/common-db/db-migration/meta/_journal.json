@@ -78,6 +78,13 @@
       "when": 1783432311716,
       "tag": "0010_legacy_specifier_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1783454545773,
+      "tag": "0011_silky_shocker",
+      "breakpoints": true
     }
   ]
 }
