@@ -1,7 +1,7 @@
 /**
- * Server-side model catalog module. Reads the local YAML file, recursively
- * resolves remote includes (with cycle detection), and maintains an
- * in-memory index for the API endpoints.
+ * Server-side model catalog module. Loads YAML files from a directory,
+ * recursively resolves remote includes (with cycle detection), and maintains
+ * an in-memory index for the API endpoints.
  */
 import { type Model, type ModelWithSpecifier, ModelFileDefinitionSchema } from "./definitions/model-definition";
 import { readdir } from "node:fs/promises";
@@ -16,7 +16,6 @@ let modelData = new Map<string, ModelWithSpecifier>();
 let mergedData: { models: Record<string, Model> } = { models: {} };
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
-let configuredFilePath: string | undefined;
 let configuredMaxDepth: number;
 let configuredDirPath: string | undefined;
 
@@ -25,8 +24,7 @@ let lastRefreshError: string | null = null;
 
 // ── Init ───────────────────────────────────────────────────────────────
 
-export function configure(maxIncludeDepth = 10, modelFilePath?: string, modelDirPath?: string) {
-  configuredFilePath = modelFilePath;
+export function configure(maxIncludeDepth = 10, modelDirPath?: string) {
   configuredMaxDepth = maxIncludeDepth;
   configuredDirPath = modelDirPath;
 }
@@ -34,8 +32,9 @@ export function configure(maxIncludeDepth = 10, modelFilePath?: string, modelDir
 // ── Refresh ────────────────────────────────────────────────────────────
 
 /**
- * Reads the local YAML file, validates it, then recursively fetches
- * and merges all remote include URLs. Rebuilds all indexes atomically.
+ * Loads all YAML files in the configured directory, validates them, then
+ * recursively fetches and merges all remote include URLs. Rebuilds all
+ * indexes atomically.
  */
 type CatalogIndexState = {
   models: Map<string, ModelWithSpecifier>;
@@ -52,20 +51,6 @@ export async function refresh(): Promise<void> {
   const visited = new Set<string>();
 
   try {
-    if (configuredFilePath) {
-      const yamlText = await Bun.file(configuredFilePath).text();
-      const result = parseModelFileYaml(yamlText);
-      if (!result.success) {
-        throw new Error(`Model file validation failed (${configuredFilePath}): ${result.error.message}`);
-      }
-
-      indexModels(result.data.models, configuredFilePath, true, state);
-
-      for (const includeUrl of result.data.includes ?? []) {
-        await resolveIncludes(includeUrl, visited, 0, state);
-      }
-    }
-
     if (configuredDirPath) {
       await loadDirectoryFiles(configuredDirPath, visited, state);
     }

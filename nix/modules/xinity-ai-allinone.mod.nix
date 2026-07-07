@@ -209,6 +209,9 @@
         (lib.mkRemovedOptionModule
           [ "services" "xinity-ai" "useHostNetwork" ]
           "The services now run as native systemd processes that always use the host network. Remove this option from your configuration.")
+        (lib.mkRemovedOptionModule
+          [ "services" "xinity-ai" "infoserver" "modelInfoFile" ]
+          "The infoserver no longer accepts a single YAML file. Use `services.xinity-ai.infoserver.modelInfoDir` to point at a directory of model YAML files instead.")
       ];
 
       options.services.xinity-ai = {
@@ -312,14 +315,8 @@
             default = 8090;
             description = "Port for the infoserver.";
           };
-          modelInfoFile = lib.mkOption {
-            type = lib.types.nullOr lib.types.path;
-            default = null;
-            description = "Deprecated: use modelInfoDir instead. Path to a single models YAML file. Will be removed in 1.0.0.";
-          };
           modelInfoDir = lib.mkOption {
-            type = lib.types.nullOr lib.types.path;
-            default = null;
+            type = lib.types.path;
             description = "Path to a directory of model YAML files on the host.";
           };
         };
@@ -567,7 +564,6 @@
           services.xinity-infoserver = {
             enable = true;
             port = lib.mkDefault cfg.infoserver.port;
-            modelInfoFile = lib.mkDefault cfg.infoserver.modelInfoFile;
             modelInfoDir = lib.mkDefault cfg.infoserver.modelInfoDir;
             environmentFiles = lib.mkDefault envFiles;
           };

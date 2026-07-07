@@ -14,6 +14,8 @@
           "The infoserver now runs as a native systemd service backed by `services.xinity-infoserver.package`, not an OCI container. Remove this option from your configuration.")
         (removed [ "extraOptions" ]
           "OCI container runtime arguments don't apply to the systemd service the infoserver now runs as. Remove this option from your configuration.")
+        (removed [ "modelInfoFile" ]
+          "The infoserver no longer accepts a single YAML file. Use `services.xinity-infoserver.modelInfoDir` to point at a directory of model YAML files instead.")
       ];
 
       options.services.xinity-infoserver = {
@@ -31,16 +33,9 @@
           description = "HTTP port the infoserver listens on.";
         };
 
-        modelInfoFile = lib.mkOption {
-          type = lib.types.nullOr lib.types.path;
-          default = null;
-          description = "Deprecated: use modelInfoDir instead. Path to a single models YAML file on the host. Will be removed in 1.0.0.";
-        };
-
         modelInfoDir = lib.mkOption {
-          type = lib.types.nullOr lib.types.path;
-          default = null;
-          description = "Path to a directory of model YAML files on the host. This is the preferred way to configure model sources.";
+          type = lib.types.path;
+          description = "Path to a directory of model YAML files on the host. Mounted into the container at /data/models.d/.";
         };
 
         refreshIntervalMs = lib.mkOption {
@@ -85,11 +80,6 @@
       };
 
       config = lib.mkIf cfg.enable {
-        assertions = [{
-          assertion = cfg.modelInfoFile != null || cfg.modelInfoDir != null;
-          message = "services.xinity-infoserver: modelInfoDir must be set (or the deprecated modelInfoFile).";
-        }];
-
         systemd.services.xinity-infoserver = {
           description = "Xinity Infoserver";
           wantedBy = [ "multi-user.target" ];
@@ -100,15 +90,10 @@
             REFRESH_INTERVAL_MS = toString cfg.refreshIntervalMs;
             MAX_INCLUDE_DEPTH = toString cfg.maxIncludeDepth;
             LOG_LEVEL = cfg.logLevel;
-          }
-          // lib.optionalAttrs (cfg.modelInfoFile != null) {
-            MODEL_INFO_FILE = cfg.modelInfoFile;
+            MODEL_INFO_DIR = cfg.modelInfoDir;
           }
           // lib.optionalAttrs (cfg.logDir != null) {
             LOG_DIR = cfg.logDir;
-          }
-          // lib.optionalAttrs (cfg.modelInfoDir != null) {
-            MODEL_INFO_DIR = cfg.modelInfoDir;
           }
           // cfg.extraEnvironment;
           serviceConfig = {

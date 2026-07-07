@@ -98,9 +98,9 @@ services:
         required: false
     environment:
       PORT: ${INFOSERVER_PORT:-8090}
-      MODEL_INFO_FILE: /data/models.yaml
+      MODEL_INFO_DIR: /data/models.d
     volumes:
-      - ./models.yaml:/data/models.yaml:ro
+      - ./models.yaml:/data/models.d/models.yaml:ro
     networks:
       - xinity-network
     profiles: [infoserver]
