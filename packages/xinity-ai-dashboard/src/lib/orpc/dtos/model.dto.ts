@@ -4,6 +4,11 @@
 import { z } from "zod";
 import { CommonDto } from "./common.dto";
 
+export const DeploymentSettingsDto = z.object({
+  version: z.literal(1),
+  maxAudioInputDurationS: z.number().int().min(1).max(24 * 60 * 60).optional(),
+});
+
 export const DeploymentDto = CommonDto.extend({
   name: z.string().trim(),
 
@@ -25,6 +30,7 @@ export const DeploymentDto = CommonDto.extend({
   earlyKvCacheSize: z.number().nullish(),
   description: z.string().nullish(),
   preferredDriver: z.enum(["ollama", "vllm"]).nullish(),
+  settings: DeploymentSettingsDto.optional(),
 });
 
 

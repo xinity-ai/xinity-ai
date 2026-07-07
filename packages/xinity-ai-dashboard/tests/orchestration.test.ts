@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
-import { buildClusterState, collectExcessInstallations, findServerForModel, rankServers } from "../src/lib/server/lib/orchestration.mod";
+import { buildClusterState, collectDriftedInstallations, collectExcessInstallations, findServerForModel, mergeRequirementsByLookupKey, rankServers } from "../src/lib/server/lib/orchestration.mod";
 import type { AiNode, ModelInstallation } from "common-db";
-import type { ModelRequirementTable, DeploymentStrategy } from "../src/lib/server/lib/orchestration.mod";
+import type { ModelRequirement, ModelRequirementTable, DeploymentStrategy } from "../src/lib/server/lib/orchestration.mod";
 
 const FF: DeploymentStrategy = "first-fit";
 
@@ -33,6 +33,7 @@ function makeInstallation(overrides: Partial<ModelInstallation> & { id: string; 
     kvCacheCapacity: 2,
     port: 11434,
     driver: "ollama",
+    settings: { version: 1 },
     deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -66,7 +67,7 @@ describe("orchestration: node goes unavailable", () => {
 
     // No excess to trim (nothing active)
     const requiredModels: ModelRequirementTable = {
-      "llama2:7b": { lookup: { kind: "legacy", providerModel: "llama2:7b" }, replicas: 1, kvCacheSize: 2, preferredDriver: null },
+      "llama2:7b": { lookup: { kind: "legacy", providerModel: "llama2:7b" }, replicas: 1, kvCacheSize: 2, preferredDriver: null, settings: { version: 1 } },
     };
     const excess = collectExcessInstallations(requiredModels, state);
     expect(excess).toHaveLength(0);
@@ -176,6 +177,86 @@ describe("orchestration: lookup-key correlation", () => {
     const inst = makeInstallation({ id: "i1", nodeId: "node-1", specifier: "llama-3.3-70b", model: "llama" });
     const state = buildClusterState([inst], [node]);
     expect(findServerForModel("llama-3.3-70b", "ollama", 8, state, [], FF)).toBeNull();
+  });
+});
+
+describe("orchestration: settings drift", () => {
+  function requirement(overrides: Partial<ModelRequirement> = {}): ModelRequirement {
+    return { lookup: { kind: "legacy", providerModel: "whisper" }, replicas: 1, kvCacheSize: null, preferredDriver: null, settings: { version: 1 }, ...overrides };
+  }
+
+  test("installation with drifted settings is collected and released from state", () => {
+    const node = makeNode({ id: "node-1" });
+    const inst = makeInstallation({ id: "i1", nodeId: "node-1", model: "whisper", settings: { version: 1, maxAudioInputDurationS: 600 } });
+    const state = buildClusterState([inst], [node]);
+    const required: ModelRequirementTable = {
+      whisper: requirement({ settings: { version: 1, maxAudioInputDurationS: 1200 } }),
+    };
+
+    const drifted = collectDriftedInstallations(required, state);
+
+    expect(drifted).toEqual(["i1"]);
+    expect(state.installationsByModel.get("whisper")).toHaveLength(0);
+    expect(state.serverCapacity.get("node-1")!.used).toBe(0);
+    expect(findServerForModel("whisper", "ollama", 8, state, [], FF)).toBe("node-1");
+  });
+
+  test("matching settings produce no drift", () => {
+    const node = makeNode({ id: "node-1" });
+    const inst = makeInstallation({ id: "i1", nodeId: "node-1", model: "whisper", settings: { version: 1, maxAudioInputDurationS: 1200 } });
+    const state = buildClusterState([inst], [node]);
+    const required: ModelRequirementTable = {
+      whisper: requirement({ settings: { version: 1, maxAudioInputDurationS: 1200 } }),
+    };
+
+    expect(collectDriftedInstallations(required, state)).toHaveLength(0);
+    expect(state.installationsByModel.get("whisper")).toHaveLength(1);
+    expect(state.serverCapacity.get("node-1")!.used).toBe(8);
+  });
+
+  test("legacy default snapshot equals freshly computed default settings", () => {
+    const node = makeNode({ id: "node-1" });
+    const inst = makeInstallation({ id: "i1", nodeId: "node-1", model: "whisper" });
+    const state = buildClusterState([inst], [node]);
+
+    expect(collectDriftedInstallations({ whisper: requirement() }, state)).toHaveLength(0);
+  });
+
+  test("installations without a requirement are left to excess trimming", () => {
+    const node = makeNode({ id: "node-1" });
+    const inst = makeInstallation({ id: "i1", nodeId: "node-1", model: "whisper", settings: { version: 1, maxAudioInputDurationS: 600 } });
+    const state = buildClusterState([inst], [node]);
+
+    expect(collectDriftedInstallations({}, state)).toHaveLength(0);
+    expect(state.installationsByModel.get("whisper")).toHaveLength(1);
+  });
+
+  test("only the drifted replica of a pair is collected", () => {
+    const node = makeNode({ id: "node-1", estCapacity: 48 });
+    const current = makeInstallation({ id: "i1", nodeId: "node-1", model: "whisper", settings: { version: 1, maxAudioInputDurationS: 1200 } });
+    const stale = makeInstallation({ id: "i2", nodeId: "node-1", model: "whisper" });
+    const state = buildClusterState([current, stale], [node]);
+    const required: ModelRequirementTable = {
+      whisper: requirement({ replicas: 2, settings: { version: 1, maxAudioInputDurationS: 1200 } }),
+    };
+
+    expect(collectDriftedInstallations(required, state)).toEqual(["i2"]);
+    expect(state.installationsByModel.get("whisper")!.map(i => i.id)).toEqual(["i1"]);
+  });
+});
+
+describe("orchestration: requirement merging", () => {
+  test("settings merge takes the maximum audio duration across deployments", () => {
+    const lookup = { kind: "legacy", providerModel: "whisper" } as const;
+    const merged = mergeRequirementsByLookupKey([
+      { lookup, replicas: 1, kvCacheSize: null, preferredDriver: null, settings: { version: 1, maxAudioInputDurationS: 600 } },
+      { lookup, replicas: 2, kvCacheSize: 4, preferredDriver: null, settings: { version: 1, maxAudioInputDurationS: 1800 } },
+      { lookup, replicas: 1, kvCacheSize: null, preferredDriver: null, settings: { version: 1 } },
+    ]);
+
+    expect(merged.whisper.replicas).toBe(2);
+    expect(merged.whisper.kvCacheSize).toBe(4);
+    expect(merged.whisper.settings).toEqual({ version: 1, maxAudioInputDurationS: 1800 });
   });
 });
 

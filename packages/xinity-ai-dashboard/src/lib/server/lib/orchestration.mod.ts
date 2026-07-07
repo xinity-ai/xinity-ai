@@ -1,4 +1,4 @@
-import { inArray, isNull, modelDeploymentT, sql, calcCanaryProgress, modelInstallationT, aiNodeT, type ModelInstallation, type AiNode, type InferInsertModel } from "common-db";
+import { inArray, isNull, modelDeploymentT, sql, calcCanaryProgress, modelInstallationT, aiNodeT, mergeSettings, settingsEqual, type DeploymentSettings, type ModelInstallation, type AiNode, type InferInsertModel } from "common-db";
 import { getDB } from "../db";
 import { infoClient } from "../info-client";
 import { resolveDefaultProvider, resolveMinVersionForDriver, resolveRequiredPlatformsForDriver, resolveRequiredFeaturesForDriver, checkNodeCompatibility, deploymentLookup, deploymentEarlyLookup, installationKey, lookupKey, type Model, type ModelNodeRequirements, type NodeCapability, type Provider, type ModelLookup } from "xinity-infoserver";
@@ -22,7 +22,7 @@ interface ClusterState {
   availableServers: AiNode[];
 }
 
-export type ModelRequirement = { lookup: ModelLookup; replicas: number; kvCacheSize: number | null; preferredDriver: Provider | null };
+export type ModelRequirement = { lookup: ModelLookup; replicas: number; kvCacheSize: number | null; preferredDriver: Provider | null; settings: DeploymentSettings };
 export type ModelRequirementTable = Record<string, ModelRequirement>;
 
 export type DeploymentStrategy = "first-fit" | "balanced" | "bin-pack" | "proportional";
@@ -47,7 +47,7 @@ export function rankServers(strategy: DeploymentStrategy, state: ClusterState): 
   }
 }
 
-function mergeRequirementsByLookupKey(entries: ModelRequirement[]): ModelRequirementTable {
+export function mergeRequirementsByLookupKey(entries: ModelRequirement[]): ModelRequirementTable {
   return entries.reduce((agg, entry) => {
     const key = lookupKey(entry.lookup);
     const existing = agg[key];
@@ -59,6 +59,7 @@ function mergeRequirementsByLookupKey(entries: ModelRequirement[]): ModelRequire
     if (entry.kvCacheSize != null && (existing.kvCacheSize == null || entry.kvCacheSize > existing.kvCacheSize)) {
       existing.kvCacheSize = entry.kvCacheSize;
     }
+    existing.settings = mergeSettings(existing.settings, entry.settings);
     return agg;
   }, {} as ModelRequirementTable);
 }
@@ -76,11 +77,11 @@ export async function assembleModelRequirementTable(): Promise<ModelRequirementT
     const driver = deployment.preferredDriver;
     const isNotCanary = progress === 100 || !earlyLookup;
     if (isNotCanary) {
-      return [requirementFor(deploymentLookup(deployment), deployment.replicas, deployment.kvCacheSize, driver)];
+      return [requirementFor(deploymentLookup(deployment), deployment.replicas, deployment.kvCacheSize, driver, deployment.settings)];
     }
     return [
-      requirementFor(deploymentLookup(deployment), Math.ceil(deployment.replicas * (progress / 100)), deployment.kvCacheSize, driver),
-      requirementFor(earlyLookup, Math.ceil(deployment.replicas * ((100 - progress) / 100)), deployment.earlyKvCacheSize, driver),
+      requirementFor(deploymentLookup(deployment), Math.ceil(deployment.replicas * (progress / 100)), deployment.kvCacheSize, driver, deployment.settings),
+      requirementFor(earlyLookup, Math.ceil(deployment.replicas * ((100 - progress) / 100)), deployment.earlyKvCacheSize, driver, deployment.settings),
     ];
   });
   return mergeRequirementsByLookupKey(models);
@@ -91,8 +92,9 @@ function requirementFor(
   replicas: number,
   kvCacheSize: number | null,
   preferredDriver: Provider | null,
+  settings: DeploymentSettings,
 ): ModelRequirement {
-  return { lookup, replicas, kvCacheSize, preferredDriver };
+  return { lookup, replicas, kvCacheSize, preferredDriver, settings };
 }
 
 export function buildClusterState(existing: ModelInstallation[], availableServers: AiNode[]): ClusterState {
@@ -148,6 +150,31 @@ export function collectExcessInstallations(requiredModels: ModelRequirementTable
       releaseInstallationFromState(state, rem);
     }
     state.installationsByModel.set(model, installs.slice(excess));
+  }
+
+  return toUninstall;
+}
+
+/** Collects installations whose settings have drifted; mutates state to free their capacity. */
+export function collectDriftedInstallations(requiredModels: ModelRequirementTable, state: ClusterState): string[] {
+  const toUninstall: string[] = [];
+
+  for (const [model, installs] of state.installationsByModel) {
+    const requirement = requiredModels[model];
+    if (!requirement) {
+      continue;
+    }
+
+    const kept: ModelInstallation[] = [];
+    for (const install of installs) {
+      if (settingsEqual(install.settings, requirement.settings)) {
+        kept.push(install);
+        continue;
+      }
+      toUninstall.push(install.id);
+      releaseInstallationFromState(state, install);
+    }
+    state.installationsByModel.set(model, kept);
   }
 
   return toUninstall;
@@ -298,6 +325,7 @@ async function planNewInstallations(
         kvCacheCapacity: effectiveKvCache,
         driver,
         port,
+        settings: requirement.settings,
       });
 
       const cap = state.serverCapacity.get(nodeId)!;
@@ -337,6 +365,7 @@ async function runSyncDeployedModels() {
   const toUninstall = [
     ...orphaned.map(i => i.id),
     ...collectExcessInstallations(requiredModels, state),
+    ...collectDriftedInstallations(requiredModels, state),
   ];
   const toInstall = await planNewInstallations(requiredModels, state, maxVramGb(), serverEnv.DEPLOYMENT_STRATEGY);
   await applyChanges(toUninstall, toInstall);

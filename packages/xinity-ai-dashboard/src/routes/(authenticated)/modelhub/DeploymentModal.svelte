@@ -9,6 +9,8 @@
   import { browserLogger } from "$lib/browserLogging";
   import CustomCodeConsent from "./CustomCodeConsent.svelte";
   import type { DeploymentDefinition } from "./+page.server";
+  import { settingsEqual, type DeploymentSettings } from "common-db";
+  import { DeploymentSettingsDto } from "$lib/orpc/dtos/model.dto";
 
   import { Button } from "$lib/components/ui/button";
   import { Checkbox } from "$lib/components/ui/checkbox";
@@ -54,6 +56,7 @@
   let timeBasedDurationHours = $state(72);
   let kvCacheSize = $state<number | null>(null);
   let earlyKvCacheSize = $state<number | null>(null);
+  let settings = $state<DeploymentSettings>({ version: 1 });
   let preferredDriver = $state<"ollama" | "vllm" | null>(null);
   let replicas = $state(1);
   let customCodeConsent = $state(false);
@@ -65,7 +68,7 @@
     earlyModelSpecifier: string | null; progress: number;
     canaryProgressWithFeedback: boolean;
     preferredDriver: string | null; replicas: number; kvCacheSize: number | null;
-    earlyKvCacheSize: number | null;
+    earlyKvCacheSize: number | null; settings: DeploymentSettings;
   };
   let initialSnapshot = $state<Snapshot | null>(null);
   let lastInitDeploymentId = $state<string | undefined>(undefined);
@@ -124,6 +127,7 @@
     canaryTraffic = d.progress ?? 100;
     kvCacheSize = d.kvCacheSize ?? null;
     earlyKvCacheSize = d.earlyKvCacheSize ?? null;
+    settings = { ...d.settings ?? { version: 1 } };
     preferredDriver = d.preferredDriver ?? null;
     replicas = d.replicas;
     customCodeConsent = false;
@@ -140,6 +144,7 @@
       canaryProgressWithFeedback: d.canaryProgressWithFeedback,
       preferredDriver: d.preferredDriver ?? null, replicas: d.replicas,
       kvCacheSize: d.kvCacheSize ?? null, earlyKvCacheSize: d.earlyKvCacheSize ?? null,
+      settings: { ...d.settings ?? { version: 1 } },
     };
   });
 
@@ -228,6 +233,7 @@
     (kvCacheSize === null || kvCacheSize >= minKvCache) &&
     (!isCanaryEnabled || earlyKvCacheSize === null || earlyKvCacheSize >= minCanaryKvCache) &&
     (!requiresCustomCodeConsent || customCodeConsent) &&
+    DeploymentSettingsDto.safeParse(settings).success &&
     !capacityBlocked && replicas >= 1,
   ));
 
@@ -244,7 +250,8 @@
       (preferredDriver ?? null) !== s.preferredDriver ||
       replicas !== s.replicas ||
       (kvCacheSize ?? null) !== s.kvCacheSize ||
-      (earlyKvCacheSize ?? null) !== s.earlyKvCacheSize
+      (earlyKvCacheSize ?? null) !== s.earlyKvCacheSize ||
+      !settingsEqual(settings, s.settings)
     );
   });
 
@@ -308,6 +315,11 @@
     const effectiveDriver = preferredDriver ?? (selectedPrimaryModel.providers.vllm ? "vllm" : "ollama");
     const submittedKvCacheSize = effectiveDriver === "ollama" ? null : kvCacheSize;
     const submittedEarlyKvCacheSize = effectiveDriver === "ollama" ? null : earlyKvCacheSize;
+    // Audio settings only apply to transcription models; drop stale values on model change
+    const submittedSettings: DeploymentSettings = { version: 1 };
+    if (selectedPrimaryModel.type === "transcription" && settings.maxAudioInputDurationS != null) {
+      submittedSettings.maxAudioInputDurationS = Math.round(settings.maxAudioInputDurationS);
+    }
 
     const [error] = deployment
       ? await orpc.deployment.update({
@@ -327,6 +339,7 @@
           kvCacheSize: submittedKvCacheSize,
           earlyKvCacheSize: isCanaryEnabled ? submittedEarlyKvCacheSize : null,
           preferredDriver: preferredDriver || null, replicas,
+          settings: submittedSettings,
         })
       : await orpc.deployment.create({
           enabled, name: deploymentName.trim(), publicSpecifier: publicSpecifier.trim(),
@@ -343,6 +356,7 @@
           canaryProgressFrom: isCanaryEnabled && selectedCanaryModel ? new Date() : undefined,
           canaryProgressUntil: isCanaryEnabled && selectedCanaryModel && advancementStrategy === "time-based"
             ? new Date(Date.now() + timeBasedDurationHours * 3_600_000) : undefined,
+          settings: submittedSettings,
         });
 
     if (error) {
@@ -365,7 +379,7 @@
     selectedPrimarySpecifier = null; selectedCanarySpecifier = null;
     isCanaryEnabled = false; canaryTraffic = 5;
     advancementStrategy = "manual"; timeBasedDurationHours = 72;
-    kvCacheSize = null; earlyKvCacheSize = null; preferredDriver = null; replicas = 1;
+    kvCacheSize = null; earlyKvCacheSize = null; settings = { version: 1 }; preferredDriver = null; replicas = 1;
     customCodeConsent = false; shouldAutoSelectCanary = true;
   }
 </script>
@@ -408,6 +422,7 @@
           bind:replicas
           bind:kvCacheSize
           bind:earlyKvCacheSize
+          bind:settings
           {maxKvCache}
           {maxCanaryKvCache}
           bind:preferredDriver

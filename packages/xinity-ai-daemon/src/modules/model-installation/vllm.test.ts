@@ -114,6 +114,7 @@ function makeInstallation(model: string, id: string = crypto.randomUUID(), port 
     kvCacheCapacity: 4,
     port,
     driver: "vllm" as const,
+    settings: { version: 1 as const },
     deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -504,6 +505,38 @@ describe("syncVllmInstallations$", () => {
     } finally {
       fetchSpy.mockRestore();
     }
+  });
+
+  test("translates the settings audio duration into the start config", async () => {
+    const id = crypto.randomUUID();
+    const inst = { ...makeInstallation("whisper-model", id, 9107), settings: { version: 1 as const, maxAudioInputDurationS: 1200 } };
+    mockFetchModel.mockImplementation((lookup) => Promise.resolve({ type: "transcription", providers: { vllm: lookupValue(lookup) } }));
+    const ops = createMockOps({
+      listRunning: mock(() => Promise.resolve([])),
+      checkHealth: mock(() => Promise.resolve(true)),
+      isAlive: mock(() => Promise.resolve(true)),
+    });
+
+    await firstValueFrom(syncVllmInstallations$([inst], ops));
+
+    const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
+    expect(startCall[1].maxAudioDecodeDurationS).toBe(1200);
+  });
+
+  test("leaves the audio duration unset when settings do not carry it", async () => {
+    const id = crypto.randomUUID();
+    const inst = makeInstallation("whisper-model", id, 9108);
+    mockFetchModel.mockImplementation((lookup) => Promise.resolve({ type: "transcription", providers: { vllm: lookupValue(lookup) } }));
+    const ops = createMockOps({
+      listRunning: mock(() => Promise.resolve([])),
+      checkHealth: mock(() => Promise.resolve(true)),
+      isAlive: mock(() => Promise.resolve(true)),
+    });
+
+    await firstValueFrom(syncVllmInstallations$([inst], ops));
+
+    const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
+    expect(startCall[1].maxAudioDecodeDurationS).toBeUndefined();
   });
 
   test("uses providers.vllm from the catalog rather than the installation row's model column", async () => {

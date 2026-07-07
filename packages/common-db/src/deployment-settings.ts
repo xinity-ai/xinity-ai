@@ -1,0 +1,43 @@
+export interface DeploymentSettingsV1 {
+  version: 1;
+  maxAudioInputDurationS?: number;
+}
+
+export type DeploymentSettings = DeploymentSettingsV1;
+
+export function normalizeSettings(settings: DeploymentSettings): Record<string, number> {
+  const entries = Object.entries(settings)
+    .filter(([key, value]) => key !== "version" && value != null);
+  return Object.fromEntries(entries);
+}
+
+export function settingsEqual(a: DeploymentSettings, b: DeploymentSettings): boolean {
+  const na = normalizeSettings(a);
+  const nb = normalizeSettings(b);
+  const aKeys = Object.keys(na);
+  if (aKeys.length !== Object.keys(nb).length) {
+    return false;
+  }
+  return aKeys.every((key) => na[key] === nb[key]);
+}
+
+export function mergeSettings(a: DeploymentSettings, b: DeploymentSettings): DeploymentSettings {
+  const merged: DeploymentSettings = { version: 1 };
+  const durations = [a.maxAudioInputDurationS, b.maxAudioInputDurationS]
+    .filter((value): value is number => value != null);
+  if (durations.length > 0) {
+    merged.maxAudioInputDurationS = Math.max(...durations);
+  }
+  return merged;
+}
+
+// Version-aware field accessors: each setting has a resolve function that
+// returns undefined for unknown versions, so older services fall back to the
+// engine default rather than misreading an incompatible shape.
+
+export function resolveMaxAudioInputDurationS(settings: DeploymentSettings | null | undefined): number | undefined {
+  if (settings == null || (settings as { version: number }).version !== 1) {
+    return undefined;
+  }
+  return settings.maxAudioInputDurationS;
+}
