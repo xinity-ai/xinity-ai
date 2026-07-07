@@ -2,9 +2,6 @@ import type { SearchProvider } from "./search-types";
 
 const SEARCH_TIMEOUT_MS = 10_000;
 
-export const WEB_SEARCH_PROVIDER_NAMES = ["searxng", "google", "bing", "brave", "serper"] as const;
-export type WebSearchProviderName = (typeof WEB_SEARCH_PROVIDER_NAMES)[number];
-
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
@@ -151,6 +148,72 @@ function createSerperProvider(credential: string): SearchProvider {
   };
 }
 
+function createTavilyProvider(credential: string): SearchProvider {
+  const apiKey = credential.trim();
+  return {
+    async search(query, maxResults) {
+      const res = await fetch("https://api.tavily.com/search", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ query, max_results: maxResults }),
+        signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        await failedSearchResponse("Tavily", res);
+      }
+      const payload = (await res.json()) as {
+        results?: Array<{ title: string; url: string; content?: string }>;
+      };
+      return (payload.results ?? []).slice(0, maxResults).map((r) => ({
+        title: r.title,
+        url: r.url,
+        content: r.content,
+      }));
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Provider registry
+// ---------------------------------------------------------------------------
+
+type ProviderEntry = {
+  create: (credential: string) => SearchProvider;
+  validateCredential?: (credential: string) => void;
+};
+
+const SEARCH_PROVIDERS: Record<string, ProviderEntry> = {
+  searxng: {
+    create: createSearxngProvider,
+    validateCredential(credential) {
+      try {
+        new URL(credential);
+      } catch {
+        throw new Error("WEB_SEARCH_CREDENTIAL for searxng must be a valid URL");
+      }
+    },
+  },
+  google: {
+    create: createGoogleProvider,
+    validateCredential(credential) {
+      const idx = credential.indexOf(":");
+      if (idx < 1 || idx === credential.length - 1) {
+        throw new Error("WEB_SEARCH_CREDENTIAL for google must be in apikey:cx format");
+      }
+    },
+  },
+  bing: { create: createBingProvider },
+  brave: { create: createBraveProvider },
+  serper: { create: createSerperProvider },
+  tavily: { create: createTavilyProvider },
+};
+
+export const WEB_SEARCH_PROVIDER_NAMES = Object.keys(SEARCH_PROVIDERS) as [string, ...string[]];
+export type WebSearchProviderName = keyof typeof SEARCH_PROVIDERS;
+
 // ---------------------------------------------------------------------------
 // Config resolution and validation
 // ---------------------------------------------------------------------------
@@ -159,13 +222,13 @@ export function resolveSearchConfig(env: {
   WEB_SEARCH_PROVIDER?: string;
   WEB_SEARCH_CREDENTIAL?: string;
   WEB_SEARCH_ENGINE_URL?: string;
-}): { provider: WebSearchProviderName; credential: string } | null {
+}): { provider: string; credential: string } | null {
   if (env.WEB_SEARCH_PROVIDER) {
     if (!env.WEB_SEARCH_CREDENTIAL) {
       throw new Error("WEB_SEARCH_CREDENTIAL must be set when WEB_SEARCH_PROVIDER is set");
     }
     return {
-      provider: env.WEB_SEARCH_PROVIDER as WebSearchProviderName,
+      provider: env.WEB_SEARCH_PROVIDER,
       credential: env.WEB_SEARCH_CREDENTIAL,
     };
   }
@@ -175,42 +238,24 @@ export function resolveSearchConfig(env: {
   return null;
 }
 
-export function validateSearchCredential(provider: WebSearchProviderName, credential: string): void {
-  switch (provider) {
-    case "searxng": {
-      try {
-        new URL(credential);
-      } catch {
-        throw new Error("WEB_SEARCH_CREDENTIAL for searxng must be a valid URL");
-      }
-      break;
-    }
-    case "google": {
-      const idx = credential.indexOf(":");
-      if (idx < 1 || idx === credential.length - 1) {
-        throw new Error("WEB_SEARCH_CREDENTIAL for google must be in apikey:cx format");
-      }
-      break;
-    }
-    case "bing":
-    case "brave":
-    case "serper": {
-      if (!credential.trim()) {
-        throw new Error(`WEB_SEARCH_CREDENTIAL for ${provider} must be a non-empty API key`);
-      }
-      break;
-    }
+export function validateSearchCredential(provider: string, credential: string): void {
+  const entry = SEARCH_PROVIDERS[provider];
+  if (!entry) {
+    throw new Error(`Unknown search provider: ${provider}`);
+  }
+  if (entry.validateCredential) {
+    entry.validateCredential(credential);
+  } else if (!credential.trim()) {
+    throw new Error(`WEB_SEARCH_CREDENTIAL for ${provider} must be a non-empty API key`);
   }
 }
 
-export function createSearchProvider(name: WebSearchProviderName, credential: string): SearchProvider {
-  switch (name) {
-    case "searxng": return createSearxngProvider(credential);
-    case "google": return createGoogleProvider(credential);
-    case "bing": return createBingProvider(credential);
-    case "brave": return createBraveProvider(credential);
-    case "serper": return createSerperProvider(credential);
+export function createSearchProvider(name: string, credential: string): SearchProvider {
+  const entry = SEARCH_PROVIDERS[name];
+  if (!entry) {
+    throw new Error(`Unknown search provider: ${name}`);
   }
+  return entry.create(credential);
 }
 
 export function getSearchProvider(env: {

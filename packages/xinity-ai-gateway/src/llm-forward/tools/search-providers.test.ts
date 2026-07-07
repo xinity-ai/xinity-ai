@@ -77,7 +77,7 @@ describe("validateSearchCredential", () => {
     });
   });
 
-  const apiKeyProviders: WebSearchProviderName[] = ["bing", "brave", "serper"];
+  const apiKeyProviders: WebSearchProviderName[] = ["bing", "brave", "serper", "tavily"];
   for (const provider of apiKeyProviders) {
     describe(provider, () => {
       test("accepts a non-empty API key", () => {
@@ -259,6 +259,29 @@ describe("createSearchProvider", () => {
       mockFetch({ message: "Invalid API key" }, 403);
       const provider = createSearchProvider("serper", "test-api-key");
       await expect(provider.search("test", 5)).rejects.toThrow(/Serper search failed \(HTTP 403\)/);
+    });
+  });
+
+  describe("tavily", () => {
+    test("maps response fields correctly", async () => {
+      mockFetch({
+        results: [{ title: "Example", url: "https://example.com", content: "A snippet" }],
+      });
+      const provider = createSearchProvider("tavily", "tvly-test-key");
+      const results = await provider.search("test", 5);
+      expect(results).toEqual([{ title: "Example", url: "https://example.com", content: "A snippet" }]);
+    });
+
+    test("handles missing results field", async () => {
+      mockFetch({});
+      const provider = createSearchProvider("tavily", "tvly-test-key");
+      expect(await provider.search("test", 5)).toEqual([]);
+    });
+
+    test("throws on non-OK response with body detail", async () => {
+      mockFetch({ detail: "Invalid API key" }, 401);
+      const provider = createSearchProvider("tavily", "tvly-test-key");
+      await expect(provider.search("test", 5)).rejects.toThrow(/Tavily search failed \(HTTP 401\)/);
     });
   });
 });
