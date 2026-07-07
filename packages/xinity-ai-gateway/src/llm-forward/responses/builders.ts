@@ -1,4 +1,4 @@
-import { Output, tool, jsonSchema, type ModelMessage, type ToolSet } from "ai";
+import { Output, tool, jsonSchema, stepCountIs, type ModelMessage, type ToolSet } from "ai";
 import type { OpenAICompatibleProvider } from "@ai-sdk/openai-compatible";
 import { responseTools, type ResponseToolName, RESPONSE_TOOL_NAMES } from "../tools/response-tools";
 import type {
@@ -496,9 +496,7 @@ export function buildGenerationParams(
     seed: body.seed,
     abortSignal: signal,
     tools: hasTools ? activeTools : undefined,
-    // Let the model decide when to stop calling tools (no artificial step limit).
-    // The loop naturally ends when the model finishes without tool calls.
-    stopWhen: hasTools ? (() => false) : undefined,
+    stopWhen: hasTools ? stepCountIs(20_000) : undefined,
     output: outputConfig.output,
   };
 }

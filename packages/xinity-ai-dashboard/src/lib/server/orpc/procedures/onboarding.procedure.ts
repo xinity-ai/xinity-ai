@@ -165,7 +165,6 @@ const cli = rootOs
 
     const apiKeyResult = await issueServerSideDashboardApiKey(userId, orgId);
     rlog.info({ userId }, "CLI onboarding: dashboard API key created");
-
     return {
       dashboardApiKey: apiKeyResult.key,
       userId,
