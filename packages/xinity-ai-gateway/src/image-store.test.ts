@@ -240,32 +240,21 @@ describe("processMessageImages – S3 enabled", () => {
     expect(dbParts[0]!.image_url.url).toMatch(/^xinity-media:\/\/[0-9a-f]{64}$/);
   });
 
-  test("external URL: LLM receives resolved data URI, DB receives xinity-media://, originalUrl stored", async () => {
-    const imgBytes = Buffer.from(TINY_PNG_BASE64, "base64");
-    const imageServer = Bun.serve({
-      port: 0,
-      fetch: () => new Response(imgBytes, { headers: { "content-type": "image/png" } }),
-    });
-
-    const externalUrl = `http://127.0.0.1:${imageServer.port}/image.png`;
+  test("external URL pointing to private IP is blocked by SSRF validation", async () => {
+    const privateUrl = "http://127.0.0.1:9999/image.png";
     const messages = [
       {
         role: "user",
-        content: [{ type: "image_url", image_url: { url: externalUrl } }],
+        content: [{ type: "image_url", image_url: { url: privateUrl } }],
       },
     ] as any;
 
-    try {
-      const { messagesForLLM, messagesForDB } = await processMessageImages(messages, "org-1", store);
+    const { messagesForLLM, messagesForDB } = await processMessageImages(messages, "org-1", store);
 
-      expect((messagesForLLM[0]!.content as any[])[0]!.image_url.url).toMatch(/^data:image\/png;base64,/);
-      expect((messagesForDB[0]!.content as any[])[0]!.image_url.url).toMatch(/^xinity-media:\/\/[0-9a-f]{64}$/);
-
-      const q = findInsert();
-      expect(q!.params).toContain(externalUrl);
-    } finally {
-      imageServer.stop();
-    }
+    // LLM still gets the original part (fallback), DB omits the blocked image
+    expect((messagesForLLM[0]!.content as any[])[0]!.image_url.url).toBe(privateUrl);
+    expect(messagesForDB).toHaveLength(0);
+    expect(capturedQueries).toHaveLength(0);
   });
 
   test("text-only messages pass through without any DB or S3 calls", async () => {
@@ -319,29 +308,20 @@ describe("processMessageImages – S3 disabled (imageStore = null)", () => {
     expect(dbParts[0]).toEqual({ type: "text", text: "Check this out:" });
   });
 
-  test("external URL: LLM receives resolved data URI, DB keeps original URL, no insert", async () => {
-    const imgBytes = Buffer.from(TINY_PNG_BASE64, "base64");
-    const imageServer = Bun.serve({
-      port: 0,
-      fetch: () => new Response(imgBytes, { headers: { "content-type": "image/png" } }),
-    });
-
-    const externalUrl = `http://127.0.0.1:${imageServer.port}/photo.png`;
+  test("external URL pointing to private IP is blocked (S3 disabled)", async () => {
+    const privateUrl = "http://192.168.1.1:8080/photo.png";
     const messages = [
       {
         role: "user",
-        content: [{ type: "image_url", image_url: { url: externalUrl } }],
+        content: [{ type: "image_url", image_url: { url: privateUrl } }],
       },
     ] as any;
 
-    try {
-      const { messagesForLLM, messagesForDB } = await processMessageImages(messages, "org-1", null);
+    const { messagesForLLM, messagesForDB } = await processMessageImages(messages, "org-1", null);
 
-      expect((messagesForLLM[0]!.content as any[])[0]!.image_url.url).toMatch(/^data:image\/png;base64,/);
-      expect((messagesForDB[0]!.content as any[])[0]!.image_url.url).toBe(externalUrl);
-      expect(capturedQueries).toHaveLength(0);
-    } finally {
-      imageServer.stop();
-    }
+    // LLM still gets the original part (fallback), DB omits the blocked image
+    expect((messagesForLLM[0]!.content as any[])[0]!.image_url.url).toBe(privateUrl);
+    expect(messagesForDB).toHaveLength(0);
+    expect(capturedQueries).toHaveLength(0);
   });
 });
