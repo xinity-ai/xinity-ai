@@ -3,26 +3,6 @@ import { pgEnum, pgTable, real, text, timestamp, uuid, boolean, integer, jsonb, 
 import { organizationT } from "./orgSchema";
 import type { DeploymentSettings } from "../deployment-settings";
 
-/*
- * TODO: at release time, generate the migration for the dropped legacy columns and
- * hand-edit the SQL so the backfill runs before the constraints:
- *
- *   UPDATE "model_deployment" SET "specifier" = "model_specifier" WHERE "specifier" IS NULL;
- *   UPDATE "model_deployment" SET "early_specifier" = "early_model_specifier"
- *     WHERE "early_specifier" IS NULL AND "early_model_specifier" IS NOT NULL;
- *   DELETE FROM "model_deployment" WHERE "specifier" IS NULL;
- *     -- defensive: after the UPDATE above this only deletes rows whose model_specifier
- *     -- was also NULL, which the pre-migration schema disallows, so a no-op in practice
- *   DELETE FROM "model_installation";
- *     -- cascades to model_installation_state via onDelete: cascade
- *     -- orchestrator recreates installations on the next sync tick
- *   ALTER TABLE "model_deployment" ALTER COLUMN "specifier" SET NOT NULL;
- *   ALTER TABLE "model_installation" ALTER COLUMN "specifier" SET NOT NULL;
- *
- * plus the generated drops of model_deployment.model_specifier/early_model_specifier,
- * model_installation.model (and its index), and ai_node.drivers.
- */
-
 export const lifecycleStateEnum = pgEnum("lifecycle_state", ["downloading", "installing", "ready", "failed"]);
 export const inferenceDriverEnum = pgEnum("inference_driver", ["ollama", "vllm"]);
 
