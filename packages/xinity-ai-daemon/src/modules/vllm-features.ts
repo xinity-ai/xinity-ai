@@ -9,6 +9,8 @@ const FEATURE_PROBES = [
   { slug: "vllm-omni", pythonModule: "vllm_omni" },
 ] as const;
 
+type FeatureSlug = (typeof FEATURE_PROBES)[number]["slug"];
+
 const ELF_MAGIC = [0x7f, 0x45, 0x4c, 0x46];
 const SHEBANG_MAGIC = [0x23, 0x21];
 const PYTHON_BIN_RE = /\/python3(?:\.\d+)?$/;
@@ -112,7 +114,7 @@ export async function detectVllmFeatures(
       return present ? slug : null;
     }),
   );
-  const features = results.filter((s): s is string => s !== null);
+  const features = results.filter((s): s is FeatureSlug => s !== null);
   if (features.length > 0) {
     log.info({ features, source, pythonBin }, "Detected vLLM optional features");
   }
