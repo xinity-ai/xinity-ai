@@ -29,6 +29,11 @@ import { createResponseStream } from "../responses/stream";
 
 const log = rootLogger.child({ name: "handle-responses" });
 
+async function checkCancelled(orgId: string, responseId: string): Promise<boolean> {
+  const stored = await getResponse(orgId, responseId) as { status?: string } | null;
+  return stored?.status === "cancelled";
+}
+
 // ---------------------------------------------------------------------------
 // Message normalisation
 // ---------------------------------------------------------------------------
@@ -300,7 +305,6 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
             });
           },
         ),
-        abortSignal: AbortSignal.timeout(env.DEEP_RESEARCH_TIMEOUT_MS),
       };
 
       const baseResponse = await createAndSaveInProgressResponse(auth.orgId, responseId, createdAt, originalModel, body);
@@ -411,15 +415,27 @@ type GeneratePersistArgs = {
   logFields: LogFields;
 };
 
-async function generateAndPersistCompletedResponse(args: GeneratePersistArgs) {
+async function generateAndPersistCompletedResponse(args: GeneratePersistArgs, background = false) {
   const { orgId, responseId, createdAt, originalModel, body, genParams, include, outputConfig, logFields } = args;
   const toolCalls: ToolCallItem[] = [];
   const toolResults: ToolResultData[] = [];
 
+  const cancelCheck = () => checkCancelled(orgId, responseId);
+  const existingStop = genParams.stopWhen;
+  const stopConditions = background
+    ? (existingStop ? [existingStop, cancelCheck] : [cancelCheck])
+    : existingStop;
+
   const result = await generateText({
     ...genParams,
+    stopWhen: stopConditions as Parameters<typeof generateText>[0]["stopWhen"],
     onStepFinish: createToolTracker(toolCalls, toolResults),
   });
+
+  if (background && await checkCancelled(orgId, responseId)) {
+    return;
+  }
+
   const responseText = resolveResponseText(result.text, () => result.output, outputConfig.usesStructuredOutput);
   const completedResponse = createResponseObject({
     responseId, createdAt, model: originalModel, status: "completed",
@@ -439,7 +455,7 @@ async function generateAndPersistCompletedResponse(args: GeneratePersistArgs) {
 async function runBackground(args: GeneratePersistArgs) {
   const { orgId, responseId, createdAt, originalModel, body } = args;
   try {
-    await generateAndPersistCompletedResponse(args);
+    await generateAndPersistCompletedResponse(args, true);
   } catch (error) {
     if (!isUpstreamError(error)) {
       log.error({ err: error, responseId }, "Background response generation failed");
@@ -480,4 +496,37 @@ export async function handleGetOrDeleteResponseRequest(req: Request): Promise<Re
   }
 
   return errorResponse("Method not allowed", 405);
+}
+
+// ---------------------------------------------------------------------------
+// POST /v1/responses/:responseId/cancel
+// ---------------------------------------------------------------------------
+
+export async function handleCancelResponseRequest(req: Request): Promise<Response> {
+  if (req.method !== "POST") {
+    return errorResponse("Method not allowed", 405);
+  }
+
+  const authHeader = req.headers.get("authorization") || "";
+  const authCheckResponse = await checkAuth(authHeader);
+  if (authCheckResponse instanceof Response) return authCheckResponse;
+
+  const segments = new URL(req.url).pathname.split("/").filter(Boolean);
+  const responseId = segments.at(-2);
+  if (!responseId) {
+    return errorResponse("Not found", 404);
+  }
+
+  const stored = await getResponse(authCheckResponse.orgId, responseId) as Record<string, unknown> | null;
+  if (!stored) {
+    return errorResponse("Not found", 404);
+  }
+  if (stored.status !== "in_progress") {
+    return errorResponse("Response is not in progress", 400);
+  }
+
+  const cancelledResponse = { ...stored, status: "cancelled" };
+  await saveResponse(authCheckResponse.orgId, responseId, cancelledResponse);
+
+  return Response.json(cancelledResponse);
 }

@@ -328,7 +328,7 @@ export interface ResponsePayloadParams {
   responseId: string;
   createdAt: number;
   model: string;
-  status: "in_progress" | "completed" | "failed" | "incomplete";
+  status: "in_progress" | "completed" | "failed" | "incomplete" | "cancelled";
   output?: OutputItem[];
   usage?: UsageInput | null;
   body: CreateResponseBody;
