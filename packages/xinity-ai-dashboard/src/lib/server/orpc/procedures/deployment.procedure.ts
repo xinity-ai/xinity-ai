@@ -7,7 +7,7 @@ import { getDB } from "$lib/server/db";
 import { syncDeployedModels } from "$lib/server/lib/orchestration.mod";
 import { infoClient } from "$lib/server/info-client";
 import { buildClusterCapacity } from "./cluster.procedure";
-import { resolveDefaultProvider, resolveMinVersionForDriver, resolveRequiredPlatformsForDriver, checkNodeCompatibility, deploymentLookup, deploymentEarlyLookup, lookupKey, type ModelNodeRequirements, type Provider, type ModelLookup } from "xinity-infoserver";
+import { resolveDefaultProvider, resolveMinVersionForDriver, resolveRequiredPlatformsForDriver, resolveRequiredFeaturesForDriver, checkNodeCompatibility, deploymentLookup, deploymentEarlyLookup, lookupKey, type ModelNodeRequirements, type Provider, type ModelLookup } from "xinity-infoserver";
 import { rootLogger } from "$lib/server/logging";
 import { aggregatePhase, isProgressBearingPhase, toDisplayPhase, type PhaseInfo } from "$lib/server/lib/deployment-phase";
 import { findOrgName } from "$lib/server/lib/org-queries";
@@ -129,7 +129,8 @@ async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>
         const driver: Provider | undefined = input.preferredDriver ?? resolveDefaultProvider(info)?.driver;
         const minVersion = driver ? resolveMinVersionForDriver(info, driver) : undefined;
         const requiredPlatforms = driver ? resolveRequiredPlatformsForDriver(info, driver) : [];
-        return { kind: "found" as const, label: m.label, replicas: m.replicas, perReplica: info.weight + effectiveKvCache, driver, minVersion, requiredPlatforms };
+        const requiredFeatures = driver ? resolveRequiredFeaturesForDriver(info, driver) : [];
+        return { kind: "found" as const, label: m.label, replicas: m.replicas, perReplica: info.weight + effectiveKvCache, driver, minVersion, requiredPlatforms, requiredFeatures };
       }),
     ),
     buildClusterCapacity(),
@@ -151,6 +152,7 @@ async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>
           const req: ModelNodeRequirements = {
             driver: model.driver!, capacityGb: 0,
             minVersion: model.minVersion, requiredPlatforms: model.requiredPlatforms,
+            requiredFeatures: model.requiredFeatures,
           };
           const reason = checkNodeCompatibility(n, req);
           return reason === null || reason === "insufficient_capacity";

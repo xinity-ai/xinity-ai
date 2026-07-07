@@ -94,6 +94,41 @@ describe("checkNodeCompatibility", () => {
     )).toBeNull();
   });
 
+  test("returns missing_feature when node lacks a required feature", () => {
+    expect(checkNodeCompatibility(
+      makeNode({ driverFeatures: { vllm: [] } }),
+      makeReq({ requiredFeatures: ["audio"] }),
+    )).toBe("missing_feature");
+  });
+
+  test("returns missing_feature when node has no driverFeatures (backward compat)", () => {
+    expect(checkNodeCompatibility(
+      makeNode(),
+      makeReq({ requiredFeatures: ["audio"] }),
+    )).toBe("missing_feature");
+  });
+
+  test("passes feature check when node has the required feature", () => {
+    expect(checkNodeCompatibility(
+      makeNode({ driverFeatures: { vllm: ["audio"] } }),
+      makeReq({ requiredFeatures: ["audio"] }),
+    )).toBeNull();
+  });
+
+  test("skips feature check when no features are required", () => {
+    expect(checkNodeCompatibility(
+      makeNode(),
+      makeReq(),
+    )).toBeNull();
+  });
+
+  test("check order: feature before platform", () => {
+    expect(checkNodeCompatibility(
+      makeNode({ driverFeatures: { vllm: [] }, gpus: [amdGpu] }),
+      makeReq({ requiredFeatures: ["audio"], requiredPlatforms: ["nvidia"] }),
+    )).toBe("missing_feature");
+  });
+
   test("returns wrong_platform when GPU vendor doesn't match", () => {
     expect(checkNodeCompatibility(
       makeNode({ gpus: [amdGpu] }),
@@ -214,6 +249,39 @@ describe("isDeployableOnCluster", () => {
     expect(isDeployableOnCluster(
       [makeNode({ driverVersions: { ollama: "0.6.3" }, gpus: [amdGpu] })],
       simpleModel,
+    )).toBe(true);
+  });
+
+  test("transcription model on vllm requires audio feature", () => {
+    const transcriptionModel = {
+      weight: 8, minKvCache: 2, type: "transcription" as const,
+      providers: { vllm: "openai/whisper-large-v3" as string | undefined },
+    };
+    expect(isDeployableOnCluster(
+      [makeNode()],
+      transcriptionModel,
+    )).toBe(false);
+  });
+
+  test("transcription model on vllm passes when node has audio feature", () => {
+    const transcriptionModel = {
+      weight: 8, minKvCache: 2, type: "transcription" as const,
+      providers: { vllm: "openai/whisper-large-v3" as string | undefined },
+    };
+    expect(isDeployableOnCluster(
+      [makeNode({ driverFeatures: { vllm: ["audio"] } })],
+      transcriptionModel,
+    )).toBe(true);
+  });
+
+  test("transcription model on ollama does not require audio feature", () => {
+    const transcriptionModel = {
+      weight: 8, minKvCache: 2, type: "transcription" as const,
+      providers: { ollama: "whisper" as string | undefined },
+    };
+    expect(isDeployableOnCluster(
+      [makeNode({ driverVersions: { ollama: "0.6.3" } })],
+      transcriptionModel,
     )).toBe(true);
   });
 });

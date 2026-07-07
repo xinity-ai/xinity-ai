@@ -7,6 +7,7 @@ import {
   resolveAllTags,
   driverHasTag,
   resolveArgsForDriver,
+  resolveRequiredFeaturesForDriver,
 } from "./model-tags";
 import { ModelSchema, type Model } from "./definitions/model-definition";
 
@@ -152,6 +153,23 @@ describe("resolveArgsForDriver", () => {
   it("returns empty array when driver has no args entry", () => {
     const m = makeModel({ providerArgs: { vllm: ["--some-arg"] } });
     expect(resolveArgsForDriver(m, "ollama")).toEqual([]);
+  });
+});
+
+describe("resolveRequiredFeaturesForDriver", () => {
+  it("returns [\"audio\"] for transcription model on vllm", () => {
+    const m = makeModel({ type: "transcription" });
+    expect(resolveRequiredFeaturesForDriver(m, "vllm")).toEqual(["audio"]);
+  });
+
+  it("returns empty for transcription model on ollama", () => {
+    const m = makeModel({ type: "transcription" });
+    expect(resolveRequiredFeaturesForDriver(m, "ollama")).toEqual([]);
+  });
+
+  it("returns empty when type is not transcription", () => {
+    const m = makeModel();
+    expect(resolveRequiredFeaturesForDriver(m, "vllm")).toEqual([]);
   });
 });
 

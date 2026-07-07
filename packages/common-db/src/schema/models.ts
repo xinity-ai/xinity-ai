@@ -84,6 +84,8 @@ export const aiNodeT = pgTable("ai_node", {
   gpuCount: integer("gpu_count").notNull().default(0),
   /** Maps driver name to its detected version string, e.g. {"vllm": "0.19.1", "ollama": "0.6.3"} */
   driverVersions: jsonb("driver_versions").$type<Record<string, string>>().notNull().default({}),
+  /** Maps driver name to detected optional features, e.g. {"vllm": ["audio", "vllm-omni"]} */
+  driverFeatures: jsonb("driver_features").$type<Record<string, string[]>>().notNull().default({}),
   /** Detected GPUs with vendor, name, and VRAM. Empty = unknown/CPU-only. */
   gpus: jsonb().$type<{ vendor: string; name: string; vramMb: number }[]>().notNull().default([]),
   /** Random token generated on daemon startup, used by the gateway to authenticate requests to this node. */

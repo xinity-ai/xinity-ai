@@ -18,6 +18,7 @@ export type GpuInfo = {
 export type NodeCapability = {
   free: number;
   driverVersions: Record<string, string>;
+  driverFeatures?: Record<string, string[]>;
   gpus: GpuInfo[];
 };
 
@@ -26,13 +27,15 @@ export type ModelNodeRequirements = {
   driver: string;
   capacityGb: number;
   minVersion?: string;
-  requiredPlatforms: string[]; // empty = any platform
+  requiredPlatforms: string[];
+  requiredFeatures?: string[];
 };
 
 export type IncompatibilityReason =
   | "missing_driver"
   | "version_too_old"
   | "version_unknown"
+  | "missing_feature"
   | "wrong_platform"
   | "insufficient_capacity";
 
@@ -66,6 +69,13 @@ export function checkNodeCompatibility(
     }
   }
 
+  if (req.requiredFeatures && req.requiredFeatures.length > 0) {
+    const nodeFeatures = node.driverFeatures?.[req.driver] ?? [];
+    if (!req.requiredFeatures.every(f => nodeFeatures.includes(f))) {
+      return "missing_feature";
+    }
+  }
+
   if (req.requiredPlatforms.length > 0) {
     const nodeVendors = node.gpus.map(g => g.vendor);
     if (!req.requiredPlatforms.some(p => nodeVendors.includes(p))) {
@@ -87,6 +97,7 @@ export function isDeployableOnCluster(
   model: {
     weight: number;
     minKvCache: number;
+    type?: string;
     providers: Record<string, string | undefined>;
     providerMinVersions?: Record<string, string>;
     providerPlatforms?: Record<string, string[]>;
@@ -97,11 +108,14 @@ export function isDeployableOnCluster(
 
   return nodes.some(node =>
     drivers.some(driver => {
+      const requiredFeatures =
+        driver === "vllm" && model.type === "transcription" ? ["audio"] : [];
       const req: ModelNodeRequirements = {
         driver,
         capacityGb: needed,
         minVersion: model.providerMinVersions?.[driver],
         requiredPlatforms: model.providerPlatforms?.[driver] ?? [],
+        requiredFeatures,
       };
       return checkNodeCompatibility(node, req) === null;
     }),
