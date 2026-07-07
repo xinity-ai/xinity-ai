@@ -1,4 +1,4 @@
-import { rootOs, withInstanceAdmin } from "../root";
+import { rootOs, withInstanceAdmin, auditMiddleware } from "../root";
 import {
   aiNodeT,
   modelInstallationT,
@@ -309,6 +309,8 @@ const computeLiveMetrics = rootOs
 
 const removeNode = rootOs
   .use(withInstanceAdmin)
+  .use(auditMiddleware)
+  .meta({ audit: { action: "compute.remove_node", resource: "node" } })
   .route({
     path: "/{nodeId}", method: "DELETE", tags,
     summary: "Remove Compute Node",

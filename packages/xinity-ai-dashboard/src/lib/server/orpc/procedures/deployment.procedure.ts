@@ -443,6 +443,8 @@ Immediately unregisters it, and drops it completely.
 const retryDeployment = rootOs
   .use(withOrganization)
   .use(requirePermission({ modelDeployment: ["update"] }))
+  .use(auditMiddleware)
+  .meta({ audit: { action: "modelDeployment.retry", resource: "modelDeployment" } })
   .route({
     path: "/{id}/retry", method: "POST", tags, summary: "Retry Failed Installations",
   })
