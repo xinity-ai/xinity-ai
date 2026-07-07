@@ -53,7 +53,4 @@ export const gatewayEnvSchema = z.object({
   DEEP_RESEARCH_COMPACTION_THRESHOLD: z.coerce.number().min(0.1).max(0.95).default(0.70)
     .describe("Fraction of model context window at which compaction triggers")
     .meta(expert()),
-  DEEP_RESEARCH_WEB_FETCH_MAX_TOKENS: z.coerce.number().positive().default(4000)
-    .describe("Max characters to retain from a single web_fetch in deep research")
-    .meta(expert()),
 }).extend(tlsEnvSchema.shape).extend(logEnvSchema.shape);
