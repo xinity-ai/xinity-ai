@@ -16,7 +16,7 @@ import { mediaObjectT, type ApiCallInputMessage, type ApiCallInputMessageContent
 import { rootLogger } from "./logger";
 import { getDB } from "./db";
 import { env } from "./env";
-import { validateUrl } from "./llm-forward/tools/url-safety";
+import { validateUrl, safeFetch } from "./llm-forward/tools/url-safety";
 
 const log = rootLogger.child({ name: "image-store" });
 
@@ -73,12 +73,7 @@ function warnImageTooLarge(url: string, size: number): void {
 /** Fetch an external URL and return its bytes and mime type. */
 async function fetchExternalImage(url: string): Promise<ResolvedImage | null> {
   try {
-    const blocked = validateUrl(url);
-    if (blocked) {
-      log.warn({ url: url.slice(0, 200), reason: blocked }, "Blocked image URL");
-      return null;
-    }
-    const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    const res = await safeFetch(url, { timeoutMs: FETCH_TIMEOUT_MS });
     if (!res.ok) return null;
     const contentType = res.headers.get("content-type") ?? "application/octet-stream";
     const [rawMimeType = ""] = contentType.split(";");
