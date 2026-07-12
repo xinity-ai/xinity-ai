@@ -3,6 +3,7 @@ import { env } from "../../env";
 // @ts-expect-error Bun text import
 import templateUnit from "../../assets/vllm-driver@.service" with { type: "text" };
 import { rootLogger } from "../../logger";
+import { resolveMaxAudioInputDurationS, resolveMaxAudioInputFileSizeMB, type DeploymentSettings } from "common-db/deployment-settings";
 
 const log = rootLogger.child({ name: "vllm-ops" });
 
@@ -13,7 +14,7 @@ export interface VllmInstanceConfig {
   trustRemoteCode?: boolean;
   extraArgs?: string[];
   gpuMemoryUtilization?: number;
-  maxAudioDecodeDurationS?: number;
+  settings?: DeploymentSettings | null;
 }
 
 export interface VllmOps {
@@ -77,8 +78,13 @@ export function buildSystemdEnvFile(config: VllmInstanceConfig): string {
   if (config.extraArgs && config.extraArgs.length > 0) {
     lines.push(`VLLM_EXTRA_ARGS=${config.extraArgs.join(" ")}`);
   }
-  if (config.maxAudioDecodeDurationS != null) {
-    lines.push(`VLLM_MAX_AUDIO_DECODE_DURATION_S=${config.maxAudioDecodeDurationS}`);
+  const audioDuration = resolveMaxAudioInputDurationS(config.settings);
+  if (audioDuration != null) {
+    lines.push(`VLLM_MAX_AUDIO_DECODE_DURATION_S=${audioDuration}`);
+  }
+  const audioFileSize = resolveMaxAudioInputFileSizeMB(config.settings);
+  if (audioFileSize != null) {
+    lines.push(`VLLM_MAX_AUDIO_CLIP_FILESIZE_MB=${audioFileSize}`);
   }
   if (env.VLLM_HF_TOKEN) {
     lines.push(`HF_TOKEN=${env.VLLM_HF_TOKEN}`);
@@ -226,6 +232,8 @@ export function buildDockerRunArgs(
     throw new Error("VLLM_DOCKER_IMAGE must be set to build a docker run command");
   }
   const containerName = dockerContainerNameFor(id);
+  const audioDuration = resolveMaxAudioInputDurationS(config.settings);
+  const audioFileSize = resolveMaxAudioInputFileSizeMB(config.settings);
   const args = [
     "docker", "run", "-d",
     "--name", containerName,
@@ -237,8 +245,11 @@ export function buildDockerRunArgs(
     "-e", "TRITON_CACHE_DIR=/data/triton-cache",
     "-e", "HF_HUB_OFFLINE=1",
     "-e", "TRANSFORMERS_OFFLINE=1",
-    ...(config.maxAudioDecodeDurationS != null
-      ? ["-e", `VLLM_MAX_AUDIO_DECODE_DURATION_S=${config.maxAudioDecodeDurationS}`]
+    ...(audioDuration != null
+      ? ["-e", `VLLM_MAX_AUDIO_DECODE_DURATION_S=${audioDuration}`]
+      : []),
+    ...(audioFileSize != null
+      ? ["-e", `VLLM_MAX_AUDIO_CLIP_FILESIZE_MB=${audioFileSize}`]
       : []),
     "-v", `${env.VLLM_HF_CACHE_DIR}:/data/hf-cache`,
     "-v", `${env.VLLM_TRITON_CACHE_DIR}:/data/triton-cache`,

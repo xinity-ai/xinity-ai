@@ -15,6 +15,11 @@ describe("normalizeSettings", () => {
       .toEqual({ maxAudioInputDurationS: 1200 });
     expect(normalizeSettings({ version: 1, maxAudioInputDurationS: undefined })).toEqual({});
   });
+
+  it("keeps maxAudioInputFileSizeMB", () => {
+    expect(normalizeSettings({ version: 1, maxAudioInputFileSizeMB: 50 }))
+      .toEqual({ maxAudioInputFileSizeMB: 50 });
+  });
 });
 
 describe("settingsEqual", () => {
@@ -37,6 +42,23 @@ describe("settingsEqual", () => {
       { version: 1, maxAudioInputDurationS: 600 },
     )).toBe(false);
   });
+
+  it("handles maxAudioInputFileSizeMB", () => {
+    expect(settingsEqual({ version: 1, maxAudioInputFileSizeMB: 50 }, { version: 1 })).toBe(false);
+    expect(settingsEqual({ version: 1, maxAudioInputFileSizeMB: 50 }, { version: 1, maxAudioInputFileSizeMB: 50 })).toBe(true);
+    expect(settingsEqual({ version: 1, maxAudioInputFileSizeMB: 50 }, { version: 1, maxAudioInputFileSizeMB: 25 })).toBe(false);
+  });
+
+  it("handles both fields together", () => {
+    expect(settingsEqual(
+      { version: 1, maxAudioInputDurationS: 1200, maxAudioInputFileSizeMB: 50 },
+      { version: 1, maxAudioInputDurationS: 1200, maxAudioInputFileSizeMB: 50 },
+    )).toBe(true);
+    expect(settingsEqual(
+      { version: 1, maxAudioInputDurationS: 1200, maxAudioInputFileSizeMB: 50 },
+      { version: 1, maxAudioInputDurationS: 600, maxAudioInputFileSizeMB: 25 },
+    )).toBe(false);
+  });
 });
 
 describe("mergeSettings", () => {
@@ -56,6 +78,24 @@ describe("mergeSettings", () => {
       { version: 1, maxAudioInputDurationS: 600 },
       { version: 1, maxAudioInputDurationS: 1800 },
     )).toEqual({ version: 1, maxAudioInputDurationS: 1800 });
+  });
+
+  it("handles maxAudioInputFileSizeMB", () => {
+    expect(mergeSettings({ version: 1, maxAudioInputFileSizeMB: 50 }, { version: 1 }))
+      .toEqual({ version: 1, maxAudioInputFileSizeMB: 50 });
+    expect(mergeSettings({ version: 1 }, { version: 1, maxAudioInputFileSizeMB: 100 }))
+      .toEqual({ version: 1, maxAudioInputFileSizeMB: 100 });
+    expect(mergeSettings(
+      { version: 1, maxAudioInputFileSizeMB: 50 },
+      { version: 1, maxAudioInputFileSizeMB: 100 },
+    )).toEqual({ version: 1, maxAudioInputFileSizeMB: 100 });
+  });
+
+  it("merges both audio fields independently", () => {
+    expect(mergeSettings(
+      { version: 1, maxAudioInputDurationS: 600, maxAudioInputFileSizeMB: 25 },
+      { version: 1, maxAudioInputDurationS: 1200, maxAudioInputFileSizeMB: 50 },
+    )).toEqual({ version: 1, maxAudioInputDurationS: 1200, maxAudioInputFileSizeMB: 50 });
   });
 });
 
