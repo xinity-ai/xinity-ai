@@ -6,6 +6,7 @@ import { rootOs, withAuth } from "../root";
 import { z } from "zod";
 import { auth } from "$lib/server/auth-server";
 import { rootLogger } from "$lib/server/logging";
+import { betterAuthErrorBody } from "$lib/server/better-auth-errors";
 import { isInstanceAdmin } from "$lib/server/serverenv";
 import { getDB } from "$lib/server/db";
 import { ssoProviderT, organizationT, sql } from "common-db";
@@ -95,25 +96,37 @@ async function dispatchSsoRegistration(
   config: { oidcConfig?: unknown } | { samlConfig?: unknown },
   context: { request: Request; traceId?: string },
   kind: "OIDC" | "SAML",
+  errors: { BAD_REQUEST: (opts?: { message?: string }) => Error; INTERNAL_SERVER_ERROR: (opts?: { message?: string }) => Error },
 ) {
   const rlog = log.child({ traceId: context.traceId });
-  const result = await auth.api.registerSSOProvider({
-    body: {
-      providerId: input.providerId,
-      issuer: input.issuer,
-      domain: input.domain,
-      organizationId: input.organizationId,
-      ...config,
-    } as any,
-    headers: context.request.headers,
-  });
-  rlog.info({ providerId: input.providerId, organizationId: input.organizationId }, `${kind} provider registered`);
-  return result;
+  try {
+    const result = await auth.api.registerSSOProvider({
+      body: {
+        providerId: input.providerId,
+        issuer: input.issuer,
+        domain: input.domain,
+        organizationId: input.organizationId,
+        ...config,
+      } as any,
+      headers: context.request.headers,
+    });
+    rlog.info({ providerId: input.providerId, organizationId: input.organizationId }, `${kind} provider registered`);
+    return result;
+  } catch (err) {
+    const body = betterAuthErrorBody(err);
+    if (body) {
+      throw errors.BAD_REQUEST({ message: body.message ?? "SSO provider registration failed" });
+    }
+    throw errors.INTERNAL_SERVER_ERROR({
+      message: err instanceof Error ? err.message : "SSO provider registration failed",
+    });
+  }
 }
 
 const registerOidc = rootOs
   .meta({ mcp: false })
   .use(withAuth)
+  .errors({ BAD_REQUEST: {} })
   .route({ path: "/register-oidc", method: "POST", tags, summary: "Register OIDC Provider" })
   .input(z.object({
     organizationId: z.string().optional(),
@@ -135,12 +148,13 @@ const registerOidc = rootOs
   }))
   .handler(async ({ input, context, errors }) => {
     await requireSsoAccess(context.session.user.email, input.organizationId, context.request.headers, errors);
-    return dispatchSsoRegistration(input, { oidcConfig: input.oidcConfig }, context, "OIDC");
+    return dispatchSsoRegistration(input, { oidcConfig: input.oidcConfig }, context, "OIDC", errors);
   });
 
 const registerSaml = rootOs
   .meta({ mcp: false })
   .use(withAuth)
+  .errors({ BAD_REQUEST: {} })
   .route({ path: "/register-saml", method: "POST", tags, summary: "Register SAML Provider" })
   .input(z.object({
     organizationId: z.string().optional(),
@@ -166,7 +180,7 @@ const registerSaml = rootOs
   }))
   .handler(async ({ input, context, errors }) => {
     await requireSsoAccess(context.session.user.email, input.organizationId, context.request.headers, errors);
-    return dispatchSsoRegistration(input, { samlConfig: input.samlConfig }, context, "SAML");
+    return dispatchSsoRegistration(input, { samlConfig: input.samlConfig }, context, "SAML", errors);
   });
 
 const deleteProvider = rootOs
