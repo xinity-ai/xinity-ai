@@ -22,8 +22,9 @@ export function info(label: string, detail?: string) {
   p.log.info(formatLabelDetail(label, detail));
 }
 
+/** Section header rendered as a colored badge. */
 export function heading(text: string) {
-  p.log.step(pc.bold(text));
+  p.log.step(pc.bgCyan(pc.black(` ${text} `)));
 }
 
 /** Cancel the current prompt flow and exit the process cleanly. */
@@ -62,36 +63,26 @@ export function logErrors(result: { success: boolean; errors: string[] }): void 
   }
 }
 
-/**
- * Reports a hard elevation failure and returns true so the caller can short-circuit.
- * A "hard failure" excludes the user-chose-to-skip case, which the caller handles separately if relevant.
- */
+/** Reports a failed elevation result and returns true so the caller can short-circuit. */
 export function elevationHardFailed(
-  result: { success: boolean; skipped: boolean; output: string },
+  result: { success: boolean; output: string },
   label: string,
 ): boolean {
-  if (result.success || result.skipped) return false;
+  if (result.success) return false;
   fail(label, result.output);
   return true;
 }
 
-/**
- * Reports a three-way elevation outcome (success/skipped/failed) with the appropriate log level.
- * Returns true on success, false otherwise.
- */
+/** Reports an elevation outcome with the appropriate log level. Returns true on success. */
 export function reportElevationOutcome(
-  result: { success: boolean; skipped: boolean },
+  result: { success: boolean },
   label: string,
-  messages: { success: string; skipped: string; failed: string },
+  messages: { success: string; failed: string },
 ): boolean {
   if (result.success) {
     pass(label, messages.success);
     return true;
   }
-  if (result.skipped) {
-    warn(label, messages.skipped);
-  } else {
-    fail(label, messages.failed);
-  }
+  fail(label, messages.failed);
   return false;
 }

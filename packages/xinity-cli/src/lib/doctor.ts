@@ -61,25 +61,21 @@ async function readFileWithElevation(
   path: string,
   description: string,
   opts: DoctorRunOptions,
-): Promise<{ content: string | null; permissionDenied: boolean; skipped: boolean }> {
+): Promise<{ content: string | null; permissionDenied: boolean }> {
   const host = opts.host;
   const content = await host.readFile(path);
   if (content !== null) {
-    return { content, permissionDenied: false, skipped: false };
+    return { content, permissionDenied: false };
   }
   // File not found or inaccessible, try elevated read if interactive
   if (opts.interactive) {
     opts.spinner?.stop();
-    const result = await host.withElevation(`cat '${path}'`, description, { sensitive: true });
+    const result = await host.withElevation(`cat '${path}'`, description);
     if (result.success) {
-      return { content: result.output, permissionDenied: false, skipped: false };
+      return { content: result.output, permissionDenied: false };
     }
-    if (result.skipped) {
-      return { content: null, permissionDenied: false, skipped: true };
-    }
-    return { content: null, permissionDenied: true, skipped: false };
   }
-  return { content: null, permissionDenied: true, skipped: false };
+  return { content: null, permissionDenied: true };
 }
 
 async function checkSystem(host: Host): Promise<ComponentReport> {
@@ -194,15 +190,6 @@ async function checkConfiguration(
     opts,
   );
 
-  if (envRead.skipped) {
-    checks.push({
-      label: "Env file",
-      status: "skip",
-      message: "Skipped",
-    });
-    return { checks, values: {}, permissionDenied: false };
-  }
-
   if (envRead.permissionDenied) {
     checks.push({
       label: "Env file",
@@ -224,7 +211,6 @@ async function checkConfiguration(
 
   // Read all secrets, elevating if needed
   let secretsPermDenied = false;
-  let secretsSkipped = false;
   let secrets: Record<string, string> = {};
 
   if (secretFields.length > 0) {
@@ -233,7 +219,6 @@ async function checkConfiguration(
       const sr = await readSecrets(host, SECRETS_DIR, secretFields.map((f) => f.key), `Read ${component} secrets`);
       secrets = sr.secrets;
       secretsPermDenied = sr.permissionDenied;
-      secretsSkipped = sr.skipped;
     } else {
       // Non-interactive: only try unelevated reads
       for (const field of secretFields) {
@@ -249,8 +234,6 @@ async function checkConfiguration(
 
   if (secretsPermDenied) {
     checks.push({ label: "Secrets", status: "skip", message: "Permission denied, rerun with sudo for full checks" });
-  } else if (secretsSkipped) {
-    checks.push({ label: "Secrets", status: "skip", message: "Skipped by user" });
   } else {
     checks.push(requiredFieldsPresenceCheck("Secrets", "All required secrets set", secretFields, values));
   }
@@ -321,42 +304,6 @@ async function checkGatewayConnectivity(
     checks.push(await checkServiceHealth(host, "Health endpoint", `http://${checkHost}:${port}/healthCheck`));
   }
   return checks;
-}
-
-async function checkSeaweedFSComponent(host: Host): Promise<ComponentReport> {
-  const checks: CheckResult[] = [];
-  const weedBin = `${BIN_DIR}/weed`;
-  const unitFile = `${UNIT_DIR}/xinity-ai-seaweedfs.service`;
-  const hasSystemd = await commandExistsOn(host, "systemctl");
-
-  // Binary
-  if (await host.fileExists(weedBin)) {
-    checks.push({ label: "Binary", status: "pass", message: weedBin });
-  } else if (await commandExistsOn(host, "weed")) {
-    checks.push({ label: "Binary", status: "pass", message: "weed found in PATH" });
-  } else {
-    checks.push({
-      label: "Binary",
-      status: "fail",
-      message: `Not found at ${weedBin}`,
-      detail: 'Run "xinity up seaweedfs" to install',
-    });
-  }
-
-  // Systemd unit
-  if (await host.fileExists(unitFile)) {
-    checks.push({ label: "Systemd unit", status: "pass", message: "xinity-ai-seaweedfs.service" });
-  } else {
-    checks.push({ label: "Systemd unit", status: "fail", message: "Unit file not found" });
-  }
-
-  checks.push(await serviceActiveCheck(host, "xinity-ai-seaweedfs.service", hasSystemd));
-
-  // S3 endpoint reachability
-  checks.push(await checkServiceHealth(host, "S3 endpoint", "http://127.0.0.1:8333/"));
-
-  const installed = await host.fileExists(weedBin) || await commandExistsOn(host, "weed");
-  return { component: "seaweedfs", installed, version: null, checks };
 }
 
 async function checkDashboardConnectivity(
@@ -654,16 +601,6 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
   // 3. Each installable component
   const checkedInfoserverUrls = new Set<string>();
   const remoteInfoserverChecks: CheckResult[] = [];
-
-  // 3a. SeaweedFS (checked independently, not in manifest)
-  opts.spinner?.message("Checking SeaweedFS…");
-  const seaweedBin = "/opt/xinity/bin/weed";
-  const seaweedInstalled = await host.fileExists(seaweedBin) || await commandExistsOn(host, "weed");
-  if (seaweedInstalled) {
-    components.push(await checkSeaweedFSComponent(host));
-  } else {
-    components.push(notInstalledReport("seaweedfs", "Not installed (optional, required for multimodal image storage)"));
-  }
 
   for (const comp of ["gateway", "dashboard", "daemon", "infoserver"] as const) {
     const entry = manifest.components[comp];

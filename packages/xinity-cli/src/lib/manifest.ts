@@ -20,6 +20,10 @@ export interface Manifest {
 
 const MANIFEST_PATH = "/opt/xinity/manifest.json";
 
+// One SSH read per run and host; writes invalidate so the next read
+// reflects disk again (a skipped elevated write must not go unnoticed).
+const manifestCache = new WeakMap<Host, Manifest>();
+
 async function readManifestContent(host: Host): Promise<string | null> {
   const direct = await host.readFile(MANIFEST_PATH);
   if (direct) return direct;
@@ -33,14 +37,20 @@ async function readManifestContent(host: Host): Promise<string | null> {
  * Returns an empty manifest if the file doesn't exist.
  */
 export async function readManifest(host: Host): Promise<Manifest> {
-  const empty: Manifest = { components: {} };
+  const cached = manifestCache.get(host);
+  if (cached) return structuredClone(cached);
+
+  let manifest: Manifest = { components: {} };
   const content = await readManifestContent(host);
-  if (!content) return empty;
-  try {
-    return JSON.parse(content) as Manifest;
-  } catch {
-    return empty;
+  if (content) {
+    try {
+      manifest = JSON.parse(content) as Manifest;
+    } catch {
+      // Unreadable manifest counts as empty, same as a missing file.
+    }
   }
+  manifestCache.set(host, manifest);
+  return structuredClone(manifest);
 }
 
 /** Get the installed version for a component, or null if not installed. */
@@ -50,6 +60,7 @@ export async function getInstalledVersion(component: string, host: Host): Promis
 
 /** Write the manifest to disk (requires elevation). */
 export async function writeManifest(manifest: Manifest, host: Host): Promise<void> {
+  manifestCache.delete(host);
   const json = JSON.stringify(manifest, null, 2);
   const cmd = `mkdir -p /opt/xinity && cat > ${MANIFEST_PATH} << 'MANIFEST_EOF'\n${json}\nMANIFEST_EOF\nchmod 644 ${MANIFEST_PATH}`;
   await host.withElevation(cmd, "Write install manifest");

@@ -1,6 +1,6 @@
 import { createServer } from "net";
 import { hostname as osHostname } from "os";
-import { localRun, buildElevationMenu, confirmManualRun, type Host, type RunResult, type ElevationResult, type ElevationPolicy } from "./host.ts";
+import { localRun, type Host, type RunResult, type ElevationResult } from "./host.ts";
 import * as p from "./clack.ts";
 import pc from "picocolors";
 import { SudoSession, checkPasswordlessSudo } from "./sudo-session.ts";
@@ -147,7 +147,7 @@ export class RemoteHost implements Host {
 
   private sudoSession: SudoSession | null = null;
   private isRootCached: boolean | null = null;
-  private elevationPolicy: ElevationPolicy = null;
+  private elevationDenied = false;
 
   constructor(hostname: string) {
     this.hostname = hostname;
@@ -188,58 +188,39 @@ export class RemoteHost implements Host {
     return localRun(["ssh", ...this.ctrlArgs, this.hostname, command]);
   }
 
-  async withElevation(command: string, description: string, options?: { sensitive?: boolean }): Promise<ElevationResult> {
-    const sensitive = options?.sensitive ?? false;
-
+  private async isRoot(): Promise<boolean> {
     // Cache the root check so we don't run `id -u` on every call.
     if (this.isRootCached === null) {
       const whoami = await localRun(["ssh", ...this.ctrlArgs, this.hostname, "id -u"]);
       this.isRootCached = whoami.ok && whoami.output.trim() === "0";
     }
+    return this.isRootCached;
+  }
 
-    if (this.isRootCached) {
+  async prepareElevation(): Promise<boolean> {
+    if (await this.isRoot()) return true;
+    if (this.sudoSession?.isAlive) return true;
+    if (this.elevationDenied) return false;
+    p.log.info(pc.dim(`Root privileges on ${this.hostname} are required to inspect and configure it.`));
+    return (await this.ensureSudoSessionAndExecute("true")).success;
+  }
+
+  async withElevation(command: string, description: string): Promise<ElevationResult> {
+    if (await this.isRoot()) {
       const b64 = b64Cmd(command);
       const result = await localRun([
         "ssh", ...this.ctrlArgs, this.hostname,
         `echo '${b64}' | base64 -d | sh`,
       ]);
-      return { success: result.ok, output: result.output, skipped: false };
+      return { success: result.ok, output: result.output };
     }
 
-    // Apply remembered policy if set.
-    if (this.elevationPolicy === "sudo") {
-      p.log.step(pc.dim(description));
-      return this.executeViaSudoSession(command);
-    }
-    if (this.elevationPolicy === "manual" && !sensitive) {
-      p.log.step(pc.dim(description));
-      this.showManualCommand(command);
-      return confirmManualRun();
+    if (this.elevationDenied) {
+      return { success: false, output: "sudo authentication was declined" };
     }
 
-    // First time (or sensitive command with manual policy): show menu.
-    const action = await p.select({
-      message: `${pc.yellow(description)} requires elevated privileges on ${pc.cyan(this.hostname)}.`,
-      options: buildElevationMenu(sensitive),
-    });
-
-    if (p.isCancel(action)) {
-      p.cancel("Cancelled.");
-      return { success: false, output: "", skipped: true };
-    }
-
-    if (action === "sudo-all" || action === "sudo-once") {
-      if (action === "sudo-all") this.elevationPolicy = "sudo";
-      return this.ensureSudoSessionAndExecute(command);
-    }
-
-    if (action === "manual-all" || action === "manual-once") {
-      if (action === "manual-all") this.elevationPolicy = "manual";
-      this.showManualCommand(command);
-      return confirmManualRun();
-    }
-
-    return { success: false, output: "", skipped: true };
+    p.log.step(pc.dim(description));
+    return this.ensureSudoSessionAndExecute(command);
   }
 
   async dispose(): Promise<void> {
@@ -264,8 +245,8 @@ export class RemoteHost implements Host {
           p.log.success("Passwordless sudo detected.");
         } catch (err) {
           p.log.warn(`Failed to establish sudo session: ${(err as Error).message}`);
-          this.elevationPolicy = null;
-          return { success: false, output: "", skipped: false };
+          this.elevationDenied = true;
+          return { success: false, output: "" };
         }
       } else {
         // Prompt for password with up to 3 attempts. The fixed-length mask
@@ -279,7 +260,8 @@ export class RemoteHost implements Host {
           );
           if (input === null) {
             p.cancel("Cancelled.");
-            return { success: false, output: "", skipped: true };
+            this.elevationDenied = true;
+            return { success: false, output: "" };
           }
 
           try {
@@ -289,8 +271,8 @@ export class RemoteHost implements Host {
           } catch {
             if (attempt === MAX_ATTEMPTS) {
               p.log.error(`Failed to authenticate after ${MAX_ATTEMPTS} attempts.`);
-              this.elevationPolicy = null;
-              return { success: false, output: "", skipped: false };
+              this.elevationDenied = true;
+              return { success: false, output: "" };
             }
           }
         }
@@ -308,20 +290,12 @@ export class RemoteHost implements Host {
 
     try {
       const { exitCode, output } = await this.sudoSession.execute(command);
-      return { success: exitCode === 0, output, skipped: false };
+      return { success: exitCode === 0, output };
     } catch (err) {
       p.log.warn(`Sudo session error: ${(err as Error).message}`);
       this.sudoSession = null;
-      return { success: false, output: "", skipped: false };
+      return { success: false, output: "" };
     }
-  }
-
-  private showManualCommand(command: string): void {
-    const b64 = b64Cmd(command);
-    p.log.info(
-      `Run manually on ${pc.cyan(this.hostname)}:\n  ${pc.cyan(`echo '${b64}' | base64 -d | sudo sh`)}`,
-    );
-    p.log.info(`Or the equivalent plain command:\n  ${pc.dim(command.replace(/\n/g, "\n  "))}`);
   }
 
   async readFile(path: string): Promise<string | null> {

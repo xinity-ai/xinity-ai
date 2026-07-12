@@ -56,6 +56,11 @@ export const rmCommand: CommandModule = {
         return;
       }
 
+      if (!(await host.prepareElevation())) {
+        p.outro("Aborted");
+        return;
+      }
+
       if (component === "all") {
         await removeAll(purge, host);
         p.outro("Done");

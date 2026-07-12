@@ -3,8 +3,6 @@ import { type Component, BIN_DIR, DASHBOARD_DIR, binaryBaseName } from "./compon
 import type { Host } from "./host.ts";
 import type { StepEvent } from "./step-event.ts";
 
-export type { Release } from "./github.ts";
-
 function findReleaseAsset(release: Release, assetName: string): Release["assets"][number] | null {
   return release.assets.find((a) => a.name === assetName) ?? null;
 }
@@ -75,7 +73,7 @@ export async function* downloadAndVerify(
   return verified ? filePath : null;
 }
 
-async function* downloadAndVerifyOnHost(
+export async function* downloadAndVerifyOnHost(
   release: Release,
   assetName: string,
   host: Host,
@@ -137,26 +135,35 @@ function stripArchiveSuffix(path: string): string {
   return path.replace(/\.tar\.gz$|\.zip$/, "");
 }
 
+/**
+ * The exact root shell command that extracts an archive and installs the
+ * component binary. Shared with the review phase's script dump.
+ */
+export function buildInstallBinaryCommand(component: Component, archivePath: string): string {
+  const binName = binaryBaseName(component);
+  const tmpExtract = stripArchiveSuffix(archivePath);
+  return (
+    `mkdir -p ${tmpExtract} && ${extractCommand(archivePath, tmpExtract)}` +
+    ` && mkdir -p ${BIN_DIR} && rm -f ${BIN_DIR}/${binName}` +
+    ` && cp ${tmpExtract}/${binName} ${BIN_DIR}/${binName}` +
+    ` && chmod +x ${BIN_DIR}/${binName}` +
+    ` && rm -rf ${tmpExtract} ${archivePath}`
+  );
+}
+
 export async function* installBinary(
   component: Component,
   archivePath: string,
   host: Host,
 ): AsyncGenerator<StepEvent, boolean> {
   const binName = binaryBaseName(component);
-  const tmpExtract = stripArchiveSuffix(archivePath);
 
   const result = await host.withElevation(
-    `mkdir -p ${tmpExtract} && ${extractCommand(archivePath, tmpExtract)}` +
-    ` && mkdir -p ${BIN_DIR} && rm -f ${BIN_DIR}/${binName}` +
-    ` && cp ${tmpExtract}/${binName} ${BIN_DIR}/${binName}` +
-    ` && chmod +x ${BIN_DIR}/${binName}` +
-    ` && rm -rf ${tmpExtract} ${archivePath}`,
+    buildInstallBinaryCommand(component, archivePath),
     `Install ${binName} binary`,
   );
   if (!result.success) {
-    if (!result.skipped) {
-      yield { type: "fail", label: "Install", detail: result.output };
-    }
+    yield { type: "fail", label: "Install", detail: result.output };
     return false;
   }
 

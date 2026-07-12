@@ -183,6 +183,7 @@ export function createCachedHost(realHost: Host, state: RemoteState): Host {
     },
 
     withElevation: realHost.withElevation.bind(realHost),
+    prepareElevation: realHost.prepareElevation.bind(realHost),
     uploadFile: realHost.uploadFile.bind(realHost),
     downloadFile: realHost.downloadFile.bind(realHost),
     verifySha256: realHost.verifySha256.bind(realHost),

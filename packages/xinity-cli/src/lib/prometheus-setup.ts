@@ -171,7 +171,7 @@ async function writeFile(host: Host, path: string, content: string, label: strin
     `cat > ${path} << 'XINITY_PROM_EOF'\n${content}\nXINITY_PROM_EOF`,
     `Write ${label}`,
   );
-  if (!result.success && !result.skipped) {
+  if (!result.success) {
     fail("Config", `Failed to write ${label}`);
     return false;
   }
@@ -309,7 +309,7 @@ export async function prometheusSetup(
     composeArgs(compose, COMPOSE_PATH, "up", "-d").join(" "),
     "Start Prometheus container",
   );
-  if (!upResult.success && !upResult.skipped) {
+  if (!upResult.success) {
     fail("Start", "Failed to start the Prometheus container");
     return undefined;
   }

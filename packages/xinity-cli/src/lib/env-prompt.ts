@@ -1,12 +1,11 @@
 import { z } from "zod";
 import * as p from "./clack.ts";
 import pc from "picocolors";
-import { promptOrExit } from "./output.ts";
+import { promptOrExit, cancelAndExit } from "./output.ts";
 import { parseEnvString } from "./env-file.ts";
-import { type Component, ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, getAutoDefaults } from "./component-meta.ts";
-import { writeEnvConfig, writeSystemdUnit, restartService } from "./service.ts";
-import { runSteps } from "./step-runner.ts";
+import { type Component, ENV_SCHEMAS, ENV_DIR, SECRETS_DIR } from "./component-meta.ts";
 import { readSecrets, type Host } from "./host.ts";
+import { readManifest } from "./manifest.ts";
 
 export interface EnvField {
   key: string;
@@ -116,6 +115,39 @@ export function splitValuesByCategory(
     if (val !== undefined) assignByCategory(field, val, config, secrets);
   }
   return { config, secrets };
+}
+
+export interface EnvBundle {
+  config: Record<string, string>;
+  secrets: Record<string, string>;
+}
+
+export interface EnvChange {
+  key: string;
+  kind: "added" | "changed" | "removed";
+  isSecret: boolean;
+  before?: string;
+  after?: string;
+}
+
+/** What applying `after` would change relative to the values currently on the host. */
+export function diffEnv(before: EnvBundle, after: EnvBundle): EnvChange[] {
+  const changes: EnvChange[] = [];
+  const compare = (prev: Record<string, string>, next: Record<string, string>, isSecret: boolean) => {
+    for (const [key, value] of Object.entries(next)) {
+      if (!(key in prev)) {
+        changes.push({ key, kind: "added", isSecret, after: value });
+      } else if (prev[key] !== value) {
+        changes.push({ key, kind: "changed", isSecret, before: prev[key], after: value });
+      }
+    }
+    for (const key of Object.keys(prev)) {
+      if (!(key in next)) changes.push({ key, kind: "removed", isSecret });
+    }
+  };
+  compare(before.config, after.config, false);
+  compare(before.secrets, after.secrets, true);
+  return changes;
 }
 
 function prefillFromExisting(
@@ -255,22 +287,19 @@ async function promptField(
 }
 
 /** Format a field's current value for display in the menu. */
-function displayValue(field: EnvField, value: string | undefined, locked = false): string {
+function displayValue(field: EnvField, value: string | undefined): string {
   if (value !== undefined && value !== "") {
     if (field.isSecret) return pc.dim("••••••");
     return pc.cyan(value);
   }
-  if (locked && field.isSecret) return pc.dim("(locked)");
   if (field.hasDefault) return pc.dim(`(default: ${field.defaultValue})`);
   if (field.isOptional) return pc.dim("(not set)");
   return pc.yellow("(not set)");
 }
 
 export interface MenuEditOptions {
-  /** Keys flagged as "new" — highlighted in label and required to be set before save. */
+  /** Keys flagged as "new", highlighted in label and required to be set before save. */
   newKeys?: Set<string>;
-  /** Secrets we couldn't read because elevation was skipped — shown as (locked). */
-  secretsLocked?: boolean;
   /** Message displayed above the menu. */
   message?: string;
 }
@@ -278,10 +307,6 @@ export interface MenuEditOptions {
 /**
  * Menu-based env editor. Returns the merged { config, secrets } without
  * persisting anything. Returns null if the user cancels.
- *
- * Used by both `xinity configure` (where the caller writes to disk and
- * restarts the service) and the `xinity up` update flow (where the caller
- * passes the result through the installer's existing write path).
  */
 export async function menuEditEnv(
   schema: z.ZodObject<any>,
@@ -290,7 +315,6 @@ export async function menuEditEnv(
 ): Promise<{ config: Record<string, string>; secrets: Record<string, string> } | null> {
   const fields = analyzeEnvSchema(schema);
   const newKeys = opts?.newKeys ?? new Set<string>();
-  const secretsLocked = opts?.secretsLocked ?? false;
   const values: Record<string, string | undefined> = { ...existing };
 
   const newMarker = pc.yellow("● new ");
@@ -300,7 +324,7 @@ export async function menuEditEnv(
       const marker = newKeys.has(field.key) ? newMarker : "";
       return {
         value: field.key,
-        label: `${marker}${field.key}  ${displayValue(field, values[field.key], secretsLocked && field.isSecret)}`,
+        label: `${marker}${field.key}  ${displayValue(field, values[field.key])}`,
         hint: field.description,
       };
     });
@@ -342,50 +366,95 @@ export async function menuEditEnv(
   return splitValuesByCategory(fields, values);
 }
 
-/**
- * Menu-based interactive configuration for a component's env vars.
- *
- * Loads current values from disk, opens the menu editor, and on save
- * persists the result and restarts the service.
- */
-export async function menuConfigureEnv(
-  component: Component,
-  host: Host,
-): Promise<void> {
-  const schema = ENV_SCHEMAS[component];
-  const fields = analyzeEnvSchema(schema);
-  const { secretFields } = categorizeFields(fields);
+/** A component's env values as currently present on the host. */
+export interface ExistingEnvState {
+  existingConfig: Record<string, string>;
+  existingSecrets: Record<string, string>;
+}
+
+export async function readExistingEnvState(component: Component, host: Host): Promise<ExistingEnvState> {
+  const { secretFields } = categorizeFields(analyzeEnvSchema(ENV_SCHEMAS[component]));
   const secretKeys = secretFields.map((f) => f.key);
 
-  p.intro(`xinity configure ${pc.cyan(component)}`);
-
-  const envPath = `${ENV_DIR}/${component}.env`;
-  const envContent = await host.readFile(envPath);
+  const envContent = await host.readFile(`${ENV_DIR}/${component}.env`);
   const existingConfig = envContent ? parseEnvString(envContent) : {};
-  let secretsLocked = false;
+
   let existingSecrets: Record<string, string> = {};
   if (secretKeys.length > 0) {
     const sr = await readSecrets(host, SECRETS_DIR, secretKeys, "Read existing secrets");
     existingSecrets = sr.secrets;
-    secretsLocked = sr.skipped;
-  }
-  const autoDefaults = getAutoDefaults(component);
-  const existing: Record<string, string> = { ...autoDefaults, ...existingConfig, ...existingSecrets };
-
-  const result = await menuEditEnv(schema, existing, { secretsLocked });
-  if (result === null) {
-    p.cancel("Cancelled, no changes saved.");
-    return;
   }
 
-  const configResult = await writeEnvConfig(component, result.config, result.secrets, host);
-  if (configResult.success) {
-    p.log.success("Config – Environment configured");
-    await writeSystemdUnit(component, Object.keys(result.secrets), host);
-    await runSteps(restartService(component, host));
-  } else if (configResult.error) {
-    p.log.error(`Config – ${configResult.error}`);
-  }
-  p.outro("Done");
+  return { existingConfig, existingSecrets };
 }
 
+export interface CollectedEnv extends EnvBundle {
+  changes: EnvChange[];
+}
+
+/**
+ * Planning-phase env collection: load current values from the host, prompt
+ * for whatever is missing (or let the user edit), and report what applying
+ * the result would change. Writes nothing. Returns null on cancel.
+ */
+export async function collectEnv(
+  component: Component,
+  host: Host,
+  autoDefaults: Record<string, string>,
+  skipKeys?: Set<string>,
+): Promise<CollectedEnv | null> {
+  const schema = ENV_SCHEMAS[component];
+  const fields = analyzeEnvSchema(schema);
+  const { existingConfig, existingSecrets } = await readExistingEnvState(component, host);
+
+  // Only the component's own env file marks it as previously configured.
+  // The secrets dir is shared infrastructure: on a fresh install the redis
+  // step already stored REDIS_URL there before any component exists, and
+  // that must not make the first component look like a leftover install.
+  const hasExistingConfig = Object.keys(existingConfig).length > 0;
+  const existing = { ...autoDefaults, ...existingConfig, ...existingSecrets };
+
+  const missingRequired = fields.filter(
+    (f) => !f.isOptional && !f.hasDefault && !existing[f.key],
+  );
+
+  const withChanges = (result: EnvBundle): CollectedEnv => ({
+    ...result,
+    changes: diffEnv({ config: existingConfig, secrets: existingSecrets }, result),
+  });
+  const useExisting = () => withChanges(splitValuesByCategory(fields, existing));
+
+  const isInstalled = !!(await readManifest(host)).components[component];
+
+  if (isInstalled && hasExistingConfig) {
+    if (missingRequired.length === 0) {
+      const action = await promptOrExit(p.select({
+        message: "All configuration variables are already set.",
+        options: [
+          { value: "skip", label: "Keep current configuration" },
+          { value: "edit", label: "Edit configuration" },
+        ],
+      }));
+      if (action === "skip") return useExisting();
+      const result = await menuEditEnv(schema, existing);
+      return result ? withChanges(result) : useExisting();
+    } else {
+      p.log.info(
+        `${missingRequired.length} new variable(s) need to be set. Edit any other values too if you like.`,
+      );
+      const newKeys = new Set(missingRequired.map((f) => f.key));
+      const result = await menuEditEnv(schema, existing, { newKeys });
+      if (result === null) cancelAndExit();
+      return withChanges(result);
+    }
+  } else if (hasExistingConfig && missingRequired.length === 0) {
+    // Not in manifest but has existing config, preserve original behavior
+    const reconfigure = await promptOrExit(p.confirm({
+      message: "Existing configuration found. Reconfigure?",
+      initialValue: false,
+    }));
+    if (!reconfigure) return useExisting();
+  }
+
+  return withChanges(await promptForEnv(component, schema, existing, skipKeys));
+}

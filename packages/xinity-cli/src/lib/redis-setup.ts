@@ -1,12 +1,9 @@
 /**
- * Interactive Redis/Valkey setup assistant for `xinity up redis`.
+ * Redis/Valkey discovery and setup, split into planning and apply halves.
  *
- * Guides the user through detecting, installing, starting, and
- * configuring a Redis or Valkey instance for the gateway's caching
- * and load-balancing state.
- *
- * All shell operations go through the Host interface so this works
- * identically for local and remote (--target-host) execution.
+ * `planRedis` finds or asks for a connection URL and, when the user opts
+ * into setup, decides the install/start commands, all without changing the
+ * host. `applyRedisPlan` executes the decided commands and persists the URL.
  */
 import { randomBytes } from "crypto";
 import * as p from "./clack.ts";
@@ -131,79 +128,81 @@ function startCommandFor(variant: RedisVariant, pm: PackageManager | undefined):
   return pm?.start[variant] ?? SYSTEMD_START_FALLBACK[variant];
 }
 
-/** Try to start the Redis/Valkey service. */
-async function startRedis(
+// ─── Plan / apply model ─────────────────────────────────────────────────────
+
+export interface RedisProvision {
+  variant: RedisVariant;
+  installCmd?: string;
+  startCmd?: string;
+  /** brew and similar: commands run as the regular user, not root. */
+  userIsSuper: boolean;
+}
+
+export interface RedisPlan {
+  url: string;
+  /** Store the URL into the secrets dir during apply. */
+  persist: boolean;
+  provision?: RedisProvision;
+}
+
+async function runProvisionCommand(
   host: Host,
-  variant: RedisVariant,
-  pm: PackageManager | undefined,
-  dryRun: boolean,
+  prov: RedisProvision,
+  cmd: string,
+  label: string,
+  messages: { success: string; failed: string },
 ): Promise<boolean> {
-  const startCmd = startCommandFor(variant, pm);
-
-  if (dryRun) {
-    info("Dry run", `Would start ${variant}: ${pc.dim(startCmd)}`);
-    return true;
-  }
-
-  if (pm?.userIsSuper) {
-    const res = await host.run(["sh", "-c", startCmd]);
+  if (prov.userIsSuper) {
+    const res = await host.run(["sh", "-c", cmd]);
     if (res.ok) {
-      pass(variant, "Service started");
+      pass(label, messages.success);
       return true;
     }
-    fail(variant, "Failed to start service");
+    fail(label, res.output || messages.failed);
     return false;
   }
 
-  const result = await host.withElevation(startCmd, `Start ${variant}`);
-  return reportElevationOutcome(result, variant, {
-    success: "Service started",
-    skipped: "Skipped starting the service",
-    failed: result.output || "Failed to start service",
+  const result = await host.withElevation(cmd, label);
+  return reportElevationOutcome(result, label, {
+    success: messages.success,
+    failed: result.output || messages.failed,
   });
 }
 
-// ─── Install flow ───────────────────────────────────────────────────────────
-
-async function installRedis(
-  host: Host,
-  variant: RedisVariant,
-  pm: PackageManager,
-  dryRun: boolean,
-): Promise<boolean> {
-  const installCmd = pm.install[variant];
-
-  const proceed = await p.confirm({
-    message: `Install ${variant} using ${pc.cyan(pm.name)}?`,
-    initialValue: true,
-  });
-  if (p.isCancel(proceed) || !proceed) return false;
-
-  if (dryRun) {
-    info("Dry run", `Would install ${variant}: ${pc.dim(installCmd)}`);
-    return true;
-  }
-
-  if (pm.userIsSuper) {
-    const spinner = p.spinner();
-    spinner.start(`Installing ${variant} via ${pm.name}…`);
-    const res = await host.run(["sh", "-c", installCmd]);
-    if (!res.ok) {
-      spinner.stop("Failed");
-      fail("Install", res.output);
+/** Execute a decided redis plan: install/start when planned, then persist the URL. */
+export async function applyRedisPlan(plan: RedisPlan, host: Host): Promise<boolean> {
+  const prov = plan.provision;
+  if (prov) {
+    if (prov.installCmd && !(await runProvisionCommand(host, prov, prov.installCmd, `Install ${prov.variant}`, {
+      success: `${prov.variant} installed`,
+      failed: "Installation failed",
+    }))) {
       return false;
     }
-    spinner.stop(`${variant} installed`);
-    pass("Install", `${variant} installed via ${pm.name}`);
-    return true;
+    if (prov.startCmd && !(await runProvisionCommand(host, prov, prov.startCmd, `Start ${prov.variant}`, {
+      success: "Service started",
+      failed: "Failed to start service",
+    }))) {
+      return false;
+    }
+    await testRedisWithSpinner(plan.url, host);
   }
 
-  const result = await host.withElevation(installCmd, `Install ${variant}`);
-  return reportElevationOutcome(result, "Install", {
-    success: `${variant} installed`,
-    skipped: "Skipped installation",
-    failed: result.output || "Installation failed",
-  });
+  if (plan.persist) await persistRedisUrl(host, plan.url);
+  return true;
+}
+
+/** Review lines for the redis actions in an `up all` plan (empty when nothing will change). */
+export function describeRedisPlan(plan: RedisPlan): string[] {
+  const lines: string[] = [];
+  if (plan.provision?.installCmd) lines.push(`  install: ${plan.provision.installCmd}`);
+  if (plan.provision?.startCmd) lines.push(`  start: ${plan.provision.startCmd}`);
+  if (plan.persist) lines.push(`  store REDIS_URL in ${SECRETS_DIR}`);
+  if (lines.length === 0) return [];
+  const head = plan.provision
+    ? `Provision ${plan.provision.variant} and store the connection URL`
+    : "Store the Redis connection URL";
+  return [head, ...lines];
 }
 
 async function waitForManualInstall(host: Host): Promise<boolean> {
@@ -253,11 +252,8 @@ async function waitForManualInstall(host: Host): Promise<boolean> {
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
-/** Build a REDIS_URL from user input or defaults. */
-async function configureRedisUrl(
-  host: Host,
-  dryRun: boolean,
-): Promise<string | undefined> {
+/** Build a REDIS_URL from user input or defaults. Prompts only. */
+async function configureRedisUrl(): Promise<string | undefined> {
   p.log.step(pc.bold("Configure Redis connection"));
 
   const hostInput = await promptOrUndefined(p.text({
@@ -341,22 +337,17 @@ async function persistRedisUrl(host: Host, url: string): Promise<void> {
     `mkdir -p '${SECRETS_DIR}' && chmod 700 '${SECRETS_DIR}'` +
     ` && printf '%s' '${escaped}' > '${SECRETS_DIR}/REDIS_URL' && chmod 600 '${SECRETS_DIR}/REDIS_URL'`,
     "Store Redis connection URL",
-    { sensitive: true },
   );
 }
 
 /**
- * Discover REDIS_URL from stored secrets, environment, or component configs.
- * If no existing URL is found, guides the user through an interactive
- * setup that can detect, install, and configure Redis/Valkey automatically.
- * Persists the result to the secrets directory for future runs.
+ * Planning half: discover REDIS_URL from stored secrets, environment, or
+ * component configs, or guide the user to a URL (optionally deciding an
+ * install). Reads and prompts only; `applyRedisPlan` makes the changes.
  *
- * Returns a Redis URL if setup completed, or `undefined` if the user cancelled.
+ * Returns undefined if the user cancelled.
  */
-export async function discoverRedisUrl(
-  host: Host,
-  dryRun: boolean,
-): Promise<string | undefined> {
+export async function planRedis(host: Host): Promise<RedisPlan | undefined> {
   // 1. Check stored secret
   const stored = await readSecrets(host, SECRETS_DIR, ["REDIS_URL"], "Read stored Redis URL");
   if (stored.secrets.REDIS_URL) {
@@ -364,7 +355,7 @@ export async function discoverRedisUrl(
     info("Redis connection", `Found stored URL: ${redactRedisUrl(url)}`);
     const result = await testRedisWithSpinner(url, host);
     if (result.success) {
-      return url;
+      return { url, persist: false };
     }
 
     // Stored URL is stale, offer to reconfigure
@@ -377,26 +368,16 @@ export async function discoverRedisUrl(
       ],
     });
     if (p.isCancel(action)) { p.cancel("Cancelled."); return undefined; }
-    if (action === "keep") return url;
-    if (action === "setup") {
-      const newUrl = await redisSetup(host, dryRun);
-      if (newUrl) {
-        await testRedisWithSpinner(newUrl, host);
-        if (!dryRun) await persistRedisUrl(host, newUrl);
-      }
-      return newUrl;
-    }
-    // reenter: fall through to promptAndValidateRedisUrl below
+    if (action === "keep") return { url, persist: false };
+    if (action === "setup") return planRedisSetup(host);
     const newUrl = await promptAndValidateRedisUrl(host);
-    if (newUrl && !dryRun) await persistRedisUrl(host, newUrl);
-    return newUrl;
+    return newUrl ? { url: newUrl, persist: true } : undefined;
   }
 
   // 2. Check environment variable
   if (process.env.REDIS_URL) {
     info("Redis connection", "Using REDIS_URL from environment");
-    if (!dryRun) await persistRedisUrl(host, process.env.REDIS_URL);
-    return process.env.REDIS_URL;
+    return { url: process.env.REDIS_URL, persist: true };
   }
 
   // 3. Check installed component env files on the target host
@@ -408,8 +389,7 @@ export async function discoverRedisUrl(
         const env = parseEnvString(content);
         if (env.REDIS_URL) {
           info("Redis connection", `Found in ${component}.env`);
-          if (!dryRun) await persistRedisUrl(host, env.REDIS_URL);
-          return env.REDIS_URL;
+          return { url: env.REDIS_URL, persist: true };
         }
       }
     }
@@ -437,19 +417,11 @@ export async function discoverRedisUrl(
     return undefined;
   }
 
-  if (choice === "setup") {
-    const url = await redisSetup(host, dryRun);
-    if (url) {
-      await testRedisWithSpinner(url, host);
-      if (!dryRun) await persistRedisUrl(host, url);
-    }
-    return url;
-  }
+  if (choice === "setup") return planRedisSetup(host);
 
   // Existing instance, prompt for URL then validate connectivity
   const url = await promptAndValidateRedisUrl(host);
-  if (url && !dryRun) await persistRedisUrl(host, url);
-  return url;
+  return url ? { url, persist: true } : undefined;
 }
 
 /**
@@ -488,11 +460,11 @@ async function promptAndValidateRedisUrl(host: Host): Promise<string | undefined
 }
 
 /**
- * Interactive Redis/Valkey setup flow.
- *
- * Returns a REDIS_URL if setup completed, or `undefined` if the user cancelled.
+ * Interactive setup planning: detect what is installed and running, decide
+ * the install/start commands, and prompt for the connection details. Nothing
+ * executes here; the decided commands run in `applyRedisPlan`.
  */
-export async function redisSetup(host: Host, dryRun: boolean): Promise<string | undefined> {
+async function planRedisSetup(host: Host): Promise<RedisPlan | undefined> {
   p.log.step(pc.bold("Redis / Valkey setup"));
 
   // Step 1: Is Redis/Valkey installed?
@@ -515,81 +487,107 @@ export async function redisSetup(host: Host, dryRun: boolean): Promise<string | 
       });
       if (p.isCancel(variantChoice)) return undefined;
 
-      const installed = await installRedis(host, variantChoice, pm, dryRun);
-      if (!installed) return undefined;
+      const proceed = await p.confirm({
+        message: `Install ${variantChoice} using ${pc.cyan(pm.name)}?`,
+        initialValue: true,
+      });
+      if (p.isCancel(proceed) || !proceed) return undefined;
 
-      const started = await startRedis(host, variantChoice, pm, dryRun);
-      if (!started) return undefined;
-
-      return configureRedisUrl(host, dryRun);
+      const url = await configureRedisUrl();
+      if (!url) return undefined;
+      return {
+        url,
+        persist: true,
+        provision: {
+          variant: variantChoice,
+          installCmd: pm.install[variantChoice],
+          startCmd: pm.start[variantChoice],
+          userIsSuper: pm.userIsSuper,
+        },
+      };
     }
 
-    // Unknown package manager
+    // Unknown package manager: the user installs by hand, we only verify.
     warn("Package manager", "Could not detect a supported package manager");
-    if (dryRun) {
-      info("Dry run", "Would ask user to install Redis/Valkey manually");
-      return configureRedisUrl(host, dryRun);
-    }
     const ready = await waitForManualInstall(host);
     if (!ready) return undefined;
 
-    return configureRedisUrl(host, dryRun);
+    const url = await configureRedisUrl();
+    return url ? { url, persist: true } : undefined;
   }
 
   // Step 2: Redis/Valkey is installed, is it running?
   if (await isRedisRunning(host)) {
     pass(variant, "Installed and running");
-    return configureRedisUrl(host, dryRun);
+    const url = await configureRedisUrl();
+    return url ? { url, persist: true } : undefined;
   }
 
   // Installed but not running
-  warn(variant, "Installed but not running");
+  warn(variant, "Installed but not running (will be started on apply)");
 
   const pm = await detectPackageManager(host);
-  const started = await startRedis(host, variant, pm, dryRun);
-  if (!started) return undefined;
+  const url = await configureRedisUrl();
+  if (!url) return undefined;
+  return {
+    url,
+    persist: true,
+    provision: {
+      variant,
+      startCmd: startCommandFor(variant, pm),
+      userIsSuper: pm?.userIsSuper ?? false,
+    },
+  };
+}
 
-  return configureRedisUrl(host, dryRun);
+function describeRedisPlanDryRun(plan: RedisPlan): void {
+  if (plan.provision?.installCmd) {
+    info("Dry run", `Would install ${plan.provision.variant}: ${pc.dim(plan.provision.installCmd)}`);
+  }
+  if (plan.provision?.startCmd) {
+    info("Dry run", `Would start ${plan.provision.variant}: ${pc.dim(plan.provision.startCmd)}`);
+  }
+  if (plan.persist) {
+    info("Dry run", `Would store REDIS_URL in ${SECRETS_DIR}`);
+  }
 }
 
 /**
- * Entry point for `xinity up infra-redis`. If a working connection already
- * exists, offers to keep it or reconfigure. Otherwise falls through to the
- * normal discovery flow.
+ * Entry point for `xinity up infra-redis`: plan, then immediately apply (or
+ * describe, on dry runs). If a working connection already exists, offers to
+ * keep it or reconfigure.
  */
 export async function infraRedis(host: Host, dryRun: boolean): Promise<string | undefined> {
+  let plan: RedisPlan | undefined;
+
   const stored = await readSecrets(host, SECRETS_DIR, ["REDIS_URL"], "Read stored Redis URL");
-  if (stored.secrets.REDIS_URL) {
-    const url = stored.secrets.REDIS_URL;
-    const result = await testRedisWithSpinner(url, host);
-
-    if (result.success) {
-      info("Redis connection", `Current: ${redactRedisUrl(url)}`);
-      const action = await p.select({
-        message: "Redis is configured and reachable.",
-        options: [
-          { value: "keep", label: "Keep current configuration" },
-          { value: "reenter", label: "Enter a different URL" },
-          { value: "setup", label: "Set up a new Redis instance" },
-        ],
-      });
-      if (p.isCancel(action) || action === "keep") return url;
-      if (action === "reenter") {
-        const newUrl = await promptAndValidateRedisUrl(host);
-        if (newUrl && !dryRun) await persistRedisUrl(host, newUrl);
-        return newUrl;
-      }
-      // setup: fall through to full setup
-      const newUrl = await redisSetup(host, dryRun);
-      if (newUrl) {
-        await testRedisWithSpinner(newUrl, host);
-        if (!dryRun) await persistRedisUrl(host, newUrl);
-      }
-      return newUrl;
+  const storedUrl = stored.secrets.REDIS_URL;
+  if (storedUrl && (await testRedisWithSpinner(storedUrl, host)).success) {
+    info("Redis connection", `Current: ${redactRedisUrl(storedUrl)}`);
+    const action = await p.select({
+      message: "Redis is configured and reachable.",
+      options: [
+        { value: "keep", label: "Keep current configuration" },
+        { value: "reenter", label: "Enter a different URL" },
+        { value: "setup", label: "Set up a new Redis instance" },
+      ],
+    });
+    if (p.isCancel(action) || action === "keep") return storedUrl;
+    if (action === "reenter") {
+      const newUrl = await promptAndValidateRedisUrl(host);
+      plan = newUrl ? { url: newUrl, persist: true } : undefined;
+    } else {
+      plan = await planRedisSetup(host);
     }
-
-    // Stored but not reachable, delegate to the stale-URL flow in discoverRedisUrl
+  } else {
+    // No stored URL, or stored but unreachable: planRedis owns the stale-URL flow.
+    plan = await planRedis(host);
   }
 
-  return discoverRedisUrl(host, dryRun);
+  if (!plan) return undefined;
+  if (dryRun) {
+    describeRedisPlanDryRun(plan);
+    return plan.url;
+  }
+  return (await applyRedisPlan(plan, host)) ? plan.url : undefined;
 }

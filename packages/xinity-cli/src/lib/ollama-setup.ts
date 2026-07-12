@@ -63,10 +63,8 @@ async function getOllamaVersion(host: Host): Promise<string | null> {
 async function installOrUpdateOllama(host: Host): Promise<boolean> {
   const result = await host.withElevation(INSTALL_COMMAND, "Install/update ollama");
   if (!result.success) {
-    if (!result.skipped) {
-      fail("Ollama", result.output || "Installation failed");
-      p.log.info(pc.dim(`  Install manually: ${INSTALL_COMMAND}`));
-    }
+    fail("Ollama", result.output || "Installation failed");
+    p.log.info(pc.dim(`  Install manually: ${INSTALL_COMMAND}`));
     return false;
   }
 
@@ -92,9 +90,7 @@ async function startOllamaService(host: Host, opts: { warnOnFail?: boolean } = {
     pass("Ollama", "Service started");
     return true;
   }
-  if (!result.skipped) {
-    (opts.warnOnFail ? warn : fail)("Ollama", result.output || "Failed to start service");
-  }
+  (opts.warnOnFail ? warn : fail)("Ollama", result.output || "Failed to start service");
   return false;
 }
 
@@ -175,6 +171,38 @@ export async function provisionOllama(host: Host, dryRun: boolean): Promise<bool
     : promptStartStoppedOllama(host, dryRun);
 }
 
+/**
+ * Non-interactive provisioning for `xinity plan apply`: install ollama when
+ * missing, start the service when stopped, leave a running instance alone.
+ * Returns true when ollama is expected to answer at {@link LOCAL_OLLAMA_ENDPOINT}.
+ */
+export async function ensureOllama(host: Host, dryRun: boolean): Promise<boolean> {
+  p.log.step(pc.bold("Ollama setup"));
+
+  const status = await detectOllamaStatus(host);
+
+  if (dryRun) {
+    info("Dry run", status === "missing"
+      ? `Would install ollama: ${INSTALL_COMMAND}`
+      : status === "stopped" ? "Would start the ollama service" : "Ollama already running");
+    return true;
+  }
+
+  if (status === "missing") {
+    info("Ollama", "Not found, installing");
+    return installOrUpdateOllama(host);
+  }
+
+  const version = await getOllamaVersion(host);
+  pass("Ollama", `Installed${version ? ` (v${version.replace(/^v/, "")})` : ""}`);
+
+  if (status === "running") {
+    pass("Ollama", "Service is running");
+    return true;
+  }
+  return startOllamaService(host);
+}
+
 // ─── Wiring the daemon to ollama (standalone `infra-ollama`) ──────────────────
 
 async function isOllamaEndpointReachable(host: Host): Promise<boolean> {
@@ -206,9 +234,7 @@ async function writeDaemonEndpoint(host: Host, endpoint: string): Promise<boolea
     await runSteps(restartService("daemon", host));
     return true;
   }
-  if (!result.skipped) {
-    fail("Daemon config", result.output || "Failed to write daemon env");
-  }
+  fail("Daemon config", result.output || "Failed to write daemon env");
   return false;
 }
 

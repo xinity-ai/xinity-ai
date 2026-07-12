@@ -44,8 +44,12 @@ export class FakeHost implements Host {
 
   async withElevation(command: string): Promise<ElevationResult> {
     this.calls.push(command);
-    const base: ElevationResult = { success: true, output: "", skipped: false };
+    const base: ElevationResult = { success: true, output: "" };
     return { ...base, ...this.config.withElevation?.(command) };
+  }
+
+  async prepareElevation(): Promise<boolean> {
+    return true;
   }
 
   async readFile(path: string): Promise<string | null> {

@@ -67,8 +67,23 @@ async function apiHeaders(accept = "application/vnd.github+json"): Promise<Recor
   return headers;
 }
 
-/** Fetch a release by version tag (or "latest"). */
-export async function fetchRelease(version: string): Promise<Release> {
+const releaseCache = new Map<string, Promise<Release>>();
+
+/**
+ * Fetch a release by version tag (or "latest"). One API call per version
+ * per run: `up all` resolves the same release for every component, and
+ * unauthenticated GitHub rate limits are tight.
+ */
+export function fetchRelease(version: string): Promise<Release> {
+  const cached = releaseCache.get(version);
+  if (cached) return cached;
+  const pending = fetchReleaseFromApi(version);
+  releaseCache.set(version, pending);
+  pending.catch(() => releaseCache.delete(version));
+  return pending;
+}
+
+async function fetchReleaseFromApi(version: string): Promise<Release> {
   const base = getApiBase();
   const url =
     version === "latest"

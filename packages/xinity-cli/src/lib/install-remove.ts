@@ -1,5 +1,5 @@
 import * as p from "./clack.ts";
-import pc from "picocolors";
+import { heading } from "./output.ts";
 import { readManifest, writeManifest } from "./manifest.ts";
 import { analyzeEnvSchema, categorizeFields } from "./env-prompt.ts";
 import { type Host, isUnitActiveOn } from "./host.ts";
@@ -13,7 +13,7 @@ import {
 } from "./component-meta.ts";
 
 function* elevationStep(
-  result: { success: boolean; skipped: boolean; output: string },
+  result: { success: boolean; output: string },
   label: string,
   successMsg: string,
   failurePrefix: string,
@@ -21,7 +21,7 @@ function* elevationStep(
 ): Generator<StepEvent> {
   if (result.success) {
     yield { type: "pass", label, detail: successMsg };
-  } else if (!result.skipped) {
+  } else {
     const error = `${failurePrefix}: ${result.output}`;
     errors.push(error);
     yield { type: "fail", label, detail: error };
@@ -149,14 +149,20 @@ export async function* removeComponent(opts: {
 }
 
 export async function removeAll(purge = false, host: Host): Promise<void> {
-  const { runComponentSequence } = await import("./installer.ts");
+  const components: Component[] = ["gateway", "dashboard", "daemon", "infoserver"];
+  for (const component of components) {
+    heading(component);
+    const result = await runSteps(removeComponent({ component, purge, host }));
+    if (!result.success) {
+      const proceed = await p.confirm({
+        message: `${component} had issues: ${result.errors.join(", ")}. Continue with remaining components?`,
+        initialValue: true,
+      });
+      if (p.isCancel(proceed) || !proceed) return;
+    }
+  }
 
-  await runComponentSequence(
-    ["gateway", "dashboard", "daemon", "infoserver"],
-    (component) => runSteps(removeComponent({ component, purge, host })),
-  );
-
-  p.log.step(pc.bold("\n── Cleanup ──"));
+  heading("cleanup");
   const cleanDirs = [
     `rmdir ${SECRETS_DIR} 2>/dev/null || true`,
     `rmdir ${ENV_DIR} 2>/dev/null || true`,

@@ -156,6 +156,11 @@ async function waitForPostgresReady(
 
 // ─── File writing ──────────────────────────────────────────────────────────
 
+function buildWriteFileCommand(path: string, content: string, mode?: string): string {
+  const chmod = mode ? `\nchmod ${mode} ${path}` : "";
+  return `cat > ${path} << 'XINITY_PG_EOF'\n${content}\nXINITY_PG_EOF${chmod}`;
+}
+
 async function writeFile(
   host: Host,
   path: string,
@@ -163,12 +168,8 @@ async function writeFile(
   label: string,
   mode?: string,
 ): Promise<boolean> {
-  const chmod = mode ? `\nchmod ${mode} ${path}` : "";
-  const result = await host.withElevation(
-    `cat > ${path} << 'XINITY_PG_EOF'\n${content}\nXINITY_PG_EOF${chmod}`,
-    `Write ${label}`,
-  );
-  if (!result.success && !result.skipped) {
+  const result = await host.withElevation(buildWriteFileCommand(path, content, mode), `Write ${label}`);
+  if (!result.success) {
     fail("Config", `Failed to write ${label}`);
     return false;
   }
@@ -183,7 +184,7 @@ async function startAndWait(host: Host, compose: ComposeCmd, user: string, port:
     composeArgs(compose, COMPOSE_PATH, "up", "-d").join(" "),
     "Start PostgreSQL container",
   );
-  if (!upResult.success && !upResult.skipped) {
+  if (!upResult.success) {
     fail("Start", "Failed to start the PostgreSQL container");
     return false;
   }
@@ -209,8 +210,21 @@ function reportSuccess(compose: ComposeCmd, connectionUrl: string): void {
     `  credentials: ${ENV_PATH} (0600)\n` +
     `  data:        Docker volume ${pc.cyan(VOLUME_NAME)} (inspect: docker volume inspect ${VOLUME_NAME})\n` +
     `  ${pc.cyan(`${manageCmd} down`)}       (stop and remove the container; data volume is kept)\n` +
-    `  ${pc.cyan(`${manageCmd} down -v`)}    (also delete the database volume — destroys data)`,
+    `  ${pc.cyan(`${manageCmd} down -v`)}    (also delete the database volume, destroys data)`,
   );
+}
+
+/**
+ * A fully-decided provisioning action: everything the apply half needs to
+ * bring the database up without asking anything else.
+ */
+export interface PostgresProvision {
+  compose: ComposeCmd;
+  user: string;
+  port: number;
+  url: string;
+  /** Present when creating a new stack; absent when restarting an existing one. */
+  files?: { envFile: string; composeFile: string };
 }
 
 /**
@@ -218,12 +232,10 @@ function reportSuccess(compose: ComposeCmd, connectionUrl: string): void {
  * applies POSTGRES_* on first init, so we must NOT regenerate credentials: we
  * reuse the existing env file, or refuse if we can't recover the password.
  */
-async function reuseExisting(
-  host: Host,
+function planReuseExisting(
   compose: ComposeCmd,
   existing: ExistingPostgres,
-  dryRun: boolean,
-): Promise<string | undefined> {
+): PostgresProvision | undefined {
   const creds = existing.envFile ? parsePostgresEnv(existing.envFile) : {};
   if (!creds.user || !creds.password || !creds.db) {
     warn("PostgreSQL", `An existing data volume (${VOLUME_NAME}) was found, but its credentials could not be recovered from ${ENV_PATH}.`);
@@ -238,19 +250,14 @@ async function reuseExisting(
   const port = existing.composeFile ? parsePublishedPort(existing.composeFile) : DEFAULT_PORT;
   const connectionUrl = buildConnectionUrl({ user: creds.user, password: creds.password, db: creds.db, port });
   info("PostgreSQL", `Reusing the existing database (credentials from ${ENV_PATH}); not regenerating.`);
-
-  if (dryRun) {
-    info("Dry run", `Would ensure the existing stack is running: ${pc.dim(composeArgs(compose, COMPOSE_PATH, "up", "-d").join(" "))}`);
-    p.note(`DB_CONNECTION_URL=${connectionUrl}`, "Existing connection URL");
-    return connectionUrl;
-  }
-
-  if (!(await startAndWait(host, compose, creds.user, port))) return undefined;
-  reportSuccess(compose, connectionUrl);
-  return connectionUrl;
+  return { compose, user: creds.user, port, url: connectionUrl };
 }
 
-async function provisionWithDocker(host: Host, dryRun: boolean): Promise<string | undefined> {
+/**
+ * Planning half: environment checks and configuration prompts only, nothing
+ * on the host changes.
+ */
+export async function planPostgresProvision(host: Host): Promise<PostgresProvision | undefined> {
   const compose = await resolveComposeCmd(host);
   if (!compose) {
     warn("Docker", "Docker with Compose is required to provision a database, and was not found.");
@@ -275,7 +282,7 @@ async function provisionWithDocker(host: Host, dryRun: boolean): Promise<string 
   // so reuse rather than silently hand out a password the database never adopted.
   const existing = await inspectExistingPostgres(host);
   if (existing.volumeExists) {
-    return reuseExisting(host, compose, existing, dryRun);
+    return planReuseExisting(compose, existing);
   }
 
   p.log.step(pc.bold("Configure the new database"));
@@ -320,37 +327,70 @@ async function provisionWithDocker(host: Host, dryRun: boolean): Promise<string 
     warn("Port", `Something is already listening on localhost:${port}. Starting the container will fail if it is still bound.`);
   }
 
-  const connectionUrl = buildConnectionUrl({ user, password, db, port });
-  const envFile = buildPostgresEnv({ db, user, password });
-  const composeFile = buildComposeFile(port, ENV_PATH);
+  return {
+    compose,
+    user,
+    port,
+    url: buildConnectionUrl({ user, password, db, port }),
+    files: {
+      envFile: buildPostgresEnv({ db, user, password }),
+      composeFile: buildComposeFile(port, ENV_PATH),
+    },
+  };
+}
 
-  if (dryRun) {
-    info("Dry run", `Would write ${ENV_PATH} (0600) and ${COMPOSE_PATH}`);
-    info("Dry run", `Would run: ${pc.dim(composeArgs(compose, COMPOSE_PATH, "up", "-d").join(" "))}`);
-    p.note(`DB_CONNECTION_URL=${connectionUrl}`, "Connection URL (not yet created)");
-    return connectionUrl;
+/** One-line summary of the provisioning action for review lists. */
+export function describePostgresProvision(prov: PostgresProvision): string {
+  return prov.files
+    ? `Provision PostgreSQL via Docker (${POSTGRES_IMAGE} on localhost:${prov.port})`
+    : `Start the existing PostgreSQL Docker stack (localhost:${prov.port})`;
+}
+
+/** The exact root shell commands the apply half runs, for the script dump. */
+export function buildPostgresProvisionCommands(prov: PostgresProvision): string[] {
+  const up = composeArgs(prov.compose, COMPOSE_PATH, "up", "-d").join(" ");
+  if (!prov.files) return [up];
+  return [
+    `mkdir -p ${STACK_DIR}`,
+    buildWriteFileCommand(ENV_PATH, prov.files.envFile, "600"),
+    buildWriteFileCommand(COMPOSE_PATH, prov.files.composeFile),
+    up,
+  ];
+}
+
+/** Apply half: write the stack files (new stacks only), start, wait for readiness. */
+export async function applyPostgresProvision(prov: PostgresProvision, host: Host): Promise<boolean> {
+  if (prov.files) {
+    await host.withElevation(`mkdir -p ${STACK_DIR}`, "Create stack directory");
+    if (!(await writeFile(host, ENV_PATH, prov.files.envFile, "database env file", "600"))) return false;
+    if (!(await writeFile(host, COMPOSE_PATH, prov.files.composeFile, "compose file"))) return false;
+    pass("Config", `Wrote ${COMPOSE_PATH} and ${ENV_PATH}`);
   }
 
-  await host.withElevation(`mkdir -p ${STACK_DIR}`, "Create stack directory");
-  if (!(await writeFile(host, ENV_PATH, envFile, "database env file", "600"))) return undefined;
-  if (!(await writeFile(host, COMPOSE_PATH, composeFile, "compose file"))) return undefined;
-  pass("Config", `Wrote ${COMPOSE_PATH} and ${ENV_PATH}`);
-
-  if (!(await startAndWait(host, compose, user, port))) return undefined;
-  reportSuccess(compose, connectionUrl);
-  return connectionUrl;
+  if (!(await startAndWait(host, prov.compose, prov.user, prov.port))) return false;
+  reportSuccess(prov.compose, prov.url);
+  return true;
 }
 
 // ─── Main entry point ───────────────────────────────────────────────────────
 
 /**
- * Provision a new PostgreSQL database via Docker.
- *
- * Returns the connection URL on success, or undefined if the user cancelled or
- * the environment is unsupported. The existing-database case is handled upstream
- * by the migrator (see the module comment), not here.
+ * `xinity up infra-postgres`: plan, then immediately apply (or describe, on
+ * dry runs). The existing-database case is handled upstream by the migrator
+ * (see the module comment), not here.
  */
 export async function postgresSetup(host: Host, dryRun: boolean): Promise<string | undefined> {
   p.log.step(pc.bold("PostgreSQL setup"));
-  return provisionWithDocker(host, dryRun);
+  const prov = await planPostgresProvision(host);
+  if (!prov) return undefined;
+
+  if (dryRun) {
+    for (const cmd of buildPostgresProvisionCommands(prov)) {
+      info("Dry run", `Would run: ${pc.dim(cmd.split("\n")[0] ?? cmd)}`);
+    }
+    p.note(`DB_CONNECTION_URL=${prov.url}`, prov.files ? "Connection URL (not yet created)" : "Existing connection URL");
+    return prov.url;
+  }
+
+  return (await applyPostgresProvision(prov, host)) ? prov.url : undefined;
 }
