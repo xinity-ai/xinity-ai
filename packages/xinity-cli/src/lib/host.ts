@@ -4,8 +4,6 @@
  * All operations that touch the filesystem or run commands go through a Host
  * instance. Use `connectHost()` from remote-host.ts to create one.
  */
-import * as p from "./clack.ts";
-
 // ─── Low-level shell primitives ─────────────────────────────────────────────
 
 export interface RunResult {
@@ -60,38 +58,9 @@ function resetStdin(): void {
 
 // ─── Elevation (sudo) ──────────────────────────────────────────────────────
 
-export type ElevationPolicy = "sudo" | "manual" | null;
-
 export interface ElevationResult {
   success: boolean;
   output: string;
-  skipped: boolean;
-}
-
-export function buildElevationMenu(sensitive: boolean): { value: string; label: string }[] {
-  const options: { value: string; label: string }[] = [
-    { value: "sudo-all", label: "Run with sudo (all remaining)" },
-    { value: "sudo-once", label: "Run with sudo (this time only)" },
-  ];
-  if (!sensitive) {
-    options.push(
-      { value: "manual-all", label: "Show me the commands (all remaining)" },
-      { value: "manual-once", label: "Show me the command (this time only)" },
-    );
-  }
-  return options;
-}
-
-export async function confirmManualRun(): Promise<ElevationResult> {
-  const done = await p.confirm({ message: "Have you run the command?", initialValue: true });
-  if (!p.isCancel(done) && done) {
-    return { success: true, output: "", skipped: false };
-  }
-  const abort = await p.confirm({ message: "Abort?", initialValue: false });
-  if (p.isCancel(abort) || abort) {
-    p.cancel("Aborted.");
-  }
-  return { success: false, output: "", skipped: true };
 }
 
 // ─── Host interface ─────────────────────────────────────────────────────────
@@ -107,13 +76,18 @@ export interface Host {
   runShell(command: string): Promise<RunResult>;
 
   /**
-   * Run a shell command that requires root privileges.
-   * May prompt the user for sudo, show the command, or skip.
-   *
-   * When `sensitive` is true the command involves secret values:
-   * - The "show command" option is hidden (prevents printing secrets)
+   * Run a shell command as root. Uses the established sudo session,
+   * prompting for the password once on first need (no-op when root).
    */
-  withElevation(command: string, description: string, options?: { sensitive?: boolean }): Promise<ElevationResult>;
+  withElevation(command: string, description: string): Promise<ElevationResult>;
+
+  /**
+   * Establish root privileges up front: passes silently when already root,
+   * otherwise starts the sudo session (one password prompt) so everything
+   * after runs unattended. Returns false when authentication is cancelled
+   * or fails.
+   */
+  prepareElevation(): Promise<boolean>;
 
   /** Read a file, returning its content or null if not found / not accessible. */
   readFile(path: string): Promise<string | null>;
@@ -159,7 +133,6 @@ export interface Host {
 export interface ReadSecretsResult {
   secrets: Record<string, string>;
   permissionDenied: boolean;
-  skipped: boolean;
 }
 
 /**
@@ -185,20 +158,17 @@ export async function readSecrets(
 
   const missing = keys.filter((k) => !(k in secrets));
   if (missing.length === 0) {
-    return { secrets, permissionDenied: false, skipped: false };
+    return { secrets, permissionDenied: false };
   }
 
   const script = missing
     .map((k) => `[ -f '${dir}/${k}' ] && printf '%s\\0%s\\0' '${k}' "$(cat '${dir}/${k}')"`)
     .join("; ") + "; true";
 
-  const result = await host.withElevation(script, description, { sensitive: true });
+  const result = await host.withElevation(script, description);
 
-  if (result.skipped) {
-    return { secrets, permissionDenied: false, skipped: true };
-  }
   if (!result.success) {
-    return { secrets, permissionDenied: true, skipped: false };
+    return { secrets, permissionDenied: true };
   }
 
   const parts = result.output.split("\0");
@@ -210,7 +180,7 @@ export async function readSecrets(
     }
   }
 
-  return { secrets, permissionDenied: false, skipped: false };
+  return { secrets, permissionDenied: false };
 }
 
 // ─── Convenience helpers ─────────────────────────────────────────────────────

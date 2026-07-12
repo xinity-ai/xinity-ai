@@ -1,6 +1,6 @@
 import type { CommandModule } from "yargs";
 import { menuConfigureCli, loadConfig, saveConfig, updateConfig } from "../lib/config.ts";
-import { menuConfigureEnv } from "../lib/env-prompt.ts";
+import { configureComponentFlow } from "../lib/up-plan.ts";
 import type { Component } from "../lib/component-meta.ts";
 import type { CliConfig } from "../lib/config.ts";
 import { connectHost } from "../lib/remote-host.ts";
@@ -53,7 +53,7 @@ export const configureCommand: CommandModule = {
     } else {
       const host = await connectHost(targetHostArg);
       try {
-        await menuConfigureEnv(component as Component, host);
+        await configureComponentFlow(component as Component, host);
       } finally {
         await host.dispose();
       }

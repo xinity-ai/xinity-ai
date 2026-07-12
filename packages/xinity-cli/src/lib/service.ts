@@ -6,7 +6,6 @@ import type { StepEvent } from "./step-event.ts";
 
 export interface ServiceResult {
   success: boolean;
-  skipped?: boolean;
   error?: string;
 }
 
@@ -17,30 +16,51 @@ function applyEnvDerivations(component: Component, config: Record<string, string
   return config;
 }
 
+// The build*Command helpers return the exact root shell commands the apply
+// runs; the review phase's script dump emits the same strings verbatim.
+
+export function buildEnvWriteCommand(component: Component, config: Record<string, string>): string {
+  const envContent = serializeEnvFile(applyEnvDerivations(component, config));
+  const envPath = `${ENV_DIR}/${component}.env`;
+  return `mkdir -p ${ENV_DIR} && cat > ${envPath} << 'ENVEOF'\n${envContent}ENVEOF\nchmod 644 ${envPath}`;
+}
+
+export function buildSecretsWriteCommand(secrets: Record<string, string>): string | null {
+  if (Object.keys(secrets).length === 0) return null;
+  const cmds = [`mkdir -p ${SECRETS_DIR}`, `chmod 700 ${SECRETS_DIR}`];
+  for (const [key, value] of Object.entries(secrets)) {
+    cmds.push(`printf '%s' '${value.replace(/'/g, "'\\''")}' > ${SECRETS_DIR}/${key}`);
+    cmds.push(`chmod 600 ${SECRETS_DIR}/${key}`);
+  }
+  return cmds.join(" && ");
+}
+
+export function buildUnitWriteCommand(component: Component, secretKeys: string[]): string {
+  const baseConfig = getComponentConfig(component);
+  const config: UnitConfig = { ...baseConfig, secretKeys };
+  const unitContent = generateUnit(config);
+  const unitPath = `${UNIT_DIR}/${unitName(component)}`;
+  return `cat > ${unitPath} << 'UNITEOF'\n${unitContent}UNITEOF\nsystemctl daemon-reload`;
+}
+
 export async function writeEnvConfig(
   component: Component,
   config: Record<string, string>,
   secrets: Record<string, string>,
   host: Host,
 ): Promise<ServiceResult> {
-  const envContent = serializeEnvFile(applyEnvDerivations(component, config));
-  const envPath = `${ENV_DIR}/${component}.env`;
   let result = await host.withElevation(
-    `mkdir -p ${ENV_DIR} && cat > ${envPath} << 'ENVEOF'\n${envContent}ENVEOF\nchmod 644 ${envPath}`,
+    buildEnvWriteCommand(component, config),
     `Write ${component} configuration`,
   );
-  if (!result.success && !result.skipped) {
+  if (!result.success) {
     return { success: false, error: result.output };
   }
 
-  if (Object.keys(secrets).length > 0) {
-    const cmds = [`mkdir -p ${SECRETS_DIR}`, `chmod 700 ${SECRETS_DIR}`];
-    for (const [key, value] of Object.entries(secrets)) {
-      cmds.push(`printf '%s' '${value.replace(/'/g, "'\\''")}' > ${SECRETS_DIR}/${key}`);
-      cmds.push(`chmod 600 ${SECRETS_DIR}/${key}`);
-    }
-    result = await host.withElevation(cmds.join(" && "), "Write secrets", { sensitive: true });
-    if (!result.success && !result.skipped) {
+  const secretsCommand = buildSecretsWriteCommand(secrets);
+  if (secretsCommand) {
+    result = await host.withElevation(secretsCommand, "Write secrets");
+    if (!result.success) {
       return { success: false, error: result.output };
     }
   }
@@ -53,22 +73,13 @@ export async function writeSystemdUnit(
   secretKeys: string[],
   host: Host,
 ): Promise<ServiceResult> {
-  const baseConfig = getComponentConfig(component);
-  const config: UnitConfig = { ...baseConfig, secretKeys };
-
-  const unitContent = generateUnit(config);
-  const unitPath = `${UNIT_DIR}/${unitName(component)}`;
-
   const result = await host.withElevation(
-    `cat > ${unitPath} << 'UNITEOF'\n${unitContent}UNITEOF\nsystemctl daemon-reload`,
+    buildUnitWriteCommand(component, secretKeys),
     `Install ${component} systemd unit`,
   );
 
-  if (!result.success && !result.skipped) {
+  if (!result.success) {
     return { success: false, error: result.output };
-  }
-  if (result.skipped) {
-    return { success: false, skipped: true };
   }
 
   return { success: true };
@@ -106,11 +117,8 @@ export async function* startService(component: Component, host: Host): AsyncGene
     `Enable and start ${unit}`,
   );
 
-  if (!result.success && !result.skipped) {
+  if (!result.success) {
     yield { type: "fail", label: "Service", detail: result.output };
-    return false;
-  }
-  if (result.skipped) {
     return false;
   }
 
@@ -146,9 +154,7 @@ export async function* restartService(component: Component, host: Host): AsyncGe
   );
 
   if (!result.success) {
-    if (!result.skipped) {
-      yield { type: "fail", label: "Service", detail: result.output };
-    }
+    yield { type: "fail", label: "Service", detail: result.output };
     return false;
   }
 

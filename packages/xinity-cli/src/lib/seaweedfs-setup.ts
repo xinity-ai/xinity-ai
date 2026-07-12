@@ -151,7 +151,7 @@ async function downloadWeed(host: Host, dataDir: string, dryRun: boolean): Promi
     `tar -xzf ${tmpTar} -C ${BIN_DIR} weed 2>/dev/null || tar -xzf ${tmpTar} -C /tmp && mv /tmp/weed ${WEED_BIN}`,
     "Extract weed binary",
   );
-  if (!extractResult.success && !extractResult.skipped) {
+  if (!extractResult.success) {
     fail("Extract", "Failed to extract weed binary from archive");
     return false;
   }
@@ -194,7 +194,7 @@ async function writeS3Config(
     "Write SeaweedFS S3 config",
   );
 
-  if (!result.success && !result.skipped) {
+  if (!result.success) {
     fail("Config", "Failed to write S3 identity config");
     return false;
   }
@@ -237,7 +237,7 @@ async function installSystemdUnit(
     "Install SeaweedFS systemd unit",
   );
 
-  if (!result.success && !result.skipped) {
+  if (!result.success) {
     fail("Systemd", "Failed to install unit file");
     return false;
   }
@@ -256,7 +256,7 @@ async function startAndWait(host: Host, dryRun: boolean): Promise<boolean> {
     `systemctl enable --now ${SEAWEEDFS_UNIT}`,
     "Start SeaweedFS",
   );
-  if (!startResult.success && !startResult.skipped) {
+  if (!startResult.success) {
     fail("Start", "Failed to start SeaweedFS");
     return false;
   }
