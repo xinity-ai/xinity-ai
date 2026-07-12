@@ -1,6 +1,7 @@
 export interface DeploymentSettingsV1 {
   version: 1;
   maxAudioInputDurationS?: number;
+  maxAudioInputFileSizeMB?: number;
 }
 
 export type DeploymentSettings = DeploymentSettingsV1;
@@ -28,6 +29,11 @@ export function mergeSettings(a: DeploymentSettings, b: DeploymentSettings): Dep
   if (durations.length > 0) {
     merged.maxAudioInputDurationS = Math.max(...durations);
   }
+  const fileSizes = [a.maxAudioInputFileSizeMB, b.maxAudioInputFileSizeMB]
+    .filter((value): value is number => value != null);
+  if (fileSizes.length > 0) {
+    merged.maxAudioInputFileSizeMB = Math.max(...fileSizes);
+  }
   return merged;
 }
 
@@ -35,9 +41,20 @@ export function mergeSettings(a: DeploymentSettings, b: DeploymentSettings): Dep
 // returns undefined for unknown versions, so older services fall back to the
 // engine default rather than misreading an incompatible shape.
 
-export function resolveMaxAudioInputDurationS(settings: DeploymentSettings | null | undefined): number | undefined {
+function resolveV1Field<T>(
+  settings: DeploymentSettings | null | undefined,
+  fn: (s: DeploymentSettingsV1) => T,
+): T | undefined {
   if (settings == null || (settings as { version: number }).version !== 1) {
     return undefined;
   }
-  return settings.maxAudioInputDurationS;
+  return fn(settings);
+}
+
+export function resolveMaxAudioInputDurationS(settings: DeploymentSettings | null | undefined): number | undefined {
+  return resolveV1Field(settings, (s) => s.maxAudioInputDurationS);
+}
+
+export function resolveMaxAudioInputFileSizeMB(settings: DeploymentSettings | null | undefined): number | undefined {
+  return resolveV1Field(settings, (s) => s.maxAudioInputFileSizeMB);
 }

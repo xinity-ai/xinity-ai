@@ -7,6 +7,7 @@ import { CommonDto } from "./common.dto";
 export const DeploymentSettingsDto = z.object({
   version: z.literal(1),
   maxAudioInputDurationS: z.number().int().min(1).max(24 * 60 * 60).optional(),
+  maxAudioInputFileSizeMB: z.number().int().min(1).optional(),
 });
 
 export const DeploymentDto = CommonDto.extend({

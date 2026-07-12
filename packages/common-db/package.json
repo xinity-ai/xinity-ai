@@ -5,6 +5,10 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./deployment-settings": {
+      "types": "./src/deployment-settings.ts",
+      "default": "./src/deployment-settings.ts"
     }
   },
   "type": "module",
