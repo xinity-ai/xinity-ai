@@ -159,17 +159,27 @@ export const backendErrorsTotal = createCounter(
   "Total backend errors by model and HTTP status",
 );
 
+export const inputTokensTotal = createCounter(
+  "gateway_input_tokens_total",
+  "Total input tokens by model, API key, and organization",
+);
+
+export const outputTokensTotal = createCounter(
+  "gateway_output_tokens_total",
+  "Total output tokens by model, API key, and organization",
+);
+
 const TOKEN_BUCKETS = [10, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000];
 
 export const inputTokens = createHistogram(
   "gateway_input_tokens",
-  "Input tokens per request by model and API key",
+  "Input tokens per request by model, API key, and organization",
   TOKEN_BUCKETS,
 );
 
 export const outputTokens = createHistogram(
   "gateway_output_tokens",
-  "Output tokens per request by model and API key",
+  "Output tokens per request by model, API key, and organization",
   TOKEN_BUCKETS,
 );
 
@@ -193,18 +203,27 @@ const allMetrics = [
   inputTokens,
   outputTokens,
   generationTokensPerSecond,
+  inputTokensTotal,
+  outputTokensTotal,
 ];
 
 export function recordTokenUsage(
   model: string,
   keyId: string,
+  orgId: string,
   usage: { inputTokens?: number; outputTokens?: number } | null | undefined,
   opts?: { deployment?: string; durationMs?: number },
 ) {
   if (!usage) return;
-  const labels = { model, key_id: keyId };
-  if (usage.inputTokens != null) inputTokens.observe(labels, usage.inputTokens);
-  if (usage.outputTokens != null) outputTokens.observe(labels, usage.outputTokens);
+  const labels: Record<string, string> = { model, key_id: keyId, org_id: orgId };
+  if (usage.inputTokens != null) {
+    inputTokens.observe(labels, usage.inputTokens);
+    inputTokensTotal.inc(labels, usage.inputTokens);
+  }
+  if (usage.outputTokens != null) {
+    outputTokens.observe(labels, usage.outputTokens);
+    outputTokensTotal.inc(labels, usage.outputTokens);
+  }
 
   if (usage.outputTokens && opts?.deployment && opts.durationMs && opts.durationMs > 0) {
     const tps = usage.outputTokens / (opts.durationMs / 1000);
@@ -216,8 +235,8 @@ export function recordTimeToFirstToken(deployment: string, callStartTime: number
   timeToFirstToken.observe({ deployment }, Date.now() - callStartTime);
 }
 
-export function recordModelRequest(model: string, success: boolean): void {
-  modelRequestsTotal.inc({ model, status: success ? "success" : "failure" });
+export function recordModelRequest(model: string, success: boolean, orgId: string): void {
+  modelRequestsTotal.inc({ model, status: success ? "success" : "failure", org_id: orgId });
 }
 
 export function recordBackendError(model: string, status: number): void {
