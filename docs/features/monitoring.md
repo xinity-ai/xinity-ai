@@ -17,12 +17,14 @@ Each service exposes a `GET /metrics` endpoint in Prometheus text format. All en
 | `gateway_active_requests` | gauge | `endpoint` | In-flight requests |
 | `gateway_request_duration_milliseconds` | histogram | `endpoint` | Request latency |
 | `gateway_time_to_first_token_milliseconds` | histogram | `deployment` | Time to first token (streaming) |
-| `gateway_model_requests_total` | counter | `model`, `status` | Requests per model (success/failure) |
+| `gateway_model_requests_total` | counter | `model`, `status`, `org_id` | Requests per model (success/failure) |
 | `gateway_client_disconnects_total` | counter | `endpoint` | Client disconnections during streaming |
 | `gateway_backend_errors_total` | counter | `model`, `status` | Backend errors by model and HTTP status |
-| `gateway_input_tokens` | histogram | `model`, `key_id` | Input tokens per request |
-| `gateway_output_tokens` | histogram | `model`, `key_id` | Output tokens per request |
+| `gateway_input_tokens` | histogram | `model`, `key_id`, `org_id` | Input tokens per request |
+| `gateway_output_tokens` | histogram | `model`, `key_id`, `org_id` | Output tokens per request |
 | `gateway_generation_tokens_per_second` | histogram | `deployment` | Output token throughput |
+| `gateway_input_tokens_total` | counter | `model`, `key_id`, `org_id` | Cumulative input tokens |
+| `gateway_output_tokens_total` | counter | `model`, `key_id`, `org_id` | Cumulative output tokens |
 
 ### Dashboard metrics
 
@@ -73,7 +75,7 @@ High-level stats: gateway request rate, error rate, active requests, daemons up,
 
 ### Xinity Gateway
 
-Traffic panels: request rate and latency by endpoint, requests by status, error rate, active requests, input/output token distributions, generation throughput. Model health panels: request rate by model, time-to-first-token, backend errors, client disconnects, failure rate.
+Traffic panels: request rate and latency by endpoint, requests by status, error rate, active requests, input/output token distributions, generation throughput. Model health panels: request rate by model, time-to-first-token, backend errors, client disconnects, failure rate. Organization usage panels: model requests by org, failure rate by org, cumulative token rate by org.
 
 ### Xinity GPU / Compute
 

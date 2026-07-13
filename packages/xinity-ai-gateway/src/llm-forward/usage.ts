@@ -41,8 +41,8 @@ export const recordUsage = ({
   deployment,
 }: RecordUsageContext): boolean => {
   const durationMs = Date.now() - callStartTime;
-  recordTokenUsage(modelInfo.model, auth.keyId, usage, { deployment, durationMs });
-  recordModelRequest(modelInfo.model, true);
+  recordTokenUsage(modelInfo.model, auth.keyId, auth.orgId, usage, { deployment, durationMs });
+  recordModelRequest(modelInfo.model, true, auth.orgId);
   if (!usage) {
     return false;
   }
@@ -72,7 +72,7 @@ export type FailedRequestContext = {
 };
 
 export function recordFailedRequest({ auth, modelInfo, callStartTime }: FailedRequestContext): void {
-  recordModelRequest(modelInfo.model, false);
+  recordModelRequest(modelInfo.model, false, auth.orgId);
   recordUsageEvent({
     organizationId: auth.orgId,
     applicationId: auth.applicationId,
