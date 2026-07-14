@@ -6,6 +6,30 @@ import type { VllmOps } from "./vllm-ops";
 // Mocks: must be set up before importing the module under test
 // ---------------------------------------------------------------------------
 
+mock.module("../../env", () => ({ env: {
+  PORT: 4020,
+  HOST: "0.0.0.0",
+  XINITY_OLLAMA_ENDPOINT: "http://localhost:11434",
+  DB_CONNECTION_URL: "postgres://localhost/test",
+  STATE_DIR: "/tmp/test-state",
+  CIDR_PREFIX: "10.0.0",
+  SYNC_INTERVAL_MS: 60_000,
+  INFOSERVER_URL: "http://localhost:8393",
+  INFOSERVER_CACHE_TTL_MS: 0,
+  VLLM_BACKEND: "docker",
+  VLLM_ENV_DIR: "/tmp/vllm-env",
+  VLLM_TEMPLATE_UNIT_PATH: "/tmp/vllm-template",
+  VLLM_PATH: "",
+  VLLM_DOCKER_IMAGE: "vllm/vllm-openai:latest",
+  VLLM_HF_CACHE_DIR: "/tmp/hf-cache",
+  VLLM_TRITON_CACHE_DIR: "/tmp/triton-cache",
+  VLLM_HEALTH_TIMEOUT_MS: 500,
+  VLLM_HEALTH_POLL_INTERVAL_MS: 50,
+  VLLM_MAX_RESTART_COUNT: 3,
+  LOG_LEVEL: "silent",
+  LOG_DIR: undefined,
+}}));
+
 // Mock DB: tracks insert and select calls
 const mockOnConflictDoUpdate = mock(() => Promise.resolve());
 const mockInsertValues = mock(() => ({ onConflictDoUpdate: mockOnConflictDoUpdate }));
@@ -21,6 +45,17 @@ mock.module("../../db/connection", () => ({
     select: mockSelect,
   }),
   listen: mock(),
+}));
+
+mock.module("../../logger", () => ({
+  rootLogger: {
+    child: () => ({
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+      debug: () => {},
+    }),
+  },
 }));
 
 // Mock the infoserver client

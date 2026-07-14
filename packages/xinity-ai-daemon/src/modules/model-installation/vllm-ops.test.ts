@@ -1,11 +1,24 @@
-import { describe, test, expect } from "bun:test";
-import {
+import { describe, test, expect, mock } from "bun:test";
+
+mock.module("../../env", () => ({ env: {
+  VLLM_BACKEND: "systemd",
+  VLLM_ENV_DIR: "/etc/vllm",
+  VLLM_TEMPLATE_UNIT_PATH: "/etc/systemd/system/vllm-driver@.service",
+  VLLM_PATH: "/usr/local/bin/vllm",
+  VLLM_DOCKER_IMAGE: "vllm/vllm-openai:latest",
+  VLLM_HF_CACHE_DIR: "/var/lib/vllm/hf-cache",
+  VLLM_TRITON_CACHE_DIR: "/var/lib/vllm/triton-cache",
+  VLLM_HF_TOKEN: undefined,
+  LOG_LEVEL: "silent",
+  LOG_DIR: undefined,
+}}));
+
+const {
   buildDockerRunArgs,
   buildSystemdEnvFile,
   buildSystemdServeArgv,
-  type VllmInstanceConfig,
-} from "./vllm-ops";
-import { env } from "../../env";
+} = await import("./vllm-ops");
+type VllmInstanceConfig = import("./vllm-ops").VllmInstanceConfig;
 
 const baseConfig: VllmInstanceConfig = {
   model: "meta-llama/Llama-3.1-8B-Instruct",
@@ -27,11 +40,11 @@ describe("buildDockerRunArgs", () => {
       "-e", "TRITON_CACHE_DIR=/data/triton-cache",
       "-e", "HF_HUB_OFFLINE=1",
       "-e", "TRANSFORMERS_OFFLINE=1",
-      "-v", `${env.VLLM_HF_CACHE_DIR}:/data/hf-cache`,
-      "-v", `${env.VLLM_TRITON_CACHE_DIR}:/data/triton-cache`,
+      "-v", "/var/lib/vllm/hf-cache:/data/hf-cache",
+      "-v", "/var/lib/vllm/triton-cache:/data/triton-cache",
       "--restart", "unless-stopped",
-      "--entrypoint", env.VLLM_PATH ?? "vllm",
-      env.VLLM_DOCKER_IMAGE!,
+      "--entrypoint", "/usr/local/bin/vllm",
+      "vllm/vllm-openai:latest",
       "serve", "meta-llama/Llama-3.1-8B-Instruct",
       "--host", "0.0.0.0",
       "--port", "8000",
@@ -54,8 +67,8 @@ describe("buildDockerRunArgs", () => {
   test("base image (vllm not the default command) is driven via --entrypoint + serve", () => {
     const argv = buildDockerRunArgs("inst-1", baseConfig);
     const entryIdx = argv.indexOf("--entrypoint");
-    expect(argv[entryIdx + 1]).toBe(env.VLLM_PATH ?? "vllm");
-    expect(argv[entryIdx + 2]).toBe(env.VLLM_DOCKER_IMAGE);
+    expect(argv[entryIdx + 1]).toBe("/usr/local/bin/vllm");
+    expect(argv[entryIdx + 2]).toBe("vllm/vllm-openai:latest");
     expect(argv[entryIdx + 3]).toBe("serve");
     expect(argv).not.toContain("--model");
   });
@@ -111,15 +124,14 @@ describe("buildDockerRunArgs", () => {
 describe("buildSystemdEnvFile", () => {
   test("base config writes only the required variables", () => {
     const out = buildSystemdEnvFile(baseConfig);
-    const lines = out.trimEnd().split("\n");
-    expect(lines).toContain("VLLM_MODEL=meta-llama/Llama-3.1-8B-Instruct");
-    expect(lines).toContain("VLLM_PORT=8000");
-    expect(lines).toContain("VLLM_HOST=127.0.0.1");
-    expect(lines).toContain("VLLM_SERVED_MODEL_NAME=meta-llama/Llama-3.1-8B-Instruct");
-    expect(lines).toContain("VLLM_KV_CACHE_BYTES=8g");
-    if (env.VLLM_PATH) {
-      expect(lines).toContain(`VLLM_BINARY_PATH=${env.VLLM_PATH}`);
-    }
+    expect(out).toBe(
+      "VLLM_MODEL=meta-llama/Llama-3.1-8B-Instruct\n" +
+      "VLLM_PORT=8000\n" +
+      "VLLM_HOST=127.0.0.1\n" +
+      "VLLM_SERVED_MODEL_NAME=meta-llama/Llama-3.1-8B-Instruct\n" +
+      "VLLM_KV_CACHE_BYTES=8g\n" +
+      "VLLM_BINARY_PATH=/usr/local/bin/vllm\n",
+    );
   });
 
   test("emits trust-remote-code, gpu-mem, and extra args when present", () => {
@@ -149,9 +161,8 @@ describe("buildSystemdEnvFile", () => {
 
 describe("buildSystemdServeArgv", () => {
   test("base config produces minimal vllm serve argv", () => {
-    const binary = env.VLLM_PATH || "/usr/bin/vllm";
     expect(buildSystemdServeArgv(baseConfig)).toEqual([
-      binary, "serve", "meta-llama/Llama-3.1-8B-Instruct",
+      "/usr/local/bin/vllm", "serve", "meta-llama/Llama-3.1-8B-Instruct",
       "--host", "127.0.0.1",
       "--port", "8000",
       "--kv-cache-memory-bytes", "8g",
@@ -160,14 +171,13 @@ describe("buildSystemdServeArgv", () => {
   });
 
   test("appends gpu utilization, trust flag, and extra args in template order", () => {
-    const binary = env.VLLM_PATH || "/usr/bin/vllm";
     expect(buildSystemdServeArgv({
       ...baseConfig,
       gpuMemoryUtilization: 0.9,
       trustRemoteCode: true,
       extraArgs: ["--runner", "pooling", "--enable-auto-tool-choice"],
     })).toEqual([
-      binary, "serve", "meta-llama/Llama-3.1-8B-Instruct",
+      "/usr/local/bin/vllm", "serve", "meta-llama/Llama-3.1-8B-Instruct",
       "--host", "127.0.0.1",
       "--port", "8000",
       "--kv-cache-memory-bytes", "8g",
