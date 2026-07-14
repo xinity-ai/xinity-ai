@@ -172,4 +172,20 @@ describe("Temporary password flow", () => {
       await context.close();
     }
   });
+
+  test("createUser does not set session cookies on the admin response", async () => {
+    const ts = Date.now() + 1;
+    const res = await ownerFetch("/api/instance-admin/users/create", {
+      method: "POST",
+      body: JSON.stringify({
+        name: `Session Hijack Test ${ts}`,
+        email: `e2e-nohijack-${ts}@xinity-test.local`,
+      }),
+    });
+    expect(res.ok).toBe(true);
+
+    const setCookies = res.headers.getSetCookie();
+    const sessionCookies = setCookies.filter((c) => c.includes("session_token"));
+    expect(sessionCookies).toHaveLength(0);
+  });
 });

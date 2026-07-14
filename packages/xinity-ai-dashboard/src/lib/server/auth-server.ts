@@ -89,6 +89,39 @@ export async function adminResetPassword(email: string, newPassword: string) {
   });
 }
 
+export async function adminCreateUser(
+  email: string,
+  name: string,
+  password: string,
+): Promise<{ userId: string }> {
+  const ctx = await auth.$context;
+  const normalizedEmail = email.toLowerCase();
+
+  const existing = await ctx.internalAdapter.findUserByEmail(normalizedEmail);
+  if (existing) {
+    throw new Error("User already exists");
+  }
+
+  const hash = await ctx.password.hash(password);
+  const user = await ctx.internalAdapter.createUser({
+    email: normalizedEmail,
+    name,
+    emailVerified: false,
+  });
+  if (!user) {
+    throw new Error("Failed to create user");
+  }
+
+  await ctx.internalAdapter.linkAccount({
+    userId: user.id,
+    providerId: "credential",
+    accountId: user.id,
+    password: hash,
+  });
+
+  return { userId: user.id };
+}
+
 const sendWelcomeNotification = createAuthMiddleware(async (ctx) => {
   if (ctx.path !== "/verify-email") return;
 
