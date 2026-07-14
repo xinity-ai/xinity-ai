@@ -95,6 +95,14 @@ export async function adminCreateUser(
   password: string,
 ): Promise<{ userId: string }> {
   const ctx = await auth.$context;
+  const { minPasswordLength, maxPasswordLength } = ctx.password.config;
+  if (password.length < minPasswordLength) {
+    throw new Error("Password too short");
+  }
+  if (password.length > maxPasswordLength) {
+    throw new Error("Password too long");
+  }
+
   const normalizedEmail = email.toLowerCase();
 
   const existing = await ctx.internalAdapter.findUserByEmail(normalizedEmail);
