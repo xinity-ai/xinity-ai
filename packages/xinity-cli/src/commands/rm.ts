@@ -1,11 +1,10 @@
 import type { CommandModule } from "yargs";
-import * as p from "../lib/clack.ts";
-import pc from "picocolors";
-import { removeComponent, removeAll } from "../lib/install-remove.ts";
-import { runSteps } from "../lib/step-runner.ts";
+import { cancel, confirm, intro, isCancel, outro } from "../lib/clack.ts";
+import { cyan, dim, yellow } from "picocolors";
+import { removeComponentCollapsed, removeAll } from "../lib/install-remove.ts";
 import type { Component } from "../lib/component-meta.ts";
 import { logErrors } from "../lib/output.ts";
-import { connectHost } from "../lib/remote-host.ts";
+import { connectHost, TARGET_HOST_OPTION } from "../lib/remote-host.ts";
 
 const COMPONENTS = ["gateway", "dashboard", "daemon", "infoserver", "all"] as const;
 
@@ -16,8 +15,8 @@ function buildRemovalConfirmMessage(component: string, purge: boolean, target: s
       : `Remove ALL Xinity components on ${target}?`;
   }
   return purge
-    ? `Remove ${pc.cyan(component)} and permanently delete its state data on ${target}?`
-    : `Remove ${pc.cyan(component)} on ${target}?`;
+    ? `Remove ${cyan(component)} and permanently delete its state data on ${target}?`
+    : `Remove ${cyan(component)} on ${target}?`;
 }
 
 export const rmCommand: CommandModule = {
@@ -35,46 +34,43 @@ export const rmCommand: CommandModule = {
         describe: "Also remove state data (logs, runtime files)",
         type: "boolean",
         default: false,
-      }),
+      })
+      .option("target-host", TARGET_HOST_OPTION),
   handler: async (argv) => {
     const component = argv.component as string;
     const purge = argv.purge as boolean;
     const targetHostArg = argv["target-host"] as string | undefined;
 
-    p.intro(`xinity rm ${pc.cyan(component)}${purge ? pc.yellow(" --purge") : ""}${targetHostArg ? pc.dim(` → ${targetHostArg}`) : ""}`);
+    intro(`xinity rm ${cyan(component)}${purge ? yellow(" --purge") : ""}${targetHostArg ? dim(` → ${targetHostArg}`) : ""}`);
 
     const host = await connectHost(targetHostArg);
 
     try {
-      const target = targetHostArg ? pc.cyan(targetHostArg) : "this machine";
-      const confirmed = await p.confirm({
+      const target = targetHostArg ? cyan(targetHostArg) : "this machine";
+      const confirmed = await confirm({
         message: buildRemovalConfirmMessage(component, purge, target),
         initialValue: false,
       });
-      if (p.isCancel(confirmed) || !confirmed) {
-        p.cancel("Cancelled.");
+      if (isCancel(confirmed) || !confirmed) {
+        cancel("Cancelled.");
         return;
       }
 
       if (!(await host.prepareElevation())) {
-        p.outro("Aborted");
+        outro("Aborted");
         return;
       }
 
       if (component === "all") {
         await removeAll(purge, host);
-        p.outro("Done");
+        outro("Done");
         return;
       }
 
-      const result = await runSteps(removeComponent({
-        component: component as Component,
-        purge,
-        host,
-      }));
+      const result = await removeComponentCollapsed({ component: component as Component, purge, host });
 
       logErrors(result);
-      p.outro("Done");
+      outro("Done");
     } finally {
       await host.dispose();
     }

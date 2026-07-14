@@ -12,8 +12,8 @@ import { mkdirSync } from "fs";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
-import * as p from "./clack.ts";
-import pc from "picocolors";
+import { cancel, confirm, isCancel, log, select, spinner as clackSpinner, text } from "./clack.ts";
+import { bold, cyan, dim } from "picocolors";
 
 import { fetchRelease, pickReleaseAsset, type Release } from "./github.ts";
 import { downloadAndVerify } from "./install-download.ts";
@@ -50,11 +50,11 @@ async function confirmCandidate(
   label: string,
   url: string,
 ): Promise<string | null | undefined> {
-  const use = await p.confirm({
+  const use = await confirm({
     message: `DB connection found ${label} (${dbHint(url)}). Use this?`,
     initialValue: true,
   });
-  if (p.isCancel(use)) { p.cancel("Cancelled."); return undefined; }
+  if (isCancel(use)) { cancel("Cancelled."); return undefined; }
   return use ? url : null;
 }
 
@@ -80,11 +80,11 @@ export async function discoverConnectionUrl(host: Host): Promise<DbPlan | undefi
   const manifest = await readManifest(host);
   if (manifest.db?.hint) {
     foundCandidate = true;
-    const use = await p.confirm({
+    const use = await confirm({
       message: `DB connection found in stored secret (${manifest.db.hint}). Use this?`,
       initialValue: true,
     });
-    if (p.isCancel(use)) { p.cancel("Cancelled."); return undefined; }
+    if (isCancel(use)) { cancel("Cancelled."); return undefined; }
     if (use) {
       // Append `; echo` so the output ends with a newline, keeping the ::exit:: marker
       // on its own line regardless of whether the secret file has a trailing newline.
@@ -130,7 +130,7 @@ export async function discoverConnectionUrl(host: Host): Promise<DbPlan | undefi
     ? "None of the found connections were used. How would you like to connect?"
     : "No database connection found. Do you already have a PostgreSQL database?";
 
-  const choice = await p.select({
+  const choice = await select({
     message,
     options: [
       { value: "existing", label: "Yes, I have a connection URL", hint: "enter your PostgreSQL connection string" },
@@ -138,10 +138,10 @@ export async function discoverConnectionUrl(host: Host): Promise<DbPlan | undefi
     ],
   });
 
-  if (p.isCancel(choice)) { p.cancel("Cancelled."); return undefined; }
+  if (isCancel(choice)) { cancel("Cancelled."); return undefined; }
 
   if (choice === "setup") {
-    p.log.step(pc.bold("PostgreSQL setup"));
+    log.step(bold("PostgreSQL setup"));
     const provision = await planPostgresProvision(host);
     return provision ? { connectionUrl: provision.url, provision } : undefined;
   }
@@ -158,7 +158,7 @@ async function promptAndValidateDbUrl(host: Host): Promise<string | undefined> {
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    const value = await p.text({
+    const value = await text({
       message: "DB_CONNECTION_URL",
       placeholder: "postgresql://user:pass@host:5432/dbname",
       validate: (val) => {
@@ -167,31 +167,31 @@ async function promptAndValidateDbUrl(host: Host): Promise<string | undefined> {
         return undefined;
       },
     });
-    if (p.isCancel(value)) {
-      p.cancel("Cancelled.");
+    if (isCancel(value)) {
+      cancel("Cancelled.");
       return undefined;
     }
 
-    const spinner = p.spinner();
+    const spinner = clackSpinner();
     spinner.start("Testing database connection…");
     const connResult = await testPostgresConnection(value, host);
     spinner.stop(connResult.success ? "Database connection successful" : "Database connection failed");
     if (!connResult.success && connResult.error) {
-      p.log.error(pc.dim(connResult.error));
+      log.error(dim(connResult.error));
     }
     if (connResult.success) {
       return value;
     }
 
-    const action = await p.select({
+    const action = await select({
       message: "Could not connect to the database.",
       options: [
         { value: "retry", label: "Enter a different URL" },
         { value: "proceed", label: "Use this URL anyway" },
       ],
     });
-    if (p.isCancel(action)) {
-      p.cancel("Cancelled.");
+    if (isCancel(action)) {
+      cancel("Cancelled.");
       return undefined;
     }
     if (action === "proceed") return value;
@@ -211,17 +211,19 @@ export async function runMigrations(opts: {
   targetVersion: string;
   dryRun: boolean;
   host: Host;
+  /** Store the URL/hint in the host's secrets dir and manifest (default). Stacks carry the URL themselves. */
+  persist?: boolean;
 }): Promise<MigrateResult> {
   const errors: string[] = [];
   const { connectionUrl } = opts;
 
   // 1. Fetch release
-  const spinner = p.spinner();
+  const spinner = clackSpinner();
   spinner.start("Fetching release info…");
   let release: Release;
   try {
     release = await fetchRelease(opts.targetVersion);
-    spinner.stop(`Release ${pc.cyan(release.tagName)}`);
+    spinner.stop(`Release ${cyan(release.tagName)}`);
   } catch (e) {
     spinner.stop("Failed");
     const msg = e instanceof Error ? e.message : String(e);
@@ -276,6 +278,10 @@ export async function runMigrations(opts: {
       await connection.end();
     }
     await tunnel.close();
+  }
+
+  if (opts.persist === false) {
+    return { success: true, errors };
   }
 
   // Persist secret and manifest only if something actually changed.

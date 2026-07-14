@@ -5,8 +5,8 @@
  * gate on a single confirmation (with a bash-script dump as a secondary
  * option), then apply hands-off through the installer.
  */
-import * as p from "./clack.ts";
-import pc from "picocolors";
+import { cancel, confirm, intro, isCancel, log, note, outro, select, spinner } from "./clack.ts";
+import { bold, cyan, dim } from "picocolors";
 import { type Component, ENV_SCHEMAS, ENV_DIR, getAutoDefaults } from "./component-meta.ts";
 import { type Host, isUnitActiveOn } from "./host.ts";
 import { pass, fail, warn, heading } from "./output.ts";
@@ -15,8 +15,8 @@ import { unitName } from "./systemd.ts";
 import { pickReleaseAsset, resolveDirectUrl, getProjectUrl, type Release } from "./github.ts";
 import { assetSizeMb, buildInstallBinaryCommand } from "./install-download.ts";
 import { buildEnvWriteCommand, buildSecretsWriteCommand, buildUnitWriteCommand, writeEnvConfig, writeSystemdUnit, restartService } from "./service.ts";
-import { runSteps } from "./step-runner.ts";
-import { resolveVersion, applyComponentAction } from "./installer.ts";
+import { runSteps, createProgress } from "./step-runner.ts";
+import { resolveVersion, applyComponentAction, type VersionResult } from "./installer.ts";
 import { collectEnv, menuEditEnv, readExistingEnvState, diffEnv, type EnvBundle, type EnvChange } from "./env-prompt.ts";
 import { discoverConnectionUrl, dbHint, runMigrations } from "./migrator.ts";
 import { describePostgresProvision, buildPostgresProvisionCommands, applyPostgresProvision, type PostgresProvision } from "./postgres-setup.ts";
@@ -59,6 +59,51 @@ export interface PlanUpOptions {
 
 // ─── Collect ────────────────────────────────────────────────────────────────
 
+/**
+ * Assemble the action for a resolved version and collected env; the
+ * single-host and stack planners differ only in how the env is collected.
+ * Returns null when no matching release asset exists.
+ */
+export async function buildComponentAction(
+  base: {
+    component: Component;
+    hardReset: boolean;
+    serviceRunning: boolean;
+    env: EnvBundle;
+    envChanges: EnvChange[];
+  },
+  version: Extract<VersionResult, { status: "proceed" | "current" }>,
+  host: Host,
+): Promise<ComponentAction | null> {
+  if (version.status === "current") {
+    return {
+      ...base,
+      kind: base.envChanges.length > 0 ? "reconfigure" : "none",
+      installedVersion: version.version,
+      toVersion: version.version,
+    };
+  }
+
+  let assetName: string;
+  try {
+    assetName = pickReleaseAsset(version.release, base.component, await host.getArch());
+  } catch (err) {
+    fail("Download", `${base.component}: ${(err as Error).message}`);
+    return null;
+  }
+  const asset = version.release.assets.find((a) => a.name === assetName);
+
+  return {
+    ...base,
+    kind: version.isUpdate ? "update" : "install",
+    installedVersion: version.installedVersion,
+    toVersion: version.release.tagName,
+    release: version.release,
+    assetName,
+    assetSizeMb: asset ? assetSizeMb(asset) : undefined,
+  };
+}
+
 /** Returns null when the user cancels or resolution fails. */
 async function planComponentAction(
   component: Component,
@@ -96,37 +141,7 @@ async function planComponentAction(
   const collected = await collectEnv(component, host, autoDefaults, resolvedKeys);
   if (!collected) return null;
 
-  if (version.status === "current") {
-    return {
-      ...base,
-      kind: collected.changes.length > 0 ? "reconfigure" : "none",
-      installedVersion: version.version,
-      toVersion: version.version,
-      env: collected,
-      envChanges: collected.changes,
-    };
-  }
-
-  let assetName: string;
-  try {
-    assetName = pickReleaseAsset(version.release, component, await host.getArch());
-  } catch (err) {
-    fail("Download", (err as Error).message);
-    return null;
-  }
-  const asset = version.release.assets.find((a) => a.name === assetName);
-
-  return {
-    ...base,
-    kind: version.isUpdate ? "update" : "install",
-    installedVersion: version.installedVersion,
-    toVersion: version.release.tagName,
-    release: version.release,
-    assetName,
-    assetSizeMb: asset ? assetSizeMb(asset) : undefined,
-    env: collected,
-    envChanges: collected.changes,
-  };
+  return buildComponentAction({ ...base, env: collected, envChanges: collected.changes }, version, host);
 }
 
 /**
@@ -167,29 +182,29 @@ export async function planUp(
       if (redisPlan.persist || redisPlan.provision) plan.redis = redisPlan;
     } else {
       warn("Redis", "No Redis URL configured");
-      const cont = await p.confirm({ message: "Continue without Redis?", initialValue: true });
-      if (p.isCancel(cont) || !cont) return null;
+      const cont = await confirm({ message: "Continue without Redis?", initialValue: true });
+      if (isCancel(cont) || !cont) return null;
     }
 
-    p.log.info(pc.dim(`Model registry guide: ${getProjectUrl()}/tree/main/packages/xinity-infoserver#readme`));
-    const installInfoserver = await p.confirm({
+    log.info(dim(`Model registry guide: ${getProjectUrl()}/tree/main/packages/xinity-infoserver#readme`));
+    const installInfoserver = await confirm({
       message: "Install the info server? (optional - most installations use the default at sysinfo.xinity.ai)",
       initialValue: false,
     });
-    if (p.isCancel(installInfoserver)) return null;
+    if (isCancel(installInfoserver)) return null;
 
-    const installDaemon = await p.confirm({
+    const installDaemon = await confirm({
       message: "Install the daemon? (only needed on inference hardware)",
       initialValue: false,
     });
-    if (p.isCancel(installDaemon)) return null;
+    if (isCancel(installDaemon)) return null;
 
     if (installDaemon) {
-      const setupOllama = await p.confirm({
+      const setupOllama = await confirm({
         message: "Set up Ollama on this machine? (one inference driver the daemon can use)",
         initialValue: false,
       });
-      if (p.isCancel(setupOllama)) return null;
+      if (isCancel(setupOllama)) return null;
       if (setupOllama) {
         const { LOCAL_OLLAMA_ENDPOINT } = await import("./ollama-setup.ts");
         plan.provisionOllama = true;
@@ -245,7 +260,7 @@ function serviceLine(action: ComponentAction): string {
   return action.serviceRunning ? `restart ${unit}` : `enable and start ${unit}`;
 }
 
-function describeComponentAction(action: ComponentAction): string[] {
+export function describeComponentAction(action: ComponentAction): string[] {
   const { component, envChanges } = action;
   const configLines = envChanges.length > 0
     ? [`config changes:`, ...envChangeLines(envChanges).map((l) => `  ${l}`)]
@@ -253,11 +268,11 @@ function describeComponentAction(action: ComponentAction): string[] {
 
   switch (action.kind) {
     case "none": {
-      return [`${pc.cyan(component)} ${action.toVersion} is current, configuration unchanged: nothing to do`];
+      return [`${cyan(component)} ${action.toVersion} is current, configuration unchanged: nothing to do`];
     }
     case "reconfigure": {
       return [
-        `Reconfigure ${pc.cyan(component)} (binary ${action.toVersion} stays)`,
+        `Reconfigure ${cyan(component)} (binary ${action.toVersion} stays)`,
         ...configLines.map((l) => `  ${l}`),
         `  update systemd unit, ${serviceLine(action)}`,
       ];
@@ -265,8 +280,8 @@ function describeComponentAction(action: ComponentAction): string[] {
     case "install":
     case "update": {
       const verb = action.kind === "install"
-        ? `Install ${pc.cyan(component)} ${action.toVersion}`
-        : `Update ${pc.cyan(component)} ${action.installedVersion} → ${action.toVersion}`;
+        ? `Install ${cyan(component)} ${action.toVersion}`
+        : `Update ${cyan(component)} ${action.installedVersion} → ${action.toVersion}`;
       const source = action.localRepoPath
         ? `build locally from ${action.localRepoPath} and upload`
         : `download ${action.assetName}${action.assetSizeMb ? ` (${action.assetSizeMb} MB)` : ""}`;
@@ -283,15 +298,16 @@ function describeComponentAction(action: ComponentAction): string[] {
 }
 
 export function renderUpPlan(plan: UpPlan): void {
-  p.log.step(pc.bold("Planned actions"));
+  log.step(bold("Planned actions"));
 
   let step = 1;
   const item = (lines: string[]) => {
     const [head, ...rest] = lines;
-    p.log.info(`${step++}. ${head}`);
-    for (const line of rest) {
-      p.log.info(pc.dim(`   ${line}`));
+    if (rest.length === 0) {
+      log.info(`${step++}. ${head}`);
+      return;
     }
+    note(rest.map((line) => dim(line.trim())).join("\n"), `${step++}. ${head}`);
   };
 
   if (plan.provisionPostgres) {
@@ -318,17 +334,17 @@ export async function reviewGate(renderScript?: () => Promise<string>): Promise<
     const options = [
       { value: "apply", label: "Yes, apply these actions" },
       { value: "abort", label: "Abort" },
-      ...(renderScript ? [{ value: "script", label: pc.dim("Show the equivalent bash script"), hint: "runs nothing" }] : []),
+      ...(renderScript ? [{ value: "script", label: dim("Show the equivalent bash script"), hint: "runs nothing" }] : []),
     ];
-    const choice = await p.select({ message: "Proceed?", options });
+    const choice = await select({ message: "Proceed?", options });
 
-    if (p.isCancel(choice) || choice === "abort") {
-      p.cancel("Aborted, nothing was changed.");
+    if (isCancel(choice) || choice === "abort") {
+      cancel("Aborted, nothing was changed.");
       return false;
     }
     if (choice === "apply") return true;
 
-    p.log.message((await renderScript!()).split("\n"));
+    log.message((await renderScript!()).split("\n"));
   }
 }
 
@@ -486,7 +502,7 @@ export async function applyUpPlan(plan: UpPlan, host: Host): Promise<ApplyResult
 export async function printPostInstallSummary(host: Host): Promise<void> {
   heading("health check");
   const { runDoctor } = await import("./doctor.ts");
-  const doctorSpinner = p.spinner();
+  const doctorSpinner = spinner();
   doctorSpinner.start("Running diagnostics…");
   const report = await runDoctor({
     interactive: false,
@@ -500,7 +516,7 @@ export async function printPostInstallSummary(host: Host): Promise<void> {
 
   const { pass: passCount, warn: warnCount, fail: failCount } = report.summary;
   if (failCount > 0) {
-    warn("Health", `${failCount} check(s) failed. Run ${pc.cyan("xinity doctor")} for details.`);
+    warn("Health", `${failCount} check(s) failed. Run ${cyan("xinity doctor")} for details.`);
   } else if (warnCount > 0) {
     pass("Health", `All checks passed (${warnCount} warning(s))`);
   } else {
@@ -511,34 +527,34 @@ export async function printPostInstallSummary(host: Host): Promise<void> {
 
   const dashContent = await host.readFile(`${ENV_DIR}/dashboard.env`);
   const dashboardOrigin = dashContent ? parseEnvString(dashContent).ORIGIN : undefined;
-  if (dashboardOrigin) summaryLines.push(`Dashboard:  ${pc.cyan(dashboardOrigin)}`);
+  if (dashboardOrigin) summaryLines.push(`Dashboard:  ${cyan(dashboardOrigin)}`);
 
   const gwContent = await host.readFile(`${ENV_DIR}/gateway.env`);
   if (gwContent) {
     const parsed = parseEnvString(gwContent);
     const gwHost = parsed.HOST || "localhost";
     const gwPort = parsed.PORT || "4010";
-    summaryLines.push(`Gateway:    ${pc.cyan(`http://${gwHost}:${gwPort}`)}`);
+    summaryLines.push(`Gateway:    ${cyan(`http://${gwHost}:${gwPort}`)}`);
   }
 
   if (summaryLines.length > 0) summaryLines.push("");
-  summaryLines.push(pc.bold("Next steps:"));
+  summaryLines.push(bold("Next steps:"));
   if (dashboardOrigin) {
     summaryLines.push(`  1. Connect the CLI to your dashboard:`);
-    summaryLines.push(`     ${pc.cyan(`xinity configure dashboardUrl ${dashboardOrigin}`)}`);
+    summaryLines.push(`     ${cyan(`xinity configure dashboardUrl ${dashboardOrigin}`)}`);
     summaryLines.push(`  2. Create your admin account from the CLI:`);
-    summaryLines.push(`     ${pc.cyan("xinity act onboarding.cli")}`);
-    summaryLines.push(`     Or open ${pc.cyan(dashboardOrigin)} in a browser to sign up there.`);
+    summaryLines.push(`     ${cyan("xinity act onboarding.cli")}`);
+    summaryLines.push(`     Or open ${cyan(dashboardOrigin)} in a browser to sign up there.`);
   } else {
     summaryLines.push(`  1. Create your admin account via the dashboard UI`);
-    summaryLines.push(`     Or from the CLI: ${pc.cyan("xinity act onboarding.cli")}`);
+    summaryLines.push(`     Or from the CLI: ${cyan("xinity act onboarding.cli")}`);
   }
-  summaryLines.push(`  ${dashboardOrigin ? "3" : "2"}. Add inference nodes: ${pc.cyan("xinity up daemon")} on each GPU machine`);
-  summaryLines.push(`  ${dashboardOrigin ? "4" : "3"}. Check health anytime: ${pc.cyan("xinity doctor")}`);
+  summaryLines.push(`  ${dashboardOrigin ? "3" : "2"}. Add inference nodes: ${cyan("xinity up daemon")} on each GPU machine`);
+  summaryLines.push(`  ${dashboardOrigin ? "4" : "3"}. Check health anytime: ${cyan("xinity doctor")}`);
   summaryLines.push("");
-  summaryLines.push(pc.dim(`Model registry guide: ${getProjectUrl()}/tree/main/packages/xinity-infoserver#readme`));
+  summaryLines.push(dim(`Model registry guide: ${getProjectUrl()}/tree/main/packages/xinity-infoserver#readme`));
 
-  p.note(summaryLines.join("\n"), "Installation complete");
+  note(summaryLines.join("\n"), "Installation complete");
 }
 
 // ─── configure <component> ──────────────────────────────────────────────────
@@ -549,10 +565,10 @@ export async function printPostInstallSummary(host: Host): Promise<void> {
  * confirmed.
  */
 export async function configureComponentFlow(component: Component, host: Host): Promise<void> {
-  p.intro(`xinity configure ${pc.cyan(component)}`);
+  intro(`xinity configure ${cyan(component)}`);
 
   if (!(await host.prepareElevation())) {
-    p.outro("Aborted");
+    outro("Aborted");
     return;
   }
 
@@ -561,39 +577,46 @@ export async function configureComponentFlow(component: Component, host: Host): 
 
   const result = await menuEditEnv(ENV_SCHEMAS[component], existing);
   if (result === null) {
-    p.cancel("Cancelled, no changes saved.");
+    cancel("Cancelled, no changes saved.");
     return;
   }
 
   const changes = diffEnv({ config: state.existingConfig, secrets: state.existingSecrets }, result);
   if (changes.length === 0) {
-    p.log.info("No changes.");
-    p.outro("Done");
+    log.info("No changes.");
+    outro("Done");
     return;
   }
 
   const serviceRunning = await isUnitActiveOn(host, unitName(component));
 
-  p.log.step(pc.bold("Planned changes"));
-  for (const line of envChangeLines(changes)) {
-    p.log.info(`  ${line}`);
-  }
-  p.log.info(pc.dim(serviceRunning
-    ? `  update systemd unit, restart ${unitName(component)}`
-    : `  update systemd unit (${unitName(component)} is not running, takes effect on next start)`));
+  note(
+    [
+      ...envChangeLines(changes),
+      dim(serviceRunning
+        ? `update systemd unit, restart ${unitName(component)}`
+        : `update systemd unit (${unitName(component)} is not running, takes effect on next start)`),
+    ].join("\n"),
+    bold("Planned changes"),
+  );
 
   const proceed = await reviewGate(async () =>
     [...SCRIPT_HEADER, ...scriptConfigSection(component, result, serviceRunning)].join("\n"),
   );
   if (!proceed) return;
 
+  const progress = createProgress("Applying configuration…");
   const configResult = await writeEnvConfig(component, result.config, result.secrets, host);
   if (configResult.success) {
-    pass("Config", "Environment configured");
+    progress.update("Environment configured");
     await writeSystemdUnit(component, Object.keys(result.secrets), host);
-    await runSteps(restartService(component, host));
+    const restarted = await runSteps(restartService(component, host), progress);
+    progress.done(restarted
+      ? `${component} reconfigured, service restarted`
+      : `${component} reconfigured (service not running, takes effect on next start)`);
   } else if (configResult.error) {
-    fail("Config", configResult.error);
+    progress.fail("Config", configResult.error);
   }
-  p.outro("Done");
+  progress.ensureSettled();
+  outro("Done");
 }

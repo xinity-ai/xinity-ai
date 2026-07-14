@@ -1,6 +1,6 @@
 import type { CommandModule } from "yargs";
-import * as p from "../lib/clack.ts";
-import pc from "picocolors";
+import { confirm, intro, isCancel, log, outro } from "../lib/clack.ts";
+import { bold, cyan, dim, yellow } from "picocolors";
 import type { Component } from "../lib/component-meta.ts";
 import { preflightCheck, showDashboardHints } from "../lib/installer.ts";
 import { discoverConnectionUrl, dbHint, runMigrations } from "../lib/migrator.ts";
@@ -13,7 +13,7 @@ import {
   printPostInstallSummary,
 } from "../lib/up-plan.ts";
 import { warn, heading } from "../lib/output.ts";
-import { connectHost } from "../lib/remote-host.ts";
+import { connectHost, TARGET_HOST_OPTION } from "../lib/remote-host.ts";
 import { seaweedfsSetup } from "../lib/seaweedfs-setup.ts";
 import { infraRedis } from "../lib/redis-setup.ts";
 import { runUpdateFlow } from "./update.ts";
@@ -35,16 +35,16 @@ async function runDbFlow(opts: { targetVersion: string; dryRun: boolean }, host:
   const dbPlan = await discoverConnectionUrl(host);
   if (!dbPlan) return false;
 
-  p.log.step(pc.bold("Planned actions"));
+  log.step(bold("Planned actions"));
   let step = 1;
   if (dbPlan.provision) {
     const { describePostgresProvision } = await import("../lib/postgres-setup.ts");
-    p.log.info(`${step++}. ${describePostgresProvision(dbPlan.provision)}`);
+    log.info(`${step++}. ${describePostgresProvision(dbPlan.provision)}`);
   }
-  p.log.info(`${step}. Apply database migrations from release ${opts.targetVersion} to ${dbHint(dbPlan.connectionUrl)}`);
+  log.info(`${step}. Apply database migrations from release ${opts.targetVersion} to ${dbHint(dbPlan.connectionUrl)}`);
 
   if (opts.dryRun) {
-    p.log.info(pc.yellow("Dry run, stopping before apply."));
+    log.info(yellow("Dry run, stopping before apply."));
     return true;
   }
   if (!(await reviewGate())) return true;
@@ -56,7 +56,7 @@ async function runDbFlow(opts: { targetVersion: string; dryRun: boolean }, host:
 
   const result = await runMigrations({ connectionUrl: dbPlan.connectionUrl, targetVersion: opts.targetVersion, dryRun: false, host });
   if (!result.success) {
-    for (const err of result.errors) p.log.error(err);
+    for (const err of result.errors) log.error(err);
     return false;
   }
 
@@ -65,7 +65,7 @@ async function runDbFlow(opts: { targetVersion: string; dryRun: boolean }, host:
   const { planRedis, applyRedisPlan } = await import("../lib/redis-setup.ts");
   const redisPlan = await planRedis(host);
   if (redisPlan && (await applyRedisPlan(redisPlan, host))) {
-    p.log.success("Redis - Connection configured");
+    log.success("Redis - Connection configured");
   } else {
     warn("Redis", "No Redis URL configured (can be set up later with xinity up infra-redis)");
   }
@@ -80,7 +80,7 @@ async function runPlannedFlow(
 ): Promise<boolean> {
   const isAll = component === "all";
   if (isAll && opts.targetVersion.startsWith("local:")) {
-    p.log.error("'xinity up all' does not support local: builds. Run 'xinity up <component>' for each component individually.");
+    log.error("'xinity up all' does not support local: builds. Run 'xinity up <component>' for each component individually.");
     return false;
   }
 
@@ -94,7 +94,7 @@ async function runPlannedFlow(
   renderUpPlan(plan);
 
   if (opts.dryRun) {
-    p.log.info(pc.yellow("Dry run, stopping before apply."));
+    log.info(yellow("Dry run, stopping before apply."));
     return true;
   }
 
@@ -102,7 +102,7 @@ async function runPlannedFlow(
 
   const result = await applyUpPlan(plan, host);
   if (!result.success) {
-    for (const err of result.errors) p.log.error(err);
+    for (const err of result.errors) log.error(err);
     return false;
   }
 
@@ -139,7 +139,8 @@ export const upCommand: CommandModule = {
         describe: "Fully reset component state during reinstall (systemctl clean --what=state)",
         type: "boolean",
         default: false,
-      }),
+      })
+      .option("target-host", TARGET_HOST_OPTION),
   handler: async (argv) => {
     const component = argv.component as string;
     const targetVersion = argv["target-version"] as string;
@@ -152,38 +153,38 @@ export const upCommand: CommandModule = {
       return;
     }
 
-    p.intro(`xinity up ${pc.cyan(component)}${dryRun ? pc.yellow(" (dry run)") : ""}${targetHostArg ? pc.dim(` → ${targetHostArg}`) : ""}`);
+    intro(`xinity up ${cyan(component)}${dryRun ? yellow(" (dry run)") : ""}${targetHostArg ? dim(` → ${targetHostArg}`) : ""}`);
 
     const host = await connectHost(targetHostArg);
 
     let hasFailure = false;
     try {
       if (!(await host.prepareElevation())) {
-        p.outro("Aborted");
+        outro("Aborted");
         return;
       }
 
       // ── Upfront pre-flight checks ──────────────────────────────────────
       const issues = await preflightCheck([component], host);
       if (issues.length > 0) {
-        p.log.step(pc.bold("Pre-flight checks"));
+        log.step(bold("Pre-flight checks"));
         for (const issue of issues) {
           warn(issue.tool, issue.reason);
-          if (issue.hint) p.log.info(`  ${pc.dim("Install:")} ${pc.cyan(issue.hint)}`);
+          if (issue.hint) log.info(`  ${dim("Install:")} ${cyan(issue.hint)}`);
         }
-        const cont = await p.confirm({
+        const cont = await confirm({
           message: "Some requirements are missing. Continue anyway?",
           initialValue: false,
         });
-        if (p.isCancel(cont) || !cont) {
-          p.outro("Aborted");
+        if (isCancel(cont) || !cont) {
+          outro("Aborted");
           return;
         }
       }
 
       if (component === "db") {
         const ok = await runDbFlow({ targetVersion, dryRun }, host);
-        p.outro(ok ? "Done" : "Failed");
+        outro(ok ? "Done" : "Failed");
         hasFailure = !ok;
         return;
       }
@@ -191,38 +192,38 @@ export const upCommand: CommandModule = {
       if (component === "infra-redis") {
         const url = await infraRedis(host, dryRun);
         if (url) {
-          p.log.success("Redis connection configured.");
+          log.success("Redis connection configured.");
         } else {
           warn("Redis", "No Redis URL configured");
         }
-        p.outro("Done");
+        outro("Done");
         return;
       }
 
       if (component === "infra-seaweedfs") {
         await seaweedfsSetup(host, dryRun);
-        p.outro("Done");
+        outro("Done");
         return;
       }
 
       if (component === "infra-prometheus") {
         const { prometheusSetup } = await import("../lib/prometheus-setup.ts");
         await prometheusSetup(host, dryRun);
-        p.outro("Done");
+        outro("Done");
         return;
       }
 
       if (component === "infra-postgres") {
         const { postgresSetup } = await import("../lib/postgres-setup.ts");
         await postgresSetup(host, dryRun);
-        p.outro("Done");
+        outro("Done");
         return;
       }
 
       if (component === "infra-ollama") {
         const { ollamaSetup } = await import("../lib/ollama-setup.ts");
         await ollamaSetup(host, dryRun);
-        p.outro("Done");
+        outro("Done");
         return;
       }
 
@@ -230,13 +231,13 @@ export const upCommand: CommandModule = {
         component === "infra-vllm" ||
         component === "infra-searxng"
       ) {
-        p.log.warn(`${pc.cyan(component)} is not yet implemented.`);
-        p.outro("Coming soon");
+        log.warn(`${cyan(component)} is not yet implemented.`);
+        outro("Coming soon");
         return;
       }
 
       const ok = await runPlannedFlow(component, { targetVersion, dryRun, hardReset }, host);
-      p.outro(ok ? "Done" : "Failed");
+      outro(ok ? "Done" : "Failed");
       hasFailure = !ok;
     } finally {
       await host.dispose();

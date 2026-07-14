@@ -6,8 +6,8 @@
  * host. `applyRedisPlan` executes the decided commands and persists the URL.
  */
 import { randomBytes } from "crypto";
-import * as p from "./clack.ts";
-import pc from "picocolors";
+import { cancel, confirm, isCancel, log, note, password as passwordPrompt, select, spinner as clackSpinner, text } from "./clack.ts";
+import { bold, cyan, dim } from "picocolors";
 import { type Host, commandExistsOn, readSecrets } from "./host.ts";
 import { pass, fail, info, promptOrUndefined, reportElevationOutcome, warn } from "./output.ts";
 import { parseEnvString } from "./env-file.ts";
@@ -16,12 +16,12 @@ import type { ConnectionResult } from "./connectivity.ts";
 
 async function testRedisWithSpinner(url: string, host: Host): Promise<ConnectionResult> {
   const { testRedisConnection } = await import("./connectivity.ts");
-  const spinner = p.spinner();
+  const spinner = clackSpinner();
   spinner.start("Testing Redis connection…");
   const result = await testRedisConnection(url, host);
   spinner.stop(result.success ? "Redis connection successful" : "Redis connection failed");
   if (!result.success && result.error) {
-    p.log.error(pc.dim(result.error));
+    log.error(dim(result.error));
   }
   return result;
 }
@@ -206,23 +206,23 @@ export function describeRedisPlan(plan: RedisPlan): string[] {
 }
 
 async function waitForManualInstall(host: Host): Promise<boolean> {
-  p.note(
+  note(
     [
       "Please install Redis or Valkey using your system's package manager.",
       "Common commands:",
       "",
-      `  ${pc.dim("# Debian/Ubuntu")}`,
+      `  ${dim("# Debian/Ubuntu")}`,
       `  sudo apt install redis-server`,
-      `  ${pc.dim("# or")}`,
+      `  ${dim("# or")}`,
       `  sudo apt install valkey`,
       "",
-      `  ${pc.dim("# Fedora/RHEL")}`,
+      `  ${dim("# Fedora/RHEL")}`,
       `  sudo dnf install redis`,
       "",
-      `  ${pc.dim("# Arch Linux")}`,
+      `  ${dim("# Arch Linux")}`,
       `  sudo pacman -S redis`,
       "",
-      `  ${pc.dim("# macOS")}`,
+      `  ${dim("# macOS")}`,
       `  brew install redis`,
       "",
       "After installing, make sure the service is running.",
@@ -230,12 +230,12 @@ async function waitForManualInstall(host: Host): Promise<boolean> {
     "Manual installation required",
   );
 
-  const done = await p.confirm({
+  const done = await confirm({
     message: "Have you installed and started Redis/Valkey?",
     initialValue: false,
   });
 
-  if (p.isCancel(done) || !done) return false;
+  if (isCancel(done) || !done) return false;
 
   if (await isRedisRunning(host)) {
     pass("Redis", "Service is running");
@@ -243,27 +243,27 @@ async function waitForManualInstall(host: Host): Promise<boolean> {
   }
 
   warn("Redis", "Service does not appear to be running yet");
-  const continueAnyway = await p.confirm({
+  const continueAnyway = await confirm({
     message: "Continue anyway?",
     initialValue: false,
   });
-  return !p.isCancel(continueAnyway) && continueAnyway;
+  return !isCancel(continueAnyway) && continueAnyway;
 }
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
 /** Build a REDIS_URL from user input or defaults. Prompts only. */
 async function configureRedisUrl(): Promise<string | undefined> {
-  p.log.step(pc.bold("Configure Redis connection"));
+  log.step(bold("Configure Redis connection"));
 
-  const hostInput = await promptOrUndefined(p.text({
+  const hostInput = await promptOrUndefined(text({
     message: "Redis host",
     placeholder: "localhost",
     defaultValue: "localhost",
   }));
   if (hostInput === undefined) return undefined;
 
-  const portInput = await promptOrUndefined(p.text({
+  const portInput = await promptOrUndefined(text({
     message: "Redis port",
     placeholder: "6379",
     defaultValue: "6379",
@@ -276,7 +276,7 @@ async function configureRedisUrl(): Promise<string | undefined> {
   }));
   if (portInput === undefined) return undefined;
 
-  const setPassword = await promptOrUndefined(p.confirm({
+  const setPassword = await promptOrUndefined(confirm({
     message: "Set a password for Redis?",
     initialValue: false,
   }));
@@ -284,7 +284,7 @@ async function configureRedisUrl(): Promise<string | undefined> {
 
   let password: string | undefined;
   if (setPassword) {
-    const useGenerated = await promptOrUndefined(p.confirm({
+    const useGenerated = await promptOrUndefined(confirm({
       message: "Generate a random password?",
       initialValue: true,
     }));
@@ -292,9 +292,9 @@ async function configureRedisUrl(): Promise<string | undefined> {
 
     if (useGenerated) {
       password = generatePassword();
-      info("Password", `Generated: ${pc.cyan(password)}`);
+      info("Password", `Generated: ${cyan(password)}`);
     } else {
-      const pw = await promptOrUndefined(p.password({
+      const pw = await promptOrUndefined(passwordPrompt({
         message: "Redis password",
         validate: (val) => {
           if (!val || val.length < 4) return "Password must be at least 4 characters";
@@ -310,7 +310,7 @@ async function configureRedisUrl(): Promise<string | undefined> {
     ? `redis://:${encodeURIComponent(password)}@${hostInput}:${portInput}`
     : `redis://${hostInput}:${portInput}`;
 
-  p.note(url, "REDIS_URL");
+  note(url, "REDIS_URL");
 
   return url;
 }
@@ -359,7 +359,7 @@ export async function planRedis(host: Host): Promise<RedisPlan | undefined> {
     }
 
     // Stored URL is stale, offer to reconfigure
-    const action = await p.select({
+    const action = await select({
       message: "Stored Redis URL failed connectivity test.",
       options: [
         { value: "reenter", label: "Enter a new URL" },
@@ -367,7 +367,7 @@ export async function planRedis(host: Host): Promise<RedisPlan | undefined> {
         { value: "keep", label: "Use the stored URL anyway" },
       ],
     });
-    if (p.isCancel(action)) { p.cancel("Cancelled."); return undefined; }
+    if (isCancel(action)) { cancel("Cancelled."); return undefined; }
     if (action === "keep") return { url, persist: false };
     if (action === "setup") return planRedisSetup(host);
     const newUrl = await promptAndValidateRedisUrl(host);
@@ -396,7 +396,7 @@ export async function planRedis(host: Host): Promise<RedisPlan | undefined> {
   }
 
   // 4. No existing connection found, ask user how to proceed
-  const choice = await p.select({
+  const choice = await select({
     message: "No existing Redis connection found. Do you already have a Redis/Valkey instance?",
     options: [
       {
@@ -412,8 +412,8 @@ export async function planRedis(host: Host): Promise<RedisPlan | undefined> {
     ],
   });
 
-  if (p.isCancel(choice)) {
-    p.cancel("Cancelled.");
+  if (isCancel(choice)) {
+    cancel("Cancelled.");
     return undefined;
   }
 
@@ -429,7 +429,7 @@ export async function planRedis(host: Host): Promise<RedisPlan | undefined> {
  */
 async function promptAndValidateRedisUrl(host: Host): Promise<string | undefined> {
   while (true) {
-    const value = await p.text({
+    const value = await text({
       message: "REDIS_URL",
       placeholder: "redis://localhost:6379",
       validate: (val) => {
@@ -438,8 +438,8 @@ async function promptAndValidateRedisUrl(host: Host): Promise<string | undefined
         return undefined;
       },
     });
-    if (p.isCancel(value)) {
-      p.cancel("Cancelled.");
+    if (isCancel(value)) {
+      cancel("Cancelled.");
       return undefined;
     }
 
@@ -448,14 +448,14 @@ async function promptAndValidateRedisUrl(host: Host): Promise<string | undefined
       return value;
     }
 
-    const action = await p.select({
+    const action = await select({
       message: "Could not connect to Redis.",
       options: [
         { value: "retry", label: "Enter a different URL" },
         { value: "proceed", label: "Use this URL anyway" },
       ],
     });
-    if (p.isCancel(action) || action === "proceed") return value;
+    if (isCancel(action) || action === "proceed") return value;
   }
 }
 
@@ -465,7 +465,7 @@ async function promptAndValidateRedisUrl(host: Host): Promise<string | undefined
  * executes here; the decided commands run in `applyRedisPlan`.
  */
 async function planRedisSetup(host: Host): Promise<RedisPlan | undefined> {
-  p.log.step(pc.bold("Redis / Valkey setup"));
+  log.step(bold("Redis / Valkey setup"));
 
   // Step 1: Is Redis/Valkey installed?
   const variant = await detectVariant(host);
@@ -475,23 +475,23 @@ async function planRedisSetup(host: Host): Promise<RedisPlan | undefined> {
 
     const pm = await detectPackageManager(host);
     if (pm) {
-      info("Package manager", `Detected ${pc.cyan(pm.name)}`);
+      info("Package manager", `Detected ${cyan(pm.name)}`);
 
       // Let user choose between Redis and Valkey
-      const variantChoice = await p.select({
+      const variantChoice = await select({
         message: "Which variant would you like to install?",
         options: [
           { value: "redis" as const, label: "Redis", hint: "the original" },
           { value: "valkey" as const, label: "Valkey", hint: "community fork, fully compatible" },
         ],
       });
-      if (p.isCancel(variantChoice)) return undefined;
+      if (isCancel(variantChoice)) return undefined;
 
-      const proceed = await p.confirm({
-        message: `Install ${variantChoice} using ${pc.cyan(pm.name)}?`,
+      const proceed = await confirm({
+        message: `Install ${variantChoice} using ${cyan(pm.name)}?`,
         initialValue: true,
       });
-      if (p.isCancel(proceed) || !proceed) return undefined;
+      if (isCancel(proceed) || !proceed) return undefined;
 
       const url = await configureRedisUrl();
       if (!url) return undefined;
@@ -542,10 +542,10 @@ async function planRedisSetup(host: Host): Promise<RedisPlan | undefined> {
 
 function describeRedisPlanDryRun(plan: RedisPlan): void {
   if (plan.provision?.installCmd) {
-    info("Dry run", `Would install ${plan.provision.variant}: ${pc.dim(plan.provision.installCmd)}`);
+    info("Dry run", `Would install ${plan.provision.variant}: ${dim(plan.provision.installCmd)}`);
   }
   if (plan.provision?.startCmd) {
-    info("Dry run", `Would start ${plan.provision.variant}: ${pc.dim(plan.provision.startCmd)}`);
+    info("Dry run", `Would start ${plan.provision.variant}: ${dim(plan.provision.startCmd)}`);
   }
   if (plan.persist) {
     info("Dry run", `Would store REDIS_URL in ${SECRETS_DIR}`);
@@ -564,7 +564,7 @@ export async function infraRedis(host: Host, dryRun: boolean): Promise<string | 
   const storedUrl = stored.secrets.REDIS_URL;
   if (storedUrl && (await testRedisWithSpinner(storedUrl, host)).success) {
     info("Redis connection", `Current: ${redactRedisUrl(storedUrl)}`);
-    const action = await p.select({
+    const action = await select({
       message: "Redis is configured and reachable.",
       options: [
         { value: "keep", label: "Keep current configuration" },
@@ -572,7 +572,7 @@ export async function infraRedis(host: Host, dryRun: boolean): Promise<string | 
         { value: "setup", label: "Set up a new Redis instance" },
       ],
     });
-    if (p.isCancel(action) || action === "keep") return storedUrl;
+    if (isCancel(action) || action === "keep") return storedUrl;
     if (action === "reenter") {
       const newUrl = await promptAndValidateRedisUrl(host);
       plan = newUrl ? { url: newUrl, persist: true } : undefined;

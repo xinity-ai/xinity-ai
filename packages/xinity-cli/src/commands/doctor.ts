@@ -1,16 +1,16 @@
 import type { CommandModule } from "yargs";
-import * as p from "../lib/clack.ts";
-import pc from "picocolors";
-import { runDoctor, type CheckResult, type ComponentReport, type DoctorReport } from "../lib/doctor.ts";
-import { connectHost } from "../lib/remote-host.ts";
+import { intro, outro, spinner } from "../lib/clack.ts";
+import { bold, dim, green, red, yellow } from "picocolors";
+import { runDoctor, buildSummaryLine, type CheckResult, type ComponentReport, type DoctorReport } from "../lib/doctor.ts";
+import { connectHost, TARGET_HOST_OPTION } from "../lib/remote-host.ts";
 
 // ─── Status symbols ──────────────────────────────────────────────────────────
 
 const SYMBOLS: Record<string, string> = {
-  pass: pc.green("✓"),
-  fail: pc.red("✗"),
-  warn: pc.yellow("⚠"),
-  skip: pc.dim("○"),
+  pass: green("✓"),
+  fail: red("✗"),
+  warn: yellow("⚠"),
+  skip: dim("○"),
 };
 
 // ─── Report renderer ─────────────────────────────────────────────────────────
@@ -28,11 +28,11 @@ function renderReport(report: DoctorReport, verbose: boolean): void {
 }
 
 function renderComponentSection(comp: ComponentReport, verbose: boolean): void {
-  const name = pc.bold(comp.component.toUpperCase());
+  const name = bold(comp.component.toUpperCase());
   const ver = comp.version?.replace(/^v/, "") ?? null;
-  const version = ver ? pc.dim(`  v${ver}`) : "";
+  const version = ver ? dim(`  v${ver}`) : "";
   process.stdout.write(`  ${name}${version}\n`);
-  process.stdout.write(`  ${pc.dim("─".repeat(SEP_WIDTH))}\n`);
+  process.stdout.write(`  ${dim("─".repeat(SEP_WIDTH))}\n`);
 
   for (const check of comp.checks) {
     renderCheckLine(check, verbose);
@@ -40,7 +40,7 @@ function renderComponentSection(comp: ComponentReport, verbose: boolean): void {
 }
 
 function renderCheckLine(check: CheckResult, verbose: boolean): void {
-  const symbol = SYMBOLS[check.status] ?? pc.dim("·");
+  const symbol = SYMBOLS[check.status] ?? dim("·");
   const label = check.label.padEnd(LABEL_WIDTH);
   const showDetail = verbose || check.status === "fail" || check.status === "warn";
 
@@ -49,21 +49,8 @@ function renderCheckLine(check: CheckResult, verbose: boolean): void {
   if (showDetail && check.detail) {
     // Indent detail to align with the message column: 2 + 1 (symbol) + 2 + LABEL_WIDTH
     const indent = " ".repeat(5 + LABEL_WIDTH);
-    process.stdout.write(`${indent}${pc.dim(check.detail)}\n`);
+    process.stdout.write(`${indent}${dim(check.detail)}\n`);
   }
-}
-
-// ─── Summary line ─────────────────────────────────────────────────────────────
-
-function buildSummaryLine(summary: DoctorReport["summary"]): string {
-  return [
-    pc.green(`${summary.pass} passed`),
-    summary.warn > 0 ? pc.yellow(`${summary.warn} warnings`) : null,
-    summary.fail > 0 ? pc.red(`${summary.fail} failed`) : null,
-    summary.skip > 0 ? pc.dim(`${summary.skip} skipped`) : null,
-  ]
-    .filter(Boolean)
-    .join(pc.dim(" · "));
 }
 
 // ─── Command ─────────────────────────────────────────────────────────────────
@@ -89,14 +76,15 @@ export const doctorCommand: CommandModule = {
         describe: "Prompt for sudo when permission-denied checks are encountered",
         type: "boolean",
         default: true,
-      }),
+      })
+      .option("target-host", TARGET_HOST_OPTION),
   handler: async (argv) => {
     const verbose = argv.verbose as boolean;
     const format = argv.format as "text" | "json" | "yaml";
     const interactive = argv.interactive as boolean;
     const targetHostArg = argv["target-host"] as string | undefined;
 
-    p.intro(`xinity doctor${targetHostArg ? pc.dim(` → ${targetHostArg}`) : ""}`);
+    intro(`xinity doctor${targetHostArg ? dim(` → ${targetHostArg}`) : ""}`);
 
     let host;
     try {
@@ -119,7 +107,7 @@ export const doctorCommand: CommandModule = {
         process.stdout.write(Bun.YAML.stringify(report, null, 2));
       } else {
         renderReport(report, verbose);
-        p.outro(buildSummaryLine(report.summary));
+        outro(buildSummaryLine(report.summary));
       }
       process.exit(1);
       return;
@@ -127,7 +115,7 @@ export const doctorCommand: CommandModule = {
 
     let hasFailures = false;
     try {
-      const clackSpinner = p.spinner();
+      const clackSpinner = spinner();
       clackSpinner.start("Collecting diagnostics…");
 
       const report = await runDoctor({
@@ -147,7 +135,7 @@ export const doctorCommand: CommandModule = {
         process.stdout.write(Bun.YAML.stringify(report, null, 2));
       } else {
         renderReport(report, verbose);
-        p.outro(buildSummaryLine(report.summary));
+        outro(buildSummaryLine(report.summary));
       }
       hasFailures = report.summary.fail > 0;
     } finally {

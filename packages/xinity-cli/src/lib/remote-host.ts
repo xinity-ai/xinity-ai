@@ -1,8 +1,8 @@
 import { createServer } from "net";
 import { hostname as osHostname } from "os";
 import { localRun, type Host, type RunResult, type ElevationResult } from "./host.ts";
-import * as p from "./clack.ts";
-import pc from "picocolors";
+import { cancel, log } from "./clack.ts";
+import { cyan, dim } from "picocolors";
 import { SudoSession, checkPasswordlessSudo } from "./sudo-session.ts";
 import { quoteShellArg, quoteShellArgv } from "common-env";
 
@@ -201,7 +201,7 @@ export class RemoteHost implements Host {
     if (await this.isRoot()) return true;
     if (this.sudoSession?.isAlive) return true;
     if (this.elevationDenied) return false;
-    p.log.info(pc.dim(`Root privileges on ${this.hostname} are required to inspect and configure it.`));
+    log.info(dim(`Root privileges on ${this.hostname} are required to inspect and configure it.`));
     return (await this.ensureSudoSessionAndExecute("true")).success;
   }
 
@@ -219,7 +219,7 @@ export class RemoteHost implements Host {
       return { success: false, output: "sudo authentication was declined" };
     }
 
-    p.log.step(pc.dim(description));
+    log.step(dim(description));
     return this.ensureSudoSessionAndExecute(command);
   }
 
@@ -242,9 +242,9 @@ export class RemoteHost implements Host {
       if (passwordless) {
         try {
           this.sudoSession = await SudoSession.create(this.ctrlArgs, this.hostname, "");
-          p.log.success("Passwordless sudo detected.");
+          log.success("Passwordless sudo detected.");
         } catch (err) {
-          p.log.warn(`Failed to establish sudo session: ${(err as Error).message}`);
+          log.warn(`Failed to establish sudo session: ${(err as Error).message}`);
           this.elevationDenied = true;
           return { success: false, output: "" };
         }
@@ -255,22 +255,22 @@ export class RemoteHost implements Host {
         for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
           const input = await readSudoPassword(
             attempt === 1
-              ? `Sudo password for ${pc.cyan(this.hostname)}: `
+              ? `Sudo password for ${cyan(this.hostname)}: `
               : `Wrong password. Try again (${attempt}/${MAX_ATTEMPTS}): `,
           );
           if (input === null) {
-            p.cancel("Cancelled.");
+            cancel("Cancelled.");
             this.elevationDenied = true;
             return { success: false, output: "" };
           }
 
           try {
             this.sudoSession = await SudoSession.create(this.ctrlArgs, this.hostname, input);
-            p.log.success("Sudo session established.");
+            log.success("Sudo session established.");
             break;
           } catch {
             if (attempt === MAX_ATTEMPTS) {
-              p.log.error(`Failed to authenticate after ${MAX_ATTEMPTS} attempts.`);
+              log.error(`Failed to authenticate after ${MAX_ATTEMPTS} attempts.`);
               this.elevationDenied = true;
               return { success: false, output: "" };
             }
@@ -292,7 +292,7 @@ export class RemoteHost implements Host {
       const { exitCode, output } = await this.sudoSession.execute(command);
       return { success: exitCode === 0, output };
     } catch (err) {
-      p.log.warn(`Sudo session error: ${(err as Error).message}`);
+      log.warn(`Sudo session error: ${(err as Error).message}`);
       this.sudoSession = null;
       return { success: false, output: "" };
     }
@@ -419,12 +419,18 @@ export class RemoteHost implements Host {
   }
 }
 
+/** yargs descriptor for the single-host selector, declared per command that supports it. */
+export const TARGET_HOST_OPTION = {
+  describe: "SSH host to operate on (any valid ssh bind_address or host alias)",
+  type: "string",
+} as const;
+
 export async function connectHost(hostname?: string): Promise<RemoteHost> {
   const target = hostname || "localhost";
   const host = new RemoteHost(target);
   await host.connect();
   if (hostname) {
-    p.log.success(`Connected to ${pc.cyan(target)}`);
+    log.success(`Connected to ${cyan(target)}`);
   }
   return host;
 }

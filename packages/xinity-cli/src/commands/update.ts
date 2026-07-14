@@ -2,8 +2,8 @@ import type { CommandModule } from "yargs";
 import { join } from "path";
 import { tmpdir, homedir } from "os";
 import { mkdirSync, copyFileSync, renameSync, unlinkSync, chmodSync, existsSync } from "fs";
-import * as p from "../lib/clack.ts";
-import pc from "picocolors";
+import { cancel, confirm, intro, isCancel, log, outro, spinner as clackSpinner } from "../lib/clack.ts";
+import { cyan, green, yellow } from "picocolors";
 
 import { version } from "../../../../package.json";
 const CLI_VERSION = `v${version}`;
@@ -45,7 +45,7 @@ async function selfUpdate(release: Release): Promise<boolean> {
     fail(
       "Self-update",
       `Could not locate the xinity binary to replace.\n` +
-      `Expected it at ${pc.cyan(fallbackPath)} (conventional install location).\n` +
+      `Expected it at ${cyan(fallbackPath)} (conventional install location).\n` +
       `If you installed it elsewhere, replace the binary manually with the downloaded file.`,
     );
     return false;
@@ -54,7 +54,7 @@ async function selfUpdate(release: Release): Promise<boolean> {
   const newBinary = join(extractDir, "xinity");
   const backupPath = currentPath + ".bak";
 
-  const replaceSpinner = p.spinner();
+  const replaceSpinner = clackSpinner();
   replaceSpinner.start("Replacing binary…");
 
   try {
@@ -99,10 +99,10 @@ function locateRunningBinary(fallbackPath: string): string | null {
 export async function runUpdateFlow(opts: { checkOnly: boolean; targetVersion: string }): Promise<void> {
   const { checkOnly, targetVersion } = opts;
 
-  p.intro(`xinity update${checkOnly ? pc.yellow(" (check only)") : ""}`);
+  intro(`xinity update${checkOnly ? yellow(" (check only)") : ""}`);
 
   // Fetch latest release
-  const spinner = p.spinner();
+  const spinner = clackSpinner();
   spinner.start("Checking for updates…");
 
   let release: Release;
@@ -111,7 +111,7 @@ export async function runUpdateFlow(opts: { checkOnly: boolean; targetVersion: s
   } catch (err) {
     spinner.stop("Failed");
     fail("GitHub API", (err as Error).message);
-    p.outro("Done");
+    outro("Done");
     return;
   }
   spinner.stop(`Latest release: ${release.tagName}`);
@@ -119,33 +119,33 @@ export async function runUpdateFlow(opts: { checkOnly: boolean; targetVersion: s
   // Compare versions
   const needsUpdate = CLI_VERSION !== release.tagName;
   const status = needsUpdate
-    ? pc.yellow(`${CLI_VERSION} → ${release.tagName}`)
-    : pc.green(`${CLI_VERSION} (up to date)`);
-  p.log.info(`  ${pc.cyan("cli")}  ${status}`);
+    ? yellow(`${CLI_VERSION} → ${release.tagName}`)
+    : green(`${CLI_VERSION} (up to date)`);
+  log.info(`  ${cyan("cli")}  ${status}`);
 
   if (!needsUpdate) {
-    p.log.success("Already up to date");
-    p.outro("Done");
+    log.success("Already up to date");
+    outro("Done");
     return;
   }
 
   if (checkOnly) {
-    p.outro("Run " + pc.cyan("xinity update") + " to apply the update");
+    outro("Run " + cyan("xinity update") + " to apply the update");
     return;
   }
 
   // Confirm
-  const proceed = await p.confirm({
+  const proceed = await confirm({
     message: `Update CLI to ${release.tagName}?`,
     initialValue: true,
   });
-  if (p.isCancel(proceed) || !proceed) {
-    p.cancel("Cancelled.");
+  if (isCancel(proceed) || !proceed) {
+    cancel("Cancelled.");
     return;
   }
 
   await selfUpdate(release);
-  p.outro("Done");
+  outro("Done");
 }
 
 // ─── Command ────────────────────────────────────────────────────────────────

@@ -3,8 +3,8 @@
  * `xinity up all`. Ollama runs alongside the daemon on the same host, so it is
  * left on its default localhost binding.
  */
-import * as p from "./clack.ts";
-import pc from "picocolors";
+import { confirm, isCancel, log, select, spinner as clackSpinner } from "./clack.ts";
+import { bold, dim } from "picocolors";
 import { type Host, commandExistsOn, isUnitActiveOn } from "./host.ts";
 import { pass, fail, info, warn } from "./output.ts";
 import { parseEnvString, serializeEnvFile } from "./env-file.ts";
@@ -64,14 +64,14 @@ async function installOrUpdateOllama(host: Host): Promise<boolean> {
   const result = await host.withElevation(INSTALL_COMMAND, "Install/update ollama");
   if (!result.success) {
     fail("Ollama", result.output || "Installation failed");
-    p.log.info(pc.dim(`  Install manually: ${INSTALL_COMMAND}`));
+    log.info(dim(`  Install manually: ${INSTALL_COMMAND}`));
     return false;
   }
 
   pass("Ollama", "Installed successfully");
 
   // The install script usually starts the service, but not always; wait, then start it ourselves.
-  const spinner = p.spinner();
+  const spinner = clackSpinner();
   spinner.start("Waiting for ollama service…");
   const running = await waitForOllamaRunning(host);
   spinner.stop(running ? "Service running" : "Service not started automatically");
@@ -99,14 +99,14 @@ async function startOllamaService(host: Host, opts: { warnOnFail?: boolean } = {
 async function promptInstallOllama(host: Host, dryRun: boolean): Promise<boolean> {
   info("Ollama", "Not found on this system");
 
-  const action = await p.select({
+  const action = await select({
     message: "Ollama is not installed.",
     options: [
       { value: "install", label: "Install ollama", hint: "uses official install script" },
       { value: "skip", label: "Skip" },
     ],
   });
-  if (p.isCancel(action) || action === "skip") return false;
+  if (isCancel(action) || action === "skip") return false;
 
   if (dryRun) {
     info("Dry run", `Would install ollama: ${INSTALL_COMMAND}`);
@@ -118,14 +118,14 @@ async function promptInstallOllama(host: Host, dryRun: boolean): Promise<boolean
 async function promptUpdateRunningOllama(host: Host, dryRun: boolean): Promise<boolean> {
   pass("Ollama", "Service is running");
 
-  const action = await p.select({
+  const action = await select({
     message: "Ollama is installed and running.",
     options: [
       { value: "keep", label: "Keep current setup" },
       { value: "update", label: "Update ollama to latest version" },
     ],
   });
-  if (p.isCancel(action) || action === "keep") return true;
+  if (isCancel(action) || action === "keep") return true;
 
   if (dryRun) {
     info("Dry run", "Would update ollama");
@@ -137,14 +137,14 @@ async function promptUpdateRunningOllama(host: Host, dryRun: boolean): Promise<b
 async function promptStartStoppedOllama(host: Host, dryRun: boolean): Promise<boolean> {
   warn("Ollama", "Installed but service is not running");
 
-  const action = await p.select({
+  const action = await select({
     message: "Ollama service is not running.",
     options: [
       { value: "start", label: "Start the service" },
       { value: "update", label: "Update and start" },
     ],
   });
-  if (p.isCancel(action)) return false;
+  if (isCancel(action)) return false;
 
   if (dryRun) {
     info("Dry run", `Would ${action} ollama`);
@@ -158,7 +158,7 @@ async function promptStartStoppedOllama(host: Host, dryRun: boolean): Promise<bo
  * ollama is set up and expected to answer at {@link LOCAL_OLLAMA_ENDPOINT}.
  */
 export async function provisionOllama(host: Host, dryRun: boolean): Promise<boolean> {
-  p.log.step(pc.bold("Ollama setup"));
+  log.step(bold("Ollama setup"));
 
   const status = await detectOllamaStatus(host);
   if (status === "missing") return promptInstallOllama(host, dryRun);
@@ -177,7 +177,7 @@ export async function provisionOllama(host: Host, dryRun: boolean): Promise<bool
  * Returns true when ollama is expected to answer at {@link LOCAL_OLLAMA_ENDPOINT}.
  */
 export async function ensureOllama(host: Host, dryRun: boolean): Promise<boolean> {
-  p.log.step(pc.bold("Ollama setup"));
+  log.step(bold("Ollama setup"));
 
   const status = await detectOllamaStatus(host);
 
@@ -247,8 +247,8 @@ async function pointDaemonAtOllama(host: Host): Promise<void> {
     pass("Ollama", `Endpoint reachable at ${LOCAL_OLLAMA_ENDPOINT}`);
   } else {
     warn("Ollama", `Endpoint not reachable at ${LOCAL_OLLAMA_ENDPOINT}. The daemon may not be able to connect.`);
-    const proceed = await p.confirm({ message: "Save this endpoint anyway?", initialValue: true });
-    if (p.isCancel(proceed) || !proceed) return;
+    const proceed = await confirm({ message: "Save this endpoint anyway?", initialValue: true });
+    if (isCancel(proceed) || !proceed) return;
   }
   await writeDaemonEndpoint(host, LOCAL_OLLAMA_ENDPOINT);
 }

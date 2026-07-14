@@ -1,10 +1,10 @@
-import * as p from "./clack.ts";
+import { confirm, isCancel } from "./clack.ts";
 import { heading } from "./output.ts";
 import { readManifest, writeManifest } from "./manifest.ts";
 import { analyzeEnvSchema, categorizeFields } from "./env-prompt.ts";
 import { type Host, isUnitActiveOn } from "./host.ts";
 import { unitName } from "./systemd.ts";
-import { runSteps } from "./step-runner.ts";
+import { runSteps, runStepsCollapsed } from "./step-runner.ts";
 import type { StepEvent } from "./step-event.ts";
 import {
   type Component, type RemoveResult,
@@ -26,6 +26,17 @@ function* elevationStep(
     errors.push(error);
     yield { type: "fail", label, detail: error };
   }
+}
+
+/** `removeComponent` in a collapsed progress scope with the standard messaging. */
+export function removeComponentCollapsed(
+  opts: { component: Component; purge?: boolean; host: Host },
+): Promise<RemoveResult> {
+  return runStepsCollapsed(
+    removeComponent(opts),
+    `Removing ${opts.component}…`,
+    `${opts.component} removed`,
+  );
 }
 
 export async function* removeComponent(opts: {
@@ -154,11 +165,11 @@ export async function removeAll(purge = false, host: Host): Promise<void> {
     heading(component);
     const result = await runSteps(removeComponent({ component, purge, host }));
     if (!result.success) {
-      const proceed = await p.confirm({
+      const proceed = await confirm({
         message: `${component} had issues: ${result.errors.join(", ")}. Continue with remaining components?`,
         initialValue: true,
       });
-      if (p.isCancel(proceed) || !proceed) return;
+      if (isCancel(proceed) || !proceed) return;
     }
   }
 
