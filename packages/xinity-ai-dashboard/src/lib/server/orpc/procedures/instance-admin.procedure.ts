@@ -2,7 +2,7 @@ import { rootOs, withInstanceAdmin } from "../root";
 import { z } from "zod";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
-import { auth, getGreenlitCallId, adminResetPassword } from "$lib/server/auth-server";
+import { auth, adminCreateUser, adminResetPassword } from "$lib/server/auth-server";
 import { userT, accountT, memberT, organizationT, sql, count } from "common-db";
 import { RoleSchema } from "$lib/server/roles";
 
@@ -258,20 +258,17 @@ const createUser = rootOs
   .handler(async ({ input, context, errors }) => {
     const rlog = log.child({ traceId: context.traceId });
     const temporaryPassword = generateTempPassword();
-    const signupResult = await auth.api.signUpEmail({
-      body: { email: input.email, password: temporaryPassword, name: input.name },
-      query: { greenlitCallId: getGreenlitCallId() },
-    }).catch((err: unknown) => {
-      rlog.error({ err, email: input.email }, "Admin user creation failed");
-      throw errors.FORBIDDEN({ message: "Failed to create user. Email may already be in use." });
-    });
-    // Admin-created users are considered verified
+    const { userId } = await adminCreateUser(input.email, input.name, temporaryPassword)
+      .catch((err: unknown) => {
+        rlog.error({ err, email: input.email }, "Admin user creation failed");
+        throw errors.FORBIDDEN({ message: "Failed to create user. Email may already be in use." });
+      });
     await getDB()
       .update(userT)
       .set({ emailVerified: true, temporaryPassword: true })
-      .where(sql`${userT.id} = ${signupResult.user.id}`);
-    rlog.info({ userId: signupResult.user.id, email: input.email }, "Admin created user");
-    return { success: true, userId: signupResult.user.id, temporaryPassword };
+      .where(sql`${userT.id} = ${userId}`);
+    rlog.info({ userId, email: input.email }, "Admin created user");
+    return { success: true, userId, temporaryPassword };
   });
 
 const resetUserPassword = rootOs
