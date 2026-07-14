@@ -1,35 +1,35 @@
-import * as p from "./clack.ts";
-import pc from "picocolors";
+import { cancel, isCancel, log } from "./clack.ts";
+import { bgCyan, black, dim } from "picocolors";
 
 function formatLabelDetail(label: string, detail?: string): string {
   if (!detail) return label;
-  return `${label} ${pc.dim("-")} ${pc.dim(detail)}`;
+  return `${label} ${dim("-")} ${dim(detail)}`;
 }
 
 export function pass(label: string, detail?: string) {
-  p.log.success(formatLabelDetail(label, detail));
+  log.success(formatLabelDetail(label, detail));
 }
 
 export function fail(label: string, detail?: string) {
-  p.log.error(formatLabelDetail(label, detail));
+  log.error(formatLabelDetail(label, detail));
 }
 
 export function warn(label: string, detail?: string) {
-  p.log.warn(formatLabelDetail(label, detail));
+  log.warn(formatLabelDetail(label, detail));
 }
 
 export function info(label: string, detail?: string) {
-  p.log.info(formatLabelDetail(label, detail));
+  log.info(formatLabelDetail(label, detail));
 }
 
 /** Section header rendered as a colored badge. */
 export function heading(text: string) {
-  p.log.step(pc.bgCyan(pc.black(` ${text} `)));
+  log.step(bgCyan(black(` ${text} `)));
 }
 
 /** Cancel the current prompt flow and exit the process cleanly. */
 export function cancelAndExit(): never {
-  p.cancel("Cancelled.");
+  cancel("Cancelled.");
   process.exit(0);
 }
 
@@ -39,7 +39,7 @@ export function cancelAndExit(): never {
  */
 export async function promptOrExit<T>(prompt: Promise<T | symbol>): Promise<Exclude<T, symbol>> {
   const value = await prompt;
-  if (p.isCancel(value)) cancelAndExit();
+  if (isCancel(value)) cancelAndExit();
   return value as Exclude<T, symbol>;
 }
 
@@ -50,7 +50,7 @@ export async function promptOrExit<T>(prompt: Promise<T | symbol>): Promise<Excl
  */
 export async function promptOrUndefined<T>(prompt: Promise<T | symbol>): Promise<Exclude<T, symbol> | undefined> {
   const value = await prompt;
-  if (p.isCancel(value)) return undefined;
+  if (isCancel(value)) return undefined;
   return value as Exclude<T, symbol>;
 }
 
@@ -58,7 +58,7 @@ export async function promptOrUndefined<T>(prompt: Promise<T | symbol>): Promise
 export function logErrors(result: { success: boolean; errors: string[] }): void {
   if (!result.success && result.errors.length > 0) {
     for (const err of result.errors) {
-      p.log.error(err);
+      log.error(err);
     }
   }
 }

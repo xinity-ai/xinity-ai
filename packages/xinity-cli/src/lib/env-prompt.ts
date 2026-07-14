@@ -1,6 +1,6 @@
 import { z } from "zod";
-import * as p from "./clack.ts";
-import pc from "picocolors";
+import { select, confirm, text, password, log, isCancel } from "./clack.ts";
+import { bold, cyan, dim, yellow, green } from "picocolors";
 import { promptOrExit, cancelAndExit } from "./output.ts";
 import { parseEnvString } from "./env-file.ts";
 import { type Component, ENV_SCHEMAS, ENV_DIR, SECRETS_DIR } from "./component-meta.ts";
@@ -48,10 +48,16 @@ function resolveJsonSchemaType(prop: JsonSchemaProp): string | undefined {
   return nonNull?.type ?? "string";
 }
 
-/** Analyze a Zod env schema into structured field metadata. */
+const schemaFieldCache = new WeakMap<z.ZodObject<any>, EnvField[]>();
+
+/** Analyze a Zod env schema into structured field metadata. Cached per schema object. */
 export function analyzeEnvSchema(
   schema: z.ZodObject<any>,
 ): EnvField[] {
+  const cached = schemaFieldCache.get(schema);
+  if (cached) {
+    return cached;
+  }
   const jsonSchema = z.toJSONSchema(schema) as {
     properties: Record<string, JsonSchemaProp>;
     required?: string[];
@@ -80,7 +86,17 @@ export function analyzeEnvSchema(
     });
   }
 
+  schemaFieldCache.set(schema, fields);
   return fields;
+}
+
+/** The single definition of "the config is invalid without this field". */
+export function isRequiredUnset(field: EnvField, values: Record<string, string | undefined>): boolean {
+  return !field.isOptional && !field.hasDefault && !values[field.key];
+}
+
+export function missingRequiredFields(fields: EnvField[], values: Record<string, string | undefined>): EnvField[] {
+  return fields.filter((f) => isRequiredUnset(f, values));
 }
 
 export function categorizeFields(fields: EnvField[]): {
@@ -120,6 +136,10 @@ export function splitValuesByCategory(
 export interface EnvBundle {
   config: Record<string, string>;
   secrets: Record<string, string>;
+}
+
+export function flattenBundle(bundle: EnvBundle): Record<string, string> {
+  return { ...bundle.config, ...bundle.secrets };
 }
 
 export interface EnvChange {
@@ -197,7 +217,7 @@ export async function promptForEnv(
   await promptFieldsUnderHeading(visibleSecrets, "Secrets", existingValues, config, secrets);
 
   if (expertFields.length > 0) {
-    const showAdvanced = await promptOrExit(p.confirm({
+    const showAdvanced = await promptOrExit(confirm({
       message: "Configure advanced settings?",
       initialValue: false,
     }));
@@ -218,32 +238,50 @@ async function promptFieldsUnderHeading(
   secrets: Record<string, string>,
 ): Promise<void> {
   if (fields.length === 0) return;
-  p.log.step(pc.bold(heading));
+  log.step(bold(heading));
   for (const field of fields) {
     const value = await promptField(field, existingValues?.[field.key]);
-    if (value !== undefined) assignByCategory(field, value, config, secrets);
+    if (value !== undefined && value !== FIELD_CANCELLED) assignByCategory(field, value, config, secrets);
   }
 }
 
-/** Prompt for a single field value. Returns undefined if skipped. */
+/** Distinguishes an Escape (back out, change nothing) from a skipped/cleared field. */
+const FIELD_CANCELLED: unique symbol = Symbol("field-cancelled");
+
+/**
+ * Prompt for a single field value. Returns undefined if skipped. When
+ * `cancelable`, Escape returns FIELD_CANCELLED instead of exiting the CLI
+ * (menu editors treat it as backing out to the menu).
+ */
 async function promptField(
   field: EnvField,
   existingValue?: string,
-): Promise<string | undefined> {
-  const hint = field.description ? pc.dim(` (${field.description})`) : "";
-  const optTag = field.isOptional ? pc.dim(" [optional]") : "";
+  cancelable = false,
+): Promise<string | undefined | typeof FIELD_CANCELLED> {
+  const resolve = async <T>(prompt: Promise<T | symbol>): Promise<T | typeof FIELD_CANCELLED> => {
+    const value = await prompt;
+    if (isCancel(value)) {
+      if (cancelable) return FIELD_CANCELLED;
+      cancelAndExit();
+    }
+    return value as T;
+  };
+
+  const hint = field.description ? dim(` (${field.description})`) : "";
+  const optTag = field.isOptional ? dim(" [optional]") : "";
   const existing = existingValue ?? (field.hasDefault ? String(field.defaultValue) : undefined);
 
   // Secret → masked password input
   if (field.isSecret) {
-    const keepHint = existing ? pc.dim(" [Enter to keep current]") : "";
-    const value = await promptOrExit(p.password({
+    const keepHint = existing ? dim(" [Enter to keep current]") : "";
+    const value = await resolve(password({
       message: `${field.key}${hint}${optTag}${keepHint}`,
       validate: (val) => {
         if (!val && !existing && !field.isOptional && !field.hasDefault) return "This field is required";
         return undefined;
       },
     }));
+    if (value === FIELD_CANCELLED) return value;
     return value || existing || undefined;
   }
 
@@ -251,29 +289,31 @@ async function promptField(
   if (field.enumValues) {
     const options = field.enumValues.map((v) => ({ value: v, label: v }));
     if (field.isOptional) {
-      options.unshift({ value: "__skip__", label: pc.dim("skip") });
+      options.unshift({ value: "__skip__", label: dim("skip") });
     }
-    const value = await promptOrExit(p.select({
+    const value = await resolve(select({
       message: `${field.key}${hint}${optTag}`,
       options,
       initialValue: existing,
     }));
+    if (value === FIELD_CANCELLED) return value;
     return value === "__skip__" ? undefined : value;
   }
 
   // Boolean → confirm
   if (field.isBoolean) {
-    const value = await promptOrExit(p.confirm({
+    const value = await resolve(confirm({
       message: `${field.key}${hint}`,
       initialValue: existingValue !== undefined
         ? existingValue === "true" || existingValue === "1"
         : field.hasDefault && field.defaultValue === true,
     }));
+    if (value === FIELD_CANCELLED) return value;
     return String(value);
   }
 
   // Number or string → text input
-  const value = await promptOrExit(p.text({
+  const value = await resolve(text({
     message: `${field.key}${hint}${optTag}`,
     placeholder: existing ?? undefined,
     defaultValue: existing ?? undefined,
@@ -283,23 +323,26 @@ async function promptField(
       return undefined;
     },
   }));
+  if (value === FIELD_CANCELLED) return value;
   return value || undefined;
 }
 
 /** Format a field's current value for display in the menu. */
 function displayValue(field: EnvField, value: string | undefined): string {
   if (value !== undefined && value !== "") {
-    if (field.isSecret) return pc.dim("••••••");
-    return pc.cyan(value);
+    if (field.isSecret) return dim("••••••");
+    return cyan(value);
   }
-  if (field.hasDefault) return pc.dim(`(default: ${field.defaultValue})`);
-  if (field.isOptional) return pc.dim("(not set)");
-  return pc.yellow("(not set)");
+  if (field.hasDefault) return dim(`(default: ${field.defaultValue})`);
+  if (field.isOptional) return dim("(not set)");
+  return yellow("(not set)");
 }
 
 export interface MenuEditOptions {
-  /** Keys flagged as "new", highlighted in label and required to be set before save. */
-  newKeys?: Set<string>;
+  /** Keys highlighted for review: values worth a deliberate look, not enforced. */
+  attentionKeys?: Set<string>;
+  /** Keys owned by another layer (e.g. stack shared settings): not shown, not editable; their seeded values pass through. */
+  hiddenKeys?: Set<string>;
   /** Message displayed above the menu. */
   message?: string;
 }
@@ -307,6 +350,10 @@ export interface MenuEditOptions {
 /**
  * Menu-based env editor. Returns the merged { config, secrets } without
  * persisting anything. Returns null if the user cancels.
+ *
+ * Required fields are marked and block saving while unset. Expert fields
+ * are hidden behind an "advanced settings" toggle unless they already
+ * carry a value or need attention.
  */
 export async function menuEditEnv(
   schema: z.ZodObject<any>,
@@ -314,48 +361,66 @@ export async function menuEditEnv(
   opts?: MenuEditOptions,
 ): Promise<{ config: Record<string, string>; secrets: Record<string, string> } | null> {
   const fields = analyzeEnvSchema(schema);
-  const newKeys = opts?.newKeys ?? new Set<string>();
+  const attentionKeys = opts?.attentionKeys ?? new Set<string>();
+  const hiddenKeys = opts?.hiddenKeys ?? new Set<string>();
+  const editable = fields.filter((f) => !hiddenKeys.has(f.key));
   const values: Record<string, string | undefined> = { ...existing };
+  let showExpert = false;
 
-  const newMarker = pc.yellow("● new ");
+  const isUnset = (f: EnvField) => values[f.key] === undefined || values[f.key] === "";
+  const requiredUnset = (f: EnvField) => isRequiredUnset(f, values);
+  const isVisible = (f: EnvField) =>
+    !f.isExpert || showExpert || !isUnset(f) || requiredUnset(f) || attentionKeys.has(f.key);
 
   while (true) {
-    const options = fields.map((field) => {
-      const marker = newKeys.has(field.key) ? newMarker : "";
+    const hiddenCount = editable.filter((f) => !isVisible(f)).length;
+
+    const options = editable.filter(isVisible).map((field) => {
+      const marker = requiredUnset(field)
+        ? yellow("● required ")
+        : attentionKeys.has(field.key) ? cyan("● review ") : "";
+      const key = field.isExpert ? dim(field.key) : field.key;
       return {
         value: field.key,
-        label: `${marker}${field.key}  ${displayValue(field, values[field.key])}`,
+        label: `${marker}${key}  ${displayValue(field, values[field.key])}`,
         hint: field.description,
       };
     });
-    options.push({ value: "__save__", label: pc.green("Save & exit"), hint: undefined });
+    if (hiddenCount > 0) {
+      options.push({ value: "__expert__", label: dim(`Show advanced settings (${hiddenCount} more)…`), hint: undefined });
+    } else if (showExpert && editable.some((f) => f.isExpert)) {
+      options.push({ value: "__expert__", label: dim("Hide advanced settings"), hint: undefined });
+    }
+    options.push({ value: "__save__", label: green("Save & exit"), hint: undefined });
 
-    const choice = await p.select({
+    const choice = await select({
       message: opts?.message ?? "Select a value to update",
       options,
     });
 
-    if (p.isCancel(choice)) return null;
+    if (isCancel(choice)) return null;
+
+    if (choice === "__expert__") {
+      showExpert = !showExpert;
+      continue;
+    }
 
     if (choice === "__save__") {
-      const unsetRequiredNew = fields.filter(
-        (f) =>
-          newKeys.has(f.key) &&
-          !f.isOptional &&
-          !f.hasDefault &&
-          (values[f.key] === undefined || values[f.key] === ""),
-      );
-      if (unsetRequiredNew.length > 0) {
-        p.log.warn(
-          `These new variables are required and not set: ${unsetRequiredNew.map((f) => f.key).join(", ")}`,
+      const blocking = missingRequiredFields(editable, values);
+      if (blocking.length > 0) {
+        log.warn(
+          `These variables are required and not set: ${blocking.map((f) => f.key).join(", ")}`,
         );
         continue;
       }
       break;
     }
 
-    const field = fields.find((f) => f.key === choice)!;
-    const newValue = await promptField(field, values[field.key]);
+    const field = editable.find((f) => f.key === choice)!;
+    const newValue = await promptField(field, values[field.key], true);
+    if (newValue === FIELD_CANCELLED) {
+      continue;
+    }
     if (newValue !== undefined) {
       values[field.key] = newValue;
     } else {
@@ -376,16 +441,17 @@ export async function readExistingEnvState(component: Component, host: Host): Pr
   const { secretFields } = categorizeFields(analyzeEnvSchema(ENV_SCHEMAS[component]));
   const secretKeys = secretFields.map((f) => f.key);
 
-  const envContent = await host.readFile(`${ENV_DIR}/${component}.env`);
-  const existingConfig = envContent ? parseEnvString(envContent) : {};
+  const [envContent, secretsResult] = await Promise.all([
+    host.readFile(`${ENV_DIR}/${component}.env`),
+    secretKeys.length > 0
+      ? readSecrets(host, SECRETS_DIR, secretKeys, "Read existing secrets")
+      : Promise.resolve({ secrets: {} as Record<string, string>, permissionDenied: false }),
+  ]);
 
-  let existingSecrets: Record<string, string> = {};
-  if (secretKeys.length > 0) {
-    const sr = await readSecrets(host, SECRETS_DIR, secretKeys, "Read existing secrets");
-    existingSecrets = sr.secrets;
-  }
-
-  return { existingConfig, existingSecrets };
+  return {
+    existingConfig: envContent ? parseEnvString(envContent) : {},
+    existingSecrets: secretsResult.secrets,
+  };
 }
 
 export interface CollectedEnv extends EnvBundle {
@@ -414,9 +480,7 @@ export async function collectEnv(
   const hasExistingConfig = Object.keys(existingConfig).length > 0;
   const existing = { ...autoDefaults, ...existingConfig, ...existingSecrets };
 
-  const missingRequired = fields.filter(
-    (f) => !f.isOptional && !f.hasDefault && !existing[f.key],
-  );
+  const missingRequired = missingRequiredFields(fields, existing);
 
   const withChanges = (result: EnvBundle): CollectedEnv => ({
     ...result,
@@ -428,7 +492,7 @@ export async function collectEnv(
 
   if (isInstalled && hasExistingConfig) {
     if (missingRequired.length === 0) {
-      const action = await promptOrExit(p.select({
+      const action = await promptOrExit(select({
         message: "All configuration variables are already set.",
         options: [
           { value: "skip", label: "Keep current configuration" },
@@ -439,17 +503,16 @@ export async function collectEnv(
       const result = await menuEditEnv(schema, existing);
       return result ? withChanges(result) : useExisting();
     } else {
-      p.log.info(
+      log.info(
         `${missingRequired.length} new variable(s) need to be set. Edit any other values too if you like.`,
       );
-      const newKeys = new Set(missingRequired.map((f) => f.key));
-      const result = await menuEditEnv(schema, existing, { newKeys });
+      const result = await menuEditEnv(schema, existing);
       if (result === null) cancelAndExit();
       return withChanges(result);
     }
   } else if (hasExistingConfig && missingRequired.length === 0) {
     // Not in manifest but has existing config, preserve original behavior
-    const reconfigure = await promptOrExit(p.confirm({
+    const reconfigure = await promptOrExit(confirm({
       message: "Existing configuration found. Reconfigure?",
       initialValue: false,
     }));

@@ -4,7 +4,7 @@
  * All UI chrome (spinner, intro, outro, logs, prompts) goes to stderr so that
  * stdout stays clean for pipeable content (`xinity doctor --json | jq`).
  *
- * Usage: `import * as p from "./clack.ts"`, same API as @clack/prompts.
+ * Import the wrappers by name, same API as @clack/prompts.
  */
 import * as clack from "@clack/prompts";
 export { isCancel } from "@clack/prompts";
@@ -43,6 +43,9 @@ export const log = {
 
 export const select = <Value>(opts: clack.SelectOptions<Value>) =>
   clack.select({ output: OUT, ...opts });
+
+export const multiselect = <Value>(opts: clack.MultiSelectOptions<Value>) =>
+  clack.multiselect({ output: OUT, ...opts });
 
 export const confirm = (opts: clack.ConfirmOptions) =>
   clack.confirm({ output: OUT, ...opts });

@@ -49,14 +49,26 @@ xinity update --check    # check for updates without installing
 
 | Flag | Description |
 |---|---|
-| `--target-host <host>` | Run the command on a remote server via SSH (any valid ssh host alias or address) |
 | `--version` | Print the CLI version |
+
+The single-host commands (`up`, `rm`, `configure`, `doctor`) additionally accept `--target-host <host>` to run against a remote server via SSH. Multi-host operations use stacks (`xinity stack`), which carry their own host lists.
+
+## How Changes Are Applied: Plan → Review → Apply
+
+`xinity up`, `xinity configure`, and `xinity stack up` all follow the same model. No command modifies a machine as it goes; they work in phases:
+
+1. **Collect.** Versions are resolved, current state is read off the host(s), and configuration is gathered through the menu editor (required values are marked and block saving; advanced settings are collapsed behind a toggle). This phase is strictly read-only on the target.
+2. **Review.** The assembled actions are shown as a numbered plan: what gets installed, updated, reconfigured, or removed, including the exact configuration diff (`+` added, `~` changed, `-` removed, secret values masked).
+3. **Gate.** One confirmation applies everything. Choosing **Abort** leaves the machines untouched. A third, secondary option prints the equivalent bash script instead of running anything, for auditing or manual execution (note: the script contains secrets in plain text).
+4. **Apply.** Runs unattended, since root privileges were established when the command started. Updates back up the previous binary and configuration and roll back automatically when the new version fails to start.
+
+`--dry-run` (on `xinity up`) stops after the review, so the plan can be inspected with zero risk.
 
 ## Commands
 
 ### `xinity up <component>`
 
-Install or update a Xinity service component as a systemd unit. Walks through configuration interactively when options have changed.
+Install or update a Xinity service component as a systemd unit, via the plan → review → apply flow described above. `up all` guides through the full sequence (database, Redis, optional infoserver/daemon/Ollama) and carries values declared in earlier steps into the later components, so nothing is asked twice.
 
 ```bash
 xinity up gateway
@@ -89,7 +101,7 @@ xinity up all
 | `--dry-run` | `false` | Show what would be done without making changes |
 | `--hard-reset` | `false` | Fully reset component state during reinstall |
 
-Core components go through: pre-flight checks, version resolution from GitHub, download with SHA-256 verification, interactive environment configuration, systemd unit generation, service start, and health verification. On updates, the previous binary and config are backed up. On start failure, rollback to the previous version is offered.
+During `up all`, infrastructure the plan decides to provision (a PostgreSQL container, a Redis install) is only executed after the gate as well; the planning phase never changes machine state.
 
 ### `xinity rm <component>`
 
@@ -155,9 +167,11 @@ Set CLI configuration values or interactively configure a service component's en
 ```bash
 xinity configure apiKey sk-...        # set a CLI config value
 xinity configure apiKey --reset       # clear a value
-xinity configure gateway              # interactive env editor for the gateway
+xinity configure gateway              # menu editor for the gateway's environment
 xinity configure                      # interactive CLI config menu
 ```
+
+Component configuration uses the same plan → review → apply flow: the menu editor shows current values (required keys marked, advanced settings collapsed), the review lists only what actually changed as a diff, and nothing is written until the gate is confirmed, after which the service restarts with the new configuration.
 
 **CLI config keys:** `apiKey`, `dashboardUrl`, `githubProjectUrl`, `githubToken`
 
@@ -168,6 +182,43 @@ xinity configure                      # interactive CLI config menu
 | `--reset` | Clear the specified config key |
 
 Configuration is stored in `~/.config/xinity/config.json` (mode 0600, directory mode 0700).
+
+### `xinity stack <action>`
+
+Declarative multi-host deployments. A stack is a local definition (`~/.config/xinity/stacks/<name>.json`, mode 600) holding shared configuration, stack-wide settings per component type, hosts (address + components), daemon fleets, and the pinned release version. `stack up` compares every host against the definition and applies only what differs.
+
+```bash
+xinity stack init prod       # shared + per-component settings, pinned version
+xinity stack edit prod       # hosts, fleets, settings, release version
+xinity stack up prod         # one plan, one gate, applied across all hosts
+xinity stack doctor prod     # health-check every host (alias: status)
+```
+
+**Actions:**
+
+| Action | Description |
+|---|---|
+| `init <name>` | Create a stack: pinned release version, shared settings (database, Redis, metrics auth, ...), then stack-wide settings per component. Required values block saving, so a fresh stack is deployable from the start. |
+| `ls` | List stacks |
+| `show <name>` | Print a stack summary |
+| `edit <name>` | Menu editor for everything in the stack. `--fleet <fleet>` jumps straight to that fleet's daemon settings. |
+| `up <name>` | Plan and apply the whole stack at its pinned version. `--target-version <v>` re-pins. |
+| `doctor <name>` (alias `status`) | Doctor every host, printing each failing check. `--fleet <fleet>` limits to that fleet's hosts. |
+| `rm <name>` | Choice of removing only the local definition or tearing down all tracked components on the hosts (best effort). `--fleet <fleet>` removes a fleet: definition only, or with daemon teardown. |
+
+**Configuration is layered**, most general first, later wins: schema defaults → shared env/secrets → per-component-type settings → fleet overrides (daemon only) → per-host overrides. Values live at the highest level possible; per-host overrides (e.g. `MACHINE_NAME`) are the escape hatch, never the norm. Shared-owned keys are not offered in lower-level editors.
+
+**What `stack up` does**, per host, after one review gate:
+
+- applies database migrations for the pinned release (skipped when the stack already applied them)
+- removes components that are installed but no longer tracked by the stack
+- installs, updates, or reconfigures each tracked component to match the pinned version and resolved configuration, with the config diff visible in the plan
+
+**Versions are pinned.** Every component in a stack is held at the stack's `pinnedVersion`. `stack up` checks for a newer release and asks before re-pinning; nothing updates silently.
+
+**Bring your own infrastructure.** Stacks manage Xinity's components, not the infrastructure beneath them: `stack init` takes your PostgreSQL and Redis connection URLs as given (migrations are then run for you). To have the CLI provision that infrastructure first, use the interactive assistants (`xinity up infra-postgres`, `xinity up infra-redis`, with `--target-host` for remote machines) and feed the resulting URLs into the stack. For a guided single-machine setup that can provision everything in one pass, `xinity up all` remains the right tool.
+
+Host addresses are anything ssh accepts (`root@10.0.0.5`, an ssh alias) or `local` for the machine the CLI runs on. A fleet is a named group of daemon hosts sharing configuration overrides, e.g. one pool per GPU type.
 
 ### `xinity update`
 
@@ -202,9 +253,9 @@ xinity completion fish > ~/.config/fish/completions/xinity.fish
 
 ## Remote Host Support
 
-All commands accept `--target-host` to operate on a remote server via SSH. The CLI uses SSH ControlMaster multiplexing to keep a single connection open for the session.
+The single-host commands (`up`, `rm`, `configure`, `doctor`) accept `--target-host`; stacks connect to their hosts on their own. The CLI uses SSH ControlMaster multiplexing to keep a single connection open per host for the session.
 
-Privilege elevation is handled interactively: the CLI auto-detects passwordless sudo, prompts for a sudo password when needed, or offers a manual mode. The elevation policy is remembered for the session.
+Root privileges are established once, up front: connecting as root needs nothing, passwordless sudo is detected automatically, and otherwise the sudo password is asked exactly once per host. Everything afterwards runs unattended.
 
 For the `doctor` command, all remote file and service checks are batched into a single SSH call to minimize round-trips over high-latency connections.
 

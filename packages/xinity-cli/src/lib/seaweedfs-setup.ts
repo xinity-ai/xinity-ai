@@ -9,8 +9,8 @@
  * identically for local and remote (--target-host) execution.
  */
 import { randomBytes, createHmac } from "crypto";
-import * as p from "./clack.ts";
-import pc from "picocolors";
+import { confirm, isCancel, log, note, password, spinner as clackSpinner, text } from "./clack.ts";
+import { bold, cyan, dim } from "picocolors";
 import { type Host, commandExistsOn } from "./host.ts";
 import { pass, fail, info, promptOrUndefined, warn } from "./output.ts";
 import { BIN_DIR, ENV_DIR, UNIT_DIR } from "./component-meta.ts";
@@ -44,7 +44,7 @@ function generateSecret(length = 40): string {
 }
 
 async function promptOrGenerateS3Credentials(): Promise<{ accessKeyId: string; secretAccessKey: string } | undefined> {
-  const useGenerated = await promptOrUndefined(p.confirm({
+  const useGenerated = await promptOrUndefined(confirm({
     message: "Generate random S3 credentials?",
     initialValue: true,
   }));
@@ -53,14 +53,14 @@ async function promptOrGenerateS3Credentials(): Promise<{ accessKeyId: string; s
   if (useGenerated) {
     const accessKeyId = generateKey();
     const secretAccessKey = generateSecret();
-    info("Access key", pc.cyan(accessKeyId));
-    info("Secret key", pc.cyan(secretAccessKey));
+    info("Access key", cyan(accessKeyId));
+    info("Secret key", cyan(secretAccessKey));
     return { accessKeyId, secretAccessKey };
   }
 
-  const accessKeyId = await promptOrUndefined(p.text({ message: "Access key ID" }));
+  const accessKeyId = await promptOrUndefined(text({ message: "Access key ID" }));
   if (accessKeyId === undefined) return undefined;
-  const secretAccessKey = await promptOrUndefined(p.password({ message: "Secret access key" }));
+  const secretAccessKey = await promptOrUndefined(password({ message: "Secret access key" }));
   if (secretAccessKey === undefined) return undefined;
   return { accessKeyId, secretAccessKey };
 }
@@ -117,17 +117,17 @@ async function downloadWeed(host: Host, dataDir: string, dryRun: boolean): Promi
     return false;
   }
 
-  const spinner = p.spinner();
+  const spinner = clackSpinner();
   spinner.start("Fetching latest SeaweedFS release…");
   const version = await fetchLatestVersion(host);
-  spinner.stop(version ? `Latest version: ${pc.cyan(version)}` : "Could not fetch latest, will use default");
+  spinner.stop(version ? `Latest version: ${cyan(version)}` : "Could not fetch latest, will use default");
 
   const tag = version ?? "3.75";
   const assetName = `linux_${arch}_large_disk.tar.gz`;
   const downloadUrl = `${SEAWEEDFS_GITHUB}/releases/download/${tag}/${assetName}`;
 
   if (dryRun) {
-    info("Dry run", `Would download: ${pc.dim(downloadUrl)}`);
+    info("Dry run", `Would download: ${dim(downloadUrl)}`);
     info("Dry run", `Would extract weed binary to ${WEED_BIN}`);
     return true;
   }
@@ -261,7 +261,7 @@ async function startAndWait(host: Host, dryRun: boolean): Promise<boolean> {
     return false;
   }
 
-  const spinner = p.spinner();
+  const spinner = clackSpinner();
   spinner.start("Waiting for SeaweedFS to start…");
   const ready = await waitForSeaweedFSRunning(host);
   if (ready) {
@@ -282,7 +282,7 @@ async function createBucket(
   dryRun: boolean,
 ): Promise<boolean> {
   if (dryRun) {
-    info("Dry run", `Would create S3 bucket: ${pc.cyan(bucket)}`);
+    info("Dry run", `Would create S3 bucket: ${cyan(bucket)}`);
     return true;
   }
 
@@ -304,7 +304,7 @@ async function createBucket(
     }
   }
 
-  pass("Bucket", `Created bucket: ${pc.cyan(bucket)}`);
+  pass("Bucket", `Created bucket: ${cyan(bucket)}`);
   return true;
 }
 
@@ -319,8 +319,8 @@ export async function seaweedfsSetup(
   host: Host,
   dryRun: boolean,
 ): Promise<SeaweedFSCredentials | undefined> {
-  p.log.step(pc.bold("SeaweedFS object store setup"));
-  p.log.info(
+  log.step(bold("SeaweedFS object store setup"));
+  log.info(
     "SeaweedFS provides S3-compatible object storage for multimodal image data.\n" +
     "It runs as a single binary with no external dependencies.",
   );
@@ -332,27 +332,27 @@ export async function seaweedfsSetup(
   if (alreadyInstalled) {
     pass("SeaweedFS", "Already installed");
   } else {
-    const proceed = await p.confirm({
+    const proceed = await confirm({
       message: "Download and install SeaweedFS?",
       initialValue: true,
     });
-    if (p.isCancel(proceed) || !proceed) return undefined;
+    if (isCancel(proceed) || !proceed) return undefined;
 
     const downloaded = await downloadWeed(host, "/var/lib/xinity-ai-seaweedfs/data", dryRun);
     if (!downloaded) return undefined;
   }
 
   // ── Step 2: Prompt for configuration ────────────────────────────────────
-  p.log.step(pc.bold("Configure SeaweedFS"));
+  log.step(bold("Configure SeaweedFS"));
 
-  const dataDir = await promptOrUndefined(p.text({
+  const dataDir = await promptOrUndefined(text({
     message: "Data directory",
     placeholder: "/var/lib/xinity-ai-seaweedfs/data",
     defaultValue: "/var/lib/xinity-ai-seaweedfs/data",
   }));
   if (dataDir === undefined) return undefined;
 
-  const bucket = await promptOrUndefined(p.text({
+  const bucket = await promptOrUndefined(text({
     message: "S3 bucket name",
     placeholder: "xinity-media",
     defaultValue: "xinity-media",
@@ -385,7 +385,7 @@ export async function seaweedfsSetup(
     bucket,
   };
 
-  p.note(
+  note(
     [
       `S3_ENDPOINT=${credentials.endpoint}`,
       `S3_ACCESS_KEY_ID=${credentials.accessKeyId}`,

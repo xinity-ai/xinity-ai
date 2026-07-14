@@ -2,8 +2,8 @@
  * Component installer: the apply half of the up flow. Executes decisions
  * already made and reviewed during planning (up-plan.ts); nothing prompts.
  */
-import * as p from "./clack.ts";
-import pc from "picocolors";
+import { log, note, spinner } from "./clack.ts";
+import { bold, cyan, yellow } from "picocolors";
 
 import { fetchRelease, type Release } from "./github.ts";
 import { buildLocalArtifact } from "./local-build.ts";
@@ -14,7 +14,7 @@ import { pass, fail, warn, info } from "./output.ts";
 import { type Host, commandExistsOn, isUnitActiveOn } from "./host.ts";
 import { isOllamaRunning } from "./ollama-setup.ts";
 import { writeEnvConfig, writeSystemdUnit, stopService, startService, restartService } from "./service.ts";
-import { runSteps } from "./step-runner.ts";
+import { runSteps, createProgress, type Progress } from "./step-runner.ts";
 import {
   type Component, type InstallResult,
   ENV_DIR, SECRETS_DIR, BIN_DIR, UNIT_DIR,
@@ -79,10 +79,10 @@ export async function preflightCheck(
 
 // ─── vLLM systemd template install ─────────────────────────────────────────
 
-async function installVllmTemplate(host: Host, templatePath: string): Promise<void> {
+async function installVllmTemplate(host: Host, templatePath: string, progress: Progress): Promise<void> {
   const exists = await host.fileExists(templatePath);
   if (exists) {
-    pass("vLLM template", `Already installed at ${templatePath}`);
+    progress.update(`vLLM template already installed at ${templatePath}`);
     return;
   }
 
@@ -91,17 +91,25 @@ async function installVllmTemplate(host: Host, templatePath: string): Promise<vo
     "Install vLLM systemd template unit",
   );
 
-  reportElevationWarning(result, "vLLM template", `Installed at ${templatePath}`, "Failed to install");
+  if (result.success) {
+    progress.update(`vLLM template installed at ${templatePath}`);
+  } else {
+    progress.warn("vLLM template", `Failed to install: ${result.output}`);
+  }
 }
 
 // ─── Driver tool checks (daemon only) ───────────────────────────────────────
 
-async function startOllama(host: Host): Promise<void> {
+async function startOllama(host: Host, progress: Progress): Promise<void> {
   const result = await host.withElevation(
     "systemctl enable --now ollama",
     "Start ollama service",
   );
-  reportElevationWarning(result, "Ollama", "ollama service started", "Failed to start ollama");
+  if (result.success) {
+    progress.update("ollama service started");
+  } else {
+    progress.warn("Ollama", `Failed to start ollama: ${result.output}`);
+  }
 }
 
 /**
@@ -113,6 +121,7 @@ async function checkDriverTools(
   config: Record<string, string>,
   secrets: Record<string, string>,
   host: Host,
+  progress: Progress,
 ): Promise<void> {
   const all = { ...config, ...secrets };
   const ollamaEnabled = !!all.XINITY_OLLAMA_ENDPOINT;
@@ -125,26 +134,28 @@ async function checkDriverTools(
   if (vllmEnabled) drivers.push("vllm");
 
   if (drivers.length === 0) {
-    warn("Drivers", "No drivers detected. Set XINITY_OLLAMA_ENDPOINT, VLLM_DOCKER_IMAGE, or VLLM_PATH to enable a driver");
+    progress.warn("Drivers", "No drivers detected. Set XINITY_OLLAMA_ENDPOINT, VLLM_DOCKER_IMAGE, or VLLM_PATH to enable a driver");
     return;
   }
 
-  info("Drivers", `Detected drivers: ${drivers.join(", ")}`);
+  progress.update(`Checking drivers: ${drivers.join(", ")}`);
 
   // ── Ollama ──
   if (ollamaEnabled) {
     const hasOllama = await commandExistsOn(host, "ollama");
     if (hasOllama) {
-      pass("Ollama", "ollama binary found");
       if (await isOllamaRunning(host)) {
-        pass("Ollama", "ollama service is running");
+        progress.update("ollama service is running");
       } else {
-        info("Ollama", "Service is not running, starting it");
-        await startOllama(host);
+        progress.update("ollama service is not running, starting it");
+        await startOllama(host, progress);
       }
     } else {
-      warn("Ollama", `ollama binary not found. Install it with ${pc.cyan("xinity up infra-ollama")}`);
-      p.log.info(pc.dim("  Or manually: curl -fsSL https://ollama.com/install.sh | sh"));
+      progress.warn(
+        "Ollama",
+        `ollama binary not found. Install it with ${cyan("xinity up infra-ollama")}`,
+        "  Or manually: curl -fsSL https://ollama.com/install.sh | sh",
+      );
     }
   }
 
@@ -152,26 +163,32 @@ async function checkDriverTools(
   if (vllmDockerEnabled) {
     const hasDocker = await commandExistsOn(host, "docker");
     if (hasDocker) {
-      pass("vLLM", "docker found (vllm-docker mode)");
+      progress.update("docker found (vllm-docker mode)");
 
       // Check for GPU container runtime matching the detected GPU vendor
       const hasNvidiaSmi = await commandExistsOn(host, "nvidia-smi");
       if (hasNvidiaSmi) {
         const rtResult = await host.run(["nvidia-container-runtime", "--version"]);
         if (rtResult.ok) {
-          pass("vLLM", "NVIDIA container runtime detected");
+          progress.update("NVIDIA container runtime detected");
         } else {
-          warn("vLLM", "NVIDIA container runtime not found, GPU passthrough may not work");
-          p.log.info(pc.dim("  Install nvidia-container-toolkit: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html"));
+          progress.warn(
+            "vLLM",
+            "NVIDIA container runtime not found, GPU passthrough may not work",
+            "  Install nvidia-container-toolkit: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html",
+          );
         }
       } else if (await commandExistsOn(host, "rocm-smi")) {
-        pass("vLLM", "AMD GPU detected (ROCm)");
+        progress.update("AMD GPU detected (ROCm)");
       } else {
-        warn("vLLM", "No GPU tools detected (nvidia-smi / rocm-smi), GPU passthrough may not work");
+        progress.warn("vLLM", "No GPU tools detected (nvidia-smi / rocm-smi), GPU passthrough may not work");
       }
     } else {
-      warn("vLLM", "docker not found but VLLM_DOCKER_IMAGE is set");
-      p.log.info(pc.dim("  Install Docker: https://docs.docker.com/engine/install/"));
+      progress.warn(
+        "vLLM",
+        "docker not found but VLLM_DOCKER_IMAGE is set",
+        "  Install Docker: https://docs.docker.com/engine/install/",
+      );
     }
   }
 
@@ -180,14 +197,13 @@ async function checkDriverTools(
     const vllmPath = all.VLLM_PATH!;
     const exists = await host.fileExists(vllmPath);
     if (exists) {
-      pass("vLLM", `vllm binary found at ${vllmPath}`);
+      progress.update(`vllm binary found at ${vllmPath}`);
     } else {
-      warn("vLLM", `vllm binary not found at ${vllmPath}`);
-      p.log.info(pc.dim("  Ensure vLLM is installed: pip install vllm"));
+      progress.warn("vLLM", `vllm binary not found at ${vllmPath}`, "  Ensure vLLM is installed: pip install vllm");
     }
 
     const templatePath = all.VLLM_TEMPLATE_UNIT_PATH ?? `${UNIT_DIR}/vllm-driver@.service`;
-    await installVllmTemplate(host, templatePath);
+    await installVllmTemplate(host, templatePath, progress);
   }
 }
 
@@ -203,14 +219,10 @@ export async function resolveVersion(
   targetVersion: string,
   host: Host,
 ): Promise<VersionResult> {
-  const spinner = p.spinner();
-  spinner.start("Checking for latest version…");
-
   let release: Release;
   try {
     release = await fetchRelease(targetVersion);
   } catch (err) {
-    spinner.stop("Version check failed");
     fail("GitHub API", (err as Error).message);
     return { status: "failed" };
   }
@@ -221,31 +233,27 @@ export async function resolveVersion(
   const isUpdate = !!installedVersion;
 
   if (installedVersion === release.tagName) {
-    spinner.stop(`${release.tagName} already installed`);
-
     // Verify the installed binary is intact before deciding.
     if (installedEntry?.binaryChecksum && installedEntry.binaryPath) {
-      const checksumSpinner = p.spinner();
-      checksumSpinner.start("Verifying installed binary…");
+      const checksumSpinner = spinner();
+      checksumSpinner.start(`Verifying installed ${component} binary…`);
       const currentHash = await host.computeSha256(installedEntry.binaryPath);
       if (currentHash === installedEntry.binaryChecksum) {
-        checksumSpinner.stop("Binary verified, checksums match");
+        checksumSpinner.stop(`${component} ${release.tagName} installed and verified`);
         return { status: "current", version: release.tagName };
       }
-      checksumSpinner.stop("Checksum mismatch, binary may be corrupted. Reinstalling");
-      warn("Checksum", "Installed binary does not match expected checksum");
+      checksumSpinner.stop(`${component}: checksum mismatch, binary may be corrupted. Reinstalling`);
       return { status: "proceed", release, isUpdate: true, installedVersion };
     }
 
     // No stored checksum (legacy install): treat as current.
-    info("Version", "Already installed (no checksum recorded to verify)");
+    info("Version", `${component} already installed (no checksum recorded to verify)`);
     return { status: "current", version: release.tagName };
-  } else if (isUpdate) {
-    spinner.stop(`Update available: ${installedVersion} → ${release.tagName}`);
-  } else {
-    spinner.stop(`Latest version: ${release.tagName}`);
   }
 
+  if (isUpdate) {
+    info("Version", `${component}: update available ${installedVersion} → ${release.tagName}`);
+  }
   return { status: "proceed", release, isUpdate, installedVersion };
 }
 
@@ -255,51 +263,49 @@ async function buildAndUploadLocalArtifact(
   component: Component,
   repoPath: string,
   host: Host,
+  progress: Progress,
 ): Promise<{ archivePath: string; version: string } | null> {
   const hostArch = await host.getArch();
-  const buildResult = await runSteps(buildLocalArtifact(component, repoPath, hostArch as "x64" | "arm64"));
+  const buildResult = await runSteps(buildLocalArtifact(component, repoPath, hostArch as "x64" | "arm64"), progress);
   if (!buildResult) return null;
 
   const remoteTmp = `/tmp/xinity-local-${Date.now()}.tar.gz`;
-  const uploadSpinner = p.spinner();
-  uploadSpinner.start("Uploading artifact...");
+  progress.update("Uploading artifact…");
   let effectivePath: string;
   try {
     effectivePath = await host.uploadFile(buildResult.archivePath, remoteTmp);
   } catch (err) {
-    uploadSpinner.stop("Upload failed");
-    fail("Upload", (err as Error).message);
+    progress.fail("Upload", (err as Error).message);
     return null;
   }
-  uploadSpinner.stop("Uploaded");
 
   const hostHash = await host.computeSha256(effectivePath);
   if (hostHash && hostHash !== buildResult.sha256) {
-    fail("Verify", `Checksum mismatch after upload (local: ${buildResult.sha256}, host: ${hostHash})`);
+    progress.fail("Verify", `Checksum mismatch after upload (local: ${buildResult.sha256}, host: ${hostHash})`);
     return null;
   }
-  pass("Verify", "Checksum matched");
+  progress.update("Upload checksum matched");
   return { archivePath: effectivePath, version: buildResult.version };
 }
 
 function printServiceFailureDiagnostics(unit: string): void {
-  p.log.warn(pc.yellow("Service failed to start. Diagnostic commands:"));
-  p.log.info(`  ${pc.cyan(`systemctl status ${unit}`)}`);
-  p.log.info(`  ${pc.cyan(`journalctl -u ${unit} -e --no-pager`)}`);
+  log.warn(yellow("Service failed to start. Diagnostic commands:"));
+  log.info(`  ${cyan(`systemctl status ${unit}`)}`);
+  log.info(`  ${cyan(`journalctl -u ${unit} -e --no-pager`)}`);
 }
 
 /** Move the current binary aside to <path>.bak before installing the new one. */
-async function backupCurrentBinary(component: Component, host: Host): Promise<void> {
+async function backupCurrentBinary(component: Component, host: Host, progress: Progress): Promise<void> {
   const binPath = `${BIN_DIR}/${binaryBaseName(component)}`;
   const result = await host.withElevation(
     `[ -f ${binPath} ] && mv -f ${binPath} ${binPath}.bak || true`,
     `Back up ${component} binary`,
   );
-  if (result.success) info("Backup", `Previous binary saved to ${binPath}.bak`);
+  if (result.success) progress.update(`Previous binary saved to ${binPath}.bak`);
 }
 
 /** Copy the current env file and secrets aside to .bak before reconfiguring. */
-async function backupCurrentConfig(component: Component, host: Host): Promise<void> {
+async function backupCurrentConfig(component: Component, host: Host, progress: Progress): Promise<void> {
   const envPath = `${ENV_DIR}/${component}.env`;
   const result = await host.withElevation(
     [
@@ -308,17 +314,17 @@ async function backupCurrentConfig(component: Component, host: Host): Promise<vo
     ].join(" && "),
     `Back up ${component} configuration`,
   );
-  if (result.success) info("Backup", `Previous configuration saved to ${envPath}.bak`);
+  if (result.success) progress.update(`Previous configuration saved to ${envPath}.bak`);
 }
 
-async function bringServiceUp(component: Component, host: Host): Promise<boolean> {
+async function bringServiceUp(component: Component, host: Host, progress: Progress): Promise<boolean> {
   return (await isUnitActiveOn(host, unitName(component)))
-    ? runSteps(restartService(component, host))
-    : runSteps(startService(component, host));
+    ? runSteps(restartService(component, host), progress)
+    : runSteps(startService(component, host), progress);
 }
 
 /** Restore the .bak binary and configuration, then bring the service back up. */
-async function performRollback(component: Component, host: Host): Promise<void> {
+async function performRollback(component: Component, host: Host, progress: Progress): Promise<void> {
   const binPath = `${BIN_DIR}/${binaryBaseName(component)}`;
   const envPath = `${ENV_DIR}/${component}.env`;
   const unit = unitName(component);
@@ -337,11 +343,11 @@ async function performRollback(component: Component, host: Host): Promise<void> 
   );
   pass("Rollback", "Previous binary and configuration restored");
 
-  if (await bringServiceUp(component, host)) {
+  if (await bringServiceUp(component, host, progress)) {
     pass("Rollback", `${unit} is back on the previous version`);
   } else {
     warn("Rollback", "Service did not restart after rollback. Manual intervention may be needed");
-    p.log.info(`  ${pc.cyan(`systemctl start ${unit}`)}`);
+    log.info(`  ${cyan(`systemctl start ${unit}`)}`);
   }
 }
 
@@ -357,39 +363,44 @@ async function applyConfigAndStart(
   host: Host,
   isUpdate: boolean,
   onFailure: ServiceFailurePolicy,
+  progress: Progress,
 ): Promise<string[]> {
   const errors: string[] = [];
   const unit = unitName(component);
 
+  progress.update("Writing configuration…");
   const configResult = await writeEnvConfig(component, env.config, env.secrets, host);
   if (configResult.success) {
-    pass("Config", "Environment configured");
+    progress.update("Environment configured");
   } else if (configResult.error) {
-    fail("Config", configResult.error);
+    progress.fail("Config", configResult.error);
     errors.push("Failed to write configuration (may need manual setup)");
   }
 
   if (component === "daemon") {
-    await checkDriverTools(env.config, env.secrets, host);
+    await checkDriverTools(env.config, env.secrets, host, progress);
   }
 
   const secretKeys = Object.keys(env.secrets);
   const unitResult = await writeSystemdUnit(component, secretKeys, host);
   if (unitResult.success) {
-    pass("Systemd", "Unit installed");
+    progress.update("Systemd unit installed");
   } else {
     if (unitResult.error) {
-      fail("Systemd", unitResult.error);
+      progress.fail("Systemd", unitResult.error);
     }
     errors.push("Systemd unit not installed (may need manual setup)");
   }
 
-  if (await bringServiceUp(component, host)) return errors;
+  if (await bringServiceUp(component, host, progress)) return errors;
 
+  if (!progress.hasFailed()) {
+    progress.fail("Service", `${unit} did not start successfully`);
+  }
   printServiceFailureDiagnostics(unit);
 
   if (isUpdate && onFailure === "rollback") {
-    await performRollback(component, host);
+    await performRollback(component, host, progress);
     errors.push("Service failed to start; rolled back to the previous version");
     return errors;
   }
@@ -403,6 +414,14 @@ async function applyConfigAndStart(
   }
   errors.push("Service did not start successfully");
   return errors;
+}
+
+function actionSummary(action: ComponentAction, versionString: string): string {
+  switch (action.kind) {
+    case "install": return `${action.component} ${versionString} installed, service active`;
+    case "update": return `${action.component} updated to ${versionString}, service active`;
+    default: return `${action.component} reconfigured, service restarted`;
+  }
 }
 
 /** Execute one reviewed component action from the plan. */
@@ -420,57 +439,68 @@ export async function applyComponentAction(
 
   const isUpdate = action.kind !== "install";
   let versionString = action.toVersion;
+  const progress = createProgress(`${component}: preparing…`);
 
-  if (action.kind !== "reconfigure") {
-    if (isUpdate) {
-      await backupCurrentBinary(component, host);
-      await backupCurrentConfig(component, host);
+  try {
+    if (action.kind !== "reconfigure") {
+      if (isUpdate) {
+        await backupCurrentBinary(component, host, progress);
+        await backupCurrentConfig(component, host, progress);
 
-      if (action.hardReset) {
-        await stopService(component, host);
-        const unit = unitName(component);
-        info("Hard reset", `Cleaning state for ${unit}…`);
-        const result = await host.withElevation(
-          `systemctl clean --what=state ${unit}`,
-          `Clean state for ${unit}`,
-        );
-        reportElevationWarning(result, "Hard reset", `State cleaned for ${unit}`, "Failed to clean state");
+        if (action.hardReset) {
+          await stopService(component, host);
+          const unit = unitName(component);
+          progress.update(`Cleaning state for ${unit}…`);
+          const result = await host.withElevation(
+            `systemctl clean --what=state ${unit}`,
+            `Clean state for ${unit}`,
+          );
+          if (result.success) {
+            progress.update(`State cleaned for ${unit}`);
+          } else {
+            progress.warn("Hard reset", `Failed to clean state: ${result.output}`);
+          }
+        }
       }
+
+      let archivePath: string;
+      if (action.localRepoPath) {
+        const built = await buildAndUploadLocalArtifact(component, action.localRepoPath, host, progress);
+        if (!built) return { success: false, version: versionString, errors: ["Local build failed"] };
+        archivePath = built.archivePath;
+        versionString = built.version;
+      } else {
+        const downloaded = await runSteps(downloadAndVerifyOnHost(action.release!, action.assetName!, host), progress);
+        if (!downloaded) return { success: false, version: versionString, errors: ["Download failed"] };
+        archivePath = downloaded;
+      }
+
+      const installed = await runSteps(installBinary(component, archivePath, host), progress);
+      if (!installed) return { success: false, version: versionString, errors: ["Installation failed or skipped"] };
     }
 
-    let archivePath: string;
-    if (action.localRepoPath) {
-      const built = await buildAndUploadLocalArtifact(component, action.localRepoPath, host);
-      if (!built) return { success: false, version: versionString, errors: ["Local build failed"] };
-      archivePath = built.archivePath;
-      versionString = built.version;
-    } else {
-      const downloaded = await runSteps(downloadAndVerifyOnHost(action.release!, action.assetName!, host));
-      if (!downloaded) return { success: false, version: versionString, errors: ["Download failed"] };
-      archivePath = downloaded;
+    const errors = await applyConfigAndStart(component, action.env, host, isUpdate, onFailure, progress);
+
+    if (action.kind !== "reconfigure") {
+      const binaryPath = `${BIN_DIR}/${binaryBaseName(component)}`;
+      const binaryChecksum = (await host.computeSha256(binaryPath)) ?? undefined;
+      await updateManifestEntry(component, {
+        version: versionString,
+        installedAt: new Date().toISOString(),
+        binaryPath,
+        unitName: unitName(component),
+        binaryChecksum,
+      }, host);
     }
 
-    const installed = await runSteps(installBinary(component, archivePath, host));
-    if (!installed) return { success: false, version: versionString, errors: ["Installation failed or skipped"] };
+    const success = errors.length === 0;
+    if (success) {
+      progress.done(actionSummary(action, versionString));
+    }
+    return { success, version: versionString, errors };
+  } finally {
+    progress.ensureSettled();
   }
-
-  const errors = await applyConfigAndStart(component, action.env, host, isUpdate, onFailure);
-
-  if (action.kind !== "reconfigure") {
-    const binaryPath = `${BIN_DIR}/${binaryBaseName(component)}`;
-    const binaryChecksum = (await host.computeSha256(binaryPath)) ?? undefined;
-    await updateManifestEntry(component, {
-      version: versionString,
-      installedAt: new Date().toISOString(),
-      binaryPath,
-      unitName: unitName(component),
-      binaryChecksum,
-    }, host);
-  }
-
-  const success = errors.length === 0;
-  if (success) pass("Done", `${component} ${versionString} applied successfully`);
-  return { success, version: versionString, errors };
 }
 
 /** Show onboarding hints after a dashboard install. */
@@ -480,32 +510,19 @@ export async function showDashboardHints(host: Host): Promise<void> {
 
   const lines: string[] = [];
   if (origin) {
-    lines.push(`Dashboard:  ${pc.cyan(origin)}`);
+    lines.push(`Dashboard:  ${cyan(origin)}`);
     lines.push("");
-    lines.push(pc.bold("Next steps:"));
+    lines.push(bold("Next steps:"));
     lines.push(`  1. Connect the CLI to your dashboard:`);
-    lines.push(`     ${pc.cyan(`xinity configure dashboardUrl ${origin}`)}`);
+    lines.push(`     ${cyan(`xinity configure dashboardUrl ${origin}`)}`);
     lines.push(`  2. Create your admin account from the CLI:`);
-    lines.push(`     ${pc.cyan("xinity act onboarding.cli")}`);
-    lines.push(`     Or open ${pc.cyan(origin)} in a browser to sign up there.`);
+    lines.push(`     ${cyan("xinity act onboarding.cli")}`);
+    lines.push(`     Or open ${cyan(origin)} in a browser to sign up there.`);
   } else {
-    lines.push(pc.bold("Next steps:"));
+    lines.push(bold("Next steps:"));
     lines.push(`  1. Create your admin account via the dashboard UI`);
-    lines.push(`     Or from the CLI: ${pc.cyan("xinity act onboarding.cli")}`);
+    lines.push(`     Or from the CLI: ${cyan("xinity act onboarding.cli")}`);
   }
 
-  p.note(lines.join("\n"), "Dashboard installed");
-}
-
-function reportElevationWarning(
-  result: { success: boolean; output: string },
-  label: string,
-  successMsg: string,
-  failurePrefix: string,
-): void {
-  if (result.success) {
-    pass(label, successMsg);
-  } else {
-    warn(label, `${failurePrefix}: ${result.output}`);
-  }
+  note(lines.join("\n"), "Dashboard installed");
 }

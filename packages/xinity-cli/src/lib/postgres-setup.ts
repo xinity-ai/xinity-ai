@@ -7,8 +7,8 @@
  * assistant when the user chose to set one up.
  */
 import { randomBytes } from "crypto";
-import * as p from "./clack.ts";
-import pc from "picocolors";
+import { confirm, log, note, password as passwordPrompt, spinner as clackSpinner, text } from "./clack.ts";
+import { bold, cyan, dim } from "picocolors";
 import { type Host } from "./host.ts";
 import { pass, fail, info, warn, promptOrUndefined } from "./output.ts";
 import {
@@ -189,7 +189,7 @@ async function startAndWait(host: Host, compose: ComposeCmd, user: string, port:
     return false;
   }
 
-  const spinner = p.spinner();
+  const spinner = clackSpinner();
   spinner.start("Waiting for PostgreSQL to become ready…");
   const ready = await waitForPostgresReady(host, compose, user);
   if (ready) {
@@ -204,13 +204,13 @@ async function startAndWait(host: Host, compose: ComposeCmd, user: string, port:
 
 function reportSuccess(compose: ComposeCmd, connectionUrl: string): void {
   const manageCmd = composeArgs(compose, COMPOSE_PATH).join(" ");
-  p.note(`DB_CONNECTION_URL=${connectionUrl}`, "Use this in your gateway, dashboard, and daemon env files");
-  p.log.info(
+  note(`DB_CONNECTION_URL=${connectionUrl}`, "Use this in your gateway, dashboard, and daemon env files");
+  log.info(
     `This stack is yours to manage. Files live in ${STACK_DIR}:\n` +
     `  credentials: ${ENV_PATH} (0600)\n` +
-    `  data:        Docker volume ${pc.cyan(VOLUME_NAME)} (inspect: docker volume inspect ${VOLUME_NAME})\n` +
-    `  ${pc.cyan(`${manageCmd} down`)}       (stop and remove the container; data volume is kept)\n` +
-    `  ${pc.cyan(`${manageCmd} down -v`)}    (also delete the database volume, destroys data)`,
+    `  data:        Docker volume ${cyan(VOLUME_NAME)} (inspect: docker volume inspect ${VOLUME_NAME})\n` +
+    `  ${cyan(`${manageCmd} down`)}       (stop and remove the container; data volume is kept)\n` +
+    `  ${cyan(`${manageCmd} down -v`)}    (also delete the database volume, destroys data)`,
   );
 }
 
@@ -239,10 +239,10 @@ function planReuseExisting(
   const creds = existing.envFile ? parsePostgresEnv(existing.envFile) : {};
   if (!creds.user || !creds.password || !creds.db) {
     warn("PostgreSQL", `An existing data volume (${VOLUME_NAME}) was found, but its credentials could not be recovered from ${ENV_PATH}.`);
-    p.log.info(
-      pc.dim("  The database already holds data and its password cannot be changed by re-running setup.\n") +
-      pc.dim("  Either choose \"use an existing database\" and supply its connection URL, or, to start\n") +
-      pc.dim(`  fresh (DESTROYS DATA), run: ${composeArgs(compose, COMPOSE_PATH, "down", "-v").join(" ")}`),
+    log.info(
+      dim("  The database already holds data and its password cannot be changed by re-running setup.\n") +
+      dim("  Either choose \"use an existing database\" and supply its connection URL, or, to start\n") +
+      dim(`  fresh (DESTROYS DATA), run: ${composeArgs(compose, COMPOSE_PATH, "down", "-v").join(" ")}`),
     );
     return undefined;
   }
@@ -261,22 +261,22 @@ export async function planPostgresProvision(host: Host): Promise<PostgresProvisi
   const compose = await resolveComposeCmd(host);
   if (!compose) {
     warn("Docker", "Docker with Compose is required to provision a database, and was not found.");
-    p.log.info(
-      pc.dim("  This environment is not supported for CLI-managed PostgreSQL.\n") +
-      pc.dim("  Install Docker (https://docs.docker.com/engine/install/) and re-run,\n") +
-      pc.dim("  or re-run and choose \"use an existing database\" with a connection URL."),
+    log.info(
+      dim("  This environment is not supported for CLI-managed PostgreSQL.\n") +
+      dim("  Install Docker (https://docs.docker.com/engine/install/) and re-run,\n") +
+      dim("  or re-run and choose \"use an existing database\" with a connection URL."),
     );
     return undefined;
   }
   if (compose.docker === "docker" && !(await dockerDaemonReady(host))) {
     warn("Docker", "The Docker CLI is installed but the daemon is not reachable.");
-    p.log.info(
-      pc.dim("  Start Docker (e.g. `systemctl start docker`) or ensure your user can\n") +
-      pc.dim("  access the Docker socket (docker group), then re-run."),
+    log.info(
+      dim("  Start Docker (e.g. `systemctl start docker`) or ensure your user can\n") +
+      dim("  access the Docker socket (docker group), then re-run."),
     );
     return undefined;
   }
-  pass("Docker", `Using ${pc.cyan(composeName(compose))}`);
+  pass("Docker", `Using ${cyan(composeName(compose))}`);
 
   // Re-running over an already-initialized cluster cannot change its credentials,
   // so reuse rather than silently hand out a password the database never adopted.
@@ -285,19 +285,19 @@ export async function planPostgresProvision(host: Host): Promise<PostgresProvisi
     return planReuseExisting(compose, existing);
   }
 
-  p.log.step(pc.bold("Configure the new database"));
+  log.step(bold("Configure the new database"));
 
-  const db = await promptOrUndefined(p.text({
+  const db = await promptOrUndefined(text({
     message: "Database name", placeholder: "xinity", defaultValue: "xinity",
   }));
   if (db === undefined) return undefined;
 
-  const user = await promptOrUndefined(p.text({
+  const user = await promptOrUndefined(text({
     message: "Database user", placeholder: "xinity", defaultValue: "xinity",
   }));
   if (user === undefined) return undefined;
 
-  const useGenerated = await promptOrUndefined(p.confirm({
+  const useGenerated = await promptOrUndefined(confirm({
     message: "Generate a random password?", initialValue: true,
   }));
   if (useGenerated === undefined) return undefined;
@@ -305,9 +305,9 @@ export async function planPostgresProvision(host: Host): Promise<PostgresProvisi
   let password: string;
   if (useGenerated) {
     password = generatePassword();
-    info("Password", `Generated: ${pc.cyan(password)}`);
+    info("Password", `Generated: ${cyan(password)}`);
   } else {
-    const pw = await promptOrUndefined(p.password({
+    const pw = await promptOrUndefined(passwordPrompt({
       message: "Database password",
       validate: (val) => (!val || val.length < 4 ? "Password must be at least 4 characters" : undefined),
     }));
@@ -315,7 +315,7 @@ export async function planPostgresProvision(host: Host): Promise<PostgresProvisi
     password = pw;
   }
 
-  const portStr = await promptOrUndefined(p.text({
+  const portStr = await promptOrUndefined(text({
     message: "Port to publish on localhost", placeholder: String(DEFAULT_PORT), defaultValue: String(DEFAULT_PORT),
   }));
   if (portStr === undefined) return undefined;
@@ -380,15 +380,15 @@ export async function applyPostgresProvision(prov: PostgresProvision, host: Host
  * (see the module comment), not here.
  */
 export async function postgresSetup(host: Host, dryRun: boolean): Promise<string | undefined> {
-  p.log.step(pc.bold("PostgreSQL setup"));
+  log.step(bold("PostgreSQL setup"));
   const prov = await planPostgresProvision(host);
   if (!prov) return undefined;
 
   if (dryRun) {
     for (const cmd of buildPostgresProvisionCommands(prov)) {
-      info("Dry run", `Would run: ${pc.dim(cmd.split("\n")[0] ?? cmd)}`);
+      info("Dry run", `Would run: ${dim(cmd.split("\n")[0] ?? cmd)}`);
     }
-    p.note(`DB_CONNECTION_URL=${prov.url}`, prov.files ? "Connection URL (not yet created)" : "Existing connection URL");
+    note(`DB_CONNECTION_URL=${prov.url}`, prov.files ? "Connection URL (not yet created)" : "Existing connection URL");
     return prov.url;
   }
 

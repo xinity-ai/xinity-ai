@@ -37,17 +37,44 @@ A Xinity deployment spans two kinds of machines:
 
 The daemon is always deployed separately on each inference node, regardless of how the control plane is deployed.
 
-## Deploy the Control Plane
+## Choosing a Path
 
-Run this on the machine that will serve the API and dashboard:
+- **One machine, batteries included:** `xinity up all` guides you through everything interactively and can provision things like the database for you along the way. Start here if you don't have a database available, dont know how to set up dependencies yourself, or want to run everything on the same machine.
+- **Multiple machines, infrastructure already available:** define a stack. It manages all hosts from one declarative definition, but expects a reachable PostgreSQL and Redis to point at. 
+
+## Deploy over Multiple Machines with a Stack (recommended)
+
+For anything beyond a single machine, define a *stack*: a local, declarative description of the whole deployment that the CLI reconciles the machines against.
+
+```bash
+xinity stack init prod       # pinned release version, shared settings (database, Redis,
+                             # metrics auth), stack-wide settings per component
+xinity stack edit prod       # add hosts (e.g. root@10.0.0.4: gateway, dashboard;
+                             # root@10.0.0.7: daemon) and group daemons into fleets
+xinity stack up prod         # one reviewed plan, then applied host by host
+```
+
+`stack up` connects to every host, checks installed versions and configuration against the stack, and plans database migrations, installs, updates, config changes, and removal of components the stack no longer tracks. Nothing is changed until the plan is confirmed. Re-run it after any edit; it only applies what differs.
+
+Key properties:
+
+- **Layered configuration.** Shared values (like `DB_CONNECTION_URL`) are entered once and inherited everywhere; component-type settings apply stack-wide; fleets carry daemon overrides; per-host overrides exist as the escape hatch.
+- **Pinned versions.** The stack holds every component at its pinned release. `stack up` offers available updates and never applies one without an explicit yes.
+- **Health checks.** `xinity stack doctor prod` (alias: `status`) runs the doctor on every host and prints each failing check; `--fleet <name>` limits it to one fleet.
+
+Host addresses are anything ssh accepts; use `root@ip` for zero prompts, or a sudo-capable user (one password prompt per host, asked up front).
+
+**Bring your own infrastructure.** A stack deploys and reconciles Xinity's own components; it deliberately does not provision the infrastructure underneath them. `stack init` asks for your PostgreSQL and Redis connection URLs as given facts (migrations are then handled for you). If you need that infrastructure created first, the assistants under `xinity up infra-*` do exactly that, and the URLs they produce go straight into the stack's shared settings.
+
+## Deploy on a Single Machine
+
+For a one-machine setup, `xinity up all` walks through everything in place without a stack definition:
 
 ```bash
 xinity up all
 ```
 
-This installs and configures gateway, dashboard, and the database as systemd services. The CLI walks through required configuration interactively.
-
-To install components individually:
+Like every `up` run, this works in phases: configuration is collected first (nothing touches the machine), the planned actions are shown with their config diffs, and only a single confirmation executes them. The same gate can instead print an equivalent bash script for auditing. To install components individually:
 
 ```bash
 xinity up db          # PostgreSQL migrations + Redis discovery
@@ -80,7 +107,7 @@ These commands handle detection, installation, service management, and connectiv
 
 ## Remote Management
 
-All commands support `--target-host` for managing a remote Linux server over SSH:
+The single-host commands (`up`, `rm`, `configure`, `doctor`) support `--target-host` for managing a remote Linux server over SSH; stacks connect to their hosts on their own:
 
 ```bash
 xinity up all --target-host user@server
@@ -88,7 +115,7 @@ xinity doctor --target-host user@server
 xinity configure dashboard --target-host user@server
 ```
 
-The CLI establishes a persistent SSH connection and caches sudo credentials for the session, so you authenticate once regardless of how many elevated operations are needed.
+The CLI establishes a persistent SSH connection per host and sets up root privileges once up front (connecting as root needs nothing, passwordless sudo is auto-detected, otherwise one password prompt), so you authenticate at most once regardless of how many elevated operations follow.
 
 ## Secrets Management
 
@@ -122,10 +149,10 @@ After `xinity up gateway`:
 ### Reconfiguring
 
 ```bash
-xinity configure gateway    # re-prompts for config and secrets
+xinity configure gateway    # menu editor over the gateway's environment
 ```
 
-The service is automatically restarted after saving to pick up the new configuration.
+The editor shows the current values; on save, a review lists exactly what would change (secrets masked) and nothing is written until confirmed. The service is restarted afterwards to pick up the new configuration.
 
 ### Rotating secrets
 

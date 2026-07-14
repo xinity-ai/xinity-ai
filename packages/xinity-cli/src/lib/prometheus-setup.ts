@@ -8,8 +8,8 @@
  * running as host processes on localhost. (Unrelated to the bridge-networked
  * deployment template, whose targets are in-stack.)
  */
-import * as p from "./clack.ts";
-import pc from "picocolors";
+import { log, note, spinner as clackSpinner, text } from "./clack.ts";
+import { bold, cyan, dim } from "picocolors";
 import { type Host } from "./host.ts";
 import { pass, fail, info, warn, promptOrUndefined } from "./output.ts";
 import { resolveComposeCmd, composeArgs, composeName, stackDir, dockerDaemonReady, tcpPortInUse } from "./docker-stack.ts";
@@ -190,8 +190,8 @@ export async function prometheusSetup(
   host: Host,
   dryRun: boolean,
 ): Promise<string | undefined> {
-  p.log.step(pc.bold("Prometheus metrics store setup"));
-  p.log.info(
+  log.step(bold("Prometheus metrics store setup"));
+  log.info(
     "Prometheus scrapes the gateway, dashboard, and daemon /metrics endpoints.\n" +
     "It runs as a Docker container and powers the live GPU overlay on the Compute page.",
   );
@@ -200,27 +200,27 @@ export async function prometheusSetup(
   const compose = await resolveComposeCmd(host);
   if (!compose) {
     warn("Docker", "Docker with Compose is required to run the monitoring stack, and was not found.");
-    p.log.info(
-      pc.dim("  This environment is not supported for CLI-managed Prometheus.\n") +
-      pc.dim("  Install Docker (https://docs.docker.com/engine/install/) and re-run,\n") +
-      pc.dim("  or run Prometheus yourself and point the dashboard at it via PROMETHEUS_URL."),
+    log.info(
+      dim("  This environment is not supported for CLI-managed Prometheus.\n") +
+      dim("  Install Docker (https://docs.docker.com/engine/install/) and re-run,\n") +
+      dim("  or run Prometheus yourself and point the dashboard at it via PROMETHEUS_URL."),
     );
     return undefined;
   }
   if (compose.docker === "docker" && !(await dockerDaemonReady(host))) {
     warn("Docker", "The Docker CLI is installed but the daemon is not reachable.");
-    p.log.info(
-      pc.dim("  Start Docker (e.g. `systemctl start docker`) or ensure your user can\n") +
-      pc.dim("  access the Docker socket (docker group), then re-run."),
+    log.info(
+      dim("  Start Docker (e.g. `systemctl start docker`) or ensure your user can\n") +
+      dim("  access the Docker socket (docker group), then re-run."),
     );
     return undefined;
   }
-  pass("Docker", `Using ${pc.cyan(composeName(compose))}`);
+  pass("Docker", `Using ${cyan(composeName(compose))}`);
 
   // ── Step 2: Prompt for configuration ────────────────────────────────────
-  p.log.step(pc.bold("Configure Prometheus"));
+  log.step(bold("Configure Prometheus"));
 
-  const portStr = await promptOrUndefined(p.text({
+  const portStr = await promptOrUndefined(text({
     message: "Prometheus port (bound to localhost)",
     placeholder: String(DEFAULT_PORT),
     defaultValue: String(DEFAULT_PORT),
@@ -243,7 +243,7 @@ export async function prometheusSetup(
     return undefined;
   };
 
-  const gatewayUrl = await promptOrUndefined(p.text({
+  const gatewayUrl = await promptOrUndefined(text({
     message: "Gateway base URL",
     placeholder: "http://localhost:4121",
     defaultValue: "http://localhost:4121",
@@ -251,7 +251,7 @@ export async function prometheusSetup(
   }));
   if (gatewayUrl === undefined) return undefined;
 
-  const dashboardUrl = await promptOrUndefined(p.text({
+  const dashboardUrl = await promptOrUndefined(text({
     message: "Dashboard base URL",
     placeholder: "http://localhost:5121",
     defaultValue: "http://localhost:5121",
@@ -265,14 +265,14 @@ export async function prometheusSetup(
   // Daemons are discovered dynamically from the dashboard, so there is no static
   // target list to maintain. Auth is optional: the SD endpoint is often left open
   // (internal only), while the daemon scrape is usually password-protected.
-  const sdAuthRaw = await promptOrUndefined(p.text({
+  const sdAuthRaw = await promptOrUndefined(text({
     message: "Dashboard METRICS_AUTH for the discovery request (user:pass, blank if none)",
     placeholder: "",
     defaultValue: "",
   }));
   if (sdAuthRaw === undefined) return undefined;
 
-  const daemonAuthRaw = await promptOrUndefined(p.text({
+  const daemonAuthRaw = await promptOrUndefined(text({
     message: "Daemon METRICS_AUTH for scraping daemons (user:pass, blank if none)",
     placeholder: "",
     defaultValue: "",
@@ -295,7 +295,7 @@ export async function prometheusSetup(
   // ── Step 3: Write the stack ─────────────────────────────────────────────
   if (dryRun) {
     info("Dry run", `Would write ${CONFIG_PATH} and ${COMPOSE_PATH}`);
-    info("Dry run", `Would run: ${pc.dim(composeArgs(compose, COMPOSE_PATH, "up", "-d").join(" "))}`);
+    info("Dry run", `Would run: ${dim(composeArgs(compose, COMPOSE_PATH, "up", "-d").join(" "))}`);
     return endpoint(port);
   }
 
@@ -314,7 +314,7 @@ export async function prometheusSetup(
     return undefined;
   }
 
-  const spinner = p.spinner();
+  const spinner = clackSpinner();
   spinner.start("Waiting for Prometheus to start…");
   const ready = await waitForPrometheusRunning(host, port);
   if (ready) {
@@ -329,19 +329,19 @@ export async function prometheusSetup(
   const promUrl = endpoint(port);
   const manageCmd = composeArgs(compose, COMPOSE_PATH).join(" ");
 
-  p.note(
+  note(
     [`PROMETHEUS_URL=${promUrl}`].join("\n"),
     "Add this to your dashboard env file to enable the compute GPU overlay",
   );
 
-  p.log.info(
+  log.info(
     `This stack is yours to manage. Files live in ${STACK_DIR}:\n` +
-    `  ${pc.cyan(`${manageCmd} restart`)}   (after editing ${CONFIG_PATH})\n` +
-    `  ${pc.cyan(`${manageCmd} down`)}      (stop and remove the container)`,
+    `  ${cyan(`${manageCmd} restart`)}   (after editing ${CONFIG_PATH})\n` +
+    `  ${cyan(`${manageCmd} down`)}      (stop and remove the container)`,
   );
 
-  p.log.info(
-    `Daemon targets are discovered from ${pc.cyan(daemonSdUrl)} and refresh automatically\n` +
+  log.info(
+    `Daemon targets are discovered from ${cyan(daemonSdUrl)} and refresh automatically\n` +
     `as nodes register or drop out, no edits or reloads needed.`,
   );
 

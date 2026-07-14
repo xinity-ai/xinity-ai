@@ -79,7 +79,10 @@ export function fetchRelease(version: string): Promise<Release> {
   if (cached) return cached;
   const pending = fetchReleaseFromApi(version);
   releaseCache.set(version, pending);
-  pending.catch(() => releaseCache.delete(version));
+  pending
+    // "latest" and its concrete tag are the same release; share the fetch.
+    .then((release) => releaseCache.set(release.tagName, pending))
+    .catch(() => releaseCache.delete(version));
   return pending;
 }
 

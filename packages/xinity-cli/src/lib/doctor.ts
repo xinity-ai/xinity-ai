@@ -1,3 +1,4 @@
+import { green, yellow, red, dim } from "picocolors";
 import { readManifest, type ComponentEntry } from "./manifest.ts";
 import { commandExistsOn, isUnitActiveOn, readSecrets, type Host } from "./host.ts";
 import { isOllamaRunning } from "./ollama-setup.ts";
@@ -40,6 +41,17 @@ export interface DoctorReport {
   timestamp: string;
   components: ComponentReport[];
   summary: { pass: number; warn: number; fail: number; skip: number };
+}
+
+export function buildSummaryLine(summary: DoctorReport["summary"]): string {
+  return [
+    green(`${summary.pass} passed`),
+    summary.warn > 0 ? yellow(`${summary.warn} warnings`) : null,
+    summary.fail > 0 ? red(`${summary.fail} failed`) : null,
+    summary.skip > 0 ? dim(`${summary.skip} skipped`) : null,
+  ]
+    .filter(Boolean)
+    .join(dim(" · "));
 }
 
 function notInstalledReport(component: string, message = "Not installed"): ComponentReport {

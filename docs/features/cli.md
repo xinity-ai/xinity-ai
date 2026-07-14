@@ -8,9 +8,17 @@ For the full command reference with flags and examples, see the [CLI package REA
 
 ### Install and manage services (`xinity up` / `xinity rm`)
 
-Deploy the full Xinity stack or individual components as systemd units. `xinity up all` runs a guided setup sequence covering database, Redis, infoserver, gateway, dashboard, and optionally the daemon with Ollama. Individual infrastructure utilities (`infra-ollama`, `infra-redis`, `infra-postgres`, `infra-seaweedfs`, `infra-prometheus`) detect, install, and configure dependencies automatically.
+Deploy individual components (or a whole machine with `up all`) as systemd units. Every `up` run is plan-based: configuration and versions are collected first without touching the host, the assembled actions are shown with a config diff, and nothing changes until a single confirmation, which can alternatively produce an equivalent bash script. Infrastructure utilities (`infra-ollama`, `infra-redis`, `infra-postgres`, `infra-seaweedfs`, `infra-prometheus`) detect, install, and configure dependencies.
 
 `xinity rm` removes installed components, with an optional `--purge` flag to also delete state data.
+
+### Multi-host deployments (`xinity stack`)
+
+A stack is a local, declarative definition of a whole deployment: shared configuration (database, Redis, metrics auth), stack-wide settings per component type, hosts with their assigned components, and daemon *fleets* (named groups of inference nodes sharing configuration). Configuration is layered so every value lives at the highest level possible; per-host overrides exist but are the escape hatch.
+
+`xinity stack up` compares every host against the definition, plans migrations, installs, updates, reconfigurations, and removal of components the stack no longer tracks, and applies everything after one review gate. Each stack pins a release version; all components are held at it and updates are offered, never automatic. `xinity stack doctor` (alias `status`) health-checks all hosts, or one fleet via `--fleet`.
+
+Stacks assume the infrastructure underneath (PostgreSQL, Redis) already exists and take its connection URLs as given; the `infra-*` assistants can provision it beforehand. For a guided single-machine install that also provisions infrastructure, `xinity up all` is the intended path.
 
 ### Health checking (`xinity doctor`)
 
@@ -22,7 +30,7 @@ Call any dashboard API route from the command line. Routes are discovered dynami
 
 ### Configuration (`xinity configure`)
 
-Set CLI-level config (API key, dashboard URL) or interactively edit a component's environment file. Configuration is stored in `~/.config/xinity/config.json`.
+Set CLI-level config (API key, dashboard URL) or edit a component's environment through the menu editor. Component changes are reviewed as a diff and applied only after confirmation, followed by a service restart. CLI configuration is stored in `~/.config/xinity/config.json`.
 
 ### Self-update (`xinity update`)
 
@@ -30,7 +38,7 @@ Downloads the latest release, verifies SHA-256, and atomically replaces the bina
 
 ### Remote management (`--target-host`)
 
-Every command accepts `--target-host` to operate on a remote server via SSH. Uses ControlMaster multiplexing for session reuse and batches remote checks into single SSH calls for performance. Privilege elevation (sudo) is handled interactively with policy remembered for the session.
+The single-host commands (`up`, `rm`, `configure`, `doctor`) accept `--target-host` to operate on a remote server via SSH; stacks manage their own host lists. Uses ControlMaster multiplexing for session reuse and batches remote checks into single SSH calls for performance. Root privileges are established once up front (root detected, passwordless sudo auto-detected, otherwise one password prompt per host).
 
 ### Shell completion (`xinity completion`)
 
