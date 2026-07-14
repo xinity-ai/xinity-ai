@@ -5,7 +5,7 @@ import { createOrganization } from "./organization.procedure";
 import { createApiKey } from "./api-key.procedure";
 import { createDeployment } from "./deployment.procedure";
 import { rootLogger } from "$lib/server/logging";
-import { auth, getGreenlitCallId } from "$lib/server/auth-server";
+import { auth, getGreenlitCallId, adminCreateUser } from "$lib/server/auth-server";
 import { serverEnv, isInstanceAdmin } from "$lib/server/serverenv";
 import { getDB } from "$lib/server/db";
 import { userT, organizationT, memberT, sql } from "common-db";
@@ -145,18 +145,13 @@ const cli = rootOs
       });
     }
 
-    // 1. Create user via Better Auth
-    let signupResult: { user: { id: string } };
+    let userId: string;
     try {
-      signupResult = await auth.api.signUpEmail({
-        body: { email: input.email, password: input.password, name: input.name },
-      });
+      ({ userId } = await adminCreateUser(input.email, input.name, input.password));
     } catch (err) {
       rlog.error({ err }, "CLI onboarding signup failed");
       throw errors.CONFLICT({ message: "Failed to create user, email may already be in use" });
     }
-
-    const userId = signupResult.user.id;
     rlog.info({ userId, email: input.email }, "CLI onboarding: user created");
 
     await markEmailVerified(userId);
