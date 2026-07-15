@@ -25,7 +25,7 @@
   let totpURI = $state("");
   let backupCodes = $state<string[]>([]);
 
-  let qrSvg = $derived(totpURI ? renderSVG(totpURI, { border: 2 }) : "");
+  const qrSvg = $derived(totpURI ? renderSVG(totpURI, { border: 2 }) : "");
 
   function extractSecret(uri: string): string {
     try {

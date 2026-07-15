@@ -22,7 +22,7 @@
   let activating = $state(false);
 
   const searchParams = createUrlSearchParamsStore();
-  let showRolesInfo = $derived($searchParams.roles === "open");
+  const showRolesInfo = $derived($searchParams.roles === "open");
 
   function openRolesInfo() {
     $searchParams = { ...$searchParams, roles: "open" };
