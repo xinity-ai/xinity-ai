@@ -1,4 +1,4 @@
-import { calcCanaryProgress, modelDeploymentT, modelInstallationT, modelInstallationStateT, organizationT, sql, deploymentMatchesInstallation, lifecycleStateEnum } from "common-db";
+import { calcCanaryProgress, modelDeploymentT, modelInstallationT, modelInstallationStateT, aiNodeT, organizationT, sql, deploymentMatchesInstallation, lifecycleStateEnum } from "common-db";
 import { getDB } from "../../db";
 import { checkAuth } from "../auth";
 import { getInfoClient } from "../model-data";
@@ -43,6 +43,7 @@ export async function handleModelsRequest(req: Request): Promise<Response> {
       .select()
       .from(modelDeploymentT)
       .leftJoin(modelInstallationT, sql`${deploymentMatchesInstallation} AND ${modelInstallationT.deletedAt} IS NULL`)
+      .leftJoin(aiNodeT, sql`${modelInstallationT.nodeId} = ${aiNodeT.id} AND ${aiNodeT.available} AND ${aiNodeT.deletedAt} IS NULL`)
       .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`)
       .where(sql`${modelDeploymentT.organizationId} = ${orgId} AND ${modelDeploymentT.deletedAt} IS NULL`),
   ]);
@@ -62,7 +63,7 @@ export async function handleModelsRequest(req: Request): Promise<Response> {
   const modelOutput = [...rowsByDeployment.values()].map((rows) => {
     const deployment = rows[0]!.model_deployment;
     const lifecycles: InstallationLifecycle[] = rows
-      .filter((r) => r.model_installation)
+      .filter((r) => r.model_installation && r.ai_node)
       .map((r) => r.model_installation_state?.lifecycleState ?? null);
     return {
       id: deployment.publicSpecifier,
