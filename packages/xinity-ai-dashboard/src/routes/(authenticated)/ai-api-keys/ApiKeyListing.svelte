@@ -1,11 +1,11 @@
 <script lang="ts">
-  import type { ApiKeyDto } from "$lib/orpc/dtos/api-key.dto";
-  import { orpc } from "$lib/orpc/orpc-client";
-  import { updateOptimistically } from "$lib/util";
-  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
-  import { toastState } from "$lib/state/toast.svelte";
-  import type { ApplicationDto } from "$lib/orpc/dtos/application.dto";
-  import { permissions } from "$lib/state/permissions.svelte";
+import type { ApiKeyDto } from "$lib/orpc/dtos/api-key.dto";
+import { orpc } from "$lib/orpc/orpc-client";
+import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
+import { toastState } from "$lib/state/toast.svelte";
+import type { ApplicationDto } from "$lib/orpc/dtos/application.dto";
+import { permissions } from "$lib/state/permissions.svelte";
+import { invalidate } from "$app/navigation";
 
   // shadcn components
   import { Button } from "$lib/components/ui/button";
@@ -19,7 +19,7 @@
   type EditingKey = Pick<ApiKeyDto, "name" | "specifier" | "id" | "applicationId">;
 
   let {
-    apiKeys = $bindable(),
+    apiKeys,
     applications,
     showModal = $bindable(false),
     editingKey = $bindable(),
@@ -64,47 +64,34 @@
     if (!keyToDelete) return;
     const deletingKey = keyToDelete;
     keyToDelete = null;
-    const apiKeysBefore = apiKeys;
-    let failed = false;
 
-    await updateOptimistically({
-      apiPromise: () => orpc.apiKey.delete({ id: deletingKey.id }),
-      update: () => (apiKeys = apiKeys.filter((v) => v !== deletingKey)),
-      undo: () => {
-        apiKeys = apiKeysBefore;
-        failed = true;
-        toastState.add("Error deleting API key", "error");
-      },
-    });
-
-    if (!failed) {
+    const { error } = await orpc.apiKey.delete({ id: deletingKey.id });
+    if (error) {
+      toastState.add("Error deleting API key", "error");
+    } else {
       toastState.add(`Deleted API key "${deletingKey.name}"`, "success");
+      invalidate("resource:apikeys");
     }
   }
 
-  // Reassign apiKeys (rather than mutating a key in place) so the derived list
-  // recomputes and the UI repaints; an in-place property write on the load data
-  // is not reactive.
-  function patchKey(id: string, patch: Partial<ApiKeyDto>) {
-    apiKeys = apiKeys.map((k) => (k.id === id ? { ...k, ...patch } : k));
-  }
-
-  function toggleEnabled(key: ApiKeyDto) {
+  async function toggleEnabled(key: ApiKeyDto) {
     const newState = !key.enabled;
-    updateOptimistically({
-      apiPromise: () => orpc.apiKey.toggleEnabled({ id: key.id, enabled: newState }),
-      update: () => patchKey(key.id, { enabled: newState }),
-      undo: () => patchKey(key.id, { enabled: !newState }),
-    });
+    const { error } = await orpc.apiKey.toggleEnabled({ id: key.id, enabled: newState });
+    if (error) {
+      toastState.add("Failed to update key status", "error");
+    } else {
+      invalidate("resource:apikeys");
+    }
   }
 
-  function toggleCollectData(key: ApiKeyDto) {
+  async function toggleCollectData(key: ApiKeyDto) {
     const newState = !key.collectData;
-    updateOptimistically({
-      apiPromise: () => orpc.apiKey.toggleCollectData({ id: key.id, collectData: newState }),
-      update: () => patchKey(key.id, { collectData: newState }),
-      undo: () => patchKey(key.id, { collectData: !newState }),
-    });
+    const { error } = await orpc.apiKey.toggleCollectData({ id: key.id, collectData: newState });
+    if (error) {
+      toastState.add("Failed to update key logging setting", "error");
+    } else {
+      invalidate("resource:apikeys");
+    }
   }
 </script>
 
