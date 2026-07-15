@@ -13,8 +13,7 @@
   import { Rocket, BookOpen, Code, Layers } from "@lucide/svelte";
 
   let {data} : {data: PageData} = $props();
-  let applications = $derived(data.applications!);
-  let apiKeys = $derived(data.apiKeys!);
+  const applications = $derived(data.applications!);
 
   let showModal = $state(false);
   let editingKey: Pick<ApiKeyDto, "name" | "specifier" | "id" | "applicationId"> = $state({
@@ -52,7 +51,7 @@
       <ApiKeyListing
         bind:showModal
         bind:editingKey
-        bind:apiKeys
+        apiKeys={data.apiKeys}
         {applications}
         userId={data.userId}
       />
