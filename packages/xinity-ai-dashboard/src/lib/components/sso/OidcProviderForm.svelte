@@ -4,9 +4,11 @@
   import { Label } from "$lib/components/ui/label";
   import * as Select from "$lib/components/ui/select";
   import * as Collapsible from "$lib/components/ui/collapsible";
+  import * as Tooltip from "$lib/components/ui/tooltip";
   import { Checkbox } from "$lib/components/ui/checkbox";
   import { orpc } from "$lib/orpc/orpc-client";
   import { trimOrUndefined } from "$lib/util";
+  import { Info } from "@lucide/svelte";
 
   let { organizationId, onCreated }: {
     organizationId?: string;
@@ -100,7 +102,17 @@
 >
   <div class="grid gap-4 md:grid-cols-2">
     <div class="space-y-2">
-      <Label for="oidc-provider-id">Provider ID</Label>
+      <div class="flex items-center gap-1.5">
+        <Label for="oidc-provider-id">Provider ID</Label>
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            <Info class="w-3.5 h-3.5 text-muted-foreground" />
+          </Tooltip.Trigger>
+          <Tooltip.Content>
+            <p class="max-w-56">A short unique identifier for this provider (e.g. "okta", "azure-ad", "my-oidc"). Used in callback URLs and login links.</p>
+          </Tooltip.Content>
+        </Tooltip.Root>
+      </div>
       <Input
         id="oidc-provider-id"
         bind:value={providerId}
@@ -113,7 +125,17 @@
     </div>
 
     <div class="space-y-2">
-      <Label for="oidc-issuer">Issuer URL</Label>
+      <div class="flex items-center gap-1.5">
+        <Label for="oidc-issuer">Issuer URL</Label>
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            <Info class="w-3.5 h-3.5 text-muted-foreground" />
+          </Tooltip.Trigger>
+          <Tooltip.Content>
+            <p class="max-w-56">The base URL of the identity provider. Used for OIDC auto-discovery of authorization, token, and JWKS endpoints.</p>
+          </Tooltip.Content>
+        </Tooltip.Root>
+      </div>
       <Input
         id="oidc-issuer"
         bind:value={issuer}
@@ -124,18 +146,38 @@
   </div>
 
   <div class="space-y-2">
-    <Label for="oidc-domain">Email domain</Label>
+    <div class="flex items-center gap-1.5">
+      <Label for="oidc-domain">Email domain</Label>
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          <Info class="w-3.5 h-3.5 text-muted-foreground" />
+        </Tooltip.Trigger>
+        <Tooltip.Content>
+          <p class="max-w-56">The email domain of users who will sign in with this provider (e.g. "acme.com" for @acme.com addresses). Used for domain verification and account linking.</p>
+        </Tooltip.Content>
+      </Tooltip.Root>
+    </div>
     <Input
       id="oidc-domain"
       bind:value={domain}
-      placeholder="https://acme.com"
+      placeholder="acme.com"
       required
     />
   </div>
 
   <div class="grid gap-4 md:grid-cols-2">
     <div class="space-y-2">
-      <Label for="oidc-client-id">Client ID</Label>
+      <div class="flex items-center gap-1.5">
+        <Label for="oidc-client-id">Client ID</Label>
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            <Info class="w-3.5 h-3.5 text-muted-foreground" />
+          </Tooltip.Trigger>
+          <Tooltip.Content>
+            <p class="max-w-56">OAuth client ID from your identity provider's application registration.</p>
+          </Tooltip.Content>
+        </Tooltip.Root>
+      </div>
       <Input
         id="oidc-client-id"
         bind:value={clientId}
@@ -143,7 +185,17 @@
       />
     </div>
     <div class="space-y-2">
-      <Label for="oidc-client-secret">Client Secret</Label>
+      <div class="flex items-center gap-1.5">
+        <Label for="oidc-client-secret">Client Secret</Label>
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            <Info class="w-3.5 h-3.5 text-muted-foreground" />
+          </Tooltip.Trigger>
+          <Tooltip.Content>
+            <p class="max-w-56">OAuth client secret from your identity provider's application registration.</p>
+          </Tooltip.Content>
+        </Tooltip.Root>
+      </div>
       <Input
         id="oidc-client-secret"
         type="password"
