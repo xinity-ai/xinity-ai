@@ -196,6 +196,11 @@ export const auth = betterAuth({
       },
     }
   },
+  account: {
+    accountLinking: {
+      enabled: true,
+    },
+  },
   emailAndPassword: {
     enabled: true,
     autoSignIn: true,
@@ -307,6 +312,7 @@ export const auth = betterAuth({
         defaultRole: "pending" as "member",
       },
       defaultOverrideUserInfo: true,
+      trustEmailVerified: true,
     }),
     organization({
       allowUserToCreateOrganization: (user) => serverEnv.MULTI_TENANT_MODE || isInstanceAdmin(user.email),
