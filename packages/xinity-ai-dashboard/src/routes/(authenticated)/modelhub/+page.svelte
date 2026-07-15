@@ -26,10 +26,10 @@
   import NoOrganization from "$lib/components/NoOrganization.svelte";
 
   let { data }: { data: PageData } = $props();
-  let maxNodeFreeCapacity = $derived(data.maxNodeFreeCapacity);
-  let availableDrivers = $derived(data.availableDrivers);
-  let nodeFreeCapacities = $derived(data.nodeFreeCapacities);
-  let nodeCapabilities = $derived(data.nodeCapabilities);
+  const maxNodeFreeCapacity = $derived(data.maxNodeFreeCapacity);
+  const availableDrivers = $derived(data.availableDrivers);
+  const nodeFreeCapacities = $derived(data.nodeFreeCapacities);
+  const nodeCapabilities = $derived(data.nodeCapabilities);
 
   // Mutable overrides updated by refreshCapacity() after mutations.
   // When set, these take precedence over the load-function values.

@@ -92,7 +92,7 @@
   const debouncedSearch = useDebouncedValue(() => searchQuery, 300);
 
   // Build a filter key to detect when server-side filters change
-  let filterKey = $derived(
+  const filterKey = $derived(
     `${applicationId}|${apiKeyFilter}|${sortOption}|${metadataKey}|${metadataValue}|${debouncedSearch.current}`,
   );
   let prevFilterKey = $state("");
@@ -120,7 +120,7 @@
     }),
   );
   let deletedCount = $state(0);
-  let totalCount = $derived(apiCallCount.current != null ? apiCallCount.current - deletedCount : null);
+  const totalCount = $derived(apiCallCount.current != null ? apiCallCount.current - deletedCount : null);
 
   // Reset pagination when server-side filters change
   $effect(() => {
@@ -168,7 +168,7 @@
     }
   });
   const apiKeys = $derived(getApiKeys({ applicationId }));
-  let apiKeyNameMap = $derived(
+  const apiKeyNameMap = $derived(
     new Map((apiKeys.current || []).map((key) => [key.id, key.name])),
   );
   let applications = $state<{ id: string; name: string }[]>([]);
@@ -179,7 +179,7 @@
       }
     });
   }
-  let filteredCalls = $derived(getFilteredCalls(allCalls));
+  const filteredCalls = $derived(getFilteredCalls(allCalls));
 
   function handleBatchRemoved(ids: string[]) {
     const removed = new Set(ids);

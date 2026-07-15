@@ -125,7 +125,7 @@
   const advancementStrategyLabel = $derived(advancementStrategyLabels[advancementStrategy] ?? "Select...");
 
   // Use "" as sentinel for null since bits-ui Select values must be strings
-  let preferredDriverStr = $derived(preferredDriver ?? "");
+  const preferredDriverStr = $derived(preferredDriver ?? "");
   const preferredDriverLabel = $derived(
     preferredDriverStr === "" ? "Auto" : driverLabel(preferredDriverStr),
   );
