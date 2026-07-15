@@ -4,8 +4,10 @@
   import { Label } from "$lib/components/ui/label";
   import { Checkbox } from "$lib/components/ui/checkbox";
   import * as Collapsible from "$lib/components/ui/collapsible";
+  import * as Tooltip from "$lib/components/ui/tooltip";
   import { orpc } from "$lib/orpc/orpc-client";
   import { trimOrUndefined } from "$lib/util";
+  import { Info } from "@lucide/svelte";
 
   let { organizationId, onCreated }: {
     organizationId?: string;
@@ -163,7 +165,17 @@
 >
   <div class="grid gap-4 md:grid-cols-2">
     <div class="space-y-2">
-      <Label for="saml-provider-id">Provider ID</Label>
+      <div class="flex items-center gap-1.5">
+        <Label for="saml-provider-id">Provider ID</Label>
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            <Info class="w-3.5 h-3.5 text-muted-foreground" />
+          </Tooltip.Trigger>
+          <Tooltip.Content>
+            <p class="max-w-56">A short unique identifier for this provider (e.g. "okta", "azure-ad"). Used in callback URLs and login links.</p>
+          </Tooltip.Content>
+        </Tooltip.Root>
+      </div>
       <Input
         id="saml-provider-id"
         bind:value={providerId}
@@ -172,7 +184,17 @@
       />
     </div>
     <div class="space-y-2">
-      <Label for="saml-issuer">Issuer URL</Label>
+      <div class="flex items-center gap-1.5">
+        <Label for="saml-issuer">Issuer URL</Label>
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            <Info class="w-3.5 h-3.5 text-muted-foreground" />
+          </Tooltip.Trigger>
+          <Tooltip.Content>
+            <p class="max-w-56">The entity ID of the identity provider. Usually found in the IdP metadata XML as the entityID attribute.</p>
+          </Tooltip.Content>
+        </Tooltip.Root>
+      </div>
       <Input
         id="saml-issuer"
         bind:value={issuer}
@@ -183,11 +205,21 @@
   </div>
 
   <div class="space-y-2">
-    <Label for="saml-domain">Email domain</Label>
+    <div class="flex items-center gap-1.5">
+      <Label for="saml-domain">Email domain</Label>
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          <Info class="w-3.5 h-3.5 text-muted-foreground" />
+        </Tooltip.Trigger>
+        <Tooltip.Content>
+          <p class="max-w-56">The email domain of users who will sign in with this provider (e.g. "acme.com" for @acme.com addresses). Used for domain verification and account linking.</p>
+        </Tooltip.Content>
+      </Tooltip.Root>
+    </div>
     <Input
       id="saml-domain"
       bind:value={domain}
-      placeholder="https://acme.com"
+      placeholder="acme.com"
       required
     />
   </div>
