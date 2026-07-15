@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from "$app/state";
   import { signIn } from "$lib/auth";
+  import { friendlySsoError } from "../../friendly-error";
   import { Button } from "$lib/components/ui/button";
   import * as Card from "$lib/components/ui/card";
   import { Loader2 } from "@lucide/svelte";
@@ -10,7 +11,9 @@
   const hasProvider = $derived(providerId.length > 0);
   const callbackURL = "/";
 
-  let errorMessage = $state("");
+  let errorMessage = $state(
+    friendlySsoError(page.url.searchParams.get("error") ?? undefined) ?? "",
+  );
   let isLoading = $state(false);
 
   function formatProviderId(id: string) {
@@ -30,6 +33,7 @@
       const { error } = await signIn.sso({
         providerId,
         callbackURL,
+        errorCallbackURL: `/login/sso/${providerId}`,
       });
 
       if (error?.message) {
@@ -78,7 +82,9 @@
         </Button>
 
         {#if errorMessage}
-          <p class="text-sm text-destructive">{errorMessage}</p>
+          <div role="alert" class="p-3 text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-lg">
+            {errorMessage}
+          </div>
         {/if}
 
         {#if !hasProvider}

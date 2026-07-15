@@ -98,7 +98,7 @@
       </div>
     </div>
     {#each ssoProviders as provider}
-      <Button variant="outline" href="/api/auth/sso/{provider.providerId}" class="w-full">
+      <Button variant="outline" href="/login/sso/{provider.providerId}" class="w-full">
         Sign in with SSO ({provider.domain})
       </Button>
     {/each}
