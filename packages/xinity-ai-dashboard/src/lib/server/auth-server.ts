@@ -155,6 +155,9 @@ export const auth = betterAuth({
   appName: serverEnv.APP_NAME,
   baseURL: serverEnv.ORIGIN,
   secret: serverEnv.BETTER_AUTH_SECRET,
+  rateLimit: {
+    enabled: serverEnv.NODE_ENV !== "test",
+  },
   session: {
     expiresIn: 60 * 60 * 24 * 30, // 30 days
     updateAge: 60 * 60 * 24, // refresh session if older than 1 day
