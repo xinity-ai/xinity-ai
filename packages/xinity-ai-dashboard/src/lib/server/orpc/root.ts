@@ -16,6 +16,7 @@ export type ProcedureMeta = {
 
 export const rootOs = os.$context<App.Locals>().$meta<ProcedureMeta>({}).errors({
   UNAUTHORIZED: {},
+  BAD_REQUEST: { message: "Invalid request" },
   FORBIDDEN: { message: "You do not have permission to perform this action" },
   NOT_FOUND: { message: "Resource not found" },
   INTERNAL_SERVER_ERROR: { message: "An internal error occurred" },

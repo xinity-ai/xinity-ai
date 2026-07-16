@@ -15,7 +15,8 @@ export function friendlySsoError(raw: string | undefined): string | null {
   if (!raw) {
     return null;
   }
-  return ssoErrors[raw] ?? raw.replace(/\+/g, " ");
+  const normalized = raw.replace(/\+/g, " ");
+  return ssoErrors[normalized] ?? normalized;
 }
 
 export function friendlyError(raw: string | undefined): string {
