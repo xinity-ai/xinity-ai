@@ -8,6 +8,8 @@
   import { Checkbox } from "$lib/components/ui/checkbox";
   import { orpc } from "$lib/orpc/orpc-client";
   import { trimOrUndefined } from "$lib/util";
+  import { copyToClipboard } from "$lib/copy";
+  import { page } from "$app/state";
   import { Info } from "@lucide/svelte";
 
   let { organizationId, onCreated }: {
@@ -33,6 +35,9 @@
   let formError = $state("");
   let submitting = $state(false);
 
+  const callbackUrl = $derived(
+    `${page.url.origin}${redirectPath.replace("{providerId}", providerId || "{providerId}")}`,
+  );
   const requiredFields = $derived([providerId, issuer, domain, clientId, clientSecret]);
   const canSubmit = $derived(
     !submitting && requiredFields.every(value => value.trim().length > 0),
@@ -92,6 +97,7 @@
   }
 </script>
 
+<Tooltip.Provider>
 <form
   method="POST"
   onsubmit={(evt) => {
@@ -120,7 +126,7 @@
         required
       />
       <p class="text-xs text-muted-foreground">
-        Callback: <span class="font-mono">{redirectPath.replace("{providerId}", providerId || "{providerId}")}</span>
+        Callback: <button type="button" class="font-mono cursor-pointer hover:text-foreground transition-colors" onclick={() => copyToClipboard(callbackUrl)}>{callbackUrl}</button>
       </p>
     </div>
 
@@ -306,3 +312,4 @@
     </p>
   </div>
 </form>
+</Tooltip.Provider>

@@ -7,6 +7,8 @@
   import * as Tooltip from "$lib/components/ui/tooltip";
   import { orpc } from "$lib/orpc/orpc-client";
   import { trimOrUndefined } from "$lib/util";
+  import { copyToClipboard } from "$lib/copy";
+  import { page } from "$app/state";
   import { Info } from "@lucide/svelte";
 
   let { organizationId, onCreated }: {
@@ -33,8 +35,12 @@
   let formError = $state("");
   let submitting = $state(false);
 
-  const filledSamlCallbackPath = $derived(samlCallbackPath.replace("{providerId}", providerId || "{providerId}"));
-  const filledSamlMetadataPath = $derived(samlMetadataPath.replace("{providerId}", providerId || "{providerId}"));
+  const filledSamlCallbackUrl = $derived(
+    `${page.url.origin}${samlCallbackPath.replace("{providerId}", providerId || "{providerId}")}`,
+  );
+  const filledSamlMetadataUrl = $derived(
+    `${page.url.origin}${samlMetadataPath.replace("{providerId}", providerId || "{providerId}")}`,
+  );
 
   const requiredFields = $derived([providerId, issuer, domain, samlEntryPoint, samlCert]);
   const canSubmit = $derived(
@@ -155,6 +161,7 @@
   }
 </script>
 
+<Tooltip.Provider>
 <form
   method="POST"
   onsubmit={(evt) => {
@@ -247,15 +254,15 @@
   <div class="rounded-lg border bg-muted/50 p-4 text-xs text-muted-foreground">
     <p>
       Callback URL:
-      <span class="font-mono text-foreground" title="Provider not registered yet, so this URL won't work until you save.">
-        {samlCallbackPath.replace("{providerId}", providerId || "{providerId}")}
-      </span>
+      <button type="button" class="font-mono text-foreground cursor-pointer hover:text-muted-foreground transition-colors" onclick={() => copyToClipboard(filledSamlCallbackUrl)}>
+        {filledSamlCallbackUrl}
+      </button>
     </p>
     <p class="mt-2">
       SP metadata:
-      <span class="font-mono text-foreground" title="Provider not registered yet, so this URL won't work until you save.">
-        {filledSamlMetadataPath}
-      </span>
+      <button type="button" class="font-mono text-foreground cursor-pointer hover:text-muted-foreground transition-colors" onclick={() => copyToClipboard(filledSamlMetadataUrl)}>
+        {filledSamlMetadataUrl}
+      </button>
     </p>
   </div>
 
@@ -356,3 +363,4 @@
     </p>
   </div>
 </form>
+</Tooltip.Provider>
