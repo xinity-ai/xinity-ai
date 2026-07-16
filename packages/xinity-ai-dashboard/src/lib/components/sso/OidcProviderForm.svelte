@@ -100,6 +100,7 @@
 <Tooltip.Provider>
 <form
   method="POST"
+  autocomplete="off"
   onsubmit={(evt) => {
     evt.preventDefault();
     submit();
@@ -205,6 +206,7 @@
       <Input
         id="oidc-client-secret"
         type="password"
+        autocomplete="new-password"
         bind:value={clientSecret}
         required
       />

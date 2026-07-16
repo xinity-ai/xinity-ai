@@ -19,21 +19,28 @@ export function friendlySsoError(raw: string | undefined): string | null {
   return ssoErrors[normalized] ?? normalized;
 }
 
+const ORIGIN_MISCONFIGURED =
+  "This dashboard is configured for a different URL than the one you used to reach it, so authentication cannot complete. Contact your administrator for the correct URL and how to access it.";
+
+const fieldLabels: Record<string, string> = {
+  name: "name",
+  email: "email address",
+  password: "password",
+};
+
 export function friendlyError(raw: string | undefined): string {
-  const originMisconfigured = `This dashboard is configured for a different URL than the one you used to reach it, so authentication cannot complete. Contact your administrator for the correct URL and how to access it.`;
   if (!raw) {
-    return originMisconfigured;
+    return ORIGIN_MISCONFIGURED;
   }
   if (/invalid origin|missing or null origin|cross-site navigation login blocked/i.test(raw)) {
-    return originMisconfigured;
+    return ORIGIN_MISCONFIGURED;
   }
-  const match = raw.match(/^\[body\.(\w+)\]\s*(.+)/);
-  if (!match) {
+  const validationMatch = raw.match(/^\[body\.(\w+)\]\s*(.+)/);
+  if (!validationMatch) {
     return raw;
   }
-  const [, field, detail] = match;
-  const labels: Record<string, string> = { name: "name", email: "email address", password: "password" };
-  const label = labels[field] ?? field;
+  const [, field, detail] = validationMatch;
+  const label = fieldLabels[field] ?? field;
   if (detail.includes("received undefined") || detail.includes("required")) {
     return `Please enter your ${label}.`;
   }
