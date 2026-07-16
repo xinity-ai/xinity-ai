@@ -12,10 +12,12 @@
     providerId: string;
     issuer: string;
     domain: string;
+    domainVerified: boolean;
     oidcConfig: string | null;
     samlConfig: string | null;
     userId: string;
     organizationId: string | null;
+    verification: { txtRecord: string; txtValue: string } | null;
   };
 
   let { organizationId }: {
@@ -110,6 +112,7 @@
       error={loadError}
       {highlightedProviderId}
       onDelete={handleProviderDelete}
+      onVerified={fetchProviders}
     />
 
     <div class="mt-6 rounded-lg border p-6">

@@ -88,7 +88,31 @@ const listProviders = rootOs
     const scope = input.organizationId
       ? sql`${ssoProviderT.organizationId} = ${input.organizationId}`
       : sql`${ssoProviderT.organizationId} IS NULL`;
-    return getDB().select().from(ssoProviderT).where(scope);
+    const providers = await getDB().select().from(ssoProviderT).where(scope);
+
+    const enriched = await Promise.all(providers.map(async (provider) => {
+      if (provider.domainVerified) {
+        return { ...provider, verification: null };
+      }
+      try {
+        const result = await auth.api.requestDomainVerification({
+          body: { providerId: provider.providerId },
+          headers: context.request.headers,
+        });
+        const hostname = domainToHostname(provider.domain);
+        return {
+          ...provider,
+          verification: {
+            txtRecord: `_xinity-sso-${provider.providerId}.${hostname}`,
+            txtValue: `_xinity-sso-${provider.providerId}=${result.domainVerificationToken}`,
+          },
+        };
+      } catch {
+        return { ...provider, verification: null };
+      }
+    }));
+
+    return enriched;
   });
 
 async function dispatchSsoRegistration(
@@ -183,6 +207,89 @@ const registerSaml = rootOs
     return dispatchSsoRegistration(input, { samlConfig: input.samlConfig }, context, "SAML", errors);
   });
 
+async function findProviderOrThrow(
+  providerId: string,
+  errors: { NOT_FOUND: (opts?: { message?: string }) => Error },
+) {
+  const [provider] = await getDB()
+    .select()
+    .from(ssoProviderT)
+    .where(sql`${ssoProviderT.providerId} = ${providerId}`)
+    .limit(1);
+  if (!provider) {
+    throw errors.NOT_FOUND({ message: "Provider not found" });
+  }
+  return provider;
+}
+
+function domainToHostname(domain: string): string {
+  try {
+    return new URL(domain.includes("://") ? domain : `https://${domain}`).hostname;
+  } catch {
+    return domain;
+  }
+}
+
+const requestDomainVerification = rootOs
+  .meta({ mcp: false })
+  .use(withAuth)
+  .route({ path: "/request-domain-verification", method: "POST", tags, summary: "Request domain verification" })
+  .input(z.object({ providerId: z.string() }))
+  .handler(async ({ input, context, errors }) => {
+    const provider = await findProviderOrThrow(input.providerId, errors);
+    await requireSsoAccess(context.session.user.email, provider.organizationId, context.request.headers, errors);
+
+    try {
+      const result = await auth.api.requestDomainVerification({
+        body: { providerId: input.providerId },
+        headers: context.request.headers,
+      });
+
+      const hostname = domainToHostname(provider.domain);
+      return {
+        token: result.domainVerificationToken,
+        txtRecord: `_xinity-sso-${input.providerId}.${hostname}`,
+        txtValue: `_xinity-sso-${input.providerId}=${result.domainVerificationToken}`,
+      };
+    } catch (err) {
+      const body = betterAuthErrorBody(err);
+      if (body) {
+        throw errors.BAD_REQUEST({ message: body.message ?? "Failed to request domain verification" });
+      }
+      throw errors.INTERNAL_SERVER_ERROR({
+        message: err instanceof Error ? err.message : "Failed to request domain verification",
+      });
+    }
+  });
+
+const verifyDomain = rootOs
+  .meta({ mcp: false })
+  .use(withAuth)
+  .route({ path: "/verify-domain", method: "POST", tags, summary: "Verify domain ownership" })
+  .input(z.object({ providerId: z.string() }))
+  .handler(async ({ input, context, errors }) => {
+    const provider = await findProviderOrThrow(input.providerId, errors);
+    await requireSsoAccess(context.session.user.email, provider.organizationId, context.request.headers, errors);
+
+    try {
+      await auth.api.verifyDomain({
+        body: { providerId: input.providerId },
+        headers: context.request.headers,
+      });
+    } catch (err) {
+      const body = betterAuthErrorBody(err);
+      if (body) {
+        throw errors.BAD_REQUEST({ message: body.message ?? "Domain verification failed" });
+      }
+      throw errors.INTERNAL_SERVER_ERROR({
+        message: err instanceof Error ? err.message : "Domain verification failed",
+      });
+    }
+
+    log.info({ providerId: input.providerId, traceId: context.traceId }, "Domain verified");
+    return { success: true }
+  });
+
 const deleteProvider = rootOs
   .meta({ mcp: false })
   .use(withAuth)
@@ -191,16 +298,11 @@ const deleteProvider = rootOs
     providerId: z.string(),
   }))
   .handler(async ({ input, context, errors }) => {
-    const rlog = log.child({ traceId: context.traceId });
-    const [provider] = await getDB().select().from(ssoProviderT).where(sql`${ssoProviderT.providerId} = ${input.providerId}`).limit(1);
-    if (!provider) {
-      throw errors.NOT_FOUND({ message: "Provider not found" });
-    }
-
+    const provider = await findProviderOrThrow(input.providerId, errors);
     await requireSsoAccess(context.session.user.email, provider.organizationId, context.request.headers, errors);
 
     await getDB().delete(ssoProviderT).where(sql`${ssoProviderT.providerId} = ${input.providerId}`);
-    rlog.info({ providerId: input.providerId }, "SSO provider deleted");
+    log.info({ providerId: input.providerId, traceId: context.traceId }, "SSO provider deleted");
     return { success: true };
   });
 
@@ -208,5 +310,7 @@ export const ssoRouter = rootOs.prefix("/sso").router({
   listProviders,
   registerOidc,
   registerSaml,
+  requestDomainVerification,
+  verifyDomain,
   delete: deleteProvider,
 });
