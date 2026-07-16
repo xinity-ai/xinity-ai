@@ -23,7 +23,15 @@ Admins can list all organizations with search and pagination. Each organization 
 
 ## SSO Provider Management
 
-Instance-level SSO/SAML identity providers are configured under Instance Settings > SSO. Both OIDC and SAML providers are supported. When SSO self-management is enabled for an organization, that org's admins can also manage their own providers from the organization settings page.
+Instance-level SSO identity providers are configured under Instance Settings > SSO. OIDC providers are supported. When SSO self-management is enabled for an organization, that org's admins can also manage their own providers from the organization settings page.
+
+Each provider requires **domain verification** before users can sign in through it. After registering a provider:
+
+1. Open the "Domain verification" section on the provider card.
+2. Add the displayed TXT record to the DNS configuration for the provider's email domain (e.g. `_xinity-sso-<providerId>.<domain>`).
+3. Click "Check DNS" once the record has propagated.
+
+Verified providers show a green "Verified" badge. Unverified providers show an amber "Unverified" badge and block sign-in attempts. The verification token persists across page reloads, so the DNS instructions remain visible without restarting the flow.
 
 ## License Management
 

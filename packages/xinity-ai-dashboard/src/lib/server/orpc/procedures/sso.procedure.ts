@@ -189,8 +189,8 @@ const registerOidc = rootOs
 const registerSaml = rootOs
   .meta({ mcp: false })
   .use(withAuth)
-  .errors({ BAD_REQUEST: {} })
-  .route({ path: "/register-saml", method: "POST", tags, summary: "Register SAML Provider" })
+  .errors({ BAD_REQUEST: {}, FORBIDDEN: {} })
+  .route({ path: "/register-saml", method: "POST", tags: [...tags, ".internal"], summary: "Register SAML Provider (dev only)" })
   .input(z.object({
     organizationId: z.string().optional(),
     providerId: z.string(),
@@ -214,6 +214,9 @@ const registerSaml = rootOs
     }),
   }))
   .handler(async ({ input, context, errors }) => {
+    if (process.env.NODE_ENV === "production") {
+      throw errors.FORBIDDEN({ message: "SAML provider registration is not available" });
+    }
     await requireSsoAccess(context.session.user.email, input.organizationId, context.request.headers, errors);
     return dispatchSsoRegistration(input, { samlConfig: input.samlConfig }, context, "SAML", errors);
   });

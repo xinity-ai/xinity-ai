@@ -12,9 +12,13 @@ The default method. Email verification is required when an SMTP server is config
 
 Admin-created users receive a temporary password and are redirected to change it on first login.
 
-### SSO (SAML and OIDC)
+### SSO (OIDC)
 
-Enterprise single sign-on via SAML or OIDC identity providers. Providers can be configured at the instance level or per-organization (with the `sso` license feature). Users provisioned through SSO are assigned the `pending` role by default. See [Instance Administration](instance-administration.md) for provider management.
+Enterprise single sign-on via OIDC identity providers. Providers can be configured at the instance level or per-organization (with the `sso` license feature). Users provisioned through SSO are assigned the `pending` role by default. See [Instance Administration](instance-administration.md) for provider management.
+
+**Domain verification** is required before users can sign in through a provider. After registering a provider, an admin must add a DNS TXT record to the provider's email domain and verify it through the dashboard. This ensures the admin controls the domain whose users will be trusted for account linking.
+
+**Account linking:** when a user signs in via SSO with an email that matches an existing account, the accounts are linked automatically if the provider's domain is verified and the identity provider confirms the email is verified. Without domain verification, sign-in is blocked.
 
 ### Passkeys (WebAuthn/FIDO2)
 
