@@ -313,6 +313,10 @@ export const auth = betterAuth({
       },
       defaultOverrideUserInfo: true,
       trustEmailVerified: true,
+      domainVerification: {
+        enabled: true,
+        tokenPrefix: "xinity-sso",
+      },
     }),
     organization({
       allowUserToCreateOrganization: (user) => serverEnv.MULTI_TENANT_MODE || isInstanceAdmin(user.email),
