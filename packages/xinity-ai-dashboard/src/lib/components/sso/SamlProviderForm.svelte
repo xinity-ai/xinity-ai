@@ -164,6 +164,7 @@
 <Tooltip.Provider>
 <form
   method="POST"
+  autocomplete="off"
   onsubmit={(evt) => {
     evt.preventDefault();
     submit();

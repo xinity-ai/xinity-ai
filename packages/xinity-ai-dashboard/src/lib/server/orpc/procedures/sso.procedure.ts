@@ -1,7 +1,3 @@
-/**
- * ORPC procedures for SSO provider management.
- * Supports both organization-scoped (multi-tenant) and instance-wide (single-tenant) providers.
- */
 import { rootOs, withAuth } from "../root";
 import { z } from "zod";
 import { auth } from "$lib/server/auth-server";
@@ -15,12 +11,6 @@ import { hasFeature } from "$lib/server/license";
 const log = rootLogger.child({ name: "sso.procedure" });
 const tags = ["SSO"];
 
-/**
- * Authorize an SSO operation.
- * - Instance-wide SSO (no organizationId): instance admin required.
- * - Organization SSO: instance admin can always manage; org owner/admin
- *   can manage only if the org has ssoSelfManage enabled.
- */
 async function requireSsoAccess(
   email: string | undefined | null,
   organizationId: string | undefined | null,
@@ -100,11 +90,12 @@ const listProviders = rootOs
           headers: context.request.headers,
         });
         const hostname = domainToHostname(provider.domain);
+        const { txtRecord, txtValue } = formatTxtRecord(provider.providerId, hostname);
         return {
           ...provider,
           verification: {
-            txtRecord: `_xinity-sso-${provider.providerId}.${hostname}`,
-            txtValue: `_xinity-sso-${provider.providerId}=${result.domainVerificationToken}`,
+            txtRecord,
+            txtValue: `${txtValue}=${result.domainVerificationToken}`,
           },
         };
       } catch {
@@ -115,12 +106,38 @@ const listProviders = rootOs
     return enriched;
   });
 
+type BetterAuthErrorHandlers = {
+  BAD_REQUEST: (opts?: { message?: string }) => Error;
+  INTERNAL_SERVER_ERROR: (opts?: { message?: string }) => Error;
+};
+
+function rethrowBetterAuthError(
+  err: unknown,
+  fallbackMessage: string,
+  errors: BetterAuthErrorHandlers,
+): never {
+  const body = betterAuthErrorBody(err);
+  if (body) {
+    throw errors.BAD_REQUEST({ message: body.message ?? fallbackMessage });
+  }
+  throw errors.INTERNAL_SERVER_ERROR({
+    message: err instanceof Error ? err.message : fallbackMessage,
+  });
+}
+
+function formatTxtRecord(providerId: string, hostname: string) {
+  return {
+    txtRecord: `_xinity-sso-${providerId}.${hostname}`,
+    txtValue: `_xinity-sso-${providerId}`,
+  };
+}
+
 async function dispatchSsoRegistration(
   input: { providerId: string; issuer: string; domain: string; organizationId?: string },
   config: { oidcConfig?: unknown } | { samlConfig?: unknown },
   context: { request: Request; traceId?: string },
   kind: "OIDC" | "SAML",
-  errors: { BAD_REQUEST: (opts?: { message?: string }) => Error; INTERNAL_SERVER_ERROR: (opts?: { message?: string }) => Error },
+  errors: BetterAuthErrorHandlers,
 ) {
   const rlog = log.child({ traceId: context.traceId });
   try {
@@ -137,13 +154,7 @@ async function dispatchSsoRegistration(
     rlog.info({ providerId: input.providerId, organizationId: input.organizationId }, `${kind} provider registered`);
     return result;
   } catch (err) {
-    const body = betterAuthErrorBody(err);
-    if (body) {
-      throw errors.BAD_REQUEST({ message: body.message ?? "SSO provider registration failed" });
-    }
-    throw errors.INTERNAL_SERVER_ERROR({
-      message: err instanceof Error ? err.message : "SSO provider registration failed",
-    });
+    rethrowBetterAuthError(err, "SSO provider registration failed", errors);
   }
 }
 
@@ -246,19 +257,14 @@ const requestDomainVerification = rootOs
       });
 
       const hostname = domainToHostname(provider.domain);
+      const { txtRecord, txtValue } = formatTxtRecord(input.providerId, hostname);
       return {
         token: result.domainVerificationToken,
-        txtRecord: `_xinity-sso-${input.providerId}.${hostname}`,
-        txtValue: `_xinity-sso-${input.providerId}=${result.domainVerificationToken}`,
+        txtRecord,
+        txtValue: `${txtValue}=${result.domainVerificationToken}`,
       };
     } catch (err) {
-      const body = betterAuthErrorBody(err);
-      if (body) {
-        throw errors.BAD_REQUEST({ message: body.message ?? "Failed to request domain verification" });
-      }
-      throw errors.INTERNAL_SERVER_ERROR({
-        message: err instanceof Error ? err.message : "Failed to request domain verification",
-      });
+      rethrowBetterAuthError(err, "Failed to request domain verification", errors);
     }
   });
 
@@ -277,13 +283,7 @@ const verifyDomain = rootOs
         headers: context.request.headers,
       });
     } catch (err) {
-      const body = betterAuthErrorBody(err);
-      if (body) {
-        throw errors.BAD_REQUEST({ message: body.message ?? "Domain verification failed" });
-      }
-      throw errors.INTERNAL_SERVER_ERROR({
-        message: err instanceof Error ? err.message : "Domain verification failed",
-      });
+      rethrowBetterAuthError(err, "Domain verification failed", errors);
     }
 
     log.info({ providerId: input.providerId, traceId: context.traceId }, "Domain verified");

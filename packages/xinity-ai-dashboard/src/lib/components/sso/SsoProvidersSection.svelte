@@ -24,10 +24,22 @@
     organizationId?: string;
   } = $props();
 
+  function safeJsonParse<T>(value: string | null) {
+    if (!value) {
+      return null;
+    }
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return null;
+    }
+  }
+
   let highlightedProviderId = $state<string | null>(null);
   let providers = $state<ProviderSummary[]>([]);
   let loading = $state(true);
   let loadError = $state<Error | null>(null);
+
   const parsedProviders = $derived(
     providers.map((provider) => {
       const parsedOidc = safeJsonParse<OIDCConfig>(provider.oidcConfig);
@@ -56,7 +68,6 @@
     providers = data ?? [];
   }
 
-  // Fetch on mount
   $effect(() => {
     fetchProviders();
   });
@@ -73,15 +84,6 @@
       return;
     }
     await fetchProviders();
-  }
-
-  function safeJsonParse<T>(value: string | null) {
-    if (!value) return null;
-    try {
-      return JSON.parse(value) as T;
-    } catch {
-      return null;
-    }
   }
 </script>
 

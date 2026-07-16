@@ -442,26 +442,26 @@
       )}
     {:else}
       <h2 class="text-lg font-semibold mb-4">Create User</h2>
-      <div class="space-y-4">
+      <form autocomplete="off" onsubmit={(evt) => { evt.preventDefault(); handleCreateUser(); }} class="space-y-4">
         <div>
           <label for="create-name" class="text-sm font-medium">Name</label>
-          <Input id="create-name" placeholder="Full name" bind:value={createUserName} />
+          <Input id="create-name" autocomplete="off" placeholder="Full name" bind:value={createUserName} />
         </div>
         <div>
           <label for="create-email" class="text-sm font-medium">Email</label>
-          <Input id="create-email" type="email" placeholder="user@example.com" bind:value={createUserEmail} />
+          <Input id="create-email" type="email" autocomplete="off" placeholder="user@example.com" bind:value={createUserEmail} />
         </div>
         <p class="text-xs text-muted-foreground">A temporary password will be generated for you to share with the user.</p>
         <div class="flex justify-end gap-2">
-          <Button variant="outline" onclick={() => { createUserModalOpen = false; }}>Cancel</Button>
+          <Button variant="outline" type="button" onclick={() => { createUserModalOpen = false; }}>Cancel</Button>
           <Button
+            type="submit"
             disabled={!createUserName || !createUserEmail || createUserLoading}
-            onclick={handleCreateUser}
           >
             {createUserLoading ? "Creating..." : "Create User"}
           </Button>
         </div>
-      </div>
+      </form>
     {/if}
   </div>
 </Modal>
