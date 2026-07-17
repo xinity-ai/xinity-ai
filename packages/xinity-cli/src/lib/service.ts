@@ -143,6 +143,12 @@ export async function* startService(component: Component, host: Host): AsyncGene
 export async function* restartService(component: Component, host: Host): AsyncGenerator<StepEvent, boolean> {
   const unit = unitName(component);
   if (!(await isUnitActiveOn(host, unit))) {
+    const status = await getUnitStatusOn(host, unit);
+    yield { type: "fail", label: "Service", detail: `${unit} is ${status} (cannot restart)` };
+    const journal = await collectJournalLines(host, unit);
+    if (journal) {
+      yield { type: "log", message: journal };
+    }
     return false;
   }
 
