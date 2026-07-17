@@ -62,7 +62,7 @@ The single-host commands (`up`, `rm`, `configure`, `doctor`) additionally accept
 3. **Gate.** One confirmation applies everything. Choosing **Abort** leaves the machines untouched. A third, secondary option prints the equivalent bash script instead of running anything, for auditing or manual execution (note: the script contains secrets in plain text).
 4. **Apply.** Runs unattended, since root privileges were established when the command started. Updates back up the previous binary and configuration and roll back automatically when the new version fails to start.
 
-`--dry-run` (on `xinity up`) stops after the review, so the plan can be inspected with zero risk.
+`--dry-run` (on `xinity up` and `xinity stack up`) stops after the review, so the plan can be inspected with zero risk.
 
 ## Commands
 
@@ -181,11 +181,11 @@ Component configuration uses the same plan → review → apply flow: the menu e
 |---|---|
 | `--reset` | Clear the specified config key |
 
-Configuration is stored in `~/.config/xinity/config.json` (mode 0600, directory mode 0700).
+Configuration is stored in `$XDG_CONFIG_HOME/xinity/config.json` (mode 0600, directory mode 0700).
 
 ### `xinity stack <action>`
 
-Declarative multi-host deployments. A stack is a local definition (`~/.config/xinity/stacks/<name>.json`, mode 600) holding shared configuration, stack-wide settings per component type, hosts (address + components), daemon fleets, and the pinned release version. `stack up` compares every host against the definition and applies only what differs.
+Declarative multi-host deployments. A stack is a local definition (`~/.config/xinity/stacks/<name>.json`, mode 600) holding shared configuration, stack-wide settings per component type, hosts (address + components), daemon fleets, and the pinned release version. `stack up` compares every host against the definition and applies only what differs. A separate state file (`$XDG_CONFIG_HOME/xinity/stacks/state/<name>.json`) records which hosts the stack actually manages, so a host deleted from the definition is still torn down on the next `up`.
 
 ```bash
 xinity stack init prod       # shared + per-component settings, pinned version
@@ -198,23 +198,24 @@ xinity stack doctor prod     # health-check every host (alias: status)
 
 | Action | Description |
 |---|---|
-| `init <name>` | Create a stack: pinned release version, shared settings (database, Redis, metrics auth, ...), then stack-wide settings per component. Required values block saving, so a fresh stack is deployable from the start. |
+| `init <name>` | Create a stack: shared settings (database, Redis, metrics auth, ...), then stack-wide settings per component. Required values block saving, so a fresh stack is deployable from the start. |
 | `ls` | List stacks |
 | `show <name>` | Print a stack summary |
 | `edit <name>` | Menu editor for everything in the stack. `--fleet <fleet>` jumps straight to that fleet's daemon settings. |
 | `up <name>` | Plan and apply the whole stack at its pinned version. `--target-version <v>` re-pins. |
 | `doctor <name>` (alias `status`) | Doctor every host, printing each failing check. `--fleet <fleet>` limits to that fleet's hosts. |
-| `rm <name>` | Choice of removing only the local definition or tearing down all tracked components on the hosts (best effort). `--fleet <fleet>` removes a fleet: definition only, or with daemon teardown. |
+| `rm <name>` | Delete the local stack definition and state; hosts stay untouched. To uninstall components first, remove the hosts from the stack and run `up` before deleting it. Fleets are removed through `stack edit`. |
 
 **Configuration is layered**, most general first, later wins: schema defaults → shared env/secrets → per-component-type settings → fleet overrides (daemon only) → per-host overrides. Values live at the highest level possible; per-host overrides (e.g. `MACHINE_NAME`) are the escape hatch, never the norm. Shared-owned keys are not offered in lower-level editors.
 
 **What `stack up` does**, per host, after one review gate:
 
 - applies database migrations for the pinned release (skipped when the stack already applied them)
+- evacuates hosts that were removed from the definition: every managed component is uninstalled and the host is forgotten (unreachable hosts are forgotten without teardown; hosts claimed by another stack are left to it)
 - removes components that are installed but no longer tracked by the stack
 - installs, updates, or reconfigures each tracked component to match the pinned version and resolved configuration, with the config diff visible in the plan
 
-**Versions are pinned.** Every component in a stack is held at the stack's `pinnedVersion`. `stack up` checks for a newer release and asks before re-pinning; nothing updates silently.
+**Versions are pinned.** Every component in a stack is held at the stack's `pinnedVersion`. The version option in `stack edit` opens a searchable list of the published releases (latest, prereleases, and the current pin marked) to re-pin from, or use `stack up --target-version`. Nothing updates silently.
 
 **Bring your own infrastructure.** Stacks manage Xinity's components, not the infrastructure beneath them: `stack init` takes your PostgreSQL and Redis connection URLs as given (migrations are then run for you). To have the CLI provision that infrastructure first, use the interactive assistants (`xinity up infra-postgres`, `xinity up infra-redis`, with `--target-host` for remote machines) and feed the resulting URLs into the stack. For a guided single-machine setup that can provision everything in one pass, `xinity up all` remains the right tool.
 
