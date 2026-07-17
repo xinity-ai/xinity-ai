@@ -372,8 +372,8 @@ async function applyConfigAndStart(
   const configResult = await writeEnvConfig(component, env.config, env.secrets, host);
   if (configResult.success) {
     progress.update("Environment configured");
-  } else if (configResult.error) {
-    progress.fail("Config", configResult.error);
+  } else {
+    progress.fail("Config", configResult.error || "failed to write config");
     errors.push("Failed to write configuration (may need manual setup)");
   }
 
@@ -386,9 +386,7 @@ async function applyConfigAndStart(
   if (unitResult.success) {
     progress.update("Systemd unit installed");
   } else {
-    if (unitResult.error) {
-      progress.fail("Systemd", unitResult.error);
-    }
+    progress.fail("Systemd", unitResult.error || "failed to install unit");
     errors.push("Systemd unit not installed (may need manual setup)");
   }
 

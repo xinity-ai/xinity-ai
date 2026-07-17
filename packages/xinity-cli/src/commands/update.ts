@@ -144,7 +144,10 @@ export async function runUpdateFlow(opts: { checkOnly: boolean; targetVersion: s
     return;
   }
 
-  await selfUpdate(release);
+  const ok = await selfUpdate(release);
+  if (!ok) {
+    process.exit(1);
+  }
   outro("Done");
 }
 

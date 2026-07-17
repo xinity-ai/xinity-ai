@@ -157,7 +157,6 @@ export const upCommand: CommandModule = {
 
     const host = await connectHost(targetHostArg);
 
-    let hasFailure = false;
     try {
       if (!(await host.prepareElevation())) {
         outro("Aborted");
@@ -185,7 +184,9 @@ export const upCommand: CommandModule = {
       if (component === "db") {
         const ok = await runDbFlow({ targetVersion, dryRun }, host);
         outro(ok ? "Done" : "Failed");
-        hasFailure = !ok;
+        if (!ok) {
+          process.exit(1);
+        }
         return;
       }
 
@@ -238,10 +239,11 @@ export const upCommand: CommandModule = {
 
       const ok = await runPlannedFlow(component, { targetVersion, dryRun, hardReset }, host);
       outro(ok ? "Done" : "Failed");
-      hasFailure = !ok;
+      if (!ok) {
+        process.exit(1);
+      }
     } finally {
       await host.dispose();
     }
-    if (hasFailure) process.exit(1);
   },
 };
