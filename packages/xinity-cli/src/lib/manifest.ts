@@ -12,10 +12,17 @@ export interface ComponentEntry {
   binaryChecksum?: string;
 }
 
+export interface StackMembership {
+  name: string;
+  fleet?: string;
+}
+
 export interface Manifest {
   components: Partial<Record<string, ComponentEntry>>;
   /** Non-secret metadata about the configured DB connection. */
   db?: { hint: string };
+  /** Which stack (and fleet) manages this machine; maintained by `stack up`. */
+  stack?: StackMembership;
 }
 
 const MANIFEST_PATH = "/opt/xinity/manifest.json";
@@ -70,6 +77,19 @@ export async function writeManifest(manifest: Manifest, host: Host): Promise<voi
 export async function saveDbHint(hint: string, host: Host): Promise<void> {
   const manifest = await readManifest(host);
   manifest.db = { hint };
+  await writeManifest(manifest, host);
+}
+
+/** Record (or clear, with null) which stack and fleet own this host. No-op when already current. */
+export async function saveStackMembership(membership: StackMembership | null, host: Host): Promise<void> {
+  const manifest = await readManifest(host);
+  if (membership === null) {
+    if (!manifest.stack) return;
+    delete manifest.stack;
+  } else {
+    if (manifest.stack?.name === membership.name && manifest.stack?.fleet === membership.fleet) return;
+    manifest.stack = membership;
+  }
   await writeManifest(manifest, host);
 }
 

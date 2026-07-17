@@ -15,6 +15,7 @@ import { secret } from "common-env";
 import { version as cliVersion } from "../../../../package.json";
 import { type Component, getAutoDefaults } from "./component-meta.ts";
 import { analyzeEnvSchema } from "./env-prompt.ts";
+import { deleteStackState } from "./stack-state.ts";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -24,6 +25,12 @@ export interface StackDefinition {
   name: string;
   /** Shared, inherited by every component (DB_CONNECTION_URL, INFOSERVER_URL, ...). */
   env: Record<string, string>;
+  /**
+   * Values derived for the current run (e.g. INFOSERVER_URL from the
+   * infoserver host's address). Sits below `env` so explicit values win,
+   * and is never persisted so it re-derives when the stack changes.
+   */
+  derivedEnv?: Record<string, string>;
   secrets: Record<string, string>;
   /** Stack-wide settings per component type (gateway PORT vs dashboard PORT don't collide here). */
   componentEnv: Partial<Record<Component, Record<string, string>>>;
@@ -113,7 +120,8 @@ export function loadStack(name: string): StackDefinition | null {
 
 export function saveStack(stack: StackDefinition): void {
   stack.version = cliVersion;
-  savePrivateJson(stackPath(stack.name), stack);
+  const { derivedEnv: _, ...persisted } = stack;
+  savePrivateJson(stackPath(stack.name), persisted);
 }
 
 export function deleteStack(name: string): boolean {
@@ -122,6 +130,7 @@ export function deleteStack(name: string): boolean {
     return false;
   }
   unlinkSync(path);
+  deleteStackState(name);
   return true;
 }
 
@@ -149,7 +158,55 @@ export function getFleetForHost(stack: StackDefinition, address: string): FleetD
   return stack.fleets.find((f) => f.hosts.includes(address)) ?? null;
 }
 
+// ── Fleet membership ─────────────────────────────────────────────────────
+
+/** Assign members to a fleet, pulling any that belonged to other fleets. Returns the names of fleets removed because they lost their last host. */
+export function claimFleetHosts(stack: StackDefinition, fleet: FleetDefinition, members: string[]): string[] {
+  const claimed = new Set(members);
+  fleet.hosts = members;
+  const emptied: string[] = [];
+  for (const other of stack.fleets) {
+    if (other === fleet) {
+      continue;
+    }
+    const remaining = other.hosts.filter((a) => !claimed.has(a));
+    if (remaining.length === 0 && other.hosts.length > 0) {
+      emptied.push(other.name);
+    }
+    other.hosts = remaining;
+  }
+  stack.fleets = stack.fleets.filter((f) => f.hosts.length > 0);
+  return emptied;
+}
+
+/** Hosts no longer running a daemon can't stay fleet members. */
+export function pruneFleetMembership(stack: StackDefinition, address: string): void {
+  for (const fleet of stack.fleets) {
+    fleet.hosts = fleet.hosts.filter((a) => a !== address);
+  }
+  stack.fleets = stack.fleets.filter((f) => f.hosts.length > 0);
+}
+
 // ── Env resolution ───────────────────────────────────────────────────────
+// One layer order, used by both the editors (base/seed) and the deploy
+// (resolveEnv): schema auto defaults → derived → shared env → shared
+// secrets → component type → fleet (daemon only) → host.
+
+export function componentLayerBase(stack: StackDefinition, component: Component): Record<string, string> {
+  return { ...getAutoDefaults(component), ...(stack.derivedEnv ?? {}), ...stack.env, ...stack.secrets };
+}
+
+export function componentLayerSeed(stack: StackDefinition, component: Component): Record<string, string> {
+  return { ...componentLayerBase(stack, component), ...(stack.componentEnv[component] ?? {}) };
+}
+
+export function fleetLayerBase(stack: StackDefinition): Record<string, string> {
+  return componentLayerSeed(stack, "daemon");
+}
+
+export function fleetLayerSeed(stack: StackDefinition, fleet: FleetDefinition): Record<string, string> {
+  return { ...fleetLayerBase(stack), ...(fleet.envOverrides ?? {}) };
+}
 
 /**
  * The stack's declared configuration for one component on one host.
@@ -164,10 +221,7 @@ export function resolveEnv(
   const host = hostAddress ? getHost(stack, hostAddress) : null;
   const fleet = component === "daemon" && hostAddress ? getFleetForHost(stack, hostAddress) : null;
   return {
-    ...getAutoDefaults(component),
-    ...stack.env,
-    ...stack.secrets,
-    ...(stack.componentEnv[component] ?? {}),
+    ...componentLayerSeed(stack, component),
     ...(fleet?.envOverrides ?? {}),
     ...(host?.envOverrides ?? {}),
   };

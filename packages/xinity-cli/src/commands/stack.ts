@@ -1,5 +1,5 @@
 import type { CommandModule } from "yargs";
-import { intro, outro, cancel, note, log, select, confirm, text, multiselect } from "../lib/clack.ts";
+import { intro, outro, cancel, note, log, confirm, text, multiselect } from "../lib/clack.ts";
 import { bold, cyan, dim, green, red, yellow } from "picocolors";
 import { promptOrExit, promptOrUndefined, fail, warn, heading } from "../lib/output.ts";
 import { type Component } from "../lib/component-meta.ts";
@@ -15,19 +15,40 @@ import {
   validateStack,
   getFleet,
   getHost,
+  getFleetForHost,
   hostLabel,
+  claimFleetHosts,
+  pruneFleetMembership,
 } from "../lib/stack.ts";
 import { editSharedLayer, editComponentLayer, editFleetLayer } from "../lib/stack-layers.ts";
-import { searchSelect, searchMultiselect } from "../lib/search-list.ts";
+import { searchSelect, searchMultiselect, listSelect } from "../lib/search-list.ts";
 import { runStackFlow } from "../lib/stack-plan.ts";
-import { runDoctor, buildSummaryLine } from "../lib/doctor.ts";
+import { runDoctor, buildSummaryLine, type DoctorReport } from "../lib/doctor.ts";
 import { fetchRelease } from "../lib/github.ts";
-import { removeComponentCollapsed } from "../lib/install-remove.ts";
-import { connectHosts, forEachHost, disposeAll } from "../lib/multi-host.ts";
+import { loadStackState, findOrphanHosts } from "../lib/stack-state.ts";
+import { connectHosts, disposeAll } from "../lib/multi-host.ts";
 
 const AVAILABLE_COMPONENTS: Component[] = ["gateway", "dashboard", "daemon", "infoserver"];
 
 // ── Helpers ──────────────────────────────────────────────────────────────
+
+// Shell completion runs the yargs builder with these choices; outside of it
+// they stay off so unknown names hit our own error messages, and `init`
+// keeps accepting fresh names.
+const completing = process.argv.includes("--get-yargs-completions");
+
+function stackNameChoices(): { choices?: string[] } {
+  return completing ? { choices: listStacks() } : {};
+}
+
+function fleetNameChoices(): { choices?: string[] } {
+  if (!completing) {
+    return {};
+  }
+  const words = process.argv.slice(process.argv.indexOf("stack") + 1).filter((w) => w && !w.startsWith("-"));
+  const stack = words[1] ? loadStack(words[1]) : null;
+  return stack ? { choices: stack.fleets.map((f) => f.name) } : {};
+}
 
 function requireStack(name: string): StackDefinition {
   const stack = loadStack(name);
@@ -89,7 +110,9 @@ function printStackSummary(stack: StackDefinition): void {
   }
 
   for (const [component, values] of Object.entries(stack.componentEnv)) {
-    if (!values || Object.keys(values).length === 0) continue;
+    if (!values || Object.keys(values).length === 0) {
+      continue;
+    }
     log.info(bold(component));
     for (const [k, v] of Object.entries(values)) {
       log.info(`  ${k} = ${cyan(v)}`);
@@ -198,8 +221,9 @@ async function handleEdit(name: string, fleetName?: string): Promise<void> {
     // Escape at the top level behaves like Save & exit: submenu edits are
     // already applied in memory and must not be discarded silently.
     while (true) {
-      const choice = await promptOrUndefined(select({
+      const choice = await promptOrUndefined(listSelect({
         message: "What would you like to edit?",
+        transient: true,
         options: [
           { value: "shared", label: `Shared settings (${Object.keys(stack.env).length + Object.keys(stack.secrets).length} set)` },
           { value: "component", label: "Component settings (stack-wide per type)" },
@@ -208,7 +232,7 @@ async function handleEdit(name: string, fleetName?: string): Promise<void> {
           { value: "fleets", label: `Fleets (${stack.fleets.length})` },
           { value: "save", label: green("Save & exit") },
         ],
-      })) as string | undefined;
+      }));
 
       if (choice === undefined || choice === "save") {
         break;
@@ -249,13 +273,14 @@ async function editPinnedVersion(stack: StackDefinition): Promise<void> {
 }
 
 async function editComponentSettings(stack: StackDefinition): Promise<void> {
-  const component = await promptOrUndefined(select({
+  const component = await promptOrUndefined(listSelect({
     message: "Which component type?",
+    transient: true,
     options: AVAILABLE_COMPONENTS.map((c) => {
       const count = Object.keys(stack.componentEnv[c] ?? {}).length;
       return { value: c, label: `${c}${count > 0 ? dim(` (${count} set)`) : ""}` };
     }),
-  })) as Component | undefined;
+  }));
   if (component) {
     await editComponentLayer(stack, component);
   }
@@ -266,20 +291,14 @@ async function editComponentSettings(stack: StackDefinition): Promise<void> {
  * bottom, dimmed and marked; selecting one moves it into this fleet.
  */
 function fleetHostOptions(stack: StackDefinition, fleet: FleetDefinition | null) {
-  const ownerOf = new Map<string, FleetDefinition>();
-  for (const other of stack.fleets) {
-    if (other === fleet) continue;
-    for (const addr of other.hosts) {
-      ownerOf.set(addr, other);
-    }
-  }
-
   const free: { value: string; label: string; hint?: string }[] = [];
   const taken: { value: string; label: string; hint?: string }[] = [];
   for (const host of stack.hosts) {
-    if (!host.components.includes("daemon")) continue;
-    const owner = ownerOf.get(host.address);
-    if (owner) {
+    if (!host.components.includes("daemon")) {
+      continue;
+    }
+    const owner = getFleetForHost(stack, host.address);
+    if (owner && owner !== fleet) {
       taken.push({
         value: host.address,
         label: dim(hostLabel(host)),
@@ -293,33 +312,17 @@ function fleetHostOptions(stack: StackDefinition, fleet: FleetDefinition | null)
   return [...free, ...taken];
 }
 
-/** Assign members to a fleet, pulling any that belonged to other fleets. */
-function claimFleetHosts(stack: StackDefinition, fleet: FleetDefinition, members: string[]): void {
-  const claimed = new Set(members);
-  fleet.hosts = members;
-  for (const other of stack.fleets) {
-    if (other === fleet) continue;
-    const remaining = other.hosts.filter((a) => !claimed.has(a));
-    if (remaining.length === 0 && other.hosts.length > 0) {
-      log.warn(`Fleet "${other.name}" lost its last host and was removed`);
-    }
-    other.hosts = remaining;
+function claimFleetHostsLogged(stack: StackDefinition, fleet: FleetDefinition, members: string[]): void {
+  for (const emptied of claimFleetHosts(stack, fleet, members)) {
+    log.warn(`Fleet "${emptied}" lost its last host and was removed`);
   }
-  stack.fleets = stack.fleets.filter((f) => f.hosts.length > 0);
-}
-
-/** Hosts no longer running a daemon can't stay fleet members. */
-function pruneFleetMembership(stack: StackDefinition, address: string): void {
-  for (const fleet of stack.fleets) {
-    fleet.hosts = fleet.hosts.filter((a) => a !== address);
-  }
-  stack.fleets = stack.fleets.filter((f) => f.hosts.length > 0);
 }
 
 async function hostsMenu(stack: StackDefinition): Promise<void> {
   while (true) {
     const choice = await promptOrUndefined(searchSelect({
       message: "Hosts",
+      transient: true,
       options: [
         ...stack.hosts.map((h) => ({
           value: h.address,
@@ -347,15 +350,16 @@ async function hostsMenu(stack: StackDefinition): Promise<void> {
 
 async function hostMenu(stack: StackDefinition, host: StackHost): Promise<void> {
   while (true) {
-    const choice = await promptOrUndefined(select({
-      message: hostLabel(host),
+    const choice = await promptOrUndefined(listSelect({
+      message: `Hosts > ${hostLabel(host)}`,
+      transient: true,
       options: [
         { value: "components", label: `Components (${host.components.join(", ") || yellow("none")})` },
         { value: "alias", label: `Alias (${host.alias ?? "not set"})` },
         { value: "remove", label: red("Remove this host from the stack") },
         { value: "back", label: dim("Back") },
       ],
-    })) as string | undefined;
+    }));
 
     if (choice === undefined || choice === "back") {
       return;
@@ -396,7 +400,7 @@ async function hostMenu(stack: StackDefinition, host: StackHost): Promise<void> 
 
     if (choice === "remove") {
       const confirmed = await promptOrUndefined(confirm({
-        message: `Remove ${hostLabel(host)} from the stack? (nothing is uninstalled)`,
+        message: `Remove ${hostLabel(host)} from the stack? (the next stack up uninstalls its components)`,
         initialValue: false,
       }));
       if (confirmed) {
@@ -447,8 +451,9 @@ async function addHostInteractive(stack: StackDefinition): Promise<void> {
 
 async function fleetsMenu(stack: StackDefinition): Promise<void> {
   while (true) {
-    const choice = await promptOrUndefined(select({
+    const choice = await promptOrUndefined(listSelect({
       message: "Fleets",
+      transient: true,
       options: [
         ...stack.fleets.map((f) => ({
           value: f.name,
@@ -458,7 +463,7 @@ async function fleetsMenu(stack: StackDefinition): Promise<void> {
         { value: "__add__", label: cyan("+ Add a fleet") },
         { value: "__back__", label: dim("Back") },
       ],
-    })) as string | undefined;
+    }));
 
     if (choice === undefined || choice === "__back__") {
       return;
@@ -481,15 +486,16 @@ async function fleetsMenu(stack: StackDefinition): Promise<void> {
 
 async function fleetMenu(stack: StackDefinition, fleet: FleetDefinition): Promise<void> {
   while (true) {
-    const choice = await promptOrUndefined(select({
-      message: `Fleet "${fleet.name}"`,
+    const choice = await promptOrUndefined(listSelect({
+      message: `Fleets > ${fleet.name}`,
+      transient: true,
       options: [
         { value: "settings", label: `Daemon settings (${Object.keys(fleet.envOverrides ?? {}).length} override(s))` },
         { value: "hosts", label: `Hosts (${fleet.hosts.join(", ") || yellow("none")})` },
         { value: "remove", label: red("Remove this fleet") },
         { value: "back", label: dim("Back") },
       ],
-    })) as string | undefined;
+    }));
 
     if (choice === undefined || choice === "back") {
       return;
@@ -512,7 +518,7 @@ async function fleetMenu(stack: StackDefinition, fleet: FleetDefinition): Promis
         required: true,
       }));
       if (members) {
-        claimFleetHosts(stack, fleet, members);
+        claimFleetHostsLogged(stack, fleet, members);
       }
       continue;
     }
@@ -558,7 +564,7 @@ async function addFleetInteractive(stack: StackDefinition): Promise<FleetDefinit
 
   const fleet: FleetDefinition = { name: fleetName, hosts: [] };
   stack.fleets.push(fleet);
-  claimFleetHosts(stack, fleet, members);
+  claimFleetHostsLogged(stack, fleet, members);
   log.success(`Fleet "${fleetName}" created with ${members.length} host(s)`);
   return fleet;
 }
@@ -631,11 +637,26 @@ async function handleDoctor(name: string, fleetName?: string): Promise<void> {
 
   let totalFailed = 0;
   try {
-    await forEachHost(hosts, async (host) => {
-      const report = await runDoctor({ host, interactive: false });
-      totalFailed += report.summary.fail;
+    // Checks are collected on all hosts at once (runDoctor stays silent when
+    // non-interactive) and rendered afterwards in host order.
+    type DoctorEntry = { address: string; report: DoctorReport } | { address: string; error: string };
+    const reports = await Promise.all([...hosts.entries()].map(async ([address, host]): Promise<DoctorEntry> => {
+      try {
+        return { address, report: await runDoctor({ host, interactive: false }) };
+      } catch (err) {
+        return { address, error: err instanceof Error ? err.message : String(err) };
+      }
+    }));
 
-      for (const component of report.components) {
+    for (const entry of reports) {
+      heading(entry.address);
+      if ("error" in entry) {
+        log.error(entry.error);
+        totalFailed++;
+        continue;
+      }
+      totalFailed += entry.report.summary.fail;
+      for (const component of entry.report.components) {
         for (const check of component.checks) {
           if (check.status === "fail") {
             fail(`${component.component} · ${check.label}`, check.message);
@@ -644,9 +665,8 @@ async function handleDoctor(name: string, fleetName?: string): Promise<void> {
           }
         }
       }
-
-      log.info(buildSummaryLine(report.summary));
-    });
+      log.info(buildSummaryLine(entry.report.summary));
+    }
   } finally {
     await disposeAll(hosts);
   }
@@ -661,138 +681,30 @@ async function handleRm(name: string): Promise<void> {
   const stack = requireStack(name);
   intro(`xinity stack rm ${cyan(name)}`);
 
-  if (stack.hosts.length === 0) {
-    const confirmed = await promptOrExit(confirm({
-      message: `Delete stack "${name}"?`,
-      initialValue: false,
-    }));
-    if (!confirmed) {
-      outro("Aborted");
-      return;
+  // Deleting the definition also deletes the state, so hosts not yet
+  // evacuated by an up run would be forgotten; the listing makes that visible.
+  const orphans = findOrphanHosts(loadStackState(name), stack);
+  if (stack.hosts.length > 0 || orphans.length > 0) {
+    log.info(bold("Tracked hosts:"));
+    for (const host of stack.hosts) {
+      log.info(`  ${host.address}: ${host.components.join(", ")}`);
     }
-    deleteStack(name);
-    log.success(`Stack "${name}" deleted`);
-    outro("Done");
-    return;
+    for (const address of orphans) {
+      log.info(`  ${address}: ${dim("removed from the definition, not yet evacuated")}`);
+    }
+    log.info("Hosts stay untouched. To uninstall components first, remove the hosts from the stack and run stack up before deleting it.");
   }
 
-  log.info(bold("Tracked hosts:"));
-  for (const host of stack.hosts) {
-    log.info(`  ${host.address}: ${host.components.join(", ")}`);
-  }
-
-  const choice = await promptOrExit(select({
-    message: `How should "${name}" be removed?`,
-    options: [
-      { value: "local", label: "Remove the local stack definition only", hint: "hosts stay untouched" },
-      { value: "teardown", label: `Uninstall all tracked components from ${stack.hosts.length} host(s), then remove the definition`, hint: "best effort" },
-      { value: "abort", label: "Abort" },
-    ],
-  })) as string;
-
-  if (choice === "abort") {
+  const confirmed = await promptOrExit(confirm({
+    message: `Delete stack "${name}"?`,
+    initialValue: false,
+  }));
+  if (!confirmed) {
     outro("Aborted");
     return;
   }
-
-  if (choice === "teardown") {
-    const done = await teardownHosts(
-      stack.hosts.map((h) => h.address),
-      (address) => getHost(stack, address)?.components ?? [],
-    );
-    if (!done) {
-      log.error("Could not reach all hosts; nothing was removed and the stack definition was kept.");
-      outro("Failed");
-      process.exit(1);
-    }
-  }
-
   deleteStack(name);
   log.success(`Stack "${name}" deleted`);
-  outro("Done");
-}
-
-/** Best-effort removal across hosts; failures are reported and treated as removed. */
-async function teardownHosts(
-  addresses: string[],
-  componentsFor: (address: string) => Component[],
-): Promise<boolean> {
-  const hosts = await connectHosts(addresses);
-  if (!hosts) {
-    return false;
-  }
-  try {
-    await forEachHost(hosts, async (host, address) => {
-      for (const component of componentsFor(address)) {
-        const result = await removeComponentCollapsed({ component, host });
-        if (!result.success) {
-          warn(component, `Not fully removed (${result.errors.join(", ")}); treating it as deleted`);
-        }
-      }
-    });
-    return true;
-  } finally {
-    await disposeAll(hosts);
-  }
-}
-
-/** `stack rm <name> --fleet <fleet>`: remove the fleet concept, or tear its daemons down too. */
-async function handleRmFleet(name: string, fleetName: string): Promise<void> {
-  const stack = requireStack(name);
-  const fleet = requireFleet(stack, fleetName);
-  intro(`xinity stack rm ${cyan(name)} · fleet ${cyan(fleetName)}`);
-
-  let choice = "concept";
-  if (fleet.hosts.length > 0) {
-    log.info(bold("Fleet hosts:"));
-    for (const addr of fleet.hosts) {
-      log.info(`  ${addr}`);
-    }
-
-    choice = await promptOrExit(select({
-      message: `How should fleet "${fleetName}" be removed?`,
-      options: [
-        { value: "concept", label: "Remove the fleet definition only", hint: "hosts and their daemons stay untouched" },
-        { value: "teardown", label: `Uninstall the daemon from ${fleet.hosts.length} host(s), then remove the fleet`, hint: "best effort" },
-        { value: "abort", label: "Abort" },
-      ],
-    })) as string;
-  } else {
-    const confirmed = await promptOrExit(confirm({
-      message: `Remove fleet "${fleetName}"?`,
-      initialValue: false,
-    }));
-    if (!confirmed) {
-      choice = "abort";
-    }
-  }
-
-  if (choice === "abort") {
-    outro("Aborted");
-    return;
-  }
-
-  if (choice === "teardown") {
-    if (!(await teardownHosts(fleet.hosts, () => ["daemon"]))) {
-      log.error("Could not reach all hosts; nothing was removed and the fleet was kept.");
-      outro("Failed");
-      process.exit(1);
-    }
-
-    // The stack must stop expecting daemons here, or the next `stack up`
-    // would simply reinstall what was just torn down.
-    for (const addr of fleet.hosts) {
-      const stackHost = getHost(stack, addr);
-      if (stackHost) {
-        stackHost.components = stackHost.components.filter((c) => c !== "daemon");
-      }
-    }
-    stack.hosts = stack.hosts.filter((h) => h.components.length > 0);
-  }
-
-  stack.fleets = stack.fleets.filter((f) => f.name !== fleetName);
-  saveStack(stack);
-  log.success(`Fleet "${fleetName}" removed`);
   outro("Done");
 }
 
@@ -822,29 +734,23 @@ export const stackCommand: CommandModule = {
         }
       })
       .command("show <name>", "Display stack details", (y) =>
-        y.positional("name", { type: "string", demandOption: true, describe: "Stack name" }),
+        y.positional("name", { type: "string", demandOption: true, describe: "Stack name", ...stackNameChoices() }),
       (argv) => {
         const stack = requireStack(argv.name as string);
         printStackSummary(stack);
       })
       .command("edit <name>", "Edit a stack", (y) =>
         y
-          .positional("name", { type: "string", demandOption: true, describe: "Stack name" })
-          .option("fleet", { type: "string", describe: "Jump straight to a fleet's daemon settings" }),
+          .positional("name", { type: "string", demandOption: true, describe: "Stack name", ...stackNameChoices() })
+          .option("fleet", { type: "string", describe: "Jump straight to a fleet's daemon settings", ...fleetNameChoices() }),
       (argv) => handleEdit(argv.name as string, argv.fleet as string | undefined))
-      .command("rm <name>", "Delete a stack, or remove the daemon from a fleet's hosts (--fleet)", (y) =>
+      .command("rm <name>", "Delete a stack definition", (y) =>
         y
-          .positional("name", { type: "string", demandOption: true, describe: "Stack name" })
-          .option("fleet", { type: "string", describe: "Remove the daemon from this fleet's hosts instead of deleting the stack" }),
-      (argv) => {
-        const fleetName = argv.fleet as string | undefined;
-        return fleetName
-          ? handleRmFleet(argv.name as string, fleetName)
-          : handleRm(argv.name as string);
-      })
+          .positional("name", { type: "string", demandOption: true, describe: "Stack name", ...stackNameChoices() }),
+      (argv) => handleRm(argv.name as string))
       .command("up <name>", "Plan and apply the whole stack at its pinned version", (y) =>
         y
-          .positional("name", { type: "string", demandOption: true, describe: "Stack name" })
+          .positional("name", { type: "string", demandOption: true, describe: "Stack name", ...stackNameChoices() })
           .option("target-version", {
             describe: "Pin the stack to this release and deploy it (defaults to the stack's pinned version)",
             type: "string",
@@ -852,8 +758,8 @@ export const stackCommand: CommandModule = {
       (argv) => handleUp(argv.name as string, argv["target-version"] as string | undefined))
       .command(["doctor <name>", "status <name>"], "Health check the stack's hosts", (y) =>
         y
-          .positional("name", { type: "string", demandOption: true, describe: "Stack name" })
-          .option("fleet", { type: "string", describe: "Only check this fleet's hosts" }),
+          .positional("name", { type: "string", demandOption: true, describe: "Stack name", ...stackNameChoices() })
+          .option("fleet", { type: "string", describe: "Only check this fleet's hosts", ...fleetNameChoices() }),
       (argv) => handleDoctor(argv.name as string, argv.fleet as string | undefined))
       .demandCommand(1, "Specify a stack action")
       .strict(),

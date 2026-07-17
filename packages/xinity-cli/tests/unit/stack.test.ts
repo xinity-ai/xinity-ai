@@ -19,6 +19,7 @@ import {
   deleteStack,
   listStacks,
 } from "../../src/lib/stack.ts";
+import { loadStackState, markHostManaged } from "../../src/lib/stack-state.ts";
 
 function makeStack(overrides: Partial<StackDefinition> = {}): StackDefinition {
   return {
@@ -107,10 +108,23 @@ describe("stack persistence", () => {
     });
   });
 
-  test("deleteStack removes the definition", () => {
+  test("saveStack never persists derivedEnv", () => {
+    const stack = makeStack({ derivedEnv: { INFOSERVER_URL: "http://10.0.0.1:8090" } });
+    saveStack(stack);
+
+    const written = JSON.parse(readFileSync(definitionPath("test-stack"), "utf-8")) as Record<string, unknown>;
+    expect(written.derivedEnv).toBeUndefined();
+    expect(loadStack("test-stack")?.derivedEnv).toBeUndefined();
+  });
+
+  test("deleteStack removes the definition and its state", () => {
     saveStack(makeStack());
+    markHostManaged("test-stack", "10.0.0.9");
+    expect(loadStackState("test-stack").hosts).toEqual([{ address: "10.0.0.9" }]);
+
     expect(deleteStack("test-stack")).toBe(true);
     expect(loadStack("test-stack")).toBeNull();
+    expect(loadStackState("test-stack").hosts).toEqual([]);
   });
 
   test("deleteStack returns false when file does not exist", () => {
@@ -211,6 +225,17 @@ describe("resolveEnv", () => {
   test("shared env overrides auto defaults", () => {
     const stack = makeStack({ env: { INFOSERVER_URL: "http://infoserver.internal:8090" } });
     expect(resolveEnv(stack, "gateway").INFOSERVER_URL).toBe("http://infoserver.internal:8090");
+  });
+
+  test("derivedEnv sits above auto defaults but below explicit shared env", () => {
+    const derived = makeStack({ derivedEnv: { INFOSERVER_URL: "http://10.0.0.9:8090" } });
+    expect(resolveEnv(derived, "gateway").INFOSERVER_URL).toBe("http://10.0.0.9:8090");
+
+    const overridden = makeStack({
+      derivedEnv: { INFOSERVER_URL: "http://10.0.0.9:8090" },
+      env: { INFOSERVER_URL: "http://public.example:8090" },
+    });
+    expect(resolveEnv(overridden, "gateway").INFOSERVER_URL).toBe("http://public.example:8090");
   });
 
   test("componentEnv applies only to its own component type", () => {
