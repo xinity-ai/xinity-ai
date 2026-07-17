@@ -37,6 +37,23 @@ const FIRST_PRINTABLE_ASCII = 0x20;
 
 const DEFAULT_REDIS_PORT = "6379";
 const DEFAULT_POSTGRES_PORT = "5432";
+const DEFAULT_SMTP_PORT = "587";
+
+function defaultPortForProtocol(protocol: string): string {
+  switch (protocol) {
+    case "postgresql:":
+    case "postgres:":
+      return DEFAULT_POSTGRES_PORT;
+    case "redis:":
+    case "rediss:":
+      return DEFAULT_REDIS_PORT;
+    case "smtp:":
+    case "smtps:":
+      return DEFAULT_SMTP_PORT;
+    default:
+      throw new Error(`No default port for protocol "${protocol}"; specify an explicit port in the URL`);
+  }
+}
 
 /**
  * Read a password from the terminal with echo fully disabled.
@@ -383,7 +400,7 @@ export class RemoteHost implements Host {
     }
     const parsed = new URL(url);
     const remoteHost = parsed.hostname;
-    const remotePort = parsed.port || (parsed.protocol === "redis:" ? DEFAULT_REDIS_PORT : DEFAULT_POSTGRES_PORT);
+    const remotePort = parsed.port || defaultPortForProtocol(parsed.protocol);
 
     // SSH local-port forwarding needs us to pick a free local port before opening
     // the tunnel; SSH can pick one with "-L 0:..." but doesn't surface which port
