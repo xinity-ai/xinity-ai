@@ -14,14 +14,13 @@ import {
   listStacks,
   validateStackName,
   getFleet,
-  getHost,
   getFleetForHost,
   hostLabel,
   claimFleetHosts,
   pruneFleetMembership,
 } from "../lib/stack.ts";
 import { editSharedLayer, editComponentLayer, editFleetLayer } from "../lib/stack-layers.ts";
-import { searchSelect, searchMultiselect, listSelect } from "../lib/search-list.ts";
+import { searchSelect, searchMultiselect, listSelect, type SearchListOption } from "../lib/search-list.ts";
 import { runStackFlow } from "../lib/stack-plan.ts";
 import { runDoctor, buildSummaryLine, type DoctorReport } from "../lib/doctor.ts";
 import { fetchRelease, listReleases, type ReleaseListEntry } from "../lib/github.ts";
@@ -268,14 +267,15 @@ async function editPinnedVersion(stack: StackDefinition, releasesPromise: Promis
       prerelease ? yellow("(prerelease)") : "",
       tag === stack.pinnedVersion ? green("(pinned)") : "",
     ].filter(Boolean);
-    const options = releases.map((r) => ({
+    // The manual-entry option is an object so it can never collide with a tag.
+    const options: SearchListOption<string | { manual: true }>[] = releases.map((r) => ({
       value: r.tagName,
       label: [r.tagName, ...markers(r.tagName, r.prerelease)].join(" "),
     }));
     if (!releases.some((r) => r.tagName === stack.pinnedVersion)) {
       options.push({ value: stack.pinnedVersion, label: `${stack.pinnedVersion} ${green("(pinned)")}` });
     }
-    options.push({ value: "__other__", label: dim("Enter a version manually") });
+    options.push({ value: { manual: true }, label: dim("Enter a version manually") });
 
     const choice = await promptOrUndefined(searchSelect({
       message: "Stack release version",
@@ -285,7 +285,7 @@ async function editPinnedVersion(stack: StackDefinition, releasesPromise: Promis
     if (choice === undefined) {
       return;
     }
-    version = choice === "__other__" ? await promptManualVersion(stack) : choice;
+    version = typeof choice === "string" ? choice : await promptManualVersion(stack);
   }
   if (version && version !== stack.pinnedVersion) {
     stack.pinnedVersion = version;
@@ -341,31 +341,30 @@ function claimFleetHostsLogged(stack: StackDefinition, fleet: FleetDefinition, m
 
 async function hostsMenu(stack: StackDefinition): Promise<void> {
   while (true) {
-    const choice = await promptOrUndefined(searchSelect({
+    // Hosts are the option values themselves, so the add/back entries can
+    // never collide with an address.
+    const choice = await promptOrUndefined(searchSelect<StackHost | "add" | "back">({
       message: "Hosts",
       transient: true,
       options: [
         ...stack.hosts.map((h) => ({
-          value: h.address,
+          value: h,
           label: hostLabel(h),
           hint: h.components.join(", "),
         })),
-        { value: "__add__", label: cyan("+ Add a host") },
-        { value: "__back__", label: dim("Back") },
+        { value: "add", label: cyan("+ Add a host") },
+        { value: "back", label: dim("Back") },
       ],
     }));
 
-    if (choice === undefined || choice === "__back__") {
+    if (choice === undefined || choice === "back") {
       return;
     }
-    if (choice === "__add__") {
+    if (choice === "add") {
       await addHostInteractive(stack);
       continue;
     }
-    const host = getHost(stack, choice);
-    if (host) {
-      await hostMenu(stack, host);
-    }
+    await hostMenu(stack, choice);
   }
 }
 
@@ -472,24 +471,26 @@ async function addHostInteractive(stack: StackDefinition): Promise<void> {
 
 async function fleetsMenu(stack: StackDefinition): Promise<void> {
   while (true) {
-    const choice = await promptOrUndefined(listSelect({
+    // Fleets are the option values themselves, so the add/back entries can
+    // never collide with a fleet name.
+    const choice = await promptOrUndefined(listSelect<FleetDefinition | "add" | "back">({
       message: "Fleets",
       transient: true,
       options: [
         ...stack.fleets.map((f) => ({
-          value: f.name,
+          value: f,
           label: f.name,
           hint: f.hosts.join(", "),
         })),
-        { value: "__add__", label: cyan("+ Add a fleet") },
-        { value: "__back__", label: dim("Back") },
+        { value: "add", label: cyan("+ Add a fleet") },
+        { value: "back", label: dim("Back") },
       ],
     }));
 
-    if (choice === undefined || choice === "__back__") {
+    if (choice === undefined || choice === "back") {
       return;
     }
-    if (choice === "__add__") {
+    if (choice === "add") {
       const fleet = await addFleetInteractive(stack);
       if (fleet) {
         // A fleet's daemon settings belong to the moment it is created;
@@ -498,10 +499,7 @@ async function fleetsMenu(stack: StackDefinition): Promise<void> {
       }
       continue;
     }
-    const fleet = getFleet(stack, choice);
-    if (fleet) {
-      await fleetMenu(stack, fleet);
-    }
+    await fleetMenu(stack, choice);
   }
 }
 

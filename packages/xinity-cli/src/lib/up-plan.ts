@@ -7,7 +7,7 @@
  */
 import { cancel, confirm, intro, isCancel, log, note, outro, select, spinner } from "./clack.ts";
 import { bold, cyan, dim } from "picocolors";
-import { type Component, ENV_SCHEMAS, ENV_DIR, getAutoDefaults } from "./component-meta.ts";
+import { type Component, ENV_SCHEMAS, ENV_DIR, getAutoDefaults, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT } from "./component-meta.ts";
 import { type Host, isUnitActiveOn } from "./host.ts";
 import { pass, fail, warn, heading } from "./output.ts";
 import { parseEnvString } from "./env-file.ts";
@@ -18,7 +18,7 @@ import { buildEnvWriteCommand, buildSecretsWriteCommand, buildUnitWriteCommand, 
 import { runSteps, createProgress } from "./step-runner.ts";
 import { resolveVersion, applyComponentAction, type VersionResult } from "./installer.ts";
 import { collectEnv, menuEditEnv, readExistingEnvState, diffEnv, type EnvBundle, type EnvChange } from "./env-prompt.ts";
-import { discoverConnectionUrl, dbHint, runMigrations } from "./migrator.ts";
+import { discoverConnectionUrl, describeMigrationStep, migrationScriptComment, runMigrations } from "./migrator.ts";
 import { describePostgresProvision, buildPostgresProvisionCommands, applyPostgresProvision, type PostgresProvision } from "./postgres-setup.ts";
 import { planRedis, applyRedisPlan, describeRedisPlan, type RedisPlan } from "./redis-setup.ts";
 import { readManifest } from "./manifest.ts";
@@ -43,7 +43,7 @@ export interface ComponentAction {
 export interface UpPlan {
   targetVersion: string;
   provisionPostgres?: PostgresProvision;
-  migrations?: { connectionUrl: string; hint: string };
+  migrations?: { connectionUrl: string };
   redis?: RedisPlan;
   provisionOllama: boolean;
   components: ComponentAction[];
@@ -170,7 +170,7 @@ export async function planUp(
     const dbPlan = await discoverConnectionUrl(host);
     if (!dbPlan) return null;
     plan.provisionPostgres = dbPlan.provision;
-    plan.migrations = { connectionUrl: dbPlan.connectionUrl, hint: dbHint(dbPlan.connectionUrl) };
+    plan.migrations = { connectionUrl: dbPlan.connectionUrl };
     shared.DB_CONNECTION_URL = dbPlan.connectionUrl;
     resolvedKeys.add("DB_CONNECTION_URL");
 
@@ -228,7 +228,7 @@ export async function planUp(
     // An infoserver declared in this run is the one the following
     // components should use, not the hosted default.
     if (component === "infoserver") {
-      shared.INFOSERVER_URL = `http://localhost:${action.env.config.PORT ?? "8090"}`;
+      shared.INFOSERVER_URL = `http://localhost:${action.env.config.PORT ?? INFOSERVER_DEFAULT_PORT}`;
     }
 
     // Suggested prompt default only: the dashboard's GATEWAY_URL is the
@@ -237,7 +237,7 @@ export async function planUp(
     if (component === "gateway") {
       const bind = action.env.config.HOST;
       const gatewayHost = !bind || bind === "0.0.0.0" ? "localhost" : bind;
-      shared.GATEWAY_URL = `http://${gatewayHost}:${action.env.config.PORT ?? "4010"}`;
+      shared.GATEWAY_URL = `http://${gatewayHost}:${action.env.config.PORT ?? GATEWAY_DEFAULT_PORT}`;
     }
   }
 
@@ -314,7 +314,7 @@ export function renderUpPlan(plan: UpPlan): void {
     item([describePostgresProvision(plan.provisionPostgres)]);
   }
   if (plan.migrations) {
-    item([`Apply database migrations from release ${plan.targetVersion} to ${plan.migrations.hint}`]);
+    item([describeMigrationStep(plan.targetVersion, plan.migrations.connectionUrl)]);
   }
   if (plan.redis) {
     const lines = describeRedisPlan(plan.redis);
@@ -413,11 +413,7 @@ export async function renderUpPlanScript(plan: UpPlan): Promise<string> {
     );
   }
   if (plan.migrations) {
-    sections.push(
-      "# Database migrations run inside the CLI (drizzle migrator, no bash equivalent):",
-      `#   xinity up db --target-version ${plan.targetVersion}`,
-      "",
-    );
+    sections.push(...migrationScriptComment(`xinity up db --target-version ${plan.targetVersion}`));
   }
   if (plan.redis) {
     sections.push("# Redis:");
@@ -533,7 +529,7 @@ export async function printPostInstallSummary(host: Host): Promise<void> {
   if (gwContent) {
     const parsed = parseEnvString(gwContent);
     const gwHost = parsed.HOST || "localhost";
-    const gwPort = parsed.PORT || "4010";
+    const gwPort = parsed.PORT || GATEWAY_DEFAULT_PORT;
     summaryLines.push(`Gateway:    ${cyan(`http://${gwHost}:${gwPort}`)}`);
   }
 

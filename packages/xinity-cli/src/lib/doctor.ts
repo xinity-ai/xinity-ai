@@ -5,7 +5,7 @@ import { isOllamaRunning } from "./ollama-setup.ts";
 import { analyzeEnvSchema, categorizeFields, type EnvField } from "./env-prompt.ts";
 import { parseEnvString } from "./env-file.ts";
 import { unitName } from "./systemd.ts";
-import { type Component, ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, BIN_DIR, UNIT_DIR } from "./component-meta.ts";
+import { type Component, ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, BIN_DIR, UNIT_DIR, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT } from "./component-meta.ts";
 import { collectRemoteState, createCachedHost } from "./remote-probe.ts";
 import {
   type CheckResult, type CheckStatus,
@@ -311,7 +311,7 @@ async function checkGatewayConnectivity(
   }
   if (serviceActive) {
     const bindHost = values.HOST || "localhost";
-    const port = values.PORT || "4010";
+    const port = values.PORT || GATEWAY_DEFAULT_PORT;
     const checkHost = bindHost === "0.0.0.0" ? "localhost" : bindHost;
     checks.push(await checkServiceHealth(host, "Health endpoint", `http://${checkHost}:${port}/healthCheck`));
   }
@@ -358,7 +358,7 @@ async function checkInfoserverConnectivity(
   host: Host,
 ): Promise<CheckResult[]> {
   const checks: CheckResult[] = [];
-  const localPort = values.PORT || "8090";
+  const localPort = values.PORT || INFOSERVER_DEFAULT_PORT;
 
   // Check configured INFOSERVER_URL(s) from other components
   for (const { url, components } of discoveredUrls) {
