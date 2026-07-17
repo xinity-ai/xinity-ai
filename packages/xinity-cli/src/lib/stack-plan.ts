@@ -29,7 +29,7 @@ import {
 } from "./stack.ts";
 import { editSharedLayer, editComponentLayer, editFleetLayer, editHostLayer } from "./stack-layers.ts";
 import { loadStackState, findOrphanHosts, markHostManaged, unmarkHostManaged } from "./stack-state.ts";
-import { connectHosts, connectElevated, disposeAll } from "./multi-host.ts";
+import { connectHosts, connectElevated, disposeAll, mapBounded, HOST_CONCURRENCY } from "./multi-host.ts";
 
 export const COMPONENT_ORDER: Component[] = ["infoserver", "gateway", "dashboard", "daemon"];
 
@@ -289,6 +289,15 @@ async function planStack(
 
 // ─── Review ─────────────────────────────────────────────────────────────────
 
+function hostPlanBodyKey(hp: StackHostPlan): string {
+  return JSON.stringify({
+    f: hp.foreignStack, e: hp.evacuate, g: hp.forget,
+    r: hp.removals.map((r) => [r.component, r.version]),
+    a: hp.actions.map((a) => describeComponentAction(a)),
+    m: hp.membership,
+  });
+}
+
 function renderStackPlan(plan: StackPlan): void {
   log.step(bold("Planned actions"));
   let step = 1;
@@ -297,7 +306,19 @@ function renderStackPlan(plan: StackPlan): void {
   } else if (plan.migration) {
     log.info(dim(`Database migrations already applied for ${plan.migration.targetTag}`));
   }
-  for (const hostPlan of plan.hostPlans) {
+
+  const groups = new Map<string, { addresses: string[]; hostPlan: StackHostPlan }>();
+  for (const hp of plan.hostPlans) {
+    const key = hostPlanBodyKey(hp);
+    const g = groups.get(key);
+    if (g) {
+      g.addresses.push(hp.address);
+    } else {
+      groups.set(key, { addresses: [hp.address], hostPlan: hp });
+    }
+  }
+
+  for (const { addresses, hostPlan } of groups.values()) {
     const lines: string[] = [];
     if (hostPlan.foreignStack) {
       lines.push(yellow(`⚠ Marked as belonging to stack "${hostPlan.foreignStack}"; this stack will claim it`));
@@ -325,7 +346,10 @@ function renderStackPlan(plan: StackPlan): void {
     if (hostPlan.evacuate) {
       lines.push(`${step++}. Clear stack membership and stop managing this host`);
     }
-    note(lines.join("\n"), cyan(hostPlan.address));
+    const label = addresses.length === 1
+      ? addresses[0]!
+      : `${addresses.join(", ")} (${addresses.length} hosts)`;
+    note(lines.join("\n"), cyan(label));
   }
 }
 
@@ -412,20 +436,19 @@ async function applyStackPlan(
     saveStack(stack);
   }
 
-  let failures = 0;
-  for (const hostPlan of plan.hostPlans) {
-    if (hostPlan.forget) {
-      unmarkHostManaged(stack.name, hostPlan.address);
-      continue;
+  for (const hp of plan.hostPlans) {
+    if (hp.forget) {
+      unmarkHostManaged(stack.name, hp.address);
+    } else if (!hp.evacuate) {
+      markHostManaged(stack.name, hp.address);
     }
+  }
+
+  const active = plan.hostPlans.filter((p) => !p.forget);
+  const hostResults = await mapBounded(active, HOST_CONCURRENCY, async (hostPlan) => {
     heading(hostPlan.address);
     const host = (hosts.get(hostPlan.address) ?? orphanHosts.get(hostPlan.address))!;
-    if (!hostPlan.evacuate) {
-      markHostManaged(stack.name, hostPlan.address);
-    }
     let hostFailures = 0;
-    // Strays go first: a component moving between roles could otherwise
-    // collide with its replacement over ports or paths.
     for (const removal of hostPlan.removals) {
       const result = await removeComponentCollapsed({ component: removal.component, host });
       if (!result.success) {
@@ -447,8 +470,13 @@ async function applyStackPlan(
     if (hostPlan.membership) {
       await saveStackMembership(hostPlan.membership, host);
     }
-    // A failed evacuation stays in the state so the next up retries it.
+    return { hostPlan, hostFailures };
+  });
+
+  let failures = 0;
+  for (const { hostPlan, hostFailures } of hostResults) {
     if (hostPlan.evacuate && hostFailures === 0) {
+      const host = (hosts.get(hostPlan.address) ?? orphanHosts.get(hostPlan.address))!;
       await saveStackMembership(null, host);
       unmarkHostManaged(stack.name, hostPlan.address);
     }

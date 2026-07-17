@@ -39,3 +39,20 @@ export async function connectHosts(addresses: string[]): Promise<Map<string, Hos
 export async function disposeAll(hosts: Map<string, Host>): Promise<void> {
   await Promise.allSettled([...hosts.values()].map((host) => host.dispose()));
 }
+
+/** How many hosts are worked on at once wherever host operations run in parallel. */
+export const HOST_CONCURRENCY = 8;
+
+/** Map over items with at most `limit` calls in flight; results keep item order. */
+export async function mapBounded<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i]!);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}

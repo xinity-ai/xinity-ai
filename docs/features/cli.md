@@ -40,6 +40,8 @@ Downloads the latest release, verifies SHA-256, and atomically replaces the bina
 
 The single-host commands (`up`, `rm`, `configure`, `doctor`) accept `--target-host` to operate on a remote server via SSH; stacks manage their own host lists. Uses ControlMaster multiplexing for session reuse and batches remote checks into single SSH calls for performance. Root privileges are established once up front (root detected, passwordless sudo auto-detected, otherwise one password prompt per host).
 
+For stacks with many hosts, SSH key-based root login eliminates repeated authentication prompts entirely. Set up an SSH key pair, add the public key to each host's `/root/.ssh/authorized_keys`, and ensure `PermitRootLogin prohibit-password` is set in `/etc/ssh/sshd_config`. With an SSH agent running, even passphrase-protected keys require only one unlock per session regardless of host count. This is the recommended setup for fleet-scale deployments.
+
 ### Shell completion (`xinity completion`)
 
 Generates completion scripts for bash, zsh, and fish. Includes dynamic completion of `act` route names from the live dashboard.
