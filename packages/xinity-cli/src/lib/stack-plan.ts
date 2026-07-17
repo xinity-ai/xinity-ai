@@ -19,7 +19,7 @@ import { removeComponentCollapsed } from "./install-remove.ts";
 import { readManifest, saveStackMembership, type StackMembership } from "./manifest.ts";
 import { dbHint, runMigrations } from "./migrator.ts";
 import { connectHost } from "./remote-host.ts";
-import { type ComponentAction, describeComponentAction, buildComponentAction, reviewGate } from "./up-plan.ts";
+import { type ComponentAction, describeComponentAction, buildComponentAction, reviewGate, scriptComponentSection } from "./up-plan.ts";
 import { analyzeEnvSchema, splitValuesByCategory, readExistingEnvState, diffEnv, missingRequiredFields } from "./env-prompt.ts";
 import {
   type StackDefinition, type StackHost, type FleetDefinition,
@@ -49,7 +49,26 @@ interface StackHostPlan {
   foreignStack?: string;
   /** Host left the definition; after the removals its membership marker and state entry are cleared. */
   evacuate?: boolean;
+  /** Reason the host needs no work and only its state entry is dropped. */
+  forget?: string;
 }
+
+export interface StackPlan {
+  targetVersion: string;
+  migration: { url: string; targetTag: string; pending: boolean } | null;
+  hostPlans: StackHostPlan[];
+}
+
+type StackPlanOutcome =
+  | { status: "planned"; plan: StackPlan }
+  | { status: "cancelled" }
+  | { status: "failed" };
+
+function stackMigrateUrl(stack: StackDefinition): string | undefined {
+  return stack.secrets.DB_CONNECTION_URL ?? stack.env.DB_CONNECTION_URL;
+}
+
+// ─── Collect ────────────────────────────────────────────────────────────────
 
 function selectDeployments(stack: StackDefinition): Deployment[] {
   const deployments: Deployment[] = [];
@@ -172,45 +191,296 @@ async function planHostComponent(
   }, version, host);
 }
 
-function renderStackPlan(plans: StackHostPlan[], firstStep: number): void {
-  let step = firstStep;
-  for (const plan of plans) {
-    const lines: string[] = [];
-    if (plan.foreignStack) {
-      lines.push(yellow(`⚠ Marked as belonging to stack "${plan.foreignStack}"; this stack will claim it`));
+/**
+ * Collect the full plan: evacuations for hosts that left the definition,
+ * stack-level config (prompting where required values are missing), then
+ * per-host component actions. Nothing on the hosts or in the state file
+ * changes here; connections made to orphans are added to orphanHosts so
+ * the apply phase reuses them and the caller disposes them.
+ */
+async function planStack(
+  stack: StackDefinition,
+  targetVersion: string,
+  deployments: Deployment[],
+  orphanCandidates: string[],
+  hosts: Map<string, Host>,
+  orphanHosts: Map<string, Host>,
+): Promise<StackPlanOutcome> {
+  const migrateUrl = stackMigrateUrl(stack);
+  let migration: StackPlan["migration"] = null;
+  if (migrateUrl) {
+    try {
+      const targetTag = (await fetchRelease(targetVersion)).tagName;
+      migration = { url: migrateUrl, targetTag, pending: targetTag !== stack.dbMigratedVersion };
+    } catch (err) {
+      fail("Release", (err as Error).message);
+      return { status: "failed" };
     }
-    if (plan.evacuate) {
+  }
+
+  const hostPlans: StackHostPlan[] = [];
+  const untracked = (address: string, forget: string): void => {
+    hostPlans.push({ address, removals: [], actions: [], membership: null, forget });
+  };
+
+  // Hosts the state says we manage but the definition no longer lists get
+  // evacuated: everything on them is removed. Unreachable ones are
+  // forgotten; a host another stack has since claimed is left to it.
+  for (const address of orphanCandidates) {
+    const connection = await connectElevated(address);
+    if ("failed" in connection) {
+      if (connection.failed === "declined") {
+        log.error(connection.message);
+        return { status: "failed" };
+      }
+      untracked(address, "no longer in the stack and unreachable");
+      continue;
+    }
+    const host = connection.host;
+    orphanHosts.set(address, host);
+    const manifest = await readManifest(host);
+    if (manifest.stack && manifest.stack.name !== stack.name) {
+      untracked(address, `now belongs to stack "${manifest.stack.name}"`);
+      continue;
+    }
+    const removals = COMPONENT_ORDER
+      .filter((c) => manifest.components[c])
+      .map((c) => ({ component: c, version: manifest.components[c]?.version }));
+    if (removals.length === 0 && !manifest.stack) {
+      untracked(address, "nothing is installed");
+      continue;
+    }
+    hostPlans.push({ address, removals, actions: [], membership: null, evacuate: true });
+  }
+
+  deriveInfoserverUrl(stack);
+  if (!(await ensureStackLevelConfig(stack, deployments))) {
+    return { status: "cancelled" };
+  }
+
+  for (const d of deployments) {
+    const host = hosts.get(d.host.address)!;
+    const manifest = await readManifest(host);
+    const removals = COMPONENT_ORDER
+      .filter((c) => manifest.components[c] && !d.host.components.includes(c))
+      .map((c) => ({ component: c, version: manifest.components[c]?.version }));
+
+    const fleetName = getFleetForHost(stack, d.host.address)?.name;
+    const marked = manifest.stack;
+    const membership: StackMembership | null =
+      marked?.name === stack.name && marked.fleet === fleetName
+        ? null
+        : { name: stack.name, ...(fleetName ? { fleet: fleetName } : {}) };
+    const foreignStack = marked && marked.name !== stack.name ? marked.name : undefined;
+
+    const actions: ComponentAction[] = [];
+    for (const component of d.components) {
+      const action = await planHostComponent(stack, component, d.host.address, host, targetVersion);
+      if (!action) {
+        return { status: "failed" };
+      }
+      actions.push(action);
+    }
+    hostPlans.push({ address: d.host.address, removals, actions, membership, foreignStack });
+  }
+
+  return { status: "planned", plan: { targetVersion, migration, hostPlans } };
+}
+
+// ─── Review ─────────────────────────────────────────────────────────────────
+
+function renderStackPlan(plan: StackPlan): void {
+  log.step(bold("Planned actions"));
+  let step = 1;
+  if (plan.migration?.pending) {
+    log.info(`${step++}. Apply database migrations from release ${plan.migration.targetTag} to ${dbHint(plan.migration.url)}`);
+  } else if (plan.migration) {
+    log.info(dim(`Database migrations already applied for ${plan.migration.targetTag}`));
+  }
+  for (const hostPlan of plan.hostPlans) {
+    const lines: string[] = [];
+    if (hostPlan.foreignStack) {
+      lines.push(yellow(`⚠ Marked as belonging to stack "${hostPlan.foreignStack}"; this stack will claim it`));
+    }
+    if (hostPlan.evacuate) {
       lines.push(yellow("⚠ No longer in the stack definition; everything managed here will be removed"));
     }
-    for (const removal of plan.removals) {
+    if (hostPlan.forget) {
+      lines.push(`${step++}. Stop tracking this host (${hostPlan.forget})`);
+    }
+    for (const removal of hostPlan.removals) {
       lines.push(`${step++}. Remove ${cyan(removal.component)}${removal.version ? ` ${removal.version}` : ""}`);
       lines.push(dim("   installed on the host but not part of this stack"));
     }
-    for (const action of plan.actions) {
+    for (const action of hostPlan.actions) {
       const [head, ...rest] = describeComponentAction(action);
       lines.push(`${step++}. ${head}`);
       for (const line of rest) {
         lines.push(dim(`   ${line}`));
       }
     }
-    if (plan.membership) {
-      lines.push(`${step++}. Record stack membership: ${cyan(plan.membership.name)}${plan.membership.fleet ? ` · fleet ${cyan(plan.membership.fleet)}` : ""}`);
+    if (hostPlan.membership) {
+      lines.push(`${step++}. Record stack membership: ${cyan(hostPlan.membership.name)}${hostPlan.membership.fleet ? ` · fleet ${cyan(hostPlan.membership.fleet)}` : ""}`);
     }
-    if (plan.evacuate) {
+    if (hostPlan.evacuate) {
       lines.push(`${step++}. Clear stack membership and stop managing this host`);
     }
-    note(lines.join("\n"), cyan(plan.address));
+    note(lines.join("\n"), cyan(hostPlan.address));
   }
 }
 
+function stackPlanIsEmpty(plan: StackPlan): boolean {
+  return !plan.migration?.pending && plan.hostPlans.every(
+    (p) => p.removals.length === 0 && p.membership === null && !p.evacuate && !p.forget && p.actions.every((a) => a.kind === "none"),
+  );
+}
+
+const SCRIPT_HEADER = [
+  "#!/usr/bin/env bash",
+  "# Equivalent script for the reviewed actions; each section runs as root on the named host.",
+  "# WARNING: contains configuration secrets in plain text.",
+  "set -euo pipefail",
+  "",
+];
+
 /**
- * The shared engine behind `stack up` and `fleet up`: collect everything,
- * review one plan, gate once, then apply host by host.
+ * Bash script reproducing the plan's per-host component actions. Steps the
+ * CLI performs itself (migrations, membership markers, the state file) have
+ * no bash equivalent and appear as comments.
+ */
+async function renderStackPlanScript(stack: StackDefinition, plan: StackPlan): Promise<string> {
+  const sections: string[] = [...SCRIPT_HEADER];
+  if (plan.migration?.pending) {
+    sections.push(
+      "# Database migrations run inside the CLI (drizzle migrator, no bash equivalent):",
+      `#   xinity stack up ${stack.name}`,
+      "",
+    );
+  }
+  for (const hostPlan of plan.hostPlans) {
+    sections.push(`# ════ ${hostPlan.address} ════`);
+    if (hostPlan.forget) {
+      sections.push(`# only its state entry is dropped (${hostPlan.forget}); nothing runs here`, "");
+      continue;
+    }
+    for (const removal of hostPlan.removals) {
+      sections.push(`# remove ${removal.component}: no bash equivalent; run: xinity rm ${removal.component} --target-host ${hostPlan.address}`);
+    }
+    for (const action of hostPlan.actions) {
+      sections.push(...(await scriptComponentSection(action)));
+    }
+    if (hostPlan.membership || hostPlan.evacuate) {
+      sections.push("# the stack membership marker in the host manifest is maintained by the CLI");
+    }
+    sections.push("");
+  }
+  return sections.join("\n");
+}
+
+// ─── Apply ──────────────────────────────────────────────────────────────────
+
+async function applyStackPlan(
+  stack: StackDefinition,
+  plan: StackPlan,
+  hosts: Map<string, Host>,
+  orphanHosts: Map<string, Host>,
+): Promise<boolean> {
+  if (plan.migration?.pending) {
+    heading("database");
+    // Migrations run through any stack host's tunnel; without hosts the
+    // database must be reachable from this machine directly.
+    let migrationHost: Host | undefined = hosts.values().next().value;
+    let localFallback: Host | null = null;
+    if (!migrationHost) {
+      localFallback = await connectHost();
+      migrationHost = localFallback;
+    }
+    try {
+      const result = await runMigrations({
+        connectionUrl: plan.migration.url,
+        targetVersion: plan.targetVersion,
+        dryRun: false,
+        host: migrationHost,
+        persist: false,
+      });
+      if (!result.success) {
+        for (const err of result.errors) {
+          fail("Migrations", err);
+        }
+        return false;
+      }
+    } finally {
+      await localFallback?.dispose();
+    }
+    stack.dbMigratedVersion = plan.migration.targetTag;
+    saveStack(stack);
+  }
+
+  let failures = 0;
+  for (const hostPlan of plan.hostPlans) {
+    if (hostPlan.forget) {
+      unmarkHostManaged(stack.name, hostPlan.address);
+      continue;
+    }
+    heading(hostPlan.address);
+    const host = (hosts.get(hostPlan.address) ?? orphanHosts.get(hostPlan.address))!;
+    if (!hostPlan.evacuate) {
+      markHostManaged(stack.name, hostPlan.address);
+    }
+    let hostFailures = 0;
+    // Strays go first: a component moving between roles could otherwise
+    // collide with its replacement over ports or paths.
+    for (const removal of hostPlan.removals) {
+      const result = await removeComponentCollapsed({ component: removal.component, host });
+      if (!result.success) {
+        hostFailures++;
+        for (const err of result.errors) {
+          fail(removal.component, err);
+        }
+      }
+    }
+    for (const action of hostPlan.actions) {
+      const result = await applyComponentAction(action, host);
+      if (!result.success) {
+        hostFailures++;
+        for (const err of result.errors) {
+          fail(action.component, err);
+        }
+      }
+    }
+    if (hostPlan.membership) {
+      await saveStackMembership(hostPlan.membership, host);
+    }
+    // A failed evacuation stays in the state so the next up retries it.
+    if (hostPlan.evacuate && hostFailures === 0) {
+      await saveStackMembership(null, host);
+      unmarkHostManaged(stack.name, hostPlan.address);
+    }
+    failures += hostFailures;
+  }
+
+  if (failures > 0) {
+    warn("Stack", `${failures} component action(s) failed; see above`);
+    return false;
+  }
+  if (plan.hostPlans.some((p) => !p.forget)) {
+    pass("Stack", "All hosts applied successfully");
+  } else if (plan.migration?.pending) {
+    pass("Stack", "Database migrations applied");
+  } else {
+    pass("Stack", "Stack state updated");
+  }
+  return true;
+}
+
+/**
+ * The shared engine behind `stack up`: collect everything, review one plan,
+ * gate once (or stop there on a dry run), then apply host by host.
  * Returns false when something failed (as opposed to a clean abort).
  */
 export async function runStackFlow(
   stack: StackDefinition,
-  opts: { targetVersion: string },
+  opts: { targetVersion: string; dryRun?: boolean },
 ): Promise<boolean> {
   const validationErrors = validateStack(stack);
   if (validationErrors.length > 0) {
@@ -222,10 +492,9 @@ export async function runStackFlow(
   }
 
   const deployments = selectDeployments(stack);
-  const migrateUrl = stack.secrets.DB_CONNECTION_URL ?? stack.env.DB_CONNECTION_URL;
   const orphanCandidates = findOrphanHosts(loadStackState(stack.name), stack);
 
-  if (deployments.length === 0 && !migrateUrl && orphanCandidates.length === 0) {
+  if (deployments.length === 0 && !stackMigrateUrl(stack) && orphanCandidates.length === 0) {
     warn("Stack", "Nothing to deploy (no matching hosts with components)");
     return true;
   }
@@ -239,17 +508,6 @@ export async function runStackFlow(
     log.info(dim(`No hosts defined yet; planning database migrations only. Add hosts with: xinity stack edit ${stack.name}`));
   }
 
-  let targetTag: string | null = null;
-  if (migrateUrl) {
-    try {
-      targetTag = (await fetchRelease(opts.targetVersion)).tagName;
-    } catch (err) {
-      fail("Release", (err as Error).message);
-      return false;
-    }
-  }
-  const migrationsPending = migrateUrl !== undefined && targetTag !== stack.dbMigratedVersion;
-
   const hosts = deployments.length > 0
     ? await connectHosts(deployments.map((d) => d.host.address))
     : new Map<string, Host>();
@@ -258,168 +516,33 @@ export async function runStackFlow(
   }
 
   const orphanHosts = new Map<string, Host>();
-  let localFallback: Host | null = null;
   try {
-    const plans: StackHostPlan[] = [];
-
-    // Hosts the state says we manage but the definition no longer lists get
-    // evacuated: everything on them is removed. Unreachable ones are
-    // forgotten; a host another stack has since claimed is left to it.
-    for (const address of orphanCandidates) {
-      const connection = await connectElevated(address);
-      if ("failed" in connection) {
-        if (connection.failed === "declined") {
-          log.error(connection.message);
-          return false;
-        }
-        warn(address, "No longer in the stack and unreachable; forgetting it");
-        unmarkHostManaged(stack.name, address);
-        continue;
-      }
-      const host = connection.host;
-      orphanHosts.set(address, host);
-      const manifest = await readManifest(host);
-      if (manifest.stack && manifest.stack.name !== stack.name) {
-        log.info(`${address} is no longer in this stack and now belongs to "${manifest.stack.name}"; leaving it untouched`);
-        unmarkHostManaged(stack.name, address);
-        continue;
-      }
-      const removals = COMPONENT_ORDER
-        .filter((c) => manifest.components[c])
-        .map((c) => ({ component: c, version: manifest.components[c]?.version }));
-      if (removals.length === 0 && !manifest.stack) {
-        unmarkHostManaged(stack.name, address);
-        continue;
-      }
-      plans.push({ address, removals, actions: [], membership: null, evacuate: true });
+    const outcome = await planStack(stack, opts.targetVersion, deployments, orphanCandidates, hosts, orphanHosts);
+    if (outcome.status === "failed") {
+      return false;
     }
-
-    deriveInfoserverUrl(stack);
-    if (!(await ensureStackLevelConfig(stack, deployments))) {
+    if (outcome.status === "cancelled") {
       cancel("Cancelled, nothing was changed on the hosts.");
       return true;
     }
 
-    for (const d of deployments) {
-      const host = hosts.get(d.host.address)!;
-      markHostManaged(stack.name, d.host.address);
-
-      const manifest = await readManifest(host);
-      const removals = COMPONENT_ORDER
-        .filter((c) => manifest.components[c] && !d.host.components.includes(c))
-        .map((c) => ({ component: c, version: manifest.components[c]?.version }));
-
-      const fleetName = getFleetForHost(stack, d.host.address)?.name;
-      const marked = manifest.stack;
-      const membership: StackMembership | null =
-        marked?.name === stack.name && marked.fleet === fleetName
-          ? null
-          : { name: stack.name, ...(fleetName ? { fleet: fleetName } : {}) };
-      const foreignStack = marked && marked.name !== stack.name ? marked.name : undefined;
-
-      const actions: ComponentAction[] = [];
-      for (const component of d.components) {
-        const action = await planHostComponent(stack, component, d.host.address, host, opts.targetVersion);
-        if (!action) {
-          return false;
-        }
-        actions.push(action);
-      }
-      plans.push({ address: d.host.address, removals, actions, membership, foreignStack });
-    }
-
-    log.step(bold("Planned actions"));
-    let firstStep = 1;
-    if (migrationsPending) {
-      log.info(`${firstStep++}. Apply database migrations from release ${targetTag} to ${dbHint(migrateUrl!)}`);
-    } else if (migrateUrl) {
-      log.info(dim(`Database migrations already applied for ${targetTag}`));
-    }
-    renderStackPlan(plans, firstStep);
-
-    const nothingToDo = plans.every(
-      (plan) => plan.removals.length === 0 && plan.membership === null && !plan.evacuate && plan.actions.every((a) => a.kind === "none"),
-    );
-    if (!migrationsPending && nothingToDo) {
+    const plan = outcome.plan;
+    renderStackPlan(plan);
+    if (stackPlanIsEmpty(plan)) {
       pass("Stack", "Everything is current and configured; nothing to apply");
       return true;
     }
-
-    if (!(await reviewGate())) {
+    if (opts.dryRun) {
+      log.info(yellow("Dry run, stopping before apply."));
+      return true;
+    }
+    if (!(await reviewGate(() => renderStackPlanScript(stack, plan)))) {
       return true;
     }
 
-    if (migrationsPending) {
-      heading("database");
-      // Migrations run through any stack host's tunnel; without hosts the
-      // database must be reachable from this machine directly.
-      let migrationHost: Host | undefined = hosts.values().next().value;
-      if (!migrationHost) {
-        localFallback = await connectHost();
-        migrationHost = localFallback;
-      }
-      const result = await runMigrations({
-        connectionUrl: migrateUrl!,
-        targetVersion: opts.targetVersion,
-        dryRun: false,
-        host: migrationHost,
-        persist: false,
-      });
-      if (!result.success) {
-        for (const err of result.errors) {
-          fail("Migrations", err);
-        }
-        return false;
-      }
-      stack.dbMigratedVersion = targetTag!;
-      saveStack(stack);
-    }
-
-    let failures = 0;
-    for (const plan of plans) {
-      heading(plan.address);
-      const host = (hosts.get(plan.address) ?? orphanHosts.get(plan.address))!;
-      let hostFailures = 0;
-      // Strays go first: a component moving between roles could otherwise
-      // collide with its replacement over ports or paths.
-      for (const removal of plan.removals) {
-        const result = await removeComponentCollapsed({ component: removal.component, host });
-        if (!result.success) {
-          hostFailures++;
-          for (const err of result.errors) {
-            fail(removal.component, err);
-          }
-        }
-      }
-      for (const action of plan.actions) {
-        const result = await applyComponentAction(action, host);
-        if (!result.success) {
-          hostFailures++;
-          for (const err of result.errors) {
-            fail(action.component, err);
-          }
-        }
-      }
-      if (plan.membership) {
-        await saveStackMembership(plan.membership, host);
-      }
-      // A failed evacuation stays in the state so the next up retries it.
-      if (plan.evacuate && hostFailures === 0) {
-        await saveStackMembership(null, host);
-        unmarkHostManaged(stack.name, plan.address);
-      }
-      failures += hostFailures;
-    }
-
-    if (failures > 0) {
-      warn("Stack", `${failures} component action(s) failed; see above`);
-      return false;
-    }
-    pass("Stack", plans.length > 0 ? "All hosts applied successfully" : "Database migrations applied");
-    return true;
+    return await applyStackPlan(stack, plan, hosts, orphanHosts);
   } finally {
     await disposeAll(hosts);
     await disposeAll(orphanHosts);
-    await localFallback?.dispose();
   }
 }

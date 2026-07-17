@@ -368,7 +368,7 @@ function scriptConfigSection(component: Component, env: EnvBundle, serviceRunnin
   ];
 }
 
-async function scriptComponentSection(action: ComponentAction): Promise<string[]> {
+export async function scriptComponentSection(action: ComponentAction): Promise<string[]> {
   const { component } = action;
   const header = `# ── ${component}: ${action.kind} ${action.toVersion} ──`;
 
