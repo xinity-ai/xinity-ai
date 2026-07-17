@@ -98,19 +98,19 @@ export async function editHostLayer(
   component: Component,
   inherited: Record<string, string>,
 ): Promise<Record<string, string> | null> {
+  const host = getHost(stack, address);
   const overrides = await menuEditLayer({
     schema: ENV_SCHEMAS[component],
     inherited,
-    own: {},
+    own: host?.envOverrides ?? {},
     hiddenKeys: STACK_SHARED_KEYS,
     message: `${component} settings for ${address} (saved as host overrides)`,
   });
   if (overrides === null) {
     return null;
   }
-  const host = getHost(stack, address);
-  if (host && Object.keys(overrides).length > 0) {
-    host.envOverrides = { ...host.envOverrides, ...overrides };
+  if (host) {
+    host.envOverrides = overrides;
     saveStack(stack);
   }
   return overrides;
