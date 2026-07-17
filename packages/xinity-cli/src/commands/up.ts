@@ -3,7 +3,7 @@ import { confirm, intro, isCancel, log, outro } from "../lib/clack.ts";
 import { bold, cyan, dim, yellow } from "picocolors";
 import type { Component } from "../lib/component-meta.ts";
 import { preflightCheck, showDashboardHints } from "../lib/installer.ts";
-import { discoverConnectionUrl, dbHint, runMigrations } from "../lib/migrator.ts";
+import { discoverConnectionUrl, describeMigrationStep, runMigrations } from "../lib/migrator.ts";
 import {
   planUp,
   renderUpPlan,
@@ -41,7 +41,7 @@ async function runDbFlow(opts: { targetVersion: string; dryRun: boolean }, host:
     const { describePostgresProvision } = await import("../lib/postgres-setup.ts");
     log.info(`${step++}. ${describePostgresProvision(dbPlan.provision)}`);
   }
-  log.info(`${step}. Apply database migrations from release ${opts.targetVersion} to ${dbHint(dbPlan.connectionUrl)}`);
+  log.info(`${step}. ${describeMigrationStep(opts.targetVersion, dbPlan.connectionUrl)}`);
 
   if (opts.dryRun) {
     log.info(yellow("Dry run, stopping before apply."));

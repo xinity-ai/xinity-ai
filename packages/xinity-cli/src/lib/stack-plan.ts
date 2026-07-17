@@ -9,7 +9,7 @@
  */
 import { cancel, log, note } from "./clack.ts";
 import { bold, cyan, dim, yellow } from "picocolors";
-import { type Component, ENV_SCHEMAS } from "./component-meta.ts";
+import { type Component, ENV_SCHEMAS, INFOSERVER_DEFAULT_PORT } from "./component-meta.ts";
 import { type Host, isUnitActiveOn } from "./host.ts";
 import { heading, warn, fail, pass } from "./output.ts";
 import { unitName } from "./systemd.ts";
@@ -17,7 +17,7 @@ import { fetchRelease } from "./github.ts";
 import { resolveVersion, applyComponentAction } from "./installer.ts";
 import { removeComponentCollapsed } from "./install-remove.ts";
 import { readManifest, saveStackMembership, type StackMembership } from "./manifest.ts";
-import { dbHint, runMigrations } from "./migrator.ts";
+import { describeMigrationStep, migrationScriptComment, runMigrations } from "./migrator.ts";
 import { connectHost } from "./remote-host.ts";
 import { type ComponentAction, describeComponentAction, buildComponentAction, reviewGate, scriptComponentSection } from "./up-plan.ts";
 import { analyzeEnvSchema, splitValuesByCategory, readExistingEnvState, diffEnv, missingRequiredFields } from "./env-prompt.ts";
@@ -93,7 +93,7 @@ function deriveInfoserverUrl(stack: StackDefinition): void {
   const hostname = infoHost.address === "local"
     ? "localhost"
     : (infoHost.address.split("@").pop() ?? infoHost.address);
-  const port = stack.componentEnv.infoserver?.PORT ?? "8090";
+  const port = stack.componentEnv.infoserver?.PORT ?? INFOSERVER_DEFAULT_PORT;
   const url = `http://${hostname}:${port}`;
   stack.derivedEnv = { ...stack.derivedEnv, INFOSERVER_URL: url };
   log.info(`INFOSERVER_URL derived from the stack's infoserver host: ${cyan(url)}`);
@@ -293,7 +293,7 @@ function renderStackPlan(plan: StackPlan): void {
   log.step(bold("Planned actions"));
   let step = 1;
   if (plan.migration?.pending) {
-    log.info(`${step++}. Apply database migrations from release ${plan.migration.targetTag} to ${dbHint(plan.migration.url)}`);
+    log.info(`${step++}. ${describeMigrationStep(plan.migration.targetTag, plan.migration.url)}`);
   } else if (plan.migration) {
     log.info(dim(`Database migrations already applied for ${plan.migration.targetTag}`));
   }
@@ -351,11 +351,7 @@ const SCRIPT_HEADER = [
 async function renderStackPlanScript(stack: StackDefinition, plan: StackPlan): Promise<string> {
   const sections: string[] = [...SCRIPT_HEADER];
   if (plan.migration?.pending) {
-    sections.push(
-      "# Database migrations run inside the CLI (drizzle migrator, no bash equivalent):",
-      `#   xinity stack up ${stack.name}`,
-      "",
-    );
+    sections.push(...migrationScriptComment(`xinity stack up ${stack.name}`));
   }
   for (const hostPlan of plan.hostPlans) {
     sections.push(`# ════ ${hostPlan.address} ════`);

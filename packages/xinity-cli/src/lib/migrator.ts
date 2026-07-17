@@ -42,6 +42,20 @@ export function dbHint(url: string): string {
   }
 }
 
+/** The one wording every plan review uses for the migration step. */
+export function describeMigrationStep(targetVersion: string, connectionUrl: string): string {
+  return `Apply database migrations from release ${targetVersion} to ${dbHint(connectionUrl)}`;
+}
+
+/** Script-dump stand-in for migrations, which run through drizzle and have no bash equivalent. */
+export function migrationScriptComment(cliCommand: string): string[] {
+  return [
+    "# Database migrations run inside the CLI (drizzle migrator, no bash equivalent):",
+    `#   ${cliCommand}`,
+    "",
+  ];
+}
+
 /**
  * Offer a discovered candidate URL to the user, showing only the safe hint.
  * Returns the full URL if accepted, null if declined, undefined if cancelled.

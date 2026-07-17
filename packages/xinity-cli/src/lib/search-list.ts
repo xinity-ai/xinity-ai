@@ -55,6 +55,28 @@ function strip(text: string): string {
 // removes them together with the trailing newline the prompt base emits.
 const ERASE_FINAL_FRAME = "\x1b[1A\x1b[J";
 
+/**
+ * Shared submit/cancel frame; null while the prompt is still active.
+ * Cancel messaging belongs to the caller; announcing it here too would
+ * read as two cancellations.
+ */
+function settledFrame(
+  state: string,
+  opts: { message: string; transient?: boolean },
+  summary: () => string,
+): string | null {
+  if (state !== "cancel" && state !== "submit") {
+    return null;
+  }
+  if (opts.transient) {
+    return dim("◇");
+  }
+  if (state === "cancel") {
+    return `${dim("◇")}  ${opts.message}`;
+  }
+  return `${dim("◇")}  ${opts.message}\n${dim(S_BAR)}  ${dim(summary())}`;
+}
+
 async function eraseWhenTransient<T>(result: Promise<T>, transient: boolean | undefined): Promise<T> {
   const value = await result;
   if (transient) {
@@ -108,9 +130,10 @@ function run<Value>(opts: {
   let cursor = 0;
 
   // Filtering runs on every keystroke and render; precompute the searchable
-  // text once and reuse one filtered array per query value.
+  // text once and reuse one filtered array per query value. Only string
+  // values add search text; objects would all match "object".
   const searchable = opts.options.map(
-    (o) => `${strip(o.label)} ${o.hint ?? ""} ${String(o.value)}`.toLowerCase(),
+    (o) => `${strip(o.label)} ${o.hint ?? ""} ${typeof o.value === "string" ? o.value : ""}`.toLowerCase(),
   );
   let filteredCache = opts.options;
   let filteredForQuery = "";
@@ -210,19 +233,11 @@ function run<Value>(opts: {
     const state = prompt.state;
     const list = filtered();
 
-    // Cancel messaging belongs to the caller; announcing it here too would
-    // read as two cancellations.
-    if (state === "cancel" || state === "submit") {
-      if (opts.transient) {
-        return dim("◇");
-      }
-      if (state === "cancel") {
-        return `${dim("◇")}  ${opts.message}`;
-      }
-      const summary = opts.multiple
-        ? dim(`${selected.size} selected`)
-        : dim(strip(opts.options.find((o) => o.value === currentValue())?.label ?? ""));
-      return `${dim("◇")}  ${opts.message}\n${dim(S_BAR)}  ${summary}`;
+    const settled = settledFrame(state, opts, () => opts.multiple
+      ? `${selected.size} selected`
+      : strip(opts.options.find((o) => o.value === currentValue())?.label ?? ""));
+    if (settled !== null) {
+      return settled;
     }
 
     const symbol = state === "error" ? yellow("▲") : cyan("◆");
@@ -273,16 +288,9 @@ export function listSelect<Value>(opts: ListSelectOptions<Value>): Promise<Value
   const prompt = new Prompt<Value>({
     output: OUT,
     render: () => {
-      const state = prompt.state;
-      if (state === "cancel" || state === "submit") {
-        if (opts.transient) {
-          return dim("◇");
-        }
-        if (state === "cancel") {
-          return `${dim("◇")}  ${opts.message}`;
-        }
-        const label = strip(opts.options[cursor]?.label ?? "");
-        return `${dim("◇")}  ${opts.message}\n${dim(S_BAR)}  ${dim(label)}`;
+      const settled = settledFrame(prompt.state, opts, () => strip(opts.options[cursor]?.label ?? ""));
+      if (settled !== null) {
+        return settled;
       }
       return [
         `${cyan("◆")}  ${opts.message}`,
