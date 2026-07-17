@@ -35,4 +35,11 @@ describe("serializeEnvFile", () => {
     const values = { A: "1", B: "two words", C: "https://x.test" };
     expect(parseEnvString(serializeEnvFile(values))).toEqual(values);
   });
+
+  test("round-trips values containing both quote types", () => {
+    const values = { MSG: `she said "it's fine"` };
+    const serialized = serializeEnvFile(values);
+    expect(parseEnvString(serialized)).toEqual(values);
+    expect(parseEnvString(serializeEnvFile(parseEnvString(serialized)))).toEqual(values);
+  });
 });
