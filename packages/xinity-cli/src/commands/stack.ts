@@ -12,7 +12,7 @@ import {
   saveStack,
   deleteStack,
   listStacks,
-  validateStack,
+  validateStackName,
   getFleet,
   getHost,
   getFleetForHost,
@@ -24,7 +24,7 @@ import { editSharedLayer, editComponentLayer, editFleetLayer } from "../lib/stac
 import { searchSelect, searchMultiselect, listSelect } from "../lib/search-list.ts";
 import { runStackFlow } from "../lib/stack-plan.ts";
 import { runDoctor, buildSummaryLine, type DoctorReport } from "../lib/doctor.ts";
-import { fetchRelease } from "../lib/github.ts";
+import { fetchRelease, listReleases, type ReleaseListEntry } from "../lib/github.ts";
 import { loadStackState, findOrphanHosts } from "../lib/stack-state.ts";
 import { connectHosts, disposeAll } from "../lib/multi-host.ts";
 
@@ -72,26 +72,9 @@ async function resolveLatestTag(): Promise<string | null> {
   try {
     return (await fetchRelease("latest")).tagName;
   } catch {
-    log.warn("Could not reach the release registry to check for updates");
+    log.warn("Could not reach the release registry");
     return null;
   }
-}
-
-/** Sets stack.pinnedVersion interactively. Returns false when no version could be determined. */
-async function promptPinnedVersion(stack: StackDefinition): Promise<boolean> {
-  const latest = await resolveLatestTag();
-  const version = await promptOrExit(text({
-    message: "Stack release version (every component is held at this version)",
-    defaultValue: latest ?? undefined,
-    placeholder: latest ?? "vX.Y.Z",
-    validate: (v) => (!v && !latest ? "A version is required" : undefined),
-  }));
-  const chosen = version || latest;
-  if (!chosen) {
-    return false;
-  }
-  stack.pinnedVersion = chosen;
-  return true;
 }
 
 function printStackSummary(stack: StackDefinition): void {
@@ -150,19 +133,23 @@ async function handleInit(name: string): Promise<void> {
     process.exit(1);
   }
 
-  const stack = createStack(name);
-  const nameError = validateStack(stack).find((e) => e.field === "name");
+  const nameError = validateStackName(name);
   if (nameError) {
-    log.error(`Invalid stack name: ${nameError.message}`);
+    log.error(`Invalid stack name: ${nameError}`);
     process.exit(1);
   }
 
   intro(`xinity stack init ${cyan(name)}`);
 
-  if (!(await promptPinnedVersion(stack))) {
-    cancel("Cancelled, stack not created.");
-    return;
+  // New stacks pin the latest release; re-pinning happens in stack edit.
+  const latest = await resolveLatestTag();
+  if (!latest) {
+    log.error("A release version is required to create a stack");
+    outro("Failed");
+    process.exit(1);
   }
+  const stack = createStack(name, latest);
+  log.info(`Release version: ${cyan(latest)} (every component is held at this version)`);
 
   const hostsOwnInfoserver = await promptOrExit(confirm({
     message: "Will this stack host its own infoserver? (rarely needed; its URL is derived at deploy time)",
@@ -218,6 +205,9 @@ async function handleEdit(name: string, fleetName?: string): Promise<void> {
   if (fleetName) {
     await editFleetLayer(stack, requireFleet(stack, fleetName));
   } else {
+    // Fetched in the background so the version menu opens without waiting.
+    const releasesPromise: Promise<ReleaseListEntry[]> = listReleases().catch(() => []);
+
     // Escape at the top level behaves like Save & exit: submenu edits are
     // already applied in memory and must not be discarded silently.
     while (true) {
@@ -227,7 +217,7 @@ async function handleEdit(name: string, fleetName?: string): Promise<void> {
         options: [
           { value: "shared", label: `Shared settings (${Object.keys(stack.env).length + Object.keys(stack.secrets).length} set)` },
           { value: "component", label: "Component settings (stack-wide per type)" },
-          { value: "version", label: `Release version (${stack.pinnedVersion ?? yellow("not set")})` },
+          { value: "version", label: `Release version (${stack.pinnedVersion})` },
           { value: "hosts", label: `Hosts (${stack.hosts.length})` },
           { value: "fleets", label: `Fleets (${stack.fleets.length})` },
           { value: "save", label: green("Save & exit") },
@@ -242,7 +232,7 @@ async function handleEdit(name: string, fleetName?: string): Promise<void> {
       } else if (choice === "component") {
         await editComponentSettings(stack);
       } else if (choice === "version") {
-        await editPinnedVersion(stack);
+        await editPinnedVersion(stack, releasesPromise);
       } else if (choice === "hosts") {
         await hostsMenu(stack);
       } else if (choice === "fleets") {
@@ -257,18 +247,49 @@ async function handleEdit(name: string, fleetName?: string): Promise<void> {
   outro("Done");
 }
 
-async function editPinnedVersion(stack: StackDefinition): Promise<void> {
-  const latest = await resolveLatestTag();
-  if (latest && stack.pinnedVersion && latest !== stack.pinnedVersion) {
-    log.info(`Latest available: ${cyan(latest)} (currently pinned to ${stack.pinnedVersion})`);
-  }
-  const version = await promptOrUndefined(text({
+function promptManualVersion(stack: StackDefinition): Promise<string | undefined> {
+  return promptOrUndefined(text({
     message: "Stack release version",
-    defaultValue: stack.pinnedVersion ?? latest ?? undefined,
-    placeholder: latest ?? "vX.Y.Z",
+    defaultValue: stack.pinnedVersion,
+    placeholder: "vX.Y.Z",
   }));
-  if (version) {
+}
+
+async function editPinnedVersion(stack: StackDefinition, releasesPromise: Promise<ReleaseListEntry[]>): Promise<void> {
+  const releases = await releasesPromise;
+  let version: string | undefined;
+  if (releases.length === 0) {
+    // Registry unreachable (or no releases yet): manual entry is all we have.
+    version = await promptManualVersion(stack);
+  } else {
+    const latestStable = releases.find((r) => !r.prerelease)?.tagName;
+    const markers = (tag: string, prerelease: boolean) => [
+      tag === latestStable ? cyan("(latest)") : "",
+      prerelease ? yellow("(prerelease)") : "",
+      tag === stack.pinnedVersion ? green("(pinned)") : "",
+    ].filter(Boolean);
+    const options = releases.map((r) => ({
+      value: r.tagName,
+      label: [r.tagName, ...markers(r.tagName, r.prerelease)].join(" "),
+    }));
+    if (!releases.some((r) => r.tagName === stack.pinnedVersion)) {
+      options.push({ value: stack.pinnedVersion, label: `${stack.pinnedVersion} ${green("(pinned)")}` });
+    }
+    options.push({ value: "__other__", label: dim("Enter a version manually") });
+
+    const choice = await promptOrUndefined(searchSelect({
+      message: "Stack release version",
+      transient: true,
+      options,
+    }));
+    if (choice === undefined) {
+      return;
+    }
+    version = choice === "__other__" ? await promptManualVersion(stack) : choice;
+  }
+  if (version && version !== stack.pinnedVersion) {
     stack.pinnedVersion = version;
+    log.success(`Pinned version set to ${cyan(version)}`);
   }
 }
 
@@ -576,8 +597,7 @@ async function handleUp(name: string, versionFlag: string | undefined, dryRun: b
   intro(`xinity stack up ${cyan(name)}${dryRun ? yellow(" (dry run)") : ""}`);
 
   // The stack is held at its pinned version; updates only on express intent
-  // (the --target-version flag, or saying yes to the update offer). A dry
-  // run never moves the pin and skips the update offer.
+  // (the --target-version flag, or re-pinning in stack edit).
   let targetVersion: string;
   if (versionFlag) {
     try {
@@ -591,27 +611,7 @@ async function handleUp(name: string, versionFlag: string | undefined, dryRun: b
       stack.pinnedVersion = targetVersion;
       saveStack(stack);
     }
-  } else if (!stack.pinnedVersion) {
-    if (!(await promptPinnedVersion(stack))) {
-      outro("Aborted");
-      return;
-    }
-    saveStack(stack);
-    targetVersion = stack.pinnedVersion!;
   } else {
-    if (!dryRun) {
-      const latest = await resolveLatestTag();
-      if (latest && latest !== stack.pinnedVersion) {
-        const update = await promptOrExit(confirm({
-          message: `A newer release is available. Update the stack from ${stack.pinnedVersion} to ${latest}?`,
-          initialValue: false,
-        }));
-        if (update) {
-          stack.pinnedVersion = latest;
-          saveStack(stack);
-        }
-      }
-    }
     targetVersion = stack.pinnedVersion;
   }
   log.info(`Stack version: ${cyan(targetVersion)}`);

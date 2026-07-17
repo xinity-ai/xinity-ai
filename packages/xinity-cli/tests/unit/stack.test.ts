@@ -28,6 +28,7 @@ function makeStack(overrides: Partial<StackDefinition> = {}): StackDefinition {
     env: {},
     secrets: {},
     componentEnv: {},
+    pinnedVersion: "v1.0.0",
     hosts: [],
     fleets: [],
     ...overrides,
@@ -93,6 +94,15 @@ describe("stack persistence", () => {
     expect(loaded).toEqual({ ...stack, version: cliVersion });
   });
 
+  test("saveStack never persists derivedEnv", () => {
+    const stack = makeStack({ derivedEnv: { INFOSERVER_URL: "http://10.0.0.1:8090" } });
+    saveStack(stack);
+
+    const written = JSON.parse(readFileSync(definitionPath("test-stack"), "utf-8")) as Record<string, unknown>;
+    expect(written.derivedEnv).toBeUndefined();
+    expect(loadStack("test-stack")?.derivedEnv).toBeUndefined();
+  });
+
   test("saved stack files are readable only by the user", () => {
     saveStack(makeStack());
     expect(statSync(definitionPath("test-stack")).mode & 0o777).toBe(0o600);
@@ -102,19 +112,10 @@ describe("stack persistence", () => {
     tmp.write("xinity/stacks/old.json", JSON.stringify({ name: "old", env: { A: "1" } }));
 
     expect(loadStack("old")).toEqual({
-      ...createStack("old"),
+      ...createStack("old", ""),
       version: "0.0.0",
       env: { A: "1" },
     });
-  });
-
-  test("saveStack never persists derivedEnv", () => {
-    const stack = makeStack({ derivedEnv: { INFOSERVER_URL: "http://10.0.0.1:8090" } });
-    saveStack(stack);
-
-    const written = JSON.parse(readFileSync(definitionPath("test-stack"), "utf-8")) as Record<string, unknown>;
-    expect(written.derivedEnv).toBeUndefined();
-    expect(loadStack("test-stack")?.derivedEnv).toBeUndefined();
   });
 
   test("deleteStack removes the definition and its state", () => {
@@ -331,7 +332,7 @@ describe("validateStack", () => {
     const errors = validateStack(stack);
 
     expect(errors.length).toBeGreaterThan(0);
-    expect(errors[0].field).toBe("name");
+    expect(errors[0]?.field).toBe("name");
   });
 
   test("rejects empty stack name", () => {
@@ -345,6 +346,12 @@ describe("validateStack", () => {
     expect(validateStack(makeStack({ name: "my-stack" }))).toEqual([]);
     expect(validateStack(makeStack({ name: "my_stack" }))).toEqual([]);
     expect(validateStack(makeStack({ name: "prod-01" }))).toEqual([]);
+  });
+
+  test("rejects a missing pinned version", () => {
+    const errors = validateStack(makeStack({ pinnedVersion: "" }));
+
+    expect(errors.some((e) => e.field === "pinnedVersion")).toBe(true);
   });
 
   test("rejects duplicate host addresses", () => {
@@ -405,10 +412,11 @@ describe("validateStack", () => {
 // ── Factory ──────────────────────────────────────────────────────────────
 
 describe("createStack", () => {
-  test("returns an empty stack with the given name", () => {
-    const stack = createStack("my-stack");
+  test("returns an empty stack with the given name and pin", () => {
+    const stack = createStack("my-stack", "v1.2.3");
 
     expect(stack.name).toBe("my-stack");
+    expect(stack.pinnedVersion).toBe("v1.2.3");
     expect(stack.env).toEqual({});
     expect(stack.secrets).toEqual({});
     expect(stack.componentEnv).toEqual({});
