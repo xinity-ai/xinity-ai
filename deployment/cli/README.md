@@ -54,7 +54,7 @@ xinity stack edit prod       # add hosts (e.g. root@10.0.0.4: gateway, dashboard
 xinity stack up prod         # one reviewed plan, then applied host by host
 ```
 
-`stack up` connects to every host, checks installed versions and configuration against the stack, and plans database migrations, installs, updates, config changes, and removal of components the stack no longer tracks. Nothing is changed until the plan is confirmed. Re-run it after any edit; it only applies what differs.
+`stack up` connects to every host, checks installed versions and configuration against the stack, and plans database migrations, installs, updates, config changes, and removal of components the stack no longer tracks. Hosts deleted from the definition entirely are evacuated too: the CLI keeps a local record of the hosts it manages and removes everything from those that left. Nothing is changed until the plan is confirmed. Re-run it after any edit; it only applies what differs.
 
 Key properties:
 

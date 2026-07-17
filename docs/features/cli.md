@@ -16,7 +16,7 @@ Deploy individual components (or a whole machine with `up all`) as systemd units
 
 A stack is a local, declarative definition of a whole deployment: shared configuration (database, Redis, metrics auth), stack-wide settings per component type, hosts with their assigned components, and daemon *fleets* (named groups of inference nodes sharing configuration). Configuration is layered so every value lives at the highest level possible; per-host overrides exist but are the escape hatch.
 
-`xinity stack up` compares every host against the definition, plans migrations, installs, updates, reconfigurations, and removal of components the stack no longer tracks, and applies everything after one review gate. Each stack pins a release version; all components are held at it and updates are offered, never automatic. `xinity stack doctor` (alias `status`) health-checks all hosts, or one fleet via `--fleet`.
+`xinity stack up` compares every host against the definition, plans migrations, installs, updates, reconfigurations, and removal of components the stack no longer tracks, and applies everything after one review gate. A local state file records which hosts the stack manages, so hosts deleted from the definition are evacuated (all managed components removed) on the next `up`. Each stack pins a release version; all components are held at it, re-pinning happens from the release list in `stack edit`, and nothing updates automatically. `xinity stack doctor` (alias `status`) health-checks all hosts, or one fleet via `--fleet`.
 
 Stacks assume the infrastructure underneath (PostgreSQL, Redis) already exists and take its connection URLs as given; the `infra-*` assistants can provision it beforehand. For a guided single-machine install that also provisions infrastructure, `xinity up all` is the intended path.
 
@@ -30,7 +30,7 @@ Call any dashboard API route from the command line. Routes are discovered dynami
 
 ### Configuration (`xinity configure`)
 
-Set CLI-level config (API key, dashboard URL) or edit a component's environment through the menu editor. Component changes are reviewed as a diff and applied only after confirmation, followed by a service restart. CLI configuration is stored in `~/.config/xinity/config.json`.
+Set CLI-level config (API key, dashboard URL) or edit a component's environment through the menu editor. Component changes are reviewed as a diff and applied only after confirmation, followed by a service restart. CLI configuration is stored in `~/.config/xinity/config.json` (`$XDG_CONFIG_HOME` is honored when set).
 
 ### Self-update (`xinity update`)
 
