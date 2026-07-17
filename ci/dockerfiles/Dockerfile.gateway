@@ -1,0 +1,15 @@
+FROM debian:12-slim
+
+ARG TARGETARCH
+
+RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser
+
+WORKDIR /app
+COPY --chown=appuser:appuser --chmod=755 linux/${TARGETARCH}/xinity-ai-gateway /app/xinity-ai-gateway
+
+USER appuser
+
+ENV PORT=3418
+EXPOSE 3418/tcp
+
+CMD [ "/app/xinity-ai-gateway" ]

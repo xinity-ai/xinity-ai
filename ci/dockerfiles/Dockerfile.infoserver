@@ -1,0 +1,15 @@
+FROM debian:12-slim
+
+ARG TARGETARCH
+
+RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser
+
+WORKDIR /app
+COPY --chown=appuser:appuser --chmod=755 linux/${TARGETARCH}/xinity-infoserver /app/xinity-infoserver
+
+USER appuser
+
+ENV MODEL_INFO_DIR=/data/models.d PORT=8090
+EXPOSE 8090/tcp
+
+CMD [ "/app/xinity-infoserver" ]

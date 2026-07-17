@@ -1,0 +1,15 @@
+FROM debian:12-slim
+
+ARG TARGETARCH
+
+RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser
+
+WORKDIR /app
+COPY --chown=appuser:appuser --chmod=755 linux/${TARGETARCH}/xinity-ai-dashboard /app/xinity-ai-dashboard
+
+USER appuser
+
+ENV HTTP_PORT=4121
+EXPOSE 4121/tcp
+
+CMD [ "/app/xinity-ai-dashboard" ]
