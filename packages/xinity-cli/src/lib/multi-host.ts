@@ -1,7 +1,21 @@
 import { log } from "./clack.ts";
 import { type Host } from "./host.ts";
 import { connectHost } from "./remote-host.ts";
-import { heading } from "./output.ts";
+
+export async function connectElevated(
+  address: string,
+): Promise<{ host: Host } | { failed: "unreachable" | "declined"; message: string }> {
+  try {
+    const host = await connectHost(address === "local" ? undefined : address);
+    if (await host.prepareElevation()) {
+      return { host };
+    }
+    await host.dispose();
+    return { failed: "declined", message: `Root privileges on ${address} were declined` };
+  } catch (err) {
+    return { failed: "unreachable", message: `Could not connect to ${address}: ${(err as Error).message}` };
+  }
+}
 
 /**
  * Connect and establish root privileges on every address up front, so the
@@ -11,36 +25,15 @@ import { heading } from "./output.ts";
 export async function connectHosts(addresses: string[]): Promise<Map<string, Host> | null> {
   const hosts = new Map<string, Host>();
   for (const addr of addresses) {
-    try {
-      const host = await connectHost(addr === "local" ? undefined : addr);
-      hosts.set(addr, host);
-      if (!(await host.prepareElevation())) {
-        log.error(`Root privileges on ${addr} were declined`);
-        await disposeAll(hosts);
-        return null;
-      }
-    } catch (err) {
-      log.error(`Could not connect to ${addr}: ${(err as Error).message}`);
+    const connection = await connectElevated(addr);
+    if ("failed" in connection) {
+      log.error(connection.message);
       await disposeAll(hosts);
       return null;
     }
+    hosts.set(addr, connection.host);
   }
   return hosts;
-}
-
-/** Run an action per host under its own heading; an error is reported and the loop continues. */
-export async function forEachHost(
-  hosts: Map<string, Host>,
-  action: (host: Host, address: string) => Promise<void>,
-): Promise<void> {
-  for (const [address, host] of hosts) {
-    heading(address);
-    try {
-      await action(host, address);
-    } catch (err) {
-      log.error(`${address}: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
 }
 
 export async function disposeAll(hosts: Map<string, Host>): Promise<void> {

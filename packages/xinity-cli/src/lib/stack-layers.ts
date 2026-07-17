@@ -1,15 +1,16 @@
 /**
- * The one place that knows how each stack layer is edited: what its base
- * (the layers below) is, which keys are hidden or marked for review, and
- * where the result is stored. `stack init`, `stack edit`, and the lazy
- * editors inside `stack up` all go through these.
+ * The one place that knows how each stack layer is edited: which keys are
+ * hidden or marked for review, and where the result is stored. `stack init`,
+ * `stack edit`, and the lazy editors inside `stack up` all go through these.
  */
-import { type Component, ENV_SCHEMAS, getAutoDefaults } from "./component-meta.ts";
+import type { z } from "zod";
+import { type Component, ENV_SCHEMAS } from "./component-meta.ts";
 import { menuEditEnv, flattenBundle } from "./env-prompt.ts";
 import {
   type StackDefinition, type FleetDefinition,
   STACK_SHARED_SCHEMA, STACK_SHARED_KEYS,
   applySharedResult, sharedHiddenKeys, diffFromLayer,
+  componentLayerBase, fleetLayerBase, getHost, saveStack,
 } from "./stack.ts";
 
 // Host-local defaults that are almost always wrong for a multi-host stack;
@@ -19,20 +20,24 @@ const STACK_ATTENTION_KEYS: Partial<Record<Component, string[]>> = {
   dashboard: ["ORIGIN", "GATEWAY_URL"],
 };
 
-export function componentLayerBase(stack: StackDefinition, component: Component): Record<string, string> {
-  return { ...getAutoDefaults(component), ...stack.env, ...stack.secrets };
-}
-
-export function componentLayerSeed(stack: StackDefinition, component: Component): Record<string, string> {
-  return { ...componentLayerBase(stack, component), ...(stack.componentEnv[component] ?? {}) };
-}
-
-export function fleetLayerBase(stack: StackDefinition): Record<string, string> {
-  return componentLayerSeed(stack, "daemon");
-}
-
-export function fleetLayerSeed(stack: StackDefinition, fleet: FleetDefinition): Record<string, string> {
-  return { ...fleetLayerBase(stack), ...(fleet.envOverrides ?? {}) };
+export async function menuEditLayer(opts: {
+  schema: z.ZodObject<any>;
+  inherited: Record<string, string>;
+  own: Record<string, string>;
+  attentionKeys?: Set<string>;
+  hiddenKeys?: Set<string>;
+  message?: string;
+}): Promise<Record<string, string> | null> {
+  const result = await menuEditEnv(opts.schema, { ...opts.inherited, ...opts.own }, {
+    attentionKeys: opts.attentionKeys,
+    hiddenKeys: opts.hiddenKeys,
+    inherited: opts.inherited,
+    message: opts.message,
+  });
+  if (result === null) {
+    return null;
+  }
+  return diffFromLayer(flattenBundle(result), opts.inherited);
 }
 
 /** Returns false when the user cancelled; nothing is stored then. */
@@ -53,16 +58,18 @@ export async function editComponentLayer(
   component: Component,
   message = `${component} settings (stack-wide)`,
 ): Promise<boolean> {
-  const base = componentLayerBase(stack, component);
-  const result = await menuEditEnv(ENV_SCHEMAS[component], componentLayerSeed(stack, component), {
+  const overrides = await menuEditLayer({
+    schema: ENV_SCHEMAS[component],
+    inherited: componentLayerBase(stack, component),
+    own: stack.componentEnv[component] ?? {},
     attentionKeys: new Set(STACK_ATTENTION_KEYS[component] ?? []),
     hiddenKeys: STACK_SHARED_KEYS,
     message,
   });
-  if (result === null) {
+  if (overrides === null) {
     return false;
   }
-  stack.componentEnv[component] = diffFromLayer(flattenBundle(result), base);
+  stack.componentEnv[component] = overrides;
   return true;
 }
 
@@ -71,14 +78,40 @@ export async function editFleetLayer(
   fleet: FleetDefinition,
   message = `Daemon settings for fleet "${fleet.name}"`,
 ): Promise<boolean> {
-  const base = fleetLayerBase(stack);
-  const result = await menuEditEnv(ENV_SCHEMAS.daemon, fleetLayerSeed(stack, fleet), {
+  const overrides = await menuEditLayer({
+    schema: ENV_SCHEMAS.daemon,
+    inherited: fleetLayerBase(stack),
+    own: fleet.envOverrides ?? {},
     hiddenKeys: STACK_SHARED_KEYS,
     message,
   });
-  if (result === null) {
+  if (overrides === null) {
     return false;
   }
-  fleet.envOverrides = diffFromLayer(flattenBundle(result), base);
+  fleet.envOverrides = overrides;
   return true;
+}
+
+export async function editHostLayer(
+  stack: StackDefinition,
+  address: string,
+  component: Component,
+  inherited: Record<string, string>,
+): Promise<Record<string, string> | null> {
+  const overrides = await menuEditLayer({
+    schema: ENV_SCHEMAS[component],
+    inherited,
+    own: {},
+    hiddenKeys: STACK_SHARED_KEYS,
+    message: `${component} settings for ${address} (saved as host overrides)`,
+  });
+  if (overrides === null) {
+    return null;
+  }
+  const host = getHost(stack, address);
+  if (host && Object.keys(overrides).length > 0) {
+    host.envOverrides = { ...host.envOverrides, ...overrides };
+    saveStack(stack);
+  }
+  return overrides;
 }
