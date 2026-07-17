@@ -571,43 +571,52 @@ async function addFleetInteractive(stack: StackDefinition): Promise<FleetDefinit
 
 // ── Up ───────────────────────────────────────────────────────────────────
 
-async function handleUp(name: string, versionFlag?: string): Promise<void> {
+async function handleUp(name: string, versionFlag: string | undefined, dryRun: boolean): Promise<void> {
   const stack = requireStack(name);
-  intro(`xinity stack up ${cyan(name)}`);
+  intro(`xinity stack up ${cyan(name)}${dryRun ? yellow(" (dry run)") : ""}`);
 
   // The stack is held at its pinned version; updates only on express intent
-  // (the --target-version flag, or saying yes to the update offer).
+  // (the --target-version flag, or saying yes to the update offer). A dry
+  // run never moves the pin and skips the update offer.
+  let targetVersion: string;
   if (versionFlag) {
     try {
-      stack.pinnedVersion = (await fetchRelease(versionFlag)).tagName;
+      targetVersion = (await fetchRelease(versionFlag)).tagName;
     } catch (err) {
       log.error(`Could not resolve version ${versionFlag}: ${(err as Error).message}`);
       outro("Failed");
       process.exit(1);
     }
-    saveStack(stack);
+    if (!dryRun) {
+      stack.pinnedVersion = targetVersion;
+      saveStack(stack);
+    }
   } else if (!stack.pinnedVersion) {
     if (!(await promptPinnedVersion(stack))) {
       outro("Aborted");
       return;
     }
     saveStack(stack);
+    targetVersion = stack.pinnedVersion!;
   } else {
-    const latest = await resolveLatestTag();
-    if (latest && latest !== stack.pinnedVersion) {
-      const update = await promptOrExit(confirm({
-        message: `A newer release is available. Update the stack from ${stack.pinnedVersion} to ${latest}?`,
-        initialValue: false,
-      }));
-      if (update) {
-        stack.pinnedVersion = latest;
-        saveStack(stack);
+    if (!dryRun) {
+      const latest = await resolveLatestTag();
+      if (latest && latest !== stack.pinnedVersion) {
+        const update = await promptOrExit(confirm({
+          message: `A newer release is available. Update the stack from ${stack.pinnedVersion} to ${latest}?`,
+          initialValue: false,
+        }));
+        if (update) {
+          stack.pinnedVersion = latest;
+          saveStack(stack);
+        }
       }
     }
+    targetVersion = stack.pinnedVersion;
   }
-  log.info(`Stack version: ${cyan(stack.pinnedVersion!)}`);
+  log.info(`Stack version: ${cyan(targetVersion)}`);
 
-  const ok = await runStackFlow(stack, { targetVersion: stack.pinnedVersion! });
+  const ok = await runStackFlow(stack, { targetVersion, dryRun });
   outro(ok ? "Done" : "Failed");
   if (!ok) {
     process.exit(1);
@@ -754,8 +763,13 @@ export const stackCommand: CommandModule = {
           .option("target-version", {
             describe: "Pin the stack to this release and deploy it (defaults to the stack's pinned version)",
             type: "string",
+          })
+          .option("dry-run", {
+            describe: "Show the planned actions without applying them",
+            type: "boolean",
+            default: false,
           }),
-      (argv) => handleUp(argv.name as string, argv["target-version"] as string | undefined))
+      (argv) => handleUp(argv.name as string, argv["target-version"] as string | undefined, argv["dry-run"] as boolean))
       .command(["doctor <name>", "status <name>"], "Health check the stack's hosts", (y) =>
         y
           .positional("name", { type: "string", demandOption: true, describe: "Stack name", ...stackNameChoices() })

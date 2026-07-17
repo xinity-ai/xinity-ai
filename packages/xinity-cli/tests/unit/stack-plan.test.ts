@@ -67,9 +67,11 @@ mock.module("../../src/lib/install-remove.ts", () => ({
   },
 }));
 
+let gateApproves: boolean;
+
 mock.module("../../src/lib/up-plan.ts", () => ({
   ...actualUpPlan,
-  reviewGate: async () => true,
+  reviewGate: async () => gateApproves,
 }));
 
 const { runStackFlow } = await import("../../src/lib/stack-plan.ts");
@@ -99,7 +101,7 @@ function makeStack(name: string): StackDefinition {
   return stack;
 }
 
-describe("runStackFlow orphan handling", () => {
+describe("runStackFlow", () => {
   let tmp: TempDir;
   let restoreEnv: () => void;
 
@@ -111,6 +113,7 @@ describe("runStackFlow orphan handling", () => {
     removals = [];
     removalFails = false;
     membershipWrites = [];
+    gateApproves = true;
   });
 
   afterEach(() => {
@@ -183,5 +186,36 @@ describe("runStackFlow orphan handling", () => {
     expect(await runStackFlow(makeStack("s5"), { targetVersion: "latest" })).toBe(false);
     expect(membershipWrites).toEqual([]);
     expect(loadStackState("s5").hosts).toEqual([{ address: "10.0.0.9" }]);
+  });
+
+  test("a dry run plans an evacuation but changes neither hosts nor state", async () => {
+    markHostManaged("s6", "10.0.0.10");
+    reachable = new Set(["10.0.0.10"]);
+    manifests["10.0.0.10"] = { components: daemonEntry(), stack: { name: "s6" } };
+
+    expect(await runStackFlow(makeStack("s6"), { targetVersion: "latest", dryRun: true })).toBe(true);
+    expect(removals).toEqual([]);
+    expect(membershipWrites).toEqual([]);
+    expect(loadStackState("s6").hosts).toEqual([{ address: "10.0.0.10" }]);
+  });
+
+  test("aborting at the gate leaves hosts and state untouched", async () => {
+    gateApproves = false;
+    markHostManaged("s7", "10.0.0.11");
+    reachable = new Set(["10.0.0.11"]);
+    manifests["10.0.0.11"] = { components: daemonEntry(), stack: { name: "s7" } };
+
+    expect(await runStackFlow(makeStack("s7"), { targetVersion: "latest" })).toBe(true);
+    expect(removals).toEqual([]);
+    expect(membershipWrites).toEqual([]);
+    expect(loadStackState("s7").hosts).toEqual([{ address: "10.0.0.11" }]);
+  });
+
+  test("an unreachable orphan is only forgotten after the gate approves", async () => {
+    gateApproves = false;
+    markHostManaged("s8", "10.0.0.12");
+
+    expect(await runStackFlow(makeStack("s8"), { targetVersion: "latest" })).toBe(true);
+    expect(loadStackState("s8").hosts).toEqual([{ address: "10.0.0.12" }]);
   });
 });
