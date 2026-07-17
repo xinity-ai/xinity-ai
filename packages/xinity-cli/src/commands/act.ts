@@ -81,9 +81,8 @@ async function callRoute(
 
   const hasBody = route.method !== "GET" && route.method !== "DELETE";
 
-  // For GET requests, add remaining data as query params
   let fetchUrl = fullUrl;
-  if (route.method === "GET" && Object.keys(remainingData).length > 0) {
+  if (!hasBody && Object.keys(remainingData).length > 0) {
     const params = new URLSearchParams();
     for (const [k, v] of Object.entries(remainingData)) {
       if (v !== undefined) params.set(k, String(v));

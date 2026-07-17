@@ -611,7 +611,7 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
   components.push(await checkSystem(host));
 
   // 3. Each installable component
-  const checkedInfoserverUrls = new Set<string>();
+  const discoveredInfoserverUrls = new Map<string, string[]>();
   const remoteInfoserverChecks: CheckResult[] = [];
 
   for (const comp of ["gateway", "dashboard", "daemon", "infoserver"] as const) {
@@ -625,17 +625,26 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
       continue;
     }
     opts.spinner?.message(`Checking ${comp}…`);
+
+    const infoserverUrls = comp === "infoserver"
+      ? [...discoveredInfoserverUrls.entries()].map(([url, comps]) => ({ url, components: comps }))
+      : [];
+
     const { report, values } = await checkComponent(comp, entry, {
       ...opts,
       host,
-      infoserverUrls: [],
+      infoserverUrls,
     });
     components.push(report);
 
-    // Check each component's infoserver URL (skip duplicates)
-    if (comp !== "infoserver" && values.INFOSERVER_URL && !checkedInfoserverUrls.has(values.INFOSERVER_URL)) {
-      checkedInfoserverUrls.add(values.INFOSERVER_URL);
-      remoteInfoserverChecks.push(...await checkInfoserverUrl(values.INFOSERVER_URL, host, comp));
+    if (comp !== "infoserver" && values.INFOSERVER_URL) {
+      const existing = discoveredInfoserverUrls.get(values.INFOSERVER_URL);
+      if (existing) {
+        existing.push(comp);
+      } else {
+        discoveredInfoserverUrls.set(values.INFOSERVER_URL, [comp]);
+        remoteInfoserverChecks.push(...await checkInfoserverUrl(values.INFOSERVER_URL, host, comp));
+      }
     }
   }
 
