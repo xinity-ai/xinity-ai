@@ -1,52 +1,25 @@
-import { describe, expect, test, beforeEach, afterEach, mock } from "bun:test";
-import { createTempDir, type TempDir } from "../helpers/temp-config.ts";
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
+import { describe, expect, test, beforeEach, afterEach } from "bun:test";
+import { createTempDir, redirectXdgConfigHome, type TempDir } from "../helpers/temp-config.ts";
+import { readFileSync, statSync } from "fs";
 import { join } from "path";
+import { loadConfig, saveConfig, updateConfig, configPath } from "../../src/lib/config.ts";
 
-/**
- * Config module tests.
- *
- * Since config.ts derives CONFIG_PATH from os.homedir() at module load time,
- * we test the underlying logic by reimplementing the same patterns against
- * a temp directory. This validates the serialization, merging, and error
- * handling behavior without needing to mock the module import.
- */
 describe("config", () => {
   let tmp: TempDir;
-  let configDir: string;
-  let configPath: string;
-
-  /** Mirror the loadConfig logic against our temp path. */
-  function loadConfig(): Record<string, string | undefined> {
-    if (!existsSync(configPath)) return {};
-    try {
-      return JSON.parse(readFileSync(configPath, "utf-8"));
-    } catch {
-      return {};
-    }
-  }
-
-  /** Mirror the saveConfig logic against our temp path. */
-  function saveConfig(config: Record<string, string | undefined>): void {
-    mkdirSync(configDir, { recursive: true });
-    writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
-  }
-
-  /** Mirror the updateConfig logic. */
-  function updateConfig(patch: Record<string, string | undefined>): Record<string, string | undefined> {
-    const config = { ...loadConfig(), ...patch };
-    saveConfig(config);
-    return config;
-  }
+  let restoreEnv: () => void;
 
   beforeEach(() => {
     tmp = createTempDir("config-test");
-    configDir = join(tmp.path, ".config", "xinity");
-    configPath = join(configDir, "config.json");
+    restoreEnv = redirectXdgConfigHome(tmp);
   });
 
   afterEach(() => {
+    restoreEnv();
     tmp.cleanup();
+  });
+
+  test("configPath honors XDG_CONFIG_HOME", () => {
+    expect(configPath()).toBe(join(tmp.path, "xinity", "config.json"));
   });
 
   describe("loadConfig", () => {
@@ -55,23 +28,17 @@ describe("config", () => {
     });
 
     test("loads valid JSON config", () => {
-      mkdirSync(configDir, { recursive: true });
-      writeFileSync(configPath, JSON.stringify({ apiKey: "test-key" }));
-
+      tmp.write("xinity/config.json", JSON.stringify({ apiKey: "test-key" }));
       expect(loadConfig()).toEqual({ apiKey: "test-key" });
     });
 
     test("returns empty object for invalid JSON", () => {
-      mkdirSync(configDir, { recursive: true });
-      writeFileSync(configPath, "not valid json{{{");
-
+      tmp.write("xinity/config.json", "not valid json{{{");
       expect(loadConfig()).toEqual({});
     });
 
     test("returns empty object for empty file", () => {
-      mkdirSync(configDir, { recursive: true });
-      writeFileSync(configPath, "");
-
+      tmp.write("xinity/config.json", "");
       expect(loadConfig()).toEqual({});
     });
   });
@@ -80,17 +47,14 @@ describe("config", () => {
     test("creates directory and writes config", () => {
       saveConfig({ apiKey: "my-key", dashboardUrl: "http://localhost:5173" });
 
-      expect(existsSync(configPath)).toBe(true);
-      const content = readFileSync(configPath, "utf-8");
-      const parsed = JSON.parse(content);
-      expect(parsed.apiKey).toBe("my-key");
-      expect(parsed.dashboardUrl).toBe("http://localhost:5173");
+      expect(tmp.exists("xinity/config.json")).toBe(true);
+      expect(loadConfig()).toEqual({ apiKey: "my-key", dashboardUrl: "http://localhost:5173" });
     });
 
     test("writes pretty-printed JSON with trailing newline", () => {
       saveConfig({ apiKey: "key" });
 
-      const content = readFileSync(configPath, "utf-8");
+      const content = readFileSync(configPath(), "utf-8");
       expect(content).toContain("  ");
       expect(content.endsWith("\n")).toBe(true);
     });
@@ -99,8 +63,12 @@ describe("config", () => {
       saveConfig({ apiKey: "old-key" });
       saveConfig({ apiKey: "new-key" });
 
-      const config = loadConfig();
-      expect(config.apiKey).toBe("new-key");
+      expect(loadConfig().apiKey).toBe("new-key");
+    });
+
+    test("config file is readable only by the user", () => {
+      saveConfig({ apiKey: "key" });
+      expect(statSync(configPath()).mode & 0o777).toBe(0o600);
     });
   });
 

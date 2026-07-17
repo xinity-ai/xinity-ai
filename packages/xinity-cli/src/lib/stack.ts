@@ -7,9 +7,9 @@
  * highest level possible; per-host settings are the escape hatch, not the
  * norm.
  */
-import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "fs";
+import { existsSync, readdirSync, unlinkSync } from "fs";
 import { join } from "path";
-import { homedir } from "os";
+import { xinityConfigDir, loadPrivateJson, savePrivateJson } from "./config.ts";
 import { z } from "zod";
 import { secret } from "common-env";
 import { version as cliVersion } from "../../../../package.json";
@@ -93,39 +93,27 @@ export function sharedHiddenKeys(stack: StackDefinition): Set<string> | undefine
 
 // ── Paths ────────────────────────────────────────────────────────────────
 
-const CONFIG_DIR = join(homedir(), ".config", "xinity");
-const STACKS_DIR = join(CONFIG_DIR, "stacks");
+function stacksDir(): string {
+  return join(xinityConfigDir(), "stacks");
+}
 
 function stackPath(name: string): string {
-  return join(STACKS_DIR, `${name}.json`);
+  return join(stacksDir(), `${name}.json`);
 }
 
 // ── Persistence ──────────────────────────────────────────────────────────
 
-function ensureStacksDir(): void {
-  mkdirSync(STACKS_DIR, { recursive: true, mode: 0o700 });
-  chmodSync(STACKS_DIR, 0o700);
-}
-
 export function loadStack(name: string): StackDefinition | null {
-  const path = stackPath(name);
-  if (!existsSync(path)) {
+  const parsed = loadPrivateJson<Partial<StackDefinition>>(stackPath(name));
+  if (!parsed) {
     return null;
   }
-  try {
-    const parsed = JSON.parse(readFileSync(path, "utf-8")) as Partial<StackDefinition>;
-    return { ...createStack(name), version: "0.0.0", ...parsed };
-  } catch {
-    return null;
-  }
+  return { ...createStack(name), version: "0.0.0", ...parsed };
 }
 
 export function saveStack(stack: StackDefinition): void {
-  ensureStacksDir();
-  const path = stackPath(stack.name);
   stack.version = cliVersion;
-  writeFileSync(path, JSON.stringify(stack, null, 2) + "\n", { mode: 0o600 });
-  chmodSync(path, 0o600);
+  savePrivateJson(stackPath(stack.name), stack);
 }
 
 export function deleteStack(name: string): boolean {
@@ -138,10 +126,10 @@ export function deleteStack(name: string): boolean {
 }
 
 export function listStacks(): string[] {
-  if (!existsSync(STACKS_DIR)) {
+  if (!existsSync(stacksDir())) {
     return [];
   }
-  return readdirSync(STACKS_DIR)
+  return readdirSync(stacksDir())
     .filter((f) => f.endsWith(".json"))
     .map((f) => f.replace(/\.json$/, ""))
     .sort();

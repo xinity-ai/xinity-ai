@@ -1,7 +1,8 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { createTempDir, type TempDir } from "../helpers/temp-config.ts";
-import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, unlinkSync } from "fs";
+import { createTempDir, redirectXdgConfigHome, type TempDir } from "../helpers/temp-config.ts";
+import { readFileSync, statSync } from "fs";
 import { join } from "path";
+import { version as cliVersion } from "../../../../package.json";
 import {
   type StackDefinition,
   type StackHost,
@@ -13,6 +14,10 @@ import {
   getHost,
   getFleetForHost,
   createStack,
+  loadStack,
+  saveStack,
+  deleteStack,
+  listStacks,
 } from "../../src/lib/stack.ts";
 
 function makeStack(overrides: Partial<StackDefinition> = {}): StackDefinition {
@@ -44,66 +49,36 @@ function makeFleet(overrides: Partial<FleetDefinition> = {}): FleetDefinition {
   };
 }
 
-// ── Persistence (mirrored against temp dir, same pattern as config.test.ts) ──
+// ── Persistence ──────────────────────────────────────────────────────────
 
 describe("stack persistence", () => {
   let tmp: TempDir;
-  let stacksDir: string;
-
-  function stackPath(name: string): string {
-    return join(stacksDir, `${name}.json`);
-  }
-
-  function saveStack(stack: StackDefinition): void {
-    mkdirSync(stacksDir, { recursive: true });
-    writeFileSync(stackPath(stack.name), JSON.stringify(stack, null, 2) + "\n");
-  }
-
-  function loadStack(name: string): StackDefinition | null {
-    const path = stackPath(name);
-    if (!existsSync(path)) {
-      return null;
-    }
-    try {
-      return JSON.parse(readFileSync(path, "utf-8")) as StackDefinition;
-    } catch {
-      return null;
-    }
-  }
-
-  function deleteStack(name: string): boolean {
-    const path = stackPath(name);
-    if (!existsSync(path)) {
-      return false;
-    }
-    unlinkSync(path);
-    return true;
-  }
-
-  function listStacks(): string[] {
-    if (!existsSync(stacksDir)) {
-      return [];
-    }
-    return readdirSync(stacksDir)
-      .filter((f) => f.endsWith(".json"))
-      .map((f) => f.replace(/\.json$/, ""))
-      .sort();
-  }
+  let restoreEnv: () => void;
 
   beforeEach(() => {
     tmp = createTempDir("stack-test");
-    stacksDir = join(tmp.path, "stacks");
+    restoreEnv = redirectXdgConfigHome(tmp);
   });
 
   afterEach(() => {
+    restoreEnv();
     tmp.cleanup();
   });
+
+  function definitionPath(name: string): string {
+    return join(tmp.path, "xinity", "stacks", `${name}.json`);
+  }
 
   test("loadStack returns null when file does not exist", () => {
     expect(loadStack("nonexistent")).toBeNull();
   });
 
-  test("round-trips a stack definition", () => {
+  test("loadStack returns null for invalid JSON", () => {
+    tmp.write("xinity/stacks/broken.json", "not valid json{{{");
+    expect(loadStack("broken")).toBeNull();
+  });
+
+  test("round-trips a stack definition, stamping the CLI version", () => {
     const stack = makeStack({
       env: { REDIS_URL: "redis://localhost:6379" },
       secrets: { DB_CONNECTION_URL: "postgresql://localhost/db" },
@@ -114,15 +89,27 @@ describe("stack persistence", () => {
     saveStack(stack);
     const loaded = loadStack("test-stack");
 
-    expect(loaded).toEqual(stack);
+    expect(loaded).toEqual({ ...stack, version: cliVersion });
   });
 
-  test("deleteStack removes the file", () => {
+  test("saved stack files are readable only by the user", () => {
     saveStack(makeStack());
-    expect(loadStack("test-stack")).not.toBeNull();
+    expect(statSync(definitionPath("test-stack")).mode & 0o777).toBe(0o600);
+  });
 
-    const deleted = deleteStack("test-stack");
-    expect(deleted).toBe(true);
+  test("loadStack backfills fields missing from older files", () => {
+    tmp.write("xinity/stacks/old.json", JSON.stringify({ name: "old", env: { A: "1" } }));
+
+    expect(loadStack("old")).toEqual({
+      ...createStack("old"),
+      version: "0.0.0",
+      env: { A: "1" },
+    });
+  });
+
+  test("deleteStack removes the definition", () => {
+    saveStack(makeStack());
+    expect(deleteStack("test-stack")).toBe(true);
     expect(loadStack("test-stack")).toBeNull();
   });
 
@@ -143,18 +130,10 @@ describe("stack persistence", () => {
   });
 
   test("listStacks ignores non-JSON files", () => {
-    mkdirSync(stacksDir, { recursive: true });
-    writeFileSync(join(stacksDir, "notes.txt"), "not a stack");
+    tmp.write("xinity/stacks/notes.txt", "not a stack");
     saveStack(makeStack({ name: "real" }));
 
     expect(listStacks()).toEqual(["real"]);
-  });
-
-  test("loadStack returns null for invalid JSON", () => {
-    mkdirSync(stacksDir, { recursive: true });
-    writeFileSync(stackPath("broken"), "not valid json{{{");
-
-    expect(loadStack("broken")).toBeNull();
   });
 });
 
