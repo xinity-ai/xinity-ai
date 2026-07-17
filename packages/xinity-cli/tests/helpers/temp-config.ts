@@ -22,6 +22,22 @@ export interface TempDir {
   cleanup(): void;
 }
 
+/**
+ * Point XDG_CONFIG_HOME at the temp dir so the real stack/state persistence
+ * writes there instead of the user's config. Returns the restore function.
+ */
+export function redirectXdgConfigHome(tmp: TempDir): () => void {
+  const original = process.env.XDG_CONFIG_HOME;
+  process.env.XDG_CONFIG_HOME = tmp.path;
+  return () => {
+    if (original === undefined) {
+      delete process.env.XDG_CONFIG_HOME;
+    } else {
+      process.env.XDG_CONFIG_HOME = original;
+    }
+  };
+}
+
 /** Create an isolated temp directory for a test. */
 export function createTempDir(prefix = "xinity-cli-test"): TempDir {
   const path = join(tmpdir(), `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`);

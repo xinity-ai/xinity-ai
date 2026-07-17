@@ -1,8 +1,9 @@
 /**
- * Persistent CLI configuration stored at ~/.config/xinity/config.json.
+ * Persistent CLI configuration stored at config.json under the xinity config
+ * dir ($XDG_CONFIG_HOME/xinity).
  */
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { join } from "path";
+import { dirname, join } from "path";
 import { homedir } from "os";
 import * as p from "./clack.ts";
 import pc from "picocolors";
@@ -51,25 +52,44 @@ const CLI_FIELDS: ConfigField[] = [
   { key: "githubToken", label: "GitHub token (for private repo access)", isSecret: true },
 ];
 
-const CONFIG_DIR = join(homedir(), ".config", "xinity");
-export const CONFIG_PATH = join(CONFIG_DIR, "config.json");
+export function xinityConfigDir(): string {
+  return process.env.XDG_CONFIG_HOME
+    ? join(process.env.XDG_CONFIG_HOME, "xinity")
+    : join(homedir(), ".config", "xinity");
+}
+
+export function configPath(): string {
+  return join(xinityConfigDir(), "config.json");
+}
+
+/** Returns null when the file is missing or not valid JSON. */
+export function loadPrivateJson<T>(path: string): T | null {
+  if (!existsSync(path)) {
+    return null;
+  }
+  try {
+    return JSON.parse(readFileSync(path, "utf-8")) as T;
+  } catch {
+    return null;
+  }
+}
+
+/** Write JSON readable only by the user (0700 directory, 0600 file). */
+export function savePrivateJson(path: string, value: unknown): void {
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  chmodSync(dirname(path), 0o700);
+  writeFileSync(path, JSON.stringify(value, null, 2) + "\n", { mode: 0o600 });
+  chmodSync(path, 0o600);
+}
 
 /** Read the config file, returning an empty object if it doesn't exist. */
 export function loadConfig(): CliConfig {
-  if (!existsSync(CONFIG_PATH)) return {};
-  try {
-    return JSON.parse(readFileSync(CONFIG_PATH, "utf-8")) as CliConfig;
-  } catch {
-    return {};
-  }
+  return loadPrivateJson<CliConfig>(configPath()) ?? {};
 }
 
 /** Write the full config object to disk, creating the directory if needed. */
 export function saveConfig(config: CliConfig): void {
-  mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
-  chmodSync(CONFIG_DIR, 0o700);
-  writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
-  chmodSync(CONFIG_PATH, 0o600);
+  savePrivateJson(configPath(), config);
 }
 
 /** Merge partial updates into the existing config and persist. */
@@ -139,6 +159,6 @@ export async function menuConfigureCli(): Promise<void> {
   }
 
   saveConfig(config);
-  p.log.success(`Config saved to ${pc.dim(CONFIG_PATH)}`);
+  p.log.success(`Config saved to ${pc.dim(configPath())}`);
   p.outro("Done");
 }
