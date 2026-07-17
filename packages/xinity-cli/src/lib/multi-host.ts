@@ -5,14 +5,16 @@ import { connectHost } from "./remote-host.ts";
 export async function connectElevated(
   address: string,
 ): Promise<{ host: Host } | { failed: "unreachable" | "declined"; message: string }> {
+  let host: Host | undefined;
   try {
-    const host = await connectHost(address === "local" ? undefined : address);
+    host = await connectHost(address === "local" ? undefined : address);
     if (await host.prepareElevation()) {
       return { host };
     }
     await host.dispose();
     return { failed: "declined", message: `Root privileges on ${address} were declined` };
   } catch (err) {
+    await host?.dispose();
     return { failed: "unreachable", message: `Could not connect to ${address}: ${(err as Error).message}` };
   }
 }
