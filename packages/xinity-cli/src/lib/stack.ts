@@ -37,7 +37,7 @@ export interface StackDefinition {
   /** Release tag whose migrations were last applied to the stack's database. */
   dbMigratedVersion?: string;
   /** The release every component is held at; updated only on explicit request. */
-  pinnedVersion?: string;
+  pinnedVersion: string;
   hosts: StackHost[];
   fleets: FleetDefinition[];
 }
@@ -115,7 +115,7 @@ export function loadStack(name: string): StackDefinition | null {
   if (!parsed) {
     return null;
   }
-  return { ...createStack(name), version: "0.0.0", ...parsed };
+  return { ...createStack(name, ""), version: "0.0.0", ...parsed };
 }
 
 export function saveStack(stack: StackDefinition): void {
@@ -248,11 +248,24 @@ export interface ValidationError {
   message: string;
 }
 
+export function validateStackName(name: string): string | null {
+  return !name || !/^[a-z0-9][a-z0-9_-]*$/.test(name)
+    ? "Must be lowercase alphanumeric with hyphens/underscores, starting with a letter or digit"
+    : null;
+}
+
 export function validateStack(stack: StackDefinition): ValidationError[] {
   const errors: ValidationError[] = [];
 
-  if (!stack.name || !/^[a-z0-9][a-z0-9_-]*$/.test(stack.name)) {
-    errors.push({ field: "name", message: "Must be lowercase alphanumeric with hyphens/underscores, starting with a letter or digit" });
+  const nameError = validateStackName(stack.name);
+  if (nameError) {
+    errors.push({ field: "name", message: nameError });
+  }
+
+  // Only reachable through hand-edited files; the CLI never writes a stack
+  // without a pin.
+  if (!stack.pinnedVersion) {
+    errors.push({ field: "pinnedVersion", message: "No release version pinned" });
   }
 
   const hostAddresses = new Set(stack.hosts.map((h) => h.address));
@@ -307,13 +320,14 @@ export function validateStack(stack: StackDefinition): ValidationError[] {
 
 // ── Factory ──────────────────────────────────────────────────────────────
 
-export function createStack(name: string): StackDefinition {
+export function createStack(name: string, pinnedVersion: string): StackDefinition {
   return {
     version: cliVersion,
     name,
     env: {},
     secrets: {},
     componentEnv: {},
+    pinnedVersion,
     hosts: [],
     fleets: [],
   };

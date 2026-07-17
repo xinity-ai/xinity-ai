@@ -18,7 +18,7 @@ function makeState(addresses: string[] = []): StackState {
 }
 
 function makeStack(addresses: string[] = []): StackDefinition {
-  const stack = createStack("test-stack");
+  const stack = createStack("test-stack", "v1.0.0");
   stack.hosts = addresses.map((address) => ({ address, components: ["daemon"] }));
   return stack;
 }

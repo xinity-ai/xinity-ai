@@ -91,7 +91,7 @@ function daemonEntry(): Manifest["components"] {
 // Shared values keep ensureStackLevelConfig from opening an interactive
 // editor; dbMigratedVersion matches the mocked release so no migrations plan.
 function makeStack(name: string): StackDefinition {
-  const stack = createStack(name);
+  const stack = createStack(name, "v9.9.9");
   stack.secrets = {
     DB_CONNECTION_URL: "postgresql://localhost/db",
     REDIS_URL: "redis://localhost:6379",
@@ -122,7 +122,7 @@ describe("runStackFlow", () => {
   });
 
   test("an empty stack with nothing tracked deploys nothing and succeeds", async () => {
-    expect(await runStackFlow(createStack("empty"), { targetVersion: "latest" })).toBe(true);
+    expect(await runStackFlow(createStack("empty", "v9.9.9"), { targetVersion: "latest" })).toBe(true);
     expect(removals).toEqual([]);
   });
 

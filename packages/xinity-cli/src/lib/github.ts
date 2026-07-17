@@ -86,6 +86,21 @@ export function fetchRelease(version: string): Promise<Release> {
   return pending;
 }
 
+export interface ReleaseListEntry {
+  tagName: string;
+  prerelease: boolean;
+}
+
+/** List recent release tags, newest first. */
+export async function listReleases(limit = 20): Promise<ReleaseListEntry[]> {
+  const res = await fetch(`${getApiBase()}/releases?per_page=${limit}`, { headers: await apiHeaders() });
+  if (!res.ok) {
+    throw new Error(`GitHub API ${res.status}: ${res.statusText}`);
+  }
+  const data = (await res.json()) as { tag_name: string; prerelease: boolean; draft: boolean }[];
+  return data.filter((r) => !r.draft).map((r) => ({ tagName: r.tag_name, prerelease: r.prerelease }));
+}
+
 async function fetchReleaseFromApi(version: string): Promise<Release> {
   const base = getApiBase();
   const url =
