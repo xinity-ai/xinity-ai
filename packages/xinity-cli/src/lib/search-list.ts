@@ -1,12 +1,19 @@
 /**
- * Searchable list prompts with two explicit focus zones: a search bar and
- * the option list. Typing only ever edits the search while it is focused;
- * Down (or Tab) moves focus into the list, where arrows navigate, space
- * toggles (multiselect), and printable keys do nothing. Up from the first
- * row returns to the search bar.
+ * List prompts built on @clack/core's Prompt base, which supplies raw-mode
+ * input, frame diffing, and cancel handling; the key model and rendering
+ * live here.
  *
- * Built on @clack/core's Prompt base, which supplies raw-mode input, frame
- * diffing, and cancel handling; the key model and rendering live here.
+ * searchSelect/searchMultiselect have two explicit focus zones: a search bar
+ * and the option list. Typing only ever edits the search while it is focused;
+ * Down (or Tab) moves focus into the list, where arrows navigate, space
+ * toggles (multiselect), and printable keys do nothing. Navigation wraps:
+ * Up from the search bar lands on the last row, Down from the last row
+ * returns to the search bar.
+ *
+ * listSelect is a plain wrap-around select in the same visual style.
+ *
+ * Transient prompts erase themselves after resolving, so menu loops render
+ * in place instead of accumulating a line per selection in the scrollback.
  */
 import { Prompt } from "@clack/core";
 import { cyan, dim, green, inverse, yellow } from "picocolors";
@@ -22,9 +29,13 @@ interface SharedOptions<Value> {
   options: SearchListOption<Value>[];
   /** Rows visible at once; overflow is windowed with "… n more" markers. */
   maxItems?: number;
+  /** Erase the prompt once it resolves instead of leaving a summary line. */
+  transient?: boolean;
 }
 
 export type SearchSelectOptions<Value> = SharedOptions<Value>;
+
+export type ListSelectOptions<Value> = SharedOptions<Value>;
 
 export interface SearchMultiselectOptions<Value> extends SharedOptions<Value> {
   initialValues?: Value[];
@@ -40,10 +51,52 @@ function strip(text: string): string {
   return text.replace(/\[[0-9;]*m/g, "");
 }
 
+// Transient final frames are exactly one line; one row up plus erase-down
+// removes them together with the trailing newline the prompt base emits.
+const ERASE_FINAL_FRAME = "\x1b[1A\x1b[J";
+
+async function eraseWhenTransient<T>(result: Promise<T>, transient: boolean | undefined): Promise<T> {
+  const value = await result;
+  if (transient) {
+    OUT.write(ERASE_FINAL_FRAME);
+  }
+  return value;
+}
+
+function listRows<Value>(
+  bar: string,
+  list: SearchListOption<Value>[],
+  cursor: number,
+  maxItems: number,
+  marker: (option: SearchListOption<Value>, isCursor: boolean) => string,
+): string[] {
+  const windowStart = Math.max(0, Math.min(
+    Math.max(0, cursor) - Math.floor(maxItems / 2),
+    list.length - maxItems,
+  ));
+  const windowEnd = Math.min(list.length, windowStart + maxItems);
+  const rows: string[] = [];
+  if (windowStart > 0) {
+    rows.push(`${bar}  ${dim(`… ${windowStart} more`)}`);
+  }
+  for (let i = windowStart; i < windowEnd; i++) {
+    const option = list[i]!;
+    const isCursor = i === cursor;
+    const pointer = isCursor ? cyan("❯") : " ";
+    const hint = option.hint && isCursor ? ` ${dim(`(${option.hint})`)}` : "";
+    rows.push(`${bar}  ${pointer} ${marker(option, isCursor)} ${option.label}${hint}`);
+  }
+  if (windowEnd < list.length) {
+    rows.push(`${bar}  ${dim(`… ${list.length - windowEnd} more`)}`);
+  }
+  return rows;
+}
+
 function run<Value>(opts: {
   message: string;
   options: SearchListOption<Value>[];
   maxItems?: number;
+  transient?: boolean;
   multiple: boolean;
   initialValues?: Value[];
   required?: boolean;
@@ -71,7 +124,9 @@ function run<Value>(opts: {
   };
 
   const currentValue = () => {
-    if (opts.multiple) return [...selected];
+    if (opts.multiple) {
+      return [...selected];
+    }
     const list = filtered();
     return (mode === "list" ? list[cursor] : list[0])?.value;
   };
@@ -103,9 +158,14 @@ function run<Value>(opts: {
         cursor = 0;
       } else if (cursor < list.length - 1) {
         cursor++;
+      } else {
+        mode = "search";
       }
     } else if (direction === "up" || direction === "left") {
-      if (mode === "list" && cursor === 0) {
+      if (mode === "search" && list.length > 0) {
+        mode = "list";
+        cursor = list.length - 1;
+      } else if (mode === "list" && cursor === 0) {
         mode = "search";
       } else if (mode === "list") {
         cursor--;
@@ -130,7 +190,9 @@ function run<Value>(opts: {
       sync();
       return;
     }
-    if (mode !== "search") return;
+    if (mode !== "search") {
+      return;
+    }
     if (key?.name === "backspace") {
       query = query.slice(0, -1);
       cursor = 0;
@@ -150,10 +212,13 @@ function run<Value>(opts: {
 
     // Cancel messaging belongs to the caller; announcing it here too would
     // read as two cancellations.
-    if (state === "cancel") {
-      return `${dim("◇")}  ${opts.message}`;
-    }
-    if (state === "submit") {
+    if (state === "cancel" || state === "submit") {
+      if (opts.transient) {
+        return dim("◇");
+      }
+      if (state === "cancel") {
+        return `${dim("◇")}  ${opts.message}`;
+      }
       const summary = opts.multiple
         ? dim(`${selected.size} selected`)
         : dim(strip(opts.options.find((o) => o.value === currentValue())?.label ?? ""));
@@ -172,28 +237,11 @@ function run<Value>(opts: {
     if (list.length === 0) {
       lines.push(`${bar}  ${dim("No matches")}`);
     } else {
-      const windowStart = Math.max(0, Math.min(
-        (mode === "list" ? cursor : 0) - Math.floor(maxItems / 2),
-        list.length - maxItems,
-      ));
-      const windowEnd = Math.min(list.length, windowStart + maxItems);
-
-      if (windowStart > 0) {
-        lines.push(`${bar}  ${dim(`… ${windowStart} more`)}`);
-      }
-      for (let i = windowStart; i < windowEnd; i++) {
-        const option = list[i]!;
-        const isCursor = mode === "list" && i === cursor;
-        const marker = opts.multiple
+      lines.push(...listRows(bar, list, mode === "list" ? cursor : -1, maxItems, (option, isCursor) =>
+        opts.multiple
           ? (selected.has(option.value) ? green("◼") : dim("◻"))
-          : (isCursor ? green("●") : dim("○"));
-        const pointer = isCursor ? cyan("❯") : " ";
-        const hint = option.hint && isCursor ? ` ${dim(`(${option.hint})`)}` : "";
-        lines.push(`${bar}  ${pointer} ${marker} ${option.label}${hint}`);
-      }
-      if (windowEnd < list.length) {
-        lines.push(`${bar}  ${dim(`… ${list.length - windowEnd} more`)}`);
-      }
+          : (isCursor ? green("●") : dim("○")),
+      ));
     }
 
     if (state === "error") {
@@ -204,7 +252,10 @@ function run<Value>(opts: {
     return lines.join("\n");
   };
 
-  return prompt.prompt() as unknown as Promise<Value | Value[] | symbol>;
+  return eraseWhenTransient(
+    prompt.prompt() as unknown as Promise<Value | Value[] | symbol>,
+    opts.transient,
+  );
 }
 
 export function searchSelect<Value>(opts: SearchSelectOptions<Value>): Promise<Value | symbol> {
@@ -213,4 +264,45 @@ export function searchSelect<Value>(opts: SearchSelectOptions<Value>): Promise<V
 
 export function searchMultiselect<Value>(opts: SearchMultiselectOptions<Value>): Promise<Value[] | symbol> {
   return run({ ...opts, multiple: true }) as Promise<Value[] | symbol>;
+}
+
+export function listSelect<Value>(opts: ListSelectOptions<Value>): Promise<Value | symbol> {
+  const maxItems = Math.max(3, opts.maxItems ?? 12);
+  let cursor = 0;
+
+  const prompt = new Prompt<Value>({
+    output: OUT,
+    render: () => {
+      const state = prompt.state;
+      if (state === "cancel" || state === "submit") {
+        if (opts.transient) {
+          return dim("◇");
+        }
+        if (state === "cancel") {
+          return `${dim("◇")}  ${opts.message}`;
+        }
+        const label = strip(opts.options[cursor]?.label ?? "");
+        return `${dim("◇")}  ${opts.message}\n${dim(S_BAR)}  ${dim(label)}`;
+      }
+      return [
+        `${cyan("◆")}  ${opts.message}`,
+        ...listRows(cyan(S_BAR), opts.options, cursor, maxItems,
+          (_, isCursor) => (isCursor ? green("●") : dim("○"))),
+        cyan(S_END),
+      ].join("\n");
+    },
+  }, false);
+
+  prompt.on("cursor", (direction) => {
+    const last = opts.options.length - 1;
+    if (direction === "up" || direction === "left") {
+      cursor = cursor === 0 ? last : cursor - 1;
+    } else if (direction === "down" || direction === "right") {
+      cursor = cursor === last ? 0 : cursor + 1;
+    }
+    prompt.value = opts.options[cursor]?.value;
+  });
+  prompt.value = opts.options[cursor]?.value;
+
+  return eraseWhenTransient(prompt.prompt() as unknown as Promise<Value | symbol>, opts.transient);
 }
