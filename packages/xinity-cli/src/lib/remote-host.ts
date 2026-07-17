@@ -59,7 +59,7 @@ async function readSudoPassword(prompt: string): Promise<string | null> {
     }
     process.stdin.resume();
 
-    let buf = "";
+    const rawBytes: number[] = [];
     let resolved = false;
 
     const finish = (value: string | null) => {
@@ -80,12 +80,18 @@ async function readSudoPassword(prompt: string): Promise<string | null> {
           return finish(null);
         }
         if (byte === CARRIAGE_RETURN || byte === LINE_FEED) {
-          return finish(buf);
+          return finish(Buffer.from(rawBytes).toString("utf-8"));
         }
         if (byte === DEL || byte === BACKSPACE) {
-          buf = buf.slice(0, -1);
+          // Pop one UTF-8 character: strip continuation bytes (10xxxxxx), then the leading byte
+          while (rawBytes.length > 0 && (rawBytes[rawBytes.length - 1]! & 0xC0) === 0x80) {
+            rawBytes.pop();
+          }
+          if (rawBytes.length > 0) {
+            rawBytes.pop();
+          }
         } else if (byte >= FIRST_PRINTABLE_ASCII) {
-          buf += String.fromCharCode(byte);
+          rawBytes.push(byte);
         }
       }
     };
