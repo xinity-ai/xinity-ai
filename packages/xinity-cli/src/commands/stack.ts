@@ -25,7 +25,7 @@ import { runStackFlow } from "../lib/stack-plan.ts";
 import { runDoctor, buildSummaryLine, type DoctorReport } from "../lib/doctor.ts";
 import { fetchRelease, listReleases, type ReleaseListEntry } from "../lib/github.ts";
 import { loadStackState, findOrphanHosts } from "../lib/stack-state.ts";
-import { connectHosts, disposeAll } from "../lib/multi-host.ts";
+import { connectHosts, disposeAll, mapBounded, HOST_CONCURRENCY } from "../lib/multi-host.ts";
 
 const AVAILABLE_COMPONENTS: Component[] = ["gateway", "dashboard", "daemon", "infoserver"];
 
@@ -647,13 +647,13 @@ async function handleDoctor(name: string, fleetName?: string): Promise<void> {
     // Checks are collected on all hosts at once (runDoctor stays silent when
     // non-interactive) and rendered afterwards in host order.
     type DoctorEntry = { address: string; report: DoctorReport } | { address: string; error: string };
-    const reports = await Promise.all([...hosts.entries()].map(async ([address, host]): Promise<DoctorEntry> => {
+    const reports = await mapBounded([...hosts.entries()], HOST_CONCURRENCY, async ([address, host]): Promise<DoctorEntry> => {
       try {
         return { address, report: await runDoctor({ host, interactive: false }) };
       } catch (err) {
         return { address, error: err instanceof Error ? err.message : String(err) };
       }
-    }));
+    });
 
     for (const entry of reports) {
       heading(entry.address);
