@@ -62,16 +62,12 @@ export function configPath(): string {
   return join(xinityConfigDir(), "config.json");
 }
 
-/** Returns null when the file is missing or not valid JSON. */
+/** Returns null when the file is missing. Throws on corrupt JSON. */
 export function loadPrivateJson<T>(path: string): T | null {
   if (!existsSync(path)) {
     return null;
   }
-  try {
-    return JSON.parse(readFileSync(path, "utf-8")) as T;
-  } catch {
-    return null;
-  }
+  return JSON.parse(readFileSync(path, "utf-8")) as T;
 }
 
 /** Write JSON readable only by the user (0700 directory, 0600 file). */
@@ -82,9 +78,13 @@ export function savePrivateJson(path: string, value: unknown): void {
   chmodSync(path, 0o600);
 }
 
-/** Read the config file, returning an empty object if it doesn't exist. */
+/** Read the config file, returning an empty object if it doesn't exist or is corrupt. */
 export function loadConfig(): CliConfig {
-  return loadPrivateJson<CliConfig>(configPath()) ?? {};
+  try {
+    return loadPrivateJson<CliConfig>(configPath()) ?? {};
+  } catch {
+    return {};
+  }
 }
 
 /** Write the full config object to disk, creating the directory if needed. */

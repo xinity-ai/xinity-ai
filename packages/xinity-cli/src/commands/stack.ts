@@ -9,10 +9,12 @@ import {
   type FleetDefinition,
   createStack,
   loadStack,
+  stackExists,
   saveStack,
   deleteStack,
   listStacks,
   validateStackName,
+  validateStack,
   getFleet,
   getFleetForHost,
   hostLabel,
@@ -52,7 +54,17 @@ function fleetNameChoices(): { choices?: string[] } {
 function requireStack(name: string): StackDefinition {
   const stack = loadStack(name);
   if (!stack) {
-    log.error(`Stack "${name}" not found`);
+    if (!stackExists(name)) {
+      log.error(`Stack "${name}" not found`);
+    }
+    process.exit(1);
+  }
+  const errors = validateStack(stack);
+  if (errors.length > 0) {
+    for (const error of errors) {
+      fail(error.field, error.message);
+    }
+    fail("Stack", `The definition is invalid; fix it with: xinity stack edit ${name}`);
     process.exit(1);
   }
   return stack;
@@ -685,21 +697,26 @@ async function handleDoctor(name: string, fleetName?: string): Promise<void> {
 }
 
 async function handleRm(name: string): Promise<void> {
-  const stack = requireStack(name);
+  if (!stackExists(name)) {
+    log.error(`Stack "${name}" not found`);
+    process.exit(1);
+  }
+
   intro(`xinity stack rm ${cyan(name)}`);
 
-  // Deleting the definition also deletes the state, so hosts not yet
-  // evacuated by an up run would be forgotten; the listing makes that visible.
-  const orphans = findOrphanHosts(loadStackState(name), stack);
-  if (stack.hosts.length > 0 || orphans.length > 0) {
-    log.info(bold("Tracked hosts:"));
-    for (const host of stack.hosts) {
-      log.info(`  ${host.address}: ${host.components.join(", ")}`);
+  const stack = loadStack(name);
+  if (stack) {
+    const orphans = findOrphanHosts(loadStackState(name), stack);
+    if (stack.hosts.length > 0 || orphans.length > 0) {
+      log.info(bold("Tracked hosts:"));
+      for (const host of stack.hosts) {
+        log.info(`  ${host.address}: ${host.components.join(", ")}`);
+      }
+      for (const address of orphans) {
+        log.info(`  ${address}: ${dim("removed from the definition, not yet evacuated")}`);
+      }
+      log.info("Hosts stay untouched. To uninstall components first, remove the hosts from the stack and run stack up before deleting it.");
     }
-    for (const address of orphans) {
-      log.info(`  ${address}: ${dim("removed from the definition, not yet evacuated")}`);
-    }
-    log.info("Hosts stay untouched. To uninstall components first, remove the hosts from the stack and run stack up before deleting it.");
   }
 
   const confirmed = await promptOrExit(confirm({

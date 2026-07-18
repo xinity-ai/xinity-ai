@@ -7,30 +7,46 @@
  */
 import { existsSync, unlinkSync } from "fs";
 import { join } from "path";
+import { z } from "zod";
 import { version as cliVersion } from "../../../../package.json";
 import { xinityConfigDir, loadPrivateJson, savePrivateJson } from "./config.ts";
 import type { StackDefinition } from "./stack.ts";
 
-export interface ManagedHost {
-  address: string;
-}
+// ── Schema & Types ──────────────────────────────────────────────────────
 
-export interface StackState {
-  /** CLI version that last wrote this file; lets future versions migrate breaking changes. */
-  version: string;
-  hosts: ManagedHost[];
-}
+const managedHostT = z.object({ address: z.string() });
+
+const stackStateT = z.object({
+  version: z.string().default("0.0.0"),
+  hosts: z.array(managedHostT).default([]),
+});
+
+export type ManagedHost = z.infer<typeof managedHostT>;
+export type StackState = z.infer<typeof stackStateT>;
+
+// ── Paths ───────────────────────────────────────────────────────────────
 
 function statePath(name: string): string {
   return join(xinityConfigDir(), "stacks", "state", `${name}.json`);
 }
 
+// ── Persistence ─────────────────────────────────────────────────────────
+
 export function loadStackState(name: string): StackState {
-  const parsed = loadPrivateJson<Partial<StackState>>(statePath(name));
-  if (!parsed) {
+  let raw: unknown;
+  try {
+    raw = loadPrivateJson<unknown>(statePath(name));
+  } catch {
     return { version: cliVersion, hosts: [] };
   }
-  return { version: "0.0.0", hosts: [], ...parsed };
+  if (raw === null) {
+    return { version: cliVersion, hosts: [] };
+  }
+  const result = stackStateT.safeParse(raw);
+  if (!result.success) {
+    return { version: cliVersion, hosts: [] };
+  }
+  return result.data;
 }
 
 function saveStackState(name: string, state: StackState): void {
