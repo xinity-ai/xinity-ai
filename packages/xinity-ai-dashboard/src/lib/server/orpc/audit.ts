@@ -12,6 +12,11 @@ export type AuditAction =
   | "account.delete_passkey"
   | "account.disable_2fa"
   | "account.enable_2fa"
+  | "account.request_password_reset"
+  | "account.sign_in"
+  | "account.sign_out"
+  | "account.sign_up"
+  | "account.verify_email"
   | "aiApplication.create"
   | "aiApplication.delete"
   | "aiApplication.update"
@@ -85,11 +90,12 @@ async function writeAuditEvent(row: typeof auditEventT.$inferInsert): Promise<vo
 export function emitAuthAuditEvent(params: {
   action: AuditAction;
   resource: string;
-  actorId: string;
+  actorId: string | null;
   actorLabel: string | null;
   ipAddress: string | null;
   userAgent: string | null;
   resourceId?: string | null;
+  result?: "success" | "failure";
 }): void {
   void writeAuditEvent({
     organizationId: null,
@@ -99,7 +105,7 @@ export function emitAuthAuditEvent(params: {
     action: params.action,
     resource: params.resource,
     resourceId: params.resourceId ?? null,
-    result: "success",
+    result: params.result ?? "success",
     ipAddress: params.ipAddress,
     userAgent: params.userAgent,
     context: null,

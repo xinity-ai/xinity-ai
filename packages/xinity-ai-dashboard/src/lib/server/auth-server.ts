@@ -152,28 +152,53 @@ const sendWelcomeNotification = createAuthMiddleware(async (ctx) => {
   });
 });
 
-/** Better Auth endpoints (2FA, etc.) that oRPC's audit middleware can't see, mapped to audit actions. */
-const AUTH_AUDIT_ACTIONS: Record<string, AuditAction> = {
-  "/two-factor/enable": "account.enable_2fa",
-  "/two-factor/disable": "account.disable_2fa",
+type AuthAuditPath = { action: AuditAction; recordFailure?: boolean };
+
+const AUTH_AUDIT_PATHS: Record<string, AuthAuditPath> = {
+  "/two-factor/enable": { action: "account.enable_2fa" },
+  "/two-factor/disable": { action: "account.disable_2fa" },
+  "/sign-in/email": { action: "account.sign_in", recordFailure: true },
+  "/sign-out": { action: "account.sign_out" },
+  "/sign-up/email": { action: "account.sign_up" },
+  "/forgot-password": { action: "account.request_password_reset" },
+  "/verify-email": { action: "account.verify_email" },
 };
 
+type UserLike = { id?: string; email?: string };
+
+function resolveAuthUser(ctx: {
+  context?: { session?: { user?: UserLike }; newSession?: { user?: UserLike } };
+  body?: { email?: string };
+}): { actorId: string | null; actorLabel: string | null; resourceId: string | null } {
+  const sessionUser = ctx.context?.session?.user ?? ctx.context?.newSession?.user;
+  if (sessionUser?.id) {
+    return { actorId: sessionUser.id, actorLabel: sessionUser.email ?? null, resourceId: sessionUser.id };
+  }
+  const email = ctx.body?.email;
+  if (typeof email === "string") {
+    return { actorId: null, actorLabel: email, resourceId: null };
+  }
+  return { actorId: null, actorLabel: null, resourceId: null };
+}
+
 const recordAuthAudit = createAuthMiddleware(async (ctx) => {
-  const action = AUTH_AUDIT_ACTIONS[ctx.path];
-  if (!action) return;
+  const config = AUTH_AUDIT_PATHS[ctx.path];
+  if (!config) return;
   const response = ctx.context?.returned as { status?: number } | undefined;
-  if (response?.status !== 200) return;
-  const user = ctx.context?.session?.user as { id?: string; email?: string } | undefined;
-  if (!user?.id) return;
+  const isSuccess = !response?.status || response.status === 200;
+  if (!isSuccess && !config.recordFailure) return;
+  const { actorId, actorLabel, resourceId } = resolveAuthUser(ctx as any);
+  if (!actorId && !actorLabel) return;
   const headers = ctx.headers ?? ctx.request?.headers;
   emitAuthAuditEvent({
-    action,
+    action: config.action,
     resource: "account",
-    actorId: user.id,
-    actorLabel: user.email ?? null,
+    actorId,
+    actorLabel,
     ipAddress: headers?.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
     userAgent: headers?.get("user-agent") ?? null,
-    resourceId: user.id,
+    resourceId,
+    result: isSuccess ? "success" : "failure",
   });
 });
 
