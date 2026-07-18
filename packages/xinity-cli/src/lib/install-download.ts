@@ -105,6 +105,7 @@ export async function* downloadAndVerifyOnHost(
   } catch (err) {
     yield { type: "spinner", id: "download", message: "Download failed", done: true };
     yield { type: "fail", label: "Download", detail: (err as Error).message };
+    await host.run(["rm", "-rf", tmpDir]);
     return null;
   }
   yield { type: "spinner", id: "download", message: "Downloaded", done: true };
@@ -114,7 +115,11 @@ export async function* downloadAndVerifyOnHost(
     (path, expected) => host.verifySha256(path, expected),
     "Checksum verified",
   );
-  return verified ? destPath : null;
+  if (!verified) {
+    await host.run(["rm", "-rf", tmpDir]);
+    return null;
+  }
+  return destPath;
 }
 
 export function extractCommandArgv(archivePath: string, destDir: string): string[] {

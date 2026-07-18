@@ -11,6 +11,9 @@ const REDIS_PING_TIMEOUT_MS = 5000;
 
 export async function testPostgresConnection(url: string, host: Host): Promise<ConnectionResult> {
   const tunnel = await host.openTunnel(url);
+  if (!tunnel.ok) {
+    return { success: false, error: tunnel.error };
+  }
   let sql: postgres.Sql | undefined;
   try {
     sql = postgres(tunnel.localUrl, { max: 1, connect_timeout: POSTGRES_CONNECT_TIMEOUT_SECONDS });
@@ -28,6 +31,9 @@ export async function testPostgresConnection(url: string, host: Host): Promise<C
 
 export async function testRedisConnection(url: string, host: Host): Promise<ConnectionResult> {
   const tunnel = await host.openTunnel(url);
+  if (!tunnel.ok) {
+    return { success: false, error: tunnel.error };
+  }
   let client: import("bun").RedisClient | undefined;
   try {
     client = new Bun.RedisClient(tunnel.localUrl, { connectionTimeout: REDIS_PING_TIMEOUT_MS });

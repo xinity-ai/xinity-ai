@@ -25,7 +25,7 @@ export async function localRun(args: string[]): Promise<RunResult> {
   ]);
   return {
     ok: exitCode === 0,
-    output: (stdout || stderr).trim(),
+    output: [stdout, stderr].filter(Boolean).join("\n").trim(),
     exitCode,
   };
 }
@@ -62,6 +62,10 @@ export interface ElevationResult {
   success: boolean;
   output: string;
 }
+
+export type TunnelResult =
+  | { ok: true; localUrl: string; close: () => Promise<void> }
+  | { ok: false; error: string };
 
 // ─── Host interface ─────────────────────────────────────────────────────────
 
@@ -122,9 +126,10 @@ export interface Host {
    * becomes reachable from the local machine via SSH port forwarding.
    * For localhost this is a no-op (services are already reachable).
    *
-   * Returns the rewritten URL and a cleanup function to tear down the tunnel.
+   * Returns the rewritten URL and a cleanup function, or an error string
+   * when the URL is malformed or the SSH tunnel cannot be established.
    */
-  openTunnel(url: string): Promise<{ localUrl: string; close: () => Promise<void> }>;
+  openTunnel(url: string): Promise<TunnelResult>;
 
   /** Release any long-lived resources (persistent sessions, connections). */
   dispose(): Promise<void>;

@@ -123,8 +123,14 @@ async function callRoute(
   }
 
   spin.stop(`${route.method} ${path}`);
-  const json = await res.json();
-  console.log(JSON.stringify(json, null, 2));
+  const text = await res.text();
+  if (text) {
+    try {
+      console.log(JSON.stringify(JSON.parse(text), null, 2));
+    } catch {
+      console.log(text);
+    }
+  }
 }
 
 function parseJsonOrExit(text: string, source: string): Record<string, unknown> {

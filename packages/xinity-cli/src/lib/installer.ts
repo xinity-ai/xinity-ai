@@ -488,19 +488,19 @@ export async function applyComponentAction(
     const binaryChanged = action.kind !== "reconfigure";
     const errors = await applyConfigAndStart(component, action.env, host, isUpdate, onFailure, progress, binaryChanged);
 
+    const success = errors.length === 0;
+
     if (action.kind !== "reconfigure") {
       const binaryPath = `${BIN_DIR}/${binaryBaseName(component)}`;
       const binaryChecksum = (await host.computeSha256(binaryPath)) ?? undefined;
       await updateManifestEntry(component, {
-        version: versionString,
+        version: success ? versionString : (action.installedVersion ?? versionString),
         installedAt: new Date().toISOString(),
         binaryPath,
         unitName: unitName(component),
         binaryChecksum,
       }, host);
     }
-
-    const success = errors.length === 0;
     if (success) {
       progress.done(actionSummary(action, versionString));
     }
