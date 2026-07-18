@@ -37,7 +37,7 @@ describe("configure command", () => {
   test("configure <key> <value> sets a config value", async () => {
     const result = await runCli({
       args: ["configure", "dashboardUrl", "http://test.example.com"],
-      env: { HOME: tmp.path },
+      env: { HOME: tmp.path, XDG_CONFIG_HOME: join(tmp.path, ".config") },
     });
 
     // Should succeed (exit 0) with non-interactive set
@@ -50,12 +50,12 @@ describe("configure command", () => {
   test("configure sets multiple values sequentially", async () => {
     await runCli({
       args: ["configure", "dashboardUrl", "http://first.com"],
-      env: { HOME: tmp.path },
+      env: { HOME: tmp.path, XDG_CONFIG_HOME: join(tmp.path, ".config") },
     });
 
     await runCli({
       args: ["configure", "githubProjectUrl", "https://github.com/test/repo"],
-      env: { HOME: tmp.path },
+      env: { HOME: tmp.path, XDG_CONFIG_HOME: join(tmp.path, ".config") },
     });
 
     const config = readConfig();
@@ -66,12 +66,12 @@ describe("configure command", () => {
   test("configure overwrites existing value", async () => {
     await runCli({
       args: ["configure", "dashboardUrl", "http://old.com"],
-      env: { HOME: tmp.path },
+      env: { HOME: tmp.path, XDG_CONFIG_HOME: join(tmp.path, ".config") },
     });
 
     await runCli({
       args: ["configure", "dashboardUrl", "http://new.com"],
-      env: { HOME: tmp.path },
+      env: { HOME: tmp.path, XDG_CONFIG_HOME: join(tmp.path, ".config") },
     });
 
     const config = readConfig();
@@ -82,14 +82,14 @@ describe("configure command", () => {
     // Set a value first
     await runCli({
       args: ["configure", "apiKey", "test-key-123"],
-      env: { HOME: tmp.path },
+      env: { HOME: tmp.path, XDG_CONFIG_HOME: join(tmp.path, ".config") },
     });
     expect(readConfig().apiKey).toBe("test-key-123");
 
     // Reset it
     const result = await runCli({
       args: ["configure", "--reset", "apiKey"],
-      env: { HOME: tmp.path },
+      env: { HOME: tmp.path, XDG_CONFIG_HOME: join(tmp.path, ".config") },
     });
 
     expect(result.exitCode).toBe(0);
@@ -99,16 +99,16 @@ describe("configure command", () => {
   test("configure --reset preserves other keys", async () => {
     await runCli({
       args: ["configure", "apiKey", "key-1"],
-      env: { HOME: tmp.path },
+      env: { HOME: tmp.path, XDG_CONFIG_HOME: join(tmp.path, ".config") },
     });
     await runCli({
       args: ["configure", "dashboardUrl", "http://test.com"],
-      env: { HOME: tmp.path },
+      env: { HOME: tmp.path, XDG_CONFIG_HOME: join(tmp.path, ".config") },
     });
 
     await runCli({
       args: ["configure", "--reset", "apiKey"],
-      env: { HOME: tmp.path },
+      env: { HOME: tmp.path, XDG_CONFIG_HOME: join(tmp.path, ".config") },
     });
 
     const config = readConfig();
@@ -119,7 +119,7 @@ describe("configure command", () => {
   test("configure rejects invalid key", async () => {
     const result = await runCli({
       args: ["configure", "invalidKey", "value"],
-      env: { HOME: tmp.path },
+      env: { HOME: tmp.path, XDG_CONFIG_HOME: join(tmp.path, ".config") },
     });
 
     expect(result.exitCode).not.toBe(0);
