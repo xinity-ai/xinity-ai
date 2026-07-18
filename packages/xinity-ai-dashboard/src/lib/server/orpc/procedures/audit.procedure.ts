@@ -6,10 +6,10 @@ import { rootOs, withOrganization, requirePermission } from "../root";
 import { z } from "zod";
 import { auditEventT, sql } from "common-db";
 import { getDB } from "$lib/server/db";
+import { hasFeature } from "$lib/server/license";
 
 const tags = ["Audit"];
 
-/** Exports audit events for the active organization within a time range. */
 const exportAudit = rootOs
   .use(withOrganization)
   .use(requirePermission({ auditLog: ["read"] }))
@@ -19,7 +19,10 @@ const exportAudit = rootOs
     from: z.coerce.date(),
     to: z.coerce.date().optional(),
   }))
-  .handler(async ({ context, input }) => {
+  .handler(async ({ context, input, errors }) => {
+    if (!hasFeature("audit-log")) {
+      throw errors.FORBIDDEN({ message: "Audit log export requires an Enterprise license." });
+    }
     const to = input.to ?? new Date();
     return getDB()
       .select()

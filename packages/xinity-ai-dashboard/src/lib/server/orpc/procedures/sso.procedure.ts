@@ -159,7 +159,7 @@ async function dispatchSsoRegistration(
 }
 
 const registerOidc = rootOs
-  .meta({ mcp: false, audit: { action: "sso.register_oidc", resource: "sso" } })
+  .meta({ mcp: false, audit: { action: "sso.register_oidc", resource: "sso", resourceId: { fromInput: "providerId" }, captureInput: ["domain"] } })
   .use(withAuth)
   .use(auditMiddleware)
   .errors({ BAD_REQUEST: {} })
@@ -188,7 +188,7 @@ const registerOidc = rootOs
   });
 
 const registerSaml = rootOs
-  .meta({ mcp: false, audit: { action: "sso.register_saml", resource: "sso" } })
+  .meta({ mcp: false, audit: { action: "sso.register_saml", resource: "sso", resourceId: { fromInput: "providerId" }, captureInput: ["domain"] } })
   .use(withAuth)
   .use(auditMiddleware)
   .errors({ BAD_REQUEST: {}, FORBIDDEN: {} })
@@ -296,7 +296,7 @@ const verifyDomain = rootOs
   });
 
 const deleteProvider = rootOs
-  .meta({ mcp: false, audit: { action: "sso.delete_provider", resource: "sso" } })
+  .meta({ mcp: false, audit: { action: "sso.delete_provider", resource: "sso", resourceId: { fromInput: "providerId" } } })
   .use(withAuth)
   .use(auditMiddleware)
   .route({ path: "/", method: "DELETE", tags, summary: "Delete SSO Provider" })

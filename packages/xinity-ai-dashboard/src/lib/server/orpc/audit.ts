@@ -52,7 +52,13 @@ export type AuditAction =
   | "sso.register_saml"
   | "user.update_settings";
 
-export type AuditTag = { action: AuditAction; resource: string };
+export type AuditTag = {
+  action: AuditAction;
+  resource: string;
+  resourceId?: { fromInput?: string; fromOutput?: string };
+  captureInput?: string[];
+  captureOutput?: string[];
+};
 
 export type ActorInfo = { actorType: AuditActorType; actorId: string | null; actorLabel: string | null };
 
@@ -83,6 +89,7 @@ export function emitAuthAuditEvent(params: {
   actorLabel: string | null;
   ipAddress: string | null;
   userAgent: string | null;
+  resourceId?: string | null;
 }): void {
   void writeAuditEvent({
     organizationId: null,
@@ -91,6 +98,7 @@ export function emitAuthAuditEvent(params: {
     actorLabel: params.actorLabel,
     action: params.action,
     resource: params.resource,
+    resourceId: params.resourceId ?? null,
     result: "success",
     ipAddress: params.ipAddress,
     userAgent: params.userAgent,
@@ -98,10 +106,42 @@ export function emitAuthAuditEvent(params: {
   }).catch((err) => log.warn({ err, action: params.action }, "Failed to emit auth audit event"));
 }
 
+function captureFields(keys: string[] | undefined, source: unknown): Record<string, unknown> | undefined {
+  if (!keys || !source || typeof source !== "object") return undefined;
+  const obj = source as Record<string, unknown>;
+  const captured: Record<string, unknown> = {};
+  let hasAny = false;
+  for (const key of keys) {
+    if (key in obj && obj[key] !== undefined) {
+      captured[key] = obj[key];
+      hasAny = true;
+    }
+  }
+  return hasAny ? captured : undefined;
+}
+
+function resolveResourceId(
+  config: AuditTag["resourceId"],
+  input: unknown,
+  output?: unknown,
+): string | null {
+  if (!config) return null;
+  if (config.fromInput && input && typeof input === "object") {
+    const val = (input as Record<string, unknown>)[config.fromInput];
+    if (typeof val === "string") return val;
+  }
+  if (config.fromOutput && output && typeof output === "object") {
+    const val = (output as Record<string, unknown>)[config.fromOutput];
+    if (typeof val === "string") return val;
+  }
+  return null;
+}
+
 async function emitAudit(
   context: AuditContext,
   tag: AuditTag,
   result: "success" | "failure",
+  resourceId: string | null,
   extraContext?: Record<string, unknown>,
 ): Promise<void> {
   const actor = context.actor ?? { actorType: "system" as const, actorId: null, actorLabel: null };
@@ -112,6 +152,7 @@ async function emitAudit(
     actorLabel: actor.actorLabel,
     action: tag.action,
     resource: tag.resource,
+    resourceId,
     result,
     ipAddress: context.clientAddress || null,
     userAgent: context.request.headers.get("user-agent"),
@@ -119,9 +160,8 @@ async function emitAudit(
   });
 }
 
-/** Fire-and-forget the write so it never adds latency to the request. writeAuditEvent logs write failures; this catches anything else. */
-function fireAudit(context: AuditContext, tag: AuditTag, result: "success" | "failure", extraContext?: Record<string, unknown>): void {
-  void emitAudit(context, tag, result, extraContext).catch((err) => log.warn({ err }, "Failed to emit audit event"));
+function fireAudit(context: AuditContext, tag: AuditTag, result: "success" | "failure", resourceId: string | null, extraContext?: Record<string, unknown>): void {
+  void emitAudit(context, tag, result, resourceId, extraContext).catch((err) => log.warn({ err }, "Failed to emit audit event"));
 }
 
 /**
@@ -132,15 +172,20 @@ function fireAudit(context: AuditContext, tag: AuditTag, result: "success" | "fa
 export async function runWithAudit<T>(
   context: AuditContext,
   tag: AuditTag | undefined,
+  input: unknown,
   next: () => T | PromiseLike<T>,
 ): Promise<T> {
   if (!tag) return next();
   try {
     const result = await next();
-    fireAudit(context, tag, "success");
+    const resourceId = resolveResourceId(tag.resourceId, input, result);
+    const captured = { ...captureFields(tag.captureInput, input), ...captureFields(tag.captureOutput, result) };
+    fireAudit(context, tag, "success", resourceId, Object.keys(captured).length > 0 ? captured : undefined);
     return result;
   } catch (err) {
-    fireAudit(context, tag, "failure", { error: err instanceof Error ? err.message : String(err) });
+    const resourceId = resolveResourceId(tag.resourceId, input);
+    const captured = captureFields(tag.captureInput, input);
+    fireAudit(context, tag, "failure", resourceId, { ...captured, error: err instanceof Error ? err.message : String(err) });
     throw err;
   }
 }

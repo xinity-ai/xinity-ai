@@ -18,7 +18,7 @@ const tags = ["Organization"];
 export const createOrganization = rootOs
   .use(withAuth)
   .use(auditMiddleware)
-  .meta({ audit: { action: "organization.create", resource: "organization" } })
+  .meta({ audit: { action: "organization.create", resource: "organization", resourceId: { fromOutput: "id" }, captureInput: ["name", "slug"] } })
   .route({ path: "/", method: "POST", tags, summary: "Create Organization" })
   .input(z.object({
     name: z.string().min(1),
@@ -74,7 +74,7 @@ const update = rootOs
   .use(withOrganization)
   .use(requirePermission({ organization: ["update"] }))
   .use(auditMiddleware)
-  .meta({ audit: { action: "organization.update", resource: "organization" } })
+  .meta({ audit: { action: "organization.update", resource: "organization", captureInput: ["name"] } })
   .route({ path: "/", method: "PATCH", tags, summary: "Update Organization" })
   .input(z.object({
     name: z.string(),
@@ -103,7 +103,7 @@ const inviteMember = rootOs
   .use(withOrganization)
   .use(requirePermission({ invitation: ["create"] }))
   .use(auditMiddleware)
-  .meta({ audit: { action: "invitation.create", resource: "invitation" } })
+  .meta({ audit: { action: "invitation.create", resource: "invitation", captureInput: ["email", "role"] } })
   .errors({ CONFLICT: {}, BAD_REQUEST: {} })
   .route({ path: "/invite", method: "POST", tags, summary: "Invite Member" })
   .input(z.object({
@@ -155,7 +155,7 @@ const removeMember = rootOs
   .use(withOrganization)
   .use(requirePermission({ member: ["delete"] }))
   .use(auditMiddleware)
-  .meta({ audit: { action: "member.remove", resource: "member" } })
+  .meta({ audit: { action: "member.remove", resource: "member", resourceId: { fromInput: "memberId" } } })
   .route({ path: "/member", method: "DELETE", tags, summary: "Remove Member" })
   .errors({ NOT_FOUND: {} })
   .input(z.object({
@@ -196,7 +196,7 @@ const updateMemberRole = rootOs
   .use(withOrganization)
   .use(requirePermission({ member: ["update"] }))
   .use(auditMiddleware)
-  .meta({ audit: { action: "member.update_role", resource: "member" } })
+  .meta({ audit: { action: "member.update_role", resource: "member", resourceId: { fromInput: "memberId" }, captureInput: ["role"] } })
   .route({ path: "/member", method: "PATCH", tags, summary: "Update Member Role" })
   .input(z.object({
     memberId: z.string(),
@@ -243,7 +243,7 @@ const cancelInvitation = rootOs
   .use(withOrganization)
   .use(requirePermission({ invitation: ["cancel"] }))
   .use(auditMiddleware)
-  .meta({ audit: { action: "invitation.cancel", resource: "invitation" } })
+  .meta({ audit: { action: "invitation.cancel", resource: "invitation", resourceId: { fromInput: "invitationId" } } })
   .route({ path: "/invitation", method: "DELETE", tags, summary: "Cancel Invitation" })
   .input(z.object({
     invitationId: z.string(),

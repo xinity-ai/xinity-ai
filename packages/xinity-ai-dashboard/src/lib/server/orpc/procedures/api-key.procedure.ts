@@ -25,7 +25,7 @@ export const createApiKey = rootOs
   .use(withOrganization)
   .use(requirePermission({ apiKey: ["create"] }))
   .use(auditMiddleware)
-  .meta({ audit: { action: "apiKey.create", resource: "apiKey" } })
+  .meta({ audit: { action: "apiKey.create", resource: "apiKey", captureInput: ["name"] } })
   .route({ path: "/", method: "POST", tags, summary: "Create LLM API Key" })
   .input(
     ApiKeyDto.omit({ specifier: true, id: true, applicationId: true, collectData: true, createdByUserId: true, createdByUserName: true, ...commonInputFilter }).extend({
@@ -115,7 +115,7 @@ const updateApiKey = rootOs
   .use(withOrganization)
   .use(requirePermission({ apiKey: ["update"] }))
   .use(auditMiddleware)
-  .meta({ audit: { action: "apiKey.update", resource: "apiKey" } })
+  .meta({ audit: { action: "apiKey.update", resource: "apiKey", resourceId: { fromInput: "id" }, captureInput: ["name"] } })
   .route({ method: "PATCH", path: "/{id}", tags, summary: "Update LLM API Key" })
   .input(ApiKeyDto.pick({ id: true, name: true }).extend({
     applicationId: z.uuid().nullable().optional(),
@@ -154,7 +154,7 @@ const deleteApiKey = rootOs
   .use(withOrganization)
   .use(requirePermission({ apiKey: ["delete"] }))
   .use(auditMiddleware)
-  .meta({ audit: { action: "apiKey.delete", resource: "apiKey" } })
+  .meta({ audit: { action: "apiKey.delete", resource: "apiKey", resourceId: { fromInput: "id" } } })
   .route({ method: "DELETE", path: "/{id}", tags, summary: "Soft Delete LLM API Key" })
   .input(ApiKeyDto.pick({ id: true }))
   .handler(async ({ context, input }) => {
@@ -170,7 +170,7 @@ const toggleEnabled = rootOs
   .use(withOrganization)
   .use(requirePermission({ apiKey: ["update"] }))
   .use(auditMiddleware)
-  .meta({ audit: { action: "apiKey.toggle_enabled", resource: "apiKey" } })
+  .meta({ audit: { action: "apiKey.toggle_enabled", resource: "apiKey", resourceId: { fromInput: "id" }, captureInput: ["enabled"] } })
   .route({ method: "PATCH", path: "/{id}/toggle-enabled", tags, summary: "Enable/Disable LLM API Key" })
   .input(ApiKeyDto.pick({ id: true }).extend({ enabled: z.boolean().optional() }))
   .handler(async ({ context, input, errors }) => {
@@ -192,7 +192,7 @@ const toggleCollectData = rootOs
   .use(withOrganization)
   .use(requirePermission({ apiKey: ["update"] }))
   .use(auditMiddleware)
-  .meta({ audit: { action: "apiKey.toggle_collect_data", resource: "apiKey" } })
+  .meta({ audit: { action: "apiKey.toggle_collect_data", resource: "apiKey", resourceId: { fromInput: "id" }, captureInput: ["collectData"] } })
   .route({ method: "PATCH", path: "/{id}/toggle-collect-data", tags, summary: "Toggle data collection for API key" })
   .input(ApiKeyDto.pick({ id: true }).extend({ collectData: z.boolean() }))
   .handler(async ({ context, input }) => {

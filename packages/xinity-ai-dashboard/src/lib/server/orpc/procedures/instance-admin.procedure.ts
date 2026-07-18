@@ -107,7 +107,7 @@ const listUsers = rootOs
   });
 
 const banUser = rootOs
-  .meta({ mcp: false, audit: { action: "instanceAdmin.ban_user", resource: "user" } })
+  .meta({ mcp: false, audit: { action: "instanceAdmin.ban_user", resource: "user", resourceId: { fromInput: "userId" }, captureInput: ["reason"] } })
   .use(withInstanceAdmin)
   .use(auditMiddleware)
   .route({ method: "PATCH", path: "/users/ban", tags, summary: "Ban a user" })
@@ -134,7 +134,7 @@ const banUser = rootOs
   });
 
 const unbanUser = rootOs
-  .meta({ mcp: false, audit: { action: "instanceAdmin.unban_user", resource: "user" } })
+  .meta({ mcp: false, audit: { action: "instanceAdmin.unban_user", resource: "user", resourceId: { fromInput: "userId" } } })
   .use(withInstanceAdmin)
   .use(auditMiddleware)
   .route({ method: "PATCH", path: "/users/unban", tags, summary: "Unban a user" })
@@ -150,7 +150,7 @@ const unbanUser = rootOs
   });
 
 const addUserToOrganization = rootOs
-  .meta({ mcp: false, audit: { action: "instanceAdmin.add_user_to_org", resource: "member" } })
+  .meta({ mcp: false, audit: { action: "instanceAdmin.add_user_to_org", resource: "member", resourceId: { fromInput: "userId" }, captureInput: ["role", "organizationId"] } })
   .use(withInstanceAdmin)
   .use(auditMiddleware)
   .route({ method: "POST", path: "/users/add-to-org", tags, summary: "Add user to organization" })
@@ -182,7 +182,7 @@ const addUserToOrganization = rootOs
   });
 
 const removeUserFromOrganization = rootOs
-  .meta({ mcp: false, audit: { action: "instanceAdmin.remove_user_from_org", resource: "member" } })
+  .meta({ mcp: false, audit: { action: "instanceAdmin.remove_user_from_org", resource: "member", resourceId: { fromInput: "userId" }, captureInput: ["organizationId"] } })
   .use(withInstanceAdmin)
   .use(auditMiddleware)
   .route({ method: "DELETE", path: "/users/membership", tags, summary: "Remove user from organization" })
@@ -206,7 +206,7 @@ const removeUserFromOrganization = rootOs
   });
 
 const updateUserRole = rootOs
-  .meta({ mcp: false, audit: { action: "instanceAdmin.update_user_role", resource: "member" } })
+  .meta({ mcp: false, audit: { action: "instanceAdmin.update_user_role", resource: "member", resourceId: { fromInput: "userId" }, captureInput: ["role", "organizationId"] } })
   .use(withInstanceAdmin)
   .use(auditMiddleware)
   .route({ method: "PATCH", path: "/users/role", tags, summary: "Update user role in organization" })
@@ -232,7 +232,7 @@ const updateUserRole = rootOs
   });
 
 const setEmailVerified = rootOs
-  .meta({ mcp: false, audit: { action: "instanceAdmin.set_email_verified", resource: "user" } })
+  .meta({ mcp: false, audit: { action: "instanceAdmin.set_email_verified", resource: "user", resourceId: { fromInput: "userId" }, captureInput: ["verified"] } })
   .use(withInstanceAdmin)
   .use(auditMiddleware)
   .route({ method: "POST", path: "/users/set-email-verified", tags, summary: "Set user email verification status" })
@@ -254,7 +254,7 @@ const setEmailVerified = rootOs
   });
 
 const createUser = rootOs
-  .meta({ mcp: false, audit: { action: "instanceAdmin.create_user", resource: "user" } })
+  .meta({ mcp: false, audit: { action: "instanceAdmin.create_user", resource: "user", resourceId: { fromOutput: "userId" }, captureInput: ["email", "name"] } })
   .use(withInstanceAdmin)
   .use(auditMiddleware)
   .route({ method: "POST", path: "/users/create", tags, summary: "Create a new user" })
@@ -279,7 +279,7 @@ const createUser = rootOs
   });
 
 const resetUserPassword = rootOs
-  .meta({ mcp: false, audit: { action: "instanceAdmin.reset_user_password", resource: "user" } })
+  .meta({ mcp: false, audit: { action: "instanceAdmin.reset_user_password", resource: "user", resourceId: { fromInput: "userId" } } })
   .use(withInstanceAdmin)
   .use(auditMiddleware)
   .route({ method: "POST", path: "/users/reset-password", tags, summary: "Reset a user's password" })
@@ -391,7 +391,7 @@ const getOrganizationMembers = rootOs
   });
 
 const setSsoSelfManage = rootOs
-  .meta({ mcp: false, audit: { action: "instanceAdmin.set_sso_self_manage", resource: "organization" } })
+  .meta({ mcp: false, audit: { action: "instanceAdmin.set_sso_self_manage", resource: "organization", resourceId: { fromInput: "organizationId" }, captureInput: ["enabled"] } })
   .use(withInstanceAdmin)
   .use(auditMiddleware)
   .route({ method: "PATCH", path: "/organizations/sso-self-manage", tags, summary: "Set SSO self-management for an organization" })

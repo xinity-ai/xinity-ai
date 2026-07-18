@@ -173,6 +173,7 @@ const recordAuthAudit = createAuthMiddleware(async (ctx) => {
     actorLabel: user.email ?? null,
     ipAddress: headers?.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
     userAgent: headers?.get("user-agent") ?? null,
+    resourceId: user.id,
   });
 });
 

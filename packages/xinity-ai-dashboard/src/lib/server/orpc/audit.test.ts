@@ -12,7 +12,7 @@ mock.module("$lib/server/logging", () => ({
 
 const { runWithAudit } = await import("./audit");
 
-const auditTag: AuditTag = { action: "member.update_role", resource: "member" };
+const auditTag: AuditTag = { action: "member.update_role", resource: "member", resourceId: { fromInput: "memberId" }, captureInput: ["role"] };
 
 function ctx(overrides: Partial<AuditContext> = {}): AuditContext {
   return {
@@ -30,7 +30,8 @@ describe("runWithAudit", () => {
   });
 
   test("emits a success event after a successful handler", async () => {
-    const result = await runWithAudit(ctx(), auditTag, async () => "OK");
+    const input = { memberId: "member-42", role: "admin" };
+    const result = await runWithAudit(ctx(), auditTag, input, async () => "OK");
     expect(result).toBe("OK");
     expect(insertValues).toHaveBeenCalledTimes(1);
     expect(insertValues.mock.calls[0]![0]).toMatchObject({
@@ -40,30 +41,33 @@ describe("runWithAudit", () => {
       actorLabel: "user-1@example.com",
       action: "member.update_role",
       resource: "member",
+      resourceId: "member-42",
       result: "success",
       ipAddress: "1.2.3.4",
       userAgent: "test-agent",
+      context: { role: "admin" },
     });
   });
 
   test("emits a failure event and rethrows when the handler throws", async () => {
     const err = new Error("boom");
-    await expect(runWithAudit(ctx(), auditTag, async () => { throw err; })).rejects.toBe(err);
+    await expect(runWithAudit(ctx(), auditTag, { memberId: "m-1", role: "admin" }, async () => { throw err; })).rejects.toBe(err);
     expect(insertValues).toHaveBeenCalledTimes(1);
-    const row = insertValues.mock.calls[0]![0] as { result: string; context: { error: string } };
+    const row = insertValues.mock.calls[0]![0] as { result: string; resourceId: string; context: { role: string; error: string } };
     expect(row.result).toBe("failure");
-    expect(row.context).toMatchObject({ error: "boom" });
+    expect(row.resourceId).toBe("m-1");
+    expect(row.context).toMatchObject({ role: "admin", error: "boom" });
   });
 
   test("does not emit when the procedure has no audit tag", async () => {
-    const result = await runWithAudit(ctx(), undefined, async () => "OK");
+    const result = await runWithAudit(ctx(), undefined, {}, async () => "OK");
     expect(result).toBe("OK");
     expect(insertValues).not.toHaveBeenCalled();
   });
 
   test("swallows a DB write failure without breaking the handler", async () => {
     insertValues.mockImplementationOnce(() => Promise.reject(new Error("db down")));
-    const result = await runWithAudit(ctx(), auditTag, async () => "OK");
+    const result = await runWithAudit(ctx(), auditTag, { memberId: "m-1" }, async () => "OK");
     expect(result).toBe("OK");
   });
 
@@ -71,6 +75,7 @@ describe("runWithAudit", () => {
     const result = await runWithAudit(
       ctx({ activeOrganizationId: undefined }),
       auditTag,
+      { memberId: "m-1" },
       async () => "OK",
     );
     expect(result).toBe("OK");
@@ -80,7 +85,7 @@ describe("runWithAudit", () => {
 
   test("attributes the event to an API key when actor is api_key", async () => {
     const c = ctx({ actor: { actorType: "api_key", actorId: "key-1", actorLabel: "ci-key" } });
-    await runWithAudit(c, auditTag, async () => "OK");
+    await runWithAudit(c, auditTag, { memberId: "m-1" }, async () => "OK");
     const row = insertValues.mock.calls[0]![0] as { actorType: string; actorId: string; actorLabel: string };
     expect(row.actorType).toBe("api_key");
     expect(row.actorId).toBe("key-1");
@@ -89,9 +94,49 @@ describe("runWithAudit", () => {
 
   test("falls back to system actor when no actor is on context", async () => {
     const c = ctx({ actor: undefined });
-    await runWithAudit(c, auditTag, async () => "OK");
+    await runWithAudit(c, auditTag, { memberId: "m-1" }, async () => "OK");
     const row = insertValues.mock.calls[0]![0] as { actorType: string; actorId: string | null };
     expect(row.actorType).toBe("system");
     expect(row.actorId).toBeNull();
+  });
+
+  test("resolves resourceId from handler output for create operations", async () => {
+    const createTag: AuditTag = { action: "aiApplication.create", resource: "aiApplication", resourceId: { fromOutput: "id" } };
+    await runWithAudit(ctx(), createTag, {}, async () => ({ id: "new-app-id", name: "Test" }));
+    expect(insertValues).toHaveBeenCalledTimes(1);
+    const row = insertValues.mock.calls[0]![0] as { resourceId: string };
+    expect(row.resourceId).toBe("new-app-id");
+  });
+
+  test("writes null resourceId when tag has no resourceId config", async () => {
+    const plainTag: AuditTag = { action: "account.change_password", resource: "account" };
+    await runWithAudit(ctx(), plainTag, {}, async () => "OK");
+    expect(insertValues).toHaveBeenCalledTimes(1);
+    const row = insertValues.mock.calls[0]![0] as { resourceId: string | null };
+    expect(row.resourceId).toBeNull();
+  });
+
+  test("captures fields from handler output via captureOutput", async () => {
+    const tag: AuditTag = { action: "modelDeployment.create", resource: "modelDeployment", captureOutput: ["name", "specifier"] };
+    await runWithAudit(ctx(), tag, {}, async () => ({ id: "d-1", name: "GPT", specifier: "gpt-4", extra: "ignored" }));
+    expect(insertValues).toHaveBeenCalledTimes(1);
+    const row = insertValues.mock.calls[0]![0] as { context: Record<string, unknown> };
+    expect(row.context).toEqual({ name: "GPT", specifier: "gpt-4" });
+  });
+
+  test("skips undefined input fields in capture", async () => {
+    const tag: AuditTag = { action: "apiKey.toggle_enabled", resource: "apiKey", captureInput: ["enabled"] };
+    await runWithAudit(ctx(), tag, { id: "k-1" }, async () => "OK");
+    expect(insertValues).toHaveBeenCalledTimes(1);
+    const row = insertValues.mock.calls[0]![0] as { context: unknown };
+    expect(row.context).toBeUndefined();
+  });
+
+  test("writes null context when no capture is configured", async () => {
+    const tag: AuditTag = { action: "apiKey.delete", resource: "apiKey", resourceId: { fromInput: "id" } };
+    await runWithAudit(ctx(), tag, { id: "k-1" }, async () => "OK");
+    expect(insertValues).toHaveBeenCalledTimes(1);
+    const row = insertValues.mock.calls[0]![0] as { context: unknown };
+    expect(row.context).toBeUndefined();
   });
 });

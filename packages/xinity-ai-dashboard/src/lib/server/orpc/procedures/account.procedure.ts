@@ -49,7 +49,7 @@ const listPasskeys = rootOs
   });
 
 const deletePasskey = rootOs
-  .meta({ mcp: false, audit: { action: "account.delete_passkey", resource: "account" } })
+  .meta({ mcp: false, audit: { action: "account.delete_passkey", resource: "account", resourceId: { fromInput: "id" } } })
   .use(withAuth)
   .use(auditMiddleware)
   .route({ path: "/passkeys", method: "DELETE", tags, summary: "Delete Passkey" })
@@ -80,7 +80,7 @@ const listDashboardApiKeys = rootOs
   });
 
 const createDashboardApiKey = rootOs
-  .meta({ mcp: false, audit: { action: "account.create_dashboard_api_key", resource: "account" } })
+  .meta({ mcp: false, audit: { action: "account.create_dashboard_api_key", resource: "account", resourceId: { fromOutput: "id" }, captureInput: ["name"] } })
   .use(withAuth)
   .use(auditMiddleware)
   .route({ path: "/dashboard-api-keys", method: "POST", tags, summary: "Create Dashboard API Key" })
@@ -119,7 +119,7 @@ const createDashboardApiKey = rootOs
   });
 
 const deleteDashboardApiKey = rootOs
-  .meta({ mcp: false, audit: { action: "account.delete_dashboard_api_key", resource: "account" } })
+  .meta({ mcp: false, audit: { action: "account.delete_dashboard_api_key", resource: "account", resourceId: { fromInput: "id" } } })
   .use(withAuth)
   .use(auditMiddleware)
   .route({ path: "/dashboard-api-keys", method: "DELETE", tags, summary: "Delete Dashboard API Key" })

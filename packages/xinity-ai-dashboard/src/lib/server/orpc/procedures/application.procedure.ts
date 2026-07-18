@@ -22,7 +22,7 @@ const createApplication = rootOs
   .use(withOrganization)
   .use(requirePermission({ aiApplication: ["create"] }))
   .use(auditMiddleware)
-  .meta({ audit: { action: "aiApplication.create", resource: "aiApplication" } })
+  .meta({ audit: { action: "aiApplication.create", resource: "aiApplication", resourceId: { fromOutput: "id" }, captureInput: ["name"] } })
   .route({ path: "/", method: "POST", tags, summary: "Create Application" })
   .input(ApplicationDto.omit({ id: true, organizationId: true, ...commonInputFilter }))
   .handler(async ({ input, context }) => {
@@ -82,7 +82,7 @@ const updateApplication = rootOs
   .use(withOrganization)
   .use(requirePermission({ aiApplication: ["update"] }))
   .use(auditMiddleware)
-  .meta({ audit: { action: "aiApplication.update", resource: "aiApplication" } })
+  .meta({ audit: { action: "aiApplication.update", resource: "aiApplication", resourceId: { fromInput: "id" }, captureInput: ["name"] } })
   .route({ method: "PATCH", path: "/{id}", tags, summary: "Update Application" })
   .input(ApplicationDto.pick({ id: true, name: true, description: true }))
   .handler(async ({ context, input }) => {
@@ -100,7 +100,7 @@ const softDeleteApplication = rootOs
   .use(withOrganization)
   .use(requirePermission({ aiApplication: ["delete"] }))
   .use(auditMiddleware)
-  .meta({ audit: { action: "aiApplication.delete", resource: "aiApplication" } })
+  .meta({ audit: { action: "aiApplication.delete", resource: "aiApplication", resourceId: { fromInput: "id" } } })
   .route({ method: "DELETE", path: "/{id}", tags, summary: "Soft Delete Application" })
   .input(ApplicationDto.pick({ id: true }))
   .handler(async ({ context, input }) => {

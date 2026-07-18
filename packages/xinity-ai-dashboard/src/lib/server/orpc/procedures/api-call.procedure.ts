@@ -111,7 +111,7 @@ const updateMetadata = rootOs
   .use(withOrganization)
   .use(requirePermission({ apiCall: ["update"] }))
   .use(auditMiddleware)
-  .meta({ audit: { action: "apiCall.update_metadata", resource: "apiCall" } })
+  .meta({ audit: { action: "apiCall.update_metadata", resource: "apiCall", resourceId: { fromInput: "callId" } } })
   .route({ path: "/{callId}/metadata", method: "PATCH", tags, summary: "Update API call metadata" })
   .input(z.object({
     callId: z.uuid(),
