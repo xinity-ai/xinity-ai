@@ -288,7 +288,7 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
         body.tool_choice ?? "auto",
       );
 
-      const maxSteps = (body as Record<string, unknown>).max_tool_calls as number | undefined ?? env.DEEP_RESEARCH_MAX_STEPS;
+      const maxSteps = env.DEEP_RESEARCH_MAX_STEPS;
       const contextLimit = modelInfo.maxContextLength;
       const userQuery = extractText(input) ?? "";
 
@@ -445,8 +445,9 @@ async function generateAndPersistCompletedResponse(args: GeneratePersistArgs, ba
 
   const cancelCheck = () => checkCancelled(orgId, responseId);
   const existingStop = genParams.stopWhen;
+  const priorConditions = Array.isArray(existingStop) ? existingStop : existingStop ? [existingStop] : [];
   const stopConditions = background
-    ? (existingStop ? [existingStop, cancelCheck] : [cancelCheck])
+    ? [...priorConditions, cancelCheck]
     : existingStop;
 
   const progressItems: OutputItem[] = [];

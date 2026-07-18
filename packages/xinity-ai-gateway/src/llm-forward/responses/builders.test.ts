@@ -25,6 +25,7 @@ const {
   markResponseFailed,
   extractSearchAnnotations,
   buildOutputItems,
+  buildStepOutputItems,
   generateCallId,
 } = await import("./builders");
 
@@ -678,5 +679,80 @@ describe("buildFunctionToolSet", () => {
     const defs = [{ type: "function" as const, name: "noop" }];
     const toolSet = buildFunctionToolSet(defs);
     expect(toolSet).toHaveProperty("noop");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildStepOutputItems
+// ---------------------------------------------------------------------------
+
+describe("buildStepOutputItems", () => {
+  test("returns empty array when stepToolCalls is undefined", () => {
+    expect(buildStepOutputItems(undefined, undefined)).toEqual([]);
+  });
+
+  test("returns empty array when stepToolCalls is empty", () => {
+    expect(buildStepOutputItems([], [])).toEqual([]);
+  });
+
+  test("builds web_search_call item with query from args", () => {
+    const toolCalls = [{ toolCallId: "tc_1", toolName: "web_search", input: { query: "Berlin weather" } }];
+    const toolResults = [{ toolCallId: "tc_1", toolName: "web_search", input: { query: "Berlin weather" }, output: { query: "Berlin weather", results: [{ url: "https://example.com", title: "Weather" }] } }];
+    const items = buildStepOutputItems(toolCalls, toolResults);
+
+    expect(items).toHaveLength(1);
+    expect(items[0]!.type).toBe("web_search_call");
+    const search = items[0] as any;
+    expect(search.status).toBe("completed");
+    expect(search.action.type).toBe("search");
+    expect(search.action.query).toBe("Berlin weather");
+    expect(search.id).toStartWith("call_");
+  });
+
+  test("filters out internal tools (web_fetch)", () => {
+    const toolCalls = [
+      { toolCallId: "tc_1", toolName: "web_search" },
+      { toolCallId: "tc_2", toolName: "web_fetch" },
+    ];
+    const items = buildStepOutputItems(toolCalls, []);
+    expect(items).toHaveLength(1);
+    expect(items[0]!.type).toBe("web_search_call");
+  });
+
+  test("builds function_call item for user-defined tools", () => {
+    const toolCalls = [{ toolCallId: "tc_1", toolName: "get_weather", input: { city: "Berlin" } }];
+    const items = buildStepOutputItems(toolCalls, []);
+
+    expect(items).toHaveLength(1);
+    expect(items[0]!.type).toBe("function_call");
+    const fc = items[0] as any;
+    expect(fc.name).toBe("get_weather");
+    expect(fc.call_id).toBe("tc_1");
+    expect(fc.arguments).toBe('{"city":"Berlin"}');
+  });
+
+  test("includes results when web_search_call.results is in include", () => {
+    const toolCalls = [{ toolCallId: "tc_1", toolName: "web_search", input: { query: "test" } }];
+    const toolResults = [{ toolCallId: "tc_1", toolName: "web_search", input: { query: "test" }, output: { results: [{ url: "https://x.com", title: "X" }] } }];
+    const items = buildStepOutputItems(toolCalls, toolResults, ["web_search_call.results"]);
+
+    const search = items[0] as any;
+    expect(search.results).toBeDefined();
+    expect(search.results).toHaveLength(1);
+    expect(search.results[0].url).toBe("https://x.com");
+  });
+
+  test("omits results when include is empty", () => {
+    const toolCalls = [{ toolCallId: "tc_1", toolName: "web_search" }];
+    const toolResults = [{ toolCallId: "tc_1", toolName: "web_search", input: {}, output: { results: [{ url: "https://x.com" }] } }];
+    const items = buildStepOutputItems(toolCalls, toolResults);
+
+    const search = items[0] as any;
+    expect(search.results).toBeUndefined();
+  });
+
+  test("skips entries with empty toolCallId", () => {
+    const toolCalls = [{ toolCallId: "", toolName: "web_search" }];
+    expect(buildStepOutputItems(toolCalls, [])).toEqual([]);
   });
 });

@@ -1,70 +1,12 @@
-import { describe, test, expect, mock, beforeAll, afterAll, jest, afterEach } from "bun:test";
-import { makeChatSseResponse, makeChatJsonResponse, makeChatJsonResponseWithToolCalls, makeChatSseResponseWithToolCalls, mockBackendFetch } from "./test-helpers";
+import { describe, test, expect, beforeAll, afterAll, afterEach } from "bun:test";
+import { makeChatSseResponse, makeChatJsonResponse, makeChatJsonResponseWithToolCalls, makeChatSseResponseWithToolCalls, mockBackendFetch, setupResponseTestMocks, waitForResponseStatus } from "./test-helpers";
 
-import { MOCK_GATEWAY_ENV } from "../mock-env";
-mock.module("../../env", () => ({ env: { ...MOCK_GATEWAY_ENV } }));
-
-const checkAuth = jest.fn(async () => ({
-  orgId: "org-1",
-  keyId: "key-1",
-  applicationId: "app-1",
-}));
-
-mock.module("../auth", () => ({
-  checkAuth,
-}));
-
-import type { getModelInfo as getModelInfoT } from "../model-data";
-
-let mockPort = 0;
-const getModelInfo = jest.fn<typeof getModelInfoT>(async () => ({
-  nodeId: "node-1",
-  host: `localhost:${mockPort}`,
-  specifier: "test-model",
-  model: "test-model",
-  driver: "vllm",
-  authToken: null,
-  tls: false,
-  tags: ["tools"],
-  requestParams: {},
-  maxContextLength: 131072,
-  release: () => {},
-}));
-
-mock.module("../model-data", () => ({
-  getModelInfo,
-}));
+const mocks = setupResponseTestMocks();
+const { checkAuth, getModelInfo, responseStore, saveResponse, logChatSync, logChatStream } = mocks;
 
 mockBackendFetch();
 
-const responseStore = new Map<string, any>();
-const saveResponse = jest.fn(async (_orgId: string, id: string, payload: any) => {
-  responseStore.set(id, payload);
-});
-const getResponse = jest.fn(async (_orgId: string, id: string) => responseStore.get(id) ?? null);
-const deleteResponse = jest.fn(async (_orgId: string, id: string) => {
-  responseStore.delete(id);
-});
-
-mock.module("../response-store", () => ({
-  saveResponse,
-  getResponse,
-  deleteResponse,
-}));
-
-const logChatSync = jest.fn();
-const logChatStream = jest.fn();
-
-mock.module("../../callLogger", () => ({
-  logChatSync,
-  logChatStream,
-}));
-
-mock.module("../../usageRecorder", () => ({
-  recordUsageEvent: mock(() => {}),
-}));
-
-const { handleCreateResponseRequest, handleGetOrDeleteResponseRequest } = await import("./handle-responses");
+const { handleCreateResponseRequest, handleGetOrDeleteResponseRequest, handleCancelResponseRequest } = await import("./handle-responses");
 
 let server: any;
 
@@ -80,8 +22,6 @@ beforeAll(() => {
           tools?: Array<{ type: string; function?: { name: string } }>;
         };
 
-        // If the request includes user-defined function tools (not built-in web_search/web_fetch
-        // which the AI SDK also sends as type:"function"), return a tool call response
         const userFunctionTool = body.tools?.find((t) =>
           t.type === "function" && t.function?.name !== "web_search" && t.function?.name !== "web_fetch"
         );
@@ -100,35 +40,16 @@ beforeAll(() => {
       return new Response("Not Found", { status: 404 });
     },
   });
-  mockPort = server.port;
+  mocks.setMockPort(server.port);
 });
 
 afterEach(() => {
-  checkAuth.mockClear();
-  getModelInfo.mockClear();
-  saveResponse.mockClear();
-  getResponse.mockClear();
-  deleteResponse.mockClear();
-  logChatSync.mockClear();
-  logChatStream.mockClear();
-  responseStore.clear();
+  mocks.clearAll();
 });
 
 afterAll(() => {
   server.stop();
 });
-
-const waitForResponseStatus = async (responseId: string, status: string) => {
-  const deadline = Date.now() + 1000;
-  while (Date.now() < deadline) {
-    const stored = responseStore.get(responseId);
-    if (stored?.status === status) {
-      return stored;
-    }
-    await new Promise(resolve => setTimeout(resolve, 10));
-  }
-  return null;
-};
 
 describe("handleResponses", () => {
   test("should create a non-streaming response", async () => {
@@ -200,7 +121,7 @@ describe("handleResponses", () => {
     expect(body.status).toBe("in_progress");
     expect(body.id).toContain("resp_");
 
-    const stored = await waitForResponseStatus(body.id, "completed");
+    const stored = await waitForResponseStatus(responseStore, body.id, "completed");
     expect(stored?.status).toBe("completed");
     expect(stored?.output?.[0]?.content?.[0]?.text).toBe("Hello");
   });
@@ -485,7 +406,7 @@ describe("handleResponses", () => {
   test("should reject function tools when catalog explicitly says model does not support them", async () => {
     getModelInfo.mockImplementationOnce(async () => ({
       nodeId: "node-1",
-      host: `localhost:${mockPort}`,
+      host: `localhost:${server.port}`,
       specifier: "test-model",
       model: "test-model",
       driver: "vllm",
@@ -519,7 +440,7 @@ describe("handleResponses", () => {
   test("should allow function tools when catalog entry is missing (legacy fallback, tags undefined)", async () => {
     getModelInfo.mockImplementationOnce(async () => ({
       nodeId: "node-1",
-      host: `localhost:${mockPort}`,
+      host: `localhost:${server.port}`,
       specifier: "test-model",
       model: "test-model",
       driver: "vllm",
@@ -551,7 +472,7 @@ describe("handleResponses", () => {
   test("should reject structured output when catalog explicitly says model does not support tools", async () => {
     getModelInfo.mockImplementationOnce(async () => ({
       nodeId: "node-1",
-      host: `localhost:${mockPort}`,
+      host: `localhost:${server.port}`,
       specifier: "test-model",
       model: "test-model",
       driver: "vllm",
@@ -589,7 +510,7 @@ describe("handleResponses", () => {
   test("should allow structured output when catalog entry is missing (legacy fallback, tags undefined)", async () => {
     getModelInfo.mockImplementationOnce(async () => ({
       nodeId: "node-1",
-      host: `localhost:${mockPort}`,
+      host: `localhost:${server.port}`,
       specifier: "test-model",
       model: "test-model",
       driver: "vllm",
