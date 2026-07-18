@@ -2,12 +2,16 @@ FROM debian:12-slim
 
 ARG TARGETARCH
 
-RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -g 1000 xinity && useradd -u 1000 -g xinity -d /app -s /sbin/nologin xinity
 
 WORKDIR /app
-COPY --chown=appuser:appuser --chmod=755 linux/${TARGETARCH}/xinity-ai-gateway /app/xinity-ai-gateway
+COPY --chown=xinity:xinity --chmod=755 linux/${TARGETARCH}/xinity-ai-gateway /app/xinity-ai-gateway
 
-USER appuser
+USER xinity
 
 ENV PORT=3418
 EXPOSE 3418/tcp
