@@ -15,45 +15,46 @@ import { secret } from "common-env";
 import { version as cliVersion } from "../../../../package.json";
 import { type Component, getAutoDefaults } from "./component-meta.ts";
 import { analyzeEnvSchema } from "./env-prompt.ts";
+import { log } from "./clack.ts";
+import { dim } from "picocolors";
 import { deleteStackState } from "./stack-state.ts";
 
-// ── Types ────────────────────────────────────────────────────────────────
+// ── Schemas & Types ─────────────────────────────────────────────────────
 
-export interface StackDefinition {
-  /** CLI version that last wrote this file; lets future versions migrate breaking changes. */
-  version: string;
-  name: string;
-  /** Shared, inherited by every component (DB_CONNECTION_URL, INFOSERVER_URL, ...). */
-  env: Record<string, string>;
-  /**
-   * Values derived for the current run (e.g. INFOSERVER_URL from the
-   * infoserver host's address). Sits below `env` so explicit values win,
-   * and is never persisted so it re-derives when the stack changes.
-   */
+const componentT = z.enum(["gateway", "dashboard", "daemon", "infoserver"]);
+
+const envRecordT = z.record(z.string(), z.string());
+
+const stackHostT = z.object({
+  alias: z.string().optional(),
+  address: z.string(),
+  components: z.array(componentT),
+  envOverrides: envRecordT.optional(),
+});
+
+const fleetDefinitionT = z.object({
+  name: z.string(),
+  hosts: z.array(z.string()),
+  envOverrides: envRecordT.optional(),
+});
+
+const stackDefinitionT = z.object({
+  version: z.string().default("0.0.0"),
+  name: z.string(),
+  env: envRecordT.default({}),
+  secrets: envRecordT.default({}),
+  componentEnv: z.record(z.string(), envRecordT).default({}) as z.ZodType<Partial<Record<Component, Record<string, string>>>>,
+  dbMigratedVersion: z.string().optional(),
+  pinnedVersion: z.string().default(""),
+  hosts: z.array(stackHostT).default([]),
+  fleets: z.array(fleetDefinitionT).default([]),
+});
+
+export type StackDefinition = z.infer<typeof stackDefinitionT> & {
   derivedEnv?: Record<string, string>;
-  secrets: Record<string, string>;
-  /** Stack-wide settings per component type (gateway PORT vs dashboard PORT don't collide here). */
-  componentEnv: Partial<Record<Component, Record<string, string>>>;
-  /** Release tag whose migrations were last applied to the stack's database. */
-  dbMigratedVersion?: string;
-  /** The release every component is held at; updated only on explicit request. */
-  pinnedVersion: string;
-  hosts: StackHost[];
-  fleets: FleetDefinition[];
-}
-
-export interface StackHost {
-  alias?: string;
-  address: string;
-  components: Component[];
-  envOverrides?: Record<string, string>;
-}
-
-export interface FleetDefinition {
-  name: string;
-  hosts: string[];
-  envOverrides?: Record<string, string>;
-}
+};
+export type StackHost = z.infer<typeof stackHostT>;
+export type FleetDefinition = z.infer<typeof fleetDefinitionT>;
 
 export function hostLabel(host: StackHost): string {
   return host.alias ? `${host.alias} (${host.address})` : host.address;
@@ -108,14 +109,37 @@ function stackPath(name: string): string {
   return join(stacksDir(), `${name}.json`);
 }
 
+export function stackExists(name: string): boolean {
+  return existsSync(stackPath(name));
+}
+
 // ── Persistence ──────────────────────────────────────────────────────────
 
 export function loadStack(name: string): StackDefinition | null {
-  const parsed = loadPrivateJson<Partial<StackDefinition>>(stackPath(name));
-  if (!parsed) {
+  const path = stackPath(name);
+  let raw: unknown;
+  try {
+    raw = loadPrivateJson<unknown>(path);
+  } catch {
+    log.error(`Stack file is not valid JSON: ${dim(path)}`);
     return null;
   }
-  return { ...createStack(name, ""), version: "0.0.0", ...parsed };
+  if (raw === null) {
+    return null;
+  }
+  const result = stackDefinitionT.safeParse(raw);
+  if (!result.success) {
+    log.error(`Stack file is malformed: ${dim(path)}`);
+    for (const issue of result.error.issues) {
+      const field = issue.path.length > 0 ? issue.path.join(".") : "(root)";
+      log.message(`  ${dim("•")} ${field}: ${issue.message}`);
+    }
+    log.message("");
+    log.message(`  Fix the file manually, or remove and re-create it:`)
+    log.message(`  ${dim("xinity stack rm <name> && xinity stack init <name>")}`);
+    return null;
+  }
+  return result.data as StackDefinition;
 }
 
 export function saveStack(stack: StackDefinition): void {

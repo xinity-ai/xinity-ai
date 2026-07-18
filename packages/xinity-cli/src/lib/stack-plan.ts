@@ -23,7 +23,7 @@ import { type ComponentAction, describeComponentAction, buildComponentAction, re
 import { analyzeEnvSchema, splitValuesByCategory, readExistingEnvState, diffEnv, missingRequiredFields } from "./env-prompt.ts";
 import {
   type StackDefinition, type StackHost, type FleetDefinition,
-  resolveEnv, saveStack, getFleetForHost, hostLabel, validateStack,
+  resolveEnv, saveStack, getFleetForHost, hostLabel,
   componentLayerSeed, fleetLayerSeed,
   STACK_SHARED_SCHEMA,
 } from "./stack.ts";
@@ -507,15 +507,6 @@ export async function runStackFlow(
   stack: StackDefinition,
   opts: { targetVersion: string; dryRun?: boolean },
 ): Promise<boolean> {
-  const validationErrors = validateStack(stack);
-  if (validationErrors.length > 0) {
-    for (const error of validationErrors) {
-      fail(error.field, error.message);
-    }
-    fail("Stack", `The definition is invalid; fix it with: xinity stack edit ${stack.name}`);
-    return false;
-  }
-
   const deployments = selectDeployments(stack);
   const orphanCandidates = findOrphanHosts(loadStackState(stack.name), stack);
 
