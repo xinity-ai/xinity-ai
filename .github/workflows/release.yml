@@ -157,21 +157,10 @@ jobs:
           path: staging/
           retention-days: 1
 
-  # Catch out-of-sync Dockerfiles before paying for a multi-arch build.
-  check-dockerfile-sync:
-    name: Verify Dockerfile sync
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-      - run: bun scripts/sync-dockerfile-manifests.ts --check
-
   # Tag-gated so `workflow_dispatch` from a branch can't push `:latest`.
   build-images:
     name: "Image: ${{ matrix.image }}"
-    needs: check-dockerfile-sync
+    needs: build-binaries
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
@@ -186,17 +175,17 @@ jobs:
       matrix:
         include:
           - image: xinity-ai-gateway
-            context: .
-            dockerfile: packages/xinity-ai-gateway/Dockerfile
+            dockerfile: ci/dockerfiles/Dockerfile.gateway
           - image: xinity-ai-dashboard
-            context: .
-            dockerfile: packages/xinity-ai-dashboard/Dockerfile
+            dockerfile: ci/dockerfiles/Dockerfile.dashboard
           - image: xinity-infoserver
-            context: .
-            dockerfile: packages/xinity-infoserver/Dockerfile
+            dockerfile: ci/dockerfiles/Dockerfile.infoserver
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+        with:
+          sparse-checkout: ci/dockerfiles
+          sparse-checkout-cone-mode: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -210,6 +199,28 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download binary artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: release-${{ matrix.image }}
+          path: .artifacts
+
+      - name: Organize binaries by arch
+        run: |
+          mkdir -p build-context/linux/amd64 build-context/linux/arm64
+          for f in .artifacts/*.tar.gz; do
+            name=$(basename "$f" .tar.gz)
+            # Skip x64-baseline tarball; it's for standalone installs, not containers
+            case "$name" in
+              *baseline*) continue ;;
+            esac
+            case "$name" in
+              *arm64) tar -xzf "$f" -C build-context/linux/arm64/ ;;
+              *x64)   tar -xzf "$f" -C build-context/linux/amd64/ ;;
+            esac
+          done
+          find build-context -type f
 
       - name: Docker metadata
         id: meta
@@ -232,7 +243,7 @@ jobs:
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
-          context: ${{ matrix.context }}
+          context: ./build-context
           file: ${{ matrix.dockerfile }}
           push: true
           platforms: linux/amd64,linux/arm64
