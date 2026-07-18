@@ -272,6 +272,11 @@ export async function runMigrations(opts: {
 
   // 4. Apply migrations (tunnels through SSH when targeting a remote host)
   const tunnel = await opts.host.openTunnel(connectionUrl);
+  if (!tunnel.ok) {
+    fail("Tunnel", tunnel.error);
+    errors.push(tunnel.error);
+    return { success: false, errors };
+  }
 
   spinner.start("Applying migrations…");
   let connection: postgres.Sql | undefined;

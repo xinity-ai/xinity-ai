@@ -29,7 +29,7 @@ import {
 } from "./stack.ts";
 import { editSharedLayer, editComponentLayer, editFleetLayer, editHostLayer } from "./stack-layers.ts";
 import { loadStackState, findOrphanHosts, markHostManaged, unmarkHostManaged } from "./stack-state.ts";
-import { connectHosts, connectElevated, disposeAll, mapBounded, HOST_CONCURRENCY } from "./multi-host.ts";
+import { connectHosts, connectElevated, disposeAll } from "./multi-host.ts";
 
 export const COMPONENT_ORDER: Component[] = ["infoserver", "gateway", "dashboard", "daemon"];
 
@@ -445,7 +445,8 @@ async function applyStackPlan(
   }
 
   const active = plan.hostPlans.filter((p) => !p.forget);
-  const hostResults = await mapBounded(active, HOST_CONCURRENCY, async (hostPlan) => {
+  const hostResults: { hostPlan: StackHostPlan; hostFailures: number }[] = [];
+  for (const hostPlan of active) {
     heading(hostPlan.address);
     const host = (hosts.get(hostPlan.address) ?? orphanHosts.get(hostPlan.address))!;
     let hostFailures = 0;
@@ -470,8 +471,8 @@ async function applyStackPlan(
     if (hostPlan.membership) {
       await saveStackMembership(hostPlan.membership, host);
     }
-    return { hostPlan, hostFailures };
-  });
+    hostResults.push({ hostPlan, hostFailures });
+  }
 
   let failures = 0;
   for (const { hostPlan, hostFailures } of hostResults) {

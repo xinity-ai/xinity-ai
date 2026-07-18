@@ -47,6 +47,10 @@ export async function probeMigrationState(sql: postgres.Sql): Promise<CheckResul
 export async function checkPostgresAndMigrations(url: string, host: Host): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
   const tunnel = await host.openTunnel(url);
+  if (!tunnel.ok) {
+    results.push({ label: "PostgreSQL", status: "fail", message: "Could not open tunnel", detail: tunnel.error });
+    return results;
+  }
   let sql: postgres.Sql | undefined;
   try {
     sql = postgres(tunnel.localUrl, { max: 1, connect_timeout: 5 });
@@ -118,6 +122,9 @@ export function probeTcpService(opts: TcpProbeOptions): Promise<CheckResult> {
 
 export async function checkRedis(url: string, host: Host): Promise<CheckResult> {
   const tunnel = await host.openTunnel(url);
+  if (!tunnel.ok) {
+    return { label: "Redis", status: "fail", message: "Could not open tunnel", detail: tunnel.error };
+  }
   let client: import("bun").RedisClient | undefined;
   try {
     client = new Bun.RedisClient(tunnel.localUrl);
@@ -175,6 +182,9 @@ export function isLocalUrl(url: string, expectedPort: string): boolean {
 
 export async function checkSmtp(url: string, host: Host): Promise<CheckResult> {
   const tunnel = await host.openTunnel(url);
+  if (!tunnel.ok) {
+    return { label: "SMTP", status: "warn", message: "Could not open tunnel", detail: tunnel.error };
+  }
   try {
     const parsed = new URL(tunnel.localUrl);
     const hostname = parsed.hostname;

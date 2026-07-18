@@ -1,6 +1,6 @@
 import { createServer } from "net";
 import { hostname as osHostname } from "os";
-import { localRun, type Host, type RunResult, type ElevationResult } from "./host.ts";
+import { localRun, type Host, type RunResult, type ElevationResult, type TunnelResult } from "./host.ts";
 import { cancel, log } from "./clack.ts";
 import { cyan, dim } from "picocolors";
 import { SudoSession, checkPasswordlessSudo } from "./sudo-session.ts";
@@ -394,11 +394,16 @@ export class RemoteHost implements Host {
     return raw;
   }
 
-  async openTunnel(url: string): Promise<{ localUrl: string; close: () => Promise<void> }> {
+  async openTunnel(url: string): Promise<TunnelResult> {
     if (this.isLocalhost) {
-      return { localUrl: url, close: async () => {} };
+      return { ok: true, localUrl: url, close: async () => {} };
     }
-    const parsed = new URL(url);
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return { ok: false, error: `Invalid URL: ${url}` };
+    }
     const remoteHost = parsed.hostname;
     const remotePort = parsed.port || defaultPortForProtocol(parsed.protocol);
 
@@ -418,7 +423,7 @@ export class RemoteHost implements Host {
     ]);
 
     if (!fwdResult.ok) {
-      throw new Error(`SSH tunnel failed: ${fwdResult.output}`);
+      return { ok: false, error: `SSH tunnel failed: ${fwdResult.output}` };
     }
 
     // Rewrite the URL to point at the local forwarded port
@@ -428,6 +433,7 @@ export class RemoteHost implements Host {
     const localUrl = localParsed.toString();
 
     return {
+      ok: true,
       localUrl,
       close: async () => {
         // Cancel the specific forwarding via the control socket

@@ -66,11 +66,12 @@ export async function getInstalledVersion(component: string, host: Host): Promis
 }
 
 /** Write the manifest to disk (requires elevation). */
-export async function writeManifest(manifest: Manifest, host: Host): Promise<void> {
+export async function writeManifest(manifest: Manifest, host: Host): Promise<boolean> {
   manifestCache.delete(host);
   const json = JSON.stringify(manifest, null, 2);
   const cmd = `mkdir -p /opt/xinity && cat > ${MANIFEST_PATH} << 'MANIFEST_EOF'\n${json}\nMANIFEST_EOF\nchmod 644 ${MANIFEST_PATH}`;
-  await host.withElevation(cmd, "Write install manifest");
+  const result = await host.withElevation(cmd, "Write install manifest");
+  return result.success;
 }
 
 /** Persist a non-secret DB hint (user@host:port/dbname) into the manifest. */
