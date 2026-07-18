@@ -62,6 +62,51 @@ For every new or modified procedure, determine which guard to use:
 5. **Unauthenticated entry point** → Document why explicitly in a comment
 6. **Dual instance/org scope** (e.g., SSO) → Manual `auth.api.hasPermission()` check in handler for org-scoped, `isInstanceAdmin` for instance-wide
 
+## Audit Tagging
+
+Procedures that perform security-relevant mutations MUST emit audit events. Add `.use(auditMiddleware)` and declare an audit tag in `.meta()`:
+
+```typescript
+rootOs
+  .meta({ audit: { action: "resource.verb", resource: "resource" } })
+  .use(withAuth)
+  .use(auditMiddleware)
+```
+
+The `auditMiddleware` (from `root.ts`) fires after the handler, recording actor, org, IP, user agent, and result (success/failure). Writes are fire-and-forget and never break the procedure.
+
+### AuditTag options
+
+| Field | Required | Purpose |
+|-------|----------|---------|
+| `action` | yes | Literal from the `AuditAction` union in `audit.ts` (add new ones there) |
+| `resource` | yes | Logical resource name (e.g. `"apiKey"`, `"member"`) |
+| `resourceId` | no | Extracts the target entity ID: `{ fromInput: "id" }` for update/delete, `{ fromOutput: "id" }` for create |
+| `captureInput` | no | List of input field names to store in the `context` jsonb column |
+| `captureOutput` | no | List of output field names to store in the `context` jsonb column |
+
+### Examples
+
+Delete (entity exists, ID comes from input):
+```typescript
+.meta({ audit: { action: "apiKey.delete", resource: "apiKey", resourceId: { fromInput: "id" } } })
+```
+
+Create (entity is created by handler, ID comes from output):
+```typescript
+.meta({ audit: { action: "modelDeployment.create", resource: "modelDeployment", resourceId: { fromOutput: "id" }, captureInput: ["name", "specifier"] } })
+```
+
+Role change (capture the new value for context):
+```typescript
+.meta({ audit: { action: "member.update_role", resource: "member", resourceId: { fromInput: "memberId" }, captureInput: ["role"] } })
+```
+
+No single target entity (omit resourceId):
+```typescript
+.meta({ audit: { action: "onboarding.setup", resource: "onboarding", captureInput: ["orgName"] } })
+```
+
 ## Checklist
 
 For every new or modified procedure:
@@ -103,6 +148,8 @@ The `$app/environment` stub sets `building: true` and `browser: false`, so patte
 
 ### Checklist addition
 
+- [ ] If the procedure is a security-relevant mutation, does it have `.use(auditMiddleware)` and an audit tag in `.meta()`?
+- [ ] Is the action literal added to `AuditAction` in `audit.ts`?
 - [ ] Run `cd packages/xinity-cli && bun run build`, bundle must succeed without errors
 
 ## Key Files
