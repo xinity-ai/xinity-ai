@@ -53,6 +53,9 @@ jobs:
           - name: Common DB
             cmd: bun test --reporter=default --reporter=junit --reporter-outfile=results.xml src/
             cwd: packages/common-db
+          - name: Tether
+            cmd: bun run test -- --reporter=default --reporter=junit --reporter-outfile=results.xml
+            cwd: packages/xinity-tether
           - name: CLI
             cmd: bun run test -- --reporter=default --reporter=junit --reporter-outfile=results.xml
             cwd: packages/xinity-cli
