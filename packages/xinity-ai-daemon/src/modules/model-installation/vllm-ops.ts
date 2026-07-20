@@ -3,6 +3,7 @@ import { env } from "../../env";
 // @ts-expect-error Bun text import
 import templateUnit from "../../assets/vllm-driver@.service" with { type: "text" };
 import { rootLogger } from "../../logger";
+import { resolveMaxAudioInputDurationS, resolveMaxAudioInputFileSizeMB, type DeploymentSettings } from "common-env";
 
 const log = rootLogger.child({ name: "vllm-ops" });
 
@@ -13,7 +14,7 @@ export interface VllmInstanceConfig {
   trustRemoteCode?: boolean;
   extraArgs?: string[];
   gpuMemoryUtilization?: number;
-  settings?: Record<string, number> | null;
+  settings?: DeploymentSettings | null;
 }
 
 export interface VllmOps {
@@ -77,11 +78,11 @@ export function buildSystemdEnvFile(config: VllmInstanceConfig): string {
   if (config.extraArgs && config.extraArgs.length > 0) {
     lines.push(`VLLM_EXTRA_ARGS=${config.extraArgs.join(" ")}`);
   }
-  const audioDuration = config.settings?.maxAudioInputDurationS;
+  const audioDuration = resolveMaxAudioInputDurationS(config.settings);
   if (audioDuration != null) {
     lines.push(`VLLM_MAX_AUDIO_DECODE_DURATION_S=${audioDuration}`);
   }
-  const audioFileSize = config.settings?.maxAudioInputFileSizeMB;
+  const audioFileSize = resolveMaxAudioInputFileSizeMB(config.settings);
   if (audioFileSize != null) {
     lines.push(`VLLM_MAX_AUDIO_CLIP_FILESIZE_MB=${audioFileSize}`);
   }
@@ -231,8 +232,8 @@ export function buildDockerRunArgs(
     throw new Error("VLLM_DOCKER_IMAGE must be set to build a docker run command");
   }
   const containerName = dockerContainerNameFor(id);
-  const audioDuration = config.settings?.maxAudioInputDurationS;
-  const audioFileSize = config.settings?.maxAudioInputFileSizeMB;
+  const audioDuration = resolveMaxAudioInputDurationS(config.settings);
+  const audioFileSize = resolveMaxAudioInputFileSizeMB(config.settings);
   const args = [
     "docker", "run", "-d",
     "--name", containerName,

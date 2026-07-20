@@ -70,7 +70,7 @@ function makeInstallation(specifier: string, id = crypto.randomUUID()) {
     kvCacheCapacity: 0,
     port: 8080,
     driver: "ollama" as const,
-    settings: {} as Record<string, number>,
+    settings: { version: 1 as const },
   };
 }
 

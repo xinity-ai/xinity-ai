@@ -1,4 +1,4 @@
-import type { DesiredInstallation } from "common-env";
+import type { DeploymentSettings, DesiredInstallation } from "common-env";
 import { defer, from, Observable } from "rxjs";
 import {
   endWith,
@@ -36,7 +36,7 @@ export interface SyncInstallation {
   estCapacity: number;
   kvCacheCapacity: number;
   port: number;
-  settings: Record<string, number>;
+  settings: DeploymentSettings;
   nodeId: string;
 }
 
@@ -48,7 +48,7 @@ function toSyncInstallation(d: DesiredInstallation, nodeId: string): SyncInstall
     estCapacity: d.estCapacity,
     kvCacheCapacity: d.kvCacheCapacity,
     port: d.port,
-    settings: d.settings,
+    settings: d.settings as DeploymentSettings,
     nodeId,
   };
 }
