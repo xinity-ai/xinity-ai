@@ -1,5 +1,5 @@
 import { aiNodeT, modelInstallationStateT, sql } from "common-db";
-import type { NodeRegistration, InstallationStateReport } from "common-env";
+import type { NodeRegistration, InstallationStateReport, InstallationStatePayload } from "common-env";
 import { getDB } from "./db";
 import { rootLogger } from "./logger";
 import { incRegistrationWrites, incStateWrites } from "./metrics";
@@ -7,7 +7,7 @@ import { incRegistrationWrites, incStateWrites } from "./metrics";
 const log = rootLogger.child({ name: "status-writer" });
 
 export async function writeRegistration(reg: NodeRegistration): Promise<void> {
-  const { nodeId, host, port, ...rest } = reg;
+  const { nodeId, host, port, protocolFingerprint: _, ...rest } = reg;
 
   await getDB().transaction(async (tx) => {
     await tx
@@ -28,25 +28,65 @@ export async function writeRegistration(reg: NodeRegistration): Promise<void> {
   log.debug({ nodeId, host, port }, "Node registration written");
 }
 
-export async function writeInstallationStates(report: InstallationStateReport): Promise<void> {
-  const db = getDB();
+const FLUSH_INTERVAL_MS = 200;
+const pendingStates = new Map<string, InstallationStatePayload>();
+let flushTimer: Timer | null = null;
 
+export function queueInstallationStates(report: InstallationStateReport): void {
   for (const state of report.states) {
-    const fields = {
-      lifecycleState: state.lifecycleState,
-      progress: state.progress ?? null,
-      statusMessage: state.statusMessage ?? null,
-      errorMessage: state.errorMessage ?? null,
-      failureLogs: state.failureLogs ?? null,
-    };
+    pendingStates.set(state.installationId, state);
+  }
+  if (flushTimer === null && pendingStates.size > 0) {
+    flushTimer = setTimeout(() => void flushPending(), FLUSH_INTERVAL_MS);
+  }
+}
 
-    await db
-      .insert(modelInstallationStateT)
-      .values({ id: state.installationId, ...fields })
-      .onConflictDoUpdate({ set: fields, target: modelInstallationStateT.id });
-
-    incStateWrites();
+async function flushPending(): Promise<void> {
+  flushTimer = null;
+  if (pendingStates.size === 0) {
+    return;
   }
 
-  log.debug({ nodeId: report.nodeId, count: report.states.length }, "Installation states written");
+  const batch = [...pendingStates.values()];
+  pendingStates.clear();
+
+  try {
+    const values = batch.map((s) => ({
+      id: s.installationId,
+      lifecycleState: s.lifecycleState,
+      progress: s.progress ?? null,
+      statusMessage: s.statusMessage ?? null,
+      errorMessage: s.errorMessage ?? null,
+      failureLogs: s.failureLogs ?? null,
+    }));
+
+    await getDB()
+      .insert(modelInstallationStateT)
+      .values(values)
+      .onConflictDoUpdate({
+        target: modelInstallationStateT.id,
+        set: {
+          lifecycleState: sql`excluded.lifecycle_state`,
+          progress: sql`excluded.progress`,
+          statusMessage: sql`excluded.status_message`,
+          errorMessage: sql`excluded.error_message`,
+          failureLogs: sql`excluded.failure_logs`,
+        },
+      });
+
+    for (let i = 0; i < batch.length; i++) {
+      incStateWrites();
+    }
+    log.debug({ count: batch.length }, "Batch state flush completed");
+  } catch (err) {
+    log.error({ err, count: batch.length }, "Batch state flush failed");
+  }
+}
+
+export async function flushAndStop(): Promise<void> {
+  if (flushTimer !== null) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  await flushPending();
 }

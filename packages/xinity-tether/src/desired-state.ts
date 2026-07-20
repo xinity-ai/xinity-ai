@@ -1,4 +1,4 @@
-import { modelInstallationT, normalizeSettings, sql } from "common-db";
+import { modelInstallationT, sql } from "common-db";
 import { getDB } from "./db";
 import type { DesiredState } from "common-env";
 
@@ -17,7 +17,7 @@ export async function buildDesiredState(nodeId: string): Promise<DesiredState> {
       estCapacity: row.estCapacity,
       kvCacheCapacity: row.kvCacheCapacity,
       port: row.port,
-      settings: normalizeSettings(row.settings),
+      settings: row.settings,
     })),
   };
 }

@@ -1,4 +1,4 @@
-import { getTlsConfig } from "common-env";
+import { getTlsConfig, protocolFingerprint } from "common-env";
 import { $ } from "bun";
 import { env } from "../env";
 import { join } from "path";
@@ -7,7 +7,7 @@ import { detectHardwareProfile, detectNodeName, type HardwareProfile } from "./h
 import { normalizePep440 } from "xinity-infoserver";
 import { rootLogger } from "../logger";
 import { detectVllmFeatures } from "./vllm-features";
-import { reportRegistration } from "./tether-client";
+import type { NodeRegistration } from "common-env";
 
 const log = rootLogger.child({ name: "statekeeper" });
 
@@ -163,7 +163,7 @@ async function writeNodeIdFile(id: string): Promise<void> {
   await Bun.file(join(env.STATE_DIR, "node_id")).write(id);
 }
 
-async function registerNode(): Promise<string> {
+async function collectRegistrationData(): Promise<NodeRegistration> {
   const { detectedCapacityGb, gpuCount, gpus: detectedGpus } = await getHardwareProfile();
   const [driverVersions, driverFeatures] = await Promise.all([
     getNodeDriverVersions(),
@@ -179,7 +179,9 @@ async function registerNode(): Promise<string> {
     await writeNodeIdFile(id);
   }
 
-  await reportRegistration({
+  cachedNodeId = id;
+
+  return {
     nodeId: id,
     host,
     port,
@@ -191,18 +193,19 @@ async function registerNode(): Promise<string> {
     estCapacity: detectedCapacityGb,
     machineName,
     authToken,
-  });
-
-  cachedNodeId = id;
-  return id;
+    protocolFingerprint: protocolFingerprint(),
+  };
 }
 
-/** Retrieves the nodeID of this ai node, registering it if it has not happened yet this process. */
 export async function getNodeId(): Promise<string> {
-  return cachedNodeId ?? registerNode();
+  if (cachedNodeId) {
+    return cachedNodeId;
+  }
+  const reg = await collectRegistrationData();
+  return reg.nodeId;
 }
 
-/** Re-registers the node with current runtime state via the tether. */
-export async function setOnline(): Promise<string> {
-  return registerNode();
+/** Collects hardware profile and builds the registration payload for the tether SSE handshake. */
+export async function buildRegistration(): Promise<NodeRegistration> {
+  return collectRegistrationData();
 }
