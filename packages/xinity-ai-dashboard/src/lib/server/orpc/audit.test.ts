@@ -10,7 +10,7 @@ mock.module("$lib/server/logging", () => ({
   rootLogger: { child: () => ({ info: () => {}, warn: () => {}, error: () => {} }) },
 }));
 
-const { runWithAudit } = await import("./audit");
+const { runWithAudit, emitAuthAuditEvent } = await import("./audit");
 
 const auditTag: AuditTag = { action: "member.update_role", resource: "member", resourceId: { fromInput: "memberId" }, captureInput: ["role"] };
 
@@ -138,5 +138,71 @@ describe("runWithAudit", () => {
     expect(insertValues).toHaveBeenCalledTimes(1);
     const row = insertValues.mock.calls[0]![0] as { context: unknown };
     expect(row.context).toBeUndefined();
+  });
+});
+
+describe("emitAuthAuditEvent", () => {
+  beforeEach(() => {
+    insertValues.mockClear();
+  });
+
+  test("writes a success event with personal scope", async () => {
+    emitAuthAuditEvent({
+      action: "account.sign_in",
+      resource: "account",
+      actorId: "user-1",
+      actorLabel: "user@example.com",
+      ipAddress: "10.0.0.1",
+      userAgent: "Mozilla/5.0",
+      resourceId: "user-1",
+    });
+    await Bun.sleep(10);
+    expect(insertValues).toHaveBeenCalledTimes(1);
+    expect(insertValues.mock.calls[0]![0]).toMatchObject({
+      organizationId: null,
+      actorType: "user",
+      actorId: "user-1",
+      actorLabel: "user@example.com",
+      action: "account.sign_in",
+      resource: "account",
+      resourceId: "user-1",
+      result: "success",
+      ipAddress: "10.0.0.1",
+      userAgent: "Mozilla/5.0",
+      context: null,
+    });
+  });
+
+  test("records a failure result when specified", async () => {
+    emitAuthAuditEvent({
+      action: "account.sign_in",
+      resource: "account",
+      actorId: null,
+      actorLabel: "attacker@example.com",
+      ipAddress: "192.168.1.1",
+      userAgent: "curl/7.0",
+      result: "failure",
+    });
+    await Bun.sleep(10);
+    expect(insertValues).toHaveBeenCalledTimes(1);
+    const row = insertValues.mock.calls[0]![0] as { actorId: string | null; actorLabel: string; result: string; resourceId: string | null };
+    expect(row.actorId).toBeNull();
+    expect(row.actorLabel).toBe("attacker@example.com");
+    expect(row.result).toBe("failure");
+    expect(row.resourceId).toBeNull();
+  });
+
+  test("swallows DB errors without throwing", async () => {
+    insertValues.mockImplementationOnce(() => Promise.reject(new Error("db down")));
+    expect(() => {
+      emitAuthAuditEvent({
+        action: "account.sign_out",
+        resource: "account",
+        actorId: "user-1",
+        actorLabel: null,
+        ipAddress: null,
+        userAgent: null,
+      });
+    }).not.toThrow();
   });
 });
