@@ -50,6 +50,8 @@ When extending or modifying the OpenAI-compatible routes, update the hand-author
 | `WEB_SEARCH_PROVIDER` | (unset) | Web search backend: `searxng`, `google`, `bing`, `brave`, `serper`, or `tavily`. Web search is disabled when unset. |
 | `WEB_SEARCH_CREDENTIAL` | (unset) | Provider credential: instance URL for SearXNG, `apikey:cx` for Google, API key for Bing/Brave/Serper/Tavily |
 | `WEB_SEARCH_ENGINE_URL` | (unset) | **Deprecated.** Use `WEB_SEARCH_PROVIDER` + `WEB_SEARCH_CREDENTIAL` instead. Falls back to SearXNG when set. |
+| `DEEP_RESEARCH_MAX_STEPS` | `30` | Maximum tool-call loop iterations per deep research request |
+| `DEEP_RESEARCH_COMPACTION_THRESHOLD` | `0.70` | Fraction of model context window at which deep research compaction triggers |
 | `RESPONSE_CACHE_TTL_SECONDS` | `3600` | Responses API Redis cache TTL |
 | `INFOSERVER_CACHE_TTL_MS` | `30000` | Infoserver response cache TTL in ms |
 | `METRICS_AUTH` | (unset) | Basic auth for `/metrics` (format: `user:pass`, comma-separated for multiple) |

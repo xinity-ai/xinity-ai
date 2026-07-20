@@ -413,6 +413,7 @@ export const openaiCompatPaths = {
         `- ${STORE_NOTE}`,
         `- ${METADATA_NOTE}`,
         "- Supported tool types: `function`, plus `web_search` (and the `web_search_preview*` aliases). Other built-in tools are not implemented.",
+        "- Append `-deep-research` to the model name to run a multi-step research agent. Always returns 202. Requires web search to be configured. Streaming is not supported.",
         `- ${APP_HEADER_NOTE}`,
       ].join("\n"),
       security: SECURITY,
@@ -422,7 +423,7 @@ export const openaiCompatPaths = {
           "Completed response, or SSE stream when `stream: true`",
           "#/components/schemas/ResponseObject",
         ),
-        "202": jsonResponse("Accepted; response is being generated in the background (`background: true`)", "#/components/schemas/ResponseObject"),
+        "202": jsonResponse("Accepted; response is being generated in the background (`background: true` or deep research)", "#/components/schemas/ResponseObject"),
         ...errorResponses,
       },
     },
@@ -468,6 +469,26 @@ export const openaiCompatPaths = {
             },
           },
         },
+        ...errorResponses,
+      },
+    },
+  },
+  "/v1/responses/{responseId}/cancel": {
+    parameters: [
+      {
+        name: "responseId",
+        in: "path",
+        required: true,
+        schema: { type: "string" },
+      },
+    ],
+    post: {
+      tags: [TAG],
+      summary: "Cancel an in-progress response",
+      description: "Marks a background or deep-research response as cancelled. The running generation stops at the next step boundary.",
+      security: SECURITY,
+      responses: {
+        "200": jsonResponse("The cancelled response object", "#/components/schemas/ResponseObject"),
         ...errorResponses,
       },
     },

@@ -52,6 +52,37 @@ The gateway implements the OpenAI Responses API at `/v1/responses`:
 
 Completed responses are cached in Redis with a configurable TTL (default: 1 hour).
 
+## Deep Research
+
+The Responses API (`POST /v1/responses`) supports a deep research mode. Appending `-deep-research` to the model name activates a multi-step research agent. For example, requesting `llama-3.1-70b-instruct-deep-research` runs research using `llama-3.1-70b-instruct` as the underlying model. This suffix is only recognized by the Responses API.
+
+Deep research always runs in background mode (returns 202 regardless of the `background` field). The model is given `web_search` and `web_fetch` tools and a system prompt that instructs it to break the query into sub-questions, search for sources, fetch full pages, cross-reference claims, and produce a cited report.
+
+### Prerequisites
+
+Web search must be configured (`WEB_SEARCH_PROVIDER` + `WEB_SEARCH_CREDENTIAL`). The model must support tool calling.
+
+### Polling and cancellation
+
+Poll for results with `GET /v1/responses/{id}`. The response object is updated incrementally as the research progresses: each completed tool call appears in the `output` array before the final text is ready.
+
+Cancel a running research session with `POST /v1/responses/{id}/cancel`. The generation stops at the next step boundary (the current LLM call or tool execution finishes before stopping).
+
+### Custom instructions
+
+Pass an `instructions` field in the request body to append guidance to the research system prompt (e.g., "Focus on sources from 2024" or "Write the report in German").
+
+### Context compaction
+
+Long research sessions can exceed the model's context window. When accumulated token usage crosses a configurable fraction of the context limit (`DEEP_RESEARCH_COMPACTION_THRESHOLD`, default: 0.70), the gateway summarizes the conversation so far and replaces the message history with the summary. Research then continues from the summary with a fresh context budget. Token usage from compaction calls is included in the final usage totals.
+
+### Configuration
+
+| Variable | Default | Description |
+|---|---|---|
+| `DEEP_RESEARCH_MAX_STEPS` | `30` | Maximum tool-call loop iterations per research request |
+| `DEEP_RESEARCH_COMPACTION_THRESHOLD` | `0.70` | Fraction of model context window at which compaction triggers |
+
 ## Image Storage
 
 When S3 is configured, images in chat requests are uploaded to S3, deduplicated by SHA-256, and stored as compact references in the database. External image URLs are fetched and converted to data URIs before forwarding to inference nodes (which may not have internet access). Supports JPEG, PNG, GIF, WebP, and AVIF up to 40 MB.
