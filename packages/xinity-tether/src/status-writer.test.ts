@@ -46,7 +46,7 @@ mock.module("./metrics", () => ({
   handleMetrics: () => new Response(""),
 }));
 
-const { writeRegistration, writeInstallationStates } = await import("./status-writer");
+const { writeRegistration, queueInstallationStates, flushAndStop } = await import("./status-writer");
 
 describe("writeRegistration", () => {
   beforeEach(() => {
@@ -70,6 +70,7 @@ describe("writeRegistration", () => {
       tls: false,
       estCapacity: 24,
       authToken: "token-abc",
+      protocolFingerprint: "test",
     });
 
     expect(mockTransaction).toHaveBeenCalledTimes(1);
@@ -88,21 +89,23 @@ describe("writeRegistration", () => {
       estCapacity: 48,
       machineName: "gpu-server-1",
       authToken: "token-def",
+      protocolFingerprint: "test",
     });
 
     expect(mockTransaction).toHaveBeenCalledTimes(1);
   });
 });
 
-describe("writeInstallationStates", () => {
-  beforeEach(() => {
+describe("queueInstallationStates", () => {
+  beforeEach(async () => {
+    await flushAndStop();
     mockInsert.mockClear();
     mockInsertValues.mockClear();
     mockOnConflictDoUpdate.mockClear();
   });
 
-  test("writes each state as an upsert", async () => {
-    await writeInstallationStates({
+  test("batches writes with a 200ms flush", async () => {
+    queueInstallationStates({
       nodeId: "node-1",
       states: [
         { installationId: "inst-1", lifecycleState: "ready" },
@@ -110,30 +113,70 @@ describe("writeInstallationStates", () => {
       ],
     });
 
-    expect(mockInsert).toHaveBeenCalledTimes(2);
-    expect(mockOnConflictDoUpdate).toHaveBeenCalledTimes(2);
+    expect(mockInsert).not.toHaveBeenCalled();
+
+    await Bun.sleep(250);
+
+    expect(mockInsert).toHaveBeenCalledTimes(1);
+    expect(mockInsertValues).toHaveBeenCalledTimes(1);
+    const values = (mockInsertValues.mock.calls as unknown as unknown[][])[0]![0] as unknown[];
+    expect(values).toHaveLength(2);
+  });
+
+  test("deduplicates by installationId, keeping latest", async () => {
+    queueInstallationStates({
+      nodeId: "node-1",
+      states: [{ installationId: "inst-1", lifecycleState: "downloading", progress: 0.2 }],
+    });
+    queueInstallationStates({
+      nodeId: "node-1",
+      states: [{ installationId: "inst-1", lifecycleState: "downloading", progress: 0.8 }],
+    });
+
+    await Bun.sleep(250);
+
+    expect(mockInsert).toHaveBeenCalledTimes(1);
+    const values = (mockInsertValues.mock.calls as unknown as unknown[][])[0]![0] as Array<{ id: string; progress: number | null }>;
+    expect(values).toHaveLength(1);
+    expect(values[0]!.progress).toBe(0.8);
   });
 
   test("handles empty states array", async () => {
-    await writeInstallationStates({
+    queueInstallationStates({
       nodeId: "node-1",
       states: [],
     });
 
+    await Bun.sleep(250);
+
     expect(mockInsert).not.toHaveBeenCalled();
   });
 
-  test("writes failure details when provided", async () => {
-    await writeInstallationStates({
+  test("flushAndStop writes pending states immediately", async () => {
+    queueInstallationStates({
       nodeId: "node-1",
-      states: [{
-        installationId: "inst-3",
-        lifecycleState: "failed",
-        errorMessage: "GPU out of memory",
-        failureLogs: "torch.cuda.OutOfMemoryError",
-      }],
+      states: [{ installationId: "inst-3", lifecycleState: "failed", errorMessage: "OOM" }],
     });
 
+    await flushAndStop();
+
     expect(mockInsert).toHaveBeenCalledTimes(1);
+  });
+
+  test("merges reports from different daemons into one batch", async () => {
+    queueInstallationStates({
+      nodeId: "node-1",
+      states: [{ installationId: "inst-a", lifecycleState: "ready" }],
+    });
+    queueInstallationStates({
+      nodeId: "node-2",
+      states: [{ installationId: "inst-b", lifecycleState: "installing" }],
+    });
+
+    await Bun.sleep(250);
+
+    expect(mockInsert).toHaveBeenCalledTimes(1);
+    const values = (mockInsertValues.mock.calls as unknown as unknown[][])[0]![0] as unknown[];
+    expect(values).toHaveLength(2);
   });
 });

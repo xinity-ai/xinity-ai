@@ -10,6 +10,12 @@ const gpuSchema = z.object({
   vramMb: z.number(),
 });
 
+const deploymentSettingsSchema = z.object({
+  version: z.literal(1),
+  maxAudioInputDurationS: z.number().optional(),
+  maxAudioInputFileSizeMB: z.number().optional(),
+});
+
 // Outbound: tether -> daemon (SSE)
 
 export const desiredInstallationSchema = z.object({
@@ -19,7 +25,7 @@ export const desiredInstallationSchema = z.object({
   estCapacity: z.number(),
   kvCacheCapacity: z.number(),
   port: z.number(),
-  settings: z.record(z.string(), z.number()),
+  settings: deploymentSettingsSchema,
 });
 export type DesiredInstallation = z.infer<typeof desiredInstallationSchema>;
 
@@ -43,6 +49,7 @@ export const nodeRegistrationSchema = z.object({
   estCapacity: z.number(),
   machineName: z.string().optional(),
   authToken: z.string(),
+  protocolFingerprint: z.string(),
 });
 export type NodeRegistration = z.infer<typeof nodeRegistrationSchema>;
 
@@ -63,3 +70,21 @@ export const installationStateReportSchema = z.object({
   states: z.array(installationStatePayloadSchema),
 });
 export type InstallationStateReport = z.infer<typeof installationStateReportSchema>;
+
+let cachedFingerprint: string | null = null;
+
+export function protocolFingerprint(): string {
+  if (cachedFingerprint) {
+    return cachedFingerprint;
+  }
+  const manifest = JSON.stringify([
+    z.toJSONSchema(desiredStateSchema),
+    z.toJSONSchema(nodeRegistrationSchema),
+    z.toJSONSchema(installationStateReportSchema),
+  ]);
+  cachedFingerprint = new Bun.CryptoHasher("sha256")
+    .update(manifest)
+    .digest("hex")
+    .slice(0, 16);
+  return cachedFingerprint;
+}
