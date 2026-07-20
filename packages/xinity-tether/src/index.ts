@@ -1,5 +1,5 @@
 import { logMigrationFailureFatal } from "common-db";
-import { nodeRegistrationSchema, installationStateReportSchema } from "common-env";
+import { nodeRegistrationSchema, installationStateReportSchema, protocolFingerprint } from "common-env";
 import { env } from "./env";
 import { rootLogger } from "./logger";
 import { checkMigrations } from "./db";
@@ -7,7 +7,7 @@ import { verifyBearerToken, unauthorized } from "./auth";
 import { addConnection, removeConnection, pushDesiredState, runKeepaliveLoop, sendShutdownToAll } from "./connections";
 import { buildDesiredState } from "./desired-state";
 import { subscribe, unsubscribe, shutdown as shutdownNotifyBus } from "./notify-bus";
-import { writeRegistration, writeInstallationStates } from "./status-writer";
+import { writeRegistration, queueInstallationStates, flushAndStop } from "./status-writer";
 import { handleMetrics } from "./metrics";
 
 const log = rootLogger;
@@ -20,15 +20,40 @@ if (migrationState.status !== "ok") {
 
 const keepaliveTimer = runKeepaliveLoop(env.KEEPALIVE_INTERVAL_MS, env.LIVENESS_TIMEOUT_MS);
 
-function handleSSEStream(req: Request): Response {
+async function handleSSEStream(req: Request): Promise<Response> {
+  if (req.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405 });
+  }
+
   if (!verifyBearerToken(req)) {
     return unauthorized();
   }
 
-  const url = new URL(req.url);
-  const nodeId = url.searchParams.get("nodeId");
-  if (!nodeId) {
-    return Response.json({ error: "nodeId query parameter required" }, { status: 400 });
+  const body = await req.json().catch(() => null);
+  const parsed = nodeRegistrationSchema.safeParse(body);
+  if (!parsed.success) {
+    return Response.json({ error: parsed.error.message }, { status: 400 });
+  }
+
+  const { nodeId } = parsed.data;
+
+  const expected = protocolFingerprint();
+  if (parsed.data.protocolFingerprint !== expected) {
+    log.warn(
+      { nodeId, expected, received: parsed.data.protocolFingerprint },
+      "Protocol version mismatch",
+    );
+    return Response.json(
+      { error: `Protocol version mismatch (tether: ${expected}, daemon: ${parsed.data.protocolFingerprint})` },
+      { status: 409 },
+    );
+  }
+
+  try {
+    await writeRegistration(parsed.data);
+  } catch (err) {
+    log.error({ err, nodeId }, "Registration write failed during SSE handshake");
+    return Response.json({ error: "Internal error" }, { status: 500 });
   }
 
   const stream = new ReadableStream({
@@ -58,26 +83,6 @@ function handleSSEStream(req: Request): Response {
   });
 }
 
-async function handleRegister(req: Request): Promise<Response> {
-  if (!verifyBearerToken(req)) {
-    return unauthorized();
-  }
-
-  const body = await req.json().catch(() => null);
-  const parsed = nodeRegistrationSchema.safeParse(body);
-  if (!parsed.success) {
-    return Response.json({ error: parsed.error.message }, { status: 400 });
-  }
-
-  try {
-    await writeRegistration(parsed.data);
-    return Response.json({ ok: true });
-  } catch (err) {
-    log.error({ err }, "Registration write failed");
-    return Response.json({ error: "Internal error" }, { status: 500 });
-  }
-}
-
 async function handleStatus(req: Request): Promise<Response> {
   if (!verifyBearerToken(req)) {
     return unauthorized();
@@ -89,13 +94,8 @@ async function handleStatus(req: Request): Promise<Response> {
     return Response.json({ error: parsed.error.message }, { status: 400 });
   }
 
-  try {
-    await writeInstallationStates(parsed.data);
-    return Response.json({ ok: true });
-  } catch (err) {
-    log.error({ err }, "Status write failed");
-    return Response.json({ error: "Internal error" }, { status: 500 });
-  }
+  queueInstallationStates(parsed.data);
+  return Response.json({ ok: true });
 }
 
 const serveTarget = env.UNIX_SOCKET
@@ -108,7 +108,6 @@ const server = Bun.serve({
     "/health": () => Response.json({ ok: true }),
     "/metrics": handleMetrics,
     "/api/v1/stream": handleSSEStream,
-    "/api/v1/register": handleRegister,
     "/api/v1/status": handleStatus,
   },
   fetch() {
@@ -121,6 +120,7 @@ log.info({ ...serveTarget }, "Tether started");
 async function shutdown() {
   clearInterval(keepaliveTimer);
   sendShutdownToAll();
+  await flushAndStop();
   await shutdownNotifyBus();
   server.stop();
   process.exit(0);
