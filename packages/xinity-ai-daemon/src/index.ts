@@ -2,7 +2,7 @@ import type { SubscriptionLike } from "rxjs";
 import { dbSync, setDesiredInstallations } from "./modules/db-sync";
 import { startMetricsSampler, type MetricsSampler } from "./modules/metrics-sampler";
 import { startServer } from "./modules/serverfront/webserver";
-import { setOnline } from "./modules/statekeeper";
+import { buildRegistration } from "./modules/statekeeper";
 import { connectSSE } from "./modules/tether-client";
 import { rootLogger } from "./logger";
 
@@ -24,7 +24,7 @@ if (import.meta.main) {
 
 async function main() {
   await startServer();
-  const nodeId = await setOnline();
+  const registration = await buildRegistration();
   metricsSampler = startMetricsSampler();
   const coordinator = dbSync();
   subscription = coordinator.start();
@@ -38,7 +38,7 @@ async function main() {
 
   sseAbort = new AbortController();
 
-  for await (const state of connectSSE(nodeId)) {
+  for await (const state of connectSSE(registration)) {
     if (shuttingDown) {
       break;
     }
