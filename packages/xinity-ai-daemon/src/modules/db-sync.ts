@@ -1,6 +1,4 @@
-import { getDB } from "../db/connection";
-import { modelInstallationT, modelInstallationStateT, sql, type ModelInstallation } from "common-db";
-import { getNodeId, getNodeDrivers } from "./statekeeper";
+import type { DesiredInstallation } from "common-env";
 import { defer, from, Observable } from "rxjs";
 import {
   endWith,
@@ -15,35 +13,71 @@ import { env } from "../env";
 import { rootLogger } from "../logger";
 import { groupInstallationsByDriver } from "./driver-grouping";
 import { updateRegistry } from "./model-registry";
+import { updateInstallationState } from "./model-installation/state";
+import { getNodeId, getNodeDrivers } from "./statekeeper";
 
 const log = rootLogger.child({ name: "db-sync" });
 
+let latestInstallations: DesiredInstallation[] = [];
 let previousInstallationsSnapshot: string | null = null;
 
-function logInstallationsIfChanged(installations: ModelInstallation[]): void {
+export function setDesiredInstallations(installations: DesiredInstallation[]): void {
+  latestInstallations = installations;
+}
+
+export function getDesiredInstallations(): DesiredInstallation[] {
+  return latestInstallations;
+}
+
+export interface SyncInstallation {
+  id: string;
+  specifier: string;
+  driver: string;
+  estCapacity: number;
+  kvCacheCapacity: number;
+  port: number;
+  settings: Record<string, number>;
+  nodeId: string;
+}
+
+function toSyncInstallation(d: DesiredInstallation, nodeId: string): SyncInstallation {
+  return {
+    id: d.installationId,
+    specifier: d.specifier,
+    driver: d.driver,
+    estCapacity: d.estCapacity,
+    kvCacheCapacity: d.kvCacheCapacity,
+    port: d.port,
+    settings: d.settings,
+    nodeId,
+  };
+}
+
+function logInstallationsIfChanged(installations: SyncInstallation[]): void {
   const models = installations.map(({ driver, specifier, estCapacity }) => ({ driver, specifier, estCapacity }));
   const snapshot = JSON.stringify(models);
-  if (snapshot === previousInstallationsSnapshot) return;
+  if (snapshot === previousInstallationsSnapshot) {
+    return;
+  }
   previousInstallationsSnapshot = snapshot;
   log.info({ models }, "Installations changed");
 }
 
-export function dbSync(){
+export function dbSync() {
   return createWorkflowCoordinator({
     periodMs: env.SYNC_INTERVAL_MS,
     run: sync,
     onError(err, trigger) {
-      log.error({ err, trigger }, "Error during sync")
+      log.error({ err, trigger }, "Error during sync");
     },
     onDrop(trigger) {
-      log.warn({ trigger }, "Sync trigger dropped (queue full)")
+      log.warn({ trigger }, "Sync trigger dropped (queue full)");
     },
   });
 }
 
 const DRIVER_SYNC_CONCURRENCY = 1;
 
-/** Appends an empty bucket for every supported driver missing from the existing buckets, so stale models on those drivers get cleaned up. */
 function ensureBucketsForSupportedDrivers<T>(
   buckets: Array<{ driver: string; installations: T[] }>,
   supportedDrivers: readonly string[],
@@ -55,36 +89,34 @@ function ensureBucketsForSupportedDrivers<T>(
   }
 }
 
-/** Mark installations on an unsupported driver as failed so they aren't retried indefinitely. */
 function syncUnsupportedDriver$(
   driver: string,
-  installations: Array<{ id: string; specifier: string }>
+  installations: Array<{ id: string; specifier: string }>,
 ): Observable<void> {
   return defer(() => {
     log.warn(
       { driver, models: installations.map((i) => i.specifier) },
-      "Skipping unsupported driver"
+      "Skipping unsupported driver",
     );
-    const failedState = {
-      lifecycleState: "failed" as const,
-      errorMessage: `Unsupported driver: ${driver}`,
-    };
     return from(
       Promise.all(
         installations.map((i) =>
-          getDB()
-            .insert(modelInstallationStateT)
-            .values({ id: i.id, ...failedState })
-            .onConflictDoUpdate({ set: failedState, target: modelInstallationStateT.id })
-        )
-      )
+          updateInstallationState(i.id, "failed", {
+            errorMessage: `Unsupported driver: ${driver}`,
+          }),
+        ),
+      ),
     );
   }).pipe(ignoreElements(), endWith(void 0));
 }
 
-function syncForDriver$(driver: string, installations: ModelInstallation[]): Observable<void> {
-  if (driver === "ollama") return syncOllamaInstallations$(installations);
-  if (driver === "vllm") return syncVllmInstallations$(installations);
+function syncForDriver$(driver: string, installations: SyncInstallation[]): Observable<void> {
+  if (driver === "ollama") {
+    return syncOllamaInstallations$(installations);
+  }
+  if (driver === "vllm") {
+    return syncVllmInstallations$(installations);
+  }
   return syncUnsupportedDriver$(driver, installations);
 }
 
@@ -92,14 +124,8 @@ function sync(): Observable<void> {
   log.debug("Performing sync");
 
   return defer(() => from(getNodeId())).pipe(
-    switchMap((nodeID) =>
-      from(
-        getDB().select().from(modelInstallationT).where(
-          sql`${modelInstallationT.nodeId} = ${nodeID} AND ${modelInstallationT.deletedAt} IS NULL`
-        )
-      )
-    ),
-    switchMap((installations) => {
+    switchMap((nodeId) => {
+      const installations = latestInstallations.map(d => toSyncInstallation(d, nodeId));
       updateRegistry(installations);
       const buckets = groupInstallationsByDriver(installations);
       ensureBucketsForSupportedDrivers(buckets, getNodeDrivers());
@@ -108,8 +134,8 @@ function sync(): Observable<void> {
         mergeMap(({ driver, installations: driverInstallations }) =>
           syncForDriver$(driver, driverInstallations), DRIVER_SYNC_CONCURRENCY),
         ignoreElements(),
-        endWith(void 0)
+        endWith(void 0),
       );
-    })
+    }),
   );
 }

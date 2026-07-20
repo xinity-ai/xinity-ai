@@ -1,6 +1,5 @@
 import { promises as fsp, readdirSync, rmSync, statSync, type Dirent } from "node:fs";
 import * as path from "node:path";
-import { modelInstallationT, sql } from "common-db";
 import { createInfoserverClient } from "xinity-infoserver";
 import { env } from "../../env";
 import { rootLogger } from "../../logger";
@@ -31,7 +30,6 @@ export interface EvictionPlan {
   sufficient: boolean;
 }
 
-/** Installation row reduced to what cache eviction needs. */
 export interface InstallationCacheRecord {
   providerModel: string;
   deletedAt: Date | null;
@@ -41,13 +39,12 @@ export function slugForModel(model: string): string {
   return `models--${model.replace("/", "--")}`;
 }
 
-// A "--" inside the org or repo name itself would mismap here; the rare
-// fallout is that the cache entry doesn't match its DB row and gets treated
-// as orphaned (oldest-first by mtime), which is acceptable.
 export function modelForSlug(slug: string): string {
   const stripped = slug.startsWith("models--") ? slug.slice("models--".length) : slug;
   const idx = stripped.indexOf("--");
-  if (idx < 0) return stripped;
+  if (idx < 0) {
+    return stripped;
+  }
   return `${stripped.slice(0, idx)}/${stripped.slice(idx + 2)}`;
 }
 
@@ -63,10 +60,15 @@ export function getDirSize(dir: string): number {
   let total = 0;
   function walk(current: string): void {
     for (const entry of readDirEntriesOrEmpty(current)) {
-      if (entry.isSymbolicLink()) continue;
+      if (entry.isSymbolicLink()) {
+        continue;
+      }
       const p = path.join(current, entry.name);
-      if (entry.isDirectory()) walk(p);
-      else total += safeFileSize(p);
+      if (entry.isDirectory()) {
+        walk(p);
+      } else {
+        total += safeFileSize(p);
+      }
     }
   }
   walk(dir);
@@ -94,7 +96,9 @@ export function listCacheEntries(hubDir: string): CacheEntry[] {
 }
 
 function latestDeletionDate(installations: readonly InstallationCacheRecord[], fallback: Date): Date {
-  if (installations.length === 0) return fallback;
+  if (installations.length === 0) {
+    return fallback;
+  }
   return installations.reduce<Date>(
     (latest, m) => (m.deletedAt && m.deletedAt > latest ? m.deletedAt : latest),
     new Date(0),
@@ -122,10 +126,14 @@ export function planEviction(input: {
   const candidates: Candidate[] = [];
 
   for (const entry of input.entries) {
-    if (entry.model === input.reservedModel) continue;
+    if (entry.model === input.reservedModel) {
+      continue;
+    }
 
     const matches = byProviderModel.get(entry.model) ?? [];
-    if (matches.some((m) => m.deletedAt === null)) continue;
+    if (matches.some((m) => m.deletedAt === null)) {
+      continue;
+    }
 
     const lastNeededAt = latestDeletionDate(matches, entry.mtime);
     candidates.push({ ...entry, lastNeededAt });
@@ -136,7 +144,9 @@ export function planEviction(input: {
   const evict: CacheEntry[] = [];
   let freed = 0;
   for (const c of candidates) {
-    if (input.freeBytes + freed >= target) break;
+    if (input.freeBytes + freed >= target) {
+      break;
+    }
     evict.push(c);
     freed += c.sizeBytes;
   }
@@ -157,23 +167,17 @@ export async function ensureCacheSpace(input: {
   }
 
   const entries = listCacheEntries(hubDir);
-  const { getNodeId } = await import("../statekeeper");
-  const { getDB } = await import("../../db/connection");
-  const nodeId = await getNodeId();
-  const installations = await getDB()
-    .select()
-    .from(modelInstallationT)
-    .where(sql`${modelInstallationT.nodeId} = ${nodeId}`);
+  const { getDesiredInstallations } = await import("../db-sync");
+  const installations = getDesiredInstallations();
 
-  // Resolve each installation's canonical specifier to its provider-side cache key.
-  // Installations the catalog cannot resolve are dropped from the eviction view:
-  // their cache directories will be treated as orphaned and ranked by mtime.
   const cacheRecords: InstallationCacheRecord[] = [];
   for (const i of installations) {
     const model = await getInfoClient().fetchModel(i.specifier);
     const providerModel = model?.providers.vllm;
-    if (!providerModel) continue;
-    cacheRecords.push({ providerModel, deletedAt: i.deletedAt });
+    if (!providerModel) {
+      continue;
+    }
+    cacheRecords.push({ providerModel, deletedAt: null });
   }
 
   const plan = planEviction({

@@ -5,10 +5,8 @@ import { firstValueFrom } from "rxjs";
 // Mocks: must be set up before importing the module under test
 // ---------------------------------------------------------------------------
 
-// Mock env to avoid side-effect (parseEnv reads process.env)
 mock.module("../../env", () => ({ env: {
   XINITY_OLLAMA_ENDPOINT: "http://localhost:11434",
-  DB_CONNECTION_URL: "postgres://localhost/test",
   SYNC_INTERVAL_MS: 60_000,
   STATE_DIR: "/tmp/test-state",
   VLLM_MAX_RESTART_COUNT: 3,
@@ -16,21 +14,14 @@ mock.module("../../env", () => ({ env: {
   INFOSERVER_CACHE_TTL_MS: 0,
 }}));
 
-// Mock DB connection
-const mockInsert = mock(() => mockInsertChain);
-const mockInsertChain = {
-  values: mock(() => mockInsertChain),
-  onConflictDoUpdate: mock(() => Promise.resolve()),
-};
+const mockUpdateState = mock(() => Promise.resolve());
 
-mock.module("../../db/connection", () => ({
-  getDB: () => ({
-    insert: mockInsert,
-  }),
-  listen: mock(),
+mock.module("./state", () => ({
+  updateInstallationState: mockUpdateState,
+  getLocalInstallationState: () => undefined,
+  getLocalInstallationStates: () => new Map(),
 }));
 
-// Mock logger
 mock.module("../../logger", () => ({
   rootLogger: {
     child: () => ({
@@ -42,8 +33,6 @@ mock.module("../../logger", () => ({
   },
 }));
 
-// Mock the infoserver client: returns the specifier as the ollama tag so test
-// expectations can use specifier and tag interchangeably.
 const mockFetchModel = mock<(specifier: string) => Promise<{ providers: { ollama?: string; vllm?: string } } | undefined>>(
   (specifier) => Promise.resolve({ providers: { ollama: specifier } }),
 );
@@ -54,7 +43,6 @@ mock.module("xinity-infoserver", () => ({
   }),
 }));
 
-// Track Ollama client calls
 let mockOllamaList = mock<() => Promise<{ models: Array<{ model: string }> }>>();
 let mockOllamaDelete = mock<(params: { model: string }) => Promise<void>>();
 let mockOllamaPull = mock<(params: { model: string; stream: boolean }) => Promise<AsyncIterable<{ status: string; completed: number; total: number }>>>();
@@ -67,7 +55,6 @@ mock.module("ollama", () => ({
   },
 }));
 
-// Now import the module under test
 const { syncOllamaInstallations$ } = await import("./ollama");
 
 // ---------------------------------------------------------------------------
@@ -83,10 +70,7 @@ function makeInstallation(specifier: string, id = crypto.randomUUID()) {
     kvCacheCapacity: 0,
     port: 8080,
     driver: "ollama" as const,
-    settings: { version: 1 as const },
-    deletedAt: null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    settings: {} as Record<string, number>,
   };
 }
 
@@ -99,9 +83,7 @@ describe("syncOllamaInstallations$", () => {
     mockOllamaList.mockReset();
     mockOllamaDelete.mockReset();
     mockOllamaPull.mockReset();
-    mockInsert.mockClear();
-    mockInsertChain.values.mockClear();
-    mockInsertChain.onConflictDoUpdate.mockClear();
+    mockUpdateState.mockClear();
     mockFetchModel.mockReset();
     mockFetchModel.mockImplementation((specifier) => Promise.resolve({ providers: { ollama: specifier } }));
   });
@@ -127,7 +109,6 @@ describe("syncOllamaInstallations$", () => {
     });
     mockOllamaDelete.mockResolvedValue(undefined);
 
-    // Only llama3 is desired, so mistral should be removed
     const installations = [makeInstallation("llama3:latest")];
     await firstValueFrom(syncOllamaInstallations$(installations));
 
@@ -138,7 +119,6 @@ describe("syncOllamaInstallations$", () => {
   test("pulls models that are desired but not installed", async () => {
     mockOllamaList.mockResolvedValue({ models: [] });
 
-    // Create an async iterable that immediately completes with success
     async function* pullStream() {
       yield { status: "success", completed: 100, total: 100 };
     }
@@ -206,9 +186,7 @@ describe("syncOllamaInstallations$", () => {
     const installations = [makeInstallation("test-model")];
     await firstValueFrom(syncOllamaInstallations$(installations));
 
-    // The DB insert should have been called to update state
-    // (bufferTime may batch these, but at least one call should happen)
-    expect(mockInsert).toHaveBeenCalled();
+    expect(mockUpdateState).toHaveBeenCalled();
   });
 
   test("skips installations the catalog has no ollama provider for", async () => {

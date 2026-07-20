@@ -1,7 +1,7 @@
 import { Ollama, type ProgressResponse } from "ollama";
 import { bufferTime, concatMap, defer, endWith, from, ignoreElements, map, merge, mergeMap, Observable, switchMap, tap } from "rxjs";
 import { env } from "../../env";
-import type { ModelInstallation } from "common-db";
+import type { SyncInstallation } from "../db-sync";
 import { createInfoserverClient } from "xinity-infoserver";
 import { rootLogger } from "../../logger";
 import { updateInstallationState } from "./state";
@@ -37,9 +37,9 @@ function derivePullProgress(chunk: ProgressResponse): { lifecycleState: OllamaPu
 }
 
 /** Installation paired with its catalog-resolved Ollama provider tag. */
-type ResolvedInstallation = { installation: ModelInstallation; tag: string };
+type ResolvedInstallation = { installation: SyncInstallation; tag: string };
 
-async function resolveInstallations(installations: Array<ModelInstallation>): Promise<ResolvedInstallation[]> {
+async function resolveInstallations(installations: Array<SyncInstallation>): Promise<ResolvedInstallation[]> {
   const resolved: ResolvedInstallation[] = [];
   for (const installation of installations) {
     const model = await infoClient.fetchModel(installation.specifier);
@@ -74,7 +74,7 @@ function consumePull$({ installation, tag }: ResolvedInstallation): Observable<v
 }
 
 export function syncOllamaInstallations$(
-  installations: Array<ModelInstallation>
+  installations: Array<SyncInstallation>
 ): Observable<void> {
   return defer(() => from(resolveInstallations(installations))).pipe(
     switchMap((resolved) =>
