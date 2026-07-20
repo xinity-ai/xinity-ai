@@ -114,7 +114,7 @@ function makeInstallation(specifier: string, id: string = crypto.randomUUID(), p
     kvCacheCapacity: 4,
     port,
     driver: "vllm" as const,
-    settings: {} as Record<string, number>,
+    settings: { version: 1 as const },
   };
 }
 
@@ -437,7 +437,7 @@ describe("syncVllmInstallations$", () => {
 
   test("passes settings through to the start config", async () => {
     const id = crypto.randomUUID();
-    const settings = { maxAudioInputDurationS: 1200, maxAudioInputFileSizeMB: 50 };
+    const settings = { version: 1 as const, maxAudioInputDurationS: 1200, maxAudioInputFileSizeMB: 50 };
     const inst = { ...makeInstallation("whisper-model", id, 9107), settings };
     mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { type: "transcription" })));
     const ops = createMockOps({
@@ -465,7 +465,7 @@ describe("syncVllmInstallations$", () => {
     await firstValueFrom(syncVllmInstallations$([inst], ops));
 
     const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
-    expect(startCall[1].settings).toEqual({});
+    expect(startCall[1].settings).toEqual({ version: 1 });
   });
 
   test("uses the engine specifier from the catalog rather than the specifier itself", async () => {

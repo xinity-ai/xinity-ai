@@ -146,5 +146,6 @@ export function quoteShellArgv(argv: string[]): string {
   return argv.map(quoteShellArg).join(" ");
 }
 
+export * from "./deployment-settings";
 export * from "./metrics-auth";
 export * from "./tether-protocol";

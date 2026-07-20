@@ -1,4 +1,5 @@
-import { inArray, modelDeploymentT, sql, calcCanaryProgress, modelInstallationT, aiNodeT, mergeSettings, settingsEqual, type DeploymentSettings, type ModelInstallation, type AiNode, type InferInsertModel } from "common-db";
+import { inArray, modelDeploymentT, sql, calcCanaryProgress, modelInstallationT, aiNodeT, type ModelInstallation, type AiNode, type InferInsertModel } from "common-db";
+import { mergeSettings, settingsEqual, type DeploymentSettings } from "common-env";
 import { getDB } from "../db";
 import { resolveSchedulable, type SchedulableModel } from "../model-catalog";
 import { checkNodeCompatibility, type BlockedVersion, type ModelNodeRequirements, type NodeCapability, type Provider } from "xinity-infoserver";

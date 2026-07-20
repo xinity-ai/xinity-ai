@@ -98,4 +98,3 @@ describe("mergeSettings", () => {
     )).toEqual({ version: 1, maxAudioInputDurationS: 1200, maxAudioInputFileSizeMB: 50 });
   });
 });
-
