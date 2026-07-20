@@ -1,5 +1,6 @@
 import { safeFetch } from "./url-safety";
 import TurndownService from "turndown";
+// @ts-expect-error no published types
 import { gfm } from "turndown-plugin-gfm";
 import { load as cheerioLoad } from "cheerio";
 import { rootLogger } from "../../logger";

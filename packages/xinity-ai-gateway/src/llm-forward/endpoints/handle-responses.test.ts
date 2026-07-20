@@ -2,11 +2,11 @@ import { describe, test, expect, beforeAll, afterAll, afterEach } from "bun:test
 import { makeChatSseResponse, makeChatJsonResponse, makeChatJsonResponseWithToolCalls, makeChatSseResponseWithToolCalls, mockBackendFetch, setupResponseTestMocks, waitForResponseStatus } from "./test-helpers";
 
 const mocks = setupResponseTestMocks();
-const { checkAuth, getModelInfo, responseStore, saveResponse, logChatSync, logChatStream } = mocks;
+const { checkAuth, getModelInfo, responseStore, saveResponse, logChatSync } = mocks;
 
 mockBackendFetch();
 
-const { handleCreateResponseRequest, handleGetOrDeleteResponseRequest, handleCancelResponseRequest } = await import("./handle-responses");
+const { handleCreateResponseRequest, handleGetOrDeleteResponseRequest } = await import("./handle-responses");
 
 let server: any;
 

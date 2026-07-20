@@ -16,7 +16,7 @@ import { mediaObjectT, type ApiCallInputMessage, type ApiCallInputMessageContent
 import { rootLogger } from "./logger";
 import { getDB } from "./db";
 import { env } from "./env";
-import { validateUrl, safeFetch } from "./llm-forward/tools/url-safety";
+import { safeFetch } from "./llm-forward/tools/url-safety";
 
 const log = rootLogger.child({ name: "image-store" });
 

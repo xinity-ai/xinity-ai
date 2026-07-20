@@ -6,7 +6,7 @@ const { getModelInfo, responseStore } = mocks;
 mockBackendFetch();
 
 mock.module("../tools/url-safety", () => ({
-  safeFetch: async (url: string) => new Response(
+  safeFetch: async (_url: string) => new Response(
     `<html><body><p>Weather data for Berlin showing temperatures and conditions.</p></body></html>`,
     { status: 200, headers: { "Content-Type": "text/html" } },
   ),
