@@ -26,6 +26,10 @@
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^2.0.47",
-    "ai": "^6.0.182"
+    "@mozilla/readability": "^0.6.0",
+    "ai": "^6.0.182",
+    "cheerio": "^1.2.0",
+    "turndown": "^7.2.0",
+    "turndown-plugin-gfm": "^1.0.2"
   }
 }

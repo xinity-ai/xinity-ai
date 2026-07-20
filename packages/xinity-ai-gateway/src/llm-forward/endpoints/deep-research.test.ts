@@ -5,13 +5,11 @@ const mocks = setupResponseTestMocks();
 const { getModelInfo, responseStore } = mocks;
 mockBackendFetch();
 
-mock.module("../tools/web-fetch", () => ({
-  fetchWebContent: async (url: string) => ({
-    url,
-    content: "Weather data for Berlin showing temperatures and conditions.",
-    truncated: false,
-    contentType: "text/html",
-  }),
+mock.module("../tools/url-safety", () => ({
+  safeFetch: async (url: string) => new Response(
+    `<html><body><p>Weather data for Berlin showing temperatures and conditions.</p></body></html>`,
+    { status: 200, headers: { "Content-Type": "text/html" } },
+  ),
 }));
 
 const { setSearchProvider } = await import("../tools/response-tools");
