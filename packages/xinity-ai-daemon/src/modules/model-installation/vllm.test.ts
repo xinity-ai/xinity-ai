@@ -11,7 +11,6 @@ mock.module("../../env", () => ({ env: {
   PORT: 4020,
   HOST: "0.0.0.0",
   XINITY_OLLAMA_ENDPOINT: "http://localhost:11434",
-  DB_CONNECTION_URL: "postgres://localhost/test",
   STATE_DIR: "/tmp/test-state",
   CIDR_PREFIX: "10.0.0",
   SYNC_INTERVAL_MS: 60_000,
@@ -31,21 +30,29 @@ mock.module("../../env", () => ({ env: {
   LOG_DIR: undefined,
 }}));
 
-// Mock DB: tracks insert and select calls
-const mockOnConflictDoUpdate = mock(() => Promise.resolve());
-const mockInsertValues = mock(() => ({ onConflictDoUpdate: mockOnConflictDoUpdate }));
-const mockInsert = mock(() => ({ values: mockInsertValues }));
+type StateCall = [string, string, Record<string, unknown> | undefined];
+const stateWrites: StateCall[] = [];
 
-const mockSelectWhere = mock(() => Promise.resolve([] as unknown[]));
-const mockSelectFrom = mock(() => ({ where: mockSelectWhere }));
-const mockSelect = mock(() => ({ from: mockSelectFrom }));
+const mockLocalStates = new Map<string, { lifecycleState: string }>();
 
-mock.module("../../db/connection", () => ({
-  getDB: () => ({
-    insert: mockInsert,
-    select: mockSelect,
-  }),
-  listen: mock(),
+const mockUpdateState = mock((id: string, state: string, opts?: Record<string, unknown>) => {
+  stateWrites.push([id, state, opts]);
+  return Promise.resolve();
+});
+
+mock.module("./state", () => ({
+  updateInstallationState: mockUpdateState,
+  getLocalInstallationState: (id: string) => mockLocalStates.get(id),
+  getLocalInstallationStates: (ids: string[]) => {
+    const result = new Map<string, { lifecycleState: string }>();
+    for (const id of ids) {
+      const entry = mockLocalStates.get(id);
+      if (entry) {
+        result.set(id, entry);
+      }
+    }
+    return result;
+  },
 }));
 
 mock.module("../../logger", () => ({
@@ -73,7 +80,6 @@ mock.module("./catalog", () => ({
   resolveInstallationEntry: mockResolveEntry,
 }));
 
-// Mock the statekeeper hardware profile
 mock.module("../statekeeper", () => ({
   getAuthToken: () => "mock-token",
   getHardwareProfile: () => Promise.resolve({
@@ -85,7 +91,6 @@ mock.module("../statekeeper", () => ({
   }),
 }));
 
-// Mock the native HF downloader (no-op in tests)
 mock.module("./vllm-download", () => ({
   downloadModel: mock(() => Promise.resolve()),
 }));
@@ -109,10 +114,7 @@ function makeInstallation(specifier: string, id: string = crypto.randomUUID(), p
     kvCacheCapacity: 4,
     port,
     driver: "vllm" as const,
-    settings: { version: 1 as const },
-    deletedAt: null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    settings: {} as Record<string, number>,
   };
 }
 
@@ -136,12 +138,9 @@ function createMockOps(overrides: Partial<VllmOps> = {}): VllmOps {
 
 describe("syncVllmInstallations$", () => {
   beforeEach(() => {
-    mockInsert.mockClear();
-    mockInsertValues.mockClear();
-    mockOnConflictDoUpdate.mockClear();
-    mockSelect.mockClear();
-    mockSelectFrom.mockClear();
-    mockSelectWhere.mockImplementation(() => Promise.resolve([]));
+    stateWrites.length = 0;
+    mockUpdateState.mockClear();
+    mockLocalStates.clear();
     mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier)));
   });
 
@@ -153,10 +152,7 @@ describe("syncVllmInstallations$", () => {
       checkHealth: mock(() => Promise.resolve(true)),
     });
 
-    // Reconcile will find the id running, DB state query returns "ready"
-    mockSelectWhere.mockImplementation(() =>
-      Promise.resolve([{ id, lifecycleState: "ready", progress: null, errorMessage: null, statusMessage: null, failureLogs: null, createdAt: new Date(), updatedAt: new Date() }]),
-    );
+    mockLocalStates.set(id, { lifecycleState: "ready" });
 
     await firstValueFrom(syncVllmInstallations$([inst], ops));
 
@@ -232,49 +228,29 @@ describe("syncVllmInstallations$", () => {
     const ops = createMockOps({
       listRunning: mock(() => Promise.resolve([])),
       checkHealth: mock(() => Promise.resolve(false)),
-      isAlive: mock(() => Promise.resolve(false)), // container died
+      isAlive: mock(() => Promise.resolve(false)),
     });
 
     await firstValueFrom(syncVllmInstallations$([inst], ops));
 
-    // Should have written a "failed" state to DB
-    const stateWrites = mockInsertValues.mock.calls as unknown as Array<[Record<string, unknown>]>;
-    const failedWrite = stateWrites.find(
-      (call) => call[0]?.lifecycleState === "failed",
-    );
+    const failedWrite = stateWrites.find(([, state]) => state === "failed");
     expect(failedWrite).toBeDefined();
   });
 
-  test("reconciles running container with stale failed DB state to installing", async () => {
+  test("reconciles running container with stale failed state to installing", async () => {
     const id = crypto.randomUUID();
     const inst = makeInstallation("stale-model", id, 9094);
     const ops = createMockOps({
       listRunning: mock(() => Promise.resolve([id])),
-      checkHealth: mock(() => Promise.resolve(false)), // not yet healthy
-      isAlive: mock(() => Promise.resolve(true)), // but alive
+      checkHealth: mock(() => Promise.resolve(false)),
+      isAlive: mock(() => Promise.resolve(true)),
     });
 
-    // DB says it's "failed" but container is running
-    mockSelectWhere.mockImplementation(() =>
-      Promise.resolve([{
-        id,
-        lifecycleState: "failed",
-        progress: null,
-        errorMessage: "Previous error",
-        statusMessage: null,
-        failureLogs: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }]),
-    );
+    mockLocalStates.set(id, { lifecycleState: "failed" });
 
     await firstValueFrom(syncVllmInstallations$([inst], ops));
 
-    // Should have corrected the state to "installing"
-    const stateWrites = mockInsertValues.mock.calls as unknown as Array<[Record<string, unknown>]>;
-    const installingWrite = stateWrites.find(
-      (call) => call[0]?.lifecycleState === "installing",
-    );
+    const installingWrite = stateWrites.find(([, state]) => state === "installing");
     expect(installingWrite).toBeDefined();
   });
 
@@ -292,12 +268,9 @@ describe("syncVllmInstallations$", () => {
     await firstValueFrom(syncVllmInstallations$([inst], ops));
 
     expect(ops.getLogs).toHaveBeenCalled();
-    const stateWrites = mockInsertValues.mock.calls as unknown as Array<[Record<string, unknown>]>;
-    const failedWrite = stateWrites.find(
-      (call) => call[0]?.lifecycleState === "failed",
-    );
+    const failedWrite = stateWrites.find(([, state]) => state === "failed");
     expect(failedWrite).toBeDefined();
-    expect(failedWrite![0].failureLogs).toBe(sampleLogs);
+    expect(failedWrite![2]?.failureLogs).toBe(sampleLogs);
   });
 
   test("reconciles dead container to failed state with logs", async () => {
@@ -307,33 +280,18 @@ describe("syncVllmInstallations$", () => {
     const ops = createMockOps({
       listRunning: mock(() => Promise.resolve([id])),
       checkHealth: mock(() => Promise.resolve(false)),
-      isAlive: mock(() => Promise.resolve(false)), // container dead
+      isAlive: mock(() => Promise.resolve(false)),
       getLogs: mock(() => Promise.resolve(sampleLogs)),
     });
 
-    // DB says it's "installing" but container is dead
-    mockSelectWhere.mockImplementation(() =>
-      Promise.resolve([{
-        id,
-        lifecycleState: "installing",
-        progress: null,
-        errorMessage: null,
-        statusMessage: null,
-        failureLogs: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }]),
-    );
+    mockLocalStates.set(id, { lifecycleState: "installing" });
 
     await firstValueFrom(syncVllmInstallations$([inst], ops));
 
     expect(ops.getLogs).toHaveBeenCalled();
-    const stateWrites = mockInsertValues.mock.calls as unknown as Array<[Record<string, unknown>]>;
-    const failedWrite = stateWrites.find(
-      (call) => call[0]?.lifecycleState === "failed",
-    );
+    const failedWrite = stateWrites.find(([, state]) => state === "failed");
     expect(failedWrite).toBeDefined();
-    expect(failedWrite![0].failureLogs).toBe(sampleLogs);
+    expect(failedWrite![2]?.failureLogs).toBe(sampleLogs);
   });
 
   test("marks failed and stops container on crash-loop during health poll", async () => {
@@ -350,14 +308,10 @@ describe("syncVllmInstallations$", () => {
 
     await firstValueFrom(syncVllmInstallations$([inst], ops));
 
-    const stateWrites = mockInsertValues.mock.calls as unknown as Array<[Record<string, unknown>]>;
-    const failedWrite = stateWrites.find(
-      (call) => call[0]?.lifecycleState === "failed",
-    );
+    const failedWrite = stateWrites.find(([, state]) => state === "failed");
     expect(failedWrite).toBeDefined();
-    expect(failedWrite![0].failureLogs).toBe(sampleLogs);
-    // Fatal pattern match overrides the raw crash-loop message with a user-friendly label
-    expect((failedWrite![0].errorMessage as string)).toContain("GPU out of memory");
+    expect(failedWrite![2]?.failureLogs).toBe(sampleLogs);
+    expect((failedWrite![2]?.errorMessage as string)).toContain("GPU out of memory");
     expect(ops.stop).toHaveBeenCalled();
   });
 
@@ -375,13 +329,10 @@ describe("syncVllmInstallations$", () => {
 
     await firstValueFrom(syncVllmInstallations$([inst], ops));
 
-    const stateWrites = mockInsertValues.mock.calls as unknown as Array<[Record<string, unknown>]>;
-    const failedWrite = stateWrites.find(
-      (call) => call[0]?.lifecycleState === "failed",
-    );
+    const failedWrite = stateWrites.find(([, state]) => state === "failed");
     expect(failedWrite).toBeDefined();
-    expect((failedWrite![0].errorMessage as string)).toContain("Triton cache permission error");
-    expect(failedWrite![0].failureLogs).toBe(sampleLogs);
+    expect((failedWrite![2]?.errorMessage as string)).toContain("Triton cache permission error");
+    expect(failedWrite![2]?.failureLogs).toBe(sampleLogs);
   });
 
   test("stops container when marking as failed on container death", async () => {
@@ -405,19 +356,7 @@ describe("syncVllmInstallations$", () => {
       listRunning: mock(() => Promise.resolve([])),
     });
 
-    // DB says this installation is already "failed"
-    mockSelectWhere.mockImplementation(() =>
-      Promise.resolve([{
-        id,
-        lifecycleState: "failed",
-        progress: null,
-        errorMessage: "Previous crash-loop",
-        statusMessage: null,
-        failureLogs: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }]),
-    );
+    mockLocalStates.set(id, { lifecycleState: "failed" });
 
     await firstValueFrom(syncVllmInstallations$([inst], ops));
 
@@ -498,7 +437,7 @@ describe("syncVllmInstallations$", () => {
 
   test("passes settings through to the start config", async () => {
     const id = crypto.randomUUID();
-    const settings = { version: 1 as const, maxAudioInputDurationS: 1200, maxAudioInputFileSizeMB: 50 };
+    const settings = { maxAudioInputDurationS: 1200, maxAudioInputFileSizeMB: 50 };
     const inst = { ...makeInstallation("whisper-model", id, 9107), settings };
     mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { type: "transcription" })));
     const ops = createMockOps({
@@ -526,7 +465,7 @@ describe("syncVllmInstallations$", () => {
     await firstValueFrom(syncVllmInstallations$([inst], ops));
 
     const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
-    expect(startCall[1].settings).toEqual({ version: 1 });
+    expect(startCall[1].settings).toEqual({});
   });
 
   test("uses the engine specifier from the catalog rather than the specifier itself", async () => {
@@ -572,29 +511,14 @@ describe("syncVllmInstallations$", () => {
       getLogs: mock(() => Promise.resolve(sampleLogs)),
     });
 
-    // DB says it's "installing" but container is crash-looping
-    mockSelectWhere.mockImplementation(() =>
-      Promise.resolve([{
-        id,
-        lifecycleState: "installing",
-        progress: null,
-        errorMessage: null,
-        statusMessage: null,
-        failureLogs: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }]),
-    );
+    mockLocalStates.set(id, { lifecycleState: "installing" });
 
     await firstValueFrom(syncVllmInstallations$([inst], ops));
 
-    const stateWrites = mockInsertValues.mock.calls as unknown as Array<[Record<string, unknown>]>;
-    const failedWrite = stateWrites.find(
-      (call) => call[0]?.lifecycleState === "failed",
-    );
+    const failedWrite = stateWrites.find(([, state]) => state === "failed");
     expect(failedWrite).toBeDefined();
-    expect((failedWrite![0].errorMessage as string)).toContain("crash-looping");
-    expect(failedWrite![0].failureLogs).toBe(sampleLogs);
+    expect((failedWrite![2]?.errorMessage as string)).toContain("crash-looping");
+    expect(failedWrite![2]?.failureLogs).toBe(sampleLogs);
     expect(ops.stop).toHaveBeenCalled();
   });
 

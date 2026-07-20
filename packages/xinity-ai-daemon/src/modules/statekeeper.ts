@@ -1,5 +1,3 @@
-import { getDB } from "../db/connection";
-import { aiNodeT, sql } from "common-db";
 import { getTlsConfig } from "common-env";
 import { $ } from "bun";
 import { env } from "../env";
@@ -9,6 +7,7 @@ import { detectHardwareProfile, detectNodeName, type HardwareProfile } from "./h
 import { normalizePep440 } from "xinity-infoserver";
 import { rootLogger } from "../logger";
 import { detectVllmFeatures } from "./vllm-features";
+import { reportRegistration } from "./tether-client";
 
 const log = rootLogger.child({ name: "statekeeper" });
 
@@ -44,8 +43,12 @@ export async function getHardwareProfile(): Promise<HardwareProfile> {
 /** Derives supported drivers from configured environment variables. */
 export function getNodeDrivers(): string[] {
   const drivers: string[] = [];
-  if (env.XINITY_OLLAMA_ENDPOINT) drivers.push("ollama");
-  if (env.VLLM_DOCKER_IMAGE || env.VLLM_PATH) drivers.push("vllm");
+  if (env.XINITY_OLLAMA_ENDPOINT) {
+    drivers.push("ollama");
+  }
+  if (env.VLLM_DOCKER_IMAGE || env.VLLM_PATH) {
+    drivers.push("vllm");
+  }
   return drivers;
 }
 
@@ -56,7 +59,9 @@ async function detectVllmVersion(
   try {
     const output = await runVersionCommand();
     const version = output.match(/(\d+\.\d+\.\d+\S*)/)?.[1];
-    if (version) return normalizePep440(version);
+    if (version) {
+      return normalizePep440(version);
+    }
     log.warn({ output, source }, "vLLM version output did not match expected format");
   } catch (err) {
     log.debug({ err, source }, "Failed to detect vLLM version");
@@ -67,7 +72,9 @@ async function detectVllmVersion(
 async function detectOllamaVersion(endpoint: string): Promise<string | undefined> {
   try {
     const res = await fetch(`${endpoint}/api/version`);
-    if (!res.ok) return undefined;
+    if (!res.ok) {
+      return undefined;
+    }
     const data = await res.json() as { version?: string };
     return data.version;
   } catch (err) {
@@ -77,7 +84,9 @@ async function detectOllamaVersion(endpoint: string): Promise<string | undefined
 }
 
 async function detectConfiguredOllamaVersion(): Promise<string | undefined> {
-  if (!env.XINITY_OLLAMA_ENDPOINT) return undefined;
+  if (!env.XINITY_OLLAMA_ENDPOINT) {
+    return undefined;
+  }
   return detectOllamaVersion(env.XINITY_OLLAMA_ENDPOINT);
 }
 
@@ -103,8 +112,12 @@ export async function getNodeDriverVersions(): Promise<Record<string, string>> {
   ]);
 
   const versions: Record<string, string> = {};
-  if (ollama) versions["ollama"] = ollama;
-  if (vllm) versions["vllm"] = vllm;
+  if (ollama) {
+    versions["ollama"] = ollama;
+  }
+  if (vllm) {
+    versions["vllm"] = vllm;
+  }
   return versions;
 }
 
@@ -136,29 +149,12 @@ function findHostIPv4Address(): string {
   return match?.address || '127.0.0.1';
 }
 
-async function collectNodeRuntimeState() {
-  const { detectedCapacityGb, gpuCount, gpus: detectedGpus } = await getHardwareProfile();
-  const [driverVersions, driverFeatures] = await Promise.all([
-    getNodeDriverVersions(),
-    getNodeDriverFeatures(),
-  ]);
-  const machineName = detectNodeName(env.MACHINE_NAME);
-  return {
-    estCapacity: detectedCapacityGb,
-    gpuCount,
-    driverVersions,
-    driverFeatures,
-    gpus: detectedGpus.map(g => ({ vendor: g.vendor, name: g.name, vramMb: g.vramMb })),
-    machineName,
-    authToken,
-    tls: !!getTlsConfig(env),
-  };
-}
-
 /** Reads the persisted node id from STATE_DIR, or null if it has not been written yet. */
 export async function readNodeIdFile(): Promise<string | null> {
   const idFile = Bun.file(join(env.STATE_DIR, "node_id"));
-  if (!(await idFile.exists())) return null;
+  if (!(await idFile.exists())) {
+    return null;
+  }
   const id = (await idFile.text()).trim();
   return id.length > 0 ? id : null;
 }
@@ -168,7 +164,12 @@ async function writeNodeIdFile(id: string): Promise<void> {
 }
 
 async function registerNode(): Promise<string> {
-  const runtimeState = await collectNodeRuntimeState();
+  const { detectedCapacityGb, gpuCount, gpus: detectedGpus } = await getHardwareProfile();
+  const [driverVersions, driverFeatures] = await Promise.all([
+    getNodeDriverVersions(),
+    getNodeDriverFeatures(),
+  ]);
+  const machineName = detectNodeName(env.MACHINE_NAME);
   const host = findHostIPv4Address();
   const port = env.PORT;
 
@@ -178,29 +179,18 @@ async function registerNode(): Promise<string> {
     await writeNodeIdFile(id);
   }
 
-  await getDB().transaction(async (tx) => {
-    // Retire a stale daemon left at this endpoint under a different id, so a reinstalled
-    // node registers fresh instead of tripping the (host, port) unique index.
-    await tx
-      .update(aiNodeT)
-      .set({ available: false, deletedAt: new Date() })
-      .where(sql`
-        ${aiNodeT.host} = ${host}
-      AND
-        ${aiNodeT.port} = ${port}
-      AND
-        ${aiNodeT.deletedAt} IS NULL
-      AND
-        ${aiNodeT.id} <> ${id}
-      `);
-
-    await tx
-      .insert(aiNodeT)
-      .values({ id, ...runtimeState, host, port, available: true })
-      .onConflictDoUpdate({
-        target: aiNodeT.id,
-        set: { ...runtimeState, host, port, available: true, deletedAt: null },
-      });
+  await reportRegistration({
+    nodeId: id,
+    host,
+    port,
+    gpuCount,
+    gpus: detectedGpus.map(g => ({ vendor: g.vendor, name: g.name, vramMb: g.vramMb })),
+    driverVersions,
+    driverFeatures,
+    tls: !!getTlsConfig(env),
+    estCapacity: detectedCapacityGb,
+    machineName,
+    authToken,
   });
 
   cachedNodeId = id;
@@ -212,17 +202,7 @@ export async function getNodeId(): Promise<string> {
   return cachedNodeId ?? registerNode();
 }
 
-/** Re-registers the node with current runtime state and marks it available. */
+/** Re-registers the node with current runtime state via the tether. */
 export async function setOnline(): Promise<string> {
   return registerNode();
-}
-
-export async function setOffline(){
-  const nodeId = await getNodeId();
-
-  await getDB()
-    .update(aiNodeT)
-    .set({ available: false, authToken: null })
-    .where(sql`${aiNodeT.id} = ${nodeId}`);
-
 }

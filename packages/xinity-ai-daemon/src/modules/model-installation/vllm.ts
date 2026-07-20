@@ -14,8 +14,7 @@ import {
   tap,
   timer,
 } from "rxjs";
-import { getDB } from "../../db/connection";
-import { inArray, type ModelInstallation, modelInstallationStateT } from "common-db";
+import type { SyncInstallation } from "../db-sync";
 import { env } from "../../env";
 import {
   createDockerVllmOps,
@@ -28,7 +27,7 @@ import { downloadModel } from "./vllm-download";
 import { estimateConcurrency, type GpuInfo, type ModelSizingFields } from "xinity-infoserver";
 import { dropPageCache } from "./page-cache";
 import { resolveInstallationEntry } from "./catalog";
-import { updateInstallationState } from "./state";
+import { updateInstallationState, getLocalInstallationStates } from "./state";
 
 const log = rootLogger.child({ name: "vllm" });
 
@@ -55,7 +54,9 @@ const FATAL_LOG_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
 
 function matchFatalPattern(logs: string): string | null {
   for (const { pattern, label } of FATAL_LOG_PATTERNS) {
-    if (pattern.test(logs)) return label;
+    if (pattern.test(logs)) {
+      return label;
+    }
   }
   return null;
 }
@@ -90,7 +91,7 @@ async function warmupChatModel(port: number, model: string): Promise<void> {
   } catch { /* best-effort */ }
 }
 
-async function markInstallationReady(installation: ModelInstallation, providerModel: string, modelType?: string): Promise<void> {
+async function markInstallationReady(installation: SyncInstallation, providerModel: string, modelType?: string): Promise<void> {
   if (modelType !== "embedding" && modelType !== "rerank" && modelType !== "transcription") {
     await warmupChatModel(installation.port, providerModel);
   }
@@ -109,7 +110,7 @@ function throttledDownloadProgress(installationId: string, intervalMs: number): 
 }
 
 function pollUntilHealthy$(
-  installation: ModelInstallation,
+  installation: SyncInstallation,
   ops: VllmOps,
   providerModel: string,
   modelType?: string,
@@ -156,7 +157,7 @@ function pollUntilHealthy$(
   );
 }
 
-async function downloadAndStart(installation: ModelInstallation, ops: VllmOps): Promise<{ modelType: string | undefined; providerModel: string }> {
+async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): Promise<{ modelType: string | undefined; providerModel: string }> {
   const entry = await resolveInstallationEntry(installation.specifier, "vllm");
   if (!entry) {
     throw new Error(`No vllm catalog entry for installation ${installation.id}`);
@@ -239,10 +240,12 @@ const CAPACITY_OVERHEAD_FACTOR = 1.1;
 const MAX_GPU_UTILIZATION = 0.90;
 
 export function computeGpuUtilization(
-  installation: Pick<ModelInstallation, "specifier" | "estCapacity">,
+  installation: Pick<SyncInstallation, "specifier" | "estCapacity">,
   profile: { gpuCount: number; detectedCapacityGb: number; physicalCapacityGb: number },
 ): number | undefined {
-  if (profile.gpuCount === 0 || profile.physicalCapacityGb === 0) return undefined;
+  if (profile.gpuCount === 0 || profile.physicalCapacityGb === 0) {
+    return undefined;
+  }
 
   const requiredGb = installation.estCapacity * CAPACITY_OVERHEAD_FACTOR;
   const headroomCap = profile.detectedCapacityGb / profile.physicalCapacityGb;
@@ -270,47 +273,42 @@ export function computeGpuUtilization(
 // ---------------------------------------------------------------------------
 
 function reconcileStaleStates$(
-  installations: Array<ModelInstallation>,
+  installations: Array<SyncInstallation>,
   activeSet: Set<string>,
   ops: VllmOps,
 ): Observable<void> {
   const activeAndDesired = installations.filter((i) => activeSet.has(i.id));
-  if (activeAndDesired.length === 0) return EMPTY;
+  if (activeAndDesired.length === 0) {
+    return EMPTY;
+  }
 
-  return defer(() =>
-    from(
-      getDB().select().from(modelInstallationStateT)
-        .where(inArray(modelInstallationStateT.id, activeAndDesired.map((i) => i.id))),
+  const stateMap = getLocalInstallationStates(activeAndDesired.map((i) => i.id));
+  const needsReconciliation = activeAndDesired.filter((i) => {
+    const state = stateMap.get(i.id);
+    return !state || state.lifecycleState !== "ready";
+  });
+
+  if (needsReconciliation.length === 0) {
+    return EMPTY;
+  }
+
+  log.info(
+    { instances: needsReconciliation.map((i) => `${i.specifier} (${i.id})`) },
+    "vLLM reconciling stale state for running instances",
+  );
+
+  return from(needsReconciliation).pipe(
+    mergeMap(
+      (installation) => defer(() => from(reconcileOne(installation, stateMap.get(installation.id), ops))),
+      4,
     ),
-  ).pipe(
-    switchMap((states) => {
-      const stateMap = new Map(states.map((s) => [s.id, s]));
-      const needsReconciliation = activeAndDesired.filter((i) => {
-        const state = stateMap.get(i.id);
-        return !state || state.lifecycleState !== "ready";
-      });
-
-      if (needsReconciliation.length === 0) return EMPTY;
-
-      log.info(
-        { instances: needsReconciliation.map((i) => `${i.specifier} (${i.id})`) },
-        "vLLM reconciling stale state for running instances",
-      );
-
-      return from(needsReconciliation).pipe(
-        mergeMap(
-          (installation) => defer(() => from(reconcileOne(installation, stateMap.get(installation.id), ops))),
-          4,
-        ),
-      );
-    }),
     ignoreElements(),
     endWith(void 0 as void),
   );
 }
 
 async function reconcileOne(
-  installation: ModelInstallation,
+  installation: SyncInstallation,
   currentState: { lifecycleState: string } | undefined,
   ops: VllmOps,
 ): Promise<void> {
@@ -358,7 +356,7 @@ async function reconcileOne(
 // ---------------------------------------------------------------------------
 
 export function syncVllmInstallations$(
-  installations: Array<ModelInstallation>,
+  installations: Array<SyncInstallation>,
   ops: VllmOps = resolveDefaultOps(),
 ): Observable<void> {
   return defer(() => from(ops.ensureSetup())).pipe(
@@ -369,16 +367,24 @@ export function syncVllmInstallations$(
       const toRemove = activeIds.filter((id) => !desiredIds.has(id));
       const candidates = installations.filter((i) => !activeSet.has(i.id));
 
-      if (toRemove.length) log.info({ ids: toRemove }, "vLLM removing stale instances");
-      if (candidates.length) log.info({ instances: candidates.map((i) => `${i.specifier} (${i.id})`) }, "vLLM adding instances");
+      if (toRemove.length) {
+        log.info({ ids: toRemove }, "vLLM removing stale instances");
+      }
+      if (candidates.length) {
+        log.info({ instances: candidates.map((i) => `${i.specifier} (${i.id})`) }, "vLLM adding instances");
+      }
 
       const reconcile$ = reconcileStaleStates$(installations, activeSet, ops);
       const remove$ = removeStaleContainers$(toRemove, ops);
       const start$ = startNewInstallations$(candidates, ops);
 
       const work: Observable<unknown>[] = [reconcile$];
-      if (toRemove.length > 0) work.push(remove$);
-      if (candidates.length > 0) work.push(start$);
+      if (toRemove.length > 0) {
+        work.push(remove$);
+      }
+      if (candidates.length > 0) {
+        work.push(start$);
+      }
 
       return concat(...work).pipe(ignoreElements(), endWith(void 0 as void));
     }),
@@ -396,36 +402,34 @@ function removeStaleContainers$(ids: string[], ops: VllmOps): Observable<void> {
   );
 }
 
-function startNewInstallations$(candidates: ModelInstallation[], ops: VllmOps): Observable<void> {
-  if (candidates.length === 0) return EMPTY;
+function startNewInstallations$(candidates: SyncInstallation[], ops: VllmOps): Observable<void> {
+  if (candidates.length === 0) {
+    return EMPTY;
+  }
 
-  return defer(() =>
-    from(
-      getDB().select().from(modelInstallationStateT)
-        .where(inArray(modelInstallationStateT.id, candidates.map((i) => i.id))),
-    ),
-  ).pipe(
-    switchMap((states) => {
-      const failedIds = new Set(states.filter((s) => s.lifecycleState === "failed").map((s) => s.id));
-      const toAdd = candidates.filter((i) => !failedIds.has(i.id));
+  const stateMap = getLocalInstallationStates(candidates.map((i) => i.id));
+  const failedIds = new Set(
+    [...stateMap.entries()]
+      .filter(([, s]) => s.lifecycleState === "failed")
+      .map(([id]) => id),
+  );
+  const toAdd = candidates.filter((i) => !failedIds.has(i.id));
 
-      if (failedIds.size > 0) {
-        log.info({ ids: [...failedIds] }, "Skipping failed installations (re-deploy to retry)");
-      }
+  if (failedIds.size > 0) {
+    log.info({ ids: [...failedIds] }, "Skipping failed installations (re-deploy to retry)");
+  }
 
-      return from(toAdd).pipe(
-        mergeMap((installation) => {
-          let containerStarted = false;
-          return defer(() =>
-            from(downloadAndStart(installation, ops).then((res) => {
-              containerStarted = true;
-              return res;
-            })),
-          ).pipe(
-            switchMap(({ modelType, providerModel }) => pollUntilHealthy$(installation, ops, providerModel, modelType)),
-            catchError((err) => handleInstallationError(err, installation, ops, containerStarted)),
-          );
-        }),
+  return from(toAdd).pipe(
+    mergeMap((installation) => {
+      let containerStarted = false;
+      return defer(() =>
+        from(downloadAndStart(installation, ops).then((res) => {
+          containerStarted = true;
+          return res;
+        })),
+      ).pipe(
+        switchMap(({ modelType, providerModel }) => pollUntilHealthy$(installation, ops, providerModel, modelType)),
+        catchError((err) => handleInstallationError(err, installation, ops, containerStarted)),
       );
     }),
     ignoreElements(),
@@ -435,7 +439,7 @@ function startNewInstallations$(candidates: ModelInstallation[], ops: VllmOps): 
 
 function handleInstallationError(
   err: unknown,
-  installation: ModelInstallation,
+  installation: SyncInstallation,
   ops: VllmOps,
   containerStarted: boolean,
 ): Observable<never> {
