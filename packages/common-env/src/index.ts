@@ -147,3 +147,4 @@ export function quoteShellArgv(argv: string[]): string {
 }
 
 export * from "./metrics-auth";
+export * from "./tether-protocol";
