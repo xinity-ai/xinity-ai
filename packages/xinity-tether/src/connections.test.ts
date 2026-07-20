@@ -1,6 +1,16 @@
-import { describe, test, expect, mock, beforeEach, afterEach } from "bun:test";
+import { describe, test, expect, mock, beforeEach } from "bun:test";
 
-const mockUpdate = mock(() => ({ set: mock(() => ({ where: mock(() => Promise.resolve()) })) }));
+let dbShouldFail = false;
+const mockUpdate = mock(() => ({
+  set: mock(() => ({
+    where: mock(() => {
+      if (dbShouldFail) {
+        return Promise.reject(new Error("DB connection lost"));
+      }
+      return Promise.resolve();
+    }),
+  })),
+}));
 
 mock.module("./env", () => ({
   env: { TETHER_SECRET: "test", METRICS_AUTH: undefined },
@@ -38,6 +48,7 @@ const {
   isConnected,
   getConnectedNodeIds,
   sendShutdownToAll,
+  runKeepaliveLoop,
 } = await import("./connections");
 
 function makeController(): { controller: ReadableStreamDefaultController; chunks: Uint8Array[] } {
@@ -61,13 +72,21 @@ function makeController(): { controller: ReadableStreamDefaultController; chunks
   return { controller: proxy, chunks };
 }
 
+function makeBrokenController(): ReadableStreamDefaultController {
+  return {
+    enqueue: () => { throw new Error("stream closed"); },
+    close: () => {},
+  } as unknown as ReadableStreamDefaultController;
+}
+
 function decodeChunks(chunks: Uint8Array[]): string {
   return chunks.map(c => new TextDecoder().decode(c)).join("");
 }
 
 describe("connections", () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     sendShutdownToAll();
+    dbShouldFail = false;
   });
 
   test("addConnection makes node connected", async () => {
@@ -120,6 +139,17 @@ describe("connections", () => {
     expect(ok).toBe(false);
   });
 
+  test("pushDesiredState removes connection on write failure", async () => {
+    await addConnection("node-broken", makeBrokenController());
+    expect(isConnected("node-broken")).toBe(true);
+
+    const ok = pushDesiredState("node-broken", { nodeId: "node-broken", installations: [] });
+    expect(ok).toBe(false);
+
+    await Bun.sleep(10);
+    expect(isConnected("node-broken")).toBe(false);
+  });
+
   test("sendShutdownToAll sends shutdown event and clears all", async () => {
     const a = makeController();
     const b = makeController();
@@ -148,5 +178,50 @@ describe("connections", () => {
     await removeConnection("node-a");
     expect(isConnected("node-a")).toBe(false);
     expect(isConnected("node-b")).toBe(true);
+  });
+
+  test("addConnection succeeds even when DB write fails", async () => {
+    dbShouldFail = true;
+    const { controller } = makeController();
+    await addConnection("node-dbfail", controller);
+    expect(isConnected("node-dbfail")).toBe(true);
+  });
+
+  test("removeConnection succeeds even when DB write fails", async () => {
+    const { controller } = makeController();
+    await addConnection("node-dbfail2", controller);
+    dbShouldFail = true;
+    await removeConnection("node-dbfail2");
+    expect(isConnected("node-dbfail2")).toBe(false);
+  });
+});
+
+describe("keepalive loop", () => {
+  beforeEach(() => {
+    sendShutdownToAll();
+    dbShouldFail = false;
+  });
+
+  test("sends keepalive comment to connected nodes", async () => {
+    const { controller, chunks } = makeController();
+    await addConnection("node-ka", controller);
+
+    const timer = runKeepaliveLoop(50, 10_000);
+    await Bun.sleep(80);
+    clearInterval(timer);
+
+    const output = decodeChunks(chunks);
+    expect(output).toContain(": keepalive");
+  });
+
+  test("removes node after liveness timeout", async () => {
+    await addConnection("node-timeout", makeBrokenController());
+    expect(isConnected("node-timeout")).toBe(true);
+
+    const timer = runKeepaliveLoop(50, 10);
+    await Bun.sleep(80);
+    clearInterval(timer);
+
+    expect(isConnected("node-timeout")).toBe(false);
   });
 });
