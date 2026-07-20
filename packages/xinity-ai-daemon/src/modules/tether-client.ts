@@ -15,13 +15,16 @@ function authHeaders(): Record<string, string> {
   return { Authorization: `Bearer ${env.TETHER_SECRET}` };
 }
 
-export async function* connectSSE(nodeId: string): AsyncGenerator<DesiredState> {
+export async function* connectSSE(registration: NodeRegistration): AsyncGenerator<DesiredState> {
   let backoffMs = 1000;
 
   while (true) {
     try {
-      const url = `${env.TETHER_URL}/api/v1/stream?nodeId=${encodeURIComponent(nodeId)}`;
-      const res = await fetch(url, { headers: authHeaders() });
+      const res = await fetch(`${env.TETHER_URL}/api/v1/stream`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(registration),
+      });
 
       if (!res.ok) {
         log.error({ status: res.status }, "SSE connection rejected");
@@ -81,21 +84,6 @@ export async function* connectSSE(nodeId: string): AsyncGenerator<DesiredState> 
     await Bun.sleep(backoffMs);
     backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
     log.info({ backoffMs }, "Reconnecting to tether");
-  }
-}
-
-export async function reportRegistration(reg: NodeRegistration): Promise<void> {
-  try {
-    const res = await fetch(`${env.TETHER_URL}/api/v1/register`, {
-      method: "POST",
-      headers: { ...authHeaders(), "Content-Type": "application/json" },
-      body: JSON.stringify(reg),
-    });
-    if (!res.ok) {
-      log.error({ status: res.status }, "Registration POST failed");
-    }
-  } catch (err) {
-    log.error({ err }, "Registration POST error");
   }
 }
 
