@@ -81,6 +81,7 @@
         xinity-ai-gateway   = mkReleaseBundle { pname = "xinity-ai-gateway"; };
         xinity-ai-daemon    = mkReleaseBundle { pname = "xinity-ai-daemon"; };
         xinity-infoserver   = mkReleaseBundle { pname = "xinity-infoserver"; };
+        xinity-tether       = mkReleaseBundle { pname = "xinity-tether"; };
         xinity-ai-dashboard = mkReleaseBinary { pname = "xinity-ai-dashboard"; };
         xinity-cli          = mkReleaseBinary { pname = "xinity-cli"; binaryName = "xinity"; };
       };
