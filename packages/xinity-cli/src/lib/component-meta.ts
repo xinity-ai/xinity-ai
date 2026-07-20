@@ -11,16 +11,18 @@ import { gatewayEnvSchema } from "xinity-ai-gateway/src/env-schema.ts";
 import { daemonEnvSchema } from "xinity-ai-daemon/src/env-schema.ts";
 import { dashboardEnvSchema } from "xinity-ai-dashboard/src/lib/server/env-schema.ts";
 import { infoserverEnvSchema } from "xinity-infoserver/env-schema.ts";
+import { tetherEnvSchema } from "xinity-tether/src/env-schema.ts";
 
 export type { Release } from "./github.ts";
 
-export type Component = "gateway" | "dashboard" | "daemon" | "infoserver";
+export type Component = "gateway" | "dashboard" | "daemon" | "infoserver" | "tether";
 
 export const ENV_SCHEMAS: Record<Component, z.ZodObject<any>> = {
   gateway: gatewayEnvSchema,
   dashboard: dashboardEnvSchema,
   daemon: daemonEnvSchema,
   infoserver: infoserverEnvSchema,
+  tether: tetherEnvSchema,
 };
 
 /** Listen ports assumed when PORT is not configured, taken from the env schemas. */
@@ -37,6 +39,7 @@ export const UNIT_DIR = "/etc/systemd/system";
 /** Map component name to its compiled binary filename. */
 export function binaryBaseName(component: Component): string {
   if (component === "infoserver") return "xinity-infoserver";
+  if (component === "tether") return "xinity-tether";
   return `xinity-ai-${component}`;
 }
 
@@ -58,6 +61,7 @@ const AUTO_DEFAULTS: Record<Component, Record<string, string>> = {
   daemon: { ...COMMON_DEFAULTS, STATE_DIR: "/var/lib/xinity-ai-daemon" },
   dashboard: { ...COMMON_DEFAULTS, NODE_ENV: "production", HTTP_PORT: "5173" },
   infoserver: {},
+  tether: {},
 };
 
 /**

@@ -28,6 +28,7 @@
     "xinity-ai-dashboard": "workspace:*",
     "xinity-ai-gateway": "workspace:*",
     "xinity-infoserver": "workspace:*",
+    "xinity-tether": "workspace:*",
     "yargs": "^18.0.0",
     "zod": "^4.4.3"
   },

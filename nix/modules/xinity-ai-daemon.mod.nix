@@ -31,20 +31,16 @@
           default = [ ];
         };
 
-        dbConnectionUrl = lib.mkOption {
+        tetherUrl = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description = ''
-            PostgreSQL connection URL.
-            WARNING: DO NOT USE IN PRODUCTION. Use environmentFiles or dbConnectionUrlFile instead to keep credentials secure.
-            This option exposes secrets in the Nix store.
-          '';
+          description = "URL of the xinity-tether service (e.g. http://localhost:4020). The daemon connects to the tether for desired-state streaming and status reporting.";
         };
 
-        dbConnectionUrlFile = lib.mkOption {
+        tetherSecretFile = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description = "Path to a file containing the PostgreSQL connection URL. The file is loaded via systemd's LoadCredential mechanism and exposed to the daemon as DB_CONNECTION_URL_FILE. This is more secure than dbConnectionUrl as the secret never enters the Nix store.";
+          description = "Path to a file containing the shared secret for tether authentication. Loaded via systemd's LoadCredential mechanism.";
         };
 
         port = lib.mkOption {
@@ -219,11 +215,11 @@
             VLLM_MAX_RESTART_COUNT = toString cfg.vllmMaxRestartCount;
             LOG_LEVEL = cfg.logLevel;
           }
-          // lib.optionalAttrs (cfg.dbConnectionUrl != null) {
-            DB_CONNECTION_URL = cfg.dbConnectionUrl;
+          // lib.optionalAttrs (cfg.tetherUrl != null) {
+            TETHER_URL = cfg.tetherUrl;
           }
-          // lib.optionalAttrs (cfg.dbConnectionUrlFile != null) {
-            DB_CONNECTION_URL_FILE = "%d/db-connection-url";
+          // lib.optionalAttrs (cfg.tetherSecretFile != null) {
+            TETHER_SECRET_FILE = "%d/tether-secret";
           }
           // lib.optionalAttrs (cfg.ollamaEndpoint != null) {
             XINITY_OLLAMA_ENDPOINT = cfg.ollamaEndpoint;
@@ -256,9 +252,9 @@
             ExecStart = "${cfg.package}/bin/xinity-ai-daemon";
             Restart = "always";
             StateDirectory = "xinity-ai-daemon";
-          } // lib.optionalAttrs (cfg.dbConnectionUrlFile != null || cfg.tlsCertFile != null || cfg.tlsKeyFile != null) {
+          } // lib.optionalAttrs (cfg.tetherSecretFile != null || cfg.tlsCertFile != null || cfg.tlsKeyFile != null) {
             LoadCredential =
-              lib.optional (cfg.dbConnectionUrlFile != null) "db-connection-url:${cfg.dbConnectionUrlFile}"
+              lib.optional (cfg.tetherSecretFile != null) "tether-secret:${cfg.tetherSecretFile}"
               ++ lib.optional (cfg.tlsCertFile != null) "tls-cert:${cfg.tlsCertFile}"
               ++ lib.optional (cfg.tlsKeyFile != null) "tls-key:${cfg.tlsKeyFile}";
           };

@@ -92,6 +92,30 @@ services:
       - better_auth_secret
       - metrics_auth
 
+  tether:
+    image: ghcr.io/xinity-ai/xinity-tether:${VERSION:?VERSION is required (set in .env)}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      HOST: 0.0.0.0
+      PORT: ${TETHER_PORT:-4020}
+      DB_CONNECTION_URL_FILE: /run/secrets/db_connection_url
+      TETHER_SECRET_FILE: /run/secrets/tether_secret
+      METRICS_AUTH_FILE: /run/secrets/metrics_auth
+    networks:
+      - xinity-network
+    ports:
+      - "127.0.0.1:${TETHER_PORT:-4020}:${TETHER_PORT:-4020}"
+    secrets:
+      - db_connection_url
+      - tether_secret
+      - metrics_auth
+
   infoserver:
     image: ghcr.io/xinity-ai/xinity-infoserver:${VERSION:?VERSION is required (set in .env)}
     restart: unless-stopped
@@ -192,6 +216,8 @@ secrets:
     file: ./secrets/better_auth_secret
   metrics_auth:
     file: ./secrets/metrics_auth
+  tether_secret:
+    file: ./secrets/tether_secret
   metrics_password:
     file: ./secrets/metrics_password
 
