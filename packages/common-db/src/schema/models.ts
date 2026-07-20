@@ -1,7 +1,7 @@
 import { type InferSelectModel, sql } from "drizzle-orm";
 import { pgEnum, pgTable, real, text, timestamp, uuid, boolean, integer, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { organizationT } from "./orgSchema";
-import type { DeploymentSettings } from "../deployment-settings";
+import type { DeploymentSettings } from "common-env";
 
 export const lifecycleStateEnum = pgEnum("lifecycle_state", ["downloading", "installing", "ready", "failed"]);
 export const inferenceDriverEnum = pgEnum("inference_driver", ["ollama", "vllm"]);
