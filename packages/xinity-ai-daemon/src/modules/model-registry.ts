@@ -1,4 +1,3 @@
-import type { ModelInstallation } from "common-db";
 import { rootLogger } from "../logger";
 
 const log = rootLogger.child({ name: "model-registry" });
@@ -6,7 +5,7 @@ const log = rootLogger.child({ name: "model-registry" });
 const registry = new Map<string, { port: number; driver: string }>();
 
 /** Replace the entire registry with the current set of installations, keyed by canonical specifier. */
-export function updateRegistry(installations: Pick<ModelInstallation, "specifier" | "port" | "driver">[]) {
+export function updateRegistry(installations: Array<{ specifier: string; port: number; driver: string }>) {
   registry.clear();
   for (const inst of installations) {
     registry.set(inst.specifier, { port: inst.port, driver: inst.driver });
