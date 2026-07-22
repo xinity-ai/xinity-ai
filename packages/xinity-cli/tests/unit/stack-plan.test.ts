@@ -14,7 +14,6 @@ const actualManifest = { ...(await import("../../src/lib/manifest.ts")) };
 const actualGithub = { ...(await import("../../src/lib/github.ts")) };
 const actualInstallRemove = { ...(await import("../../src/lib/install-remove.ts")) };
 const actualUpPlan = { ...(await import("../../src/lib/up-plan.ts")) };
-
 let reachable: Set<string>;
 let manifests: Record<string, Manifest>;
 let removals: { component: Component; address: string }[];
@@ -218,4 +217,5 @@ describe("runStackFlow", () => {
     expect(await runStackFlow(makeStack("s8"), { targetVersion: "latest" })).toBe(true);
     expect(loadStackState("s8").hosts).toEqual([{ address: "10.0.0.12" }]);
   });
+
 });
