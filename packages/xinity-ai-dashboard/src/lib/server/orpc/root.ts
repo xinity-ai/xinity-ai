@@ -155,11 +155,11 @@ export function requirePermission(permissions: PermissionSpec) {
   });
 }
 
-/**
- * Emits an audit event for procedures tagged with `.meta({ audit })`. No-op
- * otherwise. Runs after auth/org guards so actor and org are already on context.
- */
 export const auditMiddleware = rootOs.middleware(({ context, procedure, next }, input) => {
+  const tag = procedure["~orpc"].meta.audit;
+  if (!tag) {
+    throw new Error(`auditMiddleware applied to procedure without .meta({ audit })`);
+  }
   const ctx = context as AuditContext;
-  return runWithAudit(ctx, procedure["~orpc"].meta.audit, input, () => next());
+  return runWithAudit(ctx, tag, input, () => next());
 });

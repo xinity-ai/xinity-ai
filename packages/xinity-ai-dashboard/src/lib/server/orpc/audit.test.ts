@@ -10,7 +10,17 @@ mock.module("$lib/server/logging", () => ({
   rootLogger: { child: () => ({ info: () => {}, warn: () => {}, error: () => {} }) },
 }));
 
+mock.module("$lib/server/auth-server", () => ({
+  auth: { api: {} },
+}));
+
+mock.module("$lib/server/serverenv", () => ({
+  isInstanceAdmin: () => false,
+  serverEnv: {},
+}));
+
 const { runWithAudit, emitAuthAuditEvent } = await import("./audit");
+const { rootOs, auditMiddleware } = await import("./root");
 
 const auditTag: AuditTag = { action: "member.update_role", resource: "member", resourceId: { fromInput: "memberId" }, captureInput: ["role"] };
 
@@ -204,5 +214,18 @@ describe("emitAuthAuditEvent", () => {
         userAgent: null,
       });
     }).not.toThrow();
+  });
+});
+
+describe("auditMiddleware", () => {
+  test("throws when procedure has no audit meta", async () => {
+    const { call } = await import("@orpc/server");
+    const procedure = rootOs
+      .use(auditMiddleware)
+      .handler(async () => "OK");
+
+    await expect(
+      call(procedure, undefined, { context: ctx() as any }),
+    ).rejects.toThrow("auditMiddleware applied to procedure without .meta({ audit })");
   });
 });
