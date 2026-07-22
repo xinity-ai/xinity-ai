@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { deploymentSettingsSchema } from "./deployment-settings";
 
 const driverEnum = z.enum(["ollama", "vllm"]);
 
@@ -8,12 +9,6 @@ const gpuSchema = z.object({
   vendor: z.string(),
   name: z.string(),
   vramMb: z.number(),
-});
-
-const deploymentSettingsSchema = z.object({
-  version: z.literal(1),
-  maxAudioInputDurationS: z.number().optional(),
-  maxAudioInputFileSizeMB: z.number().optional(),
 });
 
 // Outbound: tether -> daemon (SSE)
