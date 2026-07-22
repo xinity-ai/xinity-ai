@@ -195,7 +195,7 @@ describe("deep research", () => {
   });
 
   test("triggers context compaction when usage exceeds threshold", async () => {
-    serverUsageOverride = { prompt_tokens: 50000, completion_tokens: 30000, total_tokens: 80000 };
+    serverUsageOverride = { prompt_tokens: 70000, completion_tokens: 5000, total_tokens: 75000 };
 
     const res = await handleCreateResponseRequest(new Request("http://localhost:4000/v1/responses", {
       method: "POST", headers: { "Authorization": "Bearer test" },

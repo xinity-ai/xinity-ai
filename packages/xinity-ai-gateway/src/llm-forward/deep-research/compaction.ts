@@ -9,13 +9,9 @@ type StepWithUsage = {
   usage?: { inputTokens?: number; outputTokens?: number };
 };
 
-function estimateStepTokens(steps: ReadonlyArray<StepWithUsage>): number {
-  let total = 0;
-  for (const step of steps) {
-    total += step.usage?.inputTokens ?? 0;
-    total += step.usage?.outputTokens ?? 0;
-  }
-  return total;
+function lastStepInputTokens(steps: ReadonlyArray<StepWithUsage>): number {
+  const last = steps[steps.length - 1];
+  return last?.usage?.inputTokens ?? 0;
 }
 
 export type CompactionUsageCallback = (usage: { inputTokens: number; outputTokens: number }) => void;
@@ -33,7 +29,7 @@ export function createCompactionStep(
   return async ({ steps, messages }: { steps: ReadonlyArray<StepWithUsage>; messages: ModelMessage[] }) => {
     if (steps.length === 0) return {};
 
-    const currentTokens = estimateStepTokens(steps);
+    const currentTokens = lastStepInputTokens(steps);
     if (currentTokens < threshold) return {};
 
     log.info(
