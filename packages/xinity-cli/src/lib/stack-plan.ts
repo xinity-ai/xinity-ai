@@ -15,7 +15,7 @@ import { heading, warn, fail, pass } from "./output.ts";
 import { unitName } from "./systemd.ts";
 import { fetchRelease } from "./github.ts";
 import { resolveVersion, applyComponentAction } from "./installer.ts";
-import { removeComponentCollapsed } from "./install-remove.ts";
+import { removeComponent } from "./install-remove.ts";
 import { readManifest, saveStackMembership, type StackMembership } from "./manifest.ts";
 import { describeMigrationStep, migrationScriptComment, runMigrations } from "./migrator.ts";
 import { connectHost } from "./remote-host.ts";
@@ -29,7 +29,9 @@ import {
 } from "./stack.ts";
 import { editSharedLayer, editComponentLayer, editFleetLayer, editHostLayer } from "./stack-layers.ts";
 import { loadStackState, findOrphanHosts, markHostManaged, unmarkHostManaged } from "./stack-state.ts";
-import { connectHosts, connectElevated, disposeAll } from "./multi-host.ts";
+import { connectHosts, connectElevated, disposeAll, mapBounded, HOST_CONCURRENCY } from "./multi-host.ts";
+import { collectSteps } from "./step-runner.ts";
+import { createMultiProgress, createDoneGuard } from "./multi-progress.ts";
 
 export const COMPONENT_ORDER: Component[] = ["infoserver", "gateway", "dashboard", "daemon"];
 
@@ -461,50 +463,70 @@ async function applyStackPlan(
   }
 
   const active = plan.hostPlans.filter((p) => !p.forget);
-  const hostResults: { hostPlan: StackHostPlan; hostFailures: number }[] = [];
-  for (const hostPlan of active) {
-    heading(hostPlan.address);
-    const host = (hosts.get(hostPlan.address) ?? orphanHosts.get(hostPlan.address))!;
-    let hostFailures = 0;
-    for (const removal of hostPlan.removals) {
-      const result = await removeComponentCollapsed({ component: removal.component, host });
-      if (!result.success) {
-        hostFailures++;
-        for (const err of result.errors) {
-          fail(removal.component, err);
-        }
-      }
-    }
-    for (const action of hostPlan.actions) {
-      const result = await applyComponentAction(action, host);
-      if (!result.success) {
-        hostFailures++;
-        for (const err of result.errors) {
-          fail(action.component, err);
-        }
-      }
-    }
-    if (hostPlan.membership) {
-      await saveStackMembership(hostPlan.membership, host);
-    }
-    hostResults.push({ hostPlan, hostFailures });
-  }
 
-  let failures = 0;
-  for (const { hostPlan, hostFailures } of hostResults) {
-    if (hostPlan.evacuate && hostFailures === 0) {
+  if (active.length > 0) {
+    const multi = createMultiProgress({
+      message: `Applying to ${active.length} host${active.length === 1 ? "" : "s"}`,
+      slots: active.map((p) => p.address),
+    });
+
+    const hostResults = await mapBounded(active, HOST_CONCURRENCY, async (hostPlan) => {
       const host = (hosts.get(hostPlan.address) ?? orphanHosts.get(hostPlan.address))!;
-      await saveStackMembership(null, host);
-      unmarkHostManaged(stack.name, hostPlan.address);
-    }
-    failures += hostFailures;
-  }
+      const slot = multi.slot(hostPlan.address);
+      const guard = createDoneGuard(slot);
+      const errors: { component: string; messages: string[] }[] = [];
+      for (const removal of hostPlan.removals) {
+        slot.update(`removing ${removal.component}`);
+        const { result } = await collectSteps(removeComponent({ component: removal.component, host }));
+        if (!result.success) {
+          errors.push({ component: removal.component, messages: result.errors });
+        }
+      }
+      for (const action of hostPlan.actions) {
+        slot.update(`${action.component}: preparing`);
+        const result = await applyComponentAction(action, host, "rollback", guard);
+        if (!result.success) {
+          errors.push({ component: action.component, messages: result.errors });
+        }
+      }
+      if (hostPlan.membership) {
+        await saveStackMembership(hostPlan.membership, host);
+      }
+      if (errors.length > 0) {
+        slot.fail(`${errors.length} component(s) failed`);
+      } else {
+        slot.done(hostPlan.evacuate ? "evacuated" : "applied");
+      }
+      return { hostPlan, errors };
+    });
 
-  if (failures > 0) {
-    warn("Stack", `${failures} component action(s) failed; see above`);
-    return false;
-  }
-  if (plan.hostPlans.some((p) => !p.forget)) {
+    multi.done();
+
+    for (const { hostPlan, errors } of hostResults) {
+      if (errors.length > 0) {
+        heading(hostPlan.address);
+        for (const { component, messages } of errors) {
+          for (const msg of messages) {
+            fail(component, msg);
+          }
+        }
+      }
+    }
+
+    let failures = 0;
+    for (const { hostPlan, errors } of hostResults) {
+      if (hostPlan.evacuate && errors.length === 0) {
+        const host = (hosts.get(hostPlan.address) ?? orphanHosts.get(hostPlan.address))!;
+        await saveStackMembership(null, host);
+        unmarkHostManaged(stack.name, hostPlan.address);
+      }
+      failures += errors.length;
+    }
+
+    if (failures > 0) {
+      warn("Stack", `${failures} component action(s) failed; see above`);
+      return false;
+    }
     pass("Stack", "All hosts applied successfully");
   } else if (plan.migration?.pending) {
     pass("Stack", "Database migrations applied");

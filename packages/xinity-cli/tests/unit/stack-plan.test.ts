@@ -58,7 +58,7 @@ mock.module("../../src/lib/github.ts", () => ({
 
 mock.module("../../src/lib/install-remove.ts", () => ({
   ...actualInstallRemove,
-  removeComponentCollapsed: async (opts: { component: Component; host: Host }) => {
+  async *removeComponent(opts: { component: Component; host: Host }) {
     removals.push({ component: opts.component, address: hostAddress(opts.host) });
     return removalFails
       ? { success: false, errors: ["simulated removal failure"] }

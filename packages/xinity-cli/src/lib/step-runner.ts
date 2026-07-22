@@ -18,6 +18,18 @@ export interface Progress {
   ensureSettled(): void;
 }
 
+export function createSilentProgress(): Progress {
+  let failed = false;
+  return {
+    update() {},
+    warn() {},
+    fail() { failed = true; },
+    hasFailed: () => failed,
+    done() {},
+    ensureSettled() {},
+  };
+}
+
 /**
  * Collapses a stream of mechanical steps into one live spinner: successes
  * only update the spinner text, warnings persist, and the first failure
