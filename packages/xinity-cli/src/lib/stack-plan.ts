@@ -7,7 +7,7 @@
  * editor, and saved back into the stack so it is never asked again.
  * The plan phase reads and prompts only; hosts change after the gate.
  */
-import { cancel, log, note } from "./clack.ts";
+import { cancel, confirm, isCancel, log, note } from "./clack.ts";
 import { bold, cyan, dim, yellow } from "picocolors";
 import { type Component, ENV_SCHEMAS, INFOSERVER_DEFAULT_PORT } from "./component-meta.ts";
 import { type Host, isUnitActiveOn } from "./host.ts";
@@ -397,6 +397,22 @@ async function renderStackPlanScript(stack: StackDefinition, plan: StackPlan): P
   return sections.join("\n");
 }
 
+async function confirmForeignClaims(plan: StackPlan): Promise<boolean> {
+  const foreignClaims = plan.hostPlans.filter((p) => p.foreignStack);
+  if (foreignClaims.length === 0) {
+    return true;
+  }
+  const message = foreignClaims.length === 1
+    ? `${foreignClaims[0]!.address} belongs to stack "${foreignClaims[0]!.foreignStack}". Claim it for this stack?`
+    : `${foreignClaims.length} hosts belong to other stacks. Claim them for this stack?`;
+  const ok = await confirm({ message, initialValue: false });
+  if (isCancel(ok) || !ok) {
+    cancel("Aborted, nothing was changed.");
+    return false;
+  }
+  return true;
+}
+
 // ─── Apply ──────────────────────────────────────────────────────────────────
 
 async function applyStackPlan(
@@ -552,6 +568,10 @@ export async function runStackFlow(
       log.info(yellow("Dry run, stopping before apply."));
       return true;
     }
+    if (!(await confirmForeignClaims(plan))) {
+      return true;
+    }
+
     if (!(await reviewGate(() => renderStackPlanScript(stack, plan)))) {
       return true;
     }
