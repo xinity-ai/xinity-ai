@@ -318,8 +318,7 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
 
       const baseResponse = await createAndSaveInProgressResponse(auth.orgId, responseId, createdAt, originalModel, body);
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      void runBackground({ orgId: auth.orgId, responseId, createdAt, originalModel, body, genParams: deepGenParams as any, include, outputConfig, logFields, deepResearch: { compactionUsage } });
+      void runBackground({ orgId: auth.orgId, responseId, createdAt, originalModel, body, genParams: deepGenParams, include, outputConfig, logFields, deepResearch: { compactionUsage } });
 
       return Response.json(baseResponse, { status: 202 });
     }
@@ -418,7 +417,7 @@ type GeneratePersistArgs = {
   createdAt: number;
   originalModel: string;
   body: CreateResponseBody;
-  genParams: ReturnType<typeof buildGenerationParams>;
+  genParams: Omit<ReturnType<typeof buildGenerationParams>, "stopWhen"> & Pick<Parameters<typeof generateText>[0], "prepareStep" | "stopWhen">;
   include: IncludeValue[];
   outputConfig: ReturnType<typeof buildOutputConfig>;
   logFields: LogFields;
@@ -574,9 +573,7 @@ export async function handleGetOrDeleteResponseRequest(req: Request): Promise<Re
   const authCheckResponse = await checkAuth(authHeader);
   if (authCheckResponse instanceof Response) return authCheckResponse;
 
-  const paramsId = (req as Request & { params?: { responseId?: string } }).params?.responseId;
-  const pathId = new URL(req.url).pathname.split("/").filter(Boolean).at(-1);
-  const responseId = paramsId ?? pathId;
+  const responseId = (req as Request & { params: { responseId: string } }).params.responseId;
   if (!responseId) return errorResponse("Not found", 404);
 
   if (req.method === "GET") {
@@ -606,8 +603,7 @@ export async function handleCancelResponseRequest(req: Request): Promise<Respons
   const authCheckResponse = await checkAuth(authHeader);
   if (authCheckResponse instanceof Response) return authCheckResponse;
 
-  const segments = new URL(req.url).pathname.split("/").filter(Boolean);
-  const responseId = segments.at(-2);
+  const responseId = (req as Request & { params: { responseId: string } }).params.responseId;
   if (!responseId) {
     return errorResponse("Not found", 404);
   }

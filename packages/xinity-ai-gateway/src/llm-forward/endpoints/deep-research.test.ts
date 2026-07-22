@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, beforeAll, afterAll, afterEach } from "bun:test";
-import { setupResponseTestMocks, waitForResponseStatus, mockBackendFetch, makeChatJsonResponseWithToolCalls, makeChatJsonResponse } from "./test-helpers";
+import { setupResponseTestMocks, waitForResponseStatus, mockBackendFetch, makeChatJsonResponseWithToolCalls, makeChatJsonResponse, requestWithParams } from "./test-helpers";
 
 const mocks = setupResponseTestMocks();
 const { getModelInfo, responseStore } = mocks;
@@ -132,9 +132,12 @@ describe("deep research", () => {
     expect(res.status).toBe(202);
     const body = await res.json() as any;
 
-    const cancelResp = await handleCancelResponseRequest(new Request(
-      `http://localhost:4000/v1/responses/${body.id}/cancel`,
-      { method: "POST", headers: { "Authorization": "Bearer test" } },
+    const cancelResp = await handleCancelResponseRequest(requestWithParams(
+      new Request(`http://localhost:4000/v1/responses/${body.id}/cancel`, {
+        method: "POST",
+        headers: { "Authorization": "Bearer test" },
+      }),
+      { responseId: body.id },
     ));
     expect(cancelResp.status).toBe(200);
 
@@ -191,7 +194,7 @@ describe("deep research", () => {
 
     expect(res.status).toBe(400);
     const body = await res.json() as any;
-    expect(body.error.message).toContain("no");
+    expect(body.error.message).toContain("does not support tool calling");
   });
 
   test("triggers context compaction when usage exceeds threshold", async () => {

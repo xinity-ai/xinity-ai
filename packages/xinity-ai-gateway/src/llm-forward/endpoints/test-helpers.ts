@@ -220,6 +220,11 @@ export function setupResponseTestMocks() {
   };
 }
 
+export function requestWithParams(req: Request, params: Record<string, string>): Request {
+  (req as Request & { params: Record<string, string> }).params = params;
+  return req;
+}
+
 export async function waitForResponseStatus(
   responseStore: Map<string, any>,
   responseId: string,

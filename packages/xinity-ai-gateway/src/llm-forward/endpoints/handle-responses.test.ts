@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeAll, afterAll, afterEach } from "bun:test";
-import { makeChatSseResponse, makeChatJsonResponse, makeChatJsonResponseWithToolCalls, makeChatSseResponseWithToolCalls, mockBackendFetch, setupResponseTestMocks, waitForResponseStatus } from "./test-helpers";
+import { makeChatSseResponse, makeChatJsonResponse, makeChatJsonResponseWithToolCalls, makeChatSseResponseWithToolCalls, mockBackendFetch, setupResponseTestMocks, waitForResponseStatus, requestWithParams } from "./test-helpers";
 
 const mocks = setupResponseTestMocks();
 const { checkAuth, getModelInfo, responseStore, saveResponse, logChatSync } = mocks;
@@ -133,12 +133,13 @@ describe("handleResponses", () => {
       status: "completed",
     });
 
-    const req = new Request("http://localhost:4000/v1/responses/resp_test", {
-      method: "GET",
-      headers: { "Authorization": "Bearer test" },
-    });
-
-    const res = await handleGetOrDeleteResponseRequest(req);
+    const res = await handleGetOrDeleteResponseRequest(requestWithParams(
+      new Request("http://localhost:4000/v1/responses/resp_test", {
+        method: "GET",
+        headers: { "Authorization": "Bearer test" },
+      }),
+      { responseId: "resp_test" },
+    ));
     expect(res.status).toBe(200);
     const body = (await res.json()) as any;
     expect(body.id).toBe("resp_test");
@@ -152,12 +153,13 @@ describe("handleResponses", () => {
       status: "completed",
     });
 
-    const req = new Request("http://localhost:4000/v1/responses/resp_delete", {
-      method: "DELETE",
-      headers: { "Authorization": "Bearer test" },
-    });
-
-    const res = await handleGetOrDeleteResponseRequest(req);
+    const res = await handleGetOrDeleteResponseRequest(requestWithParams(
+      new Request("http://localhost:4000/v1/responses/resp_delete", {
+        method: "DELETE",
+        headers: { "Authorization": "Bearer test" },
+      }),
+      { responseId: "resp_delete" },
+    ));
     expect(res.status).toBe(200);
     const body = (await res.json()) as any;
     expect(body.deleted).toBe(true);
