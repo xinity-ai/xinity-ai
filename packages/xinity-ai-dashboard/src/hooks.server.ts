@@ -64,6 +64,11 @@ const migrationGuard: Handle = ({ event, resolve }) => {
  */
 const fillLocals: Handle = ({ event, resolve }) => {
   event.locals.request = event.request;
+  try {
+    event.locals.clientAddress = event.getClientAddress();
+  } catch {
+    event.locals.clientAddress = "";
+  }
   const incoming = event.request.headers.get("x-trace-id");
   const sanitized = incoming?.replace(/[^A-Za-z0-9_.:-]/g, "").slice(0, 300);
   const traceId = sanitized || `trc_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;

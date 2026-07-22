@@ -17,6 +17,7 @@ import { ac, roles } from "./roles";
 import { sendEmail, commonEmailProps, type AnyComponent } from "./email";
 import { notify } from "./notifications/notification.service";
 import { NotificationType } from "./notifications/events";
+import { emitAuthAuditEvent, type AuditAction } from "./orpc/audit";
 import EmailVerificationTemplate from "$lib/components/mailTemplates/EmailVerificationTemplate.svelte";
 import EmailForgotPasswordTemplate from "$lib/components/mailTemplates/EmailForgotPasswordTemplate.svelte";
 import EmailInvitationTemplate from "$lib/components/mailTemplates/EmailInvitationTemplate.svelte";
@@ -151,6 +152,76 @@ const sendWelcomeNotification = createAuthMiddleware(async (ctx) => {
   });
 });
 
+type AuthAuditPath = { action: AuditAction; recordFailure?: boolean };
+
+const AUTH_AUDIT_PATHS: Record<string, AuthAuditPath> = {
+  "/two-factor/enable": { action: "account.enable_2fa" },
+  "/two-factor/disable": { action: "account.disable_2fa" },
+  "/sign-in/email": { action: "account.sign_in", recordFailure: true },
+  "/sign-out": { action: "account.sign_out" },
+  "/sign-up/email": { action: "account.sign_up" },
+  "/forgot-password": { action: "account.request_password_reset" },
+  "/verify-email": { action: "account.verify_email" },
+};
+
+const AUTH_AUDIT_PREFIXES: Array<{ prefix: string; config: AuthAuditPath }> = [
+  { prefix: "/sso/callback", config: { action: "account.sign_in_sso" } },
+  { prefix: "/sso/saml2/callback", config: { action: "account.sign_in_sso" } },
+  { prefix: "/sso/saml2/sp/acs", config: { action: "account.sign_in_sso" } },
+];
+
+function matchAuditPath(path: string): AuthAuditPath | undefined {
+  const exact = AUTH_AUDIT_PATHS[path];
+  if (exact) {
+    return exact;
+  }
+  for (const { prefix, config } of AUTH_AUDIT_PREFIXES) {
+    if (path === prefix || path.startsWith(prefix + "/")) {
+      return config;
+    }
+  }
+  return undefined;
+}
+
+type UserLike = { id?: string; email?: string };
+
+function resolveAuthUser(ctx: {
+  context?: { session?: { user?: UserLike }; newSession?: { user?: UserLike } };
+  body?: { email?: string };
+}): { actorId: string | null; actorLabel: string | null; resourceId: string | null } {
+  const sessionUser = ctx.context?.session?.user ?? ctx.context?.newSession?.user;
+  if (sessionUser?.id) {
+    return { actorId: sessionUser.id, actorLabel: sessionUser.email ?? null, resourceId: sessionUser.id };
+  }
+  const email = ctx.body?.email;
+  if (typeof email === "string") {
+    return { actorId: null, actorLabel: email, resourceId: null };
+  }
+  return { actorId: null, actorLabel: null, resourceId: null };
+}
+
+const recordAuthAudit = createAuthMiddleware(async (ctx) => {
+  const config = matchAuditPath(ctx.path);
+  if (!config) return;
+  const response = ctx.context?.returned as { status?: number } | undefined;
+  const status = response?.status;
+  const isSuccess = !status || (status >= 200 && status < 300);
+  if (!isSuccess && !config.recordFailure) return;
+  const { actorId, actorLabel, resourceId } = resolveAuthUser(ctx as any);
+  if (!actorId && !actorLabel) return;
+  const headers = ctx.headers ?? ctx.request?.headers;
+  emitAuthAuditEvent({
+    action: config.action,
+    resource: "account",
+    actorId,
+    actorLabel,
+    ipAddress: headers?.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+    userAgent: headers?.get("user-agent") ?? null,
+    resourceId,
+    result: isSuccess ? "success" : "failure",
+  });
+});
+
 export const auth = betterAuth({
   appName: serverEnv.APP_NAME,
   baseURL: serverEnv.ORIGIN,
@@ -279,7 +350,10 @@ export const auth = betterAuth({
         });
       }
     }),
-    after: sendWelcomeNotification,
+    after: createAuthMiddleware(async (ctx) => {
+      await sendWelcomeNotification(ctx);
+      await recordAuthAudit(ctx);
+    }),
   },
   trustedOrigins: serverEnv.NODE_ENV === "development" ? ["*"] : [
     serverEnv.ORIGIN,

@@ -1,7 +1,7 @@
 /**
  * ORPC procedures for API call data and seeded examples.
  */
-import { rootOs, withOrganization, requirePermission } from "../root";
+import { rootOs, withOrganization, requirePermission, auditMiddleware } from "../root";
 import { z } from "zod";
 import exampleCalls from "./example.call.data.json" with { type: "json" };
 import { sql, aiApiKeyT, apiCallT, type ApiCallInputMessage } from "common-db";
@@ -92,6 +92,8 @@ const listApiCalls = rootOs
 const deleteApiCalls = rootOs
   .use(withOrganization)
   .use(requirePermission({ apiCall: ["delete"] }))
+  .use(auditMiddleware)
+  .meta({ audit: { action: "apiCall.delete", resource: "apiCall" } })
   .route({ path: "/", method: "DELETE", tags, summary: "Delete API calls" })
   .input(z.object({
     apiCallIds: z.uuid().array().min(1).max(500),
@@ -108,6 +110,8 @@ const deleteApiCalls = rootOs
 const updateMetadata = rootOs
   .use(withOrganization)
   .use(requirePermission({ apiCall: ["update"] }))
+  .use(auditMiddleware)
+  .meta({ audit: { action: "apiCall.update_metadata", resource: "apiCall", resourceId: { fromInput: "callId" } } })
   .route({ path: "/{callId}/metadata", method: "PATCH", tags, summary: "Update API call metadata" })
   .input(z.object({
     callId: z.uuid(),
@@ -130,6 +134,8 @@ const updateMetadata = rootOs
 const reassignApplication = rootOs
   .use(withOrganization)
   .use(requirePermission({ apiCall: ["update"] }))
+  .use(auditMiddleware)
+  .meta({ audit: { action: "apiCall.reassign_application", resource: "apiCall" } })
   .route({ path: "/reassign-application", method: "POST", tags, summary: "Reassign API calls to a different application" })
   .input(z.object({
     apiCallIds: z.uuid().array().min(1).max(500),

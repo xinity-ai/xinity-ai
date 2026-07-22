@@ -1,4 +1,4 @@
-import { rootOs, withAuth } from "../root";
+import { rootOs, withAuth, auditMiddleware } from "../root";
 import { z } from "zod";
 import { call } from "@orpc/server";
 import { createOrganization } from "./organization.procedure";
@@ -55,8 +55,9 @@ async function issueServerSideDashboardApiKey(userId: string, organizationId: st
 }
 
 const setupOnboarding = rootOs
-  .meta({ mcp: false })
+  .meta({ mcp: false, audit: { action: "onboarding.setup", resource: "onboarding", captureInput: ["orgName", "specifier"] } })
   .use(withAuth)
+  .use(auditMiddleware)
   .route({ path: "/onboarding/setup", method: "POST", tags: ["Onboarding"], summary: "Complete onboarding setup" })
   .input(z.object({
     orgName: z.string().min(1).describe("Name of the organization to create"),
@@ -112,7 +113,8 @@ const setupOnboarding = rootOs
  * Does NOT require authentication; this is the entry point for first-time CLI setup.
  */
 const cli = rootOs
-  .meta({ mcp: false })
+  .meta({ mcp: false, audit: { action: "onboarding.cli", resource: "user", captureInput: ["email", "orgName"] } })
+  .use(auditMiddleware)
   .route({
     path: "/cli",
     method: "POST",

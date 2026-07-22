@@ -1,4 +1,4 @@
-import { rootOs, withOrganization, requirePermission } from "../root";
+import { rootOs, withOrganization, requirePermission, auditMiddleware } from "../root";
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
 import { sql, modelDeploymentT, modelInstallationT, modelInstallationStateT, aiNodeT, organizationT, deploymentMatchesInstallation, type ModelDeployment, type SQL } from "common-db";
 import z from "zod";
@@ -305,6 +305,8 @@ const listDeployments = rootOs.use(withOrganization)
 const updateDeployment = rootOs
   .use(withOrganization)
   .use(requirePermission({ modelDeployment: ["update"] }))
+  .use(auditMiddleware)
+  .meta({ audit: { action: "modelDeployment.update", resource: "modelDeployment", resourceId: { fromInput: "id" } } })
   .route({
     path: "/{id}", method: "PATCH", tags, summary: "Update Deployment",
   })
@@ -362,6 +364,8 @@ const updateDeployment = rootOs
 const toggleEnabled = rootOs
   .use(withOrganization)
   .use(requirePermission({ modelDeployment: ["update"] }))
+  .use(auditMiddleware)
+  .meta({ audit: { action: "modelDeployment.toggle_enabled", resource: "modelDeployment", resourceId: { fromInput: "id" }, captureInput: ["enabled"] } })
   .route({
     path: "/{id}/toggle-enabled", method: "PATCH", tags, summary: "Toggle Deployment Enabled State",
     description: "Updates the deployment, specifically by setting it enabled or disabled",
@@ -415,6 +419,8 @@ const getDeployment = rootOs
 const deleteDeployment = rootOs
   .use(withOrganization)
   .use(requirePermission({ modelDeployment: ["delete"] }))
+  .use(auditMiddleware)
+  .meta({ audit: { action: "modelDeployment.delete", resource: "modelDeployment", resourceId: { fromInput: "id" } } })
   .route({
     summary: "Delete Deployment",
     path: "/{id}", method: "DELETE", tags, description: `Endpoint to delete a deployment completely.
@@ -437,6 +443,8 @@ Immediately unregisters it, and drops it completely.
 const retryDeployment = rootOs
   .use(withOrganization)
   .use(requirePermission({ modelDeployment: ["update"] }))
+  .use(auditMiddleware)
+  .meta({ audit: { action: "modelDeployment.retry", resource: "modelDeployment", resourceId: { fromInput: "id" } } })
   .route({
     path: "/{id}/retry", method: "POST", tags, summary: "Retry Failed Installations",
   })
@@ -493,6 +501,8 @@ const findDeployment = rootOs
 export const createDeployment = rootOs
   .use(withOrganization)
   .use(requirePermission({ modelDeployment: ["create"] }))
+  .use(auditMiddleware)
+  .meta({ audit: { action: "modelDeployment.create", resource: "modelDeployment", resourceId: { fromOutput: "id" }, captureInput: ["name", "specifier"] } })
   .route({
     summary: "Create Deployment",
     path: "/", method: "POST", tags, description: `Endpoint to create new deployments`

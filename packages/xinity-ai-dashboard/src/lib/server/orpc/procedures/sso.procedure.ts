@@ -1,4 +1,4 @@
-import { rootOs, withAuth } from "../root";
+import { rootOs, withAuth, auditMiddleware } from "../root";
 import { z } from "zod";
 import { auth } from "$lib/server/auth-server";
 import { rootLogger } from "$lib/server/logging";
@@ -159,8 +159,9 @@ async function dispatchSsoRegistration(
 }
 
 const registerOidc = rootOs
-  .meta({ mcp: false })
+  .meta({ mcp: false, audit: { action: "sso.register_oidc", resource: "sso", resourceId: { fromInput: "providerId" }, captureInput: ["domain"] } })
   .use(withAuth)
+  .use(auditMiddleware)
   .errors({ BAD_REQUEST: {} })
   .route({ path: "/register-oidc", method: "POST", tags, summary: "Register OIDC Provider" })
   .input(z.object({
@@ -187,8 +188,9 @@ const registerOidc = rootOs
   });
 
 const registerSaml = rootOs
-  .meta({ mcp: false })
+  .meta({ mcp: false, audit: { action: "sso.register_saml", resource: "sso", resourceId: { fromInput: "providerId" }, captureInput: ["domain"] } })
   .use(withAuth)
+  .use(auditMiddleware)
   .errors({ BAD_REQUEST: {}, FORBIDDEN: {} })
   .route({ path: "/register-saml", method: "POST", tags: [...tags, ".internal"], summary: "Register SAML Provider (dev only)" })
   .input(z.object({
@@ -294,8 +296,9 @@ const verifyDomain = rootOs
   });
 
 const deleteProvider = rootOs
-  .meta({ mcp: false })
+  .meta({ mcp: false, audit: { action: "sso.delete_provider", resource: "sso", resourceId: { fromInput: "providerId" } } })
   .use(withAuth)
+  .use(auditMiddleware)
   .route({ path: "/", method: "DELETE", tags, summary: "Delete SSO Provider" })
   .input(z.object({
     providerId: z.string(),
