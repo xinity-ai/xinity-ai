@@ -165,7 +165,7 @@ export const ResponseObjectSchema = z.object({
   id: z.string(),
   object: z.literal("response"),
   created_at: z.number(),
-  status: z.enum(["in_progress", "completed", "failed", "incomplete"]),
+  status: z.enum(["in_progress", "completed", "failed", "incomplete", "cancelled"]),
   completed_at: z.number().nullable(),
   error: z.object({
     code: z.string(),

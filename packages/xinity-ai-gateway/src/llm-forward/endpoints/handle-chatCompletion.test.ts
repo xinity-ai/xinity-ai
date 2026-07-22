@@ -8,23 +8,8 @@ import {
   mockBackendFetch,
 } from "./test-helpers";
 
-mock.module("../../env", () => ({
-  env: {
-    HOST: "localhost",
-    PORT: 4010,
-    DB_CONNECTION_URL: "postgresql://localhost/test",
-    REDIS_URL: "redis://localhost:6379",
-    WEB_SEARCH_ENGINE_URL: undefined,
-    RESPONSE_CACHE_TTL_SECONDS: 3600,
-    INFOSERVER_URL: "http://localhost:3000",
-    INFOSERVER_CACHE_TTL_MS: 30000,
-    LOAD_BALANCE_STRATEGY: "random",
-    BACKEND_TIMEOUT_MS: 300000,
-    LOG_LEVEL: "info",
-    LOG_DIR: undefined,
-    METRICS_AUTH: undefined,
-  },
-}));
+import { MOCK_GATEWAY_ENV } from "../mock-env";
+mock.module("../../env", () => ({ env: { ...MOCK_GATEWAY_ENV } }));
 
 import type { checkAuth as checkAuthT } from "../auth";
 import type { getModelInfo as getModelInfoT } from "../model-data";
@@ -50,6 +35,7 @@ const getModelInfo = jest.fn<typeof getModelInfoT>(async () => ({
   tls: false,
   tags: ["tools"],
   requestParams: {},
+  maxContextLength: 131072,
   release: () => {},
 }))
 mock.module("../model-data", () => ({
@@ -319,6 +305,7 @@ describe("handleChatCompletion", () => {
       tls: false,
       tags: [],
       requestParams: {},
+      maxContextLength: 131072,
       release: () => {},
     }));
 
@@ -522,6 +509,7 @@ describe("handleChatCompletion, tool calling", () => {
       tls: false,
       tags: [],
       requestParams: {},
+      maxContextLength: 131072,
       release: () => {},
     }));
 
@@ -553,6 +541,7 @@ describe("handleChatCompletion, tool calling", () => {
       tls: false,
       tags: undefined,
       requestParams: undefined,
+      maxContextLength: 131072,
       release: () => {},
     }));
 

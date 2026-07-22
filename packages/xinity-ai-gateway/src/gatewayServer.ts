@@ -9,12 +9,14 @@ import { handleCompletion } from "./llm-forward/endpoints/handle-completions";
 import { errorResponse } from "./llm-forward/util";
 import { handleEmbeddingGeneration } from "./llm-forward/endpoints/handle-embeddings";
 import { handleModelsRequest } from "./llm-forward/endpoints/handle-models";
-import { handleCreateResponseRequest, handleGetOrDeleteResponseRequest } from "./llm-forward/endpoints/handle-responses";
+import { handleCreateResponseRequest, handleGetOrDeleteResponseRequest, handleCancelResponseRequest } from "./llm-forward/endpoints/handle-responses";
 import { handleRerank } from "./llm-forward/endpoints/handle-rerank";
 import { handleTranscription } from "./llm-forward/endpoints/handle-transcription";
 import { handleMetrics, withMetrics } from "./metrics";
 import { getTlsConfig } from "common-env";
 import { logMigrationFailureFatal } from "common-db";
+import { getSearchProvider } from "./llm-forward/tools/search-providers";
+import { setSearchProvider } from "./llm-forward/tools/response-tools";
 
 process.on("unhandledRejection", (reason) => {
   rootLogger.error({ err: reason }, "Unhandled promise rejection");
@@ -34,6 +36,7 @@ const handler = new OpenAPIHandler(serverRouter, {
 });
 
 const tls = getTlsConfig(env);
+setSearchProvider(getSearchProvider(env));
 
 const meteredEndpoints: Array<[string, (req: Request) => Promise<Response> | Response]> = [
   ["/v1/chat/completions", handleChatCompletion],
@@ -44,6 +47,7 @@ const meteredEndpoints: Array<[string, (req: Request) => Promise<Response> | Res
   ["/v1/rerank", handleRerank],
   ["/v1/responses", handleCreateResponseRequest],
   ["/v1/responses/:responseId", handleGetOrDeleteResponseRequest],
+  ["/v1/responses/:responseId/cancel", handleCancelResponseRequest],
 ];
 
 const meteredRoutes = Object.fromEntries(

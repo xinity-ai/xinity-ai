@@ -1,14 +1,18 @@
-import { generateText, streamText } from "ai";
+import { generateText, streamText, isLoopFinished, stepCountIs } from "ai";
 import { resolveAuthorizedModel } from "../ai-sdk";
-import { errorResponse, logChatUsage, validateModelType, toModelMessages, SSE_RESPONSE_HEADERS, validationError, isUpstreamError, upstreamHttpStatus, clientFacingErrorMessage, modelLacksToolSupport } from "../util";
+import { errorResponse, logChatUsage, recordUsage, validateModelType, toModelMessages, SSE_RESPONSE_HEADERS, validationError, isUpstreamError, upstreamHttpStatus, clientFacingErrorMessage, modelLacksToolSupport } from "../util";
 import type { ApiCallInputMessage } from "common-db";
 import { checkAuth, type AuthResult } from "../auth";
 import { deleteResponse, getResponse, saveResponse } from "../response-store";
 import { rootLogger } from "../../logger";
 import { processMessageImages, imageStore } from "../../image-store";
+import { env } from "../../env";
+import { DEEP_RESEARCH_SYSTEM_PROMPT, createCompactionStep } from "../deep-research";
+import { hasSearchProvider } from "../tools/response-tools";
 import {
   CreateResponseBodySchema,
   type CreateResponseBody,
+  type OutputItem,
 } from "../responses/schemas";
 import {
   type IncludeValue,
@@ -21,11 +25,19 @@ import {
   createResponseObject,
   markResponseFailed,
   buildOutputItems,
+  buildStepOutputItems,
+  extractSearchAnnotations,
+  formatUsage,
   buildGenerationParams,
 } from "../responses/builders";
 import { createResponseStream } from "../responses/stream";
 
 const log = rootLogger.child({ name: "handle-responses" });
+
+async function checkCancelled(orgId: string, responseId: string): Promise<boolean> {
+  const stored = await getResponse(orgId, responseId) as { status?: string } | null;
+  return stored?.status === "cancelled";
+}
 
 // ---------------------------------------------------------------------------
 // Message normalisation
@@ -181,7 +193,7 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
 
     const authorized = await resolveAuthorizedModel(req);
     if (authorized instanceof Response) return authorized;
-    const { auth, body: rawBody, originalModel, modelInfo, provider } = authorized;
+    const { auth, body: rawBody, originalModel, baseModelName, deepResearch, modelInfo, provider } = authorized;
 
     const typeError = validateModelType(modelInfo, ["chat"]);
     if (typeError) return typeError;
@@ -245,6 +257,70 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
 
     if (outputConfig.usesStructuredOutput && modelLacksToolSupport(modelInfo)) {
       return errorResponse("Model does not support structured output", 400);
+    }
+
+    // -------------------------------------------------------------------
+    // Deep research mode
+    // -------------------------------------------------------------------
+    if (deepResearch) {
+      if (body.stream) {
+        return errorResponse(
+          "Streaming is not supported for deep research requests. Deep research runs in background mode. Poll the response ID for results.",
+          400,
+        );
+      }
+      if (!hasSearchProvider()) {
+        return errorResponse("Deep research requires web search to be configured (WEB_SEARCH_PROVIDER + WEB_SEARCH_CREDENTIAL)", 501);
+      }
+      if (modelLacksToolSupport(modelInfo)) {
+        return errorResponse(
+          `Model '${baseModelName}' does not support tool calling, which is required for deep research.`,
+          400,
+        );
+      }
+
+      // Inject research system prompt
+      const systemPrompt = DEEP_RESEARCH_SYSTEM_PROMPT + (body.instructions ? "\n\n" + body.instructions : "");
+      messagesForLLM.unshift({ role: "system", content: systemPrompt });
+
+      // Force web_search + web_fetch into active tools (merge with user-provided tools)
+      const { activeTools: deepTools } = resolveActiveTools(
+        [...(body.tools ?? []), { type: "web_search" }],
+        body.tool_choice ?? "auto",
+      );
+
+      const maxSteps = env.DEEP_RESEARCH_MAX_STEPS;
+      const contextLimit = modelInfo.maxContextLength;
+      const userQuery = extractText(input) ?? "";
+
+      const compactionUsage = { inputTokens: 0, outputTokens: 0 };
+
+      const deepGenParams = {
+        ...buildGenerationParams(body, modelInfo, provider, toModelMessages(messagesForLLM), deepTools, true, outputConfig),
+        stopWhen: [isLoopFinished(), stepCountIs(maxSteps)],
+        prepareStep: createCompactionStep(
+          provider, modelInfo.model, contextLimit,
+          env.DEEP_RESEARCH_COMPACTION_THRESHOLD, userQuery,
+          (usage) => {
+            compactionUsage.inputTokens += usage.inputTokens;
+            compactionUsage.outputTokens += usage.outputTokens;
+            recordUsage({
+              usage,
+              auth,
+              modelInfo,
+              callStartTime,
+              logCalls: false,
+              deployment: originalModel,
+            });
+          },
+        ),
+      };
+
+      const baseResponse = await createAndSaveInProgressResponse(auth.orgId, responseId, createdAt, originalModel, body);
+
+      void runBackground({ orgId: auth.orgId, responseId, createdAt, originalModel, body, genParams: deepGenParams, include, outputConfig, logFields, deepResearch: { compactionUsage } });
+
+      return Response.json(baseResponse, { status: 202 });
     }
 
     const genParams = buildGenerationParams(body, modelInfo, provider, toModelMessages(messagesForLLM), activeTools, hasTools, outputConfig, req.signal);
@@ -341,31 +417,129 @@ type GeneratePersistArgs = {
   createdAt: number;
   originalModel: string;
   body: CreateResponseBody;
-  genParams: ReturnType<typeof buildGenerationParams>;
+  genParams: Omit<ReturnType<typeof buildGenerationParams>, "stopWhen"> & Pick<Parameters<typeof generateText>[0], "prepareStep" | "stopWhen">;
   include: IncludeValue[];
   outputConfig: ReturnType<typeof buildOutputConfig>;
   logFields: LogFields;
+  deepResearch?: {
+    compactionUsage: { inputTokens: number; outputTokens: number };
+  };
 };
 
-async function generateAndPersistCompletedResponse(args: GeneratePersistArgs) {
-  const { orgId, responseId, createdAt, originalModel, body, genParams, include, outputConfig, logFields } = args;
+function createWriteQueue(onError: (err: unknown) => void) {
+  let tail = Promise.resolve();
+  return {
+    enqueue(write: () => Promise<void>) {
+      tail = tail.then(write).catch(onError);
+    },
+    flush() {
+      return tail;
+    },
+  };
+}
+
+async function generateAndPersistCompletedResponse(args: GeneratePersistArgs, background = false) {
+  const { orgId, responseId, createdAt, originalModel, body, genParams, include, outputConfig, logFields, deepResearch } = args;
   const toolCalls: ToolCallItem[] = [];
   const toolResults: ToolResultData[] = [];
 
+  const cancelCheck = () => checkCancelled(orgId, responseId);
+  const existingStop = genParams.stopWhen;
+  const priorConditions = Array.isArray(existingStop) ? existingStop : existingStop ? [existingStop] : [];
+  const stopConditions = background
+    ? [...priorConditions, cancelCheck]
+    : existingStop;
+
+  const progressItems: OutputItem[] = [];
+  const progressWrites = createWriteQueue((err) => {
+    log.warn({ err, responseId }, "Failed to persist research progress");
+  });
+  const stepUsage = { inputTokens: 0, outputTokens: 0 };
+
+  type StepEvent = {
+    toolCalls?: Array<{ toolCallId: string; toolName: string; input?: unknown }>;
+    toolResults?: Array<Record<string, unknown>>;
+    usage?: { inputTokens?: number; outputTokens?: number };
+  };
+
+  const onStepFinish: (event: StepEvent) => void = deepResearch
+    ? (step) => {
+        stepUsage.inputTokens += step.usage?.inputTokens ?? 0;
+        stepUsage.outputTokens += step.usage?.outputTokens ?? 0;
+
+        if (step.toolResults) {
+          for (const tr of step.toolResults) {
+            const id = tr.toolCallId;
+            const name = tr.toolName;
+            if (typeof id === "string" && typeof name === "string") {
+              toolResults.push({ toolCallId: id, toolName: name, args: tr.input, result: tr.output });
+            }
+          }
+        }
+
+        const newItems = buildStepOutputItems(step.toolCalls, step.toolResults, include);
+        if (newItems.length === 0) return;
+        progressItems.push(...newItems);
+
+        const totalUsage = {
+          inputTokens: stepUsage.inputTokens + deepResearch.compactionUsage.inputTokens,
+          outputTokens: stepUsage.outputTokens + deepResearch.compactionUsage.outputTokens,
+        };
+        const snapshot = [...progressItems];
+        progressWrites.enqueue(async () => {
+          const stored = await getResponse(orgId, responseId) as Record<string, unknown> | null;
+          if (!stored || stored.status === "cancelled") return;
+          stored.output = snapshot;
+          stored.usage = formatUsage(totalUsage);
+          await saveResponse(orgId, responseId, stored);
+        });
+      }
+    : createToolTracker(toolCalls, toolResults);
+
   const result = await generateText({
     ...genParams,
-    onStepFinish: createToolTracker(toolCalls, toolResults),
+    stopWhen: stopConditions as Parameters<typeof generateText>[0]["stopWhen"],
+    onStepFinish,
   });
+
+  if (background && await checkCancelled(orgId, responseId)) {
+    return;
+  }
+
+  await progressWrites.flush();
+
   const responseText = resolveResponseText(result.text, () => result.output, outputConfig.usesStructuredOutput);
+
+  const finalUsage = deepResearch
+    ? {
+        inputTokens: (result.usage.inputTokens ?? 0) + deepResearch.compactionUsage.inputTokens,
+        outputTokens: (result.usage.outputTokens ?? 0) + deepResearch.compactionUsage.outputTokens,
+      }
+    : result.usage;
+
+  let finalOutput: OutputItem[];
+  if (deepResearch) {
+    const annotations = extractSearchAnnotations(toolResults);
+    progressItems.push({
+      id: `msg_${responseId}`,
+      type: "message",
+      status: "completed",
+      role: "assistant",
+      content: [{ type: "output_text", text: responseText, annotations, logprobs: null }],
+    });
+    finalOutput = progressItems;
+  } else {
+    finalOutput = buildOutputItems(responseId, responseText, toolCalls, toolResults, include);
+  }
+
   const completedResponse = createResponseObject({
     responseId, createdAt, model: originalModel, status: "completed",
-    output: buildOutputItems(responseId, responseText, toolCalls, toolResults, include),
-    usage: result.usage, body,
+    output: finalOutput, usage: finalUsage, body,
   });
   await saveResponse(orgId, responseId, completedResponse);
   logChatUsage({
     ...logFields,
-    usage: result.usage,
+    usage: finalUsage,
     outputData: { model: originalModel, choices: [{ index: 0, message: { role: "assistant", content: responseText } }] },
     stream: false,
   });
@@ -375,7 +549,7 @@ async function generateAndPersistCompletedResponse(args: GeneratePersistArgs) {
 async function runBackground(args: GeneratePersistArgs) {
   const { orgId, responseId, createdAt, originalModel, body } = args;
   try {
-    await generateAndPersistCompletedResponse(args);
+    await generateAndPersistCompletedResponse(args, true);
   } catch (error) {
     if (!isUpstreamError(error)) {
       log.error({ err: error, responseId }, "Background response generation failed");
@@ -399,9 +573,7 @@ export async function handleGetOrDeleteResponseRequest(req: Request): Promise<Re
   const authCheckResponse = await checkAuth(authHeader);
   if (authCheckResponse instanceof Response) return authCheckResponse;
 
-  const paramsId = (req as Request & { params?: { responseId?: string } }).params?.responseId;
-  const pathId = new URL(req.url).pathname.split("/").filter(Boolean).at(-1);
-  const responseId = paramsId ?? pathId;
+  const responseId = (req as Request & { params: { responseId: string } }).params.responseId;
   if (!responseId) return errorResponse("Not found", 404);
 
   if (req.method === "GET") {
@@ -416,4 +588,36 @@ export async function handleGetOrDeleteResponseRequest(req: Request): Promise<Re
   }
 
   return errorResponse("Method not allowed", 405);
+}
+
+// ---------------------------------------------------------------------------
+// POST /v1/responses/:responseId/cancel
+// ---------------------------------------------------------------------------
+
+export async function handleCancelResponseRequest(req: Request): Promise<Response> {
+  if (req.method !== "POST") {
+    return errorResponse("Method not allowed", 405);
+  }
+
+  const authHeader = req.headers.get("authorization") || "";
+  const authCheckResponse = await checkAuth(authHeader);
+  if (authCheckResponse instanceof Response) return authCheckResponse;
+
+  const responseId = (req as Request & { params: { responseId: string } }).params.responseId;
+  if (!responseId) {
+    return errorResponse("Not found", 404);
+  }
+
+  const stored = await getResponse(authCheckResponse.orgId, responseId) as Record<string, unknown> | null;
+  if (!stored) {
+    return errorResponse("Not found", 404);
+  }
+  if (stored.status !== "in_progress") {
+    return errorResponse("Response is not in progress", 400);
+  }
+
+  const cancelledResponse = { ...stored, status: "cancelled" };
+  await saveResponse(authCheckResponse.orgId, responseId, cancelledResponse);
+
+  return Response.json(cancelledResponse);
 }

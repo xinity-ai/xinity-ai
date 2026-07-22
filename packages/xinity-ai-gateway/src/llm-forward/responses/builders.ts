@@ -328,7 +328,7 @@ export interface ResponsePayloadParams {
   responseId: string;
   createdAt: number;
   model: string;
-  status: "in_progress" | "completed" | "failed" | "incomplete";
+  status: "in_progress" | "completed" | "failed" | "incomplete" | "cancelled";
   output?: OutputItem[];
   usage?: UsageInput | null;
   body: CreateResponseBody;
@@ -468,6 +468,55 @@ export function buildOutputItems(
   output.push(messageItem);
 
   return output;
+}
+
+/**
+ * Builds output items from a single onStepFinish event. Used by deep research
+ * to persist progress incrementally after each step.
+ */
+export function buildStepOutputItems(
+  stepToolCalls: Array<{ toolCallId: string; toolName: string; input?: unknown }> | undefined,
+  stepToolResults: Array<Record<string, unknown>> | undefined,
+  include?: IncludeValue[],
+): OutputItem[] {
+  if (!stepToolCalls) return [];
+
+  const results: ToolResultData[] = [];
+  if (stepToolResults) {
+    for (const tr of stepToolResults) {
+      const callId = tr.toolCallId;
+      const name = tr.toolName;
+      if (typeof callId === "string" && typeof name === "string") {
+        results.push({ toolCallId: callId, toolName: name, args: tr.input, result: tr.output });
+      }
+    }
+  }
+
+  const items: OutputItem[] = [];
+  for (const tc of stepToolCalls) {
+    const toolCallId = typeof tc.toolCallId === "string" ? tc.toolCallId : "";
+    const toolName = typeof tc.toolName === "string" ? tc.toolName : "";
+    if (!toolCallId) continue;
+
+    if (toolName === "web_search") {
+      items.push(buildWebSearchCallItem(
+        { id: generateCallId(), aiToolCallId: toolCallId, type: "web_search_call", status: "completed" },
+        results, include,
+      ));
+    } else if (!INTERNAL_TOOL_NAMES.has(toolName)) {
+      items.push(buildFunctionCallItem({
+        id: generateCallId(),
+        aiToolCallId: toolCallId,
+        type: "function_call",
+        status: "completed",
+        name: toolName,
+        callId: toolCallId,
+        arguments: tc.input != null ? JSON.stringify(tc.input) : "{}",
+      }));
+    }
+  }
+
+  return items;
 }
 
 // ---------------------------------------------------------------------------

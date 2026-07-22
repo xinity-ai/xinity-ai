@@ -14,7 +14,10 @@ export const DeploymentDto = CommonDto.extend({
   name: z.string().trim(),
 
   enabled: z.boolean(),
-  publicSpecifier: z.string().trim(),
+  publicSpecifier: z.string().trim()
+    .refine(s => !s.endsWith("-deep-research"), {
+      message: "Deployment names cannot end with '-deep-research' (reserved suffix)",
+    }),
   /** Canonical model identifier. */
   specifier: z.string().trim(),
   /** Canonical identifier for the canary (early) model in a canary deployment. */

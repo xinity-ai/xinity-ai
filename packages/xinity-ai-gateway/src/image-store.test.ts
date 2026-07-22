@@ -11,15 +11,9 @@ mock.module("./env", () => ({
   },
 }));
 
-mock.module("./logger", () => ({
-  rootLogger: {
-    child: () => ({
-      debug: () => {},
-      warn: () => {},
-      error: () => {},
-    }),
-  },
-}));
+const _noop = () => {};
+const _mockChild = (): Record<string, unknown> => ({ trace: _noop, debug: _noop, info: _noop, warn: _noop, error: _noop, fatal: _noop, child: _mockChild });
+mock.module("./logger", () => ({ rootLogger: { child: _mockChild } }));
 
 const db = drizzle.mock();
 type CapturedQuery = { sql: string; params: unknown[] };

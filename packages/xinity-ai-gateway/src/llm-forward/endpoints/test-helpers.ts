@@ -1,4 +1,6 @@
-import { mock } from "bun:test";
+import { mock, jest } from "bun:test";
+import { MOCK_GATEWAY_ENV } from "../mock-env";
+import type { getModelInfo as getModelInfoT } from "../model-data";
 
 /**
  * OpenAI-compliant mock upstream response helpers for unit tests.
@@ -152,4 +154,88 @@ export function mockBackendFetch(): void {
     createIdleTimeout: () => ({ signal: new AbortController().signal, reset: () => {}, clear: () => {} }),
     hasCustomCa: false,
   }));
+}
+
+export function setupResponseTestMocks() {
+  mock.module("../../env", () => ({ env: { ...MOCK_GATEWAY_ENV } }));
+
+  const checkAuth = jest.fn(async () => ({
+    orgId: "org-1",
+    keyId: "key-1",
+    applicationId: "app-1",
+  }));
+  mock.module("../auth", () => ({ checkAuth }));
+
+  let mockPort = 0;
+  const getModelInfo = jest.fn<typeof getModelInfoT>(async () => ({
+    nodeId: "node-1",
+    host: `localhost:${mockPort}`,
+    specifier: "test-model",
+    model: "test-model",
+    driver: "vllm",
+    authToken: null,
+    tls: false,
+    tags: ["tools"],
+    requestParams: {},
+    maxContextLength: 131072,
+    release: () => {},
+  }));
+  mock.module("../model-data", () => ({ getModelInfo }));
+
+  const responseStore = new Map<string, any>();
+  const saveResponse = jest.fn(async (_orgId: string, id: string, payload: any) => {
+    responseStore.set(id, payload);
+  });
+  const getResponse = jest.fn(async (_orgId: string, id: string) => responseStore.get(id) ?? null);
+  const deleteResponse = jest.fn(async (_orgId: string, id: string) => {
+    responseStore.delete(id);
+  });
+  mock.module("../response-store", () => ({ saveResponse, getResponse, deleteResponse }));
+
+  const logChatSync = jest.fn();
+  const logChatStream = jest.fn();
+  mock.module("../../callLogger", () => ({ logChatSync, logChatStream }));
+  mock.module("../../usageRecorder", () => ({ recordUsageEvent: mock(() => {}) }));
+
+  return {
+    checkAuth,
+    getModelInfo,
+    responseStore,
+    saveResponse,
+    getResponse,
+    deleteResponse,
+    logChatSync,
+    logChatStream,
+    setMockPort(port: number) { mockPort = port; },
+    clearAll() {
+      checkAuth.mockClear();
+      getModelInfo.mockClear();
+      saveResponse.mockClear();
+      getResponse.mockClear();
+      deleteResponse.mockClear();
+      logChatSync.mockClear();
+      logChatStream.mockClear();
+      responseStore.clear();
+    },
+  };
+}
+
+export function requestWithParams(req: Request, params: Record<string, string>): Request {
+  (req as Request & { params: Record<string, string> }).params = params;
+  return req;
+}
+
+export async function waitForResponseStatus(
+  responseStore: Map<string, any>,
+  responseId: string,
+  status: string,
+  timeoutMs = 2000,
+) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const stored = responseStore.get(responseId);
+    if (stored?.status === status) return stored;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  return null;
 }

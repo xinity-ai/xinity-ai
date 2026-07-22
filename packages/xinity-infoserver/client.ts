@@ -172,11 +172,16 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
     });
   }
 
-  async function resolveModelMeta(specifier: string, driver?: "vllm" | "ollama"): Promise<{ type: string | undefined; tags: string[] }> {
+  type ModelMetadata = {
+    type: string | undefined;
+    tags: string[];
+    maxContextLength: number;
+  };
+  async function resolveModelMeta(specifier: string, driver?: "vllm" | "ollama"): Promise<ModelMetadata> {
     const model = await fetchModel(specifier);
-    if (!model) return { type: undefined, tags: [] };
+    if (!model) return { type: undefined, tags: [], maxContextLength: 131072 };
     const tags = driver ? resolveTagsForDriver(model, driver) : resolveAllTags(model);
-    return { type: model.type, tags };
+    return { type: model.type, tags, maxContextLength: model.maxContextLength ?? 131072 };
   }
 
   async function hasTag(specifier: string, tag: string, driver?: "vllm" | "ollama"): Promise<boolean> {

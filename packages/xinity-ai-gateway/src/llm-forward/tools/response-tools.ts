@@ -1,10 +1,20 @@
 import { z } from "zod";
-import { searchSearxng } from "./searxng";
 import { fetchWebContent } from "./web-fetch";
 import { tool } from "ai";
 import { rootLogger } from "../../logger";
+import type { SearchProvider } from "./search-types";
 
 const log = rootLogger.child({ name: "response-tools" });
+
+let activeSearchProvider: SearchProvider | null = null;
+
+export function setSearchProvider(provider: SearchProvider | null): void {
+  activeSearchProvider = provider;
+}
+
+export function hasSearchProvider(): boolean {
+  return activeSearchProvider !== null;
+}
 
 export const RESPONSE_TOOL_NAMES = ["web_search"] as const;
 export type ResponseToolName = (typeof RESPONSE_TOOL_NAMES)[number];
@@ -16,9 +26,18 @@ export const webSearch = tool({
     max_results: z.number().int().min(1).max(10).optional().describe("Maximum results to return"),
   }),
   execute: async ({ query, max_results }: { query: string; max_results?: number }) => {
-    const results = await searchSearxng(query, max_results ?? 5);
-    log.debug({ query, resultCount: results.length }, "Web search");
-    return { query, results };
+    if (!activeSearchProvider) {
+      return { query, results: [], error: "Web search is not configured on this gateway" };
+    }
+    try {
+      const results = await activeSearchProvider.search(query, max_results ?? 5);
+      log.debug({ query, resultCount: results.length }, "Web search");
+      return { query, results };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log.error({ query, err: message }, "Web search failed");
+      return { query, results: [], error: message };
+    }
   },
 });
 
