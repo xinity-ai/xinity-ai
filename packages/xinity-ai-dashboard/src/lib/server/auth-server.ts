@@ -164,6 +164,25 @@ const AUTH_AUDIT_PATHS: Record<string, AuthAuditPath> = {
   "/verify-email": { action: "account.verify_email" },
 };
 
+const AUTH_AUDIT_PREFIXES: Array<{ prefix: string; config: AuthAuditPath }> = [
+  { prefix: "/sso/callback", config: { action: "account.sign_in_sso" } },
+  { prefix: "/sso/saml2/callback", config: { action: "account.sign_in_sso" } },
+  { prefix: "/sso/saml2/sp/acs", config: { action: "account.sign_in_sso" } },
+];
+
+function matchAuditPath(path: string): AuthAuditPath | undefined {
+  const exact = AUTH_AUDIT_PATHS[path];
+  if (exact) {
+    return exact;
+  }
+  for (const { prefix, config } of AUTH_AUDIT_PREFIXES) {
+    if (path === prefix || path.startsWith(prefix + "/")) {
+      return config;
+    }
+  }
+  return undefined;
+}
+
 type UserLike = { id?: string; email?: string };
 
 function resolveAuthUser(ctx: {
@@ -182,10 +201,11 @@ function resolveAuthUser(ctx: {
 }
 
 const recordAuthAudit = createAuthMiddleware(async (ctx) => {
-  const config = AUTH_AUDIT_PATHS[ctx.path];
+  const config = matchAuditPath(ctx.path);
   if (!config) return;
   const response = ctx.context?.returned as { status?: number } | undefined;
-  const isSuccess = !response?.status || response.status === 200;
+  const status = response?.status;
+  const isSuccess = !status || (status >= 200 && status < 300);
   if (!isSuccess && !config.recordFailure) return;
   const { actorId, actorLabel, resourceId } = resolveAuthUser(ctx as any);
   if (!actorId && !actorLabel) return;

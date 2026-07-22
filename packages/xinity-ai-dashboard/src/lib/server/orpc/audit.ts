@@ -14,6 +14,7 @@ export type AuditAction =
   | "account.enable_2fa"
   | "account.request_password_reset"
   | "account.sign_in"
+  | "account.sign_in_sso"
   | "account.sign_out"
   | "account.sign_up"
   | "account.verify_email"
