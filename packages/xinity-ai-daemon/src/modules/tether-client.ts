@@ -59,7 +59,16 @@ export async function* connectSSE(registration: NodeRegistration): AsyncGenerato
             currentData = line.slice(6);
           } else if (line === "") {
             if (currentEvent === "state" && currentData) {
-              const parsed = desiredStateSchema.safeParse(JSON.parse(currentData));
+              let json: unknown;
+              try {
+                json = JSON.parse(currentData);
+              } catch {
+                log.warn("Malformed JSON in SSE data, skipping event");
+                currentEvent = "";
+                currentData = "";
+                continue;
+              }
+              const parsed = desiredStateSchema.safeParse(json);
               if (parsed.success) {
                 yield parsed.data;
               } else {

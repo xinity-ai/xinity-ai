@@ -9,7 +9,6 @@ import { rootLogger } from "./logger";
 let shuttingDown = false;
 let subscription: SubscriptionLike | undefined;
 let metricsSampler: MetricsSampler | undefined;
-let sseAbort: AbortController | undefined;
 
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.once(signal, () => void shutdown());
@@ -36,8 +35,6 @@ async function main() {
   process.once("uncaughtException", onFatal("Uncaught exception"));
   process.once("unhandledRejection", onFatal("Unhandled rejection"));
 
-  sseAbort = new AbortController();
-
   for await (const state of connectSSE(registration)) {
     if (shuttingDown) {
       break;
@@ -53,7 +50,6 @@ async function shutdown() {
   }
   shuttingDown = true;
 
-  sseAbort?.abort();
   await metricsSampler?.stop();
   subscription?.unsubscribe();
   process.exit(0);
