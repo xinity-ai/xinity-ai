@@ -432,17 +432,20 @@ export async function applyComponentAction(
   action: ComponentAction,
   host: Host,
   onFailure: ServiceFailurePolicy = "rollback",
+  externalProgress?: Progress,
 ): Promise<InstallResult> {
   const { component } = action;
 
   if (action.kind === "none") {
-    pass("Skip", `${component} ${action.toVersion} is current, configuration unchanged`);
+    if (!externalProgress) {
+      pass("Skip", `${component} ${action.toVersion} is current, configuration unchanged`);
+    }
     return { success: true, version: action.toVersion, errors: [] };
   }
 
   const isUpdate = action.kind !== "install";
   let versionString = action.toVersion;
-  const progress = createProgress(`${component}: preparing…`);
+  const progress = externalProgress ?? createProgress(`${component}: preparing…`);
 
   try {
     if (isUpdate) {
