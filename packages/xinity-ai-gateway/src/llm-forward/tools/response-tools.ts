@@ -12,6 +12,10 @@ export function setSearchProvider(provider: SearchProvider | null): void {
   activeSearchProvider = provider;
 }
 
+export function hasSearchProvider(): boolean {
+  return activeSearchProvider !== null;
+}
+
 export const RESPONSE_TOOL_NAMES = ["web_search"] as const;
 export type ResponseToolName = (typeof RESPONSE_TOOL_NAMES)[number];
 

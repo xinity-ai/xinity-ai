@@ -8,6 +8,7 @@ import { rootLogger } from "../../logger";
 import { processMessageImages, imageStore } from "../../image-store";
 import { env } from "../../env";
 import { DEEP_RESEARCH_SYSTEM_PROMPT, createCompactionStep } from "../deep-research";
+import { hasSearchProvider } from "../tools/response-tools";
 import {
   CreateResponseBodySchema,
   type CreateResponseBody,
@@ -268,8 +269,8 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
           400,
         );
       }
-      if (!env.WEB_SEARCH_ENGINE_URL) {
-        return errorResponse("Deep research requires web search to be configured (WEB_SEARCH_ENGINE_URL)", 501);
+      if (!hasSearchProvider()) {
+        return errorResponse("Deep research requires web search to be configured (WEB_SEARCH_PROVIDER + WEB_SEARCH_CREDENTIAL)", 501);
       }
       if (modelLacksToolSupport(modelInfo)) {
         return errorResponse(
