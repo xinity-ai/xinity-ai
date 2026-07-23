@@ -4,6 +4,8 @@
  * All operations that touch the filesystem or run commands go through a Host
  * instance. Use `connectHost()` from remote-host.ts to create one.
  */
+import { quoteShellArg } from "common-env";
+
 // ─── Low-level shell primitives ─────────────────────────────────────────────
 
 export interface RunResult {
@@ -198,8 +200,9 @@ export const COMMAND_FALLBACK_BIN_DIRS = [
 ];
 
 export async function commandExistsOn(host: Host, name: string): Promise<boolean> {
-  const fallbacks = COMMAND_FALLBACK_BIN_DIRS.map((dir) => `test -x "${dir}/${name}"`).join(" || ");
-  const result = await host.runShell(`command -v ${name} || ${fallbacks}`);
+  const q = quoteShellArg(name);
+  const fallbacks = COMMAND_FALLBACK_BIN_DIRS.map((dir) => `test -x "${dir}/"${q}`).join(" || ");
+  const result = await host.runShell(`command -v ${q} || ${fallbacks}`);
   return result.ok;
 }
 
