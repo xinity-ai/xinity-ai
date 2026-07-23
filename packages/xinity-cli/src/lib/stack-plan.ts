@@ -108,14 +108,11 @@ function deriveInfoserverUrl(stack: StackDefinition): void {
  * values are missing; edits are stored as diffs against the layer below.
  */
 async function ensureStackLevelConfig(stack: StackDefinition, deployments: Deployment[]): Promise<boolean> {
-  // Shared keys added after the stack was created (or by CLI upgrades) get
-  // backfilled here, at their owning layer, before any component editor.
   if (missingRequiredFields(analyzeEnvSchema(STACK_SHARED_SCHEMA), { ...stack.env, ...stack.secrets }).length > 0) {
     heading("shared settings");
     if (!(await editSharedLayer(stack, "Shared stack settings (new required values)"))) {
       return false;
     }
-    saveStack(stack);
   }
 
   const involvedTypes = COMPONENT_ORDER.filter((c) => deployments.some((d) => d.components.includes(c)));
@@ -124,8 +121,6 @@ async function ensureStackLevelConfig(stack: StackDefinition, deployments: Deplo
     .map((d) => d.host.address);
 
   for (const component of involvedTypes) {
-    // Daemon config lives on fleets; the stack-wide layer only matters for
-    // daemon hosts that belong to no fleet.
     if (component === "daemon" && daemonAddresses.every((addr) => getFleetForHost(stack, addr) !== null)) {
       continue;
     }
@@ -135,7 +130,6 @@ async function ensureStackLevelConfig(stack: StackDefinition, deployments: Deplo
       if (!(await editComponentLayer(stack, component, `${component} settings (stack-wide, saved to the stack)`))) {
         return false;
       }
-      saveStack(stack);
     }
   }
 
@@ -147,7 +141,6 @@ async function ensureStackLevelConfig(stack: StackDefinition, deployments: Deplo
       if (!(await editFleetLayer(stack, fleet, `Daemon settings for fleet "${fleet.name}" (saved to the fleet)`))) {
         return false;
       }
-      saveStack(stack);
     }
   }
 
@@ -598,6 +591,7 @@ export async function runStackFlow(
       return true;
     }
 
+    saveStack(stack);
     return await applyStackPlan(stack, plan, hosts, orphanHosts);
   } finally {
     await disposeAll(hosts);
