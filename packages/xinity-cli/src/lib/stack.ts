@@ -25,9 +25,14 @@ const componentT = z.enum(["gateway", "dashboard", "daemon", "infoserver"]);
 
 const envRecordT = z.record(z.string(), z.string());
 
+const hostAddressT = z.string().regex(
+  /^[a-zA-Z0-9_.@:\[\]-]+$/,
+  "Host address may only contain alphanumerics, dots, hyphens, underscores, @, colons, and brackets",
+);
+
 const stackHostT = z.object({
   alias: z.string().optional(),
-  address: z.string(),
+  address: hostAddressT,
   components: z.array(componentT),
   envOverrides: envRecordT.optional(),
 });
@@ -64,7 +69,7 @@ export function hostLabel(host: StackHost): string {
 export const STACK_SHARED_SCHEMA = z.object({
   DB_CONNECTION_URL: z.url().describe("PostgreSQL connection string shared by all components").meta(secret()),
   REDIS_URL: z.url().describe("Redis connection URL shared by all components").meta(secret()),
-  INFOSERVER_URL: z.url().optional().describe("Infoserver URL (hosted default: https://sysinfo.xinity.ai; leave unset when the stack hosts its own)"),
+  INFOSERVER_URL: z.url().optional().describe("Infoserver URL (auto-derived from the infoserver host address if left empty)"),
   METRICS_AUTH: z.string().describe("Basic auth for every component's /metrics endpoint (user:pass, comma-separated for multiple)").meta(secret()),
   HF_TOKEN: z.string().optional().describe("Hugging Face token for gated model downloads").meta(secret()),
 });
@@ -88,15 +93,10 @@ export function applySharedResult(
   }
 }
 
-/** True when the stack runs its own infoserver (configured or placed on a host), so INFOSERVER_URL is derived, never asked. */
+/** True when the stack runs its own infoserver (configured or placed on a host). */
 export function stackHostsInfoserver(stack: StackDefinition): boolean {
   return stack.componentEnv.infoserver !== undefined
     || stack.hosts.some((h) => h.components.includes("infoserver"));
-}
-
-/** Shared-schema keys the shared editor must not offer for this stack. */
-export function sharedHiddenKeys(stack: StackDefinition): Set<string> | undefined {
-  return stackHostsInfoserver(stack) ? new Set(["INFOSERVER_URL"]) : undefined;
 }
 
 // ── Paths ────────────────────────────────────────────────────────────────
