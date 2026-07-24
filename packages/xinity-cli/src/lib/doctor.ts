@@ -596,6 +596,7 @@ async function checkComponent(
 
 
 export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
+  infoserverCheckCache.clear();
   const components: ComponentReport[] = [];
 
   // 2. Read manifest (needed before probe to know which components to check)
