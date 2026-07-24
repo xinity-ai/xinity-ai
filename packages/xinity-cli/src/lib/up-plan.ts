@@ -5,6 +5,9 @@
  * gate on a single confirmation (with a bash-script dump as a secondary
  * option), then apply hands-off through the installer.
  */
+import { writeFileSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
 import { cancel, confirm, intro, isCancel, log, note, outro, select, spinner } from "./clack.ts";
 import { bold, cyan, dim } from "picocolors";
 import { type Component, ENV_SCHEMAS, ENV_DIR, getAutoDefaults, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT } from "./component-meta.ts";
@@ -334,7 +337,7 @@ export async function reviewGate(renderScript?: () => Promise<string>): Promise<
     const options = [
       { value: "apply", label: "Yes, apply these actions" },
       { value: "abort", label: "Abort" },
-      ...(renderScript ? [{ value: "script", label: dim("Show the equivalent bash script"), hint: "runs nothing" }] : []),
+      ...(renderScript ? [{ value: "script", label: dim("Save the equivalent bash script to a file"), hint: "runs nothing" }] : []),
     ];
     const choice = await select({ message: "Proceed?", options });
 
@@ -344,7 +347,11 @@ export async function reviewGate(renderScript?: () => Promise<string>): Promise<
     }
     if (choice === "apply") return true;
 
-    log.message((await renderScript!()).split("\n"));
+    const script = await renderScript!();
+    const path = join(tmpdir(), `xinity-apply-${Date.now()}.sh`);
+    writeFileSync(path, script, { mode: 0o600 });
+    log.info(`Script written to ${cyan(path)}`);
+    log.info(dim("Contains secrets. Inspect, then run on the target host as root."));
   }
 }
 
