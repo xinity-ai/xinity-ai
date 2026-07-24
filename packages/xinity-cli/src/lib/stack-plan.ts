@@ -126,6 +126,13 @@ async function ensureStackLevelConfig(stack: StackDefinition, deployments: Deplo
     .filter((d) => d.components.includes("daemon"))
     .map((d) => d.host.address);
 
+  const fleetlessDaemons = daemonAddresses.filter((addr) => getFleetForHost(stack, addr) === null);
+  if (fleetlessDaemons.length > 0) {
+    const hosts = fleetlessDaemons.join(", ");
+    warn("Fleet", `${fleetlessDaemons.length === 1 ? "daemon host is" : "daemon hosts are"} not in a fleet: ${hosts}`);
+    log.info(dim(`Group daemons into fleets via ${bold(`xinity stack edit ${stack.name}`)} to manage configuration per pool`));
+  }
+
   for (const component of involvedTypes) {
     if (component === "daemon" && daemonAddresses.every((addr) => getFleetForHost(stack, addr) !== null)) {
       continue;
