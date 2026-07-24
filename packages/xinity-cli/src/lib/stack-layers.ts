@@ -9,7 +9,7 @@ import { menuEditEnv, flattenBundle } from "./env-prompt.ts";
 import {
   type StackDefinition, type FleetDefinition,
   STACK_SHARED_SCHEMA, STACK_SHARED_KEYS,
-  applySharedResult, sharedHiddenKeys, diffFromLayer,
+  applySharedResult, diffFromLayer,
   componentLayerBase, fleetLayerBase, getHost, saveStack,
 } from "./stack.ts";
 
@@ -43,7 +43,6 @@ export async function menuEditLayer(opts: {
 /** Returns false when the user cancelled; nothing is stored then. */
 export async function editSharedLayer(stack: StackDefinition, message = "Shared stack settings"): Promise<boolean> {
   const result = await menuEditEnv(STACK_SHARED_SCHEMA, { ...stack.env, ...stack.secrets }, {
-    hiddenKeys: sharedHiddenKeys(stack),
     message,
   });
   if (result === null) {

@@ -96,9 +96,15 @@ function deriveInfoserverUrl(stack: StackDefinition): void {
     ? "localhost"
     : (infoHost.address.split("@").pop() ?? infoHost.address);
   const port = stack.componentEnv.infoserver?.PORT ?? INFOSERVER_DEFAULT_PORT;
-  const url = `http://${hostname}:${port}`;
-  stack.derivedEnv = { ...stack.derivedEnv, INFOSERVER_URL: url };
-  log.info(`INFOSERVER_URL derived from the stack's infoserver host: ${cyan(url)}`);
+  const raw = `http://${hostname}:${port}`;
+  try {
+    new URL(raw);
+  } catch {
+    warn("INFOSERVER_URL", `could not derive a valid URL from host address "${infoHost.address}"`);
+    return;
+  }
+  stack.derivedEnv = { ...stack.derivedEnv, INFOSERVER_URL: raw };
+  log.info(`INFOSERVER_URL derived from the stack's infoserver host: ${cyan(raw)}`);
 }
 
 /**
@@ -521,6 +527,7 @@ async function applyStackPlan(
       return false;
     }
     pass("Stack", "All hosts applied successfully");
+    log.info(dim(`Run ${bold(`xinity stack doctor ${stack.name}`)} to verify all services are healthy`));
   } else if (plan.migration?.pending) {
     pass("Stack", "Database migrations applied");
   } else {
