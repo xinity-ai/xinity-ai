@@ -13,6 +13,7 @@ import { confirm, isCancel, log, note, password, spinner as clackSpinner, text }
 import { bold, cyan, dim } from "picocolors";
 import { type Host, commandExistsOn } from "./host.ts";
 import { pass, fail, info, promptOrUndefined, warn } from "./output.ts";
+import { heredoc } from "./service.ts";
 import { BIN_DIR, ENV_DIR, UNIT_DIR } from "./component-meta.ts";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -190,7 +191,7 @@ async function writeS3Config(
 
   await host.withElevation(`mkdir -p ${ENV_DIR}`, "Create config directory");
   const result = await host.withElevation(
-    `cat > ${S3_CONFIG_PATH} << 'SEAWEEDFS_CONFIG_EOF'\n${config}\nSEAWEEDFS_CONFIG_EOF`,
+    `cat > ${S3_CONFIG_PATH} ${heredoc("SEAWEEDFS_CONFIG_EOF", config)}`,
     "Write SeaweedFS S3 config",
   );
 
@@ -233,7 +234,7 @@ async function installSystemdUnit(
 
   const unitPath = `${UNIT_DIR}/${SEAWEEDFS_UNIT}`;
   const result = await host.withElevation(
-    `cat > ${unitPath} << 'UNIT_EOF'\n${unitContent}\nUNIT_EOF\nsystemctl daemon-reload`,
+    `cat > ${unitPath} ${heredoc("UNIT_EOF", unitContent)}\nsystemctl daemon-reload`,
     "Install SeaweedFS systemd unit",
   );
 

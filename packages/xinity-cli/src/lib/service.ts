@@ -19,10 +19,15 @@ function applyEnvDerivations(component: Component, config: Record<string, string
 // The build*Command helpers return the exact root shell commands the apply
 // runs; the review phase's script dump emits the same strings verbatim.
 
+export function heredoc(tag: string, content: string): string {
+  const sentinel = `${tag}_${Math.random().toString(16).slice(2, 10)}`;
+  return `<< '${sentinel}'\n${content}\n${sentinel}`;
+}
+
 export function buildEnvWriteCommand(component: Component, config: Record<string, string>): string {
   const envContent = serializeEnvFile(applyEnvDerivations(component, config));
   const envPath = `${ENV_DIR}/${component}.env`;
-  return `mkdir -p ${ENV_DIR} && cat > ${envPath} << 'ENVEOF'\n${envContent}ENVEOF\nchmod 644 ${envPath}`;
+  return `mkdir -p ${ENV_DIR} && cat > ${envPath} ${heredoc("ENVEOF", envContent)}\nchmod 644 ${envPath}`;
 }
 
 export function buildSecretsWriteCommand(secrets: Record<string, string>): string | null {
@@ -40,7 +45,7 @@ export function buildUnitWriteCommand(component: Component, secretKeys: string[]
   const config: UnitConfig = { ...baseConfig, secretKeys };
   const unitContent = generateUnit(config);
   const unitPath = `${UNIT_DIR}/${unitName(component)}`;
-  return `cat > ${unitPath} << 'UNITEOF'\n${unitContent}UNITEOF\nsystemctl daemon-reload`;
+  return `cat > ${unitPath} ${heredoc("UNITEOF", unitContent)}\nsystemctl daemon-reload`;
 }
 
 export async function writeEnvConfig(

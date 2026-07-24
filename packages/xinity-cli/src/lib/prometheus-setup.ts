@@ -12,6 +12,7 @@ import { log, note, spinner as clackSpinner, text } from "./clack.ts";
 import { bold, cyan, dim } from "picocolors";
 import { type Host } from "./host.ts";
 import { pass, fail, info, warn, promptOrUndefined } from "./output.ts";
+import { heredoc } from "./service.ts";
 import { resolveComposeCmd, composeArgs, composeName, stackDir, dockerDaemonReady, tcpPortInUse } from "./docker-stack.ts";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -168,7 +169,7 @@ export function buildComposeFile(port: number, configPath: string): string {
 
 async function writeFile(host: Host, path: string, content: string, label: string): Promise<boolean> {
   const result = await host.withElevation(
-    `cat > ${path} << 'XINITY_PROM_EOF'\n${content}\nXINITY_PROM_EOF`,
+    `cat > ${path} ${heredoc("XINITY_PROM_EOF", content)}`,
     `Write ${label}`,
   );
   if (!result.success) {

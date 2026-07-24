@@ -2,6 +2,7 @@
  * Version manifest tracking installed components at /opt/xinity/manifest.json.
  */
 import type { Host } from "./host.ts";
+import { heredoc } from "./service.ts";
 
 export interface ComponentEntry {
   version: string;
@@ -69,7 +70,7 @@ export async function getInstalledVersion(component: string, host: Host): Promis
 export async function writeManifest(manifest: Manifest, host: Host): Promise<boolean> {
   manifestCache.delete(host);
   const json = JSON.stringify(manifest, null, 2);
-  const cmd = `mkdir -p /opt/xinity && cat > ${MANIFEST_PATH} << 'MANIFEST_EOF'\n${json}\nMANIFEST_EOF\nchmod 644 ${MANIFEST_PATH}`;
+  const cmd = `mkdir -p /opt/xinity && cat > ${MANIFEST_PATH} ${heredoc("MANIFEST_EOF", json)}\nchmod 644 ${MANIFEST_PATH}`;
   const result = await host.withElevation(cmd, "Write install manifest");
   return result.success;
 }
