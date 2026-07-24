@@ -11,6 +11,7 @@ import { confirm, log, note, password as passwordPrompt, spinner as clackSpinner
 import { bold, cyan, dim } from "picocolors";
 import { type Host } from "./host.ts";
 import { pass, fail, info, warn, promptOrUndefined } from "./output.ts";
+import { heredoc } from "./service.ts";
 import {
   resolveComposeCmd, composeArgs, composeName, stackDir,
   dockerDaemonReady, tcpPortInUse, type ComposeCmd,
@@ -158,7 +159,7 @@ async function waitForPostgresReady(
 
 function buildWriteFileCommand(path: string, content: string, mode?: string): string {
   const chmod = mode ? `\nchmod ${mode} ${path}` : "";
-  return `cat > ${path} << 'XINITY_PG_EOF'\n${content}\nXINITY_PG_EOF${chmod}`;
+  return `cat > ${path} ${heredoc("XINITY_PG_EOF", content)}${chmod}`;
 }
 
 async function writeFile(

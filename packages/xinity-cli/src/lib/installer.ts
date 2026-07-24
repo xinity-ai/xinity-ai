@@ -13,7 +13,7 @@ import { parseEnvString } from "./env-file.ts";
 import { pass, fail, warn, info } from "./output.ts";
 import { type Host, commandExistsOn, isUnitActiveOn } from "./host.ts";
 import { isOllamaRunning } from "./ollama-setup.ts";
-import { writeEnvConfig, writeSystemdUnit, stopService, startService, restartService } from "./service.ts";
+import { heredoc, writeEnvConfig, writeSystemdUnit, stopService, startService, restartService } from "./service.ts";
 import { runSteps, createProgress, type Progress } from "./step-runner.ts";
 import {
   type Component, type InstallResult,
@@ -87,7 +87,7 @@ async function installVllmTemplate(host: Host, templatePath: string, progress: P
   }
 
   const result = await host.withElevation(
-    `cat > ${templatePath} << 'VLLMEOF'\n${vllmTemplateUnit}VLLMEOF\nsystemctl daemon-reload`,
+    `cat > ${templatePath} ${heredoc("VLLMEOF", vllmTemplateUnit)}\nsystemctl daemon-reload`,
     "Install vLLM systemd template unit",
   );
 

@@ -9,7 +9,7 @@ import { type Host, commandExistsOn, isUnitActiveOn } from "./host.ts";
 import { pass, fail, info, warn } from "./output.ts";
 import { parseEnvString, serializeEnvFile } from "./env-file.ts";
 import { ENV_DIR } from "./component-meta.ts";
-import { restartService } from "./service.ts";
+import { heredoc, restartService } from "./service.ts";
 import { runSteps } from "./step-runner.ts";
 
 const DEFAULT_PORT = "11434";
@@ -226,7 +226,7 @@ async function writeDaemonEndpoint(host: Host, endpoint: string): Promise<boolea
   env.XINITY_OLLAMA_ENDPOINT = endpoint;
   const content = serializeEnvFile(env);
   const result = await host.withElevation(
-    `mkdir -p '${ENV_DIR}' && cat > '${envPath}' << 'ENVEOF'\n${content}ENVEOF\nchmod 644 '${envPath}'`,
+    `mkdir -p '${ENV_DIR}' && cat > '${envPath}' ${heredoc("ENVEOF", content)}\nchmod 644 '${envPath}'`,
     "Write XINITY_OLLAMA_ENDPOINT to daemon config",
   );
   if (result.success) {
