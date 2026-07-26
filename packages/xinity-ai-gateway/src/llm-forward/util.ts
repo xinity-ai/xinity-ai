@@ -267,6 +267,9 @@ export async function forwardBackendError(
   log.error({ status: backendResponse.status, body: text }, "Backend error");
   if (model) recordBackendError(model, backendResponse.status);
   const status = mapBackendStatusToClient(backendResponse.status);
+  if (backendResponse.status >= 500) {
+    return errorResponse("Bad Gateway", status);
+  }
   if (isJsonString(text)) {
     return new Response(text, { status, headers: { "Content-Type": "application/json" } });
   }
