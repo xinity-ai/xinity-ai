@@ -1,3 +1,4 @@
+import { resolve4, resolve6 } from "node:dns/promises";
 import { rootLogger } from "../../logger";
 
 const log = rootLogger.child({ name: "url-safety" });
@@ -42,6 +43,54 @@ const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
 
 const MAX_REDIRECTS = 5;
 
+function isBlockedIpv4(ip: string): string | null {
+  for (const pattern of BLOCKED_IP_PATTERNS) {
+    if (pattern.test(ip)) {
+      return `Blocked IP range: ${ip}`;
+    }
+  }
+  return null;
+}
+
+function isBlockedIpv6(ip: string): string | null {
+  const lower = ip.toLowerCase();
+  if (lower === "::1") return `Blocked IPv6 loopback: ${ip}`;
+  // fe80: = link-local, fc/fd = unique-local (RFC 4193, the IPv6 equivalent of RFC 1918)
+  if (lower.startsWith("fe80:")) return `Blocked IPv6 range: ${ip}`;
+  if (lower.startsWith("fc") || lower.startsWith("fd")) return `Blocked IPv6 range: ${ip}`;
+
+  // IPv6 can embed IPv4 as ::ffff:a.b.c.d, which bypasses IPv4 blocklists unless checked
+  const v4Mapped = lower.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+  if (v4Mapped) return isBlockedIpv4(v4Mapped[1]);
+
+  return null;
+}
+
+function isIpv4Literal(hostname: string): boolean {
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname);
+}
+
+async function validateResolvedAddresses(hostname: string): Promise<string | null> {
+  if (isIpv4Literal(hostname)) return null;
+
+  const [v4Addrs, v6Addrs] = await Promise.all([
+    resolve4(hostname).catch(() => [] as string[]),
+    resolve6(hostname).catch(() => [] as string[]),
+  ]);
+
+  for (const ip of v4Addrs) {
+    const blocked = isBlockedIpv4(ip);
+    if (blocked) return blocked;
+  }
+
+  for (const ip of v6Addrs) {
+    const blocked = isBlockedIpv6(ip);
+    if (blocked) return blocked;
+  }
+
+  return null;
+}
+
 export type SafeFetchOptions = {
   /** Timeout in milliseconds. Defaults to 15s. */
   timeoutMs?: number;
@@ -82,13 +131,7 @@ export function validateUrl(rawUrl: string): string | null {
     return "IPv6 addresses are not allowed";
   }
 
-  for (const pattern of BLOCKED_IP_PATTERNS) {
-    if (pattern.test(bare)) {
-      return `Blocked IP range: ${bare}`;
-    }
-  }
-
-  return null;
+  return isBlockedIpv4(bare);
 }
 
 /**
@@ -108,6 +151,12 @@ export async function safeFetch(
     if (error) {
       log.warn({ url: currentUrl, reason: error }, "Blocked outbound request");
       throw new Error(`URL blocked: ${error}`);
+    }
+
+    const dnsError = await validateResolvedAddresses(new URL(currentUrl).hostname);
+    if (dnsError) {
+      log.warn({ url: currentUrl, reason: dnsError }, "Blocked outbound request (resolved address)");
+      throw new Error(`URL blocked: ${dnsError}`);
     }
 
     let response: Response;
