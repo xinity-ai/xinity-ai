@@ -1,4 +1,4 @@
-import { rootOs, withAuth } from "../root";
+import { rootOs, withOrganization, requirePermission } from "../root";
 import z from "zod";
 import { ModelSchema } from "xinity-infoserver";
 import { infoClient } from "$lib/server/info-client";
@@ -16,7 +16,8 @@ const PaginatedModelsSchema = z.object({
 });
 
 const listModels = rootOs
-  .use(withAuth)
+  .use(withOrganization)
+  .use(requirePermission({ model: ["read"] }))
   .route({ path: "/", method: "GET", tags: ["Model"], summary: "List Models" })
   .input(z.object({
     page: z.coerce.number().min(1).default(1),
@@ -31,7 +32,8 @@ const listModels = rootOs
   });
 
 const getModel = rootOs
-  .use(withAuth)
+  .use(withOrganization)
+  .use(requirePermission({ model: ["read"] }))
   .route({ path: "/{specifier}", method: "GET", tags: ["Model"], summary: "Get Model" })
   .input(z.object({ specifier: z.string() }))
   .output(ModelWithSpecifierSchema.nullable())
