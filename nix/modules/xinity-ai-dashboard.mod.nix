@@ -82,7 +82,7 @@
 
         infoserverUrl = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
-          default = "https://sysinfo.xinity.at";
+          default = "https://sysinfo.xinity.ai";
           description = "Internal URL of the xinity-infoserver instance. The dashboard uses this server-side to fetch available model information.";
         };
 
