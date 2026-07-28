@@ -26,6 +26,17 @@ Each of the gateway, dashboard, and daemon exposes a `GET /metrics` endpoint in 
 | `gateway_input_tokens_total` | counter | `model`, `key_id`, `org_id` | Cumulative input tokens |
 | `gateway_output_tokens_total` | counter | `model`, `key_id`, `org_id` | Cumulative output tokens |
 
+Load-balancer decision metrics (see [Load Balancing](gateway.md#load-balancing)). `host`, `node_id`, and `machine_name` all identify the same backend node; `node_id` is the stable join key, `machine_name` is the readable label, `host` is the raw `host:port` used internally. `deployment` on these metrics is the deployment's public specifier (the org-facing name used to address it via the API), matching the `deployment` label already used by `gateway_time_to_first_token_milliseconds` and `gateway_generation_tokens_per_second` above. It is not the resolved provider-side model name that `gateway_model_requests_total` etc. use as `model`, since the load balancer picks a host before that name is resolved.
+
+| Metric | Type | Labels | Description |
+|---|---|---|---|
+| `gateway_lb_candidate_hosts` | histogram | `deployment`, `bucket` | Number of eligible hosts considered per decision. A deployment stuck at 1 explains skewed traffic without any load-balancer bug. |
+| `gateway_lb_selections_total` | counter | `host`, `node_id`, `machine_name`, `deployment`, `bucket`, `strategy`, `reason` | Host selections, with `reason` = `single_candidate`, `random`, `round_robin`, `least_connections`, `prefix_affinity_hit`, or `redis_fallback` |
+| `gateway_lb_active_connections` | gauge | `host`, `node_id`, `machine_name` | In-flight connections as tracked by the least-connections strategy (mirrors the Redis counter it decides on) |
+| `gateway_lb_prefix_affinity_total` | counter | `outcome` (`hit`, `miss`, `ignored`) | Prefix-cache affinity lookups: hint found and honored, not found, or found but overridden by the strategy |
+| `gateway_lb_canary_split_total` | counter | `deployment`, `bucket` (`final`, `early`) | Canary routing decisions, only recorded when a deployment has an early model |
+| `gateway_lb_redis_fallback_total` | counter | `strategy` | Redis errors that forced a fallback to random selection |
+
 ### Dashboard metrics
 
 | Metric | Type | Labels | Description |
@@ -75,7 +86,7 @@ High-level stats: gateway request rate, error rate, active requests, daemons up,
 
 ### Xinity Gateway
 
-Traffic panels: request rate and latency by endpoint, requests by status, error rate, active requests, input/output token distributions, generation throughput. Model health panels: request rate by model, time-to-first-token, backend errors, client disconnects, failure rate. Organization usage panels: model requests by org, failure rate by org, cumulative token rate by org.
+Traffic panels: request rate and latency by endpoint, requests by status, error rate, active requests, input/output token distributions, generation throughput. Model health panels: request rate by model, time-to-first-token, backend errors, client disconnects, failure rate. Organization usage panels: model requests by org, failure rate by org, cumulative token rate by org. Load balancing panels: requests per host, selection reason breakdown, mean candidate hosts and single-candidate share by deployment, in-flight connections per host, canary split, prefix-affinity outcome, Redis fallback events.
 
 ### Xinity GPU / Compute
 

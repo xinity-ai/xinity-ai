@@ -2,7 +2,7 @@ import { calcCanaryProgress, sql, modelDeploymentT, aiNodeT, modelInstallationT,
 import { getDB } from "../db";
 import { env } from "../env";
 import { createInfoserverClient, resolveTagsForDriver, resolveRequestParamsForDriver } from "xinity-infoserver";
-import { selectHost as _selectHost, type LoadBalanceStrategy } from "./load-balancer";
+import { selectHost as _selectHost, type LoadBalanceStrategy, type HostMeta } from "./load-balancer";
 import { rootLogger } from "../logger";
 
 /** Indirection for testability. tests can swap this without mock.module. */
@@ -45,6 +45,7 @@ async function publicModelSpecifierToModelSource(orgId: string, specifier: strin
 
 type HostLocation = {
   nodeId: string;
+  machineName: string | null;
   driver: string;
   authToken: string | null;
   tls: boolean;
@@ -58,6 +59,7 @@ type ModelSources = {
 async function getModelSources(specifier: string): Promise<ModelSources> {
   const modelLocations = await getDB().select({
     nodeId: aiNodeT.id,
+    machineName: aiNodeT.machineName,
     host: aiNodeT.host,
     nodePort: aiNodeT.port,
     driver: modelInstallationT.driver,
@@ -74,10 +76,20 @@ async function getModelSources(specifier: string): Promise<ModelSources> {
   const byHost = new Map<string, HostLocation>();
   for (const loc of modelLocations) {
     const key = `${loc.host}:${loc.nodePort}`;
-    byHost.set(key, { nodeId: loc.nodeId, driver: loc.driver, authToken: loc.authToken, tls: loc.tls });
+    byHost.set(key, { nodeId: loc.nodeId, machineName: loc.machineName, driver: loc.driver, authToken: loc.authToken, tls: loc.tls });
   }
 
   return { hosts: [...byHost.keys()], byHost };
+}
+
+function buildHostMeta(...sources: ModelSources[]): Map<string, HostMeta> {
+  const hostMeta = new Map<string, HostMeta>();
+  for (const source of sources) {
+    for (const [host, loc] of source.byHost) {
+      hostMeta.set(host, { nodeId: loc.nodeId, machineName: loc.machineName ?? host });
+    }
+  }
+  return hostMeta;
 }
 
 type ModelInfo = {
@@ -123,6 +135,7 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, prefi
     hasEarlyModel: !!accessInfo.early,
     publicModel: publicSpecifier,
     prefixHashes,
+    hostMeta: buildHostMeta(finalSources, earlySources),
   });
 
   if (!result) {

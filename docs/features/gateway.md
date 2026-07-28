@@ -20,6 +20,10 @@ For `least-connections` and `random`, the gateway hashes conversation message pr
 
 With `least-connections`, the affinity hint is only honored if the hinted node's connection count is within 2 of the least-loaded node.
 
+### Observability
+
+The gateway exposes per-decision load-balancer metrics (candidate host count, selection reason, in-flight connections, canary split, prefix-affinity outcome, Redis fallbacks) via Prometheus, visualized in the "Load Balancing" row of the Xinity Gateway Grafana dashboard. See [Monitoring](monitoring.md#gateway-metrics) for the full metric list.
+
 ## Canary Deployments
 
 A deployment can specify an "early" (canary) model alongside the primary model. Traffic is split based on a progress percentage.
