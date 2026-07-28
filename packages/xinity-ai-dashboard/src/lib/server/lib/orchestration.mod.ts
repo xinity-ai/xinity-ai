@@ -332,6 +332,37 @@ async function planNewInstallations(
   return toInstall;
 }
 
+type ModelLookup = (specifier: string) => Promise<Model | null>;
+
+/** Whether some available node could actually take over this installation, checked the same way
+ * real placement is: driver, capacity, driver version, GPU platform, and required features
+ * (`findServerForModel`, the same function `planNewInstallations` uses). Of the installations
+ * sitting on now-unavailable nodes, only these are soft-deleted; the rest are left alone, since
+ * with few nodes in a cluster, a node going offline is far more likely to be transient than a
+ * real removal, and their installation rows need to survive so the models are still considered
+ * desired once the node returns. */
+async function hasReassignmentTarget(install: ModelInstallation, state: ClusterState, lookupModel: ModelLookup): Promise<boolean> {
+  const modelInfo = await lookupModel(install.specifier);
+  if (!modelInfo) return false;
+
+  const nodeId = findServerForModel(
+    install.specifier, install.driver, install.estCapacity, state, [], "first-fit",
+    resolveMinVersionForDriver(modelInfo, install.driver),
+    resolveRequiredPlatformsForDriver(modelInfo, install.driver),
+    resolveRequiredFeaturesForDriver(modelInfo, install.driver),
+  );
+  return nodeId !== null;
+}
+
+export async function collectReassignableOrphans(
+  orphanedCandidates: ModelInstallation[],
+  state: ClusterState,
+  lookupModel: ModelLookup,
+): Promise<ModelInstallation[]> {
+  const reassignable = await Promise.all(orphanedCandidates.map(install => hasReassignmentTarget(install, state, lookupModel)));
+  return orphanedCandidates.filter((_, i) => reassignable[i]);
+}
+
 async function applyChanges(toUninstall: string[], toInstall: NewInstallation[]) {
   if (toUninstall.length > 0) {
     await getDB().update(modelInstallationT).set({ deletedAt: new Date() }).where(inArray(modelInstallationT.id, toUninstall));
@@ -351,12 +382,21 @@ async function runSyncDeployedModels() {
   ]);
 
   const availableServerIds = new Set(availableServers.map(s => s.id));
-  const orphaned = existing.filter(i => !availableServerIds.has(i.nodeId));
+  const orphanedCandidates = existing.filter(i => !availableServerIds.has(i.nodeId));
   const active = existing.filter(i => availableServerIds.has(i.nodeId));
 
-  log.debug({ requiredModels, installedModels: existing.length, availableServers: availableServers.length, orphaned: orphaned.length }, "Syncing deployed models");
-
   const state = buildClusterState(active, availableServers);
+  const orphaned = await collectReassignableOrphans(orphanedCandidates, state, async specifier => {
+    const status = await infoClient?.fetchModelStatus(specifier);
+    return status?.status === "found" ? status.model : null;
+  });
+  const keptOffline = orphanedCandidates.length - orphaned.length;
+
+  log.debug(
+    { requiredModels, installedModels: existing.length, availableServers: availableServers.length, orphaned: orphaned.length, keptOffline },
+    "Syncing deployed models",
+  );
+
   const toUninstall = [
     ...orphaned.map(i => i.id),
     ...collectExcessInstallations(requiredModels, state),
