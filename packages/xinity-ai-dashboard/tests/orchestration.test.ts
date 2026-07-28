@@ -1,7 +1,8 @@
 import { describe, test, expect } from "bun:test";
-import { buildClusterState, collectDriftedInstallations, collectExcessInstallations, findServerForModel, mergeRequirementsBySpecifier, rankServers } from "../src/lib/server/lib/orchestration.mod";
+import { buildClusterState, collectDriftedInstallations, collectExcessInstallations, collectReassignableOrphans, findServerForModel, mergeRequirementsBySpecifier, rankServers } from "../src/lib/server/lib/orchestration.mod";
 import type { AiNode, ModelInstallation } from "common-db";
 import type { ModelRequirement, ModelRequirementTable, DeploymentStrategy } from "../src/lib/server/lib/orchestration.mod";
+import type { Model } from "xinity-infoserver";
 
 const FF: DeploymentStrategy = "first-fit";
 
@@ -35,6 +36,19 @@ function makeInstallation(overrides: Partial<ModelInstallation> & { id: string; 
     deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
+    ...overrides,
+  };
+}
+
+function makeModel(overrides: Partial<Model> = {}): Model {
+  return {
+    name: "Test Model",
+    description: "A model used in tests",
+    weight: 8,
+    minKvCache: 2,
+    url: "https://example.com/model",
+    providers: { ollama: "test-model" },
+    maxContextLength: 131072,
     ...overrides,
   };
 }
@@ -149,6 +163,69 @@ describe("orchestration: node goes unavailable", () => {
     const state = buildClusterState([], [node]);
 
     expect(findServerForModel("chat-model", "vllm", 8, state, [], FF)).toBe("node-m");
+  });
+});
+
+describe("orchestration: reassignable orphans", () => {
+  const lookup = (models: Record<string, Model>) => async (specifier: string) => models[specifier] ?? null;
+
+  test("an orphan is kept (not reassigned) when no available node has room", async () => {
+    const tightNode = makeNode({ id: "node-n", estCapacity: 4 });
+    const state = buildClusterState([], [tightNode]);
+    const orphan = makeInstallation({ id: "i1", nodeId: "node-dead", specifier: "llama2:7b", estCapacity: 8 });
+
+    const result = await collectReassignableOrphans([orphan], state, lookup({ "llama2:7b": makeModel() }));
+    expect(result).toHaveLength(0);
+  });
+
+  test("an orphan is reassigned when an available node has the driver and enough free capacity", async () => {
+    const roomyNode = makeNode({ id: "node-o", estCapacity: 24 });
+    const state = buildClusterState([], [roomyNode]);
+    const orphan = makeInstallation({ id: "i1", nodeId: "node-dead", specifier: "llama2:7b", estCapacity: 8 });
+
+    const result = await collectReassignableOrphans([orphan], state, lookup({ "llama2:7b": makeModel() }));
+    expect(result).toEqual([orphan]);
+  });
+
+  test("an orphan is kept when no available node runs its driver, even with free capacity", async () => {
+    const ollamaOnly = makeNode({ id: "node-p", estCapacity: 24, driverVersions: { ollama: "0.6.3" } });
+    const state = buildClusterState([], [ollamaOnly]);
+    const orphan = makeInstallation({ id: "i1", nodeId: "node-dead", specifier: "whisper", driver: "vllm", estCapacity: 8 });
+
+    const result = await collectReassignableOrphans([orphan], state, lookup({ whisper: makeModel({ providers: { vllm: "whisper" } }) }));
+    expect(result).toHaveLength(0);
+  });
+
+  test("an orphan is kept when the only available node is already full from active installations", async () => {
+    const node = makeNode({ id: "node-q", estCapacity: 8 });
+    const active = makeInstallation({ id: "active-1", nodeId: "node-q", specifier: "other-model", estCapacity: 8 });
+    const state = buildClusterState([active], [node]);
+    const orphan = makeInstallation({ id: "i1", nodeId: "node-dead", specifier: "llama2:7b", estCapacity: 8 });
+
+    const result = await collectReassignableOrphans([orphan], state, lookup({ "llama2:7b": makeModel() }));
+    expect(result).toHaveLength(0);
+  });
+
+  test("an orphan is kept when the only available node's driver version is too old for the model", async () => {
+    const oldNode = makeNode({ id: "node-r", estCapacity: 24, driverVersions: { vllm: "0.18.0" } });
+    const state = buildClusterState([], [oldNode]);
+    const orphan = makeInstallation({ id: "i1", nodeId: "node-dead", specifier: "new-model", driver: "vllm", estCapacity: 8 });
+    const model = makeModel({ providers: { vllm: "new-model" }, providerMinVersions: { vllm: "0.19.1" } });
+
+    // This is the case a plain driver+capacity check would wrongly approve for deletion: the
+    // node has the right driver and plenty of room, but its vLLM build is too old to run this
+    // model, so there is no real reassignment target.
+    const result = await collectReassignableOrphans([orphan], state, lookup({ "new-model": model }));
+    expect(result).toHaveLength(0);
+  });
+
+  test("an orphan is kept when the model can't be looked up in the catalog", async () => {
+    const roomyNode = makeNode({ id: "node-s", estCapacity: 24 });
+    const state = buildClusterState([], [roomyNode]);
+    const orphan = makeInstallation({ id: "i1", nodeId: "node-dead", specifier: "removed-model", estCapacity: 8 });
+
+    const result = await collectReassignableOrphans([orphan], state, lookup({}));
+    expect(result).toHaveLength(0);
   });
 });
 
