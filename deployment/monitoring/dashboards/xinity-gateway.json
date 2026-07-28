@@ -13,7 +13,7 @@
   "timezone": "browser",
   "title": "Xinity Gateway",
   "uid": "xinity-gateway",
-  "version": 2,
+  "version": 3,
   "panels": [
     { "type": "row", "id": 1, "title": "Traffic", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 } },
     {
@@ -156,6 +156,71 @@
         { "refId": "A", "editorMode": "code", "expr": "sum by (org_id) (rate(gateway_input_tokens_total[$__rate_interval]))", "legendFormat": "input {{org_id}}", "range": true }, 
         { "refId": "B", "editorMode": "code", "expr": "sum by (org_id) (rate(gateway_output_tokens_total[$__rate_interval]))", "legendFormat": "output {{org_id}}", "range": true }
       ]
+    },
+    { "type": "row", "id": 20, "title": "Load Balancing", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 51 } },
+    {
+      "type": "timeseries", "id": 21, "title": "Requests per host",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 52 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 15, "showPoints": "never", "lineInterpolation": "smooth", "stacking": { "mode": "normal", "group": "A" } } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "lastNotNull", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [ { "refId": "A", "editorMode": "code", "expr": "sum by (machine_name) (rate(gateway_lb_selections_total[$__rate_interval]))", "legendFormat": "{{machine_name}}", "range": true } ]
+    },
+    {
+      "type": "timeseries", "id": 22, "title": "Selection reason breakdown",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 52 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 15, "showPoints": "never", "lineInterpolation": "smooth", "stacking": { "mode": "normal", "group": "A" } } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [ { "refId": "A", "editorMode": "code", "expr": "sum by (reason) (rate(gateway_lb_selections_total[$__rate_interval]))", "legendFormat": "{{reason}}", "range": true } ]
+    },
+    {
+      "type": "timeseries", "id": 23, "title": "Mean candidate hosts by deployment",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 60 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 0, "showPoints": "never", "lineInterpolation": "smooth" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [ { "refId": "A", "editorMode": "code", "expr": "sum by (deployment) (rate(gateway_lb_candidate_hosts_sum[$__rate_interval])) / clamp_min(sum by (deployment) (rate(gateway_lb_candidate_hosts_count[$__rate_interval])), 0.001)", "legendFormat": "{{deployment}}", "range": true } ]
+    },
+    {
+      "type": "timeseries", "id": 24, "title": "Requests with only 1 eligible host",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 60 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "custom": { "drawStyle": "line", "fillOpacity": 0, "showPoints": "never", "lineInterpolation": "smooth" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [ { "refId": "A", "editorMode": "code", "expr": "sum by (deployment) (rate(gateway_lb_selections_total{reason=\"single_candidate\"}[$__rate_interval])) / clamp_min(sum by (deployment) (rate(gateway_lb_selections_total[$__rate_interval])), 0.001)", "legendFormat": "{{deployment}}", "range": true } ]
+    },
+    {
+      "type": "timeseries", "id": 25, "title": "In-flight connections per host",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 60 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10, "showPoints": "never", "lineInterpolation": "stepAfter" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [ { "refId": "A", "editorMode": "code", "expr": "sum by (machine_name) (gateway_lb_active_connections)", "legendFormat": "{{machine_name}}", "range": true } ]
+    },
+    {
+      "type": "timeseries", "id": 26, "title": "Canary split by deployment",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 68 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 15, "showPoints": "never", "lineInterpolation": "smooth", "stacking": { "mode": "normal", "group": "A" } } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [ { "refId": "A", "editorMode": "code", "expr": "sum by (deployment, bucket) (rate(gateway_lb_canary_split_total[$__rate_interval]))", "legendFormat": "{{deployment}} {{bucket}}", "range": true } ]
+    },
+    {
+      "type": "timeseries", "id": 27, "title": "Prefix-affinity outcome",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 68 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 15, "showPoints": "never", "lineInterpolation": "smooth", "stacking": { "mode": "normal", "group": "A" } } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "lastNotNull"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [ { "refId": "A", "editorMode": "code", "expr": "sum by (outcome) (rate(gateway_lb_prefix_affinity_total[$__rate_interval]))", "legendFormat": "{{outcome}}", "range": true } ]
+    },
+    {
+      "type": "timeseries", "id": 28, "title": "Redis fallback events",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 68 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10, "showPoints": "never", "lineInterpolation": "smooth" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [ { "refId": "A", "editorMode": "code", "expr": "sum by (strategy) (rate(gateway_lb_redis_fallback_total[$__rate_interval]))", "legendFormat": "{{strategy}}", "range": true } ]
     }
   ]
 }

@@ -191,6 +191,39 @@ export const generationTokensPerSecond = createHistogram(
   TPS_BUCKETS,
 );
 
+const CANDIDATE_HOST_BUCKETS = [0, 1, 2, 3, 4, 5, 8, 12, 16, 24, 32];
+
+export const lbCandidateHosts = createHistogram(
+  "gateway_lb_candidate_hosts",
+  "Number of eligible hosts considered for a load-balancer decision, by deployment and canary bucket",
+  CANDIDATE_HOST_BUCKETS,
+);
+
+export const lbSelectionsTotal = createCounter(
+  "gateway_lb_selections_total",
+  "Total load-balancer host selections by host, deployment, strategy, and reason",
+);
+
+export const lbActiveConnections = createGauge(
+  "gateway_lb_active_connections",
+  "In-flight connections tracked by the least-connections strategy, by host",
+);
+
+export const lbPrefixAffinityTotal = createCounter(
+  "gateway_lb_prefix_affinity_total",
+  "Total prefix-cache affinity lookups by outcome",
+);
+
+export const lbCanarySplitTotal = createCounter(
+  "gateway_lb_canary_split_total",
+  "Total canary routing decisions by deployment and bucket",
+);
+
+export const lbRedisFallbackTotal = createCounter(
+  "gateway_lb_redis_fallback_total",
+  "Total load-balancer Redis failures that fell back to random selection, by strategy",
+);
+
 const allMetrics = [
   requestsTotal,
   requestErrorsTotal,
@@ -205,7 +238,50 @@ const allMetrics = [
   generationTokensPerSecond,
   inputTokensTotal,
   outputTokensTotal,
+  lbCandidateHosts,
+  lbSelectionsTotal,
+  lbActiveConnections,
+  lbPrefixAffinityTotal,
+  lbCanarySplitTotal,
+  lbRedisFallbackTotal,
 ];
+
+/** Identifies a backend host consistently across load-balancer metrics: node_id for joins, machine_name for readable legends, host as an always-present fallback. */
+export type LbHostLabels = { host: string; node_id: string; machine_name: string };
+
+export function recordLbCandidateHosts(deployment: string, bucket: string, count: number): void {
+  lbCandidateHosts.observe({ deployment, bucket }, count);
+}
+
+export function recordLbCanarySplit(deployment: string, bucket: string): void {
+  lbCanarySplitTotal.inc({ deployment, bucket });
+}
+
+export function recordLbSelection(
+  hostLabels: LbHostLabels,
+  deployment: string,
+  bucket: string,
+  strategy: string,
+  reason: string,
+): void {
+  lbSelectionsTotal.inc({ ...hostLabels, deployment, bucket, strategy, reason });
+}
+
+export function recordLbPrefixAffinity(outcome: "hit" | "miss" | "ignored"): void {
+  lbPrefixAffinityTotal.inc({ outcome });
+}
+
+export function recordLbRedisFallback(strategy: string): void {
+  lbRedisFallbackTotal.inc({ strategy });
+}
+
+export function incLbActiveConnections(hostLabels: LbHostLabels): void {
+  lbActiveConnections.inc(hostLabels);
+}
+
+export function decLbActiveConnections(hostLabels: LbHostLabels): void {
+  lbActiveConnections.dec(hostLabels);
+}
 
 export function recordTokenUsage(
   model: string,

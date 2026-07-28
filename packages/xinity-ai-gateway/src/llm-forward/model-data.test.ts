@@ -184,6 +184,7 @@ describe("getModelInfo", () => {
       hasEarlyModel: true,
       publicModel: "my-model",
       prefixHashes: undefined,
+      hostMeta: expect.any(Map),
     });
   });
 
