@@ -11,7 +11,10 @@
  *
  * Cleans up all created rows on exit so no stale state is left behind.
  *
- * Usage: bun run simulate:compute [minutes]   (default 30)
+ * Usage: bun run simulate:compute [small|large] [minutes]   (default: small 30)
+ *
+ *   small  6 machines, 4 models (quick iteration)
+ *   large  55 machines, 8 models with 4-25 replicas each (stress-test UI)
  */
 import { join } from "path";
 import { readFileSync } from "fs";
@@ -36,10 +39,10 @@ const BACKFILL_HOURS = 1;
 const BACKFILL_BUCKET_MS = 10 * 60 * 1000;
 
 type ModelSpec = {
-  /** Public canonical identifier shown in the UI (e.g. "qwen3-8b"). */
   publicSpecifier: string;
   driver: "ollama" | "vllm";
   estCapacity: number;
+  lifecycleState?: "ready" | "downloading" | "installing" | "failed" | "scheduling";
 };
 
 type DemoMachine = {
@@ -54,26 +57,137 @@ type DemoMachine = {
 };
 
 const ASCENT_GPUS = [{ vendor: "nvidia", name: "NVIDIA GB10", vramMb: 0 }];
+const RTX_GPUS = [{ vendor: "nvidia", name: "NVIDIA RTX PRO 6000 Blackwell", vramMb: 97887 }];
+const H100_GPUS = [{ vendor: "nvidia", name: "NVIDIA H100 80GB HBM3", vramMb: 81559 }];
+
+// 192.0.2.0/24 is IANA TEST-NET-1 (RFC 5737), reserved for documentation,
+// never present in a real deployment, safe to use as demo IPs.
+
 const ASCENT_MODELS: ModelSpec[] = [
   { publicSpecifier: "qwen3-8b", driver: "ollama", estCapacity: 8 },
   { publicSpecifier: "nomic-embed", driver: "ollama", estCapacity: 1 },
 ];
 
-const RTX_GPUS = [{ vendor: "nvidia", name: "NVIDIA RTX PRO 6000 Blackwell", vramMb: 97887 }];
 const RTX_MODELS: ModelSpec[] = [
   { publicSpecifier: "mistral-small-3.2-24b", driver: "vllm", estCapacity: 48 },
 ];
 
-// 192.0.2.0/24 is IANA TEST-NET-1 (RFC 5737) — reserved for documentation,
-// never present in a real deployment, safe to use as demo IPs.
-const MACHINES: DemoMachine[] = [
+const SMALL_MACHINES: DemoMachine[] = [
   { host: "192.0.2.1", machineName: "Ascent GX10", gpus: ASCENT_GPUS, estCapacity: 110, baseUtilization: 43, models: ASCENT_MODELS, available: true },
   { host: "192.0.2.2", machineName: "Ascent GX10", gpus: ASCENT_GPUS, estCapacity: 110, baseUtilization: 51, models: ASCENT_MODELS, available: true },
   { host: "192.0.2.3", machineName: "Ascent GX10", gpus: ASCENT_GPUS, estCapacity: 110, baseUtilization: 59, models: ASCENT_MODELS, available: false },
   { host: "192.0.2.11", machineName: "RTX PRO 6000 Workstation", gpus: RTX_GPUS, estCapacity: 95, baseUtilization: 65, models: RTX_MODELS, available: true },
   { host: "192.0.2.12", machineName: "RTX PRO 6000 Workstation", gpus: RTX_GPUS, estCapacity: 95, baseUtilization: 75, models: RTX_MODELS, available: false, togglesOnOff: true },
-  { host: "192.0.2.21", machineName: "H100 Inference Server", gpus: [{ vendor: "nvidia", name: "NVIDIA H100 80GB HBM3", vramMb: 81559 }], estCapacity: 79, baseUtilization: 28, models: [{ publicSpecifier: "llama-3.3-70b", driver: "vllm", estCapacity: 70 }], available: true },
+  { host: "192.0.2.21", machineName: "H100 Inference Server", gpus: H100_GPUS, estCapacity: 79, baseUtilization: 28, models: [{ publicSpecifier: "llama-3.3-70b", driver: "vllm", estCapacity: 70 }], available: true },
 ];
+
+function generateLargeMachines(): DemoMachine[] {
+  const machines: DemoMachine[] = [];
+  let ip = 1;
+
+  // 25 Ascent GX10 edge devices
+  for (let i = 0; i < 25; i++) {
+    const offline = i === 3;
+    machines.push({
+      host: `192.0.2.${ip++}`,
+      machineName: "Ascent GX10",
+      gpus: ASCENT_GPUS,
+      estCapacity: 110,
+      baseUtilization: 35 + (i * 3) % 30,
+      models: [
+        {
+          publicSpecifier: "qwen3-8b",
+          driver: "ollama",
+          estCapacity: 8,
+          lifecycleState: offline ? "failed" : (i === 7 || i === 15) ? "downloading" : "ready",
+        },
+        {
+          publicSpecifier: "nomic-embed",
+          driver: "ollama",
+          estCapacity: 1,
+          lifecycleState: offline ? "failed" : "ready",
+        },
+      ],
+      available: !offline,
+    });
+  }
+
+  // 12 RTX PRO 6000 Workstations
+  for (let i = 0; i < 12; i++) {
+    machines.push({
+      host: `192.0.2.${ip++}`,
+      machineName: "RTX PRO 6000 Workstation",
+      gpus: RTX_GPUS,
+      estCapacity: 95,
+      baseUtilization: 50 + (i * 5) % 25,
+      models: [
+        { publicSpecifier: "mistral-small-3.2-24b", driver: "vllm", estCapacity: 48 },
+        {
+          publicSpecifier: "gemma-3-12b",
+          driver: "vllm",
+          estCapacity: 24,
+          lifecycleState: i === 4 ? "installing" : "ready",
+        },
+      ],
+      available: true,
+      ...(i === 0 ? { togglesOnOff: true as const } : {}),
+    });
+  }
+
+  // 8 H100 inference servers
+  for (let i = 0; i < 8; i++) {
+    machines.push({
+      host: `192.0.2.${ip++}`,
+      machineName: "H100 Inference Server",
+      gpus: H100_GPUS,
+      estCapacity: 79,
+      baseUtilization: 25 + (i * 7) % 30,
+      models: [
+        { publicSpecifier: "llama-3.3-70b", driver: "vllm", estCapacity: 70 },
+        {
+          publicSpecifier: "phi-4-mini",
+          driver: "vllm",
+          estCapacity: 12,
+          lifecycleState: i === 2 ? "failed" : "ready",
+        },
+      ],
+      available: i !== 5,
+    });
+  }
+
+  // 6 A100 cluster nodes
+  for (let i = 0; i < 6; i++) {
+    machines.push({
+      host: `192.0.2.${ip++}`,
+      machineName: "A100 Cluster Node",
+      gpus: [{ vendor: "nvidia", name: "NVIDIA A100 80GB", vramMb: 81920 }],
+      estCapacity: 85,
+      baseUtilization: 40 + (i * 6) % 25,
+      models: [
+        { publicSpecifier: "deepseek-v3", driver: "vllm", estCapacity: 70 },
+        { publicSpecifier: "llama-3.3-70b", driver: "vllm", estCapacity: 70 },
+      ],
+      available: true,
+    });
+  }
+
+  // 4 L40S workstations
+  for (let i = 0; i < 4; i++) {
+    machines.push({
+      host: `192.0.2.${ip++}`,
+      machineName: "L40S Workstation",
+      gpus: [{ vendor: "nvidia", name: "NVIDIA L40S", vramMb: 46068 }],
+      estCapacity: 60,
+      baseUtilization: 30 + (i * 8) % 20,
+      models: [
+        { publicSpecifier: "whisper-large-v3", driver: "vllm", estCapacity: 8 },
+      ],
+      available: true,
+    });
+  }
+
+  return machines;
+}
 
 function loadRootEnv() {
   if (process.env.DB_CONNECTION_URL) return;
@@ -108,25 +222,30 @@ async function main() {
   }
   const db = preconfigureDB(process.env.DB_CONNECTION_URL).getDB();
 
-  const minutes = Number(process.argv[2]) || 30;
+  const arg1 = process.argv[2];
+  const presetName = (arg1 === "small" || arg1 === "large") ? arg1 : undefined;
+  const minutesArg = presetName ? process.argv[3] : process.argv[2];
+  const preset = presetName ?? "small";
+  const minutes = Number(minutesArg) || 30;
+  const machines = preset === "large" ? generateLargeMachines() : SMALL_MACHINES;
   const deadline = Date.now() + minutes * 60 * 1000;
 
   const [org] = await db.select().from(organizationT).orderBy(asc(organizationT.createdAt)).limit(1);
   if (!org) throw new Error("No organization found. Log into the dashboard and complete onboarding first.");
 
   // Remove any leftover rows from a previously interrupted run.
-  const demoHosts = MACHINES.map((m) => m.host);
+  const demoHosts = machines.map((m) => m.host);
   const staleNodes = await db.select({ id: aiNodeT.id }).from(aiNodeT).where(inArray(aiNodeT.host, demoHosts));
   if (staleNodes.length > 0) {
     const ids = staleNodes.map((n) => n.id);
     await db.delete(usageEventT).where(inArray(usageEventT.nodeId, ids));
-    await db.delete(aiNodeT).where(inArray(aiNodeT.id, ids)); // cascades to installations + states
+    await db.delete(aiNodeT).where(inArray(aiNodeT.id, ids));
   }
   await db.delete(modelDeploymentT).where(like(modelDeploymentT.publicSpecifier, `${SIM_DEPLOYMENT_PREFIX}%`));
 
   // Create deployments (one per unique model specifier across all machines).
   const uniqueModels = new Map<string, ModelSpec>();
-  for (const machine of MACHINES) {
+  for (const machine of machines) {
     for (const model of machine.models) {
       if (!uniqueModels.has(model.publicSpecifier)) uniqueModels.set(model.publicSpecifier, model);
     }
@@ -134,7 +253,7 @@ async function main() {
 
   const deploymentIds: string[] = [];
   for (const publicSpecifier of uniqueModels.keys()) {
-    const replicaCount = MACHINES.filter((m) => m.models.some((m2) => m2.publicSpecifier === publicSpecifier)).length;
+    const replicaCount = machines.filter((m) => m.models.some((m2) => m2.publicSpecifier === publicSpecifier)).length;
     const [dep] = await db.insert(modelDeploymentT).values({
       organizationId: org.id,
       name: publicSpecifier,
@@ -151,7 +270,7 @@ async function main() {
   const nodeIds: string[] = [];
   const liveNodes: { id: string; phase: number; models: ModelSpec[]; machineName: string; togglesOnOff: boolean; initiallyOnline: boolean }[] = [];
 
-  for (const [index, machine] of MACHINES.entries()) {
+  for (const [index, machine] of machines.entries()) {
     const [node] = await db.insert(aiNodeT).values({
       host: machine.host,
       port: 4044,
@@ -175,12 +294,15 @@ async function main() {
         port: model.driver === "ollama" ? 11434 : 8000,
         driver: model.driver,
       }).returning();
-      await db.insert(modelInstallationStateT).values({ id: installation!.id, lifecycleState: "ready" });
+      await db.insert(modelInstallationStateT).values({
+        id: installation!.id,
+        lifecycleState: model.lifecycleState ?? "ready",
+      });
     }
   }
 
-  // Backfill one hour of usage events for all machines. Offline nodes have history too —
-  // they processed requests before going down.
+  // Backfill one hour of usage events for all machines. Offline nodes have
+  // history too, they processed requests before going down.
   const now = Date.now();
   for (const node of liveNodes) {
     const events = [];
@@ -210,7 +332,7 @@ async function main() {
   let lastToggle = Date.now();
 
   const offlineLabel = liveNodes.filter((n) => !n.initiallyOnline && !n.togglesOnOff).map((n) => n.machineName).join(", ");
-  console.log(`Created ${liveNodes.length} demo machines with ${BACKFILL_HOURS}h backfill.`);
+  console.log(`[${preset}] Created ${liveNodes.length} demo machines with ${BACKFILL_HOURS}h backfill.`);
   console.log(`  Offline (static): ${offlineLabel || "none"}`);
   console.log(`  Toggling (3 min): ${toggleNode?.machineName ?? "none"}`);
   console.log(`Simulating for ${minutes} minutes (Ctrl-C to stop and clean up)...`);
@@ -219,7 +341,7 @@ async function main() {
     console.log("\nCleaning up demo nodes...");
     if (nodeIds.length > 0) {
       await db.delete(usageEventT).where(inArray(usageEventT.nodeId, nodeIds));
-      await db.delete(aiNodeT).where(inArray(aiNodeT.id, nodeIds)); // cascades to installations + states
+      await db.delete(aiNodeT).where(inArray(aiNodeT.id, nodeIds));
     }
     if (deploymentIds.length > 0) {
       await db.delete(modelDeploymentT).where(inArray(modelDeploymentT.id, deploymentIds));
@@ -234,7 +356,6 @@ async function main() {
   while (Date.now() < deadline) {
     const tick = Date.now();
 
-    // Toggle the toggling node.
     if (toggleNode && tick - lastToggle >= TOGGLE_INTERVAL_MS) {
       toggleOnline = !toggleOnline;
       await db.update(aiNodeT).set({ available: toggleOnline }).where(eq(aiNodeT.id, toggleNode.id));
@@ -242,7 +363,6 @@ async function main() {
       lastToggle = tick;
     }
 
-    // Insert usage events for currently online nodes.
     const activeNodes = [
       ...onlineNodes,
       ...(toggleNode && toggleOnline ? [toggleNode] : []),
