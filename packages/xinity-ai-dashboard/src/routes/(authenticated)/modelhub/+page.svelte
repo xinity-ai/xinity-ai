@@ -202,6 +202,22 @@
     not_in_catalog: { dot: "bg-[#f59e0b]",      chip: "bg-[#f59e0b]/15 text-[#d97706]",      pulse: false, label: "Not in Catalog" },
   } as const;
 
+  const REPLICA_DOT_THRESHOLD = 8;
+  let expandedReplicaCards = $state(new Set<string>());
+
+  const replicaPhaseOrder = ["ready", "downloading", "installing", "scheduling", "failed"] as const;
+  type ReplicaPhase = (typeof replicaPhaseOrder)[number];
+
+  function replicaPhaseCounts(replicas: Array<{ phase: string }>): Array<[ReplicaPhase, number]> {
+    const counts = new Map<string, number>();
+    for (const r of replicas) {
+      counts.set(r.phase, (counts.get(r.phase) || 0) + 1);
+    }
+    return replicaPhaseOrder
+      .filter((p) => counts.has(p))
+      .map((p) => [p, counts.get(p)!]);
+  }
+
   async function confirmDelete() {
     if (!deploymentToDelete) return;
     const deleting = deploymentToDelete;
@@ -266,6 +282,18 @@
           <span class="ml-0.5 cursor-help" title={tooltip}><Info class="w-3 h-3" /></span>
         {/if}
       </span>
+    {/snippet}
+
+    {#snippet replicaDots(replicas: NonNullable<DeploymentDefinition["status"]>["replicas"])}
+      {#if replicas}
+        {#each replicas as replica}
+          {@const rcfg = phaseConfig[replica.phase]}
+          <span
+            class="w-2.5 h-2.5 rounded-full {rcfg.dot} {rcfg.pulse ? 'animate-pulse' : ''}"
+            title="{replica.node ?? 'Unknown node'}: {rcfg.label}{replica.error ? ` (${replica.error})` : ''}"
+          ></span>
+        {/each}
+      {/if}
     {/snippet}
 
     {#if !deploymentsLoaded}
@@ -383,15 +411,46 @@
                   {@const cfg = phaseConfig[deployment.status.phase]}
                   {@render chip(cfg.dot, cfg.chip, cfg.label, cfg.pulse)}
                   {#if deployment.status.replicas && deployment.status.replicas.length > 1}
-                    <div class="flex items-center gap-1 mt-1.5">
-                      {#each deployment.status.replicas as replica}
-                        {@const rcfg = phaseConfig[replica.phase]}
-                        <span
-                          class="w-2.5 h-2.5 rounded-full {rcfg.dot} {rcfg.pulse ? 'animate-pulse' : ''}"
-                          title="{replica.node ?? 'Unknown node'}: {rcfg.label}{replica.error ? ` (${replica.error})` : ''}"
-                        ></span>
-                      {/each}
-                    </div>
+                    {@const replicas = deployment.status.replicas}
+                    {#if replicas.length <= REPLICA_DOT_THRESHOLD}
+                      <div class="flex items-center gap-1 mt-1.5">
+                        {@render replicaDots(replicas)}
+                      </div>
+                    {:else}
+                      {@const counts = replicaPhaseCounts(replicas)}
+                      {@const expanded = expandedReplicaCards.has(deployment.id)}
+                      <div class="mt-1.5">
+                        <div class="flex items-center gap-2">
+                          <div class="flex h-2 rounded-full overflow-hidden w-24 bg-muted">
+                            {#each counts as [phase, count]}
+                              <div
+                                class={phaseConfig[phase].dot}
+                                style="width: {(count / replicas.length) * 100}%; min-width: 3px"
+                              ></div>
+                            {/each}
+                          </div>
+                          <span class="text-xs text-muted-foreground">
+                            {counts.map(([phase, count]) => `${count} ${phaseConfig[phase].label.toLowerCase()}`).join(", ")}
+                          </span>
+                        </div>
+                        <button
+                          class="text-xs text-muted-foreground hover:underline cursor-pointer mt-1"
+                          onclick={() => {
+                            const next = new Set(expandedReplicaCards);
+                            if (expanded) { next.delete(deployment.id); }
+                            else { next.add(deployment.id); }
+                            expandedReplicaCards = next;
+                          }}
+                        >
+                          {expanded ? "Hide replicas" : `Show all ${replicas.length} replicas`}
+                        </button>
+                        {#if expanded}
+                          <div class="flex flex-wrap gap-1 mt-1.5">
+                            {@render replicaDots(replicas)}
+                          </div>
+                        {/if}
+                      </div>
+                    {/if}
                   {/if}
                   {#if deployment.status.progress != null}
                     <div title="{Math.round(deployment.status.progress * 100)}%" class="w-full bg-muted rounded-full h-2 mt-2">
