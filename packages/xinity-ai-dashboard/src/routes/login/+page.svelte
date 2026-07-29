@@ -48,7 +48,7 @@
             Please verify your address to continue.
           </p>
           <p class="text-sm text-muted-foreground">
-            This window will close automatically.
+            You can close this tab and continue in your email.
           </p>
         </div>
       {:else}
@@ -87,7 +87,6 @@
             emailVerificationRequired={data.emailVerificationRequired}
             onVerificationSent={() => {
               signUpSuccess = true;
-              setTimeout(() => window.close(), 3000);
             }}
           />
         </div>
