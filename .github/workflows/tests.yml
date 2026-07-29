@@ -161,7 +161,7 @@ jobs:
         working-directory: packages/xinity-infoserver
         env:
           MODEL_INFO_DIR: .
-          PORT: "8393"
+          PORT: "8090"
 
       - name: Build dashboard
         run: |
@@ -183,7 +183,7 @@ jobs:
           SIGNUP_ENABLED: "true"
           METRICS_AUTH: "user:pass"
           LOG_LEVEL: trace
-          INFOSERVER_URL: http://localhost:8393
+          INFOSERVER_URL: http://localhost:8090
           MULTI_TENANT_MODE: "true"
           INSTANCE_ADMIN_EMAILS: "e2e-owner@xinity-test.local"
 
