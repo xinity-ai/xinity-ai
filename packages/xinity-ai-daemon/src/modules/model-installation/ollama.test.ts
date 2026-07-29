@@ -12,7 +12,7 @@ mock.module("../../env", () => ({ env: {
   SYNC_INTERVAL_MS: 60_000,
   STATE_DIR: "/tmp/test-state",
   VLLM_MAX_RESTART_COUNT: 3,
-  INFOSERVER_URL: "http://localhost:8393",
+  INFOSERVER_URL: "http://localhost:8090",
   INFOSERVER_CACHE_TTL_MS: 0,
 }}));
 

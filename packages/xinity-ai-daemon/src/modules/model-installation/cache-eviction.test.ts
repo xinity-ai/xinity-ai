@@ -1,6 +1,6 @@
 import { describe, test, expect, mock } from "bun:test";
 
-mock.module("../../env", () => ({ env: { VLLM_HF_CACHE_DIR: "/tmp/test", INFOSERVER_URL: "http://localhost:8393", INFOSERVER_CACHE_TTL_MS: 0 } }));
+mock.module("../../env", () => ({ env: { VLLM_HF_CACHE_DIR: "/tmp/test", INFOSERVER_URL: "http://localhost:8090", INFOSERVER_CACHE_TTL_MS: 0 } }));
 mock.module("../../logger", () => ({
   rootLogger: { child: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }) },
 }));

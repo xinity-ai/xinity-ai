@@ -14,7 +14,7 @@ mock.module("../../env", () => ({ env: {
   STATE_DIR: "/tmp/test-state",
   CIDR_PREFIX: "10.0.0",
   SYNC_INTERVAL_MS: 60_000,
-  INFOSERVER_URL: "http://localhost:8393",
+  INFOSERVER_URL: "http://localhost:8090",
   INFOSERVER_CACHE_TTL_MS: 0,
   VLLM_BACKEND: "docker",
   VLLM_ENV_DIR: "/tmp/vllm-env",
