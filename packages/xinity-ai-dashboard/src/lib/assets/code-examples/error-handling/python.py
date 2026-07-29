@@ -1,7 +1,7 @@
 import os
 import time
 from openai import OpenAI
-from openai.error import RateLimitError, APIError
+from openai import RateLimitError, APIError
 
 client = OpenAI(
   api_key=os.getenv("API_KEY"),
@@ -28,7 +28,7 @@ def chat_with_retry(messages, max_retries=3):
                 raise
 
         except APIError as e:
-            status = getattr(e, 'http_status', 0)
+            status = getattr(getattr(e, 'response', None), 'status_code', 0)
             if status in (503, 504) and attempt < max_retries - 1:
                 # 503: backend unreachable (starting up or restarting)
                 # 504: backend took too long to respond
