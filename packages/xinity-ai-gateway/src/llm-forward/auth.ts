@@ -1,6 +1,7 @@
-import { aiApiKeyT, sql, type AiApiKey } from "common-db";
+import { aiApiKeyT, sql, hashApiKey, apiKeyVerifier, SHA256_VERIFIER_PREFIX, type AiApiKey } from "common-db";
 import { getDB } from "../db";
 import { redis } from "bun";
+import { timingSafeEqual } from "node:crypto";
 import { rootLogger } from "../logger";
 import { createSemaphore } from "../semaphore";
 import { errorResponse } from "./util";
@@ -49,10 +50,6 @@ const MAX_CONCURRENT_VERIFICATIONS = 3;
 const VERIFY_QUEUE_TIMEOUT_MS = 2_000;
 const verifyLimiter = createSemaphore(MAX_CONCURRENT_VERIFICATIONS);
 
-function hashApiKey(key: string): string {
-  return new Bun.CryptoHasher("sha256").update(key).digest("hex");
-}
-
 export async function checkAuth(authHeader: string): Promise<Response | AuthResult> {
   if (!authHeader.startsWith(BEARER_PREFIX)) {
     return genericUnauthorized("Missing API Key");
@@ -71,11 +68,6 @@ export async function checkAuth(authHeader: string): Promise<Response | AuthResu
   return promise;
 }
 
-/**
- * Uncached verification costs a DB round trip plus an argon2 hash, so a flood of
- * unknown keys could otherwise occupy the whole connection pool and starve
- * everything else. Shedding with 503 keeps the pool available to cached traffic.
- */
 async function verifyWithinLimit(key: string, keyHash: string): Promise<Response | AuthResult> {
   if (!await verifyLimiter.acquire(VERIFY_QUEUE_TIMEOUT_MS)) {
     log.warn({ waiting: verifyLimiter.waiting() }, "Auth verification capacity exhausted");
@@ -106,17 +98,30 @@ async function verifyKeyAgainstDb(key: string, keyHash: string): Promise<Respons
     return rejectAndCache(keyHash, "API Key has been deleted");
   }
 
-  try {
-    const valid = await Bun.password.verify(key, apiKeyObj.hash)
-    if (!valid) {
-      return rejectAndCache(keyHash, "Unauthorized");
-    }
-  } catch (error) {
-    log.error({ err: error }, "Auth verification failed");
+  if (!await keyMatches(key, apiKeyObj)) {
     return rejectAndCache(keyHash, "Unauthorized");
   }
   setApiKeyCache(keyHash, pickAttrs(apiKeyObj));
   return toAuthResult(apiKeyObj);
+}
+
+async function keyMatches(key: string, apiKeyObj: AiApiKey): Promise<boolean> {
+  if (apiKeyObj.hash.startsWith(SHA256_VERIFIER_PREFIX)) {
+    return verifiersEqual(apiKeyVerifier(key), apiKeyObj.hash);
+  }
+  try {
+    return await Bun.password.verify(key, apiKeyObj.hash);
+  } catch (error) {
+    log.error({ err: error }, "Auth verification failed");
+    return false;
+  }
+}
+
+function verifiersEqual(presented: string, stored: string): boolean {
+  if (presented.length !== stored.length) {
+    return false;
+  }
+  return timingSafeEqual(Buffer.from(presented), Buffer.from(stored));
 }
 
 /** Caching the rejection keeps a flood of bad keys off the DB and out of argon2. */

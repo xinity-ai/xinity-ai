@@ -2,17 +2,14 @@ import { rootOs, withOrganization, requirePermission, auditMiddleware } from "..
 import { z } from "zod";
 import { ApiKeyDto } from "$lib/orpc/dtos/api-key.dto";
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
-import { randomBytes } from "node:crypto";
-import { sql, aiApiKeyT, aiApplicationT } from "common-db";
+import { sql, aiApiKeyT, aiApplicationT, apiKeyVerifier } from "common-db";
+import { generateApiKey } from "$lib/server/api-key";
 import { pick } from "$lib/util";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
 
 const log = rootLogger.child({ name: "api-key.procedure" });
 
-function generateRandomKey(length = 64) {
-  return randomBytes(length).toString("base64url"); // URL-safe base64 string
-}
 
 const matchActiveApiKeyInOrg = (keyId: string, orgId: string) =>
   sql`${aiApiKeyT.id} = ${keyId}
@@ -72,11 +69,7 @@ export const createApiKey = rootOs
       applicationId = newApp.id;
     }
 
-    const specifier = "sk_" + generateRandomKey(16);
-    const secretKey = generateRandomKey();
-
-    const fullKey = `${specifier}${secretKey}`;
-    const hash = await Bun.password.hash(fullKey);
+    const { specifier, fullKey } = generateApiKey();
     await getDB()
       .insert(aiApiKeyT)
       .values({
@@ -86,7 +79,7 @@ export const createApiKey = rootOs
         organizationId: context.activeOrganizationId,
         createdByUserId: context.session.user.id,
         specifier,
-        hash: hash,
+        hash: apiKeyVerifier(fullKey),
       });
     return {
       fullKey,

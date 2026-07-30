@@ -33,6 +33,7 @@ const { checkAuth } = await import("./auth");
 const FIXED_PREFIX = "test_prefix______________"; // exactly 25 chars
 const FULL_KEY = `${FIXED_PREFIX}SECRETSUFFIX`;
 const FULL_KEY_HASH = new Bun.CryptoHasher("sha256").update(FULL_KEY).digest("hex");
+const FULL_KEY_VERIFIER = `$sha256$${FULL_KEY_HASH}`;
 
 const fakeApiKey = {
   id: "key-123",
@@ -229,6 +230,59 @@ describe("checkAuth", () => {
       const cached = JSON.parse(cacheValue);
       expect(cached.id).toBe("key-123");
       expect(cached.organizationId).toBe("org-456");
+    } finally {
+      Bun.password.verify = originalVerify;
+    }
+  });
+
+  test("verifies a sha256 verifier by digest, without argon2", async () => {
+    mockQueryResult.push({ ...fakeApiKey, hash: FULL_KEY_VERIFIER });
+
+    const originalVerify = Bun.password.verify;
+    const verifySpy = jest.fn(() => Promise.resolve(true));
+    Bun.password.verify = verifySpy as any;
+
+    try {
+      const result = await checkAuth(makeBearerHeader());
+
+      expect(result).not.toBeInstanceOf(Response);
+      expect((result as AuthResult).keyId).toBe("key-123");
+      expect(verifySpy).not.toHaveBeenCalled();
+    } finally {
+      Bun.password.verify = originalVerify;
+    }
+  });
+
+  test("rejects a wrong secret against a sha256 verifier, without argon2", async () => {
+    mockQueryResult.push({ ...fakeApiKey, hash: FULL_KEY_VERIFIER });
+
+    const originalVerify = Bun.password.verify;
+    const verifySpy = jest.fn(() => Promise.resolve(true));
+    Bun.password.verify = verifySpy as any;
+
+    try {
+      const result = await checkAuth(`Bearer ${FIXED_PREFIX}WRONGSUFFIX`);
+
+      await expectUnauthorized(result);
+      expect(verifySpy).not.toHaveBeenCalled();
+    } finally {
+      Bun.password.verify = originalVerify;
+    }
+  });
+
+  test("still verifies a legacy argon2 verifier via argon2", async () => {
+    mockQueryResult.push({ ...fakeApiKey });
+
+    const originalVerify = Bun.password.verify;
+    const verifySpy = jest.fn(() => Promise.resolve(true));
+    Bun.password.verify = verifySpy as any;
+
+    try {
+      const result = await checkAuth(makeBearerHeader());
+
+      expect(result).not.toBeInstanceOf(Response);
+      expect((result as AuthResult).keyId).toBe("key-123");
+      expect(verifySpy).toHaveBeenCalledWith(FULL_KEY, fakeApiKey.hash);
     } finally {
       Bun.password.verify = originalVerify;
     }

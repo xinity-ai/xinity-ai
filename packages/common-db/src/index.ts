@@ -7,6 +7,7 @@ export * from "./schema/orgSchema";
 export * from "./schema/notification";
 export * from "./schema/deployment-config";
 export * from "./schema/audit"
+export * from "./api-key-hash";
 export * from "./model-calc";
 export * from "./deployment-settings";
 
