@@ -20,7 +20,7 @@ import { runUpdateFlow } from "./update.ts";
 
 const COMPONENTS = [
   // Core application components
-  "gateway", "dashboard", "daemon", "infoserver",
+  "gateway", "dashboard", "daemon", "infoserver", "tether",
   // Shared infrastructure (Postgres migrations + Redis discovery)
   "db",
   // Infrastructure utilities

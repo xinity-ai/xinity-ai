@@ -32,6 +32,7 @@ export const DERIVED_ENV_KEYS: Partial<Record<Component, readonly string[]>> = {
 /** Listen ports assumed when PORT is not configured, taken from the env schemas. */
 export const GATEWAY_DEFAULT_PORT = String(gatewayEnvSchema.shape.PORT.parse(undefined));
 export const INFOSERVER_DEFAULT_PORT = String(infoserverEnvSchema.shape.PORT.parse(undefined));
+export const TETHER_DEFAULT_PORT = String(tetherEnvSchema.shape.PORT.parse(undefined));
 
 export const ENV_DIR = "/etc/xinity-ai";
 export const SECRETS_DIR = "/etc/xinity-ai/secrets";

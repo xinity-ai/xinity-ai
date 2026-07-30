@@ -9,7 +9,7 @@
  */
 import { cancel, confirm, isCancel, log, note } from "./clack.ts";
 import { bold, cyan, dim, yellow } from "picocolors";
-import { type Component, ENV_SCHEMAS, INFOSERVER_DEFAULT_PORT } from "./component-meta.ts";
+import { type Component, ENV_SCHEMAS, INFOSERVER_DEFAULT_PORT, TETHER_DEFAULT_PORT } from "./component-meta.ts";
 import { type Host, isUnitActiveOn } from "./host.ts";
 import { heading, warn, fail, pass } from "./output.ts";
 import { unitName } from "./systemd.ts";
@@ -33,7 +33,7 @@ import { connectHosts, connectElevated, disposeAll, mapBounded, HOST_CONCURRENCY
 import { collectSteps } from "./step-runner.ts";
 import { createMultiProgress, createDoneGuard } from "./multi-progress.ts";
 
-export const COMPONENT_ORDER: Component[] = ["infoserver", "gateway", "dashboard", "daemon"];
+export const COMPONENT_ORDER: Component[] = ["infoserver", "gateway", "dashboard", "tether", "daemon"];
 
 type Deployment = {
   host: StackHost;
@@ -103,6 +103,35 @@ function deriveInfoserverUrl(stack: StackDefinition): void {
   }
   stack.derivedEnv = { ...stack.derivedEnv, INFOSERVER_URL: raw };
   log.info(`INFOSERVER_URL derived from the stack's infoserver host: ${cyan(raw)}`);
+}
+
+/** An in-stack tether's URL is derived from its host. An explicit stack env/secrets value wins. */
+function deriveTetherUrl(stack: StackDefinition): void {
+  if (stack.env.TETHER_URL || stack.secrets.TETHER_URL) {
+    return;
+  }
+  const tetherHosts = stack.hosts.filter((h) => h.components.includes("tether"));
+  if (tetherHosts.length === 0) {
+    return;
+  }
+  if (tetherHosts.length > 1) {
+    log.info(dim("Multiple tether hosts found; set TETHER_URL explicitly (e.g. to a load balancer)"));
+    return;
+  }
+  const host = tetherHosts[0]!;
+  const hostname = host.address === "local"
+    ? "localhost"
+    : (host.address.split("@").pop() ?? host.address);
+  const port = stack.componentEnv.tether?.PORT ?? TETHER_DEFAULT_PORT;
+  const raw = `http://${hostname}:${port}`;
+  try {
+    new URL(raw);
+  } catch {
+    warn("TETHER_URL", `could not derive a valid URL from host address "${host.address}"`);
+    return;
+  }
+  stack.derivedEnv = { ...stack.derivedEnv, TETHER_URL: raw };
+  log.info(`TETHER_URL derived from the stack's tether host: ${cyan(raw)}`);
 }
 
 /**
@@ -260,6 +289,7 @@ async function planStack(
   }
 
   deriveInfoserverUrl(stack);
+  deriveTetherUrl(stack);
   if (!(await ensureStackLevelConfig(stack, deployments))) {
     return { status: "cancelled" };
   }

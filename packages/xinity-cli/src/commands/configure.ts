@@ -6,7 +6,7 @@ import type { CliConfig } from "../lib/config.ts";
 import { connectHost, TARGET_HOST_OPTION } from "../lib/remote-host.ts";
 
 const CLI_CONFIG_KEYS = ["apiKey", "dashboardUrl", "githubProjectUrl", "githubToken"] as const;
-const COMPONENTS = ["cli", "gateway", "dashboard", "daemon", "infoserver"] as const;
+const COMPONENTS = ["cli", "gateway", "dashboard", "daemon", "infoserver", "tether"] as const;
 
 export const configureCommand: CommandModule = {
   command: "configure [key] [value]",
