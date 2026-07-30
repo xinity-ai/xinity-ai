@@ -189,6 +189,7 @@ export function setupResponseTestMocks() {
   const getResponse = jest.fn(async (_orgId: string, id: string) => responseStore.get(id) ?? null);
   const deleteResponse = jest.fn(async (_orgId: string, id: string) => {
     responseStore.delete(id);
+    return true;
   });
   mock.module("../response-store", () => ({ saveResponse, getResponse, deleteResponse }));
 
