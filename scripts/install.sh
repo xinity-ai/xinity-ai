@@ -4,9 +4,6 @@
 # Usage:
 #   curl -fsSL https://github.com/xinity-ai/xinity-ai/releases/latest/download/install.sh | bash
 #   curl -fsSL ... | bash -s -- --version v1.0.0 --prefix /usr/local/bin
-#
-# For private repos, set GITHUB_TOKEN or authenticate with `gh auth login`.
-# Private repo downloads require `jq` to be installed.
 
 set -euo pipefail
 
@@ -83,33 +80,6 @@ require_tool() {
 }
 
 require_tool curl  "apt install curl  |  dnf install curl  |  pacman -S curl"
-# Release assets are zip on Linux today; check upfront so we fail before downloading.
-require_tool unzip "apt install unzip  |  dnf install unzip  |  pacman -S unzip"
-
-# ── Auth (for private repos) ────────────────────────────────────────────────
-
-AUTH_HEADER=""
-if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-  AUTH_HEADER="Authorization: Bearer ${GITHUB_TOKEN}"
-elif command -v gh &>/dev/null; then
-  TOKEN="$(gh auth token 2>/dev/null || true)"
-  if [[ -n "$TOKEN" ]]; then
-    AUTH_HEADER="Authorization: Bearer ${TOKEN}"
-  fi
-fi
-
-IS_PRIVATE=false
-if [[ -n "$AUTH_HEADER" ]]; then
-  IS_PRIVATE=true
-fi
-
-curl_auth() {
-  if [[ -n "$AUTH_HEADER" ]]; then
-    curl -fsSL -H "$AUTH_HEADER" "$@"
-  else
-    curl -fsSL "$@"
-  fi
-}
 
 # ── Version resolution ───────────────────────────────────────────────────────
 
@@ -120,8 +90,8 @@ else
   RELEASE_URL="https://api.github.com/repos/${REPO}/releases/tags/${VERSION}"
 fi
 
-RELEASE_JSON="$(curl_auth -H "Accept: application/vnd.github+json" "$RELEASE_URL" 2>/dev/null)" \
-  || fail "Could not fetch release. Is the repo private? Set GITHUB_TOKEN or run 'gh auth login'."
+RELEASE_JSON="$(curl -fsSL -H "Accept: application/vnd.github+json" "$RELEASE_URL" 2>/dev/null)" \
+  || fail "Could not fetch release ${VERSION} from ${REPO}."
 
 TAG="$(printf '%s' "$RELEASE_JSON" | grep '"tag_name"' | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/')"
 [[ -n "$TAG" ]] || fail "Could not parse release tag"
@@ -134,28 +104,10 @@ fi
 
 info "Installing xinity CLI ${TAG} (${SUFFIX})"
 
-# ── Asset download helper ────────────────────────────────────────────────────
-#
-# Public repos:  direct browser download URL (no extra tools needed)
-# Private repos: API URL with Accept: application/octet-stream (requires jq)
-
 download_asset() {
   local name="$1" dest="$2"
-
-  if [[ "$IS_PRIVATE" = true ]]; then
-    command -v jq &>/dev/null \
-      || fail "'jq' is required for private repo downloads. Install it: apt install jq"
-
-    local api_url
-    api_url="$(printf '%s' "$RELEASE_JSON" | jq -r --arg name "$name" '.assets[] | select(.name == $name) | .url')"
-    [[ -n "$api_url" && "$api_url" != "null" ]] \
-      || return 1
-
-    curl_auth -H "Accept: application/octet-stream" -o "$dest" "$api_url"
-  else
-    local url="https://github.com/${REPO}/releases/download/${TAG}/${name}"
-    curl_auth -o "$dest" "$url"
-  fi
+  local url="https://github.com/${REPO}/releases/download/${TAG}/${name}"
+  curl -fsSL -o "$dest" "$url"
 }
 
 # ── Download ─────────────────────────────────────────────────────────────────
