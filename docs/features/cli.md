@@ -8,7 +8,7 @@ For the full command reference with flags and examples, see the [CLI package REA
 
 ### Install and manage services (`xinity up` / `xinity rm`)
 
-Deploy individual components (or a whole machine with `up all`) as systemd units. Every `up` run is plan-based: configuration and versions are collected first without touching the host, the assembled actions are shown with a config diff, and nothing changes until a single confirmation, which can alternatively produce an equivalent bash script. Infrastructure utilities (`infra-ollama`, `infra-redis`, `infra-postgres`, `infra-seaweedfs`, `infra-prometheus`) detect, install, and configure dependencies.
+Deploy individual components (`gateway`, `dashboard`, `daemon`, `infoserver`, `db`) or a whole machine with `up all`, as systemd units. Every `up` run is plan-based: configuration and versions are collected first without touching the host, the assembled actions are shown with a config diff, and nothing changes until a single confirmation, which can alternatively produce an equivalent bash script. Infrastructure utilities (`infra-ollama`, `infra-redis`, `infra-postgres`, `infra-seaweedfs`, `infra-prometheus`, `infra-searxng`) detect, install, and configure dependencies.
 
 `xinity rm` removes installed components, with an optional `--purge` flag to also delete state data.
 

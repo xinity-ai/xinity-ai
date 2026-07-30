@@ -34,8 +34,8 @@ The installation flow: download weights from HuggingFace (resumable, with file f
 
 | Backend | How it works |
 |---|---|
-| `systemd` (default) | Manages `vllm-driver@{id}.service` template units. |
-| `docker` | Runs in containers with `--gpus all` on an egress-blocked network. Selected automatically when `VLLM_DOCKER_IMAGE` is set. |
+| `systemd` (default) | Manages `vllm-driver@{id}.service` template units. Uses `VLLM_PATH` if set, otherwise falls back to `/usr/bin/vllm`. |
+| `docker` | Runs in containers with `--gpus all` on an egress-blocked network. Requires setting `VLLM_BACKEND=docker` explicitly plus `VLLM_DOCKER_IMAGE`; it is not selected automatically just by setting `VLLM_DOCKER_IMAGE`. |
 
 The Docker backend blocks all outbound internet from the inference process (IP masquerade disabled, `HF_HUB_OFFLINE=1`). Models are pre-downloaded by the daemon outside the container.
 
@@ -54,6 +54,8 @@ These metrics power the [Compute dashboard](dashboard.md#compute-dashboard) and 
 ## Node State
 
 The daemon registers itself in the database with capacity, GPU details, supported drivers and versions, hostname, and port. The `CIDR_PREFIX` setting controls which network interface is advertised in multi-homed setups. On shutdown, the daemon marks itself as offline.
+
+**Warning:** the dashboard's deployment sync service treats an offline node as unavailable and, within one sync cycle (on its 5-minute timer, or immediately if triggered by another deployment change), soft-deletes any `modelInstallation` row on it for which another available node exists that could take over (matching driver, capacity, version, platform, and features). Installations with no such reassignment target are left in place. Stopping a daemon for routine maintenance can therefore orphan installations whenever capacity exists elsewhere to reassign them; patch or restart the daemon in place rather than stopping it, unless you intend for its reassignable installations to move.
 
 ## Run-Model Script
 

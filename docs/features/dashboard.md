@@ -48,7 +48,7 @@ Data is organized by **applications.** Each application groups API calls made wi
 
 ### Filtering and search
 
-Within an application: full-text search, API key filter, reaction filter (liked/disliked/unrated/my reactions), metadata key/value filter, and sorting by time or duration. Infinite scroll pagination.
+Within an application: full-text search, API key filter, reaction filter (all/has reactions/no reactions/liked/disliked/my reactions/my likes/my dislikes), metadata key/value filter, and sorting by time or duration. Infinite scroll pagination.
 
 ### Labeling
 
@@ -71,8 +71,8 @@ Two types of API keys:
 
 | Key type | Scope | Managed at |
 |---|---|---|
-| **AI API keys** | Gateway inference API, MCP server | AI API Keys page |
-| **Dashboard API keys** | Dashboard REST API | Settings > Authentication |
+| **AI API keys** | Gateway inference API | AI API Keys page |
+| **Dashboard API keys** | Dashboard REST API, MCP server | Settings > Authentication |
 
 AI API keys can be scoped to specific applications. The AI API Keys page includes code examples (Python, curl, Node.js).
 

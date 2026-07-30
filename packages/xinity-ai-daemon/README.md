@@ -31,7 +31,7 @@ Models are pulled from the Ollama registry with progress tracking. Up to 2 concu
 
 Models go through: download from HuggingFace (resumable, with file filtering), start as a systemd unit or Docker container, health check polling (default timeout: 1 hour), and warmup request. GPU memory utilization is computed automatically with a 10% overhead factor, capped at 90%.
 
-Failed processes are restarted up to `VLLM_MAX_RESTART_COUNT` times. 14 fatal log patterns (GPU OOM, CUDA errors, unsupported architecture, etc.) trigger immediate failure.
+Failed processes are restarted up to `VLLM_MAX_RESTART_COUNT` times. A number of fatal log patterns (e.g. GPU OOM, CUDA errors) trigger immediate failure without retries.
 
 **Docker backend:** Containers run on a custom network with IP masquerade disabled (`xinity-vllm-noegress-v1`), plus `HF_HUB_OFFLINE=1`. This blocks all outbound internet access from the inference process. Ports are published only on `127.0.0.1`.
 
@@ -63,7 +63,7 @@ Or use `xinity up infra-ollama`.
 
 ### vLLM
 
-Set either `VLLM_PATH` (path to binary, systemd backend) or `VLLM_DOCKER_IMAGE` (Docker backend) in the daemon's environment.
+Set `VLLM_BACKEND` to choose the backend explicitly (`systemd`, the default, or `docker`); it is not inferred from which of `VLLM_PATH`/`VLLM_DOCKER_IMAGE` is set. Then set `VLLM_PATH` (path to binary, for the systemd backend) or `VLLM_DOCKER_IMAGE` (for the Docker backend) in the daemon's environment.
 
 ## Configuration
 
@@ -77,8 +77,11 @@ Set either `VLLM_PATH` (path to binary, systemd backend) or `VLLM_DOCKER_IMAGE` 
 | `XINITY_OLLAMA_ENDPOINT` | (unset) | Ollama API endpoint (enables Ollama driver) |
 | `VLLM_BACKEND` | `systemd` | `systemd` or `docker` |
 | `VLLM_PATH` | (unset) | Path to vLLM binary |
-| `VLLM_DOCKER_IMAGE` | (unset) | vLLM Docker image (enables Docker backend) |
+| `VLLM_DOCKER_IMAGE` | (unset) | vLLM Docker image, used when `VLLM_BACKEND=docker` |
+| `VLLM_ENV_DIR` | `/etc/vllm` | vLLM environment config directory |
+| `VLLM_TEMPLATE_UNIT_PATH` | `/etc/systemd/system/vllm-driver@.service` | vLLM systemd template unit path |
 | `VLLM_HF_CACHE_DIR` | `/var/lib/vllm/hf-cache` | HuggingFace model cache directory |
+| `VLLM_TRITON_CACHE_DIR` | `/var/lib/vllm/triton-cache` | Triton cache directory |
 | `VLLM_HF_TOKEN` | (unset) | HuggingFace token for gated models |
 | `VLLM_HEALTH_TIMEOUT_MS` | `3600000` (1 hour) | Health check timeout |
 | `VLLM_HEALTH_POLL_INTERVAL_MS` | `5000` (5 seconds) | Health check poll interval |
@@ -90,6 +93,9 @@ Set either `VLLM_PATH` (path to binary, systemd backend) or `VLLM_DOCKER_IMAGE` 
 | `STATE_DIR` | `./.local` | Local state directory |
 | `METRICS_AUTH` | (unset) | Basic auth for `/metrics` (`user:pass`) |
 | `INFOSERVER_CACHE_TTL_MS` | `30000` | Infoserver response cache TTL in ms |
+| `IDLE_TIMEOUT` | `255` | Server-level idle connection timeout in seconds |
+| `LOG_LEVEL` | `debug` | Log level (`fatal`/`error`/`warn`/`info`/`debug`/`trace`) |
+| `LOG_DIR` | (unset) | Log file directory (enables file logging) |
 
 ### TLS
 
@@ -98,15 +104,15 @@ Set either `VLLM_PATH` (path to binary, systemd backend) or `VLLM_DOCKER_IMAGE` 
 | `XINITY_TLS_CERT` | PEM-encoded TLS certificate |
 | `XINITY_TLS_KEY` | PEM-encoded TLS private key (must be set together with cert) |
 
-All secret variables support the `_FILE` suffix convention (e.g., `DB_CONNECTION_URL_FILE`) for reading values from files.
+Every environment variable above supports the `_FILE` suffix convention (e.g., `DB_CONNECTION_URL_FILE`) for reading values from files; secrets are just the variables where this matters most.
 
 ## NixOS Deployment
 
 ```nix
 {
-  services.xinity-ai-node = {
+  services.xinity-ai-daemon = {
     enable = true;
-    envFile = "/root/.env";
+    environmentFiles = [ "/root/.env" ];
   };
 }
 ```

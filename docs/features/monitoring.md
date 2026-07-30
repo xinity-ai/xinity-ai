@@ -1,12 +1,12 @@
 # Monitoring
 
-All Xinity services expose Prometheus metrics. Pre-built Grafana dashboards are included for visualization. Service discovery lets Prometheus find daemon nodes automatically.
+The gateway, dashboard, and daemon expose Prometheus metrics (the infoserver does not). Pre-built Grafana dashboards are included for visualization. Service discovery lets Prometheus find daemon nodes automatically.
 
 For deployment-specific monitoring setup, see the [Docker deployment guide](../../deployment/docker/README.md) or the [NixOS deployment guide](../../deployment/nixos/README.md). For the auto-generated Prometheus config in the dashboard, see [Instance Administration](instance-administration.md#monitoring-setup).
 
 ## Prometheus Metrics
 
-Each service exposes a `GET /metrics` endpoint in Prometheus text format. All endpoints support optional HTTP Basic Auth via the `METRICS_AUTH` environment variable (format: `user:pass`, comma-separated for multiple credentials). When unset, the endpoint is open.
+Each of the gateway, dashboard, and daemon exposes a `GET /metrics` endpoint in Prometheus text format, protected by HTTP Basic Auth via the `METRICS_AUTH` environment variable (format: `user:pass`, comma-separated for multiple credentials). On the gateway and daemon this is optional; when unset, the endpoint is open. On the dashboard, `METRICS_AUTH` is required.
 
 ### Gateway metrics
 
@@ -37,7 +37,7 @@ The dashboard uses `prom-client` and collects default Node.js/Bun runtime metric
 
 ### Daemon metrics
 
-All daemon metrics carry `node_id` and `machine_name` labels. GPU metrics additionally carry `gpu` (index) and `uuid`.
+All daemon metrics carry a `node_id` label, plus `machine_name` when the node has a display name set. GPU metrics additionally carry `gpu` (index) and `uuid`.
 
 | Metric | Type | Description |
 |---|---|---|
@@ -61,13 +61,13 @@ The dashboard exposes `GET /metrics/sd/daemons` as an [HTTP service discovery](h
 
 - `__scheme__`: `https` or `http` based on the node's TLS configuration.
 - `node_id`: the node's UUID.
-- `machine_name`: the node's display name (if set).
+- `machine_name`: the node's display name, only present when one is set.
 
 This endpoint is protected by the same `METRICS_AUTH` Basic auth as `/metrics`. Prometheus should be configured to poll it every 3 minutes.
 
 ## Grafana Dashboards
 
-Four pre-built dashboards are included in `deployment/monitoring/dashboards/`:
+Four pre-built dashboards are included. Three live in `deployment/monitoring/dashboards/` and are always provisioned; the fourth, Xinity Logs, lives in a separate `deployment/monitoring/dashboards-loki/` directory and requires Loki. Docker Compose's `monitoring` profile does not run Loki/Promtail, so it only provisions the first three. The NixOS `xinity-ai-monitoring` module provisions all four when `logs.enable = true`.
 
 ### Xinity Overview
 
@@ -81,9 +81,9 @@ Traffic panels: request rate and latency by endpoint, requests by status, error 
 
 GPU utilization, memory usage, temperature, power draw vs. limit (all as time series). GPU throttling as a state timeline.
 
-### Xinity Logs (requires Loki)
+### Xinity Logs (requires Loki, NixOS only)
 
-Systemd journal logs for gateway, dashboard, infoserver, and daemon. Requires Loki and Promtail to be configured.
+Systemd journal logs for gateway, dashboard, infoserver, and daemon. Requires Loki and Promtail, provisioned only by the NixOS monitoring module (`logs.enable = true`); not available via the Docker Compose `monitoring` profile.
 
 All dashboards are tagged `xinity-ai` and cross-linked via a shared navigation dropdown.
 

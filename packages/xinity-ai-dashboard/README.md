@@ -102,7 +102,7 @@ The dashboard tests require a running application and its dependencies. Before r
    bun run preview
    ```
 
-The tests expect the dashboard at `http://localhost:5173`. On first run, the test setup automatically creates test users and organizations via the API. See [tests/TEST_PLAN.md](tests/TEST_PLAN.md) for the full test plan.
+The tests expect the dashboard at `http://localhost:5173`. On first run, the test setup automatically creates test users and organizations via the API.
 
 ## License
 
@@ -111,4 +111,4 @@ This package is licensed under the **Elastic License 2.0 (ELv2)**, which differs
 ## Notes
 
 - Mailhog UI runs at `http://localhost:8025` when the dev Docker stack is up.
-- `INFOSERVER_URL` points at `http://localhost:8393` for a locally-run infoserver (default in `example.env`).
+- `INFOSERVER_URL` points at `http://localhost:8090` for a locally-run infoserver (default in `example.env`).

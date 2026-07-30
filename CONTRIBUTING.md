@@ -60,7 +60,7 @@ After adding, removing, or renaming a package under `packages/`, run:
 bun run sync:dockerfiles
 ```
 
-CI enforces this: the `dockerfile-sync` job in `tests.yml` runs `bun run sync:dockerfiles:check` and will fail if the Dockerfiles are out of date.
+CI enforces this: the `dockerfile-sync` job in `tests.yml` runs `bun scripts/sync-dockerfile-manifests.ts --check` (the same check as `bun run sync:dockerfiles:check`) and will fail if the Dockerfiles are out of date.
 
 ## Style and workflow
 

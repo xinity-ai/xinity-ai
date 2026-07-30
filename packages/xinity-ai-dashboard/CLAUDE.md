@@ -9,7 +9,6 @@ bun run dev              # Dev server (pipes through pino-pretty for logs)
 bun run build            # Production build
 bun run preview          # Preview production build
 bun run check            # Type-check (svelte-kit sync + svelte-check)
-bun run check:watch      # Type-check in watch mode
 ```
 
 Add shadcn-svelte components:
@@ -43,7 +42,7 @@ The client-side oRPC instance is in `src/lib/orpc/orpc-client.ts`.
 
 Authentication uses **Better Auth** with plugins: two-factor, passkey, organization, SSO, API key, bearer.
 
-RBAC is defined in `src/lib/roles.ts` (client-safe) and enforced server-side via oRPC middleware. Five roles: **owner, admin, member, labeler, viewer**. Resources: apiKey, apiCall, apiCallResponse, modelDeployment, model, aiApplication, plus default org resources (organization, member, invitation).
+RBAC is defined in `src/lib/roles.ts` (client-safe) and enforced server-side via oRPC middleware. Six roles: **owner, admin, member, labeler, viewer, pending**. Resources: apiKey, apiCall, apiCallResponse, modelDeployment, model, aiApplication, auditLog, plus default org resources (organization, member, invitation).
 
 Client-side permission checks use `src/lib/state/permissions.svelte.ts`.
 
@@ -62,7 +61,7 @@ Client-side permission checks use `src/lib/state/permissions.svelte.ts`.
 
 ### State
 
-Uses Svelte 5 runes (`$state`, `$derived`, `$props`). Reactive stores as classes in `src/lib/state/`.
+Uses Svelte 5 runes (`$state`, `$derived`, `$props`). Reactive stores in `src/lib/state/` are mostly module-level `$state` plus closures/plain objects; `toast.svelte.ts` is the one exception using a class.
 
 ### Server-only Code
 
@@ -71,7 +70,7 @@ All server-only modules are in `src/lib/server/`:
 - `email.ts`, nodemailer + MJML (Svelte component templates in `src/lib/components/mailTemplates/`)
 - `logging.ts`, Pino logger (browser logs POST to `/log`)
 - `metrics.ts`, Prometheus via prom-client (exposed at `/metrics`)
-- `serverenv.ts`, Zod-validated environment variables
+- `serverenv.ts`, parses `env-schema.ts`'s Zod schema into the typed `serverEnv`
 
 ### Path Aliases
 
@@ -85,7 +84,7 @@ Configured in `svelte.config.js`:
 - oRPC procedures: define input with Zod, chain middleware (`withAuth`/`withOrganization`/`requirePermission`), implement handler
 - UI permission gating: check permissions client-side via `permissions.svelte.ts` before showing controls
 - `updateOptimistically()` in `src/lib/util.ts` for optimistic UI updates with server rollback
-- Environment config validated with Zod in `src/lib/server/serverenv.ts`, add new env vars there
+- Environment config validated with Zod in `src/lib/server/env-schema.ts`, add new env vars there
 - Clipboard: use `copyToClipboard()` from `$lib/copy.ts` (handles errors + toast feedback)
 - Select inside Modal: pass `portalProps={{ disabled: true }}` to `Select.Content` so the dropdown renders inside the `<dialog>` top layer instead of behind it
 

@@ -22,7 +22,7 @@ The infoserver exposes endpoints for model listing (paginated, filterable by typ
 
 ### Node compatibility checking
 
-Before scheduling a model, the system verifies: driver availability, driver version, GPU vendor compatibility, and sufficient VRAM capacity. Version checks are fail-open (missing versions never block scheduling).
+Before scheduling a model, the system verifies: driver availability, driver version, GPU vendor compatibility, and sufficient VRAM capacity. In the shared library default (used by dashboard-driven provisioning), version checks are fail-open, missing versions never block scheduling. The daemon's `run-model --start` script opts into strict mode instead, hard-failing when the driver version is unknown.
 
 ### Tag resolution
 

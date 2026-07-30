@@ -458,16 +458,24 @@
           };
         };
 
-        environmentFile = lib.mkOption {
-          type = lib.types.nullOr lib.types.str;
-          default = null;
+        environmentFiles = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
           description = ''
-            Shared environment file for secrets (DB_CONNECTION_URL, REDIS_URL, BETTER_AUTH_SECRET, etc.).
-            Applied to all service containers.
+            systemd EnvironmentFile paths loaded at service start for sensitive values
+            (DB_CONNECTION_URL, REDIS_URL, BETTER_AUTH_SECRET, etc.).
+            Applied to all services (gateway, dashboard, infoserver).
 
             This is the RECOMMENDED and SECURE way to provide credentials.
             Secrets in environment files are not exposed in the Nix store.
           '';
+        };
+
+        environmentFile = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          visible = false;
+          description = "Deprecated: use environmentFiles instead.";
         };
 
         migrateOnStart = lib.mkOption {
@@ -485,9 +493,13 @@
           publicDashboardUrl = "https://${cfg.dashboardSubdomain}.${cfg.domain}";
           publicGatewayUrl = "https://${cfg.gatewaySubdomain}.${cfg.domain}";
 
-          envFiles = lib.optional (cfg.environmentFile != null) cfg.environmentFile;
+          envFiles = cfg.environmentFiles
+            ++ lib.optional (cfg.environmentFile != null) cfg.environmentFile;
         in
         lib.mkIf cfg.enable {
+
+          warnings = lib.optional (cfg.environmentFile != null)
+            "services.xinity-ai.environmentFile is deprecated. Use services.xinity-ai.environmentFiles instead.";
 
           # --- Delegate to database module ---
           services.xinity-ai-database = {

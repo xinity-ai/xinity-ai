@@ -9,6 +9,7 @@ Optional services live behind their own profiles:
 
 - `--profile searxng` adds web search.
 - `--profile infoserver` adds a self-hosted model registry (the dashboard otherwise uses the public one at `https://sysinfo.xinity.ai`).
+- `--profile monitoring` adds Prometheus + Grafana.
 
 Daemons (the GPU inference workers) are not in this stack. Install them per inference node with the Xinity CLI: see [deployment/cli/README.md](../cli/README.md).
 
@@ -31,12 +32,11 @@ cp example.env .env
 What you must set in `.env` (the setup script handles most of these):
 
 - `POSTGRES_PASSWORD`, `REDIS_PASSWORD`: `openssl rand -hex 32`
-- `BETTER_AUTH_SECRET`: `openssl rand -base64 32`
 - `INSTANCE_ADMIN_EMAILS`: at least one email. Required for a usable instance in the default single-tenant mode.
 - For HTTPS: `DOMAIN`, `ACME_EMAIL`, `ORIGIN`, `HTTP_OVERRIDE_ORIGIN`, `GATEWAY_URL`.
 - For SearXNG: `SEARXNG_SECRET` (`openssl rand -hex 32`).
 
-See `example.env` for everything else: multi-tenancy toggle, mail, S3 object storage, metrics auth, gateway tuning.
+`BETTER_AUTH_SECRET` and `METRICS_AUTH` are not `.env` variables — `setup.sh` generates them directly into `secrets/` as Docker secrets. See `example.env` for everything else: multi-tenancy toggle, mail, S3 object storage, gateway tuning.
 
 ### 2. Run database migrations
 
@@ -88,8 +88,8 @@ It prompts for name, email (must be in `INSTANCE_ADMIN_EMAILS` assuming `MULTI_T
 Then smoke-check:
 
 ```bash
-xinity doctor       # health report across the stack
-xinity act --list   # every dashboard API route the CLI can call
+xinity doctor              # health report across the stack
+xinity act --list-routes   # every dashboard API route the CLI can call
 ```
 
 **Alternative (browser flow):** if you'd rather click through the dashboard for the first user and key, sign in at the dashboard URL with an address from `INSTANCE_ADMIN_EMAILS`, mint a key under **Settings -> API Keys** (shown only once, so copy it before closing the dialog), and wire the CLI:
@@ -107,17 +107,11 @@ xinity configure apiKey <paste-key-here>
 
 For single-server deployments, plain `.env` (mode 600) is fine. Container env shows up in `docker inspect`, which is acceptable when the operator owns the host.
 
-For production where you want secrets off-disk-in-env, every Xinity service supports a `_FILE` convention. For any env var `VAR`, set `VAR_FILE` to a file path; the service reads the file at startup. Direct env vars take precedence over the `_FILE` variant.
+`setup.sh` already generates `secrets/db_connection_url`, `secrets/better_auth_secret`, and `secrets/metrics_auth`, and `docker-compose.yml` wires them into the gateway and dashboard as `DB_CONNECTION_URL_FILE`, `BETTER_AUTH_SECRET_FILE`, and `METRICS_AUTH_FILE` — no manual step needed for those.
 
-```bash
-mkdir -p secrets
-openssl rand -hex 32   > secrets/postgres_password
-openssl rand -hex 32   > secrets/redis_password
-openssl rand -base64 32 > secrets/better_auth_secret
-chmod 600 secrets/*
-```
+For any other *Xinity* service env var `VAR`, set `VAR_FILE` to a file path and the service reads the file at startup (direct env vars take precedence over the `_FILE` variant); wire it in via a `docker-compose.override.yml` using Compose's `secrets:` block.
 
-Then wire them in via a `docker-compose.override.yml` using Compose's `secrets:` block, or set the `*_FILE` env vars directly.
+This convention does not apply to `POSTGRES_PASSWORD`/`REDIS_PASSWORD` — Postgres and Redis are vanilla upstream images that this stack passes plain env vars to, not `_FILE` paths. Keep those in `.env` (mode 600), or add your own Compose override that maps them to Postgres/Redis's own secret-file support if you need them off-disk-in-env.
 
 ### Volumes
 

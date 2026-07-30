@@ -17,7 +17,7 @@ Gateway --HTTP(S)--> Daemon (:4044) /proxy/{model}/v1/... --plain HTTP--> Backen
 
 1. **App-level auth**: Each daemon generates a per-instance token on startup, stored in the database. The gateway reads the token and sends it with every request. No manual configuration needed.
 2. **TLS** (opt-in): Encrypts traffic between gateway and daemons. Configure with cert/key env vars.
-3. **Overlay networks** (recommended): For production deployments, use an overlay network like WireGuard, Tailscale, or Nebula to isolate service-to-service traffic at the network level.
+3. **Overlay networks** (recommended): For production deployments, use an overlay network like WireGuard, Tailscale, or Headscale to isolate service-to-service traffic at the network level.
 
 ## Quickstart with self-signed certs
 
@@ -139,9 +139,9 @@ Requirements:
 
 For production deployments where services span multiple hosts, consider using an overlay network:
 
-- **WireGuard**: Lightweight kernel-level VPN. Encrypt all traffic between nodes at the network layer.
+- **Headscale**: Self-hosted, open-source implementation of the Tailscale control server. Recommended for clients who prefer to host their own infrastructure rather than depend on Tailscale's cloud service.
 - **Tailscale**: WireGuard-based mesh VPN with automatic key management.
-- **Headscale**: Fully open Tailscale alternative.
+- **WireGuard**: Lightweight kernel-level VPN. Encrypt all traffic between nodes at the network layer.
 
 An overlay network provides network-level isolation and encryption independently of application-level TLS. The two approaches complement each other and can be used together.
 

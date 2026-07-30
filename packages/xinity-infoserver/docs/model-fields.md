@@ -30,7 +30,7 @@ These fields control what the model can do at runtime. Getting them wrong causes
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `type` | `"chat"` \| `"embedding"` \| `"rerank"` | `"chat"` | Determines which API endpoints accept the model. A rerank request to a chat model is rejected as incompatible |
+| `type` | `"chat"` \| `"embedding"` \| `"rerank"` \| `"transcription"` | `"chat"` | Determines which API endpoints accept the model. A rerank request to a chat model is rejected as incompatible |
 | `tags` | string[] | `[]` | Enables specific capabilities: `"tools"` (tool/function calling), `"vision"` (image inputs). Requests using a capability the model lacks are rejected. `"tools"` also requires a `providerArgs.vllm: ["--tool-call-parser", "<name>"]` (the daemon adds `--enable-auto-tool-choice` from the tag, but vLLM needs the model-specific parser too). Research and **validate** each capability against a running server before declaring it - see "Validate declared capabilities" in [integrating-a-model.md](./integrating-a-model.md). `"custom_code"` marks models that ship custom loading code requiring vLLM's `--trust-remote-code` flag; triggers an explicit approval step in the dashboard. Only add if the model fails to load without it |
 
 ## Optional fields
@@ -40,6 +40,8 @@ These fields control what the model can do at runtime. Getting them wrong causes
 | `family` | string | `"unknown"` | Model family for grouping in the UI (e.g. `"llama"`, `"phi3"`, `"mistral"`) |
 | `isCustom` | boolean | `false` | Marks fine-tuned/custom models |
 | `entryVersion` | string | - | Version of xinity-ai this model was introduced in |
+| `maxContextLength` | number | `131072` | Maximum supported context window, in tokens. Used by the gateway to enforce per-model context limits (e.g. in the Responses API) and reported via `GET /v1/models` |
+| `downloadFilter` | string[] | - | Gitignore-style glob patterns appended to the daemon's default HuggingFace download filter. Patterns starting with `!` re-include; the last matching rule wins. Arrays are deeply flattened to support YAML anchors. Example: `["*.gguf", "!consolidated.safetensors"]` |
 
 ## Per-driver overrides
 
@@ -72,14 +74,6 @@ These prefixes are never forwarded regardless of `requestParams` configuration:
 
 When `providerMinVersions` is unset for a driver, any version is accepted. When `providerPlatforms` is unset, any platform is accepted.
 
-## Custom model fields
-
-For fine-tuned models, set `isCustom: true` and provide the `custom` object:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `custom.baseModel` | string | Public specifier of the base model this was fine-tuned from |
-| `custom.extraFacts` | Record\<string, any\> | Arbitrary metadata about the custom model |
 
 ## File-level fields
 

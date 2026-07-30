@@ -4,7 +4,7 @@ The dashboard exposes a [Model Context Protocol](https://modelcontextprotocol.io
 
 ## How tools are generated
 
-`src/lib/server/mcp.ts` exports a `buildToolList()` function that recursively walks the oRPC router at module load time. Every procedure in the router becomes an MCP tool unless explicitly excluded. The tool list is built once and reused for all requests.
+`src/lib/server/mcp.ts` has an internal `buildToolList()` function that recursively walks the oRPC router at module load time; the result is exported as `mcpTools`. Every procedure in the router becomes an MCP tool unless excluded. The tool list is built once and reused for all requests.
 
 Each tool gets:
 - **name**: the procedure's path segments joined with underscores (e.g. `apiKey_create`)
@@ -15,24 +15,30 @@ Because the tool list is derived automatically, adding a new oRPC procedure make
 
 ## Excluding a procedure from MCP
 
-Chain `.meta({ mcp: false })` on the procedure definition:
+There are two ways a procedure is excluded:
+
+1. **Explicitly**, by chaining `.meta({ mcp: false })` on the procedure definition:
 
 ```typescript
-export const myProcedure = withOrganization
+export const myProcedure = rootOs
   .meta({ mcp: false })
   .route({ method: "POST", path: "/my-thing", summary: "Do something" })
+  .use(withOrganization)
   .input(z.object({ ... }))
   .handler(async ({ input, context }) => {
     // ...
   });
 ```
 
-The `ProcedureMeta` type is defined in `src/lib/server/orpc/root.ts`:
+2. **Implicitly**, if the procedure's route is tagged `.internal` — `isProcedureExcludedFromMcp()` in `mcp.ts` drops any `.internal`-tagged procedure unless `NODE_ENV === "development"`.
+
+The `ProcedureMeta` type (defined in `src/lib/server/orpc/root.ts`) carries the `mcp` flag alongside other unrelated procedure metadata (e.g. `audit`):
 
 ```typescript
 export type ProcedureMeta = {
   /** Set to `false` to exclude this procedure from the MCP server endpoint. Defaults to included. */
   mcp?: boolean;
+  // ...other fields unrelated to MCP
 };
 ```
 
@@ -52,7 +58,7 @@ The endpoint at `src/routes/mcp/+server.ts` accepts API keys via two headers (ch
 1. `Authorization: Bearer sk_...`
 2. `x-api-key: sk_...`
 
-When a tool is called, `callMcpTool()` creates a synthetic `Request` with the API key in the `x-api-key` header and passes it through the full oRPC middleware chain (`withAuth` -> `withOrganization` -> `requirePermission`). This means MCP tool calls go through the same authentication and RBAC enforcement as regular API requests.
+When a tool is called, `callMcpTool()` creates a synthetic `Request` with the API key in the `x-api-key` header and passes it through the same oRPC middleware chain org-scoped procedures use (`withOrganization` -> `requirePermission`). This means MCP tool calls go through the same authentication and RBAC enforcement as regular API requests.
 
 The `withOrganization` middleware resolves the organization from the API key's metadata, since MCP sessions don't have an active organization set in the browser session.
 

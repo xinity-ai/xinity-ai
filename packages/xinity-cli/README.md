@@ -30,7 +30,8 @@ curl -fsSL https://github.com/xinity-ai/xinity-ai/releases/latest/download/insta
 
 ### Prerequisites
 
-- `unzip` (used to extract the release archive)
+- `tar` (used to extract the release archive)
+- `unzip` (checked by the installer, though the current archive format only needs `tar`)
 
 ### Private repositories
 
@@ -175,7 +176,7 @@ Component configuration uses the same plan → review → apply flow: the menu e
 
 **CLI config keys:** `apiKey`, `dashboardUrl`, `githubProjectUrl`, `githubToken`
 
-**Component names:** `gateway`, `dashboard`, `daemon`, `infoserver`
+**Component names:** `gateway`, `dashboard`, `daemon`, `infoserver`, `cli` (equivalent to running `xinity configure` with no arguments)
 
 | Flag | Description |
 |---|---|
@@ -185,7 +186,7 @@ Configuration is stored in `$XDG_CONFIG_HOME/xinity/config.json` (mode 0600, dir
 
 ### `xinity stack <action>`
 
-Declarative multi-host deployments. A stack is a local definition (`~/.config/xinity/stacks/<name>.json`, mode 600) holding shared configuration, stack-wide settings per component type, hosts (address + components), daemon fleets, and the pinned release version. `stack up` compares every host against the definition and applies only what differs. A separate state file (`$XDG_CONFIG_HOME/xinity/stacks/state/<name>.json`) records which hosts the stack actually manages, so a host deleted from the definition is still torn down on the next `up`.
+Declarative multi-host deployments. A stack is a local definition (`stacks/<name>.json`, mode 600, under the CLI's config directory, `$XDG_CONFIG_HOME/xinity` or `~/.config/xinity` by default) holding shared configuration, stack-wide settings per component type, hosts (address + components), daemon fleets, and the pinned release version. `stack up` compares every host against the definition and applies only what differs. A separate state file (`stacks/state/<name>.json`, same config directory) records which hosts the stack actually manages, so a host deleted from the definition is still torn down on the next `up`.
 
 ```bash
 xinity stack init prod       # shared + per-component settings, pinned version
@@ -281,4 +282,4 @@ bun run dev
 |---|---|---|
 | `XINITY_DASHBOARD_URL` | Dashboard API endpoint | `http://localhost:5173` |
 | `XINITY_API_KEY` | API key for dashboard auth | - |
-| `DB_CONNECTION_URL` | PostgreSQL connection URL (for doctor) | - |
+| `DB_CONNECTION_URL` | PostgreSQL connection URL (used by `xinity up db` for connection discovery) | - |
