@@ -64,11 +64,16 @@ const migrationGuard: Handle = ({ event, resolve }) => {
  */
 const fillLocals: Handle = ({ event, resolve }) => {
   event.locals.request = event.request;
+  let clientAddress = "";
   try {
-    event.locals.clientAddress = event.getClientAddress();
+    clientAddress = event.getClientAddress();
   } catch {
-    event.locals.clientAddress = "";
+    // getClientAddress throws when the address is unavailable
   }
+  event.locals.clientAddress = clientAddress;
+  // Stamp the adapter-resolved address so Better Auth middleware can read it
+  // without re-parsing x-forwarded-for independently.
+  event.request.headers.set("x-client-address", clientAddress);
   const incoming = event.request.headers.get("x-trace-id");
   const sanitized = incoming?.replace(/[^A-Za-z0-9_.:-]/g, "").slice(0, 300);
   const traceId = sanitized || `trc_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;

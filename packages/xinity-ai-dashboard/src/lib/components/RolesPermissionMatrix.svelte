@@ -17,6 +17,7 @@
     "aiApplication": "Applications",
     "organization": "Organization Settings",
     "member": "Members & Invitations",
+    "auditLog": "Audit Log",
   }
 
   const resources: ResourcePermissions[] = Object.entries(permissionObjects).map(([object, label]) => ({

@@ -215,7 +215,7 @@ const recordAuthAudit = createAuthMiddleware(async (ctx) => {
     resource: "account",
     actorId,
     actorLabel,
-    ipAddress: headers?.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+    ipAddress: headers?.get("x-client-address") || null,
     userAgent: headers?.get("user-agent") ?? null,
     resourceId,
     result: isSuccess ? "success" : "failure",
