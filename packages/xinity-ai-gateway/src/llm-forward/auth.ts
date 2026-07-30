@@ -2,6 +2,8 @@ import { aiApiKeyT, sql, type AiApiKey } from "common-db";
 import { getDB } from "../db";
 import { redis } from "bun";
 import { rootLogger } from "../logger";
+import { createSemaphore } from "../semaphore";
+import { errorResponse } from "./util";
 
 const log = rootLogger.child({ name: "auth" });
 
@@ -42,6 +44,11 @@ const inflightAuth = new Map<string, Promise<Response | AuthResult>>();
 const BEARER_PREFIX = "Bearer ";
 const API_KEY_SPECIFIER_LENGTH = 25;
 
+/** Leaves most of the (default 10) Postgres connections for everything else. */
+const MAX_CONCURRENT_VERIFICATIONS = 3;
+const VERIFY_QUEUE_TIMEOUT_MS = 2_000;
+const verifyLimiter = createSemaphore(MAX_CONCURRENT_VERIFICATIONS);
+
 function hashApiKey(key: string): string {
   return new Bun.CryptoHasher("sha256").update(key).digest("hex");
 }
@@ -59,9 +66,26 @@ export async function checkAuth(authHeader: string): Promise<Response | AuthResu
 
   const inflight = inflightAuth.get(key);
   if (inflight) return inflight;
-  const promise = verifyKeyAgainstDb(key, keyHash).finally(() => inflightAuth.delete(key));
+  const promise = verifyWithinLimit(key, keyHash).finally(() => inflightAuth.delete(key));
   inflightAuth.set(key, promise);
   return promise;
+}
+
+/**
+ * Uncached verification costs a DB round trip plus an argon2 hash, so a flood of
+ * unknown keys could otherwise occupy the whole connection pool and starve
+ * everything else. Shedding with 503 keeps the pool available to cached traffic.
+ */
+async function verifyWithinLimit(key: string, keyHash: string): Promise<Response | AuthResult> {
+  if (!await verifyLimiter.acquire(VERIFY_QUEUE_TIMEOUT_MS)) {
+    log.warn({ waiting: verifyLimiter.waiting() }, "Auth verification capacity exhausted");
+    return errorResponse("Server busy, please retry", 503, { "Retry-After": "1" });
+  }
+  try {
+    return await verifyKeyAgainstDb(key, keyHash);
+  } finally {
+    verifyLimiter.release();
+  }
 }
 
 async function verifyKeyAgainstDb(key: string, keyHash: string): Promise<Response | AuthResult> {
