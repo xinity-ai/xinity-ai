@@ -615,7 +615,7 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
   const discoveredInfoserverUrls = new Map<string, string[]>();
   const remoteInfoserverChecks: CheckResult[] = [];
 
-  for (const comp of ["gateway", "dashboard", "daemon", "infoserver"] as const) {
+  for (const comp of ["gateway", "dashboard", "daemon", "infoserver", "tether"] as const) {
     const entry = manifest.components[comp];
     if (!entry) {
       if (comp === "infoserver" && remoteInfoserverChecks.length > 0) {

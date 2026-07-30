@@ -160,7 +160,7 @@ export async function* removeComponent(opts: {
 }
 
 export async function removeAll(purge = false, host: Host): Promise<void> {
-  const components: Component[] = ["gateway", "dashboard", "daemon", "infoserver"];
+  const components: Component[] = ["gateway", "dashboard", "daemon", "infoserver", "tether"];
   for (const component of components) {
     heading(component);
     const result = await runSteps(removeComponent({ component, purge, host }));

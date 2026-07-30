@@ -58,7 +58,7 @@ export async function preflightCheck(
   };
 
   // systemd is required for any service component
-  const serviceComponents: string[] = ["gateway", "dashboard", "daemon", "infoserver"];
+  const serviceComponents: string[] = ["gateway", "dashboard", "daemon", "infoserver", "tether"];
   if (components.some((c) => serviceComponents.includes(c) || c === "all")) {
     await check("systemctl", "systemd is required to manage services");
   }
