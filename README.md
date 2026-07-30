@@ -163,6 +163,7 @@ Detailed guides for each part of the platform:
 | [Daemon](docs/features/daemon.md) | GPU auto-detection, model installation (Ollama/vLLM), cache eviction, GPU metrics, run-model script |
 | [Monitoring](docs/features/monitoring.md) | Prometheus metrics (all services), Grafana dashboards, service discovery |
 | [Model Registry](docs/features/model-registry.md) | Infoserver API, model definition schema, registry composition, tag resolution |
+| [Reverse proxy](docs/security/reverse-proxy.md) | nginx and Caddy templates, streaming and upload requirements, rate limiting, protecting `/metrics` |
 
 ## Quick start (local development)
 
