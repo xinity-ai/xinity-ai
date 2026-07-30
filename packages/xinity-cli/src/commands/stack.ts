@@ -29,7 +29,7 @@ import { fetchRelease, listReleases, type ReleaseListEntry } from "../lib/github
 import { loadStackState, findOrphanHosts } from "../lib/stack-state.ts";
 import { connectHosts, disposeAll, mapBounded, HOST_CONCURRENCY } from "../lib/multi-host.ts";
 
-const AVAILABLE_COMPONENTS: Component[] = ["gateway", "dashboard", "daemon", "infoserver"];
+const AVAILABLE_COMPONENTS: Component[] = ["gateway", "dashboard", "daemon", "infoserver", "tether"];
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
