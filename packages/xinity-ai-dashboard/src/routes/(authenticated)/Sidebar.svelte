@@ -10,7 +10,7 @@
   import ModelIcon from "$lib/components/icons/ModelIcon.svelte";
   import OrganizationIcon from "$lib/components/icons/OrganizationIcon.svelte";
   import GearIcon from "$lib/components/icons/GearIcon.svelte";
-  import { Shield, BookOpen } from "@lucide/svelte";
+  import { Shield, BookOpen, ScrollText } from "@lucide/svelte";
   import { goto } from "$app/navigation";
   import { permissions } from "$lib/state/permissions.svelte";
 
@@ -55,6 +55,7 @@
       heading: "User",
       items: [
         { key: "organizations",    href: "/organizations/",    label: "Organizations",    icon: OrganizationIcon },
+        { key: "audit",            href: "/audit/",             label: "Audit Log",        icon: ScrollText, show: permissions.canViewAuditLog && !!license?.features.auditLog },
         { key: "instanceSettings", href: "/instance-settings/", label: "Instance Settings", icon: Shield, show: isInstanceAdmin },
         { key: "settings",         href: "/settings/",          label: "Settings",           icon: GearIcon },
       ],
