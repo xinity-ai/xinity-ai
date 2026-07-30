@@ -1,4 +1,4 @@
-import { Output, tool, jsonSchema, stepCountIs, type ModelMessage, type ToolSet } from "ai";
+import { Output, tool, jsonSchema, type ToolChoice, type ModelMessage, type ToolSet } from "ai";
 import type { OpenAICompatibleProvider } from "@ai-sdk/openai-compatible";
 import { responseTools, type ResponseToolName, RESPONSE_TOOL_NAMES } from "../tools/response-tools";
 import type {
@@ -180,6 +180,7 @@ export function buildFunctionToolSet(functionTools: FunctionToolDefinition[]): T
     toolSet[ft.name] = tool({
       description: ft.description ?? "",
       inputSchema: ft.parameters ? jsonSchema(ft.parameters) : jsonSchema({ type: "object" }),
+      ...(ft.strict != null ? { strict: ft.strict } : {}),
     });
     // No execute function → "manual" tool in AI SDK: model can call it but
     // the SDK returns the call without executing, stopping the tool loop.
@@ -523,6 +524,16 @@ export function buildStepOutputItems(
 // AI-SDK generation parameters
 // ---------------------------------------------------------------------------
 
+function mapToolChoice(choice: CreateResponseBody["tool_choice"]): ToolChoice<ToolSet> | undefined {
+  if (choice === "auto" || choice === "none" || choice === "required") {
+    return choice;
+  }
+  if (typeof choice === "object" && choice !== null && "name" in choice && typeof choice.name === "string") {
+    return { type: "tool", toolName: choice.name };
+  }
+  return undefined;
+}
+
 /** Assembles the common parameters shared by `generateText` and `streamText`. */
 export function buildGenerationParams(
   body: CreateResponseBody,
@@ -545,7 +556,8 @@ export function buildGenerationParams(
     seed: body.seed,
     abortSignal: signal,
     tools: hasTools ? activeTools : undefined,
-    stopWhen: hasTools ? stepCountIs(20_000) : undefined,
+    toolChoice: hasTools ? mapToolChoice(body.tool_choice) : undefined,
+    stopWhen: hasTools ? (() => false) : undefined,
     output: outputConfig.output,
   };
 }

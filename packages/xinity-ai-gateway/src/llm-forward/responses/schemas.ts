@@ -39,7 +39,7 @@ const ReasoningSchema = z.object({
 
 const ToolChoiceSchema = z.union([
   z.enum(["auto", "none", "required"]),
-  z.looseObject({ type: z.string() }),
+  z.looseObject({ type: z.string(), name: z.string() }),
 ]);
 
 export const CreateResponseBodySchema = z.object({
