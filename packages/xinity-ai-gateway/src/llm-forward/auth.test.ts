@@ -7,11 +7,16 @@ import { MOCK_GATEWAY_ENV } from "./mock-env";
 mock.module("../env", () => ({ env: { ...MOCK_GATEWAY_ENV } }));
 
 const mockQueryResult: any[] = [];
+/** When set, DB lookups block until resolved, so verifications can be held open. */
+let dbGate: Promise<void> | null = null;
 const mockGetDB = jest.fn(() => ({
   select: () => ({
     from: () => ({
       where: () => ({
-        limit: () => Promise.resolve(mockQueryResult),
+        limit: async () => {
+          await dbGate;
+          return mockQueryResult;
+        },
       }),
     }),
   }),
@@ -71,6 +76,7 @@ describe("checkAuth", () => {
   beforeEach(() => {
     mockGetDB.mockClear();
     mockQueryResult.length = 0;
+    dbGate = null;
 
     // Default: cache miss, set succeeds
     mockRedisGet = spyOn(redis, "get").mockResolvedValue(null);
@@ -227,6 +233,40 @@ describe("checkAuth", () => {
       Bun.password.verify = originalVerify;
     }
   });
+
+  test("caps concurrent uncached verifications so the DB pool cannot be flooded", async () => {
+    let openGate = () => { };
+    dbGate = new Promise<void>(resolve => { openGate = resolve; });
+
+    const attempts = Array.from({ length: 6 }, (_, i) =>
+      checkAuth(`Bearer ${FIXED_PREFIX}DISTINCT${i}`));
+    await Bun.sleep(5);
+
+    expect(mockGetDB).toHaveBeenCalledTimes(3);
+
+    openGate();
+    await Promise.all(attempts);
+    expect(mockGetDB).toHaveBeenCalledTimes(6);
+  });
+
+  test("sheds with 503 when queued verifications exceed the wait budget", async () => {
+    let openGate = () => { };
+    dbGate = new Promise<void>(resolve => { openGate = resolve; });
+
+    const held = Array.from({ length: 3 }, (_, i) =>
+      checkAuth(`Bearer ${FIXED_PREFIX}HELD${i}`));
+    await Bun.sleep(5);
+
+    const shed = await checkAuth(makeBearerHeader());
+    expect(shed).toBeInstanceOf(Response);
+    expect((shed as Response).status).toBe(503);
+    expect((shed as Response).headers.get("Retry-After")).toBe("1");
+    // A transient shed must not be remembered as an auth failure
+    expect(mockRedisSet).not.toHaveBeenCalled();
+
+    openGate();
+    await Promise.all(held);
+  }, 10_000);
 
   test("returns AuthResult with null applicationId when not set", async () => {
     mockQueryResult.push({ ...fakeApiKey, applicationId: null });
