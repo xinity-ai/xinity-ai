@@ -86,6 +86,12 @@ export const withAuth = rootOs.middleware(async ({ context, next, errors }) => {
   });
 });
 
+/** The cookie-cached session predates any organization activated during this request. */
+async function readActiveOrganizationFromDb(headers: Headers): Promise<string | null> {
+  const fresh = await auth.api.getSession({ headers, query: { disableCookieCache: true } });
+  return fresh?.session.activeOrganizationId ?? null;
+}
+
 /**
  * Require an authenticated session with an active organization id.
  * For API key auth, falls back to the organizationId stored in the key's metadata.
@@ -95,7 +101,9 @@ export const withOrganization = rootOs.middleware(async ({ context, next, errors
   const { actor, apiKeyInfo } = await resolveActor(context.request, session);
 
   const activeOrganizationId =
-    session.session.activeOrganizationId ?? apiKeyInfo?.organizationId ?? null;
+    session.session.activeOrganizationId
+    ?? apiKeyInfo?.organizationId
+    ?? await readActiveOrganizationFromDb(context.request.headers);
 
   if (!activeOrganizationId) {
     throw errors.UNAUTHORIZED({ message: "No organization is set to active" });
