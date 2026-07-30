@@ -42,53 +42,67 @@ const inflightAuth = new Map<string, Promise<Response | AuthResult>>();
 const BEARER_PREFIX = "Bearer ";
 const API_KEY_SPECIFIER_LENGTH = 25;
 
+function hashApiKey(key: string): string {
+  return new Bun.CryptoHasher("sha256").update(key).digest("hex");
+}
+
 export async function checkAuth(authHeader: string): Promise<Response | AuthResult> {
   if (!authHeader.startsWith(BEARER_PREFIX)) {
     return genericUnauthorized("Missing API Key");
   }
   const key = authHeader.substring(BEARER_PREFIX.length);
-  const prefix = key.substring(0, API_KEY_SPECIFIER_LENGTH);
-  const secret = await getApiKeyCache(prefix);
-  if (secret) return toAuthResult(secret);
+  const keyHash = hashApiKey(key);
+  const cached = await getApiKeyCache(keyHash);
+  if (cached) {
+    return "fail" in cached ? genericUnauthorized(cached.fail) : toAuthResult(cached);
+  }
 
   const inflight = inflightAuth.get(key);
   if (inflight) return inflight;
-  const promise = verifyKeyAgainstDb(key, prefix).finally(() => inflightAuth.delete(key));
+  const promise = verifyKeyAgainstDb(key, keyHash).finally(() => inflightAuth.delete(key));
   inflightAuth.set(key, promise);
   return promise;
 }
 
-async function verifyKeyAgainstDb(key: string, prefix: string): Promise<Response | AuthResult> {
+async function verifyKeyAgainstDb(key: string, keyHash: string): Promise<Response | AuthResult> {
+  const prefix = key.substring(0, API_KEY_SPECIFIER_LENGTH);
   const [apiKeyObj] = await getDB()
     .select()
     .from(aiApiKeyT)
     .where(sql`${aiApiKeyT.specifier} = ${prefix}`).limit(1);
   if (!apiKeyObj) {
-    return genericUnauthorized("API Key not found");
+    return rejectAndCache(keyHash, "API Key not found");
   }
 
   if (!apiKeyObj.enabled) {
-    return genericUnauthorized("API Key is disabled");
+    return rejectAndCache(keyHash, "API Key is disabled");
   }
 
   if (apiKeyObj.deletedAt) {
-    return genericUnauthorized("API Key has been deleted");
+    return rejectAndCache(keyHash, "API Key has been deleted");
   }
 
   try {
     const valid = await Bun.password.verify(key, apiKeyObj.hash)
     if (!valid) {
-      return genericUnauthorized();
+      return rejectAndCache(keyHash, "Unauthorized");
     }
   } catch (error) {
     log.error({ err: error }, "Auth verification failed");
-    return genericUnauthorized()
+    return rejectAndCache(keyHash, "Unauthorized");
   }
-  setApiKeyCache(prefix, apiKeyObj);
+  setApiKeyCache(keyHash, pickAttrs(apiKeyObj));
   return toAuthResult(apiKeyObj);
 }
 
+/** Caching the rejection keeps a flood of bad keys off the DB and out of argon2. */
+function rejectAndCache(keyHash: string, detail: string): Response {
+  setApiKeyCache(keyHash, { fail: detail }, AUTH_FAILURE_CACHE_TTL_SECONDS);
+  return genericUnauthorized(detail);
+}
+
 type PartialApiKey = Pick<AiApiKey, "organizationId" | "id" | "applicationId" | "collectData">;
+type CachedAuth = PartialApiKey | { fail: string };
 
 /** Curried pick: returns a fn that copies the given keys from an object. */
 function pick<K extends PropertyKey>(keys: readonly K[]) {
@@ -101,23 +115,26 @@ function pick<K extends PropertyKey>(keys: readonly K[]) {
 
 const pickAttrs = pick(["organizationId", "id", "applicationId", "collectData"] satisfies (keyof AiApiKey)[]);
 const API_KEY_CACHE_TTL_SECONDS = 120;
+/** Short enough that re-enabling a key takes effect promptly. */
+const AUTH_FAILURE_CACHE_TTL_SECONDS = 10;
 
 const apiKeyCacheKey = (identifier: string) => `apikey:${identifier}`;
 
 function setApiKeyCache(
   identifier: string,
-  data: AiApiKey,
+  data: CachedAuth,
   ttlSeconds: number = API_KEY_CACHE_TTL_SECONDS,
 ): void {
-  void redis.set(apiKeyCacheKey(identifier), JSON.stringify(pickAttrs(data)), "EX", ttlSeconds)
+  void redis.set(apiKeyCacheKey(identifier), JSON.stringify(data), "EX", ttlSeconds)
     .catch((err: unknown) => log.warn({ err }, "Redis error in setApiKeyCache"));
 }
 
-async function getApiKeyCache(identifier: string): Promise<PartialApiKey | null> {
+async function getApiKeyCache(identifier: string): Promise<CachedAuth | null> {
   try {
     const result = await redis.get(apiKeyCacheKey(identifier));
     if (!result) return null;
     const parsed = JSON.parse(result);
+    if (typeof parsed.fail === "string") return parsed as { fail: string };
     // Handle old cache entries missing collectData (safe default during rolling deploy)
     return { collectData: true, ...parsed };
   } catch (err) {

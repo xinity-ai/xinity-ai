@@ -26,6 +26,8 @@ const { checkAuth } = await import("./auth");
 // --- Test data ---
 
 const FIXED_PREFIX = "test_prefix______________"; // exactly 25 chars
+const FULL_KEY = `${FIXED_PREFIX}SECRETSUFFIX`;
+const FULL_KEY_HASH = new Bun.CryptoHasher("sha256").update(FULL_KEY).digest("hex");
 
 const fakeApiKey = {
   id: "key-123",
@@ -136,6 +138,26 @@ describe("checkAuth", () => {
     expect(mockGetDB).toHaveBeenCalled();
   });
 
+  test("returns 401 from cached failure without hitting DB", async () => {
+    mockRedisGet.mockResolvedValue(JSON.stringify({ fail: "API Key not found" }));
+
+    const result = await checkAuth(makeBearerHeader());
+
+    await expectUnauthorized(result, "API Key not found");
+    expect(mockGetDB).not.toHaveBeenCalled();
+  });
+
+  test("caches the failure when API key prefix not found in DB", async () => {
+    mockQueryResult.length = 0;
+
+    await checkAuth(makeBearerHeader());
+
+    const [cacheKey, cacheValue, , ttl] = mockRedisSet.mock.calls[0] as [string, string, string, number];
+    expect(cacheKey).toBe(`apikey:${FULL_KEY_HASH}`);
+    expect(JSON.parse(cacheValue)).toEqual({ fail: "API Key not found" });
+    expect(ttl).toBeLessThan(120);
+  });
+
   test("returns 401 when API key is disabled", async () => {
     mockQueryResult.push({ ...fakeApiKey, enabled: false });
 
@@ -197,7 +219,7 @@ describe("checkAuth", () => {
       // Verify it was cached in Redis
       expect(mockRedisSet).toHaveBeenCalled();
       const [cacheKey, cacheValue] = mockRedisSet.mock.calls[0];
-      expect(cacheKey).toBe(`apikey:${FIXED_PREFIX}`);
+      expect(cacheKey).toBe(`apikey:${FULL_KEY_HASH}`);
       const cached = JSON.parse(cacheValue);
       expect(cached.id).toBe("key-123");
       expect(cached.organizationId).toBe("org-456");

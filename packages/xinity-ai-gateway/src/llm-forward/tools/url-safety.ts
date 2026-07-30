@@ -61,7 +61,7 @@ function isBlockedIpv6(ip: string): string | null {
 
   // IPv6 can embed IPv4 as ::ffff:a.b.c.d, which bypasses IPv4 blocklists unless checked
   const v4Mapped = lower.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
-  if (v4Mapped) return isBlockedIpv4(v4Mapped[1]);
+  if (v4Mapped?.[1]) return isBlockedIpv4(v4Mapped[1]);
 
   return null;
 }
