@@ -32,7 +32,7 @@
 
 Cloud AI assumes your data can leave the building. For many enterprises, it can't, not without violating GDPR, banking secrecy, journalistic source protection, attorney-client privilege, or trade secret law. These organizations aren't cloud-skeptical. They're **sovereignty-blocked**.
 
-Xinity gives them a complete AI platform: model orchestration, an OpenAI-compatible API, a management dashboard, fine-tuning pipelines, and multi-node scaling, that runs entirely on their own hardware. No data leaves. Not to a region. Not to a cloud. Not at all.
+Xinity gives them a complete AI platform: model orchestration, an OpenAI-compatible API, a management dashboard, data labeling and export for downstream fine-tuning, and multi-node scaling, that runs entirely on their own hardware. No data leaves. Not to a region. Not to a cloud. Not at all.
 
 **And it's cheaper.** Cloud pricing assumes bursty ~15% utilization. Always-on AI agents run at 80–90%. At that utilization, dedicated on-prem infrastructure delivers roughly **80% cost savings** compared to equivalent cloud capacity. Sovereignty isn't just a compliance requirement, it's an economic advantage. We call this phenomenon, the **Utilization Inversion**.
 
@@ -48,7 +48,7 @@ curl -fsSL https://get.xinity.ai/install.sh | bash
 xinity up all   # add --target-host to supply a ssh available server to operate on
 
 # Create your admin account right from the terminal (no browser needed)
-xinity configure dashboardUrl http://localhost:3100
+xinity configure dashboardUrl http://localhost:5173
 xinity act onboarding.cli
 
 # Deploy a model (Phi-3 Mini as a quick start example)
@@ -61,7 +61,7 @@ xinity act deployment.list '{"withStatus": true}'
 xinity doctor
 
 # Once the deployment shows "ready", hit your local OpenAI-compatible API:
-curl http://localhost:3000/v1/chat/completions \
+curl http://localhost:4010/v1/chat/completions \
   -H "Authorization: Bearer sk_..." \
   -H "Content-Type: application/json" \
   -d '{"model": "phi-3-mini", "messages": [{"role": "user", "content": "Hello from on-prem."}]}'
@@ -78,10 +78,10 @@ Your existing OpenAI SDK code works unchanged, just point the base URL to your X
 | Multi-GPU orchestration | ✅ | ❌ | ❌ | ✅ |
 | Load balancing | ✅ | ❌ | ❌ | ❌ |
 | Web dashboard with RBAC | ✅ | ❌ | ❌ | ❌ |
-| Enterprise auth (SSO/SAML/2FA) | ✅ | ❌ | ❌ | ❌ |
+| Enterprise auth (SSO/2FA) | ✅ | ❌ | ❌ | ❌ |
 | Multi-org tenant isolation | ✅ | ❌ | ❌ | ❌ |
 | Usage tracking & data collection | ✅ | ❌ | ❌ | ❌ |
-| Fine-tuning / distillation pipeline | ✅ | ❌ | ❌ | ❌ |
+| Fine-tuning / distillation pipeline | 🚧 (in progress) | ❌ | ❌ | ❌ |
 | MCP server (AI-managed infra) | ✅ | ❌ | ❌ | ❌ |
 | EU Governance & Audit trail | ✅ | ❌ | ❌ | ❌ |
 | Fully auditable source code | ✅ | ✅ | ✅ | ✅ |
@@ -92,7 +92,7 @@ Your existing OpenAI SDK code works unchanged, just point the base URL to your X
  
 > The gateway layer adds enterprise features. Does it cost you speed? We measured.
 
-<p align="center"><img src="docs/assets/completaion-rate-graph.png" alt="Xinity Performance under load" width="720" /></p>
+<p align="center"><img src="docs/assets/completion-rate-graph.png" alt="Xinity Performance under load" width="720" /></p>
  
 **Setup:** A single NVIDIA DGX Spark (128 GB), Qwen 3.6-35B-A3B-FP8, 120 benchmark scenarios sweeping prompt size (256 – 65 536 tokens), output length (64 – 2 048 tokens), and concurrency (1 – 512 in-flight requests), 31 200 requests per run. The Xinity path traverses the public internet, a WireGuard tunnel, and TLS termination (~60 IP hops); the vLLM baseline runs on loopback.
  
@@ -129,7 +129,7 @@ Full per-scenario reports and aggregate summaries are in [`benchmarks/`](benchma
 │  │  (SvelteKit) │    │  (API proxy) │    │  (GPU nodes)   │  │
 │  │              │    │              │    │                │  │
 │  │  • RBAC      │    │  • OpenAI-   │    │  • Ollama /    │  │
-│  │  • SSO/SAML  │    │    compat.   │    │    vLLM        │  │
+│  │  • SSO/OIDC  │    │    compat.   │    │    vLLM        │  │
 │  │  • Usage     │    │  • Routing   │    │  • Model mgmt  │  │
 │  │    tracking  │    │  • Rate      │    │  • Auto-scale  │  │
 │  │  • MCP       │    │    limiting  │    │                │  │
@@ -156,7 +156,7 @@ Detailed guides for each part of the platform:
 |---|---|
 | [Gateway](docs/features/gateway.md) | Load balancing, canary deployments, request recording, Responses API, web search, image storage, TLS, backend timeouts |
 | [Dashboard](docs/features/dashboard.md) | Home analytics, Model Hub, data management, labeling, export, onboarding |
-| [Authentication & Authorization](docs/features/authentication.md) | Email/password, SSO/SAML, passkeys, 2FA, API keys, RBAC roles |
+| [Authentication & Authorization](docs/features/authentication.md) | Email/password, SSO (OIDC), passkeys, 2FA, API keys, RBAC roles |
 | [Instance Administration](docs/features/instance-administration.md) | User management, organization management, SSO providers, licensing |
 | [Notifications](docs/features/notifications.md) | Email alerts for deployments, node health, capacity, weekly reports |
 | [CLI](docs/features/cli.md) | All commands (`up`, `rm`, `doctor`, `act`, `configure`, `update`, `completion`), remote host support, infrastructure utilities |
@@ -190,7 +190,7 @@ done
 This copies each `example.env` to `.env` without overwriting existing files. Review and adjust values as needed. In particular, generate a real secret for `BETTER_AUTH_SECRET` in `packages/xinity-ai-dashboard/.env`:
 
 ```bash
-openssl rand -base64 33
+openssl rand -base64 32
 ```
 
 **3. Start infrastructure**
@@ -290,7 +290,7 @@ Point any OpenAI SDK or tool at your gateway:
 from openai import OpenAI
 
 client = OpenAI(
-    base_url="https://your-dashboard/v1",
+    base_url="https://your-gateway/v1",
     api_key="sk_..."
 )
 
@@ -300,7 +300,7 @@ response = client.chat.completions.create(
 )
 ```
 
-The gateway serves a live, schema-derived API reference at `https://your-xinity-gateway/docs` (rendered with Scalar) and the raw OpenAPI document at `https://your-xinity-gateway-instance/openapi.json`. The dashboard's Documentation page links to it as **Live OpenAPI Spec**.
+The gateway serves a live, schema-derived API reference at `https://your-gateway/docs` (rendered with Scalar) and the raw OpenAPI document at `https://your-gateway/openapi.json`. The dashboard's Documentation page links to it as **Live OpenAPI Spec**.
 
 ### Dashboard UI
 
@@ -360,7 +360,7 @@ packages/
 | Component | License | You can... |
 |---|---|---|
 | Gateway, Daemon, CLI, Infoserver, DB schema, shared libs | [Apache 2.0](LICENSE) | Use, modify, distribute freely — including commercially |
-| Dashboard | [Elastic License v2](packages/xinity-ai-dashboard/LICENSE) | Use and view source. Free tier: 1 org + 1 node. Paid tiers unlock multi-node and multi-org |
+| Dashboard | [Elastic License v2](packages/xinity-ai-dashboard/LICENSE) | Use and view source. Free tier: up to 120 GB total VRAM across your cluster. Paid tiers unlock higher/unlimited capacity and multi-org |
 
 The entire codebase is visible and auditable. The open-core engine runs without the dashboard, the dashboard adds enterprise management features on top.
 
@@ -381,7 +381,7 @@ Ensure Docker Compose is running (`docker compose ps`). The `db` service must be
 **`BETTER_AUTH_SECRET` error on dashboard startup**
 Generate a secret and set it in `packages/xinity-ai-dashboard/.env`:
 ```bash
-openssl rand -base64 33
+openssl rand -base64 32
 ```
 
 **`bun2nix` is slow or fails during install**
@@ -391,7 +391,7 @@ This runs in the postinstall hook for NixOS support. Run `CI=1 bun install` to s
 <summary><strong>Licensing FAQ</strong></summary>
 
 **Can I use it for free?**
-Yes. The engine (gateway, daemon, CLI, infoserver, DB layer) is Apache 2.0 with no restrictions. The dashboard free tier supports one organization and one inference node — enough to evaluate or run smaller deployments.
+Yes. The engine (gateway, daemon, CLI, infoserver, DB layer) is Apache 2.0 with no restrictions. The dashboard free tier supports a single organization with up to 120 GB of total VRAM across your cluster — enough to evaluate or run smaller deployments.
 
 **Can I audit the system?**
 Yes. Every line of code is here and intended to be auditable. That's the point.
@@ -445,9 +445,6 @@ cd packages/common-db
 bun run migrate               # apply migrations
 bun run migrate:gen           # regenerate migrations
 bun run inspect               # inspect schema
-
-# Run all tests across all packages
-bun run test
 
 # System tests only (requires running dependencies)
 bun run test:system

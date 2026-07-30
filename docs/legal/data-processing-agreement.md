@@ -52,6 +52,8 @@ All data processed by the Platform, including inference inputs, outputs, and cal
 
 The Platform does not transmit personal data or inference data to Xinity AI. License key validation is performed offline using cryptographic signature verification; no network call to Xinity AI systems is made during normal operation. Xinity AI receives no telemetry or usage data from deployed instances.
 
+By default, the Platform resolves model catalog metadata against Xinity AI's hosted Info Server (`INFOSERVER_URL`, default `https://sysinfo.xinity.ai`). This is a read-only metadata lookup containing no personal or inference data, and is distinct from telemetry. The Controller may configure a self-hosted Info Server instead (see Section 2.5).
+
 ### 2.5 Integration touchpoints and customer responsibility
 
 The Platform integrates with infrastructure components that the Controller supplies and configures. Xinity AI makes no assumption about the geographic location of these components; the Controller is responsible for ensuring they meet applicable data residency requirements.
@@ -59,9 +61,10 @@ The Platform integrates with infrastructure components that the Controller suppl
 | Component | Role | Data involved |
 |---|---|---|
 | PostgreSQL | Coordination database; call logs, users, deployments, API keys | May contain personal data in call logs |
-| Redis | Ephemeral gateway state (auth cache, load balancer state) | Contains API key identifiers and ephemeral session state; no inference content |
+| Redis | Ephemeral gateway state (auth cache, load balancer state, short-lived Responses API cache) | Contains API key identifiers, ephemeral session state, and inference content cached briefly for the Responses API (`RESPONSE_CACHE_TTL_SECONDS`, default 1 hour) |
 | Ollama / vLLM inference drivers | Execute model inference on customer hardware | Receive full inference requests; run on customer-managed nodes |
 | SeaweedFS / S3-compatible store | Optional multimodal image storage | Contains images submitted in inference requests; customer-managed; not enabled by default |
+| Info Server | Model catalog metadata lookup (model names, capabilities, driver identifiers) | No personal or inference data involved. Defaults to Xinity's hosted instance (`sysinfo.xinity.ai`) unless the Controller configures a self-hosted one (`INFOSERVER_URL`) |
 
 ### 2.6 Activities that transmit data outside the customer's network
 
@@ -71,7 +74,7 @@ The following activities, whether part of initial setup or optional runtime feat
 
 **Models requiring custom code (`trust-remote-code`):** Certain models hosted on external registries include custom Python code that must be executed locally during model loading. The Platform warns the operator when a model requires this. The Controller accepts sole responsibility for the security implications of executing third-party model code on their infrastructure. This is not a data processing concern but an operational security one.
 
-**Web search (`web_search` tool):** When `WEB_SEARCH_ENGINE_URL` is configured, the Gateway sends search queries to the configured SearXNG instance. SearXNG forwards queries to external search providers as part of its normal operation. Search queries may contain content derived from inference requests.
+**Web search (`web_search` tool):** When `WEB_SEARCH_PROVIDER` and `WEB_SEARCH_CREDENTIAL` are configured, the Gateway sends search queries to the configured search backend (SearXNG, Google, Bing, Brave, Tavily, or Serper). External providers forward queries to their respective search infrastructure as part of their normal operation. Search queries may contain content derived from inference requests.
 
 **Web fetch (`web_fetch` tool):** When enabled, the Gateway makes outbound HTTP requests to URLs provided by the LLM during inference.
 
@@ -105,9 +108,9 @@ The Processor implements the following security measures in the Platform and its
 |---|---|
 | Local-only data processing | The Platform is architected to process all inference data within Customer Infrastructure. No outbound data paths to Xinity AI are implemented. |
 | Offline license validation | Ed25519 cryptographic verification against an embedded public key; no network call to Processor systems. |
-| API key hashing | Gateway API keys stored as bcrypt hashes; only a short non-secret specifier used for lookup. |
+| API key hashing | Gateway API keys are one-way hashed before storage; only a short non-secret specifier used for lookup. See the Security Whitepaper for the specific algorithm. |
 | Secrets management at installation | The CLI stores service credentials in mode-600 systemd credential files, separate from non-secret configuration. |
-| Binary integrity | Release binaries distributed with SHA-256 checksums, verified by the CLI before installation. Binaries are cryptographically signed. |
+| Binary integrity | Release binaries distributed with SHA-256 checksums, verified by the CLI before installation. |
 | Source availability | Platform source code is available for inspection, enabling the Controller to independently verify data handling behavior. |
 | Secure development practices | The Processor maintains documented development, code review, and release processes designed to prevent the introduction of unauthorized data exfiltration paths. |
 

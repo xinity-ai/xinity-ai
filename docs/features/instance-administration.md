@@ -19,7 +19,7 @@ Admins can list all users with search and pagination, and perform the following 
 Admins can list all organizations with search and pagination. Each organization entry shows member count, deployment count, and total VRAM capacity. Actions include:
 
 - View and manage member lists (change roles, remove members).
-- Toggle **SSO self-management** per organization, allowing org admins to configure their own SSO providers (requires the `sso-self-manage` license feature).
+- Toggle **SSO self-management** per organization, allowing org admins to configure their own SSO providers. The toggle itself has no license requirement, but org admins can only actually manage providers if the instance has the `sso-self-manage` license feature.
 
 ## SSO Provider Management
 

@@ -12,11 +12,11 @@ Three strategies are available, configured via `LOAD_BALANCE_STRATEGY` (default:
 |---|---|
 | `least-connections` | Picks the node with the fewest in-flight requests (tracked in Redis). Falls back to random on Redis errors. |
 | `round-robin` | Atomic Redis counter per model, rotating through nodes. Falls back to random on Redis errors. |
-| `random` | Uniform random selection. No Redis dependency. |
+| `random` | Uniform random selection. |
 
 ### Prefix-cache affinity
 
-For `least-connections` and `random`, the gateway hashes conversation message prefixes and stores the mapping in Redis for 5 minutes. Repeat conversations are routed to the same node when possible, improving KV cache hit rates on the inference engine.
+For `least-connections` and `random`, the gateway hashes conversation message prefixes and stores the mapping in Redis for 5 minutes. Repeat conversations are routed to the same node when possible, improving KV cache hit rates on the inference engine. This means `random` does use Redis whenever prefix-cache affinity data exists, despite otherwise being the only strategy with no other Redis-backed state (no counters or connection gauges).
 
 With `least-connections`, the affinity hint is only honored if the hinted node's connection count is within 2 of the least-loaded node.
 
@@ -27,7 +27,7 @@ A deployment can specify an "early" (canary) model alongside the primary model. 
 | Mode | How it works |
 |---|---|
 | **Manual** | Progress stays at the configured value until changed. |
-| **Time-based** | Progress interpolates linearly from the starting value toward 100 over a configured time window. After the window expires, all traffic moves to the primary model. |
+| **Time-based** | Progress interpolates linearly from the starting value toward (but capped at) 99 over a configured time window. Once the window truly expires, progress jumps to 100 and all traffic moves to the primary model. |
 
 Canary deployments are configured through the [dashboard's Model Hub](dashboard.md#model-hub).
 
@@ -85,7 +85,7 @@ Long research sessions can exceed the model's context window. When accumulated t
 
 ## Image Storage
 
-When S3 is configured, images in chat requests are uploaded to S3, deduplicated by SHA-256, and stored as compact references in the database. External image URLs are fetched and converted to data URIs before forwarding to inference nodes (which may not have internet access). Supports JPEG, PNG, GIF, WebP, and AVIF up to 40 MB.
+When S3 is configured, images in chat requests are uploaded to S3, deduplicated by SHA-256, and stored as compact references in the database. External image URLs are fetched and converted to data URIs before forwarding to inference nodes (which may not have internet access). Content type is not validated; any image is accepted up to 40 MB.
 
 ## TLS
 

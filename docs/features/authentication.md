@@ -14,11 +14,11 @@ Admin-created users receive a temporary password and are redirected to change it
 
 ### SSO (OIDC)
 
-Enterprise single sign-on via OIDC identity providers. Providers can be configured at the instance level or per-organization (with the `sso` license feature). Users provisioned through SSO are assigned the `pending` role by default. See [Instance Administration](instance-administration.md) for provider management.
+Enterprise single sign-on via OIDC identity providers. Providers can be configured at the instance level or per-organization (with the `sso` license feature); per-organization self-management of providers additionally requires the `sso-self-manage` license feature (see [Instance Administration](instance-administration.md#organization-management)). Users provisioned through SSO are assigned the `pending` role by default. See [Instance Administration](instance-administration.md) for provider management.
 
-**Domain verification** is required before users can sign in through a provider. After registering a provider, an admin must add a DNS TXT record to the provider's email domain and verify it through the dashboard. This ensures the admin controls the domain whose users will be trusted for account linking.
+**Domain verification** is required before users can sign in through a provider. After registering a provider, an admin must add a DNS TXT record to the provider's email domain and verify it through the dashboard. This ensures the admin controls the domain whose users will be trusted for account linking. Sign-in is always blocked while a provider's domain remains unverified.
 
-**Account linking:** when a user signs in via SSO with an email that matches an existing account, the accounts are linked automatically if the provider's domain is verified and the identity provider confirms the email is verified. Without domain verification, sign-in is blocked.
+**Account linking:** when a user signs in via SSO with an email that matches an existing account, the accounts are linked automatically only if that existing account's own email is already verified, and either the SSO email's domain matches the provider's verified domain or the identity provider confirms the email as verified.
 
 ### Passkeys (WebAuthn/FIDO2)
 
@@ -38,8 +38,8 @@ Two types of API keys serve different purposes:
 
 | Key type | Scope | Used for |
 |---|---|---|
-| **AI API keys** | Gateway (inference) | Calling the OpenAI-compatible API, MCP server |
-| **Dashboard API keys** | Dashboard REST API | Programmatic access to all dashboard operations |
+| **AI API keys** | Gateway (inference) | Calling the OpenAI-compatible API |
+| **Dashboard API keys** | Dashboard REST API | Programmatic access to all dashboard operations, MCP server |
 
 Both are managed in the dashboard. AI API keys can be scoped to specific applications.
 
@@ -51,13 +51,13 @@ Both are managed in the dashboard. AI API keys can be scoped to specific applica
 
 ## RBAC (Role-Based Access Control)
 
-Users are assigned a role per organization. Roles control access to six resource types: API keys, API calls, API call responses (labeling), model deployments, models, and applications.
+Users are assigned a role per organization. Roles control access to seven resource types: API keys, API calls, API call responses (labeling), model deployments, models, applications, and the audit log.
 
 | Role | Access | Notes |
 |---|---|---|
 | **owner** | Full access to all resources and organization settings | Can transfer ownership, delete the organization |
 | **admin** | Full access to all resources, admin-level org settings | Cannot delete the organization |
-| **member** | Full access to all resources, member-level org access | Cannot manage organization settings |
+| **member** | Full access to all resources except the audit log | Cannot manage organization settings, cannot read the audit log |
 | **labeler** | Read calls, full labeling access, read models and applications | Designed for data annotators |
 | **viewer** | Read-only access to calls, deployments, models, responses, applications | No write access |
 | **pending** | No resource access | Placeholder for users awaiting role assignment |

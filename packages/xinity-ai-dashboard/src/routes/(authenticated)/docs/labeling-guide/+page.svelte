@@ -250,11 +250,6 @@
         knowledge rather than relying on retrieval at inference time.
       </li>
     </ol>
-    <!-- <img
-      src={ragExample}
-      alt="Screenshot showing a RAG conversation: a system message with retrieved documents is excluded (grayed out), the user question is kept, and the output is liked with an edit"
-      class="rounded-lg border mb-4 w-full"
-    /> -->
     <p class="text-gray-700">
       By excluding the retrieval context from training data, the fine-tuned model learns to produce
       the answer from its own weights rather than depending on a retrieval step.

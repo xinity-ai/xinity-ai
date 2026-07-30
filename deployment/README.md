@@ -13,7 +13,7 @@ The control plane can be deployed using any of the three methods below. The daem
 
 | Scenario | Recommendation |
 |---|---|
-| Quick local evaluation, no domain | [Docker Compose (local overlay)](docker/README.md#local-evaluation-no-domain-required) |
+| Quick local evaluation, no domain | [Docker Compose](docker/README.md) (`docker compose up -d`, no domain or TLS needed) |
 | Production with a domain + HTTPS | [Docker Compose](docker/README.md) or [NixOS](nixos/README.md) |
 | NixOS infrastructure | [NixOS Flake modules](nixos/README.md) |
 | Bare metal Linux with systemd | [Xinity CLI](cli/README.md) |
@@ -71,6 +71,6 @@ All three deployment targets support the same `_FILE` convention for secrets: fo
 
 Each target documents this in detail:
 
-- **Docker**: [Secrets Management](docker/README.md#secrets-management) — Docker `secrets:` block with `_FILE` env vars
+- **Docker**: [Secrets](docker/README.md#secrets) — Docker `secrets:` block with `_FILE` env vars
 - **NixOS**: [Secrets: Three Tiers](nixos/README.md#secrets-three-tiers) — direct values, environment file, or per-secret `*File` options
 - **CLI**: [Secrets Management](cli/README.md#secrets-management) — systemd `LoadCredential` with mode-600 files in `/etc/xinity-ai/secrets/`

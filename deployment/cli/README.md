@@ -6,7 +6,7 @@ The Xinity CLI is the recommended way to deploy Xinity on any Linux server with 
 
 - Linux with systemd
 - `curl` and `tar`
-- For the daemon: a machine with GPU capacity running Ollama
+- For the daemon: a machine with GPU capacity and either Ollama or vLLM available
 
 ## Install the CLI
 
@@ -33,7 +33,7 @@ curl -fsSL https://github.com/xinity-ai/xinity-ai/releases/latest/download/insta
 A Xinity deployment spans two kinds of machines:
 
 - **Control plane**: runs the gateway, dashboard, and database. Handles API requests and the admin UI.
-- **Inference node**: runs the daemon alongside Ollama. Has GPU capacity and installs/serves models.
+- **Inference node**: runs the daemon with Ollama and/or vLLM available. Has GPU capacity and installs/serves models.
 
 The daemon is always deployed separately on each inference node, regardless of how the control plane is deployed.
 
@@ -90,7 +90,7 @@ Run this on each machine with GPU capacity:
 xinity up daemon
 ```
 
-The daemon connects to the shared database and receives deployment instructions from the dashboard. Ollama must be installed and running on the same machine. Use `xinity up infra-ollama` to install it and write the daemon env.
+The daemon connects to the shared database and receives deployment instructions through it. It needs Ollama or vLLM available on the same machine to actually serve models: `xinity up infra-ollama` installs Ollama and writes the daemon env, or point the daemon at an existing vLLM install with `VLLM_PATH`/`VLLM_DOCKER_IMAGE`.
 
 ## Infrastructure Utilities
 
@@ -140,7 +140,7 @@ After `xinity up gateway`:
 
 ```
 /etc/xinity-ai/
-  gateway.env                    # HOST=0.0.0.0, PORT=4121, ...  (mode 644)
+  gateway.env                    # HOST=localhost, PORT=4010, ...  (mode 644)
   secrets/                       # (mode 700)
     DB_CONNECTION_URL            # postgresql://...               (mode 600)
     REDIS_URL                    # redis://...                    (mode 600)

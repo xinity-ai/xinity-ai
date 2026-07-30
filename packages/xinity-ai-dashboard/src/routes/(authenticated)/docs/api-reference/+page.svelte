@@ -196,7 +196,7 @@
             <td class="border border-gray-300 px-4 py-2">number</td>
             <td class="border border-gray-300 px-4 py-2">No</td>
             <td class="border border-gray-300 px-4 py-2"
-              >Sampling temperature (0.0 - 2.0). Default: 0.7</td
+              >Sampling temperature (0.0 - 2.0), forwarded to the backend as-is</td
             >
           </tr>
           <tr class="bg-gray-50">
@@ -206,7 +206,7 @@
             <td class="border border-gray-300 px-4 py-2">integer</td>
             <td class="border border-gray-300 px-4 py-2">No</td>
             <td class="border border-gray-300 px-4 py-2"
-              >Maximum tokens to generate. Default: 150</td
+              >Maximum tokens to generate, useful for keeping responses bounded</td
             >
           </tr>
           <tr>
@@ -216,7 +216,7 @@
             <td class="border border-gray-300 px-4 py-2">number</td>
             <td class="border border-gray-300 px-4 py-2">No</td>
             <td class="border border-gray-300 px-4 py-2"
-              >Nucleus sampling parameter (0.0 - 1.0). Default: 1.0</td
+              >Nucleus sampling parameter (0.0 - 1.0), forwarded to the backend as-is</td
             >
           </tr>
           <tr class="bg-gray-50">
@@ -226,7 +226,7 @@
             <td class="border border-gray-300 px-4 py-2">boolean</td>
             <td class="border border-gray-300 px-4 py-2">No</td>
             <td class="border border-gray-300 px-4 py-2"
-              >Enable streaming responses. Default: false</td
+              >Enable streaming responses</td
             >
           </tr>
           <tr>
@@ -244,6 +244,12 @@
     </div>
 
     <h3 class="text-lg font-semibold mb-3">Example Request</h3>
+    <p class="text-gray-600 mb-3">
+      <code class="text-sm">temperature</code> is included to show that standard OpenAI sampling
+      parameters are passed straight through to your model, and <code class="text-sm"
+        >max_tokens</code
+      > keeps this test request bounded rather than open-ended.
+    </p>
     <CodeExample code={exampleRequest} language="javascript" withCopy />
 
     <h3 class="text-lg font-semibold mt-4 mb-3">Response</h3>
@@ -314,13 +320,13 @@
             <td class="border border-gray-300 px-4 py-2 font-mono text-sm">top_n</td>
             <td class="border border-gray-300 px-4 py-2">integer</td>
             <td class="border border-gray-300 px-4 py-2">No</td>
-            <td class="border border-gray-300 px-4 py-2">Number of top results to return. Defaults to all documents.</td>
+            <td class="border border-gray-300 px-4 py-2">Number of top results to return. Omit to return all documents.</td>
           </tr>
           <tr>
             <td class="border border-gray-300 px-4 py-2 font-mono text-sm">return_documents</td>
             <td class="border border-gray-300 px-4 py-2">boolean</td>
             <td class="border border-gray-300 px-4 py-2">No</td>
-            <td class="border border-gray-300 px-4 py-2">Whether to include the document content in the response. Default: true</td>
+            <td class="border border-gray-300 px-4 py-2">Whether to include the document content in the response. Set to false to omit it.</td>
           </tr>
         </tbody>
       </table>

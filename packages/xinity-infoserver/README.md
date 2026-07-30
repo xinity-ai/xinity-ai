@@ -35,7 +35,8 @@ models:
     minKvCache: 2                              # Minimum KV-cache allocation in GB
     url: https://huggingface.co/microsoft/Phi-3-vision-128k-instruct
     entryVersion: 0.5.4                        # Optional: xinity version this model was introduced in
-    type: chat                                 # chat, embedding, or rerank - determines API compatibility
+    maxContextLength: 128000                   # Optional: max context window in tokens (default 131072)
+    type: chat                                 # chat, embedding, rerank, or transcription - determines API compatibility
     family: phi3                               # Model family for grouping in the UI
     tags: [vision]                             # Enabled capabilities: tools, vision, custom_code
     isCustom: false                            # Set true for fine-tuned models
@@ -163,10 +164,10 @@ Set `INFOSERVER_URL` on each component that needs model metadata:
 | Gateway    | `/etc/xinity-ai/gateway.env`   | `INFOSERVER_URL` |
 | Dashboard  | `/etc/xinity-ai/dashboard.env` | `INFOSERVER_URL` |
 
-Or via the CLI:
+Or via the CLI, which opens an interactive menu editor for the component's environment (there's no non-interactive one-shot form):
 
 ```bash
-xinity configure daemon INFOSERVER_URL http://your-infoserver:8090
+xinity configure daemon
 ```
 
 ### Verifying
@@ -212,7 +213,7 @@ All four checks must pass on a single node. If no node qualifies, the model stay
 Run the HTTP server locally:
 
 ```bash
-MODEL_INFO_DIR=./models.d bun run start
+MODEL_INFO_DIR=./models.d bun run dev
 ```
 
 Export the JSON Schema to stdout:

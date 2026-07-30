@@ -6,6 +6,12 @@
       cfgOllama = config.services.ollama;
     in {
 
+      imports = [
+        (lib.mkRenamedOptionModule
+          [ "services" "xinity-ai-daemon" "envFiles" ]
+          [ "services" "xinity-ai-daemon" "environmentFiles" ])
+      ];
+
       options.services.xinity-ai-daemon = {
         enable = lib.mkEnableOption "the xinity-ai daemon, a systemd service that manages local inference backends (Ollama, vLLM), registers the node with the gateway, and handles model lifecycle operations";
         package = lib.mkOption {
@@ -15,9 +21,13 @@
             ({ config, ... }: config.packages.xinity-ai-daemon);
           description = "The xinity-ai-daemon package to use. Defaults to the package built from this flake for the current platform.";
         };
-        envFiles = lib.mkOption {
+        environmentFiles = lib.mkOption {
           type = lib.types.listOf lib.types.str;
-          description = "List of systemd EnvironmentFile paths loaded at service start. This is the recommended way to inject secrets like DB_CONNECTION_URL without exposing them in the Nix store.";
+          description = ''
+            systemd EnvironmentFile paths loaded at service start for sensitive values
+            (DB_CONNECTION_URL, etc.). This is the RECOMMENDED and SECURE way to provide
+            credentials. Secrets in environment files are not exposed in the Nix store.
+          '';
           default = [ ];
         };
 
@@ -26,7 +36,7 @@
           default = null;
           description = ''
             PostgreSQL connection URL.
-            WARNING: DO NOT USE IN PRODUCTION. Use envFiles or dbConnectionUrlFile instead to keep credentials secure.
+            WARNING: DO NOT USE IN PRODUCTION. Use environmentFiles or dbConnectionUrlFile instead to keep credentials secure.
             This option exposes secrets in the Nix store.
           '';
         };
@@ -242,7 +252,7 @@
           }
           // cfg.extraEnvironment;
           serviceConfig = {
-            EnvironmentFile = cfg.envFiles;
+            EnvironmentFile = cfg.environmentFiles;
             ExecStart = "${cfg.package}/bin/xinity-ai-daemon";
             Restart = "always";
             StateDirectory = "xinity-ai-daemon";
@@ -262,7 +272,7 @@
       self.nixosModules.daemon
       {
         services.xinity-ai-daemon.enable = true;
-        services.xinity-ai-daemon.envFiles = [ "/etc/.env" ];
+        services.xinity-ai-daemon.environmentFiles = [ "/etc/.env" ];
         environment.etc.".env".text = ''
           SECRET_TOKEN=set
         '';

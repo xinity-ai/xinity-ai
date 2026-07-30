@@ -6,7 +6,7 @@ The dashboard sends email notifications for deployment lifecycle events, system 
 
 | Event | Subject | Trigger |
 |---|---|---|
-| `welcome` | Welcome to Xinity! | User signup (always sent) |
+| `welcome` | Welcome to Xinity! | User completes email verification |
 | `deployment_ready` | Deployment "{name}" is ready | Model deployment reaches ready state |
 | `deployment_failed` | Deployment "{name}" has failed | Model deployment fails |
 | `deployment_created` | New deployment "{name}" created | New deployment is created |
@@ -26,12 +26,14 @@ Each user controls four notification categories in Settings > Notifications:
 
 | Toggle | Controls |
 |---|---|
-| **Email Notifications** | Organization events (member joined, role changed, member removed) |
+| **Email Notifications** | Master switch for all categories below, plus organization events (member joined, role changed, member removed) |
 | **Model Training Alerts** | Deployment lifecycle events (ready, failed, created) |
 | **Weekly Reports** | Weekly usage summaries |
 | **API Usage Alerts** | System health events (node offline/online, capacity warning) |
 
-The welcome email is always sent regardless of preferences.
+Turning off **Email Notifications** suppresses all other categories too, even if their individual toggles are left on.
+
+The welcome email is sent regardless of preferences, since it fires before a user has any notification settings to configure. It only fires on the email-verification callback, so users whose email is auto-verified (admin-created accounts, CLI onboarding) never receive it.
 
 ## Scheduling
 

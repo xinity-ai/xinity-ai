@@ -9,7 +9,7 @@ All services (gateway, dashboard, infoserver, daemon) run as native `systemd` se
 A Xinity deployment spans two kinds of NixOS hosts:
 
 - **Control plane**: runs the gateway, dashboard, infoserver, database, and reverse proxy.
-- **Inference node**: runs the daemon alongside Ollama. Has GPU capacity and manages model installation.
+- **Inference node**: runs the daemon with Ollama and/or vLLM available. Has GPU capacity and manages model installation.
 
 Each gets a different module.
 
@@ -48,14 +48,14 @@ The `allinone` module is the easiest way to deploy the full control plane on a s
     acmeEmail = "admin@example.com";
 
     # Path to a secrets file, kept outside the Nix store
-    environmentFile = "/run/secrets/xinity";
+    environmentFiles = [ "/run/secrets/xinity" ];
 
-    infoserver.modelInfoFile = /etc/xinity/models.yaml;
+    infoserver.modelInfoDir = /etc/xinity/models.d;
   };
 }
 ```
 
-The `environmentFile` must contain at minimum:
+The `environmentFiles` entries must contain at minimum:
 
 ```bash
 DB_CONNECTION_URL=postgresql://xinity:PASSWORD@localhost/xinity
@@ -75,10 +75,10 @@ The modules offer three ways to provide secrets, from simplest to most secure:
 services.xinity-ai-gateway.dbConnectionUrl = "postgresql://...";
 ```
 
-**2. Environment file** — a single file outside the Nix store, sourced by systemd or the container runtime. Secrets stay off disk in the store but share one file.
+**2. Environment files** — one or more files outside the Nix store, sourced by systemd. Secrets stay off disk in the store but share one file.
 
 ```nix
-services.xinity-ai.environmentFile = "/run/secrets/xinity";
+services.xinity-ai.environmentFiles = [ "/run/secrets/xinity" ];
 ```
 
 **3. Per-secret files with `_FILE` (recommended)** — each secret gets its own file on the host. The service loads them into its runtime credential directory via systemd's `LoadCredential`, and the application reads them at startup; the value never appears as an environment variable.
@@ -104,7 +104,7 @@ age.secrets.xinity-db-url = {
 };
 ```
 
-All three tiers can be mixed. Direct values and `environmentFile` entries take precedence over `_FILE` variants. For the full list of per-secret options, see the module source in [nix/modules/](../../nix/modules/).
+All three tiers can be mixed. Direct values and `environmentFiles` entries take precedence over `_FILE` variants. For the full list of per-secret options, see the module source in [nix/modules/](../../nix/modules/).
 
 ### Subdomains
 
@@ -137,30 +137,30 @@ services.xinity-ai.searxng.enable = false;
 
 ## Inference Node: Daemon Module
 
-Deploy this on each machine with GPU capacity. The module is the flake's default output:
+Deploy this on each machine with GPU capacity. It needs Ollama and/or vLLM available on the same machine to actually serve models.
 
 ```nix
 { inputs, ... }: {
-  imports = [ inputs.xinity-ai.nixosModules.default ];
+  imports = [ inputs.xinity-ai.nixosModules.daemon ];
 
-  # Ollama must also be enabled; the daemon manages models through it
+  # Enable whichever driver(s) this node should run; the daemon
+  # manages models through Ollama and/or vLLM independently.
   services.ollama.enable = true;
 
-  services.xinity-ai-node = {
+  services.xinity-ai-daemon = {
     enable = true;
-    envFiles = [ "/run/secrets/xinity-daemon" ];
-    orchestrator = "https://dashboard.example.com";
+    environmentFiles = [ "/run/secrets/xinity-daemon" ];
   };
 }
 ```
 
-The `envFiles` entries must contain:
+The `environmentFiles` entries must contain:
 
 ```bash
 DB_CONNECTION_URL=postgresql://xinity:PASSWORD@control-plane-host/xinity
 ```
 
-The daemon is a native systemd service (`systemd.services.xinity-ai-node`). It connects to the shared database to receive deployment instructions and reports its state back.
+The daemon is a native systemd service (`systemd.services.xinity-ai-daemon`). It connects to the shared database to receive deployment instructions and reports its state back.
 
 ---
 
@@ -176,6 +176,7 @@ For fine-grained control, import and configure services separately. Available mo
 | `nixosModules.database` | PostgreSQL + Redis (`services.xinity-ai-database`) |
 | `nixosModules.caddy` | Reverse proxy (`services.xinity-ai-caddy`) |
 | `nixosModules.allinone` | All of the above combined |
-| `nixosModules.default` | Daemon / inference node (`services.xinity-ai-node`) |
+| `nixosModules.daemon` | Daemon / inference node (`services.xinity-ai-daemon`) |
+| `nixosModules.monitoring` | Prometheus + Grafana (`services.xinity-ai-monitoring`) |
 
 Each service module accepts `environmentFiles` (a list of paths) for secrets. See [nix/modules/](../../nix/modules/) for all available options per service.

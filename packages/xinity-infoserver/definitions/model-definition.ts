@@ -71,7 +71,7 @@ const vllmArgs = flatStringArray
 export const ModelSchema = z.looseObject({
   name: z.string().describe("Display name of the model. Intended to be easily human readable"),
   description: z.string().describe("Brief description of the model and its unique properties"),
-  weight: z.number().describe("Relative weight of how much strain the model places on the node it is installed on"),
+  weight: z.number().describe("VRAM consumed by the model weights, in GB"),
   minKvCache: z.number().describe(
     "Minimum KV-cache allocation in GB. " +
     "Should be precomputed from the model's config.json (if available) as roughly: " +

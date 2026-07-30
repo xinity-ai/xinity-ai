@@ -44,7 +44,7 @@ When extending or modifying the OpenAI-compatible routes, update the hand-author
 | `UNIX_SOCKET` | (unset) | Unix socket path (overrides HOST/PORT) |
 | `DB_CONNECTION_URL` | (required) | PostgreSQL connection string |
 | `REDIS_URL` | (required) | Redis connection URL |
-| `INFOSERVER_URL` | (required) | Infoserver URL |
+| `INFOSERVER_URL` | `https://sysinfo.xinity.ai` | Infoserver URL |
 | `LOAD_BALANCE_STRATEGY` | `least-connections` | `random`, `round-robin`, or `least-connections` |
 | `BACKEND_TIMEOUT_MS` | `300000` | Backend timeout in ms. Idle timeout for streaming, wall-clock for non-streaming. |
 | `WEB_SEARCH_PROVIDER` | (unset) | Web search backend: `searxng`, `google`, `bing`, `brave`, `serper`, or `tavily`. Web search is disabled when unset. |
@@ -81,12 +81,4 @@ All three must be set to enable multimodal image storage.
 
 ```bash
 bun run build
-```
-
-## Utilities
-
-Generate a test key:
-
-```bash
-bun run genkey
 ```

@@ -215,6 +215,7 @@ official one doesn't yet cover your hardware, and then review the Dockerfile and
 | `version_too_old` | Host vLLM older than the model needs | Record the real floor in `providerMinVersions.vllm`; verify on a node that meets it |
 | `version_unknown` | Couldn't detect the vLLM version (image not pulled locally, or `vllm --version` failed - it needs GPU access to run) | Pull the image and ensure a GPU is visible, pass `--vllm-path`, or `--force` to bypass the gate (which then won't enforce `providerMinVersions`) |
 | `wrong_platform` | Model needs a GPU vendor this host lacks | Record `providerPlatforms.vllm`; verify on matching hardware |
+| `missing_feature` | Node's vLLM install lacks a Python module a required capability needs (e.g. `transcription` models need `soundfile` for the `audio` feature) | Install the missing dependency into the vLLM environment, or run on a node that has it |
 | `insufficient_capacity` | `weight` + KV-cache exceeds available VRAM | Re-check the `weight` estimate, lower KV-cache via `--kv-cache`, or choose a smaller/quantized variant |
 | Server exits at load: "trust_remote_code" / "requires --trust-remote-code" | Model ships custom loading code | Add `custom_code` to `tags` (or `providerTags.vllm`) |
 | Server load: unknown/unsupported architecture | vLLM too old for this model | Set `providerMinVersions.vllm` and run on a newer node |
