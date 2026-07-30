@@ -36,7 +36,13 @@ export async function getResponse(orgId: string, id: string): Promise<unknown | 
   }
 }
 
-export function deleteResponse(orgId: string, id: string): void {
-  redis.del(responseKey(orgId, id))
-    .catch((err: unknown) => log.warn({ err }, "Redis error in deleteResponse"));
+/** Returns false when the entry could not be removed, so callers do not report a delete that did not happen. */
+export async function deleteResponse(orgId: string, id: string): Promise<boolean> {
+  try {
+    await redis.del(responseKey(orgId, id));
+    return true;
+  } catch (err) {
+    log.warn({ err }, "Redis error in deleteResponse");
+    return false;
+  }
 }

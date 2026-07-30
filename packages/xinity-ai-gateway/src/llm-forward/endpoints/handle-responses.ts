@@ -583,7 +583,9 @@ export async function handleGetOrDeleteResponseRequest(req: Request): Promise<Re
   }
 
   if (req.method === "DELETE") {
-    deleteResponse(authCheckResponse.orgId, responseId);
+    if (!await deleteResponse(authCheckResponse.orgId, responseId)) {
+      return errorResponse("Could not delete response", 500);
+    }
     return Response.json({ id: responseId, object: "response", deleted: true });
   }
 
