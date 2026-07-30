@@ -28,15 +28,6 @@ curl -fsSL https://github.com/xinity-ai/xinity-ai/releases/latest/download/insta
 curl -fsSL https://github.com/xinity-ai/xinity-ai/releases/latest/download/install.sh | bash -s -- --prefix /usr/local/bin
 ```
 
-### Prerequisites
-
-- `tar` (used to extract the release archive)
-- `unzip` (checked by the installer, though the current archive format only needs `tar`)
-
-### Private repositories
-
-For private or internal forks, the installer needs a GitHub token. Set `GITHUB_TOKEN` in your environment or authenticate with the GitHub CLI (`gh auth login`). Private repo downloads also require `jq` to be installed.
-
 ### Updating
 
 Once installed, the CLI can update itself:
