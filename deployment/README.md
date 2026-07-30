@@ -27,6 +27,8 @@ The control plane can be deployed using any of the three methods below. The daem
 | **Docker Compose** | Docker hosts, cloud VMs | [docker/README.md](docker/README.md) |
 | **NixOS Flake** | NixOS infrastructure | [nixos/README.md](nixos/README.md) |
 
+All methods put the gateway behind a reverse proxy that terminates TLS. Shared nginx and Caddy configurations live in [reverse-proxy/](reverse-proxy/README.md).
+
 ---
 
 ## Adding Inference Nodes

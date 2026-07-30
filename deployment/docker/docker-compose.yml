@@ -172,7 +172,7 @@ services:
       INFOSERVER_PORT: ${INFOSERVER_PORT:-8090}
       ACME_EMAIL: ${ACME_EMAIL:-}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../reverse-proxy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
     networks:

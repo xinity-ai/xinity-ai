@@ -1,5 +1,12 @@
 # Xinity AI Caddy Configuration
 # Automatic HTTPS with Let's Encrypt
+#
+# Used as-is by the Docker Compose deployment, which mounts this file and
+# supplies the environment variables below. The upstream hostnames (gateway,
+# dashboard, infoserver) are Compose service names; replace them with real
+# host:port pairs when running Caddy outside that stack.
+#
+# See docs/security/reverse-proxy.md for what each gateway setting is for.
 
 # Global options
 {
@@ -33,7 +40,29 @@
 
 # API Gateway
 {$GATEWAY_SUBDOMAIN}.{$DOMAIN} {
-	reverse_proxy gateway:{$GATEWAY_PORT}
+	# /metrics is only password protected when METRICS_AUTH is set on the
+	# gateway, and is public when it is not. Scrape it over the internal
+	# network instead.
+	@metrics path /metrics
+	respond @metrics 403
+
+	reverse_proxy gateway:{$GATEWAY_PORT} {
+		# Generations legitimately run for minutes. Stay just above the
+		# gateway's own BACKEND_TIMEOUT_MS (default 300s) so it produces the
+		# error rather than Caddy cutting the connection.
+		transport http {
+			read_timeout 310s
+			write_timeout 310s
+			dial_timeout 10s
+		}
+		flush_interval -1
+	}
+
+	# Multimodal requests carry base64 images (up to ~54 MB encoded) and
+	# transcription uploads are multipart.
+	request_body {
+		max_size 64MB
+	}
 
 	# Security headers
 	header {
@@ -43,6 +72,9 @@
 
 	# Enable compression
 	encode gzip zstd
+
+	# Caddy has no built-in rate limiting; the `rate_limit` directive requires a
+	# third-party plugin and an xcaddy build. See docs/security/reverse-proxy.md.
 
 	# Logging
 	log {
