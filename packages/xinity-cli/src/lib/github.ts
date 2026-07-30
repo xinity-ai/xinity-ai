@@ -7,6 +7,7 @@
 import { join } from "path";
 import { loadConfig } from "./config.ts";
 import { localRun } from "./host.ts";
+import { cliAssetSuffix } from "./platform.ts";
 
 const DEFAULT_PROJECT_URL = "https://github.com/xinity-ai/xinity-ai";
 
@@ -232,6 +233,9 @@ function productSlug(component: string): string {
 }
 
 export function assetPrefix(component: string, arch?: string): string {
+  if (component === "cli") {
+    return `${productSlug(component)}-${cliAssetSuffix()}`;
+  }
   const resolved = (arch ?? process.arch) === "arm64" ? "arm64" : "x64";
   return `${productSlug(component)}-linux-${resolved}`;
 }

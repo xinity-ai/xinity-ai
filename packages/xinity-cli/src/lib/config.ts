@@ -4,9 +4,9 @@
  */
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
-import { homedir } from "os";
 import * as p from "./clack.ts";
 import pc from "picocolors";
+import { configDir, IS_WINDOWS } from "./platform.ts";
 
 export interface CliConfig {
   apiKey?: string;
@@ -52,14 +52,8 @@ const CLI_FIELDS: ConfigField[] = [
   { key: "githubToken", label: "GitHub token (for private repo access)", isSecret: true },
 ];
 
-export function xinityConfigDir(): string {
-  return process.env.XDG_CONFIG_HOME
-    ? join(process.env.XDG_CONFIG_HOME, "xinity")
-    : join(homedir(), ".config", "xinity");
-}
-
 export function configPath(): string {
-  return join(xinityConfigDir(), "config.json");
+  return join(configDir(), "config.json");
 }
 
 /** Returns null when the file is missing. Throws on corrupt JSON. */
@@ -73,9 +67,13 @@ export function loadPrivateJson<T>(path: string): T | null {
 /** Write JSON readable only by the user (0700 directory, 0600 file). */
 export function savePrivateJson(path: string, value: unknown): void {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  chmodSync(dirname(path), 0o700);
+  if (!IS_WINDOWS) {
+    chmodSync(dirname(path), 0o700);
+  }
   writeFileSync(path, JSON.stringify(value, null, 2) + "\n", { mode: 0o600 });
-  chmodSync(path, 0o600);
+  if (!IS_WINDOWS) {
+    chmodSync(path, 0o600);
+  }
 }
 
 /** Read the config file, returning an empty object if it doesn't exist or is corrupt. */

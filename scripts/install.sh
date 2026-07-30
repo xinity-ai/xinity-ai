@@ -57,13 +57,15 @@ OS="$(uname -s)"
 ARCH="$(uname -m)"
 
 case "$OS" in
-  Linux) ;;
-  *)     fail "Unsupported OS: $OS (only Linux is supported)" ;;
+  Linux)  PLATFORM="linux" ;;
+  Darwin) PLATFORM="darwin" ;;
+  *)      fail "Unsupported OS: $OS (supported: Linux, macOS)" ;;
 esac
 
 case "$ARCH" in
-  x86_64)   SUFFIX="linux-x64" ;;
-  aarch64)  SUFFIX="linux-arm64" ;;
+  x86_64)   SUFFIX="${PLATFORM}-x64" ;;
+  aarch64)  SUFFIX="${PLATFORM}-arm64" ;;
+  arm64)    SUFFIX="${PLATFORM}-arm64" ;;
   *)        fail "Unsupported architecture: $ARCH" ;;
 esac
 
@@ -79,7 +81,8 @@ require_tool() {
   fi
 }
 
-require_tool curl  "apt install curl  |  dnf install curl  |  pacman -S curl"
+require_tool curl  "apt install curl  |  dnf install curl  |  brew install curl"
+require_tool tar   "apt install tar   |  dnf install tar   |  brew install gnu-tar"
 
 # ── Version resolution ───────────────────────────────────────────────────────
 
@@ -124,7 +127,11 @@ download_asset "$ASSET_NAME" "${TMP_DIR}/${ASSET_NAME}" \
 if download_asset "SHASUMS256.txt" "${TMP_DIR}/SHASUMS256.txt" 2>/dev/null; then
   EXPECTED="$(grep "$ASSET_NAME" "${TMP_DIR}/SHASUMS256.txt" | awk '{print $1}')"
   if [[ -n "$EXPECTED" ]]; then
-    ACTUAL="$(sha256sum "${TMP_DIR}/${ASSET_NAME}" | awk '{print $1}')"
+    if command -v sha256sum &>/dev/null; then
+      ACTUAL="$(sha256sum "${TMP_DIR}/${ASSET_NAME}" | awk '{print $1}')"
+    else
+      ACTUAL="$(shasum -a 256 "${TMP_DIR}/${ASSET_NAME}" | awk '{print $1}')"
+    fi
     if [[ "$EXPECTED" = "$ACTUAL" ]]; then
       pass "SHA256 verified"
     else
