@@ -9,7 +9,8 @@
  */
 import { existsSync, readdirSync, unlinkSync } from "fs";
 import { join } from "path";
-import { xinityConfigDir, loadPrivateJson, savePrivateJson } from "./config.ts";
+import { loadPrivateJson, savePrivateJson } from "./config.ts";
+import { configDir } from "./platform.ts";
 import { z } from "zod";
 import { secret } from "common-env";
 import { version as cliVersion } from "../../../../package.json";
@@ -102,7 +103,7 @@ export function stackHostsInfoserver(stack: StackDefinition): boolean {
 // ── Paths ────────────────────────────────────────────────────────────────
 
 function stacksDir(): string {
-  return join(xinityConfigDir(), "stacks");
+  return join(configDir(), "stacks");
 }
 
 function stackPath(name: string): string {

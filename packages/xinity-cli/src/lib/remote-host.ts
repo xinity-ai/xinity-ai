@@ -5,6 +5,7 @@ import { cancel, log } from "./clack.ts";
 import { cyan, dim } from "picocolors";
 import { SudoSession, checkPasswordlessSudo } from "./sudo-session.ts";
 import { quoteShellArg, quoteShellArgv } from "common-env";
+import { sshSocketPath } from "./platform.ts";
 
 async function findAvailableLoopbackPort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -142,7 +143,7 @@ function drainStdinBuffer(): Promise<void> {
 }
 
 export function socketPath(hostname: string): string {
-  return `/tmp/xinity-ssh-${sanitizeHost(hostname)}`;
+  return sshSocketPath(sanitizeHost(hostname));
 }
 
 function b64Cmd(command: string): string {
@@ -199,6 +200,14 @@ export class RemoteHost implements Host {
     if (!result.ok || !result.output.includes("xinity-connected")) {
       throw new Error(
         `Could not connect to ${this.hostname}: ${result.output || "SSH connection failed"}`,
+      );
+    }
+
+    const os = await localRun(["ssh", ...this.ctrlArgs, this.hostname, "uname -s"]);
+    if (!os.ok || os.output.trim() !== "Linux") {
+      throw new Error(
+        `${this.hostname} is not a Linux host (uname: ${os.output.trim() || "unknown"}). ` +
+        `Xinity services require Linux.`,
       );
     }
   }

@@ -1,9 +1,10 @@
 import type { CommandModule } from "yargs";
 import { join } from "path";
-import { tmpdir, homedir } from "os";
+import { tmpdir } from "os";
 import { mkdirSync, copyFileSync, renameSync, unlinkSync, chmodSync, existsSync } from "fs";
 import { cancel, confirm, intro, isCancel, log, outro, spinner as clackSpinner } from "../lib/clack.ts";
 import { cyan, green, yellow } from "picocolors";
+import { defaultInstallDir, binaryName, IS_WINDOWS } from "../lib/platform.ts";
 
 import { version } from "../../../../package.json";
 const CLI_VERSION = `v${version}`;
@@ -13,7 +14,20 @@ import { runSteps } from "../lib/step-runner.ts";
 import { pass, fail } from "../lib/output.ts";
 import { localRun } from "../lib/host.ts";
 
-// ─── Self-update ────────────────────────────────────────────────────────────
+export function cleanupOldBinary(): void {
+  if (!IS_WINDOWS) {
+    return;
+  }
+  const execPath = process.execPath;
+  const oldPath = execPath.replace(/\.exe$/i, ".old.exe");
+  if (oldPath !== execPath && existsSync(oldPath)) {
+    try {
+      unlinkSync(oldPath);
+    } catch {
+      // Previous instance may still be exiting; ignore
+    }
+  }
+}
 
 async function selfUpdate(release: Release): Promise<boolean> {
   let assetName: string;
@@ -38,7 +52,7 @@ async function selfUpdate(release: Release): Promise<boolean> {
     return false;
   }
 
-  const fallbackPath = join(homedir(), ".local", "bin", "xinity");
+  const fallbackPath = join(defaultInstallDir(), binaryName());
   const currentPath = locateRunningBinary(fallbackPath);
 
   if (!currentPath) {
@@ -51,25 +65,39 @@ async function selfUpdate(release: Release): Promise<boolean> {
     return false;
   }
 
-  const newBinary = join(extractDir, "xinity");
-  const backupPath = currentPath + ".bak";
+  const newBinary = join(extractDir, binaryName());
 
   const replaceSpinner = clackSpinner();
   replaceSpinner.start("Replacing binary…");
 
   try {
-    chmodSync(newBinary, 0o755);
+    if (!IS_WINDOWS) {
+      chmodSync(newBinary, 0o755);
+    }
 
-    // On Linux, renaming a running binary is safe (old inode stays alive until process exits)
-    renameSync(currentPath, backupPath);
-    try {
-      copyFileSync(newBinary, currentPath);
-      chmodSync(currentPath, 0o755);
-      unlinkSync(backupPath);
-    } catch (err) {
-      // Rollback on failure
-      renameSync(backupPath, currentPath);
-      throw err;
+    if (IS_WINDOWS) {
+      // Windows allows renaming a running .exe but not deleting it.
+      // Rename the current binary aside, copy the new one in, and let
+      // cleanupOldBinary() remove the old file on the next invocation.
+      const oldPath = currentPath.replace(/\.exe$/i, ".old.exe");
+      renameSync(currentPath, oldPath);
+      try {
+        copyFileSync(newBinary, currentPath);
+      } catch (err) {
+        renameSync(oldPath, currentPath);
+        throw err;
+      }
+    } else {
+      const backupPath = currentPath + ".bak";
+      renameSync(currentPath, backupPath);
+      try {
+        copyFileSync(newBinary, currentPath);
+        chmodSync(currentPath, 0o755);
+        unlinkSync(backupPath);
+      } catch (err) {
+        renameSync(backupPath, currentPath);
+        throw err;
+      }
     }
 
     replaceSpinner.stop("Binary replaced");
@@ -82,11 +110,6 @@ async function selfUpdate(release: Release): Promise<boolean> {
   }
 }
 
-/**
- * Locate the currently-running xinity binary. In compiled mode `process.execPath`
- * IS the binary; in dev/test environments, fall back to the conventional install
- * location.
- */
 function locateRunningBinary(fallbackPath: string): string | null {
   const execPath = process.execPath;
   if (existsSync(execPath) && execPath === process.argv[0]) return execPath;
@@ -94,14 +117,11 @@ function locateRunningBinary(fallbackPath: string): string | null {
   return null;
 }
 
-// ─── Shared update flow ─────────────────────────────────────────────────────
-
 export async function runUpdateFlow(opts: { checkOnly: boolean; targetVersion: string }): Promise<void> {
   const { checkOnly, targetVersion } = opts;
 
   intro(`xinity update${checkOnly ? yellow(" (check only)") : ""}`);
 
-  // Fetch latest release
   const spinner = clackSpinner();
   spinner.start("Checking for updates…");
 
@@ -116,7 +136,6 @@ export async function runUpdateFlow(opts: { checkOnly: boolean; targetVersion: s
   }
   spinner.stop(`Latest release: ${release.tagName}`);
 
-  // Compare versions
   const needsUpdate = CLI_VERSION !== release.tagName;
   const status = needsUpdate
     ? yellow(`${CLI_VERSION} → ${release.tagName}`)
@@ -134,7 +153,6 @@ export async function runUpdateFlow(opts: { checkOnly: boolean; targetVersion: s
     return;
   }
 
-  // Confirm
   const proceed = await confirm({
     message: `Update CLI to ${release.tagName}?`,
     initialValue: true,
@@ -150,8 +168,6 @@ export async function runUpdateFlow(opts: { checkOnly: boolean; targetVersion: s
   }
   outro("Done");
 }
-
-// ─── Command ────────────────────────────────────────────────────────────────
 
 export const updateCommand: CommandModule = {
   command: "update",

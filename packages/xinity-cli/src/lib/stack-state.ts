@@ -9,7 +9,8 @@ import { existsSync, unlinkSync } from "fs";
 import { join } from "path";
 import { z } from "zod";
 import { version as cliVersion } from "../../../../package.json";
-import { xinityConfigDir, loadPrivateJson, savePrivateJson } from "./config.ts";
+import { loadPrivateJson, savePrivateJson } from "./config.ts";
+import { configDir } from "./platform.ts";
 import type { StackDefinition } from "./stack.ts";
 
 // ── Schema & Types ──────────────────────────────────────────────────────
@@ -27,7 +28,7 @@ export type StackState = z.infer<typeof stackStateT>;
 // ── Paths ───────────────────────────────────────────────────────────────
 
 function statePath(name: string): string {
-  return join(xinityConfigDir(), "stacks", "state", `${name}.json`);
+  return join(configDir(), "stacks", "state", `${name}.json`);
 }
 
 // ── Persistence ─────────────────────────────────────────────────────────
