@@ -8,6 +8,28 @@ import { rootLogger } from "../../logger";
 const log = rootLogger.child({ name: "web-fetch" });
 
 const DEFAULT_MAX_CHARS = 12000;
+const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+
+async function readCappedText(response: Response, maxBytes: number = MAX_RESPONSE_BYTES): Promise<string> {
+  const body = response.body;
+  if (!body) return "";
+
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let result = "";
+
+  try {
+    while (result.length < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      result += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    reader.cancel();
+  }
+
+  return result.slice(0, maxBytes);
+}
 
 const turndownService = new TurndownService({
   headingStyle: "atx",
@@ -102,8 +124,8 @@ export async function fetchWebContent(
       contentType.includes("application/xml"));
 
   if (!isHtml) {
-    const text = await response.text();
-    const truncated = text.length > maxChars;
+    const text = await readCappedText(response, maxChars);
+    const truncated = text.length >= maxChars;
     return {
       url,
       content: text.slice(0, maxChars),
@@ -113,7 +135,7 @@ export async function fetchWebContent(
     };
   }
 
-  const text = await response.text();
+  const text = await readCappedText(response);
 
   const { title, description, cleanedHtml } = parseHtml(text);
 
