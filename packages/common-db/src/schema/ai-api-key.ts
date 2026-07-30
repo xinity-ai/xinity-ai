@@ -24,6 +24,7 @@ export const aiApiKeyT = pgTable("ai_api_key", {
   createdByUserId: text("created_by_user_id")
     .references(() => userT.id, { onDelete: "set null" }),
   name: text().notNull(),
+  /** "$sha256$...", or "$argon2id$..." for keys predating apiKeyVerifier. */
   hash: text().notNull(),
   deletedAt,
   createdAt,
