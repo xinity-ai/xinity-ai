@@ -22,6 +22,9 @@ let configuredDirPath: string | undefined;
 let lastRefreshAt: Date | null = null;
 let lastRefreshError: string | null = null;
 
+/** Without this an unresponsive include host stalls every later refresh behind it. */
+const INCLUDE_FETCH_TIMEOUT_MS = 10_000;
+
 // ── Init ───────────────────────────────────────────────────────────────
 
 export function configure(maxIncludeDepth = 10, modelDirPath?: string) {
@@ -85,7 +88,7 @@ async function resolveIncludes(
   visited.add(normalized);
 
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: AbortSignal.timeout(INCLUDE_FETCH_TIMEOUT_MS) });
     if (!response.ok) {
       log.warn({ url, status: response.status }, "Include fetch failed");
       return;

@@ -269,6 +269,44 @@ describe("server-catalog", () => {
     });
   });
 
+  describe("include fetch timeout", () => {
+    const realFetch = globalThis.fetch;
+
+    afterEach(() => {
+      globalThis.fetch = realFetch;
+    });
+
+    it("passes an abort signal so an unresponsive host cannot stall the refresh", async () => {
+      let receivedSignal: AbortSignal | undefined;
+      globalThis.fetch = ((_url: string, init?: RequestInit) => {
+        receivedSignal = init?.signal ?? undefined;
+        return Promise.resolve(new Response(makeModelYaml({ "remote-model": baseModel })));
+      }) as typeof fetch;
+
+      const localYaml = makeModelYaml({ "local-model": baseModel }, ["http://unreachable.invalid/models.yaml"]);
+      const { dirPath } = await writeYamlInOwnDir(localYaml, fileIndex++);
+      configure(10, dirPath);
+      await refresh();
+
+      expect(receivedSignal).toBeInstanceOf(AbortSignal);
+      expect(get("remote-model")).toBeDefined();
+    });
+
+    it("keeps local models when an include times out", async () => {
+      globalThis.fetch = ((_url: string, _init?: RequestInit) =>
+        Promise.reject(new DOMException("The operation timed out.", "TimeoutError"))) as typeof fetch;
+
+      const localYaml = makeModelYaml({ "local-model": baseModel }, ["http://unreachable.invalid/models.yaml"]);
+      const { dirPath } = await writeYamlInOwnDir(localYaml, fileIndex++);
+      configure(10, dirPath);
+      await refresh();
+
+      expect(get("local-model")).toBeDefined();
+      expect(get("remote-model")).toBeUndefined();
+      expect(getCatalogHealth().lastRefreshError).toBeNull();
+    });
+  });
+
   describe("validation", () => {
     it("skips files with unparseable YAML and continues with the rest", async () => {
       const dirPath = join(testDir, `dir-${fileIndex++}`);
