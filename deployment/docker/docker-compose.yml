@@ -77,6 +77,8 @@ services:
       METRICS_AUTH_FILE: /run/secrets/metrics_auth
       ORIGIN: ${ORIGIN:-http://localhost:${DASHBOARD_PORT:-5121}}
       HTTP_OVERRIDE_ORIGIN: ${HTTP_OVERRIDE_ORIGIN:-${ORIGIN:-http://localhost:${DASHBOARD_PORT:-5121}}}
+      HTTP_IP_HEADER: ${HTTP_IP_HEADER:-}
+      HTTP_XFF_DEPTH: ${HTTP_XFF_DEPTH:-1}
       GATEWAY_URL: ${GATEWAY_URL:-http://localhost:${GATEWAY_PORT:-4121}}
       INFOSERVER_URL: ${INFOSERVER_URL:-https://sysinfo.xinity.ai}
       APP_NAME: ${APP_NAME:-Xinity Admin}
