@@ -14,6 +14,7 @@ const log = rootLogger.child({ name: "catalog" });
 
 let modelData = new Map<string, ModelWithSpecifier>();
 let mergedData: { models: Record<string, Model> } = { models: {} };
+let serializedCatalog: SerializedCatalog = serializeCatalog(mergedData);
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
 let configuredMaxDepth: number;
@@ -61,6 +62,7 @@ export async function refresh(): Promise<void> {
     // Atomic swap
     modelData = state.models;
     mergedData = { models: state.merged };
+    serializedCatalog = serializeCatalog(mergedData);
     lastRefreshAt = new Date();
     lastRefreshError = null;
   } catch (err) {
@@ -205,6 +207,41 @@ export function getByFamily(family: string): ModelWithSpecifier[] {
 /** Returns the merged model data for the /models/v1 endpoints. */
 export function getMergedData(): { models: Record<string, Model> } {
   return mergedData;
+}
+
+// ── Serialized bodies ──────────────────────────────────────────────────
+
+export interface SerializedCatalog {
+  json: string;
+  yaml: string;
+  /** Content hash, usable as an ETag and as a change signal for clients. */
+  digest: string;
+}
+
+/**
+ * Specifiers are sorted before serializing so the digest tracks content only.
+ * Merge order follows load order (directory files sorted, then includes in fetch
+ * order), so an include that reorders its own keys would otherwise produce a new
+ * digest for byte-identical data.
+ */
+function serializeCatalog(merged: { models: Record<string, Model> }): SerializedCatalog {
+  const sorted: Record<string, Model> = {};
+  for (const specifier of Object.keys(merged.models).sort()) {
+    sorted[specifier] = merged.models[specifier]!;
+  }
+
+  const payload = { models: sorted };
+  const json = JSON.stringify(payload);
+  return {
+    json,
+    yaml: Bun.YAML.stringify(payload),
+    digest: new Bun.CryptoHasher("sha256").update(json).digest("hex"),
+  };
+}
+
+/** Bodies are built once per refresh; serving them must not re-serialize. */
+export function getSerializedCatalog(): SerializedCatalog {
+  return serializedCatalog;
 }
 
 // ── Auto-refresh ───────────────────────────────────────────────────────
