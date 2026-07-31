@@ -3,6 +3,8 @@ import { join } from "path";
 
 export const IS_WINDOWS = process.platform === "win32";
 
+export const SUPPORTS_SSH_MULTIPLEXING = !IS_WINDOWS;
+
 const PLATFORM_MAP: Record<string, string> = {
   linux: "linux",
   darwin: "darwin",

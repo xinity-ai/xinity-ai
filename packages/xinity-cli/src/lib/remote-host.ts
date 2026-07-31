@@ -1,11 +1,11 @@
-import { createServer } from "net";
+import { createServer, connect } from "net";
 import { hostname as osHostname } from "os";
 import { localRun, type Host, type RunResult, type ElevationResult, type TunnelResult } from "./host.ts";
 import { cancel, log } from "./clack.ts";
 import { cyan, dim } from "picocolors";
 import { SudoSession, checkPasswordlessSudo } from "./sudo-session.ts";
 import { quoteShellArg, quoteShellArgv } from "common-env";
-import { sshSocketPath } from "./platform.ts";
+import { sshSocketPath, SUPPORTS_SSH_MULTIPLEXING } from "./platform.ts";
 
 async function findAvailableLoopbackPort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -22,6 +22,31 @@ async function findAvailableLoopbackPort(): Promise<number> {
       server.close(() => resolve(port));
     });
   });
+}
+
+async function isLoopbackPortReachable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = connect({ port, host: "127.0.0.1" });
+    socket.once("connect", () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once("error", () => {
+      socket.destroy();
+      resolve(false);
+    });
+  });
+}
+
+async function waitForLoopbackPort(port: number, timeoutMs = 10_000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await isLoopbackPortReachable(port)) {
+      return true;
+    }
+    await Bun.sleep(100);
+  }
+  return false;
 }
 
 function sanitizeHost(hostname: string): string {
@@ -177,17 +202,21 @@ export class RemoteHost implements Host {
     this.hostname = hostname;
     this.isLocalhost = detectLocalhost(hostname);
     this.socket = socketPath(hostname);
-    this.ctrlArgs = [
-      "-o", "ControlMaster=auto",
-      "-o", `ControlPath=${this.socket}`,
-      "-o", "ControlPersist=yes",
-    ];
+    this.ctrlArgs = SUPPORTS_SSH_MULTIPLEXING
+      ? [
+          "-o", "ControlMaster=auto",
+          "-o", `ControlPath=${this.socket}`,
+          "-o", "ControlPersist=yes",
+        ]
+      : [];
   }
 
   async connect(): Promise<void> {
     // Kill any stale control socket from a previous CLI run. Reusing a stale
     // socket can corrupt stdin piping for sudo sessions.
-    await localRun(["ssh", "-O", "exit", ...this.ctrlArgs, this.hostname]).catch(() => {});
+    if (SUPPORTS_SSH_MULTIPLEXING) {
+      await localRun(["ssh", "-O", "exit", ...this.ctrlArgs, this.hostname]).catch(() => {});
+    }
 
     const result = await localRun([
       "ssh",
@@ -355,7 +384,7 @@ export class RemoteHost implements Host {
     }
     const result = await localRun([
       "scp",
-      "-o", `ControlPath=${this.socket}`,
+      ...(SUPPORTS_SSH_MULTIPLEXING ? ["-o", `ControlPath=${this.socket}`] : []),
       localPath,
       `${this.hostname}:${destPath}`,
     ]);
@@ -420,38 +449,70 @@ export class RemoteHost implements Host {
     // the tunnel; SSH can pick one with "-L 0:..." but doesn't surface which port
     // it chose, so we allocate ourselves and pass an explicit port.
     const localPort = await findAvailableLoopbackPort();
+    const forward = `${localPort}:${remoteHost}:${remotePort}`;
 
-    // Set up SSH local port forwarding using the existing control socket.
-    // -f sends SSH to the background after connection, -N means no remote command.
-    const fwdResult = await localRun([
-      "ssh", "-f", "-N",
-      "-o", "ExitOnForwardFailure=yes",
-      "-L", `${localPort}:${remoteHost}:${remotePort}`,
-      ...this.ctrlArgs,
-      this.hostname,
-    ]);
-
-    if (!fwdResult.ok) {
-      return { ok: false, error: `SSH tunnel failed: ${fwdResult.output}` };
-    }
-
-    // Rewrite the URL to point at the local forwarded port
     const localParsed = new URL(url);
     localParsed.hostname = "127.0.0.1";
     localParsed.port = String(localPort);
     const localUrl = localParsed.toString();
 
+    return SUPPORTS_SSH_MULTIPLEXING
+      ? this.forwardViaControlSocket(forward, localUrl)
+      : this.forwardViaChildProcess(forward, localPort, localUrl);
+  }
+
+  // -f sends SSH to the background after connecting, -N means no remote command.
+  private async forwardViaControlSocket(forward: string, localUrl: string): Promise<TunnelResult> {
+    const result = await localRun([
+      "ssh", "-f", "-N",
+      "-o", "ExitOnForwardFailure=yes",
+      "-L", forward,
+      ...this.ctrlArgs,
+      this.hostname,
+    ]);
+
+    if (!result.ok) {
+      return { ok: false, error: `SSH tunnel failed: ${result.output}` };
+    }
+
     return {
       ok: true,
       localUrl,
       close: async () => {
-        // Cancel the specific forwarding via the control socket
-        await localRun([
-          "ssh", "-O", "cancel",
-          "-L", `${localPort}:${remoteHost}:${remotePort}`,
-          ...this.ctrlArgs,
-          this.hostname,
-        ]);
+        await localRun(["ssh", "-O", "cancel", "-L", forward, ...this.ctrlArgs, this.hostname]);
+      },
+    };
+  }
+
+  /** Killing the process is the only way to close a forward without "ssh -O cancel". */
+  private async forwardViaChildProcess(
+    forward: string,
+    localPort: number,
+    localUrl: string,
+  ): Promise<TunnelResult> {
+    const proc = Bun.spawn(
+      ["ssh", "-N", "-o", "ExitOnForwardFailure=yes", "-L", forward, this.hostname],
+      { stdin: "ignore", stdout: "ignore", stderr: "pipe" },
+    );
+
+    // Foreground SSH never signals readiness, so watch the port instead.
+    const ready = await Promise.race([
+      waitForLoopbackPort(localPort),
+      proc.exited.then(() => false),
+    ]);
+
+    if (!ready) {
+      proc.kill();
+      const reason = (await new Response(proc.stderr).text()).trim();
+      return { ok: false, error: `SSH tunnel failed: ${reason || `${forward} never opened`}` };
+    }
+
+    return {
+      ok: true,
+      localUrl,
+      close: async () => {
+        proc.kill();
+        await proc.exited;
       },
     };
   }
