@@ -27,6 +27,8 @@ export const dashboardEnvSchema = z.object({
   S3_REGION: z.string().default("us-east-1").describe("S3 region").meta(expert()),
   MCP_ENABLED: z.stringbool().default(true).describe("Enable the /mcp Model Context Protocol endpoint"),
   LICENSE_KEY: z.string().optional().describe("License key for unlocking paid features (Ed25519-signed token)").meta(secret()),
+  HTTP_IP_HEADER: z.string().optional().describe("Header your reverse proxy uses to forward the client IP (e.g. x-forwarded-for, x-real-ip). Without this, audit logs record the proxy address, not the real client.").meta(expert()),
+  HTTP_XFF_DEPTH: z.coerce.number().int().default(1).describe("When HTTP_IP_HEADER is x-forwarded-for, how many proxy hops to skip from the right. 1 for a single proxy, 2 for two chained proxies.").meta(expert()),
   TRUSTED_ORIGINS: z.string().optional().describe("Comma-separated additional trusted origins for CSRF validation behind reverse proxies").meta(expert()),
   GATEWAY_URL: z.url().default("http://localhost:4010").describe("Gateway base URL shown to users in docs and code examples (e.g. https://api.example.com). Must NOT include the /v1 path segment - that is appended where needed.").meta(clientPublic()),
   DEPLOYMENT_STRATEGY: z.enum(["first-fit", "balanced", "bin-pack", "proportional"]).default("balanced").describe("Node selection strategy for new model installations. 'first-fit' picks the first node that fits (deterministic). 'balanced' picks the node with the most absolute free VRAM (spread for HA). 'bin-pack' picks the tightest fit (consolidate so idle nodes stay drainable). 'proportional' picks the node with the lowest percent utilization (fair spread across heterogeneous nodes).").meta(expert()),

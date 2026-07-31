@@ -547,7 +547,9 @@
             mcpEnabled = lib.mkDefault cfg.dashboard.mcpEnabled;
             licenseKey = lib.mkDefault cfg.dashboard.licenseKey;
             betterAuthUrl = lib.mkDefault publicDashboardUrl;  # Public URL for auth redirects
-            origin = lib.mkDefault publicDashboardUrl;          # Public URL for CORS
+            origin = lib.mkDefault publicDashboardUrl;
+            reverseProxy.ipHeader = lib.mkDefault "x-forwarded-for";
+            reverseProxy.xffDepth = lib.mkDefault 1;
             infoserverUrl = lib.mkDefault infoserverUrl;        # Internal URL for server-side fetching
             gatewayUrl = lib.mkDefault publicGatewayUrl;        # Public gateway base URL (no /v1 suffix)
             nodeEnv = lib.mkDefault "production";

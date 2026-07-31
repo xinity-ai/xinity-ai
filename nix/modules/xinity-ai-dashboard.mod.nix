@@ -287,6 +287,24 @@
           description = "Path to a file containing the license key.";
         };
 
+        # --- Reverse proxy (adapter-level settings) ---
+
+        reverseProxy = {
+          ipHeader = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            example = "x-forwarded-for";
+            description = "HTTP header the reverse proxy uses to pass the real client IP. Set to \"x-forwarded-for\" when running behind a reverse proxy (Caddy, nginx, Traefik). When null, the adapter uses the raw TCP peer address.";
+          };
+
+          xffDepth = lib.mkOption {
+            type = lib.types.int;
+            default = 1;
+            description = "Number of trusted proxy hops. The adapter reads the Nth entry from the right of the X-Forwarded-For header. Set to 1 for a single reverse proxy, 2 for two chained proxies, etc.";
+          };
+
+        };
+
         # --- Generic escape hatches ---
 
         environmentFiles = lib.mkOption {
@@ -325,6 +343,7 @@
           environment = {
             HTTP_PORT = toString cfg.port;
             ORIGIN = cfg.origin;
+            HTTP_OVERRIDE_ORIGIN = cfg.origin;
             NODE_ENV = cfg.nodeEnv;
             APP_NAME = cfg.appName;
             SIGNUP_ENABLED = lib.boolToString cfg.signupEnabled;
@@ -397,6 +416,10 @@
           }
           // lib.optionalAttrs (cfg.licenseKeyFile != null) {
             LICENSE_KEY_FILE = "%d/license-key";
+          }
+          // lib.optionalAttrs (cfg.reverseProxy.ipHeader != null) {
+            HTTP_IP_HEADER = cfg.reverseProxy.ipHeader;
+            HTTP_XFF_DEPTH = toString cfg.reverseProxy.xffDepth;
           }
           // cfg.extraEnvironment;
           serviceConfig = {
