@@ -32,6 +32,10 @@ export async function ensureInfoServerRunning(): Promise<void> {
         HOST,
         PORT: port,
         MODEL_INFO_DIR,
+        // Lets each test present its own client address, so one test spending a
+        // rate-limit bucket cannot throttle the next.
+        HTTP_IP_HEADER: "x-forwarded-for",
+        HTTP_XFF_DEPTH: "1",
       },
       stdout: "pipe",
       stderr: "pipe",

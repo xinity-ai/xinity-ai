@@ -5,7 +5,7 @@
 
 # Include the public Xinity model registry
 includes:
-  - https://sysinfo.xinity.ai/models/v1.yaml
+  - https://sysinfo.xinity.ai/models/v1.json
 
 # Define your custom models here
 models:

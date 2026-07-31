@@ -37,6 +37,7 @@ const {
   getAll,
   getByFamily,
   getMergedData,
+  getSerializedCatalog,
   getCatalogHealth,
   stopAutoRefresh,
 } = await import("./server-catalog");
@@ -472,6 +473,62 @@ describe("server-catalog", () => {
       const health = getCatalogHealth();
       expect(health.lastRefreshError).toBeNull();
       expect(health.modelCount).toBe(0);
+    });
+  });
+
+  describe("serialized bodies", () => {
+    it("returns the same body instance across calls, without re-serializing", async () => {
+      const yaml = makeModelYaml({ "llama-3.3-70b": baseModel });
+      const { dirPath } = await writeYamlInOwnDir(yaml, fileIndex++);
+      configure(10, dirPath);
+      await refresh();
+
+      expect(getSerializedCatalog()).toBe(getSerializedCatalog());
+    });
+
+    it("keeps the digest stable across a refresh that changes nothing", async () => {
+      const yaml = makeModelYaml({ "llama-3.3-70b": baseModel });
+      const { dirPath } = await writeYamlInOwnDir(yaml, fileIndex++);
+      configure(10, dirPath);
+
+      await refresh();
+      const first = getSerializedCatalog().digest;
+      await refresh();
+
+      expect(getSerializedCatalog().digest).toBe(first);
+    });
+
+    it("changes the digest when a model changes", async () => {
+      const { dirPath } = await writeYamlInOwnDir(makeModelYaml({ "llama-3.3-70b": baseModel }), fileIndex++);
+      configure(10, dirPath);
+      await refresh();
+      const before = getSerializedCatalog().digest;
+
+      await Bun.write(join(dirPath, "models.yaml"), makeModelYaml({
+        "llama-3.3-70b": { ...baseModel, weight: 20 },
+      }));
+      await refresh();
+
+      expect(getSerializedCatalog().digest).not.toBe(before);
+    });
+
+    it("ignores specifier ordering, so a reordered include keeps the digest", async () => {
+      const ordered = await writeYamlInOwnDir(
+        makeModelYaml({ "a-model": baseModel, "z-model": embeddingModel }),
+        fileIndex++,
+      );
+      configure(10, ordered.dirPath);
+      await refresh();
+      const forward = getSerializedCatalog().digest;
+
+      const reversed = await writeYamlInOwnDir(
+        makeModelYaml({ "z-model": embeddingModel, "a-model": baseModel }),
+        fileIndex++,
+      );
+      configure(10, reversed.dirPath);
+      await refresh();
+
+      expect(getSerializedCatalog().digest).toBe(forward);
     });
   });
 });
