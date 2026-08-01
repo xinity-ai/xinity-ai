@@ -20,7 +20,7 @@ Set `X-Forwarded-For` and `X-Forwarded-Proto` on every proxied request.
 
 ### Dashboard: trusting forwarded headers
 
-The dashboard uses the client IP for audit log entries. By default it reads the raw TCP peer address, which behind a proxy is the proxy itself. To resolve the real client IP, set two environment variables on the dashboard:
+The dashboard uses the client IP for audit log entries, session records, and auth rate limiting. All three read the same address, resolved once per request by the HTTP adapter. By default that is the raw TCP peer address, which behind a proxy is the proxy itself. To resolve the real client IP, set two environment variables on the dashboard:
 
 | Variable | Purpose | Example |
 |---|---|---|

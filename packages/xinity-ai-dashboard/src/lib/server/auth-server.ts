@@ -18,6 +18,7 @@ import { sendEmail, commonEmailProps, type AnyComponent } from "./email";
 import { notify } from "./notifications/notification.service";
 import { NotificationType } from "./notifications/events";
 import { emitAuthAuditEvent, type AuditAction } from "./orpc/audit";
+import { CLIENT_ADDRESS_HEADER, readClientAddress } from "./client-address";
 import EmailVerificationTemplate from "$lib/components/mailTemplates/EmailVerificationTemplate.svelte";
 import EmailForgotPasswordTemplate from "$lib/components/mailTemplates/EmailForgotPasswordTemplate.svelte";
 import EmailInvitationTemplate from "$lib/components/mailTemplates/EmailInvitationTemplate.svelte";
@@ -215,7 +216,7 @@ const recordAuthAudit = createAuthMiddleware(async (ctx) => {
     resource: "account",
     actorId,
     actorLabel,
-    ipAddress: headers?.get("x-client-address") || null,
+    ipAddress: readClientAddress(headers),
     userAgent: headers?.get("user-agent") ?? null,
     resourceId,
     result: isSuccess ? "success" : "failure",
@@ -228,6 +229,11 @@ export const auth = betterAuth({
   secret: serverEnv.BETTER_AUTH_SECRET,
   rateLimit: {
     enabled: serverEnv.NODE_ENV !== "test",
+  },
+  advanced: {
+    // Session rows and rate-limit buckets read the address the adapter already
+    // resolved, so Better Auth never trusts a forwarded header on its own.
+    ipAddress: { ipAddressHeaders: [CLIENT_ADDRESS_HEADER] },
   },
   session: {
     expiresIn: 60 * 60 * 24 * 30, // 30 days
