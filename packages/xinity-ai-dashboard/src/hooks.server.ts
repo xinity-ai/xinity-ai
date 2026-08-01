@@ -11,6 +11,7 @@ import { startNotificationScheduler } from "$lib/server/notifications/scheduler"
 import { serverEnv } from "$lib/server/serverenv";
 import { checkMigrationState, isMigrationOk } from "$lib/server/migration-check";
 import { loadDeploymentId } from "$lib/server/deployment-id";
+import { stampClientAddress } from "$lib/server/client-address";
 
 const log = rootLogger.child({ name: "hooks" });
 
@@ -71,9 +72,7 @@ const fillLocals: Handle = ({ event, resolve }) => {
     // getClientAddress throws when the address is unavailable
   }
   event.locals.clientAddress = clientAddress;
-  // Stamp the adapter-resolved address so Better Auth middleware can read it
-  // without re-parsing x-forwarded-for independently.
-  event.request.headers.set("x-client-address", clientAddress);
+  stampClientAddress(event.request, clientAddress);
   const incoming = event.request.headers.get("x-trace-id");
   const sanitized = incoming?.replace(/[^A-Za-z0-9_.:-]/g, "").slice(0, 300);
   const traceId = sanitized || `trc_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
