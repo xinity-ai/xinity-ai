@@ -47,6 +47,11 @@ export const CreateResponseBodySchema = z.object({
   input: z.unknown(),
   stream: z.boolean().optional().default(false),
   background: z.boolean().optional().default(false),
+  /**
+   * Governs API retrievability, per OpenAI (whose default is true), and additionally
+   * decides call logging, which OpenAI's Responses request has no parameter for. Left
+   * unset it defers to the api key's collectData; set explicitly it overrides it.
+   */
   store: z.boolean().optional(),
   temperature: z.number().optional(),
   top_p: z.number().optional(),

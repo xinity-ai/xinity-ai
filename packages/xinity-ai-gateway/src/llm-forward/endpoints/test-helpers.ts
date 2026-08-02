@@ -215,6 +215,7 @@ export function setupResponseTestMocks() {
     orgId: "org-1",
     keyId: "key-1",
     applicationId: "app-1",
+    collectData: true,
   }));
   mock.module("../auth", () => ({ checkAuth }));
 
@@ -245,8 +246,8 @@ export function setupResponseTestMocks() {
   });
   mock.module("../response-store", () => ({ saveResponse, getResponse, deleteResponse }));
 
-  const logChatSync = jest.fn();
-  const logChatStream = jest.fn();
+  const logChatSync = jest.fn(async () => {});
+  const logChatStream = jest.fn(async () => {});
   mock.module("../../callLogger", () => ({ logChatSync, logChatStream }));
   mock.module("../../usageRecorder", () => ({ recordUsageEvent: mock(() => {}) }));
 

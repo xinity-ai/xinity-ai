@@ -243,7 +243,34 @@ describe("handleResponses", () => {
 
     const body = (await res.json()) as any;
     expect(responseStore.has(body.id)).toBe(true);
-    expect(logChatSync).not.toHaveBeenCalled();
+  });
+
+  describe("call logging", () => {
+    const cases: Array<[store: boolean | undefined, collectData: boolean, logged: boolean]> = [
+      [undefined, true, true],
+      [undefined, false, false],
+      [false, true, false],
+      [true, false, true],
+    ];
+
+    test.each(cases)("store %p with collectData %p logs %p", async (store, collectData, logged) => {
+      checkAuth.mockImplementationOnce(async () => ({
+        orgId: "org-1",
+        keyId: "key-1",
+        applicationId: "app-1",
+        collectData,
+      }));
+
+      const req = new Request("http://localhost:4000/v1/responses", {
+        method: "POST",
+        headers: { "Authorization": "Bearer test" },
+        body: JSON.stringify({ model: "test-model", input: "Hi", store }),
+      });
+
+      const res = await handleCreateResponseRequest(req);
+      expect(res.status).toBe(200);
+      expect(logChatSync).toHaveBeenCalledTimes(logged ? 1 : 0);
+    });
   });
 
   test("should include metadata in response", async () => {
