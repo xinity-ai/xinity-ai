@@ -74,6 +74,26 @@ export const apiCallT = callDataSchema.table("api_call", {
 ]);
 export type ApiCall = InferSelectModel<typeof apiCallT>;
 
+/**
+ * Message bodies, referenced by the calls that sent them rather than copied per call.
+ * Conversations resend their whole history every turn, so copying grows quadratically.
+ * Org-scoped so one org's retention and deletion cannot reach another's rows.
+ */
+export const messageT = callDataSchema.table("message", {
+  id: uuid().primaryKey().defaultRandom(),
+  organizationId: text("organization_id")
+    .notNull()
+    .references(() => organizationT.id, { onDelete: "cascade" }),
+  sha256: text().notNull(),
+  /** Verbatim. Loose request schemas admit fields beyond the type, and dropping any of
+   * them would also merge messages that differ only there. */
+  payload: jsonb().notNull().$type<ApiCallInputMessage>(),
+  createdAt,
+}, table => [
+  uniqueIndex("message_organization_id_sha256_idx").on(table.organizationId, table.sha256),
+]);
+export type Message = InferSelectModel<typeof messageT>;
+
 export type Highlight = {
   start: number;
   end: number;
