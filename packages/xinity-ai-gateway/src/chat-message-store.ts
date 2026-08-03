@@ -1,12 +1,12 @@
-/** Content-addressed storage for call messages, so repeated history is stored once. */
-import { messageT, eq, and, inArray, type ApiCallInputMessage } from "common-db";
+/** Content-addressed storage for chat messages, so repeated history is stored once. */
+import { chatMessageT, eq, and, inArray, type ApiCallInputMessage } from "common-db";
 import { getDB } from "./db";
 
 const DIGEST_CACHE_MAX_ENTRIES = 5_000;
 
 type Database = ReturnType<typeof getDB>;
 /** Lets callers commit messages together with the rows referencing them. */
-export type MessageStoreExecutor = Database | Parameters<Parameters<Database["transaction"]>[0]>[0];
+export type ChatMessageStoreExecutor = Database | Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 /** Key order must not reach the digest, or dedup silently degrades to nothing. */
 function canonicalJson(value: unknown): string {
@@ -26,7 +26,7 @@ function canonicalJson(value: unknown): string {
 }
 
 /** Covers the whole message, so fields we do not model still tell two messages apart. */
-export function messageDigest(message: ApiCallInputMessage): string {
+export function chatMessageDigest(message: ApiCallInputMessage): string {
   return new Bun.CryptoHasher("sha256").update(canonicalJson(message)).digest("hex");
 }
 
@@ -65,16 +65,16 @@ const cacheKey = (orgId: string, sha256: string) => `${orgId}:${sha256}`;
  * Reading conflicts back relies on per-statement snapshots: never run this at REPEATABLE
  * READ or above.
  */
-export async function resolveMessageIds(
+export async function resolveChatMessageIds(
   orgId: string,
   messages: ApiCallInputMessage[],
-  executor: MessageStoreExecutor = getDB(),
+  executor: ChatMessageStoreExecutor = getDB(),
 ): Promise<string[]> {
   if (messages.length === 0) {
     return [];
   }
 
-  const digests = messages.map(messageDigest);
+  const digests = messages.map(chatMessageDigest);
   const resolved = new Map<string, string>();
   const pending = new Map<string, ApiCallInputMessage>();
 
@@ -92,14 +92,14 @@ export async function resolveMessageIds(
 
   if (pending.size > 0) {
     const inserted = await executor
-      .insert(messageT)
+      .insert(chatMessageT)
       .values([...pending].map(([sha256, payload]) => ({
         organizationId: orgId,
         sha256,
         payload,
       })))
       .onConflictDoNothing()
-      .returning({ id: messageT.id, sha256: messageT.sha256 });
+      .returning({ id: chatMessageT.id, sha256: chatMessageT.sha256 });
 
     for (const row of inserted) {
       resolved.set(row.sha256, row.id);
@@ -108,9 +108,9 @@ export async function resolveMessageIds(
     const conflicted = [...pending.keys()].filter((sha256) => !resolved.has(sha256));
     if (conflicted.length > 0) {
       const existing = await executor
-        .select({ id: messageT.id, sha256: messageT.sha256 })
-        .from(messageT)
-        .where(and(eq(messageT.organizationId, orgId), inArray(messageT.sha256, conflicted)));
+        .select({ id: chatMessageT.id, sha256: chatMessageT.sha256 })
+        .from(chatMessageT)
+        .where(and(eq(chatMessageT.organizationId, orgId), inArray(chatMessageT.sha256, conflicted)));
       for (const row of existing) {
         resolved.set(row.sha256, row.id);
       }

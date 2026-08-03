@@ -75,11 +75,12 @@ export const apiCallT = callDataSchema.table("api_call", {
 export type ApiCall = InferSelectModel<typeof apiCallT>;
 
 /**
- * Message bodies, referenced by the calls that sent them rather than copied per call.
- * Conversations resend their whole history every turn, so copying grows quadratically.
- * Org-scoped so one org's retention and deletion cannot reach another's rows.
+ * Bodies of chat-shaped messages, the form both `/v1/chat/completions` and `/v1/responses`
+ * normalize their input to, referenced by the calls that sent them rather than copied per
+ * call. Conversations resend their whole history every turn, so copying grows
+ * quadratically. Org-scoped so one org's retention and deletion cannot reach another's.
  */
-export const messageT = callDataSchema.table("message", {
+export const chatMessageT = callDataSchema.table("chat_message", {
   id: uuid().primaryKey().defaultRandom(),
   organizationId: text("organization_id")
     .notNull()
@@ -90,9 +91,73 @@ export const messageT = callDataSchema.table("message", {
   payload: jsonb().notNull().$type<ApiCallInputMessage>(),
   createdAt,
 }, table => [
-  uniqueIndex("message_organization_id_sha256_idx").on(table.organizationId, table.sha256),
+  uniqueIndex("chat_message_organization_id_sha256_idx").on(table.organizationId, table.sha256),
 ]);
-export type Message = InferSelectModel<typeof messageT>;
+export type ChatMessage = InferSelectModel<typeof chatMessageT>;
+
+export type ApiResponseStatus = "in_progress" | "completed" | "failed" | "incomplete" | "cancelled";
+/** A status a response can never leave again. */
+export type ApiResponseSettledStatus = Exclude<ApiResponseStatus, "in_progress">;
+
+/**
+ * Durable record of a `/v1/responses` call. Inserted when the response is created and
+ * updated once when it settles, so the request and its input survive a response that
+ * never completes.
+ */
+export const apiResponseT = callDataSchema.table("api_response", {
+  /** The client-facing `resp_` id, not a surrogate key. */
+  id: text().primaryKey(),
+  organizationId: text("organization_id")
+    .notNull()
+    .references(() => organizationT.id, { onDelete: "cascade" }),
+  apiKeyId: uuid("api_key_id").references(() => aiApiKeyT.id, { onDelete: "set null" }),
+  applicationId: uuid("application_id").references(() => aiApplicationT.id, { onDelete: "set null" }),
+  model: text().notNull(),
+  status: text().notNull().$type<ApiResponseStatus>(),
+  /** Deliberately not a foreign key: the referenced response may have been swept by
+   * retention, or never stored at all because it was created with `store: false`. */
+  previousResponseId: text("previous_response_id"),
+  /** The request-derived fields the API echoes back, all fixed at creation. */
+  requestParams: jsonb("request_params").notNull().$type<Record<string, unknown>>(),
+  error: jsonb().$type<{ code: string; message: string }>(),
+  incompleteDetails: jsonb("incomplete_details").$type<{ reason: string }>(),
+  usage: jsonb().$type<Record<string, unknown>>(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt,
+}, table => [
+  index("api_response_organization_id_created_at_idx").on(table.organizationId, table.createdAt),
+  index("api_response_api_key_id_idx").on(table.apiKeyId),
+]);
+export type ApiResponse = InferSelectModel<typeof apiResponseT>;
+
+/** Output items in emission order, inserted when the response settles rather than as they
+ * arrive, so a long run does not rewrite a growing list. `seq` doubles as the
+ * `input_items` pagination cursor. */
+export const apiResponseItemT = callDataSchema.table("api_response_item", {
+  responseId: text("response_id")
+    .notNull()
+    .references(() => apiResponseT.id, { onDelete: "cascade" }),
+  seq: integer().notNull(),
+  itemId: text("item_id").notNull(),
+  type: text().notNull(),
+  payload: jsonb().notNull().$type<Record<string, unknown>>(),
+}, table => [
+  primaryKey({ columns: [table.responseId, table.seq] }),
+]);
+export type ApiResponseItem = InferSelectModel<typeof apiResponseItemT>;
+
+/** Input messages in order. No cascade to `chat_message`, so a shared body cannot be
+ * deleted out from under a response that still references it. */
+export const apiResponseMessageT = callDataSchema.table("api_response_message", {
+  responseId: text("response_id")
+    .notNull()
+    .references(() => apiResponseT.id, { onDelete: "cascade" }),
+  seq: integer().notNull(),
+  messageId: uuid("message_id").notNull().references(() => chatMessageT.id),
+}, table => [
+  primaryKey({ columns: [table.responseId, table.seq] }),
+]);
+export type ApiResponseMessage = InferSelectModel<typeof apiResponseMessageT>;
 
 export type Highlight = {
   start: number;
