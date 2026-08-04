@@ -96,6 +96,7 @@ function makeStack(name: string): StackDefinition {
     DB_CONNECTION_URL: "postgresql://localhost/db",
     REDIS_URL: "redis://localhost:6379",
     METRICS_AUTH: "user:pass",
+    TETHER_SECRET: "test-secret",
   };
   stack.dbMigratedVersion = "v9.9.9";
   return stack;
