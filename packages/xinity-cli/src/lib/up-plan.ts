@@ -35,6 +35,7 @@ export type ComponentAction = {
   toVersion: string;
   release?: Release;
   localRepoPath?: string;
+  localArchivePath?: string;
   assetName?: string;
   assetSizeMb?: string;
   env: EnvBundle;

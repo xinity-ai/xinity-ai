@@ -72,7 +72,7 @@ export const STACK_SHARED_SCHEMA = z.object({
   REDIS_URL: z.url().describe("Redis connection URL shared by all components").meta(secret()),
   INFOSERVER_URL: z.url().optional().describe("Infoserver URL (auto-derived from the infoserver host address if left empty)"),
   TETHER_URL: z.url().optional().describe("Tether URL (auto-derived from the tether host address if left empty)"),
-  TETHER_SECRET: z.string().min(1).optional().describe("Shared secret for tether/daemon authentication").meta(secret()),
+  TETHER_SECRET: z.string().min(1).describe("Shared secret for tether/daemon authentication").meta(secret()),
   METRICS_AUTH: z.string().describe("Basic auth for every component's /metrics endpoint (user:pass, comma-separated for multiple)").meta(secret()),
   HF_TOKEN: z.string().optional().describe("Hugging Face token for gated model downloads").meta(secret()),
 });
