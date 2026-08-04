@@ -50,7 +50,7 @@ export async function saveFailedResponse(
     .catch((err) => log.error({ err, responseId }, "Failed to persist failed response"));
 }
 
-type LogFields = {
+export type LogFields = {
   readonly auth: AuthResult;
   readonly modelInfo: { model: string };
   readonly publicSpecifier: string;
@@ -87,103 +87,136 @@ function createWriteQueue(onError: (err: unknown) => void) {
   };
 }
 
-export async function generateAndPersistCompletedResponse(args: GeneratePersistArgs, background = false) {
-  const { orgId, responseId, createdAt, originalModel, body, genParams, include, outputConfig, logFields, deepResearch } = args;
+type StepEvent = {
+  toolCalls?: Array<{ toolCallId: string; toolName: string; input?: unknown }>;
+  toolResults?: Array<Record<string, unknown>>;
+  usage?: { inputTokens?: number; outputTokens?: number };
+};
+
+type StepUsage = { inputTokens?: number; outputTokens?: number };
+
+/** Accumulates what a run produces. The two implementations are the only difference
+ * between a deep research run and an ordinary one. */
+type OutputCollector = {
+  onStepFinish: (event: StepEvent) => void;
+  flush: () => Promise<void>;
+  totalUsage: (final: StepUsage) => StepUsage;
+  buildOutput: (responseText: string, reasoningTexts: string[]) => OutputItem[];
+};
+
+function createPlainCollector(responseId: string, include: IncludeValue[]): OutputCollector {
   const toolCalls: ToolCallItem[] = [];
   const toolResults: ToolResultData[] = [];
 
-  const cancelCheck = () => checkCancelled(orgId, responseId);
+  return {
+    onStepFinish: createToolTracker(toolCalls, toolResults),
+    flush: async () => {},
+    totalUsage: (final) => final,
+    buildOutput: (responseText, reasoningTexts) =>
+      buildOutputItems(responseId, responseText, toolCalls, toolResults, include, reasoningTexts),
+  };
+}
+
+/** Publishes partial output as it arrives, since a research run is too long to leave the
+ * caller polling an empty response, and folds in the usage compaction spent along the way. */
+function createResearchCollector(
+  orgId: string,
+  responseId: string,
+  include: IncludeValue[],
+  compactionUsage: { inputTokens: number; outputTokens: number },
+): OutputCollector {
+  const toolResults: ToolResultData[] = [];
+  const progressItems: OutputItem[] = [];
+  const stepUsage = { inputTokens: 0, outputTokens: 0 };
+  const writes = createWriteQueue((err) => {
+    log.warn({ err, responseId }, "Failed to persist research progress");
+  });
+
+  const withCompaction = (usage: StepUsage): StepUsage => ({
+    inputTokens: (usage.inputTokens ?? 0) + compactionUsage.inputTokens,
+    outputTokens: (usage.outputTokens ?? 0) + compactionUsage.outputTokens,
+  });
+
+  return {
+    onStepFinish: (step) => {
+      stepUsage.inputTokens += step.usage?.inputTokens ?? 0;
+      stepUsage.outputTokens += step.usage?.outputTokens ?? 0;
+
+      for (const tr of step.toolResults ?? []) {
+        if (typeof tr.toolCallId === "string" && typeof tr.toolName === "string") {
+          toolResults.push({ toolCallId: tr.toolCallId, toolName: tr.toolName, args: tr.input, result: tr.output });
+        }
+      }
+
+      const newItems = buildStepOutputItems(step.toolCalls, step.toolResults, include);
+      if (newItems.length === 0) {
+        return;
+      }
+      progressItems.push(...newItems);
+
+      const snapshot = [...progressItems];
+      const usage = withCompaction(stepUsage);
+      writes.enqueue(async () => {
+        const stored = await getResponse(orgId, responseId) as ResponseObject | null;
+        if (!stored || stored.status === "cancelled") {
+          return;
+        }
+        stored.output = snapshot;
+        stored.usage = formatUsage(usage);
+        await saveResponse(orgId, responseId, stored);
+      });
+    },
+    flush: writes.flush,
+    totalUsage: withCompaction,
+    buildOutput: (responseText) => [
+      ...progressItems,
+      {
+        id: `msg_${responseId}`,
+        type: "message",
+        status: "completed",
+        role: "assistant",
+        content: [{
+          type: "output_text",
+          text: responseText,
+          annotations: extractSearchAnnotations(toolResults),
+          logprobs: null,
+        }],
+      },
+    ],
+  };
+}
+
+export async function generateAndPersistCompletedResponse(args: GeneratePersistArgs, background = false) {
+  const { orgId, responseId, createdAt, originalModel, body, genParams, include, outputConfig, logFields, deepResearch } = args;
+
   const existingStop = genParams.stopWhen;
   const priorConditions = Array.isArray(existingStop) ? existingStop : existingStop ? [existingStop] : [];
   const stopConditions = background
-    ? [...priorConditions, cancelCheck]
+    ? [...priorConditions, () => checkCancelled(orgId, responseId)]
     : existingStop;
 
-  const progressItems: OutputItem[] = [];
-  const progressWrites = createWriteQueue((err) => {
-    log.warn({ err, responseId }, "Failed to persist research progress");
-  });
-  const stepUsage = { inputTokens: 0, outputTokens: 0 };
-
-  type StepEvent = {
-    toolCalls?: Array<{ toolCallId: string; toolName: string; input?: unknown }>;
-    toolResults?: Array<Record<string, unknown>>;
-    usage?: { inputTokens?: number; outputTokens?: number };
-  };
-
-  const onStepFinish: (event: StepEvent) => void = deepResearch
-    ? (step) => {
-        stepUsage.inputTokens += step.usage?.inputTokens ?? 0;
-        stepUsage.outputTokens += step.usage?.outputTokens ?? 0;
-
-        if (step.toolResults) {
-          for (const tr of step.toolResults) {
-            const id = tr.toolCallId;
-            const name = tr.toolName;
-            if (typeof id === "string" && typeof name === "string") {
-              toolResults.push({ toolCallId: id, toolName: name, args: tr.input, result: tr.output });
-            }
-          }
-        }
-
-        const newItems = buildStepOutputItems(step.toolCalls, step.toolResults, include);
-        if (newItems.length === 0) return;
-        progressItems.push(...newItems);
-
-        const totalUsage = {
-          inputTokens: stepUsage.inputTokens + deepResearch.compactionUsage.inputTokens,
-          outputTokens: stepUsage.outputTokens + deepResearch.compactionUsage.outputTokens,
-        };
-        const snapshot = [...progressItems];
-        progressWrites.enqueue(async () => {
-          const stored = await getResponse(orgId, responseId) as ResponseObject | null;
-          if (!stored || stored.status === "cancelled") return;
-          stored.output = snapshot;
-          stored.usage = formatUsage(totalUsage);
-          await saveResponse(orgId, responseId, stored);
-        });
-      }
-    : createToolTracker(toolCalls, toolResults);
+  const collector = deepResearch
+    ? createResearchCollector(orgId, responseId, include, deepResearch.compactionUsage)
+    : createPlainCollector(responseId, include);
 
   const result = await generateText({
     ...genParams,
     stopWhen: stopConditions as Parameters<typeof generateText>[0]["stopWhen"],
-    onStepFinish,
+    onStepFinish: collector.onStepFinish,
   });
 
   if (background && await checkCancelled(orgId, responseId)) {
     return;
   }
 
-  await progressWrites.flush();
+  await collector.flush();
 
   const responseText = resolveResponseText(result.text, () => result.output, outputConfig.usesStructuredOutput);
-
-  const finalUsage = deepResearch
-    ? {
-        inputTokens: (result.usage.inputTokens ?? 0) + deepResearch.compactionUsage.inputTokens,
-        outputTokens: (result.usage.outputTokens ?? 0) + deepResearch.compactionUsage.outputTokens,
-      }
-    : result.usage;
-
-  let finalOutput: OutputItem[];
-  if (deepResearch) {
-    const annotations = extractSearchAnnotations(toolResults);
-    progressItems.push({
-      id: `msg_${responseId}`,
-      type: "message",
-      status: "completed",
-      role: "assistant",
-      content: [{ type: "output_text", text: responseText, annotations, logprobs: null }],
-    });
-    finalOutput = progressItems;
-  } else {
-    finalOutput = buildOutputItems(responseId, responseText, toolCalls, toolResults, include, result.reasoning.map(part => part.text));
-  }
+  const finalUsage = collector.totalUsage(result.usage);
 
   const completedResponse = createResponseObject({
     responseId, createdAt, model: originalModel, status: "completed",
-    output: finalOutput, usage: finalUsage, body,
+    output: collector.buildOutput(responseText, result.reasoning.map((part) => part.text)), usage: finalUsage, body,
   });
   await saveResponse(orgId, responseId, completedResponse);
   logChatUsage({
