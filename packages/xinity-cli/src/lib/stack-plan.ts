@@ -15,6 +15,8 @@ import { heading, warn, fail, pass } from "./output.ts";
 import { unitName } from "./systemd.ts";
 import { fetchRelease } from "./github.ts";
 import { resolveVersion, applyComponentAction } from "./installer.ts";
+import { buildLocalArtifact } from "./local-build.ts";
+import { runSteps, createSilentProgress } from "./step-runner.ts";
 import { removeComponent } from "./install-remove.ts";
 import { readManifest, saveStackMembership, type StackMembership } from "./manifest.ts";
 import { describeMigrationStep, migrationScriptComment, runMigrations } from "./migrator.ts";
@@ -167,7 +169,7 @@ async function ensureStackLevelConfig(stack: StackDefinition, deployments: Deplo
       continue;
     }
     const missing = missingRequiredFields(analyzeEnvSchema(ENV_SCHEMAS[component]), componentLayerSeed(stack, component));
-    if (stack.componentEnv[component] === undefined || missing.length > 0) {
+    if (missing.length > 0) {
       heading(component);
       if (!(await editComponentLayer(stack, component, `${component} settings (stack-wide, saved to the stack)`))) {
         return false;
@@ -178,7 +180,7 @@ async function ensureStackLevelConfig(stack: StackDefinition, deployments: Deplo
   const involvedFleets = [...new Set(daemonAddresses.map((addr) => getFleetForHost(stack, addr)).filter((f): f is FleetDefinition => f !== null))];
   for (const fleet of involvedFleets) {
     const missing = missingRequiredFields(analyzeEnvSchema(ENV_SCHEMAS.daemon), fleetLayerSeed(stack, fleet));
-    if (fleet.envOverrides === undefined || missing.length > 0) {
+    if (missing.length > 0) {
       heading(`daemon · fleet ${fleet.name}`);
       if (!(await editFleetLayer(stack, fleet, `Daemon settings for fleet "${fleet.name}" (saved to the fleet)`))) {
         return false;
@@ -190,23 +192,15 @@ async function ensureStackLevelConfig(stack: StackDefinition, deployments: Deplo
 }
 
 /** Returns null when version resolution fails or the user cancels a per-host prompt. */
-async function planHostComponent(
+async function resolveHostEnv(
   stack: StackDefinition,
   component: Component,
   address: string,
   host: Host,
-  targetVersion: string,
-): Promise<ComponentAction | null> {
-  const version = await resolveVersion(component, targetVersion, host);
-  if (version.status === "failed") {
-    return null;
-  }
-
+): Promise<{ env: import("./env-prompt.ts").EnvBundle; envChanges: import("./env-prompt.ts").EnvChange[] } | null> {
   const fields = analyzeEnvSchema(ENV_SCHEMAS[component]);
   const { existingConfig, existingSecrets } = await readExistingEnvState(component, host);
   const resolved = resolveEnv(stack, component, address);
-  // The stack is declarative: its layers win over whatever is on disk, while
-  // values the stack does not manage (a hand-set MACHINE_NAME) persist.
   let merged: Record<string, string> = { ...existingConfig, ...existingSecrets, ...resolved };
 
   const missing = missingRequiredFields(fields, merged);
@@ -218,13 +212,51 @@ async function planHostComponent(
     merged = { ...merged, ...overrides };
   }
 
-  const env = splitValuesByCategory(fields, merged);
+  return {
+    env: splitValuesByCategory(fields, merged),
+    envChanges: diffEnv({ config: existingConfig, secrets: existingSecrets }, splitValuesByCategory(fields, merged)),
+  };
+}
+
+async function planHostComponent(
+  stack: StackDefinition,
+  component: Component,
+  address: string,
+  host: Host,
+  targetVersion: string,
+): Promise<ComponentAction | null> {
+  const serviceRunning = await isUnitActiveOn(host, unitName(component));
+
+  if (targetVersion.startsWith("local:")) {
+    const envResult = await resolveHostEnv(stack, component, address, host);
+    if (!envResult) return null;
+    const isUpdate = !!(await readManifest(host)).components[component];
+    return {
+      component,
+      kind: isUpdate ? "update" : "install",
+      toVersion: "local",
+      localRepoPath: targetVersion.slice(6),
+      env: envResult.env,
+      envChanges: envResult.envChanges,
+      hardReset: false,
+      serviceRunning,
+    };
+  }
+
+  const version = await resolveVersion(component, targetVersion, host);
+  if (version.status === "failed") {
+    return null;
+  }
+
+  const envResult = await resolveHostEnv(stack, component, address, host);
+  if (!envResult) return null;
+
   return buildComponentAction({
     component,
     hardReset: false,
-    serviceRunning: await isUnitActiveOn(host, unitName(component)),
-    env,
-    envChanges: diffEnv({ config: existingConfig, secrets: existingSecrets }, env),
+    serviceRunning,
+    env: envResult.env,
+    envChanges: envResult.envChanges,
   }, version, host);
 }
 
@@ -245,7 +277,7 @@ async function planStack(
 ): Promise<StackPlanOutcome> {
   const migrateUrl = stackMigrateUrl(stack);
   let migration: StackPlan["migration"] = null;
-  if (migrateUrl) {
+  if (migrateUrl && !targetVersion.startsWith("local:")) {
     try {
       const targetTag = (await fetchRelease(targetVersion)).tagName;
       migration = { url: migrateUrl, targetTag, pending: targetTag !== stack.dbMigratedVersion };
@@ -501,6 +533,31 @@ async function applyStackPlan(
   const active = plan.hostPlans.filter((p) => !p.forget);
 
   if (active.length > 0) {
+    const localActions = active.flatMap((hp) =>
+      hp.actions.filter((a) => a.localRepoPath && !a.localArchivePath),
+    );
+    if (localActions.length > 0) {
+      const buildCache = new Map<string, { archivePath: string; version: string }>();
+      for (const action of localActions) {
+        const hostForAction = active.find((hp) => hp.actions.includes(action));
+        const host = hosts.get(hostForAction!.address) ?? orphanHosts.get(hostForAction!.address);
+        const arch = await host!.getArch() as "x64" | "arm64";
+        const cacheKey = `${action.component}:${arch}`;
+        if (!buildCache.has(cacheKey)) {
+          log.info(`Building ${cyan(action.component)} for ${arch}…`);
+          const result = await runSteps(buildLocalArtifact(action.component, action.localRepoPath!, arch), createSilentProgress());
+          if (!result) {
+            fail(action.component, `Local build failed for ${arch}`);
+            return false;
+          }
+          buildCache.set(cacheKey, { archivePath: result.archivePath, version: result.version });
+        }
+        const cached = buildCache.get(cacheKey)!;
+        action.localArchivePath = cached.archivePath;
+        action.toVersion = cached.version;
+      }
+    }
+
     const multi = createMultiProgress({
       message: `Applying to ${active.length} host${active.length === 1 ? "" : "s"}`,
       slots: active.map((p) => p.address),

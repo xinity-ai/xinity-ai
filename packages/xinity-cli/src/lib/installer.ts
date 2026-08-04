@@ -288,6 +288,21 @@ async function buildAndUploadLocalArtifact(
   return { archivePath: effectivePath, version: buildResult.version };
 }
 
+async function uploadPrebuiltArtifact(
+  localPath: string,
+  host: Host,
+  progress: Progress,
+): Promise<string | null> {
+  const remoteTmp = `/tmp/xinity-local-${Date.now()}.tar.gz`;
+  progress.update("Uploading pre-built artifact…");
+  try {
+    return await host.uploadFile(localPath, remoteTmp);
+  } catch (err) {
+    progress.fail("Upload", (err as Error).message);
+    return null;
+  }
+}
+
 function printServiceFailureDiagnostics(unit: string): void {
   log.warn(yellow("Service failed to start. Diagnostic commands:"));
   log.info(`  ${cyan(`systemctl status ${unit}`)}`);
@@ -473,7 +488,11 @@ export async function applyComponentAction(
       }
 
       let archivePath: string;
-      if (action.localRepoPath) {
+      if (action.localArchivePath) {
+        const uploaded = await uploadPrebuiltArtifact(action.localArchivePath, host, progress);
+        if (!uploaded) return { success: false, version: versionString, errors: ["Upload failed"] };
+        archivePath = uploaded;
+      } else if (action.localRepoPath) {
         const built = await buildAndUploadLocalArtifact(component, action.localRepoPath, host, progress);
         if (!built) return { success: false, version: versionString, errors: ["Local build failed"] };
         archivePath = built.archivePath;
