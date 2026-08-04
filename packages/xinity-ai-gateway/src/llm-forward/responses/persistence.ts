@@ -3,6 +3,7 @@ import {
   apiResponseT,
   apiResponseItemT,
   apiResponseMessageT,
+  chatMessageT,
   type ApiResponseStatus,
   type ApiResponseSettledStatus,
   type ApiCallInputMessage,
@@ -188,6 +189,44 @@ export async function loadResponse(orgId: string, responseId: string): Promise<R
     .orderBy(sql`${apiResponseItemT.seq} ASC`);
 
   return fromResponseRow(header, items.map((row) => row.payload as unknown as OutputItem));
+}
+
+export type InputItemPage = {
+  messages: Array<{ seq: number; payload: ApiCallInputMessage }>;
+  hasMore: boolean;
+};
+
+/**
+ * Reads one page of the input a response was built from. Fetches one row beyond the limit
+ * to answer `has_more` without a second count query.
+ */
+export async function loadResponseInputItems(
+  orgId: string,
+  responseId: string,
+  page: { limit: number; ascending: boolean; afterSeq: number | null },
+): Promise<InputItemPage> {
+  const { limit, ascending, afterSeq } = page;
+  const rows = await getDB()
+    .select({ seq: apiResponseMessageT.seq, payload: chatMessageT.payload })
+    .from(apiResponseMessageT)
+    .innerJoin(chatMessageT, sql`${chatMessageT.id} = ${apiResponseMessageT.messageId}`)
+    .innerJoin(apiResponseT, sql`${apiResponseT.id} = ${apiResponseMessageT.responseId}`)
+    .where(
+      sql`
+        ${apiResponseMessageT.responseId} = ${responseId}
+      AND
+        ${apiResponseT.organizationId} = ${orgId}
+      ${afterSeq === null
+        ? sql``
+        : ascending
+          ? sql`AND ${apiResponseMessageT.seq} > ${afterSeq}`
+          : sql`AND ${apiResponseMessageT.seq} < ${afterSeq}`}
+      `,
+    )
+    .orderBy(ascending ? sql`${apiResponseMessageT.seq} ASC` : sql`${apiResponseMessageT.seq} DESC`)
+    .limit(limit + 1);
+
+  return { messages: rows.slice(0, limit), hasMore: rows.length > limit };
 }
 
 export async function deletePersistedResponse(orgId: string, responseId: string): Promise<void> {

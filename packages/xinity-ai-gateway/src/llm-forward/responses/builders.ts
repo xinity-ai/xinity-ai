@@ -1,5 +1,6 @@
 import { Output, tool, jsonSchema, type ToolChoice, type ModelMessage, type ToolSet } from "ai";
 import type { OpenAICompatibleProvider } from "@ai-sdk/openai-compatible";
+import type { ApiCallInputMessage } from "common-db";
 import { responseTools, type ResponseToolName, RESPONSE_TOOL_NAMES } from "../tools/response-tools";
 import type {
   CreateResponseBody,
@@ -457,6 +458,68 @@ export function buildReasoningItem(responseId: string, reasoningText: string, in
     summary: [{ type: "summary_text", text: reasoningText }],
     content: [],
   };
+}
+
+/** Item ids double as the `after` cursor, so they must encode position, not content:
+ * deduplication means the same body can appear at more than one position. */
+export const inputItemId = (responseId: string, seq: number) => `msg_${responseId}_${seq}`;
+
+export function parseInputItemCursor(responseId: string, cursor: string): number | null {
+  const prefix = `msg_${responseId}_`;
+  if (!cursor.startsWith(prefix)) {
+    return null;
+  }
+  const seq = Number(cursor.slice(prefix.length));
+  return Number.isInteger(seq) && seq >= 0 ? seq : null;
+}
+
+function toInputContentParts(content: ApiCallInputMessage["content"]) {
+  if (typeof content === "string") {
+    return [{ type: "input_text", text: content }];
+  }
+  if (!Array.isArray(content)) {
+    return [];
+  }
+  return content.map((part) =>
+    part.type === "image_url"
+      ? { type: "input_image", image_url: part.image_url.url }
+      : { type: "input_text", text: part.text },
+  );
+}
+
+/** Renders stored input messages the way the Responses API describes items, which is not
+ * the chat shape they were stored in: text becomes `input_text`, and `input_image` carries
+ * a bare URL rather than chat's nested object. */
+export function buildInputItems(
+  responseId: string,
+  messages: Array<{ seq: number; payload: ApiCallInputMessage }>,
+): Array<Record<string, unknown>> {
+  return messages.map(({ seq, payload }) => {
+    const id = inputItemId(responseId, seq);
+
+    if (payload.role === "tool") {
+      return {
+        id,
+        type: "function_call_output",
+        call_id: payload.tool_call_id ?? null,
+        output: typeof payload.content === "string" ? payload.content : JSON.stringify(payload.content ?? ""),
+      };
+    }
+
+    if (payload.tool_calls?.length) {
+      const [call] = payload.tool_calls;
+      return {
+        id,
+        type: "function_call",
+        status: "completed",
+        call_id: call?.id ?? null,
+        name: call?.function.name ?? "",
+        arguments: call?.function.arguments ?? "{}",
+      };
+    }
+
+    return { id, type: "message", role: payload.role, content: toInputContentParts(payload.content) };
+  });
 }
 
 export function buildOutputItems(

@@ -30,8 +30,11 @@ import {
   extractSearchAnnotations,
   formatUsage,
   buildGenerationParams,
+  buildInputItems,
+  parseInputItemCursor,
 } from "../responses/builders";
 import { createResponseStream } from "../responses/stream";
+import { loadResponse, loadResponseInputItems } from "../responses/persistence";
 
 const log = rootLogger.child({ name: "handle-responses" });
 
@@ -618,6 +621,77 @@ export async function handleGetOrDeleteResponseRequest(req: Request): Promise<Re
   }
 
   return errorResponse("Method not allowed", 405);
+}
+
+// ---------------------------------------------------------------------------
+// GET /v1/responses/:responseId/input_items
+// ---------------------------------------------------------------------------
+
+const DEFAULT_INPUT_ITEM_LIMIT = 20;
+const MAX_INPUT_ITEM_LIMIT = 100;
+
+function parseLimit(raw: string | null): number | null {
+  if (raw === null) {
+    return DEFAULT_INPUT_ITEM_LIMIT;
+  }
+  const limit = Number(raw);
+  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_INPUT_ITEM_LIMIT) {
+    return null;
+  }
+  return limit;
+}
+
+export async function handleListInputItemsRequest(req: Request): Promise<Response> {
+  if (req.method !== "GET") {
+    return errorResponse("Method not allowed", 405);
+  }
+
+  const authHeader = req.headers.get("authorization") || "";
+  const authCheckResponse = await checkAuth(authHeader);
+  if (authCheckResponse instanceof Response) return authCheckResponse;
+
+  const responseId = (req as Request & { params: { responseId: string } }).params.responseId;
+  if (!responseId) {
+    return errorResponse("Not found", 404);
+  }
+
+  const params = new URL(req.url).searchParams;
+
+  const limit = parseLimit(params.get("limit"));
+  if (limit === null) {
+    return errorResponse(`'limit' must be an integer between 1 and ${MAX_INPUT_ITEM_LIMIT}`, 400);
+  }
+
+  const order = params.get("order") ?? "desc";
+  if (order !== "asc" && order !== "desc") {
+    return errorResponse("'order' must be 'asc' or 'desc'", 400);
+  }
+
+  const cursor = params.get("after");
+  const afterSeq = cursor === null ? null : parseInputItemCursor(responseId, cursor);
+  if (cursor !== null && afterSeq === null) {
+    return errorResponse("'after' is not an item of this response", 400);
+  }
+
+  // Only stored responses have input to list; a store:false response lives in the cache
+  // with its output but was never recorded with the messages it was built from.
+  const page = await loadResponseInputItems(authCheckResponse.orgId, responseId, {
+    limit,
+    ascending: order === "asc",
+    afterSeq,
+  });
+  if (page.messages.length === 0 && afterSeq === null && !await loadResponse(authCheckResponse.orgId, responseId)) {
+    return errorResponse("Not found", 404);
+  }
+
+  const data = buildInputItems(responseId, page.messages);
+  return Response.json({
+    object: "list",
+    data,
+    has_more: page.hasMore,
+    first_id: data[0]?.id ?? null,
+    last_id: data[data.length - 1]?.id ?? null,
+  });
 }
 
 // ---------------------------------------------------------------------------

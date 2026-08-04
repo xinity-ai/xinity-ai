@@ -24,6 +24,9 @@ const {
   extractSearchAnnotations,
   buildOutputItems,
   buildStepOutputItems,
+  buildInputItems,
+  inputItemId,
+  parseInputItemCursor,
 } = await import("./builders");
 
 // ---------------------------------------------------------------------------
@@ -680,5 +683,98 @@ describe("buildStepOutputItems", () => {
   test("skips entries with empty toolCallId", () => {
     const toolCalls = [{ toolCallId: "", toolName: "web_search" }];
     expect(buildStepOutputItems(toolCalls, [])).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Input items
+// ---------------------------------------------------------------------------
+
+describe("parseInputItemCursor", () => {
+  test("recovers the position it encoded", () => {
+    expect(parseInputItemCursor("resp_1", inputItemId("resp_1", 7))).toBe(7);
+  });
+
+  test("accepts the first position", () => {
+    expect(parseInputItemCursor("resp_1", "msg_resp_1_0")).toBe(0);
+  });
+
+  test.each([
+    ["msg_resp_2_0", "a cursor from another response"],
+    ["msg_resp_1_x", "a non-numeric position"],
+    ["msg_resp_1_-1", "a negative position"],
+    ["resp_1_0", "a cursor without the item prefix"],
+  ])("rejects %s", (cursor) => {
+    expect(parseInputItemCursor("resp_1", cursor)).toBeNull();
+  });
+});
+
+describe("buildInputItems", () => {
+  test("renders string content as a single input_text part", () => {
+    const items = buildInputItems("resp_1", [{ seq: 0, payload: { role: "user", content: "Hi" } }]);
+    expect(items).toEqual([{
+      id: "msg_resp_1_0",
+      type: "message",
+      role: "user",
+      content: [{ type: "input_text", text: "Hi" }],
+    }]);
+  });
+
+  test("flattens images to a bare url, unlike the chat shape they were stored in", () => {
+    const [item] = buildInputItems("resp_1", [{
+      seq: 0,
+      payload: {
+        role: "user",
+        content: [
+          { type: "text", text: "What is this?" },
+          { type: "image_url", image_url: { url: "xinity-media://abc" } },
+        ],
+      },
+    }]);
+    expect(item?.content).toEqual([
+      { type: "input_text", text: "What is this?" },
+      { type: "input_image", image_url: "xinity-media://abc" },
+    ]);
+  });
+
+  test("renders a tool result as function_call_output", () => {
+    const [item] = buildInputItems("resp_1", [{
+      seq: 2,
+      payload: { role: "tool", content: "42", tool_call_id: "call_abc" },
+    }]);
+    expect(item).toEqual({
+      id: "msg_resp_1_2",
+      type: "function_call_output",
+      call_id: "call_abc",
+      output: "42",
+    });
+  });
+
+  test("renders an assistant tool call as function_call", () => {
+    const [item] = buildInputItems("resp_1", [{
+      seq: 1,
+      payload: {
+        role: "assistant",
+        content: null,
+        tool_calls: [{ id: "call_abc", type: "function", function: { name: "get_weather", arguments: '{"city":"Berlin"}' } }],
+      },
+    }]);
+    expect(item).toMatchObject({
+      type: "function_call",
+      call_id: "call_abc",
+      name: "get_weather",
+      arguments: '{"city":"Berlin"}',
+    });
+  });
+
+  test("keeps ids aligned with position so pagination survives duplicate bodies", () => {
+    const repeated = { role: "user" as const, content: "same" };
+    const items = buildInputItems("resp_1", [{ seq: 0, payload: repeated }, { seq: 1, payload: repeated }]);
+    expect(items.map((item) => item.id)).toEqual(["msg_resp_1_0", "msg_resp_1_1"]);
+  });
+
+  test("renders null content as no parts rather than failing", () => {
+    const [item] = buildInputItems("resp_1", [{ seq: 0, payload: { role: "system", content: null } }]);
+    expect(item?.content).toEqual([]);
   });
 });
