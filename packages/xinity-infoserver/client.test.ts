@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test";
-import { createInfoserverClient } from "./client";
+import { createCatalogClient, createInfoserverClient } from "./client";
 import type { ModelWithSpecifier } from "./definitions/model-definition";
 
 const testModel: ModelWithSpecifier = {
@@ -289,5 +289,121 @@ describe("createInfoserverClient", () => {
       const args = await client.resolveDriverArgs("llama-3.3-70b");
       expect(args).toEqual([]);
     });
+  });
+});
+
+describe("createCatalogClient", () => {
+  const v2Model = {
+    name: "Test Llama",
+    description: "A test model",
+    url: "https://example.com",
+    engine: "vllm",
+    engineSpecifier: "org/llama-vllm",
+    weight: 10,
+    minKvCache: 2,
+  };
+  // Beyond any real release, so every running instance must filter it out.
+  const futureV2Model = { ...v2Model, entryVersion: "999.0.0" };
+  const malformedV2Model = { ...v2Model, weight: "heavy" };
+
+  const DIGEST = "abc123";
+
+  let server: ReturnType<typeof Bun.serve>;
+  let requests: string[];
+  let failing: boolean;
+  let body: Record<string, unknown>;
+
+  beforeEach(() => {
+    requests = [];
+    failing = false;
+    body = { models: { "llama-vllm": v2Model } };
+
+    server = Bun.serve({
+      port: 0,
+      fetch(req) {
+        const path = new URL(req.url).pathname;
+        requests.push(path);
+        if (failing) {
+          return new Response("boom", { status: 500 });
+        }
+        if (path !== "/models/v2.json") {
+          return new Response("not found", { status: 404 });
+        }
+        if (req.headers.get("if-none-match") === `"${DIGEST}"`) {
+          return new Response(null, { status: 304, headers: { ETag: `"${DIGEST}"` } });
+        }
+        return Response.json(body, { headers: { ETag: `"${DIGEST}"` } });
+      },
+    });
+  });
+
+  afterEach(() => server.stop(true));
+
+  const makeClient = (cacheTtlMs = 0) =>
+    createCatalogClient({ baseUrl: `http://localhost:${server.port}`, cacheTtlMs });
+
+  it("keeps the snapshot when the server answers 304", async () => {
+    const client = makeClient();
+
+    expect((await client.get("llama-vllm"))?.engineSpecifier).toBe("org/llama-vllm");
+    expect((await client.get("llama-vllm"))?.engineSpecifier).toBe("org/llama-vllm");
+
+    expect(requests).toHaveLength(2);
+    expect(client.digest).toBe(DIGEST);
+  });
+
+  it("serves the last snapshot when a later refresh fails", async () => {
+    const client = makeClient();
+    await client.get("llama-vllm");
+
+    failing = true;
+
+    expect((await client.get("llama-vllm"))?.engineSpecifier).toBe("org/llama-vllm");
+  });
+
+  it("reports unavailable when it never managed to load", async () => {
+    failing = true;
+    const client = makeClient();
+
+    const result = await client.lookup("llama-vllm");
+    expect(result.status).toBe("unavailable");
+  });
+
+  it("shares one request between concurrent callers", async () => {
+    const client = makeClient();
+
+    await Promise.all([
+      client.get("llama-vllm"),
+      client.get("llama-vllm"),
+      client.getAll(),
+    ]);
+
+    expect(requests).toHaveLength(1);
+  });
+
+  it("drops entries this version is too old for, and invalid ones", async () => {
+    body = {
+      models: {
+        "llama-vllm": v2Model,
+        "future-vllm": futureV2Model,
+        "malformed-vllm": malformedV2Model,
+      },
+    };
+    const client = makeClient();
+
+    const specifiers = (await client.getAll()).map(m => m.publicSpecifier);
+    expect(specifiers).toEqual(["llama-vllm"]);
+    expect(await client.lookup("future-vllm")).toEqual({ status: "not_found" });
+  });
+
+  it("resolves a batch from the snapshot without extra requests", async () => {
+    const client = makeClient(60_000);
+    await client.get("llama-vllm");
+
+    const resolved = await client.resolveBatch(["llama-vllm", "missing"]);
+
+    expect(resolved["llama-vllm"]?.engineSpecifier).toBe("org/llama-vllm");
+    expect(resolved["missing"]).toBeNull();
+    expect(requests).toHaveLength(1);
   });
 });

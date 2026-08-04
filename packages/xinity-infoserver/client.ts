@@ -1,11 +1,159 @@
-/**
- * Lightweight infoserver client that fetches from the API endpoints
- * with time-limited in-memory caching. Replaces the old ModelCatalog class.
- */
-import { ModelSchema, type ModelWithSpecifier } from "./definitions/model-definition";
+import {
+  ModelSchema,
+  ModelV2Schema,
+  type ModelWithSpecifier,
+  type ModelV2WithSpecifier,
+} from "./definitions/model-definition";
 import { resolveTagsForDriver, resolveAllTags, resolveArgsForDriver, resolveRequestParamsForDriver, type RequestParamMap } from "./model-tags";
 import { satisfiesMinVersion } from "./semver";
 import { version } from "../../package.json";
+
+export interface CatalogClientConfig {
+  /** Base URL of the infoserver (e.g. "http://localhost:8090"). */
+  baseUrl: string;
+  /** How long the snapshot is trusted before a conditional re-fetch (ms). */
+  cacheTtlMs: number;
+  logger?: import("common-log").Logger;
+}
+
+export type ModelLookup =
+  | { status: "found"; model: ModelV2WithSpecifier }
+  | { status: "not_found" }
+  | { status: "unavailable"; error: string };
+
+/**
+ * Holds the whole catalog and answers from it. One conditional GET per TTL, so a
+ * 304 costs nothing and every lookup in a window sees the same generation of the
+ * data, which per-specifier caching could not guarantee.
+ */
+export function createCatalogClient(config: CatalogClientConfig) {
+  const baseUrl = config.baseUrl.replace(/\/$/, "");
+
+  let models = new Map<string, ModelV2WithSpecifier>();
+  let digest: string | null = null;
+  let etag: string | undefined;
+  let loadedAt = 0;
+  let inFlight: Promise<string | null> | null = null;
+
+  /**
+   * Drops entries this instance cannot use, so one bad or too-new entry does not
+   * sink the snapshot. Fail-open on a missing `entryVersion`.
+   */
+  function index(raw: unknown): Map<string, ModelV2WithSpecifier> {
+    const next = new Map<string, ModelV2WithSpecifier>();
+    const source = (raw as { models?: Record<string, unknown> } | null)?.models;
+    if (!source || typeof source !== "object") {
+      return next;
+    }
+
+    for (const [specifier, entry] of Object.entries(source)) {
+      const entryVersion = (entry as { entryVersion?: unknown } | null)?.entryVersion;
+      if (typeof entryVersion === "string" && !satisfiesMinVersion(version, entryVersion)) {
+        continue;
+      }
+
+      const parsed = ModelV2Schema.safeParse(entry);
+      if (!parsed.success) {
+        config.logger?.warn({ specifier, issues: parsed.error.issues }, "Dropping model that failed content validation");
+        continue;
+      }
+      next.set(specifier, { publicSpecifier: specifier, _source: baseUrl, ...parsed.data });
+    }
+    return next;
+  }
+
+  /** Returns an error string when the snapshot could not be established at all. */
+  async function load(): Promise<string | null> {
+    try {
+      const res = await fetch(`${baseUrl}/models/v2.json`, {
+        headers: etag ? { "If-None-Match": etag } : {},
+      });
+
+      if (res.status === 304) {
+        loadedAt = Date.now();
+        return null;
+      }
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const indexed = index(await res.json());
+      // Swapped together, so a reader never sees half of two generations.
+      models = indexed;
+      etag = res.headers.get("etag") ?? undefined;
+      digest = etag?.replace(/"/g, "") ?? null;
+      loadedAt = Date.now();
+      return null;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      // A reachable-once catalog keeps serving its last good generation rather than
+      // going blank because one refresh failed.
+      if (models.size > 0) {
+        config.logger?.warn({ err: message }, "Catalog refresh failed, keeping the last snapshot");
+        return null;
+      }
+      return message;
+    }
+  }
+
+  /** Concurrent callers share one refresh instead of stampeding the server. */
+  async function ensureLoaded(): Promise<string | null> {
+    if (models.size > 0 && Date.now() - loadedAt < config.cacheTtlMs) {
+      return null;
+    }
+    inFlight ??= load().finally(() => { inFlight = null; });
+    return inFlight;
+  }
+
+  async function lookup(specifier: string): Promise<ModelLookup> {
+    const error = await ensureLoaded();
+    if (error !== null) {
+      return { status: "unavailable", error };
+    }
+    const model = models.get(specifier);
+    return model ? { status: "found", model } : { status: "not_found" };
+  }
+
+  return {
+    lookup,
+
+    async get(specifier: string): Promise<ModelV2WithSpecifier | undefined> {
+      const result = await lookup(specifier);
+      if (result.status === "unavailable") {
+        throw new Error(`Infoserver unavailable for "${specifier}": ${result.error}`);
+      }
+      return result.status === "found" ? result.model : undefined;
+    },
+
+    async getAll(): Promise<ModelV2WithSpecifier[]> {
+      const error = await ensureLoaded();
+      if (error !== null) {
+        throw new Error(`Infoserver unavailable: ${error}`);
+      }
+      return Array.from(models.values());
+    },
+
+    async resolveBatch(specifiers: string[]): Promise<Record<string, ModelV2WithSpecifier | null>> {
+      const error = await ensureLoaded();
+      if (error !== null) {
+        throw new Error(`Infoserver unavailable: ${error}`);
+      }
+      return Object.fromEntries(specifiers.map(s => [s, models.get(s) ?? null]));
+    },
+
+    /** Generation of the data currently held, or null before the first load. */
+    get digest(): string | null {
+      return digest;
+    },
+  };
+}
+
+export type CatalogClient = ReturnType<typeof createCatalogClient>;
+
+// ── Deprecated v1 client, removed before 1.0.0 ─────────────────────────
+//
+// Fetches per specifier and caches per key, so entries in one process can be of
+// different ages. Superseded by createCatalogClient above.
 
 export interface InfoserverClientConfig {
   /** Base URL of the infoserver (e.g. "http://localhost:8090"). */
