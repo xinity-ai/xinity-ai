@@ -8,18 +8,12 @@ import type {
   ReasoningOutputItem,
   CreateResponseBody,
 } from "./schemas";
-import type { ToolCallItem, ToolResultData, IncludeValue } from "./builders";
-import {
-  createResponseObject,
-  buildOutputItems,
-  extractSearchAnnotations,
-  markResponseFailed,
-  generateCallId,
-  readWebSearchQuery,
-} from "./builders";
+import { generateCallId, type ToolCallItem, type ToolResultData } from "./tools";
+import { buildOutputItems, extractSearchAnnotations, readWebSearchQuery, type IncludeValue } from "./items";
+import { createResponseObject, markResponseFailed } from "./response-object";
 import { saveResponse } from "../response-store";
 import { rootLogger } from "../../logger";
-import { isAbortError, isTimeoutError, isUpstreamError, clientFacingErrorMessage } from "../util";
+import { isAbortError, classifyStreamError } from "../util";
 
 const log = rootLogger.child({ name: "response-stream" });
 
@@ -229,16 +223,8 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
           return;
         }
 
-        let message: string;
-        if (isTimeoutError(error)) {
-          log.warn({ err: error, responseId }, "Backend timeout in response stream");
-          message = "Backend timed out while generating the response";
-        } else if (isUpstreamError(error)) {
-          message = clientFacingErrorMessage(error);
-        } else {
-          log.error({ err: error, responseId }, "Internal error in response stream");
-          message = clientFacingErrorMessage(error);
-        }
+        const { message, logLevel, logMessage } = classifyStreamError(error);
+        (logLevel === "warn" ? log.warn : log.error).call(log, { err: error, responseId }, logMessage);
 
         const failedResponse = markResponseFailed(baseResponse, message);
         await saveResponse(orgId, responseId, failedResponse)
