@@ -11,7 +11,7 @@
   import * as Select from "$lib/components/ui/select";
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { ChevronDown } from "@lucide/svelte";
-  import type { DeploymentSettings } from "common-db/deployment-settings";
+  import type { DeploymentSettings } from "common-env/deployment-settings";
   import DeploymentSettingsSection from "./DeploymentSettingsSection.svelte";
 
   let {
