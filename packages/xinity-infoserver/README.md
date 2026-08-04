@@ -199,7 +199,15 @@ deployments keep resolving. The two directories never mix and nothing is transla
 |----------|--------|-------------|
 | `/health` | GET | Health check (per-catalog model count, last refresh time, last error) |
 | `/version.json` | GET | Server version info |
+| `/models/v2.json` | GET | The whole catalog, `ETag`-validated. Also what an `includes` entry points at |
+| `/models/v2.digest.json` | GET | Content digest alone, for cheap change polling |
 | `/schemas/model.v2.json` | GET | JSON Schema for model file validation |
+
+There is no per-model or paginated v2 endpoint. Clients hold the catalog and resolve locally, which
+is one conditional request per refresh interval instead of one per lookup, and means every lookup in
+a window sees the same generation of the data. `/models/v2.digest.json` is the cheap way to ask
+whether that generation changed: it sits on a looser rate limit than the catalog itself, which a
+conditional GET cannot, since it shares a URL with the full fetch.
 
 Every endpoint below serves `MODEL_LEGACY_DIR` only, carries a `Deprecation` header, and is
 removed before 1.0.0.

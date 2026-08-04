@@ -61,6 +61,23 @@ describe("xinity-infoserver", () => {
     expect(body.catalog.modelCount).toBe(body.models.modelCount + body.legacy.modelCount);
   });
 
+  it("serves current-format entries and never v1 ones", async () => {
+    const res = await fetch(infoServerUrl("/models/v2.json"), { headers: asClient() });
+    const body = await res.json() as any;
+    const specifiers = Object.keys(body.models);
+
+    expect(specifiers).toContain("qwen3-coder-next-large-ollama");
+    expect(specifiers).not.toContain("qwen3-coder-next-large");
+    expect(Object.values(body.models).every((m: any) => m.engine !== undefined)).toBe(true);
+  });
+
+  it("reports a digest matching the catalog etag", async () => {
+    const catalog = await fetch(infoServerUrl("/models/v2.json"), { headers: asClient() });
+    const { digest } = await (await fetch(infoServerUrl("/models/v2.digest.json"), { headers: asClient() })).json() as any;
+
+    expect(catalog.headers.get("etag")).toBe(`"${digest}"`);
+  });
+
   it("marks the v1 endpoints deprecated", async () => {
     const res = await fetch(infoServerUrl("/api/v1/models"), { headers: asClient() });
 
