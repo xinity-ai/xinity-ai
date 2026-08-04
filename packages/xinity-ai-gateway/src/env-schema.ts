@@ -27,7 +27,7 @@ export const gatewayEnvSchema = z.object({
     .describe("Response cache TTL in seconds")
     .meta(expert()),
   METRICS_AUTH: metricsAuthSchema().describe("Basic auth for the /metrics endpoint (format: user:pass, comma-separated for multiple)").meta(secret()),
-  INFOSERVER_CACHE_TTL_MS: z.coerce.number().default(30_000).describe("How long to cache infoserver responses locally (ms)").meta(expert()),
+  INFOSERVER_CACHE_TTL_MS: z.coerce.number().default(10 * 60_000).describe("How long the local catalog snapshot is trusted before a conditional re-fetch (ms). A refresh costs one 304 when nothing changed, so the ceiling on how stale a new entry can be is what this trades against").meta(expert()),
   LOAD_BALANCE_STRATEGY: z.enum(["random", "round-robin", "least-connections"])
     .default("least-connections")
     .describe("Load balancing strategy for distributing requests across inference nodes")

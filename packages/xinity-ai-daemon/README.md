@@ -92,7 +92,7 @@ Set `VLLM_BACKEND` to choose the backend explicitly (`systemd`, the default, or 
 | `CIDR_PREFIX` | (empty) | Network CIDR prefix for IP advertisement filtering |
 | `STATE_DIR` | `./.local` | Local state directory |
 | `METRICS_AUTH` | (unset) | Basic auth for `/metrics` (`user:pass`) |
-| `INFOSERVER_CACHE_TTL_MS` | `30000` | Infoserver response cache TTL in ms |
+| `INFOSERVER_CACHE_TTL_MS` | `600000` | How long the local catalog snapshot is trusted before revalidating, in ms |
 | `IDLE_TIMEOUT` | `255` | Server-level idle connection timeout in seconds |
 | `LOG_LEVEL` | `debug` | Log level (`fatal`/`error`/`warn`/`info`/`debug`/`trace`) |
 | `LOG_DIR` | (unset) | Log file directory (enables file logging) |

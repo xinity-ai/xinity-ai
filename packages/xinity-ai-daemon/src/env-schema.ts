@@ -18,7 +18,7 @@ export const daemonEnvSchema = z.object({
     .default(1000 * 60 * 5)
     .describe("Sync interval in milliseconds")
     .meta(expert()),
-  INFOSERVER_CACHE_TTL_MS: z.coerce.number().default(30_000).describe("How long to cache infoserver responses locally (ms)").meta(expert()),
+  INFOSERVER_CACHE_TTL_MS: z.coerce.number().default(10 * 60_000).describe("How long the local catalog snapshot is trusted before a conditional re-fetch (ms). A refresh costs one 304 when nothing changed, so the ceiling on how stale a new entry can be is what this trades against").meta(expert()),
   METRICS_SAMPLE_INTERVAL_MS: z.coerce
     .number()
     .default(20_000)

@@ -18,7 +18,7 @@ export const dashboardEnvSchema = z.object({
   MAIL_URL: z.url().optional().describe("SMTP mail server URL (e.g. smtp://user:pass@mail.example.com:587)").meta(secret()),
   MAIL_FROM: z.string().optional().describe("Email sender address (e.g. noreply@mydomain.com)"),
   METRICS_AUTH: metricsAuthSchema({ required: true }).describe("Required. Basic auth for the /metrics endpoints (user:pass, comma-separated for multiple)").meta(secret()),
-  INFOSERVER_CACHE_TTL_MS: z.coerce.number().default(30_000).describe("How long to cache infoserver responses locally (ms)").meta(expert()),
+  INFOSERVER_CACHE_TTL_MS: z.coerce.number().default(10 * 60_000).describe("How long the local catalog snapshot is trusted before a conditional re-fetch (ms). A refresh costs one 304 when nothing changed, so the ceiling on how stale a new entry can be is what this trades against").meta(expert()),
   NOTIFICATIONS_ENABLED: z.stringbool().default(true).describe("Enable the notification scheduler (deployment status, node health, capacity warnings, weekly reports)").meta(expert()),
   S3_ENDPOINT: z.url().optional().describe("SeaweedFS / S3-compatible endpoint URL (required for multimodal image display)").meta(expert()),
   S3_ACCESS_KEY_ID: z.string().optional().describe("S3 access key ID").meta({ ...secret(), ...expert() }),
