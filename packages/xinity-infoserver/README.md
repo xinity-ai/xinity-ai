@@ -12,87 +12,86 @@ Models are defined in YAML. Each top-level key under `models` is the model's **p
 
 ```yaml
 models:
-  my-llama:
+  my-llama-vllm:
     name: Llama 3.1 8B
     description: General-purpose chat model
+    url: https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct
+    engine: vllm
+    engineSpecifier: "meta-llama/Llama-3.1-8B-Instruct"
     weight: 8
     minKvCache: 2
-    url: https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct
-    providers:
-      vllm: "meta-llama/Llama-3.1-8B-Instruct"
 ```
 
 ### Full annotated example
 
 ```yaml
 models:
-  my-vision-model:
-    name: Phi-3 Vision                        # Display name shown in the dashboard
-    description: | 
-      Lightweight vision model      
-      # Brief description of capabilities
-    weight: 8                                  # Model size in GB (VRAM consumed by weights)
-    minKvCache: 2                              # Minimum KV-cache allocation in GB
+  phi-3-vision-vllm:                           # Specifier carries the engine
+    name: Phi-3 Vision                         # Display name shown in the dashboard
+
+    # Purpose, strengths, limitations. Read to choose between models, so a
+    # one-line label is not enough.
+    description: |
+      Compact vision-language model that reads images alongside text, tuned for
+      document and chart understanding at a size that fits a single mid-range GPU.
+
+      Its 128K context takes a whole document in one request. Noticeably weaker
+      than larger VLMs at open-ended visual reasoning, so prefer it for
+      extraction and summarisation over analysis.
+
     url: https://huggingface.co/microsoft/Phi-3-vision-128k-instruct
-    entryVersion: 0.5.4                        # Optional: xinity version this model was introduced in
+
+    engine: vllm                               # vllm or ollama
+    engineSpecifier: "microsoft/Phi-3-vision-128k-instruct"  # HF model id, or an Ollama tag
+
+    weight: 8                                  # VRAM consumed by this build's weights, in GB
+    minKvCache: 2                              # Minimum KV-cache allocation in GB
     maxContextLength: 128000                   # Optional: max context window in tokens (default 131072)
-    type: chat                                 # chat, embedding, rerank, or transcription - determines API compatibility
+
+    type: chat                                 # chat, embedding, rerank, or transcription
     family: phi3                               # Model family for grouping in the UI
-    tags: [vision]                             # Enabled capabilities: tools, vision, custom_code
+    variantOf: phi-3-vision                    # Optional: groups this build with its other variants
+    tags: [vision, custom_code]                # Capabilities this build supports
     isCustom: false                            # Set true for fine-tuned models
 
-    # Provider specifiers: at least one required.
-    # The value is the driver-specific model identifier.
-    providers:
-      vllm: "microsoft/Phi-3-vision-128k-instruct"   # HuggingFace model ID for vLLM
-      ollama: "phi3:vision"                           # Ollama model tag
+    # Extra CLI arguments appended to the engine's command line. Args the system
+    # manages itself (--host, --port, --trust-remote-code, ...) are stripped out.
+    args: ["--max-model-len", "4096"]
 
-    # Per-driver tag overrides. When set, replaces model-level tags for that driver.
-    providerTags:
-      vllm: [custom_code, vision]
-
-    # Per-driver CLI arguments appended to the server command line.
-    # Certain args are blocked for security (--trust-remote-code, --host, etc.)
-    providerArgs:
-      vllm: ["--max-model-len", "4096"]
-
-    # Per-driver request parameter allowlist. Only listed params are forwarded.
+    # Allowlist of extra request-level parameters the gateway may forward.
     requestParams:
-      vllm:
-        template.thinking: boolean
+      template.thinking: boolean
 
-    # Minimum driver version required (semver). Nodes with older versions are excluded.
-    providerMinVersions:
-      vllm: "0.19.1"
+    # Minimum engine version required (semver). Older nodes are excluded.
+    minEngineVersion: "0.19.1"
 
-    # GPU platform requirements. Nodes without a matching GPU vendor are excluded.
-    # Use this for models that depend on vendor-specific hardware features
-    # (e.g., AWQ quantization with CUDA-only kernels).
-    providerPlatforms:
-      vllm: [nvidia]
+    # GPU vendor requirement. Nodes without a matching GPU are excluded. Use this
+    # for models depending on vendor-specific features (e.g. AWQ with CUDA-only kernels).
+    platforms: [nvidia]
+
+    entryVersion: 0.23.0                       # Optional: minimum xinity version for this entry
 ```
 
 ### Key fields explained
 
-- **`weight`**: How much VRAM the model weights consume, in GB. For a 7B parameter model in FP16, this is roughly 14 GB. For quantized models, it's smaller.
+- **`engine`** and **`engineSpecifier`**: which inference engine this entry runs on, and the identifier that engine uses. The engine is part of the model's identity, not a choice made at deploy time. To offer a model on both engines, write two entries.
+- **`weight`**: How much VRAM this build's weights consume, in GB. For a 7B parameter model in FP16, roughly 14 GB. A quantized build of the same model is smaller, which is why it belongs in its own entry.
 - **`minKvCache`**: The minimum KV-cache allocation in GB. This determines how many concurrent requests the model can handle. Larger values allow more concurrency but consume more VRAM.
-- **`type`**: Determines API compatibility. A `"rerank"` model only accepts rerank requests; sending a chat request to it fails. Defaults to `"chat"`.
+- **`type`**: Determines API compatibility. A `"rerank"` model only accepts rerank requests, so sending a chat request to it fails. Defaults to `"chat"`.
 - **`tags`**: Enables runtime capabilities. `"tools"` enables function/tool calling, `"vision"` enables image inputs. Requests that use a capability the model doesn't declare are rejected. `"custom_code"` is special: some models ship with custom loading code that vLLM must execute via `--trust-remote-code`. This tag marks that requirement and triggers an explicit approval step in the dashboard before deployment. Only add it if the model fails to load without it.
-- **`providers`**: Maps driver names to their model specifiers. For vLLM, this is typically a HuggingFace model ID. For Ollama, it's an Ollama model tag. At least one provider must be specified.
-- **`providerMinVersions`**: Semver version strings. A model requiring `vllm: "0.19.1"` will only be scheduled on nodes running vLLM 0.19.1 or later.
-- **`providerPlatforms`**: GPU vendor requirements. A model with `vllm: [nvidia]` will only run on nodes with NVIDIA GPUs. Useful for models that depend on vendor-specific features (e.g., AWQ with CUDA-only kernels).
-
-For the complete field reference, see [docs/model-fields.md](docs/model-fields.md).
+- **`variantOf`**: Optional grouping key. Entries sharing it are presented together in the UI while each stays separately deployable.
+- **`minEngineVersion`**: Semver string. An entry requiring `"0.19.1"` is only scheduled on nodes running that engine version or later.
+- **`platforms`**: GPU vendor requirement. `[nvidia]` restricts the entry to NVIDIA nodes.
 
 ### IDE validation
 
 Add this comment as the first line of your YAML file to get autocomplete and validation in editors that support the YAML Language Server (VS Code, JetBrains):
 
 ```yaml
-# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v1.json
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
 ```
 
-Or generate the schema locally (writes `models.schema.json`):
+Or generate the schemas locally (writes `models.v2.schema.json` and the deprecated `models.schema.json`):
 
 ```bash
 bun run refresh-schema
@@ -129,15 +128,17 @@ Your models.yaml can include other registries. This lets you extend the public c
 
 ```yaml
 includes:
-  - https://sysinfo.xinity.ai/models/v1.json
+  - https://sysinfo.xinity.ai/models/v2.json
 
 models:
-  my-private-model:
+  my-private-model-vllm:
     name: Internal Fine-tuned LLM
     # ... your model definition
 ```
 
-Models from included sources are merged. Local models (from the main file or `MODEL_INFO_DIR`) take precedence over remote includes with the same specifier. Recursive includes are supported with cycle detection.
+An included source has to use the same format as the file including it.
+
+Models from included sources are merged. Local models take precedence over remote includes with the same specifier. Recursive includes are supported with cycle detection.
 
 ## Self-hosting
 
@@ -183,19 +184,38 @@ curl http://localhost:8090/api/v1/models
 curl http://localhost:8090/api/v1/models/my-private-model
 ```
 
+## Upgrading from the pre-v2 model format
+
+Entries used to declare several engines at once through per-engine maps (`providers`,
+`providerTags`, ...). That format is deprecated and will be removed before 1.0.0.
+
+Move those files out of `MODEL_INFO_DIR` into a directory of their own and point
+`MODEL_LEGACY_DIR` at it. They keep being served on the v1 endpoints unchanged, so running
+deployments keep resolving. The two directories never mix and nothing is translated between them.
+
 ## API endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/health` | GET | Health check (includes model count, last refresh time, last error) |
+| `/health` | GET | Health check (per-catalog model count, last refresh time, last error) |
 | `/version.json` | GET | Server version info |
+| `/schemas/model.v2.json` | GET | JSON Schema for model file validation |
+
+Every endpoint below serves `MODEL_LEGACY_DIR` only, carries a `Deprecation` header, and is
+removed before 1.0.0.
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
 | `/api/v1/models` | GET | Paginated model list (query: `page`, `pageSize`, `type`, `family`, `tag`) |
 | `/api/v1/models/:specifier` | GET | Single model lookup |
 | `/api/v1/models/family/:family` | GET | All models in a family |
 | `/api/v1/models/resolve` | POST | Batch resolve specifiers (max 200) |
 | `/models/v1.yaml` | GET | Raw merged YAML |
 | `/models/v1.json` | GET | Raw merged JSON |
-| `/schemas/model.v1.json` | GET | JSON Schema for model file validation |
+| `/schemas/model.v1.json` | GET | JSON Schema for the deprecated format |
+
+Full-catalog exports are rate limited per client (see `RATE_LIMIT_*`) and answer conditional
+requests with `304`, so a client that keeps its `ETag` polls cheaply.
 
 ## How scheduling uses model data
 
@@ -216,8 +236,8 @@ Run the HTTP server locally:
 MODEL_INFO_DIR=./models.d bun run dev
 ```
 
-Export the JSON Schema to stdout:
+Regenerate the JSON Schemas:
 
 ```bash
-bun run definitions/model-definition.ts
+bun run refresh-schema
 ```

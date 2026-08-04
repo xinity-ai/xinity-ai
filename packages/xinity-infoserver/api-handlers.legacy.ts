@@ -1,4 +1,9 @@
-import * as catalog from "./server-catalog";
+/**
+ * Handlers for the deprecated /api/v1 surface. They read the legacy catalog only,
+ * so a v2 entry is never reachable through a v1 endpoint. Removed before 1.0.0
+ * together with the format they serve.
+ */
+import { legacyCatalog } from "./server-catalog";
 import { resolveAllTags } from "./model-tags";
 import { ModelListQuerySchema } from "./api-schemas";
 import { z } from "zod";
@@ -25,7 +30,7 @@ export function handleModelList(req: Request): Response {
   }
 
   const { page, pageSize, type, family, tag } = parsed.data;
-  let models = catalog.getAll();
+  let models = legacyCatalog.getAll();
 
   if (type) models = models.filter(m => (m.type ?? "chat") === type);
   if (family) models = models.filter(m => (m.family ?? "unknown") === family);
@@ -51,7 +56,7 @@ export function handleModelsByFamily(req: Request): Response {
   if (!family) {
     return Response.json({ error: "Missing family parameter" }, { status: 400 });
   }
-  const models = catalog.getByFamily(family);
+  const models = legacyCatalog.getByFamily(family);
   return Response.json(models);
 }
 
@@ -63,7 +68,7 @@ export function handleModelBySpecifier(req: Request): Response {
   if (!specifier) {
     return Response.json({ error: "Missing specifier parameter" }, { status: 400 });
   }
-  const model = catalog.get(specifier);
+  const model = legacyCatalog.get(specifier);
   if (!model) {
     return Response.json({ error: "Model not found" }, { status: 404 });
   }
@@ -88,5 +93,5 @@ export async function handleBatchResolve(req: Request): Promise<Response> {
     );
   }
 
-  return Response.json(catalog.resolveBatch(parsed.data.specifiers));
+  return Response.json(legacyCatalog.resolveBatch(parsed.data.specifiers));
 }

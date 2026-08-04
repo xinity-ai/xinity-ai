@@ -1,5 +1,8 @@
 name: Tests
 
+# Deliberately unfiltered: every job below is a required status check on main, and a
+# filtered-out workflow reports nothing rather than a skip, which would leave a PR
+# waiting forever on a run that never starts.
 on:
   push:
     branches: [main]
@@ -160,7 +163,8 @@ jobs:
         run: bun run server.ts &
         working-directory: packages/xinity-infoserver
         env:
-          MODEL_INFO_DIR: .
+          MODEL_INFO_DIR: ./models.d
+          MODEL_LEGACY_DIR: ./models.legacy.d
           PORT: "8090"
 
       - name: Build dashboard

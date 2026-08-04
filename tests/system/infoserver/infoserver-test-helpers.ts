@@ -2,7 +2,8 @@ import { getAvailablePort, readProcessOutput, waitForHttp } from "../test-helper
 export { getAvailablePort };
 
 const HOST = process.env.INFOSERVER_HOST ?? "127.0.0.1";
-const MODEL_INFO_DIR = process.env.MODEL_INFO_DIR ?? ".";
+const MODEL_INFO_DIR = process.env.MODEL_INFO_DIR ?? "./models.d";
+const MODEL_LEGACY_DIR = process.env.MODEL_LEGACY_DIR ?? "./models.legacy.d";
 
 let allocatedPort: string | null = null;
 let infoProcess: Bun.Subprocess | null = null;
@@ -32,6 +33,7 @@ export async function ensureInfoServerRunning(): Promise<void> {
         HOST,
         PORT: port,
         MODEL_INFO_DIR,
+        MODEL_LEGACY_DIR,
         // Lets each test present its own client address, so one test spending a
         // rate-limit bucket cannot throttle the next.
         HTTP_IP_HEADER: "x-forwarded-for",
@@ -75,6 +77,53 @@ export async function stopInfoServer(): Promise<void> {
   }
   infoProcess = null;
   infoReady = null;
+}
+
+/**
+ * Runs a throwaway instance with its own environment, for behaviour that depends
+ * on how the server is configured rather than on catalog contents. Keys set to
+ * undefined are removed, so an inherited value cannot leak in.
+ */
+export async function withInfoServer<T>(
+  overrides: Record<string, string | undefined>,
+  body: (url: (path: string) => string) => Promise<T>,
+): Promise<T> {
+  const port = String(await getAvailablePort());
+  const env: Record<string, string> = {
+    ...process.env as Record<string, string>,
+    HOST,
+    PORT: port,
+    MODEL_INFO_DIR,
+    MODEL_LEGACY_DIR,
+  };
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value === undefined) {
+      delete env[key];
+    } else {
+      env[key] = value;
+    }
+  }
+
+  const proc = Bun.spawn(["bun", "run", "server.ts"], {
+    cwd: "packages/xinity-infoserver",
+    env,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  try {
+    await Promise.race([
+      waitForHttp(`http://${HOST}:${port}/health`, { timeoutMs: 20_000 }),
+      proc.exited.then(async (code) => {
+        const output = await readProcessOutput(proc);
+        throw new Error(`Info server exited before health check (code ${code}). stderr: ${output.stderr || "<empty>"}`);
+      }),
+    ]);
+    return await body(path => `http://${HOST}:${port}${path}`);
+  } finally {
+    proc.kill();
+    await proc.exited;
+  }
 }
 
 /** Builds an info server URL for the configured host/port. */

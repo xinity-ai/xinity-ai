@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { z } from "zod";
 import { quoteShellArgv } from "common-env";
-import { ModelFileDefinitionSchema, normalizePep440 } from "xinity-infoserver";
+import { ModelFileV2Schema, normalizePep440 } from "xinity-infoserver";
 import {
   resolveVllmModel,
   checkVllmCompatibility,
@@ -21,7 +21,6 @@ import {
 } from "./lib/vllm-run";
 import type { VllmInstanceConfig } from "../modules/model-installation/vllm-ops";
 import type { HardwareProfile } from "../modules/hardware-detect";
-import { detectVllmFeatures } from "../modules/vllm-features";
 
 const DEFAULT_PORT = 8000;
 
@@ -46,7 +45,7 @@ const HELP = [
   "",
   "Required:",
   "  --models <file>     Model file (YAML or JSON, xinity-infoserver model shape)",
-  "  --model  <name>     Public specifier (key in models:) or a providers.vllm value",
+  "  --model  <name>     Public specifier (key in models:) or an engineSpecifier value",
   "",
   "Verb (default --plan):",
   "  --plan              Print the plan (gate result, serve command, stop hint). No side effects.",
@@ -136,10 +135,12 @@ const [
   { buildDockerRunArgs, buildSystemdServeArgv, ensureVllmNetwork, VLLM_NETWORK },
   { computeGpuUtilization, buildVllmExtraArgs },
   { detectHardwareProfile },
+  { detectVllmFeatures },
 ] = await Promise.all([
   import("../modules/model-installation/vllm-ops"),
   import("../modules/model-installation/vllm"),
   import("../modules/hardware-detect"),
+  import("../modules/vllm-features"),
 ]);
 
 const modelFileSchema = z.object({ models: z.record(z.string(), z.any()) });
@@ -152,7 +153,7 @@ async function loadModelFile(path: string): Promise<{ models: Record<string, any
   } catch (err) {
     die(`model file is not valid ${path.endsWith(".json") ? "JSON" : "YAML"}: ${(err as Error).message}`);
   }
-  const parsed = ModelFileDefinitionSchema.safeParse(raw);
+  const parsed = ModelFileV2Schema.safeParse(raw);
   if (!parsed.success) die(`model file failed validation:\n${z.prettifyError(parsed.error)}`);
   return modelFileSchema.parse(parsed.data);
 }

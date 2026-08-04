@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { ensureInfoServerRunning, infoServerUrl, stopInfoServer } from "./infoserver-test-helpers";
+import { ensureInfoServerRunning, infoServerUrl, stopInfoServer, withInfoServer } from "./infoserver-test-helpers";
 import { version } from "../../../package.json";
 import { infoserverEnvSchema } from "../../../packages/xinity-infoserver/env-schema";
 import { burstFor } from "../../../packages/xinity-infoserver/rate-limit";
@@ -50,6 +50,55 @@ describe("xinity-infoserver", () => {
     const body = await res.json();
     expect(body).toHaveProperty("$schema");
     expect(body).toHaveProperty("type");
+  });
+
+  it("reports both catalogs separately in health", async () => {
+    const res = await fetch(infoServerUrl("/health"));
+    const body = await res.json() as any;
+
+    expect(body.models.modelCount).toBeGreaterThan(0);
+    expect(body.legacy.modelCount).toBeGreaterThan(0);
+    expect(body.catalog.modelCount).toBe(body.models.modelCount + body.legacy.modelCount);
+  });
+
+  it("marks the v1 endpoints deprecated", async () => {
+    const res = await fetch(infoServerUrl("/api/v1/models"), { headers: asClient() });
+
+    expect(res.ok).toBe(true);
+    expect(res.headers.get("deprecation")).toBe("true");
+    expect(res.headers.get("link")).toContain('rel="deprecation"');
+  });
+
+  it("serves v1 entries on v1 endpoints and never current-format ones", async () => {
+    const res = await fetch(infoServerUrl("/api/v1/models?pageSize=200"), { headers: asClient() });
+    const body = await res.json() as any;
+    const specifiers = body.models.map((m: any) => m.publicSpecifier);
+
+    expect(specifiers).toContain("qwen3-coder-next-large");
+    expect(specifiers).not.toContain("qwen3-coder-next-large-ollama");
+    expect(body.models.every((m: any) => m.providers !== undefined)).toBe(true);
+  });
+
+  describe("without a legacy directory", () => {
+    it("serves the v1 endpoints as an empty catalog", async () => {
+      await withInfoServer({ MODEL_LEGACY_DIR: undefined }, async (url) => {
+        const list = await (await fetch(url("/api/v1/models"))).json() as any;
+        expect(list.total).toBe(0);
+
+        const dump = await (await fetch(url("/models/v1.json"))).json() as any;
+        expect(dump.models).toEqual({});
+
+        const health = await (await fetch(url("/health"))).json() as any;
+        expect(health.legacy.modelCount).toBe(0);
+        expect(health.ok).toBe(true);
+      });
+    });
+
+    it("refuses to start when a file in the current directory cannot be used", async () => {
+      await expect(
+        withInfoServer({ MODEL_INFO_DIR: "./models.legacy.d" }, async () => undefined),
+      ).rejects.toThrow(/exited before health check/);
+    });
   });
 
   describe.each([

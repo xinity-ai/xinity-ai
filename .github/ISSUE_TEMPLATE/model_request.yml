@@ -1,0 +1,55 @@
+name: Model request
+description: Ask for an inference model to be added to the registry
+type: Task
+labels: ["model"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Requesting a model that already runs on your own cluster? You can add it locally without waiting for us. See the infoserver README on composing registries.
+
+  - type: input
+    id: model-link
+    attributes:
+      label: Model page
+      description: Link to the model on HuggingFace, Ollama, or the vendor's own page.
+      placeholder: https://huggingface.co/org/model-name
+    validations:
+      required: true
+
+  - type: input
+    id: variant
+    attributes:
+      label: Variant
+      description: Which exact build you need. Parameter count, instruct or base, and quantization if it matters to you.
+      placeholder: 27B, instruct, fp16
+    validations:
+      required: true
+
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Engine
+      description: Which inference engine you intend to run it on.
+      options:
+        - vLLM
+        - Ollama
+        - Either is fine
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: What you need it for
+      description: Helps us prioritise, and tells us which capabilities (tool calling, vision, long context) have to work before the model is useful to you.
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else relevant. Benchmarks, a model card quirk, hardware you plan to run it on, or a deadline.
+    validations:
+      required: false
