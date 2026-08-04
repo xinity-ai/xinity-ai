@@ -29,7 +29,7 @@
           },
           "weight": {
             "type": "number",
-            "description": "Relative weight of how much strain the model places on the node it is installed on"
+            "description": "VRAM consumed by the model weights, in GB"
           },
           "minKvCache": {
             "type": "number",
@@ -211,8 +211,15 @@
             "description": "Version of xinity-ai this model was introduced in",
             "type": "string"
           },
+          "maxContextLength": {
+            "default": 131072,
+            "description": "Maximum supported context window in tokens.",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
           "downloadFilter": {
-            "description": "Gitignore-style glob patterns appended to the daemon's default HuggingFace download filter. Patterns starting with `!` re-include; the last matching rule wins. Arrays are deeply flattened to support YAML anchors. Example: [\"*.gguf\", \"!consolidated.safetensors\"]",
+            "description": "Gitignore-style glob patterns appended to the daemon's default HuggingFace download filter. Patterns starting with `!` re-include, and the last matching rule wins. Arrays are deeply flattened to support YAML anchors. Example: [\"*.gguf\", \"!consolidated.safetensors\"]",
             "type": "array",
             "items": {
               "$ref": "#/$defs/__schema0"

@@ -1,85 +1,123 @@
 import { z } from "zod";
+import {
+  BLOCKED_REQUEST_PARAM_PREFIXES,
+  EngineEnum,
+  GpuVendorEnum,
+  ModelTypeEnum,
+  RequestParamTypeEnum,
+  TagEnum,
+  flatStringArray,
+  hasBlockedRequestParam,
+  stripBlockedVllmArgs,
+} from "./model-primitives";
 
-export const ProviderEnum = z.enum(["vllm", "ollama"]);
+export {
+  BLOCKED_REQUEST_PARAM_PREFIXES,
+  BLOCKED_VLLM_ARGS,
+  EngineEnum,
+  GpuVendorEnum,
+  ModelTypeEnum,
+  RequestParamTypeEnum,
+  TagEnum,
+  type Engine,
+  type GpuVendor,
+  type ModelType,
+  type RequestParamType,
+  type Tag,
+} from "./model-primitives";
+
+const KV_CACHE_DESCRIPTION =
+  "Minimum KV-cache allocation in GB. " +
+  "Should be precomputed from the model's config.json (if available) as roughly: " +
+  "2 * num_hidden_layers * num_key_value_heads * head_dim * dtype_bytes * total_tokens, " +
+  "where total_tokens is chosen based on desired concurrent capacity.";
+
+const DOWNLOAD_FILTER_DESCRIPTION =
+  "Gitignore-style glob patterns appended to the daemon's default HuggingFace download filter. " +
+  "Patterns starting with `!` re-include, and the last matching rule wins. " +
+  "Arrays are deeply flattened to support YAML anchors. " +
+  "Example: [\"*.gguf\", \"!consolidated.safetensors\"]";
+
+// ── Current format ─────────────────────────────────────────────────────
+
+export const ModelV2Schema = z.looseObject({
+  name: z.string().describe("Display name of the model. Intended to be easily human readable"),
+  description: z.string().describe("Multi-paragraph description: purpose, strengths, limitations. Shown when choosing between models, so a one-line label is not enough"),
+  url: z.url().describe("External documentation url, for curious users that want to know more"),
+
+  engine: EngineEnum.describe("Inference engine this entry runs on"),
+  engineSpecifier: z.string().describe("Identifier the engine itself uses. A HuggingFace model id for vLLM, a tag for Ollama"),
+
+  /** Quantization differs per engine, so these cannot be shared across engines. */
+  weight: z.number().describe("VRAM consumed by this build's weights, in GB"),
+  minKvCache: z.number().describe(KV_CACHE_DESCRIPTION),
+  maxContextLength: z.number().int().positive().default(131072).describe("Maximum supported context window in tokens"),
+
+  type: ModelTypeEnum.default("chat").describe("Usage type, which determines API compatibility"),
+  family: z.string().default("unknown").describe("Family of the model. May be unknown"),
+  variantOf: z.string().optional().describe("Groups the engine and quantization variants of one underlying model, so the UI can present them together while each stays separately deployable"),
+  tags: z.array(TagEnum).default([]).describe("Capabilities this build supports: tools, vision, custom_code"),
+  isCustom: z.boolean().default(false).describe("Set for fine-tuned models"),
+
+  args: flatStringArray.optional().describe("Extra CLI arguments appended to the engine's command line. Arrays are deeply flattened to support YAML anchors"),
+  requestParams: z.record(z.string(), RequestParamTypeEnum).optional().describe("Allowlist of extra request-level parameters the gateway may forward, as dot-notation paths mapped to primitive types. All are optional at request time"),
+  minEngineVersion: z.string().optional().describe("Minimum engine version required (semver). Older nodes are excluded from scheduling"),
+  platforms: z.array(GpuVendorEnum).optional().describe("GPU vendor requirement. Absent means any platform"),
+
+  entryVersion: z.string().optional().describe("Version of xinity-ai this entry requires. Older clients skip entries they are too old for"),
+  downloadFilter: flatStringArray.optional().describe(DOWNLOAD_FILTER_DESCRIPTION),
+  custom: z.looseObject({
+    baseModel: z.string(),
+    extraFacts: z.record(z.string(), z.unknown()),
+  }).optional().describe("Provenance for fine tuned custom models"),
+})
+  .refine(
+    model => !model.requestParams || !hasBlockedRequestParam(Object.keys(model.requestParams)),
+    { message: "requestParams must not contain blocked prefixes", path: ["requestParams"] },
+  )
+  .transform(model => (
+    model.engine === "vllm" && model.args
+      ? { ...model, args: stripBlockedVllmArgs(model.args) }
+      : model
+  ));
+
+export type ModelV2 = z.infer<typeof ModelV2Schema>;
+export type ModelV2WithSpecifier = ModelV2 & { publicSpecifier: string; _source: string };
+
+export const ModelFileV2Schema = z.object({
+  includes: z.url().array().optional().describe("Additional model sources to fetch and merge. Each must use this same format"),
+  models: z.record(
+    z.string().describe("Public model specifier. Unique, and carries the engine, e.g. gemma-4-27b-vllm"),
+    ModelV2Schema,
+  ),
+});
+
+export function createModelV2JsonSchema() {
+  return ModelFileV2Schema.toJSONSchema({
+    cycles: "ref",
+    io: "input",
+  });
+}
+
+// Deprecated v1 format, removed soon
+//
+// A single entry could claim several engines, which is why most of the schema
+// below is per-provider maps, and why weight and minKvCache are single-valued
+// even though they differ per engine. Kept only so deployments predating the
+// current format keep resolving their stored specifiers.
+
+export const ProviderEnum = EngineEnum;
 export type Provider = z.infer<typeof ProviderEnum>;
 
-export const TagEnum = z.enum(["tools", "custom_code", "vision"]);
-export type Tag = z.infer<typeof TagEnum>;
-
-export const GpuVendorEnum = z.enum(["nvidia", "amd", "intel"]);
-export type GpuVendor = z.infer<typeof GpuVendorEnum>;
-
-/**
- * vLLM args that must not appear in providerArgs because they are either
- * auto-derived from tags or managed by the system.
- */
-export const BLOCKED_VLLM_ARGS = new Set([
-  "--trust-remote-code",       // controlled by custom_code tag
-  "--enable-auto-tool-choice", // auto-derived from tools tag
-  "--runner",                  // auto-derived from model type (embedding/rerank → pooling)
-  "--task",                    // deprecated in favor of --runner, auto-managed
-  "--host",                    // system-managed
-  "--port",                    // system-managed
-  "--served-model-name",       // system-managed
-  "--kv-cache-memory-bytes",   // system-managed via kvCacheCapacity
-  "--gpu-memory-utilization",  // system-managed, calculated from model needs and total VRAM
-  "--api-key",                 // system-managed
-]);
-
-/**
- * Request-level parameter paths that must never be forwarded to backends,
- * regardless of model configuration. Defense-in-depth against known CVEs.
- */
-export const BLOCKED_REQUEST_PARAM_PREFIXES = [
-  "chat_template",  // Jinja injection vector (CVE-2025-61620), note: chat_template_kwargs is fine
-  "tokenize",       // DoS vector (CVE-2025-62426)
-  "prompt",         // prompt override
-  "api_key",        // credential leak
-];
-
-/** Allowed primitive type names for requestParams values. */
-export const RequestParamTypeEnum = z.enum(["boolean", "number", "string"]);
-export type RequestParamType = z.infer<typeof RequestParamTypeEnum>;
-
-type NestedStringItem = string | NestedStringItem[];
-const nestedStringItem: z.ZodType<NestedStringItem> = z.lazy(() =>
-  z.union([z.string(), z.array(nestedStringItem)])
-);
-
-const flatStringArray = z.array(nestedStringItem)
-  .transform((arr): string[] => (arr as unknown[]).flat(Infinity) as string[])
-  .pipe(z.array(z.string()));
-
-const vllmArgs = flatStringArray
-  .transform((args: string[]) => {
-    const result: string[] = [];
-    for (let i = 0; i < args.length; i++) {
-      const arg = args[i];
-      if (arg === undefined) continue;
-      if (BLOCKED_VLLM_ARGS.has(arg)) {
-        const next = args[i + 1];
-        if (next && !next.startsWith("--")) {
-          i++;
-        }
-      } else {
-        result.push(arg);
-      }
-    }
-    return result;
-  });
+const vllmArgs = flatStringArray.transform(stripBlockedVllmArgs);
 
 export const ModelSchema = z.looseObject({
   name: z.string().describe("Display name of the model. Intended to be easily human readable"),
   description: z.string().describe("Brief description of the model and its unique properties"),
   weight: z.number().describe("VRAM consumed by the model weights, in GB"),
-  minKvCache: z.number().describe(
-    "Minimum KV-cache allocation in GB. " +
-    "Should be precomputed from the model's config.json (if available) as roughly: " +
-    "2 * num_hidden_layers * num_key_value_heads * head_dim * dtype_bytes * total_tokens, " +
-    "where total_tokens is chosen based on desired concurrent capacity."
-  ),
+  minKvCache: z.number().describe(KV_CACHE_DESCRIPTION),
   url: z.url().describe("External documentation url, for curious users that want to know more"),
-  type: z.enum(["embedding", "chat", "rerank", "transcription"]).default("chat").optional().describe("Usage type of the model in question"),
+  type: ModelTypeEnum.default("chat").optional().describe("Usage type of the model in question"),
   family: z.string().default("unknown").optional().describe("Family of the model. May be unknown"),
   tags: z.array(TagEnum).default([]).optional().describe("Default tags, used when providerTags is absent for a given driver. Also the searchable superset"),
   isCustom: z.boolean().default(false).optional(),
@@ -95,18 +133,9 @@ export const ModelSchema = z.looseObject({
     vllm: z.record(z.string(), RequestParamTypeEnum).optional(),
     ollama: z.record(z.string(), RequestParamTypeEnum).optional(),
   }).refine(
-    (obj) => {
-      for (const driverParams of Object.values(obj)) {
-        if (!driverParams) continue;
-        for (const dotPath of Object.keys(driverParams)) {
-          const [prefix = ""] = dotPath.split(".");
-          if (BLOCKED_REQUEST_PARAM_PREFIXES.includes(prefix)) {
-            return false;
-          }
-        }
-      }
-      return true;
-    },
+    (obj) => !Object.values(obj).some(
+      driverParams => driverParams && hasBlockedRequestParam(Object.keys(driverParams)),
+    ),
     { message: `requestParams must not contain blocked prefixes: ${BLOCKED_REQUEST_PARAM_PREFIXES.join(", ")}` },
   ).optional().describe("Per-driver allowlist of extra request-level parameters that the gateway may forward. Dot-notation paths mapped to primitive types (boolean, number, string). All are optional at request time"),
   providers: z.object({
@@ -124,12 +153,7 @@ export const ModelSchema = z.looseObject({
   }).optional().describe("Per-driver GPU platform requirements. Only nodes with a matching GPU vendor can serve. Absent = any platform"),
   entryVersion: z.string().optional().describe("Version of xinity-ai this model was introduced in"),
   maxContextLength: z.number().int().positive().default(131072).describe("Maximum supported context window in tokens."),
-  downloadFilter: flatStringArray.optional().describe(
-    "Gitignore-style glob patterns appended to the daemon's default HuggingFace download filter. " +
-    "Patterns starting with `!` re-include; the last matching rule wins. " +
-    "Arrays are deeply flattened to support YAML anchors. " +
-    "Example: [\"*.gguf\", \"!consolidated.safetensors\"]"
-  ),
+  downloadFilter: flatStringArray.optional().describe(DOWNLOAD_FILTER_DESCRIPTION),
   custom: z.looseObject({
     baseModel: z.string(),
     extraFacts: z.record(z.string(), z.unknown())
@@ -157,5 +181,9 @@ export function createModelJsonSchema(){
 }
 
 if (import.meta.main) {
-  console.log(JSON.stringify(createModelJsonSchema(), null, 2));
+  const write = (name: string, schema: unknown) =>
+    Bun.write(`${import.meta.dir}/../${name}`, `${JSON.stringify(schema, null, 2)}\n`);
+
+  await write("models.v2.schema.json", createModelV2JsonSchema());
+  await write("models.schema.json", createModelJsonSchema());
 }

@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "refresh-schema": "bun run definitions/model-definition.ts > models.schema.json",
+    "refresh-schema": "bun run definitions/model-definition.ts",
     "dev": "bun run server.ts | pino-pretty",
     "build:compile": "bun build --compile --minify --target=bun ./server.ts --outfile xinity-infoserver",
     "test": "bun test ."

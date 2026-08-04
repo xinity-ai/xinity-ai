@@ -4,7 +4,7 @@
 import { parseArgs } from "node:util";
 import { z } from "zod";
 import { quoteShellArgv } from "common-env";
-import { ModelFileDefinitionSchema } from "xinity-infoserver";
+import { ModelFileV2Schema } from "xinity-infoserver";
 import { resolveVllmModel, RunModelError, type ResolvedVllmModel } from "./lib/vllm-run";
 import type { VllmInstanceConfig } from "../modules/model-installation/vllm-ops";
 import type { DetectedGpu } from "../modules/hardware-detect";
@@ -47,8 +47,8 @@ const HELP = [
   "Print the vLLM command the daemon would build for a model + state.",
   "",
   "Required flags:",
-  "  --models <path.yaml>  Infoserver model YAML (same shape as xinity-infoserver/models.yaml)",
-  "  --model  <name>       Public specifier (key in models:) or providers.vllm value",
+  "  --models <path.yaml>  Infoserver model YAML (same shape as the models.d entries)",
+  "  --model  <name>       Public specifier (key in models:) or engineSpecifier value",
   "  --state  <path.yaml>  Hardware + backend state. See src/scripts/state.example.yaml",
   "",
   "State file fields (target-machine state):",
@@ -117,7 +117,7 @@ function buildVllmInstanceConfig(resolved: ResolvedVllmModel, state: State): Vll
   };
 }
 
-const parsedModels = await loadYaml(values.models, ModelFileDefinitionSchema, "model");
+const parsedModels = await loadYaml(values.models, ModelFileV2Schema, "model");
 let resolved: ResolvedVllmModel;
 try {
   resolved = resolveVllmModel(parsedModels, values.model);

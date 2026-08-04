@@ -138,15 +138,21 @@ The dashboard reads model info from `INFOSERVER_URL` (default: public `https://s
 2. Set `INFOSERVER_URL=http://infoserver:8090` in `.env`.
 3. Start with the profile: `docker compose --profile infoserver up -d`.
 
-Your `models.yaml` can extend the public registry:
+Your `models.yaml` can extend the public registry. An included source has to use the same model
+format as the file including it:
 
 ```yaml
 includes:
-  - https://sysinfo.xinity.ai/models.yaml
+  - https://sysinfo.xinity.ai/models/v2.json
 models:
-  my-custom-model:
+  my-custom-model-vllm:
     # ...
 ```
+
+Upgrading an existing install whose `models.yaml` predates the current format? Leave it in place,
+mount it somewhere separate, and point `MODEL_LEGACY_DIR` at that directory instead. It keeps
+being served on the v1 endpoints until they are removed before 1.0.0. Mixing the two formats in one directory fails
+startup on purpose.
 
 ## Maintenance
 

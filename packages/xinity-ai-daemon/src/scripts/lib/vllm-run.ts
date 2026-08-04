@@ -7,13 +7,9 @@
  * runtime/db dependencies and is cheap to unit-test.
  */
 import {
-  resolveTagsForDriver,
-  resolveArgsForDriver,
-  resolveMinVersionForDriver,
-  resolveRequiredPlatformsForDriver,
-  resolveRequiredFeaturesForDriver,
   checkNodeCompatibility,
-  type Model,
+  requiredFeaturesForEngine,
+  type ModelV2,
   type NodeCapability,
   type ModelNodeRequirements,
   type IncompatibilityReason,
@@ -26,11 +22,11 @@ export interface MachineProfile {
   detectedCapacityGb: number;
 }
 
-/** A model entry resolved against its vllm provider, with the derived run facts. */
+/** A model entry resolved for vLLM, with the derived run facts. */
 export interface ResolvedVllmModel {
-  /** The HuggingFace-style name vLLM and the downloader use (providers.vllm). */
+  /** The HuggingFace-style name vLLM and the downloader use. */
   vllmProviderName: string;
-  model: Model;
+  model: ModelV2;
   trustRemoteCode: boolean;
   hasToolsTag: boolean;
   providerArgs: string[];
@@ -47,27 +43,28 @@ export interface ResolvedVllmModel {
 export class RunModelError extends Error {}
 
 /**
- * Accepts either a public specifier (a key in `models:`) or a `providers.vllm`
- * value, returning the entry alongside the provider name used downstream.
- * Throws RunModelError with a human-readable message when not found or not vllm-capable.
+ * Accepts either a public specifier (a key in `models:`) or an `engineSpecifier`.
+ * Throws RunModelError with a human-readable message when not found or not a vllm entry.
  */
 export function findVllmModel(
-  parsed: { models: Record<string, Model> },
+  parsed: { models: Record<string, ModelV2> },
   name: string,
-): { vllmProviderName: string; model: Model } {
+): { vllmProviderName: string; model: ModelV2 } {
   const direct = parsed.models[name];
   if (direct) {
-    if (!direct.providers.vllm) {
-      throw new RunModelError(`Model "${name}" has no providers.vllm entry; cannot build a vllm command for it.`);
+    if (direct.engine !== "vllm") {
+      throw new RunModelError(`Model "${name}" runs on ${direct.engine}, not vllm; cannot build a vllm command for it.`);
     }
-    return { vllmProviderName: direct.providers.vllm, model: direct };
+    return { vllmProviderName: direct.engineSpecifier, model: direct };
   }
   for (const model of Object.values(parsed.models)) {
-    if (model.providers.vllm === name) return { vllmProviderName: name, model };
+    if (model.engine === "vllm" && model.engineSpecifier === name) {
+      return { vllmProviderName: name, model };
+    }
   }
   const known = Object.keys(parsed.models).join(", ");
   throw new RunModelError(
-    `Model "${name}" not found (looked at public specifiers and providers.vllm values). Known: ${known}`,
+    `Model "${name}" not found (looked at public specifiers and engineSpecifier values). Known: ${known}`,
   );
 }
 
@@ -76,13 +73,13 @@ export function findVllmModel(
  * `kvCacheGbOverride`, when given, raises the floor set by model.minKvCache.
  */
 export function resolveVllmModel(
-  parsed: { models: Record<string, Model> },
+  parsed: { models: Record<string, ModelV2> },
   name: string,
   options: { kvCacheGbOverride?: number } = {},
 ): ResolvedVllmModel {
   const { vllmProviderName, model } = findVllmModel(parsed, name);
 
-  const tags = resolveTagsForDriver(model, "vllm");
+  const tags = model.tags ?? [];
   const kvCacheGb = Math.max(options.kvCacheGbOverride ?? 0, model.minKvCache);
 
   return {
@@ -90,13 +87,13 @@ export function resolveVllmModel(
     model,
     trustRemoteCode: tags.includes("custom_code"),
     hasToolsTag: tags.includes("tools"),
-    providerArgs: resolveArgsForDriver(model, "vllm"),
+    providerArgs: model.args ?? [],
     modelType: model.type,
     kvCacheGb,
     estCapacity: model.weight + kvCacheGb,
-    minVersion: resolveMinVersionForDriver(model, "vllm"),
-    requiredPlatforms: resolveRequiredPlatformsForDriver(model, "vllm"),
-    requiredFeatures: resolveRequiredFeaturesForDriver(model, "vllm"),
+    minVersion: model.minEngineVersion,
+    requiredPlatforms: model.platforms ?? [],
+    requiredFeatures: requiredFeaturesForEngine("vllm", model.type),
   };
 }
 

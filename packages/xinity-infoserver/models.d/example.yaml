@@ -1,0 +1,69 @@
+# yaml-language-server: $schema=../models.v2.schema.json
+# Example entries in the current model format. One entry describes one model on
+# one engine, so the specifier carries the engine and every number below is
+# correct for that build specifically.
+
+models:
+  phi-3-vision-vllm:
+    name: Phi-3 Vision
+    description: |
+      Compact vision-language model that reads images alongside text, tuned for
+      document and chart understanding at a size that fits a single mid-range GPU.
+
+      Its 128K context takes a whole document in one request. Noticeably weaker
+      than larger VLMs at open-ended visual reasoning, so prefer it for
+      extraction and summarisation over analysis.
+    url: https://huggingface.co/microsoft/Phi-3-vision-128k-instruct
+    engine: vllm
+    engineSpecifier: microsoft/Phi-3-vision-128k-instruct
+    weight: 8
+    minKvCache: 2
+    maxContextLength: 128000
+    type: chat
+    family: phi3
+    tags: [vision, custom_code]
+    entryVersion: 0.23.0
+
+  qwen3-coder-next-large-ollama:
+    name: Qwen Coder Next
+    description: |
+      Code model for editing and completion across large repositories, with tool
+      calling reliable enough to drive an agent loop.
+
+      This is the q8 build, which trades a little accuracy on long refactors for
+      roughly half the VRAM of the fp16 entry. Pick it when a single 24GB card has
+      to serve both this and something else.
+    url: https://ollama.com/library/qwen3-coder-next
+    engine: ollama
+    engineSpecifier: qwen3-coder-next:q8_0
+    weight: 14
+    minKvCache: 4
+    type: chat
+    family: qwen3
+    variantOf: qwen3-coder-next-large
+    tags: [tools]
+    entryVersion: 0.23.0
+
+  # Same underlying model as above, different engine and quantization, so it is a
+  # separate entry with its own capacity numbers and its own specifier.
+  qwen3-coder-next-large-vllm:
+    name: Qwen Coder Next
+    description: |
+      Code model for editing and completion across large repositories, with tool
+      calling reliable enough to drive an agent loop.
+
+      The fp16 build, and the one to use when accuracy on long multi-file changes
+      matters more than footprint. Needs roughly twice the VRAM of the q8 Ollama
+      entry and a recent vLLM for the tool-call parser.
+    url: https://huggingface.co/Qwen/Qwen3-Coder-Next
+    engine: vllm
+    engineSpecifier: Qwen/Qwen3-Coder-Next
+    weight: 28
+    minKvCache: 6
+    type: chat
+    family: qwen3
+    variantOf: qwen3-coder-next-large
+    tags: [tools]
+    args: ["--tool-call-parser", "hermes"]
+    minEngineVersion: "0.19.1"
+    entryVersion: 0.23.0

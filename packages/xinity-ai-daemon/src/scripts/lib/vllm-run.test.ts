@@ -14,7 +14,8 @@ const baseModel = {
   minKvCache: 8,
   url: "https://example.com",
   type: "chat" as const,
-  providers: { vllm: "org/test-model" },
+  engine: "vllm" as const,
+  engineSpecifier: "org/test-model",
 };
 
 const file = (models: Record<string, any>) => ({ models });
@@ -30,13 +31,13 @@ describe("findVllmModel", () => {
     expect(found.vllmProviderName).toBe("org/test-model");
   });
 
-  test("resolves by providers.vllm value", () => {
+  test("resolves by engineSpecifier value", () => {
     const found = findVllmModel(file({ "test-model": baseModel }), "org/test-model");
     expect(found.vllmProviderName).toBe("org/test-model");
   });
 
-  test("throws when the entry has no vllm provider", () => {
-    const ollamaOnly = { ...baseModel, providers: { ollama: "test:7b" } };
+  test("throws when the entry runs on another engine", () => {
+    const ollamaOnly = { ...baseModel, engine: "ollama" as const, engineSpecifier: "test:7b" };
     expect(() => findVllmModel(file({ x: ollamaOnly }), "x")).toThrow(RunModelError);
   });
 
@@ -78,19 +79,19 @@ describe("resolveVllmModel", () => {
 
 describe("checkVllmCompatibility", () => {
   test("passes when version, platform and capacity are satisfied", () => {
-    const r = resolveVllmModel(file({ m: { ...baseModel, providerMinVersions: { vllm: "0.6.0" } } }), "m");
+    const r = resolveVllmModel(file({ m: { ...baseModel, minEngineVersion: "0.6.0" } }), "m");
     const reason = checkVllmCompatibility(r, nvidia24, { available: true, version: "0.19.1" });
     expect(reason).toBeNull();
   });
 
   test("flags version_too_old", () => {
-    const r = resolveVllmModel(file({ m: { ...baseModel, providerMinVersions: { vllm: "0.20.0" } } }), "m");
+    const r = resolveVllmModel(file({ m: { ...baseModel, minEngineVersion: "0.20.0" } }), "m");
     const reason = checkVllmCompatibility(r, nvidia24, { available: true, version: "0.19.1" });
     expect(reason).toBe("version_too_old");
   });
 
   test("flags version_unknown only when requireKnownVersion is set", () => {
-    const r = resolveVllmModel(file({ m: { ...baseModel, providerMinVersions: { vllm: "0.6.0" } } }), "m");
+    const r = resolveVllmModel(file({ m: { ...baseModel, minEngineVersion: "0.6.0" } }), "m");
     expect(checkVllmCompatibility(r, nvidia24, { available: true })).toBeNull();
     expect(checkVllmCompatibility(r, nvidia24, { available: true }, { requireKnownVersion: true })).toBe("version_unknown");
   });
@@ -101,7 +102,7 @@ describe("checkVllmCompatibility", () => {
   });
 
   test("flags wrong_platform when the GPU vendor does not match", () => {
-    const r = resolveVllmModel(file({ m: { ...baseModel, providerPlatforms: { vllm: ["amd"] } } }), "m");
+    const r = resolveVllmModel(file({ m: { ...baseModel, platforms: ["amd"] } }), "m");
     expect(checkVllmCompatibility(r, nvidia24, { available: true, version: "0.19.1" })).toBe("wrong_platform");
   });
 

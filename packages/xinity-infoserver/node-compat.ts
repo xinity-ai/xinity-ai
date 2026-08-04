@@ -88,6 +88,11 @@ export function checkNodeCompatibility(
   return null;
 }
 
+/** Driver features implied by a model's type rather than declared on it. */
+export function requiredFeaturesForEngine(engine: string, type: string | undefined): string[] {
+  return engine === "vllm" && type === "transcription" ? ["audio"] : [];
+}
+
 /** A model as seen by cluster-wide deployability checks. */
 export type ClusterModel = {
   weight: number;
@@ -104,7 +109,7 @@ export function modelRequirementsForDriver(model: ClusterModel, driver: string):
     capacityGb: model.weight + model.minKvCache,
     minVersion: model.providerMinVersions?.[driver],
     requiredPlatforms: model.providerPlatforms?.[driver] ?? [],
-    requiredFeatures: driver === "vllm" && model.type === "transcription" ? ["audio"] : [],
+    requiredFeatures: requiredFeaturesForEngine(driver, model.type),
   };
 }
 
@@ -143,8 +148,33 @@ export function explainClusterIncompatibility(
 }
 
 /**
- * Returns true if at least one node can serve the model via any of its providers.
- * Used by client-side model selector to determine deployability.
+ * Returns true if at least one node can serve the model. The engine is part of
+ * the model's identity, so unlike the v1 form there is no set of drivers to try.
+ */
+export function isDeployableOnClusterV2(
+  nodes: NodeCapability[],
+  model: {
+    weight: number;
+    minKvCache: number;
+    type?: string;
+    engine: string;
+    minEngineVersion?: string;
+    platforms?: string[];
+  },
+): boolean {
+  const req: ModelNodeRequirements = {
+    driver: model.engine,
+    capacityGb: model.weight + model.minKvCache,
+    minVersion: model.minEngineVersion,
+    requiredPlatforms: model.platforms ?? [],
+    requiredFeatures: requiredFeaturesForEngine(model.engine, model.type),
+  };
+  return nodes.some(node => checkNodeCompatibility(node, req) === null);
+}
+
+/**
+ * DEPRECATED v1 form: a single entry could claim several engines, so every
+ * provider has to be tried. Removed before 1.0.0 with the format.
  */
 export function isDeployableOnCluster(nodes: NodeCapability[], model: ClusterModel): boolean {
   return explainClusterIncompatibility(nodes, model) === null;

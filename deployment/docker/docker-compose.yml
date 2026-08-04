@@ -101,6 +101,10 @@ services:
     environment:
       PORT: ${INFOSERVER_PORT:-8090}
       MODEL_INFO_DIR: /data/models.d
+      # Upgrading from the pre-v2 model format? Mount your old files somewhere
+      # separate and point MODEL_LEGACY_DIR at it. They keep being served on the
+      # v1 endpoints until 1.0.0. See the infoserver README.
+      # MODEL_LEGACY_DIR: /data/models.legacy.d
     volumes:
       - ./models.yaml:/data/models.d/models.yaml:ro
     networks:
