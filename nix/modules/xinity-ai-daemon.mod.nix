@@ -67,8 +67,8 @@
 
         infoserverCacheTtlMs = lib.mkOption {
           type = lib.types.int;
-          default = 30000;
-          description = "Duration in milliseconds to cache responses from the infoserver locally. Reduces repeated network calls when the daemon checks model definitions.";
+          default = 600000;
+          description = "How long the local catalog snapshot is trusted before the daemon re-validates it. A revalidation costs one 304 when nothing changed; this sets how stale a newly published model entry can be.";
         };
 
         stateDir = lib.mkOption {

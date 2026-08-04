@@ -126,8 +126,8 @@
 
         infoserverCacheTtlMs = lib.mkOption {
           type = lib.types.int;
-          default = 30000;
-          description = "Duration in milliseconds to cache responses from the infoserver. Reduces load on the infoserver when the dashboard frequently queries model availability.";
+          default = 600000;
+          description = "How long the local catalog snapshot is trusted before the dashboard re-validates it. A revalidation costs one 304 when nothing changed; this sets how stale a newly published model entry can be.";
         };
 
         nodeEnv = lib.mkOption {
