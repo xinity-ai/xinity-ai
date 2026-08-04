@@ -1,55 +1,56 @@
-# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v1.json
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
 # Xinity AI Model Configuration Example
 # Copy this file to models.yaml and configure your models
 # This file is mounted read-only into the infoserver container
 
-# Include the public Xinity model registry
-includes:
-  - https://sysinfo.xinity.ai/models/v1.json
-
-# Define your custom models here
+# One entry describes one model on one engine, so the specifier carries the
+# engine and the capacity numbers are correct for that exact build.
 models:
-  # Example: Custom fine-tuned model
-  my-custom-llama:
-    publicSpecifier: my-custom-llama
+  my-custom-llama-ollama:
     name: My Custom Llama
-    description: Custom fine-tuned version of Llama 3.1 8B for specific domain tasks
-    weight: 8
-    registeredAt: "2024-01-15T00:00:00Z"
+    # Purpose, strengths, limitations. Not a one-line label.
+    description: |
+      Llama 3.1 8B fine-tuned on our internal support corpus, so it answers in
+      house terminology without prompting for it.
+
+      Good for drafting replies and classifying tickets. Do not use it for
+      general knowledge questions: the fine-tune narrowed it noticeably.
     url: https://example.com/models/my-custom-llama
-    entryVersion: 1
+    engine: ollama
+    engineSpecifier: my-custom-llama:8b-q8_0
+    weight: 8
+    minKvCache: 2
     type: chat
     family: llama
-    driver: ollama
     isCustom: true
-    tags:
-      - fine-tuned
-      - domain-specific
     custom:
       baseModel: llama-3.1-8b
       extraFacts:
         training_dataset: proprietary-corpus
         training_date: "2024-01-10"
 
-  # Example: Local embedding model
-  local-embeddings:
-    publicSpecifier: local-embeddings
+  local-embeddings-ollama:
     name: Local Embedding Model
-    description: Fast local embeddings for semantic search
-    weight: 2
-    registeredAt: "2024-01-20T00:00:00Z"
+    description: |
+      Small embedding model for semantic search over our own documents, chosen so
+      indexing a large corpus stays cheap.
+
+      768-dimension output, English only. Multilingual content needs a different
+      model.
     url: https://example.com/models/embeddings
-    entryVersion: 1
+    engine: ollama
+    engineSpecifier: nomic-embed-text
+    weight: 2
+    minKvCache: 1
     type: embedding
     family: nomic
-    driver: ollama
-    tags:
-      - embeddings
-      - fast
 
 # Notes:
-# - Models in the 'includes' section are fetched from remote sources
-# - Local models defined here take precedence over included models with the same publicSpecifier
-# - The 'weight' field indicates resource requirements (higher = more resources)
-# - Use 'isCustom: true' for fine-tuned models and provide 'custom.baseModel'
-# - The infoserver exposes the merged configuration at /v1/models
+# - `weight` and `minKvCache` are in GB and describe this build only. A quantized
+#   Ollama build and an fp16 vLLM build of the same model belong in separate
+#   entries with separate numbers.
+# - Local entries take precedence over anything pulled in through `includes`.
+# - To extend the public registry, add an `includes` list pointing at
+#   https://sysinfo.xinity.ai/models/v2.json once your instance is on a release
+#   that serves it. An `includes` source must use the same format as this file.
+# - The merged catalog is exposed at /api/v1/models and /models/v1.json.

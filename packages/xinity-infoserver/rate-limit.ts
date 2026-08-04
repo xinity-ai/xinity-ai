@@ -1,17 +1,16 @@
 /**
- * Per-client token buckets. The infoserver is public and unauthenticated, and no
- * reverse-proxy config ships alongside it, so the request ceiling has to live in
- * the process rather than in nginx.
+ * Per-client token buckets. The reverse proxy in front does the coarse limiting, but
+ * it cannot know that a full-catalog export costs orders of magnitude more than a
+ * single lookup, so the asymmetric ceiling lives here.
  */
 import type { SocketAddressSource } from "./client-ip";
 
 type BucketState = { tokens: number; lastRefillMs: number };
 
 /**
- * How much of the sustained allowance a client may spend at once, in minutes.
- * At 1 the limiter never rejects a client whose one-minute total is within
- * budget, however unevenly it arrived, and a drained bucket is always full again
- * one minute later. Above 1 a client could borrow against future minutes.
+ * How much of the sustained allowance a client may spend at once, in minutes. At 1
+ * nobody is rejected whose one-minute total is within budget, however unevenly it
+ * arrived. Above 1 they could borrow against future minutes.
  */
 const BURST_WINDOW_MINUTES = 1;
 

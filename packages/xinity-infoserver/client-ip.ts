@@ -1,8 +1,8 @@
 /**
- * Resolves the address a request originated from. Behind a proxy the socket
- * address is the proxy's, so the client has to be read out of a forwarding
- * header, and such a header is only trustworthy as deep as the proxy chain
- * actually is: a client can pre-seed entries, and the proxies append after them.
+ * Behind a proxy the socket address is the proxy's, so the client has to be read
+ * out of a forwarding header. Such a header is only trustworthy as deep as the
+ * proxy chain is, because a client can pre-seed entries and the proxies append
+ * after them.
  */
 
 export interface SocketAddressSource {

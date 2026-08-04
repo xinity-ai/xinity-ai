@@ -1,16 +1,16 @@
 # Integrating a model
 
 This guide walks through adding a new model to Xinity by hand: researching it, writing its model
-entry, and verifying it actually runs before you publish it. The end product is a `models.yaml`
-entry (shape: `ModelSchema`) that you drop into your registry directory. Confirm the entry by
-running it, not by reasoning about it.
+entry, and verifying it actually runs before you publish it. The end product is an entry (shape:
+`ModelV2Schema`) in a file under `models/`, describing **one model on one engine**. Confirm the
+entry by running it, not by reasoning about it.
 
 (The Claude Code `integrate-model` skill points here too, so an agent and a human follow the same
 steps.)
 
 ## Before you start, read
 
-- [`README.md`](../README.md) - how to write a `models.yaml`, with examples.
+- [`README.md`](../README.md) - the model format, with examples.
 - [`docs/model-fields.md`](./model-fields.md) - every field, its default, and the blocked-args list.
 - `bun run run-model -- --help` (in `packages/xinity-ai-daemon`) - the runner you verify with.
 
@@ -21,30 +21,33 @@ steps.)
    quantization, since each is a different entry.
 2. **Research the fields** (table below) from the HuggingFace model card and the repo's
    `config.json`. Where a value is genuinely unknowable, use the documented default and note it.
-3. **Write the entry** as a `models.yaml` fragment. Start with the required fields plus
-   `providers.vllm`; add optional fields only when research or a failure justifies them. For editor
-   autocomplete and validation, add the schema header from the README's "IDE validation" section.
+3. **Write the entry** into the family's file under `models/`, keyed by a specifier that carries the
+   engine (e.g. `qwen3-coder-30b-vllm`). Start with the required fields; add optional fields only
+   when research or a failure justifies them. For editor autocomplete and validation, add the schema
+   header from the README's "IDE validation" section.
 4. **Verify it runs** (next section): iterate using the failure table until the gate passes, the
    server comes up, and it **serves a real request** (not just `/health`). Also **validate every
    declared capability** - test tool calling and vision if research says the model has them. While
    there, pin down the two values you can't reliably guess - the `minKvCache` floor and the
-   `providerMinVersions.vllm` floor - by the procedures below.
-5. **Publish.** Put the entry in your registry directory (`MODEL_INFO_DIR`). Record which hardware
-   you verified it on and any constraints you found (`providerMinVersions`, `providerPlatforms`).
+   `minEngineVersion` floor - by the procedures below.
+5. **Publish.** Open a PR. In the description, record which hardware you verified it on and any
+   constraints you found (`minEngineVersion`, `platforms`). CI loads `models/` the way the server
+   does, so a file the server could not serve fails the build.
 
 ## Researching the fields
 
 | Field | Where it comes from |
 |-------|---------------------|
-| `providers.vllm` | The HuggingFace repo id. `providers.ollama` only if a matching Ollama tag exists. |
+| `engine`, `engineSpecifier` | `vllm` plus the HuggingFace repo id. An Ollama build of the same model is a second entry with `engine: ollama` and its own tag, weight and KV floor. |
 | `weight` | VRAM of the weights in GB. FP16 ≈ params(billions) × 2; quantized (AWQ/GPTQ ~4-bit) ≈ params × 0.5. Round up. |
 | `minKvCache` | Start from `config.json`: roughly `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes × tokens` (in GB), `tokens` chosen for desired concurrency. Then **confirm the hard floor empirically** ("Confirm the KV-cache floor" below) - the value must be at or above what vLLM needs to start. |
 | `type` | `chat` (default), `embedding`, `rerank`, or `transcription`, from what the model does. |
-| `tags` | `vision` if multimodal, `tools` if it supports tool/function calling - **research both and validate them** (see "Validate declared capabilities" below). For `tools`, also set `providerArgs.vllm: ["--tool-call-parser", "<name>"]`: the tag makes the daemon add `--enable-auto-tool-choice`, but vLLM additionally needs a model-specific parser or it won't start. Registered parser names live in the image under `vllm/tool_parsers/` (e.g. `gemma4`, `lfm2`, `hermes`, `llama3_json`, `mistral`, `pythonic`). Do **not** add `custom_code` preemptively; only after a load failure shows it needs `--trust-remote-code`. |
-| `family`, `name`, `description`, `url` | Model card; `url` is the HuggingFace page. |
-| `providerMinVersions.vllm` | Set for new model families / quant formats. Don't guess - **establish the floor empirically** by running on older vLLM builds until it stops loading ("Confirm the version floor" below). |
-| `providerPlatforms.vllm` | Set when the variant needs a specific GPU vendor (e.g. CUDA-only quant kernels → `[nvidia]`). A `wrong_platform` failure is evidence. |
-| `providerArgs.vllm` | Extra serve flags (e.g. `["--max-model-len", "8192"]`). Note the blocked-args list in `model-fields.md`; system-managed flags are stripped. |
+| `tags` | `vision` if multimodal, `tools` if it supports tool/function calling - **research both and validate them** (see "Validate declared capabilities" below). For `tools`, also set `args: ["--tool-call-parser", "<name>"]`: the tag makes the daemon add `--enable-auto-tool-choice`, but vLLM additionally needs a model-specific parser or it won't start. Registered parser names live in the image under `vllm/tool_parsers/` (e.g. `gemma4`, `lfm2`, `hermes`, `llama3_json`, `mistral`, `pythonic`). Do **not** add `custom_code` preemptively; only after a load failure shows it needs `--trust-remote-code`. |
+| `family`, `name`, `url` | Model card; `url` is the HuggingFace page. |
+| `description` | The model card, in your own words: purpose, strengths, limitations. Multiple paragraphs as a block scalar, not a one-line label. |
+| `minEngineVersion` | Set for new model families / quant formats. Don't guess - **establish the floor empirically** by running on older vLLM builds until it stops loading ("Confirm the version floor" below). |
+| `platforms` | Set when the variant needs a specific GPU vendor (e.g. CUDA-only quant kernels → `[nvidia]`). A `wrong_platform` failure is evidence. |
+| `args` | Extra serve flags (e.g. `["--max-model-len", "8192"]`). Note the blocked-args list in `model-fields.md`; system-managed flags are stripped. |
 | `downloadFilter` | Gitignore-style globs to narrow the download (e.g. pick one quant, drop `*.gguf`). |
 
 ## Verify it runs
@@ -55,10 +58,10 @@ host, outside vLLM), and starts the server - no daemon, database, or cluster inv
 
 ```bash
 # Inspect the plan: what it resolved, whether it can run here, and the exact start command.
-bun run run-model -- --models ./models.yaml --model <specifier> --image <vllm-image> --plan
+bun run run-model -- --models ../../../models/<family>.yaml --model <specifier> --image <vllm-image> --plan
 
 # Run it. Downloads on the host first, then starts the container.
-bun run run-model -- --models ./models.yaml --model <specifier> --image <vllm-image> --start
+bun run run-model -- --models ../../../models/<family>.yaml --model <specifier> --image <vllm-image> --start
 ```
 
 With the docker backend (`--image`), the container always runs **egress-blocked and offline**: it
@@ -75,7 +78,7 @@ beforehand**, not just the weights. The downloader fetches the model's own repo;
 `downloadFilter` to re-include extra files within that repo that it needs (e.g. `*.py` for
 `trust_remote_code` / `custom_code` models, whose modeling code would otherwise be missing).
 **Known limitation:** an entry that points vLLM at a *second* repo - e.g. `--tokenizer <other-repo>`
-(or `--tokenizer-revision`) in `providerArgs`, or a `config.json` `auto_map` to another repo - will
+(or `--tokenizer-revision`) in `args`, or a `config.json` `auto_map` to another repo - will
 fail offline, because only the model's own repo is pre-downloaded and `downloadFilter` only selects
 files within it. Such a model must have that second repo made available offline by other means; the
 daemon does not fetch it.
@@ -107,10 +110,10 @@ variants). For a chat model:
 
 ```bash
 curl -s localhost:8000/v1/chat/completions -H 'Content-Type: application/json' \
-  -d '{"model":"<providers.vllm value>","messages":[{"role":"user","content":"Say OK."}],"max_tokens":10}'
+  -d '{"model":"<engineSpecifier value>","messages":[{"role":"user","content":"Say OK."}],"max_tokens":10}'
 ```
 
-The served model name is the `providers.vllm` value (the HF repo id), not your public specifier.
+The served model name is the `engineSpecifier` value (the HF repo id), not your public specifier.
 
 For a reasoning / chain-of-thought model (e.g. VibeThinker), expect long `<think>`-style output -
 a short `max_tokens` will stop it mid-thought with `finish_reason: length`. That's not a failure;
@@ -131,13 +134,13 @@ tool calling and don't recommend it - so no `tools` tag. When the card is explic
 unsupported, that counts as "no realistic chance"; don't tag it just because the base could.
 
 **Tools** - needs `tags: [tools]` (daemon adds `--enable-auto-tool-choice`) **and**
-`providerArgs.vllm: ["--tool-call-parser", "<name>"]` (see the `tags` row above). Send a request with a
+`args: ["--tool-call-parser", "<name>"]` (see the `tags` row above). Send a request with a
 `tools` definition and `tool_choice: "auto"`; a working setup returns `finish_reason: tool_calls` and a
 structured `tool_calls[]` - not the call buried in `content`:
 
 ```bash
 curl -s localhost:8000/v1/chat/completions -H 'Content-Type: application/json' -d '{
-  "model":"<providers.vllm value>",
+  "model":"<engineSpecifier value>",
   "messages":[{"role":"user","content":"What is the weather in Paris? Use the tool."}],
   "tools":[{"type":"function","function":{"name":"get_weather","description":"Get weather",
     "parameters":{"type":"object","properties":{"location":{"type":"string"}},"required":["location"]}}}],
@@ -150,7 +153,7 @@ egress-blocked, so it can't fetch a remote URL - pass the image as a `data:` bas
 
 ```bash
 curl -s localhost:8000/v1/chat/completions -H 'Content-Type: application/json' -d '{
-  "model":"<providers.vllm value>",
+  "model":"<engineSpecifier value>",
   "messages":[{"role":"user","content":[{"type":"text","text":"Describe this image."},
     {"type":"image_url","image_url":{"url":"data:image/png;base64,<...>"}}]}],"max_tokens":50}'
 ```
@@ -173,18 +176,18 @@ concurrency.
 The floor scales with the model's `max_model_len`, and per-request KV is independent of parameter
 count - so a *small* model with a *huge* native context can have a surprisingly large floor (e.g.
 Hunyuan MT2 **1.8B** at its native **256K** context needs **16 GiB** of KV). When that floor is
-impractical for the model's size, cap the context with `providerArgs: vllm: ["--max-model-len", "N"]`;
+impractical for the model's size, cap the context with `args: ["--max-model-len", "N"]`;
 the floor drops roughly proportionally. A useful pattern is to publish **several entries of the same
 model at different `--max-model-len` caps** - each a context/footprint trade-off (shorter context →
 smaller floor → more requests fit per GB of KV). Note: for models with sliding-window or hybrid
 attention (e.g. Gemma 4), the real floor is well below the dense formula above, so trust the
 empirical `X GiB needed` figure rather than the estimate.
 
-### Confirm the version floor (`providerMinVersions.vllm`)
+### Confirm the version floor (`minEngineVersion`)
 
 Don't guess the floor - establish it by running on the oldest vLLM you intend to support. Using the
 image assortment below, `--start` against progressively older versions and, on each, **send a real
-request and check the response**. Set `providerMinVersions.vllm` to the oldest version that *serves a
+request and check the response**. Set `minEngineVersion` to the oldest version that *serves a
 correct response* - not merely the oldest that loads. Loading is not proof: a version can start
 cleanly (quant kernels selected, `/health` 200) yet **500 on the first request** - e.g. an
 attention-kernel shape error for the model's head-dim layout. (Real example: Mistral-Small-4 NVFP4
@@ -210,23 +213,23 @@ official one doesn't yet cover your hardware, and then review the Dockerfile and
 
 | Symptom (gate reason / log) | What it means | Action |
 |-----------------------------|---------------|--------|
-| `resolution_error` | Entry missing `providers.vllm`, or name not found | Fix the entry / specifier |
+| `resolution_error` | Entry missing `engineSpecifier`, or name not found | Fix the entry / specifier |
 | `missing_driver` | No vLLM available on this host | Install vLLM, or pass `--image <vllm-image>` for the docker backend |
-| `version_too_old` | Host vLLM older than the model needs | Record the real floor in `providerMinVersions.vllm`; verify on a node that meets it |
-| `version_unknown` | Couldn't detect the vLLM version (image not pulled locally, or `vllm --version` failed - it needs GPU access to run) | Pull the image and ensure a GPU is visible, pass `--vllm-path`, or `--force` to bypass the gate (which then won't enforce `providerMinVersions`) |
-| `wrong_platform` | Model needs a GPU vendor this host lacks | Record `providerPlatforms.vllm`; verify on matching hardware |
+| `version_too_old` | Host vLLM older than the model needs | Record the real floor in `minEngineVersion`; verify on a node that meets it |
+| `version_unknown` | Couldn't detect the vLLM version (image not pulled locally, or `vllm --version` failed - it needs GPU access to run) | Pull the image and ensure a GPU is visible, pass `--vllm-path`, or `--force` to bypass the gate (which then won't enforce `minEngineVersion`) |
+| `wrong_platform` | Model needs a GPU vendor this host lacks | Record `platforms`; verify on matching hardware |
 | `missing_feature` | Node's vLLM install lacks a Python module a required capability needs (e.g. `transcription` models need `soundfile` for the `audio` feature) | Install the missing dependency into the vLLM environment, or run on a node that has it |
 | `insufficient_capacity` | `weight` + KV-cache exceeds available VRAM | Re-check the `weight` estimate, lower KV-cache via `--kv-cache`, or choose a smaller/quantized variant |
-| Server exits at load: "trust_remote_code" / "requires --trust-remote-code" | Model ships custom loading code | Add `custom_code` to `tags` (or `providerTags.vllm`) |
-| Server load: unknown/unsupported architecture | vLLM too old for this model | Set `providerMinVersions.vllm` and run on a newer node |
-| Server load aborts: `weights not initialized from checkpoint: {visual.*}` | A vision-language architecture shipped as a **text-only** checkpoint (`config.json` `language_model_only: true`, no vision weights), but vLLM built the vision tower | Pass `--language-model-only` in `providerArgs.vllm` - the config field is not the switch, the CLI flag is. Not a `custom_code` case. Vision is off, so no `vision` tag |
+| Server exits at load: "trust_remote_code" / "requires --trust-remote-code" | Model ships custom loading code | Add `custom_code` to `tags`  |
+| Server load: unknown/unsupported architecture | vLLM too old for this model | Set `minEngineVersion` and run on a newer node |
+| Server load aborts: `weights not initialized from checkpoint: {visual.*}` | A vision-language architecture shipped as a **text-only** checkpoint (`config.json` `language_model_only: true`, no vision weights), but vLLM built the vision tower | Pass `--language-model-only` in `args` - the config field is not the switch, the CLI flag is. Not a `custom_code` case. Vision is off, so no `vision` tag |
 | Request fails HTTP 400 "default chat template is no longer allowed" | Model ships its chat template as a standalone `chat_template.jinja` and it isn't in the cache | The host downloader keeps `*.jinja` by default; if missing, re-run `--download`. Surfaces only if you `/health`-check but never send a real request - see "Confirm it actually serves" |
 | Loads but output is gibberish | Quant format/kernel mismatch (e.g. some FP8 Gemma variants) | Try a different quant of the same model (e.g. compressed-tensors instead of ModelOpt FP8), or a newer vLLM |
 | Load aborts: `tie_weights` `NotImplementedError` | Quant method can't tie embeddings for a tied-embedding model (e.g. ModelOpt FP8 + Gemma) | Use a compressed-tensors FP8 build (keeps `lm_head` unquantized) instead |
 | HF download 401/403 (gated/private repo) | Needs auth | Provide a token via `--hf-token` (or `VLLM_HF_TOKEN`) |
 | OOM during load | Too large for the device at this utilization | Lower `--gpu-util` or KV-cache, or pick a smaller variant |
 
-Treat each `providerMinVersions` / `providerPlatforms` / `custom_code` discovery as a **fact about
+Treat each `minEngineVersion` / `platforms` / `custom_code` discovery as a **fact about
 the model** to bake into the entry, not a one-off workaround. The goal is an entry that the cluster
 scheduler can place correctly, which is exactly what these constraints feed (see the README's
 "How scheduling uses model data").

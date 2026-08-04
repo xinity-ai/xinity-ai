@@ -1,0 +1,202 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "includes": {
+      "description": "Additional model sources to fetch and merge. Each must use this same format",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      }
+    },
+    "models": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "description": "Public model specifier. Unique, and carries the engine, e.g. gemma-4-27b-vllm"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name of the model. Intended to be easily human readable"
+          },
+          "description": {
+            "type": "string",
+            "description": "Multi-paragraph description: purpose, strengths, limitations. Shown when choosing between models, so a one-line label is not enough"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "External documentation url, for curious users that want to know more"
+          },
+          "engine": {
+            "type": "string",
+            "enum": [
+              "vllm",
+              "ollama"
+            ],
+            "description": "Inference engine this entry runs on"
+          },
+          "engineSpecifier": {
+            "type": "string",
+            "description": "Identifier the engine itself uses. A HuggingFace model id for vLLM, a tag for Ollama"
+          },
+          "weight": {
+            "type": "number",
+            "description": "VRAM consumed by this build's weights, in GB"
+          },
+          "minKvCache": {
+            "type": "number",
+            "description": "Minimum KV-cache allocation in GB. Should be precomputed from the model's config.json (if available) as roughly: 2 * num_hidden_layers * num_key_value_heads * head_dim * dtype_bytes * total_tokens, where total_tokens is chosen based on desired concurrent capacity."
+          },
+          "maxContextLength": {
+            "default": 131072,
+            "description": "Maximum supported context window in tokens",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "type": {
+            "default": "chat",
+            "description": "Usage type, which determines API compatibility",
+            "type": "string",
+            "enum": [
+              "embedding",
+              "chat",
+              "rerank",
+              "transcription"
+            ]
+          },
+          "family": {
+            "default": "unknown",
+            "description": "Family of the model. May be unknown",
+            "type": "string"
+          },
+          "variantOf": {
+            "description": "Groups the engine and quantization variants of one underlying model, so the UI can present them together while each stays separately deployable",
+            "type": "string"
+          },
+          "tags": {
+            "default": [],
+            "description": "Capabilities this build supports: tools, vision, custom_code",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "tools",
+                "custom_code",
+                "vision"
+              ]
+            }
+          },
+          "isCustom": {
+            "default": false,
+            "description": "Set for fine-tuned models",
+            "type": "boolean"
+          },
+          "args": {
+            "description": "Extra CLI arguments appended to the engine's command line. Arrays are deeply flattened to support YAML anchors",
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema0"
+            }
+          },
+          "requestParams": {
+            "description": "Allowlist of extra request-level parameters the gateway may forward, as dot-notation paths mapped to primitive types. All are optional at request time",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "boolean",
+                "number",
+                "string"
+              ]
+            }
+          },
+          "minEngineVersion": {
+            "description": "Minimum engine version required (semver). Older nodes are excluded from scheduling",
+            "type": "string"
+          },
+          "platforms": {
+            "description": "GPU vendor requirement. Absent means any platform",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "nvidia",
+                "amd",
+                "intel"
+              ]
+            }
+          },
+          "entryVersion": {
+            "description": "Version of xinity-ai this entry requires. Older clients skip entries they are too old for",
+            "type": "string"
+          },
+          "downloadFilter": {
+            "description": "Gitignore-style glob patterns appended to the daemon's default HuggingFace download filter. Patterns starting with `!` re-include, and the last matching rule wins. Arrays are deeply flattened to support YAML anchors. Example: [\"*.gguf\", \"!consolidated.safetensors\"]",
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema0"
+            }
+          },
+          "custom": {
+            "description": "Provenance for fine tuned custom models",
+            "type": "object",
+            "properties": {
+              "baseModel": {
+                "type": "string"
+              },
+              "extraFacts": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "baseModel",
+              "extraFacts"
+            ],
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "url",
+          "engine",
+          "engineSpecifier",
+          "weight",
+          "minKvCache"
+        ],
+        "additionalProperties": {}
+      }
+    }
+  },
+  "required": [
+    "models"
+  ],
+  "$defs": {
+    "__schema0": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema0"
+          }
+        }
+      ]
+    }
+  }
+}

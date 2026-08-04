@@ -32,15 +32,14 @@ mock.module("./logger", () => ({
 const {
   configure,
   refresh,
-  get,
-  resolveBatch,
-  getAll,
-  getByFamily,
-  getMergedData,
-  getSerializedCatalog,
+  legacyCatalog,
+  modelCatalog,
   getCatalogHealth,
   stopAutoRefresh,
 } = await import("./server-catalog");
+
+// The fixtures below are v1-shaped, so they load through the legacy directory.
+const { get, resolveBatch, getAll, getByFamily, getMergedData, getSerializedCatalog } = legacyCatalog;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -87,6 +86,16 @@ const embeddingModel = {
   providers: { ollama: "nomic-embed" },
 };
 
+const v2Model = {
+  name: "Test Llama",
+  description: "A test model",
+  url: "https://example.com",
+  engine: "vllm",
+  engineSpecifier: "org/llama-vllm",
+  weight: 10,
+  minKvCache: 2,
+};
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -103,7 +112,7 @@ describe("server-catalog", () => {
         "nomic-embed-text": embeddingModel,
       });
       const { dirPath } = await writeYamlInOwnDir(yaml, fileIndex++);
-      configure(10, dirPath);
+      configure(10, undefined, dirPath);
       await refresh();
     });
 
@@ -157,7 +166,7 @@ describe("server-catalog", () => {
     it("later entry overwrites earlier with same specifier", async () => {
       const yaml = makeModelYaml({ "llama-3.3-70b": baseModel });
       const { dirPath } = await writeYamlInOwnDir(yaml, fileIndex++);
-      configure(10, dirPath);
+      configure(10, undefined, dirPath);
       await refresh();
       expect(get("llama-3.3-70b")?.name).toBe("Test Llama");
     });
@@ -192,7 +201,7 @@ describe("server-catalog", () => {
         [`http://localhost:${includeServer.port}/models.yaml`],
       );
       const { dirPath } = await writeYamlInOwnDir(localYaml, fileIndex++);
-      configure(10, dirPath);
+      configure(10, undefined, dirPath);
       await refresh();
 
       expect(get("local-model")).toBeDefined();
@@ -218,7 +227,7 @@ describe("server-catalog", () => {
         [`http://localhost:${includeServer.port}/self.yaml`],
       );
       const { dirPath } = await writeYamlInOwnDir(localYaml, fileIndex++);
-      configure(10, dirPath);
+      configure(10, undefined, dirPath);
       await refresh();
 
       expect(get("local-model")).toBeDefined();
@@ -245,7 +254,7 @@ describe("server-catalog", () => {
         [`http://localhost:${includeServer.port}/start.yaml`],
       );
       const { dirPath } = await writeYamlInOwnDir(localYaml, fileIndex++);
-      configure(2, dirPath);
+      configure(2, undefined, dirPath);
       await refresh();
 
       expect(get("root-model")).toBeDefined();
@@ -263,7 +272,7 @@ describe("server-catalog", () => {
         [`http://localhost:${includeServer.port}/bad.yaml`],
       );
       const { dirPath } = await writeYamlInOwnDir(localYaml, fileIndex++);
-      configure(10, dirPath);
+      configure(10, undefined, dirPath);
       await refresh();
 
       expect(get("local-model")).toBeDefined();
@@ -286,7 +295,7 @@ describe("server-catalog", () => {
 
       const localYaml = makeModelYaml({ "local-model": baseModel }, ["http://unreachable.invalid/models.yaml"]);
       const { dirPath } = await writeYamlInOwnDir(localYaml, fileIndex++);
-      configure(10, dirPath);
+      configure(10, undefined, dirPath);
       await refresh();
 
       expect(receivedSignal).toBeInstanceOf(AbortSignal);
@@ -299,12 +308,12 @@ describe("server-catalog", () => {
 
       const localYaml = makeModelYaml({ "local-model": baseModel }, ["http://unreachable.invalid/models.yaml"]);
       const { dirPath } = await writeYamlInOwnDir(localYaml, fileIndex++);
-      configure(10, dirPath);
+      configure(10, undefined, dirPath);
       await refresh();
 
       expect(get("local-model")).toBeDefined();
       expect(get("remote-model")).toBeUndefined();
-      expect(getCatalogHealth().lastRefreshError).toBeNull();
+      expect(getCatalogHealth().legacy!.lastRefreshError).toBeNull();
     });
   });
 
@@ -313,7 +322,7 @@ describe("server-catalog", () => {
       const dirPath = join(testDir, `dir-${fileIndex++}`);
       await Bun.write(join(dirPath, "a-bad.yaml"), "not: valid: model: file:");
       await Bun.write(join(dirPath, "b-good.yaml"), makeModelYaml({ "good-model": baseModel }));
-      configure(10, dirPath);
+      configure(10, undefined, dirPath);
       await refresh();
 
       expect(get("good-model")).toBeDefined();
@@ -324,7 +333,7 @@ describe("server-catalog", () => {
       const dirPath = join(testDir, `dir-${fileIndex++}`);
       await Bun.write(join(dirPath, "a-bad.yaml"), "someKey: someValue\n");
       await Bun.write(join(dirPath, "b-good.yaml"), makeModelYaml({ "good-model": baseModel }));
-      configure(10, dirPath);
+      configure(10, undefined, dirPath);
       await refresh();
 
       expect(get("good-model")).toBeDefined();
@@ -338,7 +347,7 @@ describe("server-catalog", () => {
       await Bun.write(join(dirPath, "a-models.yaml"), makeModelYaml({ "dir-model-a": baseModel }));
       await Bun.write(join(dirPath, "b-models.yaml"), makeModelYaml({ "dir-model-b": embeddingModel }));
 
-      configure(10, dirPath);
+      configure(10, undefined, dirPath);
       await refresh();
 
       expect(get("dir-model-a")).toBeDefined();
@@ -352,7 +361,7 @@ describe("server-catalog", () => {
       await Bun.write(join(dirPath, "readme.txt"), "not yaml");
       await Bun.write(join(dirPath, "config.json"), "{}");
 
-      configure(10, dirPath);
+      configure(10, undefined, dirPath);
       await refresh();
 
       expect(getAll()).toHaveLength(1);
@@ -360,7 +369,7 @@ describe("server-catalog", () => {
     });
 
     it("loads catalog as empty when the configured directory is missing", async () => {
-      configure(10, "/nonexistent/dir/path");
+      configure(10, undefined, "/nonexistent/dir/path");
       await refresh();
 
       expect(getAll()).toHaveLength(0);
@@ -389,7 +398,7 @@ describe("server-catalog", () => {
         [`http://localhost:${includeServer.port}/models.yaml`],
       );
       const { dirPath } = await writeYamlInOwnDir(localYaml, fileIndex++);
-      configure(10, dirPath);
+      configure(10, undefined, dirPath);
       await refresh();
 
       expect(get("shared-model")!.name).toBe("Local Version");
@@ -411,7 +420,7 @@ describe("server-catalog", () => {
         makeModelYaml({ "dir-local": dirModel }, [`http://localhost:${includeServer.port}/models.yaml`]),
       );
 
-      configure(10, dirPath);
+      configure(10, undefined, dirPath);
       await refresh();
 
       expect(get("dir-local")!.name).toBe("Dir Local");
@@ -422,7 +431,7 @@ describe("server-catalog", () => {
     it("tracks source file path for locally loaded models", async () => {
       const yaml = makeModelYaml({ "tracked-model": baseModel });
       const { dirPath, filePath } = await writeYamlInOwnDir(yaml, fileIndex++);
-      configure(10, dirPath);
+      configure(10, undefined, dirPath);
       await refresh();
 
       expect(get("tracked-model")!._source).toBe(filePath);
@@ -440,7 +449,7 @@ describe("server-catalog", () => {
       const includeUrl = `http://localhost:${includeServer.port}/models.yaml`;
       const localYaml = makeModelYaml({ "local-tracked": baseModel }, [includeUrl]);
       const { dirPath, filePath } = await writeYamlInOwnDir(localYaml, fileIndex++);
-      configure(10, dirPath);
+      configure(10, undefined, dirPath);
       await refresh();
 
       expect(get("remote-tracked")!._source).toBe(includeUrl);
@@ -454,10 +463,10 @@ describe("server-catalog", () => {
     it("reports model count and refresh time after successful load", async () => {
       const yaml = makeModelYaml({ "health-model": baseModel });
       const { dirPath } = await writeYamlInOwnDir(yaml, fileIndex++);
-      configure(10, dirPath);
+      configure(10, undefined, dirPath);
       await refresh();
 
-      const health = getCatalogHealth();
+      const health = getCatalogHealth().legacy!;
       expect(health.modelCount).toBe(1);
       expect(health.lastRefreshAt).toBeTruthy();
       expect(health.lastRefreshError).toBeNull();
@@ -466,11 +475,11 @@ describe("server-catalog", () => {
     it("keeps lastRefreshError null when individual files fail (skip-and-continue)", async () => {
       const dirPath = join(testDir, `dir-${fileIndex++}`);
       await Bun.write(join(dirPath, "bad.yaml"), "someKey: someValue\n");
-      configure(10, dirPath);
+      configure(10, undefined, dirPath);
 
       await refresh();
 
-      const health = getCatalogHealth();
+      const health = getCatalogHealth().legacy!;
       expect(health.lastRefreshError).toBeNull();
       expect(health.modelCount).toBe(0);
     });
@@ -480,7 +489,7 @@ describe("server-catalog", () => {
     it("returns the same body instance across calls, without re-serializing", async () => {
       const yaml = makeModelYaml({ "llama-3.3-70b": baseModel });
       const { dirPath } = await writeYamlInOwnDir(yaml, fileIndex++);
-      configure(10, dirPath);
+      configure(10, undefined, dirPath);
       await refresh();
 
       expect(getSerializedCatalog()).toBe(getSerializedCatalog());
@@ -489,7 +498,7 @@ describe("server-catalog", () => {
     it("keeps the digest stable across a refresh that changes nothing", async () => {
       const yaml = makeModelYaml({ "llama-3.3-70b": baseModel });
       const { dirPath } = await writeYamlInOwnDir(yaml, fileIndex++);
-      configure(10, dirPath);
+      configure(10, undefined, dirPath);
 
       await refresh();
       const first = getSerializedCatalog().digest;
@@ -500,7 +509,7 @@ describe("server-catalog", () => {
 
     it("changes the digest when a model changes", async () => {
       const { dirPath } = await writeYamlInOwnDir(makeModelYaml({ "llama-3.3-70b": baseModel }), fileIndex++);
-      configure(10, dirPath);
+      configure(10, undefined, dirPath);
       await refresh();
       const before = getSerializedCatalog().digest;
 
@@ -517,7 +526,7 @@ describe("server-catalog", () => {
         makeModelYaml({ "a-model": baseModel, "z-model": embeddingModel }),
         fileIndex++,
       );
-      configure(10, ordered.dirPath);
+      configure(10, undefined, ordered.dirPath);
       await refresh();
       const forward = getSerializedCatalog().digest;
 
@@ -525,10 +534,60 @@ describe("server-catalog", () => {
         makeModelYaml({ "z-model": embeddingModel, "a-model": baseModel }),
         fileIndex++,
       );
-      configure(10, reversed.dirPath);
+      configure(10, undefined, reversed.dirPath);
       await refresh();
 
       expect(getSerializedCatalog().digest).toBe(forward);
+    });
+  });
+
+  describe("format separation", () => {
+    it("keeps the two catalogs independent", async () => {
+      const current = await writeYamlInOwnDir(makeModelYaml({ "llama-vllm": v2Model }), fileIndex++);
+      const legacy = await writeYamlInOwnDir(makeModelYaml({ "llama-3.3-70b": baseModel }), fileIndex++);
+      configure(10, current.dirPath, legacy.dirPath);
+      await refresh();
+
+      expect(modelCatalog.get("llama-vllm")?.engine).toBe("vllm");
+      expect(modelCatalog.get("llama-3.3-70b")).toBeUndefined();
+      expect(legacyCatalog.get("llama-3.3-70b")).toBeDefined();
+      expect(legacyCatalog.get("llama-vllm")).toBeUndefined();
+    });
+
+    it("refuses to start on a file it cannot use, rather than serving a smaller catalog", async () => {
+      const { dirPath } = await writeYamlInOwnDir(makeModelYaml({ "llama-3.3-70b": baseModel }), fileIndex++);
+      configure(10, dirPath, undefined);
+
+      await expect(refresh()).rejects.toThrow(/is not a valid current-format model file/);
+    });
+
+    it("refuses to start when an include serves a document it cannot use", async () => {
+      const wrongFormat = Bun.serve({
+        port: 0,
+        fetch: () => new Response(makeModelYaml({ "llama-3.3-70b": baseModel })),
+      });
+
+      try {
+        const { dirPath } = await writeYamlInOwnDir(
+          makeModelYaml({ "llama-vllm": v2Model }, [`http://localhost:${wrongFormat.port}/models.json`]),
+          fileIndex++,
+        );
+        configure(10, dirPath, undefined);
+
+        await expect(refresh()).rejects.toThrow(/is not a valid current-format model document/);
+      } finally {
+        wrongFormat.stop(true);
+      }
+    });
+
+    it("strips system-managed vllm args instead of running with them", async () => {
+      const { dirPath } = await writeYamlInOwnDir(makeModelYaml({
+        "llama-vllm": { ...v2Model, args: ["--trust-remote-code", "--max-model-len", "4096"] },
+      }), fileIndex++);
+      configure(10, dirPath, undefined);
+      await refresh();
+
+      expect(modelCatalog.get("llama-vllm")?.args).toEqual(["--max-model-len", "4096"]);
     });
   });
 });

@@ -12,18 +12,22 @@ failures using the failure/fix table. The field reference is in that doc and in
 
 When working through it as an agent:
 
-- **Write the model entry to a YAML file OUTSIDE this repo** (e.g. `~/modeloutputs/<model>.yaml`) and
-  point `run-model --models <that file>` at it for verification. NEVER edit or add to this repo's
-  `packages/xinity-infoserver/models.yaml`: model metadata is tracked externally and the integrator
-  decides where to apply what you produce. No model-data artifacts may land in this repository.
-- Run `run-model` with `--json` (`--plan --json`, then `--start --json`) so output is machine-readable;
-  branch on `.gate.reason` and, on error, the non-zero exit with `.code`, instead of scraping text.
+- **One entry describes one model on one engine.** The specifier carries the engine
+  (`qwen3-coder-30b-vllm`), and `weight`, `minKvCache`, `tags` and `args` describe that build only.
+  A second engine means a second entry, not extra keys on this one.
+- **Write the entry into `models/<family>.yaml`**, creating the file if that family has none, then
+  point `run-model --models ../../models/<family>.yaml` at it for verification.
+- Never touch `packages/xinity-infoserver/models.legacy.d/`. That is the deprecated v1 format, kept
+  only for deployments predating the current one.
+- Run `run-model` with `--json` (`--plan --json`, then `--start --json`) so output is machine-readable.
+  Branch on `.gate.reason` and, on error, the non-zero exit with `.code`, instead of scraping text.
 - Confirm the entry by actually running it, not by reasoning alone, and that means a real request,
   not just `/health`.
 - Research and **validate declared capabilities**: check whether the model supports tool/function
   calling and vision, and if research says it plausibly does, add the tag (tools also needs
-  `providerArgs.vllm: ["--tool-call-parser", "<name>"]`) and test it against the running server (a
-  real `tool_calls` response; an image description). Skip a test only when research shows no realistic
+  `args: ["--tool-call-parser", "<name>"]`) and test it against the running server: a real
+  `tool_calls` response, an image description. Skip a test only when research shows no realistic
   chance, and note that you checked.
-- Do not add `custom_code` (vLLM `--trust-remote-code`) preemptively; only after a load failure shows it is needed.
+- Do not add `custom_code` (vLLM `--trust-remote-code`) preemptively, only after a load failure shows it is needed.
 - If the model is ambiguous (base vs instruct, size, quantization), ask the user before picking.
+- Leave the change staged or uncommitted for review. Do not commit.

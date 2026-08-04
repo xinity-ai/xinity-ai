@@ -1,0 +1,28 @@
+name: Models
+
+# Also runs on infoserver changes, not just catalog changes: tightening the schema
+# or the loader decides whether the committed catalog is still valid, and nothing
+# else checks that. Safe to filter because this job is not a required check.
+on:
+  push:
+    branches: [main]
+    paths: ["models/**", "packages/xinity-infoserver/**", "bun.lock"]
+  pull_request:
+    branches: [main]
+    paths: ["models/**", "packages/xinity-infoserver/**", "bun.lock"]
+
+jobs:
+  catalog:
+    name: Catalog loads
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3"
+      - run: bun install --frozen-lockfile
+      # Loading the catalog the way the server does is the validation.
+      - run: bun run server.ts --check
+        working-directory: packages/xinity-infoserver
+        env:
+          MODEL_INFO_DIR: ../../models

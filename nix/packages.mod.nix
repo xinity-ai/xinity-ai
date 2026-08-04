@@ -62,8 +62,22 @@
             platforms = builtins.attrNames archByNixSystem;
           };
         };
+      # The catalog is data in this repo rather than a release asset, so it comes
+      # from the pinned flake source. Only the model files are copied, so a README
+      # edit does not rebuild it.
+      modelCatalog = pkgs.runCommand "xinity-models-${releaseInfo.version}"
+        {
+          src = ../models;
+          passthru.modelDir = true;
+          meta.description = "Xinity model catalog, usable as services.xinity-infoserver.modelInfoDir";
+        } ''
+          mkdir -p $out
+          find $src -maxdepth 1 \( -name '*.yaml' -o -name '*.yml' \) \
+            -exec install -Dm644 {} $out/ \;
+        '';
     in {
       packages = {
+        xinity-models       = modelCatalog;
         xinity-ai-gateway   = mkReleaseBundle { pname = "xinity-ai-gateway"; };
         xinity-ai-daemon    = mkReleaseBundle { pname = "xinity-ai-daemon"; };
         xinity-infoserver   = mkReleaseBundle { pname = "xinity-infoserver"; };

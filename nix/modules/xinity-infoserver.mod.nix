@@ -35,7 +35,29 @@
 
         modelInfoDir = lib.mkOption {
           type = lib.types.path;
-          description = "Path to a directory of model YAML files on the host. Mounted into the container at /data/models.d/.";
+          default = withHostSystem ({ config, ... }: config.packages.xinity-models);
+          defaultText = lib.literalExpression "pkgs.xinity-models";
+          description = ''
+            Directory of model YAML files in the current format.
+
+            Defaults to the catalog packaged from this flake, so the pinned revision
+            decides which models exist. Point it at your own directory to serve a
+            different set, or at a symlinkJoin of both to extend the packaged one.
+          '';
+        };
+
+        modelLegacyDir = lib.mkOption {
+          type = lib.types.nullOr lib.types.path;
+          default = null;
+          description = ''
+            Path to a directory of model YAML files in the deprecated v1 format.
+            Those entries are served only on the v1 endpoints, which exist so
+            deployments predating the current format keep resolving their stored
+            specifiers. Both the option and the v1 endpoints are removed before 1.0.0, so
+            migrate the entries to `modelInfoDir` before then.
+
+            Left null, the v1 endpoints answer 410 instead of an empty catalog.
+          '';
         };
 
         refreshIntervalMs = lib.mkOption {
@@ -94,6 +116,9 @@
           }
           // lib.optionalAttrs (cfg.logDir != null) {
             LOG_DIR = cfg.logDir;
+          }
+          // lib.optionalAttrs (cfg.modelLegacyDir != null) {
+            MODEL_LEGACY_DIR = cfg.modelLegacyDir;
           }
           // cfg.extraEnvironment;
           serviceConfig = {
