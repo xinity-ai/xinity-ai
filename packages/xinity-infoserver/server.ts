@@ -3,7 +3,7 @@ import { version } from "../../package.json";
 import { env } from "./env";
 import { rootLogger } from "./logger";
 import * as catalog from "./server-catalog";
-import { legacyCatalog } from "./server-catalog";
+import { legacyCatalog, modelCatalog } from "./server-catalog";
 import { handleModelList, handleModelsByFamily, handleModelBySpecifier, handleBatchResolve } from "./api-handlers.legacy";
 import { matchesEtag } from "./http-cache";
 import { resolveClientIp } from "./client-ip";
@@ -58,11 +58,12 @@ function legacyRoute(handler: RouteHandler): RouteHandler {
 }
 
 function serveCatalogBody(
+  source: { getSerializedCatalog: () => SerializedCatalog },
   pick: (serialized: SerializedCatalog) => string,
   contentType: string,
 ): RouteHandler {
   return (req) => {
-    const serialized = legacyCatalog.getSerializedCatalog();
+    const serialized = source.getSerializedCatalog();
     const etag = `"${serialized.digest}"`;
     const validators = { ETag: etag, "Cache-Control": CACHE_CONTROL };
 
@@ -100,9 +101,18 @@ const server = Bun.serve({
     "/version.json": Response.json({ version }),
     "/schemas/model.v2.json": Response.json(createModelV2JsonSchema()),
 
+    "/models/v2.json": limited(exportLimiter, serveCatalogBody(modelCatalog, s => s.json, "application/json; charset=utf-8")),
+    // Exists so polling for change is cheap enough to leave on a loose ceiling,
+    // which a conditional GET of the catalog itself cannot be: it shares a URL
+    // with the full fetch, so the two cannot be limited apart.
+    "/models/v2.digest.json": limited(apiLimiter, () => Response.json(
+      { digest: modelCatalog.getSerializedCatalog().digest },
+      { headers: { "Cache-Control": CACHE_CONTROL } },
+    )),
+
     // Deprecated v1 surface, removed before 1.0.0. Serves MODEL_LEGACY_DIR only.
-    "/models/v1.yaml": legacyRoute(limited(exportLimiter, serveCatalogBody(s => s.yaml, "application/yaml"))),
-    "/models/v1.json": legacyRoute(limited(exportLimiter, serveCatalogBody(s => s.json, "application/json; charset=utf-8"))),
+    "/models/v1.yaml": legacyRoute(limited(exportLimiter, serveCatalogBody(legacyCatalog, s => s.yaml, "application/yaml"))),
+    "/models/v1.json": legacyRoute(limited(exportLimiter, serveCatalogBody(legacyCatalog, s => s.json, "application/json; charset=utf-8"))),
     "/schemas/model.v1.json": new Response(JSON.stringify(createModelJsonSchema()), {
       headers: { "Content-Type": "application/json; charset=utf-8", ...DEPRECATION_HEADERS },
     }),
