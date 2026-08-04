@@ -3,7 +3,7 @@ import { resolveAuthorizedModel } from "../ai-sdk";
 import { errorResponse, logChatUsage, recordUsage, validateModelType, toModelMessages, SSE_RESPONSE_HEADERS, validationError, isUpstreamError, upstreamHttpStatus, clientFacingErrorMessage, modelLacksToolSupport } from "../util";
 import type { ApiCallInputMessage } from "common-db";
 import { checkAuth, type AuthResult } from "../auth";
-import { deleteResponse, getResponse, saveResponse } from "../response-store";
+import { deleteResponse, getResponse, saveResponse, type ResponseCreation } from "../response-store";
 import { rootLogger } from "../../logger";
 import { processMessageImages, imageStore } from "../../image-store";
 import { env } from "../../env";
@@ -13,6 +13,7 @@ import {
   CreateResponseBodySchema,
   type CreateResponseBody,
   type OutputItem,
+  type ResponseObject,
 } from "../responses/schemas";
 import {
   type IncludeValue,
@@ -220,6 +221,9 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
     if (body.background && body.stream) {
       return errorResponse("'background' and 'stream' cannot both be true", 400);
     }
+    if (body.background && body.store === false) {
+      return errorResponse("'background' requires 'store' to be true", 400);
+    }
     const background = body.background;
     const stream = body.stream;
 
@@ -250,6 +254,12 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
       logCalls: body.store,
       metadata: body.metadata as Record<string, unknown> | undefined,
     } as const;
+
+    const creation: ResponseCreation = {
+      apiKeyId: auth.keyId,
+      applicationId: auth.applicationId,
+      inputMessages: messagesForDB,
+    };
 
     if (hasTools && modelLacksToolSupport(modelInfo)) {
       return errorResponse("Model does not support tool use", 400);
@@ -316,7 +326,7 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
         ),
       };
 
-      const baseResponse = await createAndSaveInProgressResponse(auth.orgId, responseId, createdAt, originalModel, body);
+      const baseResponse = await createAndSaveInProgressResponse(auth.orgId, responseId, createdAt, originalModel, body, creation);
 
       void runBackground({ orgId: auth.orgId, responseId, createdAt, originalModel, body, genParams: deepGenParams, include, outputConfig, logFields, deepResearch: { compactionUsage } });
 
@@ -329,7 +339,7 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
     // Background mode
     // -------------------------------------------------------------------
     if (background) {
-      const baseResponse = await createAndSaveInProgressResponse(auth.orgId, responseId, createdAt, originalModel, body);
+      const baseResponse = await createAndSaveInProgressResponse(auth.orgId, responseId, createdAt, originalModel, body, creation);
 
       void runBackground({ orgId: auth.orgId, responseId, createdAt, originalModel, body, genParams, include, outputConfig, logFields });
 
@@ -344,7 +354,7 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
       const toolCalls: ToolCallItem[] = [];
       const toolResults: ToolResultData[] = [];
 
-      const baseResponse = await createAndSaveInProgressResponse(auth.orgId, responseId, createdAt, originalModel, body);
+      const baseResponse = await createAndSaveInProgressResponse(auth.orgId, responseId, createdAt, originalModel, body, creation);
 
       // Tool tracking happens inline in the stream for consistent IDs
       const result = streamText(genParams);
@@ -368,11 +378,17 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
     // -------------------------------------------------------------------
     // Non-streaming mode (default)
     // -------------------------------------------------------------------
-    const responseBody = await generateAndPersistCompletedResponse({
-      orgId: auth.orgId, responseId, createdAt, originalModel,
-      body, genParams, include, outputConfig, logFields,
-    });
-    return Response.json(responseBody);
+    await createAndSaveInProgressResponse(auth.orgId, responseId, createdAt, originalModel, body, creation);
+    try {
+      const responseBody = await generateAndPersistCompletedResponse({
+        orgId: auth.orgId, responseId, createdAt, originalModel,
+        body, genParams, include, outputConfig, logFields,
+      });
+      return Response.json(responseBody);
+    } catch (error) {
+      await saveFailedResponse(auth.orgId, responseId, createdAt, originalModel, body, error);
+      throw error;
+    }
   } catch (error) {
     if (isUpstreamError(error)) {
       log.error({ err: error }, "Upstream error");
@@ -389,12 +405,30 @@ async function createAndSaveInProgressResponse(
   createdAt: number,
   originalModel: string,
   body: CreateResponseBody,
+  creation: ResponseCreation,
 ) {
   const baseResponse = createResponseObject({
     responseId, createdAt, model: originalModel, status: "in_progress", body,
   });
-  await saveResponse(orgId, responseId, baseResponse);
+  await saveResponse(orgId, responseId, baseResponse, creation);
   return baseResponse;
+}
+
+/** Settles the row a failed run would otherwise leave sitting at in_progress. */
+async function saveFailedResponse(
+  orgId: string,
+  responseId: string,
+  createdAt: number,
+  originalModel: string,
+  body: CreateResponseBody,
+  error: unknown,
+): Promise<void> {
+  const failedResponse = markResponseFailed(
+    createResponseObject({ responseId, createdAt, model: originalModel, status: "failed", body }),
+    clientFacingErrorMessage(error),
+  );
+  await saveResponse(orgId, responseId, failedResponse)
+    .catch((err) => log.error({ err, responseId }, "Failed to persist failed response"));
 }
 
 // ---------------------------------------------------------------------------
@@ -487,7 +521,7 @@ async function generateAndPersistCompletedResponse(args: GeneratePersistArgs, ba
         };
         const snapshot = [...progressItems];
         progressWrites.enqueue(async () => {
-          const stored = await getResponse(orgId, responseId) as Record<string, unknown> | null;
+          const stored = await getResponse(orgId, responseId) as ResponseObject | null;
           if (!stored || stored.status === "cancelled") return;
           stored.output = snapshot;
           stored.usage = formatUsage(totalUsage);
@@ -554,13 +588,7 @@ async function runBackground(args: GeneratePersistArgs) {
     if (!isUpstreamError(error)) {
       log.error({ err: error, responseId }, "Background response generation failed");
     }
-    const message = clientFacingErrorMessage(error);
-    const failedResponse = markResponseFailed(
-      createResponseObject({ responseId, createdAt, model: originalModel, status: "failed", body }),
-      message,
-    );
-    await saveResponse(orgId, responseId, failedResponse)
-      .catch((err) => log.error({ err, responseId }, "Failed to persist failed response"));
+    await saveFailedResponse(orgId, responseId, createdAt, originalModel, body, error);
   }
 }
 
@@ -610,7 +638,7 @@ export async function handleCancelResponseRequest(req: Request): Promise<Respons
     return errorResponse("Not found", 404);
   }
 
-  const stored = await getResponse(authCheckResponse.orgId, responseId) as Record<string, unknown> | null;
+  const stored = await getResponse(authCheckResponse.orgId, responseId) as ResponseObject | null;
   if (!stored) {
     return errorResponse("Not found", 404);
   }
@@ -618,7 +646,7 @@ export async function handleCancelResponseRequest(req: Request): Promise<Respons
     return errorResponse("Response is not in progress", 400);
   }
 
-  const cancelledResponse = { ...stored, status: "cancelled" };
+  const cancelledResponse = { ...stored, status: "cancelled" as const };
   await saveResponse(authCheckResponse.orgId, responseId, cancelledResponse);
 
   return Response.json(cancelledResponse);

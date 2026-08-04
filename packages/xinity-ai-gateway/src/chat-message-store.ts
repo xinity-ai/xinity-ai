@@ -1,5 +1,5 @@
 /** Content-addressed storage for chat messages, so repeated history is stored once. */
-import { chatMessageT, eq, and, inArray, type ApiCallInputMessage } from "common-db";
+import { chatMessageT, sql, type ApiCallInputMessage } from "common-db";
 import { getDB } from "./db";
 
 const DIGEST_CACHE_MAX_ENTRIES = 5_000;
@@ -110,7 +110,13 @@ export async function resolveChatMessageIds(
       const existing = await executor
         .select({ id: chatMessageT.id, sha256: chatMessageT.sha256 })
         .from(chatMessageT)
-        .where(and(eq(chatMessageT.organizationId, orgId), inArray(chatMessageT.sha256, conflicted)));
+        .where(
+          sql`
+            ${chatMessageT.organizationId} = ${orgId}
+          AND
+            ${chatMessageT.sha256} IN (${sql.join(conflicted.map((sha256) => sql`${sha256}`), sql`, `)})
+          `,
+        );
       for (const row of existing) {
         resolved.set(row.sha256, row.id);
       }

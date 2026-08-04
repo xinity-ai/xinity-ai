@@ -240,9 +240,13 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
           message = clientFacingErrorMessage(error);
         }
 
+        const failedResponse = markResponseFailed(baseResponse, message);
+        await saveResponse(orgId, responseId, failedResponse)
+          .catch((err) => log.error({ err, responseId }, "Failed to persist failed response"));
+
         try {
           emitStreamError(controller, message, seq);
-          emitResponseLifecycle(controller, "response.failed", markResponseFailed(baseResponse, message), seq);
+          emitResponseLifecycle(controller, "response.failed", failedResponse, seq);
           controller.close();
         } catch {
           try { controller.error(error as Error); } catch {}

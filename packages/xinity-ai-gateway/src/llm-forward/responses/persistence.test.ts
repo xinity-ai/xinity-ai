@@ -187,20 +187,20 @@ describe("createPersistedResponse", () => {
 
 describe("settlePersistedResponse", () => {
   test("refuses to settle a response as in_progress", async () => {
-    await expect(settlePersistedResponse(makeResponse({ status: "in_progress" })))
+    await expect(settlePersistedResponse("org-1", makeResponse({ status: "in_progress" })))
       .rejects.toThrow("Refusing to settle response");
     expect(capturedQueries).toHaveLength(0);
   });
 
   test("conditions the update on the row still being in_progress", async () => {
-    await settlePersistedResponse(makeResponse());
+    await settlePersistedResponse("org-1", makeResponse());
     const [update] = capturedQueries;
     expect(update?.sql).toMatch(/^\s*update/i);
-    expect(update?.params).toContain("in_progress");
+    expect(update?.sql).toContain("'in_progress'");
   });
 
   test("reports failure and skips item inserts when nothing was in_progress", async () => {
-    expect(await settlePersistedResponse(makeResponse())).toBe(false);
+    expect(await settlePersistedResponse("org-1", makeResponse())).toBe(false);
     expect(capturedQueries).toHaveLength(1);
   });
 });

@@ -245,6 +245,24 @@ describe("handleResponses", () => {
     expect(responseStore.has(body.id)).toBe(true);
   });
 
+  test("should reject background requests that opt out of storage", async () => {
+    const req = new Request("http://localhost:4000/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        input: "Hi",
+        background: true,
+        store: false,
+      }),
+    });
+
+    const res = await handleCreateResponseRequest(req);
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as any;
+    expect(body.error.message).toContain("'background' requires 'store' to be true");
+  });
+
   describe("call logging", () => {
     const cases: Array<[store: boolean | undefined, collectData: boolean, logged: boolean]> = [
       [undefined, true, true],

@@ -3,9 +3,6 @@ import {
   apiResponseT,
   apiResponseItemT,
   apiResponseMessageT,
-  and,
-  eq,
-  asc,
   type ApiResponseStatus,
   type ApiResponseSettledStatus,
   type ApiCallInputMessage,
@@ -128,7 +125,7 @@ export async function createPersistedResponse(args: CreatePersistedResponseArgs)
  * completion cannot overwrite a cancellation, and item rows cannot be inserted twice.
  * Returns false when the row was already settled or was never stored.
  */
-export async function settlePersistedResponse(response: ResponseObject): Promise<boolean> {
+export async function settlePersistedResponse(orgId: string, response: ResponseObject): Promise<boolean> {
   const status = response.status;
   if (!isSettledStatus(status)) {
     throw new Error(`Refusing to settle response ${response.id} as ${status}`);
@@ -144,7 +141,15 @@ export async function settlePersistedResponse(response: ResponseObject): Promise
         usage: response.usage as Record<string, unknown> | null,
         completedAt: response.completed_at === null ? null : new Date(response.completed_at * 1000),
       })
-      .where(and(eq(apiResponseT.id, response.id), eq(apiResponseT.status, "in_progress")))
+      .where(
+        sql`
+          ${apiResponseT.id} = ${response.id}
+        AND
+          ${apiResponseT.organizationId} = ${orgId}
+        AND
+          ${apiResponseT.status} = 'in_progress'
+        `,
+      )
       .returning({ id: apiResponseT.id });
 
     if (settled.length === 0) {
@@ -180,7 +185,7 @@ export async function loadResponse(orgId: string, responseId: string): Promise<R
     .select({ payload: apiResponseItemT.payload })
     .from(apiResponseItemT)
     .where(sql`${apiResponseItemT.responseId} = ${responseId}`)
-    .orderBy(asc(apiResponseItemT.seq));
+    .orderBy(sql`${apiResponseItemT.seq} ASC`);
 
   return fromResponseRow(header, items.map((row) => row.payload as unknown as OutputItem));
 }
