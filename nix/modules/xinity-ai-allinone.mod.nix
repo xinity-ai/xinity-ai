@@ -625,6 +625,7 @@
             port = lib.mkDefault cfg.monitoring.port;
             gatewayTarget = lib.mkDefault "localhost:${toString cfg.gateway.port}";
             dashboardTarget = lib.mkDefault "localhost:${toString cfg.dashboard.port}";
+            tetherTarget = lib.mkDefault "localhost:${toString cfg.tether.port}";
             basicAuthUsername = lib.mkDefault cfg.monitoring.basicAuthUsername;
             basicAuthPasswordFile = lib.mkDefault cfg.monitoring.basicAuthPasswordFile;
             basicAuthPassword = lib.mkDefault cfg.monitoring.basicAuthPassword;

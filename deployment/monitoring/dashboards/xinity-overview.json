@@ -105,6 +105,43 @@
       "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "fillOpacity": 10, "showPoints": "never", "lineInterpolation": "smooth" } }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [ { "refId": "A", "editorMode": "code", "expr": "nodejs_heap_size_used_bytes{job=\"xinity-dashboard\"}", "legendFormat": "heap used", "range": true } ]
+    },
+    { "type": "row", "id": 16, "title": "Control plane (tether)", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 } },
+    {
+      "type": "stat", "id": 17, "title": "Daemons connected",
+      "description": "Daemons holding an open desired-state stream. A node that is up but not connected receives no configuration changes.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 4, "x": 0, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": [ "lastNotNull" ], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none", "textMode": "auto", "justifyMode": "auto" },
+      "targets": [ { "refId": "A", "editorMode": "code", "expr": "sum(tether_connected_nodes)", "range": true } ]
+    },
+    {
+      "type": "stat", "id": 18, "title": "Reconnects / min",
+      "description": "Daemon streams established per minute. A steady fleet establishes one per node restart, so a sustained rate means connections are being dropped and re-opened.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 4, "x": 4, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 1, "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": [ "lastNotNull" ], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "textMode": "auto", "justifyMode": "auto" },
+      "targets": [ { "refId": "A", "editorMode": "code", "expr": "sum(rate(tether_sse_connections_total[$__rate_interval])) * 60", "range": true } ]
+    },
+    {
+      "type": "timeseries", "id": 19, "title": "Daemon disconnects by reason (per min)",
+      "description": "Why daemon streams closed. 'cancel' is a teardown from the far side (daemon restart, network drop, an idle timeout closing the socket), 'superseded' is the same node opening a second stream, 'write_failed' and 'keepalive_failed' mean the tether could no longer write, 'shutdown' is a clean tether stop.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 15, "showPoints": "never", "lineInterpolation": "smooth", "stacking": { "mode": "normal", "group": "A" } } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": [ "mean", "lastNotNull" ] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [ { "refId": "A", "editorMode": "code", "expr": "sum by (reason) (rate(tether_sse_connection_duration_seconds_count[$__rate_interval])) * 60", "legendFormat": "{{reason}}", "range": true } ]
+    },
+    {
+      "type": "timeseries", "id": 20, "title": "Rejected daemon requests (per min)",
+      "description": "Daemon requests the tether refused before doing any work. A 'protocol_mismatch' rate after an upgrade means part of the fleet is on an older protocol and cannot connect at all.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 15, "showPoints": "never", "lineInterpolation": "smooth", "stacking": { "mode": "normal", "group": "A" } } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": [ "mean", "lastNotNull" ] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [ { "refId": "A", "editorMode": "code", "expr": "sum by (endpoint, reason) (rate(tether_request_rejections_total[$__rate_interval])) * 60", "legendFormat": "{{endpoint}} {{reason}}", "range": true } ]
     }
   ]
 }
