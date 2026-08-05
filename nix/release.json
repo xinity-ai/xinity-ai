@@ -4,7 +4,8 @@
   "bundles": {
     "xinity-ai-daemon": "sha256-z4fBM3RMHj/wmTIq2o66isAtdWReBhWDfYOCv68Wjpo=",
     "xinity-ai-gateway": "sha256-OmWy5ibhfZVfLdxjNL6TOzAG6rr4Iwe1YV9xJpauHtE=",
-    "xinity-infoserver": "sha256-1sD97+aofFA3FKWdf9uhYDrpL6q0F6gAzX42d93a3MA="
+    "xinity-infoserver": "sha256-1sD97+aofFA3FKWdf9uhYDrpL6q0F6gAzX42d93a3MA=",
+    "xinity-tether": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
   },
   "binaries": {
     "xinity-ai-dashboard": {
