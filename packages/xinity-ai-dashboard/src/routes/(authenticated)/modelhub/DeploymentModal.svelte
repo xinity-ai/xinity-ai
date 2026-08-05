@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ModelV2WithSpecifier, NodeCapability } from "xinity-infoserver";
+  import type { ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
   import Modal from "$lib/components/Modal.svelte";
   import DeploymentFormBody from "./DeploymentFormBody.svelte";
   import { orpc } from "$lib/orpc/orpc-client";
@@ -71,15 +71,15 @@
   let lastInitDeploymentId = $state<string | undefined>(undefined);
 
   // --- Fetched model state ---
-  let selectedPrimaryModel = $state<ModelV2WithSpecifier | null>(null);
-  let selectedCanaryModel = $state<ModelV2WithSpecifier | null>(null);
+  let selectedPrimaryModel = $state<ModelWithSpecifier | null>(null);
+  let selectedCanaryModel = $state<ModelWithSpecifier | null>(null);
 
   // --- Helpers ---
   const primaryFetchGen = { v: 0 };
   const canaryFetchGen = { v: 0 };
   const canaryAutoSelectGen = { v: 0 };
 
-  function fetchModel(specifier: string | null, set: (m: ModelV2WithSpecifier | null) => void, gen: { v: number }) {
+  function fetchModel(specifier: string | null, set: (m: ModelWithSpecifier | null) => void, gen: { v: number }) {
     const seq = ++gen.v;
     if (!specifier) { set(null); return; }
     orpc.model.get({ specifier }).then(([error, data]) => {
@@ -236,7 +236,7 @@
     );
   });
 
-  function suggestedPublicSpecifier(model: ModelV2WithSpecifier | null | undefined): string {
+  function suggestedPublicSpecifier(model: ModelWithSpecifier | null | undefined): string {
     if (!model) {
       return "";
     }

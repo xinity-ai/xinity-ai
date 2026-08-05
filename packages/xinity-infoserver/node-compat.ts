@@ -97,7 +97,7 @@ export function requiredFeaturesForEngine(engine: string, type: string | undefin
  * Returns true if at least one node can serve the model. The engine is part of
  * the model's identity, so unlike the v1 form there is no set of drivers to try.
  */
-export function isDeployableOnClusterV2(
+export function isDeployableOnCluster(
   nodes: NodeCapability[],
   model: {
     weight: number;
@@ -122,7 +122,7 @@ export function isDeployableOnClusterV2(
  * DEPRECATED v1 form: a single entry could claim several engines, so every
  * provider has to be tried. Removed before 1.0.0 with the format.
  */
-export function isDeployableOnCluster(
+export function isLegacyModelDeployableOnCluster(
   nodes: NodeCapability[],
   model: {
     weight: number;

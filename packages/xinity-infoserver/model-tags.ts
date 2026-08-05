@@ -2,7 +2,7 @@
  * Pure helper functions for model provider resolution and per-driver tags.
  * Safe to import from both server and client code (no runtime deps).
  */
-import { type Model, type Provider, type RequestParamType, ProviderEnum } from "./definitions/model-definition";
+import { type LegacyModel, type Provider, type RequestParamType, ProviderEnum } from "./definitions/model-definition";
 
 // ---------------------------------------------------------------------------
 // Provider resolution
@@ -12,7 +12,7 @@ import { type Model, type Provider, type RequestParamType, ProviderEnum } from "
  * Returns the provider-specific model name and driver for the preferred
  * provider. Preference order follows ProviderEnum (vllm first, then ollama).
  */
-export function resolveDefaultProvider(model: Model): { driver: Provider; providerModel: string } | undefined {
+export function resolveDefaultProvider(model: LegacyModel): { driver: Provider; providerModel: string } | undefined {
   for (const driver of ProviderEnum.options) {
     const providerModel = model.providers[driver];
     if (providerModel) return { driver, providerModel };
@@ -21,7 +21,7 @@ export function resolveDefaultProvider(model: Model): { driver: Provider; provid
 }
 
 /** Returns the provider-specific model name for a given driver, or undefined. */
-export function resolveProvider(model: Model, driver: Provider): string | undefined {
+export function resolveProvider(model: LegacyModel, driver: Provider): string | undefined {
   return model.providers[driver];
 }
 
@@ -33,7 +33,7 @@ export function resolveProvider(model: Model, driver: Provider): string | undefi
  * Returns tags for a specific driver. When providerTags is present for
  * that driver, uses those; otherwise falls back to model-level tags.
  */
-export function resolveTagsForDriver(model: Model, driver: Provider): string[] {
+export function resolveTagsForDriver(model: LegacyModel, driver: Provider): string[] {
   return model.providerTags?.[driver] ?? model.tags ?? [];
 }
 
@@ -42,7 +42,7 @@ export function resolveTagsForDriver(model: Model, driver: Provider): string[] {
  * Used for filtering and search in the model selector where the
  * driver is not yet known.
  */
-export function resolveAllTags(model: Model): string[] {
+export function resolveAllTags(model: LegacyModel): string[] {
   const tagSet = new Set(model.tags ?? []);
   for (const driverTags of Object.values(model.providerTags ?? {})) {
     if (driverTags) {
@@ -53,7 +53,7 @@ export function resolveAllTags(model: Model): string[] {
 }
 
 /** Checks whether a specific driver has a given tag. */
-export function driverHasTag(model: Model, driver: Provider, tag: string): boolean {
+export function driverHasTag(model: LegacyModel, driver: Provider, tag: string): boolean {
   return resolveTagsForDriver(model, driver).includes(tag);
 }
 
@@ -62,12 +62,12 @@ export function driverHasTag(model: Model, driver: Provider, tag: string): boole
 // ---------------------------------------------------------------------------
 
 /** Returns the minimum driver version required for a specific driver, or undefined. */
-export function resolveMinVersionForDriver(model: Model, driver: Provider): string | undefined {
+export function resolveMinVersionForDriver(model: LegacyModel, driver: Provider): string | undefined {
   return model.providerMinVersions?.[driver];
 }
 
 /** Returns the GPU platforms required for a specific driver, or empty array (= any). */
-export function resolveRequiredPlatformsForDriver(model: Model, driver: Provider): string[] {
+export function resolveRequiredPlatformsForDriver(model: LegacyModel, driver: Provider): string[] {
   return model.providerPlatforms?.[driver] ?? [];
 }
 
@@ -76,7 +76,7 @@ export function resolveRequiredPlatformsForDriver(model: Model, driver: Provider
 // ---------------------------------------------------------------------------
 
 /** Returns driver features required by the model's type, or empty array. */
-export function resolveRequiredFeaturesForDriver(model: Model, driver: Provider): string[] {
+export function resolveRequiredFeaturesForDriver(model: LegacyModel, driver: Provider): string[] {
   if (driver === "vllm" && model.type === "transcription") return ["audio"];
   return [];
 }
@@ -89,7 +89,7 @@ export function resolveRequiredFeaturesForDriver(model: Model, driver: Provider)
  * Returns extra CLI arguments for a specific driver.
  * Returns an empty array if providerArgs is absent or has no entry for the driver.
  */
-export function resolveArgsForDriver(model: Model, driver: Provider): string[] {
+export function resolveArgsForDriver(model: LegacyModel, driver: Provider): string[] {
   return model.providerArgs?.[driver] ?? [];
 }
 
@@ -104,6 +104,6 @@ export type RequestParamMap = Record<string, RequestParamType>;
  * Returns the allowed request-level passthrough parameters for a specific driver.
  * Returns an empty record if requestParams is absent or has no entry for the driver.
  */
-export function resolveRequestParamsForDriver(model: Model, driver: Provider): RequestParamMap {
+export function resolveRequestParamsForDriver(model: LegacyModel, driver: Provider): RequestParamMap {
   return model.requestParams?.[driver] ?? {};
 }

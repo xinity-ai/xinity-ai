@@ -35,4 +35,4 @@ export const DeploymentDto = CommonDto.extend({
 });
 
 
-export { type ModelV2 as Model, ModelV2Schema as ModelDto } from "xinity-infoserver";
+export { type Model as Model, ModelSchema as ModelDto } from "xinity-infoserver";

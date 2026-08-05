@@ -1,8 +1,8 @@
 import {
+  LegacyModelSchema,
   ModelSchema,
-  ModelV2Schema,
+  type LegacyModelWithSpecifier,
   type ModelWithSpecifier,
-  type ModelV2WithSpecifier,
 } from "./definitions/model-definition";
 import { resolveTagsForDriver, resolveAllTags, resolveArgsForDriver, resolveRequestParamsForDriver, type RequestParamMap } from "./model-tags";
 import { satisfiesMinVersion } from "./semver";
@@ -17,7 +17,7 @@ export interface CatalogClientConfig {
 }
 
 export type ModelLookup =
-  | { status: "found"; model: ModelV2WithSpecifier }
+  | { status: "found"; model: ModelWithSpecifier }
   | { status: "not_found" }
   | { status: "unavailable"; error: string };
 
@@ -29,7 +29,7 @@ export type ModelLookup =
 export function createCatalogClient(config: CatalogClientConfig) {
   const baseUrl = config.baseUrl.replace(/\/$/, "");
 
-  let models = new Map<string, ModelV2WithSpecifier>();
+  let models = new Map<string, ModelWithSpecifier>();
   let digest: string | null = null;
   let etag: string | undefined;
   let loadedAt = 0;
@@ -39,8 +39,8 @@ export function createCatalogClient(config: CatalogClientConfig) {
    * Drops entries this instance cannot use, so one bad or too-new entry does not
    * sink the snapshot. Fail-open on a missing `entryVersion`.
    */
-  function index(raw: unknown): Map<string, ModelV2WithSpecifier> {
-    const next = new Map<string, ModelV2WithSpecifier>();
+  function index(raw: unknown): Map<string, ModelWithSpecifier> {
+    const next = new Map<string, ModelWithSpecifier>();
     const source = (raw as { models?: Record<string, unknown> } | null)?.models;
     if (!source || typeof source !== "object") {
       return next;
@@ -52,7 +52,7 @@ export function createCatalogClient(config: CatalogClientConfig) {
         continue;
       }
 
-      const parsed = ModelV2Schema.safeParse(entry);
+      const parsed = ModelSchema.safeParse(entry);
       if (!parsed.success) {
         config.logger?.warn({ specifier, issues: parsed.error.issues }, "Dropping model that failed content validation");
         continue;
@@ -117,7 +117,7 @@ export function createCatalogClient(config: CatalogClientConfig) {
   return {
     lookup,
 
-    async get(specifier: string): Promise<ModelV2WithSpecifier | undefined> {
+    async get(specifier: string): Promise<ModelWithSpecifier | undefined> {
       const result = await lookup(specifier);
       if (result.status === "unavailable") {
         throw new Error(`Infoserver unavailable for "${specifier}": ${result.error}`);
@@ -125,7 +125,7 @@ export function createCatalogClient(config: CatalogClientConfig) {
       return result.status === "found" ? result.model : undefined;
     },
 
-    async getAll(): Promise<ModelV2WithSpecifier[]> {
+    async getAll(): Promise<ModelWithSpecifier[]> {
       const error = await ensureLoaded();
       if (error !== null) {
         throw new Error(`Infoserver unavailable: ${error}`);
@@ -133,7 +133,7 @@ export function createCatalogClient(config: CatalogClientConfig) {
       return Array.from(models.values());
     },
 
-    async resolveBatch(specifiers: string[]): Promise<Record<string, ModelV2WithSpecifier | null>> {
+    async resolveBatch(specifiers: string[]): Promise<Record<string, ModelWithSpecifier | null>> {
       const error = await ensureLoaded();
       if (error !== null) {
         throw new Error(`Infoserver unavailable: ${error}`);
@@ -173,12 +173,12 @@ export interface InfoserverClientConfig {
  * re-added or newly-supported model is picked up within the next TTL window.
  */
 export type FetchModelStatus =
-  | { status: "found"; model: ModelWithSpecifier }
+  | { status: "found"; model: LegacyModelWithSpecifier }
   | { status: "not_found" }
   | { status: "unavailable"; error: string };
 
 export interface PaginatedModels {
-  models: ModelWithSpecifier[];
+  models: LegacyModelWithSpecifier[];
   total: number;
   page: number;
   pageSize: number;
@@ -208,7 +208,7 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
    * not thrown, so one bad entry can't sink a whole listing. Fail-open: a model
    * without `entryVersion` is kept.
    */
-  function gateAndValidate(raw: unknown): ModelWithSpecifier | null {
+  function gateAndValidate(raw: unknown): LegacyModelWithSpecifier | null {
     if (raw === null || typeof raw !== "object") return null;
     const { entryVersion, maxContextLength: rawMaxContextLength } = raw as { entryVersion?: unknown; maxContextLength?: unknown };
     if (typeof entryVersion === "string" && !satisfiesMinVersion(version, entryVersion)) {
@@ -218,12 +218,12 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
       const specifier = (raw as { name?: string }).name ?? JSON.stringify(raw);
       config.logger?.warn({ model: specifier }, "Model missing maxContextLength, defaulting to 131072");
     }
-    const parsed = ModelSchema.safeParse(raw);
+    const parsed = LegacyModelSchema.safeParse(raw);
     if (!parsed.success) {
       config.logger?.warn({ issues: parsed.error.issues }, "Dropping model that failed content validation");
       return null;
     }
-    return parsed.data as ModelWithSpecifier;
+    return parsed.data as LegacyModelWithSpecifier;
   }
 
   function isFresh(entry: CacheEntry<any> | undefined): entry is CacheEntry<any> {
@@ -271,18 +271,18 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
     }
   }
 
-  async function fetchModel(specifier: string): Promise<ModelWithSpecifier | undefined> {
+  async function fetchModel(specifier: string): Promise<LegacyModelWithSpecifier | undefined> {
     const result = await fetchModelStatus(specifier);
     if (result.status === "found") return result.model;
     if (result.status === "unavailable") throw new Error(`Infoserver unavailable for "${specifier}": ${result.error}`);
     return undefined;
   }
 
-  async function fetchModelsByFamily(family: string): Promise<ModelWithSpecifier[]> {
+  async function fetchModelsByFamily(family: string): Promise<LegacyModelWithSpecifier[]> {
     const key = `family:${family}`;
     return cachedFetch(key, async () => {
       const models = await fetchJsonOrThrow<unknown[]>(`/api/v1/models/family/${encodeURIComponent(family)}`);
-      return models.map(gateAndValidate).filter((m): m is ModelWithSpecifier => m !== null);
+      return models.map(gateAndValidate).filter((m): m is LegacyModelWithSpecifier => m !== null);
     });
   }
 
@@ -299,12 +299,12 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
     const key = `list:${qs.toString()}`;
     return cachedFetch(key, async () => {
       const res = await fetchJsonOrThrow<PaginatedModels>(`/api/v1/models?${qs}`);
-      const models = res.models.map(gateAndValidate).filter((m): m is ModelWithSpecifier => m !== null);
+      const models = res.models.map(gateAndValidate).filter((m): m is LegacyModelWithSpecifier => m !== null);
       return { ...res, models };
     });
   }
 
-  async function fetchModelsBatch(specifiers: string[]): Promise<Record<string, ModelWithSpecifier | null>> {
+  async function fetchModelsBatch(specifiers: string[]): Promise<Record<string, LegacyModelWithSpecifier | null>> {
     const key = `batch:${specifiers.slice().sort().join(",")}`;
     return cachedFetch(key, async () => {
       const raw = await fetchJsonOrThrow<Record<string, unknown>>(`/api/v1/models/resolve`, {
@@ -312,7 +312,7 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ specifiers }),
       });
-      const resolved: Record<string, ModelWithSpecifier | null> = {};
+      const resolved: Record<string, LegacyModelWithSpecifier | null> = {};
       for (const [specifier, model] of Object.entries(raw)) {
         resolved[specifier] = gateAndValidate(model);
       }
@@ -341,7 +341,7 @@ export function createInfoserverClient(config: InfoserverClientConfig) {
     specifier: string,
     driver: "vllm" | "ollama" | undefined,
     empty: T,
-    pick: (model: ModelWithSpecifier, driver: "vllm" | "ollama") => T,
+    pick: (model: LegacyModelWithSpecifier, driver: "vllm" | "ollama") => T,
   ): Promise<T> {
     const model = await fetchModel(specifier);
     if (!model || !driver) return empty;

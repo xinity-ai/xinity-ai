@@ -40,7 +40,7 @@ const DOWNLOAD_FILTER_DESCRIPTION =
 
 // ── Current format ─────────────────────────────────────────────────────
 
-export const ModelV2Fields = z.looseObject({
+export const ModelFields = z.looseObject({
   name: z.string().describe("Display name of the model. Intended to be easily human readable"),
   description: z.string().describe("Multi-paragraph description: purpose, strengths, limitations. Shown when choosing between models, so a one-line label is not enough"),
   url: z.url().describe("External documentation url, for curious users that want to know more"),
@@ -72,7 +72,7 @@ export const ModelV2Fields = z.looseObject({
   }).optional().describe("Provenance for fine tuned custom models"),
 });
 
-export const ModelV2Schema = ModelV2Fields
+export const ModelSchema = ModelFields
   .refine(
     model => !model.requestParams || !hasBlockedRequestParam(Object.keys(model.requestParams)),
     { message: "requestParams must not contain blocked prefixes", path: ["requestParams"] },
@@ -83,19 +83,19 @@ export const ModelV2Schema = ModelV2Fields
       : model
   ));
 
-export type ModelV2 = z.infer<typeof ModelV2Schema>;
-export type ModelV2WithSpecifier = ModelV2 & { publicSpecifier: string; _source: string };
+export type Model = z.infer<typeof ModelSchema>;
+export type ModelWithSpecifier = Model & { publicSpecifier: string; _source: string };
 
-export const ModelFileV2Schema = z.object({
+export const ModelFileSchema = z.object({
   includes: z.url().array().optional().describe("Additional model sources to fetch and merge. Each must use this same format"),
   models: z.record(
     z.string().describe("Public model specifier. Unique, and carries the engine, e.g. gemma-4-27b-vllm"),
-    ModelV2Schema,
+    ModelSchema,
   ),
 });
 
-export function createModelV2JsonSchema() {
-  return ModelFileV2Schema.toJSONSchema({
+export function createModelJsonSchema() {
+  return ModelFileSchema.toJSONSchema({
     cycles: "ref",
     io: "input",
   });
@@ -113,7 +113,7 @@ export type Provider = z.infer<typeof ProviderEnum>;
 
 const vllmArgs = flatStringArray.transform(stripBlockedVllmArgs);
 
-export const ModelSchema = z.looseObject({
+export const LegacyModelSchema = z.looseObject({
   name: z.string().describe("Display name of the model. Intended to be easily human readable"),
   description: z.string().describe("Brief description of the model and its unique properties"),
   weight: z.number().describe("VRAM consumed by the model weights, in GB"),
@@ -161,22 +161,22 @@ export const ModelSchema = z.looseObject({
     extraFacts: z.record(z.string(), z.unknown())
   }).optional().describe("Info for fine tuned custom models"),
 });
-export type Model = z.infer<typeof ModelSchema>;
-export type ModelWithSpecifier = Model & { publicSpecifier: string; _source: string };
+export type LegacyModel = z.infer<typeof LegacyModelSchema>;
+export type LegacyModelWithSpecifier = LegacyModel & { publicSpecifier: string; _source: string };
 
-export const ModelFileDefinitionSchema = z.object({
+export const LegacyModelFileSchema = z.object({
   includes: z.url().array().describe([
     "Include instruction. Will result in fetch attempts for additional model sources.",
     "Global uniqueness of model identifiers persists"
   ].join("\n")).optional(),
   models: z.record(
     z.string().describe("Public model specifier. The unique public identity of this model"),
-    ModelSchema,
+    LegacyModelSchema,
   ),
 })
 
-export function createModelJsonSchema(){
-  return ModelFileDefinitionSchema.toJSONSchema({
+export function createLegacyModelJsonSchema(){
+  return LegacyModelFileSchema.toJSONSchema({
     cycles: "ref",
     io: "input",
   })
@@ -186,6 +186,6 @@ if (import.meta.main) {
   const write = (name: string, schema: unknown) =>
     Bun.write(`${import.meta.dir}/../${name}`, `${JSON.stringify(schema, null, 2)}\n`);
 
-  await write("models.v2.schema.json", createModelV2JsonSchema());
-  await write("models.schema.json", createModelJsonSchema());
+  await write("models.v2.schema.json", createModelJsonSchema());
+  await write("models.schema.json", createLegacyModelJsonSchema());
 }

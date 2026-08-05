@@ -1,9 +1,9 @@
 import { rootOs, withOrganization, requirePermission } from "../root";
 import z from "zod";
-import { ModelV2Fields } from "xinity-infoserver";
+import { ModelFields } from "xinity-infoserver";
 import { catalogClient } from "$lib/server/model-catalog";
 
-const ModelWithSpecifierSchema = ModelV2Fields.extend({
+const ModelWithSpecifierSchema = ModelFields.extend({
   publicSpecifier: z.string(),
   _source: z.string(),
 });

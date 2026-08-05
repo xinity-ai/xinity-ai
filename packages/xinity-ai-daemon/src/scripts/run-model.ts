@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { z } from "zod";
 import { quoteShellArgv } from "common-env";
-import { ModelFileV2Schema, normalizePep440 } from "xinity-infoserver";
+import { ModelFileSchema, normalizePep440 } from "xinity-infoserver";
 import {
   resolveVllmModel,
   checkVllmCompatibility,
@@ -153,7 +153,7 @@ async function loadModelFile(path: string): Promise<{ models: Record<string, any
   } catch (err) {
     die(`model file is not valid ${path.endsWith(".json") ? "JSON" : "YAML"}: ${(err as Error).message}`);
   }
-  const parsed = ModelFileV2Schema.safeParse(raw);
+  const parsed = ModelFileSchema.safeParse(raw);
   if (!parsed.success) die(`model file failed validation:\n${z.prettifyError(parsed.error)}`);
   return modelFileSchema.parse(parsed.data);
 }
