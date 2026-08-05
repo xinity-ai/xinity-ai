@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ModelWithSpecifier } from "xinity-infoserver";
+  import type { ModelV2WithSpecifier } from "xinity-infoserver";
   import type { DeploymentSettings } from "common-db/deployment-settings";
   import { DeploymentSettingsDto } from "$lib/orpc/dtos/model.dto";
   import { Input } from "$lib/components/ui/input";
@@ -11,7 +11,7 @@
     idSuffix = "",
   }: {
     settings: DeploymentSettings;
-    selectedPrimaryModel: ModelWithSpecifier | undefined;
+    selectedPrimaryModel: ModelV2WithSpecifier | undefined;
     idSuffix?: string;
   } = $props();
 

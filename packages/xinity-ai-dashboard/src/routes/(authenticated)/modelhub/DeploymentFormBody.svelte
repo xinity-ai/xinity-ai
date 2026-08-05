@@ -1,6 +1,6 @@
 <script lang="ts">
   import { slide } from "svelte/transition";
-  import type { ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
+  import type { ModelV2WithSpecifier, NodeCapability } from "xinity-infoserver";
   import ModelSelectorModal from "./ModelSelectorModal.svelte";
   import DeploymentModelTile from "./DeploymentModelTile.svelte";
   import DeploymentCapacitySummary from "./DeploymentCapacitySummary.svelte";
@@ -31,7 +31,6 @@
     settings = $bindable<DeploymentSettings>({ version: 1 }),
     maxKvCache = 0,
     maxCanaryKvCache = 0,
-    preferredDriver = $bindable(),
     canaryTypeMismatch,
     editMode = false,
     readonlyModels = false,
@@ -39,7 +38,6 @@
     maxReplicas = 0,
     showTrafficSlider = true,
     maxNodeFreeCapacity = Infinity,
-    availableDrivers = [],
     nodeCapabilities = [],
     enabled = true,
     capacityChecked = false,
@@ -51,8 +49,8 @@
     idSuffix = "",
     publicSpecifierError,
   }: {
-    selectedPrimaryModel: ModelWithSpecifier | undefined;
-    selectedCanaryModel: ModelWithSpecifier | undefined;
+    selectedPrimaryModel: ModelV2WithSpecifier | undefined;
+    selectedCanaryModel: ModelV2WithSpecifier | undefined;
     primarySpecifier: string | null;
     canarySpecifier: string | null | undefined;
     publicSpecifier: string;
@@ -67,7 +65,6 @@
     settings: DeploymentSettings;
     maxKvCache: number;
     maxCanaryKvCache: number;
-    preferredDriver: "ollama" | "vllm" | null;
     canaryTypeMismatch: boolean;
     editMode?: boolean;
     readonlyModels?: boolean;
@@ -75,7 +72,6 @@
     maxReplicas?: number;
     showTrafficSlider?: boolean;
     maxNodeFreeCapacity?: number;
-    availableDrivers?: string[];
     nodeCapabilities?: NodeCapability[];
     enabled?: boolean;
     capacityChecked?: boolean;
@@ -99,13 +95,6 @@
   const minKvCache = $derived(selectedPrimaryModel?.minKvCache ?? 0);
   const minCanaryKvCache = $derived(selectedCanaryModel?.minKvCache ?? 0);
 
-  const modelDriverOptions = $derived.by(() => {
-    const m = selectedPrimaryModel;
-    if (!m) return [];
-    return availableDrivers.filter(d => m.providers[d as keyof typeof m.providers] !== undefined);
-  });
-  const singleDriverOnly = $derived(modelDriverOptions.length === 1);
-
   const selectorCapacity = $derived.by(() => {
     if (selectorMode === "canary" && selectedPrimaryModel) {
       return maxNodeFreeCapacity - (selectedPrimaryModel.weight + selectedPrimaryModel.minKvCache);
@@ -124,23 +113,14 @@
   };
   const advancementStrategyLabel = $derived(advancementStrategyLabels[advancementStrategy] ?? "Select...");
 
-  // Use "" as sentinel for null since bits-ui Select values must be strings
-  const preferredDriverStr = $derived(preferredDriver ?? "");
-  const preferredDriverLabel = $derived(
-    preferredDriverStr === "" ? "Auto" : driverLabel(preferredDriverStr),
-  );
-
-  const effectiveDriver = $derived(
-    preferredDriver ?? (selectedPrimaryModel?.providers.vllm ? "vllm" : "ollama"),
-  );
-  const showKvCacheSliders = $derived(effectiveDriver !== "ollama");
+  const showKvCacheSliders = $derived(selectedPrimaryModel?.engine !== "ollama");
 
   function openSelector(mode: "primary" | "canary") {
     selectorMode = mode;
     showModelSelector = true;
   }
 
-  function handleModelSelect(model: ModelWithSpecifier) {
+  function handleModelSelect(model: ModelV2WithSpecifier) {
     if (selectorMode === "primary") {
       primarySpecifier = model.publicSpecifier;
     } else {
@@ -159,7 +139,7 @@
   </Collapsible.Trigger>
 {/snippet}
 
-{#snippet modelTile(model: ModelWithSpecifier | undefined, specifier: string | null, color: "blue" | "purple", mode: "primary" | "canary", disabledSpec?: string | null)}
+{#snippet modelTile(model: ModelV2WithSpecifier | undefined, specifier: string | null, color: "blue" | "purple", mode: "primary" | "canary", disabledSpec?: string | null)}
   {#if !model}
     {#if !readonlyModels}
       <button
@@ -428,38 +408,14 @@
           </div>
         {/if}
 
-        {#if modelDriverOptions.length > 0}
+        {#if selectedPrimaryModel}
           <div class="space-y-2">
-            <Label for="preferred-driver{idSuffix}">Preferred Driver</Label>
-            {#if singleDriverOnly}
-              <Input id="preferred-driver{idSuffix}" type="text" value={driverLabel(modelDriverOptions[0])} readonly />
-              <p class="text-sm text-muted-foreground">This is the only available driver for this model.</p>
-            {:else}
-              <Select.Root
-                type="single"
-                value={preferredDriverStr}
-                onValueChange={(v) => { preferredDriver = v === "" ? null : v as "ollama" | "vllm"; }}
-                disabled={requiresDisabled}
-              >
-                <Select.Trigger id="preferred-driver{idSuffix}" class="w-full">
-                  {preferredDriverLabel}
-                </Select.Trigger>
-                <Select.Content portalProps={{ disabled: true }}>
-                  <Select.Item value="" label="Auto" />
-                  {#each modelDriverOptions as driver}
-                    <Select.Item value={driver} label={driverLabel(driver)} />
-                  {/each}
-                </Select.Content>
-              </Select.Root>
-              <p class="text-sm text-muted-foreground">
-                {#if requiresDisabled}
-                  Disable the deployment to change the preferred driver.
-                {:else}
-                  Select which inference driver to use. "Auto" prefers vLLM when available.
-                  <a href="/docs/inference-drivers" target="_blank" class="text-primary hover:underline">Learn more about inference drivers</a>
-                {/if}
-              </p>
-            {/if}
+            <Label for="engine{idSuffix}">Inference Driver</Label>
+            <Input id="engine{idSuffix}" type="text" value={driverLabel(selectedPrimaryModel.engine)} readonly />
+            <p class="text-sm text-muted-foreground">
+              Part of the model entry, so it is chosen by picking the model rather than at deploy time.
+              <a href="/docs/inference-drivers" target="_blank" class="text-primary hover:underline">Learn more about inference drivers</a>
+            </p>
           </div>
         {/if}
 
@@ -479,7 +435,6 @@
     {replicas}
     {kvCacheSize}
     {earlyKvCacheSize}
-    {effectiveDriver}
     {maxNodeFreeCapacity}
     {nodeCapabilities}
     {enabled}

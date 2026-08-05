@@ -4,7 +4,7 @@
   import { goto, invalidateAll } from "$app/navigation";
   import { copyToClipboard } from "$lib/copy";
   import { slugify } from "$lib/util";
-  import type { ModelWithSpecifier } from "xinity-infoserver";
+  import type { ModelV2WithSpecifier } from "xinity-infoserver";
 
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
@@ -16,7 +16,7 @@
   import ModelSelectorModal from "./modelhub/ModelSelectorModal.svelte";
 
   let orgName = $state("");
-  let selectedModel = $state<ModelWithSpecifier | null>(null);
+  let selectedModel = $state<ModelV2WithSpecifier | null>(null);
   let modelSelectorOpen = $state(false);
   let isSubmitting = $state(false);
   let error = $state("");
