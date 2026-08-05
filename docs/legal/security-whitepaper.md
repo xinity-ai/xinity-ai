@@ -16,16 +16,18 @@ This document describes the architecture, data flows, and security properties re
 
 ## 2. Architecture Overview
 
-Xinity AI consists of four services that the customer installs and operates on their own hardware:
+Xinity AI consists of four services that the customer installs and operates on their own hardware, plus an operator CLI:
 
 | Service | Role |
 |---|---|
-| **Gateway** | OpenAI-compatible API endpoint; routes and load-balances inference requests to inference nodes |
-| **Dashboard** | Web-based management UI and REST/RPC API; handles users, organizations, model deployments, API keys, and call data |
-| **Daemon** | Runs on each inference node; manages model installation and lifecycle via Ollama and vLLM |
-| **Xinity CLI** | Operator tool for installing, configuring, and managing services on Linux hosts |
+| **Gateway** | OpenAI-compatible API endpoint: routes and load-balances inference requests to inference nodes |
+| **Dashboard** | Web-based management UI and REST/RPC API: handles users, organizations, model deployments, API keys, and call data |
+| **Tether** | SSE bridge between the database and the daemon fleet: streams desired state, collects status reports, and tracks node liveness |
+| **Daemon** | Runs on each inference node: manages model installation and lifecycle via Ollama and vLLM |
 
-All services coordinate through a shared PostgreSQL database that the customer hosts. There is no external coordination endpoint. Redis is used by the Gateway for ephemeral state (authentication caching, load balancer coordination). Both PostgreSQL and Redis are customer-managed.
+The **Xinity CLI** is an operator tool for installing, configuring, and managing these services on Linux hosts.
+
+The gateway, dashboard, and tether coordinate through a shared PostgreSQL database that the customer hosts. Daemons do not connect to the database. They communicate exclusively with the tether via authenticated SSE. There is no external coordination endpoint. Redis is used by the Gateway for ephemeral state (authentication caching, load balancer coordination). Both PostgreSQL and Redis are customer-managed.
 
 An optional self-hosted object store (SeaweedFS) can be configured for multimodal image storage. This is also customer-managed; no images are transmitted to Xinity.
 

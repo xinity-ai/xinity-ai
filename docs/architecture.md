@@ -4,7 +4,7 @@
 
 Xinity AI is a self-hostable platform for managing and serving specialized AI models on-premises. The system lets organizations deploy, monitor, and query LLMs through an OpenAI-compatible API while maintaining full control over their data and infrastructure.
 
-The architecture follows a shared-database pattern for control-plane coordination: the dashboard, daemon, and gateway coordinate deployment and node state through a common PostgreSQL schema rather than calling each other directly. This keeps each service thin and independently deployable while ensuring consistency. The one exception is data-plane traffic: the gateway forwards inference requests directly to the daemon, which proxies them to the local inference driver (see [How services connect](#how-services-connect)).
+The architecture follows a shared-database pattern for control-plane coordination: the dashboard, gateway, and tether coordinate deployment and node state through a common PostgreSQL schema rather than calling each other directly. This keeps each service thin and independently deployable while ensuring consistency. Daemons do not connect to the database, they receive desired state and report status through a persistent SSE connection to the tether. The one exception to the "no direct calls" rule is data-plane traffic: the gateway forwards inference requests directly to the daemon, which proxies them to the local inference driver (see [How services connect](#how-services-connect)).
 
 ## System diagram
 
@@ -22,6 +22,7 @@ graph TB
         DeploySync["Deployment Sync Service"]
         Dashboard --- NotifSched
         Dashboard --- DeploySync
+        Tether["Tether<br/><small>SSE bridge to daemons</small>"]
     end
 
     subgraph "Data Plane"
@@ -62,10 +63,9 @@ graph TB
     Dashboard -->|"Presigned URLs +<br/>download resolution"| SeaweedFS
     DeploySync --> DB
 
-    Daemon1 --> DB
-    Daemon2 --> DB
-    Daemon1 -.-> Infoserver
-    Daemon2 -.-> Infoserver
+    Tether --> DB
+    Daemon1 -->|"SSE"| Tether
+    Daemon2 -->|"SSE"| Tether
     Dashboard -.-> Infoserver
 ```
 
@@ -116,23 +116,37 @@ The gateway is the data-plane entry point for all inference traffic. It exposes 
 
 **Redis** is used for: authentication caching, load balancer state (counters, connection gauges, affinity keys), and the responses API store.
 
+### Tether
+
+**Package:** `packages/xinity-tether` | **Runtime:** Bun HTTP server
+
+The tether is the bridge between the database and the daemon fleet. Daemons do not connect to PostgreSQL. They maintain a persistent SSE connection to the tether, which handles registration, desired-state streaming, and status collection.
+
+**SSE endpoint (`POST /api/v1/stream`):** A daemon authenticates with a shared secret, sends its hardware profile (GPUs, drivers, capacity) as the request body, and receives a `text/event-stream` response. The tether upserts the node's `aiNode` record, marks it `available = true`, and pushes the initial desired state (the node's `modelInstallation` rows). The connection stays open indefinitely. Keepalives (default every 15s) prevent idle timeouts.
+
+**Desired-state push:** The tether subscribes to PostgreSQL `NOTIFY` on channel `ai_node:<nodeId>` for each connected daemon. When the dashboard changes a deployment (creating or removing `modelInstallation` rows), the trigger fires, and the tether immediately pushes the updated desired state over the SSE stream. No polling.
+
+**Status collection (`POST /api/v1/status`):** Daemons report installation lifecycle state changes (downloading, installing, ready, failed) back to the tether, which batches and upserts them into `modelInstallationState`.
+
+**Liveness:** When a daemon disconnects or fails to respond within `LIVENESS_TIMEOUT_MS` (default 45s), the tether sets `available = false` on the node's `aiNode` row. The gateway's next query will no longer route to that node.
+
+**Protocol versioning:** A SHA-256 fingerprint of the Zod wire schemas is exchanged on connect. Version-mismatched daemons are rejected with HTTP 409, preventing silent deserialization failures after upgrades.
+
 ### Daemon
 
 **Package:** `packages/xinity-ai-daemon` | **Runtime:** Bun, runs on each inference node
 
-The daemon is a lightweight process that runs on every machine with inference hardware. It is the bridge between the desired state in the database and the actual state of model installations on the node.
+The daemon is a lightweight process that runs on every machine with inference hardware. It connects to the tether via SSE, receives desired state, and drives local inference backends to match.
 
-**Node registration:** On startup, the daemon detects the hardware profile of the machine. It probes for NVIDIA GPUs (via `nvidia-smi`), AMD GPUs (via sysfs or `rocm-smi`), and Intel GPUs (via `xpu-smi`). Total VRAM across all GPUs becomes the node's estimated capacity. If GPUs are found but report no VRAM (unified memory architectures), system RAM is used instead. With no GPUs, the node runs in CPU-only mode. The daemon registers or updates its `aiNode` record in the database with the host address, available drivers, GPU count, and capacity.
+**Node registration:** On startup, the daemon detects the hardware profile of the machine. It probes for NVIDIA GPUs (via `nvidia-smi`), AMD GPUs (via sysfs or `rocm-smi`), and Intel GPUs (via `xpu-smi`). Total VRAM across all GPUs becomes the node's estimated capacity. If GPUs are found but report no VRAM (unified memory architectures), system RAM is used instead. With no GPUs, the node runs in CPU-only mode. The daemon sends its registration (host, port, GPU details, drivers, capacity) to the tether as the SSE connection body.
 
-**Model lifecycle management:** The daemon runs a sync loop (RxJS-based, every 5 minutes by default) that:
+**Model lifecycle management:** When the tether pushes a new desired state over the SSE stream, the daemon compares it against what is actually running locally:
 
-1. Reads `modelInstallation` rows assigned to this node from the database.
-2. Compares desired installations against what is actually running locally.
-3. For **Ollama**: pulls missing models (streaming progress to `modelInstallationState`), removes models no longer needed. Supports 2 concurrent pulls.
-4. For **vLLM**: manages model instances via systemd template units or Docker containers. Starts new instances, stops stale ones, and polls health endpoints until the model is ready (up to 1 hour timeout). Fires a warmup request on readiness to pre-compile Triton kernels.
-5. Reports lifecycle state (`downloading` → `installing` → `ready` / `failed`) back to `modelInstallationState` in the database.
+1. For **Ollama**: pulls missing models (streaming progress back to the tether), removes models no longer needed. Supports 2 concurrent pulls.
+2. For **vLLM**: manages model instances via systemd template units or Docker containers. Starts new instances, stops stale ones, and polls health endpoints until the model is ready (up to 1 hour timeout). Fires a warmup request on readiness to pre-compile Triton kernels.
+3. Reports lifecycle state (`downloading` → `installing` → `ready` / `failed`) back to the tether, which writes it to `modelInstallationState`.
 
-The daemon also subscribes to PostgreSQL `NOTIFY` on channel `ai_node:<nodeId>`, allowing the dashboard to trigger immediate resync after deployment changes rather than waiting for the next poll interval.
+The daemon has no direct database connection. All coordination flows through the tether's SSE channel and status endpoint.
 
 ### Xinity CLI
 
@@ -205,7 +219,7 @@ Consumed by the gateway (to resolve model types and driver tags), the daemon (to
 graph LR
     subgraph "Writes to DB"
         DashW["Dashboard<br/><small>deployments, installations,<br/>users, orgs, API keys</small>"]
-        DaemonW["Daemon<br/><small>node info,<br/>installation state</small>"]
+        TetherW["Tether<br/><small>node info,<br/>installation state</small>"]
         GatewayW["Gateway<br/><small>API call logs</small>"]
     end
 
@@ -213,26 +227,26 @@ graph LR
 
     subgraph "Reads from DB"
         DashR["Dashboard<br/><small>all tables</small>"]
-        DaemonR["Daemon<br/><small>installations for this node</small>"]
+        TetherR["Tether<br/><small>installations per node</small>"]
         GatewayR["Gateway<br/><small>API keys, deployments,<br/>installations, nodes</small>"]
     end
 
     DashW --> DB
-    DaemonW --> DB
+    TetherW --> DB
     GatewayW --> DB
     DB --> DashR
-    DB --> DaemonR
+    DB --> TetherR
     DB --> GatewayR
 ```
 
-Control-plane coordination between the gateway, dashboard, and daemon flows through the shared PostgreSQL database, with one exception: the gateway calls the daemon directly over HTTP(S) to forward inference traffic.
+Control-plane coordination between the gateway, dashboard, and tether flows through the shared PostgreSQL database. Daemons have no database connection. They communicate exclusively with the tether via SSE. The one direct service-to-service call is data-plane: the gateway forwards inference requests to the daemon.
 
-- **Dashboard → Daemon**: The dashboard writes `modelInstallation` rows (planned state). The daemon's sync loop reads these and drives local drivers to match. PostgreSQL `NOTIFY` provides low-latency push when changes are made.
-- **Daemon → Dashboard**: The daemon writes `modelInstallationState` (actual lifecycle state) and `aiNode` (hardware availability). The dashboard reads these for status display, orchestration planning, and notification triggers.
+- **Dashboard → PostgreSQL → Tether → Daemon**: The dashboard writes `modelInstallation` rows (planned state). A PostgreSQL trigger notifies the tether, which pushes updated desired state to the affected daemon over its SSE stream. The daemon drives local drivers to match.
+- **Daemon → Tether → PostgreSQL → Dashboard**: The daemon reports installation lifecycle state to the tether via `POST /api/v1/status`. The tether writes it to `modelInstallationState`. The dashboard reads these for status display, orchestration planning, and notification triggers. On connect/disconnect, the tether updates the node's `available` flag in `aiNode`.
 - **Gateway → Daemon**: The gateway forwards inference requests directly to the target node's daemon (`/proxy/{model}/v1/...`), authenticated with a per-node token read from `aiNode`. The daemon proxies the request to the local driver on `127.0.0.1`. This is the only direct service-to-service call in the system; see [TLS](./security/tls.md).
-- **Gateway → Database**: The gateway reads `aiApiKey` for authentication, `modelDeployment` for model resolution, and `modelInstallation`/`aiNode`/`modelInstallationState` for host selection. It writes `usageEvent` rows for usage tracking, and (when the API key's `collectData` flag is set) `apiCall` rows for data labeling.
+- **Gateway → Database**: The gateway reads `aiApiKey` for authentication, `modelDeployment` for model resolution, and `modelInstallation`/`aiNode`/`modelInstallationState` for host selection (filtering to `available = true` nodes with `ready` installations). It writes `usageEvent` rows for usage tracking, and (when the API key's `collectData` flag is set) `apiCall` rows for data labeling.
 - **Redis** is used exclusively by the gateway for ephemeral state: auth caching, load balancer coordination, and the responses API store.
-- **Info server** is consumed over HTTP by all three services for model metadata resolution, with each consumer maintaining its own in-memory cache.
+- **Info server** is consumed over HTTP by the gateway and dashboard for model metadata resolution, with each consumer maintaining its own in-memory cache.
 - **SeaweedFS** (optional) is written to by the gateway on every multimodal request and read by the dashboard for image display (presigned URLs) and call export (data URI resolution). No other services interact with it directly.
 
 ## Model deployment lifecycle
@@ -244,6 +258,7 @@ sequenceDiagram
     participant Info as Info Server
     participant UI as Dashboard
     participant DB as PostgreSQL
+    participant Tether as Tether
     participant Daemon as Daemon
     participant Driver as Ollama / vLLM
     participant App as Application
@@ -251,18 +266,21 @@ sequenceDiagram
     participant Redis as Redis
 
     Ops->>Info: Publish model catalog (YAML)
-    Ops->>CLI: xinity up daemon / gateway / dashboard
+    Ops->>CLI: xinity up tether / daemon / gateway / dashboard
     CLI->>UI: Configure via dashboard API
+
+    Daemon->>Tether: SSE connect (registration + auth)
+    Tether->>DB: Upsert aiNode, set available = true
 
     UI->>Info: Fetch available models
     UI->>DB: Create modelDeployment (desired state)
     UI->>DB: Plan modelInstallation rows (sync service)
-    DB-->>Daemon: NOTIFY ai_node:<nodeId>
+    DB-->>Tether: NOTIFY ai_node:<nodeId>
+    Tether-->>Daemon: Push desired state (SSE event)
 
-    Daemon->>DB: Read modelInstallation for this node
-    Daemon->>Info: Resolve driver tags
     Daemon->>Driver: Pull / start model
-    Daemon->>DB: Update modelInstallationState (downloading → ready)
+    Daemon->>Tether: Report lifecycle state (POST /api/v1/status)
+    Tether->>DB: Upsert modelInstallationState (downloading → ready)
 
     Note over UI,DB: Dashboard scheduler detects state change,<br/>sends notification to org members
 
