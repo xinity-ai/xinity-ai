@@ -1,11 +1,11 @@
 import { describe, test, expect, mock } from "bun:test";
 
-// Mock env to avoid parseEnv side-effect (requires DB_CONNECTION_URL etc. in CI)
 mock.module("../env", () => ({ env: {
   PORT: 4010,
   HOST: "0.0.0.0",
   XINITY_OLLAMA_ENDPOINT: "http://localhost:11434",
-  DB_CONNECTION_URL: "postgres://localhost/test",
+  TETHER_URL: "http://localhost:4020",
+  TETHER_SECRET: "test",
   STATE_DIR: "/tmp/test-state",
   CIDR_PREFIX: "",
   SYNC_INTERVAL_MS: 60_000,

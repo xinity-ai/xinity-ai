@@ -7,13 +7,13 @@ import { tmpdir } from "node:os";
 // Unique per process: concurrent runs must not share this directory.
 const STATE_DIR = mkdtempSync(join(tmpdir(), "xinity-statekeeper-test-"));
 
-// Mock env to avoid parseEnv side-effect (requires DB_CONNECTION_URL etc. in CI).
 mock.module("../env", () => ({ env: {
   PORT: 4044,
   HOST: "0.0.0.0",
   STATE_DIR,
   CIDR_PREFIX: "",
-  DB_CONNECTION_URL: "postgres://localhost/test",
+  TETHER_URL: "http://localhost:4020",
+  TETHER_SECRET: "test",
   INFOSERVER_URL: "http://localhost:19090",
   LOG_LEVEL: "silent",
 }}));
