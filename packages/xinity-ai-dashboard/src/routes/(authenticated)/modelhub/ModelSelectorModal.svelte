@@ -1,7 +1,7 @@
 <script lang="ts">
   import Modal from "$lib/components/Modal.svelte";
-  import type { ModelV2WithSpecifier, NodeCapability } from "xinity-infoserver";
-  import { isDeployableOnClusterV2 } from "xinity-infoserver";
+  import type { ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
+  import { isDeployableOnCluster } from "xinity-infoserver";
   import { modelCatalog } from "$lib/state/model-catalog.svelte";
   import { formatGb } from "$lib/util";
 
@@ -38,7 +38,7 @@
     nodeCapabilities = [],
   }: {
     open: boolean;
-    onSelect: (model: ModelV2WithSpecifier) => void;
+    onSelect: (model: ModelWithSpecifier) => void;
     onClose: () => void;
     maxNodeFreeCapacity?: number;
     nodeCapabilities?: NodeCapability[];
@@ -114,7 +114,7 @@
         acc[family].push(model);
         return acc;
       },
-      {} as Record<string, ModelV2WithSpecifier[]>,
+      {} as Record<string, ModelWithSpecifier[]>,
     ),
   );
 
@@ -129,20 +129,20 @@
     }
   }
 
-  function isUndeployable(model: ModelV2WithSpecifier): boolean {
+  function isUndeployable(model: ModelWithSpecifier): boolean {
     if (nodeCapabilities.length === 0) return model.weight + model.minKvCache > maxNodeFreeCapacity;
-    return !isDeployableOnClusterV2(nodeCapabilities, model);
+    return !isDeployableOnCluster(nodeCapabilities, model);
   }
 
   // Only flag as a constraint issue when a node would otherwise have room: pure capacity shortfalls are surfaced elsewhere.
-  function hasConstraintIncompatibility(model: ModelV2WithSpecifier): boolean {
+  function hasConstraintIncompatibility(model: ModelWithSpecifier): boolean {
     if (!model.minEngineVersion && !model.platforms) return false;
     if (!isUndeployable(model)) return false;
     const needed = model.weight + model.minKvCache;
     return nodeCapabilities.some(n => n.free >= needed && model.engine in n.driverVersions);
   }
 
-  function handleSelect(model: ModelV2WithSpecifier) {
+  function handleSelect(model: ModelWithSpecifier) {
     onSelect(model);
     onClose();
   }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ModelV2WithSpecifier, NodeCapability } from "xinity-infoserver";
+  import type { ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
   import { formatGb } from "$lib/util";
   import { HardDrive, CircleCheck, CircleAlert, Info } from "@lucide/svelte";
 
@@ -18,8 +18,8 @@
     capacityBlocked = false,
     capacityReason,
   }: {
-    primaryModel: ModelV2WithSpecifier | undefined;
-    canaryModel?: ModelV2WithSpecifier | undefined;
+    primaryModel: ModelWithSpecifier | undefined;
+    canaryModel?: ModelWithSpecifier | undefined;
     isCanaryEnabled?: boolean;
     progress?: number;
     replicas?: number;
@@ -36,11 +36,11 @@
   // Mirrors the server formula in checkDeploymentCapacity: a model's footprint is
   // its weight plus its effective KV cache (at least the model minimum). Ollama has
   // no KV-cache knob, so the value submitted there is always the minimum.
-  function perReplica(model: ModelV2WithSpecifier, kv: number | null): number {
+  function perReplica(model: ModelWithSpecifier, kv: number | null): number {
     const effKv = effKvCache(model, kv);
     return model.weight + effKv;
   }
-  function effKvCache(model: ModelV2WithSpecifier, kv: number | null): number {
+  function effKvCache(model: ModelWithSpecifier, kv: number | null): number {
     return model.engine === "ollama" ? model.minKvCache : Math.max(kv ?? 0, model.minKvCache);
   }
 

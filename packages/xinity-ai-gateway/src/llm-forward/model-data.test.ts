@@ -28,7 +28,7 @@ mock.module("../db", () => ({
   getDB: () => db,
 }));
 
-type MockModel = {
+type MockLegacyModel = {
   type?: string;
   tags?: string[];
   providerTags?: { ollama?: string[]; vllm?: string[] };
@@ -36,7 +36,7 @@ type MockModel = {
   providers: { ollama?: string; vllm?: string };
 };
 
-type MockModelV2 = {
+type MockModel = {
   engineSpecifier: string;
   engine: "vllm" | "ollama";
   type?: string;
@@ -45,14 +45,14 @@ type MockModelV2 = {
   requestParams?: Record<string, string>;
 };
 
-const mockFetchModel = jest.fn<(specifier: string) => Promise<MockModel | undefined>>();
-const mockLookup = jest.fn<(specifier: string) => Promise<{ status: string; model?: MockModelV2; error?: string }>>();
+const mockFetchModel = jest.fn<(specifier: string) => Promise<MockLegacyModel | undefined>>();
+const mockLookup = jest.fn<(specifier: string) => Promise<{ status: string; model?: MockModel; error?: string }>>();
 
-function resolveTagsForDriver(model: MockModel, driver: "vllm" | "ollama"): string[] {
+function resolveTagsForDriver(model: MockLegacyModel, driver: "vllm" | "ollama"): string[] {
   return model.providerTags?.[driver] ?? model.tags ?? [];
 }
 
-function resolveRequestParamsForDriver(model: MockModel, driver: "vllm" | "ollama"): Record<string, string> {
+function resolveRequestParamsForDriver(model: MockLegacyModel, driver: "vllm" | "ollama"): Record<string, string> {
   return model.requestParams?.[driver] ?? {};
 }
 

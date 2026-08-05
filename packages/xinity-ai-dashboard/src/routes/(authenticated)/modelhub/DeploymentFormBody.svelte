@@ -1,6 +1,6 @@
 <script lang="ts">
   import { slide } from "svelte/transition";
-  import type { ModelV2WithSpecifier, NodeCapability } from "xinity-infoserver";
+  import type { ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
   import ModelSelectorModal from "./ModelSelectorModal.svelte";
   import DeploymentModelTile from "./DeploymentModelTile.svelte";
   import DeploymentCapacitySummary from "./DeploymentCapacitySummary.svelte";
@@ -49,8 +49,8 @@
     idSuffix = "",
     publicSpecifierError,
   }: {
-    selectedPrimaryModel: ModelV2WithSpecifier | undefined;
-    selectedCanaryModel: ModelV2WithSpecifier | undefined;
+    selectedPrimaryModel: ModelWithSpecifier | undefined;
+    selectedCanaryModel: ModelWithSpecifier | undefined;
     primarySpecifier: string | null;
     canarySpecifier: string | null | undefined;
     publicSpecifier: string;
@@ -120,7 +120,7 @@
     showModelSelector = true;
   }
 
-  function handleModelSelect(model: ModelV2WithSpecifier) {
+  function handleModelSelect(model: ModelWithSpecifier) {
     if (selectorMode === "primary") {
       primarySpecifier = model.publicSpecifier;
     } else {
@@ -139,7 +139,7 @@
   </Collapsible.Trigger>
 {/snippet}
 
-{#snippet modelTile(model: ModelV2WithSpecifier | undefined, specifier: string | null, color: "blue" | "purple", mode: "primary" | "canary", disabledSpec?: string | null)}
+{#snippet modelTile(model: ModelWithSpecifier | undefined, specifier: string | null, color: "blue" | "purple", mode: "primary" | "canary", disabledSpec?: string | null)}
   {#if !model}
     {#if !readonlyModels}
       <button

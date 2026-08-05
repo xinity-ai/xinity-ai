@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test";
 import { createCatalogClient, createInfoserverClient } from "./client";
-import type { ModelWithSpecifier } from "./definitions/model-definition";
+import type { LegacyModelWithSpecifier } from "./definitions/model-definition";
 
-const testModel: ModelWithSpecifier = {
+const testModel: LegacyModelWithSpecifier = {
   publicSpecifier: "llama-3.3-70b",
   _source: "test",
   name: "Test Llama",
@@ -19,7 +19,7 @@ const testModel: ModelWithSpecifier = {
   providers: { vllm: "org/llama-vllm", ollama: "llama-ollama" },
 };
 
-const embedModel: ModelWithSpecifier = {
+const embedModel: LegacyModelWithSpecifier = {
   publicSpecifier: "nomic-embed",
   _source: "test",
   name: "Nomic Embed",
@@ -37,7 +37,7 @@ const embedModel: ModelWithSpecifier = {
 
 // Declares an entryVersion far beyond any real release, so every running
 // instance is too old to use it and must filter it out.
-const futureModel: ModelWithSpecifier = {
+const futureModel: LegacyModelWithSpecifier = {
   publicSpecifier: "future-model",
   _source: "test",
   name: "Future Model",
@@ -64,7 +64,7 @@ const malformedModel = {
   url: "https://example.com",
   entryVersion: "0.1.0",
   providers: {},
-} as unknown as ModelWithSpecifier;
+} as unknown as LegacyModelWithSpecifier;
 
 describe("createInfoserverClient", () => {
   let server: ReturnType<typeof Bun.serve>;
@@ -123,7 +123,7 @@ describe("createInfoserverClient", () => {
         // POST /api/v1/models/resolve
         if (url.pathname === "/api/v1/models/resolve") {
           const { specifiers } = JSON.parse(entry.body!);
-          const result: Record<string, ModelWithSpecifier | null> = {};
+          const result: Record<string, LegacyModelWithSpecifier | null> = {};
           for (const s of specifiers) {
             if (s === "llama-3.3-70b") result[s] = testModel;
             else if (s === "nomic-embed") result[s] = embedModel;

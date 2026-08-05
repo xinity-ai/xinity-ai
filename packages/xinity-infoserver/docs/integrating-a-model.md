@@ -2,7 +2,7 @@
 
 This guide walks through adding a new model to Xinity by hand: researching it, writing its model
 entry, and verifying it actually runs before you publish it. The end product is an entry (shape:
-`ModelV2Schema`) in a file under `models/`, describing **one model on one engine**. Confirm the
+`ModelSchema`) in a file under `models/`, describing **one model on one engine**. Confirm the
 entry by running it, not by reasoning about it.
 
 (The Claude Code `integrate-model` skill points here too, so an agent and a human follow the same

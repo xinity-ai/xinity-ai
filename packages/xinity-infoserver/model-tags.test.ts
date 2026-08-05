@@ -8,10 +8,10 @@ import {
   resolveArgsForDriver,
   resolveRequiredFeaturesForDriver,
 } from "./model-tags";
-import { ModelSchema, type Model } from "./definitions/model-definition";
+import { LegacyModelSchema, type LegacyModel } from "./definitions/model-definition";
 
 /** Minimal model with both providers */
-function makeModel(overrides: Partial<Model> = {}): Model {
+function makeModel(overrides: Partial<LegacyModel> = {}): LegacyModel {
   return {
     name: "Test Model",
     description: "A test model",
@@ -159,9 +159,9 @@ describe("resolveRequiredFeaturesForDriver", () => {
   });
 });
 
-describe("ModelSchema vllm providerArgs filtering", () => {
+describe("LegacyModelSchema vllm providerArgs filtering", () => {
   function parseModel(providerArgs: string[]) {
-    return ModelSchema.parse({
+    return LegacyModelSchema.parse({
       name: "Test", description: "test", weight: 1, minKvCache: 1,
       url: "https://example.com",
       providers: { vllm: "org/test" },

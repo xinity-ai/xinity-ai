@@ -3,10 +3,10 @@
  * between them, so an entry is only ever served on an endpoint of its own format.
  */
 import {
+  type LegacyModel,
   type Model,
-  type ModelV2,
-  ModelFileDefinitionSchema,
-  ModelFileV2Schema,
+  LegacyModelFileSchema,
+  ModelFileSchema,
 } from "./definitions/model-definition";
 import { createCatalog, type FileParseOutcome } from "./catalog";
 import { rootLogger } from "./logger";
@@ -23,15 +23,15 @@ function parseWith<M>(schema: z.ZodType) {
   };
 }
 
-export const modelCatalog = createCatalog<ModelV2>({
+export const modelCatalog = createCatalog<Model>({
   name: "current-format",
-  parseFile: parseWith<ModelV2>(ModelFileV2Schema),
+  parseFile: parseWith<Model>(ModelFileSchema),
   invalidDocumentIsFatal: true,
 });
 
-export const legacyCatalog = createCatalog<Model>({
+export const legacyCatalog = createCatalog<LegacyModel>({
   name: "deprecated v1",
-  parseFile: parseWith<Model>(ModelFileDefinitionSchema),
+  parseFile: parseWith<LegacyModel>(LegacyModelFileSchema),
   invalidDocumentIsFatal: false,
 });
 

@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { checkNodeCompatibility, isDeployableOnCluster, explainClusterIncompatibility, type NodeCapability, type ModelNodeRequirements, type GpuInfo } from "./node-compat";
+import { checkNodeCompatibility, isLegacyModelDeployableOnCluster, explainClusterIncompatibility, type NodeCapability, type ModelNodeRequirements, type GpuInfo } from "./node-compat";
 
 const nvidiaGpu: GpuInfo = { vendor: "nvidia", name: "A100", vramMb: 81920 };
 const amdGpu: GpuInfo = { vendor: "amd", name: "MI300X", vramMb: 196608 };
@@ -193,7 +193,7 @@ describe("checkNodeCompatibility", () => {
   });
 });
 
-describe("isDeployableOnCluster", () => {
+describe("isLegacyModelDeployableOnCluster", () => {
   const model = {
     weight: 8,
     minKvCache: 2,
@@ -203,26 +203,26 @@ describe("isDeployableOnCluster", () => {
   };
 
   test("returns true when a compatible node exists", () => {
-    expect(isDeployableOnCluster([makeNode()], model)).toBe(true);
+    expect(isLegacyModelDeployableOnCluster([makeNode()], model)).toBe(true);
   });
 
   test("returns false when no node has enough capacity", () => {
-    expect(isDeployableOnCluster([makeNode({ free: 4 })], model)).toBe(false);
+    expect(isLegacyModelDeployableOnCluster([makeNode({ free: 4 })], model)).toBe(false);
   });
 
   test("returns false when no node has right platform", () => {
-    expect(isDeployableOnCluster([makeNode({ gpus: [amdGpu] })], model)).toBe(false);
+    expect(isLegacyModelDeployableOnCluster([makeNode({ gpus: [amdGpu] })], model)).toBe(false);
   });
 
   test("returns false when no node has right version", () => {
-    expect(isDeployableOnCluster(
+    expect(isLegacyModelDeployableOnCluster(
       [makeNode({ driverVersions: { vllm: "0.18.0" } })],
       model,
     )).toBe(false);
   });
 
   test("returns false when capacity and platform are on different nodes", () => {
-    expect(isDeployableOnCluster([
+    expect(isLegacyModelDeployableOnCluster([
       makeNode({ gpus: [nvidiaGpu], free: 4 }),
       makeNode({ gpus: [amdGpu], free: 24 }),
     ], model)).toBe(false);
@@ -233,7 +233,7 @@ describe("isDeployableOnCluster", () => {
       weight: 8, minKvCache: 2,
       providers: { vllm: "org/model" as string | undefined, ollama: "model" as string | undefined },
     };
-    expect(isDeployableOnCluster(
+    expect(isLegacyModelDeployableOnCluster(
       [makeNode({ driverVersions: { ollama: "0.6.3" } })],
       multiProviderModel,
     )).toBe(true);
@@ -241,12 +241,12 @@ describe("isDeployableOnCluster", () => {
 
   test("returns false with empty cluster", () => {
     const zeroModel = { weight: 0, minKvCache: 0, providers: { ollama: "m" as string | undefined } };
-    expect(isDeployableOnCluster([], zeroModel)).toBe(false);
+    expect(isLegacyModelDeployableOnCluster([], zeroModel)).toBe(false);
   });
 
   test("model without providerMinVersions or providerPlatforms works on any node", () => {
     const simpleModel = { weight: 8, minKvCache: 2, providers: { ollama: "m" as string | undefined } };
-    expect(isDeployableOnCluster(
+    expect(isLegacyModelDeployableOnCluster(
       [makeNode({ driverVersions: { ollama: "0.6.3" }, gpus: [amdGpu] })],
       simpleModel,
     )).toBe(true);
@@ -257,7 +257,7 @@ describe("isDeployableOnCluster", () => {
       weight: 8, minKvCache: 2, type: "transcription" as const,
       providers: { vllm: "openai/whisper-large-v3" as string | undefined },
     };
-    expect(isDeployableOnCluster(
+    expect(isLegacyModelDeployableOnCluster(
       [makeNode()],
       transcriptionModel,
     )).toBe(false);
@@ -268,7 +268,7 @@ describe("isDeployableOnCluster", () => {
       weight: 8, minKvCache: 2, type: "transcription" as const,
       providers: { vllm: "openai/whisper-large-v3" as string | undefined },
     };
-    expect(isDeployableOnCluster(
+    expect(isLegacyModelDeployableOnCluster(
       [makeNode({ driverFeatures: { vllm: ["audio"] } })],
       transcriptionModel,
     )).toBe(true);
@@ -279,7 +279,7 @@ describe("isDeployableOnCluster", () => {
       weight: 8, minKvCache: 2, type: "transcription" as const,
       providers: { ollama: "whisper" as string | undefined },
     };
-    expect(isDeployableOnCluster(
+    expect(isLegacyModelDeployableOnCluster(
       [makeNode({ driverVersions: { ollama: "0.6.3" } })],
       transcriptionModel,
     )).toBe(true);
