@@ -1,7 +1,8 @@
 import { calcCanaryProgress, modelDeploymentT, modelInstallationT, modelInstallationStateT, aiNodeT, organizationT, sql, deploymentMatchesInstallation, lifecycleStateEnum } from "common-db";
 import { getDB } from "../../db";
 import { checkAuth } from "../auth";
-import { getInfoClient } from "../model-data";
+import { getCatalogClient, getInfoClient } from "../model-data";
+import { rootLogger } from "../../logger";
 
 const TRUTHY_QUERY_VALUES = new Set(["true", "1"]);
 
@@ -23,6 +24,47 @@ function deriveStatus(lifecycles: InstallationLifecycle[]): LifecycleState | nul
   return concrete.reduce((best, current) => {
     return LIFECYCLE_PRIORITY[current] > LIFECYCLE_PRIORITY[best] ? current : best;
   });
+}
+
+/**
+ * Specifiers left out of the result fall back to the caller's default, which is also
+ * how an unreachable catalog is handled: a listing of deployments is still useful
+ * without context lengths, so it degrades rather than failing.
+ */
+async function resolveMaxContextLengths(specifiers: string[]): Promise<Map<string, number>> {
+  const resolved = new Map<string, number>();
+  const unresolved: string[] = [];
+
+  try {
+    const fromCatalog = await getCatalogClient().resolveBatch(specifiers);
+    for (const [specifier, model] of Object.entries(fromCatalog)) {
+      if (model) {
+        resolved.set(specifier, model.maxContextLength);
+      } else {
+        unresolved.push(specifier);
+      }
+    }
+  } catch (err) {
+    rootLogger.warn({ err }, "Catalog unavailable, listing models without context lengths");
+    return resolved;
+  }
+
+  if (unresolved.length === 0) {
+    return resolved;
+  }
+
+  // Pre-per-engine deployments. Removed before 1.0.0.
+  try {
+    const fromLegacy = await getInfoClient().fetchModelsBatch(unresolved);
+    for (const [specifier, model] of Object.entries(fromLegacy)) {
+      if (model?.maxContextLength !== undefined) {
+        resolved.set(specifier, model.maxContextLength);
+      }
+    }
+  } catch (err) {
+    rootLogger.warn({ err }, "Deprecated catalog unavailable, defaulting context length");
+  }
+  return resolved;
 }
 
 export async function handleModelsRequest(req: Request): Promise<Response> {
@@ -51,15 +93,9 @@ export async function handleModelsRequest(req: Request): Promise<Response> {
 
   const rowsByDeployment = Map.groupBy(models, (row) => row.model_deployment.publicSpecifier);
   const uniqueSpecifiers = [...rowsByDeployment.keys()];
-  const metaMap = new Map<string, number>();
-  if (uniqueSpecifiers.length > 0) {
-    const batchResult = await getInfoClient().fetchModelsBatch(uniqueSpecifiers);
-    for (const [specifier, model] of Object.entries(batchResult)) {
-      if (model?.maxContextLength !== undefined) {
-        metaMap.set(specifier, model.maxContextLength);
-      }
-    }
-  }
+  const metaMap = uniqueSpecifiers.length > 0
+    ? await resolveMaxContextLengths(uniqueSpecifiers)
+    : new Map<string, number>();
   const modelOutput = [...rowsByDeployment.values()].map((rows) => {
     const deployment = rows[0]!.model_deployment;
     const lifecycles: InstallationLifecycle[] = rows
