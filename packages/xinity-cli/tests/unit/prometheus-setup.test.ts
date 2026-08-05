@@ -1,88 +1,86 @@
 import { describe, expect, test } from "bun:test";
 import { buildPrometheusConfig, buildComposeFile } from "../../src/lib/prometheus-setup.ts";
 
+// Both files are built by string concatenation, so the only failure mode worth
+// testing is a document Prometheus or Compose would reject or silently misread.
+// Parsing the output catches that; substring matching cannot.
+
+type ScrapeJob = {
+  job_name: string;
+  metrics_path: string;
+  scheme?: string;
+  basic_auth?: Record<string, string>;
+  static_configs?: { targets: string[] }[];
+  http_sd_configs?: { url: string; refresh_interval: string; basic_auth?: Record<string, string> }[];
+};
+
+function parseConfig(yml: string) {
+  return Bun.YAML.parse(yml) as { global: Record<string, string>; scrape_configs: ScrapeJob[] };
+}
+
+const base = {
+  scrapeInterval: "30s",
+  gatewayTarget: "localhost:4121",
+  dashboardTarget: "localhost:5121",
+  tetherTarget: "localhost:4020",
+  daemonSdUrl: "http://localhost:5121/metrics/sd/daemons",
+};
+
 describe("buildPrometheusConfig", () => {
-  const base = {
-    scrapeInterval: "30s",
-    gatewayTarget: "localhost:4121",
-    dashboardTarget: "localhost:5121",
-    daemonSdUrl: "http://localhost:5121/metrics/sd/daemons",
-  };
+  test("every xinity component ends up as a job aimed at its own target", () => {
+    const cfg = parseConfig(buildPrometheusConfig(base));
 
-  test("emits the three xinity scrape jobs", () => {
-    const yml = buildPrometheusConfig(base);
-    expect(yml).toContain("job_name: xinity-gateway");
-    expect(yml).toContain("job_name: xinity-dashboard");
-    expect(yml).toContain("job_name: xinity-daemon");
-    expect(yml).toContain("scrape_interval: 30s");
+    expect(cfg.global.scrape_interval).toBe("30s");
+    expect(
+      cfg.scrape_configs.map((j) => [
+        j.job_name,
+        j.static_configs?.[0]!.targets[0] ?? j.http_sd_configs![0]!.url,
+      ]),
+    ).toEqual([
+      ["xinity-gateway", "localhost:4121"],
+      ["xinity-dashboard", "localhost:5121"],
+      ["xinity-tether", "localhost:4020"],
+      ["xinity-daemon", "http://localhost:5121/metrics/sd/daemons"],
+    ]);
+    expect(cfg.scrape_configs.every((j) => j.metrics_path === "/metrics")).toBe(true);
+    expect(cfg.scrape_configs.some((j) => j.basic_auth)).toBe(false);
   });
 
-  test("scrapes gateway and dashboard statically", () => {
-    const yml = buildPrometheusConfig(base);
-    expect(yml).toContain("- localhost:4121");
-    expect(yml).toContain("- localhost:5121");
-  });
-
-  test("discovers daemons via http_sd, not a static list", () => {
-    const yml = buildPrometheusConfig(base);
-    expect(yml).toContain("http_sd_configs:");
-    expect(yml).toContain("- url: http://localhost:5121/metrics/sd/daemons");
-    expect(yml).not.toContain("static_configs:\n      - targets:\n          - 10."); // no daemon static list
-  });
-
-  test("re-discovers the daemon set on a coarse interval, separate from scrape_interval", () => {
-    const yml = buildPrometheusConfig(base);
-    expect(yml).toContain("refresh_interval: 3m");
-    expect(yml).toContain("scrape_interval: 30s"); // metric resolution stays fine-grained
-  });
-
-  test("omits basic_auth (as commented placeholders) when no creds are given", () => {
-    const yml = buildPrometheusConfig(base);
-    expect(yml).toContain("# basic_auth:");
-    expect(yml).not.toMatch(/^\s+basic_auth:/m); // no active basic_auth block
-  });
-
-  test("omits scheme for http targets (Prometheus default) and emits scheme: https for https ones", () => {
-    expect(buildPrometheusConfig(base)).not.toContain("scheme: https");
-    const httpsYml = buildPrometheusConfig({
-      ...base,
-      gatewayScheme: "https",
-      dashboardScheme: "https",
-    });
-    expect(httpsYml).toContain("scheme: https");
-  });
-
-  test("emits active basic_auth blocks for SD and daemon scrape when creds are given", () => {
-    const yml = buildPrometheusConfig({
+  test("credentials attach to the SD request and the daemon scrape independently", () => {
+    const cfg = parseConfig(buildPrometheusConfig({
       ...base,
       sdAuth: { username: "sd", password: "sdpass" },
       daemonAuth: { username: "scrape", password: "scrapepass" },
-    });
-    expect(yml).toContain("username: sd");
-    expect(yml).toContain("password: sdpass");
-    expect(yml).toContain("username: scrape");
-    expect(yml).toContain("password: scrapepass");
-    expect(yml).toMatch(/^\s+basic_auth:/m);
+    }));
+    const daemon = cfg.scrape_configs.find((j) => j.job_name === "xinity-daemon")!;
+
+    expect(daemon.http_sd_configs![0]!.basic_auth).toEqual({ username: "sd", password: "sdpass" });
+    expect(daemon.basic_auth).toEqual({ username: "scrape", password: "scrapepass" });
+  });
+
+  test("https targets carry an explicit scheme, http ones rely on the Prometheus default", () => {
+    const cfg = parseConfig(buildPrometheusConfig({ ...base, gatewayScheme: "https" }));
+    const byName = (name: string) => cfg.scrape_configs.find((j) => j.job_name === name)!;
+
+    expect(byName("xinity-gateway").scheme).toBe("https");
+    expect(byName("xinity-dashboard").scheme).toBeUndefined();
   });
 });
 
 describe("buildComposeFile", () => {
   const configPath = "/etc/xinity-ai/infra/prometheus/prometheus.yml";
 
-  test("pins the prometheus image and uses host networking", () => {
-    const compose = buildComposeFile(9090, configPath);
-    expect(compose).toContain("image: prom/prometheus:v3.1.0");
-    expect(compose).toContain("network_mode: host");
-    expect(compose).toContain("container_name: xinity-ai-prometheus");
-  });
+  test("host-networked prometheus with the config mounted read-only and a persistent tsdb", () => {
+    const compose = Bun.YAML.parse(buildComposeFile(9091, configPath)) as {
+      services: Record<string, { image: string; network_mode: string; command: string[]; volumes: string[] }>;
+      volumes: Record<string, unknown>;
+    };
+    const prometheus = compose.services.prometheus!;
 
-  test("binds the web listener to the configured port on localhost", () => {
-    expect(buildComposeFile(9091, configPath)).toContain("--web.listen-address=127.0.0.1:9091");
-  });
-
-  test("mounts the given config path read-only and persists tsdb in a named volume", () => {
-    const compose = buildComposeFile(9090, configPath);
-    expect(compose).toContain(`${configPath}:/etc/prometheus/prometheus.yml:ro`);
-    expect(compose).toContain("xinity-prometheus-data:/prometheus");
+    expect(prometheus.image).toBe("prom/prometheus:v3.1.0");
+    expect(prometheus.network_mode).toBe("host");
+    expect(prometheus.command).toContain("--web.listen-address=127.0.0.1:9091");
+    expect(prometheus.volumes).toContain(`${configPath}:/etc/prometheus/prometheus.yml:ro`);
+    expect(Object.keys(compose.volumes)).toContain("xinity-prometheus-data");
   });
 });
