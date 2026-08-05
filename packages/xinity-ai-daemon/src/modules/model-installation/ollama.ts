@@ -2,13 +2,11 @@ import { Ollama, type ProgressResponse } from "ollama";
 import { bufferTime, concatMap, defer, endWith, from, ignoreElements, map, merge, mergeMap, Observable, switchMap, tap } from "rxjs";
 import { env } from "../../env";
 import type { ModelInstallation } from "common-db";
-import { createInfoserverClient } from "xinity-infoserver";
 import { rootLogger } from "../../logger";
+import { resolveInstallationEntry } from "./catalog";
 import { updateInstallationState } from "./state";
 
 const log = rootLogger.child({ name: "ollama" });
-
-const infoClient = createInfoserverClient({ baseUrl: env.INFOSERVER_URL, cacheTtlMs: env.INFOSERVER_CACHE_TTL_MS });
 
 let _ollama: Ollama | null = null;
 export function getOllamaClient(): Ollama {
@@ -42,13 +40,12 @@ type ResolvedInstallation = { installation: ModelInstallation; tag: string };
 async function resolveInstallations(installations: Array<ModelInstallation>): Promise<ResolvedInstallation[]> {
   const resolved: ResolvedInstallation[] = [];
   for (const installation of installations) {
-    const model = await infoClient.fetchModel(installation.specifier);
-    const tag = model?.providers.ollama;
-    if (!tag) {
-      log.warn({ specifier: installation.specifier, installationId: installation.id }, "Catalog has no ollama provider for installation, skipping");
+    const entry = await resolveInstallationEntry(installation.specifier, "ollama");
+    if (!entry) {
+      log.warn({ specifier: installation.specifier, installationId: installation.id }, "No ollama catalog entry for installation, skipping");
       continue;
     }
-    resolved.push({ installation, tag });
+    resolved.push({ installation, tag: entry.engineSpecifier });
   }
   return resolved;
 }

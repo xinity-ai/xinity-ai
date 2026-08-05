@@ -42,16 +42,14 @@ mock.module("../../logger", () => ({
   },
 }));
 
-// Mock the infoserver client: returns the specifier as the ollama tag so test
-// expectations can use specifier and tag interchangeably.
-const mockFetchModel = mock<(specifier: string) => Promise<{ providers: { ollama?: string; vllm?: string } } | undefined>>(
-  (specifier) => Promise.resolve({ providers: { ollama: specifier } }),
+// Resolves to the specifier as the ollama tag, so test expectations can use
+// specifier and tag interchangeably.
+const mockResolveEntry = mock<(specifier: string, engine: string) => Promise<{ engineSpecifier: string } | undefined>>(
+  (specifier) => Promise.resolve({ engineSpecifier: specifier }),
 );
 
-mock.module("xinity-infoserver", () => ({
-  createInfoserverClient: () => ({
-    fetchModel: mockFetchModel,
-  }),
+mock.module("./catalog", () => ({
+  resolveInstallationEntry: mockResolveEntry,
 }));
 
 // Track Ollama client calls
@@ -102,8 +100,8 @@ describe("syncOllamaInstallations$", () => {
     mockInsert.mockClear();
     mockInsertChain.values.mockClear();
     mockInsertChain.onConflictDoUpdate.mockClear();
-    mockFetchModel.mockReset();
-    mockFetchModel.mockImplementation((specifier) => Promise.resolve({ providers: { ollama: specifier } }));
+    mockResolveEntry.mockReset();
+    mockResolveEntry.mockImplementation((specifier) => Promise.resolve({ engineSpecifier: specifier }));
   });
 
   test("does nothing when desired and existing models match", async () => {
@@ -211,9 +209,9 @@ describe("syncOllamaInstallations$", () => {
     expect(mockInsert).toHaveBeenCalled();
   });
 
-  test("skips installations the catalog has no ollama provider for", async () => {
+  test("skips installations no catalog resolves for ollama", async () => {
     mockOllamaList.mockResolvedValue({ models: [] });
-    mockFetchModel.mockImplementation(() => Promise.resolve({ providers: { vllm: "vllm-only-model" } }));
+    mockResolveEntry.mockImplementation(() => Promise.resolve(undefined));
 
     await firstValueFrom(syncOllamaInstallations$([makeInstallation("vllm-only")]));
 
