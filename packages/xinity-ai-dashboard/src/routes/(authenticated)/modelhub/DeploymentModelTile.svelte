@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Badge } from "$lib/components/ui/badge";
   import { ExternalLink } from "@lucide/svelte";
-  import type { ModelV2WithSpecifier } from "xinity-infoserver";
+  import type { ModelWithSpecifier } from "xinity-infoserver";
 
   let {
     model,
@@ -11,7 +11,7 @@
     onSelect,
     selectedSpecifier
   }: {
-    model: ModelV2WithSpecifier;
+    model: ModelWithSpecifier;
     selectedSpecifier: string | null;
     color: "blue" | "purple";
     onSelect?: (specifier: string) => void;

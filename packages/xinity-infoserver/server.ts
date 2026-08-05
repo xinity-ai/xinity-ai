@@ -1,4 +1,4 @@
-import { createModelJsonSchema, createModelV2JsonSchema } from "./definitions/model-definition";
+import { createLegacyModelJsonSchema, createModelJsonSchema } from "./definitions/model-definition";
 import { version } from "../../package.json";
 import { env } from "./env";
 import { rootLogger } from "./logger";
@@ -99,7 +99,7 @@ const server = Bun.serve({
   routes: {
     "/health": () => Response.json(healthBody()),
     "/version.json": Response.json({ version }),
-    "/schemas/model.v2.json": Response.json(createModelV2JsonSchema()),
+    "/schemas/model.v2.json": Response.json(createModelJsonSchema()),
 
     "/models/v2.json": limited(exportLimiter, serveCatalogBody(modelCatalog, s => s.json, "application/json; charset=utf-8")),
     // Exists so polling for change is cheap enough to leave on a loose ceiling,
@@ -113,7 +113,7 @@ const server = Bun.serve({
     // Deprecated v1 surface, removed before 1.0.0. Serves MODEL_LEGACY_DIR only.
     "/models/v1.yaml": legacyRoute(limited(exportLimiter, serveCatalogBody(legacyCatalog, s => s.yaml, "application/yaml"))),
     "/models/v1.json": legacyRoute(limited(exportLimiter, serveCatalogBody(legacyCatalog, s => s.json, "application/json; charset=utf-8"))),
-    "/schemas/model.v1.json": new Response(JSON.stringify(createModelJsonSchema()), {
+    "/schemas/model.v1.json": new Response(JSON.stringify(createLegacyModelJsonSchema()), {
       headers: { "Content-Type": "application/json; charset=utf-8", ...DEPRECATION_HEADERS },
     }),
     "/api/v1/models": legacyRoute(limited(apiLimiter, handleModelList)),

@@ -9,7 +9,7 @@
 import {
   checkNodeCompatibility,
   requiredFeaturesForEngine,
-  type ModelV2,
+  type Model,
   type NodeCapability,
   type ModelNodeRequirements,
   type IncompatibilityReason,
@@ -26,7 +26,7 @@ export interface MachineProfile {
 export interface ResolvedVllmModel {
   /** The HuggingFace-style name vLLM and the downloader use. */
   vllmProviderName: string;
-  model: ModelV2;
+  model: Model;
   trustRemoteCode: boolean;
   hasToolsTag: boolean;
   args: string[];
@@ -47,9 +47,9 @@ export class RunModelError extends Error {}
  * Throws RunModelError with a human-readable message when not found or not a vllm entry.
  */
 export function findVllmModel(
-  parsed: { models: Record<string, ModelV2> },
+  parsed: { models: Record<string, Model> },
   name: string,
-): { vllmProviderName: string; model: ModelV2 } {
+): { vllmProviderName: string; model: Model } {
   const direct = parsed.models[name];
   if (direct) {
     if (direct.engine !== "vllm") {
@@ -73,7 +73,7 @@ export function findVllmModel(
  * `kvCacheGbOverride`, when given, raises the floor set by model.minKvCache.
  */
 export function resolveVllmModel(
-  parsed: { models: Record<string, ModelV2> },
+  parsed: { models: Record<string, Model> },
   name: string,
   options: { kvCacheGbOverride?: number } = {},
 ): ResolvedVllmModel {

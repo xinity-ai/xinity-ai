@@ -4,7 +4,7 @@
 import { parseArgs } from "node:util";
 import { z } from "zod";
 import { quoteShellArgv } from "common-env";
-import { ModelFileV2Schema } from "xinity-infoserver";
+import { ModelFileSchema } from "xinity-infoserver";
 import { resolveVllmModel, RunModelError, type ResolvedVllmModel } from "./lib/vllm-run";
 import type { VllmInstanceConfig } from "../modules/model-installation/vllm-ops";
 import type { DetectedGpu } from "../modules/hardware-detect";
@@ -117,7 +117,7 @@ function buildVllmInstanceConfig(resolved: ResolvedVllmModel, state: State): Vll
   };
 }
 
-const parsedModels = await loadYaml(values.models, ModelFileV2Schema, "model");
+const parsedModels = await loadYaml(values.models, ModelFileSchema, "model");
 let resolved: ResolvedVllmModel;
 try {
   resolved = resolveVllmModel(parsedModels, values.model);
