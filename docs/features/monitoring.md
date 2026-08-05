@@ -2,7 +2,7 @@
 
 The gateway, dashboard, tether, and daemon expose Prometheus metrics (the infoserver does not). Pre-built Grafana dashboards are included for visualization. Service discovery lets Prometheus find daemon nodes automatically.
 
-For deployment-specific monitoring setup, see the [Docker deployment guide](../../deployment/docker/README.md) or the [NixOS deployment guide](../../deployment/nixos/README.md). For the auto-generated Prometheus config in the dashboard, see [Instance Administration](instance-administration.md#monitoring-setup).
+For deployment-specific monitoring setup, see the [Docker deployment guide](../../deployment/docker/README.md) or the [NixOS deployment guide](../../deployment/nixos/README.md). To have the CLI write a scrape config and run Prometheus for you, use `xinity up infra-prometheus`.
 
 ## Prometheus Metrics
 
@@ -151,7 +151,7 @@ Key options:
 | `retentionTime` | `15d` | Data retention |
 | `gatewayTarget` | `localhost:4121` | Gateway metrics target |
 | `dashboardTarget` | `localhost:5121` | Dashboard metrics target |
-| `tetherTarget` | `localhost:4020` | Tether metrics target, `null` to skip |
+| `tetherTarget` | `localhost:4020` | Tether metrics target |
 | `grafana.port` | `6121` | Grafana port |
 | `logs.port` | `6122` | Loki port |
 | `logs.retentionPeriod` | `168h` (7 days) | Log retention |

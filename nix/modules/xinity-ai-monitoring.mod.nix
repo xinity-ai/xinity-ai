@@ -73,9 +73,9 @@
         };
 
         tetherTarget = lib.mkOption {
-          type = lib.types.nullOr lib.types.str;
+          type = lib.types.str;
           default = "localhost:4020";
-          description = "host:port of the tether /metrics endpoint, which reports daemon SSE connectivity and rejected daemon requests. Set to null in deployments that run no tether. Resolves to the local tether port in the all-in-one deployment.";
+          description = "host:port of the tether /metrics endpoint, which reports daemon SSE connectivity and rejected daemon requests. Resolves to the local tether port in the all-in-one deployment.";
         };
 
         basicAuthUsername = lib.mkOption {
@@ -171,9 +171,9 @@
             [
               (job "xinity-gateway" [ cfg.gatewayTarget ])
               (job "xinity-dashboard" [ cfg.dashboardTarget ])
+              (job "xinity-tether" [ cfg.tetherTarget ])
               daemonJob
             ]
-            ++ lib.optional (cfg.tetherTarget != null) (job "xinity-tether" [ cfg.tetherTarget ])
             ++ cfg.extraScrapeConfigs;
         };
 
