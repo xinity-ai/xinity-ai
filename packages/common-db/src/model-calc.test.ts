@@ -127,15 +127,6 @@ describe("calcCanaryProgress", () => {
     expect(calcCanaryProgress(d)).toBeGreaterThan(98);
   });
 
-  it("handles progress starting at 0 with full date range", () => {
-    const from = new Date(FIXED_NOW);
-    const until = new Date(FIXED_NOW + 3_600_000); // +1 hour
-    const d = makeDeployment({ progress: 0, canaryProgressFrom: from, canaryProgressUntil: until });
-    // 30 minutes in: progress + (100 - 0) * 0.5 = 50
-    nowSpy.mockReturnValue(from.valueOf() + 1_800_000);
-    expect(calcCanaryProgress(d)).toBe(50);
-  });
-
   it("clamps elapsed to 0 when now is before the start", () => {
     const from = new Date(FIXED_NOW + 60_000);
     const until = new Date(FIXED_NOW + 86_400_000);

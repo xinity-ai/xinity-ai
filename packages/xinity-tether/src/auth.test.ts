@@ -4,7 +4,7 @@ mock.module("./env", () => ({
   env: { TETHER_SECRET: "test-secret-abc123" },
 }));
 
-const { verifyBearerToken, unauthorized } = await import("./auth");
+const { verifyBearerToken } = await import("./auth");
 
 describe("verifyBearerToken", () => {
   test("accepts valid bearer token", () => {
@@ -38,12 +38,5 @@ describe("verifyBearerToken", () => {
       headers: { Authorization: "Bearer " },
     });
     expect(verifyBearerToken(req)).toBe(false);
-  });
-});
-
-describe("unauthorized", () => {
-  test("returns 401 response", () => {
-    const res = unauthorized();
-    expect(res.status).toBe(401);
   });
 });

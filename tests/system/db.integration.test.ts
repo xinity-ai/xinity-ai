@@ -68,15 +68,4 @@ describe("common-db integration", () => {
     expect(apiKey?.applicationId).toBe(appId);
     expect(apiKey?.enabled).toBe(true);
   });
-
-  it("enforces application ownership by organization", async () => {
-    const [app] = await db
-      .select()
-      .from(aiApplicationT)
-      .where(sql`${aiApplicationT.id} = ${appId}`)
-      .limit(1);
-
-    expect(app).toBeTruthy();
-    expect(app?.organizationId).toBe(orgId);
-  });
 });

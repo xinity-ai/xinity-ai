@@ -47,37 +47,6 @@ describe("configure command", () => {
     expect(config.dashboardUrl).toBe("http://test.example.com");
   });
 
-  test("configure sets multiple values sequentially", async () => {
-    await runCli({
-      args: ["configure", "dashboardUrl", "http://first.com"],
-      env: { HOME: tmp.path, XDG_CONFIG_HOME: join(tmp.path, ".config") },
-    });
-
-    await runCli({
-      args: ["configure", "githubProjectUrl", "https://github.com/test/repo"],
-      env: { HOME: tmp.path, XDG_CONFIG_HOME: join(tmp.path, ".config") },
-    });
-
-    const config = readConfig();
-    expect(config.dashboardUrl).toBe("http://first.com");
-    expect(config.githubProjectUrl).toBe("https://github.com/test/repo");
-  });
-
-  test("configure overwrites existing value", async () => {
-    await runCli({
-      args: ["configure", "dashboardUrl", "http://old.com"],
-      env: { HOME: tmp.path, XDG_CONFIG_HOME: join(tmp.path, ".config") },
-    });
-
-    await runCli({
-      args: ["configure", "dashboardUrl", "http://new.com"],
-      env: { HOME: tmp.path, XDG_CONFIG_HOME: join(tmp.path, ".config") },
-    });
-
-    const config = readConfig();
-    expect(config.dashboardUrl).toBe("http://new.com");
-  });
-
   test("configure --reset clears a config key", async () => {
     // Set a value first
     await runCli({

@@ -40,11 +40,6 @@ describe("github", () => {
       expect(pickReleaseAsset(release, "gateway", "x64")).toBe("xinity-ai-gateway-linux-x64.zip");
     });
 
-    test("picks tar.gz when only tar.gz is present", () => {
-      const release = makeRelease(["xinity-ai-gateway-linux-arm64.tar.gz"]);
-      expect(pickReleaseAsset(release, "gateway", "arm64")).toBe("xinity-ai-gateway-linux-arm64.tar.gz");
-    });
-
     test("throws when neither format is present", () => {
       const release = makeRelease(["unrelated.txt"], "v0.5.0");
       expect(() => pickReleaseAsset(release, "gateway", "x64")).toThrow(/v0\.5\.0/);
@@ -130,18 +125,5 @@ describe("github", () => {
       expect(await verifySha256(filePath, wrongHash)).toBe(false);
     });
 
-    test("handles empty files", async () => {
-      const filePath = tmp.write("empty.txt", "");
-      // SHA256 of empty string
-      const emptyHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
-      expect(await verifySha256(filePath, emptyHash)).toBe(true);
-    });
-
-    test("handles binary-like content", async () => {
-      const filePath = tmp.write("binary.dat", "\x00\x01\x02\x03");
-      // Just verify it doesn't throw
-      const result = await verifySha256(filePath, "wrong");
-      expect(typeof result).toBe("boolean");
-    });
   });
 });

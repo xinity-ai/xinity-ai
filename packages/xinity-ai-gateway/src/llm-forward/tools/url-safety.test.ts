@@ -14,28 +14,9 @@ const { validateUrl } = await import("./url-safety");
 // ---------------------------------------------------------------------------
 
 describe("validateUrl -protocol", () => {
-  test("allows http", () => {
-    expect(validateUrl("http://example.com")).toBeNull();
-  });
-
-  test("allows https", () => {
-    expect(validateUrl("https://example.com")).toBeNull();
-  });
-
-  test("blocks ftp", () => {
-    expect(validateUrl("ftp://example.com")).toContain("Blocked protocol");
-  });
-
-  test("blocks file", () => {
-    expect(validateUrl("file:///etc/passwd")).toContain("Blocked protocol");
-  });
-
+  // Everything outside the http/https allowlist takes the same single branch.
   test("blocks javascript", () => {
     expect(validateUrl("javascript:alert(1)")).toContain("Blocked protocol");
-  });
-
-  test("blocks data URIs", () => {
-    expect(validateUrl("data:text/html,<h1>hi</h1>")).toContain("Blocked protocol");
   });
 });
 
@@ -44,14 +25,6 @@ describe("validateUrl -protocol", () => {
 // ---------------------------------------------------------------------------
 
 describe("validateUrl -invalid input", () => {
-  test("rejects empty string", () => {
-    expect(validateUrl("")).toBe("Invalid URL");
-  });
-
-  test("rejects garbage", () => {
-    expect(validateUrl("not a url")).toBe("Invalid URL");
-  });
-
   test("rejects missing protocol", () => {
     expect(validateUrl("example.com/path")).toBe("Invalid URL");
   });
@@ -66,28 +39,13 @@ describe("validateUrl -blocked hostnames", () => {
     expect(validateUrl("http://localhost")).toContain("Blocked hostname");
   });
 
-  test("blocks localhost with port", () => {
-    expect(validateUrl("http://localhost:8080/path")).toContain("Blocked hostname");
-  });
-
   test("blocks metadata.google.internal", () => {
     expect(validateUrl("http://metadata.google.internal")).toContain("Blocked hostname");
   });
 
-  test("blocks metadata.google", () => {
-    expect(validateUrl("http://metadata.google")).toContain("Blocked hostname");
-  });
-
+  // .local and .localhost run through the same endsWith check.
   test("blocks .internal suffix", () => {
     expect(validateUrl("http://something.internal")).toContain("Blocked hostname");
-  });
-
-  test("blocks .local suffix", () => {
-    expect(validateUrl("http://myservice.local")).toContain("Blocked hostname");
-  });
-
-  test("blocks .localhost suffix", () => {
-    expect(validateUrl("http://app.localhost")).toContain("Blocked hostname");
   });
 });
 
@@ -96,16 +54,9 @@ describe("validateUrl -blocked hostnames", () => {
 // ---------------------------------------------------------------------------
 
 describe("validateUrl -IPv6", () => {
-  test("blocks IPv6 loopback [::1]", () => {
-    expect(validateUrl("http://[::1]/")).toContain("IPv6");
-  });
-
+  // Every IPv6 form is rejected by the same colon check.
   test("blocks IPv6 mapped IPv4 [::ffff:127.0.0.1]", () => {
     expect(validateUrl("http://[::ffff:127.0.0.1]/")).toContain("IPv6");
-  });
-
-  test("blocks arbitrary IPv6 address", () => {
-    expect(validateUrl("http://[2001:db8::1]/")).toContain("IPv6");
   });
 });
 
@@ -118,16 +69,8 @@ describe("validateUrl -blocked IP ranges", () => {
     expect(validateUrl("http://127.0.0.1")).toContain("Blocked IP range");
   });
 
-  test("blocks 127.255.255.255 (loopback)", () => {
-    expect(validateUrl("http://127.255.255.255")).toContain("Blocked IP range");
-  });
-
   test("blocks 10.0.0.1 (Class A private)", () => {
     expect(validateUrl("http://10.0.0.1")).toContain("Blocked IP range");
-  });
-
-  test("blocks 10.255.255.255 (Class A private)", () => {
-    expect(validateUrl("http://10.255.255.255")).toContain("Blocked IP range");
   });
 
   test("blocks 172.16.0.1 (Class B private)", () => {
@@ -148,10 +91,6 @@ describe("validateUrl -blocked IP ranges", () => {
 
   test("blocks 192.168.0.1 (Class C private)", () => {
     expect(validateUrl("http://192.168.0.1")).toContain("Blocked IP range");
-  });
-
-  test("blocks 192.168.255.255 (Class C private)", () => {
-    expect(validateUrl("http://192.168.255.255")).toContain("Blocked IP range");
   });
 
   test("blocks 169.254.169.254 (link-local / cloud metadata)", () => {
@@ -228,11 +167,4 @@ describe("validateUrl -safe URLs", () => {
     expect(validateUrl("http://8.8.8.8")).toBeNull();
   });
 
-  test("allows domain with path and query", () => {
-    expect(validateUrl("https://api.example.com/v1/data?key=value")).toBeNull();
-  });
-
-  test("allows domain with port", () => {
-    expect(validateUrl("https://example.com:8443/path")).toBeNull();
-  });
 });

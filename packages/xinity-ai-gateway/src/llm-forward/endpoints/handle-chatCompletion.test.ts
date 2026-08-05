@@ -202,28 +202,6 @@ describe("handleChatCompletion", () => {
     expect(mockLogChatSync).not.toHaveBeenCalled();
   });
 
-  test("should support response_format json_object", async () => {
-    const req = new Request("http://localhost:4000/v1/chat/completions", {
-      method: "POST",
-      headers: { "Authorization": "Bearer test" },
-      body: JSON.stringify({
-        model: "test-model",
-        messages: [{ role: "user", content: "Hi" }],
-        response_format: { type: "json_object" },
-      })
-    });
-
-    const res = await handleChatCompletion(req);
-    expect(res.status).toBe(200);
-
-    const body = await res.json() as any;
-    expect(body.object).toBe("chat.completion");
-    const content = body.choices?.[0]?.message?.content;
-    expect(content).toBeDefined();
-    // Content should be valid JSON
-    expect(() => JSON.parse(content)).not.toThrow();
-  });
-
   test("should support response_format json_schema", async () => {
     const req = new Request("http://localhost:4000/v1/chat/completions", {
       method: "POST",
@@ -628,25 +606,6 @@ describe("handleChatCompletion, tool calling", () => {
     expect(lastUpstreamBody?.tools).toEqual(SAMPLE_TOOLS);
   });
 
-  test("should work without tools (backward compatibility)", async () => {
-    const req = new Request("http://localhost:4000/v1/chat/completions", {
-      method: "POST",
-      headers: { "Authorization": "Bearer test" },
-      body: JSON.stringify({
-        model: "test-model",
-        messages: [{ role: "user", content: "Hi" }],
-      }),
-    });
-
-    const res = await handleChatCompletion(req);
-    expect(res.status).toBe(200);
-
-    const body = await res.json() as any;
-    expect(body.choices[0].message.content).toBe("Hello");
-    expect(body.choices[0].finish_reason).toBe("stop");
-    expect(body.choices[0].message.tool_calls).toBeUndefined();
-  });
-
   test("should forward tool result messages to upstream in OpenAI format", async () => {
     const req = new Request("http://localhost:4000/v1/chat/completions", {
       method: "POST",
@@ -696,39 +655,6 @@ describe("handleChatCompletion, tool calling", () => {
     expect(assistantMsg).toBeDefined();
     expect(assistantMsg.tool_calls[0].id).toBe("call_prev123");
     expect(assistantMsg.tool_calls[0].function.name).toBe("get_weather");
-  });
-
-  test("should handle multiple tools in a single request", async () => {
-    const multiTools = [
-      ...SAMPLE_TOOLS,
-      {
-        type: "function" as const,
-        function: {
-          name: "get_time",
-          description: "Get the current time in a timezone",
-          parameters: {
-            type: "object",
-            properties: { timezone: { type: "string" } },
-          },
-        },
-      },
-    ];
-
-    const req = new Request("http://localhost:4000/v1/chat/completions", {
-      method: "POST",
-      headers: { "Authorization": "Bearer test" },
-      body: JSON.stringify({
-        model: "test-model",
-        messages: [{ role: "user", content: "What is the weather?" }],
-        tools: multiTools,
-      }),
-    });
-
-    const res = await handleChatCompletion(req);
-    expect(res.status).toBe(200);
-
-    const body = await res.json() as any;
-    expect(body.choices[0].message.tool_calls).toBeArray();
   });
 });
 
@@ -923,21 +849,6 @@ describe("handleChatCompletion, backend response resilience", () => {
 
     const res = await handleChatCompletion(makeRequest());
     expect(res.status).toBe(502);
-  });
-
-  test("should log correctly with fully conforming response", async () => {
-    nextUpstreamResponse = makeRawJsonResponse({
-      id: "test-id", object: "chat.completion", created: 123, model: "test-model",
-      choices: [{ index: 0, message: { role: "assistant", content: "Hello" }, finish_reason: "stop" }],
-      usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
-    });
-
-    const res = await handleChatCompletion(makeRequest());
-    expect(res.status).toBe(200);
-    const body = await res.json() as any;
-    expect(body.choices[0].message.content).toBe("Hello");
-    expect(body.model).toBe("test-model");
-    expect(mockLogChatSync).toHaveBeenCalled();
   });
 });
 

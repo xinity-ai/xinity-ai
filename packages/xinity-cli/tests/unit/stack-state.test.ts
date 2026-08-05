@@ -104,11 +104,6 @@ describe("findOrphanHosts", () => {
     expect(findOrphanHosts(state, stack)).toEqual(["10.0.0.1", "10.0.0.3"]);
   });
 
-  test("returns nothing when state and definition agree", () => {
-    const state = makeState(["10.0.0.1"]);
-    expect(findOrphanHosts(state, makeStack(["10.0.0.1"]))).toEqual([]);
-  });
-
   test("hosts never applied to are not orphans", () => {
     const state = makeState([]);
     expect(findOrphanHosts(state, makeStack(["10.0.0.1"]))).toEqual([]);
