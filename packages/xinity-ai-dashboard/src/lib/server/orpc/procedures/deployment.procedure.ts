@@ -5,9 +5,9 @@ import z from "zod";
 import { DeploymentDto } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { syncDeployedModels } from "$lib/server/lib/orchestration.mod";
-import { infoClient } from "$lib/server/info-client";
+import { resolveSchedulable, resolvesOnlyAsLegacy } from "$lib/server/model-catalog";
 import { buildClusterCapacity } from "./cluster.procedure";
-import { resolveDefaultProvider, resolveMinVersionForDriver, resolveRequiredPlatformsForDriver, resolveRequiredFeaturesForDriver, checkNodeCompatibility, type ModelNodeRequirements, type Provider } from "xinity-infoserver";
+import { checkNodeCompatibility, type ModelNodeRequirements } from "xinity-infoserver";
 import { rootLogger } from "$lib/server/logging";
 import { aggregatePhase, isProgressBearingPhase, toDisplayPhase, type PhaseInfo } from "$lib/server/lib/deployment-phase";
 import { findOrgName } from "$lib/server/lib/org-queries";
@@ -24,26 +24,29 @@ async function assertModelsInCatalog(
   specifiers: string[],
   errors: { BAD_REQUEST: (opts: { message: string }) => Error },
 ): Promise<void> {
-  if (!infoClient) return;
-  const client = infoClient;
   const statuses = await Promise.all(
-    specifiers.map(async (specifier) => ({ specifier, status: await client.fetchModelStatus(specifier) })),
+    specifiers.map(async (specifier) => ({ specifier, resolution: await resolveSchedulable(specifier, null) })),
   );
-  const missing = statuses.find((s) => s.status.status === "not_found");
+  const missing = statuses.find((s) => s.resolution.status === "not_found");
   if (missing) {
     throw errors.BAD_REQUEST({ message: `Model "${missing.specifier}" was not found in the model catalog` });
   }
 }
 
+async function resolveType(specifier: string): Promise<string | undefined> {
+  const resolution = await resolveSchedulable(specifier, null);
+  return resolution.status === "found" ? resolution.model.type : undefined;
+}
+
 /** Validates that primary and canary models share the same type. Returns an error message or null. */
 async function validateCanaryModelTypes(primarySpecifier: string, earlySpecifier: string | null): Promise<string | null> {
   if (!earlySpecifier) return null;
-  const [primaryModel, earlyModel] = await Promise.all([
-    infoClient?.fetchModel(primarySpecifier),
-    infoClient?.fetchModel(earlySpecifier),
+  const [primaryType, earlyType] = await Promise.all([
+    resolveType(primarySpecifier),
+    resolveType(earlySpecifier),
   ]);
-  if (primaryModel?.type && earlyModel?.type && primaryModel.type !== earlyModel.type) {
-    return `Cannot mix model types in a canary deployment: primary is "${primaryModel.type}" but canary is "${earlyModel.type}"`;
+  if (primaryType && earlyType && primaryType !== earlyType) {
+    return `Cannot mix model types in a canary deployment: primary is "${primaryType}" but canary is "${earlyType}"`;
   }
   return null;
 }
@@ -106,16 +109,21 @@ async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>
   const [modelInfos, { nodeCapabilities }] = await Promise.all([
     Promise.all(
       modelsToCheck.map(async (m) => {
-        const status = await infoClient?.fetchModelStatus(m.specifier);
-        if (!status || status.status === "unavailable") return { kind: "unavailable" as const, label: m.specifier };
-        if (status.status === "not_found") return { kind: "not_found" as const, label: m.specifier };
-        const info = status.model;
+        const resolution = await resolveSchedulable(m.specifier, input.preferredDriver ?? null);
+        if (resolution.status === "unavailable") return { kind: "unavailable" as const, label: m.specifier };
+        if (resolution.status === "not_found") return { kind: "not_found" as const, label: m.specifier };
+        const info = resolution.model;
         const effectiveKvCache = Math.max(m.kvCacheSize ?? 0, info.minKvCache);
-        const driver: Provider | undefined = input.preferredDriver ?? resolveDefaultProvider(info)?.driver;
-        const minVersion = driver ? resolveMinVersionForDriver(info, driver) : undefined;
-        const requiredPlatforms = driver ? resolveRequiredPlatformsForDriver(info, driver) : [];
-        const requiredFeatures = driver ? resolveRequiredFeaturesForDriver(info, driver) : [];
-        return { kind: "found" as const, label: m.specifier, replicas: m.replicas, perReplica: info.weight + effectiveKvCache, driver, minVersion, requiredPlatforms, requiredFeatures };
+        return {
+          kind: "found" as const,
+          label: m.specifier,
+          replicas: m.replicas,
+          perReplica: info.weight + effectiveKvCache,
+          driver: info.driver,
+          minVersion: info.minVersion,
+          requiredPlatforms: info.requiredPlatforms,
+          requiredFeatures: info.requiredFeatures,
+        };
       }),
     ),
     buildClusterCapacity(),
@@ -132,17 +140,15 @@ async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>
 
   for (const model of resolved) {
     // Filter nodes that are structurally compatible (driver, version, platform) - capacity checked in allocation loop
-    const compatible = model.driver
-      ? remaining.filter(n => {
-          const req: ModelNodeRequirements = {
-            driver: model.driver!, capacityGb: 0,
-            minVersion: model.minVersion, requiredPlatforms: model.requiredPlatforms,
-            requiredFeatures: model.requiredFeatures,
-          };
-          const reason = checkNodeCompatibility(n, req);
-          return reason === null || reason === "insufficient_capacity";
-        })
-      : remaining;
+    const compatible = remaining.filter(n => {
+      const req: ModelNodeRequirements = {
+        driver: model.driver, capacityGb: 0,
+        minVersion: model.minVersion, requiredPlatforms: model.requiredPlatforms,
+        requiredFeatures: model.requiredFeatures,
+      };
+      const reason = checkNodeCompatibility(n, req);
+      return reason === null || reason === "insufficient_capacity";
+    });
 
     let placed = 0;
     for (const node of compatible) {
@@ -153,7 +159,7 @@ async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>
       }
     }
     if (placed < model.replicas) {
-      const reason = compatible.length === 0 && model.driver
+      const reason = compatible.length === 0
         ? noCompatibleNodeReason(model.label, model.driver, model.minVersion, model.requiredPlatforms)
         : insufficientCapacityReason(model.label);
       return { deployable: false, reason };
@@ -200,7 +206,11 @@ const DeploymentStatusSchema = z.object({
   replicas: ReplicaStatusSchema.array().optional(),
 });
 
-export const DeploymentWithStatusDto = DeploymentDto.extend({ status: DeploymentStatusSchema.optional() });
+export const DeploymentWithStatusDto = DeploymentDto.extend({
+  status: DeploymentStatusSchema.optional(),
+  /** Set while the model is only served by the deprecated catalog. Removed before 1.0.0. */
+  deprecatedModel: z.boolean().optional(),
+});
 export type DeploymentWithStatus = z.infer<typeof DeploymentWithStatusDto>;
 type StatusPhase = z.infer<typeof DeploymentStatusSchema>["phase"];
 
@@ -261,17 +271,16 @@ async function queryDeploymentsWithStatus(where: SQL | undefined): Promise<Deplo
 }
 
 async function lookupIsMissingFromCatalog(specifier: string | null): Promise<boolean> {
-  if (!specifier || !infoClient) return false;
+  if (!specifier) return false;
   try {
-    const status = await infoClient.fetchModelStatus(specifier);
-    return status.status === "not_found";
+    const resolution = await resolveSchedulable(specifier, null);
+    return resolution.status === "not_found";
   } catch {
     return false;
   }
 }
 
 async function markDeploymentsMissingFromCatalog(deployments: DeploymentWithStatus[]): Promise<void> {
-  if (!infoClient) return;
   const candidates = deployments.filter(d => !d.status && d.enabled);
   await Promise.all(candidates.map(async (entry) => {
     const [primaryMissing, earlyMissing] = await Promise.all([
@@ -280,6 +289,18 @@ async function markDeploymentsMissingFromCatalog(deployments: DeploymentWithStat
     ]);
     if (primaryMissing || earlyMissing) {
       entry.status = { phase: "not_in_catalog", progress: null, error: null };
+    }
+  }));
+}
+
+async function markDeploymentsOnDeprecatedCatalog(deployments: DeploymentWithStatus[]): Promise<void> {
+  await Promise.all(deployments.map(async (entry) => {
+    const [primary, early] = await Promise.all([
+      resolvesOnlyAsLegacy(entry.specifier ?? null),
+      resolvesOnlyAsLegacy(entry.earlySpecifier ?? null),
+    ]);
+    if (primary || early) {
+      entry.deprecatedModel = true;
     }
   }));
 }
@@ -296,7 +317,7 @@ const listDeployments = rootOs.use(withOrganization)
     `;
     if (input?.withStatus) {
       const results = await queryDeploymentsWithStatus(orgCondition);
-      await markDeploymentsMissingFromCatalog(results);
+      await Promise.all([markDeploymentsMissingFromCatalog(results), markDeploymentsOnDeprecatedCatalog(results)]);
       return results;
     }
     return await getDB().select().from(modelDeploymentT).where(orgCondition);
@@ -408,7 +429,7 @@ const getDeployment = rootOs
       const results = await queryDeploymentsWithStatus(matchActiveDeploymentInOrg(input.id, context.activeOrganizationId));
       const [first] = results;
       if (!first) throw errors.NOT_FOUND();
-      await markDeploymentsMissingFromCatalog(results);
+      await Promise.all([markDeploymentsMissingFromCatalog(results), markDeploymentsOnDeprecatedCatalog(results)]);
       return first;
     }
 

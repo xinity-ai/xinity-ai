@@ -2,7 +2,7 @@ import { describe, test, expect } from "bun:test";
 import { buildClusterState, collectDriftedInstallations, collectExcessInstallations, collectReassignableOrphans, findServerForModel, mergeRequirementsBySpecifier, rankServers } from "../src/lib/server/lib/orchestration.mod";
 import type { AiNode, ModelInstallation } from "common-db";
 import type { ModelRequirement, ModelRequirementTable, DeploymentStrategy } from "../src/lib/server/lib/orchestration.mod";
-import type { Model } from "xinity-infoserver";
+import type { SchedulableModel } from "../src/lib/server/model-catalog";
 
 const FF: DeploymentStrategy = "first-fit";
 
@@ -40,15 +40,16 @@ function makeInstallation(overrides: Partial<ModelInstallation> & { id: string; 
   };
 }
 
-function makeModel(overrides: Partial<Model> = {}): Model {
+function makeModel(overrides: Partial<SchedulableModel> = {}): SchedulableModel {
   return {
-    name: "Test Model",
-    description: "A model used in tests",
+    specifier: "test-model",
+    driver: "ollama",
+    type: "chat",
     weight: 8,
     minKvCache: 2,
-    url: "https://example.com/model",
-    providers: { ollama: "test-model" },
-    maxContextLength: 131072,
+    minVersion: undefined,
+    requiredPlatforms: [],
+    requiredFeatures: [],
     ...overrides,
   };
 }
@@ -167,7 +168,7 @@ describe("orchestration: node goes unavailable", () => {
 });
 
 describe("orchestration: reassignable orphans", () => {
-  const lookup = (models: Record<string, Model>) => async (specifier: string) => models[specifier] ?? null;
+  const lookup = (models: Record<string, SchedulableModel>) => async (specifier: string) => models[specifier] ?? null;
 
   test("an orphan is kept (not reassigned) when no available node has room", async () => {
     const tightNode = makeNode({ id: "node-n", estCapacity: 4 });
@@ -192,7 +193,7 @@ describe("orchestration: reassignable orphans", () => {
     const state = buildClusterState([], [ollamaOnly]);
     const orphan = makeInstallation({ id: "i1", nodeId: "node-dead", specifier: "whisper", driver: "vllm", estCapacity: 8 });
 
-    const result = await collectReassignableOrphans([orphan], state, lookup({ whisper: makeModel({ providers: { vllm: "whisper" } }) }));
+    const result = await collectReassignableOrphans([orphan], state, lookup({ whisper: makeModel({ specifier: "whisper", driver: "vllm" }) }));
     expect(result).toHaveLength(0);
   });
 
@@ -210,7 +211,7 @@ describe("orchestration: reassignable orphans", () => {
     const oldNode = makeNode({ id: "node-r", estCapacity: 24, driverVersions: { vllm: "0.18.0" } });
     const state = buildClusterState([], [oldNode]);
     const orphan = makeInstallation({ id: "i1", nodeId: "node-dead", specifier: "new-model", driver: "vllm", estCapacity: 8 });
-    const model = makeModel({ providers: { vllm: "new-model" }, providerMinVersions: { vllm: "0.19.1" } });
+    const model = makeModel({ specifier: "new-model", driver: "vllm", minVersion: "0.19.1" });
 
     // This is the case a plain driver+capacity check would wrongly approve for deletion: the
     // node has the right driver and plenty of room, but its vLLM build is too old to run this
