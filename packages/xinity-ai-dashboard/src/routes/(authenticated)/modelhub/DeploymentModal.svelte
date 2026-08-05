@@ -1,8 +1,7 @@
 <script lang="ts">
-  import type { ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
+  import type { ModelV2WithSpecifier, NodeCapability } from "xinity-infoserver";
   import Modal from "$lib/components/Modal.svelte";
   import DeploymentFormBody from "./DeploymentFormBody.svelte";
-  import { driverHasTag } from "xinity-infoserver";
   import { orpc } from "$lib/orpc/orpc-client";
 
   import { toastState } from "$lib/state/toast.svelte";
@@ -23,7 +22,6 @@
     deployment,
     close,
     maxNodeFreeCapacity = Infinity,
-    availableDrivers = [],
     nodeFreeCapacities = [],
     nodeCapabilities = [],
     onSaved = async () => {},
@@ -32,7 +30,6 @@
     deployment?: DeploymentDefinition;
     close: () => void;
     maxNodeFreeCapacity?: number;
-    availableDrivers?: string[];
     nodeFreeCapacities?: number[];
     nodeCapabilities?: NodeCapability[];
     onSaved?: () => Promise<void>;
@@ -74,15 +71,15 @@
   let lastInitDeploymentId = $state<string | undefined>(undefined);
 
   // --- Fetched model state ---
-  let selectedPrimaryModel = $state<ModelWithSpecifier | null>(null);
-  let selectedCanaryModel = $state<ModelWithSpecifier | null>(null);
+  let selectedPrimaryModel = $state<ModelV2WithSpecifier | null>(null);
+  let selectedCanaryModel = $state<ModelV2WithSpecifier | null>(null);
 
   // --- Helpers ---
   const primaryFetchGen = { v: 0 };
   const canaryFetchGen = { v: 0 };
   const canaryAutoSelectGen = { v: 0 };
 
-  function fetchModel(specifier: string | null, set: (m: ModelWithSpecifier | null) => void, gen: { v: number }) {
+  function fetchModel(specifier: string | null, set: (m: ModelV2WithSpecifier | null) => void, gen: { v: number }) {
     const seq = ++gen.v;
     if (!specifier) { set(null); return; }
     orpc.model.get({ specifier }).then(([error, data]) => {
@@ -205,15 +202,10 @@
     return () => abort.abort();
   });
 
+  /** Only asked for on a change: an unchanged deployment was already consented to. */
   const requiresCustomCodeConsent = $derived.by(() => {
-    if (!selectedPrimaryModel) return false;
-    const effectiveDriver = preferredDriver ?? (selectedPrimaryModel.providers.vllm ? "vllm" : "ollama");
-    if (!driverHasTag(selectedPrimaryModel, effectiveDriver, "custom_code")) return false;
-    if (isEditMode && deployment) {
-      const initialDriver = deployment.preferredDriver ?? (selectedPrimaryModel.providers.vllm ? "vllm" : "ollama");
-      if (driverHasTag(selectedPrimaryModel, initialDriver, "custom_code")) return false;
-    }
-    return true;
+    if (!selectedPrimaryModel?.tags.includes("custom_code")) return false;
+    return !isEditMode || selectedPrimarySpecifier !== deployment?.specifier;
   });
 
   const isFormValid = $derived(Boolean(
@@ -255,18 +247,7 @@
   $effect(() => { if (!isEditMode) kvCacheSize = selectedPrimaryModel?.minKvCache ?? null; });
   $effect(() => { if (!isEditMode) earlyKvCacheSize = selectedCanaryModel?.minKvCache ?? null; });
 
-  $effect(() => {
-    if (isEditMode || !selectedPrimaryModel) return;
-    const model = selectedPrimaryModel;
-    const driverOptions = availableDrivers.filter(d => model.providers[d as keyof typeof model.providers] !== undefined);
-    if (driverOptions.length === 1) {
-      preferredDriver = driverOptions[0] as "ollama" | "vllm";
-    } else if (preferredDriver && !model.providers[preferredDriver as keyof typeof model.providers]) {
-      preferredDriver = null;
-    }
-  });
-
-  $effect(() => { if (!isEditMode) { selectedPrimarySpecifier; preferredDriver; customCodeConsent = false; } });
+  $effect(() => { if (!isEditMode) { selectedPrimarySpecifier; customCodeConsent = false; } });
 
   // Pre-select canary base model for custom models
   $effect(() => {
@@ -294,9 +275,9 @@
     const primarySpecifier = selectedPrimaryModel.publicSpecifier;
     const earlySpecifier = isCanaryEnabled && selectedCanaryModel ? selectedCanaryModel.publicSpecifier : null;
     // Ollama has no KV-cache knob; clear any value carried over from a different driver
-    const effectiveDriver = preferredDriver ?? (selectedPrimaryModel.providers.vllm ? "vllm" : "ollama");
-    const submittedKvCacheSize = effectiveDriver === "ollama" ? null : kvCacheSize;
-    const submittedEarlyKvCacheSize = effectiveDriver === "ollama" ? null : earlyKvCacheSize;
+    const engine = selectedPrimaryModel.engine;
+    const submittedKvCacheSize = engine === "ollama" ? null : kvCacheSize;
+    const submittedEarlyKvCacheSize = engine === "ollama" ? null : earlyKvCacheSize;
     // Audio settings only apply to transcription models; drop stale values on model change
     const submittedSettings: DeploymentSettings = { version: 1 };
     if (selectedPrimaryModel.type === "transcription" && settings.maxAudioInputDurationS != null) {
@@ -379,7 +360,6 @@
           selectedPrimaryModel={selectedPrimaryModel ?? undefined}
           selectedCanaryModel={selectedCanaryModel ?? undefined}
           {maxNodeFreeCapacity}
-          {availableDrivers}
           {nodeCapabilities}
           {maxReplicas}
           {enabled}
@@ -403,7 +383,6 @@
           bind:settings
           {maxKvCache}
           {maxCanaryKvCache}
-          bind:preferredDriver
           {canaryTypeMismatch}
           {showTrafficSlider}
           {publicSpecifierError}

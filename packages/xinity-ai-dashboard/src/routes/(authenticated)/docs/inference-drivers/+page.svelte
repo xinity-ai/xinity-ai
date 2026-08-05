@@ -197,48 +197,32 @@
     </div>
   </section>
 
-  <!-- How Auto Works -->
+  <!-- How the Driver Is Chosen -->
   <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
-    <h2 class="text-2xl font-semibold mb-4">How "Auto" Works</h2>
+    <h2 class="text-2xl font-semibold mb-4">How the Driver Is Chosen</h2>
     <p class="text-gray-600 mb-4">
-      When the preferred driver is set to <strong>Auto</strong> (the default), the system selects
-      the best available driver automatically:
+      The driver is part of the catalog entry, not a deployment setting. A model offered on
+      both drivers appears as two entries, and picking one picks the driver with it:
     </p>
     <ol class="list-decimal pl-6 space-y-2 text-gray-600 mb-4">
       <li>
-        <strong>vLLM is preferred</strong> when available, as it provides better performance
-        for most workloads.
+        Entry names carry the driver, for example <code>gemma-4-27b-vllm</code> and
+        <code>gemma-4-27b-ollama</code>.
       </li>
       <li>
-        <strong>Ollama is used as a fallback</strong> when vLLM is not available for the model
-        or when no vLLM-capable nodes exist in the cluster.
+        Each entry carries its own VRAM footprint, tags and arguments, so a quantized Ollama
+        build is never scheduled against the numbers of an fp16 vLLM build.
       </li>
       <li>
-        Only drivers that are both <strong>supported by the model</strong> and <strong>available
-        on cluster nodes</strong> with sufficient capacity are considered.
+        An entry is only placed on nodes that run its driver, at a new enough version, on a
+        matching GPU platform, with enough free capacity.
       </li>
     </ol>
     <div class="p-4 bg-xinity-purple/10 border-l-4 border-xinity-purple text-gray-700">
-      <strong>Tip:</strong> Auto is the recommended setting for most deployments. Only override it
-      if you have a specific reason to prefer one driver over the other, for example, choosing
-      Ollama to reduce idle energy consumption on a low-traffic deployment, or forcing vLLM for a
-      latency-sensitive workload.
+      <strong>Tip:</strong> To move a deployment from one driver to the other, edit it and select
+      the entry for the driver you want. The public model name your applications call stays the
+      same, so no client change is needed.
     </div>
-  </section>
-
-  <!-- How to Set the Driver -->
-  <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
-    <h2 class="text-2xl font-semibold mb-4">How to Set the Driver</h2>
-    <p class="text-gray-600 mb-4">
-      You can set the preferred driver when creating or editing a deployment:
-    </p>
-    <ol class="list-decimal pl-6 space-y-3 text-gray-600">
-      <li>Navigate to the <a href="/modelhub" class="text-xinity-magenta hover:text-xinity-pink underline">Model Hub</a>.</li>
-      <li>Click <strong>Deploy New Model</strong> or <strong>Edit</strong> on an existing deployment.</li>
-      <li>Open the <strong>Expert Settings</strong> section.</li>
-      <li>Select your preferred driver from the <strong>Preferred Driver</strong> dropdown.</li>
-      <li>Click <strong>Deploy</strong> or <strong>Save</strong> to apply.</li>
-    </ol>
   </section>
 
   <!-- Related -->

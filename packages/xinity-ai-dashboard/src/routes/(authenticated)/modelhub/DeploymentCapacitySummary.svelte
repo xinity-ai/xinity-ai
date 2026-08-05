@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
+  import type { ModelV2WithSpecifier, NodeCapability } from "xinity-infoserver";
   import { formatGb } from "$lib/util";
   import { HardDrive, CircleCheck, CircleAlert, Info } from "@lucide/svelte";
 
@@ -11,7 +11,6 @@
     replicas = 1,
     kvCacheSize = null,
     earlyKvCacheSize = null,
-    effectiveDriver = "vllm",
     maxNodeFreeCapacity = Infinity,
     nodeCapabilities = [],
     enabled = true,
@@ -19,14 +18,13 @@
     capacityBlocked = false,
     capacityReason,
   }: {
-    primaryModel: ModelWithSpecifier | undefined;
-    canaryModel?: ModelWithSpecifier | undefined;
+    primaryModel: ModelV2WithSpecifier | undefined;
+    canaryModel?: ModelV2WithSpecifier | undefined;
     isCanaryEnabled?: boolean;
     progress?: number;
     replicas?: number;
     kvCacheSize?: number | null;
     earlyKvCacheSize?: number | null;
-    effectiveDriver?: "ollama" | "vllm";
     maxNodeFreeCapacity?: number;
     nodeCapabilities?: NodeCapability[];
     enabled?: boolean;
@@ -38,12 +36,12 @@
   // Mirrors the server formula in checkDeploymentCapacity: a model's footprint is
   // its weight plus its effective KV cache (at least the model minimum). Ollama has
   // no KV-cache knob, so the value submitted there is always the minimum.
-  function perReplica(model: ModelWithSpecifier, kv: number | null): number {
-    const effKv = effectiveDriver === "ollama" ? model.minKvCache : Math.max(kv ?? 0, model.minKvCache);
+  function perReplica(model: ModelV2WithSpecifier, kv: number | null): number {
+    const effKv = effKvCache(model, kv);
     return model.weight + effKv;
   }
-  function effKvCache(model: ModelWithSpecifier, kv: number | null): number {
-    return effectiveDriver === "ollama" ? model.minKvCache : Math.max(kv ?? 0, model.minKvCache);
+  function effKvCache(model: ModelV2WithSpecifier, kv: number | null): number {
+    return model.engine === "ollama" ? model.minKvCache : Math.max(kv ?? 0, model.minKvCache);
   }
 
   const splitsCanary = $derived(Boolean(isCanaryEnabled && canaryModel && progress < 100));
