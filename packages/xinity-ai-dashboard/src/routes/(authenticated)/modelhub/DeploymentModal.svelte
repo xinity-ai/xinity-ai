@@ -236,11 +236,24 @@
     );
   });
 
+  function suggestedPublicSpecifier(model: ModelV2WithSpecifier | null | undefined): string {
+    if (!model) {
+      return "";
+    }
+    const engineSuffix = `-${model.engine}`;
+    if (!model.publicSpecifier.endsWith(engineSuffix)) {
+      return model.publicSpecifier;
+    }
+    return model.publicSpecifier.slice(0, -engineSuffix.length);
+  }
+
   // --- Create-mode effects ---
   $effect(() => {
     if (isEditMode) return;
     const model = selectedPrimaryModel;
-    if (!publicSpecifierEdited) publicSpecifier = model?.publicSpecifier || "";
+    if (!publicSpecifierEdited) {
+      publicSpecifier = suggestedPublicSpecifier(model);
+    }
     if (!deploymentNameEdited) deploymentName = model?.name || "";
   });
 
