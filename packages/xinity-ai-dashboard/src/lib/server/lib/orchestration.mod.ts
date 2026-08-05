@@ -1,4 +1,5 @@
-import { inArray, isNull, modelDeploymentT, sql, calcCanaryProgress, modelInstallationT, aiNodeT, mergeSettings, settingsEqual, type DeploymentSettings, type ModelInstallation, type AiNode, type InferInsertModel } from "common-db";
+import { inArray, isNull, modelDeploymentT, sql, calcCanaryProgress, modelInstallationT, aiNodeT, type ModelInstallation, type AiNode, type InferInsertModel } from "common-db";
+import { mergeSettings, settingsEqual, type DeploymentSettings } from "common-env";
 import { getDB } from "../db";
 import { infoClient } from "../info-client";
 import { resolveDefaultProvider, resolveMinVersionForDriver, resolveRequiredPlatformsForDriver, resolveRequiredFeaturesForDriver, checkNodeCompatibility, type Model, type ModelNodeRequirements, type NodeCapability, type Provider } from "xinity-infoserver";

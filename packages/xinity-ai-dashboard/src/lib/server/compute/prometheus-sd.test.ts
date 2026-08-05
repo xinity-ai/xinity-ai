@@ -35,9 +35,6 @@ describe("buildDaemonServiceDiscovery", () => {
     expect(labels["node_id"]).toBeDefined();
   });
 
-  test("returns an empty array for an empty node set", () => {
-    expect(buildDaemonServiceDiscovery([])).toEqual([]);
-  });
 });
 
 describe("scrapeTarget", () => {

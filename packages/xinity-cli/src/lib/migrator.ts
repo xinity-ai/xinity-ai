@@ -123,7 +123,7 @@ export async function discoverConnectionUrl(host: Host): Promise<DbPlan | undefi
   }
 
   // 3. Component env files on the target host.
-  for (const component of ["gateway", "dashboard", "daemon"]) {
+  for (const component of ["gateway", "dashboard", "daemon", "tether"]) {
     const envPath = `${ENV_DIR}/${component}.env`;
     if (await host.fileExists(envPath)) {
       const content = await host.readFile(envPath);

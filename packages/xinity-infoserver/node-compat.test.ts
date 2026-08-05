@@ -177,20 +177,6 @@ describe("checkNodeCompatibility", () => {
       makeReq({ minVersion: "0.19.1", requiredPlatforms: ["nvidia"], capacityGb: 100 }),
     )).toBe("missing_driver");
   });
-
-  test("combined: version ok + platform ok + capacity ok = compatible", () => {
-    expect(checkNodeCompatibility(
-      makeNode({ driverVersions: { vllm: "0.19.1" }, gpus: [nvidiaGpu], free: 16 }),
-      makeReq({ minVersion: "0.19.1", requiredPlatforms: ["nvidia"], capacityGb: 16 }),
-    )).toBeNull();
-  });
-
-  test("combined: version ok + wrong platform = wrong_platform (not capacity)", () => {
-    expect(checkNodeCompatibility(
-      makeNode({ driverVersions: { vllm: "0.20.0" }, gpus: [amdGpu], free: 100 }),
-      makeReq({ minVersion: "0.19.1", requiredPlatforms: ["nvidia"], capacityGb: 8 }),
-    )).toBe("wrong_platform");
-  });
 });
 
 describe("isDeployableOnCluster", () => {

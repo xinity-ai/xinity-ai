@@ -1,117 +1,10 @@
-import { createMetricsAuth } from "common-env";
+import { createCounter, createGauge, createHistogram, createMetricsAuth, serializeMetrics } from "common-env";
 import { env } from "./env";
 import { releaseCallbacks } from "./llm-forward/release-registry";
 import { isAbortError } from "./llm-forward/util";
 import { rootLogger } from "./logger";
 
 const metricsAuth = createMetricsAuth(env.METRICS_AUTH);
-
-type Labels = Record<string, string>;
-
-function labelKey(labels: Labels): string {
-  return Object.entries(labels)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `${k}="${v}"`)
-    .join(",");
-}
-
-function serializeMetric(
-  name: string,
-  help: string,
-  type: string,
-  values: Map<string, { labels: Labels; value: number }>,
-): string {
-  if (values.size === 0) return "";
-  const lines = [`# HELP ${name} ${help}`, `# TYPE ${name} ${type}`];
-  for (const { labels, value } of values.values()) {
-    lines.push(`${name}{${labelKey(labels)}} ${value}`);
-  }
-  return lines.join("\n");
-}
-
-type HistogramEntry = { labels: Labels; sum: number; count: number; buckets: number[] };
-
-function createHistogram(name: string, help: string, boundaries: number[]) {
-  const sorted = [...boundaries].sort((a, b) => a - b);
-  const values = new Map<string, HistogramEntry>();
-
-  return {
-    observe(labels: Labels, value: number) {
-      const key = labelKey(labels);
-      let entry = values.get(key);
-      if (!entry) {
-        entry = { labels, sum: 0, count: 0, buckets: new Array(sorted.length).fill(0) };
-        values.set(key, entry);
-      }
-      entry.sum += value;
-      entry.count += 1;
-      for (let i = 0; i < sorted.length; i++) {
-        if (value <= sorted[i]!) {
-          entry.buckets[i]! += 1;
-          break;
-        }
-      }
-    },
-    serialize(): string {
-      if (values.size === 0) return "";
-      const lines = [`# HELP ${name} ${help}`, `# TYPE ${name} histogram`];
-      for (const { labels, sum, count, buckets } of values.values()) {
-        const lk = labelKey(labels);
-        const prefix = lk ? `${lk},` : "";
-        let cumulative = 0;
-        for (let i = 0; i < sorted.length; i++) {
-          cumulative += buckets[i]!;
-          lines.push(`${name}_bucket{${prefix}le="${sorted[i]}"} ${cumulative}`);
-        }
-        lines.push(`${name}_bucket{${prefix}le="+Inf"} ${count}`);
-        lines.push(`${name}_sum{${lk}} ${sum}`);
-        lines.push(`${name}_count{${lk}} ${count}`);
-      }
-      return lines.join("\n");
-    },
-  };
-}
-
-type ScalarValues = Map<string, { labels: Labels; value: number }>;
-
-function addToLabelGroup(values: ScalarValues, labels: Labels, amount: number) {
-  const key = labelKey(labels);
-  const existing = values.get(key);
-  if (existing) {
-    existing.value += amount;
-  } else {
-    values.set(key, { labels, value: amount });
-  }
-}
-
-function createCounter(name: string, help: string) {
-  const values: ScalarValues = new Map();
-
-  return {
-    inc(labels: Labels, amount = 1) {
-      addToLabelGroup(values, labels, amount);
-    },
-    serialize(): string {
-      return serializeMetric(name, help, "counter", values);
-    },
-  };
-}
-
-function createGauge(name: string, help: string) {
-  const values: ScalarValues = new Map();
-
-  return {
-    inc(labels: Labels, amount = 1) {
-      addToLabelGroup(values, labels, amount);
-    },
-    dec(labels: Labels, amount = 1) {
-      addToLabelGroup(values, labels, -amount);
-    },
-    serialize(): string {
-      return serializeMetric(name, help, "gauge", values);
-    },
-  };
-}
 
 export const requestsTotal = createCounter(
   "gateway_requests_total",
@@ -376,13 +269,7 @@ export function handleMetrics(req: Request): Response {
   const authErr = metricsAuth.unauthorized(req.headers.get("authorization"));
   if (authErr) return authErr;
 
-  const body =
-    allMetrics
-      .map((m) => m.serialize())
-      .filter(Boolean)
-      .join("\n\n") + "\n";
-
-  return new Response(body, {
+  return new Response(serializeMetrics(allMetrics), {
     headers: { "Content-Type": "text/plain; version=0.0.4; charset=utf-8" },
   });
 }

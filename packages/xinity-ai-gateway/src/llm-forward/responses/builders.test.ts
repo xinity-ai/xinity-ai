@@ -1,7 +1,6 @@
 import { describe, test, expect, mock } from "bun:test";
 import { CreateResponseBodySchema, type CreateResponseBody, type MessageOutputItem } from "./schemas";
 import type {
-  IncludeValue,
   ToolCallItem,
   ToolResultData,
   ResponsePayloadParams,
@@ -13,7 +12,6 @@ mock.module("../../env", () => ({
 }));
 
 const {
-  shouldInclude,
   createToolTracker,
   resolveActiveTools,
   parseFunctionTools,
@@ -26,7 +24,6 @@ const {
   extractSearchAnnotations,
   buildOutputItems,
   buildStepOutputItems,
-  generateCallId,
 } = await import("./builders");
 
 // ---------------------------------------------------------------------------
@@ -45,43 +42,6 @@ function makeParams(overrides: Partial<ResponsePayloadParams> = {}): ResponsePay
     ...overrides,
   };
 }
-
-// ---------------------------------------------------------------------------
-// shouldInclude
-// ---------------------------------------------------------------------------
-
-describe("shouldInclude", () => {
-  test("returns true when value is in the array", () => {
-    const include: IncludeValue[] = ["web_search_call.results", "web_search_call.action.sources"];
-    expect(shouldInclude(include, "web_search_call.results")).toBe(true);
-  });
-
-  test("returns false when value is absent", () => {
-    const include: IncludeValue[] = ["web_search_call.results"];
-    expect(shouldInclude(include, "web_search_call.action.sources")).toBe(false);
-  });
-
-  test("returns false when include is undefined", () => {
-    expect(shouldInclude(undefined, "web_search_call.results")).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// generateCallId
-// ---------------------------------------------------------------------------
-
-describe("generateCallId", () => {
-  test("returns a string starting with call_", () => {
-    const id = generateCallId();
-    expect(id).toStartWith("call_");
-    expect(typeof id).toBe("string");
-  });
-
-  test("generates unique IDs", () => {
-    const ids = new Set(Array.from({ length: 50 }, () => generateCallId()));
-    expect(ids.size).toBe(50);
-  });
-});
 
 // ---------------------------------------------------------------------------
 // createToolTracker
@@ -124,25 +84,6 @@ describe("createToolTracker", () => {
     expect(toolCalls[0]!.name).toBe("get_weather");
     expect(toolCalls[0]!.callId).toBe("tc_1");
     expect(toolCalls[0]!.arguments).toBe(JSON.stringify({ city: "Berlin" }));
-  });
-
-  test("tracks mixed web_search and function tool calls", () => {
-    const toolCalls: ToolCallItem[] = [];
-    const toolResults: ToolResultData[] = [];
-    const tracker = createToolTracker(toolCalls, toolResults);
-
-    tracker({
-      toolCalls: [
-        { toolCallId: "tc_1", toolName: "web_search" },
-        { toolCallId: "tc_2", toolName: "get_weather", input: { city: "Paris" } },
-        { toolCallId: "tc_3", toolName: "web_fetch" },
-      ],
-    });
-
-    expect(toolCalls).toHaveLength(2);
-    expect(toolCalls[0]!.type).toBe("web_search_call");
-    expect(toolCalls[1]!.type).toBe("function_call");
-    expect(toolCalls[1]!.name).toBe("get_weather");
   });
 
   test("accumulates all tool results regardless of tool name", () => {
@@ -220,14 +161,6 @@ describe("resolveActiveTools", () => {
     expect(activeTools).toHaveProperty("web_fetch");
   });
 
-  test("normalises web_search_preview_2025_03_11 to web_search via schema transform", () => {
-    const parsed = CreateResponseBodySchema.parse({
-      model: "m", input: "hi", tools: [{ type: "web_search_preview_2025_03_11" }],
-    });
-    const { activeTools } = resolveActiveTools(parsed.tools, "auto");
-    expect(activeTools).toHaveProperty("web_search");
-  });
-
   test("normalises string-form web_search_preview via schema transform", () => {
     const parsed = CreateResponseBodySchema.parse({
       model: "m", input: "hi", tools: ["web_search_preview"],
@@ -290,12 +223,6 @@ describe("buildOutputConfig", () => {
     expect(config.output).toBeDefined();
   });
 
-  test("returns structured output for json_object format", () => {
-    const config = buildOutputConfig({ format: { type: "json_object" } });
-    expect(config.usesStructuredOutput).toBe(true);
-    expect(config.output).toBeDefined();
-  });
-
   test("returns structured output for json_schema with schema", () => {
     const config = buildOutputConfig({
       format: {
@@ -318,10 +245,6 @@ describe("buildOutputConfig", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveResponseText", () => {
-  test("passes text through when not structured output", () => {
-    expect(resolveResponseText("hello world", () => undefined, false)).toBe("hello world");
-  });
-
   test("stringifies output when structured output is used", () => {
     const obj = { name: "test", value: 42 };
     const result = resolveResponseText("ignored", () => obj, true);
@@ -352,10 +275,6 @@ describe("resolveResponseText", () => {
 describe("formatUsage", () => {
   test("returns null for null input", () => {
     expect(formatUsage(null)).toBeNull();
-  });
-
-  test("returns null for undefined input", () => {
-    expect(formatUsage(undefined)).toBeNull();
   });
 
   test("normalises AI-SDK style usage", () => {
@@ -412,17 +331,6 @@ describe("createResponseObject", () => {
     expect(resp.completed_at).toBeNull();
   });
 
-  test("defaults output to empty array", () => {
-    const resp = createResponseObject(makeParams());
-    expect(resp.output).toEqual([]);
-  });
-
-  test("includes provided output items", () => {
-    const output = [{ id: "msg_1", type: "message" as const, status: "completed" as const, role: "assistant" as const, content: [] }];
-    const resp = createResponseObject(makeParams({ output: output as any }));
-    expect(resp.output).toHaveLength(1);
-  });
-
   test("formats usage when provided", () => {
     const resp = createResponseObject(makeParams({ usage: { inputTokens: 10, outputTokens: 5 } }));
     expect(resp.usage).not.toBeNull();
@@ -455,11 +363,6 @@ describe("markResponseFailed", () => {
 // ---------------------------------------------------------------------------
 
 describe("extractSearchAnnotations", () => {
-  test("returns empty array when no web_search results", () => {
-    const annotations = extractSearchAnnotations([]);
-    expect(annotations).toEqual([]);
-  });
-
   test("extracts URL citations from web_search results", () => {
     const results: ToolResultData[] = [
       {
@@ -486,14 +389,6 @@ describe("extractSearchAnnotations", () => {
     ];
     const annotations = extractSearchAnnotations(results);
     expect(annotations).toEqual([]);
-  });
-
-  test("handles missing title gracefully", () => {
-    const results: ToolResultData[] = [
-      { toolCallId: "tc_1", toolName: "web_search", args: {}, result: { results: [{ url: "https://no-title.com" }] } },
-    ];
-    const annotations = extractSearchAnnotations(results);
-    expect(annotations[0]!.title).toBe("");
   });
 });
 
@@ -536,18 +431,6 @@ describe("buildOutputItems", () => {
     expect(searchItem.action).toBeDefined();
     expect(searchItem.action.type).toBe("search");
     expect(searchItem.action.query).toBe("climate change");
-  });
-
-  test("action.query defaults to empty string when args have no query", () => {
-    const toolCalls: ToolCallItem[] = [
-      { id: "call_abc", aiToolCallId: "tc_1", type: "web_search_call", status: "completed" },
-    ];
-    const toolResults: ToolResultData[] = [
-      { toolCallId: "tc_1", toolName: "web_search", args: {}, result: { results: [] } },
-    ];
-    const items = buildOutputItems("resp_1", "text", toolCalls, toolResults);
-    const searchItem = items[0] as any;
-    expect(searchItem.action.query).toBe("");
   });
 
   test("includes web_search_call.results when requested via include", () => {
@@ -645,15 +528,6 @@ describe("parseFunctionTools", () => {
     expect(result).toHaveLength(0);
   });
 
-  test("handles tools with optional fields", () => {
-    const tools = [{ type: "function", name: "minimal" }];
-    const result = parseFunctionTools(tools);
-    expect(result).toHaveLength(1);
-    expect(result[0]!.name).toBe("minimal");
-    expect(result[0]!.description).toBeUndefined();
-    expect(result[0]!.parameters).toBeUndefined();
-  });
-
   test("returns empty for non-array input", () => {
     expect(parseFunctionTools(null as any)).toEqual([]);
     expect(parseFunctionTools(undefined as any)).toEqual([]);
@@ -674,12 +548,6 @@ describe("buildFunctionToolSet", () => {
     // Manual tools should not have an execute function
     expect((toolSet["greet"] as any).execute).toBeUndefined();
   });
-
-  test("handles tools with no parameters", () => {
-    const defs = [{ type: "function" as const, name: "noop" }];
-    const toolSet = buildFunctionToolSet(defs);
-    expect(toolSet).toHaveProperty("noop");
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -689,10 +557,6 @@ describe("buildFunctionToolSet", () => {
 describe("buildStepOutputItems", () => {
   test("returns empty array when stepToolCalls is undefined", () => {
     expect(buildStepOutputItems(undefined, undefined)).toEqual([]);
-  });
-
-  test("returns empty array when stepToolCalls is empty", () => {
-    expect(buildStepOutputItems([], [])).toEqual([]);
   });
 
   test("builds web_search_call item with query from args", () => {

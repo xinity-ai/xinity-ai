@@ -9,7 +9,7 @@
   import { browserLogger } from "$lib/browserLogging";
   import CustomCodeConsent from "./CustomCodeConsent.svelte";
   import type { DeploymentDefinition } from "./+page.server";
-  import { settingsEqual, type DeploymentSettings } from "common-db/deployment-settings";
+  import { settingsEqual, type DeploymentSettings } from "common-env/deployment-settings";
   import { DeploymentSettingsDto } from "$lib/orpc/dtos/model.dto";
 
   import { Button } from "$lib/components/ui/button";

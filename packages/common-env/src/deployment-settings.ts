@@ -1,8 +1,12 @@
-export interface DeploymentSettingsV1 {
-  version: 1;
-  maxAudioInputDurationS?: number;
-  maxAudioInputFileSizeMB?: number;
-}
+import { z } from "zod";
+
+export const deploymentSettingsSchema = z.object({
+  version: z.literal(1),
+  maxAudioInputDurationS: z.number().optional(),
+  maxAudioInputFileSizeMB: z.number().optional(),
+});
+
+export type DeploymentSettingsV1 = z.infer<typeof deploymentSettingsSchema>;
 
 export type DeploymentSettings = DeploymentSettingsV1;
 

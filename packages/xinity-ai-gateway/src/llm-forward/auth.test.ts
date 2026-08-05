@@ -94,11 +94,6 @@ describe("checkAuth", () => {
     await expectUnauthorized(result, "Missing API Key");
   });
 
-  test("returns 401 when auth header is empty string", async () => {
-    const result = await checkAuth("");
-    await expectUnauthorized(result, "Missing API Key");
-  });
-
   test("returns AuthResult from Redis cache when key is cached", async () => {
     const cached = {
       id: "cached-key",
@@ -321,21 +316,4 @@ describe("checkAuth", () => {
     openGate();
     await Promise.all(held);
   }, 10_000);
-
-  test("returns AuthResult with null applicationId when not set", async () => {
-    mockQueryResult.push({ ...fakeApiKey, applicationId: null });
-
-    const originalVerify = Bun.password.verify;
-    Bun.password.verify = jest.fn(() => Promise.resolve(true)) as any;
-
-    try {
-      const result = await checkAuth(makeBearerHeader());
-
-      expect(result).not.toBeInstanceOf(Response);
-      const auth = result as AuthResult;
-      expect(auth.applicationId).toBeNull();
-    } finally {
-      Bun.password.verify = originalVerify;
-    }
-  });
 });

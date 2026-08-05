@@ -92,9 +92,9 @@ fi
 mkdir -p secrets && chmod 700 secrets
 [ -f secrets/better_auth_secret ] || printf '%s' "$(gen_base64)" > secrets/better_auth_secret
 [ -f secrets/metrics_password ] || printf '%s' "$(gen_url_safe)" > secrets/metrics_password
-# Apps need the full user:pass; Prometheus's password_file needs the password only.
+[ -f secrets/tether_secret ] || printf '%s' "$(gen_url_safe)" > secrets/tether_secret
 printf 'metrics:%s' "$(cat secrets/metrics_password)" > secrets/metrics_auth
-chmod 600 secrets/better_auth_secret secrets/metrics_password secrets/metrics_auth
+chmod 600 secrets/better_auth_secret secrets/metrics_password secrets/metrics_auth secrets/tether_secret
 
 # The connection URL carries the DB credentials, so the apps receive it as a
 # secret too. Derived from .env, rewritten each run to stay in sync.

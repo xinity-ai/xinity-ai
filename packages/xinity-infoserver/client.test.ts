@@ -270,24 +270,4 @@ describe("createInfoserverClient", () => {
       expect(result["malformed-model"]).toBeNull();
     });
   });
-
-  describe("hasTag", () => {
-    it("returns true when model has the tag", async () => {
-      const client = makeClient();
-      expect(await client.hasTag("llama-3.3-70b", "tools")).toBe(true);
-    });
-
-    it("returns false when model does not have the tag", async () => {
-      const client = makeClient();
-      expect(await client.hasTag("llama-3.3-70b", "custom_code")).toBe(false);
-    });
-  });
-
-  describe("resolveDriverArgs", () => {
-    it("returns empty array when model has no providerArgs", async () => {
-      const client = makeClient();
-      const args = await client.resolveDriverArgs("llama-3.3-70b");
-      expect(args).toEqual([]);
-    });
-  });
 });

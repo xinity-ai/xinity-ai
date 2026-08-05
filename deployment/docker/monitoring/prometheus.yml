@@ -21,6 +21,15 @@ scrape_configs:
       username: metrics
       password_file: /run/secrets/metrics_password
 
+  - job_name: xinity-tether
+    static_configs:
+      - targets:
+          - tether:4020
+    metrics_path: /metrics
+    basic_auth:
+      username: metrics
+      password_file: /run/secrets/metrics_password
+
   # Daemon targets are discovered dynamically from the dashboard's node registry,
   # so this stays current as the node set changes, no per-node edits or reloads.
   - job_name: xinity-daemon

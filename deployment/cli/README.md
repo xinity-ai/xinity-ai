@@ -32,8 +32,8 @@ curl -fsSL https://github.com/xinity-ai/xinity-ai/releases/latest/download/insta
 
 A Xinity deployment spans two kinds of machines:
 
-- **Control plane**: runs the gateway, dashboard, and database. Handles API requests and the admin UI.
-- **Inference node**: runs the daemon with Ollama and/or vLLM available. Has GPU capacity and installs/serves models.
+- **Control plane**: runs the gateway, dashboard, tether, and database. Handles API requests, the admin UI, and daemon coordination.
+- **Inference node**: runs the daemon with Ollama and/or vLLM available. Has GPU capacity and installs/serves models. Connects to the tether via SSE.
 
 The daemon is always deployed separately on each inference node, regardless of how the control plane is deployed.
 
@@ -90,7 +90,7 @@ Run this on each machine with GPU capacity:
 xinity up daemon
 ```
 
-The daemon connects to the shared database and receives deployment instructions through it. It needs Ollama or vLLM available on the same machine to actually serve models: `xinity up infra-ollama` installs Ollama and writes the daemon env, or point the daemon at an existing vLLM install with `VLLM_PATH`/`VLLM_DOCKER_IMAGE`.
+The daemon connects to the tether via SSE and receives deployment instructions through it. It needs Ollama or vLLM available on the same machine to actually serve models: `xinity up infra-ollama` installs Ollama and writes the daemon env, or point the daemon at an existing vLLM install with `VLLM_PATH`/`VLLM_DOCKER_IMAGE`.
 
 ## Infrastructure Utilities
 

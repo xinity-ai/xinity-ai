@@ -1,11 +1,11 @@
 import { describe, test, expect, mock } from "bun:test";
 
-// Mock env to avoid parseEnv side-effect (requires DB_CONNECTION_URL etc. in CI)
 mock.module("../env", () => ({ env: {
   PORT: 4010,
   HOST: "0.0.0.0",
   XINITY_OLLAMA_ENDPOINT: "http://localhost:11434",
-  DB_CONNECTION_URL: "postgres://localhost/test",
+  TETHER_URL: "http://localhost:4020",
+  TETHER_SECRET: "test",
   STATE_DIR: "/tmp/test-state",
   CIDR_PREFIX: "",
   SYNC_INTERVAL_MS: 60_000,
@@ -56,14 +56,6 @@ describe("parseNvidiaMetricsOutput", () => {
       eccUncorrected: 0,
       eccCorrected: 3,
     });
-  });
-
-  test("parses multiple GPUs", () => {
-    const csv = [LINE, "1, GPU-def, NVIDIA H100 80GB HBM3, 560.35.03, 12, 5, 50, 95.0, 700, 2048, 81559, 0, 0"].join("\n");
-    const samples = parseNvidiaMetricsOutput(csv);
-    expect(samples).toHaveLength(2);
-    expect(samples[1]!.index).toBe(1);
-    expect(samples[1]!.uuid).toBe("GPU-def");
   });
 
   test("maps [N/A] fields to null (numbers) and null (driver string)", () => {

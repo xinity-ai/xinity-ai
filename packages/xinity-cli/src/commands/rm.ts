@@ -6,7 +6,7 @@ import type { Component } from "../lib/component-meta.ts";
 import { logErrors } from "../lib/output.ts";
 import { connectHost, TARGET_HOST_OPTION } from "../lib/remote-host.ts";
 
-const COMPONENTS = ["gateway", "dashboard", "daemon", "infoserver", "all"] as const;
+const COMPONENTS = ["gateway", "dashboard", "daemon", "infoserver", "tether", "all"] as const;
 
 function buildRemovalConfirmMessage(component: string, purge: boolean, target: string): string {
   if (component === "all") {

@@ -3,7 +3,7 @@ import { env } from "../../env";
 // @ts-expect-error Bun text import
 import templateUnit from "../../assets/vllm-driver@.service" with { type: "text" };
 import { rootLogger } from "../../logger";
-import { resolveMaxAudioInputDurationS, resolveMaxAudioInputFileSizeMB, type DeploymentSettings } from "common-db/deployment-settings";
+import { resolveMaxAudioInputDurationS, resolveMaxAudioInputFileSizeMB, type DeploymentSettings } from "common-env";
 
 const log = rootLogger.child({ name: "vllm-ops" });
 

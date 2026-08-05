@@ -199,6 +199,7 @@
         self.nixosModules.dashboard
         self.nixosModules.infoserver
         self.nixosModules.searxng
+        self.nixosModules.tether
         self.nixosModules.seaweedfs
         self.nixosModules.monitoring
         self.nixosModules.caddy
@@ -321,6 +322,14 @@
           };
         };
 
+        tether = {
+          port = lib.mkOption {
+            type = lib.types.port;
+            default = 4020;
+            description = "Port for the tether service.";
+          };
+        };
+
         redis = {
           port = lib.mkOption {
             type = lib.types.port;
@@ -435,6 +444,11 @@
             type = lib.types.nullOr lib.types.str;
             default = null;
             description = "Path to file containing SMTP mail URL. Applied to dashboard.";
+          };
+          tetherSecretFile = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = "Path to file containing the tether shared secret. Applied to tether and daemon.";
           };
           metricsAuthFile = lib.mkOption {
             type = lib.types.nullOr lib.types.str;
@@ -582,6 +596,16 @@
             environmentFiles = lib.mkDefault envFiles;
           };
 
+          # --- Tether ---
+          services.xinity-tether = {
+            enable = true;
+            port = lib.mkDefault cfg.tether.port;
+            dbConnectionUrlFile = lib.mkDefault cfg.secrets.dbConnectionUrlFile;
+            tetherSecretFile = lib.mkDefault cfg.secrets.tetherSecretFile;
+            metricsAuthFile = lib.mkDefault cfg.secrets.metricsAuthFile;
+            environmentFiles = lib.mkDefault envFiles;
+          };
+
           # --- SearXNG ---
           services.xinity-ai-searxng = lib.mkIf cfg.searxng.enable {
             enable = true;
@@ -601,6 +625,7 @@
             port = lib.mkDefault cfg.monitoring.port;
             gatewayTarget = lib.mkDefault "localhost:${toString cfg.gateway.port}";
             dashboardTarget = lib.mkDefault "localhost:${toString cfg.dashboard.port}";
+            tetherTarget = lib.mkDefault "localhost:${toString cfg.tether.port}";
             basicAuthUsername = lib.mkDefault cfg.monitoring.basicAuthUsername;
             basicAuthPasswordFile = lib.mkDefault cfg.monitoring.basicAuthPasswordFile;
             basicAuthPassword = lib.mkDefault cfg.monitoring.basicAuthPassword;

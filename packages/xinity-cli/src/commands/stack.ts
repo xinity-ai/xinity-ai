@@ -29,7 +29,7 @@ import { fetchRelease, listReleases, type ReleaseListEntry } from "../lib/github
 import { loadStackState, findOrphanHosts } from "../lib/stack-state.ts";
 import { connectHosts, disposeAll, mapBounded, HOST_CONCURRENCY } from "../lib/multi-host.ts";
 
-const AVAILABLE_COMPONENTS: Component[] = ["gateway", "dashboard", "daemon", "infoserver"];
+const AVAILABLE_COMPONENTS: Component[] = ["gateway", "dashboard", "daemon", "infoserver", "tether"];
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -90,6 +90,7 @@ async function resolveLatestTag(): Promise<string | null> {
 
 function printStackSummary(stack: StackDefinition): void {
   log.step(bold(`Stack: ${stack.name}`));
+  log.info(`Version: ${cyan(versionLabel(stack.pinnedVersion))}`);
 
   const envKeys = Object.keys(stack.env);
   const secretKeys = Object.keys(stack.secrets);
@@ -228,7 +229,7 @@ async function handleEdit(name: string, fleetName?: string): Promise<void> {
         options: [
           { value: "shared", label: `Shared settings (${Object.keys(stack.env).length + Object.keys(stack.secrets).length} set)` },
           { value: "component", label: "Component settings (stack-wide per type)" },
-          { value: "version", label: `Release version (${stack.pinnedVersion})` },
+          { value: "version", label: `Version (${versionLabel(stack.pinnedVersion)})` },
           { value: "hosts", label: `Hosts (${stack.hosts.length})` },
           { value: "fleets", label: `Fleets (${stack.fleets.length})` },
           { value: "save", label: green("Save & exit") },
@@ -266,11 +267,35 @@ function promptManualVersion(stack: StackDefinition): Promise<string | undefined
   }));
 }
 
+async function promptLocalRepoPath(stack: StackDefinition): Promise<string | undefined> {
+  const existing = stack.pinnedVersion.startsWith("local:") ? stack.pinnedVersion.slice(6) : undefined;
+  const path = await promptOrUndefined(text({
+    message: "Absolute path to the xinity-ai repository",
+    defaultValue: existing,
+    placeholder: "/home/user/xinity-ai",
+    validate(value) {
+      if (!value || !value.startsWith("/")) {
+        return "Path must be absolute";
+      }
+    },
+  }));
+  if (!path) {
+    return undefined;
+  }
+  return `local:${path}`;
+}
+
+function versionLabel(pinnedVersion: string): string {
+  if (pinnedVersion.startsWith("local:")) {
+    return `Local build (${pinnedVersion.slice(6)})`;
+  }
+  return pinnedVersion;
+}
+
 async function editPinnedVersion(stack: StackDefinition, releasesPromise: Promise<ReleaseListEntry[]>): Promise<void> {
   const releases = await releasesPromise;
   let version: string | undefined;
   if (releases.length === 0) {
-    // Registry unreachable (or no releases yet): manual entry is all we have.
     version = await promptManualVersion(stack);
   } else {
     const latestStable = releases.find((r) => !r.prerelease)?.tagName;
@@ -279,14 +304,14 @@ async function editPinnedVersion(stack: StackDefinition, releasesPromise: Promis
       prerelease ? yellow("(prerelease)") : "",
       tag === stack.pinnedVersion ? green("(pinned)") : "",
     ].filter(Boolean);
-    // The manual-entry option is an object so it can never collide with a tag.
-    const options: SearchListOption<string | { manual: true }>[] = releases.map((r) => ({
+    const options: SearchListOption<string | { manual: true } | { local: true }>[] = releases.map((r) => ({
       value: r.tagName,
       label: [r.tagName, ...markers(r.tagName, r.prerelease)].join(" "),
     }));
-    if (!releases.some((r) => r.tagName === stack.pinnedVersion)) {
+    if (!releases.some((r) => r.tagName === stack.pinnedVersion) && !stack.pinnedVersion.startsWith("local:")) {
       options.push({ value: stack.pinnedVersion, label: `${stack.pinnedVersion} ${green("(pinned)")}` });
     }
+    options.push({ value: { local: true }, label: dim("Build from local repository") });
     options.push({ value: { manual: true }, label: dim("Enter a version manually") });
 
     const choice = await promptOrUndefined(searchSelect({
@@ -297,11 +322,17 @@ async function editPinnedVersion(stack: StackDefinition, releasesPromise: Promis
     if (choice === undefined) {
       return;
     }
-    version = typeof choice === "string" ? choice : await promptManualVersion(stack);
+    if (typeof choice === "string") {
+      version = choice;
+    } else if ("local" in choice) {
+      version = await promptLocalRepoPath(stack);
+    } else {
+      version = await promptManualVersion(stack);
+    }
   }
   if (version && version !== stack.pinnedVersion) {
     stack.pinnedVersion = version;
-    log.success(`Pinned version set to ${cyan(version)}`);
+    log.success(`Pinned version set to ${cyan(versionLabel(version))}`);
   }
 }
 
@@ -609,7 +640,9 @@ async function handleUp(name: string, versionFlag: string | undefined, dryRun: b
   // The stack is held at its pinned version; updates only on express intent
   // (the --target-version flag, or re-pinning in stack edit).
   let targetVersion: string;
-  if (versionFlag) {
+  if (versionFlag && versionFlag.startsWith("local:")) {
+    targetVersion = versionFlag;
+  } else if (versionFlag) {
     try {
       targetVersion = (await fetchRelease(versionFlag)).tagName;
     } catch (err) {
@@ -624,7 +657,10 @@ async function handleUp(name: string, versionFlag: string | undefined, dryRun: b
   } else {
     targetVersion = stack.pinnedVersion;
   }
-  log.info(`Stack version: ${cyan(targetVersion)}`);
+  const versionLabel = targetVersion.startsWith("local:")
+    ? `local build (${targetVersion.slice(6)})`
+    : targetVersion;
+  log.info(`Stack version: ${cyan(versionLabel)}`);
 
   const ok = await runStackFlow(stack, { targetVersion, dryRun });
   outro(ok ? "Done" : "Failed");

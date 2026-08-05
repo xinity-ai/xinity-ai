@@ -5,7 +5,7 @@ import { $ } from "bun";
 import { binaryBaseName, type Component } from "./component-meta.ts";
 import type { StepEvent } from "./step-event.ts";
 
-const BUILDABLE_COMPONENTS = ["daemon", "gateway", "dashboard", "infoserver"] as const;
+const BUILDABLE_COMPONENTS = ["daemon", "gateway", "dashboard", "infoserver", "tether"] as const;
 type BuildableComponent = (typeof BUILDABLE_COMPONENTS)[number];
 
 function isBuildable(component: Component): component is BuildableComponent {
@@ -17,12 +17,14 @@ const PACKAGE_DIRS: Record<BuildableComponent, string> = {
   gateway: "packages/xinity-ai-gateway",
   dashboard: "packages/xinity-ai-dashboard",
   infoserver: "packages/xinity-infoserver",
+  tether: "packages/xinity-tether",
 };
 
 const BUN_BUILD_ENTRYPOINTS: Record<Exclude<BuildableComponent, "dashboard">, string> = {
   daemon: "./src/index.ts",
   gateway: "./src/gatewayServer.ts",
   infoserver: "./server.ts",
+  tether: "./src/index.ts",
 };
 
 function buildCommand(component: BuildableComponent, arch: "x64" | "arm64"): string[] {

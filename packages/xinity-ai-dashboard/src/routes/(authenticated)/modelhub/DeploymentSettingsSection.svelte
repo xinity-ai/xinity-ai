@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ModelWithSpecifier } from "xinity-infoserver";
-  import type { DeploymentSettings } from "common-db/deployment-settings";
+  import type { DeploymentSettings } from "common-env/deployment-settings";
   import { DeploymentSettingsDto } from "$lib/orpc/dtos/model.dto";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
