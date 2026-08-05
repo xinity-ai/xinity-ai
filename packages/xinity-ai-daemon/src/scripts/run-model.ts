@@ -184,7 +184,7 @@ function buildConfig(resolved: ResolvedVllmModel, profile: HardwareProfile): Vll
     kvCacheBytes: `${resolved.kvCacheGb}g`,
     trustRemoteCode: resolved.trustRemoteCode,
     gpuMemoryUtilization,
-    extraArgs: buildVllmExtraArgs(resolved.modelType, resolved.hasToolsTag, resolved.providerArgs),
+    extraArgs: buildVllmExtraArgs(resolved.modelType, resolved.hasToolsTag, resolved.args),
   };
 }
 

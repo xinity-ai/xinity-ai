@@ -58,23 +58,24 @@ mock.module("../../logger", () => ({
   },
 }));
 
-// Mock the infoserver client
-const mockHasTag = mock<(specifier: string, tag: string) => Promise<boolean>>(
-  () => Promise.resolve(false),
-);
-const mockResolveDriverArgs = mock<(specifier: string) => Promise<string[]>>(
-  () => Promise.resolve([]),
-);
-const mockFetchModel = mock<(specifier: string) => Promise<{ type?: string; providers: { vllm?: string; ollama?: string } } | undefined>>(
-  (specifier) => Promise.resolve({ type: "chat", providers: { vllm: specifier } }),
+type MockEntry = {
+  engineSpecifier: string;
+  type: string | undefined;
+  tags: string[];
+  args: string[];
+  downloadFilter: string[];
+};
+
+function catalogEntry(engineSpecifier: string, overrides: Partial<MockEntry> = {}): MockEntry {
+  return { engineSpecifier, type: "chat", tags: [], args: [], downloadFilter: [], ...overrides };
+}
+
+const mockResolveEntry = mock<(specifier: string, engine: string) => Promise<MockEntry | undefined>>(
+  (specifier) => Promise.resolve(catalogEntry(specifier)),
 );
 
-mock.module("xinity-infoserver", () => ({
-  createInfoserverClient: () => ({
-    hasTag: mockHasTag,
-    resolveDriverArgs: mockResolveDriverArgs,
-    fetchModel: mockFetchModel,
-  }),
+mock.module("./catalog", () => ({
+  resolveInstallationEntry: mockResolveEntry,
 }));
 
 // Mock the statekeeper hardware profile
@@ -142,9 +143,7 @@ describe("syncVllmInstallations$", () => {
     mockSelect.mockClear();
     mockSelectFrom.mockClear();
     mockSelectWhere.mockImplementation(() => Promise.resolve([]));
-    mockHasTag.mockImplementation(() => Promise.resolve(false));
-    mockResolveDriverArgs.mockImplementation(() => Promise.resolve([]));
-    mockFetchModel.mockImplementation((specifier) => Promise.resolve({ type: "chat", providers: { vllm: specifier } }));
+    mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier)));
   });
 
   test("completes with no changes when desired matches running", async () => {
@@ -199,9 +198,7 @@ describe("syncVllmInstallations$", () => {
   test("passes trustRemoteCode when model has custom_code tag", async () => {
     const id = crypto.randomUUID();
     const inst = makeInstallation("custom-model", id, 9091);
-    mockHasTag.mockImplementation((_model, tag) =>
-      Promise.resolve(tag === "custom_code"),
-    );
+    mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { tags: ["custom_code"] })));
     const ops = createMockOps({
       listRunning: mock(() => Promise.resolve([])),
       checkHealth: mock(() => Promise.resolve(true)),
@@ -217,9 +214,7 @@ describe("syncVllmInstallations$", () => {
   test("adds --enable-auto-tool-choice when model has tools tag", async () => {
     const id = crypto.randomUUID();
     const inst = makeInstallation("tool-model", id, 9092);
-    mockHasTag.mockImplementation((_model, tag) =>
-      Promise.resolve(tag === "tools"),
-    );
+    mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { tags: ["tools"] })));
     const ops = createMockOps({
       listRunning: mock(() => Promise.resolve([])),
       checkHealth: mock(() => Promise.resolve(true)),
@@ -433,7 +428,7 @@ describe("syncVllmInstallations$", () => {
   test("adds --runner pooling for embedding models", async () => {
     const id = crypto.randomUUID();
     const inst = makeInstallation("embed-model", id, 9102);
-    mockFetchModel.mockImplementation((specifier) => Promise.resolve({ type: "embedding", providers: { vllm: specifier } }));
+    mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { type: "embedding" })));
     const ops = createMockOps({
       listRunning: mock(() => Promise.resolve([])),
       checkHealth: mock(() => Promise.resolve(true)),
@@ -450,7 +445,7 @@ describe("syncVllmInstallations$", () => {
   test("adds --runner pooling for rerank models", async () => {
     const id = crypto.randomUUID();
     const inst = makeInstallation("rerank-model", id, 9103);
-    mockFetchModel.mockImplementation((specifier) => Promise.resolve({ type: "rerank", providers: { vllm: specifier } }));
+    mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { type: "rerank" })));
     const ops = createMockOps({
       listRunning: mock(() => Promise.resolve([])),
       checkHealth: mock(() => Promise.resolve(true)),
@@ -467,7 +462,7 @@ describe("syncVllmInstallations$", () => {
   test("does not add --runner pooling for chat models", async () => {
     const id = crypto.randomUUID();
     const inst = makeInstallation("chat-model", id, 9104);
-    mockFetchModel.mockImplementation((specifier) => Promise.resolve({ type: "chat", providers: { vllm: specifier } }));
+    mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier)));
     const ops = createMockOps({
       listRunning: mock(() => Promise.resolve([])),
       checkHealth: mock(() => Promise.resolve(true)),
@@ -485,7 +480,7 @@ describe("syncVllmInstallations$", () => {
     try {
       const id = crypto.randomUUID();
       const inst = makeInstallation("whisper-model", id, 9106);
-      mockFetchModel.mockImplementation((specifier) => Promise.resolve({ type: "transcription", providers: { vllm: specifier } }));
+      mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { type: "transcription" })));
       const ops = createMockOps({
         listRunning: mock(() => Promise.resolve([])),
         checkHealth: mock(() => Promise.resolve(true)),
@@ -506,7 +501,7 @@ describe("syncVllmInstallations$", () => {
     const id = crypto.randomUUID();
     const settings = { version: 1 as const, maxAudioInputDurationS: 1200, maxAudioInputFileSizeMB: 50 };
     const inst = { ...makeInstallation("whisper-model", id, 9107), settings };
-    mockFetchModel.mockImplementation((specifier) => Promise.resolve({ type: "transcription", providers: { vllm: specifier } }));
+    mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { type: "transcription" })));
     const ops = createMockOps({
       listRunning: mock(() => Promise.resolve([])),
       checkHealth: mock(() => Promise.resolve(true)),
@@ -522,7 +517,7 @@ describe("syncVllmInstallations$", () => {
   test("passes bare settings when installation has no audio overrides", async () => {
     const id = crypto.randomUUID();
     const inst = makeInstallation("whisper-model", id, 9108);
-    mockFetchModel.mockImplementation((specifier) => Promise.resolve({ type: "transcription", providers: { vllm: specifier } }));
+    mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { type: "transcription" })));
     const ops = createMockOps({
       listRunning: mock(() => Promise.resolve([])),
       checkHealth: mock(() => Promise.resolve(true)),
@@ -535,10 +530,10 @@ describe("syncVllmInstallations$", () => {
     expect(startCall[1].settings).toEqual({ version: 1 });
   });
 
-  test("uses providers.vllm from the catalog rather than the specifier itself", async () => {
+  test("uses the engine specifier from the catalog rather than the specifier itself", async () => {
     const id = crypto.randomUUID();
     const inst = makeInstallation("canonical-x", id, 9105);
-    mockFetchModel.mockImplementation(() => Promise.resolve({ type: "chat", providers: { vllm: "real-vllm-name" } }));
+    mockResolveEntry.mockImplementation(() => Promise.resolve(catalogEntry("real-vllm-name")));
     const ops = createMockOps({
       listRunning: mock(() => Promise.resolve([])),
       checkHealth: mock(() => Promise.resolve(true)),
@@ -551,10 +546,10 @@ describe("syncVllmInstallations$", () => {
     expect(startCall[1].model).toBe("real-vllm-name");
   });
 
-  test("aborts the installation when the catalog has no vllm provider for the chosen driver", async () => {
+  test("aborts the installation when no catalog resolves the specifier for vllm", async () => {
     const id = crypto.randomUUID();
     const inst = makeInstallation("ollama-only-model", id, 9106);
-    mockFetchModel.mockImplementation(() => Promise.resolve({ type: "chat", providers: { ollama: "ollama-only-model" } }));
+    mockResolveEntry.mockImplementation(() => Promise.resolve(undefined));
     const ops = createMockOps({
       listRunning: mock(() => Promise.resolve([])),
       checkHealth: mock(() => Promise.resolve(true)),

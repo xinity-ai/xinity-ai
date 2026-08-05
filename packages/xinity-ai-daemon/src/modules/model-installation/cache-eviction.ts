@@ -1,21 +1,13 @@
 import { promises as fsp, readdirSync, rmSync, statSync, type Dirent } from "node:fs";
 import * as path from "node:path";
 import { modelInstallationT, sql } from "common-db";
-import { createInfoserverClient } from "xinity-infoserver";
 import { env } from "../../env";
 import { rootLogger } from "../../logger";
+import { resolveInstallationEntry } from "./catalog";
 
 const log = rootLogger.child({ name: "cache-eviction" });
 
 const SAFETY_MARGIN_BYTES = 1 * 1024 ** 3;
-
-let _infoClient: ReturnType<typeof createInfoserverClient> | null = null;
-function getInfoClient(): ReturnType<typeof createInfoserverClient> {
-  if (!_infoClient) {
-    _infoClient = createInfoserverClient({ baseUrl: env.INFOSERVER_URL, cacheTtlMs: env.INFOSERVER_CACHE_TTL_MS });
-  }
-  return _infoClient;
-}
 
 export interface CacheEntry {
   slug: string;
@@ -170,10 +162,9 @@ export async function ensureCacheSpace(input: {
   // their cache directories will be treated as orphaned and ranked by mtime.
   const cacheRecords: InstallationCacheRecord[] = [];
   for (const i of installations) {
-    const model = await getInfoClient().fetchModel(i.specifier);
-    const providerModel = model?.providers.vllm;
-    if (!providerModel) continue;
-    cacheRecords.push({ providerModel, deletedAt: i.deletedAt });
+    const entry = await resolveInstallationEntry(i.specifier, "vllm");
+    if (!entry) continue;
+    cacheRecords.push({ providerModel: entry.engineSpecifier, deletedAt: i.deletedAt });
   }
 
   const plan = planEviction({
