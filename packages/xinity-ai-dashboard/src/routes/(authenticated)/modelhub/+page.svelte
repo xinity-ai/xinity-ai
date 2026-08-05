@@ -27,7 +27,6 @@
 
   let { data }: { data: PageData } = $props();
   const maxNodeFreeCapacity = $derived(data.maxNodeFreeCapacity);
-  const availableDrivers = $derived(data.availableDrivers);
   const nodeFreeCapacities = $derived(data.nodeFreeCapacities);
   const nodeCapabilities = $derived(data.nodeCapabilities);
 
@@ -35,7 +34,6 @@
   // When set, these take precedence over the load-function values.
   let capacityOverride = $state<ClusterCapacity | null>(null);
   const activeMaxCapacity = $derived(capacityOverride?.maxNodeFreeCapacity ?? maxNodeFreeCapacity);
-  const activeDrivers = $derived(capacityOverride?.availableDrivers ?? availableDrivers);
   const activeNodeCapacities = $derived(capacityOverride?.nodeFreeCapacities ?? nodeFreeCapacities);
   const activeNodeCapabilities = $derived(capacityOverride?.nodeCapabilities ?? nodeCapabilities);
 
@@ -487,6 +485,15 @@
               <div>
                 <p class="text-sm text-muted-foreground">Model</p>
                 <p class="font-medium">{deployment.publicSpecifier}</p>
+                {#if deployment.deprecatedModel}
+                  <p class="text-xs text-amber-700 dark:text-amber-400 mt-1 flex items-start gap-1.5">
+                    <Info class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span>
+                      Uses a model entry in a format that is being retired. It keeps running for now.
+                      Edit this deployment and pick a current entry to move it over.
+                    </span>
+                  </p>
+                {/if}
               </div>
 
               <div>
@@ -594,7 +601,6 @@
 <DeploymentModal
   open={showCreateDeploymentModal}
   maxNodeFreeCapacity={activeMaxCapacity}
-  availableDrivers={activeDrivers}
   nodeFreeCapacities={activeNodeCapacities}
   nodeCapabilities={activeNodeCapabilities}
   close={() => (showCreateDeploymentModal = false)}
@@ -606,7 +612,6 @@
     open={true}
     deployment={editDeployment}
     maxNodeFreeCapacity={activeMaxCapacity}
-    availableDrivers={activeDrivers}
     nodeFreeCapacities={activeNodeCapacities}
     nodeCapabilities={activeNodeCapabilities}
     close={() => (editDeploymentModalId = null)}

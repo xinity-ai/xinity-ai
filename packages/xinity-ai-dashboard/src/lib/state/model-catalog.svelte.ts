@@ -1,10 +1,10 @@
 import { browser } from "$app/environment";
-import type { ModelWithSpecifier } from "xinity-infoserver";
+import type { ModelV2WithSpecifier } from "xinity-infoserver";
 import { orpc } from "$lib/orpc/orpc-client";
 
 const PAGE_SIZE = 50;
 
-let models = $state<ModelWithSpecifier[]>([]);
+let models = $state<ModelV2WithSpecifier[]>([]);
 let currentPage = $state(1);
 let totalCount = $state(0);
 let initialLoaded = $state(false);

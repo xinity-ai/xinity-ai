@@ -1,7 +1,7 @@
 <script lang="ts">
   import Modal from "$lib/components/Modal.svelte";
-  import type { ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
-  import { resolveAllTags, resolveTagsForDriver, driverHasTag, isDeployableOnCluster } from "xinity-infoserver";
+  import type { ModelV2WithSpecifier, NodeCapability } from "xinity-infoserver";
+  import { isDeployableOnClusterV2 } from "xinity-infoserver";
   import { modelCatalog } from "$lib/state/model-catalog.svelte";
   import { formatGb } from "$lib/util";
 
@@ -38,7 +38,7 @@
     nodeCapabilities = [],
   }: {
     open: boolean;
-    onSelect: (model: ModelWithSpecifier) => void;
+    onSelect: (model: ModelV2WithSpecifier) => void;
     onClose: () => void;
     maxNodeFreeCapacity?: number;
     nodeCapabilities?: NodeCapability[];
@@ -82,13 +82,12 @@
   const totalFreeCapacity = $derived(nodeCapabilities.reduce((sum, n) => sum + n.free, 0));
 
   const allTags = $derived(
-    Array.from(new Set(modelCatalog.models.flatMap((m) => resolveAllTags(m)))).sort(),
+    Array.from(new Set(modelCatalog.models.flatMap((m) => m.tags))).sort(),
   );
 
   // Insertion order preserved; no re-sort prevents layout shifts when new pages arrive
   const filteredModels = $derived(
     modelCatalog.models.filter((m) => {
-      const tags = resolveAllTags(m);
       const searchLower = searchTerm.toLowerCase();
       const matchesSearch =
         !searchLower ||
@@ -101,7 +100,7 @@
 
       const matchesTags =
         selectedTags.size === 0 ||
-        Array.from(selectedTags).every((t) => tags.includes(t));
+        Array.from(selectedTags).every((t) => m.tags.includes(t as typeof m.tags[number]));
 
       return matchesSearch && matchesType && matchesTags;
     }),
@@ -115,7 +114,7 @@
         acc[family].push(model);
         return acc;
       },
-      {} as Record<string, ModelWithSpecifier[]>,
+      {} as Record<string, ModelV2WithSpecifier[]>,
     ),
   );
 
@@ -130,21 +129,20 @@
     }
   }
 
-  function isUndeployable(model: ModelWithSpecifier): boolean {
+  function isUndeployable(model: ModelV2WithSpecifier): boolean {
     if (nodeCapabilities.length === 0) return model.weight + model.minKvCache > maxNodeFreeCapacity;
-    return !isDeployableOnCluster(nodeCapabilities, model);
+    return !isDeployableOnClusterV2(nodeCapabilities, model);
   }
 
   // Only flag as a constraint issue when a node would otherwise have room: pure capacity shortfalls are surfaced elsewhere.
-  function hasConstraintIncompatibility(model: ModelWithSpecifier): boolean {
-    if (!model.providerMinVersions && !model.providerPlatforms) return false;
+  function hasConstraintIncompatibility(model: ModelV2WithSpecifier): boolean {
+    if (!model.minEngineVersion && !model.platforms) return false;
     if (!isUndeployable(model)) return false;
     const needed = model.weight + model.minKvCache;
-    const drivers = Object.keys(model.providers).filter(d => model.providers[d as keyof typeof model.providers] !== undefined);
-    return nodeCapabilities.some(n => n.free >= needed && drivers.some(d => d in n.driverVersions));
+    return nodeCapabilities.some(n => n.free >= needed && model.engine in n.driverVersions);
   }
 
-  function handleSelect(model: ModelWithSpecifier) {
+  function handleSelect(model: ModelV2WithSpecifier) {
     onSelect(model);
     onClose();
   }
@@ -264,9 +262,6 @@
                 {#each groupedModels[family] as model (model.publicSpecifier)}
                   {@const undeployable = isUndeployable(model)}
                   {@const constraintIssue = hasConstraintIncompatibility(model)}
-                  {@const modelTags = resolveAllTags(model)}
-                  {@const modelDrivers = Object.keys(model.providers) as Array<"vllm" | "ollama">}
-                  {@const hasDriverDiffs = model.providerTags !== undefined}
                   <div
                     role="button"
                     tabindex={0}
@@ -319,27 +314,19 @@
                       </div>
                     {/if}
 
-                    {#if model.providers.vllm && driverHasTag(model, "vllm", "custom_code")}
+                    {#if model.tags.includes("custom_code")}
                       <div class="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-400 mb-1">
                         <ShieldAlert class="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                        <span>Requires custom code execution{model.providers.ollama ? " (vLLM)" : ""}. Trust must be granted before deploy.</span>
+                        <span>Requires custom code execution. Trust must be granted before deploy.</span>
                       </div>
                     {/if}
 
                     <div class="flex flex-wrap gap-1.5 mt-auto">
-                      {#each modelTags.slice(0, 4) as tag}
-                        <Badge variant="secondary" class="text-xs">
-                          {tag}
-                          {#if hasDriverDiffs}
-                            {@const driversWithTag = modelDrivers.filter((d) => resolveTagsForDriver(model, d).includes(tag))}
-                            {#if driversWithTag.length < modelDrivers.length}
-                              <span class="ml-1 opacity-60">({driversWithTag.map((d) => d === "vllm" ? "vLLM" : "Ollama").join(", ")})</span>
-                            {/if}
-                          {/if}
-                        </Badge>
+                      {#each model.tags.slice(0, 4) as tag}
+                        <Badge variant="secondary" class="text-xs">{tag}</Badge>
                       {/each}
-                      {#if modelTags.length > 4}
-                        <Badge variant="outline" class="text-xs">+{modelTags.length - 4}</Badge>
+                      {#if model.tags.length > 4}
+                        <Badge variant="outline" class="text-xs">+{model.tags.length - 4}</Badge>
                       {/if}
                     </div>
                   </div>
