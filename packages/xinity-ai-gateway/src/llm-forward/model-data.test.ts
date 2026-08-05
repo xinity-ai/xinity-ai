@@ -36,7 +36,17 @@ type MockModel = {
   providers: { ollama?: string; vllm?: string };
 };
 
+type MockModelV2 = {
+  engineSpecifier: string;
+  engine: "vllm" | "ollama";
+  type?: string;
+  tags?: string[];
+  maxContextLength: number;
+  requestParams?: Record<string, string>;
+};
+
 const mockFetchModel = jest.fn<(specifier: string) => Promise<MockModel | undefined>>();
+const mockLookup = jest.fn<(specifier: string) => Promise<{ status: string; model?: MockModelV2; error?: string }>>();
 
 function resolveTagsForDriver(model: MockModel, driver: "vllm" | "ollama"): string[] {
   return model.providerTags?.[driver] ?? model.tags ?? [];
@@ -47,6 +57,9 @@ function resolveRequestParamsForDriver(model: MockModel, driver: "vllm" | "ollam
 }
 
 mock.module("xinity-infoserver", () => ({
+  createCatalogClient: () => ({
+    lookup: mockLookup,
+  }),
   createInfoserverClient: () => ({
     fetchModel: mockFetchModel,
   }),
@@ -96,6 +109,9 @@ const noop = () => {};
 beforeEach(() => {
   queryQueue.length = 0;
   mockSelectHost.mockReset();
+  mockLookup.mockReset();
+  // The legacy specifiers these tests use are absent from the current catalog.
+  mockLookup.mockResolvedValue({ status: "not_found" });
   mockFetchModel.mockReset();
   mockFetchModel.mockImplementation(async (specifier) => {
     return { type: "chat", tags: ["tools"], providers: { ollama: specifier, vllm: specifier } };
@@ -252,6 +268,31 @@ describe("getModelInfo", () => {
 
     expect(result!.driver).toBe("vllm");
     expect(result!.tags).toEqual(["tools", "vision"]);
+  });
+
+  test("reads metadata off a current-format entry without consulting the legacy catalog", async () => {
+    queryQueue.push([deploymentResult({ specifier: "gemma-4-27b-vllm" })]);
+    queryQueue.push([installationResult({ host: "gpu-node", nodePort: 8000, modelPort: 8000, driver: "vllm" })]);
+    mockSelectHost.mockResolvedValue({ host: "gpu-node:8000", useFinalModel: true, release: noop });
+    mockLookup.mockResolvedValue({
+      status: "found",
+      model: {
+        engine: "vllm",
+        engineSpecifier: "google/gemma-4-27b-it",
+        type: "chat",
+        tags: ["tools"],
+        maxContextLength: 8192,
+        requestParams: { "template.thinking": "boolean" },
+      },
+    });
+
+    const result = await getModelInfo("org-1", "my-model");
+
+    expect(result!.model).toBe("google/gemma-4-27b-it");
+    expect(result!.tags).toEqual(["tools"]);
+    expect(result!.maxContextLength).toBe(8192);
+    expect(result!.requestParams).toEqual({ "template.thinking": "boolean" });
+    expect(mockFetchModel).not.toHaveBeenCalled();
   });
 
   test("skips early model lookup when earlySpecifier is null", async () => {

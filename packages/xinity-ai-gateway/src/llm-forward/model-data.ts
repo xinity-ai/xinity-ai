@@ -1,15 +1,30 @@
 import { calcCanaryProgress, sql, modelDeploymentT, aiNodeT, modelInstallationT, modelInstallationStateT, installationMatchesLookup } from "common-db";
 import { getDB } from "../db";
 import { env } from "../env";
-import { createInfoserverClient, resolveTagsForDriver, resolveRequestParamsForDriver } from "xinity-infoserver";
+import { createCatalogClient, createInfoserverClient, resolveTagsForDriver, resolveRequestParamsForDriver } from "xinity-infoserver";
 import { selectHost as _selectHost, type LoadBalanceStrategy, type HostMeta } from "./load-balancer";
 import { rootLogger } from "../logger";
 
 /** Indirection for testability. tests can swap this without mock.module. */
 export const _deps = { selectHost: _selectHost };
 
+const DEFAULT_MAX_CONTEXT_LENGTH = 131072;
+
+let _catalogClient: ReturnType<typeof createCatalogClient> | undefined;
 let _infoClient: ReturnType<typeof createInfoserverClient> | undefined;
 
+export function getCatalogClient() {
+  if (!_catalogClient) {
+    _catalogClient = createCatalogClient({
+      baseUrl: env.INFOSERVER_URL,
+      cacheTtlMs: env.INFOSERVER_CACHE_TTL_MS,
+      logger: rootLogger.child({ name: "catalog-client" }),
+    });
+  }
+  return _catalogClient;
+}
+
+/** @deprecated Reaches the pre-per-engine catalog. Removed before 1.0.0. */
 export function getInfoClient() {
   if (!_infoClient) {
     _infoClient = createInfoserverClient({
@@ -92,6 +107,45 @@ function buildHostMeta(...sources: ModelSources[]): Map<string, HostMeta> {
   return hostMeta;
 }
 
+type CatalogMeta = {
+  /** Name the engine itself knows the model by. Undefined when the catalog has no entry. */
+  engineSpecifier?: string;
+  type?: string;
+  tags?: string[];
+  maxContextLength: number;
+  requestParams?: Record<string, string>;
+};
+
+async function resolveCatalogMeta(specifier: string, driver: "vllm" | "ollama"): Promise<CatalogMeta> {
+  const result = await getCatalogClient().lookup(specifier);
+  if (result.status === "unavailable") {
+    throw new Error(`Infoserver unavailable for "${specifier}": ${result.error}`);
+  }
+  if (result.status === "found") {
+    const { engineSpecifier, type, tags, maxContextLength, requestParams } = result.model;
+    return { engineSpecifier, type, tags, maxContextLength, requestParams };
+  }
+  return legacyCatalogMeta(specifier, driver);
+}
+
+/**
+ * Deployments created before the per-engine format hold a specifier the current
+ * catalog does not know. Removed before 1.0.0.
+ */
+async function legacyCatalogMeta(specifier: string, driver: "vllm" | "ollama"): Promise<CatalogMeta> {
+  const model = await getInfoClient().fetchModel(specifier);
+  if (!model) {
+    return { maxContextLength: DEFAULT_MAX_CONTEXT_LENGTH };
+  }
+  return {
+    engineSpecifier: model.providers[driver],
+    type: model.type,
+    tags: resolveTagsForDriver(model, driver),
+    maxContextLength: model.maxContextLength ?? DEFAULT_MAX_CONTEXT_LENGTH,
+    requestParams: resolveRequestParamsForDriver(model, driver),
+  };
+}
+
 type ModelInfo = {
   /** ai_node id serving this request. Recorded on usage events for per-node attribution. */
   nodeId: string | null;
@@ -152,28 +206,22 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, prefi
   const tls = location?.tls ?? false;
   const driverProvider = driver as "vllm" | "ollama";
 
-  // Best-effort pass-through: when the catalog cannot resolve the specifier,
-  // forward it as the model name and let the backend reject a mismatch.
-  const model = await getInfoClient().fetchModel(resolvedSpecifier);
-  const providerModel = model?.providers[driverProvider] ?? resolvedSpecifier;
-
-  const type = model?.type;
-  const tags = model ? resolveTagsForDriver(model, driverProvider) : undefined;
-  const maxContextLength = model?.maxContextLength ?? 131072;
-  const requestParams = model ? resolveRequestParamsForDriver(model, driverProvider) : undefined;
+  const meta = await resolveCatalogMeta(resolvedSpecifier, driverProvider);
 
   return {
     nodeId: location?.nodeId ?? null,
     host: result.host,
     specifier: resolvedSpecifier,
-    model: providerModel,
+    // Best-effort pass-through: when the catalog cannot resolve the specifier,
+    // forward it as the model name and let the backend reject a mismatch.
+    model: meta.engineSpecifier ?? resolvedSpecifier,
     driver,
     authToken,
     tls,
-    type,
-    tags,
-    maxContextLength,
-    requestParams,
+    type: meta.type,
+    tags: meta.tags,
+    maxContextLength: meta.maxContextLength,
+    requestParams: meta.requestParams,
     release: result.release,
   };
 }
