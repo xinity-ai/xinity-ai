@@ -4,7 +4,7 @@
  * bare-metal workload, so this avoids per-distro binary/systemd handling; if
  * Docker is absent the environment is reported as unsupported.
  *
- * The container uses host networking so it can scrape the gateway/dashboard/daemon
+ * The container uses host networking so it can scrape the gateway/dashboard/tether/daemon
  * running as host processes on localhost. (Unrelated to the bridge-networked
  * deployment template, whose targets are in-stack.)
  */
@@ -14,6 +14,7 @@ import { type Host } from "./host.ts";
 import { pass, fail, info, warn, promptOrUndefined } from "./output.ts";
 import { heredoc } from "./service.ts";
 import { resolveComposeCmd, composeArgs, composeName, stackDir, dockerDaemonReady, tcpPortInUse } from "./docker-stack.ts";
+import { TETHER_DEFAULT_PORT } from "./component-meta.ts";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -98,6 +99,8 @@ export function buildPrometheusConfig(opts: {
   gatewayScheme?: string;
   dashboardTarget: string;
   dashboardScheme?: string;
+  tetherTarget: string;
+  tetherScheme?: string;
   daemonSdUrl: string;
   sdAuth?: BasicAuth;
   daemonAuth?: BasicAuth;
@@ -121,6 +124,13 @@ export function buildPrometheusConfig(opts: {
     "    static_configs:",
     "      - targets:",
     `          - ${opts.dashboardTarget}`,
+    "",
+    "  - job_name: xinity-tether",
+    ...schemeLine(opts.tetherScheme),
+    "    metrics_path: /metrics",
+    "    static_configs:",
+    "      - targets:",
+    `          - ${opts.tetherTarget}`,
     "",
     "  # Daemon targets are discovered dynamically from the dashboard's node",
     "  # registry; this stays current as the node set changes, no edits needed.",
@@ -193,7 +203,7 @@ export async function prometheusSetup(
 ): Promise<string | undefined> {
   log.step(bold("Prometheus metrics store setup"));
   log.info(
-    "Prometheus scrapes the gateway, dashboard, and daemon /metrics endpoints.\n" +
+    "Prometheus scrapes the gateway, dashboard, tether, and daemon /metrics endpoints.\n" +
     "It runs as a Docker container and powers the live GPU overlay on the Compute page.",
   );
 
@@ -260,8 +270,17 @@ export async function prometheusSetup(
   }));
   if (dashboardUrl === undefined) return undefined;
 
+  const tetherUrl = await promptOrUndefined(text({
+    message: "Tether base URL",
+    placeholder: `http://localhost:${TETHER_DEFAULT_PORT}`,
+    defaultValue: `http://localhost:${TETHER_DEFAULT_PORT}`,
+    validate: validateUrl,
+  }));
+  if (tetherUrl === undefined) return undefined;
+
   const gateway = scrapeTarget(gatewayUrl);
   const dashboard = scrapeTarget(dashboardUrl);
+  const tether = scrapeTarget(tetherUrl);
 
   // Daemons are discovered dynamically from the dashboard, so there is no static
   // target list to maintain. Auth is optional: the SD endpoint is often left open
@@ -287,6 +306,8 @@ export async function prometheusSetup(
     gatewayScheme: gateway.scheme,
     dashboardTarget: dashboard.target,
     dashboardScheme: dashboard.scheme,
+    tetherTarget: tether.target,
+    tetherScheme: tether.scheme,
     daemonSdUrl,
     sdAuth: parseBasicAuth(sdAuthRaw),
     daemonAuth: parseBasicAuth(daemonAuthRaw),
