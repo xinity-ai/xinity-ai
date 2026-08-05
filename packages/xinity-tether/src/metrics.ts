@@ -1,21 +1,88 @@
-import { createMetricsAuth } from "common-env";
+import { createCounter, createGauge, createHistogram, createMetricsAuth, serializeMetrics } from "common-env";
 import { env } from "./env";
 
 const metricsAuth = createMetricsAuth(env.METRICS_AUTH);
 
-let sseConnectionsTotal = 0;
-let registrationWritesTotal = 0;
-let stateWritesTotal = 0;
-let livenessTimeoutsTotal = 0;
-let desiredStatePushesTotal = 0;
-let connectedNodes = 0;
+const connectedNodes = createGauge(
+  "tether_connected_nodes",
+  "Daemons currently holding an SSE connection.",
+);
 
-export function incSSEConnections() { sseConnectionsTotal++; }
-export function incRegistrationWrites() { registrationWritesTotal++; }
-export function incStateWrites() { stateWritesTotal++; }
-export function incLivenessTimeouts() { livenessTimeoutsTotal++; }
-export function incDesiredStatePushes() { desiredStatePushesTotal++; }
-export function setConnectedNodes(n: number) { connectedNodes = n; }
+const sseConnectionsTotal = createCounter(
+  "tether_sse_connections_total",
+  "SSE connections established.",
+);
+
+// A healthy daemon connection lasts as long as the node is up, so every
+// observation below a few minutes is a reconnect worth explaining. The low
+// boundaries carry the diagnostic weight; the high ones only need to separate
+// "hours" from "days".
+const CONNECTION_DURATION_BUCKETS = [1, 5, 15, 30, 60, 300, 900, 3600, 21600, 86400];
+
+const connectionDuration = createHistogram(
+  "tether_sse_connection_duration_seconds",
+  "How long each closed SSE connection lasted, by the reason it closed.",
+  CONNECTION_DURATION_BUCKETS,
+);
+
+const desiredStatePushesTotal = createCounter(
+  "tether_desired_state_pushes_total",
+  "Desired-state events pushed to daemons.",
+);
+
+const requestRejectionsTotal = createCounter(
+  "tether_request_rejections_total",
+  "Daemon requests refused before doing any work, by endpoint and reason.",
+);
+
+export type DisconnectReason =
+  | "cancel"
+  | "superseded"
+  | "write_failed"
+  | "keepalive_failed"
+  | "liveness_timeout"
+  | "shutdown";
+
+export type RejectionReason =
+  | "unauthorized"
+  | "invalid_payload"
+  | "protocol_mismatch"
+  | "registration_failed"
+  | "method_not_allowed";
+
+export function incSSEConnections() {
+  sseConnectionsTotal.inc({});
+}
+
+export function observeConnectionDuration(reason: DisconnectReason, seconds: number) {
+  connectionDuration.observe({ reason }, seconds);
+}
+
+export function incDesiredStatePushes() {
+  desiredStatePushesTotal.inc({});
+}
+
+export function setConnectedNodes(n: number) {
+  connectedNodes.set({}, n);
+}
+
+export function incRequestRejections(endpoint: "stream" | "status", reason: RejectionReason) {
+  requestRejectionsTotal.inc({ endpoint, reason });
+}
+
+// Publish the label-free series from the first scrape on, so a freshly started
+// tether reads as zero rather than "no data".
+connectedNodes.set({}, 0);
+sseConnectionsTotal.inc({}, 0);
+desiredStatePushesTotal.inc({}, 0);
+
+const allMetrics = [
+  connectedNodes,
+  sseConnectionsTotal,
+  connectionDuration,
+  desiredStatePushesTotal,
+  requestRejectionsTotal,
+];
 
 export function handleMetrics(req: Request): Response {
   if (req.method !== "GET") {
@@ -27,33 +94,7 @@ export function handleMetrics(req: Request): Response {
     return authErr;
   }
 
-  const lines = [
-    "# HELP tether_connected_nodes Number of currently connected daemons.",
-    "# TYPE tether_connected_nodes gauge",
-    `tether_connected_nodes ${connectedNodes}`,
-    "",
-    "# HELP tether_sse_connections_total SSE connections established.",
-    "# TYPE tether_sse_connections_total counter",
-    `tether_sse_connections_total ${sseConnectionsTotal}`,
-    "",
-    "# HELP tether_registration_writes_total Node registration upserts.",
-    "# TYPE tether_registration_writes_total counter",
-    `tether_registration_writes_total ${registrationWritesTotal}`,
-    "",
-    "# HELP tether_state_writes_total Installation state upserts.",
-    "# TYPE tether_state_writes_total counter",
-    `tether_state_writes_total ${stateWritesTotal}`,
-    "",
-    "# HELP tether_liveness_timeouts_total Nodes marked unavailable by timeout.",
-    "# TYPE tether_liveness_timeouts_total counter",
-    `tether_liveness_timeouts_total ${livenessTimeoutsTotal}`,
-    "",
-    "# HELP tether_desired_state_pushes_total Desired-state events pushed to daemons.",
-    "# TYPE tether_desired_state_pushes_total counter",
-    `tether_desired_state_pushes_total ${desiredStatePushesTotal}`,
-  ];
-
-  return new Response(lines.join("\n") + "\n", {
+  return new Response(serializeMetrics(allMetrics), {
     headers: { "Content-Type": "text/plain; version=0.0.4; charset=utf-8" },
   });
 }
