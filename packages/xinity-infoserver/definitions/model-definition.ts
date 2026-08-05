@@ -40,7 +40,7 @@ const DOWNLOAD_FILTER_DESCRIPTION =
 
 // ── Current format ─────────────────────────────────────────────────────
 
-export const ModelV2Schema = z.looseObject({
+export const ModelV2Fields = z.looseObject({
   name: z.string().describe("Display name of the model. Intended to be easily human readable"),
   description: z.string().describe("Multi-paragraph description: purpose, strengths, limitations. Shown when choosing between models, so a one-line label is not enough"),
   url: z.url().describe("External documentation url, for curious users that want to know more"),
@@ -70,7 +70,9 @@ export const ModelV2Schema = z.looseObject({
     baseModel: z.string(),
     extraFacts: z.record(z.string(), z.unknown()),
   }).optional().describe("Provenance for fine tuned custom models"),
-})
+});
+
+export const ModelV2Schema = ModelV2Fields
   .refine(
     model => !model.requestParams || !hasBlockedRequestParam(Object.keys(model.requestParams)),
     { message: "requestParams must not contain blocked prefixes", path: ["requestParams"] },
