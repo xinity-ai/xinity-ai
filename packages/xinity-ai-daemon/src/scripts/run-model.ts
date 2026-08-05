@@ -123,9 +123,10 @@ if (gpuUtilOverride !== undefined && (!(gpuUtilOverride > 0) || gpuUtilOverride 
 const backend: "docker" | "bare" = values.image ? "docker" : "bare";
 const bareVllmPath = backend === "bare" ? (values["vllm-path"] ?? Bun.which("vllm") ?? undefined) : undefined;
 
-// The daemon modules read env.* at import, so seed it first. The placeholder DB url
-// satisfies the schema without opening a connection; LOG_LEVEL keeps the logger quiet.
-process.env.DB_CONNECTION_URL ??= "postgres://placeholder";
+// env.ts validates at import time; seed placeholders so the daemon modules
+// can be imported without a running tether.
+process.env.TETHER_URL ??= "http://placeholder:4020";
+process.env.TETHER_SECRET ??= "placeholder";
 process.env.LOG_LEVEL ??= "fatal";
 if (values.image) process.env.VLLM_DOCKER_IMAGE = values.image;
 if (bareVllmPath) process.env.VLLM_PATH = bareVllmPath;

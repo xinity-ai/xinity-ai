@@ -82,10 +82,10 @@ if (state.backend === "docker" && !state.dockerImage) {
   die("state.dockerImage is required for backend=docker.");
 }
 
-// Seed process.env before the daemon modules import: env.ts validates at load
-// and the builders read env.* directly. DB_CONNECTION_URL satisfies the
-// schema (no DB is opened); LOG_LEVEL keeps the logger off stdout.
-process.env.DB_CONNECTION_URL ??= "postgres://placeholder";
+// env.ts validates at import time; seed placeholders so the daemon modules
+// can be imported without a running tether.
+process.env.TETHER_URL ??= "http://placeholder:4020";
+process.env.TETHER_SECRET ??= "placeholder";
 process.env.LOG_LEVEL ??= "fatal";
 if (state.vllmPath) process.env.VLLM_PATH = state.vllmPath;
 if (state.dockerImage) process.env.VLLM_DOCKER_IMAGE = state.dockerImage;

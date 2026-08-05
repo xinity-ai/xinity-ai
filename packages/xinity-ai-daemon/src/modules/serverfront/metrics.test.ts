@@ -2,7 +2,7 @@ import { describe, test, expect, mock, beforeEach } from "bun:test";
 
 mock.module("../../env", () => ({
   env: {
-    PORT: 4044, HOST: "0.0.0.0", DB_CONNECTION_URL: "postgres://localhost/test",
+    PORT: 4044, HOST: "0.0.0.0", TETHER_URL: "http://localhost:4020", TETHER_SECRET: "test",
     STATE_DIR: "/tmp/test", CIDR_PREFIX: "", SYNC_INTERVAL_MS: 60_000,
     INFOSERVER_URL: "http://localhost:19090", INFOSERVER_CACHE_TTL_MS: 30_000,
     METRICS_SAMPLE_INTERVAL_MS: 20_000, VLLM_BACKEND: "systemd",
