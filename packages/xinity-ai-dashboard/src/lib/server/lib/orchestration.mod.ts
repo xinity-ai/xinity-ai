@@ -1,7 +1,7 @@
 import { inArray, isNull, modelDeploymentT, sql, calcCanaryProgress, modelInstallationT, aiNodeT, mergeSettings, settingsEqual, type DeploymentSettings, type ModelInstallation, type AiNode, type InferInsertModel } from "common-db";
 import { getDB } from "../db";
-import { infoClient } from "../info-client";
-import { resolveDefaultProvider, resolveMinVersionForDriver, resolveRequiredPlatformsForDriver, resolveRequiredFeaturesForDriver, checkNodeCompatibility, type Model, type ModelNodeRequirements, type NodeCapability, type Provider } from "xinity-infoserver";
+import { resolveSchedulable, type SchedulableModel } from "../model-catalog";
+import { checkNodeCompatibility, type ModelNodeRequirements, type NodeCapability, type Provider } from "xinity-infoserver";
 import { rootLogger } from "../logging";
 import { building } from "$app/environment";
 import { maxVramGb } from "$lib/server/license";
@@ -249,11 +249,6 @@ function totalVramUsed(state: ClusterState): number {
   return used;
 }
 
-function pickDriver(modelInfo: Model, preferred: Provider | null): Provider {
-  if (preferred && modelInfo.providers[preferred]) return preferred;
-  return resolveDefaultProvider(modelInfo)?.driver ?? "ollama";
-}
-
 /** Plans installations needed to satisfy replica requirements that aren't yet met,
  * stopping a replica loop early when the next install would exceed the license VRAM cap. */
 async function planNewInstallations(
@@ -269,29 +264,21 @@ async function planNewInstallations(
     const current = (state.installationsByModel.get(specifier) || []).length;
     if (current >= requirement.replicas) continue;
 
-    const modelStatus = await infoClient?.fetchModelStatus(requirement.specifier);
-    if (!modelStatus || modelStatus.status === "unavailable") {
-      log.warn({ specifier: requirement.specifier, error: modelStatus?.status === "unavailable" ? modelStatus.error : undefined },
+    const resolution = await resolveSchedulable(requirement.specifier, requirement.preferredDriver);
+    if (resolution.status === "unavailable") {
+      log.warn({ specifier: requirement.specifier, error: resolution.error },
         "Info server unreachable; skipping installation planning for this sync cycle");
       continue;
     }
-    if (modelStatus.status === "not_found") {
+    if (resolution.status === "not_found") {
       log.warn({ specifier: requirement.specifier },
         "Model not found in catalog; installations cannot be scheduled. " +
         "If this model has been intentionally removed, disable or delete the deployment.");
       continue;
     }
-    const modelInfo = modelStatus.model;
+    const modelInfo = resolution.model;
 
-    const driver = pickDriver(modelInfo, requirement.preferredDriver);
-    const providerModel = modelInfo.providers[driver];
-    if (!providerModel) {
-      log.warn({ specifier: requirement.specifier, driver }, "Catalog entry has no provider string for the chosen driver; skipping");
-      continue;
-    }
-    const minVersion = resolveMinVersionForDriver(modelInfo, driver);
-    const requiredPlatforms = resolveRequiredPlatformsForDriver(modelInfo, driver);
-    const requiredFeatures = resolveRequiredFeaturesForDriver(modelInfo, driver);
+    const { driver, minVersion, requiredPlatforms, requiredFeatures } = modelInfo;
     const needed = requirement.replicas - current;
 
     const effectiveKvCache = Math.max(requirement.kvCacheSize ?? 0, modelInfo.minKvCache);
@@ -332,7 +319,7 @@ async function planNewInstallations(
   return toInstall;
 }
 
-type ModelLookup = (specifier: string) => Promise<Model | null>;
+type ModelLookup = (specifier: string, driver: Provider) => Promise<SchedulableModel | null>;
 
 /** Whether some available node could actually take over this installation, checked the same way
  * real placement is: driver, capacity, driver version, GPU platform, and required features
@@ -342,14 +329,12 @@ type ModelLookup = (specifier: string) => Promise<Model | null>;
  * real removal, and their installation rows need to survive so the models are still considered
  * desired once the node returns. */
 async function hasReassignmentTarget(install: ModelInstallation, state: ClusterState, lookupModel: ModelLookup): Promise<boolean> {
-  const modelInfo = await lookupModel(install.specifier);
+  const modelInfo = await lookupModel(install.specifier, install.driver as Provider);
   if (!modelInfo) return false;
 
   const nodeId = findServerForModel(
     install.specifier, install.driver, install.estCapacity, state, [], "first-fit",
-    resolveMinVersionForDriver(modelInfo, install.driver),
-    resolveRequiredPlatformsForDriver(modelInfo, install.driver),
-    resolveRequiredFeaturesForDriver(modelInfo, install.driver),
+    modelInfo.minVersion, modelInfo.requiredPlatforms, modelInfo.requiredFeatures,
   );
   return nodeId !== null;
 }
@@ -386,9 +371,9 @@ async function runSyncDeployedModels() {
   const active = existing.filter(i => availableServerIds.has(i.nodeId));
 
   const state = buildClusterState(active, availableServers);
-  const orphaned = await collectReassignableOrphans(orphanedCandidates, state, async specifier => {
-    const status = await infoClient?.fetchModelStatus(specifier);
-    return status?.status === "found" ? status.model : null;
+  const orphaned = await collectReassignableOrphans(orphanedCandidates, state, async (specifier, driver) => {
+    const resolution = await resolveSchedulable(specifier, driver);
+    return resolution.status === "found" ? resolution.model : null;
   });
   const keptOffline = orphanedCandidates.length - orphaned.length;
 
