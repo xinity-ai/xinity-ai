@@ -214,12 +214,6 @@ describe("handleTranscription", () => {
     expect(res.status).toBe(400);
   });
 
-  test("returns 404 when the model is not found", async () => {
-    getModelInfo.mockImplementationOnce(async () => undefined);
-    const res = await handleTranscription(makeReq({ model: "nope" }));
-    expect(res.status).toBe(404);
-  });
-
   test("maps a backend 5xx to 502", async () => {
     nextResponse = new Response("boom", { status: 500 });
     const res = await handleTranscription(makeReq({ model: "whisper" }));

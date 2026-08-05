@@ -7,24 +7,27 @@ import {
   startDaemon,
   startMockOllamaServer,
   stopDaemon,
+  stopTetherMock,
   waitForInstallationState,
   waitForNodeAvailability,
   waitForNodeIdFile,
   writeNodeId,
+  type DaemonHandle,
 } from "./daemon-test-helpers";
 
 const DB_CONNECTION_URL = process.env.DB_CONNECTION_URL!;
 const { getDB } = preconfigureDB(DB_CONNECTION_URL);
 const db = getDB();
 
-const runningDaemons: Bun.Subprocess[] = [];
+const runningDaemons: DaemonHandle[] = [];
 const runningMocks: Array<() => void> = [];
 const createdNodeIds: string[] = [];
 const createdInstallationIds: string[] = [];
 
 afterAll(async () => {
-  for (const proc of runningDaemons) {
-    await stopDaemon(proc);
+  for (const handle of runningDaemons) {
+    await stopDaemon(handle);
+    stopTetherMock(handle);
   }
   for (const stop of runningMocks) {
     stop();
@@ -64,8 +67,7 @@ describe("xinity-ai-daemon", () => {
 
     const nodeId = await waitForNodeIdFile(stateDir, 10_000);
     createdNodeIds.push(nodeId);
-    const [node] = await db.select().from(aiNodeT).where(sql`${aiNodeT.id} = ${nodeId}`).limit(1);
-    expect(node).toBeTruthy();
+    await waitForNodeAvailability(nodeId, true, 10_000);
   });
 
   it("resumes with an existing node_id entry", async () => {

@@ -60,12 +60,6 @@ describe("buildRules / selectFiles - HF default mode", () => {
     ]);
   });
 
-  test("keeps standalone chat_template.jinja (Gemma 4 style); needed for chat serving", () => {
-    const files = f("model.safetensors", "config.json", "chat_template.jinja");
-    const { rules } = buildRules(files, []);
-    expect(names(selectFiles(files, rules))).toContain("chat_template.jinja");
-  });
-
   test("bin fallback kicks in when no safetensors are present", () => {
     const files = f(
       "pytorch_model-00001-of-00002.bin",

@@ -1,4 +1,4 @@
-import { aiNodeT, eq, modelInstallationStateT, preconfigureDB } from "common-db";
+import { aiNodeT, eq, modelInstallationT, modelInstallationStateT, preconfigureDB, sql } from "common-db";
 import { getAvailablePort, readProcessOutput } from "../test-helpers";
 import { ensureInfoServerRunning, infoServerUrl } from "../infoserver/infoserver-test-helpers";
 import { ensureSystemReady } from "../guard";
@@ -31,13 +31,139 @@ export async function writeNodeId(stateDir: string, nodeId: string): Promise<voi
   await Bun.write(`${stateDir}/node_id`, nodeId);
 }
 
+export type TetherMock = {
+  endpoint: string;
+  stop: () => void;
+};
+
+async function startMockTetherServer(): Promise<TetherMock> {
+  const port = await getAvailablePort();
+  const db = getDB();
+
+  const server = Bun.serve({
+    port,
+    async fetch(req) {
+      const url = new URL(req.url);
+
+      if (req.method === "POST" && url.pathname === "/api/v1/stream") {
+        const body = await req.json();
+        const nodeId = body.nodeId as string;
+
+        await db.insert(aiNodeT).values({
+          id: nodeId,
+          host: body.host,
+          port: body.port,
+          estCapacity: body.estCapacity,
+          gpuCount: body.gpuCount ?? 0,
+          driverVersions: body.driverVersions ?? {},
+          driverFeatures: body.driverFeatures ?? {},
+          gpus: body.gpus ?? [],
+          authToken: body.authToken,
+          tls: body.tls ?? false,
+          machineName: body.machineName,
+          available: true,
+        }).onConflictDoUpdate({
+          target: aiNodeT.id,
+          set: {
+            host: body.host,
+            port: body.port,
+            estCapacity: body.estCapacity,
+            gpuCount: body.gpuCount ?? 0,
+            driverVersions: body.driverVersions ?? {},
+            driverFeatures: body.driverFeatures ?? {},
+            gpus: body.gpus ?? [],
+            authToken: body.authToken,
+            tls: body.tls ?? false,
+            machineName: body.machineName,
+            available: true,
+            deletedAt: null,
+          },
+        });
+
+        const installations = await db.select()
+          .from(modelInstallationT)
+          .where(sql`${modelInstallationT.nodeId} = ${nodeId} AND ${modelInstallationT.deletedAt} IS NULL`);
+
+        const desiredState = {
+          nodeId,
+          installations: installations.map(row => ({
+            installationId: row.id,
+            specifier: row.specifier,
+            driver: row.driver,
+            estCapacity: row.estCapacity,
+            kvCacheCapacity: row.kvCacheCapacity,
+            port: row.port,
+            settings: row.settings,
+          })),
+        };
+
+        const stream = new ReadableStream({
+          start(controller) {
+            const event = `event: state\ndata: ${JSON.stringify(desiredState)}\n\n`;
+            controller.enqueue(new TextEncoder().encode(event));
+          },
+          async cancel() {
+            await db.update(aiNodeT)
+              .set({ available: false })
+              .where(eq(aiNodeT.id, nodeId));
+          },
+        });
+
+        return new Response(stream, {
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+          },
+        });
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/v1/status") {
+        const body = await req.json();
+        for (const state of body.states) {
+          await db.insert(modelInstallationStateT).values({
+            id: state.installationId,
+            lifecycleState: state.lifecycleState,
+            progress: state.progress ?? null,
+            errorMessage: state.errorMessage ?? null,
+            statusMessage: state.statusMessage ?? null,
+            failureLogs: state.failureLogs ?? null,
+          }).onConflictDoUpdate({
+            target: modelInstallationStateT.id,
+            set: {
+              lifecycleState: sql`excluded.lifecycle_state`,
+              progress: sql`excluded.progress`,
+              errorMessage: sql`excluded.error_message`,
+              statusMessage: sql`excluded.status_message`,
+              failureLogs: sql`excluded.failure_logs`,
+            },
+          });
+        }
+        return Response.json({ ok: true });
+      }
+
+      return new Response("Not Found", { status: 404 });
+    },
+  });
+
+  return {
+    endpoint: `http://127.0.0.1:${port}`,
+    stop: () => server.stop(),
+  };
+}
+
+export type DaemonHandle = {
+  proc: Bun.Subprocess;
+  stopTether: () => void;
+};
+
 export async function startDaemon(options: {
   stateDir: string;
   ollamaEndpoint: string;
   port?: number;
   host?: string;
   syncIntervalMs?: number;
-}): Promise<Bun.Subprocess> {
+}): Promise<DaemonHandle> {
   await ensureSystemReady();
 
   const port = options.port ?? (await getAvailablePort());
@@ -46,6 +172,7 @@ export async function startDaemon(options: {
 
   await ensureInfoServerRunning();
 
+  const tether = await startMockTetherServer();
   const DB_CONNECTION_URL = process.env.DB_CONNECTION_URL!;
 
   const proc = Bun.spawn([
@@ -63,12 +190,13 @@ export async function startDaemon(options: {
       DB_CONNECTION_URL,
       SYNC_INTERVAL_MS: String(syncIntervalMs),
       INFOSERVER_URL: infoServerUrl(""),
+      TETHER_URL: tether.endpoint,
+      TETHER_SECRET: "test-secret",
     },
     stdout: "ignore",
     stderr: "pipe",
   });
 
-  // Actively drain stderr to prevent pipe buffer deadlock
   const stderrPromise = proc.stderr instanceof ReadableStream
     ? new Response(proc.stderr).text()
     : Promise.resolve("");
@@ -85,10 +213,12 @@ export async function startDaemon(options: {
     exitWait,
   ]);
 
-  return proc;
+  return { proc, stopTether: tether.stop };
 }
 
-export async function stopDaemon(proc: Bun.Subprocess): Promise<void> {
+export async function stopDaemon(handle: DaemonHandle | Bun.Subprocess): Promise<void> {
+  const proc = "proc" in handle ? handle.proc : handle;
+
   let didExit = false;
   proc.exited.then(() => { didExit = true; });
   proc.kill("SIGTERM");
@@ -101,6 +231,10 @@ export async function stopDaemon(proc: Bun.Subprocess): Promise<void> {
     }
   }
   await proc.exited;
+}
+
+export function stopTetherMock(handle: DaemonHandle): void {
+  handle.stopTether();
 }
 
 async function pollUntil<T>(

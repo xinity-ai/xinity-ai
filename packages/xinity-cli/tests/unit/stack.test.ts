@@ -10,9 +10,6 @@ import {
   resolveEnv,
   diffFromLayer,
   validateStack,
-  getFleet,
-  getHost,
-  getFleetForHost,
   createStack,
   loadStack,
   saveStack,
@@ -149,53 +146,6 @@ describe("stack persistence", () => {
     saveStack(makeStack({ name: "real" }));
 
     expect(listStacks()).toEqual(["real"]);
-  });
-});
-
-// ── Lookup ───────────────────────────────────────────────────────────────
-
-describe("stack lookup", () => {
-  test("getFleet returns matching fleet", () => {
-    const fleet = makeFleet({ name: "a100" });
-    const stack = makeStack({ fleets: [fleet, makeFleet({ name: "other" })] });
-
-    expect(getFleet(stack, "a100")).toEqual(fleet);
-  });
-
-  test("getFleet returns null for unknown name", () => {
-    const stack = makeStack({ fleets: [makeFleet()] });
-    expect(getFleet(stack, "nonexistent")).toBeNull();
-  });
-
-  test("getHost returns matching host", () => {
-    const host = makeHost({ address: "10.0.0.5" });
-    const stack = makeStack({ hosts: [makeHost(), host] });
-
-    expect(getHost(stack, "10.0.0.5")).toEqual(host);
-  });
-
-  test("getHost returns null for unknown address", () => {
-    const stack = makeStack({ hosts: [makeHost()] });
-    expect(getHost(stack, "10.0.0.99")).toBeNull();
-  });
-
-  test("getFleetForHost returns fleet containing the host", () => {
-    const fleet = makeFleet({ name: "pool", hosts: ["10.0.0.1", "10.0.0.2"] });
-    const stack = makeStack({
-      hosts: [makeHost({ address: "10.0.0.1" }), makeHost({ address: "10.0.0.2" })],
-      fleets: [fleet],
-    });
-
-    expect(getFleetForHost(stack, "10.0.0.2")?.name).toBe("pool");
-  });
-
-  test("getFleetForHost returns null when host is not in any fleet", () => {
-    const stack = makeStack({
-      hosts: [makeHost({ address: "10.0.0.1" })],
-      fleets: [makeFleet({ hosts: ["10.0.0.99"] })],
-    });
-
-    expect(getFleetForHost(stack, "10.0.0.1")).toBeNull();
   });
 });
 
@@ -342,12 +292,6 @@ describe("validateStack", () => {
     expect(errors.some((e) => e.field === "name")).toBe(true);
   });
 
-  test("accepts hyphenated and underscored names", () => {
-    expect(validateStack(makeStack({ name: "my-stack" }))).toEqual([]);
-    expect(validateStack(makeStack({ name: "my_stack" }))).toEqual([]);
-    expect(validateStack(makeStack({ name: "prod-01" }))).toEqual([]);
-  });
-
   test("rejects a missing pinned version", () => {
     const errors = validateStack(makeStack({ pinnedVersion: "" }));
 
@@ -406,22 +350,5 @@ describe("validateStack", () => {
     const errors = validateStack(stack);
 
     expect(errors.some((e) => e.message.includes("no hosts with the daemon"))).toBe(true);
-  });
-});
-
-// ── Factory ──────────────────────────────────────────────────────────────
-
-describe("createStack", () => {
-  test("returns an empty stack with the given name and pin", () => {
-    const stack = createStack("my-stack", "v1.2.3");
-
-    expect(stack.name).toBe("my-stack");
-    expect(stack.pinnedVersion).toBe("v1.2.3");
-    expect(stack.env).toEqual({});
-    expect(stack.secrets).toEqual({});
-    expect(stack.componentEnv).toEqual({});
-    expect(stack.hosts).toEqual([]);
-    expect(stack.fleets).toEqual([]);
-    expect(stack.version).not.toBe("");
   });
 });

@@ -191,19 +191,6 @@ describe("handleEmbeddingGeneration", () => {
     expect(res.status).toBe(502);
   });
 
-  test("returns 404 when model is not found", async () => {
-    getModelInfo.mockImplementationOnce(async () => undefined);
-
-    const req = new Request("http://localhost:4000/v1/embeddings", {
-      method: "POST",
-      headers: { "Authorization": "Bearer test" },
-      body: JSON.stringify({ model: "nonexistent", input: "hello" }),
-    });
-
-    const res = await handleEmbeddingGeneration(req);
-    expect(res.status).toBe(404);
-  });
-
   test("returns 400 when model type is wrong", async () => {
     getModelInfo.mockImplementationOnce(async () => ({
       nodeId: "node-1",

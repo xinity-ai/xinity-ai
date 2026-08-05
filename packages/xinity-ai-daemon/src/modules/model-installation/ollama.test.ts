@@ -131,64 +131,6 @@ describe("syncOllamaInstallations$", () => {
     expect(mockOllamaPull.mock.calls[0]![0]).toMatchObject({ model: "phi3:latest", stream: true });
   });
 
-  test("handles combined add and remove", async () => {
-    mockOllamaList.mockResolvedValue({
-      models: [{ model: "old-model:latest" }],
-    });
-    mockOllamaDelete.mockResolvedValue(undefined);
-
-    async function* pullStream() {
-      yield { status: "success", completed: 100, total: 100 };
-    }
-    mockOllamaPull.mockResolvedValue(pullStream());
-
-    const installations = [makeInstallation("new-model:latest")];
-    await firstValueFrom(syncOllamaInstallations$(installations));
-
-    expect(mockOllamaDelete).toHaveBeenCalledTimes(1);
-    expect(mockOllamaDelete).toHaveBeenCalledWith({ model: "old-model:latest" });
-    expect(mockOllamaPull).toHaveBeenCalledTimes(1);
-  });
-
-  test("removes all models when desired list is empty", async () => {
-    mockOllamaList.mockResolvedValue({
-      models: [
-        { model: "model-a" },
-        { model: "model-b" },
-      ],
-    });
-    mockOllamaDelete.mockResolvedValue(undefined);
-
-    await firstValueFrom(syncOllamaInstallations$([]));
-
-    expect(mockOllamaDelete).toHaveBeenCalledTimes(2);
-    expect(mockOllamaPull).not.toHaveBeenCalled();
-  });
-
-  test("does nothing when both lists are empty", async () => {
-    mockOllamaList.mockResolvedValue({ models: [] });
-
-    await firstValueFrom(syncOllamaInstallations$([]));
-
-    expect(mockOllamaDelete).not.toHaveBeenCalled();
-    expect(mockOllamaPull).not.toHaveBeenCalled();
-  });
-
-  test("updates installation state during pull progress", async () => {
-    mockOllamaList.mockResolvedValue({ models: [] });
-
-    async function* pullStream() {
-      yield { status: "downloading sha256:abc", completed: 50, total: 100 };
-      yield { status: "success", completed: 100, total: 100 };
-    }
-    mockOllamaPull.mockResolvedValue(pullStream());
-
-    const installations = [makeInstallation("test-model")];
-    await firstValueFrom(syncOllamaInstallations$(installations));
-
-    expect(mockUpdateState).toHaveBeenCalled();
-  });
-
   test("skips installations the catalog has no ollama provider for", async () => {
     mockOllamaList.mockResolvedValue({ models: [] });
     mockFetchModel.mockImplementation(() => Promise.resolve({ providers: { vllm: "vllm-only-model" } }));

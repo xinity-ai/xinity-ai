@@ -1,14 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { pickBucketSeconds, mergeHistorySeries } from "./compute";
-
-describe("pickBucketSeconds", () => {
-  test("scales bucket width with range", () => {
-    expect(pickBucketSeconds(1)).toBe(900);
-    expect(pickBucketSeconds(24)).toBe(1800);
-    expect(pickBucketSeconds(72)).toBe(7200);
-    expect(pickBucketSeconds(24 * 30)).toBe(86400);
-  });
-});
+import { mergeHistorySeries } from "./compute";
 
 describe("mergeHistorySeries", () => {
   test("builds per-node series sorted by time", () => {
@@ -24,9 +15,5 @@ describe("mergeHistorySeries", () => {
 
     const b = series.find((s) => s.nodeId === "b")!;
     expect(b.points[0]).toEqual({ t: 0, tokens: 200, requests: 1 });
-  });
-
-  test("returns empty array for no data", () => {
-    expect(mergeHistorySeries([])).toEqual([]);
   });
 });

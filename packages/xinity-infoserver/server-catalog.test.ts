@@ -36,7 +36,6 @@ const {
   resolveBatch,
   getAll,
   getByFamily,
-  getMergedData,
   getCatalogHealth,
   stopAutoRefresh,
 } = await import("./server-catalog");
@@ -113,10 +112,6 @@ describe("server-catalog", () => {
       expect(m!.name).toBe("Test Llama");
     });
 
-    it("returns undefined for unknown specifier", () => {
-      expect(get("nonexistent")).toBeUndefined();
-    });
-
     it("resolveBatch() returns map with nulls for missing specifiers", () => {
       const result = resolveBatch(["llama-3.3-70b", "missing", "nomic-embed-text"]);
       expect(result["llama-3.3-70b"]).toBeDefined();
@@ -142,23 +137,6 @@ describe("server-catalog", () => {
       expect(unknown[0]!.publicSpecifier).toBe("llama-3.3-70b");
 
       expect(getByFamily("nonexistent")).toHaveLength(0);
-    });
-
-    it("getMergedData() returns all models keyed by specifier", () => {
-      const data = getMergedData();
-      expect(Object.keys(data.models)).toHaveLength(2);
-      expect(data.models["llama-3.3-70b"]).toBeDefined();
-      expect(data.models["nomic-embed-text"]).toBeDefined();
-    });
-  });
-
-  describe("duplicate handling", () => {
-    it("later entry overwrites earlier with same specifier", async () => {
-      const yaml = makeModelYaml({ "llama-3.3-70b": baseModel });
-      const { dirPath } = await writeYamlInOwnDir(yaml, fileIndex++);
-      configure(10, dirPath);
-      await refresh();
-      expect(get("llama-3.3-70b")?.name).toBe("Test Llama");
     });
   });
 

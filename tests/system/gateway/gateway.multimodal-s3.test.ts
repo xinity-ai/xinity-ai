@@ -143,16 +143,6 @@ afterAll(async () => {
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe("multimodal image storage (SeaweedFS S3)", () => {
-  it("skips if SeaweedFS is not available", async () => {
-    // This test always passes; the skip logic is in beforeAll.
-    // If beforeAll didn't throw, we're either skipping or ready.
-    if (!(await isSeaweedFSReachable())) {
-      console.log("SeaweedFS not available, test skipped");
-      return;
-    }
-    expect(true).toBe(true);
-  });
-
   it("uploads a data URI image to S3 and stores xinity-media:// ref in DB", async () => {
     if (!(await isSeaweedFSReachable())) return;
 
