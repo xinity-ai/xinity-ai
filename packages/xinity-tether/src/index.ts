@@ -9,6 +9,7 @@ import { buildDesiredState } from "./desired-state";
 import { subscribe, unsubscribe, shutdown as shutdownNotifyBus } from "./notify-bus";
 import { writeRegistration, queueInstallationStates, flushAndStop } from "./status-writer";
 import { handleMetrics } from "./metrics";
+import { buildListenTarget } from "./serve-config";
 
 const log = rootLogger;
 
@@ -111,9 +112,7 @@ async function handleStatus(req: Request): Promise<Response> {
   return Response.json({ ok: true });
 }
 
-const serveTarget = env.UNIX_SOCKET
-  ? { unix: env.UNIX_SOCKET }
-  : { port: env.PORT, hostname: env.HOST };
+const serveTarget = buildListenTarget(env);
 
 const server = Bun.serve({
   ...serveTarget,
