@@ -8,7 +8,7 @@ import { addConnection, removeConnection, pushDesiredState, runKeepaliveLoop, se
 import { buildDesiredState } from "./desired-state";
 import { subscribe, unsubscribe, shutdown as shutdownNotifyBus } from "./notify-bus";
 import { writeRegistration, queueInstallationStates, flushAndStop } from "./status-writer";
-import { handleMetrics } from "./metrics";
+import { handleMetrics, incRequestRejections } from "./metrics";
 import { buildListenTarget } from "./serve-config";
 
 const log = rootLogger;
@@ -23,16 +23,19 @@ const keepaliveTimer = runKeepaliveLoop(env.KEEPALIVE_INTERVAL_MS, env.LIVENESS_
 
 async function handleSSEStream(req: Request): Promise<Response> {
   if (req.method !== "POST") {
+    incRequestRejections("stream", "method_not_allowed");
     return new Response("Method Not Allowed", { status: 405 });
   }
 
   if (!verifyBearerToken(req)) {
+    incRequestRejections("stream", "unauthorized");
     return unauthorized();
   }
 
   const body = await req.json().catch(() => null);
   const parsed = nodeRegistrationSchema.safeParse(body);
   if (!parsed.success) {
+    incRequestRejections("stream", "invalid_payload");
     return Response.json({ error: parsed.error.message }, { status: 400 });
   }
 
@@ -40,6 +43,7 @@ async function handleSSEStream(req: Request): Promise<Response> {
 
   const expected = protocolFingerprint();
   if (parsed.data.protocolFingerprint !== expected) {
+    incRequestRejections("stream", "protocol_mismatch");
     log.warn(
       { nodeId, expected, received: parsed.data.protocolFingerprint },
       "Protocol version mismatch",
@@ -53,6 +57,7 @@ async function handleSSEStream(req: Request): Promise<Response> {
   try {
     await writeRegistration(parsed.data);
   } catch (err) {
+    incRequestRejections("stream", "registration_failed");
     log.error({ err, nodeId }, "Registration write failed during SSE handshake");
     return Response.json({ error: "Internal error" }, { status: 500 });
   }
@@ -68,7 +73,7 @@ async function handleSSEStream(req: Request): Promise<Response> {
 
       if (cancelled) {
         await unsubscribe(nodeId);
-        await removeConnection(nodeId);
+        await removeConnection(nodeId, "cancel");
         return;
       }
 
@@ -84,7 +89,7 @@ async function handleSSEStream(req: Request): Promise<Response> {
       if (subscribed) {
         await unsubscribe(nodeId);
       }
-      await removeConnection(nodeId);
+      await removeConnection(nodeId, "cancel");
     },
   });
 
@@ -99,12 +104,14 @@ async function handleSSEStream(req: Request): Promise<Response> {
 
 async function handleStatus(req: Request): Promise<Response> {
   if (!verifyBearerToken(req)) {
+    incRequestRejections("status", "unauthorized");
     return unauthorized();
   }
 
   const body = await req.json().catch(() => null);
   const parsed = installationStateReportSchema.safeParse(body);
   if (!parsed.success) {
+    incRequestRejections("status", "invalid_payload");
     return Response.json({ error: parsed.error.message }, { status: 400 });
   }
 

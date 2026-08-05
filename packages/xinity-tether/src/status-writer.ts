@@ -2,7 +2,6 @@ import { aiNodeT, modelInstallationStateT, sql } from "common-db";
 import type { NodeRegistration, InstallationStateReport, InstallationStatePayload } from "common-env";
 import { getDB } from "./db";
 import { rootLogger } from "./logger";
-import { incRegistrationWrites, incStateWrites } from "./metrics";
 
 const log = rootLogger.child({ name: "status-writer" });
 
@@ -24,7 +23,6 @@ export async function writeRegistration(reg: NodeRegistration): Promise<void> {
       });
   });
 
-  incRegistrationWrites();
   log.debug({ nodeId, host, port }, "Node registration written");
 }
 
@@ -74,9 +72,6 @@ async function flushPending(): Promise<void> {
         },
       });
 
-    for (let i = 0; i < batch.length; i++) {
-      incStateWrites();
-    }
     log.debug({ count: batch.length }, "Batch state flush completed");
   } catch (err) {
     log.error({ err, count: batch.length }, "Batch state flush failed");
