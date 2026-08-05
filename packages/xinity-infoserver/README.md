@@ -115,7 +115,7 @@ bun run run-model -- --models ./your-models.yaml --model my-private-model --imag
 With the docker backend the container always runs egress-blocked and offline (weights are
 pre-downloaded on the host first), and `--start` runs it detached, printing a `docker logs -f`
 command to follow the load and the stop command. The `--plan` gate result tells you whether
-`weight`, `minKvCache`, `providerMinVersions`, and `providerPlatforms` are consistent with the
+`weight`, `minKvCache`, `minEngineVersion`, and `platforms` are consistent with the
 hardware, so you can correct the definition before it ever reaches the cluster scheduler. See
 `run-model --help` for the full flag list.
 
@@ -229,9 +229,9 @@ requests with `304`, so a client that keeps its `ETag` polls cheaply.
 
 When a model deployment is created, the scheduler checks each cluster node against the model's requirements:
 
-1. **Driver**: Does the node have the right inference driver (vLLM or Ollama)?
-2. **Driver version**: Does the driver version satisfy `providerMinVersions`? (Nodes that haven't reported a version are not excluded.)
-3. **GPU platform**: Does at least one of the node's GPUs match `providerPlatforms`? (Nodes with no GPUs are excluded when a platform is required.)
+1. **Driver**: Does the node run the entry's `engine`?
+2. **Driver version**: Does the driver version satisfy `minEngineVersion`? (Nodes that haven't reported a version are not excluded.)
+3. **GPU platform**: Does at least one of the node's GPUs match `platforms`? (Nodes with no GPUs are excluded when a platform is required.)
 4. **Capacity**: Does the node have enough free VRAM for the model's `weight` + KV-cache?
 
 All four checks must pass on a single node. If no node qualifies, the model stays in "scheduling" state and the dashboard shows why it can't be placed.
