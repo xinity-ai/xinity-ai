@@ -16,11 +16,11 @@ On startup, the daemon detects available GPU hardware:
 
 Unified memory systems (e.g., DGX Spark) are detected when GPUs report zero VRAM, allocating 90% of system RAM as usable capacity. When no GPUs are found at all, system RAM is used as the capacity figure for CPU-only inference.
 
-The detected hardware profile is registered in the database and visible on the [dashboard's Compute page](dashboard.md#compute-dashboard).
+The detected hardware profile is sent to the tether at registration (which writes it to the database) and visible on the [dashboard's Compute page](dashboard.md#compute-dashboard).
 
 ## Model Installation
 
-The daemon receives deployment instructions from the dashboard via the shared database. A sync loop runs periodically (default: every 5 minutes) and triggers immediately via PostgreSQL `LISTEN/NOTIFY` when the dashboard creates or modifies a deployment.
+The daemon receives deployment instructions from the tether via a persistent SSE connection. When the dashboard creates or modifies a deployment, a PostgreSQL trigger notifies the tether, which pushes the updated desired state to the daemon immediately. A periodic resync (default: every 5 minutes) acts as a safety net.
 
 ### Ollama
 
@@ -53,7 +53,7 @@ These metrics power the [Compute dashboard](dashboard.md#compute-dashboard) and 
 
 ## Node State
 
-The daemon registers itself in the database with capacity, GPU details, supported drivers and versions, hostname, and port. The `CIDR_PREFIX` setting controls which network interface is advertised in multi-homed setups. On shutdown, the daemon marks itself as offline.
+The daemon sends its registration (capacity, GPU details, supported drivers and versions, hostname, and port) to the tether, which upserts the node record in the database. The `CIDR_PREFIX` setting controls which network interface is advertised in multi-homed setups. On disconnect, the tether marks the node as offline.
 
 **Warning:** the dashboard's deployment sync service treats an offline node as unavailable and, within one sync cycle (on its 5-minute timer, or immediately if triggered by another deployment change), soft-deletes any `modelInstallation` row on it for which another available node exists that could take over (matching driver, capacity, version, platform, and features). Installations with no such reassignment target are left in place. Stopping a daemon for routine maintenance can therefore orphan installations whenever capacity exists elsewhere to reassign them; patch or restart the daemon in place rather than stopping it, unless you intend for its reassignable installations to move.
 

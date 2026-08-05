@@ -2,14 +2,14 @@
 
 This repository is a Nix flake. Add it to your NixOS configuration to deploy Xinity services declaratively.
 
-All services (gateway, dashboard, infoserver, daemon) run as native `systemd` services. Binaries are pulled from the GitHub Release: JS bundles run via a shared `pkgs.bun` runtime for gateway/daemon/infoserver, and standalone `bun --compile` binaries for dashboard and cli.
+All services (gateway, dashboard, infoserver, tether, daemon) run as native `systemd` services. Binaries are pulled from the GitHub Release: JS bundles run via a shared `pkgs.bun` runtime for gateway/daemon/infoserver/tether, and standalone `bun --compile` binaries for dashboard and cli.
 
 ## Architecture
 
 A Xinity deployment spans two kinds of NixOS hosts:
 
-- **Control plane**: runs the gateway, dashboard, infoserver, database, and reverse proxy.
-- **Inference node**: runs the daemon with Ollama and/or vLLM available. Has GPU capacity and manages model installation.
+- **Control plane**: runs the gateway, dashboard, tether, infoserver, database, and reverse proxy.
+- **Inference node**: runs the daemon with Ollama and/or vLLM available. Has GPU capacity and manages model installation. Connects to the tether via SSE.
 
 Each gets a different module.
 
@@ -157,10 +157,12 @@ Deploy this on each machine with GPU capacity. It needs Ollama and/or vLLM avail
 The `environmentFiles` entries must contain:
 
 ```bash
-DB_CONNECTION_URL=postgresql://xinity:PASSWORD@control-plane-host/xinity
+TETHER_URL=http://control-plane-host:4020
+TETHER_SECRET=<shared-secret>
 ```
 
-The daemon is a native systemd service (`systemd.services.xinity-ai-daemon`). It connects to the shared database to receive deployment instructions and reports its state back.
+The daemon is a native systemd service (`systemd.services.xinity-ai-daemon`). It connects to the tether via SSE to receive deployment instructions and reports its state back. It has no direct database connection.
+
 
 ---
 
@@ -175,6 +177,7 @@ For fine-grained control, import and configure services separately. Available mo
 | `nixosModules.infoserver` | Model registry (`services.xinity-infoserver`) |
 | `nixosModules.database` | PostgreSQL + Redis (`services.xinity-ai-database`) |
 | `nixosModules.caddy` | Reverse proxy (`services.xinity-ai-caddy`) |
+| `nixosModules.tether` | SSE bridge to daemons (`services.xinity-tether`) |
 | `nixosModules.allinone` | All of the above combined |
 | `nixosModules.daemon` | Daemon / inference node (`services.xinity-ai-daemon`) |
 | `nixosModules.monitoring` | Prometheus + Grafana (`services.xinity-ai-monitoring`) |

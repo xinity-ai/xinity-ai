@@ -1,6 +1,6 @@
 # Xinity AI Docker Compose Deployment
 
-Single Compose file that brings up the full Xinity control plane. Two modes:
+Single Compose file that brings up the full Xinity control plane (gateway, dashboard, tether, and supporting infrastructure). Two modes:
 
 - **Localhost evaluation** (default): `docker compose up -d`. Gateway and dashboard reachable on `127.0.0.1:4121` and `127.0.0.1:5121`. No domain or TLS needed.
 - **HTTPS deployment**: `docker compose --profile caddy up -d`. Caddy fronts the stack with Let's Encrypt certificates on a real domain.
@@ -107,7 +107,7 @@ xinity configure apiKey <paste-key-here>
 
 For single-server deployments, plain `.env` (mode 600) is fine. Container env shows up in `docker inspect`, which is acceptable when the operator owns the host.
 
-`setup.sh` already generates `secrets/db_connection_url`, `secrets/better_auth_secret`, and `secrets/metrics_auth`, and `docker-compose.yml` wires them into the gateway and dashboard as `DB_CONNECTION_URL_FILE`, `BETTER_AUTH_SECRET_FILE`, and `METRICS_AUTH_FILE` — no manual step needed for those.
+`setup.sh` already generates `secrets/db_connection_url`, `secrets/better_auth_secret`, `secrets/metrics_auth`, and `secrets/tether_secret`, and `docker-compose.yml` wires them into the relevant services as `*_FILE` environment variables (e.g. `DB_CONNECTION_URL_FILE`, `TETHER_SECRET_FILE`).
 
 For any other *Xinity* service env var `VAR`, set `VAR_FILE` to a file path and the service reads the file at startup (direct env vars take precedence over the `_FILE` variant); wire it in via a `docker-compose.override.yml` using Compose's `secrets:` block.
 
