@@ -147,5 +147,6 @@ export function quoteShellArgv(argv: string[]): string {
 
 export * from "./deployment-settings";
 export * from "./metrics-auth";
+export * from "./metrics-format";
 export * from "./service-url";
 export * from "./tether-protocol";
