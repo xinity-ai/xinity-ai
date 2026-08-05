@@ -1,12 +1,12 @@
 # Monitoring
 
-The gateway, dashboard, and daemon expose Prometheus metrics (the infoserver does not). Pre-built Grafana dashboards are included for visualization. Service discovery lets Prometheus find daemon nodes automatically.
+The gateway, dashboard, tether, and daemon expose Prometheus metrics (the infoserver does not). Pre-built Grafana dashboards are included for visualization. Service discovery lets Prometheus find daemon nodes automatically.
 
 For deployment-specific monitoring setup, see the [Docker deployment guide](../../deployment/docker/README.md) or the [NixOS deployment guide](../../deployment/nixos/README.md). For the auto-generated Prometheus config in the dashboard, see [Instance Administration](instance-administration.md#monitoring-setup).
 
 ## Prometheus Metrics
 
-Each of the gateway, dashboard, and daemon exposes a `GET /metrics` endpoint in Prometheus text format, protected by HTTP Basic Auth via the `METRICS_AUTH` environment variable (format: `user:pass`, comma-separated for multiple credentials). On the gateway and daemon this is optional; when unset, the endpoint is open. On the dashboard, `METRICS_AUTH` is required.
+Each of the gateway, dashboard, tether, and daemon exposes a `GET /metrics` endpoint in Prometheus text format, protected by HTTP Basic Auth via the `METRICS_AUTH` environment variable (format: `user:pass`, comma-separated for multiple credentials). On the gateway, tether, and daemon this is optional; when unset, the endpoint is open. On the dashboard, `METRICS_AUTH` is required.
 
 ### Gateway metrics
 
@@ -45,6 +45,20 @@ Load-balancer decision metrics (see [Load Balancing](gateway.md#load-balancing))
 | (Node.js defaults) | various | | Process CPU, memory, event loop lag, heap, GC |
 
 The dashboard uses `prom-client` and collects default Node.js/Bun runtime metrics automatically.
+
+### Tether metrics
+
+| Metric | Type | Labels | Description |
+|---|---|---|---|
+| `tether_connected_nodes` | gauge | | Daemons currently holding an SSE connection |
+| `tether_sse_connections_total` | counter | | SSE connections established |
+| `tether_sse_connection_duration_seconds` | histogram | `reason` | How long each closed connection lasted, by why it closed |
+| `tether_desired_state_pushes_total` | counter | | Desired-state events pushed to daemons |
+| `tether_request_rejections_total` | counter | `endpoint` (`stream`, `status`), `reason` | Daemon requests refused before any work: `unauthorized`, `invalid_payload`, `protocol_mismatch`, `registration_failed`, `method_not_allowed` |
+
+A daemon connection is meant to last as long as the node is up, so the connection-duration histogram is the primary health signal: observations in the low buckets mean the fleet is reconnecting, and `reason` says why. `cancel` covers anything that tore down the socket from the far side (daemon restart, network drop, an idle timeout closing the connection), `superseded` means the same node opened a second connection, `write_failed` and `keepalive_failed` mean the tether could no longer write to the stream, `shutdown` is a clean tether stop.
+
+`protocol_mismatch` rejections are the signal to watch after upgrading: daemons running an older protocol are refused at the handshake and retry indefinitely, so a nonzero rate means part of the fleet is stuck on the wrong version.
 
 ### Daemon metrics
 
@@ -137,6 +151,7 @@ Key options:
 | `retentionTime` | `15d` | Data retention |
 | `gatewayTarget` | `localhost:4121` | Gateway metrics target |
 | `dashboardTarget` | `localhost:5121` | Dashboard metrics target |
+| `tetherTarget` | `localhost:4020` | Tether metrics target, `null` to skip |
 | `grafana.port` | `6121` | Grafana port |
 | `logs.port` | `6122` | Loki port |
 | `logs.retentionPeriod` | `168h` (7 days) | Log retention |

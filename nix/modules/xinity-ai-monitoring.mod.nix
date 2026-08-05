@@ -72,6 +72,12 @@
           description = "host:port of the dashboard. Scraped for its own /metrics and queried for daemon service discovery at /metrics/sd/daemons. Resolves to the local dashboard port in the all-in-one deployment.";
         };
 
+        tetherTarget = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = "localhost:4020";
+          description = "host:port of the tether /metrics endpoint, which reports daemon SSE connectivity and rejected daemon requests. Set to null in deployments that run no tether. Resolves to the local tether port in the all-in-one deployment.";
+        };
+
         basicAuthUsername = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
@@ -167,6 +173,7 @@
               (job "xinity-dashboard" [ cfg.dashboardTarget ])
               daemonJob
             ]
+            ++ lib.optional (cfg.tetherTarget != null) (job "xinity-tether" [ cfg.tetherTarget ])
             ++ cfg.extraScrapeConfigs;
         };
 
