@@ -29,7 +29,7 @@ export interface ResolvedVllmModel {
   model: ModelV2;
   trustRemoteCode: boolean;
   hasToolsTag: boolean;
-  providerArgs: string[];
+  args: string[];
   modelType: string | undefined;
   /** KV-cache allocation in GB: max(override, model.minKvCache). */
   kvCacheGb: number;
@@ -87,7 +87,7 @@ export function resolveVllmModel(
     model,
     trustRemoteCode: tags.includes("custom_code"),
     hasToolsTag: tags.includes("tools"),
-    providerArgs: model.args ?? [],
+    args: model.args ?? [],
     modelType: model.type,
     kvCacheGb,
     estCapacity: model.weight + kvCacheGb,

@@ -22,14 +22,12 @@ import {
   createSystemdVllmOps,
   type VllmOps,
 } from "./vllm-ops";
-import { createInfoserverClient } from "xinity-infoserver";
 import { rootLogger } from "../../logger";
 import { getHardwareProfile } from "../statekeeper";
 import { downloadModel } from "./vllm-download";
 import { dropPageCache } from "./page-cache";
+import { resolveInstallationEntry } from "./catalog";
 import { updateInstallationState } from "./state";
-
-const infoClient = createInfoserverClient({ baseUrl: env.INFOSERVER_URL, cacheTtlMs: env.INFOSERVER_CACHE_TTL_MS });
 
 const log = rootLogger.child({ name: "vllm" });
 
@@ -158,31 +156,25 @@ function pollUntilHealthy$(
 }
 
 async function downloadAndStart(installation: ModelInstallation, ops: VllmOps): Promise<{ modelType: string | undefined; providerModel: string }> {
-  const modelInfo = await infoClient.fetchModel(installation.specifier);
-  const providerModel = modelInfo?.providers.vllm;
-  if (!providerModel) {
-    throw new Error(`Catalog entry has no vllm provider for installation ${installation.id}`);
+  const entry = await resolveInstallationEntry(installation.specifier, "vllm");
+  if (!entry) {
+    throw new Error(`No vllm catalog entry for installation ${installation.id}`);
   }
+  const providerModel = entry.engineSpecifier;
 
   await updateInstallationState(installation.id, "downloading", { statusMessage: "Downloading model", progress: 0 });
 
   await downloadModel(
     providerModel,
     throttledDownloadProgress(installation.id, 5000),
-    modelInfo?.downloadFilter ?? [],
+    entry.downloadFilter,
   );
 
   await updateInstallationState(installation.id, "installing", { statusMessage: "Starting vLLM service" });
 
-  const [trustRemoteCode, hasToolsTag, extraArgs, profile] = await Promise.all([
-    infoClient.hasTag(installation.specifier, "custom_code", "vllm"),
-    infoClient.hasTag(installation.specifier, "tools", "vllm"),
-    infoClient.resolveDriverArgs(installation.specifier, "vllm"),
-    getHardwareProfile(),
-  ]);
-
+  const profile = await getHardwareProfile();
   const gpuMemoryUtilization = computeGpuUtilization(installation, profile);
-  const modelType = modelInfo?.type;
+  const modelType = entry.type;
 
   await dropPageCache();
 
@@ -190,9 +182,9 @@ async function downloadAndStart(installation: ModelInstallation, ops: VllmOps): 
     model: providerModel,
     port: installation.port,
     kvCacheBytes: `${installation.kvCacheCapacity}g`,
-    trustRemoteCode,
+    trustRemoteCode: entry.tags.includes("custom_code"),
     gpuMemoryUtilization,
-    extraArgs: buildVllmExtraArgs(modelType, hasToolsTag, extraArgs),
+    extraArgs: buildVllmExtraArgs(modelType, entry.tags.includes("tools"), entry.args),
     settings: installation.settings,
   });
 
@@ -202,12 +194,12 @@ async function downloadAndStart(installation: ModelInstallation, ops: VllmOps): 
 export function buildVllmExtraArgs(
   modelType: string | undefined,
   hasToolsTag: boolean,
-  providerArgs: readonly string[],
+  args: readonly string[],
 ): string[] {
   return [
     ...(modelType === "embedding" || modelType === "rerank" ? ["--runner", "pooling"] : []),
     ...(hasToolsTag ? ["--enable-auto-tool-choice"] : []),
-    ...providerArgs,
+    ...args,
   ];
 }
 
