@@ -4,8 +4,8 @@
 
 A Xinity deployment has two distinct roles:
 
-- **Control plane**: runs the gateway, dashboard, database, and Redis. Serves the API and admin UI.
-- **Inference node(s)**: each GPU machine runs a daemon alongside Ollama or vLLM. The daemon connects to the shared database to receive deployment instructions and report state.
+- **Control plane**: runs the gateway, dashboard, tether, database, and Redis. Serves the API and admin UI. The tether bridges the database to the daemon fleet(s).
+- **Inference node(s)**: each GPU machine runs a daemon alongside Ollama or vLLM. The daemon connects to the tether via SSE to receive deployment instructions and report state.
 
 The control plane can be deployed using any of the three methods below. The daemon is always installed on each inference node using the Xinity CLI, regardless of how the control plane is deployed.
 
@@ -45,9 +45,9 @@ After the control plane is running (by any method):
    xinity up daemon
    ```
 
-3. When prompted, provide the same `DB_CONNECTION_URL` used by the control plane. The daemon needs direct network access to PostgreSQL.
+3. When prompted, provide `TETHER_URL` (pointing at the control plane's tether) and `TETHER_SECRET` (the shared authentication secret). The daemon needs network access to the tether, not to PostgreSQL directly.
 
-4. The daemon registers itself in the shared database. It appears in the dashboard and can receive model deployments.
+4. The daemon registers with the tether, which writes the node record to the database. It appears in the dashboard and can receive model deployments.
 
 This workflow is the same regardless of whether the control plane runs via Docker, NixOS, or CLI.
 
@@ -59,11 +59,11 @@ A common pattern is Docker Compose for the control plane and the CLI for inferen
 
 - Deploy the control plane with `docker compose up -d` (see [Docker guide](docker/README.md))
 - On each GPU machine, install the CLI and run `xinity up daemon`
-- The daemon needs network access to PostgreSQL. If PostgreSQL is inside Docker on the control plane host, either:
-  - Expose port 5432 on the host (`ports: ["5432:5432"]` in `docker-compose.yml`)
+- The daemon needs network access to the tether (default port 4020). If the tether is inside Docker on the control plane host, either:
+  - Expose port 4020 on the host (already the default in `docker-compose.yml`)
   - Use Docker's host networking mode
 
-NixOS control plane with CLI daemons works the same way — the daemon just needs the database URL.
+NixOS control plane with CLI daemons works the same way — the daemon just needs the tether URL and shared secret.
 
 ---
 

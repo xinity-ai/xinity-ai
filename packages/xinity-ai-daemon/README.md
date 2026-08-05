@@ -1,6 +1,6 @@
 # Xinity AI Daemon
 
-The daemon runs on each GPU node in the cluster. It detects hardware, installs and manages models via Ollama or vLLM, reports node state to the database, and exposes a local proxy that the gateway routes inference requests through.
+The daemon runs on each GPU node in the cluster. It detects hardware, installs and manages models via Ollama or vLLM, reports node state to the tether (which writes it to the database), and exposes a local proxy that the gateway routes inference requests through. The daemon has no direct database connection.
 
 ## Development
 
@@ -16,12 +16,13 @@ If you have direnv installed, set up a `.envrc` file with `use flake .` to autom
 On startup, the daemon:
 
 1. Detects GPU hardware (NVIDIA via `nvidia-smi`, AMD via sysfs/`rocm-smi`, Intel via `xpu-smi`). Falls back to system RAM when no GPUs are found. Unified memory systems (e.g., DGX Spark) are detected and allocated at 90% of system RAM.
-2. Registers itself in the database with capacity, GPU details, supported drivers and versions, hostname, and port.
-3. Starts a sync loop (every `SYNC_INTERVAL_MS`, default 5 minutes) that reads deployment instructions from the database and installs/removes models accordingly. Also listens for PostgreSQL `NOTIFY` signals for immediate sync on dashboard changes.
-4. Starts GPU telemetry sampling (NVIDIA only, every `METRICS_SAMPLE_INTERVAL_MS`, default 20 seconds) for utilization, temperature, power, energy, ECC errors, and throttling.
-5. Exposes Prometheus metrics at `/metrics` and an OpenAI-compatible proxy at `/proxy/*`.
+2. Opens a persistent SSE connection to the tether, sending its hardware profile (capacity, GPU details, drivers, hostname, port) as the registration body. The tether upserts the node record in the database.
+3. Receives desired state (model installations) from the tether over the SSE stream and installs/removes models accordingly. Changes are pushed immediately when the dashboard updates a deployment.
+4. Reports installation lifecycle state back to the tether via `POST /api/v1/status`.
+5. Starts GPU telemetry sampling (NVIDIA only, every `METRICS_SAMPLE_INTERVAL_MS`, default 20 seconds) for utilization, temperature, power, energy, ECC errors, and throttling.
+6. Exposes Prometheus metrics at `/metrics` and an OpenAI-compatible proxy at `/proxy/*`.
 
-On shutdown, the daemon marks itself as offline in the database.
+On disconnect, the tether marks the node as offline in the database.
 
 ### Ollama Driver
 
@@ -72,7 +73,8 @@ Set `VLLM_BACKEND` to choose the backend explicitly (`systemd`, the default, or 
 | `PORT` | `4044` | Listen port |
 | `HOST` | `0.0.0.0` | Bind address |
 | `UNIX_SOCKET` | (unset) | Unix socket path (overrides HOST/PORT) |
-| `DB_CONNECTION_URL` | (required) | PostgreSQL connection string |
+| `TETHER_URL` | (required) | URL of the xinity-tether service |
+| `TETHER_SECRET` | (required) | Shared secret for tether authentication |
 | `INFOSERVER_URL` | `https://sysinfo.xinity.ai` | Infoserver URL |
 | `XINITY_OLLAMA_ENDPOINT` | (unset) | Ollama API endpoint (enables Ollama driver) |
 | `VLLM_BACKEND` | `systemd` | `systemd` or `docker` |
@@ -86,7 +88,7 @@ Set `VLLM_BACKEND` to choose the backend explicitly (`systemd`, the default, or 
 | `VLLM_HEALTH_TIMEOUT_MS` | `3600000` (1 hour) | Health check timeout |
 | `VLLM_HEALTH_POLL_INTERVAL_MS` | `5000` (5 seconds) | Health check poll interval |
 | `VLLM_MAX_RESTART_COUNT` | `3` | Max restarts before marking as failed |
-| `SYNC_INTERVAL_MS` | `300000` (5 minutes) | Database sync interval |
+| `SYNC_INTERVAL_MS` | `300000` (5 minutes) | Periodic resync interval (desired state is also pushed in real time via SSE) |
 | `METRICS_SAMPLE_INTERVAL_MS` | `20000` (20 seconds) | GPU telemetry sampling interval |
 | `MACHINE_NAME` | (hostname) | Display name for the node |
 | `CIDR_PREFIX` | (empty) | Network CIDR prefix for IP advertisement filtering |

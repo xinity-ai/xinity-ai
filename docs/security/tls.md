@@ -1,6 +1,6 @@
 # TLS: Encrypted Inference Backend Communication
 
-xinity supports optional TLS between the gateway and inference daemons. When enabled, inference traffic is encrypted in transit. Authentication between services is handled automatically via per-node tokens exchanged through the shared database.
+xinity supports optional TLS between the gateway and inference daemons. When enabled, inference traffic is encrypted in transit. Authentication between services is handled automatically via per-node tokens: the daemon sends its token to the tether at registration, and the gateway reads it from the database when routing requests.
 
 ## Architecture
 
@@ -10,12 +10,12 @@ Gateway --HTTP(S)--> Daemon (:4044) /proxy/{model}/v1/... --plain HTTP--> Backen
 
 - The daemon acts as a reverse proxy for all inference traffic on its existing HTTP(S) port
 - Inference backends (vLLM, Ollama) bind to `127.0.0.1` only and are not directly reachable from the network
-- Each daemon generates a random auth token on startup and writes it to the database; the gateway reads it automatically
-- When TLS is configured on a daemon, it reports this to the database so the gateway connects via HTTPS
+- Each daemon generates a random auth token on startup and sends it to the tether as part of its registration. The tether writes it to the database, and the gateway reads it automatically
+- When TLS is configured on a daemon, it reports this to the tether so the gateway connects via HTTPS
 
 ## Security layers
 
-1. **App-level auth**: Each daemon generates a per-instance token on startup, stored in the database. The gateway reads the token and sends it with every request. No manual configuration needed.
+1. **App-level auth**: Each daemon generates a per-instance token on startup and sends it to the tether, which stores it in the database. The gateway reads the token and sends it with every request. No manual configuration needed.
 2. **TLS** (opt-in): Encrypts traffic between gateway and daemons. Configure with cert/key env vars.
 3. **Overlay networks** (recommended): For production deployments, use an overlay network like WireGuard, Tailscale, or Headscale to isolate service-to-service traffic at the network level.
 

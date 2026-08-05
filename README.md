@@ -134,7 +134,11 @@ Full per-scenario reports and aggregate summaries are in [`benchmarks/`](benchma
 │  │    tracking  │    │  • Rate      │    │  • Auto-scale  │  │
 │  │  • MCP       │    │    limiting  │    │                │  │
 │  └──────┬───────┘    └──────┬───────┘    └───────┬────────┘  │
-│         │                   │                    │           │
+│         │                   │                    │ SSE       │
+│         │                   │              ┌─────▼────────┐  │
+│         │                   │              │   Tether     │  │
+│         │                   │              │ (SSE bridge) │  │
+│         │                   │              └─────┬────────┘  │
 │         └─────────┬─────────┘────────────────────┘           │
 │                   │                              │           │
 │             ┌─────▼──────┐               ┌───────▼────────┐  │
@@ -161,6 +165,7 @@ Detailed guides for each part of the platform:
 | [Notifications](docs/features/notifications.md) | Email alerts for deployments, node health, capacity, weekly reports |
 | [CLI](docs/features/cli.md) | All commands (`up`, `rm`, `doctor`, `act`, `configure`, `update`, `completion`), remote host support, infrastructure utilities |
 | [Daemon](docs/features/daemon.md) | GPU auto-detection, model installation (Ollama/vLLM), cache eviction, GPU metrics, run-model script |
+| [Tether](docs/architecture.md#tether) | SSE bridge between daemons and the database, desired-state streaming, status collection, liveness tracking |
 | [Monitoring](docs/features/monitoring.md) | Prometheus metrics (all services), Grafana dashboards, service discovery |
 | [Model Registry](docs/features/model-registry.md) | Infoserver API, model definition schema, registry composition, tag resolution |
 | [Reverse proxy](docs/security/reverse-proxy.md) | nginx and Caddy templates, streaming and upload requirements, rate limiting, protecting `/metrics` |
@@ -352,6 +357,7 @@ packages/
 ├── xinity-ai-gateway/     # API gateway (OpenAI-compatible proxy)
 ├── xinity-ai-dashboard/   # SvelteKit admin dashboard
 ├── xinity-ai-daemon/      # Model runtime agent (runs on GPU hardware)
+├── xinity-tether/         # SSE bridge between daemons and database
 ├── xinity-cli/            # Operator CLI
 └── xinity-infoserver/     # Model registry + YAML server ([model authoring guide](packages/xinity-infoserver/README.md))
 ```
@@ -360,7 +366,7 @@ packages/
 
 | Component | License | You can... |
 |---|---|---|
-| Gateway, Daemon, CLI, Infoserver, DB schema, shared libs | [Apache 2.0](LICENSE) | Use, modify, distribute freely — including commercially |
+| Gateway, Daemon, Tether, CLI, Infoserver, DB schema, shared libs | [Apache 2.0](LICENSE) | Use, modify, distribute freely — including commercially |
 | Dashboard | [Elastic License v2](packages/xinity-ai-dashboard/LICENSE) | Use and view source. Free tier: up to 120 GB total VRAM across your cluster. Paid tiers unlock higher/unlimited capacity and multi-org |
 
 The entire codebase is visible and auditable. The open-core engine runs without the dashboard, the dashboard adds enterprise management features on top.
