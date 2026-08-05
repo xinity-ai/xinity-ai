@@ -43,6 +43,17 @@
           description = "Path to a file containing the metrics auth credentials. Loaded via systemd's LoadCredential mechanism.";
         };
 
+        idleTimeout = lib.mkOption {
+          type = lib.types.ints.between 1 255;
+          default = 255;
+          description = ''
+            Seconds a connection may go without traffic before the server closes it.
+            Keepalive writes reset it, so daemon SSE connections stay open indefinitely.
+            Must be at least three times keepaliveIntervalMs, which the tether
+            refuses to start without.
+          '';
+        };
+
         keepaliveIntervalMs = lib.mkOption {
           type = lib.types.int;
           default = 15000;
@@ -84,6 +95,13 @@
       };
 
       config = lib.mkIf cfg.enable {
+        assertions = [
+          {
+            assertion = cfg.keepaliveIntervalMs * 3 <= cfg.idleTimeout * 1000;
+            message = "services.xinity-tether.keepaliveIntervalMs (${toString cfg.keepaliveIntervalMs}ms) must be at most a third of idleTimeout (${toString cfg.idleTimeout}s), otherwise the tether drops live daemon connections between keepalives.";
+          }
+        ];
+
         systemd.services.xinity-tether = {
           description = "Xinity Tether";
           wantedBy = [ "multi-user.target" ];
@@ -92,6 +110,7 @@
           environment = {
             PORT = toString cfg.port;
             HOST = cfg.host;
+            IDLE_TIMEOUT = toString cfg.idleTimeout;
             KEEPALIVE_INTERVAL_MS = toString cfg.keepaliveIntervalMs;
             LIVENESS_TIMEOUT_MS = toString cfg.livenessTimeoutMs;
             LOG_LEVEL = cfg.logLevel;
