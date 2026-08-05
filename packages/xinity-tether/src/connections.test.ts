@@ -34,10 +34,9 @@ mock.module("./logger", () => ({
 mock.module("./metrics", () => ({
   incSSEConnections: () => {},
   incDesiredStatePushes: () => {},
-  incLivenessTimeouts: () => {},
+  observeConnectionDuration: () => {},
   setConnectedNodes: () => {},
-  incRegistrationWrites: () => {},
-  incStateWrites: () => {},
+  incRequestRejections: () => {},
   handleMetrics: () => new Response(""),
 }));
 
@@ -99,12 +98,12 @@ describe("connections", () => {
   test("removeConnection makes node disconnected", async () => {
     const { controller } = makeController();
     await addConnection("node-1", controller);
-    await removeConnection("node-1");
+    await removeConnection("node-1", "cancel");
     expect(isConnected("node-1")).toBe(false);
   });
 
   test("removeConnection is idempotent for unknown nodeId", async () => {
-    await removeConnection("nonexistent");
+    await removeConnection("nonexistent", "cancel");
     expect(isConnected("nonexistent")).toBe(false);
   });
 
@@ -175,7 +174,7 @@ describe("connections", () => {
     expect(isConnected("node-a")).toBe(true);
     expect(isConnected("node-b")).toBe(true);
 
-    await removeConnection("node-a");
+    await removeConnection("node-a", "cancel");
     expect(isConnected("node-a")).toBe(false);
     expect(isConnected("node-b")).toBe(true);
   });
@@ -191,7 +190,7 @@ describe("connections", () => {
     const { controller } = makeController();
     await addConnection("node-dbfail2", controller);
     dbShouldFail = true;
-    await removeConnection("node-dbfail2");
+    await removeConnection("node-dbfail2", "cancel");
     expect(isConnected("node-dbfail2")).toBe(false);
   });
 });

@@ -36,16 +36,6 @@ mock.module("./logger", () => ({
   },
 }));
 
-mock.module("./metrics", () => ({
-  incRegistrationWrites: () => {},
-  incStateWrites: () => {},
-  incSSEConnections: () => {},
-  incDesiredStatePushes: () => {},
-  incLivenessTimeouts: () => {},
-  setConnectedNodes: () => {},
-  handleMetrics: () => new Response(""),
-}));
-
 const { writeRegistration, queueInstallationStates, flushAndStop } = await import("./status-writer");
 
 describe("writeRegistration", () => {

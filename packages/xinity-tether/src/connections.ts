@@ -5,8 +5,9 @@ import { rootLogger } from "./logger";
 import {
   incSSEConnections,
   incDesiredStatePushes,
-  incLivenessTimeouts,
+  observeConnectionDuration,
   setConnectedNodes,
+  type DisconnectReason,
 } from "./metrics";
 
 const log = rootLogger.child({ name: "connections" });
@@ -33,6 +34,10 @@ function tryWrite(conn: ActiveConnection, chunk: string): boolean {
   }
 }
 
+function recordClose(conn: ActiveConnection, reason: DisconnectReason): void {
+  observeConnectionDuration(reason, (Date.now() - conn.connectedAt) / 1000);
+}
+
 async function setNodeAvailable(nodeId: string, available: boolean): Promise<void> {
   try {
     await getDB()
@@ -55,6 +60,7 @@ export async function addConnection(
     try {
       existing.controller.close();
     } catch {}
+    recordClose(existing, "superseded");
   }
 
   const conn: ActiveConnection = {
@@ -70,7 +76,7 @@ export async function addConnection(
   await setNodeAvailable(nodeId, true);
 }
 
-export async function removeConnection(nodeId: string): Promise<void> {
+export async function removeConnection(nodeId: string, reason: DisconnectReason): Promise<void> {
   const conn = connections.get(nodeId);
   if (!conn) {
     return;
@@ -78,12 +84,13 @@ export async function removeConnection(nodeId: string): Promise<void> {
 
   connections.delete(nodeId);
   setConnectedNodes(connections.size);
+  recordClose(conn, reason);
 
   try {
     conn.controller.close();
   } catch {}
 
-  log.info({ nodeId }, "Daemon disconnected");
+  log.info({ nodeId, reason }, "Daemon disconnected");
   await setNodeAvailable(nodeId, false);
 }
 
@@ -97,7 +104,7 @@ export function pushDesiredState(nodeId: string, state: DesiredState): boolean {
   if (ok) {
     incDesiredStatePushes();
   } else {
-    void removeConnection(nodeId);
+    void removeConnection(nodeId, "write_failed");
   }
   return ok;
 }
@@ -108,14 +115,13 @@ export function runKeepaliveLoop(intervalMs: number, timeoutMs: number): Timer {
     for (const [nodeId, conn] of connections) {
       if (now - conn.lastWriteAt > timeoutMs) {
         log.warn({ nodeId, silentMs: now - conn.lastWriteAt }, "Liveness timeout");
-        incLivenessTimeouts();
-        void removeConnection(nodeId);
+        void removeConnection(nodeId, "liveness_timeout");
         continue;
       }
 
       if (!tryWrite(conn, ": keepalive\n\n")) {
         log.info({ nodeId }, "Keepalive write failed");
-        void removeConnection(nodeId);
+        void removeConnection(nodeId, "keepalive_failed");
       }
     }
   }, intervalMs);
@@ -135,6 +141,7 @@ export function sendShutdownToAll(): void {
     try {
       conn.controller.close();
     } catch {}
+    recordClose(conn, "shutdown");
     connections.delete(nodeId);
   }
   setConnectedNodes(0);
