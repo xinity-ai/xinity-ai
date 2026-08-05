@@ -407,7 +407,7 @@ packages/
 ├── xinity-ai-gateway/     # API gateway (OpenAI-compatible proxy)
 ├── xinity-ai-dashboard/   # SvelteKit admin dashboard
 ├── xinity-ai-daemon/      # Model runtime agent (runs on GPU hardware)
-├── xinity-tether/         # SSE bridge between daemons and database
+├── xinity-tether/         # SSE bridge between daemons and database ([README](packages/xinity-tether/README.md))
 ├── xinity-cli/            # Operator CLI
 └── xinity-infoserver/     # Model registry + YAML server ([model authoring guide](packages/xinity-infoserver/README.md))
 ```
