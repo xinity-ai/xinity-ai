@@ -36,15 +36,3 @@ Verified providers show a green "Verified" badge. Unverified providers show an a
 ## License Management
 
 The license page (Instance Settings > License) shows the current license status, tier, licensee, and the deployment instance ID needed when requesting a license.
-
-## Monitoring Setup
-
-The monitoring page generates a ready-to-use `prometheus.yml` configuration with three scrape jobs:
-
-1. **xinity-gateway:** Static target derived from `GATEWAY_URL`.
-2. **xinity-dashboard:** Static target derived from the dashboard's `ORIGIN`.
-3. **xinity-daemon:** Dynamic target discovery via the dashboard's HTTP service discovery endpoint (`/metrics/sd/daemons`), refreshing every 3 minutes. Nodes are added and removed automatically as daemons come online.
-
-The page also documents the Docker Compose monitoring profile (`docker compose --profile monitoring up -d`) and the `PROMETHEUS_URL` overlay for enabling live GPU utilization on the Compute page.
-
-See [Monitoring](monitoring.md) for full details on metrics, Grafana dashboards, and deployment.
