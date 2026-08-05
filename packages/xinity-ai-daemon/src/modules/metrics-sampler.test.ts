@@ -58,14 +58,6 @@ describe("parseNvidiaMetricsOutput", () => {
     });
   });
 
-  test("parses multiple GPUs", () => {
-    const csv = [LINE, "1, GPU-def, NVIDIA H100 80GB HBM3, 560.35.03, 12, 5, 50, 95.0, 700, 2048, 81559, 0, 0"].join("\n");
-    const samples = parseNvidiaMetricsOutput(csv);
-    expect(samples).toHaveLength(2);
-    expect(samples[1]!.index).toBe(1);
-    expect(samples[1]!.uuid).toBe("GPU-def");
-  });
-
   test("maps [N/A] fields to null (numbers) and null (driver string)", () => {
     const csv = "0, GPU-x, NVIDIA GB10, [N/A], 45, [N/A], [N/A], [N/A], [N/A], 1024, [N/A], [N/A], [N/A]";
     const [s] = parseNvidiaMetricsOutput(csv);

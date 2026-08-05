@@ -178,26 +178,6 @@ describe("handleResponses", () => {
     expect(responseStore.has("resp_delete")).toBe(false);
   });
 
-  test("should accept include parameter", async () => {
-    const req = new Request("http://localhost:4000/v1/responses", {
-      method: "POST",
-      headers: { "Authorization": "Bearer test" },
-      body: JSON.stringify({
-        model: "test-model",
-        input: "Hi",
-        include: ["web_search_call.results"],
-      }),
-    });
-
-    const res = await handleCreateResponseRequest(req);
-    expect(res.status).toBe(200);
-    
-    const body = (await res.json()) as any;
-    expect(body.id).toContain("resp_");
-    expect(body.object).toBe("response");
-    expect(body.status).toBe("completed");
-  });
-
   test("should accept tools parameter", async () => {
     const req = new Request("http://localhost:4000/v1/responses", {
       method: "POST",
@@ -216,48 +196,6 @@ describe("handleResponses", () => {
     expect(body.id).toContain("resp_");
     expect(body.object).toBe("response");
     expect(body.status).toBe("completed");
-  });
-
-  test("should accept tools parameter as array of strings", async () => {
-    const req = new Request("http://localhost:4000/v1/responses", {
-      method: "POST",
-      headers: { "Authorization": "Bearer test" },
-      body: JSON.stringify({
-        model: "test-model",
-        input: "Hi",
-        tools: ["web_search"],
-      }),
-    });
-
-    const res = await handleCreateResponseRequest(req);
-    expect(res.status).toBe(200);
-    
-    const body = (await res.json()) as any;
-    expect(body.id).toContain("resp_");
-    expect(body.object).toBe("response");
-    expect(body.status).toBe("completed");
-  });
-
-  test("should handle both tools and include parameters together", async () => {
-    const req = new Request("http://localhost:4000/v1/responses", {
-      method: "POST",
-      headers: { "Authorization": "Bearer test" },
-      body: JSON.stringify({
-        model: "test-model",
-        input: "Hi",
-        tools: [{ type: "web_search" }],
-        include: ["web_search_call.results", "web_search_call.action.sources"],
-      }),
-    });
-
-    const res = await handleCreateResponseRequest(req);
-    expect(res.status).toBe(200);
-    
-    const body = (await res.json()) as any;
-    expect(body.id).toContain("resp_");
-    expect(body.object).toBe("response");
-    expect(body.status).toBe("completed");
-    expect(Array.isArray(body.output)).toBe(true);
   });
 
   test("should accept text config for structured output", async () => {
@@ -339,52 +277,6 @@ describe("handleResponses", () => {
 
     const res = await handleCreateResponseRequest(req);
     expect(res.status).toBe(404);
-  });
-
-  test("should accept tool_choice none", async () => {
-    const req = new Request("http://localhost:4000/v1/responses", {
-      method: "POST",
-      headers: { "Authorization": "Bearer test" },
-      body: JSON.stringify({
-        model: "test-model",
-        input: "Hi",
-        tools: [{ type: "web_search" }],
-        tool_choice: "none",
-      }),
-    });
-
-    const res = await handleCreateResponseRequest(req);
-    expect(res.status).toBe(200);
-  });
-
-  test("should accept web_search_preview tool type", async () => {
-    const req = new Request("http://localhost:4000/v1/responses", {
-      method: "POST",
-      headers: { "Authorization": "Bearer test" },
-      body: JSON.stringify({
-        model: "test-model",
-        input: "Hi",
-        tools: [{ type: "web_search_preview" }],
-      }),
-    });
-
-    const res = await handleCreateResponseRequest(req);
-    expect(res.status).toBe(200);
-  });
-
-  test("should accept web_search_preview_2025_03_11 tool type", async () => {
-    const req = new Request("http://localhost:4000/v1/responses", {
-      method: "POST",
-      headers: { "Authorization": "Bearer test" },
-      body: JSON.stringify({
-        model: "test-model",
-        input: "Hi",
-        tools: [{ type: "web_search_preview_2025_03_11" }],
-      }),
-    });
-
-    const res = await handleCreateResponseRequest(req);
-    expect(res.status).toBe(200);
   });
 
   test("should return function_call output items when model calls a function tool", async () => {

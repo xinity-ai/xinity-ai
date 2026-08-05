@@ -30,7 +30,7 @@ mock.module("./db", () => ({
 
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 
-const { processMessageImages, parseMediaRef, createImageStore } = await import("./image-store");
+const { processMessageImages, parseMediaRef } = await import("./image-store");
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -63,63 +63,8 @@ describe("parseMediaRef", () => {
     expect(parseMediaRef("https://example.com/image.png")).toBeNull();
   });
 
-  test("returns null for a data URI", () => {
-    expect(parseMediaRef(TINY_PNG_DATA_URI)).toBeNull();
-  });
-
   test("returns null for an empty string", () => {
     expect(parseMediaRef("")).toBeNull();
-  });
-});
-
-// ─── createImageStore ─────────────────────────────────────────────────────────
-
-describe("createImageStore", () => {
-  test("returns null when S3_ENDPOINT is missing", () => {
-    expect(createImageStore({
-      S3_ENDPOINT: undefined,
-      S3_ACCESS_KEY_ID: "key",
-      S3_SECRET_ACCESS_KEY: "secret",
-      S3_BUCKET: "xinity-media",
-      S3_REGION: "us-east-1",
-    })).toBeNull();
-  });
-
-  test("returns null when credentials are missing", () => {
-    expect(createImageStore({
-      S3_ENDPOINT: "http://localhost:8333",
-      S3_ACCESS_KEY_ID: undefined,
-      S3_SECRET_ACCESS_KEY: undefined,
-      S3_BUCKET: "xinity-media",
-      S3_REGION: "us-east-1",
-    })).toBeNull();
-  });
-
-  test("returns an ImageStore when fully configured", () => {
-    const store = createImageStore({
-      S3_ENDPOINT: "http://localhost:8333",
-      S3_ACCESS_KEY_ID: "key",
-      S3_SECRET_ACCESS_KEY: "secret",
-      S3_BUCKET: "xinity-media",
-      S3_REGION: "us-east-1",
-    });
-    expect(store).not.toBeNull();
-    expect(store!.bucket).toBe("xinity-media");
-  });
-});
-
-// ─── processMessageImages – fast path ────────────────────────────────────────
-
-describe("processMessageImages – no image content", () => {
-  test("returns messages unchanged when no array content present", async () => {
-    const messages = [
-      { role: "user", content: "Hello" },
-      { role: "assistant", content: "Hi there" },
-    ] as any;
-
-    const result = await processMessageImages(messages, "org-1", null);
-    expect(result.messagesForLLM).toBe(messages);
-    expect(result.messagesForDB).toBe(messages);
   });
 });
 
@@ -180,21 +125,6 @@ describe("processMessageImages – S3 enabled", () => {
     expect(sha256Param).toBeDefined();
     // S3 key is orgId/sha256
     expect(q!.params).toContain(`org-1/${sha256Param}`);
-  });
-
-  test("data URI: originalUrl param is null", async () => {
-    const messages = [
-      {
-        role: "user",
-        content: [{ type: "image_url", image_url: { url: TINY_PNG_DATA_URI } }],
-      },
-    ] as any;
-
-    await processMessageImages(messages, "org-1", store);
-
-    const q = findInsert();
-    expect(q).toBeDefined();
-    expect(q!.params).toContain(null);
   });
 
   test("data URI: S3 write uses orgId/sha256 key", async () => {

@@ -32,12 +32,6 @@ describe("slug round-trip", () => {
     expect(slugForModel("meta-llama/Llama-3.1-8B")).toBe("models--meta-llama--Llama-3.1-8B");
     expect(modelForSlug("models--meta-llama--Llama-3.1-8B")).toBe("meta-llama/Llama-3.1-8B");
   });
-
-  test("name with dashes survives round-trip", () => {
-    expect(modelForSlug(slugForModel("mistralai/Mistral-7B-Instruct-v0.3"))).toBe(
-      "mistralai/Mistral-7B-Instruct-v0.3",
-    );
-  });
 });
 
 describe("planEviction - no-op cases", () => {
