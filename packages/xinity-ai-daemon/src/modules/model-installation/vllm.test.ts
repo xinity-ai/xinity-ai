@@ -94,6 +94,10 @@ mock.module("./vllm-download", () => ({
   downloadModel: mock(() => Promise.resolve()),
 }));
 
+mock.module("./page-cache", () => ({
+  dropPageCache: mock(() => Promise.resolve()),
+}));
+
 const { syncVllmInstallations$, computeGpuUtilization } = await import("./vllm");
 
 // ---------------------------------------------------------------------------

@@ -1,4 +1,3 @@
-import { $ } from "bun";
 import {
   catchError,
   concat,
@@ -27,6 +26,7 @@ import { createInfoserverClient } from "xinity-infoserver";
 import { rootLogger } from "../../logger";
 import { getHardwareProfile } from "../statekeeper";
 import { downloadModel } from "./vllm-download";
+import { dropPageCache } from "./page-cache";
 import { updateInstallationState } from "./state";
 
 const infoClient = createInfoserverClient({ baseUrl: env.INFOSERVER_URL, cacheTtlMs: env.INFOSERVER_CACHE_TTL_MS });
@@ -155,13 +155,6 @@ function pollUntilHealthy$(
     ignoreElements(),
     endWith(void 0 as void),
   );
-}
-
-async function dropPageCache(): Promise<void> {
-  const result = await $`sh -c 'sync && echo 3 > /proc/sys/vm/drop_caches'`.quiet().nothrow();
-  if (result.exitCode !== 0) {
-    log.warn({ stderr: result.stderr.toString() }, "Failed to drop page cache before model start");
-  }
 }
 
 async function downloadAndStart(installation: ModelInstallation, ops: VllmOps): Promise<{ modelType: string | undefined; providerModel: string }> {
