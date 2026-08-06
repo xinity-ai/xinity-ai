@@ -67,7 +67,7 @@ async function resolvePythonForVllm(vllmPath: string): Promise<string> {
 
     if (bytesMatch(magic, ELF_MAGIC)) {
       const raw = new Uint8Array(await file.slice(0, 65536).arrayBuffer());
-      const decoded = new TextDecoder("latin1").decode(raw);
+      const decoded = new TextDecoder("latin1" as Bun.Encoding).decode(raw);
       const pythonPath = findEmbeddedPythonPath(decoded);
       if (pythonPath) {
         return pythonPath;
