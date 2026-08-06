@@ -52,6 +52,13 @@ export const configureCommand: CommandModule = {
     if (component === "cli") {
       await menuConfigureCli();
     } else {
+      if (process.platform !== "linux" && !targetHostArg) {
+        console.error(
+          `Configuring ${component} requires a Linux host. ` +
+          `Use --target-host to specify a remote Linux host.`,
+        );
+        process.exit(1);
+      }
       const host = await connectHost(targetHostArg);
       try {
         await configureComponentFlow(component as Component, host);

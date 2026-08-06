@@ -145,6 +145,10 @@ if (!bundleResult.success) {
 console.log("Bundle OK");
 
 // ── Step 2: Compile ─────────────────────────────────────────────────────────
+//
+// Windows binaries keep Bun's default icon and version info. Bun's --windows-*
+// resource flags require a Windows host and this compiles from Linux; see
+// assets/README.md for the icon and the two routes to applying it.
 
 const bundlePath = resolve(import.meta.dirname, "dist/index.js");
 const result = await $`bun build --compile --minify --sourcemap=external --target=${target} ${bundlePath} --outfile ${outfile}`.nothrow();

@@ -18,7 +18,8 @@ env:
   BUN_VERSION: "1.3.14"
 
 jobs:
-  # Standalone binaries via `bun build --compile` for linux x64/x64-baseline/arm64.
+  # Standalone binaries via `bun build --compile`.
+  # Linux x64/x64-baseline/arm64 for all packages; the CLI also gets macOS and Windows.
   build-binaries:
     name: "Binary: ${{ matrix.package }}"
     runs-on: ubuntu-latest
@@ -39,6 +40,7 @@ jobs:
             binary_name: xinity
             workdir: packages/xinity-cli
             custom_build: true
+            targets: "bun-linux-x64 bun-linux-x64-baseline bun-linux-arm64 bun-darwin-x64 bun-darwin-arm64 bun-windows-x64"
           - package: xinity-ai-dashboard
             workdir: packages/xinity-ai-dashboard
             custom_build: true
@@ -68,14 +70,19 @@ jobs:
         working-directory: ${{ matrix.workdir }}
         run: |
           if [ -f example.env ] && [ ! -f .env ]; then cp example.env .env; fi
-          BINARY_NAME="${{ matrix.binary_name || matrix.package }}"
+          BASE_BINARY_NAME="${{ matrix.binary_name || matrix.package }}"
+          TARGETS="${{ matrix.targets || 'bun-linux-x64 bun-linux-x64-baseline bun-linux-arm64' }}"
 
-          for target in bun-linux-x64 bun-linux-x64-baseline bun-linux-arm64; do
+          for target in ${TARGETS}; do
             suffix="${target#bun-}"
             echo "::group::Compiling ${{ matrix.package }} for ${suffix}"
 
+            BINARY_NAME="${BASE_BINARY_NAME}"
+            if [[ "$target" == *windows* ]]; then
+              BINARY_NAME="${BASE_BINARY_NAME}.exe"
+            fi
+
             if [ "${{ matrix.custom_build || 'false' }}" = "true" ]; then
-              # Custom two-step build (bundle with plugins, then compile)
               bun run build.ts --target "$target" --outfile "${BINARY_NAME}" ${{ matrix.build_flags }}
             else
               bun build --compile --minify \
@@ -288,8 +295,10 @@ jobs:
           pattern: release-*
           merge-multiple: true
 
-      - name: Add install script to release
-        run: cp scripts/install.sh release/install.sh
+      - name: Add install scripts to release
+        run: |
+          cp scripts/install.sh release/install.sh
+          cp scripts/install.ps1 release/install.ps1
 
       - name: Generate SHASUMS256.txt
         working-directory: release
@@ -305,19 +314,15 @@ jobs:
             ---
             ## Quick Install (CLI)
 
+            **Linux / macOS:**
             ```bash
             curl -fsSL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/install.sh" \
               | bash
             ```
 
-            Or manually:
-
-            ```bash
-            curl -fSL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/xinity-cli-linux-x64.tar.gz" \
-              -o cli.tar.gz
-            tar -xzf cli.tar.gz
-            mv xinity ~/.local/bin/xinity
-            chmod +x ~/.local/bin/xinity
+            **Windows (PowerShell):**
+            ```powershell
+            irm "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/install.ps1" | iex
             ```
 
             ## Install (services)

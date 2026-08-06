@@ -2,17 +2,17 @@
 
 Command-line interface for managing the Xinity AI platform. Serves as the primary entry point for installing, configuring, and interacting with Xinity services.
 
+The CLI runs on **Linux**, **macOS** (11+), and **Windows** (10+). All other Xinity services remain Linux-only; the CLI manages them remotely via SSH from any platform.
+
 ## Installation
 
-Download and install the latest release binary:
+### Linux and macOS
 
 ```bash
 curl -fsSL https://github.com/xinity-ai/xinity-ai/releases/latest/download/install.sh | bash
 ```
 
-The script detects your platform (Linux x64 or arm64), downloads the matching binary, verifies its SHA256 checksum, and installs it to `~/.local/bin`.
-
-### Options
+The script detects your platform and architecture, downloads the matching binary, verifies its SHA256 checksum, and installs it to `~/.local/bin`.
 
 | Flag | Description | Default |
 |---|---|---|
@@ -28,14 +28,13 @@ curl -fsSL https://github.com/xinity-ai/xinity-ai/releases/latest/download/insta
 curl -fsSL https://github.com/xinity-ai/xinity-ai/releases/latest/download/install.sh | bash -s -- --prefix /usr/local/bin
 ```
 
-### Prerequisites
+### Windows
 
-- `tar` (used to extract the release archive)
-- `unzip` (checked by the installer, though the current archive format only needs `tar`)
+```powershell
+irm https://github.com/xinity-ai/xinity-ai/releases/latest/download/install.ps1 | iex
+```
 
-### Private repositories
-
-For private or internal forks, the installer needs a GitHub token. Set `GITHUB_TOKEN` in your environment or authenticate with the GitHub CLI (`gh auth login`). Private repo downloads also require `jq` to be installed.
+Installs to `%LOCALAPPDATA%\xinity` and adds it to the user PATH. Requires Windows 10 build 17063+ (ships `tar` natively).
 
 ### Updating
 
@@ -52,7 +51,7 @@ xinity update --check    # check for updates without installing
 |---|---|
 | `--version` | Print the CLI version |
 
-The single-host commands (`up`, `rm`, `configure`, `doctor`) additionally accept `--target-host <host>` to run against a remote server via SSH. Multi-host operations use stacks (`xinity stack`), which carry their own host lists.
+The single-host commands (`up`, `rm`, `configure`, `doctor`) additionally accept `--target-host <host>` to run against a remote server via SSH. On macOS and Windows, `--target-host` is required for service management commands since services only run on Linux. Multi-host operations use stacks (`xinity stack`), which carry their own host lists.
 
 ## How Changes Are Applied: Plan → Review → Apply
 
@@ -182,11 +181,11 @@ Component configuration uses the same plan → review → apply flow: the menu e
 |---|---|
 | `--reset` | Clear the specified config key |
 
-Configuration is stored in `$XDG_CONFIG_HOME/xinity/config.json` (mode 0600, directory mode 0700).
+Configuration is stored in `$XDG_CONFIG_HOME/xinity/config.json` on Linux/macOS and `%APPDATA%\xinity\config.json` on Windows.
 
 ### `xinity stack <action>`
 
-Declarative multi-host deployments. A stack is a local definition (`stacks/<name>.json`, mode 600, under the CLI's config directory, `$XDG_CONFIG_HOME/xinity` or `~/.config/xinity` by default) holding shared configuration, stack-wide settings per component type, hosts (address + components), daemon fleets, and the pinned release version. `stack up` compares every host against the definition and applies only what differs. A separate state file (`stacks/state/<name>.json`, same config directory) records which hosts the stack actually manages, so a host deleted from the definition is still torn down on the next `up`.
+Declarative multi-host deployments. A stack is a local definition (`stacks/<name>.json`, mode 600, under the CLI's config directory) holding shared configuration, stack-wide settings per component type, hosts (address + components), daemon fleets, and the pinned release version. `stack up` compares every host against the definition and applies only what differs. A separate state file (`stacks/state/<name>.json`, same config directory) records which hosts the stack actually manages, so a host deleted from the definition is still torn down on the next `up`.
 
 ```bash
 xinity stack init prod       # shared + per-component settings, pinned version
