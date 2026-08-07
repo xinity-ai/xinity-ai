@@ -51,7 +51,7 @@ export const ModelFields = z.looseObject({
   /** Quantization differs per engine, so these cannot be shared across engines. */
   weight: z.number().describe("VRAM consumed by this build's weights, in GB"),
   minKvCache: z.number().describe(KV_CACHE_DESCRIPTION),
-  maxContextLength: z.number().int().positive().default(131072).describe("Maximum supported context window in tokens"),
+  maxContextLength: z.number().int().positive().describe("Maximum supported context window in tokens"),
 
   type: ModelTypeEnum.default("chat").describe("Usage type, which determines API compatibility"),
   family: z.string().default("unknown").describe("Family of the model. May be unknown"),

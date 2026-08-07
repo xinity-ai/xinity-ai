@@ -35,7 +35,6 @@ export interface CatalogHealth {
 
 interface CatalogModel {
   family?: string;
-  maxContextLength?: number;
 }
 
 export interface CatalogOptions<M> {
@@ -119,10 +118,6 @@ export function createCatalog<M extends CatalogModel>(options: CatalogOptions<M>
           continue;
         }
         log.warn({ specifier, existingSource: existing._source, newSource: sourceLabel }, "Duplicate model specifier, overwriting");
-      }
-
-      if (model.maxContextLength === undefined) {
-        log.warn({ model: specifier, source: sourceLabel }, "Model missing maxContextLength, defaulting to 131072");
       }
 
       state.models.set(specifier, { publicSpecifier: specifier, _source: sourceLabel, ...model });

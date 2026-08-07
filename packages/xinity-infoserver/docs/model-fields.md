@@ -17,6 +17,7 @@ One entry describes one model on one engine, so every number below applies to th
 | `engineSpecifier` | string | The identifier the engine itself uses: a HuggingFace model ID for vLLM (`"meta-llama/Llama-3.1-8B-Instruct"`), a tag for Ollama (`"llama3.1:8b-instruct-fp16"`) |
 | `weight` | number | VRAM consumed by this build's weights, in GB |
 | `minKvCache` | number | Minimum KV-cache allocation in GB (decimal, 10⁹ - use a decimal, not a rounded integer). It is the floor below which vLLM refuses to start (KV for one request at full context). vLLM reports that floor in GiB, so the field value is `floor_GiB × 1.074`. Confirm it empirically - see "Confirm the KV-cache floor" in [integrating-a-model.md](./integrating-a-model.md) |
+| `maxContextLength` | number | Maximum supported context window, in tokens. Used by the gateway to enforce per-model context limits (e.g. in the Responses API) and reported via `GET /v1/models` |
 
 ## Capabilities
 
@@ -35,7 +36,6 @@ These fields control what the model can do at runtime. Getting them wrong causes
 | `variantOf` | string | - | Groups this build with the other engine and quantization variants of the same underlying model. The UI presents them together while each stays separately deployable |
 | `isCustom` | boolean | `false` | Marks fine-tuned/custom models |
 | `entryVersion` | string | - | Minimum xinity-ai version this entry requires. Older clients skip entries they are too old for |
-| `maxContextLength` | number | `131072` | Maximum supported context window, in tokens. Used by the gateway to enforce per-model context limits (e.g. in the Responses API) and reported via `GET /v1/models` |
 | `args` | string[] | - | Extra CLI arguments appended to the engine's server command. Arrays are deeply flattened to support YAML anchors. Some args are blocked, see below |
 | `requestParams` | Record\<string, `"boolean"` \| `"number"` \| `"string"`\> | - | Allowlist of request-level parameters the gateway may forward to the backend. Dot-notation paths (e.g. `top_p`, `repetition_penalty`). Params not listed are dropped |
 | `downloadFilter` | string[] | - | Gitignore-style glob patterns appended to the daemon's default HuggingFace download filter. Patterns starting with `!` re-include, and the last matching rule wins. Arrays are deeply flattened to support YAML anchors. Example: `["*.gguf", "!consolidated.safetensors"]` |
