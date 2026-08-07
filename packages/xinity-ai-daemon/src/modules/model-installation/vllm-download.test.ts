@@ -28,17 +28,11 @@ const { downloadModel } = await import("./vllm-download");
 
 // ---------------------------------------------------------------------------
 // These tests hit the real HuggingFace API. They use a tiny public model
-// to keep download times minimal. Skipped if SKIP_NETWORK_TESTS is set.
+// to keep download times minimal. Skipped by default because they need
+// network; un-skip to validate downloading on demand.
 // ---------------------------------------------------------------------------
 
 const TINY_MODEL = "hf-internal-testing/tiny-random-gpt2";
-
-function skipIfNoNetwork() {
-  if (process.env.SKIP_NETWORK_TESTS) {
-    return true;
-  }
-  return false;
-}
 
 describe.skip("downloadModel (integration, real HF API)", () => {
   beforeEach(() => {
@@ -50,8 +44,6 @@ describe.skip("downloadModel (integration, real HF API)", () => {
   });
 
   test("downloads a tiny model and reports progress", async () => {
-    if (skipIfNoNetwork()) return;
-
     const progressValues: number[] = [];
     await downloadModel(TINY_MODEL, async (progress) => {
       progressValues.push(progress);
@@ -97,8 +89,6 @@ describe.skip("downloadModel (integration, real HF API)", () => {
   }, 30_000);
 
   test("second download is a no-op (files already cached)", async () => {
-    if (skipIfNoNetwork()) return;
-
     // First download
     await downloadModel(TINY_MODEL, async () => {});
 
@@ -113,8 +103,6 @@ describe.skip("downloadModel (integration, real HF API)", () => {
   }, 30_000);
 
   test("resume works after partial download", async () => {
-    if (skipIfNoNetwork()) return;
-
     // First, do a full download to discover the cache structure
     await downloadModel(TINY_MODEL, async () => {});
 
