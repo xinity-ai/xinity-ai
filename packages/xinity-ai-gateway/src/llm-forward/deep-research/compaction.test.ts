@@ -1,7 +1,11 @@
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, mock } from "bun:test";
 import type { ModelMessage } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
-import { createCompactionStep } from "./compaction";
+import { MOCK_GATEWAY_ENV } from "../mock-env";
+
+mock.module("../../env", () => ({ env: { ...MOCK_GATEWAY_ENV } }));
+
+const { createCompactionStep } = await import("./compaction");
 
 const CONTEXT_LIMIT = 1000;
 const THRESHOLD_RATIO = 0.5;
