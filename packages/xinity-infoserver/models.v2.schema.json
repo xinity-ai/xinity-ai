@@ -53,11 +53,10 @@
             "description": "Minimum KV-cache allocation in GB. Should be precomputed from the model's config.json (if available) as roughly: 2 * num_hidden_layers * num_key_value_heads * head_dim * dtype_bytes * total_tokens, where total_tokens is chosen based on desired concurrent capacity."
           },
           "maxContextLength": {
-            "default": 131072,
-            "description": "Maximum supported context window in tokens",
             "type": "integer",
             "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
+            "maximum": 9007199254740991,
+            "description": "Maximum supported context window in tokens"
           },
           "type": {
             "default": "chat",
@@ -175,7 +174,8 @@
           "engine",
           "engineSpecifier",
           "weight",
-          "minKvCache"
+          "minKvCache",
+          "maxContextLength"
         ],
         "additionalProperties": {}
       }

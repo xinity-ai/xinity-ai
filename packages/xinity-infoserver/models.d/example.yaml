@@ -38,6 +38,7 @@ models:
     engineSpecifier: qwen3-coder-next:q8_0
     weight: 14
     minKvCache: 4
+    maxContextLength: 131072
     type: chat
     family: qwen3
     variantOf: qwen3-coder-next-large
@@ -60,6 +61,7 @@ models:
     engineSpecifier: Qwen/Qwen3-Coder-Next
     weight: 28
     minKvCache: 6
+    maxContextLength: 131072
     type: chat
     family: qwen3
     variantOf: qwen3-coder-next-large

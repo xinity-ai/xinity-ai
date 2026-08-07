@@ -20,6 +20,7 @@ models:
     engineSpecifier: "meta-llama/Llama-3.1-8B-Instruct"
     weight: 8
     minKvCache: 2
+    maxContextLength: 131072
 ```
 
 ### Full annotated example
@@ -46,7 +47,7 @@ models:
 
     weight: 8                                  # VRAM consumed by this build's weights, in GB
     minKvCache: 2                              # Minimum KV-cache allocation in GB
-    maxContextLength: 128000                   # Optional: max context window in tokens (default 131072)
+    maxContextLength: 128000                   # Max context window in tokens
 
     type: chat                                 # chat, embedding, rerank, or transcription
     family: phi3                               # Model family for grouping in the UI
