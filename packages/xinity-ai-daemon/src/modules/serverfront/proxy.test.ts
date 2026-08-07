@@ -2,6 +2,16 @@ import { describe, test, expect, beforeAll, afterAll, mock } from "bun:test";
 
 let mockPort: number = 0;
 
+mock.module("../../env", () => ({ env: {
+  PORT: 4044,
+  HOST: "0.0.0.0",
+  STATE_DIR: "/tmp/test-state",
+  CIDR_PREFIX: "",
+  DB_CONNECTION_URL: "postgres://localhost/test",
+  INFOSERVER_URL: "http://localhost:19090",
+  LOG_LEVEL: "silent",
+}}));
+
 mock.module("../model-registry", () => ({
   resolveModel: (model: string) => {
     if (model === "llama3:latest") return { port: mockPort, driver: "ollama" };
@@ -11,7 +21,7 @@ mock.module("../model-registry", () => ({
   },
 }));
 
-import { getAuthToken } from "../statekeeper";
+const { getAuthToken } = await import("../statekeeper");
 const { handleProxyRequest } = await import("./proxy");
 
 let server: ReturnType<typeof Bun.serve>;
