@@ -1,5 +1,9 @@
-import { describe, test, expect } from "bun:test";
-import { computePrefixHashes } from "./ai-sdk";
+import { describe, test, expect, mock } from "bun:test";
+import { MOCK_GATEWAY_ENV } from "./mock-env";
+
+mock.module("../env", () => ({ env: { ...MOCK_GATEWAY_ENV } }));
+
+const { computePrefixHashes } = await import("./ai-sdk");
 
 describe("computePrefixHashes", () => {
   test("returns empty for missing messages field", () => {
