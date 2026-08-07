@@ -301,6 +301,7 @@ describe("createCatalogClient", () => {
     engineSpecifier: "org/llama-vllm",
     weight: 10,
     minKvCache: 2,
+    maxContextLength: 131072,
   };
   // Beyond any real release, so every running instance must filter it out.
   const futureV2Model = { ...v2Model, entryVersion: "999.0.0" };

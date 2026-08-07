@@ -94,6 +94,7 @@ const v2Model = {
   engineSpecifier: "org/llama-vllm",
   weight: 10,
   minKvCache: 2,
+  maxContextLength: 131072,
 };
 
 // ---------------------------------------------------------------------------
