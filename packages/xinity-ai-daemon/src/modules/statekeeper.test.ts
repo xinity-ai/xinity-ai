@@ -1,8 +1,11 @@
 import { describe, test, expect, beforeEach, afterAll, mock } from "bun:test";
 import { join } from "path";
 import { rm, mkdir } from "node:fs/promises";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 
-const STATE_DIR = "/tmp/xinity-statekeeper-test";
+// Unique per process: concurrent runs must not share this directory.
+const STATE_DIR = mkdtempSync(join(tmpdir(), "xinity-statekeeper-test-"));
 
 // Mock env to avoid parseEnv side-effect (requires DB_CONNECTION_URL etc. in CI).
 mock.module("../env", () => ({ env: {
