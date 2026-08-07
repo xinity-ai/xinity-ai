@@ -142,9 +142,8 @@ describe("deep research", () => {
     expect(cancelResp.status).toBe(200);
 
     resolveGate();
-    await new Promise((r) => setTimeout(r, 50));
+    const stored = await waitForResponseStatus(responseStore, body.id, "cancelled");
 
-    const stored = responseStore.get(body.id);
     expect(stored?.status).toBe("cancelled");
   });
 
