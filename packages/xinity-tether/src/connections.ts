@@ -12,11 +12,11 @@ import {
 
 const log = rootLogger.child({ name: "connections" });
 
-interface ActiveConnection {
+type ActiveConnection = {
   controller: ReadableStreamDefaultController;
   connectedAt: number;
   lastWriteAt: number;
-}
+};
 
 const connections = new Map<string, ActiveConnection>();
 

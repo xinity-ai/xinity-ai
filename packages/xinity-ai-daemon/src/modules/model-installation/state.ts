@@ -3,13 +3,13 @@ import { getNodeId } from "../statekeeper";
 
 type LifecycleState = "downloading" | "installing" | "ready" | "failed";
 
-interface InstallationStateEntry {
+type InstallationStateEntry = {
   lifecycleState: LifecycleState;
   progress: number | null;
   statusMessage: string | null;
   errorMessage: string | null;
   failureLogs: string | null;
-}
+};
 
 const localStateCache = new Map<string, InstallationStateEntry>();
 
