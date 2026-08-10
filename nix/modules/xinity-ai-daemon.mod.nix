@@ -10,6 +10,12 @@
         (lib.mkRenamedOptionModule
           [ "services" "xinity-ai-daemon" "envFiles" ]
           [ "services" "xinity-ai-daemon" "environmentFiles" ])
+        (lib.mkRemovedOptionModule
+          [ "services" "xinity-ai-daemon" "dbConnectionUrl" ]
+          "The daemon no longer connects to the database. Use tetherUrl and tetherSecretFile instead.")
+        (lib.mkRemovedOptionModule
+          [ "services" "xinity-ai-daemon" "dbConnectionUrlFile" ]
+          "The daemon no longer connects to the database. Use tetherUrl and tetherSecretFile instead.")
       ];
 
       options.services.xinity-ai-daemon = {
@@ -24,9 +30,8 @@
         environmentFiles = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           description = ''
-            systemd EnvironmentFile paths loaded at service start for sensitive values
-            (DB_CONNECTION_URL, etc.). This is the RECOMMENDED and SECURE way to provide
-            credentials. Secrets in environment files are not exposed in the Nix store.
+            systemd EnvironmentFile paths loaded at service start for sensitive values.
+            Secrets in environment files are not exposed in the Nix store.
           '';
           default = [ ];
         };
