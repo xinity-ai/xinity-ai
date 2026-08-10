@@ -35,7 +35,7 @@ These fields control what the model can do at runtime. Getting them wrong causes
 | `family` | string | `"unknown"` | Model family for grouping in the UI (e.g. `"llama"`, `"phi3"`, `"mistral"`) |
 | `variantOf` | string | - | Groups this build with the other engine and quantization variants of the same underlying model. The UI presents them together while each stays separately deployable |
 | `isCustom` | boolean | `false` | Marks fine-tuned/custom models |
-| `entryVersion` | string | - | Minimum xinity-ai version this entry requires. Older clients skip entries they are too old for |
+| `entryVersion` | string | - | Minimum xinity-ai version this entry requires. Older clients skip entries they are too old for. Set it only for an entry that genuinely needs a newer client: an entry naming a version nobody is running yet is invisible |
 | `args` | string[] | - | Extra CLI arguments appended to the engine's server command. Arrays are deeply flattened to support YAML anchors. Some args are blocked, see below |
 | `requestParams` | Record\<string, `"boolean"` \| `"number"` \| `"string"`\> | - | Allowlist of request-level parameters the gateway may forward to the backend. Dot-notation paths (e.g. `top_p`, `repetition_penalty`). Params not listed are dropped |
 | `downloadFilter` | string[] | - | Gitignore-style glob patterns appended to the daemon's default HuggingFace download filter. Patterns starting with `!` re-include, and the last matching rule wins. Arrays are deeply flattened to support YAML anchors. Example: `["*.gguf", "!consolidated.safetensors"]` |
