@@ -31,7 +31,7 @@ export function getDesiredInstallations(): DesiredInstallation[] {
   return latestInstallations;
 }
 
-export interface SyncInstallation {
+export type SyncInstallation = {
   id: string;
   specifier: string;
   driver: string;
@@ -40,7 +40,7 @@ export interface SyncInstallation {
   port: number;
   settings: DeploymentSettings;
   nodeId: string;
-}
+};
 
 function toSyncInstallation(d: DesiredInstallation, nodeId: string): SyncInstallation {
   return {
@@ -50,7 +50,7 @@ function toSyncInstallation(d: DesiredInstallation, nodeId: string): SyncInstall
     estCapacity: d.estCapacity,
     kvCacheCapacity: d.kvCacheCapacity,
     port: d.port,
-    settings: d.settings as DeploymentSettings,
+    settings: d.settings,
     nodeId,
   };
 }
