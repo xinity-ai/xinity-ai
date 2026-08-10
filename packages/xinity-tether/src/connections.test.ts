@@ -120,6 +120,19 @@ describe("connections", () => {
     expect(firstOutput).toContain("event: superseded");
   });
 
+  test("removeConnection with stale connId does not affect the new connection", async () => {
+    const first = makeController();
+    const second = makeController();
+
+    const firstConnId = await addConnection("node-1", first.controller);
+    await addConnection("node-1", second.controller);
+
+    await removeConnection("node-1", "cancel", firstConnId);
+
+    expect(isConnected("node-1")).toBe(true);
+    expect(decodeChunks(second.chunks)).not.toContain("event: superseded");
+  });
+
   test("pushDesiredState sends SSE event", async () => {
     const { controller, chunks } = makeController();
     await addConnection("node-1", controller);

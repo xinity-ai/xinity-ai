@@ -62,18 +62,19 @@ async function handleSSEStream(req: Request): Promise<Response> {
     return Response.json({ error: "Internal error" }, { status: 500 });
   }
 
+  let connId: number | undefined;
   let cancelled = false;
   let subscribed = false;
 
   const stream = new ReadableStream({
     async start(controller) {
-      await addConnection(nodeId, controller);
+      connId = await addConnection(nodeId, controller);
       await subscribe(nodeId);
       subscribed = true;
 
       if (cancelled) {
-        await unsubscribe(nodeId);
-        await removeConnection(nodeId, "cancel");
+        await unsubscribe(nodeId, connId);
+        await removeConnection(nodeId, "cancel", connId);
         return;
       }
 
@@ -87,9 +88,9 @@ async function handleSSEStream(req: Request): Promise<Response> {
     async cancel() {
       cancelled = true;
       if (subscribed) {
-        await unsubscribe(nodeId);
+        await unsubscribe(nodeId, connId);
       }
-      await removeConnection(nodeId, "cancel");
+      await removeConnection(nodeId, "cancel", connId);
     },
   });
 

@@ -13,10 +13,13 @@ import {
 const log = rootLogger.child({ name: "connections" });
 
 type ActiveConnection = {
+  id: number;
   controller: ReadableStreamDefaultController;
   connectedAt: number;
   lastWriteAt: number;
 };
+
+let nextConnectionId = 1;
 
 const connections = new Map<string, ActiveConnection>();
 
@@ -52,7 +55,7 @@ async function setNodeAvailable(nodeId: string, available: boolean): Promise<voi
 export async function addConnection(
   nodeId: string,
   controller: ReadableStreamDefaultController,
-): Promise<void> {
+): Promise<number> {
   const existing = connections.get(nodeId);
   if (existing) {
     log.info({ nodeId }, "Superseding existing SSE connection");
@@ -63,7 +66,9 @@ export async function addConnection(
     recordClose(existing, "superseded");
   }
 
+  const connId = nextConnectionId++;
   const conn: ActiveConnection = {
+    id: connId,
     controller,
     connectedAt: Date.now(),
     lastWriteAt: Date.now(),
@@ -72,13 +77,18 @@ export async function addConnection(
   setConnectedNodes(connections.size);
   incSSEConnections();
 
-  log.info({ nodeId }, "Daemon connected");
+  log.info({ nodeId, connId }, "Daemon connected");
   await setNodeAvailable(nodeId, true);
+  return connId;
 }
 
-export async function removeConnection(nodeId: string, reason: DisconnectReason): Promise<void> {
+export async function removeConnection(nodeId: string, reason: DisconnectReason, connId?: number): Promise<void> {
   const conn = connections.get(nodeId);
   if (!conn) {
+    return;
+  }
+
+  if (connId !== undefined && conn.id !== connId) {
     return;
   }
 
@@ -90,7 +100,7 @@ export async function removeConnection(nodeId: string, reason: DisconnectReason)
     conn.controller.close();
   } catch {}
 
-  log.info({ nodeId, reason }, "Daemon disconnected");
+  log.info({ nodeId, connId: conn.id, reason }, "Daemon disconnected");
   await setNodeAvailable(nodeId, false);
 }
 
@@ -129,6 +139,10 @@ export function runKeepaliveLoop(intervalMs: number, timeoutMs: number): Timer {
 
 export function isConnected(nodeId: string): boolean {
   return connections.has(nodeId);
+}
+
+export function getConnectionId(nodeId: string): number | undefined {
+  return connections.get(nodeId)?.id;
 }
 
 export function getConnectedNodeIds(): string[] {
