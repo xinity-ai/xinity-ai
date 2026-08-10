@@ -70,7 +70,7 @@ models:
     # for models depending on vendor-specific features (e.g. AWQ with CUDA-only kernels).
     platforms: [nvidia]
 
-    entryVersion: 0.23.0                       # Optional: minimum xinity version for this entry
+    entryVersion: 0.23.0                       # Optional: clients older than this skip the entry entirely
 ```
 
 ### Key fields explained

@@ -46,9 +46,11 @@ export function createCatalogClient(config: CatalogClientConfig) {
       return next;
     }
 
+    let tooNew = 0;
     for (const [specifier, entry] of Object.entries(source)) {
       const entryVersion = (entry as { entryVersion?: unknown } | null)?.entryVersion;
       if (typeof entryVersion === "string" && !satisfiesMinVersion(version, entryVersion)) {
+        tooNew++;
         continue;
       }
 
@@ -58,6 +60,10 @@ export function createCatalogClient(config: CatalogClientConfig) {
         continue;
       }
       next.set(specifier, { publicSpecifier: specifier, _source: baseUrl, ...parsed.data });
+    }
+
+    if (tooNew > 0) {
+      config.logger?.warn({ skipped: tooNew, version }, "Skipped catalog entries that require a newer xinity version");
     }
     return next;
   }

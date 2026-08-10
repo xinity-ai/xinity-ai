@@ -22,7 +22,6 @@ models:
     type: chat
     family: phi3
     tags: [vision, custom_code]
-    entryVersion: 0.23.0
 
   qwen3-coder-next-large-ollama:
     name: Qwen Coder Next
@@ -43,7 +42,6 @@ models:
     family: qwen3
     variantOf: qwen3-coder-next-large
     tags: [tools]
-    entryVersion: 0.23.0
 
   # Same underlying model as above, different engine and quantization, so it is a
   # separate entry with its own capacity numbers and its own specifier.
@@ -68,4 +66,3 @@ models:
     tags: [tools]
     args: ["--tool-call-parser", "hermes"]
     minEngineVersion: "0.19.1"
-    entryVersion: 0.23.0
