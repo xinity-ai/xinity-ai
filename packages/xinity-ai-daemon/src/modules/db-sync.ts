@@ -1,5 +1,5 @@
 import type { DeploymentSettings, DesiredInstallation } from "common-env";
-import { defer, from, type Observable } from "rxjs";
+import { defer, EMPTY, from, type Observable } from "rxjs";
 import {
   endWith,
   ignoreElements,
@@ -19,9 +19,11 @@ import { getNodeId, getNodeDrivers } from "./statekeeper";
 const log = rootLogger.child({ name: "db-sync" });
 
 let latestInstallations: DesiredInstallation[] = [];
+let stateReceived = false;
 let previousInstallationsSnapshot: string | null = null;
 
 export function setDesiredInstallations(installations: DesiredInstallation[]): void {
+  stateReceived = true;
   latestInstallations = installations;
 }
 
@@ -121,6 +123,10 @@ function syncForDriver$(driver: string, installations: SyncInstallation[]): Obse
 }
 
 function sync(): Observable<void> {
+  if (!stateReceived) {
+    log.debug("Skipping sync, no desired state received from tether yet");
+    return EMPTY;
+  }
   log.debug("Performing sync");
 
   return defer(() => from(getNodeId())).pipe(
