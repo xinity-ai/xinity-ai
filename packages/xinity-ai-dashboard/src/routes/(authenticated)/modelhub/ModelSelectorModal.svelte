@@ -9,6 +9,7 @@
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Badge } from "$lib/components/ui/badge";
+  import LicenseBadge from "./LicenseBadge.svelte";
 
   // Icons
   import { X, Search, ExternalLink, Info, ShieldAlert, HardDrive, Loader2, AlertCircle,
@@ -322,6 +323,7 @@
                     {/if}
 
                     <div class="flex flex-wrap gap-1.5 mt-auto">
+                      <LicenseBadge license={model.license} class="text-xs" />
                       {#each model.tags.slice(0, 4) as tag}
                         <Badge variant="secondary" class="text-xs">{tag}</Badge>
                       {/each}

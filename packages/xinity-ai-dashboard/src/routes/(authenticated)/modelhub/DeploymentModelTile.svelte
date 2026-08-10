@@ -2,6 +2,7 @@
   import { Badge } from "$lib/components/ui/badge";
   import { ExternalLink } from "@lucide/svelte";
   import type { ModelWithSpecifier } from "xinity-infoserver";
+  import LicenseBadge from "./LicenseBadge.svelte";
 
   let {
     model,
@@ -54,6 +55,7 @@
     {model.description}
   </p>
   <div class="flex items-center gap-4 compact:gap-2 text-sm text-muted-foreground">
+    <LicenseBadge license={model.license} />
     <span>Capacity weight: <span class="font-medium">{model.weight}</span></span>
   </div>
 

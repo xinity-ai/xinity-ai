@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
+  import type { ModelLicense, ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
   import Modal from "$lib/components/Modal.svelte";
   import DeploymentFormBody from "./DeploymentFormBody.svelte";
   import { orpc } from "$lib/orpc/orpc-client";
@@ -7,6 +7,7 @@
   import { toastState } from "$lib/state/toast.svelte";
   import { browserLogger } from "$lib/browserLogging";
   import CustomCodeConsent from "./CustomCodeConsent.svelte";
+  import LicenseNotice from "./LicenseNotice.svelte";
   import type { DeploymentDefinition } from "./+page.server";
   import { settingsEqual, type DeploymentSettings } from "common-db/deployment-settings";
   import { DeploymentSettingsDto } from "$lib/orpc/dtos/model.dto";
@@ -57,6 +58,7 @@
   let preferredDriver = $state<"ollama" | "vllm" | null>(null);
   let replicas = $state(1);
   let customCodeConsent = $state(false);
+  let licenseConsent = $state(false);
   let shouldAutoSelectCanary = $state(true);
 
   // --- Edit mode tracking ---
@@ -117,6 +119,7 @@
     preferredDriver = d.preferredDriver ?? null;
     replicas = d.replicas;
     customCodeConsent = false;
+    licenseConsent = false;
     shouldAutoSelectCanary = true;
     advancementStrategy = deriveAdvancementStrategy(d);
     if (advancementStrategy === "time-based" && d.canaryProgressUntil) {
@@ -208,12 +211,36 @@
     return !isEditMode || selectedPrimarySpecifier !== deployment?.specifier;
   });
 
+  function isNewSelection(model: ModelWithSpecifier | null, deployedSpecifier: string | null | undefined): boolean {
+    if (!model) {
+      return false;
+    }
+    return !isEditMode || model.publicSpecifier !== deployedSpecifier;
+  }
+
+  const restrictedLicenses = $derived.by(() => {
+    const reviewable = [
+      isNewSelection(selectedPrimaryModel, deployment?.specifier) ? selectedPrimaryModel : null,
+      isCanaryEnabled && isNewSelection(selectedCanaryModel, deployment?.earlySpecifier) ? selectedCanaryModel : null,
+    ];
+    const byName = new Map<string, ModelLicense>();
+    for (const model of reviewable) {
+      if (model && model.license.use !== "open") {
+        byName.set(model.license.name, model.license);
+      }
+    }
+    return [...byName.values()];
+  });
+
+  const requiresLicenseConsent = $derived(restrictedLicenses.length > 0);
+
   const isFormValid = $derived(Boolean(
     selectedPrimaryModel && deploymentName.trim() && publicSpecifier.trim() &&
     (!isCanaryEnabled || (selectedCanaryModel && !canaryTypeMismatch)) &&
     (kvCacheSize === null || kvCacheSize >= minKvCache) &&
     (!isCanaryEnabled || earlyKvCacheSize === null || earlyKvCacheSize >= minCanaryKvCache) &&
     (!requiresCustomCodeConsent || customCodeConsent) &&
+    (!requiresLicenseConsent || licenseConsent) &&
     DeploymentSettingsDto.safeParse(settings).success &&
     !capacityBlocked && replicas >= 1,
   ));
@@ -261,6 +288,8 @@
   $effect(() => { if (!isEditMode) earlyKvCacheSize = selectedCanaryModel?.minKvCache ?? null; });
 
   $effect(() => { if (!isEditMode) { selectedPrimarySpecifier; customCodeConsent = false; } });
+
+  $effect(() => { selectedPrimarySpecifier; selectedCanarySpecifier; licenseConsent = false; });
 
   // Pre-select canary base model for custom models
   $effect(() => {
@@ -352,7 +381,7 @@
     isCanaryEnabled = false; canaryTraffic = 5;
     advancementStrategy = "manual"; timeBasedDurationHours = 72;
     kvCacheSize = null; earlyKvCacheSize = null; settings = { version: 1 }; preferredDriver = null; replicas = 1;
-    customCodeConsent = false; shouldAutoSelectCanary = true;
+    customCodeConsent = false; licenseConsent = false; shouldAutoSelectCanary = true;
   }
 </script>
 
@@ -404,6 +433,10 @@
           onCanaryEnabledChange={isEditMode ? () => (shouldAutoSelectCanary = false) : undefined}
           {idSuffix}
         />
+
+        {#if requiresLicenseConsent}
+          <LicenseNotice licenses={restrictedLicenses} bind:consented={licenseConsent} {idSuffix} />
+        {/if}
 
         {#if requiresCustomCodeConsent}
           <CustomCodeConsent bind:consented={customCodeConsent} {idSuffix} />
