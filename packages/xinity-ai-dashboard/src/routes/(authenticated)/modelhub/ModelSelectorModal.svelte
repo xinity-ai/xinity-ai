@@ -1,7 +1,7 @@
 <script lang="ts">
   import Modal from "$lib/components/Modal.svelte";
-  import type { ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
-  import { isDeployableOnCluster } from "xinity-infoserver";
+  import type { Engine, ModelType, ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
+  import { EngineEnum, isDeployableOnCluster } from "xinity-infoserver";
   import { modelCatalog } from "$lib/state/model-catalog.svelte";
   import { formatGb } from "$lib/util";
 
@@ -30,6 +30,17 @@
     // { value: "tts", label: "Text to Speech", icon: AudioLines },
   ] as const;
 
+  const ENGINE_LABELS: Record<Engine, string> = { vllm: "vLLM", ollama: "Ollama" };
+  const ENGINE_MODEL_TYPES: Record<Engine, readonly ModelType[]> = {
+    vllm: ["chat", "embedding", "rerank", "transcription"],
+    ollama: ["chat", "embedding"],
+  };
+
+  const ENGINE_FILTERS = [
+    { value: "all" as const, label: "All" },
+    ...EngineEnum.options.map(engine => ({ value: engine, label: ENGINE_LABELS[engine] })),
+  ];
+
   // --- Props ---
   let {
     open = $bindable(false),
@@ -47,6 +58,7 @@
 
   // --- Filter State ---
   let searchTerm = $state("");
+  let selectedEngine = $state<Engine | "all">("all");
   let selectedType = $state<(typeof MODEL_TYPES)[number]["value"]>("all");
   const selectedTags = $state<Set<string>>(new Set());
   let sentinel = $state<HTMLElement | null>(null);
@@ -62,7 +74,7 @@
   // Stops immediately once hasMore is false; no further requests regardless of filter.
   $effect(() => {
     if (!open || !modelCatalog.initialLoaded || modelCatalog.isLoading || !modelCatalog.hasMore) return;
-    searchTerm; selectedType; selectedTags;
+    searchTerm; selectedEngine; selectedType; selectedTags;
     if (filteredModels.length < MIN_RESULTS_THRESHOLD) {
       modelCatalog.loadMore();
     }
@@ -97,13 +109,15 @@
         m.publicSpecifier.toLowerCase().includes(searchLower) ||
         (m.family && m.family.toLowerCase().includes(searchLower));
 
+      const matchesEngine = selectedEngine === "all" || m.engine === selectedEngine;
+
       const matchesType = selectedType === "all" || m.type === selectedType;
 
       const matchesTags =
         selectedTags.size === 0 ||
         Array.from(selectedTags).every((t) => m.tags.includes(t as typeof m.tags[number]));
 
-      return matchesSearch && matchesType && matchesTags;
+      return matchesSearch && matchesEngine && matchesType && matchesTags;
     }),
   );
 
@@ -122,6 +136,23 @@
   const sortedFamilies = $derived(Object.keys(groupedModels).sort());
 
   // --- Functions ---
+  function unavailableForEngine(type: (typeof MODEL_TYPES)[number]["value"]): string | undefined {
+    if (selectedEngine === "all" || type === "all") {
+      return undefined;
+    }
+    if (ENGINE_MODEL_TYPES[selectedEngine].includes(type)) {
+      return undefined;
+    }
+    return `${ENGINE_LABELS[selectedEngine]} does not serve ${type} models`;
+  }
+
+  function selectEngine(engine: Engine | "all") {
+    selectedEngine = engine;
+    if (unavailableForEngine(selectedType)) {
+      selectedType = "all";
+    }
+  }
+
   function toggleTag(tag: string) {
     if (selectedTags.has(tag)) {
       selectedTags.delete(tag);
@@ -183,10 +214,25 @@
       </div>
 
       <div class="flex flex-wrap gap-2 items-center">
+        <span class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mr-1">Engine:</span>
+        {#each ENGINE_FILTERS as e}
+          <button
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors duration-200 {selectedEngine === e.value ? 'bg-primary text-primary-foreground border-primary shadow-sm' : 'bg-background text-muted-foreground border-border hover:border-primary/50 hover:text-foreground'}"
+            onclick={() => selectEngine(e.value)}
+          >
+            {e.label}
+          </button>
+        {/each}
+      </div>
+
+      <div class="flex flex-wrap gap-2 items-center">
         <span class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mr-1">Type:</span>
         {#each MODEL_TYPES as t}
+          {@const unavailable = unavailableForEngine(t.value)}
           <button
-            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors duration-200 {selectedType === t.value ? 'bg-primary text-primary-foreground border-primary shadow-sm' : 'bg-background text-muted-foreground border-border hover:border-primary/50 hover:text-foreground'}"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-border {selectedType === t.value ? 'bg-primary text-primary-foreground border-primary shadow-sm' : 'bg-background text-muted-foreground border-border hover:border-primary/50 hover:text-foreground'}"
+            disabled={Boolean(unavailable)}
+            title={unavailable}
             onclick={() => (selectedType = t.value)}
           >
             <t.icon class="w-3.5 h-3.5" />
@@ -246,7 +292,7 @@
           <Info class="w-12 h-12 mb-4 opacity-50" />
           <p class="text-lg font-medium">No models found</p>
           <p class="text-sm">Try adjusting your search or filters</p>
-          <Button variant="link" class="mt-4" onclick={() => { searchTerm = ""; selectedType = "all"; selectedTags.clear(); }}>
+          <Button variant="link" class="mt-4" onclick={() => { searchTerm = ""; selectedEngine = "all"; selectedType = "all"; selectedTags.clear(); }}>
             Clear all filters
           </Button>
         </div>
