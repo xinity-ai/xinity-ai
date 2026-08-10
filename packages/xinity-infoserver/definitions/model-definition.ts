@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LicenseSchema } from "./licenses";
 import {
   BLOCKED_REQUEST_PARAM_PREFIXES,
   EngineEnum,
@@ -26,6 +27,15 @@ export {
   type Tag,
 } from "./model-primitives";
 
+export {
+  LICENSE_USES,
+  LicenseObjectSchema,
+  LicenseSchema,
+  LicenseUseEnum,
+  type LicenseUse,
+  type ModelLicense,
+} from "./licenses";
+
 const KV_CACHE_DESCRIPTION =
   "Minimum KV-cache allocation in GB. " +
   "Should be precomputed from the model's config.json (if available) as roughly: " +
@@ -44,6 +54,7 @@ export const ModelFields = z.looseObject({
   name: z.string().describe("Display name of the model. Intended to be easily human readable"),
   description: z.string().describe("Multi-paragraph description: purpose, strengths, limitations. Shown when choosing between models, so a one-line label is not enough"),
   url: z.url().describe("External documentation url, for curious users that want to know more"),
+  license: LicenseSchema.describe("License terms, as a well-known identifier or a full object. Governs what types of usage are permissible, if not all"),
 
   engine: EngineEnum.describe("Inference engine this entry runs on"),
   engineSpecifier: z.string().describe("Identifier the engine itself uses. A HuggingFace model id for vLLM, a tag for Ollama"),

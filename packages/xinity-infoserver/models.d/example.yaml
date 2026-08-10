@@ -14,6 +14,7 @@ models:
       than larger VLMs at open-ended visual reasoning, so prefer it for
       extraction and summarisation over analysis.
     url: https://huggingface.co/microsoft/Phi-3-vision-128k-instruct
+    license: mit
     engine: vllm
     engineSpecifier: microsoft/Phi-3-vision-128k-instruct
     weight: 8
@@ -33,6 +34,7 @@ models:
       roughly half the VRAM of the fp16 entry. Pick it when a single 24GB card has
       to serve both this and something else.
     url: https://ollama.com/library/qwen3-coder-next
+    license: apache-2.0
     engine: ollama
     engineSpecifier: qwen3-coder-next:q8_0
     weight: 14
@@ -55,6 +57,7 @@ models:
       matters more than footprint. Needs roughly twice the VRAM of the q8 Ollama
       entry and a recent vLLM for the tool-call parser.
     url: https://huggingface.co/Qwen/Qwen3-Coder-Next
+    license: apache-2.0
     engine: vllm
     engineSpecifier: Qwen/Qwen3-Coder-Next
     weight: 28
@@ -66,3 +69,51 @@ models:
     tags: [tools]
     args: ["--tool-call-parser", "hermes"]
     minEngineVersion: "0.19.1"
+
+  # Illustrative vendor license, written out in full because it is not one of the
+  # well-known identifiers. Commercial use is allowed but bounded, so the summary
+  # names the bound: it is what the dashboard puts in front of a user before deploy.
+  atlas-vision-12b-vllm:
+    name: Atlas Vision 12B
+    description: |
+      Vision-language model for document and diagram understanding, strong at
+      reading dense tables and handwritten annotations in one pass.
+
+      Answers in the language of the prompt rather than the document, which is
+      worth knowing when extracting from mixed-language scans.
+    url: https://example.com/atlas/vision-12b
+    license:
+      name: Atlas Open Weights License 1.1
+      url: https://example.com/atlas/license
+      use: conditional
+      summary: >
+        Free for research and for commercial use below $10M annual revenue. Above
+        that threshold, deployment requires a commercial agreement with the publisher.
+    engine: vllm
+    engineSpecifier: atlas-ai/Atlas-Vision-12B
+    weight: 24
+    minKvCache: 6
+    maxContextLength: 131072
+    type: chat
+    family: atlas
+    tags: [vision]
+
+  # Well-known but not open source. The identifier is enough: the restriction and
+  # the sentence explaining it come from the server's license table, not from here.
+  helix-r1-7b-vllm:
+    name: Helix R1 7B
+    description: |
+      Research reasoning model that emits an explicit chain of thought before its
+      answer, tuned for maths and competitive programming problems.
+
+      Verbose by construction, so give it generous output limits. Weaker than its
+      size suggests on open-ended chat, which it was not tuned for.
+    url: https://example.com/helix/r1-7b
+    license: cc-by-nc-4.0
+    engine: vllm
+    engineSpecifier: helix-research/Helix-R1-7B
+    weight: 14
+    minKvCache: 4
+    maxContextLength: 65536
+    type: chat
+    family: helix

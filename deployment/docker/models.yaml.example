@@ -16,10 +16,19 @@ models:
       Good for drafting replies and classifying tickets. Do not use it for
       general knowledge questions: the fine-tune narrowed it noticeably.
     url: https://example.com/models/my-custom-llama
+    # Anything that is not a well-known identifier is written out in full. The
+    # summary is what a user reads before deploying, so it states the limit.
+    license:
+      name: Acme Internal Model License
+      url: https://example.com/legal/model-policy
+      use: conditional
+      summary: >
+        Internal use only. Do not expose this model to customers or third parties.
     engine: ollama
     engineSpecifier: my-custom-llama:8b-q8_0
     weight: 8
     minKvCache: 2
+    maxContextLength: 131072
     type: chat
     family: llama
     isCustom: true
@@ -38,10 +47,12 @@ models:
       768-dimension output, English only. Multilingual content needs a different
       model.
     url: https://example.com/models/embeddings
+    license: apache-2.0
     engine: ollama
     engineSpecifier: nomic-embed-text
     weight: 2
     minKvCache: 1
+    maxContextLength: 8192
     type: embedding
     family: nomic
 

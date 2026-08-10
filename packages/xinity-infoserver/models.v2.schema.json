@@ -32,6 +32,64 @@
             "format": "uri",
             "description": "External documentation url, for curious users that want to know more"
           },
+          "license": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "apache-2.0",
+                  "mit",
+                  "bsd-3-clause",
+                  "mpl-2.0",
+                  "gpl-3.0",
+                  "agpl-3.0",
+                  "cc-by-4.0",
+                  "cc-by-sa-4.0",
+                  "cc-by-nc-4.0"
+                ],
+                "description": "Identifier of a well-known license, expanded by the server into the full object"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "description": "SPDX identifier, when this is a standard license. Display only",
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "Display name of the license"
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Link to the license text. For an unstated license, link the page a user should check instead"
+                  },
+                  "use": {
+                    "default": "unknown",
+                    "description": "How far the license restricts using this model. `open` places no meaningful limit on use (Apache-2.0, MIT, CC-BY). `conditional` allows commercial use within bounds: revenue or user thresholds, acceptable-use policies, naming requirements. `non-commercial` forbids commercial use. `unknown` means the publisher states no terms, or terms this version does not recognise. This describes freedom to use, not obligations on redistribution, so copyleft licenses are `open`.",
+                    "type": "string",
+                    "enum": [
+                      "open",
+                      "conditional",
+                      "non-commercial",
+                      "unknown"
+                    ]
+                  },
+                  "summary": {
+                    "description": "One or two sentences telling a user what they may and may not do with this model. Required unless the license is open",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "url"
+                ],
+                "additionalProperties": {}
+              }
+            ],
+            "description": "License terms, as a well-known identifier or a full object. Governs what a user may do with the model"
+          },
           "engine": {
             "type": "string",
             "enum": [
@@ -171,6 +229,7 @@
           "name",
           "description",
           "url",
+          "license",
           "engine",
           "engineSpecifier",
           "weight",
