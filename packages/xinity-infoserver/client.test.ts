@@ -297,6 +297,7 @@ describe("createCatalogClient", () => {
     name: "Test Llama",
     description: "A test model",
     url: "https://example.com",
+    license: "apache-2.0",
     engine: "vllm",
     engineSpecifier: "org/llama-vllm",
     weight: 10,

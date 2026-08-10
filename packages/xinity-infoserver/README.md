@@ -16,6 +16,7 @@ models:
     name: Llama 3.1 8B
     description: General-purpose chat model
     url: https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct
+    license: apache-2.0
     engine: vllm
     engineSpecifier: "meta-llama/Llama-3.1-8B-Instruct"
     weight: 8
@@ -41,6 +42,7 @@ models:
       extraction and summarisation over analysis.
 
     url: https://huggingface.co/microsoft/Phi-3-vision-128k-instruct
+    license: mit                               # Shorthand for a well-known license, see "Licenses" below
 
     engine: vllm                               # vllm or ollama
     engineSpecifier: "microsoft/Phi-3-vision-128k-instruct"  # HF model id, or an Ollama tag
@@ -83,6 +85,43 @@ models:
 - **`variantOf`**: Optional grouping key. Entries sharing it are presented together in the UI while each stays separately deployable.
 - **`minEngineVersion`**: Semver string. An entry requiring `"0.19.1"` is only scheduled on nodes running that engine version or later.
 - **`platforms`**: GPU vendor requirement. `[nvidia]` restricts the entry to NVIDIA nodes.
+
+### Licenses
+
+Every entry states its license, because a user deciding whether to deploy a model needs to know what they are allowed to do with it. For a well-known license, name it and the server fills in the rest:
+
+```yaml
+license: apache-2.0
+```
+
+Recognised identifiers: `apache-2.0`, `mit`, `bsd-3-clause`, `mpl-2.0`, `gpl-3.0`, `agpl-3.0`, `cc-by-4.0`, `cc-by-sa-4.0`, `cc-by-nc-4.0`.
+
+Anything else is written out in full:
+
+```yaml
+license:
+  name: Acme Open Weights License 1.0
+  url: https://example.com/acme-owl-1.0
+  use: conditional
+  summary: >
+    Free for any use including commercial, below $10M annual revenue. Above that
+    requires a commercial agreement with Acme.
+```
+
+`use` says how far the license restricts *using* the model, which is the only question the dashboard can answer for a user:
+
+| Value | Meaning | Badge |
+|-------|---------|-------|
+| `open` | No meaningful limit on use. Apache-2.0, MIT, CC-BY | Plain |
+| `conditional` | Commercial use allowed within bounds: revenue or user thresholds, acceptable-use policies, naming requirements | Amber |
+| `non-commercial` | Commercial use is not permitted | Red |
+| `unknown` | The publisher states no terms | Red |
+
+`summary` is required unless `use` is `open`, so a restricted model cannot be published without a sentence explaining the restriction. Omitting `use` entirely is read as `unknown`, which then demands that sentence too.
+
+This models freedom to use, not obligations on redistribution, so copyleft licenses are `open`: the GPL does not restrict running a model. If a license both restricts use and is unusual enough that the three values misrepresent it, say so in `summary`, which is what a user actually reads.
+
+Adding a value to `use` later is not a breaking change. A client too old to recognise one reads it as `unknown` and shows the summary and the link, rather than dropping the model or claiming it is unrestricted.
 
 ### IDE validation
 

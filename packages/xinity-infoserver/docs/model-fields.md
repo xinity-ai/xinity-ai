@@ -13,6 +13,7 @@ One entry describes one model on one engine, so every number below applies to th
 | `name` | string | Display name shown in the dashboard model selector |
 | `description` | string | Multi-paragraph description shown in the dashboard model selector: purpose, strengths, limitations. Use a YAML block scalar (`description: \|`). A one-line label is not enough, since this is what a user reads to choose between models |
 | `url` | URL | External documentation link (e.g. HuggingFace page) |
+| `license` | string \| object | License terms. Either a well-known identifier or a full object, see [Licenses](#licenses) below |
 | `engine` | `"vllm"` \| `"ollama"` | Inference engine this entry runs on |
 | `engineSpecifier` | string | The identifier the engine itself uses: a HuggingFace model ID for vLLM (`"meta-llama/Llama-3.1-8B-Instruct"`), a tag for Ollama (`"llama3.1:8b-instruct-fp16"`) |
 | `weight` | number | VRAM consumed by this build's weights, in GB |
@@ -27,6 +28,24 @@ These fields control what the model can do at runtime. Getting them wrong causes
 |-------|------|---------|-------------|
 | `type` | `"chat"` \| `"embedding"` \| `"rerank"` \| `"transcription"` | `"chat"` | Determines which API endpoints accept the model. A rerank request to a chat model is rejected as incompatible |
 | `tags` | string[] | `[]` | Enables specific capabilities: `"tools"` (tool/function calling), `"vision"` (image inputs). Requests using a capability the model lacks are rejected. `"tools"` also requires `args: ["--tool-call-parser", "<name>"]` (the daemon adds `--enable-auto-tool-choice` from the tag, but vLLM needs the model-specific parser too). Research and **validate** each capability against a running server before declaring it - see "Validate declared capabilities" in [integrating-a-model.md](./integrating-a-model.md). `"custom_code"` marks models that ship custom loading code requiring vLLM's `--trust-remote-code` flag, and triggers an explicit approval step in the dashboard. Only add if the model fails to load without it |
+
+## Licenses
+
+`license` accepts a well-known identifier, which the server expands into the object below, or the object written out in full. A published catalog only ever carries the object form.
+
+Recognised identifiers: `apache-2.0`, `mit`, `bsd-3-clause`, `mpl-2.0`, `gpl-3.0`, `agpl-3.0`, `cc-by-4.0`, `cc-by-sa-4.0`, `cc-by-nc-4.0`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Display name of the license |
+| `url` | URL | Link to the license text. For an unstated license, link the page a user should check instead |
+| `use` | `"open"` \| `"conditional"` \| `"non-commercial"` \| `"unknown"` | How far the license restricts using the model. Defaults to `unknown` when absent |
+| `summary` | string | One or two sentences on what a user may and may not do. **Required unless `use` is `open`** |
+| `id` | string | SPDX identifier when this is a standard license. Display only, set automatically by the shorthand |
+
+`use` describes freedom to use, not obligations on redistribution, so copyleft licenses are `open`.
+
+An unrecognised `use` value is read as `unknown` rather than failing validation, so adding a value later does not break clients running an older version: they show the summary and the link instead of a classification. The value must never be widened to a free-form string, and the fallback must never become `open`.
 
 ## Optional fields
 
