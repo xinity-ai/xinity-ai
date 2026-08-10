@@ -2,7 +2,7 @@ import postgres from "postgres";
 import { env } from "./env";
 import { rootLogger } from "./logger";
 import { buildDesiredState } from "./desired-state";
-import { pushDesiredState, isConnected } from "./connections";
+import { pushDesiredState, isConnected, getConnectionId } from "./connections";
 
 const log = rootLogger.child({ name: "notify-bus" });
 
@@ -44,10 +44,18 @@ export async function subscribe(nodeId: string): Promise<void> {
   log.debug({ nodeId, channel }, "Subscribed to notifications");
 }
 
-export async function unsubscribe(nodeId: string): Promise<void> {
+export async function unsubscribe(nodeId: string, connId?: number): Promise<void> {
   const handle = subscriptions.get(nodeId);
   if (!handle) {
     return;
+  }
+
+  if (connId !== undefined && isConnected(nodeId)) {
+    const current = getConnectionId(nodeId);
+    if (current !== undefined && current !== connId) {
+      log.debug({ nodeId, connId, currentConnId: current }, "Skipping unsubscribe for superseded connection");
+      return;
+    }
   }
 
   try {
