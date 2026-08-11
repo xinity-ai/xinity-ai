@@ -51,9 +51,7 @@
       <Badge variant="secondary">Custom</Badge>
     {/if}
   </div>
-  <p class="text-sm text-muted-foreground mt-1 compact:mt-0 mb-3 compact:mb-1 min-h-10 compact:min-h-0">
-    {model.description}
-  </p>
+  <p class="text-sm text-muted-foreground mt-1 compact:mt-0 mb-3 compact:mb-1 min-h-10 compact:min-h-0 whitespace-pre-line">{model.description.trim()}</p>
   <div class="flex items-center gap-4 compact:gap-2 text-sm text-muted-foreground">
     <LicenseBadge license={model.license} />
     <span>Capacity weight: <span class="font-medium">{model.weight}</span></span>
