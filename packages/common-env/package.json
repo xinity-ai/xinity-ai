@@ -8,6 +8,10 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./media-ref": {
+      "types": "./src/media-ref.ts",
+      "default": "./src/media-ref.ts"
     }
   },
   "type": "module",
