@@ -30,7 +30,7 @@ mock.module("./db", () => ({
 
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 
-const { processMessageImages, parseMediaRef } = await import("./image-store");
+const { processMessageImages } = await import("./image-store");
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -50,23 +50,6 @@ function makeImageStore(writeFn = mock(() => Promise.resolve())) {
 function findInsert(): CapturedQuery | undefined {
   return capturedQueries.find((q) => q.sql.includes("media_object"));
 }
-
-// ─── parseMediaRef ────────────────────────────────────────────────────────────
-
-describe("parseMediaRef", () => {
-  test("returns sha256 from a valid xinity-media:// URL", () => {
-    const sha256 = "a".repeat(64);
-    expect(parseMediaRef(`xinity-media://${sha256}`)).toBe(sha256);
-  });
-
-  test("returns null for a regular URL", () => {
-    expect(parseMediaRef("https://example.com/image.png")).toBeNull();
-  });
-
-  test("returns null for an empty string", () => {
-    expect(parseMediaRef("")).toBeNull();
-  });
-});
 
 // ─── processMessageImages – S3 enabled ───────────────────────────────────────
 

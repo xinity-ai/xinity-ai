@@ -13,6 +13,8 @@
  */
 import type { S3Client } from "bun";
 import { mediaObjectT, type ApiCallInputMessage, type ApiCallInputMessageContent } from "common-db";
+import { bytesDigest } from "common-env";
+import { formatMediaRef } from "common-env/media-ref";
 import { rootLogger } from "./logger";
 import { getDB } from "./db";
 import { env } from "./env";
@@ -97,11 +99,6 @@ async function fetchExternalImage(url: string): Promise<ResolvedImage | null> {
   }
 }
 
-/** Compute SHA-256 hex digest of raw bytes using Bun's native hasher. */
-function sha256Hex(bytes: Uint8Array): string {
-  return new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
-}
-
 function mimeToExtension(mimeType: string): string {
   const map: Record<string, string> = {
     "image/jpeg": "jpg",
@@ -148,7 +145,7 @@ async function processImage(
 
   // S3 enabled: upload and create media_object record
   try {
-    const sha256 = sha256Hex(bytes);
+    const sha256 = bytesDigest(bytes);
     const s3Key = `${orgId}/${sha256}`;
     const ext = mimeToExtension(mimeType);
 
@@ -170,7 +167,7 @@ async function processImage(
     await imageStore.client.write(s3Key, bytes, { type: mimeType });
 
     log.debug({ sha256, size: bytes.byteLength, ext }, "Image stored in S3");
-    return { dataUri, dbUrl: `xinity-media://${sha256}` };
+    return { dataUri, dbUrl: formatMediaRef(sha256) };
   } catch (err) {
     log.error({ err }, "Failed to store image in S3, falling back to original URL");
     return { dataUri, dbUrl: loggedExternalUrl };
@@ -262,21 +259,6 @@ export async function processMessageImages(
   }
 
   return { messagesForLLM, messagesForDB };
-}
-
-/**
- * Parse a xinity-media:// URL and return the SHA-256 hash.
- * Returns null if the URL is not a xinity-media:// reference.
- */
-export function parseMediaRef(url: string): string | null {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return null;
-  }
-  if (parsed.protocol !== "xinity-media:") return null;
-  return parsed.hostname;
 }
 
 // ─── Module-level singleton ──────────────────────────────────────────────────
