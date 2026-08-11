@@ -151,3 +151,4 @@ export * from "./metrics-auth";
 export * from "./metrics-format";
 export * from "./service-url";
 export * from "./tether-protocol";
+export * from "./content-hash";

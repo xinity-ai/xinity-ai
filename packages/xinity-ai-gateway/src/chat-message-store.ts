@@ -1,5 +1,6 @@
 /** Content-addressed storage for chat messages, so repeated history is stored once. */
 import { chatMessageT, sql, type ApiCallInputMessage } from "common-db";
+import { jsonDigest } from "common-env";
 import { getDB } from "./db";
 
 const DIGEST_CACHE_MAX_ENTRIES = 5_000;
@@ -7,28 +8,6 @@ const DIGEST_CACHE_MAX_ENTRIES = 5_000;
 type Database = ReturnType<typeof getDB>;
 /** Lets callers commit messages together with the rows referencing them. */
 export type ChatMessageStoreExecutor = Database | Parameters<Parameters<Database["transaction"]>[0]>[0];
-
-/** Key order must not reach the digest, or dedup silently degrades to nothing. */
-function canonicalJson(value: unknown): string {
-  if (value === undefined) {
-    return "null";
-  }
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map(canonicalJson).join(",")}]`;
-  }
-  const entries = Object.entries(value as Record<string, unknown>)
-    .filter(([, entryValue]) => entryValue !== undefined)
-    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
-  return `{${entries.map(([key, entryValue]) => `${JSON.stringify(key)}:${canonicalJson(entryValue)}`).join(",")}}`;
-}
-
-/** Covers the whole message, so fields we do not model still tell two messages apart. */
-export function chatMessageDigest(message: ApiCallInputMessage): string {
-  return new Bun.CryptoHasher("sha256").update(canonicalJson(message)).digest("hex");
-}
 
 function createDigestCache(maxEntries: number) {
   const entries = new Map<string, string>();
@@ -74,7 +53,7 @@ export async function resolveChatMessageIds(
     return [];
   }
 
-  const digests = messages.map(chatMessageDigest);
+  const digests = messages.map(jsonDigest);
   const resolved = new Map<string, string>();
   const pending = new Map<string, ApiCallInputMessage>();
 

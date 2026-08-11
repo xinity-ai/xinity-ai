@@ -1,5 +1,6 @@
 import { describe, test, expect, mock, jest, beforeEach } from "bun:test";
 import { drizzle, chatMessageT, type ApiCallInputMessage } from "common-db";
+import { jsonDigest } from "common-env";
 
 const db = drizzle.mock();
 
@@ -18,7 +19,7 @@ jest.spyOn(preparedProto, "execute").mockImplementation(async function (this: { 
 
 mock.module("./db", () => ({ getDB: () => db }));
 
-const { resolveChatMessageIds, chatMessageDigest } = await import("./chat-message-store");
+const { resolveChatMessageIds } = await import("./chat-message-store");
 
 const insertQueries = () => capturedQueries.filter((q) => /^\s*insert/i.test(q.sql));
 const selectQueries = () => capturedQueries.filter((q) => /^\s*select/i.test(q.sql));
@@ -36,62 +37,47 @@ beforeEach(() => {
   existingRows = [];
 });
 
-describe("chatMessageDigest", () => {
-  test("is independent of key order", () => {
-    const a = { role: "user", content: "Hi" } as ApiCallInputMessage;
-    const b = { content: "Hi", role: "user" } as ApiCallInputMessage;
-    expect(chatMessageDigest(a)).toBe(chatMessageDigest(b));
-  });
-
-  test("is independent of key order inside content parts", () => {
+// What the store must treat as the same message, and what it must keep apart. The digest itself
+// is covered in common-env; these cover the message shapes the gateway actually sends.
+describe("message identity", () => {
+  test("ignores key order, inside the message and inside its content parts", () => {
     const a = { role: "user", content: [{ type: "text", text: "Hi" }] } as ApiCallInputMessage;
-    const b = { role: "user", content: [{ text: "Hi", type: "text" }] } as ApiCallInputMessage;
-    expect(chatMessageDigest(a)).toBe(chatMessageDigest(b));
+    const b = { content: [{ text: "Hi", type: "text" }], role: "user" } as ApiCallInputMessage;
+    expect(jsonDigest(a)).toBe(jsonDigest(b));
   });
 
-  // Merging them would make one row serve both forms, and the second caller would read
-  // back a payload it never sent.
+  // Merging them would make one row serve both forms, and the second caller would read back a
+  // payload it never sent.
   test("keeps an absent field distinct from an empty one", () => {
     const base = { role: "assistant", content: "Hi" } as ApiCallInputMessage;
     const empty = { role: "assistant", content: "Hi", tool_calls: [] } as ApiCallInputMessage;
-    expect(chatMessageDigest(base)).not.toBe(chatMessageDigest(empty));
-  });
-
-  test("ignores explicitly undefined fields, which JSON cannot represent", () => {
-    const base = { role: "user", content: "Hi" } as ApiCallInputMessage;
-    const withUndefined = { role: "user", content: "Hi", tool_call_id: undefined } as ApiCallInputMessage;
-    expect(chatMessageDigest(base)).toBe(chatMessageDigest(withUndefined));
-  });
-
-  test("distinguishes different content", () => {
-    const a = { role: "user", content: "Hi" } as ApiCallInputMessage;
-    const b = { role: "user", content: "Ho" } as ApiCallInputMessage;
-    expect(chatMessageDigest(a)).not.toBe(chatMessageDigest(b));
+    expect(jsonDigest(base)).not.toBe(jsonDigest(empty));
   });
 
   test("distinguishes the same content in a different role", () => {
     const a = { role: "user", content: "Hi" } as ApiCallInputMessage;
     const b = { role: "assistant", content: "Hi" } as ApiCallInputMessage;
-    expect(chatMessageDigest(a)).not.toBe(chatMessageDigest(b));
+    expect(jsonDigest(a)).not.toBe(jsonDigest(b));
   });
 
   test("distinguishes tool results by their call id", () => {
     const a = { role: "tool", content: "42", tool_call_id: "call_a" } as ApiCallInputMessage;
     const b = { role: "tool", content: "42", tool_call_id: "call_b" } as ApiCallInputMessage;
-    expect(chatMessageDigest(a)).not.toBe(chatMessageDigest(b));
+    expect(jsonDigest(a)).not.toBe(jsonDigest(b));
   });
 
-  test("distinguishes messages differing only in an unmodelled field", () => {
+  test("distinguishes messages differing only in a field the type does not model", () => {
     const anna = { role: "user", content: "Hi", name: "anna" } as unknown as ApiCallInputMessage;
     const bob = { role: "user", content: "Hi", name: "bob" } as unknown as ApiCallInputMessage;
-    expect(chatMessageDigest(anna)).not.toBe(chatMessageDigest(bob));
-    expect(chatMessageDigest(anna)).not.toBe(chatMessageDigest({ role: "user", content: "Hi" } as ApiCallInputMessage));
+    const plain = { role: "user", content: "Hi" } as ApiCallInputMessage;
+    expect(jsonDigest(anna)).not.toBe(jsonDigest(bob));
+    expect(jsonDigest(anna)).not.toBe(jsonDigest(plain));
   });
 
   test("distinguishes assistant messages differing only in engine reasoning output", () => {
     const plain = { role: "assistant", content: "42" } as ApiCallInputMessage;
     const reasoned = { role: "assistant", content: "42", reasoning_content: "thinking" } as unknown as ApiCallInputMessage;
-    expect(chatMessageDigest(plain)).not.toBe(chatMessageDigest(reasoned));
+    expect(jsonDigest(plain)).not.toBe(jsonDigest(reasoned));
   });
 
   test("deduplicates multimodal messages by their stored media reference", () => {
@@ -103,8 +89,8 @@ describe("chatMessageDigest", () => {
     const second = { role: "user", content: parts("xinity-media://abc") } as ApiCallInputMessage;
     const other = { role: "user", content: parts("xinity-media://def") } as ApiCallInputMessage;
 
-    expect(chatMessageDigest(first)).toBe(chatMessageDigest(second));
-    expect(chatMessageDigest(first)).not.toBe(chatMessageDigest(other));
+    expect(jsonDigest(first)).toBe(jsonDigest(second));
+    expect(jsonDigest(first)).not.toBe(jsonDigest(other));
   });
 
   test("distinguishes content part types it does not model", () => {
@@ -117,7 +103,7 @@ describe("chatMessageDigest", () => {
       content: [{ type: "file", file: { file_id: "f_1" } }],
     } as unknown as ApiCallInputMessage;
 
-    expect(chatMessageDigest(audio)).not.toBe(chatMessageDigest(file));
+    expect(jsonDigest(audio)).not.toBe(jsonDigest(file));
   });
 });
 
@@ -132,8 +118,8 @@ describe("resolveChatMessageIds", () => {
 
   test("inserts new messages and returns their ids in input order", async () => {
     insertedRows = [
-      { id: "id-system", sha256: chatMessageDigest(system) },
-      { id: "id-user", sha256: chatMessageDigest(user) },
+      { id: "id-system", sha256: jsonDigest(system) },
+      { id: "id-user", sha256: jsonDigest(user) },
     ];
 
     const ids = await resolveChatMessageIds(freshOrg(), [system, user]);
@@ -143,9 +129,17 @@ describe("resolveChatMessageIds", () => {
     expect(selectQueries()).toHaveLength(0);
   });
 
+  test("sends the digest it computed, so the row is addressed by content", async () => {
+    insertedRows = [{ id: "id-system", sha256: jsonDigest(system) }];
+
+    await resolveChatMessageIds(freshOrg(), [system]);
+
+    expect(insertQueries()[0]?.params).toContain(jsonDigest(system));
+  });
+
   test("reads back rows that conflicted instead of updating them", async () => {
     insertedRows = [];
-    existingRows = [{ id: "id-existing", sha256: chatMessageDigest(system) }];
+    existingRows = [{ id: "id-existing", sha256: jsonDigest(system) }];
 
     const ids = await resolveChatMessageIds(freshOrg(), [system]);
 
@@ -157,19 +151,29 @@ describe("resolveChatMessageIds", () => {
   });
 
   test("collapses a message repeated within one batch to a single insert", async () => {
-    insertedRows = [{ id: "id-user", sha256: chatMessageDigest(user) }];
+    insertedRows = [{ id: "id-user", sha256: jsonDigest(user) }];
 
     const ids = await resolveChatMessageIds(freshOrg(), [user, user, user]);
 
     expect(ids).toEqual(["id-user", "id-user", "id-user"]);
     expect(insertQueries()).toHaveLength(1);
     const [insert] = insertQueries();
-    expect(insert?.params.filter((p) => p === chatMessageDigest(user))).toHaveLength(1);
+    expect(insert?.params.filter((p) => p === jsonDigest(user))).toHaveLength(1);
+  });
+
+  test("collapses two spellings of one message to a single insert", async () => {
+    const reordered = { content: "Hi", role: "user" } as ApiCallInputMessage;
+    insertedRows = [{ id: "id-user", sha256: jsonDigest(user) }];
+
+    const ids = await resolveChatMessageIds(freshOrg(), [user, reordered]);
+
+    expect(ids).toEqual(["id-user", "id-user"]);
+    expect(insertQueries()[0]?.params.filter((p) => p === jsonDigest(user))).toHaveLength(1);
   });
 
   test("serves a repeated message from cache without a second round trip", async () => {
     const orgId = freshOrg();
-    insertedRows = [{ id: "id-system", sha256: chatMessageDigest(system) }];
+    insertedRows = [{ id: "id-system", sha256: jsonDigest(system) }];
     await resolveChatMessageIds(orgId, [system]);
     capturedQueries.length = 0;
 
@@ -180,7 +184,7 @@ describe("resolveChatMessageIds", () => {
   });
 
   test("does not serve one organization's message from another's cache entry", async () => {
-    const digest = chatMessageDigest(system);
+    const digest = jsonDigest(system);
     insertedRows = [{ id: "id-org-a", sha256: digest }];
     await resolveChatMessageIds(freshOrg(), [system]);
     capturedQueries.length = 0;
@@ -194,7 +198,7 @@ describe("resolveChatMessageIds", () => {
 
   test("stores the message verbatim, including unmodelled fields", async () => {
     const named = { role: "user", content: "Hi", name: "anna" } as unknown as ApiCallInputMessage;
-    insertedRows = [{ id: "id-named", sha256: chatMessageDigest(named) }];
+    insertedRows = [{ id: "id-named", sha256: jsonDigest(named) }];
 
     await resolveChatMessageIds(freshOrg(), [named]);
 
@@ -205,7 +209,7 @@ describe("resolveChatMessageIds", () => {
   });
 
   test("routes queries through a supplied transaction", async () => {
-    insertedRows = [{ id: "id-system", sha256: chatMessageDigest(system) }];
+    insertedRows = [{ id: "id-system", sha256: jsonDigest(system) }];
     const tx = { insert: jest.fn(db.insert.bind(db)), select: jest.fn(db.select.bind(db)) };
 
     const ids = await resolveChatMessageIds(freshOrg(), [system], tx as never);
