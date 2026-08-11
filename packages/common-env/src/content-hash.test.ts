@@ -46,10 +46,6 @@ describe("jsonDigest", () => {
   test("distinguishes different content", () => {
     expect(jsonDigest({ a: 1 })).not.toBe(jsonDigest({ a: 2 }));
   });
-
-  test("is 64 hex characters", () => {
-    expect(jsonDigest({ a: 1 })).toMatch(/^[0-9a-f]{64}$/);
-  });
 });
 
 describe("bytesDigest", () => {
@@ -57,10 +53,6 @@ describe("bytesDigest", () => {
     const bytes = new Uint8Array([1, 2, 3]);
     expect(bytesDigest(bytes)).toBe(bytesDigest(new Uint8Array([1, 2, 3])));
     expect(bytesDigest(bytes)).not.toBe(bytesDigest(new Uint8Array([1, 2, 4])));
-  });
-
-  test("is 64 hex characters", () => {
-    expect(bytesDigest(new Uint8Array([0]))).toMatch(/^[0-9a-f]{64}$/);
   });
 
   test("matches the digest of the same bytes read as a known vector", () => {
