@@ -88,7 +88,17 @@
                 "additionalProperties": {}
               }
             ],
-            "description": "License terms, as a well-known identifier or a full object. Governs what a user may do with the model"
+            "description": "License terms, as a well-known identifier or a full object. Governs what types of usage are permissible, if not all"
+          },
+          "createdAt": {
+            "description": "Date the model was published by its creator, as YYYY-MM-DD. Recency says a lot about capability, so it is shown wherever models are compared",
+            "type": "string",
+            "pattern": "^\\d{4}[.-]\\d{2}[.-]\\d{2}$"
+          },
+          "registeredAt": {
+            "description": "Date this entry was added to the catalog, as YYYY-MM-DD. Entries added recently are flagged as new in the dashboard",
+            "type": "string",
+            "pattern": "^\\d{4}[.-]\\d{2}[.-]\\d{2}$"
           },
           "engine": {
             "type": "string",
@@ -230,6 +240,8 @@
           "description",
           "url",
           "license",
+          "createdAt",
+          "registeredAt",
           "engine",
           "engineSpecifier",
           "weight",

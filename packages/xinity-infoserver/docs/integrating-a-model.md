@@ -47,6 +47,8 @@ steps.)
 | `maxContextLength` | `max_position_embeddings` in `config.json`, unless the model card documents a lower supported window. |
 | `license` | The model card's license field, then the license text itself. If it is one of the well-known identifiers, name it and you are done (check [model-fields](./model-fields.md) for details). Otherwise read it for limits on **use** (revenue or user thresholds, non-commercial clauses, acceptable-use policies) and write those into `summary`, which is what a user reads before deploying. Do not assume permissive just because the weights are downloadable. |
 | `description` | The model card, in your own words: purpose, strengths, limitations. Multiple paragraphs as a block scalar, not a one-line label. |
+| `createdAt` | The day the creator published the model: the initial commit on the HuggingFace repo, or the announcement date the model card cites. Not a later revision, and identical across every engine variant of one model. |
+| `registeredAt` | The day you are adding the entry, i.e. today. It records integration, not the model's age, so never copy it from `createdAt` and never backdate it: entries registered in the last 14 days are flagged as new in the dashboard. |
 | `minEngineVersion` | Set for new model families / quant formats. Don't guess - **establish the floor empirically** by running on older vLLM builds until it stops loading ("Confirm the version floor" below). |
 | `platforms` | Set when the variant needs a specific GPU vendor (e.g. CUDA-only quant kernels → `[nvidia]`). A `wrong_platform` failure is evidence. |
 | `args` | Extra serve flags (e.g. `["--max-model-len", "8192"]`). Note the blocked-args list in `model-fields.md`; system-managed flags are stripped. |

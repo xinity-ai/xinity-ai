@@ -4,6 +4,7 @@ import {
   BLOCKED_REQUEST_PARAM_PREFIXES,
   EngineEnum,
   GpuVendorEnum,
+  ModelDate,
   ModelTypeEnum,
   RequestParamTypeEnum,
   TagEnum,
@@ -31,6 +32,9 @@ export const ModelFields = z.looseObject({
   description: z.string().describe("Multi-paragraph description: purpose, strengths, limitations. Shown when choosing between models, so a one-line label is not enough"),
   url: z.url().describe("External documentation url, for curious users that want to know more"),
   license: LicenseSchema.describe("License terms, as a well-known identifier or a full object. Governs what types of usage are permissible, if not all"),
+
+  createdAt: ModelDate.describe("Date the model was published by its creator, as YYYY-MM-DD. Recency says a lot about capability, so it is shown wherever models are compared"),
+  registeredAt: ModelDate.describe("Date this entry was added to the catalog, as YYYY-MM-DD. Entries added recently are flagged as new in the dashboard"),
 
   engine: EngineEnum.describe("Inference engine this entry runs on"),
   engineSpecifier: z.string().describe("Identifier the engine itself uses. A HuggingFace model id for vLLM, a tag for Ollama"),

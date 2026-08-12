@@ -21,6 +21,19 @@ export type ModelType = z.infer<typeof ModelTypeEnum>;
 export const RequestParamTypeEnum = z.enum(["boolean", "number", "string"]);
 export type RequestParamType = z.infer<typeof RequestParamTypeEnum>;
 
+const MODEL_DATE_PATTERN = /^\d{4}[.-]\d{2}[.-]\d{2}$/;
+
+function isRealCalendarDate(isoDate: string): boolean {
+  const parsed = Date.parse(`${isoDate}T00:00:00Z`);
+  return !Number.isNaN(parsed) && new Date(parsed).toISOString().startsWith(isoDate);
+}
+
+/** The catalog was authored as `2026.05.05` for months, so both separators parse. */
+export const ModelDate = z.string()
+  .regex(MODEL_DATE_PATTERN, "Expected a date as YYYY-MM-DD")
+  .transform(value => value.replaceAll(".", "-"))
+  .refine(isRealCalendarDate, "Not a real calendar date");
+
 /**
  * vLLM args that must not appear in model definitions because they are either
  * auto-derived from tags or managed by the system.

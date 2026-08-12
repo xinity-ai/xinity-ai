@@ -24,6 +24,10 @@ models:
       use: conditional
       summary: >
         Internal use only. Do not expose this model to customers or third parties.
+    # createdAt is the base model's release date, registeredAt the day you added
+    # this entry. registeredAt refers to the day the model was entered into this file
+    createdAt: 2024-07-23
+    registeredAt: 2026-01-10
     engine: ollama
     engineSpecifier: my-custom-llama:8b-q8_0
     weight: 8
@@ -48,6 +52,8 @@ models:
       model.
     url: https://example.com/models/embeddings
     license: apache-2.0
+    createdAt: 2024-02-14
+    registeredAt: 2026-01-10
     engine: ollama
     engineSpecifier: nomic-embed-text
     weight: 2

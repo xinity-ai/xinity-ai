@@ -298,6 +298,8 @@ describe("createCatalogClient", () => {
     description: "A test model",
     url: "https://example.com",
     license: "apache-2.0",
+    createdAt: "2026-01-15",
+    registeredAt: "2026-02-01",
     engine: "vllm",
     engineSpecifier: "org/llama-vllm",
     weight: 10,
