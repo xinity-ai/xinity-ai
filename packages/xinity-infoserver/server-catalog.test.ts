@@ -565,6 +565,43 @@ describe("server-catalog", () => {
       await expect(refresh()).rejects.toThrow(/is not a valid current-format model file/);
     });
 
+    it("serves the entries of an include it understands and skips the rest", async () => {
+      const ahead = Bun.serve({
+        port: 0,
+        fetch: () => new Response(makeModelYaml({
+          "llama-vllm": v2Model,
+          "llama-sglang": { ...v2Model, engine: "sglang" },
+          "tagged-vllm": { ...v2Model, tags: ["tools", "reasoning"] },
+        })),
+      });
+
+      try {
+        const { dirPath } = await writeYamlInOwnDir(
+          makeModelYaml({ "local-vllm": v2Model }, [`http://localhost:${ahead.port}/models.json`]),
+          fileIndex++,
+        );
+        configure(10, dirPath, undefined);
+        await refresh();
+
+        expect(modelCatalog.get("local-vllm")).toBeDefined();
+        expect(modelCatalog.get("llama-vllm")).toBeDefined();
+        expect(modelCatalog.get("llama-sglang")).toBeUndefined();
+        expect(modelCatalog.get("tagged-vllm")?.tags).toEqual(["tools"]);
+      } finally {
+        ahead.stop(true);
+      }
+    });
+
+    it("still refuses a local file using vocabulary it does not know", async () => {
+      const { dirPath } = await writeYamlInOwnDir(
+        makeModelYaml({ "tagged-vllm": { ...v2Model, tags: ["tools", "reasoning"] } }),
+        fileIndex++,
+      );
+      configure(10, dirPath, undefined);
+
+      await expect(refresh()).rejects.toThrow(/is not a valid current-format model file/);
+    });
+
     it("refuses to start when an include serves a document it cannot use", async () => {
       const wrongFormat = Bun.serve({
         port: 0,

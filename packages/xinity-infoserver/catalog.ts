@@ -17,7 +17,7 @@ export interface ParsedModelFile<M> {
 }
 
 export type FileParseOutcome<M> =
-  | { status: "ok"; file: ParsedModelFile<M> }
+  | { status: "ok"; file: ParsedModelFile<M>; skippedEntries?: number }
   | { status: "invalid"; reason: string };
 
 export interface SerializedCatalog {
@@ -41,6 +41,7 @@ export interface CatalogOptions<M> {
   /** Distinguishes the two catalogs in logs. */
   name: string;
   parseFile: (text: string) => FileParseOutcome<M>;
+  parseRemoteFile?: (text: string) => FileParseOutcome<M>;
   /**
    * When false, a document that fails validation is skipped with a warning. Only
    * the deprecated format does that, so tightening this cannot stop a deployment
@@ -153,7 +154,7 @@ export function createCatalog<M extends CatalogModel>(options: CatalogOptions<M>
         log.warn({ url, status: response.status }, "Include fetch failed");
         return;
       }
-      outcome = options.parseFile(await response.text());
+      outcome = (options.parseRemoteFile ?? options.parseFile)(await response.text());
     } catch (err) {
       log.warn({ url, err }, "Include fetch error");
       return;
@@ -168,6 +169,10 @@ export function createCatalog<M extends CatalogModel>(options: CatalogOptions<M>
       }
       log.warn({ url, reason: outcome.reason }, "Include validation failed, skipping");
       return;
+    }
+
+    if (outcome.skippedEntries) {
+      log.warn({ url, skipped: outcome.skippedEntries }, "Include carries entries this build cannot use");
     }
 
     indexModels(outcome.file.models, url, false, state);

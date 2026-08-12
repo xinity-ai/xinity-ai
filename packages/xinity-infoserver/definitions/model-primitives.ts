@@ -21,6 +21,34 @@ export type ModelType = z.infer<typeof ModelTypeEnum>;
 export const RequestParamTypeEnum = z.enum(["boolean", "number", "string"]);
 export type RequestParamType = z.infer<typeof RequestParamTypeEnum>;
 
+export function isKnownTag(value: unknown): value is Tag {
+  return typeof value === "string" && (TagEnum.options as readonly string[]).includes(value);
+}
+
+export function isKnownEngine(value: unknown): value is Engine {
+  return typeof value === "string" && (EngineEnum.options as readonly string[]).includes(value);
+}
+
+export function isKnownModelType(value: unknown): value is ModelType {
+  return typeof value === "string" && (ModelTypeEnum.options as readonly string[]).includes(value);
+}
+
+export function isKnownGpuVendor(value: unknown): value is GpuVendor {
+  return typeof value === "string" && (GpuVendorEnum.options as readonly string[]).includes(value);
+}
+
+export const relayedTags = z.array(z.string()).transform(tags => tags.filter(isKnownTag));
+
+/** Filtering down to an empty list would read as "any platform", so reject instead. */
+export const relayedPlatforms = z.array(z.string()).transform((vendors, ctx) => {
+  const known = vendors.filter(isKnownGpuVendor);
+  if (vendors.length > 0 && known.length === 0) {
+    ctx.addIssue({ code: "custom", message: "no recognised GPU vendor" });
+    return z.NEVER;
+  }
+  return known;
+});
+
 const MODEL_DATE_PATTERN = /^\d{4}[.-]\d{2}[.-]\d{2}$/;
 
 function isRealCalendarDate(isoDate: string): boolean {

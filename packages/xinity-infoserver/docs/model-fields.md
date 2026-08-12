@@ -49,6 +49,12 @@ Recognised identifiers: `apache-2.0`, `mit`, `bsd-3-clause`, `mpl-2.0`, `gpl-3.0
 
 An unrecognised `use` value is read as `unknown` rather than failing validation, so adding a value later does not break clients running an older version: they show the summary and the link instead of a classification. The value must never be widened to a free-form string, and the fallback must never become `open`.
 
+## Adding a value to a fixed set
+
+Adding to `engine`, `type`, `tags`, `platforms` or license `use` is not a breaking change. In a catalog read over `includes`, unknown tags and platforms are filtered out and unknown engines or types skip the entry, so older readers lose only what they could not have used. In a local file an unknown value is a typo and fails the load.
+
+Redefining or removing a value is breaking, since deployed readers keep the old meaning.
+
 ## Dates
 
 Dates are written `YYYY-MM-DD`.  

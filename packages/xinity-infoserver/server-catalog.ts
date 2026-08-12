@@ -7,6 +7,9 @@ import {
   type Model,
   LegacyModelFileSchema,
   ModelFileSchema,
+  RelayedModelFileSchema,
+  RelayedModelSchema,
+  unsupportedVocabulary,
 } from "./definitions/model-definition";
 import { createCatalog, type FileParseOutcome } from "./catalog";
 import { rootLogger } from "./logger";
@@ -23,9 +26,49 @@ function parseWith<M>(schema: z.ZodType) {
   };
 }
 
+function parseRelayedModels(text: string): FileParseOutcome<Model> {
+  const envelope = RelayedModelFileSchema.safeParse(Bun.YAML.parse(text));
+  if (!envelope.success) {
+    return { status: "invalid", reason: z.prettifyError(envelope.error) };
+  }
+
+  const models: Record<string, Model> = {};
+  let unsupportedEntries = 0;
+  let malformedEntries = 0;
+
+  for (const [specifier, entry] of Object.entries(envelope.data.models)) {
+    const unusable = unsupportedVocabulary(entry);
+    if (unusable) {
+      unsupportedEntries++;
+      log.debug({ specifier, reason: unusable }, "Relayed entry skipped");
+      continue;
+    }
+
+    const parsed = RelayedModelSchema.safeParse(entry);
+    if (!parsed.success) {
+      malformedEntries++;
+      log.warn({ specifier, reason: z.prettifyError(parsed.error) }, "Relayed entry failed validation");
+      continue;
+    }
+    models[specifier] = parsed.data;
+  }
+
+  // Nothing validating at all means the URL points at the wrong document.
+  if (malformedEntries > 0 && Object.keys(models).length === 0) {
+    return { status: "invalid", reason: `none of its ${malformedEntries} entries validated` };
+  }
+
+  return {
+    status: "ok",
+    file: { models, includes: envelope.data.includes },
+    skippedEntries: unsupportedEntries + malformedEntries,
+  };
+}
+
 export const modelCatalog = createCatalog<Model>({
   name: "current-format",
   parseFile: parseWith<Model>(ModelFileSchema),
+  parseRemoteFile: parseRelayedModels,
   invalidDocumentIsFatal: true,
 });
 
