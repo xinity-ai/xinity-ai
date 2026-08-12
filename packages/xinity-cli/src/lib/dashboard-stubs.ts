@@ -76,7 +76,7 @@ export const serverStubs: Record<string, Record<string, unknown>> = {
       originMismatch: false,
       instanceMismatch: false,
       maxVramGb: 120,
-      features: { sso: false, multiOrg: false, ssoSelfManage: false, allRoles: false },
+      features: { sso: false, multiOrg: false, ssoSelfManage: false, allRoles: false, auditLog: false },
     }),
   },
 };
