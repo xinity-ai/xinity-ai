@@ -12,30 +12,6 @@ import {
   stripBlockedVllmArgs,
 } from "./model-primitives";
 
-export {
-  BLOCKED_REQUEST_PARAM_PREFIXES,
-  BLOCKED_VLLM_ARGS,
-  EngineEnum,
-  GpuVendorEnum,
-  ModelTypeEnum,
-  RequestParamTypeEnum,
-  TagEnum,
-  type Engine,
-  type GpuVendor,
-  type ModelType,
-  type RequestParamType,
-  type Tag,
-} from "./model-primitives";
-
-export {
-  LICENSE_USES,
-  LicenseObjectSchema,
-  LicenseSchema,
-  LicenseUseEnum,
-  type LicenseUse,
-  type ModelLicense,
-} from "./licenses";
-
 const KV_CACHE_DESCRIPTION =
   "Minimum KV-cache allocation in GB. " +
   "Should be precomputed from the model's config.json (if available) as roughly: " +

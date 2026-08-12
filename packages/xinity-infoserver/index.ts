@@ -1,3 +1,5 @@
+export * from "./definitions/model-primitives";
+export * from "./definitions/licenses";
 export * from "./definitions/model-definition";
 export * from "./model-tags";
 export { satisfiesMinVersion, normalizePep440 } from "./semver";
