@@ -3,16 +3,18 @@
   import type { Engine, ModelType, ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
   import { EngineEnum, isDeployableOnCluster } from "xinity-infoserver";
   import { modelCatalog } from "$lib/state/model-catalog.svelte";
-  import { formatGb } from "$lib/util";
+  import { formatGb, humanMonthYear } from "$lib/util";
+  import { isRecentlyAdded } from "./model-recency";
 
   // shadcn components
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Badge } from "$lib/components/ui/badge";
   import LicenseBadge from "./LicenseBadge.svelte";
+  import NewModelBadge from "./NewModelBadge.svelte";
 
   // Icons
-  import { X, Search, ExternalLink, Info, ShieldAlert, HardDrive, Loader2, AlertCircle,
+  import { X, Search, ExternalLink, Info, ShieldAlert, HardDrive, CalendarDays, Loader2, AlertCircle,
     LayoutGrid, MessageSquare, Boxes, ArrowUpDown, Mic } from "@lucide/svelte";
   // Icons for the not-yet-available model types (see MODEL_TYPES below):
   // import { Image as ImageIcon, AudioLines } from "@lucide/svelte";
@@ -326,6 +328,9 @@
                         </p>
                       </div>
                       <div class="flex items-center gap-1.5 shrink-0">
+                        {#if isRecentlyAdded(model.registeredAt)}
+                          <NewModelBadge class="text-[10px] uppercase px-1.5 py-0" />
+                        {/if}
                         {#if model.url}
                           <a href={model.url} target="_blank" rel="noopener noreferrer"
                             class="p-1.5 text-muted-foreground hover:text-primary hover:bg-accent rounded-full transition-colors z-10"
@@ -343,10 +348,16 @@
 
                     <p class="text-sm text-muted-foreground mb-3 line-clamp-2 grow">{model.description}</p>
 
-                    <div class="flex items-center gap-1.5 text-xs text-muted-foreground mb-3">
-                      <HardDrive class="w-3 h-3" />
-                      <span>{formatGb(model.weight + model.minKvCache)}</span>
-                      <span class="opacity-50">({parseFloat(model.weight.toFixed(2))} model + {parseFloat(model.minKvCache.toFixed(2))} kv-cache)</span>
+                    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground mb-3">
+                      <span class="flex items-center gap-1.5">
+                        <HardDrive class="w-3 h-3 shrink-0" />
+                        <span>{formatGb(model.weight + model.minKvCache)}</span>
+                        <span class="opacity-50">({parseFloat(model.weight.toFixed(2))} model + {parseFloat(model.minKvCache.toFixed(2))} kv-cache)</span>
+                      </span>
+                      <span class="flex items-center gap-1.5" title="Released {model.createdAt}">
+                        <CalendarDays class="w-3 h-3 shrink-0" />
+                        <span>{humanMonthYear(model.createdAt)}</span>
+                      </span>
                     </div>
 
                     {#if undeployable && constraintIssue}
