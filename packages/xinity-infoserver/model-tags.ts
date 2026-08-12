@@ -2,7 +2,8 @@
  * Pure helper functions for model provider resolution and per-driver tags.
  * Safe to import from both server and client code (no runtime deps).
  */
-import { type LegacyModel, type Provider, type RequestParamType, ProviderEnum } from "./definitions/model-definition";
+import { type LegacyModel, type Provider, ProviderEnum } from "./definitions/model-definition";
+import { type RequestParamType } from "./definitions/model-primitives";
 
 // ---------------------------------------------------------------------------
 // Provider resolution
