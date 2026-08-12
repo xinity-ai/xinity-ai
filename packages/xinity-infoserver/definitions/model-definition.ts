@@ -46,6 +46,7 @@ export const ModelFields = z.looseObject({
 
   /** Quantization differs per engine, so these cannot be shared across engines. */
   weight: z.number().describe("VRAM consumed by this variant's weights, in GB"),
+  activeWeight: z.number().optional().describe("Weights read per token by a mixture-of-experts variant, in GB. Absent means dense, where every weight participates. Speed scales with this figure, while capacity still needs the full weight"),
   minKvCache: z.number().describe(KV_CACHE_DESCRIPTION),
   maxContextLength: z.number().int().positive().describe("Maximum supported context window in tokens"),
 
@@ -82,6 +83,10 @@ function withModelRules<T extends typeof ModelFields | typeof RelayedModelFields
     .refine(
       model => !model.requestParams || !hasBlockedRequestParam(Object.keys(model.requestParams)),
       { message: "requestParams must not contain blocked prefixes", path: ["requestParams"] },
+    )
+    .refine(
+      model => model.activeWeight === undefined || model.activeWeight <= model.weight,
+      { message: "activeWeight must not exceed weight", path: ["activeWeight"] },
     )
     .transform(model => (
       model.engine === "vllm" && model.args

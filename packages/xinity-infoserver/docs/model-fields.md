@@ -67,6 +67,7 @@ Dates are written `YYYY-MM-DD`.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
+| `activeWeight` | number | - | Weights read per token, in GB, for a mixture-of-experts variant. Absent means dense. Throughput scales with this rather than with `weight`, so a sparse model left without it reads as far slower than it is. Capacity is unaffected: the full `weight` still has to fit in VRAM |
 | `family` | string | `"unknown"` | Model family for grouping in the UI (e.g. `"llama"`, `"phi3"`, `"mistral"`) |
 | `variantOf` | string | - | Specifier of the standard variant of this model. Set it on the derived variants and leave it off the one they derive from, so the group has exactly one leader. A variant may not itself have variants, and a pointer at a missing entry leaves the entry ungrouped rather than failing. Every variant keeps its own license, description and capacity, since a requant can carry different terms and needs its own operational notes |
 | `isCustom` | boolean | `false` | Marks fine-tuned/custom models |
