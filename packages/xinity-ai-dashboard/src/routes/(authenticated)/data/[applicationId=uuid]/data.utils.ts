@@ -1,4 +1,5 @@
 import type { ApiCallInputMessageContent } from "common-db";
+import { parseMediaRef } from "common-env/media-ref";
 
 /**
  * Normalizes message content that may be a plain string or an array of
@@ -21,16 +22,8 @@ export function messageContentToString(
  * the authenticated /data/media/[sha256] endpoint.
  */
 export function resolveImageSrc(url: string): string {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return url;
-  }
-  if (parsed.protocol === "xinity-media:") {
-    return `/data/media/${parsed.hostname}`;
-  }
-  return url;
+  const sha256 = parseMediaRef(url);
+  return sha256 ? `/data/media/${sha256}` : url;
 }
 
 export type RoleStyle = {

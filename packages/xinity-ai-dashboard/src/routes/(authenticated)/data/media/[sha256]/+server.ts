@@ -8,6 +8,7 @@
 import type { RequestHandler } from "./$types";
 import { auth } from "$lib/server/auth-server";
 import { getPresignedUrl } from "$lib/server/image-store";
+import { isMediaDigest } from "common-env/media-ref";
 import { error } from "@sveltejs/kit";
 
 export const GET: RequestHandler = async ({ params, locals }) => {
@@ -22,7 +23,7 @@ export const GET: RequestHandler = async ({ params, locals }) => {
   }
 
   const { sha256 } = params;
-  if (!sha256 || !/^[0-9a-f]{64}$/.test(sha256)) {
+  if (!sha256 || !isMediaDigest(sha256)) {
     error(400, "Invalid media reference");
   }
 

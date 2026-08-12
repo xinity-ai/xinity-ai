@@ -9,7 +9,8 @@ import type { RequestHandler } from "./$types";
 import { auth } from "$lib/server/auth-server";
 import { getDB } from "$lib/server/db";
 import { apiCallT, apiCallResponseT, sql } from "common-db";
-import { resolveToDataUri, parseMediaRef } from "$lib/server/image-store";
+import { resolveToDataUri } from "$lib/server/image-store";
+import { parseMediaRef } from "common-env/media-ref";
 import type { ApiCallInputMessage, ApiCallInputMessageContent } from "common-db";
 import { error } from "@sveltejs/kit";
 

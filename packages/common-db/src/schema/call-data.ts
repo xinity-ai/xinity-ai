@@ -78,7 +78,7 @@ export type ApiCall = InferSelectModel<typeof apiCallT>;
  * Bodies of chat-shaped messages, the form both `/v1/chat/completions` and `/v1/responses`
  * normalize their input to, referenced by the calls that sent them rather than copied per
  * call. Conversations resend their whole history every turn, so copying grows
- * quadratically. Org-scoped so one org's retention and deletion cannot reach another's.
+ * quadratically. Org-scoped so one org's deletions cannot reach another's.
  */
 export const chatMessageT = callDataSchema.table("chat_message", {
   id: uuid().primaryKey().defaultRandom(),

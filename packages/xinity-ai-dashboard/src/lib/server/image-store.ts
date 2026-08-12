@@ -114,15 +114,3 @@ export function resolveToDataUri(
     "Failed to download image from S3",
   );
 }
-
-/** Parse a xinity-media:// URL and return its SHA-256 hash, or null. */
-export function parseMediaRef(url: string): string | null {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return null;
-  }
-  if (parsed.protocol !== "xinity-media:") return null;
-  return parsed.hostname;
-}
