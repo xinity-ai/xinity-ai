@@ -42,6 +42,7 @@ models:
     engine: ollama
     engineSpecifier: qwen3-coder-next:q8_0
     weight: 14
+    activeWeight: 3
     minKvCache: 4
     maxContextLength: 131072
     type: chat
@@ -68,6 +69,7 @@ models:
     engine: vllm
     engineSpecifier: Qwen/Qwen3-Coder-Next
     weight: 28
+    activeWeight: 6
     minKvCache: 6
     maxContextLength: 131072
     type: chat
