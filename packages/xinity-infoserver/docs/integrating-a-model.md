@@ -38,7 +38,7 @@ steps.)
 
 | Field | Where it comes from |
 |-------|---------------------|
-| `engine`, `engineSpecifier` | `vllm` plus the HuggingFace repo id. An Ollama build of the same model is a second entry with `engine: ollama` and its own tag, weight and KV floor. |
+| `engine`, `engineSpecifier` | `vllm` plus the HuggingFace repo id. An Ollama variant of the same model is a second entry with `engine: ollama` and its own tag, weight and KV floor. |
 | `weight` | VRAM of the weights in GB. FP16 ≈ params(billions) × 2; quantized (AWQ/GPTQ ~4-bit) ≈ params × 0.5. Round up. |
 | `minKvCache` | Start from `config.json`: roughly `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes × tokens` (in GB), `tokens` chosen for desired concurrency. Then **confirm the hard floor empirically** ("Confirm the KV-cache floor" below) - the value must be at or above what vLLM needs to start. |
 | `type` | `chat` (default), `embedding`, `rerank`, or `transcription`, from what the model does. |
@@ -229,7 +229,7 @@ official one doesn't yet cover your hardware, and then review the Dockerfile and
 | Server load aborts: `weights not initialized from checkpoint: {visual.*}` | A vision-language architecture shipped as a **text-only** checkpoint (`config.json` `language_model_only: true`, no vision weights), but vLLM built the vision tower | Pass `--language-model-only` in `args` - the config field is not the switch, the CLI flag is. Not a `custom_code` case. Vision is off, so no `vision` tag |
 | Request fails HTTP 400 "default chat template is no longer allowed" | Model ships its chat template as a standalone `chat_template.jinja` and it isn't in the cache | The host downloader keeps `*.jinja` by default; if missing, re-run `--download`. Surfaces only if you `/health`-check but never send a real request - see "Confirm it actually serves" |
 | Loads but output is gibberish | Quant format/kernel mismatch (e.g. some FP8 Gemma variants) | Try a different quant of the same model (e.g. compressed-tensors instead of ModelOpt FP8), or a newer vLLM |
-| Load aborts: `tie_weights` `NotImplementedError` | Quant method can't tie embeddings for a tied-embedding model (e.g. ModelOpt FP8 + Gemma) | Use a compressed-tensors FP8 build (keeps `lm_head` unquantized) instead |
+| Load aborts: `tie_weights` `NotImplementedError` | Quant method can't tie embeddings for a tied-embedding model (e.g. ModelOpt FP8 + Gemma) | Use a compressed-tensors FP8 variant (keeps `lm_head` unquantized) instead |
 | HF download 401/403 (gated/private repo) | Needs auth | Provide a token via `--hf-token` (or `VLLM_HF_TOKEN`) |
 | OOM during load | Too large for the device at this utilization | Lower `--gpu-util` or KV-cache, or pick a smaller variant |
 

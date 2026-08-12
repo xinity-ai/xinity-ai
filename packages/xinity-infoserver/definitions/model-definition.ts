@@ -45,14 +45,14 @@ export const ModelFields = z.looseObject({
   engineSpecifier: z.string().describe("Identifier the engine itself uses. A HuggingFace model id for vLLM, a tag for Ollama"),
 
   /** Quantization differs per engine, so these cannot be shared across engines. */
-  weight: z.number().describe("VRAM consumed by this build's weights, in GB"),
+  weight: z.number().describe("VRAM consumed by this variant's weights, in GB"),
   minKvCache: z.number().describe(KV_CACHE_DESCRIPTION),
   maxContextLength: z.number().int().positive().describe("Maximum supported context window in tokens"),
 
   type: ModelTypeEnum.default("chat").describe("Usage type, which determines API compatibility"),
   family: z.string().default("unknown").describe("Family of the model. May be unknown"),
-  variantOf: z.string().optional().describe("Groups the engine and quantization variants of one underlying model, so the UI can present them together while each stays separately deployable"),
-  tags: z.array(TagEnum).default([]).describe("Capabilities this build supports: tools, vision, custom_code"),
+  variantOf: z.string().optional().describe("Specifier of the standard variant of this model, when this entry is a variant of it. The UI presents the group together while each variant stays separately deployable and keeps its own license, description and capacity. A variant may not itself have variants"),
+  tags: z.array(TagEnum).default([]).describe("Capabilities this variant supports: tools, vision, custom_code"),
   isCustom: z.boolean().default(false).describe("Set for fine-tuned models"),
 
   unlisted: z.boolean().default(false).describe("Keeps the entry out of the model picker without making it unusable. Deployments referencing it keep working, and a user can still reach it deliberately"),

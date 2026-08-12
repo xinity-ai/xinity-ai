@@ -114,7 +114,7 @@
           },
           "weight": {
             "type": "number",
-            "description": "VRAM consumed by this build's weights, in GB"
+            "description": "VRAM consumed by this variant's weights, in GB"
           },
           "minKvCache": {
             "type": "number",
@@ -143,12 +143,12 @@
             "type": "string"
           },
           "variantOf": {
-            "description": "Groups the engine and quantization variants of one underlying model, so the UI can present them together while each stays separately deployable",
+            "description": "Specifier of the standard variant of this model, when this entry is a variant of it. The UI presents the group together while each variant stays separately deployable and keeps its own license, description and capacity. A variant may not itself have variants",
             "type": "string"
           },
           "tags": {
             "default": [],
-            "description": "Capabilities this build supports: tools, vision, custom_code",
+            "description": "Capabilities this variant supports: tools, vision, custom_code",
             "type": "array",
             "items": {
               "type": "string",

@@ -4,7 +4,7 @@
 # This file is mounted read-only into the infoserver container
 
 # One entry describes one model on one engine, so the specifier carries the
-# engine and the capacity numbers are correct for that exact build.
+# engine and the capacity numbers are correct for that exact variant.
 models:
   my-custom-llama-ollama:
     name: My Custom Llama
@@ -63,8 +63,8 @@ models:
     family: nomic
 
 # Notes:
-# - `weight` and `minKvCache` are in GB and describe this build only. A quantized
-#   Ollama build and an fp16 vLLM build of the same model belong in separate
+# - `weight` and `minKvCache` are in GB and describe this variant only. A quantized
+#   Ollama variant and an fp16 vLLM variant of the same model belong in separate
 #   entries with separate numbers.
 # - Local entries take precedence over anything pulled in through `includes`.
 # - To extend the public registry, add an `includes` list pointing at

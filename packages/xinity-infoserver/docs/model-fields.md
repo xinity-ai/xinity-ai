@@ -4,7 +4,7 @@ Complete reference for every field in the `ModelSchema`. See the [README](../REA
 
 For IDE autocomplete, use the JSON Schema at `/schemas/model.v2.json` (served by the infoserver) or generate it locally with `bun run refresh-schema`.
 
-One entry describes one model on one engine, so every number below applies to that exact build. A quantized Ollama build and an fp16 vLLM build of the same model are two entries.
+One entry describes one model on one engine, so every number below applies to that exact variant. A quantized Ollama variant and an fp16 vLLM variant of the same model are two entries.
 
 ## Required fields
 
@@ -18,7 +18,7 @@ One entry describes one model on one engine, so every number below applies to th
 | `registeredAt` | date | Day this entry was added to the catalog, see [Dates](#dates) below |
 | `engine` | `"vllm"` \| `"ollama"` | Inference engine this entry runs on |
 | `engineSpecifier` | string | The identifier the engine itself uses: a HuggingFace model ID for vLLM (`"meta-llama/Llama-3.1-8B-Instruct"`), a tag for Ollama (`"llama3.1:8b-instruct-fp16"`) |
-| `weight` | number | VRAM consumed by this build's weights, in GB |
+| `weight` | number | VRAM consumed by this variant's weights, in GB |
 | `minKvCache` | number | Minimum KV-cache allocation in GB (decimal, 10⁹ - use a decimal, not a rounded integer). It is the floor below which vLLM refuses to start (KV for one request at full context). vLLM reports that floor in GiB, so the field value is `floor_GiB × 1.074`. Confirm it empirically - see "Confirm the KV-cache floor" in [integrating-a-model.md](./integrating-a-model.md) |
 | `maxContextLength` | number | Maximum supported context window, in tokens. Used by the gateway to enforce per-model context limits (e.g. in the Responses API) and reported via `GET /v1/models` |
 
@@ -68,7 +68,7 @@ Dates are written `YYYY-MM-DD`.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `family` | string | `"unknown"` | Model family for grouping in the UI (e.g. `"llama"`, `"phi3"`, `"mistral"`) |
-| `variantOf` | string | - | Groups this build with the other engine and quantization variants of the same underlying model. The UI presents them together while each stays separately deployable |
+| `variantOf` | string | - | Specifier of the standard variant of this model. Set it on the derived variants and leave it off the one they derive from, so the group has exactly one leader. A variant may not itself have variants, and a pointer at a missing entry leaves the entry ungrouped rather than failing. Every variant keeps its own license, description and capacity, since a requant can carry different terms and needs its own operational notes |
 | `isCustom` | boolean | `false` | Marks fine-tuned/custom models |
 | `unlisted` | boolean | `false` | Hides the entry from the model picker without retiring it. Existing deployments keep resolving, and a user can unhide it or name its specifier exactly. Use it for models that are outdated or that you would not recommend, rather than deleting the entry |
 | `unlistedReason` | string | - | Shown when the entry is unhidden. Optional: leave it out when the model is simply old, and set it when the reason changes what a user should do, e.g. a relicensed model whose terms are no longer offered |
