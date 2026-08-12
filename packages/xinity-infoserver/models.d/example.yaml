@@ -76,6 +76,30 @@ models:
     args: ["--tool-call-parser", "hermes"]
     minEngineVersion: "0.19.1"
 
+  # Kept deployable but out of the picker. Anything already running it is unaffected,
+  # and a user who wants it can still unhide or name it exactly.
+  qwen2-coder-medium-vllm:
+    name: Qwen2 Coder
+    description: |
+      Earlier generation code model, superseded in practice by the Qwen3 entries above
+      on every task we measure.
+
+      Still here because evaluation baselines and tuned prompts are pinned to it.
+    url: https://huggingface.co/Qwen/Qwen2-Coder
+    license: apache-2.0
+    createdAt: 2024-09-19
+    registeredAt: 2025-12-03
+    engine: vllm
+    engineSpecifier: Qwen/Qwen2-Coder
+    weight: 14
+    minKvCache: 4
+    maxContextLength: 32768
+    type: chat
+    family: qwen2
+    tags: [tools]
+    unlisted: true
+    unlistedReason: Superseded by the Qwen3 Coder entries. Prefer those unless you are pinned to this one.
+
   # Illustrative vendor license, written out in full because it is not one of the
   # well-known identifiers. Commercial use is allowed but bounded, so the summary
   # names the bound: it is what the dashboard puts in front of a user before deploy.

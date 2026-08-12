@@ -55,6 +55,9 @@ export const ModelFields = z.looseObject({
   tags: z.array(TagEnum).default([]).describe("Capabilities this build supports: tools, vision, custom_code"),
   isCustom: z.boolean().default(false).describe("Set for fine-tuned models"),
 
+  unlisted: z.boolean().default(false).describe("Keeps the entry out of the model picker without making it unusable. Deployments referencing it keep working, and a user can still reach it deliberately"),
+  unlistedReason: z.string().optional().describe("Shown to anyone who unhides the entry. Leave unset when the model is simply old, and use it when the reason changes what a user should do"),
+
   args: flatStringArray.optional().describe("Extra CLI arguments appended to the engine's command line. Arrays are deeply flattened to support YAML anchors"),
   requestParams: z.record(z.string(), RequestParamTypeEnum).optional().describe("Allowlist of extra request-level parameters the gateway may forward, as dot-notation paths mapped to primitive types. All are optional at request time"),
   minEngineVersion: z.string().optional().describe("Minimum engine version required (semver). Older nodes are excluded from scheduling"),
