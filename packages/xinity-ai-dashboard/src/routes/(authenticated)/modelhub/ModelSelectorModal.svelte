@@ -14,7 +14,7 @@
   import NewModelBadge from "./NewModelBadge.svelte";
 
   // Icons
-  import { X, Search, ExternalLink, Info, ShieldAlert, HardDrive, CalendarDays, Loader2, AlertCircle,
+  import { X, Search, ExternalLink, Info, ShieldAlert, HardDrive, CalendarDays, Eye, EyeOff, Loader2, AlertCircle,
     LayoutGrid, MessageSquare, Boxes, ArrowUpDown, Mic } from "@lucide/svelte";
   // Icons for the not-yet-available model types (see MODEL_TYPES below):
   // import { Image as ImageIcon, AudioLines } from "@lucide/svelte";
@@ -62,6 +62,7 @@
   let searchTerm = $state("");
   let selectedEngine = $state<Engine | "all">("all");
   let selectedType = $state<(typeof MODEL_TYPES)[number]["value"]>("all");
+  let showUnlisted = $state(false);
   const selectedTags = $state<Set<string>>(new Set());
   let sentinel = $state<HTMLElement | null>(null);
 
@@ -76,7 +77,7 @@
   // Stops immediately once hasMore is false; no further requests regardless of filter.
   $effect(() => {
     if (!open || !modelCatalog.initialLoaded || modelCatalog.isLoading || !modelCatalog.hasMore) return;
-    searchTerm; selectedEngine; selectedType; selectedTags;
+    searchTerm; selectedEngine; selectedType; selectedTags; showUnlisted;
     if (filteredModels.length < MIN_RESULTS_THRESHOLD) {
       modelCatalog.loadMore();
     }
@@ -119,9 +120,13 @@
         selectedTags.size === 0 ||
         Array.from(selectedTags).every((t) => m.tags.includes(t as typeof m.tags[number]));
 
-      return matchesSearch && matchesEngine && matchesType && matchesTags;
+      const isVisible = !m.unlisted || showUnlisted || searchLower === m.publicSpecifier.toLowerCase();
+
+      return isVisible && matchesSearch && matchesEngine && matchesType && matchesTags;
     }),
   );
+
+  const unlistedCount = $derived(modelCatalog.models.filter(m => m.unlisted).length);
 
   const groupedModels = $derived(
     filteredModels.reduce(
@@ -225,6 +230,22 @@
             {e.label}
           </button>
         {/each}
+
+        {#if unlistedCount > 0}
+          <button
+            class="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors duration-200 {showUnlisted ? 'bg-primary/10 text-primary border-primary/20' : 'bg-background text-muted-foreground border-border hover:border-primary/50'}"
+            title={showUnlisted ? "Hide unlisted models again" : "Show models that are outdated or not recommended"}
+            onclick={() => (showUnlisted = !showUnlisted)}
+          >
+            {#if showUnlisted}
+              <Eye class="w-3 h-3" />
+              Showing {unlistedCount} unlisted
+            {:else}
+              <EyeOff class="w-3 h-3" />
+              {unlistedCount} unlisted
+            {/if}
+          </button>
+        {/if}
       </div>
 
       <div class="flex flex-wrap gap-2 items-center">
@@ -256,6 +277,7 @@
           {/each}
         </div>
       {/if}
+
     </div>
 
     <!-- Capacity Info -->
@@ -294,7 +316,7 @@
           <Info class="w-12 h-12 mb-4 opacity-50" />
           <p class="text-lg font-medium">No models found</p>
           <p class="text-sm">Try adjusting your search or filters</p>
-          <Button variant="link" class="mt-4" onclick={() => { searchTerm = ""; selectedEngine = "all"; selectedType = "all"; selectedTags.clear(); }}>
+          <Button variant="link" class="mt-4" onclick={() => { searchTerm = ""; selectedEngine = "all"; selectedType = "all"; showUnlisted = false; selectedTags.clear(); }}>
             Clear all filters
           </Button>
         </div>
@@ -369,6 +391,13 @@
                       <div class="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-400 mb-1">
                         <Info class="w-3.5 h-3.5 shrink-0 mt-0.5" />
                         <span>Needs {formatGb(model.weight + model.minKvCache)}, more than the largest node's {formatGb(maxNodeFreeCapacity)} free. You can still select it and deploy it disabled.</span>
+                      </div>
+                    {/if}
+
+                    {#if model.unlisted}
+                      <div class="flex items-start gap-2 rounded-md border border-border bg-muted/50 px-2.5 py-1.5 text-xs text-muted-foreground mb-1">
+                        <EyeOff class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                        <span>{model.unlistedReason ?? "Unlisted. Still deployable, but not offered by default."}</span>
                       </div>
                     {/if}
 
