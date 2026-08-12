@@ -10,6 +10,11 @@ import {
   TagEnum,
   flatStringArray,
   hasBlockedRequestParam,
+  isKnownEngine,
+  isKnownGpuVendor,
+  isKnownModelType,
+  relayedPlatforms,
+  relayedTags,
   stripBlockedVllmArgs,
 } from "./model-primitives";
 
@@ -63,19 +68,46 @@ export const ModelFields = z.looseObject({
   }).optional().describe("Provenance for fine tuned custom models"),
 });
 
-export const ModelSchema = ModelFields
-  .refine(
-    model => !model.requestParams || !hasBlockedRequestParam(Object.keys(model.requestParams)),
-    { message: "requestParams must not contain blocked prefixes", path: ["requestParams"] },
-  )
-  .transform(model => (
-    model.engine === "vllm" && model.args
-      ? { ...model, args: stripBlockedVllmArgs(model.args) }
-      : model
-  ));
+/** For catalogs written elsewhere. Local files keep ModelFields, where an unknown value is a typo. */
+export const RelayedModelFields = ModelFields.extend({
+  tags: relayedTags.default([]),
+  platforms: relayedPlatforms.optional(),
+});
+
+function withModelRules<T extends typeof ModelFields | typeof RelayedModelFields>(fields: T) {
+  return fields
+    .refine(
+      model => !model.requestParams || !hasBlockedRequestParam(Object.keys(model.requestParams)),
+      { message: "requestParams must not contain blocked prefixes", path: ["requestParams"] },
+    )
+    .transform(model => (
+      model.engine === "vllm" && model.args
+        ? { ...model, args: stripBlockedVllmArgs(model.args) }
+        : model
+    ));
+}
+
+export const ModelSchema = withModelRules(ModelFields);
+export const RelayedModelSchema = withModelRules(RelayedModelFields);
 
 export type Model = z.infer<typeof ModelSchema>;
 export type ModelWithSpecifier = Model & { publicSpecifier: string; _source: string };
+
+/** Checked before parsing, so these entries are counted as skipped rather than reported as errors. */
+export function unsupportedVocabulary(entry: unknown): string | undefined {
+  const { engine, type, platforms } = (entry ?? {}) as { engine?: unknown; type?: unknown; platforms?: unknown };
+
+  if (engine !== undefined && !isKnownEngine(engine)) {
+    return `unsupported engine: ${String(engine)}`;
+  }
+  if (type !== undefined && !isKnownModelType(type)) {
+    return `unsupported model type: ${String(type)}`;
+  }
+  if (Array.isArray(platforms) && platforms.length > 0 && !platforms.some(isKnownGpuVendor)) {
+    return `no recognised GPU vendor in platforms: ${platforms.join(", ")}`;
+  }
+  return undefined;
+}
 
 export const ModelFileSchema = z.object({
   includes: z.url().array().optional().describe("Additional model sources to fetch and merge. Each must use this same format"),
@@ -83,6 +115,11 @@ export const ModelFileSchema = z.object({
     z.string().describe("Public model specifier. Unique, and carries the engine, e.g. gemma-4-27b-vllm"),
     ModelSchema,
   ),
+});
+
+export const RelayedModelFileSchema = z.object({
+  includes: z.url().array().optional(),
+  models: z.record(z.string(), z.unknown()),
 });
 
 export function createModelJsonSchema() {

@@ -1,6 +1,7 @@
 import {
   LegacyModelSchema,
-  ModelSchema,
+  RelayedModelSchema,
+  unsupportedVocabulary,
   type LegacyModelWithSpecifier,
   type ModelWithSpecifier,
 } from "./definitions/model-definition";
@@ -47,6 +48,7 @@ export function createCatalogClient(config: CatalogClientConfig) {
     }
 
     let tooNew = 0;
+    let unsupported = 0;
     for (const [specifier, entry] of Object.entries(source)) {
       const entryVersion = (entry as { entryVersion?: unknown } | null)?.entryVersion;
       if (typeof entryVersion === "string" && !satisfiesMinVersion(version, entryVersion)) {
@@ -54,7 +56,14 @@ export function createCatalogClient(config: CatalogClientConfig) {
         continue;
       }
 
-      const parsed = ModelSchema.safeParse(entry);
+      const unusable = unsupportedVocabulary(entry);
+      if (unusable) {
+        unsupported++;
+        config.logger?.debug({ specifier, reason: unusable }, "Skipping catalog entry this build cannot serve");
+        continue;
+      }
+
+      const parsed = RelayedModelSchema.safeParse(entry);
       if (!parsed.success) {
         config.logger?.warn({ specifier, issues: parsed.error.issues }, "Dropping model that failed content validation");
         continue;
@@ -64,6 +73,9 @@ export function createCatalogClient(config: CatalogClientConfig) {
 
     if (tooNew > 0) {
       config.logger?.warn({ skipped: tooNew, version }, "Skipped catalog entries that require a newer xinity version");
+    }
+    if (unsupported > 0) {
+      config.logger?.warn({ skipped: unsupported }, "Skipped catalog entries using an engine, model type or platform this build does not know");
     }
     return next;
   }

@@ -385,6 +385,40 @@ describe("createCatalogClient", () => {
     expect(requests).toHaveLength(1);
   });
 
+  it("keeps a model carrying a tag it has never heard of, minus the tag", async () => {
+    body = { models: { "llama-vllm": { ...v2Model, tags: ["tools", "reasoning"] } } };
+
+    const model = await (await makeClient()).get("llama-vllm");
+    expect(model?.tags).toEqual(["tools"]);
+  });
+
+  it("drops only the entries naming an engine or model type it cannot serve", async () => {
+    body = {
+      models: {
+        "llama-vllm": v2Model,
+        "llama-sglang": { ...v2Model, engine: "sglang" },
+        "whisper-vllm": { ...v2Model, type: "diarization" },
+      },
+    };
+    const client = makeClient();
+
+    expect((await client.getAll()).map(m => m.publicSpecifier)).toEqual(["llama-vllm"]);
+  });
+
+  it("drops an entry whose platforms it cannot recognise rather than reading it as unconstrained", async () => {
+    body = {
+      models: {
+        "llama-vllm": v2Model,
+        "llama-exotic-vllm": { ...v2Model, platforms: ["tpu"] },
+        "llama-mixed-vllm": { ...v2Model, platforms: ["tpu", "nvidia"] },
+      },
+    };
+    const client = makeClient();
+
+    expect((await client.getAll()).map(m => m.publicSpecifier)).toEqual(["llama-vllm", "llama-mixed-vllm"]);
+    expect((await client.get("llama-mixed-vllm"))?.platforms).toEqual(["nvidia"]);
+  });
+
   it("drops entries this version is too old for, and invalid ones", async () => {
     body = {
       models: {
