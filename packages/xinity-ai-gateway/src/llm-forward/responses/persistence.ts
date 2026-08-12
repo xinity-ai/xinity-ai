@@ -3,6 +3,7 @@ import {
   apiResponseT,
   apiResponseItemT,
   apiResponseMessageT,
+  apiResponseStatusEnum,
   chatMessageT,
   type ApiResponseStatus,
   type ApiResponseSettledStatus,
@@ -17,7 +18,9 @@ import type { OutputItem, ResponseObject } from "./schemas";
 /** Fields the header stores as columns, so they must not also live in `requestParams`. */
 const COLUMN_BACKED_FIELDS = ["id", "object", "created_at", "status", "completed_at", "error", "incomplete_details", "output", "usage", "model", "previous_response_id"] as const;
 
-const SETTLED_STATUSES = new Set<string>(["completed", "failed", "incomplete", "cancelled"]);
+const SETTLED_STATUSES = new Set<string>(
+  apiResponseStatusEnum.enumValues.filter((status) => status !== "in_progress"),
+);
 
 export function isSettledStatus(status: string): status is ApiResponseSettledStatus {
   return SETTLED_STATUSES.has(status);

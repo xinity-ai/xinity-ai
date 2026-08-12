@@ -95,7 +95,14 @@ export const chatMessageT = callDataSchema.table("chat_message", {
 ]);
 export type ChatMessage = InferSelectModel<typeof chatMessageT>;
 
-export type ApiResponseStatus = "in_progress" | "completed" | "failed" | "incomplete" | "cancelled";
+export const apiResponseStatusEnum = callDataSchema.enum("api_response_status", [
+  "in_progress",
+  "completed",
+  "failed",
+  "incomplete",
+  "cancelled",
+]);
+export type ApiResponseStatus = (typeof apiResponseStatusEnum.enumValues)[number];
 /** A status a response can never leave again. */
 export type ApiResponseSettledStatus = Exclude<ApiResponseStatus, "in_progress">;
 
@@ -113,9 +120,9 @@ export const apiResponseT = callDataSchema.table("api_response", {
   apiKeyId: uuid("api_key_id").references(() => aiApiKeyT.id, { onDelete: "set null" }),
   applicationId: uuid("application_id").references(() => aiApplicationT.id, { onDelete: "set null" }),
   model: text().notNull(),
-  status: text().notNull().$type<ApiResponseStatus>(),
-  /** Deliberately not a foreign key: the referenced response may have been swept by
-   * retention, or never stored at all because it was created with `store: false`. */
+  status: apiResponseStatusEnum().notNull(),
+  /** Deliberately not a foreign key: the referenced response may never have been stored at
+   * all, because it was created with `store: false`. */
   previousResponseId: text("previous_response_id"),
   /** The request-derived fields the API echoes back, all fixed at creation. */
   requestParams: jsonb("request_params").notNull().$type<Record<string, unknown>>(),
