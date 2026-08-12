@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Badge } from "$lib/components/ui/badge";
-  import { ExternalLink } from "@lucide/svelte";
+  import { ExternalLink, EyeOff } from "@lucide/svelte";
   import type { ModelWithSpecifier } from "xinity-infoserver";
   import { humanMonthYear } from "$lib/util";
   import { isRecentlyAdded } from "./model-recency";
@@ -62,6 +62,12 @@
     </div>
   </div>
   <p class="text-sm text-muted-foreground mt-1 compact:mt-0 mb-3 compact:mb-1 min-h-10 compact:min-h-0 whitespace-pre-line">{model.description.trim()}</p>
+  {#if model.unlisted}
+    <div class="flex items-start gap-2 rounded-md border border-border bg-muted/50 px-2.5 py-1.5 text-xs text-muted-foreground mb-2 compact:mb-1">
+      <EyeOff class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+      <span>{model.unlistedReason ?? "Unlisted. Still deployable, but no longer offered by default."}</span>
+    </div>
+  {/if}
   <div class="flex flex-wrap items-center gap-x-4 gap-y-1 compact:gap-x-2 text-sm text-muted-foreground">
     <LicenseBadge license={model.license} />
     <span>Capacity weight: <span class="font-medium">{model.weight}</span></span>
