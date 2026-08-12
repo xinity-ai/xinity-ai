@@ -164,6 +164,15 @@
             "description": "Set for fine-tuned models",
             "type": "boolean"
           },
+          "unlisted": {
+            "default": false,
+            "description": "Keeps the entry out of the model picker without making it unusable. Deployments referencing it keep working, and a user can still reach it deliberately",
+            "type": "boolean"
+          },
+          "unlistedReason": {
+            "description": "Shown to anyone who unhides the entry. Leave unset when the model is simply old, and use it when the reason changes what a user should do",
+            "type": "string"
+          },
           "args": {
             "description": "Extra CLI arguments appended to the engine's command line. Arrays are deeply flattened to support YAML anchors",
             "type": "array",

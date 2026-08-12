@@ -59,6 +59,7 @@ models:
     variantOf: phi-3-vision                    # Optional: groups this build with its other variants
     tags: [vision, custom_code]                # Capabilities this build supports
     isCustom: false                            # Set true for fine-tuned models
+    unlisted: false                            # Set true to keep it out of the picker while staying deployable
 
     # Extra CLI arguments appended to the engine's command line. Args the system
     # manages itself (--host, --port, --trust-remote-code, ...) are stripped out.
