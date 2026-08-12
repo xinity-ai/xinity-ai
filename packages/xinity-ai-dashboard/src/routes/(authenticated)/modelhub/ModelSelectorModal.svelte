@@ -1,21 +1,20 @@
 <script lang="ts">
   import Modal from "$lib/components/Modal.svelte";
-  import { SvelteSet } from "svelte/reactivity";
   import type { Engine, ModelType, ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
   import { EngineEnum, isDeployableOnCluster } from "xinity-infoserver";
   import { modelCatalog } from "$lib/state/model-catalog.svelte";
-  import { formatGb, humanMonthYear } from "$lib/util";
-  import { isRecentlyAdded } from "./model-recency";
+  import { formatGb } from "$lib/util";
+  import { groupModelVariants, type ModelGroup } from "./model-groups";
+  import { SvelteSet } from "svelte/reactivity";
 
   // shadcn components
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Badge } from "$lib/components/ui/badge";
-  import LicenseBadge from "./LicenseBadge.svelte";
-  import NewModelBadge from "./NewModelBadge.svelte";
+  import ModelChoiceCard from "./ModelChoiceCard.svelte";
 
   // Icons
-  import { X, Search, ExternalLink, Info, ShieldAlert, HardDrive, CalendarDays, Eye, EyeOff, Loader2, AlertCircle,
+  import { X, Search, Info, HardDrive, Eye, EyeOff, Loader2, AlertCircle,
     LayoutGrid, MessageSquare, Boxes, ArrowUpDown, Mic } from "@lucide/svelte";
   // Icons for the not-yet-available model types (see MODEL_TYPES below):
   // import { Image as ImageIcon, AudioLines } from "@lucide/svelte";
@@ -66,6 +65,7 @@
   let showUnlisted = $state(false);
   // A plain Set is not reactive under $state, so mutating one updates nothing.
   const selectedTags = new SvelteSet<string>();
+  let pickingFrom = $state<ModelGroup | null>(null);
   let sentinel = $state<HTMLElement | null>(null);
 
   // Trigger initial load when modal opens
@@ -80,7 +80,7 @@
   $effect(() => {
     if (!open || !modelCatalog.initialLoaded || modelCatalog.isLoading || !modelCatalog.hasMore) return;
     searchTerm; selectedEngine; selectedType; selectedTags; showUnlisted;
-    if (filteredModels.length < MIN_RESULTS_THRESHOLD) {
+    if (variantGroups.length < MIN_RESULTS_THRESHOLD) {
       modelCatalog.loadMore();
     }
   });
@@ -130,15 +130,17 @@
 
   const unlistedCount = $derived(modelCatalog.models.filter(m => m.unlisted).length);
 
+  const variantGroups = $derived(groupModelVariants(filteredModels));
+
   const groupedModels = $derived(
-    filteredModels.reduce(
-      (acc, model) => {
-        const family = model.family || "Other";
+    variantGroups.reduce(
+      (acc, group) => {
+        const family = group.leader.family || "Other";
         if (!acc[family]) acc[family] = [];
-        acc[family].push(model);
+        acc[family].push(group);
         return acc;
       },
-      {} as Record<string, ModelWithSpecifier[]>,
+      {} as Record<string, ModelGroup[]>,
     ),
   );
 
@@ -170,6 +172,14 @@
     }
   }
 
+  function chooseFromGroup(group: ModelGroup) {
+    if (group.variants.length > 1) {
+      pickingFrom = group;
+      return;
+    }
+    handleSelect(group.leader);
+  }
+
   function isUndeployable(model: ModelWithSpecifier): boolean {
     if (nodeCapabilities.length === 0) return model.weight + model.minKvCache > maxNodeFreeCapacity;
     return !isDeployableOnCluster(nodeCapabilities, model);
@@ -184,6 +194,7 @@
   }
 
   function handleSelect(model: ModelWithSpecifier) {
+    pickingFrom = null;
     onSelect(model);
     onClose();
   }
@@ -332,94 +343,15 @@
                 <Badge variant="secondary" class="text-xs font-normal">{groupedModels[family].length}</Badge>
               </h3>
               <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {#each groupedModels[family] as model (model.publicSpecifier)}
-                  {@const undeployable = isUndeployable(model)}
-                  {@const constraintIssue = hasConstraintIncompatibility(model)}
-                  <div
-                    role="button"
-                    tabindex={0}
-                    class="group relative flex flex-col text-left bg-card border rounded-xl p-4 transition-all duration-200 min-w-0 hover:shadow-lg hover:border-primary/50 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 cursor-pointer"
-                    onclick={() => handleSelect(model)}
-                    onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleSelect(model); } }}
-                  >
-                    <div class="flex justify-between items-start w-full mb-2 gap-2 overflow-hidden">
-                      <div class="min-w-0 flex-1">
-                        <h4 class="font-semibold group-hover:text-primary transition-colors truncate" title={model.name}>
-                          {model.name}
-                        </h4>
-                        <p class="text-xs text-muted-foreground font-mono mt-0.5 truncate" title={model.publicSpecifier}>
-                          {model.publicSpecifier}
-                        </p>
-                      </div>
-                      <div class="flex items-center gap-1.5 shrink-0">
-                        {#if isRecentlyAdded(model.registeredAt)}
-                          <NewModelBadge class="text-[10px] uppercase px-1.5 py-0" />
-                        {/if}
-                        {#if model.url}
-                          <a href={model.url} target="_blank" rel="noopener noreferrer"
-                            class="p-1.5 text-muted-foreground hover:text-primary hover:bg-accent rounded-full transition-colors z-10"
-                            title="View model info" onclick={(e) => e.stopPropagation()}>
-                            <ExternalLink class="w-4 h-4" />
-                          </a>
-                        {/if}
-                        {#if model.isCustom}
-                          <Badge variant="secondary" class="text-[10px] uppercase px-1.5 py-0">Custom</Badge>
-                        {:else}
-                          <Badge variant="outline" class="text-[10px] uppercase px-1.5 py-0">{model.type}</Badge>
-                        {/if}
-                      </div>
-                    </div>
-
-                    <p class="text-sm text-muted-foreground mb-3 line-clamp-2 grow">{model.description}</p>
-
-                    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground mb-3">
-                      <span class="flex items-center gap-1.5">
-                        <HardDrive class="w-3 h-3 shrink-0" />
-                        <span>{formatGb(model.weight + model.minKvCache)}</span>
-                        <span class="opacity-50">({parseFloat(model.weight.toFixed(2))} model + {parseFloat(model.minKvCache.toFixed(2))} kv-cache)</span>
-                      </span>
-                      <span class="flex items-center gap-1.5" title="Released {model.createdAt}">
-                        <CalendarDays class="w-3 h-3 shrink-0" />
-                        <span>{humanMonthYear(model.createdAt)}</span>
-                      </span>
-                    </div>
-
-                    {#if undeployable && constraintIssue}
-                      <div class="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-400 mb-1">
-                        <Info class="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                        <span>No compatible node available (driver version or platform mismatch). You can still select it and deploy it disabled.</span>
-                      </div>
-                    {:else if undeployable}
-                      <div class="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-400 mb-1">
-                        <Info class="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                        <span>Needs {formatGb(model.weight + model.minKvCache)}, more than the largest node's {formatGb(maxNodeFreeCapacity)} free. You can still select it and deploy it disabled.</span>
-                      </div>
-                    {/if}
-
-                    {#if model.unlisted}
-                      <div class="flex items-start gap-2 rounded-md border border-border bg-muted/50 px-2.5 py-1.5 text-xs text-muted-foreground mb-1">
-                        <EyeOff class="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                        <span>{model.unlistedReason ?? "Unlisted. Still deployable, but not offered by default."}</span>
-                      </div>
-                    {/if}
-
-                    {#if model.tags.includes("custom_code")}
-                      <div class="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-400 mb-1">
-                        <ShieldAlert class="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                        <span>Requires custom code execution. Trust must be granted before deploy.</span>
-                      </div>
-                    {/if}
-
-                    <div class="flex flex-wrap gap-1.5 mt-auto">
-                      <LicenseBadge license={model.license} class="text-xs" />
-                      {#each model.tags.slice(0, 4) as tag}
-                        <Badge variant="secondary" class="text-xs">{tag}</Badge>
-                      {/each}
-                      {#if model.tags.length > 4}
-                        <Badge variant="outline" class="text-xs">+{model.tags.length - 4}</Badge>
-                      {/if}
-                    </div>
-                  </div>
+                {#each groupedModels[family] as group (group.leader.publicSpecifier)}
+                  <ModelChoiceCard
+                    model={group.leader}
+                    undeployable={isUndeployable(group.leader)}
+                    constraintIssue={hasConstraintIncompatibility(group.leader)}
+                    {maxNodeFreeCapacity}
+                    variantCount={group.variants.length}
+                    onSelect={() => chooseFromGroup(group)}
+                  />
                 {/each}
               </div>
             </section>
@@ -448,3 +380,37 @@
     </main>
   </div>
 </Modal>
+
+{#if pickingFrom}
+  {@const group = pickingFrom}
+  <Modal open onClose={() => (pickingFrom = null)} class="z-50">
+    <div class="bg-card rounded-xl shadow-2xl w-full max-w-5xl max-h-[85vh] flex flex-col overflow-hidden">
+      <header class="p-5 border-b flex justify-between items-start gap-4 bg-muted/50">
+        <div class="min-w-0">
+          <h2 class="text-xl font-bold truncate">{group.leader.name}</h2>
+          <p class="text-sm text-muted-foreground mt-1">
+            {group.variants.length} variants
+          </p>
+        </div>
+        <Button variant="ghost" size="icon" onclick={() => (pickingFrom = null)} class="shrink-0">
+          <X class="w-5 h-5" />
+        </Button>
+      </header>
+
+      <main class="p-5 overflow-y-auto">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {#each group.variants as variant, i (variant.publicSpecifier)}
+            <ModelChoiceCard
+              model={variant}
+              undeployable={isUndeployable(variant)}
+              constraintIssue={hasConstraintIncompatibility(variant)}
+              {maxNodeFreeCapacity}
+              repeatsPreviousDescription={variant.description === group.variants[i - 1]?.description}
+              onSelect={handleSelect}
+            />
+          {/each}
+        </div>
+      </main>
+    </div>
+  </Modal>
+{/if}
