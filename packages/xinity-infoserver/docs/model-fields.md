@@ -68,6 +68,7 @@ Dates are written `YYYY-MM-DD`.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `activeWeight` | number | - | Weights read per token, in GB, for a mixture-of-experts variant. Absent means dense. Throughput scales with this rather than with `weight`, so a sparse model left without it reads as far slower than it is. Capacity is unaffected: the full `weight` still has to fit in VRAM |
+| `weightBits` | number | - | **Nominal** bits per stored parameter: 16 for fp16/bf16, 8 for fp8 or `q8_0`, 4 for AWQ/GPTQ. Write the headline width of the method, not a computed average, and see [Weight precision](#weight-precision) for why the two are never the same |
 | `family` | string | `"unknown"` | Model family for grouping in the UI (e.g. `"llama"`, `"phi3"`, `"mistral"`) |
 | `variantOf` | string | - | Specifier of the standard variant of this model. Set it on the derived variants and leave it off the one they derive from, so the group has exactly one leader. A variant may not itself have variants, and a pointer at a missing entry leaves the entry ungrouped rather than failing. Every variant keeps its own license, description and capacity, since a requant can carry different terms and needs its own operational notes |
 | `isCustom` | boolean | `false` | Marks fine-tuned/custom models |
@@ -77,6 +78,12 @@ Dates are written `YYYY-MM-DD`.
 | `args` | string[] | - | Extra CLI arguments appended to the engine's server command. Arrays are deeply flattened to support YAML anchors. Some args are blocked, see below |
 | `requestParams` | Record\<string, `"boolean"` \| `"number"` \| `"string"`\> | - | Allowlist of request-level parameters the gateway may forward to the backend. Dot-notation paths (e.g. `top_p`, `repetition_penalty`). Params not listed are dropped |
 | `downloadFilter` | string[] | - | Gitignore-style glob patterns appended to the daemon's default HuggingFace download filter. Patterns starting with `!` re-include, and the last matching rule wins. Arrays are deeply flattened to support YAML anchors. Example: `["*.gguf", "!consolidated.safetensors"]` |
+
+## Weight precision
+
+No method applies one width to the whole network. AWQ and GPTQ quantize the linear projections and leave the embeddings, the LM head and the norms at fp16. K-quants mix widths per tensor by design. An fp8 checkpoint often keeps attention in bf16. The true average across a checkpoint is therefore always above the headline width, and it is not something an integrator can read off a model card.
+
+So `weightBits` records the headline width, which is the only figure anyone can state reliably. Consumers must treat the parameter count derived from it as an estimate: it comes out slightly high, which biases throughput estimates low, and that direction is deliberate. Nothing should present it as the model's exact parameter count.
 
 ## Compatibility constraints
 
