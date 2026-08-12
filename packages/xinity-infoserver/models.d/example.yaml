@@ -15,6 +15,8 @@ models:
       extraction and summarisation over analysis.
     url: https://huggingface.co/microsoft/Phi-3-vision-128k-instruct
     license: mit
+    createdAt: 2024-05-21
+    registeredAt: 2026-08-10
     engine: vllm
     engineSpecifier: microsoft/Phi-3-vision-128k-instruct
     weight: 8
@@ -35,6 +37,8 @@ models:
       to serve both this and something else.
     url: https://ollama.com/library/qwen3-coder-next
     license: apache-2.0
+    createdAt: 2026-06-18
+    registeredAt: 2026-06-24
     engine: ollama
     engineSpecifier: qwen3-coder-next:q8_0
     weight: 14
@@ -58,6 +62,8 @@ models:
       entry and a recent vLLM for the tool-call parser.
     url: https://huggingface.co/Qwen/Qwen3-Coder-Next
     license: apache-2.0
+    createdAt: 2026-06-18
+    registeredAt: 2026-06-24
     engine: vllm
     engineSpecifier: Qwen/Qwen3-Coder-Next
     weight: 28
@@ -89,6 +95,8 @@ models:
       summary: >
         Free for research and for commercial use below $10M annual revenue. Above
         that threshold, deployment requires a commercial agreement with the publisher.
+    createdAt: 2026-07-30
+    registeredAt: 2026-08-04
     engine: vllm
     engineSpecifier: atlas-ai/Atlas-Vision-12B
     weight: 24
@@ -110,6 +118,8 @@ models:
       size suggests on open-ended chat, which it was not tuned for.
     url: https://example.com/helix/r1-7b
     license: cc-by-nc-4.0
+    createdAt: 2026-07-15
+    registeredAt: 2026-08-08
     engine: vllm
     engineSpecifier: helix-research/Helix-R1-7B
     weight: 14

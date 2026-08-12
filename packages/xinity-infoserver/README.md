@@ -44,6 +44,9 @@ models:
     url: https://huggingface.co/microsoft/Phi-3-vision-128k-instruct
     license: mit                               # Shorthand for a well-known license, see "Licenses" below
 
+    createdAt: 2024-05-21                      # Day the creator published the model
+    registeredAt: 2025-12-03                   # Day this entry was added here, see "Dates" below
+
     engine: vllm                               # vllm or ollama
     engineSpecifier: "microsoft/Phi-3-vision-128k-instruct"  # HF model id, or an Ollama tag
 
@@ -122,6 +125,19 @@ license:
 This models freedom to use, not obligations on redistribution, so copyleft licenses are `open`: the GPL does not restrict running a model. If a license both restricts use and is unusual enough that the three values misrepresent it, say so in `summary`, which is what a user actually reads.
 
 Adding a value to `use` later is not a breaking change. A client too old to recognise one reads it as `unknown` and shows the summary and the link, rather than dropping the model or claiming it is unrestricted.
+
+### Dates
+
+Every entry carries two dates, both written `YYYY-MM-DD`. The dotted form the catalog used historically (`2026.05.05`) still parses and is normalized before it reaches a consumer.
+
+```yaml
+createdAt: 2024-05-21     # The creator published the model on this day
+registeredAt: 2025-12-03  # It was added to this catalog on this day
+```
+
+They answer different questions and are easy to confuse. `createdAt` is a fact about the model, taken from its creator, and it is the same across every engine and quantization variant of one model. It is required because recency is one of the few capability signals a user has when comparing two models they know nothing else about.
+
+`registeredAt` is a fact about this catalog. A model published two years ago and integrated today is newly registered, not new. The dashboard flags entries registered within the last 14 days, so backdating one hides it and postdating one leaves the flag up past its welcome. Adding a variant of an already-integrated model dates only the new entry.
 
 ### IDE validation
 

@@ -14,6 +14,8 @@ One entry describes one model on one engine, so every number below applies to th
 | `description` | string | Multi-paragraph description shown in the dashboard model selector: purpose, strengths, limitations. Use a YAML block scalar (`description: \|`). A one-line label is not enough, since this is what a user reads to choose between models |
 | `url` | URL | External documentation link (e.g. HuggingFace page) |
 | `license` | string \| object | License terms. Either a well-known identifier or a full object, see [Licenses](#licenses) below |
+| `createdAt` | date | Day the model was published by its creator, see [Dates](#dates) below |
+| `registeredAt` | date | Day this entry was added to the catalog, see [Dates](#dates) below |
 | `engine` | `"vllm"` \| `"ollama"` | Inference engine this entry runs on |
 | `engineSpecifier` | string | The identifier the engine itself uses: a HuggingFace model ID for vLLM (`"meta-llama/Llama-3.1-8B-Instruct"`), a tag for Ollama (`"llama3.1:8b-instruct-fp16"`) |
 | `weight` | number | VRAM consumed by this build's weights, in GB |
@@ -46,6 +48,14 @@ Recognised identifiers: `apache-2.0`, `mit`, `bsd-3-clause`, `mpl-2.0`, `gpl-3.0
 `use` describes freedom to use, not obligations on redistribution, so copyleft licenses are `open`.
 
 An unrecognised `use` value is read as `unknown` rather than failing validation, so adding a value later does not break clients running an older version: they show the summary and the link instead of a classification. The value must never be widened to a free-form string, and the fallback must never become `open`.
+
+## Dates
+
+Dates are written `YYYY-MM-DD`.  
+
+`createdAt` is the model's own release date, taken from its creator: the HuggingFace commit that first published the weights, or the vendor's announcement. It stays fixed for the life of the entry, and it is the same date across every engine and quantization variant of one model. Recency is one of the strongest signals of capability a user has when comparing two models they know nothing else about, which is why it is required rather than nice to have.
+
+`registeredAt` is the day the entry was added here. It has nothing to do with the model's age: a model published two years ago that you integrate today is newly registered, not new. The dashboard flags entries registered within the last 14 days so users notice additions, so backdating one hides it and postdating one keeps the flag up. When a variant of an already-integrated model is added, only the new entry gets today's date.
 
 ## Optional fields
 
