@@ -2,7 +2,10 @@
   import { Badge } from "$lib/components/ui/badge";
   import { ExternalLink } from "@lucide/svelte";
   import type { ModelWithSpecifier } from "xinity-infoserver";
+  import { humanMonthYear } from "$lib/util";
+  import { isRecentlyAdded } from "./model-recency";
   import LicenseBadge from "./LicenseBadge.svelte";
+  import NewModelBadge from "./NewModelBadge.svelte";
 
   let {
     model,
@@ -25,6 +28,8 @@
   );
   const isSelected = $derived(selectedSpecifier === model.publicSpecifier);
   const isInteractive = $derived(Boolean(onSelect) && (!isDisabled || !blockSelectWhenDisabled));
+
+  const isNew = $derived(isRecentlyAdded(model.registeredAt));
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -47,14 +52,20 @@
         {model.publicSpecifier}
       </p>
     </div>
-    {#if model.isCustom}
-      <Badge variant="secondary">Custom</Badge>
-    {/if}
+    <div class="flex items-center gap-1.5 shrink-0">
+      {#if isNew}
+        <NewModelBadge />
+      {/if}
+      {#if model.isCustom}
+        <Badge variant="secondary">Custom</Badge>
+      {/if}
+    </div>
   </div>
   <p class="text-sm text-muted-foreground mt-1 compact:mt-0 mb-3 compact:mb-1 min-h-10 compact:min-h-0 whitespace-pre-line">{model.description.trim()}</p>
-  <div class="flex items-center gap-4 compact:gap-2 text-sm text-muted-foreground">
+  <div class="flex flex-wrap items-center gap-x-4 gap-y-1 compact:gap-x-2 text-sm text-muted-foreground">
     <LicenseBadge license={model.license} />
     <span>Capacity weight: <span class="font-medium">{model.weight}</span></span>
+    <span title="Released {model.createdAt}">Released <span class="font-medium">{humanMonthYear(model.createdAt)}</span></span>
   </div>
 
   {#if model.url}

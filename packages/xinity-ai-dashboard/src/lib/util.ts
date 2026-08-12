@@ -85,6 +85,15 @@ export function humanDateShort(d: Date | undefined) {
   return d.toLocaleDateString(undefined, { dateStyle: "medium" });
 }
 
+/** Month precision, since the day a model was released is noise when comparing models. */
+export function humanMonthYear(isoDate: string) {
+  const date = new Date(`${isoDate}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) {
+    return "Unknown date";
+  }
+  return date.toLocaleDateString(undefined, { month: "short", year: "numeric", timeZone: "UTC" });
+}
+
 export function formatDurationMs(ms: number | null): string {
   if (ms == null) return "-";
   return `${(ms / 1000).toFixed(1)}s`;
