@@ -2,7 +2,7 @@
   import * as Card from "$lib/components/ui/card";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
-  import { Copy } from "@lucide/svelte";
+  import { Copy, CheckCircle2, Lock } from "@lucide/svelte";
   import { copyToClipboard } from "$lib/copy";
   import type { PageData } from "./$types";
   import { formatGb } from "$lib/util";
@@ -15,6 +15,36 @@
     "enterprise-sm": "Enterprise (Small)",
     "enterprise-lg": "Enterprise (Large)",
   };
+
+  type FeatureKey = keyof PageData["license"]["features"];
+
+  const featureCatalog: { key: FeatureKey; label: string; description: string }[] = [
+    {
+      key: "sso",
+      label: "Single sign-on",
+      description: "Authenticate users through an external OIDC or SAML identity provider.",
+    },
+    {
+      key: "ssoSelfManage",
+      label: "Self-managed SSO",
+      description: "Let organization admins register their own SSO provider without an instance admin.",
+    },
+    {
+      key: "multiOrg",
+      label: "Multiple organizations",
+      description: "Run more than one organization on this instance.",
+    },
+    {
+      key: "allRoles",
+      label: "Full role set",
+      description: "Assign the member, labeler and viewer roles on top of owner and admin.",
+    },
+    {
+      key: "auditLog",
+      label: "Audit log",
+      description: "Browse and export the record of security-relevant actions.",
+    },
+  ];
 </script>
 
 <Card.Root>
@@ -58,6 +88,33 @@
           {/if}
         </div>
       </div>
+    </div>
+
+    <div class="border-t pt-6">
+      <p class="text-sm text-muted-foreground">Features</p>
+      <p class="text-xs text-muted-foreground mt-1 mb-3">
+        Unlocked by the active license. An expired, origin-mismatched or instance-mismatched license falls back to
+        the free tier, which unlocks none of these.
+      </p>
+      <ul class="divide-y rounded border">
+        {#each featureCatalog as feature (feature.key)}
+          {@const enabled = data.license.features[feature.key]}
+          <li class="flex items-start gap-3 px-3 py-2.5">
+            {#if enabled}
+              <CheckCircle2 class="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
+            {:else}
+              <Lock class="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
+            {/if}
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium" class:text-muted-foreground={!enabled}>{feature.label}</p>
+              <p class="text-xs text-muted-foreground">{feature.description}</p>
+            </div>
+            <Badge variant={enabled ? "default" : "outline"} class="shrink-0">
+              {enabled ? "Included" : "Not included"}
+            </Badge>
+          </li>
+        {/each}
+      </ul>
     </div>
 
     <div class="border-t pt-6">
