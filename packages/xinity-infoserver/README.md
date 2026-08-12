@@ -50,14 +50,14 @@ models:
     engine: vllm                               # vllm or ollama
     engineSpecifier: "microsoft/Phi-3-vision-128k-instruct"  # HF model id, or an Ollama tag
 
-    weight: 8                                  # VRAM consumed by this build's weights, in GB
+    weight: 8                                  # VRAM consumed by this variant's weights, in GB
     minKvCache: 2                              # Minimum KV-cache allocation in GB
     maxContextLength: 128000                   # Max context window in tokens
 
     type: chat                                 # chat, embedding, rerank, or transcription
     family: phi3                               # Model family for grouping in the UI
-    variantOf: phi-3-vision                    # Optional: groups this build with its other variants
-    tags: [vision, custom_code]                # Capabilities this build supports
+    variantOf: phi-3-vision-ollama             # Optional: specifier of the standard variant this one derives from
+    tags: [vision, custom_code]                # Capabilities this variant supports
     isCustom: false                            # Set true for fine-tuned models
     unlisted: false                            # Set true to keep it out of the picker while staying deployable
 
@@ -82,7 +82,7 @@ models:
 ### Key fields explained
 
 - **`engine`** and **`engineSpecifier`**: which inference engine this entry runs on, and the identifier that engine uses. The engine is part of the model's identity, not a choice made at deploy time. To offer a model on both engines, write two entries.
-- **`weight`**: How much VRAM this build's weights consume, in GB. For a 7B parameter model in FP16, roughly 14 GB. A quantized build of the same model is smaller, which is why it belongs in its own entry.
+- **`weight`**: How much VRAM this variant's weights consume, in GB. For a 7B parameter model in FP16, roughly 14 GB. A quantized variant of the same model is smaller, which is why it belongs in its own entry.
 - **`minKvCache`**: The minimum KV-cache allocation in GB. This determines how many concurrent requests the model can handle. Larger values allow more concurrency but consume more VRAM.
 - **`type`**: Determines API compatibility. A `"rerank"` model only accepts rerank requests, so sending a chat request to it fails. Defaults to `"chat"`.
 - **`tags`**: Enables runtime capabilities. `"tools"` enables function/tool calling, `"vision"` enables image inputs. Requests that use a capability the model doesn't declare are rejected. `"custom_code"` is special: some models ship with custom loading code that vLLM must execute via `--trust-remote-code`. This tag marks that requirement and triggers an explicit approval step in the dashboard before deployment. Only add it if the model fails to load without it.

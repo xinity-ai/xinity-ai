@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=../models.v2.schema.json
 # Example entries in the current model format. One entry describes one model on
 # one engine, so the specifier carries the engine and every number below is
-# correct for that build specifically.
+# correct for that variant specifically.
 
 models:
   phi-3-vision-vllm:
@@ -32,7 +32,7 @@ models:
       Code model for editing and completion across large repositories, with tool
       calling reliable enough to drive an agent loop.
 
-      This is the q8 build, which trades a little accuracy on long refactors for
+      This is the q8 variant, which trades a little accuracy on long refactors for
       roughly half the VRAM of the fp16 entry. Pick it when a single 24GB card has
       to serve both this and something else.
     url: https://ollama.com/library/qwen3-coder-next
@@ -46,18 +46,19 @@ models:
     maxContextLength: 131072
     type: chat
     family: qwen3
-    variantOf: qwen3-coder-next-large
+    variantOf: qwen3-coder-next-large-vllm
     tags: [tools]
 
-  # Same underlying model as above, different engine and quantization, so it is a
-  # separate entry with its own capacity numbers and its own specifier.
+  # The standard variant of this model, so it carries no variantOf and the entry above
+  # points at it. Same underlying model, different engine and quantization, which is
+  # why it is a separate entry with its own capacity numbers and its own specifier.
   qwen3-coder-next-large-vllm:
     name: Qwen Coder Next
     description: |
       Code model for editing and completion across large repositories, with tool
       calling reliable enough to drive an agent loop.
 
-      The fp16 build, and the one to use when accuracy on long multi-file changes
+      The fp16 variant, and the one to use when accuracy on long multi-file changes
       matters more than footprint. Needs roughly twice the VRAM of the q8 Ollama
       entry and a recent vLLM for the tool-call parser.
     url: https://huggingface.co/Qwen/Qwen3-Coder-Next
@@ -71,7 +72,6 @@ models:
     maxContextLength: 131072
     type: chat
     family: qwen3
-    variantOf: qwen3-coder-next-large
     tags: [tools]
     args: ["--tool-call-parser", "hermes"]
     minEngineVersion: "0.19.1"
