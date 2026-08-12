@@ -14,13 +14,15 @@
   import ModelChoiceCard from "./ModelChoiceCard.svelte";
 
   // Icons
-  import { X, Search, Info, HardDrive, Eye, EyeOff, Loader2, AlertCircle,
+  import { X, Search, Info, HardDrive, Eye, EyeOff, Plus, Loader2, AlertCircle,
     LayoutGrid, MessageSquare, Boxes, ArrowUpDown, Mic } from "@lucide/svelte";
   // Icons for the not-yet-available model types (see MODEL_TYPES below):
   // import { Image as ImageIcon, AudioLines } from "@lucide/svelte";
 
   /** Minimum number of filtered results before auto-loading the next page. */
   const MIN_RESULTS_THRESHOLD = 10;
+
+  const MODEL_REQUEST_URL = "https://github.com/xinity-ai/xinity-ai/issues/new?template=model_request.yml";
 
   const MODEL_TYPES = [
     { value: "all", label: "All", icon: LayoutGrid },
@@ -214,9 +216,21 @@
           {/if}
         </p>
       </div>
-      <Button variant="ghost" size="icon" onclick={onClose} aria-label="Close modal">
-        <X class="w-5 h-5" />
-      </Button>
+      <div class="flex items-center gap-1">
+        <a
+          href={MODEL_REQUEST_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-border text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors"
+          title="Missing a model? Open a request on GitHub"
+        >
+          <Plus class="w-3.5 h-3.5" />
+          Request a model
+        </a>
+        <Button variant="ghost" size="icon" onclick={onClose} aria-label="Close modal">
+          <X class="w-5 h-5" />
+        </Button>
+      </div>
     </header>
 
     <!-- Controls -->
@@ -329,9 +343,14 @@
           <Info class="w-12 h-12 mb-4 opacity-50" />
           <p class="text-lg font-medium">No models found</p>
           <p class="text-sm">Try adjusting your search or filters</p>
-          <Button variant="link" class="mt-4" onclick={() => { searchTerm = ""; selectedEngine = "all"; selectedType = "all"; showUnlisted = false; selectedTags.clear(); }}>
-            Clear all filters
-          </Button>
+          <div class="flex items-center gap-2 mt-4">
+            <Button variant="link" onclick={() => { searchTerm = ""; selectedEngine = "all"; selectedType = "all"; showUnlisted = false; selectedTags.clear(); }}>
+              Clear all filters
+            </Button>
+            <a href={MODEL_REQUEST_URL} target="_blank" rel="noopener noreferrer" class="text-sm text-primary hover:underline">
+              Request a model
+            </a>
+          </div>
         </div>
       {:else}
         <div class="space-y-8">
