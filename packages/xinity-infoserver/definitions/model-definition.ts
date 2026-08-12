@@ -47,6 +47,7 @@ export const ModelFields = z.looseObject({
   /** Quantization differs per engine, so these cannot be shared across engines. */
   weight: z.number().describe("VRAM consumed by this variant's weights, in GB"),
   activeWeight: z.number().optional().describe("Weights read per token by a mixture-of-experts variant, in GB. Absent means dense, where every weight participates. Speed scales with this figure, while capacity still needs the full weight"),
+  weightBits: z.number().positive().max(32).optional().describe("Nominal bits per stored parameter, e.g. 16 for fp16 or 4 for AWQ. Never an exact average: every method leaves parts of the network wider than its headline width, commonly attention projections, embeddings and norms. Dividing weight by it yields a parameter count good enough to estimate throughput from, and good for nothing that needs the real one"),
   minKvCache: z.number().describe(KV_CACHE_DESCRIPTION),
   maxContextLength: z.number().int().positive().describe("Maximum supported context window in tokens"),
 
