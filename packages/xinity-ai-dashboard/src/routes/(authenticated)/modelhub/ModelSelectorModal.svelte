@@ -1,5 +1,6 @@
 <script lang="ts">
   import Modal from "$lib/components/Modal.svelte";
+  import { SvelteSet } from "svelte/reactivity";
   import type { Engine, ModelType, ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
   import { EngineEnum, isDeployableOnCluster } from "xinity-infoserver";
   import { modelCatalog } from "$lib/state/model-catalog.svelte";
@@ -63,7 +64,8 @@
   let selectedEngine = $state<Engine | "all">("all");
   let selectedType = $state<(typeof MODEL_TYPES)[number]["value"]>("all");
   let showUnlisted = $state(false);
-  const selectedTags = $state<Set<string>>(new Set());
+  // A plain Set is not reactive under $state, so mutating one updates nothing.
+  const selectedTags = new SvelteSet<string>();
   let sentinel = $state<HTMLElement | null>(null);
 
   // Trigger initial load when modal opens
