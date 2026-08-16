@@ -20,8 +20,8 @@ models:
     engine: vllm
     engineSpecifier: microsoft/Phi-3-vision-128k-instruct
     sizing:
-      weightMib: 8192
-      minKvCacheMib: 2048
+      weightGb: 8
+      minKvCacheGb: 2
       maxContextLength: 128000
     type: chat
     family: phi3
@@ -43,10 +43,10 @@ models:
     engine: ollama
     engineSpecifier: qwen3-coder-next:q8_0
     sizing:
-      weightMib: 14336
-      activeWeightMib: 3072
+      weightGb: 14
+      activeWeightGb: 3
       weightBits: 8
-      minKvCacheMib: 3200
+      minKvCacheGb: 4
       kvBytesPerToken: 24576
       maxContextLength: 131072
     type: chat
@@ -73,10 +73,10 @@ models:
     engine: vllm
     engineSpecifier: Qwen/Qwen3-Coder-Next
     sizing:
-      weightMib: 28672
-      activeWeightMib: 6144
+      weightGb: 28
+      activeWeightGb: 6
       weightBits: 16
-      minKvCacheMib: 6400
+      minKvCacheGb: 6
       kvBytesPerToken: 49152
       maxContextLength: 131072
     type: chat
@@ -101,8 +101,8 @@ models:
     engine: vllm
     engineSpecifier: Qwen/Qwen2-Coder
     sizing:
-      weightMib: 14336
-      minKvCacheMib: 4096
+      weightGb: 14
+      minKvCacheGb: 4
       maxContextLength: 32768
     type: chat
     family: qwen2
@@ -134,8 +134,8 @@ models:
     engine: vllm
     engineSpecifier: atlas-ai/Atlas-Vision-12B
     sizing:
-      weightMib: 24576
-      minKvCacheMib: 6144
+      weightGb: 24
+      minKvCacheGb: 6
       maxContextLength: 131072
     type: chat
     family: atlas
@@ -158,8 +158,8 @@ models:
     engine: vllm
     engineSpecifier: helix-research/Helix-R1-7B
     sizing:
-      weightMib: 14336
-      minKvCacheMib: 4096
+      weightGb: 14
+      minKvCacheGb: 4
       maxContextLength: 65536
     type: chat
     family: helix

@@ -7,7 +7,7 @@ import { building } from "$app/environment";
 import {
   createCatalogClient,
   createInfoserverClient,
-  mibToGb,
+
   requiredFeaturesForEngine,
   resolveDefaultProvider,
   resolveMinVersionForDriver,
@@ -67,8 +67,8 @@ export async function resolveSchedulable(
         specifier,
         driver: model.engine,
         type: model.type,
-        weight: mibToGb(model.sizing.weightMib),
-        minKvCache: mibToGb(model.sizing.minKvCacheMib),
+        weight: model.sizing.weightGb,
+        minKvCache: model.sizing.minKvCacheGb,
         minVersion: model.minEngineVersion,
         requiredPlatforms: model.platforms ?? [],
         requiredFeatures: requiredFeaturesForEngine(model.engine, model.type),

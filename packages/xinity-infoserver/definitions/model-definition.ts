@@ -33,26 +33,19 @@ const DOWNLOAD_FILTER_DESCRIPTION =
 // ── Current format ─────────────────────────────────────────────────────
 
 export const ModelSizing = z.looseObject({
-  weightMib: z.number().positive().describe("VRAM consumed by this variant's weights, in MiB. Deliberately not constrained to whole MiB: an authored figure carries margin for loader overhead and engine-version variance, and rounding it would read as exact"),
-  activeWeightMib: z.number().positive().optional().describe("Weights read per token by a mixture-of-experts variant, in MiB. Absent means dense, where every weight participates. Speed scales with this figure, while capacity still needs the full weight"),
-  weightBits: z.number().positive().max(32).optional().describe("Nominal bits per stored parameter, e.g. 16 for fp16 or 4 for AWQ. Never an exact average: every method leaves parts of the network wider than its headline width, commonly attention projections, embeddings and norms. Dividing weightMib by it yields a parameter count good enough to estimate throughput from, and good for nothing that needs the real one"),
-  minKvCacheMib: z.number().positive().describe(KV_CACHE_DESCRIPTION),
+  weightGb: z.number().describe("VRAM consumed by this variant's weights, in GB"),
+  activeWeightGb: z.number().optional().describe("Weights read per token by a mixture-of-experts variant, in GB. Absent means dense, where every weight participates. Speed scales with this figure, while capacity still needs the full weight"),
+  weightBits: z.number().positive().max(32).optional().describe("Nominal bits per stored parameter, e.g. 16 for fp16 or 4 for AWQ. Never an exact average: every method leaves parts of the network wider than its headline width, commonly attention projections, embeddings and norms. Dividing weightGb by it yields a parameter count good enough to estimate throughput from, and good for nothing that needs the real one"),
+  minKvCacheGb: z.number().describe(KV_CACHE_DESCRIPTION),
   kvBytesPerToken: z.number().int().positive().optional().describe("KV cache one token of context consumes, in bytes, i.e. 2 * num_hidden_layers * num_key_value_heads * head_dim * dtype_bytes. How many requests a deployment can serve at once follows from this and the cache it was given, so it is the figure concurrency is computed from"),
   maxContextLength: z.number().int().positive().describe("Maximum supported context window in tokens"),
   attentionWindow: z.number().int().positive().optional().describe("Sliding-window attention span in tokens, for models that have one. KV per request stops growing past this point, so a windowed model needs far less cache at long context than kvBytesPerToken alone suggests"),
 }).refine(
-  sizing => sizing.activeWeightMib === undefined || sizing.activeWeightMib <= sizing.weightMib,
-  { message: "activeWeightMib must not exceed weightMib", path: ["activeWeightMib"] },
+  sizing => sizing.activeWeightGb === undefined || sizing.activeWeightGb <= sizing.weightGb,
+  { message: "activeWeightGb must not exceed weightGb", path: ["activeWeightGb"] },
 );
 
 export type ModelSizingFields = z.infer<typeof ModelSizing>;
-
-const MIB_PER_GB = 1024;
-
-/** Scheduling, the stored capacities and the vLLM arguments still count in GB. Delete once they count in MiB. */
-export function mibToGb(mib: number): number {
-  return mib / MIB_PER_GB;
-}
 
 export const ModelFields = z.looseObject({
   name: z.string().describe("Display name of the model. Intended to be easily human readable"),
@@ -131,13 +124,14 @@ export function unsupportedVocabulary(entry: unknown): string | undefined {
   return undefined;
 }
 
-const BYTES_PER_MIB = 1024 * 1024;
+/** minKvCache is decimal GB, not GiB. See "Confirm the KV-cache floor" in docs/integrating-a-model.md. */
+const BYTES_PER_GB = 1e9;
 
 /** Wide enough that an empirically confirmed floor and its overhead still pass. A factor beyond it
  * means the arithmetic itself is wrong, e.g. K and V counted once or the cache dtype misread. */
 const KV_MISMATCH_FACTOR = 2;
 
-export type KvCacheMismatch = { minKvCacheMib: number; impliedMib: number; ratio: number };
+export type KvCacheMismatch = { minKvCacheGb: number; impliedGb: number; ratio: number };
 
 export function kvCacheMismatch(sizing: ModelSizingFields): KvCacheMismatch | undefined {
   if (sizing.kvBytesPerToken === undefined) {
@@ -145,15 +139,15 @@ export function kvCacheMismatch(sizing: ModelSizingFields): KvCacheMismatch | un
   }
 
   const cachedTokens = Math.min(sizing.maxContextLength, sizing.attentionWindow ?? Infinity);
-  const impliedMib = (sizing.kvBytesPerToken * cachedTokens) / BYTES_PER_MIB;
-  const ratio = sizing.minKvCacheMib / impliedMib;
+  const impliedGb = (sizing.kvBytesPerToken * cachedTokens) / BYTES_PER_GB;
+  const ratio = sizing.minKvCacheGb / impliedGb;
   if (ratio >= 1 / KV_MISMATCH_FACTOR && ratio <= KV_MISMATCH_FACTOR) {
     return undefined;
   }
 
   return {
-    minKvCacheMib: sizing.minKvCacheMib,
-    impliedMib: Number(impliedMib.toFixed(2)),
+    minKvCacheGb: sizing.minKvCacheGb,
+    impliedGb: Number(impliedGb.toFixed(2)),
     ratio: Number(ratio.toFixed(2)),
   };
 }

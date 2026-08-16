@@ -11,15 +11,9 @@ import { classifyGpu } from "./gpu-classes";
 import type { Model } from "./definitions/model-definition";
 import type { NodeCapability } from "./node-compat";
 
-const BYTES_PER_MIB = 1024 * 1024;
 const BYTES_PER_GB = 1e9;
 const BITS_PER_BYTE = 8;
 const FLOPS_PER_PARAM_PER_TOKEN = 2;
-
-/** Vendor bandwidth is quoted in decimal GB/s, so what it is divided by has to be decimal too. */
-function mibToDecimalGb(mib: number): number {
-  return (mib * BYTES_PER_MIB) / BYTES_PER_GB;
-}
 
 /**
  * Fractions of peak the engines actually reach. Decode gets close to the bandwidth
@@ -62,15 +56,15 @@ export function estimateThroughput(
   const cardCount = node.gpus.every(other => other.name === firstGpu.name) ? node.gpus.length : 1;
   const efficiency = ENGINE_EFFICIENCY[model.engine] ?? UNKNOWN_ENGINE_EFFICIENCY;
 
-  const { weightMib, activeWeightMib, weightBits } = model.sizing;
-  const readPerTokenMib = activeWeightMib ?? weightMib;
+  const { weightGb, activeWeightGb, weightBits } = model.sizing;
+  const readPerTokenGb = activeWeightGb ?? weightGb;
 
   const decodeTps =
-    (gpu.bandwidthGbs * cardCount * efficiency.decode) / mibToDecimalGb(readPerTokenMib);
+    (gpu.bandwidthGbs * cardCount * efficiency.decode) / readPerTokenGb;
 
   const activeParams = weightBits === undefined
     ? undefined
-    : (readPerTokenMib * BYTES_PER_MIB * BITS_PER_BYTE) / weightBits;
+    : (readPerTokenGb * BYTES_PER_GB * BITS_PER_BYTE) / weightBits;
 
   const prefillTps = activeParams === undefined
     ? undefined

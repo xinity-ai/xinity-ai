@@ -79,16 +79,14 @@ Dates are written `YYYY-MM-DD`.
 
 Everything the variant costs to run. Grouped because these figures are read together and set together, and because every one of them is specific to this engine and this quantization.
 
-Memory figures are **MiB** (2²⁰ bytes), which is what `nvidia-smi` and the engines already report, so nothing has to be converted between measuring a value and writing it down. They are not restricted to whole MiB: an authored figure carries margin for loader overhead and engine-version variance, and rounding it would make an estimate look like a measurement.
-
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `weightMib` | number | required | VRAM consumed by this variant's weights |
-| `minKvCacheMib` | number | required | The floor below which vLLM refuses to start, i.e. the KV cache one request at full context needs. Confirm it empirically - see "Confirm the KV-cache floor" in [integrating-a-model.md](./integrating-a-model.md) - and write what vLLM reports, which is already MiB |
+| `weightGb` | number | required | VRAM consumed by this variant's weights, in GB |
+| `minKvCacheGb` | number | required | Minimum KV-cache allocation in GB (decimal, 10⁹ - use a decimal, not a rounded integer). It is the floor below which vLLM refuses to start (KV for one request at full context). vLLM reports that floor in GiB, so the field value is `floor_GiB × 1.074`. Confirm it empirically - see "Confirm the KV-cache floor" in [integrating-a-model.md](./integrating-a-model.md) |
 | `maxContextLength` | number | required | Maximum supported context window, in tokens. Used by the gateway to enforce per-model context limits (e.g. in the Responses API) and reported via `GET /v1/models` |
-| `activeWeightMib` | number | - | Weights read per token by a mixture-of-experts variant. Absent means dense. Throughput scales with this rather than with `weightMib`, so a sparse model left without it reads as far slower than it is. Capacity is unaffected: the full `weightMib` still has to fit in VRAM |
+| `activeWeightGb` | number | - | Weights read per token, in GB, for a mixture-of-experts variant. Absent means dense. Throughput scales with this rather than with `weightGb`, so a sparse model left without it reads as far slower than it is. Capacity is unaffected: the full `weightGb` still has to fit in VRAM |
 | `weightBits` | number | - | **Nominal** bits per stored parameter: 16 for fp16/bf16, 8 for fp8 or `q8_0`, 4 for AWQ/GPTQ. Write the headline width of the method, not a computed average, and see [Weight precision](#weight-precision) for why the two are never the same |
-| `kvBytesPerToken` | number | - | KV cache one token of context consumes, in bytes: `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes`. This is the factor `minKvCacheMib` is built from, kept instead of discarded, because how many requests a deployment serves at once follows from it. Loading an authored file warns when the two disagree by more than a factor of two. Whole bytes, since this one genuinely is exact |
+| `kvBytesPerToken` | number | - | KV cache one token of context consumes, in bytes: `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes`. This is the factor `minKvCacheGb` is built from, kept instead of discarded, because how many requests a deployment serves at once follows from it. Loading an authored file warns when the two disagree by more than a factor of two. |
 | `attentionWindow` | number | - | Sliding-window attention span in tokens, for models that have one. KV per request stops growing past this point, so without it a windowed model looks far more expensive at long context than it is |
 
 ## Weight precision

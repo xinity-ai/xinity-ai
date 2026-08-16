@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { z } from "zod";
 import { quoteShellArgv } from "common-env";
-import { ModelFileSchema, normalizePep440 } from "xinity-infoserver";
+import { ModelFileSchema, estimateThroughput, normalizePep440 } from "xinity-infoserver";
 import {
   resolveVllmModel,
   checkVllmCompatibility,
@@ -266,8 +266,26 @@ async function stopServer(): Promise<void> {
   emit({ ok: true, event: "stopped", backend, id, pid, killed });
 }
 
+/**
+ * Reads against the GPUs just detected on this host, so it describes the card the model
+ * would actually run on. An unlisted card yields nothing rather than a default-class guess.
+ */
+function describeSpeed(estimate: ReturnType<typeof estimateThroughput>): string {
+  if (!estimate) {
+    return "no estimate (no GPU detected)";
+  }
+  if (estimate.basis !== "known-gpu") {
+    return "no estimate (this GPU is not in the speed table)";
+  }
+  const prefill = estimate.prefillTps === undefined
+    ? "prompt unknown (entry states no weightBits)"
+    : `~${Math.round(estimate.prefillTps)} tok/s prompt`;
+  return `~${Math.round(estimate.decodeTps)} tok/s generate, ${prefill}`;
+}
+
 function printPlan(resolved: ResolvedVllmModel, profile: HardwareProfile, driver: VllmDriverState, config: VllmInstanceConfig): void {
   const reason = checkVllmCompatibility(resolved, profile, driver, { requireKnownVersion: true });
+  const speed = estimateThroughput(resolved.model, { gpus: profile.gpus });
 
   if (jsonMode) {
     emit({
@@ -280,6 +298,9 @@ function printPlan(resolved: ResolvedVllmModel, profile: HardwareProfile, driver
       vllm: { available: driver.available, version: driver.version ?? null, minVersion: resolved.minVersion ?? null },
       machine: { gpus: profile.gpus, capacityGb: profile.detectedCapacityGb },
       sizing: { kvCacheGb: resolved.kvCacheGb, estCapacityGb: resolved.estCapacity, gpuMemoryUtilization: config.gpuMemoryUtilization ?? null },
+      speed: speed?.basis === "known-gpu"
+        ? { decodeTps: speed.decodeTps, prefillTps: speed.prefillTps ?? null }
+        : null,
       gate: { ok: reason === null, reason: reason ?? null, message: reason ? describeIncompatibility(reason, resolved, profile, driver) : null },
       download: { filters: resolved.model.downloadFilter ?? [] },
       network: backend === "docker" ? { name: VLLM_NETWORK } : undefined,
@@ -298,6 +319,7 @@ function printPlan(resolved: ResolvedVllmModel, profile: HardwareProfile, driver
   console.log(`vLLM:     ${driver.available ? (driver.version ?? "version undetectable") : "not available"}${resolved.minVersion ? `  (model requires >= ${resolved.minVersion})` : ""}`);
   console.log(`Machine:  ${gpus}; ${profile.detectedCapacityGb}GB capacity`);
   console.log(`Sizing:   kvCache=${resolved.kvCacheGb}GB, estCapacity=${resolved.estCapacity}GB, gpuUtil=${config.gpuMemoryUtilization ?? "n/a"}`);
+  console.log(`Speed:    ${describeSpeed(speed)}`);
   console.log(`Gate:     ${reason ? `FAIL - ${describeIncompatibility(reason, resolved, profile, driver)}` : "ok"}`);
   console.log();
   console.log(`# Download (run: --download)`);
