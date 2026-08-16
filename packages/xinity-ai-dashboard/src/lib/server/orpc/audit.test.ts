@@ -1,7 +1,9 @@
 import { describe, test, expect, beforeEach, mock } from "bun:test";
 import type { AuditContext, AuditTag } from "./audit";
 
-const insertValues = mock((_row: unknown) => Promise.resolve());
+const insertValues = mock((row: unknown) => ({
+  returning: () => Promise.resolve([{ id: "audit-event-id", createdAt: new Date(), ...(row as object) }]),
+}));
 mock.module("$lib/server/db", () => ({
   getDB: () => ({ insert: () => ({ values: insertValues }) }),
 }));
@@ -76,7 +78,7 @@ describe("runWithAudit", () => {
   });
 
   test("swallows a DB write failure without breaking the handler", async () => {
-    insertValues.mockImplementationOnce(() => Promise.reject(new Error("db down")));
+    insertValues.mockImplementationOnce(() => ({ returning: () => Promise.reject(new Error("db down")) }));
     const result = await runWithAudit(ctx(), auditTag, { memberId: "m-1" }, async () => "OK");
     expect(result).toBe("OK");
   });
@@ -203,7 +205,7 @@ describe("emitAuthAuditEvent", () => {
   });
 
   test("swallows DB errors without throwing", async () => {
-    insertValues.mockImplementationOnce(() => Promise.reject(new Error("db down")));
+    insertValues.mockImplementationOnce(() => ({ returning: () => Promise.reject(new Error("db down")) }));
     expect(() => {
       emitAuthAuditEvent({
         action: "account.sign_out",

@@ -1,5 +1,6 @@
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
+import { forwardAuditEvent } from "$lib/server/audit-forwarder";
 import { auditEventT, type AuditActorType } from "common-db";
 
 const log = rootLogger.child({ name: "orpc.audit" });
@@ -78,7 +79,10 @@ export type AuditContext = {
 
 async function writeAuditEvent(row: typeof auditEventT.$inferInsert): Promise<void> {
   try {
-    await getDB().insert(auditEventT).values(row);
+    const [inserted] = await getDB().insert(auditEventT).values(row).returning();
+    if (inserted) {
+      forwardAuditEvent(inserted);
+    }
   } catch (err) {
     log.warn({ err, action: row.action, resource: row.resource }, "Failed to write audit event");
   }
