@@ -97,9 +97,7 @@ const v2Model = {
   registeredAt: "2026-02-01",
   engine: "vllm",
   engineSpecifier: "org/llama-vllm",
-  weight: 10,
-  minKvCache: 2,
-  maxContextLength: 131072,
+  sizing: { weight: 10, minKvCache: 2, maxContextLength: 131072 },
 };
 
 // ---------------------------------------------------------------------------
@@ -637,9 +635,9 @@ describe("server-catalog", () => {
   describe("kv cache consistency", () => {
     it("reports only the entry whose minKvCache contradicts its per-token cost", async () => {
       const { dirPath } = await writeYamlInOwnDir(makeModelYaml({
-        "consistent-vllm": { ...v2Model, kvBytesPerToken: 16384 },
-        "windowed-vllm": { ...v2Model, kvBytesPerToken: 131072, attentionWindow: 16384 },
-        "mismatched-vllm": { ...v2Model, kvBytesPerToken: 131072 },
+        "consistent-vllm": { ...v2Model, sizing: { ...v2Model.sizing, kvBytesPerToken: 16384 } },
+        "windowed-vllm": { ...v2Model, sizing: { ...v2Model.sizing, kvBytesPerToken: 131072, attentionWindow: 16384 } },
+        "mismatched-vllm": { ...v2Model, sizing: { ...v2Model.sizing, kvBytesPerToken: 131072 } },
       }), fileIndex++);
       configure(10, dirPath, undefined);
       logWarn.mockClear();

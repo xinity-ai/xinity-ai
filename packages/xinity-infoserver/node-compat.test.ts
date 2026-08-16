@@ -197,9 +197,9 @@ describe("isLegacyModelDeployableOnCluster", () => {
   const model = {
     weight: 8,
     minKvCache: 2,
-    providers: { vllm: "org/model" as string | undefined, ollama: undefined },
+    providers: { vllm: "org/model", ollama: undefined },
     providerMinVersions: { vllm: "0.19.1" },
-    providerPlatforms: { vllm: ["nvidia"] },
+    providerPlatforms: { vllm: ["nvidia" as const] },
   };
 
   test("returns true when a compatible node exists", () => {
@@ -231,7 +231,7 @@ describe("isLegacyModelDeployableOnCluster", () => {
   test("tries all providers - passes if any works", () => {
     const multiProviderModel = {
       weight: 8, minKvCache: 2,
-      providers: { vllm: "org/model" as string | undefined, ollama: "model" as string | undefined },
+      providers: { vllm: "org/model", ollama: "model" },
     };
     expect(isLegacyModelDeployableOnCluster(
       [makeNode({ driverVersions: { ollama: "0.6.3" } })],
@@ -240,12 +240,12 @@ describe("isLegacyModelDeployableOnCluster", () => {
   });
 
   test("returns false with empty cluster", () => {
-    const zeroModel = { weight: 0, minKvCache: 0, providers: { ollama: "m" as string | undefined } };
+    const zeroModel = { weight: 0, minKvCache: 0, providers: { ollama: "m" } };
     expect(isLegacyModelDeployableOnCluster([], zeroModel)).toBe(false);
   });
 
   test("model without providerMinVersions or providerPlatforms works on any node", () => {
-    const simpleModel = { weight: 8, minKvCache: 2, providers: { ollama: "m" as string | undefined } };
+    const simpleModel = { weight: 8, minKvCache: 2, providers: { ollama: "m" } };
     expect(isLegacyModelDeployableOnCluster(
       [makeNode({ driverVersions: { ollama: "0.6.3" }, gpus: [amdGpu] })],
       simpleModel,
@@ -255,7 +255,7 @@ describe("isLegacyModelDeployableOnCluster", () => {
   test("transcription model on vllm requires audio feature", () => {
     const transcriptionModel = {
       weight: 8, minKvCache: 2, type: "transcription" as const,
-      providers: { vllm: "openai/whisper-large-v3" as string | undefined },
+      providers: { vllm: "openai/whisper-large-v3" },
     };
     expect(isLegacyModelDeployableOnCluster(
       [makeNode()],
@@ -266,7 +266,7 @@ describe("isLegacyModelDeployableOnCluster", () => {
   test("transcription model on vllm passes when node has audio feature", () => {
     const transcriptionModel = {
       weight: 8, minKvCache: 2, type: "transcription" as const,
-      providers: { vllm: "openai/whisper-large-v3" as string | undefined },
+      providers: { vllm: "openai/whisper-large-v3" },
     };
     expect(isLegacyModelDeployableOnCluster(
       [makeNode({ driverFeatures: { vllm: ["audio"] } })],
@@ -277,7 +277,7 @@ describe("isLegacyModelDeployableOnCluster", () => {
   test("transcription model on ollama does not require audio feature", () => {
     const transcriptionModel = {
       weight: 8, minKvCache: 2, type: "transcription" as const,
-      providers: { ollama: "whisper" as string | undefined },
+      providers: { ollama: "whisper" },
     };
     expect(isLegacyModelDeployableOnCluster(
       [makeNode({ driverVersions: { ollama: "0.6.3" } })],

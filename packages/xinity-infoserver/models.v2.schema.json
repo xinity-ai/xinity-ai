@@ -112,41 +112,53 @@
             "type": "string",
             "description": "Identifier the engine itself uses. A HuggingFace model id for vLLM, a tag for Ollama"
           },
-          "weight": {
-            "type": "number",
-            "description": "VRAM consumed by this variant's weights, in GB"
-          },
-          "activeWeight": {
-            "description": "Weights read per token by a mixture-of-experts variant, in GB. Absent means dense, where every weight participates. Speed scales with this figure, while capacity still needs the full weight",
-            "type": "number"
-          },
-          "weightBits": {
-            "description": "Nominal bits per stored parameter, e.g. 16 for fp16 or 4 for AWQ. Never an exact average: every method leaves parts of the network wider than its headline width, commonly attention projections, embeddings and norms. Dividing weight by it yields a parameter count good enough to estimate throughput from, and good for nothing that needs the real one",
-            "type": "number",
-            "exclusiveMinimum": 0,
-            "maximum": 32
-          },
-          "minKvCache": {
-            "type": "number",
-            "description": "Minimum KV-cache allocation in GB. Should be precomputed from the model's config.json (if available) as roughly: 2 * num_hidden_layers * num_key_value_heads * head_dim * dtype_bytes * total_tokens, where total_tokens is chosen based on desired concurrent capacity."
-          },
-          "kvBytesPerToken": {
-            "description": "KV cache one token of context consumes, in bytes, i.e. 2 * num_hidden_layers * num_key_value_heads * head_dim * dtype_bytes. How many requests a deployment can serve at once follows from this and the cache it was given, so it is the figure concurrency is computed from",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "maxContextLength": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991,
-            "description": "Maximum supported context window in tokens"
-          },
-          "attentionWindow": {
-            "description": "Sliding-window attention span in tokens, for models that have one. KV per request stops growing past this point, so a windowed model needs far less cache at long context than kvBytesPerToken alone suggests",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
+          "sizing": {
+            "type": "object",
+            "properties": {
+              "weight": {
+                "type": "number",
+                "description": "VRAM consumed by this variant's weights, in GB"
+              },
+              "activeWeight": {
+                "description": "Weights read per token by a mixture-of-experts variant, in GB. Absent means dense, where every weight participates. Speed scales with this figure, while capacity still needs the full weight",
+                "type": "number"
+              },
+              "weightBits": {
+                "description": "Nominal bits per stored parameter, e.g. 16 for fp16 or 4 for AWQ. Never an exact average: every method leaves parts of the network wider than its headline width, commonly attention projections, embeddings and norms. Dividing weight by it yields a parameter count good enough to estimate throughput from, and good for nothing that needs the real one",
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 32
+              },
+              "minKvCache": {
+                "type": "number",
+                "description": "Minimum KV-cache allocation in GB. Should be precomputed from the model's config.json (if available) as roughly: 2 * num_hidden_layers * num_key_value_heads * head_dim * dtype_bytes * total_tokens, where total_tokens is chosen based on desired concurrent capacity."
+              },
+              "kvBytesPerToken": {
+                "description": "KV cache one token of context consumes, in bytes, i.e. 2 * num_hidden_layers * num_key_value_heads * head_dim * dtype_bytes. How many requests a deployment can serve at once follows from this and the cache it was given, so it is the figure concurrency is computed from",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "maxContextLength": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "description": "Maximum supported context window in tokens"
+              },
+              "attentionWindow": {
+                "description": "Sliding-window attention span in tokens, for models that have one. KV per request stops growing past this point, so a windowed model needs far less cache at long context than kvBytesPerToken alone suggests",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "weight",
+              "minKvCache",
+              "maxContextLength"
+            ],
+            "additionalProperties": {},
+            "description": "What this variant costs to run: how much VRAM it occupies, how much cache a token of context needs, and how far its context reaches"
           },
           "type": {
             "default": "chat",
@@ -275,9 +287,7 @@
           "registeredAt",
           "engine",
           "engineSpecifier",
-          "weight",
-          "minKvCache",
-          "maxContextLength"
+          "sizing"
         ],
         "additionalProperties": {}
       }

@@ -39,7 +39,7 @@ async function resolveMaxContextLengths(specifiers: string[]): Promise<Map<strin
     const fromCatalog = await getCatalogClient().resolveBatch(specifiers);
     for (const [specifier, model] of Object.entries(fromCatalog)) {
       if (model) {
-        resolved.set(specifier, model.maxContextLength);
+        resolved.set(specifier, model.sizing.maxContextLength);
       } else {
         unresolved.push(specifier);
       }

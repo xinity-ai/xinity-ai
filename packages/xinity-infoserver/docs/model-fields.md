@@ -18,9 +18,7 @@ One entry describes one model on one engine, so every number below applies to th
 | `registeredAt` | date | Day this entry was added to the catalog, see [Dates](#dates) below |
 | `engine` | `"vllm"` \| `"ollama"` | Inference engine this entry runs on |
 | `engineSpecifier` | string | The identifier the engine itself uses: a HuggingFace model ID for vLLM (`"meta-llama/Llama-3.1-8B-Instruct"`), a tag for Ollama (`"llama3.1:8b-instruct-fp16"`) |
-| `weight` | number | VRAM consumed by this variant's weights, in GB |
-| `minKvCache` | number | Minimum KV-cache allocation in GB (decimal, 10⁹ - use a decimal, not a rounded integer). It is the floor below which vLLM refuses to start (KV for one request at full context). vLLM reports that floor in GiB, so the field value is `floor_GiB × 1.074`. Confirm it empirically - see "Confirm the KV-cache floor" in [integrating-a-model.md](./integrating-a-model.md) |
-| `maxContextLength` | number | Maximum supported context window, in tokens. Used by the gateway to enforce per-model context limits (e.g. in the Responses API) and reported via `GET /v1/models` |
+| `sizing` | object | What the variant costs to run, see [Sizing](#sizing) below |
 
 ## Capabilities
 
@@ -67,10 +65,6 @@ Dates are written `YYYY-MM-DD`.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `activeWeight` | number | - | Weights read per token, in GB, for a mixture-of-experts variant. Absent means dense. Throughput scales with this rather than with `weight`, so a sparse model left without it reads as far slower than it is. Capacity is unaffected: the full `weight` still has to fit in VRAM |
-| `weightBits` | number | - | **Nominal** bits per stored parameter: 16 for fp16/bf16, 8 for fp8 or `q8_0`, 4 for AWQ/GPTQ. Write the headline width of the method, not a computed average, and see [Weight precision](#weight-precision) for why the two are never the same |
-| `kvBytesPerToken` | number | - | KV cache one token of context consumes, in bytes: `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes`. This is the factor `minKvCache` is built from, kept instead of discarded, because how many requests a deployment serves at once follows from it. Loading an authored file warns when the two disagree by more than a factor of two |
-| `attentionWindow` | number | - | Sliding-window attention span in tokens, for models that have one. KV per request stops growing past this point, so without it a windowed model looks far more expensive at long context than it is |
 | `family` | string | `"unknown"` | Model family for grouping in the UI (e.g. `"llama"`, `"phi3"`, `"mistral"`) |
 | `variantOf` | string | - | Specifier of the standard variant of this model. Set it on the derived variants and leave it off the one they derive from, so the group has exactly one leader. A variant may not itself have variants, and a pointer at a missing entry leaves the entry ungrouped rather than failing. Every variant keeps its own license, description and capacity, since a requant can carry different terms and needs its own operational notes |
 | `isCustom` | boolean | `false` | Marks fine-tuned/custom models |
@@ -80,6 +74,20 @@ Dates are written `YYYY-MM-DD`.
 | `args` | string[] | - | Extra CLI arguments appended to the engine's server command. Arrays are deeply flattened to support YAML anchors. Some args are blocked, see below |
 | `requestParams` | Record\<string, `"boolean"` \| `"number"` \| `"string"`\> | - | Allowlist of request-level parameters the gateway may forward to the backend. Dot-notation paths (e.g. `top_p`, `repetition_penalty`). Params not listed are dropped |
 | `downloadFilter` | string[] | - | Gitignore-style glob patterns appended to the daemon's default HuggingFace download filter. Patterns starting with `!` re-include, and the last matching rule wins. Arrays are deeply flattened to support YAML anchors. Example: `["*.gguf", "!consolidated.safetensors"]` |
+
+## Sizing
+
+Everything the variant costs to run. Grouped because these figures are read together and set together, and because every one of them is specific to this engine and this quantization.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `weight` | number | required | VRAM consumed by this variant's weights, in GB |
+| `minKvCache` | number | required | Minimum KV-cache allocation in GB (decimal, 10⁹ - use a decimal, not a rounded integer). It is the floor below which vLLM refuses to start (KV for one request at full context). vLLM reports that floor in GiB, so the field value is `floor_GiB × 1.074`. Confirm it empirically - see "Confirm the KV-cache floor" in [integrating-a-model.md](./integrating-a-model.md) |
+| `maxContextLength` | number | required | Maximum supported context window, in tokens. Used by the gateway to enforce per-model context limits (e.g. in the Responses API) and reported via `GET /v1/models` |
+| `activeWeight` | number | - | Weights read per token, in GB, for a mixture-of-experts variant. Absent means dense. Throughput scales with this rather than with `weight`, so a sparse model left without it reads as far slower than it is. Capacity is unaffected: the full `weight` still has to fit in VRAM |
+| `weightBits` | number | - | **Nominal** bits per stored parameter: 16 for fp16/bf16, 8 for fp8 or `q8_0`, 4 for AWQ/GPTQ. Write the headline width of the method, not a computed average, and see [Weight precision](#weight-precision) for why the two are never the same |
+| `kvBytesPerToken` | number | - | KV cache one token of context consumes, in bytes: `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes`. This is the factor `minKvCache` is built from, kept instead of discarded, because how many requests a deployment serves at once follows from it. Loading an authored file warns when the two disagree by more than a factor of two |
+| `attentionWindow` | number | - | Sliding-window attention span in tokens, for models that have one. KV per request stops growing past this point, so without it a windowed model looks far more expensive at long context than it is |
 
 ## Weight precision
 

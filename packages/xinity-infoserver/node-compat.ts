@@ -4,6 +4,7 @@
  * Pure functions with no DB or IO dependencies.
  */
 import { satisfiesMinVersion } from "./semver";
+import type { LegacyModel, Model } from "./definitions/model-definition";
 
 /** Per-GPU info as detected by the daemon and persisted on aiNodeT. */
 export type GpuInfo = {
@@ -153,18 +154,11 @@ export function explainClusterIncompatibility(
  */
 export function isDeployableOnCluster(
   nodes: NodeCapability[],
-  model: {
-    weight: number;
-    minKvCache: number;
-    type?: string;
-    engine: string;
-    minEngineVersion?: string;
-    platforms?: string[];
-  },
+  model: Pick<Model, "sizing" | "type" | "engine" | "minEngineVersion" | "platforms">,
 ): boolean {
   const req: ModelNodeRequirements = {
     driver: model.engine,
-    capacityGb: model.weight + model.minKvCache,
+    capacityGb: model.sizing.weight + model.sizing.minKvCache,
     minVersion: model.minEngineVersion,
     requiredPlatforms: model.platforms ?? [],
     requiredFeatures: requiredFeaturesForEngine(model.engine, model.type),
@@ -176,6 +170,9 @@ export function isDeployableOnCluster(
  * DEPRECATED v1 form: a single entry could claim several engines, so every
  * provider has to be tried. Removed before 1.0.0 with the format.
  */
-export function isLegacyModelDeployableOnCluster(nodes: NodeCapability[], model: ClusterModel): boolean {
+export function isLegacyModelDeployableOnCluster(
+  nodes: NodeCapability[],
+  model: Pick<LegacyModel, "weight" | "minKvCache" | "type" | "providers" | "providerMinVersions" | "providerPlatforms">,
+): boolean {
   return explainClusterIncompatibility(nodes, model) === null;
 }

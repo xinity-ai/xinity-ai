@@ -1,5 +1,6 @@
 import { describe, test, expect, mock, jest, beforeEach } from "bun:test";
 import { drizzle, modelDeploymentT } from "common-db";
+import type { LegacyModel, Model } from "xinity-infoserver";
 
 mock.module("../env", () => ({
   env: {
@@ -28,22 +29,9 @@ mock.module("../db", () => ({
   getDB: () => db,
 }));
 
-type MockLegacyModel = {
-  type?: string;
-  tags?: string[];
-  providerTags?: { ollama?: string[]; vllm?: string[] };
-  requestParams?: { ollama?: Record<string, string>; vllm?: Record<string, string> };
-  providers: { ollama?: string; vllm?: string };
-};
+type MockLegacyModel = Pick<LegacyModel, "type" | "tags" | "providerTags" | "requestParams" | "providers">;
 
-type MockModel = {
-  engineSpecifier: string;
-  engine: "vllm" | "ollama";
-  type?: string;
-  tags?: string[];
-  maxContextLength: number;
-  requestParams?: Record<string, string>;
-};
+type MockModel = Pick<Model, "engineSpecifier" | "engine" | "type" | "tags" | "sizing" | "requestParams">;
 
 const mockFetchModel = jest.fn<(specifier: string) => Promise<MockLegacyModel | undefined>>();
 const mockLookup = jest.fn<(specifier: string) => Promise<{ status: string; model?: MockModel; error?: string }>>();
@@ -224,7 +212,7 @@ describe("getModelInfo", () => {
     mockSelectHost.mockResolvedValue({ host: "node-a:11434", useFinalModel: true, release: noop });
     mockFetchModel.mockResolvedValueOnce({
       type: "embedding",
-      tags: ["multilingual"],
+      tags: ["vision"],
       requestParams: { ollama: { "top_k": "number" } },
       providers: { ollama: "llama3:latest", vllm: "llama3:latest" },
     });
@@ -232,7 +220,7 @@ describe("getModelInfo", () => {
     const result = await getModelInfo("org-1", "my-model");
 
     expect(result!.type).toBe("embedding");
-    expect(result!.tags).toEqual(["multilingual"]);
+    expect(result!.tags).toEqual(["vision"]);
     expect(result!.requestParams).toEqual({ "top_k": "number" });
     expect(mockFetchModel).toHaveBeenCalledWith("llama3:latest");
   });
@@ -281,7 +269,7 @@ describe("getModelInfo", () => {
         engineSpecifier: "google/gemma-4-27b-it",
         type: "chat",
         tags: ["tools"],
-        maxContextLength: 8192,
+        sizing: { weight: 54, minKvCache: 8, maxContextLength: 8192 },
         requestParams: { "template.thinking": "boolean" },
       },
     });

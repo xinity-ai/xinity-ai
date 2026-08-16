@@ -30,9 +30,10 @@ models:
     registeredAt: 2026-01-10
     engine: ollama
     engineSpecifier: my-custom-llama:8b-q8_0
-    weight: 8
-    minKvCache: 2
-    maxContextLength: 131072
+    sizing:
+      weight: 8
+      minKvCache: 2
+      maxContextLength: 131072
     type: chat
     family: llama
     isCustom: true
@@ -56,14 +57,15 @@ models:
     registeredAt: 2026-01-10
     engine: ollama
     engineSpecifier: nomic-embed-text
-    weight: 2
-    minKvCache: 1
-    maxContextLength: 8192
+    sizing:
+      weight: 2
+      minKvCache: 1
+      maxContextLength: 8192
     type: embedding
     family: nomic
 
 # Notes:
-# - `weight` and `minKvCache` are in GB and describe this variant only. A quantized
+# - Everything under `sizing` describes this variant only, with `weight` and `minKvCache` in GB. A quantized
 #   Ollama variant and an fp16 vLLM variant of the same model belong in separate
 #   entries with separate numbers.
 # - Local entries take precedence over anything pulled in through `includes`.

@@ -32,6 +32,21 @@ const DOWNLOAD_FILTER_DESCRIPTION =
 
 // ── Current format ─────────────────────────────────────────────────────
 
+export const ModelSizing = z.looseObject({
+  weight: z.number().describe("VRAM consumed by this variant's weights, in GB"),
+  activeWeight: z.number().optional().describe("Weights read per token by a mixture-of-experts variant, in GB. Absent means dense, where every weight participates. Speed scales with this figure, while capacity still needs the full weight"),
+  weightBits: z.number().positive().max(32).optional().describe("Nominal bits per stored parameter, e.g. 16 for fp16 or 4 for AWQ. Never an exact average: every method leaves parts of the network wider than its headline width, commonly attention projections, embeddings and norms. Dividing weight by it yields a parameter count good enough to estimate throughput from, and good for nothing that needs the real one"),
+  minKvCache: z.number().describe(KV_CACHE_DESCRIPTION),
+  kvBytesPerToken: z.number().int().positive().optional().describe("KV cache one token of context consumes, in bytes, i.e. 2 * num_hidden_layers * num_key_value_heads * head_dim * dtype_bytes. How many requests a deployment can serve at once follows from this and the cache it was given, so it is the figure concurrency is computed from"),
+  maxContextLength: z.number().int().positive().describe("Maximum supported context window in tokens"),
+  attentionWindow: z.number().int().positive().optional().describe("Sliding-window attention span in tokens, for models that have one. KV per request stops growing past this point, so a windowed model needs far less cache at long context than kvBytesPerToken alone suggests"),
+}).refine(
+  sizing => sizing.activeWeight === undefined || sizing.activeWeight <= sizing.weight,
+  { message: "activeWeight must not exceed weight", path: ["activeWeight"] },
+);
+
+export type ModelSizingFields = z.infer<typeof ModelSizing>;
+
 export const ModelFields = z.looseObject({
   name: z.string().describe("Display name of the model. Intended to be easily human readable"),
   description: z.string().describe("Multi-paragraph description: purpose, strengths, limitations. Shown when choosing between models, so a one-line label is not enough"),
@@ -44,14 +59,7 @@ export const ModelFields = z.looseObject({
   engine: EngineEnum.describe("Inference engine this entry runs on"),
   engineSpecifier: z.string().describe("Identifier the engine itself uses. A HuggingFace model id for vLLM, a tag for Ollama"),
 
-  /** Quantization differs per engine, so these cannot be shared across engines. */
-  weight: z.number().describe("VRAM consumed by this variant's weights, in GB"),
-  activeWeight: z.number().optional().describe("Weights read per token by a mixture-of-experts variant, in GB. Absent means dense, where every weight participates. Speed scales with this figure, while capacity still needs the full weight"),
-  weightBits: z.number().positive().max(32).optional().describe("Nominal bits per stored parameter, e.g. 16 for fp16 or 4 for AWQ. Never an exact average: every method leaves parts of the network wider than its headline width, commonly attention projections, embeddings and norms. Dividing weight by it yields a parameter count good enough to estimate throughput from, and good for nothing that needs the real one"),
-  minKvCache: z.number().describe(KV_CACHE_DESCRIPTION),
-  kvBytesPerToken: z.number().int().positive().optional().describe("KV cache one token of context consumes, in bytes, i.e. 2 * num_hidden_layers * num_key_value_heads * head_dim * dtype_bytes. How many requests a deployment can serve at once follows from this and the cache it was given, so it is the figure concurrency is computed from"),
-  maxContextLength: z.number().int().positive().describe("Maximum supported context window in tokens"),
-  attentionWindow: z.number().int().positive().optional().describe("Sliding-window attention span in tokens, for models that have one. KV per request stops growing past this point, so a windowed model needs far less cache at long context than kvBytesPerToken alone suggests"),
+  sizing: ModelSizing.describe("What this variant costs to run: how much VRAM it occupies, how much cache a token of context needs, and how far its context reaches"),
 
   type: ModelTypeEnum.default("chat").describe("Usage type, which determines API compatibility"),
   family: z.string().default("unknown").describe("Family of the model. May be unknown"),
@@ -86,10 +94,6 @@ function withModelRules<T extends typeof ModelFields | typeof RelayedModelFields
     .refine(
       model => !model.requestParams || !hasBlockedRequestParam(Object.keys(model.requestParams)),
       { message: "requestParams must not contain blocked prefixes", path: ["requestParams"] },
-    )
-    .refine(
-      model => model.activeWeight === undefined || model.activeWeight <= model.weight,
-      { message: "activeWeight must not exceed weight", path: ["activeWeight"] },
     )
     .transform(model => (
       model.engine === "vllm" && model.args
@@ -129,20 +133,20 @@ const KV_MISMATCH_FACTOR = 2;
 
 export type KvCacheMismatch = { minKvCache: number; impliedGb: number; ratio: number };
 
-export function kvCacheMismatch(model: Model): KvCacheMismatch | undefined {
-  if (model.kvBytesPerToken === undefined) {
+export function kvCacheMismatch(sizing: ModelSizingFields): KvCacheMismatch | undefined {
+  if (sizing.kvBytesPerToken === undefined) {
     return undefined;
   }
 
-  const cachedTokens = Math.min(model.maxContextLength, model.attentionWindow ?? Infinity);
-  const impliedGb = (model.kvBytesPerToken * cachedTokens) / BYTES_PER_GB;
-  const ratio = model.minKvCache / impliedGb;
+  const cachedTokens = Math.min(sizing.maxContextLength, sizing.attentionWindow ?? Infinity);
+  const impliedGb = (sizing.kvBytesPerToken * cachedTokens) / BYTES_PER_GB;
+  const ratio = sizing.minKvCache / impliedGb;
   if (ratio >= 1 / KV_MISMATCH_FACTOR && ratio <= KV_MISMATCH_FACTOR) {
     return undefined;
   }
 
   return {
-    minKvCache: model.minKvCache,
+    minKvCache: sizing.minKvCache,
     impliedGb: Number(impliedGb.toFixed(2)),
     ratio: Number(ratio.toFixed(2)),
   };

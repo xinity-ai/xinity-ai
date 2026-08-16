@@ -183,7 +183,7 @@
   }
 
   function isUndeployable(model: ModelWithSpecifier): boolean {
-    if (nodeCapabilities.length === 0) return model.weight + model.minKvCache > maxNodeFreeCapacity;
+    if (nodeCapabilities.length === 0) return model.sizing.weight + model.sizing.minKvCache > maxNodeFreeCapacity;
     return !isDeployableOnCluster(nodeCapabilities, model);
   }
 
@@ -191,7 +191,7 @@
   function hasConstraintIncompatibility(model: ModelWithSpecifier): boolean {
     if (!model.minEngineVersion && !model.platforms) return false;
     if (!isUndeployable(model)) return false;
-    const needed = model.weight + model.minKvCache;
+    const needed = model.sizing.weight + model.sizing.minKvCache;
     return nodeCapabilities.some(n => n.free >= needed && model.engine in n.driverVersions);
   }
 
