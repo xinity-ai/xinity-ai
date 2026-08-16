@@ -1,9 +1,8 @@
 /** Display formatters and shared types for the compute overview page. */
+import type { GpuInfo } from "xinity-infoserver";
 
 export type LiveMetricsNode = { nodeId: string; utilizationAvg: number; energyWh: number };
 export type LiveMetrics = { available: boolean; nodes: LiveMetricsNode[] };
-
-export type GpuInfo = { vendor: string; name: string; vramMb: number };
 export type NodeModel = { name: string; driver: string; lifecycleState: string | null; progress: number | null };
 export type NodeUsage = { requests: number; failedRequests: number; inputTokens: number; outputTokens: number };
 export type NodeSummary = {
