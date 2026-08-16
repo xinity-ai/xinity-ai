@@ -76,6 +76,13 @@ function buildToolList(
 /** All MCP tools derived from the oRPC router. Built once at module load. */
 export const mcpTools: McpTool[] = buildToolList(router);
 
+/** The real caller behind an MCP request, so audit events record it instead of the synthetic one. */
+export type McpCaller = {
+	clientAddress: string;
+	userAgent: string | null;
+	traceId: string;
+};
+
 /**
  * Call a named MCP tool with the given arguments, authenticating as the provided
  * dashboard API key. The full oRPC middleware chain runs in-process.
@@ -84,24 +91,34 @@ export async function callMcpTool(
 	toolName: string,
 	args: unknown,
 	apiKey: string,
+	caller: McpCaller,
 ): Promise<unknown> {
 	const tool = mcpTools.find((t) => t.name === toolName);
 	if (!tool) throw new Error(`Unknown tool: ${toolName}`);
 
-	// The auth middleware reads x-api-key from context.request.headers.
-	// A minimal synthetic Request with that header is sufficient.
+	// The auth middleware reads x-api-key from context.request.headers, and the
+	// audit path reads the user agent from the same place.
+	const headers: Record<string, string> = {
+		"Content-Type": "application/json",
+		"x-api-key": apiKey,
+	};
+	if (caller.userAgent) {
+		headers["user-agent"] = caller.userAgent;
+	}
 	const syntheticRequest = new Request(`${serverEnv.ORIGIN}/rpc/${tool.path.join("/")}`, {
 		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			"x-api-key": apiKey,
-		},
+		headers,
 		body: JSON.stringify(args ?? {}),
 	});
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const routerClient = createRouterClient(router as any, {
-		context: { request: syntheticRequest } as App.Locals,
+		context: {
+			request: syntheticRequest,
+			clientAddress: caller.clientAddress,
+			traceId: caller.traceId,
+			auditChannel: "mcp",
+		} as App.Locals,
 	}) as any;
 
 	// Navigate the router client proxy by path at runtime

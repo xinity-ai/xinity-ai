@@ -11,7 +11,7 @@
  */
 import { json, type RequestHandler } from "@sveltejs/kit";
 import { toORPCError } from "@orpc/client";
-import { mcpTools, callMcpTool, type McpTool } from "$lib/server/mcp";
+import { mcpTools, callMcpTool, type McpTool, type McpCaller } from "$lib/server/mcp";
 import { serverEnv } from "$lib/server/serverenv";
 import { rootLogger } from "$lib/server/logging";
 
@@ -60,6 +60,7 @@ function jsonRpcError(jsonrpc: string, id: JsonRpcMessage["id"], code: number, m
 async function handleMessage(
 	msg: JsonRpcMessage,
 	apiKey: string | null,
+	caller: McpCaller,
 ): Promise<Record<string, unknown> | null> {
 	const { jsonrpc, id, method, params } = msg;
 
@@ -94,7 +95,7 @@ async function handleMessage(
 				return mcpToolError(jsonrpc, id, `Unknown tool: ${name}`);
 			}
 			try {
-				const result = await callMcpTool(name, args, apiKey);
+				const result = await callMcpTool(name, args, apiKey, caller);
 				return {
 					jsonrpc,
 					id,
@@ -118,14 +119,19 @@ async function handleMessage(
 	}
 }
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, locals }) => {
 	if (!serverEnv.MCP_ENABLED) return new Response("Not Found", { status: 404 });
 	const apiKey = extractApiKey(request);
 	const body = (await request.json()) as JsonRpcMessage | JsonRpcMessage[];
 	const messages = Array.isArray(body) ? body : [body];
+	const caller: McpCaller = {
+		clientAddress: locals.clientAddress,
+		userAgent: request.headers.get("user-agent"),
+		traceId: locals.traceId,
+	};
 
 	const responses = (
-		await Promise.all(messages.map((m) => handleMessage(m, apiKey)))
+		await Promise.all(messages.map((m) => handleMessage(m, apiKey, caller)))
 	).filter(Boolean);
 
 	return Array.isArray(body) ? json(responses) : json(responses[0] ?? {});

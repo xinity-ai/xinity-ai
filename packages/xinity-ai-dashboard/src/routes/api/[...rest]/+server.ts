@@ -25,6 +25,7 @@ const handler = new OpenAPIHandler<App.Locals>(router, {
 
 /** Handles OpenAPI requests and returns a 404 when no route matches. */
 const handle: RequestHandler = async ({ request, locals }) => {
+  locals.auditChannel = "api";
   const { response } = await handler.handle(request, {
     prefix: "/api",
     context: locals,

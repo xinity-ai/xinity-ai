@@ -151,6 +151,26 @@ describe("runWithAudit", () => {
     const row = insertValues.mock.calls[0]![0] as { context: unknown };
     expect(row.context).toBeUndefined();
   });
+
+  test("records the channel a call arrived over", async () => {
+    await runWithAudit(ctx({ auditChannel: "mcp" }), auditTag, { memberId: "m", role: "admin" }, async () => "OK");
+    const row = insertValues.mock.calls[0]![0] as { context: Record<string, unknown> };
+    expect(row.context).toMatchObject({ channel: "mcp", role: "admin" });
+  });
+
+  test("records the channel even when nothing else is captured", async () => {
+    const untagged: AuditTag = { action: "organization.delete", resource: "organization" };
+    await runWithAudit(ctx({ auditChannel: "api" }), untagged, {}, async () => "OK");
+    const row = insertValues.mock.calls[0]![0] as { context: Record<string, unknown> };
+    expect(row.context).toEqual({ channel: "api" });
+  });
+
+  test("leaves the context unset when no channel is known", async () => {
+    const untagged: AuditTag = { action: "organization.delete", resource: "organization" };
+    await runWithAudit(ctx({ auditChannel: undefined }), untagged, {}, async () => "OK");
+    const row = insertValues.mock.calls[0]![0] as { context: unknown };
+    expect(row.context).toBeUndefined();
+  });
 });
 
 describe("emitAuthAuditEvent", () => {

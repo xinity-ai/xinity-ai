@@ -27,6 +27,7 @@ const handler = new RPCHandler<App.Locals>(router, {
 
 /** Handles RPC requests and returns a 404 when no route matches. */
 const handle: RequestHandler = async ({ request, locals }) => {
+  locals.auditChannel = "rpc";
   const { response } = await handler.handle(request, {
     prefix: "/rpc",
     context: locals,

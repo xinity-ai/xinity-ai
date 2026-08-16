@@ -69,12 +69,15 @@ export type AuditTag = {
 
 export type ActorInfo = { actorType: AuditActorType; actorId: string | null; actorLabel: string | null };
 
+export type AuditChannel = "rpc" | "api" | "mcp";
+
 /** The subset of oRPC context the audit path reads. */
 export type AuditContext = {
   request: Request;
   clientAddress?: string;
   actor?: ActorInfo;
   activeOrganizationId?: string;
+  auditChannel?: AuditChannel;
 };
 
 async function writeAuditEvent(row: typeof auditEventT.$inferInsert): Promise<void> {
@@ -156,6 +159,9 @@ async function emitAudit(
   extraContext?: Record<string, unknown>,
 ): Promise<void> {
   const actor = context.actor ?? { actorType: "system" as const, actorId: null, actorLabel: null };
+  const recordedContext = context.auditChannel
+    ? { ...extraContext, channel: context.auditChannel }
+    : extraContext;
   await writeAuditEvent({
     organizationId: context.activeOrganizationId ?? null,
     actorType: actor.actorType,
@@ -167,7 +173,7 @@ async function emitAudit(
     result,
     ipAddress: context.clientAddress || null,
     userAgent: context.request.headers.get("user-agent"),
-    context: extraContext,
+    context: recordedContext,
   });
 }
 
