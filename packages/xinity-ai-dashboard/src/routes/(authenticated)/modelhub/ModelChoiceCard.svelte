@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ModelWithSpecifier } from "xinity-infoserver";
+  import { mibToGb } from "xinity-infoserver";
   import { formatGb, humanMonthYear } from "$lib/util";
   import { isRecentlyAdded } from "./model-recency";
   import { Badge } from "$lib/components/ui/badge";
@@ -76,8 +77,8 @@
   <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground mb-3">
     <span class="flex items-center gap-1.5">
       <HardDrive class="w-3 h-3 shrink-0" />
-      <span>{formatGb(model.sizing.weight + model.sizing.minKvCache)}</span>
-      <span class="opacity-50">({parseFloat(model.sizing.weight.toFixed(2))} model + {parseFloat(model.sizing.minKvCache.toFixed(2))} kv-cache)</span>
+      <span>{formatGb(mibToGb(model.sizing.weightMib) + mibToGb(model.sizing.minKvCacheMib))}</span>
+      <span class="opacity-50">({parseFloat(mibToGb(model.sizing.weightMib).toFixed(2))} model + {parseFloat(mibToGb(model.sizing.minKvCacheMib).toFixed(2))} kv-cache)</span>
     </span>
     <span class="flex items-center gap-1.5" title="Released {model.createdAt}">
       <CalendarDays class="w-3 h-3 shrink-0" />
@@ -93,7 +94,7 @@
   {:else if undeployable}
     <div class="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-400 mb-1">
       <Info class="w-3.5 h-3.5 shrink-0 mt-0.5" />
-      <span>Needs {formatGb(model.sizing.weight + model.sizing.minKvCache)}, more than the largest node's {formatGb(maxNodeFreeCapacity)} free. You can still select it and deploy it disabled.</span>
+      <span>Needs {formatGb(mibToGb(model.sizing.weightMib) + mibToGb(model.sizing.minKvCacheMib))}, more than the largest node's {formatGb(maxNodeFreeCapacity)} free. You can still select it and deploy it disabled.</span>
     </div>
   {/if}
 

@@ -28,7 +28,7 @@ steps.)
 4. **Verify it runs** (next section): iterate using the failure table until the gate passes, the
    server comes up, and it **serves a real request** (not just `/health`). Also **validate every
    declared capability** - test tool calling and vision if research says the model has them. While
-   there, pin down the two values you can't reliably guess - the `minKvCache` floor and the
+   there, pin down the two values you can't reliably guess - the `minKvCacheMib` floor and the
    `minEngineVersion` floor - by the procedures below.
 5. **Publish.** Open a PR. In the description, record which hardware you verified it on and any
    constraints you found (`minEngineVersion`, `platforms`). CI loads `models/` the way the server
@@ -39,14 +39,14 @@ steps.)
 | Field | Where it comes from |
 |-------|---------------------|
 | `engine`, `engineSpecifier` | `vllm` plus the HuggingFace repo id. An Ollama variant of the same model is a second entry with `engine: ollama` and its own tag, weight and KV floor. |
-| `sizing.weight` | VRAM of the weights in GB. FP16 ≈ params(billions) × 2; quantized (AWQ/GPTQ ~4-bit) ≈ params × 0.5. Round up. |
+| `sizing.weightMib` | VRAM of the weights. FP16 ≈ params(billions) × 2048; quantized (AWQ/GPTQ ~4-bit) ≈ params × 512. Round up. |
 | `sizing.weightBits` | The method's headline width: `torch_dtype` in `config.json` for an unquantized repo, the `quantization_config` bits for AWQ/GPTQ, or the digit in an Ollama tag (`q8_0` → 8, `q4_K_M` → 4). Do not try to work out the real average across the checkpoint: parts of the network stay wider than the headline width, and the field is documented as approximate for exactly that reason. |
-| `sizing.activeWeight` | MoE only, and only when `config.json` names the sparse layout. Scale `weight` by the fraction of parameters active per token, i.e. `num_experts_per_tok / num_experts` over the expert layers, and leave the shared/attention weights counted in full. Omit it for dense models. |
-| `sizing.minKvCache` | Start from `config.json`: roughly `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes × tokens` (in GB), `tokens` chosen for desired concurrency. Then **confirm the hard floor empirically** ("Confirm the KV-cache floor" below) - the value must be at or above what vLLM needs to start. |
-| `sizing.kvBytesPerToken` | The `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes` product you already compute for `minKvCache`, written down in bytes instead of thrown away. Use the cache dtype the engine will actually run with, which is not always the weight dtype. |
+| `sizing.activeWeightMib` | MoE only, and only when `config.json` names the sparse layout. Scale `weightMib` by the fraction of parameters active per token, i.e. `num_experts_per_tok / num_experts` over the expert layers, and leave the shared/attention weights counted in full. Omit it for dense models. |
+| `sizing.minKvCacheMib` | Start from `config.json`: roughly `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes × tokens` (as MiB), `tokens` chosen for desired concurrency. Then **confirm the hard floor empirically** ("Confirm the KV-cache floor" below) - the value must be at or above what vLLM needs to start. |
+| `sizing.kvBytesPerToken` | The `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes` product you already compute for `minKvCacheMib`, written down in bytes instead of thrown away. Use the cache dtype the engine will actually run with, which is not always the weight dtype. |
 | `sizing.attentionWindow` | `sliding_window` in `config.json`, when the model sets one and does not disable it (`use_sliding_window: false`). Leave it out for full attention. |
 | `type` | `chat` (default), `embedding`, `rerank`, or `transcription`, from what the model does. |
-| `tags` | `vision` if multimodal, `tools` if it supports tool/function calling - **research both and validate them** (see "Validate declared capabilities" below). For `tools`, also set `args: ["--tool-call-parser", "<name>"]`: the tag makes the daemon add `--enable-auto-tool-choice`, but vLLM additionally needs a model-specific parser or it won't start. Registered parser names live in the image under `vllm/tool_parsers/` (e.g. `gemma4`, `lfm2`, `hermes`, `llama3_json`, `mistral`, `pythonic`). Do **not** add `custom_code` preemptively; only after a load failure shows it needs `--trust-remote-code`. |
+| `tags` | `vision` if multimodal, `tools` if it supports tool/function calling - **research both and validate them** (see "Validate declared capabilities" below). For `tools`, also set `engineArgs: ["--tool-call-parser", "<name>"]`: the tag makes the daemon add `--enable-auto-tool-choice`, but vLLM additionally needs a model-specific parser or it won't start. Registered parser names live in the image under `vllm/tool_parsers/` (e.g. `gemma4`, `lfm2`, `hermes`, `llama3_json`, `mistral`, `pythonic`). Do **not** add `custom_code` preemptively; only after a load failure shows it needs `--trust-remote-code`. |
 | `family`, `name`, `url` | Model card; `url` is the HuggingFace page. |
 | `sizing.maxContextLength` | `max_position_embeddings` in `config.json`, unless the model card documents a lower supported window. |
 | `license` | The model card's license field, then the license text itself. If it is one of the well-known identifiers, name it and you are done (check [model-fields](./model-fields.md) for details). Otherwise read it for limits on **use** (revenue or user thresholds, non-commercial clauses, acceptable-use policies) and write those into `summary`, which is what a user reads before deploying. Do not assume permissive just because the weights are downloadable. |
@@ -55,7 +55,7 @@ steps.)
 | `registeredAt` | The day you are adding the entry, i.e. today. It records integration, not the model's age, so never copy it from `createdAt` and never backdate it: entries registered in the last 14 days are flagged as new in the dashboard. |
 | `minEngineVersion` | Set for new model families / quant formats. Don't guess - **establish the floor empirically** by running on older vLLM builds until it stops loading ("Confirm the version floor" below). |
 | `platforms` | Set when the variant needs a specific GPU vendor (e.g. CUDA-only quant kernels → `[nvidia]`). A `wrong_platform` failure is evidence. |
-| `args` | Extra serve flags (e.g. `["--max-model-len", "8192"]`). Note the blocked-args list in `model-fields.md`; system-managed flags are stripped. |
+| `engineArgs` | Extra serve flags (e.g. `["--max-model-len", "8192"]`). Note the blocked-args list in `model-fields.md`; system-managed flags are stripped. |
 | `downloadFilter` | Gitignore-style globs to narrow the download (e.g. pick one quant, drop `*.gguf`). |
 
 ## Verify it runs
@@ -86,7 +86,7 @@ beforehand**, not just the weights. The downloader fetches the model's own repo;
 `downloadFilter` to re-include extra files within that repo that it needs (e.g. `*.py` for
 `trust_remote_code` / `custom_code` models, whose modeling code would otherwise be missing).
 **Known limitation:** an entry that points vLLM at a *second* repo - e.g. `--tokenizer <other-repo>`
-(or `--tokenizer-revision`) in `args`, or a `config.json` `auto_map` to another repo - will
+(or `--tokenizer-revision`) in `engineArgs`, or a `config.json` `auto_map` to another repo - will
 fail offline, because only the model's own repo is pre-downloaded and `downloadFilter` only selects
 files within it. Such a model must have that second repo made available offline by other means; the
 daemon does not fetch it.
@@ -142,7 +142,7 @@ tool calling and don't recommend it - so no `tools` tag. When the card is explic
 unsupported, that counts as "no realistic chance"; don't tag it just because the base could.
 
 **Tools** - needs `tags: [tools]` (daemon adds `--enable-auto-tool-choice`) **and**
-`args: ["--tool-call-parser", "<name>"]` (see the `tags` row above). Send a request with a
+`engineArgs: ["--tool-call-parser", "<name>"]` (see the `tags` row above). Send a request with a
 `tools` definition and `tool_choice: "auto"`; a working setup returns `finish_reason: tool_calls` and a
 structured `tool_calls[]` - not the call buried in `content`:
 
@@ -168,23 +168,20 @@ curl -s localhost:8000/v1/chat/completions -H 'Content-Type: application/json' -
 
 A tag whose test fails (or a missing parser) means the entry is wrong - fix it or drop the tag.
 
-### Confirm the KV-cache floor (`minKvCache`)
+### Confirm the KV-cache floor (`sizing.minKvCacheMib`)
 
-`minKvCache` is the floor - the KV cache one request at the model's full context length needs,
-below which vLLM refuses to start. It is expressed in **GB** and becomes vLLM's
-`--kv-cache-memory-bytes Ng`, where lowercase `g` is **decimal** (10⁹) and accepts decimals - so
-write a precise decimal, not a rounded integer. Find the floor empirically: set `minKvCache` low and
-`--start`; if it's too small vLLM aborts with `To serve at least one request with the model's max
-seq len (N), X GiB KV cache is needed`. That figure is in **GiB** (binary), so the field value is
-`X × 1.074` GB (e.g. a 16 GiB floor → `minKvCache: 17.2`). Confirm the chosen value starts - the log
-shows `Maximum concurrency for N tokens per request: 1.00x` when it's right at the floor - and that a
-smaller value fails. `minKvCache` is the *minimum*; a deployment can allocate more KV for higher
+`minKvCacheMib` is the floor - the KV cache one request at the model's full context length needs,
+below which vLLM refuses to start. Find it empirically: set it low and `--start`; if it's too small
+vLLM aborts with `To serve at least one request with the model's max seq len (N), X GiB KV cache is
+needed`. That figure is binary, so the field value is `X × 1024`. Confirm the chosen value starts -
+the log shows `Maximum concurrency for N tokens per request: 1.00x` when it's right at the floor -
+and that a smaller value fails. It is the *minimum*; a deployment can allocate more KV for higher
 concurrency.
 
 The floor scales with the model's `max_model_len`, and per-request KV is independent of parameter
 count - so a *small* model with a *huge* native context can have a surprisingly large floor (e.g.
 Hunyuan MT2 **1.8B** at its native **256K** context needs **16 GiB** of KV). When that floor is
-impractical for the model's size, cap the context with `args: ["--max-model-len", "N"]`;
+impractical for the model's size, cap the context with `engineArgs: ["--max-model-len", "N"]`;
 the floor drops roughly proportionally. A useful pattern is to publish **several entries of the same
 model at different `--max-model-len` caps** - each a context/footprint trade-off (shorter context →
 smaller floor → more requests fit in the same cache). Note: for models with sliding-window or hybrid
@@ -230,7 +227,7 @@ official one doesn't yet cover your hardware, and then review the Dockerfile and
 | `insufficient_capacity` | `weight` + KV-cache exceeds available VRAM | Re-check the `weight` estimate, lower KV-cache via `--kv-cache`, or choose a smaller/quantized variant |
 | Server exits at load: "trust_remote_code" / "requires --trust-remote-code" | Model ships custom loading code | Add `custom_code` to `tags`  |
 | Server load: unknown/unsupported architecture | vLLM too old for this model | Set `minEngineVersion` and run on a newer node |
-| Server load aborts: `weights not initialized from checkpoint: {visual.*}` | A vision-language architecture shipped as a **text-only** checkpoint (`config.json` `language_model_only: true`, no vision weights), but vLLM built the vision tower | Pass `--language-model-only` in `args` - the config field is not the switch, the CLI flag is. Not a `custom_code` case. Vision is off, so no `vision` tag |
+| Server load aborts: `weights not initialized from checkpoint: {visual.*}` | A vision-language architecture shipped as a **text-only** checkpoint (`config.json` `language_model_only: true`, no vision weights), but vLLM built the vision tower | Pass `--language-model-only` in `engineArgs` - the config field is not the switch, the CLI flag is. Not a `custom_code` case. Vision is off, so no `vision` tag |
 | Request fails HTTP 400 "default chat template is no longer allowed" | Model ships its chat template as a standalone `chat_template.jinja` and it isn't in the cache | The host downloader keeps `*.jinja` by default; if missing, re-run `--download`. Surfaces only if you `/health`-check but never send a real request - see "Confirm it actually serves" |
 | Loads but output is gibberish | Quant format/kernel mismatch (e.g. some FP8 Gemma variants) | Try a different quant of the same model (e.g. compressed-tensors instead of ModelOpt FP8), or a newer vLLM |
 | Load aborts: `tie_weights` `NotImplementedError` | Quant method can't tie embeddings for a tied-embedding model (e.g. ModelOpt FP8 + Gemma) | Use a compressed-tensors FP8 variant (keeps `lm_head` unquantized) instead |

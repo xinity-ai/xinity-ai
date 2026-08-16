@@ -115,22 +115,25 @@
           "sizing": {
             "type": "object",
             "properties": {
-              "weight": {
+              "weightMib": {
                 "type": "number",
-                "description": "VRAM consumed by this variant's weights, in GB"
+                "exclusiveMinimum": 0,
+                "description": "VRAM consumed by this variant's weights, in MiB. Deliberately not constrained to whole MiB: an authored figure carries margin for loader overhead and engine-version variance, and rounding it would read as exact"
               },
-              "activeWeight": {
-                "description": "Weights read per token by a mixture-of-experts variant, in GB. Absent means dense, where every weight participates. Speed scales with this figure, while capacity still needs the full weight",
-                "type": "number"
+              "activeWeightMib": {
+                "description": "Weights read per token by a mixture-of-experts variant, in MiB. Absent means dense, where every weight participates. Speed scales with this figure, while capacity still needs the full weight",
+                "type": "number",
+                "exclusiveMinimum": 0
               },
               "weightBits": {
-                "description": "Nominal bits per stored parameter, e.g. 16 for fp16 or 4 for AWQ. Never an exact average: every method leaves parts of the network wider than its headline width, commonly attention projections, embeddings and norms. Dividing weight by it yields a parameter count good enough to estimate throughput from, and good for nothing that needs the real one",
+                "description": "Nominal bits per stored parameter, e.g. 16 for fp16 or 4 for AWQ. Never an exact average: every method leaves parts of the network wider than its headline width, commonly attention projections, embeddings and norms. Dividing weightMib by it yields a parameter count good enough to estimate throughput from, and good for nothing that needs the real one",
                 "type": "number",
                 "exclusiveMinimum": 0,
                 "maximum": 32
               },
-              "minKvCache": {
+              "minKvCacheMib": {
                 "type": "number",
+                "exclusiveMinimum": 0,
                 "description": "Minimum KV-cache allocation in GB. Should be precomputed from the model's config.json (if available) as roughly: 2 * num_hidden_layers * num_key_value_heads * head_dim * dtype_bytes * total_tokens, where total_tokens is chosen based on desired concurrent capacity."
               },
               "kvBytesPerToken": {
@@ -153,8 +156,8 @@
               }
             },
             "required": [
-              "weight",
-              "minKvCache",
+              "weightMib",
+              "minKvCacheMib",
               "maxContextLength"
             ],
             "additionalProperties": {},
@@ -207,7 +210,7 @@
             "description": "Shown to anyone who unhides the entry. Leave unset when the model is simply old, and use it when the reason changes what a user should do",
             "type": "string"
           },
-          "args": {
+          "engineArgs": {
             "description": "Extra CLI arguments appended to the engine's command line. Arrays are deeply flattened to support YAML anchors",
             "type": "array",
             "items": {
@@ -245,8 +248,8 @@
               ]
             }
           },
-          "entryVersion": {
-            "description": "Version of xinity-ai this entry requires. Older clients skip entries they are too old for",
+          "minXinityVersion": {
+            "description": "Minimum xinity-ai version required to use this entry. Older clients skip entries they are too old for",
             "type": "string"
           },
           "downloadFilter": {

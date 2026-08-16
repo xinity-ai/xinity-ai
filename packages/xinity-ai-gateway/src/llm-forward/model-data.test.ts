@@ -269,7 +269,7 @@ describe("getModelInfo", () => {
         engineSpecifier: "google/gemma-4-27b-it",
         type: "chat",
         tags: ["tools"],
-        sizing: { weight: 54, minKvCache: 8, maxContextLength: 8192 },
+        sizing: { weightMib: 55296, minKvCacheMib: 8192, maxContextLength: 8192 },
         requestParams: { "template.thinking": "boolean" },
       },
     });
