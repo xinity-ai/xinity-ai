@@ -88,36 +88,64 @@ export function checkNodeCompatibility(
   return null;
 }
 
+/** A model as seen by cluster-wide deployability checks. */
+export type ClusterModel = {
+  weight: number;
+  minKvCache: number;
+  type?: string;
+  providers: Record<string, string | undefined>;
+  providerMinVersions?: Record<string, string>;
+  providerPlatforms?: Record<string, string[]>;
+};
+
+export function modelRequirementsForDriver(model: ClusterModel, driver: string): ModelNodeRequirements {
+  return {
+    driver,
+    capacityGb: model.weight + model.minKvCache,
+    minVersion: model.providerMinVersions?.[driver],
+    requiredPlatforms: model.providerPlatforms?.[driver] ?? [],
+    requiredFeatures: driver === "vllm" && model.type === "transcription" ? ["audio"] : [],
+  };
+}
+
+/** How far through checkNodeCompatibility's ordered checks a node got before failing. */
+const REASON_PROGRESS: Record<IncompatibilityReason, number> = {
+  missing_driver: 0,
+  version_unknown: 1,
+  version_too_old: 1,
+  missing_feature: 2,
+  wrong_platform: 3,
+  insufficient_capacity: 4,
+};
+
+/**
+ * Returns null if any node can serve the model via any of its providers, otherwise
+ * the reason from the node/driver pair that came closest to working.
+ *
+ * Reporting the closest pair matters: a cluster where one node is merely full and
+ * another lacks the driver is a capacity problem, not a driver problem.
+ */
+export function explainClusterIncompatibility(
+  nodes: NodeCapability[],
+  model: ClusterModel,
+): IncompatibilityReason | null {
+  const drivers = Object.keys(model.providers).filter(d => model.providers[d] !== undefined);
+
+  let closest: IncompatibilityReason = "missing_driver";
+  for (const node of nodes) {
+    for (const driver of drivers) {
+      const reason = checkNodeCompatibility(node, modelRequirementsForDriver(model, driver));
+      if (reason === null) return null;
+      if (REASON_PROGRESS[reason] > REASON_PROGRESS[closest]) closest = reason;
+    }
+  }
+  return closest;
+}
+
 /**
  * Returns true if at least one node can serve the model via any of its providers.
  * Used by client-side model selector to determine deployability.
  */
-export function isDeployableOnCluster(
-  nodes: NodeCapability[],
-  model: {
-    weight: number;
-    minKvCache: number;
-    type?: string;
-    providers: Record<string, string | undefined>;
-    providerMinVersions?: Record<string, string>;
-    providerPlatforms?: Record<string, string[]>;
-  },
-): boolean {
-  const needed = model.weight + model.minKvCache;
-  const drivers = Object.keys(model.providers).filter(d => model.providers[d] !== undefined);
-
-  return nodes.some(node =>
-    drivers.some(driver => {
-      const requiredFeatures =
-        driver === "vllm" && model.type === "transcription" ? ["audio"] : [];
-      const req: ModelNodeRequirements = {
-        driver,
-        capacityGb: needed,
-        minVersion: model.providerMinVersions?.[driver],
-        requiredPlatforms: model.providerPlatforms?.[driver] ?? [],
-        requiredFeatures,
-      };
-      return checkNodeCompatibility(node, req) === null;
-    }),
-  );
+export function isDeployableOnCluster(nodes: NodeCapability[], model: ClusterModel): boolean {
+  return explainClusterIncompatibility(nodes, model) === null;
 }

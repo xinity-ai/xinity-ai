@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { checkNodeCompatibility, isDeployableOnCluster, type NodeCapability, type ModelNodeRequirements, type GpuInfo } from "./node-compat";
+import { checkNodeCompatibility, isDeployableOnCluster, explainClusterIncompatibility, type NodeCapability, type ModelNodeRequirements, type GpuInfo } from "./node-compat";
 
 const nvidiaGpu: GpuInfo = { vendor: "nvidia", name: "A100", vramMb: 81920 };
 const amdGpu: GpuInfo = { vendor: "amd", name: "MI300X", vramMb: 196608 };
@@ -283,5 +283,71 @@ describe("isDeployableOnCluster", () => {
       [makeNode({ driverVersions: { ollama: "0.6.3" } })],
       transcriptionModel,
     )).toBe(true);
+  });
+});
+
+describe("explainClusterIncompatibility", () => {
+  const vllmModel = {
+    weight: 8,
+    minKvCache: 2,
+    providers: { vllm: "org/model" as string | undefined },
+    providerMinVersions: { vllm: "0.19.1" },
+    providerPlatforms: { vllm: ["nvidia"] },
+  };
+
+  test("returns null when a compatible node exists", () => {
+    expect(explainClusterIncompatibility([makeNode()], vllmModel)).toBeNull();
+  });
+
+  test("reports missing_driver, not capacity, when a roomy cluster lacks the driver entirely", () => {
+    const plainModel = { weight: 8, minKvCache: 2, providers: { vllm: "org/model" as string | undefined } };
+    expect(explainClusterIncompatibility(
+      [makeNode({ free: 50, driverVersions: { ollama: "0.6.3" } })],
+      plainModel,
+    )).toBe("missing_driver");
+  });
+
+  test("reports missing_feature, not capacity, for a transcription model on a roomy cluster", () => {
+    const transcriptionModel = {
+      weight: 8, minKvCache: 2, type: "transcription" as const,
+      providers: { vllm: "openai/whisper-large-v3" as string | undefined },
+    };
+    expect(explainClusterIncompatibility([makeNode({ free: 50 })], transcriptionModel)).toBe("missing_feature");
+  });
+
+  test("reports wrong_platform when the only driver-capable node has the wrong GPU", () => {
+    expect(explainClusterIncompatibility(
+      [makeNode({ free: 50, gpus: [amdGpu] })],
+      vllmModel,
+    )).toBe("wrong_platform");
+  });
+
+  test("reports version_too_old when the driver is present but outdated", () => {
+    expect(explainClusterIncompatibility(
+      [makeNode({ free: 50, driverVersions: { vllm: "0.18.0" } })],
+      vllmModel,
+    )).toBe("version_too_old");
+  });
+
+  test("reports insufficient_capacity when a structurally fine node is merely full", () => {
+    expect(explainClusterIncompatibility([makeNode({ free: 4 })], vllmModel)).toBe("insufficient_capacity");
+  });
+
+  test("prefers the closest node: full-but-compatible outranks roomy-but-driverless", () => {
+    expect(explainClusterIncompatibility([
+      makeNode({ free: 50, driverVersions: { ollama: "0.6.3" } }),
+      makeNode({ free: 4 }),
+    ], vllmModel)).toBe("insufficient_capacity");
+  });
+
+  test("prefers the closest node: platform mismatch outranks missing driver", () => {
+    expect(explainClusterIncompatibility([
+      makeNode({ driverVersions: { ollama: "0.6.3" } }),
+      makeNode({ gpus: [amdGpu] }),
+    ], vllmModel)).toBe("wrong_platform");
+  });
+
+  test("reports missing_driver for an empty cluster", () => {
+    expect(explainClusterIncompatibility([], vllmModel)).toBe("missing_driver");
   });
 });
