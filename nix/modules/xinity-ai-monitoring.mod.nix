@@ -126,7 +126,7 @@
           enable = lib.mkOption {
             type = lib.types.bool;
             default = true;
-            description = "Collect this machine's systemd journal into a local Loki store (shipped by Promtail) and expose it as a Grafana datasource named \"Loki\". On by default; set to false to skip log collection.";
+            description = "Collect this machine's systemd journal into a local Loki store (shipped by Grafana Alloy) and expose it as a Grafana datasource named \"Loki\". On by default; set to false to skip log collection.";
           };
 
           port = lib.mkOption {
@@ -266,43 +266,41 @@
           };
         };
 
-        services.promtail = lib.mkIf cfg.logs.enable {
+        services.alloy = lib.mkIf cfg.logs.enable {
           enable = true;
-          configuration = {
-            server = {
-              http_listen_address = "127.0.0.1";
-              http_listen_port = 9080;
-              grpc_listen_port = 0;
-            };
-            clients = [
-              { url = "http://127.0.0.1:${toString cfg.logs.port}/loki/api/v1/push"; }
-            ];
-            scrape_configs = [
-              {
-                job_name = "journal";
-                journal = {
-                  max_age = "12h";
-                  labels.job = "systemd-journal";
-                };
-                relabel_configs = [
-                  { source_labels = [ "__journal__systemd_unit" ]; target_label = "unit"; }
-                  { source_labels = [ "__journal__hostname" ]; target_label = "host"; }
-                  { source_labels = [ "__journal_priority_keyword" ]; target_label = "level"; }
-                ];
-                pipeline_stages = [
-                  # For pino JSON logs: extract the numeric level and map to a string.
-                  # Non-JSON lines skip silently, keeping the syslog priority from relabel_configs.
-                  { json = { expressions = { pino_level = "level"; }; }; }
-                  { template = {
-                      source = "pino_level";
-                      template = "{{if eq .Value \"10\"}}trace{{else if eq .Value \"20\"}}debug{{else if eq .Value \"30\"}}info{{else if eq .Value \"40\"}}warn{{else if eq .Value \"50\"}}error{{else if eq .Value \"60\"}}fatal{{else}}{{.Value}}{{end}}";
-                    };
-                  }
-                  { labels = { level = "pino_level"; }; }
-                ];
+          # Alloy phones home with usage statistics unless this is set.
+          extraFlags = [ "--disable-reporting" ];
+        };
+
+        environment.etc."alloy/config.alloy" = lib.mkIf cfg.logs.enable {
+          text = ''
+            loki.relabel "journal" {
+              forward_to = []
+
+              rule {
+                source_labels = ["__journal__systemd_unit"]
+                target_label  = "unit"
               }
-            ];
-          };
+
+              rule {
+                source_labels = ["__journal__hostname"]
+                target_label  = "host"
+              }
+            }
+
+            loki.source.journal "journal" {
+              max_age       = "12h"
+              labels        = { job = "systemd-journal" }
+              relabel_rules = loki.relabel.journal.rules
+              forward_to    = [loki.write.local.receiver]
+            }
+
+            loki.write "local" {
+              endpoint {
+                url = "http://127.0.0.1:${toString cfg.logs.port}/loki/api/v1/push"
+              }
+            }
+          '';
         };
       };
     };
