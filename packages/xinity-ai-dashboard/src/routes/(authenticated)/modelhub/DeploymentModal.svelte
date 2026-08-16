@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { ModelLicense, ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
-  import { mibToGb } from "xinity-infoserver";
   import Modal from "$lib/components/Modal.svelte";
   import DeploymentFormBody from "./DeploymentFormBody.svelte";
   import { orpc } from "$lib/orpc/orpc-client";
@@ -147,14 +146,14 @@
   $effect(() => fetchModel(selectedCanarySpecifier, m => selectedCanaryModel = m, canaryFetchGen));
 
   // --- Derived values ---
-  const minKvCache = $derived(selectedPrimaryModel ? mibToGb(selectedPrimaryModel.sizing.minKvCacheMib) : 0);
-  const minCanaryKvCache = $derived(selectedCanaryModel ? mibToGb(selectedCanaryModel.sizing.minKvCacheMib) : 0);
+  const minKvCache = $derived(selectedPrimaryModel ? selectedPrimaryModel.sizing.minKvCacheGb : 0);
+  const minCanaryKvCache = $derived(selectedCanaryModel ? selectedCanaryModel.sizing.minKvCacheGb : 0);
 
   const maxKvCache = $derived(
-    selectedPrimaryModel ? Math.max(minKvCache, Math.floor((maxNodeFreeCapacity - mibToGb(selectedPrimaryModel.sizing.weightMib)) * 10) / 10) : 0,
+    selectedPrimaryModel ? Math.max(minKvCache, Math.floor((maxNodeFreeCapacity - selectedPrimaryModel.sizing.weightGb) * 10) / 10) : 0,
   );
   const maxCanaryKvCache = $derived(
-    selectedCanaryModel ? Math.max(minCanaryKvCache, Math.floor((maxNodeFreeCapacity - mibToGb(selectedCanaryModel.sizing.weightMib)) * 10) / 10) : 0,
+    selectedCanaryModel ? Math.max(minCanaryKvCache, Math.floor((maxNodeFreeCapacity - selectedCanaryModel.sizing.weightGb) * 10) / 10) : 0,
   );
 
   const canaryTypeMismatch = $derived(
@@ -164,7 +163,7 @@
 
   const maxReplicas = $derived.by(() => {
     if (!selectedPrimaryModel) return 0;
-    const perReplica = mibToGb(selectedPrimaryModel.sizing.weightMib) + Math.max(kvCacheSize ?? 0, mibToGb(selectedPrimaryModel.sizing.minKvCacheMib));
+    const perReplica = selectedPrimaryModel.sizing.weightGb + Math.max(kvCacheSize ?? 0, selectedPrimaryModel.sizing.minKvCacheGb);
     const nodesWithSpace = nodeFreeCapacities.filter(c => c >= perReplica).length;
     return nodesWithSpace + (isEditMode && deployment ? (deployment.replicas ?? 0) : 0);
   });
@@ -285,8 +284,8 @@
     if (!deploymentNameEdited) deploymentName = model?.name || "";
   });
 
-  $effect(() => { if (!isEditMode) kvCacheSize = selectedPrimaryModel ? mibToGb(selectedPrimaryModel.sizing.minKvCacheMib) : null; });
-  $effect(() => { if (!isEditMode) earlyKvCacheSize = selectedCanaryModel ? mibToGb(selectedCanaryModel.sizing.minKvCacheMib) : null; });
+  $effect(() => { if (!isEditMode) kvCacheSize = selectedPrimaryModel ? selectedPrimaryModel.sizing.minKvCacheGb : null; });
+  $effect(() => { if (!isEditMode) earlyKvCacheSize = selectedCanaryModel ? selectedCanaryModel.sizing.minKvCacheGb : null; });
 
   $effect(() => { if (!isEditMode) { selectedPrimarySpecifier; customCodeConsent = false; } });
 

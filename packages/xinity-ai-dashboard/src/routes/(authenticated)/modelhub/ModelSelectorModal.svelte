@@ -1,7 +1,7 @@
 <script lang="ts">
   import Modal from "$lib/components/Modal.svelte";
   import type { Engine, ModelType, ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
-  import { EngineEnum, isDeployableOnCluster, mibToGb } from "xinity-infoserver";
+  import { EngineEnum, isDeployableOnCluster } from "xinity-infoserver";
   import { modelCatalog } from "$lib/state/model-catalog.svelte";
   import { formatGb } from "$lib/util";
   import { groupModelVariants, type ModelGroup } from "./model-groups";
@@ -183,7 +183,7 @@
   }
 
   function isUndeployable(model: ModelWithSpecifier): boolean {
-    if (nodeCapabilities.length === 0) return mibToGb(model.sizing.weightMib) + mibToGb(model.sizing.minKvCacheMib) > maxNodeFreeCapacity;
+    if (nodeCapabilities.length === 0) return model.sizing.weightGb + model.sizing.minKvCacheGb > maxNodeFreeCapacity;
     return !isDeployableOnCluster(nodeCapabilities, model);
   }
 
@@ -191,7 +191,7 @@
   function hasConstraintIncompatibility(model: ModelWithSpecifier): boolean {
     if (!model.minEngineVersion && !model.platforms) return false;
     if (!isUndeployable(model)) return false;
-    const needed = mibToGb(model.sizing.weightMib) + mibToGb(model.sizing.minKvCacheMib);
+    const needed = model.sizing.weightGb + model.sizing.minKvCacheGb;
     return nodeCapabilities.some(n => n.free >= needed && model.engine in n.driverVersions);
   }
 

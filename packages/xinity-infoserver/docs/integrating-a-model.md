@@ -28,7 +28,7 @@ steps.)
 4. **Verify it runs** (next section): iterate using the failure table until the gate passes, the
    server comes up, and it **serves a real request** (not just `/health`). Also **validate every
    declared capability** - test tool calling and vision if research says the model has them. While
-   there, pin down the two values you can't reliably guess - the `minKvCacheMib` floor and the
+   there, pin down the two values you can't reliably guess - the `minKvCacheGb` floor and the
    `minEngineVersion` floor - by the procedures below.
 5. **Publish.** Open a PR. In the description, record which hardware you verified it on and any
    constraints you found (`minEngineVersion`, `platforms`). CI loads `models/` the way the server
@@ -39,11 +39,11 @@ steps.)
 | Field | Where it comes from |
 |-------|---------------------|
 | `engine`, `engineSpecifier` | `vllm` plus the HuggingFace repo id. An Ollama variant of the same model is a second entry with `engine: ollama` and its own tag, weight and KV floor. |
-| `sizing.weightMib` | VRAM of the weights. FP16 ≈ params(billions) × 2048; quantized (AWQ/GPTQ ~4-bit) ≈ params × 512. Round up. |
+| `sizing.weightGb` | VRAM of the weights in GB. FP16 ≈ params(billions) × 2; quantized (AWQ/GPTQ ~4-bit) ≈ params × 0.5. Round up. |
 | `sizing.weightBits` | The method's headline width: `torch_dtype` in `config.json` for an unquantized repo, the `quantization_config` bits for AWQ/GPTQ, or the digit in an Ollama tag (`q8_0` → 8, `q4_K_M` → 4). Do not try to work out the real average across the checkpoint: parts of the network stay wider than the headline width, and the field is documented as approximate for exactly that reason. |
-| `sizing.activeWeightMib` | MoE only, and only when `config.json` names the sparse layout. Scale `weightMib` by the fraction of parameters active per token, i.e. `num_experts_per_tok / num_experts` over the expert layers, and leave the shared/attention weights counted in full. Omit it for dense models. |
-| `sizing.minKvCacheMib` | Start from `config.json`: roughly `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes × tokens` (as MiB), `tokens` chosen for desired concurrency. Then **confirm the hard floor empirically** ("Confirm the KV-cache floor" below) - the value must be at or above what vLLM needs to start. |
-| `sizing.kvBytesPerToken` | The `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes` product you already compute for `minKvCacheMib`, written down in bytes instead of thrown away. Use the cache dtype the engine will actually run with, which is not always the weight dtype. |
+| `sizing.activeWeightGb` | MoE only, and only when `config.json` names the sparse layout. Scale `weightGb` by the fraction of parameters active per token, i.e. `num_experts_per_tok / num_experts` over the expert layers, and leave the shared/attention weights counted in full. Omit it for dense models. |
+| `sizing.minKvCacheGb` | Start from `config.json`: roughly `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes × tokens` (in GB), `tokens` chosen for desired concurrency. Then **confirm the hard floor empirically** ("Confirm the KV-cache floor" below) - the value must be at or above what vLLM needs to start. |
+| `sizing.kvBytesPerToken` | The `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes` product you already compute for `minKvCacheGb`, written down in bytes instead of thrown away. Use the cache dtype the engine will actually run with, which is not always the weight dtype. |
 | `sizing.attentionWindow` | `sliding_window` in `config.json`, when the model sets one and does not disable it (`use_sliding_window: false`). Leave it out for full attention. |
 | `type` | `chat` (default), `embedding`, `rerank`, or `transcription`, from what the model does. |
 | `tags` | `vision` if multimodal, `tools` if it supports tool/function calling - **research both and validate them** (see "Validate declared capabilities" below). For `tools`, also set `engineArgs: ["--tool-call-parser", "<name>"]`: the tag makes the daemon add `--enable-auto-tool-choice`, but vLLM additionally needs a model-specific parser or it won't start. Registered parser names live in the image under `vllm/tool_parsers/` (e.g. `gemma4`, `lfm2`, `hermes`, `llama3_json`, `mistral`, `pythonic`). Do **not** add `custom_code` preemptively; only after a load failure shows it needs `--trust-remote-code`. |
@@ -168,14 +168,17 @@ curl -s localhost:8000/v1/chat/completions -H 'Content-Type: application/json' -
 
 A tag whose test fails (or a missing parser) means the entry is wrong - fix it or drop the tag.
 
-### Confirm the KV-cache floor (`sizing.minKvCacheMib`)
+### Confirm the KV-cache floor (`minKvCacheGb`)
 
-`minKvCacheMib` is the floor - the KV cache one request at the model's full context length needs,
-below which vLLM refuses to start. Find it empirically: set it low and `--start`; if it's too small
-vLLM aborts with `To serve at least one request with the model's max seq len (N), X GiB KV cache is
-needed`. That figure is binary, so the field value is `X × 1024`. Confirm the chosen value starts -
-the log shows `Maximum concurrency for N tokens per request: 1.00x` when it's right at the floor -
-and that a smaller value fails. It is the *minimum*; a deployment can allocate more KV for higher
+`minKvCacheGb` is the floor - the KV cache one request at the model's full context length needs,
+below which vLLM refuses to start. It is expressed in **GB** and becomes vLLM's
+`--kv-cache-memory-bytes Ng`, where lowercase `g` is **decimal** (10⁹) and accepts decimals - so
+write a precise decimal, not a rounded integer. Find the floor empirically: set `minKvCacheGb` low and
+`--start`; if it's too small vLLM aborts with `To serve at least one request with the model's max
+seq len (N), X GiB KV cache is needed`. That figure is in **GiB** (binary), so the field value is
+`X × 1.074` GB (e.g. a 16 GiB floor → `minKvCacheGb: 17.2`). Confirm the chosen value starts - the log
+shows `Maximum concurrency for N tokens per request: 1.00x` when it's right at the floor - and that a
+smaller value fails. `minKvCacheGb` is the *minimum*; a deployment can allocate more KV for higher
 concurrency.
 
 The floor scales with the model's `max_model_len`, and per-request KV is independent of parameter

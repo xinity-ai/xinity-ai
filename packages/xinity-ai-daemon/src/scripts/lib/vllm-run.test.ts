@@ -10,7 +10,7 @@ import {
 const baseModel = {
   name: "Test",
   description: "test model",
-  sizing: { weightMib: 16384, minKvCacheMib: 8192, maxContextLength: 131072 },
+  sizing: { weightGb: 16, minKvCacheGb: 8, maxContextLength: 131072 },
   url: "https://example.com",
   type: "chat" as const,
   engine: "vllm" as const,
@@ -106,7 +106,7 @@ describe("checkVllmCompatibility", () => {
   });
 
   test("flags insufficient_capacity when the model is too large", () => {
-    const r = resolveVllmModel(file({ m: { ...baseModel, sizing: { ...baseModel.sizing, weightMib: 40960 } } }), "m");
+    const r = resolveVllmModel(file({ m: { ...baseModel, sizing: { ...baseModel.sizing, weightGb: 40 } } }), "m");
     expect(checkVllmCompatibility(r, nvidia24, { available: true, version: "0.19.1" })).toBe("insufficient_capacity");
   });
 

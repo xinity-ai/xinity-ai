@@ -97,7 +97,7 @@ const v2Model = {
   registeredAt: "2026-02-01",
   engine: "vllm",
   engineSpecifier: "org/llama-vllm",
-  sizing: { weightMib: 10240, minKvCacheMib: 2048, maxContextLength: 131072 },
+  sizing: { weightGb: 10, minKvCacheGb: 2, maxContextLength: 131072 },
 };
 
 // ---------------------------------------------------------------------------

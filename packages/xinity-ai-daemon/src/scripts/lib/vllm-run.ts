@@ -8,7 +8,7 @@
  */
 import {
   checkNodeCompatibility,
-  mibToGb,
+
   requiredFeaturesForEngine,
   type GpuInfo,
   type Model,
@@ -33,7 +33,7 @@ export interface ResolvedVllmModel {
   hasToolsTag: boolean;
   args: string[];
   modelType: string | undefined;
-  /** KV-cache allocation in GB: max(override, model.minKvCache). */
+  /** KV-cache allocation in GB: max(override, the entry's minKvCache). */
   kvCacheGb: number;
   /** Total VRAM the install is expected to occupy: weight + kvCacheGb. Mirrors orchestration.mod.ts. */
   estCapacity: number;
@@ -72,7 +72,7 @@ export function findVllmModel(
 
 /**
  * Resolves a model file entry into the facts needed to run it under vLLM.
- * `kvCacheGbOverride`, when given, raises the floor set by model.minKvCache.
+ * `kvCacheGbOverride`, when given, raises the floor set by the entry's minKvCache.
  */
 export function resolveVllmModel(
   parsed: { models: Record<string, Model> },
@@ -82,7 +82,7 @@ export function resolveVllmModel(
   const { vllmProviderName, model } = findVllmModel(parsed, name);
 
   const tags = model.tags ?? [];
-  const kvCacheGb = Math.max(options.kvCacheGbOverride ?? 0, mibToGb(model.sizing.minKvCacheMib));
+  const kvCacheGb = Math.max(options.kvCacheGbOverride ?? 0, model.sizing.minKvCacheGb);
 
   return {
     vllmProviderName,
@@ -92,7 +92,7 @@ export function resolveVllmModel(
     args: model.engineArgs ?? [],
     modelType: model.type,
     kvCacheGb,
-    estCapacity: mibToGb(model.sizing.weightMib) + kvCacheGb,
+    estCapacity: model.sizing.weightGb + kvCacheGb,
     minVersion: model.minEngineVersion,
     requiredPlatforms: model.platforms ?? [],
     requiredFeatures: requiredFeaturesForEngine("vllm", model.type),

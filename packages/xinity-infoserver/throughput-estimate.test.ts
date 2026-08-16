@@ -6,12 +6,12 @@ const node = (...names: string[]) => ({ gpus: names.map(gpu) });
 
 const dense = {
   engine: "vllm" as const,
-  sizing: { weightMib: 14336, minKvCacheMib: 4096, maxContextLength: 131072, weightBits: 16 },
+  sizing: { weightGb: 14, minKvCacheGb: 4, maxContextLength: 131072, weightBits: 16 },
 };
 
 describe("estimateThroughput", () => {
   it("reads only the active weights of a sparse model, so an MoE is not scored as dense", () => {
-    const sparse = { ...dense, sizing: { ...dense.sizing, activeWeightMib: 3584 } };
+    const sparse = { ...dense, sizing: { ...dense.sizing, activeWeightGb: 3.5 } };
 
     const denseTps = estimateThroughput(dense, node("NVIDIA GeForce RTX 4090"))!.decodeTps;
     const sparseTps = estimateThroughput(sparse, node("NVIDIA GeForce RTX 4090"))!.decodeTps;

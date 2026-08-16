@@ -2,7 +2,7 @@
   import { Badge } from "$lib/components/ui/badge";
   import { ExternalLink, EyeOff } from "@lucide/svelte";
   import type { ModelWithSpecifier } from "xinity-infoserver";
-  import { humanMonthYear } from "$lib/util";
+  import { formatGb, humanMonthYear } from "$lib/util";
   import { isRecentlyAdded } from "./model-recency";
   import LicenseBadge from "./LicenseBadge.svelte";
   import NewModelBadge from "./NewModelBadge.svelte";
@@ -70,7 +70,7 @@
   {/if}
   <div class="flex flex-wrap items-center gap-x-4 gap-y-1 compact:gap-x-2 text-sm text-muted-foreground">
     <LicenseBadge license={model.license} />
-    <span>Capacity weight: <span class="font-medium">{model.weight}</span></span>
+    <span>Capacity weight: <span class="font-medium">{formatGb(model.sizing.weightGb)}</span></span>
     <span title="Released {model.createdAt}">Released <span class="font-medium">{humanMonthYear(model.createdAt)}</span></span>
   </div>
 

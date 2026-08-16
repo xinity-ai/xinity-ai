@@ -4,7 +4,7 @@
  * Pure functions with no DB or IO dependencies.
  */
 import { satisfiesMinVersion } from "./semver";
-import { mibToGb, type LegacyModel, type Model } from "./definitions/model-definition";
+import { type LegacyModel, type Model } from "./definitions/model-definition";
 
 /** Per-GPU info as detected by the daemon and persisted on aiNodeT. */
 export type GpuInfo = {
@@ -158,7 +158,7 @@ export function isDeployableOnCluster(
 ): boolean {
   const req: ModelNodeRequirements = {
     driver: model.engine,
-    capacityGb: mibToGb(model.sizing.weightMib + model.sizing.minKvCacheMib),
+    capacityGb: model.sizing.weightGb + model.sizing.minKvCacheGb,
     minVersion: model.minEngineVersion,
     requiredPlatforms: model.platforms ?? [],
     requiredFeatures: requiredFeaturesForEngine(model.engine, model.type),
