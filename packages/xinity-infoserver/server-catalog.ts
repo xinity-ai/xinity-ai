@@ -9,6 +9,7 @@ import {
   ModelFileSchema,
   RelayedModelFileSchema,
   RelayedModelSchema,
+  kvCacheMismatch,
   unsupportedVocabulary,
 } from "./definitions/model-definition";
 import { createCatalog, type FileParseOutcome } from "./catalog";
@@ -24,6 +25,20 @@ function parseWith<M>(schema: z.ZodType) {
       ? { status: "ok", file: parsed.data as { models: Record<string, M>; includes?: string[] } }
       : { status: "invalid", reason: z.prettifyError(parsed.error) };
   };
+}
+
+/** Only authored files are checked. A relayed entry's numbers are not this operator's to fix. */
+function parseLocalModels(text: string): FileParseOutcome<Model> {
+  const outcome = parseWith<Model>(ModelFileSchema)(text);
+  if (outcome.status === "ok") {
+    for (const [specifier, model] of Object.entries(outcome.file.models)) {
+      const mismatch = kvCacheMismatch(model);
+      if (mismatch) {
+        log.warn({ specifier, ...mismatch }, "minKvCache disagrees with the cost implied by kvBytesPerToken");
+      }
+    }
+  }
+  return outcome;
 }
 
 function parseRelayedModels(text: string): FileParseOutcome<Model> {
@@ -67,7 +82,7 @@ function parseRelayedModels(text: string): FileParseOutcome<Model> {
 
 export const modelCatalog = createCatalog<Model>({
   name: "current-format",
-  parseFile: parseWith<Model>(ModelFileSchema),
+  parseFile: parseLocalModels,
   parseRemoteFile: parseRelayedModels,
   invalidDocumentIsFatal: true,
 });

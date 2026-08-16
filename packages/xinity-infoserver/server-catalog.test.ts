@@ -17,11 +17,13 @@ mock.module("./env", () => ({
   },
 }));
 
+const logWarn = mock((_fields: unknown, _msg?: string) => {});
+
 mock.module("./logger", () => ({
   rootLogger: {
     child: () => ({
       info: () => {},
-      warn: () => {},
+      warn: logWarn,
       error: () => {},
       debug: () => {},
     }),
@@ -629,6 +631,26 @@ describe("server-catalog", () => {
       await refresh();
 
       expect(modelCatalog.get("llama-vllm")?.args).toEqual(["--max-model-len", "4096"]);
+    });
+  });
+
+  describe("kv cache consistency", () => {
+    it("reports only the entry whose minKvCache contradicts its per-token cost", async () => {
+      const { dirPath } = await writeYamlInOwnDir(makeModelYaml({
+        "consistent-vllm": { ...v2Model, kvBytesPerToken: 16384 },
+        "windowed-vllm": { ...v2Model, kvBytesPerToken: 131072, attentionWindow: 16384 },
+        "mismatched-vllm": { ...v2Model, kvBytesPerToken: 131072 },
+      }), fileIndex++);
+      configure(10, dirPath, undefined);
+      logWarn.mockClear();
+      await refresh();
+
+      const reported = logWarn.mock.calls
+        .filter(([, msg]) => msg?.includes("kvBytesPerToken"))
+        .map(([fields]) => (fields as { specifier: string }).specifier);
+
+      expect(reported).toEqual(["mismatched-vllm"]);
+      expect(modelCatalog.get("mismatched-vllm")).toBeDefined();
     });
   });
 });
