@@ -38,10 +38,10 @@
   // no KV-cache knob, so the value submitted there is always the minimum.
   function perReplica(model: ModelWithSpecifier, kv: number | null): number {
     const effKv = effKvCache(model, kv);
-    return model.weight + effKv;
+    return model.sizing.weight + effKv;
   }
   function effKvCache(model: ModelWithSpecifier, kv: number | null): number {
-    return model.engine === "ollama" ? model.minKvCache : Math.max(kv ?? 0, model.minKvCache);
+    return model.engine === "ollama" ? model.sizing.minKvCache : Math.max(kv ?? 0, model.sizing.minKvCache);
   }
 
   const splitsCanary = $derived(Boolean(isCanaryEnabled && canaryModel && progress < 100));
@@ -76,7 +76,7 @@
           {isCanaryEnabled ? "Primary per replica" : "Per replica"}
         </dt>
         <dd class="text-right">
-          {formatGb(primaryModel.weight)} model + {formatGb(effKvCache(primaryModel, kvCacheSize))} kv-cache
+          {formatGb(primaryModel.sizing.weight)} model + {formatGb(effKvCache(primaryModel, kvCacheSize))} kv-cache
           = <span class="font-medium">{formatGb(primaryPer)}</span>
           <span class="text-muted-foreground"> &times; {primaryReplicas}</span>
         </dd>
@@ -86,7 +86,7 @@
         <div class="flex justify-between gap-4">
           <dt class="text-muted-foreground">Canary per replica</dt>
           <dd class="text-right">
-            {formatGb(canaryModel.weight)} model + {formatGb(effKvCache(canaryModel, earlyKvCacheSize))} kv-cache
+            {formatGb(canaryModel.sizing.weight)} model + {formatGb(effKvCache(canaryModel, earlyKvCacheSize))} kv-cache
             = <span class="font-medium">{formatGb(canaryPer)}</span>
             <span class="text-muted-foreground"> &times; {canaryReplicas}</span>
           </dd>

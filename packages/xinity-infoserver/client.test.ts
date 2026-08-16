@@ -302,13 +302,11 @@ describe("createCatalogClient", () => {
     registeredAt: "2026-02-01",
     engine: "vllm",
     engineSpecifier: "org/llama-vllm",
-    weight: 10,
-    minKvCache: 2,
-    maxContextLength: 131072,
+    sizing: { weight: 10, minKvCache: 2, maxContextLength: 131072 },
   };
   // Beyond any real release, so every running instance must filter it out.
   const futureV2Model = { ...v2Model, entryVersion: "999.0.0" };
-  const malformedV2Model = { ...v2Model, weight: "heavy" };
+  const malformedV2Model = { ...v2Model, sizing: { ...v2Model.sizing, weight: "heavy" } };
 
   const DIGEST = "abc123";
 

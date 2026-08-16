@@ -92,15 +92,15 @@
   let showExpertSettings = $state(false);
 
   // --- Derived ---
-  const minKvCache = $derived(selectedPrimaryModel?.minKvCache ?? 0);
-  const minCanaryKvCache = $derived(selectedCanaryModel?.minKvCache ?? 0);
+  const minKvCache = $derived(selectedPrimaryModel?.sizing.minKvCache ?? 0);
+  const minCanaryKvCache = $derived(selectedCanaryModel?.sizing.minKvCache ?? 0);
 
   const selectorCapacity = $derived.by(() => {
     if (selectorMode === "canary" && selectedPrimaryModel) {
-      return maxNodeFreeCapacity - (selectedPrimaryModel.weight + selectedPrimaryModel.minKvCache);
+      return maxNodeFreeCapacity - (selectedPrimaryModel.sizing.weight + selectedPrimaryModel.sizing.minKvCache);
     }
     if (selectorMode === "primary" && isCanaryEnabled && selectedCanaryModel) {
-      return maxNodeFreeCapacity - (selectedCanaryModel.weight + selectedCanaryModel.minKvCache);
+      return maxNodeFreeCapacity - (selectedCanaryModel.sizing.weight + selectedCanaryModel.sizing.minKvCache);
     }
     return maxNodeFreeCapacity;
   });

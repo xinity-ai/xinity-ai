@@ -122,8 +122,8 @@ async function resolveCatalogMeta(specifier: string, driver: "vllm" | "ollama"):
     throw new Error(`Infoserver unavailable for "${specifier}": ${result.error}`);
   }
   if (result.status === "found") {
-    const { engineSpecifier, type, tags, maxContextLength, requestParams } = result.model;
-    return { engineSpecifier, type, tags, maxContextLength, requestParams };
+    const { engineSpecifier, type, tags, sizing, requestParams } = result.model;
+    return { engineSpecifier, type, tags, maxContextLength: sizing.maxContextLength, requestParams };
   }
   return legacyCatalogMeta(specifier, driver);
 }

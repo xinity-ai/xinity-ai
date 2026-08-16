@@ -39,16 +39,16 @@ steps.)
 | Field | Where it comes from |
 |-------|---------------------|
 | `engine`, `engineSpecifier` | `vllm` plus the HuggingFace repo id. An Ollama variant of the same model is a second entry with `engine: ollama` and its own tag, weight and KV floor. |
-| `weight` | VRAM of the weights in GB. FP16 ≈ params(billions) × 2; quantized (AWQ/GPTQ ~4-bit) ≈ params × 0.5. Round up. |
-| `weightBits` | The method's headline width: `torch_dtype` in `config.json` for an unquantized repo, the `quantization_config` bits for AWQ/GPTQ, or the digit in an Ollama tag (`q8_0` → 8, `q4_K_M` → 4). Do not try to work out the real average across the checkpoint: parts of the network stay wider than the headline width, and the field is documented as approximate for exactly that reason. |
-| `activeWeight` | MoE only, and only when `config.json` names the sparse layout. Scale `weight` by the fraction of parameters active per token, i.e. `num_experts_per_tok / num_experts` over the expert layers, and leave the shared/attention weights counted in full. Omit it for dense models. |
-| `minKvCache` | Start from `config.json`: roughly `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes × tokens` (in GB), `tokens` chosen for desired concurrency. Then **confirm the hard floor empirically** ("Confirm the KV-cache floor" below) - the value must be at or above what vLLM needs to start. |
-| `kvBytesPerToken` | The `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes` product you already compute for `minKvCache`, written down in bytes instead of thrown away. Use the cache dtype the engine will actually run with, which is not always the weight dtype. |
-| `attentionWindow` | `sliding_window` in `config.json`, when the model sets one and does not disable it (`use_sliding_window: false`). Leave it out for full attention. |
+| `sizing.weight` | VRAM of the weights in GB. FP16 ≈ params(billions) × 2; quantized (AWQ/GPTQ ~4-bit) ≈ params × 0.5. Round up. |
+| `sizing.weightBits` | The method's headline width: `torch_dtype` in `config.json` for an unquantized repo, the `quantization_config` bits for AWQ/GPTQ, or the digit in an Ollama tag (`q8_0` → 8, `q4_K_M` → 4). Do not try to work out the real average across the checkpoint: parts of the network stay wider than the headline width, and the field is documented as approximate for exactly that reason. |
+| `sizing.activeWeight` | MoE only, and only when `config.json` names the sparse layout. Scale `weight` by the fraction of parameters active per token, i.e. `num_experts_per_tok / num_experts` over the expert layers, and leave the shared/attention weights counted in full. Omit it for dense models. |
+| `sizing.minKvCache` | Start from `config.json`: roughly `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes × tokens` (in GB), `tokens` chosen for desired concurrency. Then **confirm the hard floor empirically** ("Confirm the KV-cache floor" below) - the value must be at or above what vLLM needs to start. |
+| `sizing.kvBytesPerToken` | The `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes` product you already compute for `minKvCache`, written down in bytes instead of thrown away. Use the cache dtype the engine will actually run with, which is not always the weight dtype. |
+| `sizing.attentionWindow` | `sliding_window` in `config.json`, when the model sets one and does not disable it (`use_sliding_window: false`). Leave it out for full attention. |
 | `type` | `chat` (default), `embedding`, `rerank`, or `transcription`, from what the model does. |
 | `tags` | `vision` if multimodal, `tools` if it supports tool/function calling - **research both and validate them** (see "Validate declared capabilities" below). For `tools`, also set `args: ["--tool-call-parser", "<name>"]`: the tag makes the daemon add `--enable-auto-tool-choice`, but vLLM additionally needs a model-specific parser or it won't start. Registered parser names live in the image under `vllm/tool_parsers/` (e.g. `gemma4`, `lfm2`, `hermes`, `llama3_json`, `mistral`, `pythonic`). Do **not** add `custom_code` preemptively; only after a load failure shows it needs `--trust-remote-code`. |
 | `family`, `name`, `url` | Model card; `url` is the HuggingFace page. |
-| `maxContextLength` | `max_position_embeddings` in `config.json`, unless the model card documents a lower supported window. |
+| `sizing.maxContextLength` | `max_position_embeddings` in `config.json`, unless the model card documents a lower supported window. |
 | `license` | The model card's license field, then the license text itself. If it is one of the well-known identifiers, name it and you are done (check [model-fields](./model-fields.md) for details). Otherwise read it for limits on **use** (revenue or user thresholds, non-commercial clauses, acceptable-use policies) and write those into `summary`, which is what a user reads before deploying. Do not assume permissive just because the weights are downloadable. |
 | `description` | The model card, in your own words: purpose, strengths, limitations. Multiple paragraphs as a block scalar, not a one-line label. |
 | `createdAt` | The day the creator published the model: the initial commit on the HuggingFace repo, or the announcement date the model card cites. Not a later revision, and identical across every engine variant of one model. |
@@ -187,7 +187,7 @@ Hunyuan MT2 **1.8B** at its native **256K** context needs **16 GiB** of KV). Whe
 impractical for the model's size, cap the context with `args: ["--max-model-len", "N"]`;
 the floor drops roughly proportionally. A useful pattern is to publish **several entries of the same
 model at different `--max-model-len` caps** - each a context/footprint trade-off (shorter context →
-smaller floor → more requests fit per GB of KV). Note: for models with sliding-window or hybrid
+smaller floor → more requests fit in the same cache). Note: for models with sliding-window or hybrid
 attention (e.g. Gemma 4), the real floor is well below the dense formula above, so trust the
 empirical `X GiB needed` figure rather than the estimate.
 

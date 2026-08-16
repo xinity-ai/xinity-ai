@@ -19,9 +19,10 @@ models:
     license: apache-2.0
     engine: vllm
     engineSpecifier: "meta-llama/Llama-3.1-8B-Instruct"
-    weight: 8
-    minKvCache: 2
-    maxContextLength: 131072
+    sizing:
+      weight: 8
+      minKvCache: 2
+      maxContextLength: 131072
 ```
 
 ### Full annotated example
@@ -50,9 +51,10 @@ models:
     engine: vllm                               # vllm or ollama
     engineSpecifier: "microsoft/Phi-3-vision-128k-instruct"  # HF model id, or an Ollama tag
 
-    weight: 8                                  # VRAM consumed by this variant's weights, in GB
-    minKvCache: 2                              # Minimum KV-cache allocation in GB
-    maxContextLength: 128000                   # Max context window in tokens
+    sizing:                                    # What the variant costs to run
+      weight: 8                                # VRAM consumed by this variant's weights, in GB
+      minKvCache: 2                            # Minimum KV-cache allocation in GB
+      maxContextLength: 128000                 # Max context window in tokens
 
     type: chat                                 # chat, embedding, rerank, or transcription
     family: phi3                               # Model family for grouping in the UI
@@ -82,8 +84,7 @@ models:
 ### Key fields explained
 
 - **`engine`** and **`engineSpecifier`**: which inference engine this entry runs on, and the identifier that engine uses. The engine is part of the model's identity, not a choice made at deploy time. To offer a model on both engines, write two entries.
-- **`weight`**: How much VRAM this variant's weights consume, in GB. For a 7B parameter model in FP16, roughly 14 GB. A quantized variant of the same model is smaller, which is why it belongs in its own entry.
-- **`minKvCache`**: The minimum KV-cache allocation in GB. This determines how many concurrent requests the model can handle. Larger values allow more concurrency but consume more VRAM.
+- **`sizing`**: Everything the variant costs to run, grouped together. `weight` is the VRAM its weights consume in GB, roughly 14 for a 7B model in FP16, and a quantized variant of the same model is smaller, which is why it belongs in its own entry. `minKvCache` is the minimum KV-cache allocation in GB, which bounds how many concurrent requests it can serve. See [model-fields](./docs/model-fields.md) for the rest.
 - **`type`**: Determines API compatibility. A `"rerank"` model only accepts rerank requests, so sending a chat request to it fails. Defaults to `"chat"`.
 - **`tags`**: Enables runtime capabilities. `"tools"` enables function/tool calling, `"vision"` enables image inputs. Requests that use a capability the model doesn't declare are rejected. `"custom_code"` is special: some models ship with custom loading code that vLLM must execute via `--trust-remote-code`. This tag marks that requirement and triggers an explicit approval step in the dashboard before deployment. Only add it if the model fails to load without it.
 - **`variantOf`**: Optional grouping key. Entries sharing it are presented together in the UI while each stays separately deployable.
@@ -172,7 +173,7 @@ bun run run-model -- --models ./your-models.yaml --model my-private-model --imag
 With the docker backend the container always runs egress-blocked and offline (weights are
 pre-downloaded on the host first), and `--start` runs it detached, printing a `docker logs -f`
 command to follow the load and the stop command. The `--plan` gate result tells you whether
-`weight`, `minKvCache`, `minEngineVersion`, and `platforms` are consistent with the
+`sizing`, `minEngineVersion`, and `platforms` are consistent with the
 hardware, so you can correct the definition before it ever reaches the cluster scheduler. See
 `run-model --help` for the full flag list.
 
@@ -289,7 +290,7 @@ When a model deployment is created, the scheduler checks each cluster node again
 1. **Driver**: Does the node run the entry's `engine`?
 2. **Driver version**: Does the driver version satisfy `minEngineVersion`? (Nodes that haven't reported a version are not excluded.)
 3. **GPU platform**: Does at least one of the node's GPUs match `platforms`? (Nodes with no GPUs are excluded when a platform is required.)
-4. **Capacity**: Does the node have enough free VRAM for the model's `weight` + KV-cache?
+4. **Capacity**: Does the node have enough free VRAM for the model's `sizing.weight` + KV-cache?
 
 All four checks must pass on a single node. If no node qualifies, the model stays in "scheduling" state and the dashboard shows why it can't be placed.
 

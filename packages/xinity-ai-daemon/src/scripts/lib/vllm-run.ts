@@ -9,6 +9,7 @@
 import {
   checkNodeCompatibility,
   requiredFeaturesForEngine,
+  type GpuInfo,
   type Model,
   type NodeCapability,
   type ModelNodeRequirements,
@@ -17,7 +18,7 @@ import {
 
 /** Minimal machine description the resolver needs; a subset of HardwareProfile. */
 export interface MachineProfile {
-  gpus: Array<{ vendor: string; name: string; vramMb: number }>;
+  gpus: GpuInfo[];
   /** Usable model capacity in GB (total, treated as free on an empty standalone node). */
   detectedCapacityGb: number;
 }
@@ -80,7 +81,7 @@ export function resolveVllmModel(
   const { vllmProviderName, model } = findVllmModel(parsed, name);
 
   const tags = model.tags ?? [];
-  const kvCacheGb = Math.max(options.kvCacheGbOverride ?? 0, model.minKvCache);
+  const kvCacheGb = Math.max(options.kvCacheGbOverride ?? 0, model.sizing.minKvCache);
 
   return {
     vllmProviderName,
@@ -90,7 +91,7 @@ export function resolveVllmModel(
     args: model.args ?? [],
     modelType: model.type,
     kvCacheGb,
-    estCapacity: model.weight + kvCacheGb,
+    estCapacity: model.sizing.weight + kvCacheGb,
     minVersion: model.minEngineVersion,
     requiredPlatforms: model.platforms ?? [],
     requiredFeatures: requiredFeaturesForEngine("vllm", model.type),

@@ -32,7 +32,7 @@ function parseLocalModels(text: string): FileParseOutcome<Model> {
   const outcome = parseWith<Model>(ModelFileSchema)(text);
   if (outcome.status === "ok") {
     for (const [specifier, model] of Object.entries(outcome.file.models)) {
-      const mismatch = kvCacheMismatch(model);
+      const mismatch = kvCacheMismatch(model.sizing);
       if (mismatch) {
         log.warn({ specifier, ...mismatch }, "minKvCache disagrees with the cost implied by kvBytesPerToken");
       }

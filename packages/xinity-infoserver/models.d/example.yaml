@@ -19,9 +19,10 @@ models:
     registeredAt: 2026-08-10
     engine: vllm
     engineSpecifier: microsoft/Phi-3-vision-128k-instruct
-    weight: 8
-    minKvCache: 2
-    maxContextLength: 128000
+    sizing:
+      weight: 8
+      minKvCache: 2
+      maxContextLength: 128000
     type: chat
     family: phi3
     tags: [vision, custom_code]
@@ -41,12 +42,13 @@ models:
     registeredAt: 2026-06-24
     engine: ollama
     engineSpecifier: qwen3-coder-next:q8_0
-    weight: 14
-    activeWeight: 3
-    weightBits: 8
-    minKvCache: 4
-    kvBytesPerToken: 24576
-    maxContextLength: 131072
+    sizing:
+      weight: 14
+      activeWeight: 3
+      weightBits: 8
+      minKvCache: 4
+      kvBytesPerToken: 24576
+      maxContextLength: 131072
     type: chat
     family: qwen3
     variantOf: qwen3-coder-next-large-vllm
@@ -70,12 +72,13 @@ models:
     registeredAt: 2026-06-24
     engine: vllm
     engineSpecifier: Qwen/Qwen3-Coder-Next
-    weight: 28
-    activeWeight: 6
-    weightBits: 16
-    minKvCache: 6
-    kvBytesPerToken: 49152
-    maxContextLength: 131072
+    sizing:
+      weight: 28
+      activeWeight: 6
+      weightBits: 16
+      minKvCache: 6
+      kvBytesPerToken: 49152
+      maxContextLength: 131072
     type: chat
     family: qwen3
     tags: [tools]
@@ -97,9 +100,10 @@ models:
     registeredAt: 2025-12-03
     engine: vllm
     engineSpecifier: Qwen/Qwen2-Coder
-    weight: 14
-    minKvCache: 4
-    maxContextLength: 32768
+    sizing:
+      weight: 14
+      minKvCache: 4
+      maxContextLength: 32768
     type: chat
     family: qwen2
     tags: [tools]
@@ -129,9 +133,10 @@ models:
     registeredAt: 2026-08-04
     engine: vllm
     engineSpecifier: atlas-ai/Atlas-Vision-12B
-    weight: 24
-    minKvCache: 6
-    maxContextLength: 131072
+    sizing:
+      weight: 24
+      minKvCache: 6
+      maxContextLength: 131072
     type: chat
     family: atlas
     tags: [vision]
@@ -152,8 +157,9 @@ models:
     registeredAt: 2026-08-08
     engine: vllm
     engineSpecifier: helix-research/Helix-R1-7B
-    weight: 14
-    minKvCache: 4
-    maxContextLength: 65536
+    sizing:
+      weight: 14
+      minKvCache: 4
+      maxContextLength: 65536
     type: chat
     family: helix
