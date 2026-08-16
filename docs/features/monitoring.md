@@ -78,7 +78,7 @@ This endpoint is protected by the same `METRICS_AUTH` Basic auth as `/metrics`. 
 
 ## Grafana Dashboards
 
-Four pre-built dashboards are included. Three live in `deployment/monitoring/dashboards/` and are always provisioned; the fourth, Xinity Logs, lives in a separate `deployment/monitoring/dashboards-loki/` directory and requires Loki. Docker Compose's `monitoring` profile does not run Loki/Promtail, so it only provisions the first three. The NixOS `xinity-ai-monitoring` module provisions all four when `logs.enable = true`.
+Four pre-built dashboards are included. Three live in `deployment/monitoring/dashboards/` and are always provisioned. The fourth, Xinity Logs, lives in a separate `deployment/monitoring/dashboards-loki/` directory and requires Loki. Docker Compose's `monitoring` profile does not run Loki/Alloy, so it only provisions the first three. The NixOS `xinity-ai-monitoring` module provisions all four when `logs.enable = true`.
 
 ### Xinity Overview
 
@@ -94,7 +94,7 @@ GPU utilization, memory usage, temperature, power draw vs. limit (all as time se
 
 ### Xinity Logs (requires Loki, NixOS only)
 
-Systemd journal logs for gateway, dashboard, infoserver, and daemon. Requires Loki and Promtail, provisioned only by the NixOS monitoring module (`logs.enable = true`); not available via the Docker Compose `monitoring` profile.
+Systemd journal logs for gateway, dashboard, infoserver, and daemon. Requires Loki and Grafana Alloy, provisioned only by the NixOS monitoring module (`logs.enable = true`); not available via the Docker Compose `monitoring` profile.
 
 All dashboards are tagged `xinity-ai` and cross-linked via a shared navigation dropdown.
 
@@ -114,7 +114,7 @@ Set `PROMETHEUS_URL` in the dashboard's environment to enable live GPU utilizati
 
 ### NixOS
 
-The `services.xinity-ai-monitoring` module provisions Prometheus, Grafana, and optionally Loki + Promtail:
+The `services.xinity-ai-monitoring` module provisions Prometheus, Grafana, and optionally Loki + Grafana Alloy:
 
 ```nix
 services.xinity-ai-monitoring = {
@@ -122,7 +122,7 @@ services.xinity-ai-monitoring = {
   basicAuthUsername = "prometheus";
   basicAuthPasswordFile = "/run/secrets/metrics-password";
   # Grafana is enabled by default
-  logs.enable = true;  # Loki + Promtail for log aggregation
+  logs.enable = true;  # Loki + Grafana Alloy for log aggregation
 };
 ```
 
