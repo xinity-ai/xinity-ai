@@ -45,6 +45,7 @@ models:
     activeWeight: 3
     weightBits: 8
     minKvCache: 4
+    kvBytesPerToken: 24576
     maxContextLength: 131072
     type: chat
     family: qwen3
@@ -73,6 +74,7 @@ models:
     activeWeight: 6
     weightBits: 16
     minKvCache: 6
+    kvBytesPerToken: 49152
     maxContextLength: 131072
     type: chat
     family: qwen3
