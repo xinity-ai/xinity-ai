@@ -202,6 +202,8 @@
           wantedBy = [ "multi-user.target" ];
           after = [ "network-online.target" ];
           wants = [ "network-online.target" ];
+          # generell system paths instead of specific binaries to allow dynamic tooling resolution. i.e. nvidia-smi generelly gets auto added to this when installing the drivers
+          path = [ "/run/current-system/sw" ];
           environment = {
             PORT = toString cfg.port;
             HOST = cfg.host;
