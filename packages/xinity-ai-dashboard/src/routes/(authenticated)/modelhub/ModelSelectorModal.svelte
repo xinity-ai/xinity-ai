@@ -1,7 +1,7 @@
 <script lang="ts">
   import Modal from "$lib/components/Modal.svelte";
-  import type { ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
-  import { resolveAllTags, resolveTagsForDriver, driverHasTag, isDeployableOnCluster } from "xinity-infoserver";
+  import type { ModelWithSpecifier, NodeCapability, IncompatibilityReason } from "xinity-infoserver";
+  import { resolveAllTags, resolveTagsForDriver, driverHasTag, explainClusterIncompatibility } from "xinity-infoserver";
   import { modelCatalog } from "$lib/state/model-catalog.svelte";
   import { formatGb } from "$lib/util";
 
@@ -130,18 +130,40 @@
     }
   }
 
-  function isUndeployable(model: ModelWithSpecifier): boolean {
-    if (nodeCapabilities.length === 0) return model.weight + model.minKvCache > maxNodeFreeCapacity;
-    return !isDeployableOnCluster(nodeCapabilities, model);
+  function undeployableReason(model: ModelWithSpecifier): IncompatibilityReason | null {
+    // Without a cluster snapshot the only thing knowable is whether it could ever fit.
+    if (nodeCapabilities.length === 0) {
+      return model.weight + model.minKvCache > maxNodeFreeCapacity ? "insufficient_capacity" : null;
+    }
+    return explainClusterIncompatibility(nodeCapabilities, model);
   }
 
-  // Only flag as a constraint issue when a node would otherwise have room: pure capacity shortfalls are surfaced elsewhere.
-  function hasConstraintIncompatibility(model: ModelWithSpecifier): boolean {
-    if (!model.providerMinVersions && !model.providerPlatforms) return false;
-    if (!isUndeployable(model)) return false;
-    const needed = model.weight + model.minKvCache;
+  function modelDriverLabels(model: ModelWithSpecifier): string {
     const drivers = Object.keys(model.providers).filter(d => model.providers[d as keyof typeof model.providers] !== undefined);
-    return nodeCapabilities.some(n => n.free >= needed && drivers.some(d => d in n.driverVersions));
+    return drivers.map(d => (d === "vllm" ? "vLLM" : "Ollama")).join(" or ") || "any driver";
+  }
+
+  function modelPlatformLabels(model: ModelWithSpecifier): string {
+    const platforms = new Set(Object.values(model.providerPlatforms ?? {}).flat());
+    return Array.from(platforms).join(" or ");
+  }
+
+  function undeployableMessage(reason: IncompatibilityReason, model: ModelWithSpecifier): string {
+    switch (reason) {
+      case "missing_driver":
+        return `No node runs ${modelDriverLabels(model)}.`;
+      case "version_too_old":
+      case "version_unknown":
+        return `No node has a new enough ${modelDriverLabels(model)} version.`;
+      case "missing_feature":
+        return `No node's ${modelDriverLabels(model)} build supports the features this model needs.`;
+      case "wrong_platform": {
+        const platforms = modelPlatformLabels(model);
+        return `No node has a compatible GPU${platforms ? ` (needs ${platforms})` : ""}.`;
+      }
+      case "insufficient_capacity":
+        return `Needs ${formatGb(model.weight + model.minKvCache)}, more than the largest node's ${formatGb(maxNodeFreeCapacity)} free.`;
+    }
   }
 
   function handleSelect(model: ModelWithSpecifier) {
@@ -262,8 +284,7 @@
               </h3>
               <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {#each groupedModels[family] as model (model.publicSpecifier)}
-                  {@const undeployable = isUndeployable(model)}
-                  {@const constraintIssue = hasConstraintIncompatibility(model)}
+                  {@const blockedReason = undeployableReason(model)}
                   {@const modelTags = resolveAllTags(model)}
                   {@const modelDrivers = Object.keys(model.providers) as Array<"vllm" | "ollama">}
                   {@const hasDriverDiffs = model.providerTags !== undefined}
@@ -307,15 +328,10 @@
                       <span class="opacity-50">({parseFloat(model.weight.toFixed(2))} model + {parseFloat(model.minKvCache.toFixed(2))} kv-cache)</span>
                     </div>
 
-                    {#if undeployable && constraintIssue}
+                    {#if blockedReason}
                       <div class="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-400 mb-1">
                         <Info class="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                        <span>No compatible node available (driver version or platform mismatch). You can still select it and deploy it disabled.</span>
-                      </div>
-                    {:else if undeployable}
-                      <div class="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-400 mb-1">
-                        <Info class="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                        <span>Needs {formatGb(model.weight + model.minKvCache)}, more than the largest node's {formatGb(maxNodeFreeCapacity)} free. You can still select it and deploy it disabled.</span>
+                        <span>{undeployableMessage(blockedReason, model)} You can still select it and deploy it disabled.</span>
                       </div>
                     {/if}
 
