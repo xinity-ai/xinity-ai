@@ -31,6 +31,7 @@ import {
   inArray,
   like,
 } from "common-db";
+import type { GpuInfo } from "xinity-infoserver";
 
 const SIM_DEPLOYMENT_PREFIX = "demo:";
 const TICK_MS = 10_000;
@@ -48,7 +49,7 @@ type ModelSpec = {
 type DemoMachine = {
   host: string;
   machineName: string;
-  gpus: { vendor: string; name: string; vramMb: number }[];
+  gpus: GpuInfo[];
   estCapacity: number;
   baseUtilization: number;
   models: ModelSpec[];

@@ -1,5 +1,6 @@
 import { describe, test, expect, mock, beforeEach } from "bun:test";
 import { firstValueFrom } from "rxjs";
+import type { InstallationEntry } from "./catalog";
 
 // ---------------------------------------------------------------------------
 // Mocks: must be set up before importing the module under test
@@ -44,7 +45,7 @@ mock.module("../../logger", () => ({
 
 // Resolves to the specifier as the ollama tag, so test expectations can use
 // specifier and tag interchangeably.
-const mockResolveEntry = mock<(specifier: string, engine: string) => Promise<{ engineSpecifier: string } | undefined>>(
+const mockResolveEntry = mock<(specifier: string, engine: string) => Promise<Pick<InstallationEntry, "engineSpecifier"> | undefined>>(
   (specifier) => Promise.resolve({ engineSpecifier: specifier }),
 );
 

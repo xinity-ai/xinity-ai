@@ -1,6 +1,7 @@
 import { describe, test, expect, mock, beforeEach, spyOn } from "bun:test";
 import { firstValueFrom } from "rxjs";
 import type { VllmOps } from "./vllm-ops";
+import type { InstallationEntry } from "./catalog";
 
 // ---------------------------------------------------------------------------
 // Mocks: must be set up before importing the module under test
@@ -58,13 +59,7 @@ mock.module("../../logger", () => ({
   },
 }));
 
-type MockEntry = {
-  engineSpecifier: string;
-  type: string | undefined;
-  tags: string[];
-  args: string[];
-  downloadFilter: string[];
-};
+type MockEntry = InstallationEntry;
 
 function catalogEntry(engineSpecifier: string, overrides: Partial<MockEntry> = {}): MockEntry {
   return { engineSpecifier, type: "chat", tags: [], args: [], downloadFilter: [], ...overrides };
