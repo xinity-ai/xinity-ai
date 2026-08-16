@@ -20,8 +20,8 @@ models:
     engine: vllm
     engineSpecifier: microsoft/Phi-3-vision-128k-instruct
     sizing:
-      weight: 8
-      minKvCache: 2
+      weightMib: 8192
+      minKvCacheMib: 2048
       maxContextLength: 128000
     type: chat
     family: phi3
@@ -43,10 +43,10 @@ models:
     engine: ollama
     engineSpecifier: qwen3-coder-next:q8_0
     sizing:
-      weight: 14
-      activeWeight: 3
+      weightMib: 14336
+      activeWeightMib: 3072
       weightBits: 8
-      minKvCache: 4
+      minKvCacheMib: 3200
       kvBytesPerToken: 24576
       maxContextLength: 131072
     type: chat
@@ -73,16 +73,16 @@ models:
     engine: vllm
     engineSpecifier: Qwen/Qwen3-Coder-Next
     sizing:
-      weight: 28
-      activeWeight: 6
+      weightMib: 28672
+      activeWeightMib: 6144
       weightBits: 16
-      minKvCache: 6
+      minKvCacheMib: 6400
       kvBytesPerToken: 49152
       maxContextLength: 131072
     type: chat
     family: qwen3
     tags: [tools]
-    args: ["--tool-call-parser", "hermes"]
+    engineArgs: ["--tool-call-parser", "hermes"]
     minEngineVersion: "0.19.1"
 
   # Kept deployable but out of the picker. Anything already running it is unaffected,
@@ -101,8 +101,8 @@ models:
     engine: vllm
     engineSpecifier: Qwen/Qwen2-Coder
     sizing:
-      weight: 14
-      minKvCache: 4
+      weightMib: 14336
+      minKvCacheMib: 4096
       maxContextLength: 32768
     type: chat
     family: qwen2
@@ -134,8 +134,8 @@ models:
     engine: vllm
     engineSpecifier: atlas-ai/Atlas-Vision-12B
     sizing:
-      weight: 24
-      minKvCache: 6
+      weightMib: 24576
+      minKvCacheMib: 6144
       maxContextLength: 131072
     type: chat
     family: atlas
@@ -158,8 +158,8 @@ models:
     engine: vllm
     engineSpecifier: helix-research/Helix-R1-7B
     sizing:
-      weight: 14
-      minKvCache: 4
+      weightMib: 14336
+      minKvCacheMib: 4096
       maxContextLength: 65536
     type: chat
     family: helix

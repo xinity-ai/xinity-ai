@@ -38,7 +38,7 @@ export function createCatalogClient(config: CatalogClientConfig) {
 
   /**
    * Drops entries this instance cannot use, so one bad or too-new entry does not
-   * sink the snapshot. Fail-open on a missing `entryVersion`.
+   * sink the snapshot. Fail-open on a missing `minXinityVersion`.
    */
   function index(raw: unknown): Map<string, ModelWithSpecifier> {
     const next = new Map<string, ModelWithSpecifier>();
@@ -50,8 +50,8 @@ export function createCatalogClient(config: CatalogClientConfig) {
     let tooNew = 0;
     let unsupported = 0;
     for (const [specifier, entry] of Object.entries(source)) {
-      const entryVersion = (entry as { entryVersion?: unknown } | null)?.entryVersion;
-      if (typeof entryVersion === "string" && !satisfiesMinVersion(version, entryVersion)) {
+      const minXinityVersion = (entry as { minXinityVersion?: unknown } | null)?.minXinityVersion;
+      if (typeof minXinityVersion === "string" && !satisfiesMinVersion(version, minXinityVersion)) {
         tooNew++;
         continue;
       }

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { slide } from "svelte/transition";
   import type { ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
+  import { mibToGb } from "xinity-infoserver";
   import ModelSelectorModal from "./ModelSelectorModal.svelte";
   import DeploymentModelTile from "./DeploymentModelTile.svelte";
   import DeploymentCapacitySummary from "./DeploymentCapacitySummary.svelte";
@@ -92,15 +93,15 @@
   let showExpertSettings = $state(false);
 
   // --- Derived ---
-  const minKvCache = $derived(selectedPrimaryModel?.sizing.minKvCache ?? 0);
-  const minCanaryKvCache = $derived(selectedCanaryModel?.sizing.minKvCache ?? 0);
+  const minKvCache = $derived(selectedPrimaryModel ? mibToGb(selectedPrimaryModel.sizing.minKvCacheMib) : 0);
+  const minCanaryKvCache = $derived(selectedCanaryModel ? mibToGb(selectedCanaryModel.sizing.minKvCacheMib) : 0);
 
   const selectorCapacity = $derived.by(() => {
     if (selectorMode === "canary" && selectedPrimaryModel) {
-      return maxNodeFreeCapacity - (selectedPrimaryModel.sizing.weight + selectedPrimaryModel.sizing.minKvCache);
+      return maxNodeFreeCapacity - (mibToGb(selectedPrimaryModel.sizing.weightMib) + mibToGb(selectedPrimaryModel.sizing.minKvCacheMib));
     }
     if (selectorMode === "primary" && isCanaryEnabled && selectedCanaryModel) {
-      return maxNodeFreeCapacity - (selectedCanaryModel.sizing.weight + selectedCanaryModel.sizing.minKvCache);
+      return maxNodeFreeCapacity - (mibToGb(selectedCanaryModel.sizing.weightMib) + mibToGb(selectedCanaryModel.sizing.minKvCacheMib));
     }
     return maxNodeFreeCapacity;
   });

@@ -8,6 +8,7 @@
  */
 import {
   checkNodeCompatibility,
+  mibToGb,
   requiredFeaturesForEngine,
   type GpuInfo,
   type Model,
@@ -81,17 +82,17 @@ export function resolveVllmModel(
   const { vllmProviderName, model } = findVllmModel(parsed, name);
 
   const tags = model.tags ?? [];
-  const kvCacheGb = Math.max(options.kvCacheGbOverride ?? 0, model.sizing.minKvCache);
+  const kvCacheGb = Math.max(options.kvCacheGbOverride ?? 0, mibToGb(model.sizing.minKvCacheMib));
 
   return {
     vllmProviderName,
     model,
     trustRemoteCode: tags.includes("custom_code"),
     hasToolsTag: tags.includes("tools"),
-    args: model.args ?? [],
+    args: model.engineArgs ?? [],
     modelType: model.type,
     kvCacheGb,
-    estCapacity: model.sizing.weight + kvCacheGb,
+    estCapacity: mibToGb(model.sizing.weightMib) + kvCacheGb,
     minVersion: model.minEngineVersion,
     requiredPlatforms: model.platforms ?? [],
     requiredFeatures: requiredFeaturesForEngine("vllm", model.type),

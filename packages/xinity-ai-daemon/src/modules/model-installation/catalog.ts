@@ -59,7 +59,7 @@ export async function resolveInstallationEntry(
       engineSpecifier: model.engineSpecifier,
       type: model.type,
       tags: model.tags,
-      args: model.args ?? [],
+      args: model.engineArgs ?? [],
       downloadFilter: model.downloadFilter ?? [],
     };
   }

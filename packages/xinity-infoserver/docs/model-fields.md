@@ -27,7 +27,7 @@ These fields control what the model can do at runtime. Getting them wrong causes
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `type` | `"chat"` \| `"embedding"` \| `"rerank"` \| `"transcription"` | `"chat"` | Determines which API endpoints accept the model. A rerank request to a chat model is rejected as incompatible |
-| `tags` | string[] | `[]` | Enables specific capabilities: `"tools"` (tool/function calling), `"vision"` (image inputs). Requests using a capability the model lacks are rejected. `"tools"` also requires `args: ["--tool-call-parser", "<name>"]` (the daemon adds `--enable-auto-tool-choice` from the tag, but vLLM needs the model-specific parser too). Research and **validate** each capability against a running server before declaring it - see "Validate declared capabilities" in [integrating-a-model.md](./integrating-a-model.md). `"custom_code"` marks models that ship custom loading code requiring vLLM's `--trust-remote-code` flag, and triggers an explicit approval step in the dashboard. Only add if the model fails to load without it |
+| `tags` | string[] | `[]` | Enables specific capabilities: `"tools"` (tool/function calling), `"vision"` (image inputs). Requests using a capability the model lacks are rejected. `"tools"` also requires `engineArgs: ["--tool-call-parser", "<name>"]` (the daemon adds `--enable-auto-tool-choice` from the tag, but vLLM needs the model-specific parser too). Research and **validate** each capability against a running server before declaring it - see "Validate declared capabilities" in [integrating-a-model.md](./integrating-a-model.md). `"custom_code"` marks models that ship custom loading code requiring vLLM's `--trust-remote-code` flag, and triggers an explicit approval step in the dashboard. Only add if the model fails to load without it |
 
 ## Licenses
 
@@ -70,8 +70,8 @@ Dates are written `YYYY-MM-DD`.
 | `isCustom` | boolean | `false` | Marks fine-tuned/custom models |
 | `unlisted` | boolean | `false` | Hides the entry from the model picker without retiring it. Existing deployments keep resolving, and a user can unhide it or name its specifier exactly. Use it for models that are outdated or that you would not recommend, rather than deleting the entry |
 | `unlistedReason` | string | - | Shown when the entry is unhidden. Optional: leave it out when the model is simply old, and set it when the reason changes what a user should do, e.g. a relicensed model whose terms are no longer offered |
-| `entryVersion` | string | - | Minimum xinity-ai version this entry requires. Older clients skip entries they are too old for. Set it only for an entry that genuinely needs a newer client: an entry naming a version nobody is running yet is invisible |
-| `args` | string[] | - | Extra CLI arguments appended to the engine's server command. Arrays are deeply flattened to support YAML anchors. Some args are blocked, see below |
+| `minXinityVersion` | string | - | Minimum xinity-ai version this entry requires. Older clients skip entries they are too old for. Set it only for an entry that genuinely needs a newer client: an entry naming a version nobody is running yet is invisible |
+| `engineArgs` | string[] | - | Extra CLI arguments appended to the engine's server command. Arrays are deeply flattened to support YAML anchors. Some are blocked, see below |
 | `requestParams` | Record\<string, `"boolean"` \| `"number"` \| `"string"`\> | - | Allowlist of request-level parameters the gateway may forward to the backend. Dot-notation paths (e.g. `top_p`, `repetition_penalty`). Params not listed are dropped |
 | `downloadFilter` | string[] | - | Gitignore-style glob patterns appended to the daemon's default HuggingFace download filter. Patterns starting with `!` re-include, and the last matching rule wins. Arrays are deeply flattened to support YAML anchors. Example: `["*.gguf", "!consolidated.safetensors"]` |
 
@@ -79,14 +79,16 @@ Dates are written `YYYY-MM-DD`.
 
 Everything the variant costs to run. Grouped because these figures are read together and set together, and because every one of them is specific to this engine and this quantization.
 
+Memory figures are **MiB** (2²⁰ bytes), which is what `nvidia-smi` and the engines already report, so nothing has to be converted between measuring a value and writing it down. They are not restricted to whole MiB: an authored figure carries margin for loader overhead and engine-version variance, and rounding it would make an estimate look like a measurement.
+
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `weight` | number | required | VRAM consumed by this variant's weights, in GB |
-| `minKvCache` | number | required | Minimum KV-cache allocation in GB (decimal, 10⁹ - use a decimal, not a rounded integer). It is the floor below which vLLM refuses to start (KV for one request at full context). vLLM reports that floor in GiB, so the field value is `floor_GiB × 1.074`. Confirm it empirically - see "Confirm the KV-cache floor" in [integrating-a-model.md](./integrating-a-model.md) |
+| `weightMib` | number | required | VRAM consumed by this variant's weights |
+| `minKvCacheMib` | number | required | The floor below which vLLM refuses to start, i.e. the KV cache one request at full context needs. Confirm it empirically - see "Confirm the KV-cache floor" in [integrating-a-model.md](./integrating-a-model.md) - and write what vLLM reports, which is already MiB |
 | `maxContextLength` | number | required | Maximum supported context window, in tokens. Used by the gateway to enforce per-model context limits (e.g. in the Responses API) and reported via `GET /v1/models` |
-| `activeWeight` | number | - | Weights read per token, in GB, for a mixture-of-experts variant. Absent means dense. Throughput scales with this rather than with `weight`, so a sparse model left without it reads as far slower than it is. Capacity is unaffected: the full `weight` still has to fit in VRAM |
+| `activeWeightMib` | number | - | Weights read per token by a mixture-of-experts variant. Absent means dense. Throughput scales with this rather than with `weightMib`, so a sparse model left without it reads as far slower than it is. Capacity is unaffected: the full `weightMib` still has to fit in VRAM |
 | `weightBits` | number | - | **Nominal** bits per stored parameter: 16 for fp16/bf16, 8 for fp8 or `q8_0`, 4 for AWQ/GPTQ. Write the headline width of the method, not a computed average, and see [Weight precision](#weight-precision) for why the two are never the same |
-| `kvBytesPerToken` | number | - | KV cache one token of context consumes, in bytes: `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes`. This is the factor `minKvCache` is built from, kept instead of discarded, because how many requests a deployment serves at once follows from it. Loading an authored file warns when the two disagree by more than a factor of two |
+| `kvBytesPerToken` | number | - | KV cache one token of context consumes, in bytes: `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes`. This is the factor `minKvCacheMib` is built from, kept instead of discarded, because how many requests a deployment serves at once follows from it. Loading an authored file warns when the two disagree by more than a factor of two. Whole bytes, since this one genuinely is exact |
 | `attentionWindow` | number | - | Sliding-window attention span in tokens, for models that have one. KV per request stops growing past this point, so without it a windowed model looks far more expensive at long context than it is |
 
 ## Weight precision
@@ -106,7 +108,7 @@ Unset means unconstrained: any engine version, any platform.
 
 ### Blocked vLLM arguments
 
-These arguments are system-managed and silently stripped from `args`:
+These arguments are system-managed and silently stripped from `engineArgs`:
 
 `--trust-remote-code`, `--enable-auto-tool-choice`, `--runner`, `--task`, `--host`, `--port`, `--served-model-name`, `--kv-cache-memory-bytes`, `--gpu-memory-utilization`, `--api-key`
 

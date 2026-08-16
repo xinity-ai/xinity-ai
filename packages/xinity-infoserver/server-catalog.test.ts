@@ -97,7 +97,7 @@ const v2Model = {
   registeredAt: "2026-02-01",
   engine: "vllm",
   engineSpecifier: "org/llama-vllm",
-  sizing: { weight: 10, minKvCache: 2, maxContextLength: 131072 },
+  sizing: { weightMib: 10240, minKvCacheMib: 2048, maxContextLength: 131072 },
 };
 
 // ---------------------------------------------------------------------------
@@ -623,12 +623,12 @@ describe("server-catalog", () => {
 
     it("strips system-managed vllm args instead of running with them", async () => {
       const { dirPath } = await writeYamlInOwnDir(makeModelYaml({
-        "llama-vllm": { ...v2Model, args: ["--trust-remote-code", "--max-model-len", "4096"] },
+        "llama-vllm": { ...v2Model, engineArgs: ["--trust-remote-code", "--max-model-len", "4096"] },
       }), fileIndex++);
       configure(10, dirPath, undefined);
       await refresh();
 
-      expect(modelCatalog.get("llama-vllm")?.args).toEqual(["--max-model-len", "4096"]);
+      expect(modelCatalog.get("llama-vllm")?.engineArgs).toEqual(["--max-model-len", "4096"]);
     });
   });
 
