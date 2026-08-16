@@ -1,4 +1,5 @@
 import { $ } from "bun";
+import { classifyGpu } from "xinity-infoserver";
 import { env } from "../env";
 import { rootLogger } from "../logger";
 import { getHardwareProfile } from "./statekeeper";
@@ -38,36 +39,17 @@ export type MetricsSnapshot = {
 
 // ─── Power estimation ────────────────────────────────────────────────────────
 //
-// When power draw isn't measurable we estimate from utilization and a rough TDP,
-// matched by substring against the GPU name. Energy is labeled an approximation,
-// so coarse figures are acceptable; the default covers unknown GPUs.
-
-const GPU_TDP_WATTS: [pattern: string, watts: number][] = [
-  ["gb10", 100], // DGX Spark / Ascent GX10 class, ~140 W whole-system TDP
-  ["h200", 700],
-  ["h100", 500], // between PCIe (350 W) and SXM (700 W) variants
-  ["a100", 400],
-  ["rtx pro 6000", 600],
-  ["rtx 6000", 300],
-  ["l40", 300],
-  ["rtx 5090", 575],
-  ["rtx 4090", 450],
-];
-
-const DEFAULT_TDP_WATTS = 250;
+// When power draw isn't measurable we estimate from utilization and the board TDP
+// in the shared GPU table. Energy is labeled an approximation, so coarse figures
+// are acceptable, and an unlisted card falls back to that table's default.
 
 /** Fraction of TDP a GPU draws when idle. */
 const IDLE_POWER_FRACTION = 0.1;
 
-export function estimateTdpWatts(gpuName: string): number {
-  const name = gpuName.toLowerCase();
-  return GPU_TDP_WATTS.find(([pattern]) => name.includes(pattern))?.[1] ?? DEFAULT_TDP_WATTS;
-}
-
 export function estimatePowerWatts(gpuName: string, utilizationPct: number): number {
-  const tdp = estimateTdpWatts(gpuName);
+  const { tdpWatts } = classifyGpu(gpuName);
   const load = Math.min(Math.max(utilizationPct, 0), 100) / 100;
-  return tdp * (IDLE_POWER_FRACTION + (1 - IDLE_POWER_FRACTION) * load);
+  return tdpWatts * (IDLE_POWER_FRACTION + (1 - IDLE_POWER_FRACTION) * load);
 }
 
 // ─── nvidia-smi sampling ─────────────────────────────────────────────────────

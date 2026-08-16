@@ -1,4 +1,5 @@
 import { describe, test, expect, mock } from "bun:test";
+import { classifyGpu } from "xinity-infoserver";
 
 // Mock env to avoid parseEnv side-effect (requires DB_CONNECTION_URL etc. in CI)
 mock.module("../env", () => ({ env: {
@@ -28,7 +29,6 @@ mock.module("../env", () => ({ env: {
 const {
   parseNvidiaMetricsOutput,
   parseThrottleOutput,
-  estimateTdpWatts,
   estimatePowerWatts,
   GpuMetricsStore,
 } = await import("./metrics-sampler");
@@ -106,14 +106,14 @@ describe("parseThrottleOutput", () => {
 
 describe("power estimation", () => {
   test("matches known GPUs by substring", () => {
-    expect(estimateTdpWatts("NVIDIA H100 80GB HBM3")).toBe(500);
-    expect(estimateTdpWatts("NVIDIA GB10")).toBe(100);
-    expect(estimateTdpWatts("NVIDIA RTX PRO 6000 Blackwell Workstation Edition")).toBe(600);
-    expect(estimateTdpWatts("NVIDIA RTX 6000 Ada Generation")).toBe(300);
+    expect(classifyGpu("NVIDIA H100 80GB HBM3").tdpWatts).toBe(500);
+    expect(classifyGpu("NVIDIA GB10").tdpWatts).toBe(100);
+    expect(classifyGpu("NVIDIA RTX PRO 6000 Blackwell Workstation Edition").tdpWatts).toBe(600);
+    expect(classifyGpu("NVIDIA RTX 6000 Ada Generation").tdpWatts).toBe(300);
   });
 
   test("falls back to default TDP for unknown GPUs", () => {
-    expect(estimateTdpWatts("Some Future GPU")).toBe(250);
+    expect(classifyGpu("Some Future GPU").tdpWatts).toBe(250);
   });
 
   test("scales between idle and TDP with utilization", () => {
