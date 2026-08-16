@@ -7,6 +7,7 @@ declare global {
 			request: Request;
 			traceId: string;
 			clientAddress: string;
+			auditChannel: import("$lib/server/orpc/audit").AuditChannel;
 		}
 		// interface PageData {}
 		// interface PageState {}
