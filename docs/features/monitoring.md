@@ -78,7 +78,7 @@ This endpoint is protected by the same `METRICS_AUTH` Basic auth as `/metrics`. 
 
 ## Grafana Dashboards
 
-Four pre-built dashboards are included. Three live in `deployment/monitoring/dashboards/` and are always provisioned. The fourth, Xinity Logs, lives in a separate `deployment/monitoring/dashboards-loki/` directory and requires Loki. Docker Compose's `monitoring` profile does not run Loki/Alloy, so it only provisions the first three. The NixOS `xinity-ai-monitoring` module provisions all four when `logs.enable = true`.
+Three pre-built dashboards live in `deployment/monitoring/dashboards/` and are always provisioned. A fourth, Xinity Logs, lives in `deployment/monitoring/dashboards-loki/` and needs Loki: the NixOS `xinity-ai-monitoring` module adds it when `logs.enable = true`, and Docker Compose's `monitoring` profile never does, since it runs no Loki or Alloy.
 
 ### Xinity Overview
 
@@ -92,9 +92,11 @@ Traffic panels: request rate and latency by endpoint, requests by status, error 
 
 GPU utilization, memory usage, temperature, power draw vs. limit (all as time series). GPU throttling as a state timeline.
 
-### Xinity Logs (requires Loki, NixOS only)
+### Xinity Logs (requires Loki)
 
 Systemd journal logs for gateway, dashboard, infoserver, and daemon. Requires Loki and Grafana Alloy, provisioned only by the NixOS monitoring module (`logs.enable = true`); not available via the Docker Compose `monitoring` profile.
+
+An Audit trail row adds a breakdown of audit events by action and the audit event stream. Those panels come from the dashboard's audit forwarder rather than the journal, so they stay empty unless `AUDIT_LOKI_URL` is set and the license carries the `audit-log` feature. The all-in-one module points the forwarder at the bundled Loki automatically when `monitoring.logs.enable = true`.
 
 All dashboards are tagged `xinity-ai` and cross-linked via a shared navigation dropdown.
 

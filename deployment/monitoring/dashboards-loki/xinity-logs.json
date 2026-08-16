@@ -13,7 +13,7 @@
   "timezone": "browser",
   "title": "Xinity Logs",
   "uid": "xinity-logs",
-  "version": 1,
+  "version": 2,
   "panels": [
     { "type": "row", "id": 1, "title": "Logs (systemd journal)", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 } },
     {
@@ -43,6 +43,22 @@
       "gridPos": { "h": 11, "w": 12, "x": 12, "y": 12 },
       "options": { "showTime": true, "showLabels": false, "showCommonLabels": false, "wrapLogMessage": true, "prettifyLogMessage": false, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending" },
       "targets": [ { "refId": "A", "editorMode": "code", "queryType": "range", "range": true, "expr": "{job=\"systemd-journal\", unit=\"xinity-ai-daemon.service\"} | json | label_format level=`{{if eq .level \"50\"}}error{{else if eq .level \"40\"}}warn{{else if eq .level \"30\"}}info{{else if eq .level \"20\"}}debug{{else if eq .level \"10\"}}trace{{else if eq .level \"60\"}}fatal{{else}}{{.level}}{{end}}` | line_format `{{if .name}}({{.name}}) {{end}}{{if .msg}}{{.msg}}{{else}}{{__line__}}{{end}}`" } ]
+    },
+    { "type": "row", "id": 6, "title": "Audit trail", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 } },
+    {
+      "type": "timeseries", "id": 7, "title": "Audit events by action",
+      "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+      "gridPos": { "h": 11, "w": 12, "x": 0, "y": 24 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 60, "lineWidth": 0, "stacking": { "mode": "normal", "group": "A" } } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["sum"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [ { "refId": "A", "editorMode": "code", "queryType": "range", "range": true, "expr": "sum by (action) (count_over_time({job=\"xinity-audit\"}[$__auto]))", "legendFormat": "{{action}}" } ]
+    },
+    {
+      "type": "logs", "id": 8, "title": "Audit events",
+      "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+      "gridPos": { "h": 11, "w": 12, "x": 12, "y": 24 },
+      "options": { "showTime": true, "showLabels": false, "showCommonLabels": false, "wrapLogMessage": true, "prettifyLogMessage": false, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending" },
+      "targets": [ { "refId": "A", "editorMode": "code", "queryType": "range", "range": true, "expr": "{job=\"xinity-audit\"} | json | line_format `{{.actorLabel}} {{.action}} {{.resource}}{{if .resourceId}} {{.resourceId}}{{end}} [{{.result}}]{{if .ipAddress}} from {{.ipAddress}}{{end}}`" } ]
     }
   ]
 }
