@@ -226,6 +226,18 @@
           description = "URL of a Prometheus instance the dashboard queries server-side for live GPU metrics (e.g. http://127.0.0.1:9090). When set, the Compute page shows utilization rings and energy readouts. Leave null to keep the Compute page in its no-metrics mode.";
         };
 
+        auditLokiUrl = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Base URL of a Loki instance audit events are mirrored to for SIEM ingestion (e.g. http://127.0.0.1:6122). Requires a license with the audit-log feature. Leave null to keep audit events in the database only.";
+        };
+
+        auditLokiTenant = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Tenant id sent as X-Scope-OrgID to auditLokiUrl. Only needed for multi-tenant Loki or Grafana Cloud.";
+        };
+
         licenseKey = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
@@ -392,6 +404,12 @@
           }
           // lib.optionalAttrs (cfg.prometheusUrl != null) {
             PROMETHEUS_URL = cfg.prometheusUrl;
+          }
+          // lib.optionalAttrs (cfg.auditLokiUrl != null) {
+            AUDIT_LOKI_URL = cfg.auditLokiUrl;
+          }
+          // lib.optionalAttrs (cfg.auditLokiTenant != null) {
+            AUDIT_LOKI_TENANT = cfg.auditLokiTenant;
           }
           // lib.optionalAttrs (cfg.licenseKey != null) {
             LICENSE_KEY = cfg.licenseKey;

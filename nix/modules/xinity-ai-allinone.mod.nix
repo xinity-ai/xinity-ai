@@ -407,7 +407,7 @@
             enable = lib.mkOption {
               type = lib.types.bool;
               default = true;
-              description = "Collect the machine's systemd journal into a local Loki store and expose it as a Grafana datasource. On by default; set to false to skip log collection.";
+              description = "Collect the machine's systemd journal into a local Loki store and expose it as a Grafana datasource. Also points the dashboard's audit forwarder at that Loki instance. On by default; set to false to skip log collection.";
             };
           };
         };
@@ -556,6 +556,11 @@
             prometheusUrl = lib.mkDefault (
               if cfg.monitoring.enable
               then "http://127.0.0.1:${toString cfg.monitoring.port}"
+              else null
+            );
+            auditLokiUrl = lib.mkDefault (
+              if cfg.monitoring.enable && cfg.monitoring.logs.enable
+              then "http://127.0.0.1:${toString config.services.xinity-ai-monitoring.logs.port}"
               else null
             );
             s3Endpoint = lib.mkDefault (
