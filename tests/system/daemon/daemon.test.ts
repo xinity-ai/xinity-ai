@@ -64,6 +64,9 @@ describe("xinity-ai-daemon", () => {
 
     const nodeId = await waitForNodeIdFile(stateDir, 10_000);
     createdNodeIds.push(nodeId);
+
+    // The daemon writes node_id before it commits the registration, so the row lands after the file does.
+    await waitForNodeAvailability(nodeId, true, 10_000);
     const [node] = await db.select().from(aiNodeT).where(sql`${aiNodeT.id} = ${nodeId}`).limit(1);
     expect(node).toBeTruthy();
   });
