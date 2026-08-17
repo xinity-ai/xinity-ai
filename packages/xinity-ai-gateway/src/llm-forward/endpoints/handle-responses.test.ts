@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeAll, afterAll, afterEach } from "bun:test";
-import { makeChatSseResponse, makeChatJsonResponse, makeChatJsonResponseWithToolCalls, makeChatSseResponseWithToolCalls, mockBackendFetch, setupResponseTestMocks, waitForResponseStatus, requestWithParams } from "./test-helpers";
+import { makeChatSseResponse, makeChatJsonResponse, makeChatJsonResponseWithToolCalls, makeChatSseResponseWithToolCalls, makeChatJsonResponseWithReasoning, makeChatSseResponseWithReasoning, MOCK_REASONING_TOKENS, mockBackendFetch, setupResponseTestMocks, waitForResponseStatus, requestWithParams } from "./test-helpers";
 
 const mocks = setupResponseTestMocks();
 const { checkAuth, getModelInfo, responseStore, saveResponse, logChatSync } = mocks;
@@ -9,6 +9,7 @@ mockBackendFetch();
 const { handleCreateResponseRequest, handleGetOrDeleteResponseRequest } = await import("./handle-responses");
 
 let server: any;
+let lastUpstreamBody: Record<string, unknown> | undefined;
 
 beforeAll(() => {
   server = Bun.serve({
@@ -18,9 +19,16 @@ beforeAll(() => {
       if (url.pathname === "/v1/chat/completions") {
         const body = (await req.json()) as {
           stream?: boolean;
+          reasoning_effort?: string;
           response_format?: { type?: string };
           tools?: Array<{ type: string; function?: { name: string } }>;
         };
+        lastUpstreamBody = body as Record<string, unknown>;
+
+        if (body.reasoning_effort) {
+          if (body.stream) return makeChatSseResponseWithReasoning("test-model", ["Hello"], ["Let me ", "think."]);
+          return makeChatJsonResponseWithReasoning("test-model", "Hello", "Let me think.");
+        }
 
         const userFunctionTool = body.tools?.find((t) =>
           t.type === "function" && t.function?.name !== "web_search" && t.function?.name !== "web_fetch"
@@ -45,6 +53,7 @@ beforeAll(() => {
 
 afterEach(() => {
   mocks.clearAll();
+  lastUpstreamBody = undefined;
 });
 
 afterAll(() => {
@@ -585,5 +594,144 @@ describe("handleResponses", () => {
     const body2 = (await res2.json()) as any;
     expect(body2.status).toBe("completed");
     expect(body2.previous_response_id).toBe(responseId);
+  });
+
+  test("should forward reasoning.effort upstream as reasoning_effort", async () => {
+    const req = new Request("http://localhost:4000/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        input: "Hi",
+        reasoning: { effort: "high" },
+      }),
+    });
+
+    const res = await handleCreateResponseRequest(req);
+    expect(res.status).toBe(200);
+    expect(lastUpstreamBody?.reasoning_effort).toBe("high");
+  });
+
+  test("should forward an effort value outside OpenAI's enum verbatim", async () => {
+    const req = new Request("http://localhost:4000/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        input: "Hi",
+        reasoning: { effort: "minimal" },
+      }),
+    });
+
+    const res = await handleCreateResponseRequest(req);
+    expect(res.status).toBe(200);
+    expect(lastUpstreamBody?.reasoning_effort).toBe("minimal");
+  });
+
+  test("should omit reasoning_effort upstream when the client sends no effort", async () => {
+    const req = new Request("http://localhost:4000/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({ model: "test-model", input: "Hi" }),
+    });
+
+    await handleCreateResponseRequest(req);
+    expect(lastUpstreamBody).toBeDefined();
+    expect(lastUpstreamBody).not.toHaveProperty("reasoning_effort");
+  });
+
+  test("should omit reasoning_effort upstream when the client sends no reasoning block at all", async () => {
+    const req = new Request("http://localhost:4000/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({ model: "test-model", input: "Hi", reasoning: {} }),
+    });
+
+    await handleCreateResponseRequest(req);
+    expect(lastUpstreamBody).toBeDefined();
+    expect(lastUpstreamBody).not.toHaveProperty("reasoning_effort");
+  });
+
+  test("should not forward an explicit null effort to the backend", async () => {
+    const req = new Request("http://localhost:4000/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        input: "Hi",
+        reasoning: { effort: null },
+      }),
+    });
+
+    const res = await handleCreateResponseRequest(req);
+    expect(res.status).toBe(200);
+    expect(lastUpstreamBody).toBeDefined();
+    expect(lastUpstreamBody).not.toHaveProperty("reasoning_effort");
+  });
+
+  test("should return a reasoning output item ahead of the message and real reasoning_tokens", async () => {
+    const req = new Request("http://localhost:4000/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        input: "Hi",
+        reasoning: { effort: "high" },
+      }),
+    });
+
+    const res = await handleCreateResponseRequest(req);
+    const body = (await res.json()) as any;
+
+    expect(body.output?.[0]?.type).toBe("reasoning");
+    expect(body.output?.[0]?.summary?.[0]).toEqual({ type: "summary_text", text: "Let me think." });
+    expect(body.output?.[1]?.type).toBe("message");
+    expect(body.output?.[1]?.content?.[0]?.text).toBe("Hello");
+    expect(body.usage?.output_tokens_details?.reasoning_tokens).toBe(MOCK_REASONING_TOKENS);
+    expect(body.reasoning).toEqual({ effort: "high", summary: null });
+  });
+
+  test("should emit the reasoning event sequence when streaming", async () => {
+    const req = new Request("http://localhost:4000/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        input: "Hi",
+        stream: true,
+        reasoning: { effort: "high" },
+      }),
+    });
+
+    const res = await handleCreateResponseRequest(req);
+    expect(res.status).toBe(200);
+    const text = await res.text();
+
+    expect(text).toContain("response.reasoning_summary_part.added");
+    expect(text).toContain("response.reasoning_summary_text.delta");
+    expect(text).toContain("response.reasoning_summary_text.done");
+    expect(text).toContain("response.reasoning_summary_part.done");
+
+    const events = text.split("\n\n").filter(Boolean).map((block) => {
+      const dataLine = block.split("\n").find((l) => l.startsWith("data: "))!;
+      return JSON.parse(dataLine.slice(6));
+    });
+
+    // Reasoning precedes the message, so it takes output_index 0 and pushes the message to 1
+    const reasoningDeltas = events.filter((e) => e.type === "response.reasoning_summary_text.delta");
+    expect(reasoningDeltas.map((e) => e.delta).join("")).toBe("Let me think.");
+    expect(reasoningDeltas.every((e) => e.output_index === 0)).toBe(true);
+
+    const textDeltas = events.filter((e) => e.type === "response.output_text.delta");
+    expect(textDeltas.length).toBeGreaterThan(0);
+    expect(textDeltas.every((e) => e.output_index === 1)).toBe(true);
+
+    const sequenceNumbers = events.map((e) => e.sequence_number);
+    expect(sequenceNumbers).toEqual([...sequenceNumbers].sort((a, b) => a - b));
+
+    const completed = events.find((e) => e.type === "response.completed");
+    expect(completed.response.output[0].type).toBe("reasoning");
+    expect(completed.response.output[0].summary[0].text).toBe("Let me think.");
+    expect(completed.response.usage.output_tokens_details.reasoning_tokens).toBe(MOCK_REASONING_TOKENS);
   });
 });

@@ -327,6 +327,73 @@ describe("handleChatCompletion", () => {
 });
 
 // ---------------------------------------------------------------------------
+// reasoning_effort
+// ---------------------------------------------------------------------------
+
+describe("handleChatCompletion, reasoning_effort", () => {
+  function reasoningRequest(body: Record<string, unknown>): Request {
+    return new Request("http://localhost:4000/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        messages: [{ role: "user", content: "Hi" }],
+        ...body,
+      }),
+    });
+  }
+
+  test("forwards reasoning_effort to the backend", async () => {
+    const res = await handleChatCompletion(reasoningRequest({ reasoning_effort: "high" }));
+    expect(res.status).toBe(200);
+    expect(lastUpstreamBody?.reasoning_effort).toBe("high");
+  });
+
+  test("forwards a value outside OpenAI's enum verbatim, leaving the backend to judge it", async () => {
+    const res = await handleChatCompletion(reasoningRequest({ reasoning_effort: "minimal" }));
+    expect(res.status).toBe(200);
+    expect(lastUpstreamBody?.reasoning_effort).toBe("minimal");
+  });
+
+  test("omits reasoning_effort from the upstream body when the client sends none", async () => {
+    const res = await handleChatCompletion(reasoningRequest({}));
+    expect(res.status).toBe(200);
+    expect(lastUpstreamBody).not.toHaveProperty("reasoning_effort");
+  });
+
+  test("rejects a non-string reasoning_effort", async () => {
+    const res = await handleChatCompletion(reasoningRequest({ reasoning_effort: 3 }));
+    expect(res.status).toBe(400);
+  });
+
+  test("rejects a null reasoning_effort rather than forwarding the null", async () => {
+    const res = await handleChatCompletion(reasoningRequest({ reasoning_effort: null }));
+    expect(res.status).toBe(400);
+    expect(lastUpstreamBody).toBeNull();
+  });
+
+  test("lets a model's requestParams allowlist override the top-level field", async () => {
+    getModelInfo.mockImplementationOnce(async () => ({
+      nodeId: "node-1",
+      host: `localhost:${mockPort}`,
+      specifier: "test-model",
+      model: "test-model",
+      driver: "vllm",
+      authToken: null,
+      tls: false,
+      tags: ["tools"],
+      requestParams: { reasoning_effort: "string" },
+      maxContextLength: 131072,
+      release: () => {},
+    }));
+
+    const res = await handleChatCompletion(reasoningRequest({ reasoning_effort: "low" }));
+    expect(res.status).toBe(200);
+    expect(lastUpstreamBody?.reasoning_effort).toBe("low");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // logprobs
 // ---------------------------------------------------------------------------
 

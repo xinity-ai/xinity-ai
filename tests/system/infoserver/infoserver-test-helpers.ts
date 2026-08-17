@@ -104,7 +104,9 @@ export async function withInfoServer<T>(
     }
   }
 
-  const proc = Bun.spawn(["bun", "run", "server.ts"], {
+  // --env-file suppresses the automatic load of the package's own .env, which a
+  // developer may have populated; without it a removed key comes back from disk.
+  const proc = Bun.spawn(["bun", "run", "--env-file=/dev/null", "server.ts"], {
     cwd: "packages/xinity-infoserver",
     env,
     stdout: "pipe",

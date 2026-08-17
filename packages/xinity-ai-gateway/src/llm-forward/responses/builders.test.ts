@@ -1,5 +1,5 @@
 import { describe, test, expect, mock } from "bun:test";
-import { CreateResponseBodySchema, type CreateResponseBody, type MessageOutputItem } from "./schemas";
+import { CreateResponseBodySchema, type CreateResponseBody, type MessageOutputItem, type ReasoningOutputItem } from "./schemas";
 import type {
   IncludeValue,
   ToolCallItem,
@@ -389,6 +389,31 @@ describe("formatUsage", () => {
     const result = formatUsage({ inputTokens: 100, promptTokens: 50 });
     expect(result!.input_tokens).toBe(100);
   });
+
+  test("reads reasoning tokens from the ai-sdk outputTokenDetails shape", () => {
+    const result = formatUsage({ inputTokens: 10, outputTokens: 20, outputTokenDetails: { reasoningTokens: 8 } });
+    expect(result!.output_tokens_details.reasoning_tokens).toBe(8);
+  });
+
+  test("reads reasoning tokens from the deprecated flat ai-sdk field", () => {
+    const result = formatUsage({ inputTokens: 10, outputTokens: 20, reasoningTokens: 6 });
+    expect(result!.output_tokens_details.reasoning_tokens).toBe(6);
+  });
+
+  test("reads reasoning tokens from the OpenAI snake_case shape", () => {
+    const result = formatUsage({ prompt_tokens: 5, completion_tokens: 15, completion_tokens_details: { reasoning_tokens: 4 } });
+    expect(result!.output_tokens_details.reasoning_tokens).toBe(4);
+  });
+
+  test("prefers outputTokenDetails over the deprecated flat field", () => {
+    const result = formatUsage({ outputTokenDetails: { reasoningTokens: 9 }, reasoningTokens: 2 });
+    expect(result!.output_tokens_details.reasoning_tokens).toBe(9);
+  });
+
+  test("reports zero reasoning tokens when the backend sends none", () => {
+    const result = formatUsage({ inputTokens: 10, outputTokens: 20 });
+    expect(result!.output_tokens_details.reasoning_tokens).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -618,6 +643,36 @@ describe("buildOutputItems", () => {
     expect(items[0]!.type).toBe("web_search_call");
     expect(items[1]!.type).toBe("function_call");
     expect(items[2]!.type).toBe("message");
+  });
+
+  test("puts the reasoning item first when reasoning text is present", () => {
+    const items = buildOutputItems("resp_1", "Hello!", [], [], undefined, "Thinking about it.");
+    expect(items).toHaveLength(2);
+    expect(items[0]!.type).toBe("reasoning");
+    expect(items[1]!.type).toBe("message");
+
+    const reasoning = items[0] as ReasoningOutputItem;
+    expect(reasoning.id).toBe("rs_resp_1");
+    expect(reasoning.status).toBe("completed");
+    expect(reasoning.summary).toEqual([{ type: "summary_text", text: "Thinking about it." }]);
+  });
+
+  test("puts the reasoning item ahead of tool calls too", () => {
+    const toolCalls: ToolCallItem[] = [
+      { id: "call_1", aiToolCallId: "tc_1", type: "function_call", status: "completed", name: "calc", callId: "tc_1", arguments: "{}" },
+    ];
+    const items = buildOutputItems("resp_1", "Answer", toolCalls, [], undefined, "Reasoning.");
+    expect(items.map((i) => i.type)).toEqual(["reasoning", "function_call", "message"]);
+  });
+
+  test("omits the reasoning item when reasoning text is undefined", () => {
+    const items = buildOutputItems("resp_1", "Hello!", [], [], undefined, undefined);
+    expect(items.map((i) => i.type)).toEqual(["message"]);
+  });
+
+  test("omits the reasoning item when reasoning text is empty", () => {
+    const items = buildOutputItems("resp_1", "Hello!", [], [], undefined, "");
+    expect(items.map((i) => i.type)).toEqual(["message"]);
   });
 });
 

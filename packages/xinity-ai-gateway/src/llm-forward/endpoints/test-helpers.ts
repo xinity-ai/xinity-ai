@@ -25,11 +25,18 @@ function sseResponse(body: string): Response {
   return new Response(body, { headers: SSE_HEADERS });
 }
 
+type MockUsage = {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  completion_tokens_details?: { reasoning_tokens: number };
+};
+
 function sseChunk(
   model: string,
   delta: Record<string, unknown>,
   finishReason: string | null = null,
-  usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number },
+  usage?: MockUsage,
 ): string {
   const obj: Record<string, unknown> = {
     id: MOCK_ID,
@@ -68,6 +75,51 @@ export function makeChatJsonResponse(
     choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
     usage,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Reasoning mock responses
+// ---------------------------------------------------------------------------
+
+export const MOCK_REASONING_TOKENS = 7;
+
+const MOCK_REASONING_USAGE: MockUsage = {
+  prompt_tokens: 5,
+  completion_tokens: 12,
+  total_tokens: 17,
+  completion_tokens_details: { reasoning_tokens: MOCK_REASONING_TOKENS },
+};
+
+/** Non-streaming upstream response carrying vLLM-style `reasoning_content`. */
+export function makeChatJsonResponseWithReasoning(
+  model: string,
+  content: string,
+  reasoning: string,
+): Response {
+  return Response.json({
+    ...chatCompletionEnvelope(model),
+    choices: [{
+      index: 0,
+      message: { role: "assistant", content, reasoning_content: reasoning },
+      finish_reason: "stop",
+    }],
+    usage: MOCK_REASONING_USAGE,
+  });
+}
+
+/** Streaming upstream response emitting `reasoning_content` deltas ahead of the content. */
+export function makeChatSseResponseWithReasoning(
+  model: string,
+  contentChunks: string[],
+  reasoningChunks: string[],
+): Response {
+  return sseResponse([
+    sseChunk(model, { role: "assistant", content: "" }),
+    ...reasoningChunks.map((r) => sseChunk(model, { reasoning_content: r })),
+    ...contentChunks.map((c) => sseChunk(model, { content: c })),
+    sseChunk(model, {}, "stop", MOCK_REASONING_USAGE),
+    "data: [DONE]\n\n",
+  ].join(""));
 }
 
 // ---------------------------------------------------------------------------

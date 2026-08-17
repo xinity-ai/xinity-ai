@@ -9,6 +9,7 @@ import type {
   MessageOutputItem,
   WebSearchCallOutputItem,
   FunctionCallOutputItem,
+  ReasoningOutputItem,
   Usage,
 } from "./schemas";
 
@@ -304,6 +305,9 @@ export type UsageInput = {
   completionTokens?: number;
   completion_tokens?: number;
   total_tokens?: number;
+  outputTokenDetails?: { reasoningTokens?: number };
+  reasoningTokens?: number;
+  completion_tokens_details?: { reasoning_tokens?: number };
 };
 
 /** Normalises AI-SDK / OpenAI usage objects into the Responses API shape. */
@@ -312,12 +316,16 @@ export function formatUsage(usage: UsageInput | null | undefined): Usage | null 
   const inputTokens = usage.inputTokens ?? usage.promptTokens ?? usage.prompt_tokens ?? 0;
   const outputTokens = usage.outputTokens ?? usage.completionTokens ?? usage.completion_tokens ?? 0;
   const totalTokens = usage.totalTokens ?? usage.total_tokens ?? inputTokens + outputTokens;
+  const reasoningTokens = usage.outputTokenDetails?.reasoningTokens
+    ?? usage.reasoningTokens
+    ?? usage.completion_tokens_details?.reasoning_tokens
+    ?? 0;
   return {
     input_tokens: inputTokens,
     output_tokens: outputTokens,
     total_tokens: totalTokens,
     input_tokens_details: { cached_tokens: 0 },
-    output_tokens_details: { reasoning_tokens: 0 },
+    output_tokens_details: { reasoning_tokens: reasoningTokens },
   };
 }
 
@@ -441,14 +449,29 @@ function buildFunctionCallItem(toolCall: ToolCallItem): FunctionCallOutputItem {
   };
 }
 
+export function buildReasoningItem(responseId: string, reasoningText: string): ReasoningOutputItem {
+  return {
+    id: `rs_${responseId}`,
+    type: "reasoning",
+    status: "completed",
+    summary: [{ type: "summary_text", text: reasoningText }],
+    content: [],
+  };
+}
+
 export function buildOutputItems(
   responseId: string,
   text: string,
   toolCalls: ToolCallItem[],
   toolResults: ToolResultData[],
   include?: IncludeValue[],
+  reasoningText?: string,
 ): OutputItem[] {
   const output: OutputItem[] = [];
+
+  if (reasoningText) {
+    output.push(buildReasoningItem(responseId, reasoningText));
+  }
 
   for (const toolCall of toolCalls) {
     if (toolCall.type === "web_search_call") {
@@ -555,6 +578,9 @@ export function buildGenerationParams(
     presencePenalty: body.presence_penalty,
     seed: body.seed,
     abortSignal: signal,
+    providerOptions: body.reasoning?.effort
+      ? { openaiCompatible: { reasoningEffort: body.reasoning.effort } }
+      : undefined,
     tools: hasTools ? activeTools : undefined,
     toolChoice: hasTools ? mapToolChoice(body.tool_choice) : undefined,
     stopWhen: hasTools ? (() => false) : undefined,
