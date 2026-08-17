@@ -94,7 +94,7 @@ mock.module("./page-cache", () => ({
   dropPageCache: mock(() => Promise.resolve()),
 }));
 
-const { syncVllmInstallations$, computeGpuUtilization } = await import("./vllm");
+const { syncVllmInstallations$, computeGpuUtilization, buildVllmExtraArgs, concurrencyCap } = await import("./vllm");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -636,5 +636,56 @@ describe("syncVllmInstallations$", () => {
       { gpuCount: 1, detectedCapacityGb: 107, physicalCapacityGb: 120 },
     );
     expect(util).toBeCloseTo((16 * 1.1) / 120, 4);
+  });
+});
+
+describe("concurrencyCap", () => {
+  const gpus = [{ vendor: "nvidia", name: "NVIDIA GeForce RTX 4090", vramMb: 24576 }];
+  const sizing = { weightGb: 14, minKvCacheGb: 4, maxContextLength: 32768, weightBits: 16, kvBytesPerToken: 131072 };
+
+  test("declines for a legacy entry, which states no sizing at all", () => {
+    expect(concurrencyCap(undefined, gpus, 8)).toBeUndefined();
+  });
+
+  test("declines when the entry states no kv cost per token, rather than guessing one", () => {
+    const { kvBytesPerToken, ...withoutPerToken } = sizing;
+    expect(concurrencyCap(withoutPerToken, gpus, 8)).toBeUndefined();
+  });
+
+  test("stays inside what the allocated cache holds, so vllm never rejects the cap", () => {
+    const cap = concurrencyCap(sizing, gpus, 8)!;
+    const cacheHolds = Math.floor((8 * 1e9) / (131072 * 4096));
+
+    expect(cap).toBeLessThanOrEqual(cacheHolds);
+    expect(cap).toBeGreaterThan(0);
+  });
+
+  test("charges a hybrid model for its per-sequence state, lowering the cap", () => {
+    // Few full-attention layers, so KV per token is small and the fixed state dominates.
+    // The cache is tight on purpose: state only shows where the cache floor is what binds.
+    const attentionOnly = { ...sizing, kvBytesPerToken: 24576 };
+    const hybrid = { ...attentionOnly, stateBytesPerSequence: 20_000_000 };
+
+    expect(concurrencyCap(hybrid, gpus, 3)!).toBeLessThan(concurrencyCap(attentionOnly, gpus, 3)!);
+  });
+});
+
+describe("buildVllmExtraArgs", () => {
+  test("caps concurrency when an estimate exists", () => {
+    expect(buildVllmExtraArgs(undefined, false, [], 17)).toEqual(["--max-num-seqs", "17"]);
+  });
+
+  test("leaves vllm's default alone without an estimate", () => {
+    expect(buildVllmExtraArgs(undefined, false, [])).toEqual([]);
+  });
+
+  test("yields to an entry that sets the flag itself, rather than passing it twice", () => {
+    expect(buildVllmExtraArgs(undefined, false, ["--max-num-seqs", "256"], 17))
+      .toEqual(["--max-num-seqs", "256"]);
+  });
+
+  test("keeps the runner and tool flags it already derived", () => {
+    expect(buildVllmExtraArgs("embedding", true, ["--x"], 8))
+      .toEqual(["--runner", "pooling", "--enable-auto-tool-choice", "--max-num-seqs", "8", "--x"]);
   });
 });

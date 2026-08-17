@@ -25,6 +25,7 @@ import {
 import { rootLogger } from "../../logger";
 import { getHardwareProfile } from "../statekeeper";
 import { downloadModel } from "./vllm-download";
+import { estimateConcurrency, type GpuInfo, type ModelSizingFields } from "xinity-infoserver";
 import { dropPageCache } from "./page-cache";
 import { resolveInstallationEntry } from "./catalog";
 import { updateInstallationState } from "./state";
@@ -184,21 +185,50 @@ async function downloadAndStart(installation: ModelInstallation, ops: VllmOps): 
     kvCacheBytes: `${installation.kvCacheCapacity}g`,
     trustRemoteCode: entry.tags.includes("custom_code"),
     gpuMemoryUtilization,
-    extraArgs: buildVllmExtraArgs(modelType, entry.tags.includes("tools"), entry.args),
+    extraArgs: buildVllmExtraArgs(
+      modelType,
+      entry.tags.includes("tools"),
+      entry.args,
+      concurrencyCap(entry.sizing, profile.gpus, installation.kvCacheCapacity),
+    ),
     settings: installation.settings,
   });
 
   return { modelType, providerModel };
 }
 
+/**
+ * vLLM's default max_num_seqs is 1024. A hybrid model reserves per-sequence recurrent
+ * state for every one of those up front and dies at cuda-graph capture long before the
+ * usual max_model_len check runs, so the default alone makes such a model unlaunchable.
+ * The sweet spot also stops a deployment batching past the point where total throughput
+ * has flattened and only per-request latency is still moving.
+ *
+ * Undefined for a legacy entry, or one stating no kvBytesPerToken, leaving vLLM's default
+ * in place rather than guessing a cap from figures the entry does not carry.
+ */
+export function concurrencyCap(
+  sizing: ModelSizingFields | undefined,
+  gpus: GpuInfo[],
+  kvCacheGb: number,
+): number | undefined {
+  if (!sizing) {
+    return undefined;
+  }
+  return estimateConcurrency({ sizing, engine: "vllm" }, { gpus }, { kvCacheGb })?.sweetSpot;
+}
+
 export function buildVllmExtraArgs(
   modelType: string | undefined,
   hasToolsTag: boolean,
   args: readonly string[],
+  maxNumSeqs?: number,
 ): string[] {
+  const capConcurrency = maxNumSeqs !== undefined && !args.includes("--max-num-seqs");
   return [
     ...(modelType === "embedding" || modelType === "rerank" ? ["--runner", "pooling"] : []),
     ...(hasToolsTag ? ["--enable-auto-tool-choice"] : []),
+    ...(capConcurrency ? ["--max-num-seqs", String(maxNumSeqs)] : []),
     ...args,
   ];
 }
