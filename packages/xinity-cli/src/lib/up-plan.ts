@@ -23,7 +23,7 @@ import { resolveVersion, applyComponentAction, type VersionResult } from "./inst
 import { collectEnv, menuEditEnv, readExistingEnvState, diffEnv, type EnvBundle, type EnvChange } from "./env-prompt.ts";
 import { discoverConnectionUrl, describeMigrationStep, migrationScriptComment, runMigrations } from "./migrator.ts";
 import { describePostgresProvision, buildPostgresProvisionCommands, applyPostgresProvision, type PostgresProvision } from "./postgres-setup.ts";
-import { planRedis, applyRedisPlan, describeRedisPlan, type RedisPlan } from "./redis-setup.ts";
+import { planRedis, applyRedisPlan, describeRedisPlan, buildRedisProvisionCommands, type RedisPlan } from "./redis-setup.ts";
 import { readManifest } from "./manifest.ts";
 
 export type ComponentActionKind = "install" | "update" | "reconfigure" | "none";
@@ -423,9 +423,8 @@ export async function renderUpPlanScript(plan: UpPlan): Promise<string> {
     sections.push(...migrationScriptComment(`xinity up db --target-version ${plan.targetVersion}`));
   }
   if (plan.redis) {
-    sections.push("# Redis:");
-    if (plan.redis.provision?.installCmd) sections.push(plan.redis.provision.installCmd);
-    if (plan.redis.provision?.startCmd) sections.push(plan.redis.provision.startCmd);
+    sections.push("# Redis (Docker compose stack):");
+    if (plan.redis.provision) sections.push(...buildRedisProvisionCommands(plan.redis.provision));
     if (plan.redis.persist) sections.push(buildSecretsWriteCommand({ REDIS_URL: plan.redis.url })!);
     sections.push("");
   }

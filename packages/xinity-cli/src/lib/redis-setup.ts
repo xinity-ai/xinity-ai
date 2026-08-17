@@ -1,18 +1,43 @@
 /**
- * Redis/Valkey discovery and setup, split into planning and apply halves.
+ * Redis discovery and setup, split into planning and apply halves.
  *
- * `planRedis` finds or asks for a connection URL and, when the user opts
- * into setup, decides the install/start commands, all without changing the
- * host. `applyRedisPlan` executes the decided commands and persists the URL.
+ * `planRedis` finds or asks for a connection URL and, when the user opts into
+ * setup, plans a Docker Compose stack, all without changing the host.
+ * `applyRedisPlan` writes and starts that stack and persists the URL.
+ *
+ * Native package installs are not supported (the same rule as PostgreSQL):
+ * if Docker is absent the environment is reported as unsupported and the user
+ * is pointed at the "I have a connection URL" path instead.
+ *
+ * The stack is one unauthenticated instance. Its port is published on 127.0.0.1
+ * only, so reaching it already means having the host, and the official image
+ * ships `protected-mode no`, which is what makes that work through a published
+ * port. Anyone needing auth, TLS, or a cluster brings their own URL.
  */
-import { randomBytes } from "crypto";
-import { cancel, confirm, isCancel, log, note, password as passwordPrompt, select, spinner as clackSpinner, text } from "./clack.ts";
+import { cancel, isCancel, log, note, select, spinner as clackSpinner, text } from "./clack.ts";
 import { bold, cyan, dim } from "picocolors";
-import { type Host, commandExistsOn, readSecrets } from "./host.ts";
-import { pass, fail, info, promptOrUndefined, reportElevationOutcome, warn } from "./output.ts";
+import { type Host, readSecrets } from "./host.ts";
+import { pass, fail, info, promptOrUndefined, warn } from "./output.ts";
 import { parseEnvString } from "./env-file.ts";
 import { SECRETS_DIR, ENV_DIR } from "./component-meta.ts";
+import { heredoc } from "./service.ts";
+import {
+  resolveComposeCmd, composeArgs, composeName, stackDir,
+  dockerDaemonReady, tcpPortInUse, type ComposeCmd,
+} from "./docker-stack.ts";
 import type { ConnectionResult } from "./connectivity.ts";
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const STACK_DIR = stackDir("redis");
+const COMPOSE_PATH = `${STACK_DIR}/docker-compose.yml`;
+const CONTAINER_NAME = "xinity-ai-redis";
+const VOLUME_NAME = "xinity-redis-data";
+const DEFAULT_PORT = 6379;
+// Pinned to match the dev compose.yaml and deployment template.
+const REDIS_IMAGE = "redis:7-alpine";
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
 async function testRedisWithSpinner(url: string, host: Host): Promise<ConnectionResult> {
   const { testRedisConnection } = await import("./connectivity.ts");
@@ -26,293 +51,236 @@ async function testRedisWithSpinner(url: string, host: Host): Promise<Connection
   return result;
 }
 
-// ─── Package-manager definitions ────────────────────────────────────────────
-
-type RedisVariant = "redis" | "valkey";
-
-interface PackageManager {
-  name: string;
-  /** The binary on PATH that indicates this PM is available. */
-  bin: string;
-  /** Shell command to install each variant. */
-  install: Record<RedisVariant, string>;
-  /** Shell command to start the service for each variant. */
-  start: Record<RedisVariant, string>;
-  /** True when `sudo` is NOT needed (e.g. macOS Homebrew). */
-  userIsSuper: boolean;
+export function buildRedisUrl(port: number): string {
+  return `redis://localhost:${port}`;
 }
 
-const PACKAGE_MANAGERS: PackageManager[] = [
-  {
-    name: "apt",
-    bin: "apt-get",
-    install: { redis: "apt-get install -y redis-server", valkey: "apt-get install -y valkey" },
-    start: { redis: "systemctl start redis-server", valkey: "systemctl start valkey" },
-    userIsSuper: false,
-  },
-  {
-    name: "dnf",
-    bin: "dnf",
-    install: { redis: "dnf install -y redis", valkey: "dnf install -y valkey" },
-    start: { redis: "systemctl start redis", valkey: "systemctl start valkey" },
-    userIsSuper: false,
-  },
-  {
-    name: "pacman",
-    bin: "pacman",
-    install: { redis: "pacman -S --noconfirm redis", valkey: "pacman -S --noconfirm valkey" },
-    start: { redis: "systemctl start redis", valkey: "systemctl start valkey" },
-    userIsSuper: false,
-  },
-  {
-    name: "zypper",
-    bin: "zypper",
-    install: { redis: "zypper install -y redis", valkey: "zypper install -y valkey" },
-    start: { redis: "systemctl start redis", valkey: "systemctl start valkey" },
-    userIsSuper: false,
-  },
-  {
-    name: "brew",
-    bin: "brew",
-    install: { redis: "brew install redis", valkey: "brew install valkey" },
-    start: { redis: "brew services start redis", valkey: "brew services start valkey" },
-    userIsSuper: true,
-  },
-];
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-async function detectPackageManager(host: Host): Promise<PackageManager | undefined> {
-  for (const pm of PACKAGE_MANAGERS) {
-    if (await commandExistsOn(host, pm.bin)) return pm;
-  }
-  return undefined;
+export function buildComposeFile(port: number): string {
+  return [
+    "# Managed by `xinity up infra-redis`. This stack is yours: the data lives in",
+    "# the named volume below. Edit and `docker compose up -d` to apply, or",
+    "# `docker compose down` to stop (add -v to also delete the data).",
+    "#",
+    "# One unauthenticated instance. The port is published on 127.0.0.1 only, so",
+    "# Redis is reachable at localhost but not exposed to the network.",
+    "services:",
+    "  redis:",
+    `    image: ${REDIS_IMAGE}`,
+    `    container_name: ${CONTAINER_NAME}`,
+    "    restart: unless-stopped",
+    '    command: ["redis-server", "--appendonly", "yes"]',
+    "    ports:",
+    `      - "127.0.0.1:${port}:6379"`,
+    "    volumes:",
+    `      - ${VOLUME_NAME}:/data`,
+    "    healthcheck:",
+    '      test: ["CMD", "redis-cli", "ping"]',
+    "      interval: 10s",
+    "      timeout: 5s",
+    "      retries: 5",
+    "",
+    "volumes:",
+    `  ${VOLUME_NAME}:`,
+    "",
+  ].join("\n");
 }
 
-function generatePassword(length = 24): string {
-  return randomBytes(length).toString("base64url").slice(0, length);
+// ─── Pre-existing state ──────────────────────────────────────────────────────
+
+/** Recover the published host port from an existing compose file, falling back to the default. */
+export function parsePublishedPort(composeContent: string, fallback: number = DEFAULT_PORT): number {
+  const match = composeContent.match(/127\.0\.0\.1:(\d+):6379/);
+  return match ? Number(match[1]) : fallback;
 }
 
-/** Detect which variant (redis or valkey) is installed. */
-async function detectVariant(host: Host): Promise<RedisVariant | null> {
-  if (await commandExistsOn(host, "redis-server")) return "redis";
-  if (await commandExistsOn(host, "redis-cli")) return "redis";
-  if (await commandExistsOn(host, "valkey-server")) return "valkey";
-  if (await commandExistsOn(host, "valkey-cli")) return "valkey";
-  return null;
+export type ExistingRedis = {
+  volumeExists: boolean;
+  containerExists: boolean;
+  composeFile: string | null;
+};
+
+/** Probe the host for an already-provisioned Redis stack. Read-only. */
+export async function inspectExistingRedis(host: Host): Promise<ExistingRedis> {
+  const volume = await host.run(["docker", "volume", "inspect", VOLUME_NAME]);
+  const container = await host.run([
+    "docker", "ps", "-a", "--filter", `name=${CONTAINER_NAME}`, "--format", "{{.Names}}",
+  ]);
+  return {
+    volumeExists: volume.ok,
+    containerExists: container.ok && container.output.trim().length > 0,
+    composeFile: await host.readFile(COMPOSE_PATH),
+  };
 }
 
-/** Check whether a Redis/Valkey server is reachable. */
-async function isRedisRunning(host: Host): Promise<boolean> {
-  // Try redis-cli first, then valkey-cli
-  for (const cli of ["redis-cli", "valkey-cli"]) {
-    if (await commandExistsOn(host, cli)) {
-      const res = await host.run([cli, "ping"]);
-      if (res.ok && res.output.includes("PONG")) return true;
-    }
-  }
-  // Fallback: try common systemd unit names
-  for (const unit of ["redis-server", "redis", "valkey"]) {
-    const res = await host.run(["systemctl", "is-active", unit]);
-    if (res.ok) return true;
+// ─── Health ────────────────────────────────────────────────────────────────
+
+const POLL_INTERVAL_MS = 1000;
+const POLL_ATTEMPTS = 30;
+
+/** Poll redis-cli inside the container (the host has no native redis-cli in the Docker model). */
+async function waitForRedisReady(host: Host, compose: ComposeCmd): Promise<boolean> {
+  const probe = composeArgs(compose, COMPOSE_PATH, "exec", "-T", "redis", "redis-cli", "ping").join(" ");
+  for (let i = 0; i < POLL_ATTEMPTS; i++) {
+    const res = await host.withElevation(probe, "Check Redis readiness");
+    if (res.success && res.output.includes("PONG")) return true;
+    await Bun.sleep(POLL_INTERVAL_MS);
   }
   return false;
 }
 
-const SYSTEMD_START_FALLBACK: Record<RedisVariant, string> = {
-  redis: "systemctl start redis-server",
-  valkey: "systemctl start valkey",
+// ─── File writing ──────────────────────────────────────────────────────────
+
+function buildWriteFileCommand(path: string, content: string): string {
+  return `cat > ${path} ${heredoc("XINITY_REDIS_EOF", content)}`;
+}
+
+// ─── Provision via Docker ────────────────────────────────────────────────────
+
+/**
+ * A fully-decided provisioning action: everything the apply half needs to
+ * bring Redis up without asking anything else.
+ */
+export type RedisProvision = {
+  compose: ComposeCmd;
+  port: number;
+  url: string;
+  /** Present when creating a new stack; absent when restarting an existing one. */
+  composeFile?: string;
 };
 
-function startCommandFor(variant: RedisVariant, pm: PackageManager | undefined): string {
-  return pm?.start[variant] ?? SYSTEMD_START_FALLBACK[variant];
+/**
+ * Planning half: environment checks and configuration prompts only, nothing
+ * on the host changes.
+ */
+export async function planRedisProvision(host: Host): Promise<RedisProvision | undefined> {
+  const compose = await resolveComposeCmd(host);
+  if (!compose) {
+    warn("Docker", "Docker with Compose is required to provision Redis, and was not found.");
+    log.info(
+      dim("  This environment is not supported for CLI-managed Redis.\n") +
+      dim("  Install Docker (https://docs.docker.com/engine/install/) and re-run,\n") +
+      dim("  or re-run and supply the connection URL of an existing Redis instance."),
+    );
+    return undefined;
+  }
+  if (compose.docker === "docker" && !(await dockerDaemonReady(host))) {
+    warn("Docker", "The Docker CLI is installed but the daemon is not reachable.");
+    log.info(
+      dim("  Start Docker (e.g. `systemctl start docker`) or ensure your user can\n") +
+      dim("  access the Docker socket (docker group), then re-run."),
+    );
+    return undefined;
+  }
+  pass("Docker", `Using ${cyan(composeName(compose))}`);
+
+  const existing = await inspectExistingRedis(host);
+  if (existing.composeFile) {
+    const port = parsePublishedPort(existing.composeFile);
+    info("Redis", `Reusing the existing stack in ${STACK_DIR}.`);
+    return { compose, port, url: buildRedisUrl(port) };
+  }
+
+  const portStr = await promptOrUndefined(text({
+    message: "Port to publish on localhost", placeholder: String(DEFAULT_PORT), defaultValue: String(DEFAULT_PORT),
+  }));
+  if (portStr === undefined) return undefined;
+  const port = Number(portStr) || DEFAULT_PORT;
+
+  // Best-effort, non-fatal: a clash here is most often a native Redis the user
+  // could instead supply via "I have a connection URL".
+  if (await tcpPortInUse(host, port)) {
+    warn("Port", `Something is already listening on localhost:${port}. Starting the container will fail if it is still bound.`);
+  }
+
+  return { compose, port, url: buildRedisUrl(port), composeFile: buildComposeFile(port) };
+}
+
+/** One-line summary of the provisioning action for review lists. */
+export function describeRedisProvision(prov: RedisProvision): string {
+  return prov.composeFile
+    ? `Provision Redis via Docker (${REDIS_IMAGE} on localhost:${prov.port})`
+    : `Start the existing Redis Docker stack (localhost:${prov.port})`;
+}
+
+/** The exact root shell commands the apply half runs, for the script dump. */
+export function buildRedisProvisionCommands(prov: RedisProvision): string[] {
+  const up = composeArgs(prov.compose, COMPOSE_PATH, "up", "-d").join(" ");
+  if (!prov.composeFile) return [up];
+  return [
+    `mkdir -p ${STACK_DIR}`,
+    buildWriteFileCommand(COMPOSE_PATH, prov.composeFile),
+    up,
+  ];
+}
+
+function reportSuccess(compose: ComposeCmd): void {
+  const manageCmd = composeArgs(compose, COMPOSE_PATH).join(" ");
+  log.info(
+    `This stack is yours to manage. The compose file lives in ${STACK_DIR}:\n` +
+    `  data: Docker volume ${cyan(VOLUME_NAME)} (inspect: docker volume inspect ${VOLUME_NAME})\n` +
+    `  ${cyan(`${manageCmd} down`)}       (stop and remove the container; data volume is kept)\n` +
+    `  ${cyan(`${manageCmd} down -v`)}    (also delete the data volume)`,
+  );
+}
+
+/** Apply half: write the compose file (new stacks only), start, wait for readiness. */
+export async function applyRedisProvision(prov: RedisProvision, host: Host): Promise<boolean> {
+  if (prov.composeFile) {
+    await host.withElevation(`mkdir -p ${STACK_DIR}`, "Create stack directory");
+    const written = await host.withElevation(
+      buildWriteFileCommand(COMPOSE_PATH, prov.composeFile),
+      "Write compose file",
+    );
+    if (!written.success) {
+      fail("Config", "Failed to write the compose file");
+      return false;
+    }
+    pass("Config", `Wrote ${COMPOSE_PATH}`);
+  }
+
+  const upResult = await host.withElevation(
+    composeArgs(prov.compose, COMPOSE_PATH, "up", "-d").join(" "),
+    "Start Redis container",
+  );
+  if (!upResult.success) {
+    fail("Start", "Failed to start the Redis container");
+    return false;
+  }
+
+  const spinner = clackSpinner();
+  spinner.start("Waiting for Redis to become ready…");
+  if (!(await waitForRedisReady(host, prov.compose))) {
+    spinner.stop("Timed out");
+    fail("Health", "Redis container did not become ready within 30 seconds");
+    return false;
+  }
+  spinner.stop("Redis is ready");
+  pass("Health", `Redis reachable at localhost:${prov.port}`);
+  reportSuccess(prov.compose);
+  return true;
 }
 
 // ─── Plan / apply model ─────────────────────────────────────────────────────
 
-export interface RedisProvision {
-  variant: RedisVariant;
-  installCmd?: string;
-  startCmd?: string;
-  /** brew and similar: commands run as the regular user, not root. */
-  userIsSuper: boolean;
-}
-
-export interface RedisPlan {
+export type RedisPlan = {
   url: string;
   /** Store the URL into the secrets dir during apply. */
   persist: boolean;
   provision?: RedisProvision;
-}
+};
 
-async function runProvisionCommand(
-  host: Host,
-  prov: RedisProvision,
-  cmd: string,
-  label: string,
-  messages: { success: string; failed: string },
-): Promise<boolean> {
-  if (prov.userIsSuper) {
-    const res = await host.run(["sh", "-c", cmd]);
-    if (res.ok) {
-      pass(label, messages.success);
-      return true;
-    }
-    fail(label, res.output || messages.failed);
-    return false;
-  }
-
-  const result = await host.withElevation(cmd, label);
-  return reportElevationOutcome(result, label, {
-    success: messages.success,
-    failed: result.output || messages.failed,
-  });
-}
-
-/** Execute a decided redis plan: install/start when planned, then persist the URL. */
+/** Execute a decided redis plan: provision when planned, then persist the URL. */
 export async function applyRedisPlan(plan: RedisPlan, host: Host): Promise<boolean> {
-  const prov = plan.provision;
-  if (prov) {
-    if (prov.installCmd && !(await runProvisionCommand(host, prov, prov.installCmd, `Install ${prov.variant}`, {
-      success: `${prov.variant} installed`,
-      failed: "Installation failed",
-    }))) {
-      return false;
-    }
-    if (prov.startCmd && !(await runProvisionCommand(host, prov, prov.startCmd, `Start ${prov.variant}`, {
-      success: "Service started",
-      failed: "Failed to start service",
-    }))) {
-      return false;
-    }
-    await testRedisWithSpinner(plan.url, host);
-  }
-
+  if (plan.provision && !(await applyRedisProvision(plan.provision, host))) return false;
   if (plan.persist) await persistRedisUrl(host, plan.url);
   return true;
 }
 
 /** Review lines for the redis actions in an `up all` plan (empty when nothing will change). */
 export function describeRedisPlan(plan: RedisPlan): string[] {
-  const lines: string[] = [];
-  if (plan.provision?.installCmd) lines.push(`  install: ${plan.provision.installCmd}`);
-  if (plan.provision?.startCmd) lines.push(`  start: ${plan.provision.startCmd}`);
-  if (plan.persist) lines.push(`  store REDIS_URL in ${SECRETS_DIR}`);
-  if (lines.length === 0) return [];
-  const head = plan.provision
-    ? `Provision ${plan.provision.variant} and store the connection URL`
-    : "Store the Redis connection URL";
-  return [head, ...lines];
-}
-
-async function waitForManualInstall(host: Host): Promise<boolean> {
-  note(
-    [
-      "Please install Redis or Valkey using your system's package manager.",
-      "Common commands:",
-      "",
-      `  ${dim("# Debian/Ubuntu")}`,
-      `  sudo apt install redis-server`,
-      `  ${dim("# or")}`,
-      `  sudo apt install valkey`,
-      "",
-      `  ${dim("# Fedora/RHEL")}`,
-      `  sudo dnf install redis`,
-      "",
-      `  ${dim("# Arch Linux")}`,
-      `  sudo pacman -S redis`,
-      "",
-      `  ${dim("# macOS")}`,
-      `  brew install redis`,
-      "",
-      "After installing, make sure the service is running.",
-    ].join("\n"),
-    "Manual installation required",
-  );
-
-  const done = await confirm({
-    message: "Have you installed and started Redis/Valkey?",
-    initialValue: false,
-  });
-
-  if (isCancel(done) || !done) return false;
-
-  if (await isRedisRunning(host)) {
-    pass("Redis", "Service is running");
-    return true;
-  }
-
-  warn("Redis", "Service does not appear to be running yet");
-  const continueAnyway = await confirm({
-    message: "Continue anyway?",
-    initialValue: false,
-  });
-  return !isCancel(continueAnyway) && continueAnyway;
-}
-
-// ─── Configuration ──────────────────────────────────────────────────────────
-
-/** Build a REDIS_URL from user input or defaults. Prompts only. */
-async function configureRedisUrl(): Promise<string | undefined> {
-  log.step(bold("Configure Redis connection"));
-
-  const hostInput = await promptOrUndefined(text({
-    message: "Redis host",
-    placeholder: "localhost",
-    defaultValue: "localhost",
-  }));
-  if (hostInput === undefined) return undefined;
-
-  const portInput = await promptOrUndefined(text({
-    message: "Redis port",
-    placeholder: "6379",
-    defaultValue: "6379",
-    validate: (val) => {
-      if (!val) return undefined;
-      const n = parseInt(val, 10);
-      if (isNaN(n) || n < 1 || n > 65535) return "Must be a valid port number";
-      return undefined;
-    },
-  }));
-  if (portInput === undefined) return undefined;
-
-  const setPassword = await promptOrUndefined(confirm({
-    message: "Set a password for Redis?",
-    initialValue: false,
-  }));
-  if (setPassword === undefined) return undefined;
-
-  let password: string | undefined;
-  if (setPassword) {
-    const useGenerated = await promptOrUndefined(confirm({
-      message: "Generate a random password?",
-      initialValue: true,
-    }));
-    if (useGenerated === undefined) return undefined;
-
-    if (useGenerated) {
-      password = generatePassword();
-      info("Password", `Generated: ${cyan(password)}`);
-    } else {
-      const pw = await promptOrUndefined(passwordPrompt({
-        message: "Redis password",
-        validate: (val) => {
-          if (!val || val.length < 4) return "Password must be at least 4 characters";
-          return undefined;
-        },
-      }));
-      if (pw === undefined) return undefined;
-      password = pw;
-    }
-  }
-
-  const url = password
-    ? `redis://:${encodeURIComponent(password)}@${hostInput}:${portInput}`
-    : `redis://${hostInput}:${portInput}`;
-
-  note(url, "REDIS_URL");
-
-  return url;
+  if (!plan.provision && !plan.persist) return [];
+  const head = plan.provision ? describeRedisProvision(plan.provision) : "Store the Redis connection URL";
+  return plan.persist ? [head, `  store REDIS_URL in ${SECRETS_DIR}`] : [head];
 }
 
 // ─── Main entry point ───────────────────────────────────────────────────────
@@ -342,8 +310,8 @@ async function persistRedisUrl(host: Host, url: string): Promise<void> {
 
 /**
  * Planning half: discover REDIS_URL from stored secrets, environment, or
- * component configs, or guide the user to a URL (optionally deciding an
- * install). Reads and prompts only; `applyRedisPlan` makes the changes.
+ * component configs, or guide the user to a URL (optionally planning a Docker
+ * stack). Reads and prompts only; `applyRedisPlan` makes the changes.
  *
  * Returns undefined if the user cancelled.
  */
@@ -397,7 +365,7 @@ export async function planRedis(host: Host): Promise<RedisPlan | undefined> {
 
   // 4. No existing connection found, ask user how to proceed
   const choice = await select({
-    message: "No existing Redis connection found. Do you already have a Redis/Valkey instance?",
+    message: "No existing Redis connection found. Do you already have a Redis instance?",
     options: [
       {
         value: "existing",
@@ -407,7 +375,7 @@ export async function planRedis(host: Host): Promise<RedisPlan | undefined> {
       {
         value: "setup",
         label: "No, help me set one up",
-        hint: "detect/install Redis or Valkey and configure it",
+        hint: "run Redis as a Docker container",
       },
     ],
   });
@@ -459,93 +427,17 @@ async function promptAndValidateRedisUrl(host: Host): Promise<string | undefined
   }
 }
 
-/**
- * Interactive setup planning: detect what is installed and running, decide
- * the install/start commands, and prompt for the connection details. Nothing
- * executes here; the decided commands run in `applyRedisPlan`.
- */
 async function planRedisSetup(host: Host): Promise<RedisPlan | undefined> {
-  log.step(bold("Redis / Valkey setup"));
-
-  // Step 1: Is Redis/Valkey installed?
-  const variant = await detectVariant(host);
-
-  if (!variant) {
-    info("Redis/Valkey", "Not found on this system");
-
-    const pm = await detectPackageManager(host);
-    if (pm) {
-      info("Package manager", `Detected ${cyan(pm.name)}`);
-
-      // Let user choose between Redis and Valkey
-      const variantChoice = await select({
-        message: "Which variant would you like to install?",
-        options: [
-          { value: "redis" as const, label: "Redis", hint: "the original" },
-          { value: "valkey" as const, label: "Valkey", hint: "community fork, fully compatible" },
-        ],
-      });
-      if (isCancel(variantChoice)) return undefined;
-
-      const proceed = await confirm({
-        message: `Install ${variantChoice} using ${cyan(pm.name)}?`,
-        initialValue: true,
-      });
-      if (isCancel(proceed) || !proceed) return undefined;
-
-      const url = await configureRedisUrl();
-      if (!url) return undefined;
-      return {
-        url,
-        persist: true,
-        provision: {
-          variant: variantChoice,
-          installCmd: pm.install[variantChoice],
-          startCmd: pm.start[variantChoice],
-          userIsSuper: pm.userIsSuper,
-        },
-      };
-    }
-
-    // Unknown package manager: the user installs by hand, we only verify.
-    warn("Package manager", "Could not detect a supported package manager");
-    const ready = await waitForManualInstall(host);
-    if (!ready) return undefined;
-
-    const url = await configureRedisUrl();
-    return url ? { url, persist: true } : undefined;
-  }
-
-  // Step 2: Redis/Valkey is installed, is it running?
-  if (await isRedisRunning(host)) {
-    pass(variant, "Installed and running");
-    const url = await configureRedisUrl();
-    return url ? { url, persist: true } : undefined;
-  }
-
-  // Installed but not running
-  warn(variant, "Installed but not running (will be started on apply)");
-
-  const pm = await detectPackageManager(host);
-  const url = await configureRedisUrl();
-  if (!url) return undefined;
-  return {
-    url,
-    persist: true,
-    provision: {
-      variant,
-      startCmd: startCommandFor(variant, pm),
-      userIsSuper: pm?.userIsSuper ?? false,
-    },
-  };
+  log.step(bold("Redis setup"));
+  const provision = await planRedisProvision(host);
+  return provision ? { url: provision.url, persist: true, provision } : undefined;
 }
 
 function describeRedisPlanDryRun(plan: RedisPlan): void {
-  if (plan.provision?.installCmd) {
-    info("Dry run", `Would install ${plan.provision.variant}: ${dim(plan.provision.installCmd)}`);
-  }
-  if (plan.provision?.startCmd) {
-    info("Dry run", `Would start ${plan.provision.variant}: ${dim(plan.provision.startCmd)}`);
+  if (plan.provision) {
+    for (const cmd of buildRedisProvisionCommands(plan.provision)) {
+      info("Dry run", `Would run: ${dim(cmd.split("\n")[0] ?? cmd)}`);
+    }
   }
   if (plan.persist) {
     info("Dry run", `Would store REDIS_URL in ${SECRETS_DIR}`);
@@ -587,6 +479,7 @@ export async function infraRedis(host: Host, dryRun: boolean): Promise<string | 
   if (!plan) return undefined;
   if (dryRun) {
     describeRedisPlanDryRun(plan);
+    note(`REDIS_URL=${plan.url}`, plan.provision?.composeFile ? "Connection URL (not yet created)" : "Connection URL");
     return plan.url;
   }
   return (await applyRedisPlan(plan, host)) ? plan.url : undefined;
