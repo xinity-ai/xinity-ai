@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ModelWithSpecifier } from "xinity-infoserver";
+  import type { IncompatibilityReason, ModelWithSpecifier } from "xinity-infoserver";
   import { formatGb, humanMonthYear } from "$lib/util";
   import { isRecentlyAdded } from "./model-recency";
   import { Badge } from "$lib/components/ui/badge";
@@ -9,21 +9,38 @@
 
   let {
     model,
-    undeployable,
-    constraintIssue,
+    blockedReason,
     maxNodeFreeCapacity,
     variantCount = 1,
     repeatsPreviousDescription = false,
     onSelect,
   }: {
     model: ModelWithSpecifier;
-    undeployable: boolean;
-    constraintIssue: boolean;
+    blockedReason: IncompatibilityReason | null;
     maxNodeFreeCapacity: number;
     variantCount?: number;
     repeatsPreviousDescription?: boolean;
     onSelect: (model: ModelWithSpecifier) => void;
   } = $props();
+
+  const engineLabel = $derived(model.engine === "vllm" ? "vLLM" : "Ollama");
+  const platformLabel = $derived((model.platforms ?? []).join(" or "));
+
+  function undeployableMessage(reason: IncompatibilityReason): string {
+    switch (reason) {
+      case "missing_driver":
+        return `No node runs ${engineLabel}.`;
+      case "version_too_old":
+      case "version_unknown":
+        return `No node has a new enough ${engineLabel} version.`;
+      case "missing_feature":
+        return `No node's ${engineLabel} build supports the features this model needs.`;
+      case "wrong_platform":
+        return `No node has a compatible GPU${platformLabel ? ` (needs ${platformLabel})` : ""}.`;
+      case "insufficient_capacity":
+        return `Needs ${formatGb(model.sizing.weightGb + model.sizing.minKvCacheGb)}, more than the largest node's ${formatGb(maxNodeFreeCapacity)} free.`;
+    }
+  }
 </script>
 
 <div
@@ -85,15 +102,10 @@
     </span>
   </div>
 
-  {#if undeployable && constraintIssue}
+  {#if blockedReason}
     <div class="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-400 mb-1">
       <Info class="w-3.5 h-3.5 shrink-0 mt-0.5" />
-      <span>No compatible node available (driver version or platform mismatch). You can still select it and deploy it disabled.</span>
-    </div>
-  {:else if undeployable}
-    <div class="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-400 mb-1">
-      <Info class="w-3.5 h-3.5 shrink-0 mt-0.5" />
-      <span>Needs {formatGb(model.sizing.weightGb + model.sizing.minKvCacheGb)}, more than the largest node's {formatGb(maxNodeFreeCapacity)} free. You can still select it and deploy it disabled.</span>
+      <span>{undeployableMessage(blockedReason)} You can still select it and deploy it disabled.</span>
     </div>
   {/if}
 

@@ -1,7 +1,7 @@
 <script lang="ts">
   import Modal from "$lib/components/Modal.svelte";
-  import type { Engine, ModelType, ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
-  import { EngineEnum, isDeployableOnCluster } from "xinity-infoserver";
+  import type { Engine, IncompatibilityReason, ModelType, ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
+  import { EngineEnum, explainClusterIncompatibility } from "xinity-infoserver";
   import { modelCatalog } from "$lib/state/model-catalog.svelte";
   import { formatGb } from "$lib/util";
   import { groupModelVariants, type ModelGroup } from "./model-groups";
@@ -182,17 +182,12 @@
     handleSelect(group.leader);
   }
 
-  function isUndeployable(model: ModelWithSpecifier): boolean {
-    if (nodeCapabilities.length === 0) return model.sizing.weightGb + model.sizing.minKvCacheGb > maxNodeFreeCapacity;
-    return !isDeployableOnCluster(nodeCapabilities, model);
-  }
-
-  // Only flag as a constraint issue when a node would otherwise have room: pure capacity shortfalls are surfaced elsewhere.
-  function hasConstraintIncompatibility(model: ModelWithSpecifier): boolean {
-    if (!model.minEngineVersion && !model.platforms) return false;
-    if (!isUndeployable(model)) return false;
-    const needed = model.sizing.weightGb + model.sizing.minKvCacheGb;
-    return nodeCapabilities.some(n => n.free >= needed && model.engine in n.driverVersions);
+  function undeployableReason(model: ModelWithSpecifier): IncompatibilityReason | null {
+    // Without a cluster snapshot the only thing knowable is whether it could ever fit.
+    if (nodeCapabilities.length === 0) {
+      return model.sizing.weightGb + model.sizing.minKvCacheGb > maxNodeFreeCapacity ? "insufficient_capacity" : null;
+    }
+    return explainClusterIncompatibility(nodeCapabilities, model);
   }
 
   function handleSelect(model: ModelWithSpecifier) {
@@ -365,8 +360,7 @@
                 {#each groupedModels[family] as group (group.leader.publicSpecifier)}
                   <ModelChoiceCard
                     model={group.leader}
-                    undeployable={isUndeployable(group.leader)}
-                    constraintIssue={hasConstraintIncompatibility(group.leader)}
+                    blockedReason={undeployableReason(group.leader)}
                     {maxNodeFreeCapacity}
                     variantCount={group.variants.length}
                     onSelect={() => chooseFromGroup(group)}
@@ -421,8 +415,7 @@
           {#each group.variants as variant, i (variant.publicSpecifier)}
             <ModelChoiceCard
               model={variant}
-              undeployable={isUndeployable(variant)}
-              constraintIssue={hasConstraintIncompatibility(variant)}
+              blockedReason={undeployableReason(variant)}
               {maxNodeFreeCapacity}
               repeatsPreviousDescription={variant.description === group.variants[i - 1]?.description}
               onSelect={handleSelect}
