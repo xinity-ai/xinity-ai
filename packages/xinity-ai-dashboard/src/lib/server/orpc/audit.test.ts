@@ -16,10 +16,7 @@ mock.module("$lib/server/auth-server", () => ({
   auth: { api: {} },
 }));
 
-mock.module("$lib/server/serverenv", () => ({
-  isInstanceAdmin: () => false,
-  serverEnv: {},
-}));
+// serverEnv and isInstanceAdmin are mocked for all suites in tests/preload.ts.
 
 const { runWithAudit, emitAuthAuditEvent } = await import("./audit");
 const { rootOs, auditMiddleware } = await import("./root");
