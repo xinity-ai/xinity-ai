@@ -158,6 +158,7 @@ Detailed guides for each part of the platform:
 | [Dashboard](docs/features/dashboard.md) | Home analytics, Model Hub, data management, labeling, export, onboarding |
 | [Authentication & Authorization](docs/features/authentication.md) | Email/password, SSO (OIDC), passkeys, 2FA, API keys, RBAC roles |
 | [Instance Administration](docs/features/instance-administration.md) | User management, organization management, SSO providers, licensing |
+| [Audit Trail](docs/features/audit.md) | Recorded actions, transport channel, access gates, export, Loki forwarding |
 | [Notifications](docs/features/notifications.md) | Email alerts for deployments, node health, capacity, weekly reports |
 | [CLI](docs/features/cli.md) | All commands (`up`, `rm`, `doctor`, `act`, `configure`, `update`, `completion`), remote host support, infrastructure utilities |
 | [Daemon](docs/features/daemon.md) | GPU auto-detection, model installation (Ollama/vLLM), cache eviction, GPU metrics, run-model script |
