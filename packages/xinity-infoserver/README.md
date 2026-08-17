@@ -300,7 +300,7 @@ All four checks must pass on a single node. If no node qualifies, the model stay
 Run the HTTP server locally:
 
 ```bash
-MODEL_INFO_DIR=./models.d bun run dev
+MODEL_INFO_DIR=../../models bun run dev
 ```
 
 Regenerate the JSON Schemas:
