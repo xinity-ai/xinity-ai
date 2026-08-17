@@ -92,7 +92,7 @@ if (state.dockerImage) process.env.VLLM_DOCKER_IMAGE = state.dockerImage;
 
 const [
   { buildDockerRunArgs, buildSystemdEnvFile, buildSystemdServeArgv },
-  { computeGpuUtilization, buildVllmExtraArgs },
+  { computeGpuUtilization, buildVllmExtraArgs, concurrencyCap },
   { buildHardwareProfile },
 ] = await Promise.all([
   import("../modules/model-installation/vllm-ops"),
@@ -113,7 +113,12 @@ function buildVllmInstanceConfig(resolved: ResolvedVllmModel, state: State): Vll
     kvCacheBytes: `${resolved.kvCacheGb}g`,
     trustRemoteCode: resolved.trustRemoteCode,
     gpuMemoryUtilization,
-    extraArgs: buildVllmExtraArgs(resolved.modelType, resolved.hasToolsTag, resolved.args),
+    extraArgs: buildVllmExtraArgs(
+      resolved.modelType,
+      resolved.hasToolsTag,
+      resolved.args,
+      concurrencyCap(resolved.model.sizing, profile.gpus, resolved.kvCacheGb),
+    ),
   };
 }
 

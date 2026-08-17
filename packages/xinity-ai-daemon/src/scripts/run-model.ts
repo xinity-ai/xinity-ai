@@ -139,7 +139,7 @@ if (values["hf-token"]) process.env.VLLM_HF_TOKEN = values["hf-token"];
 
 const [
   { buildDockerRunArgs, buildSystemdServeArgv, ensureVllmNetwork, VLLM_NETWORK },
-  { computeGpuUtilization, buildVllmExtraArgs },
+  { computeGpuUtilization, buildVllmExtraArgs, concurrencyCap },
   { detectHardwareProfile },
   { detectVllmFeatures },
 ] = await Promise.all([
@@ -190,7 +190,12 @@ function buildConfig(resolved: ResolvedVllmModel, profile: HardwareProfile): Vll
     kvCacheBytes: `${resolved.kvCacheGb}g`,
     trustRemoteCode: resolved.trustRemoteCode,
     gpuMemoryUtilization,
-    extraArgs: buildVllmExtraArgs(resolved.modelType, resolved.hasToolsTag, resolved.args),
+    extraArgs: buildVllmExtraArgs(
+      resolved.modelType,
+      resolved.hasToolsTag,
+      resolved.args,
+      concurrencyCap(resolved.model.sizing, profile.gpus, resolved.kvCacheGb),
+    ),
   };
 }
 

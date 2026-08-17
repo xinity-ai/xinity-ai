@@ -1,4 +1,4 @@
-import { createCatalogClient, createInfoserverClient, resolveArgsForDriver, resolveTagsForDriver } from "xinity-infoserver";
+import { createCatalogClient, createInfoserverClient, resolveArgsForDriver, resolveTagsForDriver, type ModelSizingFields } from "xinity-infoserver";
 import { env } from "../../env";
 import { rootLogger } from "../../logger";
 
@@ -33,6 +33,8 @@ export type InstallationEntry = {
   tags: string[];
   args: string[];
   downloadFilter: string[];
+  /** Absent for installations resolved through the legacy format, which states no sizing. */
+  sizing?: ModelSizingFields;
 };
 
 /**
@@ -60,6 +62,7 @@ export async function resolveInstallationEntry(
       type: model.type,
       tags: model.tags,
       args: model.engineArgs ?? [],
+      sizing: model.sizing,
       downloadFilter: model.downloadFilter ?? [],
     };
   }
