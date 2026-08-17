@@ -131,7 +131,7 @@ const REASON_PROGRESS: Record<IncompatibilityReason, number> = {
  * Reporting the closest pair matters: a cluster where one node is merely full and
  * another lacks the driver is a capacity problem, not a driver problem.
  */
-export function explainClusterIncompatibility(
+export function explainLegacyClusterIncompatibility(
   nodes: NodeCapability[],
   model: ClusterModel,
 ): IncompatibilityReason | null {
@@ -148,22 +148,46 @@ export function explainClusterIncompatibility(
   return closest;
 }
 
-/**
- * Returns true if at least one node can serve the model. The engine is part of
- * the model's identity, so unlike the v1 form there is no set of drivers to try.
- */
-export function isDeployableOnCluster(
-  nodes: NodeCapability[],
-  model: Pick<Model, "sizing" | "type" | "engine" | "minEngineVersion" | "platforms">,
-): boolean {
-  const req: ModelNodeRequirements = {
+/** Everything a cluster-wide deployability check reads off a model. */
+export type DeployableModel = Pick<Model, "sizing" | "type" | "engine" | "minEngineVersion" | "platforms">;
+
+export function modelRequirements(model: DeployableModel): ModelNodeRequirements {
+  return {
     driver: model.engine,
     capacityGb: model.sizing.weightGb + model.sizing.minKvCacheGb,
     minVersion: model.minEngineVersion,
     requiredPlatforms: model.platforms ?? [],
     requiredFeatures: requiredFeaturesForEngine(model.engine, model.type),
   };
-  return nodes.some(node => checkNodeCompatibility(node, req) === null);
+}
+
+/**
+ * Returns null if any node can serve the model, otherwise the reason from the node that
+ * came closest to working. With one engine per entry the candidates differ only by node,
+ * so the closest reason distinguishes a cluster that is merely full from one that could
+ * never run this model.
+ */
+export function explainClusterIncompatibility(
+  nodes: NodeCapability[],
+  model: DeployableModel,
+): IncompatibilityReason | null {
+  const req = modelRequirements(model);
+
+  let closest: IncompatibilityReason = "missing_driver";
+  for (const node of nodes) {
+    const reason = checkNodeCompatibility(node, req);
+    if (reason === null) {
+      return null;
+    }
+    if (REASON_PROGRESS[reason] > REASON_PROGRESS[closest]) {
+      closest = reason;
+    }
+  }
+  return closest;
+}
+
+export function isDeployableOnCluster(nodes: NodeCapability[], model: DeployableModel): boolean {
+  return explainClusterIncompatibility(nodes, model) === null;
 }
 
 /**
@@ -174,5 +198,5 @@ export function isLegacyModelDeployableOnCluster(
   nodes: NodeCapability[],
   model: Pick<LegacyModel, "weight" | "minKvCache" | "type" | "providers" | "providerMinVersions" | "providerPlatforms">,
 ): boolean {
-  return explainClusterIncompatibility(nodes, model) === null;
+  return explainLegacyClusterIncompatibility(nodes, model) === null;
 }
