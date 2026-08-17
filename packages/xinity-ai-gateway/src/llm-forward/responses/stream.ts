@@ -5,6 +5,7 @@ import type {
   MessageOutputItem,
   WebSearchCallOutputItem,
   FunctionCallOutputItem,
+  ReasoningOutputItem,
   CreateResponseBody,
 } from "./schemas";
 import type { ToolCallItem, ToolResultData, IncludeValue } from "./builders";
@@ -91,9 +92,13 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
     async start(controller) {
       const seq = createSequence();
       let accumulatedText = "";
+      let accumulatedReasoning = "";
       let messageOutputIndex = -1;
+      let reasoningOutputIndex = -1;
       let nextOutputIndex = 0;
       let messageItemEmitted = false;
+      let reasoningItemFinished = false;
+      const reasoningItemId = `rs_${responseId}`;
 
       // Track tool calls inline for consistent IDs across stream events
       const streamToolCalls: StreamToolCall[] = [];
@@ -103,7 +108,22 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
         emitResponseLifecycle(controller, "response.in_progress", baseResponse, seq);
 
         for await (const part of result.fullStream) {
-          if (part.type === "text-delta") {
+          if (part.type === "reasoning-start") {
+            reasoningOutputIndex = nextOutputIndex++;
+            emitReasoningItemAdded(controller, reasoningItemId, reasoningOutputIndex, seq);
+          } else if (part.type === "reasoning-delta") {
+            if (reasoningOutputIndex === -1) {
+              reasoningOutputIndex = nextOutputIndex++;
+              emitReasoningItemAdded(controller, reasoningItemId, reasoningOutputIndex, seq);
+            }
+            accumulatedReasoning += part.text;
+            emitReasoningDelta(controller, reasoningItemId, reasoningOutputIndex, part.text, seq);
+          } else if (part.type === "reasoning-end") {
+            if (reasoningOutputIndex !== -1 && !reasoningItemFinished) {
+              reasoningItemFinished = true;
+              emitReasoningFinished(controller, reasoningItemId, reasoningOutputIndex, accumulatedReasoning, seq);
+            }
+          } else if (part.type === "text-delta") {
             if (!messageItemEmitted) {
               messageOutputIndex = nextOutputIndex++;
               messageItemEmitted = true;
@@ -166,6 +186,10 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
         const finalUsage = await result.usage;
         const finalText = accumulatedText || await result.text;
 
+        if (reasoningOutputIndex !== -1 && !reasoningItemFinished) {
+          emitReasoningFinished(controller, reasoningItemId, reasoningOutputIndex, accumulatedReasoning, seq);
+        }
+
         if (!messageItemEmitted) {
           messageOutputIndex = nextOutputIndex++;
           emitMessageItemAdded(controller, messageItemId, messageOutputIndex, seq);
@@ -177,7 +201,7 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
 
         const completedResponse = createResponseObject({
           responseId, createdAt, model: originalModel, status: "completed",
-          output: buildOutputItems(responseId, finalText, toolCalls, toolResults, include),
+          output: buildOutputItems(responseId, finalText, toolCalls, toolResults, include, accumulatedReasoning),
           usage: finalUsage, body,
         });
         await saveResponse(orgId, responseId, completedResponse)
@@ -228,6 +252,78 @@ function emitResponseLifecycle(
   seq: () => number,
 ) {
   emit(ctrl, event, { response, sequence_number: seq() });
+}
+
+function emitReasoningItemAdded(
+  ctrl: ReadableStreamDefaultController,
+  reasoningItemId: string,
+  outputIndex: number,
+  seq: () => number,
+) {
+  emit(ctrl, "response.output_item.added", {
+    output_index: outputIndex,
+    item: { id: reasoningItemId, type: "reasoning", status: "in_progress", summary: [], content: [] },
+    sequence_number: seq(),
+  });
+  emit(ctrl, "response.reasoning_summary_part.added", {
+    item_id: reasoningItemId,
+    output_index: outputIndex,
+    summary_index: 0,
+    part: { type: "summary_text", text: "" },
+    sequence_number: seq(),
+  });
+}
+
+function emitReasoningDelta(
+  ctrl: ReadableStreamDefaultController,
+  reasoningItemId: string,
+  outputIndex: number,
+  delta: string,
+  seq: () => number,
+) {
+  emit(ctrl, "response.reasoning_summary_text.delta", {
+    item_id: reasoningItemId,
+    output_index: outputIndex,
+    summary_index: 0,
+    delta,
+    sequence_number: seq(),
+  });
+}
+
+function emitReasoningFinished(
+  ctrl: ReadableStreamDefaultController,
+  reasoningItemId: string,
+  outputIndex: number,
+  text: string,
+  seq: () => number,
+) {
+  const item: ReasoningOutputItem = {
+    id: reasoningItemId,
+    type: "reasoning",
+    status: "completed",
+    summary: [{ type: "summary_text", text }],
+    content: [],
+  };
+
+  emit(ctrl, "response.reasoning_summary_text.done", {
+    item_id: reasoningItemId,
+    output_index: outputIndex,
+    summary_index: 0,
+    text,
+    sequence_number: seq(),
+  });
+  emit(ctrl, "response.reasoning_summary_part.done", {
+    item_id: reasoningItemId,
+    output_index: outputIndex,
+    summary_index: 0,
+    part: { type: "summary_text", text },
+    sequence_number: seq(),
+  });
+  emit(ctrl, "response.output_item.done", {
+    output_index: outputIndex,
+    item,
+    sequence_number: seq(),
+  });
 }
 
 function emitMessageItemAdded(

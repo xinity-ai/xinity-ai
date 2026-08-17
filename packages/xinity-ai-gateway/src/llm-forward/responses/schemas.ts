@@ -33,7 +33,7 @@ const TextFormatSchema = z.object({
 }).optional();
 
 const ReasoningSchema = z.object({
-  effort: z.enum(["low", "medium", "high"]).nullable().optional(),
+  effort: z.string().nullable().optional(),
   summary: z.enum(["auto", "concise", "detailed"]).nullable().optional(),
 }).optional();
 
@@ -139,10 +139,29 @@ const FunctionCallOutputItemSchema = z.object({
 
 export type FunctionCallOutputItem = z.infer<typeof FunctionCallOutputItemSchema>;
 
+/**
+ * The backends return raw chain-of-thought rather than a model-authored summary.
+ * It is carried in `summary` regardless, because that is the field clients render
+ * and there is no summarizer to populate it otherwise.
+ */
+const ReasoningOutputItemSchema = z.object({
+  id: z.string(),
+  type: z.literal("reasoning"),
+  status: z.enum(["in_progress", "completed", "incomplete"]),
+  summary: z.array(z.object({
+    type: z.literal("summary_text"),
+    text: z.string(),
+  })),
+  content: z.array(z.unknown()).default([]),
+});
+
+export type ReasoningOutputItem = z.infer<typeof ReasoningOutputItemSchema>;
+
 const OutputItemSchema = z.discriminatedUnion("type", [
   MessageOutputItemSchema,
   WebSearchCallOutputItemSchema,
   FunctionCallOutputItemSchema,
+  ReasoningOutputItemSchema,
 ]);
 
 export type OutputItem = z.infer<typeof OutputItemSchema>;

@@ -35,6 +35,7 @@ export const ChatCompletionBodySchema = z.looseObject({
   seed: z.number().optional(),
   logprobs: z.boolean().optional(),
   top_logprobs: z.number().optional(),
+  reasoning_effort: z.string().optional(),
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
   response_format: z.object({
     type: z.enum(["text", "json_object", "json_schema"]),
@@ -179,6 +180,7 @@ export const handleChatCompletion = withEndpointGuards({
       seed: body.seed,
       logprobs: body.logprobs,
       top_logprobs: body.top_logprobs,
+      reasoning_effort: body.reasoning_effort,
       response_format: body.response_format,
       tools: body.tools,
       tool_choice: body.tool_choice,
