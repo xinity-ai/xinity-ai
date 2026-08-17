@@ -28,8 +28,8 @@ steps.)
 4. **Verify it runs** (next section): iterate using the failure table until the gate passes, the
    server comes up, and it **serves a real request** (not just `/health`). Also **validate every
    declared capability** - test tool calling and vision if research says the model has them. While
-   there, pin down the two values you can't reliably guess - the `minKvCacheGb` floor and the
-   `minEngineVersion` floor - by the procedures below.
+   there, pin down the `minEngineVersion` floor by the procedure below, and confirm the derived
+   KV-cache floor actually starts.
 5. **Publish.** Open a PR. In the description, record which hardware you verified it on and any
    constraints you found (`minEngineVersion`, `platforms`). CI loads `models/` the way the server
    does, so a file the server could not serve fails the build.
@@ -42,8 +42,8 @@ steps.)
 | `sizing.weightGb` | VRAM of the weights in GB. FP16 ≈ params(billions) × 2; quantized (AWQ/GPTQ ~4-bit) ≈ params × 0.5. Round up. |
 | `sizing.weightBits` | The method's headline width: `torch_dtype` in `config.json` for an unquantized repo, the `quantization_config` bits for AWQ/GPTQ, or the digit in an Ollama tag (`q8_0` → 8, `q4_K_M` → 4). Do not try to work out the real average across the checkpoint: parts of the network stay wider than the headline width, and the field is documented as approximate for exactly that reason. |
 | `sizing.activeWeightGb` | MoE only, and only when `config.json` names the sparse layout. Scale `weightGb` by the fraction of parameters active per token, i.e. `num_experts_per_tok / num_experts` over the expert layers, and leave the shared/attention weights counted in full. Omit it for dense models. |
-| `sizing.minKvCacheGb` | Start from `config.json`: roughly `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes × tokens` (in GB), `tokens` chosen for desired concurrency. Then **confirm the hard floor empirically** ("Confirm the KV-cache floor" below) - the value must be at or above what vLLM needs to start. |
-| `sizing.kvBytesPerToken` | The `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes` product you already compute for `minKvCacheGb`, written down in bytes instead of thrown away. Use the cache dtype the engine will actually run with, which is not always the weight dtype. |
+| `sizing.minKvCacheGb` | Leave it out. `kvBytesPerToken` derives the floor exactly and rounds it up, so authoring both only invites the two to disagree. Author it alone when you want **more** cache than the floor, and then confirm it starts ("Confirm the KV-cache floor" below). |
+| `sizing.kvBytesPerToken` | The `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes` product from `config.json`, in bytes. The cache floor and the concurrency estimate both come from it, so it is the one KV figure worth getting right. Use the cache dtype the engine will actually run with, which is not always the weight dtype. |
 | `sizing.attentionWindow` | `sliding_window` in `config.json`, when the model sets one and does not disable it (`use_sliding_window: false`). Leave it out for full attention. |
 | `sizing.stateBytesPerSequence` | Hybrid architectures only, where `config.json` mixes attention with Mamba or gated-deltanet layers (look for `linear_attention`, `mamba` or a `layer_types` list that is not uniformly attention). Sum the per-layer state across the recurrent layers: roughly `conv_state + ssm_state` per layer, i.e. `d_inner × d_conv` plus `d_inner × d_state`, times `dtype_bytes`. Omit it for pure attention models. It is worth confirming against the number vLLM reports for the state cache at startup, because on these models it is what a concurrency cap has to respect. |
 | `type` | `chat` (default), `embedding`, `rerank`, or `transcription`, from what the model does. |
@@ -171,16 +171,15 @@ A tag whose test fails (or a missing parser) means the entry is wrong - fix it o
 
 ### Confirm the KV-cache floor (`minKvCacheGb`)
 
-`minKvCacheGb` is the floor - the KV cache one request at the model's full context length needs,
-below which vLLM refuses to start. It is expressed in **GB** and becomes vLLM's
-`--kv-cache-memory-bytes Ng`, where lowercase `g` is **decimal** (10⁹) and accepts decimals - so
-write a precise decimal, not a rounded integer. Find the floor empirically: set `minKvCacheGb` low and
-`--start`; if it's too small vLLM aborts with `To serve at least one request with the model's max
-seq len (N), X GiB KV cache is needed`. That figure is in **GiB** (binary), so the field value is
-`X × 1.074` GB (e.g. a 16 GiB floor → `minKvCacheGb: 17.2`). Confirm the chosen value starts - the log
-shows `Maximum concurrency for N tokens per request: 1.00x` when it's right at the floor - and that a
-smaller value fails. `minKvCacheGb` is the *minimum*; a deployment can allocate more KV for higher
-concurrency.
+The floor is the KV cache one request at the model's full context length needs, below which vLLM
+refuses to start. Stating `kvBytesPerToken` computes it, so this section is a check rather than a
+hunt: `--start` the entry and confirm it comes up. The log shows
+`Maximum concurrency for N tokens per request: 1.00x` when the allocation sits right at the floor.
+
+If it aborts, vLLM names the figure it wanted: `To serve at least one request with the model's max
+seq len (N), X GiB KV cache is needed`. That is **GiB** (binary) against our decimal GB, so compare
+it as `X × 1.074`. A derived value below what vLLM asks for means `kvBytesPerToken` is wrong, and it
+is the field to fix. `minKvCacheGb` remains the *minimum*, and a deployment can allocate more.
 
 The floor scales with the model's `max_model_len`, and per-request KV is independent of parameter
 count - so a *small* model with a *huge* native context can have a surprisingly large floor (e.g.

@@ -46,7 +46,6 @@ models:
       weightGb: 14
       activeWeightGb: 3
       weightBits: 8
-      minKvCacheGb: 4
       kvBytesPerToken: 24576
       maxContextLength: 131072
     type: chat
