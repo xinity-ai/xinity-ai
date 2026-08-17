@@ -2,7 +2,7 @@ import { getAvailablePort, readProcessOutput, waitForHttp } from "../test-helper
 export { getAvailablePort };
 
 const HOST = process.env.INFOSERVER_HOST ?? "127.0.0.1";
-const MODEL_INFO_DIR = process.env.MODEL_INFO_DIR ?? "./models.d";
+const MODEL_INFO_DIR = process.env.MODEL_INFO_DIR ?? "../../models";
 const MODEL_LEGACY_DIR = process.env.MODEL_LEGACY_DIR ?? "./models.legacy.d";
 
 let allocatedPort: string | null = null;

@@ -66,7 +66,7 @@ describe("xinity-infoserver", () => {
     const body = await res.json() as any;
     const specifiers = Object.keys(body.models);
 
-    expect(specifiers).toContain("qwen3-coder-next-large-ollama");
+    expect(specifiers).toContain("qwen3.6-35b-a3b-vllm");
     expect(specifiers).not.toContain("qwen3-coder-next-large");
     expect(Object.values(body.models).every((m: any) => m.engine !== undefined)).toBe(true);
   });
@@ -92,7 +92,7 @@ describe("xinity-infoserver", () => {
     const specifiers = body.models.map((m: any) => m.publicSpecifier);
 
     expect(specifiers).toContain("qwen3-coder-next-large");
-    expect(specifiers).not.toContain("qwen3-coder-next-large-ollama");
+    expect(specifiers).not.toContain("qwen3.6-35b-a3b-vllm");
     expect(body.models.every((m: any) => m.providers !== undefined)).toBe(true);
   });
 

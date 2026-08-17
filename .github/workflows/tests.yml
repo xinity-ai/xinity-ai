@@ -163,7 +163,7 @@ jobs:
         run: bun run server.ts &
         working-directory: packages/xinity-infoserver
         env:
-          MODEL_INFO_DIR: ./models.d
+          MODEL_INFO_DIR: ../../models
           MODEL_LEGACY_DIR: ./models.legacy.d
           PORT: "8090"
 

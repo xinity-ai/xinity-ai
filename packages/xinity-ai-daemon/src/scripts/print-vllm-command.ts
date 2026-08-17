@@ -47,7 +47,7 @@ const HELP = [
   "Print the vLLM command the daemon would build for a model + state.",
   "",
   "Required flags:",
-  "  --models <path.yaml>  Infoserver model YAML (same shape as the models.d entries)",
+  "  --models <path.yaml>  Infoserver model YAML (same shape as the models/ entries)",
   "  --model  <name>       Public specifier (key in models:) or engineSpecifier value",
   "  --state  <path.yaml>  Hardware + backend state. See src/scripts/state.example.yaml",
   "",
