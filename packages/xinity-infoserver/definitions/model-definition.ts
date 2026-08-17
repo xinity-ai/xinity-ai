@@ -36,7 +36,7 @@ export const ModelSizing = z.looseObject({
   weightGb: z.number().describe("VRAM consumed by this variant's weights, in GB"),
   activeWeightGb: z.number().optional().describe("Weights read per token by a mixture-of-experts variant, in GB. Absent means dense, where every weight participates. Speed scales with this figure, while capacity still needs the full weight"),
   weightBits: z.number().positive().max(32).optional().describe("Nominal bits per stored parameter, e.g. 16 for fp16 or 4 for AWQ. Never an exact average: every method leaves parts of the network wider than its headline width, commonly attention projections, embeddings and norms. Dividing weightGb by it yields a parameter count good enough to estimate throughput from, and good for nothing that needs the real one"),
-  minKvCacheGb: z.number().describe(KV_CACHE_DESCRIPTION),
+  minKvCacheGb: z.number().optional().describe("Minimum KV-cache allocation in decimal GB. Optional once kvBytesPerToken is stated, because the floor is then exact: one request at full context plus, for a hybrid model, its per-sequence state. Author it only to demand more than that floor, and expect the server to log any entry whose figure disagrees with the derived one by more than a factor of two"),
   kvBytesPerToken: z.number().int().positive().optional().describe("KV cache one token of context consumes, in bytes, i.e. 2 * num_hidden_layers * num_key_value_heads * head_dim * dtype_bytes. How many requests a deployment can serve at once follows from this and the cache it was given, so it is the figure concurrency is computed from"),
   maxContextLength: z.number().int().positive().describe("Maximum supported context window in tokens"),
   attentionWindow: z.number().int().positive().optional().describe("Sliding-window attention span in tokens, for models that have one. KV per request stops growing past this point, so a windowed model needs far less cache at long context than kvBytesPerToken alone suggests"),
@@ -44,7 +44,28 @@ export const ModelSizing = z.looseObject({
 }).refine(
   sizing => sizing.activeWeightGb === undefined || sizing.activeWeightGb <= sizing.weightGb,
   { message: "activeWeightGb must not exceed weightGb", path: ["activeWeightGb"] },
-);
+).refine(
+  sizing => sizing.minKvCacheGb !== undefined || sizing.kvBytesPerToken !== undefined,
+  { message: "state kvBytesPerToken, or minKvCacheGb directly", path: ["minKvCacheGb"] },
+).transform(sizing => ({
+  ...sizing,
+  // The refine above guarantees kvBytesPerToken whenever minKvCacheGb is absent.
+  minKvCacheGb: sizing.minKvCacheGb ?? kvCacheFloorGb(
+    sizing.kvBytesPerToken!,
+    Math.min(sizing.maxContextLength, sizing.attentionWindow ?? Infinity),
+    sizing.stateBytesPerSequence ?? 0,
+  ),
+}));
+
+/**
+ * The floor vLLM enforces before it will start: one sequence holding its full context,
+ * plus the state a hybrid model reserves per sequence. Rounded up, never down, since
+ * landing a hair under the floor is the one outcome that stops the engine booting.
+ */
+function kvCacheFloorGb(bytesPerToken: number, cachedTokens: number, stateBytes: number): number {
+  const floorGb = (bytesPerToken * cachedTokens + stateBytes) / BYTES_PER_GB;
+  return Math.ceil(floorGb * 100) / 100;
+}
 
 export type ModelSizingFields = z.infer<typeof ModelSizing>;
 

@@ -113,6 +113,7 @@
             "description": "Identifier the engine itself uses. A HuggingFace model id for vLLM, a tag for Ollama"
           },
           "sizing": {
+            "description": "What this variant costs to run: how much VRAM it occupies, how much cache a token of context needs, and how far its context reaches",
             "type": "object",
             "properties": {
               "weightGb": {
@@ -131,7 +132,7 @@
               },
               "minKvCacheGb": {
                 "type": "number",
-                "description": "Minimum KV-cache allocation in GB. Should be precomputed from the model's config.json (if available) as roughly: 2 * num_hidden_layers * num_key_value_heads * head_dim * dtype_bytes * total_tokens, where total_tokens is chosen based on desired concurrent capacity."
+                "description": "Minimum KV-cache allocation in decimal GB. Optional once kvBytesPerToken is stated, because the floor is then exact: one request at full context plus, for a hybrid model, its per-sequence state. Author it only to demand more than that floor, and expect the server to log any entry whose figure disagrees with the derived one by more than a factor of two"
               },
               "kvBytesPerToken": {
                 "description": "KV cache one token of context consumes, in bytes, i.e. 2 * num_hidden_layers * num_key_value_heads * head_dim * dtype_bytes. How many requests a deployment can serve at once follows from this and the cache it was given, so it is the figure concurrency is computed from",
@@ -160,11 +161,9 @@
             },
             "required": [
               "weightGb",
-              "minKvCacheGb",
               "maxContextLength"
             ],
-            "additionalProperties": {},
-            "description": "What this variant costs to run: how much VRAM it occupies, how much cache a token of context needs, and how far its context reaches"
+            "additionalProperties": {}
           },
           "type": {
             "default": "chat",
