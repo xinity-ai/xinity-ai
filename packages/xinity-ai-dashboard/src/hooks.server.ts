@@ -12,7 +12,7 @@ import { serverEnv } from "$lib/server/serverenv";
 import { checkMigrationState, isMigrationOk } from "$lib/server/migration-check";
 import { loadDeploymentId } from "$lib/server/deployment-id";
 import { stampClientAddress } from "$lib/server/client-address";
-import { flushAuditEvents } from "$lib/server/audit-forwarder";
+import { flushAuditEvents } from "$lib/server/audit/audit-forwarder";
 import { onShutdown, installShutdownHandlers } from "$lib/server/shutdown";
 
 const log = rootLogger.child({ name: "hooks" });

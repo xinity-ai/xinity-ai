@@ -1,6 +1,6 @@
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
-import { forwardAuditEvent } from "$lib/server/audit-forwarder";
+import { forwardAuditEvent } from "$lib/server/audit/audit-forwarder";
 import { auditEventT, type AuditActorType } from "common-db";
 
 const log = rootLogger.child({ name: "orpc.audit" });

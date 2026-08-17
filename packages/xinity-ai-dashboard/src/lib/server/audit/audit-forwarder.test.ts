@@ -9,7 +9,7 @@ mock.module("$lib/server/logging", () => ({
 const deliverAuditEvents = mock((_events: AuditEvent[], _target: unknown): Promise<AuditDelivery> =>
   Promise.resolve({ delivered: true }),
 );
-mock.module("$lib/server/audit-loki", () => ({ deliverAuditEvents }));
+mock.module("./audit-loki", () => ({ deliverAuditEvents }));
 
 const { lokiTargetFromEnv, forwardAuditEvent, flushAuditEvents } = await import("./audit-forwarder");
 

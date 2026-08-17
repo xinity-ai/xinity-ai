@@ -1,7 +1,7 @@
 import { serverEnv } from "$lib/server/serverenv";
 import { rootLogger } from "$lib/server/logging";
 import { hasFeature } from "$lib/server/license";
-import { deliverAuditEvents, type LokiTarget } from "$lib/server/audit-loki";
+import { deliverAuditEvents, type LokiTarget } from "./audit-loki";
 import type { AuditEvent } from "common-db";
 
 const log = rootLogger.child({ name: "audit.forwarder" });
