@@ -12,7 +12,11 @@
 export type GpuClass = {
   /** Peak memory bandwidth in GB/s. Sets the ceiling on single-request decode speed. */
   bandwidthGbs: number;
-  /** Dense FP16 throughput in TFLOPS, without sparsity. Sets the ceiling on prefill. */
+  /**
+   * Dense FP16 throughput in TFLOPS. Vendors headline the 2:4-sparsity figure, which is
+   * double this and unreachable by an inference engine, so a new entry needs halving
+   * whenever the datasheet says "with sparsity".
+   */
   fp16Tflops: number;
   /** Narrowest datatype with hardware acceleration, which roughly doubles prefill per step down. */
   lowPrecision: "fp8" | "fp4" | null;
@@ -25,9 +29,9 @@ export type GpuClass = {
 /** First match wins, so a pattern must never precede a longer one that contains it. */
 const GPU_CLASSES: [pattern: string, gpu: Omit<GpuClass, "known">][] = [
   ["mi300x", { bandwidthGbs: 5300, fp16Tflops: 1307, lowPrecision: "fp8", tdpWatts: 750 }],
-  ["h200", { bandwidthGbs: 4800, fp16Tflops: 989, lowPrecision: "fp8", tdpWatts: 700 }],
+  ["h200", { bandwidthGbs: 4800, fp16Tflops: 495, lowPrecision: "fp8", tdpWatts: 700 }],
   // Between the PCIe and SXM variants on all three figures.
-  ["h100", { bandwidthGbs: 2700, fp16Tflops: 870, lowPrecision: "fp8", tdpWatts: 500 }],
+  ["h100", { bandwidthGbs: 2700, fp16Tflops: 430, lowPrecision: "fp8", tdpWatts: 500 }],
   ["a100", { bandwidthGbs: 1900, fp16Tflops: 312, lowPrecision: null, tdpWatts: 400 }],
   ["rtx pro 6000", { bandwidthGbs: 1792, fp16Tflops: 126, lowPrecision: "fp4", tdpWatts: 600 }],
   ["rtx 6000", { bandwidthGbs: 960, fp16Tflops: 91, lowPrecision: "fp8", tdpWatts: 300 }],
