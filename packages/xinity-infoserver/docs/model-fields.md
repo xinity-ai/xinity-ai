@@ -88,6 +88,15 @@ Everything the variant costs to run. Grouped because these figures are read toge
 | `weightBits` | number | - | **Nominal** bits per stored parameter: 16 for fp16/bf16, 8 for fp8 or `q8_0`, 4 for AWQ/GPTQ. Write the headline width of the method, not a computed average, and see [Weight precision](#weight-precision) for why the two are never the same |
 | `kvBytesPerToken` | number | - | KV cache one token of context consumes, in bytes: `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes`. This is the factor `minKvCacheGb` is built from, kept instead of discarded, because how many requests a deployment serves at once follows from it. Loading an authored file warns when the two disagree by more than a factor of two. |
 | `attentionWindow` | number | - | Sliding-window attention span in tokens, for models that have one. KV per request stops growing past this point, so without it a windowed model looks far more expensive at long context than it is |
+| `stateBytesPerSequence` | number | - | Recurrent state one concurrent request consumes, in bytes, for hybrid architectures whose layers are not all attention. A fixed cost per request in flight rather than one that grows with context, so it bounds concurrency in a way shortening the context cannot relieve. See [Hybrid architectures](#hybrid-architectures) |
+
+## Hybrid architectures
+
+Models that mix attention with a recurrent layer type, Mamba or gated deltanet, do not pay for concurrency the way a pure attention model does. Their attention layers still cost `kvBytesPerToken` per token of context, but their recurrent layers hold a fixed-size state per request in flight, and vLLM allocates that state up front as one block per sequence.
+
+This is why such a model can refuse to start at a batch size a pure attention model of the same weight would accept. vLLM's default `max_num_seqs` rose from 256 to 1024 with the V1 engine, and on a hybrid model that increase alone can push the state allocation past what the cache holds, failing at CUDA-graph capture rather than at the usual `max_model_len` check.
+
+`stateBytesPerSequence` is therefore not an optimization hint. A concurrency figure computed without it is one the engine may reject.
 
 ## Weight precision
 
