@@ -12,11 +12,7 @@ mock.module("./public-key", () => ({
   PUBLIC_KEY_BASE64: testPublicKeyBase64,
 }));
 
-// Mock server env so we don't need the full SvelteKit env stack.
-mock.module("$lib/server/serverenv", () => ({
-  serverEnv: { ORIGIN: "https://dashboard.example.com", LICENSE_KEY: undefined },
-  isInstanceAdmin: () => false,
-}));
+// serverEnv is mocked for all suites in tests/preload.ts. Each block sets what it needs.
 
 // Mock logger to suppress output during tests.
 mock.module("$lib/server/logging", () => ({

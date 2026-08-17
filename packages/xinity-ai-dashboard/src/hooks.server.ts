@@ -12,6 +12,8 @@ import { serverEnv } from "$lib/server/serverenv";
 import { checkMigrationState, isMigrationOk } from "$lib/server/migration-check";
 import { loadDeploymentId } from "$lib/server/deployment-id";
 import { stampClientAddress } from "$lib/server/client-address";
+import { flushAuditEvents } from "$lib/server/audit-forwarder";
+import { onShutdown, installShutdownHandlers } from "$lib/server/shutdown";
 
 const log = rootLogger.child({ name: "hooks" });
 
@@ -124,3 +126,10 @@ if (isMigrationOk() && serverEnv.COMPUTE_MANAGEMENT_ENABLED) {
 if (isMigrationOk() && serverEnv.NOTIFICATIONS_ENABLED) {
   void startNotificationScheduler();
 }
+
+/**
+ * Every shutdown action belongs here. Registering a signal listener elsewhere would
+ * suppress the default termination and leave the process running after a stop.
+ */
+onShutdown("audit-forwarder", flushAuditEvents);
+installShutdownHandlers();
