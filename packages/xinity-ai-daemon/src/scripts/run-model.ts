@@ -10,7 +10,13 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { z } from "zod";
 import { quoteShellArgv } from "common-env";
-import { ModelFileSchema, estimateThroughput, normalizePep440 } from "xinity-infoserver";
+import {
+  ModelFileSchema,
+  estimateThroughput,
+  estimateConcurrency,
+  normalizePep440,
+  type ConcurrencyEstimate,
+} from "xinity-infoserver";
 import {
   resolveVllmModel,
   checkVllmCompatibility,
@@ -283,9 +289,39 @@ function describeSpeed(estimate: ReturnType<typeof estimateThroughput>): string 
   return `~${Math.round(estimate.decodeTps)} tok/s generate, ${prefill}`;
 }
 
+/**
+ * Which limit the sweet spot came from, since each one calls for a different response:
+ * more cache, a bigger card, or nothing at all. The cache limits are checked first so a
+ * tie names the one an operator can act on.
+ */
+function bindingLimit(estimate: ConcurrencyEstimate): string {
+  if (estimate.sweetSpot === estimate.workingSetConcurrency) {
+    return "cache size";
+  }
+  if (estimate.sweetSpot === estimate.kvBandwidthKnee) {
+    return "kv bandwidth";
+  }
+  return "compute";
+}
+
+function describeConcurrency(estimate: ConcurrencyEstimate | undefined, gpuCount: number): string {
+  if (gpuCount === 0) {
+    return "no estimate (no GPU detected)";
+  }
+  if (!estimate) {
+    return "no estimate (entry states no kvBytesPerToken)";
+  }
+  if (estimate.basis !== "known-gpu") {
+    return "no estimate (this GPU is not in the speed table)";
+  }
+  return `${estimate.sweetSpot} concurrent (${bindingLimit(estimate)}), `
+    + `${Math.round(estimate.aggregateTps)} of ${Math.round(estimate.maxAggregateTps)} tok/s total`;
+}
+
 function printPlan(resolved: ResolvedVllmModel, profile: HardwareProfile, driver: VllmDriverState, config: VllmInstanceConfig): void {
   const reason = checkVllmCompatibility(resolved, profile, driver, { requireKnownVersion: true });
   const speed = estimateThroughput(resolved.model, { gpus: profile.gpus });
+  const concurrency = estimateConcurrency(resolved.model, { gpus: profile.gpus }, { kvCacheGb: resolved.kvCacheGb });
 
   if (jsonMode) {
     emit({
@@ -300,6 +336,19 @@ function printPlan(resolved: ResolvedVllmModel, profile: HardwareProfile, driver
       sizing: { kvCacheGb: resolved.kvCacheGb, estCapacityGb: resolved.estCapacity, gpuMemoryUtilization: config.gpuMemoryUtilization ?? null },
       speed: speed?.basis === "known-gpu"
         ? { decodeTps: speed.decodeTps, prefillTps: speed.prefillTps ?? null }
+        : null,
+      concurrency: concurrency?.basis === "known-gpu"
+        ? {
+            sweetSpot: concurrency.sweetSpot,
+            limit: bindingLimit(concurrency),
+            fullContextConcurrency: concurrency.fullContextConcurrency,
+            workingSetConcurrency: concurrency.workingSetConcurrency,
+            kvBandwidthKnee: concurrency.kvBandwidthKnee,
+            computeKnee: concurrency.computeKnee ?? null,
+            decodeTpsAtSweetSpot: concurrency.decodeTpsAtSweetSpot,
+            aggregateTps: concurrency.aggregateTps,
+            maxAggregateTps: concurrency.maxAggregateTps,
+          }
         : null,
       gate: { ok: reason === null, reason: reason ?? null, message: reason ? describeIncompatibility(reason, resolved, profile, driver) : null },
       download: { filters: resolved.model.downloadFilter ?? [] },
@@ -320,6 +369,7 @@ function printPlan(resolved: ResolvedVllmModel, profile: HardwareProfile, driver
   console.log(`Machine:  ${gpus}; ${profile.detectedCapacityGb}GB capacity`);
   console.log(`Sizing:   kvCache=${resolved.kvCacheGb}GB, estCapacity=${resolved.estCapacity}GB, gpuUtil=${config.gpuMemoryUtilization ?? "n/a"}`);
   console.log(`Speed:    ${describeSpeed(speed)}`);
+  console.log(`Batch:    ${describeConcurrency(concurrency, profile.gpus.length)}`);
   console.log(`Gate:     ${reason ? `FAIL - ${describeIncompatibility(reason, resolved, profile, driver)}` : "ok"}`);
   console.log();
   console.log(`# Download (run: --download)`);
