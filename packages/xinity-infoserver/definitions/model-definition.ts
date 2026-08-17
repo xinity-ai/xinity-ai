@@ -40,6 +40,7 @@ export const ModelSizing = z.looseObject({
   kvBytesPerToken: z.number().int().positive().optional().describe("KV cache one token of context consumes, in bytes, i.e. 2 * num_hidden_layers * num_key_value_heads * head_dim * dtype_bytes. How many requests a deployment can serve at once follows from this and the cache it was given, so it is the figure concurrency is computed from"),
   maxContextLength: z.number().int().positive().describe("Maximum supported context window in tokens"),
   attentionWindow: z.number().int().positive().optional().describe("Sliding-window attention span in tokens, for models that have one. KV per request stops growing past this point, so a windowed model needs far less cache at long context than kvBytesPerToken alone suggests"),
+  stateBytesPerSequence: z.number().int().positive().optional().describe("Recurrent state one concurrent request consumes, in bytes, for hybrid architectures whose layers are not all attention, such as Mamba or gated deltanet. Unlike kvBytesPerToken this does not grow with context: it is a fixed cost per request in flight. Present only for hybrid models, and vLLM refuses to start when its per-sequence state does not fit, so a concurrency cap that ignores it can be one the engine rejects"),
 }).refine(
   sizing => sizing.activeWeightGb === undefined || sizing.activeWeightGb <= sizing.weightGb,
   { message: "activeWeightGb must not exceed weightGb", path: ["activeWeightGb"] },

@@ -150,6 +150,12 @@
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 9007199254740991
+              },
+              "stateBytesPerSequence": {
+                "description": "Recurrent state one concurrent request consumes, in bytes, for hybrid architectures whose layers are not all attention, such as Mamba or gated deltanet. Unlike kvBytesPerToken this does not grow with context: it is a fixed cost per request in flight. Present only for hybrid models, and vLLM refuses to start when its per-sequence state does not fit, so a concurrency cap that ignores it can be one the engine rejects",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
               }
             },
             "required": [

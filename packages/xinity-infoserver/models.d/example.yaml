@@ -57,6 +57,10 @@ models:
   # The standard variant of this model, so it carries no variantOf and the entry above
   # points at it. Same underlying model, different engine and quantization, which is
   # why it is a separate entry with its own capacity numbers and its own specifier.
+  #
+  # Its layers alternate attention with gated deltanet, so it also carries
+  # stateBytesPerSequence. That state is held per request in flight and does not shrink
+  # with a shorter context, which is what bounds how many requests vLLM will admit.
   qwen3-coder-next-large-vllm:
     name: Qwen Coder Next
     description: |
@@ -78,6 +82,7 @@ models:
       weightBits: 16
       minKvCacheGb: 6
       kvBytesPerToken: 49152
+      stateBytesPerSequence: 20971520
       maxContextLength: 131072
     type: chat
     family: qwen3
