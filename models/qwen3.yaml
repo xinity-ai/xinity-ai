@@ -1,0 +1,237 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+#
+# Qwen3.8 27B. One checkpoint family, six ways to run it. Verified on GB10; the
+# full verification record, including the measurements behind every number here,
+# is in ~/modeloutputs/qwen3.8-27b.yaml.
+
+# Values shared by every entry below. YAML resolves these anchors at parse time
+# and the block itself is not part of the model format, so it is dropped on load.
+x-shared:
+  identity: &identity
+    license: apache-2.0
+    createdAt: 2026-08-14
+    registeredAt: 2026-08-17
+    engine: vllm
+    type: chat
+    family: qwen3
+    minEngineVersion: "0.19.2"
+
+  # Same for every entry: KV layout is set by the 16 full-attention layers and is
+  # unaffected by weight quantization or by whether vision is built.
+  #
+  # minKvCacheGb sits above the 17.34 that kvBytesPerToken + stateBytesPerSequence
+  # derive, and is authored deliberately: vLLM raises the attention block size to
+  # 784 tokens so an attention page is at least a mamba page, which rounds 262144
+  # up to 335 blocks and pads the mamba page by 0.13%. Measured - it aborts at
+  # both 17.34 and 17.36, and starts at 17.37 reporting 1.00x concurrency.
+  kv: &kv
+    kvBytesPerToken: 65536
+    stateBytesPerSequence: 154140672
+    minKvCacheGb: 17.37
+    maxContextLength: 262144
+
+  # The tags add --enable-auto-tool-choice; vLLM still needs the parsers named.
+  args: &args
+    - --tool-call-parser
+    - qwen3_coder
+    - --reasoning-parser
+    - qwen3
+
+  # Non-standard extras this model needs and the gateway cannot know about.
+  # Standard OpenAI fields (temperature, top_p, presence_penalty,
+  # reasoning_effort, ...) are the gateway's responsibility, not this file's.
+  params: &params
+    top_k: number
+    min_p: number
+    repetition_penalty: number
+    chat_template_kwargs.enable_thinking: boolean
+
+models:
+  qwen3.8-27b-vllm:
+    <<: *identity
+    name: Qwen3.8 27B
+    description: |
+      Alibaba's 27B dense vision-language model, and the strongest open-weight
+      release in the Qwen line to date. It reads text, images and video, and was
+      tuned for long-horizon agentic work: driving a terminal, operating a
+      browser, and carrying multi-step tasks through to completion.
+
+      Thinking is on by default and this is a heavy thinker, so allow generous
+      `max_tokens` or replies get cut off mid-thought. Depth is adjustable per
+      request with `reasoning_effort`, which takes `xhigh` (the default),
+      `medium` or `low`, in decreasing order of how much the model deliberates.
+      Only those three are accepted: `minimal`, `high` and `max` are refused,
+      unlike on most OpenAI-compatible models. Thinking can be switched off
+      altogether with `chat_template_kwargs: {"enable_thinking": false}`. Note
+      that lower effort does not reliably finish agent loops sooner, because
+      shallower analysis tends to cost extra retries.
+
+      It is sensitive to sampling settings and the two modes want different ones.
+      Thinking: `temperature 1.0, top_p 0.95, top_k 20`. Non-thinking:
+      `temperature 0.7, top_p 0.80, top_k 20, presence_penalty 1.5`. Greedy
+      decoding is not recommended while thinking and tends to repeat.
+
+      The window is 262K. Long context is comparatively cheap on this
+      architecture, but every request in flight holds a fixed working set
+      whatever its length, so a deployment runs out of concurrency well before it
+      runs out of context. The 1M window described in Qwen's model card needs a
+      scaling override and is not what this entry serves.
+    url: https://huggingface.co/Qwen/Qwen3.8-27B
+    engineSpecifier: Qwen/Qwen3.8-27B
+    sizing:
+      <<: *kv
+      weightGb: 54.9   # measured resident, 51.1 GiB; the safetensors sum higher
+      weightBits: 16
+    tags: [vision, tools]
+    engineArgs: *args
+    requestParams: *params
+
+  qwen3.8-27b-fp8-vllm:
+    <<: *identity
+    name: Qwen3.8 27B FP8
+    description: |
+      Qwen's own FP8 build, a little over half the size of the bf16 entry for
+      very close quality. The vision tower is left at full precision, so image
+      and video understanding is not the part that pays for the quantization.
+
+      Pick it over bf16 when the memory saved is better spent on serving more
+      requests at once than on weight precision.
+
+      Thinking, `reasoning_effort`, sampling and context behave exactly as on the
+      bf16 entry.
+    url: https://huggingface.co/Qwen/Qwen3.8-27B-FP8
+    engineSpecifier: Qwen/Qwen3.8-27B-FP8
+    variantOf: qwen3.8-27b-vllm
+    sizing:
+      <<: *kv
+      weightGb: 30.6   # measured resident, 28.51 GiB
+      weightBits: 8
+    tags: [vision, tools]
+    engineArgs: *args
+    requestParams: *params
+
+  qwen3.8-27b-nvfp4-vllm:
+    <<: *identity
+    name: Qwen3.8 27B NVFP4
+    description: |
+      The smallest build of Qwen3.8 27B that still does vision. It runs NVFP4
+      kernels, so it needs a Blackwell-class NVIDIA GPU and will not be scheduled
+      anywhere else.
+
+      Despite the 4-bit name, much of the checkpoint stays at higher precision,
+      so it lands at 26 GB rather than the ~14 GB the label suggests. That is
+      meaningfully smaller than FP8, not dramatically so.
+
+      This is a third-party requantization rather than a Qwen build, so it was
+      checked harder than the official entries: a twelve-prompt battery spanning
+      arithmetic, sequence reasoning, translation, code and factual recall
+      returned twelve correct answers with no empty or truncated replies.
+
+      Thinking, `reasoning_effort`, sampling and context behave exactly as on the
+      bf16 entry.
+    url: https://huggingface.co/Inferact/Qwen3.8-27B-NVFP4
+    engineSpecifier: Inferact/Qwen3.8-27B-NVFP4
+    variantOf: qwen3.8-27b-vllm
+    sizing:
+      <<: *kv
+      weightGb: 26.0   # measured resident, 24.18 GiB
+      weightBits: 4
+    tags: [vision, tools]
+    platforms: [nvidia]
+    engineArgs: *args
+    requestParams: *params
+
+  qwen3.8-27b-nvfp4-mtp-vllm:
+    <<: *identity
+    name: Qwen3.8 27B NVFP4 (fast decode)
+    description: |
+      The NVFP4 build with speculative decoding enabled: the same weights and the
+      same answers, roughly 1.7x more tokens per second for a single stream.
+
+      That speedup is a low-concurrency effect. It is largest when the GPU is
+      otherwise idle and shrinks as more requests share the card, so choose this
+      entry for latency-sensitive single-stream work and the plain NVFP4 entry
+      for throughput serving. It also needs about 2.4 GB more than plain NVFP4,
+      across both weights and cache.
+
+      Tool calling and vision are unaffected. Thinking, `reasoning_effort`,
+      sampling and context behave exactly as on the bf16 entry.
+    url: https://huggingface.co/Inferact/Qwen3.8-27B-NVFP4
+    engineSpecifier: Inferact/Qwen3.8-27B-NVFP4
+    variantOf: qwen3.8-27b-vllm
+    sizing:
+      <<: *kv
+      weightGb: 26.8   # measured resident with the MTP head, 24.97 GiB
+      weightBits: 4
+      # Higher than every other entry: the MTP head is an extra decoder layer and
+      # carries its own KV. Measured - vLLM demands 17.64 GiB here, aborts at
+      # 17.37, and starts at 18.95 reporting 1.00x.
+      minKvCacheGb: 18.95
+    tags: [vision, tools]
+    platforms: [nvidia]
+    engineArgs:
+      # Arrays are deeply flattened, so the shared list composes with the extras.
+      # n=3 was chosen by measurement: n=1 reaches only 1.47x against this 1.68x.
+      - *args
+      - --speculative-config
+      - '{"method":"mtp","num_speculative_tokens":3}'
+    requestParams: *params
+
+  # The two entries below serve the same checkpoints with the vision tower left
+  # unbuilt (--language-model-only). Measured: it really does skip loading it,
+  # ~0.9 GB off the weights, after which images are refused with HTTP 400. The KV
+  # floor is unchanged, because the text layers are untouched.
+  qwen3.8-27b-blind-vllm:
+    <<: *identity
+    name: Qwen3.8 27B (text-only)
+    description: |
+      Qwen3.8 27B bf16 with vision switched off. The same text model as the
+      standard entry and identical to it on text and tool calling; it simply
+      cannot accept images or video.
+
+      Pick it for a text-only deployment where you want that guaranteed rather
+      than assumed: image requests are refused outright instead of quietly
+      consuming tokens on a modality nobody meant to use. It saves about 1 GB, so
+      memory alone is a weak reason to choose it over the standard entry.
+
+      Thinking, `reasoning_effort`, sampling and context behave exactly as on the
+      bf16 entry.
+    url: https://huggingface.co/Qwen/Qwen3.8-27B
+    engineSpecifier: Qwen/Qwen3.8-27B
+    variantOf: qwen3.8-27b-vllm
+    sizing:
+      <<: *kv
+      weightGb: 53.9   # measured resident with the tower unbuilt, 50.22 GiB
+      weightBits: 16
+    tags: [tools]
+    engineArgs:
+      - *args
+      - --language-model-only
+    requestParams: *params
+
+  qwen3.8-27b-fp8-blind-vllm:
+    <<: *identity
+    name: Qwen3.8 27B FP8 (text-only)
+    description: |
+      Qwen3.8 27B FP8 with vision switched off: the smallest way to run this
+      model on any vendor's hardware, and text-only by construction rather than
+      by convention.
+
+      Image requests are refused outright, which is the point of the entry.
+      Choose the NVFP4 entry instead if you want smaller still and are on
+      Blackwell-class NVIDIA hardware.
+
+      Thinking, `reasoning_effort`, sampling and context behave exactly as on the
+      bf16 entry.
+    url: https://huggingface.co/Qwen/Qwen3.8-27B-FP8
+    engineSpecifier: Qwen/Qwen3.8-27B-FP8
+    variantOf: qwen3.8-27b-vllm
+    sizing:
+      <<: *kv
+      weightGb: 29.7   # measured resident with the tower unbuilt, 27.64 GiB
+      weightBits: 8
+    tags: [tools]
+    engineArgs:
+      - *args
+      - --language-model-only
+    requestParams: *params
