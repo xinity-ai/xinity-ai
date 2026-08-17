@@ -12,9 +12,9 @@
  * database log entirely.
  */
 import type { S3Client } from "bun";
-import { mediaObjectT, type ApiCallInputMessage, type ApiCallInputMessageContent } from "common-db";
+import { mediaObjectT, sql, type ApiCallInputMessage, type ApiCallInputMessageContent } from "common-db";
 import { bytesDigest } from "common-env";
-import { formatMediaRef } from "common-env/media-ref";
+import { formatMediaRef, parseMediaRef } from "common-env/media-ref";
 import { rootLogger } from "./logger";
 import { getDB } from "./db";
 import { env } from "./env";
@@ -259,6 +259,85 @@ export async function processMessageImages(
   }
 
   return { messagesForLLM, messagesForDB };
+}
+
+/**
+ * Reads a stored image back out as a data URI. Logged messages keep `xinity-media://` references
+ * instead of image data, so replaying one to a model means resolving it first.
+ */
+export async function resolveMediaRef(
+  sha256: string,
+  orgId: string,
+  store: ImageStore | null,
+): Promise<string | null> {
+  if (!store) {
+    return null;
+  }
+  const [row] = await getDB()
+    .select({ s3Key: mediaObjectT.s3Key, mimeType: mediaObjectT.mimeType })
+    .from(mediaObjectT)
+    .where(sql`${mediaObjectT.sha256} = ${sha256} AND ${mediaObjectT.organizationId} = ${orgId}`)
+    .limit(1);
+  if (!row) {
+    return null;
+  }
+  try {
+    const bytes = await store.client.file(row.s3Key).arrayBuffer();
+    return `data:${row.mimeType};base64,${Buffer.from(bytes).toString("base64")}`;
+  } catch (err) {
+    log.error({ err, sha256 }, "Failed to read a stored image");
+    return null;
+  }
+}
+
+async function restoreImagePart(
+  part: ApiCallInputMessageContent,
+  orgId: string,
+  store: ImageStore | null,
+): Promise<ApiCallInputMessageContent | null> {
+  if (part.type !== "image_url") {
+    return part;
+  }
+  const sha256 = parseMediaRef(part.image_url.url);
+  if (!sha256) {
+    return part;
+  }
+  const dataUri = await resolveMediaRef(sha256, orgId, store);
+  if (!dataUri) {
+    log.warn({ sha256 }, "Dropping an image that could not be restored");
+    return null;
+  }
+  return { type: "image_url", image_url: { url: dataUri } };
+}
+
+/**
+ * Turns logged messages back into something a model can read. An image that cannot be restored
+ * is dropped rather than passed along, because a `xinity-media://` url reaching a backend is a
+ * hard error there, where a missing image is only a gap.
+ */
+export async function restoreMessageImages(
+  messages: ApiCallInputMessage[],
+  orgId: string,
+  store: ImageStore | null,
+): Promise<ApiCallInputMessage[]> {
+  if (!messages.some((message) => Array.isArray(message.content))) {
+    return messages;
+  }
+
+  const restored: ApiCallInputMessage[] = [];
+  for (const message of messages) {
+    if (!Array.isArray(message.content)) {
+      restored.push(message);
+      continue;
+    }
+    const parts = (await Promise.all(
+      message.content.map((part) => restoreImagePart(part, orgId, store)),
+    )).filter((part): part is ApiCallInputMessageContent => part !== null);
+    if (parts.length > 0) {
+      restored.push({ ...message, content: parts });
+    }
+  }
+  return restored;
 }
 
 // ─── Module-level singleton ──────────────────────────────────────────────────

@@ -104,7 +104,7 @@ export type StoredResponse = {
   }>;
 };
 
-export function extractPreviousMessages(stored: StoredResponse): ApiCallInputMessage[] {
+export function outputAsMessages(stored: StoredResponse): ApiCallInputMessage[] {
   const messages: ApiCallInputMessage[] = [];
   // Collect function_call items to inject as a single assistant tool_calls message
   const functionCalls: Array<{ call_id: string; name: string; arguments: string }> = [];

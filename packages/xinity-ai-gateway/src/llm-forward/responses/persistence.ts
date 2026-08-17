@@ -194,6 +194,27 @@ export async function loadResponse(orgId: string, responseId: string): Promise<R
   return fromResponseRow(header, items.map((row) => row.payload as unknown as OutputItem));
 }
 
+/** Every message a response was built from, in order. */
+export async function loadResponseMessages(
+  orgId: string,
+  responseId: string,
+): Promise<ApiCallInputMessage[]> {
+  const rows = await getDB()
+    .select({ payload: chatMessageT.payload })
+    .from(apiResponseMessageT)
+    .innerJoin(chatMessageT, sql`${chatMessageT.id} = ${apiResponseMessageT.messageId}`)
+    .innerJoin(apiResponseT, sql`${apiResponseT.id} = ${apiResponseMessageT.responseId}`)
+    .where(
+      sql`
+        ${apiResponseMessageT.responseId} = ${responseId}
+      AND
+        ${apiResponseT.organizationId} = ${orgId}
+      `,
+    )
+    .orderBy(sql`${apiResponseMessageT.seq} ASC`);
+  return rows.map((row) => row.payload);
+}
+
 export type InputItemPage = {
   messages: Array<{ seq: number; payload: ApiCallInputMessage }>;
   hasMore: boolean;

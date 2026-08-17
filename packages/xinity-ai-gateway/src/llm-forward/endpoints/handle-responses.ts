@@ -1,9 +1,9 @@
 import { streamText, isLoopFinished, stepCountIs } from "ai";
 import { resolveAuthorizedModel } from "../ai-sdk";
 import { errorResponse, logChatUsage, recordUsage, validateModelType, toModelMessages, SSE_RESPONSE_HEADERS, validationError, isUpstreamError, upstreamHttpStatus, modelLacksToolSupport } from "../util";
-import { deleteResponse, getResponse, saveResponse, type ResponseCreation } from "../response-store";
+import { deleteResponse, getResponse, getResponseMessages, saveResponse, type ResponseCreation } from "../response-store";
 import { rootLogger } from "../../logger";
-import { processMessageImages, imageStore } from "../../image-store";
+import { processMessageImages, restoreMessageImages, imageStore } from "../../image-store";
 import { env } from "../../env";
 import { DEEP_RESEARCH_SYSTEM_PROMPT, createCompactionStep } from "../deep-research";
 import { hasSearchProvider } from "../tools/response-tools";
@@ -14,7 +14,7 @@ import { buildGenerationParams, buildOutputConfig } from "../responses/generatio
 import type { ApiCallInputMessage } from "common-db";
 import { createResponseStream } from "../responses/stream";
 import { withResponseIdRoute } from "../endpoint-guards";
-import { extractText, normalizeMessages, extractPreviousMessages, type StoredResponse } from "../responses/input-normalize";
+import { extractText, normalizeMessages, outputAsMessages, type StoredResponse } from "../responses/input-normalize";
 import { loadResponse, loadResponseInputItems } from "../responses/persistence";
 import {
   createAndSaveInProgressResponse,
@@ -87,15 +87,26 @@ async function prepareResponseRequest(req: Request): Promise<PreparedRequest | R
 
   const callStartTime = Date.now();
 
-  // Before image processing, so previous messages reach the model without being reprocessed.
+  let historyForModel: ApiCallInputMessage[] = [];
+  let historyForLog: ApiCallInputMessage[] = [];
   if (body.previous_response_id) {
     const previousResponse = await getResponse(auth.orgId, body.previous_response_id);
     if (!previousResponse) return errorResponse("Not found", 404);
-    const previousMessages = extractPreviousMessages(previousResponse as StoredResponse);
-    if (previousMessages.length) messages.unshift(...previousMessages);
+    // A stored response keeps the whole message list it was given, so reading one hop back
+    // carries the entire conversation, however long it has run.
+    const askedBefore = await getResponseMessages(auth.orgId, body.previous_response_id);
+    const answeredBefore = outputAsMessages(previousResponse as StoredResponse);
+    historyForLog = [...askedBefore, ...answeredBefore];
+    // Logged messages carry `xinity-media://` references, which no backend can fetch.
+    historyForModel = [
+      ...await restoreMessageImages(askedBefore, auth.orgId, imageStore),
+      ...answeredBefore,
+    ];
   }
 
-  const { messagesForLLM, messagesForDB } = await processMessageImages(messages, auth.orgId, imageStore);
+  const processed = await processMessageImages(messages, auth.orgId, imageStore);
+  const messagesForLLM = [...historyForModel, ...processed.messagesForLLM];
+  const messagesForDB = [...historyForLog, ...processed.messagesForDB];
 
   return {
     ...authorized,

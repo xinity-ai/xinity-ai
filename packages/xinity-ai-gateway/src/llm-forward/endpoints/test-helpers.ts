@@ -236,15 +236,22 @@ export function setupResponseTestMocks() {
   mock.module("../model-data", () => ({ getModelInfo }));
 
   const responseStore = new Map<string, any>();
-  const saveResponse = jest.fn(async (_orgId: string, id: string, payload: any) => {
+  /** Stands in for api_response_message: what each response was asked, not what it answered. */
+  const responseMessages = new Map<string, any[]>();
+  const saveResponse = jest.fn(async (_orgId: string, id: string, payload: any, creation?: any) => {
     responseStore.set(id, payload);
+    if (creation?.inputMessages) {
+      responseMessages.set(id, creation.inputMessages);
+    }
   });
   const getResponse = jest.fn(async (_orgId: string, id: string) => responseStore.get(id) ?? null);
+  const getResponseMessages = jest.fn(async (_orgId: string, id: string) => responseMessages.get(id) ?? []);
   const deleteResponse = jest.fn(async (_orgId: string, id: string) => {
     responseStore.delete(id);
+    responseMessages.delete(id);
     return true;
   });
-  mock.module("../response-store", () => ({ saveResponse, getResponse, deleteResponse }));
+  mock.module("../response-store", () => ({ saveResponse, getResponse, getResponseMessages, deleteResponse }));
 
   const logChatSync = jest.fn(async () => {});
   const logChatStream = jest.fn(async () => {});
@@ -255,8 +262,10 @@ export function setupResponseTestMocks() {
     checkAuth,
     getModelInfo,
     responseStore,
+    responseMessages,
     saveResponse,
     getResponse,
+    getResponseMessages,
     deleteResponse,
     logChatSync,
     logChatStream,
@@ -266,10 +275,12 @@ export function setupResponseTestMocks() {
       getModelInfo.mockClear();
       saveResponse.mockClear();
       getResponse.mockClear();
+      getResponseMessages.mockClear();
       deleteResponse.mockClear();
       logChatSync.mockClear();
       logChatStream.mockClear();
       responseStore.clear();
+      responseMessages.clear();
     },
   };
 }

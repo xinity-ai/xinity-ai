@@ -18,10 +18,12 @@ mock.module("./logger", () => ({ rootLogger: { child: _mockChild } }));
 const db = drizzle.mock();
 type CapturedQuery = { sql: string; params: unknown[] };
 const capturedQueries: CapturedQuery[] = [];
+/** The media_object rows the next select finds. Empty means "no such object". */
+let storedMediaRows: Array<{ s3Key: string; mimeType: string }> = [];
 const preparedProto = Object.getPrototypeOf(db.select().from(mediaObjectT).prepare("_spy"));
 jest.spyOn(preparedProto, "execute").mockImplementation(async function (this: { queryString: string; params: unknown[] }) {
   capturedQueries.push({ sql: this.queryString, params: this.params });
-  return [];
+  return /^\s*select/i.test(this.queryString) ? storedMediaRows : [];
 });
 
 mock.module("./db", () => ({
@@ -30,7 +32,7 @@ mock.module("./db", () => ({
 
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 
-const { processMessageImages } = await import("./image-store");
+const { processMessageImages, resolveMediaRef, restoreMessageImages } = await import("./image-store");
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -229,6 +231,99 @@ describe("processMessageImages – S3 disabled (imageStore = null)", () => {
     // LLM still gets the original part (fallback), DB omits the blocked image
     expect((messagesForLLM[0]!.content as any[])[0]!.image_url.url).toBe(privateUrl);
     expect(messagesForDB).toHaveLength(0);
+    expect(capturedQueries).toHaveLength(0);
+  });
+});
+
+// ─── reading stored media back ────────────────────────────────────────────────
+
+describe("restoring logged images", () => {
+  const DIGEST = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
+  const IMAGE_BYTES = new TextEncoder().encode("png-bytes");
+
+  function readableStore(bytes: Uint8Array | Error = IMAGE_BYTES) {
+    return {
+      bucket: "xinity-media",
+      client: {
+        file: () => ({
+          arrayBuffer: async () => {
+            if (bytes instanceof Error) throw bytes;
+            return bytes.buffer;
+          },
+        }),
+      },
+    } as any;
+  }
+
+  const refMessage = (url: string) => ({
+    role: "user",
+    content: [{ type: "text", text: "look" }, { type: "image_url", image_url: { url } }],
+  }) as any;
+
+  beforeEach(() => {
+    capturedQueries.length = 0;
+    storedMediaRows = [];
+  });
+
+  test("resolves a stored reference to a data URI", async () => {
+    storedMediaRows = [{ s3Key: `org-1/${DIGEST}`, mimeType: "image/png" }];
+    const dataUri = await resolveMediaRef(DIGEST, "org-1", readableStore());
+    expect(dataUri).toBe(`data:image/png;base64,${Buffer.from(IMAGE_BYTES).toString("base64")}`);
+  });
+
+  test("scopes the lookup to the organization", async () => {
+    storedMediaRows = [{ s3Key: `org-1/${DIGEST}`, mimeType: "image/png" }];
+    await resolveMediaRef(DIGEST, "org-1", readableStore());
+    expect(capturedQueries[0]?.params).toContain("org-1");
+    expect(capturedQueries[0]?.params).toContain(DIGEST);
+  });
+
+  test("returns null for an object this organization never stored", async () => {
+    storedMediaRows = [];
+    expect(await resolveMediaRef(DIGEST, "org-1", readableStore())).toBeNull();
+  });
+
+  test("returns null when S3 is not configured, without querying", async () => {
+    expect(await resolveMediaRef(DIGEST, "org-1", null)).toBeNull();
+    expect(capturedQueries).toHaveLength(0);
+  });
+
+  test("returns null when the object cannot be read", async () => {
+    storedMediaRows = [{ s3Key: `org-1/${DIGEST}`, mimeType: "image/png" }];
+    expect(await resolveMediaRef(DIGEST, "org-1", readableStore(new Error("gone")))).toBeNull();
+  });
+
+  test("replaces a reference in a message with the image itself", async () => {
+    storedMediaRows = [{ s3Key: `org-1/${DIGEST}`, mimeType: "image/png" }];
+    const [message] = await restoreMessageImages([refMessage(`xinity-media://${DIGEST}`)], "org-1", readableStore());
+    const parts = message!.content as any[];
+    expect(parts[1].image_url.url).toStartWith("data:image/png;base64,");
+  });
+
+  // A xinity-media:// url reaching a backend is a hard error there, so it must not survive.
+  test("drops an image it cannot restore, keeping the rest of the message", async () => {
+    storedMediaRows = [];
+    const [message] = await restoreMessageImages([refMessage(`xinity-media://${DIGEST}`)], "org-1", readableStore());
+    const parts = message!.content as any[];
+    expect(parts).toHaveLength(1);
+    expect(parts[0]).toEqual({ type: "text", text: "look" });
+  });
+
+  test("drops a message whose only content was an unrestorable image", async () => {
+    storedMediaRows = [];
+    const imageOnly = { role: "user", content: [{ type: "image_url", image_url: { url: `xinity-media://${DIGEST}` } }] } as any;
+    expect(await restoreMessageImages([imageOnly], "org-1", readableStore())).toEqual([]);
+  });
+
+  test("leaves urls that are not references alone", async () => {
+    const external = refMessage("https://example.com/cat.png");
+    expect(await restoreMessageImages([external], "org-1", readableStore())).toEqual([external]);
+    expect(capturedQueries).toHaveLength(0);
+  });
+
+  test("returns plain text conversations untouched, without querying", async () => {
+    const messages = [{ role: "user", content: "hi" }] as any;
+    expect(await restoreMessageImages(messages, "org-1", readableStore())).toBe(messages);
     expect(capturedQueries).toHaveLength(0);
   });
 });

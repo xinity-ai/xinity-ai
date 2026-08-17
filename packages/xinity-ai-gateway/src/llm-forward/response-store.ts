@@ -6,6 +6,7 @@ import {
   createPersistedResponse,
   settlePersistedResponse,
   loadResponse,
+  loadResponseMessages,
   deletePersistedResponse,
   type ResponseOwner,
 } from "./responses/persistence";
@@ -88,6 +89,15 @@ export async function getResponse(orgId: string, id: string): Promise<unknown | 
   await cacheResponse(orgId, id, stored)
     .catch((err) => log.warn({ err, responseId: id }, "Failed to re-cache response"));
   return stored;
+}
+
+/**
+ * The messages a stored response was built from. Only Postgres holds these; the Redis entry is
+ * the response object, which carries the answer but not the question. Empty for a response
+ * created with `store: false`, which is never written to Postgres at all.
+ */
+export function getResponseMessages(orgId: string, id: string): Promise<ApiCallInputMessage[]> {
+  return loadResponseMessages(orgId, id);
 }
 
 /** Returns false when the entry could not be removed, so callers do not report a delete that did not happen. */

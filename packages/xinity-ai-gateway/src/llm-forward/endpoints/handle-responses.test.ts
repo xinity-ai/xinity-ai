@@ -10,6 +10,8 @@ const { handleCreateResponseRequest, handleGetOrDeleteResponseRequest } = await 
 
 let server: any;
 let lastUpstreamBody: Record<string, unknown> | undefined;
+/** The message list the backend was last asked to complete. */
+let lastChatMessages: Array<{ role: string; content: unknown }> = [];
 
 beforeAll(() => {
   server = Bun.serve({
@@ -22,8 +24,10 @@ beforeAll(() => {
           reasoning_effort?: string;
           response_format?: { type?: string };
           tools?: Array<{ type: string; function?: { name: string } }>;
+          messages?: Array<{ role: string; content: unknown }>;
         };
         lastUpstreamBody = body as Record<string, unknown>;
+        lastChatMessages = body.messages ?? [];
 
         if (body.reasoning_effort === "interleave") {
           return makeChatSseResponseWithInterleavedReasoning("test-model");
@@ -699,5 +703,59 @@ describe("handleResponses", () => {
     expect(completed.response.output.map((o: { type: string }) => o.type)).toEqual(["reasoning", "reasoning", "message"]);
     expect(completed.response.output[0].summary[0].text).toBe("first block");
     expect(completed.response.output[1].summary[0].text).toBe("second block");
+  });
+
+  // A chained request sends only the new turn, so everything before it has to come from
+  // storage. Reading back only the previous answer left the model unable to see the question
+  // it had answered.
+  describe("conversation state", () => {
+    async function turn(input: unknown, previousResponseId?: string) {
+      const req = new Request("http://localhost:4000/v1/responses", {
+        method: "POST",
+        headers: { "Authorization": "Bearer test" },
+        body: JSON.stringify({
+          model: "test-model",
+          input,
+          ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
+        }),
+      });
+      const res = await handleCreateResponseRequest(req);
+      expect(res.status).toBe(200);
+      return (await res.json()) as any;
+    }
+
+    test("carries the earlier question and answer into the next turn", async () => {
+      const first = await turn("u1");
+      await turn("u2", first.id);
+
+      expect(lastChatMessages.map((m) => [m.role, m.content])).toEqual([
+        ["user", "u1"],
+        ["assistant", "Hello"],
+        ["user", "u2"],
+      ]);
+    });
+
+    test("keeps carrying it as the conversation grows", async () => {
+      const first = await turn("u1");
+      const second = await turn("u2", first.id);
+      await turn("u3", second.id);
+
+      expect(lastChatMessages.map((m) => m.content)).toEqual([
+        "u1", "Hello", "u2", "Hello", "u3",
+      ]);
+    });
+
+    test("stores the whole conversation, so the next turn can read it back", async () => {
+      const first = await turn("u1");
+      const second = await turn("u2", first.id);
+
+      expect(mocks.responseMessages.get(second.id)?.map((m: any) => m.content))
+        .toEqual(["u1", "Hello", "u2"]);
+    });
+
+    test("sends only the new turn when nothing is chained", async () => {
+      await turn("u1");
+      expect(lastChatMessages.map((m) => m.content)).toEqual(["u1"]);
+    });
   });
 });
