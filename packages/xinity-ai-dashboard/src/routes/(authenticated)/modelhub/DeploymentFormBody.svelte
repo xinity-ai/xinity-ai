@@ -35,6 +35,8 @@
     editMode = false,
     readonlyModels = false,
     requiresDisabled = false,
+    keepsUnknownPrimary = false,
+    keepsUnknownCanary = false,
     maxReplicas = 0,
     showTrafficSlider = true,
     maxNodeFreeCapacity = Infinity,
@@ -69,6 +71,8 @@
     editMode?: boolean;
     readonlyModels?: boolean;
     requiresDisabled?: boolean;
+    keepsUnknownPrimary?: boolean;
+    keepsUnknownCanary?: boolean;
     maxReplicas?: number;
     showTrafficSlider?: boolean;
     maxNodeFreeCapacity?: number;
@@ -141,7 +145,20 @@
 
 {#snippet modelTile(model: ModelWithSpecifier | undefined, specifier: string | null, color: "blue" | "purple", mode: "primary" | "canary", disabledSpec?: string | null)}
   {#if !model}
-    {#if !readonlyModels}
+    {#if specifier && (mode === "primary" ? keepsUnknownPrimary : keepsUnknownCanary)}
+      <div class="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 space-y-2">
+        <p class="font-medium font-mono text-sm">{specifier}</p>
+        <p class="text-sm text-amber-700 dark:text-amber-400">
+          The current catalog does not describe this model. The deployment keeps running as it is and
+          can be enabled or disabled from here. Any other change needs a current entry.
+        </p>
+        {#if !readonlyModels}
+          <Button variant="secondary" size="sm" onclick={() => openSelector(mode)}>
+            Pick a current entry
+          </Button>
+        {/if}
+      </div>
+    {:else if !readonlyModels}
       <button
         class="w-full {mode === 'primary' ? 'py-8 compact:py-4' : 'py-6 compact:py-3'} border-2 border-dashed rounded-lg text-muted-foreground hover:border-{color === 'blue' ? 'primary' : 'purple-500'} hover:text-{color === 'blue' ? 'primary' : 'purple-500'} transition-colors flex flex-col items-center justify-center gap-{mode === 'primary' ? '2' : '1'}"
         onclick={() => openSelector(mode)}

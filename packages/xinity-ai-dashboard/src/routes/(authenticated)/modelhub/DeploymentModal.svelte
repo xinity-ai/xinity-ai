@@ -64,7 +64,7 @@
   // --- Edit mode tracking ---
   type Snapshot = {
     name: string; publicSpecifier: string; enabled: boolean;
-    earlySpecifier: string | null; progress: number;
+    specifier: string | null; earlySpecifier: string | null; progress: number;
     canaryProgressWithFeedback: boolean;
     preferredDriver: string | null; replicas: number; kvCacheSize: number | null;
     earlyKvCacheSize: number | null; settings: DeploymentSettings;
@@ -75,19 +75,25 @@
   // --- Fetched model state ---
   let selectedPrimaryModel = $state<ModelWithSpecifier | null>(null);
   let selectedCanaryModel = $state<ModelWithSpecifier | null>(null);
+  let primaryAbsentFromCatalog = $state(false);
+  let canaryAbsentFromCatalog = $state(false);
 
   // --- Helpers ---
   const primaryFetchGen = { v: 0 };
   const canaryFetchGen = { v: 0 };
   const canaryAutoSelectGen = { v: 0 };
 
-  function fetchModel(specifier: string | null, set: (m: ModelWithSpecifier | null) => void, gen: { v: number }) {
+  function fetchModel(
+    specifier: string | null,
+    set: (m: ModelWithSpecifier | null, absentFromCatalog: boolean) => void,
+    gen: { v: number },
+  ) {
     const seq = ++gen.v;
-    if (!specifier) { set(null); return; }
+    if (!specifier) { set(null, false); return; }
     orpc.model.get({ specifier }).then(([error, data]) => {
       if (seq !== gen.v) return;
       if (error) { toastState.add(`Failed to load model info: ${error.message}`, "error"); return; }
-      set(data ?? null);
+      set(data ?? null, !data);
     });
   }
 
@@ -129,7 +135,7 @@
 
     initialSnapshot = {
       name: d.name, publicSpecifier: d.publicSpecifier, enabled: d.enabled,
-      earlySpecifier: d.earlySpecifier ?? null, progress: d.progress,
+      specifier: d.specifier ?? null, earlySpecifier: d.earlySpecifier ?? null, progress: d.progress,
       canaryProgressWithFeedback: d.canaryProgressWithFeedback,
       preferredDriver: d.preferredDriver ?? null, replicas: d.replicas,
       kvCacheSize: d.kvCacheSize ?? null, earlyKvCacheSize: d.earlyKvCacheSize ?? null,
@@ -142,8 +148,28 @@
   });
 
   // --- Model fetching ---
-  $effect(() => fetchModel(selectedPrimarySpecifier, m => selectedPrimaryModel = m, primaryFetchGen));
-  $effect(() => fetchModel(selectedCanarySpecifier, m => selectedCanaryModel = m, canaryFetchGen));
+  $effect(() => fetchModel(selectedPrimarySpecifier, (m, absent) => {
+    selectedPrimaryModel = m;
+    primaryAbsentFromCatalog = absent;
+  }, primaryFetchGen));
+  $effect(() => fetchModel(selectedCanarySpecifier, (m, absent) => {
+    selectedCanaryModel = m;
+    canaryAbsentFromCatalog = absent;
+  }, canaryFetchGen));
+
+  /**
+   * The current catalog cannot describe this deployment's model, so every figure derived
+   * from it is unknown. Keeping it is allowed, which is what makes turning the deployment
+   * off possible without first moving it to a current entry.
+   */
+  const keepsUnknownPrimary = $derived(
+    isEditMode && primaryAbsentFromCatalog && selectedPrimarySpecifier === deployment?.specifier,
+  );
+  const keepsUnknownCanary = $derived(
+    isEditMode && canaryAbsentFromCatalog
+    && (selectedCanarySpecifier ?? null) === (deployment?.earlySpecifier ?? null),
+  );
+  const keepsUnknownEntry = $derived(keepsUnknownPrimary || keepsUnknownCanary);
 
   // --- Derived values ---
   const minKvCache = $derived(selectedPrimaryModel ? selectedPrimaryModel.sizing.minKvCacheGb : 0);
@@ -234,24 +260,13 @@
 
   const requiresLicenseConsent = $derived(restrictedLicenses.length > 0);
 
-  const isFormValid = $derived(Boolean(
-    selectedPrimaryModel && deploymentName.trim() && publicSpecifier.trim() &&
-    (!isCanaryEnabled || (selectedCanaryModel && !canaryTypeMismatch)) &&
-    (kvCacheSize === null || kvCacheSize >= minKvCache) &&
-    (!isCanaryEnabled || earlyKvCacheSize === null || earlyKvCacheSize >= minCanaryKvCache) &&
-    (!requiresCustomCodeConsent || customCodeConsent) &&
-    (!requiresLicenseConsent || licenseConsent) &&
-    DeploymentSettingsDto.safeParse(settings).success &&
-    !capacityBlocked && replicas >= 1,
-  ));
-
-  const hasChanges = $derived.by(() => {
+  const hasChangesBesidesEnabled = $derived.by(() => {
     if (!isEditMode || !initialSnapshot) return true;
     const s = initialSnapshot;
     return (
       deploymentName.trim() !== s.name.trim() ||
       publicSpecifier.trim() !== s.publicSpecifier.trim() ||
-      enabled !== s.enabled ||
+      (selectedPrimarySpecifier ?? null) !== s.specifier ||
       (isCanaryEnabled ? (selectedCanarySpecifier ?? null) : null) !== s.earlySpecifier ||
       (isCanaryEnabled ? canaryTraffic : 100) !== s.progress ||
       (isCanaryEnabled && advancementStrategy === "smart-auto") !== s.canaryProgressWithFeedback ||
@@ -262,6 +277,22 @@
       !settingsEqual(settings, s.settings)
     );
   });
+
+  const hasChanges = $derived(
+    hasChangesBesidesEnabled || (initialSnapshot !== null && enabled !== initialSnapshot.enabled),
+  );
+
+  const isFormValid = $derived(Boolean(
+    (selectedPrimaryModel || keepsUnknownPrimary) && deploymentName.trim() && publicSpecifier.trim() &&
+    (!isCanaryEnabled || ((selectedCanaryModel || keepsUnknownCanary) && !canaryTypeMismatch)) &&
+    (kvCacheSize === null || kvCacheSize >= minKvCache) &&
+    (!isCanaryEnabled || earlyKvCacheSize === null || earlyKvCacheSize >= minCanaryKvCache) &&
+    (!requiresCustomCodeConsent || customCodeConsent) &&
+    (!requiresLicenseConsent || licenseConsent) &&
+    DeploymentSettingsDto.safeParse(settings).success &&
+    !capacityBlocked && replicas >= 1 &&
+    (!keepsUnknownEntry || !hasChangesBesidesEnabled),
+  ));
 
   function suggestedPublicSpecifier(model: ModelWithSpecifier | null | undefined): string {
     if (!model) {
@@ -310,21 +341,29 @@
   // Edit mode: clear canary when disabled
   $effect(() => { if (isEditMode && !isCanaryEnabled) selectedCanarySpecifier = null; });
 
+  /** Audio settings only apply to transcription models, so a model change drops stale values. */
+  function settingsForSubmit(): DeploymentSettings {
+    if (keepsUnknownEntry) {
+      return { ...settings };
+    }
+    const submitted: DeploymentSettings = { version: 1 };
+    if (selectedPrimaryModel?.type === "transcription" && settings.maxAudioInputDurationS != null) {
+      submitted.maxAudioInputDurationS = Math.round(settings.maxAudioInputDurationS);
+    }
+    return submitted;
+  }
+
   // --- Submit ---
   async function handleSubmit() {
-    if (!isFormValid || !selectedPrimaryModel) return;
+    const primarySpecifier = selectedPrimaryModel?.publicSpecifier ?? selectedPrimarySpecifier;
+    if (!isFormValid || !primarySpecifier) return;
 
-    const primarySpecifier = selectedPrimaryModel.publicSpecifier;
     const earlySpecifier = isCanaryEnabled && selectedCanaryModel ? selectedCanaryModel.publicSpecifier : null;
     // Ollama has no KV-cache knob; clear any value carried over from a different driver
-    const engine = selectedPrimaryModel.engine;
+    const engine = selectedPrimaryModel?.engine;
     const submittedKvCacheSize = engine === "ollama" ? null : kvCacheSize;
     const submittedEarlyKvCacheSize = engine === "ollama" ? null : earlyKvCacheSize;
-    // Audio settings only apply to transcription models; drop stale values on model change
-    const submittedSettings: DeploymentSettings = { version: 1 };
-    if (selectedPrimaryModel.type === "transcription" && settings.maxAudioInputDurationS != null) {
-      submittedSettings.maxAudioInputDurationS = Math.round(settings.maxAudioInputDurationS);
-    }
+    const submittedSettings = settingsForSubmit();
 
     const [error] = deployment
       ? await orpc.deployment.update({
@@ -411,6 +450,8 @@
           editMode={isEditMode}
           readonlyModels={requiresDisabled}
           {requiresDisabled}
+          {keepsUnknownPrimary}
+          {keepsUnknownCanary}
           bind:primarySpecifier={selectedPrimarySpecifier}
           bind:canarySpecifier={selectedCanarySpecifier}
           bind:publicSpecifier
