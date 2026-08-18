@@ -1,4 +1,4 @@
-import type { ModelWithSpecifier } from "xinity-infoserver";
+import { nearestIncompatibility, type IncompatibilityReason, type ModelWithSpecifier } from "xinity-infoserver";
 
 export type ModelGroup = {
   leader: ModelWithSpecifier;
@@ -38,4 +38,16 @@ export function groupModelVariants(models: ModelWithSpecifier[]): ModelGroup[] {
   }
 
   return [...groups.values()];
+}
+
+/**
+ * A group is only as undeployable as its most deployable variant, since picking the
+ * group means picking one of them. Judging it by its leader marks a whole family
+ * unavailable over a quantization the cluster was never going to be asked to run.
+ */
+export function groupIncompatibility(
+  group: ModelGroup,
+  explain: (model: ModelWithSpecifier) => IncompatibilityReason | null,
+): IncompatibilityReason | null {
+  return nearestIncompatibility(group.variants.map(variant => explain(variant)));
 }
