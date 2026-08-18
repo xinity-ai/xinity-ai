@@ -125,27 +125,40 @@ const REASON_PROGRESS: Record<IncompatibilityReason, number> = {
 };
 
 /**
- * Returns null if any node can serve the model via any of its providers, otherwise
- * the reason from the node/driver pair that came closest to working.
+ * Collapses the outcomes of several candidates into one: null if any candidate worked,
+ * otherwise the reason from the one that came closest.
  *
- * Reporting the closest pair matters: a cluster where one node is merely full and
- * another lacks the driver is a capacity problem, not a driver problem.
+ * Reporting the closest matters: a cluster where one node is merely full and another
+ * lacks the driver is a capacity problem, not a driver problem. The same holds across
+ * the variants of one model, where a quantization that fits beats one that does not.
  */
+export function nearestIncompatibility(
+  reasons: Iterable<IncompatibilityReason | null>,
+): IncompatibilityReason | null {
+  let closest: IncompatibilityReason = "missing_driver";
+  for (const reason of reasons) {
+    if (reason === null) {
+      return null;
+    }
+    if (REASON_PROGRESS[reason] > REASON_PROGRESS[closest]) {
+      closest = reason;
+    }
+  }
+  return closest;
+}
+
+/** Returns null if any node can serve the model via any of its providers. */
 export function explainLegacyClusterIncompatibility(
   nodes: NodeCapability[],
   model: ClusterModel,
 ): IncompatibilityReason | null {
   const drivers = Object.keys(model.providers).filter(d => model.providers[d] !== undefined);
 
-  let closest: IncompatibilityReason = "missing_driver";
-  for (const node of nodes) {
-    for (const driver of drivers) {
-      const reason = checkNodeCompatibility(node, modelRequirementsForDriver(model, driver));
-      if (reason === null) return null;
-      if (REASON_PROGRESS[reason] > REASON_PROGRESS[closest]) closest = reason;
-    }
-  }
-  return closest;
+  return nearestIncompatibility(
+    nodes.flatMap(node =>
+      drivers.map(driver => checkNodeCompatibility(node, modelRequirementsForDriver(model, driver))),
+    ),
+  );
 }
 
 /** Everything a cluster-wide deployability check reads off a model. */
@@ -161,29 +174,13 @@ export function modelRequirements(model: DeployableModel): ModelNodeRequirements
   };
 }
 
-/**
- * Returns null if any node can serve the model, otherwise the reason from the node that
- * came closest to working. With one engine per entry the candidates differ only by node,
- * so the closest reason distinguishes a cluster that is merely full from one that could
- * never run this model.
- */
+/** Returns null if any node can serve the model. */
 export function explainClusterIncompatibility(
   nodes: NodeCapability[],
   model: DeployableModel,
 ): IncompatibilityReason | null {
   const req = modelRequirements(model);
-
-  let closest: IncompatibilityReason = "missing_driver";
-  for (const node of nodes) {
-    const reason = checkNodeCompatibility(node, req);
-    if (reason === null) {
-      return null;
-    }
-    if (REASON_PROGRESS[reason] > REASON_PROGRESS[closest]) {
-      closest = reason;
-    }
-  }
-  return closest;
+  return nearestIncompatibility(nodes.map(node => checkNodeCompatibility(node, req)));
 }
 
 export function isDeployableOnCluster(nodes: NodeCapability[], model: DeployableModel): boolean {
