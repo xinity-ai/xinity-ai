@@ -292,3 +292,19 @@ export async function waitForResponseStatus(
   }
   return null;
 }
+
+/**
+ * Reasoning interrupted by content and resumed after. The provider closes a block on the
+ * first content delta and opens a new one for the later reasoning, so this shape is what
+ * a response holding several reasoning items looks like on the wire.
+ */
+export function makeChatSseResponseWithInterleavedReasoning(model: string): Response {
+  return sseResponse([
+    sseChunk(model, { role: "assistant", content: "" }),
+    sseChunk(model, { reasoning_content: "first block" }),
+    sseChunk(model, { content: "Hello" }),
+    sseChunk(model, { reasoning_content: "second block" }),
+    sseChunk(model, {}, "stop", MOCK_REASONING_USAGE),
+    "data: [DONE]\n\n",
+  ].join(""));
+}

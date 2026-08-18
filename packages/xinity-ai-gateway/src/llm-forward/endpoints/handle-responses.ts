@@ -529,7 +529,7 @@ async function generateAndPersistCompletedResponse(args: GeneratePersistArgs, ba
     });
     finalOutput = progressItems;
   } else {
-    finalOutput = buildOutputItems(responseId, responseText, toolCalls, toolResults, include, result.reasoningText);
+    finalOutput = buildOutputItems(responseId, responseText, toolCalls, toolResults, include, result.reasoning.map(part => part.text));
   }
 
   const completedResponse = createResponseObject({
