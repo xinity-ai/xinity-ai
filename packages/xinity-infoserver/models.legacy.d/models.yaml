@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=../models.schema.json
 # DEPRECATED v1 example. Served only on the v1 endpoints via MODEL_LEGACY_DIR,
-# and removed in 1.0.0. New entries belong in models.d in the current format.
+# and removed in 1.0.0. New entries belong in MODEL_INFO_DIR in the current format.
 includes:
   - https://sysinfo.xinity.ai/models/v1.json
 
