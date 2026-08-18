@@ -326,7 +326,7 @@
           <AlertCircle class="w-12 h-12 mb-4 text-destructive opacity-70" />
           <p class="text-lg font-medium text-destructive">Failed to load models</p>
           <p class="text-sm mt-1">{modelCatalog.loadError}</p>
-          <Button variant="outline" class="mt-4" onclick={() => modelCatalog.loadMore()}>Retry</Button>
+          <Button variant="outline" class="mt-4" onclick={() => modelCatalog.retry()}>Retry</Button>
         </div>
       {:else if !modelCatalog.initialLoaded}
         <div class="flex flex-col items-center justify-center h-64 text-muted-foreground">
@@ -377,7 +377,7 @@
             <div class="flex items-center gap-2 text-sm text-destructive">
               <AlertCircle class="w-4 h-4" />
               <span>Failed to load more: {modelCatalog.loadError}</span>
-              <Button variant="outline" size="sm" onclick={() => modelCatalog.loadMore()}>Retry</Button>
+              <Button variant="outline" size="sm" onclick={() => modelCatalog.retry()}>Retry</Button>
             </div>
           {:else if modelCatalog.isLoading}
             <div class="flex items-center gap-2 text-sm text-muted-foreground">
