@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { checkNodeCompatibility, isLegacyModelDeployableOnCluster, explainLegacyClusterIncompatibility, type NodeCapability, type ModelNodeRequirements, type GpuInfo } from "./node-compat";
+import { checkNodeCompatibility, isLegacyModelDeployableOnCluster, explainLegacyClusterIncompatibility, nearestIncompatibility, type NodeCapability, type ModelNodeRequirements, type GpuInfo } from "./node-compat";
 
 const nvidiaGpu: GpuInfo = { vendor: "nvidia", name: "A100", vramMb: 81920 };
 const amdGpu: GpuInfo = { vendor: "amd", name: "MI300X", vramMb: 196608 };
@@ -21,6 +21,20 @@ function makeReq(overrides?: Partial<ModelNodeRequirements>): ModelNodeRequireme
     ...overrides,
   };
 }
+
+describe("nearestIncompatibility", () => {
+  test("one workable candidate clears the whole set", () => {
+    expect(nearestIncompatibility(["missing_driver", null, "insufficient_capacity"])).toBeNull();
+  });
+
+  test("reports the candidate that got furthest through the checks", () => {
+    expect(nearestIncompatibility(["missing_driver", "wrong_platform", "version_too_old"])).toBe("wrong_platform");
+  });
+
+  test("reports missing_driver for no candidates at all", () => {
+    expect(nearestIncompatibility([])).toBe("missing_driver");
+  });
+});
 
 describe("checkNodeCompatibility", () => {
   test("returns null when all constraints satisfied", () => {
