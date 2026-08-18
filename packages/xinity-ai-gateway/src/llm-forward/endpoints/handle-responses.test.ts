@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeAll, afterAll, afterEach } from "bun:test";
-import { makeChatSseResponse, makeChatJsonResponse, makeChatJsonResponseWithToolCalls, makeChatSseResponseWithToolCalls, makeChatJsonResponseWithReasoning, makeChatSseResponseWithReasoning, MOCK_REASONING_TOKENS, mockBackendFetch, setupResponseTestMocks, waitForResponseStatus, requestWithParams } from "./test-helpers";
+import { makeChatSseResponse, makeChatJsonResponse, makeChatSseResponseWithInterleavedReasoning, makeChatJsonResponseWithToolCalls, makeChatSseResponseWithToolCalls, makeChatJsonResponseWithReasoning, makeChatSseResponseWithReasoning, MOCK_REASONING_TOKENS, mockBackendFetch, setupResponseTestMocks, waitForResponseStatus, requestWithParams } from "./test-helpers";
 
 const mocks = setupResponseTestMocks();
 const { checkAuth, getModelInfo, responseStore, saveResponse, logChatSync } = mocks;
@@ -25,6 +25,9 @@ beforeAll(() => {
         };
         lastUpstreamBody = body as Record<string, unknown>;
 
+        if (body.reasoning_effort === "interleave") {
+          return makeChatSseResponseWithInterleavedReasoning("test-model");
+        }
         if (body.reasoning_effort) {
           if (body.stream) return makeChatSseResponseWithReasoning("test-model", ["Hello"], ["Let me ", "think."]);
           return makeChatJsonResponseWithReasoning("test-model", "Hello", "Let me think.");
@@ -733,5 +736,31 @@ describe("handleResponses", () => {
     expect(completed.response.output[0].type).toBe("reasoning");
     expect(completed.response.output[0].summary[0].text).toBe("Let me think.");
     expect(completed.response.usage.output_tokens_details.reasoning_tokens).toBe(MOCK_REASONING_TOKENS);
+  });
+
+  test("should complete every reasoning item when reasoning resumes after content", async () => {
+    const res = await handleCreateResponseRequest(new Request("http://x/v1/responses", {
+      method: "POST",
+      headers: { authorization: "Bearer k", "content-type": "application/json" },
+      body: JSON.stringify({ model: "test-model", input: "Hi", stream: true, reasoning: { effort: "interleave" } }),
+    }));
+    const events = (await res.text()).split("\n\n").filter(Boolean).flatMap((block) => {
+      const line = block.split("\n").find((l) => l.startsWith("data: "));
+      try { return [JSON.parse(line!.slice(6))]; } catch { return []; }
+    });
+
+    const added = events.filter((e) => e.type === "response.output_item.added");
+    const done = events.filter((e) => e.type === "response.output_item.done");
+    expect(added.map((e) => e.item.type)).toEqual(["reasoning", "message", "reasoning"]);
+    // Completion order follows finish time, not add order: the message item is finalized last.
+    expect(done.map((e) => e.output_index).sort()).toEqual(added.map((e) => e.output_index).sort());
+
+    const reasoningIds = added.filter((e) => e.item.type === "reasoning").map((e) => e.item.id);
+    expect(new Set(reasoningIds).size).toBe(2);
+
+    const completed = events.find((e) => e.type === "response.completed");
+    expect(completed.response.output.map((o: { type: string }) => o.type)).toEqual(["reasoning", "reasoning", "message"]);
+    expect(completed.response.output[0].summary[0].text).toBe("first block");
+    expect(completed.response.output[1].summary[0].text).toBe("second block");
   });
 });

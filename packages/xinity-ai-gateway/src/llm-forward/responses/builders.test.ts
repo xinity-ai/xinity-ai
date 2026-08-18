@@ -646,13 +646,13 @@ describe("buildOutputItems", () => {
   });
 
   test("puts the reasoning item first when reasoning text is present", () => {
-    const items = buildOutputItems("resp_1", "Hello!", [], [], undefined, "Thinking about it.");
+    const items = buildOutputItems("resp_1", "Hello!", [], [], undefined, ["Thinking about it."]);
     expect(items).toHaveLength(2);
     expect(items[0]!.type).toBe("reasoning");
     expect(items[1]!.type).toBe("message");
 
     const reasoning = items[0] as ReasoningOutputItem;
-    expect(reasoning.id).toBe("rs_resp_1");
+    expect(reasoning.id).toBe("rs_resp_1_0");
     expect(reasoning.status).toBe("completed");
     expect(reasoning.summary).toEqual([{ type: "summary_text", text: "Thinking about it." }]);
   });
@@ -661,7 +661,7 @@ describe("buildOutputItems", () => {
     const toolCalls: ToolCallItem[] = [
       { id: "call_1", aiToolCallId: "tc_1", type: "function_call", status: "completed", name: "calc", callId: "tc_1", arguments: "{}" },
     ];
-    const items = buildOutputItems("resp_1", "Answer", toolCalls, [], undefined, "Reasoning.");
+    const items = buildOutputItems("resp_1", "Answer", toolCalls, [], undefined, ["Reasoning."]);
     expect(items.map((i) => i.type)).toEqual(["reasoning", "function_call", "message"]);
   });
 
@@ -670,9 +670,16 @@ describe("buildOutputItems", () => {
     expect(items.map((i) => i.type)).toEqual(["message"]);
   });
 
-  test("omits the reasoning item when reasoning text is empty", () => {
-    const items = buildOutputItems("resp_1", "Hello!", [], [], undefined, "");
+  test("omits an empty reasoning block while keeping later ids stable", () => {
+    const items = buildOutputItems("resp_1", "Hello!", [], [], undefined, [""]);
     expect(items.map((i) => i.type)).toEqual(["message"]);
+  });
+
+  test("gives every reasoning block its own item and id", () => {
+    const items = buildOutputItems("resp_1", "Hello!", [], [], undefined, ["First.", "Second."]);
+    expect(items.map((i) => i.type)).toEqual(["reasoning", "reasoning", "message"]);
+    expect((items[0] as ReasoningOutputItem).id).toBe("rs_resp_1_0");
+    expect((items[1] as ReasoningOutputItem).id).toBe("rs_resp_1_1");
   });
 });
 

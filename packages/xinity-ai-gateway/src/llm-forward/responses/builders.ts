@@ -449,9 +449,9 @@ function buildFunctionCallItem(toolCall: ToolCallItem): FunctionCallOutputItem {
   };
 }
 
-export function buildReasoningItem(responseId: string, reasoningText: string): ReasoningOutputItem {
+export function buildReasoningItem(responseId: string, reasoningText: string, index: number): ReasoningOutputItem {
   return {
-    id: `rs_${responseId}`,
+    id: `rs_${responseId}_${index}`,
     type: "reasoning",
     status: "completed",
     summary: [{ type: "summary_text", text: reasoningText }],
@@ -465,13 +465,15 @@ export function buildOutputItems(
   toolCalls: ToolCallItem[],
   toolResults: ToolResultData[],
   include?: IncludeValue[],
-  reasoningText?: string,
+  reasoningTexts: string[] = [],
 ): OutputItem[] {
   const output: OutputItem[] = [];
 
-  if (reasoningText) {
-    output.push(buildReasoningItem(responseId, reasoningText));
-  }
+  reasoningTexts.forEach((reasoningText, index) => {
+    if (reasoningText) {
+      output.push(buildReasoningItem(responseId, reasoningText, index));
+    }
+  });
 
   for (const toolCall of toolCalls) {
     if (toolCall.type === "web_search_call") {

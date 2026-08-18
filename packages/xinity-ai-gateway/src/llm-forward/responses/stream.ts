@@ -92,13 +92,32 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
     async start(controller) {
       const seq = createSequence();
       let accumulatedText = "";
-      let accumulatedReasoning = "";
       let messageOutputIndex = -1;
-      let reasoningOutputIndex = -1;
       let nextOutputIndex = 0;
       let messageItemEmitted = false;
-      let reasoningItemFinished = false;
-      const reasoningItemId = `rs_${responseId}`;
+
+      // The provider closes a reasoning block whenever content or a tool call interrupts it
+      // and opens a fresh one after, so a response holds as many items as it opened blocks.
+      const reasoningTexts: string[] = [];
+      let openReasoningIndex = -1;
+      let openReasoningItemId = "";
+      let openReasoningText = "";
+
+      function openReasoningBlock() {
+        openReasoningIndex = nextOutputIndex++;
+        openReasoningItemId = `rs_${responseId}_${reasoningTexts.length}`;
+        openReasoningText = "";
+        emitReasoningItemAdded(controller, openReasoningItemId, openReasoningIndex, seq);
+      }
+
+      function closeReasoningBlock() {
+        if (openReasoningIndex === -1) {
+          return;
+        }
+        emitReasoningFinished(controller, openReasoningItemId, openReasoningIndex, openReasoningText, seq);
+        reasoningTexts.push(openReasoningText);
+        openReasoningIndex = -1;
+      }
 
       // Track tool calls inline for consistent IDs across stream events
       const streamToolCalls: StreamToolCall[] = [];
@@ -109,20 +128,16 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
 
         for await (const part of result.fullStream) {
           if (part.type === "reasoning-start") {
-            reasoningOutputIndex = nextOutputIndex++;
-            emitReasoningItemAdded(controller, reasoningItemId, reasoningOutputIndex, seq);
+            closeReasoningBlock();
+            openReasoningBlock();
           } else if (part.type === "reasoning-delta") {
-            if (reasoningOutputIndex === -1) {
-              reasoningOutputIndex = nextOutputIndex++;
-              emitReasoningItemAdded(controller, reasoningItemId, reasoningOutputIndex, seq);
+            if (openReasoningIndex === -1) {
+              openReasoningBlock();
             }
-            accumulatedReasoning += part.text;
-            emitReasoningDelta(controller, reasoningItemId, reasoningOutputIndex, part.text, seq);
+            openReasoningText += part.text;
+            emitReasoningDelta(controller, openReasoningItemId, openReasoningIndex, part.text, seq);
           } else if (part.type === "reasoning-end") {
-            if (reasoningOutputIndex !== -1 && !reasoningItemFinished) {
-              reasoningItemFinished = true;
-              emitReasoningFinished(controller, reasoningItemId, reasoningOutputIndex, accumulatedReasoning, seq);
-            }
+            closeReasoningBlock();
           } else if (part.type === "text-delta") {
             if (!messageItemEmitted) {
               messageOutputIndex = nextOutputIndex++;
@@ -186,9 +201,7 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
         const finalUsage = await result.usage;
         const finalText = accumulatedText || await result.text;
 
-        if (reasoningOutputIndex !== -1 && !reasoningItemFinished) {
-          emitReasoningFinished(controller, reasoningItemId, reasoningOutputIndex, accumulatedReasoning, seq);
-        }
+        closeReasoningBlock();
 
         if (!messageItemEmitted) {
           messageOutputIndex = nextOutputIndex++;
@@ -201,7 +214,7 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
 
         const completedResponse = createResponseObject({
           responseId, createdAt, model: originalModel, status: "completed",
-          output: buildOutputItems(responseId, finalText, toolCalls, toolResults, include, accumulatedReasoning),
+          output: buildOutputItems(responseId, finalText, toolCalls, toolResults, include, reasoningTexts),
           usage: finalUsage, body,
         });
         await saveResponse(orgId, responseId, completedResponse)
