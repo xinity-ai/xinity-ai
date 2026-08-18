@@ -25,6 +25,7 @@
 
   const engineLabel = $derived(model.engine === "vllm" ? "vLLM" : "Ollama");
   const platformLabel = $derived((model.platforms ?? []).join(" or "));
+  const isVariantGroup = $derived(variantCount > 1);
 
   function undeployableMessage(reason: IncompatibilityReason): string {
     switch (reason) {
@@ -38,7 +39,9 @@
       case "wrong_platform":
         return `No node has a compatible GPU${platformLabel ? ` (needs ${platformLabel})` : ""}.`;
       case "insufficient_capacity":
-        return `Needs ${formatGb(model.sizing.weightGb + model.sizing.minKvCacheGb)}, more than the largest node's ${formatGb(maxNodeFreeCapacity)} free.`;
+        return isVariantGroup
+          ? `No variant fits the largest node's ${formatGb(maxNodeFreeCapacity)} free.`
+          : `Needs ${formatGb(model.sizing.weightGb + model.sizing.minKvCacheGb)}, more than the largest node's ${formatGb(maxNodeFreeCapacity)} free.`;
     }
   }
 </script>
@@ -91,11 +94,13 @@
   {/if}
 
   <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground mb-3">
-    <span class="flex items-center gap-1.5">
-      <HardDrive class="w-3 h-3 shrink-0" />
-      <span>{formatGb(model.sizing.weightGb + model.sizing.minKvCacheGb)}</span>
-      <span class="opacity-50">({parseFloat(model.sizing.weightGb.toFixed(2))} model + {parseFloat(model.sizing.minKvCacheGb.toFixed(2))} kv-cache)</span>
-    </span>
+    {#if !isVariantGroup}
+      <span class="flex items-center gap-1.5">
+        <HardDrive class="w-3 h-3 shrink-0" />
+        <span>{formatGb(model.sizing.weightGb + model.sizing.minKvCacheGb)}</span>
+        <span class="opacity-50">({parseFloat(model.sizing.weightGb.toFixed(2))} model + {parseFloat(model.sizing.minKvCacheGb.toFixed(2))} kv-cache)</span>
+      </span>
+    {/if}
     <span class="flex items-center gap-1.5" title="Released {model.createdAt}">
       <CalendarDays class="w-3 h-3 shrink-0" />
       <span>{humanMonthYear(model.createdAt)}</span>
@@ -105,7 +110,10 @@
   {#if blockedReason}
     <div class="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-400 mb-1">
       <Info class="w-3.5 h-3.5 shrink-0 mt-0.5" />
-      <span>{undeployableMessage(blockedReason)} You can still select it and deploy it disabled.</span>
+      <span>
+        {undeployableMessage(blockedReason)}
+        {#if !isVariantGroup}You can still select it and deploy it disabled.{/if}
+      </span>
     </div>
   {/if}
 

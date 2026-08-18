@@ -4,7 +4,7 @@
   import { EngineEnum, explainClusterIncompatibility } from "xinity-infoserver";
   import { modelCatalog } from "$lib/state/model-catalog.svelte";
   import { formatGb } from "$lib/util";
-  import { groupModelVariants, type ModelGroup } from "./model-groups";
+  import { groupModelVariants, groupIncompatibility, type ModelGroup } from "./model-groups";
   import { SvelteSet } from "svelte/reactivity";
 
   // shadcn components
@@ -360,7 +360,7 @@
                 {#each groupedModels[family] as group (group.leader.publicSpecifier)}
                   <ModelChoiceCard
                     model={group.leader}
-                    blockedReason={undeployableReason(group.leader)}
+                    blockedReason={groupIncompatibility(group, undeployableReason)}
                     {maxNodeFreeCapacity}
                     variantCount={group.variants.length}
                     onSelect={() => chooseFromGroup(group)}
