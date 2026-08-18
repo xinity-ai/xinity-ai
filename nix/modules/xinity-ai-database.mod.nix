@@ -70,6 +70,11 @@
         };
 
         postgres = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Provision the local PostgreSQL instance. Set to false to run the rest of the database stack against an external PostgreSQL server, in which case the connection URL must be supplied to each service that needs it.";
+          };
           port = lib.mkOption {
             type = lib.types.port;
             default = 5432;
@@ -78,6 +83,11 @@
         };
 
         redis = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Provision the local Redis instance. Set to false to point the gateway at an external Redis via its redisUrlFile.";
+          };
           port = lib.mkOption {
             type = lib.types.port;
             default = 6379;
@@ -113,7 +123,7 @@
           }];
 
         # --- PostgreSQL ---
-        services.postgresql = {
+        services.postgresql = lib.mkIf cfg.postgres.enable {
           enable = true;
           package = pkgs.postgresql_17;
           enableTCPIP = true;
@@ -131,21 +141,24 @@
         };
 
         # --- Redis ---
-        services.redis.servers.xinity = {
-          enable = true;
-          port = cfg.redis.port;
-          requirePassFile = cfg.redisPasswordFile;
-          bind = redisBindAddress;
+        services.redis.servers = lib.mkIf cfg.redis.enable {
+          xinity = {
+            enable = true;
+            port = cfg.redis.port;
+            requirePassFile = cfg.redisPasswordFile;
+            bind = redisBindAddress;
+          };
         };
 
         # --- Firewall ---
         networking.firewall.allowedTCPPorts =
           lib.mkIf (cfg.listenMode != "local")
-            [ cfg.postgres.port cfg.redis.port ];
+            (lib.optional cfg.postgres.enable cfg.postgres.port
+              ++ lib.optional cfg.redis.enable cfg.redis.port);
 
         # --- PostgreSQL password setup ---
         systemd.services.postgresql-auth-setup =
-          lib.mkIf (cfg.pgPasswordFile != null) {
+          lib.mkIf (cfg.postgres.enable && cfg.pgPasswordFile != null) {
             description = "PostgreSQL auth updating Script";
 
             requires = [ "postgresql-setup.service" ];

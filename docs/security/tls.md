@@ -6,9 +6,11 @@ xinity supports optional TLS between the gateway and inference daemons. When ena
 
 ```
 Gateway --HTTP(S)--> Daemon (:4044) /proxy/{model}/v1/... --plain HTTP--> Backend on 127.0.0.1
+Daemon  --HTTP(S)--> Tether (:4020) /api/v1/stream, /api/v1/status
 ```
 
 - The daemon acts as a reverse proxy for all inference traffic on its existing HTTP(S) port
+- The tether is typically reached by daemons directly rather than through a reverse proxy, and it carries `TETHER_SECRET` as a bearer token. Enabling TLS on it is still possible, and recommended for any untrusted network. 
 - Inference backends (vLLM, Ollama) bind to `127.0.0.1` only and are not directly reachable from the network
 - Each daemon generates a random auth token on startup and sends it to the tether as part of its registration. The tether writes it to the database, and the gateway reads it automatically
 - When TLS is configured on a daemon, it reports this to the tether so the gateway connects via HTTPS
@@ -46,7 +48,7 @@ This creates:
 
 ### Server TLS (any service)
 
-These env vars are shared across daemon and gateway. When both are set, the service serves HTTPS.
+These env vars are shared across daemon, gateway, and tether. When both are set, the service serves HTTPS.
 
 | Variable | Description |
 |----------|-------------|
@@ -100,6 +102,24 @@ services.xinity-ai-daemon = {
   tlsCertFile = "/run/secrets/xinity/server.pem";
   tlsKeyFile = "/run/secrets/xinity/server-key.pem";
 };
+```
+
+**Tether** (systemd service, uses LoadCredential):
+
+```nix
+services.xinity-tether = {
+  enable = true;
+  tlsCertFile = "/run/secrets/xinity/tether.pem";
+  tlsKeyFile = "/run/secrets/xinity/tether-key.pem";
+};
+```
+
+With the `allinone` module, set `services.xinity-ai.tether.tlsCertFile` and `tlsKeyFile` instead. The bundled local daemon then dials the tether by domain name rather than loopback, since one certificate cannot be valid for both `127.0.0.1` and a public name.
+
+The certificate must be valid for the name in each node's `TETHER_URL`. If a private CA signed it, the daemons need to trust that CA, which is a trust store concern rather than a Xinity setting:
+
+```nix
+services.xinity-ai-daemon.extraEnvironment.NODE_EXTRA_CA_CERTS = "/run/secrets/xinity/ca.pem";
 ```
 
 **Gateway** (OCI container, uses volume mounts):
