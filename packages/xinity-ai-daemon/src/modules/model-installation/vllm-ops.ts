@@ -38,7 +38,9 @@ export interface VllmOps {
 
 async function checkHealth(port: number): Promise<boolean> {
   try {
-    const res = await fetch(`http://localhost:${port}/health`);
+    const res = await fetch(`http://localhost:${port}/health`, {
+      signal: AbortSignal.timeout(10_000),
+    });
     return res.ok;
   } catch {
     return false;
