@@ -1,5 +1,5 @@
 import { logMigrationFailureFatal } from "common-db";
-import { nodeRegistrationSchema, installationStateReportSchema, protocolFingerprint } from "common-env";
+import { nodeRegistrationSchema, installationStateReportSchema, protocolFingerprint, getTlsConfig } from "common-env";
 import { env } from "./env";
 import { rootLogger } from "./logger";
 import { checkMigrations } from "./db";
@@ -121,9 +121,11 @@ async function handleStatus(req: Request): Promise<Response> {
 }
 
 const serveTarget = buildListenTarget(env);
+const tls = getTlsConfig(env);
 
 const server = Bun.serve({
   ...serveTarget,
+  tls,
   routes: {
     "/health": () => Response.json({ ok: true }),
     "/metrics": handleMetrics,
@@ -135,7 +137,7 @@ const server = Bun.serve({
   },
 });
 
-log.info({ ...serveTarget }, "Tether started");
+log.info({ ...serveTarget, tls: !!tls }, `Tether started (${tls ? "https" : "http"})`);
 
 async function shutdown() {
   clearInterval(keepaliveTimer);

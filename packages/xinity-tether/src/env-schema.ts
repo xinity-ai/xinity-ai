@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { secret, expert, metricsAuthSchema } from "common-env";
+import { secret, expert, metricsAuthSchema, tlsEnvSchema } from "common-env";
 import { logEnvSchema } from "common-log";
 
 export const tetherEnvSchema = z.object({
@@ -14,7 +14,7 @@ export const tetherEnvSchema = z.object({
     .meta(expert()),
   KEEPALIVE_INTERVAL_MS: z.coerce.number().default(15_000).describe("SSE keepalive interval in ms").meta(expert()),
   LIVENESS_TIMEOUT_MS: z.coerce.number().default(45_000).describe("Time before a silent connection is considered dead").meta(expert()),
-}).extend(logEnvSchema.shape).check((ctx) => {
+}).extend(tlsEnvSchema.shape).extend(logEnvSchema.shape).check((ctx) => {
   const keepaliveMs = ctx.value.KEEPALIVE_INTERVAL_MS;
   const idleTimeoutMs = ctx.value.IDLE_TIMEOUT * 1000;
   if (keepaliveMs * 3 > idleTimeoutMs) {

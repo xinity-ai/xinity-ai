@@ -16,6 +16,12 @@
       infoserverTarget =
         if cfg.infoserverOrigin != null then cfg.infoserverOrigin
         else "localhost:${toString config.services.xinity-infoserver.port}";
+
+      vhost = subdomain: target: lib.optionalAttrs (subdomain != null) {
+        "${subdomain}.${cfg.domain}".extraConfig = lib.mkDefault ''
+          reverse_proxy ${target}
+        '';
+      };
     in {
       options.services.xinity-ai-caddy = {
         enable = lib.mkEnableOption "a Caddy reverse proxy that terminates TLS via ACME/Let's Encrypt and routes traffic to the xinity-ai dashboard, gateway, and infoserver by subdomain";
@@ -26,32 +32,33 @@
         };
 
         acmeEmail = lib.mkOption {
-          type = lib.types.str;
-          description = "Email address registered with ACME/Let's Encrypt for certificate expiry notifications and account recovery.";
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Email address registered with ACME/Let's Encrypt for certificate expiry notifications and account recovery. When null, no email is registered and expiry warnings are lost.";
         };
 
         dashboardSubdomain = lib.mkOption {
-          type = lib.types.str;
+          type = lib.types.nullOr lib.types.str;
           default = "dashboard";
-          description = "Subdomain prefix for the dashboard (e.g. dashboard.example.com).";
+          description = "Subdomain prefix for the dashboard (e.g. dashboard.example.com). Set to null to leave the dashboard unrouted.";
         };
 
         gatewaySubdomain = lib.mkOption {
-          type = lib.types.str;
+          type = lib.types.nullOr lib.types.str;
           default = "api";
-          description = "Subdomain prefix for the gateway (e.g. api.example.com).";
+          description = "Subdomain prefix for the gateway (e.g. api.example.com). Set to null to leave the gateway unrouted.";
         };
 
         infoserverSubdomain = lib.mkOption {
-          type = lib.types.str;
+          type = lib.types.nullOr lib.types.str;
           default = "models";
-          description = "Subdomain prefix for the infoserver (e.g. models.example.com).";
+          description = "Subdomain prefix for the infoserver (e.g. models.example.com). Set to null to leave the infoserver unrouted, which is what you want when consuming a remote infoserver.";
         };
 
         grafanaSubdomain = lib.mkOption {
-          type = lib.types.str;
+          type = lib.types.nullOr lib.types.str;
           default = "grafana";
-          description = "Subdomain prefix for Grafana (e.g. grafana.example.com).";
+          description = "Subdomain prefix for Grafana (e.g. grafana.example.com). Set to null to leave Grafana unrouted.";
         };
 
         dashboardOrigin = lib.mkOption {
@@ -94,29 +101,15 @@
       config = lib.mkIf cfg.enable {
         services.caddy = {
           enable = lib.mkDefault true;
-          globalConfig = lib.mkDefault ''
+          globalConfig = lib.mkIf (cfg.acmeEmail != null) (lib.mkDefault ''
             email ${cfg.acmeEmail}
-          '';
-          virtualHosts."${cfg.dashboardSubdomain}.${cfg.domain}" = {
-            extraConfig = lib.mkDefault ''
-              reverse_proxy ${dashboardTarget}
-            '';
-          };
-          virtualHosts."${cfg.gatewaySubdomain}.${cfg.domain}" = {
-            extraConfig = lib.mkDefault ''
-              reverse_proxy ${gatewayTarget}
-            '';
-          };
-          virtualHosts."${cfg.infoserverSubdomain}.${cfg.domain}" = {
-            extraConfig = lib.mkDefault ''
-              reverse_proxy ${infoserverTarget}
-            '';
-          };
-          virtualHosts."${cfg.grafanaSubdomain}.${cfg.domain}" = lib.mkIf (cfg.grafanaOrigin != null) {
-            extraConfig = lib.mkDefault ''
-              reverse_proxy ${cfg.grafanaOrigin}
-            '';
-          };
+          '');
+          virtualHosts =
+            vhost cfg.dashboardSubdomain dashboardTarget
+            // vhost cfg.gatewaySubdomain gatewayTarget
+            // vhost cfg.infoserverSubdomain infoserverTarget
+            // lib.optionalAttrs (cfg.grafanaOrigin != null)
+              (vhost cfg.grafanaSubdomain cfg.grafanaOrigin);
         };
 
         networking.firewall.allowedTCPPorts = [ 80 443 ];
@@ -200,6 +193,7 @@
         self.nixosModules.infoserver
         self.nixosModules.searxng
         self.nixosModules.tether
+        self.nixosModules.daemon
         self.nixosModules.seaweedfs
         self.nixosModules.monitoring
         self.nixosModules.caddy
@@ -224,8 +218,9 @@
         };
 
         acmeEmail = lib.mkOption {
-          type = lib.types.str;
-          description = "Email address registered with ACME/Let's Encrypt for certificate expiry notifications. Forwarded to the Caddy module.";
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Email address registered with ACME/Let's Encrypt for certificate expiry notifications. Forwarded to the Caddy module. Required unless caddy.enable is false.";
         };
 
         dashboardSubdomain = lib.mkOption {
@@ -253,6 +248,11 @@
         };
 
         database = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Provision the local PostgreSQL instance, with automatic schema migrations. Set to false to run against an external server, in which case you give every service its connection URL through secrets.dbConnectionUrlFile or environmentFiles and manage its schema yourself.";
+          };
           name = lib.mkOption {
             type = lib.types.str;
             default = "xinity";
@@ -280,6 +280,11 @@
         };
 
         gateway = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Run the gateway on this machine.";
+          };
           port = lib.mkOption {
             type = lib.types.port;
             default = 4121;
@@ -293,6 +298,11 @@
         };
 
         dashboard = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Run the admin dashboard on this machine.";
+          };
           port = lib.mkOption {
             type = lib.types.port;
             default = 5121;
@@ -311,6 +321,11 @@
         };
 
         infoserver = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Run the bundled infoserver on this machine. Set to false to consume a remote one, and point services.xinity-ai.infoserverUrl at it.";
+          };
           port = lib.mkOption {
             type = lib.types.port;
             default = 8090;
@@ -318,19 +333,93 @@
           };
           modelInfoDir = lib.mkOption {
             type = lib.types.path;
-            description = "Path to a directory of model YAML files on the host.";
+            description = "Path to a directory of model YAML files on the host. Only needed when infoserver.enable is true.";
           };
         };
 
+        infoserverUrl = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = ''
+            URL of the infoserver the gateway, dashboard, and daemon should use
+            (e.g. https://sysinfo.xinity.ai). When null, the bundled infoserver on loopback is
+            used. Required when infoserver.enable is false.
+          '';
+        };
+
         tether = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Run the tether on this machine. Inference nodes connect to it to receive desired state.";
+          };
           port = lib.mkOption {
             type = lib.types.port;
             default = 4020;
             description = "Port for the tether service.";
           };
+          openFirewall = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = "Open the tether's port in the firewall. Needed when inference nodes run on other machines. Caddy does not front the tether, so this port is separate from 80 and 443.";
+          };
+          tlsCertFile = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = "Path to a file containing the PEM-encoded TLS certificate for the tether. Enables HTTPS on it.";
+          };
+          tlsKeyFile = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = "Path to a file containing the PEM-encoded TLS private key for the tether. Required with tether.tlsCertFile.";
+          };
+        };
+
+        daemon = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = ''
+              Run an inference daemon on this machine, tethered over loopback, so the
+              all-in-one host serves models itself. Set to false for a control-plane-only
+              deployment whose capacity comes entirely from separate inference nodes.
+            '';
+          };
+          port = lib.mkOption {
+            type = lib.types.port;
+            default = 4044;
+            description = "Port the local daemon's API listens on. The gateway connects to it to forward inference requests.";
+          };
+          ollama = {
+            enable = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = ''
+                Provision Ollama as the local daemon's inference driver and wire its endpoint
+                automatically. Without a driver the daemon registers but can serve nothing.
+
+                NixOS defaults Ollama to CPU inference; set services.ollama.acceleration to
+                "cuda" or "rocm" to use the GPU. Set this to false to supply a driver yourself
+                through services.xinity-ai-daemon (vLLM, or an Ollama instance elsewhere).
+              '';
+            };
+          };
+        };
+
+        caddy = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Run the bundled Caddy reverse proxy, which terminates TLS via ACME and routes each service by subdomain. Set to false to handle reverse proxying yourself, in which case no ports are opened for you and acmeEmail is not required.";
+          };
         };
 
         redis = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Provision the local Redis instance. Set to false to use an external Redis, and give the gateway its URL through secrets.redisUrlFile.";
+          };
           port = lib.mkOption {
             type = lib.types.port;
             default = 6379;
@@ -448,7 +537,7 @@
           tetherSecretFile = lib.mkOption {
             type = lib.types.nullOr lib.types.str;
             default = null;
-            description = "Path to file containing the tether shared secret. Applied to tether and daemon.";
+            description = "Path to file containing the tether shared secret. Applied to the tether and to the local daemon. Every additional inference node must be given the same secret as TETHER_SECRET; there is one shared secret per deployment, not one per node.";
           };
           metricsAuthFile = lib.mkOption {
             type = lib.types.nullOr lib.types.str;
@@ -495,17 +584,33 @@
         migrateOnStart = lib.mkOption {
           type = lib.types.bool;
           default = true;
-          description = "Run Drizzle database migrations automatically at boot before starting the gateway and dashboard. Disable this if you manage schema migrations out-of-band.";
+          description = ''
+            Run Drizzle database migrations automatically at boot before starting the gateway
+            and dashboard. Disable this if you manage schema migrations out-of-band.
+
+            Only applies to the bundled PostgreSQL instance. An external server is never
+            migrated for you, so with database.enable = false you manage its schema yourself
+            and this option has no effect.
+          '';
         };
 
       };
 
       config =
         let
-          infoserverUrl = "http://127.0.0.1:${toString cfg.infoserver.port}";
+          infoserverUrl =
+            if cfg.infoserverUrl != null then cfg.infoserverUrl
+            else "http://127.0.0.1:${toString cfg.infoserver.port}";
 
           publicDashboardUrl = "https://${cfg.dashboardSubdomain}.${cfg.domain}";
           publicGatewayUrl = "https://${cfg.gatewaySubdomain}.${cfg.domain}";
+
+          # A TLS-serving tether cannot be reached at 127.0.0.1 without failing hostname
+          # verification, so the local daemon uses the same name remote nodes do.
+          tetherUrl =
+            if cfg.tether.tlsCertFile != null
+            then "https://${cfg.domain}:${toString cfg.tether.port}"
+            else "http://127.0.0.1:${toString cfg.tether.port}";
 
           envFiles = cfg.environmentFiles
             ++ lib.optional (cfg.environmentFile != null) cfg.environmentFile;
@@ -515,9 +620,29 @@
           warnings = lib.optional (cfg.environmentFile != null)
             "services.xinity-ai.environmentFile is deprecated. Use services.xinity-ai.environmentFiles instead.";
 
+          assertions = [
+            {
+              assertion = !cfg.caddy.enable || cfg.acmeEmail != null;
+              message = ''
+                services.xinity-ai.acmeEmail must be set so Caddy can register with ACME.
+                Set it, or set services.xinity-ai.caddy.enable = false to handle reverse
+                proxying yourself.
+              '';
+            }
+            {
+              assertion = cfg.infoserver.enable || cfg.infoserverUrl != null;
+              message = ''
+                services.xinity-ai.infoserver.enable is false, so services.xinity-ai.infoserverUrl
+                must point at the infoserver to use (e.g. https://sysinfo.xinity.ai).
+              '';
+            }
+          ];
+
           # --- Delegate to database module ---
-          services.xinity-ai-database = {
+          services.xinity-ai-database = lib.mkIf (cfg.database.enable || cfg.redis.enable) {
             enable = true;
+            postgres.enable = cfg.database.enable;
+            redis.enable = cfg.redis.enable;
             name = lib.mkDefault cfg.database.name;
             user = lib.mkDefault cfg.database.user;
             listenMode = lib.mkDefault cfg.listenMode;
@@ -527,10 +652,10 @@
           };
 
           # --- Database initialization (password setup + migrations) ---
-          services.xinity-ai-db-init.enable  = cfg.migrateOnStart;
+          services.xinity-ai-db-init.enable = cfg.migrateOnStart && cfg.database.enable;
 
           # --- Gateway ---
-          services.xinity-ai-gateway = {
+          services.xinity-ai-gateway = lib.mkIf cfg.gateway.enable {
             enable = true;
             port = lib.mkDefault cfg.gateway.port;
             backendTimeoutMs = lib.mkDefault cfg.gateway.backendTimeoutMs;
@@ -555,7 +680,7 @@
           };
 
           # --- Dashboard ---
-          services.xinity-ai-dashboard = {
+          services.xinity-ai-dashboard = lib.mkIf cfg.dashboard.enable {
             enable = true;
             port = lib.mkDefault cfg.dashboard.port;
             mcpEnabled = lib.mkDefault cfg.dashboard.mcpEnabled;
@@ -594,7 +719,7 @@
           };
 
           # --- InfoServer ---
-          services.xinity-infoserver = {
+          services.xinity-infoserver = lib.mkIf cfg.infoserver.enable {
             enable = true;
             port = lib.mkDefault cfg.infoserver.port;
             modelInfoDir = lib.mkDefault cfg.infoserver.modelInfoDir;
@@ -602,13 +727,31 @@
           };
 
           # --- Tether ---
-          services.xinity-tether = {
+          services.xinity-tether = lib.mkIf cfg.tether.enable {
             enable = true;
             port = lib.mkDefault cfg.tether.port;
             dbConnectionUrlFile = lib.mkDefault cfg.secrets.dbConnectionUrlFile;
             tetherSecretFile = lib.mkDefault cfg.secrets.tetherSecretFile;
             metricsAuthFile = lib.mkDefault cfg.secrets.metricsAuthFile;
+            openFirewall = lib.mkDefault cfg.tether.openFirewall;
+            tlsCertFile = lib.mkDefault cfg.tether.tlsCertFile;
+            tlsKeyFile = lib.mkDefault cfg.tether.tlsKeyFile;
             environmentFiles = lib.mkDefault envFiles;
+          };
+
+          # --- Daemon (local inference node) ---
+          services.xinity-ai-daemon = lib.mkIf cfg.daemon.enable {
+            enable = true;
+            port = lib.mkDefault cfg.daemon.port;
+            tetherUrl = lib.mkDefault tetherUrl;
+            tetherSecretFile = lib.mkDefault cfg.secrets.tetherSecretFile;
+            infoserverUrl = lib.mkDefault infoserverUrl;
+            metricsAuthFile = lib.mkDefault cfg.secrets.metricsAuthFile;
+            environmentFiles = lib.mkDefault envFiles;
+          };
+
+          services.ollama = lib.mkIf (cfg.daemon.enable && cfg.daemon.ollama.enable) {
+            enable = true;
           };
 
           # --- SearXNG ---
@@ -640,14 +783,18 @@
             logs.enable = lib.mkDefault cfg.monitoring.logs.enable;
           };
 
-          # --- Caddy (always enabled in allinone) ---
-          services.xinity-ai-caddy = {
+          # --- Caddy ---
+          services.xinity-ai-caddy = lib.mkIf cfg.caddy.enable {
             enable = true;
             domain = lib.mkDefault cfg.domain;
             acmeEmail = lib.mkDefault cfg.acmeEmail;
-            dashboardSubdomain = lib.mkDefault cfg.dashboardSubdomain;
-            gatewaySubdomain = lib.mkDefault cfg.gatewaySubdomain;
-            infoserverSubdomain = lib.mkDefault cfg.infoserverSubdomain;
+            # Services running elsewhere are left unrouted rather than proxied to a dead port
+            dashboardSubdomain =
+              lib.mkDefault (if cfg.dashboard.enable then cfg.dashboardSubdomain else null);
+            gatewaySubdomain =
+              lib.mkDefault (if cfg.gateway.enable then cfg.gatewaySubdomain else null);
+            infoserverSubdomain =
+              lib.mkDefault (if cfg.infoserver.enable then cfg.infoserverSubdomain else null);
             grafanaSubdomain = lib.mkDefault cfg.grafanaSubdomain;
             grafanaOrigin =
               if cfg.monitoring.enable && cfg.monitoring.grafana.enable

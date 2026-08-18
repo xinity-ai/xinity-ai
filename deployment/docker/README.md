@@ -109,6 +109,8 @@ For single-server deployments, plain `.env` (mode 600) is fine. Container env sh
 
 `setup.sh` already generates `secrets/db_connection_url`, `secrets/better_auth_secret`, `secrets/metrics_auth`, and `secrets/tether_secret`, and `docker-compose.yml` wires them into the relevant services as `*_FILE` environment variables (e.g. `DB_CONNECTION_URL_FILE`, `TETHER_SECRET_FILE`).
 
+`secrets/tether_secret` is also needed off this host: every inference node authenticates to the tether with it as `TETHER_SECRET`, so `cat secrets/tether_secret` and supply it when `xinity up daemon` prompts. The tether is published on all interfaces (port 4020, unlike the other services which bind to `127.0.0.1`) because daemons connect to it from other machines. To serve them over HTTPS, mount a certificate and key and set `XINITY_TLS_CERT_FILE` and `XINITY_TLS_KEY_FILE`. Nodes then use `TETHER_URL=https://<host>:4020`. See [TLS](../../docs/security/tls.md).  
+
 For any other *Xinity* service env var `VAR`, set `VAR_FILE` to a file path and the service reads the file at startup (direct env vars take precedence over the `_FILE` variant); wire it in via a `docker-compose.override.yml` using Compose's `secrets:` block.
 
 This convention does not apply to `POSTGRES_PASSWORD`/`REDIS_PASSWORD` — Postgres and Redis are vanilla upstream images that this stack passes plain env vars to, not `_FILE` paths. Keep those in `.env` (mode 600), or add your own Compose override that maps them to Postgres/Redis's own secret-file support if you need them off-disk-in-env.

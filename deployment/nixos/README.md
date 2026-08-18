@@ -8,10 +8,10 @@ All services (gateway, dashboard, infoserver, tether, daemon) run as native `sys
 
 A Xinity deployment spans two kinds of NixOS hosts:
 
-- **Control plane**: runs the gateway, dashboard, tether, infoserver, database, and reverse proxy.
+- **Control plane**: runs the gateway, dashboard, tether, infoserver, database, an inference daemon, and reverse proxy. 
 - **Inference node**: runs the daemon with Ollama and/or vLLM available. Has GPU capacity and manages model installation. Connects to the tether via SSE.
 
-Each gets a different module.
+Add inference nodes when you need capacity beyond the control plane host, or turn the local daemon off (`services.xinity-ai.daemon.enable = false`) to keep the control plane free of inference work.
 
 ## Add the Flake Input
 
@@ -35,7 +35,7 @@ nix.settings = {
 
 ## Control Plane: All-in-One Module
 
-The `allinone` module is the easiest way to deploy the full control plane on a single host. It configures PostgreSQL, Redis, gateway, dashboard, infoserver, and Caddy (automatic HTTPS) together.
+The `allinone` module is the easiest way to deploy Xinity on a single host. It configures PostgreSQL, Redis, gateway, dashboard, infoserver, tether, Caddy (automatic HTTPS), and a local inference daemon with Ollama together.
 
 ```nix
 # In your NixOS host configuration
@@ -61,9 +61,89 @@ The `environmentFiles` entries must contain at minimum:
 DB_CONNECTION_URL=postgresql://xinity:PASSWORD@localhost/xinity
 REDIS_URL=redis://:PASSWORD@localhost:6379
 BETTER_AUTH_SECRET=<random 32+ char string>
+TETHER_SECRET=<random 32+ char string>
 ```
 
+The same value as `TETHER_SECRET` must be given to every inference node (see [Inference Node](#inference-node-daemon-module) below); it is the only credential daemons use to authenticate.
+
 Use a secrets manager (e.g. [agenix](https://github.com/ryantm/agenix) or [sops-nix](https://github.com/Mic92/sops-nix)) to provision this file.
+
+### What Runs, and How to Disable It
+
+Every part of the stack is a toggle, so you can keep the convenience of `allinone` while supplying any individual piece yourself. Set any of these to `false` and that service is not configured at all:
+
+| Toggle | Default | Turn it off when |
+|---|---|---|
+| `database.enable` | on | PostgreSQL lives on another host |
+| `redis.enable` | on | Redis lives on another host |
+| `migrateOnStart` | on | you apply the bundled database's migrations out-of-band |
+| `gateway.enable` | on | the gateway runs elsewhere |
+| `dashboard.enable` | on | the dashboard runs elsewhere |
+| `infoserver.enable` | on | you use a remote model registry |
+| `tether.enable` | on | the tether runs elsewhere |
+| `daemon.enable` | on | this host should not serve inference |
+| `daemon.ollama.enable` | on | you drive vLLM, or Ollama runs elsewhere |
+| `caddy.enable` | on | you handle reverse proxying and TLS |
+| `searxng.enable` | on | you do not want web-augmented inference |
+| `seaweedfs.enable` | off | you want bundled S3-compatible storage |
+| `monitoring.enable` | off | you want bundled Prometheus and Grafana |
+
+Disabling a bundled service does not reconfigure its consumers. Point them at your own instance through the matching `services.xinity-ai-*` option, which always wins over what `allinone` sets.
+
+#### Local Inference
+
+The bundled daemon is tethered over loopback and needs no secret of its own beyond the one the tether already has. Ollama defaults to CPU inference on NixOS, so declare your accelerator:
+
+```nix
+services.ollama.acceleration = "cuda";  # or "rocm"
+```
+
+For a control plane that does no inference itself:
+
+```nix
+services.xinity-ai.daemon.enable = false;
+```
+
+To drive vLLM instead of Ollama, turn off the bundled Ollama and configure the driver directly:
+
+```nix
+services.xinity-ai.daemon.ollama.enable = false;
+services.xinity-ai-daemon.vllmDockerImage = "vllm/vllm-openai:latest";
+```
+
+#### External Infoserver
+
+```nix
+services.xinity-ai = {
+  infoserver.enable = false;
+  infoserverUrl = "https://sysinfo.xinity.ai";
+};
+```
+
+The gateway, dashboard, and local daemon all follow `infoserverUrl`, and Caddy stops routing the infoserver subdomain. `infoserver.modelInfoDir` is not needed in this mode.
+
+#### Your Own Reverse Proxy
+
+```nix
+services.xinity-ai = {
+  caddy.enable = false;
+  domain = "example.com";  # still required: it defines the public URLs services advertise
+};
+```
+
+Nothing is proxied and no ports are opened for you, so forward `dashboard.example.com` and `api.example.com` to the dashboard and gateway ports (5121 and 4121 by default) and open 80/443 yourself. `acmeEmail` is not required in this mode. The dashboard still expects to be reached at `https://<dashboardSubdomain>.<domain>` for auth redirects, so keep those names pointing at it, and forward `x-forwarded-for`.
+
+#### External Database
+
+```nix
+services.xinity-ai = {
+  database.enable = false;                              # external PostgreSQL
+  redis.enable = true;                                  # but keep Redis local
+  secrets.dbConnectionUrlFile = "/run/secrets/xinity-db-url";
+};
+```
+
+**Migrations come with the bundled database, not with an external one.** The internal instance is migrated for you at boot. An external server is yours to manage, so apply migrations however you already manage that database's schema. `migrateOnStart` has no effect when `database.enable = false`.
 
 ### Secrets: Three Tiers
 
@@ -88,6 +168,7 @@ services.xinity-ai.secrets = {
   dbConnectionUrlFile = "/run/secrets/xinity-db-url";
   redisUrlFile = "/run/secrets/xinity-redis-url";
   betterAuthSecretFile = "/run/secrets/xinity-auth-secret";
+  tetherSecretFile = "/run/secrets/xinity-tether-secret";
   metricsAuthFile = "/run/secrets/xinity-metrics-auth";
   s3AccessKeyIdFile = "/run/secrets/xinity-s3-key";
   s3SecretAccessKeyFile = "/run/secrets/xinity-s3-secret";
@@ -137,7 +218,11 @@ services.xinity-ai.searxng.enable = false;
 
 ## Inference Node: Daemon Module
 
-Deploy this on each machine with GPU capacity. It needs Ollama and/or vLLM available on the same machine to actually serve models.
+Deploy this on each machine with GPU capacity **in addition to** the control plane host.
+
+On an `allinone` host the daemon is already there, configured through `services.xinity-ai.daemon` and `services.xinity-ai-daemon`.
+
+An inference node needs Ollama and/or vLLM available on the same machine to actually serve models.
 
 ```nix
 { inputs, ... }: {
@@ -161,7 +246,35 @@ TETHER_URL=http://control-plane-host:4020
 TETHER_SECRET=<shared-secret>
 ```
 
+`TETHER_SECRET` must be byte-identical to the value the control plane's tether was given. There is one shared secret per deployment, not one per node.
+
 The daemon is a native systemd service (`systemd.services.xinity-ai-daemon`). It connects to the tether via SSE to receive deployment instructions and reports its state back. It has no direct database connection.
+
+### Reaching the Tether
+
+Inference nodes connect to the tether directly on port 4020, which Caddy does not front, so open it on the control plane host:
+
+```nix
+services.xinity-ai.tether.openFirewall = true;
+```
+
+A single-host deployment does not need this: the bundled daemon reaches the tether over loopback.
+
+`openFirewall` accepts connections from anywhere. To accept them only from your inference nodes, leave it off and write the narrower rule yourself:
+
+```nix
+networking.firewall.extraInputRules = ''
+  ip saddr { 10.0.0.11, 10.0.0.12 } tcp dport 4020 accept
+'';
+```
+
+Or scope it to one interface, which is the usual choice when the nodes share a VPN or overlay network (WireGuard, Tailscale, Headscale):
+
+```nix
+networking.firewall.interfaces.wg0.allowedTCPPorts = [ 4020 ];
+```
+
+To serve nodes over HTTPS, set `services.xinity-ai.tether.tlsCertFile` and `tlsKeyFile`. Caddy's ACME certificates do not cover the tether, so this needs its own certificate, valid for the `<domain>` nodes dial. Nodes then use `TETHER_URL=https://<domain>:4020`, and the bundled daemon follows that name automatically. See [TLS](../../docs/security/tls.md).
 
 
 ---
@@ -176,10 +289,15 @@ For fine-grained control, import and configure services separately. Available mo
 | `nixosModules.dashboard` | Admin dashboard (`services.xinity-ai-dashboard`) |
 | `nixosModules.infoserver` | Model registry (`services.xinity-infoserver`) |
 | `nixosModules.database` | PostgreSQL + Redis (`services.xinity-ai-database`) |
+| `nixosModules.db-init` | Schema migrations (`services.xinity-ai-db-init`) |
 | `nixosModules.caddy` | Reverse proxy (`services.xinity-ai-caddy`) |
 | `nixosModules.tether` | SSE bridge to daemons (`services.xinity-tether`) |
-| `nixosModules.allinone` | All of the above combined |
 | `nixosModules.daemon` | Daemon / inference node (`services.xinity-ai-daemon`) |
+| `nixosModules.searxng` | Metasearch for web-augmented inference (`services.xinity-ai-searxng`) |
+| `nixosModules.seaweedfs` | S3-compatible object storage (`services.xinity-ai-seaweedfs`) |
 | `nixosModules.monitoring` | Prometheus + Grafana (`services.xinity-ai-monitoring`) |
+| `nixosModules.allinone` | All of the above combined, each individually disableable |
 
 Each service module accepts `environmentFiles` (a list of paths) for secrets. See [nix/modules/](../../nix/modules/) for all available options per service.
+
+These are an alternative to `allinone`, for layouts it cannot express such as splitting services across hosts. To keep the bundle but replace or retune one part, use the toggles in [What Runs, and How to Disable It](#what-runs-and-how-to-disable-it) and set `services.xinity-ai-<service>.*` directly, which `allinone` already declares.

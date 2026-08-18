@@ -162,6 +162,14 @@
           description = "Maximum number of times a vLLM container is restarted after a crash before the daemon marks the model installation as permanently failed and stops retrying.";
         };
 
+        # --- Metrics ---
+
+        metricsAuthFile = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Path to a file containing the metrics auth credentials, as comma-separated user:pass pairs. Prometheus must present one of these pairs when scraping the daemon's /metrics endpoint. Loaded via systemd's LoadCredential mechanism.";
+        };
+
         # --- TLS ---
 
         tlsCertFile = lib.mkOption {
@@ -233,7 +241,7 @@
           }
           // lib.optionalAttrs (cfg.ollamaEndpoint == null && cfgOllama.enable or false) {
             XINITY_OLLAMA_ENDPOINT =
-              "${cfgOllama.host}:${toString cfgOllama.port}";
+              "http://${cfgOllama.host}:${toString cfgOllama.port}";
           }
           // lib.optionalAttrs (cfg.infoserverUrl != null) {
             INFOSERVER_URL = cfg.infoserverUrl;
@@ -243,6 +251,9 @@
           }
           // lib.optionalAttrs (cfg.vllmDockerImage != null) {
             VLLM_DOCKER_IMAGE = cfg.vllmDockerImage;
+          }
+          // lib.optionalAttrs (cfg.metricsAuthFile != null) {
+            METRICS_AUTH_FILE = "%d/metrics-auth";
           }
           // lib.optionalAttrs (cfg.logDir != null) {
             LOG_DIR = cfg.logDir;
@@ -254,16 +265,19 @@
             XINITY_TLS_KEY_FILE = "%d/tls-key";
           }
           // cfg.extraEnvironment;
-          serviceConfig = {
+          serviceConfig = let
+            loadCredentialEntries =
+              lib.optional (cfg.tetherSecretFile != null) "tether-secret:${cfg.tetherSecretFile}"
+              ++ lib.optional (cfg.metricsAuthFile != null) "metrics-auth:${cfg.metricsAuthFile}"
+              ++ lib.optional (cfg.tlsCertFile != null) "tls-cert:${cfg.tlsCertFile}"
+              ++ lib.optional (cfg.tlsKeyFile != null) "tls-key:${cfg.tlsKeyFile}";
+          in {
             EnvironmentFile = cfg.environmentFiles;
             ExecStart = "${cfg.package}/bin/xinity-ai-daemon";
             Restart = "always";
             StateDirectory = "xinity-ai-daemon";
-          } // lib.optionalAttrs (cfg.tetherSecretFile != null || cfg.tlsCertFile != null || cfg.tlsKeyFile != null) {
-            LoadCredential =
-              lib.optional (cfg.tetherSecretFile != null) "tether-secret:${cfg.tetherSecretFile}"
-              ++ lib.optional (cfg.tlsCertFile != null) "tls-cert:${cfg.tlsCertFile}"
-              ++ lib.optional (cfg.tlsKeyFile != null) "tls-key:${cfg.tlsKeyFile}";
+          } // lib.optionalAttrs (loadCredentialEntries != [ ]) {
+            LoadCredential = loadCredentialEntries;
           };
         };
       };
