@@ -6,7 +6,7 @@ mock.module("../../logger", () => ({
   rootLogger: { child: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }) },
 }));
 
-const { planEviction, slugForModel, modelForSlug } = await import("./cache-eviction");
+const { planEviction, needsCacheSpace, slugForModel, modelForSlug } = await import("./cache-eviction");
 
 const GB = 1024 ** 3;
 
@@ -199,5 +199,19 @@ describe("planEviction - safety margin", () => {
     // Have 11G free, need 10+2=12G → must evict the 5G entry → 16G free.
     expect(plan.evict.map((e) => e.model)).toEqual(["a/del"]);
     expect(plan.sufficient).toBe(true);
+  });
+});
+
+describe("needsCacheSpace", () => {
+  test("a fully cached model needs nothing, however tight the disk is", () => {
+    expect(needsCacheSpace(0, 100 * 1024 ** 2)).toBe(false);
+  });
+
+  test("still refuses a real download that would leave less than the margin", () => {
+    expect(needsCacheSpace(10 * GB, 10.5 * GB, GB)).toBe(true);
+  });
+
+  test("allows a real download that clears the margin", () => {
+    expect(needsCacheSpace(10 * GB, 11.5 * GB, GB)).toBe(false);
   });
 });

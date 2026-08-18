@@ -136,6 +136,19 @@ export function planEviction(input: {
   return { evict, freedBytes: freed, sufficient: input.freeBytes + freed >= target };
 }
 
+/**
+ * The margin keeps a download from filling the disk as it writes. A model already in the
+ * cache writes nothing, so demanding headroom for it refuses a start that would have
+ * touched no bytes, and eviction cannot help: the reserved model is what fills the disk.
+ */
+export function needsCacheSpace(
+  requiredBytes: number,
+  freeBytes: number,
+  safetyMarginBytes: number = SAFETY_MARGIN_BYTES,
+): boolean {
+  return requiredBytes > 0 && freeBytes < requiredBytes + safetyMarginBytes;
+}
+
 export async function ensureCacheSpace(input: {
   requiredBytes: number;
   reservedModel: string;
@@ -144,7 +157,7 @@ export async function ensureCacheSpace(input: {
   const hubDir = path.join(cacheDir, "hub");
 
   const freeBefore = await getDiskFree(cacheDir);
-  if (freeBefore >= input.requiredBytes + SAFETY_MARGIN_BYTES) {
+  if (!needsCacheSpace(input.requiredBytes, freeBefore)) {
     return { evicted: [], freeBefore, freeAfter: freeBefore };
   }
 
