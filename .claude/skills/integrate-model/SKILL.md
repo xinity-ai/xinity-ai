@@ -27,6 +27,17 @@ When working through it as an agent:
   Branch on `.gate.reason` and, on error, the non-zero exit with `.code`, instead of scraping text.
 - Confirm the entry by actually running it, not by reasoning alone, and that means a real request,
   not just `/health`.
+- **Only one server can hold `127.0.0.1:8000`.** Before starting, wait until nothing publishes the
+  port (`docker ps --format '{{.Ports}}' | grep -q ':8000->'`). Checking your own container name
+  misses a squatter from an earlier run whose cleanup never fired. After `/health`, assert
+  `/v1/models` names the expected `engineSpecifier`. A stale container answers health checks and
+  every measurement then describes the wrong model, plausibly. Treat a self-contradictory result as
+  this until proven otherwise.
+- **When a question needs many requests**, such as an intermittent defect or a rate rather than a
+  yes/no, send them concurrently (a dozen at a time) and cut `max_tokens` to the smallest budget that still
+  exposes the symptom. Serial requests at a full budget cost hours for an answer that takes minutes.
+  Bucket `finish_reason: length` separately from real malformations, or truncation will masquerade
+  as the defect you are hunting.
 - Research and **validate declared capabilities**: check whether the model supports tool/function
   calling and vision, and if research says it plausibly does, add the tag (tools also needs
   `args: ["--tool-call-parser", "<name>"]`) and test it against the running server: a real
@@ -40,7 +51,7 @@ When working through it as an agent:
   variants. Mechanics (block sizes, tensor counts, kernel names) go in the PR, not the entry.
 - **The entry states facts about the model.** Never encode a workaround for a gap elsewhere in the
   stack; report that separately and leave the model data correct.
-- Verify claims about this repo by reading the code, never from memory - stale notes about our own
+- Verify claims about this repo by reading the code, never from memory. Stale notes about our own
   behaviour are the easiest thing to check and the most damaging to get wrong.
 - If the model is ambiguous (base vs instruct, size, quantization), ask the user before picking.
 - Leave the change staged or uncommitted for review. Do not commit.
