@@ -3,7 +3,7 @@ import { select, confirm, text, password, log, isCancel } from "./clack.ts";
 import { bold, cyan, dim, yellow, green } from "picocolors";
 import { promptOrExit, cancelAndExit } from "./output.ts";
 import { parseEnvString } from "./env-file.ts";
-import { type Component, ENV_SCHEMAS, ENV_DIR, SECRETS_DIR } from "./component-meta.ts";
+import { type Component, DERIVED_ENV_KEYS, ENV_SCHEMAS, ENV_DIR, SECRETS_DIR } from "./component-meta.ts";
 import { readSecrets, type Host } from "./host.ts";
 import { readManifest } from "./manifest.ts";
 
@@ -148,6 +148,14 @@ export interface EnvChange {
   isSecret: boolean;
   before?: string;
   after?: string;
+}
+
+export function withoutDerivedKeys(component: Component, config: Record<string, string>): Record<string, string> {
+  const derived = DERIVED_ENV_KEYS[component];
+  if (!derived) {
+    return config;
+  }
+  return Object.fromEntries(Object.entries(config).filter(([key]) => !derived.includes(key)));
 }
 
 /** What applying `after` would change relative to the values currently on the host. */
@@ -488,7 +496,7 @@ export async function collectEnv(
 
   const withChanges = (result: EnvBundle): CollectedEnv => ({
     ...result,
-    changes: diffEnv({ config: existingConfig, secrets: existingSecrets }, result),
+    changes: diffEnv({ config: withoutDerivedKeys(component, existingConfig), secrets: existingSecrets }, result),
   });
   const useExisting = () => withChanges(splitValuesByCategory(fields, existing));
 

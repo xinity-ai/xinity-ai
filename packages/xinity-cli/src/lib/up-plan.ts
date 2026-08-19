@@ -127,10 +127,11 @@ async function planComponentAction(
   if (opts.targetVersion.startsWith("local:")) {
     const collected = await collectEnv(component, host, autoDefaults, resolvedKeys);
     if (!collected) return null;
-    const isUpdate = !!(await readManifest(host)).components[component];
+    const installed = (await readManifest(host)).components[component];
     return {
       ...base,
-      kind: isUpdate ? "update" : "install",
+      kind: installed ? "update" : "install",
+      installedVersion: installed?.version,
       toVersion: "local",
       localRepoPath: opts.targetVersion.slice(6),
       env: collected,
