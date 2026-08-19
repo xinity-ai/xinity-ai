@@ -65,7 +65,7 @@ Dates are written `YYYY-MM-DD`.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `family` | string | `"unknown"` | Model family for grouping in the UI (e.g. `"llama"`, `"phi3"`, `"mistral"`) |
+| `family` | string | `"unknown"` | Model family, shown to the user as the group label in the picker. Write it as a human-readable name, capitalised the way the vendor writes it: `"Qwen3"`, `"Mistral Small"`, `"Granite 4"`, not `"qwen3"` or `"mistral-small"`. Entries sharing a label are grouped together, so it has to match exactly across a family |
 | `variantOf` | string | - | Specifier of the standard variant of this model. Set it on the derived variants and leave it off the one they derive from, so the group has exactly one leader. A variant may not itself have variants, and a pointer at a missing entry leaves the entry ungrouped rather than failing. Every variant keeps its own license, description and capacity, since a requant can carry different terms and needs its own operational notes |
 | `isCustom` | boolean | `false` | Marks fine-tuned/custom models |
 | `unlisted` | boolean | `false` | Hides the entry from the model picker without retiring it. Existing deployments keep resolving, and a user can unhide it or name its specifier exactly. Use it for models that are outdated or that you would not recommend, rather than deleting the entry |
