@@ -23,6 +23,10 @@ export const ENV_SCHEMAS: Record<Component, z.ZodObject<any>> = {
   infoserver: infoserverEnvSchema,
 };
 
+export const DERIVED_ENV_KEYS: Partial<Record<Component, readonly string[]>> = {
+  dashboard: ["HTTP_OVERRIDE_ORIGIN"],
+};
+
 /** Listen ports assumed when PORT is not configured, taken from the env schemas. */
 export const GATEWAY_DEFAULT_PORT = String(gatewayEnvSchema.shape.PORT.parse(undefined));
 export const INFOSERVER_DEFAULT_PORT = String(infoserverEnvSchema.shape.PORT.parse(undefined));
