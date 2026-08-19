@@ -1,0 +1,78 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+#
+# Mistral's third-generation Ministraux line. All three are vision-language instruct
+# models shipped in Mistral's own checkpoint format, so they need the mistral tokenizer,
+# config and load formats rather than the HuggingFace ones.
+
+models:
+  ministral-3-3b-vllm: &ministral3
+    name: Ministral 3 3B Instruct
+    description: |
+      The smallest of Mistral's third-generation Ministraux models. It reads images
+      alongside text and calls tools, at a size aimed at on-device and low-latency work
+      where memory and response time matter more than peak quality.
+
+      It keeps the full 256K context of its larger siblings, which is the unusual part:
+      the window costs far more cache than the weights do, so plan capacity around the
+      context rather than the parameter count.
+    url: https://mistral.ai/news/mistral-3
+    license: apache-2.0
+    createdAt: 2025-12-02
+    registeredAt: 2026-08-18
+    engine: vllm
+    engineSpecifier: mistralai/Ministral-3-3B-Instruct-2512
+    sizing:
+      # 26 layers, 8 kv heads, head_dim 128 -> 2 * 26 * 8 * 128 * 2
+      kvBytesPerToken: 106496
+      maxContextLength: 262144
+      weightGb: 4.83  # measured resident, 4.50 GiB
+      weightBits: 8
+    type: chat
+    family: Ministral 3
+    tags: [vision, tools]
+    engineArgs: &ministral3-args
+      # Mistral publish these in their own checkpoint format, not the HuggingFace one.
+      - --tokenizer_mode
+      - mistral
+      - --config_format
+      - mistral
+      - --load_format
+      - mistral
+      - --tool-call-parser
+      - mistral
+    minEngineVersion: "0.18.0"
+
+  ministral-3-8b-vllm:
+    <<: *ministral3
+    name: Ministral 3 8B Instruct
+    description: |
+      The middle Ministral 3. Noticeably stronger than the 3B on reasoning and code while
+      still fitting comfortably on a single card, which makes it the sensible default of
+      the three.
+
+      Same vision support, same tool calling and the same 256K window.
+    engineSpecifier: mistralai/Ministral-3-8B-Instruct-2512
+    sizing:
+      # 34 layers, 8 kv heads, head_dim 128 -> 2 * 34 * 8 * 128 * 2
+      kvBytesPerToken: 139264
+      maxContextLength: 262144
+      weightGb: 10.57  # measured resident, 9.84 GiB
+      weightBits: 8
+
+  ministral-3-14b-vllm:
+    <<: *ministral3
+    name: Ministral 3 14B Instruct
+    description: |
+      The largest Ministral 3, and the one to pick for reasoning and tool-use work that
+      the 8B cannot carry. It reaches Mistral Small-class quality on a noticeably smaller
+      memory budget.
+
+      Same vision support, same tool calling and the same 256K window.
+    url: https://huggingface.co/mistralai/Ministral-3-14B-Instruct-2512
+    engineSpecifier: mistralai/Ministral-3-14B-Instruct-2512
+    sizing:
+      # 40 layers, 8 kv heads, head_dim 128 -> 2 * 40 * 8 * 128 * 2
+      kvBytesPerToken: 163840
+      maxContextLength: 262144
+      weightGb: 15.85  # measured resident, 14.76 GiB
+      weightBits: 8

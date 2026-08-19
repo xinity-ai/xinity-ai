@@ -50,7 +50,7 @@ models:
     #   stateBytesPerSequence = 3,211,264 * 48         = 154,140,672
     # minKvCacheGb is authored above the 17.34 those two derive, deliberately: vLLM
     # raises the attention block size so an attention page is at least a mamba page,
-    # rounding 262144 up to 335 blocks. Measured - aborts at 17.34 and at 17.36, starts
+    # rounding 262144 up to 335 blocks. Measured: aborts at 17.34 and at 17.36, starts
     # at 17.37 reporting 1.00x. Quantization and disabling vision do not change it.
     sizing: &sizing-27b-bf16
       kvBytesPerToken: 65536
@@ -60,7 +60,7 @@ models:
       weightGb: 54.9   # measured resident, 51.1 GiB; the safetensors sum higher
       weightBits: 16
     type: chat
-    family: qwen3
+    family: Qwen3
     tags: [vision, tools]
     # The tags add --enable-auto-tool-choice; vLLM still needs the parsers named.
     engineArgs: &parsers
@@ -140,8 +140,16 @@ models:
       for throughput serving. It also needs about 2.4 GB more than plain NVFP4,
       across both weights and cache.
 
-      Tool calling and vision are unaffected. Thinking, `reasoning_effort`,
-      sampling and context behave exactly as on the bf16 entry.
+      Tool calling, vision, `reasoning_effort`, sampling and context behave exactly as
+      on the bf16 entry.
+
+      Thinking does not. This entry serves with thinking off and does not offer the
+      switch, because speculative decoding and thinking together corrupt structured
+      output: about 45% of schema-constrained replies come back opening with a doubled
+      `{{`, which is not valid JSON and which the grammar should never have allowed.
+      With thinking off it is clean, and the same weights without speculative decoding
+      are clean with thinking on, so it is the combination that breaks. If a workload
+      needs a chain of thought and a response schema at once, use the plain NVFP4 entry.
     url: https://huggingface.co/Inferact/Qwen3.8-27B-NVFP4
     engineSpecifier: Inferact/Qwen3.8-27B-NVFP4
     variantOf: qwen3.8-27b-vllm
@@ -151,12 +159,22 @@ models:
       weightGb: 26.8   # measured resident with the MTP head, 24.97 GiB
       weightBits: 4
       # The MTP head is an extra decoder layer carrying its own KV, so only the floor
-      # moves. Measured - vLLM demands 17.64 GiB, aborts at 17.37, starts at 18.95.
+      # moves. Measured: vLLM demands 17.64 GiB, aborts at 17.37, starts at 18.95.
       minKvCacheGb: 18.95
+    # The shared list offers chat_template_kwargs.enable_thinking; this build must not,
+    # so the allowlist is replaced rather than inherited. See the description.
+    requestParams:
+      top_k: number
+      min_p: number
+      repetition_penalty: number
     engineArgs:
       # engineArgs are deep-flattened on load, so this composes with the shared list.
       # n=3 was chosen by measurement: n=1 reaches only 1.47x against this 1.68x.
       - *parsers
+      # Thinking off at the engine as well as absent from requestParams: the flag is a
+      # default and a request can still override it, so the allowlist is what enforces.
+      - --default-chat-template-kwargs
+      - '{"enable_thinking": false}'
       - --speculative-config
       - '{"method":"mtp","num_speculative_tokens":3}'
 
@@ -223,7 +241,7 @@ models:
       A sparse mixture of experts, so it reads only a fraction of its weights per token
       and runs much faster than its total size suggests. Most of its layers are linear
       attention, so it holds far less KV per token than a dense model of the same size,
-      and instead reserves a fixed recurrent state for every request in flight - which
+      and instead reserves a fixed recurrent state for every request in flight. That
       means concurrency, not context length, is what limits how many requests fit.
     url: https://huggingface.co/Qwen/Qwen3.6-35B-A3B
     license: apache-2.0
@@ -246,7 +264,7 @@ models:
       activeWeightGb: 7
       weightBits: 16
     type: chat
-    family: qwen3
+    family: Qwen3
     tags: [vision, tools]
     engineArgs:
       - *parsers
@@ -307,7 +325,7 @@ models:
     engineSpecifier: Qwen/Qwen3.6-27B
     sizing: *sizing-27b-bf16
     type: chat
-    family: qwen3
+    family: Qwen3
     tags: [vision, tools]
     engineArgs:
       - *parsers
@@ -330,3 +348,40 @@ models:
     engineSpecifier: Qwen/Qwen3.6-27B-FP8
     variantOf: qwen3.6-27b-vllm
     sizing: *sizing-27b-fp8
+
+  qwen-agentworld-35b-a3b-vllm:
+    name: Qwen-AgentWorld 35B A3B
+    description: |
+      A world model rather than an assistant. It simulates agent environments such as
+      MCP servers, search, a terminal, SWE tasks, Android, the web and an OS, so an
+      agent can be exercised against a model of the world instead of the real thing.
+
+      It works through long chains of thought and thinking is on by default, so output
+      budgets have to cover the reasoning as well as the answer. Text only, with tool
+      calling and a 256K window.
+
+      Do not reach for this as a general chat model; that is not the job it was trained
+      for.
+    url: https://huggingface.co/Qwen/Qwen-AgentWorld-35B-A3B
+    license: apache-2.0
+    createdAt: 2026-06-22
+    registeredAt: 2026-08-18
+    engine: vllm
+    engineSpecifier: Qwen/Qwen-AgentWorld-35B-A3B
+    sizing:
+      # Byte for byte the Qwen3.6 35B A3B layout, so the cache figures carry over; only
+      # the weights differ.
+      <<: *sizing-35b-bf16
+      weightGb: 69.46  # measured resident, 64.69 GiB
+    type: chat
+    family: Qwen-AgentWorld
+    tags: [tools]
+    requestParams:
+      chat_template_kwargs.enable_thinking: boolean
+    engineArgs:
+      - --language-model-only
+      - --tool-call-parser
+      - qwen3_coder
+      - --reasoning-parser
+      - qwen3
+    minEngineVersion: "0.19.0"

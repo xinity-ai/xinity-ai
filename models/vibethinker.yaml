@@ -1,0 +1,38 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+
+models:
+  vibethinker-3b-vllm:
+    name: VibeThinker 3B
+    description: |
+      A 3B reasoning model from WeiboAI, trained to work problems out at length before
+      answering. It punches well above its size on maths and competition-style
+      reasoning, and is far cheaper to run than the large reasoning models.
+
+      Every answer begins with an extended chain of thought, so give it generous
+      `max_tokens`: a short budget will cut it off mid-thought with
+      `finish_reason: length` rather than produce a short answer.
+
+      WeiboAI state it was not trained for tool use and advise against it, so treat it
+      as a reasoning engine rather than an agent.
+    url: https://huggingface.co/WeiboAI/VibeThinker-3B
+    license: mit
+    createdAt: 2026-06-12
+    registeredAt: 2026-08-18
+    engine: vllm
+    engineSpecifier: WeiboAI/VibeThinker-3B
+    sizing:
+      # 36 layers, 2 kv heads, head_dim 128 -> 2 * 36 * 2 * 128 * 2. The config carries
+      # sliding_window 32768 but sets use_sliding_window false, so attention is full and
+      # no attentionWindow applies.
+      kvBytesPerToken: 36864
+      maxContextLength: 131072
+      weightGb: 6.24  # measured resident, 5.81 GiB
+      weightBits: 16
+    type: chat
+    family: VibeThinker
+    tags: []
+    engineArgs:
+      # It emits <think> blocks; without a parser they land in the reply text. There is
+      # no VibeThinker-specific parser, and deepseek_r1 handles this format.
+      - --reasoning-parser
+      - deepseek_r1

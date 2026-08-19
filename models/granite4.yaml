@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+#
+# IBM's Granite 4 small instruct models. Both carry the GraniteMoeHybrid architecture
+# class, but these two checkpoints declare every block as attention, so neither pays a
+# per-sequence recurrent state.
+
+models:
+  granite-4.0-350m-vllm: &granite4
+    name: Granite 4.0 350M Instruct
+    description: |
+      The smallest Granite 4. At 350M parameters it is for work where latency and cost
+      dominate: classification, routing, extraction, light tooling, or anywhere a model
+      has to run on hardware that will not hold anything larger.
+
+      Do not expect open-ended reasoning from it. Its 32K window is generous for the
+      size and its cache cost is negligible, so many copies fit on one card.
+    url: https://huggingface.co/ibm-granite/granite-4.0-350m
+    license: apache-2.0
+    createdAt: 2025-09-30
+    registeredAt: 2026-08-18
+    engine: vllm
+    engineSpecifier: ibm-granite/granite-4.0-350m
+    sizing:
+      # 28 layers, 4 kv heads, head_dim 64 -> 2 * 28 * 4 * 64 * 2
+      kvBytesPerToken: 28672
+      maxContextLength: 32768
+      weightGb: 0.72  # measured resident, 0.67 GiB
+      weightBits: 16
+    type: chat
+    family: Granite 4
+    tags: [tools]
+    engineArgs:
+      - --tool-call-parser
+      - granite4
+
+  granite-4.0-micro-vllm:
+    <<: *granite4
+    name: Granite 4.0 Micro Instruct
+    description: |
+      The 3B Granite 4, and the first size in the family worth pointing at general work:
+      chat, summarisation and routine tooling on a small footprint.
+
+      Clearly better than the 350M across the board, with a 128K window rather than 32K.
+    url: https://huggingface.co/ibm-granite/granite-4.0-micro
+    engineSpecifier: ibm-granite/granite-4.0-micro
+    sizing:
+      # 40 layers, 8 kv heads, head_dim 64 -> 2 * 40 * 8 * 64 * 2
+      kvBytesPerToken: 81920
+      maxContextLength: 131072
+      weightGb: 6.84  # measured resident, 6.37 GiB
+      weightBits: 16

@@ -1,0 +1,107 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+#
+# DiffusionGemma 26B A4B: a block-diffusion Gemma 4 MoE. It does not decode strictly
+# left to right, which is why it needs a recent vLLM and why its throughput profile
+# differs from an autoregressive model of the same size.
+
+models:
+  diffusiongemma-26b-a4b-vllm: &dg
+    name: DiffusionGemma 26B A4B
+    description: |
+      Google's block-diffusion take on Gemma 4: a 26B sparse mixture of experts with
+      about 4B active per token, which refines blocks of tokens rather than emitting
+      them strictly one at a time.
+
+      It reads images as well as text, and its sparse layout means it decodes far
+      faster than 26B of dense weights would.
+
+      Most of its attention is sliding-window, only 5 of 30 layers see the full
+      context, so its 262K window is unusually affordable.
+
+      It generates by iteratively denoising whole blocks of tokens rather than emitting
+      them one at a time, so the ordinary sampling controls do not apply. Requests that
+      carry temperature, min_p, seed, min_tokens, logit_bias, bad_words or
+      allowed_token_ids are rejected outright rather than ignored; leave them unset and
+      let the model's own denoiser schedule decide.
+    url: https://huggingface.co/google/diffusiongemma-26B-A4B-it
+    license: apache-2.0
+    createdAt: 2026-06-09
+    registeredAt: 2026-08-18
+    engine: vllm
+    engineSpecifier: google/diffusiongemma-26B-A4B-it
+    sizing: &dg-kv
+      # Only 5 of the 30 layers attend to the full context; the other 25 are capped at a
+      # 1024-token window. kvBytesPerToken therefore counts the 5 unbounded layers alone
+      # (2 * 5 * 8 * 256 * 2), and the windowed 25 are a fixed 25 * 8192 * 1024 bytes per
+      # request in flight rather than a cost that keeps growing with context.
+      kvBytesPerToken: 40960
+      stateBytesPerSequence: 209715200
+      maxContextLength: 262144
+      minKvCacheGb: 6.43  # bracketed: 6.42 aborts
+      weightGb: 52.16  # measured resident, 48.58 GiB
+      activeWeightGb: 8
+      weightBits: 16
+    type: chat
+    family: DiffusionGemma
+    tags: [vision, tools]
+    minEngineVersion: "0.23.1"
+    engineArgs:
+      # DiffusionGemma inherits Gemma 4's <|channel|> format for both reasoning and
+      # tool calls, so the gemma4 parsers apply unchanged.
+      - --reasoning-parser
+      - gemma4
+      - --tool-call-parser
+      - gemma4
+
+  diffusiongemma-26b-a4b-fp8-vllm:
+    <<: *dg
+    name: DiffusionGemma 26B A4B FP8
+    description: |
+      Red Hat's FP8-dynamic build of DiffusionGemma, at half the footprint of the bf16
+      release for very close quality. Same vision support, same 262K window.
+
+      This is the one to reach for when the bf16 entry will not leave room for anything
+      else on the card.
+
+      It generates by iteratively denoising whole blocks of tokens rather than emitting
+      them one at a time, so the ordinary sampling controls do not apply. Requests that
+      carry temperature, min_p, seed, min_tokens, logit_bias, bad_words or
+      allowed_token_ids are rejected outright rather than ignored; leave them unset and
+      let the model's own denoiser schedule decide.
+    url: https://huggingface.co/RedHatAI/diffusiongemma-26B-A4B-it-FP8-dynamic
+    createdAt: 2026-06-09
+    engineSpecifier: RedHatAI/diffusiongemma-26B-A4B-it-FP8-dynamic
+    variantOf: diffusiongemma-26b-a4b-vllm
+    sizing:
+      <<: *dg-kv
+      weightGb: 27.77  # measured resident, 25.86 GiB
+      activeWeightGb: 4
+      weightBits: 8
+
+  diffusiongemma-26b-a4b-nvfp4-vllm:
+    <<: *dg
+    name: DiffusionGemma 26B A4B NVFP4
+    description: |
+      Red Hat's NVFP4 build, the smallest official quantization of DiffusionGemma. It
+      runs NVFP4 kernels, so it needs a Blackwell-class NVIDIA GPU and will not be
+      scheduled elsewhere.
+
+      Same model, same vision support and same 262K window as the bf16 entry, at around
+      a third of the memory.
+
+      It generates by iteratively denoising whole blocks of tokens rather than emitting
+      them one at a time, so the ordinary sampling controls do not apply. Requests that
+      carry temperature, min_p, seed, min_tokens, logit_bias, bad_words or
+      allowed_token_ids are rejected outright rather than ignored; leave them unset and
+      let the model's own denoiser schedule decide.
+    url: https://huggingface.co/RedHatAI/diffusiongemma-26B-A4B-it-NVFP4
+    createdAt: 2026-06-09
+    engineSpecifier: RedHatAI/diffusiongemma-26B-A4B-it-NVFP4
+    variantOf: diffusiongemma-26b-a4b-vllm
+    platforms: [nvidia]
+    sizing:
+      <<: *dg-kv
+      weightGb: 18.67  # measured resident, 17.39 GiB
+      activeWeightGb: 3
+      weightBits: 4
+

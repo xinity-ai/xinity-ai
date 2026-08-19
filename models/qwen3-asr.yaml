@@ -1,0 +1,58 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+#
+# Qwen3-ASR speech recognition. Use the native checkpoints, not the *-hf conversions:
+# the native layout is what vLLM's qwen3_asr path expects.
+
+models:
+  qwen3-asr-0.6b-vllm: &qwen3-asr
+    name: Qwen3 ASR 0.6B
+    description: |
+      Alibaba's small speech-recognition model: audio in, text out. It is multilingual
+      and handles accented speech and background noise better than its size suggests,
+      while being cheap enough to run many streams at once.
+
+      It transcribes only. It does not translate, summarise or answer questions about
+      the audio, and it is not a chat model.
+
+      Pass `language` when the source is known and leave it out to have the model
+      identify it; it covers 30 languages and 22 Chinese dialects. Unlike most ASR
+      models it is trained on singing and on speech over background music, so it is the
+      one to reach for when the audio is not a clean recording of someone talking.
+
+      Its decoder window is capped here at 16K tokens. The architecture allows 64K, but
+      per-request cache is set by context rather than model size, so the native window
+      would demand over 7 GB of cache for a 0.6B model. 16K is far more transcript than
+      a single request produces.
+    url: https://huggingface.co/Qwen/Qwen3-ASR-0.6B
+    license: apache-2.0
+    createdAt: 2026-01-28
+    registeredAt: 2026-08-18
+    engine: vllm
+    engineSpecifier: Qwen/Qwen3-ASR-0.6B
+    sizing: &qwen3-asr-kv
+      # Text decoder: 28 layers, 8 kv heads, head_dim 128 -> 2 * 28 * 8 * 128 * 2
+      kvBytesPerToken: 114688
+      maxContextLength: 16384
+      weightGb: 1.64  # measured resident, 1.53 GiB
+      weightBits: 16
+    type: transcription
+    family: Qwen3 ASR
+    tags: []
+    engineArgs: &qwen3-asr-args
+      - --max-model-len
+      - "16384"
+
+  qwen3-asr-1.7b-vllm:
+    <<: *qwen3-asr
+    name: Qwen3 ASR 1.7B
+    description: |
+      The larger Qwen3-ASR. Same job and same interface as the 0.6B, with noticeably
+      better accuracy on hard audio: heavy accents, overlapping speech, poor recordings.
+
+      Pick it when transcript quality matters more than throughput; the 0.6B is the
+      better choice for bulk work.
+    url: https://huggingface.co/Qwen/Qwen3-ASR-1.7B
+    engineSpecifier: Qwen/Qwen3-ASR-1.7B
+    sizing:
+      <<: *qwen3-asr-kv
+      weightGb: 4.19  # measured resident, 3.9 GiB

@@ -1,0 +1,99 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+#
+# Qwen3's retrieval line: three embedding sizes and a reranker, all Qwen3 decoders run
+# as pooling models. Unlike the BERT-class encoders they keep a real KV cost per token
+# and a 32K window.
+
+models:
+  qwen3-embedding-0.6b-vllm: &qwen3-emb
+    name: Qwen3 Embedding 0.6B
+    description: |
+      The small Qwen3 embedding model: cheap to run, fast enough for bulk ingest, and
+      good enough for everyday retrieval and semantic search.
+
+      Its 32K window means whole documents can be embedded without chunking in many
+      pipelines, which is unusual at this size. Step up to the 4B or 8B entry when
+      retrieval quality matters more than throughput.
+
+      Queries take an instruction, documents do not. Qwen's format is
+      `Instruct: {task description}\nQuery:{query}`, for example
+      `Instruct: Given a web search query, retrieve relevant passages that answer the
+      query\nQuery:...`. Embed documents as plain text. The instruction is what adapts
+      the model to a task, so keep it identical between indexing runs and queries.
+    url: https://huggingface.co/Qwen/Qwen3-Embedding-0.6B
+    license: apache-2.0
+    createdAt: 2025-06-03
+    registeredAt: 2026-08-18
+    engine: vllm
+    engineSpecifier: Qwen/Qwen3-Embedding-0.6B
+    sizing:
+      # 28 layers, 8 kv heads, head_dim 128 -> 2 * 28 * 8 * 128 * 2
+      kvBytesPerToken: 114688
+      maxContextLength: 32768
+      weightGb: 1.20  # measured resident, 1.12 GiB
+      weightBits: 16
+    type: embedding
+    family: Qwen3 Embedding
+    tags: []
+    minEngineVersion: "0.19.2"
+
+  qwen3-embedding-4b-vllm:
+    <<: *qwen3-emb
+    name: Qwen3 Embedding 4B
+    description: |
+      The middle Qwen3 embedding model. Clearly better retrieval than the 0.6B at a
+      fraction of the 8B's footprint, which makes it the reasonable default for a
+      general pipeline.
+    url: https://huggingface.co/Qwen/Qwen3-Embedding-4B
+    engineSpecifier: Qwen/Qwen3-Embedding-4B
+    sizing: &qwen3-emb-large-kv
+      # 36 layers, 8 kv heads, head_dim 128 -> 2 * 36 * 8 * 128 * 2
+      kvBytesPerToken: 147456
+      maxContextLength: 32768
+      weightGb: 8.12  # measured resident, 7.56 GiB
+      weightBits: 16
+    engineArgs: &qwen3-emb-cap
+      # config.json allows 40960 but Qwen document 32K, and left alone vLLM sizes its
+      # cache for the larger figure and then refuses to start against the smaller floor
+      # this entry declares.
+      - --max-model-len
+      - "32768"
+
+  qwen3-embedding-8b-vllm:
+    <<: *qwen3-emb
+    name: Qwen3 Embedding 8B
+    description: |
+      The largest Qwen3 embedding model and the best retrieval quality in the family.
+      Worth it where a missed document costs more than the extra memory and latency;
+      otherwise the 4B is the better trade.
+    url: https://huggingface.co/Qwen/Qwen3-Embedding-8B
+    engineSpecifier: Qwen/Qwen3-Embedding-8B
+    engineArgs: *qwen3-emb-cap
+    sizing:
+      <<: *qwen3-emb-large-kv
+      weightGb: 15.15  # measured resident, 14.11 GiB
+
+  qwen3-reranker-0.6b-vllm:
+    <<: *qwen3-emb
+    name: Qwen3 Reranker 0.6B
+    description: |
+      The reranker for this family. It reads a query and a candidate document together
+      and scores the match, which is the second stage after an embedding search has
+      narrowed the field.
+
+      Multilingual, and cheap enough to rerank a healthy candidate list per query.
+
+      Like the embedding models it is instruction-conditioned: it judges relevance
+      against a stated task rather than in the abstract, and scores bunch together
+      without one. Supply the task description with the query when the pipeline allows
+      it, and keep it the same one used at retrieval time.
+    url: https://huggingface.co/Qwen/Qwen3-Reranker-0.6B
+    engineSpecifier: Qwen/Qwen3-Reranker-0.6B
+    type: rerank
+    engineArgs: *qwen3-emb-cap
+    sizing:
+      # Same geometry as the 0.6B embedding model.
+      kvBytesPerToken: 114688
+      maxContextLength: 32768
+      weightGb: 1.20  # measured resident, 1.12 GiB
+      weightBits: 16

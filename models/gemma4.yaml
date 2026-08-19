@@ -1,0 +1,132 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+#
+# Two independent FP8 requantizations of Google's Gemma 4 E4B instruct model. Both are
+# third-party; Google publishes no FP8 build of this model.
+
+models:
+  gemma-4-e4b-it-fp8-vllm: &gemma4-e4b-fp8
+    name: Gemma 4 E4B Instruct FP8
+    description: |
+      Google's Gemma 4 E4B instruction model, quantized to FP8 by a third party. It is a
+      compact vision-language model: it reads images alongside text, calls tools, and
+      handles general assistant work at a size that leaves room on the card for other
+      things.
+
+      Most of its attention is sliding-window, only 7 of 42 layers attend to the full
+      context, which is why its 128K window costs far less cache than the layer count
+      suggests.
+
+      Thinking is off by default and turns on per request with
+      `chat_template_kwargs.enable_thinking`. With it on the model writes out its
+      reasoning before answering, so `max_tokens` has to cover both or the answer is
+      cut off.
+
+      There is a second FP8 build of this model in the catalog. They behave the same;
+      that one is slightly smaller on the card.
+    url: https://huggingface.co/vrfai/gemma-4-E4B-it-fp8
+    license: &gemma-license
+      name: Gemma Terms of Use
+      url: https://ai.google.dev/gemma/terms
+      use: conditional
+      summary: >
+        Commercial use is allowed with no revenue or user threshold, but Google's
+        Prohibited Use Policy applies and must be passed to downstream recipients along
+        with a copy of the terms, and Google reserves the right to restrict usage
+        remotely where it believes the terms are violated. These terms follow the
+        weights: a third-party requantization cannot relicense them, whatever the
+        repacker's model card declares.
+    createdAt: 2026-04-15
+    registeredAt: 2026-08-18
+    engine: vllm
+    engineSpecifier: vrfai/gemma-4-E4B-it-fp8
+    sizing: &sizing-e4b
+      # Only 7 of the 42 layers attend to the full context; the other 35 are capped at a
+      # 512-token window. So kvBytesPerToken counts the 7 unbounded layers alone
+      # (2 * 7 * 2 * 256 * 2), and the windowed 35 are a fixed 35 * 2048 * 512 bytes per
+      # request in flight rather than a cost that keeps growing with context.
+      # Describing all 42 as windowed, which the layer count invites, understates the
+      # floor by a factor of fifty and the model will not start.
+      kvBytesPerToken: 14336
+      stateBytesPerSequence: 36700160
+      maxContextLength: 131072
+      minKvCacheGb: 2.34  # bracketed: 2.33 aborts
+      weightGb: 13.06  # measured resident, 12.16 GiB
+      weightBits: 8
+    type: chat
+    family: Gemma 4
+    tags: [vision, tools]
+    requestParams:
+      chat_template_kwargs.enable_thinking: boolean
+    engineArgs:
+      # Gemma 4 emits its reasoning and its tool calls in the same <|channel|> format,
+      # so one parser name covers both.
+      - --reasoning-parser
+      - gemma4
+      - --tool-call-parser
+      - gemma4
+
+  gemma-4-e4b-it-fp8-ct-vllm:
+    <<: *gemma4-e4b-fp8
+    name: Gemma 4 E4B Instruct FP8 (compressed-tensors)
+    description: |
+      A second FP8 build of Gemma 4 E4B, by a different repacker. Identical model,
+      window and capabilities to its sibling entry, and about a gigabyte smaller on the
+      card.
+
+      Note that this repacker's model card declares Apache 2.0. That is not correct for
+      Gemma weights and does not override Google's terms, which is why this entry
+      carries the Gemma Terms of Use like its sibling.
+    url: https://huggingface.co/prithivMLmods/gemma-4-E4B-it-FP8
+    createdAt: 2026-04-03
+    engineSpecifier: prithivMLmods/gemma-4-E4B-it-FP8
+    variantOf: gemma-4-e4b-it-fp8-vllm
+    sizing:
+      <<: *sizing-e4b
+      weightGb: 12.34  # measured resident, 11.49 GiB
+
+  gemma-4-26b-a4b-nvfp4-vllm:
+    name: Gemma 4 26B A4B Instruct NVFP4
+    description: |
+      Google's Gemma 4 26B mixture of experts, quantized to NVFP4 by Red Hat. Only about
+      4B parameters are active per token, so it decodes at something closer to a small
+      model's cost while answering like a much larger one, and the quantization puts its
+      footprint at roughly a quarter of the bf16 release.
+
+      It reads images alongside text and calls tools. Thinking is available per request
+      through `chat_template_kwargs.enable_thinking`; with it on the model writes a
+      reasoning preamble before the answer, so a tight `max_tokens` will cut the answer
+      off or leave it empty.
+
+      It runs NVFP4 kernels, so it needs a Blackwell-class NVIDIA GPU.
+    url: https://huggingface.co/RedHatAI/gemma-4-26B-A4B-it-NVFP4
+    license: *gemma-license
+    createdAt: 2026-04-15
+    registeredAt: 2026-08-18
+    engine: vllm
+    engineSpecifier: RedHatAI/gemma-4-26B-A4B-it-NVFP4
+    platforms: [nvidia]
+    sizing:
+      # 30 layers, 5 of them full attention and 25 sliding at 1024, 8 kv heads at
+      # head_dim 256. That is DiffusionGemma's layout, and the same floor arithmetic.
+      # This entry serves 131072 rather than the architecture's 262144, which halves the
+      # cache the full-attention layers demand.
+      kvBytesPerToken: 40960
+      stateBytesPerSequence: 209715200
+      minKvCacheGb: 3.93  # 1.00x at 131072
+      maxContextLength: 131072
+      weightGb: 17.05  # measured resident, 15.88 GiB
+      activeWeightGb: 3
+      weightBits: 4
+    type: chat
+    family: Gemma 4
+    tags: [vision, tools]
+    requestParams:
+      chat_template_kwargs.enable_thinking: boolean
+    engineArgs:
+      - --reasoning-parser
+      - gemma4
+      - --tool-call-parser
+      - gemma4
+      - --max-model-len
+      - "131072"
+    minEngineVersion: "0.19.0"

@@ -1,0 +1,118 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+#
+# OpenAI Whisper. Encoder-decoder: audio is encoded in 30-second windows and the
+# decoder emits at most 448 tokens per window, so the cache cost is trivial regardless
+# of how long the source audio is.
+
+models:
+  whisper-large-v3-vllm: &whisper
+    name: Whisper large-v3
+    description: |
+      OpenAI's most accurate open speech-recognition model, covering roughly a hundred
+      languages and able to translate speech into English as well as transcribe it.
+
+      It is the quality benchmark for open ASR. If a transcript matters more than
+      throughput, this is the one to use; the turbo entry is the faster alternative.
+
+      Audio is processed in 30-second windows, so long recordings cost time rather than
+      memory.
+
+      Pass `language` when the source language is known; left out, the model guesses
+      from the first window and a bad guess derails the whole transcript. Transcription
+      keeps the source language, while `/v1/audio/translations` returns English from any
+      of them.
+    url: https://huggingface.co/openai/whisper-large-v3
+    license: apache-2.0
+    createdAt: 2023-11-07
+    registeredAt: 2026-08-18
+    engine: vllm
+    engineSpecifier: openai/whisper-large-v3
+    sizing:
+      # Decoder self-attention: 32 layers, 20 heads, head_dim 64 -> 2 * 32 * 20 * 64 * 2,
+      # over at most 448 decoded tokens. The cross-attention cache is the larger cost and
+      # does not scale with the transcript: it holds the encoder's 1500 states for the
+      # 30-second window, so it is a fixed 1500 * 163840 bytes per request in flight.
+      # Leaving it out puts the floor at a quarter of what vLLM demands and it will not
+      # start.
+      kvBytesPerToken: 163840
+      stateBytesPerSequence: 245760000
+      minKvCacheGb: 0.32  # self-attention + one 1500-state cross-attention cache
+      maxContextLength: 448
+      weightGb: 3.09  # measured resident, 2.88 GiB
+      weightBits: 16
+    type: transcription
+    family: Whisper
+    tags: []
+    engineArgs: &whisper-args
+      # The audio encoder emits 1500 tokens for every 30-second window, and vLLM refuses
+      # to start when one multimodal item is larger than the batched-token budget. That
+      # budget otherwise follows the 448-token decoder window and is far too small.
+      - --max-num-batched-tokens
+      - "1500"
+
+  whisper-large-v3-turbo-vllm:
+    <<: *whisper
+    name: Whisper large-v3-turbo
+    description: |
+      A distilled large-v3 with the decoder cut from 32 layers to 4, which makes it
+      several times faster while keeping the full encoder and most of the accuracy.
+
+      This is the sensible default for bulk transcription. Fall back to large-v3 when a
+      specific recording defeats it, and note that turbo is weaker at speech
+      translation than at plain transcription.
+    url: https://huggingface.co/openai/whisper-large-v3-turbo
+    createdAt: 2024-10-01
+    engineSpecifier: openai/whisper-large-v3-turbo
+    sizing:
+      # Only 4 decoder layers -> 2 * 4 * 20 * 64 * 2, and the cross-attention cache
+      # shrinks with them: 1500 * 20480 bytes per request.
+      kvBytesPerToken: 20480
+      stateBytesPerSequence: 30720000
+      minKvCacheGb: 0.04
+      maxContextLength: 448
+      weightGb: 1.62  # measured resident, 1.51 GiB
+      weightBits: 16
+
+  whisper-medium-vllm:
+    <<: *whisper
+    name: Whisper medium
+    description: |
+      The mid-size Whisper. Clearly behind large-v3 on hard audio and accented speech,
+      but useful where memory is tight and the recordings are clean.
+
+      For most purposes the turbo entry is a better trade: similar footprint, better
+      accuracy.
+    url: https://huggingface.co/openai/whisper-medium
+    createdAt: 2022-09-21
+    engineSpecifier: openai/whisper-medium
+    sizing:
+      # 24 decoder layers, 16 heads, head_dim 64 -> 2 * 24 * 16 * 64 * 2, plus
+      # 1500 * 98304 bytes of cross-attention per request.
+      kvBytesPerToken: 98304
+      stateBytesPerSequence: 147456000
+      minKvCacheGb: 0.20  # bracketed: 0.19 aborts
+      maxContextLength: 448
+      weightGb: 1.52  # measured resident, 1.42 GiB
+      weightBits: 16
+
+  whisper-small-vllm:
+    <<: *whisper
+    name: Whisper small
+    description: |
+      The smallest Whisper here, for high-volume transcription of clean audio where
+      throughput matters more than getting every word right.
+
+      Accuracy drops noticeably on accents, noise and non-English speech; do not use it
+      where the transcript is the product.
+    url: https://huggingface.co/openai/whisper-small
+    createdAt: 2022-09-21
+    engineSpecifier: openai/whisper-small
+    sizing:
+      # 12 decoder layers, 12 heads, head_dim 64 -> 2 * 12 * 12 * 64 * 2, plus
+      # 1500 * 36864 bytes of cross-attention per request.
+      kvBytesPerToken: 36864
+      stateBytesPerSequence: 55296000
+      minKvCacheGb: 0.08  # bracketed: 0.07 aborts
+      maxContextLength: 448
+      weightGb: 0.50  # measured resident, 0.47 GiB
+      weightBits: 16

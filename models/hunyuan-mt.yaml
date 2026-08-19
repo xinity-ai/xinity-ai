@@ -1,0 +1,70 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+
+models:
+  hy-mt2-1.8b-vllm: &hy-mt2
+    name: Hunyuan MT2 1.8B
+    description: |
+      Tencent's small dedicated translation model. It is not a general assistant: it
+      translates, and that focus is why a 1.8B model is worth deploying at all. Give it
+      source text and a target language and it will outperform far larger general
+      models on the same job.
+
+      Because it is single-purpose, it has no tool calling and should not be pointed at
+      chat or reasoning workloads.
+
+      It has no default system prompt: the instruction goes in the user message. A plain
+      "Translate to German: ..." is understood, but Tencent's form is
+      `Translate the following text into {target language}. Note that you should only
+      output the translated result without any additional explanation:` followed by a
+      blank line and the source text. Name the language in full ("German", not "de") and
+      in the same language as the instruction. That shape is worth following because the
+      documented variants extend it: a glossary of required terms, a target style, and
+      structured input whose keys and placeholders must survive untranslated.
+
+      Tencent recommend `temperature` 0.7, `top_p` 0.6, `top_k` 20 and
+      `repetition_penalty` 1.05.
+
+      This entry caps the window at 32K, which is ample for documents and keeps the
+      cache small. The model's native window is 262144, but per-request KV does not
+      shrink with parameter count: at full context this 1.8B model needs over 17 GB of
+      cache, far more than its own weights. Use the long-context entry only if you
+      genuinely translate book-length inputs in one request.
+    url: https://huggingface.co/tencent/Hy-MT2-1.8B
+    license: apache-2.0
+    createdAt: 2026-05-11
+    registeredAt: 2026-08-18
+    engine: vllm
+    engineSpecifier: tencent/Hy-MT2-1.8B
+    sizing: &hy-mt2-sizing
+      # 32 layers, 4 kv heads, head_dim 128 -> 2 * 32 * 4 * 128 * 2
+      kvBytesPerToken: 65536
+      maxContextLength: 32768
+      weightGb: 3.68  # measured resident, 3.43 GiB
+      weightBits: 16
+    type: chat
+    family: Hunyuan MT
+    tags: []
+    requestParams:
+      top_k: number
+      repetition_penalty: number
+    engineArgs:
+      - --max-model-len
+      - "32768"
+
+  hy-mt2-1.8b-256k-vllm:
+    <<: *hy-mt2
+    name: Hunyuan MT2 1.8B (256K)
+    description: |
+      The same translation model served at its full native 262144-token window, for
+      translating a whole document in a single request rather than chunking it.
+
+      The trade is severe and worth understanding before choosing this entry: per
+      request KV cost is set by context, not by model size, so this 1.8B model needs
+      over 17 GB of cache here against under 4 GB of weights. It will occupy a card far
+      out of proportion to its size, and serve very few requests at once. Prefer the
+      32K entry unless the long window is the reason you are deploying it.
+    variantOf: hy-mt2-1.8b-vllm
+    sizing:
+      <<: *hy-mt2-sizing
+      maxContextLength: 262144
+    engineArgs: []

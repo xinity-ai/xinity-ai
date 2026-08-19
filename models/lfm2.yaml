@@ -1,0 +1,78 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+#
+# Liquid AI's LFM2.5 line. Both are hybrids: most layers are short convolutions rather
+# than attention, so they hold very little KV per token and instead keep a small fixed
+# convolution state per request in flight.
+
+models:
+  lfm2.5-2.6b-vllm: &lfm25
+    name: LFM2.5 2.6B
+    description: |
+      A 2.6B general model from Liquid AI, built for on-device and edge deployment. It
+      is unusually cheap at long context for its size, because only 8 of its 30 layers
+      use attention at all.
+
+      It thinks before answering, and it calls tools.
+
+      Its 128K window costs about 2 GB of cache, comparable to its own weights, which
+      makes it one of the few small models where long context is actually affordable.
+    url: https://huggingface.co/LiquidAI/LFM2.5-2.6B
+    license: &lfm-license
+      name: LFM Open License v1.0
+      url: https://huggingface.co/LiquidAI/LFM2.5-2.6B/blob/main/LICENSE
+      use: conditional
+      summary: >
+        Free to use, modify and redistribute with attribution, including commercially,
+        but only below a revenue threshold: a legal entity with annual revenue of
+        $10,000,000 or more needs a separate commercial agreement with Liquid AI.
+        Qualified non-profits are exempt when using it non-commercially.
+    createdAt: 2026-07-28
+    registeredAt: 2026-08-18
+    engine: vllm
+    engineSpecifier: LiquidAI/LFM2.5-2.6B
+    sizing:
+      # 30 layers, of which only 8 are full attention: 2 * 8 * 8 * 64 * 2.
+      # The other 22 are conv layers holding conv_dim 2048 x conv_L_cache 3 x 2 bytes
+      # each, so 12,288 per layer per request.
+      kvBytesPerToken: 16384
+      stateBytesPerSequence: 270336
+      maxContextLength: 131072
+      weightGb: 5.42  # measured resident, 5.05 GiB
+      weightBits: 16
+    type: chat
+    family: LFM2.5
+    tags: [tools]
+    engineArgs: &lfm-args
+      # There is no lfm2 reasoning parser in vLLM; deepseek_r1 handles this format.
+      - --tool-call-parser
+      - lfm2
+      - --reasoning-parser
+      - deepseek_r1
+    # The lfm2 tool parser lands in 0.21.0, not 0.20.x.
+    minEngineVersion: "0.21.0"
+
+  lfm2.5-8b-a1b-vllm:
+    <<: *lfm25
+    name: LFM2.5 8B A1B
+    description: |
+      The sparse sibling: 8B total parameters with about 1B active per token, so it
+      reads far less per token than its size suggests and decodes closer to a 1B model
+      while answering closer to an 8B one.
+
+      Like the 2.6B it is mostly convolutional, with only 6 of 24 layers using
+      attention, which makes its 128K window remarkably cheap, under 2 GB of cache.
+
+      It thinks before answering, and it calls tools.
+    url: https://huggingface.co/LiquidAI/LFM2.5-8B-A1B
+    license: *lfm-license
+    createdAt: 2026-05-28
+    engineSpecifier: LiquidAI/LFM2.5-8B-A1B
+    sizing:
+      # 24 layers, only 6 full attention: 2 * 6 * 8 * 64 * 2.
+      # 18 conv layers x (2048 x 3 x 2 bytes).
+      kvBytesPerToken: 12288
+      stateBytesPerSequence: 221184
+      maxContextLength: 128000
+      weightGb: 16.97  # measured resident, 15.8 GiB
+      activeWeightGb: 2.1
+      weightBits: 16
