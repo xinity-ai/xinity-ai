@@ -9,7 +9,12 @@
     dashboardUrl = "",
     appName = "Xinity",
     preferencesUrl = "",
+    observedReplicas = 0,
+    desiredReplicas = 0,
   } = $props();
+
+  // Defaults of 0 keep the unqualified wording for any notification queued without the counts.
+  const isUnderProvisioned = $derived(observedReplicas < desiredReplicas);
 </script>
 
 <mjml>
@@ -25,14 +30,22 @@
       <mj-column>
         <mj-text font-size="20px" font-weight="bold" color="#16a34a">Deployment Ready</mj-text>
         <mj-text>
-          Your deployment <strong>{deploymentName}</strong> in <strong>{orgName}</strong> is now fully operational.
+          Your deployment <strong>{deploymentName}</strong> in <strong>{orgName}</strong> is now serving requests.
         </mj-text>
         <mj-text>
           Model: <strong>{publicSpecifier}</strong>
         </mj-text>
-        <mj-text>
-          All requested replicas have been installed and are ready to serve requests.
-        </mj-text>
+        {#if isUnderProvisioned}
+          <mj-text>
+            {observedReplicas} of {desiredReplicas} requested replicas are installed and ready to serve
+            requests. The remaining {desiredReplicas - observedReplicas} could not be placed, usually
+            because no node has enough free VRAM or the required driver.
+          </mj-text>
+        {:else}
+          <mj-text>
+            All requested replicas have been installed and are ready to serve requests.
+          </mj-text>
+        {/if}
         <mj-button href={dashboardUrl} background-color="#16a34a">View Deployment</mj-button>
       </mj-column>
     </mj-section>

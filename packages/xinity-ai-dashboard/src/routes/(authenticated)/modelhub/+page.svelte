@@ -11,6 +11,7 @@
   import { browserLogger } from "$lib/browserLogging";
   import { toastState } from "$lib/state/toast.svelte";
   import { copyToClipboard } from "$lib/copy";
+  import { replicaSlots, replicaSlotCounts, type ReplicaSlots } from "./replica-slots";
 
   // shadcn components
   import { Button } from "$lib/components/ui/button";
@@ -200,21 +201,18 @@
     not_in_catalog: { dot: "bg-[#f59e0b]",      chip: "bg-[#f59e0b]/15 text-[#d97706]",      pulse: false, label: "Not in Catalog" },
   } as const;
 
+  /** A desired replica the orchestrator has not placed, rendered hollow so it reads as an empty slot. */
+  const unscheduledSlotConfig = {
+    dot: "border border-muted-foreground/50",
+    chip: "bg-muted text-muted-foreground",
+    pulse: false,
+    label: "Not scheduled",
+  } as const;
+
+  const slotConfig = { ...phaseConfig, unscheduled: unscheduledSlotConfig } as const;
+
   const REPLICA_DOT_THRESHOLD = 8;
   let expandedReplicaCards = $state(new Set<string>());
-
-  const replicaPhaseOrder = ["ready", "downloading", "installing", "scheduling", "failed"] as const;
-  type ReplicaPhase = (typeof replicaPhaseOrder)[number];
-
-  function replicaPhaseCounts(replicas: Array<{ phase: string }>): Array<[ReplicaPhase, number]> {
-    const counts = new Map<string, number>();
-    for (const r of replicas) {
-      counts.set(r.phase, (counts.get(r.phase) || 0) + 1);
-    }
-    return replicaPhaseOrder
-      .filter((p) => counts.has(p))
-      .map((p) => [p, counts.get(p)!]);
-  }
 
   async function confirmDelete() {
     if (!deploymentToDelete) return;
@@ -282,16 +280,20 @@
       </span>
     {/snippet}
 
-    {#snippet replicaDots(replicas: NonNullable<DeploymentDefinition["status"]>["replicas"])}
-      {#if replicas}
-        {#each replicas as replica}
-          {@const rcfg = phaseConfig[replica.phase]}
-          <span
-            class="w-2.5 h-2.5 rounded-full {rcfg.dot} {rcfg.pulse ? 'animate-pulse' : ''}"
-            title="{replica.node ?? 'Unknown node'}: {rcfg.label}{replica.error ? ` (${replica.error})` : ''}"
-          ></span>
-        {/each}
-      {/if}
+    {#snippet replicaDots(slots: ReplicaSlots)}
+      {#each slots.observed as replica}
+        {@const rcfg = phaseConfig[replica.phase]}
+        <span
+          class="w-2.5 h-2.5 rounded-full {rcfg.dot} {rcfg.pulse ? 'animate-pulse' : ''}"
+          title="{replica.node ?? 'Unknown node'}: {rcfg.label}{replica.error ? ` (${replica.error})` : ''}"
+        ></span>
+      {/each}
+      {#each { length: slots.missing } as _}
+        <span
+          class="w-2.5 h-2.5 rounded-full {unscheduledSlotConfig.dot}"
+          title="Not scheduled: no node had capacity for this replica"
+        ></span>
+      {/each}
     {/snippet}
 
     {#if !deploymentsLoaded}
@@ -407,28 +409,36 @@
                   {@render chip("bg-amber-400", "bg-amber-100 text-amber-700", "No node available", false, "The orchestrator could not place this model on any node. Common causes: no node has enough free VRAM for the model weight, or no available node has the required driver.")}
                 {:else}
                   {@const cfg = phaseConfig[deployment.status.phase]}
+                  {@const slots = replicaSlots(deployment.replicas, deployment.status.replicas)}
                   {@render chip(cfg.dot, cfg.chip, cfg.label, cfg.pulse)}
-                  {#if deployment.status.replicas && deployment.status.replicas.length > 1}
-                    {@const replicas = deployment.status.replicas}
-                    {#if replicas.length <= REPLICA_DOT_THRESHOLD}
+                  {#if slots.missing > 0}
+                    <span
+                      class="ml-2 text-xs text-amber-600 dark:text-amber-500 cursor-help"
+                      title="Only {slots.observed.length} of {deployment.replicas} requested replicas are placed. Common causes: no node has enough free VRAM for the model weight, or no available node has the required driver."
+                    >
+                      {slots.observed.length}/{deployment.replicas} replicas
+                    </span>
+                  {/if}
+                  {#if slots.total > 1}
+                    {#if slots.total <= REPLICA_DOT_THRESHOLD}
                       <div class="flex items-center gap-1 mt-1.5">
-                        {@render replicaDots(replicas)}
+                        {@render replicaDots(slots)}
                       </div>
                     {:else}
-                      {@const counts = replicaPhaseCounts(replicas)}
+                      {@const counts = replicaSlotCounts(slots)}
                       {@const expanded = expandedReplicaCards.has(deployment.id)}
                       <div class="mt-1.5">
                         <div class="flex items-center gap-2">
                           <div class="flex h-2 rounded-full overflow-hidden w-24 bg-muted">
                             {#each counts as [phase, count]}
                               <div
-                                class={phaseConfig[phase].dot}
-                                style="width: {(count / replicas.length) * 100}%; min-width: 3px"
+                                class={slotConfig[phase].dot}
+                                style="width: {(count / slots.total) * 100}%; min-width: 3px"
                               ></div>
                             {/each}
                           </div>
                           <span class="text-xs text-muted-foreground">
-                            {counts.map(([phase, count]) => `${count} ${phaseConfig[phase].label.toLowerCase()}`).join(", ")}
+                            {counts.map(([phase, count]) => `${count} ${slotConfig[phase].label.toLowerCase()}`).join(", ")}
                           </span>
                         </div>
                         <button
@@ -440,11 +450,11 @@
                             expandedReplicaCards = next;
                           }}
                         >
-                          {expanded ? "Hide replicas" : `Show all ${replicas.length} replicas`}
+                          {expanded ? "Hide replicas" : `Show all ${slots.total} replicas`}
                         </button>
                         {#if expanded}
                           <div class="flex flex-wrap gap-1 mt-1.5">
-                            {@render replicaDots(replicas)}
+                            {@render replicaDots(slots)}
                           </div>
                         {/if}
                       </div>
