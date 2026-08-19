@@ -4,6 +4,7 @@ import { isValidVersionRange } from "../semver";
 import {
   BLOCKED_REQUEST_PARAM_PREFIXES,
   EngineEnum,
+  EngineVersionEffectEnum,
   GpuVendorEnum,
   ModelDate,
   ModelTypeEnum,
@@ -73,21 +74,41 @@ export type ModelSizingFields = z.infer<typeof ModelSizing>;
 /** Authored versions are written clean. PEP440 is the shape a node reports, not one to state here. */
 const COMPLETE_VERSION = /^\d+\.\d+\.\d+$/;
 
-export const BrokenEngineVersion = z.object({
+export const EngineVersionRule = z.object({
   range: z.string().refine(isValidVersionRange, "Expected comparators over complete versions, e.g. \">=0.27.0 <0.27.3\"")
-    .describe("Releases that do not serve this model correctly, as a single version or a range"),
-  reason: z.string().describe("What goes wrong, and which release fixes it where that is known. An operator reads this to decide between upgrading, pinning and waiting"),
+    .describe("The releases this rule is about, as a single version or a range"),
+  effect: EngineVersionEffectEnum.describe("What the rule says about them. `blocked` keeps the model off nodes running one"),
+  reason: z.string().describe("Why, in a sentence an operator can act on. For a block, what goes wrong and which release fixes it where that is known"),
 });
 
-export const EngineVersions = z.object({
+export type EngineVersionRuleFields = z.infer<typeof EngineVersionRule>;
+
+/**
+ * A rule whose effect this version does not know is dropped rather than guessed at.
+ * Guessing the wrong way round turns a future `preferred` range into an exclusion and
+ * empties the cluster, so silence is the only safe reading.
+ */
+const relayedEngineVersionRules = z.array(z.unknown()).transform(rules =>
+  rules.filter((rule): rule is EngineVersionRuleFields => EngineVersionRule.safeParse(rule).success),
+);
+
+const engineVersionFields = {
   min: z.string().regex(COMPLETE_VERSION, "Expected a complete version, e.g. 0.21.0").optional()
     .describe("Oldest engine version that serves this model correctly. Establish it empirically: a version can load cleanly and still fail the first request"),
-  broken: z.array(BrokenEngineVersion).min(1).optional()
-    .describe("Releases at or above the floor that still fail. A model can have one without having a known floor"),
-}).refine(
-  versions => versions.min !== undefined || versions.broken !== undefined,
-  { message: "state min, broken, or both" },
-);
+  rules: z.array(EngineVersionRule).min(1).optional()
+    .describe("What specific releases at or above the floor do. A model can carry these without having a known floor"),
+};
+
+const statesSomething = {
+  check: (versions: { min?: string; rules?: unknown[] }) => versions.min !== undefined || versions.rules !== undefined,
+  message: "state min, rules, or both",
+};
+
+export const EngineVersions = z.object(engineVersionFields)
+  .refine(statesSomething.check, { message: statesSomething.message });
+
+export const RelayedEngineVersions = z.object({ ...engineVersionFields, rules: relayedEngineVersionRules.optional() })
+  .refine(statesSomething.check, { message: statesSomething.message });
 
 export const ModelFields = z.looseObject({
   name: z.string().describe("Display name of the model. Intended to be easily human readable"),
@@ -114,7 +135,7 @@ export const ModelFields = z.looseObject({
 
   engineArgs: flatStringArray.optional().describe("Extra CLI arguments appended to the engine's command line. Arrays are deeply flattened to support YAML anchors"),
   requestParams: z.record(z.string(), RequestParamTypeEnum).optional().describe("Allowlist of extra request-level parameters the gateway may forward, as dot-notation paths mapped to primitive types. All are optional at request time"),
-  engineVersions: EngineVersions.optional().describe("Which engine versions serve this model. Nodes running one it excludes are passed over when placing the model"),
+  engineVersions: EngineVersions.optional().describe("What this model needs of the engine version, and what specific releases do. Nodes running a blocked release are passed over when placing the model"),
   platforms: z.array(GpuVendorEnum).optional().describe("GPU vendor requirement. Absent means any platform"),
 
   minXinityVersion: z.string().optional().describe("Minimum xinity-ai version required to use this entry. Older clients skip entries they are too old for"),
@@ -129,6 +150,7 @@ export const ModelFields = z.looseObject({
 export const RelayedModelFields = ModelFields.extend({
   tags: relayedTags.default([]),
   platforms: relayedPlatforms.optional(),
+  engineVersions: RelayedEngineVersions.optional(),
 });
 
 function withModelRules<T extends typeof ModelFields | typeof RelayedModelFields>(fields: T) {

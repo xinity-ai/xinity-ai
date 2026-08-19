@@ -79,7 +79,7 @@ steps.)
 | `description` | Purpose, strengths, limitations, in your own words. Multiple paragraphs as a block scalar, not a one-line label. Write it **last** (step 5): it is sourced from the model card *and* from what you measured, and it is aimed at a user choosing between variants, not at a maintainer. State what changes for them, meaning which values a parameter takes and what they do, and when to pick a sibling entry. Leave the mechanics to the PR. YAML comments do not reach anyone, so nothing a user needs may live in one. |
 | `createdAt` | The day the creator published the model: the initial commit on the HuggingFace repo, or the announcement date the model card cites. Not a later revision, and identical across every engine variant of one model. |
 | `registeredAt` | The day you are adding the entry, i.e. today. It records integration, not the model's age, so never copy it from `createdAt` and never backdate it: entries registered in the last 14 days are flagged as new in the dashboard. |
-| `engineVersions.min` | Set for new model families / quant formats. Don't guess. **Establish the floor empirically** by running on older vLLM builds until it stops loading ("Confirm the version floor" below). |
+| `engineVersions` | `min` for new model families / quant formats. Do not guess. **Establish the floor empirically** by running on older vLLM builds until it stops loading ("Confirm the version floor" below). Add a `blocked` rule when a release above the floor fails and a later one works again ("Block a release that fails above the floor"). |
 | `platforms` | Set when the variant needs a specific GPU vendor (e.g. CUDA-only quant kernels → `[nvidia]`). A `wrong_platform` failure is evidence. |
 | `engineArgs` | Extra serve flags (e.g. `["--max-model-len", "8192"]`). Note the blocked-args list in `model-fields.md`; system-managed flags are stripped. Carry a flag only once you can show it does something on **this** architecture. See "Vendor-recommended flags are not all universal". |
 | `requestParams` | Allowlist for the **non-standard** request fields this model needs forwarded: `top_k`, `min_p`, `repetition_penalty`, `chat_template_kwargs.*` and the like. Standard OpenAI fields are the gateway's responsibility, so do **not** list one here just because the gateway does not forward it today. An entry states facts about the model; a gap elsewhere in the stack is a bug to fix there, and a workaround encoded here outlives the bug silently and becomes wrong data nobody re-examines. Validate anything you list ("A 200 is not proof" below). |
@@ -380,6 +380,36 @@ image **with GPU access** (without a GPU, `vllm --version` aborts on device infe
 reads as unknown). If detection fails, the gate reports `version_unknown` rather than risk an
 unverified placement.
 
+### Block a release that fails above the floor (`engineVersions.rules`)
+
+The floor only moves one way. When a release *above* it stops serving a model and a later one
+serves it again, that is not a floor change, and raising `min` past it would throw away every
+working release in between. Record it as a rule instead:
+
+```yaml
+    engineVersions:
+      min: "0.21.0"
+      rules:
+        - range: "0.27.1"
+          effect: blocked
+          reason: Engine aborts on the first request with a Triton attention shape mismatch. Fixed in 0.27.2.
+```
+
+Tell the two apart by what is on either side. A floor has nothing working below it, and a
+blocked release is bracketed by releases that work. If you have not tested above the
+suspect release, you do not yet know which you have, so test one release further before
+writing either.
+
+Prefer a range over a single version when a run of releases is affected
+(`">=0.27.0 <0.27.3"`), and write the fixing release into the `reason` when you know it, so
+the rule can be narrowed later by whoever reads it. The `reason` is shown to operators in
+the model picker and is the whole point of the rule: without it they know a model cannot be
+placed but not whether to upgrade, pin or wait.
+
+Ranges are checked when the file loads and a malformed one fails the load. That check is not
+cosmetic. The underlying matcher reads a range it cannot parse as matching *everything*, so
+an unvalidated typo would block the entire fleet rather than one release.
+
 ### vLLM images to test against
 
 `--image` selects the vLLM build. **Prefer official images**; use community images only where an
@@ -435,7 +465,8 @@ receive.
 |-----------------------------|---------------|--------|
 | `resolution_error` | Entry missing `engineSpecifier`, or name not found | Fix the entry / specifier |
 | `missing_driver` | No vLLM available on this host | Install vLLM, or pass `--image <vllm-image>` for the docker backend |
-| `version_too_old` | Host vLLM older than the model needs | Record the real floor in `engineVersions.min`; verify on a node that meets it |
+| `version_too_old` | Host vLLM older than the model needs | Record the real floor in `engineVersions.min`, then verify on a node that meets it |
+| `version_blocked` | Host vLLM is named by a `blocked` rule on this entry | Read the rule's `reason`. Move to a release outside the range, or narrow the rule if it is wider than the evidence |
 | `version_unknown` | Couldn't detect the vLLM version (image not pulled locally, or `vllm --version` failed, since it needs GPU access to run) | Pull the image and ensure a GPU is visible, pass `--vllm-path`, or `--force` to bypass the gate (which then won't enforce `engineVersions.min`) |
 | `wrong_platform` | Model needs a GPU vendor this host lacks | Record `platforms`; verify on matching hardware |
 | `missing_feature` | Node's vLLM install lacks a Python module a required capability needs (e.g. `transcription` models need `soundfile` for the `audio` feature) | Install the missing dependency into the vLLM environment, or run on a node that has it |

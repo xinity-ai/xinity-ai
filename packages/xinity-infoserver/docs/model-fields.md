@@ -49,7 +49,7 @@ An unrecognised `use` value is read as `unknown` rather than failing validation,
 
 ## Adding a value to a fixed set
 
-Adding to `engine`, `type`, `tags`, `platforms` or license `use` is not a breaking change. In a catalog read over `includes`, unknown tags and platforms are filtered out and unknown engines or types skip the entry, so older readers lose only what they could not have used. In a local file an unknown value is a typo and fails the load.
+Adding to `engine`, `type`, `tags`, `platforms`, an `engineVersions.rules` effect or license `use` is not a breaking change. In a catalog read over `includes`, unknown tags and platforms are filtered out and unknown engines or types skip the entry, and a version rule naming an unknown effect is dropped on its own, so older readers lose only what they could not have used. In a local file an unknown value is a typo and fails the load.
 
 Redefining or removing a value is breaking, since deployed readers keep the old meaning.
 
@@ -115,14 +115,39 @@ Unset means unconstrained: any engine version, any platform.
 
 ### Engine versions
 
+State at least one of the two. Both are enforced only when the node's engine version is detectable.
+
 | Field | Type | Description |
 |-------|------|-------------|
-| `min` | string | Oldest engine version that serves this model correctly. Nodes running an older one are passed over when placing the model. Write a complete version, e.g. `"0.19.1"`, with no `v` prefix and no PEP440 suffix: that is the shape a *node* reports, and it is normalised at comparison time rather than authored here. Establish the floor empirically rather than guessing, see "Confirm the version floor" in [integrating-a-model.md](./integrating-a-model.md). Enforced only when the node's engine version is detectable |
+| `min` | string | Oldest engine version that serves this model correctly. Nodes running an older one are passed over when placing the model. Write a complete version, e.g. `"0.19.1"`, with no `v` prefix and no PEP440 suffix: that is the shape a *node* reports, and it is normalised at comparison time rather than authored here. Establish the floor empirically rather than guessing, see "Confirm the version floor" in [integrating-a-model.md](./integrating-a-model.md) |
+| `rules` | object[] | What specific releases at or above the floor do, see [Version rules](#version-rules) below. A model can carry rules without having a known floor |
 
 ```yaml
     engineVersions:
       min: "0.19.1"
+      rules:
+        - range: ">=0.27.0 <0.27.3"
+          effect: blocked
+          reason: Attention kernel shape mismatch on this head_dim. Fixed in 0.27.3.
 ```
+
+### Version rules
+
+A rule names a set of releases and says what they mean for this model. Today one effect
+exists. The shape is a list of rules rather than a list of bad versions so that a later
+effect, say marking a range as the one a model runs best on, is a new value here rather
+than a new field.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `range` | string | The releases the rule is about. A single version (`"0.27.1"`), comparators ANDed by spaces (`">=0.27.0 <0.27.3"`), or alternatives ORed by `\|\|`. Deliberately narrower than semver's own grammar: complete versions only, and no `^`, `~`, `x` or hyphen ranges, because an exclusion is always a concrete interval |
+| `effect` | `"blocked"` | What the rule says. `blocked` keeps the model off nodes running one of these releases |
+| `reason` | string | Why, in a sentence an operator can act on. For a block, what goes wrong and which release fixes it where that is known. This text is shown in the model picker, so it is the difference between "no node can run this" and knowing whether to upgrade, pin or wait |
+
+An entry read over `includes` that carries an effect this version does not define has
+that **rule** dropped, not the entry. Reading an unknown effect as a block would let a
+future "preferred" range empty a cluster, so an unreadable rule is ignored instead. In a
+local file it is a typo and fails the load.
 
 ### Blocked vLLM arguments
 

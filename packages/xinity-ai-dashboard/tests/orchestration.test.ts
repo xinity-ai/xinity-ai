@@ -107,56 +107,65 @@ describe("orchestration: node goes unavailable", () => {
     const oldNode = makeNode({ id: "node-e", host: "10.0.0.5", driverVersions: { vllm: "0.18.0" } });
     const state = buildClusterState([], [oldNode]);
 
-    expect(findServerForModel("new-model", "vllm", 8, state, [], FF, "0.19.1")).toBeNull();
+    expect(findServerForModel("new-model", "vllm", 8, state, [], FF, { minVersion: "0.19.1" })).toBeNull();
   });
 
   test("findServerForModel accepts nodes with sufficient driver version", () => {
     const newNode = makeNode({ id: "node-f", host: "10.0.0.6", driverVersions: { vllm: "0.20.0" } });
     const state = buildClusterState([], [newNode]);
 
-    expect(findServerForModel("new-model", "vllm", 8, state, [], FF, "0.19.1")).toBe("node-f");
+    expect(findServerForModel("new-model", "vllm", 8, state, [], FF, { minVersion: "0.19.1" })).toBe("node-f");
   });
 
   test("findServerForModel allows nodes whose driver version is recorded as empty (fail-open)", () => {
     const unknownNode = makeNode({ id: "node-g", host: "10.0.0.7", driverVersions: { vllm: "" } });
     const state = buildClusterState([], [unknownNode]);
 
-    expect(findServerForModel("new-model", "vllm", 8, state, [], FF, "0.19.1")).toBe("node-g");
+    expect(findServerForModel("new-model", "vllm", 8, state, [], FF, { minVersion: "0.19.1" })).toBe("node-g");
+  });
+
+  test("findServerForModel routes past a node on a blocked release to one that is not", () => {
+    const blockedVersions = [{ range: "0.27.1", reason: "crashes on the first request" }];
+    const onBadRelease = makeNode({ id: "node-blocked", host: "10.0.0.20", driverVersions: { vllm: "0.27.1" } });
+    const onGoodRelease = makeNode({ id: "node-ok", host: "10.0.0.21", driverVersions: { vllm: "0.27.2" } });
+
+    expect(findServerForModel("m", "vllm", 8, buildClusterState([], [onBadRelease]), [], FF, { blockedVersions })).toBeNull();
+    expect(findServerForModel("m", "vllm", 8, buildClusterState([], [onBadRelease, onGoodRelease]), [], FF, { blockedVersions })).toBe("node-ok");
   });
 
   test("findServerForModel skips nodes with wrong GPU platform", () => {
     const amdNode = makeNode({ id: "node-h", host: "10.0.0.8", driverVersions: { vllm: "0.20.0" }, gpus: [{ vendor: "amd", name: "MI300X", vramMb: 196608 }] });
     const state = buildClusterState([], [amdNode]);
 
-    expect(findServerForModel("mxfp4-model", "vllm", 8, state, [], FF, undefined, ["nvidia"])).toBeNull();
+    expect(findServerForModel("mxfp4-model", "vllm", 8, state, [], FF, { requiredPlatforms: ["nvidia"] })).toBeNull();
   });
 
   test("findServerForModel accepts nodes with matching GPU platform", () => {
     const nvidiaNode = makeNode({ id: "node-i", host: "10.0.0.9", driverVersions: { vllm: "0.20.0" }, gpus: [{ vendor: "nvidia", name: "A100", vramMb: 81920 }] });
     const state = buildClusterState([], [nvidiaNode]);
 
-    expect(findServerForModel("mxfp4-model", "vllm", 8, state, [], FF, undefined, ["nvidia"])).toBe("node-i");
+    expect(findServerForModel("mxfp4-model", "vllm", 8, state, [], FF, { requiredPlatforms: ["nvidia"] })).toBe("node-i");
   });
 
   test("findServerForModel rejects nodes with no GPUs when platform is required", () => {
     const cpuNode = makeNode({ id: "node-j", host: "10.0.0.10", driverVersions: { vllm: "0.20.0" }, gpus: [] });
     const state = buildClusterState([], [cpuNode]);
 
-    expect(findServerForModel("mxfp4-model", "vllm", 8, state, [], FF, undefined, ["nvidia"])).toBeNull();
+    expect(findServerForModel("mxfp4-model", "vllm", 8, state, [], FF, { requiredPlatforms: ["nvidia"] })).toBeNull();
   });
 
   test("findServerForModel skips nodes missing a required feature", () => {
     const node = makeNode({ id: "node-k", host: "10.0.0.11", driverVersions: { vllm: "0.20.0" }, driverFeatures: {} });
     const state = buildClusterState([], [node]);
 
-    expect(findServerForModel("whisper", "vllm", 8, state, [], FF, undefined, undefined, ["audio"])).toBeNull();
+    expect(findServerForModel("whisper", "vllm", 8, state, [], FF, { requiredFeatures: ["audio"] })).toBeNull();
   });
 
   test("findServerForModel accepts nodes with the required feature", () => {
     const node = makeNode({ id: "node-l", host: "10.0.0.12", driverVersions: { vllm: "0.20.0" }, driverFeatures: { vllm: ["audio"] } });
     const state = buildClusterState([], [node]);
 
-    expect(findServerForModel("whisper", "vllm", 8, state, [], FF, undefined, undefined, ["audio"])).toBe("node-l");
+    expect(findServerForModel("whisper", "vllm", 8, state, [], FF, { requiredFeatures: ["audio"] })).toBe("node-l");
   });
 
   test("findServerForModel without requiredFeatures does not filter by features", () => {
