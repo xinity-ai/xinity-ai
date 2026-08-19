@@ -14,8 +14,6 @@ import {
   type Model,
   type NodeCapability,
   type ModelNodeRequirements,
-  matchesVersionRange,
-  type BrokenVersion,
   type IncompatibilityReason,
 } from "xinity-infoserver";
 
@@ -40,7 +38,6 @@ export interface ResolvedVllmModel {
   /** Total VRAM the install is expected to occupy: weight + kvCacheGb. Mirrors orchestration.mod.ts. */
   estCapacity: number;
   minVersion: string | undefined;
-  brokenVersions: BrokenVersion[] | undefined;
   requiredPlatforms: string[];
   requiredFeatures: string[];
 }
@@ -97,7 +94,6 @@ export function resolveVllmModel(
     kvCacheGb,
     estCapacity: model.sizing.weightGb + kvCacheGb,
     minVersion: model.engineVersions?.min,
-    brokenVersions: model.engineVersions?.broken,
     requiredPlatforms: model.platforms ?? [],
     requiredFeatures: requiredFeaturesForEngine("vllm", model.type),
   };
@@ -129,7 +125,6 @@ export function toModelRequirements(resolved: ResolvedVllmModel): ModelNodeRequi
     driver: "vllm",
     capacityGb: resolved.estCapacity,
     minVersion: resolved.minVersion,
-    brokenVersions: resolved.brokenVersions,
     requiredPlatforms: resolved.requiredPlatforms,
     requiredFeatures: resolved.requiredFeatures,
   };
@@ -163,17 +158,12 @@ export function describeIncompatibility(
     case "missing_driver":
       return "vLLM driver not available (no vllm binary or docker image resolved).";
     case "version_unknown":
-      return resolved.minVersion
-        ? `Could not detect the installed vLLM version, and this model requires >= ${resolved.minVersion}.`
-        : "Could not detect the installed vLLM version, and this model excludes specific releases.";
+      return `Could not detect the installed vLLM version, and this model requires >= ${resolved.minVersion}.`;
     case "version_too_old":
       return `Installed vLLM ${driver.version} is older than the required >= ${resolved.minVersion}.`;
-    case "version_broken": {
-      const matched = resolved.brokenVersions?.filter(
-        broken => driver.version && matchesVersionRange(driver.version, broken.range),
-      ) ?? [];
-      return `Installed vLLM ${driver.version} is known not to serve this model: ${matched.map(broken => broken.reason).join(" ")}`;
-    }
+    // Unreachable: this runner targets one named host, so it never asks where a model should go.
+    case "version_blocked":
+      return `Installed vLLM ${driver.version} is one this model's catalog entry blocks.`;
     case "missing_feature": {
       const have = driver.features?.join(", ") || "none";
       return `Model requires features [${resolved.requiredFeatures.join(", ")}]; this installation has [${have}].`;

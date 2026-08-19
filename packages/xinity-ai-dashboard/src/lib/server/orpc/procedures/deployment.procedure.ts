@@ -121,7 +121,7 @@ async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>
           perReplica: info.weight + effectiveKvCache,
           driver: info.driver,
           minVersion: info.minVersion,
-          brokenVersions: info.brokenVersions,
+          blockedVersions: info.blockedVersions,
           requiredPlatforms: info.requiredPlatforms,
           requiredFeatures: info.requiredFeatures,
         };
@@ -144,7 +144,7 @@ async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>
     const compatible = remaining.filter(n => {
       const req: ModelNodeRequirements = {
         driver: model.driver, capacityGb: 0,
-        minVersion: model.minVersion, brokenVersions: model.brokenVersions,
+        minVersion: model.minVersion, blockedVersions: model.blockedVersions,
         requiredPlatforms: model.requiredPlatforms,
         requiredFeatures: model.requiredFeatures,
       };

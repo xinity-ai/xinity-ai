@@ -1,7 +1,7 @@
 import { inArray, isNull, modelDeploymentT, sql, calcCanaryProgress, modelInstallationT, aiNodeT, mergeSettings, settingsEqual, type DeploymentSettings, type ModelInstallation, type AiNode, type InferInsertModel } from "common-db";
 import { getDB } from "../db";
 import { resolveSchedulable, type SchedulableModel } from "../model-catalog";
-import { checkNodeCompatibility, type ModelNodeRequirements, type NodeCapability, type Provider } from "xinity-infoserver";
+import { checkNodeCompatibility, type BlockedVersion, type ModelNodeRequirements, type NodeCapability, type Provider } from "xinity-infoserver";
 import { rootLogger } from "../logging";
 import { building } from "$app/environment";
 import { maxVramGb } from "$lib/server/license";
@@ -189,6 +189,14 @@ function nodeAlreadyHostsModel(
   return pending.some(p => p.nodeId === nodeId && p.specifier === specifier);
 }
 
+/** What a model demands of a node, beyond the driver and the room to hold it. */
+export type PlacementConstraints = {
+  minVersion?: string;
+  blockedVersions?: BlockedVersion[];
+  requiredPlatforms?: string[];
+  requiredFeatures?: string[];
+};
+
 /** Picks a node according to the configured strategy; skips nodes that already host the model. */
 export function findServerForModel(
   specifier: string,
@@ -197,14 +205,14 @@ export function findServerForModel(
   state: ClusterState,
   pending: NewInstallation[],
   strategy: DeploymentStrategy,
-  minVersion?: string,
-  requiredPlatforms?: string[],
-  requiredFeatures?: string[],
+  constraints: PlacementConstraints = {},
 ): string | null {
   const req: ModelNodeRequirements = {
     driver, capacityGb: weight,
-    minVersion, requiredPlatforms: requiredPlatforms ?? [],
-    requiredFeatures,
+    minVersion: constraints.minVersion,
+    blockedVersions: constraints.blockedVersions,
+    requiredPlatforms: constraints.requiredPlatforms ?? [],
+    requiredFeatures: constraints.requiredFeatures,
   };
 
   for (const server of rankServers(strategy, state)) {
@@ -278,7 +286,7 @@ async function planNewInstallations(
     }
     const modelInfo = resolution.model;
 
-    const { driver, minVersion, requiredPlatforms, requiredFeatures } = modelInfo;
+    const { driver, minVersion, blockedVersions, requiredPlatforms, requiredFeatures } = modelInfo;
     const needed = requirement.replicas - current;
 
     const effectiveKvCache = Math.max(requirement.kvCacheSize ?? 0, modelInfo.minKvCache);
@@ -293,7 +301,8 @@ async function planNewInstallations(
         break;
       }
 
-      const nodeId = findServerForModel(specifier, driver, totalCapacity, state, toInstall, strategy, minVersion, requiredPlatforms, requiredFeatures);
+      const nodeId = findServerForModel(specifier, driver, totalCapacity, state, toInstall, strategy,
+        { minVersion, blockedVersions, requiredPlatforms, requiredFeatures });
       if (!nodeId) {
         log.warn({ specifier: requirement.specifier }, "No server with enough capacity for additional replica");
         break;
@@ -334,7 +343,7 @@ async function hasReassignmentTarget(install: ModelInstallation, state: ClusterS
 
   const nodeId = findServerForModel(
     install.specifier, install.driver, install.estCapacity, state, [], "first-fit",
-    modelInfo.minVersion, modelInfo.requiredPlatforms, modelInfo.requiredFeatures,
+    modelInfo,
   );
   return nodeId !== null;
 }

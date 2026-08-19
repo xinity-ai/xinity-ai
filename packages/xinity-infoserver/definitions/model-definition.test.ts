@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { EngineVersions, ModelSizing } from "./model-definition";
+import { EngineVersions, RelayedEngineVersions, ModelSizing } from "./model-definition";
 
 const base = { weightGb: 14, maxContextLength: 32768, kvBytesPerToken: 131072 };
 
@@ -47,25 +47,44 @@ describe("EngineVersions", () => {
 
   it("rejects an engineVersions stating nothing", () => {
     expect(EngineVersions.safeParse({}).success).toBe(false);
-    expect(EngineVersions.safeParse({ broken: [] }).success).toBe(false);
+    expect(EngineVersions.safeParse({ rules: [] }).success).toBe(false);
   });
 
-  it("takes broken releases without a floor, since one can be known without the other", () => {
+  it("takes rules without a floor, since one can be known without the other", () => {
     const parsed = EngineVersions.parse({
-      broken: [{ range: "0.27.1", reason: "engine crashes on the first request" }],
+      rules: [{ range: "0.27.1", effect: "blocked", reason: "engine crashes on the first request" }],
     });
     expect(parsed.min).toBeUndefined();
-    expect(parsed.broken).toHaveLength(1);
+    expect(parsed.rules).toHaveLength(1);
+  });
+
+  it("rejects a rule naming an effect this version does not define", () => {
+    expect(EngineVersions.safeParse({
+      rules: [{ range: "0.27.1", effect: "preferred", reason: "x" }],
+    }).success).toBe(false);
   });
 
   /**
    * Bun reads a malformed range as a wildcard, so an unchecked typo here excludes every
    * node instead of one release. This refusal is what keeps that out of the catalog.
    */
-  it("rejects a broken range that is not a range", () => {
+  it("rejects a rule whose range is not a range", () => {
     for (const range of ["0.27.1 or later", "^0.27.0", "0.27.x", "0.27"]) {
-      expect(EngineVersions.safeParse({ broken: [{ range, reason: "x" }] }).success).toBe(false);
+      expect(EngineVersions.safeParse({ rules: [{ range, effect: "blocked", reason: "x" }] }).success).toBe(false);
     }
+  });
+
+  /** An unreadable rule in someone else's catalog costs that rule, never the whole entry. */
+  it("drops rules it cannot read from a relayed catalog instead of failing", () => {
+    const parsed = RelayedEngineVersions.parse({
+      min: "0.21.0",
+      rules: [
+        { range: "0.27.1", effect: "blocked", reason: "crashes" },
+        { range: "0.28.0", effect: "preferred", reason: "an effect from a later version" },
+        { range: "nonsense", effect: "blocked", reason: "an unreadable range" },
+      ],
+    });
+    expect(parsed.rules).toEqual([{ range: "0.27.1", effect: "blocked", reason: "crashes" }]);
   });
 
   it("rejects the shapes a node reports but an author must not write", () => {

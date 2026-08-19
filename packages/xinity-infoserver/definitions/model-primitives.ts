@@ -17,6 +17,13 @@ export type GpuVendor = z.infer<typeof GpuVendorEnum>;
 export const ModelTypeEnum = z.enum(["embedding", "chat", "rerank", "transcription"]);
 export type ModelType = z.infer<typeof ModelTypeEnum>;
 
+/**
+ * What a rule says about the engine versions it names. Adding a value is how this grows:
+ * a range could later be preferred, or carry an advisory, with the shape unchanged.
+ */
+export const EngineVersionEffectEnum = z.enum(["blocked"]);
+export type EngineVersionEffect = z.infer<typeof EngineVersionEffectEnum>;
+
 /** Allowed primitive type names for requestParams values. */
 export const RequestParamTypeEnum = z.enum(["boolean", "number", "string"]);
 export type RequestParamType = z.infer<typeof RequestParamTypeEnum>;

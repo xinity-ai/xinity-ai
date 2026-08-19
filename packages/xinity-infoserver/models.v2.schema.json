@@ -235,7 +235,7 @@
             }
           },
           "engineVersions": {
-            "description": "Which engine versions serve this model. Nodes running one it excludes are passed over when placing the model",
+            "description": "What this model needs of the engine version, and what specific releases do. Nodes running a blocked release are passed over when placing the model",
             "type": "object",
             "properties": {
               "min": {
@@ -243,8 +243,8 @@
                 "type": "string",
                 "pattern": "^\\d+\\.\\d+\\.\\d+$"
               },
-              "broken": {
-                "description": "Releases at or above the floor that still fail. A model can have one without having a known floor",
+              "rules": {
+                "description": "What specific releases at or above the floor do. A model can carry these without having a known floor",
                 "minItems": 1,
                 "type": "array",
                 "items": {
@@ -252,15 +252,23 @@
                   "properties": {
                     "range": {
                       "type": "string",
-                      "description": "Releases that do not serve this model correctly, as a single version or a range"
+                      "description": "The releases this rule is about, as a single version or a range"
+                    },
+                    "effect": {
+                      "type": "string",
+                      "enum": [
+                        "blocked"
+                      ],
+                      "description": "What the rule says about them. `blocked` keeps the model off nodes running one"
                     },
                     "reason": {
                       "type": "string",
-                      "description": "What goes wrong, and which release fixes it where that is known. An operator reads this to decide between upgrading, pinning and waiting"
+                      "description": "Why, in a sentence an operator can act on. For a block, what goes wrong and which release fixes it where that is known"
                     }
                   },
                   "required": [
                     "range",
+                    "effect",
                     "reason"
                   ]
                 }

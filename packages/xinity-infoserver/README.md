@@ -72,9 +72,14 @@ models:
     requestParams:
       template.thinking: boolean
 
-    # Oldest engine version that serves this model. Older nodes are excluded.
+    # What this model needs of the engine version. Nodes running an older release, or
+    # one a rule blocks, are passed over when placing it.
     engineVersions:
       min: "0.19.1"
+      rules:
+        - range: ">=0.27.0 <0.27.3"
+          effect: blocked
+          reason: Attention kernel shape mismatch on this head_dim. Fixed in 0.27.3.
 
     # GPU vendor requirement. Nodes without a matching GPU are excluded. Use this
     # for models depending on vendor-specific features (e.g. AWQ with CUDA-only kernels).
@@ -90,7 +95,7 @@ models:
 - **`type`**: Determines API compatibility. A `"rerank"` model only accepts rerank requests, so sending a chat request to it fails. Defaults to `"chat"`.
 - **`tags`**: Enables runtime capabilities. `"tools"` enables function/tool calling, `"vision"` enables image inputs. Requests that use a capability the model doesn't declare are rejected. `"custom_code"` is special: some models ship with custom loading code that vLLM must execute via `--trust-remote-code`. This tag marks that requirement and triggers an explicit approval step in the dashboard before deployment. Only add it if the model fails to load without it.
 - **`variantOf`**: Optional grouping key. Entries sharing it are presented together in the UI while each stays separately deployable.
-- **`engineVersions.min`**: Semver string. An entry requiring `"0.19.1"` is only scheduled on nodes running that engine version or later.
+- **`engineVersions`**: What the entry needs of the engine version. `min` is the floor, so `"0.19.1"` schedules only on nodes running that or later. `rules` says what specific releases at or above the floor do, today only `effect: blocked` for a release that fails, carrying a `reason` the model picker shows. It is a list of rules rather than a list of bad versions so a later effect, such as marking the range a model runs best on, is a new value rather than a new field.
 - **`platforms`**: GPU vendor requirement. `[nvidia]` restricts the entry to NVIDIA nodes.
 
 ### Licenses
@@ -290,7 +295,7 @@ requests with `304`, so a client that keeps its `ETag` polls cheaply.
 When a model deployment is created, the scheduler checks each cluster node against the model's requirements:
 
 1. **Driver**: Does the node run the entry's `engine`?
-2. **Driver version**: Does the driver version satisfy `engineVersions.min`? (Nodes that haven't reported a version are not excluded.)
+2. **Driver version**: Does the driver version satisfy `engineVersions.min`, and does it escape every `blocked` rule? (Nodes that haven't reported a version are not excluded on either count.)
 3. **GPU platform**: Does at least one of the node's GPUs match `platforms`? (Nodes with no GPUs are excluded when a platform is required.)
 4. **Capacity**: Does the node have enough free VRAM for the model's `sizing.weightGb` + KV-cache?
 

@@ -8,8 +8,9 @@ import {
   createCatalogClient,
   createInfoserverClient,
 
+  blockedVersionRules,
   requiredFeaturesForEngine,
-  type BrokenVersion,
+  type BlockedVersion,
   resolveDefaultProvider,
   resolveMinVersionForDriver,
   resolveRequiredFeaturesForDriver,
@@ -35,7 +36,7 @@ export type SchedulableModel = {
   weight: number;
   minKvCache: number;
   minVersion: string | undefined;
-  brokenVersions?: BrokenVersion[];
+  blockedVersions?: BlockedVersion[];
   requiredPlatforms: string[];
   requiredFeatures: string[];
 };
@@ -72,7 +73,7 @@ export async function resolveSchedulable(
         weight: model.sizing.weightGb,
         minKvCache: model.sizing.minKvCacheGb,
         minVersion: model.engineVersions?.min,
-        brokenVersions: model.engineVersions?.broken,
+        blockedVersions: blockedVersionRules(model),
         requiredPlatforms: model.platforms ?? [],
         requiredFeatures: requiredFeaturesForEngine(model.engine, model.type),
       },
