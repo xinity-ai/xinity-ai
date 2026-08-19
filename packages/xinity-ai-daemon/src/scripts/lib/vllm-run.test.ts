@@ -78,19 +78,19 @@ describe("resolveVllmModel", () => {
 
 describe("checkVllmCompatibility", () => {
   test("passes when version, platform and capacity are satisfied", () => {
-    const r = resolveVllmModel(file({ m: { ...baseModel, minEngineVersion: "0.6.0" } }), "m");
+    const r = resolveVllmModel(file({ m: { ...baseModel, engineVersions: { min: "0.6.0" } } }), "m");
     const reason = checkVllmCompatibility(r, nvidia24, { available: true, version: "0.19.1" });
     expect(reason).toBeNull();
   });
 
   test("flags version_too_old", () => {
-    const r = resolveVllmModel(file({ m: { ...baseModel, minEngineVersion: "0.20.0" } }), "m");
+    const r = resolveVllmModel(file({ m: { ...baseModel, engineVersions: { min: "0.20.0" } } }), "m");
     const reason = checkVllmCompatibility(r, nvidia24, { available: true, version: "0.19.1" });
     expect(reason).toBe("version_too_old");
   });
 
   test("flags version_unknown only when requireKnownVersion is set", () => {
-    const r = resolveVllmModel(file({ m: { ...baseModel, minEngineVersion: "0.6.0" } }), "m");
+    const r = resolveVllmModel(file({ m: { ...baseModel, engineVersions: { min: "0.6.0" } } }), "m");
     expect(checkVllmCompatibility(r, nvidia24, { available: true })).toBeNull();
     expect(checkVllmCompatibility(r, nvidia24, { available: true }, { requireKnownVersion: true })).toBe("version_unknown");
   });

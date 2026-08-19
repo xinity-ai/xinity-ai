@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { ModelSizing } from "./model-definition";
+import { EngineVersions, ModelSizing } from "./model-definition";
 
 const base = { weightGb: 14, maxContextLength: 32768, kvBytesPerToken: 131072 };
 
@@ -37,5 +37,40 @@ describe("ModelSizing minKvCacheGb", () => {
   it("rejects an entry that states neither, rather than defaulting the cache to nothing", () => {
     const { kvBytesPerToken, ...withoutPerToken } = base;
     expect(ModelSizing.safeParse(withoutPerToken).success).toBe(false);
+  });
+});
+
+describe("EngineVersions", () => {
+  it("accepts a complete version", () => {
+    expect(EngineVersions.parse({ min: "0.21.0" }).min).toBe("0.21.0");
+  });
+
+  it("rejects an engineVersions stating nothing", () => {
+    expect(EngineVersions.safeParse({}).success).toBe(false);
+    expect(EngineVersions.safeParse({ broken: [] }).success).toBe(false);
+  });
+
+  it("takes broken releases without a floor, since one can be known without the other", () => {
+    const parsed = EngineVersions.parse({
+      broken: [{ range: "0.27.1", reason: "engine crashes on the first request" }],
+    });
+    expect(parsed.min).toBeUndefined();
+    expect(parsed.broken).toHaveLength(1);
+  });
+
+  /**
+   * Bun reads a malformed range as a wildcard, so an unchecked typo here excludes every
+   * node instead of one release. This refusal is what keeps that out of the catalog.
+   */
+  it("rejects a broken range that is not a range", () => {
+    for (const range of ["0.27.1 or later", "^0.27.0", "0.27.x", "0.27"]) {
+      expect(EngineVersions.safeParse({ broken: [{ range, reason: "x" }] }).success).toBe(false);
+    }
+  });
+
+  it("rejects the shapes a node reports but an author must not write", () => {
+    for (const min of ["v0.21.0", "0.21.0.post1", "0.19.2rc1", "0.21", "latest"]) {
+      expect(EngineVersions.safeParse({ min }).success).toBe(false);
+    }
   });
 });

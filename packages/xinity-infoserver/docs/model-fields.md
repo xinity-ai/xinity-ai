@@ -108,10 +108,21 @@ So `weightBits` records the headline width, which is the only figure anyone can 
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `minEngineVersion` | string (semver) | Minimum engine version required. Nodes with older versions are excluded from scheduling. Example: `"0.19.1"`. Establish the floor empirically rather than guessing - see "Confirm the version floor" in [integrating-a-model.md](./integrating-a-model.md). Enforced only when the node's engine version is detectable |
+| `engineVersions` | object | Which engine versions serve this model, see [Engine versions](#engine-versions) below |
 | `platforms` | string[] (GPU vendors) | Required GPU vendors. Nodes without a matching GPU are excluded. Values: `"nvidia"`, `"amd"`, `"intel"`. Example: `[nvidia]` for models with CUDA-only kernels |
 
 Unset means unconstrained: any engine version, any platform.
+
+### Engine versions
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `min` | string | Oldest engine version that serves this model correctly. Nodes running an older one are passed over when placing the model. Write a complete version, e.g. `"0.19.1"`, with no `v` prefix and no PEP440 suffix: that is the shape a *node* reports, and it is normalised at comparison time rather than authored here. Establish the floor empirically rather than guessing, see "Confirm the version floor" in [integrating-a-model.md](./integrating-a-model.md). Enforced only when the node's engine version is detectable |
+
+```yaml
+    engineVersions:
+      min: "0.19.1"
+```
 
 ### Blocked vLLM arguments
 

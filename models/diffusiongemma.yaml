@@ -44,7 +44,8 @@ models:
     type: chat
     family: DiffusionGemma
     tags: [vision, tools]
-    minEngineVersion: "0.23.1"
+    engineVersions:
+      min: "0.23.1"
     engineArgs:
       # DiffusionGemma inherits Gemma 4's <|channel|> format for both reasoning and
       # tool calls, so the gemma4 parsers apply unchanged.

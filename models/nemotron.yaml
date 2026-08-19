@@ -46,7 +46,8 @@ models:
     # The modelling code lives in .py files that the default download filter drops.
     downloadFilter:
       - "!*.py"
-    minEngineVersion: "0.20.2"
+    engineVersions:
+      min: "0.20.2"
 
   nemotron-3-super-120b-a12b-nvfp4-vllm:
     name: Nemotron 3 Super 120B A12B NVFP4
@@ -93,4 +94,5 @@ models:
       - qwen3_coder
       - --reasoning-parser
       - nemotron_v3
-    minEngineVersion: "0.20.0"
+    engineVersions:
+      min: "0.20.0"

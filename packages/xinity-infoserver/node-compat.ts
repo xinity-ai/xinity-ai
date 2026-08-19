@@ -3,7 +3,7 @@
  * Single source of truth for "can this node serve this model?"
  * Pure functions with no DB or IO dependencies.
  */
-import { satisfiesMinVersion } from "./semver";
+import { matchesVersionRange, satisfiesMinVersion } from "./semver";
 import { type LegacyModel, type Model } from "./definitions/model-definition";
 
 /** Per-GPU info as detected by the daemon and persisted on aiNodeT. */
@@ -23,11 +23,14 @@ export type NodeCapability = {
   gpus: GpuInfo[];
 };
 
+export type BrokenVersion = { range: string; reason: string };
+
 /** What a model needs from a node, resolved from model metadata for a specific driver. */
 export type ModelNodeRequirements = {
   driver: string;
   capacityGb: number;
   minVersion?: string;
+  brokenVersions?: BrokenVersion[];
   requiredPlatforms: string[];
   requiredFeatures?: string[];
 };
@@ -36,6 +39,7 @@ export type IncompatibilityReason =
   | "missing_driver"
   | "version_too_old"
   | "version_unknown"
+  | "version_broken"
   | "missing_feature"
   | "wrong_platform"
   | "insufficient_capacity";
@@ -61,12 +65,17 @@ export function checkNodeCompatibility(
 
   if (!(req.driver in node.driverVersions)) return "missing_driver";
 
-  if (req.minVersion) {
-    const nodeVersion = node.driverVersions[req.driver];
-    if (!nodeVersion) {
-      if (requireKnownVersion) return "version_unknown";
-    } else if (!satisfiesMinVersion(nodeVersion, req.minVersion)) {
+  const nodeVersion = node.driverVersions[req.driver];
+  const constrainsVersion = req.minVersion !== undefined || (req.brokenVersions?.length ?? 0) > 0;
+
+  if (constrainsVersion && !nodeVersion) {
+    if (requireKnownVersion) return "version_unknown";
+  } else if (nodeVersion) {
+    if (req.minVersion && !satisfiesMinVersion(nodeVersion, req.minVersion)) {
       return "version_too_old";
+    }
+    if (req.brokenVersions?.some(broken => matchesVersionRange(nodeVersion, broken.range))) {
+      return "version_broken";
     }
   }
 
@@ -119,6 +128,7 @@ const REASON_PROGRESS: Record<IncompatibilityReason, number> = {
   missing_driver: 0,
   version_unknown: 1,
   version_too_old: 1,
+  version_broken: 1,
   missing_feature: 2,
   wrong_platform: 3,
   insufficient_capacity: 4,
@@ -162,13 +172,14 @@ export function explainLegacyClusterIncompatibility(
 }
 
 /** Everything a cluster-wide deployability check reads off a model. */
-export type DeployableModel = Pick<Model, "sizing" | "type" | "engine" | "minEngineVersion" | "platforms">;
+export type DeployableModel = Pick<Model, "sizing" | "type" | "engine" | "engineVersions" | "platforms">;
 
 export function modelRequirements(model: DeployableModel): ModelNodeRequirements {
   return {
     driver: model.engine,
     capacityGb: model.sizing.weightGb + model.sizing.minKvCacheGb,
-    minVersion: model.minEngineVersion,
+    minVersion: model.engineVersions?.min,
+    brokenVersions: model.engineVersions?.broken,
     requiredPlatforms: model.platforms ?? [],
     requiredFeatures: requiredFeaturesForEngine(model.engine, model.type),
   };

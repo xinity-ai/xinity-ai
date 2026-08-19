@@ -207,6 +207,61 @@ describe("checkNodeCompatibility", () => {
   });
 });
 
+describe("checkNodeCompatibility broken versions", () => {
+  const broken = [{ range: ">=0.27.0 <0.27.3", reason: "attention kernel shape mismatch, fixed in 0.27.3" }];
+
+  test("excludes a node running a release the model names as broken", () => {
+    expect(checkNodeCompatibility(
+      makeNode({ driverVersions: { vllm: "0.27.1" } }),
+      makeReq({ brokenVersions: broken }),
+    )).toBe("version_broken");
+  });
+
+  test("clears a node running a release either side of the broken range", () => {
+    for (const version of ["0.26.9", "0.27.3"]) {
+      expect(checkNodeCompatibility(
+        makeNode({ driverVersions: { vllm: version } }),
+        makeReq({ brokenVersions: broken }),
+      )).toBeNull();
+    }
+  });
+
+  test("matches a PEP440 node version against the range", () => {
+    expect(checkNodeCompatibility(
+      makeNode({ driverVersions: { vllm: "0.27.1.post1+cu126" } }),
+      makeReq({ brokenVersions: broken }),
+    )).toBe("version_broken");
+  });
+
+  test("reports the floor first, since upgrading past it is the nearer fix", () => {
+    expect(checkNodeCompatibility(
+      makeNode({ driverVersions: { vllm: "0.19.0" } }),
+      makeReq({ minVersion: "0.21.0", brokenVersions: broken }),
+    )).toBe("version_too_old");
+  });
+
+  /** Excluding a node whose version never probed takes the cluster out over a release it may not run. */
+  test("does not exclude a node whose engine version is undetectable", () => {
+    expect(checkNodeCompatibility(
+      makeNode({ driverVersions: { vllm: "" } }),
+      makeReq({ brokenVersions: broken }),
+    )).toBeNull();
+  });
+
+  test("still flags an undetectable version when the caller demands one", () => {
+    expect(checkNodeCompatibility(
+      makeNode({ driverVersions: { vllm: "" } }),
+      makeReq({ brokenVersions: broken }),
+      { requireKnownVersion: true },
+    )).toBe("version_unknown");
+  });
+
+  test("ranks a broken version above missing_driver and below capacity", () => {
+    expect(nearestIncompatibility(["missing_driver", "version_broken"])).toBe("version_broken");
+    expect(nearestIncompatibility(["version_broken", "insufficient_capacity"])).toBe("insufficient_capacity");
+  });
+});
+
 describe("isLegacyModelDeployableOnCluster", () => {
   const model = {
     weight: 8,

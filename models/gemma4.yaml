@@ -129,4 +129,5 @@ models:
       - gemma4
       - --max-model-len
       - "131072"
-    minEngineVersion: "0.19.0"
+    engineVersions:
+      min: "0.19.0"

@@ -34,6 +34,8 @@
       case "version_too_old":
       case "version_unknown":
         return `No node has a new enough ${engineLabel} version.`;
+      case "version_broken":
+        return `Every node runs a ${engineLabel} release known not to serve this model.`;
       case "missing_feature":
         return `No node's ${engineLabel} build supports the features this model needs.`;
       case "wrong_platform":

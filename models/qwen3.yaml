@@ -76,7 +76,8 @@ models:
       min_p: number
       repetition_penalty: number
       chat_template_kwargs.enable_thinking: boolean
-    minEngineVersion: "0.19.2"
+    engineVersions:
+      min: "0.19.2"
 
   qwen3.8-27b-fp8-vllm:
     <<: *qwen38-27b
@@ -278,7 +279,8 @@ models:
     # do on Qwen3.8, but nothing has verified that, so they are not claimed.
     requestParams: &params-36
       chat_template_kwargs.enable_thinking: boolean
-    minEngineVersion: 0.19.2rc1
+    engineVersions:
+      min: "0.19.2"
 
   qwen3.6-35b-a3b-fp8-vllm:
     <<: *qwen36-35b
@@ -333,7 +335,8 @@ models:
       - --max-model-len
       - "262144"
     requestParams: *params-36
-    minEngineVersion: 0.19.0
+    engineVersions:
+      min: "0.19.0"
 
   qwen3.6-27b-fp8-vllm:
     <<: *qwen36-27b
@@ -384,4 +387,5 @@ models:
       - qwen3_coder
       - --reasoning-parser
       - qwen3
-    minEngineVersion: "0.19.0"
+    engineVersions:
+      min: "0.19.0"

@@ -47,7 +47,7 @@ steps.)
 4. **Verify it runs** (next section): iterate using the failure table until the gate passes, the
    server comes up, and it **serves a real request** (not just `/health`). Also **validate every
    declared capability**, so test tool calling and vision if research says the model has them. While
-   there, pin down the `minEngineVersion` floor by the procedure below, and confirm the derived
+   there, pin down the `engineVersions.min` floor by the procedure below, and confirm the derived
    KV-cache floor actually starts.
 5. **Write the description last**, once the measurements exist. It is the one field a user reads
    before choosing, so write it for someone deciding between variants: what the model is good at,
@@ -56,7 +56,7 @@ steps.)
    a model picker. Writing this early, from the model card, reliably produces claims you then have
    to correct.
 6. **Publish.** Open a PR. In the description, record which hardware you verified it on and any
-   constraints you found (`minEngineVersion`, `platforms`). CI loads `models/` the way the server
+   constraints you found (`engineVersions.min`, `platforms`). CI loads `models/` the way the server
    does, so a file the server could not serve fails the build.
 
 ## Researching the fields
@@ -79,7 +79,7 @@ steps.)
 | `description` | Purpose, strengths, limitations, in your own words. Multiple paragraphs as a block scalar, not a one-line label. Write it **last** (step 5): it is sourced from the model card *and* from what you measured, and it is aimed at a user choosing between variants, not at a maintainer. State what changes for them, meaning which values a parameter takes and what they do, and when to pick a sibling entry. Leave the mechanics to the PR. YAML comments do not reach anyone, so nothing a user needs may live in one. |
 | `createdAt` | The day the creator published the model: the initial commit on the HuggingFace repo, or the announcement date the model card cites. Not a later revision, and identical across every engine variant of one model. |
 | `registeredAt` | The day you are adding the entry, i.e. today. It records integration, not the model's age, so never copy it from `createdAt` and never backdate it: entries registered in the last 14 days are flagged as new in the dashboard. |
-| `minEngineVersion` | Set for new model families / quant formats. Don't guess. **Establish the floor empirically** by running on older vLLM builds until it stops loading ("Confirm the version floor" below). |
+| `engineVersions.min` | Set for new model families / quant formats. Don't guess. **Establish the floor empirically** by running on older vLLM builds until it stops loading ("Confirm the version floor" below). |
 | `platforms` | Set when the variant needs a specific GPU vendor (e.g. CUDA-only quant kernels → `[nvidia]`). A `wrong_platform` failure is evidence. |
 | `engineArgs` | Extra serve flags (e.g. `["--max-model-len", "8192"]`). Note the blocked-args list in `model-fields.md`; system-managed flags are stripped. Carry a flag only once you can show it does something on **this** architecture. See "Vendor-recommended flags are not all universal". |
 | `requestParams` | Allowlist for the **non-standard** request fields this model needs forwarded: `top_k`, `min_p`, `repetition_penalty`, `chat_template_kwargs.*` and the like. Standard OpenAI fields are the gateway's responsibility, so do **not** list one here just because the gateway does not forward it today. An entry states facts about the model; a gap elsewhere in the stack is a bug to fix there, and a workaround encoded here outlives the bug silently and becomes wrong data nobody re-examines. Validate anything you list ("A 200 is not proof" below). |
@@ -365,11 +365,11 @@ smaller floor → more requests fit in the same cache). Note: for models with sl
 attention (e.g. Gemma 4), the real floor is well below the dense formula above, so trust the
 empirical `X GiB needed` figure rather than the estimate.
 
-### Confirm the version floor (`minEngineVersion`)
+### Confirm the version floor (`engineVersions.min`)
 
 Don't guess the floor. Establish it by running on the oldest vLLM you intend to support. Using the
 image assortment below, `--start` against progressively older versions and, on each, **send a real
-request and check the response**. Set `minEngineVersion` to the oldest version that *serves a
+request and check the response**. Set `engineVersions.min` to the oldest version that *serves a
 correct response*, not merely the oldest that loads. Loading is not proof: a version can start
 cleanly (quant kernels selected, `/health` 200) yet **500 on the first request**, for example an
 attention-kernel shape error for the model's head-dim layout. (Real example: Mistral-Small-4 NVFP4
@@ -405,7 +405,8 @@ x-shared:
     engine: vllm
     type: chat
     family: qwen3
-    minEngineVersion: "0.19.2"
+    engineVersions:
+      min: "0.19.2"
   args: &args
     - --tool-call-parser
     - qwen3_coder
@@ -434,13 +435,13 @@ receive.
 |-----------------------------|---------------|--------|
 | `resolution_error` | Entry missing `engineSpecifier`, or name not found | Fix the entry / specifier |
 | `missing_driver` | No vLLM available on this host | Install vLLM, or pass `--image <vllm-image>` for the docker backend |
-| `version_too_old` | Host vLLM older than the model needs | Record the real floor in `minEngineVersion`; verify on a node that meets it |
-| `version_unknown` | Couldn't detect the vLLM version (image not pulled locally, or `vllm --version` failed, since it needs GPU access to run) | Pull the image and ensure a GPU is visible, pass `--vllm-path`, or `--force` to bypass the gate (which then won't enforce `minEngineVersion`) |
+| `version_too_old` | Host vLLM older than the model needs | Record the real floor in `engineVersions.min`; verify on a node that meets it |
+| `version_unknown` | Couldn't detect the vLLM version (image not pulled locally, or `vllm --version` failed, since it needs GPU access to run) | Pull the image and ensure a GPU is visible, pass `--vllm-path`, or `--force` to bypass the gate (which then won't enforce `engineVersions.min`) |
 | `wrong_platform` | Model needs a GPU vendor this host lacks | Record `platforms`; verify on matching hardware |
 | `missing_feature` | Node's vLLM install lacks a Python module a required capability needs (e.g. `transcription` models need `soundfile` for the `audio` feature) | Install the missing dependency into the vLLM environment, or run on a node that has it |
 | `insufficient_capacity` | `sizing.weightGb` + KV-cache exceeds available VRAM | Re-check the `weightGb` estimate, lower KV-cache via `--kv-cache`, or choose a smaller/quantized variant |
 | Server exits at load: "trust_remote_code" / "requires --trust-remote-code" | Model ships custom loading code | Add `custom_code` to `tags`  |
-| Server load: unknown/unsupported architecture | vLLM too old for this model | Set `minEngineVersion` and run on a newer node |
+| Server load: unknown/unsupported architecture | vLLM too old for this model | Set `engineVersions.min` and run on a newer node |
 | Server load aborts: `weights not initialized from checkpoint: {visual.*}` | A vision-language architecture shipped as a **text-only** checkpoint (`config.json` `language_model_only: true`, no vision weights), but vLLM built the vision tower | Pass `--language-model-only` in `engineArgs`. The config field is not the switch, the CLI flag is. Not a `custom_code` case. Vision is off, so no `vision` tag |
 | Request fails HTTP 400 "default chat template is no longer allowed" | Model ships its chat template as a standalone `chat_template.jinja` and it isn't in the cache | The host downloader keeps `*.jinja` by default; if missing, re-run `--download`. Surfaces only if you `/health`-check but never send a real request. See "Confirm it actually serves" |
 | Load aborts on KV cache with `X GiB is needed ... available (Y GiB)` where X is only slightly above Y, on a hybrid model | The derived floor is short because vLLM block-aligned the attention page to the mamba page | Compute the real floor from the block size in the log and author `minKvCacheGb`. Do **not** change `kvBytesPerToken`. See "Confirm the KV-cache floor" |
@@ -451,7 +452,7 @@ receive.
 | OOM during load | Too large for the device at this utilization | Lower `--gpu-util` or KV-cache, or pick a smaller variant |
 | `docker run` fails with a port conflict, or results describe a model you are not testing | An earlier container still holds `127.0.0.1:8000`; `/health` answers from it | Wait for the port to clear and assert `/v1/models` names the expected `engineSpecifier` before trusting a result. See "One server at a time" |
 
-Treat each `minEngineVersion` / `platforms` / `custom_code` discovery as a **fact about
+Treat each `engineVersions.min` / `platforms` / `custom_code` discovery as a **fact about
 the model** to bake into the entry, not a one-off workaround. The goal is an entry that the cluster
 scheduler can place correctly, which is exactly what these constraints feed (see the README's
 "How scheduling uses model data").
