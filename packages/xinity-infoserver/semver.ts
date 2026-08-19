@@ -4,6 +4,8 @@
  * Handles PEP440 versions (vLLM) by normalizing to semver first.
  */
 
+const SEMVER_PREFIX = /^\d+\.\d+\.\d+/;
+
 /**
  * Normalizes a version string that may be PEP440 (e.g. "0.19.1.post1",
  * "0.8.5.post1+cu126", "0.8.5.dev3") to a semver-compatible "major.minor.patch".
@@ -26,10 +28,31 @@ export function satisfiesMinVersion(actual: string, minRequired: string): boolea
   const normalized = normalizePep440(actual);
   const normalizedMin = normalizePep440(minRequired);
   // If normalization didn't produce a valid semver prefix, fail-open
-  if (!/^\d+\.\d+\.\d+/.test(normalized)) return true;
+  if (!SEMVER_PREFIX.test(normalized)) return true;
   try {
     return Bun.semver.satisfies(normalized, `>=${normalizedMin}`);
   } catch {
     return true;
   }
+}
+
+/** Bun reads a range it cannot parse as a wildcard, so vet it before trusting a match. */
+export function matchesVersionRange(actual: string, range: string): boolean {
+  if (!actual || !isValidVersionRange(range)) {
+    return false;
+  }
+  const normalized = normalizePep440(actual);
+  if (!SEMVER_PREFIX.test(normalized)) {
+    return false;
+  }
+  return Bun.semver.satisfies(normalized, range);
+}
+
+const COMPARATOR = /^(?:<=|>=|<|>|=)?\d+\.\d+\.\d+$/;
+
+/** Comparators ANDed by spaces, ORed by "||". Narrow on purpose: an exclusion is a concrete interval. */
+export function isValidVersionRange(range: string): boolean {
+  return range.split("||").every(clause =>
+    clause.trim().split(/\s+/).every(comparator => COMPARATOR.test(comparator)),
+  );
 }
