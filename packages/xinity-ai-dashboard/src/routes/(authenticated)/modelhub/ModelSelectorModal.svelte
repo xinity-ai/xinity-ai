@@ -1,7 +1,7 @@
 <script lang="ts">
   import Modal from "$lib/components/Modal.svelte";
   import type { Engine, IncompatibilityReason, ModelType, ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
-  import { EngineEnum, explainClusterIncompatibility } from "xinity-infoserver";
+  import { EngineEnum, blockedVersionNotes, explainClusterIncompatibility } from "xinity-infoserver";
   import { modelCatalog } from "$lib/state/model-catalog.svelte";
   import { formatGb } from "$lib/util";
   import { groupModelVariants, groupIncompatibility, type ModelGroup } from "./model-groups";
@@ -190,6 +190,11 @@
     return explainClusterIncompatibility(nodeCapabilities, model);
   }
 
+  function blockedReleaseNote(model: ModelWithSpecifier): string | undefined {
+    const notes = blockedVersionNotes(nodeCapabilities, model);
+    return notes.length > 0 ? notes.join(" ") : undefined;
+  }
+
   function handleSelect(model: ModelWithSpecifier) {
     pickingFrom = null;
     onSelect(model);
@@ -358,9 +363,11 @@
               </h3>
               <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {#each groupedModels[family] as group (group.leader.publicSpecifier)}
+                  {@const groupReason = groupIncompatibility(group, undeployableReason)}
                   <ModelChoiceCard
                     model={group.leader}
-                    blockedReason={groupIncompatibility(group, undeployableReason)}
+                    blockedReason={groupReason}
+                    blockedDetail={groupReason === "version_blocked" ? blockedReleaseNote(group.leader) : undefined}
                     {maxNodeFreeCapacity}
                     variantCount={group.variants.length}
                     onSelect={() => chooseFromGroup(group)}
@@ -413,9 +420,11 @@
       <main class="p-5 overflow-y-auto">
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {#each group.variants as variant, i (variant.publicSpecifier)}
+            {@const variantReason = undeployableReason(variant)}
             <ModelChoiceCard
               model={variant}
-              blockedReason={undeployableReason(variant)}
+              blockedReason={variantReason}
+              blockedDetail={variantReason === "version_blocked" ? blockedReleaseNote(variant) : undefined}
               {maxNodeFreeCapacity}
               repeatsPreviousDescription={variant.description === group.variants[i - 1]?.description}
               onSelect={handleSelect}
