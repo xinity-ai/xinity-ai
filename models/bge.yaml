@@ -1,0 +1,65 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+#
+# BAAI's BGE retrieval pair: an embedding model and the cross-encoder reranker meant to
+# sit behind it. Both are XLM-RoBERTa-large encoders, so neither generates text and
+# neither pays for a growing KV cache.
+
+models:
+  bge-m3-vllm:
+    name: BGE M3 Embedding
+    description: |
+      BAAI's multilingual embedding model, and the closest thing open retrieval has to a
+      default. It covers over a hundred languages and retrieves across them, so a query
+      in one language finds documents in another.
+
+      It is the first stage of a two-stage pipeline: embed everything, retrieve cheaply,
+      then rerank the top results with the BGE Reranker v2-M3 entry.
+
+      Its 8K input window is generous for an embedding model, but documents still have
+      to be chunked to whatever the retrieval unit is.
+
+      Unlike most of the alternatives it needs no instruction or query prefix: embed
+      queries and documents exactly as they are. That is one less thing to keep
+      consistent between indexing and serving.
+    url: https://huggingface.co/BAAI/bge-m3
+    license: mit
+    createdAt: 2024-01-27
+    registeredAt: 2026-08-18
+    engine: vllm
+    engineSpecifier: BAAI/bge-m3
+    sizing: &bge-kv
+      # 24 layers, 16 heads, head_dim 64 -> 2 * 24 * 16 * 64 * 2. An encoder-only pooling
+      # model reserves no paged KV cache at all, so this figure exists to keep the
+      # capacity estimate honest rather than to size an allocation.
+      kvBytesPerToken: 98304
+      maxContextLength: 8192
+      weightGb: 1.14  # measured resident, 1.06 GiB
+      weightBits: 16
+    type: embedding
+    family: BGE
+    tags: []
+
+  bge-reranker-v2-m3-vllm:
+    name: BGE Reranker v2-M3
+    description: |
+      The reranker that pairs with BGE M3. It reads a query and a candidate document
+      together and scores how well they match, which is more accurate than comparing two
+      independent embeddings and far too slow to run over a whole corpus.
+
+      Use it on the top few dozen results from an embedding search. It covers the same
+      hundred-plus languages as the embedding model, which is the usual reason to pick it
+      over an English-only reranker.
+
+      8K per query-document pair, so it scores long passages without truncating them.
+    url: https://huggingface.co/BAAI/bge-reranker-v2-m3
+    license: apache-2.0
+    createdAt: 2024-03-15
+    registeredAt: 2026-08-18
+    engine: vllm
+    engineSpecifier: BAAI/bge-reranker-v2-m3
+    sizing:
+      <<: *bge-kv
+      weightGb: 1.14  # measured resident, 1.06 GiB
+    type: rerank
+    family: BGE
+    tags: []

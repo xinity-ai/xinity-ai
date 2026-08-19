@@ -1,0 +1,103 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+#
+# The Qwen3 30B-A3B line: a sparse mixture of experts with about 3B active per token,
+# in an instruct build, a reasoning build and a coding build. All three share one layout,
+# so they share one KV anchor.
+
+models:
+  qwen3-30b-a3b-instruct-vllm: &qwen3-30b
+    name: Qwen3 30B A3B Instruct
+    description: |
+      Qwen3's general-purpose instruct model at 30B total and roughly 3B active per
+      token, which is what makes it cheap to serve for the quality it gives. Good
+      everyday chat and code, and it calls tools.
+
+      This is the one to reach for on routine work. Use the Thinking sibling only where
+      a problem is hard enough to be worth waiting for a chain of thought.
+    url: https://github.com/QwenLM/Qwen3
+    license: apache-2.0
+    createdAt: 2025-07-29
+    registeredAt: 2026-08-18
+    engine: vllm
+    engineSpecifier: Qwen/Qwen3-30B-A3B-Instruct-2507
+    sizing: &qwen3-30b-kv
+      # 48 layers, 4 kv heads, head_dim 128 -> 2 * 48 * 4 * 128 * 2. Dense attention on
+      # every layer, so the 256K window costs about 26 GB of cache for one request.
+      kvBytesPerToken: 98304
+      maxContextLength: 262144
+      weightGb: 61.13  # measured resident, 56.93 GiB
+      activeWeightGb: 6
+      weightBits: 16
+    type: chat
+    family: Qwen3 30B
+    tags: [tools]
+    engineArgs: &qwen3-30b-args
+      - --tool-call-parser
+      - hermes
+
+  qwen3-30b-a3b-instruct-fp8-vllm:
+    <<: *qwen3-30b
+    name: Qwen3 30B A3B Instruct FP8
+    description: |
+      The instruct model in FP8, at half the memory for very close quality. On any card
+      that has to hold the 256K cache as well, this is the practical choice over the bf16
+      entry.
+    engineSpecifier: Qwen/Qwen3-30B-A3B-Instruct-2507-FP8
+    variantOf: qwen3-30b-a3b-instruct-vllm
+    sizing:
+      <<: *qwen3-30b-kv
+      weightGb: 31.54  # measured resident, 29.37 GiB
+      activeWeightGb: 3
+      weightBits: 8
+
+  qwen3-30b-a3b-thinking-vllm:
+    <<: *qwen3-30b
+    name: Qwen3 30B A3B Thinking
+    description: |
+      The reasoning build of the same architecture. It writes out a chain of thought
+      before answering, which lifts it well above the Instruct sibling on hard problems
+      and makes it slower and more expensive on easy ones.
+
+      Every request carries that reasoning preamble, so `max_tokens` has to cover the
+      thinking as well as the answer or the reply arrives truncated.
+    engineSpecifier: Qwen/Qwen3-30B-A3B-Thinking-2507
+    engineArgs:
+      - *qwen3-30b-args
+      - --reasoning-parser
+      - qwen3
+    sizing: *qwen3-30b-kv
+
+  qwen3-30b-a3b-thinking-fp8-vllm:
+    <<: *qwen3-30b
+    name: Qwen3 30B A3B Thinking FP8
+    description: |
+      The reasoning build in FP8, at half the memory. Same chain-of-thought behaviour and
+      the same need for a generous `max_tokens` as the bf16 entry.
+    engineSpecifier: Qwen/Qwen3-30B-A3B-Thinking-2507-FP8
+    variantOf: qwen3-30b-a3b-thinking-vllm
+    engineArgs:
+      - *qwen3-30b-args
+      - --reasoning-parser
+      - qwen3
+    sizing:
+      <<: *qwen3-30b-kv
+      weightGb: 31.54  # measured resident, 29.37 GiB
+      activeWeightGb: 3
+      weightBits: 8
+
+  qwen3-coder-30b-a3b-vllm:
+    <<: *qwen3-30b
+    name: Qwen3 Coder 30B A3B Instruct
+    description: |
+      The coding specialist on the same architecture. It is markedly better than the
+      general Instruct model at agentic tool use and at long code edits, and that is the
+      case for choosing it: an IDE agent or a refactoring pipeline rather than chat.
+
+      It emits tool calls in Qwen's own XML-ish format rather than the JSON one the other
+      entries in this file use.
+    url: https://qwenlm.github.io/blog/qwen3-coder/
+    engineSpecifier: Qwen/Qwen3-Coder-30B-A3B-Instruct
+    engineArgs:
+      - --tool-call-parser
+      - qwen3_coder
+    sizing: *qwen3-30b-kv

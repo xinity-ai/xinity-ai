@@ -1,0 +1,55 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+
+models:
+  embeddinggemma-300m-vllm:
+    name: EmbeddingGemma 300M
+    description: |
+      Google's small text-embedding model, built on the Gemma 3 backbone and trained
+      for retrieval, semantic search, clustering and classification across a wide
+      range of languages.
+
+      It is tiny enough to sit alongside a generation model on the same card, which
+      is the usual reason to pick it: a retrieval pipeline can embed locally instead
+      of shipping documents to a hosted embedding API.
+
+      Its input window is 2048 tokens, short by current standards, so longer
+      documents have to be chunked before embedding. It only produces embeddings;
+      it cannot chat, and requests to the chat endpoints are rejected.
+
+      It expects its task prompts, and this one is not optional. Prefix a query with
+      `task: search result | query: ` and a document with `title: none | text: `.
+      Embedded bare, everything it is shown lands between 0.90 and 0.95 cosine of
+      everything else and relevant barely outranks irrelevant; with the prompts the
+      same comparison separates by an order of magnitude more. Other tasks have their
+      own query prefixes, among them `task: clustering | query: `,
+      `task: classification | query: ` and `task: sentence similarity | query: `. The
+      query prefix and the document prefix must belong to the same task.
+    url: https://huggingface.co/google/embeddinggemma-300m
+    license:
+      name: Gemma Terms of Use
+      url: https://ai.google.dev/gemma/terms
+      use: conditional
+      summary: >
+        Commercial use is allowed, with no revenue or user threshold, but Google's
+        Prohibited Use Policy applies and must be passed on to downstream recipients
+        together with a copy of the terms. Google reserves the right to restrict
+        usage, remotely or otherwise, where it believes the terms are being violated.
+    createdAt: 2025-07-17
+    registeredAt: 2026-08-18
+    engine: vllm
+    engineSpecifier: google/embeddinggemma-300m
+    sizing:
+      # 24 layers, 1 kv head, head_dim 256. 20 of the 24 are sliding-window, so
+      # attentionWindow caps what a long request holds. Note the pooling runner does
+      # not reserve a paged KV cache the way a generative model does. vLLM logs no
+      # cache size at all, so this figure only keeps the capacity estimate honest.
+      kvBytesPerToken: 24576
+      attentionWindow: 512
+      maxContextLength: 2048
+      # The checkpoint is float32 on disk but vLLM loads it bf16 (dtype=torch.bfloat16),
+      # so this is the measured resident 0.57 GiB, not the 1.2 GB of files.
+      weightGb: 0.61
+      weightBits: 16
+    type: embedding
+    family: EmbeddingGemma
+    tags: []

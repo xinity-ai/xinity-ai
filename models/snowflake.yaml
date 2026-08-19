@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+
+models:
+  snowflake-arctic-embed-l-v2-vllm:
+    name: Snowflake Arctic Embed L v2.0
+    description: |
+      Snowflake's multilingual embedding model, on the same XLM-RoBERTa-large backbone as
+      BGE M3 and released later with newer training data. It generally scores ahead of
+      BGE M3 on the multilingual retrieval benchmarks.
+
+      It is a direct alternative to BGE M3 as the first stage of a retrieval pipeline,
+      at the same size and the same 8K input window. The BGE reranker sits behind either
+      of them.
+
+      Snowflake prefix queries with `query: ` and leave documents bare.
+    url: https://huggingface.co/Snowflake/snowflake-arctic-embed-l-v2.0
+    license: apache-2.0
+    createdAt: 2024-11-08
+    registeredAt: 2026-08-18
+    engine: vllm
+    engineSpecifier: Snowflake/snowflake-arctic-embed-l-v2.0
+    sizing:
+      # 24 layers, 16 heads, head_dim 64 -> 2 * 24 * 16 * 64 * 2. Encoder-only, so no
+      # paged KV cache is reserved.
+      kvBytesPerToken: 98304
+      maxContextLength: 8192
+      weightGb: 1.14  # measured resident, 1.06 GiB
+      weightBits: 16
+    type: embedding
+    family: Snowflake Arctic
+    tags: []

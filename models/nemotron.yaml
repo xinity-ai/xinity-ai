@@ -1,0 +1,96 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+
+models:
+  nemotron-3-puzzle-75b-a9b-nvfp4-vllm:
+    name: Nemotron 3 Puzzle 75B A9B NVFP4
+    description: |
+      NVIDIA's 75B sparse reasoning model with roughly 9B active per token, quantized to
+      NVFP4. Despite the parameter count it fits on a single large card, and it decodes
+      at a speed set by the active weights rather than the total.
+
+      It is aimed at hard reasoning and agentic work, and supports tool calling.
+
+      It runs NVFP4 kernels, so it needs a Blackwell-class NVIDIA GPU.
+    url: https://huggingface.co/nvidia/NVIDIA-Nemotron-Labs-3-Puzzle-75B-A9B-NVFP4
+    license:
+      name: OpenMDW 1.1
+      url: https://openmdw.ai/license/1-1/
+      use: open
+    createdAt: 2026-06-24
+    registeredAt: 2026-08-18
+    engine: vllm
+    engineSpecifier: nvidia/NVIDIA-Nemotron-Labs-3-Puzzle-75B-A9B-NVFP4
+    sizing:
+      # 88 blocks: 8 attention, 40 mamba, 40 MoE. Only the 8 attention blocks hold a KV
+      # cache, and the checkpoint asks for an fp8 one, so a token costs
+      # 2 * 8 * 2 kv heads * 128 head_dim * 1 byte. The 40 mamba blocks hold a fixed
+      # state per request instead: vLLM pages them at 3,211,264 bytes each.
+      kvBytesPerToken: 4096
+      stateBytesPerSequence: 128450560
+      minKvCacheGb: 1.22
+      maxContextLength: 262144
+      weightGb: 47.95  # measured resident, 44.65 GiB
+      activeWeightGb: 7
+      weightBits: 4
+    type: chat
+    family: Nemotron
+    tags: [tools, custom_code]
+    platforms: [nvidia]
+    engineArgs:
+      # The template emits <tool_call><function=name><parameter=x>, which is the
+      # qwen3_coder shape rather than a Nemotron-specific one.
+      - --tool-call-parser
+      - qwen3_coder
+      - --reasoning-parser
+      - nemotron_v3
+    # The modelling code lives in .py files that the default download filter drops.
+    downloadFilter:
+      - "!*.py"
+    minEngineVersion: "0.20.2"
+
+  nemotron-3-super-120b-a12b-nvfp4-vllm:
+    name: Nemotron 3 Super 120B A12B NVFP4
+    description: |
+      NVIDIA's 120B hybrid Transformer-Mamba mixture of experts with about 12B active per
+      token, quantized to NVFP4. Frontier-class reasoning that still fits on a single
+      large card, and multi-token prediction keeps decoding fast.
+
+      It reasons before answering and calls tools, with a 256K window.
+
+      It runs NVFP4 kernels, so it needs a Blackwell-class NVIDIA GPU.
+    url: https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4
+    license:
+      name: NVIDIA Nemotron Open Model License
+      url: https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/
+      use: conditional
+      summary: >
+        Not an OSI-approved open-source licence. Commercial use, modification and
+        redistribution are permitted, but the built-in guardrails must not be bypassed or
+        removed, the licence has to be passed through to downstream users, and NVIDIA
+        reserves the right to update its terms.
+    createdAt: 2026-05-20
+    registeredAt: 2026-08-18
+    engine: vllm
+    engineSpecifier: nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4
+    platforms: [nvidia]
+    sizing:
+      # 88 blocks: 8 attention, 40 mamba, 40 MoE. That is the Puzzle layout, but with a wider
+      # SSM state (128 rather than 96), so the mamba page is larger. A token costs
+      # 2 * 8 * 2 kv heads * 128 head_dim * 1 byte of fp8 cache; each of the 40 mamba
+      # blocks holds a fixed 4,259,840-byte page per request in flight.
+      kvBytesPerToken: 4096
+      stateBytesPerSequence: 170393600
+      minKvCacheGb: 1.27  # 1.00x; vLLM picks an 8320-token attention block here
+      maxContextLength: 262144
+      weightGb: 74.76  # measured resident, 69.62 GiB
+      activeWeightGb: 11
+      weightBits: 4
+    type: chat
+    family: Nemotron
+    tags: [tools]
+    engineArgs:
+      - --tool-call-parser
+      - qwen3_coder
+      - --reasoning-parser
+      - nemotron_v3
+    minEngineVersion: "0.20.0"

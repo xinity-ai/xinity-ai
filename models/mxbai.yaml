@@ -1,0 +1,84 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+#
+# Mixedbread's retrieval models. The embedding model is a BERT encoder; both rerankers
+# are Qwen2 decoders repurposed as sequence classifiers, which is why they carry a real
+# KV cost and a 32K window while the embedding model is capped at 512 tokens.
+
+models:
+  mxbai-embed-large-v1-vllm:
+    name: Mixedbread Embed Large v1
+    description: |
+      An English-focused embedding model on a BERT-large backbone, and a strong one on
+      English retrieval benchmarks. Pair it with either Mixedbread reranker for a
+      two-stage English pipeline.
+
+      Its 512-token window is the thing to plan around: it is short by current standards
+      and documents have to be chunked at ingest, not at query time. If the corpus is
+      multilingual or the chunks are long, BGE M3 is the better first stage.
+
+      For retrieval, Mixedbread prefix queries with
+      `Represent this sentence for searching relevant passages: ` and leave documents
+      bare. Nothing else needs a prompt.
+    url: https://huggingface.co/mixedbread-ai/mxbai-embed-large-v1
+    license: apache-2.0
+    createdAt: 2024-03-07
+    registeredAt: 2026-08-18
+    engine: vllm
+    engineSpecifier: mixedbread-ai/mxbai-embed-large-v1
+    sizing:
+      # 24 layers, 16 heads, head_dim 64 -> 2 * 24 * 16 * 64 * 2. Encoder-only, so no
+      # paged KV cache is reserved; the figure keeps the capacity estimate honest.
+      kvBytesPerToken: 98304
+      maxContextLength: 512
+      weightGb: 0.67  # measured resident, 0.62 GiB
+      weightBits: 16
+    type: embedding
+    family: Mixedbread
+    tags: []
+
+  mxbai-rerank-large-v2-vllm: &mxbai-rerank
+    name: Mixedbread Rerank Large v2
+    description: |
+      Mixedbread's most accurate cross-encoder reranker, built on a Qwen2 1.5B base and
+      trained on hard-negative-mined pairs. It scores each query-document pair directly
+      rather than comparing embeddings.
+
+      It beats BGE Reranker v2-M3 on English retrieval, at higher latency per pair. Its
+      32K window is the practical advantage over BGE-class rerankers: it scores long
+      documents without truncating them.
+
+      Reach for the base entry instead when reranker throughput is the bottleneck.
+    url: https://www.mixedbread.com/blog/mxbai-rerank-v2
+    license: apache-2.0
+    createdAt: 2025-03-03
+    registeredAt: 2026-08-18
+    engine: vllm
+    engineSpecifier: mixedbread-ai/mxbai-rerank-large-v2
+    sizing:
+      # 28 layers, 2 kv heads, head_dim 128 -> 2 * 28 * 2 * 128 * 2
+      kvBytesPerToken: 28672
+      maxContextLength: 32768
+      weightGb: 3.20  # measured resident, 2.98 GiB
+      weightBits: 16
+    type: rerank
+    family: Mixedbread
+    tags: []
+
+  mxbai-rerank-base-v2-vllm:
+    <<: *mxbai-rerank
+    name: Mixedbread Rerank Base v2
+    description: |
+      The smaller Mixedbread reranker: a Qwen2 0.5B base, same training recipe as the
+      large entry, roughly three times faster per pair and a fraction of the memory.
+
+      It gives up some accuracy for that, which is the right trade in a high-QPS pipeline
+      where the reranker is the bottleneck rather than the quality ceiling. Same 32K
+      window per pair.
+    url: https://www.mixedbread.com/blog/mxbai-rerank-v2
+    engineSpecifier: mixedbread-ai/mxbai-rerank-base-v2
+    sizing:
+      # 24 layers, 2 kv heads, head_dim 64 -> 2 * 24 * 2 * 64 * 2
+      kvBytesPerToken: 12288
+      maxContextLength: 32768
+      weightGb: 1.00  # measured resident, 0.93 GiB
+      weightBits: 16

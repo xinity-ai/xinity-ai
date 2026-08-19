@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+
+models:
+  mistral-small-4-119b-nvfp4-vllm:
+    name: Mistral Small 4 119B NVFP4
+    description: |
+      Mistral Small 4 quantized to NVFP4, which is what brings a 119B model onto a single
+      card. It is a sparse mixture of experts with four experts active per token, reads
+      images alongside text, and unifies chat, reasoning and coding in one model rather
+      than splitting them across variants.
+
+      Reasoning depth is set per request with `reasoning_effort`. The 256K window is what
+      this entry serves; the architecture allows far more.
+
+      Expect a small quality loss against the full-precision release on the hardest
+      reasoning prompts, in exchange for roughly a third of the memory.
+    url: https://mistral.ai/news/mistral-small-4
+    license: apache-2.0
+    createdAt: 2026-03-03
+    registeredAt: 2026-08-18
+    engine: vllm
+    engineSpecifier: mistralai/Mistral-Small-4-119B-2603-NVFP4
+    sizing:
+      # Multi-head latent attention: a token costs the compressed latent plus the rope
+      # part, not a full per-head cache, so (256 kv_lora_rank + 64 qk_rope_head_dim)
+      # * 36 layers * 2 bytes. That is why a 119B model needs less cache than a dense
+      # 30B does.
+      kvBytesPerToken: 23040
+      maxContextLength: 262144
+      weightGb: 71.00  # measured resident, 66.12 GiB
+      activeWeightGb: 12
+      weightBits: 4
+    type: chat
+    family: Mistral Small
+    tags: [vision, tools]
+    engineArgs:
+      # Mistral's own checkpoint format, and the window pinned to what the entry
+      # declares rather than the 1M the config allows.
+      - --tokenizer_mode
+      - mistral
+      - --config_format
+      - mistral
+      - --load_format
+      - mistral
+      - --tool-call-parser
+      - mistral
+      - --max-model-len
+      - "262144"
+    minEngineVersion: "0.20.0"

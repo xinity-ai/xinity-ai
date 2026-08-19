@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+
+models:
+  unlimited-ocr-vllm:
+    name: Unlimited OCR
+    description: |
+      Baidu's document OCR model: a small sparse vision-language model built to turn
+      scans, PDFs and photographed pages into structured text. It handles dense layout,
+      tables and mixed scripts better than a general vision model of the same size.
+
+      It is purpose-built for extraction rather than conversation. Ask it to read a
+      page and it will; ask it to reason about the content and it will disappoint.
+
+      For a multi-page document, the prompt must literally contain "Multi page
+      parsing." or the model treats the input as a single page and returns only the
+      first. That phrasing is load-bearing, not a suggestion.
+    url: https://huggingface.co/baidu/Unlimited-OCR
+    license: mit
+    createdAt: 2026-06-19
+    registeredAt: 2026-08-18
+    engine: vllm
+    engineSpecifier: baidu/Unlimited-OCR
+    sizing:
+      # 12 layers, 10 kv heads, head_dim 128 -> 2 * 12 * 10 * 128 * 2
+      kvBytesPerToken: 61440
+      maxContextLength: 32768
+      weightGb: 6.70  # measured resident, 6.24 GiB
+      weightBits: 16
+    type: chat
+    family: Unlimited-OCR
+    tags: [vision]
+    minEngineVersion: "0.25.0"
