@@ -287,6 +287,29 @@ docker run --rm --entrypoint sh <vllm-image> -c \
 a log for a fallback, match on a distinctive substring and case-insensitively, because a grep that misses
 is indistinguishable from a flag that worked.
 
+### `maxContextLength` is not passed to the engine
+
+Nothing derives `--max-model-len` from `maxContextLength`. The daemon manages
+`--kv-cache-memory-bytes`, `--gpu-memory-utilization`, `--runner`, `--enable-auto-tool-choice` and
+`--max-num-seqs`, and leaves the context window to vLLM, which reads it from the model's own
+config. That is a deliberate choice rather than an oversight: for most entries the two figures are
+the same number, so injecting the flag would be a no-op that also overrode any considered value
+already sitting in `engineArgs`.
+
+So when you clip a model below its architectural window, write the figure **twice**:
+`maxContextLength` for the catalog, and `--max-model-len` in `engineArgs` for the engine. Both
+directions fail if you write only one.
+
+- Missing from `engineArgs`: vLLM sizes its cache for the config's larger figure and then refuses
+  to start against the smaller floor the entry declares. `qwen3-embedding-4b-vllm` is the worked
+  example, where `config.json` allows 40960 and Qwen document 32K.
+- Missing from `maxContextLength`: the gateway advertises and admits a window the engine rejects,
+  so the failure lands on a user's request rather than at start-up.
+
+`maxContextLength` also drives the derived KV floor, so an entry that clips its context only in
+`engineArgs` reserves cache for a window it will never serve, and reads as needing more VRAM than
+it does.
+
 ### Confirm the KV-cache floor (`minKvCacheGb`)
 
 The floor is the KV cache one request at the model's full context length needs, below which vLLM
