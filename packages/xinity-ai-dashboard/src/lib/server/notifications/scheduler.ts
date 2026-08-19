@@ -66,33 +66,45 @@ async function notifyAllOrgs(
 
 // ── Deployment status check ─────────────────────────────────────────
 
-type DeploymentInfo = { phase: DisplayPhase; orgId: string; orgName: string; name: string; model: string; error: string | null };
+export type DeploymentInfo = {
+  phase: DisplayPhase;
+  orgId: string;
+  orgName: string;
+  name: string;
+  model: string;
+  error: string | null;
+  /** Installations that exist, which can fall short of `desiredReplicas`. */
+  observedReplicas: number;
+  desiredReplicas: number;
+};
 
 type DeploymentAcc = Omit<DeploymentInfo, "phase"> & { phase: DeploymentPhase; hasReady: boolean };
 
-async function getDeploymentPhases(): Promise<Map<string, DeploymentInfo>> {
-  const rows = await getDB()
-    .select({
-      deploymentId: modelDeploymentT.id,
-      deploymentName: modelDeploymentT.name,
-      organizationId: modelDeploymentT.organizationId,
-      orgName: organizationT.name,
-      publicSpecifier: modelDeploymentT.publicSpecifier,
-      installationId: modelInstallationT.id,
-      lifecycleState: modelInstallationStateT.lifecycleState,
-      errorMessage: modelInstallationStateT.errorMessage,
-    })
-    .from(modelDeploymentT)
-    .where(and(eq(modelDeploymentT.enabled, true), isNull(modelDeploymentT.deletedAt)))
-    .leftJoin(organizationT, eq(organizationT.id, modelDeploymentT.organizationId))
-    .leftJoin(modelInstallationT, and(deploymentMatchesInstallation, isNull(modelInstallationT.deletedAt)))
-    .leftJoin(modelInstallationStateT, eq(modelInstallationStateT.id, modelInstallationT.id));
+export type DeploymentPhaseRow = {
+  deploymentId: string;
+  deploymentName: string;
+  organizationId: string;
+  orgName: string | null;
+  publicSpecifier: string;
+  desiredReplicas: number;
+  installationId: string | null;
+  lifecycleState: string | null;
+  errorMessage: string | null;
+};
 
+/**
+ * Folds the installation join into one aggregate per deployment.
+ *
+ * A deployment with no installations still yields a row with a null `installationId`, so the
+ * observed count keys off that column rather than the row count.
+ */
+export function foldDeploymentPhaseRows(rows: DeploymentPhaseRow[]): Map<string, DeploymentInfo> {
   const accumulators = new Map<string, DeploymentAcc>();
 
   for (const row of rows) {
     const existing = accumulators.get(row.deploymentId);
     const phase: DeploymentPhase = row.lifecycleState as DeploymentPhase ?? (row.installationId ? "scheduling" : "pending");
+    const observed = row.installationId ? 1 : 0;
 
     if (!existing) {
       accumulators.set(row.deploymentId, {
@@ -103,6 +115,8 @@ async function getDeploymentPhases(): Promise<Map<string, DeploymentInfo>> {
         name: row.deploymentName,
         model: row.publicSpecifier,
         error: row.errorMessage,
+        observedReplicas: observed,
+        desiredReplicas: row.desiredReplicas,
       });
     } else {
       const agg = aggregatePhase(
@@ -115,6 +129,7 @@ async function getDeploymentPhases(): Promise<Map<string, DeploymentInfo>> {
         hasReady: agg.hasReady,
         orgName: row.orgName ?? existing.orgName,
         error: agg.error,
+        observedReplicas: existing.observedReplicas + observed,
       });
     }
   }
@@ -122,9 +137,40 @@ async function getDeploymentPhases(): Promise<Map<string, DeploymentInfo>> {
   const result = new Map<string, DeploymentInfo>();
   for (const [id, acc] of accumulators) {
     const phase = acc.phase === "failed" && acc.hasReady ? "partial" : acc.phase;
-    result.set(id, { phase, orgId: acc.orgId, orgName: acc.orgName, name: acc.name, model: acc.model, error: acc.error });
+    result.set(id, {
+      phase,
+      orgId: acc.orgId,
+      orgName: acc.orgName,
+      name: acc.name,
+      model: acc.model,
+      error: acc.error,
+      observedReplicas: acc.observedReplicas,
+      desiredReplicas: acc.desiredReplicas,
+    });
   }
   return result;
+}
+
+async function getDeploymentPhases(): Promise<Map<string, DeploymentInfo>> {
+  const rows = await getDB()
+    .select({
+      deploymentId: modelDeploymentT.id,
+      deploymentName: modelDeploymentT.name,
+      organizationId: modelDeploymentT.organizationId,
+      orgName: organizationT.name,
+      publicSpecifier: modelDeploymentT.publicSpecifier,
+      desiredReplicas: modelDeploymentT.replicas,
+      installationId: modelInstallationT.id,
+      lifecycleState: modelInstallationStateT.lifecycleState,
+      errorMessage: modelInstallationStateT.errorMessage,
+    })
+    .from(modelDeploymentT)
+    .where(and(eq(modelDeploymentT.enabled, true), isNull(modelDeploymentT.deletedAt)))
+    .leftJoin(organizationT, eq(organizationT.id, modelDeploymentT.organizationId))
+    .leftJoin(modelInstallationT, and(deploymentMatchesInstallation, isNull(modelInstallationT.deletedAt)))
+    .leftJoin(modelInstallationStateT, eq(modelInstallationStateT.id, modelInstallationT.id));
+
+  return foldDeploymentPhaseRows(rows);
 }
 
 function dispatchDeploymentPhaseNotification(
@@ -160,7 +206,10 @@ async function checkDeploymentStatus() {
       if (previousPhase === info.phase) continue;
 
       if (info.phase === "ready") {
-        dispatchDeploymentPhaseNotification(deploymentId, info, NotificationType.deployment_ready, "ready");
+        dispatchDeploymentPhaseNotification(deploymentId, info, NotificationType.deployment_ready, "ready", {
+          observedReplicas: info.observedReplicas,
+          desiredReplicas: info.desiredReplicas,
+        });
       } else if (info.phase === "failed") {
         dispatchDeploymentPhaseNotification(deploymentId, info, NotificationType.deployment_failed, "failed", {
           errorMessage: info.error ?? "An unknown error occurred during installation",
