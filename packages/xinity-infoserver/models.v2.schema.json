@@ -131,8 +131,8 @@
                 "maximum": 32
               },
               "minKvCacheGb": {
-                "type": "number",
-                "description": "Minimum KV-cache allocation in decimal GB. Optional once kvBytesPerToken is stated, because the floor is then exact: one request at full context plus, for a hybrid model, its per-sequence state. Author it only to demand more than that floor, and expect the server to log any entry whose figure disagrees with the derived one by more than a factor of two"
+                "description": "Minimum KV-cache allocation in decimal GB. Optional once kvBytesPerToken is stated, because the floor is then exact: one request at full context plus, for a hybrid model, its per-sequence state. Author it only to demand more than that floor, and expect the server to log any entry whose figure disagrees with the derived one by more than a factor of two",
+                "type": "number"
               },
               "kvBytesPerToken": {
                 "description": "KV cache one token of context consumes, in bytes, i.e. 2 * num_hidden_layers * num_key_value_heads * head_dim * dtype_bytes. How many requests a deployment can serve at once follows from this and the cache it was given, so it is the figure concurrency is computed from",
@@ -234,9 +234,38 @@
               ]
             }
           },
-          "minEngineVersion": {
-            "description": "Minimum engine version required (semver). Older nodes are excluded from scheduling",
-            "type": "string"
+          "engineVersions": {
+            "description": "Which engine versions serve this model. Nodes running one it excludes are passed over when placing the model",
+            "type": "object",
+            "properties": {
+              "min": {
+                "description": "Oldest engine version that serves this model correctly. Establish it empirically: a version can load cleanly and still fail the first request",
+                "type": "string",
+                "pattern": "^\\d+\\.\\d+\\.\\d+$"
+              },
+              "broken": {
+                "description": "Releases at or above the floor that still fail. A model can have one without having a known floor",
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "range": {
+                      "type": "string",
+                      "description": "Releases that do not serve this model correctly, as a single version or a range"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "description": "What goes wrong, and which release fixes it where that is known. An operator reads this to decide between upgrading, pinning and waiting"
+                    }
+                  },
+                  "required": [
+                    "range",
+                    "reason"
+                  ]
+                }
+              }
+            }
           },
           "platforms": {
             "description": "GPU vendor requirement. Absent means any platform",

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { LicenseSchema } from "./licenses";
+import { isValidVersionRange } from "../semver";
 import {
   BLOCKED_REQUEST_PARAM_PREFIXES,
   EngineEnum,
@@ -69,6 +70,25 @@ function kvCacheFloorGb(bytesPerToken: number, cachedTokens: number, stateBytes:
 
 export type ModelSizingFields = z.infer<typeof ModelSizing>;
 
+/** Authored versions are written clean. PEP440 is the shape a node reports, not one to state here. */
+const COMPLETE_VERSION = /^\d+\.\d+\.\d+$/;
+
+export const BrokenEngineVersion = z.object({
+  range: z.string().refine(isValidVersionRange, "Expected comparators over complete versions, e.g. \">=0.27.0 <0.27.3\"")
+    .describe("Releases that do not serve this model correctly, as a single version or a range"),
+  reason: z.string().describe("What goes wrong, and which release fixes it where that is known. An operator reads this to decide between upgrading, pinning and waiting"),
+});
+
+export const EngineVersions = z.object({
+  min: z.string().regex(COMPLETE_VERSION, "Expected a complete version, e.g. 0.21.0").optional()
+    .describe("Oldest engine version that serves this model correctly. Establish it empirically: a version can load cleanly and still fail the first request"),
+  broken: z.array(BrokenEngineVersion).min(1).optional()
+    .describe("Releases at or above the floor that still fail. A model can have one without having a known floor"),
+}).refine(
+  versions => versions.min !== undefined || versions.broken !== undefined,
+  { message: "state min, broken, or both" },
+);
+
 export const ModelFields = z.looseObject({
   name: z.string().describe("Display name of the model. Intended to be easily human readable"),
   description: z.string().describe("Multi-paragraph description: purpose, strengths, limitations. Shown when choosing between models, so a one-line label is not enough"),
@@ -94,7 +114,7 @@ export const ModelFields = z.looseObject({
 
   engineArgs: flatStringArray.optional().describe("Extra CLI arguments appended to the engine's command line. Arrays are deeply flattened to support YAML anchors"),
   requestParams: z.record(z.string(), RequestParamTypeEnum).optional().describe("Allowlist of extra request-level parameters the gateway may forward, as dot-notation paths mapped to primitive types. All are optional at request time"),
-  minEngineVersion: z.string().optional().describe("Minimum engine version required (semver). Older nodes are excluded from scheduling"),
+  engineVersions: EngineVersions.optional().describe("Which engine versions serve this model. Nodes running one it excludes are passed over when placing the model"),
   platforms: z.array(GpuVendorEnum).optional().describe("GPU vendor requirement. Absent means any platform"),
 
   minXinityVersion: z.string().optional().describe("Minimum xinity-ai version required to use this entry. Older clients skip entries they are too old for"),

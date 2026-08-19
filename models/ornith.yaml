@@ -47,7 +47,8 @@ models:
         - --reasoning-parser
         - qwen3
       - --language-model-only
-    minEngineVersion: "0.19.2"
+    engineVersions:
+      min: "0.19.2"
 
   ornith-1.0-9b-vl-vllm:
     <<: *ornith9
@@ -93,7 +94,8 @@ models:
     family: Ornith
     tags: [tools]
     engineArgs: *ornith-args-text
-    minEngineVersion: "0.19.2"
+    engineVersions:
+      min: "0.19.2"
 
   ornith-1.0-35b-vl-vllm:
     <<: *ornith35

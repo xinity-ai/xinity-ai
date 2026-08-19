@@ -33,7 +33,8 @@ models:
     type: chat
     family: Apertus
     tags: [tools]
-    minEngineVersion: "0.22.0"
+    engineVersions:
+      min: "0.22.0"
     engineArgs:
       - --tool-call-parser
       - apertus
@@ -410,7 +411,8 @@ models:
     type: chat
     family: Apertus
     tags: []
-    minEngineVersion: "0.19.2"
+    engineVersions:
+      min: "0.19.2"
 
   apertus-v1.1-1.5b-vllm:
     <<: *apertus-v11

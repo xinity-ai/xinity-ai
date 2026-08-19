@@ -72,8 +72,9 @@ models:
     requestParams:
       template.thinking: boolean
 
-    # Minimum engine version required (semver). Older nodes are excluded.
-    minEngineVersion: "0.19.1"
+    # Oldest engine version that serves this model. Older nodes are excluded.
+    engineVersions:
+      min: "0.19.1"
 
     # GPU vendor requirement. Nodes without a matching GPU are excluded. Use this
     # for models depending on vendor-specific features (e.g. AWQ with CUDA-only kernels).
@@ -89,7 +90,7 @@ models:
 - **`type`**: Determines API compatibility. A `"rerank"` model only accepts rerank requests, so sending a chat request to it fails. Defaults to `"chat"`.
 - **`tags`**: Enables runtime capabilities. `"tools"` enables function/tool calling, `"vision"` enables image inputs. Requests that use a capability the model doesn't declare are rejected. `"custom_code"` is special: some models ship with custom loading code that vLLM must execute via `--trust-remote-code`. This tag marks that requirement and triggers an explicit approval step in the dashboard before deployment. Only add it if the model fails to load without it.
 - **`variantOf`**: Optional grouping key. Entries sharing it are presented together in the UI while each stays separately deployable.
-- **`minEngineVersion`**: Semver string. An entry requiring `"0.19.1"` is only scheduled on nodes running that engine version or later.
+- **`engineVersions.min`**: Semver string. An entry requiring `"0.19.1"` is only scheduled on nodes running that engine version or later.
 - **`platforms`**: GPU vendor requirement. `[nvidia]` restricts the entry to NVIDIA nodes.
 
 ### Licenses
@@ -174,7 +175,7 @@ bun run run-model -- --models ./your-models.yaml --model my-private-model --imag
 With the docker backend the container always runs egress-blocked and offline (weights are
 pre-downloaded on the host first), and `--start` runs it detached, printing a `docker logs -f`
 command to follow the load and the stop command. The `--plan` gate result tells you whether
-`sizing`, `minEngineVersion`, and `platforms` are consistent with the
+`sizing`, `engineVersions.min`, and `platforms` are consistent with the
 hardware, so you can correct the definition before it ever reaches the cluster scheduler. See
 `run-model --help` for the full flag list.
 
@@ -289,7 +290,7 @@ requests with `304`, so a client that keeps its `ETag` polls cheaply.
 When a model deployment is created, the scheduler checks each cluster node against the model's requirements:
 
 1. **Driver**: Does the node run the entry's `engine`?
-2. **Driver version**: Does the driver version satisfy `minEngineVersion`? (Nodes that haven't reported a version are not excluded.)
+2. **Driver version**: Does the driver version satisfy `engineVersions.min`? (Nodes that haven't reported a version are not excluded.)
 3. **GPU platform**: Does at least one of the node's GPUs match `platforms`? (Nodes with no GPUs are excluded when a platform is required.)
 4. **Capacity**: Does the node have enough free VRAM for the model's `sizing.weightGb` + KV-cache?
 

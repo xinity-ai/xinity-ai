@@ -29,4 +29,5 @@ models:
     type: chat
     family: Unlimited-OCR
     tags: [vision]
-    minEngineVersion: "0.25.0"
+    engineVersions:
+      min: "0.25.0"

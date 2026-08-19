@@ -40,7 +40,8 @@ models:
       - mistral
       - --tool-call-parser
       - mistral
-    minEngineVersion: "0.18.0"
+    engineVersions:
+      min: "0.18.0"
 
   ministral-3-8b-vllm:
     <<: *ministral3
