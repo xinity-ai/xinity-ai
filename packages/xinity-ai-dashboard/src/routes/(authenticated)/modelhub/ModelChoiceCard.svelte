@@ -10,6 +10,7 @@
   let {
     model,
     blockedReason,
+    blockedDetail,
     maxNodeFreeCapacity,
     variantCount = 1,
     repeatsPreviousDescription = false,
@@ -17,6 +18,7 @@
   }: {
     model: ModelWithSpecifier;
     blockedReason: IncompatibilityReason | null;
+    blockedDetail?: string;
     maxNodeFreeCapacity: number;
     variantCount?: number;
     repeatsPreviousDescription?: boolean;
@@ -115,6 +117,9 @@
       <span>
         {undeployableMessage(blockedReason)}
         {#if !isVariantGroup}You can still select it and deploy it disabled.{/if}
+        {#if blockedDetail && !isVariantGroup}
+          <span class="block mt-1 opacity-80">{blockedDetail}</span>
+        {/if}
       </span>
     </div>
   {/if}

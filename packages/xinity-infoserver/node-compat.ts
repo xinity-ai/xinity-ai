@@ -203,6 +203,16 @@ export function isDeployableOnCluster(nodes: NodeCapability[], model: Deployable
   return explainClusterIncompatibility(nodes, model) === null;
 }
 
+/** Why the releases this cluster is actually running are excluded. Empty when none are. */
+export function blockedVersionNotes(nodes: NodeCapability[], model: DeployableModel): string[] {
+  const running = nodes
+    .map(node => node.driverVersions[model.engine])
+    .filter((version): version is string => !!version);
+  return blockedVersionRules(model)
+    .filter(blocked => running.some(version => matchesVersionRange(version, blocked.range)))
+    .map(blocked => blocked.reason);
+}
+
 /**
  * DEPRECATED v1 form: a single entry could claim several engines, so every
  * provider has to be tried. Removed before 1.0.0 with the format.

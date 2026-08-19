@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { checkNodeCompatibility, isLegacyModelDeployableOnCluster, explainLegacyClusterIncompatibility, nearestIncompatibility, type NodeCapability, type ModelNodeRequirements, type GpuInfo } from "./node-compat";
+import { checkNodeCompatibility, isLegacyModelDeployableOnCluster, explainLegacyClusterIncompatibility, blockedVersionNotes, nearestIncompatibility, type DeployableModel, type NodeCapability, type ModelNodeRequirements, type GpuInfo } from "./node-compat";
 
 const nvidiaGpu: GpuInfo = { vendor: "nvidia", name: "A100", vramMb: 81920 };
 const amdGpu: GpuInfo = { vendor: "amd", name: "MI300X", vramMb: 196608 };
@@ -259,6 +259,41 @@ describe("checkNodeCompatibility blocked versions", () => {
   test("ranks a blocked version above missing_driver and below capacity", () => {
     expect(nearestIncompatibility(["missing_driver", "version_blocked"])).toBe("version_blocked");
     expect(nearestIncompatibility(["version_blocked", "insufficient_capacity"])).toBe("insufficient_capacity");
+  });
+});
+
+describe("blockedVersionNotes", () => {
+  const model: DeployableModel = {
+    engine: "vllm",
+    type: "chat",
+    sizing: { weightGb: 8, minKvCacheGb: 2 } as DeployableModel["sizing"],
+    engineVersions: {
+      rules: [
+        { range: "0.27.1", effect: "blocked", reason: "crashes on the first request" },
+        { range: ">=0.30.0 <0.30.4", effect: "blocked", reason: "tool calls come back empty" },
+      ],
+    },
+  };
+
+  function nodesOn(...versions: string[]): NodeCapability[] {
+    return versions.map(vllm => makeNode({ driverVersions: { vllm } }));
+  }
+
+  test("reports only the releases the cluster is actually running", () => {
+    expect(blockedVersionNotes(nodesOn("0.27.1"), model)).toEqual(["crashes on the first request"]);
+  });
+
+  test("reports every matching release when the fleet runs several", () => {
+    expect(blockedVersionNotes(nodesOn("0.27.1", "0.30.2"), model)).toHaveLength(2);
+  });
+
+  test("says nothing when no node runs an excluded release", () => {
+    expect(blockedVersionNotes(nodesOn("0.28.0", "0.31.0"), model)).toEqual([]);
+  });
+
+  test("says nothing for a model that excludes none, or a cluster of unknown versions", () => {
+    expect(blockedVersionNotes(nodesOn("0.27.1"), { ...model, engineVersions: undefined })).toEqual([]);
+    expect(blockedVersionNotes(nodesOn(""), model)).toEqual([]);
   });
 });
 
