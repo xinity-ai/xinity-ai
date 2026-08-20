@@ -50,4 +50,26 @@ export const gatewayEnvSchema = z.object({
   DEEP_RESEARCH_COMPACTION_THRESHOLD: z.coerce.number().min(0.1).max(0.95).default(0.70)
     .describe("Fraction of model context window at which compaction triggers")
     .meta(expert()),
+  // NVIDIA Nemotron Guardrails & Reward
+  XINITY_NEMOTRON_ENABLED: z.coerce.boolean().default(false)
+    .describe("Enable optional NVIDIA Nemotron enterprise guardrails and reward scoring")
+    .meta(expert()),
+  XINITY_NEMOTRON_ENDPOINT: z.url().optional()
+    .describe("Internal endpoint URL for the Nemotron worker")
+    .meta(expert()),
+  XINITY_NEMOTRON_API_KEY: z.string().optional()
+    .describe("Optional API token for the Nemotron worker")
+    .meta({ ...secret(), ...expert() }),
+  XINITY_NEMOTRON_GUARD_MODEL: z.string().default("nemotron-mini-4b")
+    .describe("Model specifier for Nemotron guardrail verification")
+    .meta(expert()),
+  XINITY_NEMOTRON_REWARD_MODEL: z.string().default("nemotron-3-reward")
+    .describe("Model specifier for Nemotron multi-attribute reward scoring")
+    .meta(expert()),
+  XINITY_NEMOTRON_GUARD_STRICTNESS: z.enum(["low", "medium", "high"]).default("medium")
+    .describe("Strictness level for guardrail evaluations")
+    .meta(expert()),
+  XINITY_NEMOTRON_DISTILLATION_THRESHOLD: z.coerce.number().min(0.0).max(1.0).default(0.90)
+    .describe("Minimum reward score threshold for marking interactions as distillation-ready")
+    .meta(expert()),
 }).extend(tlsEnvSchema.shape).extend(logEnvSchema.shape);

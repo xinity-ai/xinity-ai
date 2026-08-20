@@ -15,8 +15,10 @@ import { BackendUsageSchema } from "./backend-schemas";
 import type { AuthResult } from "./auth";
 import type { ApiCallInputMessage } from "common-db";
 import type { ChatStreamData, ChatSyncData } from "../callLogger";
+import { checkPostFlightGuard, recordPostFlightReward } from "./guardrails-hook";
 
 type Logger = {
+
   info: (obj: Record<string, unknown>, msg: string) => void;
   warn: (obj: Record<string, unknown>, msg: string) => void;
   error: (obj: Record<string, unknown>, msg: string) => void;
@@ -144,6 +146,18 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
 
         const outputData: ChatStreamData = sortedAccs.map(([idx, acc]) => spec.toLogEntry(acc, idx, originalModel));
 
+        const prompt = extractPromptText(logFields.inputMessages);
+        const streamedResponseText = sortedAccs
+          .map(([_, acc]) => (typeof (acc as { content?: unknown }).content === "string" ? (acc as { content: string }).content : ""))
+          .join("\n");
+
+        if (prompt && streamedResponseText) {
+          // Asynchronously perform post-flight check (records metrics / logs violations)
+          void checkPostFlightGuard(originalModel, prompt, streamedResponseText);
+          // Asynchronously calculate quality reward score
+          void recordPostFlightReward(prompt, streamedResponseText, originalModel);
+        }
+
         logChatUsage({
           ...logFields,
           usage: collectedUsage,
@@ -164,6 +178,31 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
   });
 
   return new Response(stream, { headers: SSE_RESPONSE_HEADERS });
+}
+
+function extractPromptText(messages?: ApiCallInputMessage[]): string {
+  if (!messages || !Array.isArray(messages)) return "";
+  const parts: string[] = [];
+  for (const m of messages) {
+    if (typeof m.content === "string") {
+      parts.push(m.content);
+    }
+  }
+  return parts.join("\n");
+}
+
+function extractChoiceResponseText(choices: unknown[]): string {
+  const parts: string[] = [];
+  for (const choice of choices) {
+    if (choice && typeof choice === "object") {
+      if ("message" in choice && choice.message && typeof choice.message === "object" && "content" in choice.message && typeof (choice.message as { content: unknown }).content === "string") {
+        parts.push((choice.message as { content: string }).content);
+      } else if ("text" in choice && typeof (choice as { text: unknown }).text === "string") {
+        parts.push((choice as { text: string }).text);
+      }
+    }
+  }
+  return parts.join("\n");
 }
 
 export type NonStreamSpec<Choice> = {
@@ -195,6 +234,18 @@ export async function forwardOpenAINonStream<Choice>({
   const choicesResult = spec.choicesSchema.safeParse(raw.choices);
   const usageResult = BackendUsageSchema.safeParse(raw.usage);
   if (choicesResult.success) {
+    const prompt = extractPromptText(logFields.inputMessages);
+    const responseText = extractChoiceResponseText(choicesResult.data);
+
+    if (prompt && responseText) {
+      const guardVerdict = await checkPostFlightGuard(originalModel, prompt, responseText);
+      if (!guardVerdict.allowed) {
+        recordFailedRequest(logFields);
+        return errorResponse(guardVerdict.reason ?? "Model output failed safety verification", 400);
+      }
+      void recordPostFlightReward(prompt, responseText, originalModel);
+    }
+
     logChatUsage({
       ...logFields,
       usage: usageResult.success ? usageResult.data : undefined,

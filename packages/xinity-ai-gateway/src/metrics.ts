@@ -224,6 +224,43 @@ export const lbRedisFallbackTotal = createCounter(
   "Total load-balancer Redis failures that fell back to random selection, by strategy",
 );
 
+// NVIDIA Nemotron Guardrails & Reward Metrics
+export const nemotronPreflightTotal = createCounter(
+  "gateway_nemotron_preflight_total",
+  "Total Nemotron pre-flight inspections by verdict and category",
+);
+
+const NEMOTRON_LATENCY_BUCKETS = [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000];
+
+export const nemotronPreflightDuration = createHistogram(
+  "gateway_nemotron_preflight_duration_milliseconds",
+  "Nemotron pre-flight inspection latency in milliseconds",
+  NEMOTRON_LATENCY_BUCKETS,
+);
+
+export const nemotronPostflightTotal = createCounter(
+  "gateway_nemotron_postflight_total",
+  "Total Nemotron post-flight inspections by verdict and category",
+);
+
+const REWARD_SCORE_BUCKETS = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95, 1.0];
+
+export const nemotronRewardScore = createHistogram(
+  "gateway_nemotron_reward_score",
+  "Distribution of Nemotron multi-attribute composite reward scores",
+  REWARD_SCORE_BUCKETS,
+);
+
+export const nemotronGuardSkipTotal = createCounter(
+  "gateway_nemotron_guard_skip_total",
+  "Total Nemotron inspections skipped due to circuit breaker, timeout, or errors (fail-open)",
+);
+
+export const nemotronDistillationEligibleTotal = createCounter(
+  "gateway_nemotron_distillation_eligible_total",
+  "Total interactions meeting quality threshold for distillation dataset",
+);
+
 const allMetrics = [
   requestsTotal,
   requestErrorsTotal,
@@ -244,6 +281,12 @@ const allMetrics = [
   lbPrefixAffinityTotal,
   lbCanarySplitTotal,
   lbRedisFallbackTotal,
+  nemotronPreflightTotal,
+  nemotronPreflightDuration,
+  nemotronPostflightTotal,
+  nemotronRewardScore,
+  nemotronGuardSkipTotal,
+  nemotronDistillationEligibleTotal,
 ];
 
 /** Identifies a backend host consistently across load-balancer metrics: node_id for joins, machine_name for readable legends, host as an always-present fallback. */
@@ -318,6 +361,27 @@ export function recordModelRequest(model: string, success: boolean, orgId: strin
 export function recordBackendError(model: string, status: number): void {
   backendErrorsTotal.inc({ model, status: String(status) });
 }
+
+export function recordNemotronPreflight(verdict: "allow" | "block", category: string, durationMs: number): void {
+  nemotronPreflightTotal.inc({ verdict, category });
+  nemotronPreflightDuration.observe({ verdict }, durationMs);
+}
+
+export function recordNemotronPostflight(verdict: "allow" | "block", category: string): void {
+  nemotronPostflightTotal.inc({ verdict, category });
+}
+
+export function recordNemotronReward(score: number, eligible: boolean, model: string): void {
+  nemotronRewardScore.observe({ model }, score);
+  if (eligible) {
+    nemotronDistillationEligibleTotal.inc({ model });
+  }
+}
+
+export function recordNemotronGuardSkip(check: "pre_flight" | "post_flight", reason: string): void {
+  nemotronGuardSkipTotal.inc({ check, reason });
+}
+
 
 export function withMetrics(
   endpoint: string,
