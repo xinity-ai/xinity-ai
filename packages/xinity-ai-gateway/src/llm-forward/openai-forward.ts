@@ -87,17 +87,32 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
             log.warn({ data: event.data }, "Non-JSON SSE chunk from backend, skipping");
             continue;
           }
-          const parsed = spec.chunkSchema.safeParse(json);
-          if (!parsed.success) {
-            // Forward chunks we can't model instead of dropping them; they skip logging only.
-            log.warn({ issues: parsed.error.issues }, "Unrecognized backend SSE chunk, forwarding unlogged");
-            if (json && typeof json === "object") {
-              (json as Record<string, unknown>).model = originalModel;
+
+          let chunk: Chunk;
+          // Fast-path: Standard SSE chunk envelope with choices array
+          if (
+            typeof json === "object" &&
+            json !== null &&
+            "choices" in json &&
+            Array.isArray((json as Record<string, unknown>).choices)
+          ) {
+            const rawObj = json as Record<string, unknown>;
+            rawObj.model = originalModel;
+            chunk = rawObj as unknown as Chunk;
+          } else {
+            // Fallback: Validate via full Zod schema
+            const parsed = spec.chunkSchema.safeParse(json);
+            if (!parsed.success) {
+              // Forward chunks we can't model instead of dropping them; they skip logging only.
+              log.warn({ issues: parsed.error.issues }, "Unrecognized backend SSE chunk, forwarding unlogged");
+              if (json && typeof json === "object") {
+                (json as Record<string, unknown>).model = originalModel;
+              }
+              controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(json)}\n\n`));
+              continue;
             }
-            controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(json)}\n\n`));
-            continue;
+            chunk = { ...parsed.data, model: originalModel };
           }
-          const chunk = { ...parsed.data, model: originalModel };
           lastChunk = chunk;
 
           if (!ttftRecorded) {

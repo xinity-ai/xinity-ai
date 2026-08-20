@@ -204,31 +204,31 @@ export async function processMessageImages(
       continue;
     }
 
-    const llmParts: ApiCallInputMessageContent[] = [];
-    const dbParts: ApiCallInputMessageContent[] = [];
+    const processedParts = await Promise.all(
+      message.content.map(async (part) => {
+        if (part.type !== "image_url") {
+          return { llmPart: part, dbPart: part as ApiCallInputMessageContent | null };
+        }
 
-    for (const part of message.content) {
-      if (part.type !== "image_url") {
-        llmParts.push(part);
-        dbParts.push(part);
-        continue;
-      }
+        const imageUrl = part.image_url.url;
+        const { dataUri, dbUrl } = await processImage(imageUrl, orgId, imageStore);
 
-      const imageUrl = part.image_url.url;
-      const { dataUri, dbUrl } = await processImage(imageUrl, orgId, imageStore);
+        const llmPart: ApiCallInputMessageContent = dataUri
+          ? { type: "image_url", image_url: { url: dataUri } }
+          : part;
 
-      if (dataUri) {
-        llmParts.push({ type: "image_url", image_url: { url: dataUri } });
-      } else {
-        // Could not resolve image, pass original to LLM, omit from DB
-        llmParts.push(part);
-      }
+        const dbPart: ApiCallInputMessageContent | null = dbUrl !== null
+          ? { type: "image_url", image_url: { url: dbUrl } }
+          : null;
 
-      if (dbUrl !== null) {
-        dbParts.push({ type: "image_url", image_url: { url: dbUrl } });
-      }
-      // If dbUrl is null (data URI with no S3), the image is omitted from DB
-    }
+        return { llmPart, dbPart };
+      }),
+    );
+
+    const llmParts: ApiCallInputMessageContent[] = processedParts.map((p) => p.llmPart);
+    const dbParts: ApiCallInputMessageContent[] = processedParts
+      .map((p) => p.dbPart)
+      .filter((p): p is ApiCallInputMessageContent => p !== null);
 
     messagesForLLM.push({ ...message, content: llmParts });
 

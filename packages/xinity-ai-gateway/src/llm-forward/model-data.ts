@@ -36,7 +36,27 @@ export function getInfoClient() {
   return _infoClient;
 }
 
+const MODEL_CACHE_TTL_MS = 10_000;
+const NEGATIVE_CACHE_TTL_MS = 2_000;
+
+type CacheEntry<T> = { data: T; expiresAt: number };
+
+const deploymentCache = new Map<string, CacheEntry<{ progress: number; primary: string; early: string | null } | undefined>>();
+const modelSourcesCache = new Map<string, CacheEntry<ModelSources>>();
+
+/** Clears the in-memory model routing cache. Exported for tests and invalidation. */
+export function clearModelDataCache(): void {
+  deploymentCache.clear();
+  modelSourcesCache.clear();
+}
+
 async function publicModelSpecifierToModelSource(orgId: string, specifier: string) {
+  const cacheKey = `${orgId}:${specifier}`;
+  const now = Date.now();
+  const cached = deploymentCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return cached.data;
+  }
 
   const [deployment] = await getDB().select().from(modelDeploymentT).where(sql`
     ${modelDeploymentT.organizationId} = ${orgId}
@@ -47,15 +67,20 @@ async function publicModelSpecifierToModelSource(orgId: string, specifier: strin
     AND
     ${modelDeploymentT.deletedAt} IS NULL
   `).limit(1);
+
   if (!deployment) {
+    deploymentCache.set(cacheKey, { data: undefined, expiresAt: now + NEGATIVE_CACHE_TTL_MS });
     return;
   }
 
-  return {
+  const result = {
     progress: calcCanaryProgress(deployment),
     primary: deployment.specifier,
     early: deployment.earlySpecifier,
-  }
+  };
+
+  deploymentCache.set(cacheKey, { data: result, expiresAt: now + MODEL_CACHE_TTL_MS });
+  return result;
 }
 
 type HostLocation = {
@@ -72,6 +97,12 @@ type ModelSources = {
 };
 
 async function getModelSources(specifier: string): Promise<ModelSources> {
+  const now = Date.now();
+  const cached = modelSourcesCache.get(specifier);
+  if (cached && cached.expiresAt > now) {
+    return cached.data;
+  }
+
   const modelLocations = await getDB().select({
     nodeId: aiNodeT.id,
     machineName: aiNodeT.machineName,
@@ -94,7 +125,9 @@ async function getModelSources(specifier: string): Promise<ModelSources> {
     byHost.set(key, { nodeId: loc.nodeId, machineName: loc.machineName, driver: loc.driver, authToken: loc.authToken, tls: loc.tls });
   }
 
-  return { hosts: [...byHost.keys()], byHost };
+  const result: ModelSources = { hosts: [...byHost.keys()], byHost };
+  modelSourcesCache.set(specifier, { data: result, expiresAt: now + MODEL_CACHE_TTL_MS });
+  return result;
 }
 
 function buildHostMeta(...sources: ModelSources[]): Map<string, HostMeta> {

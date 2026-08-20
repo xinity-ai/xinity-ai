@@ -56,7 +56,7 @@ mock.module("xinity-infoserver", () => ({
   BLOCKED_REQUEST_PARAM_PREFIXES: ["chat_template", "tokenize", "prompt", "api_key"],
 }));
 
-const { getModelInfo, _deps } = await import("./model-data");
+const { getModelInfo, clearModelDataCache, _deps } = await import("./model-data");
 const mockSelectHost = jest.fn<() => Promise<{ host: string; useFinalModel: boolean; release: () => void } | null>>();
 _deps.selectHost = mockSelectHost as any;
 
@@ -95,6 +95,7 @@ function installationResult(r: { host: string; nodePort: number; modelPort: numb
 const noop = () => {};
 
 beforeEach(() => {
+  clearModelDataCache();
   queryQueue.length = 0;
   mockSelectHost.mockReset();
   mockLookup.mockReset();
@@ -293,5 +294,21 @@ describe("getModelInfo", () => {
     const call = mockSelectHost.mock.calls[0] as unknown as [string, Record<string, unknown>];
     expect(call[1].earlyHosts).toEqual([]);
     expect(call[1].hasEarlyModel).toBe(false);
+  });
+
+  test("uses in-memory cached deployment and source data on subsequent calls without querying DB", async () => {
+    queryQueue.push([deploymentResult({ specifier: "llama3:latest", earlySpecifier: null })]);
+    queryQueue.push([installationResult({ host: "192.168.1.10", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
+    mockSelectHost.mockResolvedValue({ host: "192.168.1.10:11434", useFinalModel: true, release: noop });
+
+    const first = await getModelInfo("org-1", "my-model");
+    expect(first).toBeDefined();
+    expect(queryQueue.length).toBe(0);
+
+    // Second call without pushing anything into queryQueue: should succeed via in-memory cache
+    const second = await getModelInfo("org-1", "my-model");
+    expect(second).toBeDefined();
+    expect(second!.host).toBe("192.168.1.10:11434");
+    expect(queryQueue.length).toBe(0);
   });
 });
