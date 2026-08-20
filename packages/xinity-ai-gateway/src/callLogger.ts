@@ -55,7 +55,19 @@ function buildApiCallRow(input: ChatLogFields, model: string, outputMessage: Api
 // U+0000 (null) is the only codepoint PostgreSQL categorically rejects.
 const PG_UNSAFE_CHAR = /\0/g;
 
+function containsNullByte(value: unknown): boolean {
+  if (typeof value === "string") return value.includes("\0");
+  if (Array.isArray(value)) return value.some(containsNullByte);
+  if (value !== null && typeof value === "object") {
+    return Object.values(value).some(containsNullByte);
+  }
+  return false;
+}
+
 function sanitizeForPg(value: unknown): unknown {
+  // Fast path: if no null bytes present, return value untouched without object cloning
+  if (!containsNullByte(value)) return value;
+
   if (typeof value === "string") {
     return value.replace(PG_UNSAFE_CHAR, "");
   }
@@ -81,13 +93,43 @@ function sanitizeRow(row: ApiCallRow): ApiCallRow {
   };
 }
 
-async function insertApiCallRows(rows: ApiCallRow[]): Promise<void> {
+const CALL_BATCH_SIZE = 50;
+const CALL_FLUSH_INTERVAL_MS = 200;
+
+let callQueue: ApiCallRow[] = [];
+let callTimer: ReturnType<typeof setTimeout> | null = null;
+
+export async function flushApiCallRows(): Promise<void> {
+  if (callTimer) {
+    clearTimeout(callTimer);
+    callTimer = null;
+  }
+  if (callQueue.length === 0) return;
+
+  const batch = callQueue;
+  callQueue = [];
+
   try {
-    await getDB().insert(apiCallT).values(rows.map(sanitizeRow));
+    await getDB().insert(apiCallT).values(batch);
   } catch (err) {
-    log.error({ err }, "DB error writing API call");
+    log.error({ err, count: batch.length }, "DB error writing API call batch");
   }
 }
+
+async function insertApiCallRows(rows: ApiCallRow[]): Promise<void> {
+  for (const row of rows) {
+    callQueue.push(sanitizeRow(row));
+  }
+  if (callQueue.length >= CALL_BATCH_SIZE) {
+    void flushApiCallRows();
+  } else if (!callTimer) {
+    callTimer = setTimeout(() => void flushApiCallRows(), CALL_FLUSH_INTERVAL_MS);
+  }
+}
+
+process.on("beforeExit", () => {
+  void flushApiCallRows();
+});
 
 function coerceMessageRole(raw: unknown): ApiCallInputMessage["role"] {
   return ((raw as string) || "assistant") as ApiCallInputMessage["role"];

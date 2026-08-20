@@ -18,10 +18,38 @@ type UsageRecord = {
   success: boolean;
 };
 
-export async function recordUsageEvent(record: UsageRecord): Promise<void> {
+const BATCH_SIZE = 50;
+const FLUSH_INTERVAL_MS = 200;
+
+let queue: UsageRecord[] = [];
+let timer: ReturnType<typeof setTimeout> | null = null;
+
+export async function flushUsageEvents(): Promise<void> {
+  if (timer) {
+    clearTimeout(timer);
+    timer = null;
+  }
+  if (queue.length === 0) return;
+
+  const batch = queue;
+  queue = [];
+
   try {
-    await getDB().insert(usageEventT).values(record);
+    await getDB().insert(usageEventT).values(batch);
   } catch (err) {
-    log.error({ err }, "Usage recording error");
+    log.error({ err, count: batch.length }, "Usage recording batch error");
   }
 }
+
+export function recordUsageEvent(record: UsageRecord): void {
+  queue.push(record);
+  if (queue.length >= BATCH_SIZE) {
+    void flushUsageEvents();
+  } else if (!timer) {
+    timer = setTimeout(() => void flushUsageEvents(), FLUSH_INTERVAL_MS);
+  }
+}
+
+process.on("beforeExit", () => {
+  void flushUsageEvents();
+});

@@ -26,7 +26,7 @@ mock.module("../db", () => ({ getDB: mockGetDB }));
 // --- Import under test ---
 
 import type { AuthResult } from "./auth";
-const { checkAuth } = await import("./auth");
+const { checkAuth, clearAuthCache } = await import("./auth");
 
 // --- Test data ---
 
@@ -75,6 +75,7 @@ async function expectUnauthorized(result: Response | AuthResult, detail?: string
 
 describe("checkAuth", () => {
   beforeEach(() => {
+    clearAuthCache();
     mockGetDB.mockClear();
     mockQueryResult.length = 0;
     dbGate = null;
@@ -334,6 +335,29 @@ describe("checkAuth", () => {
       expect(result).not.toBeInstanceOf(Response);
       const auth = result as AuthResult;
       expect(auth.applicationId).toBeNull();
+    } finally {
+      Bun.password.verify = originalVerify;
+    }
+  });
+
+  test("serves repeat requests from L1 in-memory cache without redis.get calls", async () => {
+    mockQueryResult.push(fakeApiKey);
+
+    const originalVerify = Bun.password.verify;
+    Bun.password.verify = jest.fn(() => Promise.resolve(true)) as any;
+
+    try {
+      // First call queries DB and populates L1 + Redis
+      const first = await checkAuth(makeBearerHeader());
+      expect(first).not.toBeInstanceOf(Response);
+      expect(mockGetDB).toHaveBeenCalledTimes(1);
+
+      mockRedisGet.mockClear();
+
+      // Second call should hit L1 in-memory cache: 0 DB calls and 0 redis.get calls!
+      const second = await checkAuth(makeBearerHeader());
+      expect(second).not.toBeInstanceOf(Response);
+      expect(mockRedisGet).not.toHaveBeenCalled();
     } finally {
       Bun.password.verify = originalVerify;
     }
