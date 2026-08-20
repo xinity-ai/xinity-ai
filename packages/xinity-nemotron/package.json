@@ -1,0 +1,20 @@
+{
+  "name": "xinity-nemotron",
+  "version": "0.1.0",
+  "module": "src/index.ts",
+  "scripts": {
+    "test": "bun test src/"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "type": "module",
+  "private": true,
+  "peerDependencies": {
+    "typescript": "^5.9.3",
+    "zod": "^4.4.2"
+  }
+}
