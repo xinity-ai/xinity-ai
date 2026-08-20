@@ -19,10 +19,10 @@ interface PinoLike {
  */
 export async function checkMigrations(db: PostgresJsDatabase): Promise<MigrationState> {
   try {
-    const rows = await db.execute<{ count: number }>(
+    const rows = (await db.execute(
       sql`SELECT count(*)::int AS count FROM "drizzle"."__drizzle_migrations"`,
-    );
-    const applied = Array.from(rows)[0]?.count ?? 0;
+    )) as unknown as Array<{ count: number }>;
+    const applied = rows[0]?.count ?? 0;
 
     if (applied >= expectedMigrationCount) {
       return { status: "ok" };
@@ -42,7 +42,11 @@ export async function checkMigrations(db: PostgresJsDatabase): Promise<Migration
  *
  * Callers should `await checkMigrations()` before using `getDB()`.
  */
-export function preconfigureDB(DB_CONNECTION_URL: string, pinoLogger?: PinoLike) {
+export function preconfigureDB(
+  DB_CONNECTION_URL: string,
+  pinoLogger?: PinoLike,
+  options?: postgres.Options<Record<string, never>>,
+) {
   let connection: postgres.Sql;
   let db: PostgresJsDatabase;
   let migrationState: MigrationState | null = null;
@@ -56,7 +60,18 @@ export function preconfigureDB(DB_CONNECTION_URL: string, pinoLogger?: PinoLike)
     : undefined;
 
   function ensurePostgresConnection(): postgres.Sql {
-    return connection ??= postgres(DB_CONNECTION_URL);
+    const poolMax = options?.max ?? (process.env.DB_MAX_CONNECTIONS ? parseInt(process.env.DB_MAX_CONNECTIONS, 10) : 20);
+    const idleTimeout = options?.idle_timeout ?? 30;
+    const connectTimeout = options?.connect_timeout ?? 10;
+    const prepare = options?.prepare ?? true;
+
+    return connection ??= postgres(DB_CONNECTION_URL, {
+      max: poolMax,
+      idle_timeout: idleTimeout,
+      connect_timeout: connectTimeout,
+      prepare,
+      ...options,
+    });
   }
 
   function ensureConnection(): PostgresJsDatabase {
