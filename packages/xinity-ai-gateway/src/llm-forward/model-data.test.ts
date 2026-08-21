@@ -1,5 +1,6 @@
-import { describe, test, expect, mock, jest, beforeEach } from "bun:test";
+import { describe, test, expect, mock, jest, beforeEach, afterEach, spyOn } from "bun:test";
 import { drizzle, modelDeploymentT } from "common-db";
+import { redis } from "bun";
 import type { LegacyModel, Model } from "xinity-infoserver";
 
 mock.module("../env", () => ({
@@ -94,9 +95,14 @@ function installationResult(r: { host: string; nodePort: number; modelPort: numb
 
 const noop = () => {};
 
+let mockRedisGet: ReturnType<typeof spyOn>;
+let mockRedisSet: ReturnType<typeof spyOn>;
+const redisStore = new Map<string, string>();
+
 beforeEach(() => {
   clearModelDataCache();
   queryQueue.length = 0;
+  redisStore.clear();
   mockSelectHost.mockReset();
   mockLookup.mockReset();
   // The legacy specifiers these tests use are absent from the current catalog.
@@ -105,6 +111,19 @@ beforeEach(() => {
   mockFetchModel.mockImplementation(async (specifier) => {
     return { type: "chat", tags: ["tools"], providers: { ollama: specifier, vllm: specifier } };
   });
+
+  mockRedisGet = spyOn(redis, "get").mockImplementation(async (key: string) => {
+    return redisStore.get(key) ?? null;
+  });
+  mockRedisSet = spyOn(redis, "set").mockImplementation(async (key: string, val: string) => {
+    redisStore.set(key, val);
+    return "OK" as any;
+  });
+});
+
+afterEach(() => {
+  mockRedisGet.mockRestore();
+  mockRedisSet.mockRestore();
 });
 
 describe("getModelInfo", () => {
@@ -296,7 +315,7 @@ describe("getModelInfo", () => {
     expect(call[1].hasEarlyModel).toBe(false);
   });
 
-  test("uses in-memory cached deployment and source data on subsequent calls without querying DB", async () => {
+  test("uses Redis-cached deployment and source data on subsequent calls without querying DB", async () => {
     queryQueue.push([deploymentResult({ specifier: "llama3:latest", earlySpecifier: null })]);
     queryQueue.push([installationResult({ host: "192.168.1.10", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
     mockSelectHost.mockResolvedValue({ host: "192.168.1.10:11434", useFinalModel: true, release: noop });

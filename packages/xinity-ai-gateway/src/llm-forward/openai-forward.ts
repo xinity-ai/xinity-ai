@@ -47,6 +47,53 @@ export type StreamSpec<Chunk extends StreamChunkLike, Acc> = {
   synthesizeFinal?: (acc: Acc, index: number, template: Chunk) => Chunk | null;
 };
 
+function isValidUsage(usage: unknown): boolean {
+  if (typeof usage !== "object" || usage === null) return false;
+  const u = usage as Record<string, unknown>;
+  return (
+    typeof u.prompt_tokens === "number" &&
+    typeof u.completion_tokens === "number" &&
+    typeof u.total_tokens === "number"
+  );
+}
+
+export function isStandardStreamingChunk(json: unknown): boolean {
+  if (typeof json !== "object" || json === null) return false;
+  const obj = json as Record<string, unknown>;
+  if (typeof obj.id !== "string" || typeof obj.created !== "number") return false;
+  if (!Array.isArray(obj.choices)) return false;
+
+  if (obj.choices.length === 0) {
+    return !obj.usage || isValidUsage(obj.usage);
+  }
+
+  if (obj.usage && !isValidUsage(obj.usage)) {
+    return false;
+  }
+
+  for (const choice of obj.choices) {
+    if (typeof choice !== "object" || choice === null) return false;
+    const c = choice as Record<string, unknown>;
+    if (typeof c.index !== "number") return false;
+
+    if ("delta" in c) {
+      if (typeof c.delta !== "object" || c.delta === null) return false;
+      const delta = c.delta as Record<string, unknown>;
+      if (delta.tool_calls !== undefined || delta.refusal !== undefined) return false;
+      if (delta.content !== undefined && delta.content !== null && typeof delta.content !== "string") return false;
+      if (delta.role !== undefined && typeof delta.role !== "string") return false;
+      if (delta.reasoning_content !== undefined && delta.reasoning_content !== null && typeof delta.reasoning_content !== "string") return false;
+      if (delta.reasoning !== undefined && typeof delta.reasoning !== "string") return false;
+    } else if ("text" in c) {
+      if (typeof c.text !== "string") return false;
+    } else {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
   backendResponse,
   originalModel,
@@ -89,13 +136,8 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
           }
 
           let chunk: Chunk;
-          // Fast-path: Standard SSE chunk envelope with choices array
-          if (
-            typeof json === "object" &&
-            json !== null &&
-            "choices" in json &&
-            Array.isArray((json as Record<string, unknown>).choices)
-          ) {
+          // Fast-path: Standard SSE chunk envelope with verified choices shape
+          if (isStandardStreamingChunk(json)) {
             const rawObj = json as Record<string, unknown>;
             rawObj.model = originalModel;
             chunk = rawObj as unknown as Chunk;
