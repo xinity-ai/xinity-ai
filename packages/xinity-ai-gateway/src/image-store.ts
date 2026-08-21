@@ -177,6 +177,27 @@ async function processImage(
   }
 }
 
+const MAX_IMAGE_CONCURRENCY = 4;
+
+async function mapConcurrent<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const results = new Array<R>(items.length);
+  let currentIndex = 0;
+  const workerCount = Math.min(limit, items.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (currentIndex < items.length) {
+      const idx = currentIndex++;
+      results[idx] = await fn(items[idx] as T, idx);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 /**
  * Transform messages containing image_url content parts:
  * - messagesForLLM: all images resolved to data URIs (inference node ready)
@@ -204,8 +225,10 @@ export async function processMessageImages(
       continue;
     }
 
-    const processedParts = await Promise.all(
-      message.content.map(async (part) => {
+    const processedParts = await mapConcurrent(
+      message.content,
+      MAX_IMAGE_CONCURRENCY,
+      async (part) => {
         if (part.type !== "image_url") {
           return { llmPart: part, dbPart: part as ApiCallInputMessageContent | null };
         }
@@ -222,7 +245,7 @@ export async function processMessageImages(
           : null;
 
         return { llmPart, dbPart };
-      }),
+      },
     );
 
     const llmParts: ApiCallInputMessageContent[] = processedParts.map((p) => p.llmPart);

@@ -36,8 +36,15 @@ export async function flushUsageEvents(): Promise<void> {
 
   try {
     await getDB().insert(usageEventT).values(batch);
-  } catch (err) {
-    log.error({ err, count: batch.length }, "Usage recording batch error");
+  } catch (batchErr) {
+    log.warn({ err: batchErr, count: batch.length }, "Usage recording batch failed, falling back to individual inserts");
+    for (const record of batch) {
+      try {
+        await getDB().insert(usageEventT).values(record);
+      } catch (rowErr) {
+        log.error({ err: rowErr, record }, "Usage recording individual row error");
+      }
+    }
   }
 }
 

@@ -111,8 +111,15 @@ export async function flushApiCallRows(): Promise<void> {
 
   try {
     await getDB().insert(apiCallT).values(batch);
-  } catch (err) {
-    log.error({ err, count: batch.length }, "DB error writing API call batch");
+  } catch (batchErr) {
+    log.warn({ err: batchErr, count: batch.length }, "API call batch insert failed, falling back to individual inserts");
+    for (const row of batch) {
+      try {
+        await getDB().insert(apiCallT).values(row);
+      } catch (rowErr) {
+        log.error({ err: rowErr, specifiedModel: row.specifiedModel, organizationId: row.organizationId }, "DB error writing individual API call");
+      }
+    }
   }
 }
 

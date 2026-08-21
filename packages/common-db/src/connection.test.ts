@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { checkMigrations } from "./connection";
+import { checkMigrations, preconfigureDB } from "./connection";
 import { expectedMigrationCount } from "./migrations";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
@@ -51,3 +51,13 @@ describe("checkMigrations", () => {
     });
   });
 });
+
+describe("preconfigureDB", () => {
+  it("initializes without connecting and exports checkMigrations / getDB", () => {
+    const { checkMigrations: cm, getDB, getMigrationState } = preconfigureDB("postgresql://localhost:5432/test", undefined, { max: undefined });
+    expect(typeof cm).toBe("function");
+    expect(typeof getDB).toBe("function");
+    expect(getMigrationState()).toBeNull();
+  });
+});
+

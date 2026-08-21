@@ -146,15 +146,6 @@ const pickAttrs = pick(["organizationId", "id", "applicationId", "collectData"] 
 const API_KEY_CACHE_TTL_SECONDS = 120;
 /** Short enough that re-enabling a key takes effect promptly. */
 const AUTH_FAILURE_CACHE_TTL_SECONDS = 10;
-const L1_AUTH_CACHE_TTL_MS = 5_000;
-
-type L1AuthEntry = { data: CachedAuth; expiresAt: number };
-const l1AuthCache = new Map<string, L1AuthEntry>();
-
-/** Clears the in-memory L1 auth cache. Exported for tests and invalidation. */
-export function clearAuthCache(): void {
-  l1AuthCache.clear();
-}
 
 const apiKeyCacheKey = (identifier: string) => `apikey:${identifier}`;
 
@@ -163,30 +154,18 @@ function setApiKeyCache(
   data: CachedAuth,
   ttlSeconds: number = API_KEY_CACHE_TTL_SECONDS,
 ): void {
-  const l1Ttl = Math.min(ttlSeconds * 1000, L1_AUTH_CACHE_TTL_MS);
-  l1AuthCache.set(identifier, { data, expiresAt: Date.now() + l1Ttl });
-
   void redis.set(apiKeyCacheKey(identifier), JSON.stringify(data), "EX", ttlSeconds)
     .catch((err: unknown) => log.warn({ err }, "Redis error in setApiKeyCache"));
 }
 
 async function getApiKeyCache(identifier: string): Promise<CachedAuth | null> {
-  const now = Date.now();
-  const l1 = l1AuthCache.get(identifier);
-  if (l1 && l1.expiresAt > now) {
-    return l1.data;
-  }
-
   try {
     const result = await redis.get(apiKeyCacheKey(identifier));
     if (!result) return null;
     const parsed = JSON.parse(result);
-    const resolved: CachedAuth = typeof parsed.fail === "string"
-      ? (parsed as { fail: string })
-      : { collectData: true, ...parsed };
-
-    l1AuthCache.set(identifier, { data: resolved, expiresAt: now + L1_AUTH_CACHE_TTL_MS });
-    return resolved;
+    if (typeof parsed.fail === "string") return parsed as { fail: string };
+    // Handle old cache entries missing collectData (safe default during rolling deploy)
+    return { collectData: true, ...parsed };
   } catch (err) {
     log.warn({ err }, "Redis error in getApiKeyCache");
     return null;

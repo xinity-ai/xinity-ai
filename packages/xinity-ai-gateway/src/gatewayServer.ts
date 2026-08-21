@@ -17,6 +17,8 @@ import { getTlsConfig } from "common-env";
 import { logMigrationFailureFatal } from "common-db";
 import { getSearchProvider } from "./llm-forward/tools/search-providers";
 import { setSearchProvider } from "./llm-forward/tools/response-tools";
+import { flushUsageEvents } from "./usageRecorder";
+import { flushApiCallRows } from "./callLogger";
 
 process.on("unhandledRejection", (reason) => {
   rootLogger.error({ err: reason }, "Unhandled promise rejection");
@@ -70,8 +72,26 @@ const proto = tls ? "https" : "http";
 const serveTarget = env.UNIX_SOCKET
   ? { unix: env.UNIX_SOCKET, idleTimeout: undefined }
   : { port: env.PORT, hostname: env.HOST };
-Bun.serve({ ...serveOptions, ...serveTarget });
+const server = Bun.serve({ ...serveOptions, ...serveTarget });
 rootLogger.info({ ...serveTarget, tls: !!tls }, `Gateway started (${proto})`);
+
+let isShuttingDown = false;
+async function gracefulShutdown(signal: string) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  rootLogger.info({ signal }, "Gateway shutting down, flushing write queues...");
+  server.stop(true);
+  try {
+    await Promise.all([flushUsageEvents(), flushApiCallRows()]);
+    rootLogger.info("Write queues flushed successfully");
+  } catch (err) {
+    rootLogger.error({ err }, "Error flushing write queues on shutdown");
+  }
+  process.exit(0);
+}
+
+process.on("SIGTERM", () => void gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => void gracefulShutdown("SIGINT"));
 
 async function handleRequest(req: Request): Promise<Response> {
   const { matched, response } = await handler.handle(req, {

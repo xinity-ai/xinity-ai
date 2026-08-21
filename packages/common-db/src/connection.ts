@@ -19,9 +19,9 @@ interface PinoLike {
  */
 export async function checkMigrations(db: PostgresJsDatabase): Promise<MigrationState> {
   try {
-    const rows = (await db.execute(
+    const rows = await db.execute<{ count: number }>(
       sql`SELECT count(*)::int AS count FROM "drizzle"."__drizzle_migrations"`,
-    )) as unknown as Array<{ count: number }>;
+    );
     const applied = rows[0]?.count ?? 0;
 
     if (applied >= expectedMigrationCount) {
@@ -60,18 +60,25 @@ export function preconfigureDB(
     : undefined;
 
   function ensurePostgresConnection(): postgres.Sql {
-    const poolMax = options?.max ?? (process.env.DB_MAX_CONNECTIONS ? parseInt(process.env.DB_MAX_CONNECTIONS, 10) : 20);
-    const idleTimeout = options?.idle_timeout ?? 30;
-    const connectTimeout = options?.connect_timeout ?? 10;
-    const prepare = options?.prepare ?? true;
+    const envMax = process.env.DB_MAX_CONNECTIONS ? parseInt(process.env.DB_MAX_CONNECTIONS, 10) : NaN;
+    const defaultMax = !Number.isNaN(envMax) ? envMax : 20;
 
-    return connection ??= postgres(DB_CONNECTION_URL, {
-      max: poolMax,
-      idle_timeout: idleTimeout,
-      connect_timeout: connectTimeout,
-      prepare,
-      ...options,
-    });
+    const mergedOptions: postgres.Options<Record<string, never>> = {
+      max: defaultMax,
+      idle_timeout: 30,
+      connect_timeout: 10,
+      prepare: true,
+    };
+
+    if (options) {
+      for (const [key, val] of Object.entries(options)) {
+        if (val !== undefined) {
+          (mergedOptions as any)[key] = val;
+        }
+      }
+    }
+
+    return connection ??= postgres(DB_CONNECTION_URL, mergedOptions);
   }
 
   function ensureConnection(): PostgresJsDatabase {
