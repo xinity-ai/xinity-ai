@@ -168,6 +168,25 @@ Detailed guides for each part of the platform:
 
 ## Quick start (local development)
 
+### Prerequisites
+
+Before running the local setup, make sure Bun and Docker are available:
+
+    bun -v
+    docker --version
+    docker compose version
+
+If Bun is missing on macOS/zsh, install it and add it to your shell PATH:
+
+    curl -fsSL https://bun.sh/install | bash
+    echo 'export BUN_INSTALL="$HOME/.bun"' >> ~/.zshrc
+    echo 'export PATH="$BUN_INSTALL/bin:$PATH"' >> ~/.zshrc
+    source ~/.zshrc
+    bun -v
+
+Install and start Docker Desktop before running `docker compose up -d`.
+
+
 **1. Install dependencies**
 
 ```bash
