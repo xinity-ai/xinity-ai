@@ -5,9 +5,7 @@ import {
   modelInstallationStateT,
   aiNodeT,
   apiCallT,
-  memberT,
   organizationT,
-  userT,
   count,
   deploymentMatchesInstallation,
 } from "common-db";
@@ -15,9 +13,9 @@ import { serverEnv } from "$lib/server/serverenv";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
 import { building } from "$app/environment";
-import { notify, notifyOrgMembers } from "./notification.service";
+import { notifyOrgMembers } from "./notification.service";
 import { NotificationType } from "./events";
-import { type DeploymentPhase, type DisplayPhase, aggregatePhase, toDisplayPhase } from "$lib/server/lib/deployment-phase";
+import { type DeploymentPhase, type DisplayPhase, aggregatePhase } from "$lib/server/lib/deployment-phase";
 
 const log = rootLogger.child({ name: "notification.scheduler" });
 

@@ -5,7 +5,7 @@ import { isOllamaRunning } from "./ollama-setup.ts";
 import { analyzeEnvSchema, categorizeFields, type EnvField } from "./env-prompt.ts";
 import { parseEnvString } from "./env-file.ts";
 import { unitName } from "./systemd.ts";
-import { type Component, ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, BIN_DIR, UNIT_DIR, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT } from "./component-meta.ts";
+import { type Component, ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, UNIT_DIR, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT } from "./component-meta.ts";
 import { collectRemoteState, createCachedHost } from "./remote-probe.ts";
 import {
   type CheckResult, type CheckStatus,

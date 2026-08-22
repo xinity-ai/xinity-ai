@@ -47,7 +47,7 @@ export const HOST_CONCURRENCY = 8;
 
 /** Map over items with at most `limit` calls in flight; results keep item order. */
 export async function mapBounded<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const results: R[] = new Array(items.length);
+  const results: R[] = Array(items.length);
   let next = 0;
   const worker = async () => {
     while (next < items.length) {

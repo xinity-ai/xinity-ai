@@ -1,5 +1,5 @@
 import { aiNodeT, sql, modelInstallationStateT, preconfigureDB } from "common-db";
-import { getAvailablePort, readProcessOutput } from "../test-helpers";
+import { getAvailablePort } from "../test-helpers";
 import { ensureInfoServerRunning, infoServerUrl } from "../infoserver/infoserver-test-helpers";
 import { ensureSystemReady } from "../guard";
 

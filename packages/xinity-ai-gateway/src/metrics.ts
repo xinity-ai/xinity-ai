@@ -40,7 +40,7 @@ function createHistogram(name: string, help: string, boundaries: number[]) {
       const key = labelKey(labels);
       let entry = values.get(key);
       if (!entry) {
-        entry = { labels, sum: 0, count: 0, buckets: new Array(sorted.length).fill(0) };
+        entry = { labels, sum: 0, count: 0, buckets: Array(sorted.length).fill(0) };
         values.set(key, entry);
       }
       entry.sum += value;

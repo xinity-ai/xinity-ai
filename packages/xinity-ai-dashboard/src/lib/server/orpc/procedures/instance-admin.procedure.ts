@@ -2,7 +2,7 @@ import { rootOs, withInstanceAdmin, auditMiddleware } from "../root";
 import { z } from "zod";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
-import { auth, adminCreateUser, adminResetPassword } from "$lib/server/auth-server";
+import { adminCreateUser, adminResetPassword } from "$lib/server/auth-server";
 import { userT, accountT, memberT, organizationT, sql, count } from "common-db";
 import { RoleSchema } from "$lib/server/roles";
 

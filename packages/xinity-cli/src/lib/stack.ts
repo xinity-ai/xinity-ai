@@ -27,7 +27,7 @@ const componentT = z.enum(["gateway", "dashboard", "daemon", "infoserver"]);
 const envRecordT = z.record(z.string(), z.string());
 
 const hostAddressT = z.string().regex(
-  /^[a-zA-Z0-9_.@:\[\]-]+$/,
+  /^[a-zA-Z0-9_.@:[\]-]+$/,
   "Host address may only contain alphanumerics, dots, hyphens, underscores, @, colons, and brackets",
 );
 
@@ -218,11 +218,11 @@ export function pruneFleetMembership(stack: StackDefinition, address: string): v
 // secrets → component type → fleet (daemon only) → host.
 
 export function componentLayerBase(stack: StackDefinition, component: Component): Record<string, string> {
-  return { ...getAutoDefaults(component), ...(stack.derivedEnv ?? {}), ...stack.env, ...stack.secrets };
+  return { ...getAutoDefaults(component), ...stack.derivedEnv, ...stack.env, ...stack.secrets };
 }
 
 export function componentLayerSeed(stack: StackDefinition, component: Component): Record<string, string> {
-  return { ...componentLayerBase(stack, component), ...(stack.componentEnv[component] ?? {}) };
+  return { ...componentLayerBase(stack, component), ...stack.componentEnv[component] };
 }
 
 export function fleetLayerBase(stack: StackDefinition): Record<string, string> {
@@ -230,7 +230,7 @@ export function fleetLayerBase(stack: StackDefinition): Record<string, string> {
 }
 
 export function fleetLayerSeed(stack: StackDefinition, fleet: FleetDefinition): Record<string, string> {
-  return { ...fleetLayerBase(stack), ...(fleet.envOverrides ?? {}) };
+  return { ...fleetLayerBase(stack), ...fleet.envOverrides };
 }
 
 /**
@@ -247,8 +247,8 @@ export function resolveEnv(
   const fleet = component === "daemon" && hostAddress ? getFleetForHost(stack, hostAddress) : null;
   return {
     ...componentLayerSeed(stack, component),
-    ...(fleet?.envOverrides ?? {}),
-    ...(host?.envOverrides ?? {}),
+    ...fleet?.envOverrides,
+    ...host?.envOverrides,
   };
 }
 

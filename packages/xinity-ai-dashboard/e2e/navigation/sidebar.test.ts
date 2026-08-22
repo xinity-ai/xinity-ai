@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { ownerPage, viewerPage } from "../utils/browser";
-import { expectVisible, expectHidden } from "../utils/helpers";
+import { expectVisible } from "../utils/helpers";
 
 describe("Sidebar navigation", () => {
   test("owner sees all sidebar items", async () => {

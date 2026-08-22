@@ -1,6 +1,6 @@
-import type { PageServerLoad, Actions } from "./$types";
+import type { PageServerLoad } from "./$types";
 import { auth } from "$lib/server/auth-server";
-import { fail, redirect } from "@sveltejs/kit";
+import { redirect } from "@sveltejs/kit";
 import { rootLogger } from "$lib/server/logging";
 import { getDB } from "$lib/server/db";
 import { organizationT, sql } from "common-db";
