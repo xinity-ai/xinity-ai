@@ -340,7 +340,11 @@ async function findInvitationInOrg(invitationId: string, organizationId: string)
   const [row] = await getDB()
     .select({ id: invitationT.id })
     .from(invitationT)
-    .where(sql`${invitationT.id} = ${invitationId} AND ${invitationT.organizationId} = ${organizationId}`)
+    .where(sql`
+      ${invitationT.id} = ${invitationId}
+    AND
+      ${invitationT.organizationId} = ${organizationId}
+    `)
     .limit(1);
   return row ?? null;
 }
@@ -350,7 +354,11 @@ async function findMemberNameInOrg(memberId: string, organizationId: string): Pr
     .select({ name: userT.name })
     .from(memberT)
     .innerJoin(userT, sql`${userT.id} = ${memberT.userId}`)
-    .where(sql`${memberT.id} = ${memberId} AND ${memberT.organizationId} = ${organizationId}`)
+    .where(sql`
+      ${memberT.id} = ${memberId}
+    AND
+      ${memberT.organizationId} = ${organizationId}
+    `)
     .limit(1);
   return row?.name;
 }

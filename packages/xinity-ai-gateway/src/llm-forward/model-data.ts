@@ -138,12 +138,22 @@ async function getModelSources(specifier: string): Promise<ModelSources> {
     authToken: aiNodeT.authToken,
     tls: aiNodeT.tls,
   }).from(modelInstallationT)
-    .innerJoin(aiNodeT, sql`${modelInstallationT.nodeId} = ${aiNodeT.id} AND ${aiNodeT.available} AND ${aiNodeT.deletedAt} IS NULL`)
+    .innerJoin(aiNodeT, sql`
+      ${modelInstallationT.nodeId} = ${aiNodeT.id}
+    AND
+      ${aiNodeT.available}
+    AND
+      ${aiNodeT.deletedAt} IS NULL
+    `)
     .innerJoin(modelInstallationStateT, sql`
       ${modelInstallationStateT.id} = ${modelInstallationT.id}
       AND ${modelInstallationStateT.lifecycleState} = 'ready'
     `)
-    .where(sql`${installationMatchesLookup(specifier)} AND ${modelInstallationT.deletedAt} IS NULL`);
+    .where(sql`
+      ${installationMatchesLookup(specifier)}
+    AND
+      ${modelInstallationT.deletedAt} IS NULL
+    `);
 
   const byHost = new Map<string, HostLocation>();
   for (const loc of modelLocations) {

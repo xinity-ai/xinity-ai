@@ -1,7 +1,7 @@
 import type { PageServerLoad } from "./$types";
 import { auth } from "$lib/server/auth-server";
 import { redirect } from "@sveltejs/kit";
-import { memberT, organizationT, sql, eq } from "common-db";
+import { memberT, organizationT, sql } from "common-db";
 import { getDB } from "$lib/server/db";
 import type { RoleName } from "$lib/roles";
 
@@ -34,7 +34,7 @@ export const load: PageServerLoad = async ({ params, request, parent }) => {
       AND
       ${memberT.organizationId} = ${organization.id}
     `).limit(1),
-    getDB().select({ ssoSelfManage: organizationT.ssoSelfManage }).from(organizationT).where(eq(organizationT.id, organization.id)).limit(1),
+    getDB().select({ ssoSelfManage: organizationT.ssoSelfManage }).from(organizationT).where(sql`${organizationT.id} = ${organization.id}`).limit(1),
   ]);
 
   if (!fullOrg) {

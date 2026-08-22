@@ -63,7 +63,11 @@ const listAudit = rootOs
     const where = buildWhereClause(context.activeOrganizationId, filters, includeInstance);
 
     const cursorClause = cursor
-      ? sql`${where} AND ${auditEventT.createdAt} < ${cursor.toISOString()}`
+      ? sql`
+        ${where}
+      AND
+        ${auditEventT.createdAt} < ${cursor.toISOString()}
+      `
       : where;
 
     const events = await getDB()

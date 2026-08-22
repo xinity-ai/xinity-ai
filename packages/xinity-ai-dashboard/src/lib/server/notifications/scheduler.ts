@@ -1,8 +1,5 @@
 import {
   sql,
-  and,
-  eq,
-  gte,
   isNull,
   modelDeploymentT,
   modelInstallationT,
@@ -165,10 +162,18 @@ async function getDeploymentPhases(): Promise<Map<string, DeploymentInfo>> {
       errorMessage: modelInstallationStateT.errorMessage,
     })
     .from(modelDeploymentT)
-    .where(and(eq(modelDeploymentT.enabled, true), isNull(modelDeploymentT.deletedAt)))
-    .leftJoin(organizationT, eq(organizationT.id, modelDeploymentT.organizationId))
-    .leftJoin(modelInstallationT, and(deploymentMatchesInstallation, isNull(modelInstallationT.deletedAt)))
-    .leftJoin(modelInstallationStateT, eq(modelInstallationStateT.id, modelInstallationT.id));
+    .where(sql`
+      ${modelDeploymentT.enabled}
+    AND
+      ${modelDeploymentT.deletedAt} IS NULL
+    `)
+    .leftJoin(organizationT, sql`${organizationT.id} = ${modelDeploymentT.organizationId}`)
+    .leftJoin(modelInstallationT, sql`
+      ${deploymentMatchesInstallation}
+    AND
+      ${modelInstallationT.deletedAt} IS NULL
+    `)
+    .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`);
 
   return foldDeploymentPhaseRows(rows);
 }
@@ -268,7 +273,11 @@ async function checkCapacity() {
     const nodes = await getDB()
       .select({ id: aiNodeT.id, estCapacity: aiNodeT.estCapacity, available: aiNodeT.available })
       .from(aiNodeT)
-      .where(and(eq(aiNodeT.available, true), isNull(aiNodeT.deletedAt)));
+      .where(sql`
+        ${aiNodeT.available}
+      AND
+        ${aiNodeT.deletedAt} IS NULL
+      `);
 
     const installations = await getDB()
       .select({ nodeId: modelInstallationT.nodeId, estCapacity: modelInstallationT.estCapacity })
@@ -311,11 +320,13 @@ async function countActiveDeployments(orgId: string): Promise<number> {
   const [row] = await getDB()
     .select({ count: count() })
     .from(modelDeploymentT)
-    .where(and(
-      eq(modelDeploymentT.organizationId, orgId),
-      eq(modelDeploymentT.enabled, true),
-      isNull(modelDeploymentT.deletedAt),
-    ));
+    .where(sql`
+      ${modelDeploymentT.organizationId} = ${orgId}
+    AND
+      ${modelDeploymentT.enabled}
+    AND
+      ${modelDeploymentT.deletedAt} IS NULL
+    `);
   return row?.count ?? 0;
 }
 
@@ -323,7 +334,11 @@ async function countApiCallsSince(orgId: string, since: Date): Promise<number> {
   const [row] = await getDB()
     .select({ count: count() })
     .from(apiCallT)
-    .where(and(eq(apiCallT.organizationId, orgId), gte(apiCallT.createdAt, since)));
+    .where(sql`
+      ${apiCallT.organizationId} = ${orgId}
+    AND
+      ${apiCallT.createdAt} >= ${since}
+    `);
   return row?.count ?? 0;
 }
 
@@ -331,7 +346,11 @@ async function topModelsByCallsSince(orgId: string, since: Date, limit = 5): Pro
   return await getDB()
     .select({ name: apiCallT.model, calls: count() })
     .from(apiCallT)
-    .where(and(eq(apiCallT.organizationId, orgId), gte(apiCallT.createdAt, since)))
+    .where(sql`
+      ${apiCallT.organizationId} = ${orgId}
+    AND
+      ${apiCallT.createdAt} >= ${since}
+    `)
     .groupBy(apiCallT.model)
     .orderBy(sql`count(*) DESC`)
     .limit(limit);
@@ -360,7 +379,11 @@ async function checkWeeklyReport() {
     const [orgs, nodeResult] = await Promise.all([
       getDB().select({ id: organizationT.id, name: organizationT.name }).from(organizationT),
       getDB().select({ count: count() }).from(aiNodeT)
-        .where(and(eq(aiNodeT.available, true), isNull(aiNodeT.deletedAt))),
+        .where(sql`
+          ${aiNodeT.available}
+        AND
+          ${aiNodeT.deletedAt} IS NULL
+        `),
     ]);
     const activeNodes = nodeResult[0]?.count ?? 0;
     const period = formatReportPeriod(oneWeekAgo, now);

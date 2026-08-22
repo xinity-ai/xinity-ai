@@ -121,8 +121,16 @@ export async function buildComputeOverview(rangeHours: number): Promise<ComputeO
       inputTokens: sumNumber(usageEventT.inputTokens),
       outputTokens: sumNumber(usageEventT.outputTokens),
     }).from(usageEventT)
-      .innerJoin(aiNodeT, sql`${aiNodeT.id} = ${usageEventT.nodeId} AND ${aiNodeT.deletedAt} IS NULL`)
-      .where(sql`${usageEventT.createdAt} >= ${since} AND ${usageEventT.nodeId} IS NOT NULL`)
+      .innerJoin(aiNodeT, sql`
+        ${aiNodeT.id} = ${usageEventT.nodeId}
+      AND
+        ${aiNodeT.deletedAt} IS NULL
+      `)
+      .where(sql`
+        ${usageEventT.createdAt} >= ${since}
+      AND
+        ${usageEventT.nodeId} IS NOT NULL
+      `)
       .groupBy(usageEventT.nodeId),
   ]);
 
@@ -204,8 +212,16 @@ export async function buildComputeHistory(rangeHours: number): Promise<ComputeHi
     tokens: sql<number>`coalesce(sum(${usageEventT.inputTokens} + ${usageEventT.outputTokens}), 0)`.mapWith(Number),
     requests: count(),
   }).from(usageEventT)
-    .innerJoin(aiNodeT, sql`${aiNodeT.id} = ${usageEventT.nodeId} AND ${aiNodeT.deletedAt} IS NULL`)
-    .where(sql`${usageEventT.createdAt} >= ${since} AND ${usageEventT.nodeId} IS NOT NULL`)
+    .innerJoin(aiNodeT, sql`
+      ${aiNodeT.id} = ${usageEventT.nodeId}
+    AND
+      ${aiNodeT.deletedAt} IS NULL
+    `)
+    .where(sql`
+      ${usageEventT.createdAt} >= ${since}
+    AND
+      ${usageEventT.nodeId} IS NOT NULL
+    `)
     .groupBy(usageEventT.nodeId, usageBucket);
 
   return {
@@ -322,7 +338,11 @@ const removeNode = rootOs
     await db
       .update(aiNodeT)
       .set({ deletedAt: new Date() })
-      .where(sql`${aiNodeT.id} = ${input.nodeId} AND ${aiNodeT.deletedAt} IS NULL`);
+      .where(sql`
+        ${aiNodeT.id} = ${input.nodeId}
+      AND
+        ${aiNodeT.deletedAt} IS NULL
+      `);
   });
 
 export const computeRouter = rootOs.prefix("/compute").router({

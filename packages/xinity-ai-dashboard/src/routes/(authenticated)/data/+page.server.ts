@@ -2,7 +2,7 @@ import { call } from '@orpc/server';
 import type { PageServerLoad } from './$types';
 import { applicationRouter } from '$lib/server/orpc/procedures/application.procedure';
 import { getDB } from '$lib/server/db';
-import { apiCallT, sql, and, eq, isNull } from 'common-db';
+import { apiCallT, sql } from 'common-db';
 import { auth } from '$lib/server/auth-server';
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -16,10 +16,11 @@ export const load: PageServerLoad = async ({ locals }) => {
     getDB()
       .select({ count: sql<number>`COUNT(*)::int` })
       .from(apiCallT)
-      .where(and(
-        eq(apiCallT.organizationId, session.session.activeOrganizationId),
-        isNull(apiCallT.applicationId),
-      )),
+      .where(sql`
+        ${apiCallT.organizationId} = ${session.session.activeOrganizationId}
+      AND
+        ${apiCallT.applicationId} IS NULL
+      `),
   ]);
 
   return {

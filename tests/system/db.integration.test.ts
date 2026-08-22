@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { aiApiKeyT, aiApplicationT, eq, organizationT, preconfigureDB } from "common-db";
+import { aiApiKeyT, aiApplicationT, sql, organizationT, preconfigureDB } from "common-db";
 import { randomUUID } from "crypto";
 import { ensureSystemReady } from "./guard";
 
@@ -47,12 +47,12 @@ beforeAll(async () => {
 afterAll(async () => {
   if (!db) return;
   if (apiKeyId) {
-    await db.delete(aiApiKeyT).where(eq(aiApiKeyT.id, apiKeyId));
+    await db.delete(aiApiKeyT).where(sql`${aiApiKeyT.id} = ${apiKeyId}`);
   }
   if (appId) {
-    await db.delete(aiApplicationT).where(eq(aiApplicationT.id, appId));
+    await db.delete(aiApplicationT).where(sql`${aiApplicationT.id} = ${appId}`);
   }
-  await db.delete(organizationT).where(eq(organizationT.id, orgId));
+  await db.delete(organizationT).where(sql`${organizationT.id} = ${orgId}`);
 });
 
 describe("common-db integration", () => {
@@ -60,7 +60,7 @@ describe("common-db integration", () => {
     const [apiKey] = await db
       .select()
       .from(aiApiKeyT)
-      .where(eq(aiApiKeyT.id, apiKeyId))
+      .where(sql`${aiApiKeyT.id} = ${apiKeyId}`)
       .limit(1);
 
     expect(apiKey).toBeTruthy();
@@ -73,7 +73,7 @@ describe("common-db integration", () => {
     const [app] = await db
       .select()
       .from(aiApplicationT)
-      .where(eq(aiApplicationT.id, appId))
+      .where(sql`${aiApplicationT.id} = ${appId}`)
       .limit(1);
 
     expect(app).toBeTruthy();

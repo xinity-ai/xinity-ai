@@ -6,7 +6,7 @@ import {
   aiNodeT,
   usageEventT,
   preconfigureDB,
-  eq,
+  sql,
 } from "common-db";
 import { ownerFetch, getSetupState, apiUrl } from "./api-helpers";
 import { ensureE2EReady } from "../guard";
@@ -79,8 +79,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (!db || !nodeId) return;
-  await db.delete(usageEventT).where(eq(usageEventT.nodeId, nodeId));
-  await db.delete(aiNodeT).where(eq(aiNodeT.id, nodeId));
+  await db.delete(usageEventT).where(sql`${usageEventT.nodeId} = ${nodeId}`);
+  await db.delete(aiNodeT).where(sql`${aiNodeT.id} = ${nodeId}`);
 });
 
 describe("compute API", () => {

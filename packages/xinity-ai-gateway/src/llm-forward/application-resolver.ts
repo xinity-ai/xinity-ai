@@ -29,7 +29,13 @@ export async function resolveApplicationByName(
     .select({ id: aiApplicationT.id })
     .from(aiApplicationT)
     .where(
-      sql`${aiApplicationT.name} = ${name} AND ${aiApplicationT.organizationId} = ${organizationId} AND ${aiApplicationT.deletedAt} IS NULL`
+      sql`
+        ${aiApplicationT.name} = ${name}
+      AND
+        ${aiApplicationT.organizationId} = ${organizationId}
+      AND
+        ${aiApplicationT.deletedAt} IS NULL
+      `
     )
     .limit(1);
 

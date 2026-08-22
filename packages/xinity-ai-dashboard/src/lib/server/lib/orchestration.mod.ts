@@ -372,7 +372,11 @@ async function runSyncDeployedModels() {
   const requiredModels = await assembleModelRequirementTable();
   const [existing, availableServers]: [ModelInstallation[], AiNode[]] = await Promise.all([
     getDB().select().from(modelInstallationT).where(isNull(modelInstallationT.deletedAt)),
-    getDB().select().from(aiNodeT).where(sql`${aiNodeT.available} AND ${aiNodeT.deletedAt} IS NULL`),
+    getDB().select().from(aiNodeT).where(sql`
+      ${aiNodeT.available}
+    AND
+      ${aiNodeT.deletedAt} IS NULL
+    `),
   ]);
 
   const availableServerIds = new Set(availableServers.map(s => s.id));

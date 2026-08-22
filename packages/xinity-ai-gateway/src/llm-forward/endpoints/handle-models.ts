@@ -84,10 +84,24 @@ export async function handleModelsRequest(req: Request): Promise<Response> {
     getDB()
       .select()
       .from(modelDeploymentT)
-      .leftJoin(modelInstallationT, sql`${deploymentMatchesInstallation} AND ${modelInstallationT.deletedAt} IS NULL`)
-      .leftJoin(aiNodeT, sql`${modelInstallationT.nodeId} = ${aiNodeT.id} AND ${aiNodeT.available} AND ${aiNodeT.deletedAt} IS NULL`)
+      .leftJoin(modelInstallationT, sql`
+        ${deploymentMatchesInstallation}
+      AND
+        ${modelInstallationT.deletedAt} IS NULL
+      `)
+      .leftJoin(aiNodeT, sql`
+        ${modelInstallationT.nodeId} = ${aiNodeT.id}
+      AND
+        ${aiNodeT.available}
+      AND
+        ${aiNodeT.deletedAt} IS NULL
+      `)
       .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`)
-      .where(sql`${modelDeploymentT.organizationId} = ${orgId} AND ${modelDeploymentT.deletedAt} IS NULL`),
+      .where(sql`
+        ${modelDeploymentT.organizationId} = ${orgId}
+      AND
+        ${modelDeploymentT.deletedAt} IS NULL
+      `),
   ]);
   const [organization] = orgRows;
 

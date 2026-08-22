@@ -1,6 +1,6 @@
 import { getDB } from "$lib/server/db";
 import {
-  sql, and, eq, inArray, isNull,
+  sql, inArray,
   aiApplicationT, apiCallT, apiCallResponseT, modelDeploymentT,
   usageEventT, usageSummaryT, NIL_APP_UUID, invitationT,
 } from "common-db";
@@ -65,10 +65,12 @@ async function rollupUsageEvents(db: DB, orgId: string) {
       "total_duration" = "usage_summary"."total_duration" + EXCLUDED."total_duration"
   `);
 
-  await db.delete(usageEventT).where(and(
-    eq(usageEventT.organizationId, orgId),
-    sql`${usageEventT.createdAt} < CURRENT_DATE - INTERVAL '30 days'`,
-  ));
+  await db.delete(usageEventT)
+    .where(sql`
+      ${usageEventT.organizationId} = ${orgId}
+    AND
+      ${usageEventT.createdAt} < CURRENT_DATE - INTERVAL '30 days'
+    `);
 }
 
 async function loadKeyMetrics(db: DB, orgId: string, userId: string): Promise<KeyMetrics> {
@@ -86,24 +88,25 @@ async function loadKeyMetrics(db: DB, orgId: string, userId: string): Promise<Ke
       avgDuration: sql<number | null>`AVG(${usageEventT.duration})`,
     })
       .from(usageEventT)
-      .where(eq(usageEventT.organizationId, orgId)),
+      .where(sql`${usageEventT.organizationId} = ${orgId}`),
 
     db.select({
       totalCalls: sql<number>`COALESCE(SUM(${usageSummaryT.totalCalls}), 0)::int`,
       loggedCalls: sql<number>`COALESCE(SUM(${usageSummaryT.loggedCalls}), 0)::int`,
     })
       .from(usageSummaryT)
-      .where(eq(usageSummaryT.organizationId, orgId)),
+      .where(sql`${usageSummaryT.organizationId} = ${orgId}`),
 
     db.select({
       totalCalls: sql<number>`COUNT(*)::int`,
       loggedCalls: sql<number>`COUNT(*) FILTER (WHERE ${usageEventT.logged})::int`,
     })
       .from(usageEventT)
-      .where(and(
-        eq(usageEventT.organizationId, orgId),
-        sql`DATE(${usageEventT.createdAt}) = CURRENT_DATE`,
-      )),
+      .where(sql`
+        ${usageEventT.organizationId} = ${orgId}
+      AND
+        DATE(${usageEventT.createdAt}) = CURRENT_DATE
+      `),
 
     db.select({
       avgInput1m: sql<number | null>`AVG(${usageEventT.inputTokens}) FILTER (WHERE ${usageEventT.createdAt} > NOW() - INTERVAL '1 minute')`,
@@ -114,10 +117,11 @@ async function loadKeyMetrics(db: DB, orgId: string, userId: string): Promise<Ke
       avgOutput1h: sql<number | null>`AVG(${usageEventT.outputTokens}) FILTER (WHERE ${usageEventT.createdAt} > NOW() - INTERVAL '1 hour')`,
     })
       .from(usageEventT)
-      .where(and(
-        eq(usageEventT.organizationId, orgId),
-        sql`${usageEventT.createdAt} > NOW() - INTERVAL '1 hour'`,
-      )),
+      .where(sql`
+        ${usageEventT.organizationId} = ${orgId}
+      AND
+        ${usageEventT.createdAt} > NOW() - INTERVAL '1 hour'
+      `),
 
     // Ratings + training data from apiCallResponse, same table and filter
     db.select({
@@ -193,10 +197,11 @@ async function loadCharts(db: DB, orgId: string): Promise<ChartsData> {
       outputTokens: sql<number>`COALESCE(SUM(${usageEventT.outputTokens}), 0)::int`,
     })
       .from(usageEventT)
-      .where(and(
-        eq(usageEventT.organizationId, orgId),
-        sql`DATE(${usageEventT.createdAt}) >= CURRENT_DATE - INTERVAL '29 days'`,
-      ))
+      .where(sql`
+        ${usageEventT.organizationId} = ${orgId}
+      AND
+        DATE(${usageEventT.createdAt}) >= CURRENT_DATE - INTERVAL '29 days'
+      `)
       .groupBy(sql`DATE(${usageEventT.createdAt})`)
       .orderBy(sql`DATE(${usageEventT.createdAt}) ASC`),
 
@@ -206,10 +211,11 @@ async function loadCharts(db: DB, orgId: string): Promise<ChartsData> {
       totalTokens: sql<number>`COALESCE(SUM(${usageEventT.inputTokens} + ${usageEventT.outputTokens}), 0)::int`,
     })
       .from(usageEventT)
-      .where(and(
-        eq(usageEventT.organizationId, orgId),
-        sql`${usageEventT.createdAt} >= CURRENT_DATE - INTERVAL '29 days'`,
-      ))
+      .where(sql`
+        ${usageEventT.organizationId} = ${orgId}
+      AND
+        ${usageEventT.createdAt} >= CURRENT_DATE - INTERVAL '29 days'
+      `)
       .groupBy(usageEventT.applicationId)
       .orderBy(sql`COUNT(*) DESC`)
       .limit(5),
@@ -241,7 +247,7 @@ async function loadTables(db: DB, orgId: string): Promise<TablesData> {
       logged: usageEventT.logged,
     })
       .from(usageEventT)
-      .where(eq(usageEventT.organizationId, orgId))
+      .where(sql`${usageEventT.organizationId} = ${orgId}`)
       .orderBy(sql`${usageEventT.createdAt} DESC`)
       .limit(5),
 
@@ -315,26 +321,27 @@ async function loadChecklist(db: DB, orgId: string): Promise<ChecklistData> {
 
     db.select({ id: usageEventT.id })
       .from(usageEventT)
-      .where(eq(usageEventT.organizationId, orgId))
+      .where(sql`${usageEventT.organizationId} = ${orgId}`)
       .limit(1),
 
     db.select({ id: apiCallResponseT.apiCallId })
       .from(apiCallResponseT)
-      .innerJoin(apiCallT, eq(apiCallT.id, apiCallResponseT.apiCallId))
-      .where(eq(apiCallT.organizationId, orgId))
+      .innerJoin(apiCallT, sql`${apiCallT.id} = ${apiCallResponseT.apiCallId}`)
+      .where(sql`${apiCallT.organizationId} = ${orgId}`)
       .limit(1),
 
     db.select({ id: invitationT.id })
       .from(invitationT)
-      .where(eq(invitationT.organizationId, orgId))
+      .where(sql`${invitationT.organizationId} = ${orgId}`)
       .limit(1),
 
     db.select({ id: aiApplicationT.id })
       .from(aiApplicationT)
-      .where(and(
-        eq(aiApplicationT.organizationId, orgId),
-        isNull(aiApplicationT.deletedAt),
-      ))
+      .where(sql`
+        ${aiApplicationT.organizationId} = ${orgId}
+      AND
+        ${aiApplicationT.deletedAt} IS NULL
+      `)
       .limit(1),
   ]);
 
