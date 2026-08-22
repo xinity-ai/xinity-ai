@@ -1,6 +1,5 @@
 import {
   sql,
-  isNull,
   modelDeploymentT,
   modelInstallationT,
   modelInstallationStateT,
@@ -235,7 +234,7 @@ async function checkNodeHealth() {
     const nodes = await getDB()
       .select({ id: aiNodeT.id, host: aiNodeT.host, port: aiNodeT.port, available: aiNodeT.available })
       .from(aiNodeT)
-      .where(isNull(aiNodeT.deletedAt));
+      .where(sql`${aiNodeT.deletedAt} IS NULL`);
 
     for (const node of nodes) {
       const previousAvailable = nodeAvailabilityCache.get(node.id);
@@ -282,7 +281,7 @@ async function checkCapacity() {
     const installations = await getDB()
       .select({ nodeId: modelInstallationT.nodeId, estCapacity: modelInstallationT.estCapacity })
       .from(modelInstallationT)
-      .where(isNull(modelInstallationT.deletedAt));
+      .where(sql`${modelInstallationT.deletedAt} IS NULL`);
 
     const totalCapacity = nodes.reduce((sum, n) => sum + n.estCapacity, 0);
     if (totalCapacity === 0) return;

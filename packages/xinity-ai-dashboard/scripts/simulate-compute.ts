@@ -29,7 +29,6 @@ import {
   asc,
   sql,
   inArray,
-  like,
 } from "common-db";
 import type { GpuInfo } from "xinity-infoserver";
 
@@ -242,7 +241,7 @@ async function main() {
     await db.delete(usageEventT).where(inArray(usageEventT.nodeId, ids));
     await db.delete(aiNodeT).where(inArray(aiNodeT.id, ids));
   }
-  await db.delete(modelDeploymentT).where(like(modelDeploymentT.publicSpecifier, `${SIM_DEPLOYMENT_PREFIX}%`));
+  await db.delete(modelDeploymentT).where(sql`${modelDeploymentT.publicSpecifier} LIKE ${SIM_DEPLOYMENT_PREFIX + "%"}`);
 
   // Create deployments (one per unique model specifier across all machines).
   const uniqueModels = new Map<string, ModelSpec>();

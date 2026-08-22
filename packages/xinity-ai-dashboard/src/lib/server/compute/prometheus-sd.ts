@@ -4,7 +4,7 @@
  * https://prometheus.io/docs/prometheus/latest/http_sd/
  */
 import { getDB } from "$lib/server/db";
-import { aiNodeT, isNull } from "common-db";
+import { aiNodeT, sql } from "common-db";
 
 export type SdNode = {
   id: string;
@@ -43,7 +43,7 @@ export async function listDaemonSdNodes(): Promise<SdNode[]> {
       machineName: aiNodeT.machineName,
     })
     .from(aiNodeT)
-    .where(isNull(aiNodeT.deletedAt));
+    .where(sql`${aiNodeT.deletedAt} IS NULL`);
 }
 
 export type ScrapeTarget = { target: string; scheme: string };

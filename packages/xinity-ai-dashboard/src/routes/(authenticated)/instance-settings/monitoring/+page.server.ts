@@ -1,6 +1,6 @@
 import type { PageServerLoad } from "./$types";
 import { getDB } from "$lib/server/db";
-import { aiNodeT, isNull, sql } from "common-db";
+import { aiNodeT, sql } from "common-db";
 import { serverEnv } from "$lib/server/serverenv";
 import { scrapeTarget } from "$lib/server/compute/prometheus-sd";
 
@@ -9,7 +9,7 @@ export const load: PageServerLoad = async () => {
   const [{ count: nodeCount }] = await db
     .select({ count: sql<number>`count(*)`.mapWith(Number) })
     .from(aiNodeT)
-    .where(isNull(aiNodeT.deletedAt));
+    .where(sql`${aiNodeT.deletedAt} IS NULL`);
 
   const gateway = scrapeTarget(serverEnv.GATEWAY_URL);
   const dashboard = scrapeTarget(serverEnv.ORIGIN);

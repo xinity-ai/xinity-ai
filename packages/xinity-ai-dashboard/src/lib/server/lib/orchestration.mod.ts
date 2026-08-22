@@ -1,4 +1,4 @@
-import { inArray, isNull, modelDeploymentT, sql, calcCanaryProgress, modelInstallationT, aiNodeT, mergeSettings, settingsEqual, type DeploymentSettings, type ModelInstallation, type AiNode, type InferInsertModel } from "common-db";
+import { inArray, modelDeploymentT, sql, calcCanaryProgress, modelInstallationT, aiNodeT, mergeSettings, settingsEqual, type DeploymentSettings, type ModelInstallation, type AiNode, type InferInsertModel } from "common-db";
 import { getDB } from "../db";
 import { resolveSchedulable, type SchedulableModel } from "../model-catalog";
 import { checkNodeCompatibility, type BlockedVersion, type ModelNodeRequirements, type NodeCapability, type Provider } from "xinity-infoserver";
@@ -371,7 +371,7 @@ async function applyChanges(toUninstall: string[], toInstall: NewInstallation[])
 async function runSyncDeployedModels() {
   const requiredModels = await assembleModelRequirementTable();
   const [existing, availableServers]: [ModelInstallation[], AiNode[]] = await Promise.all([
-    getDB().select().from(modelInstallationT).where(isNull(modelInstallationT.deletedAt)),
+    getDB().select().from(modelInstallationT).where(sql`${modelInstallationT.deletedAt} IS NULL`),
     getDB().select().from(aiNodeT).where(sql`
       ${aiNodeT.available}
     AND

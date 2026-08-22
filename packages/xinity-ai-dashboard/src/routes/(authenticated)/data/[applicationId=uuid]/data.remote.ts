@@ -3,7 +3,7 @@ import { auth } from '$lib/server/auth-server';
 import { getDB } from '$lib/server/db';
 import { pick } from '$lib/util';
 import { error } from '@sveltejs/kit';
-import { apiCallResponseT, apiCallT, aiApiKeyT, sql, type ApiCall, type AiApiKey, isNull, and, inArray } from 'common-db';
+import { apiCallResponseT, apiCallT, aiApiKeyT, sql, type ApiCall, type AiApiKey, and, inArray } from 'common-db';
 import z from 'zod';
 
 async function getSession() {
@@ -46,7 +46,7 @@ function buildApiCallConditions(opts: {
   if (opts.applicationId) {
     conditions.push(sql`${apiCallT.applicationId} = ${opts.applicationId}`);
   } else {
-    conditions.push(isNull(apiCallT.applicationId));
+    conditions.push(sql`${apiCallT.applicationId} IS NULL`);
   }
   if (opts.apiKeyId) {
     conditions.push(sql`${apiCallT.apiKeyId} = ${opts.apiKeyId}`);
@@ -71,14 +71,14 @@ export const getApiKeys = query(z.object({ applicationId: z.uuid().nullable() })
 
   const conditions = [
     sql`${aiApiKeyT.organizationId} = ${session.activeOrganizationId}`,
-    isNull(aiApiKeyT.deletedAt),
+    sql`${aiApiKeyT.deletedAt} IS NULL`,
   ];
 
   if (applicationId) {
     conditions.push(sql`${aiApiKeyT.applicationId} = ${applicationId}`);
   } else {
     // For uncategorized view, show keys without a default application
-    conditions.push(isNull(aiApiKeyT.applicationId));
+    conditions.push(sql`${aiApiKeyT.applicationId} IS NULL`);
   }
 
   const apiKeys = await getDB()
