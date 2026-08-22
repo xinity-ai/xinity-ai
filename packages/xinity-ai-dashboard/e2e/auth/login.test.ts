@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
-import { freshPage, ownerPage, type TestPage } from "../utils/browser";
+import { freshPage, ownerPage } from "../utils/browser";
 import { expectURL, expectVisible, expectHidden } from "../utils/helpers";
-import { OWNER, STORAGE_STATE } from "../utils/test-data";
+import { OWNER } from "../utils/test-data";
 
 describe("Authentication flows", () => {
   test("unauthenticated visit to / redirects to /login/", async () => {

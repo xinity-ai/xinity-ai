@@ -1,6 +1,6 @@
 import { rootOs, withOrganization, requirePermission, auditMiddleware } from "../root";
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
-import { sql, modelDeploymentT, modelInstallationT, modelInstallationStateT, aiNodeT, organizationT, deploymentMatchesInstallation, type ModelDeployment, type SQL } from "common-db";
+import { sql, modelDeploymentT, modelInstallationT, modelInstallationStateT, aiNodeT, deploymentMatchesInstallation, type ModelDeployment, type SQL } from "common-db";
 import z from "zod";
 import { DeploymentDto } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";

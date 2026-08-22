@@ -1,4 +1,4 @@
-import { describe, test, expect } from "bun:test";
+import { describe, test } from "bun:test";
 import { ownerPage } from "../utils/browser";
 import { expectVisible, expectHidden } from "../utils/helpers";
 

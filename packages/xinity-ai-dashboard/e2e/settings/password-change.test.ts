@@ -1,9 +1,9 @@
-import { describe, test, expect, beforeAll } from "bun:test";
+import { describe, test, beforeAll } from "bun:test";
 import { join } from "path";
 import { freshPage, type TestPage } from "../utils/browser";
-import { expectVisible, expectURL } from "../utils/helpers";
+import { expectVisible } from "../utils/helpers";
 import { ensureE2EReady } from "../guard";
-import { ownerFetch, apiUrl } from "../api/api-helpers";
+import { ownerFetch } from "../api/api-helpers";
 import { BASE_URL, MAILHOG_API } from "../utils/test-data";
 
 const AUTH_HEADERS = {
