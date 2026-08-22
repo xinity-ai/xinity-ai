@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    // Naming a binding is how you opt out: `_unused` to keep a signature,
+    // or `const { drop, ...rest } = x` to omit a key.
+    "no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_",
+        "destructuredArrayIgnorePattern": "^_",
+        "ignoreRestSiblings": true
+      }
+    ]
+  },
+  // Rendered to users as text, never executed.
+  "ignorePatterns": ["**/assets/code-examples/**/*.js"],
+  "overrides": [
+    {
+      "files": ["**/*.svelte"],
+      // Template usage is invisible here: effects name dependencies bare to
+      // register them, and `bind:this` assigns refs from markup.
+      "rules": {
+        "no-unused-expressions": "off",
+        "no-unassigned-vars": "off"
+      }
+    }
+  ]
+}

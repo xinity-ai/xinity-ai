@@ -8,6 +8,7 @@
   "scripts": {
     "bump": "bumpp --release conventional --git-check --all --commit --tag --push --execute 'bash scripts/update-changelog.sh'",
     "changelog:preview": "bunx git-cliff --unreleased",
+    "lint": "oxlint",
     "postinstall": "if [ -z \"$CI\" ]; then bunx simple-git-hooks@2; fi",
     "sync:dockerfiles": "bun scripts/sync-dockerfile-manifests.ts",
     "sync:dockerfiles:check": "bun scripts/sync-dockerfile-manifests.ts --check",
@@ -25,7 +26,8 @@
   "devDependencies": {
     "@commitlint/cli": "^21.0.2",
     "@commitlint/config-conventional": "^21.0.2",
-    "bumpp": "^11.1.0"
+    "bumpp": "^11.1.0",
+    "oxlint": "^1.79.0"
   },
   "overrides": {
     "samlify": "2.13.1",
