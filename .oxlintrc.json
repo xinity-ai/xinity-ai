@@ -15,6 +15,12 @@
         "destructuredArrayIgnorePattern": "^_",
         "ignoreRestSiblings": true
       }
+    ],
+    // Only destructuring is safe here: oxlint's fixer strips the `type`
+    // modifier off import/export specifiers, which verbatimModuleSyntax needs.
+    "no-useless-rename": [
+      "error",
+      { "ignoreImport": true, "ignoreExport": true }
     ]
   },
   // Rendered to users as text, never executed.
