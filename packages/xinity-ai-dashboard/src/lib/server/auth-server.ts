@@ -8,7 +8,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { sveltekitCookies } from "better-auth/svelte-kit";
 import { getRequestEvent } from "$app/server";
 import { twoFactorT, userT, accountT, verificationT, sessionT, passkeyT, dashboardApiKeyT, ssoProviderT } from "common-db";
-import { organizationT, memberT, invitationT, sql, eq, and } from "common-db";
+import { organizationT, memberT, invitationT, sql } from "common-db";
 import { rootLogger } from "./logging";
 import { omit, pick } from "$lib/util";
 import { serverEnv, isInstanceAdmin, parseCsvEnvList } from "./serverenv";
@@ -330,10 +330,11 @@ export const auth = betterAuth({
           const [invitation] = await getDB()
             .select({ id: invitationT.id })
             .from(invitationT)
-            .where(and(
-              eq(invitationT.email, email),
-              eq(invitationT.status, "pending"),
-            ))
+            .where(sql`
+              ${invitationT.email} = ${email}
+            AND
+              ${invitationT.status} = ${"pending"}
+            `)
             .limit(1);
           if (!invitation) {
             throw new APIError("FORBIDDEN", {

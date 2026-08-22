@@ -1,4 +1,4 @@
-import { aiNodeT, eq, modelInstallationStateT, preconfigureDB } from "common-db";
+import { aiNodeT, sql, modelInstallationStateT, preconfigureDB } from "common-db";
 import { getAvailablePort, readProcessOutput } from "../test-helpers";
 import { ensureInfoServerRunning, infoServerUrl } from "../infoserver/infoserver-test-helpers";
 import { ensureSystemReady } from "../guard";
@@ -126,7 +126,7 @@ export function waitForNodeIdFile(stateDir: string, timeoutMs: number): Promise<
 
 export async function waitForNodeAvailability(nodeId: string, available: boolean, timeoutMs = 10_000): Promise<void> {
   await pollUntil(async () => {
-    const [node] = await getDB().select().from(aiNodeT).where(eq(aiNodeT.id, nodeId)).limit(1);
+    const [node] = await getDB().select().from(aiNodeT).where(sql`${aiNodeT.id} = ${nodeId}`).limit(1);
     return node?.available === available ? true : undefined;
   }, { timeoutMs, intervalMs: 200, timeoutMessage: `Timed out waiting for node ${nodeId} available=${available}` });
 }
@@ -136,7 +136,7 @@ export async function waitForInstallationState(installationId: string, timeoutMs
     const [state] = await getDB()
       .select()
       .from(modelInstallationStateT)
-      .where(eq(modelInstallationStateT.id, installationId))
+      .where(sql`${modelInstallationStateT.id} = ${installationId}`)
       .limit(1);
     return state?.lifecycleState === "ready" ? true : undefined;
   }, { timeoutMs, intervalMs: 250, timeoutMessage: `Timed out waiting for installation state for ${installationId}` });

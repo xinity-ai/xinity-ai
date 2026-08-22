@@ -27,7 +27,7 @@ import {
   usageEventT,
   preconfigureDB,
   asc,
-  eq,
+  sql,
   inArray,
   like,
 } from "common-db";
@@ -359,7 +359,7 @@ async function main() {
 
     if (toggleNode && tick - lastToggle >= TOGGLE_INTERVAL_MS) {
       toggleOnline = !toggleOnline;
-      await db.update(aiNodeT).set({ available: toggleOnline }).where(eq(aiNodeT.id, toggleNode.id));
+      await db.update(aiNodeT).set({ available: toggleOnline }).where(sql`${aiNodeT.id} = ${toggleNode.id}`);
       process.stdout.write(`\n  ${toggleNode.machineName} -> ${toggleOnline ? "online" : "offline"}`);
       lastToggle = tick;
     }

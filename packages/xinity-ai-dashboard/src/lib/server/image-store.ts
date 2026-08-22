@@ -8,7 +8,7 @@
  */
 import type { S3Client } from "bun";
 import { serverEnv } from "./serverenv";
-import { mediaObjectT, and, eq } from "common-db";
+import { mediaObjectT, sql } from "common-db";
 import { getDB } from "./db";
 import { rootLogger } from "./logging";
 
@@ -43,10 +43,11 @@ async function findMediaObject(
   const [row] = await getDB()
     .select({ s3Key: mediaObjectT.s3Key, mimeType: mediaObjectT.mimeType })
     .from(mediaObjectT)
-    .where(and(
-      eq(mediaObjectT.sha256, sha256),
-      eq(mediaObjectT.organizationId, organizationId),
-    ))
+    .where(sql`
+      ${mediaObjectT.sha256} = ${sha256}
+    AND
+      ${mediaObjectT.organizationId} = ${organizationId}
+    `)
     .limit(1);
   return row ?? null;
 }

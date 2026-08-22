@@ -95,7 +95,11 @@ function sync(): Observable<void> {
     switchMap((nodeID) =>
       from(
         getDB().select().from(modelInstallationT).where(
-          sql`${modelInstallationT.nodeId} = ${nodeID} AND ${modelInstallationT.deletedAt} IS NULL`
+          sql`
+            ${modelInstallationT.nodeId} = ${nodeID}
+          AND
+            ${modelInstallationT.deletedAt} IS NULL
+          `
         )
       )
     ),

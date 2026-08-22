@@ -8,7 +8,7 @@
 import type { RequestHandler } from "./$types";
 import { auth } from "$lib/server/auth-server";
 import { getDB } from "$lib/server/db";
-import { apiCallT, apiCallResponseT, and, eq } from "common-db";
+import { apiCallT, apiCallResponseT, sql } from "common-db";
 import { resolveToDataUri, parseMediaRef } from "$lib/server/image-store";
 import type { ApiCallInputMessage, ApiCallInputMessageContent } from "common-db";
 import { error } from "@sveltejs/kit";
@@ -30,12 +30,16 @@ export const GET: RequestHandler = async ({ params, locals }) => {
     getDB()
       .select()
       .from(apiCallT)
-      .where(and(eq(apiCallT.id, callId), eq(apiCallT.organizationId, orgId)))
+      .where(sql`
+        ${apiCallT.id} = ${callId}
+      AND
+        ${apiCallT.organizationId} = ${orgId}
+      `)
       .limit(1),
     getDB()
       .select()
       .from(apiCallResponseT)
-      .where(eq(apiCallResponseT.apiCallId, callId))
+      .where(sql`${apiCallResponseT.apiCallId} = ${callId}`)
       .limit(1),
   ]);
 

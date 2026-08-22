@@ -1,6 +1,6 @@
 import { error, redirect } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
-import { eq, userT } from "common-db";
+import { sql, userT } from "common-db";
 import { rootLogger } from "$lib/server/logging";
 import { getDB } from "$lib/server/db";
 import { auth } from "$lib/server/auth-server";
@@ -33,7 +33,7 @@ export const GET: RequestHandler = async ({ url, request }) => {
   log.info({ callback, user: { name, id: session.user.id } }, "Entered user name");
 
   if (name) {
-    await getDB().update(userT).set({ name }).where(eq(userT.id, session.user.id));
+    await getDB().update(userT).set({ name }).where(sql`${userT.id} = ${session.user.id}`);
   }
 
   redirect(302, callback);

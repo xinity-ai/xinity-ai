@@ -41,7 +41,11 @@ export async function buildClusterCapacity(): Promise<ClusterCapacity> {
       driverFeatures: aiNodeT.driverFeatures,
       gpus: aiNodeT.gpus,
     }).from(aiNodeT)
-      .where(sql`${aiNodeT.available} AND ${aiNodeT.deletedAt} IS NULL`),
+      .where(sql`
+        ${aiNodeT.available}
+      AND
+        ${aiNodeT.deletedAt} IS NULL
+      `),
     getDB().select().from(modelInstallationT)
       .where(sql`${modelInstallationT.deletedAt} IS NULL`),
   ]);

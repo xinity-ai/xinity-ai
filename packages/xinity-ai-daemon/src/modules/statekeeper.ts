@@ -1,5 +1,5 @@
 import { getDB } from "../db/connection";
-import { aiNodeT, eq, sql } from "common-db";
+import { aiNodeT, sql } from "common-db";
 import { getTlsConfig } from "common-env";
 import { $ } from "bun";
 import { env } from "../env";
@@ -184,7 +184,15 @@ async function registerNode(): Promise<string> {
     await tx
       .update(aiNodeT)
       .set({ available: false, deletedAt: new Date() })
-      .where(sql`${aiNodeT.host} = ${host} AND ${aiNodeT.port} = ${port} AND ${aiNodeT.deletedAt} IS NULL AND ${aiNodeT.id} <> ${id}`);
+      .where(sql`
+        ${aiNodeT.host} = ${host}
+      AND
+        ${aiNodeT.port} = ${port}
+      AND
+        ${aiNodeT.deletedAt} IS NULL
+      AND
+        ${aiNodeT.id} <> ${id}
+      `);
 
     await tx
       .insert(aiNodeT)
@@ -215,6 +223,6 @@ export async function setOffline(){
   await getDB()
     .update(aiNodeT)
     .set({ available: false, authToken: null })
-    .where(eq(aiNodeT.id, nodeId));
+    .where(sql`${aiNodeT.id} = ${nodeId}`);
 
 }

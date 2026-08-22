@@ -13,7 +13,11 @@ const log = rootLogger.child({ name: "api-call.procedure" });
 const tags = ["API Call"];
 
 const matchKeyInOrg = (keyId: string, orgId: string) =>
-  sql`${aiApiKeyT.id} = ${keyId} AND ${aiApiKeyT.organizationId} = ${orgId}`;
+  sql`
+    ${aiApiKeyT.id} = ${keyId}
+  AND
+    ${aiApiKeyT.organizationId} = ${orgId}
+  `;
 
 async function findApiKeyInOrg(keyId: string, orgId: string) {
   const [key] = await getDB()
@@ -101,7 +105,11 @@ const deleteApiCalls = rootOs
   .handler(async ({ context, input }) => {
     const result = await getDB()
       .delete(apiCallT)
-      .where(sql`${apiCallT.organizationId} = ${context.activeOrganizationId} AND ${apiCallT.id} IN ${input.apiCallIds}`)
+      .where(sql`
+        ${apiCallT.organizationId} = ${context.activeOrganizationId}
+      AND
+        ${apiCallT.id} IN ${input.apiCallIds}
+      `)
       .returning({ id: apiCallT.id });
     return { deleted: result.length };
   });
@@ -122,7 +130,11 @@ const updateMetadata = rootOs
     const result = await getDB()
       .update(apiCallT)
       .set({ metadata: input.metadata ?? null })
-      .where(sql`${apiCallT.id} = ${input.callId} AND ${apiCallT.organizationId} = ${context.activeOrganizationId}`)
+      .where(sql`
+        ${apiCallT.id} = ${input.callId}
+      AND
+        ${apiCallT.organizationId} = ${context.activeOrganizationId}
+      `)
       .returning();
     if (!result.length) {
       throw errors.NOT_FOUND();
@@ -145,7 +157,11 @@ const reassignApplication = rootOs
     const result = await getDB()
       .update(apiCallT)
       .set({ applicationId: input.applicationId })
-      .where(sql`${apiCallT.organizationId} = ${context.activeOrganizationId} AND ${apiCallT.id} IN ${input.apiCallIds}`)
+      .where(sql`
+        ${apiCallT.organizationId} = ${context.activeOrganizationId}
+      AND
+        ${apiCallT.id} IN ${input.apiCallIds}
+      `)
       .returning({ id: apiCallT.id });
     return { reassigned: result.length };
   });

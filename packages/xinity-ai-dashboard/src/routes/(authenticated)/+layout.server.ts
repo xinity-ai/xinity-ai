@@ -9,7 +9,7 @@ import {version} from "../../../../../package.json";
 import { semver } from "bun";
 import { timeCache } from "$lib/util";
 import type { RoleName } from "$lib/roles";
-import { sql, and, eq, isNull, userT, aiNodeT, defaultDisplaySettings, type DisplaySettings } from "common-db";
+import { sql, userT, aiNodeT, defaultDisplaySettings, type DisplaySettings } from "common-db";
 import { getLicenseSummary, hasFeature } from "$lib/server/license";
 
 const log = rootLogger.child({name: "+layout.root"})
@@ -142,7 +142,7 @@ async function fetchUserSettings(userId: string): Promise<{ displaySettings: Dis
     const [row] = await getDB()
       .select({ displaySettings: userT.displaySettings, temporaryPassword: userT.temporaryPassword })
       .from(userT)
-      .where(eq(userT.id, userId))
+      .where(sql`${userT.id} = ${userId}`)
       .limit(1);
     return {
       displaySettings: row?.displaySettings ?? defaultDisplaySettings,
@@ -159,7 +159,11 @@ async function fetchTotalAvailableVramGb(): Promise<number> {
     const [result] = await getDB()
       .select({ total: sql<number>`coalesce(sum(${aiNodeT.estCapacity}), 0)` })
       .from(aiNodeT)
-      .where(and(eq(aiNodeT.available, true), isNull(aiNodeT.deletedAt)));
+      .where(sql`
+        ${aiNodeT.available}
+      AND
+        ${aiNodeT.deletedAt} IS NULL
+      `);
     return result?.total ?? 0;
   } catch (err) {
     log.warn({ err }, "Failed to sum node VRAM");

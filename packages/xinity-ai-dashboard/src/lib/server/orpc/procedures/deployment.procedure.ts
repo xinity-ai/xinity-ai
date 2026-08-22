@@ -226,7 +226,11 @@ async function queryDeploymentsWithStatus(where: SQL | undefined): Promise<Deplo
   const rows = await getDB()
     .select()
     .from(modelDeploymentT)
-    .leftJoin(modelInstallationT, sql`${deploymentMatchesInstallation} AND ${modelInstallationT.deletedAt} IS NULL`)
+    .leftJoin(modelInstallationT, sql`
+      ${deploymentMatchesInstallation}
+    AND
+      ${modelInstallationT.deletedAt} IS NULL
+    `)
     .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`)
     .leftJoin(aiNodeT, sql`${aiNodeT.id} = ${modelInstallationT.nodeId}`)
     .where(where);
@@ -481,7 +485,11 @@ const retryDeployment = rootOs
     const failedStates = await getDB()
       .select({ stateId: modelInstallationStateT.id })
       .from(modelDeploymentT)
-      .innerJoin(modelInstallationT, sql`${deploymentMatchesInstallation} AND ${modelInstallationT.deletedAt} IS NULL`)
+      .innerJoin(modelInstallationT, sql`
+        ${deploymentMatchesInstallation}
+      AND
+        ${modelInstallationT.deletedAt} IS NULL
+      `)
       .innerJoin(modelInstallationStateT, sql`
         ${modelInstallationStateT.id} = ${modelInstallationT.id}
         AND ${modelInstallationStateT.lifecycleState} = ${"failed"}

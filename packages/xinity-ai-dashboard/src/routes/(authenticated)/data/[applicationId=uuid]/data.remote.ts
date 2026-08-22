@@ -3,7 +3,7 @@ import { auth } from '$lib/server/auth-server';
 import { getDB } from '$lib/server/db';
 import { pick } from '$lib/util';
 import { error } from '@sveltejs/kit';
-import { apiCallResponseT, apiCallT, aiApiKeyT, sql, type ApiCall, type AiApiKey, isNull, and, eq, inArray } from 'common-db';
+import { apiCallResponseT, apiCallT, aiApiKeyT, sql, type ApiCall, type AiApiKey, isNull, and, inArray } from 'common-db';
 import z from 'zod';
 
 async function getSession() {
@@ -23,7 +23,11 @@ async function apiCallExistsInOrg(apiCallId: string, organizationId: string | nu
   const [apiCall] = await getDB()
     .select({ id: apiCallT.id })
     .from(apiCallT)
-    .where(sql`${apiCallT.id} = ${apiCallId} AND ${apiCallT.organizationId} = ${organizationId}`)
+    .where(sql`
+      ${apiCallT.id} = ${apiCallId}
+    AND
+      ${apiCallT.organizationId} = ${organizationId}
+    `)
     .limit(1);
   return !!apiCall;
 }
@@ -37,15 +41,15 @@ function buildApiCallConditions(opts: {
   searchQuery?: string;
 }) {
   const conditions = [
-    eq(apiCallT.organizationId, opts.organizationId),
+    sql`${apiCallT.organizationId} = ${opts.organizationId}`,
   ];
   if (opts.applicationId) {
-    conditions.push(eq(apiCallT.applicationId, opts.applicationId));
+    conditions.push(sql`${apiCallT.applicationId} = ${opts.applicationId}`);
   } else {
     conditions.push(isNull(apiCallT.applicationId));
   }
   if (opts.apiKeyId) {
-    conditions.push(eq(apiCallT.apiKeyId, opts.apiKeyId));
+    conditions.push(sql`${apiCallT.apiKeyId} = ${opts.apiKeyId}`);
   }
   if (opts.metadataKey && opts.metadataValue) {
     conditions.push(sql`${apiCallT.metadata} @> ${JSON.stringify({ [opts.metadataKey]: opts.metadataValue })}::jsonb`);
@@ -188,10 +192,11 @@ export const getAPICallResponse = query.batch(z.uuid(), async (ids) => {
   const userId = session.user.id;
 
   const responses = await getDB().select().from(apiCallResponseT)
-    .where(and(
-      inArray(apiCallResponseT.apiCallId, ids),
-      eq(apiCallResponseT.userId, userId),
-    ));
+    .where(sql`
+      ${inArray(apiCallResponseT.apiCallId, ids)}
+    AND
+      ${apiCallResponseT.userId} = ${userId}
+    `);
 
   return id => responses.find(v => v.apiCallId === id);
 
@@ -244,7 +249,7 @@ export const deleteApiCall = command(z.object({ apiCallId: z.uuid() }), async ({
     throw error(404, { message: "The api Call was not found" });
   }
 
-  await getDB().delete(apiCallT).where(eq(apiCallT.id, apiCallId));
+  await getDB().delete(apiCallT).where(sql`${apiCallT.id} = ${apiCallId}`);
 
   return { success: true };
 });
