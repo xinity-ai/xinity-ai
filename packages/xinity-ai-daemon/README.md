@@ -106,7 +106,7 @@ Set `VLLM_BACKEND` to choose the backend explicitly (`systemd`, the default, or 
 | `XINITY_TLS_CERT` | PEM-encoded TLS certificate |
 | `XINITY_TLS_KEY` | PEM-encoded TLS private key (must be set together with cert) |
 
-Every environment variable above supports the `_FILE` suffix convention (e.g., `DB_CONNECTION_URL_FILE`) for reading values from files; secrets are just the variables where this matters most.
+Every environment variable above supports the `_FILE` suffix convention (e.g., `TETHER_SECRET_FILE`) for reading values from files. Secrets are just the variables where this matters most.
 
 ## NixOS Deployment
 
