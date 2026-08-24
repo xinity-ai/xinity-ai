@@ -5,9 +5,9 @@
  * gate on a single confirmation (with a bash-script dump as a secondary
  * option), then apply hands-off through the installer.
  */
-import { writeFileSync } from "fs";
-import { join } from "path";
-import { tmpdir } from "os";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { cancel, confirm, intro, isCancel, log, note, outro, select, spinner } from "./clack.ts";
 import { bold, cyan, dim } from "picocolors";
 import { type Component, ENV_SCHEMAS, ENV_DIR, getAutoDefaults, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT } from "./component-meta.ts";

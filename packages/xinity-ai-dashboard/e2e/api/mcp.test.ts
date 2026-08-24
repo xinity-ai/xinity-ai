@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeAll } from "bun:test";
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync } from "node:fs";
 import { ensureE2EReady } from "../guard";
 import { getSetupState } from "./api-helpers";
 import { BASE_URL, STORAGE_STATE, type StorageState } from "../utils/test-data";

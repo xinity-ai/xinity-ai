@@ -1,5 +1,5 @@
 import { describe, test, beforeAll } from "bun:test";
-import { join } from "path";
+import { join } from "node:path";
 import { freshPage, type TestPage } from "../utils/browser";
 import { expectVisible } from "../utils/helpers";
 import { ensureE2EReady } from "../guard";

@@ -1,6 +1,6 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { readFileSync, writeFileSync, existsSync } from "fs";
-import { join } from "path";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
 import { createTempDir, type TempDir } from "../helpers/temp-config.ts";
 import type { Manifest } from "../../src/lib/manifest.ts";
 import { makeComponentEntry, makeManifest } from "../helpers/fixtures.ts";

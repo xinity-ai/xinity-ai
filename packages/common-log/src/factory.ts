@@ -1,5 +1,5 @@
 import pino, { type StreamEntry } from "pino";
-import { hostname } from "os";
+import { hostname } from "node:os";
 
 export type LoggerOptions = {
   /** Pino log level. */

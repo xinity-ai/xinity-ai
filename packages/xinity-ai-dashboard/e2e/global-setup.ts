@@ -12,8 +12,8 @@ import {
   API_KEY_STATE,
   BASE_URL,
 } from "./utils/test-data";
-import { mkdirSync } from "fs";
-import { dirname } from "path";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 
 // ─── Types ──────────────────────────────────────────────────────────
 

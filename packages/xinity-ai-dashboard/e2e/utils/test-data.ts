@@ -1,4 +1,4 @@
-import { join } from "path";
+import { join } from "node:path";
 
 export const OWNER = {
   name: "E2E Owner",

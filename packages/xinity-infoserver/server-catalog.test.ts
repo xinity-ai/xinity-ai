@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterAll, afterEach, mock } from "bun:test";
-import { tmpdir } from "os";
-import { join } from "path";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 // ---------------------------------------------------------------------------
 // Mocks: must be registered before the dynamic import below

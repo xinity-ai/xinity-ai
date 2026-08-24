@@ -1,5 +1,5 @@
-import { createServer, connect } from "net";
-import { hostname as osHostname } from "os";
+import { createServer, connect } from "node:net";
+import { hostname as osHostname } from "node:os";
 import { localRun, type Host, type RunResult, type ElevationResult, type TunnelResult } from "./host.ts";
 import { cancel, log } from "./clack.ts";
 import { cyan, dim } from "picocolors";

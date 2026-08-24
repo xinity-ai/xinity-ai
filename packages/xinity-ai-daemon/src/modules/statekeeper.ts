@@ -3,7 +3,7 @@ import { aiNodeT, sql } from "common-db";
 import { getTlsConfig } from "common-env";
 import { $ } from "bun";
 import { env } from "../env";
-import { join } from "path";
+import { join } from "node:path";
 import { networkInterfaces } from "node:os";
 import { detectHardwareProfile, detectNodeName, type HardwareProfile } from "./hardware-detect";
 import { normalizePep440 } from "xinity-infoserver";

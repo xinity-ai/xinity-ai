@@ -3,7 +3,7 @@
  *
  * Pure I/O helpers with no UI dependencies. Safe to import from any module.
  */
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync } from "node:fs";
 
 /** Parse env file content (KEY=value lines) into a key-value record. */
 export function parseEnvString(content: string): Record<string, string> {

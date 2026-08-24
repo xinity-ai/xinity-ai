@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "bun:test";
-import { randomUUID } from "crypto";
+import { randomUUID } from "node:crypto";
 import { aiNodeT, modelInstallationT, preconfigureDB, sql } from "common-db";
 import {
   createTempStateDir,

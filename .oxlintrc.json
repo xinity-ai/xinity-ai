@@ -3,6 +3,8 @@
   "categories": {
     "correctness": "error"
   },
+  // Naming this replaces the default set, so the defaults are restated.
+  "plugins": ["unicorn", "typescript", "oxc", "import"],
   "rules": {
     // Naming a binding is how you opt out: `_unused` to keep a signature,
     // or `const { drop, ...rest } = x` to omit a key.
@@ -36,11 +38,20 @@
       "error",
       { "fixStyle": "inline-type-imports", "disallowTypeAnnotations": false }
     ],
-    "typescript/no-import-type-side-effects": "error"
+    "typescript/no-import-type-side-effects": "error",
+    "unicorn/prefer-node-protocol": "error",
+    "import/no-default-export": "error"
   },
   // Rendered to users as text, never executed.
   "ignorePatterns": ["**/assets/code-examples/**/*.js"],
   "overrides": [
+    {
+      // Tooling loads these by convention and reads the default export.
+      "files": ["**/*.config.ts", "**/*.config.js"],
+      "rules": {
+        "import/no-default-export": "off"
+      }
+    },
     {
       "files": ["**/*.svelte"],
       // Template usage is invisible here: effects name dependencies bare to

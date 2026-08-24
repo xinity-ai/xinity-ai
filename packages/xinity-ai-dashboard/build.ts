@@ -7,7 +7,7 @@
  *   bun run build.ts
  *   bun run build.ts --target bun-linux-arm64 --outfile dist/xinity-ai-dashboard
  */
-import { parseArgs } from "util";
+import { parseArgs } from "node:util";
 import { $ } from "bun";
 
 const { values } = parseArgs({
@@ -43,7 +43,7 @@ if (!values["no-vite"]) {
 
 // compile mode derives the output filename from the entrypoint path, ignoring
 // naming/outfile options. Output to a temp dir then rename to the desired name.
-const tmpDir = await import("os").then((os) => os.tmpdir());
+const tmpDir = await import("node:os").then((os) => os.tmpdir());
 const tmpOut = `${tmpDir}/bun-dashboard-compile-${Date.now()}`;
 
 const buildResult = await Bun.build({

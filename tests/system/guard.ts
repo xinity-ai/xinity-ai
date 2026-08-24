@@ -1,4 +1,4 @@
-import { join } from "path";
+import { join } from "node:path";
 import { sql, preconfigureDB } from "common-db";
 
 const ROOT_DIR = join(import.meta.dir, "../..");

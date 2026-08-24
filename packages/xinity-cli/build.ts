@@ -8,8 +8,8 @@
  *   bun run build.ts --target bun-linux-x64 --outfile dist/xinity
  *   bun run build.ts                           # defaults: target=bun-linux-x64, outfile=dist/xinity
  */
-import { resolve } from "path";
-import { parseArgs } from "util";
+import { resolve } from "node:path";
+import { parseArgs } from "node:util";
 import { $ } from "bun";
 import { serverStubs, serverStubSources, appStubSources } from "./src/lib/dashboard-stubs.ts";
 

@@ -1,6 +1,6 @@
 import adapter from '@eslym/sveltekit-adapter-bun';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
-import fs from 'fs';
+import fs from 'node:fs';
 
 const pkg = JSON.parse(fs.readFileSync('./package.json', 'utf-8'));
 

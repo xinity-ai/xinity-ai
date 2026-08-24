@@ -2,8 +2,8 @@
  * Persistent CLI configuration stored at config.json under the xinity config
  * dir ($XDG_CONFIG_HOME/xinity).
  */
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { dirname, join } from "path";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import * as p from "./clack.ts";
 import pc from "picocolors";
 import { configDir, IS_WINDOWS } from "./platform.ts";

@@ -9,7 +9,7 @@
  *   bun test --timeout 30000 tests/system/gateway/gateway.multimodal-s3.test.ts
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { randomUUID } from "crypto";
+import { randomUUID } from "node:crypto";
 import { apiCallT, mediaObjectT, preconfigureDB, sql } from "common-db";
 import { readProcessOutput, waitForHttp } from "../test-helpers";
 import { ensureSystemReady } from "../guard";

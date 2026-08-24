@@ -1,7 +1,7 @@
 import type { CommandModule } from "yargs";
-import { join } from "path";
-import { tmpdir } from "os";
-import { mkdirSync, copyFileSync, renameSync, unlinkSync, chmodSync, existsSync } from "fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { mkdirSync, copyFileSync, renameSync, unlinkSync, chmodSync, existsSync } from "node:fs";
 import { cancel, confirm, intro, isCancel, log, outro, spinner as clackSpinner } from "../lib/clack.ts";
 import { cyan, green, yellow } from "picocolors";
 import { defaultInstallDir, binaryName, IS_WINDOWS } from "../lib/platform.ts";

@@ -6,7 +6,7 @@
  * absent here, the migrator (`xinity up db`) owns it and only delegates to this
  * assistant when the user chose to set one up.
  */
-import { randomBytes } from "crypto";
+import { randomBytes } from "node:crypto";
 import { confirm, log, note, password as passwordPrompt, spinner as clackSpinner, text } from "./clack.ts";
 import { bold, cyan, dim } from "picocolors";
 import type { Host } from "./host.ts";

@@ -7,8 +7,8 @@
  * highest level possible; per-host settings are the escape hatch, not the
  * norm.
  */
-import { existsSync, readdirSync, unlinkSync } from "fs";
-import { join } from "path";
+import { existsSync, readdirSync, unlinkSync } from "node:fs";
+import { join } from "node:path";
 import { loadPrivateJson, savePrivateJson } from "./config.ts";
 import { configDir } from "./platform.ts";
 import { z } from "zod";
