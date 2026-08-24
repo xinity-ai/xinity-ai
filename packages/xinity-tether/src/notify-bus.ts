@@ -1,65 +1,78 @@
-import { subscribe, end as endDB } from "./db";
+import type { DesiredState } from "common-env";
 import { rootLogger } from "./logger";
-import { buildDesiredState } from "./desired-state";
-import { pushDesiredState, isConnected, getConnectedNodeIds } from "./connections";
 
 const log = rootLogger.child({ name: "notify-bus" });
 
 /** Must match the channel the model_installation trigger publishes to. */
-const CHANNEL = "model_installation";
+export const CHANNEL = "model_installation";
 const COALESCE_WINDOW_MS = 200;
 
-const pending = new Set<string>();
-let flushTimer: Timer | null = null;
-let unlisten: (() => Promise<void>) | null = null;
+type NotifyBusDeps = {
+  subscribe: (
+    channel: string,
+    onNotify: (payload: string) => void,
+    onSubscribed?: () => void,
+  ) => Promise<() => Promise<void>>;
+  buildDesiredState: (nodeId: string) => Promise<DesiredState>;
+  pushDesiredState: (nodeId: string, state: DesiredState) => boolean;
+  isConnected: (nodeId: string) => boolean;
+  getConnectedNodeIds: () => string[];
+};
 
-function queue(nodeId: string): void {
-  pending.add(nodeId);
-  if (flushTimer === null) {
-    flushTimer = setTimeout(() => void flush(), COALESCE_WINDOW_MS);
-  }
-}
+export function createNotifyBus(deps: NotifyBusDeps) {
+  const pending = new Set<string>();
+  let flushTimer: Timer | null = null;
+  let unlisten: (() => Promise<void>) | null = null;
 
-async function flush(): Promise<void> {
-  flushTimer = null;
-  const nodeIds = [...pending];
-  pending.clear();
-
-  for (const nodeId of nodeIds) {
-    if (!isConnected(nodeId)) {
-      continue;
-    }
-    try {
-      pushDesiredState(nodeId, await buildDesiredState(nodeId));
-    } catch (err) {
-      log.error({ err, nodeId }, "Failed to push desired state after notification");
+  function queue(nodeId: string): void {
+    pending.add(nodeId);
+    if (flushTimer === null) {
+      flushTimer = setTimeout(() => void flush(), COALESCE_WINDOW_MS);
     }
   }
-}
 
-export async function start(): Promise<void> {
-  // Notifications sent while the listen connection was down are lost, so every live
-  // daemon is re-synced whenever the subscription is established again.
-  unlisten = await subscribe(CHANNEL, queue, () => {
-    for (const nodeId of getConnectedNodeIds()) {
-      queue(nodeId);
-    }
-  });
-  log.info({ channel: CHANNEL }, "Listening for installation changes");
-}
-
-export async function stop(): Promise<void> {
-  if (flushTimer !== null) {
-    clearTimeout(flushTimer);
+  async function flush(): Promise<void> {
     flushTimer = null;
+    const nodeIds = [...pending];
+    pending.clear();
+
+    for (const nodeId of nodeIds) {
+      if (!deps.isConnected(nodeId)) {
+        continue;
+      }
+      try {
+        deps.pushDesiredState(nodeId, await deps.buildDesiredState(nodeId));
+      } catch (err) {
+        log.error({ err, nodeId }, "Failed to push desired state after notification");
+      }
+    }
   }
 
-  try {
-    await unlisten?.();
-  } catch (err) {
-    log.warn({ err }, "Failed to unlisten");
-  }
-  unlisten = null;
+  return {
+    async start(): Promise<void> {
+      // Notifications sent while the listen connection was down are lost, so every
+      // live daemon is re-synced whenever the subscription is established again.
+      unlisten = await deps.subscribe(CHANNEL, queue, () => {
+        for (const nodeId of deps.getConnectedNodeIds()) {
+          queue(nodeId);
+        }
+      });
+      log.info({ channel: CHANNEL }, "Listening for installation changes");
+    },
 
-  await endDB();
+    async stop(): Promise<void> {
+      if (flushTimer !== null) {
+        clearTimeout(flushTimer);
+        flushTimer = null;
+      }
+      pending.clear();
+
+      try {
+        await unlisten?.();
+      } catch (err) {
+        log.warn({ err }, "Failed to unlisten");
+      }
+      unlisten = null;
+    },
+  };
 }
