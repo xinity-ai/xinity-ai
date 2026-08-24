@@ -1,4 +1,4 @@
-import { z } from "zod";
+import type { z } from "zod";
 import { resolveModel, type ResolvedModel } from "./ai-sdk";
 import { errorResponse, handleEndpointError, recordFailedRequest, validateModelType, validationError } from "./util";
 import type { AuthResult } from "./auth";

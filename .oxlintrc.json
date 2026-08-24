@@ -21,7 +21,22 @@
     "no-useless-rename": [
       "error",
       { "ignoreImport": true, "ignoreExport": true }
-    ]
+    ],
+    // `x != null` covers both null and undefined in one check, which is the
+    // intent everywhere it appears here.
+    "eqeqeq": ["error", "always", { "null": "ignore" }],
+    "no-var": "error",
+    "prefer-const": "error",
+    "typescript/no-extraneous-class": "error",
+    "typescript/consistent-type-assertions": "error",
+    // verbatimModuleSyntax emits imports as written, so a type imported as a
+    // value becomes a missing runtime binding. Inline keeps mixed imports as
+    // one statement; `import()` type annotations stay legal for ambient files.
+    "typescript/consistent-type-imports": [
+      "error",
+      { "fixStyle": "inline-type-imports", "disallowTypeAnnotations": false }
+    ],
+    "typescript/no-import-type-side-effects": "error"
   },
   // Rendered to users as text, never executed.
   "ignorePatterns": ["**/assets/code-examples/**/*.js"],

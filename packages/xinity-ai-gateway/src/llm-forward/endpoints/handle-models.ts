@@ -1,4 +1,4 @@
-import { calcCanaryProgress, modelDeploymentT, modelInstallationT, modelInstallationStateT, aiNodeT, organizationT, sql, deploymentMatchesInstallation, lifecycleStateEnum } from "common-db";
+import { calcCanaryProgress, modelDeploymentT, modelInstallationT, modelInstallationStateT, aiNodeT, organizationT, sql, deploymentMatchesInstallation, type lifecycleStateEnum } from "common-db";
 import { getDB } from "../../db";
 import { checkAuth } from "../auth";
 import { getCatalogClient, getInfoClient } from "../model-data";

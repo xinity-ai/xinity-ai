@@ -1,6 +1,6 @@
 import {
   Subject,
-  Observable,
+  type Observable,
   Subscription,
   merge,
   timer,

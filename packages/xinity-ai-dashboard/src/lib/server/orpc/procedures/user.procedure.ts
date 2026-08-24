@@ -2,7 +2,7 @@ import { rootOs, withAuth, auditMiddleware } from "../root";
 import { UserDto } from "$lib/orpc/dtos/user.dto";
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
 import { sql, userT } from "common-db";
-import z from "zod";
+import type z from "zod";
 import { getDB } from "$lib/server/db";
 
 const tags = ["User"];

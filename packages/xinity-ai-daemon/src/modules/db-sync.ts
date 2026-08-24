@@ -1,7 +1,7 @@
 import { getDB } from "../db/connection";
 import { modelInstallationT, modelInstallationStateT, sql, type ModelInstallation } from "common-db";
 import { getNodeId, getNodeDrivers } from "./statekeeper";
-import { defer, from, Observable } from "rxjs";
+import { defer, from, type Observable } from "rxjs";
 import {
   endWith,
   ignoreElements,

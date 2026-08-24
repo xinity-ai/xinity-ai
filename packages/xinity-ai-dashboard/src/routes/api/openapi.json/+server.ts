@@ -4,7 +4,7 @@
 import { OpenAPIGenerator } from '@orpc/openapi'
 import { ZodToJsonSchemaConverter } from '@orpc/zod/zod4'
 import { text } from '@sveltejs/kit'
-import { os, Procedure } from '@orpc/server'
+import { os, type Procedure } from '@orpc/server'
 import { router } from '$lib/server/orpc/router'
 import { UserDto } from '$lib/orpc/dtos/user.dto'
 import { ApiKeyDto } from '$lib/orpc/dtos/api-key.dto'

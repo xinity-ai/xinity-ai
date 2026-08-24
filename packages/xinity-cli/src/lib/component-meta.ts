@@ -5,7 +5,7 @@
  * the CLI. Zero runtime dependencies, intentionally kept side-effect-free
  * so any module can import without pulling in install/service logic.
  */
-import { z } from "zod";
+import type { z } from "zod";
 
 import { gatewayEnvSchema } from "xinity-ai-gateway/src/env-schema.ts";
 import { daemonEnvSchema } from "xinity-ai-daemon/src/env-schema.ts";

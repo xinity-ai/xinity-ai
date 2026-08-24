@@ -5,7 +5,7 @@ import postgres from "postgres";
 // As soon as this becomes available in the bun PG driver, we should switch to that instead
 // ISSUE: https://github.com/oven-sh/bun/issues/18214
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { type Logger } from "drizzle-orm/logger";
+import type { Logger } from "drizzle-orm/logger";
 import { sql } from "drizzle-orm";
 import { expectedMigrationCount, type MigrationState } from "./migrations";
 

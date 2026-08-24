@@ -4,7 +4,7 @@
  * Pure functions with no DB or IO dependencies.
  */
 import { matchesVersionRange, satisfiesMinVersion } from "./semver";
-import { type LegacyModel, type Model } from "./definitions/model-definition";
+import type { LegacyModel, Model } from "./definitions/model-definition";
 
 /** Per-GPU info as detected by the daemon and persisted on aiNodeT. */
 export type GpuInfo = {

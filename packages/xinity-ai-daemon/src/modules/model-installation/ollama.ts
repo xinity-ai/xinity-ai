@@ -1,5 +1,5 @@
 import { Ollama, type ProgressResponse } from "ollama";
-import { bufferTime, concatMap, defer, endWith, from, ignoreElements, map, merge, mergeMap, Observable, switchMap, tap } from "rxjs";
+import { bufferTime, concatMap, defer, endWith, from, ignoreElements, map, merge, mergeMap, type Observable, switchMap, tap } from "rxjs";
 import { env } from "../../env";
 import type { ModelInstallation } from "common-db";
 import { rootLogger } from "../../logger";
