@@ -1,5 +1,4 @@
 <script lang="ts">
-  import type { PageData } from "./$types";
   import NoOrganization from "$lib/components/NoOrganization.svelte";
   import * as Card from "$lib/components/ui/card";
   import { Button } from "$lib/components/ui/button";
@@ -9,7 +8,13 @@
   import { orpc } from "$lib/orpc/orpc-client";
   import { Cpu, Play, Square, Database, FileText, Activity, AlertCircle } from "@lucide/svelte";
 
-  let { data }: { data: PageData } = $props();
+  interface TrainingPageData {
+    activeOrganizationId?: string | null;
+    datasets?: { totalApiCalls: number; datasetItemCount: number; jsonlPreview: string; jsonlFull: string };
+    jobs?: any[];
+  }
+
+  let { data }: { data: TrainingPageData } = $props();
 
   let datasets = $state(data.datasets);
   let jobs = $state(data.jobs || []);

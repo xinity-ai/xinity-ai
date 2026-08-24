@@ -1,8 +1,8 @@
-import type { PageServerLoad } from "./$types";
+import type { RequestEvent } from "@sveltejs/kit";
 import { router } from "$lib/server/orpc/router";
 import { call } from "@orpc/server";
 
-export const load: PageServerLoad = async ({ parent, locals }) => {
+export const load = async ({ parent, locals }: RequestEvent) => {
   const { session } = await parent();
   const activeOrgId = session.activeOrganizationId;
 
