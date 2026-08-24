@@ -68,4 +68,26 @@ describe("xinity-fine-tuning", () => {
     expect(cancelled).toBe(true);
     expect(FineTuningRunner.getJobStatus("test-job-999")?.status).toBe("CANCELLED");
   });
+
+  test("FineTuningExporter augments dataset with Code Intelligence AST Graph context when option enabled", () => {
+    const rawCalls: RawApiCall[] = [
+      {
+        id: "call-1",
+        specifiedModel: "llama-3",
+        inputMessages: [{ role: "user", content: "Refactor UserService" }],
+        outputMessage: { role: "assistant", content: "UserService refactored." }
+      }
+    ];
+
+    const astContext = "[class] UserService @ src/service.ts\n[function] getUser @ src/service.ts";
+    const dataset = FineTuningExporter.exportChatML(rawCalls, {
+      includeCodeIntelligence: true,
+      graphSymbolsContext: astContext
+    });
+
+    expect(dataset.length).toBe(1);
+    expect(dataset[0]!.messages[0]!.role).toBe("system");
+    expect(dataset[0]!.messages[0]!.content).toContain("[Code Intelligence AST Context]");
+    expect(dataset[0]!.messages[0]!.content).toContain("UserService @ src/service.ts");
+  });
 });

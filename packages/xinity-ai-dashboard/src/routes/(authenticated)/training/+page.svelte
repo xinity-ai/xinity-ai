@@ -8,6 +8,8 @@
   import { orpc } from "$lib/orpc/orpc-client";
   import { Cpu, Play, Square, Database, FileText, Activity, AlertCircle } from "@lucide/svelte";
 
+  import { Checkbox } from "$lib/components/ui/checkbox";
+
   interface TrainingPageData {
     activeOrganizationId?: string | null;
     datasets?: { totalApiCalls: number; datasetItemCount: number; jsonlPreview: string; jsonlFull: string };
@@ -24,6 +26,7 @@
   let epochs = $state(3);
   let loraRank = $state(16);
   let gpuId = $state("0");
+  let includeCodeIntelligence = $state(false);
   let isSubmitting = $state(false);
   let errorMessage = $state<string | null>(null);
   let selectedJobLogs = $state<string[]>([]);
@@ -39,7 +42,8 @@
         learningRate,
         epochs,
         loraRank,
-        gpuId
+        gpuId,
+        includeCodeIntelligence
       });
 
       if (err) {
@@ -166,6 +170,12 @@
               <div class="space-y-2">
                 <Label for="loraRank">LoRA Rank (r)</Label>
                 <Input id="loraRank" type="number" min="4" max="128" bind:value={loraRank} required />
+              </div>
+              <div class="flex items-center space-x-2 pt-6 col-span-1 md:col-span-2">
+                <Checkbox id="includeCodeIntelligence" bind:checked={includeCodeIntelligence} />
+                <Label for="includeCodeIntelligence" class="text-sm font-medium cursor-pointer">
+                  Augment Training Dataset with Code Intelligence AST Graph Context
+                </Label>
               </div>
             </div>
 

@@ -16,17 +16,30 @@ export interface ChatMLDatasetItem {
   messages: ApiCallMessage[];
 }
 
+export interface ExportOptions {
+  includeCodeIntelligence?: boolean;
+  graphSymbolsContext?: string;
+}
+
 export class FineTuningExporter {
   /**
    * Converts raw API calls into ChatML JSONL dataset items for LoRA / QLoRA training.
+   * Optionally augments dataset with Code Intelligence AST Graph context.
    */
-  public static exportChatML(apiCalls: RawApiCall[]): ChatMLDatasetItem[] {
+  public static exportChatML(apiCalls: RawApiCall[], options?: ExportOptions): ChatMLDatasetItem[] {
     const dataset: ChatMLDatasetItem[] = [];
 
     for (const call of apiCalls) {
       if (!call.inputMessages || call.inputMessages.length === 0) continue;
 
       const messages: ApiCallMessage[] = [];
+
+      if (options?.includeCodeIntelligence && options.graphSymbolsContext) {
+        messages.push({
+          role: 'system',
+          content: `[Code Intelligence AST Context]\n${options.graphSymbolsContext}`
+        });
+      }
 
       for (const msg of call.inputMessages) {
         if (msg.role && msg.content) {

@@ -4,14 +4,24 @@ import { sql, apiCallT, type ApiCallInputMessage } from "common-db";
 import { getDB } from "$lib/server/db";
 import { FineTuningExporter, FineTuningRunner, type RawApiCall } from "xinity-fine-tuning";
 
+import { MultiTenantGraphStorage } from "xinity-code-intelligence";
+
 const tags = ["Fine-Tuning"];
+
+const graphStorage = new MultiTenantGraphStorage();
+
+function getOrgGraphContext(orgId: string): string {
+  const symbols = graphStorage.querySymbols(orgId, "", undefined, 50);
+  if (!symbols || symbols.length === 0) return "[No AST symbols indexed yet]";
+  return symbols.map(s => `[${s.type}] ${s.name} @ ${s.filePath}`).join("\n");
+}
 
 /** Lists datasets created from labeled API calls in the active organization. */
 const listDatasets = rootOs
   .use(withOrganization)
   .use(requirePermission({ apiCall: ["read"] }))
   .route({ path: "/datasets", method: "GET", tags, summary: "List Fine-Tuning Datasets" })
-  .input(z.object({ limit: z.number().optional().default(100) }))
+  .input(z.object({ limit: z.number().optional().default(100), includeCodeIntelligence: z.boolean().optional().default(false) }))
   .handler(async ({ context, input }) => {
     const orgId = context.activeOrganizationId;
 
@@ -30,7 +40,8 @@ const listDatasets = rootOs
       metadata: (c.metadata as Record<string, any>) ?? null
     }));
 
-    const chatMlItems = FineTuningExporter.exportChatML(formattedCalls);
+    const graphSymbolsContext = input.includeCodeIntelligence ? getOrgGraphContext(orgId) : undefined;
+    const chatMlItems = FineTuningExporter.exportChatML(formattedCalls, { includeCodeIntelligence: input.includeCodeIntelligence, graphSymbolsContext });
     const jsonl = FineTuningExporter.toJSONL(chatMlItems);
 
     return {
@@ -54,7 +65,8 @@ const startJob = rootOs
       learningRate: z.number().positive().optional().default(0.0002),
       epochs: z.number().int().positive().optional().default(3),
       loraRank: z.number().int().positive().optional().default(16),
-      gpuId: z.string().optional().default("0")
+      gpuId: z.string().optional().default("0"),
+      includeCodeIntelligence: z.boolean().optional().default(false)
     })
   )
   .handler(async ({ context, input }) => {
@@ -74,13 +86,14 @@ const startJob = rootOs
       rating: c.rating ?? null
     }));
 
-    const chatMlItems = FineTuningExporter.exportChatML(formattedCalls);
+    const graphSymbolsContext = input.includeCodeIntelligence ? getOrgGraphContext(orgId) : undefined;
+    const chatMlItems = FineTuningExporter.exportChatML(formattedCalls, { includeCodeIntelligence: input.includeCodeIntelligence, graphSymbolsContext });
     const jsonl = FineTuningExporter.toJSONL(chatMlItems);
     const jobId = `ft-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
     const status = await FineTuningRunner.startJob({
       jobId,
-      name: `Fine-Tune ${input.baseModel}`,
+      name: `Fine-Tune ${input.baseModel}` + (input.includeCodeIntelligence ? " (+CodeIntelligence)" : ""),
       baseModel: input.baseModel,
       datasetJsonl: jsonl,
       learningRate: input.learningRate,
