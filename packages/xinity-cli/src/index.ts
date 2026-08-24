@@ -10,12 +10,31 @@ import { configureCommand } from "./commands/configure.ts";
 import { rmCommand } from "./commands/rm.ts";
 import { completionCommand } from "./commands/completion.ts";
 import { stackCommand } from "./commands/stack.ts";
+import { cleanupOldBinary } from "./commands/update.ts";
 
-// Wrapped in an async function to avoid top-level await, which Bun.build()
-// transforms into an internal `awaitPromise` call that breaks the two-step
-// bundle → compile build (see build.ts comments).
+const LOCAL_LINUX_COMMANDS = new Set(["up", "rm", "doctor"]);
+
+function rejectLocalServiceCommands(argv: { _: (string | number)[]; "target-host"?: string }): void {
+  if (process.platform === "linux") {
+    return;
+  }
+  const cmd = String(argv._[0] ?? "");
+  if (!LOCAL_LINUX_COMMANDS.has(cmd)) {
+    return;
+  }
+  if (argv["target-host"]) {
+    return;
+  }
+  console.error(
+    `Service management requires a Linux host. ` +
+    `Use --target-host to specify a remote Linux host.`,
+  );
+  process.exit(1);
+}
+
 async function main() {
-  // Preload route names so the synchronous yargs builder can offer them as choices.
+  cleanupOldBinary();
+
   if (process.argv.includes("--get-yargs-completions")) {
     await preloadActChoices();
   }
@@ -23,6 +42,7 @@ async function main() {
   await yargs(hideBin(process.argv))
     .scriptName("xinity")
     .version(`v${version}`)
+    .middleware(rejectLocalServiceCommands, true)
     .command(doctorCommand)
     .command(upCommand)
     .command(rmCommand)

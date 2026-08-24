@@ -15,6 +15,16 @@ function makeRelease(assetNames: string[], tagName = "v0.1.0"): Release {
   };
 }
 
+function withPlatform(platform: string, run: () => void): void {
+  const original = process.platform;
+  Object.defineProperty(process, "platform", { value: platform, configurable: true });
+  try {
+    run();
+  } finally {
+    Object.defineProperty(process, "platform", { value: original, configurable: true });
+  }
+}
+
 describe("github", () => {
   describe("pickReleaseAsset", () => {
     test("prefers tar.gz when both formats are present", () => {
@@ -73,6 +83,24 @@ describe("github", () => {
       const expected = process.arch === "arm64" ? "arm64" : "x64";
       const release = makeRelease([`xinity-ai-gateway-linux-${expected}.tar.gz`]);
       expect(pickReleaseAsset(release, "gateway")).toBe(`xinity-ai-gateway-linux-${expected}.tar.gz`);
+    });
+
+    for (const [platform, label] of [["darwin", "macOS"], ["win32", "Windows"]] as const) {
+      test(`points at newer releases when a Linux-only release is picked on ${label}`, () => {
+        const release = makeRelease(["xinity-cli-linux-x64.tar.gz"], "v0.23.0");
+        withPlatform(platform, () => {
+          expect(() => pickReleaseAsset(release, "cli")).toThrow(
+            `Release v0.23.0 has Linux builds only. ${label} builds are present in newer releases only.`,
+          );
+        });
+      });
+    }
+
+    test("keeps the generic message when a release carries no CLI build at all", () => {
+      const release = makeRelease(["unrelated.txt"], "v0.23.0");
+      withPlatform("darwin", () => {
+        expect(() => pickReleaseAsset(release, "cli")).toThrow(/^Neither xinity-cli-darwin-/);
+      });
     });
   });
 
