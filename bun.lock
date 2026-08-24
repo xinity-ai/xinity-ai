@@ -182,6 +182,16 @@
         "@types/node": "^22.13.4",
       },
     },
+    "packages/xinity-fine-tuning": {
+      "name": "xinity-fine-tuning",
+      "version": "1.0.0",
+      "dependencies": {
+        "zod": "^3.24.2",
+      },
+      "devDependencies": {
+        "@types/node": "^22.13.4",
+      },
+    },
     "packages/xinity-infoserver": {
       "name": "xinity-infoserver",
       "dependencies": {
@@ -1580,6 +1590,8 @@
 
     "xinity-code-intelligence": ["xinity-code-intelligence@workspace:packages/xinity-code-intelligence"],
 
+    "xinity-fine-tuning": ["xinity-fine-tuning@workspace:packages/xinity-fine-tuning"],
+
     "xinity-infoserver": ["xinity-infoserver@workspace:packages/xinity-infoserver"],
 
     "xml": ["xml@1.0.1", "", {}, "sha512-huCv9IH9Tcf95zuYCsQraZtWnJvBtLVE0QHMOs8bWyZAFZNDcYjsPq1nEx8jKA9y+Beo9v+7OBPRisQTjinQMw=="],
@@ -1691,6 +1703,8 @@
     "wrap-ansi-cjs/strip-ansi": ["strip-ansi@6.0.1", "", { "dependencies": { "ansi-regex": "^5.0.1" } }, "sha512-Y38VPSHcqkFrCpFnQ9vuSXmquuv5oXOKpGeT6aGrr3o3Gc9AlVa6JBfUSOCnbxGGZF+/0ooI7KrPuUSztUdU5A=="],
 
     "xinity-code-intelligence/zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
+
+    "xinity-fine-tuning/zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
 
     "xml-crypto/xpath": ["xpath@0.0.33", "", {}, "sha512-NNXnzrkDrAzalLhIUc01jO2mOzXGXh1JwPgkihcLLzw98c0WgYDmmjSh1Kl3wzaxSVWMuA+fe0WTWOBDWCBmNA=="],
 

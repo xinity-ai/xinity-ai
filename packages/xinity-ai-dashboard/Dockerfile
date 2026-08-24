@@ -18,6 +18,7 @@ COPY packages/xinity-ai-dashboard/package.json packages/xinity-ai-dashboard/pack
 COPY packages/xinity-ai-gateway/package.json packages/xinity-ai-gateway/package.json
 COPY packages/xinity-cli/package.json packages/xinity-cli/package.json
 COPY packages/xinity-code-intelligence/package.json packages/xinity-code-intelligence/package.json
+COPY packages/xinity-fine-tuning/package.json packages/xinity-fine-tuning/package.json
 COPY packages/xinity-infoserver/package.json packages/xinity-infoserver/package.json
 # [/sync:workspace-manifests]
 

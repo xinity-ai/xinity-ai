@@ -14,6 +14,7 @@ import { instanceAdminRouter } from "./procedures/instance-admin.procedure";
 import { clusterRouter } from "./procedures/cluster.procedure";
 import { computeRouter } from "./procedures/compute.procedure";
 import { auditRouter } from "./procedures/audit.procedure";
+import { fineTuningRouter } from "./procedures/fine-tuning.procedure";
 import z from "zod";
 
 const health = os
@@ -40,5 +41,6 @@ export const router = {
   cluster: clusterRouter,
   compute: computeRouter,
   audit: auditRouter,
+  fineTuning: fineTuningRouter,
   health,
 };
