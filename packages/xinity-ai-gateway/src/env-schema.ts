@@ -9,6 +9,7 @@ export const gatewayEnvSchema = z.object({
   IDLE_TIMEOUT: z.coerce.number().max(255).default(255).describe("Timeout in seconds after which the request is assumed to be stalled and interrupted (max 255)"),
   UNIX_SOCKET: z.string().optional().describe("Unix socket path (overrides HOST/PORT when set)").meta(expert()),
   DB_CONNECTION_URL: z.url().describe("PostgreSQL connection string (e.g. postgresql://user:pass@host:5432/dbname)").meta(secret()),
+  DB_MAX_CONNECTIONS: z.coerce.number().int().positive().default(20).describe("Maximum PostgreSQL connection pool size for gateway").meta(expert()),
   REDIS_URL: z.url().describe("Redis connection URL (e.g. redis://localhost:6379)").meta(secret()),
   INFOSERVER_URL: z.url().default("https://sysinfo.xinity.ai").describe("Infoserver URL (default hosted: https://sysinfo.xinity.ai, or your self-hosted instance)"),
   WEB_SEARCH_PROVIDER: z.enum(WEB_SEARCH_PROVIDER_NAMES).optional()

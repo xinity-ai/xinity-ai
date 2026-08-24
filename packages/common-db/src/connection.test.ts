@@ -54,7 +54,7 @@ describe("checkMigrations", () => {
 
 describe("preconfigureDB", () => {
   it("initializes without connecting and exports checkMigrations / getDB", () => {
-    const { checkMigrations: cm, getDB, getMigrationState } = preconfigureDB("postgresql://localhost:5432/test", undefined, { max: undefined });
+    const { checkMigrations: cm, getDB, getMigrationState } = preconfigureDB("postgresql://localhost:5432/test");
     expect(typeof cm).toBe("function");
     expect(typeof getDB).toBe("function");
     expect(getMigrationState()).toBeNull();

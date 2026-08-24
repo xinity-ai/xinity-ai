@@ -10,6 +10,7 @@ export const daemonEnvSchema = z.object({
   IDLE_TIMEOUT: z.coerce.number().default(255).describe("Timeout in seconds after which idle connections are closed").meta(expert()),
   XINITY_OLLAMA_ENDPOINT: z.url().optional().describe("Ollama API endpoint, typically http://localhost:11434 (enables ollama driver)"),
   DB_CONNECTION_URL: z.url().describe("PostgreSQL connection string (e.g. postgresql://user:pass@host:5432/dbname)").meta(secret()),
+  DB_MAX_CONNECTIONS: z.coerce.number().int().positive().default(5).describe("Maximum PostgreSQL connection pool size for daemon").meta(expert()),
   INFOSERVER_URL: z.url().default("https://sysinfo.xinity.ai").describe("Infoserver URL (default hosted: https://sysinfo.xinity.ai, or your self-hosted instance)"),
   STATE_DIR: z.string().default("./.local").describe("Local state directory for daemon runtime data").meta(expert()),
   CIDR_PREFIX: z.string().default("").describe("Network CIDR prefix (e.g. '192.168') to filter which local IP the daemon advertises. Empty = first non-internal IPv4 address"),
