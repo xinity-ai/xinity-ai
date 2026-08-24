@@ -172,8 +172,8 @@ async function handleInit(name: string): Promise<void> {
   // pools and live on fleets (with an optional stack-wide baseline under
   // `stack edit` → Component settings).
   const components: Component[] = hostsOwnInfoserver
-    ? ["infoserver", "gateway", "dashboard"]
-    : ["gateway", "dashboard"];
+    ? ["infoserver", "gateway", "dashboard", "tether"]
+    : ["gateway", "dashboard", "tether"];
   if (hostsOwnInfoserver) {
     // Marks the infoserver as stack-hosted, which hides INFOSERVER_URL from
     // the shared editor; the URL is derived from its host at deploy time.

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { renderUpPlanScript, type UpPlan } from "../../src/lib/up-plan.ts";
+import { coreComponents, initialSharedSecrets, renderUpPlanScript, type UpPlan } from "../../src/lib/up-plan.ts";
 import { buildPostgresProvisionCommands, describePostgresProvision, type PostgresProvision } from "../../src/lib/postgres-setup.ts";
 import { describeRedisPlan, buildRedisProvisionCommands, type RedisPlan } from "../../src/lib/redis-setup.ts";
 
@@ -101,5 +101,34 @@ describe("renderUpPlanScript", () => {
   test("a keep-current redis plan is not part of an up-all script", async () => {
     const script = await renderUpPlanScript(planWith({}));
     expect(script).not.toContain("Redis");
+  });
+});
+
+describe("coreComponents", () => {
+  test("always installs the tether, ordered before the daemon that depends on it", () => {
+    const components = coreComponents({ installInfoserver: false, installDaemon: true });
+    expect(components).toContain("tether");
+    expect(components.indexOf("tether")).toBeLessThan(components.indexOf("daemon"));
+  });
+
+  test("the tether is not opt-in, unlike the infoserver and daemon", () => {
+    expect(coreComponents({ installInfoserver: false, installDaemon: false }))
+      .toEqual(["gateway", "dashboard", "tether"]);
+    expect(coreComponents({ installInfoserver: true, installDaemon: false })[0]).toBe("infoserver");
+  });
+});
+
+describe("initialSharedSecrets", () => {
+  test("pre-fills the required secrets that carry no schema default", () => {
+    const secrets = initialSharedSecrets();
+    expect(secrets.BETTER_AUTH_SECRET).toBeTruthy();
+    expect(secrets.TETHER_SECRET).toBeTruthy();
+  });
+
+  test("a distinct secret per run, and never a shared value between the two", () => {
+    const first = initialSharedSecrets();
+    const second = initialSharedSecrets();
+    expect(first.BETTER_AUTH_SECRET).not.toBe(second.BETTER_AUTH_SECRET);
+    expect(first.BETTER_AUTH_SECRET).not.toBe(first.TETHER_SECRET);
   });
 });
