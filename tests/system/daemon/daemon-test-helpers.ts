@@ -192,6 +192,8 @@ export async function startDaemon(options: {
       INFOSERVER_URL: infoServerUrl(""),
       TETHER_URL: tether.endpoint,
       TETHER_SECRET: "test-secret",
+      // Blank so driver detection cannot block on pulling a multi-gigabyte image.
+      VLLM_DOCKER_IMAGE: "",
     },
     stdout: "ignore",
     stderr: "pipe",
