@@ -85,6 +85,13 @@
       "when": 1783454545773,
       "tag": "0011_silky_shocker",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1787584413071,
+      "tag": "0012_generic_row_change_notifications",
+      "breakpoints": true
     }
   ]
 }
