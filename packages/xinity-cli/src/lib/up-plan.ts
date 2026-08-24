@@ -5,12 +5,13 @@
  * gate on a single confirmation (with a bash-script dump as a secondary
  * option), then apply hands-off through the installer.
  */
+import { randomBytes } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { cancel, confirm, intro, isCancel, log, note, outro, select, spinner } from "./clack.ts";
 import { bold, cyan, dim } from "picocolors";
-import { type Component, ENV_SCHEMAS, ENV_DIR, getAutoDefaults, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT } from "./component-meta.ts";
+import { type Component, ENV_SCHEMAS, ENV_DIR, getAutoDefaults, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT, TETHER_DEFAULT_PORT } from "./component-meta.ts";
 import { type Host, isUnitActiveOn } from "./host.ts";
 import { pass, fail, warn, heading } from "./output.ts";
 import { parseEnvString } from "./env-file.ts";
@@ -149,6 +150,26 @@ async function planComponentAction(
   return buildComponentAction({ ...base, env: collected, envChanges: collected.changes }, version, host);
 }
 
+function generateSecret(length = 40): string {
+  return randomBytes(length).toString("base64url").slice(0, length);
+}
+
+/** Not in getAutoDefaults: that also feeds stack deploys, where per-call secrets would differ per host. */
+export function initialSharedSecrets(): Record<string, string> {
+  return {
+    BETTER_AUTH_SECRET: generateSecret(),
+    TETHER_SECRET: generateSecret(),
+  };
+}
+
+export function coreComponents(opts: { installInfoserver: boolean; installDaemon: boolean }): Component[] {
+  return [
+    ...(opts.installInfoserver ? ["infoserver" as Component] : []),
+    "gateway", "dashboard", "tether",
+    ...(opts.installDaemon ? ["daemon" as Component] : []),
+  ];
+}
+
 /**
  * Collect the full plan. All prompting happens here; nothing on the host
  * changes. Returns null when the user cancels.
@@ -158,7 +179,7 @@ export async function planUp(
   opts: PlanUpOptions,
   host: Host,
 ): Promise<UpPlan | null> {
-  const shared: Record<string, string> = {};
+  const shared: Record<string, string> = initialSharedSecrets();
   // Shared values the user already confirmed at an infra step this run;
   // the component wizards skip re-prompting these. Suggested defaults
   // (INFOSERVER_URL, GATEWAY_URL) stay out so their prompts still appear.
@@ -218,11 +239,7 @@ export async function planUp(
       }
     }
 
-    orderedComponents = [
-      ...(installInfoserver ? ["infoserver" as Component] : []),
-      "gateway", "dashboard",
-      ...(installDaemon ? ["daemon" as Component] : []),
-    ];
+    orderedComponents = coreComponents({ installInfoserver, installDaemon });
   }
 
   for (const component of orderedComponents) {
@@ -243,6 +260,17 @@ export async function planUp(
       const bind = action.env.config.HOST;
       const gatewayHost = !bind || bind === "0.0.0.0" ? "localhost" : bind;
       shared.GATEWAY_URL = `http://${gatewayHost}:${action.env.config.PORT ?? GATEWAY_DEFAULT_PORT}`;
+    }
+
+    if (component === "tether") {
+      shared.TETHER_URL = `http://localhost:${action.env.config.PORT ?? TETHER_DEFAULT_PORT}`;
+
+      // Resolved, unlike the URL: a re-prompt could leave daemon and tether with different secrets.
+      const secret = action.env.config.TETHER_SECRET;
+      if (secret) {
+        shared.TETHER_SECRET = secret;
+        resolvedKeys.add("TETHER_SECRET");
+      }
     }
   }
 
