@@ -50,9 +50,10 @@ type CachedDeployment = {
   canaryProgressUntil: number | null;
 };
 
-/** Clears the model routing cache in tests. */
-export async function clearModelDataCache(): Promise<void> {
-  // No-op for process-local state; individual keys expire naturally via Redis TTL.
+const modelSourcesCache = new Map<string, { data: ModelSources; expiresAt: number }>();
+
+export function _clearModelSourcesCacheForTest(): void {
+  modelSourcesCache.clear();
 }
 
 async function publicModelSpecifierToModelSource(orgId: string, specifier: string) {
@@ -122,18 +123,10 @@ type ModelSources = {
 };
 
 async function getModelSources(specifier: string): Promise<ModelSources> {
-  const cacheKey = `gateway:sources:${specifier}`;
-  try {
-    const cached = await redis.get(cacheKey);
-    if (cached) {
-      const parsed = JSON.parse(cached) as { hosts: string[]; byHost: Array<[string, HostLocation]> };
-      return {
-        hosts: parsed.hosts,
-        byHost: new Map<string, HostLocation>(parsed.byHost),
-      };
-    }
-  } catch (err) {
-    log.warn({ err }, "Redis error reading model sources cache");
+  const now = Date.now();
+  const cached = modelSourcesCache.get(specifier);
+  if (cached && cached.expiresAt > now) {
+    return cached.data;
   }
 
   const modelLocations = await getDB().select({
@@ -159,13 +152,7 @@ async function getModelSources(specifier: string): Promise<ModelSources> {
   }
 
   const result: ModelSources = { hosts: [...byHost.keys()], byHost };
-  const serialized = {
-    hosts: result.hosts,
-    byHost: Array.from(byHost.entries()),
-  };
-
-  void redis.set(cacheKey, JSON.stringify(serialized), "EX", MODEL_CACHE_TTL_SECONDS)
-    .catch((err: unknown) => log.warn({ err }, "Redis error in set model sources cache"));
+  modelSourcesCache.set(specifier, { data: result, expiresAt: now + MODEL_CACHE_TTL_SECONDS * 1000 });
 
   return result;
 }

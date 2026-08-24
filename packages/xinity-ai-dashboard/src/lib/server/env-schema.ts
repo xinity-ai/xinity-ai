@@ -3,6 +3,7 @@ import { secret, expert, clientPublic, metricsAuthSchema } from "common-env";
 
 export const dashboardEnvSchema = z.object({
   DB_CONNECTION_URL: z.url().describe("PostgreSQL connection string (e.g. postgresql://user:pass@host:5432/dbname)").meta(secret()),
+  DB_MAX_CONNECTIONS: z.coerce.number().int().positive().default(10).describe("Maximum PostgreSQL connection pool size for dashboard").meta(expert()),
   NODE_ENV: z.enum(["production", "development", "test"]).describe("Node environment").meta(expert()),
   ORIGIN: z.url().default("http://localhost:5173").describe("Public origin URL, no trailing slash (e.g. https://xinity.mydomain.com)"),
   HTTP_PORT: z.coerce.number().int().default(5173).describe("TCP port the server listens on (use a reverse proxy if deploying behind HTTPS)").meta(expert()),

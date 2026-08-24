@@ -75,18 +75,48 @@ const serveTarget = env.UNIX_SOCKET
 const server = Bun.serve({ ...serveOptions, ...serveTarget });
 rootLogger.info({ ...serveTarget, tls: !!tls }, `Gateway started (${proto})`);
 
+const DRAIN_TIMEOUT_MS = 10_000;
+const FLUSH_TIMEOUT_MS = 5_000;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+    promise.then(
+      (res) => {
+        clearTimeout(timer);
+        resolve(res);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
 let isShuttingDown = false;
 async function gracefulShutdown(signal: string) {
   if (isShuttingDown) return;
   isShuttingDown = true;
-  rootLogger.info({ signal }, "Gateway shutting down, flushing write queues...");
-  server.stop(true);
+  rootLogger.info({ signal }, "Gateway shutting down, stopping new connection listener...");
+
+  const stopPromise = server.stop();
+
   try {
-    await Promise.all([flushUsageEvents(), flushApiCallRows()]);
+    await withTimeout(stopPromise, DRAIN_TIMEOUT_MS, "In-flight request drain");
+    rootLogger.info("In-flight requests drained cleanly");
+  } catch (err) {
+    rootLogger.warn({ err }, "Drain timeout reached, forcing closure of remaining connections");
+    server.stop(true);
+  }
+
+  try {
+    await withTimeout(Promise.all([flushUsageEvents(), flushApiCallRows()]), FLUSH_TIMEOUT_MS, "DB write queue flush");
     rootLogger.info("Write queues flushed successfully");
   } catch (err) {
-    rootLogger.error({ err }, "Error flushing write queues on shutdown");
+    rootLogger.error({ err }, "Error or timeout flushing write queues on shutdown");
   }
+
   process.exit(0);
 }
 

@@ -60,8 +60,7 @@ export function preconfigureDB(
     : undefined;
 
   function ensurePostgresConnection(): postgres.Sql {
-    const envMax = process.env.DB_MAX_CONNECTIONS ? parseInt(process.env.DB_MAX_CONNECTIONS, 10) : NaN;
-    const defaultMax = !Number.isNaN(envMax) ? envMax : 20;
+    const defaultMax = 10;
 
     const mergedOptions: postgres.Options<Record<string, never>> = {
       max: defaultMax,
