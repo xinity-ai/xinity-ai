@@ -1,5 +1,5 @@
 import { boolean, timestamp, pgTable, text, jsonb, integer, index } from "drizzle-orm/pg-core";
-import { type InferSelectModel } from "drizzle-orm";
+import type { InferSelectModel } from "drizzle-orm";
 import { organizationT } from "./orgSchema";
 
 const createdAt = timestamp("created_at").defaultNow().notNull();

@@ -54,9 +54,9 @@ mock.module("./catalog", () => ({
 }));
 
 // Track Ollama client calls
-let mockOllamaList = mock<() => Promise<{ models: Array<{ model: string }> }>>();
-let mockOllamaDelete = mock<(params: { model: string }) => Promise<void>>();
-let mockOllamaPull = mock<(params: { model: string; stream: boolean }) => Promise<AsyncIterable<{ status: string; completed: number; total: number }>>>();
+const mockOllamaList = mock<() => Promise<{ models: Array<{ model: string }> }>>();
+const mockOllamaDelete = mock<(params: { model: string }) => Promise<void>>();
+const mockOllamaPull = mock<(params: { model: string; stream: boolean }) => Promise<AsyncIterable<{ status: string; completed: number; total: number }>>>();
 
 mock.module("ollama", () => ({
   Ollama: class MockOllama {

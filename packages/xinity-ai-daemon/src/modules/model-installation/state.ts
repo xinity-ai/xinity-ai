@@ -1,5 +1,5 @@
 import { getDB } from "../../db/connection";
-import { lifecycleStateEnum, modelInstallationStateT } from "common-db";
+import { type lifecycleStateEnum, modelInstallationStateT } from "common-db";
 
 type LifecycleState = typeof lifecycleStateEnum.enumValues[number];
 

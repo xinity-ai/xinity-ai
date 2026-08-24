@@ -1,5 +1,5 @@
 import { log } from "./clack.ts";
-import { type Host } from "./host.ts";
+import type { Host } from "./host.ts";
 import { connectHost } from "./remote-host.ts";
 
 export async function connectElevated(

@@ -8,7 +8,7 @@ import {
   from,
   ignoreElements,
   mergeMap,
-  Observable,
+  type Observable,
   switchMap,
   take,
   tap,

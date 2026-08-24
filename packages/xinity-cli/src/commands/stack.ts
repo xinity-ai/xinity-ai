@@ -2,7 +2,7 @@ import type { CommandModule } from "yargs";
 import { intro, outro, cancel, note, log, confirm, text, multiselect } from "../lib/clack.ts";
 import { bold, cyan, dim, green, red, yellow } from "picocolors";
 import { promptOrExit, promptOrUndefined, fail, warn, heading } from "../lib/output.ts";
-import { type Component } from "../lib/component-meta.ts";
+import type { Component } from "../lib/component-meta.ts";
 import {
   type StackDefinition,
   type StackHost,

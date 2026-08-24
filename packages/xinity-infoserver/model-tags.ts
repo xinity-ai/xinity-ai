@@ -3,7 +3,7 @@
  * Safe to import from both server and client code (no runtime deps).
  */
 import { type LegacyModel, type Provider, ProviderEnum } from "./definitions/model-definition";
-import { type RequestParamType } from "./definitions/model-primitives";
+import type { RequestParamType } from "./definitions/model-primitives";
 
 // ---------------------------------------------------------------------------
 // Provider resolution

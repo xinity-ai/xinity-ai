@@ -2,7 +2,7 @@
  * Maps notification event types to their email templates and subject line generators.
  */
 import type { AnyComponent } from "$lib/server/email";
-import { NotificationType } from "./events";
+import type { NotificationType } from "./events";
 
 import EmailWelcomeTemplate from "$lib/components/mailTemplates/EmailWelcomeTemplate.svelte";
 import EmailDeploymentReadyTemplate from "$lib/components/mailTemplates/EmailDeploymentReadyTemplate.svelte";
