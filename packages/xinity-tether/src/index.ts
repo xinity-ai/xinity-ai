@@ -2,11 +2,11 @@ import { logMigrationFailureFatal } from "common-db";
 import { nodeRegistrationSchema, installationStateReportSchema, protocolFingerprint, getTlsConfig } from "common-env";
 import { env } from "./env";
 import { rootLogger } from "./logger";
-import { checkMigrations } from "./db";
+import { checkMigrations, subscribe, end as endDB } from "./db";
 import { verifyBearerToken, unauthorized } from "./auth";
-import { addConnection, removeConnection, pushDesiredState, runKeepaliveLoop, sendShutdownToAll } from "./connections";
+import { addConnection, removeConnection, pushDesiredState, runKeepaliveLoop, sendShutdownToAll, isConnected, getConnectedNodeIds } from "./connections";
 import { buildDesiredState } from "./desired-state";
-import { start as startNotifyBus, stop as stopNotifyBus } from "./notify-bus";
+import { createNotifyBus } from "./notify-bus";
 import { writeRegistration, queueInstallationStates, flushAndStop } from "./status-writer";
 import { handleMetrics, incRequestRejections } from "./metrics";
 import { buildListenTarget } from "./serve-config";
@@ -19,10 +19,18 @@ if (migrationState.status !== "ok") {
   process.exit(1);
 }
 
+const notifyBus = createNotifyBus({
+  subscribe,
+  buildDesiredState,
+  pushDesiredState,
+  isConnected,
+  getConnectedNodeIds,
+});
+
 // Without the subscription a daemon would connect and then never hear about a
 // deployment again, which is worse than refusing to serve at all.
 try {
-  await startNotifyBus();
+  await notifyBus.start();
 } catch (err) {
   rootLogger.fatal({ err }, "Failed to subscribe to installation changes");
   process.exit(1);
@@ -145,7 +153,8 @@ async function shutdown() {
   clearInterval(keepaliveTimer);
   sendShutdownToAll();
   await flushAndStop();
-  await stopNotifyBus();
+  await notifyBus.stop();
+  await endDB();
   server.stop();
   process.exit(0);
 }
