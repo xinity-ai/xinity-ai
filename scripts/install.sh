@@ -99,8 +99,14 @@ RELEASE_JSON="$(curl -fsSL -H "Accept: application/vnd.github+json" "$RELEASE_UR
 TAG="$(printf '%s' "$RELEASE_JSON" | grep '"tag_name"' | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/')"
 [[ -n "$TAG" ]] || fail "Could not parse release tag"
 
-if printf '%s' "$RELEASE_JSON" | grep -q "\"name\": *\"${ASSET_PREFIX}.tar.gz\""; then
+has_asset() {
+  printf '%s' "$RELEASE_JSON" | grep -q "\"name\": *\"$1\""
+}
+
+if has_asset "${ASSET_PREFIX}.tar.gz"; then
   ASSET_NAME="${ASSET_PREFIX}.tar.gz"
+elif [[ "$PLATFORM" != "linux" ]] && has_asset "xinity-cli-linux-x64.tar.gz"; then
+  fail "Release ${TAG} has Linux builds only. macOS builds are present in newer releases only. Omit --version to install the latest."
 else
   fail "${ASSET_PREFIX}.tar.gz not found in release ${TAG}"
 fi

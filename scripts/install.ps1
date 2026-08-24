@@ -57,6 +57,10 @@ $AssetName = "xinity-cli-$Suffix.tar.gz"
 
 $HasAsset = $Release.assets | Where-Object { $_.name -eq $AssetName }
 if (-not $HasAsset) {
+    $HasLinuxAsset = $Release.assets | Where-Object { $_.name -eq "xinity-cli-linux-x64.tar.gz" }
+    if ($HasLinuxAsset) {
+        Write-Fail "Release $Tag has Linux builds only. Windows builds are present in newer releases only. Omit -Version to install the latest."
+    }
     Write-Fail "$AssetName not found in release $Tag"
 }
 
