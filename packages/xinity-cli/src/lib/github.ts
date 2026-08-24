@@ -7,7 +7,7 @@
 import { join } from "path";
 import { loadConfig } from "./config.ts";
 import { localRun } from "./host.ts";
-import { cliAssetSuffix } from "./platform.ts";
+import { cliAssetSuffix, platformLabel } from "./platform.ts";
 
 const DEFAULT_PROJECT_URL = "https://github.com/xinity-ai/xinity-ai";
 
@@ -251,6 +251,12 @@ export function pickReleaseAsset(release: Release, component: string, arch?: str
   const names = new Set(release.assets.map((a) => a.name));
   if (names.has(tarName)) return tarName;
   if (names.has(zipName)) return zipName;
+  if (component === "cli" && process.platform !== "linux" && names.has("xinity-cli-linux-x64.tar.gz")) {
+    throw new Error(
+      `Release ${release.tagName} has Linux builds only. ` +
+      `${platformLabel()} builds are present in newer releases only.`,
+    );
+  }
   throw new Error(
     `Neither ${tarName} nor ${zipName} found in release ${release.tagName}`,
   );

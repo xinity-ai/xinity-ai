@@ -11,6 +11,12 @@ const PLATFORM_MAP: Record<string, string> = {
   win32: "windows",
 };
 
+const PLATFORM_LABELS: Record<string, string> = {
+  linux: "Linux",
+  darwin: "macOS",
+  win32: "Windows",
+};
+
 const ARCH_MAP: Record<string, string> = {
   x64: "x64",
   arm64: "arm64",
@@ -23,6 +29,10 @@ export function cliAssetSuffix(): string {
   }
   const arch = ARCH_MAP[process.arch] ?? "x64";
   return `${platform}-${arch}`;
+}
+
+export function platformLabel(): string {
+  return PLATFORM_LABELS[process.platform] ?? process.platform;
 }
 
 export function configDir(): string {
