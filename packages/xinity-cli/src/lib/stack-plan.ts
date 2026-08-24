@@ -35,12 +35,12 @@ import { createMultiProgress, createDoneGuard } from "./multi-progress.ts";
 
 export const COMPONENT_ORDER: Component[] = ["infoserver", "gateway", "dashboard", "daemon"];
 
-interface Deployment {
+type Deployment = {
   host: StackHost;
   components: Component[];
 }
 
-interface StackHostPlan {
+type StackHostPlan = {
   address: string;
   /** Installed on the host but not tracked by the stack; removed before anything else. */
   removals: { component: Component; version?: string }[];
@@ -55,7 +55,7 @@ interface StackHostPlan {
   forget?: string;
 }
 
-export interface StackPlan {
+export type StackPlan = {
   targetVersion: string;
   migration: { url: string; targetTag: string; pending: boolean } | null;
   hostPlans: StackHostPlan[];

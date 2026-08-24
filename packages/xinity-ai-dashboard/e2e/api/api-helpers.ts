@@ -7,7 +7,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { API_KEY_STATE, STORAGE_STATE, BASE_URL, type StorageState } from "../utils/test-data";
 import { ensureE2EReady } from "../guard";
 
-export interface SetupState {
+export type SetupState = {
   ownerApiKey: string;
   orgId: string;
   orgSlug: string;

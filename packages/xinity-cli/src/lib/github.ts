@@ -11,7 +11,7 @@ import { cliAssetSuffix, platformLabel } from "./platform.ts";
 
 const DEFAULT_PROJECT_URL = "https://github.com/xinity-ai/xinity-ai";
 
-export interface ReleaseAsset {
+export type ReleaseAsset = {
   name: string;
   /** API URL for downloading (works with auth for private repos). */
   apiUrl: string;
@@ -20,7 +20,7 @@ export interface ReleaseAsset {
   size: number;
 }
 
-export interface Release {
+export type Release = {
   tagName: string;
   name: string;
   assets: ReleaseAsset[];
@@ -87,7 +87,7 @@ export function fetchRelease(version: string): Promise<Release> {
   return pending;
 }
 
-export interface ReleaseListEntry {
+export type ReleaseListEntry = {
   tagName: string;
   prerelease: boolean;
 }

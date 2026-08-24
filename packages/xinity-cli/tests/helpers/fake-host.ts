@@ -12,7 +12,7 @@ type RunHandler = (args: string[]) => Partial<RunResult> | undefined;
 type ShellHandler = (command: string) => Partial<RunResult> | undefined;
 type ElevationHandler = (command: string) => Partial<ElevationResult> | undefined;
 
-export interface FakeHostConfig {
+export type FakeHostConfig = {
   /** Map a `run(args)` call to a result; return undefined to fall through to the default (failure). */
   run?: RunHandler;
   /** Map a `runShell(cmd)` call to a result; default is failure (command not found). */

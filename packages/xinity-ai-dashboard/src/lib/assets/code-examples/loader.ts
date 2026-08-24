@@ -8,7 +8,7 @@ const rawFiles = import.meta.glob("./**/*.{py,js,sh}", {
 
 export type Language = "python" | "javascript" | "bash";
 
-export interface CodeExampleSet {
+export type CodeExampleSet = {
   python?: string;
   javascript?: string;
   bash?: string;

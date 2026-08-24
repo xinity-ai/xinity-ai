@@ -9,7 +9,7 @@ const log = rootLogger.child({ name: "cache-eviction" });
 
 const SAFETY_MARGIN_BYTES = 1 * 1024 ** 3;
 
-export interface CacheEntry {
+export type CacheEntry = {
   slug: string;
   model: string;
   dir: string;
@@ -17,14 +17,14 @@ export interface CacheEntry {
   mtime: Date;
 }
 
-export interface EvictionPlan {
+export type EvictionPlan = {
   evict: CacheEntry[];
   freedBytes: number;
   sufficient: boolean;
 }
 
 /** Installation row reduced to what cache eviction needs. */
-export interface InstallationCacheRecord {
+export type InstallationCacheRecord = {
   providerModel: string;
   deletedAt: Date | null;
 }

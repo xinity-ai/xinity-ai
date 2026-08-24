@@ -6,7 +6,7 @@ import { STORAGE_STATE, BASE_URL } from "../utils/test-data";
 import type { StorageState } from "../utils/test-data";
 
 /** Subset of API key fields used across these tests. */
-interface ApiKeyResponse {
+type ApiKeyResponse = {
   id: string;
   name: string;
   fullKey: string;

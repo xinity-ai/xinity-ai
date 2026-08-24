@@ -24,13 +24,13 @@ let tempPassword = "";
 let postResetTempPassword = "";
 let postResetStoragePath = "";
 
-interface CreateUserResponse {
+type CreateUserResponse = {
   success: boolean;
   userId: string;
   temporaryPassword: string;
 }
 
-interface ResetPasswordResponse {
+type ResetPasswordResponse = {
   success: boolean;
   temporaryPassword: string;
 }

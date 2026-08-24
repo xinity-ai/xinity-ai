@@ -44,13 +44,13 @@ export function binaryBaseName(component: Component): string {
   return `xinity-ai-${component}`;
 }
 
-export interface InstallResult {
+export type InstallResult = {
   success: boolean;
   version: string;
   errors: string[];
 }
 
-export interface RemoveResult {
+export type RemoveResult = {
   success: boolean;
   errors: string[];
 }

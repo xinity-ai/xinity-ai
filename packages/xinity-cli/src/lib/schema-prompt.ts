@@ -3,7 +3,7 @@ import * as p from "./clack.ts";
 import pc from "picocolors";
 import { promptOrExit } from "./output.ts";
 
-interface JsonSchemaProperty {
+type JsonSchemaProperty = {
   type?: string;
   description?: string;
   default?: unknown;
@@ -14,7 +14,7 @@ interface JsonSchemaProperty {
   required?: string[];
 }
 
-interface JsonSchema {
+type JsonSchema = {
   type: string;
   properties: Record<string, JsonSchemaProperty>;
   required?: string[];

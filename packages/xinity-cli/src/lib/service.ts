@@ -4,7 +4,7 @@ import { generateUnit, getComponentConfig, unitName, type UnitConfig } from "./s
 import { type Host, isUnitActiveOn, getUnitStatusOn } from "./host.ts";
 import type { StepEvent } from "./step-event.ts";
 
-export interface ServiceResult {
+export type ServiceResult = {
   success: boolean;
   error?: string;
 }

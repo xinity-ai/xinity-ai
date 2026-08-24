@@ -73,7 +73,7 @@ async function confirmCandidate(
 }
 
 /** The database half of a plan: the URL to use, plus provisioning when the user chose setup. */
-export interface DbPlan {
+export type DbPlan = {
   connectionUrl: string;
   provision?: PostgresProvision;
 }
@@ -212,7 +212,7 @@ async function promptAndValidateDbUrl(host: Host): Promise<string | undefined> {
   }
 }
 
-export interface MigrateResult {
+export type MigrateResult = {
   success: boolean;
   errors: string[];
 }

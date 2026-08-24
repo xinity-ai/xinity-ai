@@ -8,7 +8,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-export interface TempDir {
+export type TempDir = {
   path: string;
   /** Write a file at a relative path inside the temp dir. */
   write(relativePath: string, content: string): string;

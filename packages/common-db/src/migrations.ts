@@ -14,7 +14,7 @@ export type MigrationState =
   | { status: "error"; message: string };
 
 /** Minimal logger surface used by {@link logMigrationFailureFatal}. */
-export interface MigrationFailureLogger {
+export type MigrationFailureLogger = {
   fatal(msg: string): void;
 }
 

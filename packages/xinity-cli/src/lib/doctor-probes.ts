@@ -4,7 +4,7 @@ import { getUnitStatusOn, type Host } from "./host.ts";
 
 export type CheckStatus = "pass" | "warn" | "fail" | "skip";
 
-export interface CheckResult {
+export type CheckResult = {
   label: string;
   status: CheckStatus;
   message: string;
@@ -66,7 +66,7 @@ export async function checkPostgresAndMigrations(url: string, host: Host): Promi
   return results;
 }
 
-interface TcpProbeOptions {
+type TcpProbeOptions = {
   hostname: string;
   port: number;
   label: string;

@@ -16,12 +16,12 @@ import {
 
 export type { CheckResult, CheckStatus };
 
-export interface DoctorSpinner {
+export type DoctorSpinner = {
   message: (msg: string) => void;
   stop: () => void;
 }
 
-export interface DoctorRunOptions {
+export type DoctorRunOptions = {
   /** Prompt for sudo when permission is denied instead of silently skipping. */
   interactive?: boolean;
   /** Spinner instance for progress updates during collection. */
@@ -30,14 +30,14 @@ export interface DoctorRunOptions {
   host: Host;
 }
 
-export interface ComponentReport {
+export type ComponentReport = {
   component: string;
   installed: boolean;
   version: string | null;
   checks: CheckResult[];
 }
 
-export interface DoctorReport {
+export type DoctorReport = {
   timestamp: string;
   components: ComponentReport[];
   summary: { pass: number; warn: number; fail: number; skip: number };

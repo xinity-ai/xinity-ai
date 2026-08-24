@@ -8,7 +8,7 @@ import * as p from "./clack.ts";
 import pc from "picocolors";
 import { configDir, IS_WINDOWS } from "./platform.ts";
 
-export interface CliConfig {
+export type CliConfig = {
   apiKey?: string;
   dashboardUrl?: string;
   githubProjectUrl?: string;
@@ -39,7 +39,7 @@ export function resolveConfigValue<K extends keyof CliConfig>(
 
 type ConfigKey = keyof CliConfig;
 
-interface ConfigField {
+type ConfigField = {
   key: ConfigKey;
   label: string;
   isSecret: boolean;

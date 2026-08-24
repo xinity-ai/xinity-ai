@@ -4,7 +4,7 @@ import { dim } from "picocolors";
 import { pass, fail, warn, info } from "./output.ts";
 import type { StepEvent } from "./step-event.ts";
 
-export interface Progress {
+export type Progress = {
   /** Transient: only updates the spinner text. */
   update(message: string): void;
   /** Persists; the spinner pauses around it. */

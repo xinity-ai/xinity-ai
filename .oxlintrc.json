@@ -40,7 +40,8 @@
     ],
     "typescript/no-import-type-side-effects": "error",
     "unicorn/prefer-node-protocol": "error",
-    "import/no-default-export": "error"
+    "import/no-default-export": "error",
+    "typescript/consistent-type-definitions": ["error", "type"]
   },
   // Rendered to users as text, never executed.
   "ignorePatterns": ["**/assets/code-examples/**/*.js"],
@@ -50,6 +51,14 @@
       "files": ["**/*.config.ts", "**/*.config.js"],
       "rules": {
         "import/no-default-export": "off"
+      }
+    },
+    {
+      // Ambient declarations augment other packages' interfaces, and only
+      // `interface` merges.
+      "files": ["**/*.d.ts"],
+      "rules": {
+        "typescript/consistent-type-definitions": "off"
       }
     },
     {

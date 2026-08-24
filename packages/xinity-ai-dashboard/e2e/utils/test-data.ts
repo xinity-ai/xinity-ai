@@ -31,7 +31,7 @@ export const MAILHOG_API = "http://localhost:8025/api";
 export const BASE_URL = "http://localhost:5173";
 
 /** Shape of Playwright storage state files written by global-setup. */
-export interface StorageState {
+export type StorageState = {
   cookies: Array<{ name: string; value: string; domain: string; path: string; httpOnly: boolean; secure: boolean; sameSite: "Lax" | "Strict" | "None" }>;
   origins: unknown[];
 }

@@ -219,7 +219,7 @@ function reportSuccess(compose: ComposeCmd, connectionUrl: string): void {
  * A fully-decided provisioning action: everything the apply half needs to
  * bring the database up without asking anything else.
  */
-export interface PostgresProvision {
+export type PostgresProvision = {
   compose: ComposeCmd;
   user: string;
   port: number;

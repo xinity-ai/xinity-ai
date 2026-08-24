@@ -1,4 +1,4 @@
-export interface DeploymentSettingsV1 {
+export type DeploymentSettingsV1 = {
   version: 1;
   maxAudioInputDurationS?: number;
   maxAudioInputFileSizeMB?: number;

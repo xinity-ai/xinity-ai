@@ -14,7 +14,7 @@ type BucketState = { tokens: number; lastRefillMs: number };
  */
 const BURST_WINDOW_MINUTES = 1;
 
-export interface RateLimiterConfig {
+export type RateLimiterConfig = {
   perMinute: number;
 }
 
@@ -23,7 +23,7 @@ export function burstFor(perMinute: number): number {
   return Math.max(1, Math.round(perMinute * BURST_WINDOW_MINUTES));
 }
 
-export interface RateLimiter {
+export type RateLimiter = {
   /** Consumes one token. Returns false when the client is over its ceiling. */
   take(key: string, nowMs?: number): boolean;
   /** Drops fully-refilled buckets so idle clients can't grow the map without bound. */

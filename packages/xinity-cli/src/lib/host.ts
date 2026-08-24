@@ -8,7 +8,7 @@ import { quoteShellArg } from "common-env";
 
 // ─── Low-level shell primitives ─────────────────────────────────────────────
 
-export interface RunResult {
+export type RunResult = {
   ok: boolean;
   output: string;
   exitCode: number;
@@ -60,7 +60,7 @@ function resetStdin(): void {
 
 // ─── Elevation (sudo) ──────────────────────────────────────────────────────
 
-export interface ElevationResult {
+export type ElevationResult = {
   success: boolean;
   output: string;
 }
@@ -71,7 +71,7 @@ export type TunnelResult =
 
 // ─── Host interface ─────────────────────────────────────────────────────────
 
-export interface Host {
+export type Host = {
   /** Execute a command, returning a structured result. */
   run(args: string[]): Promise<RunResult>;
 
@@ -137,7 +137,7 @@ export interface Host {
   dispose(): Promise<void>;
 }
 
-export interface ReadSecretsResult {
+export type ReadSecretsResult = {
   secrets: Record<string, string>;
   permissionDenied: boolean;
 }

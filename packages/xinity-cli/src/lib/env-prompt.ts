@@ -7,7 +7,7 @@ import { type Component, DERIVED_ENV_KEYS, ENV_SCHEMAS, ENV_DIR, SECRETS_DIR } f
 import { readSecrets, type Host } from "./host.ts";
 import { readManifest } from "./manifest.ts";
 
-export interface EnvField {
+export type EnvField = {
   key: string;
   description?: string;
   hasDefault: boolean;
@@ -133,7 +133,7 @@ export function splitValuesByCategory(
   return { config, secrets };
 }
 
-export interface EnvBundle {
+export type EnvBundle = {
   config: Record<string, string>;
   secrets: Record<string, string>;
 }
@@ -142,7 +142,7 @@ export function flattenBundle(bundle: EnvBundle): Record<string, string> {
   return { ...bundle.config, ...bundle.secrets };
 }
 
-export interface EnvChange {
+export type EnvChange = {
   key: string;
   kind: "added" | "changed" | "removed";
   isSecret: boolean;
@@ -346,7 +346,7 @@ function displayValue(field: EnvField, value: string | undefined): string {
   return yellow("(not set)");
 }
 
-export interface MenuEditOptions {
+export type MenuEditOptions = {
   /** Keys highlighted for review: values worth a deliberate look, not enforced. */
   attentionKeys?: Set<string>;
   /** Keys owned by another layer (e.g. stack shared settings): not shown, not editable; their seeded values pass through. */
@@ -444,7 +444,7 @@ export async function menuEditEnv(
 }
 
 /** A component's env values as currently present on the host. */
-export interface ExistingEnvState {
+export type ExistingEnvState = {
   existingConfig: Record<string, string>;
   existingSecrets: Record<string, string>;
 }
@@ -466,9 +466,9 @@ export async function readExistingEnvState(component: Component, host: Host): Pr
   };
 }
 
-export interface CollectedEnv extends EnvBundle {
+export type CollectedEnv = {
   changes: EnvChange[];
-}
+} & EnvBundle
 
 /**
  * Planning-phase env collection: load current values from the host, prompt

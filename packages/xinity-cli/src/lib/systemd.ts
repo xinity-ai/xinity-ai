@@ -9,7 +9,7 @@
  */
 import { BIN_DIR, ENV_DIR, SECRETS_DIR, binaryBaseName, type Component } from "./component-meta.ts";
 
-export interface UnitConfig {
+export type UnitConfig = {
   component: string;
   description: string;
   execStart: string;

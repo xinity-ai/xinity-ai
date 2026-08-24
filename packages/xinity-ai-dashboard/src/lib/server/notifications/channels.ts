@@ -8,7 +8,7 @@ import { rootLogger } from "$lib/server/logging";
 
 const log = rootLogger.child({ name: "notification.channel" });
 
-export interface NotificationChannel {
+export type NotificationChannel = {
   readonly name: string;
   send(params: {
     recipient: { email: string; name: string };

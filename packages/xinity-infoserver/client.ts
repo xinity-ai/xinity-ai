@@ -9,7 +9,7 @@ import { resolveTagsForDriver, resolveAllTags, resolveArgsForDriver, resolveRequ
 import { satisfiesMinVersion } from "./semver";
 import { version } from "../../package.json";
 
-export interface CatalogClientConfig {
+export type CatalogClientConfig = {
   /** Base URL of the infoserver (e.g. "http://localhost:8090"). */
   baseUrl: string;
   /** How long the snapshot is trusted before a conditional re-fetch (ms). */
@@ -173,7 +173,7 @@ export type CatalogClient = ReturnType<typeof createCatalogClient>;
 // Fetches per specifier and caches per key, so entries in one process can be of
 // different ages. Superseded by createCatalogClient above.
 
-export interface InfoserverClientConfig {
+export type InfoserverClientConfig = {
   /** Base URL of the infoserver (e.g. "http://localhost:8090"). */
   baseUrl: string;
   /** How long cached responses remain valid before re-fetching (ms). */
@@ -195,14 +195,14 @@ export type FetchModelStatus =
   | { status: "not_found" }
   | { status: "unavailable"; error: string };
 
-export interface PaginatedModels {
+export type PaginatedModels = {
   models: LegacyModelWithSpecifier[];
   total: number;
   page: number;
   pageSize: number;
 }
 
-export interface FetchModelsParams {
+export type FetchModelsParams = {
   page?: number;
   pageSize?: number;
   type?: "chat" | "embedding" | "rerank" | "transcription";
@@ -210,7 +210,7 @@ export interface FetchModelsParams {
   tags?: string[];
 }
 
-interface CacheEntry<T> {
+type CacheEntry<T> = {
   data: T;
   fetchedAt: number;
 }

@@ -30,7 +30,7 @@ function decodeQP(raw: string): string {
     .replace(/&amp;/g, "&");
 }
 
-interface MailhogResponse {
+type MailhogResponse = {
   items?: Array<{ Content?: { Body?: string } }>;
 }
 

@@ -28,7 +28,7 @@ import { readManifest } from "./manifest.ts";
 
 export type ComponentActionKind = "install" | "update" | "reconfigure" | "none";
 
-export interface ComponentAction {
+export type ComponentAction = {
   component: Component;
   kind: ComponentActionKind;
   installedVersion?: string;
@@ -43,7 +43,7 @@ export interface ComponentAction {
   serviceRunning: boolean;
 }
 
-export interface UpPlan {
+export type UpPlan = {
   targetVersion: string;
   provisionPostgres?: PostgresProvision;
   migrations?: { connectionUrl: string };
@@ -52,7 +52,7 @@ export interface UpPlan {
   components: ComponentAction[];
 }
 
-export interface PlanUpOptions {
+export type PlanUpOptions = {
   targetVersion: string;
   hardReset: boolean;
   dryRun: boolean;
@@ -447,7 +447,7 @@ export async function renderUpPlanScript(plan: UpPlan): Promise<string> {
 
 // ─── Apply ──────────────────────────────────────────────────────────────────
 
-export interface ApplyResult {
+export type ApplyResult = {
   success: boolean;
   errors: string[];
 }

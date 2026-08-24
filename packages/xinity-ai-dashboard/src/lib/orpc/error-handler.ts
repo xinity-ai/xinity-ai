@@ -4,7 +4,7 @@
  */
 import { toastState } from "$lib/state/toast.svelte";
 
-interface ORPCError {
+type ORPCError = {
   code?: string;
   message?: string;
   data?: {
