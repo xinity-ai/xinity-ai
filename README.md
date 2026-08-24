@@ -168,7 +168,11 @@ Detailed guides for each part of the platform:
 
 ## Quick start (local development)
 
-**1. Install dependencies**
+**1. Ensure requirements are installed**
+
+Before starting, make sure all requirements are installed. See [Requirements](#requirements).
+
+**2. Install dependencies**
 
 ```bash
 # Clone and install dependencies
@@ -179,7 +183,7 @@ bun install
 
 > The postinstall hook sets up git commit hooks (commitlint).
 
-**2. Create `.env` files from examples**
+**3. Create `.env` files from examples**
 
 ```bash
 # Initialize .env files from examples (won't overwrite existing)
@@ -195,7 +199,7 @@ This copies each `example.env` to `.env` without overwriting existing files. Rev
 openssl rand -base64 32
 ```
 
-**3. Start infrastructure**
+**4. Start infrastructure**
 
 ```bash
 docker compose up -d
@@ -205,13 +209,13 @@ This starts Postgres, Redis, and Mailhog. To also start optional services (SearX
 
 Verify services are healthy: `docker compose ps`
 
-**4. Run database migrations**
+**5. Run database migrations**
 
 ```bash
 bun run --cwd packages/common-db migrate
 ```
 
-**5. Start the infoserver**
+**6. Start the infoserver**
 
 ```bash
 bun run --cwd packages/xinity-infoserver dev
@@ -219,7 +223,7 @@ bun run --cwd packages/xinity-infoserver dev
 
 The infoserver must be running before the gateway, dashboard, or daemon can start. See the [service dependency table](#service-dependencies) below.
 
-**6. Start the package you want to work on**
+**7. Start the package you want to work on**
 
 See [Package details](#package-details) below for per-package dev commands.
 
@@ -232,13 +236,58 @@ See [Package details](#package-details) below for per-package dev commands.
 | **Dashboard** | Postgres, Infoserver, Mailhog (for auth emails) |
 | **Daemon** | Postgres, Infoserver, Ollama or vLLM |
 
-Start order: infrastructure (step 3) → migrations (step 4) → infoserver (step 5) → other services (step 6).
+Start order: infrastructure (step 4) → migrations (step 5) → infoserver (step 6) → other services (step 7).
 
 ### Requirements
 
-- **Bun** ≥ 1.3 (build, package manager, and runtime)
-- **Docker + Docker Compose** (local dependencies and container builds)
-- **direnv** (recommended for env var loading)
+- **Bun** ≥ 1.3 (build, package manager, and runtime)  
+  Install:
+
+  ```bash
+  curl -fsSL https://bun.sh/install | bash
+  ```
+
+  Verify:
+
+  ```bash
+  bun -v
+  ```
+
+  If `bun` is not available after installation on macOS/zsh, restart your terminal or add Bun to your shell PATH:
+
+  ```bash
+  export BUN_INSTALL="$HOME/.bun"
+  export PATH="$BUN_INSTALL/bin:$PATH"
+  ```
+
+- **Docker with Compose** (local dependencies and container builds)  
+  Install Docker with Compose. On macOS and Windows, this is most commonly done via Docker Desktop. On Linux, Docker Engine with the Compose plugin is enough.
+
+  Verify:
+
+  ```bash
+  docker --version
+  docker compose version
+  ```
+
+- **direnv** (recommended for env var loading)  
+  Install on macOS:
+
+  ```bash
+  brew install direnv
+  ```
+
+  Install on Debian/Ubuntu:
+
+  ```bash
+  sudo apt install direnv
+  ```
+
+  Verify:
+
+  ```bash
+  direnv --version
+  ```
 
 Each package reads its own `.env` file. There is no automatic inheritance from the repo root. The root `.env` is only used by system tests (`bun run test:system`), which need `DB_CONNECTION_URL` and `REDIS_URL`.
 
