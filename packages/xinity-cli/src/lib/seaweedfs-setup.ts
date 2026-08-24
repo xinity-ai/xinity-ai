@@ -8,7 +8,7 @@
  * All shell operations go through the Host interface so this works
  * identically for local and remote (--target-host) execution.
  */
-import { randomBytes, createHmac } from "crypto";
+import { randomBytes, createHmac } from "node:crypto";
 import { confirm, isCancel, log, note, password, spinner as clackSpinner, text } from "./clack.ts";
 import { bold, cyan, dim } from "picocolors";
 import { type Host, commandExistsOn } from "./host.ts";

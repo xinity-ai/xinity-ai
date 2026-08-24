@@ -1,8 +1,8 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { runCli } from "../helpers/cli-runner.ts";
 import { createTempDir, type TempDir } from "../helpers/temp-config.ts";
-import { join } from "path";
-import { readFileSync } from "fs";
+import { join } from "node:path";
+import { readFileSync } from "node:fs";
 
 /**
  * Configure command integration tests.

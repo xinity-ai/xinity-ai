@@ -5,8 +5,8 @@
  * still get torn down. Kept in its own file so observed facts never mix
  * with desired configuration.
  */
-import { existsSync, unlinkSync } from "fs";
-import { join } from "path";
+import { existsSync, unlinkSync } from "node:fs";
+import { join } from "node:path";
 import { z } from "zod";
 import { version as cliVersion } from "../../../../package.json";
 import { loadPrivateJson, savePrivateJson } from "./config.ts";

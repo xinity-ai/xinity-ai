@@ -1,4 +1,4 @@
-import { createServer } from "net";
+import { createServer } from "node:net";
 
 export function requireEnv(name: string): string {
   const value = process.env[name];

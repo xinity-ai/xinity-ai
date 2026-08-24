@@ -6,9 +6,9 @@
  * half: download the migration tarball from a GitHub release, extract it,
  * and apply pending migrations via drizzle-orm's programmatic migrator.
  */
-import { tmpdir } from "os";
-import { join } from "path";
-import { mkdirSync } from "fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { mkdirSync } from "node:fs";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";

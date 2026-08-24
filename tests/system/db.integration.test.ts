@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { aiApiKeyT, aiApplicationT, sql, organizationT, preconfigureDB } from "common-db";
-import { randomUUID } from "crypto";
+import { randomUUID } from "node:crypto";
 import { ensureSystemReady } from "./guard";
 
 const orgId = `org-${randomUUID()}`;

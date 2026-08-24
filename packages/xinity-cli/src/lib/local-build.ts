@@ -1,6 +1,6 @@
-import { resolve, join, dirname, basename } from "path";
-import { existsSync } from "fs";
-import { tmpdir } from "os";
+import { resolve, join, dirname, basename } from "node:path";
+import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { $ } from "bun";
 import { binaryBaseName, type Component } from "./component-meta.ts";
 import type { StepEvent } from "./step-event.ts";

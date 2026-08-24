@@ -16,8 +16,8 @@
  *   small  6 machines, 4 models (quick iteration)
  *   large  55 machines, 8 models with 4-25 replicas each (stress-test UI)
  */
-import { join } from "path";
-import { readFileSync } from "fs";
+import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import {
   aiNodeT,
   modelDeploymentT,

@@ -1,7 +1,7 @@
-import { execSync } from "child_process";
-import { existsSync } from "fs";
-import { join } from "path";
-import { homedir } from "os";
+import { execSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 
 const CANDIDATES = [
   "brave",

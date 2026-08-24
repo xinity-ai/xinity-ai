@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { existsSync, readFileSync } from "fs";
-import { join } from "path";
-import { randomUUID } from "crypto";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import {
   aiNodeT,
   usageEventT,

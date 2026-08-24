@@ -3,7 +3,7 @@
  * Reuses the session cookies saved by global-setup (owner.json) to avoid
  * creating extra sessions that would invalidate the browser tests' state.
  */
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync } from "node:fs";
 import { API_KEY_STATE, STORAGE_STATE, BASE_URL, type StorageState } from "../utils/test-data";
 import { ensureE2EReady } from "../guard";
 

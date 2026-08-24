@@ -2,7 +2,7 @@
  * E2E test guard: ensures the dashboard is running and auth state exists.
  * Call from beforeAll or from getBrowser(). Idempotent, safe to call multiple times.
  */
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync } from "node:fs";
 import { STORAGE_STATE, API_KEY_STATE, BASE_URL, type StorageState } from "./utils/test-data";
 import { runSetup } from "./global-setup";
 

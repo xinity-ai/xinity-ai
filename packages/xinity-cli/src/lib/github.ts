@@ -4,7 +4,7 @@
  * Supports private repos via a configurable token (githubToken in CLI config).
  * Falls back to `gh auth token` if the GitHub CLI is authenticated.
  */
-import { join } from "path";
+import { join } from "node:path";
 import { loadConfig } from "./config.ts";
 import { localRun } from "./host.ts";
 import { cliAssetSuffix, platformLabel } from "./platform.ts";

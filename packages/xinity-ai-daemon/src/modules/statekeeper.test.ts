@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterAll, mock } from "bun:test";
-import { join } from "path";
+import { join } from "node:path";
 import { rm, mkdir } from "node:fs/promises";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";

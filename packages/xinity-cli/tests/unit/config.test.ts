@@ -1,7 +1,7 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { createTempDir, redirectXdgConfigHome, type TempDir } from "../helpers/temp-config.ts";
-import { readFileSync, statSync } from "fs";
-import { join } from "path";
+import { readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { loadConfig, saveConfig, updateConfig, configPath } from "../../src/lib/config.ts";
 
 describe("config", () => {

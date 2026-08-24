@@ -4,9 +4,9 @@
  * Creates isolated temp directories for each test to avoid
  * conflicts and filesystem pollution.
  */
-import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "fs";
-import { join } from "path";
-import { tmpdir } from "os";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 export interface TempDir {
   path: string;

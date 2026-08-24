@@ -1,5 +1,5 @@
 import type { CommandModule } from "yargs";
-import { basename } from "path";
+import { basename } from "node:path";
 
 const SHELLS = ["bash", "zsh", "fish"] as const;
 type Shell = (typeof SHELLS)[number];

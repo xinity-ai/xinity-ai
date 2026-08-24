@@ -5,7 +5,7 @@
  * stdout, stderr, and exit code. Supports environment overrides
  * and timeout control.
  */
-import { join } from "path";
+import { join } from "node:path";
 
 const CLI_ENTRY = join(import.meta.dir, "../../src/index.ts");
 

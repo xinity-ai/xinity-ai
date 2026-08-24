@@ -7,7 +7,7 @@
  * MUST be imported before any dashboard module imports.
  */
 import { plugin } from "bun";
-import { resolve } from "path";
+import { resolve } from "node:path";
 import { serverStubs, appStubs, svelteComponentStubs } from "./dashboard-stubs.ts";
 
 const DASHBOARD_SRC = resolve(import.meta.dirname, "../../../../packages/xinity-ai-dashboard/src/lib");
