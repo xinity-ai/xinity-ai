@@ -1,82 +1,65 @@
-import postgres from "postgres";
-import { env } from "./env";
+import { subscribe, end as endDB } from "./db";
 import { rootLogger } from "./logger";
 import { buildDesiredState } from "./desired-state";
-import { pushDesiredState, isConnected, getConnectionId } from "./connections";
+import { pushDesiredState, isConnected, getConnectedNodeIds } from "./connections";
 
 const log = rootLogger.child({ name: "notify-bus" });
 
-let sql: postgres.Sql | null = null;
-const subscriptions = new Map<string, postgres.ListenMeta>();
+/** Must match the channel the model_installation trigger publishes to. */
+const CHANNEL = "model_installation";
+const COALESCE_WINDOW_MS = 200;
 
-function channelForNode(nodeId: string): string {
-  return `ai_node:${nodeId}`;
+const pending = new Set<string>();
+let flushTimer: Timer | null = null;
+let unlisten: (() => Promise<void>) | null = null;
+
+function queue(nodeId: string): void {
+  pending.add(nodeId);
+  if (flushTimer === null) {
+    flushTimer = setTimeout(() => void flush(), COALESCE_WINDOW_MS);
+  }
 }
 
-function ensureConnection(): postgres.Sql {
-  if (!sql) {
-    sql = postgres(env.DB_CONNECTION_URL);
-  }
-  return sql;
-}
+async function flush(): Promise<void> {
+  flushTimer = null;
+  const nodeIds = [...pending];
+  pending.clear();
 
-export async function subscribe(nodeId: string): Promise<void> {
-  if (subscriptions.has(nodeId)) {
-    return;
-  }
-
-  const channel = channelForNode(nodeId);
-  const conn = ensureConnection();
-
-  const handle = await conn.listen(channel, async () => {
+  for (const nodeId of nodeIds) {
     if (!isConnected(nodeId)) {
-      return;
+      continue;
     }
     try {
-      const state = await buildDesiredState(nodeId);
-      pushDesiredState(nodeId, state);
+      pushDesiredState(nodeId, await buildDesiredState(nodeId));
     } catch (err) {
       log.error({ err, nodeId }, "Failed to push desired state after notification");
     }
-  });
-
-  subscriptions.set(nodeId, handle);
-  log.debug({ nodeId, channel }, "Subscribed to notifications");
+  }
 }
 
-export async function unsubscribe(nodeId: string, connId?: number): Promise<void> {
-  const handle = subscriptions.get(nodeId);
-  if (!handle) {
-    return;
-  }
-
-  if (connId !== undefined && isConnected(nodeId)) {
-    const current = getConnectionId(nodeId);
-    if (current !== undefined && current !== connId) {
-      log.debug({ nodeId, connId, currentConnId: current }, "Skipping unsubscribe for superseded connection");
-      return;
+export async function start(): Promise<void> {
+  // Notifications sent while the listen connection was down are lost, so every live
+  // daemon is re-synced whenever the subscription is established again.
+  unlisten = await subscribe(CHANNEL, queue, () => {
+    for (const nodeId of getConnectedNodeIds()) {
+      queue(nodeId);
     }
+  });
+  log.info({ channel: CHANNEL }, "Listening for installation changes");
+}
+
+export async function stop(): Promise<void> {
+  if (flushTimer !== null) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
   }
 
   try {
-    await handle.unlisten();
+    await unlisten?.();
   } catch (err) {
-    log.warn({ err, nodeId }, "Failed to unlisten");
+    log.warn({ err }, "Failed to unlisten");
   }
-  subscriptions.delete(nodeId);
-  log.debug({ nodeId }, "Unsubscribed from notifications");
-}
+  unlisten = null;
 
-export async function shutdown(): Promise<void> {
-  for (const [nodeId, handle] of subscriptions) {
-    try {
-      await handle.unlisten();
-    } catch {}
-    subscriptions.delete(nodeId);
-  }
-
-  if (sql) {
-    await sql.end();
-    sql = null;
-  }
+  await endDB();
 }

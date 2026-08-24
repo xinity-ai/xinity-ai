@@ -141,10 +141,6 @@ export function isConnected(nodeId: string): boolean {
   return connections.has(nodeId);
 }
 
-export function getConnectionId(nodeId: string): number | undefined {
-  return connections.get(nodeId)?.id;
-}
-
 export function getConnectedNodeIds(): string[] {
   return [...connections.keys()];
 }

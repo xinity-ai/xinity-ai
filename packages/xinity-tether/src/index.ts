@@ -6,7 +6,7 @@ import { checkMigrations } from "./db";
 import { verifyBearerToken, unauthorized } from "./auth";
 import { addConnection, removeConnection, pushDesiredState, runKeepaliveLoop, sendShutdownToAll } from "./connections";
 import { buildDesiredState } from "./desired-state";
-import { subscribe, unsubscribe, shutdown as shutdownNotifyBus } from "./notify-bus";
+import { start as startNotifyBus, stop as stopNotifyBus } from "./notify-bus";
 import { writeRegistration, queueInstallationStates, flushAndStop } from "./status-writer";
 import { handleMetrics, incRequestRejections } from "./metrics";
 import { buildListenTarget } from "./serve-config";
@@ -16,6 +16,15 @@ const log = rootLogger;
 const migrationState = await checkMigrations();
 if (migrationState.status !== "ok") {
   logMigrationFailureFatal(migrationState, rootLogger, "tether");
+  process.exit(1);
+}
+
+// Without the subscription a daemon would connect and then never hear about a
+// deployment again, which is worse than refusing to serve at all.
+try {
+  await startNotifyBus();
+} catch (err) {
+  rootLogger.fatal({ err }, "Failed to subscribe to installation changes");
   process.exit(1);
 }
 
@@ -64,16 +73,12 @@ async function handleSSEStream(req: Request): Promise<Response> {
 
   let connId: number | undefined;
   let cancelled = false;
-  let subscribed = false;
 
   const stream = new ReadableStream({
     async start(controller) {
       connId = await addConnection(nodeId, controller);
-      await subscribe(nodeId);
-      subscribed = true;
 
       if (cancelled) {
-        await unsubscribe(nodeId, connId);
         await removeConnection(nodeId, "cancel", connId);
         return;
       }
@@ -87,9 +92,6 @@ async function handleSSEStream(req: Request): Promise<Response> {
     },
     async cancel() {
       cancelled = true;
-      if (subscribed) {
-        await unsubscribe(nodeId, connId);
-      }
       await removeConnection(nodeId, "cancel", connId);
     },
   });
@@ -143,7 +145,7 @@ async function shutdown() {
   clearInterval(keepaliveTimer);
   sendShutdownToAll();
   await flushAndStop();
-  await shutdownNotifyBus();
+  await stopNotifyBus();
   server.stop();
   process.exit(0);
 }
