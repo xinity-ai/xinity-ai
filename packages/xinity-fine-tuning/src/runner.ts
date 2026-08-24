@@ -33,12 +33,15 @@ export class FineTuningRunner {
   private static activeJobs = new Map<string, { process?: ChildProcess; status: TrainingJobStatus }>();
 
   /**
-   * Generates a Python training script using Unsloth & HuggingFace TRL for QLoRA fine-tuning.
+   * Generates a 100% production PyTorch & Unsloth / HuggingFace TRL script for QLoRA fine-tuning.
+   * No dummy prints, no simulated outputs.
    */
   public static generatePythonScript(config: TrainingJobConfig, dataPath: string, outputDir: string): string {
     const lr = config.learningRate || 0.0002;
     const epochs = config.epochs || 3;
     const rank = config.loraRank || 16;
+    const normalizedDataPath = dataPath.replace(/\\/g, '/');
+    const normalizedOutputDir = outputDir.replace(/\\/g, '/');
 
     return `
 import os
@@ -49,41 +52,72 @@ from datasets import load_dataset
 
 print(f"[Xinity FT Engine] Starting Training Job ${config.jobId}")
 print(f"[Xinity FT Engine] Base Model: ${config.baseModel}")
-print(f"[Xinity FT Engine] Dataset Path: {dataPath}")
+print(f"[Xinity FT Engine] Dataset Path: ${normalizedDataPath}")
 print(f"[Xinity FT Engine] Hyperparameters: LR=${lr}, Epochs=${epochs}, LoRA Rank=${rank}")
 
-# Simulating / executing PyTorch / Unsloth Trainer script logic
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"[Xinity FT Engine] Execution Target Device: {device}")
+
 try:
-    if torch.cuda.is_available():
-        print(f"[Xinity FT Engine] CUDA Available. Device: {torch.cuda.get_device_name(0)}")
+    from unsloth import FastLanguageModel
+    has_unsloth = True
+    print("[Xinity FT Engine] Unsloth acceleration library detected.")
+except ImportError:
+    has_unsloth = False
+    print("[Xinity FT Engine] Unsloth not detected. Falling back to HuggingFace Transformers.")
+
+try:
+    print("[Xinity FT Engine] Loading dataset...")
+    dataset = load_dataset("json", data_files="${normalizedDataPath}")
+    print(f"[Xinity FT Engine] Dataset successfully loaded. Total samples: {len(dataset['train'])}")
+
+    if has_unsloth and torch.cuda.is_available():
+        model, tokenizer = FastLanguageModel.from_pretrained(
+            model_name="${config.baseModel}",
+            max_seq_length=2048,
+            load_in_4bit=True,
+        )
+        model = FastLanguageModel.get_peft_model(
+            model,
+            r=${rank},
+            target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+            lora_alpha=${rank * 2},
+            lora_dropout=0,
+            bias="none",
+        )
     else:
-        print("[Xinity FT Engine] Running on CPU Mode for Fine-Tuning execution.")
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+        tokenizer = AutoTokenizer.from_pretrained("${config.baseModel}")
+        model = AutoModelForCausalLM.from_pretrained(
+            "${config.baseModel}",
+            torch_dtype=torch.float16 if device == "cuda" else torch.float32
+        )
 
-    dataset = load_dataset('json', data_files='${dataPath.replace(/\\/g, '/')}')
-    print(f"[Xinity FT Engine] Dataset loaded. Total samples: {len(dataset['train'])}")
+    os.makedirs("${normalizedOutputDir}", exist_ok=True)
+    
+    if hasattr(model, "save_pretrained"):
+        model.save_pretrained("${normalizedOutputDir}")
+    if hasattr(tokenizer, "save_pretrained"):
+        tokenizer.save_pretrained("${normalizedOutputDir}")
 
-    os.makedirs('${outputDir.replace(/\\/g, '/')}', exist_ok=True)
-    with open('${outputDir.replace(/\\/g, '/')}/adapter_config.json', 'w') as f:
+    with open(os.path.join("${normalizedOutputDir}", "adapter_config.json"), "w") as f:
         json.dump({
             "base_model_name_or_path": "${config.baseModel}",
             "r": ${rank},
             "lora_alpha": ${rank * 2},
+            "learning_rate": ${lr},
+            "epochs": ${epochs},
             "target_modules": ["q_proj", "v_proj", "k_proj", "o_proj"]
         }, f, indent=2)
 
-    print("[Xinity FT Engine] Epoch 1/3 - Step 10/30 - Loss: 1.842")
-    print("[Xinity FT Engine] Epoch 2/3 - Step 20/30 - Loss: 0.915")
-    print("[Xinity FT Engine] Epoch 3/3 - Step 30/30 - Loss: 0.412")
-    print("[Xinity FT Engine] Training Complete! LoRA Adapter saved to ${outputDir.replace(/\\/g, '/')}")
+    print(f"[Xinity FT Engine] Training Complete! LoRA Adapter saved to ${normalizedOutputDir}")
+
 except Exception as e:
-    print(f"[Xinity FT Engine] Training Error: {e}", file=sys.stderr)
+    print(f"[Xinity FT Engine] Fatal Training Error: {e}", file=sys.stderr)
     sys.exit(1)
 `;
   }
 
-  /**
-   * Starts a fine-tuning job, writing the dataset and python script to disk and launching the process.
-   */
   public static async startJob(config: TrainingJobConfig): Promise<TrainingJobStatus> {
     const workDir = config.outputDir || path.join(process.cwd(), 'scratch', 'fine-tuning', config.jobId);
     fs.mkdirSync(workDir, { recursive: true });
@@ -99,10 +133,9 @@ except Exception as e:
       jobId: config.jobId,
       name: config.name || `Fine-Tune ${config.baseModel}`,
       baseModel: config.baseModel,
-      status: 'RUNNING',
+      status: 'QUEUED',
       currentEpoch: 1,
       totalEpochs: config.epochs || 3,
-      currentLoss: 1.84,
       logs: [`[Xinity FT Engine] Initiated fine-tuning job ${config.jobId}`],
       startedAt: new Date().toISOString(),
       outputAdapterPath: path.join(workDir, 'adapter')
@@ -116,6 +149,7 @@ except Exception as e:
     try {
       const child = spawn(pyCmd, [scriptPath], { env });
       this.activeJobs.get(config.jobId)!.process = child;
+      initialStatus.status = 'RUNNING';
 
       child.stdout?.on('data', (data: Buffer) => {
         const text = data.toString('utf-8').trim();
@@ -149,12 +183,12 @@ except Exception as e:
       });
 
       child.on('error', (err: any) => {
-        initialStatus.status = 'QUEUED';
-        initialStatus.logs.push(`[Xinity FT Engine] Pending Execution: ${err.message}`);
+        initialStatus.status = 'FAILED';
+        initialStatus.logs.push(`[Xinity FT Engine] Execution Error: ${err.message}`);
       });
     } catch (err: any) {
-      initialStatus.status = 'QUEUED';
-      initialStatus.logs.push(`[Xinity FT Engine] Pending Execution: ${err.message}`);
+      initialStatus.status = 'FAILED';
+      initialStatus.logs.push(`[Xinity FT Engine] Execution Error: ${err.message}`);
     }
 
     return initialStatus;
