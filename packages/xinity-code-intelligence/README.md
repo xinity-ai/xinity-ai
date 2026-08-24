@@ -4,12 +4,12 @@
 
 ## Key Features
 
-- 🏢 **Multi-Tenancy & Isolation**: Isolated graph storage scoped strictly by `tenantId` and `repoId`.
-- 🔐 **RBAC Governance**: Fine-grained access control (`graph:read`, `graph:write`, `graph:admin`, `repo:index`) enforced on every query via JWT token claims.
-- 🌳 **Production AST Parsing**: Powered by the official TypeScript Compiler API (`ts.createSourceFile`) to parse real classes, methods, functions, and interfaces while ignoring comments and strings.
-- 🔗 **Cross-File Import Resolver**: Resolves relative module specifiers (`./`, `../`, `/index.ts`) to construct `imports` relation edges between workspace files.
-- ⚡ **Token Minimization (`format: "compact"`)**: SCIP-style single-line text output (e.g. `[class] OrderController @ src/api.ts`) saving **70–80% of prompt tokens** compared to verbose JSON.
-- 🛡️ **Admin Feature Toggle**: Disabled by default (`CODE_INTELLIGENCE_ENABLED=false`). Requires explicit administrator activation.
+- **Multi-Tenancy & Isolation**: Isolated graph storage scoped strictly by `tenantId` and `repoId`.
+- **RBAC Governance**: Fine-grained access control (`graph:read`, `graph:write`, `graph:admin`, `repo:index`) enforced on every query via JWT token claims.
+- **Production AST Parsing**: Powered by the official TypeScript Compiler API (`ts.createSourceFile`) to parse real classes, methods, functions, and interfaces while ignoring comments and strings.
+- **Cross-File Import Resolver**: Resolves relative module specifiers (`./`, `../`, `/index.ts`) to construct `imports` relation edges between workspace files.
+- **Token Minimization (`format: "compact"`)**: SCIP-style single-line text output (e.g. `[class] OrderController @ src/api.ts`) saving **70–80% of prompt tokens** compared to verbose JSON.
+- **Admin Feature Toggle**: Disabled by default (`CODE_INTELLIGENCE_ENABLED=false`). Requires explicit administrator activation.
 
 ---
 
