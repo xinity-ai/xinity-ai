@@ -33,7 +33,7 @@ export function resolveImageSrc(url: string): string {
   return url;
 }
 
-export interface RoleStyle {
+export type RoleStyle = {
   borderColor: string;
   bgColor: string;
   badgeColor: string;

@@ -41,14 +41,14 @@ const S_ERROR = "■";
 const S_BAR = "├";
 const S_BAR_END = "└";
 
-interface SlotState {
+type SlotState = {
   label: string;
   message: string;
   settled: boolean;
   failed: boolean;
 }
 
-export interface MultiProgressResult {
+export type MultiProgressResult = {
   slot(label: string): Progress;
   done(): void;
 }

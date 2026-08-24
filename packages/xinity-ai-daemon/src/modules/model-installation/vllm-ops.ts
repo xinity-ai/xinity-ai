@@ -7,7 +7,7 @@ import { resolveMaxAudioInputDurationS, resolveMaxAudioInputFileSizeMB, type Dep
 
 const log = rootLogger.child({ name: "vllm-ops" });
 
-export interface VllmInstanceConfig {
+export type VllmInstanceConfig = {
   model: string;
   port: number;
   kvCacheBytes: string;
@@ -17,7 +17,7 @@ export interface VllmInstanceConfig {
   settings?: DeploymentSettings | null;
 }
 
-export interface VllmOps {
+export type VllmOps = {
   /** Returns instance IDs of running vLLM instances */
   listRunning(): Promise<string[]>;
   /** Deploy and start a vLLM instance with the given config */

@@ -12,7 +12,7 @@ import { router } from "./orpc/router";
 import type { ProcedureMeta } from "./orpc/root";
 import { serverEnv } from "./serverenv";
 
-export interface McpTool {
+export type McpTool = {
 	name: string;
 	description: string;
 	inputSchema: Record<string, unknown>;

@@ -1,7 +1,7 @@
 import postgres from "postgres";
 import type { Host } from "./host.ts";
 
-export interface ConnectionResult {
+export type ConnectionResult = {
   success: boolean;
   error?: string;
 }

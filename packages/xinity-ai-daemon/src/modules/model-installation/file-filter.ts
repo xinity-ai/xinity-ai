@@ -1,6 +1,6 @@
 // Allow-list semantics (default exclude); a leading "!" re-includes; last
 // matching rule wins. Globs are Bun.Glob.
-interface CompiledRule {
+type CompiledRule = {
   glob: Bun.Glob;
   includes: boolean;
 }

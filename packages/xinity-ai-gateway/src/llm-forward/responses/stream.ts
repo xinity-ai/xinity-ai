@@ -62,7 +62,7 @@ const INTERNAL_TOOL_NAMES = new Set(["web_fetch"]);
 // Streaming entry point
 // ---------------------------------------------------------------------------
 
-export interface StreamResponseParams {
+export type StreamResponseParams = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Output type varies per call site
   result: StreamTextResult<ToolSet, any>;
   orgId: string;

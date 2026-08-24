@@ -18,13 +18,13 @@
 import { Prompt } from "@clack/core";
 import { cyan, dim, green, inverse, yellow } from "picocolors";
 
-export interface SearchListOption<Value> {
+export type SearchListOption<Value> = {
   value: Value;
   label: string;
   hint?: string;
 }
 
-interface SharedOptions<Value> {
+type SharedOptions<Value> = {
   message: string;
   options: SearchListOption<Value>[];
   /** Rows visible at once; overflow is windowed with "… n more" markers. */
@@ -37,10 +37,10 @@ export type SearchSelectOptions<Value> = SharedOptions<Value>;
 
 export type ListSelectOptions<Value> = SharedOptions<Value>;
 
-export interface SearchMultiselectOptions<Value> extends SharedOptions<Value> {
+export type SearchMultiselectOptions<Value> = {
   initialValues?: Value[];
   required?: boolean;
-}
+} & SharedOptions<Value>
 
 const OUT = process.stderr;
 const S_BAR = "│";

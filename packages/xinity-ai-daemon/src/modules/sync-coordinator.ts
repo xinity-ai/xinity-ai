@@ -25,7 +25,7 @@ export type WorkflowTrigger =
   | { kind: "interval" }
   | { kind: "signal"; source?: string };
 
-export interface WorkflowCoordinatorOptions {
+export type WorkflowCoordinatorOptions = {
   /**
    * The interval between periodic workflow triggers, in milliseconds.
    * Use something like: 6 * 60 * 60 * 1000 for every 6 hours.
@@ -49,7 +49,7 @@ export interface WorkflowCoordinatorOptions {
   onDrop?: (trigger: WorkflowTrigger) => void;
 }
 
-export interface WorkflowCoordinator {
+export type WorkflowCoordinator = {
   /**
    * Push a signal-trigger into the coordinator.
    */

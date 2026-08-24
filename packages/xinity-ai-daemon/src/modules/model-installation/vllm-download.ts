@@ -9,7 +9,7 @@ const log = rootLogger.child({ name: "vllm-download" });
 
 const HF_API_URL = "https://huggingface.co";
 
-interface HfFileEntry {
+type HfFileEntry = {
   path: string;
   size: number;
   lfs: { size: number } | null;

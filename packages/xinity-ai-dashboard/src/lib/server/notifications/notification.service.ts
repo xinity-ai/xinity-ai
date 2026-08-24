@@ -12,7 +12,7 @@ import { commonEmailProps } from "$lib/server/email";
 
 const log = rootLogger.child({ name: "notification.service" });
 
-export interface NotifyParams {
+export type NotifyParams = {
   type: NotificationType;
   userId: string;
   organizationId?: string;

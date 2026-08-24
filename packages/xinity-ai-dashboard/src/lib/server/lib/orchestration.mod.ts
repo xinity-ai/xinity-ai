@@ -15,7 +15,7 @@ const VLLM_PORT_BASE = 11435;
 type NewInstallation = InferInsertModel<typeof modelInstallationT>;
 
 /** Mutable tracking state built from current DB contents. */
-interface ClusterState {
+type ClusterState = {
   installationsByModel: Map<string, ModelInstallation[]>;
   installationsByServer: Map<string, ModelInstallation[]>;
   serverCapacity: Map<string, { total: number; used: number }>;

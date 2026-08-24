@@ -2,7 +2,7 @@ import { describe, test, expect } from "bun:test";
 import { ownerFetch } from "./api-helpers";
 
 /** Subset of API key fields used across these tests. */
-interface ApiKeyResponse {
+type ApiKeyResponse = {
   id: string;
   name: string;
   fullKey: string;

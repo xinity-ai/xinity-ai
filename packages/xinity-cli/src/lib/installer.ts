@@ -31,7 +31,7 @@ export type ServiceFailurePolicy = "rollback" | "keep";
 
 // ─── Pre-checks ────────────────────────────────────────────────────────────
 
-export interface PreflightIssue {
+export type PreflightIssue = {
   tool: string;
   reason: string;
   hint?: string;

@@ -11,7 +11,7 @@ import { unitName } from "./systemd.ts";
 import { type Component, ENV_DIR, SECRETS_DIR, ENV_SCHEMAS, BIN_DIR, UNIT_DIR } from "./component-meta.ts";
 import { analyzeEnvSchema, categorizeFields } from "./env-prompt.ts";
 
-export interface RemoteState {
+export type RemoteState = {
   platform: string;
   files: Record<string, boolean>;
   /** Base64-encoded file contents (null if missing/unreadable) */

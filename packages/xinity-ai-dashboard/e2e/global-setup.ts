@@ -17,24 +17,24 @@ import { dirname } from "node:path";
 
 // ─── Types ──────────────────────────────────────────────────────────
 
-interface OnboardResult {
+type OnboardResult = {
   dashboardApiKey: string;
   userId: string;
   orgId: string;
   orgSlug: string;
 }
 
-interface SessionResponse {
+type SessionResponse = {
   user?: { id: string };
 }
 
-interface OrgResponse {
+type OrgResponse = {
   id: string;
   name: string;
   slug: string;
 }
 
-interface InvitationResponse {
+type InvitationResponse = {
   id: string;
   organizationId: string;
   email: string;

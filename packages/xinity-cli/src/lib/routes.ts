@@ -10,7 +10,7 @@ import type { z } from "zod";
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
-export interface RouteInfo {
+export type RouteInfo = {
   /** HTTP method (GET, POST, etc.) */
   method: HttpMethod;
   /** HTTP path including prefix (e.g. /deployment/{id}) */

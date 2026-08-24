@@ -27,7 +27,7 @@ const S3_ENDPOINT = `http://127.0.0.1:${S3_PORT}`;
 /** SeaweedFS GitHub releases URL pattern for single-file binaries. */
 const SEAWEEDFS_GITHUB = "https://github.com/seaweedfs/seaweedfs";
 
-export interface SeaweedFSCredentials {
+export type SeaweedFSCredentials = {
   endpoint: string;
   accessKeyId: string;
   secretAccessKey: string;

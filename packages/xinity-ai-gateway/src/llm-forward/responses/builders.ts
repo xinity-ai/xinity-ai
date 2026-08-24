@@ -333,7 +333,7 @@ export function formatUsage(usage: UsageInput | null | undefined): Usage | null 
 // Response object construction
 // ---------------------------------------------------------------------------
 
-export interface ResponsePayloadParams {
+export type ResponsePayloadParams = {
   responseId: string;
   createdAt: number;
   model: string;

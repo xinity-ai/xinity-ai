@@ -1,6 +1,6 @@
 import { APIError } from "better-auth";
 
-export interface BetterAuthErrorBody {
+export type BetterAuthErrorBody = {
   code: string | undefined;
   message: string | undefined;
 }

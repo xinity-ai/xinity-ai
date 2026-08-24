@@ -3,14 +3,14 @@ import { ownerFetch } from "../api/api-helpers";
 import { ownerPage } from "../utils/browser";
 import { expectVisible } from "../utils/helpers";
 
-interface CreatedKey {
+type CreatedKey = {
   fullKey: string;
   name: string;
   specifier: string;
   applicationId: string | null;
 }
 
-interface ListedKey {
+type ListedKey = {
   id: string;
   specifier: string;
   applicationId: string | null;

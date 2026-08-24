@@ -18,14 +18,14 @@ import {
 } from "xinity-infoserver";
 
 /** Minimal machine description the resolver needs; a subset of HardwareProfile. */
-export interface MachineProfile {
+export type MachineProfile = {
   gpus: GpuInfo[];
   /** Usable model capacity in GB (total, treated as free on an empty standalone node). */
   detectedCapacityGb: number;
 }
 
 /** A model entry resolved for vLLM, with the derived run facts. */
-export interface ResolvedVllmModel {
+export type ResolvedVllmModel = {
   /** The HuggingFace-style name vLLM and the downloader use. */
   vllmProviderName: string;
   model: Model;
@@ -100,7 +100,7 @@ export function resolveVllmModel(
 }
 
 /** Whether the vLLM driver is usable on this machine, and its version if detectable. */
-export interface VllmDriverState {
+export type VllmDriverState = {
   available: boolean;
   version?: string;
   features?: string[];

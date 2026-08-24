@@ -5,11 +5,11 @@
  * after them.
  */
 
-export interface SocketAddressSource {
+export type SocketAddressSource = {
   requestIP(req: Request): { address: string } | null;
 }
 
-export interface ClientIpConfig {
+export type ClientIpConfig = {
   /** Forwarding header to read. Unset means trust only the socket address. */
   header: string | undefined;
   /** Number of proxies in front. Entries left of that position are client-supplied. */

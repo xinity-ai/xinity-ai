@@ -20,7 +20,7 @@ import { safeFetch } from "./llm-forward/tools/url-safety";
 
 const log = rootLogger.child({ name: "image-store" });
 
-export interface ImageStore {
+export type ImageStore = {
   client: S3Client;
   bucket: string;
 }

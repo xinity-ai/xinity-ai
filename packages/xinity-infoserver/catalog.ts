@@ -11,7 +11,7 @@ const INCLUDE_FETCH_TIMEOUT_MS = 10_000;
 
 export type Indexed<M> = M & { publicSpecifier: string; _source: string };
 
-export interface ParsedModelFile<M> {
+export type ParsedModelFile<M> = {
   models: Record<string, M>;
   includes?: string[];
 }
@@ -20,24 +20,24 @@ export type FileParseOutcome<M> =
   | { status: "ok"; file: ParsedModelFile<M>; skippedEntries?: number }
   | { status: "invalid"; reason: string };
 
-export interface SerializedCatalog {
+export type SerializedCatalog = {
   json: string;
   yaml: string;
   /** Content hash, usable as an ETag and as a change signal for clients. */
   digest: string;
 }
 
-export interface CatalogHealth {
+export type CatalogHealth = {
   modelCount: number;
   lastRefreshAt: string | null;
   lastRefreshError: string | null;
 }
 
-interface CatalogModel {
+type CatalogModel = {
   family?: string;
 }
 
-export interface CatalogOptions<M> {
+export type CatalogOptions<M> = {
   /** Distinguishes the two catalogs in logs. */
   name: string;
   parseFile: (text: string) => FileParseOutcome<M>;
@@ -50,12 +50,12 @@ export interface CatalogOptions<M> {
   invalidDocumentIsFatal: boolean;
 }
 
-interface CatalogConfig {
+type CatalogConfig = {
   dirPath: string | undefined;
   maxIncludeDepth: number;
 }
 
-export interface Catalog<M> {
+export type Catalog<M> = {
   configure(config: CatalogConfig): void;
   refresh(): Promise<void>;
   get(specifier: string): Indexed<M> | undefined;

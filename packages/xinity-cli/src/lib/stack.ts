@@ -268,7 +268,7 @@ export function diffFromLayer(
 
 // ── Validation ───────────────────────────────────────────────────────────
 
-export interface ValidationError {
+export type ValidationError = {
   field: string;
   message: string;
 }

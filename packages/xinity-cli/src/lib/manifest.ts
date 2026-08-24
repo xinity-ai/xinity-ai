@@ -4,7 +4,7 @@
 import type { Host } from "./host.ts";
 import { heredoc } from "./service.ts";
 
-export interface ComponentEntry {
+export type ComponentEntry = {
   version: string;
   installedAt: string;
   binaryPath: string;
@@ -13,12 +13,12 @@ export interface ComponentEntry {
   binaryChecksum?: string;
 }
 
-export interface StackMembership {
+export type StackMembership = {
   name: string;
   fleet?: string;
 }
 
-export interface Manifest {
+export type Manifest = {
   components: Partial<Record<string, ComponentEntry>>;
   /** Non-secret metadata about the configured DB connection. */
   db?: { hint: string };

@@ -9,13 +9,13 @@ import { join } from "node:path";
 
 const CLI_ENTRY = join(import.meta.dir, "../../src/index.ts");
 
-export interface CliResult {
+export type CliResult = {
   stdout: string;
   stderr: string;
   exitCode: number;
 }
 
-export interface RunCliOptions {
+export type RunCliOptions = {
   args?: string[];
   env?: Record<string, string>;
   timeout?: number;

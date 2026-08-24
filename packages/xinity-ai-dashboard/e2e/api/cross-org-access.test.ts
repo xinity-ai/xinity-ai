@@ -30,9 +30,9 @@ const AUTH_HEADERS = {
   Origin: BASE_URL,
 } as const;
 
-interface OrgRow { id: string; name: string; slug: string }
-interface MemberRow { id: string; role: string; userId: string; user: { email: string } }
-interface FullOrg { id: string; members: MemberRow[] }
+type OrgRow = { id: string; name: string; slug: string }
+type MemberRow = { id: string; role: string; userId: string; user: { email: string } }
+type FullOrg = { id: string; members: MemberRow[] }
 
 let attackerCookies: string;
 let victimOrgId: string;

@@ -1,6 +1,6 @@
 import { getContext } from "svelte";
 
-export interface ClientEnv {
+export type ClientEnv = {
   GATEWAY_URL: string;
 }
 
