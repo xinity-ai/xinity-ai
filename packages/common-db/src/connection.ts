@@ -101,42 +101,24 @@ export function preconfigureDB(
       return migrationState;
     },
 
-    async* listen(channel: string) {
-      const sql = ensurePostgresConnection();
-      yield* fromCallback(callback => sql.listen(channel, callback), async x => {
-        const o = await x;
-        process.on("beforeExit", () => o.unlisten());
-      })
+    /**
+     * All channels share one dedicated connection, so subscribing per channel is cheap.
+     * `onSubscribed` fires again whenever a dropped connection is re-established, which is
+     * the only chance a caller gets to re-sync state that changed while it was deaf.
+     */
+    async subscribe(
+      channel: string,
+      onNotify: (payload: string) => void,
+      onSubscribed?: () => void,
+    ): Promise<() => Promise<void>> {
+      const subscription = await ensurePostgresConnection().listen(channel, onNotify, onSubscribed);
+      return () => subscription.unlisten();
     },
-  }
-}
 
-/**
- * Bridges a callback-based subscription into an async generator. The subscription
- * is set up via `register`; the returned handle is forwarded to `postRegister` so
- * the caller can wire up teardown (e.g. process.on("beforeExit", ...)).
- */
-async function* fromCallback<T, K>(
-  register: (callback: (val: T) => void) => K,
-  postRegister: (handle: K) => void = () => { },
-) {
-  const queue: T[] = [];
-  let resolveNext: ((value: T) => void) | undefined;
-
-  postRegister(register(value => {
-    if (resolveNext) {
-      resolveNext(value);
-      resolveNext = undefined;
-    } else {
-      queue.push(value);
-    }
-  }));
-
-  while (true) {
-    if (queue.length) {
-      yield queue.shift()!;
-    } else {
-      yield await new Promise<T>(resolve => { resolveNext = resolve; });
-    }
+    async end(): Promise<void> {
+      if (connection) {
+        await connection.end();
+      }
+    },
   }
 }
