@@ -38,6 +38,9 @@ jobs:
       fail-fast: false
       matrix:
         suite:
+          - name: Lint
+            cmd: bun run lint
+            cwd: .
           - name: Gateway
             cmd: bun run test -- --reporter=default --reporter=junit --reporter-outfile=results.xml
             cwd: packages/xinity-ai-gateway
@@ -68,6 +71,7 @@ jobs:
         with:
           name: test-results-${{ matrix.suite.name }}
           path: ${{ matrix.suite.cwd }}/results.xml
+          if-no-files-found: ignore
 
   system-tests:
     name: System Integration
