@@ -1,5 +1,4 @@
-import type { CreateResponseBody, ResponseObject, Usage } from "./schemas";
-import type { OutputItem } from "./schemas";
+import type { CreateResponseBody, OutputItem, ResponseObject, Usage } from "./schemas";
 
 // ---------------------------------------------------------------------------
 // Usage formatting

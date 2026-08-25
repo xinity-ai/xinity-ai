@@ -9,7 +9,7 @@ import type { CreateResponseBody, OutputItem, ResponseObject } from "./schemas";
 import { createToolTracker, type ToolCallItem, type ToolResultData } from "./tools";
 import { buildOutputItems, buildStepOutputItems, extractSearchAnnotations, type IncludeValue } from "./items";
 import { createResponseObject, formatUsage, markResponseFailed } from "./response-object";
-import { buildGenerationParams, buildOutputConfig, resolveResponseText } from "./generation-params";
+import { type buildGenerationParams, type buildOutputConfig, resolveResponseText } from "./generation-params";
 
 const log = rootLogger.child({ name: "response-generate" });
 
