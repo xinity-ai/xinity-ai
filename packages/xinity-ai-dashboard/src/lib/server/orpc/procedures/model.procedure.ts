@@ -1,4 +1,5 @@
-import { rootOs, withOrganization, requirePermission } from "../root";
+/** Public infoserver reference data, and onboarding reads it before an organization exists. */
+import { rootOs, withAuth } from "../root";
 import z from "zod";
 import { ModelFields } from "xinity-infoserver";
 import { catalogClient } from "$lib/server/model-catalog";
@@ -21,8 +22,7 @@ const PaginatedModelsSchema = z.object({
  * point the deployment at a current entry, which the deployment form already allows.
  */
 const listModels = rootOs
-  .use(withOrganization)
-  .use(requirePermission({ model: ["read"] }))
+  .use(withAuth)
   .route({ path: "/", method: "GET", tags: ["Model"], summary: "List Models" })
   .input(z.object({
     page: z.coerce.number().min(1).default(1),
@@ -50,8 +50,7 @@ const listModels = rootOs
   });
 
 const getModel = rootOs
-  .use(withOrganization)
-  .use(requirePermission({ model: ["read"] }))
+  .use(withAuth)
   .route({ path: "/{specifier}", method: "GET", tags: ["Model"], summary: "Get Model" })
   .input(z.object({ specifier: z.string() }))
   .output(ModelWithSpecifierSchema.nullable())

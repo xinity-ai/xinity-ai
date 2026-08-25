@@ -55,19 +55,20 @@ async function issueServerSideDashboardApiKey(userId: string, organizationId: st
 }
 
 const setupOnboarding = rootOs
-  .meta({ mcp: false, audit: { action: "onboarding.setup", resource: "onboarding", captureInput: ["orgName", "specifier"] } })
+  .meta({ mcp: false, audit: { action: "onboarding.setup", resource: "onboarding", captureInput: ["orgName", "specifier"], captureOutput: ["deploymentName"] } })
   .use(withAuth)
   .use(auditMiddleware)
   .route({ path: "/onboarding/setup", method: "POST", tags: ["Onboarding"], summary: "Complete onboarding setup" })
   .input(z.object({
     orgName: z.string().min(1).describe("Name of the organization to create"),
-    specifier: z.string().describe("The canonical model identifier"),
-    publicSpecifier: z.string().describe("The public-facing model name"),
+    specifier: z.string().optional().describe("The canonical model identifier"),
+    publicSpecifier: z.string().optional().describe("The public-facing model name"),
   }))
   .output(z.object({
     apiKey: z.string().describe("The full API key (shown once)"),
     applicationName: z.string(),
-    deploymentName: z.string(),
+    deploymentName: z.string().nullable().describe("Null when onboarding created no deployment"),
+    deploymentWarning: z.string().nullable().describe("Why the requested deployment was not created, if it was rejected"),
   }))
   .errors({ CONFLICT: {} })
   .handler(async ({ input, context, errors }) => {
@@ -93,18 +94,32 @@ const setupOnboarding = rootOs
       },
     }, { context });
 
-    await call(createDeployment, {
-      name: input.publicSpecifier,
-      specifier: input.specifier,
-      publicSpecifier: input.publicSpecifier,
-      enabled: true,
-      replicas: 1,
-    }, { context });
+    let deploymentName: string | null = null;
+    let deploymentWarning: string | null = null;
+    if (input.specifier) {
+      const publicSpecifier = input.publicSpecifier ?? input.specifier;
+      try {
+        await call(createDeployment, {
+          name: publicSpecifier,
+          specifier: input.specifier,
+          publicSpecifier,
+          enabled: true,
+          replicas: 1,
+        }, { context });
+        deploymentName = publicSpecifier;
+      } catch (err) {
+        // The organization and its API key already exist, and the key is only ever
+        // returned here, so a rejected deployment must not take the whole setup down.
+        rlog.error({ err, specifier: input.specifier }, "Onboarding deployment failed");
+        deploymentWarning = err instanceof Error ? err.message : String(err);
+      }
+    }
 
     return {
       apiKey: apiKeyResult.fullKey,
       applicationName: defaultApplicationName,
-      deploymentName: input.publicSpecifier,
+      deploymentName,
+      deploymentWarning,
     };
   });
 
