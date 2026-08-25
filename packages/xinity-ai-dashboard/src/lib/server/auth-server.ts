@@ -283,7 +283,7 @@ export const auth = betterAuth({
     revokeSessionsOnPasswordReset: true,
     requireEmailVerification: !!serverEnv.MAIL_URL,
     disableSignUp: false,
-    async sendResetPassword({ url, user, token }, request) {
+    async sendResetPassword({ url, user, token }) {
       const redirectTo = new URL(url).searchParams.get("callbackURL") ?? "";
       const [, resetId] = decodeURIComponent(redirectTo).match(/^__admin_reset__:(.+)$/) ?? [];
       if (resetId) {

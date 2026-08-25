@@ -338,11 +338,9 @@ describe("prefix hint routing", () => {
   });
 
   test("redis failure in prefix lookup falls back to strategy", async () => {
-    let mgetCount = 0;
     mockRedisSend.mockImplementation(
       ((cmd: string, args: string[]) => {
         if (cmd === "MGET") {
-          mgetCount++;
           const keys = args as string[];
           if (keys[0]?.startsWith("lb:prefix:")) {
             return Promise.reject(new Error("Redis down"));
