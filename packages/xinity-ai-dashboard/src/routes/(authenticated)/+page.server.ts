@@ -20,6 +20,10 @@ const isUncategorizedApp = (id: string | null | undefined): boolean =>
 
 type DailyTrendEntry = { totalCalls: number; loggedCalls: number; inputTokens: number; outputTokens: number };
 
+/** Matches the labels postgres returns for DATE(created_at), which shift out of range under toISOString. */
+const toDateKey = (date: Date): string =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+
 function fillDailyTrendSeries(
   trendData: Array<{ date: string } & DailyTrendEntry>,
   days: number,
@@ -29,8 +33,7 @@ function fillDailyTrendSeries(
   return Array.from({ length: days }, (_, i) => {
     const date = new Date(today);
     date.setDate(date.getDate() - (days - 1 - i));
-    const [dateStr = ""] = date.toISOString().split('T');
-    const dayData = trendMap.get(dateStr);
+    const dayData = trendMap.get(toDateKey(date));
     return {
       totalCalls: dayData?.totalCalls ?? 0,
       loggedCalls: dayData?.loggedCalls ?? 0,
