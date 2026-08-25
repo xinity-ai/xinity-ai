@@ -1,7 +1,7 @@
 <script lang="ts">
   import { orpc } from "$lib/orpc/orpc-client";
   import { organization } from "$lib/auth";
-  import { goto, invalidateAll } from "$app/navigation";
+  import { goto } from "$app/navigation";
   import { copyToClipboard } from "$lib/copy";
   import { slugify } from "$lib/util";
   import type { ModelWithSpecifier } from "xinity-infoserver";
@@ -10,7 +10,6 @@
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
   import * as Card from "$lib/components/ui/card";
-  import { Badge } from "$lib/components/ui/badge";
 
   import { Rocket, Copy, CheckCircle2, XCircle, Loader2, X } from "@lucide/svelte";
   import ModelSelectorModal from "./modelhub/ModelSelectorModal.svelte";
@@ -34,16 +33,21 @@
       return;
     }
 
+    let cancelled = false;
     checkingSlug = true;
     const timer = setTimeout(async () => {
       const slugCheck = await organization.checkSlug({ slug });
+      if (cancelled) return;
       if (slugCheck.data) {
         slugAvailable = slugCheck.data.status;
       }
       checkingSlug = false;
     }, 500);
 
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   });
 
   const canSubmit = $derived(orgName.trim().length > 0 && slugAvailable !== false && !isSubmitting);
