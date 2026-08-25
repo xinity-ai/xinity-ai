@@ -515,8 +515,9 @@ describe("handleChatCompletion, tool calling", () => {
 
     // Verify tools and tool_choice are forwarded to the upstream
     expect(lastUpstreamBody?.tools).toBeDefined();
-    expect((lastUpstreamBody?.tools as any[]).length).toBe(1);
-    expect((lastUpstreamBody?.tools as any[])[0].function.name).toBe("get_weather");
+    const forwardedTools = lastUpstreamBody!.tools as any[];
+    expect(forwardedTools.length).toBe(1);
+    expect(forwardedTools[0].function.name).toBe("get_weather");
     expect(lastUpstreamBody?.tool_choice).toBe("required");
   });
 

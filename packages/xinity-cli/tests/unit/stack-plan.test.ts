@@ -58,6 +58,7 @@ mock.module("../../src/lib/github.ts", () => ({
 
 mock.module("../../src/lib/install-remove.ts", () => ({
   ...actualInstallRemove,
+  // oxlint-disable-next-line require-yield -- the double reports no progress steps, only the final result
   async *removeComponent(opts: { component: Component; host: Host }) {
     removals.push({ component: opts.component, address: hostAddress(opts.host) });
     return removalFails
