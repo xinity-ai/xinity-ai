@@ -46,6 +46,7 @@ export async function ensureE2EReady(): Promise<void> {
   } catch (err) {
     throw new Error(
       `Dashboard not running at ${BASE_URL}. Start with: bun run dev\n  Original error: ${err}`,
+      { cause: err },
     );
   }
 

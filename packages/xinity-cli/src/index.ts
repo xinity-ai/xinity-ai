@@ -4,13 +4,12 @@ import { hideBin } from "yargs/helpers";
 import { version } from "../../../package.json";
 import { doctorCommand } from "./commands/doctor.ts";
 import { upCommand } from "./commands/up.ts";
-import { updateCommand } from "./commands/update.ts";
+import { updateCommand, cleanupOldBinary } from "./commands/update.ts";
 import { actCommand, preloadActChoices } from "./commands/act.ts";
 import { configureCommand } from "./commands/configure.ts";
 import { rmCommand } from "./commands/rm.ts";
 import { completionCommand } from "./commands/completion.ts";
 import { stackCommand } from "./commands/stack.ts";
-import { cleanupOldBinary } from "./commands/update.ts";
 
 const LOCAL_LINUX_COMMANDS = new Set(["up", "rm", "doctor"]);
 

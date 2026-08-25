@@ -189,9 +189,7 @@ const SEARCH_PROVIDERS: Record<string, ProviderEntry> = {
   searxng: {
     create: createSearxngProvider,
     validateCredential(credential) {
-      try {
-        new URL(credential);
-      } catch {
+      if (!URL.canParse(credential)) {
         throw new Error("WEB_SEARCH_CREDENTIAL for searxng must be a valid URL");
       }
     },
