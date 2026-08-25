@@ -15,7 +15,8 @@
     "test:system": "bun test --timeout 60000 tests/system/"
   },
   "simple-git-hooks": {
-    "commit-msg": "bunx --no-install commitlint --edit $1"
+    "commit-msg": "bunx --no-install commitlint --edit $1",
+    "pre-commit": "git diff --cached --name-only --diff-filter=ACM -z | grep -zE '\\.(ts|tsx|js|jsx|mjs|cjs|svelte)$' | xargs -0 -r bun --bun oxlint"
   },
   "type": "module",
   "workspaces": {
