@@ -97,9 +97,7 @@ function deriveInfoserverUrl(stack: StackDefinition): void {
     : (infoHost.address.split("@").pop() ?? infoHost.address);
   const port = stack.componentEnv.infoserver?.PORT ?? INFOSERVER_DEFAULT_PORT;
   const raw = `http://${hostname}:${port}`;
-  try {
-    new URL(raw);
-  } catch {
+  if (!URL.canParse(raw)) {
     warn("INFOSERVER_URL", `could not derive a valid URL from host address "${infoHost.address}"`);
     return;
   }

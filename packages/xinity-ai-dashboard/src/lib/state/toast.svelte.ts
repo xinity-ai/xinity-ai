@@ -9,27 +9,34 @@ export type Toast = {
 
 let nextId = 0;
 
-class ToastManager {
-  toasts = $state<Toast[]>([]);
+function createToastState() {
+  const toasts = $state<Toast[]>([]);
 
-  add(message: string, type: ToastType = "info", duration = 5000) {
+  function remove(id: string) {
+    const index = toasts.findIndex((t) => t.id === id);
+    if (index !== -1) {
+      toasts.splice(index, 1);
+    }
+  }
+
+  function add(message: string, type: ToastType = "info", duration = 5000) {
     const id = String(nextId++);
-    const toast: Toast = { id, message, type, duration };
-    this.toasts.push(toast);
+    toasts.push({ id, message, type, duration });
 
     if (duration > 0) {
       setTimeout(() => {
-        this.remove(id);
+        remove(id);
       }, duration);
     }
   }
 
-  remove(id: string) {
-    const index = this.toasts.findIndex((t) => t.id === id);
-    if (index !== -1) {
-      this.toasts.splice(index, 1);
-    }
-  }
+  return {
+    get toasts() {
+      return toasts;
+    },
+    add,
+    remove,
+  };
 }
 
-export const toastState = new ToastManager();
+export const toastState = createToastState();

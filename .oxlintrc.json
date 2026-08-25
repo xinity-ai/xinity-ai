@@ -41,7 +41,11 @@
     "typescript/no-import-type-side-effects": "error",
     "unicorn/prefer-node-protocol": "error",
     "import/no-default-export": "error",
-    "typescript/consistent-type-definitions": ["error", "type"]
+    "typescript/consistent-type-definitions": ["error", "type"],
+    "no-new": "error",
+    "preserve-caught-error": "error",
+    "import/no-duplicates": "error",
+    "import/no-mutable-exports": "error"
   },
   // Rendered to users as text, never executed.
   "ignorePatterns": ["**/assets/code-examples/**/*.js"],

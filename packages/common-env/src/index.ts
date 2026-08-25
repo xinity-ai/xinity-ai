@@ -36,6 +36,7 @@ function resolveSecretFiles(
       } catch (err) {
         throw new Error(
           `Failed to read secret file for ${key} from "${filePath}": ${(err as Error).message}`,
+          { cause: err },
         );
       }
     }

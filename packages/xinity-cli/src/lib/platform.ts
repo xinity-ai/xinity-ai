@@ -1,5 +1,5 @@
-import { homedir, tmpdir } from "os";
-import { join } from "path";
+import { homedir, tmpdir } from "node:os";
+import { join } from "node:path";
 
 export const IS_WINDOWS = process.platform === "win32";
 

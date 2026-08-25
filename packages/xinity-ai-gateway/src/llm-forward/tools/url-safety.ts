@@ -164,7 +164,7 @@ export async function safeFetch(
       response = await fetch(currentUrl, { signal, headers, redirect: "manual" });
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
-        throw new Error(`Fetch timed out after ${timeoutMs}ms`);
+        throw new Error(`Fetch timed out after ${timeoutMs}ms`, { cause: e });
       }
       throw e;
     }
