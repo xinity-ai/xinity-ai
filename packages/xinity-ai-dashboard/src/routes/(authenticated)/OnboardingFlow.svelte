@@ -20,7 +20,7 @@
   let modelSelectorOpen = $state(false);
   let isSubmitting = $state(false);
   let error = $state("");
-  let result = $state<{ apiKey: string } | null>(null);
+  let result = $state<{ apiKey: string; deploymentName: string | null; deploymentWarning: string | null } | null>(null);
   let slugAvailable = $state<boolean | null>(null);
   let checkingSlug = $state(false);
 
@@ -46,11 +46,9 @@
     return () => clearTimeout(timer);
   });
 
-  const canSubmit = $derived(orgName.trim().length > 0 && selectedModel && slugAvailable !== false && !isSubmitting);
+  const canSubmit = $derived(orgName.trim().length > 0 && slugAvailable !== false && !isSubmitting);
 
   async function handleOnboard() {
-    if (!selectedModel) return;
-
     if (slugAvailable === false) {
       error = "This organization name results in a slug that is already taken. Please choose a different name.";
       return;
@@ -61,8 +59,8 @@
 
     const { error: setupError, data } = await orpc.onboarding.setup({
       orgName,
-      specifier: selectedModel.publicSpecifier,
-      publicSpecifier: selectedModel.publicSpecifier,
+      specifier: selectedModel?.publicSpecifier,
+      publicSpecifier: selectedModel?.publicSpecifier,
     });
 
     if (setupError) {
@@ -71,7 +69,7 @@
       return;
     }
 
-    result = { apiKey: data.apiKey };
+    result = { apiKey: data.apiKey, deploymentName: data.deploymentName, deploymentWarning: data.deploymentWarning };
     isSubmitting = false;
   }
 
@@ -89,10 +87,21 @@
           </div>
           <Card.Title class="text-2xl">You're all set!</Card.Title>
           <Card.Description>
-            Your organization, API key, and model deployment have been created.
+            {#if result.deploymentName}
+              Your organization, API key, and model deployment have been created.
+            {:else}
+              Your organization and API key have been created. Deploy your first model from the Model Hub.
+            {/if}
           </Card.Description>
         </Card.Header>
         <Card.Content class="space-y-4">
+          {#if result.deploymentWarning}
+            <div class="p-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg">
+              <p class="font-medium">The model was not deployed</p>
+              <p class="mt-1">{result.deploymentWarning}</p>
+              <p class="mt-1">Your organization and API key are ready. You can deploy the model from the Model Hub once the cluster has room for it.</p>
+            </div>
+          {/if}
           <div class="space-y-2">
             <Label>Your API Key</Label>
             <div class="flex items-center gap-2">
@@ -132,7 +141,7 @@
           </div>
           <Card.Title class="text-2xl">Welcome to Xinity AI</Card.Title>
           <Card.Description>
-            Set up your organization and deploy your first model in one step.
+            Set up your organization to get started.
           </Card.Description>
         </Card.Header>
         <Card.Content>
@@ -174,7 +183,7 @@
             </div>
 
             <div class="space-y-2">
-              <Label>Select a Model to Deploy</Label>
+              <Label>Select a Model to Deploy <span class="text-muted-foreground font-normal">(optional)</span></Label>
               {#if selectedModel}
                 <div class="flex items-center gap-3 p-3 border rounded-lg bg-primary/5 border-primary">
                   <div class="flex-1 min-w-0">
@@ -207,6 +216,9 @@
                 >
                   Browse models...
                 </Button>
+                <p class="text-xs text-muted-foreground">
+                  You can skip this and deploy a model later from the Model Hub, once your compute nodes have joined the cluster.
+                </p>
               {/if}
             </div>
 
