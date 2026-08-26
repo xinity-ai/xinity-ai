@@ -52,12 +52,40 @@ type CachedDeployment = {
 
 const modelSourcesCache = new Map<string, { data: ModelSources; expiresAt: number }>();
 
-export function _clearModelSourcesCacheForTest(): void {
+/**
+ * Bumped on every invalidation so a query that was already in flight cannot write
+ * its now-stale result into the cache it raced.
+ */
+let sourcesGeneration = 0;
+
+export function invalidateModelSources(): void {
+  sourcesGeneration += 1;
   modelSourcesCache.clear();
 }
 
+const DEPLOYMENT_CACHE_PREFIX = "gateway:dep:";
+const SCAN_BATCH = 200;
+
+/** The notified deployment id cannot be mapped back to the org and specifier keying this cache. */
+export async function invalidateDeployments(): Promise<void> {
+  let cursor = "0";
+  try {
+    do {
+      const [next, keys] = await redis.send("SCAN", [
+        cursor, "MATCH", `${DEPLOYMENT_CACHE_PREFIX}*`, "COUNT", String(SCAN_BATCH),
+      ]) as [string, string[]];
+      if (keys.length > 0) {
+        await redis.send("DEL", keys);
+      }
+      cursor = next;
+    } while (cursor !== "0");
+  } catch (err) {
+    log.warn({ err }, "Redis error clearing deployment cache");
+  }
+}
+
 async function publicModelSpecifierToModelSource(orgId: string, specifier: string) {
-  const cacheKey = `gateway:dep:${orgId}:${specifier}`;
+  const cacheKey = `${DEPLOYMENT_CACHE_PREFIX}${orgId}:${specifier}`;
   try {
     const cached = await redis.get(cacheKey);
     if (cached) {
@@ -129,6 +157,8 @@ async function getModelSources(specifier: string): Promise<ModelSources> {
     return cached.data;
   }
 
+  const generationAtQuery = sourcesGeneration;
+
   const modelLocations = await getDB().select({
     nodeId: aiNodeT.id,
     machineName: aiNodeT.machineName,
@@ -162,7 +192,9 @@ async function getModelSources(specifier: string): Promise<ModelSources> {
   }
 
   const result: ModelSources = { hosts: [...byHost.keys()], byHost };
-  modelSourcesCache.set(specifier, { data: result, expiresAt: now + MODEL_CACHE_TTL_SECONDS * 1000 });
+  if (generationAtQuery === sourcesGeneration) {
+    modelSourcesCache.set(specifier, { data: result, expiresAt: now + MODEL_CACHE_TTL_SECONDS * 1000 });
+  }
 
   return result;
 }

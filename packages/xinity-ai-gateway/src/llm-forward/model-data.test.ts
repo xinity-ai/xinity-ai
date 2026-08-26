@@ -57,7 +57,7 @@ mock.module("xinity-infoserver", () => ({
   BLOCKED_REQUEST_PARAM_PREFIXES: ["chat_template", "tokenize", "prompt", "api_key"],
 }));
 
-const { getModelInfo, _clearModelSourcesCacheForTest, _deps } = await import("./model-data");
+const { getModelInfo, invalidateModelSources, _deps } = await import("./model-data");
 const mockSelectHost = jest.fn<() => Promise<{ host: string; useFinalModel: boolean; release: () => void } | null>>();
 _deps.selectHost = mockSelectHost as any;
 
@@ -100,7 +100,7 @@ let mockRedisSet: ReturnType<typeof spyOn>;
 const redisStore = new Map<string, string>();
 
 beforeEach(() => {
-  _clearModelSourcesCacheForTest();
+  invalidateModelSources();
   queryQueue.length = 0;
   redisStore.clear();
   mockSelectHost.mockReset();
