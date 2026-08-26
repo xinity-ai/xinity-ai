@@ -1,7 +1,7 @@
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { serverRouter } from "./rpc/gatewayRouter";
 import { env } from "./env";
-import { checkMigrations } from "./db";
+import { checkMigrations, subscribe } from "./db";
 import { rootLogger } from "./logger";
 import { createOpenapiSpec, createScalarPage } from "./openapi";
 import { handleChatCompletion } from "./llm-forward/endpoints/handle-chatCompletion";
@@ -19,6 +19,8 @@ import { getSearchProvider } from "./llm-forward/tools/search-providers";
 import { setSearchProvider } from "./llm-forward/tools/response-tools";
 import { flushUsageEvents } from "./usageRecorder";
 import { flushApiCallRows } from "./callLogger";
+import { createCacheInvalidation } from "./llm-forward/cache-invalidation";
+import { invalidateModelSources, invalidateDeployments } from "./llm-forward/model-data";
 
 process.on("unhandledRejection", (reason) => {
   rootLogger.error({ err: reason }, "Unhandled promise rejection");
@@ -31,6 +33,16 @@ const migrationState = await checkMigrations();
 if (migrationState.status !== "ok") {
   logMigrationFailureFatal(migrationState, rootLogger, "gateway");
   process.exit(1);
+}
+
+const cacheInvalidation = createCacheInvalidation({ subscribe, invalidateModelSources, invalidateDeployments });
+
+// Serving with a stale cache is degraded but correct, so a failed subscription is not
+// worth refusing traffic over. The cache TTL remains the staleness bound.
+try {
+  await cacheInvalidation.start();
+} catch (err) {
+  rootLogger.error({ err }, "Cache invalidation unavailable, falling back to TTL expiry");
 }
 
 const handler = new OpenAPIHandler(serverRouter, {
@@ -109,6 +121,8 @@ async function gracefulShutdown(signal: string) {
     rootLogger.warn({ err }, "Drain timeout reached, forcing closure of remaining connections");
     server.stop(true);
   }
+
+  await cacheInvalidation.stop();
 
   try {
     await withTimeout(Promise.all([flushUsageEvents(), flushApiCallRows()]), FLUSH_TIMEOUT_MS, "DB write queue flush");
