@@ -41,9 +41,9 @@ function addToLabelGroup(values: ScalarValues, labels: Labels, amount: number) {
   }
 }
 
-export interface Metric {
+export type Metric = {
   serialize(): string;
-}
+};
 
 export function createCounter(name: string, help: string) {
   const values: ScalarValues = new Map();
