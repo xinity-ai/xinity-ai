@@ -40,7 +40,7 @@ import { redis } from "bun";
 
 const log = rootLogger.child({ name: "model-data" });
 
-const MODEL_CACHE_TTL_SECONDS = 10;
+const MODEL_CACHE_TTL_SECONDS = 60;
 
 type CachedDeployment = {
   specifier: string;
