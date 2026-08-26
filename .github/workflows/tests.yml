@@ -175,9 +175,7 @@ jobs:
           PORT: "8090"
 
       - name: Build dashboard
-        run: |
-          cp example.env .env
-          bun run build
+        run: bun run build
         working-directory: packages/xinity-ai-dashboard
 
       - name: Start dashboard
