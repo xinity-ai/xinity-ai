@@ -47,7 +47,7 @@ const tmpDir = await import("node:os").then((os) => os.tmpdir());
 const tmpOut = `${tmpDir}/bun-dashboard-compile-${Date.now()}`;
 
 const buildResult = await Bun.build({
-  entrypoints: ["build/index.js"],
+  entrypoints: ["src/server-entry.ts"],
   outdir: tmpOut,
   compile: true,
   minify: true,
