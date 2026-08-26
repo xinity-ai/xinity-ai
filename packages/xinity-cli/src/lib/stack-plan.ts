@@ -16,7 +16,7 @@ import { unitName } from "./systemd.ts";
 import { fetchRelease } from "./github.ts";
 import { resolveVersion, applyComponentAction } from "./installer.ts";
 import { buildLocalArtifact } from "./local-build.ts";
-import { runSteps, createSilentProgress } from "./step-runner.ts";
+import { runSteps, createSilentProgress, collectSteps } from "./step-runner.ts";
 import { removeComponent } from "./install-remove.ts";
 import { readManifest, saveStackMembership, type StackMembership } from "./manifest.ts";
 import { describeMigrationStep, migrationScriptComment, runMigrations } from "./migrator.ts";
@@ -32,7 +32,6 @@ import {
 import { editSharedLayer, editComponentLayer, editFleetLayer, editHostLayer } from "./stack-layers.ts";
 import { loadStackState, findOrphanHosts, markHostManaged, unmarkHostManaged } from "./stack-state.ts";
 import { connectHosts, connectElevated, disposeAll, mapBounded, HOST_CONCURRENCY } from "./multi-host.ts";
-import { collectSteps } from "./step-runner.ts";
 import { createMultiProgress, createDoneGuard } from "./multi-progress.ts";
 
 export const COMPONENT_ORDER: Component[] = ["infoserver", "gateway", "dashboard", "tether", "daemon"];
@@ -126,9 +125,7 @@ function deriveTetherUrl(stack: StackDefinition): void {
     : (host.address.split("@").pop() ?? host.address);
   const port = stack.componentEnv.tether?.PORT ?? TETHER_DEFAULT_PORT;
   const raw = `http://${hostname}:${port}`;
-  try {
-    new URL(raw);
-  } catch {
+  if (!URL.canParse(raw)) {
     warn("TETHER_URL", `could not derive a valid URL from host address "${host.address}"`);
     return;
   }

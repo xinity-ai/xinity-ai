@@ -50,10 +50,10 @@ const {
   runKeepaliveLoop,
 } = await import("./connections");
 
-function makeController(): { controller: ReadableStreamDefaultController; chunks: Uint8Array[] } {
+function makeController(): { controller: ReadableStreamDefaultController; chunks: Uint8Array[]; stream: ReadableStream } {
   const chunks: Uint8Array[] = [];
   let ctrl!: ReadableStreamDefaultController;
-  new ReadableStream({
+  const stream = new ReadableStream({
     start(c) {
       ctrl = c;
     },
@@ -68,7 +68,7 @@ function makeController(): { controller: ReadableStreamDefaultController; chunks
       try { original.close(); } catch {}
     },
   } as unknown as ReadableStreamDefaultController;
-  return { controller: proxy, chunks };
+  return { controller: proxy, chunks, stream };
 }
 
 function makeBrokenController(): ReadableStreamDefaultController {
