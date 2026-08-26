@@ -1,4 +1,4 @@
-import { aiNodeT, eq, modelInstallationT, modelInstallationStateT, preconfigureDB, sql } from "common-db";
+import { aiNodeT, modelInstallationT, modelInstallationStateT, preconfigureDB, sql } from "common-db";
 import { getAvailablePort } from "../test-helpers";
 import { ensureInfoServerRunning, infoServerUrl } from "../infoserver/infoserver-test-helpers";
 import { ensureSystemReady } from "../guard";
@@ -105,7 +105,7 @@ async function startMockTetherServer(): Promise<TetherMock> {
           async cancel() {
             await db.update(aiNodeT)
               .set({ available: false })
-              .where(eq(aiNodeT.id, nodeId));
+              .where(sql`${aiNodeT.id} = ${nodeId}`);
           },
         });
 

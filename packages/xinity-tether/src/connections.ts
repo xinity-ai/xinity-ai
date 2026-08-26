@@ -1,4 +1,4 @@
-import { aiNodeT, eq } from "common-db";
+import { aiNodeT, sql } from "common-db";
 import type { DesiredState } from "common-env";
 import { getDB } from "./db";
 import { rootLogger } from "./logger";
@@ -46,7 +46,7 @@ async function setNodeAvailable(nodeId: string, available: boolean): Promise<voi
     await getDB()
       .update(aiNodeT)
       .set({ available })
-      .where(eq(aiNodeT.id, nodeId));
+      .where(sql`${aiNodeT.id} = ${nodeId}`);
   } catch (err) {
     log.error({ err, nodeId, available }, "Failed to update node availability");
   }
