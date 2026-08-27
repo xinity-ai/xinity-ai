@@ -22,7 +22,7 @@
     const { error } = await orpc.organization.delete({});
 
     if (error) {
-      toastState.add("Failed to delete organization", "error");
+      toastState.add(error.message || "Failed to delete organization", "error");
       deleting = false;
     } else {
       goto("/organizations");
