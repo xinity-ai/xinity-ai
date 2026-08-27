@@ -15,6 +15,21 @@ describe("satisfiesMinVersion", () => {
     expect(satisfiesMinVersion("0.8.5.post1", "0.8.6")).toBe(false);
   });
 
+  test("a pre-release does not satisfy the release it is on the way to", () => {
+    expect(satisfiesMinVersion("0.23.1rc1.dev0+ge3e3cd545.d20260621.cu132", "0.23.1")).toBe(false);
+    expect(satisfiesMinVersion("0.20.2.dev0+g132765e35.d20260521.cu132", "0.20.2")).toBe(false);
+    expect(satisfiesMinVersion("0.19.2rc1.dev134+gfe9c3d6c5.cu130", "0.19.2")).toBe(false);
+  });
+
+  test("a pre-release still satisfies anything older", () => {
+    expect(satisfiesMinVersion("0.23.1rc1.dev0+ge3e3cd545.d20260621.cu132", "0.23.0")).toBe(true);
+    expect(satisfiesMinVersion("0.24.1.dev0+gee0da84ab.d20260708.cu132", "0.23.5")).toBe(true);
+  });
+
+  test("a pre-release requirement is met by that same pre-release", () => {
+    expect(satisfiesMinVersion("0.23.1rc1", "0.23.1rc1")).toBe(true);
+  });
+
   test("returns true when actual is empty (fail-open)", () => {
     expect(satisfiesMinVersion("", "0.19.1")).toBe(true);
   });
@@ -25,6 +40,11 @@ describe("satisfiesMinVersion", () => {
 
   test("returns true for unparseable actual (fail-open)", () => {
     expect(satisfiesMinVersion("nightly", "0.19.1")).toBe(true);
+  });
+
+  /** Why pre-releases are ranked here rather than emitted as semver pre-releases. */
+  test("Bun keeps a semver pre-release out of ranges that do not name it", () => {
+    expect(Bun.semver.satisfies("0.23.1-rc.1", ">=0.23.0")).toBe(false);
   });
 });
 
