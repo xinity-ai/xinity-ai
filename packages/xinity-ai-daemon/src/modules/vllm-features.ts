@@ -52,7 +52,7 @@ function findEmbeddedPythonPath(binaryContent: string): string | null {
   return null;
 }
 
-async function resolvePythonForVllm(vllmPath: string): Promise<string> {
+export async function resolvePythonForVllm(vllmPath: string): Promise<string> {
   try {
     const file = Bun.file(vllmPath);
     const magic = new Uint8Array(await file.slice(0, 4).arrayBuffer());

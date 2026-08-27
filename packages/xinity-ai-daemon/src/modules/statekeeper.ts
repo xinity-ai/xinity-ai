@@ -6,7 +6,7 @@ import { networkInterfaces } from "node:os";
 import { detectHardwareProfile, detectNodeName, type HardwareProfile } from "./hardware-detect";
 import { normalizePep440 } from "xinity-infoserver";
 import { rootLogger } from "../logger";
-import { detectVllmFeatures } from "./vllm-features";
+import { detectVllmFeatures, resolvePythonForVllm } from "./vllm-features";
 import type { NodeRegistration } from "common-env";
 
 const log = rootLogger.child({ name: "statekeeper" });
@@ -52,19 +52,35 @@ export function getNodeDrivers(): string[] {
   return drivers;
 }
 
+/** Reads the installed distribution's version without importing vllm itself. */
+const VLLM_VERSION_FROM_METADATA = "from importlib.metadata import version; print(version('vllm'))";
+
+type VersionProbe = {
+  label: string;
+  run: () => Promise<{ stdout: Buffer; stderr: Buffer; exitCode: number }>;
+}
+
+/** Probes are tried in order; the first one that yields a version wins. */
 async function detectVllmVersion(
   source: "docker" | "binary",
-  runVersionCommand: () => Promise<string>,
+  probes: VersionProbe[],
 ): Promise<string | undefined> {
-  try {
-    const output = await runVersionCommand();
-    const version = output.match(/(\d+\.\d+\.\d+\S*)/)?.[1];
-    if (version) {
-      return normalizePep440(version);
+  let last: Record<string, unknown> | undefined;
+  for (const probe of probes) {
+    try {
+      const { stdout, stderr, exitCode } = await probe.run();
+      const output = stdout.toString();
+      const version = output.match(/(\d+\.\d+\.\d+\S*)/)?.[1];
+      if (version) {
+        return normalizePep440(version);
+      }
+      last = { probe: probe.label, exitCode, stdout: output, stderr: stderr.toString() };
+    } catch (err) {
+      log.debug({ err, source, probe: probe.label }, "vLLM version probe failed");
     }
-    log.warn({ output, source }, "vLLM version output did not match expected format");
-  } catch (err) {
-    log.debug({ err, source }, "Failed to detect vLLM version");
+  }
+  if (last) {
+    log.warn({ source, ...last }, "Could not read the vLLM version");
   }
   return undefined;
 }
@@ -91,15 +107,20 @@ async function detectConfiguredOllamaVersion(): Promise<string | undefined> {
 }
 
 async function detectConfiguredVllmVersion(): Promise<string | undefined> {
-  if (env.VLLM_DOCKER_IMAGE) {
-    return detectVllmVersion("docker", () =>
-      $`docker run --rm --gpus all --entrypoint ${env.VLLM_PATH ?? "vllm"} ${env.VLLM_DOCKER_IMAGE} --version`.throws(false).text(),
-    );
+  const image = env.VLLM_DOCKER_IMAGE;
+  if (image) {
+    return detectVllmVersion("docker", [
+      { label: "metadata", run: () => $`docker run --rm --entrypoint python3 ${image} -c ${VLLM_VERSION_FROM_METADATA}`.throws(false).quiet() },
+      { label: "cli", run: () => $`docker run --rm --gpus all --entrypoint ${env.VLLM_PATH ?? "vllm"} ${image} --version`.throws(false).quiet() },
+    ]);
   }
-  if (env.VLLM_PATH) {
-    return detectVllmVersion("binary", () =>
-      $`${env.VLLM_PATH} --version`.throws(false).text(),
-    );
+  const vllmPath = env.VLLM_PATH;
+  if (vllmPath) {
+    const pythonBin = await resolvePythonForVllm(vllmPath);
+    return detectVllmVersion("binary", [
+      { label: "metadata", run: () => $`${pythonBin} -c ${VLLM_VERSION_FROM_METADATA}`.throws(false).quiet() },
+      { label: "cli", run: () => $`${vllmPath} --version`.throws(false).quiet() },
+    ]);
   }
   return undefined;
 }
