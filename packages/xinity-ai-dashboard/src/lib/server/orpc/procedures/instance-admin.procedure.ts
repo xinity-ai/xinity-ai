@@ -309,6 +309,10 @@ const resetUserPassword = rootOs
       throw errors.NOT_FOUND({ message: "User has no password-based account (may use SSO only)." });
     }
     const temporaryPassword = generateTempPassword();
+    // Flagged before the reset: the reset runs outside this connection, so a
+    // failing flag write afterwards would leave an admin-issued password in
+    // place without the forced change on next login.
+    await db.update(userT).set({ temporaryPassword: true }).where(sql`${userT.id} = ${input.userId}`);
     try {
       // Uses Better Auth's full reset flow (hashing, session revocation)
       await adminResetPassword(user.email, temporaryPassword);
@@ -316,7 +320,6 @@ const resetUserPassword = rootOs
       rlog.error({ err, userId: input.userId }, "Admin password reset failed");
       throw errors.INTERNAL_SERVER_ERROR({ message: "Failed to reset password." });
     }
-    await db.update(userT).set({ temporaryPassword: true }).where(sql`${userT.id} = ${input.userId}`);
     rlog.info({ userId: input.userId }, "Admin reset user password");
     return { success: true, temporaryPassword };
   });
