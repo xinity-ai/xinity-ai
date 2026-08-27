@@ -14,7 +14,9 @@ const actualManifest = { ...(await import("../../src/lib/manifest.ts")) };
 const actualGithub = { ...(await import("../../src/lib/github.ts")) };
 const actualInstallRemove = { ...(await import("../../src/lib/install-remove.ts")) };
 const actualUpPlan = { ...(await import("../../src/lib/up-plan.ts")) };
+const actualMigrator = { ...(await import("../../src/lib/migrator.ts")) };
 let reachable: Set<string>;
+let migrationCalls: { targetVersion: string; connectionUrl: string }[];
 let manifests: Record<string, Manifest>;
 let removals: { component: Component; address: string }[];
 let removalFails: boolean;
@@ -74,6 +76,14 @@ mock.module("../../src/lib/up-plan.ts", () => ({
   reviewGate: async () => gateApproves,
 }));
 
+mock.module("../../src/lib/migrator.ts", () => ({
+  ...actualMigrator,
+  runMigrations: async (opts: { targetVersion: string; connectionUrl: string }) => {
+    migrationCalls.push({ targetVersion: opts.targetVersion, connectionUrl: opts.connectionUrl });
+    return { success: true, errors: [] };
+  },
+}));
+
 const { runStackFlow } = await import("../../src/lib/stack-plan.ts");
 
 afterAll(() => {
@@ -82,6 +92,7 @@ afterAll(() => {
   mock.module("../../src/lib/github.ts", () => actualGithub);
   mock.module("../../src/lib/install-remove.ts", () => actualInstallRemove);
   mock.module("../../src/lib/up-plan.ts", () => actualUpPlan);
+  mock.module("../../src/lib/migrator.ts", () => actualMigrator);
 });
 
 function daemonEntry(): Manifest["components"] {
@@ -114,6 +125,7 @@ describe("runStackFlow", () => {
     removals = [];
     removalFails = false;
     membershipWrites = [];
+    migrationCalls = [];
     gateApproves = true;
   });
 
@@ -218,6 +230,41 @@ describe("runStackFlow", () => {
 
     expect(await runStackFlow(makeStack("s8"), { targetVersion: "latest" })).toBe(true);
     expect(loadStackState("s8").hosts).toEqual([{ address: "10.0.0.12" }]);
+  });
+
+  test("a local target migrates from the checkout and records the local version", async () => {
+    reachable = new Set(["local"]);
+    const stack = makeStack("s9");
+
+    expect(await runStackFlow(stack, { targetVersion: "local:." })).toBe(true);
+    expect(migrationCalls).toEqual([{ targetVersion: "local:.", connectionUrl: "postgresql://localhost/db" }]);
+    expect(stack.dbMigratedVersion).toMatch(/^local-/);
+  });
+
+  test("a local target migrates again even when the recorded version is unchanged", async () => {
+    reachable = new Set(["local"]);
+    const stack = makeStack("s10");
+    stack.dbMigratedVersion = "local-deadbee";
+
+    expect(await runStackFlow(stack, { targetVersion: "local:." })).toBe(true);
+    expect(migrationCalls).toHaveLength(1);
+  });
+
+  test("a release target skips migrations once the recorded version matches", async () => {
+    reachable = new Set(["local"]);
+
+    expect(await runStackFlow(makeStack("s11"), { targetVersion: "latest" })).toBe(true);
+    expect(migrationCalls).toEqual([]);
+  });
+
+  test("a release target behind the recorded version migrates and records the tag", async () => {
+    reachable = new Set(["local"]);
+    const stack = makeStack("s12");
+    stack.dbMigratedVersion = "v8.0.0";
+
+    expect(await runStackFlow(stack, { targetVersion: "latest" })).toBe(true);
+    expect(migrationCalls).toEqual([{ targetVersion: "latest", connectionUrl: "postgresql://localhost/db" }]);
+    expect(stack.dbMigratedVersion).toBe("v9.9.9");
   });
 
 });

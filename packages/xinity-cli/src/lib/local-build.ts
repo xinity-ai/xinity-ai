@@ -57,6 +57,10 @@ async function readVersion(repoPath: string): Promise<string> {
   return "local";
 }
 
+export async function localVersionString(repoPath: string): Promise<string> {
+  return `local-${await readVersion(repoPath)}`;
+}
+
 export async function* buildLocalArtifact(
   component: Component,
   repoPath: string,
@@ -120,8 +124,7 @@ export async function* buildLocalArtifact(
   }
   const sha256 = hasher.digest("hex");
 
-  const version = await readVersion(absRepoPath);
-  const versionString = `local-${version}`;
+  const versionString = await localVersionString(absRepoPath);
 
   yield { type: "pass", label: "Local build", detail: `${component} ${versionString} (${targetArch})` };
   return { archivePath: tmpArchive, version: versionString, sha256 };

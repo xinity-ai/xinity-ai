@@ -3,12 +3,13 @@
  *
  * `discoverConnectionUrl` is the planning-phase half: find or ask for the
  * DB_CONNECTION_URL without changing anything. `runMigrations` is the apply
- * half: download the migration tarball from a GitHub release, extract it,
- * and apply pending migrations via drizzle-orm's programmatic migrator.
+ * half: resolve a migration folder (a GitHub release tarball, or the local
+ * repository for `local:` targets) and apply pending migrations via
+ * drizzle-orm's programmatic migrator.
  */
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { mkdirSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { existsSync, mkdirSync } from "node:fs";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
@@ -17,6 +18,7 @@ import { bold, cyan, dim } from "picocolors";
 
 import { fetchRelease, pickReleaseAsset, type Release } from "./github.ts";
 import { downloadAndVerify } from "./install-download.ts";
+import { localVersionString } from "./local-build.ts";
 import { runSteps } from "./step-runner.ts";
 import { parseEnvString } from "./env-file.ts";
 import { fail, pass, info, warn } from "./output.ts";
@@ -44,7 +46,10 @@ export function dbHint(url: string): string {
 
 /** The one wording every plan review uses for the migration step. */
 export function describeMigrationStep(targetVersion: string, connectionUrl: string): string {
-  return `Apply database migrations from release ${targetVersion} to ${dbHint(connectionUrl)}`;
+  const source = targetVersion.startsWith("local:")
+    ? `local repository ${targetVersion.slice(6)}`
+    : `release ${targetVersion}`;
+  return `Apply database migrations from ${source} to ${dbHint(connectionUrl)}`;
 }
 
 /** Script-dump stand-in for migrations, which run through drizzle and have no bash equivalent. */
@@ -217,9 +222,62 @@ export type MigrateResult = {
   errors: string[];
 }
 
-/**
- * Download migrations from a release, extract, and apply to the database.
- */
+/** Where the release asset is cut from: `tar czf … -C packages/common-db/db-migration .` */
+const REPO_MIGRATIONS_DIR = "packages/common-db/db-migration";
+
+type MigrationSource = {
+  folder: string;
+  version: string;
+}
+
+async function resolveLocalMigrations(repoPath: string): Promise<MigrationSource | { error: string }> {
+  const absRepoPath = resolve(repoPath);
+  const folder = join(absRepoPath, REPO_MIGRATIONS_DIR);
+  if (!existsSync(folder)) {
+    const error = `No migrations found at ${folder}`;
+    fail("Migrations", error);
+    return { error };
+  }
+  pass("Migrations", `Using local migrations from ${folder}`);
+  return { folder, version: await localVersionString(absRepoPath) };
+}
+
+async function resolveReleaseMigrations(targetVersion: string): Promise<MigrationSource | { error: string }> {
+  const spinner = clackSpinner();
+  spinner.start("Fetching release info…");
+  let release: Release;
+  try {
+    release = await fetchRelease(targetVersion);
+    spinner.stop(`Release ${cyan(release.tagName)}`);
+  } catch (e) {
+    spinner.stop("Failed");
+    const error = e instanceof Error ? e.message : String(e);
+    fail("Release", error);
+    return { error };
+  }
+
+  const assetName = pickReleaseAsset(release, "db");
+  const tmpDir = join(tmpdir(), `xinity-db-migrate-${Date.now()}`);
+  mkdirSync(tmpDir, { recursive: true });
+
+  const archivePath = await runSteps(downloadAndVerify(release, assetName, tmpDir));
+  if (!archivePath) {
+    return { error: "Download failed" };
+  }
+
+  const folder = join(tmpDir, "db-migration");
+  mkdirSync(folder, { recursive: true });
+  const extract = await localRun(["tar", "xzf", archivePath, "-C", folder]);
+  if (!extract.ok) {
+    fail("Extract", "Failed to extract migration archive");
+    return { error: "Extraction failed" };
+  }
+  pass("Extract", "Migrations extracted");
+
+  return { folder, version: release.tagName };
+}
+
+/** Resolve the migrations for the target version and apply them to the database. */
 export async function runMigrations(opts: {
   connectionUrl: string;
   targetVersion: string;
@@ -231,46 +289,20 @@ export async function runMigrations(opts: {
   const errors: string[] = [];
   const { connectionUrl } = opts;
 
-  // 1. Fetch release
-  const spinner = clackSpinner();
-  spinner.start("Fetching release info…");
-  let release: Release;
-  try {
-    release = await fetchRelease(opts.targetVersion);
-    spinner.stop(`Release ${cyan(release.tagName)}`);
-  } catch (e) {
-    spinner.stop("Failed");
-    const msg = e instanceof Error ? e.message : String(e);
-    fail("Release", msg);
-    return { success: false, errors: [msg] };
+  const source = opts.targetVersion.startsWith("local:")
+    ? await resolveLocalMigrations(opts.targetVersion.slice(6))
+    : await resolveReleaseMigrations(opts.targetVersion);
+  if ("error" in source) {
+    return { success: false, errors: [source.error] };
   }
-
-  // 2. Download & verify
-  const assetName = pickReleaseAsset(release, "db");
-  const tmpDir = join(tmpdir(), `xinity-db-migrate-${Date.now()}`);
-  mkdirSync(tmpDir, { recursive: true });
-
-  const archivePath = await runSteps(downloadAndVerify(release, assetName, tmpDir));
-  if (!archivePath) {
-    return { success: false, errors: ["Download failed"] };
-  }
-
-  // 3. Extract
-  const extractDir = join(tmpDir, "db-migration");
-  mkdirSync(extractDir, { recursive: true });
-  const extract = await localRun(["tar", "xzf", archivePath, "-C", extractDir]);
-  if (!extract.ok) {
-    fail("Extract", "Failed to extract migration archive");
-    return { success: false, errors: ["Extraction failed"] };
-  }
-  pass("Extract", "Migrations extracted");
 
   if (opts.dryRun) {
     info("Dry run", "Would apply migrations, skipping actual execution");
     return { success: true, errors: [] };
   }
 
-  // 4. Apply migrations (tunnels through SSH when targeting a remote host)
+  // Apply migrations (tunnels through SSH when targeting a remote host)
+  const spinner = clackSpinner();
   const tunnel = await opts.host.openTunnel(connectionUrl);
   if (!tunnel.ok) {
     fail("Tunnel", tunnel.error);
@@ -283,7 +315,7 @@ export async function runMigrations(opts: {
   try {
     connection = postgres(tunnel.localUrl, { max: 1, onnotice: () => {} });
     const db = drizzle(connection);
-    await migrate(db, { migrationsFolder: extractDir });
+    await migrate(db, { migrationsFolder: source.folder });
     spinner.stop("Migrations applied");
     pass("Migrate", "All pending migrations applied successfully");
   } catch (e) {
@@ -317,9 +349,9 @@ export async function runMigrations(opts: {
     await saveDbHint(hint, opts.host);
   }
 
-  if (freshManifest.components["db"]?.version !== release.tagName) {
+  if (freshManifest.components["db"]?.version !== source.version) {
     await updateManifestEntry("db", {
-      version: release.tagName,
+      version: source.version,
       installedAt: new Date().toISOString(),
       binaryPath: "",
       unitName: "",

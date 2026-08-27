@@ -15,7 +15,7 @@ import { heading, warn, fail, pass } from "./output.ts";
 import { unitName } from "./systemd.ts";
 import { fetchRelease } from "./github.ts";
 import { resolveVersion, applyComponentAction } from "./installer.ts";
-import { buildLocalArtifact } from "./local-build.ts";
+import { buildLocalArtifact, localVersionString } from "./local-build.ts";
 import { runSteps, createSilentProgress, collectSteps } from "./step-runner.ts";
 import { removeComponent } from "./install-remove.ts";
 import { readManifest, saveStackMembership, type StackMembership } from "./manifest.ts";
@@ -58,7 +58,8 @@ type StackHostPlan = {
 
 export type StackPlan = {
   targetVersion: string;
-  migration: { url: string; targetTag: string; pending: boolean } | null;
+  /** `source` is what the migrator resolves, `version` what gets recorded on the stack. */
+  migration: { url: string; source: string; version: string; pending: boolean } | null;
   hostPlans: StackHostPlan[];
 }
 
@@ -272,10 +273,20 @@ async function planStack(
 ): Promise<StackPlanOutcome> {
   const migrateUrl = stackMigrateUrl(stack);
   let migration: StackPlan["migration"] = null;
-  if (migrateUrl && !targetVersion.startsWith("local:")) {
+  if (migrateUrl && targetVersion.startsWith("local:")) {
+    // A checkout carries no tag to compare against, so local deploys always
+    // migrate; drizzle applies only what is genuinely pending.
+    const version = await localVersionString(targetVersion.slice(6));
+    migration = { url: migrateUrl, source: targetVersion, version, pending: true };
+  } else if (migrateUrl) {
     try {
       const targetTag = (await fetchRelease(targetVersion)).tagName;
-      migration = { url: migrateUrl, targetTag, pending: targetTag !== stack.dbMigratedVersion };
+      migration = {
+        url: migrateUrl,
+        source: targetTag,
+        version: targetTag,
+        pending: targetTag !== stack.dbMigratedVersion,
+      };
     } catch (err) {
       fail("Release", (err as Error).message);
       return { status: "failed" };
@@ -367,9 +378,9 @@ function renderStackPlan(plan: StackPlan): void {
   log.step(bold("Planned actions"));
   let step = 1;
   if (plan.migration?.pending) {
-    log.info(`${step++}. ${describeMigrationStep(plan.migration.targetTag, plan.migration.url)}`);
+    log.info(`${step++}. ${describeMigrationStep(plan.migration.source, plan.migration.url)}`);
   } else if (plan.migration) {
-    log.info(dim(`Database migrations already applied for ${plan.migration.targetTag}`));
+    log.info(dim(`Database migrations already applied for ${plan.migration.version}`));
   }
 
   const groups = new Map<string, { addresses: string[]; hostPlan: StackHostPlan }>();
@@ -513,7 +524,7 @@ async function applyStackPlan(
     } finally {
       await localFallback?.dispose();
     }
-    stack.dbMigratedVersion = plan.migration.targetTag;
+    stack.dbMigratedVersion = plan.migration.version;
     saveStack(stack);
   }
 
