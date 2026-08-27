@@ -1,0 +1,107 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+#
+# Thomson 1.0: Thomson Reuters' continual-learning line for legal, tax and journalism
+# work. Thomson-1.0-Small is a continual-pretrain of Qwen3.6-35B-A3B (by way of
+# tri-fair-lab/Snowdon1.1-Small), so it is byte for byte that architecture and every
+# cache figure below cross-checks against qwen3.6-35b-a3b-vllm in models/qwen3.yaml.
+#
+# Verified on GB10 (aarch64, 109 GB, egress-blocked docker via run-model). The full
+# record, including what was predicted before it was measured, is in
+# ~/modeloutputs/thomson-1.0-small.yaml.
+#
+# Only the official bf16 release is integrated. A third-party NVFP4 repack
+# (ProprietaryLegal/Thomson-1.0-Small-NVFP4) appeared on 2026-08-27 and has not been
+# evaluated; the GGUF and MLX repacks are for other engines.
+
+models:
+  thomson-1.0-small-vllm:
+    name: Thomson 1.0 Small
+    description: |
+      A 35B sparse mixture of experts from Thomson Reuters, continually pretrained
+      from Qwen3.6-35B-A3B on decades of proprietary news, case law, statutes,
+      contracts and regulatory filings. It is the model to reach for on legal, tax
+      and journalism work, and on document processing and RAG over professional
+      material, where its publisher measures the clearest gains over the Qwen base
+      it started from. On general reasoning, maths and coding it is roughly the
+      base model's equal, so it is a domain specialist rather than an all-round
+      upgrade: pick `qwen3.6-35b-a3b-vllm` if the workload is not in its subject
+      area, and note that entry is Apache-2.0 where this one is not.
+
+      **Licensing is the first thing to check.** PolyForm Strict 1.0.0 permits
+      noncommercial use only, and also forbids modification and redistribution.
+      Research, evaluation, teaching and public-sector use are fine; serving it to
+      paying customers or using it in commercial legal or tax work is not.
+
+      Reasoning is on by default: the assistant turn opens with a chain of thought
+      that arrives in `reasoning_content`, separate from the answer, so output
+      budgets have to cover both or replies get cut off mid-thought. Send
+      `chat_template_kwargs: {"enable_thinking": false}` to suppress it, which cuts
+      a short answer from hundreds of characters of reasoning to none.
+
+      It reads images as well as text, and it calls tools, returning structured
+      `tool_calls` rather than burying the call in the reply. Sampling is
+      adjustable with `top_k`, `min_p` and `repetition_penalty` in addition to the
+      standard OpenAI fields; the checkpoint's own defaults are `temperature 1.0`,
+      `top_p 0.95`, `top_k 20`.
+
+      The window is 262K. Long context is comparatively cheap on this hybrid
+      architecture, but every request in flight holds a fixed recurrent state
+      whatever its length, so a deployment runs out of concurrency well before it
+      runs out of context.
+    url: https://huggingface.co/thomsonreuters/Thomson-1.0-Small
+    license:
+      name: PolyForm Strict 1.0.0
+      url: https://polyformproject.org/licenses/strict/1.0.0
+      use: non-commercial
+      summary: >
+        Noncommercial use only, and among the most restrictive terms in the catalog:
+        the licence also withholds the right to modify the weights or to redistribute
+        them. Personal study, research, teaching and use by charities, educational
+        institutions, public research bodies and government all qualify; any
+        commercial application, including serving the model to paying users, needs a
+        separate agreement with Thomson Reuters.
+    createdAt: 2026-08-18
+    registeredAt: 2026-08-27
+    engine: vllm
+    engineSpecifier: thomsonreuters/Thomson-1.0-Small
+    # 40 layers: 10 full attention + 30 linear, 2 kv heads, head_dim 256 - the
+    # Qwen3.6-35B-A3B geometry unchanged.
+    #   kvBytesPerToken       = 2 * 10 * 2 * 256 * 2  = 20480
+    #   block size 1056, mamba page padded 0.76% to 2,162,688
+    #   stateBytesPerSequence = 2,162,688 * 30        = 64,880,640
+    # minKvCacheGb must be authored: block alignment rounds 262144 up to 249 whole
+    # blocks, putting the real floor above what kvBytesPerToken derives. Bracketed on
+    # this checkpoint, not inherited - 5.44 aborts ("5.08 GiB needed vs available
+    # 5.07"), 5.45 starts at 1.00x. The margin is ~26 KB, so do not round it down.
+    sizing:
+      kvBytesPerToken: 20480
+      stateBytesPerSequence: 64880640
+      minKvCacheGb: 5.45
+      maxContextLength: 262144
+      weightGb: 70.4   # measured resident, 65.53 GiB
+      # 35.11B params of which 32.21B are routed experts; 8 of 256 active per token
+      # leaves 3.90B -> 7.8 GB. Derived, not measured.
+      activeWeightGb: 7.8
+      weightBits: 16
+    type: chat
+    family: Thomson
+    tags: [vision, tools]
+    # The tags add --enable-auto-tool-choice; vLLM still needs the parsers named.
+    # The template emits <tool_call><function=...><parameter=...>, which qwen3_coder
+    # parses. The sibling's --mm-processor-cache-type / --mamba-cache-mode flags are
+    # deliberately absent: the floor above was measured without them.
+    engineArgs:
+      - --tool-call-parser
+      - qwen3_coder
+      - --reasoning-parser
+      - qwen3
+    # Each verified to reach the sampler, not merely accepted: top_k=1 and min_p=0.99
+    # each collapse 6/6 samples to one output at temperature 2.0, and repetition_penalty
+    # is validated engine-side (0.0 is refused with HTTP 400).
+    requestParams:
+      top_k: number
+      min_p: number
+      repetition_penalty: number
+      chat_template_kwargs.enable_thinking: boolean
+    engineVersions:
+      min: "0.19.2"
