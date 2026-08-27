@@ -244,6 +244,7 @@ export const auth = betterAuth({
   },
   database: drizzleAdapter(getDB(), {
     provider: "pg", // or "mysql", "sqlite"
+    transaction: true,
     schema: {
       user: userT,
       twoFactor: twoFactorT,
