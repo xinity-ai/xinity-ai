@@ -8,7 +8,7 @@ import { rootLogger } from "$lib/server/logging";
 import { auth, getGreenlitCallId, adminCreateUser } from "$lib/server/auth-server";
 import { serverEnv, isInstanceAdmin } from "$lib/server/serverenv";
 import { getDB } from "$lib/server/db";
-import { userT, organizationT, memberT, sql } from "common-db";
+import { userT, organizationT, sql } from "common-db";
 import { slugify } from "$lib/util";
 
 const log = rootLogger.child({ name: "onboarding.procedure" });
@@ -31,16 +31,29 @@ async function createOrgWithOwnerMembership(
 ): Promise<{ orgId: string; orgSlug: string }> {
   const slug = slugify(orgName);
   await assertSlugAvailable(slug, errors);
-  const orgId = crypto.randomUUID();
-  const db = getDB();
-  await db.insert(organizationT).values({ id: orgId, name: orgName, slug });
-  await db.insert(memberT).values({
-    id: crypto.randomUUID(),
-    userId: ownerUserId,
-    organizationId: orgId,
-    role: "owner",
+  // CLI onboarding runs without a session, so the creator is named through the
+  // server-only userId field; Better Auth adds the owner membership itself.
+  const org = await auth.api.createOrganization({
+    body: { name: orgName, slug, userId: ownerUserId },
   });
-  return { orgId, orgSlug: slug };
+  if (!org) {
+    throw new Error("Organization creation returned no organization");
+  }
+  return { orgId: org.id, orgSlug: org.slug };
+}
+
+/** Compensating delete: reported, never thrown, so the caller still sees the original failure. */
+async function discardOrganization(
+  organizationId: string,
+  headers: Headers,
+  rlog: typeof log,
+): Promise<void> {
+  try {
+    await auth.api.deleteOrganization({ body: { organizationId }, headers });
+    rlog.info({ organizationId }, "Rolled back organization after failed onboarding");
+  } catch (err) {
+    rlog.error({ err, organizationId }, "Could not roll back organization after failed onboarding");
+  }
 }
 
 async function issueServerSideDashboardApiKey(userId: string, organizationId: string) {
@@ -80,7 +93,7 @@ const setupOnboarding = rootOs
 
     const defaultApplicationName = "Default";
 
-    await call(createOrganization, {
+    const org = await call(createOrganization, {
       name: input.orgName,
       slug,
     }, { context });
@@ -92,7 +105,10 @@ const setupOnboarding = rootOs
         name: defaultApplicationName,
         description: "Default application created during onboarding",
       },
-    }, { context });
+    }, { context }).catch(async (err: unknown) => {
+      await discardOrganization(org.id, context.request.headers, rlog);
+      throw err;
+    });
 
     let deploymentName: string | null = null;
     let deploymentWarning: string | null = null;
