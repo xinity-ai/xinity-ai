@@ -15,38 +15,55 @@ function countLabel(count: number, noun: string): string {
 }
 
 /**
- * Applications and deployments reference the organization ON DELETE restrict,
- * and a soft-deleted row still holds its reference. Returns why the delete
- * would be rejected, or null when nothing blocks it.
+ * Applications and deployments reference the organization ON DELETE restrict.
+ * Returns why the delete would be rejected, or null when nothing blocks it.
+ * Soft-deleted rows are not blockers, see purgeSoftDeletedOrgDependents.
  */
 export async function findOrgDeleteBlockers(organizationId: string): Promise<string | null> {
   const db = getDB();
+  const total = { count: sql<number>`cast(count(*) as int)` };
   const [[applications], [deployments]] = await Promise.all([
-    db.select({
-      total: sql<number>`cast(count(*) as int)`,
-      discarded: sql<number>`cast(count(${aiApplicationT.deletedAt}) as int)`,
-    }).from(aiApplicationT).where(sql`${aiApplicationT.organizationId} = ${organizationId}`),
-    db.select({
-      total: sql<number>`cast(count(*) as int)`,
-      discarded: sql<number>`cast(count(${modelDeploymentT.deletedAt}) as int)`,
-    }).from(modelDeploymentT).where(sql`${modelDeploymentT.organizationId} = ${organizationId}`),
+    db.select(total).from(aiApplicationT).where(sql`
+      ${aiApplicationT.organizationId} = ${organizationId} AND ${aiApplicationT.deletedAt} IS NULL
+    `),
+    db.select(total).from(modelDeploymentT).where(sql`
+      ${modelDeploymentT.organizationId} = ${organizationId} AND ${modelDeploymentT.deletedAt} IS NULL
+    `),
   ]);
 
   const blockers: string[] = [];
-  if (applications && applications.total > 0) {
-    blockers.push(countLabel(applications.total, "application"));
+  if (applications && applications.count > 0) {
+    blockers.push(countLabel(applications.count, "application"));
   }
-  if (deployments && deployments.total > 0) {
-    blockers.push(countLabel(deployments.total, "model deployment"));
+  if (deployments && deployments.count > 0) {
+    blockers.push(countLabel(deployments.count, "model deployment"));
   }
   if (blockers.length === 0) {
     return null;
   }
-
-  const discarded = (applications?.discarded ?? 0) + (deployments?.discarded ?? 0);
-  const retained = discarded > 0
-    ? ` ${discarded} of them ${discarded === 1 ? "is" : "are"} already deleted but still retained.`
-    : "";
   return `This organization still has ${blockers.join(" and ")},`
-    + ` which must be removed before the organization can be deleted.${retained}`;
+    + " which must be removed before the organization can be deleted.";
+}
+
+/**
+ * Nothing in the product can clear a soft-deleted row, so one would otherwise
+ * hold its ON DELETE restrict reference forever. Callers that reference these
+ * rows (api keys, calls, usage) do so ON DELETE set null.
+ */
+export async function purgeSoftDeletedOrgDependents(organizationId: string): Promise<number> {
+  return await getDB().transaction(async (tx) => {
+    const applications = await tx
+      .delete(aiApplicationT)
+      .where(sql`
+        ${aiApplicationT.organizationId} = ${organizationId} AND ${aiApplicationT.deletedAt} IS NOT NULL
+      `)
+      .returning({ id: aiApplicationT.id });
+    const deployments = await tx
+      .delete(modelDeploymentT)
+      .where(sql`
+        ${modelDeploymentT.organizationId} = ${organizationId} AND ${modelDeploymentT.deletedAt} IS NOT NULL
+      `)
+      .returning({ id: modelDeploymentT.id });
+    return applications.length + deployments.length;
+  });
 }
