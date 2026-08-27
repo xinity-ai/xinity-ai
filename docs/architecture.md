@@ -124,7 +124,7 @@ The tether is the bridge between the database and the daemon fleet. Daemons do n
 
 **SSE endpoint (`POST /api/v1/stream`):** A daemon authenticates with a shared secret, sends its hardware profile (GPUs, drivers, capacity) as the request body, and receives a `text/event-stream` response. The tether upserts the node's `aiNode` record, marks it `available = true`, and pushes the initial desired state (the node's `modelInstallation` rows). The connection stays open indefinitely. Keepalives (default every 15s) prevent idle timeouts.
 
-**Desired-state push:** The tether subscribes to PostgreSQL `NOTIFY` on channel `ai_node:<nodeId>` for each connected daemon. When the dashboard changes a deployment (creating or removing `modelInstallation` rows), the trigger fires, and the tether immediately pushes the updated desired state over the SSE stream. No polling.
+**Desired-state push:** The tether subscribes to a single PostgreSQL `NOTIFY` channel, `model_installation`, no matter how many daemons are connected. When the dashboard changes a deployment (creating or removing `modelInstallation` rows), the trigger fires with the affected node id as its payload, and the tether pushes that node's updated desired state over its SSE stream. Pushes are coalesced over a short window, so a burst of row changes results in one push per node. No polling.
 
 **Status collection (`POST /api/v1/status`):** Daemons report installation lifecycle state changes (downloading, installing, ready, failed) back to the tether, which batches and upserts them into `modelInstallationState`.
 
@@ -154,7 +154,7 @@ The daemon has no direct database connection. All coordination flows through the
 
 The CLI is the operator's tool for installing, configuring, and managing Xinity services on Linux hosts. Key capabilities:
 
-- **`xinity up <component>`**: Installs or updates gateway, dashboard, daemon, infoserver, or database. Handles the full lifecycle: downloads the binary from GitHub Releases with SHA256 verification, prompts for environment configuration (reading Zod schemas from each component's `env-schema.ts`), generates systemd unit files with security hardening, and starts the service. Supports `--target-host` for remote installation over SSH. The `db` subcommand also bundles Redis discovery after running Postgres migrations.
+- **`xinity up <component>`**: Installs or updates gateway, dashboard, daemon, tether, infoserver, or database. Handles the full lifecycle: downloads the binary from GitHub Releases with SHA256 verification, prompts for environment configuration (reading Zod schemas from each component's `env-schema.ts`), generates systemd unit files with security hardening, and starts the service. Supports `--target-host` for remote installation over SSH. The `db` subcommand also bundles Redis discovery after running Postgres migrations.
 - **`xinity up infra-<tool>`**: Infrastructure setup utilities for dependencies like Redis, SeaweedFS, Postgres, and Ollama. These handle detection, installation, service management, and configuration. For example, `infra-ollama` installs ollama (left on its default localhost binding, since it runs alongside the daemon on the same host), tests the endpoint, and writes `XINITY_OLLAMA_ENDPOINT` into the daemon env file.
 - **`xinity rm <component>`**: Cleanly removes a component (stops service, removes unit file, binary, and config). Preserves secrets that are still needed by other installed components.
 - **`xinity update`**: Self-updates the CLI binary.
@@ -244,7 +244,7 @@ Control-plane coordination between the gateway, dashboard, and tether flows thro
 - **Dashboard → PostgreSQL → Tether → Daemon**: The dashboard writes `modelInstallation` rows (planned state). A PostgreSQL trigger notifies the tether, which pushes updated desired state to the affected daemon over its SSE stream. The daemon drives local drivers to match.
 - **Daemon → Tether → PostgreSQL → Dashboard**: The daemon reports installation lifecycle state to the tether via `POST /api/v1/status`. The tether writes it to `modelInstallationState`. The dashboard reads these for status display, orchestration planning, and notification triggers. On connect/disconnect, the tether updates the node's `available` flag in `aiNode`.
 - **Gateway → Daemon**: The gateway forwards inference requests directly to the target node's daemon (`/proxy/{model}/v1/...`), authenticated with a per-node token read from `aiNode`. The daemon proxies the request to the local driver on `127.0.0.1`. This is the only direct service-to-service call in the system; see [TLS](./security/tls.md).
-- **Gateway → Database**: The gateway reads `aiApiKey` for authentication, `modelDeployment` for model resolution, and `modelInstallation`/`aiNode`/`modelInstallationState` for host selection (filtering to `available = true` nodes with `ready` installations). It writes `usageEvent` rows for usage tracking, and (when the API key's `collectData` flag is set) `apiCall` rows for data labeling.
+- **Gateway → Database**: The gateway reads `aiApiKey` for authentication, `modelDeployment` for model resolution, and `modelInstallation`/`aiNode`/`modelInstallationState` for host selection (filtering to `available = true` nodes with `ready` installations). It writes `usageEvent` rows for usage tracking, and (when the API key's `collectData` flag is set) `apiCall` rows for data labeling. It also listens for row-change notifications on those four tables to invalidate its routing caches.
 - **Redis** is used exclusively by the gateway for ephemeral state: auth caching, load balancer coordination, and the responses API store.
 - **Info server** is consumed over HTTP by the gateway and dashboard for model metadata resolution, with each consumer maintaining its own in-memory cache.
 - **SeaweedFS** (optional) is written to by the gateway on every multimodal request and read by the dashboard for image display (presigned URLs) and call export (data URI resolution). No other services interact with it directly.
@@ -275,7 +275,7 @@ sequenceDiagram
     UI->>Info: Fetch available models
     UI->>DB: Create modelDeployment (desired state)
     UI->>DB: Plan modelInstallation rows (sync service)
-    DB-->>Tether: NOTIFY ai_node:<nodeId>
+    DB-->>Tether: NOTIFY model_installation
     Tether-->>Daemon: Push desired state (SSE event)
 
     Daemon->>Driver: Pull / start model
