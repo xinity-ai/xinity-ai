@@ -48,6 +48,14 @@ const NodeSummarySchema = z.object({
   gpuCount: z.number(),
   gpus: z.array(GpuInfoSchema),
   estCapacity: z.number(),
+  /** Driver name to detected version, e.g. {"vllm": "0.23.0"}. */
+  driverVersions: z.record(z.string(), z.string()),
+  /** Driver name to detected optional features, e.g. {"vllm": ["audio"]}. */
+  driverFeatures: z.record(z.string(), z.array(z.string())),
+  tls: z.boolean(),
+  /** Epoch ms of the node's last registration write. */
+  lastSeenMs: z.number(),
+  firstSeenMs: z.number(),
   models: z.array(NodeModelSchema),
   usage: NodeUsageSchema,
 });
@@ -102,6 +110,11 @@ export async function buildComputeOverview(rangeHours: number): Promise<ComputeO
       gpuCount: aiNodeT.gpuCount,
       gpus: aiNodeT.gpus,
       estCapacity: aiNodeT.estCapacity,
+      driverVersions: aiNodeT.driverVersions,
+      driverFeatures: aiNodeT.driverFeatures,
+      tls: aiNodeT.tls,
+      createdAt: aiNodeT.createdAt,
+      updatedAt: aiNodeT.updatedAt,
     }).from(aiNodeT).where(sql`${aiNodeT.deletedAt} IS NULL`),
 
     db.select({
@@ -154,6 +167,11 @@ export async function buildComputeOverview(rangeHours: number): Promise<ComputeO
       gpuCount: node.gpuCount,
       gpus: node.gpus,
       estCapacity: node.estCapacity,
+      driverVersions: node.driverVersions,
+      driverFeatures: node.driverFeatures,
+      tls: node.tls,
+      lastSeenMs: node.updatedAt.getTime(),
+      firstSeenMs: node.createdAt.getTime(),
       models: (modelsByNode.get(node.id) ?? []).map((m) => ({
         name: m.specifier,
         driver: m.driver,

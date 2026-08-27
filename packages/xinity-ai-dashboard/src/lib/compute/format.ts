@@ -8,6 +8,8 @@ export type NodeUsage = { requests: number; failedRequests: number; inputTokens:
 export type NodeSummary = {
   id: string; host: string; machineName: string | null; online: boolean;
   gpuCount: number; gpus: GpuInfo[]; estCapacity: number;
+  driverVersions: Record<string, string>; driverFeatures: Record<string, string[]>;
+  tls: boolean; lastSeenMs: number; firstSeenMs: number;
   models: NodeModel[]; usage: NodeUsage;
 };
 export type ComputeTotals = {
@@ -44,6 +46,12 @@ export function formatRelativeTime(epochMs: number, nowMs: number): string {
   const hours = Math.round(minutes / 60);
   if (hours < 48) return `${hours}h ago`;
   return `${Math.round(hours / 24)}d ago`;
+}
+
+/** Null when no VRAM was reported, which is what unified-memory hosts do. */
+export function totalVramGb(gpus: { vramMb: number }[]): number | null {
+  const totalMb = gpus.reduce((sum, gpu) => sum + gpu.vramMb, 0);
+  return totalMb > 0 ? Math.round(totalMb / 1024) : null;
 }
 
 /** Groups identical GPUs into "2× NVIDIA H100 80GB HBM3". */

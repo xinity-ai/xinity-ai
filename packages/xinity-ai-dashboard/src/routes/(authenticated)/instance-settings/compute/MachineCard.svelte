@@ -2,8 +2,8 @@
   import type { NodeSummary } from "$lib/compute/format";
   import UtilizationRing from "./UtilizationRing.svelte";
   import AnimatedNumber from "./AnimatedNumber.svelte";
-  import { formatTokens, formatPercent, formatEnergy, gpuSummary } from "$lib/compute/format";
-  import { Zap, ArrowRightLeft, CircleCheck, Trash2 } from "@lucide/svelte";
+  import { formatTokens, formatPercent, formatEnergy, formatRelativeTime, gpuSummary, totalVramGb } from "$lib/compute/format";
+  import { Zap, ArrowRightLeft, CircleCheck, Trash2, Cpu, Lock, MemoryStick } from "@lucide/svelte";
 
   let { node, rangeLabel, metrics = null, onRemove }: {
     node: NodeSummary;
@@ -17,6 +17,9 @@
       ? ((node.usage.requests - node.usage.failedRequests) / node.usage.requests) * 100
       : null,
   );
+  const vramGb = $derived(totalVramGb(node.gpus));
+  const drivers = $derived(Object.entries(node.driverVersions));
+  const lastSeen = $derived(formatRelativeTime(node.lastSeenMs, Date.now()));
   const lifecycleBadge: Record<string, string> = {
     ready: "bg-gray-100 text-gray-700",
     downloading: "bg-xinity-purple/10 text-xinity-purple animate-pulse",
@@ -88,6 +91,35 @@
         <span>{formatPercent(successRate)} of <AnimatedNumber value={node.usage.requests} format={formatTokens} /> requests</span>
       {/if}
     </div>
+  </div>
+
+  <div class="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 border-t border-gray-100 text-xs text-gray-500">
+    {#if vramGb !== null}
+      <span class="inline-flex items-center gap-1" title="Total VRAM reported across {node.gpus.length} GPU{node.gpus.length === 1 ? '' : 's'}">
+        <MemoryStick class="w-3 h-3 text-xinity-magenta shrink-0" />{vramGb} GB VRAM
+      </span>
+    {/if}
+    {#each drivers as [driver, version]}
+      <span class="inline-flex items-center gap-1">
+        <Cpu class="w-3 h-3 text-xinity-purple shrink-0" />
+        <span class="font-medium text-gray-700">{driver}</span>
+        <span class="font-mono">{version}</span>
+        {#each node.driverFeatures[driver] ?? [] as feature}
+          <span class="rounded bg-gray-100 px-1 py-px text-[10px] uppercase tracking-wide text-gray-600">{feature}</span>
+        {/each}
+      </span>
+    {/each}
+    {#if drivers.length === 0}
+      <span class="text-gray-400">no drivers reported</span>
+    {/if}
+    {#if node.tls}
+      <span class="inline-flex items-center gap-1" title="This node serves traffic over TLS">
+        <Lock class="w-3 h-3 text-emerald-500 shrink-0" />TLS
+      </span>
+    {/if}
+    <span class="ml-auto whitespace-nowrap" title="First seen {new Date(node.firstSeenMs).toLocaleString()}">
+      seen {lastSeen}
+    </span>
   </div>
 
   {#if node.models.length > 0}
