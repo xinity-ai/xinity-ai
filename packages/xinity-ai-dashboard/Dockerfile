@@ -18,6 +18,7 @@ COPY packages/xinity-ai-dashboard/package.json packages/xinity-ai-dashboard/pack
 COPY packages/xinity-ai-gateway/package.json packages/xinity-ai-gateway/package.json
 COPY packages/xinity-cli/package.json packages/xinity-cli/package.json
 COPY packages/xinity-infoserver/package.json packages/xinity-infoserver/package.json
+COPY packages/xinity-nemotron/package.json packages/xinity-nemotron/package.json
 # [/sync:workspace-manifests]
 
 FROM xinity-base AS deps

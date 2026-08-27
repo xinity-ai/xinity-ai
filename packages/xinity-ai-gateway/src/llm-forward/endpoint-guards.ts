@@ -2,6 +2,7 @@ import type { z } from "zod";
 import { resolveModel, type ResolvedModel } from "./ai-sdk";
 import { errorResponse, handleEndpointError, recordFailedRequest, validateModelType, validationError } from "./util";
 import type { AuthResult } from "./auth";
+import { checkPreFlightGuard } from "./guardrails-hook";
 
 type EndpointLogger = {
   info: (obj: Record<string, unknown>, msg: string) => void;
@@ -66,6 +67,11 @@ export function withEndpointGuards<TBody>(
       const parseResult = opts.bodySchema.safeParse(resolved.body);
       if (!parseResult.success) {
         return noteFailedRequest(validationError(parseResult.error));
+      }
+
+      const guardError = await checkPreFlightGuard(resolved.originalModel, resolved.body);
+      if (guardError) {
+        return noteFailedRequest(guardError);
       }
 
       return noteFailedRequest(await opts.handler({
