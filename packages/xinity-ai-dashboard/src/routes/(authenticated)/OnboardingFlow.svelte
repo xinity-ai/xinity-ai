@@ -1,7 +1,7 @@
 <script lang="ts">
   import { orpc } from "$lib/orpc/orpc-client";
   import { organization } from "$lib/auth";
-  import { goto } from "$app/navigation";
+  import { goto, invalidateAll } from "$app/navigation";
   import { copyToClipboard } from "$lib/copy";
   import { slugify } from "$lib/util";
   import type { ModelWithSpecifier } from "xinity-infoserver";
@@ -13,6 +13,8 @@
 
   import { Rocket, Copy, CheckCircle2, XCircle, Loader2, X } from "@lucide/svelte";
   import ModelSelectorModal from "./modelhub/ModelSelectorModal.svelte";
+
+  let { onCompleted }: { onCompleted: () => void } = $props();
 
   let orgName = $state("");
   let selectedModel = $state<ModelWithSpecifier | null>(null);
@@ -75,6 +77,10 @@
 
     result = { apiKey: data.apiKey, deploymentName: data.deploymentName, deploymentWarning: data.deploymentWarning };
     isSubmitting = false;
+    onCompleted();
+    // The new organization is active server-side; reload so the sidebar and
+    // permissions reflect it without a page refresh.
+    await invalidateAll();
   }
 
 </script>
@@ -108,13 +114,10 @@
           {/if}
           <div class="space-y-2">
             <Label>Your API Key</Label>
-            <div class="flex items-center gap-2">
-              <Input
-                type="text"
-                value={apiKey}
-                readonly
-                class="font-mono text-sm"
-              />
+            <div class="flex items-start gap-2">
+              <code
+                class="flex-1 min-w-0 rounded-md border border-input bg-muted px-3 py-2 font-mono text-sm break-all select-all"
+              >{apiKey}</code>
               <Button
                 variant="outline"
                 size="icon"

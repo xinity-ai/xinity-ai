@@ -5,14 +5,19 @@
   import type { PageData } from "./$types";
 
   let { data }: { data: PageData } = $props();
+
+  // Onboarding activates the organization and reloads, and its success card
+  // holds the only copy of the new API key, so it stays mounted after noOrg
+  // turns false.
+  let onboarded = $state(false);
 </script>
 
 <svelte:head>
   <title>Xinity Dashboard</title>
 </svelte:head>
 
-{#if data.noOrg}
-  <OnboardingFlow />
+{#if data.noOrg || onboarded}
+  <OnboardingFlow onCompleted={() => (onboarded = true)} />
 {/if}
 
 {#if !data.displaySettings?.gettingStartedDismissed}
@@ -22,7 +27,7 @@
   />
 {/if}
 
-{#if !data.noOrg}
+{#if !data.noOrg && !onboarded}
   <Dashboard
     keyMetrics={data.keyMetrics}
     charts={data.charts}
