@@ -79,10 +79,6 @@ async function runPlannedFlow(
   host: import("../lib/host.ts").Host,
 ): Promise<boolean> {
   const isAll = component === "all";
-  if (isAll && opts.targetVersion.startsWith("local:")) {
-    log.error("'xinity up all' does not support local: builds. Run 'xinity up <component>' for each component individually.");
-    return false;
-  }
 
   const plan = await planUp(
     isAll ? [] : [component as Component],
