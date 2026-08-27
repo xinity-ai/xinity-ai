@@ -10,7 +10,7 @@ import { memberT, userT, organizationT, invitationT, sql } from "common-db";
 import { isRoleAvailable, RoleSchema } from "$lib/server/roles";
 import { hasFeature } from "$lib/server/license";
 import { betterAuthErrorBody } from "$lib/server/better-auth-errors";
-import { findOrgName } from "$lib/server/lib/org-queries";
+import { findOrgName, findOrgDeleteBlockers } from "$lib/server/lib/org-queries";
 
 const log = rootLogger.child({ name: "organization.procedure" });
 const tags = ["Organization"];
@@ -269,6 +269,10 @@ const cancelInvitation = rootOs
     return { success: true };
   });
 
+function isForeignKeyViolation(err: unknown): boolean {
+  return typeof err === "object" && err !== null && (err as { code?: unknown }).code === "23503";
+}
+
 const deleteOrganization = rootOs
   .meta({ mcp: false })
   .use(withOrganization)
@@ -276,15 +280,32 @@ const deleteOrganization = rootOs
   .use(auditMiddleware)
   .meta({ audit: { action: "organization.delete", resource: "organization" } })
   .route({ path: "/", method: "DELETE", tags, summary: "Delete Organization" })
-  .handler(async ({ context }) => {
+  .errors({ CONFLICT: {} })
+  .handler(async ({ context, errors }) => {
     const rlog = log.child({ traceId: context.traceId });
+    const blocked = await findOrgDeleteBlockers(context.activeOrganizationId);
+    if (blocked) {
+      throw errors.CONFLICT({ message: blocked });
+    }
+
     rlog.info({ organizationId: context.activeOrganizationId }, "Deleting organization");
-    await auth.api.deleteOrganization({
-      body: {
-        organizationId: context.activeOrganizationId,
-      },
-      headers: context.request.headers,
-    });
+    try {
+      await auth.api.deleteOrganization({
+        body: {
+          organizationId: context.activeOrganizationId,
+        },
+        headers: context.request.headers,
+      });
+    } catch (err) {
+      if (!isForeignKeyViolation(err)) {
+        throw err;
+      }
+      rlog.warn({ err, organizationId: context.activeOrganizationId }, "Organization delete rejected by a dependent row");
+      throw errors.CONFLICT({
+        message: await findOrgDeleteBlockers(context.activeOrganizationId)
+          ?? "The organization gained content while it was being deleted. Please try again.",
+      });
+    }
 
     return { success: true };
   });
