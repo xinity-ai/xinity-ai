@@ -42,45 +42,47 @@ export const createApiKey = rootOs
     rlog.info({ keyName: input.name, org: context.activeOrganizationId }, "Creating new API key")
 
     let applicationId: string | null = input.applicationId ?? null;
-
-    if (applicationId) {
-      const [application] = await getDB()
-        .select({ id: aiApplicationT.id })
-        .from(aiApplicationT)
-        .where(sql`
-          ${aiApplicationT.id} = ${applicationId}
-          AND ${aiApplicationT.organizationId} = ${context.activeOrganizationId}
-          AND ${aiApplicationT.deletedAt} IS NULL
-        `)
-        .limit(1);
-      if (!application) {
-        throw errors.NOT_FOUND({ message: "Application not found" })
-      }
-    } else if (input.createApplication) {
-      const [newApp] = await getDB()
-        .insert(aiApplicationT)
-        .values({
-          name: input.createApplication.name,
-          description: input.createApplication.description,
-          organizationId: context.activeOrganizationId,
-        })
-        .returning();
-      if (!newApp) throw new Error("Insert into aiApplicationT returned no row");
-      applicationId = newApp.id;
-    }
-
     const { specifier, fullKey } = generateApiKey();
-    await getDB()
-      .insert(aiApiKeyT)
-      .values({
-        name: input.name,
-        enabled: input.enabled,
-        applicationId,
-        organizationId: context.activeOrganizationId,
-        createdByUserId: context.session.user.id,
-        specifier,
-        hash: apiKeyVerifier(fullKey),
-      });
+
+    await getDB().transaction(async (tx) => {
+      if (applicationId) {
+        const [application] = await tx
+          .select({ id: aiApplicationT.id })
+          .from(aiApplicationT)
+          .where(sql`
+            ${aiApplicationT.id} = ${applicationId}
+            AND ${aiApplicationT.organizationId} = ${context.activeOrganizationId}
+            AND ${aiApplicationT.deletedAt} IS NULL
+          `)
+          .limit(1);
+        if (!application) {
+          throw errors.NOT_FOUND({ message: "Application not found" })
+        }
+      } else if (input.createApplication) {
+        const [newApp] = await tx
+          .insert(aiApplicationT)
+          .values({
+            name: input.createApplication.name,
+            description: input.createApplication.description,
+            organizationId: context.activeOrganizationId,
+          })
+          .returning();
+        if (!newApp) throw new Error("Insert into aiApplicationT returned no row");
+        applicationId = newApp.id;
+      }
+
+      await tx
+        .insert(aiApiKeyT)
+        .values({
+          name: input.name,
+          enabled: input.enabled,
+          applicationId,
+          organizationId: context.activeOrganizationId,
+          createdByUserId: context.session.user.id,
+          specifier,
+          hash: apiKeyVerifier(fullKey),
+        });
+    });
     return {
       fullKey,
       name: input.name,
