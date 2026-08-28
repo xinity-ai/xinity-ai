@@ -142,7 +142,7 @@ function coerceMessageRole(raw: unknown): ApiCallInputMessage["role"] {
   return ((raw as string) || "assistant") as ApiCallInputMessage["role"];
 }
 
-function syncMessageToOutput(msg: Record<string, unknown>): ApiCallInputMessage {
+function toOutputMessage(msg: Record<string, unknown>): ApiCallInputMessage {
   const outputMessage: ApiCallInputMessage = {
     role: coerceMessageRole(msg.role),
     content: (msg.content as string | null) ?? "",
@@ -153,35 +153,22 @@ function syncMessageToOutput(msg: Record<string, unknown>): ApiCallInputMessage 
   return outputMessage;
 }
 
-function streamChunksToOutput(data: ChatStreamData, choiceIndex: number): ApiCallInputMessage {
-  const content = data
-    .map((chunk) => chunk.choices[choiceIndex]?.delta.content as string | undefined)
-    .filter((c) => c)
-    .join("");
-  const role = coerceMessageRole(data[0]?.choices[choiceIndex]?.delta.role);
-  const outputMessage: ApiCallInputMessage = { content, role };
-  const toolCalls = data
-    .map((chunk) => chunk.choices[choiceIndex]?.delta.tool_calls)
-    .find((tc) => Array.isArray(tc) && tc.length > 0);
-  if (toolCalls) {
-    outputMessage.tool_calls = toolCalls as ApiCallInputMessage["tool_calls"];
-  }
-  return outputMessage;
-}
-
 export async function logChatSync(input: ChatSyncInput) {
-  if (!input.data.choices.length) return;
   const rows = input.data.choices.map((choice) =>
-    buildApiCallRow(input, input.data.model, syncMessageToOutput(choice.message)),
+    buildApiCallRow(input, input.data.model, toOutputMessage(choice.message)),
   );
+  if (rows.length === 0) {
+    return;
+  }
   await insertApiCallRows(rows);
 }
 
 export async function logChatStream(input: ChatStreamInput) {
-  const firstChunk = input.data[0];
-  if (!firstChunk || !firstChunk.choices.length) return;
-  const rows = firstChunk.choices.map((_, choiceIndex) =>
-    buildApiCallRow(input, firstChunk.model, streamChunksToOutput(input.data, choiceIndex)),
+  const rows = input.data.flatMap((entry) =>
+    entry.choices.map((choice) => buildApiCallRow(input, entry.model, toOutputMessage(choice.delta))),
   );
+  if (rows.length === 0) {
+    return;
+  }
   await insertApiCallRows(rows);
 }

@@ -13,7 +13,7 @@ mock.module("./db", () => ({
   getDB: () => dbMock,
 }));
 
-const { logChatSync, flushApiCallRows } = await import("./callLogger");
+const { logChatSync, logChatStream, flushApiCallRows } = await import("./callLogger");
 
 function sampleChatInput() {
   return {
@@ -57,6 +57,23 @@ describe("callLogger", () => {
     const [batch] = insertMock.mock.calls[0] as [any[]];
     expect(batch.length).toBe(2);
     expect(batch[0].organizationId).toBe("org-1");
+  });
+
+  test("gives each streamed choice its own row", async () => {
+    insertMock.mockResolvedValue(undefined);
+    const { data: _sync, ...fields } = sampleChatInput();
+
+    await logChatStream({
+      ...fields,
+      data: [
+        { model: "llama3:latest", choices: [{ index: 0, delta: { role: "assistant", content: "first" }, finish_reason: "stop" }] },
+        { model: "llama3:latest", choices: [{ index: 1, delta: { role: "assistant", content: "second" }, finish_reason: "stop" }] },
+      ],
+    });
+    await flushApiCallRows();
+
+    const [batch] = insertMock.mock.calls[0] as [any[]];
+    expect(batch.map((row) => row.outputMessage.content)).toEqual(["first", "second"]);
   });
 
   test("auto-flushes on timer interval", async () => {
