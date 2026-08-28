@@ -95,7 +95,7 @@
         ollamaEndpoint = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description = "Ollama API endpoint URL (e.g. http://127.0.0.1:11434). Setting this enables the Ollama inference driver. If left null and the NixOS services.ollama module is enabled, the endpoint is derived automatically from its host and port settings.";
+          description = "Ollama API endpoint URL (e.g. http://127.0.0.1:11434). Only needed when Ollama does not listen on its default local port: the daemon probes that address on its own and enables the Ollama driver whenever it answers. If left null and the NixOS services.ollama module is enabled, the endpoint is derived from its host and port settings.";
         };
 
         # --- vLLM settings ---
@@ -237,10 +237,10 @@
             TETHER_SECRET_FILE = "%d/tether-secret";
           }
           // lib.optionalAttrs (cfg.ollamaEndpoint != null) {
-            XINITY_OLLAMA_ENDPOINT = cfg.ollamaEndpoint;
+            OLLAMA_URL = cfg.ollamaEndpoint;
           }
           // lib.optionalAttrs (cfg.ollamaEndpoint == null && cfgOllama.enable or false) {
-            XINITY_OLLAMA_ENDPOINT =
+            OLLAMA_URL =
               "http://${cfgOllama.host}:${toString cfgOllama.port}";
           }
           // lib.optionalAttrs (cfg.infoserverUrl != null) {

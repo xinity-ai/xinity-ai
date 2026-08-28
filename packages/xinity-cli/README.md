@@ -85,7 +85,7 @@ xinity up all
 | `daemon` | Model runtime agent |
 | `infoserver` | Model registry server |
 | `db` | Runs database migrations and Redis discovery |
-| `infra-ollama` | Detects/installs Ollama and wires the daemon |
+| `infra-ollama` | Detects/installs Ollama; the daemon picks it up on its own |
 | `infra-redis` | Detects/installs Redis or Valkey |
 | `infra-postgres` | Provisions PostgreSQL via Docker |
 | `infra-seaweedfs` | Downloads and configures SeaweedFS for S3 storage |

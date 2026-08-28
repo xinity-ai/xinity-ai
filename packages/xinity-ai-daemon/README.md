@@ -26,6 +26,8 @@ On disconnect, the tether marks the node as offline in the database.
 
 ### Ollama Driver
 
+The driver needs no configuration: the daemon probes `OLLAMA_URL` (default `http://localhost:11434`) on each sync and offers the driver whenever that endpoint answers. Set `OLLAMA_URL` only when Ollama listens elsewhere.
+
 Models are pulled from the Ollama registry with progress tracking. Up to 2 concurrent pull/delete operations.
 
 ### vLLM Driver
@@ -76,7 +78,7 @@ Set `VLLM_BACKEND` to choose the backend explicitly (`systemd`, the default, or 
 | `TETHER_URL` | (required) | URL of the xinity-tether service |
 | `TETHER_SECRET` | (required) | Shared secret for tether authentication |
 | `INFOSERVER_URL` | `https://sysinfo.xinity.ai` | Infoserver URL |
-| `XINITY_OLLAMA_ENDPOINT` | (unset) | Ollama API endpoint (enables Ollama driver) |
+| `OLLAMA_URL` | `http://localhost:11434` | Ollama API endpoint. Only needed when Ollama listens elsewhere |
 | `VLLM_BACKEND` | `systemd` | `systemd` or `docker` |
 | `VLLM_PATH` | (unset) | Path to vLLM binary |
 | `VLLM_DOCKER_IMAGE` | (unset) | vLLM Docker image, used when `VLLM_BACKEND=docker` |
