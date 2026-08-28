@@ -232,10 +232,7 @@ export async function planUp(
       });
       if (isCancel(setupOllama)) return null;
       if (setupOllama) {
-        const { LOCAL_OLLAMA_ENDPOINT } = await import("./ollama-setup.ts");
         plan.provisionOllama = true;
-        shared.XINITY_OLLAMA_ENDPOINT = LOCAL_OLLAMA_ENDPOINT;
-        resolvedKeys.add("XINITY_OLLAMA_ENDPOINT");
       }
     }
 
