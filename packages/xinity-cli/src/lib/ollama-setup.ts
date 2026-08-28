@@ -3,20 +3,13 @@
  * `xinity up all`. Ollama runs alongside the daemon on the same host, so it is
  * left on its default localhost binding.
  */
-import { confirm, isCancel, log, select, spinner as clackSpinner } from "./clack.ts";
+import { isCancel, log, select, spinner as clackSpinner } from "./clack.ts";
 import { bold, dim } from "picocolors";
 import { type Host, commandExistsOn, isUnitActiveOn } from "./host.ts";
 import { pass, fail, info, warn } from "./output.ts";
-import { parseEnvString, serializeEnvFile } from "./env-file.ts";
-import { ENV_DIR } from "./component-meta.ts";
-import { heredoc, restartService } from "./service.ts";
-import { runSteps } from "./step-runner.ts";
+import { DEFAULT_OLLAMA_URL } from "./component-meta.ts";
 
-const DEFAULT_PORT = "11434";
 const INSTALL_COMMAND = "curl -fsSL https://ollama.com/install.sh | sh";
-
-/** Endpoint the daemon uses to reach the ollama instance running on the same host. */
-export const LOCAL_OLLAMA_ENDPOINT = `http://localhost:${DEFAULT_PORT}`;
 
 type OllamaStatus = "missing" | "stopped" | "running";
 
@@ -155,7 +148,7 @@ async function promptStartStoppedOllama(host: Host, dryRun: boolean): Promise<bo
 
 /**
  * Install/update ollama and ensure its service is running. Returns true when
- * ollama is set up and expected to answer at {@link LOCAL_OLLAMA_ENDPOINT}.
+ * ollama is set up and expected to answer at {@link DEFAULT_OLLAMA_URL}.
  */
 export async function provisionOllama(host: Host, dryRun: boolean): Promise<boolean> {
   log.step(bold("Ollama setup"));
@@ -174,7 +167,7 @@ export async function provisionOllama(host: Host, dryRun: boolean): Promise<bool
 /**
  * Non-interactive provisioning for `xinity plan apply`: install ollama when
  * missing, start the service when stopped, leave a running instance alone.
- * Returns true when ollama is expected to answer at {@link LOCAL_OLLAMA_ENDPOINT}.
+ * Returns true when ollama is expected to answer at {@link DEFAULT_OLLAMA_URL}.
  */
 export async function ensureOllama(host: Host, dryRun: boolean): Promise<boolean> {
   log.step(bold("Ollama setup"));
@@ -203,58 +196,30 @@ export async function ensureOllama(host: Host, dryRun: boolean): Promise<boolean
   return startOllamaService(host);
 }
 
-// ─── Wiring the daemon to ollama (standalone `infra-ollama`) ──────────────────
+// ─── Confirming the daemon will find ollama ──────────────────────────────────
 
 async function isOllamaEndpointReachable(host: Host): Promise<boolean> {
   const result = await host.runShell(
-    `curl -sf --connect-timeout 5 '${LOCAL_OLLAMA_ENDPOINT}/api/tags' > /dev/null`,
+    `curl -sf --connect-timeout 5 '${DEFAULT_OLLAMA_URL}/api/tags' > /dev/null`,
   );
   return result.ok;
 }
 
-/** Sets XINITY_OLLAMA_ENDPOINT in the daemon env file and restarts the daemon. */
-async function writeDaemonEndpoint(host: Host, endpoint: string): Promise<boolean> {
-  const envPath = `${ENV_DIR}/daemon.env`;
-  const existing = await host.readFile(envPath);
-  const env = existing ? parseEnvString(existing) : {};
-
-  if (env.XINITY_OLLAMA_ENDPOINT === endpoint) {
-    pass("Daemon config", `XINITY_OLLAMA_ENDPOINT already set to ${endpoint}`);
-    return true;
-  }
-
-  env.XINITY_OLLAMA_ENDPOINT = endpoint;
-  const content = serializeEnvFile(env);
-  const result = await host.withElevation(
-    `mkdir -p '${ENV_DIR}' && cat > '${envPath}' ${heredoc("ENVEOF", content)}\nchmod 644 '${envPath}'`,
-    "Write XINITY_OLLAMA_ENDPOINT to daemon config",
-  );
-  if (result.success) {
-    pass("Daemon config", `XINITY_OLLAMA_ENDPOINT=${endpoint}`);
-    await runSteps(restartService("daemon", host));
-    return true;
-  }
-  fail("Daemon config", result.output || "Failed to write daemon env");
-  return false;
-}
-
 /**
- * Point an already-installed daemon at the local ollama instance: confirm the
- * endpoint answers, then persist it to the daemon env.
+ * The daemon probes {@link DEFAULT_OLLAMA_URL} on its own, so nothing needs
+ * writing. Report whether that probe will find anything.
  */
-async function pointDaemonAtOllama(host: Host): Promise<void> {
+async function reportDaemonReachability(host: Host): Promise<void> {
   if (await isOllamaEndpointReachable(host)) {
-    pass("Ollama", `Endpoint reachable at ${LOCAL_OLLAMA_ENDPOINT}`);
+    pass("Ollama", `Endpoint reachable at ${DEFAULT_OLLAMA_URL}, the daemon will pick it up`);
   } else {
-    warn("Ollama", `Endpoint not reachable at ${LOCAL_OLLAMA_ENDPOINT}. The daemon may not be able to connect.`);
-    const proceed = await confirm({ message: "Save this endpoint anyway?", initialValue: true });
-    if (isCancel(proceed) || !proceed) return;
+    warn("Ollama", `Endpoint not reachable at ${DEFAULT_OLLAMA_URL}. The daemon will not detect the ollama driver.`);
+    info("Ollama", "Set OLLAMA_URL in the daemon config if ollama listens elsewhere");
   }
-  await writeDaemonEndpoint(host, LOCAL_OLLAMA_ENDPOINT);
 }
 
-/** Entry point for `xinity up infra-ollama`: provision ollama, then point the daemon at it. */
+/** Entry point for `xinity up infra-ollama`: provision ollama and confirm the daemon can reach it. */
 export async function ollamaSetup(host: Host, dryRun: boolean): Promise<void> {
   const ready = await provisionOllama(host, dryRun);
-  if (ready && !dryRun) await pointDaemonAtOllama(host);
+  if (ready && !dryRun) await reportDaemonReachability(host);
 }

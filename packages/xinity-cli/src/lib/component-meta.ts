@@ -34,6 +34,9 @@ export const GATEWAY_DEFAULT_PORT = String(gatewayEnvSchema.shape.PORT.parse(und
 export const INFOSERVER_DEFAULT_PORT = String(infoserverEnvSchema.shape.PORT.parse(undefined));
 export const TETHER_DEFAULT_PORT = String(tetherEnvSchema.shape.PORT.parse(undefined));
 
+/** Where the daemon probes for ollama when OLLAMA_URL is left unset. */
+export const DEFAULT_OLLAMA_URL = String(daemonEnvSchema.shape.OLLAMA_URL.parse(undefined));
+
 export const ENV_DIR = "/etc/xinity-ai";
 export const SECRETS_DIR = "/etc/xinity-ai/secrets";
 export const BIN_DIR = "/opt/xinity/bin";

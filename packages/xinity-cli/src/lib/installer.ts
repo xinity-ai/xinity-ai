@@ -113,9 +113,9 @@ async function startOllama(host: Host, progress: Progress): Promise<void> {
 }
 
 /**
- * Detects which drivers are enabled from the configured env values and checks
- * the required tools are available. A stopped ollama service is started; a
- * missing ollama install is reported (installing it is `up infra-ollama`).
+ * Checks the tools each driver needs. Ollama takes no configuration, so it
+ * counts as a driver whenever its binary is on the host; a stopped service is
+ * started. vLLM stays derived from the configured env values.
  */
 async function checkDriverTools(
   config: Record<string, string>,
@@ -124,38 +124,33 @@ async function checkDriverTools(
   progress: Progress,
 ): Promise<void> {
   const all = { ...config, ...secrets };
-  const ollamaEnabled = !!all.XINITY_OLLAMA_ENDPOINT;
+  const ollamaInstalled = await commandExistsOn(host, "ollama");
   const vllmDockerEnabled = !!all.VLLM_DOCKER_IMAGE;
   const vllmSystemdEnabled = !!all.VLLM_PATH;
   const vllmEnabled = vllmDockerEnabled || vllmSystemdEnabled;
 
   const drivers: string[] = [];
-  if (ollamaEnabled) drivers.push("ollama");
+  if (ollamaInstalled) drivers.push("ollama");
   if (vllmEnabled) drivers.push("vllm");
 
   if (drivers.length === 0) {
-    progress.warn("Drivers", "No drivers detected. Set XINITY_OLLAMA_ENDPOINT, VLLM_DOCKER_IMAGE, or VLLM_PATH to enable a driver");
+    progress.warn(
+      "Drivers",
+      `No drivers detected. Install ollama with ${cyan("xinity up infra-ollama")}, or set VLLM_DOCKER_IMAGE or VLLM_PATH`,
+      "  Or install ollama manually: curl -fsSL https://ollama.com/install.sh | sh",
+    );
     return;
   }
 
   progress.update(`Checking drivers: ${drivers.join(", ")}`);
 
   // ── Ollama ──
-  if (ollamaEnabled) {
-    const hasOllama = await commandExistsOn(host, "ollama");
-    if (hasOllama) {
-      if (await isOllamaRunning(host)) {
-        progress.update("ollama service is running");
-      } else {
-        progress.update("ollama service is not running, starting it");
-        await startOllama(host, progress);
-      }
+  if (ollamaInstalled) {
+    if (await isOllamaRunning(host)) {
+      progress.update("ollama service is running");
     } else {
-      progress.warn(
-        "Ollama",
-        `ollama binary not found. Install it with ${cyan("xinity up infra-ollama")}`,
-        "  Or manually: curl -fsSL https://ollama.com/install.sh | sh",
-      );
+      progress.update("ollama service is not running, starting it");
+      await startOllama(host, progress);
     }
   }
 

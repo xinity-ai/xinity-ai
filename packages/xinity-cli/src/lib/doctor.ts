@@ -5,7 +5,7 @@ import { isOllamaRunning } from "./ollama-setup.ts";
 import { analyzeEnvSchema, categorizeFields, type EnvField } from "./env-prompt.ts";
 import { parseEnvString } from "./env-file.ts";
 import { unitName } from "./systemd.ts";
-import { type Component, ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, UNIT_DIR, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT } from "./component-meta.ts";
+import { type Component, ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, UNIT_DIR, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT, DEFAULT_OLLAMA_URL } from "./component-meta.ts";
 import { collectRemoteState, createCachedHost } from "./remote-probe.ts";
 import {
   type CheckResult, type CheckStatus,
@@ -396,22 +396,15 @@ async function checkDaemonDrivers(
 ): Promise<CheckResult[]> {
   const checks: CheckResult[] = [];
 
-  // Ollama
-  if (values.XINITY_OLLAMA_ENDPOINT) {
-    // Binary
-    if (await commandExistsOn(host, "ollama")) {
-      checks.push({
-        label: "Ollama binary",
-        status: "pass",
-        message: "Found",
-      });
-    } else {
-      checks.push({
-        label: "Ollama binary",
-        status: "warn",
-        message: "Not found in PATH",
-      });
-    }
+  // Ollama: no config enables it, so the binary's presence is what says it is in play
+  const ollamaInstalled = await commandExistsOn(host, "ollama");
+
+  if (ollamaInstalled) {
+    checks.push({
+      label: "Ollama binary",
+      status: "pass",
+      message: "Found",
+    });
 
     // Service running
     if (await isOllamaRunning(host)) {
@@ -429,8 +422,9 @@ async function checkDaemonDrivers(
     }
 
     // Endpoint reachable: check via host since Ollama runs on the target machine
+    const ollamaUrl = values.OLLAMA_URL || DEFAULT_OLLAMA_URL;
     checks.push(
-      await checkServiceHealth(host, "Ollama endpoint", `${values.XINITY_OLLAMA_ENDPOINT}/api/tags`),
+      await checkServiceHealth(host, "Ollama endpoint", `${ollamaUrl}/api/tags`),
     );
   }
 
@@ -486,12 +480,8 @@ async function checkDaemonDrivers(
     }
   }
 
-  // GPU detection (check if any driver is configured that may need GPU)
-  if (
-    values.VLLM_PATH ||
-    values.VLLM_DOCKER_IMAGE ||
-    values.XINITY_OLLAMA_ENDPOINT
-  ) {
+  // GPU detection (check if any driver that may need a GPU is present)
+  if (values.VLLM_PATH || values.VLLM_DOCKER_IMAGE || ollamaInstalled) {
     const hasNvidiaSmi = await commandExistsOn(host, "nvidia-smi");
     const hasRocmSmi = await commandExistsOn(host, "rocm-smi");
 
