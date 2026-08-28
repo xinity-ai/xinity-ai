@@ -60,7 +60,7 @@ describe("xinity-ai-daemon", () => {
 
     const proc = await startDaemon({
       stateDir,
-      ollamaEndpoint: mock.endpoint,
+      ollamaUrl: mock.endpoint,
       syncIntervalMs: 500,
     });
     runningDaemons.push(proc);
@@ -89,7 +89,7 @@ describe("xinity-ai-daemon", () => {
 
     const proc = await startDaemon({
       stateDir,
-      ollamaEndpoint: mock.endpoint,
+      ollamaUrl: mock.endpoint,
       syncIntervalMs: 500,
     });
     runningDaemons.push(proc);
@@ -128,7 +128,7 @@ describe("xinity-ai-daemon", () => {
 
     const proc = await startDaemon({
       stateDir,
-      ollamaEndpoint: mock.endpoint,
+      ollamaUrl: mock.endpoint,
       syncIntervalMs: 500,
     });
     runningDaemons.push(proc);
@@ -144,7 +144,7 @@ describe("xinity-ai-daemon", () => {
 
     const proc = await startDaemon({
       stateDir,
-      ollamaEndpoint: mock.endpoint,
+      ollamaUrl: mock.endpoint,
       syncIntervalMs: 500,
     });
     runningDaemons.push(proc);
@@ -180,7 +180,7 @@ describe("xinity-ai-daemon", () => {
 
     const proc = await startDaemon({
       stateDir,
-      ollamaEndpoint: mock.endpoint,
+      ollamaUrl: mock.endpoint,
       syncIntervalMs: 500,
     });
     runningDaemons.push(proc);
@@ -226,7 +226,7 @@ describe("xinity-ai-daemon", () => {
 
     const proc = await startDaemon({
       stateDir,
-      ollamaEndpoint: mock.endpoint,
+      ollamaUrl: mock.endpoint,
       syncIntervalMs: 500,
     });
     runningDaemons.push(proc);

@@ -7,6 +7,15 @@ import { tmpdir } from "node:os";
 // Unique per process: concurrent runs must not share this directory.
 const STATE_DIR = mkdtempSync(join(tmpdir(), "xinity-statekeeper-test-"));
 
+let ollamaHealthy = true;
+const ollama = Bun.serve({
+  port: 0,
+  fetch: (req) =>
+    new URL(req.url).pathname === "/api/version" && ollamaHealthy
+      ? Response.json({ version: "0.12.3" })
+      : new Response("unavailable", { status: 500 }),
+});
+
 mock.module("../env", () => ({ env: {
   PORT: 4044,
   HOST: "0.0.0.0",
@@ -15,10 +24,13 @@ mock.module("../env", () => ({ env: {
   TETHER_URL: "http://localhost:4020",
   TETHER_SECRET: "test",
   INFOSERVER_URL: "http://localhost:19090",
+  OLLAMA_URL: `http://127.0.0.1:${ollama.port}`,
+  VLLM_PATH: undefined,
+  VLLM_DOCKER_IMAGE: undefined,
   LOG_LEVEL: "silent",
 }}));
 
-const { readNodeIdFile } = await import("./statekeeper");
+const { readNodeIdFile, getNodeDrivers, getNodeDriverVersions } = await import("./statekeeper");
 
 const idFile = join(STATE_DIR, "node_id");
 
@@ -45,5 +57,30 @@ describe("readNodeIdFile", () => {
   test("returns null for an empty or whitespace-only file", async () => {
     await Bun.write(idFile, "   \n");
     expect(await readNodeIdFile()).toBeNull();
+  });
+});
+
+// Ollama takes no configuration to enable, so the driver list has to follow the
+// live endpoint rather than the presence of an env value. Tests run in order:
+// the last one takes the endpoint away for good.
+describe("getNodeDrivers", () => {
+  afterAll(() => ollama.stop(true));
+
+  test("lists ollama while the endpoint answers", async () => {
+    ollamaHealthy = true;
+    expect(await getNodeDrivers()).toEqual(["ollama"]);
+    expect(await getNodeDriverVersions()).toEqual({ ollama: "0.12.3" });
+  });
+
+  test("omits ollama when the endpoint rejects the probe", async () => {
+    ollamaHealthy = false;
+    expect(await getNodeDrivers()).toEqual([]);
+    expect(await getNodeDriverVersions()).toEqual({});
+  });
+
+  test("omits ollama when nothing is listening", async () => {
+    ollamaHealthy = true;
+    await ollama.stop(true);
+    expect(await getNodeDrivers()).toEqual([]);
   });
 });

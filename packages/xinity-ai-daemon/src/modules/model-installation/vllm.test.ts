@@ -10,7 +10,7 @@ import type { InstallationEntry } from "./catalog";
 mock.module("../../env", () => ({ env: {
   PORT: 4020,
   HOST: "0.0.0.0",
-  XINITY_OLLAMA_ENDPOINT: "http://localhost:11434",
+  OLLAMA_URL: "http://localhost:11434",
   STATE_DIR: "/tmp/test-state",
   CIDR_PREFIX: "10.0.0",
   SYNC_INTERVAL_MS: 60_000,

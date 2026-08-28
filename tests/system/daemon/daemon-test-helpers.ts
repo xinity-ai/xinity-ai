@@ -159,7 +159,7 @@ export type DaemonHandle = {
 
 export async function startDaemon(options: {
   stateDir: string;
-  ollamaEndpoint: string;
+  ollamaUrl: string;
   port?: number;
   host?: string;
   syncIntervalMs?: number;
@@ -186,7 +186,7 @@ export async function startDaemon(options: {
       PORT: String(port),
       HOST: host,
       STATE_DIR: options.stateDir,
-      XINITY_OLLAMA_ENDPOINT: options.ollamaEndpoint,
+      OLLAMA_URL: options.ollamaUrl,
       DB_CONNECTION_URL,
       SYNC_INTERVAL_MS: String(syncIntervalMs),
       INFOSERVER_URL: infoServerUrl(""),
@@ -298,6 +298,11 @@ export async function startMockOllamaServer(): Promise<OllamaMock> {
     port,
     fetch: async (req) => {
       const url = new URL(req.url);
+      // The daemon probes this to decide whether the ollama driver exists at all.
+      if (req.method === "GET" && url.pathname === "/api/version") {
+        return Response.json({ version: "0.12.3" });
+      }
+
       if (req.method === "GET" && url.pathname === "/api/tags") {
         calls.list += 1;
         return Response.json({
