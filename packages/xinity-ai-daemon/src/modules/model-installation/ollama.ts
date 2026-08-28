@@ -11,8 +11,7 @@ const log = rootLogger.child({ name: "ollama" });
 let _ollama: Ollama | null = null;
 export function getOllamaClient(): Ollama {
   if (!_ollama) {
-    if (!env.XINITY_OLLAMA_ENDPOINT) throw new Error("env.XINITY_OLLAMA_ENDPOINT is not configured but ollama sync was triggered");
-    _ollama = new Ollama({ host: env.XINITY_OLLAMA_ENDPOINT });
+    _ollama = new Ollama({ host: env.OLLAMA_URL });
   }
   return _ollama;
 }

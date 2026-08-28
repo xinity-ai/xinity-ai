@@ -40,10 +40,10 @@ export async function getHardwareProfile(): Promise<HardwareProfile> {
   return cachedProfile;
 }
 
-/** Derives supported drivers from configured environment variables. */
-export function getNodeDrivers(): string[] {
+/** Ollama needs no configuration, so its driver is derived from a live probe rather than from env. */
+export async function getNodeDrivers(): Promise<string[]> {
   const drivers: string[] = [];
-  if (env.XINITY_OLLAMA_ENDPOINT) {
+  if (await detectOllamaVersion(env.OLLAMA_URL)) {
     drivers.push("ollama");
   }
   if (env.VLLM_DOCKER_IMAGE || env.VLLM_PATH) {
@@ -85,25 +85,21 @@ async function detectVllmVersion(
   return undefined;
 }
 
+/** Bounded so an unreachable or wedged endpoint cannot stall registration or a sync cycle. */
+const OLLAMA_PROBE_TIMEOUT_MS = 3_000;
+
 async function detectOllamaVersion(endpoint: string): Promise<string | undefined> {
   try {
-    const res = await fetch(`${endpoint}/api/version`);
+    const res = await fetch(`${endpoint}/api/version`, { signal: AbortSignal.timeout(OLLAMA_PROBE_TIMEOUT_MS) });
     if (!res.ok) {
       return undefined;
     }
     const data = await res.json() as { version?: string };
     return data.version;
   } catch (err) {
-    log.debug({ err }, "Failed to detect Ollama version");
+    log.debug({ err, endpoint }, "Ollama did not answer, treating the driver as unavailable");
     return undefined;
   }
-}
-
-async function detectConfiguredOllamaVersion(): Promise<string | undefined> {
-  if (!env.XINITY_OLLAMA_ENDPOINT) {
-    return undefined;
-  }
-  return detectOllamaVersion(env.XINITY_OLLAMA_ENDPOINT);
 }
 
 async function detectConfiguredVllmVersion(): Promise<string | undefined> {
@@ -128,7 +124,7 @@ async function detectConfiguredVllmVersion(): Promise<string | undefined> {
 /** Detects driver versions from configured endpoints/binaries. Best-effort: missing = empty. */
 export async function getNodeDriverVersions(): Promise<Record<string, string>> {
   const [ollama, vllm] = await Promise.all([
-    detectConfiguredOllamaVersion(),
+    detectOllamaVersion(env.OLLAMA_URL),
     detectConfiguredVllmVersion(),
   ]);
 

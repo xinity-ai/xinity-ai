@@ -129,12 +129,12 @@ function sync(): Observable<void> {
   }
   log.debug("Performing sync");
 
-  return defer(() => from(getNodeId())).pipe(
-    switchMap((nodeId) => {
+  return defer(() => from(Promise.all([getNodeId(), getNodeDrivers()]))).pipe(
+    switchMap(([nodeId, drivers]) => {
       const installations = latestInstallations.map(d => toSyncInstallation(d, nodeId));
       updateRegistry(installations);
       const buckets = groupInstallationsByDriver(installations);
-      ensureBucketsForSupportedDrivers(buckets, getNodeDrivers());
+      ensureBucketsForSupportedDrivers(buckets, drivers);
       logInstallationsIfChanged(installations);
       return from(buckets).pipe(
         mergeMap(({ driver, installations: driverInstallations }) =>
