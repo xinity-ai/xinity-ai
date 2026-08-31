@@ -171,7 +171,11 @@ function toOutputMessage(msg: Record<string, unknown>): ApiCallInputMessage {
   } as ApiCallInputMessage;
 }
 
-function buildQueuedCall(input: ChatLogFields, model: string, outputMessage: ApiCallInputMessage): QueuedCall {
+function buildQueuedCall(
+  input: ChatLogFields,
+  model: string,
+  outputMessage: ApiCallInputMessage,
+): QueuedCall {
   const row = sanitizeRow(buildApiCallRow(input, model, outputMessage));
   return {
     row,

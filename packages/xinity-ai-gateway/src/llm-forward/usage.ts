@@ -87,19 +87,19 @@ export function recordFailedRequest({ auth, modelInfo, callStartTime }: FailedRe
   });
 }
 
-type UsageLogContextBase = {
-  usage: UsageData | null | undefined;
-  auth: AuthResult;
-  modelInfo: { model: string };
-  endpoint: InferenceEndpoint;
-  publicSpecifier: string;
-  inputMessages: ApiCallInputMessage[];
-  callStartTime: number;
-  logCalls?: boolean;
-  metadata?: Record<string, unknown>;
+/** What every surface hands to `logChatUsage`, whichever endpoint served the call. */
+export type CallLogFields = {
+  readonly auth: AuthResult;
+  readonly modelInfo: { model: string; nodeId?: string | null };
+  readonly publicSpecifier: string;
+  readonly endpoint: InferenceEndpoint;
+  readonly inputMessages: ApiCallInputMessage[];
+  readonly callStartTime: number;
+  readonly logCalls?: boolean;
+  readonly metadata?: Record<string, unknown>;
 };
 
-export type UsageLogContext = UsageLogContextBase & (
+export type UsageLogContext = CallLogFields & { usage: UsageData | null | undefined } & (
   | { stream: true; outputData: ChatStreamData }
   | { stream: false; outputData: ChatSyncData }
 );

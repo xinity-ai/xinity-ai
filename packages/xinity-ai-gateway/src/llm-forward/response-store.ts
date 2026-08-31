@@ -9,6 +9,7 @@ import {
   loadResponseMessages,
   deletePersistedResponse,
   type ResponseOwner,
+  type ResponseAttribution,
 } from "./responses/persistence";
 import type { ResponseObject } from "./responses/schemas";
 
@@ -17,11 +18,7 @@ const log = rootLogger.child({ name: "response-store" });
 const responseKey = (orgId: string, id: string) => `response:${orgId}:${id}`;
 
 /** Only the creating write can supply these; later writes are recognized by status. */
-export type ResponseCreation = {
-  apiKeyId: string | null;
-  applicationId: string | null;
-  inputMessages: ApiCallInputMessage[];
-};
+export type ResponseCreation = ResponseAttribution & { inputMessages: ApiCallInputMessage[] };
 
 async function cacheResponse(orgId: string, id: string, payload: unknown): Promise<void> {
   await redis.set(responseKey(orgId, id), JSON.stringify(payload), "EX", env.RESPONSE_CACHE_TTL_SECONDS);

@@ -1,7 +1,6 @@
 /** Runs a response generation to completion and records it, for every mode but streaming. */
 import { generateText } from "ai";
-import type { ApiCallInputMessage, InferenceEndpoint } from "common-db";
-import type { AuthResult } from "../auth";
+import type { CallLogFields } from "../usage";
 import { getResponse, saveResponse, type ResponseCreation } from "../response-store";
 import { logChatUsage, isUpstreamError, clientFacingErrorMessage } from "../util";
 import { rootLogger } from "../../logger";
@@ -50,16 +49,6 @@ export async function saveFailedResponse(
     .catch((err) => log.error({ err, responseId }, "Failed to persist failed response"));
 }
 
-export type LogFields = {
-  readonly auth: AuthResult;
-  readonly modelInfo: { model: string };
-  readonly publicSpecifier: string;
-  readonly endpoint: InferenceEndpoint;
-  readonly inputMessages: ApiCallInputMessage[];
-  readonly callStartTime: number;
-  readonly logCalls: boolean | undefined;
-  readonly metadata: Record<string, unknown> | undefined;
-};
 
 export type GeneratePersistArgs = {
   orgId: string;
@@ -70,7 +59,7 @@ export type GeneratePersistArgs = {
   genParams: Omit<ReturnType<typeof buildGenerationParams>, "stopWhen"> & Pick<Parameters<typeof generateText>[0], "prepareStep" | "stopWhen">;
   include: IncludeValue[];
   outputConfig: ReturnType<typeof buildOutputConfig>;
-  logFields: LogFields;
+  logFields: CallLogFields;
   deepResearch?: {
     compactionUsage: { inputTokens: number; outputTokens: number };
   };

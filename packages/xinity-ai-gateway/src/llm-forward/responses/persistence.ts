@@ -45,11 +45,12 @@ function toRequestParams(response: ResponseObject): Record<string, unknown> {
   return params;
 }
 
-export type ResponseOwner = {
-  orgId: string;
+export type ResponseAttribution = {
   apiKeyId: string | null;
   applicationId: string | null;
 };
+
+export type ResponseOwner = ResponseAttribution & { orgId: string };
 
 export function toResponseRow(
   response: ResponseObject,

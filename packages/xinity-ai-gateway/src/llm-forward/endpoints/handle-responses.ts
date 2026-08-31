@@ -17,12 +17,12 @@ import { withResponseIdRoute } from "../endpoint-guards";
 import { extractText, normalizeMessages } from "../responses/input-normalize";
 import { loadResponse, loadResponseInputItems } from "../responses/persistence";
 import { newResponseId } from "../responses/response-id";
+import type { CallLogFields } from "../usage";
 import {
   createAndSaveInProgressResponse,
   saveFailedResponse,
   generateAndPersistCompletedResponse,
   runBackground,
-  type LogFields,
 } from "../responses/generate";
 
 const log = rootLogger.child({ name: "handle-responses" });
@@ -47,7 +47,7 @@ type PreparedRequest = Omit<Authorized, "body"> & {
   activeTools: ResolvedTools["activeTools"];
   hasTools: boolean;
   callStartTime: number;
-  logFields: LogFields;
+  logFields: CallLogFields;
   creation: ResponseCreation;
 };
 
@@ -103,6 +103,7 @@ async function prepareResponseRequest(req: Request): Promise<PreparedRequest | R
   const processed = await processMessageImages(messages, auth.orgId, imageStore);
   const messagesForLLM = [...historyForModel, ...processed.messagesForLLM];
   const messagesForDB = [...historyForLog, ...processed.messagesForDB];
+
 
   return {
     ...authorized,
