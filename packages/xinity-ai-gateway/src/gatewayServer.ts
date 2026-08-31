@@ -1,3 +1,5 @@
+import "zod/compile";
+
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { serverRouter } from "./rpc/gatewayRouter";
 import { env } from "./env";

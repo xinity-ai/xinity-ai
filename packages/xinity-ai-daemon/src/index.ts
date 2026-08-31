@@ -1,3 +1,5 @@
+import "zod/compile";
+
 import type { SubscriptionLike } from "rxjs";
 import { dbSync, setDesiredInstallations } from "./modules/db-sync";
 import { startMetricsSampler, type MetricsSampler } from "./modules/metrics-sampler";
