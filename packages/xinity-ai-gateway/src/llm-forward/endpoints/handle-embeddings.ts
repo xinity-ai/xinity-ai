@@ -15,6 +15,11 @@ export const EmbeddingBodySchema = z.looseObject({
   user: z.string().optional(),
 });
 
+const EmbeddingUsageSchema = z.looseObject({
+  prompt_tokens: z.number(),
+  total_tokens: z.number(),
+});
+
 export const handleEmbeddingGeneration = withEndpointGuards({
   modelTypes: ["embedding"],
   bodySchema: EmbeddingBodySchema,
@@ -50,10 +55,7 @@ export const handleEmbeddingGeneration = withEndpointGuards({
 
     raw.model = originalModel;
 
-    const usageResult = z.looseObject({
-      prompt_tokens: z.number(),
-      total_tokens: z.number(),
-    }).safeParse(raw.usage);
+    const usageResult = EmbeddingUsageSchema.safeParse(raw.usage);
 
     if (usageResult.success) {
       recordUsage({
