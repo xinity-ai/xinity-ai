@@ -142,15 +142,23 @@ function coerceMessageRole(raw: unknown): ApiCallInputMessage["role"] {
   return ((raw as string) || "assistant") as ApiCallInputMessage["role"];
 }
 
+/** vLLM and DeepSeek send `reasoning_content`, other engines `reasoning`. */
+function normalizeReasoning(msg: Record<string, unknown>): Record<string, unknown> {
+  const { reasoning, ...rest } = msg;
+  if (typeof reasoning === "string" && rest.reasoning_content === undefined) {
+    return { ...rest, reasoning_content: reasoning };
+  }
+  return rest;
+}
+
+/** Backend schemas are loose, so rebuilding would drop fields: `ApiCallInputMessage` is a lower
+ * bound on what is stored. */
 function toOutputMessage(msg: Record<string, unknown>): ApiCallInputMessage {
-  const outputMessage: ApiCallInputMessage = {
+  return {
+    ...normalizeReasoning(msg),
     role: coerceMessageRole(msg.role),
     content: (msg.content as string | null) ?? "",
-  };
-  if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
-    outputMessage.tool_calls = msg.tool_calls as ApiCallInputMessage["tool_calls"];
-  }
-  return outputMessage;
+  } as ApiCallInputMessage;
 }
 
 export async function logChatSync(input: ChatSyncInput) {

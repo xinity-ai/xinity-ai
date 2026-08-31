@@ -73,6 +73,9 @@ type ChatAcc = {
   content: string;
   role: string;
   tool_calls?: ToolCallAcc[];
+  /** Absent rather than empty: an empty key hashes differently from a missing one. */
+  reasoning_content?: string;
+  refusal?: string;
   finish_reason?: string | null;
 };
 
@@ -98,6 +101,13 @@ const chatStreamSpec: StreamSpec<z.infer<typeof BackendChatChunkSchema>, ChatAcc
         }
       }
     }
+    const reasoning = choice.delta.reasoning_content ?? choice.delta.reasoning;
+    if (typeof reasoning === "string") {
+      acc.reasoning_content = (acc.reasoning_content ?? "") + reasoning;
+    }
+    if (typeof choice.delta.refusal === "string") {
+      acc.refusal = (acc.refusal ?? "") + choice.delta.refusal;
+    }
     if (choice.finish_reason) {
       acc.finish_reason = choice.finish_reason;
     }
@@ -110,6 +120,8 @@ const chatStreamSpec: StreamSpec<z.infer<typeof BackendChatChunkSchema>, ChatAcc
         role: acc.role,
         content: acc.content,
         ...(acc.tool_calls ? { tool_calls: acc.tool_calls } : {}),
+        ...(acc.reasoning_content !== undefined ? { reasoning_content: acc.reasoning_content } : {}),
+        ...(acc.refusal !== undefined ? { refusal: acc.refusal } : {}),
       },
       finish_reason: acc.finish_reason ?? null,
     }],

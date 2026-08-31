@@ -76,6 +76,55 @@ describe("callLogger", () => {
     expect(batch.map((row) => row.outputMessage.content)).toEqual(["first", "second"]);
   });
 
+  test("keeps reasoning and refusal the engine sent", async () => {
+    insertMock.mockResolvedValue(undefined);
+    const input = sampleChatInput();
+
+    await logChatSync({
+      ...input,
+      data: {
+        model: "llama3:latest",
+        choices: [{
+          index: 0,
+          message: { role: "assistant", content: "Answer", reasoning_content: "Thought", refusal: null },
+        }],
+      },
+    });
+    await flushApiCallRows();
+
+    const [batch] = insertMock.mock.calls[0] as [any[]];
+    expect(batch[0].outputMessage.reasoning_content).toBe("Thought");
+    expect(batch[0].outputMessage).toHaveProperty("refusal");
+  });
+
+  test("stores reasoning under one name whichever the engine used", async () => {
+    insertMock.mockResolvedValue(undefined);
+    const input = sampleChatInput();
+
+    await logChatSync({
+      ...input,
+      data: {
+        model: "llama3:latest",
+        choices: [{ index: 0, message: { role: "assistant", content: "Answer", reasoning: "Thought" } }],
+      },
+    });
+    await flushApiCallRows();
+
+    const [batch] = insertMock.mock.calls[0] as [any[]];
+    expect(batch[0].outputMessage.reasoning_content).toBe("Thought");
+    expect(batch[0].outputMessage).not.toHaveProperty("reasoning");
+  });
+
+  test("adds no reasoning key to a reply that carried none", async () => {
+    insertMock.mockResolvedValue(undefined);
+
+    await logChatSync(sampleChatInput());
+    await flushApiCallRows();
+
+    const [batch] = insertMock.mock.calls[0] as [any[]];
+    expect(batch[0].outputMessage).not.toHaveProperty("reasoning_content");
+  });
+
   test("auto-flushes on timer interval", async () => {
     insertMock.mockResolvedValue(undefined);
 
