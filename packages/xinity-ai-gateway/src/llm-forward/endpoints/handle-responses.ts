@@ -121,6 +121,7 @@ async function prepareResponseRequest(req: Request): Promise<PreparedRequest | R
       auth,
       modelInfo,
       publicSpecifier: originalModel,
+      endpoint: "responses" as const,
       inputMessages: messagesForDB,
       callStartTime,
       logCalls: body.store,

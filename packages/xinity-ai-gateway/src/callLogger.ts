@@ -1,5 +1,6 @@
 import { getDB } from "./db";
-import { apiCallT, type ApiCallInputMessage } from "common-db";
+import { apiCallT, type ApiCallInputMessage, type InferenceEndpoint } from "common-db";
+import { recordInferenceCalls, type InferenceCallRecord } from "./inference-call-store";
 import { rootLogger } from "./logger";
 
 const log = rootLogger.child({ name: "call-logger" });
@@ -28,6 +29,9 @@ type ChatLogFields = {
   organizationId: string;
   durationInMS: number;
   publicSpecifier: string;
+  /** The name the engine knows the model by, which `api_call` does not record. */
+  engineModel: string;
+  endpoint: InferenceEndpoint;
   inputMessages: ApiCallInputMessage[];
   metadata?: Record<string, unknown>;
 };
@@ -96,24 +100,17 @@ function sanitizeRow(row: ApiCallRow): ApiCallRow {
 const CALL_BATCH_SIZE = 50;
 const CALL_FLUSH_INTERVAL_MS = 200;
 
-let callQueue: ApiCallRow[] = [];
+type QueuedCall = { row: ApiCallRow; record: InferenceCallRecord };
+
+let callQueue: QueuedCall[] = [];
 let callTimer: ReturnType<typeof setTimeout> | null = null;
 
-export async function flushApiCallRows(): Promise<void> {
-  if (callTimer) {
-    clearTimeout(callTimer);
-    callTimer = null;
-  }
-  if (callQueue.length === 0) return;
-
-  const batch = callQueue;
-  callQueue = [];
-
+async function insertApiCallRows(rows: ApiCallRow[]): Promise<void> {
   try {
-    await getDB().insert(apiCallT).values(batch);
+    await getDB().insert(apiCallT).values(rows);
   } catch (batchErr) {
-    log.warn({ err: batchErr, count: batch.length }, "API call batch insert failed, falling back to individual inserts");
-    for (const row of batch) {
+    log.warn({ err: batchErr, count: rows.length }, "API call batch insert failed, falling back to individual inserts");
+    for (const row of rows) {
       try {
         await getDB().insert(apiCallT).values(row);
       } catch (rowErr) {
@@ -123,19 +120,32 @@ export async function flushApiCallRows(): Promise<void> {
   }
 }
 
-async function insertApiCallRows(rows: ApiCallRow[]): Promise<void> {
-  for (const row of rows) {
-    callQueue.push(sanitizeRow(row));
+export async function flushCallLog(): Promise<void> {
+  if (callTimer) {
+    clearTimeout(callTimer);
+    callTimer = null;
   }
+  if (callQueue.length === 0) return;
+
+  const batch = callQueue;
+  callQueue = [];
+
+  await insertApiCallRows(batch.map((queued) => queued.row));
+  await recordInferenceCalls(batch.map((queued) => queued.record))
+    .catch((err) => log.error({ err, count: batch.length }, "Inference call batch insert failed"));
+}
+
+async function enqueueCalls(calls: QueuedCall[]): Promise<void> {
+  callQueue.push(...calls);
   if (callQueue.length >= CALL_BATCH_SIZE) {
-    void flushApiCallRows();
+    void flushCallLog();
   } else if (!callTimer) {
-    callTimer = setTimeout(() => void flushApiCallRows(), CALL_FLUSH_INTERVAL_MS);
+    callTimer = setTimeout(() => void flushCallLog(), CALL_FLUSH_INTERVAL_MS);
   }
 }
 
 process.on("beforeExit", () => {
-  void flushApiCallRows();
+  void flushCallLog();
 });
 
 function coerceMessageRole(raw: unknown): ApiCallInputMessage["role"] {
@@ -161,22 +171,41 @@ function toOutputMessage(msg: Record<string, unknown>): ApiCallInputMessage {
   } as ApiCallInputMessage;
 }
 
+function buildQueuedCall(input: ChatLogFields, model: string, outputMessage: ApiCallInputMessage): QueuedCall {
+  const row = sanitizeRow(buildApiCallRow(input, model, outputMessage));
+  return {
+    row,
+    record: {
+      organizationId: input.organizationId,
+      apiKeyId: input.keyId,
+      applicationId: input.applicationId,
+      endpoint: input.endpoint,
+      model: input.engineModel,
+      specifiedModel: input.publicSpecifier,
+      durationMs: input.durationInMS,
+      metadata: row.metadata,
+      inputMessages: row.inputMessages,
+      outputMessages: [row.outputMessage],
+    },
+  };
+}
+
 export async function logChatSync(input: ChatSyncInput) {
-  const rows = input.data.choices.map((choice) =>
-    buildApiCallRow(input, input.data.model, toOutputMessage(choice.message)),
+  const calls = input.data.choices.map((choice) =>
+    buildQueuedCall(input, input.data.model, toOutputMessage(choice.message)),
   );
-  if (rows.length === 0) {
+  if (calls.length === 0) {
     return;
   }
-  await insertApiCallRows(rows);
+  await enqueueCalls(calls);
 }
 
 export async function logChatStream(input: ChatStreamInput) {
-  const rows = input.data.flatMap((entry) =>
-    entry.choices.map((choice) => buildApiCallRow(input, entry.model, toOutputMessage(choice.delta))),
+  const calls = input.data.flatMap((entry) =>
+    entry.choices.map((choice) => buildQueuedCall(input, entry.model, toOutputMessage(choice.delta))),
   );
-  if (rows.length === 0) {
+  if (calls.length === 0) {
     return;
   }
-  await insertApiCallRows(rows);
+  await enqueueCalls(calls);
 }

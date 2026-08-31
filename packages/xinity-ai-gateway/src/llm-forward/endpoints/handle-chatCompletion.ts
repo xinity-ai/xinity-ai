@@ -212,6 +212,7 @@ export const handleChatCompletion = withEndpointGuards({
       auth,
       modelInfo,
       publicSpecifier: originalModel,
+      endpoint: "chat_completions" as const,
       inputMessages: messagesForDB,
       callStartTime,
       logCalls: body.store,

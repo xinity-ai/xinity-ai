@@ -2,7 +2,7 @@ import { logChatSync, logChatStream, type ChatSyncData, type ChatStreamData } fr
 import { recordTokenUsage, recordModelRequest } from "../metrics";
 import { recordUsageEvent } from "../usageRecorder";
 import type { AuthResult } from "./auth";
-import type { ApiCallInputMessage } from "common-db";
+import type { ApiCallInputMessage, InferenceEndpoint } from "common-db";
 import { rootLogger } from "../logger";
 
 const log = rootLogger.child({ name: "usage" });
@@ -91,6 +91,7 @@ type UsageLogContextBase = {
   usage: UsageData | null | undefined;
   auth: AuthResult;
   modelInfo: { model: string };
+  endpoint: InferenceEndpoint;
   publicSpecifier: string;
   inputMessages: ApiCallInputMessage[];
   callStartTime: number;
@@ -110,6 +111,7 @@ export const logChatUsage = ({
   auth,
   modelInfo,
   publicSpecifier,
+  endpoint,
   inputMessages,
   callStartTime,
   logCalls,
@@ -125,6 +127,8 @@ export const logChatUsage = ({
     applicationId: auth.applicationId,
     organizationId: auth.orgId,
     publicSpecifier,
+    engineModel: modelInfo.model,
+    endpoint,
     durationInMS: Date.now() - callStartTime,
     inputMessages,
     metadata,

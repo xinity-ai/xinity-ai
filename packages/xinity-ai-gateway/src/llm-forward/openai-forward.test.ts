@@ -94,6 +94,7 @@ describe("forwardOpenAIStream", () => {
     auth: { keyId: "k", orgId: "o", applicationId: null, collectData: false },
     modelInfo: { model: "m" },
     publicSpecifier: "pub-m",
+    endpoint: "chat_completions" as const,
     inputMessages: [],
     callStartTime: Date.now(),
   };

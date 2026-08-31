@@ -1,6 +1,6 @@
 /** Runs a response generation to completion and records it, for every mode but streaming. */
 import { generateText } from "ai";
-import type { ApiCallInputMessage } from "common-db";
+import type { ApiCallInputMessage, InferenceEndpoint } from "common-db";
 import type { AuthResult } from "../auth";
 import { getResponse, saveResponse, type ResponseCreation } from "../response-store";
 import { logChatUsage, isUpstreamError, clientFacingErrorMessage } from "../util";
@@ -54,6 +54,7 @@ export type LogFields = {
   readonly auth: AuthResult;
   readonly modelInfo: { model: string };
   readonly publicSpecifier: string;
+  readonly endpoint: InferenceEndpoint;
   readonly inputMessages: ApiCallInputMessage[];
   readonly callStartTime: number;
   readonly logCalls: boolean | undefined;

@@ -20,7 +20,7 @@ import { logMigrationFailureFatal } from "common-db";
 import { getSearchProvider } from "./llm-forward/tools/search-providers";
 import { setSearchProvider } from "./llm-forward/tools/response-tools";
 import { flushUsageEvents } from "./usageRecorder";
-import { flushApiCallRows } from "./callLogger";
+import { flushCallLog } from "./callLogger";
 import { createCacheInvalidation } from "./llm-forward/cache-invalidation";
 import { invalidateModelSources, invalidateDeployments } from "./llm-forward/model-data";
 
@@ -128,7 +128,7 @@ async function gracefulShutdown(signal: string) {
   await cacheInvalidation.stop();
 
   try {
-    await withTimeout(Promise.all([flushUsageEvents(), flushApiCallRows()]), FLUSH_TIMEOUT_MS, "DB write queue flush");
+    await withTimeout(Promise.all([flushUsageEvents(), flushCallLog()]), FLUSH_TIMEOUT_MS, "DB write queue flush");
     rootLogger.info("Write queues flushed successfully");
   } catch (err) {
     rootLogger.error({ err }, "Error or timeout flushing write queues on shutdown");

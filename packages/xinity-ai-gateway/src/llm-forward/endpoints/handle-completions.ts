@@ -99,6 +99,7 @@ export const handleCompletion = withEndpointGuards({
       auth,
       modelInfo,
       publicSpecifier: originalModel,
+      endpoint: "completions" as const,
       inputMessages,
       callStartTime,
       logCalls: body.store,

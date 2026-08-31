@@ -13,7 +13,7 @@ import {
 import { recordTimeToFirstToken } from "../metrics";
 import { BackendUsageSchema } from "./backend-schemas";
 import type { AuthResult } from "./auth";
-import type { ApiCallInputMessage } from "common-db";
+import type { ApiCallInputMessage, InferenceEndpoint } from "common-db";
 import type { ChatStreamData, ChatSyncData } from "../callLogger";
 
 type Logger = {
@@ -26,6 +26,7 @@ export type OpenAIForwardLogFields = {
   auth: AuthResult;
   modelInfo: { model: string; nodeId?: string | null };
   publicSpecifier: string;
+  endpoint: InferenceEndpoint;
   inputMessages: ApiCallInputMessage[];
   callStartTime: number;
   logCalls?: boolean;

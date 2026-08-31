@@ -1,19 +1,52 @@
 import { describe, test, expect, mock, jest, beforeEach } from "bun:test";
+import { apiCallT, chatMessageT, inferenceCallT } from "common-db";
 import { MOCK_GATEWAY_ENV } from "./llm-forward/mock-env";
 mock.module("./env", () => ({ env: { ...MOCK_GATEWAY_ENV } }));
 
 const insertMock = jest.fn();
+
+/** Tables the inference-call path wrote, in order. */
+const inferenceWrites: string[] = [];
+let failInference = false;
+
+function recordingInsert(table: string) {
+  return {
+    values: (rows: unknown) => {
+      inferenceWrites.push(table);
+      const inserted = Array.isArray(rows) ? rows : [rows];
+      const done = Promise.resolve(undefined) as Promise<undefined> & Record<string, unknown>;
+      done.onConflictDoNothing = () => ({
+        returning: async () => inserted.map((row) => ({
+          id: `id-${(row as { sha256: string }).sha256}`,
+          sha256: (row as { sha256: string }).sha256,
+        })),
+      });
+      return done;
+    },
+  };
+}
+
 const dbMock = {
-  insert: () => ({
-    values: insertMock,
-  }),
+  insert: (table: unknown) => {
+    if (table === apiCallT) return { values: insertMock };
+    if (table === chatMessageT) return recordingInsert("chat_message");
+    if (table === inferenceCallT) return recordingInsert("inference_call");
+    return recordingInsert("inference_call_message");
+  },
+  select: () => ({ from: () => ({ where: async () => [] }) }),
+  transaction: async (run: (tx: unknown) => unknown) => {
+    if (failInference) {
+      throw new Error("inference write down");
+    }
+    return run(dbMock);
+  },
 };
 
 mock.module("./db", () => ({
   getDB: () => dbMock,
 }));
 
-const { logChatSync, logChatStream, flushApiCallRows } = await import("./callLogger");
+const { logChatSync, logChatStream, flushCallLog } = await import("./callLogger");
 
 function sampleChatInput() {
   return {
@@ -22,6 +55,8 @@ function sampleChatInput() {
     applicationId: "app-1",
     durationInMS: 100,
     publicSpecifier: "my-model",
+    engineModel: "engine-model",
+    endpoint: "chat_completions" as const,
     inputMessages: [{ role: "user" as const, content: "Hello world" }],
     metadata: { env: "test" },
     data: {
@@ -34,9 +69,11 @@ function sampleChatInput() {
 describe("callLogger", () => {
   beforeEach(() => {
     insertMock.mockReset();
+    inferenceWrites.length = 0;
+    failInference = false;
   });
 
-  test("buffers calls and flushes in batch on flushApiCallRows", async () => {
+  test("buffers calls and flushes in batch on flushCallLog", async () => {
     insertMock.mockResolvedValue(undefined);
 
     await logChatSync(sampleChatInput());
@@ -51,7 +88,7 @@ describe("callLogger", () => {
     // Buffered, not flushed yet
     expect(insertMock).not.toHaveBeenCalled();
 
-    await flushApiCallRows();
+    await flushCallLog();
 
     expect(insertMock).toHaveBeenCalledTimes(1);
     const [batch] = insertMock.mock.calls[0] as [any[]];
@@ -70,7 +107,7 @@ describe("callLogger", () => {
         { model: "llama3:latest", choices: [{ index: 1, delta: { role: "assistant", content: "second" }, finish_reason: "stop" }] },
       ],
     });
-    await flushApiCallRows();
+    await flushCallLog();
 
     const [batch] = insertMock.mock.calls[0] as [any[]];
     expect(batch.map((row) => row.outputMessage.content)).toEqual(["first", "second"]);
@@ -90,7 +127,7 @@ describe("callLogger", () => {
         }],
       },
     });
-    await flushApiCallRows();
+    await flushCallLog();
 
     const [batch] = insertMock.mock.calls[0] as [any[]];
     expect(batch[0].outputMessage.reasoning_content).toBe("Thought");
@@ -108,7 +145,7 @@ describe("callLogger", () => {
         choices: [{ index: 0, message: { role: "assistant", content: "Answer", reasoning: "Thought" } }],
       },
     });
-    await flushApiCallRows();
+    await flushCallLog();
 
     const [batch] = insertMock.mock.calls[0] as [any[]];
     expect(batch[0].outputMessage.reasoning_content).toBe("Thought");
@@ -119,10 +156,31 @@ describe("callLogger", () => {
     insertMock.mockResolvedValue(undefined);
 
     await logChatSync(sampleChatInput());
-    await flushApiCallRows();
+    await flushCallLog();
 
     const [batch] = insertMock.mock.calls[0] as [any[]];
     expect(batch[0].outputMessage).not.toHaveProperty("reasoning_content");
+  });
+
+  test("writes the inference call alongside the legacy row", async () => {
+    insertMock.mockResolvedValue(undefined);
+
+    await logChatSync({ ...sampleChatInput(), organizationId: "dual-write-org" });
+    await flushCallLog();
+
+    expect(insertMock).toHaveBeenCalledTimes(1);
+    expect(inferenceWrites).toContain("inference_call");
+    expect(inferenceWrites).toContain("inference_call_message");
+  });
+
+  test("keeps the legacy row when the inference write fails", async () => {
+    insertMock.mockResolvedValue(undefined);
+    failInference = true;
+
+    await logChatSync({ ...sampleChatInput(), organizationId: "isolated-org" });
+    await flushCallLog();
+
+    expect(insertMock).toHaveBeenCalledTimes(1);
   });
 
   test("auto-flushes on timer interval", async () => {
@@ -150,7 +208,7 @@ describe("callLogger", () => {
       },
     });
 
-    await flushApiCallRows();
+    await flushCallLog();
 
     expect(insertMock).toHaveBeenCalledTimes(1);
     const [batch] = insertMock.mock.calls[0] as [any[]];
@@ -169,7 +227,7 @@ describe("callLogger", () => {
     await logChatSync(sampleChatInput());
     await logChatSync(sampleChatInput());
 
-    await flushApiCallRows();
+    await flushCallLog();
 
     // 1 batch + 3 individual
     expect(insertMock).toHaveBeenCalledTimes(4);
