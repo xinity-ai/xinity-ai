@@ -112,8 +112,8 @@ export type ApiResponseSettledStatus = Exclude<ApiResponseStatus, "in_progress">
  * never completes.
  */
 export const apiResponseT = callDataSchema.table("api_response", {
-  /** The client-facing `resp_` id, not a surrogate key. */
-  id: text().primaryKey(),
+  /** The uuid half of the client-facing `resp_` id, which is applied at the API boundary. */
+  id: uuid().primaryKey(),
   organizationId: text("organization_id")
     .notNull()
     .references(() => organizationT.id, { onDelete: "cascade" }),
@@ -123,7 +123,7 @@ export const apiResponseT = callDataSchema.table("api_response", {
   status: apiResponseStatusEnum().notNull(),
   /** Deliberately not a foreign key: the referenced response may never have been stored at
    * all, because it was created with `store: false`. */
-  previousResponseId: text("previous_response_id"),
+  previousResponseId: uuid("previous_response_id"),
   /** The request-derived fields the API echoes back, all fixed at creation. */
   requestParams: jsonb("request_params").notNull().$type<Record<string, unknown>>(),
   error: jsonb().$type<{ code: string; message: string }>(),
@@ -141,7 +141,7 @@ export type ApiResponse = InferSelectModel<typeof apiResponseT>;
  * arrive, so a long run does not rewrite a growing list. `seq` doubles as the
  * `input_items` pagination cursor. */
 export const apiResponseItemT = callDataSchema.table("api_response_item", {
-  responseId: text("response_id")
+  responseId: uuid("response_id")
     .notNull()
     .references(() => apiResponseT.id, { onDelete: "cascade" }),
   seq: integer().notNull(),
@@ -156,7 +156,7 @@ export type ApiResponseItem = InferSelectModel<typeof apiResponseItemT>;
 /** Input messages in order. No cascade to `chat_message`, so a shared body cannot be
  * deleted out from under a response that still references it. */
 export const apiResponseMessageT = callDataSchema.table("api_response_message", {
-  responseId: text("response_id")
+  responseId: uuid("response_id")
     .notNull()
     .references(() => apiResponseT.id, { onDelete: "cascade" }),
   seq: integer().notNull(),

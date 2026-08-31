@@ -26,7 +26,7 @@ jest.spyOn(preparedProto, "execute").mockImplementation(async function (this: { 
     throw new Error("pg down");
   }
   if (/^\s*insert/i.test(this.queryString)) {
-    return [{ id: "resp_1" }];
+    return [{ id: UUID_A }];
   }
   return /^\s*select/i.test(this.queryString) ? selectRows : [];
 });
@@ -50,9 +50,12 @@ beforeEach(() => {
   redisDel.mockClear().mockResolvedValue(1 as never);
 });
 
+const UUID_A = "11111111-1111-4111-8111-111111111111";
+const RESP_A = `resp_${UUID_A}`;
+
 function makeResponse(overrides: Partial<ResponseObject> = {}): ResponseObject {
   return {
-    id: "resp_1",
+    id: RESP_A,
     object: "response",
     created_at: 1_700_000_000,
     status: "in_progress",
@@ -72,7 +75,7 @@ function makeResponse(overrides: Partial<ResponseObject> = {}): ResponseObject {
 /** What a select on the header table yields for a stored, settled response. */
 function headerRow() {
   return {
-    id: "resp_1",
+    id: UUID_A,
     organizationId: "org-1",
     apiKeyId: "key-1",
     applicationId: "app-1",
@@ -92,19 +95,19 @@ const CREATION = { apiKeyId: "key-1", applicationId: "app-1", inputMessages: [] 
 
 describe("saveResponse", () => {
   test("records a new response when given creation context", async () => {
-    await saveResponse("org-1", "resp_1", makeResponse(), CREATION);
+    await saveResponse("org-1", RESP_A, makeResponse(), CREATION);
     expect(redisSet).toHaveBeenCalled();
     expect(sqlOf(/^\s*insert into "call_data"\."api_response"/i)).toHaveLength(1);
   });
 
   test("treats an in-progress write without creation context as cache-only", async () => {
-    await saveResponse("org-1", "resp_1", makeResponse());
+    await saveResponse("org-1", RESP_A, makeResponse());
     expect(redisSet).toHaveBeenCalled();
     expect(capturedQueries).toHaveLength(0);
   });
 
   test.each(["completed", "failed", "incomplete", "cancelled"] as const)("settles on %s", async (status) => {
-    await saveResponse("org-1", "resp_1", makeResponse({ status }));
+    await saveResponse("org-1", RESP_A, makeResponse({ status }));
     const updates = sqlOf(/^\s*update/i);
     expect(updates).toHaveLength(1);
     expect(updates[0]?.sql).toContain("'in_progress'");
@@ -112,15 +115,15 @@ describe("saveResponse", () => {
   });
 
   test("keeps a store:false response out of Postgres entirely", async () => {
-    await saveResponse("org-1", "resp_1", makeResponse({ store: false }), CREATION);
-    await saveResponse("org-1", "resp_1", makeResponse({ store: false, status: "completed" }));
+    await saveResponse("org-1", RESP_A, makeResponse({ store: false }), CREATION);
+    await saveResponse("org-1", RESP_A, makeResponse({ store: false, status: "completed" }));
     expect(redisSet).toHaveBeenCalledTimes(2);
     expect(capturedQueries).toHaveLength(0);
   });
 
   test("does not fail the write when Postgres does", async () => {
     failNextQuery = true;
-    await saveResponse("org-1", "resp_1", makeResponse(), CREATION);
+    await saveResponse("org-1", RESP_A, makeResponse(), CREATION);
     expect(redisSet).toHaveBeenCalled();
   });
 });
@@ -130,51 +133,51 @@ describe("getResponse", () => {
     const response = makeResponse({ status: "completed" });
     redisGet.mockResolvedValue(JSON.stringify(response));
 
-    expect(await getResponse("org-1", "resp_1")).toEqual(response);
+    expect(await getResponse("org-1", RESP_A)).toEqual(response);
     expect(capturedQueries).toHaveLength(0);
   });
 
   test("falls back to Postgres once Redis has expired the entry", async () => {
     selectRows = [headerRow()];
-    const recovered = await getResponse("org-1", "resp_1") as ResponseObject;
+    const recovered = await getResponse("org-1", RESP_A) as ResponseObject;
 
-    expect(recovered?.id).toBe("resp_1");
+    expect(recovered?.id).toBe(RESP_A);
     expect(recovered?.status).toBe("completed");
     expect(sqlOf(/^\s*select/i).length).toBeGreaterThan(0);
   });
 
   test("re-caches what it recovered from Postgres", async () => {
     selectRows = [headerRow()];
-    await getResponse("org-1", "resp_1");
+    await getResponse("org-1", RESP_A);
     expect(redisSet).toHaveBeenCalled();
   });
 
   test("returns null when neither tier has it", async () => {
-    expect(await getResponse("org-1", "resp_1")).toBeNull();
+    expect(await getResponse("org-1", RESP_A)).toBeNull();
   });
 
   test("falls back to Postgres when the cached entry is corrupt", async () => {
     redisGet.mockResolvedValue("{not json");
     selectRows = [headerRow()];
-    expect(await getResponse("org-1", "resp_1")).not.toBeNull();
+    expect(await getResponse("org-1", RESP_A)).not.toBeNull();
   });
 
   test("falls back to Postgres when Redis errors", async () => {
     redisGet.mockRejectedValue(new Error("redis down"));
     selectRows = [headerRow()];
-    expect(await getResponse("org-1", "resp_1")).not.toBeNull();
+    expect(await getResponse("org-1", RESP_A)).not.toBeNull();
   });
 
   test("does not slide the cache expiry on read", async () => {
     redisGet.mockResolvedValue(JSON.stringify(makeResponse()));
-    await getResponse("org-1", "resp_1");
+    await getResponse("org-1", RESP_A);
     expect(redisSet).not.toHaveBeenCalled();
   });
 });
 
 describe("deleteResponse", () => {
   test("removes the response from both tiers", async () => {
-    expect(await deleteResponse("org-1", "resp_1")).toBe(true);
+    expect(await deleteResponse("org-1", RESP_A)).toBe(true);
     expect(redisDel).toHaveBeenCalled();
     expect(sqlOf(/^\s*delete/i)).toHaveLength(1);
   });

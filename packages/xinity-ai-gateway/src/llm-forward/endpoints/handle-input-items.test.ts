@@ -27,7 +27,7 @@ jest.spyOn(preparedProto, "execute").mockImplementation(async function (this: { 
   if (/api_response_message/i.test(this.queryString)) {
     return messageRows;
   }
-  return headerExists ? [{ id: "resp_1", requestParams: {}, createdAt: new Date(0), status: "completed", completedAt: null, error: null, incompleteDetails: null, usage: null, model: "m", previousResponseId: null }] : [];
+  return headerExists ? [{ id: UUID_A, requestParams: {}, createdAt: new Date(0), status: "completed", completedAt: null, error: null, incompleteDetails: null, usage: null, model: "m", previousResponseId: null }] : [];
 });
 
 mock.module("../../db", () => ({ getDB: () => db }));
@@ -41,13 +41,17 @@ beforeEach(() => {
   checkAuth.mockClear();
 });
 
+const UUID_A = "11111111-1111-4111-8111-111111111111";
+const RESP_A = `resp_${UUID_A}`;
+const RESP_OTHER = "resp_99999999-9999-4999-8999-999999999999";
+
 function listRequest(query = "", method = "GET") {
   return requestWithParams(
-    new Request(`http://localhost:4000/v1/responses/resp_1/input_items${query}`, {
+    new Request(`http://localhost:4000/v1/responses/${RESP_A}/input_items${query}`, {
       method,
       headers: { "Authorization": "Bearer test" },
     }),
-    { responseId: "resp_1" },
+    { responseId: RESP_A },
   );
 }
 
@@ -63,10 +67,10 @@ describe("handleListInputItemsRequest", () => {
     const body = (await res.json()) as any;
     expect(body.object).toBe("list");
     expect(body.has_more).toBe(false);
-    expect(body.first_id).toBe("msg_resp_1_0");
-    expect(body.last_id).toBe("msg_resp_1_0");
+    expect(body.first_id).toBe(`msg_${RESP_A}_0`);
+    expect(body.last_id).toBe(`msg_${RESP_A}_0`);
     expect(body.data).toEqual([{
-      id: "msg_resp_1_0",
+      id: `msg_${RESP_A}_0`,
       type: "message",
       role: "user",
       content: [{ type: "input_text", text: "Hi" }],
@@ -105,7 +109,7 @@ describe("handleListInputItemsRequest", () => {
 
   test("carries the cursor into the query", async () => {
     messageRows = [{ seq: 3, payload: userMessage("later") }];
-    await handleListInputItemsRequest(listRequest("?after=msg_resp_1_2"));
+    await handleListInputItemsRequest(listRequest(`?after=msg_${RESP_A}_2`));
     const [query] = capturedQueries;
     expect(query?.params).toContain(2);
   });
@@ -115,7 +119,7 @@ describe("handleListInputItemsRequest", () => {
     ["?limit=101", "'limit' must be an integer"],
     ["?limit=abc", "'limit' must be an integer"],
     ["?order=sideways", "'order' must be"],
-    ["?after=msg_resp_other_0", "'after' is not an item"],
+    [`?after=msg_${RESP_OTHER}_0`, "'after' is not an item"],
   ])("rejects %s", async (query, message) => {
     const res = await handleListInputItemsRequest(listRequest(query));
     expect(res.status).toBe(400);

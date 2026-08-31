@@ -13,6 +13,7 @@ import {
 } from "common-db";
 import { getDB } from "../../db";
 import { resolveChatMessageIds } from "../../chat-message-store";
+import { formatResponseId, parseResponseId } from "./response-id";
 import type { OutputItem, ResponseObject } from "./schemas";
 
 /** Fields the header stores as columns, so they must not also live in `requestParams`. */
@@ -24,6 +25,15 @@ const SETTLED_STATUSES = new Set<string>(
 
 export function isSettledStatus(status: string): status is ApiResponseSettledStatus {
   return SETTLED_STATUSES.has(status);
+}
+
+/** The gateway generates every id it writes, so a malformed one here is a bug rather than bad input. */
+function storedId(id: string): string {
+  const uuid = parseResponseId(id);
+  if (uuid === null) {
+    throw new Error(`Malformed response id: ${id}`);
+  }
+  return uuid;
 }
 
 function toRequestParams(response: ResponseObject): Record<string, unknown> {
@@ -46,13 +56,15 @@ export function toResponseRow(
   owner: ResponseOwner,
 ): typeof apiResponseT.$inferInsert {
   return {
-    id: response.id,
+    id: storedId(response.id),
     organizationId: owner.orgId,
     apiKeyId: owner.apiKeyId,
     applicationId: owner.applicationId,
     model: response.model,
     status,
-    previousResponseId: response.previous_response_id,
+    previousResponseId: response.previous_response_id === null || response.previous_response_id === undefined
+      ? null
+      : parseResponseId(response.previous_response_id),
     requestParams: toRequestParams(response),
     error: response.error,
     incompleteDetails: response.incomplete_details,
@@ -68,7 +80,7 @@ export function fromResponseRow(
 ): ResponseObject {
   return {
     ...header.requestParams,
-    id: header.id,
+    id: formatResponseId(header.id),
     object: "response",
     created_at: Math.floor(header.createdAt.getTime() / 1000),
     status: header.status,
@@ -76,7 +88,7 @@ export function fromResponseRow(
     error: header.error ?? null,
     incomplete_details: header.incompleteDetails ?? null,
     model: header.model,
-    previous_response_id: header.previousResponseId,
+    previous_response_id: header.previousResponseId === null ? null : formatResponseId(header.previousResponseId),
     output: items,
     usage: header.usage ?? null,
   } as ResponseObject;
@@ -118,7 +130,7 @@ export async function createPersistedResponse(args: CreatePersistedResponseArgs)
     const messageIds = await resolveChatMessageIds(orgId, inputMessages, tx);
     if (messageIds.length > 0) {
       await tx.insert(apiResponseMessageT).values(
-        messageIds.map((messageId, seq) => ({ responseId: response.id, seq, messageId })),
+        messageIds.map((messageId, seq) => ({ responseId: storedId(response.id), seq, messageId })),
       );
     }
   });
@@ -147,7 +159,7 @@ export async function settlePersistedResponse(orgId: string, response: ResponseO
       })
       .where(
         sql`
-          ${apiResponseT.id} = ${response.id}
+          ${apiResponseT.id} = ${storedId(response.id)}
         AND
           ${apiResponseT.organizationId} = ${orgId}
         AND
@@ -160,7 +172,7 @@ export async function settlePersistedResponse(orgId: string, response: ResponseO
       return false;
     }
 
-    const items = toItemRows(response.id, response.output);
+    const items = toItemRows(storedId(response.id), response.output);
     if (items.length > 0) {
       await tx.insert(apiResponseItemT).values(items);
     }
@@ -169,13 +181,18 @@ export async function settlePersistedResponse(orgId: string, response: ResponseO
 }
 
 export async function loadResponse(orgId: string, responseId: string): Promise<ResponseObject | null> {
+  const id = parseResponseId(responseId);
+  if (id === null) {
+    return null;
+  }
+
   const db = getDB();
   const [header] = await db
     .select()
     .from(apiResponseT)
     .where(
       sql`
-        ${apiResponseT.id} = ${responseId}
+        ${apiResponseT.id} = ${id}
       AND
         ${apiResponseT.organizationId} = ${orgId}
       `,
@@ -188,7 +205,7 @@ export async function loadResponse(orgId: string, responseId: string): Promise<R
   const items = await db
     .select({ payload: apiResponseItemT.payload })
     .from(apiResponseItemT)
-    .where(sql`${apiResponseItemT.responseId} = ${responseId}`)
+    .where(sql`${apiResponseItemT.responseId} = ${id}`)
     .orderBy(sql`${apiResponseItemT.seq} ASC`);
 
   return fromResponseRow(header, items.map((row) => row.payload as unknown as OutputItem));
@@ -199,6 +216,11 @@ export async function loadResponseMessages(
   orgId: string,
   responseId: string,
 ): Promise<ApiCallInputMessage[]> {
+  const id = parseResponseId(responseId);
+  if (id === null) {
+    return [];
+  }
+
   const rows = await getDB()
     .select({ payload: chatMessageT.payload })
     .from(apiResponseMessageT)
@@ -206,7 +228,7 @@ export async function loadResponseMessages(
     .innerJoin(apiResponseT, sql`${apiResponseT.id} = ${apiResponseMessageT.responseId}`)
     .where(
       sql`
-        ${apiResponseMessageT.responseId} = ${responseId}
+        ${apiResponseMessageT.responseId} = ${id}
       AND
         ${apiResponseT.organizationId} = ${orgId}
       `,
@@ -229,6 +251,11 @@ export async function loadResponseInputItems(
   responseId: string,
   page: { limit: number; ascending: boolean; afterSeq: number | null },
 ): Promise<InputItemPage> {
+  const id = parseResponseId(responseId);
+  if (id === null) {
+    return { messages: [], hasMore: false };
+  }
+
   const { limit, ascending, afterSeq } = page;
   const rows = await getDB()
     .select({ seq: apiResponseMessageT.seq, payload: chatMessageT.payload })
@@ -237,7 +264,7 @@ export async function loadResponseInputItems(
     .innerJoin(apiResponseT, sql`${apiResponseT.id} = ${apiResponseMessageT.responseId}`)
     .where(
       sql`
-        ${apiResponseMessageT.responseId} = ${responseId}
+        ${apiResponseMessageT.responseId} = ${id}
       AND
         ${apiResponseT.organizationId} = ${orgId}
       ${afterSeq === null
@@ -254,11 +281,16 @@ export async function loadResponseInputItems(
 }
 
 export async function deletePersistedResponse(orgId: string, responseId: string): Promise<void> {
+  const id = parseResponseId(responseId);
+  if (id === null) {
+    return;
+  }
+
   await getDB()
     .delete(apiResponseT)
     .where(
       sql`
-        ${apiResponseT.id} = ${responseId}
+        ${apiResponseT.id} = ${id}
       AND
         ${apiResponseT.organizationId} = ${orgId}
       `

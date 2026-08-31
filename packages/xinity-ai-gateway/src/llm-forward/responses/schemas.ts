@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseResponseId } from "./response-id";
 
 const WebSearchTypeSchema = z.enum([
   "web_search", "web_search_preview", "web_search_preview_2025_03_11"])
@@ -66,7 +67,10 @@ export const CreateResponseBodySchema = z.object({
   text: TextFormatSchema,
   include: z.array(z.string()).optional().default([]),
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
-  previous_response_id: z.string().nullable().optional(),
+  /** Checked here so a malformed id is a 400 rather than a lookup that silently matches nothing. */
+  previous_response_id: z.string().refine((id) => parseResponseId(id) !== null, {
+    message: "previous_response_id must be a response id",
+  }).nullable().optional(),
   truncation: z.string().nullable().optional().default("disabled"),
   user: z.string().nullable().optional(),
   reasoning: ReasoningSchema,

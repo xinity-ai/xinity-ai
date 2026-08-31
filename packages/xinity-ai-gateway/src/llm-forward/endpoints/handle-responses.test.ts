@@ -313,19 +313,22 @@ describe("handleResponses", () => {
     expect(body.metadata).toEqual({ trace_id: "trace-123" });
   });
 
-  test("should return 404 for unknown previous_response_id", async () => {
-    const req = new Request("http://localhost:4000/v1/responses", {
+  function chainedRequest(previousResponseId: string): Request {
+    return new Request("http://localhost:4000/v1/responses", {
       method: "POST",
       headers: { "Authorization": "Bearer test" },
-      body: JSON.stringify({
-        model: "test-model",
-        input: "Hi",
-        previous_response_id: "resp_missing",
-      }),
+      body: JSON.stringify({ model: "test-model", input: "Hi", previous_response_id: previousResponseId }),
     });
+  }
 
-    const res = await handleCreateResponseRequest(req);
+  test("should return 404 for unknown previous_response_id", async () => {
+    const res = await handleCreateResponseRequest(chainedRequest("resp_99999999-9999-4999-8999-999999999999"));
     expect(res.status).toBe(404);
+  });
+
+  test("rejects a malformed previous_response_id rather than looking it up", async () => {
+    const res = await handleCreateResponseRequest(chainedRequest("resp_missing"));
+    expect(res.status).toBe(400);
   });
 
   test("should return function_call output items when model calls a function tool", async () => {

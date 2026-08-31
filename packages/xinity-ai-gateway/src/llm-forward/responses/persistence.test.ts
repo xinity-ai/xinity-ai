@@ -21,6 +21,11 @@ beforeEach(() => {
   capturedQueries.length = 0;
 });
 
+const UUID_A = "11111111-1111-4111-8111-111111111111";
+const UUID_B = "22222222-2222-4222-8222-222222222222";
+const RESP_A = `resp_${UUID_A}`;
+const RESP_B = `resp_${UUID_B}`;
+
 const OUTPUT: OutputItem[] = [
   {
     id: "msg_1",
@@ -41,7 +46,7 @@ const OUTPUT: OutputItem[] = [
 
 function makeResponse(overrides: Partial<ResponseObject> = {}): ResponseObject {
   return {
-    id: "resp_1",
+    id: RESP_A,
     object: "response",
     created_at: 1_700_000_000,
     status: "completed",
@@ -115,8 +120,14 @@ describe("row mapping", () => {
   });
 
   test("round-trips a cancelled response chained onto a previous one", () => {
-    const response = makeResponse({ status: "cancelled", previous_response_id: "resp_0" });
+    const response = makeResponse({ status: "cancelled", previous_response_id: RESP_B });
     expect(roundTrip(response)).toEqual(response);
+  });
+
+  test("stores both ids as bare uuids, prefix applied only on the way out", () => {
+    const row = toResponseRow(makeResponse({ previous_response_id: RESP_B }), "completed", OWNER);
+    expect(row.id).toBe(UUID_A);
+    expect(row.previousResponseId).toBe(UUID_B);
   });
 
   test("keeps column-backed fields out of requestParams", () => {
@@ -141,20 +152,21 @@ describe("row mapping", () => {
 
 describe("tenancy", () => {
   test("scopes reads to the organization", async () => {
-    expect(await loadResponse("org-1", "resp_1")).toBeNull();
+    expect(await loadResponse("org-1", RESP_A)).toBeNull();
     const [query] = capturedQueries;
     expect(query?.sql).toContain("organization_id");
     expect(query?.params).toContain("org-1");
-    expect(query?.params).toContain("resp_1");
+    expect(query?.params).toContain(UUID_A);
+    expect(query?.params).not.toContain(RESP_A);
   });
 
   test("does not read items for a response it could not find", async () => {
-    await loadResponse("org-1", "resp_1");
+    await loadResponse("org-1", RESP_A);
     expect(capturedQueries).toHaveLength(1);
   });
 
   test("scopes deletes to the organization", async () => {
-    await deletePersistedResponse("org-1", "resp_1");
+    await deletePersistedResponse("org-1", RESP_A);
     const [query] = capturedQueries;
     expect(query?.sql).toMatch(/^\s*delete/i);
     expect(query?.sql).toContain("organization_id");

@@ -16,6 +16,7 @@ import { createResponseStream } from "../responses/stream";
 import { withResponseIdRoute } from "../endpoint-guards";
 import { extractText, normalizeMessages, outputAsMessages, type StoredResponse } from "../responses/input-normalize";
 import { loadResponse, loadResponseInputItems } from "../responses/persistence";
+import { newResponseId } from "../responses/response-id";
 import {
   createAndSaveInProgressResponse,
   saveFailedResponse,
@@ -111,7 +112,7 @@ async function prepareResponseRequest(req: Request): Promise<PreparedRequest | R
   return {
     ...authorized,
     body,
-    responseId: `resp_${crypto.randomUUID()}`,
+    responseId: newResponseId(),
     createdAt: Math.floor(Date.now() / 1000),
     input,
     messagesForLLM,
