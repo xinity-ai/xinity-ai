@@ -1,6 +1,7 @@
 import {
   bigint,
   boolean,
+  customType,
   date,
   index,
   integer,
@@ -19,6 +20,10 @@ import { userT } from "./auth";
 import type { InferSelectModel } from "drizzle-orm";
 import { callDataSchema } from "./pg-schemas";
 
+const bytea = customType<{ data: Uint8Array<ArrayBuffer>; driverData: Buffer }>({
+  dataType: () => "bytea",
+});
+
 const createdAt = timestamp("created_at", { withTimezone: true }).defaultNow().notNull();
 const updatedAt = timestamp("updated_at", { withTimezone: true })
   .defaultNow()
@@ -27,12 +32,7 @@ const updatedAt = timestamp("updated_at", { withTimezone: true })
 
 export type ApiCallInputMessageContent =
   | { type: "text"; text: string }
-  /**
-   * Image reference stored as an image_url part.
-   * When S3 is enabled, `url` is a `xinity-media://{sha256hex}` reference
-   * resolved via the mediaObject table. When S3 is disabled, `url` is the
-   * original external URL (data URIs are stripped from the log entirely).
-   */
+  /** `url` is a `xinity-media://{sha256hex}` reference into `media_object`. */
   | { type: "image_url"; image_url: { url: string } };
 export type ApiCallToolCall = {
   id: string;
@@ -302,7 +302,7 @@ export const usageEventT = callDataSchema.table("usage_event", {
   index("usage_event_node_id_created_at_idx").on(table.nodeId, table.createdAt),
 ]);
 
-/** A media object (image) stored in S3. Referenced from apiCall.inputMessages via xinity-media://{sha256} URLs. */
+/** A media object (image) referenced from message payloads via xinity-media://{sha256} URLs. */
 export const mediaObjectT = callDataSchema.table("media_object", {
   id: uuid().primaryKey().defaultRandom(),
   /** Hex-encoded SHA-256 of the raw image bytes. Used as the xinity-media:// URL identifier. */
@@ -310,9 +310,12 @@ export const mediaObjectT = callDataSchema.table("media_object", {
   mimeType: text("mime_type").notNull(),
   /** Original source URL if the image came from an external URL. Null for data URIs. */
   originalUrl: text("original_url"),
-  s3Bucket: text("s3_bucket").notNull(),
+  /** Null when the object lives in `bytes` instead. */
+  s3Bucket: text("s3_bucket"),
   /** S3 object key, formatted as {organizationId}/{sha256} */
-  s3Key: text("s3_key").notNull(),
+  s3Key: text("s3_key"),
+  /** Holds the object when no S3 bucket is configured, so an inline image still survives. */
+  bytes: bytea(),
   organizationId: text("organization_id")
     .notNull()
     .references(() => organizationT.id, { onDelete: "cascade" }),

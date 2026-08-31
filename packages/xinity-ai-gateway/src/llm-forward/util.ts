@@ -1,5 +1,6 @@
 import { recordBackendError } from "../metrics";
 import { BLOCKED_REQUEST_PARAM_PREFIXES } from "xinity-infoserver";
+import { isImageTooLarge } from "../image-store";
 
 export { toModelMessages } from "./message-convert";
 export { recordUsage, recordFailedRequest, logChatUsage } from "./usage";
@@ -355,6 +356,10 @@ export function handleEndpointError(
   if (isTimeoutError(error)) {
     log.warn({ err: error }, "Backend timeout");
     return errorResponse("Backend timeout", 504);
+  }
+  if (isImageTooLarge(error)) {
+    log.warn({ err: error }, "Image rejected at ingest");
+    return errorResponse((error as Error).message, 413);
   }
   if (isConnectionRefused(error)) {
     log.warn({ err: error }, "Backend unreachable");

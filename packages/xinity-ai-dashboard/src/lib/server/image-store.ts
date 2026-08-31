@@ -34,14 +34,14 @@ function getClient(): S3Client | null {
   return _client;
 }
 
-type MediaObjectRow = { s3Key: string; mimeType: string };
+type MediaObjectRow = { s3Key: string | null; mimeType: string; bytes: Uint8Array<ArrayBuffer> | null };
 
 async function findMediaObject(
   sha256: string,
   organizationId: string,
 ): Promise<MediaObjectRow | null> {
   const [row] = await getDB()
-    .select({ s3Key: mediaObjectT.s3Key, mimeType: mediaObjectT.mimeType })
+    .select({ s3Key: mediaObjectT.s3Key, mimeType: mediaObjectT.mimeType, bytes: mediaObjectT.bytes })
     .from(mediaObjectT)
     .where(sql`
       ${mediaObjectT.sha256} = ${sha256}
@@ -52,24 +52,16 @@ async function findMediaObject(
   return row ?? null;
 }
 
-async function withMediaObject<T>(
-  sha256: string,
-  organizationId: string,
-  operation: (client: S3Client, row: MediaObjectRow) => Promise<T> | T,
-  errorMessage: string,
-): Promise<T | null> {
+/** Null for an object the database holds itself, which no client can read. */
+async function readObject(row: MediaObjectRow): Promise<Uint8Array<ArrayBuffer> | null> {
+  if (!row.s3Key) {
+    return row.bytes;
+  }
   const client = getClient();
-  if (!client) return null;
-
-  const row = await findMediaObject(sha256, organizationId);
-  if (!row) return null;
-
-  try {
-    return await operation(client, row);
-  } catch (err) {
-    log.error({ err, sha256 }, errorMessage);
+  if (!client) {
     return null;
   }
+  return new Uint8Array(await client.file(row.s3Key).arrayBuffer());
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -80,37 +72,56 @@ async function withMediaObject<T>(
  *
  * Returns null when S3 is not configured or the object is not found.
  */
-export function getPresignedUrl(
+export async function getPresignedUrl(
   sha256: string,
   organizationId: string,
 ): Promise<string | null> {
-  return withMediaObject(
-    sha256,
-    organizationId,
-    (client, row) => client.presign(row.s3Key, { expiresIn: PRESIGN_TTL_SECONDS }),
-    "Failed to generate presigned URL",
-  );
+  const client = getClient();
+  if (!client) {
+    return null;
+  }
+  const row = await findMediaObject(sha256, organizationId);
+  // Nothing to presign for an object the database holds: the caller serves it instead.
+  if (!row?.s3Key) {
+    return null;
+  }
+  try {
+    return client.presign(row.s3Key, { expiresIn: PRESIGN_TTL_SECONDS });
+  } catch (err) {
+    log.error({ err, sha256 }, "Failed to generate presigned URL");
+    return null;
+  }
+}
+
+/** The bytes behind a reference, from S3 or from the database, whichever holds them. */
+export async function readMediaObject(
+  sha256: string,
+  organizationId: string,
+): Promise<{ bytes: Uint8Array<ArrayBuffer>; mimeType: string } | null> {
+  const row = await findMediaObject(sha256, organizationId);
+  if (!row) {
+    return null;
+  }
+  try {
+    const bytes = await readObject(row);
+    return bytes ? { bytes, mimeType: row.mimeType } : null;
+  } catch (err) {
+    log.error({ err, sha256 }, "Failed to read the stored image");
+    return null;
+  }
 }
 
 /**
  * Resolve a xinity-media:// URL to a base64 data URI.
  * Used when generating self-contained download exports.
- *
- * Returns null when S3 is not configured, the object is not found,
- * or download fails.
  */
-export function resolveToDataUri(
+export async function resolveToDataUri(
   sha256: string,
   organizationId: string,
 ): Promise<string | null> {
-  return withMediaObject(
-    sha256,
-    organizationId,
-    async (client, row) => {
-      const buffer = await client.file(row.s3Key).arrayBuffer();
-      const base64 = Buffer.from(buffer).toString("base64");
-      return `data:${row.mimeType};base64,${base64}`;
-    },
-    "Failed to download image from S3",
-  );
+  const object = await readMediaObject(sha256, organizationId);
+  if (!object) {
+    return null;
+  }
+  return `data:${object.mimeType};base64,${Buffer.from(object.bytes).toString("base64")}`;
 }

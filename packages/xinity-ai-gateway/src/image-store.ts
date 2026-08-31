@@ -1,15 +1,7 @@
 /**
- * Multimodal image handling for the gateway.
- *
- * When S3 is configured, images embedded in chat requests are uploaded to
- * object storage before the call is forwarded. Inference nodes always receive
- * resolved data URIs; the database receives compact xinity-media:// references
- * that can be resolved by the dashboard.
- *
- * When S3 is not configured, external image URLs are still resolved to data
- * URIs for the inference node (they can't always reach arbitrary URLs), but
- * only the original URL is logged; inline data URIs are stripped from the
- * database log entirely.
+ * Multimodal image handling. Inference nodes always receive resolved data URIs, and the
+ * database always receives a `xinity-media://` reference, whether the bytes went to S3 or
+ * into `media_object` itself.
  */
 import type { S3Client } from "bun";
 import { mediaObjectT, sql, type ApiCallInputMessage, type ApiCallInputMessageContent } from "common-db";
@@ -50,26 +42,37 @@ export function createImageStore(config: {
   };
 }
 
-type ResolvedImage = { mimeType: string; bytes: Uint8Array };
-
-/** Parse a data URI into its mime type and raw bytes. */
-function parseDataUri(url: string): ResolvedImage | null {
-  // data:[<mediatype>][;base64],<data>
-  const [, mimeType, data] = url.match(/^data:([^;,]+)(?:;base64)?,(.+)$/s) ?? [];
-  if (!mimeType || !data) return null;
-  try {
-    const bytes = Buffer.from(data, "base64");
-    return { mimeType, bytes };
-  } catch {
-    return null;
-  }
-}
+type ResolvedImage = { mimeType: string; bytes: Uint8Array<ArrayBuffer> };
 
 const MAX_IMAGE_BYTES = 40 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 10_000;
 
-function warnImageTooLarge(url: string, size: number): void {
-  log.warn({ url: url.slice(0, 200), size }, "Image exceeds size limit, skipping");
+const IMAGE_TOO_LARGE = "image_too_large";
+
+/** Rejected rather than dropped: a picture missing from the log is missing from the
+ * conversation every later turn replays. */
+function imageTooLargeError(size: number): Error {
+  const limitMb = Math.floor(MAX_IMAGE_BYTES / (1024 * 1024));
+  return Object.assign(
+    new Error(`Image is ${size} bytes, over the ${limitMb}MB limit`),
+    { code: IMAGE_TOO_LARGE },
+  );
+}
+
+export function isImageTooLarge(error: unknown): boolean {
+  return typeof error === "object" && error !== null
+    && (error as { code?: unknown }).code === IMAGE_TOO_LARGE;
+}
+
+function parseDataUri(url: string): ResolvedImage | null {
+  // data:[<mediatype>][;base64],<data>
+  const [, mimeType, data] = url.match(/^data:([^;,]+)(?:;base64)?,(.+)$/s) ?? [];
+  if (!mimeType || !data) return null;
+  const bytes = new Uint8Array(Buffer.from(data, "base64"));
+  if (bytes.byteLength > MAX_IMAGE_BYTES) {
+    throw imageTooLargeError(bytes.byteLength);
+  }
+  return { mimeType, bytes };
 }
 
 /** Fetch an external URL and return its bytes and mime type. */
@@ -83,40 +86,23 @@ async function fetchExternalImage(url: string): Promise<ResolvedImage | null> {
 
     const declaredSize = parseInt(res.headers.get("content-length") ?? "", 10);
     if (Number.isFinite(declaredSize) && declaredSize > MAX_IMAGE_BYTES) {
-      warnImageTooLarge(url, declaredSize);
-      return null;
+      throw imageTooLargeError(declaredSize);
     }
 
     const buffer = await res.arrayBuffer();
     if (buffer.byteLength > MAX_IMAGE_BYTES) {
-      warnImageTooLarge(url, buffer.byteLength);
-      return null;
+      throw imageTooLargeError(buffer.byteLength);
     }
 
     return { mimeType, bytes: new Uint8Array(buffer) };
-  } catch {
+  } catch (err) {
+    if (isImageTooLarge(err)) {
+      throw err;
+    }
     return null;
   }
 }
 
-function mimeToExtension(mimeType: string): string {
-  const map: Record<string, string> = {
-    "image/jpeg": "jpg",
-    "image/png": "png",
-    "image/gif": "gif",
-    "image/webp": "webp",
-    "image/avif": "avif",
-  };
-  return map[mimeType] ?? "bin";
-}
-
-/**
- * Process a single image (data URI or external URL):
- * - Returns the data URI for the inference node (resolves external URLs).
- * - Uploads to S3 and returns the xinity-media:// reference for the DB,
- *   or the original external URL when S3 is unavailable, or null for
- *   data URIs when S3 is unavailable (they must be stripped).
- */
 async function processImage(
   imageUrl: string,
   orgId: string,
@@ -135,42 +121,37 @@ async function processImage(
     ? imageUrl
     : `data:${mimeType};base64,${Buffer.from(bytes).toString("base64")}`;
 
-  // Used both for the media_object.originalUrl column and as the fallback dbUrl
-  // when S3 storage is unavailable. Data URIs are stripped (no remote source).
-  const loggedExternalUrl = isDataUri ? null : imageUrl;
+  const originalUrl = isDataUri ? null : imageUrl;
 
-  if (!imageStore) {
-    return { dataUri, dbUrl: loggedExternalUrl };
-  }
-
-  // S3 enabled: upload and create media_object record
   try {
     const sha256 = bytesDigest(bytes);
-    const s3Key = `${orgId}/${sha256}`;
-    const ext = mimeToExtension(mimeType);
+    const s3Key = imageStore ? `${orgId}/${sha256}` : null;
 
-    // Upsert: if already uploaded by this org, reuse
+    // Upsert: if already stored by this org, reuse
     await getDB()
       .insert(mediaObjectT)
       .values({
         sha256,
         mimeType,
-        originalUrl: loggedExternalUrl,
-        s3Bucket: imageStore.bucket,
+        originalUrl,
+        s3Bucket: imageStore?.bucket ?? null,
         s3Key,
+        bytes: imageStore ? null : bytes,
         organizationId: orgId,
         size: bytes.byteLength,
       })
       .onConflictDoNothing();
 
-    // Upload to S3 (idempotent: same key = same content due to SHA-256)
-    await imageStore.client.write(s3Key, bytes, { type: mimeType });
+    if (imageStore && s3Key) {
+      // Idempotent: same key = same content, since the key is the digest
+      await imageStore.client.write(s3Key, bytes, { type: mimeType });
+    }
 
-    log.debug({ sha256, size: bytes.byteLength, ext }, "Image stored in S3");
+    log.debug({ sha256, size: bytes.byteLength, inS3: Boolean(imageStore) }, "Image stored");
     return { dataUri, dbUrl: formatMediaRef(sha256) };
   } catch (err) {
-    log.error({ err }, "Failed to store image in S3, falling back to original URL");
-    return { dataUri, dbUrl: loggedExternalUrl };
+    log.error({ err }, "Failed to store image, falling back to the original URL");
+    return { dataUri, dbUrl: originalUrl };
   }
 }
 
@@ -195,12 +176,7 @@ async function mapConcurrent<T, R>(
   return results;
 }
 
-/**
- * Transform messages containing image_url content parts:
- * - messagesForLLM: all images resolved to data URIs (inference node ready)
- * - messagesForDB: images replaced with xinity-media:// references, or
- *   original external URLs when S3 is disabled, data URIs stripped entirely
- */
+/** `messagesForLLM` carries resolved data URIs, `messagesForDB` carries references. */
 export async function processMessageImages(
   messages: ApiCallInputMessage[],
   orgId: string,
@@ -270,11 +246,8 @@ export async function resolveMediaRef(
   orgId: string,
   store: ImageStore | null,
 ): Promise<string | null> {
-  if (!store) {
-    return null;
-  }
   const [row] = await getDB()
-    .select({ s3Key: mediaObjectT.s3Key, mimeType: mediaObjectT.mimeType })
+    .select({ s3Key: mediaObjectT.s3Key, mimeType: mediaObjectT.mimeType, bytes: mediaObjectT.bytes })
     .from(mediaObjectT)
     .where(sql`${mediaObjectT.sha256} = ${sha256} AND ${mediaObjectT.organizationId} = ${orgId}`)
     .limit(1);
@@ -282,7 +255,12 @@ export async function resolveMediaRef(
     return null;
   }
   try {
-    const bytes = await store.client.file(row.s3Key).arrayBuffer();
+    const bytes = row.s3Key && store
+      ? new Uint8Array(await store.client.file(row.s3Key).arrayBuffer())
+      : row.bytes;
+    if (!bytes) {
+      return null;
+    }
     return `data:${row.mimeType};base64,${Buffer.from(bytes).toString("base64")}`;
   } catch (err) {
     log.error({ err, sha256 }, "Failed to read a stored image");

@@ -19,7 +19,7 @@ const db = drizzle.mock();
 type CapturedQuery = { sql: string; params: unknown[] };
 const capturedQueries: CapturedQuery[] = [];
 /** The media_object rows the next select finds. Empty means "no such object". */
-let storedMediaRows: Array<{ s3Key: string; mimeType: string }> = [];
+let storedMediaRows: Array<{ s3Key: string | null; mimeType: string; bytes?: Uint8Array | null }> = [];
 const preparedProto = Object.getPrototypeOf(db.select().from(mediaObjectT).prepare("_spy"));
 jest.spyOn(preparedProto, "execute").mockImplementation(async function (this: { queryString: string; params: unknown[] }) {
   capturedQueries.push({ sql: this.queryString, params: this.params });
@@ -183,7 +183,16 @@ describe("processMessageImages – S3 disabled (imageStore = null)", () => {
     capturedQueries.length = 0;
   });
 
-  test("data URI: LLM receives data URI, DB message omitted (image-only message)", async () => {
+  test("rejects an oversize image rather than dropping it from the conversation", async () => {
+    const oversize = `data:image/png;base64,${"A".repeat(56 * 1024 * 1024)}`;
+    const messages = [
+      { role: "user", content: [{ type: "image_url", image_url: { url: oversize } }] },
+    ] as any;
+
+    await expect(processMessageImages(messages, "org-1", null)).rejects.toThrow(/over the 40MB limit/);
+  });
+
+  test("keeps an inline image, storing its bytes in the row it references", async () => {
     const messages = [
       {
         role: "user",
@@ -194,11 +203,14 @@ describe("processMessageImages – S3 disabled (imageStore = null)", () => {
     const { messagesForLLM, messagesForDB } = await processMessageImages(messages, "org-1", null);
 
     expect((messagesForLLM[0]!.content as any[])[0]!.image_url.url).toBe(TINY_PNG_DATA_URI);
-    expect(messagesForDB).toHaveLength(0);
-    expect(capturedQueries).toHaveLength(0);
+    expect((messagesForDB[0]!.content as any[])[0]!.image_url.url).toMatch(/^xinity-media:\/\//);
+
+    const [insert] = capturedQueries;
+    expect(insert?.sql).toMatch(/^\s*insert/i);
+    expect(insert?.params.some((p) => p instanceof Uint8Array)).toBe(true);
   });
 
-  test("data URI + text: DB message keeps text, strips image", async () => {
+  test("keeps both the text and the image reference", async () => {
     const messages = [
       {
         role: "user",
@@ -213,8 +225,9 @@ describe("processMessageImages – S3 disabled (imageStore = null)", () => {
 
     expect((messagesForLLM[0]!.content as any[])).toHaveLength(2);
     const dbParts = messagesForDB[0]!.content as any[];
-    expect(dbParts).toHaveLength(1);
+    expect(dbParts).toHaveLength(2);
     expect(dbParts[0]).toEqual({ type: "text", text: "Check this out:" });
+    expect(dbParts[1].image_url.url).toMatch(/^xinity-media:\/\//);
   });
 
   test("external URL pointing to private IP is blocked (S3 disabled)", async () => {
@@ -283,9 +296,15 @@ describe("restoring logged images", () => {
     expect(await resolveMediaRef(DIGEST, "org-1", readableStore())).toBeNull();
   });
 
-  test("returns null when S3 is not configured, without querying", async () => {
+  test("reads an image the database holds, with no S3 configured", async () => {
+    storedMediaRows = [{ s3Key: null, mimeType: "image/png", bytes: IMAGE_BYTES }];
+    const dataUri = await resolveMediaRef(DIGEST, "org-1", null);
+    expect(dataUri).toBe(`data:image/png;base64,${Buffer.from(IMAGE_BYTES).toString("base64")}`);
+  });
+
+  test("returns null when neither S3 nor the row holds the bytes", async () => {
+    storedMediaRows = [{ s3Key: null, mimeType: "image/png", bytes: null }];
     expect(await resolveMediaRef(DIGEST, "org-1", null)).toBeNull();
-    expect(capturedQueries).toHaveLength(0);
   });
 
   test("returns null when the object cannot be read", async () => {
