@@ -1,57 +1,58 @@
-import { describe, test, expect, mock, jest, beforeEach } from "bun:test";
-import { apiCallT, chatMessageT, inferenceCallT } from "common-db";
+import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { chatMessageT, inferenceCallT } from "common-db";
 import { MOCK_GATEWAY_ENV } from "./llm-forward/mock-env";
 mock.module("./env", () => ({ env: { ...MOCK_GATEWAY_ENV } }));
 
-const insertMock = jest.fn();
+/** Rows each table was given, keyed by table. */
+const inserted = new Map<string, any[]>();
+let failWrite = false;
 
-/** Tables the inference-call path wrote, in order. */
-const inferenceWrites: string[] = [];
-let failInference = false;
-
-function recordingInsert(table: string) {
-  return {
-    values: (rows: unknown) => {
-      inferenceWrites.push(table);
-      const inserted = Array.isArray(rows) ? rows : [rows];
-      const done = Promise.resolve(undefined) as Promise<undefined> & Record<string, unknown>;
-      done.onConflictDoNothing = () => ({
-        returning: async () => inserted.map((row) => ({
-          id: `id-${(row as { sha256: string }).sha256}`,
-          sha256: (row as { sha256: string }).sha256,
-        })),
-      });
-      return done;
-    },
-  };
+function tableName(table: unknown): string {
+  if (table === chatMessageT) return "chat_message";
+  if (table === inferenceCallT) return "inference_call";
+  return "inference_call_message";
 }
 
 const dbMock = {
-  insert: (table: unknown) => {
-    if (table === apiCallT) return { values: insertMock };
-    if (table === chatMessageT) return recordingInsert("chat_message");
-    if (table === inferenceCallT) return recordingInsert("inference_call");
-    return recordingInsert("inference_call_message");
-  },
+  insert: (table: unknown) => ({
+    values: (rows: unknown) => {
+      const name = tableName(table);
+      const list = (Array.isArray(rows) ? rows : [rows]) as any[];
+      inserted.set(name, [...(inserted.get(name) ?? []), ...list]);
+      const done = Promise.resolve(undefined) as Promise<undefined> & Record<string, unknown>;
+      done.onConflictDoNothing = () => ({
+        returning: async () => list.map((row) => ({ id: `id-${row.sha256}`, sha256: row.sha256 })),
+      });
+      return done;
+    },
+  }),
   select: () => ({ from: () => ({ where: async () => [] }) }),
   transaction: async (run: (tx: unknown) => unknown) => {
-    if (failInference) {
-      throw new Error("inference write down");
+    if (failWrite) {
+      throw new Error("log write down");
     }
     return run(dbMock);
   },
 };
 
-mock.module("./db", () => ({
-  getDB: () => dbMock,
-}));
+mock.module("./db", () => ({ getDB: () => dbMock }));
 
 const { logChatSync, logChatStream, flushCallLog } = await import("./callLogger");
+
+const calls = () => inserted.get("inference_call") ?? [];
+const messagePayloads = () => (inserted.get("chat_message") ?? []).map((row) => row.payload);
+
+/** Distinct per test, since the digest cache is module-level and would skip a repeat insert. */
+let orgCounter = 0;
+function freshOrg(): string {
+  orgCounter += 1;
+  return `calllog-org-${orgCounter}`;
+}
 
 function sampleChatInput() {
   return {
     keyId: "key-1",
-    organizationId: "org-1",
+    organizationId: freshOrg(),
     applicationId: "app-1",
     durationInMS: 100,
     publicSpecifier: "my-model",
@@ -66,38 +67,25 @@ function sampleChatInput() {
   };
 }
 
+beforeEach(() => {
+  inserted.clear();
+  failWrite = false;
+});
+
 describe("callLogger", () => {
-  beforeEach(() => {
-    insertMock.mockReset();
-    inferenceWrites.length = 0;
-    failInference = false;
-  });
-
-  test("buffers calls and flushes in batch on flushCallLog", async () => {
-    insertMock.mockResolvedValue(undefined);
-
+  test("buffers calls and writes the batch as one insert", async () => {
     await logChatSync(sampleChatInput());
-    await logChatSync({
-      ...sampleChatInput(),
-      data: {
-        model: "llama3:latest",
-        choices: [{ index: 0, message: { role: "assistant", content: "Response 2" } }],
-      },
-    });
+    await logChatSync(sampleChatInput());
 
-    // Buffered, not flushed yet
-    expect(insertMock).not.toHaveBeenCalled();
+    expect(calls()).toHaveLength(0);
 
     await flushCallLog();
 
-    expect(insertMock).toHaveBeenCalledTimes(1);
-    const [batch] = insertMock.mock.calls[0] as [any[]];
-    expect(batch.length).toBe(2);
-    expect(batch[0].organizationId).toBe("org-1");
+    expect(calls()).toHaveLength(2);
+    expect(calls()[0].endpoint).toBe("chat_completions");
   });
 
-  test("gives each streamed choice its own row", async () => {
-    insertMock.mockResolvedValue(undefined);
+  test("gives each streamed choice its own call", async () => {
     const { data: _sync, ...fields } = sampleChatInput();
 
     await logChatStream({
@@ -109,12 +97,21 @@ describe("callLogger", () => {
     });
     await flushCallLog();
 
-    const [batch] = insertMock.mock.calls[0] as [any[]];
-    expect(batch.map((row) => row.outputMessage.content)).toEqual(["first", "second"]);
+    expect(calls()).toHaveLength(2);
+    const replies = messagePayloads().map((m) => m.content);
+    expect(replies).toContain("first");
+    expect(replies).toContain("second");
+  });
+
+  test("records the engine's own model name, which the legacy log never did", async () => {
+    await logChatSync(sampleChatInput());
+    await flushCallLog();
+
+    expect(calls()[0].model).toBe("engine-model");
+    expect(calls()[0].specifiedModel).toBe("my-model");
   });
 
   test("keeps reasoning and refusal the engine sent", async () => {
-    insertMock.mockResolvedValue(undefined);
     const input = sampleChatInput();
 
     await logChatSync({
@@ -129,13 +126,12 @@ describe("callLogger", () => {
     });
     await flushCallLog();
 
-    const [batch] = insertMock.mock.calls[0] as [any[]];
-    expect(batch[0].outputMessage.reasoning_content).toBe("Thought");
-    expect(batch[0].outputMessage).toHaveProperty("refusal");
+    const reply = messagePayloads().find((m) => m.content === "Answer");
+    expect(reply.reasoning_content).toBe("Thought");
+    expect(reply).toHaveProperty("refusal");
   });
 
   test("stores reasoning under one name whichever the engine used", async () => {
-    insertMock.mockResolvedValue(undefined);
     const input = sampleChatInput();
 
     await logChatSync({
@@ -147,58 +143,38 @@ describe("callLogger", () => {
     });
     await flushCallLog();
 
-    const [batch] = insertMock.mock.calls[0] as [any[]];
-    expect(batch[0].outputMessage.reasoning_content).toBe("Thought");
-    expect(batch[0].outputMessage).not.toHaveProperty("reasoning");
+    const reply = messagePayloads().find((m) => m.content === "Answer");
+    expect(reply.reasoning_content).toBe("Thought");
+    expect(reply).not.toHaveProperty("reasoning");
   });
 
   test("adds no reasoning key to a reply that carried none", async () => {
-    insertMock.mockResolvedValue(undefined);
-
     await logChatSync(sampleChatInput());
     await flushCallLog();
 
-    const [batch] = insertMock.mock.calls[0] as [any[]];
-    expect(batch[0].outputMessage).not.toHaveProperty("reasoning_content");
+    const reply = messagePayloads().find((m) => m.content === "Response");
+    expect(reply).not.toHaveProperty("reasoning_content");
   });
 
-  test("writes the inference call alongside the legacy row", async () => {
-    insertMock.mockResolvedValue(undefined);
+  test("uses an id the caller reserved before the batch was flushed", async () => {
+    const reserved = "88888888-8888-4888-8888-888888888888";
 
-    await logChatSync({ ...sampleChatInput(), organizationId: "dual-write-org" });
+    await logChatSync({ ...sampleChatInput(), inferenceCallId: reserved });
     await flushCallLog();
 
-    expect(insertMock).toHaveBeenCalledTimes(1);
-    expect(inferenceWrites).toContain("inference_call");
-    expect(inferenceWrites).toContain("inference_call_message");
-  });
-
-  test("keeps the legacy row when the inference write fails", async () => {
-    insertMock.mockResolvedValue(undefined);
-    failInference = true;
-
-    await logChatSync({ ...sampleChatInput(), organizationId: "isolated-org" });
-    await flushCallLog();
-
-    expect(insertMock).toHaveBeenCalledTimes(1);
+    expect(calls()[0].id).toBe(reserved);
   });
 
   test("auto-flushes on timer interval", async () => {
-    insertMock.mockResolvedValue(undefined);
-
     await logChatSync(sampleChatInput());
 
-    expect(insertMock).not.toHaveBeenCalled();
-
-    // Wait for 200ms timer
+    expect(calls()).toHaveLength(0);
     await new Promise((r) => setTimeout(r, 250));
 
-    expect(insertMock).toHaveBeenCalledTimes(1);
+    expect(calls()).toHaveLength(1);
   });
 
-  test("sanitizes null bytes when present", async () => {
-    insertMock.mockResolvedValue(undefined);
-
+  test("strips null bytes, which postgres rejects outright", async () => {
     await logChatSync({
       ...sampleChatInput(),
       inputMessages: [{ role: "user" as const, content: "Hello\0world" }],
@@ -207,29 +183,18 @@ describe("callLogger", () => {
         choices: [{ index: 0, message: { role: "assistant", content: "Result\0null" } }],
       },
     });
-
     await flushCallLog();
 
-    expect(insertMock).toHaveBeenCalledTimes(1);
-    const [batch] = insertMock.mock.calls[0] as [any[]];
-    expect(batch[0].inputMessages[0].content).toBe("Helloworld");
-    expect(batch[0].outputMessage.content).toBe("Resultnull");
+    const contents = messagePayloads().map((m) => m.content);
+    expect(contents).toContain("Helloworld");
+    expect(contents).toContain("Resultnull");
   });
 
-  test("falls back to individual row inserts when batch fails", async () => {
-    insertMock
-      .mockRejectedValueOnce(new Error("Batch insert error"))
-      .mockResolvedValueOnce(undefined) // row 1 succeeds
-      .mockRejectedValueOnce(new Error("Row 2 constraint error")) // row 2 fails
-      .mockResolvedValueOnce(undefined); // row 3 succeeds
+  test("swallows a failed write rather than breaking the request that logged it", async () => {
+    failWrite = true;
 
     await logChatSync(sampleChatInput());
-    await logChatSync(sampleChatInput());
-    await logChatSync(sampleChatInput());
 
-    await flushCallLog();
-
-    // 1 batch + 3 individual
-    expect(insertMock).toHaveBeenCalledTimes(4);
+    expect(flushCallLog()).resolves.toBeUndefined();
   });
 });

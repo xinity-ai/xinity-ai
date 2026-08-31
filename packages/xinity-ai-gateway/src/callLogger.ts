@@ -1,5 +1,4 @@
-import { getDB } from "./db";
-import { apiCallT, type ApiCallInputMessage, type InferenceEndpoint } from "common-db";
+import type { ApiCallInputMessage, InferenceEndpoint } from "common-db";
 import { recordInferenceCalls, type InferenceCallRecord } from "./inference-call-store";
 import { rootLogger } from "./logger";
 
@@ -29,7 +28,6 @@ type ChatLogFields = {
   organizationId: string;
   durationInMS: number;
   publicSpecifier: string;
-  /** The name the engine knows the model by, which `api_call` does not record. */
   engineModel: string;
   endpoint: InferenceEndpoint;
   /** Reserved by a surface that had to record the id before the call was logged. */
@@ -40,22 +38,6 @@ type ChatLogFields = {
 
 type ChatSyncInput = ChatLogFields & { data: ChatSyncData };
 type ChatStreamInput = ChatLogFields & { data: ChatStreamData };
-
-type ApiCallRow = ReturnType<typeof buildApiCallRow>;
-
-function buildApiCallRow(input: ChatLogFields, model: string, outputMessage: ApiCallInputMessage) {
-  return {
-    apiKeyId: input.keyId,
-    applicationId: input.applicationId,
-    organizationId: input.organizationId,
-    specifiedModel: input.publicSpecifier,
-    duration: input.durationInMS,
-    model,
-    outputMessage,
-    inputMessages: input.inputMessages,
-    metadata: input.metadata,
-  };
-}
 
 // Characters that PostgreSQL cannot store in text/jsonb columns.
 // U+0000 (null) is the only codepoint PostgreSQL categorically rejects.
@@ -90,37 +72,11 @@ function sanitizeForPg(value: unknown): unknown {
   return value;
 }
 
-function sanitizeRow(row: ApiCallRow): ApiCallRow {
-  return {
-    ...row,
-    inputMessages: sanitizeForPg(row.inputMessages) as ApiCallRow["inputMessages"],
-    outputMessage: sanitizeForPg(row.outputMessage) as ApiCallRow["outputMessage"],
-    metadata: row.metadata ? sanitizeForPg(row.metadata) as ApiCallRow["metadata"] : row.metadata,
-  };
-}
-
 const CALL_BATCH_SIZE = 50;
 const CALL_FLUSH_INTERVAL_MS = 200;
 
-type QueuedCall = { row: ApiCallRow; record: InferenceCallRecord };
-
-let callQueue: QueuedCall[] = [];
+let callQueue: InferenceCallRecord[] = [];
 let callTimer: ReturnType<typeof setTimeout> | null = null;
-
-async function insertApiCallRows(rows: ApiCallRow[]): Promise<void> {
-  try {
-    await getDB().insert(apiCallT).values(rows);
-  } catch (batchErr) {
-    log.warn({ err: batchErr, count: rows.length }, "API call batch insert failed, falling back to individual inserts");
-    for (const row of rows) {
-      try {
-        await getDB().insert(apiCallT).values(row);
-      } catch (rowErr) {
-        log.error({ err: rowErr, specifiedModel: row.specifiedModel, organizationId: row.organizationId }, "DB error writing individual API call");
-      }
-    }
-  }
-}
 
 export async function flushCallLog(): Promise<void> {
   if (callTimer) {
@@ -132,12 +88,11 @@ export async function flushCallLog(): Promise<void> {
   const batch = callQueue;
   callQueue = [];
 
-  await insertApiCallRows(batch.map((queued) => queued.row));
-  await recordInferenceCalls(batch.map((queued) => queued.record))
+  await recordInferenceCalls(batch)
     .catch((err) => log.error({ err, count: batch.length }, "Inference call batch insert failed"));
 }
 
-async function enqueueCalls(calls: QueuedCall[]): Promise<void> {
+async function enqueueCalls(calls: InferenceCallRecord[]): Promise<void> {
   callQueue.push(...calls);
   if (callQueue.length >= CALL_BATCH_SIZE) {
     void flushCallLog();
@@ -173,35 +128,30 @@ function toOutputMessage(msg: Record<string, unknown>): ApiCallInputMessage {
   } as ApiCallInputMessage;
 }
 
-function buildQueuedCall(
+function buildRecord(
   input: ChatLogFields,
-  model: string,
   outputMessage: ApiCallInputMessage,
   choiceIndex: number,
-): QueuedCall {
-  const row = sanitizeRow(buildApiCallRow(input, model, outputMessage));
+): InferenceCallRecord {
   return {
-    row,
-    record: {
-      // Only the first choice can claim it: every choice is its own call row.
-      id: choiceIndex === 0 ? input.inferenceCallId ?? undefined : undefined,
-      organizationId: input.organizationId,
-      apiKeyId: input.keyId,
-      applicationId: input.applicationId,
-      endpoint: input.endpoint,
-      model: input.engineModel,
-      specifiedModel: input.publicSpecifier,
-      durationMs: input.durationInMS,
-      metadata: row.metadata,
-      inputMessages: row.inputMessages,
-      outputMessages: [row.outputMessage],
-    },
+    // Only the first choice can claim it: every choice is its own call row.
+    id: choiceIndex === 0 ? input.inferenceCallId ?? undefined : undefined,
+    organizationId: input.organizationId,
+    apiKeyId: input.keyId,
+    applicationId: input.applicationId,
+    endpoint: input.endpoint,
+    model: input.engineModel,
+    specifiedModel: input.publicSpecifier,
+    durationMs: input.durationInMS,
+    metadata: input.metadata ? sanitizeForPg(input.metadata) as Record<string, unknown> : undefined,
+    inputMessages: sanitizeForPg(input.inputMessages) as ApiCallInputMessage[],
+    outputMessages: [sanitizeForPg(outputMessage) as ApiCallInputMessage],
   };
 }
 
 export async function logChatSync(input: ChatSyncInput) {
   const calls = input.data.choices.map((choice, index) =>
-    buildQueuedCall(input, input.data.model, toOutputMessage(choice.message), index),
+    buildRecord(input, toOutputMessage(choice.message), index),
   );
   if (calls.length === 0) {
     return;
@@ -211,7 +161,7 @@ export async function logChatSync(input: ChatSyncInput) {
 
 export async function logChatStream(input: ChatStreamInput) {
   const calls = input.data.flatMap((entry) =>
-    entry.choices.map((choice) => buildQueuedCall(input, entry.model, toOutputMessage(choice.delta), choice.index)),
+    entry.choices.map((choice) => buildRecord(input, toOutputMessage(choice.delta), choice.index)),
   );
   if (calls.length === 0) {
     return;
