@@ -153,14 +153,18 @@ export const apiResponseItemT = callDataSchema.table("api_response_item", {
 ]);
 export type ApiResponseItem = InferSelectModel<typeof apiResponseItemT>;
 
-/** Input messages in order. No cascade to `chat_message`, so a shared body cannot be
- * deleted out from under a response that still references it. */
+export const messageDirectionEnum = callDataSchema.enum("message_direction", ["input", "output"]);
+export type MessageDirection = (typeof messageDirectionEnum.enumValues)[number];
+
+/** The conversation a response is part of, in order. No cascade to `chat_message`, so a shared
+ * body cannot be deleted out from under a response that still references it. */
 export const apiResponseMessageT = callDataSchema.table("api_response_message", {
   responseId: uuid("response_id")
     .notNull()
     .references(() => apiResponseT.id, { onDelete: "cascade" }),
   seq: integer().notNull(),
   messageId: uuid("message_id").notNull().references(() => chatMessageT.id),
+  direction: messageDirectionEnum().notNull(),
 }, table => [
   primaryKey({ columns: [table.responseId, table.seq] }),
 ]);

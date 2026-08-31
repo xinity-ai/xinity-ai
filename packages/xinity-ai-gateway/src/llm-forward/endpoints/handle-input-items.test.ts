@@ -151,6 +151,13 @@ describe("handleListInputItemsRequest", () => {
     expect(query?.params).toContain("org-1");
   });
 
+  test("asks only for input, so the answer is never listed as part of the question", async () => {
+    await handleListInputItemsRequest(listRequest());
+    const [query] = capturedQueries;
+    expect(query?.sql).toContain("direction");
+    expect(query?.sql).toContain("'input'");
+  });
+
   test("rejects non-GET methods", async () => {
     const res = await handleListInputItemsRequest(listRequest("", "POST"));
     expect(res.status).toBe(405);

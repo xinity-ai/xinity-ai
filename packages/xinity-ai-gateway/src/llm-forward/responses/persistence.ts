@@ -14,6 +14,7 @@ import {
 import { getDB } from "../../db";
 import { resolveChatMessageIds } from "../../chat-message-store";
 import { formatResponseId, parseResponseId } from "./response-id";
+import { outputAsMessages } from "./input-normalize";
 import type { OutputItem, ResponseObject } from "./schemas";
 
 /** Fields the header stores as columns, so they must not also live in `requestParams`. */
@@ -130,7 +131,12 @@ export async function createPersistedResponse(args: CreatePersistedResponseArgs)
     const messageIds = await resolveChatMessageIds(orgId, inputMessages, tx);
     if (messageIds.length > 0) {
       await tx.insert(apiResponseMessageT).values(
-        messageIds.map((messageId, seq) => ({ responseId: storedId(response.id), seq, messageId })),
+        messageIds.map((messageId, seq) => ({
+          responseId: storedId(response.id),
+          seq,
+          messageId,
+          direction: "input" as const,
+        })),
       );
     }
   });
@@ -172,9 +178,31 @@ export async function settlePersistedResponse(orgId: string, response: ResponseO
       return false;
     }
 
-    const items = toItemRows(storedId(response.id), response.output);
+    const id = storedId(response.id);
+    const items = toItemRows(id, response.output);
     if (items.length > 0) {
       await tx.insert(apiResponseItemT).values(items);
+    }
+
+    // Converted once here rather than on every chained read, so the form a later turn replays
+    // is the one that was stored, not one re-derived from the output items each time.
+    const reply = outputAsMessages(response);
+    if (reply.length > 0) {
+      const [row] = await tx
+        .select({ next: sql<number>`COALESCE(MAX(${apiResponseMessageT.seq}), -1) + 1` })
+        .from(apiResponseMessageT)
+        .where(sql`${apiResponseMessageT.responseId} = ${id}`);
+      const firstSeq = row?.next ?? 0;
+
+      const messageIds = await resolveChatMessageIds(orgId, reply, tx);
+      await tx.insert(apiResponseMessageT).values(
+        messageIds.map((messageId, offset) => ({
+          responseId: id,
+          seq: firstSeq + offset,
+          messageId,
+          direction: "output" as const,
+        })),
+      );
     }
     return true;
   });
@@ -211,7 +239,8 @@ export async function loadResponse(orgId: string, responseId: string): Promise<R
   return fromResponseRow(header, items.map((row) => row.payload as unknown as OutputItem));
 }
 
-/** Every message a response was built from, in order. */
+/** The whole conversation a response is part of, question and answer alike, in order. This is
+ * what the next turn replays, which is why it does not stop at the input. */
 export async function loadResponseMessages(
   orgId: string,
   responseId: string,
@@ -265,6 +294,8 @@ export async function loadResponseInputItems(
     .where(
       sql`
         ${apiResponseMessageT.responseId} = ${id}
+      AND
+        ${apiResponseMessageT.direction} = 'input'
       AND
         ${apiResponseT.organizationId} = ${orgId}
       ${afterSeq === null

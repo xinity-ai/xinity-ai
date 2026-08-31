@@ -1,6 +1,7 @@
 import { mock, jest } from "bun:test";
 import { MOCK_GATEWAY_ENV } from "../mock-env";
 import type { getModelInfo as getModelInfoT } from "../model-data";
+import { outputAsMessages } from "../responses/input-normalize";
 
 /**
  * OpenAI-compliant mock upstream response helpers for unit tests.
@@ -241,7 +242,11 @@ export function setupResponseTestMocks() {
   const saveResponse = jest.fn(async (_orgId: string, id: string, payload: any, creation?: any) => {
     responseStore.set(id, payload);
     if (creation?.inputMessages) {
-      responseMessages.set(id, creation.inputMessages);
+      responseMessages.set(id, [...creation.inputMessages]);
+    }
+    // Settling appends the reply, the way persistence does, so a chained turn reads it back.
+    if (payload?.status && payload.status !== "in_progress") {
+      responseMessages.get(id)?.push(...outputAsMessages(payload));
     }
   });
   const getResponse = jest.fn(async (_orgId: string, id: string) => responseStore.get(id) ?? null);

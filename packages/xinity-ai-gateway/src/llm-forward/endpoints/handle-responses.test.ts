@@ -748,12 +748,19 @@ describe("handleResponses", () => {
       ]);
     });
 
-    test("stores the whole conversation, so the next turn can read it back", async () => {
+    test("stores its own answer alongside the question, so the next turn can read both back", async () => {
       const first = await turn("u1");
       const second = await turn("u2", first.id);
 
       expect(mocks.responseMessages.get(second.id)?.map((m: any) => m.content))
-        .toEqual(["u1", "Hello", "u2"]);
+        .toEqual(["u1", "Hello", "u2", "Hello"]);
+    });
+
+    test("stores the first turn's answer without needing a second turn to derive it", async () => {
+      const first = await turn("u1");
+
+      expect(mocks.responseMessages.get(first.id)?.map((m: any) => m.content))
+        .toEqual(["u1", "Hello"]);
     });
 
     test("sends only the new turn when nothing is chained", async () => {

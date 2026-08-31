@@ -1,5 +1,6 @@
 /** Normalises the several input shapes `/v1/responses` accepts into chat messages. */
 import type { ApiCallInputMessage } from "common-db";
+import type { OutputItem } from "./schemas";
 
 export function extractText(content: unknown): string | null {
   if (typeof content === "string") return content;
@@ -93,33 +94,24 @@ export function normalizeMessages(input: unknown): ApiCallInputMessage[] | null 
   return null;
 }
 
-export type StoredResponse = {
-  output?: Array<{
-    type?: string;
-    content?: Array<{ type?: string; text?: string }>;
-    // function_call fields
-    call_id?: string;
-    name?: string;
-    arguments?: string;
-  }>;
-};
-
-export function outputAsMessages(stored: StoredResponse): ApiCallInputMessage[] {
+/** The chat form of a reply, which is what a later turn replays. Item types with no chat
+ * representation, web search among them, have none and are left to the output items. */
+export function outputAsMessages(response: { output: OutputItem[] }): ApiCallInputMessage[] {
   const messages: ApiCallInputMessage[] = [];
   // Collect function_call items to inject as a single assistant tool_calls message
   const functionCalls: Array<{ call_id: string; name: string; arguments: string }> = [];
 
-  for (const item of stored.output ?? []) {
+  for (const item of response.output) {
     if (item.type === "message") {
-      const textParts = (item.content ?? [])
-        .filter((c) => c.type === "output_text" && typeof c.text === "string")
-        .map((c) => c.text as string);
+      const textParts = item.content
+        .filter((part) => part.type === "output_text")
+        .map((part) => part.text);
       if (textParts.length) messages.push({ role: "assistant", content: textParts.join("") });
-    } else if (item.type === "function_call" && item.call_id && item.name) {
+    } else if (item.type === "function_call") {
       functionCalls.push({
         call_id: item.call_id,
         name: item.name,
-        arguments: item.arguments ?? "{}",
+        arguments: item.arguments,
       });
     }
   }

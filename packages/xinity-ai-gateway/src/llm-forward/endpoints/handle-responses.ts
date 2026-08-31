@@ -14,7 +14,7 @@ import { buildGenerationParams, buildOutputConfig } from "../responses/generatio
 import type { ApiCallInputMessage } from "common-db";
 import { createResponseStream } from "../responses/stream";
 import { withResponseIdRoute } from "../endpoint-guards";
-import { extractText, normalizeMessages, outputAsMessages, type StoredResponse } from "../responses/input-normalize";
+import { extractText, normalizeMessages } from "../responses/input-normalize";
 import { loadResponse, loadResponseInputItems } from "../responses/persistence";
 import { newResponseId } from "../responses/response-id";
 import {
@@ -93,16 +93,11 @@ async function prepareResponseRequest(req: Request): Promise<PreparedRequest | R
   if (body.previous_response_id) {
     const previousResponse = await getResponse(auth.orgId, body.previous_response_id);
     if (!previousResponse) return errorResponse("Not found", 404);
-    // A stored response keeps the whole message list it was given, so reading one hop back
-    // carries the entire conversation, however long it has run.
-    const askedBefore = await getResponseMessages(auth.orgId, body.previous_response_id);
-    const answeredBefore = outputAsMessages(previousResponse as StoredResponse);
-    historyForLog = [...askedBefore, ...answeredBefore];
+    // A stored response keeps the whole conversation it was part of, answer included, so
+    // reading one hop back carries all of it however long the exchange has run.
+    historyForLog = await getResponseMessages(auth.orgId, body.previous_response_id);
     // Logged messages carry `xinity-media://` references, which no backend can fetch.
-    historyForModel = [
-      ...await restoreMessageImages(askedBefore, auth.orgId, imageStore),
-      ...answeredBefore,
-    ];
+    historyForModel = await restoreMessageImages(historyForLog, auth.orgId, imageStore);
   }
 
   const processed = await processMessageImages(messages, auth.orgId, imageStore);
