@@ -12,7 +12,7 @@ import { adminAc, defaultStatements, memberAc, ownerAc } from "better-auth/plugi
 const customResourcePermissions = {
   apiKey: ["create", "update", "delete", "read"],
   apiCall: ["read", "update", "delete"],
-  apiCallResponse: ["create", "update", "delete", "read"],
+  callRating: ["create", "update", "delete", "read"],
   modelDeployment: ["create", "update", "delete", "read"],
   model: ["create", "update", "delete", "read"],
   aiApplication: ["create", "update", "delete", "read"],
@@ -38,7 +38,7 @@ export const admin = ac.newRole({ ...fullAccessPermissions, ...restrictedResourc
 export const member = ac.newRole({ ...fullAccessPermissions, ...memberAc.statements });
 
 export const labeler = ac.newRole({
-  apiCallResponse: ["create", "delete", "update", "read"],
+  callRating: ["create", "delete", "update", "read"],
   apiCall: ["read"],
   model: ["read"],
   aiApplication: ["read"],
@@ -49,7 +49,7 @@ export const viewer = ac.newRole({
   apiCall: ["read"],
   modelDeployment: ["read"],
   model: ["read"],
-  apiCallResponse: ["read"],
+  callRating: ["read"],
   aiApplication: ["read"],
   ...memberAc.statements,
 });
