@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { ApiCall, ApiCallResponse } from "common-db";
-  import type { ApiCallReactionSummary } from "./data.remote";
+  import type { ApiCallResponse } from "common-db";
+  import type { ApiCallReactionSummary, DataViewCall } from "./data.remote";
   import { messageContentToString } from "./data.utils";
   import * as Card from "$lib/components/ui/card";
   import { Badge } from "$lib/components/ui/badge";
@@ -23,11 +23,11 @@
     onSelectToggle = () => {},
     onSelectAll = (_checked: boolean) => {},
   }: {
-    calls?: ApiCall[];
+    calls?: DataViewCall[];
     loading?: boolean;
     selectedCallId?: string | null;
     formatDate: (date: Date) => string;
-    onSelect?: (call: ApiCall) => void;
+    onSelect?: (call: DataViewCall) => void;
     onLoadMore?: () => void;
     loadingMore?: boolean;
     hasMore?: boolean;
@@ -66,7 +66,7 @@
     return () => observer.disconnect();
   });
 
-  function startOfPrompt(call: ApiCall) {
+  function startOfPrompt(call: DataViewCall) {
     const first = call.inputMessages?.[0];
     if (!first) return "";
     return messageContentToString(first.content);

@@ -1,14 +1,10 @@
 /**
- * ORPC procedures for API call data and seeded examples.
+ * ORPC procedures for API call data.
  */
 import { rootOs, withOrganization, requirePermission, auditMiddleware } from "../root";
 import { z } from "zod";
-import exampleCalls from "./example.call.data.json" with { type: "json" };
-import { sql, aiApiKeyT, apiCallT, type ApiCallInputMessage } from "common-db";
+import { sql, aiApiKeyT, apiCallT, inferenceCallT } from "common-db";
 import { getDB } from "$lib/server/db";
-import { rootLogger } from "$lib/server/logging";
-
-const log = rootLogger.child({ name: "api-call.procedure" });
 
 const tags = ["API Call"];
 
@@ -27,50 +23,6 @@ async function findApiKeyInOrg(keyId: string, orgId: string) {
     .limit(1);
   return key;
 }
-
-/** Adds seeded example API calls for a specific API key (dev-only). */
-const addExampleCalls = rootOs
-  .meta({mcp: false})
-  .use(withOrganization)
-  .use(requirePermission({ apiCall: ["delete"] }))
-  .route({ method: "POST", path: "/add-example-data", tags: [...tags, ".internal"], summary: "Add example api calls (dev)" })
-  .input(z.object({ apiKeyId: z.uuid(), applicationId: z.uuid() }))
-  .errors({
-    NOT_FOUND: { message: "API key not found" },
-    NOT_ACCEPTABLE: { message: "Dev-only procedure" },
-  })
-  .handler(async ({ context, input, errors }) => {
-    if (process.env.NODE_ENV === "production") {
-      throw errors.NOT_ACCEPTABLE();
-    }
-    const rlog = log.child({ traceId: context.traceId });
-    const orgId = context.activeOrganizationId;
-    const key = await findApiKeyInOrg(input.apiKeyId, orgId);
-    if (!key) {
-      throw errors.NOT_FOUND();
-    }
-
-    try {
-      await getDB()
-        .insert(apiCallT)
-        .values(
-          exampleCalls.map((v) => ({
-            ...v,
-            apiKeyId: key.id,
-            applicationId: input.applicationId,
-            organizationId: orgId,
-            specifiedModel: v.model,
-            inputMessages: v.inputMessages as ApiCallInputMessage[],
-            outputMessage: v.outputMessage as ApiCallInputMessage,
-          })),
-        );
-
-    } catch (e) {
-      rlog.error({ err: e }, "Error inserting example calls");
-      throw e;
-    }
-  });
-
 
 /** Lists API calls for a specific API key in the active organization. */
 const listApiCalls = rootOs
@@ -104,13 +56,13 @@ const deleteApiCalls = rootOs
   }))
   .handler(async ({ context, input }) => {
     const result = await getDB()
-      .delete(apiCallT)
+      .delete(inferenceCallT)
       .where(sql`
-        ${apiCallT.organizationId} = ${context.activeOrganizationId}
+        ${inferenceCallT.organizationId} = ${context.activeOrganizationId}
       AND
-        ${apiCallT.id} IN ${input.apiCallIds}
+        ${inferenceCallT.id} IN ${input.apiCallIds}
       `)
-      .returning({ id: apiCallT.id });
+      .returning({ id: inferenceCallT.id });
     return { deleted: result.length };
   });
 
@@ -128,12 +80,12 @@ const updateMetadata = rootOs
   .errors({ NOT_FOUND: { message: "API call not found" } })
   .handler(async ({ context, input, errors }) => {
     const result = await getDB()
-      .update(apiCallT)
-      .set({ metadata: input.metadata ?? null })
+      .update(inferenceCallT)
+      .set({ metadata: input.metadata ?? {} })
       .where(sql`
-        ${apiCallT.id} = ${input.callId}
+        ${inferenceCallT.id} = ${input.callId}
       AND
-        ${apiCallT.organizationId} = ${context.activeOrganizationId}
+        ${inferenceCallT.organizationId} = ${context.activeOrganizationId}
       `)
       .returning();
     if (!result.length) {
@@ -155,19 +107,18 @@ const reassignApplication = rootOs
   }))
   .handler(async ({ context, input }) => {
     const result = await getDB()
-      .update(apiCallT)
+      .update(inferenceCallT)
       .set({ applicationId: input.applicationId })
       .where(sql`
-        ${apiCallT.organizationId} = ${context.activeOrganizationId}
+        ${inferenceCallT.organizationId} = ${context.activeOrganizationId}
       AND
-        ${apiCallT.id} IN ${input.apiCallIds}
+        ${inferenceCallT.id} IN ${input.apiCallIds}
       `)
-      .returning({ id: apiCallT.id });
+      .returning({ id: inferenceCallT.id });
     return { reassigned: result.length };
   });
 
 export const apiCallRouter = rootOs.prefix("/api-call").router({
-  addExampleCalls,
   list: listApiCalls,
   delete: deleteApiCalls,
   updateMetadata,

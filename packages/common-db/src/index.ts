@@ -15,4 +15,5 @@ export * from "./migrations";
 export * from "./connection";
 export { drizzle } from "drizzle-orm/postgres-js";
 export * from "drizzle-orm";
+export { unionAll } from "drizzle-orm/pg-core";
 export type { PgColumn, PgTable } from "drizzle-orm/pg-core";

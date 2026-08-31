@@ -12,8 +12,9 @@
     getApiCallCount,
     getApiKeys,
     type ApiCallReactionSummary,
+    type DataViewCall,
   } from "./data.remote";
-  import type { ApiCall, ApiCallResponse } from "common-db";
+  import type { ApiCallResponse } from "common-db";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import { permissions } from "$lib/state/permissions.svelte";
   import { orpc } from "$lib/orpc/orpc-client";
@@ -52,8 +53,8 @@
   let reactionFilter: ReactionFilter = $state("all");
   let metadataKey = $state("");
   let metadataValue = $state("");
-  let selectedCall: ApiCall | null = $state(null);
-  let deleteTarget = $state<ApiCall | null>(null);
+  let selectedCall: DataViewCall | null = $state(null);
+  let deleteTarget = $state<DataViewCall | null>(null);
   let deleteModalOpen = $state(false);
   let deleting = $state(false);
   let selectedCallIds = $state(new Set<string>());
@@ -84,7 +85,7 @@
     selectedCallIds = new Set();
   }
 
-  let allCalls = $state<ApiCall[]>([]);
+  let allCalls = $state<DataViewCall[]>([]);
   let offset = $state(0);
   let loadingMore = $state(false);
   let hasMore = $state(true);
@@ -205,7 +206,7 @@
     return responseRequests.get(callId)?.current ?? null;
   }
 
-  function getFilteredCalls(calls: ApiCall[]) {
+  function getFilteredCalls(calls: DataViewCall[]) {
     if (reactionFilter === "all") return calls;
     return calls.filter((call) => {
       const reactionSummary = getReactionSummary(call.id);
@@ -228,7 +229,7 @@
     });
   }
 
-  function selectCall(call: ApiCall) {
+  function selectCall(call: DataViewCall) {
     selectedCall = call;
   }
 
@@ -238,7 +239,7 @@
     offset = allCalls.length;
   }
 
-  function requestDelete(call: ApiCall) {
+  function requestDelete(call: DataViewCall) {
     deleteTarget = call;
     deleteModalOpen = true;
   }

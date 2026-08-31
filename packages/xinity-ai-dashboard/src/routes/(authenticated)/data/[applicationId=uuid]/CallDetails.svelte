@@ -1,13 +1,12 @@
 <script lang="ts">
   import type {
-    ApiCall,
     ApiCallInputMessage,
     ApiCallResponse,
     InputExclusion,
   } from "common-db";
   import { onDestroy } from "svelte";
   import { humanDate, formatDurationMs } from "$lib/util";
-  import { getAPICallResponse, upsertApiCallResponse } from "./data.remote";
+  import { getAPICallResponse, upsertApiCallResponse, type DataViewCall } from "./data.remote";
   import { orpc } from "$lib/orpc/orpc-client";
   import { messageContentToString, getRoleStyle, resolveImageSrc } from "./data.utils";
   import HighlightPopup from "./HighlightPopup.svelte";
@@ -33,10 +32,10 @@
     canDelete = false,
     canUpdate = false,
   }: {
-    call?: ApiCall | null;
+    call?: DataViewCall | null;
     apiKeyNameMap: Map<string, string>;
     formatDate?: (date: Date) => string;
-    onDelete?: (call: ApiCall) => void;
+    onDelete?: (call: DataViewCall) => void;
     canDelete?: boolean;
     canUpdate?: boolean;
   } = $props();
@@ -55,7 +54,7 @@
     metadataEditorOpen = false;
   }
 
-  let activeCall = $state<ApiCall | null>(null);
+  let activeCall = $state<DataViewCall | null>(null);
   let currentRating = $state<ApiCallResponse | null>(null);
   let editedResponse = $state("");
   let lastSavedValue = $state("");
@@ -199,7 +198,7 @@
   }
 
   function deriveResponseText(
-    nextCall: ApiCall,
+    nextCall: DataViewCall,
     nextRating: ApiCallResponse | null,
   ) {
     return (
@@ -235,7 +234,7 @@
   }
 
   function initializeFromCall(
-    nextCall: ApiCall,
+    nextCall: DataViewCall,
     nextRating: ApiCallResponse | null,
   ) {
     activeCall = nextCall;
@@ -742,7 +741,7 @@
 
   function syncRatingFromProps(
     nextRating: ApiCallResponse | null,
-    callContext: ApiCall | null = activeCall,
+    callContext: DataViewCall | null = activeCall,
   ) {
     currentRating = nextRating ? { ...nextRating } : null;
 
