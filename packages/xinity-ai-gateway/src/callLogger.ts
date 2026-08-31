@@ -32,6 +32,8 @@ type ChatLogFields = {
   /** The name the engine knows the model by, which `api_call` does not record. */
   engineModel: string;
   endpoint: InferenceEndpoint;
+  /** Reserved by a surface that had to record the id before the call was logged. */
+  inferenceCallId?: string | null;
   inputMessages: ApiCallInputMessage[];
   metadata?: Record<string, unknown>;
 };
@@ -175,11 +177,14 @@ function buildQueuedCall(
   input: ChatLogFields,
   model: string,
   outputMessage: ApiCallInputMessage,
+  choiceIndex: number,
 ): QueuedCall {
   const row = sanitizeRow(buildApiCallRow(input, model, outputMessage));
   return {
     row,
     record: {
+      // Only the first choice can claim it: every choice is its own call row.
+      id: choiceIndex === 0 ? input.inferenceCallId ?? undefined : undefined,
       organizationId: input.organizationId,
       apiKeyId: input.keyId,
       applicationId: input.applicationId,
@@ -195,8 +200,8 @@ function buildQueuedCall(
 }
 
 export async function logChatSync(input: ChatSyncInput) {
-  const calls = input.data.choices.map((choice) =>
-    buildQueuedCall(input, input.data.model, toOutputMessage(choice.message)),
+  const calls = input.data.choices.map((choice, index) =>
+    buildQueuedCall(input, input.data.model, toOutputMessage(choice.message), index),
   );
   if (calls.length === 0) {
     return;
@@ -206,7 +211,7 @@ export async function logChatSync(input: ChatSyncInput) {
 
 export async function logChatStream(input: ChatStreamInput) {
   const calls = input.data.flatMap((entry) =>
-    entry.choices.map((choice) => buildQueuedCall(input, entry.model, toOutputMessage(choice.delta))),
+    entry.choices.map((choice) => buildQueuedCall(input, entry.model, toOutputMessage(choice.delta), choice.index)),
   );
   if (calls.length === 0) {
     return;

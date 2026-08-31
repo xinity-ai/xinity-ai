@@ -33,6 +33,7 @@ async function persist(orgId: string, response: ResponseObject, creation?: Respo
     orgId,
     apiKeyId: creation?.apiKeyId ?? null,
     applicationId: creation?.applicationId ?? null,
+    inferenceCallId: creation?.inferenceCallId ?? null,
   };
   try {
     if (response.status === "in_progress") {

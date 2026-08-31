@@ -93,6 +93,7 @@ export type CallLogFields = {
   readonly modelInfo: { model: string; nodeId?: string | null };
   readonly publicSpecifier: string;
   readonly endpoint: InferenceEndpoint;
+  readonly inferenceCallId?: string | null;
   readonly inputMessages: ApiCallInputMessage[];
   readonly callStartTime: number;
   readonly logCalls?: boolean;
@@ -112,6 +113,7 @@ export const logChatUsage = ({
   modelInfo,
   publicSpecifier,
   endpoint,
+  inferenceCallId,
   inputMessages,
   callStartTime,
   logCalls,
@@ -129,6 +131,7 @@ export const logChatUsage = ({
     publicSpecifier,
     engineModel: modelInfo.model,
     endpoint,
+    inferenceCallId,
     durationInMS: Date.now() - callStartTime,
     inputMessages,
     metadata,

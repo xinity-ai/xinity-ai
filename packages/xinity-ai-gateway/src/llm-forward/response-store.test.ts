@@ -91,7 +91,7 @@ function headerRow() {
   };
 }
 
-const CREATION = { apiKeyId: "key-1", applicationId: "app-1", inputMessages: [] };
+const CREATION = { apiKeyId: "key-1", applicationId: "app-1", inferenceCallId: null, inputMessages: [] };
 
 describe("saveResponse", () => {
   test("records a new response when given creation context", async () => {

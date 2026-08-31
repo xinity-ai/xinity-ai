@@ -98,6 +98,16 @@ describe("recordInferenceCalls", () => {
     expect(insertsInto("chat_message")).toHaveLength(2);
   });
 
+  test("uses an id a caller reserved, so a row can be pointed at before it exists", async () => {
+    const reserved = "77777777-7777-4777-8777-777777777777";
+    resolveTo(user("Hi"), assistant("Hello"));
+
+    const [id] = await recordInferenceCalls([call(freshOrg(), { id: reserved })]);
+
+    expect(id).toBe(reserved);
+    expect(insertsInto("inference_call")[0]?.params).toContain(reserved);
+  });
+
   test("writes a header and nothing else for a surface that carries no messages", async () => {
     await recordInferenceCalls([
       call(freshOrg(), { endpoint: "embeddings", inputMessages: [], outputMessages: [] }),

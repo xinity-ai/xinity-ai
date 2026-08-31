@@ -48,6 +48,7 @@ function toRequestParams(response: ResponseObject): Record<string, unknown> {
 export type ResponseAttribution = {
   apiKeyId: string | null;
   applicationId: string | null;
+  inferenceCallId: string | null;
 };
 
 export type ResponseOwner = ResponseAttribution & { orgId: string };
@@ -72,6 +73,7 @@ export function toResponseRow(
     incompleteDetails: response.incomplete_details,
     usage: response.usage as Record<string, unknown> | null,
     completedAt: response.completed_at === null ? null : new Date(response.completed_at * 1000),
+    inferenceCallId: owner.inferenceCallId,
     createdAt: new Date(response.created_at * 1000),
   };
 }
@@ -116,12 +118,12 @@ export type CreatePersistedResponseArgs = ResponseOwner & {
  * visible without the messages it was built from.
  */
 export async function createPersistedResponse(args: CreatePersistedResponseArgs): Promise<void> {
-  const { response, orgId, apiKeyId, applicationId, inputMessages } = args;
+  const { response, orgId, apiKeyId, applicationId, inferenceCallId, inputMessages } = args;
 
   await getDB().transaction(async (tx) => {
     const inserted = await tx
       .insert(apiResponseT)
-      .values(toResponseRow(response, "in_progress", { orgId, apiKeyId, applicationId }))
+      .values(toResponseRow(response, "in_progress", { orgId, apiKeyId, applicationId, inferenceCallId }))
       .onConflictDoNothing()
       .returning({ id: apiResponseT.id });
 

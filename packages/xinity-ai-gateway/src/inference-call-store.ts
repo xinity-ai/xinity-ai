@@ -9,6 +9,8 @@ import { getDB } from "./db";
 import { resolveChatMessageIds } from "./chat-message-store";
 
 export type InferenceCallRecord = {
+  /** Set when a caller needed the id before the batch was flushed. */
+  id?: string;
   organizationId: string;
   apiKeyId: string | null;
   applicationId: string | null;
@@ -84,7 +86,7 @@ export async function recordInferenceCalls(calls: InferenceCallRecord[]): Promis
     return [];
   }
 
-  const ids = calls.map(() => crypto.randomUUID());
+  const ids = calls.map((call) => call.id ?? crypto.randomUUID());
   const pending = pendingMessages(calls);
 
   await getDB().transaction(async (tx) => {

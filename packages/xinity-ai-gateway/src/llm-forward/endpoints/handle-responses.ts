@@ -104,6 +104,9 @@ async function prepareResponseRequest(req: Request): Promise<PreparedRequest | R
   const messagesForLLM = [...historyForModel, ...processed.messagesForLLM];
   const messagesForDB = [...historyForLog, ...processed.messagesForDB];
 
+  // Reserved up front because the response settles before the log is flushed, and only when
+  // the call will be logged, so the column never names a row that was never written.
+  const inferenceCallId = (body.store ?? auth.collectData) ? crypto.randomUUID() : null;
 
   return {
     ...authorized,
@@ -123,12 +126,14 @@ async function prepareResponseRequest(req: Request): Promise<PreparedRequest | R
       modelInfo,
       publicSpecifier: originalModel,
       endpoint: "responses" as const,
+      inferenceCallId,
       inputMessages: messagesForDB,
       callStartTime,
       logCalls: body.store,
       metadata: body.metadata as Record<string, unknown> | undefined,
     },
     creation: {
+      inferenceCallId,
       apiKeyId: auth.keyId,
       applicationId: auth.applicationId,
       inputMessages: messagesForDB,

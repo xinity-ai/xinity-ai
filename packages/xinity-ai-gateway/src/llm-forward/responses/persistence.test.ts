@@ -80,7 +80,7 @@ function makeResponse(overrides: Partial<ResponseObject> = {}): ResponseObject {
   } as ResponseObject;
 }
 
-const OWNER = { orgId: "org-1", apiKeyId: "key-1", applicationId: "app-1" };
+const OWNER = { orgId: "org-1", apiKeyId: "key-1", applicationId: "app-1", inferenceCallId: null };
 
 /** The insert shape less its defaulted columns is the select shape. */
 function asSelected(row: ReturnType<typeof toResponseRow>): typeof apiResponseT.$inferSelect {
