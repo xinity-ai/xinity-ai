@@ -1,4 +1,6 @@
 #!/usr/bin/env bun
+import "zod/compile";
+
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { version } from "../../../package.json";

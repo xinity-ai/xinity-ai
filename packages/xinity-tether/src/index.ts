@@ -1,3 +1,5 @@
+import "zod/compile";
+
 import { logMigrationFailureFatal } from "common-db";
 import { nodeRegistrationSchema, installationStateReportSchema, protocolFingerprint, getTlsConfig } from "common-env";
 import { env } from "./env";

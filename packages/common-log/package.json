@@ -11,10 +11,10 @@
   "private": true,
   "dependencies": {
     "common-env": "workspace:*",
-    "pino": "^10.3.1"
+    "pino": "catalog:"
   },
   "peerDependencies": {
-    "typescript": "^5.9.3",
-    "zod": "^4.4.2"
+    "typescript": "catalog:",
+    "zod": "catalog:"
   }
 }

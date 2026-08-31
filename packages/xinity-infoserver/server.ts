@@ -1,3 +1,5 @@
+import "zod/compile";
+
 import { createLegacyModelJsonSchema, createModelJsonSchema } from "./definitions/model-definition";
 import { version } from "../../package.json";
 import { env } from "./env";
