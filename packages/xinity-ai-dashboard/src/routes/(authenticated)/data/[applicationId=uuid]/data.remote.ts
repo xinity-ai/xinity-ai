@@ -1,6 +1,7 @@
 import { command, getRequestEvent, query } from '$app/server';
 import { auth } from '$lib/server/auth-server';
 import { getDB } from '$lib/server/db';
+import { legacyMatchesSearch, searchPattern } from "$lib/server/call-messages";
 import { pick } from '$lib/util';
 import { error } from '@sveltejs/kit';
 import { apiCallResponseT, apiCallT, aiApiKeyT, sql, type ApiCall, type AiApiKey, and, inArray } from 'common-db';
@@ -13,10 +14,6 @@ async function getSession() {
     throw error(401, "Not logged in")
   }
   return session;
-}
-
-function escapeLikePattern(s: string): string {
-  return s.replace(/[%_\\]/g, "\\$&");
 }
 
 async function apiCallExistsInOrg(apiCallId: string, organizationId: string | null | undefined): Promise<boolean> {
@@ -55,10 +52,7 @@ function buildApiCallConditions(opts: {
     conditions.push(sql`${apiCallT.metadata} @> ${JSON.stringify({ [opts.metadataKey]: opts.metadataValue })}::jsonb`);
   }
   if (opts.searchQuery && opts.searchQuery.trim().length > 0) {
-    const term = `%${escapeLikePattern(opts.searchQuery.trim())}%`;
-    conditions.push(
-      sql`(${apiCallT.inputMessages}::text ILIKE ${term} OR ${apiCallT.outputMessage}::text ILIKE ${term})`
-    );
+    conditions.push(legacyMatchesSearch(searchPattern(opts.searchQuery)));
   }
   return conditions;
 }
