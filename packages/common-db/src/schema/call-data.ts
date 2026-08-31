@@ -130,6 +130,8 @@ export const apiResponseT = callDataSchema.table("api_response", {
   incompleteDetails: jsonb("incomplete_details").$type<{ reason: string }>(),
   usage: jsonb().$type<Record<string, unknown>>(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
+  /** No FK: a response can be retrievable without being logged. */
+  inferenceCallId: uuid("inference_call_id"),
   createdAt,
 }, table => [
   index("api_response_organization_id_created_at_idx").on(table.organizationId, table.createdAt),
@@ -170,6 +172,54 @@ export const apiResponseMessageT = callDataSchema.table("api_response_message", 
 ]);
 export type ApiResponseMessage = InferSelectModel<typeof apiResponseMessageT>;
 
+export const inferenceEndpointEnum = callDataSchema.enum("inference_endpoint", [
+  "chat_completions",
+  "completions",
+  "embeddings",
+  "audio_transcriptions",
+  "rerank",
+  "responses",
+]);
+export type InferenceEndpoint = (typeof inferenceEndpointEnum.enumValues)[number];
+
+export const inferenceCallT = callDataSchema.table("inference_call", {
+  id: uuid().primaryKey().defaultRandom(),
+  organizationId: text("organization_id")
+    .notNull()
+    .references(() => organizationT.id, { onDelete: "cascade" }),
+  apiKeyId: uuid("api_key_id").references(() => aiApiKeyT.id, { onDelete: "set null" }),
+  applicationId: uuid("application_id").references(() => aiApplicationT.id, { onDelete: "set null" }),
+  endpoint: inferenceEndpointEnum().notNull(),
+  model: text().notNull(),
+  specifiedModel: text("specified_model").notNull(),
+  user: text(),
+  /** in milliseconds */
+  duration: integer().notNull(),
+  metadata: jsonb().$type<Record<string, unknown>>().notNull().default({}),
+  createdAt,
+}, table => [
+  index("inference_call_api_key_id_idx").on(table.apiKeyId),
+  index("inference_call_application_id_idx").on(table.applicationId),
+  index("inference_call_organization_id_idx").on(table.organizationId),
+  index("inference_call_organization_id_created_at_idx").on(table.organizationId, table.createdAt),
+  index("inference_call_model_idx").on(table.model),
+  index("inference_call_org_endpoint_created_at_idx").on(table.organizationId, table.endpoint, table.createdAt),
+]);
+export type InferenceCall = InferSelectModel<typeof inferenceCallT>;
+
+export const inferenceCallMessageT = callDataSchema.table("inference_call_message", {
+  callId: uuid("call_id")
+    .notNull()
+    .references(() => inferenceCallT.id, { onDelete: "cascade" }),
+  seq: integer().notNull(),
+  messageId: uuid("message_id").notNull().references(() => chatMessageT.id),
+  direction: messageDirectionEnum().notNull(),
+}, table => [
+  primaryKey({ columns: [table.callId, table.seq] }),
+  index("inference_call_message_message_id_idx").on(table.messageId),
+]);
+export type InferenceCallMessage = InferSelectModel<typeof inferenceCallMessageT>;
+
 export type Highlight = {
   start: number;
   end: number;
@@ -203,6 +253,24 @@ export const apiCallResponseT = callDataSchema.table("api_call_response", {
   primaryKey({ columns: [table.userId, table.apiCallId] }),
 ]);
 export type ApiCallResponse = InferSelectModel<typeof apiCallResponseT>;
+
+export const inferenceCallRatingT = callDataSchema.table("inference_call_rating", {
+  userId: text("user_id").notNull().references(() => userT.id, { onDelete: "cascade" }),
+  callId: uuid("call_id")
+    .notNull()
+    .references(() => inferenceCallT.id, { onDelete: "cascade" }),
+  /** Like (true), dislike (false), or rated without a verdict (null). */
+  response: boolean(),
+  outputEdit: text("output_edit"),
+  highlights: jsonb().$type<Highlight[]>().notNull().default([]),
+  excludedMessages: jsonb("excluded_messages").$type<number[]>().notNull().default([]),
+  inputExclusions: jsonb("input_exclusions").$type<InputExclusion[]>().notNull().default([]),
+  createdAt,
+  updatedAt,
+}, table => [
+  primaryKey({ columns: [table.userId, table.callId] }),
+]);
+export type InferenceCallRating = InferSelectModel<typeof inferenceCallRatingT>;
 
 /** Per-call usage event. One row for every API call (including unlogged and embeddings). */
 export const usageEventT = callDataSchema.table("usage_event", {
