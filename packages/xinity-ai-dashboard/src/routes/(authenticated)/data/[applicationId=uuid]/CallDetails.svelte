@@ -15,7 +15,7 @@
   import * as Card from "$lib/components/ui/card";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
-  import { Download, Trash2, Pencil, Eye, EyeOff, Ban, X } from "@lucide/svelte";
+  import { Download, Trash2, Pencil, Eye, EyeOff, Ban, X, Archive } from "@lucide/svelte";
   import MetadataEditor from "./MetadataEditor.svelte";
 
   type Highlight = {
@@ -55,6 +55,9 @@
   }
 
   let activeCall = $state<DataViewCall | null>(null);
+
+  /** Calls in the legacy table are read-only until an instance admin converts them. */
+  const frozen = $derived(activeCall?.source === "legacy");
   let currentRating = $state<ApiCallResponse | null>(null);
   let editedResponse = $state("");
   let lastSavedValue = $state("");
@@ -790,13 +793,22 @@
             </Button>
           {/if}
           {#if canDelete}
-            <Button variant="ghost" size="icon" onclick={() => activeCall && onDelete?.(activeCall)} title="Delete call">
+            <Button variant="ghost" size="icon" disabled={frozen} onclick={() => activeCall && onDelete?.(activeCall)} title={frozen ? "Stored in the old format, so it cannot be deleted" : "Delete call"}>
               <Trash2 class="w-4 h-4 text-destructive" />
             </Button>
           {/if}
         </div>
       </div>
     </Card.Header>
+    {#if frozen}
+      <div class="flex items-start gap-2 px-6 py-3 compact:px-3 compact:py-2 text-sm border-b bg-muted/30 text-muted-foreground">
+        <Archive class="mt-0.5 size-4 shrink-0" />
+        <p>
+          This call is stored in the old format, so it cannot be labelled, edited or deleted.
+          An instance admin can convert it under Instance Settings, Maintenance.
+        </p>
+      </div>
+    {/if}
     <Card.Content class="p-6 compact:p-3">
       <div class="grid grid-cols-1 gap-6 compact:gap-3 md:grid-cols-2">
         <div>
@@ -967,6 +979,7 @@
               <Button
                 variant="outline"
                 size="sm"
+                disabled={frozen}
                 onclick={() => { editTabUnlocked = true; responseTab = "edit"; }}
               >
                 <Pencil class="w-3.5 h-3.5" />
@@ -1079,6 +1092,7 @@
           <RatingControls
             value={currentRating?.response ?? null}
             isEdited={isEdited}
+            disabled={frozen}
             onRate={rateResponse}
           />
         </div>
@@ -1124,7 +1138,7 @@
           <div class="flex items-center justify-between mb-2">
             <h3 class="text-lg compact:mb-1 compact:text-base font-medium">Metadata</h3>
             {#if canUpdate}
-              <Button variant="outline" size="sm" onclick={() => (metadataEditorOpen = true)}>
+              <Button variant="outline" size="sm" disabled={frozen} onclick={() => (metadataEditorOpen = true)}>
                 <Pencil class="w-3 h-3" />
                 {hasMetadata ? "Edit" : "Add"}
               </Button>
