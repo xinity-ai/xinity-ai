@@ -7,6 +7,7 @@ import type { S3Client } from "bun";
 import { mediaObjectT, sql, type ApiCallInputMessage, type ApiCallInputMessageContent } from "common-db";
 import { bytesDigest } from "common-env";
 import { formatMediaRef, parseMediaRef } from "common-env/media-ref";
+import { isStorableImageType, STORABLE_IMAGE_TYPES, type StorableImageType } from "common-env/image-types";
 import { rootLogger } from "./logger";
 import { getDB } from "./db";
 import { env } from "./env";
@@ -64,6 +65,49 @@ export function isImageTooLarge(error: unknown): boolean {
     && (error as { code?: unknown }).code === IMAGE_TOO_LARGE;
 }
 
+const IMAGE_TYPE_UNSUPPORTED = "image_type_unsupported";
+
+/** Refused rather than stored: these bytes are served back to a browser later. */
+function imageTypeUnsupportedError(declared: string): Error {
+  return Object.assign(
+    new Error(`Image type ${declared || "unknown"} is not supported. Supported: ${STORABLE_IMAGE_TYPES.join(", ")}`),
+    { code: IMAGE_TYPE_UNSUPPORTED },
+  );
+}
+
+export function isImageTypeUnsupported(error: unknown): boolean {
+  return typeof error === "object" && error !== null
+    && (error as { code?: unknown }).code === IMAGE_TYPE_UNSUPPORTED;
+}
+
+const MAGIC: Array<{ type: StorableImageType; matches: (b: Uint8Array) => boolean }> = [
+  { type: "image/png", matches: (b) => starts(b, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) },
+  { type: "image/jpeg", matches: (b) => starts(b, [0xff, 0xd8, 0xff]) },
+  { type: "image/gif", matches: (b) => starts(b, [0x47, 0x49, 0x46, 0x38]) },
+  { type: "image/bmp", matches: (b) => starts(b, [0x42, 0x4d]) },
+  { type: "image/tiff", matches: (b) => starts(b, [0x49, 0x49, 0x2a, 0x00]) || starts(b, [0x4d, 0x4d, 0x00, 0x2a]) },
+  { type: "image/webp", matches: (b) => starts(b, [0x52, 0x49, 0x46, 0x46]) && tagAt(b, 8) === "WEBP" },
+  { type: "image/avif", matches: (b) => tagAt(b, 4) === "ftyp" && tagAt(b, 8) === "avif" },
+  { type: "image/heic", matches: (b) => tagAt(b, 4) === "ftyp" && ["heic", "heix", "mif1"].includes(tagAt(b, 8)) },
+];
+
+function starts(bytes: Uint8Array, prefix: number[]): boolean {
+  return prefix.every((byte, index) => bytes[index] === byte);
+}
+
+function tagAt(bytes: Uint8Array, offset: number): string {
+  return String.fromCharCode(...bytes.subarray(offset, offset + 4));
+}
+
+/**
+ * The bytes are the only trustworthy source. A data URI carries whatever the client declared, and
+ * an external server may send a wrong `content-type` or none at all, but the stored type ends up
+ * on the S3 object and decides whether a browser renders it or downloads it.
+ */
+export function sniffImageType(bytes: Uint8Array): StorableImageType | null {
+  return MAGIC.find((format) => format.matches(bytes))?.type ?? null;
+}
+
 function parseDataUri(url: string): ResolvedImage | null {
   // data:[<mediatype>][;base64],<data>
   const [, mimeType, data] = url.match(/^data:([^;,]+)(?:;base64)?,(.+)$/s) ?? [];
@@ -117,7 +161,12 @@ async function processImage(
     return { dataUri: null, dbUrl: null };
   }
 
-  const { mimeType, bytes } = resolved;
+  const { bytes } = resolved;
+  const sniffed = sniffImageType(bytes);
+  if (!sniffed) {
+    throw imageTypeUnsupportedError(resolved.mimeType);
+  }
+  const mimeType = isStorableImageType(resolved.mimeType) ? resolved.mimeType : sniffed;
   const dataUri = isDataUri
     ? imageUrl
     : `data:${mimeType};base64,${Buffer.from(bytes).toString("base64")}`;

@@ -12,6 +12,10 @@
     "./media-ref": {
       "types": "./src/media-ref.ts",
       "default": "./src/media-ref.ts"
+    },
+    "./image-types": {
+      "types": "./src/image-types.ts",
+      "default": "./src/image-types.ts"
     }
   },
   "type": "module",

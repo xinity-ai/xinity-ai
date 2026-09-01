@@ -32,7 +32,8 @@ mock.module("./db", () => ({
 
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 
-const { processMessageImages, resolveMediaRef, restoreMessageImages } = await import("./image-store");
+const { processMessageImages, resolveMediaRef, restoreMessageImages, sniffImageType } = await import("./image-store");
+import type { StorableImageType } from "common-env/image-types";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -376,5 +377,114 @@ describe("processMessageImages – store = false", () => {
     ] as any;
 
     await expect(processMessageImages(messages, "org-1", null, false)).rejects.toThrow(/over the 40MB limit/);
+  });
+});
+
+// ─── mime type is taken from the bytes ───────────────────────────────────────
+
+describe("sniffImageType", () => {
+  test("recognises the formats a model is likely to be sent", () => {
+    const cases: Array<[StorableImageType, number[]]> = [
+      ["image/png", [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]],
+      ["image/jpeg", [0xff, 0xd8, 0xff, 0xe0]],
+      ["image/gif", [0x47, 0x49, 0x46, 0x38, 0x39, 0x61]],
+      ["image/bmp", [0x42, 0x4d, 0x00, 0x00]],
+      ["image/tiff", [0x4d, 0x4d, 0x00, 0x2a]],
+    ];
+    for (const [expected, bytes] of cases) {
+      expect(sniffImageType(new Uint8Array(bytes))).toBe(expected);
+    }
+  });
+
+  test("reads the brand of a container format rather than stopping at the box", () => {
+    const riff = [0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0];
+    expect(sniffImageType(new Uint8Array([...riff, ...Buffer.from("WEBP")]))).toBe("image/webp");
+    expect(sniffImageType(new Uint8Array([0, 0, 0, 0, ...Buffer.from("ftypavif")]))).toBe("image/avif");
+    expect(sniffImageType(new Uint8Array([0, 0, 0, 0, ...Buffer.from("ftypheic")]))).toBe("image/heic");
+    // RIFF without the WEBP brand is some other RIFF file, not an image.
+    expect(sniffImageType(new Uint8Array([...riff, ...Buffer.from("AVI ")]))).toBeNull();
+  });
+
+  test("returns null for bytes it does not recognise", () => {
+    expect(sniffImageType(new Uint8Array([0x00, 0x01, 0x02, 0x03]))).toBeNull();
+    expect(sniffImageType(new Uint8Array([]))).toBeNull();
+  });
+});
+
+describe("stored mime type", () => {
+  let writeCall: ReturnType<typeof mock>;
+  let store: ReturnType<typeof makeImageStore>;
+
+  beforeEach(() => {
+    capturedQueries.length = 0;
+    writeCall = mock(() => Promise.resolve());
+    store = makeImageStore(writeCall);
+  });
+
+  test("keeps a declared image type, even when the bytes say otherwise", async () => {
+    const mislabelled = `data:image/gif;base64,${TINY_PNG_BASE64}`;
+    const messages = [
+      { role: "user", content: [{ type: "image_url", image_url: { url: mislabelled } }] },
+    ] as any;
+
+    await processMessageImages(messages, "org-1", store, true);
+
+    expect(findInsert()!.params).toContain("image/gif");
+  });
+
+  test("falls back to the bytes when the source declared nothing usable", async () => {
+    const unhelpful = `data:application/octet-stream;base64,${TINY_PNG_BASE64}`;
+    const messages = [
+      { role: "user", content: [{ type: "image_url", image_url: { url: unhelpful } }] },
+    ] as any;
+
+    await processMessageImages(messages, "org-1", store, true);
+
+    expect(findInsert()!.params).toContain("image/png");
+    expect(findInsert()!.params).not.toContain("application/octet-stream");
+  });
+
+  test("is attached to the S3 object, which is what a browser reads", async () => {
+    const messages = [
+      { role: "user", content: [{ type: "image_url", image_url: { url: TINY_PNG_DATA_URI } }] },
+    ] as any;
+
+    await processMessageImages(messages, "org-1", store, true);
+
+    const [, , options] = writeCall.mock.calls[0] as [string, unknown, { type: string }];
+    expect(options.type).toBe("image/png");
+  });
+});
+
+describe("unsupported image types", () => {
+  beforeEach(() => {
+    capturedQueries.length = 0;
+  });
+
+  /** Anything a browser would execute while rendering it, since these bytes are served back. */
+  const dangerous: Array<[string, string]> = [
+    ["svg", `data:image/svg+xml;base64,${Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>').toString("base64")}`],
+    ["html", `data:text/html;base64,${Buffer.from("<script>alert(1)</script>").toString("base64")}`],
+    ["pdf", `data:application/pdf;base64,${Buffer.from("%PDF-1.7\n").toString("base64")}`],
+  ];
+
+  test.each(dangerous)("refuses %s rather than storing it", async (_label, url) => {
+    const messages = [
+      { role: "user", content: [{ type: "image_url", image_url: { url } }] },
+    ] as any;
+
+    await expect(processMessageImages(messages, "org-1", makeImageStore(), true))
+      .rejects.toThrow(/not supported/);
+    expect(findInsert()).toBeUndefined();
+  });
+
+  test("refuses an unrecognised type even when the call will not be logged", async () => {
+    const svg = `data:image/svg+xml;base64,${Buffer.from("<svg/>").toString("base64")}`;
+    const messages = [
+      { role: "user", content: [{ type: "image_url", image_url: { url: svg } }] },
+    ] as any;
+
+    await expect(processMessageImages(messages, "org-1", null, false))
+      .rejects.toThrow(/not supported/);
   });
 });
