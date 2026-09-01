@@ -72,7 +72,7 @@ Use a secrets manager (e.g. [agenix](https://github.com/ryantm/agenix) or [sops-
 
 Every part of the stack is a toggle, so you can keep the convenience of `allinone` while supplying any individual piece yourself. Set any of these to `false` and that service is not configured at all:
 
-| Toggle | Default | Turn it off when |
+| Toggle | Default | Change it when |
 |---|---|---|
 | `database.enable` | on | PostgreSQL lives on another host |
 | `redis.enable` | on | Redis lives on another host |
