@@ -377,6 +377,9 @@ export async function menuEditEnv(
   const editable = fields.filter((f) => !hiddenKeys.has(f.key));
   const values: Record<string, string | undefined> = { ...existing };
   let showExpert = false;
+  // Returning to the top after every edit means scrolling back down to the neighbouring key, which
+  // is exactly the one you usually want next.
+  let cursor: string | undefined;
 
   const isUnset = (f: EnvField) => values[f.key] === undefined || values[f.key] === "";
   const requiredUnset = (f: EnvField) => isRequiredUnset(f, values);
@@ -408,12 +411,14 @@ export async function menuEditEnv(
     const choice = await select({
       message: opts?.message ?? "Select a value to update",
       options,
+      initialValue: cursor,
     });
 
     if (isCancel(choice)) return null;
 
     if (choice === "__expert__") {
       showExpert = !showExpert;
+      cursor = "__expert__";
       continue;
     }
 
@@ -428,6 +433,7 @@ export async function menuEditEnv(
       break;
     }
 
+    cursor = choice;
     const field = editable.find((f) => f.key === choice)!;
     const newValue = await promptField(field, values[field.key], true);
     if (newValue === FIELD_CANCELLED) {
