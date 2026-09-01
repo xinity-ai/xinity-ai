@@ -10,7 +10,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { apiCallT, mediaObjectT, preconfigureDB, sql } from "common-db";
+import { chatMessageT, inferenceCallMessageT, inferenceCallT, mediaObjectT, preconfigureDB, sql } from "common-db";
 import { readProcessOutput, waitForHttp } from "../test-helpers";
 import { ensureSystemReady } from "../guard";
 import { ensureInfoServerRunning, infoServerUrl } from "../infoserver/infoserver-test-helpers";
@@ -142,6 +142,35 @@ afterAll(async () => {
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
+/**
+ * Input messages of the most recent logged call. They are no longer inline on the call row: the
+ * log references deduplicated `chat_message` bodies, so reading one back means the join.
+ */
+async function loggedInputMessages(orgId: string): Promise<any[]> {
+  const [call] = await getDB()
+    .select({ id: inferenceCallT.id })
+    .from(inferenceCallT)
+    .where(sql`${inferenceCallT.organizationId} = ${orgId}`)
+    .orderBy(sql`${inferenceCallT.createdAt} DESC`)
+    .limit(1);
+  if (!call) {
+    return [];
+  }
+
+  const rows = await getDB()
+    .select({ body: chatMessageT.body })
+    .from(inferenceCallMessageT)
+    .innerJoin(chatMessageT, sql`${chatMessageT.id} = ${inferenceCallMessageT.messageId}`)
+    .where(sql`
+      ${inferenceCallMessageT.callId} = ${call.id}
+    AND
+      ${inferenceCallMessageT.direction} = 'input'
+    `)
+    .orderBy(sql`${inferenceCallMessageT.seq} ASC`);
+
+  return rows.map((row) => row.body as any);
+}
+
 describe("multimodal image storage (SeaweedFS S3)", () => {
   it("uploads a data URI image to S3 and stores xinity-media:// ref in DB", async () => {
     if (!(await isSeaweedFSReachable())) return;
@@ -192,14 +221,9 @@ describe("multimodal image storage (SeaweedFS S3)", () => {
     // Wait briefly for async log write
     await Bun.sleep(300);
 
-    const calls = await getDB()
-      .select()
-      .from(apiCallT)
-      .where(sql`${apiCallT.organizationId} = ${orgId}`);
+    const callMessages = await loggedInputMessages(orgId);
 
-    expect(calls.length).toBeGreaterThanOrEqual(1);
-    const call = calls[calls.length - 1]!;
-    const callMessages = call.inputMessages as any[];
+    expect(callMessages.length).toBeGreaterThanOrEqual(1);
     const userMsg = callMessages.find((m: any) => m.role === "user");
     expect(userMsg).toBeDefined();
 
@@ -339,14 +363,9 @@ describe("multimodal image storage (SeaweedFS S3)", () => {
 
       await Bun.sleep(300);
 
-      const calls = await getDB()
-        .select()
-        .from(apiCallT)
-        .where(sql`${apiCallT.organizationId} = ${orgId}`);
+      const callMessages = await loggedInputMessages(orgId);
 
-      expect(calls.length).toBeGreaterThanOrEqual(1);
-      const call = calls[calls.length - 1]!;
-      const callMessages = call.inputMessages as any[];
+      expect(callMessages.length).toBeGreaterThanOrEqual(1);
       const userMsg = callMessages.find((m: any) => m.role === "user");
       expect(userMsg).toBeDefined();
 
