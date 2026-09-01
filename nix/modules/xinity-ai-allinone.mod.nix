@@ -775,6 +775,12 @@
             s3Config = lib.mkDefault cfg.seaweedfs.s3Config;
           };
 
+          # ordering extra effect in case that seaweed is enabled
+          systemd.services = lib.mkIf cfg.seaweedfs.enable {
+            xinity-ai-gateway.after = [ "xinity-ai-seaweedfs-buckets.service" ];
+            xinity-ai-dashboard.after = [ "xinity-ai-seaweedfs-buckets.service" ];
+          };
+
           # --- Monitoring ---
           services.xinity-ai-monitoring = lib.mkIf cfg.monitoring.enable {
             enable = true;
