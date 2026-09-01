@@ -17,7 +17,7 @@ import { withResponseIdRoute } from "../endpoint-guards";
 import { extractText, normalizeMessages } from "../responses/input-normalize";
 import { loadResponse, loadResponseInputItems } from "../responses/persistence";
 import { newResponseId } from "../responses/response-id";
-import type { CallLogFields } from "../usage";
+import { callWillBeLogged, type CallLogFields } from "../usage";
 import {
   createAndSaveInProgressResponse,
   saveFailedResponse,
@@ -100,13 +100,14 @@ async function prepareResponseRequest(req: Request): Promise<PreparedRequest | R
     historyForModel = await restoreMessageImages(historyForLog, auth.orgId, imageStore);
   }
 
-  const processed = await processMessageImages(messages, auth.orgId, imageStore);
+  const willLog = callWillBeLogged(auth, body.store);
+  const processed = await processMessageImages(messages, auth.orgId, imageStore, willLog);
   const messagesForLLM = [...historyForModel, ...processed.messagesForLLM];
   const messagesForDB = [...historyForLog, ...processed.messagesForDB];
 
   // Reserved up front because the response settles before the log is flushed, and only when
   // the call will be logged, so the column never names a row that was never written.
-  const inferenceCallId = (body.store ?? auth.collectData) ? crypto.randomUUID() : null;
+  const inferenceCallId = willLog ? crypto.randomUUID() : null;
 
   return {
     ...authorized,

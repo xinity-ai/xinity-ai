@@ -76,7 +76,7 @@ describe("processMessageImages – S3 enabled", () => {
       },
     ] as any;
 
-    const { messagesForLLM, messagesForDB } = await processMessageImages(messages, "org-1", store);
+    const { messagesForLLM, messagesForDB } = await processMessageImages(messages, "org-1", store, true);
 
     const llmParts = messagesForLLM[0]!.content as any[];
     expect(llmParts[0]).toEqual({ type: "text", text: "Look at this image:" });
@@ -95,7 +95,7 @@ describe("processMessageImages – S3 enabled", () => {
       },
     ] as any;
 
-    await processMessageImages(messages, "org-1", store);
+    await processMessageImages(messages, "org-1", store, true);
 
     const q = findInsert();
     expect(q).toBeDefined();
@@ -120,7 +120,7 @@ describe("processMessageImages – S3 enabled", () => {
       },
     ] as any;
 
-    await processMessageImages(messages, "org-abc", store);
+    await processMessageImages(messages, "org-abc", store, true);
 
     expect(writeCall).toHaveBeenCalledTimes(1);
     const [s3Key] = writeCall.mock.calls[0] as [string, ...unknown[]];
@@ -138,7 +138,7 @@ describe("processMessageImages – S3 enabled", () => {
       },
     ] as any;
 
-    const { messagesForDB } = await processMessageImages(messages, "org-1", store);
+    const { messagesForDB } = await processMessageImages(messages, "org-1", store, true);
 
     const inserts = capturedQueries.filter((q) => q.sql.includes("media_object"));
     expect(inserts).toHaveLength(2);
@@ -158,7 +158,7 @@ describe("processMessageImages – S3 enabled", () => {
       },
     ] as any;
 
-    const { messagesForLLM, messagesForDB } = await processMessageImages(messages, "org-1", store);
+    const { messagesForLLM, messagesForDB } = await processMessageImages(messages, "org-1", store, true);
 
     // LLM still gets the original part (fallback), DB omits the blocked image
     expect((messagesForLLM[0]!.content as any[])[0]!.image_url.url).toBe(privateUrl);
@@ -168,7 +168,7 @@ describe("processMessageImages – S3 enabled", () => {
 
   test("text-only messages pass through without any DB or S3 calls", async () => {
     const messages = [{ role: "user", content: "Hello" }] as any;
-    const { messagesForLLM, messagesForDB } = await processMessageImages(messages, "org-1", store);
+    const { messagesForLLM, messagesForDB } = await processMessageImages(messages, "org-1", store, true);
     expect(messagesForLLM).toBe(messages);
     expect(messagesForDB).toBe(messages);
     expect(capturedQueries).toHaveLength(0);
@@ -189,7 +189,7 @@ describe("processMessageImages – S3 disabled (imageStore = null)", () => {
       { role: "user", content: [{ type: "image_url", image_url: { url: oversize } }] },
     ] as any;
 
-    await expect(processMessageImages(messages, "org-1", null)).rejects.toThrow(/over the 40MB limit/);
+    await expect(processMessageImages(messages, "org-1", null, true)).rejects.toThrow(/over the 40MB limit/);
   });
 
   test("keeps an inline image, storing its bytes in the row it references", async () => {
@@ -200,7 +200,7 @@ describe("processMessageImages – S3 disabled (imageStore = null)", () => {
       },
     ] as any;
 
-    const { messagesForLLM, messagesForDB } = await processMessageImages(messages, "org-1", null);
+    const { messagesForLLM, messagesForDB } = await processMessageImages(messages, "org-1", null, true);
 
     expect((messagesForLLM[0]!.content as any[])[0]!.image_url.url).toBe(TINY_PNG_DATA_URI);
     expect((messagesForDB[0]!.content as any[])[0]!.image_url.url).toMatch(/^xinity-media:\/\//);
@@ -221,7 +221,7 @@ describe("processMessageImages – S3 disabled (imageStore = null)", () => {
       },
     ] as any;
 
-    const { messagesForLLM, messagesForDB } = await processMessageImages(messages, "org-1", null);
+    const { messagesForLLM, messagesForDB } = await processMessageImages(messages, "org-1", null, true);
 
     expect((messagesForLLM[0]!.content as any[])).toHaveLength(2);
     const dbParts = messagesForDB[0]!.content as any[];
@@ -239,7 +239,7 @@ describe("processMessageImages – S3 disabled (imageStore = null)", () => {
       },
     ] as any;
 
-    const { messagesForLLM, messagesForDB } = await processMessageImages(messages, "org-1", null);
+    const { messagesForLLM, messagesForDB } = await processMessageImages(messages, "org-1", null, true);
 
     // LLM still gets the original part (fallback), DB omits the blocked image
     expect((messagesForLLM[0]!.content as any[])[0]!.image_url.url).toBe(privateUrl);
@@ -344,5 +344,37 @@ describe("restoring logged images", () => {
     const messages = [{ role: "user", content: "hi" }] as any;
     expect(await restoreMessageImages(messages, "org-1", readableStore())).toBe(messages);
     expect(capturedQueries).toHaveLength(0);
+  });
+});
+
+// ─── processMessageImages – call will not be logged ──────────────────────────
+
+describe("processMessageImages – store = false", () => {
+  beforeEach(() => {
+    capturedQueries.length = 0;
+  });
+
+  test("stores nothing for a call that will not be logged", async () => {
+    const store = makeImageStore();
+    const messages = [
+      { role: "user", content: [{ type: "image_url", image_url: { url: TINY_PNG_DATA_URI } }] },
+    ] as any;
+
+    const { messagesForLLM, messagesForDB } = await processMessageImages(messages, "org-1", store, false);
+
+    expect(findInsert()).toBeUndefined();
+    expect(store.client.write).not.toHaveBeenCalled();
+    expect(messagesForDB).toEqual([]);
+    // The model still needs the picture.
+    expect((messagesForLLM[0] as any).content[0].image_url.url).toBe(TINY_PNG_DATA_URI);
+  });
+
+  test("still rejects an oversize image, which guards the request and not just the store", async () => {
+    const oversize = `data:image/png;base64,${"A".repeat(56 * 1024 * 1024)}`;
+    const messages = [
+      { role: "user", content: [{ type: "image_url", image_url: { url: oversize } }] },
+    ] as any;
+
+    await expect(processMessageImages(messages, "org-1", null, false)).rejects.toThrow(/over the 40MB limit/);
   });
 });

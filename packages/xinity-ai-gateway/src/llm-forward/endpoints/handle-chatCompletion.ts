@@ -10,6 +10,7 @@ import type { ApiCallInputMessage } from "common-db";
 import { rootLogger } from "../../logger";
 import { env } from "../../env";
 import { processMessageImages, imageStore } from "../../image-store";
+import { callWillBeLogged } from "../usage";
 import { backendPostJson, createIdleTimeout } from "../backend-fetch";
 import {
   forwardOpenAIResponse,
@@ -173,11 +174,13 @@ export const handleChatCompletion = withEndpointGuards({
     }
 
     const callStartTime = Date.now();
+    const willLog = callWillBeLogged(auth, body.store);
 
     const { messagesForLLM, messagesForDB } = await processMessageImages(
       body.messages as ApiCallInputMessage[],
       auth.orgId,
       imageStore,
+      willLog,
     );
 
     const fetchBody: Record<string, unknown> = {

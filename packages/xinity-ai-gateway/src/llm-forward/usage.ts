@@ -23,6 +23,15 @@ function normalizeOutputTokens(usage: UsageData): number {
   return usage.outputTokens ?? usage.completion_tokens ?? 0;
 }
 
+/**
+ * The single answer to whether a call gets logged. Both the image store and the usage recorder ask,
+ * and they must agree: images skipped for a call that then logs would leave the conversation with
+ * references to pictures that were never stored.
+ */
+export function callWillBeLogged(auth: AuthResult, logCalls?: boolean): boolean {
+  return logCalls ?? auth.collectData;
+}
+
 export type RecordUsageContext = {
   usage: UsageData | null | undefined;
   auth: AuthResult;
@@ -47,7 +56,7 @@ export const recordUsage = ({
     return false;
   }
 
-  const shouldLog = logCalls ?? auth.collectData;
+  const shouldLog = callWillBeLogged(auth, logCalls);
 
   recordUsageEvent({
     organizationId: auth.orgId,

@@ -107,6 +107,7 @@ async function processImage(
   imageUrl: string,
   orgId: string,
   imageStore: ImageStore | null,
+  store: boolean,
 ): Promise<{ dataUri: string | null; dbUrl: string | null }> {
   const isDataUri = imageUrl.startsWith("data:");
   const resolved = isDataUri ? parseDataUri(imageUrl) : await fetchExternalImage(imageUrl);
@@ -120,6 +121,10 @@ async function processImage(
   const dataUri = isDataUri
     ? imageUrl
     : `data:${mimeType};base64,${Buffer.from(bytes).toString("base64")}`;
+
+  if (!store) {
+    return { dataUri, dbUrl: null };
+  }
 
   const originalUrl = isDataUri ? null : imageUrl;
 
@@ -176,11 +181,17 @@ async function mapConcurrent<T, R>(
   return results;
 }
 
-/** `messagesForLLM` carries resolved data URIs, `messagesForDB` carries references. */
+/**
+ * `messagesForLLM` carries resolved data URIs, `messagesForDB` carries references.
+ *
+ * `store` is `callWillBeLogged`: an unlogged call still needs its data URIs for the model, but a
+ * `media_object` written for it would be referenced by nothing, ever.
+ */
 export async function processMessageImages(
   messages: ApiCallInputMessage[],
   orgId: string,
   imageStore: ImageStore | null,
+  store: boolean,
 ): Promise<{ messagesForLLM: ApiCallInputMessage[]; messagesForDB: ApiCallInputMessage[] }> {
   // Fast path: if no message has array content, skip processing
   const hasArrayContent = messages.some((m) => Array.isArray(m.content));
@@ -207,7 +218,7 @@ export async function processMessageImages(
         }
 
         const imageUrl = part.image_url.url;
-        const { dataUri, dbUrl } = await processImage(imageUrl, orgId, imageStore);
+        const { dataUri, dbUrl } = await processImage(imageUrl, orgId, imageStore, store);
 
         const llmPart: ApiCallInputMessageContent = dataUri
           ? { type: "image_url", image_url: { url: dataUri } }
