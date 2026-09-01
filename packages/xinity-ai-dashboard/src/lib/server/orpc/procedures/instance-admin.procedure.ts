@@ -5,7 +5,9 @@ import { rootLogger } from "$lib/server/logging";
 import { adminCreateUser, adminResetPassword } from "$lib/server/auth-server";
 import { userT, accountT, memberT, organizationT, sql, count } from "common-db";
 import { RoleSchema } from "$lib/server/roles";
-import { countLegacyCalls, postfillLegacyCalls } from "$lib/server/legacy-postfill";
+import { countLegacyCalls, postfillLegacyCalls } from "$lib/server/lib/legacy-postfill";
+import { countDatabaseBackedMedia, moveMediaToS3 } from "$lib/server/lib/media-migration";
+import { mediaS3Client } from "$lib/server/image-store";
 
 const log = rootLogger.child({ name: "instance-admin.procedure" });
 const tags = ["Instance Admin"];
@@ -450,6 +452,28 @@ const convertLegacyCalls = rootOs
     return progress;
   });
 
+/** Rows the database is still carrying itself, and whether there is a bucket to move them to. */
+const mediaStorageStatus = rootOs
+  .use(withInstanceAdmin)
+  .route({ method: "GET", path: "/media-storage", tags, summary: "Count media stored in the database" })
+  .handler(async () => ({
+    remaining: await countDatabaseBackedMedia(),
+    s3Configured: mediaS3Client() !== null,
+  }));
+
+const moveMedia = rootOs
+  .use(withInstanceAdmin)
+  .use(auditMiddleware)
+  .meta({ audit: { action: "instanceAdmin.move_media_to_s3", resource: "organization" } })
+  .route({ method: "POST", path: "/media-storage/move", tags, summary: "Move a chunk of media into S3" })
+  .input(z.object({ chunkSize: z.number().int().min(1).max(500).default(50) }))
+  .handler(async ({ input, context }) => {
+    const rlog = log.child({ traceId: context.traceId });
+    const progress = await moveMediaToS3(input.chunkSize);
+    rlog.info(progress, "Moved a chunk of media into S3");
+    return progress;
+  });
+
 export const instanceAdminRouter = rootOs.prefix("/instance-admin").router({
   listUsers,
   banUser,
@@ -465,4 +489,6 @@ export const instanceAdminRouter = rootOs.prefix("/instance-admin").router({
   setSsoSelfManage,
   legacyCallStatus,
   convertLegacyCalls,
+  mediaStorageStatus,
+  moveMedia,
 });

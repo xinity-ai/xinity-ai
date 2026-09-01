@@ -5,8 +5,8 @@ import { rootOs, withOrganization, requirePermission, auditMiddleware } from "..
 import { z } from "zod";
 import { sql, aiApiKeyT, apiCallT, inferenceCallT } from "common-db";
 import { getDB } from "$lib/server/db";
-import { resolveCallMessages } from "$lib/server/call-messages";
-import { inferenceToCallRecord, legacyToCallRecord, type CallRecord } from "$lib/server/call-record";
+import { resolveCallMessages } from "$lib/server/lib/call-messages";
+import { inferenceToCallRecord, legacyToCallRecord, type CallRecord } from "$lib/server/lib/call-record";
 
 const tags = ["API Call"];
 

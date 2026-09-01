@@ -11,7 +11,7 @@ import {
   type MessageDirection,
   type SQL,
 } from "common-db";
-import { getDB } from "./db";
+import { getDB } from "../db";
 
 export type CallMessages = {
   inputMessages: ApiCallInputMessage[];

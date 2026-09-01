@@ -14,9 +14,9 @@ import {
   count,
   type ApiCall,
 } from "common-db";
-import { getDB } from "./db";
+import { getDB } from "../db";
 import { recordChatMessages } from "./chat-message-store";
-import { rootLogger } from "./logging";
+import { rootLogger } from "../logging";
 
 const log = rootLogger.child({ name: "legacy-postfill" });
 

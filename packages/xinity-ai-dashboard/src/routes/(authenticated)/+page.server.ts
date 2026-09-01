@@ -6,7 +6,7 @@ import {
 } from "common-db";
 import type { PageServerLoad } from "./$types";
 import type { ChecklistData, KeyMetrics, ChartsData, TablesData } from "./dashboard.types";
-import { organizationHasRating, resolveRatingTotals } from "$lib/server/call-ratings";
+import { organizationHasRating, resolveRatingTotals } from "$lib/server/lib/call-ratings";
 import { rootLogger } from "$lib/server/logging";
 
 const log = rootLogger.child({ name: "dashboard-home" });

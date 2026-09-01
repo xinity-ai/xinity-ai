@@ -13,7 +13,7 @@ import {
   type ApiCallResponse,
   type PgColumn,
 } from "common-db";
-import { getDB } from "./db";
+import { getDB } from "../db";
 
 export type ReactionSummary = {
   apiCallId: string;

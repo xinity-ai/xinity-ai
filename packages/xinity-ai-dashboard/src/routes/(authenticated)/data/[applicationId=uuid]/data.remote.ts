@@ -1,8 +1,8 @@
 import { command, getRequestEvent, query } from '$app/server';
 import { auth } from '$lib/server/auth-server';
 import { getDB } from '$lib/server/db';
-import { callMatchesSearch, legacyMatchesSearch, resolveCallMessages, searchPattern } from "$lib/server/call-messages";
-import { resolveReactionSummaries, resolveUserRatings } from "$lib/server/call-ratings";
+import { callMatchesSearch, legacyMatchesSearch, resolveCallMessages, searchPattern } from "$lib/server/lib/call-messages";
+import { resolveReactionSummaries, resolveUserRatings } from "$lib/server/lib/call-ratings";
 import { pick } from '$lib/util';
 import { error } from '@sveltejs/kit';
 import { apiCallT, aiApiKeyT, inferenceCallT, inferenceCallRatingT, sql, unionAll, type ApiCallInputMessage, type AiApiKey, type PgColumn, and, inArray } from 'common-db';

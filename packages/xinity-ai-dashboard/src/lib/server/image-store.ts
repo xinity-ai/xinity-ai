@@ -21,7 +21,7 @@ const PRESIGN_TTL_SECONDS = 900;
 
 let _client: S3Client | null = null;
 
-function getClient(): S3Client | null {
+export function mediaS3Client(): S3Client | null {
   if (_client !== null) return _client;
   if (!serverEnv.S3_ENDPOINT || !serverEnv.S3_ACCESS_KEY_ID || !serverEnv.S3_SECRET_ACCESS_KEY) return null;
   _client = new Bun.S3Client({
@@ -57,7 +57,7 @@ async function readObject(row: MediaObjectRow): Promise<Uint8Array<ArrayBuffer> 
   if (!row.s3Key) {
     return row.bytes;
   }
-  const client = getClient();
+  const client = mediaS3Client();
   if (!client) {
     return null;
   }
@@ -76,7 +76,7 @@ export async function getPresignedUrl(
   sha256: string,
   organizationId: string,
 ): Promise<string | null> {
-  const client = getClient();
+  const client = mediaS3Client();
   if (!client) {
     return null;
   }

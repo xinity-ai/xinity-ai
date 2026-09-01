@@ -35,6 +35,7 @@ export type AuditAction =
   | "instanceAdmin.ban_user"
   | "instanceAdmin.convert_legacy_calls"
   | "instanceAdmin.create_user"
+  | "instanceAdmin.move_media_to_s3"
   | "instanceAdmin.remove_user_from_org"
   | "instanceAdmin.reset_user_password"
   | "instanceAdmin.set_email_verified"
