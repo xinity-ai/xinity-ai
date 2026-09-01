@@ -167,10 +167,12 @@ describe("tenancy", () => {
 
   test("scopes deletes to the organization", async () => {
     await deletePersistedResponse("org-1", RESP_A);
-    const [query] = capturedQueries;
-    expect(query?.sql).toMatch(/^\s*delete/i);
-    expect(query?.sql).toContain("organization_id");
-    expect(query?.params).toContain("org-1");
+
+    // The delete is preceded by the query gathering message ids to prune afterwards.
+    const query = capturedQueries.find((q) => /^\s*delete/i.test(q.sql));
+    expect(query).toBeDefined();
+    expect(query!.sql).toContain("organization_id");
+    expect(query!.params).toContain("org-1");
   });
 });
 

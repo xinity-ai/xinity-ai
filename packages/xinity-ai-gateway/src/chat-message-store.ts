@@ -1,5 +1,5 @@
 /** Content-addressed storage for chat messages, so repeated history is stored once. */
-import { chatMessageT, inArray, sql, type ApiCallInputMessage } from "common-db";
+import { apiResponseMessageT, chatMessageT, inArray, inferenceCallMessageT, sql, type ApiCallInputMessage } from "common-db";
 import { jsonDigest } from "common-env";
 import { getDB } from "./db";
 
@@ -113,4 +113,50 @@ export async function recordChatMessages(
     digestCache.set(cacheKey(orgId, sha256), id);
     return id;
   });
+}
+
+/**
+ * Removes bodies nothing references any more. Deleting a call takes its link rows with it, so the
+ * ids have to be gathered before that delete and handed here after it, inside the same transaction.
+ *
+ * A body shared with a call that survives is kept, which is the whole point of storing it once.
+ */
+export async function pruneUnreferencedMessages(
+  messageIds: string[],
+  executor: ChatMessageStoreExecutor = getDB(),
+): Promise<number> {
+  if (messageIds.length === 0) {
+    return 0;
+  }
+
+  const removed = await executor
+    .delete(chatMessageT)
+    .where(sql`
+      ${inArray(chatMessageT.id, messageIds)}
+    AND NOT EXISTS (
+      SELECT 1 FROM ${inferenceCallMessageT}
+      WHERE ${inferenceCallMessageT.messageId} = ${chatMessageT.id}
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM ${apiResponseMessageT}
+      WHERE ${apiResponseMessageT.messageId} = ${chatMessageT.id}
+    )
+    `)
+    .returning({ id: chatMessageT.id });
+
+  return removed.length;
+}
+
+export async function messageIdsOfResponses(
+  responseIds: string[],
+  executor: ChatMessageStoreExecutor = getDB(),
+): Promise<string[]> {
+  if (responseIds.length === 0) {
+    return [];
+  }
+  const rows = await executor
+    .selectDistinct({ id: apiResponseMessageT.messageId })
+    .from(apiResponseMessageT)
+    .where(inArray(apiResponseMessageT.responseId, responseIds));
+  return rows.map((row) => row.id);
 }

@@ -12,7 +12,7 @@ import {
   sql,
 } from "common-db";
 import { getDB } from "../../db";
-import { recordChatMessages } from "../../chat-message-store";
+import { messageIdsOfResponses, pruneUnreferencedMessages, recordChatMessages } from "../../chat-message-store";
 import { formatResponseId, parseResponseId } from "./response-id";
 import { outputAsMessages } from "./input-normalize";
 import type { OutputItem, ResponseObject } from "./schemas";
@@ -320,13 +320,17 @@ export async function deletePersistedResponse(orgId: string, responseId: string)
     return;
   }
 
-  await getDB()
-    .delete(apiResponseT)
-    .where(
-      sql`
-        ${apiResponseT.id} = ${id}
-      AND
-        ${apiResponseT.organizationId} = ${orgId}
-      `
-    );
+  await getDB().transaction(async (tx) => {
+    const messageIds = await messageIdsOfResponses([id], tx);
+    await tx
+      .delete(apiResponseT)
+      .where(
+        sql`
+          ${apiResponseT.id} = ${id}
+        AND
+          ${apiResponseT.organizationId} = ${orgId}
+        `
+      );
+    await pruneUnreferencedMessages(messageIds, tx);
+  });
 }
