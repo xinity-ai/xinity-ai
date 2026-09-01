@@ -24,6 +24,16 @@ const bytea = customType<{ data: Uint8Array<ArrayBuffer>; driverData: Buffer }>(
   dataType: () => "bytea",
 });
 
+/**
+ * A content-addressing digest. Handled as hex in code and stored as the 32 raw bytes, which is
+ * half the width of the hex text in every index entry that carries one.
+ */
+const digest = customType<{ data: string; driverData: Buffer }>({
+  dataType: () => "bytea",
+  toDriver: (hex) => Buffer.from(hex, "hex"),
+  fromDriver: (bytes) => bytes.toString("hex"),
+});
+
 const createdAt = timestamp("created_at", { withTimezone: true }).defaultNow().notNull();
 const updatedAt = timestamp("updated_at", { withTimezone: true })
   .defaultNow()
@@ -85,7 +95,7 @@ export const chatMessageT = callDataSchema.table("chat_message", {
   organizationId: text("organization_id")
     .notNull()
     .references(() => organizationT.id, { onDelete: "cascade" }),
-  sha256: text().notNull(),
+  sha256: digest().notNull(),
   /** Verbatim. Loose request schemas admit fields beyond the type, and dropping any of
    * them would also merge messages that differ only there. */
   body: jsonb().notNull().$type<ApiCallInputMessage>(),
@@ -169,6 +179,7 @@ export const apiResponseMessageT = callDataSchema.table("api_response_message", 
   direction: messageDirectionEnum().notNull(),
 }, table => [
   primaryKey({ columns: [table.responseId, table.seq] }),
+  index("api_response_message_message_id_idx").on(table.messageId),
 ]);
 export type ApiResponseMessage = InferSelectModel<typeof apiResponseMessageT>;
 
@@ -267,6 +278,7 @@ export const inferenceCallRatingT = callDataSchema.table("inference_call_rating"
   updatedAt,
 }, table => [
   primaryKey({ columns: [table.userId, table.callId] }),
+  index("inference_call_rating_call_id_idx").on(table.callId),
 ]);
 export type InferenceCallRating = InferSelectModel<typeof inferenceCallRatingT>;
 

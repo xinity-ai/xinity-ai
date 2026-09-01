@@ -110,6 +110,10 @@ describe("message identity", () => {
 describe("recordChatMessages", () => {
   const system = { role: "system", content: "You are helpful" } as ApiCallInputMessage;
   const user = { role: "user", content: "Hi" } as ApiCallInputMessage;
+  /** The column is bytea, so a digest reaches the driver as raw bytes rather than hex. */
+  const sentDigests = (params: unknown[] | undefined) =>
+    (params ?? []).filter((p): p is Buffer => Buffer.isBuffer(p)).map((p) => p.toString("hex"));
+
 
   test("returns an empty list without touching the database", async () => {
     expect(await recordChatMessages(freshOrg(), [])).toEqual([]);
@@ -134,7 +138,7 @@ describe("recordChatMessages", () => {
 
     await recordChatMessages(freshOrg(), [system]);
 
-    expect(insertQueries()[0]?.params).toContain(jsonDigest(system));
+    expect(sentDigests(insertQueries()[0]?.params)).toContain(jsonDigest(system));
   });
 
   test("reads back rows that conflicted instead of updating them", async () => {
@@ -158,7 +162,7 @@ describe("recordChatMessages", () => {
     expect(ids).toEqual(["id-user", "id-user", "id-user"]);
     expect(insertQueries()).toHaveLength(1);
     const [insert] = insertQueries();
-    expect(insert?.params.filter((p) => p === jsonDigest(user))).toHaveLength(1);
+    expect(sentDigests(insert?.params).filter((d) => d === jsonDigest(user))).toHaveLength(1);
   });
 
   test("collapses two spellings of one message to a single insert", async () => {
@@ -168,7 +172,7 @@ describe("recordChatMessages", () => {
     const ids = await recordChatMessages(freshOrg(), [user, reordered]);
 
     expect(ids).toEqual(["id-user", "id-user"]);
-    expect(insertQueries()[0]?.params.filter((p) => p === jsonDigest(user))).toHaveLength(1);
+    expect(sentDigests(insertQueries()[0]?.params).filter((d) => d === jsonDigest(user))).toHaveLength(1);
   });
 
   test("serves a repeated message from cache without a second round trip", async () => {

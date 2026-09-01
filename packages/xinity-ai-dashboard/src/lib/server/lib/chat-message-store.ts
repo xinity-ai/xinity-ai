@@ -3,7 +3,7 @@
  * than shared because the query needs `chatMessageT`, and common-env cannot depend on common-db.
  * The digest itself is the shared `jsonDigest`, so the two writers cannot disagree.
  */
-import { chatMessageT, sql, type ApiCallInputMessage } from "common-db";
+import { chatMessageT, inArray, sql, type ApiCallInputMessage } from "common-db";
 import { jsonDigest } from "common-env";
 import { getDB } from "../db";
 
@@ -56,7 +56,7 @@ export async function recordChatMessages(
       .where(sql`
         ${chatMessageT.organizationId} = ${orgId}
       AND
-        ${chatMessageT.sha256} IN (${sql.join(conflicted.map((sha256) => sql`${sha256}`), sql`, `)})
+        ${inArray(chatMessageT.sha256, conflicted)}
       `);
     for (const row of existing) {
       resolved.set(row.sha256, row.id);
