@@ -44,6 +44,7 @@ export async function moveMediaToS3(chunkSize: number): Promise<MediaMoveProgres
       id: mediaObjectT.id,
       organizationId: mediaObjectT.organizationId,
       sha256: mediaObjectT.sha256,
+      mimeType: mediaObjectT.mimeType,
       bytes: mediaObjectT.bytes,
     })
     .from(mediaObjectT)
@@ -57,7 +58,7 @@ export async function moveMediaToS3(chunkSize: number): Promise<MediaMoveProgres
       continue;
     }
     const key = mediaKey(row.organizationId, row.sha256);
-    await client.write(key, row.bytes)
+    await client.write(key, row.bytes, { type: row.mimeType })
       .then(() => getDB()
         .update(mediaObjectT)
         .set({ s3Bucket: serverEnv.S3_BUCKET, s3Key: key, bytes: null })
