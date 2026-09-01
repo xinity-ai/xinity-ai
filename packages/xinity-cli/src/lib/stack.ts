@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { loadPrivateJson, savePrivateJson } from "./config.ts";
 import { configDir } from "./platform.ts";
 import { z } from "zod";
-import { secret } from "common-env";
+import { secret, s3EnvSchema } from "common-env";
 import { version as cliVersion } from "../../../../package.json";
 import { type Component, getAutoDefaults } from "./component-meta.ts";
 import { analyzeEnvSchema } from "./env-prompt.ts";
@@ -75,7 +75,7 @@ export const STACK_SHARED_SCHEMA = z.object({
   TETHER_SECRET: z.string().min(1).describe("Shared secret for tether/daemon authentication").meta(secret()),
   METRICS_AUTH: z.string().describe("Basic auth for every component's /metrics endpoint (user:pass, comma-separated for multiple)").meta(secret()),
   HF_TOKEN: z.string().optional().describe("Hugging Face token for gated model downloads").meta(secret()),
-});
+}).extend(s3EnvSchema.shape);
 
 /** Owned by the shared layer; component/fleet/host editors must not offer them. */
 export const STACK_SHARED_KEYS: Set<string> = new Set(Object.keys(STACK_SHARED_SCHEMA.shape));

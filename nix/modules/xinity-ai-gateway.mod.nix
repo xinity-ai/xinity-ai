@@ -3,6 +3,7 @@
     let
       withHostSystem = withSystem pkgs.stdenv.hostPlatform.system;
       cfg = config.services.xinity-ai-gateway;
+      s3Options = import ./lib/s3-options.nix { inherit lib; };
 
       removed = path: message:
         lib.mkRemovedOptionModule
@@ -54,7 +55,7 @@
           default = null;
           description = ''
             PostgreSQL connection URL.
-            WARNING: DO NOT USE IN PRODUCTION. Use environmentFiles instead to keep credentials secure.
+            WARNING: DO NOT USE IN PRODUCTION. Set DB_CONNECTION_URL through environmentFiles, or use dbConnectionUrlFile, to keep credentials secure.
             This option exposes secrets in the Nix store.
           '';
         };
@@ -64,7 +65,7 @@
           default = null;
           description = ''
             Redis connection URL.
-            WARNING: DO NOT USE IN PRODUCTION. Use environmentFiles instead to keep credentials secure.
+            WARNING: DO NOT USE IN PRODUCTION. Set REDIS_URL through environmentFiles, or use redisUrlFile, to keep credentials secure.
             This option exposes secrets in the Nix store.
           '';
         };
@@ -109,7 +110,7 @@
           default = null;
           description = ''
             username:password for /metrics endpoint.
-            WARNING: DO NOT USE IN PRODUCTION. Use environmentFiles instead to keep credentials secure.
+            WARNING: DO NOT USE IN PRODUCTION. Set METRICS_AUTH through environmentFiles, or use metricsAuthFile, to keep credentials secure.
             This option exposes secrets in the Nix store.
           '';
         };
@@ -132,47 +133,6 @@
           description = "Maximum time in milliseconds to wait for an inference backend to respond before the gateway returns a timeout error to the client. Increase this for models with long generation times.";
         };
 
-        # --- S3 / SeaweedFS settings ---
-
-        s3Endpoint = lib.mkOption {
-          type = lib.types.nullOr lib.types.str;
-          default = null;
-          description = "URL of the SeaweedFS or S3-compatible object storage endpoint. Used for storing and retrieving media files attached to conversations.";
-        };
-
-        s3AccessKeyId = lib.mkOption {
-          type = lib.types.nullOr lib.types.str;
-          default = null;
-          description = ''
-            S3 access key ID.
-            WARNING: DO NOT USE IN PRODUCTION. Use environmentFiles or s3AccessKeyIdFile instead to keep credentials secure.
-            This option exposes secrets in the Nix store.
-          '';
-        };
-
-        s3SecretAccessKey = lib.mkOption {
-          type = lib.types.nullOr lib.types.str;
-          default = null;
-          description = ''
-            S3 secret access key.
-            WARNING: DO NOT USE IN PRODUCTION. Use environmentFiles or s3SecretAccessKeyFile instead to keep credentials secure.
-            This option exposes secrets in the Nix store.
-          '';
-        };
-
-        s3Bucket = lib.mkOption {
-          type = lib.types.str;
-          default = "xinity-media";
-          description = "S3 bucket name used for storing uploaded media objects such as conversation attachments.";
-        };
-
-        s3Region = lib.mkOption {
-          type = lib.types.str;
-          default = "us-east-1";
-          description = "S3 region for the object storage endpoint. For SeaweedFS or MinIO, the conventional value is 'us-east-1'.";
-        };
-
-        # --- TLS settings ---
 
         tlsCertFile = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
@@ -242,7 +202,7 @@
           default = { };
           description = "Additional environment variables to pass to the service.";
         };
-      };
+      } // s3Options;
 
       config = lib.mkIf cfg.enable {
         systemd.services.xinity-ai-gateway = {

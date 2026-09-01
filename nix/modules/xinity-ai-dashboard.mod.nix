@@ -3,6 +3,7 @@
     let
       withHostSystem = withSystem pkgs.stdenv.hostPlatform.system;
       cfg = config.services.xinity-ai-dashboard;
+      s3Options = import ./lib/s3-options.nix { inherit lib; };
 
       removed = path: message:
         lib.mkRemovedOptionModule
@@ -53,7 +54,7 @@
           default = null;
           description = ''
             PostgreSQL connection URL.
-            WARNING: DO NOT USE IN PRODUCTION. Use environmentFiles instead to keep credentials secure.
+            WARNING: DO NOT USE IN PRODUCTION. Set DB_CONNECTION_URL through environmentFiles, or use dbConnectionUrlFile, to keep credentials secure.
             This option exposes secrets in the Nix store.
           '';
         };
@@ -63,7 +64,7 @@
           default = null;
           description = ''
             Better Auth secret key. Generate using 'openssl rand -base64 32'.
-            WARNING: DO NOT USE IN PRODUCTION. Use environmentFiles instead to keep credentials secure.
+            WARNING: DO NOT USE IN PRODUCTION. Set BETTER_AUTH_SECRET through environmentFiles, or use betterAuthSecretFile, to keep credentials secure.
             This option exposes secrets in the Nix store.
           '';
         };
@@ -153,7 +154,7 @@
           default = null;
           description = ''
             SMTP connection URL (e.g. smtps://user:pass@mail.example.com).
-            WARNING: DO NOT USE IN PRODUCTION. Use environmentFiles instead to keep credentials secure.
+            WARNING: DO NOT USE IN PRODUCTION. Set MAIL_URL through environmentFiles, or use mailUrlFile, to keep credentials secure.
             This option exposes secrets in the Nix store.
           '';
         };
@@ -169,51 +170,10 @@
           default = null;
           description = ''
             username:password for /metrics endpoint.
-            WARNING: DO NOT USE IN PRODUCTION. Use environmentFiles instead to keep credentials secure.
+            WARNING: DO NOT USE IN PRODUCTION. Set METRICS_AUTH through environmentFiles, or use metricsAuthFile, to keep credentials secure.
             This option exposes secrets in the Nix store.
           '';
         };
-
-        # --- S3 / SeaweedFS settings ---
-
-        s3Endpoint = lib.mkOption {
-          type = lib.types.nullOr lib.types.str;
-          default = null;
-          description = "SeaweedFS / S3-compatible endpoint URL.";
-        };
-
-        s3AccessKeyId = lib.mkOption {
-          type = lib.types.nullOr lib.types.str;
-          default = null;
-          description = ''
-            S3 access key ID.
-            WARNING: DO NOT USE IN PRODUCTION. Use environmentFiles instead to keep credentials secure.
-            This option exposes secrets in the Nix store.
-          '';
-        };
-
-        s3SecretAccessKey = lib.mkOption {
-          type = lib.types.nullOr lib.types.str;
-          default = null;
-          description = ''
-            S3 secret access key.
-            WARNING: DO NOT USE IN PRODUCTION. Use environmentFiles instead to keep credentials secure.
-            This option exposes secrets in the Nix store.
-          '';
-        };
-
-        s3Bucket = lib.mkOption {
-          type = lib.types.str;
-          default = "xinity-media";
-          description = "S3 bucket name used for storing uploaded media objects such as user avatars and organization logos.";
-        };
-
-        s3Region = lib.mkOption {
-          type = lib.types.str;
-          default = "us-east-1";
-          description = "S3 region for the object storage endpoint. For SeaweedFS or MinIO, the conventional value is 'us-east-1'.";
-        };
-
         mcpEnabled = lib.mkOption {
           type = lib.types.bool;
           default = true;
@@ -243,7 +203,7 @@
           default = null;
           description = ''
             License key for unlocking paid features (Ed25519-signed token).
-            WARNING: DO NOT USE IN PRODUCTION. Use licenseKeyFile or environmentFiles instead to keep credentials secure.
+            WARNING: DO NOT USE IN PRODUCTION. Set LICENSE_KEY through environmentFiles, or use licenseKeyFile, to keep credentials secure.
             This option exposes secrets in the Nix store.
           '';
         };
@@ -335,7 +295,7 @@
           default = { };
           description = "Additional environment variables to pass to the service.";
         };
-      };
+      } // s3Options;
 
       config = lib.mkIf cfg.enable {
         # Require a METRICS_AUTH source: the service-discovery endpoint would
