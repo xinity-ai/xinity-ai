@@ -3,7 +3,7 @@
   import type { Snippet } from "svelte";
   import * as Card from "$lib/components/ui/card";
   import { Button } from "$lib/components/ui/button";
-  import { Users, Building2, Shield, KeyRound, Cpu } from "@lucide/svelte";
+  import { Users, Building2, Shield, KeyRound, Cpu, Wrench } from "@lucide/svelte";
 
   const { children }: { children: Snippet } = $props();
 
@@ -13,6 +13,7 @@
     { href: "/instance-settings/sso", label: "SSO", icon: Shield },
     { href: "/instance-settings/license", label: "License", icon: KeyRound },
     { href: "/instance-settings/compute", label: "Compute", icon: Cpu },
+    { href: "/instance-settings/maintenance", label: "Maintenance", icon: Wrench },
   ];
 
   const currentPath = $derived(page.url.pathname);

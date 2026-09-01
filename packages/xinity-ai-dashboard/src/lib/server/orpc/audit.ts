@@ -33,6 +33,7 @@ export type AuditAction =
   | "compute.remove_node"
   | "instanceAdmin.add_user_to_org"
   | "instanceAdmin.ban_user"
+  | "instanceAdmin.convert_legacy_calls"
   | "instanceAdmin.create_user"
   | "instanceAdmin.remove_user_from_org"
   | "instanceAdmin.reset_user_password"

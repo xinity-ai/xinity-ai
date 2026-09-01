@@ -5,6 +5,7 @@ import { rootLogger } from "$lib/server/logging";
 import { adminCreateUser, adminResetPassword } from "$lib/server/auth-server";
 import { userT, accountT, memberT, organizationT, sql, count } from "common-db";
 import { RoleSchema } from "$lib/server/roles";
+import { countLegacyCalls, postfillLegacyCalls } from "$lib/server/legacy-postfill";
 
 const log = rootLogger.child({ name: "instance-admin.procedure" });
 const tags = ["Instance Admin"];
@@ -420,6 +421,35 @@ const setSsoSelfManage = rootOs
     return { success: true };
   });
 
+/**
+ * Remaining legacy calls, which is also the postfill's progress: rows are deleted as they convert,
+ * so the count needs no separate state.
+ *
+ * @deprecated Serves a table that is being dropped. Removed before 1.0.0.
+ */
+const legacyCallStatus = rootOs
+  .use(withInstanceAdmin)
+  .route({ method: "GET", path: "/legacy-calls", tags, summary: "Count unconverted legacy API calls" })
+  .handler(async () => ({ remaining: await countLegacyCalls() }));
+
+/**
+ * Converts one bounded chunk, so the caller drives the run and can stop between chunks.
+ *
+ * @deprecated Empties a table that is being dropped. Removed before 1.0.0.
+ */
+const convertLegacyCalls = rootOs
+  .use(withInstanceAdmin)
+  .use(auditMiddleware)
+  .meta({ audit: { action: "instanceAdmin.convert_legacy_calls", resource: "organization" } })
+  .route({ method: "POST", path: "/legacy-calls/convert", tags, summary: "Convert a chunk of legacy API calls" })
+  .input(z.object({ chunkSize: z.number().int().min(1).max(1000).default(250) }))
+  .handler(async ({ input, context }) => {
+    const rlog = log.child({ traceId: context.traceId });
+    const progress = await postfillLegacyCalls(input.chunkSize);
+    rlog.info(progress, "Converted a chunk of legacy calls");
+    return progress;
+  });
+
 export const instanceAdminRouter = rootOs.prefix("/instance-admin").router({
   listUsers,
   banUser,
@@ -433,4 +463,6 @@ export const instanceAdminRouter = rootOs.prefix("/instance-admin").router({
   listOrganizations,
   getOrganizationMembers,
   setSsoSelfManage,
+  legacyCallStatus,
+  convertLegacyCalls,
 });

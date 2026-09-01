@@ -1,7 +1,6 @@
 /**
- * The single call shape readers hand out. Rows still in the legacy `api_call` table are normalized
- * into it, so no consumer has to know which table a call came from and the shape survives that
- * table being dropped.
+ * The single call shape readers hand out. Rows in the legacy `api_call` table are normalized into
+ * it, so no consumer has to know which table a call came from.
  */
 import type { apiCallT, ApiCallInputMessage, InferenceCall, InferenceEndpoint } from "common-db";
 import type { CallMessages } from "./call-messages";
@@ -43,7 +42,7 @@ export function inferenceToCallRecord(
   };
 }
 
-/** Legacy rows predate the endpoint column, and only the chat surface ever wrote them. */
+/** `api_call` holds chat completions only and has no endpoint column. */
 export function legacyToCallRecord(call: typeof apiCallT.$inferSelect): CallRecord {
   return {
     id: call.id,
