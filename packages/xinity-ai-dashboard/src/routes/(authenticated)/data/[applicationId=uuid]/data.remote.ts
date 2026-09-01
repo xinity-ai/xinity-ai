@@ -3,6 +3,7 @@ import { auth } from '$lib/server/auth-server';
 import { getDB } from '$lib/server/db';
 import { callMatchesSearch, legacyMatchesSearch, resolveCallMessages, searchPattern } from "$lib/server/lib/call-messages";
 import { resolveReactionSummaries, resolveUserRatings } from "$lib/server/lib/call-ratings";
+import { messageIdsOfCalls, pruneUnreferencedMessages } from "$lib/server/lib/chat-message-store";
 import { pick } from '$lib/util';
 import { error } from '@sveltejs/kit';
 import { apiCallT, aiApiKeyT, inferenceCallT, inferenceCallRatingT, sql, unionAll, type ApiCallInputMessage, type AiApiKey, type PgColumn, and, inArray } from 'common-db';
@@ -326,7 +327,11 @@ export const deleteApiCall = command(z.object({ apiCallId: z.uuid() }), async ({
     throw error(404, { message: "The call was not found" });
   }
 
-  await getDB().delete(inferenceCallT).where(sql`${inferenceCallT.id} = ${apiCallId}`);
+  await getDB().transaction(async (tx) => {
+    const messageIds = await messageIdsOfCalls([apiCallId], tx);
+    await tx.delete(inferenceCallT).where(sql`${inferenceCallT.id} = ${apiCallId}`);
+    await pruneUnreferencedMessages(messageIds, tx);
+  });
 
   return { success: true };
 });

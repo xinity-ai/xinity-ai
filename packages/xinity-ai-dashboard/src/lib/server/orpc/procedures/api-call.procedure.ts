@@ -6,6 +6,7 @@ import { z } from "zod";
 import { sql, aiApiKeyT, apiCallT, inferenceCallT } from "common-db";
 import { getDB } from "$lib/server/db";
 import { resolveCallMessages } from "$lib/server/lib/call-messages";
+import { messageIdsOfCalls, pruneUnreferencedMessages } from "$lib/server/lib/chat-message-store";
 import { inferenceToCallRecord, legacyToCallRecord, type CallRecord } from "$lib/server/lib/call-record";
 
 const tags = ["API Call"];
@@ -76,15 +77,19 @@ const deleteApiCalls = rootOs
     apiCallIds: z.uuid().array().min(1).max(500),
   }))
   .handler(async ({ context, input }) => {
-    const result = await getDB()
-      .delete(inferenceCallT)
-      .where(sql`
-        ${inferenceCallT.organizationId} = ${context.activeOrganizationId}
-      AND
-        ${inferenceCallT.id} IN ${input.apiCallIds}
-      `)
-      .returning({ id: inferenceCallT.id });
-    return { deleted: result.length };
+    return getDB().transaction(async (tx) => {
+      const messageIds = await messageIdsOfCalls(input.apiCallIds, tx);
+      const result = await tx
+        .delete(inferenceCallT)
+        .where(sql`
+          ${inferenceCallT.organizationId} = ${context.activeOrganizationId}
+        AND
+          ${inferenceCallT.id} IN ${input.apiCallIds}
+        `)
+        .returning({ id: inferenceCallT.id });
+      await pruneUnreferencedMessages(messageIds, tx);
+      return { deleted: result.length };
+    });
   });
 
 /** Updates metadata for a specific API call. */

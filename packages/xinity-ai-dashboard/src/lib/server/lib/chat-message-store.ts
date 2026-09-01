@@ -3,7 +3,7 @@
  * than shared because the query needs `chatMessageT`, and common-env cannot depend on common-db.
  * The digest itself is the shared `jsonDigest`, so the two writers cannot disagree.
  */
-import { chatMessageT, inArray, sql, type ApiCallInputMessage } from "common-db";
+import { apiResponseMessageT, chatMessageT, inArray, inferenceCallMessageT, sql, type ApiCallInputMessage } from "common-db";
 import { jsonDigest } from "common-env";
 import { getDB } from "../db";
 
@@ -70,4 +70,51 @@ export async function recordChatMessages(
     }
     return id;
   });
+}
+
+/**
+ * Removes bodies nothing references any more. Deleting a call takes its link rows with it, so the
+ * ids have to be gathered before that delete and handed here after it, inside the same transaction.
+ *
+ * A body shared with a call that survives is kept, which is the whole point of storing it once.
+ */
+export async function pruneUnreferencedMessages(
+  messageIds: string[],
+  executor: ChatMessageStoreExecutor = getDB(),
+): Promise<number> {
+  if (messageIds.length === 0) {
+    return 0;
+  }
+
+  const removed = await executor
+    .delete(chatMessageT)
+    .where(sql`
+      ${inArray(chatMessageT.id, messageIds)}
+    AND NOT EXISTS (
+      SELECT 1 FROM ${inferenceCallMessageT}
+      WHERE ${inferenceCallMessageT.messageId} = ${chatMessageT.id}
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM ${apiResponseMessageT}
+      WHERE ${apiResponseMessageT.messageId} = ${chatMessageT.id}
+    )
+    `)
+    .returning({ id: chatMessageT.id });
+
+  return removed.length;
+}
+
+/** Ids the given calls reference, gathered before deleting them so they can be pruned after. */
+export async function messageIdsOfCalls(
+  callIds: string[],
+  executor: ChatMessageStoreExecutor = getDB(),
+): Promise<string[]> {
+  if (callIds.length === 0) {
+    return [];
+  }
+  const rows = await executor
+    .selectDistinct({ id: inferenceCallMessageT.messageId })
+    .from(inferenceCallMessageT)
+    .where(inArray(inferenceCallMessageT.callId, callIds));
+  return rows.map((row) => row.id);
 }
