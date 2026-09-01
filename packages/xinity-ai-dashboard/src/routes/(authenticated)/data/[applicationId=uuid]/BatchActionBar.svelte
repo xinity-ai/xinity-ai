@@ -1,6 +1,7 @@
 <script lang="ts">
   import { orpc } from "$lib/orpc/orpc-client";
   import { Button } from "$lib/components/ui/button";
+  import { toastState } from "$lib/state/toast.svelte";
 
   let {
     selectedCallIds,
@@ -13,7 +14,7 @@
     applications?: { id: string; name: string }[];
     canMove?: boolean;
     onClear: () => void;
-    onMoved: (ids: string[]) => void;
+    onMoved: (ids: string[], reassigned: number) => void;
   } = $props();
 
   let reassignTarget = $state("");
@@ -25,13 +26,17 @@
     const ids = Array.from(selectedCallIds);
     const applicationId = reassignTarget === "uncategorized" ? null : reassignTarget;
     try {
-      const [error] = await orpc.apiCall.reassignApplication({ apiCallIds: ids, applicationId });
+      const [error, result] = await orpc.apiCall.reassignApplication({ apiCallIds: ids, applicationId });
       if (error) {
         throw error;
       }
-      onMoved(ids);
+      if (result.reassigned < ids.length) {
+        toastState.add(`Moved ${result.reassigned} of ${ids.length} calls.`, "error");
+      }
+      onMoved(ids, result.reassigned);
       onClear();
     } catch (e) {
+      toastState.add("Could not move the selected calls.", "error");
       console.error("Failed to reassign calls:", e);
     }
     reassignTarget = "";

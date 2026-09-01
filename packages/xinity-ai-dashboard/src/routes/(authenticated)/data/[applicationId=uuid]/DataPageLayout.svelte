@@ -72,6 +72,9 @@
   function handleSelectAll(checked: boolean) {
     const next = new Set(selectedCallIds);
     for (const call of filteredCalls) {
+      if (call.source === "legacy") {
+        continue;
+      }
       if (checked) {
         next.add(call.id);
       } else {
@@ -182,10 +185,13 @@
   }
   const filteredCalls = $derived(getFilteredCalls(allCalls));
 
-  function handleBatchRemoved(ids: string[]) {
+  function handleBatchRemoved(ids: string[], reassigned: number) {
+    if (reassigned === 0) {
+      return;
+    }
     const removed = new Set(ids);
     allCalls = allCalls.filter((c) => !removed.has(c.id));
-    deletedCount += ids.length;
+    deletedCount += reassigned;
     if (selectedCall && removed.has(selectedCall.id)) {
       selectedCall = null;
     }
