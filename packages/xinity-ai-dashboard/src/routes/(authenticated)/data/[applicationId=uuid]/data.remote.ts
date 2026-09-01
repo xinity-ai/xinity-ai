@@ -2,9 +2,10 @@ import { command, getRequestEvent, query } from '$app/server';
 import { auth } from '$lib/server/auth-server';
 import { getDB } from '$lib/server/db';
 import { callMatchesSearch, legacyMatchesSearch, resolveCallMessages, searchPattern } from "$lib/server/call-messages";
+import { resolveReactionSummaries, resolveUserRatings } from "$lib/server/call-ratings";
 import { pick } from '$lib/util';
 import { error } from '@sveltejs/kit';
-import { apiCallResponseT, apiCallT, aiApiKeyT, inferenceCallT, inferenceCallRatingT, sql, unionAll, type ApiCall, type AiApiKey, type PgColumn, and, inArray } from 'common-db';
+import { apiCallT, aiApiKeyT, inferenceCallT, inferenceCallRatingT, sql, unionAll, type ApiCallInputMessage, type AiApiKey, type PgColumn, and, inArray } from 'common-db';
 import z from 'zod';
 
 async function getSession() {
@@ -117,11 +118,21 @@ type ApiCallSortOption = z.infer<typeof apiCallFilters>["sortOption"];
 /** Which table a listed call came from. The Data view renders both the same way; this exists so
  * it can tell them apart when it needs to, and so messages are fetched from the right place. */
 export type CallSource = "legacy" | "inference";
-export type DataViewCall = Pick<
-  ApiCall,
-  "id" | "apiKeyId" | "applicationId" | "createdAt" | "duration"
-  | "model" | "specifiedModel" | "user" | "metadata" | "inputMessages" | "outputMessage"
-> & { source: CallSource };
+
+export type DataViewCall = {
+  id: string;
+  source: CallSource;
+  apiKeyId: string | null;
+  applicationId: string | null;
+  createdAt: Date;
+  durationMs: number;
+  servedModel: string;
+  publicSpecifier: string | null;
+  user: string | null;
+  metadata: Record<string, unknown> | null;
+  inputMessages: ApiCallInputMessage[];
+  outputMessage: ApiCallInputMessage | null;
+};
 
 export const getApiCalls = query(apiCallFilters, async ({ applicationId, apiKeyId, sortOption, metadataKey, metadataValue, searchQuery, limit = 50, offset = 0 }) => {
   const { session } = await getSession();
@@ -147,9 +158,9 @@ export const getApiCalls = query(apiCallFilters, async ({ applicationId, apiKeyI
       apiKeyId: apiCallT.apiKeyId,
       applicationId: apiCallT.applicationId,
       createdAt: apiCallT.createdAt,
-      duration: apiCallT.duration,
-      model: apiCallT.model,
-      specifiedModel: apiCallT.specifiedModel,
+      durationMs: sql<number>`${apiCallT.duration}`.as("duration_ms"),
+      servedModel: sql<string>`${apiCallT.model}`.as("served_model"),
+      publicSpecifier: sql<string>`${apiCallT.specifiedModel}`.as("public_specifier"),
       user: apiCallT.user,
       metadata: apiCallT.metadata,
     })
@@ -163,9 +174,9 @@ export const getApiCalls = query(apiCallFilters, async ({ applicationId, apiKeyI
       apiKeyId: inferenceCallT.apiKeyId,
       applicationId: inferenceCallT.applicationId,
       createdAt: inferenceCallT.createdAt,
-      duration: inferenceCallT.duration,
-      model: inferenceCallT.model,
-      specifiedModel: inferenceCallT.specifiedModel,
+      durationMs: sql<number>`${inferenceCallT.durationMs}`.as("duration_ms"),
+      servedModel: sql<string>`${inferenceCallT.servedModel}`.as("served_model"),
+      publicSpecifier: sql<string>`${inferenceCallT.publicSpecifier}`.as("public_specifier"),
       user: inferenceCallT.user,
       metadata: inferenceCallT.metadata,
     })
@@ -183,7 +194,7 @@ export const getApiCalls = query(apiCallFilters, async ({ applicationId, apiKeyI
 /** Sorting spans the union, so it names the projected columns rather than either table's. */
 function unionOrderBy(sortOption: ApiCallSortOption) {
   if (sortOption === "oldest") return sql`created_at ASC`;
-  if (sortOption === "duration") return sql`duration DESC`;
+  if (sortOption === "duration") return sql`duration_ms DESC`;
   return sql`created_at DESC`;
 }
 
@@ -252,40 +263,18 @@ export type ApiCallReactionSummary = {
 };
 
 export const getApiCallReactionSummary = query.batch(z.uuid(), async (ids) => {
-  const summaries = await getDB()
-    .select({
-      apiCallId: apiCallResponseT.apiCallId,
-      likes: sql<number>`COUNT(CASE WHEN ${apiCallResponseT.response} = true THEN 1 END)::int`,
-      dislikes: sql<number>`COUNT(CASE WHEN ${apiCallResponseT.response} = false THEN 1 END)::int`,
-      total: sql<number>`COUNT(CASE WHEN ${apiCallResponseT.response} IS NOT NULL THEN 1 END)::int`,
-    })
-    .from(apiCallResponseT)
-    .where(inArray(apiCallResponseT.apiCallId, ids))
-    .groupBy(apiCallResponseT.apiCallId);
+  const summaries = await resolveReactionSummaries([...ids]);
 
   return (id) =>
-    summaries.find((summary) => summary.apiCallId === id) ?? {
-      apiCallId: id,
-      likes: 0,
-      dislikes: 0,
-      total: 0,
-    };
+    summaries.get(id) ?? { apiCallId: id, likes: 0, dislikes: 0, total: 0 };
 });
 
 export const getAPICallResponse = query.batch(z.uuid(), async (ids) => {
   const session = await getSession();
-  const userId = session.user.id;
+  const ratings = await resolveUserRatings([...ids], session.user.id);
 
-  const responses = await getDB().select().from(apiCallResponseT)
-    .where(sql`
-      ${inArray(apiCallResponseT.apiCallId, ids)}
-    AND
-      ${apiCallResponseT.userId} = ${userId}
-    `);
-
-  return id => responses.find(v => v.apiCallId === id);
-
-})
+  return (id) => ratings.get(id);
+});
 
 export type PartialPublicApiKey = Pick<AiApiKey, "name" | "enabled" | "specifier" | "createdAt" | "id" | "applicationId">;
 
@@ -313,11 +302,14 @@ export const upsertApiCallResponse = command(z.object({
     error(404, { message: "The call was not found" });
   }
 
+  const { response, ...rest } = payload;
+  const row = { ...rest, ...(response === undefined ? {} : { verdict: response }) };
+
   const newObj = await getDB().insert(inferenceCallRatingT).values({
     callId: apiCallId,
     userId: user.id,
-    ...payload,
-  }).onConflictDoUpdate({ set: payload, target: [inferenceCallRatingT.callId, inferenceCallRatingT.userId] });
+    ...row,
+  }).onConflictDoUpdate({ set: row, target: [inferenceCallRatingT.callId, inferenceCallRatingT.userId] });
   getAPICallResponse(apiCallId).refresh();
   getApiCallReactionSummary(apiCallId).refresh();
   return newObj;

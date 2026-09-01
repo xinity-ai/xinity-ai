@@ -40,7 +40,7 @@ mock.module("./db", () => ({ getDB: () => dbMock }));
 const { logChatSync, logChatStream, flushCallLog } = await import("./callLogger");
 
 const calls = () => inserted.get("inference_call") ?? [];
-const messagePayloads = () => (inserted.get("chat_message") ?? []).map((row) => row.payload);
+const messagePayloads = () => (inserted.get("chat_message") ?? []).map((row) => row.body);
 
 /** Distinct per test, since the digest cache is module-level and would skip a repeat insert. */
 let orgCounter = 0;
@@ -56,7 +56,7 @@ function sampleChatInput() {
     applicationId: "app-1",
     durationInMS: 100,
     publicSpecifier: "my-model",
-    engineModel: "engine-model",
+    servedModel: "engine-model",
     endpoint: "chat_completions" as const,
     inputMessages: [{ role: "user" as const, content: "Hello world" }],
     metadata: { env: "test" },
@@ -107,8 +107,8 @@ describe("callLogger", () => {
     await logChatSync(sampleChatInput());
     await flushCallLog();
 
-    expect(calls()[0].model).toBe("engine-model");
-    expect(calls()[0].specifiedModel).toBe("my-model");
+    expect(calls()[0].servedModel).toBe("engine-model");
+    expect(calls()[0].publicSpecifier).toBe("my-model");
   });
 
   test("keeps reasoning and refusal the engine sent", async () => {

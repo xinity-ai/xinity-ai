@@ -134,22 +134,22 @@ function toInputContentParts(content: ApiCallInputMessage["content"]) {
  * a bare URL rather than chat's nested object. */
 export function buildInputItems(
   responseId: string,
-  messages: Array<{ seq: number; payload: ApiCallInputMessage }>,
+  messages: Array<{ seq: number; body: ApiCallInputMessage }>,
 ): Array<Record<string, unknown>> {
-  return messages.map(({ seq, payload }) => {
+  return messages.map(({ seq, body }) => {
     const id = inputItemId(responseId, seq);
 
-    if (payload.role === "tool") {
+    if (body.role === "tool") {
       return {
         id,
         type: "function_call_output",
-        call_id: payload.tool_call_id ?? null,
-        output: typeof payload.content === "string" ? payload.content : JSON.stringify(payload.content ?? ""),
+        call_id: body.tool_call_id ?? null,
+        output: typeof body.content === "string" ? body.content : JSON.stringify(body.content ?? ""),
       };
     }
 
-    if (payload.tool_calls?.length) {
-      const [call] = payload.tool_calls;
+    if (body.tool_calls?.length) {
+      const [call] = body.tool_calls;
       return {
         id,
         type: "function_call",
@@ -160,7 +160,7 @@ export function buildInputItems(
       };
     }
 
-    return { id, type: "message", role: payload.role, content: toInputContentParts(payload.content) };
+    return { id, type: "message", role: body.role, content: toInputContentParts(body.content) };
   });
 }
 

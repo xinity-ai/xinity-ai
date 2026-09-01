@@ -1097,12 +1097,12 @@
           </div>
           <div class="min-w-20 flex-1">
             <p class="text-xs text-muted-foreground">Model</p>
-            <p class="font-medium">{activeCall.model}</p>
+            <p class="font-medium">{activeCall.servedModel}</p>
           </div>
           <div class="min-w-20 flex-1">
             <p class="text-xs text-muted-foreground">Specified Model</p>
             <p class="font-medium">
-              {activeCall.specifiedModel}
+              {activeCall.publicSpecifier}
             </p>
           </div>
           <div class="min-w-30 flex-1">
@@ -1113,7 +1113,7 @@
           </div>
           <div class="min-w-20 flex-1">
             <p class="text-xs text-muted-foreground">Duration</p>
-            <p class="font-medium">{formatDurationMs(activeCall.duration)}</p>
+            <p class="font-medium">{formatDurationMs(activeCall.durationMs)}</p>
           </div>
         </div>
       </div>

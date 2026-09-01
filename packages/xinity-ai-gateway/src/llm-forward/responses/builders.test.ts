@@ -711,7 +711,7 @@ describe("parseInputItemCursor", () => {
 
 describe("buildInputItems", () => {
   test("renders string content as a single input_text part", () => {
-    const items = buildInputItems("resp_1", [{ seq: 0, payload: { role: "user", content: "Hi" } }]);
+    const items = buildInputItems("resp_1", [{ seq: 0, body: { role: "user", content: "Hi" } }]);
     expect(items).toEqual([{
       id: "msg_resp_1_0",
       type: "message",
@@ -723,7 +723,7 @@ describe("buildInputItems", () => {
   test("flattens images to a bare url, unlike the chat shape they were stored in", () => {
     const [item] = buildInputItems("resp_1", [{
       seq: 0,
-      payload: {
+      body: {
         role: "user",
         content: [
           { type: "text", text: "What is this?" },
@@ -740,7 +740,7 @@ describe("buildInputItems", () => {
   test("renders a tool result as function_call_output", () => {
     const [item] = buildInputItems("resp_1", [{
       seq: 2,
-      payload: { role: "tool", content: "42", tool_call_id: "call_abc" },
+      body: { role: "tool", content: "42", tool_call_id: "call_abc" },
     }]);
     expect(item).toEqual({
       id: "msg_resp_1_2",
@@ -753,7 +753,7 @@ describe("buildInputItems", () => {
   test("renders an assistant tool call as function_call", () => {
     const [item] = buildInputItems("resp_1", [{
       seq: 1,
-      payload: {
+      body: {
         role: "assistant",
         content: null,
         tool_calls: [{ id: "call_abc", type: "function", function: { name: "get_weather", arguments: '{"city":"Berlin"}' } }],
@@ -769,12 +769,12 @@ describe("buildInputItems", () => {
 
   test("keeps ids aligned with position so pagination survives duplicate bodies", () => {
     const repeated = { role: "user" as const, content: "same" };
-    const items = buildInputItems("resp_1", [{ seq: 0, payload: repeated }, { seq: 1, payload: repeated }]);
+    const items = buildInputItems("resp_1", [{ seq: 0, body: repeated }, { seq: 1, body: repeated }]);
     expect(items.map((item) => item.id)).toEqual(["msg_resp_1_0", "msg_resp_1_1"]);
   });
 
   test("renders null content as no parts rather than failing", () => {
-    const [item] = buildInputItems("resp_1", [{ seq: 0, payload: { role: "system", content: null } }]);
+    const [item] = buildInputItems("resp_1", [{ seq: 0, body: { role: "system", content: null } }]);
     expect(item?.content).toEqual([]);
   });
 });

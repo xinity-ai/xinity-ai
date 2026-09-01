@@ -88,7 +88,7 @@ export const chatMessageT = callDataSchema.table("chat_message", {
   sha256: text().notNull(),
   /** Verbatim. Loose request schemas admit fields beyond the type, and dropping any of
    * them would also merge messages that differ only there. */
-  payload: jsonb().notNull().$type<ApiCallInputMessage>(),
+  body: jsonb().notNull().$type<ApiCallInputMessage>(),
   createdAt,
 }, table => [
   uniqueIndex("chat_message_organization_id_sha256_idx").on(table.organizationId, table.sha256),
@@ -190,11 +190,10 @@ export const inferenceCallT = callDataSchema.table("inference_call", {
   apiKeyId: uuid("api_key_id").references(() => aiApiKeyT.id, { onDelete: "set null" }),
   applicationId: uuid("application_id").references(() => aiApplicationT.id, { onDelete: "set null" }),
   endpoint: inferenceEndpointEnum().notNull(),
-  model: text().notNull(),
-  specifiedModel: text("specified_model").notNull(),
+  servedModel: text("served_model").notNull(),
+  publicSpecifier: text("public_specifier").notNull(),
   user: text(),
-  /** in milliseconds */
-  duration: integer().notNull(),
+  durationMs: integer("duration_ms").notNull(),
   metadata: jsonb().$type<Record<string, unknown>>().notNull().default({}),
   createdAt,
 }, table => [
@@ -202,7 +201,7 @@ export const inferenceCallT = callDataSchema.table("inference_call", {
   index("inference_call_application_id_idx").on(table.applicationId),
   index("inference_call_organization_id_idx").on(table.organizationId),
   index("inference_call_organization_id_created_at_idx").on(table.organizationId, table.createdAt),
-  index("inference_call_model_idx").on(table.model),
+  index("inference_call_served_model_idx").on(table.servedModel),
   index("inference_call_org_endpoint_created_at_idx").on(table.organizationId, table.endpoint, table.createdAt),
 ]);
 export type InferenceCall = InferSelectModel<typeof inferenceCallT>;
@@ -259,8 +258,7 @@ export const inferenceCallRatingT = callDataSchema.table("inference_call_rating"
   callId: uuid("call_id")
     .notNull()
     .references(() => inferenceCallT.id, { onDelete: "cascade" }),
-  /** Like (true), dislike (false), or rated without a verdict (null). */
-  response: boolean(),
+  verdict: boolean(),
   outputEdit: text("output_edit"),
   highlights: jsonb().$type<Highlight[]>().notNull().default([]),
   excludedMessages: jsonb("excluded_messages").$type<number[]>().notNull().default([]),

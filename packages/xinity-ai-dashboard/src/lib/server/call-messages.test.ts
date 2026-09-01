@@ -12,7 +12,7 @@ const row = (
 ): CallMessageRow => ({
   callId,
   direction,
-  payload: message(content, direction === "output" ? "assistant" : "user"),
+  body: message(content, direction === "output" ? "assistant" : "user"),
 });
 
 describe("groupCallMessages", () => {

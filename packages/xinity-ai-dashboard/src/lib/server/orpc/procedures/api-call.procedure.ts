@@ -5,6 +5,8 @@ import { rootOs, withOrganization, requirePermission, auditMiddleware } from "..
 import { z } from "zod";
 import { sql, aiApiKeyT, apiCallT, inferenceCallT } from "common-db";
 import { getDB } from "$lib/server/db";
+import { resolveCallMessages } from "$lib/server/call-messages";
+import { inferenceToCallRecord, legacyToCallRecord, type CallRecord } from "$lib/server/call-record";
 
 const tags = ["API Call"];
 
@@ -24,6 +26,29 @@ async function findApiKeyInOrg(keyId: string, orgId: string) {
   return key;
 }
 
+const CALL_LIST_LIMIT = 5000;
+
+async function listCallsForKey(keyId: string): Promise<CallRecord[]> {
+  const db = getDB();
+  const [legacy, inference] = await Promise.all([
+    db.select().from(apiCallT)
+      .where(sql`${apiCallT.apiKeyId} = ${keyId}`)
+      .orderBy(apiCallT.createdAt).limit(CALL_LIST_LIMIT),
+    db.select().from(inferenceCallT)
+      .where(sql`${inferenceCallT.apiKeyId} = ${keyId}`)
+      .orderBy(inferenceCallT.createdAt).limit(CALL_LIST_LIMIT),
+  ]);
+
+  const messages = await resolveCallMessages(inference.map((call) => call.id));
+
+  return [
+    ...legacy.map(legacyToCallRecord),
+    ...inference.map((call) => inferenceToCallRecord(call, messages.get(call.id))),
+  ]
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+    .slice(0, CALL_LIST_LIMIT);
+}
+
 /** Lists API calls for a specific API key in the active organization. */
 const listApiCalls = rootOs
   .use(withOrganization)
@@ -37,11 +62,7 @@ const listApiCalls = rootOs
       throw errors.NOT_FOUND();
     }
 
-    const apiCalls = await getDB().select()
-      .from(apiCallT).orderBy(apiCallT.createdAt)
-      .where(sql`${apiCallT.apiKeyId} = ${input.apiKeyId}`).limit(5000);
-
-    return apiCalls;
+    return listCallsForKey(input.apiKeyId);
   });
 
 /** Deletes API calls in the active organization. */

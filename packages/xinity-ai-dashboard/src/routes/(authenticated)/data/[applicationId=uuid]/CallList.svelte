@@ -121,7 +121,7 @@
                   class="absolute inset-0 cursor-pointer"
                   onclick={() => onSelect(call)}
                   aria-pressed={selectedCallId === call.id}
-                  aria-label="View call {call.model}"
+                  aria-label="View call {call.servedModel}"
                 ></button>
                 <div class="flex items-start gap-3 pointer-events-none">
                   {#if showSelect}
@@ -135,7 +135,7 @@
                   {/if}
                   <div class="flex-1 text-left">
                     <div class="flex items-center justify-between">
-                      <span class="font-medium truncate">{call.model}</span>
+                      <span class="font-medium truncate">{call.servedModel}</span>
                       <span class="text-xs text-muted-foreground">{formatDate(call.createdAt)}</span>
                     </div>
                     <p class="mt-1 text-sm text-muted-foreground line-clamp-2">
@@ -146,7 +146,7 @@
                         <span class="status-indicator status-completed"></span>
                         complete
                       </span>
-                      <span>{(call.duration / 1000).toFixed(1)}s</span>
+                      <span>{(call.durationMs / 1000).toFixed(1)}s</span>
                     </div>
                     <div class="flex flex-wrap items-center gap-2 mt-2 text-xs text-muted-foreground">
                       {#if summary.total > 0}

@@ -254,7 +254,7 @@ export async function loadResponseMessages(
   }
 
   const rows = await getDB()
-    .select({ payload: chatMessageT.payload })
+    .select({ body: chatMessageT.body })
     .from(apiResponseMessageT)
     .innerJoin(chatMessageT, sql`${chatMessageT.id} = ${apiResponseMessageT.messageId}`)
     .innerJoin(apiResponseT, sql`${apiResponseT.id} = ${apiResponseMessageT.responseId}`)
@@ -266,11 +266,11 @@ export async function loadResponseMessages(
       `,
     )
     .orderBy(sql`${apiResponseMessageT.seq} ASC`);
-  return rows.map((row) => row.payload);
+  return rows.map((row) => row.body);
 }
 
 export type InputItemPage = {
-  messages: Array<{ seq: number; payload: ApiCallInputMessage }>;
+  messages: Array<{ seq: number; body: ApiCallInputMessage }>;
   hasMore: boolean;
 };
 
@@ -290,7 +290,7 @@ export async function loadResponseInputItems(
 
   const { limit, ascending, afterSeq } = page;
   const rows = await getDB()
-    .select({ seq: apiResponseMessageT.seq, payload: chatMessageT.payload })
+    .select({ seq: apiResponseMessageT.seq, body: chatMessageT.body })
     .from(apiResponseMessageT)
     .innerJoin(chatMessageT, sql`${chatMessageT.id} = ${apiResponseMessageT.messageId}`)
     .innerJoin(apiResponseT, sql`${apiResponseT.id} = ${apiResponseMessageT.responseId}`)

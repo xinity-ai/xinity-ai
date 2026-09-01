@@ -129,7 +129,7 @@ export const logChatUsage = ({
     applicationId: auth.applicationId,
     organizationId: auth.orgId,
     publicSpecifier,
-    engineModel: modelInfo.model,
+    servedModel: modelInfo.model,
     endpoint,
     inferenceCallId,
     durationInMS: Date.now() - callStartTime,

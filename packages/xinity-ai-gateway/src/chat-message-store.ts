@@ -72,10 +72,10 @@ export async function resolveChatMessageIds(
   if (pending.size > 0) {
     const inserted = await executor
       .insert(chatMessageT)
-      .values([...pending].map(([sha256, payload]) => ({
+      .values([...pending].map(([sha256, body]) => ({
         organizationId: orgId,
         sha256,
-        payload,
+        body,
       })))
       .onConflictDoNothing()
       .returning({ id: chatMessageT.id, sha256: chatMessageT.sha256 });

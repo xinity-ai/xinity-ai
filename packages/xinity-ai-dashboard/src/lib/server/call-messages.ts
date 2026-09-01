@@ -41,14 +41,14 @@ export function callMatchesSearch(callId: SQL, pattern: string): SQL {
     WHERE
       ${inferenceCallMessageT.callId} = ${callId}
     AND
-      ${chatMessageT.payload}::text ILIKE ${pattern}
+      ${chatMessageT.body}::text ILIKE ${pattern}
   )`;
 }
 
 export type CallMessageRow = {
   callId: string;
   direction: MessageDirection;
-  payload: ApiCallInputMessage;
+  body: ApiCallInputMessage;
 };
 
 /** Rows arrive flat and ordered by `(call_id, seq)`; this is the fold back into per-call shape. */
@@ -57,9 +57,9 @@ export function groupCallMessages(rows: CallMessageRow[]): Map<string, CallMessa
   for (const row of rows) {
     const entry = resolved.get(row.callId) ?? { inputMessages: [], outputMessage: null };
     if (row.direction === "output") {
-      entry.outputMessage = row.payload;
+      entry.outputMessage = row.body;
     } else {
-      entry.inputMessages.push(row.payload);
+      entry.inputMessages.push(row.body);
     }
     resolved.set(row.callId, entry);
   }
@@ -76,7 +76,7 @@ export async function resolveCallMessages(callIds: string[]): Promise<Map<string
     .select({
       callId: inferenceCallMessageT.callId,
       direction: inferenceCallMessageT.direction,
-      payload: chatMessageT.payload,
+      body: chatMessageT.body,
     })
     .from(inferenceCallMessageT)
     .innerJoin(chatMessageT, sql`${chatMessageT.id} = ${inferenceCallMessageT.messageId}`)

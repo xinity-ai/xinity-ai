@@ -17,7 +17,7 @@ const db = drizzle.mock();
 
 const capturedQueries: Array<{ sql: string; params: unknown[] }> = [];
 /** Rows the join yields, newest-first or oldest-first as the query asked. */
-let messageRows: Array<{ seq: number; payload: ApiCallInputMessage }> = [];
+let messageRows: Array<{ seq: number; body: ApiCallInputMessage }> = [];
 /** Whether the header lookup should find the response at all. */
 let headerExists = true;
 
@@ -59,7 +59,7 @@ const userMessage = (text: string): ApiCallInputMessage => ({ role: "user", cont
 
 describe("handleListInputItemsRequest", () => {
   test("returns stored input as a list of items", async () => {
-    messageRows = [{ seq: 0, payload: userMessage("Hi") }];
+    messageRows = [{ seq: 0, body: userMessage("Hi") }];
 
     const res = await handleListInputItemsRequest(listRequest());
     expect(res.status).toBe(200);
@@ -97,8 +97,8 @@ describe("handleListInputItemsRequest", () => {
 
   test("reports has_more and trims the extra row", async () => {
     messageRows = [
-      { seq: 0, payload: userMessage("one") },
-      { seq: 1, payload: userMessage("two") },
+      { seq: 0, body: userMessage("one") },
+      { seq: 1, body: userMessage("two") },
     ];
 
     const res = await handleListInputItemsRequest(listRequest("?limit=1"));
@@ -108,7 +108,7 @@ describe("handleListInputItemsRequest", () => {
   });
 
   test("carries the cursor into the query", async () => {
-    messageRows = [{ seq: 3, payload: userMessage("later") }];
+    messageRows = [{ seq: 3, body: userMessage("later") }];
     await handleListInputItemsRequest(listRequest(`?after=msg_${RESP_A}_2`));
     const [query] = capturedQueries;
     expect(query?.params).toContain(2);

@@ -15,8 +15,8 @@ export type InferenceCallRecord = {
   apiKeyId: string | null;
   applicationId: string | null;
   endpoint: InferenceEndpoint;
-  model: string;
-  specifiedModel: string;
+  servedModel: string;
+  publicSpecifier: string;
   user?: string | null;
   durationMs: number;
   metadata?: Record<string, unknown>;
@@ -72,10 +72,10 @@ function toCallRow(call: InferenceCallRecord, id: string) {
     apiKeyId: call.apiKeyId,
     applicationId: call.applicationId,
     endpoint: call.endpoint,
-    model: call.model,
-    specifiedModel: call.specifiedModel,
+    servedModel: call.servedModel,
+    publicSpecifier: call.publicSpecifier,
     user: call.user ?? null,
-    duration: call.durationMs,
+    durationMs: call.durationMs,
     metadata: call.metadata ?? {},
   };
 }

@@ -28,7 +28,7 @@ type ChatLogFields = {
   organizationId: string;
   durationInMS: number;
   publicSpecifier: string;
-  engineModel: string;
+  servedModel: string;
   endpoint: InferenceEndpoint;
   /** Reserved by a surface that had to record the id before the call was logged. */
   inferenceCallId?: string | null;
@@ -140,8 +140,8 @@ function buildRecord(
     apiKeyId: input.keyId,
     applicationId: input.applicationId,
     endpoint: input.endpoint,
-    model: input.engineModel,
-    specifiedModel: input.publicSpecifier,
+    servedModel: input.servedModel,
+    publicSpecifier: input.publicSpecifier,
     durationMs: input.durationInMS,
     metadata: input.metadata ? sanitizeForPg(input.metadata) as Record<string, unknown> : undefined,
     inputMessages: sanitizeForPg(input.inputMessages) as ApiCallInputMessage[],
