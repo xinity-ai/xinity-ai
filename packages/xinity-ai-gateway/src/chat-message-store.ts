@@ -40,11 +40,13 @@ const digestCache = createDigestCache(DIGEST_CACHE_MAX_ENTRIES);
 const cacheKey = (orgId: string, sha256: string) => `${orgId}:${sha256}`;
 
 /**
- * DO NOTHING rather than a no-op DO UPDATE, which would write a dead tuple per repeat.
- * Reading conflicts back relies on per-statement snapshots: never run this at REPEATABLE
- * READ or above.
+ * Stores each message body once per organization and returns their row ids, one per input message
+ * and in the same order. Repeats, within the batch and across calls, collapse onto one row.
+ *
+ * Reading conflicts back relies on per-statement snapshots: never run this at REPEATABLE READ or
+ * above.
  */
-export async function resolveChatMessageIds(
+export async function recordChatMessages(
   orgId: string,
   messages: ApiCallInputMessage[],
   executor: ChatMessageStoreExecutor = getDB(),
@@ -77,6 +79,7 @@ export async function resolveChatMessageIds(
         sha256,
         body,
       })))
+      // DO NOTHING, not a no-op DO UPDATE, which would write a dead tuple per repeat.
       .onConflictDoNothing()
       .returning({ id: chatMessageT.id, sha256: chatMessageT.sha256 });
 
@@ -105,7 +108,7 @@ export async function resolveChatMessageIds(
   return digests.map((sha256) => {
     const id = resolved.get(sha256);
     if (!id) {
-      throw new Error(`Failed to resolve message ${sha256}`);
+      throw new Error(`Failed to record message ${sha256}`);
     }
     digestCache.set(cacheKey(orgId, sha256), id);
     return id;

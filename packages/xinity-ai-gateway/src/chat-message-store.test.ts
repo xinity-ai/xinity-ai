@@ -19,7 +19,7 @@ jest.spyOn(preparedProto, "execute").mockImplementation(async function (this: { 
 
 mock.module("./db", () => ({ getDB: () => db }));
 
-const { resolveChatMessageIds } = await import("./chat-message-store");
+const { recordChatMessages } = await import("./chat-message-store");
 
 const insertQueries = () => capturedQueries.filter((q) => /^\s*insert/i.test(q.sql));
 const selectQueries = () => capturedQueries.filter((q) => /^\s*select/i.test(q.sql));
@@ -107,12 +107,12 @@ describe("message identity", () => {
   });
 });
 
-describe("resolveChatMessageIds", () => {
+describe("recordChatMessages", () => {
   const system = { role: "system", content: "You are helpful" } as ApiCallInputMessage;
   const user = { role: "user", content: "Hi" } as ApiCallInputMessage;
 
   test("returns an empty list without touching the database", async () => {
-    expect(await resolveChatMessageIds(freshOrg(), [])).toEqual([]);
+    expect(await recordChatMessages(freshOrg(), [])).toEqual([]);
     expect(capturedQueries).toHaveLength(0);
   });
 
@@ -122,7 +122,7 @@ describe("resolveChatMessageIds", () => {
       { id: "id-user", sha256: jsonDigest(user) },
     ];
 
-    const ids = await resolveChatMessageIds(freshOrg(), [system, user]);
+    const ids = await recordChatMessages(freshOrg(), [system, user]);
 
     expect(ids).toEqual(["id-system", "id-user"]);
     expect(insertQueries()).toHaveLength(1);
@@ -132,7 +132,7 @@ describe("resolveChatMessageIds", () => {
   test("sends the digest it computed, so the row is addressed by content", async () => {
     insertedRows = [{ id: "id-system", sha256: jsonDigest(system) }];
 
-    await resolveChatMessageIds(freshOrg(), [system]);
+    await recordChatMessages(freshOrg(), [system]);
 
     expect(insertQueries()[0]?.params).toContain(jsonDigest(system));
   });
@@ -141,7 +141,7 @@ describe("resolveChatMessageIds", () => {
     insertedRows = [];
     existingRows = [{ id: "id-existing", sha256: jsonDigest(system) }];
 
-    const ids = await resolveChatMessageIds(freshOrg(), [system]);
+    const ids = await recordChatMessages(freshOrg(), [system]);
 
     expect(ids).toEqual(["id-existing"]);
     const [insert] = insertQueries();
@@ -153,7 +153,7 @@ describe("resolveChatMessageIds", () => {
   test("collapses a message repeated within one batch to a single insert", async () => {
     insertedRows = [{ id: "id-user", sha256: jsonDigest(user) }];
 
-    const ids = await resolveChatMessageIds(freshOrg(), [user, user, user]);
+    const ids = await recordChatMessages(freshOrg(), [user, user, user]);
 
     expect(ids).toEqual(["id-user", "id-user", "id-user"]);
     expect(insertQueries()).toHaveLength(1);
@@ -165,7 +165,7 @@ describe("resolveChatMessageIds", () => {
     const reordered = { content: "Hi", role: "user" } as ApiCallInputMessage;
     insertedRows = [{ id: "id-user", sha256: jsonDigest(user) }];
 
-    const ids = await resolveChatMessageIds(freshOrg(), [user, reordered]);
+    const ids = await recordChatMessages(freshOrg(), [user, reordered]);
 
     expect(ids).toEqual(["id-user", "id-user"]);
     expect(insertQueries()[0]?.params.filter((p) => p === jsonDigest(user))).toHaveLength(1);
@@ -174,10 +174,10 @@ describe("resolveChatMessageIds", () => {
   test("serves a repeated message from cache without a second round trip", async () => {
     const orgId = freshOrg();
     insertedRows = [{ id: "id-system", sha256: jsonDigest(system) }];
-    await resolveChatMessageIds(orgId, [system]);
+    await recordChatMessages(orgId, [system]);
     capturedQueries.length = 0;
 
-    const ids = await resolveChatMessageIds(orgId, [system]);
+    const ids = await recordChatMessages(orgId, [system]);
 
     expect(ids).toEqual(["id-system"]);
     expect(capturedQueries).toHaveLength(0);
@@ -186,11 +186,11 @@ describe("resolveChatMessageIds", () => {
   test("does not serve one organization's message from another's cache entry", async () => {
     const digest = jsonDigest(system);
     insertedRows = [{ id: "id-org-a", sha256: digest }];
-    await resolveChatMessageIds(freshOrg(), [system]);
+    await recordChatMessages(freshOrg(), [system]);
     capturedQueries.length = 0;
 
     insertedRows = [{ id: "id-org-b", sha256: digest }];
-    const ids = await resolveChatMessageIds(freshOrg(), [system]);
+    const ids = await recordChatMessages(freshOrg(), [system]);
 
     expect(ids).toEqual(["id-org-b"]);
     expect(insertQueries()).toHaveLength(1);
@@ -200,7 +200,7 @@ describe("resolveChatMessageIds", () => {
     const named = { role: "user", content: "Hi", name: "anna" } as unknown as ApiCallInputMessage;
     insertedRows = [{ id: "id-named", sha256: jsonDigest(named) }];
 
-    await resolveChatMessageIds(freshOrg(), [named]);
+    await recordChatMessages(freshOrg(), [named]);
 
     const [insert] = insertQueries();
     const payload = insert?.params.find((p) => typeof p === "string" && p.includes("anna"));
@@ -212,7 +212,7 @@ describe("resolveChatMessageIds", () => {
     insertedRows = [{ id: "id-system", sha256: jsonDigest(system) }];
     const tx = { insert: jest.fn(db.insert.bind(db)), select: jest.fn(db.select.bind(db)) };
 
-    const ids = await resolveChatMessageIds(freshOrg(), [system], tx as never);
+    const ids = await recordChatMessages(freshOrg(), [system], tx as never);
 
     expect(ids).toEqual(["id-system"]);
     expect(tx.insert).toHaveBeenCalledTimes(1);
@@ -221,6 +221,6 @@ describe("resolveChatMessageIds", () => {
   test("throws when a message can be neither inserted nor found", async () => {
     insertedRows = [];
     existingRows = [];
-    await expect(resolveChatMessageIds(freshOrg(), [system])).rejects.toThrow("Failed to resolve message");
+    await expect(recordChatMessages(freshOrg(), [system])).rejects.toThrow("Failed to record message");
   });
 });

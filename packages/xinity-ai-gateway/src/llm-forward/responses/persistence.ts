@@ -12,7 +12,7 @@ import {
   sql,
 } from "common-db";
 import { getDB } from "../../db";
-import { resolveChatMessageIds } from "../../chat-message-store";
+import { recordChatMessages } from "../../chat-message-store";
 import { formatResponseId, parseResponseId } from "./response-id";
 import { outputAsMessages } from "./input-normalize";
 import type { OutputItem, ResponseObject } from "./schemas";
@@ -131,7 +131,7 @@ export async function createPersistedResponse(args: CreatePersistedResponseArgs)
       return;
     }
 
-    const messageIds = await resolveChatMessageIds(orgId, inputMessages, tx);
+    const messageIds = await recordChatMessages(orgId, inputMessages, tx);
     if (messageIds.length > 0) {
       await tx.insert(apiResponseMessageT).values(
         messageIds.map((messageId, seq) => ({
@@ -197,7 +197,7 @@ export async function settlePersistedResponse(orgId: string, response: ResponseO
         .where(sql`${apiResponseMessageT.responseId} = ${id}`);
       const firstSeq = row?.next ?? 0;
 
-      const messageIds = await resolveChatMessageIds(orgId, reply, tx);
+      const messageIds = await recordChatMessages(orgId, reply, tx);
       await tx.insert(apiResponseMessageT).values(
         messageIds.map((messageId, offset) => ({
           responseId: id,

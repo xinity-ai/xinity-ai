@@ -6,7 +6,7 @@ import {
   type MessageDirection,
 } from "common-db";
 import { getDB } from "./db";
-import { resolveChatMessageIds } from "./chat-message-store";
+import { recordChatMessages } from "./chat-message-store";
 
 export type InferenceCallRecord = {
   /** Set when a caller needed the id before the batch was flushed. */
@@ -94,7 +94,7 @@ export async function recordInferenceCalls(calls: InferenceCallRecord[]): Promis
 
     const rows = [];
     for (const [orgId, group] of groupByOrg(calls, pending)) {
-      const messageIds = await resolveChatMessageIds(orgId, group.map((entry) => entry.message), tx);
+      const messageIds = await recordChatMessages(orgId, group.map((entry) => entry.message), tx);
       rows.push(...group.map((entry, index) => ({
         callId: ids[entry.callIndex]!,
         seq: entry.seq,
