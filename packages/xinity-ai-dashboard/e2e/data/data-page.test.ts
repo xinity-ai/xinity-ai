@@ -1,5 +1,7 @@
 import { describe, test, expect } from "bun:test";
-import { ownerFetch } from "../api/api-helpers";
+import { ownerFetch, getSetupState } from "../api/api-helpers";
+import { chatMessageT, inferenceCallMessageT, inferenceCallT, preconfigureDB } from "common-db";
+import { jsonDigest } from "common-env";
 import { ownerPage } from "../utils/browser";
 import { expectVisible } from "../utils/helpers";
 
@@ -14,6 +16,53 @@ type ListedKey = {
   id: string;
   specifier: string;
   applicationId: string | null;
+}
+
+const SEEDED_CALLS = 7;
+
+/**
+ * The gateway is not running in the e2e stack, so the log is written directly. Messages are
+ * content-addressed and referenced rather than inline, which is the shape the Data view reads.
+ */
+async function seedInferenceCalls(orgId: string, apiKeyId: string, applicationId: string) {
+  const dbUrl = process.env.DB_CONNECTION_URL;
+  if (!dbUrl) {
+    throw new Error("DB_CONNECTION_URL not set; copy example.env to .env at the repo root");
+  }
+  const db = preconfigureDB(dbUrl).getDB();
+
+  for (let i = 0; i < SEEDED_CALLS; i++) {
+    // Bodies are content-addressed and unique per organization, so a rerun must not repeat them.
+    const bodies = [
+      { role: "user", content: `data-page seed prompt ${i} for ${applicationId}` },
+      { role: "assistant", content: `data-page seed reply ${i} for ${applicationId}` },
+    ];
+
+    const [call] = await db
+      .insert(inferenceCallT)
+      .values({
+        organizationId: orgId,
+        apiKeyId,
+        applicationId,
+        endpoint: "chat_completions",
+        servedModel: "seed-engine-model",
+        publicSpecifier: "seed-model",
+        durationMs: 100 + i,
+      })
+      .returning({ id: inferenceCallT.id });
+
+    const messages = await db
+      .insert(chatMessageT)
+      .values(bodies.map((body) => ({ organizationId: orgId, sha256: jsonDigest(body), body })))
+      .returning({ id: chatMessageT.id, sha256: chatMessageT.sha256 });
+
+    await db.insert(inferenceCallMessageT).values(bodies.map((body, seq) => ({
+      callId: call!.id,
+      seq,
+      messageId: messages.find((row) => row.sha256 === jsonDigest(body))!.id,
+      direction: seq === 0 ? "input" as const : "output" as const,
+    })));
+  }
 }
 
 describe("Data page", () => {
@@ -43,11 +92,8 @@ describe("Data page", () => {
     if (!keyRow) throw new Error(`could not find created key with specifier ${created.specifier}`);
     const apiKeyId = keyRow.id;
 
-    const seedRes = await ownerFetch("/api/api-call/add-example-data", {
-      method: "POST",
-      body: JSON.stringify({ apiKeyId, applicationId }),
-    });
-    expect(seedRes.status).toBe(200);
+    const { orgId } = await getSetupState();
+    await seedInferenceCalls(orgId, apiKeyId, applicationId);
 
     const { page, context } = await ownerPage();
     try {
@@ -61,7 +107,7 @@ describe("Data page", () => {
 
       await expectVisible(page.getByText("Recent API Calls"), 60_000);
       await expectVisible(page.locator('[role="listitem"]').first(), 60_000);
-      await expectVisible(page.getByText(/Showing 7 of 7 calls/), 60_000);
+      await expectVisible(page.getByText(new RegExp(`Showing ${SEEDED_CALLS} of ${SEEDED_CALLS} calls`)), 60_000);
 
       const asyncErr = pageErrors.find((e) =>
         /experimental_async_required/.test(e.message),
