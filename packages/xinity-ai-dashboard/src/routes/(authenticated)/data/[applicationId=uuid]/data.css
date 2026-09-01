@@ -339,3 +339,14 @@
   user-select: text;
   cursor: text;
 }
+
+.rating-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.rating-btn:disabled:hover {
+  background-color: transparent;
+  transform: none;
+  box-shadow: none;
+}

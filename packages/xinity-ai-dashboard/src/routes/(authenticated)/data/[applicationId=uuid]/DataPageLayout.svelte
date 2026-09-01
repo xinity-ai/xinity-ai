@@ -12,12 +12,13 @@
     getApiCallCount,
     getApiKeys,
     type ApiCallReactionSummary,
+    type DataViewCall,
   } from "./data.remote";
-  import type { ApiCall, ApiCallResponse } from "common-db";
+  import type { ApiCallResponse } from "common-db";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import { permissions } from "$lib/state/permissions.svelte";
   import { orpc } from "$lib/orpc/orpc-client";
-  import { untrack } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { useDebouncedValue } from "$lib/state/debounced.svelte";
   import { Button } from "$lib/components/ui/button";
   import { ArrowLeft, BookOpen } from "@lucide/svelte";
@@ -52,8 +53,8 @@
   let reactionFilter: ReactionFilter = $state("all");
   let metadataKey = $state("");
   let metadataValue = $state("");
-  let selectedCall: ApiCall | null = $state(null);
-  let deleteTarget = $state<ApiCall | null>(null);
+  let selectedCall: DataViewCall | null = $state(null);
+  let deleteTarget = $state<DataViewCall | null>(null);
   let deleteModalOpen = $state(false);
   let deleting = $state(false);
   let selectedCallIds = $state(new Set<string>());
@@ -71,6 +72,9 @@
   function handleSelectAll(checked: boolean) {
     const next = new Set(selectedCallIds);
     for (const call of filteredCalls) {
+      if (call.source === "legacy") {
+        continue;
+      }
       if (checked) {
         next.add(call.id);
       } else {
@@ -84,7 +88,7 @@
     selectedCallIds = new Set();
   }
 
-  let allCalls = $state<ApiCall[]>([]);
+  let allCalls = $state<DataViewCall[]>([]);
   let offset = $state(0);
   let loadingMore = $state(false);
   let hasMore = $state(true);
@@ -167,6 +171,13 @@
       }
     }
   });
+  // The remote query cache outlives this component, so arriving here would otherwise show whatever
+  // was true on the last visit.
+  onMount(() => {
+    void apiCalls.refresh();
+    void apiCallCount.refresh();
+  });
+
   const apiKeys = $derived(getApiKeys({ applicationId }));
   const apiKeyNameMap = $derived(
     new Map((apiKeys.current || []).map((key) => [key.id, key.name])),
@@ -181,10 +192,13 @@
   }
   const filteredCalls = $derived(getFilteredCalls(allCalls));
 
-  function handleBatchRemoved(ids: string[]) {
+  function handleBatchRemoved(ids: string[], reassigned: number) {
+    if (reassigned === 0) {
+      return;
+    }
     const removed = new Set(ids);
     allCalls = allCalls.filter((c) => !removed.has(c.id));
-    deletedCount += ids.length;
+    deletedCount += reassigned;
     if (selectedCall && removed.has(selectedCall.id)) {
       selectedCall = null;
     }
@@ -205,7 +219,7 @@
     return responseRequests.get(callId)?.current ?? null;
   }
 
-  function getFilteredCalls(calls: ApiCall[]) {
+  function getFilteredCalls(calls: DataViewCall[]) {
     if (reactionFilter === "all") return calls;
     return calls.filter((call) => {
       const reactionSummary = getReactionSummary(call.id);
@@ -228,7 +242,7 @@
     });
   }
 
-  function selectCall(call: ApiCall) {
+  function selectCall(call: DataViewCall) {
     selectedCall = call;
   }
 
@@ -238,7 +252,7 @@
     offset = allCalls.length;
   }
 
-  function requestDelete(call: ApiCall) {
+  function requestDelete(call: DataViewCall) {
     deleteTarget = call;
     deleteModalOpen = true;
   }

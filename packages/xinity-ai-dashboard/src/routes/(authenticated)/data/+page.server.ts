@@ -2,7 +2,7 @@ import { call } from '@orpc/server';
 import type { PageServerLoad } from './$types';
 import { applicationRouter } from '$lib/server/orpc/procedures/application.procedure';
 import { getDB } from '$lib/server/db';
-import { apiCallT, sql } from 'common-db';
+import { apiCallT, inferenceCallT, sql } from 'common-db';
 import { auth } from '$lib/server/auth-server';
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -11,20 +11,24 @@ export const load: PageServerLoad = async ({ locals }) => {
     return { applications: [], uncategorizedCount: 0 };
   }
 
-  const [applications, uncategorizedCountRows] = await Promise.all([
+  const [applications, uncategorizedCount] = await Promise.all([
     call(applicationRouter.list, {}, { context: locals }),
-    getDB()
-      .select({ count: sql<number>`COUNT(*)::int` })
-      .from(apiCallT)
-      .where(sql`
-        ${apiCallT.organizationId} = ${session.session.activeOrganizationId}
-      AND
-        ${apiCallT.applicationId} IS NULL
-      `),
+    countUncategorized(session.session.activeOrganizationId),
   ]);
 
-  return {
-    applications,
-    uncategorizedCount: uncategorizedCountRows[0]?.count ?? 0,
-  };
+  return { applications, uncategorizedCount };
 };
+
+async function countUncategorized(orgId: string): Promise<number> {
+  const db = getDB();
+  const count = sql<number>`COUNT(*)::int`;
+  const [[legacy], [inference]] = await Promise.all([
+    db.select({ count }).from(apiCallT).where(sql`
+      ${apiCallT.organizationId} = ${orgId} AND ${apiCallT.applicationId} IS NULL
+    `),
+    db.select({ count }).from(inferenceCallT).where(sql`
+      ${inferenceCallT.organizationId} = ${orgId} AND ${inferenceCallT.applicationId} IS NULL
+    `),
+  ]);
+  return (legacy?.count ?? 0) + (inference?.count ?? 0);
+}

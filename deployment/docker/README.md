@@ -36,7 +36,7 @@ What you must set in `.env` (the setup script handles most of these):
 - For HTTPS: `DOMAIN`, `ACME_EMAIL`, `ORIGIN`, `HTTP_OVERRIDE_ORIGIN`, `GATEWAY_URL`.
 - For SearXNG: `SEARXNG_SECRET` (`openssl rand -hex 32`).
 
-`BETTER_AUTH_SECRET` and `METRICS_AUTH` are not `.env` variables — `setup.sh` generates them directly into `secrets/` as Docker secrets. See `example.env` for everything else: multi-tenancy toggle, mail, S3 object storage, gateway tuning.
+`BETTER_AUTH_SECRET` and `METRICS_AUTH` are not `.env` variables — `setup.sh` generates them directly into `secrets/` as Docker secrets. See `example.env` for everything else: multi-tenancy toggle, mail, S3 object storage, gateway tuning. S3 is optional and points at storage you already run, and the bucket has to exist first, since an upload to a missing one is dropped rather than failing the request.
 
 ### 2. Run database migrations
 

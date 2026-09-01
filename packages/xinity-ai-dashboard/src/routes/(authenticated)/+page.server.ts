@@ -1,11 +1,12 @@
 import { getDB } from "$lib/server/db";
 import {
   sql, inArray,
-  aiApplicationT, apiCallT, apiCallResponseT, modelDeploymentT,
+  aiApplicationT, modelDeploymentT,
   usageEventT, usageSummaryT, NIL_APP_UUID, invitationT,
 } from "common-db";
 import type { PageServerLoad } from "./$types";
 import type { ChecklistData, KeyMetrics, ChartsData, TablesData } from "./dashboard.types";
+import { organizationHasRating, resolveRatingTotals } from "$lib/server/lib/call-ratings";
 import { rootLogger } from "$lib/server/logging";
 
 const log = rootLogger.child({ name: "dashboard-home" });
@@ -82,7 +83,7 @@ async function loadKeyMetrics(db: DB, orgId: string, userId: string): Promise<Ke
     [summaryTotalsResult],
     [todayResult],
     [tokenAvgResult],
-    [responseDataResult],
+    responseDataResult,
   ] = await Promise.all([
     // Usage totals + avg duration from usageEvent, same table and filter
     db.select({
@@ -126,17 +127,7 @@ async function loadKeyMetrics(db: DB, orgId: string, userId: string): Promise<Ke
         ${usageEventT.createdAt} > NOW() - INTERVAL '1 hour'
       `),
 
-    // Ratings + training data from apiCallResponse, same table and filter
-    db.select({
-      liked: sql<number>`COUNT(CASE WHEN ${apiCallResponseT.response} = true THEN 1 END)::int`,
-      disliked: sql<number>`COUNT(CASE WHEN ${apiCallResponseT.response} = false THEN 1 END)::int`,
-      unrated: sql<number>`COUNT(CASE WHEN ${apiCallResponseT.response} IS NULL THEN 1 END)::int`,
-      total: sql<number>`COUNT(*)::int`,
-      edited: sql<number>`COUNT(CASE WHEN ${apiCallResponseT.outputEdit} IS NOT NULL THEN 1 END)::int`,
-      rated: sql<number>`COUNT(CASE WHEN ${apiCallResponseT.response} IS NOT NULL THEN 1 END)::int`,
-    })
-      .from(apiCallResponseT)
-      .where(sql`${apiCallResponseT.userId} = ${userId}`),
+    resolveRatingTotals(userId),
   ]);
 
   const totalCalls = (eventTotalsResult?.totalCalls || 0) + (summaryTotalsResult?.totalCalls || 0);
@@ -327,11 +318,7 @@ async function loadChecklist(db: DB, orgId: string): Promise<ChecklistData> {
       .where(sql`${usageEventT.organizationId} = ${orgId}`)
       .limit(1),
 
-    db.select({ id: apiCallResponseT.apiCallId })
-      .from(apiCallResponseT)
-      .innerJoin(apiCallT, sql`${apiCallT.id} = ${apiCallResponseT.apiCallId}`)
-      .where(sql`${apiCallT.organizationId} = ${orgId}`)
-      .limit(1),
+    organizationHasRating(orgId),
 
     db.select({ id: invitationT.id })
       .from(invitationT)
@@ -352,7 +339,7 @@ async function loadChecklist(db: DB, orgId: string): Promise<ChecklistData> {
     hasOrganization: true,
     hasDeployment: checkDeployment.length > 0,
     hasApiCall: checkApiCall.length > 0,
-    hasLabeledCall: checkLabeledCall.length > 0,
+    hasLabeledCall: checkLabeledCall,
     hasInvitation: checkInvitation.length > 0,
     hasApplication: checkApplication.length > 0,
   };

@@ -2,7 +2,7 @@ import { logChatSync, logChatStream, type ChatSyncData, type ChatStreamData } fr
 import { recordTokenUsage, recordModelRequest } from "../metrics";
 import { recordUsageEvent } from "../usageRecorder";
 import type { AuthResult } from "./auth";
-import type { ApiCallInputMessage } from "common-db";
+import type { ApiCallInputMessage, InferenceEndpoint } from "common-db";
 import { rootLogger } from "../logger";
 
 const log = rootLogger.child({ name: "usage" });
@@ -21,6 +21,15 @@ function normalizeInputTokens(usage: UsageData): number {
 
 function normalizeOutputTokens(usage: UsageData): number {
   return usage.outputTokens ?? usage.completion_tokens ?? 0;
+}
+
+/**
+ * The single answer to whether a call gets logged. Both the image store and the usage recorder ask,
+ * and they must agree: images skipped for a call that then logs would leave the conversation with
+ * references to pictures that were never stored.
+ */
+export function callWillBeLogged(auth: AuthResult, logCalls?: boolean): boolean {
+  return logCalls ?? auth.collectData;
 }
 
 export type RecordUsageContext = {
@@ -47,7 +56,7 @@ export const recordUsage = ({
     return false;
   }
 
-  const shouldLog = logCalls ?? auth.collectData;
+  const shouldLog = callWillBeLogged(auth, logCalls);
 
   recordUsageEvent({
     organizationId: auth.orgId,
@@ -87,18 +96,20 @@ export function recordFailedRequest({ auth, modelInfo, callStartTime }: FailedRe
   });
 }
 
-type UsageLogContextBase = {
-  usage: UsageData | null | undefined;
-  auth: AuthResult;
-  modelInfo: { model: string };
-  publicSpecifier: string;
-  inputMessages: ApiCallInputMessage[];
-  callStartTime: number;
-  logCalls?: boolean;
-  metadata?: Record<string, unknown>;
+/** What every surface hands to `logChatUsage`, whichever endpoint served the call. */
+export type CallLogFields = {
+  readonly auth: AuthResult;
+  readonly modelInfo: { model: string; nodeId?: string | null };
+  readonly publicSpecifier: string;
+  readonly endpoint: InferenceEndpoint;
+  readonly inferenceCallId?: string | null;
+  readonly inputMessages: ApiCallInputMessage[];
+  readonly callStartTime: number;
+  readonly logCalls?: boolean;
+  readonly metadata?: Record<string, unknown>;
 };
 
-export type UsageLogContext = UsageLogContextBase & (
+export type UsageLogContext = CallLogFields & { usage: UsageData | null | undefined } & (
   | { stream: true; outputData: ChatStreamData }
   | { stream: false; outputData: ChatSyncData }
 );
@@ -110,6 +121,8 @@ export const logChatUsage = ({
   auth,
   modelInfo,
   publicSpecifier,
+  endpoint,
+  inferenceCallId,
   inputMessages,
   callStartTime,
   logCalls,
@@ -125,6 +138,9 @@ export const logChatUsage = ({
     applicationId: auth.applicationId,
     organizationId: auth.orgId,
     publicSpecifier,
+    servedModel: modelInfo.model,
+    endpoint,
+    inferenceCallId,
     durationInMS: Date.now() - callStartTime,
     inputMessages,
     metadata,

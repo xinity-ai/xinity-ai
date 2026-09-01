@@ -1,6 +1,7 @@
 import {
   bigint,
   boolean,
+  customType,
   date,
   index,
   integer,
@@ -19,6 +20,20 @@ import { userT } from "./auth";
 import type { InferSelectModel } from "drizzle-orm";
 import { callDataSchema } from "./pg-schemas";
 
+const bytea = customType<{ data: Uint8Array<ArrayBuffer>; driverData: Buffer }>({
+  dataType: () => "bytea",
+});
+
+/**
+ * A content-addressing digest. Handled as hex in code and stored as the 32 raw bytes, which is
+ * half the width of the hex text in every index entry that carries one.
+ */
+const digest = customType<{ data: string; driverData: Buffer }>({
+  dataType: () => "bytea",
+  toDriver: (hex) => Buffer.from(hex, "hex"),
+  fromDriver: (bytes) => bytes.toString("hex"),
+});
+
 const createdAt = timestamp("created_at", { withTimezone: true }).defaultNow().notNull();
 const updatedAt = timestamp("updated_at", { withTimezone: true })
   .defaultNow()
@@ -27,12 +42,7 @@ const updatedAt = timestamp("updated_at", { withTimezone: true })
 
 export type ApiCallInputMessageContent =
   | { type: "text"; text: string }
-  /**
-   * Image reference stored as an image_url part.
-   * When S3 is enabled, `url` is a `xinity-media://{sha256hex}` reference
-   * resolved via the mediaObject table. When S3 is disabled, `url` is the
-   * original external URL (data URIs are stripped from the log entirely).
-   */
+  /** `url` is a `xinity-media://{sha256hex}` reference into `media_object`. */
   | { type: "image_url"; image_url: { url: string } };
 export type ApiCallToolCall = {
   id: string;
@@ -74,6 +84,152 @@ export const apiCallT = callDataSchema.table("api_call", {
 ]);
 export type ApiCall = InferSelectModel<typeof apiCallT>;
 
+/**
+ * Bodies of chat-shaped messages, the form both `/v1/chat/completions` and `/v1/responses`
+ * normalize their input to, referenced by the calls that sent them rather than copied per
+ * call. Conversations resend their whole history every turn, so copying grows
+ * quadratically. Org-scoped so one org's deletions cannot reach another's.
+ */
+export const chatMessageT = callDataSchema.table("chat_message", {
+  id: uuid().primaryKey().defaultRandom(),
+  organizationId: text("organization_id")
+    .notNull()
+    .references(() => organizationT.id, { onDelete: "cascade" }),
+  sha256: digest().notNull(),
+  /** Verbatim. Loose request schemas admit fields beyond the type, and dropping any of
+   * them would also merge messages that differ only there. */
+  body: jsonb().notNull().$type<ApiCallInputMessage>(),
+  createdAt,
+}, table => [
+  uniqueIndex("chat_message_organization_id_sha256_idx").on(table.organizationId, table.sha256),
+]);
+export type ChatMessage = InferSelectModel<typeof chatMessageT>;
+
+export const apiResponseStatusEnum = callDataSchema.enum("api_response_status", [
+  "in_progress",
+  "completed",
+  "failed",
+  "incomplete",
+  "cancelled",
+]);
+export type ApiResponseStatus = (typeof apiResponseStatusEnum.enumValues)[number];
+/** A status a response can never leave again. */
+export type ApiResponseSettledStatus = Exclude<ApiResponseStatus, "in_progress">;
+
+/**
+ * Durable record of a `/v1/responses` call. Inserted when the response is created and
+ * updated once when it settles, so the request and its input survive a response that
+ * never completes.
+ */
+export const apiResponseT = callDataSchema.table("api_response", {
+  /** The uuid half of the client-facing `resp_` id, which is applied at the API boundary. */
+  id: uuid().primaryKey(),
+  organizationId: text("organization_id")
+    .notNull()
+    .references(() => organizationT.id, { onDelete: "cascade" }),
+  apiKeyId: uuid("api_key_id").references(() => aiApiKeyT.id, { onDelete: "set null" }),
+  applicationId: uuid("application_id").references(() => aiApplicationT.id, { onDelete: "set null" }),
+  model: text().notNull(),
+  status: apiResponseStatusEnum().notNull(),
+  /** Deliberately not a foreign key: the referenced response may never have been stored at
+   * all, because it was created with `store: false`. */
+  previousResponseId: uuid("previous_response_id"),
+  /** The request-derived fields the API echoes back, all fixed at creation. */
+  requestParams: jsonb("request_params").notNull().$type<Record<string, unknown>>(),
+  error: jsonb().$type<{ code: string; message: string }>(),
+  incompleteDetails: jsonb("incomplete_details").$type<{ reason: string }>(),
+  usage: jsonb().$type<Record<string, unknown>>(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  /** No FK: a response can be retrievable without being logged. */
+  inferenceCallId: uuid("inference_call_id"),
+  createdAt,
+}, table => [
+  index("api_response_organization_id_created_at_idx").on(table.organizationId, table.createdAt),
+  index("api_response_api_key_id_idx").on(table.apiKeyId),
+]);
+export type ApiResponse = InferSelectModel<typeof apiResponseT>;
+
+/** Output items in emission order, inserted when the response settles rather than as they
+ * arrive, so a long run does not rewrite a growing list. `seq` doubles as the
+ * `input_items` pagination cursor. */
+export const apiResponseItemT = callDataSchema.table("api_response_item", {
+  responseId: uuid("response_id")
+    .notNull()
+    .references(() => apiResponseT.id, { onDelete: "cascade" }),
+  seq: integer().notNull(),
+  itemId: text("item_id").notNull(),
+  type: text().notNull(),
+  payload: jsonb().notNull().$type<Record<string, unknown>>(),
+}, table => [
+  primaryKey({ columns: [table.responseId, table.seq] }),
+]);
+export type ApiResponseItem = InferSelectModel<typeof apiResponseItemT>;
+
+export const messageDirectionEnum = callDataSchema.enum("message_direction", ["input", "output"]);
+export type MessageDirection = (typeof messageDirectionEnum.enumValues)[number];
+
+/** The conversation a response is part of, in order. No cascade to `chat_message`, so a shared
+ * body cannot be deleted out from under a response that still references it. */
+export const apiResponseMessageT = callDataSchema.table("api_response_message", {
+  responseId: uuid("response_id")
+    .notNull()
+    .references(() => apiResponseT.id, { onDelete: "cascade" }),
+  seq: integer().notNull(),
+  messageId: uuid("message_id").notNull().references(() => chatMessageT.id),
+  direction: messageDirectionEnum().notNull(),
+}, table => [
+  primaryKey({ columns: [table.responseId, table.seq] }),
+  index("api_response_message_message_id_idx").on(table.messageId),
+]);
+export type ApiResponseMessage = InferSelectModel<typeof apiResponseMessageT>;
+
+export const inferenceEndpointEnum = callDataSchema.enum("inference_endpoint", [
+  "chat_completions",
+  "completions",
+  "embeddings",
+  "audio_transcriptions",
+  "rerank",
+  "responses",
+]);
+export type InferenceEndpoint = (typeof inferenceEndpointEnum.enumValues)[number];
+
+export const inferenceCallT = callDataSchema.table("inference_call", {
+  id: uuid().primaryKey().defaultRandom(),
+  organizationId: text("organization_id")
+    .notNull()
+    .references(() => organizationT.id, { onDelete: "cascade" }),
+  apiKeyId: uuid("api_key_id").references(() => aiApiKeyT.id, { onDelete: "set null" }),
+  applicationId: uuid("application_id").references(() => aiApplicationT.id, { onDelete: "set null" }),
+  endpoint: inferenceEndpointEnum().notNull(),
+  servedModel: text("served_model").notNull(),
+  publicSpecifier: text("public_specifier").notNull(),
+  user: text(),
+  durationMs: integer("duration_ms").notNull(),
+  metadata: jsonb().$type<Record<string, unknown>>().notNull().default({}),
+  createdAt,
+}, table => [
+  index("inference_call_api_key_id_idx").on(table.apiKeyId),
+  index("inference_call_application_id_idx").on(table.applicationId),
+  index("inference_call_organization_id_idx").on(table.organizationId),
+  index("inference_call_organization_id_created_at_idx").on(table.organizationId, table.createdAt),
+  index("inference_call_served_model_idx").on(table.servedModel),
+  index("inference_call_org_endpoint_created_at_idx").on(table.organizationId, table.endpoint, table.createdAt),
+]);
+export type InferenceCall = InferSelectModel<typeof inferenceCallT>;
+
+export const inferenceCallMessageT = callDataSchema.table("inference_call_message", {
+  callId: uuid("call_id")
+    .notNull()
+    .references(() => inferenceCallT.id, { onDelete: "cascade" }),
+  seq: integer().notNull(),
+  messageId: uuid("message_id").notNull().references(() => chatMessageT.id),
+  direction: messageDirectionEnum().notNull(),
+}, table => [
+  primaryKey({ columns: [table.callId, table.seq] }),
+  index("inference_call_message_message_id_idx").on(table.messageId),
+]);
+export type InferenceCallMessage = InferSelectModel<typeof inferenceCallMessageT>;
+
 export type Highlight = {
   start: number;
   end: number;
@@ -108,6 +264,24 @@ export const apiCallResponseT = callDataSchema.table("api_call_response", {
 ]);
 export type ApiCallResponse = InferSelectModel<typeof apiCallResponseT>;
 
+export const inferenceCallRatingT = callDataSchema.table("inference_call_rating", {
+  userId: text("user_id").notNull().references(() => userT.id, { onDelete: "cascade" }),
+  callId: uuid("call_id")
+    .notNull()
+    .references(() => inferenceCallT.id, { onDelete: "cascade" }),
+  verdict: boolean(),
+  outputEdit: text("output_edit"),
+  highlights: jsonb().$type<Highlight[]>().notNull().default([]),
+  excludedMessages: jsonb("excluded_messages").$type<number[]>().notNull().default([]),
+  inputExclusions: jsonb("input_exclusions").$type<InputExclusion[]>().notNull().default([]),
+  createdAt,
+  updatedAt,
+}, table => [
+  primaryKey({ columns: [table.userId, table.callId] }),
+  index("inference_call_rating_call_id_idx").on(table.callId),
+]);
+export type InferenceCallRating = InferSelectModel<typeof inferenceCallRatingT>;
+
 /** Per-call usage event. One row for every API call (including unlogged and embeddings). */
 export const usageEventT = callDataSchema.table("usage_event", {
   id: uuid().primaryKey().defaultRandom(),
@@ -138,7 +312,7 @@ export const usageEventT = callDataSchema.table("usage_event", {
   index("usage_event_node_id_created_at_idx").on(table.nodeId, table.createdAt),
 ]);
 
-/** A media object (image) stored in S3. Referenced from apiCall.inputMessages via xinity-media://{sha256} URLs. */
+/** A media object (image) referenced from message payloads via xinity-media://{sha256} URLs. */
 export const mediaObjectT = callDataSchema.table("media_object", {
   id: uuid().primaryKey().defaultRandom(),
   /** Hex-encoded SHA-256 of the raw image bytes. Used as the xinity-media:// URL identifier. */
@@ -146,9 +320,12 @@ export const mediaObjectT = callDataSchema.table("media_object", {
   mimeType: text("mime_type").notNull(),
   /** Original source URL if the image came from an external URL. Null for data URIs. */
   originalUrl: text("original_url"),
-  s3Bucket: text("s3_bucket").notNull(),
+  /** Null when the object lives in `bytes` instead. */
+  s3Bucket: text("s3_bucket"),
   /** S3 object key, formatted as {organizationId}/{sha256} */
-  s3Key: text("s3_key").notNull(),
+  s3Key: text("s3_key"),
+  /** Holds the object when no S3 bucket is configured, so an inline image still survives. */
+  bytes: bytea(),
   organizationId: text("organization_id")
     .notNull()
     .references(() => organizationT.id, { onDelete: "cascade" }),

@@ -1,7 +1,45 @@
 import type { z } from "zod";
 import { resolveModel, type ResolvedModel } from "./ai-sdk";
 import { errorResponse, handleEndpointError, recordFailedRequest, validateModelType, validationError } from "./util";
-import type { AuthResult } from "./auth";
+import { checkAuth, type AuthResult } from "./auth";
+
+/** Bun fills `params` in from the route pattern; it is absent on a directly constructed Request. */
+export function pathParam(req: Request, name: string): string | undefined {
+  return (req as Request & { params?: Record<string, string> }).params?.[name];
+}
+
+export type ResponseIdRouteContext = {
+  auth: AuthResult;
+  responseId: string;
+  req: Request;
+};
+
+/**
+ * Preamble for the `/v1/responses/:responseId` sub-routes, which authenticate and read a
+ * path parameter but resolve no model, so `withEndpointGuards` does not fit them.
+ */
+export function withResponseIdRoute(
+  methods: readonly string[],
+  handler: (ctx: ResponseIdRouteContext) => Promise<Response>,
+): (req: Request) => Promise<Response> {
+  return async (req) => {
+    if (!methods.includes(req.method)) {
+      return errorResponse("Method not allowed", 405);
+    }
+
+    const auth = await checkAuth(req.headers.get("authorization") || "");
+    if (auth instanceof Response) {
+      return auth;
+    }
+
+    const responseId = pathParam(req, "responseId");
+    if (!responseId) {
+      return errorResponse("Not found", 404);
+    }
+
+    return handler({ auth, responseId, req });
+  };
+}
 
 type EndpointLogger = {
   info: (obj: Record<string, unknown>, msg: string) => void;

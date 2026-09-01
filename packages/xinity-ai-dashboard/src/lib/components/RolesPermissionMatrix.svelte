@@ -11,7 +11,7 @@
   const permissionObjects = {
     "apiKey": "AI API Keys",
     "apiCall": "API Calls",
-    "apiCallResponse": "Response Ratings",
+    "callRating": "Response Ratings",
     "modelDeployment": "Model Deployments",
     "model": "Custom Models",
     "aiApplication": "Applications",

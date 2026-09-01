@@ -1,5 +1,5 @@
-import { getDB } from "./db";
-import { apiCallT, type ApiCallInputMessage } from "common-db";
+import type { ApiCallInputMessage, InferenceEndpoint } from "common-db";
+import { recordInferenceCalls, type InferenceCallRecord } from "./inference-call-store";
 import { rootLogger } from "./logger";
 
 const log = rootLogger.child({ name: "call-logger" });
@@ -28,28 +28,16 @@ type ChatLogFields = {
   organizationId: string;
   durationInMS: number;
   publicSpecifier: string;
+  servedModel: string;
+  endpoint: InferenceEndpoint;
+  /** Reserved by a surface that had to record the id before the call was logged. */
+  inferenceCallId?: string | null;
   inputMessages: ApiCallInputMessage[];
   metadata?: Record<string, unknown>;
 };
 
 type ChatSyncInput = ChatLogFields & { data: ChatSyncData };
 type ChatStreamInput = ChatLogFields & { data: ChatStreamData };
-
-type ApiCallRow = ReturnType<typeof buildApiCallRow>;
-
-function buildApiCallRow(input: ChatLogFields, model: string, outputMessage: ApiCallInputMessage) {
-  return {
-    apiKeyId: input.keyId,
-    applicationId: input.applicationId,
-    organizationId: input.organizationId,
-    specifiedModel: input.publicSpecifier,
-    duration: input.durationInMS,
-    model,
-    outputMessage,
-    inputMessages: input.inputMessages,
-    metadata: input.metadata,
-  };
-}
 
 // Characters that PostgreSQL cannot store in text/jsonb columns.
 // U+0000 (null) is the only codepoint PostgreSQL categorically rejects.
@@ -84,22 +72,13 @@ function sanitizeForPg(value: unknown): unknown {
   return value;
 }
 
-function sanitizeRow(row: ApiCallRow): ApiCallRow {
-  return {
-    ...row,
-    inputMessages: sanitizeForPg(row.inputMessages) as ApiCallRow["inputMessages"],
-    outputMessage: sanitizeForPg(row.outputMessage) as ApiCallRow["outputMessage"],
-    metadata: row.metadata ? sanitizeForPg(row.metadata) as ApiCallRow["metadata"] : row.metadata,
-  };
-}
-
 const CALL_BATCH_SIZE = 50;
 const CALL_FLUSH_INTERVAL_MS = 200;
 
-let callQueue: ApiCallRow[] = [];
+let callQueue: InferenceCallRecord[] = [];
 let callTimer: ReturnType<typeof setTimeout> | null = null;
 
-export async function flushApiCallRows(): Promise<void> {
+export async function flushCallLog(): Promise<void> {
   if (callTimer) {
     clearTimeout(callTimer);
     callTimer = null;
@@ -109,79 +88,83 @@ export async function flushApiCallRows(): Promise<void> {
   const batch = callQueue;
   callQueue = [];
 
-  try {
-    await getDB().insert(apiCallT).values(batch);
-  } catch (batchErr) {
-    log.warn({ err: batchErr, count: batch.length }, "API call batch insert failed, falling back to individual inserts");
-    for (const row of batch) {
-      try {
-        await getDB().insert(apiCallT).values(row);
-      } catch (rowErr) {
-        log.error({ err: rowErr, specifiedModel: row.specifiedModel, organizationId: row.organizationId }, "DB error writing individual API call");
-      }
-    }
-  }
+  await recordInferenceCalls(batch)
+    .catch((err) => log.error({ err, count: batch.length }, "Inference call batch insert failed"));
 }
 
-async function insertApiCallRows(rows: ApiCallRow[]): Promise<void> {
-  for (const row of rows) {
-    callQueue.push(sanitizeRow(row));
-  }
+async function enqueueCalls(calls: InferenceCallRecord[]): Promise<void> {
+  callQueue.push(...calls);
   if (callQueue.length >= CALL_BATCH_SIZE) {
-    void flushApiCallRows();
+    void flushCallLog();
   } else if (!callTimer) {
-    callTimer = setTimeout(() => void flushApiCallRows(), CALL_FLUSH_INTERVAL_MS);
+    callTimer = setTimeout(() => void flushCallLog(), CALL_FLUSH_INTERVAL_MS);
   }
 }
 
 process.on("beforeExit", () => {
-  void flushApiCallRows();
+  void flushCallLog();
 });
 
 function coerceMessageRole(raw: unknown): ApiCallInputMessage["role"] {
   return ((raw as string) || "assistant") as ApiCallInputMessage["role"];
 }
 
-function syncMessageToOutput(msg: Record<string, unknown>): ApiCallInputMessage {
-  const outputMessage: ApiCallInputMessage = {
-    role: coerceMessageRole(msg.role),
-    content: (msg.content as string | null) ?? "",
-  };
-  if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
-    outputMessage.tool_calls = msg.tool_calls as ApiCallInputMessage["tool_calls"];
+/** vLLM and DeepSeek send `reasoning_content`, other engines `reasoning`. */
+function normalizeReasoning(msg: Record<string, unknown>): Record<string, unknown> {
+  const { reasoning, ...rest } = msg;
+  if (typeof reasoning === "string" && rest.reasoning_content === undefined) {
+    return { ...rest, reasoning_content: reasoning };
   }
-  return outputMessage;
+  return rest;
 }
 
-function streamChunksToOutput(data: ChatStreamData, choiceIndex: number): ApiCallInputMessage {
-  const content = data
-    .map((chunk) => chunk.choices[choiceIndex]?.delta.content as string | undefined)
-    .filter((c) => c)
-    .join("");
-  const role = coerceMessageRole(data[0]?.choices[choiceIndex]?.delta.role);
-  const outputMessage: ApiCallInputMessage = { content, role };
-  const toolCalls = data
-    .map((chunk) => chunk.choices[choiceIndex]?.delta.tool_calls)
-    .find((tc) => Array.isArray(tc) && tc.length > 0);
-  if (toolCalls) {
-    outputMessage.tool_calls = toolCalls as ApiCallInputMessage["tool_calls"];
-  }
-  return outputMessage;
+/** Backend schemas are loose, so rebuilding would drop fields: `ApiCallInputMessage` is a lower
+ * bound on what is stored. */
+function toOutputMessage(msg: Record<string, unknown>): ApiCallInputMessage {
+  return {
+    ...normalizeReasoning(msg),
+    role: coerceMessageRole(msg.role),
+    content: (msg.content as string | null) ?? "",
+  } as ApiCallInputMessage;
+}
+
+function buildRecord(
+  input: ChatLogFields,
+  outputMessage: ApiCallInputMessage,
+  choiceIndex: number,
+): InferenceCallRecord {
+  return {
+    // Only the first choice can claim it: every choice is its own call row.
+    id: choiceIndex === 0 ? input.inferenceCallId ?? undefined : undefined,
+    organizationId: input.organizationId,
+    apiKeyId: input.keyId,
+    applicationId: input.applicationId,
+    endpoint: input.endpoint,
+    servedModel: input.servedModel,
+    publicSpecifier: input.publicSpecifier,
+    durationMs: input.durationInMS,
+    metadata: input.metadata ? sanitizeForPg(input.metadata) as Record<string, unknown> : undefined,
+    inputMessages: sanitizeForPg(input.inputMessages) as ApiCallInputMessage[],
+    outputMessages: [sanitizeForPg(outputMessage) as ApiCallInputMessage],
+  };
 }
 
 export async function logChatSync(input: ChatSyncInput) {
-  if (!input.data.choices.length) return;
-  const rows = input.data.choices.map((choice) =>
-    buildApiCallRow(input, input.data.model, syncMessageToOutput(choice.message)),
+  const calls = input.data.choices.map((choice, index) =>
+    buildRecord(input, toOutputMessage(choice.message), index),
   );
-  await insertApiCallRows(rows);
+  if (calls.length === 0) {
+    return;
+  }
+  await enqueueCalls(calls);
 }
 
 export async function logChatStream(input: ChatStreamInput) {
-  const firstChunk = input.data[0];
-  if (!firstChunk || !firstChunk.choices.length) return;
-  const rows = firstChunk.choices.map((_, choiceIndex) =>
-    buildApiCallRow(input, firstChunk.model, streamChunksToOutput(input.data, choiceIndex)),
+  const calls = input.data.flatMap((entry) =>
+    entry.choices.map((choice) => buildRecord(input, toOutputMessage(choice.delta), choice.index)),
   );
-  await insertApiCallRows(rows);
+  if (calls.length === 0) {
+    return;
+  }
+  await enqueueCalls(calls);
 }

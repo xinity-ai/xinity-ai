@@ -473,6 +473,62 @@ export const openaiCompatPaths = {
       },
     },
   },
+  "/v1/responses/{responseId}/input_items": {
+    parameters: [
+      {
+        name: "responseId",
+        in: "path",
+        required: true,
+        schema: { type: "string" },
+      },
+      {
+        name: "limit",
+        in: "query",
+        required: false,
+        schema: { type: "integer", minimum: 1, maximum: 100, default: 20 },
+      },
+      {
+        name: "order",
+        in: "query",
+        required: false,
+        schema: { type: "string", enum: ["asc", "desc"], default: "desc" },
+      },
+      {
+        name: "after",
+        in: "query",
+        required: false,
+        description: "An item ID to list items after, used in pagination.",
+        schema: { type: "string" },
+      },
+    ],
+    get: {
+      tags: [TAG],
+      summary: "List the input items of a stored response",
+      description: "OpenAI: https://platform.openai.com/docs/api-reference/responses/input-items. Only responses created with `store` enabled have retrievable input.",
+      security: SECURITY,
+      responses: {
+        "200": {
+          description: "A list of input items",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["object", "data", "has_more", "first_id", "last_id"],
+                properties: {
+                  object: { type: "string", enum: ["list"] },
+                  data: { type: "array", items: { type: "object", additionalProperties: true } },
+                  has_more: { type: "boolean" },
+                  first_id: { type: "string", nullable: true },
+                  last_id: { type: "string", nullable: true },
+                },
+              },
+            },
+          },
+        },
+        ...errorResponses,
+      },
+    },
+  },
   "/v1/responses/{responseId}/cancel": {
     parameters: [
       {

@@ -4,16 +4,21 @@ models:
   unlimited-ocr-vllm:
     name: Unlimited OCR
     description: |
+      Prompt it with `<image>document parsing.` for a single page, or
+      `<image>Multi page parsing.` for a document. The `<image>` marker and the trailing
+      full stop are both part of the prompt, and a document sent with the single-page
+      prompt comes back as its first page only.
+
       Baidu's document OCR model: a small sparse vision-language model built to turn
       scans, PDFs and photographed pages into structured text. It handles dense layout,
       tables and mixed scripts better than a general vision model of the same size.
 
       It is purpose-built for extraction rather than conversation. Ask it to read a
-      page and it will; ask it to reason about the content and it will disappoint.
+      page and it will. Ask it to reason about the content and it will disappoint.
 
-      For a multi-page document, the prompt must literally contain "Multi page
-      parsing." or the model treats the input as a single page and returns only the
-      first. That phrasing is load-bearing, not a suggestion.
+      Repetition is the failure mode to plan around: without an n-gram guard the model
+      loops on repeated layout. Send `vllm_xargs: {"ngram_size": 35, "window_size": 128}`
+      alongside the prompt, raising `window_size` to 1024 for a multi-page document.
     url: https://huggingface.co/baidu/Unlimited-OCR
     license: mit
     createdAt: 2026-06-19
@@ -29,5 +34,16 @@ models:
     type: chat
     family: Unlimited-OCR
     tags: [vision]
+    engineArgs:
+      # The per-request ngram_size and window_size do nothing without this processor
+      # registered, and the model loops on repeated layout.
+      - --logits_processors
+      - vllm.model_executor.models.unlimited_ocr:NGramPerReqLogitsProcessor
+      - --no-enable-prefix-caching
+      - --mm-processor-cache-gb
+      - "0"
+    requestParams:
+      vllm_xargs.ngram_size: number
+      vllm_xargs.window_size: number
     engineVersions:
       min: "0.25.0"

@@ -1,13 +1,12 @@
 <script lang="ts">
   import type {
-    ApiCall,
     ApiCallInputMessage,
     ApiCallResponse,
     InputExclusion,
   } from "common-db";
   import { onDestroy } from "svelte";
   import { humanDate, formatDurationMs } from "$lib/util";
-  import { getAPICallResponse, upsertApiCallResponse } from "./data.remote";
+  import { getAPICallResponse, upsertApiCallResponse, type DataViewCall } from "./data.remote";
   import { orpc } from "$lib/orpc/orpc-client";
   import { messageContentToString, getRoleStyle, resolveImageSrc } from "./data.utils";
   import HighlightPopup from "./HighlightPopup.svelte";
@@ -16,7 +15,7 @@
   import * as Card from "$lib/components/ui/card";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
-  import { Download, Trash2, Pencil, Eye, EyeOff, Ban, X } from "@lucide/svelte";
+  import { Download, Trash2, Pencil, Eye, EyeOff, Ban, X, Archive } from "@lucide/svelte";
   import MetadataEditor from "./MetadataEditor.svelte";
 
   type Highlight = {
@@ -33,10 +32,10 @@
     canDelete = false,
     canUpdate = false,
   }: {
-    call?: ApiCall | null;
+    call?: DataViewCall | null;
     apiKeyNameMap: Map<string, string>;
     formatDate?: (date: Date) => string;
-    onDelete?: (call: ApiCall) => void;
+    onDelete?: (call: DataViewCall) => void;
     canDelete?: boolean;
     canUpdate?: boolean;
   } = $props();
@@ -55,7 +54,10 @@
     metadataEditorOpen = false;
   }
 
-  let activeCall = $state<ApiCall | null>(null);
+  let activeCall = $state<DataViewCall | null>(null);
+
+  /** Calls in the legacy table are read-only until an instance admin converts them. */
+  const frozen = $derived(activeCall?.source === "legacy");
   let currentRating = $state<ApiCallResponse | null>(null);
   let editedResponse = $state("");
   let lastSavedValue = $state("");
@@ -199,7 +201,7 @@
   }
 
   function deriveResponseText(
-    nextCall: ApiCall,
+    nextCall: DataViewCall,
     nextRating: ApiCallResponse | null,
   ) {
     return (
@@ -235,7 +237,7 @@
   }
 
   function initializeFromCall(
-    nextCall: ApiCall,
+    nextCall: DataViewCall,
     nextRating: ApiCallResponse | null,
   ) {
     activeCall = nextCall;
@@ -742,7 +744,7 @@
 
   function syncRatingFromProps(
     nextRating: ApiCallResponse | null,
-    callContext: ApiCall | null = activeCall,
+    callContext: DataViewCall | null = activeCall,
   ) {
     currentRating = nextRating ? { ...nextRating } : null;
 
@@ -791,13 +793,22 @@
             </Button>
           {/if}
           {#if canDelete}
-            <Button variant="ghost" size="icon" onclick={() => activeCall && onDelete?.(activeCall)} title="Delete call">
+            <Button variant="ghost" size="icon" disabled={frozen} onclick={() => activeCall && onDelete?.(activeCall)} title={frozen ? "Stored in the old format, so it cannot be deleted" : "Delete call"}>
               <Trash2 class="w-4 h-4 text-destructive" />
             </Button>
           {/if}
         </div>
       </div>
     </Card.Header>
+    {#if frozen}
+      <div class="flex items-start gap-2 px-6 py-3 compact:px-3 compact:py-2 text-sm border-b bg-muted/30 text-muted-foreground">
+        <Archive class="mt-0.5 size-4 shrink-0" />
+        <p>
+          This call is stored in the old format, so it cannot be labelled, edited or deleted.
+          An instance admin can convert it under Instance Settings, Maintenance.
+        </p>
+      </div>
+    {/if}
     <Card.Content class="p-6 compact:p-3">
       <div class="grid grid-cols-1 gap-6 compact:gap-3 md:grid-cols-2">
         <div>
@@ -968,6 +979,7 @@
               <Button
                 variant="outline"
                 size="sm"
+                disabled={frozen}
                 onclick={() => { editTabUnlocked = true; responseTab = "edit"; }}
               >
                 <Pencil class="w-3.5 h-3.5" />
@@ -1080,6 +1092,7 @@
           <RatingControls
             value={currentRating?.response ?? null}
             isEdited={isEdited}
+            disabled={frozen}
             onRate={rateResponse}
           />
         </div>
@@ -1098,12 +1111,12 @@
           </div>
           <div class="min-w-20 flex-1">
             <p class="text-xs text-muted-foreground">Model</p>
-            <p class="font-medium">{activeCall.model}</p>
+            <p class="font-medium">{activeCall.servedModel}</p>
           </div>
           <div class="min-w-20 flex-1">
             <p class="text-xs text-muted-foreground">Specified Model</p>
             <p class="font-medium">
-              {activeCall.specifiedModel}
+              {activeCall.publicSpecifier}
             </p>
           </div>
           <div class="min-w-30 flex-1">
@@ -1114,7 +1127,7 @@
           </div>
           <div class="min-w-20 flex-1">
             <p class="text-xs text-muted-foreground">Duration</p>
-            <p class="font-medium">{formatDurationMs(activeCall.duration)}</p>
+            <p class="font-medium">{formatDurationMs(activeCall.durationMs)}</p>
           </div>
         </div>
       </div>
@@ -1125,7 +1138,7 @@
           <div class="flex items-center justify-between mb-2">
             <h3 class="text-lg compact:mb-1 compact:text-base font-medium">Metadata</h3>
             {#if canUpdate}
-              <Button variant="outline" size="sm" onclick={() => (metadataEditorOpen = true)}>
+              <Button variant="outline" size="sm" disabled={frozen} onclick={() => (metadataEditorOpen = true)}>
                 <Pencil class="w-3 h-3" />
                 {hasMetadata ? "Edit" : "Add"}
               </Button>

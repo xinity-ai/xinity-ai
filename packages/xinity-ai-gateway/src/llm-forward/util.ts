@@ -1,5 +1,6 @@
 import { recordBackendError } from "../metrics";
 import { BLOCKED_REQUEST_PARAM_PREFIXES } from "xinity-infoserver";
+import { isImageTooLarge, isImageTypeUnsupported } from "../image-store";
 
 export { toModelMessages } from "./message-convert";
 export { recordUsage, recordFailedRequest, logChatUsage } from "./usage";
@@ -19,6 +20,48 @@ export const SSE_RESPONSE_HEADERS = {
 /** Shared TextEncoder for SSE frame encoding. */
 export const sseEncoder = new TextEncoder();
 
+export type StreamErrorInfo = {
+  /** Safe to hand to the client. */
+  message: string;
+  errorType: string;
+  logLevel: "warn" | "error";
+  logMessage: string;
+};
+
+/** Classifies without logging, so each stream can log with its own context. */
+export function classifyStreamError(e: unknown): StreamErrorInfo {
+  if (isTimeoutError(e)) {
+    return {
+      message: "Backend timed out while generating the response",
+      errorType: "timeout_error",
+      logLevel: "warn",
+      logMessage: "Backend timeout during stream",
+    };
+  }
+  if (isConnectionRefused(e)) {
+    return {
+      message: "Service temporarily unavailable",
+      errorType: "server_error",
+      logLevel: "warn",
+      logMessage: "Backend unreachable during stream",
+    };
+  }
+  if (isUpstreamError(e)) {
+    return {
+      message: clientFacingErrorMessage(e),
+      errorType: "server_error",
+      logLevel: "error",
+      logMessage: "Upstream error during stream",
+    };
+  }
+  return {
+    message: "Internal server error",
+    errorType: "server_error",
+    logLevel: "error",
+    logMessage: "Internal error during stream",
+  };
+}
+
 /**
  * Handles errors inside an OpenAI-compatible streaming ReadableStream.
  * Emits an error event + [DONE] sentinel and closes the controller.
@@ -34,26 +77,8 @@ export function handleStreamError(
     return;
   }
 
-  let message: string;
-  let errorType: string;
-
-  if (isTimeoutError(e)) {
-    (log.warn ?? log.error)({ err: e }, "Backend timeout during stream");
-    message = "Backend timed out while generating the response";
-    errorType = "timeout_error";
-  } else if (isConnectionRefused(e)) {
-    (log.warn ?? log.error)({ err: e }, "Backend unreachable during stream");
-    message = "Service temporarily unavailable";
-    errorType = "server_error";
-  } else if (isUpstreamError(e)) {
-    log.error({ err: e }, "Upstream error during stream");
-    message = clientFacingErrorMessage(e);
-    errorType = "server_error";
-  } else {
-    log.error({ err: e }, "Internal error during stream");
-    message = "Internal server error";
-    errorType = "server_error";
-  }
+  const { message, errorType, logLevel, logMessage } = classifyStreamError(e);
+  (logLevel === "warn" ? log.warn ?? log.error : log.error)({ err: e }, logMessage);
 
   try {
     controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify({ error: { message, type: errorType } })}\n\n`));
@@ -331,6 +356,14 @@ export function handleEndpointError(
   if (isTimeoutError(error)) {
     log.warn({ err: error }, "Backend timeout");
     return errorResponse("Backend timeout", 504);
+  }
+  if (isImageTooLarge(error)) {
+    log.warn({ err: error }, "Image rejected at ingest");
+    return errorResponse((error as Error).message, 413);
+  }
+  if (isImageTypeUnsupported(error)) {
+    log.warn({ err: error }, "Image rejected at ingest");
+    return errorResponse((error as Error).message, 415);
   }
   if (isConnectionRefused(error)) {
     log.warn({ err: error }, "Backend unreachable");

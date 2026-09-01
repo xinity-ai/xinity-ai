@@ -1,9 +1,12 @@
 import { command, getRequestEvent, query } from '$app/server';
 import { auth } from '$lib/server/auth-server';
 import { getDB } from '$lib/server/db';
+import { callMatchesSearch, legacyMatchesSearch, resolveCallMessages, searchPattern } from "$lib/server/lib/call-messages";
+import { resolveReactionSummaries, resolveUserRatings } from "$lib/server/lib/call-ratings";
+import { messageIdsOfCalls, pruneUnreferencedMessages } from "$lib/server/lib/chat-message-store";
 import { pick } from '$lib/util';
 import { error } from '@sveltejs/kit';
-import { apiCallResponseT, apiCallT, aiApiKeyT, sql, type ApiCall, type AiApiKey, and, inArray } from 'common-db';
+import { apiCallT, aiApiKeyT, inferenceCallT, inferenceCallRatingT, sql, unionAll, type ApiCallInputMessage, type AiApiKey, type PgColumn, and, inArray } from 'common-db';
 import z from 'zod';
 
 async function getSession() {
@@ -15,50 +18,61 @@ async function getSession() {
   return session;
 }
 
-function escapeLikePattern(s: string): string {
-  return s.replace(/[%_\\]/g, "\\$&");
-}
-
-async function apiCallExistsInOrg(apiCallId: string, organizationId: string | null | undefined): Promise<boolean> {
-  const [apiCall] = await getDB()
-    .select({ id: apiCallT.id })
-    .from(apiCallT)
+/** Only `inference_call` answers yes. A legacy row is frozen, so nothing may act on it. */
+async function callIsWritable(callId: string, organizationId: string | null | undefined): Promise<boolean> {
+  const [call] = await getDB()
+    .select({ id: inferenceCallT.id })
+    .from(inferenceCallT)
     .where(sql`
-      ${apiCallT.id} = ${apiCallId}
+      ${inferenceCallT.id} = ${callId}
     AND
-      ${apiCallT.organizationId} = ${organizationId}
+      ${inferenceCallT.organizationId} = ${organizationId}
     `)
     .limit(1);
-  return !!apiCall;
+  return !!call;
 }
 
-function buildApiCallConditions(opts: {
+type CallFilters = {
   organizationId: string;
   applicationId: string | null;
   apiKeyId?: string;
   metadataKey?: string;
   metadataValue?: string;
   searchQuery?: string;
-}) {
-  const conditions = [
-    sql`${apiCallT.organizationId} = ${opts.organizationId}`,
-  ];
-  if (opts.applicationId) {
-    conditions.push(sql`${apiCallT.applicationId} = ${opts.applicationId}`);
-  } else {
-    conditions.push(sql`${apiCallT.applicationId} IS NULL`);
-  }
+};
+
+/** The filters both tables answer the same way, given that table's columns. */
+function commonConditions(
+  opts: CallFilters,
+  col: { organizationId: PgColumn; applicationId: PgColumn; apiKeyId: PgColumn; metadata: PgColumn },
+) {
+  const conditions = [sql`${col.organizationId} = ${opts.organizationId}`];
+  conditions.push(opts.applicationId
+    ? sql`${col.applicationId} = ${opts.applicationId}`
+    : sql`${col.applicationId} IS NULL`);
   if (opts.apiKeyId) {
-    conditions.push(sql`${apiCallT.apiKeyId} = ${opts.apiKeyId}`);
+    conditions.push(sql`${col.apiKeyId} = ${opts.apiKeyId}`);
   }
   if (opts.metadataKey && opts.metadataValue) {
-    conditions.push(sql`${apiCallT.metadata} @> ${JSON.stringify({ [opts.metadataKey]: opts.metadataValue })}::jsonb`);
+    conditions.push(sql`${col.metadata} @> ${JSON.stringify({ [opts.metadataKey]: opts.metadataValue })}::jsonb`);
   }
+  return conditions;
+}
+
+/** The two tables never hold the same call: the gateway writes only `inference_call`, and the
+ * postfill deletes a legacy row as it converts it. */
+function legacyConditions(opts: CallFilters) {
+  const conditions = commonConditions(opts, apiCallT);
   if (opts.searchQuery && opts.searchQuery.trim().length > 0) {
-    const term = `%${escapeLikePattern(opts.searchQuery.trim())}%`;
-    conditions.push(
-      sql`(${apiCallT.inputMessages}::text ILIKE ${term} OR ${apiCallT.outputMessage}::text ILIKE ${term})`
-    );
+    conditions.push(legacyMatchesSearch(searchPattern(opts.searchQuery)));
+  }
+  return conditions;
+}
+
+function inferenceConditions(opts: CallFilters) {
+  const conditions = commonConditions(opts, inferenceCallT);
+  if (opts.searchQuery && opts.searchQuery.trim().length > 0) {
+    conditions.push(callMatchesSearch(sql`${inferenceCallT.id}`, searchPattern(opts.searchQuery)));
   }
   return conditions;
 }
@@ -102,37 +116,120 @@ const apiCallFilters = z.object({
 
 type ApiCallSortOption = z.infer<typeof apiCallFilters>["sortOption"];
 
-function apiCallOrderBy(sortOption: ApiCallSortOption) {
-  if (sortOption === "oldest") return sql`${apiCallT.createdAt} ASC`;
-  if (sortOption === "duration") return sql`${apiCallT.duration} DESC`;
-  return sql`${apiCallT.createdAt} DESC`;
-}
+/** Which table a listed call came from. The Data view renders both the same way; this exists so
+ * it can tell them apart when it needs to, and so messages are fetched from the right place. */
+export type CallSource = "legacy" | "inference";
+
+export type DataViewCall = {
+  id: string;
+  source: CallSource;
+  apiKeyId: string | null;
+  applicationId: string | null;
+  createdAt: Date;
+  durationMs: number;
+  servedModel: string;
+  publicSpecifier: string | null;
+  user: string | null;
+  metadata: Record<string, unknown> | null;
+  inputMessages: ApiCallInputMessage[];
+  outputMessage: ApiCallInputMessage | null;
+};
 
 export const getApiCalls = query(apiCallFilters, async ({ applicationId, apiKeyId, sortOption, metadataKey, metadataValue, searchQuery, limit = 50, offset = 0 }) => {
   const { session } = await getSession();
   if (!session.activeOrganizationId) {
-    return [] as ApiCall[];
+    return [] as DataViewCall[];
   }
 
-  const conditions = buildApiCallConditions({
+  const filters = {
     organizationId: session.activeOrganizationId,
     applicationId,
     apiKeyId,
     metadataKey,
     metadataValue,
     searchQuery,
-  });
+  };
+  const db = getDB();
 
-  const select = pick(apiCallT, "id", "apiKeyId", "createdAt", "duration", "inputMessages", "outputMessage", "model", "specifiedModel", "user", "applicationId", "metadata");
-  const apiCalls = await getDB()
-    .select(select)
+  // Only the columns both tables have. Messages are attached below, from whichever side holds them.
+  const legacy = db
+    .select({
+      id: apiCallT.id,
+      source: sql<CallSource>`'legacy'`.as("source"),
+      apiKeyId: apiCallT.apiKeyId,
+      applicationId: apiCallT.applicationId,
+      createdAt: apiCallT.createdAt,
+      durationMs: sql<number>`${apiCallT.duration}`.as("duration_ms"),
+      servedModel: sql<string>`${apiCallT.model}`.as("served_model"),
+      publicSpecifier: sql<string>`${apiCallT.specifiedModel}`.as("public_specifier"),
+      user: apiCallT.user,
+      metadata: apiCallT.metadata,
+    })
     .from(apiCallT)
-    .where(and(...conditions))
-    .orderBy(apiCallOrderBy(sortOption))
+    .where(and(...legacyConditions(filters)));
+
+  const inference = db
+    .select({
+      id: inferenceCallT.id,
+      source: sql<CallSource>`'inference'`.as("source"),
+      apiKeyId: inferenceCallT.apiKeyId,
+      applicationId: inferenceCallT.applicationId,
+      createdAt: inferenceCallT.createdAt,
+      durationMs: sql<number>`${inferenceCallT.durationMs}`.as("duration_ms"),
+      servedModel: sql<string>`${inferenceCallT.servedModel}`.as("served_model"),
+      publicSpecifier: sql<string>`${inferenceCallT.publicSpecifier}`.as("public_specifier"),
+      user: inferenceCallT.user,
+      metadata: inferenceCallT.metadata,
+    })
+    .from(inferenceCallT)
+    .where(and(...inferenceConditions(filters)));
+
+  const page = await unionAll(legacy, inference)
+    .orderBy(unionOrderBy(sortOption))
     .limit(limit)
     .offset(offset);
-  return apiCalls as ApiCall[];
+
+  return attachMessages(page);
 });
+
+/** Sorting spans the union, so it names the projected columns rather than either table's. */
+function unionOrderBy(sortOption: ApiCallSortOption) {
+  if (sortOption === "oldest") return sql`created_at ASC`;
+  if (sortOption === "duration") return sql`duration_ms DESC`;
+  return sql`created_at DESC`;
+}
+
+type PagedCall = Omit<DataViewCall, "inputMessages" | "outputMessage">;
+
+/** Two lookups for the page rather than one per row: legacy rows carry their messages inline,
+ * inference rows reference them. */
+async function attachMessages(page: PagedCall[]): Promise<DataViewCall[]> {
+  const legacyIds = page.filter((call) => call.source === "legacy").map((call) => call.id);
+  const inferenceIds = page.filter((call) => call.source === "inference").map((call) => call.id);
+
+  const [legacyRows, resolved] = await Promise.all([
+    legacyIds.length === 0
+      ? []
+      : getDB()
+        .select(pick(apiCallT, "id", "inputMessages", "outputMessage"))
+        .from(apiCallT)
+        .where(inArray(apiCallT.id, legacyIds)),
+    resolveCallMessages(inferenceIds),
+  ]);
+
+  const legacyMessages = new Map(legacyRows.map((row) => [row.id, row]));
+
+  return page.map((call) => {
+    const own = call.source === "legacy"
+      ? legacyMessages.get(call.id)
+      : resolved.get(call.id);
+    return {
+      ...call,
+      inputMessages: own?.inputMessages ?? [],
+      outputMessage: own?.outputMessage ?? { role: "assistant", content: "" },
+    } as DataViewCall;
+  });
+}
 
 const apiCallCountFilters = z.object({
   applicationId: z.uuid().nullable(),
@@ -146,17 +243,17 @@ export const getApiCallCount = query(apiCallCountFilters, async (params) => {
   const { session } = await getSession();
   if (!session.activeOrganizationId) return 0;
 
-  const conditions = buildApiCallConditions({
-    organizationId: session.activeOrganizationId,
-    ...params,
-  });
+  const filters = { organizationId: session.activeOrganizationId, ...params };
+  const db = getDB();
+  const total = sql<number>`COUNT(*)::int`;
 
-  const [result] = await getDB()
-    .select({ count: sql<number>`COUNT(*)::int` })
-    .from(apiCallT)
-    .where(and(...conditions));
+  // Summed rather than counted over the union: the twin exclusion already makes the two disjoint.
+  const [[legacy], [inference]] = await Promise.all([
+    db.select({ count: total }).from(apiCallT).where(and(...legacyConditions(filters))),
+    db.select({ count: total }).from(inferenceCallT).where(and(...inferenceConditions(filters))),
+  ]);
 
-  return result?.count ?? 0;
+  return (legacy?.count ?? 0) + (inference?.count ?? 0);
 });
 
 export type ApiCallReactionSummary = {
@@ -167,40 +264,18 @@ export type ApiCallReactionSummary = {
 };
 
 export const getApiCallReactionSummary = query.batch(z.uuid(), async (ids) => {
-  const summaries = await getDB()
-    .select({
-      apiCallId: apiCallResponseT.apiCallId,
-      likes: sql<number>`COUNT(CASE WHEN ${apiCallResponseT.response} = true THEN 1 END)::int`,
-      dislikes: sql<number>`COUNT(CASE WHEN ${apiCallResponseT.response} = false THEN 1 END)::int`,
-      total: sql<number>`COUNT(CASE WHEN ${apiCallResponseT.response} IS NOT NULL THEN 1 END)::int`,
-    })
-    .from(apiCallResponseT)
-    .where(inArray(apiCallResponseT.apiCallId, ids))
-    .groupBy(apiCallResponseT.apiCallId);
+  const summaries = await resolveReactionSummaries([...ids]);
 
   return (id) =>
-    summaries.find((summary) => summary.apiCallId === id) ?? {
-      apiCallId: id,
-      likes: 0,
-      dislikes: 0,
-      total: 0,
-    };
+    summaries.get(id) ?? { apiCallId: id, likes: 0, dislikes: 0, total: 0 };
 });
 
 export const getAPICallResponse = query.batch(z.uuid(), async (ids) => {
   const session = await getSession();
-  const userId = session.user.id;
+  const ratings = await resolveUserRatings([...ids], session.user.id);
 
-  const responses = await getDB().select().from(apiCallResponseT)
-    .where(sql`
-      ${inArray(apiCallResponseT.apiCallId, ids)}
-    AND
-      ${apiCallResponseT.userId} = ${userId}
-    `);
-
-  return id => responses.find(v => v.apiCallId === id);
-
-})
+  return (id) => ratings.get(id);
+});
 
 export type PartialPublicApiKey = Pick<AiApiKey, "name" | "enabled" | "specifier" | "createdAt" | "id" | "applicationId">;
 
@@ -224,15 +299,18 @@ export const upsertApiCallResponse = command(z.object({
 }), async ({ apiCallId, payload }) => {
   const { session, user } = await getSession();
 
-  if (!await apiCallExistsInOrg(apiCallId, session.activeOrganizationId)) {
-    error(404, { message: "The api Call was not found" });
+  if (!await callIsWritable(apiCallId, session.activeOrganizationId)) {
+    error(404, { message: "The call was not found" });
   }
 
-  const newObj = await getDB().insert(apiCallResponseT).values({
-    apiCallId: apiCallId,
+  const { response, ...rest } = payload;
+  const row = { ...rest, ...(response === undefined ? {} : { verdict: response }) };
+
+  const newObj = await getDB().insert(inferenceCallRatingT).values({
+    callId: apiCallId,
     userId: user.id,
-    ...payload,
-  }).onConflictDoUpdate({ set: payload, target: [apiCallResponseT.apiCallId, apiCallResponseT.userId] });
+    ...row,
+  }).onConflictDoUpdate({ set: row, target: [inferenceCallRatingT.callId, inferenceCallRatingT.userId] });
   getAPICallResponse(apiCallId).refresh();
   getApiCallReactionSummary(apiCallId).refresh();
   return newObj;
@@ -245,11 +323,15 @@ export const deleteApiCall = command(z.object({ apiCallId: z.uuid() }), async ({
     throw error(403, { message: "No active organization" });
   }
 
-  if (!await apiCallExistsInOrg(apiCallId, session.activeOrganizationId)) {
-    throw error(404, { message: "The api Call was not found" });
+  if (!await callIsWritable(apiCallId, session.activeOrganizationId)) {
+    throw error(404, { message: "The call was not found" });
   }
 
-  await getDB().delete(apiCallT).where(sql`${apiCallT.id} = ${apiCallId}`);
+  await getDB().transaction(async (tx) => {
+    const messageIds = await messageIdsOfCalls([apiCallId], tx);
+    await tx.delete(inferenceCallT).where(sql`${inferenceCallT.id} = ${apiCallId}`);
+    await pruneUnreferencedMessages(messageIds, tx);
+  });
 
   return { success: true };
 });

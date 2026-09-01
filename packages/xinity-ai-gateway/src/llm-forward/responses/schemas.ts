@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseResponseId } from "./response-id";
 
 const WebSearchTypeSchema = z.enum([
   "web_search", "web_search_preview", "web_search_preview_2025_03_11"])
@@ -47,6 +48,11 @@ export const CreateResponseBodySchema = z.object({
   input: z.unknown(),
   stream: z.boolean().optional().default(false),
   background: z.boolean().optional().default(false),
+  /**
+   * Governs API retrievability, per OpenAI (whose default is true), and additionally
+   * decides call logging, which OpenAI's Responses request has no parameter for. Left
+   * unset it defers to the api key's collectData; set explicitly it overrides it.
+   */
   store: z.boolean().optional(),
   temperature: z.number().optional(),
   top_p: z.number().optional(),
@@ -61,7 +67,10 @@ export const CreateResponseBodySchema = z.object({
   text: TextFormatSchema,
   include: z.array(z.string()).optional().default([]),
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
-  previous_response_id: z.string().nullable().optional(),
+  /** Checked here so a malformed id is a 400 rather than a lookup that silently matches nothing. */
+  previous_response_id: z.string().refine((id) => parseResponseId(id) !== null, {
+    message: "previous_response_id must be a response id",
+  }).nullable().optional(),
   truncation: z.string().nullable().optional().default("disabled"),
   user: z.string().nullable().optional(),
   reasoning: ReasoningSchema,

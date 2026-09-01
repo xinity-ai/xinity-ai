@@ -461,6 +461,11 @@
             default = null;
             description = "Path to an S3 configuration JSON file defining access keys and permissions for SeaweedFS. When null, anonymous S3 access is allowed.";
           };
+          bucket = lib.mkOption {
+            type = lib.types.str;
+            default = "xinity-media";
+            description = "Bucket media is stored in. Created on the bundled SeaweedFS and handed to the gateway and dashboard, so all three cannot disagree.";
+          };
         };
 
         monitoring = {
@@ -674,6 +679,7 @@
             dbConnectionUrlFile = lib.mkDefault cfg.secrets.dbConnectionUrlFile;
             redisUrlFile = lib.mkDefault cfg.secrets.redisUrlFile;
             metricsAuthFile = lib.mkDefault cfg.secrets.metricsAuthFile;
+            s3Bucket = lib.mkDefault cfg.seaweedfs.bucket;
             s3AccessKeyIdFile = lib.mkDefault cfg.secrets.s3AccessKeyIdFile;
             s3SecretAccessKeyFile = lib.mkDefault cfg.secrets.s3SecretAccessKeyFile;
             environmentFiles = lib.mkDefault envFiles;
@@ -712,6 +718,7 @@
             betterAuthSecretFile = lib.mkDefault cfg.secrets.betterAuthSecretFile;
             mailUrlFile = lib.mkDefault cfg.secrets.mailUrlFile;
             metricsAuthFile = lib.mkDefault cfg.secrets.metricsAuthFile;
+            s3Bucket = lib.mkDefault cfg.seaweedfs.bucket;
             s3AccessKeyIdFile = lib.mkDefault cfg.secrets.s3AccessKeyIdFile;
             s3SecretAccessKeyFile = lib.mkDefault cfg.secrets.s3SecretAccessKeyFile;
             licenseKeyFile = lib.mkDefault cfg.secrets.licenseKeyFile;
@@ -762,9 +769,16 @@
 
           # --- SeaweedFS ---
           services.xinity-ai-seaweedfs = lib.mkIf cfg.seaweedfs.enable {
+            buckets = lib.mkDefault [ cfg.seaweedfs.bucket ];
             enable = true;
             s3Port = lib.mkDefault cfg.seaweedfs.s3Port;
             s3Config = lib.mkDefault cfg.seaweedfs.s3Config;
+          };
+
+          # ordering extra effect in case that seaweed is enabled
+          systemd.services = lib.mkIf cfg.seaweedfs.enable {
+            xinity-ai-gateway.after = [ "xinity-ai-seaweedfs-buckets.service" ];
+            xinity-ai-dashboard.after = [ "xinity-ai-seaweedfs-buckets.service" ];
           };
 
           # --- Monitoring ---

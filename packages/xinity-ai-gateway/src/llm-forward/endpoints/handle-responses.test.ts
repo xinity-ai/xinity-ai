@@ -10,6 +10,8 @@ const { handleCreateResponseRequest, handleGetOrDeleteResponseRequest } = await 
 
 let server: any;
 let lastUpstreamBody: Record<string, unknown> | undefined;
+/** The message list the backend was last asked to complete. */
+let lastChatMessages: Array<{ role: string; content: unknown }> = [];
 
 beforeAll(() => {
   server = Bun.serve({
@@ -22,8 +24,10 @@ beforeAll(() => {
           reasoning_effort?: string;
           response_format?: { type?: string };
           tools?: Array<{ type: string; function?: { name: string } }>;
+          messages?: Array<{ role: string; content: unknown }>;
         };
         lastUpstreamBody = body as Record<string, unknown>;
+        lastChatMessages = body.messages ?? [];
 
         if (body.reasoning_effort === "interleave") {
           return makeChatSseResponseWithInterleavedReasoning("test-model");
@@ -84,7 +88,7 @@ describe("handleResponses", () => {
     expect(body.status).toBe("completed");
     expect(body.output?.[0]?.content?.[0]?.text).toBe("Hello");
     expect(checkAuth).toHaveBeenCalledWith("Bearer test");
-    expect(getModelInfo).toHaveBeenCalledWith("org-1", "test-model", undefined);
+    expect(getModelInfo).toHaveBeenCalledWith("org-1", "test-model", expect.any(Array));
     expect(responseStore.get(body.id)?.status).toBe("completed");
   });
 
@@ -243,7 +247,52 @@ describe("handleResponses", () => {
 
     const body = (await res.json()) as any;
     expect(responseStore.has(body.id)).toBe(true);
-    expect(logChatSync).not.toHaveBeenCalled();
+  });
+
+  test("should reject background requests that opt out of storage", async () => {
+    const req = new Request("http://localhost:4000/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        input: "Hi",
+        background: true,
+        store: false,
+      }),
+    });
+
+    const res = await handleCreateResponseRequest(req);
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as any;
+    expect(body.error.message).toContain("'background' requires 'store' to be true");
+  });
+
+  describe("call logging", () => {
+    const cases: Array<[store: boolean | undefined, collectData: boolean, logged: boolean]> = [
+      [undefined, true, true],
+      [undefined, false, false],
+      [false, true, false],
+      [true, false, true],
+    ];
+
+    test.each(cases)("store %p with collectData %p logs %p", async (store, collectData, logged) => {
+      checkAuth.mockImplementationOnce(async () => ({
+        orgId: "org-1",
+        keyId: "key-1",
+        applicationId: "app-1",
+        collectData,
+      }));
+
+      const req = new Request("http://localhost:4000/v1/responses", {
+        method: "POST",
+        headers: { "Authorization": "Bearer test" },
+        body: JSON.stringify({ model: "test-model", input: "Hi", store }),
+      });
+
+      const res = await handleCreateResponseRequest(req);
+      expect(res.status).toBe(200);
+      expect(logChatSync).toHaveBeenCalledTimes(logged ? 1 : 0);
+    });
   });
 
   test("should include metadata in response", async () => {
@@ -264,19 +313,22 @@ describe("handleResponses", () => {
     expect(body.metadata).toEqual({ trace_id: "trace-123" });
   });
 
-  test("should return 404 for unknown previous_response_id", async () => {
-    const req = new Request("http://localhost:4000/v1/responses", {
+  function chainedRequest(previousResponseId: string): Request {
+    return new Request("http://localhost:4000/v1/responses", {
       method: "POST",
       headers: { "Authorization": "Bearer test" },
-      body: JSON.stringify({
-        model: "test-model",
-        input: "Hi",
-        previous_response_id: "resp_missing",
-      }),
+      body: JSON.stringify({ model: "test-model", input: "Hi", previous_response_id: previousResponseId }),
     });
+  }
 
-    const res = await handleCreateResponseRequest(req);
+  test("should return 404 for unknown previous_response_id", async () => {
+    const res = await handleCreateResponseRequest(chainedRequest("resp_99999999-9999-4999-8999-999999999999"));
     expect(res.status).toBe(404);
+  });
+
+  test("rejects a malformed previous_response_id rather than looking it up", async () => {
+    const res = await handleCreateResponseRequest(chainedRequest("resp_missing"));
+    expect(res.status).toBe(400);
   });
 
   test("should return function_call output items when model calls a function tool", async () => {
@@ -654,5 +706,66 @@ describe("handleResponses", () => {
     expect(completed.response.output.map((o: { type: string }) => o.type)).toEqual(["reasoning", "reasoning", "message"]);
     expect(completed.response.output[0].summary[0].text).toBe("first block");
     expect(completed.response.output[1].summary[0].text).toBe("second block");
+  });
+
+  // A chained request sends only the new turn, so everything before it has to come from
+  // storage. Reading back only the previous answer left the model unable to see the question
+  // it had answered.
+  describe("conversation state", () => {
+    async function turn(input: unknown, previousResponseId?: string) {
+      const req = new Request("http://localhost:4000/v1/responses", {
+        method: "POST",
+        headers: { "Authorization": "Bearer test" },
+        body: JSON.stringify({
+          model: "test-model",
+          input,
+          ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
+        }),
+      });
+      const res = await handleCreateResponseRequest(req);
+      expect(res.status).toBe(200);
+      return (await res.json()) as any;
+    }
+
+    test("carries the earlier question and answer into the next turn", async () => {
+      const first = await turn("u1");
+      await turn("u2", first.id);
+
+      expect(lastChatMessages.map((m) => [m.role, m.content])).toEqual([
+        ["user", "u1"],
+        ["assistant", "Hello"],
+        ["user", "u2"],
+      ]);
+    });
+
+    test("keeps carrying it as the conversation grows", async () => {
+      const first = await turn("u1");
+      const second = await turn("u2", first.id);
+      await turn("u3", second.id);
+
+      expect(lastChatMessages.map((m) => m.content)).toEqual([
+        "u1", "Hello", "u2", "Hello", "u3",
+      ]);
+    });
+
+    test("stores its own answer alongside the question, so the next turn can read both back", async () => {
+      const first = await turn("u1");
+      const second = await turn("u2", first.id);
+
+      expect(mocks.responseMessages.get(second.id)?.map((m: any) => m.content))
+        .toEqual(["u1", "Hello", "u2", "Hello"]);
+    });
+
+    test("stores the first turn's answer without needing a second turn to derive it", async () => {
+      const first = await turn("u1");
+
+      expect(mocks.responseMessages.get(first.id)?.map((m: any) => m.content))
+        .toEqual(["u1", "Hello"]);
+    });
+
+    test("sends only the new turn when nothing is chained", async () => {
+      await turn("u1");
+      expect(lastChatMessages.map((m) => m.content)).toEqual(["u1"]);
+    });
   });
 });

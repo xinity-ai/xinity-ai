@@ -1,9 +1,10 @@
 <script lang="ts">
   import { ThumbsUp, ThumbsDown } from "@lucide/svelte";
 
-  let { value = null, isEdited = false, onRate }: {
+  let { value = null, isEdited = false, disabled = false, onRate }: {
     value?: boolean | null;
     isEdited?: boolean;
+    disabled?: boolean;
     onRate: (rating: boolean) => void;
   } = $props();
 </script>
@@ -13,6 +14,7 @@
     type="button"
     class="rating-btn {value === true ? 'liked' : ''}"
     onclick={() => onRate(true)}
+    {disabled}
     title="Helpful"
   >
     <ThumbsUp />
@@ -22,6 +24,7 @@
     type="button"
     class="rating-btn {value === false ? 'disliked' : ''}"
     onclick={() => onRate(false)}
+    {disabled}
     title="Not helpful"
   >
     <ThumbsDown />

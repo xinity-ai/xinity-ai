@@ -11,7 +11,7 @@ import { handleCompletion } from "./llm-forward/endpoints/handle-completions";
 import { errorResponse } from "./llm-forward/util";
 import { handleEmbeddingGeneration } from "./llm-forward/endpoints/handle-embeddings";
 import { handleModelsRequest } from "./llm-forward/endpoints/handle-models";
-import { handleCreateResponseRequest, handleGetOrDeleteResponseRequest, handleCancelResponseRequest } from "./llm-forward/endpoints/handle-responses";
+import { handleCreateResponseRequest, handleGetOrDeleteResponseRequest, handleCancelResponseRequest, handleListInputItemsRequest } from "./llm-forward/endpoints/handle-responses";
 import { handleRerank } from "./llm-forward/endpoints/handle-rerank";
 import { handleTranscription } from "./llm-forward/endpoints/handle-transcription";
 import { handleMetrics, withMetrics } from "./metrics";
@@ -20,7 +20,7 @@ import { logMigrationFailureFatal } from "common-db";
 import { getSearchProvider } from "./llm-forward/tools/search-providers";
 import { setSearchProvider } from "./llm-forward/tools/response-tools";
 import { flushUsageEvents } from "./usageRecorder";
-import { flushApiCallRows } from "./callLogger";
+import { flushCallLog } from "./callLogger";
 import { createCacheInvalidation } from "./llm-forward/cache-invalidation";
 import { invalidateModelSources, invalidateDeployments } from "./llm-forward/model-data";
 
@@ -64,6 +64,7 @@ const meteredEndpoints: Array<[string, (req: Request) => Promise<Response> | Res
   ["/v1/responses", handleCreateResponseRequest],
   ["/v1/responses/:responseId", handleGetOrDeleteResponseRequest],
   ["/v1/responses/:responseId/cancel", handleCancelResponseRequest],
+  ["/v1/responses/:responseId/input_items", handleListInputItemsRequest],
 ];
 
 const meteredRoutes = Object.fromEntries(
@@ -127,7 +128,7 @@ async function gracefulShutdown(signal: string) {
   await cacheInvalidation.stop();
 
   try {
-    await withTimeout(Promise.all([flushUsageEvents(), flushApiCallRows()]), FLUSH_TIMEOUT_MS, "DB write queue flush");
+    await withTimeout(Promise.all([flushUsageEvents(), flushCallLog()]), FLUSH_TIMEOUT_MS, "DB write queue flush");
     rootLogger.info("Write queues flushed successfully");
   } catch (err) {
     rootLogger.error({ err }, "Error or timeout flushing write queues on shutdown");

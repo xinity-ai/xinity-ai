@@ -23,9 +23,23 @@ export type AuthorizedModelContext = ResolvedModel & {
 
 const MAX_CASCADE_LEVELS = 10;
 
+/** `/v1/responses` calls the conversation `input`; the chat endpoints call it `messages`. */
+function conversationItems(body: Record<string, unknown>): unknown[] {
+  if (Array.isArray(body.messages)) {
+    return body.messages;
+  }
+  if (Array.isArray(body.input)) {
+    return body.input;
+  }
+  if (typeof body.input === "string") {
+    return [body.input];
+  }
+  return [];
+}
+
 export function computePrefixHashes(model: string, body: Record<string, unknown>): string[] {
-  const messages = body.messages;
-  if (!Array.isArray(messages) || messages.length === 0) {
+  const messages = conversationItems(body);
+  if (messages.length === 0) {
     return [];
   }
 
@@ -35,12 +49,10 @@ export function computePrefixHashes(model: string, body: Record<string, unknown>
   const hashes: string[] = [];
 
   for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i] as Record<string, unknown> | null | undefined;
-    const role = String(msg?.role ?? "");
-    const content = String(msg?.content ?? "");
-    hasher.update(role);
-    hasher.update(":");
-    hasher.update(content);
+    // The whole message, because `String(content)` renders any array of content parts as
+    // "[object Object]": one hash for every multimodal message, so unrelated conversations
+    // collide and get steered towards whichever host was recorded first.
+    hasher.update(JSON.stringify(messages[i] ?? null));
     hasher.update("\n");
 
     if ((i + 1) % 2 === 0 || i === messages.length - 1) {

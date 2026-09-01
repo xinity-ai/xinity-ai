@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { secret, expert, tlsEnvSchema, metricsAuthSchema } from "common-env";
+import { secret, expert, s3EnvSchema, tlsEnvSchema, metricsAuthSchema } from "common-env";
 import { logEnvSchema } from "common-log";
 import { WEB_SEARCH_PROVIDER_NAMES } from "./llm-forward/tools/search-providers";
 
@@ -36,11 +36,6 @@ export const gatewayEnvSchema = z.object({
   BACKEND_TIMEOUT_MS: z.coerce.number().positive().default(300_000)
     .describe("Backend timeout in ms (default: 5 min). For streaming requests this is an idle timeout that resets on each chunk; for non-streaming requests it is a wall-clock deadline.")
     .meta(expert()),
-  S3_ENDPOINT: z.url().optional().describe("SeaweedFS / S3-compatible endpoint URL (enables multimodal image storage)").meta(expert()),
-  S3_ACCESS_KEY_ID: z.string().optional().describe("S3 access key ID").meta({ ...secret(), ...expert() }),
-  S3_SECRET_ACCESS_KEY: z.string().optional().describe("S3 secret access key").meta({ ...secret(), ...expert() }),
-  S3_BUCKET: z.string().default("xinity-media").describe("S3 bucket for media objects").meta(expert()),
-  S3_REGION: z.string().default("us-east-1").describe("S3 region (use 'us-east-1' for SeaweedFS)").meta(expert()),
   // Inference backend TLS
   XINITY_INFERENCE_CA: z.string().optional()
     .describe("PEM-encoded CA certificate for verifying daemon TLS. When set, gateway connects to daemons via HTTPS. See https://github.com/xinity-ai/xinity-ai/blob/main/docs/security/tls.md")
@@ -51,4 +46,4 @@ export const gatewayEnvSchema = z.object({
   DEEP_RESEARCH_COMPACTION_THRESHOLD: z.coerce.number().min(0.1).max(0.95).default(0.70)
     .describe("Fraction of model context window at which compaction triggers")
     .meta(expert()),
-}).extend(tlsEnvSchema.shape).extend(logEnvSchema.shape);
+}).extend(s3EnvSchema.shape).extend(tlsEnvSchema.shape).extend(logEnvSchema.shape);

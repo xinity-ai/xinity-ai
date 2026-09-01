@@ -10,6 +10,7 @@ import type { ApiCallInputMessage } from "common-db";
 import { rootLogger } from "../../logger";
 import { env } from "../../env";
 import { processMessageImages, imageStore } from "../../image-store";
+import { callWillBeLogged } from "../usage";
 import { backendPostJson, createIdleTimeout } from "../backend-fetch";
 import {
   forwardOpenAIResponse,
@@ -73,6 +74,9 @@ type ChatAcc = {
   content: string;
   role: string;
   tool_calls?: ToolCallAcc[];
+  /** Absent rather than empty: an empty key hashes differently from a missing one. */
+  reasoning_content?: string;
+  refusal?: string;
   finish_reason?: string | null;
 };
 
@@ -98,6 +102,13 @@ const chatStreamSpec: StreamSpec<z.infer<typeof BackendChatChunkSchema>, ChatAcc
         }
       }
     }
+    const reasoning = choice.delta.reasoning_content ?? choice.delta.reasoning;
+    if (typeof reasoning === "string") {
+      acc.reasoning_content = (acc.reasoning_content ?? "") + reasoning;
+    }
+    if (typeof choice.delta.refusal === "string") {
+      acc.refusal = (acc.refusal ?? "") + choice.delta.refusal;
+    }
     if (choice.finish_reason) {
       acc.finish_reason = choice.finish_reason;
     }
@@ -110,6 +121,8 @@ const chatStreamSpec: StreamSpec<z.infer<typeof BackendChatChunkSchema>, ChatAcc
         role: acc.role,
         content: acc.content,
         ...(acc.tool_calls ? { tool_calls: acc.tool_calls } : {}),
+        ...(acc.reasoning_content !== undefined ? { reasoning_content: acc.reasoning_content } : {}),
+        ...(acc.refusal !== undefined ? { refusal: acc.refusal } : {}),
       },
       finish_reason: acc.finish_reason ?? null,
     }],
@@ -161,11 +174,13 @@ export const handleChatCompletion = withEndpointGuards({
     }
 
     const callStartTime = Date.now();
+    const willLog = callWillBeLogged(auth, body.store);
 
     const { messagesForLLM, messagesForDB } = await processMessageImages(
       body.messages as ApiCallInputMessage[],
       auth.orgId,
       imageStore,
+      willLog,
     );
 
     const fetchBody: Record<string, unknown> = {
@@ -200,6 +215,7 @@ export const handleChatCompletion = withEndpointGuards({
       auth,
       modelInfo,
       publicSpecifier: originalModel,
+      endpoint: "chat_completions" as const,
       inputMessages: messagesForDB,
       callStartTime,
       logCalls: body.store,

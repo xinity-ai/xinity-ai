@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { ApiCall, ApiCallResponse } from "common-db";
-  import type { ApiCallReactionSummary } from "./data.remote";
+  import type { ApiCallResponse } from "common-db";
+  import type { ApiCallReactionSummary, DataViewCall } from "./data.remote";
   import { messageContentToString } from "./data.utils";
   import * as Card from "$lib/components/ui/card";
   import { Badge } from "$lib/components/ui/badge";
@@ -23,11 +23,11 @@
     onSelectToggle = () => {},
     onSelectAll = (_checked: boolean) => {},
   }: {
-    calls?: ApiCall[];
+    calls?: DataViewCall[];
     loading?: boolean;
     selectedCallId?: string | null;
     formatDate: (date: Date) => string;
-    onSelect?: (call: ApiCall) => void;
+    onSelect?: (call: DataViewCall) => void;
     onLoadMore?: () => void;
     loadingMore?: boolean;
     hasMore?: boolean;
@@ -66,7 +66,7 @@
     return () => observer.disconnect();
   });
 
-  function startOfPrompt(call: ApiCall) {
+  function startOfPrompt(call: DataViewCall) {
     const first = call.inputMessages?.[0];
     if (!first) return "";
     return messageContentToString(first.content);
@@ -95,13 +95,15 @@
         {#if calls.length > 0}
           <div role="list">
             {#if showSelect}
+              {@const selectable = calls.filter((c) => c.source !== "legacy")}
               <div class="p-4 compact:p-2 border-b bg-muted/30 border-l-3 border-l-transparent">
                 <div class="flex items-center gap-3">
                   <input
                     type="checkbox"
                     id="select-all"
-                    checked={calls.every(c => selectedCallIds.has(c.id)) && calls.length > 0}
-                    indeterminate={selectedCallIds.size > 0 && !calls.every(c => selectedCallIds.has(c.id))}
+                    checked={selectable.length > 0 && selectable.every((c) => selectedCallIds.has(c.id))}
+                    indeterminate={selectedCallIds.size > 0 && !selectable.every((c) => selectedCallIds.has(c.id))}
+                    disabled={selectable.length === 0}
                     onchange={(e) => onSelectAll(e.currentTarget.checked)}
                     class="w-4 h-4 shrink-0"
                   />
@@ -112,6 +114,7 @@
             {#each calls as call (call.id)}
               {@const summary = getReactionSummary(call.id)}
               {@const userResponse = getUserResponse(call.id)}
+              {@const frozen = call.source === "legacy"}
               <div
                 role="listitem"
                 class:selected={selectedCallId === call.id}
@@ -121,22 +124,29 @@
                   class="absolute inset-0 cursor-pointer"
                   onclick={() => onSelect(call)}
                   aria-pressed={selectedCallId === call.id}
-                  aria-label="View call {call.model}"
+                  aria-label="View call {call.servedModel}"
                 ></button>
                 <div class="flex items-start gap-3 pointer-events-none">
                   {#if showSelect}
                     <input
                       type="checkbox"
                       checked={selectedCallIds.has(call.id)}
+                      disabled={frozen}
                       onchange={(e) => onSelectToggle(call.id, e.currentTarget.checked)}
                       onclick={(e) => e.stopPropagation()}
-                      class="w-4 h-4 shrink-0 mt-1 pointer-events-auto"
+                      class="w-4 h-4 shrink-0 mt-1 pointer-events-auto disabled:opacity-40"
+                      title={frozen ? "Stored in the old format, so it cannot be moved" : undefined}
                     />
                   {/if}
                   <div class="flex-1 text-left">
-                    <div class="flex items-center justify-between">
-                      <span class="font-medium truncate">{call.model}</span>
-                      <span class="text-xs text-muted-foreground">{formatDate(call.createdAt)}</span>
+                    <div class="flex items-center justify-between gap-2">
+                      <div class="flex items-center gap-2 min-w-0">
+                        <span class="font-medium truncate">{call.servedModel}</span>
+                        {#if frozen}
+                          <Badge variant="outline" class="shrink-0 text-[10px] px-1.5 py-0">Old format</Badge>
+                        {/if}
+                      </div>
+                      <span class="text-xs text-muted-foreground shrink-0">{formatDate(call.createdAt)}</span>
                     </div>
                     <p class="mt-1 text-sm text-muted-foreground line-clamp-2">
                       {startOfPrompt(call)}
@@ -146,7 +156,7 @@
                         <span class="status-indicator status-completed"></span>
                         complete
                       </span>
-                      <span>{(call.duration / 1000).toFixed(1)}s</span>
+                      <span>{(call.durationMs / 1000).toFixed(1)}s</span>
                     </div>
                     <div class="flex flex-wrap items-center gap-2 mt-2 text-xs text-muted-foreground">
                       {#if summary.total > 0}

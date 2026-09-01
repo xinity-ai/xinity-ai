@@ -4,6 +4,7 @@ import {
   makeChatJsonResponse,
   makeChatJsonResponseWithToolCalls,
   makeChatSseResponseWithToolCalls,
+  makeChatSseResponseWithReasoning,
   makeRawJsonResponse,
   mockBackendFetch,
 } from "./test-helpers";
@@ -368,6 +369,39 @@ describe("handleChatCompletion, reasoning_effort", () => {
     const res = await handleChatCompletion(reasoningRequest({ reasoning_effort: "low" }));
     expect(res.status).toBe(200);
     expect(lastUpstreamBody?.reasoning_effort).toBe("low");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// reasoning output
+// ---------------------------------------------------------------------------
+
+describe("handleChatCompletion, reasoning output", () => {
+  function streamRequest(): Request {
+    return new Request("http://localhost:4000/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({ model: "test-model", messages: [{ role: "user", content: "Hi" }], stream: true }),
+    });
+  }
+
+  test("hands the accumulated reasoning to the logger", async () => {
+    nextUpstreamResponse = makeChatSseResponseWithReasoning("test-model", ["Hello"], ["Let me ", "think."]);
+
+    const res = await handleChatCompletion(streamRequest());
+    await res.text();
+
+    const [logged] = mockLogChatStream.mock.calls[0] as unknown as [{ data: any[] }];
+    expect(logged.data[0].choices[0].delta.reasoning_content).toBe("Let me think.");
+    expect(logged.data[0].choices[0].delta.content).toBe("Hello");
+  });
+
+  test("hands over no reasoning key when the model sent none", async () => {
+    const res = await handleChatCompletion(streamRequest());
+    await res.text();
+
+    const [logged] = mockLogChatStream.mock.calls[0] as unknown as [{ data: any[] }];
+    expect(logged.data[0].choices[0].delta).not.toHaveProperty("reasoning_content");
   });
 });
 

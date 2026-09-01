@@ -110,6 +110,21 @@ export function parseEnv<T extends ZodObjectWithShape>(
 }
 
 /**
+ * Object storage for media, shared by every component that reads or writes it. The gateway stores
+ * images here and the dashboard serves them back, so both must point at the same bucket.
+ * Extend your service's env schema with `.extend(s3EnvSchema.shape)`.
+ */
+export const s3EnvSchema = z.object({
+  S3_ENDPOINT: z.url().optional()
+    .describe("SeaweedFS / S3-compatible endpoint URL. Without it the database carries image bytes itself")
+    .meta(expert()),
+  S3_ACCESS_KEY_ID: z.string().optional().describe("S3 access key ID").meta({ ...secret(), ...expert() }),
+  S3_SECRET_ACCESS_KEY: z.string().optional().describe("S3 secret access key").meta({ ...secret(), ...expert() }),
+  S3_BUCKET: z.string().default("xinity-media").describe("S3 bucket for media objects").meta(expert()),
+  S3_REGION: z.string().default("us-east-1").describe("S3 region (use 'us-east-1' for SeaweedFS)").meta(expert()),
+});
+
+/**
  * Reusable TLS env vars for opt-in HTTPS on any service.
  * Extend your service's env schema with `.extend(tlsEnvSchema.shape)`.
  */
@@ -151,3 +166,4 @@ export * from "./metrics-auth";
 export * from "./metrics-format";
 export * from "./service-url";
 export * from "./tether-protocol";
+export * from "./content-hash";

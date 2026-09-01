@@ -12,8 +12,7 @@ import {
 } from "./util";
 import { recordTimeToFirstToken } from "../metrics";
 import { BackendUsageSchema } from "./backend-schemas";
-import type { AuthResult } from "./auth";
-import type { ApiCallInputMessage } from "common-db";
+import type { CallLogFields } from "./usage";
 import type { ChatStreamData, ChatSyncData } from "../callLogger";
 
 type Logger = {
@@ -22,15 +21,6 @@ type Logger = {
   error: (obj: Record<string, unknown>, msg: string) => void;
 };
 
-export type OpenAIForwardLogFields = {
-  auth: AuthResult;
-  modelInfo: { model: string; nodeId?: string | null };
-  publicSpecifier: string;
-  inputMessages: ApiCallInputMessage[];
-  callStartTime: number;
-  logCalls?: boolean;
-  metadata?: Record<string, unknown>;
-};
 
 type StreamChunkLike = {
   choices: Array<{ index: number }>;
@@ -106,7 +96,7 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
   backendResponse: Response;
   originalModel: string;
   spec: StreamSpec<Chunk, Acc>;
-  logFields: OpenAIForwardLogFields;
+  logFields: CallLogFields;
   log: Logger;
   onStreamChunk?: () => void;
   onStreamEnd?: () => void;
@@ -238,7 +228,7 @@ export async function forwardOpenAINonStream<Choice>({
   backendResponse: Response;
   originalModel: string;
   spec: NonStreamSpec<Choice>;
-  logFields: OpenAIForwardLogFields;
+  logFields: CallLogFields;
   log: Logger;
 }): Promise<Response> {
   let raw: Record<string, unknown>;
@@ -280,7 +270,7 @@ export function forwardOpenAIResponse<Chunk extends StreamChunkLike, Acc, Choice
   stream: boolean;
   streamSpec: StreamSpec<Chunk, Acc>;
   nonStreamSpec: NonStreamSpec<Choice>;
-  logFields: OpenAIForwardLogFields;
+  logFields: CallLogFields;
   log: Logger;
   onStreamChunk?: () => void;
   onStreamEnd?: () => void;

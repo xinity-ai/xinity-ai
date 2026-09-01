@@ -1,378 +1,271 @@
-import { generateText, streamText, isLoopFinished, stepCountIs } from "ai";
+import { streamText, isLoopFinished, stepCountIs } from "ai";
 import { resolveAuthorizedModel } from "../ai-sdk";
-import { errorResponse, logChatUsage, recordUsage, validateModelType, toModelMessages, SSE_RESPONSE_HEADERS, validationError, isUpstreamError, upstreamHttpStatus, clientFacingErrorMessage, modelLacksToolSupport } from "../util";
-import type { ApiCallInputMessage } from "common-db";
-import { checkAuth, type AuthResult } from "../auth";
-import { deleteResponse, getResponse, saveResponse } from "../response-store";
+import { errorResponse, logChatUsage, recordUsage, validateModelType, toModelMessages, SSE_RESPONSE_HEADERS, validationError, isUpstreamError, upstreamHttpStatus, modelLacksToolSupport } from "../util";
+import { deleteResponse, getResponse, getResponseMessages, saveResponse, type ResponseCreation } from "../response-store";
 import { rootLogger } from "../../logger";
-import { processMessageImages, imageStore } from "../../image-store";
+import { processMessageImages, restoreMessageImages, imageStore } from "../../image-store";
 import { env } from "../../env";
 import { DEEP_RESEARCH_SYSTEM_PROMPT, createCompactionStep } from "../deep-research";
 import { hasSearchProvider } from "../tools/response-tools";
-import {
-  CreateResponseBodySchema,
-  type CreateResponseBody,
-  type OutputItem,
-} from "../responses/schemas";
-import {
-  type IncludeValue,
-  type ToolCallItem,
-  type ToolResultData,
-  createToolTracker,
-  resolveActiveTools,
-  buildOutputConfig,
-  resolveResponseText,
-  createResponseObject,
-  markResponseFailed,
-  buildOutputItems,
-  buildStepOutputItems,
-  extractSearchAnnotations,
-  formatUsage,
-  buildGenerationParams,
-} from "../responses/builders";
+import { CreateResponseBodySchema, type CreateResponseBody, type ResponseObject } from "../responses/schemas";
+import { resolveActiveTools, type ResolvedTools, type ToolCallItem, type ToolResultData } from "../responses/tools";
+import { buildInputItems, parseInputItemCursor, type IncludeValue } from "../responses/items";
+import { buildGenerationParams, buildOutputConfig } from "../responses/generation-params";
+import type { ApiCallInputMessage } from "common-db";
 import { createResponseStream } from "../responses/stream";
+import { withResponseIdRoute } from "../endpoint-guards";
+import { extractText, normalizeMessages } from "../responses/input-normalize";
+import { loadResponse, loadResponseInputItems } from "../responses/persistence";
+import { newResponseId } from "../responses/response-id";
+import { callWillBeLogged, type CallLogFields } from "../usage";
+import {
+  createAndSaveInProgressResponse,
+  saveFailedResponse,
+  generateAndPersistCompletedResponse,
+  runBackground,
+} from "../responses/generate";
 
 const log = rootLogger.child({ name: "handle-responses" });
-
-async function checkCancelled(orgId: string, responseId: string): Promise<boolean> {
-  const stored = await getResponse(orgId, responseId) as { status?: string } | null;
-  return stored?.status === "cancelled";
-}
-
-// ---------------------------------------------------------------------------
-// Message normalisation
-// ---------------------------------------------------------------------------
-
-function extractText(content: unknown): string | null {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    const parts = content
-      .map((part: unknown) => {
-        if (typeof part === "string") return part;
-        const p = part as Record<string, unknown> | null;
-        if (p && typeof p.text === "string") return p.text;
-        if (p && typeof p.content === "string") return p.content;
-        return null;
-      })
-      .filter(Boolean);
-    return parts.length ? parts.join("") : null;
-  }
-  const c = content as Record<string, unknown> | null;
-  if (c && typeof c.text === "string") return c.text;
-  return null;
-}
-
-type TextMessageRole = "user" | "assistant" | "system";
-const VALID_TEXT_ROLES = new Set<TextMessageRole>(["user", "assistant", "system"]);
-
-function normalizeRole(raw: unknown): TextMessageRole {
-  if (typeof raw === "string" && VALID_TEXT_ROLES.has(raw as TextMessageRole)) return raw as TextMessageRole;
-  return "user";
-}
-
-/** Extract content parts, preserving image_url entries alongside text. */
-function extractContent(raw: unknown): string | ApiCallInputMessage["content"] | null {
-  if (typeof raw === "string") return raw;
-  if (Array.isArray(raw)) {
-    const parts: Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }> = [];
-    for (const part of raw) {
-      if (typeof part === "string") {
-        parts.push({ type: "text", text: part });
-        continue;
-      }
-      const p = part as Record<string, unknown> | null;
-      if (!p) continue;
-      if (p.type === "image_url" && p.image_url && typeof (p.image_url as Record<string, unknown>).url === "string") {
-        parts.push({ type: "image_url", image_url: { url: (p.image_url as { url: string }).url } });
-        continue;
-      }
-      if (typeof p.text === "string") parts.push({ type: "text", text: p.text });
-      else if (typeof p.content === "string") parts.push({ type: "text", text: p.content });
-    }
-    if (!parts.length) return null;
-    const [first] = parts;
-    if (parts.length === 1 && first?.type === "text") return first.text;
-    return parts;
-  }
-  return extractText(raw);
-}
-
-function normalizeMessages(input: unknown): ApiCallInputMessage[] | null {
-  if (typeof input === "string") return [{ role: "user", content: input }];
-  if (Array.isArray(input)) {
-    if (input.every((item) => typeof item === "string"))
-      return input.map((text) => ({ role: "user", content: text }));
-    const messages: ApiCallInputMessage[] = [];
-    for (const item of input) {
-      if (!item || typeof item !== "object") return null;
-      const obj = item as Record<string, unknown>;
-
-      // Handle function_call_output items (client returning function tool results)
-      if (obj.type === "function_call_output") {
-        const output = typeof obj.output === "string" ? obj.output : JSON.stringify(obj.output ?? "");
-        messages.push({
-          role: "tool",
-          content: output,
-          tool_call_id: obj.call_id as string,
-        } as ApiCallInputMessage);
-        continue;
-      }
-
-      const role = normalizeRole(obj.role);
-      const content = extractContent(obj.content ?? obj.input ?? obj.text);
-      if (!content) return null;
-      messages.push({ role, content } as ApiCallInputMessage);
-    }
-    return messages;
-  }
-  if (input && typeof input === "object") {
-    const obj = input as Record<string, unknown>;
-    const role = normalizeRole(obj.role);
-    const content = extractContent(obj.content ?? obj.input ?? obj.text);
-    if (!content) return null;
-    return [{ role, content } as ApiCallInputMessage];
-  }
-  return null;
-}
-
-type StoredResponse = {
-  output?: Array<{
-    type?: string;
-    content?: Array<{ type?: string; text?: string }>;
-    // function_call fields
-    call_id?: string;
-    name?: string;
-    arguments?: string;
-  }>;
-};
-
-function extractPreviousMessages(stored: StoredResponse): ApiCallInputMessage[] {
-  const messages: ApiCallInputMessage[] = [];
-  // Collect function_call items to inject as a single assistant tool_calls message
-  const functionCalls: Array<{ call_id: string; name: string; arguments: string }> = [];
-
-  for (const item of stored.output ?? []) {
-    if (item.type === "message") {
-      const textParts = (item.content ?? [])
-        .filter((c) => c.type === "output_text" && typeof c.text === "string")
-        .map((c) => c.text as string);
-      if (textParts.length) messages.push({ role: "assistant", content: textParts.join("") });
-    } else if (item.type === "function_call" && item.call_id && item.name) {
-      functionCalls.push({
-        call_id: item.call_id,
-        name: item.name,
-        arguments: item.arguments ?? "{}",
-      });
-    }
-  }
-
-  // Re-inject function calls as an assistant tool_calls message so the AI SDK
-  // can continue the conversation when the client sends function_call_output
-  if (functionCalls.length) {
-    messages.push({
-      role: "assistant",
-      content: null,
-      tool_calls: functionCalls.map((fc) => ({
-        id: fc.call_id,
-        type: "function" as const,
-        function: { name: fc.name, arguments: fc.arguments },
-      })),
-    } as ApiCallInputMessage);
-  }
-
-  return messages;
-}
 
 // ---------------------------------------------------------------------------
 // POST /v1/responses
 // ---------------------------------------------------------------------------
 
-export async function handleCreateResponseRequest(req: Request): Promise<Response> {
-  try {
-    if (req.method !== "POST") return errorResponse("Method not allowed", 405);
+type Authorized = Exclude<Awaited<ReturnType<typeof resolveAuthorizedModel>>, Response>;
+type GenerationParams = ReturnType<typeof buildGenerationParams>;
 
-    const authorized = await resolveAuthorizedModel(req);
-    if (authorized instanceof Response) return authorized;
-    const { auth, body: rawBody, originalModel, baseModelName, deepResearch, modelInfo, provider } = authorized;
+/** Everything the four modes share, resolved once before any of them is chosen. */
+type PreparedRequest = Omit<Authorized, "body"> & {
+  body: CreateResponseBody;
+  responseId: string;
+  createdAt: number;
+  input: unknown;
+  messagesForLLM: ApiCallInputMessage[];
+  messagesForDB: ApiCallInputMessage[];
+  include: IncludeValue[];
+  outputConfig: ReturnType<typeof buildOutputConfig>;
+  activeTools: ResolvedTools["activeTools"];
+  hasTools: boolean;
+  callStartTime: number;
+  logFields: CallLogFields;
+  creation: ResponseCreation;
+};
 
-    const typeError = validateModelType(modelInfo, ["chat"]);
-    if (typeError) return typeError;
+async function prepareResponseRequest(req: Request): Promise<PreparedRequest | Response> {
+  const authorized = await resolveAuthorizedModel(req);
+  if (authorized instanceof Response) return authorized;
+  const { auth, body: rawBody, originalModel, modelInfo } = authorized;
 
-    // Validate request body
-    const parseResult = CreateResponseBodySchema.safeParse(rawBody);
-    if (!parseResult.success) {
-      return validationError(parseResult.error);
-    }
-    const body = parseResult.data;
+  const typeError = validateModelType(modelInfo, ["chat"]);
+  if (typeError) return typeError;
 
-    const responseId = `resp_${crypto.randomUUID()}`;
-    const createdAt = Math.floor(Date.now() / 1000);
-    const input = body.input ?? body.messages ?? body.prompt;
-    const messages = normalizeMessages(input);
-    if (!messages) return errorResponse("Unsupported data type", 422);
+  const parseResult = CreateResponseBodySchema.safeParse(rawBody);
+  if (!parseResult.success) {
+    return validationError(parseResult.error);
+  }
+  const body = parseResult.data;
 
-    const include = (body.include ?? []) as IncludeValue[];
-    const textConfig = body.text ?? null;
-    const outputConfig = buildOutputConfig(textConfig);
-    const { activeTools } = resolveActiveTools(body.tools ?? [], body.tool_choice);
-    const hasTools = Object.keys(activeTools).length > 0;
+  const input = body.input ?? body.messages ?? body.prompt;
+  const messages = normalizeMessages(input);
+  if (!messages) return errorResponse("Unsupported data type", 422);
 
-    if (body.background && body.stream) {
-      return errorResponse("'background' and 'stream' cannot both be true", 400);
-    }
-    const background = body.background;
-    const stream = body.stream;
+  const outputConfig = buildOutputConfig(body.text ?? null);
+  const { activeTools } = resolveActiveTools(body.tools ?? [], body.tool_choice);
+  const hasTools = Object.keys(activeTools).length > 0;
 
-    const callStartTime = Date.now();
+  if (body.background && body.stream) {
+    return errorResponse("'background' and 'stream' cannot both be true", 400);
+  }
+  if (body.background && body.store === false) {
+    return errorResponse("'background' requires 'store' to be true", 400);
+  }
+  if (hasTools && modelLacksToolSupport(modelInfo)) {
+    return errorResponse("Model does not support tool use", 400);
+  }
+  if (outputConfig.usesStructuredOutput && modelLacksToolSupport(modelInfo)) {
+    return errorResponse("Model does not support structured output", 400);
+  }
 
-    // Load previous response context (before image processing so previous
-    // messages are included in the LLM context but not re-processed)
-    if (body.previous_response_id) {
-      const previousResponse = await getResponse(auth.orgId, body.previous_response_id);
-      if (!previousResponse) return errorResponse("Not found", 404);
-      const previousMessages = extractPreviousMessages(previousResponse as StoredResponse);
-      if (previousMessages.length) messages.unshift(...previousMessages);
-    }
+  const callStartTime = Date.now();
 
-    // Process images in the new messages (excludes previously loaded context)
-    const { messagesForLLM, messagesForDB } = await processMessageImages(
-      messages,
-      auth.orgId,
-      imageStore,
-    );
+  let historyForModel: ApiCallInputMessage[] = [];
+  let historyForLog: ApiCallInputMessage[] = [];
+  if (body.previous_response_id) {
+    const previousResponse = await getResponse(auth.orgId, body.previous_response_id);
+    if (!previousResponse) return errorResponse("Not found", 404);
+    // A stored response keeps the whole conversation it was part of, answer included, so
+    // reading one hop back carries all of it however long the exchange has run.
+    historyForLog = await getResponseMessages(auth.orgId, body.previous_response_id);
+    // Logged messages carry `xinity-media://` references, which no backend can fetch.
+    historyForModel = await restoreMessageImages(historyForLog, auth.orgId, imageStore);
+  }
 
-    const logFields = {
+  const willLog = callWillBeLogged(auth, body.store);
+  const processed = await processMessageImages(messages, auth.orgId, imageStore, willLog);
+  const messagesForLLM = [...historyForModel, ...processed.messagesForLLM];
+  const messagesForDB = [...historyForLog, ...processed.messagesForDB];
+
+  // Reserved up front because the response settles before the log is flushed, and only when
+  // the call will be logged, so the column never names a row that was never written.
+  const inferenceCallId = willLog ? crypto.randomUUID() : null;
+
+  return {
+    ...authorized,
+    body,
+    responseId: newResponseId(),
+    createdAt: Math.floor(Date.now() / 1000),
+    input,
+    messagesForLLM,
+    messagesForDB,
+    include: (body.include ?? []) as IncludeValue[],
+    outputConfig,
+    activeTools,
+    hasTools,
+    callStartTime,
+    logFields: {
       auth,
       modelInfo,
       publicSpecifier: originalModel,
+      endpoint: "responses" as const,
+      inferenceCallId,
       inputMessages: messagesForDB,
       callStartTime,
       logCalls: body.store,
       metadata: body.metadata as Record<string, unknown> | undefined,
-    } as const;
+    },
+    creation: {
+      inferenceCallId,
+      apiKeyId: auth.keyId,
+      applicationId: auth.applicationId,
+      inputMessages: messagesForDB,
+    },
+  };
+}
 
-    if (hasTools && modelLacksToolSupport(modelInfo)) {
-      return errorResponse("Model does not support tool use", 400);
-    }
+async function runDeepResearch(prepared: PreparedRequest): Promise<Response> {
+  const {
+    auth, body, modelInfo, provider, originalModel, baseModelName,
+    responseId, createdAt, input, messagesForLLM, include, outputConfig, logFields, creation, callStartTime,
+  } = prepared;
 
-    if (outputConfig.usesStructuredOutput && modelLacksToolSupport(modelInfo)) {
-      return errorResponse("Model does not support structured output", 400);
-    }
+  if (body.stream) {
+    return errorResponse(
+      "Streaming is not supported for deep research requests. Deep research runs in background mode. Poll the response ID for results.",
+      400,
+    );
+  }
+  if (!hasSearchProvider()) {
+    return errorResponse("Deep research requires web search to be configured (WEB_SEARCH_PROVIDER + WEB_SEARCH_CREDENTIAL)", 501);
+  }
+  if (modelLacksToolSupport(modelInfo)) {
+    return errorResponse(
+      `Model '${baseModelName}' does not support tool calling, which is required for deep research.`,
+      400,
+    );
+  }
 
-    // -------------------------------------------------------------------
-    // Deep research mode
-    // -------------------------------------------------------------------
-    if (deepResearch) {
-      if (body.stream) {
-        return errorResponse(
-          "Streaming is not supported for deep research requests. Deep research runs in background mode. Poll the response ID for results.",
-          400,
-        );
-      }
-      if (!hasSearchProvider()) {
-        return errorResponse("Deep research requires web search to be configured (WEB_SEARCH_PROVIDER + WEB_SEARCH_CREDENTIAL)", 501);
-      }
-      if (modelLacksToolSupport(modelInfo)) {
-        return errorResponse(
-          `Model '${baseModelName}' does not support tool calling, which is required for deep research.`,
-          400,
-        );
-      }
+  const systemPrompt = DEEP_RESEARCH_SYSTEM_PROMPT + (body.instructions ? "\n\n" + body.instructions : "");
+  messagesForLLM.unshift({ role: "system", content: systemPrompt });
 
-      // Inject research system prompt
-      const systemPrompt = DEEP_RESEARCH_SYSTEM_PROMPT + (body.instructions ? "\n\n" + body.instructions : "");
-      messagesForLLM.unshift({ role: "system", content: systemPrompt });
+  const { activeTools: deepTools } = resolveActiveTools(
+    [...(body.tools ?? []), { type: "web_search" }],
+    body.tool_choice ?? "auto",
+  );
 
-      // Force web_search + web_fetch into active tools (merge with user-provided tools)
-      const { activeTools: deepTools } = resolveActiveTools(
-        [...(body.tools ?? []), { type: "web_search" }],
-        body.tool_choice ?? "auto",
-      );
+  const compactionUsage = { inputTokens: 0, outputTokens: 0 };
+  const genParams = {
+    ...buildGenerationParams(body, modelInfo, provider, toModelMessages(messagesForLLM), deepTools, true, outputConfig),
+    stopWhen: [isLoopFinished(), stepCountIs(env.DEEP_RESEARCH_MAX_STEPS)],
+    prepareStep: createCompactionStep(
+      provider, modelInfo.model, modelInfo.maxContextLength,
+      env.DEEP_RESEARCH_COMPACTION_THRESHOLD, extractText(input) ?? "",
+      (usage) => {
+        compactionUsage.inputTokens += usage.inputTokens;
+        compactionUsage.outputTokens += usage.outputTokens;
+        recordUsage({ usage, auth, modelInfo, callStartTime, logCalls: false, deployment: originalModel });
+      },
+    ),
+  };
 
-      const maxSteps = env.DEEP_RESEARCH_MAX_STEPS;
-      const contextLimit = modelInfo.maxContextLength;
-      const userQuery = extractText(input) ?? "";
+  const baseResponse = await createAndSaveInProgressResponse(auth.orgId, responseId, createdAt, originalModel, body, creation);
+  void runBackground({
+    orgId: auth.orgId, responseId, createdAt, originalModel, body,
+    genParams, include, outputConfig, logFields, deepResearch: { compactionUsage },
+  });
+  return Response.json(baseResponse, { status: 202 });
+}
 
-      const compactionUsage = { inputTokens: 0, outputTokens: 0 };
+async function runInBackground(prepared: PreparedRequest, genParams: GenerationParams): Promise<Response> {
+  const { auth, body, originalModel, responseId, createdAt, include, outputConfig, logFields, creation } = prepared;
 
-      const deepGenParams = {
-        ...buildGenerationParams(body, modelInfo, provider, toModelMessages(messagesForLLM), deepTools, true, outputConfig),
-        stopWhen: [isLoopFinished(), stepCountIs(maxSteps)],
-        prepareStep: createCompactionStep(
-          provider, modelInfo.model, contextLimit,
-          env.DEEP_RESEARCH_COMPACTION_THRESHOLD, userQuery,
-          (usage) => {
-            compactionUsage.inputTokens += usage.inputTokens;
-            compactionUsage.outputTokens += usage.outputTokens;
-            recordUsage({
-              usage,
-              auth,
-              modelInfo,
-              callStartTime,
-              logCalls: false,
-              deployment: originalModel,
-            });
-          },
-        ),
-      };
+  const baseResponse = await createAndSaveInProgressResponse(auth.orgId, responseId, createdAt, originalModel, body, creation);
+  void runBackground({ orgId: auth.orgId, responseId, createdAt, originalModel, body, genParams, include, outputConfig, logFields });
+  return Response.json(baseResponse, { status: 202 });
+}
 
-      const baseResponse = await createAndSaveInProgressResponse(auth.orgId, responseId, createdAt, originalModel, body);
+async function runStreaming(prepared: PreparedRequest, genParams: GenerationParams): Promise<Response> {
+  const { auth, body, originalModel, responseId, createdAt, include, logFields, creation } = prepared;
 
-      void runBackground({ orgId: auth.orgId, responseId, createdAt, originalModel, body, genParams: deepGenParams, include, outputConfig, logFields, deepResearch: { compactionUsage } });
+  const toolCalls: ToolCallItem[] = [];
+  const toolResults: ToolResultData[] = [];
+  const baseResponse = await createAndSaveInProgressResponse(auth.orgId, responseId, createdAt, originalModel, body, creation);
 
-      return Response.json(baseResponse, { status: 202 });
-    }
-
-    const genParams = buildGenerationParams(body, modelInfo, provider, toModelMessages(messagesForLLM), activeTools, hasTools, outputConfig, req.signal);
-
-    // -------------------------------------------------------------------
-    // Background mode
-    // -------------------------------------------------------------------
-    if (background) {
-      const baseResponse = await createAndSaveInProgressResponse(auth.orgId, responseId, createdAt, originalModel, body);
-
-      void runBackground({ orgId: auth.orgId, responseId, createdAt, originalModel, body, genParams, include, outputConfig, logFields });
-
-      return Response.json(baseResponse, { status: 202 });
-    }
-
-    // -------------------------------------------------------------------
-    // Streaming mode
-    // -------------------------------------------------------------------
-    if (stream) {
-      const messageItemId = `msg_${responseId}`;
-      const toolCalls: ToolCallItem[] = [];
-      const toolResults: ToolResultData[] = [];
-
-      const baseResponse = await createAndSaveInProgressResponse(auth.orgId, responseId, createdAt, originalModel, body);
-
-      // Tool tracking happens inline in the stream for consistent IDs
-      const result = streamText(genParams);
-
-      const streamBody = createResponseStream({
-        result, orgId: auth.orgId, responseId, messageItemId, createdAt, originalModel, body,
-        baseResponse, toolCalls, toolResults, include,
-        onFinished: (usage, text) => {
-          logChatUsage({
-            ...logFields,
-            usage,
-            outputData: [{ model: originalModel, choices: [{ index: 0, delta: { role: "assistant", content: text } }] }],
-            stream: true,
-          });
-        },
+  const streamBody = createResponseStream({
+    result: streamText(genParams),
+    orgId: auth.orgId, responseId, messageItemId: `msg_${responseId}`, createdAt, originalModel, body,
+    baseResponse, toolCalls, toolResults, include,
+    onFinished: (usage, text) => {
+      logChatUsage({
+        ...logFields,
+        usage,
+        outputData: [{ model: originalModel, choices: [{ index: 0, delta: { role: "assistant", content: text } }] }],
+        stream: true,
       });
+    },
+  });
 
-      return new Response(streamBody, { headers: SSE_RESPONSE_HEADERS });
-    }
+  return new Response(streamBody, { headers: SSE_RESPONSE_HEADERS });
+}
 
-    // -------------------------------------------------------------------
-    // Non-streaming mode (default)
-    // -------------------------------------------------------------------
+async function runBlocking(prepared: PreparedRequest, genParams: GenerationParams): Promise<Response> {
+  const { auth, body, originalModel, responseId, createdAt, include, outputConfig, logFields, creation } = prepared;
+
+  await createAndSaveInProgressResponse(auth.orgId, responseId, createdAt, originalModel, body, creation);
+  try {
     const responseBody = await generateAndPersistCompletedResponse({
       orgId: auth.orgId, responseId, createdAt, originalModel,
       body, genParams, include, outputConfig, logFields,
     });
     return Response.json(responseBody);
+  } catch (error) {
+    await saveFailedResponse(auth.orgId, responseId, createdAt, originalModel, body, error);
+    throw error;
+  }
+}
+
+export async function handleCreateResponseRequest(req: Request): Promise<Response> {
+  try {
+    if (req.method !== "POST") return errorResponse("Method not allowed", 405);
+
+    const prepared = await prepareResponseRequest(req);
+    if (prepared instanceof Response) return prepared;
+
+    if (prepared.deepResearch) {
+      return runDeepResearch(prepared);
+    }
+
+    const { body, modelInfo, provider, messagesForLLM, activeTools, hasTools, outputConfig } = prepared;
+    const genParams = buildGenerationParams(
+      body, modelInfo, provider, toModelMessages(messagesForLLM), activeTools, hasTools, outputConfig, req.signal,
+    );
+
+    if (body.background) {
+      return runInBackground(prepared, genParams);
+    }
+    if (body.stream) {
+      return runStreaming(prepared, genParams);
+    }
+    return runBlocking(prepared, genParams);
   } catch (error) {
     if (isUpstreamError(error)) {
       log.error({ err: error }, "Upstream error");
@@ -383,234 +276,90 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
   }
 }
 
-async function createAndSaveInProgressResponse(
-  orgId: string,
-  responseId: string,
-  createdAt: number,
-  originalModel: string,
-  body: CreateResponseBody,
-) {
-  const baseResponse = createResponseObject({
-    responseId, createdAt, model: originalModel, status: "in_progress", body,
-  });
-  await saveResponse(orgId, responseId, baseResponse);
-  return baseResponse;
-}
-
-// ---------------------------------------------------------------------------
-// Background execution
-// ---------------------------------------------------------------------------
-
-type LogFields = {
-  readonly auth: AuthResult;
-  readonly modelInfo: { model: string };
-  readonly publicSpecifier: string;
-  readonly inputMessages: ApiCallInputMessage[];
-  readonly callStartTime: number;
-  readonly logCalls: boolean | undefined;
-  readonly metadata: Record<string, unknown> | undefined;
-};
-
-type GeneratePersistArgs = {
-  orgId: string;
-  responseId: string;
-  createdAt: number;
-  originalModel: string;
-  body: CreateResponseBody;
-  genParams: Omit<ReturnType<typeof buildGenerationParams>, "stopWhen"> & Pick<Parameters<typeof generateText>[0], "prepareStep" | "stopWhen">;
-  include: IncludeValue[];
-  outputConfig: ReturnType<typeof buildOutputConfig>;
-  logFields: LogFields;
-  deepResearch?: {
-    compactionUsage: { inputTokens: number; outputTokens: number };
-  };
-};
-
-function createWriteQueue(onError: (err: unknown) => void) {
-  let tail = Promise.resolve();
-  return {
-    enqueue(write: () => Promise<void>) {
-      tail = tail.then(write).catch(onError);
-    },
-    flush() {
-      return tail;
-    },
-  };
-}
-
-async function generateAndPersistCompletedResponse(args: GeneratePersistArgs, background = false) {
-  const { orgId, responseId, createdAt, originalModel, body, genParams, include, outputConfig, logFields, deepResearch } = args;
-  const toolCalls: ToolCallItem[] = [];
-  const toolResults: ToolResultData[] = [];
-
-  const cancelCheck = () => checkCancelled(orgId, responseId);
-  const existingStop = genParams.stopWhen;
-  const priorConditions = Array.isArray(existingStop) ? existingStop : existingStop ? [existingStop] : [];
-  const stopConditions = background
-    ? [...priorConditions, cancelCheck]
-    : existingStop;
-
-  const progressItems: OutputItem[] = [];
-  const progressWrites = createWriteQueue((err) => {
-    log.warn({ err, responseId }, "Failed to persist research progress");
-  });
-  const stepUsage = { inputTokens: 0, outputTokens: 0 };
-
-  type StepEvent = {
-    toolCalls?: Array<{ toolCallId: string; toolName: string; input?: unknown }>;
-    toolResults?: Array<Record<string, unknown>>;
-    usage?: { inputTokens?: number; outputTokens?: number };
-  };
-
-  const onStepFinish: (event: StepEvent) => void = deepResearch
-    ? (step) => {
-        stepUsage.inputTokens += step.usage?.inputTokens ?? 0;
-        stepUsage.outputTokens += step.usage?.outputTokens ?? 0;
-
-        if (step.toolResults) {
-          for (const tr of step.toolResults) {
-            const id = tr.toolCallId;
-            const name = tr.toolName;
-            if (typeof id === "string" && typeof name === "string") {
-              toolResults.push({ toolCallId: id, toolName: name, args: tr.input, result: tr.output });
-            }
-          }
-        }
-
-        const newItems = buildStepOutputItems(step.toolCalls, step.toolResults, include);
-        if (newItems.length === 0) return;
-        progressItems.push(...newItems);
-
-        const totalUsage = {
-          inputTokens: stepUsage.inputTokens + deepResearch.compactionUsage.inputTokens,
-          outputTokens: stepUsage.outputTokens + deepResearch.compactionUsage.outputTokens,
-        };
-        const snapshot = [...progressItems];
-        progressWrites.enqueue(async () => {
-          const stored = await getResponse(orgId, responseId) as Record<string, unknown> | null;
-          if (!stored || stored.status === "cancelled") return;
-          stored.output = snapshot;
-          stored.usage = formatUsage(totalUsage);
-          await saveResponse(orgId, responseId, stored);
-        });
-      }
-    : createToolTracker(toolCalls, toolResults);
-
-  const result = await generateText({
-    ...genParams,
-    stopWhen: stopConditions as Parameters<typeof generateText>[0]["stopWhen"],
-    onStepFinish,
-  });
-
-  if (background && await checkCancelled(orgId, responseId)) {
-    return;
-  }
-
-  await progressWrites.flush();
-
-  const responseText = resolveResponseText(result.text, () => result.output, outputConfig.usesStructuredOutput);
-
-  const finalUsage = deepResearch
-    ? {
-        inputTokens: (result.usage.inputTokens ?? 0) + deepResearch.compactionUsage.inputTokens,
-        outputTokens: (result.usage.outputTokens ?? 0) + deepResearch.compactionUsage.outputTokens,
-      }
-    : result.usage;
-
-  let finalOutput: OutputItem[];
-  if (deepResearch) {
-    const annotations = extractSearchAnnotations(toolResults);
-    progressItems.push({
-      id: `msg_${responseId}`,
-      type: "message",
-      status: "completed",
-      role: "assistant",
-      content: [{ type: "output_text", text: responseText, annotations, logprobs: null }],
-    });
-    finalOutput = progressItems;
-  } else {
-    finalOutput = buildOutputItems(responseId, responseText, toolCalls, toolResults, include, result.reasoning.map(part => part.text));
-  }
-
-  const completedResponse = createResponseObject({
-    responseId, createdAt, model: originalModel, status: "completed",
-    output: finalOutput, usage: finalUsage, body,
-  });
-  await saveResponse(orgId, responseId, completedResponse);
-  logChatUsage({
-    ...logFields,
-    usage: finalUsage,
-    outputData: { model: originalModel, choices: [{ index: 0, message: { role: "assistant", content: responseText } }] },
-    stream: false,
-  });
-  return completedResponse;
-}
-
-async function runBackground(args: GeneratePersistArgs) {
-  const { orgId, responseId, createdAt, originalModel, body } = args;
-  try {
-    await generateAndPersistCompletedResponse(args, true);
-  } catch (error) {
-    if (!isUpstreamError(error)) {
-      log.error({ err: error, responseId }, "Background response generation failed");
-    }
-    const message = clientFacingErrorMessage(error);
-    const failedResponse = markResponseFailed(
-      createResponseObject({ responseId, createdAt, model: originalModel, status: "failed", body }),
-      message,
-    );
-    await saveResponse(orgId, responseId, failedResponse)
-      .catch((err) => log.error({ err, responseId }, "Failed to persist failed response"));
-  }
-}
-
 // ---------------------------------------------------------------------------
 // GET / DELETE /v1/responses/:responseId
 // ---------------------------------------------------------------------------
 
-export async function handleGetOrDeleteResponseRequest(req: Request): Promise<Response> {
-  const authHeader = req.headers.get("authorization") || "";
-  const authCheckResponse = await checkAuth(authHeader);
-  if (authCheckResponse instanceof Response) return authCheckResponse;
+export const handleGetOrDeleteResponseRequest = withResponseIdRoute(
+  ["GET", "DELETE"],
+  async ({ auth, responseId, req }) => {
+    if (req.method === "GET") {
+      const stored = await getResponse(auth.orgId, responseId);
+      if (!stored) return errorResponse("Not found", 404);
+      return Response.json(stored);
+    }
 
-  const responseId = (req as Request & { params: { responseId: string } }).params.responseId;
-  if (!responseId) return errorResponse("Not found", 404);
-
-  if (req.method === "GET") {
-    const stored = await getResponse(authCheckResponse.orgId, responseId);
-    if (!stored) return errorResponse("Not found", 404);
-    return Response.json(stored);
-  }
-
-  if (req.method === "DELETE") {
-    if (!await deleteResponse(authCheckResponse.orgId, responseId)) {
+    if (!await deleteResponse(auth.orgId, responseId)) {
       return errorResponse("Could not delete response", 500);
     }
     return Response.json({ id: responseId, object: "response", deleted: true });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// GET /v1/responses/:responseId/input_items
+// ---------------------------------------------------------------------------
+
+const DEFAULT_INPUT_ITEM_LIMIT = 20;
+const MAX_INPUT_ITEM_LIMIT = 100;
+
+function parseLimit(raw: string | null): number | null {
+  if (raw === null) {
+    return DEFAULT_INPUT_ITEM_LIMIT;
+  }
+  const limit = Number(raw);
+  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_INPUT_ITEM_LIMIT) {
+    return null;
+  }
+  return limit;
+}
+
+export const handleListInputItemsRequest = withResponseIdRoute(["GET"], async ({ auth, responseId, req }) => {
+  const params = new URL(req.url).searchParams;
+
+  const limit = parseLimit(params.get("limit"));
+  if (limit === null) {
+    return errorResponse(`'limit' must be an integer between 1 and ${MAX_INPUT_ITEM_LIMIT}`, 400);
   }
 
-  return errorResponse("Method not allowed", 405);
-}
+  const order = params.get("order") ?? "desc";
+  if (order !== "asc" && order !== "desc") {
+    return errorResponse("'order' must be 'asc' or 'desc'", 400);
+  }
+
+  const cursor = params.get("after");
+  const afterSeq = cursor === null ? null : parseInputItemCursor(responseId, cursor);
+  if (cursor !== null && afterSeq === null) {
+    return errorResponse("'after' is not an item of this response", 400);
+  }
+
+  // Only stored responses have input to list; a store:false response lives in the cache
+  // with its output but was never recorded with the messages it was built from.
+  const page = await loadResponseInputItems(auth.orgId, responseId, {
+    limit,
+    ascending: order === "asc",
+    afterSeq,
+  });
+  if (page.messages.length === 0 && afterSeq === null && !await loadResponse(auth.orgId, responseId)) {
+    return errorResponse("Not found", 404);
+  }
+
+  const data = buildInputItems(responseId, page.messages);
+  return Response.json({
+    object: "list",
+    data,
+    has_more: page.hasMore,
+    first_id: data[0]?.id ?? null,
+    last_id: data[data.length - 1]?.id ?? null,
+  });
+});
 
 // ---------------------------------------------------------------------------
 // POST /v1/responses/:responseId/cancel
 // ---------------------------------------------------------------------------
 
-export async function handleCancelResponseRequest(req: Request): Promise<Response> {
-  if (req.method !== "POST") {
-    return errorResponse("Method not allowed", 405);
-  }
-
-  const authHeader = req.headers.get("authorization") || "";
-  const authCheckResponse = await checkAuth(authHeader);
-  if (authCheckResponse instanceof Response) return authCheckResponse;
-
-  const responseId = (req as Request & { params: { responseId: string } }).params.responseId;
-  if (!responseId) {
-    return errorResponse("Not found", 404);
-  }
-
-  const stored = await getResponse(authCheckResponse.orgId, responseId) as Record<string, unknown> | null;
+export const handleCancelResponseRequest = withResponseIdRoute(["POST"], async ({ auth, responseId }) => {
+  const stored = await getResponse(auth.orgId, responseId) as ResponseObject | null;
   if (!stored) {
     return errorResponse("Not found", 404);
   }
@@ -618,8 +367,8 @@ export async function handleCancelResponseRequest(req: Request): Promise<Respons
     return errorResponse("Response is not in progress", 400);
   }
 
-  const cancelledResponse = { ...stored, status: "cancelled" };
-  await saveResponse(authCheckResponse.orgId, responseId, cancelledResponse);
+  const cancelledResponse = { ...stored, status: "cancelled" as const };
+  await saveResponse(auth.orgId, responseId, cancelledResponse);
 
   return Response.json(cancelledResponse);
-}
+});

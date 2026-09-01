@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { secret, expert, clientPublic, metricsAuthSchema } from "common-env";
+import { secret, expert, clientPublic, s3EnvSchema, metricsAuthSchema } from "common-env";
 
 export const dashboardEnvSchema = z.object({
   DB_CONNECTION_URL: z.url().describe("PostgreSQL connection string (e.g. postgresql://user:pass@host:5432/dbname)").meta(secret()),
@@ -21,11 +21,6 @@ export const dashboardEnvSchema = z.object({
   METRICS_AUTH: metricsAuthSchema({ required: true }).describe("Required. Basic auth for the /metrics endpoints (user:pass, comma-separated for multiple)").meta(secret()),
   INFOSERVER_CACHE_TTL_MS: z.coerce.number().default(10 * 60_000).describe("How long the local catalog snapshot is trusted before a conditional re-fetch (ms). A refresh costs one 304 when nothing changed, so the ceiling on how stale a new entry can be is what this trades against").meta(expert()),
   NOTIFICATIONS_ENABLED: z.stringbool().default(true).describe("Enable the notification scheduler (deployment status, node health, capacity warnings, weekly reports)").meta(expert()),
-  S3_ENDPOINT: z.url().optional().describe("SeaweedFS / S3-compatible endpoint URL (required for multimodal image display)").meta(expert()),
-  S3_ACCESS_KEY_ID: z.string().optional().describe("S3 access key ID").meta({ ...secret(), ...expert() }),
-  S3_SECRET_ACCESS_KEY: z.string().optional().describe("S3 secret access key").meta({ ...secret(), ...expert() }),
-  S3_BUCKET: z.string().default("xinity-media").describe("S3 bucket for media objects").meta(expert()),
-  S3_REGION: z.string().default("us-east-1").describe("S3 region").meta(expert()),
   MCP_ENABLED: z.stringbool().default(true).describe("Enable the /mcp Model Context Protocol endpoint"),
   LICENSE_KEY: z.string().optional().describe("License key for unlocking paid features (Ed25519-signed token)").meta(secret()),
   HTTP_IP_HEADER: z.string().optional().describe("Header your reverse proxy uses to forward the client IP (e.g. x-forwarded-for, x-real-ip). Without this, audit logs record the proxy address, not the real client.").meta(expert()),
@@ -37,4 +32,4 @@ export const dashboardEnvSchema = z.object({
   AUDIT_LOKI_URL: z.url().optional().describe("Loki base URL to mirror audit events to for SIEM ingestion (e.g. http://localhost:6122). Leave unset to keep audit events in the database only. Requires a license with the audit-log feature.").meta(expert()),
   AUDIT_LOKI_AUTH: z.string().optional().describe("Basic auth for AUDIT_LOKI_URL as user:pass. Only needed when the Loki endpoint is authenticated.").meta({ ...secret(), ...expert() }),
   AUDIT_LOKI_TENANT: z.string().optional().describe("Tenant id sent as X-Scope-OrgID to AUDIT_LOKI_URL. Only needed for multi-tenant Loki or Grafana Cloud.").meta(expert()),
-});
+}).extend(s3EnvSchema.shape);

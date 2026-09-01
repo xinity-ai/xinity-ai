@@ -26,6 +26,9 @@ bun run dev
 - `src/llm-forward/model-data.ts` handles canary deployment traffic splitting.
 - `src/llm-forward/endpoints/handle-responses.ts` implements the OpenAI Responses API with built-in web search and web fetch tools.
 
+`callLogger` and `usageRecorder` both buffer in memory, flushing at 50 rows or after 200ms. A hard
+crash drops whatever is still queued, so neither table is an audit record.
+
 ## Live API documentation
 
 The gateway serves its own OpenAPI documentation:

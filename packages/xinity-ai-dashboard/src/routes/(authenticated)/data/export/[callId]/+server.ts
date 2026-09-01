@@ -1,16 +1,20 @@
 /**
  * GET /data/export/[callId]
  *
- * Authenticated endpoint that exports a logged API call as a self-contained
- * JSON file. Any xinity-media:// image references in inputMessages are
- * resolved to base64 data URIs so the exported file is fully standalone.
+ * Exports a logged call as a self-contained JSON file. Calls still held in the legacy `api_call`
+ * table are normalized into the `inference_call` shape, so the file format does not change again
+ * when that table is dropped. Any xinity-media:// image references are resolved to base64 data
+ * URIs so the export stands alone.
  */
 import type { RequestHandler } from "./$types";
 import { auth } from "$lib/server/auth-server";
 import { getDB } from "$lib/server/db";
-import { apiCallT, apiCallResponseT, sql } from "common-db";
-import { resolveToDataUri, parseMediaRef } from "$lib/server/image-store";
-import type { ApiCallInputMessage, ApiCallInputMessageContent } from "common-db";
+import { apiCallT, inferenceCallT, sql, type ApiCallResponse, type ApiCallInputMessage, type ApiCallInputMessageContent } from "common-db";
+import { resolveCallMessages } from "$lib/server/lib/call-messages";
+import { inferenceToCallRecord, legacyToCallRecord, type CallRecord } from "$lib/server/lib/call-record";
+import { resolveFirstRating } from "$lib/server/lib/call-ratings";
+import { resolveToDataUri } from "$lib/server/image-store";
+import { parseMediaRef } from "common-env/media-ref";
 import { error } from "@sveltejs/kit";
 
 export const GET: RequestHandler = async ({ params, locals }) => {
@@ -26,35 +30,22 @@ export const GET: RequestHandler = async ({ params, locals }) => {
 
   const { callId } = params;
 
-  const [callRows, ratingRows] = await Promise.all([
-    getDB()
-      .select()
-      .from(apiCallT)
-      .where(sql`
-        ${apiCallT.id} = ${callId}
-      AND
-        ${apiCallT.organizationId} = ${orgId}
-      `)
-      .limit(1),
-    getDB()
-      .select()
-      .from(apiCallResponseT)
-      .where(sql`${apiCallResponseT.apiCallId} = ${callId}`)
-      .limit(1),
+  const [call, rating] = await Promise.all([
+    loadCall(callId, orgId),
+    resolveFirstRating(callId),
   ]);
-
-  const [call] = callRows;
-  const [rating] = ratingRows;
 
   if (!call) {
     error(404, "Call not found");
   }
 
-  const resolvedMessages = await resolveMessagesImages(call.inputMessages, orgId);
-
   const payload = {
-    call: { ...call, inputMessages: resolvedMessages },
-    rating: rating ?? null,
+    call: {
+      ...call,
+      inputMessages: await resolveMessagesImages(call.inputMessages, orgId),
+      outputMessages: await resolveMessagesImages(call.outputMessages, orgId),
+    },
+    rating: (rating ?? null) satisfies ApiCallResponse | null,
   };
 
   return new Response(JSON.stringify(payload, null, 2), {
@@ -64,6 +55,27 @@ export const GET: RequestHandler = async ({ params, locals }) => {
     },
   });
 };
+
+async function loadCall(callId: string, orgId: string): Promise<CallRecord | null> {
+  const [inference] = await getDB()
+    .select()
+    .from(inferenceCallT)
+    .where(sql`${inferenceCallT.id} = ${callId} AND ${inferenceCallT.organizationId} = ${orgId}`)
+    .limit(1);
+
+  if (inference) {
+    const messages = (await resolveCallMessages([callId])).get(callId);
+    return inferenceToCallRecord(inference, messages);
+  }
+
+  const [legacy] = await getDB()
+    .select()
+    .from(apiCallT)
+    .where(sql`${apiCallT.id} = ${callId} AND ${apiCallT.organizationId} = ${orgId}`)
+    .limit(1);
+
+  return legacy ? legacyToCallRecord(legacy) : null;
+}
 
 async function resolveImagePart(
   part: ApiCallInputMessageContent,
