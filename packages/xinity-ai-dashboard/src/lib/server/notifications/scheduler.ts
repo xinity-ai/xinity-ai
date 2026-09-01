@@ -4,10 +4,11 @@ import {
   modelInstallationT,
   modelInstallationStateT,
   aiNodeT,
-  apiCallT,
+  usageEventT,
   organizationT,
   count,
   deploymentMatchesInstallation,
+  type SQL,
 } from "common-db";
 import { serverEnv } from "$lib/server/serverenv";
 import { getDB } from "$lib/server/db";
@@ -327,28 +328,33 @@ async function countActiveDeployments(orgId: string): Promise<number> {
   return row?.count ?? 0;
 }
 
+/** `logged AND success` reproduces what the retired `api_call` table used to hold. */
+function loggedSince(orgId: string, since: Date): SQL {
+  return sql`
+    ${usageEventT.organizationId} = ${orgId}
+  AND
+    ${usageEventT.createdAt} >= ${since}
+  AND
+    ${usageEventT.logged}
+  AND
+    ${usageEventT.success}
+  `;
+}
+
 async function countApiCallsSince(orgId: string, since: Date): Promise<number> {
   const [row] = await getDB()
     .select({ count: count() })
-    .from(apiCallT)
-    .where(sql`
-      ${apiCallT.organizationId} = ${orgId}
-    AND
-      ${apiCallT.createdAt} >= ${since}
-    `);
+    .from(usageEventT)
+    .where(loggedSince(orgId, since));
   return row?.count ?? 0;
 }
 
 async function topModelsByCallsSince(orgId: string, since: Date, limit = 5): Promise<Array<{ name: string; calls: number }>> {
   return await getDB()
-    .select({ name: apiCallT.model, calls: count() })
-    .from(apiCallT)
-    .where(sql`
-      ${apiCallT.organizationId} = ${orgId}
-    AND
-      ${apiCallT.createdAt} >= ${since}
-    `)
-    .groupBy(apiCallT.model)
+    .select({ name: usageEventT.model, calls: count() })
+    .from(usageEventT)
+    .where(loggedSince(orgId, since))
+    .groupBy(usageEventT.model)
     .orderBy(sql`count(*) DESC`)
     .limit(limit);
 }
