@@ -18,7 +18,7 @@
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import { permissions } from "$lib/state/permissions.svelte";
   import { orpc } from "$lib/orpc/orpc-client";
-  import { untrack } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { useDebouncedValue } from "$lib/state/debounced.svelte";
   import { Button } from "$lib/components/ui/button";
   import { ArrowLeft, BookOpen } from "@lucide/svelte";
@@ -171,6 +171,13 @@
       }
     }
   });
+  // The remote query cache outlives this component, so arriving here would otherwise show whatever
+  // was true on the last visit.
+  onMount(() => {
+    void apiCalls.refresh();
+    void apiCallCount.refresh();
+  });
+
   const apiKeys = $derived(getApiKeys({ applicationId }));
   const apiKeyNameMap = $derived(
     new Map((apiKeys.current || []).map((key) => [key.id, key.name])),
