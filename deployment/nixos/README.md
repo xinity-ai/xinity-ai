@@ -206,6 +206,61 @@ services.xinity-ai = {
 };
 ```
 
+### Optional: Object Storage
+
+Images sent to multimodal models are kept so the conversation still shows them when it is replayed later. Without object storage the bytes go into PostgreSQL, which works but is not where you want a growing list of images. Turning on the bundled SeaweedFS moves them out:
+
+```nix
+services.xinity-ai.seaweedfs.enable = true;
+```
+
+The gateway and dashboard are pointed at it, and the bucket is created
+before either of them needs it. The bucket name defaults to xinity-media` and is set in one place if you want another:
+
+```nix
+services.xinity-ai.seaweedfs.bucket = "my-media";
+```
+
+SeaweedFS allows anonymous S3 access by default, and the gateway and dashboard reach it over loopback. The listener itself is not restricted to loopback, so keep the S3 port closed at the firewall.  
+To require credentials instead, point it at an S3 config file and give the same keys to its two clients:
+
+```nix
+services.xinity-ai = {
+  seaweedfs = {
+    enable = true;
+    s3Config = "/run/secrets/seaweedfs-s3.json";
+  };
+  secrets = {
+    s3AccessKeyIdFile = "/run/secrets/xinity-s3-key-id";
+    s3SecretAccessKeyFile = "/run/secrets/xinity-s3-secret";
+  };
+};
+```
+
+#### Using Storage You Already Have
+
+The bundled instance is off unless you asked for it, so configure the two clients directly.  
+
+```nix
+services.xinity-ai-gateway = {
+  s3Endpoint = "https://s3.example.com";
+  s3Bucket = "xinity-media";
+  s3Region = "eu-central-1";
+  s3AccessKeyIdFile = "/run/secrets/xinity-s3-key-id";
+  s3SecretAccessKeyFile = "/run/secrets/xinity-s3-secret";
+};
+services.xinity-ai-dashboard = {
+  s3Endpoint = "https://s3.example.com";
+  s3Bucket = "xinity-media";
+  s3Region = "eu-central-1";
+  s3AccessKeyIdFile = "/run/secrets/xinity-s3-key-id";
+  s3SecretAccessKeyFile = "/run/secrets/xinity-s3-secret";
+};
+```
+
+Both should point at the same bucket: the gateway writes the images and the dashboard reads them back. Some limited writing may happen from the dashboard, during the migration from db to s3 if you have existing state.  
+Create the bucket yourself, since nothing does it for storage the stack does not run, and an upload to a missing bucket is logged and dropped rather than failing the request.
+
 ### Optional: SearXNG
 
 SearXNG is enabled by default for web-augmented inference. To disable:
