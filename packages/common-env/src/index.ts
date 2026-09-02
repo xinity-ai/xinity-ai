@@ -8,8 +8,8 @@
  * Usage:
  *   const env = parseEnv(z.object({ DB_CONNECTION_URL: z.url(), ... }));
  */
-import { readFileSync } from "node:fs";
 import { z } from "zod";
+import { readSecretFile } from "./secret-file";
 
 /**
  * For each key, check if a corresponding KEY_FILE env var is set.
@@ -31,14 +31,7 @@ function resolveSecretFiles(
 
     const filePath = env[`${key}_FILE`];
     if (filePath) {
-      try {
-        resolved[key] = readFileSync(filePath, "utf-8").trim();
-      } catch (err) {
-        throw new Error(
-          `Failed to read secret file for ${key} from "${filePath}": ${(err as Error).message}`,
-          { cause: err },
-        );
-      }
+      resolved[key] = readSecretFile(filePath, key);
     }
   }
 
