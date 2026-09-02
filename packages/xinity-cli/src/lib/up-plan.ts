@@ -628,7 +628,7 @@ export async function configureComponentFlow(component: Component, host: Host): 
     return;
   }
 
-  const changes = diffEnv({ config: state.existingConfig, secrets: state.existingSecrets }, result);
+  const changes = diffEnv(component, { config: state.existingConfig, secrets: state.existingSecrets }, result);
   if (changes.length === 0) {
     log.info("No changes.");
     outro("Done");

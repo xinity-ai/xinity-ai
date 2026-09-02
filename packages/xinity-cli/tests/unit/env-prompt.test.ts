@@ -2,8 +2,8 @@ import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { z } from "zod";
 import { secret } from "common-env";
 import {
-  analyzeEnvSchema, categorizeFields, planSecretFileRemoval,
-  type EnvChange,
+  analyzeEnvSchema, categorizeFields, diffEnv, planSecretFileRemoval,
+  type EnvBundle, type EnvChange,
 } from "../../src/lib/env-prompt.ts";
 import { readEnvFile, serializeEnvFile, readSecretFiles } from "../../src/lib/env-file.ts";
 import { buildSecretsRemoveCommand } from "../../src/lib/service.ts";
@@ -133,6 +133,34 @@ describe("env-prompt", () => {
 
     test("an optional field is not required", () => {
       expect(field("MAIL_URL").isRequired).toBe(false);
+    });
+  });
+
+  describe("diffEnv", () => {
+    const bundle = (config: Record<string, string>): EnvBundle => ({ config, secrets: {} });
+
+    test("reports added, changed and removed keys", () => {
+      const changes = diffEnv(
+        "gateway",
+        bundle({ HOST: "0.0.0.0", PORT: "3000" }),
+        bundle({ HOST: "127.0.0.1", LOG_LEVEL: "debug" }),
+      );
+
+      expect(changes).toEqual([
+        { key: "HOST", kind: "changed", isSecret: false, before: "0.0.0.0", after: "127.0.0.1" },
+        { key: "LOG_LEVEL", kind: "added", isSecret: false, after: "debug" },
+        { key: "PORT", kind: "removed", isSecret: false },
+      ]);
+    });
+
+    test("a key the writer derives is never reported as removed", () => {
+      const changes = diffEnv(
+        "dashboard",
+        bundle({ ORIGIN: "https://xinity.test", HTTP_OVERRIDE_ORIGIN: "https://xinity.test" }),
+        bundle({ ORIGIN: "https://xinity.test" }),
+      );
+
+      expect(changes).toEqual([]);
     });
   });
 
