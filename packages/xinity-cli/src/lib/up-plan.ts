@@ -18,10 +18,10 @@ import { parseEnvString } from "./env-file.ts";
 import { unitName } from "./systemd.ts";
 import { pickReleaseAsset, resolveDirectUrl, getProjectUrl, type Release } from "./github.ts";
 import { assetSizeMb, buildInstallBinaryCommand } from "./install-download.ts";
-import { buildEnvWriteCommand, buildSecretsWriteCommand, buildUnitWriteCommand, writeEnvConfig, writeSystemdUnit, restartService } from "./service.ts";
+import { buildEnvWriteCommand, buildSecretsWriteCommand, buildSecretsRemoveCommand, buildUnitWriteCommand, writeEnvConfig, writeSystemdUnit, restartService } from "./service.ts";
 import { runSteps, createProgress } from "./step-runner.ts";
 import { resolveVersion, applyComponentAction, type VersionResult } from "./installer.ts";
-import { collectEnv, menuEditEnv, readExistingEnvState, diffEnv, type EnvBundle, type EnvChange } from "./env-prompt.ts";
+import { collectEnv, menuEditEnv, readExistingEnvState, diffEnv, planSecretFileRemoval, type EnvBundle, type EnvChange, type SecretFilePlan } from "./env-prompt.ts";
 import { discoverConnectionUrl, describeMigrationStep, migrationScriptComment, runMigrations } from "./migrator.ts";
 import { describePostgresProvision, buildPostgresProvisionCommands, applyPostgresProvision, type PostgresProvision } from "./postgres-setup.ts";
 import { planRedis, applyRedisPlan, describeRedisPlan, buildRedisProvisionCommands, type RedisPlan } from "./redis-setup.ts";
@@ -41,6 +41,7 @@ export type ComponentAction = {
   assetSizeMb?: string;
   env: EnvBundle;
   envChanges: EnvChange[];
+  secretFiles: SecretFilePlan;
   hardReset: boolean;
   serviceRunning: boolean;
 }
@@ -80,9 +81,12 @@ export async function buildComponentAction(
   version: Extract<VersionResult, { status: "proceed" | "current" }>,
   host: Host,
 ): Promise<ComponentAction | null> {
+  const secretFiles = await planSecretFileRemoval(base.component, base.envChanges, host);
+
   if (version.status === "current") {
     return {
       ...base,
+      secretFiles,
       kind: base.envChanges.length > 0 ? "reconfigure" : "none",
       installedVersion: version.version,
       toVersion: version.version,
@@ -100,6 +104,7 @@ export async function buildComponentAction(
 
   return {
     ...base,
+    secretFiles,
     kind: version.isUpdate ? "update" : "install",
     installedVersion: version.installedVersion,
     toVersion: version.release.tagName,
@@ -138,6 +143,7 @@ async function planComponentAction(
       localRepoPath: opts.targetVersion.slice(6),
       env: collected,
       envChanges: collected.changes,
+      secretFiles: await planSecretFileRemoval(component, collected.changes, host),
     };
   }
 
@@ -276,9 +282,14 @@ export async function planUp(
 
 // ─── Review ─────────────────────────────────────────────────────────────────
 
-function envChangeLines(changes: EnvChange[]): string[] {
+function envChangeLines(changes: EnvChange[], secretFiles: SecretFilePlan): string[] {
   return changes.map((c) => {
-    if (c.kind === "removed") return `- ${c.key}`;
+    if (c.kind === "removed") {
+      const kept = secretFiles.keptForOtherComponents.includes(c.key)
+        ? dim(" (secret file kept, another component still uses it)")
+        : "";
+      return `- ${c.key}${kept}`;
+    }
     const value = c.isSecret ? "••••••" : c.after;
     if (c.kind === "added") return `+ ${c.key} = ${value}`;
     return c.isSecret ? `~ ${c.key} = ••••••` : `~ ${c.key} = ${c.before} → ${c.after}`;
@@ -293,7 +304,7 @@ function serviceLine(action: ComponentAction): string {
 export function describeComponentAction(action: ComponentAction): string[] {
   const { component, envChanges } = action;
   const configLines = envChanges.length > 0
-    ? [`config changes:`, ...envChangeLines(envChanges).map((l) => `  ${l}`)]
+    ? [`config changes:`, ...envChangeLines(envChanges, action.secretFiles).map((l) => `  ${l}`)]
     : ["configuration unchanged"];
 
   switch (action.kind) {
@@ -392,11 +403,18 @@ const SCRIPT_HEADER = [
   "",
 ];
 
-function scriptConfigSection(component: Component, env: EnvBundle, serviceRunning: boolean): string[] {
+function scriptConfigSection(
+  component: Component,
+  env: EnvBundle,
+  serviceRunning: boolean,
+  secretFiles: SecretFilePlan,
+): string[] {
   const secretsCommand = buildSecretsWriteCommand(env.secrets);
+  const removeCommand = buildSecretsRemoveCommand(secretFiles.remove);
   return [
     buildEnvWriteCommand(component, env.config),
     ...(secretsCommand ? [secretsCommand] : []),
+    ...(removeCommand ? [removeCommand] : []),
     buildUnitWriteCommand(component, Object.keys(env.secrets)),
     serviceRunning ? `systemctl restart ${unitName(component)}` : `systemctl enable --now ${unitName(component)}`,
   ];
@@ -410,7 +428,7 @@ export async function scriptComponentSection(action: ComponentAction): Promise<s
     return [`# ── ${component}: ${action.toVersion} already current, nothing to do ──`];
   }
   if (action.kind === "reconfigure") {
-    return [header, ...scriptConfigSection(component, action.env, action.serviceRunning)];
+    return [header, ...scriptConfigSection(component, action.env, action.serviceRunning, action.secretFiles)];
   }
   if (action.localRepoPath) {
     return [
@@ -427,7 +445,7 @@ export async function scriptComponentSection(action: ComponentAction): Promise<s
     `mkdir -p /tmp/xinity-script-install`,
     `curl -fsSL -o '${archivePath}' '${url}'`,
     buildInstallBinaryCommand(component, archivePath),
-    ...scriptConfigSection(component, action.env, action.serviceRunning),
+    ...scriptConfigSection(component, action.env, action.serviceRunning, action.secretFiles),
   ];
 }
 
@@ -618,10 +636,11 @@ export async function configureComponentFlow(component: Component, host: Host): 
   }
 
   const serviceRunning = await isUnitActiveOn(host, unitName(component));
+  const secretFiles = await planSecretFileRemoval(component, changes, host);
 
   note(
     [
-      ...envChangeLines(changes),
+      ...envChangeLines(changes, secretFiles),
       dim(serviceRunning
         ? `update systemd unit, restart ${unitName(component)}`
         : `update systemd unit (${unitName(component)} is not running, takes effect on next start)`),
@@ -630,12 +649,12 @@ export async function configureComponentFlow(component: Component, host: Host): 
   );
 
   const proceed = await reviewGate(async () =>
-    [...SCRIPT_HEADER, ...scriptConfigSection(component, result, serviceRunning)].join("\n"),
+    [...SCRIPT_HEADER, ...scriptConfigSection(component, result, serviceRunning, secretFiles)].join("\n"),
   );
   if (!proceed) return;
 
   const progress = createProgress("Applying configuration…");
-  const configResult = await writeEnvConfig(component, result.config, result.secrets, host);
+  const configResult = await writeEnvConfig(component, result.config, result.secrets, host, secretFiles.remove);
   if (configResult.success) {
     progress.update("Environment configured");
     await writeSystemdUnit(component, Object.keys(result.secrets), host);

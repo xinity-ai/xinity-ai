@@ -65,6 +65,22 @@ describe("configure command", () => {
     expect(readConfig().apiKey).toBeUndefined();
   });
 
+  test("configure <key> \"\" unsets the key", async () => {
+    await runCli({
+      args: ["configure", "dashboardUrl", "http://test.example.com"],
+      env: { HOME: tmp.path, XDG_CONFIG_HOME: join(tmp.path, ".config") },
+    });
+    expect(readConfig().dashboardUrl).toBe("http://test.example.com");
+
+    const result = await runCli({
+      args: ["configure", "dashboardUrl", ""],
+      env: { HOME: tmp.path, XDG_CONFIG_HOME: join(tmp.path, ".config") },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(readConfig().dashboardUrl).toBeUndefined();
+  });
+
   test("configure --reset preserves other keys", async () => {
     await runCli({
       args: ["configure", "apiKey", "key-1"],

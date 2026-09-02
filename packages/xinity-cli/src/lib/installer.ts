@@ -372,6 +372,7 @@ async function performRollback(component: Component, host: Host, progress: Progr
 async function applyConfigAndStart(
   component: Component,
   env: EnvBundle,
+  removeSecretKeys: string[],
   host: Host,
   isUpdate: boolean,
   onFailure: ServiceFailurePolicy,
@@ -382,7 +383,7 @@ async function applyConfigAndStart(
   const unit = unitName(component);
 
   progress.update("Writing configuration…");
-  const configResult = await writeEnvConfig(component, env.config, env.secrets, host);
+  const configResult = await writeEnvConfig(component, env.config, env.secrets, host, removeSecretKeys);
   if (configResult.success) {
     progress.update("Environment configured");
   } else {
@@ -503,7 +504,7 @@ export async function applyComponentAction(
     }
 
     const binaryChanged = action.kind !== "reconfigure";
-    const errors = await applyConfigAndStart(component, action.env, host, isUpdate, onFailure, progress, binaryChanged);
+    const errors = await applyConfigAndStart(component, action.env, action.secretFiles.remove, host, isUpdate, onFailure, progress, binaryChanged);
 
     const success = errors.length === 0;
 

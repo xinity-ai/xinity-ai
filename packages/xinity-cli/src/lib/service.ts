@@ -40,6 +40,11 @@ export function buildSecretsWriteCommand(secrets: Record<string, string>): strin
   return cmds.join(" && ");
 }
 
+export function buildSecretsRemoveCommand(keys: string[]): string | null {
+  if (keys.length === 0) return null;
+  return `rm -f ${keys.map((key) => `${SECRETS_DIR}/${key}`).join(" ")}`;
+}
+
 export function buildUnitWriteCommand(component: Component, secretKeys: string[]): string {
   const baseConfig = getComponentConfig(component);
   const config: UnitConfig = { ...baseConfig, secretKeys };
@@ -53,6 +58,7 @@ export async function writeEnvConfig(
   config: Record<string, string>,
   secrets: Record<string, string>,
   host: Host,
+  removeSecretKeys: string[] = [],
 ): Promise<ServiceResult> {
   let result = await host.withElevation(
     buildEnvWriteCommand(component, config),
@@ -65,6 +71,14 @@ export async function writeEnvConfig(
   const secretsCommand = buildSecretsWriteCommand(secrets);
   if (secretsCommand) {
     result = await host.withElevation(secretsCommand, "Write secrets");
+    if (!result.success) {
+      return { success: false, error: result.output };
+    }
+  }
+
+  const removeCommand = buildSecretsRemoveCommand(removeSecretKeys);
+  if (removeCommand) {
+    result = await host.withElevation(removeCommand, "Remove unset secrets");
     if (!result.success) {
       return { success: false, error: result.output };
     }
