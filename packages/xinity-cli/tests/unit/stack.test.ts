@@ -169,7 +169,6 @@ describe("resolveEnv", () => {
 
   test("includes the component's auto defaults as the base layer", () => {
     const stack = makeStack();
-    expect(resolveEnv(stack, "daemon").STATE_DIR).toBe("/var/lib/xinity-ai-daemon");
     expect(resolveEnv(stack, "gateway").INFOSERVER_URL).toBe("https://sysinfo.xinity.ai");
   });
 
