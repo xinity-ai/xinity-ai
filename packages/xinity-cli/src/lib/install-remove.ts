@@ -1,7 +1,7 @@
 import { confirm, isCancel } from "./clack.ts";
 import { heading } from "./output.ts";
 import { readManifest, writeManifest } from "./manifest.ts";
-import { analyzeEnvSchema, categorizeFields } from "./env-prompt.ts";
+import { analyzeEnvSchema, categorizeFields, secretKeysOfOtherComponents } from "./env-prompt.ts";
 import { type Host, isUnitActiveOn } from "./host.ts";
 import { unitName } from "./systemd.ts";
 import { runSteps, runStepsCollapsed } from "./step-runner.ts";
@@ -94,15 +94,7 @@ export async function* removeComponent(opts: {
   const fields = analyzeEnvSchema(schema);
   const { secretFields } = categorizeFields(fields);
   if (secretFields.length > 0) {
-    const manifest = await readManifest(host);
-    const otherComponents = (Object.keys(ENV_SCHEMAS) as Component[])
-      .filter((c) => c !== component && manifest.components[c]);
-    const sharedKeys = new Set(
-      otherComponents.flatMap((c) => {
-        const { secretFields: sf } = categorizeFields(analyzeEnvSchema(ENV_SCHEMAS[c]));
-        return sf.map((f) => f.key);
-      }),
-    );
+    const sharedKeys = await secretKeysOfOtherComponents(component, host);
 
     const toDelete = secretFields.filter((f) => !sharedKeys.has(f.key));
     const kept = secretFields.filter((f) => sharedKeys.has(f.key));

@@ -1,5 +1,5 @@
 import type { CommandModule } from "yargs";
-import { menuConfigureCli, loadConfig, saveConfig, updateConfig } from "../lib/config.ts";
+import { menuConfigureCli, clearConfigKey, updateConfig } from "../lib/config.ts";
 import { configureComponentFlow } from "../lib/up-plan.ts";
 import type { Component } from "../lib/component-meta.ts";
 import type { CliConfig } from "../lib/config.ts";
@@ -20,7 +20,7 @@ export const configureCommand: CommandModule = {
         default: "cli",
       })
       .positional("value", {
-        describe: "Value to assign to the config key",
+        describe: "Value to assign to the config key, empty string to unset it",
         type: "string",
       })
       .option("reset", {
@@ -36,10 +36,8 @@ export const configureCommand: CommandModule = {
     const targetHostArg = argv["target-host"] as string | undefined;
     const isConfigKey = (CLI_CONFIG_KEYS as readonly string[]).includes(key);
 
-    if (isConfigKey && reset) {
-      const config = loadConfig();
-      delete (config as Record<string, unknown>)[key];
-      saveConfig(config);
+    if (isConfigKey && (reset || value === "")) {
+      clearConfigKey(key as keyof CliConfig);
       return;
     }
 

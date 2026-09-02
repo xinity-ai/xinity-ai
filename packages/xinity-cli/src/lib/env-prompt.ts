@@ -13,6 +13,7 @@ export type EnvField = {
   hasDefault: boolean;
   defaultValue?: unknown;
   isOptional: boolean;
+  isRequired: boolean;
   isSecret: boolean;
   isExpert: boolean;
   isPublic: boolean;
@@ -70,13 +71,16 @@ export function analyzeEnvSchema(
     const meta = readFieldMeta(zodField as z.ZodType);
     const enumValues = extractEnumValues(prop);
     const resolvedType = resolveJsonSchemaType(prop);
+    const hasDefault = "default" in prop;
+    const isOptional = !requiredKeys.has(key);
 
     fields.push({
       key,
       description: prop.description,
-      hasDefault: "default" in prop,
+      hasDefault,
       defaultValue: prop.default,
-      isOptional: !requiredKeys.has(key),
+      isOptional,
+      isRequired: !isOptional && !hasDefault,
       isSecret: meta.secret,
       isExpert: meta.expert,
       isPublic: meta.public,
@@ -92,7 +96,7 @@ export function analyzeEnvSchema(
 
 /** The single definition of "the config is invalid without this field". */
 export function isRequiredUnset(field: EnvField, values: Record<string, string | undefined>): boolean {
-  return !field.isOptional && !field.hasDefault && !values[field.key];
+  return field.isRequired && !values[field.key];
 }
 
 export function missingRequiredFields(fields: EnvField[], values: Record<string, string | undefined>): EnvField[] {
@@ -256,20 +260,17 @@ async function promptFieldsUnderHeading(
 /** Distinguishes an Escape (back out, change nothing) from a skipped/cleared field. */
 const FIELD_CANCELLED: unique symbol = Symbol("field-cancelled");
 
-/**
- * Prompt for a single field value. Returns undefined if skipped. When
- * `cancelable`, Escape returns FIELD_CANCELLED instead of exiting the CLI
- * (menu editors treat it as backing out to the menu).
- */
+const UNSET_OPTION = "__unset__";
+
 async function promptField(
   field: EnvField,
   existingValue?: string,
-  cancelable = false,
+  inMenuEditor = false,
 ): Promise<string | undefined | typeof FIELD_CANCELLED> {
   const resolve = async <T>(prompt: Promise<T | symbol>): Promise<T | typeof FIELD_CANCELLED> => {
     const value = await prompt;
     if (isCancel(value)) {
-      if (cancelable) return FIELD_CANCELLED;
+      if (inMenuEditor) return FIELD_CANCELLED;
       cancelAndExit();
     }
     return value as T;
@@ -278,26 +279,31 @@ async function promptField(
   const hint = field.description ? dim(` (${field.description})`) : "";
   const optTag = field.isOptional ? dim(" [optional]") : "";
   const existing = existingValue ?? (field.hasDefault ? String(field.defaultValue) : undefined);
+  // Only the menu editor can back out with Escape, so only there is an empty submit safe to read as "unset".
+  const unsetOnEmpty = inMenuEditor && !field.isRequired;
+  const emptyHint = existingValue === undefined
+    ? ""
+    : dim(unsetOnEmpty ? " [Enter to unset]" : " [Enter to keep current]");
+  const keepOnEmpty = unsetOnEmpty ? undefined : existing;
 
   // Secret → masked password input
   if (field.isSecret) {
-    const keepHint = existing ? dim(" [Enter to keep current]") : "";
     const value = await resolve(password({
-      message: `${field.key}${hint}${optTag}${keepHint}`,
+      message: `${field.key}${hint}${optTag}${emptyHint}`,
       validate: (val) => {
-        if (!val && !existing && !field.isOptional && !field.hasDefault) return "This field is required";
+        if (!val && !existing && field.isRequired) return "This field is required";
         return undefined;
       },
     }));
     if (value === FIELD_CANCELLED) return value;
-    return value || existing || undefined;
+    return value || keepOnEmpty || undefined;
   }
 
   // Enum → select
   if (field.enumValues) {
     const options = field.enumValues.map((v) => ({ value: v, label: v }));
-    if (field.isOptional) {
-      options.unshift({ value: "__skip__", label: dim("skip") });
+    if (!field.isRequired) {
+      options.unshift({ value: UNSET_OPTION, label: dim(inMenuEditor ? "unset" : "skip") });
     }
     const value = await resolve(select({
       message: `${field.key}${hint}${optTag}`,
@@ -305,7 +311,7 @@ async function promptField(
       initialValue: existing,
     }));
     if (value === FIELD_CANCELLED) return value;
-    return value === "__skip__" ? undefined : value;
+    return value === UNSET_OPTION ? undefined : value;
   }
 
   // Boolean → confirm
@@ -322,17 +328,17 @@ async function promptField(
 
   // Number or string → text input
   const value = await resolve(text({
-    message: `${field.key}${hint}${optTag}`,
+    message: `${field.key}${hint}${optTag}${emptyHint}`,
     placeholder: existing ?? undefined,
-    defaultValue: existing ?? undefined,
+    defaultValue: unsetOnEmpty ? undefined : existing ?? undefined,
     validate: (val) => {
-      if (!val && !existing && !field.isOptional && !field.hasDefault) return "This field is required";
+      if (!val && !existing && field.isRequired) return "This field is required";
       if (val && field.isNumber && Number.isNaN(Number(val))) return "Must be a number";
       return undefined;
     },
   }));
   if (value === FIELD_CANCELLED) return value;
-  return value || undefined;
+  return value || keepOnEmpty || undefined;
 }
 
 /** Format a field's current value for display in the menu. */
@@ -469,6 +475,36 @@ export async function readExistingEnvState(component: Component, host: Host): Pr
   return {
     existingConfig: envContent ? parseEnvString(envContent) : {},
     existingSecrets: secretsResult.secrets,
+  };
+}
+
+export type SecretFilePlan = {
+  remove: string[];
+  keptForOtherComponents: string[];
+}
+
+export async function secretKeysOfOtherComponents(component: Component, host: Host): Promise<Set<string>> {
+  const manifest = await readManifest(host);
+  const others = (Object.keys(ENV_SCHEMAS) as Component[])
+    .filter((c) => c !== component && manifest.components[c]);
+  return new Set(
+    others.flatMap((c) => categorizeFields(analyzeEnvSchema(ENV_SCHEMAS[c])).secretFields.map((f) => f.key)),
+  );
+}
+
+export async function planSecretFileRemoval(
+  component: Component,
+  changes: EnvChange[],
+  host: Host,
+): Promise<SecretFilePlan> {
+  const unset = changes.filter((c) => c.kind === "removed" && c.isSecret).map((c) => c.key);
+  if (unset.length === 0) {
+    return { remove: [], keptForOtherComponents: [] };
+  }
+  const heldElsewhere = await secretKeysOfOtherComponents(component, host);
+  return {
+    remove: unset.filter((key) => !heldElsewhere.has(key)),
+    keptForOtherComponents: unset.filter((key) => heldElsewhere.has(key)),
   };
 }
 

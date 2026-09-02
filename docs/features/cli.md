@@ -32,6 +32,8 @@ Call any dashboard API route from the command line. Routes are discovered dynami
 
 Set CLI-level config (API key, dashboard URL) or edit a component's environment through the menu editor. Component changes are reviewed as a diff and applied only after confirmation, followed by a service restart. CLI configuration is stored in `~/.config/xinity/config.json` (`$XDG_CONFIG_HOME` is honored when set).
 
+Submitting an empty value unsets a key unless it is required, and Escape leaves the value untouched. `xinity configure <key> ""` (or `--reset`) unsets CLI-level config non-interactively, and unsetting a component secret also deletes its file from the host's secrets directory unless another installed component still reads it.
+
 ### Self-update (`xinity update`)
 
 Downloads the latest release, verifies SHA-256, and atomically replaces the binary with rollback on failure. `--check` reports whether an update is available without installing.

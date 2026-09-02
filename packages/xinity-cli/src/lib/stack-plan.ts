@@ -22,7 +22,7 @@ import { readManifest, saveStackMembership, type StackMembership } from "./manif
 import { describeMigrationStep, migrationScriptComment, runMigrations } from "./migrator.ts";
 import { connectHost } from "./remote-host.ts";
 import { type ComponentAction, describeComponentAction, buildComponentAction, reviewGate, scriptComponentSection } from "./up-plan.ts";
-import { analyzeEnvSchema, splitValuesByCategory, readExistingEnvState, diffEnv, missingRequiredFields } from "./env-prompt.ts";
+import { analyzeEnvSchema, splitValuesByCategory, readExistingEnvState, diffEnv, missingRequiredFields, planSecretFileRemoval } from "./env-prompt.ts";
 import {
   type StackDefinition, type StackHost, type FleetDefinition,
   resolveEnv, saveStack, getFleetForHost, hostLabel,
@@ -234,6 +234,7 @@ async function planHostComponent(
       localRepoPath: targetVersion.slice(6),
       env: envResult.env,
       envChanges: envResult.envChanges,
+      secretFiles: await planSecretFileRemoval(component, envResult.envChanges, host),
       hardReset: false,
       serviceRunning,
     };

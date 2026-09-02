@@ -1,9 +1,14 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { z } from "zod";
 import { secret } from "common-env";
-import { analyzeEnvSchema, categorizeFields } from "../../src/lib/env-prompt.ts";
+import {
+  analyzeEnvSchema, categorizeFields, planSecretFileRemoval,
+  type EnvChange,
+} from "../../src/lib/env-prompt.ts";
 import { readEnvFile, serializeEnvFile, readSecretFiles } from "../../src/lib/env-file.ts";
+import { buildSecretsRemoveCommand } from "../../src/lib/service.ts";
 import { createTempDir, type TempDir } from "../helpers/temp-config.ts";
+import { FakeHost } from "../helpers/fake-host.ts";
 
 describe("env-prompt", () => {
   describe("analyzeEnvSchema", () => {
@@ -36,6 +41,9 @@ describe("env-prompt", () => {
       const fields = analyzeEnvSchema(schema);
       expect(fields[0]!.hasDefault).toBe(true);
       expect(fields[0]!.defaultValue).toBe(3000);
+      // Listed as required in the JSON schema, but the default satisfies it.
+      expect(fields[0]!.isOptional).toBe(false);
+      expect(fields[0]!.isRequired).toBe(false);
     });
 
     test("detects number fields", () => {
@@ -105,6 +113,74 @@ describe("env-prompt", () => {
       expect(secretFields.map((f) => f.key)).toEqual(["DB_PASSWORD", "API_KEY"]);
     });
 
+  });
+
+  describe("isRequired", () => {
+    const fields = analyzeEnvSchema(z.object({
+      HOST: z.string(),
+      PORT: z.coerce.number().default(3000),
+      MAIL_URL: z.url().optional(),
+    }));
+    const field = (key: string) => fields.find((f) => f.key === key)!;
+
+    test("a field without a value or a default is required", () => {
+      expect(field("HOST").isRequired).toBe(true);
+    });
+
+    test("a field with a default is not required, it falls back to it", () => {
+      expect(field("PORT").isRequired).toBe(false);
+    });
+
+    test("an optional field is not required", () => {
+      expect(field("MAIL_URL").isRequired).toBe(false);
+    });
+  });
+
+  describe("planSecretFileRemoval", () => {
+    const unset = (key: string, isSecret = true): EnvChange => ({ key, kind: "removed", isSecret });
+
+    const hostWith = (...components: string[]) => new FakeHost({
+      files: {
+        "/opt/xinity/manifest.json": JSON.stringify({
+          components: Object.fromEntries(components.map((c) => [c, { version: "0.0.0" }])),
+        }),
+      },
+    });
+
+    test("deletes the file of a secret only this component declares", async () => {
+      const plan = await planSecretFileRemoval("dashboard", [unset("MAIL_URL")], hostWith("dashboard", "gateway"));
+
+      expect(plan).toEqual({ remove: ["MAIL_URL"], keptForOtherComponents: [] });
+    });
+
+    test("keeps a secret another installed component still reads", async () => {
+      const plan = await planSecretFileRemoval("gateway", [unset("METRICS_AUTH")], hostWith("gateway", "dashboard"));
+
+      expect(plan).toEqual({ remove: [], keptForOtherComponents: ["METRICS_AUTH"] });
+    });
+
+    test("deletes a shared secret once no other component is installed", async () => {
+      const plan = await planSecretFileRemoval("gateway", [unset("METRICS_AUTH")], hostWith("gateway"));
+
+      expect(plan).toEqual({ remove: ["METRICS_AUTH"], keptForOtherComponents: [] });
+    });
+
+    test("ignores unset config keys, which the env file rewrite already drops", async () => {
+      const plan = await planSecretFileRemoval("gateway", [unset("HOST", false)], hostWith("gateway"));
+
+      expect(plan).toEqual({ remove: [], keptForOtherComponents: [] });
+    });
+  });
+
+  describe("buildSecretsRemoveCommand", () => {
+    test("removes each key's file under the secrets dir", () => {
+      expect(buildSecretsRemoveCommand(["MAIL_URL", "LICENSE_KEY"]))
+        .toBe("rm -f /etc/xinity-ai/secrets/MAIL_URL /etc/xinity-ai/secrets/LICENSE_KEY");
+    });
+
+    test("returns null when nothing was unset", () => {
+      expect(buildSecretsRemoveCommand([])).toBeNull();
+    });
   });
 
   describe("readEnvFile", () => {

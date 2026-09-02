@@ -97,6 +97,13 @@ export function updateConfig(patch: Partial<CliConfig>): CliConfig {
   return config;
 }
 
+export function clearConfigKey(key: keyof CliConfig): CliConfig {
+  const config = loadConfig();
+  delete config[key];
+  saveConfig(config);
+  return config;
+}
+
 /** Format a CLI config value for display in the menu. */
 function displayCliValue(field: ConfigField, value: string | undefined): string {
   if (value) {
@@ -135,25 +142,17 @@ export async function menuConfigureCli(): Promise<void> {
 
     const field = CLI_FIELDS.find((f) => f.key === choice)!;
     const current = config[field.key];
+    const unsetHint = current ? pc.dim(" [Enter to unset]") : "";
 
-    if (field.isSecret) {
-      const keepHint = current ? pc.dim(" [Enter to keep current]") : "";
-      const value = await p.password({
-        message: `${field.label}${keepHint}`,
-      });
-      if (p.isCancel(value)) { p.cancel("Cancelled."); return; }
-      if (value) config[field.key] = value;
-      else if (!current) delete config[field.key];
-    } else {
-      const value = await p.text({
-        message: field.label,
+    const value = field.isSecret
+      ? await p.password({ message: `${field.label}${unsetHint}` })
+      : await p.text({
+        message: `${field.label}${unsetHint}`,
         placeholder: current ?? undefined,
-        defaultValue: current ?? undefined,
       });
-      if (p.isCancel(value)) { p.cancel("Cancelled."); return; }
-      if (value) config[field.key] = value;
-      else delete config[field.key];
-    }
+    if (p.isCancel(value)) continue;
+    if (value) config[field.key] = value;
+    else delete config[field.key];
   }
 
   saveConfig(config);
