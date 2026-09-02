@@ -360,8 +360,6 @@ export type MenuEditOptions = {
   attentionKeys?: Set<string>;
   /** Keys owned by another layer (e.g. stack shared settings): not shown, not editable; their seeded values pass through. */
   hiddenKeys?: Set<string>;
-  /** Values the edited layer inherits; expert fields still matching them stay behind the advanced toggle. */
-  inherited?: Record<string, string>;
   /** Message displayed above the menu. */
   message?: string;
 }
@@ -371,8 +369,7 @@ export type MenuEditOptions = {
  * persisting anything. Returns null if the user cancels.
  *
  * Required fields are marked and block saving while unset. Expert fields
- * are hidden behind an "advanced settings" toggle unless they carry a
- * value beyond the inherited baseline or need attention.
+ * live behind the "advanced settings" toggle, set or not.
  */
 export async function menuEditEnv(
   schema: z.ZodObject<any>,
@@ -382,7 +379,6 @@ export async function menuEditEnv(
   const fields = analyzeEnvSchema(schema);
   const attentionKeys = opts?.attentionKeys ?? new Set<string>();
   const hiddenKeys = opts?.hiddenKeys ?? new Set<string>();
-  const inherited = opts?.inherited ?? {};
   const editable = fields.filter((f) => !hiddenKeys.has(f.key));
   const values: Record<string, string | undefined> = { ...existing };
   let showExpert = false;
@@ -390,11 +386,8 @@ export async function menuEditEnv(
   // is exactly the one you usually want next.
   let cursor: string | undefined;
 
-  const isUnset = (f: EnvField) => values[f.key] === undefined || values[f.key] === "";
   const requiredUnset = (f: EnvField) => isRequiredUnset(f, values);
-  const isInherited = (f: EnvField) => inherited[f.key] !== undefined && values[f.key] === inherited[f.key];
-  const isVisible = (f: EnvField) =>
-    !f.isExpert || showExpert || (!isUnset(f) && !isInherited(f)) || requiredUnset(f) || attentionKeys.has(f.key);
+  const isVisible = (f: EnvField) => !f.isExpert || showExpert;
 
   while (true) {
     const hiddenCount = editable.filter((f) => !isVisible(f)).length;

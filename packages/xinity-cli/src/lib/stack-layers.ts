@@ -31,7 +31,6 @@ export async function menuEditLayer(opts: {
   const result = await menuEditEnv(opts.schema, { ...opts.inherited, ...opts.own }, {
     attentionKeys: opts.attentionKeys,
     hiddenKeys: opts.hiddenKeys,
-    inherited: opts.inherited,
     message: opts.message,
   });
   if (result === null) {
