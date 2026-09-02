@@ -210,7 +210,7 @@ async function resolveHostEnv(
 
   return {
     env: splitValuesByCategory(fields, merged),
-    envChanges: diffEnv({ config: existingConfig, secrets: existingSecrets }, splitValuesByCategory(fields, merged)),
+    envChanges: diffEnv(component, { config: existingConfig, secrets: existingSecrets }, splitValuesByCategory(fields, merged)),
   };
 }
 

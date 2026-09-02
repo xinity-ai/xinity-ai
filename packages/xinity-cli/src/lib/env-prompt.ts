@@ -154,7 +154,7 @@ export type EnvChange = {
   after?: string;
 }
 
-export function withoutDerivedKeys(component: Component, config: Record<string, string>): Record<string, string> {
+function withoutDerivedKeys(component: Component, config: Record<string, string>): Record<string, string> {
   const derived = DERIVED_ENV_KEYS[component];
   if (!derived) {
     return config;
@@ -162,8 +162,11 @@ export function withoutDerivedKeys(component: Component, config: Record<string, 
   return Object.fromEntries(Object.entries(config).filter(([key]) => !derived.includes(key)));
 }
 
-/** What applying `after` would change relative to the values currently on the host. */
-export function diffEnv(before: EnvBundle, after: EnvBundle): EnvChange[] {
+/**
+ * What applying `after` would change relative to the values currently on the
+ * host.
+ */
+export function diffEnv(component: Component, before: EnvBundle, after: EnvBundle): EnvChange[] {
   const changes: EnvChange[] = [];
   const compare = (prev: Record<string, string>, next: Record<string, string>, isSecret: boolean) => {
     for (const [key, value] of Object.entries(next)) {
@@ -177,7 +180,7 @@ export function diffEnv(before: EnvBundle, after: EnvBundle): EnvChange[] {
       if (!(key in next)) changes.push({ key, kind: "removed", isSecret });
     }
   };
-  compare(before.config, after.config, false);
+  compare(withoutDerivedKeys(component, before.config), withoutDerivedKeys(component, after.config), false);
   compare(before.secrets, after.secrets, true);
   return changes;
 }
@@ -538,7 +541,7 @@ export async function collectEnv(
 
   const withChanges = (result: EnvBundle): CollectedEnv => ({
     ...result,
-    changes: diffEnv({ config: withoutDerivedKeys(component, existingConfig), secrets: existingSecrets }, result),
+    changes: diffEnv(component, { config: existingConfig, secrets: existingSecrets }, result),
   });
   const useExisting = () => withChanges(splitValuesByCategory(fields, existing));
 
