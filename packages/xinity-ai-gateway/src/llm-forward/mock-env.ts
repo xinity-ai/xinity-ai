@@ -1,19 +1,16 @@
-export const MOCK_GATEWAY_ENV = {
-  HOST: "localhost",
-  PORT: 4010,
+import { parseEnv } from "common-env";
+import { gatewayEnvSchema } from "../env-schema";
+
+// Derived from the schema, so a variable added there cannot go missing here and surface as an
+// undefined deep inside an unrelated test.
+export const MOCK_GATEWAY_ENV = parseEnv(gatewayEnvSchema, {
   DB_CONNECTION_URL: "postgresql://localhost/test",
   REDIS_URL: "redis://localhost:6379",
-  WEB_SEARCH_PROVIDER: undefined,
-  WEB_SEARCH_CREDENTIAL: undefined,
-  WEB_SEARCH_ENGINE_URL: "http://localhost:6148/",
-  RESPONSE_CACHE_TTL_SECONDS: 3600,
   INFOSERVER_URL: "http://localhost:3000",
-  INFOSERVER_CACHE_TTL_MS: 30000,
+  INFOSERVER_CACHE_TTL_MS: "30000",
+  WEB_SEARCH_ENGINE_URL: "http://localhost:6148/",
   LOAD_BALANCE_STRATEGY: "random",
-  BACKEND_TIMEOUT_MS: 300000,
   LOG_LEVEL: "info",
-  LOG_DIR: undefined,
-  METRICS_AUTH: undefined,
-  DEEP_RESEARCH_MAX_STEPS: 5,
-  DEEP_RESEARCH_COMPACTION_THRESHOLD: 0.5,
-};
+  DEEP_RESEARCH_MAX_STEPS: "5",
+  DEEP_RESEARCH_COMPACTION_THRESHOLD: "0.5",
+});

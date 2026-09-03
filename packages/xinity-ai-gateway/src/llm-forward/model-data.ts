@@ -40,7 +40,6 @@ import { redis } from "bun";
 
 const log = rootLogger.child({ name: "model-data" });
 
-const MODEL_CACHE_TTL_SECONDS = 60;
 
 type CachedDeployment = {
   specifier: string;
@@ -127,7 +126,7 @@ async function publicModelSpecifierToModelSource(orgId: string, specifier: strin
     canaryProgressUntil: deployment.canaryProgressUntil ? new Date(deployment.canaryProgressUntil).valueOf() : null,
   };
 
-  void redis.set(cacheKey, JSON.stringify(cachedData), "EX", MODEL_CACHE_TTL_SECONDS)
+  void redis.set(cacheKey, JSON.stringify(cachedData), "EX", env.CACHE_MODEL_TTL_SECONDS)
     .catch((err: unknown) => log.warn({ err }, "Redis error in set deployment cache"));
 
   return {
@@ -193,7 +192,7 @@ async function getModelSources(specifier: string): Promise<ModelSources> {
 
   const result: ModelSources = { hosts: [...byHost.keys()], byHost };
   if (generationAtQuery === sourcesGeneration) {
-    modelSourcesCache.set(specifier, { data: result, expiresAt: now + MODEL_CACHE_TTL_SECONDS * 1000 });
+    modelSourcesCache.set(specifier, { data: result, expiresAt: now + env.CACHE_MODEL_TTL_SECONDS * 1000 });
   }
 
   return result;

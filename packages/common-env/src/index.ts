@@ -154,6 +154,15 @@ export function quoteShellArgv(argv: string[]): string {
   return argv.map(quoteShellArg).join(" ");
 }
 
+export * from "./config/leaf-types";
+export * from "./config/group";
+export * from "./config/build";
+export * from "./config/activation";
+export * from "./config/resolve";
+export * from "./config/load-file";
+export * from "./config/json-schema";
+export * from "./config/flat-projection";
+export * from "./config/shared-groups";
 export * from "./deployment-settings";
 export * from "./metrics-auth";
 export * from "./metrics-format";

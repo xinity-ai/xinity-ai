@@ -21,11 +21,23 @@ export const gatewayEnvSchema = z.object({
   WEB_SEARCH_ENGINE_URL: z.url().optional()
     .describe("@deprecated Use WEB_SEARCH_PROVIDER + WEB_SEARCH_CREDENTIAL instead. SearXNG search engine URL.")
     .meta(expert()),
-  RESPONSE_CACHE_TTL_SECONDS: z.coerce
-    .number()
-    .positive()
-    .default(3600)
-    .describe("Response cache TTL in seconds")
+  RESPONSE_CACHE_TTL_SECONDS: z.coerce.number().positive().default(3600)
+    .describe("How long an identical completion is served from cache instead of the backend")
+    .meta(expert()),
+  CACHE_APPLICATION_TTL_SECONDS: z.coerce.number().positive().default(300)
+    .describe("How long an application name to id lookup is cached")
+    .meta(expert()),
+  CACHE_API_KEY_TTL_SECONDS: z.coerce.number().positive().default(120)
+    .describe("How long a validated API key is cached, so every request does not hit the database")
+    .meta(expert()),
+  CACHE_AUTH_FAILURE_TTL_SECONDS: z.coerce.number().positive().default(10)
+    .describe("How long a rejected API key is remembered. Short, so re-enabling a key takes effect promptly")
+    .meta(expert()),
+  CACHE_MODEL_TTL_SECONDS: z.coerce.number().positive().default(60)
+    .describe("How long a model deployment lookup is cached")
+    .meta(expert()),
+  CACHE_DIGEST_MAX_ENTRIES: z.coerce.number().int().positive().default(5_000)
+    .describe("Entries held in the in-process chat message digest cache, which avoids re-hashing repeated history")
     .meta(expert()),
   METRICS_AUTH: metricsAuthSchema().describe("Basic auth for the /metrics endpoint (format: user:pass, comma-separated for multiple)").meta(secret()),
   INFOSERVER_CACHE_TTL_MS: z.coerce.number().default(10 * 60_000).describe("How long the local catalog snapshot is trusted before a conditional re-fetch (ms). A refresh costs one 304 when nothing changed, so the ceiling on how stale a new entry can be is what this trades against").meta(expert()),

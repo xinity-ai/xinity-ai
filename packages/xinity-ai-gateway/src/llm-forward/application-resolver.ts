@@ -2,10 +2,9 @@ import { aiApplicationT, sql } from "common-db";
 import { getDB } from "../db";
 import { redis } from "bun";
 import { rootLogger } from "../logger";
+import { env } from "../env";
 
 const log = rootLogger.child({ name: "application-resolver" });
-
-const APP_CACHE_TTL_SECONDS = 5 * 60; // 5 minutes
 
 /**
  * Resolves an application name to its ID within an organization.
@@ -41,7 +40,7 @@ export async function resolveApplicationByName(
 
   if (!app) return null;
 
-  redis.set(cacheKey, app.id, "EX", APP_CACHE_TTL_SECONDS)
+  redis.set(cacheKey, app.id, "EX", env.CACHE_APPLICATION_TTL_SECONDS)
     .catch((err: unknown) => log.warn({ err }, "Redis error in resolveApplicationByName (set)"));
   return app.id;
 }
