@@ -7,7 +7,7 @@
  * must never be exposed to the browser).
  */
 import type { S3Client } from "bun";
-import { serverEnv } from "./serverenv";
+import { config } from "./config";
 import { mediaObjectT, sql } from "common-db";
 import { getDB } from "./db";
 import { rootLogger } from "./logging";
@@ -23,13 +23,13 @@ let _client: S3Client | null = null;
 
 export function mediaS3Client(): S3Client | null {
   if (_client !== null) return _client;
-  if (!serverEnv.S3_ENDPOINT || !serverEnv.S3_ACCESS_KEY_ID || !serverEnv.S3_SECRET_ACCESS_KEY) return null;
+  if (!config.s3) return null;
   _client = new Bun.S3Client({
-    endpoint: serverEnv.S3_ENDPOINT,
-    accessKeyId: serverEnv.S3_ACCESS_KEY_ID,
-    secretAccessKey: serverEnv.S3_SECRET_ACCESS_KEY,
-    bucket: serverEnv.S3_BUCKET,
-    region: serverEnv.S3_REGION,
+    endpoint: config.s3.endpoint,
+    accessKeyId: config.s3.accessKeyId,
+    secretAccessKey: config.s3.secretAccessKey,
+    bucket: config.s3.bucket,
+    region: config.s3.region,
   });
   return _client;
 }

@@ -17,14 +17,14 @@ import {
   resolveRequiredPlatformsForDriver,
   type Provider,
 } from "xinity-infoserver";
-import { serverEnv } from "./serverenv";
+import { config } from "./config";
 import { rootLogger } from "./logging";
 
 const log = rootLogger.child({ name: "model-catalog" });
 
 export const catalogClient = building ? null : createCatalogClient({
-  baseUrl: serverEnv.INFOSERVER_URL,
-  cacheTtlMs: serverEnv.INFOSERVER_CACHE_TTL_MS,
+  baseUrl: config.infoserver.url,
+  cacheTtlMs: config.infoserver.cacheTtlMs,
   logger: log,
 });
 
@@ -132,8 +132,8 @@ async function legacySchedulable(specifier: string, preferredDriver: Provider | 
 let _legacyClient: ReturnType<typeof createInfoserverClient> | null = null;
 function legacyClient() {
   _legacyClient ??= createInfoserverClient({
-    baseUrl: serverEnv.INFOSERVER_URL,
-    cacheTtlMs: serverEnv.INFOSERVER_CACHE_TTL_MS,
+    baseUrl: config.infoserver.url,
+    cacheTtlMs: config.infoserver.cacheTtlMs,
     logger: log,
   });
   return _legacyClient;

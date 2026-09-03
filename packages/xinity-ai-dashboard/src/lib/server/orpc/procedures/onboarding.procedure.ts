@@ -6,7 +6,8 @@ import { createApiKey } from "./api-key.procedure";
 import { createDeployment } from "./deployment.procedure";
 import { rootLogger } from "$lib/server/logging";
 import { auth, getGreenlitCallId, adminCreateUser } from "$lib/server/auth-server";
-import { serverEnv, isInstanceAdmin } from "$lib/server/serverenv";
+import { config } from "$lib/server/config";
+import { isInstanceAdmin } from "$lib/server/roles";
 import { getDB } from "$lib/server/db";
 import { userT, organizationT, sql } from "common-db";
 import { slugify } from "$lib/util";
@@ -168,11 +169,11 @@ const cli = rootOs
   .errors({ FORBIDDEN: {}, CONFLICT: {} })
   .handler(async ({ input, context, errors }) => {
     const rlog = log.child({ traceId: context.traceId });
-    if (!serverEnv.SIGNUP_ENABLED) {
+    if (!config.auth.signupEnabled) {
       throw errors.FORBIDDEN({ message: "User signup is currently disabled" });
     }
 
-    if (!serverEnv.MULTI_TENANT_MODE && !isInstanceAdmin(input.email)) {
+    if (!config.auth.multiTenantMode && !isInstanceAdmin(input.email)) {
       throw errors.FORBIDDEN({
         message: "Only instance admins can create organizations. Use an email listed in INSTANCE_ADMIN_EMAILS.",
       });

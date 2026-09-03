@@ -4,7 +4,7 @@
  * database has no reason to keep.
  */
 import { mediaObjectT, sql, count } from "common-db";
-import { serverEnv } from "../serverenv";
+import { config } from "../config";
 import { getDB } from "../db";
 import { mediaS3Client } from "../image-store";
 import { rootLogger } from "../logging";
@@ -35,9 +35,10 @@ const mediaKey = (organizationId: string, sha256: string) => `${organizationId}/
  */
 export async function moveMediaToS3(chunkSize: number): Promise<MediaMoveProgress> {
   const client = mediaS3Client();
-  if (!client) {
+  if (!client || !config.s3) {
     throw new Error("S3 is not configured");
   }
+  const { bucket } = config.s3;
 
   const rows = await getDB()
     .select({
@@ -61,7 +62,7 @@ export async function moveMediaToS3(chunkSize: number): Promise<MediaMoveProgres
     await client.write(key, row.bytes, { type: row.mimeType })
       .then(() => getDB()
         .update(mediaObjectT)
-        .set({ s3Bucket: serverEnv.S3_BUCKET, s3Key: key, bytes: null })
+        .set({ s3Bucket: bucket, s3Key: key, bytes: null })
         .where(sql`${mediaObjectT.id} = ${row.id}`))
       .then(() => { moved += 1; })
       .catch((err) => {

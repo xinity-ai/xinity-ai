@@ -1,6 +1,7 @@
 import { auth } from "$lib/server/auth-server";
 import { rootLogger } from "$lib/server/logging";
-import { serverEnv, isInstanceAdmin } from "$lib/server/serverenv";
+import { serverEnv } from "$lib/server/serverenv";
+import { isInstanceAdmin } from "$lib/server/roles";
 import { getDB } from "$lib/server/db";
 import { nodeIsLive } from "$lib/server/lib/node-liveness";
 import type { LayoutServerLoad } from "./$types";

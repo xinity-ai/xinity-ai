@@ -1,5 +1,7 @@
 import { mock } from "bun:test";
+import { resolveConfig } from "common-env";
 import { dashboardEnvSchema } from "../src/lib/server/env-schema";
+import { dashboardConfig, type DashboardConfig } from "../src/lib/server/config-schema";
 
 mock.module("$app/environment", () => ({
   building: false,
@@ -19,10 +21,20 @@ const serverEnv: Record<string, unknown> = dashboardEnvSchema.parse({
   METRICS_AUTH: "test:test",
 });
 
-mock.module("$lib/server/serverenv", () => ({
-  serverEnv,
-  isInstanceAdmin: () => false,
-}));
+mock.module("$lib/server/serverenv", () => ({ serverEnv }));
+
+/** Mutable on purpose: suites that need a different value assign to it in a beforeEach. */
+const config: DashboardConfig = resolveConfig<DashboardConfig>(dashboardConfig, {
+  env: {
+    DB_CONNECTION_URL: "postgresql://test:test@localhost:5432/test",
+    NODE_ENV: "test",
+    BETTER_AUTH_SECRET: "test-better-auth-secret",
+    METRICS_AUTH: "test:test",
+    MULTI_TENANT_MODE: "true",
+  },
+}).value;
+
+mock.module("$lib/server/config", () => ({ config }));
 
 /** Only the barrel. license/license.test.ts exercises the deep path, which this leaves untouched. */
 const licensedFeatures: string[] = [];

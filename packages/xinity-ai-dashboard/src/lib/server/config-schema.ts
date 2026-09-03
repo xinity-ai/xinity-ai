@@ -4,6 +4,7 @@ import {
   clientPublic,
   configBool,
   configInt,
+  configList,
   databaseGroup,
   defineConfig,
   defineGroup,
@@ -20,7 +21,7 @@ import {
 } from "common-env";
 import { loggingGroup, type LoggingConfig } from "common-log";
 
-type Server = { port: number; origin: string; trustedOrigins?: string };
+type Server = { port: number; origin: string; trustedOrigins: string[] };
 
 const server = defineGroup<Server>({
   id: "server",
@@ -32,8 +33,8 @@ const server = defineGroup<Server>({
       .meta(expert())),
     origin: env("ORIGIN", z.url().default("http://localhost:5173")
       .describe("Public origin URL, no trailing slash (e.g. https://xinity.mydomain.com)")),
-    trustedOrigins: env("TRUSTED_ORIGINS", z.string().optional()
-      .describe("Comma-separated additional trusted origins for CSRF validation behind reverse proxies")
+    trustedOrigins: env("TRUSTED_ORIGINS", configList(z.string()).default([])
+      .describe("Additional trusted origins for CSRF validation behind reverse proxies")
       .meta(expert())),
   },
 });
@@ -42,15 +43,15 @@ type Auth = {
   secret: string;
   signupEnabled: boolean;
   multiTenantMode: boolean;
-  instanceAdminEmails?: string;
+  instanceAdmins: string[];
 };
 
 const auth = defineGroup<Auth>({
   id: "auth",
   title: "Authentication",
   description: "Who can sign in, and who is allowed to create an organization.",
-  violations: ({ multiTenantMode, instanceAdminEmails }) => {
-    if (multiTenantMode || instanceAdminEmails) {
+  violations: ({ multiTenantMode, instanceAdmins }) => {
+    if (multiTenantMode || instanceAdmins.length > 0) {
       return [];
     }
     return [{
@@ -68,8 +69,8 @@ const auth = defineGroup<Auth>({
       .describe("Enable user signup")),
     multiTenantMode: env("MULTI_TENANT_MODE", configBool().default(false)
       .describe("Allow any authenticated user to create organizations")),
-    instanceAdminEmails: env("INSTANCE_ADMIN_EMAILS", z.string().optional()
-      .describe("Comma-separated emails of users who get instance-wide admin privileges (can manage all orgs)")),
+    instanceAdmins: env("INSTANCE_ADMIN_EMAILS", configList(z.email().toLowerCase()).default([])
+      .describe("Emails of users who get instance-wide admin privileges (can manage all orgs)")),
   },
 });
 

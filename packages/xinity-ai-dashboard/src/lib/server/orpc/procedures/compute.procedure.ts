@@ -9,7 +9,7 @@ import {
 } from "common-db";
 import { getDB } from "$lib/server/db";
 import { mergeHistorySeries, pickBucketSeconds } from "$lib/server/compute/compute";
-import { serverEnv } from "$lib/server/serverenv";
+import { config } from "$lib/server/config";
 import { rootLogger } from "$lib/server/logging";
 import z from "zod";
 
@@ -306,7 +306,7 @@ const computeLiveMetrics = rootOs
   .input(z.object({}).optional())
   .output(LiveMetricsOutput)
   .handler(async () => {
-    const prometheusUrl = serverEnv.PROMETHEUS_URL;
+    const prometheusUrl = config.compute.prometheusUrl;
     if (!prometheusUrl) return { available: false, nodes: [] };
 
     try {

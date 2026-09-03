@@ -6,7 +6,7 @@ import { checkNodeCompatibility, type BlockedVersion, type ModelNodeRequirements
 import { rootLogger } from "../logging";
 import { building } from "$app/environment";
 import { maxVramGb } from "$lib/server/license";
-import { serverEnv } from "$lib/server/serverenv";
+import { config } from "$lib/server/config";
 import { nodeIsLive } from "./node-liveness";
 
 const log = rootLogger.child({ name: "orchestration.mod" })
@@ -398,7 +398,7 @@ async function runSyncDeployedModels() {
     ...collectExcessInstallations(requiredModels, state),
     ...collectDriftedInstallations(requiredModels, state),
   ];
-  const toInstall = await planNewInstallations(requiredModels, state, maxVramGb(), serverEnv.DEPLOYMENT_STRATEGY);
+  const toInstall = await planNewInstallations(requiredModels, state, maxVramGb(), config.compute.deploymentStrategy);
   await applyChanges(toUninstall, toInstall);
 }
 

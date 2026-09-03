@@ -1,5 +1,5 @@
 import { error } from "@sveltejs/kit";
-import { serverEnv } from "$lib/server/serverenv";
+import { config } from "$lib/server/config";
 import { rootLogger } from "$lib/server/logging";
 
 const log = rootLogger.child({ name: "gateway-proxy" });
@@ -16,7 +16,7 @@ export async function fetchGateway(
   traceId?: string,
 ): Promise<Response> {
   try {
-    return await fetch(`${serverEnv.GATEWAY_URL}${path}`, init);
+    return await fetch(`${config.gatewayUrl}${path}`, init);
   } catch (err) {
     if (init.signal?.aborted || (err instanceof Error && err.name === "AbortError")) {
       throw err;

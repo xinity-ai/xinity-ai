@@ -6,7 +6,7 @@ import { auth, type Session } from "$lib/server/auth-server";
 import { os } from "@orpc/server";
 import { rootLogger } from "../logging";
 import type { ac } from "../roles";
-import { isInstanceAdmin } from "../serverenv";
+import { isInstanceAdmin } from "../roles";
 import { runWithAudit, type ActorInfo, type AuditContext, type AuditTag } from "./audit";
 
 /** Metadata type available on all dashboard procedures. */

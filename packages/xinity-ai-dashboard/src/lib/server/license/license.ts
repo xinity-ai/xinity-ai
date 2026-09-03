@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { LicensePayloadSchema, type LicenseInfo, type LicenseFeature, type LicensePayload, type LicenseTier } from "./types";
 import { PUBLIC_KEY_BASE64 } from "./public-key";
 import { rootLogger } from "$lib/server/logging";
-import { serverEnv } from "../serverenv";
+import { config } from "../config";
 import { getDeploymentId } from "../deployment-id";
 
 const log = rootLogger.child({ name: "license" });
@@ -67,7 +67,7 @@ export function parseLicense(key: string): LicenseInfo {
 export function hasOriginMismatch(): boolean {
   const license = getLicense();
   if (!license.valid) return false;
-  const dashboardOrigin = serverEnv.ORIGIN.replace(/\/+$/, "");
+  const dashboardOrigin = config.server.origin.replace(/\/+$/, "");
   return !license.payload.origins.some(
     (o) => o.replace(/\/+$/, "") === dashboardOrigin,
   );
@@ -110,7 +110,7 @@ function logLicenseLifecycle(license: LicenseInfo): void {
 
   if (hasOriginMismatch()) {
     log.error(
-      { allowedOrigins: license.payload.origins, actual: serverEnv.ORIGIN },
+      { allowedOrigins: license.payload.origins, actual: config.server.origin },
       "LICENSE ORIGIN MISMATCH: The dashboard ORIGIN does not match the licensed origin. Treating as free tier until this is corrected.",
     );
   }
@@ -130,7 +130,7 @@ function logLicenseLifecycle(license: LicenseInfo): void {
 export function getLicense(): LicenseInfo {
   if (cachedLicense) return cachedLicense;
 
-  const key = serverEnv.LICENSE_KEY;
+  const key = config.licenseKey;
   if (!key) {
     cachedLicense = { valid: false, reason: "No license key configured" };
     log.info("No LICENSE_KEY set. Running in free tier");

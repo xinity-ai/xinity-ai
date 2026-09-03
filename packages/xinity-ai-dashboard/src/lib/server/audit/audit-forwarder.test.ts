@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach, afterAll, spyOn } from "bun:test";
 import type { AuditEvent } from "common-db";
 import * as auditLoki from "./audit-loki";
+import type { DashboardConfig } from "../config-schema";
 
 /**
  * A spy rather than `mock.module`, which has no counterpart to undo it: the
@@ -13,9 +14,9 @@ afterAll(() => {
   deliverAuditEvents.mockRestore();
 });
 
-const { lokiTargetFromEnv, forwardAuditEvent, flushAuditEvents } = await import("./audit-forwarder");
+const { lokiTarget, forwardAuditEvent, flushAuditEvents } = await import("./audit-forwarder");
 
-const serverEnv = (require("$lib/server/serverenv") as { serverEnv: Record<string, unknown> }).serverEnv;
+const { config } = require("$lib/server/config") as { config: DashboardConfig };
 const licensedFeatures = (require("$lib/server/license") as { licensedFeatures: string[] }).licensedFeatures;
 
 function event(overrides: Partial<AuditEvent> = {}): AuditEvent {
@@ -39,29 +40,26 @@ function event(overrides: Partial<AuditEvent> = {}): AuditEvent {
 
 beforeEach(async () => {
   licensedFeatures.splice(0, licensedFeatures.length, "audit-log");
-  serverEnv.AUDIT_LOKI_URL = "http://localhost:6122";
-  delete serverEnv.AUDIT_LOKI_AUTH;
-  delete serverEnv.AUDIT_LOKI_TENANT;
+  config.audit = { url: "http://localhost:6122" };
   await flushAuditEvents();
   deliverAuditEvents.mockClear();
   deliverAuditEvents.mockImplementation(() => Promise.resolve({ delivered: true }));
 });
 
-describe("lokiTargetFromEnv", () => {
+describe("lokiTarget", () => {
   test("is null without a configured URL", () => {
-    delete serverEnv.AUDIT_LOKI_URL;
-    expect(lokiTargetFromEnv()).toBeNull();
+    config.audit = undefined;
+    expect(lokiTarget()).toBeNull();
   });
 
   test("is null without the audit-log feature", () => {
     licensedFeatures.length = 0;
-    expect(lokiTargetFromEnv()).toBeNull();
+    expect(lokiTarget()).toBeNull();
   });
 
   test("carries the optional auth and tenant when set", () => {
-    serverEnv.AUDIT_LOKI_AUTH = "user:pass";
-    serverEnv.AUDIT_LOKI_TENANT = "acme";
-    expect(lokiTargetFromEnv()).toEqual({
+    config.audit = { url: "http://localhost:6122", auth: "user:pass", tenant: "acme" };
+    expect(lokiTarget()).toEqual({
       url: "http://localhost:6122",
       auth: "user:pass",
       tenant: "acme",
@@ -90,7 +88,7 @@ describe("forwardAuditEvent", () => {
   });
 
   test("drops the event entirely when no sink is configured", async () => {
-    delete serverEnv.AUDIT_LOKI_URL;
+    config.audit = undefined;
     forwardAuditEvent(event());
     await flushAuditEvents();
     expect(deliverAuditEvents).not.toHaveBeenCalled();

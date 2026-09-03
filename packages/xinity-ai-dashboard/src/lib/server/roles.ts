@@ -5,6 +5,7 @@
 export { ac, roles } from "$lib/roles";
 import type { RoleName } from "$lib/roles";
 import { hasFeature } from "$lib/server/license";
+import { config } from "./config";
 import { z } from "zod";
 
 /** All roles unlocked by the "all-roles" license feature. */
@@ -23,4 +24,9 @@ function getAvailableRoles(): readonly RoleName[] {
 /** Returns true if the given role is available under the current license. */
 export function isRoleAvailable(role: RoleName): boolean {
   return (getAvailableRoles() as readonly string[]).includes(role);
+}
+
+/** Instance admins are granted by configuration rather than by an organization role. */
+export function isInstanceAdmin(email?: string | null): boolean {
+  return !!email && config.auth.instanceAdmins.includes(email.toLowerCase());
 }
