@@ -10,7 +10,7 @@ mock.module("$lib/server/auth-server", () => ({
   auth: { api: {} },
 }));
 
-// serverEnv, isInstanceAdmin, logging and db are mocked for all suites in tests/preload.ts.
+// config, logging and db are mocked for all suites in tests/preload.ts.
 
 const { dbHandle } = require("$lib/server/db") as { dbHandle: { getDB: () => unknown; reset: () => void } };
 

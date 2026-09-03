@@ -94,7 +94,7 @@ const dashboardStubPlugin: import("bun").BunPlugin = {
     }));
 
     // ── Relative imports that resolve to stub files ─────────────────────
-    // When dashboard code uses relative paths (e.g. `../../serverenv`)
+    // When dashboard code uses relative paths (e.g. `../../roles`)
     // that resolve to the same files we need to stub, intercept the load.
     build.onLoad({ filter: stubFileRegex }, (args) => {
       const contents = stubsByAbsPath.get(args.path);

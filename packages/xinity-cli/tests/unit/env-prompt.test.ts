@@ -141,7 +141,6 @@ describe("env-prompt", () => {
 
     test("reports added, changed and removed keys", () => {
       const changes = diffEnv(
-        "gateway",
         bundle({ HOST: "0.0.0.0", PORT: "3000" }),
         bundle({ HOST: "127.0.0.1", LOG_LEVEL: "debug" }),
       );
@@ -151,16 +150,6 @@ describe("env-prompt", () => {
         { key: "LOG_LEVEL", kind: "added", isSecret: false, after: "debug" },
         { key: "PORT", kind: "removed", isSecret: false },
       ]);
-    });
-
-    test("a key the writer derives is never reported as removed", () => {
-      const changes = diffEnv(
-        "dashboard",
-        bundle({ ORIGIN: "https://xinity.test", HTTP_OVERRIDE_ORIGIN: "https://xinity.test" }),
-        bundle({ ORIGIN: "https://xinity.test" }),
-      );
-
-      expect(changes).toEqual([]);
     });
   });
 

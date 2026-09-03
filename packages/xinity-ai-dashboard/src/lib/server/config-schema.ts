@@ -178,8 +178,8 @@ export const dashboardConfig = defineConfig<DashboardConfig>({
     .describe("Node environment").meta(expert())),
   appName: env("APP_NAME", z.string().default("Xinity Admin")
     .describe("Application display name").meta(expert())),
-  gatewayUrl: env("GATEWAY_URL", z.url().default("http://localhost:4010")
-    .describe("Gateway base URL shown to users in docs and code examples (e.g. https://api.example.com). Must NOT include the /v1 path segment - that is appended where needed.")
+  gatewayUrl: env("GATEWAY_URL", z.url().overwrite((url) => url.replace(/\/$/, "")).default("http://localhost:4010")
+    .describe("Gateway base URL shown to users in docs and code examples (e.g. https://api.example.com). Must NOT include the /v1 path segment - that is appended where needed. A trailing slash is stripped.")
     .meta(clientPublic())),
   licenseKey: env("LICENSE_KEY", z.string().optional()
     .describe("License key for unlocking paid features (Ed25519-signed token)").meta(secret())),

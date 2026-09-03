@@ -9,13 +9,6 @@ export type ServiceResult = {
   error?: string;
 }
 
-function applyEnvDerivations(component: Component, config: Record<string, string>): Record<string, string> {
-  if (component === "dashboard" && config.ORIGIN) {
-    return { ...config, HTTP_OVERRIDE_ORIGIN: config.ORIGIN };
-  }
-  return config;
-}
-
 // The build*Command helpers return the exact root shell commands the apply
 // runs; the review phase's script dump emits the same strings verbatim.
 
@@ -25,7 +18,7 @@ export function heredoc(tag: string, content: string): string {
 }
 
 export function buildEnvWriteCommand(component: Component, config: Record<string, string>): string {
-  const envContent = serializeEnvFile(applyEnvDerivations(component, config));
+  const envContent = serializeEnvFile(config);
   const envPath = `${ENV_DIR}/${component}.env`;
   return `mkdir -p ${ENV_DIR} && cat > ${envPath} ${heredoc("ENVEOF", envContent)}\nchmod 644 ${envPath}`;
 }

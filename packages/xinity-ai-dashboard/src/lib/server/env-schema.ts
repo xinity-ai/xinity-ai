@@ -1,35 +1,6 @@
-import { z } from "zod";
-import { secret, expert, clientPublic, s3EnvSchema, metricsAuthSchema } from "common-env";
+import { toFlatSchema } from "common-env";
+import { dashboardConfig } from "./config-schema";
 
-export const dashboardEnvSchema = z.object({
-  DB_CONNECTION_URL: z.url().describe("PostgreSQL connection string (e.g. postgresql://user:pass@host:5432/dbname)").meta(secret()),
-  DB_MAX_CONNECTIONS: z.coerce.number().int().positive().default(10).describe("Maximum PostgreSQL connection pool size for dashboard").meta(expert()),
-  NODE_ENV: z.enum(["production", "development", "test"]).describe("Node environment").meta(expert()),
-  ORIGIN: z.url().default("http://localhost:5173").describe("Public origin URL, no trailing slash (e.g. https://xinity.mydomain.com)"),
-  HTTP_PORT: z.coerce.number().int().default(5173).describe("TCP port the server listens on (use a reverse proxy if deploying behind HTTPS)").meta(expert()),
-  BETTER_AUTH_SECRET: z.string().describe("Better Auth secret key, generate with: openssl rand -base64 32").meta(secret()),
-  INFOSERVER_URL: z.url().default("https://sysinfo.xinity.ai").describe("Infoserver URL (default hosted: https://sysinfo.xinity.ai, or your self-hosted instance)"),
-  SIGNUP_ENABLED: z.stringbool().default(true).describe("Enable user signup"),
-  COMPUTE_MANAGEMENT_ENABLED: z.stringbool().default(true).describe("Enable compute management").meta(expert()),
-  APP_NAME: z.string().default("Xinity Admin").describe("Application display name").meta(expert()),
-  INSTANCE_ADMIN_EMAILS: z.string().optional().describe("Comma-separated emails of users who get instance-wide admin privileges (can manage all orgs)"),
-  MULTI_TENANT_MODE: z.stringbool().default(false).describe("Allow any authenticated user to create organizations. Required when INSTANCE_ADMIN_EMAILS is not set."),
-  LOG_DIR: z.string().optional().describe("Log file directory").meta(expert()),
-  LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("debug").describe("Log level").meta(expert()),
-  MAIL_URL: z.url().optional().describe("SMTP mail server URL (e.g. smtp://user:pass@mail.example.com:587)").meta(secret()),
-  MAIL_FROM: z.string().optional().describe("Email sender address (e.g. noreply@mydomain.com)"),
-  METRICS_AUTH: metricsAuthSchema({ required: true }).describe("Required. Basic auth for the /metrics endpoints (user:pass, comma-separated for multiple)").meta(secret()),
-  INFOSERVER_CACHE_TTL_MS: z.coerce.number().default(10 * 60_000).describe("How long the local catalog snapshot is trusted before a conditional re-fetch (ms). A refresh costs one 304 when nothing changed, so the ceiling on how stale a new entry can be is what this trades against").meta(expert()),
-  NOTIFICATIONS_ENABLED: z.stringbool().default(true).describe("Enable the notification scheduler (deployment status, node health, capacity warnings, weekly reports)").meta(expert()),
-  MCP_ENABLED: z.stringbool().default(true).describe("Enable the /mcp Model Context Protocol endpoint"),
-  LICENSE_KEY: z.string().optional().describe("License key for unlocking paid features (Ed25519-signed token)").meta(secret()),
-  HTTP_IP_HEADER: z.string().optional().describe("Header your reverse proxy uses to forward the client IP (e.g. x-forwarded-for, x-real-ip). Without this, audit logs record the proxy address, not the real client.").meta(expert()),
-  HTTP_XFF_DEPTH: z.coerce.number().int().default(1).describe("When HTTP_IP_HEADER is x-forwarded-for, how many proxy hops to skip from the right. 1 for a single proxy, 2 for two chained proxies.").meta(expert()),
-  TRUSTED_ORIGINS: z.string().optional().describe("Comma-separated additional trusted origins for CSRF validation behind reverse proxies").meta(expert()),
-  GATEWAY_URL: z.url().overwrite(url => url.replace(/\/$/, "")).default("http://localhost:4010").describe("Gateway base URL shown to users in docs and code examples (e.g. https://api.example.com). Must NOT include the /v1 path segment - that is appended where needed. A trailing slash is stripped.").meta(clientPublic()),
-  DEPLOYMENT_STRATEGY: z.enum(["first-fit", "balanced", "bin-pack", "proportional"]).default("balanced").describe("Node selection strategy for new model installations. 'first-fit' picks the first node that fits (deterministic). 'balanced' picks the node with the most absolute free VRAM (spread for HA). 'bin-pack' picks the tightest fit (consolidate so idle nodes stay drainable). 'proportional' picks the node with the lowest percent utilization (fair spread across heterogeneous nodes).").meta(expert()),
-  PROMETHEUS_URL: z.url().optional().describe("Prometheus server URL for live GPU metrics overlay on the Compute page (e.g. http://prometheus:9090). Enables utilization rings and energy readouts on compute nodes.").meta(expert()),
-  AUDIT_LOKI_URL: z.url().optional().describe("Loki base URL to mirror audit events to for SIEM ingestion (e.g. http://localhost:6122). Leave unset to keep audit events in the database only. Requires a license with the audit-log feature.").meta(expert()),
-  AUDIT_LOKI_AUTH: z.string().optional().describe("Basic auth for AUDIT_LOKI_URL as user:pass. Only needed when the Loki endpoint is authenticated.").meta({ ...secret(), ...expert() }),
-  AUDIT_LOKI_TENANT: z.string().optional().describe("Tenant id sent as X-Scope-OrgID to AUDIT_LOKI_URL. Only needed for multi-tenant Loki or Grafana Cloud.").meta(expert()),
-}).extend(s3EnvSchema.shape);
+// The env-keyed projection of the declaration, kept for the CLI, which introspects a schema at
+// runtime to build its editor. The dashboard itself reads `config`.
+export const dashboardEnvSchema = toFlatSchema(dashboardConfig);

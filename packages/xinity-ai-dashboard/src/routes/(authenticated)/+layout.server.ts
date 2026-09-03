@@ -1,6 +1,6 @@
 import { auth } from "$lib/server/auth-server";
 import { rootLogger } from "$lib/server/logging";
-import { serverEnv } from "$lib/server/serverenv";
+import { config } from "$lib/server/config";
 import { isInstanceAdmin } from "$lib/server/roles";
 import { getDB } from "$lib/server/db";
 import { nodeIsLive } from "$lib/server/lib/node-liveness";
@@ -42,7 +42,7 @@ export const load: LayoutServerLoad = async ({ request, url, cookies }) => {
   }
 
   const userIsInstanceAdmin = isInstanceAdmin(session.user.email);
-  const multiTenantMode = serverEnv.MULTI_TENANT_MODE;
+  const multiTenantMode = config.auth.multiTenantMode;
   const hasActiveOrg = !!session.session.activeOrganizationId;
 
   return {
@@ -72,7 +72,7 @@ const VERSION_FETCH_TIMEOUT_MS = 5_000;
 
 const fetchVersion = timeCache(VERSION_CACHE_TTL_MS, async () => {
   try {
-    const res = await fetch(new URL("/version.json", serverEnv.INFOSERVER_URL), { signal: AbortSignal.timeout(VERSION_FETCH_TIMEOUT_MS) });
+    const res = await fetch(new URL("/version.json", config.infoserver.url), { signal: AbortSignal.timeout(VERSION_FETCH_TIMEOUT_MS) });
     if (!res.ok) {
       return fallbackToCurrentVersion("Unable to reach infoserver to retrieve version");
     }
@@ -129,7 +129,7 @@ async function autoActivateFirstOrganization(headers: Headers): Promise<string |
 }
 
 function clearBetterAuthSessionCacheCookies(cookies: Cookies): void {
-  const prefix = serverEnv.ORIGIN.startsWith("https://") ? "__Secure-" : "";
+  const prefix = config.server.origin.startsWith("https://") ? "__Secure-" : "";
   const baseName = `${prefix}better-auth.session_data`;
   const chunkPrefix = `${baseName}.`;
   for (const { name } of cookies.getAll()) {

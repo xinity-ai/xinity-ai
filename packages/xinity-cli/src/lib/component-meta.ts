@@ -5,14 +5,13 @@
  * the CLI. Zero runtime dependencies, intentionally kept side-effect-free
  * so any module can import without pulling in install/service logic.
  */
-import type { z } from "zod";
 
 import { entryFor, type AnyConfig } from "common-env";
 import { gatewayConfig } from "xinity-ai-gateway/src/config-schema.ts";
 import { tetherConfig } from "xinity-tether/src/config-schema.ts";
 import { infoserverConfig } from "xinity-infoserver/config-schema.ts";
 import { daemonConfig } from "xinity-ai-daemon/src/config-schema.ts";
-import { dashboardEnvSchema } from "xinity-ai-dashboard/src/lib/server/env-schema.ts";
+import { dashboardConfig } from "xinity-ai-dashboard/src/lib/server/config-schema.ts";
 
 export type { Release } from "./github.ts";
 
@@ -20,20 +19,12 @@ export type Component = "gateway" | "dashboard" | "daemon" | "infoserver" | "tet
 
 export const COMPONENTS: readonly Component[] = ["gateway", "dashboard", "daemon", "infoserver", "tether"];
 
-// Components on a grouped declaration. The rest still carry a flat schema, until they port.
-export const COMPONENT_CONFIGS: Partial<Record<Component, AnyConfig>> = {
+export const COMPONENT_CONFIGS: Record<Component, AnyConfig> = {
   gateway: gatewayConfig,
   tether: tetherConfig,
   infoserver: infoserverConfig,
   daemon: daemonConfig,
-};
-
-export const ENV_SCHEMAS: Partial<Record<Component, z.ZodObject<any>>> = {
-  dashboard: dashboardEnvSchema,
-};
-
-export const DERIVED_ENV_KEYS: Partial<Record<Component, readonly string[]>> = {
-  dashboard: ["HTTP_OVERRIDE_ORIGIN"],
+  dashboard: dashboardConfig,
 };
 
 function declaredDefault(config: AnyConfig, envKey: string): unknown {
