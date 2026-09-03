@@ -75,7 +75,18 @@ function groupObjectSchema(group: AnyGroup): z.ZodObject<z.ZodRawShape> {
   for (const [name, field] of Object.entries(group.fields)) {
     shape[name] = field.schema;
   }
-  return z.object(shape);
+
+  const object = z.object(shape);
+  const violations = group.violations;
+  if (!violations) {
+    return object;
+  }
+
+  return object.check((ctx) => {
+    for (const violation of violations(ctx.value)) {
+      ctx.issues.push({ code: "custom", input: ctx.value, path: [violation.field], message: violation.message });
+    }
+  });
 }
 
 export function entryFor(config: AnyConfig, envKey: string): ConfigEntry | undefined {

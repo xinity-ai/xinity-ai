@@ -1,7 +1,7 @@
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
-import { getTlsConfig } from "common-env";
+
 import { router } from "../../rpc/router";
-import { env } from "../../env";
+import { config } from "../../config";
 import { rootLogger } from "../../logger";
 import { createOpenapiSpec, createScalarPage } from "./openai";
 import { handleProxyRequest } from "./proxy";
@@ -14,10 +14,10 @@ export async function startServer() {
 
   const spec = await createOpenapiSpec();
 
-  const tls = getTlsConfig(env);
+  const tls = config.tls && { cert: config.tls.cert, key: config.tls.key };
   const serveOptions = {
     tls,
-    idleTimeout: env.IDLE_TIMEOUT,
+    idleTimeout: config.server.idleTimeout,
     routes: {
       "/": httpMetrics.route("/", () => createScalarPage()),
       "/openapi.json": httpMetrics.route("/openapi.json", () => Response.json(spec)),
@@ -43,9 +43,9 @@ export async function startServer() {
   } as const;
 
   const proto = tls ? "https" : "http";
-  const serveTarget = env.UNIX_SOCKET
-    ? { unix: env.UNIX_SOCKET, idleTimeout: undefined }
-    : { port: env.PORT, hostname: env.HOST };
+  const serveTarget = config.server.unixSocket
+    ? { unix: config.server.unixSocket, idleTimeout: undefined }
+    : { port: config.server.port, hostname: config.server.host };
   Bun.serve({ ...serveOptions, ...serveTarget });
   rootLogger.info({ ...serveTarget, tls: !!tls }, `Daemon server started (${proto})`);
 }

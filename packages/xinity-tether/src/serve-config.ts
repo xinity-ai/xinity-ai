@@ -1,8 +1,4 @@
-import type { z } from "zod";
-import type { tetherEnvSchema } from "./env-schema";
-
-type TetherEnv = z.infer<typeof tetherEnvSchema>;
-type ListenTarget = Pick<TetherEnv, "UNIX_SOCKET" | "PORT" | "HOST" | "IDLE_TIMEOUT">;
+import type { TetherConfig } from "./config-schema";
 
 /**
  * Bun closes any connection that goes idle for longer than `idleTimeout`, SSE
@@ -10,8 +6,8 @@ type ListenTarget = Pick<TetherEnv, "UNIX_SOCKET" | "PORT" | "HOST" | "IDLE_TIME
  * tether holds daemon connections open for the life of the node, so the option
  * has to be set explicitly. Unix sockets have no idle timeout to configure.
  */
-export function buildListenTarget(env: ListenTarget) {
-  return env.UNIX_SOCKET
-    ? { unix: env.UNIX_SOCKET, idleTimeout: undefined }
-    : { port: env.PORT, hostname: env.HOST, idleTimeout: env.IDLE_TIMEOUT };
+export function buildListenTarget(server: TetherConfig["server"]) {
+  return server.unixSocket
+    ? { unix: server.unixSocket, idleTimeout: undefined }
+    : { port: server.port, hostname: server.host, idleTimeout: server.idleTimeout };
 }

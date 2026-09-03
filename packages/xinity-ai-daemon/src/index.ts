@@ -1,12 +1,15 @@
 import "zod/compile";
 
 import type { SubscriptionLike } from "rxjs";
+import { checkGroupActivation } from "common-env";
+
 import { dbSync, setDesiredInstallations } from "./modules/db-sync";
 import { startMetricsSampler, type MetricsSampler } from "./modules/metrics-sampler";
 import { startServer } from "./modules/serverfront/webserver";
 import { buildRegistration } from "./modules/statekeeper";
 import { connectSSE } from "./modules/tether-client";
 import { rootLogger } from "./logger";
+import { daemonConfig } from "./config-schema";
 
 let shuttingDown = false;
 let subscription: SubscriptionLike | undefined;
@@ -24,6 +27,18 @@ if (import.meta.main) {
 }
 
 async function main() {
+  const activation = checkGroupActivation(daemonConfig, process.env);
+  for (const warning of activation.warnings) {
+    rootLogger.warn(warning, warning.message);
+  }
+
+  // Serving plaintext when asked for HTTPS is worse than not starting, so this group is the one
+  // exception to partial activation being a warning.
+  if (activation.warnings.some((warning) => warning.key === "tls")) {
+    rootLogger.fatal("TLS is only partly configured, refusing to start rather than serve plaintext");
+    process.exit(1);
+  }
+
   await startServer();
   const registration = await buildRegistration();
   metricsSampler = startMetricsSampler();

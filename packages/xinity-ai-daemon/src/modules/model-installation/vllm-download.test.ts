@@ -1,4 +1,5 @@
 import { describe, test, expect, mock, beforeEach, afterEach } from "bun:test";
+import { mockDaemonConfig } from "../../mock-config";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -6,12 +7,7 @@ import * as os from "node:os";
 // Mock env before importing module under test
 const testCacheDir = path.join(os.tmpdir(), `hf-download-test-${Date.now()}`);
 
-mock.module("../../env", () => ({
-  env: {
-    VLLM_HF_CACHE_DIR: testCacheDir,
-    VLLM_HF_TOKEN: undefined,
-  },
-}));
+mock.module("../../config", () => ({ config: mockDaemonConfig({ VLLM_HF_CACHE_DIR: testCacheDir }) }));
 
 mock.module("../../logger", () => ({
   rootLogger: {

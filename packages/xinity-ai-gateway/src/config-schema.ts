@@ -64,8 +64,6 @@ type WebSearch = {
   engineUrl?: string;
 };
 
-// Not an optional group: engineUrl is a second activation path, which `requires` cannot express,
-// and resolveSearchConfig already enforces that a provider comes with a credential.
 const webSearch = defineGroup<WebSearch>({
   id: "webSearch",
   title: "Web search",

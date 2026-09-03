@@ -32,10 +32,13 @@ export type AnyGroup = {
   readonly description?: string;
   readonly expert?: boolean;
   readonly optional?: { readonly requires: readonly string[] };
+  readonly violations?: (value: Record<string, unknown>) => readonly { field: string; message: string }[];
   readonly fields: Readonly<Record<string, AnyField>>;
 };
 
 export type GroupDef<V = unknown> = AnyGroup & Resolves<V>;
+
+export type Violation<T> = { field: keyof T & string; message: string };
 
 type GroupInput<T> = {
   id: string;
@@ -43,6 +46,7 @@ type GroupInput<T> = {
   description?: string;
   /** Marks every field advanced, so they need not repeat it. */
   expert?: boolean;
+  violations?: (value: T) => readonly Violation<T>[];
   fields: Fields<T>;
 };
 
@@ -84,6 +88,7 @@ export function defineGroup<T>(
     description: def.description,
     expert: def.expert,
     optional: def.optional,
+    violations: def.violations as AnyGroup["violations"],
     fields,
   } as GroupDef<T | undefined>;
 }

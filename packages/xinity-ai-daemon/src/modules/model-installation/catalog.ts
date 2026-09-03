@@ -1,5 +1,5 @@
 import { createCatalogClient, createInfoserverClient, resolveArgsForDriver, resolveTagsForDriver, type ModelSizingFields } from "xinity-infoserver";
-import { env } from "../../env";
+import { config } from "../../config";
 import { rootLogger } from "../../logger";
 
 const log = rootLogger.child({ name: "model-catalog" });
@@ -10,8 +10,8 @@ let _legacyClient: ReturnType<typeof createInfoserverClient> | null = null;
 /** One client per process, so every installation resolves against one generation of the catalog. */
 function getCatalogClient() {
   _catalogClient ??= createCatalogClient({
-    baseUrl: env.INFOSERVER_URL,
-    cacheTtlMs: env.INFOSERVER_CACHE_TTL_MS,
+    baseUrl: config.infoserver.url,
+    cacheTtlMs: config.infoserver.cacheTtlMs,
     logger: log,
   });
   return _catalogClient;
@@ -19,8 +19,8 @@ function getCatalogClient() {
 
 function getLegacyClient() {
   _legacyClient ??= createInfoserverClient({
-    baseUrl: env.INFOSERVER_URL,
-    cacheTtlMs: env.INFOSERVER_CACHE_TTL_MS,
+    baseUrl: config.infoserver.url,
+    cacheTtlMs: config.infoserver.cacheTtlMs,
     logger: log,
   });
   return _legacyClient;

@@ -1,8 +1,9 @@
 import "zod/compile";
 
 import { logMigrationFailureFatal } from "common-db";
-import { nodeRegistrationSchema, installationStateReportSchema, protocolFingerprint, getTlsConfig } from "common-env";
-import { env } from "./env";
+import { nodeRegistrationSchema, installationStateReportSchema, protocolFingerprint, checkGroupActivation } from "common-env";
+import { tetherConfig } from "./config-schema";
+import { config } from "./config";
 import { rootLogger } from "./logger";
 import { checkMigrations, subscribe, end as endDB } from "./db";
 import { verifyBearerToken, unauthorized } from "./auth";
@@ -14,6 +15,17 @@ import { handleMetrics, httpMetrics, incRequestRejections } from "./metrics";
 import { buildListenTarget } from "./serve-config";
 
 const log = rootLogger;
+
+const activation = checkGroupActivation(tetherConfig, process.env);
+for (const warning of activation.warnings) {
+  rootLogger.warn(warning, warning.message);
+}
+
+// Serving plaintext when asked for HTTPS is worse than not starting.
+if (activation.warnings.some((warning) => warning.key === "tls")) {
+  rootLogger.fatal("TLS is only partly configured, refusing to start rather than serve plaintext");
+  process.exit(1);
+}
 
 const migrationState = await checkMigrations();
 if (migrationState.status !== "ok") {
@@ -38,7 +50,7 @@ try {
   process.exit(1);
 }
 
-const keepaliveTimer = runKeepaliveLoop(env.KEEPALIVE_INTERVAL_MS, env.LIVENESS_TIMEOUT_MS);
+const keepaliveTimer = runKeepaliveLoop(config.server.keepaliveIntervalMs, config.server.livenessTimeoutMs);
 
 async function handleSSEStream(req: Request): Promise<Response> {
   if (req.method !== "POST") {
@@ -132,8 +144,8 @@ async function handleStatus(req: Request): Promise<Response> {
   return Response.json({ ok: true });
 }
 
-const serveTarget = buildListenTarget(env);
-const tls = getTlsConfig(env);
+const serveTarget = buildListenTarget(config.server);
+const tls = config.tls && { cert: config.tls.cert, key: config.tls.key };
 
 const server = Bun.serve({
   ...serveTarget,

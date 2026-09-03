@@ -117,30 +117,6 @@ export const s3EnvSchema = z.object({
   S3_REGION: z.string().default("us-east-1").describe("S3 region (use 'us-east-1' for SeaweedFS)").meta(expert()),
 });
 
-/**
- * Reusable TLS env vars for opt-in HTTPS on any service.
- * Extend your service's env schema with `.extend(tlsEnvSchema.shape)`.
- */
-export const tlsEnvSchema = z.object({
-  XINITY_TLS_CERT: z.string().optional()
-    .describe("PEM-encoded TLS certificate (enables HTTPS). See https://github.com/xinity-ai/xinity-ai/blob/main/docs/security/tls.md")
-    .meta({...secret(), ...expert()}),
-  XINITY_TLS_KEY: z.string().optional()
-    .describe("PEM-encoded TLS private key (enables HTTPS). See https://github.com/xinity-ai/xinity-ai/blob/main/docs/security/tls.md")
-    .meta({...secret(), ...expert()}),
-});
-
-/** Returns `{ cert, key }` if TLS is fully configured, `undefined` otherwise. Throws on partial config. */
-export function getTlsConfig(env: { XINITY_TLS_CERT?: string; XINITY_TLS_KEY?: string }) {
-  const cert = env.XINITY_TLS_CERT;
-  const key = env.XINITY_TLS_KEY;
-  if (!cert && !key) return undefined;
-  if (!cert || !key) {
-    throw new Error("XINITY_TLS_CERT and XINITY_TLS_KEY must both be set or both be unset");
-  }
-  return { cert, key };
-}
-
 /** POSIX-safe single-quote shell escape. Strings made of only `[A-Za-z0-9@%+=:,./_-]` are returned as-is. */
 export function quoteShellArg(s: string): string {
   if (/^[A-Za-z0-9@%+=:,./_-]+$/.test(s)) {

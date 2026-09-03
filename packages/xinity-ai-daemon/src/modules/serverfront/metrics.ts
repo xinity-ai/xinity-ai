@@ -10,11 +10,11 @@ import {
   type Metric,
 } from "common-env";
 import { version } from "../../../../../package.json";
-import { env } from "../../env";
+import { config } from "../../config";
 import { getMetricsSnapshot, type GpuSnapshot } from "../metrics-sampler";
 import { getNodeId, getMachineName } from "../statekeeper";
 
-const metricsAuth = createMetricsAuth(env.METRICS_AUTH);
+const metricsAuth = createMetricsAuth(config.metrics.auth);
 
 export const httpMetrics = createHttpMetrics();
 

@@ -9,10 +9,10 @@ import type { z } from "zod";
 
 import { entryFor, type AnyConfig } from "common-env";
 import { gatewayConfig } from "xinity-ai-gateway/src/config-schema.ts";
-import { daemonEnvSchema } from "xinity-ai-daemon/src/env-schema.ts";
+import { tetherConfig } from "xinity-tether/src/config-schema.ts";
+import { infoserverConfig } from "xinity-infoserver/config-schema.ts";
+import { daemonConfig } from "xinity-ai-daemon/src/config-schema.ts";
 import { dashboardEnvSchema } from "xinity-ai-dashboard/src/lib/server/env-schema.ts";
-import { infoserverEnvSchema } from "xinity-infoserver/env-schema.ts";
-import { tetherEnvSchema } from "xinity-tether/src/env-schema.ts";
 
 export type { Release } from "./github.ts";
 
@@ -23,13 +23,13 @@ export const COMPONENTS: readonly Component[] = ["gateway", "dashboard", "daemon
 // Components on a grouped declaration. The rest still carry a flat schema, until they port.
 export const COMPONENT_CONFIGS: Partial<Record<Component, AnyConfig>> = {
   gateway: gatewayConfig,
+  tether: tetherConfig,
+  infoserver: infoserverConfig,
+  daemon: daemonConfig,
 };
 
 export const ENV_SCHEMAS: Partial<Record<Component, z.ZodObject<any>>> = {
   dashboard: dashboardEnvSchema,
-  daemon: daemonEnvSchema,
-  infoserver: infoserverEnvSchema,
-  tether: tetherEnvSchema,
 };
 
 export const DERIVED_ENV_KEYS: Partial<Record<Component, readonly string[]>> = {
@@ -46,11 +46,11 @@ function declaredDefault(config: AnyConfig, envKey: string): unknown {
 
 /** Listen ports assumed when PORT is not configured, taken from the declarations. */
 export const GATEWAY_DEFAULT_PORT = String(declaredDefault(gatewayConfig, "PORT"));
-export const INFOSERVER_DEFAULT_PORT = String(infoserverEnvSchema.shape.PORT.parse(undefined));
-export const TETHER_DEFAULT_PORT = String(tetherEnvSchema.shape.PORT.parse(undefined));
+export const INFOSERVER_DEFAULT_PORT = String(declaredDefault(infoserverConfig, "PORT"));
+export const TETHER_DEFAULT_PORT = String(declaredDefault(tetherConfig, "PORT"));
 
 /** Where the daemon probes for ollama when OLLAMA_URL is left unset. */
-export const DEFAULT_OLLAMA_URL = String(daemonEnvSchema.shape.OLLAMA_URL.parse(undefined));
+export const DEFAULT_OLLAMA_URL = String(declaredDefault(daemonConfig, "OLLAMA_URL"));
 
 export const ENV_DIR = "/etc/xinity-ai";
 export const SECRETS_DIR = "/etc/xinity-ai/secrets";

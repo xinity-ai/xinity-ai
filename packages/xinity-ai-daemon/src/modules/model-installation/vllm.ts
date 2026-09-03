@@ -15,7 +15,7 @@ import {
   timer,
 } from "rxjs";
 import type { SyncInstallation } from "../db-sync";
-import { env } from "../../env";
+import { config } from "../../config";
 import {
   createDockerVllmOps,
   createSystemdVllmOps,
@@ -71,7 +71,7 @@ function errorWithPreCapturedLogs(message: string, logs: string): Error {
 }
 
 function resolveDefaultOps(): VllmOps {
-  return env.VLLM_BACKEND === "docker"
+  return config.vllm.backend === "docker"
     ? createDockerVllmOps()
     : createSystemdVllmOps();
 }
@@ -115,9 +115,9 @@ function pollUntilHealthy$(
   providerModel: string,
   modelType?: string,
 ): Observable<void> {
-  const deadline = Date.now() + env.VLLM_HEALTH_TIMEOUT_MS;
+  const deadline = Date.now() + config.vllm.healthTimeoutMs;
 
-  return timer(env.VLLM_HEALTH_POLL_INTERVAL_MS, env.VLLM_HEALTH_POLL_INTERVAL_MS).pipe(
+  return timer(config.vllm.healthPollIntervalMs, config.vllm.healthPollIntervalMs).pipe(
     mergeMap(async () => {
       const alive = await ops.isAlive(installation.id);
       if (!alive) {
@@ -128,7 +128,7 @@ function pollUntilHealthy$(
 
       if (restartCount > 0) {
         const { logs, fatalMatch } = await captureLogsAndMatch(installation.id, ops);
-        if (restartCount >= env.VLLM_MAX_RESTART_COUNT) {
+        if (restartCount >= config.vllm.maxRestartCount) {
           throw errorWithPreCapturedLogs(
             `Container crash-looping (${restartCount} restarts, ${fatalMatch ?? "unknown reason"}): ${installation.specifier}`,
             logs,
@@ -146,7 +146,7 @@ function pollUntilHealthy$(
     }),
     tap((healthy) => {
       if (!healthy && Date.now() > deadline) {
-        throw new Error(`Health check timed out after ${env.VLLM_HEALTH_TIMEOUT_MS}ms for ${installation.specifier} (${installation.id})`);
+        throw new Error(`Health check timed out after ${config.vllm.healthTimeoutMs}ms for ${installation.specifier} (${installation.id})`);
       }
     }),
     filter((healthy): healthy is true => healthy),
@@ -323,7 +323,7 @@ async function reconcileOne(
 
   if (alive) {
     const restartCount = await ops.getRestartCount(installation.id);
-    if (restartCount >= env.VLLM_MAX_RESTART_COUNT) {
+    if (restartCount >= config.vllm.maxRestartCount) {
       const { logs, fatalMatch } = await captureLogsAndMatch(installation.id, ops);
       await updateInstallationState(installation.id, "failed", {
         errorMessage: `Container crash-looping (${restartCount} restarts${fatalMatch ? `, ${fatalMatch}` : ""})`,

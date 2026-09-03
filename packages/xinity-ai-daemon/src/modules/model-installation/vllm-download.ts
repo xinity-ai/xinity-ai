@@ -1,4 +1,4 @@
-import { env } from "../../env";
+import { config } from "../../config";
 import { rootLogger } from "../../logger";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -16,7 +16,7 @@ type HfFileEntry = {
 }
 
 function authHeaders(): Record<string, string> {
-  return env.VLLM_HF_TOKEN ? { Authorization: `Bearer ${env.VLLM_HF_TOKEN}` } : {};
+  return config.vllm.hfToken ? { Authorization: `Bearer ${config.vllm.hfToken}` } : {};
 }
 
 function cleanEtag(raw: string): string {
@@ -54,7 +54,7 @@ export async function downloadModel(
   onProgress: (progress: number) => Promise<void>,
   userPatterns: readonly string[] = [],
 ): Promise<void> {
-  const repoDir = path.join(env.VLLM_HF_CACHE_DIR, "hub", `models--${model.replace("/", "--")}`);
+  const repoDir = path.join(config.vllm.hfCacheDir, "hub", `models--${model.replace("/", "--")}`);
   const blobsDir = path.join(repoDir, "blobs");
   const refsDir = path.join(repoDir, "refs");
 

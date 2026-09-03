@@ -1,17 +1,7 @@
 import { describe, test, expect, mock } from "bun:test";
+import { mockDaemonConfig } from "../../mock-config";
 
-mock.module("../../env", () => ({ env: {
-  VLLM_BACKEND: "systemd",
-  VLLM_ENV_DIR: "/etc/vllm",
-  VLLM_TEMPLATE_UNIT_PATH: "/etc/systemd/system/vllm-driver@.service",
-  VLLM_PATH: "/usr/local/bin/vllm",
-  VLLM_DOCKER_IMAGE: "vllm/vllm-openai:latest",
-  VLLM_HF_CACHE_DIR: "/var/lib/vllm/hf-cache",
-  VLLM_TRITON_CACHE_DIR: "/var/lib/vllm/triton-cache",
-  VLLM_HF_TOKEN: undefined,
-  LOG_LEVEL: "silent",
-  LOG_DIR: undefined,
-}}));
+mock.module("../../config", () => ({ config: mockDaemonConfig({ VLLM_PATH: "/usr/local/bin/vllm", VLLM_DOCKER_IMAGE: "vllm/vllm-openai:latest" }) }));
 
 const {
   buildDockerRunArgs,

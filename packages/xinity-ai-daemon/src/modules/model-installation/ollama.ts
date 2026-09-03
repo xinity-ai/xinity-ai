@@ -1,6 +1,6 @@
 import { Ollama, type ProgressResponse } from "ollama";
 import { bufferTime, concatMap, defer, endWith, from, ignoreElements, map, merge, mergeMap, type Observable, switchMap, tap } from "rxjs";
-import { env } from "../../env";
+import { config } from "../../config";
 import type { SyncInstallation } from "../db-sync";
 import { rootLogger } from "../../logger";
 import { resolveInstallationEntry } from "./catalog";
@@ -11,7 +11,7 @@ const log = rootLogger.child({ name: "ollama" });
 let _ollama: Ollama | null = null;
 export function getOllamaClient(): Ollama {
   if (!_ollama) {
-    _ollama = new Ollama({ host: env.OLLAMA_URL });
+    _ollama = new Ollama({ host: config.ollamaUrl });
   }
   return _ollama;
 }

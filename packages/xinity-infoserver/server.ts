@@ -2,7 +2,7 @@ import "zod/compile";
 
 import { createLegacyModelJsonSchema, createModelJsonSchema } from "./definitions/model-definition";
 import { version } from "../../package.json";
-import { env } from "./env";
+import { config } from "./config";
 import { rootLogger } from "./logger";
 import * as catalog from "./server-catalog";
 import { legacyCatalog, modelCatalog } from "./server-catalog";
@@ -12,9 +12,9 @@ import { resolveClientIp } from "./client-ip";
 import { createRateLimiter, withRateLimit, type RateLimiter, type RouteHandler } from "./rate-limit";
 import type { SerializedCatalog } from "./catalog";
 
-const port = env.PORT;
+const port = config.server.port;
 
-catalog.configure(env.MAX_INCLUDE_DEPTH, env.MODEL_INFO_DIR, env.MODEL_LEGACY_DIR);
+catalog.configure(config.catalog.maxIncludeDepth, config.catalog.infoDir, config.catalog.legacyDir);
 
 // The refresh above is the validation: it throws on anything this server could not
 // serve. `--check` is how CI asks that question without leaving a server running.
@@ -23,9 +23,9 @@ if (Bun.argv.includes("--check")) {
   process.exit(0);
 }
 
-catalog.startAutoRefresh(env.REFRESH_INTERVAL_MS);
+catalog.startAutoRefresh(config.catalog.refreshIntervalMs);
 
-const CACHE_CONTROL = `public, max-age=${Math.floor(env.REFRESH_INTERVAL_MS / 1000)}`;
+const CACHE_CONTROL = `public, max-age=${Math.floor(config.catalog.refreshIntervalMs / 1000)}`;
 
 /** No Sunset header: RFC 8594 wants a date, and the removal is pinned to a version. */
 const DEPRECATION_HEADERS: Record<string, string> = {
@@ -33,13 +33,13 @@ const DEPRECATION_HEADERS: Record<string, string> = {
   Link: '<https://github.com/xinity-ai/xinity-ai/blob/main/packages/xinity-infoserver/README.md#model-format-versions>; rel="deprecation"',
 };
 
-const exportLimiter = createRateLimiter({ perMinute: env.RATE_LIMIT_EXPORT_PER_MINUTE });
-const apiLimiter = createRateLimiter({ perMinute: env.RATE_LIMIT_API_PER_MINUTE });
+const exportLimiter = createRateLimiter({ perMinute: config.rateLimit.exportPerMinute });
+const apiLimiter = createRateLimiter({ perMinute: config.rateLimit.apiPerMinute });
 
-const clientIpConfig = { header: env.HTTP_IP_HEADER, xffDepth: env.HTTP_XFF_DEPTH };
+const clientIpConfig = config.proxy;
 
 function limited(limiter: RateLimiter, handler: RouteHandler): RouteHandler {
-  if (!env.RATE_LIMIT_ENABLED) {
+  if (!config.rateLimit.enabled) {
     return handler;
   }
   return withRateLimit(
@@ -128,7 +128,7 @@ const server = Bun.serve({
   },
 });
 
-if (env.RATE_LIMIT_ENABLED) {
+if (config.rateLimit.enabled) {
   setInterval(() => {
     exportLimiter.sweep();
     apiLimiter.sweep();

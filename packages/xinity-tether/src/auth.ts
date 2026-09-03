@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
-import { env } from "./env";
+import { config } from "./config";
 
-const secretBuffer = Buffer.from(env.TETHER_SECRET);
+const secretBuffer = Buffer.from(config.tetherSecret);
 
 export function verifyBearerToken(req: Request): boolean {
   const header = req.headers.get("authorization");

@@ -128,7 +128,7 @@ if (gpuUtilOverride !== undefined && (!(gpuUtilOverride > 0) || gpuUtilOverride 
 const backend: "docker" | "bare" = values.image ? "docker" : "bare";
 const bareVllmPath = backend === "bare" ? (values["vllm-path"] ?? Bun.which("vllm") ?? undefined) : undefined;
 
-// env.ts validates at import time; seed placeholders so the daemon modules
+// config.ts validates at import time; seed placeholders so the daemon modules
 // can be imported without a running tether.
 process.env.TETHER_URL ??= "http://placeholder:4020";
 process.env.TETHER_SECRET ??= "placeholder";

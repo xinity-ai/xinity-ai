@@ -6,37 +6,36 @@ import { defineGroup, env, type GroupDef } from "./group";
 
 export type ServerConfig = { host: string; port: number; idleTimeout: number; unixSocket?: string };
 
-/** HOST, PORT, UNIX_SOCKET and IDLE_TIMEOUT, written out once for the three services that bind a port. */
-export function serverGroup(defaults: {
-  host: string;
-  port: number;
-  idleTimeout?: number;
-}): GroupDef<ServerConfig> {
-  return defineGroup<ServerConfig>({
-    id: "server",
-    title: "HTTP server",
-    fields: {
-      host: env("HOST", z.string().default(defaults.host)
-        .describe("Bind address (use 0.0.0.0 to listen on all interfaces)")),
-      port: env("PORT", configNumber().default(defaults.port).describe("Listen port")),
-      idleTimeout: env("IDLE_TIMEOUT", configNumber(z.number().max(255)).default(defaults.idleTimeout ?? 255)
-        .describe("Seconds a connection may go without traffic before it is closed (Bun allows at most 255)")),
-      unixSocket: env("UNIX_SOCKET", z.string().optional()
-        .describe("Unix socket path (overrides HOST/PORT when set)").meta(expert())),
-    },
-  });
+export function serverFields(defaults: { host: string; port: number; idleTimeout?: number }) {
+  return {
+    host: env("HOST", z.string().default(defaults.host)
+      .describe("Bind address (use 0.0.0.0 to listen on all interfaces)")),
+    port: env("PORT", configNumber().default(defaults.port).describe("Listen port")),
+    idleTimeout: env("IDLE_TIMEOUT", configNumber(z.number().max(255)).default(defaults.idleTimeout ?? 255)
+      .describe("Seconds a connection may go without traffic before it is closed (Bun allows at most 255)")),
+    unixSocket: env("UNIX_SOCKET", z.string().optional()
+      .describe("Unix socket path (overrides HOST/PORT when set)").meta(expert())),
+  };
+}
+
+export function serverGroup(defaults: { host: string; port: number; idleTimeout?: number }): GroupDef<ServerConfig> {
+  return defineGroup<ServerConfig>({ id: "server", title: "HTTP server", fields: serverFields(defaults) });
 }
 
 export type DatabaseConfig = { connectionUrl: string; maxConnections: number };
+
+export function databaseUrlField() {
+  return env("DB_CONNECTION_URL", z.url()
+    .describe("PostgreSQL connection string (e.g. postgresql://user:pass@host:5432/dbname)")
+    .meta(secret()));
+}
 
 export function databaseGroup(defaults: { maxConnections: number }): GroupDef<DatabaseConfig> {
   return defineGroup<DatabaseConfig>({
     id: "db",
     title: "Database",
     fields: {
-      connectionUrl: env("DB_CONNECTION_URL", z.url()
-        .describe("PostgreSQL connection string (e.g. postgresql://user:pass@host:5432/dbname)")
-        .meta(secret())),
+      connectionUrl: databaseUrlField(),
       maxConnections: env("DB_MAX_CONNECTIONS", configInt(z.int().positive()).default(defaults.maxConnections)
         .describe("Maximum PostgreSQL connection pool size").meta(expert())),
     },
@@ -61,17 +60,17 @@ export function catalogGroup(): GroupDef<CatalogConfig> {
 
 export type MetricsConfig = { auth?: string };
 
-// The dashboard needs a variant that requires auth. It also needs metricsAuthSchema to discriminate
-// its return type on `required`, which it does not yet, so that lands when the dashboard is ported.
+export function metricsAuthField() {
+  return env("METRICS_AUTH", metricsAuthSchema()
+    .describe("Basic auth for the /metrics endpoint (format: user:pass, comma-separated for multiple)")
+    .meta(secret()));
+}
+
 export function metricsGroup(): GroupDef<MetricsConfig> {
   return defineGroup<MetricsConfig>({
     id: "metrics",
     title: "Metrics endpoint",
-    fields: {
-      auth: env("METRICS_AUTH", metricsAuthSchema()
-        .describe("Basic auth for the /metrics endpoint (format: user:pass, comma-separated for multiple)")
-        .meta(secret())),
-    },
+    fields: { auth: metricsAuthField() },
   });
 }
 
@@ -106,7 +105,6 @@ export type TlsConfig = { cert: string; key: string };
 export const TLS_DESCRIPTION =
   "Opt-in HTTPS. See https://github.com/xinity-ai/xinity-ai/blob/main/docs/security/tls.md";
 
-// Exposed alongside the group so a service can spread them into a larger TLS group of its own.
 export function tlsFields() {
   return {
     cert: env("XINITY_TLS_CERT", z.string().describe("PEM-encoded TLS certificate").meta(secret())),
@@ -122,5 +120,22 @@ export function tlsGroup(): GroupDef<TlsConfig | undefined> {
     expert: true,
     optional: { requires: ["cert", "key"] },
     fields: tlsFields(),
+  });
+}
+
+export type ProxyConfig = { header?: string; xffDepth: number };
+
+export function proxyGroup(): GroupDef<ProxyConfig> {
+  return defineGroup<ProxyConfig>({
+    id: "proxy",
+    title: "Reverse proxy",
+    description: "Only needed when something sits in front of this service.",
+    expert: true,
+    fields: {
+      header: env("HTTP_IP_HEADER", z.string().optional()
+        .describe("Header the client IP is forwarded in (e.g. x-forwarded-for). Without it, requests all appear to come from the proxy")),
+      xffDepth: env("HTTP_XFF_DEPTH", configInt(z.int().min(1)).default(1)
+        .describe("Number of proxies in front. Anything further left in the header is client-supplied and forgeable")),
+    },
   });
 }

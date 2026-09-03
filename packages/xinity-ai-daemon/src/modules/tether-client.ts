@@ -6,14 +6,14 @@ import {
   type InstallationStateReport,
 } from "common-env";
 import { rootLogger } from "../logger";
-import { env } from "../env";
+import { config } from "../config";
 
 const log = rootLogger.child({ name: "tether-client" });
 
 const MAX_BACKOFF_MS = 30_000;
 
 function authHeaders(): Record<string, string> {
-  return { Authorization: `Bearer ${env.TETHER_SECRET}` };
+  return { Authorization: `Bearer ${config.tether.secret}` };
 }
 
 export async function* connectSSE(registration: NodeRegistration): AsyncGenerator<DesiredState> {
@@ -21,7 +21,7 @@ export async function* connectSSE(registration: NodeRegistration): AsyncGenerato
 
   while (true) {
     try {
-      const res = await fetch(serviceUrl(env.TETHER_URL, "/api/v1/stream"), {
+      const res = await fetch(serviceUrl(config.tether.url, "/api/v1/stream"), {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify(registration),
@@ -99,7 +99,7 @@ export async function* connectSSE(registration: NodeRegistration): AsyncGenerato
 
 export async function reportInstallationStates(report: InstallationStateReport): Promise<void> {
   try {
-    const res = await fetch(serviceUrl(env.TETHER_URL, "/api/v1/status"), {
+    const res = await fetch(serviceUrl(config.tether.url, "/api/v1/status"), {
       method: "POST",
       headers: { ...authHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify(report),
