@@ -3,6 +3,7 @@ import "zod/compile";
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { serverRouter } from "./rpc/gatewayRouter";
 import { env } from "./env";
+import { gatewayConfig } from "./config-schema";
 import { checkMigrations, subscribe } from "./db";
 import { rootLogger } from "./logger";
 import { createOpenapiSpec, createScalarPage } from "./openapi";
@@ -16,7 +17,7 @@ import { handleRerank } from "./llm-forward/endpoints/handle-rerank";
 import { handleTranscription } from "./llm-forward/endpoints/handle-transcription";
 import { handleMetrics, withMetrics } from "./metrics";
 import { LONG_RUNNING_ROUTES, withoutConnectionTimeout, type RouteHandler } from "./serve-config";
-import { getTlsConfig } from "common-env";
+import { checkGroupActivation, getTlsConfig } from "common-env";
 import { logMigrationFailureFatal } from "common-db";
 import { getSearchProvider } from "./llm-forward/tools/search-providers";
 import { setSearchProvider } from "./llm-forward/tools/response-tools";
@@ -31,6 +32,10 @@ process.on("unhandledRejection", (reason) => {
 process.on("uncaughtException", (err) => {
   rootLogger.error({ err }, "Uncaught exception");
 });
+
+for (const warning of checkGroupActivation(gatewayConfig, process.env).warnings) {
+  rootLogger.warn(warning, warning.message);
+}
 
 const migrationState = await checkMigrations();
 if (migrationState.status !== "ok") {
