@@ -288,17 +288,6 @@ export async function promptForEnv(
   await promptFieldsUnderHeading(visibleConfig, "Configuration", existingValues, config, secrets);
   await promptFieldsUnderHeading(visibleSecrets, "Secrets", existingValues, config, secrets);
 
-  if (expertFields.length > 0) {
-    const showAdvanced = await promptOrExit(confirm({
-      message: "Configure advanced settings?",
-      initialValue: false,
-    }));
-
-    if (showAdvanced) {
-      await promptFieldsUnderHeading(expertFields, "Advanced Settings", existingValues, config, secrets);
-    }
-  }
-
   return { config, secrets };
 }
 
@@ -417,6 +406,8 @@ type MenuGroup = { definition: EnvFieldGroup; fields: EnvField[] };
 const GROUP_PREFIX = " group:";
 const GROUP_TITLE_WIDTH = 22;
 
+const ADVANCED_THRESHOLD = 6;
+
 /** Groups in the order their first key appears, so the declaration dictates the layout. */
 function collectGroups(fields: EnvField[]): MenuGroup[] {
   const groups: MenuGroup[] = [];
@@ -505,7 +496,7 @@ export async function menuEditEnv(
   let cursor: string | undefined;
 
   const requiredUnset = (f: EnvField) => isRequiredUnset(f, values);
-  const isVisible = (f: EnvField) => !f.isExpert || showExpert;
+  const isVisible = (f: EnvField, hideAdvanced: boolean) => !hideAdvanced || !f.isExpert || showExpert;
 
   const ungrouped = editable.filter((f) => !f.group);
   const groups = collectGroups(editable);
@@ -540,8 +531,9 @@ export async function menuEditEnv(
 
   const editGroup = async (group: MenuGroup): Promise<void> => {
     let groupCursor: string | undefined;
+    const hideAdvanced = group.fields.length > ADVANCED_THRESHOLD;
     while (true) {
-      const visible = group.fields.filter(isVisible);
+      const visible = group.fields.filter((f) => isVisible(f, hideAdvanced));
       const options = visible.map(fieldOption);
       const hidden = group.fields.length - visible.length;
       if (hidden > 0 && !showExpert) {
@@ -577,31 +569,27 @@ export async function menuEditEnv(
     }
   };
 
-  while (true) {
-    let hiddenCount = ungrouped.filter((f) => !isVisible(f)).length;
+  // A group is one row of navigation rather than an option, so it never counts towards the
+  // threshold and is never hidden: its own view decides what to show once you are inside it.
+  const hideAdvanced = ungrouped.length > ADVANCED_THRESHOLD;
 
-    const options = ungrouped.filter(isVisible).map(fieldOption);
+  while (true) {
+    const hiddenCount = ungrouped.filter((f) => !isVisible(f, hideAdvanced)).length;
+
+    const options = ungrouped.filter((f) => isVisible(f, hideAdvanced)).map(fieldOption);
 
     for (const group of groups) {
-      const visible = group.fields.filter(isVisible);
-      const state = groupState(group, values);
-      // A heading with nothing under it is worse than no heading. A group hidden this way still
-      // counts towards the advanced toggle, or a wholly-expert group would be unreachable.
-      if (visible.length === 0 && state !== "off") {
-        hiddenCount += group.fields.length;
-        continue;
-      }
       const missing = group.fields.filter(requiredUnset).length;
       options.push({
         value: `${GROUP_PREFIX}${group.definition.id}`,
-        label: `${group.definition.title.padEnd(GROUP_TITLE_WIDTH)} ${groupStatus(state, missing, group, values)}`,
+        label: `${group.definition.title.padEnd(GROUP_TITLE_WIDTH)} ${groupStatus(groupState(group, values), missing, group, values)}`,
         hint: group.definition.description,
       });
     }
 
     if (hiddenCount > 0) {
       options.push({ value: "__expert__", label: dim(`Show advanced settings (${hiddenCount} more)…`), hint: undefined });
-    } else if (showExpert && editable.some((f) => f.isExpert)) {
+    } else if (showExpert && hideAdvanced && ungrouped.some((f) => f.isExpert)) {
       options.push({ value: "__expert__", label: dim("Hide advanced settings"), hint: undefined });
     }
     options.push({ value: "__save__", label: green("Save & exit"), hint: undefined });

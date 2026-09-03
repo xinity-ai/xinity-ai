@@ -234,6 +234,10 @@ export const upCommand: CommandModule = {
       }
 
       const ok = await runPlannedFlow(component, { targetVersion, dryRun, hardReset }, host);
+      if (ok && !dryRun) {
+        const target = targetHostArg ? ` --target-host ${targetHostArg}` : "";
+        log.info(`Everything else is tunable with ${cyan(`xinity configure ${component}${target}`)}`);
+      }
       outro(ok ? "Done" : "Failed");
       if (!ok) {
         process.exit(1);
