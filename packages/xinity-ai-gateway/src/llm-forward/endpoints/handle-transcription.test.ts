@@ -1,8 +1,8 @@
 import { describe, test, expect, mock, beforeAll, afterAll, jest, afterEach } from "bun:test";
 import { mockBackendFetch } from "./test-helpers";
 
-import { MOCK_GATEWAY_ENV } from "../mock-env";
-mock.module("../../env", () => ({ env: { ...MOCK_GATEWAY_ENV } }));
+import { MOCK_GATEWAY_CONFIG } from "../mock-env";
+mock.module("../../config", () => ({ config: MOCK_GATEWAY_CONFIG }));
 
 import type { checkAuth as checkAuthT } from "../auth";
 import type { getModelInfo as getModelInfoT } from "../model-data";

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { errorResponse, forwardBackendError, recordUsage } from "../util";
 import { withEndpointGuards } from "../endpoint-guards";
 import { rootLogger } from "../../logger";
-import { env } from "../../env";
+import { config } from "../../config";
 import { backendPostJson } from "../backend-fetch";
 
 const log = rootLogger.child({ name: "handle-embeddings" });
@@ -39,7 +39,7 @@ export const handleEmbeddingGeneration = withEndpointGuards({
       fetchBody.user = body.user;
     }
 
-    const signal = AbortSignal.any([req.signal, AbortSignal.timeout(env.BACKEND_TIMEOUT_MS)]);
+    const signal = AbortSignal.any([req.signal, AbortSignal.timeout(config.inference.backendTimeoutMs)]);
     const backendResponse = await backendPostJson(modelInfo, "/v1/embeddings", fetchBody, signal);
 
     if (!backendResponse.ok) {

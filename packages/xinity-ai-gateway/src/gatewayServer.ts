@@ -2,7 +2,7 @@ import "zod/compile";
 
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { serverRouter } from "./rpc/gatewayRouter";
-import { env } from "./env";
+import { config } from "./config";
 import { gatewayConfig } from "./config-schema";
 import { checkMigrations, subscribe } from "./db";
 import { rootLogger } from "./logger";
@@ -17,7 +17,7 @@ import { handleRerank } from "./llm-forward/endpoints/handle-rerank";
 import { handleTranscription } from "./llm-forward/endpoints/handle-transcription";
 import { handleMetrics, withMetrics } from "./metrics";
 import { LONG_RUNNING_ROUTES, withoutConnectionTimeout, type RouteHandler } from "./serve-config";
-import { checkGroupActivation, getTlsConfig } from "common-env";
+import { checkGroupActivation } from "common-env";
 import { logMigrationFailureFatal } from "common-db";
 import { getSearchProvider } from "./llm-forward/tools/search-providers";
 import { setSearchProvider } from "./llm-forward/tools/response-tools";
@@ -33,8 +33,16 @@ process.on("uncaughtException", (err) => {
   rootLogger.error({ err }, "Uncaught exception");
 });
 
-for (const warning of checkGroupActivation(gatewayConfig, process.env).warnings) {
+const activation = checkGroupActivation(gatewayConfig, process.env);
+for (const warning of activation.warnings) {
   rootLogger.warn(warning, warning.message);
+}
+
+// Serving plaintext when asked for HTTPS is worse than not starting, so this group is the one
+// exception to partial activation being a warning.
+if (activation.warnings.some((warning) => warning.key === "tls")) {
+  rootLogger.fatal("TLS is only partly configured, refusing to start rather than serve plaintext");
+  process.exit(1);
 }
 
 const migrationState = await checkMigrations();
@@ -57,8 +65,8 @@ const handler = new OpenAPIHandler(serverRouter, {
   plugins: [],
 });
 
-const tls = getTlsConfig(env);
-setSearchProvider(getSearchProvider(env));
+const tls = config.tls && { cert: config.tls.cert, key: config.tls.key };
+setSearchProvider(getSearchProvider(config.webSearch));
 
 const meteredEndpoints: Array<[string, RouteHandler]> = [
   ["/v1/chat/completions", handleChatCompletion],
@@ -89,13 +97,13 @@ const serveOptions = {
     ...meteredRoutes,
   },
   fetch: handleRequest,
-  idleTimeout: env.IDLE_TIMEOUT,
+  idleTimeout: config.server.idleTimeout,
 } as const;
 
 const proto = tls ? "https" : "http";
-const serveTarget = env.UNIX_SOCKET
-  ? { unix: env.UNIX_SOCKET, idleTimeout: undefined }
-  : { port: env.PORT, hostname: env.HOST };
+const serveTarget = config.server.unixSocket
+  ? { unix: config.server.unixSocket, idleTimeout: undefined }
+  : { port: config.server.port, hostname: config.server.host };
 const server = Bun.serve({ ...serveOptions, ...serveTarget });
 rootLogger.info({ ...serveTarget, tls: !!tls }, `Gateway started (${proto})`);
 

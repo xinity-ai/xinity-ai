@@ -1,8 +1,8 @@
 import { describe, test, expect, beforeEach, spyOn, afterEach, mock } from "bun:test";
 import { redis } from "bun";
 
-import { MOCK_GATEWAY_ENV } from "./mock-env";
-mock.module("../env", () => ({ env: { ...MOCK_GATEWAY_ENV } }));
+import { MOCK_GATEWAY_CONFIG } from "./mock-env";
+mock.module("../config", () => ({ config: MOCK_GATEWAY_CONFIG }));
 
 import type { SelectHostInput } from "./load-balancer";
 const { selectHost } = await import("./load-balancer");

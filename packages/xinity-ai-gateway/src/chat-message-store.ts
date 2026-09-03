@@ -2,7 +2,7 @@
 import { apiResponseMessageT, chatMessageT, inArray, inferenceCallMessageT, sql, type ApiCallInputMessage } from "common-db";
 import { jsonDigest } from "common-env";
 import { getDB } from "./db";
-import { env } from "./env";
+import { config } from "./config";
 
 
 type Database = ReturnType<typeof getDB>;
@@ -35,7 +35,7 @@ function createDigestCache(maxEntries: number) {
   };
 }
 
-const digestCache = createDigestCache(env.CACHE_DIGEST_MAX_ENTRIES);
+const digestCache = createDigestCache(config.cache.digestEntries);
 
 const cacheKey = (orgId: string, sha256: string) => `${orgId}:${sha256}`;
 

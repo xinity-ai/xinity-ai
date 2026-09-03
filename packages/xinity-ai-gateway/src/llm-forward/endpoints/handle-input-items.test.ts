@@ -1,9 +1,9 @@
 import { describe, test, expect, mock, jest, beforeEach } from "bun:test";
 import { drizzle, apiResponseT, type ApiCallInputMessage } from "common-db";
-import { MOCK_GATEWAY_ENV } from "../mock-env";
+import { MOCK_GATEWAY_CONFIG } from "../mock-env";
 import { requestWithParams } from "./test-helpers";
 
-mock.module("../../env", () => ({ env: { ...MOCK_GATEWAY_ENV } }));
+mock.module("../../config", () => ({ config: MOCK_GATEWAY_CONFIG }));
 
 const checkAuth = jest.fn(async () => ({
   orgId: "org-1",

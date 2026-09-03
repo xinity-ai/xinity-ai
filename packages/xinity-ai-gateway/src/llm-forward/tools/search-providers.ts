@@ -216,22 +216,21 @@ export type WebSearchProviderName = keyof typeof SEARCH_PROVIDERS;
 // Config resolution and validation
 // ---------------------------------------------------------------------------
 
-export function resolveSearchConfig(env: {
-  WEB_SEARCH_PROVIDER?: string;
-  WEB_SEARCH_CREDENTIAL?: string;
-  WEB_SEARCH_ENGINE_URL?: string;
-}): { provider: string; credential: string } | null {
-  if (env.WEB_SEARCH_PROVIDER) {
-    if (!env.WEB_SEARCH_CREDENTIAL) {
+export type WebSearchSettings = {
+  provider?: string;
+  credential?: string;
+  engineUrl?: string;
+};
+
+export function resolveSearchConfig(webSearch: WebSearchSettings): { provider: string; credential: string } | null {
+  if (webSearch.provider) {
+    if (!webSearch.credential) {
       throw new Error("WEB_SEARCH_CREDENTIAL must be set when WEB_SEARCH_PROVIDER is set");
     }
-    return {
-      provider: env.WEB_SEARCH_PROVIDER,
-      credential: env.WEB_SEARCH_CREDENTIAL,
-    };
+    return { provider: webSearch.provider, credential: webSearch.credential };
   }
-  if (env.WEB_SEARCH_ENGINE_URL) {
-    return { provider: "searxng", credential: env.WEB_SEARCH_ENGINE_URL };
+  if (webSearch.engineUrl) {
+    return { provider: "searxng", credential: webSearch.engineUrl };
   }
   return null;
 }
@@ -256,15 +255,11 @@ export function createSearchProvider(name: string, credential: string): SearchPr
   return entry.create(credential);
 }
 
-export function getSearchProvider(env: {
-  WEB_SEARCH_PROVIDER?: string;
-  WEB_SEARCH_CREDENTIAL?: string;
-  WEB_SEARCH_ENGINE_URL?: string;
-}): SearchProvider | null {
-  const config = resolveSearchConfig(env);
-  if (!config) {
+export function getSearchProvider(webSearch: WebSearchSettings): SearchProvider | null {
+  const resolved = resolveSearchConfig(webSearch);
+  if (!resolved) {
     return null;
   }
-  validateSearchCredential(config.provider, config.credential);
-  return createSearchProvider(config.provider, config.credential);
+  validateSearchCredential(resolved.provider, resolved.credential);
+  return createSearchProvider(resolved.provider, resolved.credential);
 }

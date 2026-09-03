@@ -1,14 +1,9 @@
 import { describe, test, expect, mock, jest, beforeEach } from "bun:test";
 import { drizzle, mediaObjectT } from "common-db";
 
-mock.module("./env", () => ({
-  env: {
-    S3_ENDPOINT: undefined,
-    S3_ACCESS_KEY_ID: undefined,
-    S3_SECRET_ACCESS_KEY: undefined,
-    S3_BUCKET: "xinity-media",
-    S3_REGION: "us-east-1",
-  },
+// The whole group is undefined when object storage is off, which is the entire mock now.
+mock.module("./config", () => ({
+  config: { s3: undefined },
 }));
 
 const _noop = () => {};

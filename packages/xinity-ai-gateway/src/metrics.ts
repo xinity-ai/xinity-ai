@@ -10,13 +10,13 @@ import {
 } from "common-env";
 import type { Server } from "bun";
 import { version } from "../../../package.json";
-import { env } from "./env";
+import { config } from "./config";
 import type { RouteHandler } from "./serve-config";
 import { releaseCallbacks } from "./llm-forward/release-registry";
 import { isAbortError } from "./llm-forward/util";
 import { rootLogger } from "./logger";
 
-const metricsAuth = createMetricsAuth(env.METRICS_AUTH);
+const metricsAuth = createMetricsAuth(config.metrics.auth);
 
 const http = createHttpMetrics();
 

@@ -12,8 +12,7 @@ import {
   objectStorageGroup,
   secret,
   serverGroup,
-  tlsFields,
-  TLS_DESCRIPTION,
+  tlsGroup,
   type CatalogConfig,
   type DatabaseConfig,
   type MetricsConfig,
@@ -60,21 +59,22 @@ const cache = defineGroup<Cache>({
 });
 
 type WebSearch = {
-  provider: (typeof WEB_SEARCH_PROVIDER_NAMES)[number];
-  credential: string;
+  provider?: (typeof WEB_SEARCH_PROVIDER_NAMES)[number];
+  credential?: string;
   engineUrl?: string;
 };
 
+// Not an optional group: engineUrl is a second activation path, which `requires` cannot express,
+// and resolveSearchConfig already enforces that a provider comes with a credential.
 const webSearch = defineGroup<WebSearch>({
   id: "webSearch",
   title: "Web search",
   description: "Backend for web-search-augmented generation. Disabled when unset.",
   expert: true,
-  optional: { requires: ["provider", "credential"] },
   fields: {
-    provider: env("WEB_SEARCH_PROVIDER", z.enum(WEB_SEARCH_PROVIDER_NAMES)
+    provider: env("WEB_SEARCH_PROVIDER", z.enum(WEB_SEARCH_PROVIDER_NAMES).optional()
       .describe("Web search backend. When unset, web search is disabled.")),
-    credential: env("WEB_SEARCH_CREDENTIAL", z.string()
+    credential: env("WEB_SEARCH_CREDENTIAL", z.string().optional()
       .describe("Provider credential: searxng=instance URL, google=apikey:cx, bing/brave/serper/tavily=API key")
       .meta(secret())),
     engineUrl: env("WEB_SEARCH_ENGINE_URL", z.url().optional()
@@ -85,9 +85,9 @@ const webSearch = defineGroup<WebSearch>({
 type Inference = {
   loadBalanceStrategy: "random" | "round-robin" | "least-connections";
   backendTimeoutMs: number;
+  /** Verifying daemon certificates is independent of serving HTTPS, so it does not live in `tls`. */
+  ca?: string;
 };
-
-type GatewayTls = TlsConfig & { inferenceCa?: string };
 
 const inference = defineGroup<Inference>({
   id: "inference",
@@ -100,18 +100,7 @@ const inference = defineGroup<Inference>({
         .describe("Load balancing strategy for distributing requests across inference nodes")),
     backendTimeoutMs: env("BACKEND_TIMEOUT_MS", configNumber(z.number().positive()).default(300_000)
       .describe("Backend timeout in ms (default: 5 min). For streaming requests this is an idle timeout that resets on each chunk; for non-streaming requests it is a wall-clock deadline.")),
-  },
-});
-
-const tls = defineGroup<GatewayTls>({
-  id: "tls",
-  title: "TLS",
-  description: TLS_DESCRIPTION,
-  expert: true,
-  optional: { requires: ["cert", "key"] },
-  fields: {
-    ...tlsFields(),
-    inferenceCa: env("XINITY_INFERENCE_CA", z.string().optional()
+    ca: env("XINITY_INFERENCE_CA", z.string().optional()
       .describe("PEM-encoded CA certificate for verifying daemon TLS. When set, gateway connects to daemons via HTTPS.")
       .meta(secret())),
   },
@@ -140,8 +129,8 @@ export type GatewayConfig = {
   metrics: MetricsConfig;
   log: LoggingConfig;
   s3: ObjectStorageConfig | undefined;
-  tls: GatewayTls | undefined;
-  webSearch: WebSearch | undefined;
+  tls: TlsConfig | undefined;
+  webSearch: WebSearch;
   inference: Inference;
   deepResearch: DeepResearch;
 };
@@ -154,7 +143,7 @@ export const gatewayConfig = defineConfig<GatewayConfig>({
   metrics: metricsGroup(),
   log: loggingGroup(),
   s3: objectStorageGroup(),
-  tls,
+  tls: tlsGroup(),
   webSearch,
   inference,
   deepResearch,

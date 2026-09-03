@@ -1,5 +1,5 @@
 import { mock, jest } from "bun:test";
-import { MOCK_GATEWAY_ENV } from "../mock-env";
+import { MOCK_GATEWAY_CONFIG } from "../mock-env";
 import type { getModelInfo as getModelInfoT } from "../model-data";
 import { outputAsMessages } from "../responses/input-normalize";
 
@@ -210,7 +210,7 @@ export function mockBackendFetch(): void {
 }
 
 export function setupResponseTestMocks() {
-  mock.module("../../env", () => ({ env: { ...MOCK_GATEWAY_ENV } }));
+  mock.module("../../config", () => ({ config: MOCK_GATEWAY_CONFIG }));
 
   const checkAuth = jest.fn(async () => ({
     orgId: "org-1",

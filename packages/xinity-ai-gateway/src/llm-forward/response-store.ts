@@ -1,6 +1,6 @@
 import { redis } from "bun";
 import type { ApiCallInputMessage } from "common-db";
-import { env } from "../env";
+import { config } from "../config";
 import { rootLogger } from "../logger";
 import {
   createPersistedResponse,
@@ -21,7 +21,7 @@ const responseKey = (orgId: string, id: string) => `response:${orgId}:${id}`;
 export type ResponseCreation = ResponseAttribution & { inputMessages: ApiCallInputMessage[] };
 
 async function cacheResponse(orgId: string, id: string, payload: unknown): Promise<void> {
-  await redis.set(responseKey(orgId, id), JSON.stringify(payload), "EX", env.RESPONSE_CACHE_TTL_SECONDS);
+  await redis.set(responseKey(orgId, id), JSON.stringify(payload), "EX", config.cache.responseTtlSeconds);
 }
 
 /**

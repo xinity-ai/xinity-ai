@@ -3,7 +3,7 @@ import { getDB } from "../db";
 import { redis } from "bun";
 import { timingSafeEqual } from "node:crypto";
 import { rootLogger } from "../logger";
-import { env } from "../env";
+import { config } from "../config";
 import { createSemaphore } from "../semaphore";
 import { errorResponse } from "./util";
 
@@ -127,7 +127,7 @@ function verifiersEqual(presented: string, stored: string): boolean {
 
 /** Caching the rejection keeps a flood of bad keys off the DB and out of argon2. */
 function rejectAndCache(keyHash: string, detail: string): Response {
-  setApiKeyCache(keyHash, { fail: detail }, env.CACHE_AUTH_FAILURE_TTL_SECONDS);
+  setApiKeyCache(keyHash, { fail: detail }, config.cache.authFailureTtlSeconds);
   return genericUnauthorized(detail);
 }
 
@@ -150,7 +150,7 @@ const apiKeyCacheKey = (identifier: string) => `apikey:${identifier}`;
 function setApiKeyCache(
   identifier: string,
   data: CachedAuth,
-  ttlSeconds: number = env.CACHE_API_KEY_TTL_SECONDS,
+  ttlSeconds: number = config.cache.apiKeyTtlSeconds,
 ): void {
   void redis.set(apiKeyCacheKey(identifier), JSON.stringify(data), "EX", ttlSeconds)
     .catch((err: unknown) => log.warn({ err }, "Redis error in setApiKeyCache"));

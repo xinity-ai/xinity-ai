@@ -1,6 +1,6 @@
 import { describe, test, expect, mock, jest, beforeEach } from "bun:test";
-import { MOCK_GATEWAY_ENV } from "./llm-forward/mock-env";
-mock.module("./env", () => ({ env: { ...MOCK_GATEWAY_ENV } }));
+import { MOCK_GATEWAY_CONFIG } from "./llm-forward/mock-env";
+mock.module("./config", () => ({ config: MOCK_GATEWAY_CONFIG }));
 
 const insertMock = jest.fn();
 const dbMock = {

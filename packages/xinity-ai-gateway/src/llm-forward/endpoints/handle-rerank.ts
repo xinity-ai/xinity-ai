@@ -2,7 +2,7 @@ import { z } from "zod";
 import { errorResponse, forwardBackendError } from "../util";
 import { withEndpointGuards } from "../endpoint-guards";
 import { rootLogger } from "../../logger";
-import { env } from "../../env";
+import { config } from "../../config";
 import { backendPostJson } from "../backend-fetch";
 
 const log = rootLogger.child({ name: "handle-rerank" });
@@ -20,7 +20,7 @@ export const handleRerank = withEndpointGuards({
   bodySchema: RerankBodySchema,
   log,
   handler: async ({ body, modelInfo, originalModel, req }) => {
-    const signal = AbortSignal.any([req.signal, AbortSignal.timeout(env.BACKEND_TIMEOUT_MS)]);
+    const signal = AbortSignal.any([req.signal, AbortSignal.timeout(config.inference.backendTimeoutMs)]);
     const backendResponse = await backendPostJson(modelInfo, "/v1/rerank", {
       model: modelInfo.model,
       query: body.query,
