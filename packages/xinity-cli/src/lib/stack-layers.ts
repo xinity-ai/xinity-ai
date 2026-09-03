@@ -3,9 +3,8 @@
  * hidden or marked for review, and where the result is stored. `stack init`,
  * `stack edit`, and the lazy editors inside `stack up` all go through these.
  */
-import type { z } from "zod";
-import { type Component, ENV_SCHEMAS } from "./component-meta.ts";
-import { menuEditEnv, flattenBundle } from "./env-prompt.ts";
+import type { Component } from "./component-meta.ts";
+import { analyzeEnvSchema, componentFields, menuEditEnv, flattenBundle, type EnvField } from "./env-prompt.ts";
 import {
   type StackDefinition, type FleetDefinition,
   STACK_SHARED_SCHEMA, STACK_SHARED_KEYS,
@@ -21,14 +20,14 @@ const STACK_ATTENTION_KEYS: Partial<Record<Component, string[]>> = {
 };
 
 export async function menuEditLayer(opts: {
-  schema: z.ZodObject<any>;
+  fields: EnvField[];
   inherited: Record<string, string>;
   own: Record<string, string>;
   attentionKeys?: Set<string>;
   hiddenKeys?: Set<string>;
   message?: string;
 }): Promise<Record<string, string> | null> {
-  const result = await menuEditEnv(opts.schema, { ...opts.inherited, ...opts.own }, {
+  const result = await menuEditEnv(opts.fields, { ...opts.inherited, ...opts.own }, {
     attentionKeys: opts.attentionKeys,
     hiddenKeys: opts.hiddenKeys,
     message: opts.message,
@@ -41,7 +40,7 @@ export async function menuEditLayer(opts: {
 
 /** Returns false when the user cancelled; nothing is stored then. */
 export async function editSharedLayer(stack: StackDefinition, message = "Shared stack settings"): Promise<boolean> {
-  const result = await menuEditEnv(STACK_SHARED_SCHEMA, { ...stack.env, ...stack.secrets }, {
+  const result = await menuEditEnv(analyzeEnvSchema(STACK_SHARED_SCHEMA), { ...stack.env, ...stack.secrets }, {
     message,
   });
   if (result === null) {
@@ -57,7 +56,7 @@ export async function editComponentLayer(
   message = `${component} settings (stack-wide)`,
 ): Promise<boolean> {
   const overrides = await menuEditLayer({
-    schema: ENV_SCHEMAS[component],
+    fields: componentFields(component),
     inherited: componentLayerBase(stack, component),
     own: stack.componentEnv[component] ?? {},
     attentionKeys: new Set(STACK_ATTENTION_KEYS[component] ?? []),
@@ -77,7 +76,7 @@ export async function editFleetLayer(
   message = `Daemon settings for fleet "${fleet.name}"`,
 ): Promise<boolean> {
   const overrides = await menuEditLayer({
-    schema: ENV_SCHEMAS.daemon,
+    fields: componentFields("daemon"),
     inherited: fleetLayerBase(stack),
     own: fleet.envOverrides ?? {},
     hiddenKeys: STACK_SHARED_KEYS,
@@ -98,7 +97,7 @@ export async function editHostLayer(
 ): Promise<Record<string, string> | null> {
   const host = getHost(stack, address);
   const overrides = await menuEditLayer({
-    schema: ENV_SCHEMAS[component],
+    fields: componentFields(component),
     inherited,
     own: host?.envOverrides ?? {},
     hiddenKeys: STACK_SHARED_KEYS,

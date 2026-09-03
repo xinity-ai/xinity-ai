@@ -1,14 +1,14 @@
 import { confirm, isCancel } from "./clack.ts";
 import { heading } from "./output.ts";
 import { readManifest, writeManifest } from "./manifest.ts";
-import { analyzeEnvSchema, categorizeFields, secretKeysOfOtherComponents } from "./env-prompt.ts";
+import { categorizeFields, componentFields, secretKeysOfOtherComponents } from "./env-prompt.ts";
 import { type Host, isUnitActiveOn } from "./host.ts";
 import { unitName } from "./systemd.ts";
 import { runSteps, runStepsCollapsed } from "./step-runner.ts";
 import type { StepEvent } from "./step-event.ts";
 import {
   type Component, type RemoveResult,
-  ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, BIN_DIR, DASHBOARD_DIR, UNIT_DIR,
+  COMPONENTS, ENV_DIR, SECRETS_DIR, BIN_DIR, DASHBOARD_DIR, UNIT_DIR,
   binaryBaseName,
 } from "./component-meta.ts";
 
@@ -90,8 +90,7 @@ export async function* removeComponent(opts: {
   );
   yield* elevationStep(rmEnv, "Config", `Removed ${envPath}`, "Failed to remove env config", errors);
 
-  const schema = ENV_SCHEMAS[component];
-  const fields = analyzeEnvSchema(schema);
+  const fields = componentFields(component);
   const { secretFields } = categorizeFields(fields);
   if (secretFields.length > 0) {
     const sharedKeys = await secretKeysOfOtherComponents(component, host);

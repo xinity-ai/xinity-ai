@@ -7,7 +7,8 @@
  */
 import type { z } from "zod";
 
-import { gatewayEnvSchema } from "xinity-ai-gateway/src/env-schema.ts";
+import { entryFor, type AnyConfig } from "common-env";
+import { gatewayConfig } from "xinity-ai-gateway/src/config-schema.ts";
 import { daemonEnvSchema } from "xinity-ai-daemon/src/env-schema.ts";
 import { dashboardEnvSchema } from "xinity-ai-dashboard/src/lib/server/env-schema.ts";
 import { infoserverEnvSchema } from "xinity-infoserver/env-schema.ts";
@@ -17,8 +18,14 @@ export type { Release } from "./github.ts";
 
 export type Component = "gateway" | "dashboard" | "daemon" | "infoserver" | "tether";
 
-export const ENV_SCHEMAS: Record<Component, z.ZodObject<any>> = {
-  gateway: gatewayEnvSchema,
+export const COMPONENTS: readonly Component[] = ["gateway", "dashboard", "daemon", "infoserver", "tether"];
+
+// Components on a grouped declaration. The rest still carry a flat schema, until they port.
+export const COMPONENT_CONFIGS: Partial<Record<Component, AnyConfig>> = {
+  gateway: gatewayConfig,
+};
+
+export const ENV_SCHEMAS: Partial<Record<Component, z.ZodObject<any>>> = {
   dashboard: dashboardEnvSchema,
   daemon: daemonEnvSchema,
   infoserver: infoserverEnvSchema,
@@ -29,8 +36,16 @@ export const DERIVED_ENV_KEYS: Partial<Record<Component, readonly string[]>> = {
   dashboard: ["HTTP_OVERRIDE_ORIGIN"],
 };
 
-/** Listen ports assumed when PORT is not configured, taken from the env schemas. */
-export const GATEWAY_DEFAULT_PORT = String(gatewayEnvSchema.shape.PORT!.parse(undefined));
+function declaredDefault(config: AnyConfig, envKey: string): unknown {
+  const entry = entryFor(config, envKey);
+  if (!entry) {
+    throw new Error(`${envKey} is not declared`);
+  }
+  return entry.schema.parse(undefined);
+}
+
+/** Listen ports assumed when PORT is not configured, taken from the declarations. */
+export const GATEWAY_DEFAULT_PORT = String(declaredDefault(gatewayConfig, "PORT"));
 export const INFOSERVER_DEFAULT_PORT = String(infoserverEnvSchema.shape.PORT.parse(undefined));
 export const TETHER_DEFAULT_PORT = String(tetherEnvSchema.shape.PORT.parse(undefined));
 

@@ -8,8 +8,8 @@
 import { COMMAND_FALLBACK_BIN_DIRS, type Host, type RunResult } from "./host.ts";
 import type { Manifest } from "./manifest.ts";
 import { unitName } from "./systemd.ts";
-import { type Component, ENV_DIR, SECRETS_DIR, ENV_SCHEMAS, BIN_DIR, UNIT_DIR } from "./component-meta.ts";
-import { analyzeEnvSchema, categorizeFields } from "./env-prompt.ts";
+import { type Component, ENV_DIR, SECRETS_DIR, BIN_DIR, UNIT_DIR } from "./component-meta.ts";
+import { componentFields, categorizeFields } from "./env-prompt.ts";
 
 export type RemoteState = {
   platform: string;
@@ -52,8 +52,7 @@ export async function collectRemoteState(
     filesToCheck.push(envPath);
     filesToRead.push(envPath);
 
-    const schema = ENV_SCHEMAS[comp];
-    const fields = analyzeEnvSchema(schema);
+    const fields = componentFields(comp);
     const { secretFields } = categorizeFields(fields);
     for (const field of secretFields) {
       filesToRead.push(`${SECRETS_DIR}/${field.key}`);

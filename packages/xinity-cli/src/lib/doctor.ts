@@ -2,10 +2,10 @@ import { green, yellow, red, dim } from "picocolors";
 import { readManifest, type ComponentEntry } from "./manifest.ts";
 import { commandExistsOn, isUnitActiveOn, readSecrets, type Host } from "./host.ts";
 import { isOllamaRunning } from "./ollama-setup.ts";
-import { analyzeEnvSchema, categorizeFields, type EnvField } from "./env-prompt.ts";
+import { componentFields, categorizeFields, type EnvField } from "./env-prompt.ts";
 import { parseEnvString } from "./env-file.ts";
 import { unitName } from "./systemd.ts";
-import { type Component, ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, UNIT_DIR, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT, DEFAULT_OLLAMA_URL } from "./component-meta.ts";
+import { type Component, ENV_DIR, SECRETS_DIR, UNIT_DIR, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT, DEFAULT_OLLAMA_URL } from "./component-meta.ts";
 import { collectRemoteState, createCachedHost } from "./remote-probe.ts";
 import {
   type CheckResult, type CheckStatus,
@@ -215,8 +215,7 @@ async function checkConfiguration(
   checks.push({ label: "Env file", status: "pass", message: envPath });
 
   // Check required config keys
-  const schema = ENV_SCHEMAS[component];
-  const fields = analyzeEnvSchema(schema);
+  const fields = componentFields(component);
   const { configFields, secretFields } = categorizeFields(fields);
 
   checks.push(requiredFieldsPresenceCheck("Config keys", "All required config keys set", configFields, config));
