@@ -34,6 +34,8 @@ function parseUserPass(value: string): MetricsCredential | null {
  * Kept a string (not transformed) so the CLI's schema introspection still works.
  * `required: true` rejects unset/empty for endpoints that must never be anonymous.
  */
+export function metricsAuthSchema(opts: { required: true }): z.ZodString;
+export function metricsAuthSchema(opts?: { required?: false }): z.ZodOptional<z.ZodString>;
 export function metricsAuthSchema(opts: { required?: boolean } = {}) {
   const validate = (value: string | undefined): boolean => {
     try {

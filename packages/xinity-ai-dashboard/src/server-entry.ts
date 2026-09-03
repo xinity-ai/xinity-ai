@@ -7,7 +7,20 @@
  * scheduler and the shutdown handlers from its module body, so an idle process would run
  * none of them. One request to ourselves forces that initialisation.
  */
-import { serveOptions, tlsOptions } from "../build/index.js";
+import { config } from "./lib/server/config";
+
+// The adapter reads these four from process.env before any of our code runs, so a value that
+// arrived from a config file reaches it only by being placed here. Assigned one at a time on
+// purpose: a spread would put DB_CONNECTION_URL, BETTER_AUTH_SECRET, LICENSE_KEY and the S3
+// credentials somewhere every child process and crash dump can read them, for no gain.
+process.env.HTTP_PORT = String(config.server.port);
+process.env.HTTP_OVERRIDE_ORIGIN = config.server.origin;
+process.env.HTTP_XFF_DEPTH = String(config.proxy.xffDepth);
+if (config.proxy.header) {
+  process.env.HTTP_IP_HEADER = config.proxy.header;
+}
+
+const { serveOptions, tlsOptions } = await import("../build/index.js");
 
 /** A real route, since this app logs 404s at error level and a warm-up must not look like a fault. */
 const WARMUP_PATH = "/login/";
