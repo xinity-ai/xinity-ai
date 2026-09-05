@@ -14,8 +14,6 @@ export type ProjectedGroup = {
 function projectedMeta(entry: ConfigEntry, group: ProjectedGroup | undefined) {
   const meta = readLeafMeta(entry.schema);
   return {
-    // .meta() merges down the wrapper chain, so the file form has to be cleared rather than omitted.
-    fileSchema: undefined,
     ...(entry.description ? { description: entry.description } : {}),
     ...(entry.isSecret ? { secret: true } : {}),
     ...(entry.isExpert ? { expert: true } : {}),

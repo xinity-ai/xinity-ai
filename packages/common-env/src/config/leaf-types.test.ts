@@ -1,24 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { configBool, configInt, configList, configNumber, fileFormOf, readLeafMeta } from "./leaf-types";
+import { configBool, configInt, configList, configNumber, readLeafMeta } from "./leaf-types";
 
-const asJsonSchema = (schema: z.ZodType) =>
-  z.toJSONSchema(schema, { io: "input" }) as Record<string, unknown>;
-
-test("every dual leaf reaches the same value from either form", () => {
-  expect(configBool().parse(true)).toBe(true);
+test("each leaf parses the string form an environment supplies", () => {
   expect(configBool().parse("true")).toBe(true);
-  expect(configInt().parse(4010)).toBe(4010);
   expect(configInt().parse("4010")).toBe(4010);
   expect(configInt().parse("-5")).toBe(-5);
   expect(configInt().parse(" 4010 ")).toBe(4010);
-  expect(configNumber().parse(0.7)).toBe(0.7);
   expect(configNumber().parse("0.7")).toBe(0.7);
-  expect(configList(z.string()).parse(["a", "b"])).toEqual(["a", "b"]);
   expect(configList(z.string()).parse(" a , , b ")).toEqual(["a", "b"]);
 });
 
-describe("the string branch is strict", () => {
+describe("parsing is strict", () => {
   test("rejects what z.coerce would silently turn into a number", () => {
     for (const input of [null, "", true]) {
       expect(configInt().safeParse(input).success).toBe(false);
@@ -34,48 +27,29 @@ describe("the string branch is strict", () => {
   });
 });
 
-test("constraints on the base reach both branches", () => {
+test("constraints on the base reach the parsed number", () => {
   const port = configInt(z.int().min(1).max(255));
   expect(port.parse("255")).toBe(255);
-  expect(port.safeParse(256).success).toBe(false);
   expect(port.safeParse("256").success).toBe(false);
   expect(port.safeParse("0").success).toBe(false);
 });
 
-test("a list of structured entries parses from a sequence or from pairs", () => {
+test("a list of structured entries parses from delimited pairs", () => {
   const credential = z.object({ user: z.string(), password: z.string() });
-  const fromPair = z
-    .string()
-    .transform((raw) => {
-      const [user = "", ...rest] = raw.split(":");
-      return { user, password: rest.join(":") };
-    })
-    .pipe(credential);
-  const auth = configList(credential, fromPair);
+  const auth = configList(
+    z
+      .string()
+      .transform((raw) => {
+        const [user = "", ...rest] = raw.split(":");
+        return { user, password: rest.join(":") };
+      })
+      .pipe(credential),
+  );
 
-  expect(auth.parse([{ user: "admin", password: "hunter2" }]))
-    .toEqual([{ user: "admin", password: "hunter2" }]);
   expect(auth.parse("admin:hunter2,prom:a:b")).toEqual([
     { user: "admin", password: "hunter2" },
     { user: "prom", password: "a:b" },
   ]);
-});
-
-describe("fileFormOf", () => {
-  test("a dual leaf yields its native branch, not the union over both", () => {
-    const leaf = configInt(z.int().max(255));
-    expect(asJsonSchema(leaf).anyOf).toBeDefined();
-    expect(asJsonSchema(fileFormOf(leaf))).toMatchObject({ type: "integer", maximum: 255 });
-  });
-
-  test("a plain leaf is its own, so refinements chained on later survive", () => {
-    expect(asJsonSchema(fileFormOf(z.string().max(10)))).toMatchObject({ maxLength: 10 });
-  });
-
-  test("resolves through wrappers", () => {
-    expect(asJsonSchema(fileFormOf(configBool().optional().default(true))))
-      .toMatchObject({ type: "boolean" });
-  });
 });
 
 test("readLeafMeta merges markers through wrappers, outer winning", () => {

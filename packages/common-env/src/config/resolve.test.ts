@@ -6,7 +6,6 @@ import { z } from "zod";
 import { configInt } from "./leaf-types";
 import { defineGroup, env } from "./group";
 import { defineConfig } from "./build";
-import { loadConfigFile } from "./load-file";
 import { resolveConfig } from "./resolve";
 
 type ObjectStorage = { endpoint: string; accessKeyId: string; bucket: string };
@@ -71,25 +70,6 @@ describe("optional groups", () => {
 });
 
 describe("precedence", () => {
-  const file = {
-    server: { host: "0.0.0.0", port: 8080 },
-    s3: { endpoint: "http://from-file:8333", accessKeyId: "FILE", bucket: "from-file" },
-    origin: "https://file.example",
-  };
-
-  test("env beats the file for one leaf without disturbing the rest of its group", () => {
-    const { value } = resolveConfig(config, { env: { S3_BUCKET: "from-env" }, file });
-    expect(value.s3).toEqual({
-      endpoint: "http://from-file:8333",
-      accessKeyId: "FILE",
-      bucket: "from-env",
-    });
-  });
-
-  test("the file beats the schema default", () => {
-    expect(resolveConfig(config, { file }).value.server).toEqual({ host: "0.0.0.0", port: 8080 });
-  });
-
   test("a direct env var beats KEY_FILE", () => {
     const dir = scratch();
     const path = join(dir, "origin");
@@ -103,10 +83,6 @@ describe("precedence", () => {
       .toBe("https://from-file.example");
   });
 
-  test("an explicit null in a file counts as absent", () => {
-    const { value } = resolveConfig(config, { env: ORIGIN, file: { server: { host: null } } });
-    expect(value.server.host).toBe("localhost");
-  });
 });
 
 describe("KEY_FILE is the only indirection", () => {
@@ -160,24 +136,16 @@ test("every problem is reported at once, against the env key the operator set", 
 });
 
 test("provenance says where each value came from", () => {
-  const { provenance } = resolveConfig(config, { env: ORIGIN, file: { server: { host: "0.0.0.0" } } });
+  const path = join(scratch(), "s3-key");
+  writeFileSync(path, "AKIA-FROM-FILE\n");
+
+  const { provenance } = resolveConfig(config, {
+    env: { ...ORIGIN, ...S3_ON, S3_ACCESS_KEY_ID: "", S3_ACCESS_KEY_ID_FILE: path },
+  });
   const at = (pointer: string) => provenance.find((entry) => entry.pointer === pointer)!;
 
   expect(at("origin").source).toBe("env");
-  expect(at("server.host").source).toBe("file");
+  expect(at("s3.accessKeyId").source).toBe("env-file");
   expect(at("server.port").source).toBe("default");
   expect(at("s3.accessKeyId").isSecret).toBe(true);
-});
-
-test("a YAML file on disk resolves the same as an inline object", () => {
-  const dir = scratch();
-  const path = join(dir, "gateway.yaml");
-  writeFileSync(
-    path,
-    ["server:", "  host: 0.0.0.0", "  port: 8080", "origin: https://yaml.example", ""].join("\n"),
-  );
-
-  const { value } = resolveConfig(config, { file: loadConfigFile(path), fileOrigin: path });
-  expect(value.server).toEqual({ host: "0.0.0.0", port: 8080 });
-  expect(value.origin).toBe("https://yaml.example");
 });

@@ -4,7 +4,7 @@ import { checkGroupActivation, isGroupActive, type ActivationWarning } from "./a
 import { groupAt, type ConfigDef, type AnyConfig } from "./build";
 import { isGroup, type ConfigEntry } from "./group";
 
-export type ValueSource = "env" | "env-file" | "file" | "default";
+export type ValueSource = "env" | "env-file" | "default";
 
 export type Provenance = {
   readonly pointer: string;
@@ -16,8 +16,6 @@ export type Provenance = {
 
 export type ResolveOptions = {
   readonly env?: Readonly<Record<string, string | undefined>>;
-  readonly file?: unknown;
-  readonly fileOrigin?: string;
 };
 
 export type Resolved<T> = {
@@ -32,17 +30,6 @@ type Located = {
   readonly origin?: string;
 };
 
-function readPath(source: unknown, path: readonly string[]): unknown {
-  let cursor: unknown = source;
-  for (const segment of path) {
-    if (typeof cursor !== "object" || cursor === null) {
-      return undefined;
-    }
-    cursor = (cursor as Record<string, unknown>)[segment];
-  }
-  return cursor;
-}
-
 function locate(entry: ConfigEntry, opts: ResolveOptions): Located | undefined {
   const env = opts.env ?? {};
 
@@ -56,15 +43,9 @@ function locate(entry: ConfigEntry, opts: ResolveOptions): Located | undefined {
     return { source: "env-file", raw: indirect, origin: indirect };
   }
 
-  const fromFile = readPath(opts.file, entry.path);
-  if (fromFile !== undefined && fromFile !== null) {
-    return { source: "file", raw: fromFile, origin: opts.fileOrigin };
-  }
-
   return undefined;
 }
 
-// KEY_FILE is the only indirection. A config file carries values, never references to them.
 function materialize(entry: ConfigEntry, located: Located): unknown {
   return located.source === "env-file"
     ? readSecretFile(String(located.raw), entry.envKey)

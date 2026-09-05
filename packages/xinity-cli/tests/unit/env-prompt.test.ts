@@ -1,8 +1,8 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { z } from "zod";
-import { secret } from "common-env";
+import { configBool, configInt, defineConfig, defineGroup, env, secret } from "common-env";
 import {
-  analyzeEnvSchema, categorizeFields, diffEnv, planSecretFileRemoval,
+  analyzeConfig, analyzeEnvSchema, categorizeFields, diffEnv, planSecretFileRemoval,
   type EnvBundle, type EnvChange,
 } from "../../src/lib/env-prompt.ts";
 import { readEnvFile, serializeEnvFile, readSecretFiles } from "../../src/lib/env-file.ts";
@@ -11,6 +11,28 @@ import { createTempDir, type TempDir } from "../helpers/temp-config.ts";
 import { FakeHost } from "../helpers/fake-host.ts";
 
 describe("env-prompt", () => {
+  // The editor picks its input widget from these, and every leaf parses from a string, so the
+  // type has to come from what the leaf produces rather than what it accepts.
+  test("analyzeConfig reads a field's type through the string parsing", () => {
+    type Cfg = { server: { port: number; debug: boolean; level: "info" | "warn" } };
+    const declared = defineConfig<Cfg>({
+      server: defineGroup<Cfg["server"]>({
+        id: "server",
+        title: "Server",
+        fields: {
+          port: env("PORT", configInt().default(80)),
+          debug: env("DEBUG", configBool().default(false)),
+          level: env("LEVEL", z.enum(["info", "warn"]).default("info")),
+        },
+      }),
+    });
+
+    const byKey = Object.fromEntries(analyzeConfig(declared).map((f) => [f.key, f]));
+    expect(byKey.PORT).toMatchObject({ isNumber: true, isBoolean: false });
+    expect(byKey.DEBUG).toMatchObject({ isBoolean: true, isNumber: false });
+    expect(byKey.LEVEL!.enumValues).toEqual(["info", "warn"]);
+  });
+
   describe("analyzeEnvSchema", () => {
     test("detects required string fields", () => {
       const schema = z.object({

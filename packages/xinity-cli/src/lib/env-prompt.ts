@@ -3,7 +3,7 @@ import { select, confirm, text, password, log, isCancel } from "./clack.ts";
 import { bold, cyan, dim, yellow, green } from "picocolors";
 import { promptOrExit, cancelAndExit } from "./output.ts";
 import { parseEnvString } from "./env-file.ts";
-import { fileFormOf, readLeafMeta, type AnyConfig } from "common-env";
+import { readLeafMeta, type AnyConfig } from "common-env";
 import { type Component, COMPONENTS, COMPONENT_CONFIGS, ENV_DIR, SECRETS_DIR } from "./component-meta.ts";
 import { readSecrets, type Host } from "./host.ts";
 import { readManifest } from "./manifest.ts";
@@ -115,7 +115,7 @@ export function analyzeConfig(config: AnyConfig): EnvField[] {
   }
 
   const fields = config.entries.map((entry): EnvField => {
-    const prop = z.toJSONSchema(fileFormOf(entry.schema), { io: "input" }) as JsonSchemaProp;
+    const prop = z.toJSONSchema(entry.schema, { io: "output" }) as JsonSchemaProp;
     const withoutValue = entry.schema.safeParse(undefined);
     const resolvedType = resolveJsonSchemaType(prop);
     const mounted = config.groups.find((candidate) => candidate.group.id === entry.groupId);
