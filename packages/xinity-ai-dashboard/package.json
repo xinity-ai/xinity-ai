@@ -61,7 +61,6 @@
 		"mjml": "^5.2.1",
 		"nodemailer": "^9.0.5",
 		"pino": "catalog:",
-		"prom-client": "^15.1.3",
 		"uqr": "^0.1.3"
 	}
 }
