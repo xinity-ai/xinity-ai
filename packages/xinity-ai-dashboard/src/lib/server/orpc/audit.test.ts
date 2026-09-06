@@ -1,22 +1,26 @@
-import { describe, test, expect, beforeEach, mock } from "bun:test";
+import { describe, test, expect, beforeEach, afterAll, mock } from "bun:test";
 import type { AuditContext, AuditTag } from "./audit";
 
 const insertValues = mock((row: unknown) => ({
   returning: () => Promise.resolve([{ id: "audit-event-id", createdAt: new Date(), ...(row as object) }]),
 }));
-mock.module("$lib/server/db", () => ({
-  getDB: () => ({ insert: () => ({ values: insertValues }) }),
-}));
 
-mock.module("$lib/server/logging", () => ({
-  rootLogger: { child: () => ({ info: () => {}, warn: () => {}, error: () => {} }) },
-}));
-
+/** Importing the real module boots Better Auth against a live database. */
 mock.module("$lib/server/auth-server", () => ({
   auth: { api: {} },
 }));
 
-// serverEnv and isInstanceAdmin are mocked for all suites in tests/preload.ts.
+// serverEnv, isInstanceAdmin, logging and db are mocked for all suites in tests/preload.ts.
+
+const { dbHandle } = require("$lib/server/db") as { dbHandle: { getDB: () => unknown; reset: () => void } };
+
+beforeEach(() => {
+  dbHandle.getDB = () => ({ insert: () => ({ values: insertValues }) });
+});
+
+afterAll(() => {
+  dbHandle.reset();
+});
 
 const { runWithAudit, emitAuthAuditEvent } = await import("./audit");
 const { rootOs, auditMiddleware } = await import("./root");

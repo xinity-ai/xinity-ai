@@ -33,3 +33,28 @@ mock.module("$lib/server/license", () => ({
   getLicenseSummary: () => ({ tier: "free", licensee: null, features: {} }),
   licensedFeatures,
 }));
+
+mock.module("$lib/server/logging", () => ({
+  rootLogger: { child: () => ({ info: () => {}, warn: () => {}, error: () => {} }) },
+}));
+
+/**
+ * Importing the real module opens a connection pool, so the double lives here.
+ * Suites that need rows assign `dbHandle.getDB` and call `dbHandle.reset` when
+ * done, which keeps one file's stub from standing in for another's.
+ */
+const rejectDBUse = () => {
+  throw new Error("no database under the test preload: assign dbHandle.getDB in the suite that needs one");
+};
+
+const dbHandle: { getDB: () => unknown; reset: () => void } = {
+  getDB: rejectDBUse,
+  reset: () => {
+    dbHandle.getDB = rejectDBUse;
+  },
+};
+
+mock.module("$lib/server/db", () => ({
+  getDB: () => dbHandle.getDB(),
+  dbHandle,
+}));
