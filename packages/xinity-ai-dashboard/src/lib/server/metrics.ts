@@ -1,6 +1,6 @@
 import {
   createBuildInfo,
-  createCounter,
+  createHttpMetrics,
   createMetricsAuth,
   processMetrics,
   serializeMetrics,
@@ -14,13 +14,10 @@ export function isMetricsAuthorized(request: Request): boolean {
   return metricsAuth.isAuthorized(request.headers.get("authorization"));
 }
 
-export const httpRequestCountMetric = createCounter(
-  "http_requests_total",
-  "Total number of HTTP requests",
-);
+export const httpMetrics = createHttpMetrics();
 
 const buildInfo = createBuildInfo("dashboard_build_info", { version });
 
 export function renderMetrics(): string {
-  return serializeMetrics([buildInfo, httpRequestCountMetric, ...processMetrics()]);
+  return serializeMetrics([buildInfo, ...httpMetrics.metrics, ...processMetrics()]);
 }

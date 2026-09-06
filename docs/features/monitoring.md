@@ -22,14 +22,29 @@ Every service above exports these alongside its own. They carry no service label
 
 Event loop lag is a cumulative histogram, so pick the window at query time: `histogram_quantile(0.99, rate(process_event_loop_lag_seconds_bucket[5m]))`. Being cumulative, it aggregates across instances and is unaffected by how many Prometheus servers scrape the target.
 
+### Shared HTTP metrics
+
+Every service serves these under the same names, so one query shape works across the fleet. Scope by `job`, or a query sums all four services together.
+
+| Metric | Type | Labels | Description |
+|---|---|---|---|
+| `http_requests_total` | counter | `method`, `route`, `status` | Requests by method, matched route, and response status |
+| `http_request_duration_seconds` | histogram | `method`, `route` | Request duration in seconds |
+| `http_requests_in_flight` | gauge | `method`, `route` | Requests currently being served |
+
+`route` is always a bounded pattern, never a raw path: the dashboard reports SvelteKit's matched `route.id`, the daemon reports `/proxy/*` for proxied inference, and anything unmatched reports `<unmatched>`. A path matching no route can therefore never mint a new series.
+
+Error rate comes from `status`, so there is no separate errors counter:
+
+```
+sum(rate(http_requests_total{job="xinity-gateway",status=~"[45].."}[5m]))
+  / sum(rate(http_requests_total{job="xinity-gateway"}[5m]))
+```
+
 ### Gateway metrics
 
 | Metric | Type | Labels | Description |
 |---|---|---|---|
-| `gateway_requests_total` | counter | `endpoint`, `status` | Total requests by endpoint and HTTP status |
-| `gateway_request_errors_total` | counter | `endpoint` | Requests with status >= 400 |
-| `gateway_active_requests` | gauge | `endpoint` | In-flight requests |
-| `gateway_request_duration_milliseconds` | histogram | `endpoint` | Request latency |
 | `gateway_time_to_first_token_milliseconds` | histogram | `deployment` | Time to first token (streaming) |
 | `gateway_model_requests_total` | counter | `model`, `status`, `org_id` | Requests per model (success/failure) |
 | `gateway_client_disconnects_total` | counter | `endpoint` | Client disconnections during streaming |
@@ -53,9 +68,7 @@ Load-balancer decision metrics (see [Load Balancing](gateway.md#load-balancing))
 
 ### Dashboard metrics
 
-| Metric | Type | Labels | Description |
-|---|---|---|---|
-| `http_requests_total` | counter | `method`, `route` | Total HTTP requests |
+Only the shared runtime and HTTP metrics above.
 
 ### Tether metrics
 

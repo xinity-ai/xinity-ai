@@ -3,6 +3,7 @@ import {
   createCounter,
   createGauge,
   createHistogram,
+  createHttpMetrics,
   createMetricsAuth,
   processMetrics,
   serializeMetrics,
@@ -87,7 +88,10 @@ desiredStatePushesTotal.inc({}, 0);
 
 const buildInfo = createBuildInfo("tether_build_info", { version });
 
+export const httpMetrics = createHttpMetrics();
+
 const allMetrics = [
+  ...httpMetrics.metrics,
   buildInfo,
   connectedNodes,
   sseConnectionsTotal,

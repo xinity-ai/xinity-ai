@@ -2,6 +2,7 @@ import {
   createBuildInfo,
   createCounter,
   createGauge,
+  createHttpMetrics,
   createMetricsAuth,
   processMetrics,
   serializeMetrics,
@@ -14,6 +15,8 @@ import { getMetricsSnapshot, type GpuSnapshot } from "../metrics-sampler";
 import { getNodeId, getMachineName } from "../statekeeper";
 
 const metricsAuth = createMetricsAuth(env.METRICS_AUTH);
+
+export const httpMetrics = createHttpMetrics();
 
 /** Round to a fixed precision and drop trailing zeros. */
 function round(value: number, dp: number): number {
@@ -39,7 +42,7 @@ function gpuGauge(
 }
 
 function metricsResponse(metrics: Metric[]): Response {
-  return new Response(serializeMetrics([...metrics, ...processMetrics()]), {
+  return new Response(serializeMetrics([...metrics, ...httpMetrics.metrics, ...processMetrics()]), {
     headers: { "Content-Type": "text/plain; version=0.0.4; charset=utf-8" },
   });
 }

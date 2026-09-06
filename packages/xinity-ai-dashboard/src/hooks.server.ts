@@ -4,7 +4,7 @@ import type { Handle, HandleServerError } from "@sveltejs/kit";
 import { redirect } from "@sveltejs/kit";
 import { sequence } from "@sveltejs/kit/hooks";
 import { rootLogger } from "$lib/server/logging";
-import { httpRequestCountMetric } from "$lib/server/metrics";
+import { httpMetrics } from "$lib/server/metrics";
 import { auth } from "$lib/server/auth-server";
 import { svelteKitHandler } from "better-auth/svelte-kit";
 import { building } from "$app/environment";
@@ -90,14 +90,10 @@ const handleAuth: Handle = ({ event, resolve }) => {
   return svelteKitHandler({ event, resolve, auth, building });
 };
 
-const UUID_IN_PATH = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g;
-
+/** `route.id`, not `url.pathname`: an unbounded label mints a series per stray URL. */
 const recordRequestMetric: Handle = ({ event, resolve }) => {
-  httpRequestCountMetric.inc({
-    method: event.request.method,
-    route: event.url.pathname.replace(UUID_IN_PATH, "[uuid]"),
-  });
-  return resolve(event);
+  const labels = { method: event.request.method, route: event.route.id ?? "<unmatched>" };
+  return httpMetrics.track(labels, () => resolve(event), (res) => res.status);
 };
 
 /**

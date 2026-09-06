@@ -22,7 +22,7 @@
       "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
       "fieldConfig": { "defaults": { "unit": "reqps", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] } }, "overrides": [] },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "textMode": "auto", "justifyMode": "auto" },
-      "targets": [ { "refId": "A", "editorMode": "code", "expr": "sum(rate(gateway_requests_total[$__rate_interval]))", "range": true } ]
+      "targets": [ { "refId": "A", "editorMode": "code", "expr": "sum(rate(http_requests_total{job=\"xinity-gateway\"}[$__rate_interval]))", "range": true } ]
     },
     {
       "type": "stat", "id": 3, "title": "Gateway error rate",
@@ -30,7 +30,7 @@
       "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
       "fieldConfig": { "defaults": { "unit": "percent", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 } ] } }, "overrides": [] },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "textMode": "auto", "justifyMode": "auto" },
-      "targets": [ { "refId": "A", "editorMode": "code", "expr": "100 * sum(rate(gateway_request_errors_total[$__rate_interval])) / clamp_min(sum(rate(gateway_requests_total[$__rate_interval])), 1)", "range": true } ]
+      "targets": [ { "refId": "A", "editorMode": "code", "expr": "100 * sum(rate(http_requests_total{job=\"xinity-gateway\",status=~\"[45]..\"}[$__rate_interval])) / clamp_min(sum(rate(http_requests_total{job=\"xinity-gateway\"}[$__rate_interval])), 1)", "range": true } ]
     },
     {
       "type": "stat", "id": 4, "title": "Active requests",
@@ -38,7 +38,7 @@
       "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
       "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] } }, "overrides": [] },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area", "textMode": "auto", "justifyMode": "auto" },
-      "targets": [ { "refId": "A", "editorMode": "code", "expr": "sum(gateway_active_requests)", "range": true } ]
+      "targets": [ { "refId": "A", "editorMode": "code", "expr": "sum(http_requests_in_flight{job=\"xinity-gateway\"})", "range": true } ]
     },
     {
       "type": "stat", "id": 5, "title": "Daemons up",
@@ -96,15 +96,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
       "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 0, "showPoints": "never", "lineInterpolation": "smooth" } }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "targets": [ { "refId": "A", "editorMode": "code", "expr": "nodejs_eventloop_lag_p99_seconds{job=\"xinity-dashboard\"}", "legendFormat": "p99 lag", "range": true } ]
-    },
-    {
-      "type": "timeseries", "id": 15, "title": "Node.js heap used",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
-      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "fillOpacity": 10, "showPoints": "never", "lineInterpolation": "smooth" } }, "overrides": [] },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "targets": [ { "refId": "A", "editorMode": "code", "expr": "nodejs_heap_size_used_bytes{job=\"xinity-dashboard\"}", "legendFormat": "heap used", "range": true } ]
+      "targets": [ { "refId": "A", "editorMode": "code", "expr": "histogram_quantile(0.99, sum by (le) (rate(process_event_loop_lag_seconds_bucket{job=\"xinity-dashboard\"}[$__rate_interval])))", "legendFormat": "p99 lag", "range": true } ]
     },
     { "type": "row", "id": 16, "title": "Control plane (tether)", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 } },
     {
