@@ -1,5 +1,6 @@
-import { describe, test, expect, beforeEach, mock } from "bun:test";
+import { describe, test, expect, beforeEach, afterAll, mock, spyOn } from "bun:test";
 import crypto from "node:crypto";
+import * as deploymentId from "$lib/server/deployment-id";
 
 // Generate a dedicated test key pair independent of the production key.
 const testKeyPair = crypto.generateKeyPairSync("ed25519");
@@ -7,23 +8,22 @@ const testPublicKeyBase64 = testKeyPair.publicKey
   .export({ type: "spki", format: "der" })
   .toString("base64");
 
-// Mock the public key module so parseLicense verifies against our test key.
+/**
+ * The only export is a string constant, so there is nothing to spy on. Contained
+ * because license.ts is the sole importer and this suite is its sole loader.
+ */
 mock.module("./public-key", () => ({
   PUBLIC_KEY_BASE64: testPublicKeyBase64,
 }));
 
 // serverEnv is mocked for all suites in tests/preload.ts. Each block sets what it needs.
 
-// Mock logger to suppress output during tests.
-mock.module("$lib/server/logging", () => ({
-  rootLogger: { child: () => ({ info: () => {}, warn: () => {}, error: () => {} }) },
-}));
-
-// Mock the deployment-id module so we can control the local instance ID.
 const deploymentIdMock = { id: null as string | null };
-mock.module("$lib/server/deployment-id", () => ({
-  getDeploymentId: () => deploymentIdMock.id,
-}));
+const getDeploymentId = spyOn(deploymentId, "getDeploymentId").mockImplementation(() => deploymentIdMock.id);
+
+afterAll(() => {
+  getDeploymentId.mockRestore();
+});
 
 // Now import the module under test (after mocks are in place).
 const { parseLicense, resetLicenseCache, isLicenseEffective, hasFeature, maxVramGb, tierName, licenseeName, isExpired, isInGracePeriod, hasOriginMismatch, hasInstanceMismatch, getLicenseSummary } = await import("./license");

@@ -1,8 +1,4 @@
-import { describe, test, expect, beforeEach, mock } from "bun:test";
-
-mock.module("$lib/server/logging", () => ({
-  rootLogger: { child: () => ({ info: () => {}, warn: () => {}, error: () => {} }) },
-}));
+import { describe, test, expect, beforeEach } from "bun:test";
 
 const { onShutdown, runShutdownTasks, resetShutdownTasks } = await import("./shutdown");
 

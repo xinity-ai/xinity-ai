@@ -1,15 +1,17 @@
-import { describe, test, expect, beforeEach, mock } from "bun:test";
+import { describe, test, expect, beforeEach, afterAll, spyOn } from "bun:test";
 import type { AuditEvent } from "common-db";
-import type { AuditDelivery } from "./audit-loki";
+import * as auditLoki from "./audit-loki";
 
-mock.module("$lib/server/logging", () => ({
-  rootLogger: { child: () => ({ info: () => {}, warn: () => {}, error: () => {} }) },
-}));
+/**
+ * A spy rather than `mock.module`, which has no counterpart to undo it: the
+ * override would outlive this file and hand `audit-loki.test.ts` the stub in
+ * place of the module it exists to test.
+ */
+const deliverAuditEvents = spyOn(auditLoki, "deliverAuditEvents");
 
-const deliverAuditEvents = mock((_events: AuditEvent[], _target: unknown): Promise<AuditDelivery> =>
-  Promise.resolve({ delivered: true }),
-);
-mock.module("./audit-loki", () => ({ deliverAuditEvents }));
+afterAll(() => {
+  deliverAuditEvents.mockRestore();
+});
 
 const { lokiTargetFromEnv, forwardAuditEvent, flushAuditEvents } = await import("./audit-forwarder");
 

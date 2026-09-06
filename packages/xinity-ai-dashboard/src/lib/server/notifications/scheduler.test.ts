@@ -1,9 +1,4 @@
-import { describe, test, expect, mock } from "bun:test";
-
-mock.module("$lib/server/logging", () => ({
-  rootLogger: { child: () => ({ info: () => {}, warn: () => {}, error: () => {} }) },
-}));
-mock.module("$lib/server/db", () => ({ getDB: () => { throw new Error("db unused in these tests"); } }));
+import { describe, test, expect } from "bun:test";
 
 const { foldDeploymentPhaseRows } = await import("./scheduler");
 type Row = Parameters<typeof foldDeploymentPhaseRows>[0][number];

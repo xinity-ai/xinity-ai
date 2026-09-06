@@ -1,6 +1,12 @@
-import { describe, test, expect, mock } from "bun:test";
+import { describe, test, expect, afterEach, mock } from "bun:test";
 import type { AuditEvent } from "common-db";
 import { buildPushPayload, deliverAuditEvents } from "./audit-loki";
+
+const realFetch = globalThis.fetch;
+
+afterEach(() => {
+  globalThis.fetch = realFetch;
+});
 
 const event: AuditEvent = {
   id: "3f1d1c2e-0000-4000-8000-000000000001",
