@@ -8,6 +8,20 @@ For deployment-specific monitoring setup, see the [Docker deployment guide](../.
 
 Each of the gateway, dashboard, tether, and daemon exposes a `GET /metrics` endpoint in Prometheus text format, protected by HTTP Basic Auth via the `METRICS_AUTH` environment variable (format: `user:pass`, comma-separated for multiple credentials). On the gateway, tether, and daemon this is optional; when unset, the endpoint is open. On the dashboard, `METRICS_AUTH` is required.
 
+### Shared runtime metrics
+
+Every service above exports these alongside its own. They carry no service label, since Prometheus already attaches `job` and `instance` at scrape time.
+
+| Metric | Type | Labels | Description |
+|---|---|---|---|
+| `<service>_build_info` | gauge | `version`, `bun_version` | Running build. The value is always 1, so it joins onto other series by `instance`. The daemon's also carries `node_id` and `machine_name`. |
+| `process_start_time_seconds` | gauge | | Process start as a unix timestamp. Uptime is `time() - process_start_time_seconds`, and a change means a restart. |
+| `process_cpu_seconds_total` | counter | `mode` (`user`, `system`) | CPU time consumed. Use `rate()` for utilization. |
+| `process_resident_memory_bytes` | gauge | | Resident set size. |
+| `process_event_loop_lag_seconds` | histogram | | Event loop delay, sampled every 100ms. The clearest signal for a process that is up and idle but not responding. |
+
+Event loop lag is a cumulative histogram, so pick the window at query time: `histogram_quantile(0.99, rate(process_event_loop_lag_seconds_bucket[5m]))`. Being cumulative, it aggregates across instances and is unaffected by how many Prometheus servers scrape the target.
+
 ### Gateway metrics
 
 | Metric | Type | Labels | Description |
@@ -42,9 +56,6 @@ Load-balancer decision metrics (see [Load Balancing](gateway.md#load-balancing))
 | Metric | Type | Labels | Description |
 |---|---|---|---|
 | `http_requests_total` | counter | `method`, `route` | Total HTTP requests |
-| (Node.js defaults) | various | | Process CPU, memory, event loop lag, heap, GC |
-
-The dashboard uses `prom-client` and collects default Node.js/Bun runtime metrics automatically.
 
 ### Tether metrics
 
@@ -62,7 +73,7 @@ A daemon connection is meant to last as long as the node is up, so the connectio
 
 ### Daemon metrics
 
-All daemon metrics carry a `node_id` label, plus `machine_name` when the node has a display name set. GPU metrics additionally carry `gpu` (index) and `uuid`.
+All `daemon_*` metrics carry a `node_id` label, plus `machine_name` when the node has a display name set. GPU metrics additionally carry `gpu` (index) and `uuid`.
 
 | Metric | Type | Description |
 |---|---|---|

@@ -69,7 +69,7 @@ All server-only modules are in `src/lib/server/`:
 - `auth-server.ts`, Better Auth configuration
 - `email.ts`, nodemailer + MJML (Svelte component templates in `src/lib/components/mailTemplates/`)
 - `logging.ts`, Pino logger (browser logs POST to `/log`)
-- `metrics.ts`, Prometheus via prom-client (exposed at `/metrics`)
+- `metrics.ts`, Prometheus via `common-env` metric primitives (exposed at `/metrics`)
 - `serverenv.ts`, parses `env-schema.ts`'s Zod schema into the typed `serverEnv`
 
 ### Path Aliases

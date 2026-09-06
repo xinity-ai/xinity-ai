@@ -1,17 +1,12 @@
-/**
- * Prometheus metrics endpoint with optional basic auth.
- */
 import type { RequestHandler } from "./$types";
-import { metricRegister, isMetricsAuthorized } from "$lib/server/metrics";
+import { renderMetrics, isMetricsAuthorized } from "$lib/server/metrics";
 import { error } from "@sveltejs/kit";
 
-/** Serves metrics in Prometheus text format. */
-export const GET: RequestHandler = async ({ request }) => {
+export const GET: RequestHandler = ({ request }) => {
   if (!isMetricsAuthorized(request)) {
     error(401);
   }
-  const metrics = await metricRegister.metrics();
-  return new Response(metrics, {
-    headers: { "Content-Type": metricRegister.contentType },
+  return new Response(renderMetrics(), {
+    headers: { "Content-Type": "text/plain; version=0.0.4; charset=utf-8" },
   });
 };

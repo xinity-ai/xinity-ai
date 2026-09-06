@@ -1,4 +1,13 @@
-import { createCounter, createGauge, createHistogram, createMetricsAuth, serializeMetrics } from "common-env";
+import {
+  createBuildInfo,
+  createCounter,
+  createGauge,
+  createHistogram,
+  createMetricsAuth,
+  processMetrics,
+  serializeMetrics,
+} from "common-env";
+import { version } from "../../../package.json";
 import { env } from "./env";
 import { releaseCallbacks } from "./llm-forward/release-registry";
 import { isAbortError } from "./llm-forward/util";
@@ -117,7 +126,10 @@ export const lbRedisFallbackTotal = createCounter(
   "Total load-balancer Redis failures that fell back to random selection, by strategy",
 );
 
+const buildInfo = createBuildInfo("gateway_build_info", { version });
+
 const allMetrics = [
+  buildInfo,
   requestsTotal,
   requestErrorsTotal,
   activeRequests,
@@ -269,7 +281,7 @@ export function handleMetrics(req: Request): Response {
   const authErr = metricsAuth.unauthorized(req.headers.get("authorization"));
   if (authErr) return authErr;
 
-  return new Response(serializeMetrics(allMetrics), {
+  return new Response(serializeMetrics([...allMetrics, ...processMetrics()]), {
     headers: { "Content-Type": "text/plain; version=0.0.4; charset=utf-8" },
   });
 }

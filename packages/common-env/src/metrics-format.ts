@@ -7,10 +7,14 @@
 
 export type Labels = Record<string, string>;
 
+function escapeLabelValue(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
+}
+
 function labelKey(labels: Labels): string {
   return Object.entries(labels)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `${k}="${v}"`)
+    .map(([k, v]) => `${k}="${escapeLabelValue(v)}"`)
     .join(",");
 }
 
@@ -112,8 +116,9 @@ export function createHistogram(name: string, help: string, boundaries: number[]
           lines.push(`${name}_bucket{${prefix}le="${sorted[i]}"} ${cumulative}`);
         }
         lines.push(`${name}_bucket{${prefix}le="+Inf"} ${count}`);
-        lines.push(`${name}_sum{${lk}} ${sum}`);
-        lines.push(`${name}_count{${lk}} ${count}`);
+        const suffix = lk ? `{${lk}}` : "";
+        lines.push(`${name}_sum${suffix} ${sum}`);
+        lines.push(`${name}_count${suffix} ${count}`);
       }
       return lines.join("\n");
     },

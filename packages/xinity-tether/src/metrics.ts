@@ -1,4 +1,13 @@
-import { createCounter, createGauge, createHistogram, createMetricsAuth, serializeMetrics } from "common-env";
+import {
+  createBuildInfo,
+  createCounter,
+  createGauge,
+  createHistogram,
+  createMetricsAuth,
+  processMetrics,
+  serializeMetrics,
+} from "common-env";
+import { version } from "../../../package.json";
 import { env } from "./env";
 
 const metricsAuth = createMetricsAuth(env.METRICS_AUTH);
@@ -76,7 +85,10 @@ connectedNodes.set({}, 0);
 sseConnectionsTotal.inc({}, 0);
 desiredStatePushesTotal.inc({}, 0);
 
+const buildInfo = createBuildInfo("tether_build_info", { version });
+
 const allMetrics = [
+  buildInfo,
   connectedNodes,
   sseConnectionsTotal,
   connectionDuration,
@@ -94,7 +106,7 @@ export function handleMetrics(req: Request): Response {
     return authErr;
   }
 
-  return new Response(serializeMetrics(allMetrics), {
+  return new Response(serializeMetrics([...allMetrics, ...processMetrics()]), {
     headers: { "Content-Type": "text/plain; version=0.0.4; charset=utf-8" },
   });
 }
