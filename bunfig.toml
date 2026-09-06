@@ -7,3 +7,6 @@
 minimumReleaseAge = 86400
 # Packages allowed to bypass the age gate (none for now).
 minimumReleaseAgeExcludes = []
+
+[test]
+preload = ["./tests/system/preload.ts"]
