@@ -119,8 +119,14 @@ export async function stopGateway(): Promise<void> {
   }
   const exited = gatewayProcess.exited;
   gatewayProcess.kill();
-  const timeout = Bun.sleep(2000)
-  await Promise.race([exited.then(() => undefined), timeout]);
+  const timedOut = await Promise.race([
+    exited.then(() => false),
+    Bun.sleep(2000).then(() => true),
+  ]);
+  if (timedOut) {
+    gatewayProcess.kill("SIGKILL");
+    await exited;
+  }
   gatewayProcess = null;
   gatewayReady = null;
 }
