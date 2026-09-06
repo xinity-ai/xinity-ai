@@ -1,9 +1,7 @@
-// https://github.com/oven-sh/bun/issues/18214
-
+// postgres.js rather than Bun.SQL, whose pool opens `max` connections on the
+// first query instead of growing with load, so every service would claim its
+// ceiling at startup. Switch once https://github.com/oven-sh/bun/pull/30636 lands.
 import postgres from "postgres";
-// Until further notice we still need an additional pg driver, to allow LISTEN/NOTIFY to work.
-// As soon as this becomes available in the bun PG driver, we should switch to that instead
-// ISSUE: https://github.com/oven-sh/bun/issues/18214
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type { Logger } from "drizzle-orm/logger";
 import { sql } from "drizzle-orm";
