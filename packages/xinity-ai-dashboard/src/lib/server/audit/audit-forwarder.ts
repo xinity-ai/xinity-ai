@@ -1,7 +1,7 @@
-import { config } from "$lib/server/config";
 import { rootLogger } from "$lib/server/logging";
 import { hasFeature } from "$lib/server/license";
-import { deliverAuditEvents, type LokiTarget } from "./audit-loki";
+import { lokiSink } from "./audit-loki";
+import type { AuditSink } from "./audit-sink";
 import type { AuditEvent } from "common-db";
 
 const log = rootLogger.child({ name: "audit.forwarder" });
@@ -9,9 +9,9 @@ const log = rootLogger.child({ name: "audit.forwarder" });
 const BATCH_MAX_EVENTS = 100;
 const BATCH_MAX_DELAY_MS = 5_000;
 /**
- * Bounds memory while the upstream is unreachable. Overflow is a mirroring gap
- * rather than lost data: audit_event still holds every record, so a backlog
- * worker can replay the reported window once delivery tracking exists.
+ * Bounds memory while the sinks are unreachable. Overflow is a mirroring gap
+ * rather than lost data: audit_event still holds every record, so the reported
+ * window can be replayed.
  */
 const BATCH_MAX_PENDING = 10_000;
 
@@ -20,18 +20,38 @@ let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let unmirrored = 0;
 let unmirroredSince: Date | null = null;
 
-export function lokiTarget(): LokiTarget | null {
-  if (!config.audit || !hasFeature("audit-log")) {
-    return null;
+/** Every sink the instance is configured and licensed for. Empty means no mirroring. */
+export function resolveAuditSinks(): AuditSink[] {
+  if (!hasFeature("audit-log")) {
+    return [];
   }
-  return {
-    url: config.audit.url,
-    auth: config.audit.auth,
-    tenant: config.audit.tenant,
-  };
+  return [lokiSink()].filter(sink => sink !== null);
 }
 
-/** Sends everything buffered so far. Safe to call when the buffer is empty. */
+type SinkFailure = { sink: string; reason: string };
+
+async function deliverBatch(sink: AuditSink, events: AuditEvent[]): Promise<SinkFailure | null> {
+  try {
+    await sink.deliver(events);
+    return null;
+  } catch (err) {
+    return { sink: sink.name, reason: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+function reportMirrorGap(until: Date | undefined): void {
+  if (unmirrored === 0) {
+    return;
+  }
+  log.error(
+    { unmirrored, since: unmirroredSince, until },
+    "Audit events in this window never reached a sink and must be replayed from audit_event",
+  );
+  unmirrored = 0;
+  unmirroredSince = null;
+}
+
+/** Sends everything buffered so far to every sink. Safe to call when the buffer is empty. */
 export async function flushAuditEvents(): Promise<void> {
   if (flushTimer) {
     clearTimeout(flushTimer);
@@ -43,23 +63,17 @@ export async function flushAuditEvents(): Promise<void> {
   }
   pending = [];
 
-  const target = lokiTarget();
-  if (!target) {
+  const sinks = resolveAuditSinks();
+  if (sinks.length === 0) {
     return;
   }
 
-  const delivery = await deliverAuditEvents(batch, target);
-  if (!delivery.delivered) {
-    log.warn({ events: batch.length, reason: delivery.reason }, "Failed to forward audit events");
-    return;
+  const failures = (await Promise.all(sinks.map(sink => deliverBatch(sink, batch)))).filter(failure => failure !== null);
+  for (const failure of failures) {
+    log.warn({ events: batch.length, ...failure }, "Failed to forward audit events");
   }
-  if (unmirrored > 0) {
-    log.error(
-      { unmirrored, since: unmirroredSince, until: batch.at(-1)?.createdAt },
-      "Audit events in this window never reached the upstream and must be replayed from audit_event",
-    );
-    unmirrored = 0;
-    unmirroredSince = null;
+  if (failures.length < sinks.length) {
+    reportMirrorGap(batch.at(-1)?.createdAt);
   }
 }
 
@@ -68,7 +82,7 @@ export async function flushAuditEvents(): Promise<void> {
  * Failures are dropped with a warning; the database holds the authoritative record.
  */
 export function forwardAuditEvent(event: AuditEvent): void {
-  if (!lokiTarget()) {
+  if (resolveAuditSinks().length === 0) {
     return;
   }
 
@@ -77,7 +91,7 @@ export function forwardAuditEvent(event: AuditEvent): void {
       unmirroredSince = event.createdAt;
       log.error(
         { limit: BATCH_MAX_PENDING, since: unmirroredSince },
-        "Audit forward buffer full, events are no longer reaching the upstream",
+        "Audit forward buffer full, events are no longer reaching any sink",
       );
     }
     unmirrored += 1;
