@@ -3,6 +3,7 @@ import {
   createCounter,
   createGauge,
   createHistogram,
+  createHttpMetrics,
   createMetricsAuth,
   processMetrics,
   serializeMetrics,
@@ -15,28 +16,7 @@ import { rootLogger } from "./logger";
 
 const metricsAuth = createMetricsAuth(env.METRICS_AUTH);
 
-export const requestsTotal = createCounter(
-  "gateway_requests_total",
-  "Total HTTP requests by endpoint and status code",
-);
-
-export const requestErrorsTotal = createCounter(
-  "gateway_request_errors_total",
-  "Total failed requests by endpoint",
-);
-
-export const activeRequests = createGauge(
-  "gateway_active_requests",
-  "Currently in-flight requests by endpoint",
-);
-
-const DURATION_BUCKETS = [50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000, 120000];
-
-export const requestDuration = createHistogram(
-  "gateway_request_duration_milliseconds",
-  "Request duration in milliseconds by endpoint",
-  DURATION_BUCKETS,
-);
+const http = createHttpMetrics();
 
 const TTFT_BUCKETS = [50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000];
 
@@ -130,10 +110,7 @@ const buildInfo = createBuildInfo("gateway_build_info", { version });
 
 const allMetrics = [
   buildInfo,
-  requestsTotal,
-  requestErrorsTotal,
-  activeRequests,
-  requestDuration,
+  ...http.metrics,
   timeToFirstToken,
   modelRequestsTotal,
   clientDisconnectsTotal,
@@ -230,12 +207,13 @@ export function withMetrics(
 ): (req: Request) => Promise<Response> {
   return async (req: Request) => {
     const labels = { endpoint };
-    activeRequests.inc(labels);
-    const start = Date.now();
+    const httpLabels = { method: req.method, route: endpoint };
+    http.started(httpLabels);
+    const start = performance.now();
 
+    let status = 500;
     const cleanup = () => {
-      activeRequests.dec(labels);
-      requestDuration.observe(labels, Date.now() - start);
+      http.finished(httpLabels, status, (performance.now() - start) / 1000);
       releaseCallbacks.get(req)?.();
       releaseCallbacks.delete(req);
     };
@@ -243,8 +221,7 @@ export function withMetrics(
     let deferred = false;
     try {
       const res = await handler(req);
-      requestsTotal.inc({ endpoint, status: String(res.status) });
-      if (res.status >= 400) requestErrorsTotal.inc(labels);
+      status = res.status;
       if (res.status === 499) clientDisconnectsTotal.inc(labels);
 
       // For streaming responses, defer cleanup until the stream finishes
@@ -267,10 +244,6 @@ export function withMetrics(
       }
 
       return res;
-    } catch (err) {
-      requestErrorsTotal.inc(labels);
-      requestsTotal.inc({ endpoint, status: "500" });
-      throw err;
     } finally {
       if (!deferred) cleanup();
     }

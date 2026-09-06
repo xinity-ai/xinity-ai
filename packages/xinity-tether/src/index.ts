@@ -10,7 +10,7 @@ import { addConnection, removeConnection, pushDesiredState, runKeepaliveLoop, se
 import { buildDesiredState } from "./desired-state";
 import { createNotifyBus } from "./notify-bus";
 import { writeRegistration, queueInstallationStates, flushAndStop } from "./status-writer";
-import { handleMetrics, incRequestRejections } from "./metrics";
+import { handleMetrics, httpMetrics, incRequestRejections } from "./metrics";
 import { buildListenTarget } from "./serve-config";
 
 const log = rootLogger;
@@ -139,14 +139,12 @@ const server = Bun.serve({
   ...serveTarget,
   tls,
   routes: {
-    "/health": () => Response.json({ ok: true }),
+    "/health": httpMetrics.route("/health", () => Response.json({ ok: true })),
     "/metrics": handleMetrics,
-    "/api/v1/stream": handleSSEStream,
-    "/api/v1/status": handleStatus,
+    "/api/v1/stream": httpMetrics.route("/api/v1/stream", handleSSEStream),
+    "/api/v1/status": httpMetrics.route("/api/v1/status", handleStatus),
   },
-  fetch() {
-    return new Response("Not Found", { status: 404 });
-  },
+  fetch: httpMetrics.route("<unmatched>", () => new Response("Not Found", { status: 404 })),
 });
 
 log.info({ ...serveTarget, tls: !!tls }, `Tether started (${tls ? "https" : "http"})`);

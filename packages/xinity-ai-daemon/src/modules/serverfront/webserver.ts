@@ -5,7 +5,7 @@ import { env } from "../../env";
 import { rootLogger } from "../../logger";
 import { createOpenapiSpec, createScalarPage } from "./openai";
 import { handleProxyRequest } from "./proxy";
-import { handleDaemonMetrics } from "./metrics";
+import { handleDaemonMetrics, httpMetrics } from "./metrics";
 
 export async function startServer() {
   const handler = new OpenAPIHandler(router, {
@@ -19,28 +19,26 @@ export async function startServer() {
     tls,
     idleTimeout: env.IDLE_TIMEOUT,
     routes: {
-      "/": () => createScalarPage(),
-      "/openapi.json": () => Response.json(spec),
+      "/": httpMetrics.route("/", () => createScalarPage()),
+      "/openapi.json": httpMetrics.route("/openapi.json", () => Response.json(spec)),
     },
     async fetch(req: Request) {
       const url = new URL(req.url);
       if (url.pathname === "/metrics") {
         return handleDaemonMetrics(req);
       }
+      // The proxy path carries a model name, so it is labelled by pattern.
       if (url.pathname.startsWith("/proxy/")) {
-        return handleProxyRequest(req, url);
+        return httpMetrics.route("/proxy/*", (r) => handleProxyRequest(r, url))(req);
       }
 
-      const { matched, response } = await handler.handle(req, {
-        prefix: "/",
-        context: { headers: req.headers },
-      });
-
-      if (matched) {
-        return response;
-      }
-
-      return new Response("Not found", { status: 404 });
+      return httpMetrics.route("/rpc", async (r) => {
+        const { matched, response } = await handler.handle(r, {
+          prefix: "/",
+          context: { headers: r.headers },
+        });
+        return matched ? response : new Response("Not found", { status: 404 });
+      })(req);
     },
   } as const;
 

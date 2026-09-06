@@ -165,6 +165,7 @@ export * from "./deployment-settings";
 export * from "./metrics-auth";
 export * from "./metrics-format";
 export * from "./process-metrics";
+export * from "./http-metrics";
 export * from "./service-url";
 export * from "./tether-protocol";
 export * from "./content-hash";
