@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-ARG BUN_VERSION=1.4.0
+ARG BUN_VERSION=1.4.2
 
 # ---------- base (shared manifest layer) ----------
 # All workspace package.jsons must be present for bun install to resolve the lockfile.

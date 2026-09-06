@@ -15,7 +15,7 @@ concurrency:
 permissions: {}
 
 env:
-  BUN_VERSION: "1.4.0"
+  BUN_VERSION: "1.4.2"
 
 jobs:
   # Standalone binaries via `bun build --compile`.
