@@ -8,8 +8,10 @@ import {
   processMetrics,
   serializeMetrics,
 } from "common-env";
+import type { Server } from "bun";
 import { version } from "../../../package.json";
 import { env } from "./env";
+import type { RouteHandler } from "./serve-config";
 import { releaseCallbacks } from "./llm-forward/release-registry";
 import { isAbortError } from "./llm-forward/util";
 import { rootLogger } from "./logger";
@@ -203,9 +205,9 @@ export function recordBackendError(model: string, status: number): void {
 
 export function withMetrics(
   endpoint: string,
-  handler: (req: Request) => Promise<Response> | Response,
-): (req: Request) => Promise<Response> {
-  return async (req: Request) => {
+  handler: RouteHandler,
+): (req: Request, server: Server<unknown>) => Promise<Response> {
+  return async (req: Request, server: Server<unknown>) => {
     const labels = { endpoint };
     const httpLabels = { method: req.method, route: endpoint };
     http.started(httpLabels);
@@ -220,7 +222,7 @@ export function withMetrics(
 
     let deferred = false;
     try {
-      const res = await handler(req);
+      const res = await handler(req, server);
       status = res.status;
       if (res.status === 499) clientDisconnectsTotal.inc(labels);
 

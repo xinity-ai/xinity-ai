@@ -58,7 +58,7 @@ When extending or modifying the OpenAI-compatible routes, update the hand-author
 | `RESPONSE_CACHE_TTL_SECONDS` | `3600` | Responses API Redis cache TTL |
 | `INFOSERVER_CACHE_TTL_MS` | `600000` | How long the local catalog snapshot is trusted before revalidating, in ms |
 | `METRICS_AUTH` | (unset) | Basic auth for `/metrics` (format: `user:pass`, comma-separated for multiple) |
-| `IDLE_TIMEOUT` | `255` | Server-level idle connection timeout in seconds |
+| `IDLE_TIMEOUT` | `255` | Server-level idle connection timeout in seconds (max 255, Bun's cap). Inference routes are exempt and bounded by `BACKEND_TIMEOUT_MS` instead, so a long generation is not cut off mid-request. |
 
 ### S3 (image storage)
 
