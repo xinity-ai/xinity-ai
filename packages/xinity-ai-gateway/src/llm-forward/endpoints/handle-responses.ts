@@ -5,6 +5,7 @@ import { deleteResponse, getResponse, getResponseMessages, saveResponse, type Re
 import { rootLogger } from "../../logger";
 import { processMessageImages, restoreMessageImages, imageStore } from "../../image-store";
 import { env } from "../../env";
+import { createIdleTimeout, type IdleTimeout } from "../backend-fetch";
 import { DEEP_RESEARCH_SYSTEM_PROMPT, createCompactionStep } from "../deep-research";
 import { hasSearchProvider } from "../tools/response-tools";
 import { CreateResponseBodySchema, type CreateResponseBody, type ResponseObject } from "../responses/schemas";
@@ -203,7 +204,7 @@ async function runInBackground(prepared: PreparedRequest, genParams: GenerationP
   return Response.json(baseResponse, { status: 202 });
 }
 
-async function runStreaming(prepared: PreparedRequest, genParams: GenerationParams): Promise<Response> {
+async function runStreaming(prepared: PreparedRequest, genParams: GenerationParams, idle?: IdleTimeout): Promise<Response> {
   const { auth, body, originalModel, responseId, createdAt, include, logFields, creation } = prepared;
 
   const toolCalls: ToolCallItem[] = [];
@@ -214,7 +215,9 @@ async function runStreaming(prepared: PreparedRequest, genParams: GenerationPara
     result: streamText(genParams),
     orgId: auth.orgId, responseId, messageItemId: `msg_${responseId}`, createdAt, originalModel, body,
     baseResponse, toolCalls, toolResults, include,
+    onChunk: idle?.reset,
     onFinished: (usage, text) => {
+      idle?.clear();
       logChatUsage({
         ...logFields,
         usage,
@@ -255,15 +258,21 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
     }
 
     const { body, modelInfo, provider, messagesForLLM, activeTools, hasTools, outputConfig } = prepared;
-    const genParams = buildGenerationParams(
-      body, modelInfo, provider, toModelMessages(messagesForLLM), activeTools, hasTools, outputConfig, req.signal,
-    );
+    const messages = toModelMessages(messagesForLLM);
+    const paramsWith = (signal: AbortSignal) =>
+      buildGenerationParams(body, modelInfo, provider, messages, activeTools, hasTools, outputConfig, signal);
 
+    // Background generation outlives the request that started it, so it takes no request-scoped deadline.
     if (body.background) {
-      return runInBackground(prepared, genParams);
+      return runInBackground(prepared, paramsWith(req.signal));
     }
+
+    const idle = body.stream ? createIdleTimeout() : undefined;
+    const timeoutSignal = idle?.signal ?? AbortSignal.timeout(env.BACKEND_TIMEOUT_MS);
+    const genParams = paramsWith(AbortSignal.any([req.signal, timeoutSignal]));
+
     if (body.stream) {
-      return runStreaming(prepared, genParams);
+      return runStreaming(prepared, genParams, idle);
     }
     return runBlocking(prepared, genParams);
   } catch (error) {

@@ -70,6 +70,8 @@ export type StreamResponseParams = {
   toolResults: ToolResultData[];
   include: IncludeValue[];
   onFinished: (usage: LanguageModelUsage, text: string) => void;
+  /** called on every stream part, so a caller's idle timeout can be reset */
+  onChunk?: () => void;
 }
 
 /**
@@ -79,7 +81,7 @@ export type StreamResponseParams = {
 export function createResponseStream(params: StreamResponseParams): ReadableStream {
   const {
     result, orgId, responseId, messageItemId, createdAt, originalModel, body,
-    baseResponse, toolCalls, toolResults, include, onFinished,
+    baseResponse, toolCalls, toolResults, include, onFinished, onChunk,
   } = params;
 
   return new ReadableStream({
@@ -121,6 +123,7 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
         emitResponseLifecycle(controller, "response.in_progress", baseResponse, seq);
 
         for await (const part of result.fullStream) {
+          onChunk?.();
           if (part.type === "reasoning-start") {
             closeReasoningBlock();
             openReasoningBlock();
