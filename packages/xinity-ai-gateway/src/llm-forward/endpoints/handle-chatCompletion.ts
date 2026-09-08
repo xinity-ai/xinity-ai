@@ -20,12 +20,26 @@ import {
 
 const log = rootLogger.child({ name: "handle-chatCompletion" });
 
+const MessageToolCallSchema = z.looseObject({
+  id: z.string(),
+  type: z.literal("function"),
+  function: z.looseObject({
+    name: z.string(),
+    arguments: z.string(),
+  }),
+});
+
 export const ChatCompletionBodySchema = z.looseObject({
   model: z.string(),
   messages: z.array(z.looseObject({
     role: z.string(),
-    content: z.unknown(),
-  })),
+    content: z.unknown().optional(),
+    tool_calls: z.array(MessageToolCallSchema).optional(),
+    tool_call_id: z.string().optional(),
+  }).refine(
+    (m) => m.content !== undefined || m.tool_calls !== undefined,
+    "content is required unless the message carries tool_calls",
+  )),
   stream: z.boolean().optional().default(false),
   store: z.boolean().optional(),
   temperature: z.number().optional(),
