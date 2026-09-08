@@ -232,7 +232,13 @@ async function queryDeploymentsWithStatus(where: SQL | undefined): Promise<Deplo
       ${modelInstallationT.deletedAt} IS NULL
     `)
     .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`)
-    .leftJoin(aiNodeT, sql`${aiNodeT.id} = ${modelInstallationT.nodeId}`)
+    .leftJoin(aiNodeT, sql`
+      ${aiNodeT.id} = ${modelInstallationT.nodeId}
+    AND
+      ${aiNodeT.available}
+    AND
+      ${aiNodeT.deletedAt} IS NULL
+    `)
     .where(where);
 
   const deploymentMap = new Map<string, { deployment: ModelDeployment; phaseInfo?: PhaseInfo; replicas: ReplicaStatus[] }>();
@@ -247,19 +253,22 @@ async function queryDeploymentsWithStatus(where: SQL | undefined): Promise<Deplo
 
     const installation = row.model_installation;
     const state = row.model_installation_state;
-    const node = row.ai_node;
+    const liveNode = row.ai_node;
 
-    if (installation && !state) {
+    if (!installation || !liveNode) continue;
+
+    const nodeLabel = liveNode.machineName ?? liveNode.host;
+
+    if (!state) {
       entry.phaseInfo = aggregatePhase(entry.phaseInfo, "scheduling", null, null);
-      entry.replicas.push({ phase: "scheduling", node: node?.machineName ?? node?.host ?? null, error: null });
+      entry.replicas.push({ phase: "scheduling", node: nodeLabel, error: null });
       continue;
     }
-    if (!state) continue;
 
     const phase = state.lifecycleState;
     const progress = isProgressBearingPhase(phase) ? (state.progress ?? null) : null;
     entry.phaseInfo = aggregatePhase(entry.phaseInfo, phase, progress, state.errorMessage, state.failureLogs);
-    entry.replicas.push({ phase, node: node?.machineName ?? node?.host ?? null, error: state.errorMessage });
+    entry.replicas.push({ phase, node: nodeLabel, error: state.errorMessage });
   }
 
   return Array.from(deploymentMap.values()).map(({ deployment, phaseInfo, replicas }) => {

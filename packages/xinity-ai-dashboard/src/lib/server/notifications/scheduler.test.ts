@@ -12,6 +12,7 @@ function row(overrides: Partial<Row> = {}): Row {
     publicSpecifier: "qwen3.6-27b",
     desiredReplicas: 4,
     installationId: "inst-1",
+    liveNodeId: "node-1",
     lifecycleState: "ready",
     errorMessage: null,
     ...overrides,
@@ -20,7 +21,7 @@ function row(overrides: Partial<Row> = {}): Row {
 
 /** One installation row per id, all in the given phase. */
 function installations(count: number, lifecycleState = "ready"): Row[] {
-  return Array.from({ length: count }, (_, i) => row({ installationId: `inst-${i}`, lifecycleState }));
+  return Array.from({ length: count }, (_, i) => row({ installationId: `inst-${i}`, liveNodeId: `node-${i}`, lifecycleState }));
 }
 
 describe("foldDeploymentPhaseRows", () => {
@@ -85,6 +86,32 @@ describe("foldDeploymentPhaseRows", () => {
     ]).get("dep-1")!;
     expect(info.phase).toBe("scheduling");
     expect(info.observedReplicas).toBe(1);
+  });
+
+  test("ignores a replica whose node left the cluster, even while its state still reads ready", () => {
+    const info = foldDeploymentPhaseRows([
+      ...installations(2),
+      row({ installationId: "inst-gone", liveNodeId: null, lifecycleState: "ready" }),
+    ]).get("dep-1")!;
+    expect(info.observedReplicas).toBe(2);
+    expect(info.phase).toBe("ready");
+  });
+
+  test("reports pending when every installation sits on a node that left the cluster", () => {
+    const info = foldDeploymentPhaseRows([
+      row({ installationId: "inst-0", liveNodeId: null, lifecycleState: "ready" }),
+      row({ installationId: "inst-1", liveNodeId: null, lifecycleState: "ready" }),
+    ]).get("dep-1")!;
+    expect(info.observedReplicas).toBe(0);
+    expect(info.phase).toBe("pending");
+  });
+
+  test("drops the stale error of a replica whose node left the cluster", () => {
+    const info = foldDeploymentPhaseRows([
+      row({ installationId: "inst-gone", liveNodeId: null, lifecycleState: "failed", errorMessage: "boom" }),
+    ]).get("dep-1")!;
+    expect(info.error).toBeNull();
+    expect(info.phase).toBe("pending");
   });
 
   test("an all-ready but under-provisioned deployment reports ready with a shortfall", () => {

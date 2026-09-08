@@ -291,7 +291,7 @@
       {#each { length: slots.missing } as _}
         <span
           class="w-2.5 h-2.5 rounded-full {unscheduledSlotConfig.dot}"
-          title="Not scheduled: no node had capacity for this replica"
+          title="Not scheduled: no node was free to take this replica"
         ></span>
       {/each}
     {/snippet}
@@ -406,7 +406,7 @@
                 {#if !deployment.enabled}
                   {@render chip("bg-muted-foreground/50", "bg-muted text-muted-foreground", "Disabled")}
                 {:else if !deployment.status}
-                  {@render chip("bg-amber-400", "bg-amber-100 text-amber-700", "No node available", false, "The orchestrator could not place this model on any node. Common causes: no node has enough free VRAM for the model weight, or no available node has the required driver.")}
+                  {@render chip("bg-amber-400", "bg-amber-100 text-amber-700", "No node available", false, "The orchestrator could not place this model on any node. Common causes: no node has enough free VRAM for the model weight, or no available node has the required driver. A node that was removed or is powered off no longer counts.")}
                 {:else}
                   {@const cfg = phaseConfig[deployment.status.phase]}
                   {@const slots = replicaSlots(deployment.replicas, deployment.status.replicas)}
@@ -414,7 +414,7 @@
                   {#if slots.missing > 0}
                     <span
                       class="ml-2 text-xs text-amber-600 dark:text-amber-500 cursor-help"
-                      title="Only {slots.observed.length} of {deployment.replicas} requested replicas are placed. Common causes: no node has enough free VRAM for the model weight, or no available node has the required driver."
+                      title="Only {slots.observed.length} of {deployment.replicas} requested replicas are placed. Each replica needs its own node, so a cluster cannot run more replicas than it has nodes. Other causes: no node has enough free VRAM for the model weight, or no available node has the required driver."
                     >
                       {slots.observed.length}/{deployment.replicas} replicas
                     </span>
