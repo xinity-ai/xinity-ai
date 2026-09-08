@@ -4,6 +4,7 @@
   import "prismjs/components/prism-python.min.js";
   import "prismjs/components/prism-javascript.min.js";
   import "prismjs/components/prism-bash.min.js";
+  import "prismjs/components/prism-json.min.js";
   import CopyIcon from "$lib/components/icons/CopyIcon.svelte";
 
   const {
@@ -12,7 +13,7 @@
     withCopy = false,
   }: {
     code: string;
-    language: "javascript" | "bash" | "python";
+    language: "javascript" | "bash" | "python" | "json";
     withCopy?: boolean;
   } = $props();
 
