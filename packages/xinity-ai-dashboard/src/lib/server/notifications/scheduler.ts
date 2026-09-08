@@ -289,8 +289,15 @@ async function checkCapacity() {
       `);
 
     const installations = await getDB()
-      .select({ nodeId: modelInstallationT.nodeId, estCapacity: modelInstallationT.estCapacity })
+      .select({ estCapacity: modelInstallationT.estCapacity })
       .from(modelInstallationT)
+      .innerJoin(aiNodeT, sql`
+        ${aiNodeT.id} = ${modelInstallationT.nodeId}
+      AND
+        ${aiNodeT.available}
+      AND
+        ${aiNodeT.deletedAt} IS NULL
+      `)
       .where(sql`${modelInstallationT.deletedAt} IS NULL`);
 
     const totalCapacity = nodes.reduce((sum, n) => sum + n.estCapacity, 0);
