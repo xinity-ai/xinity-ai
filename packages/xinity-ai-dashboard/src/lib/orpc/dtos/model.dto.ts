@@ -34,5 +34,27 @@ export const DeploymentDto = CommonDto.extend({
   settings: DeploymentSettingsDto.optional(),
 });
 
+export const ReplicaStatusDto = z.object({
+  phase: z.enum(["ready", "downloading", "installing", "failed", "scheduling"]),
+  node: z.string().nullable(),
+  error: z.string().nullable(),
+});
+export type ReplicaStatus = z.infer<typeof ReplicaStatusDto>;
+
+export const DeploymentStatusDto = z.object({
+  phase: z.enum(["ready", "downloading", "installing", "failed", "scheduling", "not_in_catalog", "partial"]),
+  progress: z.number().nullable(),
+  error: z.string().nullable().optional(),
+  failureLogs: z.string().nullable().optional(),
+  replicas: ReplicaStatusDto.array().optional(),
+});
+export type StatusPhase = z.infer<typeof DeploymentStatusDto>["phase"];
+
+export const DeploymentWithStatusDto = DeploymentDto.extend({
+  status: DeploymentStatusDto.optional(),
+  /** Set while the model is only served by the deprecated catalog. Removed before 1.0.0. */
+  deprecatedModel: z.boolean().optional(),
+});
+export type DeploymentWithStatus = z.infer<typeof DeploymentWithStatusDto>;
 
 export { type Model, ModelSchema as ModelDto } from "xinity-infoserver";
