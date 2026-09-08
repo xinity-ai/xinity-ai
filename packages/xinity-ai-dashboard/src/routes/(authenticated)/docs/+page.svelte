@@ -105,7 +105,7 @@
         <h2 class="text-lg font-semibold group-hover:text-xinity-purple transition-colors">Coding Agents</h2>
       </div>
       <p class="text-sm text-gray-600">
-        Point OpenCode at your own deployments with a config generated from the models you run.
+        Run coding agents against your own deployments, with a config generated from the models you run.
       </p>
     </a>
 
