@@ -47,7 +47,7 @@
       </li>
       <li>
         <strong>Instance-wide</strong>, configured by instance admins under
-        <a href="/instance-settings" class="text-xinity-magenta hover:text-xinity-pink underline">Instance Settings</a>.
+        <a href="/instance-settings/" class="text-xinity-magenta hover:text-xinity-pink underline">Instance Settings</a>.
         These providers appear on the login page for all users.
       </li>
     </ul>

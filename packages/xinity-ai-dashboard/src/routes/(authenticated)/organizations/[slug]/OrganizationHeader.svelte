@@ -19,7 +19,7 @@
 </script>
 
 <div class="mb-6">
-  <Button variant="ghost" href="/organizations" class="mb-4 -ml-2">
+  <Button variant="ghost" href="/organizations/" class="mb-4 -ml-2">
     <ArrowLeft class="w-4 h-4" />
     Back to Organizations
   </Button>

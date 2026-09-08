@@ -29,7 +29,7 @@
           >We're excited to have you on board. Start exploring your dashboard or
           set up your profile.</mj-text
         >
-        <mj-button href={appUrl + "/start"} background-color="#007BFF"
+        <mj-button href={appUrl + "/"} background-color="#007BFF"
           >Get Started</mj-button
         >
       </mj-column>

@@ -408,7 +408,7 @@ export const auth = betterAuth({
       // disableOrganizationDeletion: true,
       async sendInvitationEmail(data, request) {
         const encodedEmail = encodeURIComponent(data.email);
-        const url = `${serverEnv.ORIGIN}/organizations/accept-invitation-${data.invitation.id}?email=${encodedEmail}`
+        const url = `${serverEnv.ORIGIN}/organizations/accept-invitation-${data.invitation.id}/?email=${encodedEmail}`
         log.info({ data, request, url }, "Send invitation email");
         void sendEmail({
           to: data.email,
@@ -419,7 +419,7 @@ export const auth = betterAuth({
             url,
             inviterName: data.inviter.user.name || data.inviter.user.email,
             orgName: data.organization.name,
-            loginUrl: `${serverEnv.ORIGIN}/login?email=${encodedEmail}&tab=signup`,
+            loginUrl: `${serverEnv.ORIGIN}/login/?email=${encodedEmail}&tab=signup`,
           },
         });
       },

@@ -355,19 +355,19 @@
   <section class="p-6 bg-linear-to-r from-xinity-purple/10 to-xinity-coral/10 rounded-lg">
     <h2 class="text-2xl font-semibold mb-4">Related Documentation</h2>
     <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-      <a href="/docs/applications" class="block p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition">
+      <a href="/docs/applications/" class="block p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition">
         <h3 class="font-semibold text-xinity-purple">Applications</h3>
         <p class="text-sm text-gray-600">Organize API calls into logical groups for labeling and fine-tuning.</p>
       </a>
-      <a href="/docs/quick-start" class="block p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition">
+      <a href="/docs/quick-start/" class="block p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition">
         <h3 class="font-semibold text-xinity-purple">Quick Start Guide</h3>
         <p class="text-sm text-gray-600">Deploy a model, create an API key, and make your first request.</p>
       </a>
-      <a href="/docs/roles" class="block p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition">
+      <a href="/docs/roles/" class="block p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition">
         <h3 class="font-semibold text-xinity-purple">Roles & Permissions</h3>
         <p class="text-sm text-gray-600">The "labeler" role can rate and annotate but cannot manage deployments.</p>
       </a>
-      <a href="/docs/api-reference" class="block p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition">
+      <a href="/docs/api-reference/" class="block p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition">
         <h3 class="font-semibold text-xinity-purple">API Reference</h3>
         <p class="text-sm text-gray-600">Endpoint details for calls that get logged and labeled.</p>
       </a>

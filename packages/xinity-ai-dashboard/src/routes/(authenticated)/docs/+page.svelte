@@ -18,7 +18,7 @@
 
   <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
     <a
-      href="/docs/quick-start"
+      href="/docs/quick-start/"
       class="group block p-6 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
     >
       <div class="flex items-center gap-3 mb-3">
@@ -33,7 +33,7 @@
     </a>
 
     <a
-      href="/docs/applications"
+      href="/docs/applications/"
       class="group block p-6 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
     >
       <div class="flex items-center gap-3 mb-3">
@@ -48,7 +48,7 @@
     </a>
 
     <a
-      href="/docs/api-reference"
+      href="/docs/api-reference/"
       class="group block p-6 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
     >
       <div class="flex items-center gap-3 mb-3">
@@ -80,7 +80,7 @@
     </a>
 
     <a
-      href="/docs/code-examples"
+      href="/docs/code-examples/"
       class="group block p-6 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
     >
       <div class="flex items-center gap-3 mb-3">
@@ -110,7 +110,7 @@
     </a>
 
     <a
-      href="/docs/sso"
+      href="/docs/sso/"
       class="group block p-6 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
     >
       <div class="flex items-center gap-3 mb-3">
@@ -125,7 +125,7 @@
     </a>
 
     <a
-      href="/docs/inference-drivers"
+      href="/docs/inference-drivers/"
       class="group block p-6 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
     >
       <div class="flex items-center gap-3 mb-3">
@@ -140,7 +140,7 @@
     </a>
 
     <a
-      href="/docs/deployment-troubleshooting"
+      href="/docs/deployment-troubleshooting/"
       class="group block p-6 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
     >
       <div class="flex items-center gap-3 mb-3">
@@ -155,7 +155,7 @@
     </a>
 
     <a
-      href="/docs/labeling-guide"
+      href="/docs/labeling-guide/"
       class="group block p-6 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
     >
       <div class="flex items-center gap-3 mb-3">
@@ -170,7 +170,7 @@
     </a>
 
     <a
-      href="/docs/roles"
+      href="/docs/roles/"
       class="group block p-6 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
     >
       <div class="flex items-center gap-3 mb-3">

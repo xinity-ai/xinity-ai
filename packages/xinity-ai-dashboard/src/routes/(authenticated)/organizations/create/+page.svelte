@@ -88,7 +88,7 @@
 
 <div class="container max-w-2xl px-6 py-8 mx-auto">
   <div class="mb-6">
-    <Button variant="ghost" href="/organizations" class="mb-4 -ml-2">
+    <Button variant="ghost" href="/organizations/" class="mb-4 -ml-2">
       <ArrowLeft class="w-4 h-4" />
       Back to Organizations
     </Button>
@@ -173,7 +173,7 @@
               Create Organization
             {/if}
           </Button>
-          <Button variant="outline" href="/organizations">
+          <Button variant="outline" href="/organizations/">
             Cancel
           </Button>
         </div>

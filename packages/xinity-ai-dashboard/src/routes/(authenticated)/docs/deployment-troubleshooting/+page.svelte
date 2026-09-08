@@ -38,7 +38,7 @@
   <section class="mb-8 p-6 bg-white rounded-lg shadow-md">
     <h2 class="text-2xl font-semibold mb-2">When a deployment fails</h2>
     <p class="text-gray-600 mb-4">
-      Go to the <a href="/modelhub" class="text-xinity-magenta hover:text-xinity-pink underline">Model Hub</a>,
+      Go to the <a href="/modelhub/" class="text-xinity-magenta hover:text-xinity-pink underline">Model Hub</a>,
       find the failed deployment, and look at the <strong>error message</strong>.
       If available, expand <strong>View logs</strong> for more detail.
       Then match it to one of the patterns below.
@@ -588,7 +588,7 @@
     <ol class="list-decimal pl-6 space-y-2 text-gray-600">
       <li>Note down the error and check the failure logs (they are deleted with the deployment).</li>
       <li>Fix the underlying issue.</li>
-      <li>Delete the failed deployment from the <a href="/modelhub" class="text-xinity-magenta hover:text-xinity-pink underline">Model Hub</a>.</li>
+      <li>Delete the failed deployment from the <a href="/modelhub/" class="text-xinity-magenta hover:text-xinity-pink underline">Model Hub</a>.</li>
       <li>Create a new deployment with the corrected settings.</li>
     </ol>
   </section>
@@ -598,14 +598,14 @@
     <h2 class="text-xl font-semibold mb-4">Related Documentation</h2>
     <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
       <a
-        href="/docs/inference-drivers"
+        href="/docs/inference-drivers/"
         class="group block p-4 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
       >
         <h3 class="font-semibold group-hover:text-xinity-purple transition-colors">Inference Drivers</h3>
         <p class="text-sm text-gray-600">Understand the differences between vLLM and Ollama.</p>
       </a>
       <a
-        href="/docs/quick-start"
+        href="/docs/quick-start/"
         class="group block p-4 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
       >
         <h3 class="font-semibold group-hover:text-xinity-purple transition-colors">Quick Start Guide</h3>

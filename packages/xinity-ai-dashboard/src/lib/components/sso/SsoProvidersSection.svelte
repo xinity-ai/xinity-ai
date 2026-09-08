@@ -100,7 +100,7 @@
           {/if}
         </Card.Description>
       </div>
-      <Button variant="outline" size="sm" href="/docs/sso#troubleshooting">
+      <Button variant="outline" size="sm" href="/docs/sso/#troubleshooting">
         <CircleQuestionMark class="w-4 h-4 mr-1.5" />
         Troubleshooting
       </Button>

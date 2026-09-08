@@ -207,14 +207,14 @@
       <!-- Related links -->
       <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
         <a
-          href="/docs/quick-start"
+          href="/docs/quick-start/"
           class="block p-4 bg-white rounded-lg shadow hover:shadow-md transition"
         >
           <h3 class="font-semibold text-xinity-purple mb-1">Quick Start Guide</h3>
           <p class="text-sm text-gray-600">Get started in minutes</p>
         </a>
         <a
-          href="/docs/api-reference"
+          href="/docs/api-reference/"
           class="block p-4 bg-white rounded-lg shadow hover:shadow-md transition"
         >
           <h3 class="font-semibold text-xinity-purple mb-1">API Reference</h3>

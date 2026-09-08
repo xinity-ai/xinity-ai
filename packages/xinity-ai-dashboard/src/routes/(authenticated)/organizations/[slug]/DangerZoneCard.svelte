@@ -25,7 +25,7 @@
       toastState.add(error.message || "Failed to delete organization", "error");
       deleting = false;
     } else {
-      goto("/organizations");
+      goto("/organizations/");
     }
   }
 </script>

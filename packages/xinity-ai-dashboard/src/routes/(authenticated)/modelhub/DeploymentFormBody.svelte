@@ -431,7 +431,7 @@
             <Input id="engine{idSuffix}" type="text" value={driverLabel(selectedPrimaryModel.engine)} readonly />
             <p class="text-sm text-muted-foreground">
               Part of the model entry, so it is chosen by picking the model rather than at deploy time.
-              <a href="/docs/inference-drivers" target="_blank" class="text-primary hover:underline">Learn more about inference drivers</a>
+              <a href="/docs/inference-drivers/" target="_blank" class="text-primary hover:underline">Learn more about inference drivers</a>
             </p>
           </div>
         {/if}

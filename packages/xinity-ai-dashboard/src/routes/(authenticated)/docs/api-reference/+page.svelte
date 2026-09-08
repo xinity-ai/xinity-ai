@@ -464,14 +464,14 @@
     <h2 class="text-2xl font-semibold mb-4">Related Documentation</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
       <a
-        href="/docs/quick-start"
+        href="/docs/quick-start/"
         class="block p-4 bg-white rounded-lg shadow hover:shadow-md transition"
       >
         <h3 class="font-semibold text-xinity-purple">Quick Start Guide</h3>
         <p class="text-sm text-gray-600">Get started in minutes</p>
       </a>
       <a
-        href="/docs/code-examples"
+        href="/docs/code-examples/"
         class="block p-4 bg-white rounded-lg shadow hover:shadow-md transition"
       >
         <h3 class="font-semibold text-xinity-purple">Code Examples</h3>

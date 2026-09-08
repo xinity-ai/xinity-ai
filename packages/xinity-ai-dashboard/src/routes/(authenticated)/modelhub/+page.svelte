@@ -467,7 +467,7 @@
                   {/if}
                   {#if (deployment.status.phase === 'failed' || deployment.status.phase === 'partial') && deployment.status.error}
                     <p class="text-sm text-destructive mt-2">{deployment.status.error}</p>
-                    <a href="/docs/deployment-troubleshooting" class="text-xs text-muted-foreground hover:underline mt-1 inline-block">Troubleshooting guide</a>
+                    <a href="/docs/deployment-troubleshooting/" class="text-xs text-muted-foreground hover:underline mt-1 inline-block">Troubleshooting guide</a>
                   {/if}
                   {#if (deployment.status.phase === 'failed' || deployment.status.phase === 'partial') && deployment.status.failureLogs}
                     <Collapsible.Root class="mt-2">

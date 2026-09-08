@@ -230,14 +230,14 @@
     <h2 class="text-xl font-semibold mb-4">Related Documentation</h2>
     <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
       <a
-        href="/docs/quick-start"
+        href="/docs/quick-start/"
         class="group block p-4 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
       >
         <h3 class="font-semibold group-hover:text-xinity-purple transition-colors">Quick Start Guide</h3>
         <p class="text-sm text-gray-600">Deploy a model and make your first request.</p>
       </a>
       <a
-        href="/docs/api-reference"
+        href="/docs/api-reference/"
         class="group block p-4 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
       >
         <h3 class="font-semibold group-hover:text-xinity-purple transition-colors">API Reference</h3>

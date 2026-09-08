@@ -25,7 +25,7 @@ const CHECK_INTERVAL_MS = 5 * 60_000; // 5 minutes
 const WEEKLY_CHECK_INTERVAL_MS = 60 * 60_000; // 1 hour
 const WARMUP_DELAY_MS = 2_000;
 const CAPACITY_WARNING_THRESHOLD = 0.8; // 80%
-const MODELHUB_URL = `${serverEnv.ORIGIN}/modelhub`;
+const MODELHUB_URL = `${serverEnv.ORIGIN}/modelhub/`;
 
 // ── In-memory state caches ──────────────────────────────────────────
 
