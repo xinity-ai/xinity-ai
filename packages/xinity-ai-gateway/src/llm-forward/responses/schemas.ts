@@ -45,7 +45,7 @@ const ToolChoiceSchema = z.union([
 
 export const CreateResponseBodySchema = z.object({
   model: z.string(),
-  input: z.unknown(),
+  input: z.unknown().optional(),
   stream: z.boolean().optional().default(false),
   background: z.boolean().optional().default(false),
   /**
@@ -78,7 +78,10 @@ export const CreateResponseBodySchema = z.object({
   // Aliases
   messages: z.unknown().optional(),
   prompt: z.unknown().optional(),
-});
+}).refine(
+  (b) => b.input !== undefined || b.messages !== undefined || b.prompt !== undefined,
+  "input is required",
+);
 
 export type CreateResponseBody = z.infer<typeof CreateResponseBodySchema>;
 

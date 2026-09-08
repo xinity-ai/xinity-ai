@@ -92,6 +92,38 @@ describe("handleResponses", () => {
     expect(responseStore.get(body.id)?.status).toBe("completed");
   });
 
+  test("should accept the messages alias in place of input", async () => {
+    const req = new Request("http://localhost:4000/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        messages: [{ role: "user", content: "Hi" }],
+      }),
+    });
+
+    const res = await handleCreateResponseRequest(req);
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as any;
+    expect(body.status).toBe("completed");
+    expect(lastChatMessages).toEqual([{ role: "user", content: "Hi" }]);
+  });
+
+  test("should reject a request carrying neither input nor an alias", async () => {
+    const req = new Request("http://localhost:4000/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({ model: "test-model" }),
+    });
+
+    const res = await handleCreateResponseRequest(req);
+    expect(res.status).toBe(400);
+
+    const body = (await res.json()) as any;
+    expect(body.error.message).toContain("input is required");
+  });
+
   test("should create a streaming response", async () => {
     const req = new Request("http://localhost:4000/v1/responses", {
       method: "POST",
