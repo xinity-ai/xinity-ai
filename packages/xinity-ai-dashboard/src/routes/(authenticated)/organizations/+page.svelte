@@ -82,11 +82,11 @@
 
           <Card.Footer class="flex gap-2">
             {#if data.activeOrganizationId === org.id}
-              <Button variant="outline" href="/organizations/{org.slug}" class="flex-1">
+              <Button variant="outline" href="/organizations/{org.slug}/" class="flex-1">
                 Manage
               </Button>
             {:else}
-              <Button variant="outline" href="/organizations/{org.slug}" class="flex-1">
+              <Button variant="outline" href="/organizations/{org.slug}/" class="flex-1">
                 View
               </Button>
               <Button onclick={() => switchOrganization(org.id)} class="flex-1">

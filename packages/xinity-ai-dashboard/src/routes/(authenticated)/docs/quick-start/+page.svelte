@@ -427,7 +427,7 @@ const completion = await openai.chat.completions.create({
     <h2 class="text-2xl font-semibold mb-4">Next Steps</h2>
     <div class="space-y-3">
       <a
-        href="/docs/applications"
+        href="/docs/applications/"
         class="block p-4 bg-white rounded-lg shadow hover:shadow-md transition"
       >
         <h3 class="font-semibold text-xinity-purple">
@@ -438,7 +438,7 @@ const completion = await openai.chat.completions.create({
         </p>
       </a>
       <a
-        href="/docs/api-reference"
+        href="/docs/api-reference/"
         class="block p-4 bg-white rounded-lg shadow hover:shadow-md transition"
       >
         <h3 class="font-semibold text-xinity-purple">
@@ -449,7 +449,7 @@ const completion = await openai.chat.completions.create({
         </p>
       </a>
       <a
-        href="/docs/code-examples"
+        href="/docs/code-examples/"
         class="block p-4 bg-white rounded-lg shadow hover:shadow-md transition"
       >
         <h3 class="font-semibold text-xinity-purple">View More Code Examples</h3>
@@ -458,7 +458,7 @@ const completion = await openai.chat.completions.create({
         </p>
       </a>
       <a
-        href="/training"
+        href="/training/"
         class="block p-4 bg-white rounded-lg shadow hover:shadow-md transition"
       >
         <h3 class="font-semibold text-xinity-purple">Fine-tune Your Model</h3>

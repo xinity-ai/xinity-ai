@@ -8,10 +8,10 @@
   const { children }: { children: Snippet } = $props();
 
   const navItems = [
-    { href: "/settings/profile", label: "Profile", icon: User },
-    { href: "/settings/notifications", label: "Notifications", icon: Bell },
-    { href: "/settings/display", label: "Display", icon: Monitor },
-    { href: "/settings/auth", label: "Authentication", icon: Shield },
+    { href: "/settings/profile/", label: "Profile", icon: User },
+    { href: "/settings/notifications/", label: "Notifications", icon: Bell },
+    { href: "/settings/display/", label: "Display", icon: Monitor },
+    { href: "/settings/auth/", label: "Authentication", icon: Shield },
   ];
 
   const currentPath = $derived(page.url.pathname);

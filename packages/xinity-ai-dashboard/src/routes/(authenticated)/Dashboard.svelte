@@ -360,7 +360,7 @@
       <div class="bg-white rounded-lg shadow p-5 compact:p-3 lg:col-span-2">
         <div class="flex justify-between items-center mb-4">
           <h2 class="text-lg font-medium">Recent Activities</h2>
-          <a href="/data" class="text-sm text-xinity-magenta hover:text-xinity-pink">View All</a>
+          <a href="/data/" class="text-sm text-xinity-magenta hover:text-xinity-pink">View All</a>
         </div>
         <div class="overflow-x-auto">
           <table class="min-w-full divide-y divide-gray-200">
@@ -409,7 +409,7 @@
       <div class="bg-white rounded-lg shadow p-5 compact:p-3">
         <div class="flex justify-between items-center mb-4">
           <h2 class="text-lg font-medium">Deployed Models</h2>
-          <a href="/modelhub" class="text-sm text-xinity-magenta hover:text-xinity-pink">View All</a>
+          <a href="/modelhub/" class="text-sm text-xinity-magenta hover:text-xinity-pink">View All</a>
         </div>
         <div class="space-y-3 compact:space-y-1">
           {#each recentModels as model}
@@ -423,13 +423,13 @@
                   </div>
                 </div>
               </div>
-              <a href="/modelhub" class="text-sm text-xinity-magenta hover:text-xinity-pink">Details</a>
+              <a href="/modelhub/" class="text-sm text-xinity-magenta hover:text-xinity-pink">Details</a>
             </div>
           {/each}
         </div>
         <div class="mt-4 text-center">
           <a
-            href="/training"
+            href="/training/"
             class="inline-flex items-center px-4 py-2 border border-xinity-purple text-sm font-medium rounded-md text-xinity-magenta bg-white hover:bg-xinity-magenta/10"
           >
             Train New Model

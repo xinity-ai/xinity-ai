@@ -9,5 +9,5 @@
   <p class="text-muted-foreground text-center max-w-md">
     You need to be part of an organization to access this page. Create one to get started.
   </p>
-  <Button href="/organizations">Go to Organizations</Button>
+  <Button href="/organizations/">Go to Organizations</Button>
 </div>

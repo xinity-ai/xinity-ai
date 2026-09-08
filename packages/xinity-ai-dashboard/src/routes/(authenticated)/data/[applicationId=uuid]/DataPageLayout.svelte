@@ -286,7 +286,7 @@
     <Button
       variant="outline"
       size="icon"
-      href="/data"
+      href="/data/"
       title="Back to applications"
     >
       <ArrowLeft class="w-5 h-5" />
@@ -298,7 +298,7 @@
       </p>
     </div>
     <a
-      href="/docs/labeling-guide"
+      href="/docs/labeling-guide/"
       class="ml-auto flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
     >
       <BookOpen class="w-4 h-4" />

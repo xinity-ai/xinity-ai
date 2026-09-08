@@ -114,7 +114,7 @@
 
       <div class="text-center text-xs text-muted-foreground">
         <p>By continuing you agree to Xinity's security policies.</p>
-        <a class="text-primary hover:text-primary/80 transition-colors" href="/login">
+        <a class="text-primary hover:text-primary/80 transition-colors" href="/login/">
           Choose a different sign-in method
         </a>
       </div>

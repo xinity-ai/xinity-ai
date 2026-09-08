@@ -107,13 +107,13 @@
       <!-- Action Buttons -->
       <div class="flex gap-3">
         <a
-          href="/organizations"
+          href="/organizations/"
           class="flex-1 px-4 py-2 text-sm font-medium text-center text-white bg-xinity-purple rounded-md hover:bg-xinity-purple/80 transition-colors"
         >
           Go to Organizations
         </a>
         <a
-          href="/settings"
+          href="/settings/"
           class="flex-1 px-4 py-2 text-sm font-medium text-center text-xinity-magenta border border-xinity-purple rounded-md hover:bg-xinity-magenta/5"
         >
           Account Settings

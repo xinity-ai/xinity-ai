@@ -8,12 +8,12 @@
   const { children }: { children: Snippet } = $props();
 
   const navItems = [
-    { href: "/instance-settings/users", label: "Users", icon: Users },
-    { href: "/instance-settings/organizations", label: "Organizations", icon: Building2 },
-    { href: "/instance-settings/sso", label: "SSO", icon: Shield },
-    { href: "/instance-settings/license", label: "License", icon: KeyRound },
-    { href: "/instance-settings/compute", label: "Compute", icon: Cpu },
-    { href: "/instance-settings/maintenance", label: "Maintenance", icon: Wrench },
+    { href: "/instance-settings/users/", label: "Users", icon: Users },
+    { href: "/instance-settings/organizations/", label: "Organizations", icon: Building2 },
+    { href: "/instance-settings/sso/", label: "SSO", icon: Shield },
+    { href: "/instance-settings/license/", label: "License", icon: KeyRound },
+    { href: "/instance-settings/compute/", label: "Compute", icon: Cpu },
+    { href: "/instance-settings/maintenance/", label: "Maintenance", icon: Wrench },
   ];
 
   const currentPath = $derived(page.url.pathname);

@@ -24,10 +24,10 @@
   });
 
   const docLinks = [
-    { href: "/docs/quick-start", icon: Rocket, title: "Quick Start Guide", description: "Get started with our API in minutes." },
-    { href: "/docs/applications", icon: Layers, title: "Applications", description: "Organize calls for labeling and fine-tuning." },
-    { href: "/docs/api-reference", icon: BookOpen, title: "API Reference", description: "Detailed documentation of all available endpoints." },
-    { href: "/docs/code-examples", icon: Code, title: "Code Examples", description: "Sample code for common use cases." },
+    { href: "/docs/quick-start/", icon: Rocket, title: "Quick Start Guide", description: "Get started with our API in minutes." },
+    { href: "/docs/applications/", icon: Layers, title: "Applications", description: "Organize calls for labeling and fine-tuning." },
+    { href: "/docs/api-reference/", icon: BookOpen, title: "API Reference", description: "Detailed documentation of all available endpoints." },
+    { href: "/docs/code-examples/", icon: Code, title: "Code Examples", description: "Sample code for common use cases." },
   ];
 </script>
 
