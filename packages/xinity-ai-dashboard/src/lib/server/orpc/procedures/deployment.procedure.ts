@@ -4,6 +4,7 @@ import { sql, modelDeploymentT, modelInstallationT, modelInstallationStateT, aiN
 import z from "zod";
 import { DeploymentDto } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
+import { installationOnLiveNode } from "$lib/server/lib/node-liveness";
 import { syncDeployedModels } from "$lib/server/lib/orchestration.mod";
 import { resolveSchedulable, resolvesOnlyAsLegacy } from "$lib/server/model-catalog";
 import { buildClusterCapacity } from "./cluster.procedure";
@@ -232,13 +233,7 @@ async function queryDeploymentsWithStatus(where: SQL | undefined): Promise<Deplo
       ${modelInstallationT.deletedAt} IS NULL
     `)
     .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`)
-    .leftJoin(aiNodeT, sql`
-      ${aiNodeT.id} = ${modelInstallationT.nodeId}
-    AND
-      ${aiNodeT.available}
-    AND
-      ${aiNodeT.deletedAt} IS NULL
-    `)
+    .leftJoin(aiNodeT, installationOnLiveNode)
     .where(where);
 
   const deploymentMap = new Map<string, { deployment: ModelDeployment; phaseInfo?: PhaseInfo; replicas: ReplicaStatus[] }>();

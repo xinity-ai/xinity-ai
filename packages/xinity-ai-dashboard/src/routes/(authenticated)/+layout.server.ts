@@ -2,6 +2,7 @@ import { auth } from "$lib/server/auth-server";
 import { rootLogger } from "$lib/server/logging";
 import { serverEnv, isInstanceAdmin } from "$lib/server/serverenv";
 import { getDB } from "$lib/server/db";
+import { nodeIsLive } from "$lib/server/lib/node-liveness";
 import type { LayoutServerLoad } from "./$types";
 import { redirect, type Cookies } from "@sveltejs/kit";
 // path to root package version
@@ -159,11 +160,7 @@ async function fetchTotalAvailableVramGb(): Promise<number> {
     const [result] = await getDB()
       .select({ total: sql<number>`coalesce(sum(${aiNodeT.estCapacity}), 0)` })
       .from(aiNodeT)
-      .where(sql`
-        ${aiNodeT.available}
-      AND
-        ${aiNodeT.deletedAt} IS NULL
-      `);
+      .where(nodeIsLive);
     return result?.total ?? 0;
   } catch (err) {
     log.warn({ err }, "Failed to sum node VRAM");
