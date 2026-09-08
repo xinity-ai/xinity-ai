@@ -22,7 +22,7 @@ const log = rootLogger.child({ name: "handle-chatCompletion" });
 
 const MessageToolCallSchema = z.looseObject({
   id: z.string(),
-  type: z.literal("function"),
+  type: z.literal("function", { error: "custom tool calls are not supported by the inference backends; use tool calls of type 'function'" }),
   function: z.looseObject({
     name: z.string(),
     arguments: z.string(),
@@ -61,7 +61,7 @@ export const ChatCompletionBodySchema = z.looseObject({
   }).optional(),
   structured_outputs: z.record(z.string(), z.json().optional()).optional(),
   tools: z.array(z.looseObject({
-    type: z.literal("function"),
+    type: z.literal("function", { error: "custom tools are not supported by the inference backends; use tools of type 'function'" }),
     function: z.looseObject({
       name: z.string(),
       description: z.string().optional(),
