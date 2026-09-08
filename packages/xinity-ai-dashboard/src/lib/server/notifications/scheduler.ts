@@ -83,6 +83,7 @@ export type DeploymentPhaseRow = {
   publicSpecifier: string;
   desiredReplicas: number;
   installationId: string | null;
+  liveNodeId: string | null;
   lifecycleState: string | null;
   errorMessage: string | null;
 };
@@ -98,8 +99,10 @@ export function foldDeploymentPhaseRows(rows: DeploymentPhaseRow[]): Map<string,
 
   for (const row of rows) {
     const existing = accumulators.get(row.deploymentId);
-    const phase: DeploymentPhase = row.lifecycleState as DeploymentPhase ?? (row.installationId ? "scheduling" : "pending");
-    const observed = row.installationId ? 1 : 0;
+    const servedByLiveNode = row.installationId !== null && row.liveNodeId !== null;
+    const phase: DeploymentPhase = servedByLiveNode ? (row.lifecycleState as DeploymentPhase ?? "scheduling") : "pending";
+    const observed = servedByLiveNode ? 1 : 0;
+    const error = servedByLiveNode ? row.errorMessage : null;
 
     if (!existing) {
       accumulators.set(row.deploymentId, {
@@ -109,14 +112,14 @@ export function foldDeploymentPhaseRows(rows: DeploymentPhaseRow[]): Map<string,
         orgName: row.orgName ?? "",
         name: row.deploymentName,
         model: row.publicSpecifier,
-        error: row.errorMessage,
+        error,
         observedReplicas: observed,
         desiredReplicas: row.desiredReplicas,
       });
     } else {
       const agg = aggregatePhase(
         { phase: existing.phase, progress: null, error: existing.error, failureLogs: null, hasReady: existing.hasReady },
-        phase, null, row.errorMessage,
+        phase, null, error,
       );
       accumulators.set(row.deploymentId, {
         ...existing,
@@ -156,6 +159,7 @@ async function getDeploymentPhases(): Promise<Map<string, DeploymentInfo>> {
       publicSpecifier: modelDeploymentT.publicSpecifier,
       desiredReplicas: modelDeploymentT.replicas,
       installationId: modelInstallationT.id,
+      liveNodeId: aiNodeT.id,
       lifecycleState: modelInstallationStateT.lifecycleState,
       errorMessage: modelInstallationStateT.errorMessage,
     })
@@ -171,7 +175,14 @@ async function getDeploymentPhases(): Promise<Map<string, DeploymentInfo>> {
     AND
       ${modelInstallationT.deletedAt} IS NULL
     `)
-    .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`);
+    .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`)
+    .leftJoin(aiNodeT, sql`
+      ${aiNodeT.id} = ${modelInstallationT.nodeId}
+    AND
+      ${aiNodeT.available}
+    AND
+      ${aiNodeT.deletedAt} IS NULL
+    `);
 
   return foldDeploymentPhaseRows(rows);
 }
