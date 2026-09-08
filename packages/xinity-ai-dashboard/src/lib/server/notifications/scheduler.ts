@@ -279,26 +279,27 @@ async function checkNodeHealth() {
 
 async function checkCapacity() {
   try {
-    const nodes = await getDB()
-      .select({ id: aiNodeT.id, estCapacity: aiNodeT.estCapacity, available: aiNodeT.available })
-      .from(aiNodeT)
-      .where(sql`
-        ${aiNodeT.available}
-      AND
-        ${aiNodeT.deletedAt} IS NULL
-      `);
-
-    const installations = await getDB()
-      .select({ estCapacity: modelInstallationT.estCapacity })
-      .from(modelInstallationT)
-      .innerJoin(aiNodeT, sql`
-        ${aiNodeT.id} = ${modelInstallationT.nodeId}
-      AND
-        ${aiNodeT.available}
-      AND
-        ${aiNodeT.deletedAt} IS NULL
-      `)
-      .where(sql`${modelInstallationT.deletedAt} IS NULL`);
+    const [nodes, installations] = await Promise.all([
+      getDB()
+        .select({ estCapacity: aiNodeT.estCapacity })
+        .from(aiNodeT)
+        .where(sql`
+          ${aiNodeT.available}
+        AND
+          ${aiNodeT.deletedAt} IS NULL
+        `),
+      getDB()
+        .select({ estCapacity: modelInstallationT.estCapacity })
+        .from(modelInstallationT)
+        .innerJoin(aiNodeT, sql`
+          ${aiNodeT.id} = ${modelInstallationT.nodeId}
+        AND
+          ${aiNodeT.available}
+        AND
+          ${aiNodeT.deletedAt} IS NULL
+        `)
+        .where(sql`${modelInstallationT.deletedAt} IS NULL`),
+    ]);
 
     const totalCapacity = nodes.reduce((sum, n) => sum + n.estCapacity, 0);
     if (totalCapacity === 0) return;
