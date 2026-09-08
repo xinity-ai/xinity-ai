@@ -7,6 +7,7 @@ export const LONG_RUNNING_ROUTES = new Set([
   "/v1/chat/completions",
   "/v1/completions",
   "/v1/audio/transcriptions",
+  "/v1/responses",
 ]);
 
 /** lifts the connection timeout for one request; bun clamps per-request values to the 255s cap, so 0 is the only value that works */
