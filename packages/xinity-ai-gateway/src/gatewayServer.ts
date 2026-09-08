@@ -15,6 +15,7 @@ import { handleCreateResponseRequest, handleGetOrDeleteResponseRequest, handleCa
 import { handleRerank } from "./llm-forward/endpoints/handle-rerank";
 import { handleTranscription } from "./llm-forward/endpoints/handle-transcription";
 import { handleMetrics, withMetrics } from "./metrics";
+import { LONG_RUNNING_ROUTES, withoutConnectionTimeout, type RouteHandler } from "./serve-config";
 import { getTlsConfig } from "common-env";
 import { logMigrationFailureFatal } from "common-db";
 import { getSearchProvider } from "./llm-forward/tools/search-providers";
@@ -54,7 +55,7 @@ const handler = new OpenAPIHandler(serverRouter, {
 const tls = getTlsConfig(env);
 setSearchProvider(getSearchProvider(env));
 
-const meteredEndpoints: Array<[string, (req: Request) => Promise<Response> | Response]> = [
+const meteredEndpoints: Array<[string, RouteHandler]> = [
   ["/v1/chat/completions", handleChatCompletion],
   ["/v1/completions", handleCompletion],
   ["/v1/embeddings", handleEmbeddingGeneration],
@@ -68,7 +69,10 @@ const meteredEndpoints: Array<[string, (req: Request) => Promise<Response> | Res
 ];
 
 const meteredRoutes = Object.fromEntries(
-  meteredEndpoints.map(([path, handler]) => [path, withMetrics(path, handler)]),
+  meteredEndpoints.map(([path, handler]) => [
+    path,
+    withMetrics(path, LONG_RUNNING_ROUTES.has(path) ? withoutConnectionTimeout(handler) : handler),
+  ]),
 );
 
 const serveOptions = {
