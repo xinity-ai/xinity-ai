@@ -43,7 +43,7 @@ type ModelSpec = {
   publicSpecifier: string;
   driver: "ollama" | "vllm";
   estCapacity: number;
-  lifecycleState?: "ready" | "downloading" | "installing" | "failed" | "scheduling";
+  lifecycleState?: "ready" | "downloading" | "installing" | "failed";
 };
 
 type DemoMachine = {
