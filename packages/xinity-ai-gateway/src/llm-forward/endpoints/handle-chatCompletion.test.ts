@@ -690,6 +690,80 @@ describe("handleChatCompletion, tool calling", () => {
     expect(assistantMsg.tool_calls[0].id).toBe("call_prev123");
     expect(assistantMsg.tool_calls[0].function.name).toBe("get_weather");
   });
+
+  test("should accept assistant tool-call messages that omit content entirely", async () => {
+    // The OpenAI Go/Python/Node clients drop `content` from the JSON rather
+    // than sending null when an assistant turn is nothing but tool calls.
+    const req = new Request("http://localhost:4000/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        messages: [
+          { role: "user", content: "What is the weather in Boston?" },
+          {
+            role: "assistant",
+            tool_calls: [{
+              id: "call_prev123",
+              type: "function",
+              function: { name: "get_weather", arguments: '{"location":"Boston"}' },
+            }],
+          },
+          {
+            role: "tool",
+            tool_call_id: "call_prev123",
+            content: '{"temperature": 72, "condition": "sunny"}',
+          },
+        ],
+        tools: SAMPLE_TOOLS,
+      }),
+    });
+
+    const res = await handleChatCompletion(req);
+    expect(res.status).toBe(200);
+
+    const upstreamMessages = lastUpstreamBody?.messages as any[];
+    const assistantMsg = upstreamMessages.find((m: any) => m.role === "assistant" && m.tool_calls);
+    expect(assistantMsg).toBeDefined();
+    expect(assistantMsg.content).toBeUndefined();
+  });
+
+  test("should reject a message that omits content without carrying tool calls", async () => {
+    const req = new Request("http://localhost:4000/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        messages: [{ role: "user" }],
+      }),
+    });
+
+    const res = await handleChatCompletion(req);
+    expect(res.status).toBe(400);
+
+    const body = await res.json() as any;
+    expect(body.error.message).toContain("content is required");
+  });
+
+  test("should reject tool calls that are missing their function arguments", async () => {
+    const req = new Request("http://localhost:4000/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        messages: [
+          { role: "user", content: "What is the weather in Boston?" },
+          {
+            role: "assistant",
+            tool_calls: [{ id: "call_prev123", type: "function", function: { name: "get_weather" } }],
+          },
+        ],
+      }),
+    });
+
+    const res = await handleChatCompletion(req);
+    expect(res.status).toBe(400);
+  });
 });
 
 // ---------------------------------------------------------------------------
