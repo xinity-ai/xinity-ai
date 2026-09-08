@@ -8,6 +8,7 @@
  *   - Most nodes online and active
  *   - One node permanently offline throughout
  *   - One node starts offline and toggles every 3 minutes
+ *   - One node removed from the cluster while its installations survive
  *
  * Cleans up all created rows on exit so no stale state is left behind.
  *
@@ -54,6 +55,7 @@ type DemoMachine = {
   models: ModelSpec[];
   available: boolean;
   togglesOnOff?: true;
+  removed?: true;
 };
 
 const ASCENT_GPUS = [{ vendor: "nvidia", name: "NVIDIA GB10", vramMb: 0 }];
@@ -76,6 +78,7 @@ const SMALL_MACHINES: DemoMachine[] = [
   { host: "192.0.2.1", machineName: "Ascent GX10", gpus: ASCENT_GPUS, estCapacity: 110, baseUtilization: 43, models: ASCENT_MODELS, available: true },
   { host: "192.0.2.2", machineName: "Ascent GX10", gpus: ASCENT_GPUS, estCapacity: 110, baseUtilization: 51, models: ASCENT_MODELS, available: true },
   { host: "192.0.2.3", machineName: "Ascent GX10", gpus: ASCENT_GPUS, estCapacity: 110, baseUtilization: 59, models: ASCENT_MODELS, available: false },
+  { host: "192.0.2.4", machineName: "Ascent GX10", gpus: ASCENT_GPUS, estCapacity: 110, baseUtilization: 47, models: ASCENT_MODELS, available: true, removed: true },
   { host: "192.0.2.11", machineName: "RTX PRO 6000 Workstation", gpus: RTX_GPUS, estCapacity: 95, baseUtilization: 65, models: RTX_MODELS, available: true },
   { host: "192.0.2.12", machineName: "RTX PRO 6000 Workstation", gpus: RTX_GPUS, estCapacity: 95, baseUtilization: 75, models: RTX_MODELS, available: false, togglesOnOff: true },
   { host: "192.0.2.21", machineName: "H100 Inference Server", gpus: H100_GPUS, estCapacity: 79, baseUtilization: 28, models: [{ publicSpecifier: "llama-3.3-70b", driver: "vllm", estCapacity: 70 }], available: true },
@@ -109,6 +112,7 @@ function generateLargeMachines(): DemoMachine[] {
         },
       ],
       available: !offline,
+      ...(i === 20 ? { removed: true as const } : {}),
     });
   }
 
@@ -268,7 +272,7 @@ async function main() {
 
   // Create nodes and their model installations.
   const nodeIds: string[] = [];
-  const liveNodes: { id: string; phase: number; models: ModelSpec[]; machineName: string; togglesOnOff: boolean; initiallyOnline: boolean }[] = [];
+  const liveNodes: { id: string; phase: number; models: ModelSpec[]; machineName: string; togglesOnOff: boolean; initiallyOnline: boolean; removed: boolean }[] = [];
 
   for (const [index, machine] of machines.entries()) {
     const [node] = await db.insert(aiNodeT).values({
@@ -280,10 +284,11 @@ async function main() {
       gpus: machine.gpus,
       driverVersions: machine.models.some((m) => m.driver === "vllm") ? { vllm: "0.19.1" } : { ollama: "0.6.3" },
       machineName: machine.machineName,
+      deletedAt: machine.removed ? new Date() : null,
     }).returning();
 
     nodeIds.push(node!.id);
-    liveNodes.push({ id: node!.id, phase: index, models: machine.models, machineName: machine.machineName, togglesOnOff: machine.togglesOnOff ?? false, initiallyOnline: machine.available });
+    liveNodes.push({ id: node!.id, phase: index, models: machine.models, machineName: machine.machineName, togglesOnOff: machine.togglesOnOff ?? false, initiallyOnline: machine.available, removed: machine.removed ?? false });
 
     for (const model of machine.models) {
       const [installation] = await db.insert(modelInstallationT).values({
@@ -326,15 +331,17 @@ async function main() {
     await db.insert(usageEventT).values(events);
   }
 
-  const onlineNodes = liveNodes.filter((n) => n.initiallyOnline && !n.togglesOnOff);
+  const onlineNodes = liveNodes.filter((n) => n.initiallyOnline && !n.togglesOnOff && !n.removed);
   const toggleNode = liveNodes.find((n) => n.togglesOnOff);
   let toggleOnline = false;
   let lastToggle = Date.now();
 
-  const offlineLabel = liveNodes.filter((n) => !n.initiallyOnline && !n.togglesOnOff).map((n) => n.machineName).join(", ");
+  const offlineLabel = liveNodes.filter((n) => !n.initiallyOnline && !n.togglesOnOff && !n.removed).map((n) => n.machineName).join(", ");
+  const removedLabel = liveNodes.filter((n) => n.removed).map((n) => n.machineName).join(", ");
   console.log(`[${preset}] Created ${liveNodes.length} demo machines with ${BACKFILL_HOURS}h backfill.`);
   console.log(`  Offline (static): ${offlineLabel || "none"}`);
   console.log(`  Toggling (3 min): ${toggleNode?.machineName ?? "none"}`);
+  console.log(`  Removed, installations kept: ${removedLabel || "none"}`);
   console.log(`Simulating for ${minutes} minutes (Ctrl-C to stop and clean up)...`);
 
   async function cleanup() {
