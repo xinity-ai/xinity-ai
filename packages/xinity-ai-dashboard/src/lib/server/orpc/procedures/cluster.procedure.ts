@@ -1,6 +1,7 @@
 import { rootOs, withOrganization, requirePermission } from "../root";
 import { sql, aiNodeT, modelInstallationT } from "common-db";
 import { getDB } from "$lib/server/db";
+import { nodeIsLive } from "$lib/server/lib/node-liveness";
 import z from "zod";
 import type { NodeCapability } from "xinity-infoserver";
 
@@ -40,12 +41,7 @@ export async function buildClusterCapacity(): Promise<ClusterCapacity> {
       driverVersions: aiNodeT.driverVersions,
       driverFeatures: aiNodeT.driverFeatures,
       gpus: aiNodeT.gpus,
-    }).from(aiNodeT)
-      .where(sql`
-        ${aiNodeT.available}
-      AND
-        ${aiNodeT.deletedAt} IS NULL
-      `),
+    }).from(aiNodeT).where(nodeIsLive),
     getDB().select().from(modelInstallationT)
       .where(sql`${modelInstallationT.deletedAt} IS NULL`),
   ]);

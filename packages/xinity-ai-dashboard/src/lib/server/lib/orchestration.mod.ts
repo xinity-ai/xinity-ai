@@ -7,6 +7,7 @@ import { rootLogger } from "../logging";
 import { building } from "$app/environment";
 import { maxVramGb } from "$lib/server/license";
 import { serverEnv } from "$lib/server/serverenv";
+import { nodeIsLive } from "./node-liveness";
 
 const log = rootLogger.child({ name: "orchestration.mod" })
 
@@ -373,11 +374,7 @@ async function runSyncDeployedModels() {
   const requiredModels = await assembleModelRequirementTable();
   const [existing, availableServers]: [ModelInstallation[], AiNode[]] = await Promise.all([
     getDB().select().from(modelInstallationT).where(sql`${modelInstallationT.deletedAt} IS NULL`),
-    getDB().select().from(aiNodeT).where(sql`
-      ${aiNodeT.available}
-    AND
-      ${aiNodeT.deletedAt} IS NULL
-    `),
+    getDB().select().from(aiNodeT).where(nodeIsLive),
   ]);
 
   const availableServerIds = new Set(availableServers.map(s => s.id));

@@ -12,6 +12,7 @@ import {
 } from "common-db";
 import { serverEnv } from "$lib/server/serverenv";
 import { getDB } from "$lib/server/db";
+import { nodeIsLive, installationOnLiveNode } from "$lib/server/lib/node-liveness";
 import { rootLogger } from "$lib/server/logging";
 import { building } from "$app/environment";
 import { notifyOrgMembers } from "./notification.service";
@@ -176,13 +177,7 @@ async function getDeploymentPhases(): Promise<Map<string, DeploymentInfo>> {
       ${modelInstallationT.deletedAt} IS NULL
     `)
     .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`)
-    .leftJoin(aiNodeT, sql`
-      ${aiNodeT.id} = ${modelInstallationT.nodeId}
-    AND
-      ${aiNodeT.available}
-    AND
-      ${aiNodeT.deletedAt} IS NULL
-    `);
+    .leftJoin(aiNodeT, installationOnLiveNode);
 
   return foldDeploymentPhaseRows(rows);
 }
@@ -283,21 +278,11 @@ async function checkCapacity() {
       getDB()
         .select({ estCapacity: aiNodeT.estCapacity })
         .from(aiNodeT)
-        .where(sql`
-          ${aiNodeT.available}
-        AND
-          ${aiNodeT.deletedAt} IS NULL
-        `),
+        .where(nodeIsLive),
       getDB()
         .select({ estCapacity: modelInstallationT.estCapacity })
         .from(modelInstallationT)
-        .innerJoin(aiNodeT, sql`
-          ${aiNodeT.id} = ${modelInstallationT.nodeId}
-        AND
-          ${aiNodeT.available}
-        AND
-          ${aiNodeT.deletedAt} IS NULL
-        `)
+        .innerJoin(aiNodeT, installationOnLiveNode)
         .where(sql`${modelInstallationT.deletedAt} IS NULL`),
     ]);
 
@@ -400,12 +385,7 @@ async function checkWeeklyReport() {
     const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60_000);
     const [orgs, nodeResult] = await Promise.all([
       getDB().select({ id: organizationT.id, name: organizationT.name }).from(organizationT),
-      getDB().select({ count: count() }).from(aiNodeT)
-        .where(sql`
-          ${aiNodeT.available}
-        AND
-          ${aiNodeT.deletedAt} IS NULL
-        `),
+      getDB().select({ count: count() }).from(aiNodeT).where(nodeIsLive),
     ]);
     const activeNodes = nodeResult[0]?.count ?? 0;
     const period = formatReportPeriod(oneWeekAgo, now);
