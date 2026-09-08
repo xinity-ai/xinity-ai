@@ -2,7 +2,7 @@ import { rootOs, withOrganization, requirePermission, auditMiddleware } from "..
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
 import { sql, modelDeploymentT, modelInstallationT, modelInstallationStateT, aiNodeT, deploymentMatchesInstallation, type ModelDeployment, type SQL } from "common-db";
 import z from "zod";
-import { DeploymentDto } from "$lib/orpc/dtos/model.dto";
+import { DeploymentDto, DeploymentWithStatusDto, type DeploymentWithStatus } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { installationOnLiveNode } from "$lib/server/lib/node-liveness";
 import { syncDeployedModels } from "$lib/server/lib/orchestration.mod";
@@ -10,7 +10,7 @@ import { resolveSchedulable, resolvesOnlyAsLegacy } from "$lib/server/model-cata
 import { buildClusterCapacity } from "./cluster.procedure";
 import { checkNodeCompatibility, type ModelNodeRequirements } from "xinity-infoserver";
 import { rootLogger } from "$lib/server/logging";
-import { aggregatePhase, isProgressBearingPhase, toDisplayPhase, type PhaseInfo } from "$lib/server/lib/deployment-phase";
+import { foldDeploymentStatusRows } from "$lib/server/lib/deployment-status";
 import { findOrgName } from "$lib/server/lib/org-queries";
 import { notifyOrgMembers } from "$lib/server/notifications/notification.service";
 import { NotificationType } from "$lib/server/notifications/events";
@@ -195,34 +195,10 @@ async function findActiveDeploymentInOrg(id: string, orgId: string): Promise<Mod
 // Shared status schema and query helper
 // ---------------------------------------------------------------------------
 
-const ReplicaStatusSchema = z.object({
-  phase: z.enum(["ready", "downloading", "installing", "failed", "scheduling"]),
-  node: z.string().nullable(),
-  error: z.string().nullable(),
-});
-
-const DeploymentStatusSchema = z.object({
-  phase: z.enum(["ready", "downloading", "installing", "failed", "scheduling", "not_in_catalog", "partial"]),
-  progress: z.number().nullable(),
-  error: z.string().nullable().optional(),
-  failureLogs: z.string().nullable().optional(),
-  replicas: ReplicaStatusSchema.array().optional(),
-});
-
-export const DeploymentWithStatusDto = DeploymentDto.extend({
-  status: DeploymentStatusSchema.optional(),
-  /** Set while the model is only served by the deprecated catalog. Removed before 1.0.0. */
-  deprecatedModel: z.boolean().optional(),
-});
-export type DeploymentWithStatus = z.infer<typeof DeploymentWithStatusDto>;
-type StatusPhase = z.infer<typeof DeploymentStatusSchema>["phase"];
-
 /**
  * Runs the status join query and aggregates installation phase info for the given deployments.
  * `where` should narrow to the specific deployment rows you want (org condition + optional id filter).
  */
-type ReplicaStatus = z.infer<typeof ReplicaStatusSchema>;
-
 async function queryDeploymentsWithStatus(where: SQL | undefined): Promise<DeploymentWithStatus[]> {
   const rows = await getDB()
     .select()
@@ -236,48 +212,7 @@ async function queryDeploymentsWithStatus(where: SQL | undefined): Promise<Deplo
     .leftJoin(aiNodeT, installationOnLiveNode)
     .where(where);
 
-  const deploymentMap = new Map<string, { deployment: ModelDeployment; phaseInfo?: PhaseInfo; replicas: ReplicaStatus[] }>();
-
-  for (const row of rows) {
-    const deployment = row.model_deployment;
-    let entry = deploymentMap.get(deployment.id);
-    if (!entry) {
-      entry = { deployment, replicas: [] };
-      deploymentMap.set(deployment.id, entry);
-    }
-
-    const installation = row.model_installation;
-    const state = row.model_installation_state;
-    const liveNode = row.ai_node;
-
-    if (!installation || !liveNode) continue;
-
-    const nodeLabel = liveNode.machineName ?? liveNode.host;
-
-    if (!state) {
-      entry.phaseInfo = aggregatePhase(entry.phaseInfo, "scheduling", null, null);
-      entry.replicas.push({ phase: "scheduling", node: nodeLabel, error: null });
-      continue;
-    }
-
-    const phase = state.lifecycleState;
-    const progress = isProgressBearingPhase(phase) ? (state.progress ?? null) : null;
-    entry.phaseInfo = aggregatePhase(entry.phaseInfo, phase, progress, state.errorMessage, state.failureLogs);
-    entry.replicas.push({ phase, node: nodeLabel, error: state.errorMessage });
-  }
-
-  return Array.from(deploymentMap.values()).map(({ deployment, phaseInfo, replicas }) => {
-    if (!phaseInfo) return deployment;
-    const phase = toDisplayPhase(phaseInfo);
-    const status = {
-      phase: phase as StatusPhase,
-      progress: phaseInfo.progress,
-      error: phaseInfo.error,
-      failureLogs: phaseInfo.failureLogs,
-      replicas: replicas.length > 0 ? replicas : undefined,
-    };
-    return { ...deployment, status };
-  });
+  return foldDeploymentStatusRows(rows);
 }
 
 async function lookupIsMissingFromCatalog(specifier: string | null): Promise<boolean> {

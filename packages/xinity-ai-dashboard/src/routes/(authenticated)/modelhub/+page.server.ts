@@ -2,7 +2,7 @@ import type { PageServerLoad } from "./$types";
 import { router } from "$lib/server/orpc/router";
 import { call } from "@orpc/server";
 import { buildClusterCapacity, type ClusterCapacity } from "$lib/server/orpc/procedures/cluster.procedure";
-import type { DeploymentWithStatus } from "$lib/server/orpc/procedures/deployment.procedure";
+import type { DeploymentWithStatus } from "$lib/orpc/dtos/model.dto";
 import type { ApplicationDto } from "$lib/orpc/dtos/application.dto";
 import { isRedirect, isHttpError } from "@sveltejs/kit";
 
