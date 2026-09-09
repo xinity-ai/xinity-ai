@@ -74,7 +74,7 @@ export const STACK_SHARED_SCHEMA = z.object({
   TETHER_URL: z.url().optional().describe("Tether URL (auto-derived from the tether host address if left empty)"),
   TETHER_SECRET: z.string().min(1).describe("Shared secret for tether/daemon authentication").meta(secret()),
   METRICS_AUTH: z.string().describe("Basic auth for every component's /metrics endpoint (user:pass, comma-separated for multiple)").meta(secret()),
-  HF_TOKEN: z.string().optional().describe("Hugging Face token for gated model downloads").meta(secret()),
+  VLLM_HF_TOKEN: z.string().optional().describe("HuggingFace token for downloading private or gated models").meta(secret()),
 }).extend(s3EnvSchema.shape);
 
 /** Owned by the shared layer; component/fleet/host editors must not offer them. */
@@ -142,7 +142,21 @@ export function loadStack(name: string): StackDefinition | null {
     log.message(`  ${dim("xinity stack rm <name> && xinity stack init <name>")}`);
     return null;
   }
-  return result.data as StackDefinition;
+  return migrateSharedKeys(result.data as StackDefinition);
+}
+
+/**
+ * HF_TOKEN was collected but declared by no component, so it was filtered out before any env
+ * file was written. Renaming it to the key the daemon reads makes an already-entered token
+ * take effect instead of being lost.
+ */
+function migrateSharedKeys(stack: StackDefinition): StackDefinition {
+  const stale = stack.secrets.HF_TOKEN;
+  if (stale !== undefined) {
+    stack.secrets.VLLM_HF_TOKEN ??= stale;
+    delete stack.secrets.HF_TOKEN;
+  }
+  return stack;
 }
 
 export function saveStack(stack: StackDefinition): void {

@@ -15,8 +15,11 @@ import {
   saveStack,
   deleteStack,
   listStacks,
+  STACK_SHARED_SCHEMA,
 } from "../../src/lib/stack.ts";
 import { loadStackState, markHostManaged } from "../../src/lib/stack-state.ts";
+import { COMPONENTS } from "../../src/lib/component-meta.ts";
+import { componentFields } from "../../src/lib/env-prompt.ts";
 
 function makeStack(overrides: Partial<StackDefinition> = {}): StackDefinition {
   return {
@@ -113,6 +116,15 @@ describe("stack persistence", () => {
       version: "0.0.0",
       env: { A: "1" },
     });
+  });
+
+  test("loadStack moves a stored HF_TOKEN onto the key the daemon actually reads", () => {
+    tmp.write(
+      "xinity/stacks/old.json",
+      JSON.stringify({ name: "old", secrets: { HF_TOKEN: "hf_abc" } }),
+    );
+
+    expect(loadStack("old")!.secrets).toEqual({ VLLM_HF_TOKEN: "hf_abc" });
   });
 
   test("deleteStack removes the definition and its state", () => {
@@ -350,4 +362,12 @@ describe("validateStack", () => {
 
     expect(errors.some((e) => e.message.includes("no hosts with the daemon"))).toBe(true);
   });
+});
+
+// A shared key no component declares is filtered out before any env file is written, so it is
+// collected from the operator and then silently discarded.
+test("every shared key is declared by some component", () => {
+  const declared = new Set(COMPONENTS.flatMap((component) => componentFields(component).map((f) => f.key)));
+  const orphaned = Object.keys(STACK_SHARED_SCHEMA.shape).filter((key) => !declared.has(key));
+  expect(orphaned).toEqual([]);
 });
