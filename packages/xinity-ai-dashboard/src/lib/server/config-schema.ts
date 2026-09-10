@@ -54,6 +54,22 @@ const server = defineGroup<Server>({
   },
 });
 
+type Tls = { certFile: string; keyFile: string };
+
+const tls = defineGroup<Tls>({
+  id: "tls",
+  title: "TLS",
+  description: "Opt-in HTTPS. See https://github.com/xinity-ai/xinity-ai/blob/main/docs/security/tls.md",
+  expert: true,
+  optional: { requires: ["certFile", "keyFile"] },
+  fields: {
+    certFile: env("XINITY_TLS_CERT_FILE", z.string()
+      .describe("Path to the PEM-encoded TLS certificate")),
+    keyFile: env("XINITY_TLS_KEY_FILE", z.string()
+      .describe("Path to the PEM-encoded TLS private key")),
+  },
+});
+
 type Auth = {
   secret: string;
   signupEnabled: boolean;
@@ -155,6 +171,7 @@ export type DashboardConfig = {
   audit: Audit | undefined;
   metrics: Required<MetricsConfig>;
   s3: ObjectStorageConfig | undefined;
+  tls: Tls | undefined;
   proxy: ProxyConfig;
   log: LoggingConfig;
   nodeEnv: "production" | "development" | "test";
@@ -175,6 +192,7 @@ export const dashboardConfig = defineConfig<DashboardConfig>({
   audit,
   metrics: metricsGroup({ required: true }),
   s3: objectStorageGroup(),
+  tls,
   proxy: proxyGroup(),
   log: loggingGroup(),
   nodeEnv: env("NODE_ENV", z.enum(["production", "development", "test"])

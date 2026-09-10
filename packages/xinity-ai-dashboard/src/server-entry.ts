@@ -7,7 +7,16 @@
  * scheduler and the shutdown handlers from its module body, so an idle process would run
  * none of them. One request to ourselves forces that initialisation.
  */
+import { activationRefusal } from "common-env";
+import { dashboardConfig } from "./lib/server/config-schema";
 import { config } from "./lib/server/config";
+import { rootLogger } from "./lib/server/logging";
+
+const refusal = activationRefusal(dashboardConfig, process.env, rootLogger);
+if (refusal) {
+  rootLogger.fatal(refusal);
+  process.exit(1);
+}
 
 // The adapter reads these from process.env before any of our code runs, so a declared value
 // reaches it only by being placed here. Assigned one at a time on purpose: a spread would put
@@ -20,6 +29,10 @@ process.env.HTTP_OVERRIDE_ORIGIN = config.server.origin;
 process.env.HTTP_XFF_DEPTH = String(config.proxy.xffDepth);
 if (config.server.unixSocket) {
   process.env.HTTP_SOCKET = config.server.unixSocket;
+}
+if (config.tls) {
+  process.env.TLS_CERT_FILE = config.tls.certFile;
+  process.env.TLS_KEY_FILE = config.tls.keyFile;
 }
 if (config.proxy.header) {
   process.env.HTTP_IP_HEADER = config.proxy.header;
