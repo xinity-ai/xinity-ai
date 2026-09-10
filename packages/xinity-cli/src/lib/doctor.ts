@@ -259,7 +259,7 @@ function requiredFieldsPresenceCheck(
   values: Record<string, string>,
 ): CheckResult {
   const missing = fields
-    .filter(f => !f.isOptional && !f.hasDefault && !values[f.key])
+    .filter(f => f.isRequired && !values[f.key])
     .map(f => f.key);
   if (missing.length > 0) {
     return { label, status: "fail", message: `Missing required: ${missing.join(", ")}` };

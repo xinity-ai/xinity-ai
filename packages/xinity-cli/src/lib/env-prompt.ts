@@ -21,7 +21,6 @@ export type EnvField = {
   description?: string;
   hasDefault: boolean;
   defaultValue?: unknown;
-  isOptional: boolean;
   isRequired: boolean;
   isSecret: boolean;
   isExpert: boolean;
@@ -77,7 +76,6 @@ export function analyzeConfig(config: AnyConfig): EnvField[] {
       description: entry.description,
       hasDefault: withoutValue.success && withoutValue.data !== undefined,
       defaultValue: withoutValue.success ? withoutValue.data : undefined,
-      isOptional: withoutValue.success,
       isRequired: !withoutValue.success,
       isSecret: entry.isSecret,
       isExpert: entry.isExpert,
@@ -103,7 +101,7 @@ export function componentFields(component: Component): EnvField[] {
 }
 
 /** The single definition of "the config is invalid without this field". */
-export function isRequiredUnset(field: EnvField, values: Record<string, string | undefined>): boolean {
+function isRequiredUnset(field: EnvField, values: Record<string, string | undefined>): boolean {
   if (!field.isRequired || values[field.key]) {
     return false;
   }
@@ -278,7 +276,7 @@ async function promptField(
   };
 
   const hint = field.description ? dim(` (${field.description})`) : "";
-  const optTag = field.isOptional ? dim(" [optional]") : "";
+  const optTag = field.isRequired ? "" : dim(" [optional]");
   const existing = existingValue ?? (field.hasDefault ? String(field.defaultValue) : undefined);
   // Only the menu editor can back out with Escape, so only there is an empty submit safe to read as "unset".
   const unsetOnEmpty = inMenuEditor && !field.isRequired;
@@ -348,8 +346,7 @@ function displayValue(field: EnvField, value: string | undefined): string {
     return cyan(value);
   }
   if (field.hasDefault) return dim(`(default: ${field.defaultValue})`);
-  if (field.isOptional) return dim("(not set)");
-  return yellow("(not set)");
+  return field.isRequired ? yellow("(not set)") : dim("(not set)");
 }
 
 type MenuGroup = { definition: EnvFieldGroup; fields: EnvField[] };
