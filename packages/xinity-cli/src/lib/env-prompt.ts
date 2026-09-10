@@ -27,10 +27,17 @@ export type EnvField = {
   isExpert: boolean;
   isPublic: boolean;
   enumValues?: string[];
-  isNumber: boolean;
   isBoolean: boolean;
+  validate: (raw: string) => string | undefined;
   /** Only set for components on a grouped declaration. */
   group?: EnvFieldGroup;
+}
+
+function schemaValidator(schema: z.ZodType): (raw: string) => string | undefined {
+  return (raw) => {
+    const parsed = schema.safeParse(raw);
+    return parsed.success ? undefined : parsed.error.issues[0]?.message;
+  };
 }
 
 function readFieldMeta(field: z.ZodType): { secret: boolean; expert: boolean; public: boolean } {
@@ -96,8 +103,8 @@ export function analyzeEnvSchema(
       isExpert: meta.expert,
       isPublic: meta.public,
       enumValues,
-      isNumber: resolvedType === "number" || resolvedType === "integer",
       isBoolean: resolvedType === "boolean",
+      validate: schemaValidator(zodField as z.ZodType),
     });
   }
 
@@ -131,8 +138,8 @@ export function analyzeConfig(config: AnyConfig): EnvField[] {
       isExpert: entry.isExpert,
       isPublic: readLeafMeta(entry.schema).public === true,
       enumValues: extractEnumValues(prop),
-      isNumber: resolvedType === "number" || resolvedType === "integer",
       isBoolean: resolvedType === "boolean",
+      validate: schemaValidator(entry.schema),
       group: mounted && {
         id: mounted.group.id,
         title: mounted.group.title,
@@ -322,15 +329,18 @@ async function promptField(
     ? ""
     : dim(unsetOnEmpty ? " [Enter to unset]" : " [Enter to keep current]");
   const keepOnEmpty = unsetOnEmpty ? undefined : existing;
+  const validateInput = (val: string | undefined) => {
+    if (!val) {
+      return !existing && field.isRequired ? "This field is required" : undefined;
+    }
+    return field.validate(val);
+  };
 
   // Secret → masked password input
   if (field.isSecret) {
     const value = await resolve(password({
       message: `${field.key}${hint}${optTag}${emptyHint}`,
-      validate: (val) => {
-        if (!val && !existing && field.isRequired) return "This field is required";
-        return undefined;
-      },
+      validate: validateInput,
     }));
     if (value === FIELD_CANCELLED) return value;
     return value || keepOnEmpty || undefined;
@@ -368,11 +378,7 @@ async function promptField(
     message: `${field.key}${hint}${optTag}${emptyHint}`,
     placeholder: existing ?? undefined,
     defaultValue: unsetOnEmpty ? undefined : existing ?? undefined,
-    validate: (val) => {
-      if (!val && !existing && field.isRequired) return "This field is required";
-      if (val && field.isNumber && Number.isNaN(Number(val))) return "Must be a number";
-      return undefined;
-    },
+    validate: validateInput,
   }));
   if (value === FIELD_CANCELLED) return value;
   return value || keepOnEmpty || undefined;

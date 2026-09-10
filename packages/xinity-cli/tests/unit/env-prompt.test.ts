@@ -28,9 +28,29 @@ describe("env-prompt", () => {
     });
 
     const byKey = Object.fromEntries(analyzeConfig(declared).map((f) => [f.key, f]));
-    expect(byKey.PORT).toMatchObject({ isNumber: true, isBoolean: false });
-    expect(byKey.DEBUG).toMatchObject({ isBoolean: true, isNumber: false });
+    expect(byKey.DEBUG!.isBoolean).toBe(true);
+    expect(byKey.PORT!.isBoolean).toBe(false);
     expect(byKey.LEVEL!.enumValues).toEqual(["info", "warn"]);
+  });
+
+  describe("field validation", () => {
+    const fields = analyzeConfig(defineConfig<{ origin: string; port: number }>({
+      origin: env("ORIGIN", z.url()),
+      port: env("PORT", configInt(z.int().max(255))),
+    }));
+    const check = (key: string, raw: string) => fields.find((f) => f.key === key)!.validate(raw);
+
+    test("refuses what the service would refuse at boot", () => {
+      expect(check("ORIGIN", "hello$world")).toBeTruthy();
+      expect(check("PORT", "300")).toBeTruthy();
+      // Number("0x10") is 16, so a numeric coercion would let it through.
+      expect(check("PORT", "0x10")).toBeTruthy();
+    });
+
+    test("accepts what it would take", () => {
+      expect(check("ORIGIN", "https://x.example")).toBeUndefined();
+      expect(check("PORT", "80")).toBeUndefined();
+    });
   });
 
   describe("analyzeEnvSchema", () => {
@@ -68,16 +88,6 @@ describe("env-prompt", () => {
       expect(fields[0]!.isRequired).toBe(false);
     });
 
-    test("detects number fields", () => {
-      const schema = z.object({
-        PORT: z.coerce.number(),
-      });
-
-      const fields = analyzeEnvSchema(schema);
-      expect(fields[0]!.isNumber).toBe(true);
-      expect(fields[0]!.isBoolean).toBe(false);
-    });
-
     test("detects boolean fields", () => {
       const schema = z.object({
         VERBOSE: z.boolean().default(false),
@@ -85,7 +95,6 @@ describe("env-prompt", () => {
 
       const fields = analyzeEnvSchema(schema);
       expect(fields[0]!.isBoolean).toBe(true);
-      expect(fields[0]!.isNumber).toBe(false);
     });
 
     test("detects enum fields", () => {
