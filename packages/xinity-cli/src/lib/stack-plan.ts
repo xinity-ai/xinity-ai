@@ -22,12 +22,12 @@ import { readManifest, saveStackMembership, type StackMembership } from "./manif
 import { describeMigrationStep, migrationScriptComment, runMigrations } from "./migrator.ts";
 import { connectHost } from "./remote-host.ts";
 import { type ComponentAction, describeComponentAction, buildComponentAction, reviewGate, scriptComponentSection } from "./up-plan.ts";
-import { analyzeEnvSchema, componentFields, splitValuesByCategory, readExistingEnvState, diffEnv, missingRequiredFields, planSecretFileRemoval } from "./env-prompt.ts";
+import { componentFields, splitValuesByCategory, readExistingEnvState, diffEnv, missingRequiredFields, planSecretFileRemoval } from "./env-prompt.ts";
 import {
   type StackDefinition, type StackHost, type FleetDefinition,
   resolveEnv, saveStack, getFleetForHost, hostLabel,
   componentLayerSeed, fleetLayerSeed,
-  STACK_SHARED_SCHEMA,
+  sharedFields,
 } from "./stack.ts";
 import { editSharedLayer, editComponentLayer, editFleetLayer, editHostLayer } from "./stack-layers.ts";
 import { loadStackState, findOrphanHosts, markHostManaged, unmarkHostManaged } from "./stack-state.ts";
@@ -141,7 +141,7 @@ function deriveTetherUrl(stack: StackDefinition): void {
  * values are missing; edits are stored as diffs against the layer below.
  */
 async function ensureStackLevelConfig(stack: StackDefinition, deployments: Deployment[]): Promise<boolean> {
-  if (missingRequiredFields(analyzeEnvSchema(STACK_SHARED_SCHEMA), { ...stack.env, ...stack.secrets }).length > 0) {
+  if (missingRequiredFields(sharedFields(), { ...stack.env, ...stack.secrets }).length > 0) {
     heading("shared settings");
     if (!(await editSharedLayer(stack, "Shared stack settings (new required values)"))) {
       return false;

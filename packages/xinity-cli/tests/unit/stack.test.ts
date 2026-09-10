@@ -19,6 +19,7 @@ import {
   sharedFields,
 } from "../../src/lib/stack.ts";
 import { loadStackState, markHostManaged } from "../../src/lib/stack-state.ts";
+import { missingRequiredFields } from "../../src/lib/env-prompt.ts";
 
 function makeStack(overrides: Partial<StackDefinition> = {}): StackDefinition {
   return {
@@ -376,5 +377,12 @@ describe("sharedFields", () => {
 
   test("a key derived from a host address is not demanded before the hosts exist", () => {
     expect(byKey.get("TETHER_URL")!.isRequired).toBe(false);
+  });
+
+  test("an empty stack is short its infra keys, but not the switched-off S3 group", () => {
+    const demanded = missingRequiredFields(sharedFields(), {}).map((field) => field.key);
+
+    expect(demanded).toContain("DB_CONNECTION_URL");
+    expect(demanded).not.toContain("S3_ENDPOINT");
   });
 });

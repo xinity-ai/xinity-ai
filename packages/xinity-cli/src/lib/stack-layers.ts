@@ -4,10 +4,10 @@
  * `stack edit`, and the lazy editors inside `stack up` all go through these.
  */
 import { type Component, COMPONENT_CONFIGS } from "./component-meta.ts";
-import { analyzeEnvSchema, componentFields, menuEditEnv, flattenBundle } from "./env-prompt.ts";
+import { componentFields, menuEditEnv, flattenBundle } from "./env-prompt.ts";
 import {
   type StackDefinition, type FleetDefinition,
-  STACK_SHARED_SCHEMA, STACK_SHARED_KEYS,
+  STACK_SHARED_KEYS, sharedFields,
   applySharedResult, diffFromLayer,
   componentLayerBase, fleetLayerBase, getHost, saveStack,
 } from "./stack.ts";
@@ -41,7 +41,7 @@ export async function menuEditLayer(opts: {
 
 /** Returns false when the user cancelled; nothing is stored then. */
 export async function editSharedLayer(stack: StackDefinition, message = "Shared stack settings"): Promise<boolean> {
-  const result = await menuEditEnv(analyzeEnvSchema(STACK_SHARED_SCHEMA), { ...stack.env, ...stack.secrets }, {
+  const result = await menuEditEnv(sharedFields(), { ...stack.env, ...stack.secrets }, {
     message,
   });
   if (result === null) {

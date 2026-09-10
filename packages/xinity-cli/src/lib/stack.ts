@@ -15,7 +15,7 @@ import { z } from "zod";
 import { secret, s3EnvSchema } from "common-env";
 import { version as cliVersion } from "../../../../package.json";
 import { type Component, COMPONENTS, getAutoDefaults } from "./component-meta.ts";
-import { analyzeEnvSchema, componentFields, type EnvField } from "./env-prompt.ts";
+import { componentFields, type EnvField } from "./env-prompt.ts";
 import { log } from "./clack.ts";
 import { dim } from "picocolors";
 import { deleteStackState } from "./stack-state.ts";
@@ -126,7 +126,7 @@ export function applySharedResult(
   stack: StackDefinition,
   result: { config: Record<string, string>; secrets: Record<string, string> },
 ): void {
-  for (const field of analyzeEnvSchema(STACK_SHARED_SCHEMA)) {
+  for (const field of sharedFields()) {
     const bucket = field.isSecret ? stack.secrets : stack.env;
     const value = field.isSecret ? result.secrets[field.key] : result.config[field.key];
     if (value === undefined) {
