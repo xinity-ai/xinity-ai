@@ -73,12 +73,17 @@ export function metricsAuthField(opts: { required?: boolean } = {}) {
       .describe(METRICS_AUTH_DESCRIPTION).meta(secret()));
 }
 
-export function metricsGroup(): GroupDef<MetricsConfig> {
-  return defineGroup<MetricsConfig>({
-    id: "metrics",
-    title: "Metrics endpoint",
-    fields: { auth: metricsAuthField() },
-  });
+const METRICS_GROUP = { id: "metrics", title: "Metrics endpoint" } as const;
+
+export function metricsGroup(opts: { required: true }): GroupDef<Required<MetricsConfig>>;
+export function metricsGroup(opts?: { required?: false }): GroupDef<MetricsConfig>;
+export function metricsGroup(opts: { required?: boolean } = {}) {
+  return opts.required
+    ? defineGroup<Required<MetricsConfig>>({
+      ...METRICS_GROUP,
+      fields: { auth: metricsAuthField({ required: true }) },
+    })
+    : defineGroup<MetricsConfig>({ ...METRICS_GROUP, fields: { auth: metricsAuthField() } });
 }
 
 export function tetherSecretField() {
@@ -115,24 +120,17 @@ export function objectStorageGroup(): GroupDef<ObjectStorageConfig | undefined> 
 
 export type TlsConfig = { cert: string; key: string };
 
-export const TLS_DESCRIPTION =
-  "Opt-in HTTPS. See https://github.com/xinity-ai/xinity-ai/blob/main/docs/security/tls.md";
-
-export function tlsFields() {
-  return {
-    cert: env("XINITY_TLS_CERT", z.string().describe("PEM-encoded TLS certificate").meta(secret())),
-    key: env("XINITY_TLS_KEY", z.string().describe("PEM-encoded TLS private key").meta(secret())),
-  };
-}
-
 export function tlsGroup(): GroupDef<TlsConfig | undefined> {
   return defineGroup<TlsConfig>({
     id: "tls",
     title: "TLS",
-    description: TLS_DESCRIPTION,
+    description: "Opt-in HTTPS. See https://github.com/xinity-ai/xinity-ai/blob/main/docs/security/tls.md",
     expert: true,
     optional: { requires: ["cert", "key"] },
-    fields: tlsFields(),
+    fields: {
+      cert: env("XINITY_TLS_CERT", z.string().describe("PEM-encoded TLS certificate").meta(secret())),
+      key: env("XINITY_TLS_KEY", z.string().describe("PEM-encoded TLS private key").meta(secret())),
+    },
   });
 }
 

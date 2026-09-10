@@ -10,12 +10,13 @@ import {
   defineGroup,
   env,
   expert,
-  metricsAuthField,
+  metricsGroup,
   objectStorageGroup,
   proxyGroup,
   secret,
   type CatalogConfig,
   type DatabaseConfig,
+  type MetricsConfig,
   type ObjectStorageConfig,
   type ProxyConfig,
 } from "common-env";
@@ -130,16 +131,6 @@ const audit = defineGroup<Audit>({
   },
 });
 
-type Metrics = { auth: string };
-
-const metrics = defineGroup<Metrics>({
-  id: "metrics",
-  title: "Metrics endpoint",
-  fields: {
-    auth: metricsAuthField({ required: true }),
-  },
-});
-
 export type DashboardConfig = {
   server: Server;
   db: DatabaseConfig;
@@ -148,7 +139,7 @@ export type DashboardConfig = {
   infoserver: CatalogConfig;
   compute: Compute;
   audit: Audit | undefined;
-  metrics: Metrics;
+  metrics: Required<MetricsConfig>;
   s3: ObjectStorageConfig | undefined;
   proxy: ProxyConfig;
   log: LoggingConfig;
@@ -168,7 +159,7 @@ export const dashboardConfig = defineConfig<DashboardConfig>({
   infoserver: catalogGroup(),
   compute,
   audit,
-  metrics,
+  metrics: metricsGroup({ required: true }),
   s3: objectStorageGroup(),
   proxy: proxyGroup(),
   log: loggingGroup(),

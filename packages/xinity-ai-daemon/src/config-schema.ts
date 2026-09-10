@@ -9,7 +9,7 @@ import {
   expert,
   metricsAuthField,
   secret,
-  serverFields,
+  serverGroup,
   tetherSecretField,
   tlsGroup,
   type CatalogConfig,
@@ -122,11 +122,7 @@ export type DaemonConfig = {
 };
 
 export const daemonConfig = defineConfig<DaemonConfig>({
-  server: defineGroup<ServerConfig>({
-    id: "server",
-    title: "HTTP server",
-    fields: serverFields({ host: "0.0.0.0", port: 4044 }),
-  }),
+  server: serverGroup({ host: "0.0.0.0", port: 4044 }),
   tether,
   node,
   infoserver: catalogGroup(),
