@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { coreComponents, initialSharedSecrets, renderUpPlanScript, type UpPlan } from "../../src/lib/up-plan.ts";
+import { coreComponents, renderUpPlanScript, type UpPlan } from "../../src/lib/up-plan.ts";
+import { initialSharedSecrets } from "../../src/lib/secrets.ts";
 import { buildPostgresProvisionCommands, describePostgresProvision, type PostgresProvision } from "../../src/lib/postgres-setup.ts";
 import { describeRedisPlan, buildRedisProvisionCommands, type RedisPlan } from "../../src/lib/redis-setup.ts";
 

@@ -8,13 +8,13 @@
  * All shell operations go through the Host interface so this works
  * identically for local and remote (--target-host) execution.
  */
-import { randomBytes } from "node:crypto";
 import { confirm, isCancel, log, note, password, spinner as clackSpinner, text } from "./clack.ts";
 import { bold, cyan, dim } from "picocolors";
 import { type Host, commandExistsOn } from "./host.ts";
 import { pass, fail, info, promptOrUndefined, warn } from "./output.ts";
 import { heredoc } from "./service.ts";
 import { BIN_DIR, ENV_DIR, UNIT_DIR } from "./component-meta.ts";
+import { randomToken } from "./secrets.ts";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -36,14 +36,6 @@ export type SeaweedFSCredentials = {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function generateKey(length = 20): string {
-  return randomBytes(length).toString("base64url").slice(0, length).toUpperCase();
-}
-
-function generateSecret(length = 40): string {
-  return randomBytes(length).toString("base64url").slice(0, length);
-}
-
 async function promptOrGenerateS3Credentials(): Promise<{ accessKeyId: string; secretAccessKey: string } | undefined> {
   const useGenerated = await promptOrUndefined(confirm({
     message: "Generate random S3 credentials?",
@@ -52,8 +44,8 @@ async function promptOrGenerateS3Credentials(): Promise<{ accessKeyId: string; s
   if (useGenerated === undefined) return undefined;
 
   if (useGenerated) {
-    const accessKeyId = generateKey();
-    const secretAccessKey = generateSecret();
+    const accessKeyId = randomToken(20).toUpperCase();
+    const secretAccessKey = randomToken();
     info("Access key", cyan(accessKeyId));
     info("Secret key", cyan(secretAccessKey));
     return { accessKeyId, secretAccessKey };

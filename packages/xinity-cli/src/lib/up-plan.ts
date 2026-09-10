@@ -5,7 +5,6 @@
  * gate on a single confirmation (with a bash-script dump as a secondary
  * option), then apply hands-off through the installer.
  */
-import { randomBytes } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -26,6 +25,7 @@ import { discoverConnectionUrl, describeMigrationStep, migrationScriptComment, r
 import { describePostgresProvision, buildPostgresProvisionCommands, applyPostgresProvision, type PostgresProvision } from "./postgres-setup.ts";
 import { planRedis, applyRedisPlan, describeRedisPlan, buildRedisProvisionCommands, type RedisPlan } from "./redis-setup.ts";
 import { readManifest } from "./manifest.ts";
+import { initialSharedSecrets } from "./secrets.ts";
 
 export type ComponentActionKind = "install" | "update" | "reconfigure" | "none";
 
@@ -154,18 +154,6 @@ async function planComponentAction(
   if (!collected) return null;
 
   return buildComponentAction({ ...base, env: collected, envChanges: collected.changes }, version, host);
-}
-
-export function generateSecret(length = 40): string {
-  return randomBytes(length).toString("base64url").slice(0, length);
-}
-
-/** Not in getAutoDefaults: that also feeds stack deploys, where per-call secrets would differ per host. */
-export function initialSharedSecrets(): Record<string, string> {
-  return {
-    BETTER_AUTH_SECRET: generateSecret(),
-    TETHER_SECRET: generateSecret(),
-  };
 }
 
 export function coreComponents(opts: { installInfoserver: boolean; installDaemon: boolean }): Component[] {
