@@ -12,7 +12,6 @@ import { join } from "node:path";
 import { loadPrivateJson, savePrivateJson } from "./config.ts";
 import { configDir } from "./platform.ts";
 import { z } from "zod";
-import { secret, s3EnvSchema } from "common-env";
 import { version as cliVersion } from "../../../../package.json";
 import { type Component, COMPONENTS, getAutoDefaults } from "./component-meta.ts";
 import { componentFields, type EnvField } from "./env-prompt.ts";
@@ -65,17 +64,6 @@ export type FleetDefinition = z.infer<typeof fleetDefinitionT>;
 export function hostLabel(host: StackHost): string {
   return host.alias ? `${host.alias} (${host.address})` : host.address;
 }
-
-/** Shared infra values collected at `stack init`; everything else lives in component/fleet layers. */
-export const STACK_SHARED_SCHEMA = z.object({
-  DB_CONNECTION_URL: z.url().describe("PostgreSQL connection string shared by all components").meta(secret()),
-  REDIS_URL: z.url().describe("Redis connection URL shared by all components").meta(secret()),
-  INFOSERVER_URL: z.url().optional().describe("Infoserver URL (auto-derived from the infoserver host address if left empty)"),
-  TETHER_URL: z.url().optional().describe("Tether URL (auto-derived from the tether host address if left empty)"),
-  TETHER_SECRET: z.string().min(1).describe("Shared secret for tether/daemon authentication").meta(secret()),
-  METRICS_AUTH: z.string().describe("Basic auth for every component's /metrics endpoint (user:pass, comma-separated for multiple)").meta(secret()),
-  VLLM_HF_TOKEN: z.string().optional().describe("HuggingFace token for downloading private or gated models").meta(secret()),
-}).extend(s3EnvSchema.shape);
 
 // Not derivable: REDIS_URL is gateway-only and VLLM_HF_TOKEN daemon-only, yet both are set once.
 const SHARED_KEYS = [

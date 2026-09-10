@@ -40,15 +40,6 @@ function schemaValidator(schema: z.ZodType): (raw: string) => string | undefined
   };
 }
 
-function readFieldMeta(field: z.ZodType): { secret: boolean; expert: boolean; public: boolean } {
-  const meta = z.globalRegistry.get(field);
-  return {
-    secret: meta?.secret === true,
-    expert: meta?.expert === true,
-    public: meta?.public === true,
-  };
-}
-
 type JsonSchemaProp = {
   type?: string;
   enum?: string[];
@@ -67,54 +58,8 @@ function resolveJsonSchemaType(prop: JsonSchemaProp): string | undefined {
   return nonNull?.type ?? "string";
 }
 
-const schemaFieldCache = new WeakMap<z.ZodObject<any>, EnvField[]>();
-
-/** Analyze a Zod env schema into structured field metadata. Cached per schema object. */
-export function analyzeEnvSchema(
-  schema: z.ZodObject<any>,
-): EnvField[] {
-  const cached = schemaFieldCache.get(schema);
-  if (cached) {
-    return cached;
-  }
-  const jsonSchema = z.toJSONSchema(schema) as {
-    properties: Record<string, JsonSchemaProp>;
-    required?: string[];
-  };
-  const requiredKeys = new Set(jsonSchema.required ?? []);
-
-  const fields: EnvField[] = [];
-  for (const [key, zodField] of Object.entries(schema.shape)) {
-    const prop = jsonSchema.properties[key] ?? {};
-    const meta = readFieldMeta(zodField as z.ZodType);
-    const enumValues = extractEnumValues(prop);
-    const resolvedType = resolveJsonSchemaType(prop);
-    const hasDefault = "default" in prop;
-    const isOptional = !requiredKeys.has(key);
-
-    fields.push({
-      key,
-      description: prop.description,
-      hasDefault,
-      defaultValue: prop.default,
-      isOptional,
-      isRequired: !isOptional && !hasDefault,
-      isSecret: meta.secret,
-      isExpert: meta.expert,
-      isPublic: meta.public,
-      enumValues,
-      isBoolean: resolvedType === "boolean",
-      validate: schemaValidator(zodField as z.ZodType),
-    });
-  }
-
-  schemaFieldCache.set(schema, fields);
-  return fields;
-}
-
 const configFieldCache = new WeakMap<AnyConfig, EnvField[]>();
 
-/** The same metadata, from a grouped declaration rather than a flat schema. */
 export function analyzeConfig(config: AnyConfig): EnvField[] {
   const cached = configFieldCache.get(config);
   if (cached) {
@@ -153,7 +98,6 @@ export function analyzeConfig(config: AnyConfig): EnvField[] {
   return fields;
 }
 
-/** A component reads either way, so services can port one at a time. */
 export function componentFields(component: Component): EnvField[] {
   return analyzeConfig(COMPONENT_CONFIGS[component]);
 }
