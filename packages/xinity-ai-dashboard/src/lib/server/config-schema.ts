@@ -10,7 +10,7 @@ import {
   defineGroup,
   env,
   expert,
-  metricsAuthSchema,
+  metricsAuthField,
   objectStorageGroup,
   proxyGroup,
   secret,
@@ -136,9 +136,7 @@ const metrics = defineGroup<Metrics>({
   id: "metrics",
   title: "Metrics endpoint",
   fields: {
-    auth: env("METRICS_AUTH", metricsAuthSchema({ required: true })
-      .describe("Required. Basic auth for the /metrics endpoints (user:pass, comma-separated for multiple)")
-      .meta(secret())),
+    auth: metricsAuthField({ required: true }),
   },
 });
 

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { expert, secret } from "../index";
 import { metricsAuthSchema } from "../metrics-auth";
 import { configInt, configNumber } from "./leaf-types";
-import { defineGroup, env, type GroupDef } from "./group";
+import { defineGroup, env, type ConfigField, type GroupDef } from "./group";
 
 export type ServerConfig = { host: string; port: number; idleTimeout: number; unixSocket?: string };
 
@@ -60,10 +60,17 @@ export function catalogGroup(): GroupDef<CatalogConfig> {
 
 export type MetricsConfig = { auth?: string };
 
-export function metricsAuthField() {
-  return env("METRICS_AUTH", metricsAuthSchema()
-    .describe("Basic auth for the /metrics endpoint (format: user:pass, comma-separated for multiple)")
-    .meta(secret()));
+const METRICS_AUTH_DESCRIPTION =
+  "Basic auth for the /metrics endpoint (format: user:pass, comma-separated for multiple)";
+
+export function metricsAuthField(opts: { required: true }): ConfigField<string>;
+export function metricsAuthField(opts?: { required?: false }): ConfigField<string | undefined>;
+export function metricsAuthField(opts: { required?: boolean } = {}) {
+  return opts.required
+    ? env("METRICS_AUTH", metricsAuthSchema({ required: true })
+      .describe(METRICS_AUTH_DESCRIPTION).meta(secret()))
+    : env("METRICS_AUTH", metricsAuthSchema()
+      .describe(METRICS_AUTH_DESCRIPTION).meta(secret()));
 }
 
 export function metricsGroup(): GroupDef<MetricsConfig> {
@@ -72,6 +79,12 @@ export function metricsGroup(): GroupDef<MetricsConfig> {
     title: "Metrics endpoint",
     fields: { auth: metricsAuthField() },
   });
+}
+
+export function tetherSecretField() {
+  return env("TETHER_SECRET", z.string().min(1)
+    .describe("Shared secret authenticating daemons to the tether")
+    .meta(secret()));
 }
 
 export type ObjectStorageConfig = {

@@ -10,6 +10,7 @@ import {
   metricsAuthField,
   secret,
   serverFields,
+  tetherSecretField,
   tlsGroup,
   type CatalogConfig,
   type ServerConfig,
@@ -25,8 +26,7 @@ const tether = defineGroup<Tether>({
   description: "The control plane this node reports to.",
   fields: {
     url: env("TETHER_URL", z.url().describe("URL of the xinity-tether service (e.g. http://tether:4020)")),
-    secret: env("TETHER_SECRET", z.string().min(1)
-      .describe("Shared secret for tether authentication").meta(secret())),
+    secret: tetherSecretField(),
     syncIntervalMs: env("SYNC_INTERVAL_MS", configNumber().default(1000 * 60 * 5)
       .describe("Sync interval in milliseconds").meta(expert())),
   },

@@ -1,4 +1,3 @@
-import { z } from "zod";
 import {
   configNumber,
   databaseUrlField,
@@ -7,8 +6,8 @@ import {
   env,
   expert,
   metricsGroup,
-  secret,
   serverFields,
+  tetherSecretField,
   tlsGroup,
   type MetricsConfig,
   type ServerConfig,
@@ -67,6 +66,5 @@ export const tetherConfig = defineConfig<TetherConfig>({
   metrics: metricsGroup(),
   log: loggingGroup(),
   tls: tlsGroup(),
-  tetherSecret: env("TETHER_SECRET", z.string().min(1)
-    .describe("Shared secret for daemon authentication").meta(secret())),
+  tetherSecret: tetherSecretField(),
 });
