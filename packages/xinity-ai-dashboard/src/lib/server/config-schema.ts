@@ -22,16 +22,30 @@ import {
 } from "common-env";
 import { loggingGroup, type LoggingConfig } from "common-log";
 
-type Server = { port: number; origin: string; trustedOrigins: string[] };
+type Server = {
+  host: string;
+  port: number;
+  idleTimeout: number;
+  unixSocket?: string;
+  origin: string;
+  trustedOrigins: string[];
+};
 
 const server = defineGroup<Server>({
   id: "server",
   title: "HTTP server",
-  description: "The port it listens on, and the URL browsers reach it at.",
+  description: "Where it listens, and the URL browsers reach it at.",
   fields: {
+    host: env("HTTP_HOST", z.string().default("0.0.0.0")
+      .describe("Bind address (use 0.0.0.0 to listen on all interfaces)")),
     port: env("HTTP_PORT", configInt().default(5173)
-      .describe("TCP port the server listens on (use a reverse proxy if deploying behind HTTPS)")
+      .describe("TCP port the server listens on")
       .meta(expert())),
+    idleTimeout: env("HTTP_IDLE_TIMEOUT", configInt(z.int().positive().max(255)).default(30)
+      .describe("Seconds a connection may go without traffic before it is closed (Bun allows at most 255)")
+      .meta(expert())),
+    unixSocket: env("HTTP_SOCKET", z.string().optional()
+      .describe("Unix socket path (overrides HTTP_HOST/HTTP_PORT when set)").meta(expert())),
     origin: env("ORIGIN", z.url().default("http://localhost:5173")
       .describe("Public origin URL, no trailing slash (e.g. https://xinity.mydomain.com)")),
     trustedOrigins: env("TRUSTED_ORIGINS", configList(z.string()).default([])
