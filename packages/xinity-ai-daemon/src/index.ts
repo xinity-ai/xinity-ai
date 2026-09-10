@@ -1,7 +1,7 @@
 import "zod/compile";
 
 import type { SubscriptionLike } from "rxjs";
-import { requireGroupActivation } from "common-env";
+import { activationRefusal } from "common-env";
 
 import { dbSync, setDesiredInstallations } from "./modules/db-sync";
 import { startMetricsSampler, type MetricsSampler } from "./modules/metrics-sampler";
@@ -27,7 +27,11 @@ if (import.meta.main) {
 }
 
 async function main() {
-  requireGroupActivation(daemonConfig, process.env, rootLogger);
+  const refusal = activationRefusal(daemonConfig, process.env, rootLogger);
+  if (refusal) {
+    rootLogger.fatal(refusal);
+    process.exit(1);
+  }
 
   await startServer();
   const registration = await buildRegistration();

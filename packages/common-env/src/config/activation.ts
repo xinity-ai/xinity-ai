@@ -78,21 +78,22 @@ export function checkGroupActivation(config: AnyConfig, raw: RawPresence): Activ
   return { byKey, warnings };
 }
 
-type ActivationLog = {
-  warn: (details: object, message: string) => void;
-  fatal: (message: string) => void;
-};
+type ActivationLog = { warn: (details: object, message: string) => void };
 
-/** Serving plaintext when asked for HTTPS is worse than not starting, so tls is the one group whose partial activation is fatal. */
-export function requireGroupActivation(config: AnyConfig, raw: RawPresence, log: ActivationLog): void {
+/** Warns about every partly configured group, and reports the one that a service must not start on. */
+export function activationRefusal(
+  config: AnyConfig,
+  raw: RawPresence,
+  log: ActivationLog,
+): string | undefined {
   const { warnings } = checkGroupActivation(config, raw);
   for (const warning of warnings) {
     log.warn(warning, warning.message);
   }
-  if (warnings.some((warning) => warning.groupId === "tls")) {
-    log.fatal("TLS is only partly configured, refusing to start rather than serve plaintext");
-    process.exit(1);
-  }
+  // Serving plaintext when asked for HTTPS is worse than not starting.
+  return warnings.some((warning) => warning.groupId === "tls")
+    ? "TLS is only partly configured, refusing to start rather than serve plaintext"
+    : undefined;
 }
 
 export function isGroupActive(report: ActivationReport, key: string): boolean {

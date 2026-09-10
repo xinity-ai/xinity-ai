@@ -1,7 +1,7 @@
 import "zod/compile";
 
 import { logMigrationFailureFatal } from "common-db";
-import { nodeRegistrationSchema, installationStateReportSchema, protocolFingerprint, requireGroupActivation } from "common-env";
+import { nodeRegistrationSchema, installationStateReportSchema, protocolFingerprint, activationRefusal } from "common-env";
 import { tetherConfig } from "./config-schema";
 import { config } from "./config";
 import { rootLogger } from "./logger";
@@ -16,7 +16,11 @@ import { buildListenTarget } from "./serve-config";
 
 const log = rootLogger;
 
-requireGroupActivation(tetherConfig, process.env, rootLogger);
+const refusal = activationRefusal(tetherConfig, process.env, rootLogger);
+if (refusal) {
+  rootLogger.fatal(refusal);
+  process.exit(1);
+}
 
 const migrationState = await checkMigrations();
 if (migrationState.status !== "ok") {
