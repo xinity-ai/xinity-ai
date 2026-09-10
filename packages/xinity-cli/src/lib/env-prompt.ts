@@ -351,7 +351,7 @@ function displayValue(field: EnvField, value: string | undefined): string {
 
 type MenuGroup = { definition: EnvFieldGroup; fields: EnvField[] };
 
-const GROUP_PREFIX = " group:";
+const GROUP_PREFIX = "__group__:";
 const GROUP_TITLE_WIDTH = 22;
 
 const ADVANCED_THRESHOLD = 6;
