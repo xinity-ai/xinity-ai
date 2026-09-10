@@ -6,7 +6,7 @@ import { z } from "zod";
 import { configInt } from "./leaf-types";
 import { defineGroup, env } from "./group";
 import { defineConfig } from "./build";
-import { resolveConfig } from "./resolve";
+import { checkConfig, resolveConfig } from "./resolve";
 
 type ObjectStorage = { endpoint: string; accessKeyId: string; bucket: string };
 type Server = { host: string; port: number };
@@ -148,4 +148,37 @@ test("provenance says where each value came from", () => {
   expect(at("s3.accessKeyId").source).toBe("env-file");
   expect(at("server.port").source).toBe("default");
   expect(at("s3.accessKeyId").isSecret).toBe(true);
+});
+
+describe("checkConfig", () => {
+  type Keepalive = { idleTimeout: number; keepaliveMs: number };
+  const withInvariant = defineConfig<{ server: Keepalive }>({
+    server: defineGroup<Keepalive>({
+      id: "server",
+      title: "HTTP server",
+      violations: ({ idleTimeout, keepaliveMs }) =>
+        keepaliveMs * 3 <= idleTimeout * 1000
+          ? []
+          : [{ field: "keepaliveMs", message: "must be at most a third of IDLE_TIMEOUT" }],
+      fields: {
+        idleTimeout: env("IDLE_TIMEOUT", configInt().default(255)),
+        keepaliveMs: env("KEEPALIVE_INTERVAL_MS", configInt().default(15_000)),
+      },
+    }),
+  });
+
+  test("reports every problem against its env key instead of throwing", () => {
+    expect(checkConfig(config, { env: { ORIGIN: "not-a-url", PORT: "99999" } })).toEqual([
+      { envKey: "PORT", pointer: "server.port", message: expect.any(String) },
+      { envKey: "ORIGIN", pointer: "origin", message: expect.any(String) },
+    ]);
+  });
+
+  test("a group invariant lands on the field it names, which no per-key check could find", () => {
+    expect(checkConfig(withInvariant, { env: { IDLE_TIMEOUT: "20" } })).toEqual([{
+      envKey: "KEEPALIVE_INTERVAL_MS",
+      pointer: "server.keepaliveMs",
+      message: "must be at most a third of IDLE_TIMEOUT",
+    }]);
+  });
 });

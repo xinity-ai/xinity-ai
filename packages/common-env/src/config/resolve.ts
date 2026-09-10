@@ -24,6 +24,12 @@ export type Resolved<T> = {
   readonly warnings: readonly ActivationWarning[];
 };
 
+export type ConfigProblem = {
+  readonly envKey: string;
+  readonly pointer: string;
+  readonly message: string;
+};
+
 type Located = {
   readonly source: Exclude<ValueSource, "default">;
   readonly raw: unknown;
@@ -52,17 +58,30 @@ function materialize(entry: ConfigEntry, located: Located): unknown {
     : located.raw;
 }
 
-function describeIssues(issues: readonly z.core.$ZodIssue[], within: readonly ConfigEntry[]): string[] {
+function attribute(
+  issues: readonly z.core.$ZodIssue[],
+  within: readonly ConfigEntry[],
+): ConfigProblem[] {
   return issues.map((issue) => {
     const name = issue.path[0];
     const entry = within.find((candidate) => candidate.path[candidate.path.length - 1] === name);
     const target = entry ?? within[0];
-    const label = target ? `${target.envKey} (${target.path.join(".")})` : String(name ?? "(root)");
-    return `  - ${label}: ${issue.message}`;
+    return {
+      envKey: target?.envKey ?? String(name ?? ""),
+      pointer: target?.path.join(".") ?? "(root)",
+      message: issue.message,
+    };
   });
 }
 
-export function resolveConfig<T>(config: ConfigDef<T>, opts: ResolveOptions = {}): Resolved<T> {
+type Parsed = {
+  readonly value: Record<string, unknown>;
+  readonly problems: readonly ConfigProblem[];
+  readonly located: ReadonlyMap<string, Located>;
+  readonly warnings: readonly ActivationWarning[];
+};
+
+function parseConfig(config: AnyConfig, opts: ResolveOptions): Parsed {
   const located = new Map<string, Located>();
   const presence: Record<string, unknown> = {};
 
@@ -76,7 +95,7 @@ export function resolveConfig<T>(config: ConfigDef<T>, opts: ResolveOptions = {}
 
   const activation = checkGroupActivation(config, presence);
   const value: Record<string, unknown> = {};
-  const problems: string[] = [];
+  const problems: ConfigProblem[] = [];
 
   for (const [key, member] of Object.entries(config.members)) {
     if (!isGroup(member)) {
@@ -86,7 +105,7 @@ export function resolveConfig<T>(config: ConfigDef<T>, opts: ResolveOptions = {}
       if (parsed.success) {
         value[key] = parsed.data;
       } else {
-        problems.push(...describeIssues(parsed.error.issues, [entry]));
+        problems.push(...attribute(parsed.error.issues, [entry]));
       }
       continue;
     }
@@ -110,12 +129,23 @@ export function resolveConfig<T>(config: ConfigDef<T>, opts: ResolveOptions = {}
     if (parsed.success) {
       value[key] = parsed.data;
     } else {
-      problems.push(...describeIssues(parsed.error.issues, entries));
+      problems.push(...attribute(parsed.error.issues, entries));
     }
   }
 
+  return { value, problems, located, warnings: activation.warnings };
+}
+
+export function checkConfig(config: AnyConfig, opts: ResolveOptions = {}): readonly ConfigProblem[] {
+  return parseConfig(config, opts).problems;
+}
+
+export function resolveConfig<T>(config: ConfigDef<T>, opts: ResolveOptions = {}): Resolved<T> {
+  const { value, problems, located, warnings } = parseConfig(config, opts);
+
   if (problems.length > 0) {
-    throw new Error(`Invalid configuration:\n${problems.join("\n")}`);
+    const lines = problems.map((problem) => `  - ${problem.envKey} (${problem.pointer}): ${problem.message}`);
+    throw new Error(`Invalid configuration:\n${lines.join("\n")}`);
   }
 
   const provenance = config.entries.map((entry): Provenance => {
@@ -129,7 +159,7 @@ export function resolveConfig<T>(config: ConfigDef<T>, opts: ResolveOptions = {}
     };
   });
 
-  return { value: value as T, provenance, warnings: activation.warnings };
+  return { value: value as T, provenance, warnings };
 }
 
 function entryAt(config: AnyConfig, path: readonly string[]): ConfigEntry {
