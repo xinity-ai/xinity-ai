@@ -2,7 +2,8 @@ import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { z } from "zod";
 import { configBool, configInt, defineConfig, defineGroup, env, secret } from "common-env";
 import {
-  analyzeConfig, analyzeEnvSchema, categorizeFields, diffEnv, planSecretFileRemoval,
+  analyzeConfig, analyzeEnvSchema, categorizeFields, componentFields, diffEnv,
+  missingRequiredFields, planSecretFileRemoval,
   type EnvBundle, type EnvChange,
 } from "../../src/lib/env-prompt.ts";
 import { readEnvFile, serializeEnvFile, readSecretFiles } from "../../src/lib/env-file.ts";
@@ -50,6 +51,19 @@ describe("env-prompt", () => {
     test("accepts what it would take", () => {
       expect(check("ORIGIN", "https://x.example")).toBeUndefined();
       expect(check("PORT", "80")).toBeUndefined();
+    });
+  });
+
+  describe("requiredness inside an optional group", () => {
+    const s3 = componentFields("gateway").filter((f) => f.group?.id === "s3");
+    const endpoint = s3.find((f) => f.key === "S3_ENDPOINT")!;
+
+    test("a member is not demanded while the group is switched off", () => {
+      expect(missingRequiredFields(s3, {})).toEqual([]);
+    });
+
+    test("but is demanded once something switched the group on", () => {
+      expect(missingRequiredFields(s3, { S3_ACCESS_KEY_ID: "AKIA" })).toContain(endpoint);
     });
   });
 

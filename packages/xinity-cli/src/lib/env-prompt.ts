@@ -160,7 +160,12 @@ export function componentFields(component: Component): EnvField[] {
 
 /** The single definition of "the config is invalid without this field". */
 export function isRequiredUnset(field: EnvField, values: Record<string, string | undefined>): boolean {
-  return field.isRequired && !values[field.key];
+  if (!field.isRequired || values[field.key]) {
+    return false;
+  }
+  const activation = field.group?.activation ?? [];
+  const groupIsActive = activation.length === 0 || activation.some((key) => Boolean(values[key]));
+  return groupIsActive;
 }
 
 export function missingRequiredFields(fields: EnvField[], values: Record<string, string | undefined>): EnvField[] {
