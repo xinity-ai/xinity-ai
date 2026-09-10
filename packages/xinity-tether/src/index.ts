@@ -1,7 +1,7 @@
 import "zod/compile";
 
 import { logMigrationFailureFatal } from "common-db";
-import { nodeRegistrationSchema, installationStateReportSchema, protocolFingerprint, checkGroupActivation } from "common-env";
+import { nodeRegistrationSchema, installationStateReportSchema, protocolFingerprint, requireGroupActivation } from "common-env";
 import { tetherConfig } from "./config-schema";
 import { config } from "./config";
 import { rootLogger } from "./logger";
@@ -16,16 +16,7 @@ import { buildListenTarget } from "./serve-config";
 
 const log = rootLogger;
 
-const activation = checkGroupActivation(tetherConfig, process.env);
-for (const warning of activation.warnings) {
-  rootLogger.warn(warning, warning.message);
-}
-
-// Serving plaintext when asked for HTTPS is worse than not starting.
-if (activation.warnings.some((warning) => warning.key === "tls")) {
-  rootLogger.fatal("TLS is only partly configured, refusing to start rather than serve plaintext");
-  process.exit(1);
-}
+requireGroupActivation(tetherConfig, process.env, rootLogger);
 
 const migrationState = await checkMigrations();
 if (migrationState.status !== "ok") {

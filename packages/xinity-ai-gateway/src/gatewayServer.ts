@@ -17,7 +17,7 @@ import { handleRerank } from "./llm-forward/endpoints/handle-rerank";
 import { handleTranscription } from "./llm-forward/endpoints/handle-transcription";
 import { handleMetrics, withMetrics } from "./metrics";
 import { LONG_RUNNING_ROUTES, withoutConnectionTimeout, type RouteHandler } from "./serve-config";
-import { checkGroupActivation } from "common-env";
+import { requireGroupActivation } from "common-env";
 import { logMigrationFailureFatal } from "common-db";
 import { getSearchProvider } from "./llm-forward/tools/search-providers";
 import { setSearchProvider } from "./llm-forward/tools/response-tools";
@@ -33,17 +33,7 @@ process.on("uncaughtException", (err) => {
   rootLogger.error({ err }, "Uncaught exception");
 });
 
-const activation = checkGroupActivation(gatewayConfig, process.env);
-for (const warning of activation.warnings) {
-  rootLogger.warn(warning, warning.message);
-}
-
-// Serving plaintext when asked for HTTPS is worse than not starting, so this group is the one
-// exception to partial activation being a warning.
-if (activation.warnings.some((warning) => warning.key === "tls")) {
-  rootLogger.fatal("TLS is only partly configured, refusing to start rather than serve plaintext");
-  process.exit(1);
-}
+requireGroupActivation(gatewayConfig, process.env, rootLogger);
 
 const migrationState = await checkMigrations();
 if (migrationState.status !== "ok") {

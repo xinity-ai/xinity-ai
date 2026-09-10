@@ -1,7 +1,7 @@
 import "zod/compile";
 
 import type { SubscriptionLike } from "rxjs";
-import { checkGroupActivation } from "common-env";
+import { requireGroupActivation } from "common-env";
 
 import { dbSync, setDesiredInstallations } from "./modules/db-sync";
 import { startMetricsSampler, type MetricsSampler } from "./modules/metrics-sampler";
@@ -27,17 +27,7 @@ if (import.meta.main) {
 }
 
 async function main() {
-  const activation = checkGroupActivation(daemonConfig, process.env);
-  for (const warning of activation.warnings) {
-    rootLogger.warn(warning, warning.message);
-  }
-
-  // Serving plaintext when asked for HTTPS is worse than not starting, so this group is the one
-  // exception to partial activation being a warning.
-  if (activation.warnings.some((warning) => warning.key === "tls")) {
-    rootLogger.fatal("TLS is only partly configured, refusing to start rather than serve plaintext");
-    process.exit(1);
-  }
+  requireGroupActivation(daemonConfig, process.env, rootLogger);
 
   await startServer();
   const registration = await buildRegistration();
