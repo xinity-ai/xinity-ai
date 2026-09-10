@@ -309,7 +309,7 @@ async function checkGatewayConnectivity(
     checks.push(await checkS3Endpoint(values.S3_ENDPOINT, host));
   }
   if (serviceActive) {
-    const bindHost = values.HOST || "localhost";
+    const bindHost = values.HOST || "0.0.0.0";
     const port = values.PORT || GATEWAY_DEFAULT_PORT;
     const checkHost = bindHost === "0.0.0.0" ? "localhost" : bindHost;
     checks.push(await checkServiceHealth(host, "Health endpoint", `http://${checkHost}:${port}/healthCheck`));
@@ -327,10 +327,28 @@ async function checkDashboardConnectivity(
   await pushInfoserverCheck(checks, values, host);
   if (values.MAIL_URL) checks.push(await checkSmtp(values.MAIL_URL, host));
   if (serviceActive) {
-    const port = values.HTTP_PORT || "5173";
-    checks.push(await checkServiceHealth(host, "Health endpoint", `http://localhost:${port}/api/health`));
+    const { url, curlArgs } = dashboardHealthProbe(values);
+    checks.push(await checkServiceHealth(host, "Health endpoint", url, curlArgs));
   }
   return checks;
+}
+
+/** A socket or our own certificate needs curl told about it, or a healthy dashboard reads as unreachable. */
+function dashboardHealthProbe(values: Record<string, string>): { url: string; curlArgs: string[] } {
+  const scheme = values.XINITY_TLS_CERT_FILE ? "https" : "http";
+  // We are the one serving the certificate, so there is nothing to verify it against.
+  const curlArgs = scheme === "https" ? ["-k"] : [];
+
+  if (values.HTTP_SOCKET) {
+    return {
+      url: `${scheme}://localhost/api/health`,
+      curlArgs: [...curlArgs, "--unix-socket", values.HTTP_SOCKET],
+    };
+  }
+
+  const bindHost = values.HTTP_HOST || "0.0.0.0";
+  const checkHost = bindHost === "0.0.0.0" ? "localhost" : bindHost;
+  return { url: `${scheme}://${checkHost}:${values.HTTP_PORT || "5173"}/api/health`, curlArgs };
 }
 
 async function checkDaemonConnectivity(

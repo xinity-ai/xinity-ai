@@ -147,10 +147,12 @@ export async function checkServiceHealth(
   host: Host,
   label: string,
   url: string,
+  curlArgs: readonly string[] = [],
 ): Promise<CheckResult> {
   const result = await host.run([
     "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
     "--connect-timeout", "5", "--max-time", "5",
+    ...curlArgs,
     url,
   ]);
   const statusCode = parseInt(result.output.trim(), 10);
