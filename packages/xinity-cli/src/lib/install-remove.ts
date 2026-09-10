@@ -8,7 +8,7 @@ import { runSteps, runStepsCollapsed } from "./step-runner.ts";
 import type { StepEvent } from "./step-event.ts";
 import {
   type Component, type RemoveResult,
-  COMPONENTS, ENV_DIR, SECRETS_DIR, BIN_DIR, DASHBOARD_DIR, UNIT_DIR,
+  ENV_DIR, SECRETS_DIR, BIN_DIR, DASHBOARD_DIR, UNIT_DIR,
   binaryBaseName,
 } from "./component-meta.ts";
 
