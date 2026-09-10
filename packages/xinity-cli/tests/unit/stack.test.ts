@@ -15,11 +15,10 @@ import {
   saveStack,
   deleteStack,
   listStacks,
-  STACK_SHARED_SCHEMA,
+  STACK_SHARED_KEYS,
+  sharedFields,
 } from "../../src/lib/stack.ts";
 import { loadStackState, markHostManaged } from "../../src/lib/stack-state.ts";
-import { COMPONENTS } from "../../src/lib/component-meta.ts";
-import { componentFields } from "../../src/lib/env-prompt.ts";
 
 function makeStack(overrides: Partial<StackDefinition> = {}): StackDefinition {
   return {
@@ -364,10 +363,18 @@ describe("validateStack", () => {
   });
 });
 
-// A shared key no component declares is filtered out before any env file is written, so it is
-// collected from the operator and then silently discarded.
-test("every shared key is declared by some component", () => {
-  const declared = new Set(COMPONENTS.flatMap((component) => componentFields(component).map((f) => f.key)));
-  const orphaned = Object.keys(STACK_SHARED_SCHEMA.shape).filter((key) => !declared.has(key));
-  expect(orphaned).toEqual([]);
+describe("sharedFields", () => {
+  const byKey = new Map(sharedFields().map((field) => [field.key, field]));
+
+  test("every shared key resolves, or it is collected from the operator and then dropped", () => {
+    expect(byKey.size).toBe(STACK_SHARED_KEYS.size);
+  });
+
+  test("a key several components declare takes the strictest of them", () => {
+    expect(byKey.get("METRICS_AUTH")!.isRequired).toBe(true);
+  });
+
+  test("a key derived from a host address is not demanded before the hosts exist", () => {
+    expect(byKey.get("TETHER_URL")!.isRequired).toBe(false);
+  });
 });

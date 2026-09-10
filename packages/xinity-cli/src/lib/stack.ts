@@ -14,8 +14,8 @@ import { configDir } from "./platform.ts";
 import { z } from "zod";
 import { secret, s3EnvSchema } from "common-env";
 import { version as cliVersion } from "../../../../package.json";
-import { type Component, getAutoDefaults } from "./component-meta.ts";
-import { analyzeEnvSchema } from "./env-prompt.ts";
+import { type Component, COMPONENTS, getAutoDefaults } from "./component-meta.ts";
+import { analyzeEnvSchema, componentFields, type EnvField } from "./env-prompt.ts";
 import { log } from "./clack.ts";
 import { dim } from "picocolors";
 import { deleteStackState } from "./stack-state.ts";
@@ -77,8 +77,49 @@ export const STACK_SHARED_SCHEMA = z.object({
   VLLM_HF_TOKEN: z.string().optional().describe("HuggingFace token for downloading private or gated models").meta(secret()),
 }).extend(s3EnvSchema.shape);
 
+// Not derivable: REDIS_URL is gateway-only and VLLM_HF_TOKEN daemon-only, yet both are set once.
+const SHARED_KEYS = [
+  "DB_CONNECTION_URL",
+  "REDIS_URL",
+  "INFOSERVER_URL",
+  "TETHER_URL",
+  "TETHER_SECRET",
+  "METRICS_AUTH",
+  "VLLM_HF_TOKEN",
+  "S3_ENDPOINT",
+  "S3_ACCESS_KEY_ID",
+  "S3_SECRET_ACCESS_KEY",
+  "S3_BUCKET",
+  "S3_REGION",
+] as const;
+
+const DERIVED_FROM_HOST_ADDRESSES: ReadonlySet<string> = new Set(["INFOSERVER_URL", "TETHER_URL"]);
+
 /** Owned by the shared layer; component/fleet/host editors must not offer them. */
-export const STACK_SHARED_KEYS: Set<string> = new Set(Object.keys(STACK_SHARED_SCHEMA.shape));
+export const STACK_SHARED_KEYS: Set<string> = new Set(SHARED_KEYS);
+
+/** Everything but requiredness is taken from one declarer, so the rest has to agree. */
+function agreedShape(field: EnvField): string {
+  return JSON.stringify([field.description, field.isSecret, field.isBoolean, field.enumValues, field.defaultValue]);
+}
+
+/** The shared keys as their components declare them, so nothing restates their descriptions. */
+export function sharedFields(): EnvField[] {
+  const declared = COMPONENTS.flatMap((component) => componentFields(component));
+
+  return SHARED_KEYS.map((key) => {
+    const matches = declared.filter((field) => field.key === key);
+    const first = matches[0];
+    if (!first) {
+      throw new Error(`The stack offers ${key}, which no component declares`);
+    }
+    if (matches.some((field) => agreedShape(field) !== agreedShape(first))) {
+      throw new Error(`Components declare ${key} differently, so the stack cannot offer one of them`);
+    }
+    const required = matches.some((field) => field.isRequired) && !DERIVED_FROM_HOST_ADDRESSES.has(key);
+    return { ...first, isRequired: required, isOptional: !required };
+  });
+}
 
 /** Write a shared-settings editor result back, honoring deletions of optional keys. */
 export function applySharedResult(
