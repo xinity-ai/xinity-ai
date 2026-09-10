@@ -68,12 +68,11 @@ export type RemoveResult = {
   errors: string[];
 }
 
-const COMMON_DEFAULTS = { INFOSERVER_URL: "https://sysinfo.xinity.ai" };
-
+/** Only what a packaged install needs beyond the declarations: restating one would pin it. */
 const AUTO_DEFAULTS: Record<Component, Record<string, string>> = {
-  gateway: { ...COMMON_DEFAULTS },
-  daemon: { ...COMMON_DEFAULTS, STATE_DIR: "/var/lib/xinity-ai-daemon" },
-  dashboard: { ...COMMON_DEFAULTS, NODE_ENV: "production", HTTP_PORT: "5173" },
+  gateway: {},
+  daemon: { STATE_DIR: "/var/lib/xinity-ai-daemon" },
+  dashboard: { NODE_ENV: "production" },
   infoserver: {},
   tether: {},
 };

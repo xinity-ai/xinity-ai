@@ -24,6 +24,7 @@ import {
 import { editSharedLayer, editComponentLayer, editFleetLayer } from "../lib/stack-layers.ts";
 import { searchSelect, searchMultiselect, listSelect, type SearchListOption } from "../lib/search-list.ts";
 import { runStackFlow } from "../lib/stack-plan.ts";
+import { generateSecret } from "../lib/up-plan.ts";
 import { runDoctor, buildSummaryLine, type DoctorReport } from "../lib/doctor.ts";
 import { fetchRelease, listReleases, type ReleaseListEntry } from "../lib/github.ts";
 import { loadStackState, findOrphanHosts } from "../lib/stack-state.ts";
@@ -178,9 +179,14 @@ async function handleInit(name: string): Promise<void> {
     // Marks the infoserver as stack-hosted, which hides INFOSERVER_URL from
     // the shared editor; the URL is derived from its host at deploy time.
     stack.componentEnv.infoserver = {};
-  } else {
-    stack.env.INFOSERVER_URL = "https://sysinfo.xinity.ai";
   }
+
+  stack.secrets.TETHER_SECRET = generateSecret();
+  // One value across the dashboard's instances rather than across components, so it is not shared.
+  stack.componentEnv.dashboard = {
+    ...stack.componentEnv.dashboard,
+    BETTER_AUTH_SECRET: generateSecret(),
+  };
 
   if (!(await editSharedLayer(stack))) {
     cancel("Cancelled, stack not created.");

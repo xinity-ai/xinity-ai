@@ -83,6 +83,9 @@ const SHARED_KEYS = [
 
 const DERIVED_FROM_HOST_ADDRESSES: ReadonlySet<string> = new Set(["INFOSERVER_URL", "TETHER_URL"]);
 
+// Worth having on every deployment, so it is asked for even when no component here requires it.
+const REQUIRED_IN_EVERY_STACK: ReadonlySet<string> = new Set(["METRICS_AUTH"]);
+
 /** Owned by the shared layer; component/fleet/host editors must not offer them. */
 export const STACK_SHARED_KEYS: Set<string> = new Set(SHARED_KEYS);
 
@@ -104,7 +107,8 @@ export function sharedFields(): EnvField[] {
     if (matches.some((field) => agreedShape(field) !== agreedShape(first))) {
       throw new Error(`Components declare ${key} differently, so the stack cannot offer one of them`);
     }
-    const required = matches.some((field) => field.isRequired) && !DERIVED_FROM_HOST_ADDRESSES.has(key);
+    const wanted = REQUIRED_IN_EVERY_STACK.has(key) || matches.some((field) => field.isRequired);
+    const required = wanted && !DERIVED_FROM_HOST_ADDRESSES.has(key);
     return { ...first, isRequired: required, isOptional: !required };
   });
 }

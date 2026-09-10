@@ -10,6 +10,7 @@ import { readEnvFile, serializeEnvFile, readSecretFiles } from "../../src/lib/en
 import { buildSecretsRemoveCommand } from "../../src/lib/service.ts";
 import { createTempDir, type TempDir } from "../helpers/temp-config.ts";
 import { FakeHost } from "../helpers/fake-host.ts";
+import { COMPONENTS, getAutoDefaults } from "../../src/lib/component-meta.ts";
 
 describe("env-prompt", () => {
   // The editor picks its input widget from these, and every leaf parses from a string, so the
@@ -100,6 +101,17 @@ describe("env-prompt", () => {
     test("an optional field is not required", () => {
       expect(field("MAIL_URL").isRequired).toBe(false);
     });
+  });
+
+  test("no auto default restates a declared one, which would pin it onto every host", () => {
+    const restated = COMPONENTS.flatMap((component) => {
+      const byKey = new Map(componentFields(component).map((f) => [f.key, f]));
+      return Object.entries(getAutoDefaults(component))
+        .filter(([key, value]) => String(byKey.get(key)?.defaultValue) === value)
+        .map(([key]) => `${component}.${key}`);
+    });
+
+    expect(restated).toEqual([]);
   });
 
   describe("diffEnv", () => {

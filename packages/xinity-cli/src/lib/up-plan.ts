@@ -156,7 +156,7 @@ async function planComponentAction(
   return buildComponentAction({ ...base, env: collected, envChanges: collected.changes }, version, host);
 }
 
-function generateSecret(length = 40): string {
+export function generateSecret(length = 40): string {
   return randomBytes(length).toString("base64url").slice(0, length);
 }
 
