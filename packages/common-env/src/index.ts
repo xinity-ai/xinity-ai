@@ -135,7 +135,6 @@ export * from "./config/group";
 export * from "./config/build";
 export * from "./config/activation";
 export * from "./config/resolve";
-export * from "./config/flat-projection";
 export * from "./config/shared-groups";
 export * from "./deployment-settings";
 export * from "./metrics-auth";

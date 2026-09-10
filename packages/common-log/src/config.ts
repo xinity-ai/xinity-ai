@@ -6,7 +6,6 @@ export type LoggingConfig = {
   dir?: string;
 };
 
-/** Alongside logEnvSchema, which it replaces for services on a grouped declaration. */
 export function loggingGroup(): GroupDef<LoggingConfig> {
   return defineGroup<LoggingConfig>({
     id: "log",

@@ -1,10 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { ensureInfoServerRunning, infoServerUrl, stopInfoServer, withInfoServer } from "./infoserver-test-helpers";
 import { version } from "../../../package.json";
-import { infoserverEnvSchema } from "../../../packages/xinity-infoserver/env-schema";
+import { resolveConfig } from "common-env";
+import { infoserverConfig, type InfoserverConfig } from "../../../packages/xinity-infoserver/config-schema";
 import { burstFor } from "../../../packages/xinity-infoserver/rate-limit";
 
-const EXPORT_BURST = burstFor(infoserverEnvSchema.parse({ MODEL_INFO_DIR: "." }).RATE_LIMIT_EXPORT_PER_MINUTE);
+const { rateLimit } = resolveConfig<InfoserverConfig>(infoserverConfig, { env: { MODEL_INFO_DIR: "." } }).value;
+const EXPORT_BURST = burstFor(rateLimit.exportPerMinute);
 
 /**
  * The test server trusts X-Forwarded-For, so each caller gets its own rate-limit

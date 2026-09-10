@@ -123,10 +123,6 @@ export function fieldEntry(path: readonly string[], field: AnyField, group?: Any
   };
 }
 
-export function isRequiredLeaf(entry: ConfigEntry): boolean {
-  return !entry.schema.safeParse(undefined).success;
-}
-
 export function groupEntries(group: AnyGroup): ConfigEntry[] {
   return Object.entries(group.fields).map(([name, field]) => fieldEntry([name], field, group));
 }
