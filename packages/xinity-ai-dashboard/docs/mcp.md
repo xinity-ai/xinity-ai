@@ -72,7 +72,7 @@ If a procedure has no input schema, it defaults to `{ type: "object", properties
 
 ## Disabling the endpoint
 
-Set `MCP_ENABLED=false` in the environment. The variable is defined in `src/lib/server/env-schema.ts` and defaults to `true`. When disabled, the `/mcp` endpoint returns 404.
+Set `MCP_ENABLED=false` in the environment. The variable is declared in `src/lib/server/config-schema.ts` and defaults to `true`. When disabled, the `/mcp` endpoint returns 404.
 
 ## Key files
 
@@ -81,4 +81,4 @@ Set `MCP_ENABLED=false` in the environment. The variable is defined in `src/lib/
 | `src/lib/server/mcp.ts` | Tool registry (`buildToolList`) and execution (`callMcpTool`) |
 | `src/routes/mcp/+server.ts` | HTTP endpoint, JSON-RPC message handling, authentication |
 | `src/lib/server/orpc/root.ts` | `ProcedureMeta` type, shared middleware chain |
-| `src/lib/server/env-schema.ts` | `MCP_ENABLED` environment variable definition |
+| `src/lib/server/config-schema.ts` | `MCP_ENABLED` declaration |
