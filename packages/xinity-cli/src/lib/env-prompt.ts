@@ -3,7 +3,7 @@ import { select, confirm, text, password, log, isCancel } from "./clack.ts";
 import { bold, cyan, dim, yellow, green } from "picocolors";
 import { promptOrExit, cancelAndExit } from "./output.ts";
 import { parseEnvString } from "./env-file.ts";
-import { readLeafMeta, type AnyConfig } from "common-env";
+import { checkConfig, readLeafMeta, type AnyConfig } from "common-env";
 import { type Component, COMPONENTS, COMPONENT_CONFIGS, ENV_DIR, SECRETS_DIR } from "./component-meta.ts";
 import { readSecrets, type Host } from "./host.ts";
 import { readManifest } from "./manifest.ts";
@@ -466,6 +466,7 @@ export type MenuEditOptions = {
   hiddenKeys?: Set<string>;
   /** Message displayed above the menu. */
   message?: string;
+  declaration?: AnyConfig;
 }
 
 /**
@@ -494,6 +495,10 @@ export async function menuEditEnv(
 
   const ungrouped = editable.filter((f) => !f.group);
   const groups = collectGroups(editable);
+
+  // Declared keys only: a stray KEY_FILE in the host's env file would otherwise be resolved
+  // against this machine's disk rather than the host's.
+  const declaredValues = () => Object.fromEntries(fields.map((f) => [f.key, values[f.key]]));
 
   const fieldOption = (field: EnvField) => ({
     value: field.key,
@@ -607,6 +612,13 @@ export async function menuEditEnv(
       if (blocking.length > 0) {
         log.warn(
           `These variables are required and not set: ${blocking.map((f) => f.key).join(", ")}`,
+        );
+        continue;
+      }
+      const rejected = opts?.declaration ? checkConfig(opts.declaration, { env: declaredValues() }) : [];
+      if (rejected.length > 0) {
+        log.warn(
+          `The service would refuse these values:\n${rejected.map((p) => `  ${p.envKey}: ${p.message}`).join("\n")}`,
         );
         continue;
       }
