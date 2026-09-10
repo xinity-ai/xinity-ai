@@ -42,7 +42,7 @@ When extending or modifying the OpenAI-compatible routes, update the hand-author
 
 | Variable | Default | Description |
 |---|---|---|
-| `HOST` | `localhost` | Bind address |
+| `HOST` | `0.0.0.0` | Bind address |
 | `PORT` | `4010` | Listen port |
 | `UNIX_SOCKET` | (unset) | Unix socket path (overrides HOST/PORT) |
 | `DB_CONNECTION_URL` | (required) | PostgreSQL connection string |

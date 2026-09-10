@@ -15,7 +15,6 @@ import {
 // Host-local defaults that are almost always wrong for a multi-host stack;
 // marked in the editors so they get looked at instead of skipped.
 const STACK_ATTENTION_KEYS: Partial<Record<Component, string[]>> = {
-  gateway: ["HOST"],
   dashboard: ["ORIGIN", "GATEWAY_URL"],
 };
 

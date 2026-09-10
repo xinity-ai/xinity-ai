@@ -134,7 +134,7 @@ export type GatewayConfig = {
 };
 
 export const gatewayConfig = defineConfig<GatewayConfig>({
-  server: serverGroup({ host: "localhost", port: 4010 }),
+  server: serverGroup({ host: "0.0.0.0", port: 4010 }),
   db: databaseGroup({ maxConnections: 20 }),
   cache,
   infoserver: catalogGroup(),
