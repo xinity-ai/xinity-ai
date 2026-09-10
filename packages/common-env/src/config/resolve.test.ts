@@ -169,16 +169,58 @@ describe("checkConfig", () => {
 
   test("reports every problem against its env key instead of throwing", () => {
     expect(checkConfig(config, { env: { ORIGIN: "not-a-url", PORT: "99999" } })).toEqual([
-      { envKey: "PORT", pointer: "server.port", message: expect.any(String) },
-      { envKey: "ORIGIN", pointer: "origin", message: expect.any(String) },
+      { fields: [{ envKey: "PORT", pointer: "server.port", groupTitle: "HTTP server" }], message: expect.any(String) },
+      { fields: [{ envKey: "ORIGIN", pointer: "origin", groupTitle: undefined }], message: expect.any(String) },
     ]);
   });
 
   test("a group invariant lands on the field it names, which no per-key check could find", () => {
     expect(checkConfig(withInvariant, { env: { IDLE_TIMEOUT: "20" } })).toEqual([{
-      envKey: "KEEPALIVE_INTERVAL_MS",
-      pointer: "server.keepaliveMs",
+      fields: [{ envKey: "KEEPALIVE_INTERVAL_MS", pointer: "server.keepaliveMs", groupTitle: "HTTP server" }],
       message: "must be at most a third of IDLE_TIMEOUT",
     }]);
+  });
+});
+
+describe("rules spanning members", () => {
+  type Audit = { url: string };
+  type Licensed = { audit: Audit | undefined; licenseKey?: string };
+
+  const licensed = defineConfig<Licensed>({
+    audit: defineGroup<Audit>({
+      id: "audit",
+      title: "Audit export",
+      optional: { requires: ["url"] },
+      fields: { url: env("AUDIT_LOKI_URL", z.url()) },
+    }),
+    licenseKey: env("LICENSE_KEY", z.string().optional()),
+  }, {
+    violations: (value, at) => value.audit && !value.licenseKey
+      ? [{ fields: [at.audit.url, at.licenseKey], message: "needs a licence" }]
+      : [],
+  });
+
+  test("one violation names every key it is about, across a group and a top-level field", () => {
+    expect(checkConfig(licensed, { env: { AUDIT_LOKI_URL: "http://loki:3100" } })).toEqual([{
+      fields: [
+        { envKey: "AUDIT_LOKI_URL", pointer: "audit.url", groupTitle: "Audit export" },
+        { envKey: "LICENSE_KEY", pointer: "licenseKey", groupTitle: undefined },
+      ],
+      message: "needs a licence",
+    }]);
+  });
+
+  test("and says nothing once the rule is satisfied", () => {
+    expect(checkConfig(licensed, {
+      env: { AUDIT_LOKI_URL: "http://loki:3100", LICENSE_KEY: "lic" },
+    })).toEqual([]);
+  });
+
+  test("a field that failed to parse is reported instead, since the rule needs a whole value", () => {
+    expect(checkConfig(licensed, { env: { AUDIT_LOKI_URL: "not-a-url" } }))
+      .toEqual([{
+        fields: [{ envKey: "AUDIT_LOKI_URL", pointer: "audit.url", groupTitle: "Audit export" }],
+        message: expect.any(String),
+      }]);
   });
 });

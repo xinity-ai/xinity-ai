@@ -186,4 +186,11 @@ export const dashboardConfig = defineConfig<DashboardConfig>({
   notificationsEnabled: env("NOTIFICATIONS_ENABLED", configBool().default(true)
     .describe("Enable the notification scheduler (deployment status, node health, capacity warnings, weekly reports)")
     .meta(expert())),
+}, {
+  violations: (config, at) => config.audit && !config.licenseKey
+    ? [{
+      fields: [at.audit.url, at.licenseKey],
+      message: "Audit export is a licensed feature, so without a license nothing would be forwarded.",
+    }]
+    : [],
 });

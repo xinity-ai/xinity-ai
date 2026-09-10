@@ -27,15 +27,52 @@ export type MountedGroup = {
   readonly activation: readonly string[];
 };
 
+export type FieldRef = {
+  readonly envKey: string;
+  readonly pointer: string;
+  readonly groupTitle?: string;
+};
+
+/** Mirrors the config shape, with a reference where each value would be. */
+export type FieldRefs<T> = {
+  readonly [K in keyof T]-?: NonNullable<T[K]> extends readonly unknown[]
+    ? FieldRef
+    : NonNullable<T[K]> extends object
+      ? FieldRefs<NonNullable<T[K]>>
+      : FieldRef;
+};
+
+export type ConfigViolation = { fields: readonly FieldRef[]; message: string };
+
 export type AnyConfig = {
   readonly members: Readonly<Record<string, AnyMember>>;
   readonly entries: readonly ConfigEntry[];
   readonly groups: readonly MountedGroup[];
+  readonly violations?: (value: unknown, at: unknown) => readonly ConfigViolation[];
 };
 
 export type ConfigDef<T = unknown> = AnyConfig & { readonly [CONFIG_VALUE]: (value: T) => T };
 
-export function defineConfig<T>(members: Members<T>): ConfigDef<T> {
+type ConfigInput<T> = { violations?: (value: T, at: FieldRefs<T>) => readonly ConfigViolation[] };
+
+export function refFor(entry: ConfigEntry): FieldRef {
+  return { envKey: entry.envKey, pointer: entry.path.join("."), groupTitle: entry.groupTitle };
+}
+
+export function fieldRefs(config: AnyConfig): unknown {
+  const root: Record<string, unknown> = {};
+  for (const entry of config.entries) {
+    let node = root;
+    for (const segment of entry.path.slice(0, -1)) {
+      node[segment] ??= {};
+      node = node[segment] as Record<string, unknown>;
+    }
+    node[entry.path[entry.path.length - 1]!] = refFor(entry);
+  }
+  return root;
+}
+
+export function defineConfig<T>(members: Members<T>, opts: ConfigInput<T> = {}): ConfigDef<T> {
   const mounted = members as Readonly<Record<string, AnyMember>>;
 
   const entries: ConfigEntry[] = [];
@@ -67,7 +104,12 @@ export function defineConfig<T>(members: Members<T>): ConfigDef<T> {
     seen.set(entry.envKey, pointer);
   }
 
-  return { members: mounted, entries, groups } as unknown as ConfigDef<T>;
+  return {
+    members: mounted,
+    entries,
+    groups,
+    violations: opts.violations as AnyConfig["violations"],
+  } as unknown as ConfigDef<T>;
 }
 
 function groupObjectSchema(group: AnyGroup): z.ZodObject<z.ZodRawShape> {

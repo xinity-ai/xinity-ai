@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import { readSecretFile } from "../secret-file";
 import { checkGroupActivation, isGroupActive, type ActivationWarning } from "./activation";
-import { groupAt, type ConfigDef, type AnyConfig } from "./build";
+import { fieldRefs, groupAt, refFor, type AnyConfig, type ConfigDef, type FieldRef } from "./build";
 import { isGroup, type ConfigEntry } from "./group";
 
 export type ValueSource = "env" | "env-file" | "default";
@@ -25,8 +25,7 @@ export type Resolved<T> = {
 };
 
 export type ConfigProblem = {
-  readonly envKey: string;
-  readonly pointer: string;
+  readonly fields: readonly FieldRef[];
   readonly message: string;
 };
 
@@ -67,8 +66,7 @@ function attribute(
     const entry = within.find((candidate) => candidate.path[candidate.path.length - 1] === name);
     const target = entry ?? within[0];
     return {
-      envKey: target?.envKey ?? String(name ?? ""),
-      pointer: target?.path.join(".") ?? "(root)",
+      fields: target ? [refFor(target)] : [{ envKey: String(name ?? ""), pointer: "(root)" }],
       message: issue.message,
     };
   });
@@ -133,6 +131,11 @@ function parseConfig(config: AnyConfig, opts: ResolveOptions): Parsed {
     }
   }
 
+  // Only on a complete value: a rule reads members a failed one would have left undefined.
+  if (problems.length === 0 && config.violations) {
+    problems.push(...config.violations(value, fieldRefs(config)));
+  }
+
   return { value, problems, located, warnings: activation.warnings };
 }
 
@@ -144,7 +147,11 @@ export function resolveConfig<T>(config: ConfigDef<T>, opts: ResolveOptions = {}
   const { value, problems, located, warnings } = parseConfig(config, opts);
 
   if (problems.length > 0) {
-    const lines = problems.map((problem) => `  - ${problem.envKey} (${problem.pointer}): ${problem.message}`);
+    const lines = problems.map((p) => {
+      const keys = p.fields.map((field) => field.envKey).join(", ");
+      const pointers = p.fields.map((field) => field.pointer).join(", ");
+      return `  - ${keys} (${pointers}): ${p.message}`;
+    });
     throw new Error(`Invalid configuration:\n${lines.join("\n")}`);
   }
 

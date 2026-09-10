@@ -3,7 +3,7 @@ import { select, confirm, text, password, log, isCancel } from "./clack.ts";
 import { bold, cyan, dim, yellow, green } from "picocolors";
 import { promptOrExit, cancelAndExit } from "./output.ts";
 import { parseEnvString } from "./env-file.ts";
-import { checkConfig, readLeafMeta, type AnyConfig } from "common-env";
+import { checkConfig, readLeafMeta, type AnyConfig, type ConfigProblem } from "common-env";
 import { type Component, COMPONENTS, COMPONENT_CONFIGS, ENV_DIR, SECRETS_DIR } from "./component-meta.ts";
 import { readSecrets, type Host } from "./host.ts";
 import { readManifest } from "./manifest.ts";
@@ -114,6 +114,14 @@ export function isRequiredUnset(field: EnvField, values: Record<string, string |
 
 export function missingRequiredFields(fields: EnvField[], values: Record<string, string | undefined>): EnvField[] {
   return fields.filter((f) => isRequiredUnset(f, values));
+}
+
+/** Names each key where the menu keeps it, since a grouped key is a level down from the top. */
+function describeProblem(problem: ConfigProblem): string {
+  const where = problem.fields
+    .map((field) => (field.groupTitle ? `${field.envKey} under ${field.groupTitle}` : field.envKey))
+    .join(", ");
+  return `  ${where}: ${problem.message}`;
 }
 
 export function categorizeFields(fields: EnvField[]): {
@@ -566,9 +574,7 @@ export async function menuEditEnv(
       }
       const rejected = opts?.declaration ? checkConfig(opts.declaration, { env: declaredValues() }) : [];
       if (rejected.length > 0) {
-        log.warn(
-          `The service would refuse these values:\n${rejected.map((p) => `  ${p.envKey}: ${p.message}`).join("\n")}`,
-        );
+        log.warn(`The service would refuse these values:\n${rejected.map(describeProblem).join("\n")}`);
         continue;
       }
       break;
