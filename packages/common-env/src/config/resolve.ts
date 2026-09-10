@@ -169,6 +169,10 @@ export function resolveConfig<T>(config: ConfigDef<T>, opts: ResolveOptions = {}
   return { value: value as T, provenance, warnings };
 }
 
+export function configFromProcessEnv<T>(config: ConfigDef<T>): T {
+  return resolveConfig(config, { env: process.env }).value;
+}
+
 function entryAt(config: AnyConfig, path: readonly string[]): ConfigEntry {
   const pointer = path.join(".");
   const entry = config.entries.find((candidate) => candidate.path.join(".") === pointer);
