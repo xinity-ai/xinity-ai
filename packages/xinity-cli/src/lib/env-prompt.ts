@@ -3,7 +3,7 @@ import { select, confirm, text, password, log, isCancel } from "./clack.ts";
 import { bold, cyan, dim, yellow, green } from "picocolors";
 import { promptOrExit, cancelAndExit } from "./output.ts";
 import { parseEnvString } from "./env-file.ts";
-import { checkConfig, readLeafMeta, type AnyConfig, type ConfigProblem } from "common-env";
+import { checkConfig, type AnyConfig, type ConfigProblem } from "common-env";
 import { type Component, COMPONENTS, COMPONENT_CONFIGS, ENV_DIR, SECRETS_DIR } from "./component-meta.ts";
 import { readSecrets, type Host } from "./host.ts";
 import { readManifest } from "./manifest.ts";
@@ -79,7 +79,7 @@ export function analyzeConfig(config: AnyConfig): EnvField[] {
       isRequired: !withoutValue.success,
       isSecret: entry.isSecret,
       isExpert: entry.isExpert,
-      isPublic: readLeafMeta(entry.schema).public === true,
+      isPublic: entry.isPublic,
       enumValues: extractEnumValues(prop),
       isBoolean: resolvedType === "boolean",
       validate: schemaValidator(entry.schema),

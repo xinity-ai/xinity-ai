@@ -105,6 +105,7 @@ export type ConfigEntry = {
   readonly description?: string;
   readonly isSecret: boolean;
   readonly isExpert: boolean;
+  readonly isPublic: boolean;
   readonly groupId?: string;
   readonly groupTitle?: string;
 };
@@ -118,6 +119,7 @@ export function fieldEntry(path: readonly string[], field: AnyField, group?: Any
     description: typeof meta.description === "string" ? meta.description : undefined,
     isSecret: meta.secret === true,
     isExpert: group?.expert === true || meta.expert === true,
+    isPublic: meta.public === true,
     groupId: group?.id,
     groupTitle: group?.title,
   };

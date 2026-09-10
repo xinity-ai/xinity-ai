@@ -1,11 +1,10 @@
-import { readLeafMeta } from "common-env";
 import { dashboardConfig } from "$lib/server/config-schema";
 import { config } from "$lib/server/config";
 
 export const load = () => {
   const clientEnv: Record<string, string> = {};
   for (const entry of dashboardConfig.entries) {
-    if (readLeafMeta(entry.schema).public !== true) {
+    if (!entry.isPublic) {
       continue;
     }
     let value: unknown = config;
