@@ -2,7 +2,8 @@ import { green, yellow, red, dim } from "picocolors";
 import { readManifest, type ComponentEntry } from "./manifest.ts";
 import { commandExistsOn, isUnitActiveOn, readSecrets, type Host } from "./host.ts";
 import { isOllamaRunning } from "./ollama-setup.ts";
-import { componentFields, categorizeFields, type EnvField } from "./env-prompt.ts";
+import { componentFields, categorizeFields } from "./env-prompt.ts";
+import type { EnvField } from "common-env";
 import { parseEnvString } from "./env-file.ts";
 import { unitName } from "./systemd.ts";
 import { type Component, ENV_DIR, SECRETS_DIR, UNIT_DIR, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT, DEFAULT_OLLAMA_URL } from "./component-meta.ts";
@@ -339,14 +340,14 @@ function dashboardHealthProbe(values: Record<string, string>): { url: string; cu
   // We are the one serving the certificate, so there is nothing to verify it against.
   const curlArgs = scheme === "https" ? ["-k"] : [];
 
-  if (values.HTTP_SOCKET) {
+  if (values.UNIX_SOCKET) {
     return {
       url: `${scheme}://localhost/api/health`,
-      curlArgs: [...curlArgs, "--unix-socket", values.HTTP_SOCKET],
+      curlArgs: [...curlArgs, "--unix-socket", values.UNIX_SOCKET],
     };
   }
 
-  const bindHost = values.HTTP_HOST || "0.0.0.0";
+  const bindHost = values.HOST || "0.0.0.0";
   const checkHost = bindHost === "0.0.0.0" ? "localhost" : bindHost;
   return { url: `${scheme}://${checkHost}:${values.HTTP_PORT || "5173"}/api/health`, curlArgs };
 }

@@ -1,8 +1,8 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { z } from "zod";
-import { configBool, configInt, defineConfig, defineGroup, env, secret } from "common-env";
+import { analyzeConfig, configBool, configInt, defineConfig, defineGroup, env, secret } from "common-env";
 import {
-  analyzeConfig, categorizeFields, componentFields, diffEnv,
+  categorizeFields, componentFields, diffEnv,
   missingRequiredFields, planSecretFileRemoval,
   type EnvBundle, type EnvChange,
 } from "../../src/lib/env-prompt.ts";

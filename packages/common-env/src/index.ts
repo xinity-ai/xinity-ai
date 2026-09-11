@@ -51,6 +51,7 @@ export * from "./config/build";
 export * from "./config/activation";
 export * from "./config/resolve";
 export * from "./config/shared-groups";
+export * from "./config/analyze";
 export * from "./deployment-settings";
 export * from "./metrics-auth";
 export * from "./metrics-format";
