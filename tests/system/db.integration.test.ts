@@ -28,7 +28,7 @@ beforeAll(async () => {
       organizationId: orgId,
     })
     .returning();
-  appId = app.id;
+  appId = app!.id;
 
   const [apiKey] = await db
     .insert(aiApiKeyT)
@@ -41,7 +41,7 @@ beforeAll(async () => {
       hash: "hash-placeholder",
     })
     .returning();
-  apiKeyId = apiKey.id;
+  apiKeyId = apiKey!.id;
 });
 
 afterAll(async () => {

@@ -3,8 +3,9 @@ import { coreComponents, renderUpPlanScript, type UpPlan } from "../../src/lib/u
 import { initialSharedSecrets } from "../../src/lib/secrets.ts";
 import { buildPostgresProvisionCommands, describePostgresProvision, type PostgresProvision } from "../../src/lib/postgres-setup.ts";
 import { describeRedisPlan, buildRedisProvisionCommands, type RedisPlan } from "../../src/lib/redis-setup.ts";
+import type { ComposeCmd } from "../../src/lib/docker-stack.ts";
 
-const COMPOSE = { docker: "docker", sub: ["compose"] } as const;
+const COMPOSE: ComposeCmd = { docker: "docker", sub: ["compose"] };
 
 const newStackProvision: PostgresProvision = {
   compose: COMPOSE,
@@ -90,7 +91,7 @@ describe("renderUpPlanScript", () => {
   test("includes provisioning commands, migration deferral, and the redis secret write", async () => {
     const script = await renderUpPlanScript(planWith({
       provisionPostgres: newStackProvision,
-      migrations: { connectionUrl: newStackProvision.url, hint: "xinity@localhost:5432/xinity" },
+      migrations: { connectionUrl: newStackProvision.url },
       redis: provisionedRedis,
     }));
     expect(script).toContain("docker compose -f");
