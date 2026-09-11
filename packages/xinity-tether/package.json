@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "bun run --watch src/index.ts | pino-pretty",
     "build:compile": "bun build --compile --minify --target=bun ./src/index.ts --outfile xinity-tether",
-    "test": "bun test src/"
+    "test": "bun test src/",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/bun": "catalog:",

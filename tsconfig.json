@@ -24,8 +24,14 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false,
+    "types": ["bun"],
     "paths": {
-      "common-db": ["./packages/common-db/src/"]
+      "common-db": ["./packages/common-db/src/"],
+      "common-env": ["./packages/common-env/src/"],
+      "common-log": ["./packages/common-log/src/"]
     }
   },
+  // Scoped deliberately: every package has its own tsconfig, and without an include this
+  // one sweeps all of them with settings that are wrong for each.
+  "include": ["tests/**/*", "scripts/**/*"]
 }

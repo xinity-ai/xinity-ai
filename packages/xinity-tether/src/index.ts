@@ -16,7 +16,7 @@ import { buildListenTarget } from "./serve-config";
 
 const log = rootLogger;
 
-const refusal = activationRefusal(tetherConfig, process.env, rootLogger);
+const refusal = activationRefusal(tetherConfig, rootLogger);
 if (refusal) {
   rootLogger.fatal(refusal);
   process.exit(1);

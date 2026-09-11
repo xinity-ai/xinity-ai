@@ -2,7 +2,8 @@
   "name": "common-env",
   "module": "src/index.ts",
   "scripts": {
-    "test": "bun test src/"
+    "test": "bun test src/",
+    "typecheck": "tsc --noEmit"
   },
   "exports": {
     ".": {

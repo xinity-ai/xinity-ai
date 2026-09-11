@@ -27,7 +27,7 @@ if (import.meta.main) {
 }
 
 async function main() {
-  const refusal = activationRefusal(daemonConfig, process.env, rootLogger);
+  const refusal = activationRefusal(daemonConfig, rootLogger);
   if (refusal) {
     rootLogger.fatal(refusal);
     process.exit(1);

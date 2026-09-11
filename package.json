@@ -12,7 +12,8 @@
     "postinstall": "if [ -z \"$CI\" ]; then bunx simple-git-hooks@2; fi",
     "sync:dockerfiles": "bun scripts/sync-dockerfile-manifests.ts",
     "sync:dockerfiles:check": "bun scripts/sync-dockerfile-manifests.ts --check",
-    "test:system": "bun test --timeout 60000 tests/system/"
+    "test:system": "bun test --timeout 60000 tests/system/",
+    "typecheck": "tsc --noEmit && bun run --filter '*' typecheck"
   },
   "simple-git-hooks": {
     "commit-msg": "bunx --no-install commitlint --edit $1",

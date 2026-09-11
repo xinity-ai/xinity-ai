@@ -56,6 +56,11 @@ When extending or modifying the OpenAI-compatible routes, update the hand-author
 | `DEEP_RESEARCH_MAX_STEPS` | `30` | Maximum tool-call loop iterations per deep research request |
 | `DEEP_RESEARCH_COMPACTION_THRESHOLD` | `0.70` | Fraction of model context window at which deep research compaction triggers |
 | `RESPONSE_CACHE_TTL_SECONDS` | `3600` | Responses API Redis cache TTL |
+| `CACHE_APPLICATION_TTL_SECONDS` | `300` | How long an application name to id lookup is cached |
+| `CACHE_API_KEY_TTL_SECONDS` | `120` | How long a validated API key is cached, so every request does not hit the database |
+| `CACHE_AUTH_FAILURE_TTL_SECONDS` | `10` | How long a rejected API key is remembered. Short, so re-enabling a key takes effect promptly |
+| `CACHE_MODEL_TTL_SECONDS` | `60` | How long a model deployment lookup is cached |
+| `CACHE_DIGEST_MAX_ENTRIES` | `5000` | Entries held in the in-process chat message digest cache, which avoids re-hashing repeated history |
 | `INFOSERVER_CACHE_TTL_MS` | `600000` | How long the local catalog snapshot is trusted before revalidating, in ms |
 | `METRICS_AUTH` | (unset) | Basic auth for `/metrics` (format: `user:pass`, comma-separated for multiple) |
 | `IDLE_TIMEOUT` | `255` | Server-level idle connection timeout in seconds (max 255, Bun's cap). Inference routes are exempt and bounded by `BACKEND_TIMEOUT_MS` instead, so a long generation is not cut off mid-request. |

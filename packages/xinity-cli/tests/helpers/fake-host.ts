@@ -6,7 +6,7 @@
  * Only the methods the infra setups actually use are wired meaningfully; the
  * rest return inert defaults so the Host interface is satisfied.
  */
-import type { Host, RunResult, ElevationResult } from "../../src/lib/host.ts";
+import type { Host, RunResult, ElevationResult, TunnelResult } from "../../src/lib/host.ts";
 
 type RunHandler = (args: string[]) => Partial<RunResult> | undefined;
 type ShellHandler = (command: string) => Partial<RunResult> | undefined;
@@ -67,8 +67,8 @@ export class FakeHost implements Host {
   async verifySha256(): Promise<boolean> { return true; }
   async computeSha256(): Promise<string | null> { return null; }
   async getArch(): Promise<string> { return "x64"; }
-  async openTunnel(url: string): Promise<{ localUrl: string; close: () => Promise<void> }> {
-    return { localUrl: url, close: async () => {} };
+  async openTunnel(url: string): Promise<TunnelResult> {
+    return { ok: true, localUrl: url, close: async () => {} };
   }
   async dispose(): Promise<void> {}
 }

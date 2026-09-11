@@ -6,7 +6,8 @@
     "dev": "bun run --watch src/gatewayServer.ts | pino-pretty",
     "build": "bun build --production --target=bun  --outdir=dist ./src/gatewayServer.ts",
     "build:compile": "bun build --compile --minify --target=bun ./src/gatewayServer.ts --outfile xinity-ai-gateway",
-    "test": "bun test src/"
+    "test": "bun test src/",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@orpc/client": "catalog:orpc",
