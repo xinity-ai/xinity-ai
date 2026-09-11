@@ -3,12 +3,13 @@
  * hidden or marked for review, and where the result is stored. `stack init`,
  * `stack edit`, and the lazy editors inside `stack up` all go through these.
  */
+import { checkConfig } from "common-env";
 import { type Component, COMPONENT_CONFIGS } from "./component-meta.ts";
 import { componentFields, menuEditEnv, flattenBundle } from "./env-prompt.ts";
 import {
   type StackDefinition, type FleetDefinition,
   STACK_SHARED_KEYS, sharedFields,
-  applySharedResult, diffFromLayer,
+  applySharedResult, diffFromLayer, sharedLayerProblems,
   componentLayerBase, fleetLayerBase, getHost, saveStack,
 } from "./stack.ts";
 
@@ -30,7 +31,7 @@ export async function menuEditLayer(opts: {
     attentionKeys: opts.attentionKeys,
     hiddenKeys: opts.hiddenKeys,
     message: opts.message,
-    declaration: COMPONENT_CONFIGS[opts.component],
+    validate: (values) => checkConfig(COMPONENT_CONFIGS[opts.component], { env: values }),
   });
   if (result === null) {
     return null;
@@ -42,6 +43,7 @@ export async function menuEditLayer(opts: {
 export async function editSharedLayer(stack: StackDefinition, message = "Shared stack settings"): Promise<boolean> {
   const result = await menuEditEnv(sharedFields(), { ...stack.env, ...stack.secrets }, {
     message,
+    validate: (values) => sharedLayerProblems(stack, values),
   });
   if (result === null) {
     return false;

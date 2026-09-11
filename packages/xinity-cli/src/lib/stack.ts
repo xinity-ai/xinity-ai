@@ -13,9 +13,9 @@ import { loadPrivateJson, savePrivateJson } from "./config.ts";
 import { configDir } from "./platform.ts";
 import { z } from "zod";
 import { version as cliVersion } from "../../../../package.json";
-import { type Component, COMPONENTS, getAutoDefaults } from "./component-meta.ts";
+import { type Component, COMPONENTS, COMPONENT_CONFIGS, getAutoDefaults } from "./component-meta.ts";
 import { componentFields } from "./env-prompt.ts";
-import type { EnvField } from "common-env";
+import { checkConfig, type ConfigProblem, type EnvField } from "common-env";
 import { log } from "./clack.ts";
 import { dim } from "picocolors";
 import { deleteStackState } from "./stack-state.ts";
@@ -111,6 +111,37 @@ export function sharedFields(): EnvField[] {
     const wanted = REQUIRED_IN_EVERY_STACK.has(key) || matches.some((field) => field.isRequired);
     return { ...first, isRequired: wanted && !DERIVED_FROM_HOST_ADDRESSES.has(key) };
   });
+}
+
+export function sharedLayerProblems(
+  stack: StackDefinition,
+  shared: Record<string, string | undefined>,
+): ConfigProblem[] {
+  const problems: ConfigProblem[] = [];
+  const seen = new Set<string>();
+
+  for (const component of COMPONENTS) {
+    const env = {
+      ...getAutoDefaults(component),
+      ...stack.derivedEnv,
+      ...shared,
+      ...stack.componentEnv[component],
+    };
+    for (const problem of checkConfig(COMPONENT_CONFIGS[component], { env })) {
+      const keys = problem.fields.map((field) => field.envKey);
+      // Anything else belongs to the layer that owns the key, whose own editor checks it.
+      if (!keys.some((key) => STACK_SHARED_KEYS.has(key))) continue;
+      // Absent by design while editing: the stack fills these in from host addresses at deploy.
+      if (keys.some((key) => DERIVED_FROM_HOST_ADDRESSES.has(key))) continue;
+
+      const id = `${keys.join(",")}:${problem.message}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      problems.push(problem);
+    }
+  }
+
+  return problems;
 }
 
 /** Write a shared-settings editor result back, honoring deletions of optional keys. */

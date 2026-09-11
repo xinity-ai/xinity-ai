@@ -17,6 +17,7 @@ import {
   listStacks,
   STACK_SHARED_KEYS,
   sharedFields,
+  sharedLayerProblems,
 } from "../../src/lib/stack.ts";
 import { loadStackState, markHostManaged } from "../../src/lib/stack-state.ts";
 import { missingRequiredFields } from "../../src/lib/env-prompt.ts";
@@ -384,5 +385,30 @@ describe("sharedFields", () => {
 
     expect(demanded).toContain("DB_CONNECTION_URL");
     expect(demanded).not.toContain("S3_ENDPOINT");
+  });
+});
+
+describe("sharedLayerProblems", () => {
+  const valid = {
+    DB_CONNECTION_URL: "postgresql://u:p@db:5432/xinity",
+    REDIS_URL: "redis://redis:6379",
+    TETHER_SECRET: "shhh",
+    METRICS_AUTH: "user:pass",
+  };
+
+  test("reports a shared value the services would refuse", () => {
+    const problems = sharedLayerProblems(makeStack(), { ...valid, DB_CONNECTION_URL: "not-a-url" });
+    expect(problems.flatMap((p) => p.fields.map((f) => f.envKey))).toContain("DB_CONNECTION_URL");
+  });
+
+  test("says nothing about the URLs the stack derives from host addresses", () => {
+    const keys = sharedLayerProblems(makeStack(), valid).flatMap((p) => p.fields.map((f) => f.envKey));
+    expect(keys).not.toContain("INFOSERVER_URL");
+    expect(keys).not.toContain("TETHER_URL");
+  });
+
+  test("reports each distinct problem once, not once per component that shares the key", () => {
+    const problems = sharedLayerProblems(makeStack(), { ...valid, DB_CONNECTION_URL: "not-a-url" });
+    expect(problems).toHaveLength(1);
   });
 });

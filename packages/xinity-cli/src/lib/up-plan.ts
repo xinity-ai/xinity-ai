@@ -24,6 +24,7 @@ import { componentFields, collectEnv, menuEditEnv, readExistingEnvState, diffEnv
 import { discoverConnectionUrl, describeMigrationStep, migrationScriptComment, runMigrations } from "./migrator.ts";
 import { describePostgresProvision, buildPostgresProvisionCommands, applyPostgresProvision, type PostgresProvision } from "./postgres-setup.ts";
 import { planRedis, applyRedisPlan, describeRedisPlan, buildRedisProvisionCommands, type RedisPlan } from "./redis-setup.ts";
+import { checkConfig } from "common-env";
 import { readManifest } from "./manifest.ts";
 import { initialSharedSecrets } from "./secrets.ts";
 
@@ -610,7 +611,7 @@ export async function configureComponentFlow(component: Component, host: Host): 
   const state = await readExistingEnvState(component, host);
   const existing = { ...getAutoDefaults(component), ...state.existingConfig, ...state.existingSecrets };
 
-  const result = await menuEditEnv(componentFields(component), existing, { declaration: COMPONENT_CONFIGS[component] });
+  const result = await menuEditEnv(componentFields(component), existing, { validate: (values) => checkConfig(COMPONENT_CONFIGS[component], { env: values }) });
   if (result === null) {
     cancel("Cancelled, no changes saved.");
     return;

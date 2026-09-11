@@ -2,7 +2,7 @@ import { select, confirm, text, password, log, isCancel } from "./clack.ts";
 import { bold, cyan, dim, yellow, green } from "picocolors";
 import { promptOrExit, cancelAndExit } from "./output.ts";
 import { parseEnvString } from "./env-file.ts";
-import { analyzeConfig, checkConfig, type AnyConfig, type ConfigProblem, type EnvField, type EnvFieldGroup } from "common-env";
+import { analyzeConfig, type ConfigProblem, type EnvField, type EnvFieldGroup } from "common-env";
 import { type Component, COMPONENTS, COMPONENT_CONFIGS, ENV_DIR, SECRETS_DIR } from "./component-meta.ts";
 import { readSecrets, type Host } from "./host.ts";
 import { readManifest } from "./manifest.ts";
@@ -332,7 +332,8 @@ export type MenuEditOptions = {
   hiddenKeys?: Set<string>;
   /** Message displayed above the menu. */
   message?: string;
-  declaration?: AnyConfig;
+  /** Refuses the save when it returns anything. */
+  validate?: (values: Record<string, string | undefined>) => readonly ConfigProblem[];
 }
 
 /**
@@ -481,7 +482,7 @@ export async function menuEditEnv(
         );
         continue;
       }
-      const rejected = opts?.declaration ? checkConfig(opts.declaration, { env: declaredValues() }) : [];
+      const rejected = opts?.validate?.(declaredValues()) ?? [];
       if (rejected.length > 0) {
         log.warn(`The service would refuse these values:\n${rejected.map(describeProblem).join("\n")}`);
         continue;
