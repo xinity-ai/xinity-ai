@@ -52,6 +52,7 @@ if (config.proxy.header) {
   process.env.HTTP_IP_HEADER = config.proxy.header;
 }
 
+// @ts-ignore: the adapter's build output does not exist until build.ts has run vite.
 const { serveOptions, tlsOptions } = await import("../build/index.js");
 
 /** A real route, since this app logs 404s at error level and a warm-up must not look like a fault. */
