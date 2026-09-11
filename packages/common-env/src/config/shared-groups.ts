@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { expert, secret } from "../index";
 import { metricsAuthSchema } from "../metrics-auth";
-import { configInt, configNumber } from "./leaf-types";
+import { configInt, configList, configNumber } from "./leaf-types";
 import { defineGroup, env, type ConfigField, type GroupDef } from "./group";
 
 export type ServerConfig = { host: string; port: number; idleTimeout: number; unixSocket?: string };
@@ -135,18 +135,36 @@ export function tlsGroup(): GroupDef<TlsConfig | undefined> {
 }
 
 export type ProxyConfig = { header?: string; xffDepth: number };
+export type TrustingProxyConfig = ProxyConfig & { trustedProxies: string[] };
 
-export function proxyGroup(): GroupDef<ProxyConfig> {
-  return defineGroup<ProxyConfig>({
-    id: "proxy",
-    title: "Reverse proxy",
-    description: "Only needed when something sits in front of this service.",
-    expert: true,
+const proxyFields = () => ({
+  header: env("HTTP_IP_HEADER", z.string().optional()
+    .describe("Header the client IP is forwarded in (e.g. x-forwarded-for). Without it, requests all appear to come from the proxy")),
+  xffDepth: env("HTTP_XFF_DEPTH", configInt(z.int().min(1)).default(1)
+    .describe("Number of proxies in front. Anything further left in the header is client-supplied and forgeable")),
+});
+
+const PROXY_GROUP = {
+  id: "proxy",
+  title: "Reverse proxy",
+  description: "Only needed when something sits in front of this service.",
+  expert: true,
+} as const;
+
+const trustedProxy = z.union([z.cidrv4(), z.cidrv6(), z.ipv4(), z.ipv6()]);
+
+export function proxyGroup(opts: { trustedProxies: true }): GroupDef<TrustingProxyConfig>;
+export function proxyGroup(opts?: { trustedProxies?: false }): GroupDef<ProxyConfig>;
+export function proxyGroup(opts: { trustedProxies?: boolean } = {}) {
+  if (!opts.trustedProxies) {
+    return defineGroup<ProxyConfig>({ ...PROXY_GROUP, fields: proxyFields() });
+  }
+  return defineGroup<TrustingProxyConfig>({
+    ...PROXY_GROUP,
     fields: {
-      header: env("HTTP_IP_HEADER", z.string().optional()
-        .describe("Header the client IP is forwarded in (e.g. x-forwarded-for). Without it, requests all appear to come from the proxy")),
-      xffDepth: env("HTTP_XFF_DEPTH", configInt(z.int().min(1)).default(1)
-        .describe("Number of proxies in front. Anything further left in the header is client-supplied and forgeable")),
+      ...proxyFields(),
+      trustedProxies: env("HTTP_TRUSTED_PROXIES", configList(trustedProxy).default([])
+        .describe("Restricts the forwarding header to these addresses or CIDR ranges (e.g. 10.0.0.0/8). Empty accepts it from any source, which is what a proxy-only route needs")),
     },
   });
 }

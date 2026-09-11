@@ -186,6 +186,7 @@ Only needed when something sits in front of this service.
 |---|---|---|
 | `HTTP_IP_HEADER` | (unset) | Header the client IP is forwarded in (e.g. x-forwarded-for). Without it, requests all appear to come from the proxy. |
 | `HTTP_XFF_DEPTH` | `1` | Number of proxies in front. Anything further left in the header is client-supplied and forgeable. |
+| `HTTP_TRUSTED_PROXIES` | (empty) | Restricts the forwarding header to these addresses or CIDR ranges (e.g. 10.0.0.0/8). Empty accepts it from any source, which is what a proxy-only route needs. |
 
 ### Logging
 

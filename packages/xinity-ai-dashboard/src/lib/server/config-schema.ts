@@ -19,7 +19,7 @@ import {
   type DatabaseConfig,
   type MetricsConfig,
   type ObjectStorageConfig,
-  type ProxyConfig,
+  type TrustingProxyConfig,
   type TlsConfig,
 } from "common-env";
 import { loggingGroup, type LoggingConfig } from "common-log";
@@ -158,7 +158,7 @@ export type DashboardConfig = {
   metrics: Required<MetricsConfig>;
   s3: ObjectStorageConfig | undefined;
   tls: TlsConfig | undefined;
-  proxy: ProxyConfig;
+  proxy: TrustingProxyConfig;
   log: LoggingConfig;
   nodeEnv: "production" | "development" | "test";
   appName: string;
@@ -179,7 +179,7 @@ export const dashboardConfig = defineConfig<DashboardConfig>({
   metrics: metricsGroup({ required: true }),
   s3: objectStorageGroup(),
   tls: tlsGroup(),
-  proxy: proxyGroup(),
+  proxy: proxyGroup({ trustedProxies: true }),
   log: loggingGroup(),
   nodeEnv: env("NODE_ENV", z.enum(["production", "development", "test"])
     .describe("Node environment").meta(expert())),

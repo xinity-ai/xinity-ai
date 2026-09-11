@@ -54,6 +54,9 @@ if (config.tls) {
 if (config.proxy.header) {
   process.env.HTTP_IP_HEADER = config.proxy.header;
 }
+if (config.proxy.trustedProxies.length > 0) {
+  process.env.HTTP_TRUSTED_PROXIES = config.proxy.trustedProxies.join(",");
+}
 
 // @ts-ignore: the adapter's build output does not exist until build.ts has run vite.
 const { serveOptions, tlsOptions } = await import("../build/index.js");
