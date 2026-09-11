@@ -82,12 +82,8 @@ export function checkGroupActivation(config: AnyConfig, raw: RawPresence): Activ
 type ActivationLog = { warn: (details: object, message: string) => void };
 
 /** Warns about every partly configured group, and reports the one that a service must not start on. */
-export function activationRefusal(
-  config: AnyConfig,
-  raw: RawPresence,
-  log: ActivationLog,
-): string | undefined {
-  const { warnings } = checkGroupActivation(config, raw);
+export function activationRefusal(config: AnyConfig, log: ActivationLog): string | undefined {
+  const { warnings } = checkGroupActivation(config, process.env);
   for (const warning of warnings) {
     log.warn(warning, warning.message);
   }

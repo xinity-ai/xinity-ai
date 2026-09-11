@@ -33,7 +33,7 @@ process.on("uncaughtException", (err) => {
   rootLogger.error({ err }, "Uncaught exception");
 });
 
-const refusal = activationRefusal(gatewayConfig, process.env, rootLogger);
+const refusal = activationRefusal(gatewayConfig, rootLogger);
 if (refusal) {
   rootLogger.fatal(refusal);
   process.exit(1);

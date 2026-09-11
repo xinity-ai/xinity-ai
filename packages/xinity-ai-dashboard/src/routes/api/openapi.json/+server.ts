@@ -6,6 +6,7 @@ import { ZodToJsonSchemaConverter } from '@orpc/zod/zod4'
 import { text } from '@sveltejs/kit'
 import { os, type Procedure } from '@orpc/server'
 import { router } from '$lib/server/orpc/router'
+import { config } from '$lib/server/config'
 import { UserDto } from '$lib/orpc/dtos/user.dto'
 import { ApiKeyDto } from '$lib/orpc/dtos/api-key.dto'
 
@@ -54,7 +55,7 @@ function isProc(obj: Proc | RouterMap): obj is Proc {
 }
 
 function isInternalProc(p: Proc): boolean {
-  return Bun.env.NODE_ENV !== "development"
+  return config.nodeEnv !== "development"
     && p['~orpc'].route.tags?.includes(".internal") === true;
 }
 

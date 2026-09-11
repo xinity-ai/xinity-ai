@@ -3,6 +3,7 @@
  */
 import { sql } from "common-db";
 import { rootOs, withAuth } from "../root";
+import { config } from "$lib/server/config";
 import { getDB } from "$lib/server/db";
 
 
@@ -27,7 +28,7 @@ const queryQueryStatistics = rootOs
   })
   .errors({ NOT_ACCEPTABLE: { message: "Dev-only procedure" } })
   .handler(async ({ errors }) => {
-    if (process.env.NODE_ENV === "production") {
+    if (config.nodeEnv === "production") {
       throw errors.NOT_ACCEPTABLE();
     }
     const query = sql`SELECT

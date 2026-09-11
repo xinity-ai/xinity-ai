@@ -27,7 +27,7 @@ type OrpcInternals = {
 
 function isProcedureExcludedFromMcp(orpc: OrpcInternals): boolean {
 	const tags = orpc.route?.tags ?? [];
-	const isInternalOutsideDev = tags.includes(".internal") && Bun.env.NODE_ENV !== "development";
+	const isInternalOutsideDev = tags.includes(".internal") && config.nodeEnv !== "development";
 	const isOptedOut = orpc.meta?.mcp === false;
 	return isInternalOutsideDev || isOptedOut;
 }

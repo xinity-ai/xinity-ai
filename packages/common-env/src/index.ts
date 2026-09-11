@@ -1,46 +1,4 @@
 /**
- * Unified environment variable parsing with secret file support.
- *
- * For any env var KEY, you can alternatively set KEY_FILE to a file path
- * whose trimmed contents will be used as the value. Direct env vars take
- * precedence over _FILE variants.
- *
- * Usage:
- *   const env = parseEnv(z.object({ DB_CONNECTION_URL: z.url(), ... }));
- */
-import type { z } from "zod";
-import { readSecretFile } from "./secret-file";
-
-/**
- * For each key, check if a corresponding KEY_FILE env var is set.
- * If so (and KEY itself is not set), read the file and use its trimmed
- * contents as the value. Returns a new env record with resolved values.
- */
-function resolveSecretFiles(
-  env: Record<string, string | undefined>,
-  keys: string[],
-): Record<string, string | undefined> {
-  const resolved: Record<string, string | undefined> = {};
-
-  for (const key of keys) {
-    const direct = env[key];
-    if (direct !== undefined && direct !== "") {
-      resolved[key] = direct;
-      continue;
-    }
-
-    const filePath = env[`${key}_FILE`];
-    if (filePath) {
-      resolved[key] = readSecretFile(filePath, key);
-    }
-  }
-
-  return { ...env, ...resolved };
-}
-
-type ZodObjectWithShape = z.ZodType & { shape: Record<string, unknown> };
-
-/**
  * Zod `.meta()` marker for env vars that should be treated as secrets.
  * Used by the CLI to decide which values go into LoadCredential files
  * vs. the plain EnvironmentFile.
@@ -72,34 +30,6 @@ export function expert() {
  */
 export function clientPublic() {
   return { public: true as const };
-}
-
-/**
- * Parse environment variables through a Zod object schema with _FILE secret
- * support. Each key in the schema can be provided either directly or via a
- * KEY_FILE env var pointing to a file containing the value.
- */
-// Treat "" as unset so Compose's ${VAR:-} interpolation doesn't trip zod.
-function emptyStringsAsUndefined(
-  env: Record<string, string | undefined>,
-): Record<string, string | undefined> {
-  const out: Record<string, string | undefined> = {};
-  for (const [k, v] of Object.entries(env)) {
-    out[k] = v === "" ? undefined : v;
-  }
-  return out;
-}
-
-export function parseEnv<T extends ZodObjectWithShape>(
-  schema: T,
-  env: Record<string, string | undefined> = process.env as Record<
-    string,
-    string | undefined
-  >,
-): z.infer<T> {
-  const keys = Object.keys(schema.shape);
-  const resolved = resolveSecretFiles(env, keys);
-  return schema.parse(emptyStringsAsUndefined(resolved));
 }
 
 /** POSIX-safe single-quote shell escape. Strings made of only `[A-Za-z0-9@%+=:,./_-]` are returned as-is. */

@@ -7,6 +7,7 @@ import { isInstanceAdmin } from "$lib/server/roles";
 import { getDB } from "$lib/server/db";
 import { ssoProviderT, organizationT, sql } from "common-db";
 import { hasFeature } from "$lib/server/license";
+import { config } from "$lib/server/config";
 
 const log = rootLogger.child({ name: "sso.procedure" });
 const tags = ["SSO"];
@@ -216,7 +217,7 @@ const registerSaml = rootOs
     }),
   }))
   .handler(async ({ input, context, errors }) => {
-    if (process.env.NODE_ENV === "production") {
+    if (config.nodeEnv === "production") {
       throw errors.FORBIDDEN({ message: "SAML provider registration is not available" });
     }
     await requireSsoAccess(context.session.user.email, input.organizationId, context.request.headers, errors);
