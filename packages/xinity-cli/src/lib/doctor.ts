@@ -335,7 +335,7 @@ async function checkDashboardConnectivity(
 
 /** A socket or our own certificate needs curl told about it, or a healthy dashboard reads as unreachable. */
 function dashboardHealthProbe(values: Record<string, string>): { url: string; curlArgs: string[] } {
-  const scheme = values.XINITY_TLS_CERT_FILE ? "https" : "http";
+  const scheme = values.XINITY_TLS_CERT || values.XINITY_TLS_CERT_FILE ? "https" : "http";
   // We are the one serving the certificate, so there is nothing to verify it against.
   const curlArgs = scheme === "https" ? ["-k"] : [];
 
