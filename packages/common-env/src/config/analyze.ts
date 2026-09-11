@@ -14,7 +14,7 @@ export type EnvField = {
   description?: string;
   hasDefault: boolean;
   defaultValue?: unknown;
-  isRequired: boolean;
+  isRequiredBySchema: boolean;
   isSecret: boolean;
   isExpert: boolean;
   isPublic: boolean;
@@ -70,7 +70,7 @@ export function analyzeConfig(config: AnyConfig): EnvField[] {
       description: entry.description,
       hasDefault: withoutValue.success && withoutValue.data !== undefined,
       defaultValue: withoutValue.success ? withoutValue.data : undefined,
-      isRequired: !withoutValue.success,
+      isRequiredBySchema: !withoutValue.success,
       isSecret: entry.isSecret,
       isExpert: entry.isExpert,
       isPublic: entry.isPublic,

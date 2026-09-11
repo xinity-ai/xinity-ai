@@ -90,16 +90,16 @@ describe("env-prompt", () => {
     const field = (key: string) => fields.find((f) => f.key === key)!;
 
     test("a field without a value or a default is required", () => {
-      expect(field("HOST").isRequired).toBe(true);
+      expect(field("HOST").isRequiredBySchema).toBe(true);
     });
 
     test("a field with a default is not required, it falls back to it", () => {
-      expect(field("PORT").isRequired).toBe(false);
+      expect(field("PORT").isRequiredBySchema).toBe(false);
       expect(field("PORT").defaultValue).toBe(3000);
     });
 
     test("an optional field is not required", () => {
-      expect(field("MAIL_URL").isRequired).toBe(false);
+      expect(field("MAIL_URL").isRequiredBySchema).toBe(false);
     });
   });
 

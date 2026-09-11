@@ -373,11 +373,11 @@ describe("sharedFields", () => {
   });
 
   test("a key several components declare takes the strictest of them", () => {
-    expect(byKey.get("METRICS_AUTH")!.isRequired).toBe(true);
+    expect(byKey.get("METRICS_AUTH")!.isRequiredBySchema).toBe(true);
   });
 
   test("a key derived from a host address is not demanded before the hosts exist", () => {
-    expect(byKey.get("TETHER_URL")!.isRequired).toBe(false);
+    expect(byKey.get("TETHER_URL")!.isRequiredBySchema).toBe(false);
   });
 
   test("an empty stack is short its infra keys, but not the switched-off S3 group", () => {

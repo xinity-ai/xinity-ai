@@ -2,7 +2,7 @@ import { green, yellow, red, dim } from "picocolors";
 import { readManifest, type ComponentEntry } from "./manifest.ts";
 import { commandExistsOn, isUnitActiveOn, readSecrets, type Host } from "./host.ts";
 import { isOllamaRunning } from "./ollama-setup.ts";
-import { componentFields, categorizeFields } from "./env-prompt.ts";
+import { componentFields, categorizeFields, isRequired } from "./env-prompt.ts";
 import type { EnvField } from "common-env";
 import { parseEnvString } from "./env-file.ts";
 import { unitName } from "./systemd.ts";
@@ -219,8 +219,6 @@ async function checkConfiguration(
   const fields = componentFields(component);
   const { configFields, secretFields } = categorizeFields(fields);
 
-  checks.push(requiredFieldsPresenceCheck("Config keys", "All required config keys set", configFields, config));
-
   // Read all secrets, elevating if needed
   let secretsPermDenied = false;
   let secrets: Record<string, string> = {};
@@ -242,7 +240,10 @@ async function checkConfiguration(
     }
   }
 
+  // A group's switch may be a secret, so requiredness cannot be judged from the env file alone.
   const values = { ...config, ...secrets };
+
+  checks.push(requiredFieldsPresenceCheck("Config keys", "All required config keys set", configFields, values));
 
   if (secretsPermDenied) {
     checks.push({ label: "Secrets", status: "skip", message: "Permission denied, rerun with sudo for full checks" });
@@ -260,7 +261,7 @@ function requiredFieldsPresenceCheck(
   values: Record<string, string>,
 ): CheckResult {
   const missing = fields
-    .filter(f => f.isRequired && !values[f.key])
+    .filter(f => isRequired(f, values) && !values[f.key])
     .map(f => f.key);
   if (missing.length > 0) {
     return { label, status: "fail", message: `Missing required: ${missing.join(", ")}` };

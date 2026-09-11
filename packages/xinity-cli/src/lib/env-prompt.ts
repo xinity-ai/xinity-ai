@@ -12,14 +12,17 @@ export function componentFields(component: Component): EnvField[] {
   return analyzeConfig(COMPONENT_CONFIGS[component]);
 }
 
-/** The single definition of "the config is invalid without this field". */
-function isRequiredUnset(field: EnvField, values: Record<string, string | undefined>): boolean {
-  if (!field.isRequired || values[field.key]) {
+/** A field in a switched-off optional group is not required, whatever its schema says. */
+export function isRequired(field: EnvField, values: Record<string, string | undefined>): boolean {
+  if (!field.isRequiredBySchema) {
     return false;
   }
   const activation = field.group?.activation ?? [];
-  const groupIsActive = activation.length === 0 || activation.some((key) => Boolean(values[key]));
-  return groupIsActive;
+  return activation.length === 0 || activation.some((key) => Boolean(values[key]));
+}
+
+function isRequiredUnset(field: EnvField, values: Record<string, string | undefined>): boolean {
+  return isRequired(field, values) && !values[field.key];
 }
 
 export function missingRequiredFields(fields: EnvField[], values: Record<string, string | undefined>): EnvField[] {
@@ -163,7 +166,7 @@ async function promptFieldsUnderHeading(
   if (fields.length === 0) return;
   log.step(bold(heading));
   for (const field of fields) {
-    const value = await promptField(field, existingValues?.[field.key]);
+    const value = await promptField(field, existingValues?.[field.key], isRequired(field, existingValues ?? {}));
     if (value !== undefined && value !== FIELD_CANCELLED) assignByCategory(field, value, config, secrets);
   }
 }
@@ -175,7 +178,8 @@ const UNSET_OPTION = "__unset__";
 
 async function promptField(
   field: EnvField,
-  existingValue?: string,
+  existingValue: string | undefined,
+  required: boolean,
   inMenuEditor = false,
 ): Promise<string | undefined | typeof FIELD_CANCELLED> {
   const resolve = async <T>(prompt: Promise<T | symbol>): Promise<T | typeof FIELD_CANCELLED> => {
@@ -188,17 +192,17 @@ async function promptField(
   };
 
   const hint = field.description ? dim(` (${field.description})`) : "";
-  const optTag = field.isRequired ? "" : dim(" [optional]");
+  const optTag = required ? "" : dim(" [optional]");
   const existing = existingValue ?? (field.hasDefault ? String(field.defaultValue) : undefined);
   // Only the menu editor can back out with Escape, so only there is an empty submit safe to read as "unset".
-  const unsetOnEmpty = inMenuEditor && !field.isRequired;
+  const unsetOnEmpty = inMenuEditor && !required;
   const emptyHint = existingValue === undefined
     ? ""
     : dim(unsetOnEmpty ? " [Enter to unset]" : " [Enter to keep current]");
   const keepOnEmpty = unsetOnEmpty ? undefined : existing;
   const validateInput = (val: string | undefined) => {
     if (!val) {
-      return !existing && field.isRequired ? "This field is required" : undefined;
+      return !existing && required ? "This field is required" : undefined;
     }
     return field.validate(val);
   };
@@ -216,7 +220,7 @@ async function promptField(
   // Enum → select
   if (field.enumValues) {
     const options = field.enumValues.map((v) => ({ value: v, label: v }));
-    if (!field.isRequired) {
+    if (!required) {
       options.unshift({ value: UNSET_OPTION, label: dim(inMenuEditor ? "unset" : "skip") });
     }
     const value = await resolve(select({
@@ -252,13 +256,13 @@ async function promptField(
 }
 
 /** Format a field's current value for display in the menu. */
-function displayValue(field: EnvField, value: string | undefined): string {
+function displayValue(field: EnvField, value: string | undefined, required: boolean): string {
   if (value !== undefined && value !== "") {
     if (field.isSecret) return dim("••••••");
     return cyan(value);
   }
   if (field.hasDefault) return dim(`(default: ${field.defaultValue})`);
-  return field.isRequired ? yellow("(not set)") : dim("(not set)");
+  return required ? yellow("(not set)") : dim("(not set)");
 }
 
 type MenuGroup = { definition: EnvFieldGroup; fields: EnvField[] };
@@ -369,12 +373,12 @@ export async function menuEditEnv(
 
   const fieldOption = (field: EnvField) => ({
     value: field.key,
-    label: `${fieldMarker(field, requiredUnset(field), attentionKeys)}${field.isExpert ? dim(field.key) : field.key}  ${displayValue(field, values[field.key])}`,
+    label: `${fieldMarker(field, requiredUnset(field), attentionKeys)}${field.isExpert ? dim(field.key) : field.key}  ${displayValue(field, values[field.key], isRequired(field, values))}`,
     hint: field.description,
   });
 
   const editField = async (field: EnvField): Promise<void> => {
-    const newValue = await promptField(field, values[field.key], true);
+    const newValue = await promptField(field, values[field.key], isRequired(field, values), true);
     if (newValue === FIELD_CANCELLED) {
       return;
     }
@@ -506,7 +510,7 @@ export async function menuEditEnv(
     }
 
     const field = editable.find((f) => f.key === choice)!;
-    const newValue = await promptField(field, values[field.key], true);
+    const newValue = await promptField(field, values[field.key], isRequired(field, values), true);
     if (newValue === FIELD_CANCELLED) {
       continue;
     }

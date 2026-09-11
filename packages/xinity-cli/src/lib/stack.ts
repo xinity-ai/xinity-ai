@@ -108,8 +108,8 @@ export function sharedFields(): EnvField[] {
     if (matches.some((field) => agreedShape(field) !== agreedShape(first))) {
       throw new Error(`Components declare ${key} differently, so the stack cannot offer one of them`);
     }
-    const wanted = REQUIRED_IN_EVERY_STACK.has(key) || matches.some((field) => field.isRequired);
-    return { ...first, isRequired: wanted && !DERIVED_FROM_HOST_ADDRESSES.has(key) };
+    const wanted = REQUIRED_IN_EVERY_STACK.has(key) || matches.some((field) => field.isRequiredBySchema);
+    return { ...first, isRequiredBySchema: wanted && !DERIVED_FROM_HOST_ADDRESSES.has(key) };
   });
 }
 
