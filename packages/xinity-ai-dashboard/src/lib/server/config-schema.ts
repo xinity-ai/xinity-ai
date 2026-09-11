@@ -14,11 +14,13 @@ import {
   objectStorageGroup,
   proxyGroup,
   secret,
+  tlsGroup,
   type CatalogConfig,
   type DatabaseConfig,
   type MetricsConfig,
   type ObjectStorageConfig,
   type ProxyConfig,
+  type TlsConfig,
 } from "common-env";
 import { loggingGroup, type LoggingConfig } from "common-log";
 
@@ -51,22 +53,6 @@ const server = defineGroup<Server>({
     trustedOrigins: env("TRUSTED_ORIGINS", configList(z.string()).default([])
       .describe("Additional trusted origins for CSRF validation behind reverse proxies")
       .meta(expert())),
-  },
-});
-
-type Tls = { certFile: string; keyFile: string };
-
-const tls = defineGroup<Tls>({
-  id: "tls",
-  title: "TLS",
-  description: "Opt-in HTTPS. See https://github.com/xinity-ai/xinity-ai/blob/main/docs/security/tls.md",
-  expert: true,
-  optional: { requires: ["certFile", "keyFile"] },
-  fields: {
-    certFile: env("XINITY_TLS_CERT_FILE", z.string()
-      .describe("Path to the PEM-encoded TLS certificate")),
-    keyFile: env("XINITY_TLS_KEY_FILE", z.string()
-      .describe("Path to the PEM-encoded TLS private key")),
   },
 });
 
@@ -171,7 +157,7 @@ export type DashboardConfig = {
   audit: Audit | undefined;
   metrics: Required<MetricsConfig>;
   s3: ObjectStorageConfig | undefined;
-  tls: Tls | undefined;
+  tls: TlsConfig | undefined;
   proxy: ProxyConfig;
   log: LoggingConfig;
   nodeEnv: "production" | "development" | "test";
@@ -192,7 +178,7 @@ export const dashboardConfig = defineConfig<DashboardConfig>({
   audit,
   metrics: metricsGroup({ required: true }),
   s3: objectStorageGroup(),
-  tls,
+  tls: tlsGroup(),
   proxy: proxyGroup(),
   log: loggingGroup(),
   nodeEnv: env("NODE_ENV", z.enum(["production", "development", "test"])

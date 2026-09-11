@@ -7,7 +7,10 @@
  * scheduler and the shutdown handlers from its module body, so an idle process would run
  * none of them. One request to ourselves forces that initialisation.
  */
-import { activationRefusal } from "common-env";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { activationRefusal, type TlsConfig } from "common-env";
 import { dashboardConfig } from "./lib/server/config-schema";
 import { config } from "./lib/server/config";
 import { rootLogger } from "./lib/server/logging";
@@ -16,6 +19,16 @@ const refusal = activationRefusal(dashboardConfig, process.env, rootLogger);
 if (refusal) {
   rootLogger.fatal(refusal);
   process.exit(1);
+}
+
+/** The adapter hands Bun a path, so PEM that came from the environment has to reach the disk to be served. */
+async function writeTlsMaterial(tls: TlsConfig): Promise<{ cert: string; key: string }> {
+  const dir = await mkdtemp(join(tmpdir(), "xinity-tls-"));
+  const cert = join(dir, "cert.pem");
+  const key = join(dir, "key.pem");
+  await writeFile(cert, tls.cert, { mode: 0o600 });
+  await writeFile(key, tls.key, { mode: 0o600 });
+  return { cert, key };
 }
 
 // The adapter reads these from process.env before any of our code runs, so a declared value
@@ -31,8 +44,9 @@ if (config.server.unixSocket) {
   process.env.HTTP_SOCKET = config.server.unixSocket;
 }
 if (config.tls) {
-  process.env.TLS_CERT_FILE = config.tls.certFile;
-  process.env.TLS_KEY_FILE = config.tls.keyFile;
+  const { cert, key } = await writeTlsMaterial(config.tls);
+  process.env.TLS_CERT_FILE = cert;
+  process.env.TLS_KEY_FILE = key;
 }
 if (config.proxy.header) {
   process.env.HTTP_IP_HEADER = config.proxy.header;

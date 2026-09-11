@@ -48,7 +48,7 @@ This creates:
 
 ### Server TLS (any service)
 
-These env vars are shared across daemon, gateway, and tether. When both are set, the service serves HTTPS. Setting only one is a configuration error and the service refuses to start rather than fall back to plaintext.
+These env vars are shared across every service. When both are set, the service serves HTTPS. Setting only one is a configuration error and the service refuses to start rather than fall back to plaintext.
 
 | Variable | Description |
 |----------|-------------|
@@ -56,19 +56,6 @@ These env vars are shared across daemon, gateway, and tether. When both are set,
 | `XINITY_TLS_KEY` | PEM-encoded TLS private key. Required with `XINITY_TLS_CERT`. |
 
 All variables support the `_FILE` suffix (e.g., `XINITY_TLS_CERT_FILE=/path/to/cert.pem`).
-
-### Dashboard TLS
-
-The dashboard serves HTTPS through its Bun adapter, which reads the certificate and key from disk rather than from the environment, so it takes the paths only:
-
-| Variable | Description |
-|----------|-------------|
-| `XINITY_TLS_CERT_FILE` | Path to the PEM-encoded TLS certificate. Enables HTTPS. |
-| `XINITY_TLS_KEY_FILE` | Path to the PEM-encoded TLS private key. Required with `XINITY_TLS_CERT_FILE`. |
-
-An operator who mounts certificates as files sets the same two variables here as on the other services. The inline `XINITY_TLS_CERT` form has no equivalent on the dashboard. Setting only one is refused the same way.
-
-Most dashboard deployments terminate TLS at a reverse proxy instead. Set `ORIGIN` to the URL end users type, whatever sits in front.
 
 ### Gateway inference connection
 
