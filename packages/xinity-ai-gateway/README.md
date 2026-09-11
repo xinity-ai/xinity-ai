@@ -40,50 +40,113 @@ When extending or modifying the OpenAI-compatible routes, update the hand-author
 
 ## Configuration
 
-| Variable | Default | Description |
-|---|---|---|
-| `HOST` | `0.0.0.0` | Bind address |
-| `PORT` | `4010` | Listen port |
-| `UNIX_SOCKET` | (unset) | Unix socket path (overrides HOST/PORT) |
-| `DB_CONNECTION_URL` | (required) | PostgreSQL connection string |
-| `REDIS_URL` | (required) | Redis connection URL |
-| `INFOSERVER_URL` | `https://sysinfo.xinity.ai` | Infoserver URL |
-| `LOAD_BALANCE_STRATEGY` | `least-connections` | `random`, `round-robin`, or `least-connections` |
-| `BACKEND_TIMEOUT_MS` | `300000` | Backend timeout in ms. Idle timeout for streaming, wall-clock for non-streaming. |
-| `WEB_SEARCH_PROVIDER` | (unset) | Web search backend: `searxng`, `google`, `bing`, `brave`, `serper`, or `tavily`. Web search is disabled when unset. |
-| `WEB_SEARCH_CREDENTIAL` | (unset) | Provider credential: instance URL for SearXNG, `apikey:cx` for Google, API key for Bing/Brave/Serper/Tavily |
-| `WEB_SEARCH_ENGINE_URL` | (unset) | **Deprecated.** Use `WEB_SEARCH_PROVIDER` + `WEB_SEARCH_CREDENTIAL` instead. Falls back to SearXNG when set. |
-| `DEEP_RESEARCH_MAX_STEPS` | `30` | Maximum tool-call loop iterations per deep research request |
-| `DEEP_RESEARCH_COMPACTION_THRESHOLD` | `0.70` | Fraction of model context window at which deep research compaction triggers |
-| `RESPONSE_CACHE_TTL_SECONDS` | `3600` | Responses API Redis cache TTL |
-| `CACHE_APPLICATION_TTL_SECONDS` | `300` | How long an application name to id lookup is cached |
-| `CACHE_API_KEY_TTL_SECONDS` | `120` | How long a validated API key is cached, so every request does not hit the database |
-| `CACHE_AUTH_FAILURE_TTL_SECONDS` | `10` | How long a rejected API key is remembered. Short, so re-enabling a key takes effect promptly |
-| `CACHE_MODEL_TTL_SECONDS` | `60` | How long a model deployment lookup is cached |
-| `CACHE_DIGEST_MAX_ENTRIES` | `5000` | Entries held in the in-process chat message digest cache, which avoids re-hashing repeated history |
-| `INFOSERVER_CACHE_TTL_MS` | `600000` | How long the local catalog snapshot is trusted before revalidating, in ms |
-| `METRICS_AUTH` | (unset) | Basic auth for `/metrics` (format: `user:pass`, comma-separated for multiple) |
-| `IDLE_TIMEOUT` | `255` | Server-level idle connection timeout in seconds (max 255, Bun's cap). Inference routes are exempt and bounded by `BACKEND_TIMEOUT_MS` instead, so a long generation is not cut off mid-request. |
+<!-- [sync:config] - generated from the config declaration, do not edit -->
 
-### S3 (image storage)
-
-All three must be set to enable multimodal image storage.
+### HTTP server
 
 | Variable | Default | Description |
 |---|---|---|
-| `S3_ENDPOINT` | (unset) | S3-compatible endpoint (e.g., SeaweedFS) |
-| `S3_ACCESS_KEY_ID` | (unset) | S3 access key |
-| `S3_SECRET_ACCESS_KEY` | (unset) | S3 secret key |
-| `S3_BUCKET` | `xinity-media` | S3 bucket name |
-| `S3_REGION` | `us-east-1` | S3 region (use `us-east-1` for SeaweedFS) |
+| `HOST` | `0.0.0.0` | Bind address (use 0.0.0.0 to listen on all interfaces). |
+| `PORT` | `4010` | Listen port. |
+| `IDLE_TIMEOUT` | `255` | Seconds a connection may go without traffic before it is closed (Bun allows at most 255). |
+| `UNIX_SOCKET` | (unset) | Unix socket path (overrides HOST/PORT when set). |
+
+### Database
+
+| Variable | Default | Description |
+|---|---|---|
+| `DB_CONNECTION_URL` | (required) | PostgreSQL connection string (e.g. postgresql://user:pass@host:5432/dbname). Secret. |
+| `DB_MAX_CONNECTIONS` | `20` | Maximum PostgreSQL connection pool size. |
+
+### Cache
+
+Redis, and the lifetimes of what the gateway keeps in it.
+
+| Variable | Default | Description |
+|---|---|---|
+| `REDIS_URL` | (required) | Redis connection URL (e.g. redis://localhost:6379). Secret. |
+| `RESPONSE_CACHE_TTL_SECONDS` | `3600` | How long an identical completion is served from cache instead of the backend. |
+| `CACHE_APPLICATION_TTL_SECONDS` | `300` | How long an application name to id lookup is cached. |
+| `CACHE_API_KEY_TTL_SECONDS` | `120` | How long a validated API key is cached, so every request does not hit the database. |
+| `CACHE_AUTH_FAILURE_TTL_SECONDS` | `10` | How long a rejected API key is remembered. Short, so re-enabling a key takes effect promptly. |
+| `CACHE_MODEL_TTL_SECONDS` | `60` | How long a model deployment lookup is cached. |
+| `CACHE_DIGEST_MAX_ENTRIES` | `5000` | Entries held in the in-process chat message digest cache, which avoids re-hashing repeated history. |
+
+### Model catalog
+
+| Variable | Default | Description |
+|---|---|---|
+| `INFOSERVER_URL` | `https://sysinfo.xinity.ai` | Infoserver URL (default hosted: https://sysinfo.xinity.ai, or your self-hosted instance). |
+| `INFOSERVER_CACHE_TTL_MS` | `600000` | How long the local catalog snapshot is trusted before a conditional re-fetch (ms). A refresh costs one 304 when nothing changed, so the ceiling on how stale a new entry can be is what this trades against. |
+
+### Metrics endpoint
+
+| Variable | Default | Description |
+|---|---|---|
+| `METRICS_AUTH` | (unset) | Basic auth for the /metrics endpoint (format: user:pass, comma-separated for multiple). Secret. |
+
+### Logging
+
+| Variable | Default | Description |
+|---|---|---|
+| `LOG_LEVEL` | `debug` | Log level. One of `fatal`, `error`, `warn`, `info`, `debug`, `trace`. |
+| `LOG_DIR` | (unset) | Log file directory (enables file logging). |
+
+### Object storage
+
+SeaweedFS or any S3-compatible endpoint for conversation media. Without it the database carries the bytes itself.
+
+Off unless all of `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` are set.
+
+| Variable | Default | Description |
+|---|---|---|
+| `S3_ENDPOINT` | (required) | SeaweedFS / S3-compatible endpoint URL. |
+| `S3_ACCESS_KEY_ID` | (required) | S3 access key ID. Secret. |
+| `S3_SECRET_ACCESS_KEY` | (required) | S3 secret access key. Secret. |
+| `S3_BUCKET` | `xinity-media` | S3 bucket for media objects. |
+| `S3_REGION` | `us-east-1` | S3 region (use 'us-east-1' for SeaweedFS). |
 
 ### TLS
 
-| Variable | Description |
-|---|---|
-| `XINITY_TLS_CERT` | PEM-encoded TLS certificate for the gateway's listen socket |
-| `XINITY_TLS_KEY` | PEM-encoded TLS private key (must be set together with cert) |
-| `XINITY_INFERENCE_CA` | PEM-encoded CA certificate for verifying TLS connections to daemons |
+Opt-in HTTPS. See https://github.com/xinity-ai/xinity-ai/blob/main/docs/security/tls.md
+
+Off unless all of `XINITY_TLS_CERT`, `XINITY_TLS_KEY` are set.
+
+| Variable | Default | Description |
+|---|---|---|
+| `XINITY_TLS_CERT` | (required) | PEM-encoded TLS certificate. Secret. |
+| `XINITY_TLS_KEY` | (required) | PEM-encoded TLS private key. Secret. |
+
+### Web search
+
+Backend for web-search-augmented generation. Disabled when unset.
+
+| Variable | Default | Description |
+|---|---|---|
+| `WEB_SEARCH_PROVIDER` | (unset) | Web search backend. When unset, web search is disabled. One of `searxng`, `google`, `bing`, `brave`, `serper`, `tavily`. |
+| `WEB_SEARCH_CREDENTIAL` | (unset) | Provider credential: searxng=instance URL, google=apikey:cx, bing/brave/serper/tavily=API key. Secret. |
+| `WEB_SEARCH_ENGINE_URL` | (unset) | @deprecated Use WEB_SEARCH_PROVIDER + WEB_SEARCH_CREDENTIAL instead. SearXNG search engine URL. |
+
+### Inference backends
+
+How the gateway picks a node, how long it waits, and how it trusts one.
+
+| Variable | Default | Description |
+|---|---|---|
+| `LOAD_BALANCE_STRATEGY` | `least-connections` | Load balancing strategy for distributing requests across inference nodes. One of `random`, `round-robin`, `least-connections`. |
+| `BACKEND_TIMEOUT_MS` | `300000` | Backend timeout in ms (default: 5 min). For streaming requests this is an idle timeout that resets on each chunk; for non-streaming requests it is a wall-clock deadline. |
+| `XINITY_INFERENCE_CA` | (unset) | PEM-encoded CA certificate for verifying daemon TLS. When set, gateway connects to daemons via HTTPS. Secret. |
+
+### Deep research
+
+| Variable | Default | Description |
+|---|---|---|
+| `DEEP_RESEARCH_MAX_STEPS` | `30` | Maximum tool-call steps for deep research mode. |
+| `DEEP_RESEARCH_COMPACTION_THRESHOLD` | `0.7` | Fraction of model context window at which compaction triggers. |
+
+<!-- [/sync:config] -->
+
+Inference routes are exempt from `IDLE_TIMEOUT` and bounded by `BACKEND_TIMEOUT_MS` instead, so a long generation is not cut off mid-request.
 
 ## Build
 

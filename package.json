@@ -10,6 +10,7 @@
     "changelog:preview": "bunx git-cliff --unreleased",
     "lint": "bun --bun oxlint",
     "postinstall": "if [ -z \"$CI\" ]; then bunx simple-git-hooks@2; fi",
+    "sync:config-docs": "bun scripts/sync-config-docs.ts",
     "sync:dockerfiles": "bun scripts/sync-dockerfile-manifests.ts",
     "sync:dockerfiles:check": "bun scripts/sync-dockerfile-manifests.ts --check",
     "test:system": "bun test --timeout 60000 tests/system/",
