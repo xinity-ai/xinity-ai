@@ -25,9 +25,10 @@ export type ActivationReport = {
 /** Raw values keyed by env key, before any parsing. */
 export type RawPresence = Readonly<Record<string, unknown>>;
 
-// Empty matches what parseEnv already does, so a Compose `${VAR:-}` cannot activate a group.
-function isPresent(value: unknown): boolean {
-  return value !== undefined && value !== null && value !== "";
+// A Compose `${VAR:-}` arrives as an empty string, and must not activate a group.
+function isSet(raw: RawPresence, envKey: string): boolean {
+  return [raw[envKey], raw[`${envKey}_FILE`]]
+    .some((value) => value !== undefined && value !== null && value !== "");
 }
 
 function stateOf(present: number, missing: number): ActivationState {
@@ -58,8 +59,8 @@ export function checkGroupActivation(config: AnyConfig, raw: RawPresence): Activ
       continue;
     }
 
-    const present = mounted.activation.filter((envKey) => isPresent(raw[envKey]));
-    const missing = mounted.activation.filter((envKey) => !isPresent(raw[envKey]));
+    const present = mounted.activation.filter((envKey) => isSet(raw, envKey));
+    const missing = mounted.activation.filter((envKey) => !isSet(raw, envKey));
     const activation: GroupActivation = {
       key: mounted.key,
       groupId: mounted.group.id,

@@ -61,7 +61,14 @@ describe("classification", () => {
   });
 });
 
-test("a value that parseEnv would treat as unset does not activate", () => {
+test("a value supplied as KEY_FILE activates, since resolution reads it", () => {
+  const viaFile = { S3_ENDPOINT_FILE: "/run/secrets/endpoint", S3_ACCESS_KEY_ID_FILE: "/run/secrets/key" };
+  expect(check(viaFile).byKey.get("s3")!.state).toBe("partial");
+  expect(check({ ...viaFile, S3_SECRET_ACCESS_KEY_FILE: "/run/secrets/secret" }).byKey.get("s3")!.state)
+    .toBe("active");
+});
+
+test("a value that resolution would treat as unset does not activate", () => {
   for (const empty of ["", null, undefined]) {
     expect(check({ ...ALL_SET, S3_ENDPOINT: empty }).byKey.get("s3")!.state).toBe("partial");
   }
