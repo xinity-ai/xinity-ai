@@ -20,7 +20,7 @@ function cell(text: string): string {
 }
 
 function defaultCell(field: EnvField): string {
-  if (field.isRequired) return "(required)";
+  if (field.isRequiredBySchema) return "(required)";
   if (!field.hasDefault) return "(unset)";
   const value = field.defaultValue;
   return Array.isArray(value) && value.length === 0 ? "(empty)" : `\`${cell(String(value))}\``;
