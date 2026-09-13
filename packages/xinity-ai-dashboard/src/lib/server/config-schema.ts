@@ -29,14 +29,12 @@ type Server = {
   port: number;
   idleTimeout: number;
   unixSocket?: string;
-  origin: string;
-  trustedOrigins: string[];
 };
 
 const server = defineGroup<Server>({
   id: "server",
   title: "HTTP server",
-  description: "Where it listens, and the URL browsers reach it at.",
+  description: "Where it listens.",
   fields: {
     host: env("HOST", z.string().default("0.0.0.0")
       .describe("Bind address (use 0.0.0.0 to listen on all interfaces)")),
@@ -48,11 +46,6 @@ const server = defineGroup<Server>({
       .meta(expert())),
     unixSocket: env("UNIX_SOCKET", z.string().optional()
       .describe("Unix socket path (overrides HOST and HTTP_PORT when set)").meta(expert())),
-    origin: env("ORIGIN", z.url().default("http://localhost:5173")
-      .describe("Public origin URL, no trailing slash (e.g. https://xinity.mydomain.com)")),
-    trustedOrigins: env("TRUSTED_ORIGINS", configList(z.string()).default([])
-      .describe("Additional trusted origins for CSRF validation behind reverse proxies")
-      .meta(expert())),
   },
 });
 
@@ -162,6 +155,8 @@ export type DashboardConfig = {
   log: LoggingConfig;
   nodeEnv: "production" | "development" | "test";
   appName: string;
+  origin: string;
+  trustedOrigins: string[];
   gatewayUrl: string;
   licenseKey?: string;
   mcpEnabled: boolean;
@@ -185,6 +180,11 @@ export const dashboardConfig = defineConfig<DashboardConfig>({
     .describe("Node environment").meta(expert())),
   appName: env("APP_NAME", z.string().default("Xinity Admin")
     .describe("Application display name").meta(expert())),
+  origin: env("ORIGIN", z.url().default("http://localhost:5173")
+    .describe("Public origin URL browsers reach this dashboard at, no trailing slash (e.g. https://xinity.mydomain.com). The default only suits local development")),
+  trustedOrigins: env("TRUSTED_ORIGINS", configList(z.string()).default([])
+    .describe("Additional trusted origins for CSRF validation behind reverse proxies")
+    .meta(expert())),
   gatewayUrl: env("GATEWAY_URL", z.url().overwrite((url) => url.replace(/\/$/, "")).default("http://localhost:4010")
     .describe("Gateway base URL shown to users in docs and code examples (e.g. https://api.example.com). Must NOT include the /v1 path segment - that is appended where needed. A trailing slash is stripped.")
     .meta(clientPublic())),

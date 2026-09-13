@@ -357,7 +357,7 @@ function dispatchMemberEventNotification(
       eventType: spec.eventType,
       role: spec.role,
       orgName: spec.orgName,
-      dashboardUrl: `${config.server.origin}/organizations/`,
+      dashboardUrl: `${config.origin}/organizations/`,
     },
   }).catch((err: unknown) => rlog.error({ err }, `Failed to send member ${eventLabel} notification`));
 }

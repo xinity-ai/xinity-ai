@@ -78,7 +78,7 @@ See the in-app documentation at `/docs/access-methods` for detailed setup instru
 
 ### HTTP server
 
-Where it listens, and the URL browsers reach it at.
+Where it listens.
 
 | Variable | Default | Description |
 |---|---|---|
@@ -86,8 +86,6 @@ Where it listens, and the URL browsers reach it at.
 | `HTTP_PORT` | `5173` | TCP port the server listens on. |
 | `IDLE_TIMEOUT` | `30` | Seconds a connection may go without traffic before it is closed (Bun allows at most 255). |
 | `UNIX_SOCKET` | (unset) | Unix socket path (overrides HOST and HTTP_PORT when set). |
-| `ORIGIN` | `http://localhost:5173` | Public origin URL, no trailing slash (e.g. https://xinity.mydomain.com). |
-| `TRUSTED_ORIGINS` | (empty) | Additional trusted origins for CSRF validation behind reverse proxies. |
 
 ### Database
 
@@ -201,6 +199,8 @@ Only needed when something sits in front of this service.
 |---|---|---|
 | `NODE_ENV` | (required) | Node environment. One of `production`, `development`, `test`. |
 | `APP_NAME` | `Xinity Admin` | Application display name. |
+| `ORIGIN` | `http://localhost:5173` | Public origin URL browsers reach this dashboard at, no trailing slash (e.g. https://xinity.mydomain.com). The default only suits local development. |
+| `TRUSTED_ORIGINS` | (empty) | Additional trusted origins for CSRF validation behind reverse proxies. |
 | `GATEWAY_URL` | `http://localhost:4010` | Gateway base URL shown to users in docs and code examples (e.g. https://api.example.com). Must NOT include the /v1 path segment - that is appended where needed. A trailing slash is stripped. |
 | `LICENSE_KEY` | (unset) | License key for unlocking paid features (Ed25519-signed token). Secret. |
 | `MCP_ENABLED` | `true` | Enable the /mcp Model Context Protocol endpoint. |

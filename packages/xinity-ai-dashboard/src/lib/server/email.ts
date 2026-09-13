@@ -18,7 +18,7 @@ const mailer = config.mail && {
 /** Props every email template expects (appName, preferences link). Merge into per-template props. */
 export const commonEmailProps = {
   appName: config.appName,
-  preferencesUrl: `${config.server.origin}/settings/notifications/`,
+  preferencesUrl: `${config.origin}/settings/notifications/`,
 };
 
 export async function renderEmailTemplate<Props extends Record<string, unknown>>(

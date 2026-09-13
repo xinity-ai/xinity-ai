@@ -105,7 +105,7 @@ export async function callMcpTool(
 	if (caller.userAgent) {
 		headers["user-agent"] = caller.userAgent;
 	}
-	const syntheticRequest = new Request(`${config.server.origin}/rpc/${tool.path.join("/")}`, {
+	const syntheticRequest = new Request(`${config.origin}/rpc/${tool.path.join("/")}`, {
 		method: "POST",
 		headers,
 		body: JSON.stringify(args ?? {}),

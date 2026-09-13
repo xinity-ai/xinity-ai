@@ -129,7 +129,7 @@ async function autoActivateFirstOrganization(headers: Headers): Promise<string |
 }
 
 function clearBetterAuthSessionCacheCookies(cookies: Cookies): void {
-  const prefix = config.server.origin.startsWith("https://") ? "__Secure-" : "";
+  const prefix = config.origin.startsWith("https://") ? "__Secure-" : "";
   const baseName = `${prefix}better-auth.session_data`;
   const chunkPrefix = `${baseName}.`;
   for (const { name } of cookies.getAll()) {

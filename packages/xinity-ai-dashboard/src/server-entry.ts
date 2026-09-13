@@ -38,10 +38,10 @@ async function writeTlsMaterial(tls: TlsConfig): Promise<{ cert: string; key: st
 process.env.HTTP_HOST = config.server.host;
 process.env.HTTP_PORT = String(config.server.port);
 process.env.HTTP_IDLE_TIMEOUT = String(config.server.idleTimeout);
-process.env.HTTP_OVERRIDE_ORIGIN = config.server.origin;
+process.env.HTTP_OVERRIDE_ORIGIN = config.origin;
 // Not for the adapter: orpc-client is browser-importable, so the environment is the only
 // place it can read an absolute URL from while rendering on the server.
-process.env.ORIGIN = config.server.origin;
+process.env.ORIGIN = config.origin;
 process.env.HTTP_XFF_DEPTH = String(config.proxy.xffDepth);
 if (config.server.unixSocket) {
   process.env.HTTP_SOCKET = config.server.unixSocket;

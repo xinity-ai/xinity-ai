@@ -67,7 +67,7 @@ export function parseLicense(key: string): LicenseInfo {
 export function hasOriginMismatch(): boolean {
   const license = getLicense();
   if (!license.valid) return false;
-  const dashboardOrigin = config.server.origin.replace(/\/+$/, "");
+  const dashboardOrigin = config.origin.replace(/\/+$/, "");
   return !license.payload.origins.some(
     (o) => o.replace(/\/+$/, "") === dashboardOrigin,
   );
@@ -110,7 +110,7 @@ function logLicenseLifecycle(license: LicenseInfo): void {
 
   if (hasOriginMismatch()) {
     log.error(
-      { allowedOrigins: license.payload.origins, actual: config.server.origin },
+      { allowedOrigins: license.payload.origins, actual: config.origin },
       "LICENSE ORIGIN MISMATCH: The dashboard ORIGIN does not match the licensed origin. Treating as free tier until this is corrected.",
     );
   }

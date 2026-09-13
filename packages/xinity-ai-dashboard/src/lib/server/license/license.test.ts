@@ -133,7 +133,7 @@ describe("guard functions", () => {
     // Reset the mocked license key before each test
     const { config } = require("$lib/server/config");
     config.licenseKey = undefined;
-    config.server.origin = "https://dashboard.example.com";
+    config.origin = "https://dashboard.example.com";
   });
 
   test("free tier: no key yields tier=free, maxVramGb=120, no features", () => {
@@ -217,7 +217,7 @@ describe("origin mismatch", () => {
     resetLicenseCache();
     const { config } = require("$lib/server/config");
     config.licenseKey = undefined;
-    config.server.origin = "https://dashboard.example.com";
+    config.origin = "https://dashboard.example.com";
   });
 
   test("no mismatch when origin matches", () => {
@@ -231,7 +231,7 @@ describe("origin mismatch", () => {
 
   test("no mismatch when origin matches with trailing slash", () => {
     const { config } = require("$lib/server/config");
-    config.server.origin = "https://dashboard.example.com/";
+    config.origin = "https://dashboard.example.com/";
     config.licenseKey = signLicense(validPayload({
       origins: ["https://dashboard.example.com"],
     }));
@@ -271,7 +271,7 @@ describe("instance mismatch", () => {
     resetLicenseCache();
     const { config } = require("$lib/server/config");
     config.licenseKey = undefined;
-    config.server.origin = "https://dashboard.example.com";
+    config.origin = "https://dashboard.example.com";
     deploymentIdMock.id = null;
   });
 
@@ -332,7 +332,7 @@ describe("getLicenseSummary", () => {
     resetLicenseCache();
     const { config } = require("$lib/server/config");
     config.licenseKey = undefined;
-    config.server.origin = "https://dashboard.example.com";
+    config.origin = "https://dashboard.example.com";
     deploymentIdMock.id = null;
   });
 
@@ -390,7 +390,7 @@ describe("mismatch enforcement", () => {
     resetLicenseCache();
     const { config } = require("$lib/server/config");
     config.licenseKey = undefined;
-    config.server.origin = "https://dashboard.example.com";
+    config.origin = "https://dashboard.example.com";
     deploymentIdMock.id = null;
   });
 

@@ -147,7 +147,7 @@ const sendWelcomeNotification = createAuthMiddleware(async (ctx) => {
     data: {
       userName: user.name || "",
       appName: config.appName,
-      appUrl: config.server.origin,
+      appUrl: config.origin,
     },
   });
 });
@@ -224,7 +224,7 @@ const recordAuthAudit = createAuthMiddleware(async (ctx) => {
 
 export const auth = betterAuth({
   appName: config.appName,
-  baseURL: config.server.origin,
+  baseURL: config.origin,
   secret: config.auth.secret,
   rateLimit: {
     enabled: config.nodeEnv !== "test",
@@ -363,17 +363,17 @@ export const auth = betterAuth({
     }),
   },
   trustedOrigins: config.nodeEnv === "development" ? ["*"] : [
-    config.server.origin,
+    config.origin,
     "*.google.com",
-    ...config.server.trustedOrigins,
+    ...config.trustedOrigins,
   ],
 
   plugins: [
     twoFactor(),
     passkey({
       rpName: "Xinity",
-      origin: config.server.origin,
-      rpID: new URL(config.server.origin).hostname,
+      origin: config.origin,
+      rpID: new URL(config.origin).hostname,
     }),
     bearer(),
     apiKey({
@@ -408,7 +408,7 @@ export const auth = betterAuth({
       // disableOrganizationDeletion: true,
       async sendInvitationEmail(data, request) {
         const encodedEmail = encodeURIComponent(data.email);
-        const url = `${config.server.origin}/organizations/accept-invitation-${data.invitation.id}/?email=${encodedEmail}`
+        const url = `${config.origin}/organizations/accept-invitation-${data.invitation.id}/?email=${encodedEmail}`
         log.info({ data, request, url }, "Send invitation email");
         void sendEmail({
           to: data.email,
@@ -419,7 +419,7 @@ export const auth = betterAuth({
             url,
             inviterName: data.inviter.user.name || data.inviter.user.email,
             orgName: data.organization.name,
-            loginUrl: `${config.server.origin}/login/?email=${encodedEmail}&tab=signup`,
+            loginUrl: `${config.origin}/login/?email=${encodedEmail}&tab=signup`,
           },
         });
       },

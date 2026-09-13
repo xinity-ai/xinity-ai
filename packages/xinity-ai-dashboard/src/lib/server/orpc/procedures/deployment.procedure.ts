@@ -524,7 +524,7 @@ export const createDeployment = rootOs
           publicSpecifier: deployment.publicSpecifier,
           creatorName: context.session.user.name || context.session.user.email,
           orgName: orgName ?? "",
-          dashboardUrl: `${config.server.origin}/modelhub/`,
+          dashboardUrl: `${config.origin}/modelhub/`,
         },
       }).catch((err: unknown) => rlog.error({ err }, "Failed to send deployment created notification"));
       return deployment;

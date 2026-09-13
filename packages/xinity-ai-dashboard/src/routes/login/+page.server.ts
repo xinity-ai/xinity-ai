@@ -15,7 +15,7 @@ export const load: PageServerLoad = async ({ request, url }) => {
   const callbackUrl = rawCallback && rawCallback.startsWith("/") && !rawCallback.startsWith("//")
     ? rawCallback
     : "/";
-  const configuredOrigin = new URL(config.server.origin);
+  const configuredOrigin = new URL(config.origin);
   const hostMismatch =
     config.nodeEnv !== "development" && url.host !== configuredOrigin.host;
 
