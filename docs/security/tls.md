@@ -114,6 +114,18 @@ services.xinity-tether = {
 };
 ```
 
+**Gateway and dashboard** take the same pair:
+
+```nix
+services.xinity-ai-dashboard = {
+  enable = true;
+  tlsCertFile = "/run/secrets/xinity/dashboard.pem";
+  tlsKeyFile = "/run/secrets/xinity/dashboard-key.pem";
+};
+```
+
+Neither needs it when something terminates TLS in front, which is what the `allinone` module does: it runs Caddy with ACME and reaches both over loopback. Set these only when you serve them directly.
+
 With the `allinone` module, set `services.xinity-ai.tether.tlsCertFile` and `tlsKeyFile` instead. The bundled local daemon then dials the tether by domain name rather than loopback, since one certificate cannot be valid for both `127.0.0.1` and a public name.
 
 The certificate must be valid for the name in each node's `TETHER_URL`. If a private CA signed it, the daemons need to trust that CA, which is a trust store concern rather than a Xinity setting:
