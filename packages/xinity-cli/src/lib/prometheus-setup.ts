@@ -14,7 +14,7 @@ import type { Host } from "./host.ts";
 import { pass, fail, info, warn, promptOrUndefined } from "./output.ts";
 import { heredoc } from "./service.ts";
 import { resolveComposeCmd, composeArgs, composeName, stackDir, dockerDaemonReady, tcpPortInUse } from "./docker-stack.ts";
-import { TETHER_DEFAULT_PORT } from "./component-meta.ts";
+import { DASHBOARD_DEFAULT_PORT, TETHER_DEFAULT_PORT } from "./component-meta.ts";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -262,10 +262,11 @@ export async function prometheusSetup(
   }));
   if (gatewayUrl === undefined) return undefined;
 
+  const dashboardDefault = `http://localhost:${DASHBOARD_DEFAULT_PORT}`;
   const dashboardUrl = await promptOrUndefined(text({
     message: "Dashboard base URL",
-    placeholder: "http://localhost:5121",
-    defaultValue: "http://localhost:5121",
+    placeholder: dashboardDefault,
+    defaultValue: dashboardDefault,
     validate: validateUrl,
   }));
   if (dashboardUrl === undefined) return undefined;

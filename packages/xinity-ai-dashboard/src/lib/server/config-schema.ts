@@ -38,7 +38,7 @@ const server = defineGroup<Server>({
   fields: {
     host: env("HOST", z.string().default("0.0.0.0")
       .describe("Bind address (use 0.0.0.0 to listen on all interfaces)")),
-    port: env("HTTP_PORT", configInt().default(5173)
+    port: env("HTTP_PORT", configInt().default(4030)
       .describe("TCP port the server listens on")
       .meta(expert())),
     idleTimeout: env("IDLE_TIMEOUT", configInt(z.int().positive().max(255)).default(30)
@@ -180,7 +180,7 @@ export const dashboardConfig = defineConfig<DashboardConfig>({
     .describe("Node environment").meta(expert())),
   appName: env("APP_NAME", z.string().default("Xinity Admin")
     .describe("Application display name").meta(expert())),
-  origin: env("ORIGIN", z.url().default("http://localhost:5173")
+  origin: env("ORIGIN", z.url().default("http://localhost:4030")
     .describe("Public origin URL browsers reach this dashboard at, no trailing slash (e.g. https://xinity.mydomain.com). The default only suits local development")),
   trustedOrigins: env("TRUSTED_ORIGINS", configList(z.string()).default([])
     .describe("Additional trusted origins for CSRF validation behind reverse proxies")

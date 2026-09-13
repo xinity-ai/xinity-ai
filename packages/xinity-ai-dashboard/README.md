@@ -83,7 +83,7 @@ Where it listens.
 | Variable | Default | Description |
 |---|---|---|
 | `HOST` | `0.0.0.0` | Bind address (use 0.0.0.0 to listen on all interfaces). |
-| `HTTP_PORT` | `5173` | TCP port the server listens on. |
+| `HTTP_PORT` | `4030` | TCP port the server listens on. |
 | `IDLE_TIMEOUT` | `30` | Seconds a connection may go without traffic before it is closed (Bun allows at most 255). |
 | `UNIX_SOCKET` | (unset) | Unix socket path (overrides HOST and HTTP_PORT when set). |
 
@@ -199,7 +199,7 @@ Only needed when something sits in front of this service.
 |---|---|---|
 | `NODE_ENV` | (required) | Node environment. One of `production`, `development`, `test`. |
 | `APP_NAME` | `Xinity Admin` | Application display name. |
-| `ORIGIN` | `http://localhost:5173` | Public origin URL browsers reach this dashboard at, no trailing slash (e.g. https://xinity.mydomain.com). The default only suits local development. |
+| `ORIGIN` | `http://localhost:4030` | Public origin URL browsers reach this dashboard at, no trailing slash (e.g. https://xinity.mydomain.com). The default only suits local development. |
 | `TRUSTED_ORIGINS` | (empty) | Additional trusted origins for CSRF validation behind reverse proxies. |
 | `GATEWAY_URL` | `http://localhost:4010` | Gateway base URL shown to users in docs and code examples (e.g. https://api.example.com). Must NOT include the /v1 path segment - that is appended where needed. A trailing slash is stripped. |
 | `LICENSE_KEY` | (unset) | License key for unlocking paid features (Ed25519-signed token). Secret. |

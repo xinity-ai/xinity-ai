@@ -6,7 +6,7 @@ import { componentFields, categorizeFields, isRequired } from "./env-prompt.ts";
 import type { EnvField } from "common-env";
 import { parseEnvString } from "./env-file.ts";
 import { unitName } from "./systemd.ts";
-import { type Component, ENV_DIR, SECRETS_DIR, UNIT_DIR, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT, DEFAULT_OLLAMA_URL } from "./component-meta.ts";
+import { type Component, ENV_DIR, SECRETS_DIR, UNIT_DIR, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT, DASHBOARD_DEFAULT_PORT, DEFAULT_OLLAMA_URL } from "./component-meta.ts";
 import { collectRemoteState, createCachedHost } from "./remote-probe.ts";
 import {
   type CheckResult, type CheckStatus,
@@ -350,7 +350,7 @@ function dashboardHealthProbe(values: Record<string, string>): { url: string; cu
 
   const bindHost = values.HOST || "0.0.0.0";
   const checkHost = bindHost === "0.0.0.0" ? "localhost" : bindHost;
-  return { url: `${scheme}://${checkHost}:${values.HTTP_PORT || "5173"}/api/health`, curlArgs };
+  return { url: `${scheme}://${checkHost}:${values.HTTP_PORT || DASHBOARD_DEFAULT_PORT}/api/health`, curlArgs };
 }
 
 async function checkDaemonConnectivity(

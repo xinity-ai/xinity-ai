@@ -48,7 +48,7 @@ curl -fsSL https://get.xinity.ai/install.sh | bash
 xinity up all   # add --target-host to supply a ssh available server to operate on
 
 # Create your admin account right from the terminal (no browser needed)
-xinity configure dashboardUrl http://localhost:5173
+xinity configure dashboardUrl http://localhost:4030
 xinity act onboarding.cli
 
 # Deploy a model (Phi-3 Mini as a quick start example)
