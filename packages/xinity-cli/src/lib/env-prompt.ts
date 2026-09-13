@@ -330,7 +330,7 @@ function fieldMarker(field: EnvField, required: boolean, attentionKeys: Set<stri
 }
 
 export type MenuEditOptions = {
-  /** Keys highlighted for review: values worth a deliberate look, not enforced. */
+  /** Keys asked for outright while unset, alongside the required ones, and marked in the menu after. */
   attentionKeys?: Set<string>;
   /** Keys owned by another layer (e.g. stack shared settings): not shown, not editable; their seeded values pass through. */
   hiddenKeys?: Set<string>;
@@ -438,6 +438,35 @@ export async function menuEditEnv(
       await editField(group.fields.find((f) => f.key === choice)!);
     }
   };
+
+  /**
+   * Asks for everything that has to be answered before the menu opens, so none of it has to be
+   * hunted for a level down inside a group. Escape leaves the rest to the menu.
+   */
+  const askWhatMustBeSet = async (): Promise<void> => {
+    const pending = (field: EnvField) =>
+      values[field.key] === undefined && (isRequired(field, values) || attentionKeys.has(field.key));
+    if (!editable.some(pending)) {
+      return;
+    }
+    log.step(bold("Values that need to be set"));
+    for (const field of editable) {
+      // Re-checked per field: answering one can activate the group that makes the next required.
+      if (!pending(field)) {
+        continue;
+      }
+      // A default the user is being asked to confirm counts as an answer, so Enter accepts it.
+      const value = await promptField(field, undefined, isRequired(field, values) || field.hasDefault, true);
+      if (value === FIELD_CANCELLED) {
+        return;
+      }
+      if (value !== undefined) {
+        values[field.key] = value;
+      }
+    }
+  };
+
+  await askWhatMustBeSet();
 
   // A group is one row of navigation rather than an option, so it never counts towards the
   // threshold and is never hidden: its own view decides what to show once you are inside it.

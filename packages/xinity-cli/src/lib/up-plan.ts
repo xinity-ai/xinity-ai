@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { cancel, confirm, intro, isCancel, log, note, outro, select, spinner } from "./clack.ts";
 import { bold, cyan, dim } from "picocolors";
-import { type Component, COMPONENT_CONFIGS, ENV_DIR, getAutoDefaults, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT, TETHER_DEFAULT_PORT } from "./component-meta.ts";
+import { attentionKeysFor, type Component, COMPONENT_CONFIGS, ENV_DIR, getAutoDefaults, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT, TETHER_DEFAULT_PORT } from "./component-meta.ts";
 import { type Host, isUnitActiveOn } from "./host.ts";
 import { pass, fail, warn, heading } from "./output.ts";
 import { parseEnvString } from "./env-file.ts";
@@ -611,7 +611,10 @@ export async function configureComponentFlow(component: Component, host: Host): 
   const state = await readExistingEnvState(component, host);
   const existing = { ...getAutoDefaults(component), ...state.existingConfig, ...state.existingSecrets };
 
-  const result = await menuEditEnv(componentFields(component), existing, { validate: (values) => checkConfig(COMPONENT_CONFIGS[component], { env: values }) });
+  const result = await menuEditEnv(componentFields(component), existing, {
+    attentionKeys: attentionKeysFor(component),
+    validate: (values) => checkConfig(COMPONENT_CONFIGS[component], { env: values }),
+  });
   if (result === null) {
     cancel("Cancelled, no changes saved.");
     return;

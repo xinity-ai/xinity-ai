@@ -1,10 +1,10 @@
 /**
- * The one place that knows how each stack layer is edited: which keys are
- * hidden or marked for review, and where the result is stored. `stack init`,
- * `stack edit`, and the lazy editors inside `stack up` all go through these.
+ * The one place that knows how each stack layer is edited: which keys another
+ * layer owns, and where the result is stored. `stack init`, `stack edit`, and
+ * the lazy editors inside `stack up` all go through these.
  */
 import { checkConfig } from "common-env";
-import { type Component, COMPONENT_CONFIGS } from "./component-meta.ts";
+import { attentionKeysFor, type Component, COMPONENT_CONFIGS } from "./component-meta.ts";
 import { componentFields, menuEditEnv, flattenBundle } from "./env-prompt.ts";
 import {
   type StackDefinition, type FleetDefinition,
@@ -13,22 +13,15 @@ import {
   componentLayerBase, fleetLayerBase, getHost, saveStack,
 } from "./stack.ts";
 
-// Host-local defaults that are almost always wrong for a multi-host stack;
-// marked in the editors so they get looked at instead of skipped.
-const STACK_ATTENTION_KEYS: Partial<Record<Component, string[]>> = {
-  dashboard: ["ORIGIN", "GATEWAY_URL"],
-};
-
 export async function menuEditLayer(opts: {
   component: Component;
   inherited: Record<string, string>;
   own: Record<string, string>;
-  attentionKeys?: Set<string>;
   hiddenKeys?: Set<string>;
   message?: string;
 }): Promise<Record<string, string> | null> {
   const result = await menuEditEnv(componentFields(opts.component), { ...opts.inherited, ...opts.own }, {
-    attentionKeys: opts.attentionKeys,
+    attentionKeys: attentionKeysFor(opts.component),
     hiddenKeys: opts.hiddenKeys,
     message: opts.message,
     validate: (values) => checkConfig(COMPONENT_CONFIGS[opts.component], { env: values }),
@@ -61,7 +54,6 @@ export async function editComponentLayer(
     component,
     inherited: componentLayerBase(stack, component),
     own: stack.componentEnv[component] ?? {},
-    attentionKeys: new Set(STACK_ATTENTION_KEYS[component] ?? []),
     hiddenKeys: STACK_SHARED_KEYS,
     message,
   });

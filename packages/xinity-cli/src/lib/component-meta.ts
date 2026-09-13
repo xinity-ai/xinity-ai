@@ -85,3 +85,13 @@ const AUTO_DEFAULTS: Record<Component, Record<string, string>> = {
 export function getAutoDefaults(component: Component): Record<string, string> {
   return AUTO_DEFAULTS[component];
 }
+
+// Declared defaults that suit local development and nothing else. The editor asks for these
+// outright rather than marking them, since a marker is only seen by someone already looking.
+const ATTENTION_KEYS: Partial<Record<Component, readonly string[]>> = {
+  dashboard: ["ORIGIN", "GATEWAY_URL"],
+};
+
+export function attentionKeysFor(component: Component): Set<string> {
+  return new Set(ATTENTION_KEYS[component] ?? []);
+}
