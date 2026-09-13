@@ -45,7 +45,7 @@ graph TB
         DB[("PostgreSQL")]
         Redis[("Redis")]
         Infoserver["Info Server<br/><small>Model Catalog</small>"]
-        SeaweedFS[("SeaweedFS<br/><small>Object Store</small>")]
+        ObjectStore[("Object Store<br/><small>S3-compatible</small>")]
     end
 
     App -->|"OpenAI-compatible<br/>requests"| Gateway
@@ -57,10 +57,10 @@ graph TB
     Gateway -->|"Forward inference<br/>requests"| Daemon1
     Gateway -->|"Forward inference<br/>requests"| Daemon2
     Gateway -.->|"Resolve model<br/>metadata"| Infoserver
-    Gateway -->|"Upload images<br/>(multimodal)"| SeaweedFS
+    Gateway -->|"Upload images<br/>(multimodal)"| ObjectStore
 
     Dashboard --> DB
-    Dashboard -->|"Presigned URLs +<br/>download resolution"| SeaweedFS
+    Dashboard -->|"Presigned URLs +<br/>download resolution"| ObjectStore
     DeploySync --> DB
 
     Tether --> DB
@@ -110,7 +110,7 @@ The gateway is the data-plane entry point for all inference traffic. It exposes 
 1. **Authentication:** The `Authorization: Bearer <key>` header is parsed. The first 25 characters are used as a specifier for fast lookup (cached in Redis for 120 seconds). The full key is verified against a hash stored in the database.
 2. **Model resolution:** The requested model name is resolved through the `modelDeployment` table to determine the actual model specifier. For canary deployments, the gateway probabilistically routes between the current and canary model based on time-interpolated progress.
 3. **Host selection:** Available inference nodes are fetched from `modelInstallation` joined with `aiNode` and `modelInstallationState`, filtered to installations in the `ready` state. A load balancer selects the target host using one of three strategies: random, round-robin, or least-connections (default).
-4. **Image extraction:** For multimodal requests containing image content, each image is extracted and uploaded to SeaweedFS (when configured). The SHA-256 hash of the raw bytes serves as the S3 key and deduplication identifier. A compact `xinity-media://{sha256}` reference is stored in the database log, while the inference node always receives full data URIs. External image URLs are fetched and resolved to data URIs before forwarding. When SeaweedFS is not configured, data URIs are stripped from the database log and external URLs are stored as-is.
+4. **Image extraction:** For multimodal requests containing image content, each image is extracted and uploaded to object storage (when configured). The SHA-256 hash of the raw bytes serves as the S3 key and deduplication identifier. A compact `xinity-media://{sha256}` reference is stored in the database log, while the inference node always receives full data URIs. External image URLs are fetched and resolved to data URIs before forwarding. Without object storage, data URIs are stripped from the database log and external URLs are stored as-is.
 5. **Forwarding:** The request is forwarded over HTTP(S) to the selected node's daemon, authenticated with the daemon's per-node token. The daemon proxies it to the local inference driver (Ollama or vLLM) via a plain HTTP passthrough. See [TLS](./security/tls.md) for the daemon proxy's auth and encryption model.
 6. **Logging:** On completion, a `usageEvent` row is always written for usage tracking, and (unless suppressed per-request or by the API key's `collectData` flag) a full `apiCall` record is also written for data labeling and review.
 
@@ -182,19 +182,19 @@ The shared database layer. Contains the Drizzle ORM schema, migrations, and util
 | `usageEvent` / `usageSummary` | Unconditional per-call usage records and their rolled-up summaries, used for usage tracking and billing (in `call_data` schema) |
 | `apiCall` | Full logged inference requests, gated by the API key's `collectData` flag, used for data labeling and review (in `call_data` schema) |
 | `apiCallResponse` | User feedback and labels on logged calls |
-| `mediaObject` | Metadata for images uploaded to SeaweedFS: sha256, mimeType, s3Key, org scoping (in `call_data` schema) |
+| `mediaObject` | Metadata for images uploaded to object storage: sha256, mimeType, s3Key, org scoping (in `call_data` schema) |
 
 The package also provides `preconfigureDB()`, which returns lazy database access with a migration check gate, so services cannot query the database until migrations are confirmed up to date.
 
-### SeaweedFS
+### Object storage
 
 **External service** | **Managed by:** `xinity up infra-seaweedfs`
 
-SeaweedFS is an optional self-hosted S3-compatible object store used for multimodal image storage. It replaces the alternative of embedding base64 image data directly in the PostgreSQL `apiCall.inputMessages` JSONB column, which would cause significant database bloat.
+An optional S3-compatible object store used for multimodal image storage. It replaces the alternative of embedding base64 image data directly in the PostgreSQL `apiCall.inputMessages` JSONB column, which would cause significant database bloat.
 
 When `S3_ENDPOINT` is configured in the gateway:
 
-- Incoming image content (data URIs and external URLs) is uploaded to SeaweedFS, keyed by the SHA-256 hash of the raw bytes.
+- Incoming image content (data URIs and external URLs) is uploaded to the bucket, keyed by the SHA-256 hash of the raw bytes.
 - The database stores a compact `xinity-media://{sha256}` reference inside the existing `image_url` content part.
 - Inference nodes always receive full data URIs (external URLs are fetched and resolved before forwarding).
 - The `mediaObject` table records sha256, MIME type, S3 bucket/key, organization ID, and byte size. The unique constraint on `(organizationId, sha256)` provides content-addressed deduplication.
@@ -203,7 +203,7 @@ The dashboard resolves `xinity-media://` references:
 - **Display:** A server-side `/data/media/[sha256]` endpoint generates a short-lived presigned URL (15 minutes) and returns a 302 redirect.
 - **Export:** The `/data/export/[callId]` endpoint resolves references to data URIs before serializing, producing fully self-contained JSON downloads.
 
-SeaweedFS ships as a single static `weed` binary with no external dependencies. It is installed and managed via `xinity up infra-seaweedfs`, which downloads the binary, writes an S3 identity config to `/etc/xinity-ai/seaweedfs-s3.json`, installs a systemd unit, and starts the service. The gateway can also function without SeaweedFS configured, in which case, data URIs are stripped from call logs entirely and external URLs are stored as-is.
+Any S3-compatible endpoint works. To self-host one, `xinity up infra-seaweedfs` installs SeaweedFS, which ships as a single static `weed` binary with no external dependencies: it downloads the binary, writes an S3 identity config to `/etc/xinity-ai/seaweedfs-s3.json`, installs a systemd unit, and starts the service. The gateway also functions with no object storage at all, in which case data URIs are stripped from call logs entirely and external URLs are stored as-is.
 
 ### Info Server
 
@@ -247,7 +247,7 @@ Control-plane coordination between the gateway, dashboard, and tether flows thro
 - **Gateway → Database**: The gateway reads `aiApiKey` for authentication, `modelDeployment` for model resolution, and `modelInstallation`/`aiNode`/`modelInstallationState` for host selection (filtering to `available = true` nodes with `ready` installations). It writes `usageEvent` rows for usage tracking, and (when the API key's `collectData` flag is set) `apiCall` rows for data labeling. It also listens for row-change notifications on those four tables to invalidate its routing caches.
 - **Redis** is used exclusively by the gateway for ephemeral state: auth caching, load balancer coordination, and the responses API store.
 - **Info server** is consumed over HTTP by the gateway and dashboard for model metadata resolution, with each consumer maintaining its own in-memory cache.
-- **SeaweedFS** (optional) is written to by the gateway on every multimodal request and read by the dashboard for image display (presigned URLs) and call export (data URI resolution). No other services interact with it directly.
+- **Object storage** (optional) is written to by the gateway on every multimodal request and read by the dashboard for image display (presigned URLs) and call export (data URI resolution). No other services interact with it directly.
 
 ## Model deployment lifecycle
 

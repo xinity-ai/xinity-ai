@@ -7,7 +7,7 @@
   s3Endpoint = lib.mkOption {
     type = lib.types.nullOr lib.types.str;
     default = null;
-    description = "URL of the SeaweedFS or S3-compatible object storage endpoint, used for media attached to conversations. Without it the database carries the bytes itself.";
+    description = "URL of the S3-compatible object storage endpoint, used for media attached to conversations. Without it the database carries the bytes itself.";
   };
 
   s3AccessKeyId = lib.mkOption {
@@ -39,6 +39,6 @@
   s3Region = lib.mkOption {
     type = lib.types.str;
     default = "us-east-1";
-    description = "S3 region for the object storage endpoint. For SeaweedFS or MinIO, the conventional value is 'us-east-1'.";
+    description = "S3 region for the object storage endpoint. Endpoints that are not AWS usually ignore it, and 'us-east-1' is the conventional value.";
   };
 }

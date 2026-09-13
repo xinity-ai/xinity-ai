@@ -153,17 +153,17 @@ Off unless all of `AUDIT_LOKI_URL` are set.
 
 ### Object storage
 
-SeaweedFS or any S3-compatible endpoint for conversation media. Without it the database carries the bytes itself.
+Any S3-compatible endpoint for conversation media. Without it the database carries the bytes itself.
 
 Off unless all of `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` are set.
 
 | Variable | Default | Description |
 |---|---|---|
-| `S3_ENDPOINT` | (required) | SeaweedFS / S3-compatible endpoint URL. |
+| `S3_ENDPOINT` | (required) | S3-compatible endpoint URL. |
 | `S3_ACCESS_KEY_ID` | (required) | S3 access key ID. Secret. |
 | `S3_SECRET_ACCESS_KEY` | (required) | S3 secret access key. Secret. |
 | `S3_BUCKET` | `xinity-media` | S3 bucket for media objects. |
-| `S3_REGION` | `us-east-1` | S3 region (use 'us-east-1' for SeaweedFS). |
+| `S3_REGION` | `us-east-1` | S3 region. Endpoints that are not AWS usually ignore it, and 'us-east-1' is the conventional value. |
 
 ### TLS
 

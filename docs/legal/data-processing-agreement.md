@@ -63,7 +63,7 @@ The Platform integrates with infrastructure components that the Controller suppl
 | PostgreSQL | Coordination database; call logs, users, deployments, API keys | May contain personal data in call logs |
 | Redis | Ephemeral gateway state (auth cache, load balancer state, short-lived Responses API cache) | Contains API key identifiers, ephemeral session state, and inference content cached briefly for the Responses API (`RESPONSE_CACHE_TTL_SECONDS`, default 1 hour) |
 | Ollama / vLLM inference drivers | Execute model inference on customer hardware | Receive full inference requests; run on customer-managed nodes |
-| SeaweedFS / S3-compatible store | Optional multimodal image storage | Contains images submitted in inference requests; customer-managed; not enabled by default |
+| S3-compatible object store | Optional multimodal image storage | Contains images submitted in inference requests; customer-managed; not enabled by default |
 | Info Server | Model catalog metadata lookup (model names, capabilities, driver identifiers) | No personal or inference data involved. Defaults to Xinity's hosted instance (`sysinfo.xinity.ai`) unless the Controller configures a self-hosted one (`INFOSERVER_URL`) |
 
 ### 2.6 Activities that transmit data outside the customer's network

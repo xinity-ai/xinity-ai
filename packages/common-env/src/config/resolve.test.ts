@@ -35,7 +35,7 @@ const config = defineConfig<Gateway>({
 });
 
 const ORIGIN = { ORIGIN: "https://x.example" };
-const S3_ON = { S3_ENDPOINT: "http://seaweedfs:8333", S3_ACCESS_KEY_ID: "AKIA" };
+const S3_ON = { S3_ENDPOINT: "http://objects.internal:8333", S3_ACCESS_KEY_ID: "AKIA" };
 
 const scratch = () => mkdtempSync(join(tmpdir(), "xinity-config-"));
 
@@ -48,7 +48,7 @@ describe("optional groups", () => {
   test("active parses its fields and applies their defaults", () => {
     const { value } = resolveConfig(config, { env: { ...ORIGIN, ...S3_ON } });
     expect(value.s3).toEqual({
-      endpoint: "http://seaweedfs:8333",
+      endpoint: "http://objects.internal:8333",
       accessKeyId: "AKIA",
       bucket: "xinity-media",
     });
@@ -56,7 +56,7 @@ describe("optional groups", () => {
 
   test("partial resolves to undefined and warns, rather than failing the boot", () => {
     const { value, warnings } = resolveConfig(config, {
-      env: { ...ORIGIN, S3_ENDPOINT: "http://seaweedfs:8333" },
+      env: { ...ORIGIN, S3_ENDPOINT: "http://objects.internal:8333" },
     });
     expect(value.s3).toBeUndefined();
     expect(warnings).toHaveLength(1);

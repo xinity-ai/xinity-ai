@@ -104,16 +104,16 @@ export function objectStorageGroup(): GroupDef<ObjectStorageConfig | undefined> 
   return defineGroup<ObjectStorageConfig>({
     id: "s3",
     title: "Object storage",
-    description: "SeaweedFS or any S3-compatible endpoint for conversation media. Without it the database carries the bytes itself.",
+    description: "Any S3-compatible endpoint for conversation media. Without it the database carries the bytes itself.",
     expert: true,
     optional: { requires: ["endpoint", "accessKeyId", "secretAccessKey"] },
     fields: {
-      endpoint: env("S3_ENDPOINT", z.url().describe("SeaweedFS / S3-compatible endpoint URL")),
+      endpoint: env("S3_ENDPOINT", z.url().describe("S3-compatible endpoint URL")),
       accessKeyId: env("S3_ACCESS_KEY_ID", z.string().describe("S3 access key ID").meta(secret())),
       secretAccessKey: env("S3_SECRET_ACCESS_KEY", z.string().describe("S3 secret access key").meta(secret())),
       bucket: env("S3_BUCKET", z.string().default("xinity-media").describe("S3 bucket for media objects")),
       region: env("S3_REGION", z.string().default("us-east-1")
-        .describe("S3 region (use 'us-east-1' for SeaweedFS)")),
+        .describe("S3 region. Endpoints that are not AWS usually ignore it, and 'us-east-1' is the conventional value")),
     },
   });
 }

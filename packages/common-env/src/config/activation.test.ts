@@ -29,7 +29,7 @@ const config = defineConfig<{ s3: ObjectStorage | undefined; server: Server }>({
 const check = (raw: Record<string, unknown>) => checkGroupActivation(config, raw);
 
 const ALL_SET = {
-  S3_ENDPOINT: "http://seaweedfs:8333",
+  S3_ENDPOINT: "http://objects.internal:8333",
   S3_ACCESS_KEY_ID: "AKIA",
   S3_SECRET_ACCESS_KEY: "shhh",
 };
@@ -48,7 +48,7 @@ describe("classification", () => {
   });
 
   test("some present is partial, and names what was found and what was missing", () => {
-    const report = check({ S3_ENDPOINT: "http://seaweedfs:8333" });
+    const report = check({ S3_ENDPOINT: "http://objects.internal:8333" });
     const s3 = report.byKey.get("s3")!;
 
     expect(s3.state).toBe("partial");
