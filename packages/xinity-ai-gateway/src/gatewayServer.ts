@@ -5,6 +5,7 @@ import { serverRouter } from "./rpc/gatewayRouter";
 import { config } from "./config";
 import { gatewayConfig } from "./config-schema";
 import { checkMigrations, subscribe } from "./db";
+import { checkRedis } from "./redis";
 import { rootLogger } from "./logger";
 import { createOpenapiSpec, createScalarPage } from "./openapi";
 import { handleChatCompletion } from "./llm-forward/endpoints/handle-chatCompletion";
@@ -42,6 +43,12 @@ if (refusal) {
 const migrationState = await checkMigrations();
 if (migrationState.status !== "ok") {
   logMigrationFailureFatal(migrationState, rootLogger, "gateway");
+  process.exit(1);
+}
+
+const cacheRefusal = await checkRedis();
+if (cacheRefusal) {
+  rootLogger.fatal(cacheRefusal);
   process.exit(1);
 }
 
