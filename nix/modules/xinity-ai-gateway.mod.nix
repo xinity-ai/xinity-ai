@@ -278,6 +278,8 @@
             ExecStart = "${cfg.package}/bin/xinity-ai-gateway";
             Restart = "always";
             RestartSec = 5;
+            RestartSteps = 10;
+            RestartMaxDelaySec = 300;
           } // lib.optionalAttrs (loadCredentialEntries != [ ]) {
             LoadCredential = loadCredentialEntries;
           };

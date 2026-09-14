@@ -85,7 +85,7 @@ export function generateUnit(config: UnitConfig): string {
   }
 
   lines.push(`ExecStart=${config.execStart}`);
-  lines.push("Restart=on-failure", "RestartSec=5");
+  lines.push("Restart=on-failure", "RestartSec=5", "RestartSteps=10", "RestartMaxDelaySec=300");
 
   // Security hardening (only for sandboxed services)
   if (!config.runAsRoot) {
