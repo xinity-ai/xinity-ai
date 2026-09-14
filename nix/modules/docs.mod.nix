@@ -9,6 +9,11 @@
                   default = [];
                   internal = true;
                 };
+                warnings = lib.mkOption {
+                  type = lib.types.listOf lib.types.str;
+                  default = [];
+                  internal = true;
+                };
                 systemd = lib.mkOption {
                   type = lib.types.attrsOf lib.types.unspecified;
                   default = {};
