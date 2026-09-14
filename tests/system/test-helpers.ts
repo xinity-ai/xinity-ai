@@ -33,6 +33,27 @@ export async function readProcessOutput(proc: Bun.Subprocess): Promise<{ stdout:
   return { stdout, stderr };
 }
 
+/**
+ * Re-reads until the rows a background writer is expected to produce show up.
+ * A fixed sleep races the writer's flush interval, which a loaded CI runner loses.
+ */
+export async function waitForRows<T>(
+  read: () => Promise<T[]>,
+  options?: { atLeast?: number; timeoutMs?: number; intervalMs?: number },
+): Promise<T[]> {
+  const atLeast = options?.atLeast ?? 1;
+  const timeoutMs = options?.timeoutMs ?? 10_000;
+  const intervalMs = options?.intervalMs ?? 50;
+  const startedAt = Date.now();
+
+  let rows = await read();
+  while (rows.length < atLeast && Date.now() - startedAt < timeoutMs) {
+    await Bun.sleep(intervalMs);
+    rows = await read();
+  }
+  return rows;
+}
+
 export async function waitForHttp(url: string, options?: { timeoutMs?: number; intervalMs?: number }) {
   const timeoutMs = options?.timeoutMs ?? 10_000;
   const intervalMs = options?.intervalMs ?? 250;
