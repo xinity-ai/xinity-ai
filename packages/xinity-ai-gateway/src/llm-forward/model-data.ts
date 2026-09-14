@@ -36,7 +36,7 @@ export function getInfoClient() {
   return _infoClient;
 }
 
-import { redis } from "bun";
+import { redis } from "../redis";
 
 const log = rootLogger.child({ name: "model-data" });
 

@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, spyOn, afterEach } from "bun:test";
-import { redis } from "bun";
+import { redis } from "../redis";
 
 
 import type { SelectHostInput } from "./load-balancer";

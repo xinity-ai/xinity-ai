@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, jest, spyOn, beforeEach } from "bun:test";
-import { redis } from "bun";
+import { redis } from "../redis";
 import { drizzle, apiResponseT } from "common-db";
 import type { ResponseObject } from "./responses/schemas";
 

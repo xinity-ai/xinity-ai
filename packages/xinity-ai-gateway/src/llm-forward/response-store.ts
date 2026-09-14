@@ -1,4 +1,4 @@
-import { redis } from "bun";
+import { redis } from "../redis";
 import type { ApiCallInputMessage } from "common-db";
 import { config } from "../config";
 import { rootLogger } from "../logger";

@@ -1,6 +1,6 @@
 import { describe, test, expect, mock, jest, beforeEach, afterEach, spyOn } from "bun:test";
 import { drizzle, modelDeploymentT } from "common-db";
-import { redis } from "bun";
+import { redis } from "../redis";
 import type { LegacyModel, Model } from "xinity-infoserver";
 
 mock.module("../env", () => ({

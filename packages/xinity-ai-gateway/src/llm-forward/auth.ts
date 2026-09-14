@@ -1,6 +1,6 @@
 import { aiApiKeyT, sql, hashApiKey, apiKeyVerifier, SHA256_VERIFIER_PREFIX, type AiApiKey } from "common-db";
 import { getDB } from "../db";
-import { redis } from "bun";
+import { redis } from "../redis";
 import { timingSafeEqual } from "node:crypto";
 import { rootLogger } from "../logger";
 import { config } from "../config";
