@@ -126,6 +126,8 @@
             ExecStart = "${cfg.package}/bin/xinity-infoserver";
             Restart = "always";
             RestartSec = 5;
+            RestartSteps = 10;
+            RestartMaxDelaySec = 300;
           };
         };
       };
