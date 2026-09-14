@@ -92,6 +92,12 @@
 
         # --- Ollama settings ---
 
+        ollamaEnabled = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Provision Ollama on this host as the daemon's inference driver. This is all an inference node needs: the daemon discovers a local Ollama on its own, so ollamaEndpoint stays for the cases discovery cannot cover, an Ollama running elsewhere or on a non-default port.";
+        };
+
         ollamaEndpoint = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
@@ -206,6 +212,8 @@
       };
 
       config = lib.mkIf cfg.enable {
+        services.ollama = lib.mkIf cfg.ollamaEnabled { enable = lib.mkDefault true; };
+
         systemd.services.xinity-ai-daemon = {
           description = "Xinity AI Daemon";
           wantedBy = [ "multi-user.target" ];

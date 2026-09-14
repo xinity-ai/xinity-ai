@@ -126,6 +126,12 @@
             default = null;
             description = "Public domain Grafana is served under. Sets root_url so redirects and generated links work behind a reverse proxy. Leave null when reaching Grafana directly over the bound address.";
           };
+
+          secretKeyFile = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = "Path to a file holding Grafana's secret_key, which encrypts datasource credentials in its database. Read through Grafana's file provider, so the value never enters the Nix store. Only worth setting once Grafana holds credentials worth encrypting, which the provisioned Prometheus and Loki datasources do not. Changing it on a running instance makes already-encrypted values unreadable.";
+          };
         };
 
         logs = {
@@ -179,6 +185,13 @@
 
         services.grafana = lib.mkIf cfg.grafana.enable {
           enable = true;
+          # Only encrypts datasource credentials, and the provisioned Prometheus and Loki
+          # carry none. nixpkgs shipped a shared constant here until 26.05 removed it.
+          settings.security.secret_key = lib.mkDefault (
+            if cfg.grafana.secretKeyFile != null
+            then "$__file{${cfg.grafana.secretKeyFile}}"
+            else "xinity-grafana-placeholder"
+          );
           settings.server = {
             http_addr = cfg.grafana.listenAddress;
             http_port = cfg.grafana.port;

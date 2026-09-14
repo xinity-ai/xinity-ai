@@ -1,0 +1,6 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v1.json
+
+# Include the public Xinity model registry
+includes:
+  - https://sysinfo.xinity.ai/models/v1.yaml
+
