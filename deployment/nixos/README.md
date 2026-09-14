@@ -95,7 +95,7 @@ Disabling a bundled service does not reconfigure its consumers. Point them at yo
 The bundled daemon is tethered over loopback and needs no secret of its own beyond the one the tether already has. Ollama defaults to CPU inference on NixOS, so declare your accelerator:
 
 ```nix
-services.ollama.acceleration = "cuda";  # or "rocm"
+services.ollama.package = pkgs.ollama-cuda;  # or pkgs.ollama-rocm
 ```
 
 For a control plane that does no inference itself:
@@ -356,3 +356,27 @@ For fine-grained control, import and configure services separately. Available mo
 Each service module accepts `environmentFiles` (a list of paths) for secrets. See [nix/modules/](../../nix/modules/) for all available options per service.
 
 These are an alternative to `allinone`, for layouts it cannot express such as splitting services across hosts. To keep the bundle but replace or retune one part, use the toggles in [What Runs, and How to Disable It](#what-runs-and-how-to-disable-it) and set `services.xinity-ai-<service>.*` directly, which `allinone` already declares.
+## Example
+
+In the directory: [example-flake](./example-flake/) an example of a full directly appliable nixos flake integrating our repository can be found.  
+This is intended both as a demonstration on how a completed nixos configuration with our integration can look like,
+as well as a basis from which one could base their own configuration on.  
+For this purpose the recommended strategy is:
+- Get the example-flake folder where you want to manage your configuration:  
+  `nix flake new -t github:xinity-ai/xinity-ai#nixos-example xinity-deploy`
+- Lock the flake, and pull in the current revision of this repository:  
+  `nix flake lock && nix flake update xinity-ai`
+- Review it
+  - Think of overrides you might want
+  - Point `modules/host.nix` at whichever sample in `hardware/` matches the machine. The samples are viable as they stand, but a configuration read off the machine itself is always more accurate: take that machine's own `/etc/nixos/hardware-configuration.nix`, or the output of `nixos-generate-config --show-hardware-config` run on it
+  - Think of individual features of the stack that you may want to turn of for any specific instance
+  - Check out at least the spots that read "FILL IN" and fill in the corresponding configuration
+- Provision the secrets. `nix develop` puts `agenix` on your path, and it reads `secrets.nix` from the working directory, so run it from inside `secrets/`:
+  - Replace the placeholder ssh keys in `secrets/secrets.nix`. User keys are whoever may edit a secret, host keys are the machines that decrypt it at boot. Read a host key off the target with `cat /etc/ssh/ssh_host_ed25519_key.pub`, or `ssh-keyscan <host>`
+  - Run `agenix -e <name>.age` for each entry in that file, which separates the secrets that must be set from the optional add ons. `exampleSharedEnv.env` is the template for `sharedEnv.age`
+  - Two of them have to agree by hand, and nothing checks it: `metricsAuth.age` must contain the line `superuser:<the exact contents of prometheusPass.age>`, because that is the pair Prometheus scrapes with. The username comes from `monitoring.basicAuthUsername`. A mismatch builds and boots fine, then every scrape returns 401
+  - The encrypted `.age` files are safe to commit. The private keys that open them are not
+- Apply the configuration:  
+  `nixos-rebuild --flake .#exampleHost1 --target-host <user@ip> test`
+- If it runs and you are happy, ensure the configuration becomes persistent:  
+  `nixos-rebuild --flake .#exampleHost1 --target-host <user@ip> switch`

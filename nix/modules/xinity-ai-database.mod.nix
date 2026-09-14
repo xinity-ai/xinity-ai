@@ -139,7 +139,9 @@
           ensureUsers = [{ name = cfg.user; }];
           authentication = postgresAuth;
           settings = {
-            listen_addresses = lib.mkDefault postgresListenAddresses;
+            # nixpkgs derives listen_addresses from enableTCPIP at normal priority, so a
+            # mkDefault here would be ignored. 90 beats that and still yields to mkForce.
+            listen_addresses = lib.mkOverride 90 postgresListenAddresses;
             port = lib.mkDefault cfg.postgres.port;
             max_connections = lib.mkDefault 100;
             shared_buffers = lib.mkDefault "256MB";

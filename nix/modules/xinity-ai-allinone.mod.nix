@@ -398,9 +398,10 @@
                 Provision Ollama as the local daemon's inference driver and wire its endpoint
                 automatically. Without a driver the daemon registers but can serve nothing.
 
-                NixOS defaults Ollama to CPU inference; set services.ollama.acceleration to
-                "cuda" or "rocm" to use the GPU. Set this to false to supply a driver yourself
-                through services.xinity-ai-daemon (vLLM, or an Ollama instance elsewhere).
+                NixOS defaults Ollama to CPU inference; set services.ollama.package to
+                pkgs.ollama-cuda or pkgs.ollama-rocm to use the GPU. Set this to false to
+                supply a driver yourself through services.xinity-ai-daemon (vLLM, or an
+                Ollama instance elsewhere).
               '';
             };
           };
@@ -504,6 +505,11 @@
               type = lib.types.port;
               default = 6121;
               description = "Port for the Grafana UI. Bound to localhost; Caddy serves it at grafana.<domain>.";
+            };
+            secretKeyFile = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "Path to a file holding Grafana's secret_key, which encrypts datasource credentials in its database. Only worth setting once Grafana holds credentials worth encrypting. Forwarded to the monitoring module.";
             };
           };
           logs = {
@@ -754,10 +760,7 @@
             infoserverUrl = lib.mkDefault infoserverUrl;
             metricsAuthFile = lib.mkDefault cfg.secrets.metricsAuthFile;
             environmentFiles = lib.mkDefault envFiles;
-          };
-
-          services.ollama = lib.mkIf (cfg.daemon.enable && cfg.daemon.ollama.enable) {
-            enable = true;
+            ollamaEnabled = lib.mkDefault cfg.daemon.ollama.enable;
           };
 
           # --- SearXNG ---
@@ -792,6 +795,7 @@
             basicAuthPassword = lib.mkDefault cfg.monitoring.basicAuthPassword;
             grafana.enable = lib.mkDefault cfg.monitoring.grafana.enable;
             grafana.port = lib.mkDefault cfg.monitoring.grafana.port;
+            grafana.secretKeyFile = lib.mkDefault cfg.monitoring.grafana.secretKeyFile;
             grafana.domain = lib.mkDefault "${cfg.grafanaSubdomain}.${cfg.domain}";
             logs.enable = lib.mkDefault cfg.monitoring.logs.enable;
           };
