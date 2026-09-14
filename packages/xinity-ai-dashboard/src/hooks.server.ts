@@ -12,6 +12,7 @@ import { startDeploymentSyncService } from "$lib/server/lib/orchestration.mod";
 import { startNotificationScheduler } from "$lib/server/notifications/scheduler";
 import { config } from "$lib/server/config";
 import { checkMigrationState, isMigrationOk } from "$lib/server/migration-check";
+import { logMigrationFailureFatal } from "common-db";
 import { loadDeploymentId } from "$lib/server/deployment-id";
 import { stampClientAddress } from "$lib/server/client-address";
 import { flushAuditEvents } from "$lib/server/audit/audit-forwarder";
@@ -19,10 +20,12 @@ import { onShutdown, installShutdownHandlers } from "$lib/server/shutdown";
 
 const log = rootLogger.child({ name: "hooks" });
 
-/**
- * Verify database migrations are up to date before serving any requests.
- */
-await checkMigrationState();
+const migrationState = await checkMigrationState();
+
+if (migrationState.status === "unreachable") {
+  logMigrationFailureFatal(migrationState, log, "dashboard");
+  process.exit(1);
+}
 
 /**
  * Warm the deployment instance ID cache so the license module can verify
