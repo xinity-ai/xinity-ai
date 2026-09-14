@@ -1,4 +1,4 @@
-import { redis } from "bun";
+import { redis } from "../redis";
 import { rootLogger } from "../logger";
 import {
   recordLbCandidateHosts,

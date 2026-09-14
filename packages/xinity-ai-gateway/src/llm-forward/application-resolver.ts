@@ -1,6 +1,6 @@
 import { aiApplicationT, sql } from "common-db";
 import { getDB } from "../db";
-import { redis } from "bun";
+import { redis } from "../redis";
 import { rootLogger } from "../logger";
 import { config } from "../config";
 

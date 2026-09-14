@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, jest, beforeEach, afterEach, spyOn } from "bun:test";
-import { redis } from "bun";
+import { redis } from "../redis";
 
 // --- Mocks (hoisted by bun:test) ---
 
