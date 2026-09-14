@@ -64,7 +64,7 @@ Redis, and the lifetimes of what the gateway keeps in it.
 
 | Variable | Default | Description |
 |---|---|---|
-| `REDIS_URL` | (required) | Redis connection URL (e.g. redis://localhost:6379). Secret. |
+| `REDIS_URL` | (required) | Redis or Valkey connection URL (e.g. redis://:PASSWORD@localhost:6379). Percent-encode the password. Secret. |
 | `RESPONSE_CACHE_TTL_SECONDS` | `3600` | How long an identical completion is served from cache instead of the backend. |
 | `CACHE_APPLICATION_TTL_SECONDS` | `300` | How long an application name to id lookup is cached. |
 | `CACHE_API_KEY_TTL_SECONDS` | `120` | How long a validated API key is cached, so every request does not hit the database. |
