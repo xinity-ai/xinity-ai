@@ -40,8 +40,8 @@ const cache = defineGroup<Cache>({
   title: "Cache",
   description: "Redis, and the lifetimes of what the gateway keeps in it.",
   fields: {
-    url: env("REDIS_URL", z.url()
-      .describe("Redis connection URL (e.g. redis://localhost:6379)").meta(secret())),
+    url: env("REDIS_URL", z.url({ protocol: /^(redis|valkey)s?$/ })
+      .describe("Redis or Valkey connection URL (e.g. redis://:PASSWORD@localhost:6379). Percent-encode the password.").meta(secret())),
     responseTtlSeconds: env("RESPONSE_CACHE_TTL_SECONDS", ttl(3600)
       .describe("How long an identical completion is served from cache instead of the backend")),
     applicationTtlSeconds: env("CACHE_APPLICATION_TTL_SECONDS", ttl(300)
