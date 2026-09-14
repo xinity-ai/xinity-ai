@@ -11,6 +11,45 @@ type PinoLike = {
   debug(obj: object, msg: string): void;
 }
 
+const UNREACHABLE_CODES = new Set([
+  "08001", // sqlclient_unable_to_establish_sqlconnection
+  "08004", // sqlserver_rejected_establishment_of_sqlconnection
+  "08006", // connection_failure
+  "53300", // too_many_connections
+  "57P01", // admin_shutdown
+  "57P02", // crash_shutdown
+  "57P03", // cannot_connect_now
+  "CONNECTION_CLOSED",
+  "CONNECTION_DESTROYED",
+  "CONNECTION_ENDED",
+  "CONNECT_TIMEOUT",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ENOTFOUND",
+  "EPIPE",
+  "ETIMEDOUT",
+]);
+
+const NO_TABLE_CODES = new Set([
+  "42P01", // undefined_table
+  "3F000", // invalid_schema_name
+]);
+
+/** Drizzle wraps driver errors, so the SQLSTATE is on `cause`, not on the error we catch. */
+function driverErrorCode(err: unknown): string | null {
+  let current: unknown = err;
+  for (let depth = 0; current instanceof Error && depth < 5; depth++) {
+    const { code } = current as Error & { code?: unknown };
+    if (typeof code === "string") {
+      return code;
+    }
+    current = current.cause;
+  }
+  return null;
+}
+
 /**
  * Queries the Drizzle migrations table and compares the applied count
  * against the expected count from the compiled migration journal.
@@ -27,11 +66,15 @@ export async function checkMigrations(db: PostgresJsDatabase): Promise<Migration
     }
     return { status: "pending", applied, expected: expectedMigrationCount };
   } catch (err) {
-    const msg = String(err);
-    if (msg.includes("does not exist")) {
+    const message = String(err);
+    const code = driverErrorCode(err);
+    if (code && UNREACHABLE_CODES.has(code)) {
+      return { status: "unreachable", message };
+    }
+    if (code && NO_TABLE_CODES.has(code)) {
       return { status: "no_table" };
     }
-    return { status: "error", message: msg };
+    return { status: "error", message };
   }
 }
 

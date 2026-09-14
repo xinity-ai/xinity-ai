@@ -36,6 +36,9 @@ export async function checkMigrationState(): Promise<MigrationState> {
     case "no_table":
       log.error("Drizzle migrations table not found, database not initialized");
       break;
+    case "unreachable":
+      log.error({ message: state.message }, "Database is not reachable");
+      break;
     case "error":
       log.error({ message: state.message }, "Failed to check migration state");
       break;
