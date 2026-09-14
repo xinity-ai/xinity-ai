@@ -59,7 +59,7 @@ The `environmentFiles` entries must contain at minimum:
 
 ```bash
 DB_CONNECTION_URL=postgresql://xinity:PASSWORD@localhost/xinity
-REDIS_URL=redis://:PASSWORD@localhost:6379
+REDIS_URL=redis://:PASSWORD@localhost:6379   # percent-encode @ / # ? in the password
 BETTER_AUTH_SECRET=<random 32+ char string>
 TETHER_SECRET=<random 32+ char string>
 ```

@@ -122,6 +122,14 @@
             '';
           }];
 
+        warnings = lib.optional
+          (cfg.redis.enable && cfg.listenMode != "local" && cfg.redisPasswordFile == null) ''
+            services.xinity-ai-database binds Redis to ${redisBindAddress} on port ${toString cfg.redis.port}
+            and opens that port in the firewall, but redisPasswordFile is unset, so it accepts
+            unauthenticated connections from the network.
+            Set services.xinity-ai-database.redisPasswordFile, or use listenMode = "local".
+          '';
+
         # --- PostgreSQL ---
         services.postgresql = lib.mkIf cfg.postgres.enable {
           enable = true;

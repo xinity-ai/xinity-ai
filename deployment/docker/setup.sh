@@ -96,13 +96,15 @@ mkdir -p secrets && chmod 700 secrets
 printf 'metrics:%s' "$(cat secrets/metrics_password)" > secrets/metrics_auth
 chmod 600 secrets/better_auth_secret secrets/metrics_password secrets/metrics_auth secrets/tether_secret
 
-# The connection URL carries the DB credentials, so the apps receive it as a
-# secret too. Derived from .env, rewritten each run to stay in sync.
+# Connection URLs carry credentials, so the apps receive them as secrets too.
+# Derived from .env, rewritten each run to stay in sync.
 pg_user=$(grep -E '^POSTGRES_USER=' .env | head -n1 | cut -d= -f2-)
 pg_db=$(grep -E '^POSTGRES_DB=' .env | head -n1 | cut -d= -f2-)
 pg_pw=$(grep -E '^POSTGRES_PASSWORD=' .env | head -n1 | cut -d= -f2-)
 printf 'postgresql://%s:%s@postgres:5432/%s' "${pg_user:-xinity}" "$pg_pw" "${pg_db:-xinity}" > secrets/db_connection_url
-chmod 600 secrets/db_connection_url
+redis_pw=$(grep -E '^REDIS_PASSWORD=' .env | head -n1 | cut -d= -f2-)
+printf 'redis://:%s@redis:6379' "$redis_pw" > secrets/redis_url
+chmod 600 secrets/db_connection_url secrets/redis_url
 
 chmod 600 .env
 
