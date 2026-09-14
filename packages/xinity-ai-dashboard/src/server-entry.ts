@@ -7,7 +7,59 @@
  * scheduler and the shutdown handlers from its module body, so an idle process would run
  * none of them. One request to ourselves forces that initialisation.
  */
-import { serveOptions, tlsOptions } from "../build/index.js";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { activationRefusal, type TlsConfig } from "common-env";
+import { dashboardConfig } from "./lib/server/config-schema";
+import { config } from "./lib/server/config";
+import { rootLogger } from "./lib/server/logging";
+
+const refusal = activationRefusal(dashboardConfig, rootLogger);
+if (refusal) {
+  rootLogger.fatal(refusal);
+  process.exit(1);
+}
+
+/** The adapter hands Bun a path, so PEM that came from the environment has to reach the disk to be served. */
+async function writeTlsMaterial(tls: TlsConfig): Promise<{ cert: string; key: string }> {
+  const dir = await mkdtemp(join(tmpdir(), "xinity-tls-"));
+  const cert = join(dir, "cert.pem");
+  const key = join(dir, "key.pem");
+  await writeFile(cert, tls.cert, { mode: 0o600 });
+  await writeFile(key, tls.key, { mode: 0o600 });
+  return { cert, key };
+}
+
+// The adapter reads these from process.env before any of our code runs, so a declared value
+// reaches it only by being placed here. Assigned one at a time on purpose: a spread would put
+// DB_CONNECTION_URL, BETTER_AUTH_SECRET, LICENSE_KEY and the S3 credentials somewhere every
+// child process and crash dump can read them, for no gain.
+process.env.HTTP_HOST = config.server.host;
+process.env.HTTP_PORT = String(config.server.port);
+process.env.HTTP_IDLE_TIMEOUT = String(config.server.idleTimeout);
+process.env.HTTP_OVERRIDE_ORIGIN = config.origin;
+// Not for the adapter: orpc-client is browser-importable, so the environment is the only
+// place it can read an absolute URL from while rendering on the server.
+process.env.ORIGIN = config.origin;
+process.env.HTTP_XFF_DEPTH = String(config.proxy.xffDepth);
+if (config.server.unixSocket) {
+  process.env.HTTP_SOCKET = config.server.unixSocket;
+}
+if (config.tls) {
+  const { cert, key } = await writeTlsMaterial(config.tls);
+  process.env.TLS_CERT_FILE = cert;
+  process.env.TLS_KEY_FILE = key;
+}
+if (config.proxy.header) {
+  process.env.HTTP_IP_HEADER = config.proxy.header;
+}
+if (config.proxy.trustedProxies.length > 0) {
+  process.env.HTTP_TRUSTED_PROXIES = config.proxy.trustedProxies.join(",");
+}
+
+// @ts-ignore: the adapter's build output does not exist until build.ts has run vite.
+const { serveOptions, tlsOptions } = await import("../build/index.js");
 
 /** A real route, since this app logs 404s at error level and a warm-up must not look like a fault. */
 const WARMUP_PATH = "/login/";

@@ -3,6 +3,7 @@ import { getDB } from "../db";
 import { redis } from "bun";
 import { timingSafeEqual } from "node:crypto";
 import { rootLogger } from "../logger";
+import { config } from "../config";
 import { createSemaphore } from "../semaphore";
 import { errorResponse } from "./util";
 
@@ -126,7 +127,7 @@ function verifiersEqual(presented: string, stored: string): boolean {
 
 /** Caching the rejection keeps a flood of bad keys off the DB and out of argon2. */
 function rejectAndCache(keyHash: string, detail: string): Response {
-  setApiKeyCache(keyHash, { fail: detail }, AUTH_FAILURE_CACHE_TTL_SECONDS);
+  setApiKeyCache(keyHash, { fail: detail }, config.cache.authFailureTtlSeconds);
   return genericUnauthorized(detail);
 }
 
@@ -143,16 +144,13 @@ function pick<K extends PropertyKey>(keys: readonly K[]) {
 }
 
 const pickAttrs = pick(["organizationId", "id", "applicationId", "collectData"] satisfies (keyof AiApiKey)[]);
-const API_KEY_CACHE_TTL_SECONDS = 120;
-/** Short enough that re-enabling a key takes effect promptly. */
-const AUTH_FAILURE_CACHE_TTL_SECONDS = 10;
 
 const apiKeyCacheKey = (identifier: string) => `apikey:${identifier}`;
 
 function setApiKeyCache(
   identifier: string,
   data: CachedAuth,
-  ttlSeconds: number = API_KEY_CACHE_TTL_SECONDS,
+  ttlSeconds: number = config.cache.apiKeyTtlSeconds,
 ): void {
   void redis.set(apiKeyCacheKey(identifier), JSON.stringify(data), "EX", ttlSeconds)
     .catch((err: unknown) => log.warn({ err }, "Redis error in setApiKeyCache"));

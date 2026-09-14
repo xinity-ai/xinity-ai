@@ -5,37 +5,44 @@
  * the CLI. Zero runtime dependencies, intentionally kept side-effect-free
  * so any module can import without pulling in install/service logic.
  */
-import type { z } from "zod";
 
-import { gatewayEnvSchema } from "xinity-ai-gateway/src/env-schema.ts";
-import { daemonEnvSchema } from "xinity-ai-daemon/src/env-schema.ts";
-import { dashboardEnvSchema } from "xinity-ai-dashboard/src/lib/server/env-schema.ts";
-import { infoserverEnvSchema } from "xinity-infoserver/env-schema.ts";
-import { tetherEnvSchema } from "xinity-tether/src/env-schema.ts";
+import { entryFor, type AnyConfig } from "common-env";
+import { gatewayConfig } from "xinity-ai-gateway/src/config-schema.ts";
+import { tetherConfig } from "xinity-tether/src/config-schema.ts";
+import { infoserverConfig } from "xinity-infoserver/config-schema.ts";
+import { daemonConfig } from "xinity-ai-daemon/src/config-schema.ts";
+import { dashboardConfig } from "xinity-ai-dashboard/src/lib/server/config-schema.ts";
 
 export type { Release } from "./github.ts";
 
 export type Component = "gateway" | "dashboard" | "daemon" | "infoserver" | "tether";
 
-export const ENV_SCHEMAS: Record<Component, z.ZodObject<any>> = {
-  gateway: gatewayEnvSchema,
-  dashboard: dashboardEnvSchema,
-  daemon: daemonEnvSchema,
-  infoserver: infoserverEnvSchema,
-  tether: tetherEnvSchema,
+export const COMPONENTS: readonly Component[] = ["gateway", "dashboard", "daemon", "infoserver", "tether"];
+
+export const COMPONENT_CONFIGS: Record<Component, AnyConfig> = {
+  gateway: gatewayConfig,
+  tether: tetherConfig,
+  infoserver: infoserverConfig,
+  daemon: daemonConfig,
+  dashboard: dashboardConfig,
 };
 
-export const DERIVED_ENV_KEYS: Partial<Record<Component, readonly string[]>> = {
-  dashboard: ["HTTP_OVERRIDE_ORIGIN"],
-};
+function declaredDefault(config: AnyConfig, envKey: string): unknown {
+  const entry = entryFor(config, envKey);
+  if (!entry) {
+    throw new Error(`${envKey} is not declared`);
+  }
+  return entry.schema.parse(undefined);
+}
 
-/** Listen ports assumed when PORT is not configured, taken from the env schemas. */
-export const GATEWAY_DEFAULT_PORT = String(gatewayEnvSchema.shape.PORT.parse(undefined));
-export const INFOSERVER_DEFAULT_PORT = String(infoserverEnvSchema.shape.PORT.parse(undefined));
-export const TETHER_DEFAULT_PORT = String(tetherEnvSchema.shape.PORT.parse(undefined));
+/** Listen ports assumed when PORT is not configured, taken from the declarations. */
+export const GATEWAY_DEFAULT_PORT = String(declaredDefault(gatewayConfig, "PORT"));
+export const INFOSERVER_DEFAULT_PORT = String(declaredDefault(infoserverConfig, "PORT"));
+export const TETHER_DEFAULT_PORT = String(declaredDefault(tetherConfig, "PORT"));
+export const DASHBOARD_DEFAULT_PORT = String(declaredDefault(dashboardConfig, "HTTP_PORT"));
 
 /** Where the daemon probes for ollama when OLLAMA_URL is left unset. */
-export const DEFAULT_OLLAMA_URL = String(daemonEnvSchema.shape.OLLAMA_URL.parse(undefined));
+export const DEFAULT_OLLAMA_URL = String(declaredDefault(daemonConfig, "OLLAMA_URL"));
 
 export const ENV_DIR = "/etc/xinity-ai";
 export const SECRETS_DIR = "/etc/xinity-ai/secrets";
@@ -62,12 +69,11 @@ export type RemoveResult = {
   errors: string[];
 }
 
-const COMMON_DEFAULTS = { INFOSERVER_URL: "https://sysinfo.xinity.ai" };
-
+/** Only what a packaged install needs beyond the declarations: restating one would pin it. */
 const AUTO_DEFAULTS: Record<Component, Record<string, string>> = {
-  gateway: { ...COMMON_DEFAULTS },
-  daemon: { ...COMMON_DEFAULTS, STATE_DIR: "/var/lib/xinity-ai-daemon" },
-  dashboard: { ...COMMON_DEFAULTS, NODE_ENV: "production", HTTP_PORT: "5173" },
+  gateway: {},
+  daemon: { STATE_DIR: "/var/lib/xinity-ai-daemon" },
+  dashboard: { NODE_ENV: "production" },
   infoserver: {},
   tether: {},
 };
@@ -79,4 +85,14 @@ const AUTO_DEFAULTS: Record<Component, Record<string, string>> = {
  */
 export function getAutoDefaults(component: Component): Record<string, string> {
   return AUTO_DEFAULTS[component];
+}
+
+// Declared defaults that suit local development and nothing else. The editor asks for these
+// outright rather than marking them, since a marker is only seen by someone already looking.
+const ATTENTION_KEYS: Partial<Record<Component, readonly string[]>> = {
+  dashboard: ["ORIGIN", "GATEWAY_URL"],
+};
+
+export function attentionKeysFor(component: Component): Set<string> {
+  return new Set(ATTENTION_KEYS[component] ?? []);
 }

@@ -1,9 +1,7 @@
-import { describe, test, expect, mock } from "bun:test";
+import { describe, test, expect } from "bun:test";
 import type { ModelMessage } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
-import { MOCK_GATEWAY_ENV } from "../mock-env";
 
-mock.module("../../env", () => ({ env: { ...MOCK_GATEWAY_ENV } }));
 
 const { createCompactionStep } = await import("./compaction");
 

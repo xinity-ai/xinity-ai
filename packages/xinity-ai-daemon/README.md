@@ -70,45 +70,94 @@ Set `VLLM_BACKEND` to choose the backend explicitly (`systemd`, the default, or 
 
 ## Configuration
 
+<!-- [sync:config] - generated from the config declaration, do not edit -->
+
+### HTTP server
+
 | Variable | Default | Description |
 |---|---|---|
-| `PORT` | `4044` | Listen port |
-| `HOST` | `0.0.0.0` | Bind address |
-| `UNIX_SOCKET` | (unset) | Unix socket path (overrides HOST/PORT) |
-| `TETHER_URL` | (required) | URL of the xinity-tether service |
-| `TETHER_SECRET` | (required) | Shared secret for tether authentication |
-| `INFOSERVER_URL` | `https://sysinfo.xinity.ai` | Infoserver URL |
-| `OLLAMA_URL` | `http://localhost:11434` | Ollama API endpoint. Only needed when Ollama listens elsewhere |
-| `VLLM_BACKEND` | `systemd` | `systemd` or `docker` |
-| `VLLM_PATH` | (unset) | Path to vLLM binary |
-| `VLLM_DOCKER_IMAGE` | (unset) | vLLM Docker image, used when `VLLM_BACKEND=docker` |
-| `VLLM_ENV_DIR` | `/etc/vllm` | vLLM environment config directory |
-| `VLLM_TEMPLATE_UNIT_PATH` | `/etc/systemd/system/vllm-driver@.service` | vLLM systemd template unit path |
-| `VLLM_HF_CACHE_DIR` | `/var/lib/vllm/hf-cache` | HuggingFace model cache directory |
-| `VLLM_TRITON_CACHE_DIR` | `/var/lib/vllm/triton-cache` | Triton cache directory |
-| `VLLM_HF_TOKEN` | (unset) | HuggingFace token for gated models |
-| `VLLM_HEALTH_TIMEOUT_MS` | `3600000` (1 hour) | Health check timeout |
-| `VLLM_HEALTH_POLL_INTERVAL_MS` | `5000` (5 seconds) | Health check poll interval |
-| `VLLM_MAX_RESTART_COUNT` | `3` | Max restarts before marking as failed |
-| `SYNC_INTERVAL_MS` | `300000` (5 minutes) | Periodic resync interval (desired state is also pushed in real time via SSE) |
-| `METRICS_SAMPLE_INTERVAL_MS` | `20000` (20 seconds) | GPU telemetry sampling interval |
-| `MACHINE_NAME` | (hostname) | Display name for the node |
-| `CIDR_PREFIX` | (empty) | Network CIDR prefix for IP advertisement filtering |
-| `STATE_DIR` | `./.local` | Local state directory |
-| `METRICS_AUTH` | (unset) | Basic auth for `/metrics` (`user:pass`) |
-| `INFOSERVER_CACHE_TTL_MS` | `600000` | How long the local catalog snapshot is trusted before revalidating, in ms |
-| `IDLE_TIMEOUT` | `255` | Server-level idle connection timeout in seconds |
-| `LOG_LEVEL` | `debug` | Log level (`fatal`/`error`/`warn`/`info`/`debug`/`trace`) |
-| `LOG_DIR` | (unset) | Log file directory (enables file logging) |
+| `HOST` | `0.0.0.0` | Bind address (use 0.0.0.0 to listen on all interfaces). |
+| `PORT` | `4044` | Listen port. |
+| `IDLE_TIMEOUT` | `255` | Seconds a connection may go without traffic before it is closed (Bun allows at most 255). |
+| `UNIX_SOCKET` | (unset) | Unix socket path (overrides HOST/PORT when set). |
+
+### Tether
+
+The control plane this node reports to.
+
+| Variable | Default | Description |
+|---|---|---|
+| `TETHER_URL` | (required) | URL of the xinity-tether service (e.g. http://tether:4020). |
+| `TETHER_SECRET` | (required) | Shared secret authenticating daemons to the tether. Secret. |
+| `SYNC_INTERVAL_MS` | `300000` | Sync interval in milliseconds. |
+
+### This node
+
+| Variable | Default | Description |
+|---|---|---|
+| `MACHINE_NAME` | (unset) | Display name for this node (defaults to hostname). |
+| `CIDR_PREFIX` | `` | Network CIDR prefix (e.g. '192.168') to filter which local IP the daemon advertises. Empty = first non-internal IPv4 address. |
+| `STATE_DIR` | `./.local` | Local state directory for daemon runtime data. |
+
+### Model catalog
+
+| Variable | Default | Description |
+|---|---|---|
+| `INFOSERVER_URL` | `https://sysinfo.xinity.ai` | Infoserver URL (default hosted: https://sysinfo.xinity.ai, or your self-hosted instance). |
+| `INFOSERVER_CACHE_TTL_MS` | `600000` | How long the local catalog snapshot is trusted before a conditional re-fetch (ms). A refresh costs one 304 when nothing changed, so the ceiling on how stale a new entry can be is what this trades against. |
+
+### Metrics endpoint
+
+| Variable | Default | Description |
+|---|---|---|
+| `METRICS_AUTH` | (unset) | Basic auth for the /metrics endpoint (format: user:pass, comma-separated for multiple). Secret. |
+| `METRICS_SAMPLE_INTERVAL_MS` | `20000` | GPU telemetry sampling interval in milliseconds. |
+
+### vLLM
+
+How this node runs vLLM models.
+
+| Variable | Default | Description |
+|---|---|---|
+| `VLLM_BACKEND` | `systemd` | vLLM backend type. One of `systemd`, `docker`. |
+| `VLLM_ENV_DIR` | `/etc/vllm` | vLLM environment config directory. |
+| `VLLM_TEMPLATE_UNIT_PATH` | `/etc/systemd/system/vllm-driver@.service` | vLLM systemd template unit path. |
+| `VLLM_PATH` | (unset) | Path to the vllm binary. With VLLM_BACKEND=systemd it is executed directly; with VLLM_BACKEND=docker it is the entrypoint used inside the image (default: vllm on the image PATH). Install: https://docs.vllm.ai/en/latest/getting_started/installation/index.html. |
+| `VLLM_DOCKER_IMAGE` | (unset) | vLLM Docker image (enables vllm-docker driver). Options: vllm/vllm-openai (https://hub.docker.com/r/vllm/vllm-openai), timothystewart6/vllm-gb10 (https://hub.docker.com/r/timothystewart6/vllm-gb10, for DGX Spark / GB10 devices), vllm/vllm-openai:cu130-nightly (for DGX Spark / Blackwell devices). |
+| `VLLM_HF_CACHE_DIR` | `/var/lib/vllm/hf-cache` | HuggingFace cache directory. |
+| `VLLM_TRITON_CACHE_DIR` | `/var/lib/vllm/triton-cache` | Triton cache directory. |
+| `VLLM_HF_TOKEN` | (unset) | HuggingFace token for downloading private or gated models. Secret. |
+| `VLLM_HEALTH_TIMEOUT_MS` | `3600000` | vLLM health check timeout in milliseconds (default: 1 hour). |
+| `VLLM_HEALTH_POLL_INTERVAL_MS` | `5000` | vLLM health check poll interval in milliseconds. |
+| `VLLM_MAX_RESTART_COUNT` | `3` | Max container restarts before marking installation as permanently failed. |
 
 ### TLS
 
-| Variable | Description |
-|---|---|
-| `XINITY_TLS_CERT` | PEM-encoded TLS certificate |
-| `XINITY_TLS_KEY` | PEM-encoded TLS private key (must be set together with cert) |
+Opt-in HTTPS. See https://github.com/xinity-ai/xinity-ai/blob/main/docs/security/tls.md
 
-Every environment variable above supports the `_FILE` suffix convention (e.g., `TETHER_SECRET_FILE`) for reading values from files. Secrets are just the variables where this matters most.
+Off unless all of `XINITY_TLS_CERT`, `XINITY_TLS_KEY` are set.
+
+| Variable | Default | Description |
+|---|---|---|
+| `XINITY_TLS_CERT` | (required) | PEM-encoded TLS certificate. Secret. |
+| `XINITY_TLS_KEY` | (required) | PEM-encoded TLS private key. Secret. |
+
+### Logging
+
+| Variable | Default | Description |
+|---|---|---|
+| `LOG_LEVEL` | `debug` | Log level. One of `fatal`, `error`, `warn`, `info`, `debug`, `trace`. |
+| `LOG_DIR` | (unset) | Log file directory (enables file logging). |
+
+### Other
+
+| Variable | Default | Description |
+|---|---|---|
+| `OLLAMA_URL` | `http://localhost:11434` | Ollama API endpoint. The ollama driver is enabled whenever this endpoint answers, so it only needs setting when ollama does not listen on its default local port. |
+
+<!-- [/sync:config] -->
+
+Every variable supports the `_FILE` suffix convention (e.g. `TETHER_SECRET_FILE`) for reading the value from a file.
 
 ## NixOS Deployment
 

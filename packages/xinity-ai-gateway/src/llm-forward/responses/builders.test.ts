@@ -1,4 +1,4 @@
-import { describe, test, expect, mock } from "bun:test";
+import { describe, test, expect } from "bun:test";
 import { CreateResponseBodySchema, type CreateResponseBody, type MessageOutputItem, type ReasoningOutputItem } from "./schemas";
 import type {
   ToolCallItem,
@@ -6,10 +6,6 @@ import type {
   ResponsePayloadParams,
 } from "./builders";
 
-import { MOCK_GATEWAY_ENV } from "../mock-env";
-mock.module("../../env", () => ({
-  env: { ...MOCK_GATEWAY_ENV, METRICS_AUTH: [] },
-}));
 
 const {
   createToolTracker,

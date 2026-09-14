@@ -1,4 +1,4 @@
-import { serverEnv } from "$lib/server/serverenv";
+import { config } from "$lib/server/config";
 import { rootLogger } from "$lib/server/logging";
 import { hasFeature } from "$lib/server/license";
 import { deliverAuditEvents, type LokiTarget } from "./audit-loki";
@@ -20,14 +20,14 @@ let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let unmirrored = 0;
 let unmirroredSince: Date | null = null;
 
-export function lokiTargetFromEnv(): LokiTarget | null {
-  if (!serverEnv.AUDIT_LOKI_URL || !hasFeature("audit-log")) {
+export function lokiTarget(): LokiTarget | null {
+  if (!config.audit || !hasFeature("audit-log")) {
     return null;
   }
   return {
-    url: serverEnv.AUDIT_LOKI_URL,
-    auth: serverEnv.AUDIT_LOKI_AUTH,
-    tenant: serverEnv.AUDIT_LOKI_TENANT,
+    url: config.audit.url,
+    auth: config.audit.auth,
+    tenant: config.audit.tenant,
   };
 }
 
@@ -43,7 +43,7 @@ export async function flushAuditEvents(): Promise<void> {
   }
   pending = [];
 
-  const target = lokiTargetFromEnv();
+  const target = lokiTarget();
   if (!target) {
     return;
   }
@@ -68,7 +68,7 @@ export async function flushAuditEvents(): Promise<void> {
  * Failures are dropped with a warning; the database holds the authoritative record.
  */
 export function forwardAuditEvent(event: AuditEvent): void {
-  if (!lokiTargetFromEnv()) {
+  if (!lokiTarget()) {
     return;
   }
 

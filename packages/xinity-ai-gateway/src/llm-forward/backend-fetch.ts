@@ -1,6 +1,6 @@
-import { env } from "../env";
+import { config } from "../config";
 
-const customCa = env.XINITY_INFERENCE_CA;
+const customCa = config.inference.ca;
 const tlsOptions = customCa ? { ca: customCa } : undefined;
 
 export const hasCustomCa = !!customCa;
@@ -29,7 +29,7 @@ export type IdleTimeout = { signal: AbortSignal; reset: () => void; clear: () =>
  * countdown. If the timer fires, the returned signal aborts with a
  * TimeoutError identical to AbortSignal.timeout().
  */
-export function createIdleTimeout(ms: number = env.BACKEND_TIMEOUT_MS): IdleTimeout {
+export function createIdleTimeout(ms: number = config.inference.backendTimeoutMs): IdleTimeout {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
 

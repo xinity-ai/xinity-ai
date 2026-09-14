@@ -15,8 +15,12 @@ import {
   saveStack,
   deleteStack,
   listStacks,
+  STACK_SHARED_KEYS,
+  sharedFields,
+  sharedLayerProblems,
 } from "../../src/lib/stack.ts";
 import { loadStackState, markHostManaged } from "../../src/lib/stack-state.ts";
+import { missingRequiredFields } from "../../src/lib/env-prompt.ts";
 
 function makeStack(overrides: Partial<StackDefinition> = {}): StackDefinition {
   return {
@@ -115,6 +119,15 @@ describe("stack persistence", () => {
     });
   });
 
+  test("loadStack moves a stored HF_TOKEN onto the key the daemon actually reads", () => {
+    tmp.write(
+      "xinity/stacks/old.json",
+      JSON.stringify({ name: "old", secrets: { HF_TOKEN: "hf_abc" } }),
+    );
+
+    expect(loadStack("old")!.secrets).toEqual({ VLLM_HF_TOKEN: "hf_abc" });
+  });
+
   test("deleteStack removes the definition and its state", () => {
     saveStack(makeStack());
     markHostManaged("test-stack", "10.0.0.9");
@@ -169,7 +182,7 @@ describe("resolveEnv", () => {
 
   test("includes the component's auto defaults as the base layer", () => {
     const stack = makeStack();
-    expect(resolveEnv(stack, "gateway").INFOSERVER_URL).toBe("https://sysinfo.xinity.ai");
+    expect(resolveEnv(stack, "daemon").STATE_DIR).toBe("/var/lib/xinity-ai-daemon");
   });
 
   test("shared env overrides auto defaults", () => {
@@ -349,5 +362,53 @@ describe("validateStack", () => {
     const errors = validateStack(stack);
 
     expect(errors.some((e) => e.message.includes("no hosts with the daemon"))).toBe(true);
+  });
+});
+
+describe("sharedFields", () => {
+  const byKey = new Map(sharedFields().map((field) => [field.key, field]));
+
+  test("every shared key resolves, or it is collected from the operator and then dropped", () => {
+    expect(byKey.size).toBe(STACK_SHARED_KEYS.size);
+  });
+
+  test("a key several components declare takes the strictest of them", () => {
+    expect(byKey.get("METRICS_AUTH")!.isRequiredBySchema).toBe(true);
+  });
+
+  test("a key derived from a host address is not demanded before the hosts exist", () => {
+    expect(byKey.get("TETHER_URL")!.isRequiredBySchema).toBe(false);
+  });
+
+  test("an empty stack is short its infra keys, but not the switched-off S3 group", () => {
+    const demanded = missingRequiredFields(sharedFields(), {}).map((field) => field.key);
+
+    expect(demanded).toContain("DB_CONNECTION_URL");
+    expect(demanded).not.toContain("S3_ENDPOINT");
+  });
+});
+
+describe("sharedLayerProblems", () => {
+  const valid = {
+    DB_CONNECTION_URL: "postgresql://u:p@db:5432/xinity",
+    REDIS_URL: "redis://redis:6379",
+    TETHER_SECRET: "shhh",
+    METRICS_AUTH: "user:pass",
+  };
+
+  test("reports a shared value the services would refuse", () => {
+    const problems = sharedLayerProblems(makeStack(), { ...valid, DB_CONNECTION_URL: "not-a-url" });
+    expect(problems.flatMap((p) => p.fields.map((f) => f.envKey))).toContain("DB_CONNECTION_URL");
+  });
+
+  test("says nothing about the URLs the stack derives from host addresses", () => {
+    const keys = sharedLayerProblems(makeStack(), valid).flatMap((p) => p.fields.map((f) => f.envKey));
+    expect(keys).not.toContain("INFOSERVER_URL");
+    expect(keys).not.toContain("TETHER_URL");
+  });
+
+  test("reports each distinct problem once, not once per component that shares the key", () => {
+    const problems = sharedLayerProblems(makeStack(), { ...valid, DB_CONNECTION_URL: "not-a-url" });
+    expect(problems).toHaveLength(1);
   });
 });

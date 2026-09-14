@@ -9,8 +9,6 @@ import {
   mockBackendFetch,
 } from "./test-helpers";
 
-import { MOCK_GATEWAY_ENV } from "../mock-env";
-mock.module("../../env", () => ({ env: { ...MOCK_GATEWAY_ENV } }));
 
 import type { checkAuth as checkAuthT } from "../auth";
 import type { getModelInfo as getModelInfoT } from "../model-data";

@@ -1,16 +1,6 @@
 import { describe, test, expect, mock, jest, beforeEach } from "bun:test";
 import { drizzle, mediaObjectT } from "common-db";
 
-mock.module("./env", () => ({
-  env: {
-    S3_ENDPOINT: undefined,
-    S3_ACCESS_KEY_ID: undefined,
-    S3_SECRET_ACCESS_KEY: undefined,
-    S3_BUCKET: "xinity-media",
-    S3_REGION: "us-east-1",
-  },
-}));
-
 const _noop = () => {};
 const _mockChild = (): Record<string, unknown> => ({ trace: _noop, debug: _noop, info: _noop, warn: _noop, error: _noop, fatal: _noop, child: _mockChild });
 mock.module("./logger", () => ({ rootLogger: { child: _mockChild } }));

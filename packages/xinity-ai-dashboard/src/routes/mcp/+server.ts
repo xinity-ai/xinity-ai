@@ -12,7 +12,7 @@
 import { json, type RequestHandler } from "@sveltejs/kit";
 import { toORPCError } from "@orpc/client";
 import { mcpTools, callMcpTool, type McpTool, type McpCaller } from "$lib/server/mcp";
-import { serverEnv } from "$lib/server/serverenv";
+import { config } from "$lib/server/config";
 import { rootLogger } from "$lib/server/logging";
 
 const log = rootLogger.child({ name: "mcp" });
@@ -120,7 +120,7 @@ async function handleMessage(
 }
 
 export const POST: RequestHandler = async ({ request, locals }) => {
-	if (!serverEnv.MCP_ENABLED) return new Response("Not Found", { status: 404 });
+	if (!config.mcpEnabled) return new Response("Not Found", { status: 404 });
 	const apiKey = extractApiKey(request);
 	const body = (await request.json()) as JsonRpcMessage | JsonRpcMessage[];
 	const messages = Array.isArray(body) ? body : [body];

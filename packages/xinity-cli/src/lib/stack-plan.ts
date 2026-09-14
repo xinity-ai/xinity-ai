@@ -9,7 +9,7 @@
  */
 import { cancel, confirm, isCancel, log, note } from "./clack.ts";
 import { bold, cyan, dim, yellow } from "picocolors";
-import { type Component, ENV_SCHEMAS, INFOSERVER_DEFAULT_PORT, TETHER_DEFAULT_PORT } from "./component-meta.ts";
+import { type Component, INFOSERVER_DEFAULT_PORT, TETHER_DEFAULT_PORT } from "./component-meta.ts";
 import { type Host, isUnitActiveOn } from "./host.ts";
 import { heading, warn, fail, pass } from "./output.ts";
 import { unitName } from "./systemd.ts";
@@ -22,12 +22,12 @@ import { readManifest, saveStackMembership, type StackMembership } from "./manif
 import { describeMigrationStep, migrationScriptComment, runMigrations } from "./migrator.ts";
 import { connectHost } from "./remote-host.ts";
 import { type ComponentAction, describeComponentAction, buildComponentAction, reviewGate, scriptComponentSection } from "./up-plan.ts";
-import { analyzeEnvSchema, splitValuesByCategory, readExistingEnvState, diffEnv, missingRequiredFields, planSecretFileRemoval } from "./env-prompt.ts";
+import { componentFields, splitValuesByCategory, readExistingEnvState, diffEnv, missingRequiredFields, planSecretFileRemoval } from "./env-prompt.ts";
 import {
   type StackDefinition, type StackHost, type FleetDefinition,
   resolveEnv, saveStack, getFleetForHost, hostLabel,
   componentLayerSeed, fleetLayerSeed,
-  STACK_SHARED_SCHEMA,
+  sharedFields,
 } from "./stack.ts";
 import { editSharedLayer, editComponentLayer, editFleetLayer, editHostLayer } from "./stack-layers.ts";
 import { loadStackState, findOrphanHosts, markHostManaged, unmarkHostManaged } from "./stack-state.ts";
@@ -141,7 +141,7 @@ function deriveTetherUrl(stack: StackDefinition): void {
  * values are missing; edits are stored as diffs against the layer below.
  */
 async function ensureStackLevelConfig(stack: StackDefinition, deployments: Deployment[]): Promise<boolean> {
-  if (missingRequiredFields(analyzeEnvSchema(STACK_SHARED_SCHEMA), { ...stack.env, ...stack.secrets }).length > 0) {
+  if (missingRequiredFields(sharedFields(), { ...stack.env, ...stack.secrets }).length > 0) {
     heading("shared settings");
     if (!(await editSharedLayer(stack, "Shared stack settings (new required values)"))) {
       return false;
@@ -164,7 +164,7 @@ async function ensureStackLevelConfig(stack: StackDefinition, deployments: Deplo
     if (component === "daemon" && daemonAddresses.every((addr) => getFleetForHost(stack, addr) !== null)) {
       continue;
     }
-    const missing = missingRequiredFields(analyzeEnvSchema(ENV_SCHEMAS[component]), componentLayerSeed(stack, component));
+    const missing = missingRequiredFields(componentFields(component), componentLayerSeed(stack, component));
     if (missing.length > 0) {
       heading(component);
       if (!(await editComponentLayer(stack, component, `${component} settings (stack-wide, saved to the stack)`))) {
@@ -175,7 +175,7 @@ async function ensureStackLevelConfig(stack: StackDefinition, deployments: Deplo
 
   const involvedFleets = [...new Set(daemonAddresses.map((addr) => getFleetForHost(stack, addr)).filter((f): f is FleetDefinition => f !== null))];
   for (const fleet of involvedFleets) {
-    const missing = missingRequiredFields(analyzeEnvSchema(ENV_SCHEMAS.daemon), fleetLayerSeed(stack, fleet));
+    const missing = missingRequiredFields(componentFields("daemon"), fleetLayerSeed(stack, fleet));
     if (missing.length > 0) {
       heading(`daemon · fleet ${fleet.name}`);
       if (!(await editFleetLayer(stack, fleet, `Daemon settings for fleet "${fleet.name}" (saved to the fleet)`))) {
@@ -194,7 +194,7 @@ async function resolveHostEnv(
   address: string,
   host: Host,
 ): Promise<{ env: import("./env-prompt.ts").EnvBundle; envChanges: import("./env-prompt.ts").EnvChange[] } | null> {
-  const fields = analyzeEnvSchema(ENV_SCHEMAS[component]);
+  const fields = componentFields(component);
   const { existingConfig, existingSecrets } = await readExistingEnvState(component, host);
   const resolved = resolveEnv(stack, component, address);
   let merged: Record<string, string> = { ...existingConfig, ...existingSecrets, ...resolved };
@@ -210,7 +210,7 @@ async function resolveHostEnv(
 
   return {
     env: splitValuesByCategory(fields, merged),
-    envChanges: diffEnv(component, { config: existingConfig, secrets: existingSecrets }, splitValuesByCategory(fields, merged)),
+    envChanges: diffEnv({ config: existingConfig, secrets: existingSecrets }, splitValuesByCategory(fields, merged)),
   };
 }
 

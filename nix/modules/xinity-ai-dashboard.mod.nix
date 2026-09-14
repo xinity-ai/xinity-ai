@@ -17,7 +17,9 @@
         ++ lib.optional (cfg.metricsAuthFile != null) "metrics-auth:${cfg.metricsAuthFile}"
         ++ lib.optional (cfg.s3AccessKeyIdFile != null) "s3-access-key-id:${cfg.s3AccessKeyIdFile}"
         ++ lib.optional (cfg.s3SecretAccessKeyFile != null) "s3-secret-access-key:${cfg.s3SecretAccessKeyFile}"
-        ++ lib.optional (cfg.licenseKeyFile != null) "license-key:${cfg.licenseKeyFile}";
+        ++ lib.optional (cfg.licenseKeyFile != null) "license-key:${cfg.licenseKeyFile}"
+        ++ lib.optional (cfg.tlsCertFile != null) "tls-cert:${cfg.tlsCertFile}"
+        ++ lib.optional (cfg.tlsKeyFile != null) "tls-key:${cfg.tlsKeyFile}";
     in {
       imports = [
         (removed [ "image" ]
@@ -30,6 +32,8 @@
           "OCI volume mounts don't apply to the systemd service the dashboard now runs as. Secrets are exposed via `LoadCredential` driven by the `*File` options instead. Remove this option from your configuration.")
         (removed [ "mountLogDir" ]
           "The dashboard now writes directly to the host path set in `logDir`; no bind-mount is needed. Remove this option from your configuration.")
+        (removed [ "betterAuthUrl" ]
+          "The dashboard never read this; auth redirects and session cookies follow `origin`. Set that instead and remove this option from your configuration.")
       ];
 
       options.services.xinity-ai-dashboard = {
@@ -69,16 +73,10 @@
           '';
         };
 
-        betterAuthUrl = lib.mkOption {
+        origin = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description = "Public URL of the auth service (e.g. https://dashboard.example.com). Used by Better Auth for OAuth callbacks and session cookie domains.";
-        };
-
-        origin = lib.mkOption {
-          type = lib.types.str;
-          default = "http://localhost:5173";
-          description = "Allowed origin for CORS headers and SvelteKit's ORIGIN check. Must match the URL users visit in their browser, including the scheme (e.g. https://dashboard.example.com).";
+          description = "Allowed origin for CORS headers and SvelteKit's ORIGIN check. Must match the URL users visit in their browser, including the scheme (e.g. https://dashboard.example.com). Required: no default can be right for a deployment, and a wrong one breaks auth redirects and CSRF validation. The allinone module derives it from `domain` and `dashboardSubdomain`.";
         };
 
         infoserverUrl = lib.mkOption {
@@ -198,6 +196,18 @@
           description = "Tenant id sent as X-Scope-OrgID to auditLokiUrl. Only needed for multi-tenant Loki or Grafana Cloud.";
         };
 
+        tlsCertFile = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Path to a file containing the PEM-encoded TLS certificate. Loaded via systemd LoadCredential and exposed as XINITY_TLS_CERT_FILE. Enables HTTPS on the dashboard, which is only needed when nothing terminates TLS in front of it.";
+        };
+
+        tlsKeyFile = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Path to a file containing the PEM-encoded TLS private key. Setting only one of the pair is a configuration error and the dashboard refuses to start rather than serve plaintext.";
+        };
+
         licenseKey = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
@@ -305,6 +315,10 @@
             assertion = cfg.metricsAuth != null || cfg.metricsAuthFile != null || cfg.environmentFiles != [ ];
             message = "services.xinity-ai-dashboard: METRICS_AUTH is required. Set `metricsAuth`, `metricsAuthFile`, or provide METRICS_AUTH via `environmentFiles`.";
           }
+          {
+            assertion = cfg.origin != null;
+            message = "services.xinity-ai-dashboard: `origin` is required. Set it to the URL users visit in their browser, scheme included (e.g. https://dashboard.example.com). The allinone module sets it for you from `domain` and `dashboardSubdomain`.";
+          }
         ];
 
         systemd.services.xinity-ai-dashboard = {
@@ -314,8 +328,9 @@
           wants = [ "network-online.target" ];
           environment = {
             HTTP_PORT = toString cfg.port;
-            ORIGIN = cfg.origin;
-            HTTP_OVERRIDE_ORIGIN = cfg.origin;
+            # Never null in a config that evaluates: the assertion above rejects that first.
+            ORIGIN = toString cfg.origin;
+            HTTP_OVERRIDE_ORIGIN = toString cfg.origin;
             NODE_ENV = cfg.nodeEnv;
             APP_NAME = cfg.appName;
             SIGNUP_ENABLED = lib.boolToString cfg.signupEnabled;
@@ -394,6 +409,12 @@
           }
           // lib.optionalAttrs (cfg.licenseKeyFile != null) {
             LICENSE_KEY_FILE = "%d/license-key";
+          }
+          // lib.optionalAttrs (cfg.tlsCertFile != null) {
+            XINITY_TLS_CERT_FILE = "%d/tls-cert";
+          }
+          // lib.optionalAttrs (cfg.tlsKeyFile != null) {
+            XINITY_TLS_KEY_FILE = "%d/tls-key";
           }
           // lib.optionalAttrs (cfg.reverseProxy.ipHeader != null) {
             HTTP_IP_HEADER = cfg.reverseProxy.ipHeader;

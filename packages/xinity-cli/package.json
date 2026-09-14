@@ -11,7 +11,8 @@
     "build": "bun run build.ts",
     "test": "bun test --timeout 30000 tests/",
     "test:unit": "bun test --timeout 15000 tests/unit/",
-    "test:integration": "bun test --timeout 30000 tests/integration/"
+    "test:integration": "bun test --timeout 30000 tests/integration/",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@clack/core": "1.3.1",

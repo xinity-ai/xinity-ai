@@ -5,8 +5,9 @@ import { loadRoutes, getRouteNames, getRouteLoadError, type RouteInfo } from "..
 import { promptForSchema } from "../lib/schema-prompt.ts";
 import { resolveConfigValue, ENV_VAR_MAP } from "../lib/config.ts";
 import { workflows, workflowNames } from "../lib/workflows.ts";
+import { DASHBOARD_DEFAULT_PORT } from "../lib/component-meta.ts";
 
-const DEFAULT_DASHBOARD_URL = "http://localhost:5173";
+const DEFAULT_DASHBOARD_URL = `http://localhost:${DASHBOARD_DEFAULT_PORT}`;
 const REQUEST_TIMEOUT_MS = 15_000;
 
 function getDashboardUrl(argv: { url?: string }): string {

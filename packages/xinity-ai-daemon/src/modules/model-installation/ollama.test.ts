@@ -1,4 +1,5 @@
 import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { mockDaemonConfig } from "../../mock-config";
 import { firstValueFrom } from "rxjs";
 import type { InstallationEntry } from "./catalog";
 
@@ -6,14 +7,7 @@ import type { InstallationEntry } from "./catalog";
 // Mocks: must be set up before importing the module under test
 // ---------------------------------------------------------------------------
 
-mock.module("../../env", () => ({ env: {
-  OLLAMA_URL: "http://localhost:11434",
-  SYNC_INTERVAL_MS: 60_000,
-  STATE_DIR: "/tmp/test-state",
-  VLLM_MAX_RESTART_COUNT: 3,
-  INFOSERVER_URL: "http://localhost:8090",
-  INFOSERVER_CACHE_TTL_MS: 0,
-}}));
+mock.module("../../config", () => ({ config: mockDaemonConfig({ STATE_DIR: "/tmp/test-state", INFOSERVER_URL: "http://localhost:8090", INFOSERVER_CACHE_TTL_MS: "0" }) }));
 
 const mockUpdateState = mock(() => Promise.resolve());
 

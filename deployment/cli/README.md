@@ -140,7 +140,7 @@ After `xinity up gateway`:
 
 ```
 /etc/xinity-ai/
-  gateway.env                    # HOST=localhost, PORT=4010, ...  (mode 644)
+  gateway.env                    # HOST=0.0.0.0, PORT=4010, ...    (mode 644)
   secrets/                       # (mode 700)
     DB_CONNECTION_URL            # postgresql://...               (mode 600)
     REDIS_URL                    # redis://...                    (mode 600)

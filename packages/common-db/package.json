@@ -12,7 +12,8 @@
   "scripts": {
     "migrate:gen": "drizzle-kit generate",
     "migrate": "drizzle-kit migrate",
-    "inspect": "drizzle-kit studio"
+    "inspect": "drizzle-kit studio",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/bun": "catalog:",

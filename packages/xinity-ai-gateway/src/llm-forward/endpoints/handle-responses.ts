@@ -4,7 +4,7 @@ import { errorResponse, logChatUsage, recordUsage, validateModelType, toModelMes
 import { deleteResponse, getResponse, getResponseMessages, saveResponse, type ResponseCreation } from "../response-store";
 import { rootLogger } from "../../logger";
 import { processMessageImages, restoreMessageImages, imageStore } from "../../image-store";
-import { env } from "../../env";
+import { config } from "../../config";
 import { createIdleTimeout, type IdleTimeout } from "../backend-fetch";
 import { DEEP_RESEARCH_SYSTEM_PROMPT, createCompactionStep } from "../deep-research";
 import { hasSearchProvider } from "../tools/response-tools";
@@ -176,10 +176,10 @@ async function runDeepResearch(prepared: PreparedRequest): Promise<Response> {
   const compactionUsage = { inputTokens: 0, outputTokens: 0 };
   const genParams = {
     ...buildGenerationParams(body, modelInfo, provider, toModelMessages(messagesForLLM), deepTools, true, outputConfig),
-    stopWhen: [isLoopFinished(), stepCountIs(env.DEEP_RESEARCH_MAX_STEPS)],
+    stopWhen: [isLoopFinished(), stepCountIs(config.deepResearch.maxSteps)],
     prepareStep: createCompactionStep(
       provider, modelInfo.model, modelInfo.maxContextLength,
-      env.DEEP_RESEARCH_COMPACTION_THRESHOLD, extractText(input) ?? "",
+      config.deepResearch.compactionThreshold, extractText(input) ?? "",
       (usage) => {
         compactionUsage.inputTokens += usage.inputTokens;
         compactionUsage.outputTokens += usage.outputTokens;
@@ -268,7 +268,7 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
     }
 
     const idle = body.stream ? createIdleTimeout() : undefined;
-    const timeoutSignal = idle?.signal ?? AbortSignal.timeout(env.BACKEND_TIMEOUT_MS);
+    const timeoutSignal = idle?.signal ?? AbortSignal.timeout(config.inference.backendTimeoutMs);
     const genParams = paramsWith(AbortSignal.any([req.signal, timeoutSignal]));
 
     if (body.stream) {

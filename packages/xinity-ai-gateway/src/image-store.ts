@@ -10,7 +10,8 @@ import { formatMediaRef, parseMediaRef } from "common-env/media-ref";
 import { isStorableImageType, STORABLE_IMAGE_TYPES, type StorableImageType } from "common-env/image-types";
 import { rootLogger } from "./logger";
 import { getDB } from "./db";
-import { env } from "./env";
+import { config } from "./config";
+import type { GatewayConfig } from "./config-schema";
 import { safeFetch } from "./llm-forward/tools/url-safety";
 
 const log = rootLogger.child({ name: "image-store" });
@@ -20,27 +21,11 @@ export type ImageStore = {
   bucket: string;
 }
 
-/** Create an ImageStore from config, or return null if S3 is not configured. */
-export function createImageStore(config: {
-  S3_ENDPOINT?: string;
-  S3_ACCESS_KEY_ID?: string;
-  S3_SECRET_ACCESS_KEY?: string;
-  S3_BUCKET: string;
-  S3_REGION: string;
-}): ImageStore | null {
-  if (!config.S3_ENDPOINT || !config.S3_ACCESS_KEY_ID || !config.S3_SECRET_ACCESS_KEY) {
+export function createImageStore(s3: GatewayConfig["s3"]): ImageStore | null {
+  if (!s3) {
     return null;
   }
-  return {
-    client: new Bun.S3Client({
-      endpoint: config.S3_ENDPOINT,
-      accessKeyId: config.S3_ACCESS_KEY_ID,
-      secretAccessKey: config.S3_SECRET_ACCESS_KEY,
-      bucket: config.S3_BUCKET,
-      region: config.S3_REGION,
-    }),
-    bucket: config.S3_BUCKET,
-  };
+  return { client: new Bun.S3Client(s3), bucket: s3.bucket };
 }
 
 type ResolvedImage = { mimeType: string; bytes: Uint8Array<ArrayBuffer> };
@@ -380,5 +365,5 @@ export async function restoreMessageImages(
 
 // ─── Module-level singleton ──────────────────────────────────────────────────
 
-/** Gateway-wide S3 image store. Null when S3 env vars are not configured. */
-export const imageStore: ImageStore | null = createImageStore(env);
+/** Gateway-wide S3 image store. Null when object storage is not configured. */
+export const imageStore: ImageStore | null = createImageStore(config.s3);

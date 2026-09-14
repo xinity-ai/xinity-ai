@@ -10,9 +10,9 @@ import { getRequestEvent } from "$app/server";
 import { twoFactorT, userT, accountT, verificationT, sessionT, passkeyT, dashboardApiKeyT, ssoProviderT, organizationT, memberT, invitationT, sql } from "common-db";
 import { rootLogger } from "./logging";
 import { omit, pick } from "$lib/util";
-import { serverEnv, isInstanceAdmin, parseCsvEnvList } from "./serverenv";
+import { config } from "./config";
 import { getDB } from "./db";
-import { ac, roles } from "./roles";
+import { ac, isInstanceAdmin, roles } from "./roles";
 import { sendEmail, commonEmailProps, type AnyComponent } from "./email";
 import { notify } from "./notifications/notification.service";
 import { NotificationType } from "./notifications/events";
@@ -146,8 +146,8 @@ const sendWelcomeNotification = createAuthMiddleware(async (ctx) => {
     userId: user.id,
     data: {
       userName: user.name || "",
-      appName: serverEnv.APP_NAME,
-      appUrl: serverEnv.ORIGIN,
+      appName: config.appName,
+      appUrl: config.origin,
     },
   });
 });
@@ -223,11 +223,11 @@ const recordAuthAudit = createAuthMiddleware(async (ctx) => {
 });
 
 export const auth = betterAuth({
-  appName: serverEnv.APP_NAME,
-  baseURL: serverEnv.ORIGIN,
-  secret: serverEnv.BETTER_AUTH_SECRET,
+  appName: config.appName,
+  baseURL: config.origin,
+  secret: config.auth.secret,
   rateLimit: {
-    enabled: serverEnv.NODE_ENV !== "test",
+    enabled: config.nodeEnv !== "test",
   },
   advanced: {
     // Session rows and rate-limit buckets read the address the adapter already
@@ -282,7 +282,7 @@ export const auth = betterAuth({
     enabled: true,
     autoSignIn: true,
     revokeSessionsOnPasswordReset: true,
-    requireEmailVerification: !!serverEnv.MAIL_URL,
+    requireEmailVerification: !!config.mail,
     disableSignUp: false,
     async sendResetPassword({ url, user, token }) {
       const redirectTo = new URL(url).searchParams.get("callbackURL") ?? "";
@@ -304,7 +304,7 @@ export const auth = betterAuth({
     },
   },
   emailVerification: {
-    sendOnSignUp: !!serverEnv.MAIL_URL,
+    sendOnSignUp: !!config.mail,
     autoSignInAfterVerification: true,
     async sendVerificationEmail({ user, url }) {
       dispatchAuthEmail({
@@ -324,7 +324,7 @@ export const auth = betterAuth({
       }
 
       // Gate signup: when SIGNUP_ENABLED is false, only allow users with pending invitations
-      if (ctx.path === "/sign-up/email" && !serverEnv.SIGNUP_ENABLED) {
+      if (ctx.path === "/sign-up/email" && !config.auth.signupEnabled) {
         const email = ctx.body?.email;
         if (email) {
           const [invitation] = await getDB()
@@ -362,18 +362,18 @@ export const auth = betterAuth({
       await recordAuthAudit(ctx);
     }),
   },
-  trustedOrigins: serverEnv.NODE_ENV === "development" ? ["*"] : [
-    serverEnv.ORIGIN,
+  trustedOrigins: config.nodeEnv === "development" ? ["*"] : [
+    config.origin,
     "*.google.com",
-    ...parseCsvEnvList(serverEnv.TRUSTED_ORIGINS),
+    ...config.trustedOrigins,
   ],
 
   plugins: [
     twoFactor(),
     passkey({
       rpName: "Xinity",
-      origin: serverEnv.ORIGIN,
-      rpID: new URL(serverEnv.ORIGIN).hostname,
+      origin: config.origin,
+      rpID: new URL(config.origin).hostname,
     }),
     bearer(),
     apiKey({
@@ -400,15 +400,15 @@ export const auth = betterAuth({
       },
     }),
     organization({
-      allowUserToCreateOrganization: (user) => serverEnv.MULTI_TENANT_MODE || isInstanceAdmin(user.email),
+      allowUserToCreateOrganization: (user) => config.auth.multiTenantMode || isInstanceAdmin(user.email),
       ac,
       roles,
       cancelPendingInvitationsOnReInvite: true,
-      requireEmailVerificationOnInvitation: !!serverEnv.MAIL_URL,
+      requireEmailVerificationOnInvitation: !!config.mail,
       // disableOrganizationDeletion: true,
       async sendInvitationEmail(data, request) {
         const encodedEmail = encodeURIComponent(data.email);
-        const url = `${serverEnv.ORIGIN}/organizations/accept-invitation-${data.invitation.id}/?email=${encodedEmail}`
+        const url = `${config.origin}/organizations/accept-invitation-${data.invitation.id}/?email=${encodedEmail}`
         log.info({ data, request, url }, "Send invitation email");
         void sendEmail({
           to: data.email,
@@ -419,7 +419,7 @@ export const auth = betterAuth({
             url,
             inviterName: data.inviter.user.name || data.inviter.user.email,
             orgName: data.organization.name,
-            loginUrl: `${serverEnv.ORIGIN}/login/?email=${encodedEmail}&tab=signup`,
+            loginUrl: `${config.origin}/login/?email=${encodedEmail}&tab=signup`,
           },
         });
       },

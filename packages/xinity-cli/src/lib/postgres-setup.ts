@@ -6,7 +6,6 @@
  * absent here, the migrator (`xinity up db`) owns it and only delegates to this
  * assistant when the user chose to set one up.
  */
-import { randomBytes } from "node:crypto";
 import { confirm, log, note, password as passwordPrompt, spinner as clackSpinner, text } from "./clack.ts";
 import { bold, cyan, dim } from "picocolors";
 import type { Host } from "./host.ts";
@@ -16,6 +15,7 @@ import {
   resolveComposeCmd, composeArgs, composeName, stackDir,
   dockerDaemonReady, tcpPortInUse, type ComposeCmd,
 } from "./docker-stack.ts";
+import { randomToken } from "./secrets.ts";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -29,10 +29,6 @@ const DEFAULT_PORT = 5432;
 const POSTGRES_IMAGE = "postgres:17.4-alpine";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-function generatePassword(length = 24): string {
-  return randomBytes(length).toString("base64url").slice(0, length);
-}
 
 export function buildConnectionUrl(opts: {
   user: string;
@@ -305,7 +301,7 @@ export async function planPostgresProvision(host: Host): Promise<PostgresProvisi
 
   let password: string;
   if (useGenerated) {
-    password = generatePassword();
+    password = randomToken(24);
     info("Password", `Generated: ${cyan(password)}`);
   } else {
     const pw = await promptOrUndefined(passwordPrompt({

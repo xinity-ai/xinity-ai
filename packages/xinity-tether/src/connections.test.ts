@@ -12,8 +12,8 @@ const mockUpdate = mock(() => ({
   })),
 }));
 
-mock.module("./env", () => ({
-  env: { TETHER_SECRET: "test", METRICS_AUTH: undefined },
+mock.module("./config", () => ({
+  config: { tetherSecret: "test", metrics: { auth: undefined } },
 }));
 
 mock.module("./db", () => ({

@@ -4,7 +4,7 @@ import { withEndpointGuards } from "../endpoint-guards";
 import { BackendCompletionChunkSchema } from "../backend-schemas";
 import type { ApiCallInputMessage } from "common-db";
 import { rootLogger } from "../../logger";
-import { env } from "../../env";
+import { config } from "../../config";
 import { backendPostJson, createIdleTimeout } from "../backend-fetch";
 import {
   forwardOpenAIResponse,
@@ -124,7 +124,7 @@ export const handleCompletion = withEndpointGuards({
     }
 
     const idle = body.stream ? createIdleTimeout() : undefined;
-    const timeoutSignal = idle?.signal ?? AbortSignal.timeout(env.BACKEND_TIMEOUT_MS);
+    const timeoutSignal = idle?.signal ?? AbortSignal.timeout(config.inference.backendTimeoutMs);
     const signal = AbortSignal.any([req.signal, timeoutSignal]);
 
     const backendResponse = await backendPostJson(modelInfo, "/v1/completions", fetchBody, signal);

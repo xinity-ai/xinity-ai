@@ -19,6 +19,8 @@ afterAll(async () => {
   try { await cleanupTestData(); } catch {}
 });
 
+type ModelsResponse = { object: string; data: { id: string; max_model_len: number }[] };
+
 describe("xinity-ai-gateway models", () => {
   it("returns an empty list when no models are deployed for the org", async () => {
     const { orgId, appId } = await createOrganizationAndApp();
@@ -28,7 +30,7 @@ describe("xinity-ai-gateway models", () => {
       headers: { authorization: `Bearer ${fullKey}` },
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as ModelsResponse;
     expect(body).toEqual({ object: "list", data: [] });
   });
 
@@ -42,7 +44,7 @@ describe("xinity-ai-gateway models", () => {
       headers: { authorization: `Bearer ${fullKey}` },
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as ModelsResponse;
     expect(body).toMatchObject({
       object: "list",
       data: [
@@ -65,7 +67,7 @@ describe("xinity-ai-gateway models", () => {
       headers: { authorization: `Bearer ${fullKey}` },
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as ModelsResponse;
     expect(body).toEqual({ object: "list", data: [] });
   });
 
@@ -219,7 +221,7 @@ describe("xinity-ai-gateway models", () => {
       headers: { authorization: `Bearer ${fullKey}` },
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as ModelsResponse;
     expect(body.data).toHaveLength(1);
     expect(body.data[0]!.max_model_len).toBe(8192);
   });
@@ -234,7 +236,7 @@ describe("xinity-ai-gateway models", () => {
       headers: { authorization: `Bearer ${fullKey}` },
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await res.json() as ModelsResponse;
     expect(body.data).toHaveLength(1);
     expect(body.data[0]!.max_model_len).toBe(131072);
   });

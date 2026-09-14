@@ -1,5 +1,5 @@
 import { preconfigureDB } from "common-db";
-import { serverEnv } from "./serverenv";
+import { config } from "./config";
 import { rootLogger } from "./logging";
 
-export const { getDB, checkMigrations, getMigrationState } = preconfigureDB(serverEnv.DB_CONNECTION_URL, rootLogger, { max: serverEnv.DB_MAX_CONNECTIONS });
+export const { getDB, checkMigrations, getMigrationState } = preconfigureDB(config.db.connectionUrl, rootLogger, { max: config.db.maxConnections });

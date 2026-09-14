@@ -1,10 +1,8 @@
 import { describe, test, expect, mock, jest, spyOn, beforeEach } from "bun:test";
 import { redis } from "bun";
 import { drizzle, apiResponseT } from "common-db";
-import { MOCK_GATEWAY_ENV } from "./mock-env";
 import type { ResponseObject } from "./responses/schemas";
 
-mock.module("../env", () => ({ env: { ...MOCK_GATEWAY_ENV } }));
 
 const noop = () => {};
 const mockChild = (): Record<string, unknown> => ({ trace: noop, debug: noop, info: noop, warn: noop, error: noop, fatal: noop, child: mockChild });

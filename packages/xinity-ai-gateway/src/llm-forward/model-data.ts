@@ -1,6 +1,6 @@
 import { calcCanaryProgress, sql, modelDeploymentT, aiNodeT, modelInstallationT, modelInstallationStateT, installationMatchesLookup } from "common-db";
 import { getDB } from "../db";
-import { env } from "../env";
+import { config } from "../config";
 import { createCatalogClient, createInfoserverClient, resolveTagsForDriver, resolveRequestParamsForDriver } from "xinity-infoserver";
 import { selectHost as _selectHost, type LoadBalanceStrategy, type HostMeta } from "./load-balancer";
 import { rootLogger } from "../logger";
@@ -16,8 +16,8 @@ let _infoClient: ReturnType<typeof createInfoserverClient> | undefined;
 export function getCatalogClient() {
   if (!_catalogClient) {
     _catalogClient = createCatalogClient({
-      baseUrl: env.INFOSERVER_URL,
-      cacheTtlMs: env.INFOSERVER_CACHE_TTL_MS,
+      baseUrl: config.infoserver.url,
+      cacheTtlMs: config.infoserver.cacheTtlMs,
       logger: rootLogger.child({ name: "catalog-client" }),
     });
   }
@@ -28,8 +28,8 @@ export function getCatalogClient() {
 export function getInfoClient() {
   if (!_infoClient) {
     _infoClient = createInfoserverClient({
-      baseUrl: env.INFOSERVER_URL,
-      cacheTtlMs: env.INFOSERVER_CACHE_TTL_MS,
+      baseUrl: config.infoserver.url,
+      cacheTtlMs: config.infoserver.cacheTtlMs,
       logger: rootLogger.child({ name: "infoserver-client" }),
     });
   }
@@ -40,7 +40,6 @@ import { redis } from "bun";
 
 const log = rootLogger.child({ name: "model-data" });
 
-const MODEL_CACHE_TTL_SECONDS = 60;
 
 type CachedDeployment = {
   specifier: string;
@@ -127,7 +126,7 @@ async function publicModelSpecifierToModelSource(orgId: string, specifier: strin
     canaryProgressUntil: deployment.canaryProgressUntil ? new Date(deployment.canaryProgressUntil).valueOf() : null,
   };
 
-  void redis.set(cacheKey, JSON.stringify(cachedData), "EX", MODEL_CACHE_TTL_SECONDS)
+  void redis.set(cacheKey, JSON.stringify(cachedData), "EX", config.cache.modelTtlSeconds)
     .catch((err: unknown) => log.warn({ err }, "Redis error in set deployment cache"));
 
   return {
@@ -193,7 +192,7 @@ async function getModelSources(specifier: string): Promise<ModelSources> {
 
   const result: ModelSources = { hosts: [...byHost.keys()], byHost };
   if (generationAtQuery === sourcesGeneration) {
-    modelSourcesCache.set(specifier, { data: result, expiresAt: now + MODEL_CACHE_TTL_SECONDS * 1000 });
+    modelSourcesCache.set(specifier, { data: result, expiresAt: now + config.cache.modelTtlSeconds * 1000 });
   }
 
   return result;
@@ -284,7 +283,7 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, prefi
       : Promise.resolve(emptySources),
   ]);
 
-  const result = await _deps.selectHost(env.LOAD_BALANCE_STRATEGY as LoadBalanceStrategy, {
+  const result = await _deps.selectHost(config.inference.loadBalanceStrategy as LoadBalanceStrategy, {
     hosts: finalSources.hosts,
     earlyHosts: earlySources.hosts,
     canaryProgress: accessInfo.progress,

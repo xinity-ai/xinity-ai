@@ -1,5 +1,5 @@
 import { preconfigureDB } from "common-db";
-import { env } from "./env";
+import { config } from "./config";
 import { rootLogger } from "./logger";
 
-export const { getDB, checkMigrations, subscribe, end } = preconfigureDB(env.DB_CONNECTION_URL, rootLogger);
+export const { getDB, checkMigrations, subscribe, end } = preconfigureDB(config.db.connectionUrl, rootLogger);

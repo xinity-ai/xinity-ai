@@ -11,7 +11,7 @@ export type SocketAddressSource = {
 
 export type ClientIpConfig = {
   /** Forwarding header to read. Unset means trust only the socket address. */
-  header: string | undefined;
+  header?: string;
   /** Number of proxies in front. Entries left of that position are client-supplied. */
   xffDepth: number;
 }

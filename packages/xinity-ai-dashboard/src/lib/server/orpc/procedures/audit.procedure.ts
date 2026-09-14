@@ -3,7 +3,7 @@ import { z } from "zod";
 import { auditEventT, auditResultEnum, sql, and } from "common-db";
 import { getDB } from "$lib/server/db";
 import { hasFeature } from "$lib/server/license";
-import { isInstanceAdmin } from "$lib/server/serverenv";
+import { isInstanceAdmin } from "$lib/server/roles";
 
 const tags = ["Audit"];
 const EXPORT_ROW_CAP = 10_000;

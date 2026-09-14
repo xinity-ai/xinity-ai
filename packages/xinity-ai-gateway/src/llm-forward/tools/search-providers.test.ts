@@ -18,28 +18,28 @@ describe("resolveSearchConfig", () => {
 
   test("returns provider and credential when both are set", () => {
     expect(resolveSearchConfig({
-      WEB_SEARCH_PROVIDER: "google",
-      WEB_SEARCH_CREDENTIAL: "key:cx",
+      provider: "google",
+      credential: "key:cx",
     })).toEqual({ provider: "google", credential: "key:cx" });
   });
 
   test("falls back to searxng when only WEB_SEARCH_ENGINE_URL is set", () => {
     expect(resolveSearchConfig({
-      WEB_SEARCH_ENGINE_URL: "http://localhost:6148/",
+      engineUrl: "http://localhost:6148/",
     })).toEqual({ provider: "searxng", credential: "http://localhost:6148/" });
   });
 
   test("WEB_SEARCH_PROVIDER takes precedence over WEB_SEARCH_ENGINE_URL", () => {
     expect(resolveSearchConfig({
-      WEB_SEARCH_PROVIDER: "brave",
-      WEB_SEARCH_CREDENTIAL: "brave-key",
-      WEB_SEARCH_ENGINE_URL: "http://localhost:6148/",
+      provider: "brave",
+      credential: "brave-key",
+      engineUrl: "http://localhost:6148/",
     })).toEqual({ provider: "brave", credential: "brave-key" });
   });
 
   test("throws when WEB_SEARCH_PROVIDER is set without WEB_SEARCH_CREDENTIAL", () => {
     expect(() => resolveSearchConfig({
-      WEB_SEARCH_PROVIDER: "bing",
+      provider: "bing",
     })).toThrow("WEB_SEARCH_CREDENTIAL must be set");
   });
 });
@@ -297,8 +297,8 @@ describe("getSearchProvider", () => {
 
   test("returns a provider for valid config", () => {
     const provider = getSearchProvider({
-      WEB_SEARCH_PROVIDER: "brave",
-      WEB_SEARCH_CREDENTIAL: "test-key",
+      provider: "brave",
+      credential: "test-key",
     });
     expect(provider).not.toBeNull();
     expect(typeof provider!.search).toBe("function");
@@ -306,14 +306,14 @@ describe("getSearchProvider", () => {
 
   test("throws on invalid credential", () => {
     expect(() => getSearchProvider({
-      WEB_SEARCH_PROVIDER: "google",
-      WEB_SEARCH_CREDENTIAL: "no-colon",
+      provider: "google",
+      credential: "no-colon",
     })).toThrow("apikey:cx");
   });
 
   test("works with legacy WEB_SEARCH_ENGINE_URL", () => {
     const provider = getSearchProvider({
-      WEB_SEARCH_ENGINE_URL: "http://localhost:6148/",
+      engineUrl: "http://localhost:6148/",
     });
     expect(provider).not.toBeNull();
     expect(typeof provider!.search).toBe("function");

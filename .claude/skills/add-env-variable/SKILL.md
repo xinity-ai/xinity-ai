@@ -1,40 +1,69 @@
 ---
 name: add-env-variable
-description: Add a new environment variable to any service package following the env-schema / parseEnv pattern with Zod schema, describe(), and meta(secret()) annotations.
+description: Add a new configuration variable to any service package, declaring it on the package's grouped config declaration with an explicit env key, describe(), and meta(secret()) annotations.
 ---
 
-# Add Environment Variable
+# Add Configuration Variable
 
-When adding a new environment variable to any service package, follow this pattern.
+Every service declares its configuration as named groups of fields. A variable is a field on one
+of those groups, bound to an env key that stays greppable.
 
-## Env schema separation
+## Where it goes
 
-Each service package has two env files:
-- **`env-schema.ts`**: exports a Zod object schema with `.describe()` and `.meta(secret())` annotations. No side effects, safe to import from CLI or tests.
-- **`env.ts`** (or `serverenv.ts` for dashboard): imports the schema and calls `parseEnv()` which reads `process.env`.
-
-| Package | Schema file | Runtime file |
-|---------|------------|-------------|
-| gateway | `src/env-schema.ts` -> `gatewayEnvSchema` | `src/env.ts` |
-| daemon | `src/env-schema.ts` -> `daemonEnvSchema` | `src/env.ts` |
-| dashboard | `src/lib/server/env-schema.ts` -> `dashboardEnvSchema` | `src/lib/server/serverenv.ts` |
+| Package | Declaration | Resolved value |
+|---------|------------|----------------|
+| gateway | `src/config-schema.ts` -> `gatewayConfig` | `src/config.ts` -> `config` |
+| tether | `src/config-schema.ts` -> `tetherConfig` | `src/config.ts` |
+| daemon | `src/config-schema.ts` -> `daemonConfig` | `src/config.ts` |
+| infoserver | `config-schema.ts` -> `infoserverConfig` | `config.ts` |
+| dashboard | `src/lib/server/config-schema.ts` -> `dashboardConfig` | `src/lib/server/config.ts` |
 
 ## Steps
 
-1. **Add to the schema file** with `.describe("Human-readable description")`.
-2. **Mark secrets** with `.meta(secret())` (imported from `common-env`). The CLI reads `z.globalRegistry.get(field)?.secret` to decide what goes into systemd `LoadCredential` secret files vs. plain `EnvironmentFile` entries.
-3. **The runtime file does not need changes** - it parses from the schema automatically.
-4. **Update `example.env`** if this variable should have a default for local dev.
+1. **Pick the group** the variable belongs to, or add it top-level when it belongs to none.
+   Shared groups (`serverGroup`, `databaseGroup`, `catalogGroup`, `metricsGroup`,
+   `objectStorageGroup`, `tlsGroup`, `proxyGroup`, `loggingGroup`) already declare their own keys.
+2. **Add the field to the group's hand-written type first.** `defineGroup<T>` validates that the
+   field keys match `keyof T` and that each schema produces `T[K]`, so the type is the contract
+   and nothing is inferred.
+3. **Declare the field** as `env("MY_NEW_VAR", schema)`. Both names appear in the source so the
+   env key greps and the field jumps to its definition.
+4. **Use a dual leaf for non-strings**: `configBool()`, `configInt()`, `configNumber()`,
+   `configList()`. Constraints go on their `base` argument, as in `configInt(z.int().positive())`.
+5. **Mark secrets** with `.meta(secret())`. The CLI reads that to decide what goes into systemd
+   `LoadCredential` secret files rather than plain `EnvironmentFile` entries.
+6. **Update `example.env`** if the variable wants a value for local dev.
+
+Reading it is `config.group.field`. Nothing else needs changing: the CLI builds its editor from
+the declaration, and the resolved value is typed from it.
 
 ## Example
 
 ```typescript
-// In env-schema.ts
-import { secret } from "common-env";
+type WebSearch = { provider?: "searxng" | "google"; credential?: string };
 
-export const gatewayEnvSchema = z.object({
-  // ... existing vars
-  MY_NEW_VAR: z.string().describe("What this var controls"),
-  MY_SECRET_VAR: z.string().describe("A secret value").meta(secret()),
+const webSearch = defineGroup<WebSearch>({
+  id: "webSearch",
+  title: "Web search",
+  expert: true,
+  fields: {
+    provider: env("WEB_SEARCH_PROVIDER", z.enum(["searxng", "google"]).optional()
+      .describe("Web search backend. When unset, web search is disabled.")),
+    credential: env("WEB_SEARCH_CREDENTIAL", z.string().optional()
+      .describe("Provider credential").meta(secret())),
+  },
 });
 ```
+
+## Groups that switch on and off
+
+A group whose members are meaningless on their own takes `optional: { requires: [...] }`, naming
+the fields whose presence activates it. It resolves to `undefined` when none are set, and warns at
+boot when only some are. Every member has to be meaningless without those keys, so an optional
+field inside an optional group is a sign the grouping is wrong.
+
+## Rules that span fields
+
+`violations: (value) => [{ field, message }]` rejects combinations no single field can catch, such
+as a keepalive longer than the idle timeout it has to fit inside. The CLI runs the same check
+before it writes, so its editor cannot save a combination the service would refuse.

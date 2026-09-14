@@ -9,9 +9,9 @@ import {
   serializeMetrics,
 } from "common-env";
 import { version } from "../../../package.json";
-import { env } from "./env";
+import { config } from "./config";
 
-const metricsAuth = createMetricsAuth(env.METRICS_AUTH);
+const metricsAuth = createMetricsAuth(config.metrics.auth);
 
 const connectedNodes = createGauge(
   "tether_connected_nodes",

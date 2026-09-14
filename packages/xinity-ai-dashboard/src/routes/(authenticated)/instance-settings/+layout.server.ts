@@ -1,5 +1,5 @@
 import type { LayoutServerLoad } from "./$types";
-import { isInstanceAdmin } from "$lib/server/serverenv";
+import { isInstanceAdmin } from "$lib/server/roles";
 import { redirect } from "@sveltejs/kit";
 
 export const load: LayoutServerLoad = async ({ parent }) => {

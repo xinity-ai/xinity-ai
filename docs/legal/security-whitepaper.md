@@ -29,7 +29,7 @@ The **Xinity CLI** is an operator tool for installing, configuring, and managing
 
 The gateway, dashboard, and tether coordinate through a shared PostgreSQL database that the customer hosts. Daemons do not connect to the database. They communicate exclusively with the tether via authenticated SSE. There is no external coordination endpoint. Redis is used by the Gateway for ephemeral state (authentication caching, load balancer coordination). Both PostgreSQL and Redis are customer-managed.
 
-An optional self-hosted object store (SeaweedFS) can be configured for multimodal image storage. This is also customer-managed; no images are transmitted to Xinity.
+An optional S3-compatible object store can be configured for multimodal image storage. This is also customer-managed; no images are transmitted to Xinity.
 
 ---
 
@@ -54,7 +54,7 @@ Xinity AI is a software platform, not a managed service. All infrastructure comp
 | **PostgreSQL** | Shared coordination database; stores call logs, users, deployments, API keys | Customer-managed; location determined by customer |
 | **Redis** | Ephemeral gateway state: auth cache, load balancer counters, responses store | Customer-managed |
 | **Ollama / vLLM** | Local inference drivers | Run on customer-managed inference nodes; model weights and inference data do not leave those nodes |
-| **SeaweedFS / S3** | Optional object store for multimodal image data | Customer-managed; not configured by default |
+| **S3-compatible object store** | Optional store for multimodal image data | Customer-managed; not configured by default |
 | **Info Server** | Model catalog metadata (model names, capabilities, driver identifiers) | Defaults to Xinity's hosted instance (`sysinfo.xinity.ai`); metadata lookup only, no inference data. Can be self-hosted (see 3.1 above) |
 
 ### 3.4 Inference data plane
@@ -69,7 +69,7 @@ After each request completes, the Gateway logs call data — including input mes
 
 ### 3.5 Image data (multimodal)
 
-When SeaweedFS is configured, images submitted in multimodal requests are uploaded to the customer's SeaweedFS instance and referenced by SHA-256 hash in the call log. Inference nodes always receive full data URIs. No image data is transmitted to Xinity.
+When object storage is configured, images submitted in multimodal requests are uploaded to the customer's own endpoint and referenced by SHA-256 hash in the call log. Inference nodes always receive full data URIs. No image data is transmitted to Xinity.
 
 ### 3.6 Optional web search and web fetch tools (Responses API)
 

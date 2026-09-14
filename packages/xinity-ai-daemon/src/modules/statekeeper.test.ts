@@ -1,4 +1,5 @@
 import { describe, test, expect, beforeEach, afterAll, mock } from "bun:test";
+import { mockDaemonConfig } from "../mock-config";
 import { join } from "node:path";
 import { rm, mkdir } from "node:fs/promises";
 import { mkdtempSync } from "node:fs";
@@ -16,19 +17,9 @@ const ollama = Bun.serve({
       : new Response("unavailable", { status: 500 }),
 });
 
-mock.module("../env", () => ({ env: {
-  PORT: 4044,
-  HOST: "0.0.0.0",
-  STATE_DIR,
-  CIDR_PREFIX: "",
-  TETHER_URL: "http://localhost:4020",
-  TETHER_SECRET: "test",
-  INFOSERVER_URL: "http://localhost:19090",
-  OLLAMA_URL: `http://127.0.0.1:${ollama.port}`,
-  VLLM_PATH: undefined,
-  VLLM_DOCKER_IMAGE: undefined,
-  LOG_LEVEL: "silent",
-}}));
+mock.module("../config", () => ({
+  config: mockDaemonConfig({ STATE_DIR, OLLAMA_URL: `http://127.0.0.1:${ollama.port}` }),
+}));
 
 const { readNodeIdFile, getNodeDrivers, getNodeDriverVersions } = await import("./statekeeper");
 

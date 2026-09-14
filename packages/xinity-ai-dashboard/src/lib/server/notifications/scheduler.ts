@@ -10,7 +10,7 @@ import {
   deploymentMatchesInstallation,
   type SQL,
 } from "common-db";
-import { serverEnv } from "$lib/server/serverenv";
+import { config } from "$lib/server/config";
 import { getDB } from "$lib/server/db";
 import { nodeIsLive, installationOnLiveNode } from "$lib/server/lib/node-liveness";
 import { rootLogger } from "$lib/server/logging";
@@ -25,7 +25,7 @@ const CHECK_INTERVAL_MS = 5 * 60_000; // 5 minutes
 const WEEKLY_CHECK_INTERVAL_MS = 60 * 60_000; // 1 hour
 const WARMUP_DELAY_MS = 2_000;
 const CAPACITY_WARNING_THRESHOLD = 0.8; // 80%
-const MODELHUB_URL = `${serverEnv.ORIGIN}/modelhub/`;
+const MODELHUB_URL = `${config.origin}/modelhub/`;
 
 // ── In-memory state caches ──────────────────────────────────────────
 
@@ -407,7 +407,7 @@ async function checkWeeklyReport() {
           totalApiCalls,
           topModels,
           period,
-          dashboardUrl: serverEnv.ORIGIN,
+          dashboardUrl: config.origin,
         },
       }).catch((err: unknown) => log.error({ err }, "Failed to send weekly report notification"));
 

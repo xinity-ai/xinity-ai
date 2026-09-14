@@ -1,7 +1,7 @@
 import { auth } from "$lib/server/auth-server";
 import { redirect } from "@sveltejs/kit";
 import type { PageServerLoad } from "./$types";
-import { serverEnv } from "$lib/server/serverenv";
+import { config } from "$lib/server/config";
 import { getDB } from "$lib/server/db";
 import { ssoProviderT, sql } from "common-db";
 
@@ -15,11 +15,11 @@ export const load: PageServerLoad = async ({ request, url }) => {
   const callbackUrl = rawCallback && rawCallback.startsWith("/") && !rawCallback.startsWith("//")
     ? rawCallback
     : "/";
-  const configuredOrigin = new URL(serverEnv.ORIGIN);
+  const configuredOrigin = new URL(config.origin);
   const hostMismatch =
-    serverEnv.NODE_ENV !== "development" && url.host !== configuredOrigin.host;
+    config.nodeEnv !== "development" && url.host !== configuredOrigin.host;
 
-  const ssoProviders = serverEnv.MULTI_TENANT_MODE
+  const ssoProviders = config.auth.multiTenantMode
     ? []
     : await getDB().select({
         providerId: ssoProviderT.providerId,
@@ -29,8 +29,8 @@ export const load: PageServerLoad = async ({ request, url }) => {
   return {
     callbackUrl,
     ssoProviders,
-    signupEnabled: serverEnv.SIGNUP_ENABLED,
-    emailVerificationRequired: Boolean(serverEnv.MAIL_URL),
+    signupEnabled: config.auth.signupEnabled,
+    emailVerificationRequired: Boolean(config.mail),
     hostMismatch,
     configuredOrigin: configuredOrigin.origin,
   };

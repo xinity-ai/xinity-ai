@@ -2,7 +2,8 @@ import "zod/compile";
 
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { serverRouter } from "./rpc/gatewayRouter";
-import { env } from "./env";
+import { config } from "./config";
+import { gatewayConfig } from "./config-schema";
 import { checkMigrations, subscribe } from "./db";
 import { rootLogger } from "./logger";
 import { createOpenapiSpec, createScalarPage } from "./openapi";
@@ -16,7 +17,7 @@ import { handleRerank } from "./llm-forward/endpoints/handle-rerank";
 import { handleTranscription } from "./llm-forward/endpoints/handle-transcription";
 import { handleMetrics, withMetrics } from "./metrics";
 import { LONG_RUNNING_ROUTES, withoutConnectionTimeout, type RouteHandler } from "./serve-config";
-import { getTlsConfig } from "common-env";
+import { activationRefusal } from "common-env";
 import { logMigrationFailureFatal } from "common-db";
 import { getSearchProvider } from "./llm-forward/tools/search-providers";
 import { setSearchProvider } from "./llm-forward/tools/response-tools";
@@ -31,6 +32,12 @@ process.on("unhandledRejection", (reason) => {
 process.on("uncaughtException", (err) => {
   rootLogger.error({ err }, "Uncaught exception");
 });
+
+const refusal = activationRefusal(gatewayConfig, rootLogger);
+if (refusal) {
+  rootLogger.fatal(refusal);
+  process.exit(1);
+}
 
 const migrationState = await checkMigrations();
 if (migrationState.status !== "ok") {
@@ -52,8 +59,8 @@ const handler = new OpenAPIHandler(serverRouter, {
   plugins: [],
 });
 
-const tls = getTlsConfig(env);
-setSearchProvider(getSearchProvider(env));
+const tls = config.tls && { cert: config.tls.cert, key: config.tls.key };
+setSearchProvider(getSearchProvider(config.webSearch));
 
 const meteredEndpoints: Array<[string, RouteHandler]> = [
   ["/v1/chat/completions", handleChatCompletion],
@@ -84,13 +91,13 @@ const serveOptions = {
     ...meteredRoutes,
   },
   fetch: handleRequest,
-  idleTimeout: env.IDLE_TIMEOUT,
+  idleTimeout: config.server.idleTimeout,
 } as const;
 
 const proto = tls ? "https" : "http";
-const serveTarget = env.UNIX_SOCKET
-  ? { unix: env.UNIX_SOCKET, idleTimeout: undefined }
-  : { port: env.PORT, hostname: env.HOST };
+const serveTarget = config.server.unixSocket
+  ? { unix: config.server.unixSocket, idleTimeout: undefined }
+  : { port: config.server.port, hostname: config.server.host };
 const server = Bun.serve({ ...serveOptions, ...serveTarget });
 rootLogger.info({ ...serveTarget, tls: !!tls }, `Gateway started (${proto})`);
 

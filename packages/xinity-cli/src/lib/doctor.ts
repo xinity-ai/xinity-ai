@@ -2,10 +2,11 @@ import { green, yellow, red, dim } from "picocolors";
 import { readManifest, type ComponentEntry } from "./manifest.ts";
 import { commandExistsOn, isUnitActiveOn, readSecrets, type Host } from "./host.ts";
 import { isOllamaRunning } from "./ollama-setup.ts";
-import { analyzeEnvSchema, categorizeFields, type EnvField } from "./env-prompt.ts";
+import { componentFields, categorizeFields, isRequired } from "./env-prompt.ts";
+import type { EnvField } from "common-env";
 import { parseEnvString } from "./env-file.ts";
 import { unitName } from "./systemd.ts";
-import { type Component, ENV_SCHEMAS, ENV_DIR, SECRETS_DIR, UNIT_DIR, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT, DEFAULT_OLLAMA_URL } from "./component-meta.ts";
+import { type Component, ENV_DIR, SECRETS_DIR, UNIT_DIR, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT, DASHBOARD_DEFAULT_PORT, DEFAULT_OLLAMA_URL } from "./component-meta.ts";
 import { collectRemoteState, createCachedHost } from "./remote-probe.ts";
 import {
   type CheckResult, type CheckStatus,
@@ -215,11 +216,8 @@ async function checkConfiguration(
   checks.push({ label: "Env file", status: "pass", message: envPath });
 
   // Check required config keys
-  const schema = ENV_SCHEMAS[component];
-  const fields = analyzeEnvSchema(schema);
+  const fields = componentFields(component);
   const { configFields, secretFields } = categorizeFields(fields);
-
-  checks.push(requiredFieldsPresenceCheck("Config keys", "All required config keys set", configFields, config));
 
   // Read all secrets, elevating if needed
   let secretsPermDenied = false;
@@ -242,7 +240,10 @@ async function checkConfiguration(
     }
   }
 
+  // A group's switch may be a secret, so requiredness cannot be judged from the env file alone.
   const values = { ...config, ...secrets };
+
+  checks.push(requiredFieldsPresenceCheck("Config keys", "All required config keys set", configFields, values));
 
   if (secretsPermDenied) {
     checks.push({ label: "Secrets", status: "skip", message: "Permission denied, rerun with sudo for full checks" });
@@ -260,7 +261,7 @@ function requiredFieldsPresenceCheck(
   values: Record<string, string>,
 ): CheckResult {
   const missing = fields
-    .filter(f => !f.isOptional && !f.hasDefault && !values[f.key])
+    .filter(f => isRequired(f, values) && !values[f.key])
     .map(f => f.key);
   if (missing.length > 0) {
     return { label, status: "fail", message: `Missing required: ${missing.join(", ")}` };
@@ -310,7 +311,7 @@ async function checkGatewayConnectivity(
     checks.push(await checkS3Endpoint(values.S3_ENDPOINT, host));
   }
   if (serviceActive) {
-    const bindHost = values.HOST || "localhost";
+    const bindHost = values.HOST || "0.0.0.0";
     const port = values.PORT || GATEWAY_DEFAULT_PORT;
     const checkHost = bindHost === "0.0.0.0" ? "localhost" : bindHost;
     checks.push(await checkServiceHealth(host, "Health endpoint", `http://${checkHost}:${port}/healthCheck`));
@@ -328,10 +329,28 @@ async function checkDashboardConnectivity(
   await pushInfoserverCheck(checks, values, host);
   if (values.MAIL_URL) checks.push(await checkSmtp(values.MAIL_URL, host));
   if (serviceActive) {
-    const port = values.HTTP_PORT || "5173";
-    checks.push(await checkServiceHealth(host, "Health endpoint", `http://localhost:${port}/api/health`));
+    const { url, curlArgs } = dashboardHealthProbe(values);
+    checks.push(await checkServiceHealth(host, "Health endpoint", url, curlArgs));
   }
   return checks;
+}
+
+/** A socket or our own certificate needs curl told about it, or a healthy dashboard reads as unreachable. */
+function dashboardHealthProbe(values: Record<string, string>): { url: string; curlArgs: string[] } {
+  const scheme = values.XINITY_TLS_CERT || values.XINITY_TLS_CERT_FILE ? "https" : "http";
+  // We are the one serving the certificate, so there is nothing to verify it against.
+  const curlArgs = scheme === "https" ? ["-k"] : [];
+
+  if (values.UNIX_SOCKET) {
+    return {
+      url: `${scheme}://localhost/api/health`,
+      curlArgs: [...curlArgs, "--unix-socket", values.UNIX_SOCKET],
+    };
+  }
+
+  const bindHost = values.HOST || "0.0.0.0";
+  const checkHost = bindHost === "0.0.0.0" ? "localhost" : bindHost;
+  return { url: `${scheme}://${checkHost}:${values.HTTP_PORT || DASHBOARD_DEFAULT_PORT}/api/health`, curlArgs };
 }
 
 async function checkDaemonConnectivity(

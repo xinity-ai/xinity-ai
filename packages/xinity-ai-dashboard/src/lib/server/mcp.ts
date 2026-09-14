@@ -10,7 +10,7 @@ import { createRouterClient, isProcedure, type AnyRouter } from "@orpc/server";
 import { toJSONSchema } from "zod";
 import { router } from "./orpc/router";
 import type { ProcedureMeta } from "./orpc/root";
-import { serverEnv } from "./serverenv";
+import { config } from "./config";
 
 export type McpTool = {
 	name: string;
@@ -27,7 +27,7 @@ type OrpcInternals = {
 
 function isProcedureExcludedFromMcp(orpc: OrpcInternals): boolean {
 	const tags = orpc.route?.tags ?? [];
-	const isInternalOutsideDev = tags.includes(".internal") && Bun.env.NODE_ENV !== "development";
+	const isInternalOutsideDev = tags.includes(".internal") && config.nodeEnv !== "development";
 	const isOptedOut = orpc.meta?.mcp === false;
 	return isInternalOutsideDev || isOptedOut;
 }
@@ -105,7 +105,7 @@ export async function callMcpTool(
 	if (caller.userAgent) {
 		headers["user-agent"] = caller.userAgent;
 	}
-	const syntheticRequest = new Request(`${serverEnv.ORIGIN}/rpc/${tool.path.join("/")}`, {
+	const syntheticRequest = new Request(`${config.origin}/rpc/${tool.path.join("/")}`, {
 		method: "POST",
 		headers,
 		body: JSON.stringify(args ?? {}),

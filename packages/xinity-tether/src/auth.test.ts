@@ -1,7 +1,7 @@
 import { describe, test, expect, mock } from "bun:test";
 
-mock.module("./env", () => ({
-  env: { TETHER_SECRET: "test-secret-abc123" },
+mock.module("./config", () => ({
+  config: { tetherSecret: "test-secret-abc123" },
 }));
 
 const { verifyBearerToken } = await import("./auth");

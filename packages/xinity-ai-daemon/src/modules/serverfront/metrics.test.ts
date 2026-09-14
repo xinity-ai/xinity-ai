@@ -1,18 +1,7 @@
 import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { mockDaemonConfig } from "../../mock-config";
 
-mock.module("../../env", () => ({
-  env: {
-    PORT: 4044, HOST: "0.0.0.0", TETHER_URL: "http://localhost:4020", TETHER_SECRET: "test",
-    STATE_DIR: "/tmp/test", CIDR_PREFIX: "", SYNC_INTERVAL_MS: 60_000,
-    INFOSERVER_URL: "http://localhost:19090", INFOSERVER_CACHE_TTL_MS: 30_000,
-    METRICS_SAMPLE_INTERVAL_MS: 20_000, VLLM_BACKEND: "systemd",
-    VLLM_ENV_DIR: "/etc/vllm", VLLM_TEMPLATE_UNIT_PATH: "/etc/systemd/system/vllm-driver@.service",
-    VLLM_HF_CACHE_DIR: "/var/lib/vllm/hf-cache", VLLM_TRITON_CACHE_DIR: "/var/lib/vllm/triton-cache",
-    VLLM_HEALTH_TIMEOUT_MS: 3_600_000, VLLM_HEALTH_POLL_INTERVAL_MS: 5_000,
-    LOG_LEVEL: "silent", LOG_DIR: undefined,
-    METRICS_AUTH: undefined,
-  },
-}));
+mock.module("../../config", () => ({ config: mockDaemonConfig() }));
 
 mock.module("../statekeeper", () => ({
   getNodeId: async () => "test-node-uuid",

@@ -3,7 +3,7 @@
 	"compilerOptions": {
 		"allowImportingTsExtensions": true,
 		"allowJs": true,
-		"checkJs": true,
+		"checkJs": false,
 		"esModuleInterop": true,
 		"forceConsistentCasingInFileNames": true,
 		"resolveJsonModule": true,
@@ -14,9 +14,7 @@
 		"types": ["bun"]
 	},
 	"exclude": [
-		"src/lib/assets/code-examples/**/*.js",
-		// Imports the adapter's build output, which is absent before a build and minified after one
-		"src/server-entry.ts"
+		"src/lib/assets/code-examples/**/*.js"
 	]
 	// Path aliases are handled by https://svelte.dev/docs/kit/configuration#alias
 	// except $lib which is handled by https://svelte.dev/docs/kit/configuration#files

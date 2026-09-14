@@ -124,7 +124,7 @@ describe("xinity-ai-daemon", () => {
       port: nodePort,
       driver: "ollama",
     }).returning();
-    createdInstallationIds.push(installation.id);
+    createdInstallationIds.push(installation!.id);
 
     const proc = await startDaemon({
       stateDir,
@@ -133,7 +133,7 @@ describe("xinity-ai-daemon", () => {
     });
     runningDaemons.push(proc);
 
-    await waitForInstallationState(installation.id, 15_000);
+    await waitForInstallationState(installation!.id, 15_000);
     expect(mock.calls.pull.length).toBeGreaterThan(0);
   });
 
@@ -222,7 +222,7 @@ describe("xinity-ai-daemon", () => {
       port: nodePort,
       driver: "ollama",
     }).returning();
-    createdInstallationIds.push(installation.id);
+    createdInstallationIds.push(installation!.id);
 
     const proc = await startDaemon({
       stateDir,
@@ -235,7 +235,7 @@ describe("xinity-ai-daemon", () => {
       () => mock.calls.delete.some(call => call.model === removeModel),
       10_000
     );
-    await waitForInstallationState(installation.id, 15_000);
+    await waitForInstallationState(installation!.id, 15_000);
     expect(mock.calls.pull.some(call => call.model === addModelTag)).toBe(true);
   });
 });

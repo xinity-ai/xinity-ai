@@ -691,7 +691,6 @@
             port = lib.mkDefault cfg.dashboard.port;
             mcpEnabled = lib.mkDefault cfg.dashboard.mcpEnabled;
             licenseKey = lib.mkDefault cfg.dashboard.licenseKey;
-            betterAuthUrl = lib.mkDefault publicDashboardUrl;  # Public URL for auth redirects
             origin = lib.mkDefault publicDashboardUrl;
             reverseProxy.ipHeader = lib.mkDefault "x-forwarded-for";
             reverseProxy.xffDepth = lib.mkDefault 1;

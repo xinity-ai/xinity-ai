@@ -1,37 +1,30 @@
 /**
- * The one place that knows how each stack layer is edited: which keys are
- * hidden or marked for review, and where the result is stored. `stack init`,
- * `stack edit`, and the lazy editors inside `stack up` all go through these.
+ * The one place that knows how each stack layer is edited: which keys another
+ * layer owns, and where the result is stored. `stack init`, `stack edit`, and
+ * the lazy editors inside `stack up` all go through these.
  */
-import type { z } from "zod";
-import { type Component, ENV_SCHEMAS } from "./component-meta.ts";
-import { menuEditEnv, flattenBundle } from "./env-prompt.ts";
+import { checkConfig } from "common-env";
+import { attentionKeysFor, type Component, COMPONENT_CONFIGS } from "./component-meta.ts";
+import { componentFields, menuEditEnv, flattenBundle } from "./env-prompt.ts";
 import {
   type StackDefinition, type FleetDefinition,
-  STACK_SHARED_SCHEMA, STACK_SHARED_KEYS,
-  applySharedResult, diffFromLayer,
+  STACK_SHARED_KEYS, sharedFields,
+  applySharedResult, diffFromLayer, sharedLayerProblems,
   componentLayerBase, fleetLayerBase, getHost, saveStack,
 } from "./stack.ts";
 
-// Host-local defaults that are almost always wrong for a multi-host stack;
-// marked in the editors so they get looked at instead of skipped.
-const STACK_ATTENTION_KEYS: Partial<Record<Component, string[]>> = {
-  gateway: ["HOST"],
-  dashboard: ["ORIGIN", "GATEWAY_URL"],
-};
-
 export async function menuEditLayer(opts: {
-  schema: z.ZodObject<any>;
+  component: Component;
   inherited: Record<string, string>;
   own: Record<string, string>;
-  attentionKeys?: Set<string>;
   hiddenKeys?: Set<string>;
   message?: string;
 }): Promise<Record<string, string> | null> {
-  const result = await menuEditEnv(opts.schema, { ...opts.inherited, ...opts.own }, {
-    attentionKeys: opts.attentionKeys,
+  const result = await menuEditEnv(componentFields(opts.component), { ...opts.inherited, ...opts.own }, {
+    attentionKeys: attentionKeysFor(opts.component),
     hiddenKeys: opts.hiddenKeys,
     message: opts.message,
+    validate: (values) => checkConfig(COMPONENT_CONFIGS[opts.component], { env: values }),
   });
   if (result === null) {
     return null;
@@ -41,8 +34,9 @@ export async function menuEditLayer(opts: {
 
 /** Returns false when the user cancelled; nothing is stored then. */
 export async function editSharedLayer(stack: StackDefinition, message = "Shared stack settings"): Promise<boolean> {
-  const result = await menuEditEnv(STACK_SHARED_SCHEMA, { ...stack.env, ...stack.secrets }, {
+  const result = await menuEditEnv(sharedFields(), { ...stack.env, ...stack.secrets }, {
     message,
+    validate: (values) => sharedLayerProblems(stack, values),
   });
   if (result === null) {
     return false;
@@ -57,10 +51,9 @@ export async function editComponentLayer(
   message = `${component} settings (stack-wide)`,
 ): Promise<boolean> {
   const overrides = await menuEditLayer({
-    schema: ENV_SCHEMAS[component],
+    component,
     inherited: componentLayerBase(stack, component),
     own: stack.componentEnv[component] ?? {},
-    attentionKeys: new Set(STACK_ATTENTION_KEYS[component] ?? []),
     hiddenKeys: STACK_SHARED_KEYS,
     message,
   });
@@ -77,7 +70,7 @@ export async function editFleetLayer(
   message = `Daemon settings for fleet "${fleet.name}"`,
 ): Promise<boolean> {
   const overrides = await menuEditLayer({
-    schema: ENV_SCHEMAS.daemon,
+    component: "daemon",
     inherited: fleetLayerBase(stack),
     own: fleet.envOverrides ?? {},
     hiddenKeys: STACK_SHARED_KEYS,
@@ -98,7 +91,7 @@ export async function editHostLayer(
 ): Promise<Record<string, string> | null> {
   const host = getHost(stack, address);
   const overrides = await menuEditLayer({
-    schema: ENV_SCHEMAS[component],
+    component,
     inherited,
     own: host?.envOverrides ?? {},
     hiddenKeys: STACK_SHARED_KEYS,

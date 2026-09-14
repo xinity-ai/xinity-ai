@@ -1,5 +1,6 @@
 import { mock } from "bun:test";
-import { dashboardEnvSchema } from "../src/lib/server/env-schema";
+import { resolveConfig } from "common-env";
+import { dashboardConfig, type DashboardConfig } from "../src/lib/server/config-schema";
 
 mock.module("$app/environment", () => ({
   building: false,
@@ -7,22 +8,18 @@ mock.module("$app/environment", () => ({
   browser: false,
 }));
 
-/**
- * Bun binds the first registration for a specifier, so cross-cutting mocks live
- * here. Per-file ones leave some suites mutating an object the code never sees.
- * Parsed from the real schema because logging.ts reads fields at import time.
- */
-const serverEnv: Record<string, unknown> = dashboardEnvSchema.parse({
-  DB_CONNECTION_URL: "postgresql://test:test@localhost:5432/test",
-  NODE_ENV: "test",
-  BETTER_AUTH_SECRET: "test-better-auth-secret",
-  METRICS_AUTH: "test:test",
-});
+/** Mutable on purpose: suites that need a different value assign to it in a beforeEach. */
+const config: DashboardConfig = resolveConfig<DashboardConfig>(dashboardConfig, {
+  env: {
+    DB_CONNECTION_URL: "postgresql://test:test@localhost:5432/test",
+    NODE_ENV: "test",
+    BETTER_AUTH_SECRET: "test-better-auth-secret",
+    METRICS_AUTH: "test:test",
+    MULTI_TENANT_MODE: "true",
+  },
+}).value;
 
-mock.module("$lib/server/serverenv", () => ({
-  serverEnv,
-  isInstanceAdmin: () => false,
-}));
+mock.module("$lib/server/config", () => ({ config }));
 
 /** Only the barrel. license/license.test.ts exercises the deep path, which this leaves untouched. */
 const licensedFeatures: string[] = [];

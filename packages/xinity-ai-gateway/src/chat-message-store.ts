@@ -2,8 +2,8 @@
 import { apiResponseMessageT, chatMessageT, inArray, inferenceCallMessageT, sql, type ApiCallInputMessage } from "common-db";
 import { jsonDigest } from "common-env";
 import { getDB } from "./db";
+import { config } from "./config";
 
-const DIGEST_CACHE_MAX_ENTRIES = 5_000;
 
 type Database = ReturnType<typeof getDB>;
 /** Lets callers commit messages together with the rows referencing them. */
@@ -35,7 +35,7 @@ function createDigestCache(maxEntries: number) {
   };
 }
 
-const digestCache = createDigestCache(DIGEST_CACHE_MAX_ENTRIES);
+const digestCache = createDigestCache(config.cache.digestEntries);
 
 const cacheKey = (orgId: string, sha256: string) => `${orgId}:${sha256}`;
 

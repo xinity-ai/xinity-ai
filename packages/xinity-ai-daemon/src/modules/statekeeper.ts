@@ -1,6 +1,6 @@
-import { getTlsConfig, protocolFingerprint } from "common-env";
+import { protocolFingerprint } from "common-env";
 import { $ } from "bun";
-import { env } from "../env";
+import { config } from "../config";
 import { join } from "node:path";
 import { networkInterfaces } from "node:os";
 import { detectHardwareProfile, detectNodeName, type HardwareProfile } from "./hardware-detect";
@@ -24,7 +24,7 @@ export function getAuthToken() {
 /** Returns the machine name (MACHINE_NAME env or OS hostname). */
 export function getMachineName(): string {
   if (!cachedMachineName) {
-    cachedMachineName = detectNodeName(env.MACHINE_NAME);
+    cachedMachineName = detectNodeName(config.node.machineName);
   }
   return cachedMachineName;
 }
@@ -43,10 +43,10 @@ export async function getHardwareProfile(): Promise<HardwareProfile> {
 /** Ollama needs no configuration, so its driver is derived from a live probe rather than from env. */
 export async function getNodeDrivers(): Promise<string[]> {
   const drivers: string[] = [];
-  if (await detectOllamaVersion(env.OLLAMA_URL)) {
+  if (await detectOllamaVersion(config.ollamaUrl)) {
     drivers.push("ollama");
   }
-  if (env.VLLM_DOCKER_IMAGE || env.VLLM_PATH) {
+  if (config.vllm.dockerImage || config.vllm.path) {
     drivers.push("vllm");
   }
   return drivers;
@@ -103,14 +103,14 @@ async function detectOllamaVersion(endpoint: string): Promise<string | undefined
 }
 
 async function detectConfiguredVllmVersion(): Promise<string | undefined> {
-  const image = env.VLLM_DOCKER_IMAGE;
+  const image = config.vllm.dockerImage;
   if (image) {
     return detectVllmVersion("docker", [
       { label: "metadata", run: () => $`docker run --rm --entrypoint python3 ${image} -c ${VLLM_VERSION_FROM_METADATA}`.throws(false).quiet() },
-      { label: "cli", run: () => $`docker run --rm --gpus all --entrypoint ${env.VLLM_PATH ?? "vllm"} ${image} --version`.throws(false).quiet() },
+      { label: "cli", run: () => $`docker run --rm --gpus all --entrypoint ${config.vllm.path ?? "vllm"} ${image} --version`.throws(false).quiet() },
     ]);
   }
-  const vllmPath = env.VLLM_PATH;
+  const vllmPath = config.vllm.path;
   if (vllmPath) {
     const pythonBin = await resolvePythonForVllm(vllmPath);
     return detectVllmVersion("binary", [
@@ -124,7 +124,7 @@ async function detectConfiguredVllmVersion(): Promise<string | undefined> {
 /** Detects driver versions from configured endpoints/binaries. Best-effort: missing = empty. */
 export async function getNodeDriverVersions(): Promise<Record<string, string>> {
   const [ollama, vllm] = await Promise.all([
-    detectOllamaVersion(env.OLLAMA_URL),
+    detectOllamaVersion(config.ollamaUrl),
     detectConfiguredVllmVersion(),
   ]);
 
@@ -141,11 +141,11 @@ export async function getNodeDriverVersions(): Promise<Record<string, string>> {
 export async function getNodeDriverFeatures(): Promise<Record<string, string[]>> {
   const features: Record<string, string[]> = {};
   try {
-    if (env.VLLM_DOCKER_IMAGE || env.VLLM_PATH) {
-      const source: "docker" | "binary" = env.VLLM_DOCKER_IMAGE ? "docker" : "binary";
+    if (config.vllm.dockerImage || config.vllm.path) {
+      const source: "docker" | "binary" = config.vllm.dockerImage ? "docker" : "binary";
       features["vllm"] = await detectVllmFeatures(source, {
-        dockerImage: env.VLLM_DOCKER_IMAGE,
-        vllmPath: env.VLLM_PATH,
+        dockerImage: config.vllm.dockerImage,
+        vllmPath: config.vllm.path,
       });
     }
   } catch (err) {
@@ -157,7 +157,7 @@ export async function getNodeDriverFeatures(): Promise<Record<string, string[]>>
 function findHostIPv4Address(): string {
   const isMatchingExternalIPv4 = (iface: { family: string; cidr?: string | null; internal: boolean }) =>
     iface.family === 'IPv4' &&
-    (!iface.cidr || iface.cidr.startsWith(env.CIDR_PREFIX)) &&
+    (!iface.cidr || iface.cidr.startsWith(config.node.cidrPrefix)) &&
     !iface.internal;
 
   const match = Object.values(networkInterfaces())
@@ -168,7 +168,7 @@ function findHostIPv4Address(): string {
 
 /** Reads the persisted node id from STATE_DIR, or null if it has not been written yet. */
 export async function readNodeIdFile(): Promise<string | null> {
-  const idFile = Bun.file(join(env.STATE_DIR, "node_id"));
+  const idFile = Bun.file(join(config.node.stateDir, "node_id"));
   if (!(await idFile.exists())) {
     return null;
   }
@@ -177,7 +177,7 @@ export async function readNodeIdFile(): Promise<string | null> {
 }
 
 async function writeNodeIdFile(id: string): Promise<void> {
-  await Bun.file(join(env.STATE_DIR, "node_id")).write(id);
+  await Bun.file(join(config.node.stateDir, "node_id")).write(id);
 }
 
 async function collectRegistrationData(): Promise<NodeRegistration> {
@@ -186,9 +186,9 @@ async function collectRegistrationData(): Promise<NodeRegistration> {
     getNodeDriverVersions(),
     getNodeDriverFeatures(),
   ]);
-  const machineName = detectNodeName(env.MACHINE_NAME);
+  const machineName = detectNodeName(config.node.machineName);
   const host = findHostIPv4Address();
-  const port = env.PORT;
+  const port = config.server.port;
 
   let id = await readNodeIdFile();
   if (!id) {
@@ -206,7 +206,7 @@ async function collectRegistrationData(): Promise<NodeRegistration> {
     gpus: detectedGpus.map(g => ({ vendor: g.vendor, name: g.name, vramMb: g.vramMb })),
     driverVersions,
     driverFeatures,
-    tls: !!getTlsConfig(env),
+    tls: !!config.tls,
     estCapacity: detectedCapacityGb,
     machineName,
     authToken,

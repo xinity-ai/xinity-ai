@@ -9,7 +9,7 @@ import {
 import { syncOllamaInstallations$ } from "./model-installation/ollama";
 import { syncVllmInstallations$ } from "./model-installation/vllm";
 import { createWorkflowCoordinator } from "./sync-coordinator";
-import { env } from "../env";
+import { config } from "../config";
 import { rootLogger } from "../logger";
 import { groupInstallationsByDriver } from "./driver-grouping";
 import { updateRegistry } from "./model-registry";
@@ -67,7 +67,7 @@ function logInstallationsIfChanged(installations: SyncInstallation[]): void {
 
 export function dbSync() {
   return createWorkflowCoordinator({
-    periodMs: env.SYNC_INTERVAL_MS,
+    periodMs: config.tether.syncIntervalMs,
     run: sync,
     onError(err, trigger) {
       log.error({ err, trigger }, "Error during sync");

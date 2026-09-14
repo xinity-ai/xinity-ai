@@ -1,6 +1,6 @@
 import { promises as fsp, readdirSync, rmSync, statSync, type Dirent } from "node:fs";
 import * as path from "node:path";
-import { env } from "../../env";
+import { config } from "../../config";
 import { rootLogger } from "../../logger";
 import { resolveInstallationEntry } from "./catalog";
 
@@ -164,7 +164,7 @@ export async function ensureCacheSpace(input: {
   requiredBytes: number;
   reservedModel: string;
 }): Promise<{ evicted: { model: string; sizeBytes: number }[]; freeBefore: number; freeAfter: number }> {
-  const cacheDir = env.VLLM_HF_CACHE_DIR;
+  const cacheDir = config.vllm.hfCacheDir;
   const hubDir = path.join(cacheDir, "hub");
 
   const freeBefore = await getDiskFree(cacheDir);

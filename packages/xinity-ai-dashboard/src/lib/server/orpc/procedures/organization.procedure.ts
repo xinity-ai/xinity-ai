@@ -2,12 +2,12 @@ import { rootOs, withAuth, withOrganization, requirePermission, auditMiddleware 
 import { z } from "zod";
 import { auth } from "$lib/server/auth-server";
 import { rootLogger } from "$lib/server/logging";
-import { isInstanceAdmin, serverEnv } from "$lib/server/serverenv";
+import { config } from "$lib/server/config";
 import { getDB } from "$lib/server/db";
 import { notifyOrgMembers } from "$lib/server/notifications/notification.service";
 import { NotificationType } from "$lib/server/notifications/events";
 import { memberT, userT, organizationT, invitationT, sql } from "common-db";
-import { isRoleAvailable, RoleSchema } from "$lib/server/roles";
+import { isInstanceAdmin, isRoleAvailable, RoleSchema } from "$lib/server/roles";
 import { hasFeature } from "$lib/server/license";
 import { betterAuthErrorBody } from "$lib/server/better-auth-errors";
 import { findOrgName, findOrgDeleteBlockers, purgeSoftDeletedOrgDependents } from "$lib/server/lib/org-queries";
@@ -32,7 +32,7 @@ export const createOrganization = rootOs
   }))
   .handler(async ({ input, context, errors }) => {
     const rlog = log.child({ traceId: context.traceId });
-    if (!serverEnv.MULTI_TENANT_MODE && !isInstanceAdmin(context.session.user.email)) {
+    if (!config.auth.multiTenantMode && !isInstanceAdmin(context.session.user.email)) {
       throw errors.FORBIDDEN({ message: "Only instance admins can create organizations." });
     }
 
@@ -357,7 +357,7 @@ function dispatchMemberEventNotification(
       eventType: spec.eventType,
       role: spec.role,
       orgName: spec.orgName,
-      dashboardUrl: `${serverEnv.ORIGIN}/organizations/`,
+      dashboardUrl: `${config.origin}/organizations/`,
     },
   }).catch((err: unknown) => rlog.error({ err }, `Failed to send member ${eventLabel} notification`));
 }

@@ -16,7 +16,7 @@ import {
   type FailedRequestContext,
 } from "../util";
 import { backendPostForm, createIdleTimeout, type IdleTimeout } from "../backend-fetch";
-import { env } from "../../env";
+import { config } from "../../config";
 import { BackendTranscriptionChunkSchema, BackendUsageSchema } from "../backend-schemas";
 import { recordTimeToFirstToken } from "../../metrics";
 import { rootLogger } from "../../logger";
@@ -167,7 +167,7 @@ export async function handleTranscription(req: Request): Promise<Response> {
 
     // `as FormData` bridges the global vs undici FormData type mismatch.
     const idle = wantsStream ? createIdleTimeout() : undefined;
-    const timeoutSignal = idle?.signal ?? AbortSignal.timeout(env.BACKEND_TIMEOUT_MS);
+    const timeoutSignal = idle?.signal ?? AbortSignal.timeout(config.inference.backendTimeoutMs);
     const signal = AbortSignal.any([req.signal, timeoutSignal]);
     const backendResponse = await backendPostForm(modelInfo, "/v1/audio/transcriptions", form as FormData, signal);
     if (!backendResponse.ok) {

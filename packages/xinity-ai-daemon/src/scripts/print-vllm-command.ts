@@ -82,7 +82,7 @@ if (state.backend === "docker" && !state.dockerImage) {
   die("state.dockerImage is required for backend=docker.");
 }
 
-// env.ts validates at import time; seed placeholders so the daemon modules
+// config.ts validates at import time; seed placeholders so the daemon modules
 // can be imported without a running tether.
 process.env.TETHER_URL ??= "http://placeholder:4020";
 process.env.TETHER_SECRET ??= "placeholder";

@@ -1,30 +1,8 @@
 import { describe, test, expect, mock } from "bun:test";
+import { mockDaemonConfig } from "../mock-config";
 import { classifyGpu } from "xinity-infoserver";
 
-mock.module("../env", () => ({ env: {
-  PORT: 4010,
-  HOST: "0.0.0.0",
-  OLLAMA_URL: "http://localhost:11434",
-  TETHER_URL: "http://localhost:4020",
-  TETHER_SECRET: "test",
-  STATE_DIR: "/tmp/test-state",
-  CIDR_PREFIX: "",
-  SYNC_INTERVAL_MS: 60_000,
-  INFOSERVER_URL: "http://localhost:19090",
-  INFOSERVER_CACHE_TTL_MS: 30_000,
-  METRICS_SAMPLE_INTERVAL_MS: 20_000,
-  VLLM_BACKEND: "systemd",
-  VLLM_ENV_DIR: "/etc/vllm",
-  VLLM_TEMPLATE_UNIT_PATH: "/etc/systemd/system/vllm-driver@.service",
-  VLLM_PATH: undefined,
-  VLLM_DOCKER_IMAGE: undefined,
-  VLLM_HF_CACHE_DIR: "/var/lib/vllm/hf-cache",
-  VLLM_TRITON_CACHE_DIR: "/var/lib/vllm/triton-cache",
-  VLLM_HEALTH_TIMEOUT_MS: 3_600_000,
-  VLLM_HEALTH_POLL_INTERVAL_MS: 5_000,
-  LOG_LEVEL: "silent",
-  LOG_DIR: undefined,
-}}));
+mock.module("../config", () => ({ config: mockDaemonConfig() }));
 
 const {
   parseNvidiaMetricsOutput,

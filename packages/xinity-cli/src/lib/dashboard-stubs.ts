@@ -27,11 +27,6 @@ const dummyLogger: Record<string, unknown> = {
 // ── Server module stubs ──────────────────────────────────────────────────
 
 export const serverStubs: Record<string, Record<string, unknown>> = {
-  "$lib/server/serverenv": {
-    serverEnv: {},
-    getDB: noop,
-    isInstanceAdmin: () => false,
-  },
   "$lib/server/logging": {
     rootLogger: dummyLogger,
   },
@@ -46,6 +41,7 @@ export const serverStubs: Record<string, Record<string, unknown>> = {
     roles: {},
     RoleSchema: z.string(),
     isRoleAvailable: () => true,
+    isInstanceAdmin: () => false,
   },
   "$lib/server/email": {
     sendEmail: asyncNoop,
@@ -140,6 +136,7 @@ const sourceOverrides: Record<string, string> = {
     export const roles = {};
     export const RoleSchema = z.string();
     export const isRoleAvailable = () => true;
+    export const isInstanceAdmin = () => false;
   `,
 };
 

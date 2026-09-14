@@ -1,5 +1,5 @@
 import { $ } from "bun";
-import { env } from "../../env";
+import { config as daemonConfig } from "../../config";
 // @ts-expect-error Bun text import
 import templateUnit from "../../assets/vllm-driver@.service" with { type: "text" };
 import { rootLogger } from "../../logger";
@@ -68,8 +68,8 @@ export function buildSystemdEnvFile(config: VllmInstanceConfig): string {
     `VLLM_SERVED_MODEL_NAME=${config.model}`,
     `VLLM_KV_CACHE_BYTES=${config.kvCacheBytes}`,
   ];
-  if (env.VLLM_PATH) {
-    lines.push(`VLLM_BINARY_PATH=${env.VLLM_PATH}`);
+  if (daemonConfig.vllm.path) {
+    lines.push(`VLLM_BINARY_PATH=${daemonConfig.vllm.path}`);
   }
   if (config.trustRemoteCode) {
     lines.push(`VLLM_TRUST_REMOTE_CODE=true`);
@@ -88,8 +88,8 @@ export function buildSystemdEnvFile(config: VllmInstanceConfig): string {
   if (audioFileSize != null) {
     lines.push(`VLLM_MAX_AUDIO_CLIP_FILESIZE_MB=${audioFileSize}`);
   }
-  if (env.VLLM_HF_TOKEN) {
-    lines.push(`HF_TOKEN=${env.VLLM_HF_TOKEN}`);
+  if (daemonConfig.vllm.hfToken) {
+    lines.push(`HF_TOKEN=${daemonConfig.vllm.hfToken}`);
   }
   return lines.join("\n") + "\n";
 }
@@ -109,7 +109,7 @@ function appendVllmCommonArgs(args: string[], config: VllmInstanceConfig): void 
 
 // Mirror of the ExecStart logic in src/assets/vllm-driver@.service; keep in sync.
 export function buildSystemdServeArgv(config: VllmInstanceConfig): string[] {
-  const binary = env.VLLM_PATH || "/usr/bin/vllm";
+  const binary = daemonConfig.vllm.path || "/usr/bin/vllm";
   const argv = [binary, "serve", config.model,
     "--host", "127.0.0.1",
     "--port", String(config.port),
@@ -143,8 +143,8 @@ export function createSystemdVllmOps(): VllmOps {
     },
 
     async start(id, config) {
-      await $`mkdir -p ${env.VLLM_ENV_DIR}`;
-      const envPath = `${env.VLLM_ENV_DIR}/${id}.env`;
+      await $`mkdir -p ${daemonConfig.vllm.envDir}`;
+      const envPath = `${daemonConfig.vllm.envDir}/${id}.env`;
       const envContent = buildSystemdEnvFile(config);
       log.info(
         { id, envPath, config },
@@ -157,7 +157,7 @@ export function createSystemdVllmOps(): VllmOps {
 
     async stop(id) {
       await $`systemctl disable --now ${systemdUnitFor(id)}`.nothrow();
-      await $`rm -f ${env.VLLM_ENV_DIR}/${id}.env`;
+      await $`rm -f ${daemonConfig.vllm.envDir}/${id}.env`;
     },
 
     checkHealth,
@@ -188,7 +188,7 @@ export function createSystemdVllmOps(): VllmOps {
     },
 
     async ensureSetup() {
-      const targetPath = env.VLLM_TEMPLATE_UNIT_PATH;
+      const targetPath = daemonConfig.vllm.templateUnitPath;
       const existing = await Bun.file(targetPath).text().catch(() => null);
       if (existing != null) {
         log.debug({ targetPath }, "vLLM systemd template already present, skipping");
@@ -201,8 +201,8 @@ export function createSystemdVllmOps(): VllmOps {
       // Ensure cache and env directories exist with correct ownership.
       // The vllm-driver@ template runs as User=vllm with
       // ReadWritePaths=/var/lib/vllm, so these must be pre-created.
-      await $`mkdir -p ${env.VLLM_HF_CACHE_DIR} ${env.VLLM_TRITON_CACHE_DIR} ${env.VLLM_ENV_DIR}`;
-      await $`chown -R vllm:vllm ${env.VLLM_HF_CACHE_DIR} ${env.VLLM_TRITON_CACHE_DIR}`.nothrow();
+      await $`mkdir -p ${daemonConfig.vllm.hfCacheDir} ${daemonConfig.vllm.tritonCacheDir} ${daemonConfig.vllm.envDir}`;
+      await $`chown -R vllm:vllm ${daemonConfig.vllm.hfCacheDir} ${daemonConfig.vllm.tritonCacheDir}`.nothrow();
     },
   };
 }
@@ -229,7 +229,7 @@ export function buildDockerRunArgs(
   config: VllmInstanceConfig,
   mode: "daemon" | "preview" = "daemon",
 ): string[] {
-  const dockerImage = env.VLLM_DOCKER_IMAGE;
+  const dockerImage = daemonConfig.vllm.dockerImage;
   if (!dockerImage) {
     throw new Error("VLLM_DOCKER_IMAGE must be set to build a docker run command");
   }
@@ -253,10 +253,10 @@ export function buildDockerRunArgs(
     ...(audioFileSize != null
       ? ["-e", `VLLM_MAX_AUDIO_CLIP_FILESIZE_MB=${audioFileSize}`]
       : []),
-    "-v", `${env.VLLM_HF_CACHE_DIR}:/data/hf-cache`,
-    "-v", `${env.VLLM_TRITON_CACHE_DIR}:/data/triton-cache`,
+    "-v", `${daemonConfig.vllm.hfCacheDir}:/data/hf-cache`,
+    "-v", `${daemonConfig.vllm.tritonCacheDir}:/data/triton-cache`,
     ...(mode === "daemon" ? ["--restart", "unless-stopped"] : []),
-    "--entrypoint", env.VLLM_PATH ?? "vllm",
+    "--entrypoint", daemonConfig.vllm.path ?? "vllm",
     dockerImage,
     "serve", config.model,
     "--host", "0.0.0.0",
@@ -331,8 +331,8 @@ export function createDockerVllmOps(): VllmOps {
     async ensureSetup() {
       // Ensure cache directories exist with open permissions so the
       // container process (which may run as any uid) can read/write.
-      await $`mkdir -p ${env.VLLM_HF_CACHE_DIR} ${env.VLLM_TRITON_CACHE_DIR}`;
-      await $`chmod 777 ${env.VLLM_HF_CACHE_DIR} ${env.VLLM_TRITON_CACHE_DIR}`;
+      await $`mkdir -p ${daemonConfig.vllm.hfCacheDir} ${daemonConfig.vllm.tritonCacheDir}`;
+      await $`chmod 777 ${daemonConfig.vllm.hfCacheDir} ${daemonConfig.vllm.tritonCacheDir}`;
     },
   };
 }

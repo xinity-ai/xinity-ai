@@ -135,7 +135,7 @@ The CLI uses a stub plugin (`src/lib/dashboard-stubs.ts`) that intercepts proble
 
 Modules that **are safe to load directly** (not needing a stub):
 - `$lib/server/info-client`: guarded by `building: true` from the `$app/environment` stub, so `createInfoserverClient()` is never called
-- Any module whose only server deps are already stubbed (`serverenv`, `logging`, `auth-server`, etc.)
+- Any module whose only server deps are already stubbed (`logging`, `auth-server`, `roles`, etc.)
 
 ### When to add a new stub
 

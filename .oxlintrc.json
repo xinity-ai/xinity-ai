@@ -45,7 +45,12 @@
     "no-new": "error",
     "preserve-caught-error": "error",
     "import/no-duplicates": "error",
-    "import/no-mutable-exports": "error"
+    "import/no-mutable-exports": "error",
+    "no-restricted-properties": [
+      "error",
+      { "object": "process", "property": "env", "message": "Read configuration through the grouped declaration." },
+      { "object": "Bun", "property": "env", "message": "Read configuration through the grouped declaration." }
+    ]
   },
   // Rendered to users as text, never executed.
   "ignorePatterns": ["**/assets/code-examples/**/*.js"],
@@ -64,6 +69,27 @@
       "rules": {
         "typescript/consistent-type-definitions": "off"
       }
+    },
+    {
+      // A path belongs here only if it cannot reach a config declaration, or is what builds one.
+      "files": [
+        // individual exhemptions
+        "packages/common-env/src/config/resolve.ts",
+        "packages/common-env/src/config/activation.ts",
+        "packages/xinity-ai-dashboard/src/server-entry.ts",
+        "packages/xinity-ai-dashboard/src/lib/orpc/orpc-client.ts",
+        // The cli package doesnt have a config schema to follow
+        "packages/xinity-cli/**",
+        // generic cases in which process.env may be used otherwise
+        "**/*.config.ts",
+        "**/scripts/**",
+        "**/tests/**",
+        "**/e2e/**",
+        "tests/**",
+        "**/code-examples/**",
+        "**/docs/**/+page.svelte"
+      ],
+      "rules": { "no-restricted-properties": "off" }
     },
     {
       "files": ["**/*.svelte"],

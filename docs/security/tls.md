@@ -48,7 +48,7 @@ This creates:
 
 ### Server TLS (any service)
 
-These env vars are shared across daemon, gateway, and tether. When both are set, the service serves HTTPS.
+These env vars are shared across every service. When both are set, the service serves HTTPS. Setting only one is a configuration error and the service refuses to start rather than fall back to plaintext.
 
 | Variable | Description |
 |----------|-------------|
@@ -113,6 +113,18 @@ services.xinity-tether = {
   tlsKeyFile = "/run/secrets/xinity/tether-key.pem";
 };
 ```
+
+**Gateway and dashboard** take the same pair:
+
+```nix
+services.xinity-ai-dashboard = {
+  enable = true;
+  tlsCertFile = "/run/secrets/xinity/dashboard.pem";
+  tlsKeyFile = "/run/secrets/xinity/dashboard-key.pem";
+};
+```
+
+Neither needs it when something terminates TLS in front, which is what the `allinone` module does: it runs Caddy with ACME and reaches both over loopback. Set these only when you serve them directly.
 
 With the `allinone` module, set `services.xinity-ai.tether.tlsCertFile` and `tlsKeyFile` instead. The bundled local daemon then dials the tether by domain name rather than loopback, since one certificate cannot be valid for both `127.0.0.1` and a public name.
 

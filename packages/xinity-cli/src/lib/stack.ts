@@ -12,10 +12,10 @@ import { join } from "node:path";
 import { loadPrivateJson, savePrivateJson } from "./config.ts";
 import { configDir } from "./platform.ts";
 import { z } from "zod";
-import { secret, s3EnvSchema } from "common-env";
 import { version as cliVersion } from "../../../../package.json";
-import { type Component, getAutoDefaults } from "./component-meta.ts";
-import { analyzeEnvSchema } from "./env-prompt.ts";
+import { type Component, COMPONENTS, COMPONENT_CONFIGS, getAutoDefaults } from "./component-meta.ts";
+import { componentFields } from "./env-prompt.ts";
+import { checkConfig, type ConfigProblem, type EnvField } from "common-env";
 import { log } from "./clack.ts";
 import { dim } from "picocolors";
 import { deleteStackState } from "./stack-state.ts";
@@ -66,26 +66,90 @@ export function hostLabel(host: StackHost): string {
   return host.alias ? `${host.alias} (${host.address})` : host.address;
 }
 
-/** Shared infra values collected at `stack init`; everything else lives in component/fleet layers. */
-export const STACK_SHARED_SCHEMA = z.object({
-  DB_CONNECTION_URL: z.url().describe("PostgreSQL connection string shared by all components").meta(secret()),
-  REDIS_URL: z.url().describe("Redis connection URL shared by all components").meta(secret()),
-  INFOSERVER_URL: z.url().optional().describe("Infoserver URL (auto-derived from the infoserver host address if left empty)"),
-  TETHER_URL: z.url().optional().describe("Tether URL (auto-derived from the tether host address if left empty)"),
-  TETHER_SECRET: z.string().min(1).describe("Shared secret for tether/daemon authentication").meta(secret()),
-  METRICS_AUTH: z.string().describe("Basic auth for every component's /metrics endpoint (user:pass, comma-separated for multiple)").meta(secret()),
-  HF_TOKEN: z.string().optional().describe("Hugging Face token for gated model downloads").meta(secret()),
-}).extend(s3EnvSchema.shape);
+// Not derivable: REDIS_URL is gateway-only and VLLM_HF_TOKEN daemon-only, yet both are set once.
+const SHARED_KEYS = [
+  "DB_CONNECTION_URL",
+  "REDIS_URL",
+  "INFOSERVER_URL",
+  "TETHER_URL",
+  "TETHER_SECRET",
+  "METRICS_AUTH",
+  "VLLM_HF_TOKEN",
+  "S3_ENDPOINT",
+  "S3_ACCESS_KEY_ID",
+  "S3_SECRET_ACCESS_KEY",
+  "S3_BUCKET",
+  "S3_REGION",
+] as const;
+
+const DERIVED_FROM_HOST_ADDRESSES: ReadonlySet<string> = new Set(["INFOSERVER_URL", "TETHER_URL"]);
+
+// Worth having on every deployment, so it is asked for even when no component here requires it.
+const REQUIRED_IN_EVERY_STACK: ReadonlySet<string> = new Set(["METRICS_AUTH"]);
 
 /** Owned by the shared layer; component/fleet/host editors must not offer them. */
-export const STACK_SHARED_KEYS: Set<string> = new Set(Object.keys(STACK_SHARED_SCHEMA.shape));
+export const STACK_SHARED_KEYS: Set<string> = new Set(SHARED_KEYS);
+
+/** Everything but requiredness is taken from one declarer, so the rest has to agree. */
+function agreedShape(field: EnvField): string {
+  return JSON.stringify([field.description, field.isSecret, field.isBoolean, field.enumValues, field.defaultValue]);
+}
+
+/** The shared keys as their components declare them, so nothing restates their descriptions. */
+export function sharedFields(): EnvField[] {
+  const declared = COMPONENTS.flatMap((component) => componentFields(component));
+
+  return SHARED_KEYS.map((key) => {
+    const matches = declared.filter((field) => field.key === key);
+    const first = matches[0];
+    if (!first) {
+      throw new Error(`The stack offers ${key}, which no component declares`);
+    }
+    if (matches.some((field) => agreedShape(field) !== agreedShape(first))) {
+      throw new Error(`Components declare ${key} differently, so the stack cannot offer one of them`);
+    }
+    const wanted = REQUIRED_IN_EVERY_STACK.has(key) || matches.some((field) => field.isRequiredBySchema);
+    return { ...first, isRequiredBySchema: wanted && !DERIVED_FROM_HOST_ADDRESSES.has(key) };
+  });
+}
+
+export function sharedLayerProblems(
+  stack: StackDefinition,
+  shared: Record<string, string | undefined>,
+): ConfigProblem[] {
+  const problems: ConfigProblem[] = [];
+  const seen = new Set<string>();
+
+  for (const component of COMPONENTS) {
+    const env = {
+      ...getAutoDefaults(component),
+      ...stack.derivedEnv,
+      ...shared,
+      ...stack.componentEnv[component],
+    };
+    for (const problem of checkConfig(COMPONENT_CONFIGS[component], { env })) {
+      const keys = problem.fields.map((field) => field.envKey);
+      // Anything else belongs to the layer that owns the key, whose own editor checks it.
+      if (!keys.some((key) => STACK_SHARED_KEYS.has(key))) continue;
+      // Absent by design while editing: the stack fills these in from host addresses at deploy.
+      if (keys.some((key) => DERIVED_FROM_HOST_ADDRESSES.has(key))) continue;
+
+      const id = `${keys.join(",")}:${problem.message}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      problems.push(problem);
+    }
+  }
+
+  return problems;
+}
 
 /** Write a shared-settings editor result back, honoring deletions of optional keys. */
 export function applySharedResult(
   stack: StackDefinition,
   result: { config: Record<string, string>; secrets: Record<string, string> },
 ): void {
-  for (const field of analyzeEnvSchema(STACK_SHARED_SCHEMA)) {
+  for (const field of sharedFields()) {
     const bucket = field.isSecret ? stack.secrets : stack.env;
     const value = field.isSecret ? result.secrets[field.key] : result.config[field.key];
     if (value === undefined) {
@@ -142,7 +206,21 @@ export function loadStack(name: string): StackDefinition | null {
     log.message(`  ${dim("xinity stack rm <name> && xinity stack init <name>")}`);
     return null;
   }
-  return result.data as StackDefinition;
+  return migrateSharedKeys(result.data as StackDefinition);
+}
+
+/**
+ * HF_TOKEN was collected but declared by no component, so it was filtered out before any env
+ * file was written. Renaming it to the key the daemon reads makes an already-entered token
+ * take effect instead of being lost.
+ */
+function migrateSharedKeys(stack: StackDefinition): StackDefinition {
+  const stale = stack.secrets.HF_TOKEN;
+  if (stale !== undefined) {
+    stack.secrets.VLLM_HF_TOKEN ??= stale;
+    delete stack.secrets.HF_TOKEN;
+  }
+  return stack;
 }
 
 export function saveStack(stack: StackDefinition): void {

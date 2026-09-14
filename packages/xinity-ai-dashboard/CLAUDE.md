@@ -70,7 +70,7 @@ All server-only modules are in `src/lib/server/`:
 - `email.ts`, nodemailer + MJML (Svelte component templates in `src/lib/components/mailTemplates/`)
 - `logging.ts`, Pino logger (browser logs POST to `/log`)
 - `metrics.ts`, Prometheus via `common-env` metric primitives (exposed at `/metrics`)
-- `serverenv.ts`, parses `env-schema.ts`'s Zod schema into the typed `serverEnv`
+- `config.ts`, resolves `config-schema.ts`'s grouped declaration into the typed `config`
 
 ### Path Aliases
 
@@ -84,7 +84,7 @@ Configured in `svelte.config.js`:
 - oRPC procedures: define input with Zod, chain middleware (`withAuth`/`withOrganization`/`requirePermission`), implement handler
 - UI permission gating: check permissions client-side via `permissions.svelte.ts` before showing controls
 - `updateOptimistically()` in `src/lib/util.ts` for optimistic UI updates with server rollback
-- Environment config validated with Zod in `src/lib/server/env-schema.ts`, add new env vars there
+- Configuration is declared in groups in `src/lib/server/config-schema.ts` and read as `config.group.field`
 - Clipboard: use `copyToClipboard()` from `$lib/copy.ts` (handles errors + toast feedback)
 - Select inside Modal: pass `portalProps={{ disabled: true }}` to `Select.Content` so the dropdown renders inside the `<dialog>` top layer instead of behind it
 

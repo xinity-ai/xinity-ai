@@ -1,8 +1,8 @@
 import { createLogger } from "common-log";
-import { env } from "./env";
+import { config } from "./config";
 
 export const rootLogger = createLogger({
-  level: env.LOG_LEVEL,
+  level: config.log.level,
   service: "infoserver",
-  logDir: env.LOG_DIR,
+  logDir: config.log.dir,
 });

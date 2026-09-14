@@ -1,16 +1,9 @@
 import { describe, test, expect, beforeAll, afterAll, mock } from "bun:test";
+import { mockDaemonConfig } from "../../mock-config";
 
 let mockPort: number = 0;
 
-mock.module("../../env", () => ({ env: {
-  PORT: 4044,
-  HOST: "0.0.0.0",
-  STATE_DIR: "/tmp/test-state",
-  CIDR_PREFIX: "",
-  DB_CONNECTION_URL: "postgres://localhost/test",
-  INFOSERVER_URL: "http://localhost:19090",
-  LOG_LEVEL: "silent",
-}}));
+mock.module("../../config", () => ({ config: mockDaemonConfig({ STATE_DIR: "/tmp/test" }) }));
 
 mock.module("../model-registry", () => ({
   resolveModel: (model: string) => {

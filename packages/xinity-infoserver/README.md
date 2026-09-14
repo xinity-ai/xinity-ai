@@ -205,6 +205,55 @@ An included source has to use the same format as the file including it.
 
 Models from included sources are merged. Local models take precedence over remote includes with the same specifier. Recursive includes are supported with cycle detection.
 
+## Configuration
+
+<!-- [sync:config] - generated from the config declaration, do not edit -->
+
+### HTTP server
+
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `8090` | Listen port. |
+
+### Model catalog
+
+Where model files are read from, and how often they are re-read.
+
+| Variable | Default | Description |
+|---|---|---|
+| `MODEL_INFO_DIR` | (required) | Directory of model YAML files (*.yaml, *.yml) in the current format. |
+| `MODEL_LEGACY_DIR` | (unset) | Directory of model YAML files in the deprecated v1 format, served only on the v1 endpoints. Removed before 1.0.0, so migrate these entries to MODEL_INFO_DIR. Leave unset to serve the v1 endpoints as an empty catalog. |
+| `REFRESH_INTERVAL_MS` | `300000` | How often to re-read model files and re-fetch includes (ms). |
+| `MAX_INCLUDE_DEPTH` | `10` | Maximum recursion depth when resolving include URLs. |
+
+### Rate limiting
+
+| Variable | Default | Description |
+|---|---|---|
+| `RATE_LIMIT_ENABLED` | `true` | Apply per-client request ceilings. Disable only on a trusted network. |
+| `RATE_LIMIT_EXPORT_PER_MINUTE` | `60` | Full-catalog requests allowed per client per minute, spendable all at once. Every client fetches the whole catalog once per refresh, and processes behind one address share a bucket, so this has to clear several of them at once rather than just one. |
+| `RATE_LIMIT_API_PER_MINUTE` | `600` | Programmatic API requests allowed per client per minute, spendable all at once. |
+
+### Reverse proxy
+
+Only needed when something sits in front of this service.
+
+| Variable | Default | Description |
+|---|---|---|
+| `HTTP_IP_HEADER` | (unset) | Header the client IP is forwarded in (e.g. x-forwarded-for). Without it, requests all appear to come from the proxy. |
+| `HTTP_XFF_DEPTH` | `1` | Number of proxies in front. Anything further left in the header is client-supplied and forgeable. |
+
+### Logging
+
+| Variable | Default | Description |
+|---|---|---|
+| `LOG_LEVEL` | `debug` | Log level. One of `fatal`, `error`, `warn`, `info`, `debug`, `trace`. |
+| `LOG_DIR` | (unset) | Log file directory (enables file logging). |
+
+<!-- [/sync:config] -->
+
+Every variable supports the `_FILE` suffix convention (e.g. `DB_CONNECTION_URL_FILE`) for reading the value from a file.
+
 ## Self-hosting
 
 Most deployments use the public registry and don't need this section. Self-host when you need custom models, private model metadata, or air-gapped operation.

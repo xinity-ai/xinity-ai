@@ -1,4 +1,5 @@
 import { aiNodeT, modelInstallationT, modelInstallationStateT, preconfigureDB, sql } from "common-db";
+import type { InstallationStateReport, NodeRegistration } from "common-env";
 import { getAvailablePort } from "../test-helpers";
 import { ensureInfoServerRunning, infoServerUrl } from "../infoserver/infoserver-test-helpers";
 import { ensureSystemReady } from "../guard";
@@ -46,7 +47,7 @@ async function startMockTetherServer(): Promise<TetherMock> {
       const url = new URL(req.url);
 
       if (req.method === "POST" && url.pathname === "/api/v1/stream") {
-        const body = await req.json();
+        const body = await req.json() as NodeRegistration;
         const nodeId = body.nodeId as string;
 
         await db.insert(aiNodeT).values({
@@ -119,7 +120,7 @@ async function startMockTetherServer(): Promise<TetherMock> {
       }
 
       if (req.method === "POST" && url.pathname === "/api/v1/status") {
-        const body = await req.json();
+        const body = await req.json() as InstallationStateReport;
         for (const state of body.states) {
           await db.insert(modelInstallationStateT).values({
             id: state.installationId,
@@ -317,7 +318,7 @@ export async function startMockOllamaServer(): Promise<OllamaMock> {
       }
 
       if (req.method === "POST" && url.pathname === "/api/pull") {
-        const body = await req.json();
+        const body = await req.json() as { name: string };
         calls.pull.push({ model: body.name });
         installed.add(body.name);
 
@@ -341,7 +342,7 @@ export async function startMockOllamaServer(): Promise<OllamaMock> {
       }
 
       if (req.method === "DELETE" && url.pathname === "/api/delete") {
-        const body = await req.json();
+        const body = await req.json() as { name: string };
         calls.delete.push({ model: body.name });
         installed.delete(body.name);
         return Response.json({ status: "success" });

@@ -1,139 +1,117 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { z } from "zod";
-import { secret } from "common-env";
+import { analyzeConfig, configBool, configInt, defineConfig, defineGroup, env, secret } from "common-env";
 import {
-  analyzeEnvSchema, categorizeFields, diffEnv, planSecretFileRemoval,
+  categorizeFields, componentFields, diffEnv,
+  missingRequiredFields, planSecretFileRemoval,
   type EnvBundle, type EnvChange,
 } from "../../src/lib/env-prompt.ts";
 import { readEnvFile, serializeEnvFile, readSecretFiles } from "../../src/lib/env-file.ts";
 import { buildSecretsRemoveCommand } from "../../src/lib/service.ts";
 import { createTempDir, type TempDir } from "../helpers/temp-config.ts";
 import { FakeHost } from "../helpers/fake-host.ts";
+import { COMPONENTS, getAutoDefaults } from "../../src/lib/component-meta.ts";
 
 describe("env-prompt", () => {
-  describe("analyzeEnvSchema", () => {
-    test("detects required string fields", () => {
-      const schema = z.object({
-        HOST: z.string(),
-      });
-
-      const fields = analyzeEnvSchema(schema);
-      expect(fields).toHaveLength(1);
-      expect(fields[0]!.key).toBe("HOST");
-      expect(fields[0]!.isOptional).toBe(false);
-      expect(fields[0]!.hasDefault).toBe(false);
+  // The editor picks its input widget from these, and every leaf parses from a string, so the
+  // type has to come from what the leaf produces rather than what it accepts.
+  test("analyzeConfig reads a field's type through the string parsing", () => {
+    type Cfg = { server: { port: number; debug: boolean; level: "info" | "warn" } };
+    const declared = defineConfig<Cfg>({
+      server: defineGroup<Cfg["server"]>({
+        id: "server",
+        title: "Server",
+        fields: {
+          port: env("PORT", configInt().default(80)),
+          debug: env("DEBUG", configBool().default(false)),
+          level: env("LEVEL", z.enum(["info", "warn"]).default("info")),
+        },
+      }),
     });
 
-    test("detects optional fields", () => {
-      const schema = z.object({
-        DEBUG: z.string().optional(),
-      });
+    const byKey = Object.fromEntries(analyzeConfig(declared).map((f) => [f.key, f]));
+    expect(byKey.DEBUG!.isBoolean).toBe(true);
+    expect(byKey.PORT!.isBoolean).toBe(false);
+    expect(byKey.LEVEL!.enumValues).toEqual(["info", "warn"]);
+  });
 
-      const fields = analyzeEnvSchema(schema);
-      expect(fields[0]!.isOptional).toBe(true);
+  describe("field validation", () => {
+    const fields = analyzeConfig(defineConfig<{ origin: string; port: number }>({
+      origin: env("ORIGIN", z.url()),
+      port: env("PORT", configInt(z.int().max(255))),
+    }));
+    const check = (key: string, raw: string) => fields.find((f) => f.key === key)!.validate(raw);
+
+    test("refuses what the service would refuse at boot", () => {
+      expect(check("ORIGIN", "hello$world")).toBeTruthy();
+      expect(check("PORT", "300")).toBeTruthy();
+      // Number("0x10") is 16, so a numeric coercion would let it through.
+      expect(check("PORT", "0x10")).toBeTruthy();
     });
 
-    test("detects fields with defaults", () => {
-      const schema = z.object({
-        PORT: z.coerce.number().default(3000),
-      });
+    test("accepts what it would take", () => {
+      expect(check("ORIGIN", "https://x.example")).toBeUndefined();
+      expect(check("PORT", "80")).toBeUndefined();
+    });
+  });
 
-      const fields = analyzeEnvSchema(schema);
-      expect(fields[0]!.hasDefault).toBe(true);
-      expect(fields[0]!.defaultValue).toBe(3000);
-      // Listed as required in the JSON schema, but the default satisfies it.
-      expect(fields[0]!.isOptional).toBe(false);
-      expect(fields[0]!.isRequired).toBe(false);
+  describe("requiredness inside an optional group", () => {
+    const s3 = componentFields("gateway").filter((f) => f.group?.id === "s3");
+    const endpoint = s3.find((f) => f.key === "S3_ENDPOINT")!;
+
+    test("a member is not demanded while the group is switched off", () => {
+      expect(missingRequiredFields(s3, {})).toEqual([]);
     });
 
-    test("detects number fields", () => {
-      const schema = z.object({
-        PORT: z.coerce.number(),
-      });
-
-      const fields = analyzeEnvSchema(schema);
-      expect(fields[0]!.isNumber).toBe(true);
-      expect(fields[0]!.isBoolean).toBe(false);
+    test("but is demanded once something switched the group on", () => {
+      expect(missingRequiredFields(s3, { S3_ACCESS_KEY_ID: "AKIA" })).toContain(endpoint);
     });
-
-    test("detects boolean fields", () => {
-      const schema = z.object({
-        VERBOSE: z.boolean().default(false),
-      });
-
-      const fields = analyzeEnvSchema(schema);
-      expect(fields[0]!.isBoolean).toBe(true);
-      expect(fields[0]!.isNumber).toBe(false);
-    });
-
-    test("detects enum fields", () => {
-      const schema = z.object({
-        LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]),
-      });
-
-      const fields = analyzeEnvSchema(schema);
-      expect(fields[0]!.enumValues).toEqual(["debug", "info", "warn", "error"]);
-    });
-
-    test("detects secret fields via z.globalRegistry", () => {
-      const schema = z.object({
-        DB_PASSWORD: z.string().meta(secret()),
-      });
-
-      const fields = analyzeEnvSchema(schema);
-      expect(fields[0]!.isSecret).toBe(true);
-    });
-
-    test("includes description from .describe()", () => {
-      const schema = z.object({
-        HOST: z.string().describe("The server hostname"),
-      });
-
-      const fields = analyzeEnvSchema(schema);
-      expect(fields[0]!.description).toBe("The server hostname");
-    });
-
   });
 
   describe("categorizeFields", () => {
     test("separates config and secret fields", () => {
-      const schema = z.object({
-        HOST: z.string(),
-        PORT: z.coerce.number(),
-        DB_PASSWORD: z.string().meta(secret()),
-        API_KEY: z.string().meta(secret()),
-      });
-
-      const fields = analyzeEnvSchema(schema);
+      const fields = analyzeConfig(defineConfig<{ host: string; dbPassword: string }>({
+        host: env("HOST", z.string()),
+        dbPassword: env("DB_PASSWORD", z.string().meta(secret())),
+      }));
       const { configFields, secretFields } = categorizeFields(fields);
 
-      expect(configFields).toHaveLength(2);
-      expect(secretFields).toHaveLength(2);
-      expect(configFields.map((f) => f.key)).toEqual(["HOST", "PORT"]);
-      expect(secretFields.map((f) => f.key)).toEqual(["DB_PASSWORD", "API_KEY"]);
+      expect(configFields.map((f) => f.key)).toEqual(["HOST"]);
+      expect(secretFields.map((f) => f.key)).toEqual(["DB_PASSWORD"]);
     });
-
   });
 
   describe("isRequired", () => {
-    const fields = analyzeEnvSchema(z.object({
-      HOST: z.string(),
-      PORT: z.coerce.number().default(3000),
-      MAIL_URL: z.url().optional(),
+    const fields = analyzeConfig(defineConfig<{ host: string; port: number; mailUrl?: string }>({
+      host: env("HOST", z.string()),
+      port: env("PORT", configInt().default(3000)),
+      mailUrl: env("MAIL_URL", z.url().optional()),
     }));
     const field = (key: string) => fields.find((f) => f.key === key)!;
 
     test("a field without a value or a default is required", () => {
-      expect(field("HOST").isRequired).toBe(true);
+      expect(field("HOST").isRequiredBySchema).toBe(true);
     });
 
     test("a field with a default is not required, it falls back to it", () => {
-      expect(field("PORT").isRequired).toBe(false);
+      expect(field("PORT").isRequiredBySchema).toBe(false);
+      expect(field("PORT").defaultValue).toBe(3000);
     });
 
     test("an optional field is not required", () => {
-      expect(field("MAIL_URL").isRequired).toBe(false);
+      expect(field("MAIL_URL").isRequiredBySchema).toBe(false);
     });
+  });
+
+  test("no auto default restates a declared one, which would pin it onto every host", () => {
+    const restated = COMPONENTS.flatMap((component) => {
+      const byKey = new Map(componentFields(component).map((f) => [f.key, f]));
+      return Object.entries(getAutoDefaults(component))
+        .filter(([key, value]) => String(byKey.get(key)?.defaultValue) === value)
+        .map(([key]) => `${component}.${key}`);
+    });
+
+    expect(restated).toEqual([]);
   });
 
   describe("diffEnv", () => {
@@ -141,7 +119,6 @@ describe("env-prompt", () => {
 
     test("reports added, changed and removed keys", () => {
       const changes = diffEnv(
-        "gateway",
         bundle({ HOST: "0.0.0.0", PORT: "3000" }),
         bundle({ HOST: "127.0.0.1", LOG_LEVEL: "debug" }),
       );
@@ -151,16 +128,6 @@ describe("env-prompt", () => {
         { key: "LOG_LEVEL", kind: "added", isSecret: false, after: "debug" },
         { key: "PORT", kind: "removed", isSecret: false },
       ]);
-    });
-
-    test("a key the writer derives is never reported as removed", () => {
-      const changes = diffEnv(
-        "dashboard",
-        bundle({ ORIGIN: "https://xinity.test", HTTP_OVERRIDE_ORIGIN: "https://xinity.test" }),
-        bundle({ ORIGIN: "https://xinity.test" }),
-      );
-
-      expect(changes).toEqual([]);
     });
   });
 

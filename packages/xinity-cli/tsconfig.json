@@ -32,5 +32,5 @@
       "$lib/*": ["../xinity-ai-dashboard/src/lib/*"]
     }
   },
-  "include": ["src/**/*", "build.ts", "../xinity-ai-dashboard/src/app.d.ts"]
+  "include": ["src/**/*", "tests/**/*", "build.ts", "../xinity-ai-dashboard/src/app.d.ts"]
 }

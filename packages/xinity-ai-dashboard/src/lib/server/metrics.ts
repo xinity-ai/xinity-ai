@@ -6,9 +6,9 @@ import {
   serializeMetrics,
 } from "common-env";
 import { version } from "../../../../../package.json";
-import { serverEnv } from "$lib/server/serverenv";
+import { config } from "$lib/server/config";
 
-const metricsAuth = createMetricsAuth(serverEnv.METRICS_AUTH);
+const metricsAuth = createMetricsAuth(config.metrics.auth);
 
 export function isMetricsAuthorized(request: Request): boolean {
   return metricsAuth.isAuthorized(request.headers.get("authorization"));

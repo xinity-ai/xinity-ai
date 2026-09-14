@@ -10,7 +10,7 @@ import { svelteKitHandler } from "better-auth/svelte-kit";
 import { building } from "$app/environment";
 import { startDeploymentSyncService } from "$lib/server/lib/orchestration.mod";
 import { startNotificationScheduler } from "$lib/server/notifications/scheduler";
-import { serverEnv } from "$lib/server/serverenv";
+import { config } from "$lib/server/config";
 import { checkMigrationState, isMigrationOk } from "$lib/server/migration-check";
 import { loadDeploymentId } from "$lib/server/deployment-id";
 import { stampClientAddress } from "$lib/server/client-address";
@@ -114,14 +114,14 @@ export const handleError: HandleServerError = ({ error, event, status, message }
  * Start the deployment sync service when the server boots.
  * Gated by COMPUTE_MANAGEMENT_ENABLED; skip when running without local inference nodes.
  */
-if (isMigrationOk() && serverEnv.COMPUTE_MANAGEMENT_ENABLED) {
+if (isMigrationOk() && config.compute.managementEnabled) {
   void startDeploymentSyncService();
 }
 
 /**
  * Start the notification scheduler (deployment status, node health, capacity, weekly reports).
  */
-if (isMigrationOk() && serverEnv.NOTIFICATIONS_ENABLED) {
+if (isMigrationOk() && config.notificationsEnabled) {
   void startNotificationScheduler();
 }
 

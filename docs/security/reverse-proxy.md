@@ -27,6 +27,8 @@ The dashboard uses the client IP for audit log entries, session records, and aut
 | `HTTP_IP_HEADER` | Header containing the client IP | `x-forwarded-for` or `x-real-ip` |
 | `HTTP_XFF_DEPTH` | Trusted proxy hops (counted from the right of the header value) | `1` for a single proxy, `2` for two chained proxies |
 
+A third, `HTTP_TRUSTED_PROXIES`, is optional: listing addresses or CIDR ranges (`10.0.0.0/8`, or `10.0.0.4,10.0.0.5`) restricts the header to connections coming from them, and anything else is read from its socket address. Left unset, the header is read from whatever sends it, which is what you want when the proxy is the only route in.
+
 In `xinity configure dashboard`, these appear under advanced/expert settings.
 
 Only trust forwarded headers when a proxy you control is the sole path to the dashboard. `X-Forwarded-For` is client-settable: a dashboard reachable directly will believe whatever it is told.

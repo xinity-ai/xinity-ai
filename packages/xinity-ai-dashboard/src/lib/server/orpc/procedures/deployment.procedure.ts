@@ -14,7 +14,7 @@ import { foldDeploymentStatusRows } from "$lib/server/lib/deployment-status";
 import { findOrgName } from "$lib/server/lib/org-queries";
 import { notifyOrgMembers } from "$lib/server/notifications/notification.service";
 import { NotificationType } from "$lib/server/notifications/events";
-import { serverEnv } from "$lib/server/serverenv";
+import { config } from "$lib/server/config";
 const log = rootLogger.child({ name: "deployment.orpc" });
 
 const tags = ["Deployment"];
@@ -524,7 +524,7 @@ export const createDeployment = rootOs
           publicSpecifier: deployment.publicSpecifier,
           creatorName: context.session.user.name || context.session.user.email,
           orgName: orgName ?? "",
-          dashboardUrl: `${serverEnv.ORIGIN}/modelhub/`,
+          dashboardUrl: `${config.origin}/modelhub/`,
         },
       }).catch((err: unknown) => rlog.error({ err }, "Failed to send deployment created notification"));
       return deployment;

@@ -2,7 +2,7 @@ import type { Component } from "svelte";
 import { render } from 'svelte/server';
 import mjml from "mjml";
 import nodemailer from "nodemailer";
-import { serverEnv } from "./serverenv";
+import { config } from "./config";
 import { rootLogger } from "./logging";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- template props vary per call site
@@ -10,14 +10,15 @@ export type AnyComponent = Component<any>;
 
 const log = rootLogger.child({ name: "email" });
 
-const transporter = serverEnv.MAIL_URL
-  ? nodemailer.createTransport(serverEnv.MAIL_URL)
-  : null;
+const mailer = config.mail && {
+  transport: nodemailer.createTransport(config.mail.url),
+  from: config.mail.from,
+};
 
 /** Props every email template expects (appName, preferences link). Merge into per-template props. */
 export const commonEmailProps = {
-  appName: serverEnv.APP_NAME,
-  preferencesUrl: `${serverEnv.ORIGIN}/settings/notifications/`,
+  appName: config.appName,
+  preferencesUrl: `${config.origin}/settings/notifications/`,
 };
 
 export async function renderEmailTemplate<Props extends Record<string, unknown>>(
@@ -44,8 +45,8 @@ export async function sendEmail<Props extends Record<string, unknown>>({
   template: AnyComponent;
   props: Props;
 }) {
-  if (!transporter || !serverEnv.MAIL_FROM) {
-    log.warn({ to, subject, props }, "Email not sent: No transporter or from address");
+  if (!mailer) {
+    log.warn({ to, subject, props }, "Email not sent: outbound mail is not configured");
     return;
   }
 
@@ -56,8 +57,8 @@ export async function sendEmail<Props extends Record<string, unknown>>({
       log.warn({ errors }, "MJML rendering produced errors");
     }
 
-    const info = await transporter.sendMail({
-      from: serverEnv.MAIL_FROM,
+    const info = await mailer.transport.sendMail({
+      from: mailer.from,
       to,
       subject,
       html,

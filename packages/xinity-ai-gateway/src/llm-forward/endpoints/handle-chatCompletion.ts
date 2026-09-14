@@ -8,7 +8,7 @@ import { withEndpointGuards } from "../endpoint-guards";
 import { BackendChatChunkSchema } from "../backend-schemas";
 import type { ApiCallInputMessage } from "common-db";
 import { rootLogger } from "../../logger";
-import { env } from "../../env";
+import { config } from "../../config";
 import { processMessageImages, imageStore } from "../../image-store";
 import { callWillBeLogged } from "../usage";
 import { backendPostJson, createIdleTimeout } from "../backend-fetch";
@@ -237,7 +237,7 @@ export const handleChatCompletion = withEndpointGuards({
     };
 
     const idle = body.stream ? createIdleTimeout() : undefined;
-    const timeoutSignal = idle?.signal ?? AbortSignal.timeout(env.BACKEND_TIMEOUT_MS);
+    const timeoutSignal = idle?.signal ?? AbortSignal.timeout(config.inference.backendTimeoutMs);
     const signal = AbortSignal.any([req.signal, timeoutSignal]);
 
     const backendResponse = await backendPostJson(modelInfo, "/v1/chat/completions", fetchBody, signal);

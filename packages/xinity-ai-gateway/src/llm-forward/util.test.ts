@@ -1,7 +1,5 @@
-import { describe, test, expect, mock } from "bun:test";
-import { MOCK_GATEWAY_ENV } from "./mock-env";
+import { describe, test, expect } from "bun:test";
 
-mock.module("../env", () => ({ env: { ...MOCK_GATEWAY_ENV } }));
 
 const { classifyStreamError } = await import("./util");
 

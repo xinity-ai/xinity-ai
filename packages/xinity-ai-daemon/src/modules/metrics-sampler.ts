@@ -1,6 +1,6 @@
 import { $ } from "bun";
 import { classifyGpu } from "xinity-infoserver";
-import { env } from "../env";
+import { config } from "../config";
 import { rootLogger } from "../logger";
 import { getHardwareProfile } from "./statekeeper";
 
@@ -234,7 +234,7 @@ export function startMetricsSampler(): MetricsSampler {
     try {
       const now = Date.now();
       // Clamp dt so a suspended/stalled host doesn't integrate into an energy spike.
-      const dtMs = Math.min(now - lastSampleAt, env.METRICS_SAMPLE_INTERVAL_MS * 2);
+      const dtMs = Math.min(now - lastSampleAt, config.metrics.sampleIntervalMs * 2);
       lastSampleAt = now;
 
       const gpus = await sampleNvidiaMetrics();
@@ -256,7 +256,7 @@ export function startMetricsSampler(): MetricsSampler {
     const profile = await getHardwareProfile();
     const hasNvidia = profile.gpus.some((g) => g.vendor === "nvidia");
     if (hasNvidia) {
-      sampleTimer = setInterval(() => void sampleOnce(), env.METRICS_SAMPLE_INTERVAL_MS);
+      sampleTimer = setInterval(() => void sampleOnce(), config.metrics.sampleIntervalMs);
       void sampleOnce();
     } else if (profile.gpuCount > 0) {
       log.info("GPU telemetry not yet supported for this vendor; sampling deferred");

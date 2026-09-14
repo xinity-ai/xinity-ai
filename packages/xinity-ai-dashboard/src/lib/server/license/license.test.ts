@@ -16,7 +16,7 @@ mock.module("./public-key", () => ({
   PUBLIC_KEY_BASE64: testPublicKeyBase64,
 }));
 
-// serverEnv is mocked for all suites in tests/preload.ts. Each block sets what it needs.
+// config is mocked for all suites in tests/preload.ts. Each block sets what it needs.
 
 const deploymentIdMock = { id: null as string | null };
 const getDeploymentId = spyOn(deploymentId, "getDeploymentId").mockImplementation(() => deploymentIdMock.id);
@@ -130,10 +130,10 @@ describe("parseLicense", () => {
 describe("guard functions", () => {
   beforeEach(() => {
     resetLicenseCache();
-    // Reset the mocked serverEnv LICENSE_KEY before each test
-    const { serverEnv } = require("$lib/server/serverenv");
-    serverEnv.LICENSE_KEY = undefined;
-    serverEnv.ORIGIN = "https://dashboard.example.com";
+    // Reset the mocked license key before each test
+    const { config } = require("$lib/server/config");
+    config.licenseKey = undefined;
+    config.origin = "https://dashboard.example.com";
   });
 
   test("free tier: no key yields tier=free, maxVramGb=120, no features", () => {
@@ -145,8 +145,8 @@ describe("guard functions", () => {
   });
 
   test("valid key: returns correct tier, maxVramGb, features, licensee", () => {
-    const { serverEnv } = require("$lib/server/serverenv");
-    serverEnv.LICENSE_KEY = signLicense(validPayload({ maxVramGb: 500 }));
+    const { config } = require("$lib/server/config");
+    config.licenseKey = signLicense(validPayload({ maxVramGb: 500 }));
 
     expect(tierName()).toBe("enterprise-sm");
     expect(maxVramGb()).toBe(500);
@@ -159,8 +159,8 @@ describe("guard functions", () => {
   });
 
   test("startup key without enterprise features", () => {
-    const { serverEnv } = require("$lib/server/serverenv");
-    serverEnv.LICENSE_KEY = signLicense(validPayload({
+    const { config } = require("$lib/server/config");
+    config.licenseKey = signLicense(validPayload({
       tier: "startup",
       maxVramGb: 200,
       features: ["all-roles"],
@@ -174,8 +174,8 @@ describe("guard functions", () => {
   });
 
   test("expired beyond grace period falls back to free tier", () => {
-    const { serverEnv } = require("$lib/server/serverenv");
-    serverEnv.LICENSE_KEY = signLicense(validPayload({
+    const { config } = require("$lib/server/config");
+    config.licenseKey = signLicense(validPayload({
       expiresAt: Date.now() - 60 * MS_PER_DAY,
     }));
 
@@ -188,8 +188,8 @@ describe("guard functions", () => {
   });
 
   test("expired within grace period retains features", () => {
-    const { serverEnv } = require("$lib/server/serverenv");
-    serverEnv.LICENSE_KEY = signLicense(validPayload({
+    const { config } = require("$lib/server/config");
+    config.licenseKey = signLicense(validPayload({
       expiresAt: Date.now() - 10 * MS_PER_DAY,
     }));
 
@@ -201,8 +201,8 @@ describe("guard functions", () => {
   });
 
   test("maxVramGb -1 returns Infinity", () => {
-    const { serverEnv } = require("$lib/server/serverenv");
-    serverEnv.LICENSE_KEY = signLicense(validPayload({ maxVramGb: -1 }));
+    const { config } = require("$lib/server/config");
+    config.licenseKey = signLicense(validPayload({ maxVramGb: -1 }));
 
     expect(maxVramGb()).toBe(Infinity);
   });
@@ -215,14 +215,14 @@ describe("guard functions", () => {
 describe("origin mismatch", () => {
   beforeEach(() => {
     resetLicenseCache();
-    const { serverEnv } = require("$lib/server/serverenv");
-    serverEnv.LICENSE_KEY = undefined;
-    serverEnv.ORIGIN = "https://dashboard.example.com";
+    const { config } = require("$lib/server/config");
+    config.licenseKey = undefined;
+    config.origin = "https://dashboard.example.com";
   });
 
   test("no mismatch when origin matches", () => {
-    const { serverEnv } = require("$lib/server/serverenv");
-    serverEnv.LICENSE_KEY = signLicense(validPayload({
+    const { config } = require("$lib/server/config");
+    config.licenseKey = signLicense(validPayload({
       origins: ["https://dashboard.example.com"],
     }));
 
@@ -230,9 +230,9 @@ describe("origin mismatch", () => {
   });
 
   test("no mismatch when origin matches with trailing slash", () => {
-    const { serverEnv } = require("$lib/server/serverenv");
-    serverEnv.ORIGIN = "https://dashboard.example.com/";
-    serverEnv.LICENSE_KEY = signLicense(validPayload({
+    const { config } = require("$lib/server/config");
+    config.origin = "https://dashboard.example.com/";
+    config.licenseKey = signLicense(validPayload({
       origins: ["https://dashboard.example.com"],
     }));
 
@@ -240,8 +240,8 @@ describe("origin mismatch", () => {
   });
 
   test("no mismatch when any of multiple origins match", () => {
-    const { serverEnv } = require("$lib/server/serverenv");
-    serverEnv.LICENSE_KEY = signLicense(validPayload({
+    const { config } = require("$lib/server/config");
+    config.licenseKey = signLicense(validPayload({
       origins: ["https://other.example.com", "https://dashboard.example.com"],
     }));
 
@@ -249,8 +249,8 @@ describe("origin mismatch", () => {
   });
 
   test("mismatch when origin does not match any listed", () => {
-    const { serverEnv } = require("$lib/server/serverenv");
-    serverEnv.LICENSE_KEY = signLicense(validPayload({
+    const { config } = require("$lib/server/config");
+    config.licenseKey = signLicense(validPayload({
       origins: ["https://other.example.com"],
     }));
 
@@ -269,9 +269,9 @@ describe("origin mismatch", () => {
 describe("instance mismatch", () => {
   beforeEach(() => {
     resetLicenseCache();
-    const { serverEnv } = require("$lib/server/serverenv");
-    serverEnv.LICENSE_KEY = undefined;
-    serverEnv.ORIGIN = "https://dashboard.example.com";
+    const { config } = require("$lib/server/config");
+    config.licenseKey = undefined;
+    config.origin = "https://dashboard.example.com";
     deploymentIdMock.id = null;
   });
 
@@ -280,32 +280,32 @@ describe("instance mismatch", () => {
   const ID_B = "22222222-2222-4222-8222-222222222222";
 
   test("no mismatch when license has no instanceId claim (backwards compatible)", () => {
-    const { serverEnv } = require("$lib/server/serverenv");
-    serverEnv.LICENSE_KEY = signLicense(validPayload());
+    const { config } = require("$lib/server/config");
+    config.licenseKey = signLicense(validPayload());
     deploymentIdMock.id = ID_A;
 
     expect(hasInstanceMismatch()).toBe(false);
   });
 
   test("no mismatch when license instanceId equals local deployment ID", () => {
-    const { serverEnv } = require("$lib/server/serverenv");
-    serverEnv.LICENSE_KEY = signLicense(validPayload({ instanceId: ID_A }));
+    const { config } = require("$lib/server/config");
+    config.licenseKey = signLicense(validPayload({ instanceId: ID_A }));
     deploymentIdMock.id = ID_A;
 
     expect(hasInstanceMismatch()).toBe(false);
   });
 
   test("mismatch when license instanceId differs from local deployment ID", () => {
-    const { serverEnv } = require("$lib/server/serverenv");
-    serverEnv.LICENSE_KEY = signLicense(validPayload({ instanceId: ID_A }));
+    const { config } = require("$lib/server/config");
+    config.licenseKey = signLicense(validPayload({ instanceId: ID_A }));
     deploymentIdMock.id = ID_B;
 
     expect(hasInstanceMismatch()).toBe(true);
   });
 
   test("no mismatch when local deployment ID has not loaded yet", () => {
-    const { serverEnv } = require("$lib/server/serverenv");
-    serverEnv.LICENSE_KEY = signLicense(validPayload({ instanceId: ID_A }));
+    const { config } = require("$lib/server/config");
+    config.licenseKey = signLicense(validPayload({ instanceId: ID_A }));
     deploymentIdMock.id = null;
 
     expect(hasInstanceMismatch()).toBe(false);
@@ -330,9 +330,9 @@ describe("instance mismatch", () => {
 describe("getLicenseSummary", () => {
   beforeEach(() => {
     resetLicenseCache();
-    const { serverEnv } = require("$lib/server/serverenv");
-    serverEnv.LICENSE_KEY = undefined;
-    serverEnv.ORIGIN = "https://dashboard.example.com";
+    const { config } = require("$lib/server/config");
+    config.licenseKey = undefined;
+    config.origin = "https://dashboard.example.com";
     deploymentIdMock.id = null;
   });
 
@@ -351,8 +351,8 @@ describe("getLicenseSummary", () => {
   });
 
   test("returns complete summary for paid tier", () => {
-    const { serverEnv } = require("$lib/server/serverenv");
-    serverEnv.LICENSE_KEY = signLicense(validPayload());
+    const { config } = require("$lib/server/config");
+    config.licenseKey = signLicense(validPayload());
 
     const summary = getLicenseSummary();
     expect(summary.tier).toBe("enterprise-sm");
@@ -366,8 +366,8 @@ describe("getLicenseSummary", () => {
   });
 
   test("surfaces instanceMismatch when license instanceId differs from local", () => {
-    const { serverEnv } = require("$lib/server/serverenv");
-    serverEnv.LICENSE_KEY = signLicense(validPayload({
+    const { config } = require("$lib/server/config");
+    config.licenseKey = signLicense(validPayload({
       instanceId: "33333333-3333-4333-8333-333333333333",
     }));
     deploymentIdMock.id = "44444444-4444-4444-8444-444444444444";
@@ -388,15 +388,15 @@ describe("mismatch enforcement", () => {
 
   beforeEach(() => {
     resetLicenseCache();
-    const { serverEnv } = require("$lib/server/serverenv");
-    serverEnv.LICENSE_KEY = undefined;
-    serverEnv.ORIGIN = "https://dashboard.example.com";
+    const { config } = require("$lib/server/config");
+    config.licenseKey = undefined;
+    config.origin = "https://dashboard.example.com";
     deploymentIdMock.id = null;
   });
 
   test("origin mismatch downgrades feature gates to free tier", () => {
-    const { serverEnv } = require("$lib/server/serverenv");
-    serverEnv.LICENSE_KEY = signLicense(validPayload({
+    const { config } = require("$lib/server/config");
+    config.licenseKey = signLicense(validPayload({
       origins: ["https://other.example.com"],
     }));
 
@@ -415,8 +415,8 @@ describe("mismatch enforcement", () => {
   });
 
   test("instance mismatch downgrades feature gates to free tier", () => {
-    const { serverEnv } = require("$lib/server/serverenv");
-    serverEnv.LICENSE_KEY = signLicense(validPayload({ instanceId: ID_A }));
+    const { config } = require("$lib/server/config");
+    config.licenseKey = signLicense(validPayload({ instanceId: ID_A }));
     deploymentIdMock.id = ID_B;
 
     expect(isLicenseEffective()).toBe(false);
@@ -434,8 +434,8 @@ describe("mismatch enforcement", () => {
   });
 
   test("matching origin and instance keeps the paid tier effective", () => {
-    const { serverEnv } = require("$lib/server/serverenv");
-    serverEnv.LICENSE_KEY = signLicense(validPayload({ instanceId: ID_A }));
+    const { config } = require("$lib/server/config");
+    config.licenseKey = signLicense(validPayload({ instanceId: ID_A }));
     deploymentIdMock.id = ID_A;
 
     expect(isLicenseEffective()).toBe(true);

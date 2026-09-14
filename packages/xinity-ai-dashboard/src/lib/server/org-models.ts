@@ -3,7 +3,7 @@ import { isRedirect, isHttpError } from "@sveltejs/kit";
 import { router } from "$lib/server/orpc/router";
 import { catalogClient } from "$lib/server/model-catalog";
 import type { ModelType, ModelWithSpecifier } from "xinity-infoserver";
-import type { DeploymentWithStatus } from "$lib/server/orpc/procedures/deployment.procedure";
+import type { DeploymentWithStatus } from "$lib/orpc/dtos/model.dto";
 
 export type OrgModel = {
   publicSpecifier: string;

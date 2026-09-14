@@ -1,6 +1,4 @@
-import { describe, test, expect, mock, jest } from "bun:test";
-import { MOCK_GATEWAY_ENV } from "./mock-env";
-mock.module("../env", () => ({ env: { ...MOCK_GATEWAY_ENV } }));
+import { describe, test, expect, jest } from "bun:test";
 
 import { BackendChatChunkSchema } from "./backend-schemas";
 const { isStandardStreamingChunk, forwardOpenAIStream } = await import("./openai-forward");
