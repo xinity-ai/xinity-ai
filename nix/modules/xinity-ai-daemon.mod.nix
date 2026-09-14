@@ -283,6 +283,9 @@
             EnvironmentFile = cfg.environmentFiles;
             ExecStart = "${cfg.package}/bin/xinity-ai-daemon";
             Restart = "always";
+            RestartSec = 5;
+            RestartSteps = 10;
+            RestartMaxDelaySec = 300;
             StateDirectory = "xinity-ai-daemon";
           } // lib.optionalAttrs (loadCredentialEntries != [ ]) {
             LoadCredential = loadCredentialEntries;

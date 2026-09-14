@@ -97,6 +97,8 @@
             ++ cfg.extraArgs);
             Restart = "always";
             RestartSec = 5;
+            RestartSteps = 10;
+            RestartMaxDelaySec = 300;
             WorkingDirectory = cfg.dataDir;
           };
         };
