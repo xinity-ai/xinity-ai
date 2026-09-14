@@ -9,16 +9,16 @@
  * if Docker is absent the environment is reported as unsupported and the user
  * is pointed at the "I have a connection URL" path instead.
  *
- * The stack is one unauthenticated instance. Its port is published on 127.0.0.1
- * only, so reaching it already means having the host, and the official image
- * ships `protected-mode no`, which is what makes that work through a published
- * port. Anyone needing auth, TLS, or a cluster brings their own URL.
+ * The stack is one instance published on 127.0.0.1, with a generated password
+ * the compose file is the only record of. Anyone needing TLS or a cluster
+ * brings their own URL.
  */
 import { cancel, isCancel, log, note, select, spinner as clackSpinner, text } from "./clack.ts";
 import { bold, cyan, dim } from "picocolors";
 import { type Host, readSecrets } from "./host.ts";
 import { pass, fail, info, promptOrUndefined, warn } from "./output.ts";
 import { parseEnvString } from "./env-file.ts";
+import { randomToken } from "./secrets.ts";
 import { SECRETS_DIR, ENV_DIR } from "./component-meta.ts";
 import { heredoc } from "./service.ts";
 import {
@@ -51,24 +51,27 @@ async function testRedisWithSpinner(url: string, host: Host): Promise<Connection
   return result;
 }
 
-export function buildRedisUrl(port: number): string {
-  return `redis://localhost:${port}`;
+export function buildRedisUrl(port: number, password?: string): string {
+  return password
+    ? `redis://:${encodeURIComponent(password)}@localhost:${port}`
+    : `redis://localhost:${port}`;
 }
 
-export function buildComposeFile(port: number): string {
+export function buildComposeFile(port: number, password: string): string {
   return [
     "# Managed by `xinity up infra-redis`. This stack is yours: the data lives in",
     "# the named volume below. Edit and `docker compose up -d` to apply, or",
     "# `docker compose down` to stop (add -v to also delete the data).",
     "#",
-    "# One unauthenticated instance. The port is published on 127.0.0.1 only, so",
-    "# Redis is reachable at localhost but not exposed to the network.",
+    "# Change the password below and re-run `xinity up infra-redis` so the stored URL follows.",
     "services:",
     "  redis:",
     `    image: ${REDIS_IMAGE}`,
     `    container_name: ${CONTAINER_NAME}`,
     "    restart: unless-stopped",
-    '    command: ["redis-server", "--appendonly", "yes"]',
+    `    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${password}"]`,
+    "    environment:",
+    `      REDISCLI_AUTH: "${password}"`,
     "    ports:",
     `      - "127.0.0.1:${port}:6379"`,
     "    volumes:",
@@ -91,6 +94,11 @@ export function buildComposeFile(port: number): string {
 export function parsePublishedPort(composeContent: string, fallback: number = DEFAULT_PORT): number {
   const match = composeContent.match(/127\.0\.0\.1:(\d+):6379/);
   return match ? Number(match[1]) : fallback;
+}
+
+/** Undefined for a stack provisioned without one. */
+export function parseRequirePass(composeContent: string): string | undefined {
+  return composeContent.match(/"--requirepass", "([^"]+)"/)?.[1];
 }
 
 export type ExistingRedis = {
@@ -177,7 +185,7 @@ export async function planRedisProvision(host: Host): Promise<RedisProvision | u
   if (existing.composeFile) {
     const port = parsePublishedPort(existing.composeFile);
     info("Redis", `Reusing the existing stack in ${STACK_DIR}.`);
-    return { compose, port, url: buildRedisUrl(port) };
+    return { compose, port, url: buildRedisUrl(port, parseRequirePass(existing.composeFile)) };
   }
 
   const portStr = await promptOrUndefined(text({
@@ -192,7 +200,8 @@ export async function planRedisProvision(host: Host): Promise<RedisProvision | u
     warn("Port", `Something is already listening on localhost:${port}. Starting the container will fail if it is still bound.`);
   }
 
-  return { compose, port, url: buildRedisUrl(port), composeFile: buildComposeFile(port) };
+  const password = randomToken(32);
+  return { compose, port, url: buildRedisUrl(port, password), composeFile: buildComposeFile(port, password) };
 }
 
 /** One-line summary of the provisioning action for review lists. */
