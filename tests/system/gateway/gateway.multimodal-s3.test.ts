@@ -11,7 +11,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { chatMessageT, inferenceCallMessageT, inferenceCallT, mediaObjectT, preconfigureDB, sql } from "common-db";
-import { readProcessOutput, waitForHttp } from "../test-helpers";
+import { readProcessOutput, waitForHttp, waitForRows } from "../test-helpers";
 import { ensureSystemReady } from "../guard";
 import { ensureInfoServerRunning, infoServerUrl } from "../infoserver/infoserver-test-helpers";
 import {
@@ -218,10 +218,7 @@ describe("multimodal image storage (SeaweedFS S3)", () => {
     expect(body.object).toBe("chat.completion");
 
     // ── Verify DB: apiCall logged with xinity-media:// reference ─────────────
-    // Wait briefly for async log write
-    await Bun.sleep(300);
-
-    const callMessages = await loggedInputMessages(orgId);
+    const callMessages = await waitForRows(() => loggedInputMessages(orgId));
 
     expect(callMessages.length).toBeGreaterThanOrEqual(1);
     const userMsg = callMessages.find((m: any) => m.role === "user");
@@ -290,13 +287,12 @@ describe("multimodal image storage (SeaweedFS S3)", () => {
     expect(res1.status).toBe(200);
     expect(res2.status).toBe(200);
 
-    await Bun.sleep(400);
-
     // Only one mediaObject row should exist for this org (dedup on sha256)
-    const mediaObjects = await getDB()
-      .select()
-      .from(mediaObjectT)
-      .where(sql`${mediaObjectT.organizationId} = ${orgId}`);
+    const mediaObjects = await waitForRows(() =>
+      getDB()
+        .select()
+        .from(mediaObjectT)
+        .where(sql`${mediaObjectT.organizationId} = ${orgId}`));
 
     expect(mediaObjects.length).toBe(1);
 
@@ -361,9 +357,7 @@ describe("multimodal image storage (SeaweedFS S3)", () => {
 
       expect(res.status).toBe(200);
 
-      await Bun.sleep(300);
-
-      const callMessages = await loggedInputMessages(orgId);
+      const callMessages = await waitForRows(() => loggedInputMessages(orgId));
 
       expect(callMessages.length).toBeGreaterThanOrEqual(1);
       const userMsg = callMessages.find((m: any) => m.role === "user");
