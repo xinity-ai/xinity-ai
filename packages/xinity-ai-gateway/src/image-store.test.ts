@@ -1,11 +1,6 @@
 import { describe, test, expect, mock, jest, beforeEach } from "bun:test";
 import { drizzle, mediaObjectT } from "common-db";
 
-// The whole group is undefined when object storage is off, which is the entire mock now.
-mock.module("./config", () => ({
-  config: { s3: undefined },
-}));
-
 const _noop = () => {};
 const _mockChild = (): Record<string, unknown> => ({ trace: _noop, debug: _noop, info: _noop, warn: _noop, error: _noop, fatal: _noop, child: _mockChild });
 mock.module("./logger", () => ({ rootLogger: { child: _mockChild } }));

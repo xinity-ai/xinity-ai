@@ -3,8 +3,6 @@ import { redis } from "bun";
 
 // --- Mocks (hoisted by bun:test) ---
 
-import { MOCK_GATEWAY_CONFIG } from "./mock-env";
-mock.module("../config", () => ({ config: MOCK_GATEWAY_CONFIG }));
 
 const mockQueryResult: any[] = [];
 /** When set, DB lookups block until resolved, so verifications can be held open. */
