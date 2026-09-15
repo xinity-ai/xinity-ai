@@ -1,3 +1,4 @@
+import { hostname } from "node:os";
 import type { AuditEvent } from "common-db";
 import type { AuditSink } from "./audit-sink";
 
@@ -5,10 +6,12 @@ const PUSH_TIMEOUT_MS = 5_000;
 
 export type LokiTarget = { url: string; auth?: string; tenant?: string };
 
-type StreamLabels = { job: string; action: string; resource: string; result: string };
+type LokiPush = LokiTarget & { instance: string };
 
-function streamLabels(event: AuditEvent): StreamLabels {
-  return { job: "xinity-audit", action: event.action, resource: event.resource, result: event.result };
+type StreamLabels = { job: string; instance: string; action: string; resource: string; result: string };
+
+function streamLabels(event: AuditEvent, instance: string): StreamLabels {
+  return { job: "xinity-audit", instance, action: event.action, resource: event.resource, result: event.result };
 }
 
 /**
@@ -16,11 +19,11 @@ function streamLabels(event: AuditEvent): StreamLabels {
  * a single stream. Labels stay limited to the low-cardinality fields; actor and
  * context land in the line so they cannot multiply the stream count.
  */
-export function buildPushPayload(events: AuditEvent[]): string {
+export function buildPushPayload(events: AuditEvent[], instance: string): string {
   const streams = new Map<string, { stream: StreamLabels; values: [string, string][] }>();
 
   for (const event of events) {
-    const labels = streamLabels(event);
+    const labels = streamLabels(event, instance);
     const key = JSON.stringify([labels.action, labels.resource, labels.result]);
     let stream = streams.get(key);
     if (!stream) {
@@ -44,11 +47,11 @@ function pushHeaders(target: LokiTarget): Record<string, string> {
   return headers;
 }
 
-export async function pushToLoki(events: AuditEvent[], target: LokiTarget): Promise<void> {
+export async function pushToLoki(events: AuditEvent[], target: LokiPush): Promise<void> {
   const response = await fetch(`${target.url.replace(/\/$/, "")}/loki/api/v1/push`, {
     method: "POST",
     headers: pushHeaders(target),
-    body: buildPushPayload(events),
+    body: buildPushPayload(events, target.instance),
     signal: AbortSignal.timeout(PUSH_TIMEOUT_MS),
   });
   if (!response.ok) {
@@ -57,5 +60,6 @@ export async function pushToLoki(events: AuditEvent[], target: LokiTarget): Prom
 }
 
 export function lokiSink(target: LokiTarget): AuditSink {
-  return { name: "loki", deliver: events => pushToLoki(events, target) };
+  const push: LokiPush = { ...target, instance: hostname() };
+  return { name: "loki", deliver: events => pushToLoki(events, push) };
 }

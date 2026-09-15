@@ -112,7 +112,9 @@ If the sink is unreachable the affected events are logged at error level with th
 
 ### Loki
 
-Query events under `{job="xinity-audit"}`. `action`, `resource` and `result` are stream labels, so they can be used as selectors. Everything else, including actor and context, lives in the log line and needs `| json`.
+Query events under `{job="xinity-audit"}`. `instance`, `action`, `resource` and `result` are stream labels, so they can be used as selectors. Everything else, including actor and context, lives in the log line and needs `| json`.
+
+`instance` is the hostname of the dashboard that emitted the event. Select on it when several instances feed one Loki, since each numbers its own events and a mixed stream would look full of holes.
 
 ### Syslog
 

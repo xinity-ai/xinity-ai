@@ -37,30 +37,37 @@ function headersOf(fetchMock: ReturnType<typeof mockFetch>): Record<string, stri
 }
 
 describe("buildPushPayload", () => {
-  test("labels the stream by action, resource and result only", () => {
-    const payload = JSON.parse(buildPushPayload([event]));
+  test("labels the stream by instance, action, resource and result only", () => {
+    const payload = JSON.parse(buildPushPayload([event], "host1"));
     expect(payload.streams[0].stream).toEqual({
       job: "xinity-audit",
+      instance: "host1",
       action: "apiKey.create",
       resource: "apiKey",
       result: "success",
     });
   });
 
+  test("keeps instances apart so their positions are not interleaved", () => {
+    const one = JSON.parse(buildPushPayload([event], "host1")).streams[0].stream.instance;
+    const two = JSON.parse(buildPushPayload([event], "host2")).streams[0].stream.instance;
+    expect([one, two]).toEqual(["host1", "host2"]);
+  });
+
   test("carries the whole event in the line at a nanosecond timestamp", () => {
-    const [timestamp, line] = JSON.parse(buildPushPayload([event])).streams[0].values[0];
+    const [timestamp, line] = JSON.parse(buildPushPayload([event], "host1")).streams[0].values[0];
     expect(timestamp).toBe(`${event.createdAt.getTime()}000000`);
     expect(JSON.parse(line)).toMatchObject({ id: event.id, streamPosition: event.streamPosition, actorLabel: "jv@xinity.ai", context: { name: "prod" } });
   });
 
   test("collapses events sharing a label set into one stream", () => {
-    const payload = JSON.parse(buildPushPayload([event, { ...event, id: "second", resourceId: "key_2" }]));
+    const payload = JSON.parse(buildPushPayload([event, { ...event, id: "second", resourceId: "key_2" }], "host1"));
     expect(payload.streams).toHaveLength(1);
     expect(payload.streams[0].values).toHaveLength(2);
   });
 
   test("keeps events with differing labels in separate streams", () => {
-    const payload = JSON.parse(buildPushPayload([event, { ...event, id: "second", result: "failure" }]));
+    const payload = JSON.parse(buildPushPayload([event, { ...event, id: "second", result: "failure" }], "host1"));
     expect(payload.streams).toHaveLength(2);
     expect(payload.streams.map((s: { stream: { result: string } }) => s.stream.result).sort()).toEqual(["failure", "success"]);
   });
@@ -70,7 +77,7 @@ describe("pushToLoki", () => {
   test("posts to the push endpoint of the configured base URL", async () => {
     const fetchMock = mockFetch(() => Promise.resolve(new Response("", { status: 204 })));
 
-    await pushToLoki([event], { url: "http://localhost:6122/", auth: "user:pass", tenant: "acme" });
+    await pushToLoki([event], { url: "http://localhost:6122/", auth: "user:pass", tenant: "acme", instance: "host1" });
 
     const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("http://localhost:6122/loki/api/v1/push");
@@ -81,7 +88,7 @@ describe("pushToLoki", () => {
   test("omits auth headers when the target has no credentials", async () => {
     const fetchMock = mockFetch(() => Promise.resolve(new Response("", { status: 204 })));
 
-    await pushToLoki([event], { url: "http://localhost:6122" });
+    await pushToLoki([event], { url: "http://localhost:6122", instance: "host1" });
 
     expect(headersOf(fetchMock).Authorization).toBeUndefined();
     expect(headersOf(fetchMock)["X-Scope-OrgID"]).toBeUndefined();
@@ -90,13 +97,13 @@ describe("pushToLoki", () => {
   test("throws the status and body of a rejected push", async () => {
     mockFetch(() => Promise.resolve(new Response("entry too far behind", { status: 400 })));
 
-    await expect(pushToLoki([event], { url: "http://localhost:6122" })).rejects.toThrow("400 entry too far behind");
+    await expect(pushToLoki([event], { url: "http://localhost:6122", instance: "host1" })).rejects.toThrow("400 entry too far behind");
   });
 
   test("propagates a transport failure", async () => {
     mockFetch(() => Promise.reject(new Error("connection refused")));
 
-    await expect(pushToLoki([event], { url: "http://localhost:6122" })).rejects.toThrow("connection refused");
+    await expect(pushToLoki([event], { url: "http://localhost:6122", instance: "host1" })).rejects.toThrow("connection refused");
   });
 });
 
