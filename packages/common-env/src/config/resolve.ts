@@ -4,7 +4,7 @@ import { checkGroupActivation, isGroupActive, type ActivationWarning } from "./a
 import { fieldRefs, groupAt, refFor, type AnyConfig, type ConfigDef, type FieldRef } from "./build";
 import { isGroup, type ConfigEntry } from "./group";
 
-export type ValueSource = "env" | "env-file" | "default";
+export type ValueSource = "env" | "env-file" | "default" | "dynamic";
 
 export type Provenance = {
   readonly pointer: string;
@@ -143,17 +143,26 @@ export function checkConfig(config: AnyConfig, opts: ResolveOptions = {}): reado
   return parseConfig(config, opts).problems;
 }
 
-export function resolveConfig<T>(config: ConfigDef<T>, opts: ResolveOptions = {}): Resolved<T> {
-  const { value, problems, located, warnings } = parseConfig(config, opts);
+export function configError(problems: readonly ConfigProblem[]): Error {
+  const lines = problems.map((p) => {
+    const keys = p.fields.map((field) => field.envKey).join(", ");
+    const pointers = p.fields.map((field) => field.pointer).join(", ");
+    return `  - ${keys} (${pointers}): ${p.message}`;
+  });
+  return new Error(`Invalid configuration:\n${lines.join("\n")}`);
+}
 
-  if (problems.length > 0) {
-    const lines = problems.map((p) => {
-      const keys = p.fields.map((field) => field.envKey).join(", ");
-      const pointers = p.fields.map((field) => field.pointer).join(", ");
-      return `  - ${keys} (${pointers}): ${p.message}`;
-    });
-    throw new Error(`Invalid configuration:\n${lines.join("\n")}`);
-  }
+export type ConfigValues = Record<string, unknown>;
+
+export type ResolvedValues = {
+  readonly values: ConfigValues;
+  readonly problems: readonly ConfigProblem[];
+  readonly provenance: readonly Provenance[];
+  readonly warnings: readonly ActivationWarning[];
+};
+
+export function resolveValues(config: AnyConfig, opts: ResolveOptions = {}): ResolvedValues {
+  const { value, problems, located, warnings } = parseConfig(config, opts);
 
   const provenance = config.entries.map((entry): Provenance => {
     const found = located.get(entry.envKey);
@@ -166,7 +175,46 @@ export function resolveConfig<T>(config: ConfigDef<T>, opts: ResolveOptions = {}
     };
   });
 
-  return { value: value as T, provenance, warnings };
+  return { values: value, problems, provenance, warnings };
+}
+
+export function projectValues<T>(config: AnyConfig, readCurrentValues: () => ConfigValues): T {
+  const projected: ConfigValues = {};
+
+  for (const [key, member] of Object.entries(config.members)) {
+    if (!isGroup(member)) {
+      projected[key] = member.isDynamic
+        ? () => readCurrentValues()[key]
+        : readCurrentValues()[key];
+      continue;
+    }
+
+    const groupValue = readCurrentValues()[key] as ConfigValues | undefined;
+    if (groupValue === undefined) {
+      projected[key] = undefined;
+      continue;
+    }
+
+    const fields: ConfigValues = {};
+    for (const [name, field] of Object.entries(member.fields)) {
+      fields[name] = field.isDynamic
+        ? () => (readCurrentValues()[key] as ConfigValues)[name]
+        : groupValue[name];
+    }
+    projected[key] = fields;
+  }
+
+  return projected as T;
+}
+
+export function resolveConfig<T>(config: ConfigDef<T>, opts: ResolveOptions = {}): Resolved<T> {
+  const { values, problems, provenance, warnings } = resolveValues(config, opts);
+
+  if (problems.length > 0) {
+    throw configError(problems);
+  }
+
+  return { value: projectValues<T>(config, () => values), provenance, warnings };
 }
 
 export function configFromProcessEnv<T>(config: ConfigDef<T>): T {

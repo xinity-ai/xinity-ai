@@ -11,12 +11,21 @@ type Resolves<V> = { readonly [RESOLVED]: (value: V) => V };
 export type AnyField = {
   readonly envKey: string;
   readonly schema: z.ZodType;
+  readonly isDynamic?: boolean;
 };
 
 export type ConfigField<V = unknown> = AnyField & Resolves<V>;
 
 export function env<S extends z.ZodType>(envKey: string, schema: S): ConfigField<z.output<S>> {
   return { envKey, schema } as unknown as ConfigField<z.output<S>>;
+}
+
+/** An accessor rather than a value, so every read site is a compile error until reviewed. */
+export function dynamic<S extends z.ZodType>(
+  envKey: string,
+  schema: S,
+): ConfigField<() => z.output<S>> {
+  return { envKey, schema, isDynamic: true } as unknown as ConfigField<() => z.output<S>>;
 }
 
 type Fields<T> = { [K in keyof T]-?: ConfigField<T[K]> };
@@ -106,6 +115,7 @@ export type ConfigEntry = {
   readonly isSecret: boolean;
   readonly isExpert: boolean;
   readonly isPublic: boolean;
+  readonly isDynamic: boolean;
   readonly groupId?: string;
   readonly groupTitle?: string;
 };
@@ -120,6 +130,7 @@ export function fieldEntry(path: readonly string[], field: AnyField, group?: Any
     isSecret: meta.secret === true,
     isExpert: group?.expert === true || meta.expert === true,
     isPublic: meta.public === true,
+    isDynamic: field.isDynamic === true,
     groupId: group?.id,
     groupTitle: group?.title,
   };
