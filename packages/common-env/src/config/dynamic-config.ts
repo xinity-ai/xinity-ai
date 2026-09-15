@@ -1,9 +1,11 @@
 import type { ConfigDef } from "./build";
 import { splitDelegations, type RawEnv } from "./delegation";
+import { createDerivation, type Derivation, type Derived } from "./derivation";
 import {
   configError,
   projectValues,
   resolveValues,
+  sameConfigValue,
   type ConfigValues,
   type Provenance,
 } from "./resolve";
@@ -18,6 +20,11 @@ export type DynamicConfig<T> = {
   value: T;
   delegatedKeys: readonly string[];
   provenance: () => readonly Provenance[];
+  derive: <I, R>(
+    selectInputs: (value: T) => I,
+    build: (inputs: I) => R,
+    opts?: { dispose?: (value: R) => void },
+  ) => Derived<R>;
   start: () => Promise<void>;
   stop: () => Promise<void>;
 };
@@ -54,6 +61,9 @@ export function createDynamicConfig<T>(deps: {
   let overriddenKeys = new Set<string>();
   let stopFeed: Teardown | null = null;
 
+  const value = projectValues<T>(declaration, () => resolved.values);
+  const derivations = new Set<Derivation>();
+
   const apply: ApplyOverrides = (overrides) => {
     const env: Record<string, string | undefined> = { ...envWithFallbacks };
     const applied = new Set<string>();
@@ -67,17 +77,32 @@ export function createDynamicConfig<T>(deps: {
 
     const next = resolve(env);
     const changed = dynamicEntries
-      .filter((entry) => !Object.is(valueAt(resolved.values, entry.path), valueAt(next.values, entry.path)))
+      .filter((entry) => !sameConfigValue(valueAt(resolved.values, entry.path), valueAt(next.values, entry.path)))
       .map((entry) => entry.path.join("."));
 
     resolved = next;
     overriddenKeys = applied;
+
+    for (const derivation of derivations) {
+      derivation.revalidate();
+    }
     return changed;
   };
 
   return {
-    value: projectValues<T>(declaration, () => resolved.values),
+    value,
     delegatedKeys,
+
+    derive(selectInputs, build, opts) {
+      const derivation = createDerivation({
+        values: value,
+        selectInputs,
+        build,
+        dispose: opts?.dispose,
+      });
+      derivations.add(derivation);
+      return derivation;
+    },
 
     provenance: () => resolved.provenance.map((entry) =>
       overriddenKeys.has(entry.envKey)

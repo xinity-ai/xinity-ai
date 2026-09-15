@@ -154,6 +154,17 @@ export function configError(problems: readonly ConfigProblem[]): Error {
 
 export type ConfigValues = Record<string, unknown>;
 
+/** A list leaf re-parses into a fresh array, so identity would report every resolve as a change. */
+export function sameConfigValue(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) {
+    return true;
+  }
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+    return false;
+  }
+  return a.every((item, index) => sameConfigValue(item, b[index]));
+}
+
 export type ResolvedValues = {
   readonly values: ConfigValues;
   readonly problems: readonly ConfigProblem[];
