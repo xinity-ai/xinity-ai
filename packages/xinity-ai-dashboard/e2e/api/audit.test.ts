@@ -9,4 +9,15 @@ describe("Audit trail API", () => {
     });
     expect(res.status).toBe(403);
   });
+
+  test("audit.export accepts a stream position as its only bound", async () => {
+    const res = await ownerFetch("/api/audit/export?fromStreamPosition=1", { method: "GET" });
+    expect(res.status).toBe(403);
+  });
+
+  test("audit.export refuses to run unbounded", async () => {
+    const res = await ownerFetch("/api/audit/export", { method: "GET" });
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).not.toBe(403);
+  });
 });

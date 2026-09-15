@@ -15,6 +15,8 @@ const auditFilters = z.object({
   result: z.enum(auditResultEnum.enumValues).optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
+  fromStreamPosition: z.coerce.number().int().positive().optional(),
+  toStreamPosition: z.coerce.number().int().positive().optional(),
 });
 
 function buildWhereClause(orgId: string, filters: z.infer<typeof auditFilters>, includeInstanceEvents = false) {
@@ -39,6 +41,12 @@ function buildWhereClause(orgId: string, filters: z.infer<typeof auditFilters>, 
   }
   if (filters.to) {
     conditions.push(sql`${auditEventT.createdAt} <= ${filters.to.toISOString()}`);
+  }
+  if (filters.fromStreamPosition) {
+    conditions.push(sql`${auditEventT.streamPosition} >= ${filters.fromStreamPosition}`);
+  }
+  if (filters.toStreamPosition) {
+    conditions.push(sql`${auditEventT.streamPosition} <= ${filters.toStreamPosition}`);
   }
   return and(...conditions);
 }
@@ -93,23 +101,24 @@ const exportAudit = rootOs
   .use(requirePermission({ auditLog: ["read"] }))
   .meta({ mcp: false })
   .route({ path: "/export", method: "GET", tags, summary: "Export Audit Events" })
-  .input(auditFilters.pick({ from: true, to: true }).required({ from: true }).extend({
-    includeInstanceEvents: z.boolean().default(false),
-  }))
+  .input(auditFilters
+    .pick({ from: true, to: true, fromStreamPosition: true, toStreamPosition: true })
+    .extend({ includeInstanceEvents: z.boolean().default(false) })
+    .refine(input => input.from !== undefined || input.fromStreamPosition !== undefined, {
+      message: "Bound the export with either from or fromStreamPosition",
+      path: ["from"],
+    }))
   .handler(async ({ context, input, errors }) => {
     if (!hasFeature("audit-log")) {
       throw errors.FORBIDDEN({ message: "Audit log export requires an Enterprise license." });
     }
     const includeInstance = input.includeInstanceEvents && isInstanceAdmin(context.session.user.email);
-    const where = buildWhereClause(context.activeOrganizationId, {
-      from: input.from,
-      to: input.to ?? new Date(),
-    }, includeInstance);
+    const where = buildWhereClause(context.activeOrganizationId, input, includeInstance);
     const events = await getDB()
       .select()
       .from(auditEventT)
       .where(where)
-      .orderBy(sql`${auditEventT.createdAt} ASC`)
+      .orderBy(sql`${auditEventT.streamPosition} ASC`)
       .limit(EXPORT_ROW_CAP);
 
     return { events, truncated: events.length === EXPORT_ROW_CAP };

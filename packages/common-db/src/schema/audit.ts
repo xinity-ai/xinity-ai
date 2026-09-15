@@ -1,4 +1,4 @@
-import { bigint, index, jsonb, pgEnum, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { bigint, index, jsonb, pgEnum, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { InferSelectModel } from "drizzle-orm";
 import { callDataSchema } from "./pg-schemas";
 
@@ -32,6 +32,7 @@ export const auditEventT = callDataSchema.table("audit_event", {
 }, table => [
   index("audit_event_organization_id_created_at_idx").on(table.organizationId, table.createdAt),
   index("audit_event_organization_id_actor_id_created_at_idx").on(table.organizationId, table.actorId, table.createdAt),
+  uniqueIndex("audit_event_stream_position_idx").on(table.streamPosition),
 ]);
 
 export type AuditEvent = InferSelectModel<typeof auditEventT>;
