@@ -4,7 +4,7 @@ import type { ConfigEntry } from "common-env";
 import { DYNAMIC_SETTINGS } from "xinity-ai-dashboard/src/routes/(authenticated)/instance-settings/configuration/dynamic-settings.ts";
 import { COMPONENTS, COMPONENT_CONFIGS } from "../../src/lib/component-meta.ts";
 
-type DeclaredField = { components: string[]; group: string; entry: ConfigEntry };
+type DeclaredField = { components: string[]; group?: string; entry: ConfigEntry };
 
 function declaredDynamicFields(): Map<string, DeclaredField> {
   const byKey = new Map<string, DeclaredField>();
@@ -19,7 +19,7 @@ function declaredDynamicFields(): Map<string, DeclaredField> {
         existing.components.push(component);
         continue;
       }
-      byKey.set(entry.envKey, { components: [component], group: entry.groupTitle ?? "", entry });
+      byKey.set(entry.envKey, { components: [component], group: entry.groupTitle, entry });
     }
   }
   return byKey;

@@ -120,7 +120,7 @@ async function handleMessage(
 }
 
 export const POST: RequestHandler = async ({ request, locals }) => {
-	if (!config.mcpEnabled) return new Response("Not Found", { status: 404 });
+	if (!config.mcpEnabled()) return new Response("Not Found", { status: 404 });
 	const apiKey = extractApiKey(request);
 	const body = (await request.json()) as JsonRpcMessage | JsonRpcMessage[];
 	const messages = Array.isArray(body) ? body : [body];

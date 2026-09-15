@@ -29,7 +29,7 @@ export const load: PageServerLoad = async ({ request, url }) => {
   return {
     callbackUrl,
     ssoProviders,
-    signupEnabled: config.auth.signupEnabled,
+    signupEnabled: config.auth.signupEnabled(),
     emailVerificationRequired: Boolean(config.mail),
     hostMismatch,
     configuredOrigin: configuredOrigin.origin,

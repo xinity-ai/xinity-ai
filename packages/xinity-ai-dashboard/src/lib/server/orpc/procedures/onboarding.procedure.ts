@@ -169,7 +169,7 @@ const cli = rootOs
   .errors({ FORBIDDEN: {}, CONFLICT: {} })
   .handler(async ({ input, context, errors }) => {
     const rlog = log.child({ traceId: context.traceId });
-    if (!config.auth.signupEnabled) {
+    if (!config.auth.signupEnabled()) {
       throw errors.FORBIDDEN({ message: "User signup is currently disabled" });
     }
 
