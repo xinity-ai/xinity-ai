@@ -5,11 +5,8 @@ import postgres from "postgres";
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type { Logger } from "drizzle-orm/logger";
 import { sql } from "drizzle-orm";
+import type { PinoLike } from "common-env";
 import { expectedMigrationCount, type MigrationState } from "./migrations";
-
-type PinoLike = {
-  debug(obj: object, msg: string): void;
-}
 
 const UNREACHABLE_CODES = new Set([
   "08001", // sqlclient_unable_to_establish_sqlconnection
