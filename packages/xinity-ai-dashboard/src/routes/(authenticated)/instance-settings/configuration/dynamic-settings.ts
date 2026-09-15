@@ -86,6 +86,20 @@ export const DYNAMIC_SETTINGS: DynamicSetting[] = [
       .describe("Node selection strategy for new model installations. 'first-fit' picks the first node that fits (deterministic). 'balanced' picks the node with the most absolute free VRAM (spread for HA). 'bin-pack' picks the tightest fit (consolidate so idle nodes stay drainable). 'proportional' picks the node with the lowest percent utilization (fair spread across heterogeneous nodes)."),
   },
   {
+    key: "KEEPALIVE_INTERVAL_MS",
+    components: ["tether"],
+    group: "HTTP server",
+    schema: configNumber().default(15_000)
+      .describe("SSE keepalive interval in ms").meta(expert()),
+  },
+  {
+    key: "LIVENESS_TIMEOUT_MS",
+    components: ["tether"],
+    group: "HTTP server",
+    schema: configNumber().default(45_000)
+      .describe("Time before a silent connection is considered dead").meta(expert()),
+  },
+  {
     key: "MCP_ENABLED",
     components: ["dashboard"],
     schema: configBool().default(true)

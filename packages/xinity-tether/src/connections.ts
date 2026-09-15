@@ -119,11 +119,11 @@ export function pushDesiredState(nodeId: string, state: DesiredState): boolean {
   return ok;
 }
 
-export function runKeepaliveLoop(intervalMs: number, timeoutMs: number): Timer {
+export function runKeepaliveLoop(intervalMs: number, livenessTimeoutMs: () => number): Timer {
   return setInterval(() => {
     const now = Date.now();
     for (const [nodeId, conn] of connections) {
-      if (now - conn.lastWriteAt > timeoutMs) {
+      if (now - conn.lastWriteAt > livenessTimeoutMs()) {
         log.warn({ nodeId, silentMs: now - conn.lastWriteAt }, "Liveness timeout");
         void removeConnection(nodeId, "liveness_timeout");
         continue;
