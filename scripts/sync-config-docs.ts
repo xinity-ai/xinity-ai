@@ -6,6 +6,8 @@ import { COMPONENTS, COMPONENT_CONFIGS, type Component } from "../packages/xinit
 const ROOT = resolve(import.meta.dirname, "..");
 const START_MARKER = "<!-- [sync:config] - generated from the config declaration, do not edit -->";
 const END_MARKER = "<!-- [/sync:config] -->";
+const NIX_START_MARKER = "# [sync:dynamic-keys] - generated from the config declaration, do not edit";
+const NIX_END_MARKER = "# [/sync:dynamic-keys]";
 
 const PACKAGE_DIRS: Record<Component, string> = {
   gateway: "packages/xinity-ai-gateway",
@@ -13,6 +15,14 @@ const PACKAGE_DIRS: Record<Component, string> = {
   daemon: "packages/xinity-ai-daemon",
   infoserver: "packages/xinity-infoserver",
   tether: "packages/xinity-tether",
+};
+
+const NIX_MODULES: Record<Component, string> = {
+  gateway: "nix/modules/xinity-ai-gateway.mod.nix",
+  dashboard: "nix/modules/xinity-ai-dashboard.mod.nix",
+  daemon: "nix/modules/xinity-ai-daemon.mod.nix",
+  infoserver: "nix/modules/xinity-infoserver.mod.nix",
+  tether: "nix/modules/xinity-tether.mod.nix",
 };
 
 function cell(text: string): string {
@@ -67,33 +77,50 @@ function sections(fields: EnvField[]): string[] {
   return lines;
 }
 
-function render(component: Component): string {
-  const fields = analyzeConfig(COMPONENT_CONFIGS[component]);
-  return [START_MARKER, "", ...sections(fields), END_MARKER].join("\n");
+function nixKeyList(keys: string[]): string[] {
+  return ["dashboardManageableKeys = [", ...keys.map((key) => `  "${key}"`), "];"];
 }
 
-let missing = 0;
-for (const component of COMPONENTS) {
-  const path = join(ROOT, PACKAGE_DIRS[component], "README.md");
-  const readme = readFileSync(path, "utf-8");
-  const start = readme.indexOf(START_MARKER);
-  const end = readme.indexOf(END_MARKER);
+function sync(relPath: string, start: string, end: string, render: (indent: string) => string): boolean {
+  const path = join(ROOT, relPath);
+  const text = readFileSync(path, "utf-8");
+  const from = text.indexOf(start);
+  const to = text.indexOf(end);
 
-  if (start === -1 || end === -1) {
-    console.error(`Missing sync markers in ${PACKAGE_DIRS[component]}/README.md`);
-    missing++;
-    continue;
+  if (from === -1 || to === -1) {
+    console.error(`Missing sync markers in ${relPath}`);
+    return false;
   }
 
-  const updated = readme.slice(0, start) + render(component) + readme.slice(end + END_MARKER.length);
-  if (updated === readme) {
-    console.log(`OK: ${PACKAGE_DIRS[component]}/README.md`);
-    continue;
+  const indent = text.slice(text.lastIndexOf("\n", from) + 1, from);
+  const updated = text.slice(0, from) + render(indent) + text.slice(to + end.length);
+  if (updated === text) {
+    console.log(`OK: ${relPath}`);
+    return true;
   }
   writeFileSync(path, updated);
-  console.log(`Updated: ${PACKAGE_DIRS[component]}/README.md`);
+  console.log(`Updated: ${relPath}`);
+  return true;
 }
 
-if (missing > 0) {
+let synced = true;
+for (const component of COMPONENTS) {
+  const fields = analyzeConfig(COMPONENT_CONFIGS[component]);
+
+  synced =
+    sync(join(PACKAGE_DIRS[component], "README.md"), START_MARKER, END_MARKER, () =>
+      [START_MARKER, "", ...sections(fields), END_MARKER].join("\n"),
+    ) && synced;
+
+  const dynamicKeys = fields.filter((f) => f.isDynamic).map((f) => f.key);
+  if (dynamicKeys.length > 0) {
+    synced =
+      sync(NIX_MODULES[component], NIX_START_MARKER, NIX_END_MARKER, (indent) =>
+        [NIX_START_MARKER, ...nixKeyList(dynamicKeys), NIX_END_MARKER].join(`\n${indent}`),
+      ) && synced;
+  }
+}
+
+if (!synced) {
   process.exit(1);
 }

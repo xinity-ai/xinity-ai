@@ -4,6 +4,15 @@
       withHostSystem = withSystem pkgs.stdenv.hostPlatform.system;
       cfg = config.services.xinity-ai-dashboard;
       s3Options = import ./lib/s3-options.nix { inherit lib; };
+      dynamicConfig = import ./lib/dynamic-config.nix { inherit lib; };
+
+      # [sync:dynamic-keys] - generated from the config declaration, do not edit
+      dashboardManageableKeys = [
+        "SIGNUP_ENABLED"
+        "DEPLOYMENT_STRATEGY"
+        "MCP_ENABLED"
+      ];
+      # [/sync:dynamic-keys]
 
       removed = path: message:
         lib.mkRemovedOptionModule
@@ -312,6 +321,8 @@
           default = { };
           description = "Additional environment variables to pass to the service.";
         };
+
+        dashboardManaged = dynamicConfig.dashboardManagedOption dashboardManageableKeys;
       } // s3Options;
 
       config = lib.mkIf cfg.enable {
@@ -333,7 +344,7 @@
           wantedBy = [ "multi-user.target" ];
           after = [ "network-online.target" ];
           wants = [ "network-online.target" ];
-          environment = {
+          environment = dynamicConfig.delegateToDashboard cfg.dashboardManaged ({
             HTTP_PORT = toString cfg.port;
             # Never null in a config that evaluates: the assertion above rejects that first.
             ORIGIN = toString cfg.origin;
@@ -427,7 +438,7 @@
             HTTP_IP_HEADER = cfg.reverseProxy.ipHeader;
             HTTP_XFF_DEPTH = toString cfg.reverseProxy.xffDepth;
           }
-          // cfg.extraEnvironment;
+          // cfg.extraEnvironment);
           serviceConfig = {
             EnvironmentFile = cfg.environmentFiles;
             ExecStart = "${cfg.package}/bin/xinity-ai-dashboard";
