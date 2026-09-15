@@ -180,6 +180,234 @@
       };
     };
 
+  # ── Managed Credentials Module ────────────────────────────────────────
+  # Credentials a deployment should not have to write out by hand.
+  flake.nixosModules.secrets = { config, lib, pkgs, ... }:
+    let
+      cfg = config.services.xinity-ai-secrets;
+
+      # Composed values are rewritten on every start so they cannot drift from their parts.
+      # Created ones have to survive a reboot, or Grafana loses what it encrypted.
+      derivedDir = "/run/xinity";
+      generatedDir = "/var/lib/xinity";
+
+      redisAuthed = cfg.redisUrl.enable && cfg.redisUrl.passwordFile != null;
+
+      # A switched-off branch of the script still has to evaluate, so values that only
+      # exist when their branch is on are read through this rather than directly.
+      whenOn = enabled: value: lib.optionalString enabled value;
+    in {
+      options.services.xinity-ai-secrets = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = cfg.dbConnectionUrl.enable || cfg.redisUrl.enable
+            || cfg.metricsAuth.enable || cfg.grafanaSecretKey.enable;
+          defaultText = lib.literalMD "true when any of the values below is enabled";
+          description = "Run the unit that composes and creates the credentials below. Follows whether any of them is enabled, so it is not normally set by hand.";
+        };
+
+        dbConnectionUrl = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = "Compose the PostgreSQL connection URL from the settings below.";
+          };
+          user = lib.mkOption { type = lib.types.str; description = "PostgreSQL role the URL authenticates as."; };
+          name = lib.mkOption { type = lib.types.str; description = "Database the URL points at."; };
+          port = lib.mkOption { type = lib.types.port; default = 5432; description = "Port the URL points at."; };
+          passwordFile = lib.mkOption { type = lib.types.str; description = "File holding the role's password. Percent-encoded into the URL, so it may contain anything."; };
+        };
+
+        redisUrl = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = "Compose the Redis URL from the settings below.";
+          };
+          port = lib.mkOption { type = lib.types.port; default = 6379; description = "Port the URL points at."; };
+          passwordFile = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = "File holding the Redis password. Null composes a URL without credentials, which is what an unauthenticated local Redis needs.";
+          };
+        };
+
+        metricsAuth = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = "Compose the METRICS_AUTH pair, so the scrape username and password cannot disagree with what Prometheus sends.";
+          };
+          username = lib.mkOption { type = lib.types.str; description = "Username Prometheus scrapes as."; };
+          passwordFile = lib.mkOption { type = lib.types.str; description = "File holding that username's password."; };
+        };
+
+        grafanaSecretKey.enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Create Grafana's secret_key once and keep it. It has no upstream to be composed from and only has to stay the same, because replacing it makes everything Grafana encrypted with it unreadable.";
+        };
+
+        tetherSecret.enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = ''
+            Create the secret daemons authenticate to the tether with, once, and keep it.
+
+            There is one per deployment, so this is only right on the host running the
+            tether. Every node elsewhere needs that same value: read the created file to
+            hand it out, or supply secrets.tetherSecretFile so it is declarative on all of
+            them.
+          '';
+        };
+
+        betterAuthSecret.enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = ''
+            Create the Better Auth signing secret once and keep it. Replacing it logs every
+            dashboard user out.
+
+            It belongs to the deployment rather than the host, so a second dashboard needs
+            the same value. Before adding one, move the created file's value into your
+            secrets manager and point secrets.betterAuthSecretFile at it.
+          '';
+        };
+
+        consumers = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          example = [ "xinity-ai-gateway" "grafana" ];
+          description = "Units that must not start before these credentials exist. Each requires the composing unit and is ordered after it, so failing to produce a credential stops the consumer rather than starting it against a stale file. Naming a service that is not enabled would define an empty unit for it, so list only the ones that run.";
+        };
+
+        paths = {
+          dbConnectionUrl = lib.mkOption {
+            type = lib.types.str;
+            readOnly = true;
+            default = "${derivedDir}/db-connection-url";
+            description = "Where the composed PostgreSQL URL is written.";
+          };
+          redisUrl = lib.mkOption {
+            type = lib.types.str;
+            readOnly = true;
+            default = "${derivedDir}/redis-url";
+            description = "Where the composed Redis URL is written.";
+          };
+          metricsAuth = lib.mkOption {
+            type = lib.types.str;
+            readOnly = true;
+            default = "${derivedDir}/metrics-auth";
+            description = "Where the composed metrics auth pair is written.";
+          };
+          grafanaSecretKey = lib.mkOption {
+            type = lib.types.str;
+            readOnly = true;
+            default = "${generatedDir}/grafana-secret-key";
+            description = "Where the created Grafana secret_key is kept.";
+          };
+          tetherSecret = lib.mkOption {
+            type = lib.types.str;
+            readOnly = true;
+            default = "${generatedDir}/tether-secret";
+            description = "Where the created tether secret is kept.";
+          };
+          betterAuthSecret = lib.mkOption {
+            type = lib.types.str;
+            readOnly = true;
+            default = "${generatedDir}/better-auth-secret";
+            description = "Where the created Better Auth secret is kept.";
+          };
+        };
+      };
+
+      config = lib.mkIf cfg.enable {
+        systemd.services = lib.genAttrs cfg.consumers (_: {
+          requires = [ "xinity-secrets.service" ];
+          after = [ "xinity-secrets.service" ];
+        }) // {
+          xinity-secrets = {
+            description = "Compose and create the managed xinity-ai credentials";
+          serviceConfig = {
+            Type = "oneshot";
+            RuntimeDirectory = "xinity";
+            RuntimeDirectoryMode = "0700";
+            StateDirectory = "xinity";
+            # Traversable but not listable, so Grafana can open a path it is told about
+            # while the files stay readable only by their own consumer.
+            StateDirectoryMode = "0711";
+            LoadCredential =
+              lib.optional cfg.dbConnectionUrl.enable
+                "pg-password:${cfg.dbConnectionUrl.passwordFile}"
+              ++ lib.optional redisAuthed "redis-password:${cfg.redisUrl.passwordFile}"
+              ++ lib.optional cfg.metricsAuth.enable
+                "metrics-password:${cfg.metricsAuth.passwordFile}";
+          };
+          script = ''
+            set -euo pipefail
+            umask 077
+
+            # A password out of a secrets manager can hold anything, so it is encoded
+            # before going into a URL. The Compose setup instead generates URL-safe ones.
+            encode() { ${pkgs.jq}/bin/jq -rn --arg v "$1" '$v|@uri'; }
+
+            if ${lib.boolToString cfg.dbConnectionUrl.enable}; then
+              printf 'postgresql://%s:%s@127.0.0.1:%d/%s' \
+                '${whenOn cfg.dbConnectionUrl.enable cfg.dbConnectionUrl.user}' \
+                "$(encode "$(cat "$CREDENTIALS_DIRECTORY/pg-password")")" \
+                ${toString cfg.dbConnectionUrl.port} \
+                '${whenOn cfg.dbConnectionUrl.enable cfg.dbConnectionUrl.name}' \
+                > ${cfg.paths.dbConnectionUrl}
+            fi
+
+            if ${lib.boolToString redisAuthed}; then
+              printf 'redis://:%s@127.0.0.1:%d' \
+                "$(encode "$(cat "$CREDENTIALS_DIRECTORY/redis-password")")" \
+                ${toString cfg.redisUrl.port} \
+                > ${cfg.paths.redisUrl}
+            elif ${lib.boolToString cfg.redisUrl.enable}; then
+              printf 'redis://127.0.0.1:%d' ${toString cfg.redisUrl.port} \
+                > ${cfg.paths.redisUrl}
+            fi
+
+            if ${lib.boolToString cfg.metricsAuth.enable}; then
+              printf '%s:%s' '${whenOn cfg.metricsAuth.enable cfg.metricsAuth.username}' \
+                "$(cat "$CREDENTIALS_DIRECTORY/metrics-password")" \
+                > ${cfg.paths.metricsAuth}
+            fi
+
+            # No trailing newline, so the file holds exactly the secret for readers that
+            # do not trim it themselves.
+            if ${lib.boolToString cfg.grafanaSecretKey.enable}; then
+              if [ ! -s ${cfg.paths.grafanaSecretKey} ]; then
+                printf '%s' "$(${pkgs.openssl}/bin/openssl rand -hex 16)" \
+                  > ${cfg.paths.grafanaSecretKey}
+              fi
+              chown grafana:grafana ${cfg.paths.grafanaSecretKey}
+              chmod 0400 ${cfg.paths.grafanaSecretKey}
+            fi
+
+            if ${lib.boolToString cfg.betterAuthSecret.enable}; then
+              if [ ! -s ${cfg.paths.betterAuthSecret} ]; then
+                printf '%s' "$(${pkgs.openssl}/bin/openssl rand -base64 32)" \
+                  > ${cfg.paths.betterAuthSecret}
+              fi
+              chmod 0400 ${cfg.paths.betterAuthSecret}
+            fi
+
+            if ${lib.boolToString cfg.tetherSecret.enable}; then
+              if [ ! -s ${cfg.paths.tetherSecret} ]; then
+                printf '%s' "$(${pkgs.openssl}/bin/openssl rand -hex 32)" \
+                  > ${cfg.paths.tetherSecret}
+              fi
+              chmod 0400 ${cfg.paths.tetherSecret}
+            fi
+          '';
+          };
+        };
+      };
+    };
+
   # ── All-in-One Module ─────────────────────────────────────────────────
   flake.nixosModules.allinone = { config, lib, pkgs, ... }:
     let
@@ -196,6 +424,7 @@
         self.nixosModules.daemon
         self.nixosModules.seaweedfs
         self.nixosModules.monitoring
+        self.nixosModules.secrets
         self.nixosModules.caddy
 
         (lib.mkRemovedOptionModule
@@ -525,6 +754,33 @@
         # These use the _FILE env var pattern for secure secret injection.
 
         secrets = {
+          derive = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = ''
+              Provide the credentials below that this module can work out for itself, so
+              the only one left to supply is the database password.
+
+              Composed from values already declared here, and rewritten at every start under
+              /run/xinity so they cannot drift:
+
+              - `dbConnectionUrlFile`, from `database.user`, `database.name` and `database.pgPasswordFile`
+              - `redisUrlFile`, from `redis.port` and `redis.redisPasswordFile`
+              - `metricsAuthFile`, from `monitoring.basicAuthUsername` and `basicAuthPasswordFile`
+
+              Created once and kept under /var/lib/xinity, having nothing to be composed from:
+
+              - `betterAuthSecretFile`
+              - `tetherSecretFile`, only on the host running the tether
+              - `monitoring.grafana.secretKeyFile`
+
+              Setting any of them yourself, or providing the variable through
+              `environmentFiles`, wins and stops that one being provided for you. What is
+              left over, and has to come from you, is `database.pgPasswordFile` plus
+              anything optional you want: the license key, S3 credentials and the mail URL.
+            '';
+          };
+
           dbConnectionUrlFile = lib.mkOption {
             type = lib.types.nullOr lib.types.str;
             default = null;
@@ -625,6 +881,46 @@
 
           envFiles = cfg.environmentFiles
             ++ lib.optional (cfg.environmentFile != null) cfg.environmentFile;
+
+          # Each of these carries "the operator set nothing here", so a value they did set
+          # is simply what is left when nothing was composed for them.
+          deriveDb = cfg.secrets.derive && cfg.secrets.dbConnectionUrlFile == null
+            && cfg.database.enable && cfg.database.pgPasswordFile != null;
+          deriveRedis = cfg.secrets.derive && cfg.secrets.redisUrlFile == null
+            && cfg.redis.enable;
+          deriveMetricsAuth = cfg.secrets.derive && cfg.secrets.metricsAuthFile == null
+            && cfg.monitoring.enable && cfg.monitoring.basicAuthUsername != null
+            && cfg.monitoring.basicAuthPasswordFile != null;
+          generateGrafanaKey = cfg.secrets.derive && cfg.monitoring.enable
+            && cfg.monitoring.grafana.enable
+            && cfg.monitoring.grafana.secretKeyFile == null;
+          generateBetterAuthSecret = cfg.secrets.derive && cfg.dashboard.enable
+            && cfg.secrets.betterAuthSecretFile == null;
+          # Only where the tether runs: a daemon pointed at a tether elsewhere has to be
+          # given that tether's secret, not one generated here.
+          generateTetherSecret = cfg.secrets.derive && cfg.tether.enable
+            && cfg.secrets.tetherSecretFile == null;
+
+          managed = config.services.xinity-ai-secrets.paths;
+          pick = explicit: derived: path: if derived then path else explicit;
+
+          dbConnectionUrlFile =
+            pick cfg.secrets.dbConnectionUrlFile deriveDb managed.dbConnectionUrl;
+          redisUrlFile = pick cfg.secrets.redisUrlFile deriveRedis managed.redisUrl;
+          metricsAuthFile =
+            pick cfg.secrets.metricsAuthFile deriveMetricsAuth managed.metricsAuth;
+          grafanaSecretKeyFile = pick cfg.monitoring.grafana.secretKeyFile
+            generateGrafanaKey managed.grafanaSecretKey;
+          betterAuthSecretFile = pick cfg.secrets.betterAuthSecretFile
+            generateBetterAuthSecret managed.betterAuthSecret;
+          tetherSecretFile = pick cfg.secrets.tetherSecretFile
+            generateTetherSecret managed.tetherSecret;
+
+
+
+          # An environment file could contain anything, and Nix cannot look inside one, so
+          # the "you have not provided this" assertions only speak up when there is none.
+          noEnvFiles = envFiles == [ ];
         in
         lib.mkIf cfg.enable {
 
@@ -647,7 +943,69 @@
                 must point at the infoserver to use (e.g. https://sysinfo.xinity.ai).
               '';
             }
+            {
+              assertion = !noEnvFiles || !cfg.database.enable
+                || cfg.database.pgPasswordFile != null
+                || cfg.secrets.dbConnectionUrlFile != null;
+              message = ''
+                Nothing provides the database credentials. Set
+                services.xinity-ai.database.pgPasswordFile to a file holding the password,
+                and the connection URL is composed from it for you.
+              '';
+            }
+            {
+              assertion = !noEnvFiles || !cfg.dashboard.enable
+                || cfg.secrets.betterAuthSecretFile != null || generateBetterAuthSecret;
+              message = ''
+                Nothing provides BETTER_AUTH_SECRET, which signs dashboard sessions and
+                cannot be worked out from anything else. Set
+                services.xinity-ai.secrets.betterAuthSecretFile to a file holding a random
+                string of 32 characters or more.
+              '';
+            }
+            {
+              assertion = !noEnvFiles || !(cfg.tether.enable || cfg.daemon.enable)
+                || cfg.secrets.tetherSecretFile != null || generateTetherSecret;
+              message = ''
+                Nothing provides TETHER_SECRET, the one credential daemons authenticate to
+                the tether with. This host runs a daemon against a tether somewhere else, so
+                the secret belongs to that tether and cannot be created here. Set
+                services.xinity-ai.secrets.tetherSecretFile to a file holding the same value
+                that tether was given.
+              '';
+            }
           ];
+
+
+          # --- Managed credentials ---
+          services.xinity-ai-secrets = {
+            dbConnectionUrl = lib.mkIf deriveDb {
+              enable = true;
+              user = cfg.database.user;
+              name = cfg.database.name;
+              port = config.services.xinity-ai-database.postgres.port;
+              passwordFile = cfg.database.pgPasswordFile;
+            };
+            redisUrl = lib.mkIf deriveRedis {
+              enable = true;
+              port = cfg.redis.port;
+              passwordFile = cfg.redis.redisPasswordFile;
+            };
+            metricsAuth = lib.mkIf deriveMetricsAuth {
+              enable = true;
+              username = cfg.monitoring.basicAuthUsername;
+              passwordFile = cfg.monitoring.basicAuthPasswordFile;
+            };
+            grafanaSecretKey.enable = generateGrafanaKey;
+            betterAuthSecret.enable = generateBetterAuthSecret;
+            tetherSecret.enable = generateTetherSecret;
+            consumers =
+              lib.optional cfg.gateway.enable "xinity-ai-gateway"
+              ++ lib.optional cfg.dashboard.enable "xinity-ai-dashboard"
+              ++ lib.optional cfg.tether.enable "xinity-tether"
+              ++ lib.optional cfg.daemon.enable "xinity-ai-daemon"
+              ++ lib.optional generateGrafanaKey "grafana";
+          };
 
           # --- Delegate to database module ---
           services.xinity-ai-database = lib.mkIf (cfg.database.enable || cfg.redis.enable) {
@@ -682,9 +1040,9 @@
               else null
             );
             # Secret file options (mkDefault so direct submodule config can override)
-            dbConnectionUrlFile = lib.mkDefault cfg.secrets.dbConnectionUrlFile;
-            redisUrlFile = lib.mkDefault cfg.secrets.redisUrlFile;
-            metricsAuthFile = lib.mkDefault cfg.secrets.metricsAuthFile;
+            dbConnectionUrlFile = lib.mkDefault dbConnectionUrlFile;
+            redisUrlFile = lib.mkDefault redisUrlFile;
+            metricsAuthFile = lib.mkDefault metricsAuthFile;
             s3Bucket = lib.mkDefault cfg.seaweedfs.bucket;
             s3AccessKeyIdFile = lib.mkDefault cfg.secrets.s3AccessKeyIdFile;
             s3SecretAccessKeyFile = lib.mkDefault cfg.secrets.s3SecretAccessKeyFile;
@@ -719,10 +1077,10 @@
               else null
             );
             # Secret file options (mkDefault so direct submodule config can override)
-            dbConnectionUrlFile = lib.mkDefault cfg.secrets.dbConnectionUrlFile;
-            betterAuthSecretFile = lib.mkDefault cfg.secrets.betterAuthSecretFile;
+            dbConnectionUrlFile = lib.mkDefault dbConnectionUrlFile;
+            betterAuthSecretFile = lib.mkDefault betterAuthSecretFile;
             mailUrlFile = lib.mkDefault cfg.secrets.mailUrlFile;
-            metricsAuthFile = lib.mkDefault cfg.secrets.metricsAuthFile;
+            metricsAuthFile = lib.mkDefault metricsAuthFile;
             s3Bucket = lib.mkDefault cfg.seaweedfs.bucket;
             s3AccessKeyIdFile = lib.mkDefault cfg.secrets.s3AccessKeyIdFile;
             s3SecretAccessKeyFile = lib.mkDefault cfg.secrets.s3SecretAccessKeyFile;
@@ -742,9 +1100,9 @@
           services.xinity-tether = lib.mkIf cfg.tether.enable {
             enable = true;
             port = lib.mkDefault cfg.tether.port;
-            dbConnectionUrlFile = lib.mkDefault cfg.secrets.dbConnectionUrlFile;
-            tetherSecretFile = lib.mkDefault cfg.secrets.tetherSecretFile;
-            metricsAuthFile = lib.mkDefault cfg.secrets.metricsAuthFile;
+            dbConnectionUrlFile = lib.mkDefault dbConnectionUrlFile;
+            tetherSecretFile = lib.mkDefault tetherSecretFile;
+            metricsAuthFile = lib.mkDefault metricsAuthFile;
             openFirewall = lib.mkDefault cfg.tether.openFirewall;
             tlsCertFile = lib.mkDefault cfg.tether.tlsCertFile;
             tlsKeyFile = lib.mkDefault cfg.tether.tlsKeyFile;
@@ -756,9 +1114,9 @@
             enable = true;
             port = lib.mkDefault cfg.daemon.port;
             tetherUrl = lib.mkDefault tetherUrl;
-            tetherSecretFile = lib.mkDefault cfg.secrets.tetherSecretFile;
+            tetherSecretFile = lib.mkDefault tetherSecretFile;
             infoserverUrl = lib.mkDefault infoserverUrl;
-            metricsAuthFile = lib.mkDefault cfg.secrets.metricsAuthFile;
+            metricsAuthFile = lib.mkDefault metricsAuthFile;
             environmentFiles = lib.mkDefault envFiles;
             ollamaEnabled = lib.mkDefault cfg.daemon.ollama.enable;
           };
@@ -795,7 +1153,7 @@
             basicAuthPassword = lib.mkDefault cfg.monitoring.basicAuthPassword;
             grafana.enable = lib.mkDefault cfg.monitoring.grafana.enable;
             grafana.port = lib.mkDefault cfg.monitoring.grafana.port;
-            grafana.secretKeyFile = lib.mkDefault cfg.monitoring.grafana.secretKeyFile;
+            grafana.secretKeyFile = lib.mkDefault grafanaSecretKeyFile;
             grafana.domain = lib.mkDefault "${cfg.grafanaSubdomain}.${cfg.domain}";
             logs.enable = lib.mkDefault cfg.monitoring.logs.enable;
           };
