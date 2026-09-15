@@ -115,9 +115,9 @@ function pollUntilHealthy$(
   providerModel: string,
   modelType?: string,
 ): Observable<void> {
-  const deadline = Date.now() + config.vllm.healthTimeoutMs;
+  const deadline = Date.now() + config.vllm.healthTimeoutMs();
 
-  return timer(config.vllm.healthPollIntervalMs, config.vllm.healthPollIntervalMs).pipe(
+  return timer(config.vllm.healthPollIntervalMs(), config.vllm.healthPollIntervalMs()).pipe(
     mergeMap(async () => {
       const alive = await ops.isAlive(installation.id);
       if (!alive) {
@@ -128,7 +128,7 @@ function pollUntilHealthy$(
 
       if (restartCount > 0) {
         const { logs, fatalMatch } = await captureLogsAndMatch(installation.id, ops);
-        if (restartCount >= config.vllm.maxRestartCount) {
+        if (restartCount >= config.vllm.maxRestartCount()) {
           throw errorWithPreCapturedLogs(
             `Container crash-looping (${restartCount} restarts, ${fatalMatch ?? "unknown reason"}): ${installation.specifier}`,
             logs,
@@ -146,7 +146,7 @@ function pollUntilHealthy$(
     }),
     tap((healthy) => {
       if (!healthy && Date.now() > deadline) {
-        throw new Error(`Health check timed out after ${config.vllm.healthTimeoutMs}ms for ${installation.specifier} (${installation.id})`);
+        throw new Error(`Health check timed out after ${config.vllm.healthTimeoutMs()}ms for ${installation.specifier} (${installation.id})`);
       }
     }),
     filter((healthy): healthy is true => healthy),
@@ -323,7 +323,7 @@ async function reconcileOne(
 
   if (alive) {
     const restartCount = await ops.getRestartCount(installation.id);
-    if (restartCount >= config.vllm.maxRestartCount) {
+    if (restartCount >= config.vllm.maxRestartCount()) {
       const { logs, fatalMatch } = await captureLogsAndMatch(installation.id, ops);
       await updateInstallationState(installation.id, "failed", {
         errorMessage: `Container crash-looping (${restartCount} restarts${fatalMatch ? `, ${fatalMatch}` : ""})`,

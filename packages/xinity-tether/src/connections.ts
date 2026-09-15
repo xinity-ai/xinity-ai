@@ -104,6 +104,22 @@ export async function removeConnection(nodeId: string, reason: DisconnectReason,
   await setNodeAvailable(nodeId, false);
 }
 
+export function pushConfig(nodeId: string, values: Record<string, string>): void {
+  const conn = connections.get(nodeId);
+  if (!conn) {
+    return;
+  }
+  if (!tryWrite(conn, sseEncode("config", JSON.stringify({ values })))) {
+    void removeConnection(nodeId, "write_failed");
+  }
+}
+
+export function pushConfigToAll(values: Record<string, string>): void {
+  for (const nodeId of connections.keys()) {
+    pushConfig(nodeId, values);
+  }
+}
+
 export function pushDesiredState(nodeId: string, state: DesiredState): boolean {
   const conn = connections.get(nodeId);
   if (!conn) {
