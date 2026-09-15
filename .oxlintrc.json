@@ -76,6 +76,7 @@
         // individual exhemptions
         "packages/common-env/src/config/resolve.ts",
         "packages/common-env/src/config/activation.ts",
+        "packages/common-env/src/config/dynamic-config.ts",
         "packages/xinity-ai-dashboard/src/server-entry.ts",
         "packages/xinity-ai-dashboard/src/lib/orpc/orpc-client.ts",
         // The cli package doesnt have a config schema to follow

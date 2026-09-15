@@ -50,6 +50,8 @@ export * from "./config/group";
 export * from "./config/build";
 export * from "./config/activation";
 export * from "./config/resolve";
+export * from "./config/delegation";
+export * from "./config/dynamic-config";
 export * from "./config/shared-groups";
 export * from "./config/analyze";
 export * from "./deployment-settings";
