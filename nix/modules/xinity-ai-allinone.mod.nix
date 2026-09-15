@@ -1066,7 +1066,7 @@
               then "http://127.0.0.1:${toString cfg.monitoring.port}"
               else null
             );
-            auditLokiUrl = lib.mkDefault (
+            auditSinkUrl = lib.mkDefault (
               if cfg.monitoring.enable && cfg.monitoring.logs.enable
               then "http://127.0.0.1:${toString config.services.xinity-ai-monitoring.logs.port}"
               else null

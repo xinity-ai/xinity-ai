@@ -134,7 +134,7 @@ GPU utilization, memory usage, temperature, power draw vs. limit (all as time se
 
 Systemd journal logs for gateway, dashboard, infoserver, and daemon. Requires Loki and Grafana Alloy, provisioned only by the NixOS monitoring module (`logs.enable = true`); not available via the Docker Compose `monitoring` profile.
 
-An Audit trail row adds a breakdown of audit events by action and the audit event stream. Those panels come from the dashboard's audit forwarder rather than the journal, so they stay empty unless `AUDIT_LOKI_URL` is set and the license carries the `audit-log` feature. The all-in-one module points the forwarder at the bundled Loki automatically when `monitoring.logs.enable = true`.
+An Audit trail row adds a breakdown of audit events by action and the audit event stream. Those panels come from the dashboard's audit forwarder rather than the journal, so they stay empty unless `AUDIT_SINK_URL` points at Loki and the license carries the `audit-log` feature. The all-in-one module points the forwarder at the bundled Loki automatically when `monitoring.logs.enable = true`.
 
 All dashboards are tagged `xinity-ai` and cross-linked via a shared navigation dropdown.
 

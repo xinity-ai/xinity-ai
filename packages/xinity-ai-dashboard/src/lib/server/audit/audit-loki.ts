@@ -1,4 +1,3 @@
-import { config } from "$lib/server/config";
 import type { AuditEvent } from "common-db";
 import type { AuditSink } from "./audit-sink";
 
@@ -45,7 +44,6 @@ function pushHeaders(target: LokiTarget): Record<string, string> {
   return headers;
 }
 
-/** Pushes one batch, throwing on a rejected or unreachable endpoint. */
 export async function pushToLoki(events: AuditEvent[], target: LokiTarget): Promise<void> {
   const response = await fetch(`${target.url.replace(/\/$/, "")}/loki/api/v1/push`, {
     method: "POST",
@@ -58,10 +56,6 @@ export async function pushToLoki(events: AuditEvent[], target: LokiTarget): Prom
   }
 }
 
-export function lokiSink(): AuditSink | null {
-  const target = config.audit;
-  if (!target) {
-    return null;
-  }
+export function lokiSink(target: LokiTarget): AuditSink {
   return { name: "loki", deliver: events => pushToLoki(events, target) };
 }

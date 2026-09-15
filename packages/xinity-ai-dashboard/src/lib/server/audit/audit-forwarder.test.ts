@@ -1,23 +1,32 @@
 import { describe, test, expect, beforeEach, afterAll, mock, spyOn } from "bun:test";
 import type { AuditEvent } from "common-db";
 import * as auditLoki from "./audit-loki";
+import * as auditSyslog from "./audit-syslog";
+import type { DashboardConfig } from "../config-schema";
 
 /**
- * A spy rather than `mock.module`, which has no counterpart to undo it: the
- * override would outlive this file and hand `audit-loki.test.ts` the stub in
- * place of the module it exists to test.
+ * Spies rather than `mock.module`, which has no counterpart to undo it: the
+ * override would outlive this file and hand the sink suites the stub in place
+ * of the module they exist to test.
  */
 const lokiSink = spyOn(auditLoki, "lokiSink");
+const syslogSink = spyOn(auditSyslog, "syslogSink");
 
 afterAll(() => {
   lokiSink.mockRestore();
+  syslogSink.mockRestore();
 });
 
-const { resolveAuditSinks, forwardAuditEvent, flushAuditEvents } = await import("./audit-forwarder");
+const { resolveAuditSink, forwardAuditEvent, flushAuditEvents } = await import("./audit-forwarder");
 
+const { config } = require("$lib/server/config") as { config: DashboardConfig };
 const licensedFeatures = (require("$lib/server/license") as { licensedFeatures: string[] }).licensedFeatures;
 
 const deliver = mock((_events: AuditEvent[]): Promise<void> => Promise.resolve());
+
+function audit(url: string): DashboardConfig["audit"] {
+  return { url, facility: "local0", framing: "octet-counting", appName: "xinity-audit" };
+}
 
 function event(overrides: Partial<AuditEvent> = {}): AuditEvent {
   return {
@@ -40,25 +49,34 @@ function event(overrides: Partial<AuditEvent> = {}): AuditEvent {
 
 beforeEach(async () => {
   licensedFeatures.splice(0, licensedFeatures.length, "audit-log");
+  config.audit = audit("http://localhost:6122");
   lokiSink.mockReturnValue({ name: "loki", deliver });
+  syslogSink.mockReturnValue({ name: "syslog", deliver });
   await flushAuditEvents();
   deliver.mockClear();
   deliver.mockImplementation(() => Promise.resolve());
 });
 
-describe("resolveAuditSinks", () => {
-  test("is empty when no sink is configured", () => {
-    lokiSink.mockReturnValue(null);
-    expect(resolveAuditSinks()).toEqual([]);
+describe("resolveAuditSink", () => {
+  test("is null when no sink is configured", () => {
+    config.audit = undefined;
+    expect(resolveAuditSink()).toBeNull();
   });
 
-  test("is empty without the audit-log feature", () => {
+  test("is null without the audit-log feature", () => {
     licensedFeatures.length = 0;
-    expect(resolveAuditSinks()).toEqual([]);
+    expect(resolveAuditSink()).toBeNull();
   });
 
-  test("names each configured sink", () => {
-    expect(resolveAuditSinks().map(sink => sink.name)).toEqual(["loki"]);
+  test("picks the sink from the url scheme", () => {
+    for (const url of ["http://localhost:6122", "https://loki.example.com"]) {
+      config.audit = audit(url);
+      expect(resolveAuditSink()?.name).toBe("loki");
+    }
+    for (const url of ["udp://collector:514", "tcp://collector:514", "tls://collector:6514"]) {
+      config.audit = audit(url);
+      expect(resolveAuditSink()?.name).toBe("syslog");
+    }
   });
 });
 
@@ -83,7 +101,7 @@ describe("forwardAuditEvent", () => {
   });
 
   test("drops the event entirely when no sink is configured", async () => {
-    lokiSink.mockReturnValue(null);
+    config.audit = undefined;
     forwardAuditEvent(event());
     await flushAuditEvents();
     expect(deliver).not.toHaveBeenCalled();

@@ -1,9 +1,6 @@
-import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test";
+import { describe, test, expect, afterEach, mock } from "bun:test";
 import type { AuditEvent } from "common-db";
-import { buildPushPayload, lokiSink, pushToLoki } from "./audit-loki";
-import type { DashboardConfig } from "../config-schema";
-
-const { config } = require("$lib/server/config") as { config: DashboardConfig };
+import { buildPushPayload, pushToLoki } from "./audit-loki";
 
 const realFetch = globalThis.fetch;
 
@@ -37,10 +34,6 @@ function headersOf(fetchMock: ReturnType<typeof mockFetch>): Record<string, stri
   const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
   return init.headers as Record<string, string>;
 }
-
-beforeEach(() => {
-  config.audit = { url: "http://localhost:6122" };
-});
 
 describe("buildPushPayload", () => {
   test("labels the stream by action, resource and result only", () => {
@@ -106,28 +99,3 @@ describe("pushToLoki", () => {
   });
 });
 
-describe("lokiSink", () => {
-  test("is null without a configured URL", () => {
-    config.audit = undefined;
-    expect(lokiSink()).toBeNull();
-  });
-
-  test("delivers to the configured URL", async () => {
-    const fetchMock = mockFetch(() => Promise.resolve(new Response("", { status: 204 })));
-
-    await lokiSink()?.deliver([event]);
-
-    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe("http://localhost:6122/loki/api/v1/push");
-  });
-
-  test("applies the optional auth and tenant when set", async () => {
-    config.audit = { url: "http://localhost:6122", auth: "user:pass", tenant: "acme" };
-    const fetchMock = mockFetch(() => Promise.resolve(new Response("", { status: 204 })));
-
-    await lokiSink()?.deliver([event]);
-
-    expect(headersOf(fetchMock).Authorization).toBe(`Basic ${btoa("user:pass")}`);
-    expect(headersOf(fetchMock)["X-Scope-OrgID"]).toBe("acme");
-  });
-});

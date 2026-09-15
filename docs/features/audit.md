@@ -2,7 +2,7 @@
 
 The dashboard keeps an append-only record of security-relevant actions in the `audit_event` table. Recording is always on and needs no configuration. Viewing and exporting the trail requires a license carrying the `audit-log` feature, so an unlicensed instance still accumulates a complete record and can read it later once licensed.
 
-Events can additionally be mirrored to Loki, which is covered under [Forwarding to Loki](#forwarding-to-loki).
+Events can additionally be mirrored to an external sink, which is covered under [Forwarding to an external sink](#forwarding-to-an-external-sink).
 
 ## What is recorded
 
@@ -26,12 +26,12 @@ A failed action is recorded as well as a successful one, with `result: "failure"
 
 ## Audited actions
 
-51 actions across 13 resource families.
+53 actions across 13 resource families.
 
 | Family | Actions |
 |---|---|
 | `account` | `change_password`, `create_dashboard_api_key`, `delete_dashboard_api_key`, `delete_passkey`, `disable_2fa`, `enable_2fa`, `request_password_reset`, `sign_in`, `sign_in_sso`, `sign_out`, `sign_up`, `verify_email` |
-| `instanceAdmin` | `add_user_to_org`, `ban_user`, `create_user`, `remove_user_from_org`, `reset_user_password`, `set_email_verified`, `set_sso_self_manage`, `unban_user`, `update_user_role` |
+| `instanceAdmin` | `add_user_to_org`, `ban_user`, `convert_legacy_calls`, `create_user`, `move_media_to_s3`, `remove_user_from_org`, `reset_user_password`, `set_email_verified`, `set_sso_self_manage`, `unban_user`, `update_user_role` |
 | `apiKey` | `create`, `delete`, `toggle_collect_data`, `toggle_enabled`, `update` |
 | `modelDeployment` | `create`, `delete`, `retry`, `toggle_enabled`, `update` |
 | `aiApplication` | `create`, `delete`, `update` |
@@ -86,27 +86,51 @@ Export is available as NDJSON or CSV over `audit.export`, which requires a `from
 | `HTTP_IP_HEADER` | Header the proxy forwards the client IP in, for example `x-forwarded-for` or `x-real-ip` |
 | `HTTP_XFF_DEPTH` | With `x-forwarded-for`, how many proxy hops to skip from the right. 1 for a single proxy, 2 for two chained |
 
-## Forwarding to Loki
+## Forwarding to an external sink
 
-Every persisted event can be mirrored to Loki for querying alongside service logs. The database stays authoritative, and the mirror is best effort.
+Every persisted event can be mirrored, which is what makes the trail tamper resilient.
+
+One sink is configured at a time, and the URL scheme picks the transport.
 
 | Variable | Purpose |
 |---|---|
-| `AUDIT_LOKI_URL` | Loki base URL, for example `http://localhost:6122`. Unset means no forwarding |
-| `AUDIT_LOKI_AUTH` | Basic auth as `user:pass`, only for an authenticated endpoint |
-| `AUDIT_LOKI_TENANT` | Tenant id sent as `X-Scope-OrgID`, for multi-tenant Loki or Grafana Cloud |
+| `AUDIT_SINK_URL` | Where events go. `http(s)://` is a Loki base URL, `udp://`, `tcp://` or `tls://` is a syslog collector. Unset means no forwarding |
+| `AUDIT_SINK_AUTH` | Loki only. Basic auth as `user:pass`, for an authenticated endpoint |
+| `AUDIT_SINK_TENANT` | Loki only. Tenant id sent as `X-Scope-OrgID`, for multi-tenant Loki or Grafana Cloud |
+| `AUDIT_SINK_SYSLOG_FACILITY` | Syslog only. Default `local0`. `audit` is the RFC 5424 log-audit facility |
+| `AUDIT_SINK_SYSLOG_FRAMING` | Syslog only. `octet-counting` (default, RFC 6587) or `lf` for collectors that only accept newline delimiting |
+| `AUDIT_SINK_SYSLOG_APP_NAME` | Syslog only. Default `xinity-audit`, the APP-NAME collectors filter on |
+| `AUDIT_SINK_SYSLOG_CA` | Syslog only. PEM authority a `tls://` collector is verified against, for a private CA. `AUDIT_SINK_SYSLOG_CA_FILE` takes a path instead |
+
+Settings belonging to the transport the URL did not select are ignored, so switching a sink over is a matter of changing the URL and leaving the rest.
 
 Forwarding also requires the `audit-log` feature, so an unlicensed instance never pushes.
 
 Events are batched, flushing at 100 events or 5 seconds, whichever comes first, and are flushed again during shutdown so a restart does not discard the current batch.
 
-Query them under `{job="xinity-audit"}`. `action`, `resource` and `result` are stream labels, so they can be used as selectors. Everything else, including actor and context, lives in the log line and needs `| json`.
+If the sink is unreachable the affected events are logged at error level with the time range they cover, and never reach the mirror. The database still holds them, so that range is what you would re-query for a complete picture.
 
-If Loki is unreachable the affected events are logged at error level with the time range they cover, and never reach the mirror. The database still holds them, so that range is what you would re-query for a complete picture.
+### Loki
+
+Query events under `{job="xinity-audit"}`. `action`, `resource` and `result` are stream labels, so they can be used as selectors. Everything else, including actor and context, lives in the log line and needs `| json`.
+
+### Syslog
+
+Messages are RFC 5424, with the event as JSON in MSG and no structured data, so one parser covers this and the Loki mirror:
+
+```
+<134>1 2026-08-16T10:00:00.000Z host1 xinity-audit 4711 apiKey.create - {"id":"…","action":"apiKey.create",…}
+```
+
+The priority combines the configured facility with a severity taken from the result: informational for a success, warning for a failure. MSGID is the action, capped at the 32 characters the RFC 5424 grammar allows. Default ports are 514, or 6514 for `tls://` per RFC 5425.
+
+An oversized message degrades instead of being cut mid-token into something the collector cannot parse. First `context` is dropped and `"truncated":"context"` is set, and failing that only the identifying fields are sent with `"truncated":"event"`. Both stay valid JSON and both carry the `id`, so the untruncated record can be pulled from `audit_event`. The budget is 1400 bytes on `udp://` to survive a typical path MTU, 8192 on the stream transports.
+
+`udp://` cannot report delivery failures and silently drops anything over the MTU, so prefer `tcp://` or `tls://` where the collector allows it.
 
 ### NixOS
 
-The dashboard module exposes `auditLokiUrl` and `auditLokiTenant`. The all-in-one module points the forwarder at the bundled Loki automatically when `monitoring.logs.enable = true`, so no explicit configuration is needed there.
+The dashboard module exposes `auditSinkUrl` and `auditSinkTenant`, with the syslog settings available through `extraEnvironment`. The all-in-one module points the forwarder at the bundled Loki automatically when `monitoring.logs.enable = true`, so no explicit configuration is needed there.
 
 ### Grafana
 

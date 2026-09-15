@@ -1,6 +1,9 @@
+import { config } from "$lib/server/config";
+import { isLokiUrl, type Audit } from "$lib/server/config-schema";
 import { rootLogger } from "$lib/server/logging";
 import { hasFeature } from "$lib/server/license";
 import { lokiSink } from "./audit-loki";
+import { syslogSink } from "./audit-syslog";
 import type { AuditSink } from "./audit-sink";
 import type { AuditEvent } from "common-db";
 
@@ -9,7 +12,7 @@ const log = rootLogger.child({ name: "audit.forwarder" });
 const BATCH_MAX_EVENTS = 100;
 const BATCH_MAX_DELAY_MS = 5_000;
 /**
- * Bounds memory while the sinks are unreachable. Overflow is a mirroring gap
+ * Bounds memory while the sink is unreachable. Overflow is a mirroring gap
  * rather than lost data: audit_event still holds every record, so the reported
  * window can be replayed.
  */
@@ -20,23 +23,16 @@ let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let unmirrored = 0;
 let unmirroredSince: Date | null = null;
 
-/** Every sink the instance is configured and licensed for. Empty means no mirroring. */
-export function resolveAuditSinks(): AuditSink[] {
-  if (!hasFeature("audit-log")) {
-    return [];
-  }
-  return [lokiSink()].filter(sink => sink !== null);
+function mirrorTarget(): Audit | null {
+  return config.audit && hasFeature("audit-log") ? config.audit : null;
 }
 
-type SinkFailure = { sink: string; reason: string };
-
-async function deliverBatch(sink: AuditSink, events: AuditEvent[]): Promise<SinkFailure | null> {
-  try {
-    await sink.deliver(events);
+export function resolveAuditSink(): AuditSink | null {
+  const target = mirrorTarget();
+  if (!target) {
     return null;
-  } catch (err) {
-    return { sink: sink.name, reason: err instanceof Error ? err.message : String(err) };
   }
+  return isLokiUrl(target.url) ? lokiSink(target) : syslogSink(target);
 }
 
 function reportMirrorGap(until: Date | undefined): void {
@@ -45,13 +41,12 @@ function reportMirrorGap(until: Date | undefined): void {
   }
   log.error(
     { unmirrored, since: unmirroredSince, until },
-    "Audit events in this window never reached a sink and must be replayed from audit_event",
+    "Audit events in this window never reached the sink and must be replayed from audit_event",
   );
   unmirrored = 0;
   unmirroredSince = null;
 }
 
-/** Sends everything buffered so far to every sink. Safe to call when the buffer is empty. */
 export async function flushAuditEvents(): Promise<void> {
   if (flushTimer) {
     clearTimeout(flushTimer);
@@ -63,26 +58,22 @@ export async function flushAuditEvents(): Promise<void> {
   }
   pending = [];
 
-  const sinks = resolveAuditSinks();
-  if (sinks.length === 0) {
+  const sink = resolveAuditSink();
+  if (!sink) {
     return;
   }
 
-  const failures = (await Promise.all(sinks.map(sink => deliverBatch(sink, batch)))).filter(failure => failure !== null);
-  for (const failure of failures) {
-    log.warn({ events: batch.length, ...failure }, "Failed to forward audit events");
+  try {
+    await sink.deliver(batch);
+  } catch (err) {
+    log.warn({ events: batch.length, sink: sink.name, err }, "Failed to forward audit events");
+    return;
   }
-  if (failures.length < sinks.length) {
-    reportMirrorGap(batch.at(-1)?.createdAt);
-  }
+  reportMirrorGap(batch.at(-1)?.createdAt);
 }
 
-/**
- * Buffers a persisted audit event for the next push.
- * Failures are dropped with a warning; the database holds the authoritative record.
- */
 export function forwardAuditEvent(event: AuditEvent): void {
-  if (resolveAuditSinks().length === 0) {
+  if (!mirrorTarget()) {
     return;
   }
 
@@ -91,7 +82,7 @@ export function forwardAuditEvent(event: AuditEvent): void {
       unmirroredSince = event.createdAt;
       log.error(
         { limit: BATCH_MAX_PENDING, since: unmirroredSince },
-        "Audit forward buffer full, events are no longer reaching any sink",
+        "Audit forward buffer full, events are no longer reaching the sink",
       );
     }
     unmirrored += 1;
