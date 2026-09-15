@@ -53,6 +53,7 @@ export * from "./config/resolve";
 export * from "./config/delegation";
 export * from "./config/dynamic-config";
 export * from "./config/db-config-feed";
+export * from "./config/derivation";
 export * from "./config/shared-groups";
 export * from "./config/analyze";
 export * from "./deployment-settings";
