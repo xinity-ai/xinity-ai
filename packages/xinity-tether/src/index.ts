@@ -7,7 +7,8 @@ import { config, configStore } from "./config";
 import { rootLogger } from "./logger";
 import { checkMigrations, getDB, subscribe, end as endDB } from "./db";
 import { verifyBearerToken, unauthorized } from "./auth";
-import { addConnection, removeConnection, pushDesiredState, runKeepaliveLoop, sendShutdownToAll, isConnected, getConnectedNodeIds } from "./connections";
+import { addConnection, removeConnection, pushDesiredState, pushConfig, pushConfigToAll, runKeepaliveLoop, sendShutdownToAll, isConnected, getConnectedNodeIds } from "./connections";
+import { createConfigBroadcast } from "./config-broadcast";
 import { buildDesiredState } from "./desired-state";
 import { createNotifyBus } from "./notify-bus";
 import { writeRegistration, queueInstallationStates, flushAndStop } from "./status-writer";
@@ -56,6 +57,21 @@ try {
   }));
 } catch (err) {
   rootLogger.error({ err }, "Dynamic configuration unavailable, keeping the values this process booted with");
+}
+
+const configBroadcast = createConfigBroadcast({
+  channel: DYNAMIC_CONFIG_CHANNEL,
+  read: () => readDynamicConfig(getDB()),
+  subscribe,
+  pushToAll: pushConfigToAll,
+  pushTo: pushConfig,
+  log: rootLogger,
+});
+
+try {
+  await configBroadcast.start();
+} catch (err) {
+  rootLogger.error({ err }, "Daemons will not receive dynamic configuration changes");
 }
 
 let keepaliveTimer: Timer | undefined;
@@ -126,6 +142,8 @@ async function handleSSEStream(req: Request): Promise<Response> {
       } catch (err) {
         log.error({ err, nodeId }, "Failed to push initial desired state");
       }
+
+      configBroadcast.sendCurrent(nodeId);
     },
     async cancel() {
       cancelled = true;
@@ -179,6 +197,7 @@ log.info({ ...serveTarget, tls: !!tls }, `Tether started (${tls ? "https" : "htt
 async function shutdown() {
   clearInterval(keepaliveTimer);
   await configStore.stop();
+  await configBroadcast.stop();
   sendShutdownToAll();
   await flushAndStop();
   await notifyBus.stop();

@@ -100,6 +100,27 @@ export const DYNAMIC_SETTINGS: DynamicSetting[] = [
       .describe("Time before a silent connection is considered dead").meta(expert()),
   },
   {
+    key: "VLLM_HEALTH_TIMEOUT_MS",
+    components: ["daemon"],
+    group: "vLLM",
+    schema: configNumber().default(60 * 60 * 1000)
+      .describe("vLLM health check timeout in milliseconds (default: 1 hour)").meta(expert()),
+  },
+  {
+    key: "VLLM_HEALTH_POLL_INTERVAL_MS",
+    components: ["daemon"],
+    group: "vLLM",
+    schema: configNumber().default(5_000)
+      .describe("vLLM health check poll interval in milliseconds").meta(expert()),
+  },
+  {
+    key: "VLLM_MAX_RESTART_COUNT",
+    components: ["daemon"],
+    group: "vLLM",
+    schema: configInt(z.int().positive()).default(3)
+      .describe("Max container restarts before marking installation as permanently failed").meta(expert()),
+  },
+  {
     key: "MCP_ENABLED",
     components: ["dashboard"],
     schema: configBool().default(true)

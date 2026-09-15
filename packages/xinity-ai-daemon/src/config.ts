@@ -1,4 +1,6 @@
-import { configFromProcessEnv } from "common-env";
+import { createDynamicConfig } from "common-env";
 import { daemonConfig, type DaemonConfig } from "./config-schema";
 
-export const config: DaemonConfig = configFromProcessEnv(daemonConfig);
+export const configStore = createDynamicConfig({ declaration: daemonConfig });
+
+export const config: DaemonConfig = configStore.value;

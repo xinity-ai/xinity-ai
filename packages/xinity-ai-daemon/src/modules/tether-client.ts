@@ -6,6 +6,7 @@ import {
   type InstallationStateReport,
 } from "common-env";
 import { rootLogger } from "../logger";
+import { receiveConfigEvent } from "./config-feed";
 import { config } from "../config";
 
 const log = rootLogger.child({ name: "tether-client" });
@@ -75,6 +76,8 @@ export async function* connectSSE(registration: NodeRegistration): AsyncGenerato
               } else {
                 log.warn({ error: parsed.error.message }, "Invalid desired state payload");
               }
+            } else if (currentEvent === "config" && currentData) {
+              receiveConfigEvent(currentData);
             } else if (currentEvent === "superseded") {
               log.warn("Connection superseded by another daemon instance");
             } else if (currentEvent === "shutdown") {

@@ -5,6 +5,7 @@ import {
   configNumber,
   defineConfig,
   defineGroup,
+  dynamic,
   env,
   expert,
   metricsAuthField,
@@ -68,9 +69,9 @@ type Vllm = {
   hfCacheDir: string;
   tritonCacheDir: string;
   hfToken?: string;
-  healthTimeoutMs: number;
-  healthPollIntervalMs: number;
-  maxRestartCount: number;
+  healthTimeoutMs: () => number;
+  healthPollIntervalMs: () => number;
+  maxRestartCount: () => number;
 };
 
 const vllm = defineGroup<Vllm>({
@@ -99,11 +100,11 @@ const vllm = defineGroup<Vllm>({
       .describe("Triton cache directory").meta(expert())),
     hfToken: env("VLLM_HF_TOKEN", z.string().optional()
       .describe("HuggingFace token for downloading private or gated models").meta(secret())),
-    healthTimeoutMs: env("VLLM_HEALTH_TIMEOUT_MS", configNumber().default(60 * 60 * 1000)
+    healthTimeoutMs: dynamic("VLLM_HEALTH_TIMEOUT_MS", configNumber().default(60 * 60 * 1000)
       .describe("vLLM health check timeout in milliseconds (default: 1 hour)").meta(expert())),
-    healthPollIntervalMs: env("VLLM_HEALTH_POLL_INTERVAL_MS", configNumber().default(5_000)
+    healthPollIntervalMs: dynamic("VLLM_HEALTH_POLL_INTERVAL_MS", configNumber().default(5_000)
       .describe("vLLM health check poll interval in milliseconds").meta(expert())),
-    maxRestartCount: env("VLLM_MAX_RESTART_COUNT", configInt(z.int().positive()).default(3)
+    maxRestartCount: dynamic("VLLM_MAX_RESTART_COUNT", configInt(z.int().positive()).default(3)
       .describe("Max container restarts before marking installation as permanently failed").meta(expert())),
   },
 });

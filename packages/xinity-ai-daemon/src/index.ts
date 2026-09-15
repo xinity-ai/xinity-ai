@@ -8,6 +8,8 @@ import { startMetricsSampler, type MetricsSampler } from "./modules/metrics-samp
 import { startServer } from "./modules/serverfront/webserver";
 import { buildRegistration } from "./modules/statekeeper";
 import { connectSSE } from "./modules/tether-client";
+import { tetherConfigFeed } from "./modules/config-feed";
+import { configStore } from "./config";
 import { rootLogger } from "./logger";
 import { daemonConfig } from "./config-schema";
 
@@ -46,6 +48,8 @@ async function main() {
   process.once("uncaughtException", onFatal("Uncaught exception"));
   process.once("unhandledRejection", onFatal("Unhandled rejection"));
 
+  await configStore.start(tetherConfigFeed);
+
   for await (const state of connectSSE(registration)) {
     if (shuttingDown) {
       break;
@@ -62,6 +66,7 @@ async function shutdown() {
   shuttingDown = true;
 
   await metricsSampler?.stop();
+  await configStore.stop();
   subscription?.unsubscribe();
   process.exit(0);
 }
