@@ -9,6 +9,7 @@ Events can additionally be mirrored to an external sink, which is covered under 
 | Field | Description |
 |---|---|
 | `id` | Event UUID |
+| `streamPosition` | Position in the stream this instance has emitted, see [Verifying the mirror is complete](#verifying-the-mirror-is-complete). Never returned by organization-scoped reads, since it counts the whole instance |
 | `createdAt` | Timestamp, the sort and pagination key |
 | `organizationId` | Owning organization, or null for instance-scoped and personal events |
 | `actorType` | `user`, `api_key`, `system`, or `instance_admin` |
@@ -88,7 +89,7 @@ Export is available as NDJSON or CSV over `audit.export`, which requires a `from
 
 ## Forwarding to an external sink
 
-Every persisted event can be mirrored, which is what makes the trail tamper resilient.
+Every persisted event can be mirrored, which is what makes the trail tamper resilient. Checking that the copy is complete is covered under [Verifying the mirror is complete](#verifying-the-mirror-is-complete).
 
 One sink is configured at a time, and the URL scheme picks the transport.
 
@@ -137,3 +138,40 @@ The dashboard module exposes `auditSinkUrl` and `auditSinkTenant`, with the sysl
 ### Grafana
 
 The **Xinity Logs** dashboard carries an Audit trail row with events broken down by action and the event stream itself. It is provisioned by the NixOS monitoring module when `logs.enable = true`. See [Monitoring](monitoring.md).
+
+## Verifying the mirror is complete
+
+A copy in your SIEM is only evidence if you can show nothing is missing from it. Suppressing the mirror, by stopping the sink or overflowing its buffer, would otherwise leave no trace outside the instance you are trying to check.
+
+Every event carries a `streamPosition`: a number assigned when the row is written, counting up across the whole instance and never reused. **A gap in the positions your sink holds is the signal.** It needs no cooperation from the instance, which is the point.
+
+### Pulling the authoritative set
+
+Compare against `GET /api/instance-admin/audit-stream`, which returns the same rows the forwarder sent, ordered by position:
+
+| Parameter | Purpose |
+|---|---|
+| `fromStreamPosition` | First position to return, default 1 |
+| `toStreamPosition` | Last position to return, optional |
+
+It requires instance admin (`INSTANCE_ADMIN_EMAILS`) and the `audit-log` feature, and is deliberately **not** scoped to an organization: the mirror carries every organization, so an organization-scoped view could not be compared against it. This is also why `/api/audit/export` cannot be used for reconciliation, even as an instance admin. It only ever returns your active organization's events.
+
+A response is capped at 10,000 rows. When it is, `truncated` is true and `nextStreamPosition` gives the position to resume from, so paging is mechanical:
+
+```
+GET /api/instance-admin/audit-stream?fromStreamPosition=1
+  -> { events: [...], truncated: true, nextStreamPosition: 10001 }
+GET /api/instance-admin/audit-stream?fromStreamPosition=10001
+  -> { events: [...], truncated: false, nextStreamPosition: null }
+```
+
+### Reading the result
+
+A run of positions missing from your sink but present here is a real mirroring gap. The database still holds those events, so re-ingest that range to close it. If the forwarder was the cause, it will also have logged the window at error level, but the gap is visible in your own data either way.
+
+Four things to know before treating a gap as evidence of tampering:
+
+- **A single missing position usually is not one.** Postgres consumes a position when an insert fails, so an isolated one-value gap can be a rolled-back write. Runs of missing positions are the signal worth chasing.
+- **Numbering is per instance.** Two instances both count from 1. Partition by instance before checking: syslog carries it in HOSTNAME, Loki in the `instance` label.
+- **The baseline starts at the upgrade** that added `streamPosition`. Rows written before it were numbered during the migration in storage order, which does not necessarily match the order they occurred in.
+- **Retention limits what is provable.** Once pruning removes rows, their absence from the database proves nothing, because retention legitimately removed them. Reconciliation is only meaningful inside the retention window, and after that your sink is the archive rather than a copy of one.
