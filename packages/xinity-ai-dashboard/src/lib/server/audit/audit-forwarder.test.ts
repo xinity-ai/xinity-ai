@@ -31,6 +31,7 @@ function audit(url: string): DashboardConfig["audit"] {
 function event(overrides: Partial<AuditEvent> = {}): AuditEvent {
   return {
     id: "3f1d1c2e-0000-4000-8000-000000000001",
+    streamPosition: 1,
     organizationId: "org_1",
     actorType: "user",
     actorId: "user_1",

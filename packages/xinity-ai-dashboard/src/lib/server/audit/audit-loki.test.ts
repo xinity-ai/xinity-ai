@@ -10,6 +10,7 @@ afterEach(() => {
 
 const event: AuditEvent = {
   id: "3f1d1c2e-0000-4000-8000-000000000001",
+  streamPosition: 4211,
   organizationId: "org_1",
   actorType: "user",
   actorId: "user_1",
@@ -49,7 +50,7 @@ describe("buildPushPayload", () => {
   test("carries the whole event in the line at a nanosecond timestamp", () => {
     const [timestamp, line] = JSON.parse(buildPushPayload([event])).streams[0].values[0];
     expect(timestamp).toBe(`${event.createdAt.getTime()}000000`);
-    expect(JSON.parse(line)).toMatchObject({ id: event.id, actorLabel: "jv@xinity.ai", context: { name: "prod" } });
+    expect(JSON.parse(line)).toMatchObject({ id: event.id, streamPosition: event.streamPosition, actorLabel: "jv@xinity.ai", context: { name: "prod" } });
   });
 
   test("collapses events sharing a label set into one stream", () => {

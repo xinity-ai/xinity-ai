@@ -4,6 +4,7 @@ import { buildSyslogMessage, framePayload, parseSyslogUrl, sendToSyslog, type Sy
 
 const event: AuditEvent = {
   id: "3f1d1c2e-0000-4000-8000-000000000001",
+  streamPosition: 4211,
   organizationId: "org_1",
   actorType: "user",
   actorId: "user_1",
@@ -69,6 +70,7 @@ describe("buildSyslogMessage", () => {
   test("carries the whole event as JSON in the message", () => {
     expect(JSON.parse(parts(buildSyslogMessage(event, config())).payload)).toMatchObject({
       id: event.id,
+      streamPosition: event.streamPosition,
       actorLabel: "jv@xinity.ai",
       context: { name: "prod" },
     });
