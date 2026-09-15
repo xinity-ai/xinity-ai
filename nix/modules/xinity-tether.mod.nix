@@ -3,6 +3,14 @@
     let
       withHostSystem = withSystem pkgs.stdenv.hostPlatform.system;
       cfg = config.services.xinity-tether;
+      dynamicConfig = import ./lib/dynamic-config.nix { inherit lib; };
+
+      # [sync:dynamic-keys] - generated from the config declaration, do not edit
+      dashboardManageableKeys = [
+        "KEEPALIVE_INTERVAL_MS"
+        "LIVENESS_TIMEOUT_MS"
+      ];
+      # [/sync:dynamic-keys]
     in {
       options.services.xinity-tether = {
         enable = lib.mkEnableOption "the xinity-tether, a lightweight mediator between xinity-ai daemons and PostgreSQL that provides desired-state streaming via SSE, status ingestion, and liveness detection";
@@ -110,6 +118,8 @@
           default = { };
           description = "Additional environment variables to pass to the service.";
         };
+
+        dashboardManaged = dynamicConfig.dashboardManagedOption dashboardManageableKeys;
       };
 
       config = lib.mkIf cfg.enable {
@@ -132,7 +142,7 @@
           wantedBy = [ "multi-user.target" ];
           after = [ "network-online.target" ];
           wants = [ "network-online.target" ];
-          environment = {
+          environment = dynamicConfig.delegateToDashboard cfg.dashboardManaged ({
             PORT = toString cfg.port;
             HOST = cfg.host;
             IDLE_TIMEOUT = toString cfg.idleTimeout;
@@ -158,7 +168,7 @@
           // lib.optionalAttrs (cfg.logDir != null) {
             LOG_DIR = cfg.logDir;
           }
-          // cfg.extraEnvironment;
+          // cfg.extraEnvironment);
           serviceConfig = let
             loadCredentialEntries =
               lib.optional (cfg.dbConnectionUrlFile != null) "db-connection-url:${cfg.dbConnectionUrlFile}"

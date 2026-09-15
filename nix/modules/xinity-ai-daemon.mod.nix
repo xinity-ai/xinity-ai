@@ -4,6 +4,15 @@
       withHostSystem = withSystem pkgs.stdenv.hostPlatform.system;
       cfg = config.services.xinity-ai-daemon;
       cfgOllama = config.services.ollama;
+      dynamicConfig = import ./lib/dynamic-config.nix { inherit lib; };
+
+      # [sync:dynamic-keys] - generated from the config declaration, do not edit
+      dashboardManageableKeys = [
+        "VLLM_HEALTH_TIMEOUT_MS"
+        "VLLM_HEALTH_POLL_INTERVAL_MS"
+        "VLLM_MAX_RESTART_COUNT"
+      ];
+      # [/sync:dynamic-keys]
     in {
 
       imports = [
@@ -209,6 +218,8 @@
           default = { };
           description = "Additional environment variables passed to the systemd service. Use this for driver-specific tuning or feature flags not covered by dedicated options.";
         };
+
+        dashboardManaged = dynamicConfig.dashboardManagedOption dashboardManageableKeys;
       };
 
       config = lib.mkIf cfg.enable {
@@ -221,7 +232,7 @@
           wants = [ "network-online.target" ];
           # generell system paths instead of specific binaries to allow dynamic tooling resolution. i.e. nvidia-smi generelly gets auto added to this when installing the drivers
           path = [ "/run/current-system/sw" ];
-          environment = {
+          environment = dynamicConfig.delegateToDashboard cfg.dashboardManaged ({
             PORT = toString cfg.port;
             HOST = cfg.host;
             STATE_DIR = cfg.stateDir;
@@ -272,7 +283,7 @@
           // lib.optionalAttrs (cfg.tlsKeyFile != null) {
             XINITY_TLS_KEY_FILE = "%d/tls-key";
           }
-          // cfg.extraEnvironment;
+          // cfg.extraEnvironment);
           serviceConfig = let
             loadCredentialEntries =
               lib.optional (cfg.tetherSecretFile != null) "tether-secret:${cfg.tetherSecretFile}"

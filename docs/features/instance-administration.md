@@ -50,3 +50,12 @@ The fallback form is the safe way to adopt one. `LOAD_BALANCE_STRATEGY=@dynamic:
 Clearing a value returns each component to the fallback it was started with, which can differ between hosts. The page cannot show what that is, only the value the schema declares.
 
 A component that was not started with `@dynamic` for a setting ignores whatever is on the page, and a component refuses to start if it is given `@dynamic` for a setting that is not dashboard-managed.
+
+How a component gets delegated depends on how it is deployed. The CLI offers "manage from dashboard" in its configuration menu, which keeps the current value as the fallback. A Docker Compose or systemd deployment writes the sentinel into its environment file by hand. A NixOS deployment lists the env keys under `services.<service>.dashboardManaged`, which keeps every typed option as it was and emits it as its own fallback:
+
+```nix
+services.xinity-ai-gateway = {
+  loadBalanceStrategy = "round-robin";
+  dashboardManaged = [ "LOAD_BALANCE_STRATEGY" "RESPONSE_CACHE_TTL_SECONDS" ];
+};
+```

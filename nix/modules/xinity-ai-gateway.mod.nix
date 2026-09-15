@@ -4,6 +4,20 @@
       withHostSystem = withSystem pkgs.stdenv.hostPlatform.system;
       cfg = config.services.xinity-ai-gateway;
       s3Options = import ./lib/s3-options.nix { inherit lib; };
+      dynamicConfig = import ./lib/dynamic-config.nix { inherit lib; };
+
+      # [sync:dynamic-keys] - generated from the config declaration, do not edit
+      dashboardManageableKeys = [
+        "RESPONSE_CACHE_TTL_SECONDS"
+        "CACHE_APPLICATION_TTL_SECONDS"
+        "CACHE_API_KEY_TTL_SECONDS"
+        "CACHE_AUTH_FAILURE_TTL_SECONDS"
+        "CACHE_MODEL_TTL_SECONDS"
+        "CACHE_DIGEST_MAX_ENTRIES"
+        "LOAD_BALANCE_STRATEGY"
+        "BACKEND_TIMEOUT_MS"
+      ];
+      # [/sync:dynamic-keys]
 
       removed = path: message:
         lib.mkRemovedOptionModule
@@ -202,6 +216,8 @@
           default = { };
           description = "Additional environment variables to pass to the service.";
         };
+
+        dashboardManaged = dynamicConfig.dashboardManagedOption dashboardManageableKeys;
       } // s3Options;
 
       config = lib.mkIf cfg.enable {
@@ -210,7 +226,7 @@
           wantedBy = [ "multi-user.target" ];
           after = [ "network-online.target" ];
           wants = [ "network-online.target" ];
-          environment = {
+          environment = dynamicConfig.delegateToDashboard cfg.dashboardManaged ({
             HOST = cfg.host;
             PORT = toString cfg.port;
             RESPONSE_CACHE_TTL_SECONDS = toString cfg.responseCacheTtlSeconds;
@@ -272,7 +288,7 @@
           // lib.optionalAttrs (cfg.s3SecretAccessKeyFile != null) {
             S3_SECRET_ACCESS_KEY_FILE = "%d/s3-secret-access-key";
           }
-          // cfg.extraEnvironment;
+          // cfg.extraEnvironment);
           serviceConfig = {
             EnvironmentFile = cfg.environmentFiles;
             ExecStart = "${cfg.package}/bin/xinity-ai-gateway";
