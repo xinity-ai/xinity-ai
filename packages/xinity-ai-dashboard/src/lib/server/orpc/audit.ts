@@ -30,6 +30,8 @@ export type AuditAction =
   | "apiKey.toggle_collect_data"
   | "apiKey.toggle_enabled"
   | "apiKey.update"
+  | "dynamicConfig.clear"
+  | "dynamicConfig.set"
   | "compute.remove_node"
   | "instanceAdmin.add_user_to_org"
   | "instanceAdmin.ban_user"

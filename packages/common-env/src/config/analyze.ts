@@ -18,6 +18,7 @@ export type EnvField = {
   isSecret: boolean;
   isExpert: boolean;
   isPublic: boolean;
+  isDynamic: boolean;
   enumValues?: string[];
   isBoolean: boolean;
   validate: (raw: string) => string | undefined;
@@ -74,6 +75,7 @@ export function analyzeConfig(config: AnyConfig): EnvField[] {
       isSecret: entry.isSecret,
       isExpert: entry.isExpert,
       isPublic: entry.isPublic,
+      isDynamic: entry.isDynamic,
       enumValues: extractEnumValues(prop),
       isBoolean: resolvedType === "boolean",
       validate: schemaValidator(entry.schema),
