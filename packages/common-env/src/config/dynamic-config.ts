@@ -25,7 +25,7 @@ export type DynamicConfig<T> = {
     build: (inputs: I) => R,
     opts?: { dispose?: (value: R) => void },
   ) => Derived<R>;
-  start: () => Promise<void>;
+  start: (feed: ConfigFeed) => Promise<void>;
   stop: () => Promise<void>;
 };
 
@@ -40,7 +40,6 @@ function valueAt(values: ConfigValues, path: readonly string[]): unknown {
 export function createDynamicConfig<T>(deps: {
   declaration: ConfigDef<T>;
   rawEnv?: RawEnv;
-  feed?: ConfigFeed;
 }): DynamicConfig<T> {
   const { declaration } = deps;
   const { envWithFallbacks, delegatedKeys } = splitDelegations(
@@ -109,11 +108,11 @@ export function createDynamicConfig<T>(deps: {
         ? { ...entry, source: "dynamic" as const }
         : entry),
 
-    async start() {
-      if (!deps.feed || stopFeed) {
+    async start(feed) {
+      if (stopFeed) {
         return;
       }
-      stopFeed = await deps.feed(apply);
+      stopFeed = await feed(apply);
     },
 
     async stop() {

@@ -39,7 +39,7 @@ export const handleEmbeddingGeneration = withEndpointGuards({
       fetchBody.user = body.user;
     }
 
-    const signal = AbortSignal.any([req.signal, AbortSignal.timeout(config.inference.backendTimeoutMs)]);
+    const signal = AbortSignal.any([req.signal, AbortSignal.timeout(config.inference.backendTimeoutMs())]);
     const backendResponse = await backendPostJson(modelInfo, "/v1/embeddings", fetchBody, signal);
 
     if (!backendResponse.ok) {

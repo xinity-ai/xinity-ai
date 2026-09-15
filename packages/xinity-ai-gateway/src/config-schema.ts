@@ -6,6 +6,7 @@ import {
   databaseGroup,
   defineConfig,
   defineGroup,
+  dynamic,
   env,
   expert,
   metricsGroup,
@@ -25,12 +26,12 @@ import { WEB_SEARCH_PROVIDER_NAMES } from "./llm-forward/tools/search-providers"
 
 type Cache = {
   url: string;
-  responseTtlSeconds: number;
-  applicationTtlSeconds: number;
-  apiKeyTtlSeconds: number;
-  authFailureTtlSeconds: number;
-  modelTtlSeconds: number;
-  digestEntries: number;
+  responseTtlSeconds: () => number;
+  applicationTtlSeconds: () => number;
+  apiKeyTtlSeconds: () => number;
+  authFailureTtlSeconds: () => number;
+  modelTtlSeconds: () => number;
+  digestEntries: () => number;
 };
 
 const ttl = (seconds: number) => configNumber(z.number().positive()).default(seconds).meta(expert());
@@ -42,17 +43,17 @@ const cache = defineGroup<Cache>({
   fields: {
     url: env("REDIS_URL", z.url({ protocol: /^(redis|valkey)s?$/ })
       .describe("Redis or Valkey connection URL (e.g. redis://:PASSWORD@localhost:6379). Percent-encode the password.").meta(secret())),
-    responseTtlSeconds: env("RESPONSE_CACHE_TTL_SECONDS", ttl(3600)
+    responseTtlSeconds: dynamic("RESPONSE_CACHE_TTL_SECONDS", ttl(3600)
       .describe("How long an identical completion is served from cache instead of the backend")),
-    applicationTtlSeconds: env("CACHE_APPLICATION_TTL_SECONDS", ttl(300)
+    applicationTtlSeconds: dynamic("CACHE_APPLICATION_TTL_SECONDS", ttl(300)
       .describe("How long an application name to id lookup is cached")),
-    apiKeyTtlSeconds: env("CACHE_API_KEY_TTL_SECONDS", ttl(120)
+    apiKeyTtlSeconds: dynamic("CACHE_API_KEY_TTL_SECONDS", ttl(120)
       .describe("How long a validated API key is cached, so every request does not hit the database")),
-    authFailureTtlSeconds: env("CACHE_AUTH_FAILURE_TTL_SECONDS", ttl(10)
+    authFailureTtlSeconds: dynamic("CACHE_AUTH_FAILURE_TTL_SECONDS", ttl(10)
       .describe("How long a rejected API key is remembered. Short, so re-enabling a key takes effect promptly")),
-    modelTtlSeconds: env("CACHE_MODEL_TTL_SECONDS", ttl(60)
+    modelTtlSeconds: dynamic("CACHE_MODEL_TTL_SECONDS", ttl(60)
       .describe("How long a model deployment lookup is cached")),
-    digestEntries: env("CACHE_DIGEST_MAX_ENTRIES", configInt(z.int().positive()).default(5_000)
+    digestEntries: dynamic("CACHE_DIGEST_MAX_ENTRIES", configInt(z.int().positive()).default(5_000)
       .describe("Entries held in the in-process chat message digest cache, which avoids re-hashing repeated history")
       .meta(expert())),
   },
@@ -81,8 +82,8 @@ const webSearch = defineGroup<WebSearch>({
 });
 
 type Inference = {
-  loadBalanceStrategy: "random" | "round-robin" | "least-connections";
-  backendTimeoutMs: number;
+  loadBalanceStrategy: () => "random" | "round-robin" | "least-connections";
+  backendTimeoutMs: () => number;
   /** Verifying daemon certificates is independent of serving HTTPS, so it does not live in `tls`. */
   ca?: string;
 };
@@ -93,10 +94,10 @@ const inference = defineGroup<Inference>({
   description: "How the gateway picks a node, how long it waits, and how it trusts one.",
   expert: true,
   fields: {
-    loadBalanceStrategy: env("LOAD_BALANCE_STRATEGY",
+    loadBalanceStrategy: dynamic("LOAD_BALANCE_STRATEGY",
       z.enum(["random", "round-robin", "least-connections"]).default("least-connections")
         .describe("Load balancing strategy for distributing requests across inference nodes")),
-    backendTimeoutMs: env("BACKEND_TIMEOUT_MS", configNumber(z.number().positive()).default(300_000)
+    backendTimeoutMs: dynamic("BACKEND_TIMEOUT_MS", configNumber(z.number().positive()).default(300_000)
       .describe("Backend timeout in ms (default: 5 min). For streaming requests this is an idle timeout that resets on each chunk; for non-streaming requests it is a wall-clock deadline.")),
     ca: env("XINITY_INFERENCE_CA", z.string().optional()
       .describe("PEM-encoded CA certificate for verifying daemon TLS. When set, gateway connects to daemons via HTTPS.")

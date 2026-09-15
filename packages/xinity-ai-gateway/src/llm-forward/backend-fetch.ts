@@ -29,7 +29,8 @@ export type IdleTimeout = { signal: AbortSignal; reset: () => void; clear: () =>
  * countdown. If the timer fires, the returned signal aborts with a
  * TimeoutError identical to AbortSignal.timeout().
  */
-export function createIdleTimeout(ms: number = config.inference.backendTimeoutMs): IdleTimeout {
+export function createIdleTimeout(): IdleTimeout {
+  const ms = config.inference.backendTimeoutMs();
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
 

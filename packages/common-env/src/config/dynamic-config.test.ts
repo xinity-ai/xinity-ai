@@ -56,10 +56,10 @@ function startFed(rawEnv: Record<string, string | undefined>) {
     return async () => {};
   };
 
-  const config = createDynamicConfig({ declaration, rawEnv, feed });
+  const config = createDynamicConfig({ declaration, rawEnv });
   return {
     config,
-    started: config.start(),
+    started: config.start(feed),
     push: (overrides: Record<string, string>) => push(overrides),
   };
 }
@@ -220,9 +220,9 @@ describe("the feed", () => {
     const feed: ConfigFeed = async () => async () => {
       teardowns += 1;
     };
-    const config = createDynamicConfig({ declaration, rawEnv: BASE, feed });
+    const config = createDynamicConfig({ declaration, rawEnv: BASE });
 
-    await config.start();
+    await config.start(feed);
     await config.stop();
     expect(teardowns).toBe(1);
   });

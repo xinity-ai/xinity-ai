@@ -2,9 +2,9 @@ import "zod/compile";
 
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { serverRouter } from "./rpc/gatewayRouter";
-import { config } from "./config";
+import { config, configStore } from "./config";
 import { gatewayConfig } from "./config-schema";
-import { checkMigrations, subscribe } from "./db";
+import { checkMigrations, getDB, subscribe } from "./db";
 import { checkRedis } from "./redis";
 import { rootLogger } from "./logger";
 import { createOpenapiSpec, createScalarPage } from "./openapi";
@@ -18,8 +18,8 @@ import { handleRerank } from "./llm-forward/endpoints/handle-rerank";
 import { handleTranscription } from "./llm-forward/endpoints/handle-transcription";
 import { handleMetrics, withMetrics } from "./metrics";
 import { LONG_RUNNING_ROUTES, withoutConnectionTimeout, type RouteHandler } from "./serve-config";
-import { activationRefusal } from "common-env";
-import { logMigrationFailureFatal } from "common-db";
+import { activationRefusal, createDbConfigFeed } from "common-env";
+import { DYNAMIC_CONFIG_CHANNEL, logMigrationFailureFatal, readDynamicConfig } from "common-db";
 import { getSearchProvider } from "./llm-forward/tools/search-providers";
 import { setSearchProvider } from "./llm-forward/tools/response-tools";
 import { flushUsageEvents } from "./usageRecorder";
@@ -60,6 +60,19 @@ try {
   await cacheInvalidation.start();
 } catch (err) {
   rootLogger.error({ err }, "Cache invalidation unavailable, falling back to TTL expiry");
+}
+
+// Every delegated setting already holds its configured fallback, so a failed subscription
+// costs dashboard control of them, not a working gateway.
+try {
+  await configStore.start(createDbConfigFeed({
+    channel: DYNAMIC_CONFIG_CHANNEL,
+    read: () => readDynamicConfig(getDB()),
+    subscribe,
+    log: rootLogger,
+  }));
+} catch (err) {
+  rootLogger.error({ err }, "Dynamic configuration unavailable, keeping the values this process booted with");
 }
 
 const handler = new OpenAPIHandler(serverRouter, {
@@ -144,6 +157,7 @@ async function gracefulShutdown(signal: string) {
   }
 
   await cacheInvalidation.stop();
+  await configStore.stop();
 
   try {
     await withTimeout(Promise.all([flushUsageEvents(), flushCallLog()]), FLUSH_TIMEOUT_MS, "DB write queue flush");
