@@ -8,6 +8,7 @@ import {
   databaseGroup,
   defineConfig,
   defineGroup,
+  dynamic,
   env,
   expert,
   metricsGroup,
@@ -51,7 +52,7 @@ const server = defineGroup<Server>({
 
 type Auth = {
   secret: string;
-  signupEnabled: boolean;
+  signupEnabled: () => boolean;
   multiTenantMode: boolean;
   instanceAdmins: string[];
 };
@@ -75,7 +76,7 @@ const auth = defineGroup<Auth>({
   fields: {
     secret: env("BETTER_AUTH_SECRET", z.string()
       .describe("Better Auth secret key, generate with: openssl rand -base64 32").meta(secret())),
-    signupEnabled: env("SIGNUP_ENABLED", configBool().default(true)
+    signupEnabled: dynamic("SIGNUP_ENABLED", configBool().default(true)
       .describe("Enable user signup")),
     multiTenantMode: env("MULTI_TENANT_MODE", configBool().default(false)
       .describe("Allow any authenticated user to create organizations")),
@@ -101,7 +102,7 @@ const mail = defineGroup<Mail>({
 
 type Compute = {
   managementEnabled: boolean;
-  deploymentStrategy: "first-fit" | "balanced" | "bin-pack" | "proportional";
+  deploymentStrategy: () => "first-fit" | "balanced" | "bin-pack" | "proportional";
   prometheusUrl?: string;
 };
 
@@ -113,7 +114,7 @@ const compute = defineGroup<Compute>({
   fields: {
     managementEnabled: env("COMPUTE_MANAGEMENT_ENABLED", configBool().default(true)
       .describe("Enable compute management")),
-    deploymentStrategy: env("DEPLOYMENT_STRATEGY",
+    deploymentStrategy: dynamic("DEPLOYMENT_STRATEGY",
       z.enum(["first-fit", "balanced", "bin-pack", "proportional"]).default("balanced")
         .describe("Node selection strategy for new model installations. 'first-fit' picks the first node that fits (deterministic). 'balanced' picks the node with the most absolute free VRAM (spread for HA). 'bin-pack' picks the tightest fit (consolidate so idle nodes stay drainable). 'proportional' picks the node with the lowest percent utilization (fair spread across heterogeneous nodes).")),
     prometheusUrl: env("PROMETHEUS_URL", z.url().optional()
@@ -186,7 +187,7 @@ export type DashboardConfig = {
   trustedOrigins: string[];
   gatewayUrl: string;
   licenseKey?: string;
-  mcpEnabled: boolean;
+  mcpEnabled: () => boolean;
   notificationsEnabled: boolean;
 };
 
@@ -217,7 +218,7 @@ export const dashboardConfig = defineConfig<DashboardConfig>({
     .meta(clientPublic())),
   licenseKey: env("LICENSE_KEY", z.string().optional()
     .describe("License key for unlocking paid features (Ed25519-signed token)").meta(secret())),
-  mcpEnabled: env("MCP_ENABLED", configBool().default(true)
+  mcpEnabled: dynamic("MCP_ENABLED", configBool().default(true)
     .describe("Enable the /mcp Model Context Protocol endpoint")),
   notificationsEnabled: env("NOTIFICATIONS_ENABLED", configBool().default(true)
     .describe("Enable the notification scheduler (deployment status, node health, capacity warnings, weekly reports)")

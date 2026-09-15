@@ -7,6 +7,7 @@
   import * as Select from "$lib/components/ui/select";
   import * as Tooltip from "$lib/components/ui/tooltip";
   import { Badge } from "$lib/components/ui/badge";
+  import { Switch } from "$lib/components/ui/switch";
   import { Search, RotateCcw } from "@lucide/svelte";
   import { toastState } from "$lib/state/toast.svelte";
   import type { DynamicSettingSummary } from "./dynamic-settings";
@@ -35,7 +36,8 @@
   const groups = $derived.by(() => {
     const byGroup = new Map<string, DynamicSettingSummary[]>();
     for (const setting of visible) {
-      byGroup.set(setting.group, [...(byGroup.get(setting.group) ?? []), setting]);
+      const name = setting.group ?? "General";
+      byGroup.set(name, [...(byGroup.get(name) ?? []), setting]);
     }
     return [...byGroup.entries()].sort(([a], [b]) => a.localeCompare(b));
   });
@@ -60,6 +62,11 @@
       return "";
     }
     return overrides[setting.key]?.value ?? setting.defaultValue ?? "";
+  }
+
+  /** `configBool` accepts several spellings, so a value set outside the dashboard may not be "true". */
+  function isOn(value: string): boolean {
+    return ["true", "1", "yes", "on"].includes(value.trim().toLowerCase());
   }
 
   function draftOf(setting: DynamicSettingSummary): string {
@@ -180,7 +187,17 @@
             </div>
 
             <div class="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">
-              {#if setting.enumValues}
+              {#if setting.kind === "boolean"}
+                <label class="flex w-56 cursor-pointer items-center gap-2">
+                  <Switch
+                    checked={isOn(draftOf(setting))}
+                    onCheckedChange={(on) => (drafts[setting.key] = String(on))}
+                  />
+                  <span class="text-sm text-muted-foreground">
+                    {isOn(draftOf(setting)) ? "Enabled" : "Disabled"}
+                  </span>
+                </label>
+              {:else if setting.enumValues}
                 <Select.Root
                   type="single"
                   value={draftOf(setting)}

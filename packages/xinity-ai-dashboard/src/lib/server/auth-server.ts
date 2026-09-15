@@ -324,7 +324,7 @@ export const auth = betterAuth({
       }
 
       // Gate signup: when SIGNUP_ENABLED is false, only allow users with pending invitations
-      if (ctx.path === "/sign-up/email" && !config.auth.signupEnabled) {
+      if (ctx.path === "/sign-up/email" && !config.auth.signupEnabled()) {
         const email = ctx.body?.email;
         if (email) {
           const [invitation] = await getDB()

@@ -1,4 +1,6 @@
-import { configFromProcessEnv } from "common-env";
+import { createDynamicConfig } from "common-env";
 import { dashboardConfig, type DashboardConfig } from "./config-schema";
 
-export const config: DashboardConfig = configFromProcessEnv(dashboardConfig);
+export const configStore = createDynamicConfig({ declaration: dashboardConfig });
+
+export const config: DashboardConfig = configStore.value;

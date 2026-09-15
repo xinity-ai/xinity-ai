@@ -1,10 +1,10 @@
 import { z } from "zod";
-import { configInt, configNumber, expert, readLeafMeta } from "common-env";
+import { configBool, configInt, configNumber, expert, readLeafMeta } from "common-env";
 
 export type DynamicSetting = {
   key: string;
   components: string[];
-  group: string;
+  group?: string;
   schema: z.ZodType;
 };
 
@@ -72,6 +72,25 @@ export const DYNAMIC_SETTINGS: DynamicSetting[] = [
     schema: z.enum(["random", "round-robin", "least-connections"]).default("least-connections")
       .describe("Load balancing strategy for distributing requests across inference nodes"),
   },
+  {
+    key: "SIGNUP_ENABLED",
+    components: ["dashboard"],
+    group: "Authentication",
+    schema: configBool().default(true).describe("Enable user signup"),
+  },
+  {
+    key: "DEPLOYMENT_STRATEGY",
+    components: ["dashboard"],
+    group: "Compute",
+    schema: z.enum(["first-fit", "balanced", "bin-pack", "proportional"]).default("balanced")
+      .describe("Node selection strategy for new model installations. 'first-fit' picks the first node that fits (deterministic). 'balanced' picks the node with the most absolute free VRAM (spread for HA). 'bin-pack' picks the tightest fit (consolidate so idle nodes stay drainable). 'proportional' picks the node with the lowest percent utilization (fair spread across heterogeneous nodes)."),
+  },
+  {
+    key: "MCP_ENABLED",
+    components: ["dashboard"],
+    schema: configBool().default(true)
+      .describe("Enable the /mcp Model Context Protocol endpoint"),
+  },
 ];
 
 export function findDynamicSetting(key: string): DynamicSetting | undefined {
@@ -84,7 +103,7 @@ type JsonSchema = { type?: string; enum?: string[]; default?: unknown; descripti
 export type DynamicSettingSummary = {
   key: string;
   components: string[];
-  group: string;
+  group?: string;
   description: string;
   defaultValue?: string;
   isSecret: boolean;

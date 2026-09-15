@@ -398,7 +398,7 @@ async function runSyncDeployedModels() {
     ...collectExcessInstallations(requiredModels, state),
     ...collectDriftedInstallations(requiredModels, state),
   ];
-  const toInstall = await planNewInstallations(requiredModels, state, maxVramGb(), config.compute.deploymentStrategy);
+  const toInstall = await planNewInstallations(requiredModels, state, maxVramGb(), config.compute.deploymentStrategy());
   await applyChanges(toUninstall, toInstall);
 }
 

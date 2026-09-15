@@ -10,9 +10,11 @@ import { svelteKitHandler } from "better-auth/svelte-kit";
 import { building } from "$app/environment";
 import { startDeploymentSyncService } from "$lib/server/lib/orchestration.mod";
 import { startNotificationScheduler } from "$lib/server/notifications/scheduler";
-import { config } from "$lib/server/config";
+import { config, configStore } from "$lib/server/config";
 import { checkMigrationState, isMigrationOk } from "$lib/server/migration-check";
-import { logMigrationFailureFatal } from "common-db";
+import { DYNAMIC_CONFIG_CHANNEL, logMigrationFailureFatal, readDynamicConfig } from "common-db";
+import { createDbConfigFeed } from "common-env";
+import { getDB, subscribe } from "$lib/server/db";
 import { loadDeploymentId } from "$lib/server/deployment-id";
 import { stampClientAddress } from "$lib/server/client-address";
 import { flushAuditEvents } from "$lib/server/audit/audit-forwarder";
@@ -121,6 +123,19 @@ if (isMigrationOk() && config.compute.managementEnabled) {
   void startDeploymentSyncService();
 }
 
+// Every delegated setting already holds its configured fallback, so a failed subscription
+// costs dashboard control of them, not a working dashboard.
+if (isMigrationOk()) {
+  configStore
+    .start(createDbConfigFeed({
+      channel: DYNAMIC_CONFIG_CHANNEL,
+      read: () => readDynamicConfig(getDB()),
+      subscribe,
+      log: rootLogger,
+    }))
+    .catch((err: unknown) => log.error({ err }, "Dynamic configuration unavailable, keeping the values this process booted with"));
+}
+
 /**
  * Start the notification scheduler (deployment status, node health, capacity, weekly reports).
  */
@@ -132,5 +147,6 @@ if (isMigrationOk() && config.notificationsEnabled) {
  * Every shutdown action belongs here. Registering a signal listener elsewhere would
  * suppress the default termination and leave the process running after a stop.
  */
+onShutdown("dynamic-config", () => configStore.stop());
 onShutdown("audit-forwarder", flushAuditEvents);
 installShutdownHandlers();
