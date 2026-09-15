@@ -218,7 +218,7 @@ describe("keepalive loop", () => {
     const { controller, chunks } = makeController();
     await addConnection("node-ka", controller);
 
-    const timer = runKeepaliveLoop(50, 10_000);
+    const timer = runKeepaliveLoop(50, () => 10_000);
     await Bun.sleep(80);
     clearInterval(timer);
 
@@ -230,7 +230,7 @@ describe("keepalive loop", () => {
     await addConnection("node-timeout", makeBrokenController());
     expect(isConnected("node-timeout")).toBe(true);
 
-    const timer = runKeepaliveLoop(50, 10);
+    const timer = runKeepaliveLoop(50, () => 10);
     await Bun.sleep(80);
     clearInterval(timer);
 

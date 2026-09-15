@@ -3,7 +3,7 @@ import {
   databaseUrlField,
   defineConfig,
   defineGroup,
-  env,
+  dynamic,
   expert,
   metricsGroup,
   serverFields,
@@ -15,7 +15,7 @@ import {
 } from "common-env";
 import { loggingGroup, type LoggingConfig } from "common-log";
 
-type Server = ServerConfig & { keepaliveIntervalMs: number; livenessTimeoutMs: number };
+type Server = ServerConfig & { keepaliveIntervalMs: () => number; livenessTimeoutMs: () => number };
 
 const server = defineGroup<Server>({
   id: "server",
@@ -35,9 +35,9 @@ const server = defineGroup<Server>({
   },
   fields: {
     ...serverFields({ host: "0.0.0.0", port: 4020 }),
-    keepaliveIntervalMs: env("KEEPALIVE_INTERVAL_MS", configNumber().default(15_000)
+    keepaliveIntervalMs: dynamic("KEEPALIVE_INTERVAL_MS", configNumber().default(15_000)
       .describe("SSE keepalive interval in ms").meta(expert())),
-    livenessTimeoutMs: env("LIVENESS_TIMEOUT_MS", configNumber().default(45_000)
+    livenessTimeoutMs: dynamic("LIVENESS_TIMEOUT_MS", configNumber().default(45_000)
       .describe("Time before a silent connection is considered dead").meta(expert())),
   },
 });

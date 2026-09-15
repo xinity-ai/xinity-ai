@@ -49,13 +49,16 @@ export type GroupDef<V = unknown> = AnyGroup & Resolves<V>;
 
 export type Violation<T> = { field: keyof T & string; message: string };
 
+/** Rules run on resolved values, before a dynamic field is projected into its accessor. */
+export type Settled<T> = { [K in keyof T]: T[K] extends () => infer V ? V : T[K] };
+
 type GroupInput<T> = {
   id: string;
   title: string;
   description?: string;
   /** Marks every field advanced, so they need not repeat it. */
   expert?: boolean;
-  violations?: (value: T) => readonly Violation<T>[];
+  violations?: (value: Settled<T>) => readonly Violation<T>[];
   fields: Fields<T>;
 };
 

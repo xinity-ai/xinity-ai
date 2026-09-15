@@ -25,6 +25,8 @@ export type DynamicConfig<T> = {
     build: (inputs: I) => R,
     opts?: { dispose?: (value: R) => void },
   ) => Derived<R>;
+  /** Runs `react` now and whenever the selected values change, for side effects rather than values. */
+  watch: <I>(selectInputs: (value: T) => I, react: (inputs: I) => void) => () => void;
   start: (feed: ConfigFeed) => Promise<void>;
   stop: () => Promise<void>;
 };
@@ -101,6 +103,12 @@ export function createDynamicConfig<T>(deps: {
       });
       derivations.add(derivation);
       return derivation;
+    },
+
+    watch(selectInputs, react) {
+      const derivation = createDerivation({ values: value, selectInputs, build: (inputs) => inputs });
+      derivations.add(derivation);
+      return derivation.subscribe(react);
     },
 
     provenance: () => resolved.provenance.map((entry) =>

@@ -1,11 +1,11 @@
 import "zod/compile";
 
-import { logMigrationFailureFatal } from "common-db";
-import { nodeRegistrationSchema, installationStateReportSchema, protocolFingerprint, activationRefusal } from "common-env";
+import { DYNAMIC_CONFIG_CHANNEL, logMigrationFailureFatal, readDynamicConfig } from "common-db";
+import { nodeRegistrationSchema, installationStateReportSchema, protocolFingerprint, activationRefusal, createDbConfigFeed } from "common-env";
 import { tetherConfig } from "./config-schema";
-import { config } from "./config";
+import { config, configStore } from "./config";
 import { rootLogger } from "./logger";
-import { checkMigrations, subscribe, end as endDB } from "./db";
+import { checkMigrations, getDB, subscribe, end as endDB } from "./db";
 import { verifyBearerToken, unauthorized } from "./auth";
 import { addConnection, removeConnection, pushDesiredState, runKeepaliveLoop, sendShutdownToAll, isConnected, getConnectedNodeIds } from "./connections";
 import { buildDesiredState } from "./desired-state";
@@ -45,7 +45,27 @@ try {
   process.exit(1);
 }
 
-const keepaliveTimer = runKeepaliveLoop(config.server.keepaliveIntervalMs, config.server.livenessTimeoutMs);
+// Every delegated setting already holds its configured fallback, so a failed subscription
+// costs dashboard control of them, not a working tether.
+try {
+  await configStore.start(createDbConfigFeed({
+    channel: DYNAMIC_CONFIG_CHANNEL,
+    read: () => readDynamicConfig(getDB()),
+    subscribe,
+    log: rootLogger,
+  }));
+} catch (err) {
+  rootLogger.error({ err }, "Dynamic configuration unavailable, keeping the values this process booted with");
+}
+
+let keepaliveTimer: Timer | undefined;
+configStore.watch(
+  (value) => value.server.keepaliveIntervalMs(),
+  (intervalMs) => {
+    clearInterval(keepaliveTimer);
+    keepaliveTimer = runKeepaliveLoop(intervalMs, config.server.livenessTimeoutMs);
+  },
+);
 
 async function handleSSEStream(req: Request): Promise<Response> {
   if (req.method !== "POST") {
@@ -158,6 +178,7 @@ log.info({ ...serveTarget, tls: !!tls }, `Tether started (${tls ? "https" : "htt
 
 async function shutdown() {
   clearInterval(keepaliveTimer);
+  await configStore.stop();
   sendShutdownToAll();
   await flushAndStop();
   await notifyBus.stop();

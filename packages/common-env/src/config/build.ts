@@ -8,6 +8,7 @@ import {
   type AnyGroup,
   type ConfigEntry,
   type ConfigField,
+  type Settled,
   type GroupDef,
 } from "./group";
 
@@ -37,9 +38,11 @@ export type FieldRef = {
 export type FieldRefs<T> = {
   readonly [K in keyof T]-?: NonNullable<T[K]> extends readonly unknown[]
     ? FieldRef
-    : NonNullable<T[K]> extends object
-      ? FieldRefs<NonNullable<T[K]>>
-      : FieldRef;
+    : NonNullable<T[K]> extends (...args: never[]) => unknown
+      ? FieldRef
+      : NonNullable<T[K]> extends object
+        ? FieldRefs<NonNullable<T[K]>>
+        : FieldRef;
 };
 
 export type ConfigViolation = { fields: readonly FieldRef[]; message: string };
@@ -53,7 +56,17 @@ export type AnyConfig = {
 
 export type ConfigDef<T = unknown> = AnyConfig & { readonly [CONFIG_VALUE]: (value: T) => T };
 
-type ConfigInput<T> = { violations?: (value: T, at: FieldRefs<T>) => readonly ConfigViolation[] };
+type SettledMembers<T> = {
+  [K in keyof T]: T[K] extends () => infer V
+    ? V
+    : NonNullable<T[K]> extends object
+      ? Settled<NonNullable<T[K]>> | Extract<T[K], undefined>
+      : T[K];
+};
+
+type ConfigInput<T> = {
+  violations?: (value: SettledMembers<T>, at: FieldRefs<T>) => readonly ConfigViolation[];
+};
 
 export function refFor(entry: ConfigEntry): FieldRef {
   return { envKey: entry.envKey, pointer: entry.path.join("."), groupTitle: entry.groupTitle };
