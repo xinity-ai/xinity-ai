@@ -6,7 +6,7 @@
  * so any module can import without pulling in install/service logic.
  */
 
-import { entryFor, type AnyConfig } from "common-env";
+import { checkConfig, entryFor, splitDelegations, type AnyConfig, type ConfigProblem } from "common-env";
 import { gatewayConfig } from "xinity-ai-gateway/src/config-schema.ts";
 import { tetherConfig } from "xinity-tether/src/config-schema.ts";
 import { infoserverConfig } from "xinity-infoserver/config-schema.ts";
@@ -95,4 +95,20 @@ const ATTENTION_KEYS: Partial<Record<Component, readonly string[]>> = {
 
 export function attentionKeysFor(component: Component): Set<string> {
   return new Set(ATTENTION_KEYS[component] ?? []);
+}
+
+/**
+ * Validates as the component will at boot, where a delegated key resolves to its `@dynamic`
+ * fallback rather than to the sentinel itself.
+ */
+export function checkComponentConfig(
+  component: Component,
+  env: Record<string, string | undefined>,
+): readonly ConfigProblem[] {
+  const declaration = COMPONENT_CONFIGS[component];
+  try {
+    return checkConfig(declaration, { env: splitDelegations(declaration, env).envWithFallbacks });
+  } catch (err) {
+    return [{ fields: [], message: err instanceof Error ? err.message : String(err) }];
+  }
 }

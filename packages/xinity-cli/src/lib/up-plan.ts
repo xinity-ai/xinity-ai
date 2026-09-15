@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { cancel, confirm, intro, isCancel, log, note, outro, select, spinner } from "./clack.ts";
 import { bold, cyan, dim } from "picocolors";
-import { attentionKeysFor, type Component, COMPONENT_CONFIGS, ENV_DIR, getAutoDefaults, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT, TETHER_DEFAULT_PORT } from "./component-meta.ts";
+import { attentionKeysFor, checkComponentConfig, type Component, ENV_DIR, getAutoDefaults, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT, TETHER_DEFAULT_PORT } from "./component-meta.ts";
 import { type Host, isUnitActiveOn } from "./host.ts";
 import { pass, fail, warn, heading } from "./output.ts";
 import { parseEnvString } from "./env-file.ts";
@@ -24,7 +24,7 @@ import { componentFields, collectEnv, menuEditEnv, readExistingEnvState, diffEnv
 import { discoverConnectionUrl, describeMigrationStep, migrationScriptComment, runMigrations } from "./migrator.ts";
 import { describePostgresProvision, buildPostgresProvisionCommands, applyPostgresProvision, type PostgresProvision } from "./postgres-setup.ts";
 import { planRedis, applyRedisPlan, describeRedisPlan, buildRedisProvisionCommands, type RedisPlan } from "./redis-setup.ts";
-import { checkConfig } from "common-env";
+
 import { readManifest } from "./manifest.ts";
 import { initialSharedSecrets } from "./secrets.ts";
 
@@ -613,7 +613,7 @@ export async function configureComponentFlow(component: Component, host: Host): 
 
   const result = await menuEditEnv(componentFields(component), existing, {
     attentionKeys: attentionKeysFor(component),
-    validate: (values) => checkConfig(COMPONENT_CONFIGS[component], { env: values }),
+    validate: (values) => checkComponentConfig(component, values),
   });
   if (result === null) {
     cancel("Cancelled, no changes saved.");

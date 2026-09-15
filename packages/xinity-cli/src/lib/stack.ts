@@ -13,9 +13,9 @@ import { loadPrivateJson, savePrivateJson } from "./config.ts";
 import { configDir } from "./platform.ts";
 import { z } from "zod";
 import { version as cliVersion } from "../../../../package.json";
-import { type Component, COMPONENTS, COMPONENT_CONFIGS, getAutoDefaults } from "./component-meta.ts";
+import { checkComponentConfig, type Component, COMPONENTS, getAutoDefaults } from "./component-meta.ts";
 import { componentFields } from "./env-prompt.ts";
-import { checkConfig, type ConfigProblem, type EnvField } from "common-env";
+import type { ConfigProblem, EnvField } from "common-env";
 import { log } from "./clack.ts";
 import { dim } from "picocolors";
 import { deleteStackState } from "./stack-state.ts";
@@ -127,7 +127,7 @@ export function sharedLayerProblems(
       ...shared,
       ...stack.componentEnv[component],
     };
-    for (const problem of checkConfig(COMPONENT_CONFIGS[component], { env })) {
+    for (const problem of checkComponentConfig(component, env)) {
       const keys = problem.fields.map((field) => field.envKey);
       // Anything else belongs to the layer that owns the key, whose own editor checks it.
       if (!keys.some((key) => STACK_SHARED_KEYS.has(key))) continue;

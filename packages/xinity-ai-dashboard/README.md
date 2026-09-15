@@ -101,7 +101,7 @@ Who can sign in, and who is allowed to create an organization.
 | Variable | Default | Description |
 |---|---|---|
 | `BETTER_AUTH_SECRET` | (required) | Better Auth secret key, generate with: openssl rand -base64 32. Secret. |
-| `SIGNUP_ENABLED` | `true` | Enable user signup. |
+| `SIGNUP_ENABLED` | `true` | Enable user signup. Can be set to `@dynamic` to take its value from the dashboard. |
 | `MULTI_TENANT_MODE` | `false` | Allow any authenticated user to create organizations. |
 | `INSTANCE_ADMIN_EMAILS` | (empty) | Emails of users who get instance-wide admin privileges (can manage all orgs). |
 
@@ -130,20 +130,24 @@ Model deployment across inference nodes, and what the Compute page shows.
 | Variable | Default | Description |
 |---|---|---|
 | `COMPUTE_MANAGEMENT_ENABLED` | `true` | Enable compute management. |
-| `DEPLOYMENT_STRATEGY` | `balanced` | Node selection strategy for new model installations. 'first-fit' picks the first node that fits (deterministic). 'balanced' picks the node with the most absolute free VRAM (spread for HA). 'bin-pack' picks the tightest fit (consolidate so idle nodes stay drainable). 'proportional' picks the node with the lowest percent utilization (fair spread across heterogeneous nodes). One of `first-fit`, `balanced`, `bin-pack`, `proportional`. |
+| `DEPLOYMENT_STRATEGY` | `balanced` | Node selection strategy for new model installations. 'first-fit' picks the first node that fits (deterministic). 'balanced' picks the node with the most absolute free VRAM (spread for HA). 'bin-pack' picks the tightest fit (consolidate so idle nodes stay drainable). 'proportional' picks the node with the lowest percent utilization (fair spread across heterogeneous nodes). One of `first-fit`, `balanced`, `bin-pack`, `proportional`. Can be set to `@dynamic` to take its value from the dashboard. |
 | `PROMETHEUS_URL` | (unset) | Prometheus server URL for live GPU metrics overlay on the Compute page (e.g. http://prometheus:9090). Enables utilization rings and energy readouts on compute nodes. |
 
 ### Audit event export
 
-Mirrors audit events to Loki for SIEM ingestion. Requires a license with the audit-log feature.
+Mirrors audit events to one SIEM sink. The URL scheme picks the transport: http(s) pushes to Loki, udp, tcp or tls sends RFC 5424 syslog. Settings for the other transport are ignored. Requires a license with the audit-log feature.
 
-Off unless all of `AUDIT_LOKI_URL` are set.
+Off unless all of `AUDIT_SINK_URL` are set.
 
 | Variable | Default | Description |
 |---|---|---|
-| `AUDIT_LOKI_URL` | (required) | Loki base URL to mirror audit events to (e.g. http://localhost:6122). |
-| `AUDIT_LOKI_AUTH` | (unset) | Basic auth for AUDIT_LOKI_URL as user:pass. Only needed when the Loki endpoint is authenticated. Secret. |
-| `AUDIT_LOKI_TENANT` | (unset) | Tenant id sent as X-Scope-OrgID. Only needed for multi-tenant Loki or Grafana Cloud. |
+| `AUDIT_SINK_URL` | (required) | Sink audit events are mirrored to. http(s):// is a Loki base URL (e.g. http://localhost:6122), udp://, tcp:// or tls:// is a syslog collector (e.g. tls://collector.example.com:6514). |
+| `AUDIT_SINK_AUTH` | (unset) | Loki only. Basic auth as user:pass, for an authenticated Loki endpoint. Secret. |
+| `AUDIT_SINK_TENANT` | (unset) | Loki only. Tenant id sent as X-Scope-OrgID, for multi-tenant Loki or Grafana Cloud. |
+| `AUDIT_SINK_SYSLOG_FACILITY` | `local0` | Syslog only. Facility the messages are sent under, which is what collectors route on. 'audit' is the RFC 5424 log-audit facility, local0 to local7 are the site-specific ones. One of `kern`, `user`, `mail`, `daemon`, `auth`, `syslog`, `lpr`, `news`, `uucp`, `cron`, `authpriv`, `ftp`, `ntp`, `audit`, `alert`, `clock`, `local0`, `local1`, `local2`, `local3`, `local4`, `local5`, `local6`, `local7`. |
+| `AUDIT_SINK_SYSLOG_FRAMING` | `octet-counting` | Syslog only. How messages are delimited on tcp and tls. 'octet-counting' is RFC 6587, which rsyslog and syslog-ng expect. 'lf' is newline-delimited, for collectors that only accept that. Ignored on udp. One of `octet-counting`, `lf`. |
+| `AUDIT_SINK_SYSLOG_APP_NAME` | `xinity-audit` | Syslog only. APP-NAME field of the messages. Give each instance its own name when several feed one collector. |
+| `AUDIT_SINK_SYSLOG_CA` | (unset) | Syslog only. PEM certificate authority the tls:// collector is verified against. Only needed when the collector uses a private CA. |
 
 ### Metrics endpoint
 
@@ -203,7 +207,7 @@ Only needed when something sits in front of this service.
 | `TRUSTED_ORIGINS` | (empty) | Additional trusted origins for CSRF validation behind reverse proxies. |
 | `GATEWAY_URL` | `http://localhost:4010` | Gateway base URL shown to users in docs and code examples (e.g. https://api.example.com). Must NOT include the /v1 path segment - that is appended where needed. A trailing slash is stripped. |
 | `LICENSE_KEY` | (unset) | License key for unlocking paid features (Ed25519-signed token). Secret. |
-| `MCP_ENABLED` | `true` | Enable the /mcp Model Context Protocol endpoint. |
+| `MCP_ENABLED` | `true` | Enable the /mcp Model Context Protocol endpoint. Can be set to `@dynamic` to take its value from the dashboard. |
 | `NOTIFICATIONS_ENABLED` | `true` | Enable the notification scheduler (deployment status, node health, capacity warnings, weekly reports). |
 
 <!-- [/sync:config] -->

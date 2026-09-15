@@ -30,8 +30,8 @@ Where the tether listens, and how it keeps daemon connections alive.
 | `PORT` | `4020` | Listen port. |
 | `IDLE_TIMEOUT` | `255` | Seconds a connection may go without traffic before it is closed (Bun allows at most 255). |
 | `UNIX_SOCKET` | (unset) | Unix socket path (overrides HOST/PORT when set). |
-| `KEEPALIVE_INTERVAL_MS` | `15000` | SSE keepalive interval in ms. |
-| `LIVENESS_TIMEOUT_MS` | `45000` | Time before a silent connection is considered dead. |
+| `KEEPALIVE_INTERVAL_MS` | `15000` | SSE keepalive interval in ms. Can be set to `@dynamic` to take its value from the dashboard. |
+| `LIVENESS_TIMEOUT_MS` | `45000` | Time before a silent connection is considered dead. Can be set to `@dynamic` to take its value from the dashboard. |
 
 ### Database
 
