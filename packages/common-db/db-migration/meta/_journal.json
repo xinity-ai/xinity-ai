@@ -99,6 +99,13 @@
       "when": 1788282731045,
       "tag": "0013_exotic_zarek",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789472853070,
+      "tag": "0014_freezing_vampiro",
+      "breakpoints": true
     }
   ]
 }
