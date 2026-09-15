@@ -14,13 +14,15 @@
   import type { PageData } from "./$types";
   import type { AuditEvent } from "common-db";
 
+  type OrgAuditEvent = Omit<AuditEvent, "streamPosition">;
+
   let { data }: { data: PageData } = $props();
 
   const hasFeature = $derived(!!data.license.features.auditLog);
 
   const searchParams = createUrlSearchParamsStore();
 
-  let events = $state<AuditEvent[]>([]);
+  let events = $state<OrgAuditEvent[]>([]);
   let nextCursor = $state<string | null>(null);
   let cursorStack = $state<string[]>([]);
   let loading = $state(false);
@@ -177,7 +179,7 @@
     return `${resource}: ${verb.replace(/_/g, " ")}`;
   }
 
-  function actorDisplay(event: AuditEvent): string {
+  function actorDisplay(event: OrgAuditEvent): string {
     if (event.actorLabel) {
       return event.actorLabel;
     }
@@ -208,14 +210,14 @@
     let extension: string;
 
     if (format === "ndjson") {
-      content = rows.map((r: AuditEvent) => JSON.stringify(r)).join("\n");
+      content = rows.map((r: OrgAuditEvent) => JSON.stringify(r)).join("\n");
       mimeType = "application/x-ndjson";
       extension = "jsonl";
     } else {
       const headers = ["id", "createdAt", "actorType", "actorId", "actorLabel", "action", "resource", "resourceId", "result", "ipAddress", "userAgent", "context"];
-      const csvRows = rows.map((r: AuditEvent) =>
+      const csvRows = rows.map((r: OrgAuditEvent) =>
         headers.map((h) => {
-          const val = r[h as keyof AuditEvent];
+          const val = r[h as keyof OrgAuditEvent];
           if (val === null || val === undefined) {
             return "";
           }
