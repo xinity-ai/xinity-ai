@@ -20,7 +20,7 @@ export const handleRerank = withEndpointGuards({
   bodySchema: RerankBodySchema,
   log,
   handler: async ({ body, modelInfo, originalModel, req }) => {
-    const signal = AbortSignal.any([req.signal, AbortSignal.timeout(config.inference.backendTimeoutMs)]);
+    const signal = AbortSignal.any([req.signal, AbortSignal.timeout(config.inference.backendTimeoutMs())]);
     const backendResponse = await backendPostJson(modelInfo, "/v1/rerank", {
       model: modelInfo.model,
       query: body.query,

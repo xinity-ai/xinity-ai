@@ -126,7 +126,7 @@ async function publicModelSpecifierToModelSource(orgId: string, specifier: strin
     canaryProgressUntil: deployment.canaryProgressUntil ? new Date(deployment.canaryProgressUntil).valueOf() : null,
   };
 
-  void redis.set(cacheKey, JSON.stringify(cachedData), "EX", config.cache.modelTtlSeconds)
+  void redis.set(cacheKey, JSON.stringify(cachedData), "EX", config.cache.modelTtlSeconds())
     .catch((err: unknown) => log.warn({ err }, "Redis error in set deployment cache"));
 
   return {
@@ -192,7 +192,7 @@ async function getModelSources(specifier: string): Promise<ModelSources> {
 
   const result: ModelSources = { hosts: [...byHost.keys()], byHost };
   if (generationAtQuery === sourcesGeneration) {
-    modelSourcesCache.set(specifier, { data: result, expiresAt: now + config.cache.modelTtlSeconds * 1000 });
+    modelSourcesCache.set(specifier, { data: result, expiresAt: now + config.cache.modelTtlSeconds() * 1000 });
   }
 
   return result;
@@ -283,7 +283,7 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, prefi
       : Promise.resolve(emptySources),
   ]);
 
-  const result = await _deps.selectHost(config.inference.loadBalanceStrategy as LoadBalanceStrategy, {
+  const result = await _deps.selectHost(config.inference.loadBalanceStrategy() as LoadBalanceStrategy, {
     hosts: finalSources.hosts,
     earlyHosts: earlySources.hosts,
     canaryProgress: accessInfo.progress,

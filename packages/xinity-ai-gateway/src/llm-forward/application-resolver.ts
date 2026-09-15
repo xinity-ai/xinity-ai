@@ -40,7 +40,7 @@ export async function resolveApplicationByName(
 
   if (!app) return null;
 
-  redis.set(cacheKey, app.id, "EX", config.cache.applicationTtlSeconds)
+  redis.set(cacheKey, app.id, "EX", config.cache.applicationTtlSeconds())
     .catch((err: unknown) => log.warn({ err }, "Redis error in resolveApplicationByName (set)"));
   return app.id;
 }

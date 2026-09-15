@@ -268,7 +268,7 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
     }
 
     const idle = body.stream ? createIdleTimeout() : undefined;
-    const timeoutSignal = idle?.signal ?? AbortSignal.timeout(config.inference.backendTimeoutMs);
+    const timeoutSignal = idle?.signal ?? AbortSignal.timeout(config.inference.backendTimeoutMs());
     const genParams = paramsWith(AbortSignal.any([req.signal, timeoutSignal]));
 
     if (body.stream) {

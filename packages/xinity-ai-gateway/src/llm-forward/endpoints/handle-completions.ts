@@ -124,7 +124,7 @@ export const handleCompletion = withEndpointGuards({
     }
 
     const idle = body.stream ? createIdleTimeout() : undefined;
-    const timeoutSignal = idle?.signal ?? AbortSignal.timeout(config.inference.backendTimeoutMs);
+    const timeoutSignal = idle?.signal ?? AbortSignal.timeout(config.inference.backendTimeoutMs());
     const signal = AbortSignal.any([req.signal, timeoutSignal]);
 
     const backendResponse = await backendPostJson(modelInfo, "/v1/completions", fetchBody, signal);

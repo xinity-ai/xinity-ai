@@ -35,8 +35,8 @@ async function startFed() {
     return async () => {};
   };
 
-  const config = createDynamicConfig({ declaration, rawEnv: BASE, feed });
-  await config.start();
+  const config = createDynamicConfig({ declaration, rawEnv: BASE });
+  await config.start(feed);
   return { config, push: (overrides: Record<string, string>) => push(overrides) };
 }
 

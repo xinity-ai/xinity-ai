@@ -2,7 +2,7 @@
 import { apiResponseMessageT, chatMessageT, inArray, inferenceCallMessageT, sql, type ApiCallInputMessage } from "common-db";
 import { jsonDigest } from "common-env";
 import { getDB } from "./db";
-import { config } from "./config";
+import { configStore } from "./config";
 
 
 type Database = ReturnType<typeof getDB>;
@@ -35,7 +35,10 @@ function createDigestCache(maxEntries: number) {
   };
 }
 
-const digestCache = createDigestCache(config.cache.digestEntries);
+const digestCache = configStore.derive(
+  (value) => value.cache.digestEntries(),
+  (maxEntries) => createDigestCache(maxEntries),
+);
 
 const cacheKey = (orgId: string, sha256: string) => `${orgId}:${sha256}`;
 
@@ -55,6 +58,7 @@ export async function recordChatMessages(
     return [];
   }
 
+  const cache = digestCache.get();
   const digests = messages.map(jsonDigest);
   const resolved = new Map<string, string>();
   const pending = new Map<string, ApiCallInputMessage>();
@@ -63,7 +67,7 @@ export async function recordChatMessages(
     if (resolved.has(sha256) || pending.has(sha256)) {
       continue;
     }
-    const cached = digestCache.get(cacheKey(orgId, sha256));
+    const cached = cache.get(cacheKey(orgId, sha256));
     if (cached) {
       resolved.set(sha256, cached);
       continue;
@@ -110,7 +114,7 @@ export async function recordChatMessages(
     if (!id) {
       throw new Error(`Failed to record message ${sha256}`);
     }
-    digestCache.set(cacheKey(orgId, sha256), id);
+    cache.set(cacheKey(orgId, sha256), id);
     return id;
   });
 }

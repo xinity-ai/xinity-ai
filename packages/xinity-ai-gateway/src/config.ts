@@ -1,4 +1,6 @@
-import { configFromProcessEnv } from "common-env";
+import { createDynamicConfig } from "common-env";
 import { gatewayConfig, type GatewayConfig } from "./config-schema";
 
-export const config: GatewayConfig = configFromProcessEnv(gatewayConfig);
+export const configStore = createDynamicConfig({ declaration: gatewayConfig });
+
+export const config: GatewayConfig = configStore.value;

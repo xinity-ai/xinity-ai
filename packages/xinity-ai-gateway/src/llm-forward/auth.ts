@@ -102,7 +102,7 @@ async function verifyKeyAgainstDb(key: string, keyHash: string): Promise<Respons
   if (!await keyMatches(key, apiKeyObj)) {
     return rejectAndCache(keyHash, "Unauthorized");
   }
-  setApiKeyCache(keyHash, pickAttrs(apiKeyObj));
+  setApiKeyCache(keyHash, pickAttrs(apiKeyObj), config.cache.apiKeyTtlSeconds());
   return toAuthResult(apiKeyObj);
 }
 
@@ -127,7 +127,7 @@ function verifiersEqual(presented: string, stored: string): boolean {
 
 /** Caching the rejection keeps a flood of bad keys off the DB and out of argon2. */
 function rejectAndCache(keyHash: string, detail: string): Response {
-  setApiKeyCache(keyHash, { fail: detail }, config.cache.authFailureTtlSeconds);
+  setApiKeyCache(keyHash, { fail: detail }, config.cache.authFailureTtlSeconds());
   return genericUnauthorized(detail);
 }
 
@@ -150,7 +150,7 @@ const apiKeyCacheKey = (identifier: string) => `apikey:${identifier}`;
 function setApiKeyCache(
   identifier: string,
   data: CachedAuth,
-  ttlSeconds: number = config.cache.apiKeyTtlSeconds,
+  ttlSeconds: number,
 ): void {
   void redis.set(apiKeyCacheKey(identifier), JSON.stringify(data), "EX", ttlSeconds)
     .catch((err: unknown) => log.warn({ err }, "Redis error in setApiKeyCache"));
