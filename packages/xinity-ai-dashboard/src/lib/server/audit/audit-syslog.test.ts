@@ -84,7 +84,7 @@ describe("buildSyslogMessage", () => {
   test("drops context rather than emitting an oversized line", () => {
     const bloated = { ...event, context: { blob: "x".repeat(2_000) } };
     const payload = JSON.parse(parts(buildSyslogMessage(bloated, config({ transport: "udp" }))).payload);
-    expect(payload).toMatchObject({ id: event.id, context: null, truncated: "context" });
+    expect(payload).toMatchObject({ id: event.id, streamPosition: event.streamPosition, context: null, truncated: "context" });
   });
 
   test("falls back to an identifying payload when even the context-free event is too long", () => {
@@ -92,6 +92,7 @@ describe("buildSyslogMessage", () => {
     const payload = JSON.parse(parts(buildSyslogMessage(bloated, config({ transport: "udp" }))).payload);
     expect(payload).toEqual({
       id: event.id,
+      streamPosition: event.streamPosition,
       action: event.action,
       result: event.result,
       createdAt: event.createdAt.toISOString(),

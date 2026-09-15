@@ -124,7 +124,7 @@ Messages are RFC 5424, with the event as JSON in MSG and no structured data, so 
 
 The priority combines the configured facility with a severity taken from the result: informational for a success, warning for a failure. MSGID is the action, capped at the 32 characters the RFC 5424 grammar allows. Default ports are 514, or 6514 for `tls://` per RFC 5425.
 
-An oversized message degrades instead of being cut mid-token into something the collector cannot parse. First `context` is dropped and `"truncated":"context"` is set, and failing that only the identifying fields are sent with `"truncated":"event"`. Both stay valid JSON and both carry the `id`, so the untruncated record can be pulled from `audit_event`. The budget is 1400 bytes on `udp://` to survive a typical path MTU, 8192 on the stream transports.
+An oversized message degrades instead of being cut mid-token into something the collector cannot parse. First `context` is dropped and `"truncated":"context"` is set, and failing that only the identifying fields are sent with `"truncated":"event"`. Both stay valid JSON and both carry the `id` and `streamPosition`, so a truncated message still counts toward completeness and the untruncated record can be pulled from `audit_event`. The budget is 1400 bytes on `udp://` to survive a typical path MTU, 8192 on the stream transports.
 
 `udp://` cannot report delivery failures and silently drops anything over the MTU, so prefer `tcp://` or `tls://` where the collector allows it.
 

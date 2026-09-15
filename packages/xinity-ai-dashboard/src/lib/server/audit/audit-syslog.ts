@@ -43,7 +43,8 @@ function printableAscii(value: string): string {
 /**
  * Fits the event into what is left of the message budget, degrading in steps that
  * each stay valid JSON: a byte-truncated line would be unparseable to the collector,
- * and `id` is enough to pull the untruncated row back out of audit_event.
+ * and `id` is enough to pull the untruncated row back out of audit_event. Every step
+ * keeps `streamPosition`.
  */
 function fitPayload(event: AuditEvent, budget: number): string {
   const full = JSON.stringify(event);
@@ -54,7 +55,14 @@ function fitPayload(event: AuditEvent, budget: number): string {
   if (Buffer.byteLength(withoutContext) <= budget) {
     return withoutContext;
   }
-  return JSON.stringify({ id: event.id, action: event.action, result: event.result, createdAt: event.createdAt, truncated: "event" });
+  return JSON.stringify({
+    id: event.id,
+    streamPosition: event.streamPosition,
+    action: event.action,
+    result: event.result,
+    createdAt: event.createdAt,
+    truncated: "event",
+  });
 }
 
 /**
