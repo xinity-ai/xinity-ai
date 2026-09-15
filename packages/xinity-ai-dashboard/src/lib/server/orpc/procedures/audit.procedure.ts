@@ -17,6 +17,22 @@ const auditFilters = z.object({
   to: z.coerce.date().optional(),
 });
 
+const orgVisibleColumns = {
+  id: auditEventT.id,
+  organizationId: auditEventT.organizationId,
+  actorType: auditEventT.actorType,
+  actorId: auditEventT.actorId,
+  actorLabel: auditEventT.actorLabel,
+  action: auditEventT.action,
+  resource: auditEventT.resource,
+  resourceId: auditEventT.resourceId,
+  result: auditEventT.result,
+  ipAddress: auditEventT.ipAddress,
+  userAgent: auditEventT.userAgent,
+  context: auditEventT.context,
+  createdAt: auditEventT.createdAt,
+} as const;
+
 function buildWhereClause(orgId: string, filters: z.infer<typeof auditFilters>, includeInstanceEvents = false) {
   const orgCondition = includeInstanceEvents
     ? sql`(${auditEventT.organizationId} = ${orgId} OR ${auditEventT.organizationId} IS NULL)`
@@ -71,7 +87,7 @@ const listAudit = rootOs
       : where;
 
     const events = await getDB()
-      .select()
+      .select(orgVisibleColumns)
       .from(auditEventT)
       .where(cursorClause)
       .orderBy(sql`${auditEventT.createdAt} DESC`)
@@ -101,15 +117,12 @@ const exportAudit = rootOs
       throw errors.FORBIDDEN({ message: "Audit log export requires an Enterprise license." });
     }
     const includeInstance = input.includeInstanceEvents && isInstanceAdmin(context.session.user.email);
-    const where = buildWhereClause(context.activeOrganizationId, {
-      from: input.from,
-      to: input.to ?? new Date(),
-    }, includeInstance);
+    const where = buildWhereClause(context.activeOrganizationId, { from: input.from, to: input.to }, includeInstance);
     const events = await getDB()
-      .select()
+      .select(orgVisibleColumns)
       .from(auditEventT)
       .where(where)
-      .orderBy(sql`${auditEventT.createdAt} ASC`)
+      .orderBy(sql`${auditEventT.streamPosition} ASC`)
       .limit(EXPORT_ROW_CAP);
 
     return { events, truncated: events.length === EXPORT_ROW_CAP };

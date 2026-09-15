@@ -1,27 +1,37 @@
-import { describe, test, expect, beforeEach, afterAll, spyOn } from "bun:test";
+import { describe, test, expect, beforeEach, afterAll, mock, spyOn } from "bun:test";
 import type { AuditEvent } from "common-db";
 import * as auditLoki from "./audit-loki";
+import * as auditSyslog from "./audit-syslog";
 import type { DashboardConfig } from "../config-schema";
 
 /**
- * A spy rather than `mock.module`, which has no counterpart to undo it: the
- * override would outlive this file and hand `audit-loki.test.ts` the stub in
- * place of the module it exists to test.
+ * Spies rather than `mock.module`, which has no counterpart to undo it: the
+ * override would outlive this file and hand the sink suites the stub in place
+ * of the module they exist to test.
  */
-const deliverAuditEvents = spyOn(auditLoki, "deliverAuditEvents");
+const lokiSink = spyOn(auditLoki, "lokiSink");
+const syslogSink = spyOn(auditSyslog, "syslogSink");
 
 afterAll(() => {
-  deliverAuditEvents.mockRestore();
+  lokiSink.mockRestore();
+  syslogSink.mockRestore();
 });
 
-const { lokiTarget, forwardAuditEvent, flushAuditEvents } = await import("./audit-forwarder");
+const { resolveAuditSink, forwardAuditEvent, flushAuditEvents } = await import("./audit-forwarder");
 
 const { config } = require("$lib/server/config") as { config: DashboardConfig };
 const licensedFeatures = (require("$lib/server/license") as { licensedFeatures: string[] }).licensedFeatures;
 
+const deliver = mock((_events: AuditEvent[]): Promise<void> => Promise.resolve());
+
+function audit(url: string): DashboardConfig["audit"] {
+  return { url, facility: "local0", framing: "octet-counting", appName: "xinity-audit" };
+}
+
 function event(overrides: Partial<AuditEvent> = {}): AuditEvent {
   return {
     id: "3f1d1c2e-0000-4000-8000-000000000001",
+    streamPosition: 1,
     organizationId: "org_1",
     actorType: "user",
     actorId: "user_1",
@@ -40,30 +50,34 @@ function event(overrides: Partial<AuditEvent> = {}): AuditEvent {
 
 beforeEach(async () => {
   licensedFeatures.splice(0, licensedFeatures.length, "audit-log");
-  config.audit = { url: "http://localhost:6122" };
+  config.audit = audit("http://localhost:6122");
+  lokiSink.mockReturnValue({ name: "loki", deliver });
+  syslogSink.mockReturnValue({ name: "syslog", deliver });
   await flushAuditEvents();
-  deliverAuditEvents.mockClear();
-  deliverAuditEvents.mockImplementation(() => Promise.resolve({ delivered: true }));
+  deliver.mockClear();
+  deliver.mockImplementation(() => Promise.resolve());
 });
 
-describe("lokiTarget", () => {
-  test("is null without a configured URL", () => {
+describe("resolveAuditSink", () => {
+  test("is null when no sink is configured", () => {
     config.audit = undefined;
-    expect(lokiTarget()).toBeNull();
+    expect(resolveAuditSink()).toBeNull();
   });
 
   test("is null without the audit-log feature", () => {
     licensedFeatures.length = 0;
-    expect(lokiTarget()).toBeNull();
+    expect(resolveAuditSink()).toBeNull();
   });
 
-  test("carries the optional auth and tenant when set", () => {
-    config.audit = { url: "http://localhost:6122", auth: "user:pass", tenant: "acme" };
-    expect(lokiTarget()).toEqual({
-      url: "http://localhost:6122",
-      auth: "user:pass",
-      tenant: "acme",
-    });
+  test("picks the sink from the url scheme", () => {
+    for (const url of ["http://localhost:6122", "https://loki.example.com"]) {
+      config.audit = audit(url);
+      expect(resolveAuditSink()?.name).toBe("loki");
+    }
+    for (const url of ["udp://collector:514", "tcp://collector:514", "tls://collector:6514"]) {
+      config.audit = audit(url);
+      expect(resolveAuditSink()?.name).toBe("syslog");
+    }
   });
 });
 
@@ -71,11 +85,11 @@ describe("forwardAuditEvent", () => {
   test("buffers rather than delivering per event", async () => {
     forwardAuditEvent(event());
     forwardAuditEvent(event({ id: "second" }));
-    expect(deliverAuditEvents).not.toHaveBeenCalled();
+    expect(deliver).not.toHaveBeenCalled();
 
     await flushAuditEvents();
-    expect(deliverAuditEvents).toHaveBeenCalledTimes(1);
-    expect(deliverAuditEvents.mock.calls[0]![0]).toHaveLength(2);
+    expect(deliver).toHaveBeenCalledTimes(1);
+    expect(deliver.mock.calls[0]![0]).toHaveLength(2);
   });
 
   test("flushes on its own once the batch is full", async () => {
@@ -83,48 +97,48 @@ describe("forwardAuditEvent", () => {
       forwardAuditEvent(event({ id: `event-${i}` }));
     }
     await Promise.resolve();
-    expect(deliverAuditEvents).toHaveBeenCalledTimes(1);
-    expect(deliverAuditEvents.mock.calls[0]![0]).toHaveLength(100);
+    expect(deliver).toHaveBeenCalledTimes(1);
+    expect(deliver.mock.calls[0]![0]).toHaveLength(100);
   });
 
   test("drops the event entirely when no sink is configured", async () => {
     config.audit = undefined;
     forwardAuditEvent(event());
     await flushAuditEvents();
-    expect(deliverAuditEvents).not.toHaveBeenCalled();
+    expect(deliver).not.toHaveBeenCalled();
   });
 
   test("drops the event entirely when the license lacks audit-log", async () => {
     licensedFeatures.length = 0;
     forwardAuditEvent(event());
     await flushAuditEvents();
-    expect(deliverAuditEvents).not.toHaveBeenCalled();
+    expect(deliver).not.toHaveBeenCalled();
   });
 });
 
 describe("flushAuditEvents", () => {
   test("does nothing on an empty buffer", async () => {
     await flushAuditEvents();
-    expect(deliverAuditEvents).not.toHaveBeenCalled();
+    expect(deliver).not.toHaveBeenCalled();
   });
 
-  test("keeps accepting events after a failed delivery", async () => {
-    deliverAuditEvents.mockImplementation(() => Promise.resolve({ delivered: false, reason: "boom" }));
+  test("swallows a throwing sink and keeps accepting events", async () => {
+    deliver.mockImplementation(() => Promise.reject(new Error("connection refused")));
     forwardAuditEvent(event());
     await flushAuditEvents();
-    expect(deliverAuditEvents).toHaveBeenCalledTimes(1);
+    expect(deliver).toHaveBeenCalledTimes(1);
 
-    deliverAuditEvents.mockImplementation(() => Promise.resolve({ delivered: true }));
+    deliver.mockImplementation(() => Promise.resolve());
     forwardAuditEvent(event({ id: "after-failure" }));
     await flushAuditEvents();
-    expect(deliverAuditEvents).toHaveBeenCalledTimes(2);
-    expect(deliverAuditEvents.mock.calls[1]![0]).toHaveLength(1);
+    expect(deliver).toHaveBeenCalledTimes(2);
+    expect(deliver.mock.calls[1]![0]).toHaveLength(1);
   });
 
   test("does not re-send a batch that already went out", async () => {
     forwardAuditEvent(event());
     await flushAuditEvents();
     await flushAuditEvents();
-    expect(deliverAuditEvents).toHaveBeenCalledTimes(1);
+    expect(deliver).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,6 +1,6 @@
 import { describe, test, expect, afterEach, mock } from "bun:test";
 import type { AuditEvent } from "common-db";
-import { buildPushPayload, deliverAuditEvents } from "./audit-loki";
+import { buildPushPayload, pushToLoki } from "./audit-loki";
 
 const realFetch = globalThis.fetch;
 
@@ -10,6 +10,7 @@ afterEach(() => {
 
 const event: AuditEvent = {
   id: "3f1d1c2e-0000-4000-8000-000000000001",
+  streamPosition: 4211,
   organizationId: "org_1",
   actorType: "user",
   actorId: "user_1",
@@ -24,88 +25,85 @@ const event: AuditEvent = {
   createdAt: new Date("2026-08-16T10:00:00.000Z"),
 };
 
+function mockFetch(response: () => Promise<Response>) {
+  const fetchMock = mock(response);
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
+  return fetchMock;
+}
+
+function headersOf(fetchMock: ReturnType<typeof mockFetch>): Record<string, string> {
+  const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+  return init.headers as Record<string, string>;
+}
+
 describe("buildPushPayload", () => {
-  test("labels the stream by action, resource and result only", () => {
-    const payload = JSON.parse(buildPushPayload([event]));
+  test("labels the stream by instance, action, resource and result only", () => {
+    const payload = JSON.parse(buildPushPayload([event], "host1"));
     expect(payload.streams[0].stream).toEqual({
       job: "xinity-audit",
+      instance: "host1",
       action: "apiKey.create",
       resource: "apiKey",
       result: "success",
     });
   });
 
+  test("keeps instances apart so their positions are not interleaved", () => {
+    const one = JSON.parse(buildPushPayload([event], "host1")).streams[0].stream.instance;
+    const two = JSON.parse(buildPushPayload([event], "host2")).streams[0].stream.instance;
+    expect([one, two]).toEqual(["host1", "host2"]);
+  });
+
   test("carries the whole event in the line at a nanosecond timestamp", () => {
-    const [timestamp, line] = JSON.parse(buildPushPayload([event])).streams[0].values[0];
+    const [timestamp, line] = JSON.parse(buildPushPayload([event], "host1")).streams[0].values[0];
     expect(timestamp).toBe(`${event.createdAt.getTime()}000000`);
-    expect(JSON.parse(line)).toMatchObject({ id: event.id, actorLabel: "jv@xinity.ai", context: { name: "prod" } });
+    expect(JSON.parse(line)).toMatchObject({ id: event.id, streamPosition: event.streamPosition, actorLabel: "jv@xinity.ai", context: { name: "prod" } });
   });
 
   test("collapses events sharing a label set into one stream", () => {
-    const payload = JSON.parse(buildPushPayload([event, { ...event, id: "second", resourceId: "key_2" }]));
+    const payload = JSON.parse(buildPushPayload([event, { ...event, id: "second", resourceId: "key_2" }], "host1"));
     expect(payload.streams).toHaveLength(1);
     expect(payload.streams[0].values).toHaveLength(2);
   });
 
   test("keeps events with differing labels in separate streams", () => {
-    const payload = JSON.parse(buildPushPayload([event, { ...event, id: "second", result: "failure" }]));
+    const payload = JSON.parse(buildPushPayload([event, { ...event, id: "second", result: "failure" }], "host1"));
     expect(payload.streams).toHaveLength(2);
     expect(payload.streams.map((s: { stream: { result: string } }) => s.stream.result).sort()).toEqual(["failure", "success"]);
   });
 });
 
-describe("deliverAuditEvents", () => {
+describe("pushToLoki", () => {
   test("posts to the push endpoint of the configured base URL", async () => {
-    const fetchMock = mock(() => Promise.resolve(new Response("", { status: 204 })));
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const fetchMock = mockFetch(() => Promise.resolve(new Response("", { status: 204 })));
 
-    const delivery = await deliverAuditEvents([event], {
-      url: "http://localhost:6122/",
-      auth: "user:pass",
-      tenant: "acme",
-    });
+    await pushToLoki([event], { url: "http://localhost:6122/", auth: "user:pass", tenant: "acme", instance: "host1" });
 
-    expect(delivery).toEqual({ delivered: true });
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("http://localhost:6122/loki/api/v1/push");
-    expect((init.headers as Record<string, string>)["X-Scope-OrgID"]).toBe("acme");
-    expect((init.headers as Record<string, string>).Authorization).toBe(`Basic ${btoa("user:pass")}`);
+    expect(headersOf(fetchMock)["X-Scope-OrgID"]).toBe("acme");
+    expect(headersOf(fetchMock).Authorization).toBe(`Basic ${btoa("user:pass")}`);
   });
 
   test("omits auth headers when the target has no credentials", async () => {
-    const fetchMock = mock(() => Promise.resolve(new Response("", { status: 204 })));
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const fetchMock = mockFetch(() => Promise.resolve(new Response("", { status: 204 })));
 
-    await deliverAuditEvents([event], { url: "http://localhost:6122" });
+    await pushToLoki([event], { url: "http://localhost:6122", instance: "host1" });
 
-    const headers = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].headers as Record<string, string>;
-    expect(headers.Authorization).toBeUndefined();
-    expect(headers["X-Scope-OrgID"]).toBeUndefined();
+    expect(headersOf(fetchMock).Authorization).toBeUndefined();
+    expect(headersOf(fetchMock)["X-Scope-OrgID"]).toBeUndefined();
   });
 
-  test("reports a rejected push instead of throwing", async () => {
-    globalThis.fetch = mock(() => Promise.resolve(new Response("entry too far behind", { status: 400 }))) as unknown as typeof fetch;
+  test("throws the status and body of a rejected push", async () => {
+    mockFetch(() => Promise.resolve(new Response("entry too far behind", { status: 400 })));
 
-    expect(await deliverAuditEvents([event], { url: "http://localhost:6122" })).toEqual({
-      delivered: false,
-      reason: "400 entry too far behind",
-    });
+    await expect(pushToLoki([event], { url: "http://localhost:6122", instance: "host1" })).rejects.toThrow("400 entry too far behind");
   });
 
-  test("does not call out for an empty batch", async () => {
-    const fetchMock = mock(() => Promise.reject(new Error("should not be called")));
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
+  test("propagates a transport failure", async () => {
+    mockFetch(() => Promise.reject(new Error("connection refused")));
 
-    expect(await deliverAuditEvents([], { url: "http://localhost:6122" })).toEqual({ delivered: true });
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  test("reports a transport failure instead of throwing", async () => {
-    globalThis.fetch = mock(() => Promise.reject(new Error("connection refused"))) as unknown as typeof fetch;
-
-    expect(await deliverAuditEvents([event], { url: "http://localhost:6122" })).toEqual({
-      delivered: false,
-      reason: "connection refused",
-    });
+    await expect(pushToLoki([event], { url: "http://localhost:6122", instance: "host1" })).rejects.toThrow("connection refused");
   });
 });
+

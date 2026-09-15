@@ -10,6 +10,11 @@
           ([ "services" "xinity-ai-dashboard" ] ++ path)
           message;
 
+      renamed = from: to:
+        lib.mkRenamedOptionModule
+          ([ "services" "xinity-ai-dashboard" ] ++ from)
+          ([ "services" "xinity-ai-dashboard" ] ++ to);
+
       loadCredentialEntries =
         lib.optional (cfg.dbConnectionUrlFile != null) "db-connection-url:${cfg.dbConnectionUrlFile}"
         ++ lib.optional (cfg.betterAuthSecretFile != null) "better-auth-secret:${cfg.betterAuthSecretFile}"
@@ -34,6 +39,8 @@
           "The dashboard now writes directly to the host path set in `logDir`; no bind-mount is needed. Remove this option from your configuration.")
         (removed [ "betterAuthUrl" ]
           "The dashboard never read this; auth redirects and session cookies follow `origin`. Set that instead and remove this option from your configuration.")
+        (renamed [ "auditLokiUrl" ] [ "auditSinkUrl" ])
+        (renamed [ "auditLokiTenant" ] [ "auditSinkTenant" ])
       ];
 
       options.services.xinity-ai-dashboard = {
@@ -184,16 +191,16 @@
           description = "URL of a Prometheus instance the dashboard queries server-side for live GPU metrics (e.g. http://127.0.0.1:9090). When set, the Compute page shows utilization rings and energy readouts. Leave null to keep the Compute page in its no-metrics mode.";
         };
 
-        auditLokiUrl = lib.mkOption {
+        auditSinkUrl = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description = "Base URL of a Loki instance audit events are mirrored to for SIEM ingestion (e.g. http://127.0.0.1:6122). Requires a license with the audit-log feature. Leave null to keep audit events in the database only.";
+          description = "Sink audit events are mirrored to for SIEM ingestion. The scheme picks the transport: http(s):// is a Loki base URL (e.g. http://127.0.0.1:6122), udp://, tcp:// or tls:// is an RFC 5424 syslog collector (e.g. tls://collector.example.com:6514). Requires a license with the audit-log feature. Leave null to keep audit events in the database only. Syslog tuning (facility, framing, app name, CA) goes through extraEnvironment.";
         };
 
-        auditLokiTenant = lib.mkOption {
+        auditSinkTenant = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description = "Tenant id sent as X-Scope-OrgID to auditLokiUrl. Only needed for multi-tenant Loki or Grafana Cloud.";
+          description = "Tenant id sent as X-Scope-OrgID to a Loki auditSinkUrl. Only needed for multi-tenant Loki or Grafana Cloud.";
         };
 
         tlsCertFile = lib.mkOption {
@@ -380,11 +387,11 @@
           // lib.optionalAttrs (cfg.prometheusUrl != null) {
             PROMETHEUS_URL = cfg.prometheusUrl;
           }
-          // lib.optionalAttrs (cfg.auditLokiUrl != null) {
-            AUDIT_LOKI_URL = cfg.auditLokiUrl;
+          // lib.optionalAttrs (cfg.auditSinkUrl != null) {
+            AUDIT_SINK_URL = cfg.auditSinkUrl;
           }
-          // lib.optionalAttrs (cfg.auditLokiTenant != null) {
-            AUDIT_LOKI_TENANT = cfg.auditLokiTenant;
+          // lib.optionalAttrs (cfg.auditSinkTenant != null) {
+            AUDIT_SINK_TENANT = cfg.auditSinkTenant;
           }
           // lib.optionalAttrs (cfg.licenseKey != null) {
             LICENSE_KEY = cfg.licenseKey;

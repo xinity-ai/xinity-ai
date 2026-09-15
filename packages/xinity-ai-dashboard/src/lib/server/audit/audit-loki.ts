@@ -1,19 +1,17 @@
+import { hostname } from "node:os";
 import type { AuditEvent } from "common-db";
+import type { AuditSink } from "./audit-sink";
 
 const PUSH_TIMEOUT_MS = 5_000;
 
 export type LokiTarget = { url: string; auth?: string; tenant?: string };
 
-/**
- * Outcome of a single delivery attempt. Returned rather than thrown so a
- * delivery-tracking table can record failures without branching on exception types.
- */
-export type AuditDelivery = { delivered: true } | { delivered: false; reason: string };
+type LokiPush = LokiTarget & { instance: string };
 
-type StreamLabels = { job: string; action: string; resource: string; result: string };
+type StreamLabels = { job: string; instance: string; action: string; resource: string; result: string };
 
-function streamLabels(event: AuditEvent): StreamLabels {
-  return { job: "xinity-audit", action: event.action, resource: event.resource, result: event.result };
+function streamLabels(event: AuditEvent, instance: string): StreamLabels {
+  return { job: "xinity-audit", instance, action: event.action, resource: event.resource, result: event.result };
 }
 
 /**
@@ -21,11 +19,11 @@ function streamLabels(event: AuditEvent): StreamLabels {
  * a single stream. Labels stay limited to the low-cardinality fields; actor and
  * context land in the line so they cannot multiply the stream count.
  */
-export function buildPushPayload(events: AuditEvent[]): string {
+export function buildPushPayload(events: AuditEvent[], instance: string): string {
   const streams = new Map<string, { stream: StreamLabels; values: [string, string][] }>();
 
   for (const event of events) {
-    const labels = streamLabels(event);
+    const labels = streamLabels(event, instance);
     const key = JSON.stringify([labels.action, labels.resource, labels.result]);
     let stream = streams.get(key);
     if (!stream) {
@@ -49,24 +47,19 @@ function pushHeaders(target: LokiTarget): Record<string, string> {
   return headers;
 }
 
-/** Attempts one delivery. Never throws, so a failed push cannot fail the audited action. */
-export async function deliverAuditEvents(events: AuditEvent[], target: LokiTarget): Promise<AuditDelivery> {
-  if (events.length === 0) {
-    return { delivered: true };
+export async function pushToLoki(events: AuditEvent[], target: LokiPush): Promise<void> {
+  const response = await fetch(`${target.url.replace(/\/$/, "")}/loki/api/v1/push`, {
+    method: "POST",
+    headers: pushHeaders(target),
+    body: buildPushPayload(events, target.instance),
+    signal: AbortSignal.timeout(PUSH_TIMEOUT_MS),
+  });
+  if (!response.ok) {
+    throw new Error(`${response.status} ${await response.text()}`.trim());
   }
+}
 
-  try {
-    const response = await fetch(`${target.url.replace(/\/$/, "")}/loki/api/v1/push`, {
-      method: "POST",
-      headers: pushHeaders(target),
-      body: buildPushPayload(events),
-      signal: AbortSignal.timeout(PUSH_TIMEOUT_MS),
-    });
-    if (!response.ok) {
-      return { delivered: false, reason: `${response.status} ${await response.text()}`.trim() };
-    }
-    return { delivered: true };
-  } catch (err) {
-    return { delivered: false, reason: err instanceof Error ? err.message : String(err) };
-  }
+export function lokiSink(target: LokiTarget): AuditSink {
+  const push: LokiPush = { ...target, instance: hostname() };
+  return { name: "loki", deliver: events => pushToLoki(events, push) };
 }

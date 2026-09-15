@@ -121,22 +121,49 @@ const compute = defineGroup<Compute>({
   },
 });
 
-type Audit = { url: string; auth?: string; tenant?: string };
+/** RFC 5424 facility names in numeric order, so the index is the facility code. */
+export const SYSLOG_FACILITIES = [
+  "kern", "user", "mail", "daemon", "auth", "syslog", "lpr", "news",
+  "uucp", "cron", "authpriv", "ftp", "ntp", "audit", "alert", "clock",
+  "local0", "local1", "local2", "local3", "local4", "local5", "local6", "local7",
+] as const;
+
+export type Audit = {
+  url: string;
+  auth?: string;
+  tenant?: string;
+  facility: (typeof SYSLOG_FACILITIES)[number];
+  framing: "octet-counting" | "lf";
+  appName: string;
+  ca?: string;
+};
+
+export function isLokiUrl(url: string): boolean {
+  return /^https?:$/.test(new URL(url).protocol);
+}
 
 const audit = defineGroup<Audit>({
   id: "audit",
   title: "Audit event export",
-  description: "Mirrors audit events to Loki for SIEM ingestion. Requires a license with the audit-log feature.",
+  description: "Mirrors audit events to one SIEM sink. The URL scheme picks the transport: http(s) pushes to Loki, udp, tcp or tls sends RFC 5424 syslog. Settings for the other transport are ignored. Requires a license with the audit-log feature.",
   expert: true,
   optional: { requires: ["url"] },
   fields: {
-    url: env("AUDIT_LOKI_URL", z.url()
-      .describe("Loki base URL to mirror audit events to (e.g. http://localhost:6122)")),
-    auth: env("AUDIT_LOKI_AUTH", z.string().optional()
-      .describe("Basic auth for AUDIT_LOKI_URL as user:pass. Only needed when the Loki endpoint is authenticated.")
+    url: env("AUDIT_SINK_URL", z.url({ protocol: /^(https?|udp|tcp|tls)$/ })
+      .describe("Sink audit events are mirrored to. http(s):// is a Loki base URL (e.g. http://localhost:6122), udp://, tcp:// or tls:// is a syslog collector (e.g. tls://collector.example.com:6514)")),
+    auth: env("AUDIT_SINK_AUTH", z.string().optional()
+      .describe("Loki only. Basic auth as user:pass, for an authenticated Loki endpoint.")
       .meta(secret())),
-    tenant: env("AUDIT_LOKI_TENANT", z.string().optional()
-      .describe("Tenant id sent as X-Scope-OrgID. Only needed for multi-tenant Loki or Grafana Cloud.")),
+    tenant: env("AUDIT_SINK_TENANT", z.string().optional()
+      .describe("Loki only. Tenant id sent as X-Scope-OrgID, for multi-tenant Loki or Grafana Cloud.")),
+    facility: env("AUDIT_SINK_SYSLOG_FACILITY", z.enum(SYSLOG_FACILITIES).default("local0")
+      .describe("Syslog only. Facility the messages are sent under, which is what collectors route on. 'audit' is the RFC 5424 log-audit facility, local0 to local7 are the site-specific ones.")),
+    framing: env("AUDIT_SINK_SYSLOG_FRAMING", z.enum(["octet-counting", "lf"]).default("octet-counting")
+      .describe("Syslog only. How messages are delimited on tcp and tls. 'octet-counting' is RFC 6587, which rsyslog and syslog-ng expect. 'lf' is newline-delimited, for collectors that only accept that. Ignored on udp.")),
+    appName: env("AUDIT_SINK_SYSLOG_APP_NAME", z.string().default("xinity-audit")
+      .describe("Syslog only. APP-NAME field of the messages. Give each instance its own name when several feed one collector.")),
+    ca: env("AUDIT_SINK_SYSLOG_CA", z.string().optional()
+      .describe("Syslog only. PEM certificate authority the tls:// collector is verified against. Only needed when the collector uses a private CA.")),
   },
 });
 

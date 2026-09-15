@@ -3,11 +3,12 @@ import { z } from "zod";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
 import { adminCreateUser, adminResetPassword } from "$lib/server/auth-server";
-import { userT, accountT, memberT, organizationT, sql, count } from "common-db";
+import { userT, accountT, memberT, organizationT, auditEventT, sql, and, count } from "common-db";
 import { RoleSchema } from "$lib/server/roles";
 import { countLegacyCalls, postfillLegacyCalls } from "$lib/server/lib/legacy-postfill";
 import { countDatabaseBackedMedia, moveMediaToS3 } from "$lib/server/lib/media-migration";
 import { mediaS3Client } from "$lib/server/image-store";
+import { hasFeature } from "$lib/server/license";
 
 const log = rootLogger.child({ name: "instance-admin.procedure" });
 const tags = ["Instance Admin"];
@@ -474,6 +475,47 @@ const moveMedia = rootOs
     return progress;
   });
 
+// ── Audit reconciliation ─────────────────────────────────────────────────
+
+const AUDIT_STREAM_ROW_CAP = 10_000;
+
+/**
+ * Deliberately not organization-scoped: the mirror carries every organization, so an
+ * org-filtered view could not be diffed against what the operator's sink holds.
+ */
+const exportAuditStream = rootOs
+  .meta({ mcp: false })
+  .use(withInstanceAdmin)
+  .route({ method: "GET", path: "/audit-stream", tags, summary: "Export the mirrored audit stream" })
+  .input(z.object({
+    fromStreamPosition: z.coerce.number().int().positive().default(1),
+    toStreamPosition: z.coerce.number().int().positive().optional(),
+  }))
+  .handler(async ({ input, errors }) => {
+    if (!hasFeature("audit-log")) {
+      throw errors.FORBIDDEN({ message: "Audit log export requires an Enterprise license." });
+    }
+    const conditions = [sql`${auditEventT.streamPosition} >= ${input.fromStreamPosition}`];
+    if (input.toStreamPosition) {
+      conditions.push(sql`${auditEventT.streamPosition} <= ${input.toStreamPosition}`);
+    }
+
+    // The whole row on purpose, since this has to match what the sink was sent.
+    const events = await getDB()
+      .select()
+      .from(auditEventT)
+      .where(and(...conditions))
+      .orderBy(sql`${auditEventT.streamPosition} ASC`)
+      .limit(AUDIT_STREAM_ROW_CAP);
+
+    const truncated = events.length === AUDIT_STREAM_ROW_CAP;
+    return {
+      events,
+      truncated,
+      nextStreamPosition: truncated ? events[events.length - 1]!.streamPosition + 1 : null,
+    };
+  });
+
 export const instanceAdminRouter = rootOs.prefix("/instance-admin").router({
   listUsers,
   banUser,
@@ -491,4 +533,5 @@ export const instanceAdminRouter = rootOs.prefix("/instance-admin").router({
   convertLegacyCalls,
   mediaStorageStatus,
   moveMedia,
+  exportAuditStream,
 });

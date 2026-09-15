@@ -1,6 +1,5 @@
-import { index, jsonb, pgEnum, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { bigint, index, jsonb, pgEnum, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { InferSelectModel } from "drizzle-orm";
-import { organizationT } from "./orgSchema";
 import { callDataSchema } from "./pg-schemas";
 
 export const auditActorTypeEnum = pgEnum("audit_actor_type", ["user", "api_key", "system", "instance_admin"]);
@@ -9,8 +8,13 @@ export const auditResultEnum = pgEnum("audit_result", ["success", "failure"]);
 /** Append-only record of a security-relevant action. */
 export const auditEventT = callDataSchema.table("audit_event", {
   id: uuid().primaryKey().defaultRandom(),
-  organizationId: text("organization_id")
-    .references(() => organizationT.id, { onDelete: "cascade" }),
+  /**
+   * Lets a holder of the mirror see that events are missing without trusting anything
+   * this instance reports. Should not be renumbered or restarted, retention pruning included.
+   */
+  streamPosition: bigint("stream_position", { mode: "number" }).generatedAlwaysAsIdentity(),
+  /** Denormalized owning organization, carrying no reference, so deleting an organization leaves its trail intact and the organization.delete event can still be written after the row is gone. */
+  organizationId: text("organization_id"),
   actorType: auditActorTypeEnum("actor_type").notNull(),
   /** Id of the actor. */
   actorId: text("actor_id"),
@@ -28,6 +32,7 @@ export const auditEventT = callDataSchema.table("audit_event", {
 }, table => [
   index("audit_event_organization_id_created_at_idx").on(table.organizationId, table.createdAt),
   index("audit_event_organization_id_actor_id_created_at_idx").on(table.organizationId, table.actorId, table.createdAt),
+  uniqueIndex("audit_event_stream_position_idx").on(table.streamPosition),
 ]);
 
 export type AuditEvent = InferSelectModel<typeof auditEventT>;
