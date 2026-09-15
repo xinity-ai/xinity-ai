@@ -2,7 +2,7 @@ import { select, confirm, text, password, log, isCancel } from "./clack.ts";
 import { bold, cyan, dim, yellow, green } from "picocolors";
 import { promptOrExit, cancelAndExit } from "./output.ts";
 import { parseEnvString } from "./env-file.ts";
-import { analyzeConfig, type ConfigProblem, type EnvField, type EnvFieldGroup } from "common-env";
+import { analyzeConfig, delegate, parseDelegation, type ConfigProblem, type EnvField, type EnvFieldGroup } from "common-env";
 import { type Component, COMPONENTS, COMPONENT_CONFIGS, ENV_DIR, SECRETS_DIR } from "./component-meta.ts";
 import { readSecrets, type Host } from "./host.ts";
 import { readManifest } from "./manifest.ts";
@@ -176,6 +176,12 @@ const FIELD_CANCELLED: unique symbol = Symbol("field-cancelled");
 
 const UNSET_OPTION = "__unset__";
 
+/** Keeps whatever the component runs on today as the fallback, so delegating changes nothing yet. */
+function fallbackFor(field: EnvField, existingValue: string | undefined): string | undefined {
+  const current = parseDelegation(existingValue)?.fallback ?? existingValue;
+  return current ?? (field.hasDefault ? String(field.defaultValue) : undefined);
+}
+
 async function promptField(
   field: EnvField,
   existingValue: string | undefined,
@@ -193,6 +199,23 @@ async function promptField(
 
   const hint = field.description ? dim(` (${field.description})`) : "";
   const optTag = required ? "" : dim(" [optional]");
+
+  if (inMenuEditor && field.isDynamic) {
+    const source = await resolve(select({
+      message: `${field.key}${hint}`,
+      options: [
+        { value: "here", label: "Set a value here" },
+        { value: "dashboard", label: "Manage from the dashboard" },
+      ],
+      initialValue: parseDelegation(existingValue) ? "dashboard" : "here",
+    }));
+    if (source === FIELD_CANCELLED) return source;
+    if (source === "dashboard") {
+      return delegate(fallbackFor(field, existingValue));
+    }
+    existingValue = parseDelegation(existingValue)?.fallback ?? existingValue;
+  }
+
   const existing = existingValue ?? (field.hasDefault ? String(field.defaultValue) : undefined);
   // Only the menu editor can back out with Escape, so only there is an empty submit safe to read as "unset".
   const unsetOnEmpty = inMenuEditor && !required;
@@ -257,6 +280,11 @@ async function promptField(
 
 /** Format a field's current value for display in the menu. */
 function displayValue(field: EnvField, value: string | undefined, required: boolean): string {
+  const delegation = parseDelegation(value);
+  if (delegation) {
+    const fallback = delegation.fallback ?? String(field.defaultValue ?? "unset");
+    return `${green("dashboard")} ${dim(`(falls back to ${fallback})`)}`;
+  }
   if (value !== undefined && value !== "") {
     if (field.isSecret) return dim("••••••");
     return cyan(value);

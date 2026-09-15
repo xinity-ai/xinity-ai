@@ -16,6 +16,11 @@ export function parseDelegation(raw: string | undefined): Delegation | null {
   return { fallback: raw.slice(DYNAMIC_SENTINEL.length + 1) };
 }
 
+/** The sentinel form a deployment writes to hand a setting to the dashboard. */
+export function delegate(fallback?: string): string {
+  return fallback === undefined ? DYNAMIC_SENTINEL : `${DYNAMIC_SENTINEL}:${fallback}`;
+}
+
 export type DelegationSplit = {
   readonly envWithFallbacks: Record<string, string | undefined>;
   readonly delegatedKeys: readonly string[];

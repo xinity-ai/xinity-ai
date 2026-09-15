@@ -65,12 +65,12 @@ Redis, and the lifetimes of what the gateway keeps in it.
 | Variable | Default | Description |
 |---|---|---|
 | `REDIS_URL` | (required) | Redis or Valkey connection URL (e.g. redis://:PASSWORD@localhost:6379). Percent-encode the password. Secret. |
-| `RESPONSE_CACHE_TTL_SECONDS` | `3600` | How long an identical completion is served from cache instead of the backend. |
-| `CACHE_APPLICATION_TTL_SECONDS` | `300` | How long an application name to id lookup is cached. |
-| `CACHE_API_KEY_TTL_SECONDS` | `120` | How long a validated API key is cached, so every request does not hit the database. |
-| `CACHE_AUTH_FAILURE_TTL_SECONDS` | `10` | How long a rejected API key is remembered. Short, so re-enabling a key takes effect promptly. |
-| `CACHE_MODEL_TTL_SECONDS` | `60` | How long a model deployment lookup is cached. |
-| `CACHE_DIGEST_MAX_ENTRIES` | `5000` | Entries held in the in-process chat message digest cache, which avoids re-hashing repeated history. |
+| `RESPONSE_CACHE_TTL_SECONDS` | `3600` | How long an identical completion is served from cache instead of the backend. Can be set to `@dynamic` to take its value from the dashboard. |
+| `CACHE_APPLICATION_TTL_SECONDS` | `300` | How long an application name to id lookup is cached. Can be set to `@dynamic` to take its value from the dashboard. |
+| `CACHE_API_KEY_TTL_SECONDS` | `120` | How long a validated API key is cached, so every request does not hit the database. Can be set to `@dynamic` to take its value from the dashboard. |
+| `CACHE_AUTH_FAILURE_TTL_SECONDS` | `10` | How long a rejected API key is remembered. Short, so re-enabling a key takes effect promptly. Can be set to `@dynamic` to take its value from the dashboard. |
+| `CACHE_MODEL_TTL_SECONDS` | `60` | How long a model deployment lookup is cached. Can be set to `@dynamic` to take its value from the dashboard. |
+| `CACHE_DIGEST_MAX_ENTRIES` | `5000` | Entries held in the in-process chat message digest cache, which avoids re-hashing repeated history. Can be set to `@dynamic` to take its value from the dashboard. |
 
 ### Model catalog
 
@@ -133,8 +133,8 @@ How the gateway picks a node, how long it waits, and how it trusts one.
 
 | Variable | Default | Description |
 |---|---|---|
-| `LOAD_BALANCE_STRATEGY` | `least-connections` | Load balancing strategy for distributing requests across inference nodes. One of `random`, `round-robin`, `least-connections`. |
-| `BACKEND_TIMEOUT_MS` | `300000` | Backend timeout in ms (default: 5 min). For streaming requests this is an idle timeout that resets on each chunk; for non-streaming requests it is a wall-clock deadline. |
+| `LOAD_BALANCE_STRATEGY` | `least-connections` | Load balancing strategy for distributing requests across inference nodes. One of `random`, `round-robin`, `least-connections`. Can be set to `@dynamic` to take its value from the dashboard. |
+| `BACKEND_TIMEOUT_MS` | `300000` | Backend timeout in ms (default: 5 min). For streaming requests this is an idle timeout that resets on each chunk; for non-streaming requests it is a wall-clock deadline. Can be set to `@dynamic` to take its value from the dashboard. |
 | `XINITY_INFERENCE_CA` | (unset) | PEM-encoded CA certificate for verifying daemon TLS. When set, gateway connects to daemons via HTTPS. Secret. |
 
 ### Deep research

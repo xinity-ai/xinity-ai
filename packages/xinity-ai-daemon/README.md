@@ -127,9 +127,9 @@ How this node runs vLLM models.
 | `VLLM_HF_CACHE_DIR` | `/var/lib/vllm/hf-cache` | HuggingFace cache directory. |
 | `VLLM_TRITON_CACHE_DIR` | `/var/lib/vllm/triton-cache` | Triton cache directory. |
 | `VLLM_HF_TOKEN` | (unset) | HuggingFace token for downloading private or gated models. Secret. |
-| `VLLM_HEALTH_TIMEOUT_MS` | `3600000` | vLLM health check timeout in milliseconds (default: 1 hour). |
-| `VLLM_HEALTH_POLL_INTERVAL_MS` | `5000` | vLLM health check poll interval in milliseconds. |
-| `VLLM_MAX_RESTART_COUNT` | `3` | Max container restarts before marking installation as permanently failed. |
+| `VLLM_HEALTH_TIMEOUT_MS` | `3600000` | vLLM health check timeout in milliseconds (default: 1 hour). Can be set to `@dynamic` to take its value from the dashboard. |
+| `VLLM_HEALTH_POLL_INTERVAL_MS` | `5000` | vLLM health check poll interval in milliseconds. Can be set to `@dynamic` to take its value from the dashboard. |
+| `VLLM_MAX_RESTART_COUNT` | `3` | Max container restarts before marking installation as permanently failed. Can be set to `@dynamic` to take its value from the dashboard. |
 
 ### TLS
 

@@ -3,8 +3,8 @@
  * layer owns, and where the result is stored. `stack init`, `stack edit`, and
  * the lazy editors inside `stack up` all go through these.
  */
-import { checkConfig } from "common-env";
-import { attentionKeysFor, type Component, COMPONENT_CONFIGS } from "./component-meta.ts";
+
+import { attentionKeysFor, checkComponentConfig, type Component } from "./component-meta.ts";
 import { componentFields, menuEditEnv, flattenBundle } from "./env-prompt.ts";
 import {
   type StackDefinition, type FleetDefinition,
@@ -24,7 +24,7 @@ export async function menuEditLayer(opts: {
     attentionKeys: attentionKeysFor(opts.component),
     hiddenKeys: opts.hiddenKeys,
     message: opts.message,
-    validate: (values) => checkConfig(COMPONENT_CONFIGS[opts.component], { env: values }),
+    validate: (values) => checkComponentConfig(opts.component, values),
   });
   if (result === null) {
     return null;

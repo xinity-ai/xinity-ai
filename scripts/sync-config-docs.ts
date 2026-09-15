@@ -32,6 +32,7 @@ function describe(field: EnvField): string {
     text && !/[.!?]$/.test(text) ? `${text}.` : text,
     field.enumValues ? `One of ${field.enumValues.map((v) => `\`${v}\``).join(", ")}.` : "",
     field.isSecret ? "Secret." : "",
+    field.isDynamic ? "Can be set to `@dynamic` to take its value from the dashboard." : "",
   ];
   return cell(notes.filter(Boolean).join(" "));
 }

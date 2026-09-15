@@ -36,3 +36,17 @@ Verified providers show a green "Verified" badge. Unverified providers show an a
 ## License Management
 
 The license page (Instance Settings > License) shows the current license status, tier, licensee, and the deployment instance ID needed when requesting a license.
+
+## Dynamic Configuration
+
+Selected settings can be changed from Instance Settings > Configuration and take effect without restarting anything. Three things must line up before a value there is used:
+
+1. The setting is declared as dashboard-managed by the service that reads it. The per-package README marks these.
+2. The deployment delegated it, by starting the component with `KEY=@dynamic` or `KEY=@dynamic:<fallback>` instead of a literal value.
+3. A value is set on the page.
+
+The fallback form is the safe way to adopt one. `LOAD_BALANCE_STRATEGY=@dynamic:round-robin` behaves exactly as `LOAD_BALANCE_STRATEGY=round-robin` did until somebody sets a value on the page, so nothing changes on the next restart.
+
+Clearing a value returns each component to the fallback it was started with, which can differ between hosts. The page cannot show what that is, only the value the schema declares.
+
+A component that was not started with `@dynamic` for a setting ignores whatever is on the page, and a component refuses to start if it is given `@dynamic` for a setting that is not dashboard-managed.
