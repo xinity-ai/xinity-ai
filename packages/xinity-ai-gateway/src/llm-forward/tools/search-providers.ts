@@ -185,7 +185,7 @@ type ProviderEntry = {
   validateCredential?: (credential: string) => void;
 };
 
-const SEARCH_PROVIDERS: Record<string, ProviderEntry> = {
+const SEARCH_PROVIDERS = {
   searxng: {
     create: createSearxngProvider,
     validateCredential(credential) {
@@ -207,22 +207,28 @@ const SEARCH_PROVIDERS: Record<string, ProviderEntry> = {
   brave: { create: createBraveProvider },
   serper: { create: createSerperProvider },
   tavily: { create: createTavilyProvider },
-};
+} satisfies Record<string, ProviderEntry>;
 
-export const WEB_SEARCH_PROVIDER_NAMES = Object.keys(SEARCH_PROVIDERS) as [string, ...string[]];
 export type WebSearchProviderName = keyof typeof SEARCH_PROVIDERS;
+
+export const WEB_SEARCH_PROVIDER_NAMES = Object.keys(SEARCH_PROVIDERS) as [
+  WebSearchProviderName,
+  ...WebSearchProviderName[],
+];
 
 // ---------------------------------------------------------------------------
 // Config resolution and validation
 // ---------------------------------------------------------------------------
 
 export type WebSearchSettings = {
-  provider?: string;
+  provider?: WebSearchProviderName;
   credential?: string;
   engineUrl?: string;
 };
 
-export function resolveSearchConfig(webSearch: WebSearchSettings): { provider: string; credential: string } | null {
+export function resolveSearchConfig(
+  webSearch: WebSearchSettings,
+): { provider: WebSearchProviderName; credential: string } | null {
   if (webSearch.provider) {
     if (!webSearch.credential) {
       throw new Error("WEB_SEARCH_CREDENTIAL must be set when WEB_SEARCH_PROVIDER is set");
@@ -235,11 +241,8 @@ export function resolveSearchConfig(webSearch: WebSearchSettings): { provider: s
   return null;
 }
 
-export function validateSearchCredential(provider: string, credential: string): void {
-  const entry = SEARCH_PROVIDERS[provider];
-  if (!entry) {
-    throw new Error(`Unknown search provider: ${provider}`);
-  }
+export function validateSearchCredential(provider: WebSearchProviderName, credential: string): void {
+  const entry: ProviderEntry = SEARCH_PROVIDERS[provider];
   if (entry.validateCredential) {
     entry.validateCredential(credential);
   } else if (!credential.trim()) {
@@ -247,12 +250,8 @@ export function validateSearchCredential(provider: string, credential: string): 
   }
 }
 
-export function createSearchProvider(name: string, credential: string): SearchProvider {
-  const entry = SEARCH_PROVIDERS[name];
-  if (!entry) {
-    throw new Error(`Unknown search provider: ${name}`);
-  }
-  return entry.create(credential);
+export function createSearchProvider(name: WebSearchProviderName, credential: string): SearchProvider {
+  return SEARCH_PROVIDERS[name].create(credential);
 }
 
 export function getSearchProvider(webSearch: WebSearchSettings): SearchProvider | null {
