@@ -12,7 +12,7 @@
   import { toastState } from "$lib/state/toast.svelte";
   import type { DynamicSettingSummary } from "./dynamic-settings";
 
-  type Override = { value?: string; updatedBy: string | null; updatedAt: string };
+  type Override = { value?: string; digest?: string; updatedBy: string | null; updatedAt: string };
 
   let settings = $state<DynamicSettingSummary[]>([]);
   let overrides = $state<Record<string, Override>>({});
@@ -50,6 +50,7 @@
     settings = data.settings;
     overrides = Object.fromEntries(data.overrides.map((override) => [override.key, {
       value: override.value,
+      digest: override.digest,
       updatedBy: override.updatedBy,
       updatedAt: String(override.updatedAt),
     }]));
@@ -168,6 +169,11 @@
                 <p class="text-xs text-muted-foreground">
                   Set by {override.updatedBy ?? "an unknown user"} on
                   {new Date(override.updatedAt).toLocaleString()}
+                  {#if override.digest}
+                    <span class="font-mono" title="Fingerprint of the stored value, so you can tell it apart from another without revealing either">
+                      &middot; {override.digest}
+                    </span>
+                  {/if}
                 </p>
               {:else}
                 <Tooltip.Provider>
