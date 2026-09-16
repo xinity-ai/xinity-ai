@@ -65,3 +65,4 @@ export * from "./service-url";
 export * from "./tether-protocol";
 export * from "./content-hash";
 export * from "./pino-like";
+export * from "./secret-keyring";

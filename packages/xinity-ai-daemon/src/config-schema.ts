@@ -9,7 +9,9 @@ import {
   env,
   expert,
   metricsAuthField,
+  previousSecretKeyField,
   secret,
+  secretKeyField,
   serverGroup,
   tetherSecretField,
   tlsGroup,
@@ -120,6 +122,8 @@ export type DaemonConfig = {
   log: LoggingConfig;
   /** Its own driver, with one knob, so it is not worth a group of its own. */
   ollamaUrl: string;
+  secretKey?: string;
+  previousSecretKey?: string;
 };
 
 export const daemonConfig = defineConfig<DaemonConfig>({
@@ -134,4 +138,6 @@ export const daemonConfig = defineConfig<DaemonConfig>({
   ollamaUrl: env("OLLAMA_URL", z.url().default("http://localhost:11434")
     .describe("Ollama API endpoint. The ollama driver is enabled whenever this endpoint answers, so it only needs setting when ollama does not listen on its default local port")
     .meta(expert())),
+  secretKey: secretKeyField(),
+  previousSecretKey: previousSecretKeyField(),
 });

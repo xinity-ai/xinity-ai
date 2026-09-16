@@ -201,7 +201,9 @@
         enable = lib.mkOption {
           type = lib.types.bool;
           default = cfg.dbConnectionUrl.enable || cfg.redisUrl.enable
-            || cfg.metricsAuth.enable || cfg.grafanaSecretKey.enable;
+            || cfg.metricsAuth.enable || cfg.grafanaSecretKey.enable
+            || cfg.tetherSecret.enable || cfg.betterAuthSecret.enable
+            || cfg.secretKey.enable;
           defaultText = lib.literalMD "true when any of the values below is enabled";
           description = "Run the unit that composes and creates the credentials below. Follows whether any of them is enabled, so it is not normally set by hand.";
         };
@@ -274,6 +276,20 @@
           '';
         };
 
+        secretKey.enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = ''
+            Create the key that encrypts dashboard-managed secrets at rest, once, and keep it.
+            Replacing it makes every secret already stored in the dashboard unreadable.
+
+            It belongs to the deployment rather than the host, and every host that sets or
+            reads one of those secrets needs the same value. Before adding a second one, move
+            the created file's value into your secrets manager and point
+            secrets.secretKeyFile at it.
+          '';
+        };
+
         consumers = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           default = [ ];
@@ -317,6 +333,12 @@
             readOnly = true;
             default = "${generatedDir}/better-auth-secret";
             description = "Where the created Better Auth secret is kept.";
+          };
+          secretKey = lib.mkOption {
+            type = lib.types.str;
+            readOnly = true;
+            default = "${generatedDir}/secret-key";
+            description = "Where the created dashboard-managed-secret encryption key is kept.";
           };
         };
       };
@@ -401,6 +423,15 @@
                   > ${cfg.paths.tetherSecret}
               fi
               chmod 0400 ${cfg.paths.tetherSecret}
+            fi
+
+            # base64 of exactly 32 bytes: the AES-256 key itself, not a token of that length.
+            if ${lib.boolToString cfg.secretKey.enable}; then
+              if [ ! -s ${cfg.paths.secretKey} ]; then
+                printf '%s' "$(${pkgs.openssl}/bin/openssl rand -base64 32)" \
+                  > ${cfg.paths.secretKey}
+              fi
+              chmod 0400 ${cfg.paths.secretKey}
             fi
           '';
           };
@@ -826,6 +857,11 @@
             default = null;
             description = "Path to file containing the license key. Applied to dashboard.";
           };
+          secretKeyFile = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = "Path to file containing XINITY_SECRET_KEY, which encrypts dashboard-managed secrets at rest. Applied to the gateway, dashboard and local daemon. Every additional inference node must be given the same value; there is one key per deployment, not one per node.";
+          };
         };
 
         environmentFiles = lib.mkOption {
@@ -900,6 +936,10 @@
           # given that tether's secret, not one generated here.
           generateTetherSecret = cfg.secrets.derive && cfg.tether.enable
             && cfg.secrets.tetherSecretFile == null;
+          # Only where the dashboard runs: it is what seals these values, and a node
+          # elsewhere has to be given that dashboard's key to read them back.
+          generateSecretKey = cfg.secrets.derive && cfg.dashboard.enable
+            && cfg.secrets.secretKeyFile == null;
 
           managed = config.services.xinity-ai-secrets.paths;
           pick = explicit: derived: path: if derived then path else explicit;
@@ -915,6 +955,8 @@
             generateBetterAuthSecret managed.betterAuthSecret;
           tetherSecretFile = pick cfg.secrets.tetherSecretFile
             generateTetherSecret managed.tetherSecret;
+          secretKeyFile = pick cfg.secrets.secretKeyFile
+            generateSecretKey managed.secretKey;
 
 
 
@@ -999,6 +1041,7 @@
             grafanaSecretKey.enable = generateGrafanaKey;
             betterAuthSecret.enable = generateBetterAuthSecret;
             tetherSecret.enable = generateTetherSecret;
+            secretKey.enable = generateSecretKey;
             consumers =
               lib.optional cfg.gateway.enable "xinity-ai-gateway"
               ++ lib.optional cfg.dashboard.enable "xinity-ai-dashboard"
@@ -1046,6 +1089,7 @@
             s3Bucket = lib.mkDefault cfg.seaweedfs.bucket;
             s3AccessKeyIdFile = lib.mkDefault cfg.secrets.s3AccessKeyIdFile;
             s3SecretAccessKeyFile = lib.mkDefault cfg.secrets.s3SecretAccessKeyFile;
+            secretKeyFile = lib.mkDefault secretKeyFile;
             environmentFiles = lib.mkDefault envFiles;
           };
 
@@ -1085,6 +1129,7 @@
             s3AccessKeyIdFile = lib.mkDefault cfg.secrets.s3AccessKeyIdFile;
             s3SecretAccessKeyFile = lib.mkDefault cfg.secrets.s3SecretAccessKeyFile;
             licenseKeyFile = lib.mkDefault cfg.secrets.licenseKeyFile;
+            secretKeyFile = lib.mkDefault secretKeyFile;
             environmentFiles = lib.mkDefault envFiles;
           };
 
@@ -1117,6 +1162,7 @@
             tetherSecretFile = lib.mkDefault tetherSecretFile;
             infoserverUrl = lib.mkDefault infoserverUrl;
             metricsAuthFile = lib.mkDefault metricsAuthFile;
+            secretKeyFile = lib.mkDefault secretKeyFile;
             environmentFiles = lib.mkDefault envFiles;
             ollamaEnabled = lib.mkDefault cfg.daemon.ollama.enable;
           };
