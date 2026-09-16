@@ -8,6 +8,7 @@
 
       # [sync:dynamic-keys] - generated from the config declaration, do not edit
       dashboardManageableKeys = [
+        "VLLM_HF_TOKEN"
         "VLLM_HEALTH_TIMEOUT_MS"
         "VLLM_HEALTH_POLL_INTERVAL_MS"
         "VLLM_MAX_RESTART_COUNT"

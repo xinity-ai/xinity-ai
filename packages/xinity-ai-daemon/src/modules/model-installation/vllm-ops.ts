@@ -88,8 +88,9 @@ export function buildSystemdEnvFile(config: VllmInstanceConfig): string {
   if (audioFileSize != null) {
     lines.push(`VLLM_MAX_AUDIO_CLIP_FILESIZE_MB=${audioFileSize}`);
   }
-  if (daemonConfig.vllm.hfToken) {
-    lines.push(`HF_TOKEN=${daemonConfig.vllm.hfToken}`);
+  const hfToken = daemonConfig.vllm.hfToken();
+  if (hfToken) {
+    lines.push(`HF_TOKEN=${hfToken}`);
   }
   return lines.join("\n") + "\n";
 }

@@ -70,7 +70,7 @@ type Vllm = {
   dockerImage?: string;
   hfCacheDir: string;
   tritonCacheDir: string;
-  hfToken?: string;
+  hfToken: () => string | undefined;
   healthTimeoutMs: () => number;
   healthPollIntervalMs: () => number;
   maxRestartCount: () => number;
@@ -100,7 +100,7 @@ const vllm = defineGroup<Vllm>({
       .describe("HuggingFace cache directory").meta(expert())),
     tritonCacheDir: env("VLLM_TRITON_CACHE_DIR", z.string().default("/var/lib/vllm/triton-cache")
       .describe("Triton cache directory").meta(expert())),
-    hfToken: env("VLLM_HF_TOKEN", z.string().optional()
+    hfToken: dynamic("VLLM_HF_TOKEN", z.string().optional()
       .describe("HuggingFace token for downloading private or gated models").meta(secret())),
     healthTimeoutMs: dynamic("VLLM_HEALTH_TIMEOUT_MS", configNumber().default(60 * 60 * 1000)
       .describe("vLLM health check timeout in milliseconds (default: 1 hour)").meta(expert())),

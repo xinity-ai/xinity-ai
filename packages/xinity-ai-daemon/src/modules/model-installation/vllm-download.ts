@@ -16,7 +16,8 @@ type HfFileEntry = {
 }
 
 function authHeaders(): Record<string, string> {
-  return config.vllm.hfToken ? { Authorization: `Bearer ${config.vllm.hfToken}` } : {};
+  const hfToken = config.vllm.hfToken();
+  return hfToken ? { Authorization: `Bearer ${hfToken}` } : {};
 }
 
 function cleanEtag(raw: string): string {

@@ -14,6 +14,7 @@ export type DynamicOverride = {
   key: string;
   /** Withheld for secrets, which the dashboard sets but never reads back. */
   value?: string;
+  digest?: string;
   updatedBy: string | null;
   updatedAt: Date;
 };
@@ -43,6 +44,7 @@ export async function listOverrides(): Promise<DynamicOverride[]> {
     .select({
       key: dynamicConfigT.key,
       value: dynamicConfigT.value,
+      valueDigest: dynamicConfigT.valueDigest,
       updatedBy: dynamicConfigT.updatedBy,
       updatedAt: dynamicConfigT.updatedAt,
     })
@@ -50,9 +52,11 @@ export async function listOverrides(): Promise<DynamicOverride[]> {
 
   return rows.map((row) => {
     const setting = findDynamicSetting(row.key);
+    const withheld = setting !== undefined && summarize(setting).isSecret;
     return {
       key: row.key,
-      value: setting && summarize(setting).isSecret ? undefined : row.value,
+      value: withheld ? undefined : row.value,
+      digest: withheld ? row.valueDigest ?? undefined : undefined,
       updatedBy: row.updatedBy,
       updatedAt: row.updatedAt,
     };

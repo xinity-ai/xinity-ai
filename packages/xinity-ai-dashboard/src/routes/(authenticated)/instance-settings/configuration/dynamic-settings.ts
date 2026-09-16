@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { configBool, configInt, configNumber, expert, readLeafMeta } from "common-env";
+import { configBool, configInt, configNumber, expert, readLeafMeta, secret } from "common-env";
 
 export type DynamicSetting = {
   key: string;
@@ -119,6 +119,13 @@ export const DYNAMIC_SETTINGS: DynamicSetting[] = [
     group: "vLLM",
     schema: configInt(z.int().positive()).default(3)
       .describe("Max container restarts before marking installation as permanently failed").meta(expert()),
+  },
+  {
+    key: "VLLM_HF_TOKEN",
+    components: ["daemon"],
+    group: "vLLM",
+    schema: z.string().optional()
+      .describe("HuggingFace token for downloading private or gated models").meta(secret()),
   },
   {
     key: "MCP_ENABLED",
