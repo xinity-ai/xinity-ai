@@ -1,7 +1,7 @@
 import "zod/compile";
 
 import type { SubscriptionLike } from "rxjs";
-import { activationRefusal } from "common-env";
+import { activationRefusal, createSecretUnsealer } from "common-env";
 
 import { dbSync, setDesiredInstallations } from "./modules/db-sync";
 import { startMetricsSampler, type MetricsSampler } from "./modules/metrics-sampler";
@@ -9,7 +9,7 @@ import { startServer } from "./modules/serverfront/webserver";
 import { buildRegistration } from "./modules/statekeeper";
 import { connectSSE } from "./modules/tether-client";
 import { tetherConfigFeed } from "./modules/config-feed";
-import { configStore } from "./config";
+import { config, configStore } from "./config";
 import { rootLogger } from "./logger";
 import { daemonConfig } from "./config-schema";
 
@@ -48,7 +48,9 @@ async function main() {
   process.once("uncaughtException", onFatal("Uncaught exception"));
   process.once("unhandledRejection", onFatal("Unhandled rejection"));
 
-  await configStore.start(tetherConfigFeed);
+  await configStore.start(tetherConfigFeed, {
+    unseal: createSecretUnsealer({ current: config.secretKey, previous: config.previousSecretKey }, rootLogger),
+  });
 
   for await (const state of connectSSE(registration)) {
     if (shuttingDown) {

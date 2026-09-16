@@ -8,6 +8,8 @@ const START_MARKER = "<!-- [sync:config] - generated from the config declaration
 const END_MARKER = "<!-- [/sync:config] -->";
 const NIX_START_MARKER = "# [sync:dynamic-keys] - generated from the config declaration, do not edit";
 const NIX_END_MARKER = "# [/sync:dynamic-keys]";
+const TS_START_MARKER = "// [sync:dynamic-keys] - generated from the config declaration, do not edit";
+const TS_END_MARKER = "// [/sync:dynamic-keys]";
 
 const PACKAGE_DIRS: Record<Component, string> = {
   gateway: "packages/xinity-ai-gateway",
@@ -81,6 +83,17 @@ function nixKeyList(keys: string[]): string[] {
   return ["dashboardManageableKeys = [", ...keys.map((key) => `  "${key}"`), "];"];
 }
 
+/** The tether forwards these to every daemon, so it has to know them without importing the daemon. */
+const TETHER_DAEMON_KEYS = "packages/xinity-tether/src/daemon-config-keys.ts";
+
+function tsKeyList(keys: string[]): string[] {
+  return [
+    "export const DAEMON_DYNAMIC_KEYS: readonly string[] = [",
+    ...keys.map((key) => `  "${key}",`),
+    "];",
+  ];
+}
+
 function sync(relPath: string, start: string, end: string, render: (indent: string) => string): boolean {
   const path = join(ROOT, relPath);
   const text = readFileSync(path, "utf-8");
@@ -117,6 +130,13 @@ for (const component of COMPONENTS) {
     synced =
       sync(NIX_MODULES[component], NIX_START_MARKER, NIX_END_MARKER, (indent) =>
         [NIX_START_MARKER, ...nixKeyList(dynamicKeys), NIX_END_MARKER].join(`\n${indent}`),
+      ) && synced;
+  }
+
+  if (component === "daemon") {
+    synced =
+      sync(TETHER_DAEMON_KEYS, TS_START_MARKER, TS_END_MARKER, () =>
+        [TS_START_MARKER, ...tsKeyList(dynamicKeys), TS_END_MARKER].join("\n"),
       ) && synced;
   }
 }

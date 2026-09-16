@@ -1,9 +1,9 @@
 import { test, expect, mock } from "bun:test";
-import { mockDaemonConfig } from "../mock-config";
+import { mockConfigModule } from "../mock-config";
 import type { InstallationStateReport } from "common-env";
 
 // The trailing slash is the shape that produced `//api/v1/stream` in production.
-mock.module("../config", () => ({ config: mockDaemonConfig({ TETHER_URL: "http://100.64.0.11:2000/" }) }));
+mock.module("../config", () => mockConfigModule({ TETHER_URL: "http://100.64.0.11:2000/" }));
 
 const { reportInstallationStates } = await import("./tether-client");
 

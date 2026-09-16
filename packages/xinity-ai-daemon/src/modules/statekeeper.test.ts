@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterAll, mock } from "bun:test";
-import { mockDaemonConfig } from "../mock-config";
+import { mockConfigModule } from "../mock-config";
 import { join } from "node:path";
 import { rm, mkdir } from "node:fs/promises";
 import { mkdtempSync } from "node:fs";
@@ -17,9 +17,7 @@ const ollama = Bun.serve({
       : new Response("unavailable", { status: 500 }),
 });
 
-mock.module("../config", () => ({
-  config: mockDaemonConfig({ STATE_DIR, OLLAMA_URL: `http://127.0.0.1:${ollama.port}` }),
-}));
+mock.module("../config", () => mockConfigModule({ STATE_DIR, OLLAMA_URL: `http://127.0.0.1:${ollama.port}` }));
 
 const { readNodeIdFile, getNodeDrivers, getNodeDriverVersions } = await import("./statekeeper");
 

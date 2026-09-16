@@ -1,5 +1,6 @@
 import "zod/compile";
 
+import { z } from "zod";
 import { DYNAMIC_CONFIG_CHANNEL, logMigrationFailureFatal, readDynamicConfig } from "common-db";
 import { nodeRegistrationSchema, installationStateReportSchema, protocolFingerprint, activationRefusal, createDbConfigFeed } from "common-env";
 import { tetherConfig } from "./config-schema";
@@ -16,6 +17,8 @@ import { handleMetrics, httpMetrics, incRequestRejections } from "./metrics";
 import { buildListenTarget } from "./serve-config";
 
 const log = rootLogger;
+
+const handshakeSchema = z.object({ protocolFingerprint: z.string() });
 
 const refusal = activationRefusal(tetherConfig, rootLogger);
 if (refusal) {
@@ -48,6 +51,8 @@ try {
 
 // Every delegated setting already holds its configured fallback, so a failed subscription
 // costs dashboard control of them, not a working tether.
+// No unsealer: the tether delegates nothing secret and relays what it reads still sealed, so it
+// is the one service in the path that never holds the key.
 try {
   await configStore.start(createDbConfigFeed({
     channel: DYNAMIC_CONFIG_CHANNEL,
@@ -95,6 +100,21 @@ async function handleSSEStream(req: Request): Promise<Response> {
   }
 
   const body = await req.json().catch(() => null);
+
+  // Before the full schema, so a daemon whose payload shape predates this build is told its
+  // protocol is incompatible rather than that some field it never heard of is missing.
+  const handshake = handshakeSchema.safeParse(body);
+  const expected = protocolFingerprint();
+  if (!handshake.success || handshake.data.protocolFingerprint !== expected) {
+    const received = handshake.success ? handshake.data.protocolFingerprint : "unknown";
+    incRequestRejections("stream", "protocol_mismatch");
+    log.warn({ expected, received }, "Protocol version mismatch");
+    return Response.json(
+      { error: `Protocol version mismatch (tether: ${expected}, daemon: ${received})` },
+      { status: 409 },
+    );
+  }
+
   const parsed = nodeRegistrationSchema.safeParse(body);
   if (!parsed.success) {
     incRequestRejections("stream", "invalid_payload");
@@ -102,19 +122,6 @@ async function handleSSEStream(req: Request): Promise<Response> {
   }
 
   const { nodeId } = parsed.data;
-
-  const expected = protocolFingerprint();
-  if (parsed.data.protocolFingerprint !== expected) {
-    incRequestRejections("stream", "protocol_mismatch");
-    log.warn(
-      { nodeId, expected, received: parsed.data.protocolFingerprint },
-      "Protocol version mismatch",
-    );
-    return Response.json(
-      { error: `Protocol version mismatch (tether: ${expected}, daemon: ${parsed.data.protocolFingerprint})` },
-      { status: 409 },
-    );
-  }
 
   try {
     await writeRegistration(parsed.data);

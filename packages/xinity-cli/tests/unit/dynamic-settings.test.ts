@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import type { ConfigEntry } from "common-env";
 import { DYNAMIC_SETTINGS } from "xinity-ai-dashboard/src/routes/(authenticated)/instance-settings/configuration/dynamic-settings.ts";
+import { DAEMON_DYNAMIC_KEYS } from "xinity-tether/src/daemon-config-keys.ts";
 import { COMPONENTS, COMPONENT_CONFIGS } from "../../src/lib/component-meta.ts";
 
 type DeclaredField = { components: string[]; group?: string; entry: ConfigEntry };
@@ -53,5 +54,15 @@ describe("the dashboard's dynamic settings catalogue", () => {
       expect([setting.components, setting.group], setting.key)
         .toEqual([field.components, field.group]);
     }
+  });
+});
+
+describe("the tether's daemon key list", () => {
+  test("names exactly the keys the daemon declares dynamic", () => {
+    const declared = COMPONENT_CONFIGS.daemon.entries
+      .filter((entry) => entry.isDynamic)
+      .map((entry) => entry.envKey);
+
+    expect([...DAEMON_DYNAMIC_KEYS]).toEqual(declared);
   });
 });

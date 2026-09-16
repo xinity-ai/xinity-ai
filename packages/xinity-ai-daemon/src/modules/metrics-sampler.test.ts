@@ -1,8 +1,8 @@
 import { describe, test, expect, mock } from "bun:test";
-import { mockDaemonConfig } from "../mock-config";
+import { mockConfigModule } from "../mock-config";
 import { classifyGpu } from "xinity-infoserver";
 
-mock.module("../config", () => ({ config: mockDaemonConfig() }));
+mock.module("../config", () => mockConfigModule());
 
 const {
   parseNvidiaMetricsOutput,
