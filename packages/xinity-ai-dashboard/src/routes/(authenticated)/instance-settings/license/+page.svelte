@@ -118,6 +118,31 @@
     </div>
 
     <div class="border-t pt-6">
+      <p class="text-sm text-muted-foreground">Where the key comes from</p>
+      {#if !data.licenseKey.delegated}
+        <p class="text-xs text-muted-foreground mt-1">
+          This dashboard reads <code class="font-mono">LICENSE_KEY</code> from its own environment, so it cannot be
+          changed from here. Start it with <code class="font-mono">LICENSE_KEY=@dynamic</code> to hand the setting to
+          the Configuration page instead.
+        </p>
+      {:else}
+        <p class="text-xs text-muted-foreground mt-1">
+          {#if data.licenseKey.managedHere}
+            Set from the Configuration page{#if data.licenseKey.digest}, fingerprint
+              <span class="font-mono">{data.licenseKey.digest}</span>{/if}. Replacing it there takes effect without a
+            restart.
+          {:else}
+            Handed to the Configuration page, but no value is set there yet, so this dashboard is running the key it
+            was started with.
+          {/if}
+        </p>
+        <Button href="/instance-settings/configuration" variant="outline" size="sm" class="mt-3">
+          Open Configuration
+        </Button>
+      {/if}
+    </div>
+
+    <div class="border-t pt-6">
       <p class="text-sm text-muted-foreground">Deployment instance ID</p>
       <p class="text-xs text-muted-foreground mt-1 mb-2">
         Provide this ID when requesting a license to bind it to this specific dashboard install.

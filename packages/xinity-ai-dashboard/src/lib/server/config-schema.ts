@@ -188,7 +188,7 @@ export type DashboardConfig = {
   origin: string;
   trustedOrigins: string[];
   gatewayUrl: string;
-  licenseKey?: string;
+  licenseKey: () => string | undefined;
   mcpEnabled: () => boolean;
   notificationsEnabled: boolean;
   secretKey?: string;
@@ -220,7 +220,7 @@ export const dashboardConfig = defineConfig<DashboardConfig>({
   gatewayUrl: env("GATEWAY_URL", z.url().overwrite((url) => url.replace(/\/$/, "")).default("http://localhost:4010")
     .describe("Gateway base URL shown to users in docs and code examples (e.g. https://api.example.com). Must NOT include the /v1 path segment - that is appended where needed. A trailing slash is stripped.")
     .meta(clientPublic())),
-  licenseKey: env("LICENSE_KEY", z.string().optional()
+  licenseKey: dynamic("LICENSE_KEY", z.string().optional()
     .describe("License key for unlocking paid features (Ed25519-signed token)").meta(secret())),
   mcpEnabled: dynamic("MCP_ENABLED", configBool().default(true)
     .describe("Enable the /mcp Model Context Protocol endpoint")),

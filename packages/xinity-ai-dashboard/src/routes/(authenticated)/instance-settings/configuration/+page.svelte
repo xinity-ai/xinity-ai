@@ -15,6 +15,7 @@
   type Override = { value?: string; digest?: string; updatedBy: string | null; updatedAt: string };
 
   let settings = $state<DynamicSettingSummary[]>([]);
+  let notDelegatedHere = $state<Set<string>>(new Set());
   let overrides = $state<Record<string, Override>>({});
   let drafts = $state<Record<string, string>>({});
   let busy = $state<string | null>(null);
@@ -48,6 +49,7 @@
       return;
     }
     settings = data.settings;
+    notDelegatedHere = new Set(data.notDelegatedHere);
     overrides = Object.fromEntries(data.overrides.map((override) => [override.key, {
       value: override.value,
       digest: override.digest,
@@ -165,6 +167,12 @@
                 {/if}
               </div>
               <p class="text-sm text-muted-foreground">{setting.description}</p>
+              {#if notDelegatedHere.has(setting.key)}
+                <p class="text-xs text-amber-600 dark:text-amber-400">
+                  This dashboard was not started with <code class="font-mono">@dynamic</code> for this setting, so a
+                  value set here is stored but ignored until it is.
+                </p>
+              {/if}
               {#if override}
                 <p class="text-xs text-muted-foreground">
                   Set by {override.updatedBy ?? "an unknown user"} on

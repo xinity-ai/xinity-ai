@@ -1,7 +1,7 @@
 import { dynamicConfigT, sql } from "common-db";
 import { createSecretKeyring, SEALED_PREFIX, type SecretKeyring } from "common-env";
 import { getDB } from "$lib/server/db";
-import { config } from "$lib/server/config";
+import { config, configStore } from "$lib/server/config";
 import {
   DYNAMIC_SETTINGS,
   findDynamicSetting,
@@ -21,6 +21,14 @@ export type DynamicOverride = {
 
 export function dynamicSettings(): DynamicSettingSummary[] {
   return DYNAMIC_SETTINGS.map(summarize);
+}
+
+/** Its own only: what another component was started with is not knowable from here. */
+export function notDelegatedHere(): string[] {
+  const delegated = new Set(configStore.delegatedKeys);
+  return DYNAMIC_SETTINGS
+    .filter((setting) => setting.components.includes("dashboard") && !delegated.has(setting.key))
+    .map((setting) => setting.key);
 }
 
 /**
