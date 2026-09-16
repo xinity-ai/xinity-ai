@@ -19,7 +19,9 @@ const config: DashboardConfig = resolveConfig<DashboardConfig>(dashboardConfig, 
   },
 }).value;
 
-mock.module("$lib/server/config", () => ({ config }));
+// mock.module replaces the module for every file in the run, so an omitted export breaks
+// whichever module statically imports it.
+mock.module("$lib/server/config", () => ({ config, configStore: { watch: () => () => {} } }));
 
 /** Only the barrel. license/license.test.ts exercises the deep path, which this leaves untouched. */
 const licensedFeatures: string[] = [];

@@ -206,7 +206,7 @@ Only needed when something sits in front of this service.
 | `ORIGIN` | `http://localhost:4030` | Public origin URL browsers reach this dashboard at, no trailing slash (e.g. https://xinity.mydomain.com). The default only suits local development. |
 | `TRUSTED_ORIGINS` | (empty) | Additional trusted origins for CSRF validation behind reverse proxies. |
 | `GATEWAY_URL` | `http://localhost:4010` | Gateway base URL shown to users in docs and code examples (e.g. https://api.example.com). Must NOT include the /v1 path segment - that is appended where needed. A trailing slash is stripped. |
-| `LICENSE_KEY` | (unset) | License key for unlocking paid features (Ed25519-signed token). Secret. |
+| `LICENSE_KEY` | (unset) | License key for unlocking paid features (Ed25519-signed token). Secret. Can be set to `@dynamic` to take its value from the dashboard. |
 | `MCP_ENABLED` | `true` | Enable the /mcp Model Context Protocol endpoint. Can be set to `@dynamic` to take its value from the dashboard. |
 | `NOTIFICATIONS_ENABLED` | `true` | Enable the notification scheduler (deployment status, node health, capacity warnings, weekly reports). |
 | `XINITY_SECRET_KEY` | (unset) | 32 bytes of base64 (openssl rand -base64 32) encrypting dashboard-managed secrets at rest. The same value on every host that sets or reads one. Secret. |

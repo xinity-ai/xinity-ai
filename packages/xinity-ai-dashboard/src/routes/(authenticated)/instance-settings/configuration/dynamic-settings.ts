@@ -133,6 +133,12 @@ export const DYNAMIC_SETTINGS: DynamicSetting[] = [
     schema: configBool().default(true)
       .describe("Enable the /mcp Model Context Protocol endpoint"),
   },
+  {
+    key: "LICENSE_KEY",
+    components: ["dashboard"],
+    schema: z.string().optional()
+      .describe("License key for unlocking paid features (Ed25519-signed token)").meta(secret()),
+  },
 ];
 
 export function findDynamicSetting(key: string): DynamicSetting | undefined {

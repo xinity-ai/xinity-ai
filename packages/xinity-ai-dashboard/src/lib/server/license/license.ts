@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { LicensePayloadSchema, type LicenseInfo, type LicenseFeature, type LicensePayload, type LicenseTier } from "./types";
 import { PUBLIC_KEY_BASE64 } from "./public-key";
 import { rootLogger } from "$lib/server/logging";
-import { config } from "../config";
+import { config, configStore } from "../config";
 import { getDeploymentId } from "../deployment-id";
 
 const log = rootLogger.child({ name: "license" });
@@ -130,7 +130,7 @@ function logLicenseLifecycle(license: LicenseInfo): void {
 export function getLicense(): LicenseInfo {
   if (cachedLicense) return cachedLicense;
 
-  const key = config.licenseKey;
+  const key = config.licenseKey();
   if (!key) {
     cachedLicense = { valid: false, reason: "No license key configured" };
     log.info("No LICENSE_KEY set. Running in free tier");
@@ -146,6 +146,9 @@ export function getLicense(): LicenseInfo {
 export function resetLicenseCache(): void {
   cachedLicense = null;
 }
+
+// Without this the cache above outlives the key, so a dashboard-set license is never consulted.
+configStore.watch((value) => value.licenseKey(), resetLicenseCache);
 
 function effectiveLicensePayload(): LicensePayload | null {
   const license = getLicense();

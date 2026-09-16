@@ -13,7 +13,7 @@ import { startNotificationScheduler } from "$lib/server/notifications/scheduler"
 import { config, configStore } from "$lib/server/config";
 import { checkMigrationState, isMigrationOk } from "$lib/server/migration-check";
 import { DYNAMIC_CONFIG_CHANNEL, logMigrationFailureFatal, readDynamicConfig } from "common-db";
-import { createDbConfigFeed } from "common-env";
+import { createDbConfigFeed, createSecretUnsealer } from "common-env";
 import { getDB, subscribe } from "$lib/server/db";
 import { loadDeploymentId } from "$lib/server/deployment-id";
 import { stampClientAddress } from "$lib/server/client-address";
@@ -132,7 +132,12 @@ if (isMigrationOk()) {
       read: () => readDynamicConfig(getDB()),
       subscribe,
       log: rootLogger,
-    }))
+    }), {
+      unseal: createSecretUnsealer(
+        { current: config.secretKey, previous: config.previousSecretKey },
+        rootLogger,
+      ),
+    })
     .catch((err: unknown) => log.error({ err }, "Dynamic configuration unavailable, keeping the values this process booted with"));
 }
 

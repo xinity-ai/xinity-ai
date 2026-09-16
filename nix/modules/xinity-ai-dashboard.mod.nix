@@ -10,6 +10,7 @@
       dashboardManageableKeys = [
         "SIGNUP_ENABLED"
         "DEPLOYMENT_STRATEGY"
+        "LICENSE_KEY"
         "MCP_ENABLED"
       ];
       # [/sync:dynamic-keys]

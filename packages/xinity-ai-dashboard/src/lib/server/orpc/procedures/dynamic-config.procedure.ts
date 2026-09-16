@@ -4,6 +4,7 @@ import {
   clearOverride,
   dynamicSettings,
   listOverrides,
+  notDelegatedHere,
   missingSecretKey,
   overrideProblem,
   setOverride,
@@ -18,6 +19,7 @@ const list = rootOs
   .handler(async () => ({
     settings: dynamicSettings(),
     overrides: await listOverrides(),
+    notDelegatedHere: notDelegatedHere(),
   }));
 
 const set = rootOs
