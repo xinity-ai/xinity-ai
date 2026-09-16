@@ -28,6 +28,7 @@
         lib.optional (cfg.dbConnectionUrlFile != null) "db-connection-url:${cfg.dbConnectionUrlFile}"
         ++ lib.optional (cfg.redisUrlFile != null) "redis-url:${cfg.redisUrlFile}"
         ++ lib.optional (cfg.metricsAuthFile != null) "metrics-auth:${cfg.metricsAuthFile}"
+        ++ lib.optional (cfg.secretKeyFile != null) "secret-key:${cfg.secretKeyFile}"
         ++ lib.optional (cfg.s3AccessKeyIdFile != null) "s3-access-key-id:${cfg.s3AccessKeyIdFile}"
         ++ lib.optional (cfg.s3SecretAccessKeyFile != null) "s3-secret-access-key:${cfg.s3SecretAccessKeyFile}"
         ++ lib.optional (cfg.tlsCertFile != null) "tls-cert:${cfg.tlsCertFile}"
@@ -188,6 +189,19 @@
           description = "Path to a file containing the metrics basic auth credentials.";
         };
 
+        secretKeyFile = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = ''
+            Path to a file containing XINITY_SECRET_KEY, 32 bytes of base64 from
+            `openssl rand -base64 32`. It decrypts dashboard-managed secrets, so every host
+            that sets or reads one needs the same value. Only needed once a secret setting is
+            handed to the dashboard via `dashboardManaged`.
+
+            During a key rotation, supply XINITY_SECRET_KEY_PREVIOUS through environmentFiles.
+          '';
+        };
+
         s3AccessKeyIdFile = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
@@ -281,6 +295,9 @@
           }
           // lib.optionalAttrs (cfg.metricsAuthFile != null) {
             METRICS_AUTH_FILE = "%d/metrics-auth";
+          }
+          // lib.optionalAttrs (cfg.secretKeyFile != null) {
+            XINITY_SECRET_KEY_FILE = "%d/secret-key";
           }
           // lib.optionalAttrs (cfg.s3AccessKeyIdFile != null) {
             S3_ACCESS_KEY_ID_FILE = "%d/s3-access-key-id";

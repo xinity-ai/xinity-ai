@@ -11,7 +11,9 @@ import {
   expert,
   metricsGroup,
   objectStorageGroup,
+  previousSecretKeyField,
   secret,
+  secretKeyField,
   serverGroup,
   tlsGroup,
   type CatalogConfig,
@@ -132,6 +134,8 @@ export type GatewayConfig = {
   webSearch: WebSearch;
   inference: Inference;
   deepResearch: DeepResearch;
+  secretKey?: string;
+  previousSecretKey?: string;
 };
 
 export const gatewayConfig = defineConfig<GatewayConfig>({
@@ -146,4 +150,6 @@ export const gatewayConfig = defineConfig<GatewayConfig>({
   webSearch,
   inference,
   deepResearch,
+  secretKey: secretKeyField(),
+  previousSecretKey: previousSecretKeyField(),
 });

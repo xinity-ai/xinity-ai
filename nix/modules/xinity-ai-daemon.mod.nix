@@ -185,6 +185,19 @@
           description = "Path to a file containing the metrics auth credentials, as comma-separated user:pass pairs. Prometheus must present one of these pairs when scraping the daemon's /metrics endpoint. Loaded via systemd's LoadCredential mechanism.";
         };
 
+        secretKeyFile = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = ''
+            Path to a file containing XINITY_SECRET_KEY, 32 bytes of base64 from
+            `openssl rand -base64 32`. It decrypts dashboard-managed secrets, which reach this
+            node still encrypted, so it must hold the same value as the dashboard that set
+            them.
+
+            During a key rotation, supply XINITY_SECRET_KEY_PREVIOUS through environmentFiles.
+          '';
+        };
+
         # --- TLS ---
 
         tlsCertFile = lib.mkOption {
@@ -274,6 +287,9 @@
           // lib.optionalAttrs (cfg.metricsAuthFile != null) {
             METRICS_AUTH_FILE = "%d/metrics-auth";
           }
+          // lib.optionalAttrs (cfg.secretKeyFile != null) {
+            XINITY_SECRET_KEY_FILE = "%d/secret-key";
+          }
           // lib.optionalAttrs (cfg.logDir != null) {
             LOG_DIR = cfg.logDir;
           }
@@ -288,6 +304,7 @@
             loadCredentialEntries =
               lib.optional (cfg.tetherSecretFile != null) "tether-secret:${cfg.tetherSecretFile}"
               ++ lib.optional (cfg.metricsAuthFile != null) "metrics-auth:${cfg.metricsAuthFile}"
+              ++ lib.optional (cfg.secretKeyFile != null) "secret-key:${cfg.secretKeyFile}"
               ++ lib.optional (cfg.tlsCertFile != null) "tls-cert:${cfg.tlsCertFile}"
               ++ lib.optional (cfg.tlsKeyFile != null) "tls-key:${cfg.tlsKeyFile}";
           in {

@@ -144,6 +144,13 @@ How the gateway picks a node, how long it waits, and how it trusts one.
 | `DEEP_RESEARCH_MAX_STEPS` | `30` | Maximum tool-call steps for deep research mode. |
 | `DEEP_RESEARCH_COMPACTION_THRESHOLD` | `0.7` | Fraction of model context window at which compaction triggers. |
 
+### Other
+
+| Variable | Default | Description |
+|---|---|---|
+| `XINITY_SECRET_KEY` | (unset) | 32 bytes of base64 (openssl rand -base64 32) encrypting dashboard-managed secrets at rest. The same value on every host that sets or reads one. Secret. |
+| `XINITY_SECRET_KEY_PREVIOUS` | (unset) | The key XINITY_SECRET_KEY replaced, accepted for decryption only. Set during a rotation, removed once every value has been re-sealed. Secret. |
+
 <!-- [/sync:config] -->
 
 Inference routes are exempt from `IDLE_TIMEOUT` and bounded by `BACKEND_TIMEOUT_MS` instead, so a long generation is not cut off mid-request.

@@ -92,6 +92,18 @@ export function tetherSecretField() {
     .meta(secret()));
 }
 
+export function secretKeyField() {
+  return env("XINITY_SECRET_KEY", z.string().optional()
+    .describe("32 bytes of base64 (openssl rand -base64 32) encrypting dashboard-managed secrets at rest. The same value on every host that sets or reads one")
+    .meta(secret()));
+}
+
+export function previousSecretKeyField() {
+  return env("XINITY_SECRET_KEY_PREVIOUS", z.string().optional()
+    .describe("The key XINITY_SECRET_KEY replaced, accepted for decryption only. Set during a rotation, removed once every value has been re-sealed")
+    .meta({ ...secret(), ...expert() }));
+}
+
 export type ObjectStorageConfig = {
   endpoint: string;
   accessKeyId: string;

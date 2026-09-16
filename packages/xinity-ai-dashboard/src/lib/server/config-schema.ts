@@ -13,8 +13,10 @@ import {
   expert,
   metricsGroup,
   objectStorageGroup,
+  previousSecretKeyField,
   proxyGroup,
   secret,
+  secretKeyField,
   tlsGroup,
   type CatalogConfig,
   type DatabaseConfig,
@@ -189,6 +191,8 @@ export type DashboardConfig = {
   licenseKey?: string;
   mcpEnabled: () => boolean;
   notificationsEnabled: boolean;
+  secretKey?: string;
+  previousSecretKey?: string;
 };
 
 export const dashboardConfig = defineConfig<DashboardConfig>({
@@ -223,6 +227,8 @@ export const dashboardConfig = defineConfig<DashboardConfig>({
   notificationsEnabled: env("NOTIFICATIONS_ENABLED", configBool().default(true)
     .describe("Enable the notification scheduler (deployment status, node health, capacity warnings, weekly reports)")
     .meta(expert())),
+  secretKey: secretKeyField(),
+  previousSecretKey: previousSecretKeyField(),
 }, {
   violations: (config, at) => config.audit && !config.licenseKey
     ? [{
