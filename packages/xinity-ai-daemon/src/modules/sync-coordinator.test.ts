@@ -1,7 +1,7 @@
 import { describe, test, expect, mock } from "bun:test";
-import { mockDaemonConfig } from "../mock-config";
+import { mockConfigModule } from "../mock-config";
 
-mock.module("../config", () => ({ config: mockDaemonConfig() }));
+mock.module("../config", () => mockConfigModule());
 
 const { createWorkflowCoordinator } = await import("./sync-coordinator");
 type WorkflowTrigger = import("./sync-coordinator").WorkflowTrigger;

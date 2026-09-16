@@ -1,6 +1,9 @@
 import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes } from "node:crypto";
+import type { PinoLike } from "./pino-like";
 
-const VERSION = "enc.v1";
+/** The whole `enc.` namespace is reserved, so a later format is refused rather than read as plaintext. */
+export const SEALED_PREFIX = "enc.";
+const VERSION = `${SEALED_PREFIX}v1`;
 const SEPARATOR = ":";
 const KEY_BYTES = 32;
 const NONCE_BYTES = 12;
@@ -27,7 +30,7 @@ function parseKey(raw: string, envKey: string): Key {
 }
 
 export function isSealed(value: string): boolean {
-  return value.startsWith(`${VERSION}${SEPARATOR}`);
+  return value.startsWith(SEALED_PREFIX);
 }
 
 export type SecretKeyring = {
@@ -63,6 +66,12 @@ export function createSecretKeyring(keys: { current: string; previous?: string }
         return value;
       }
 
+      if (!value.startsWith(`${VERSION}${SEPARATOR}`)) {
+        throw new Error(
+          `Sealed as ${value.split(SEPARATOR)[0]}, which this build cannot open: it understands ${VERSION}`,
+        );
+      }
+
       const [, id, nonce, body, tag, ...rest] = value.split(SEPARATOR);
       if (id === undefined || nonce === undefined || body === undefined || tag === undefined || rest.length > 0) {
         throw new Error(`Malformed ${VERSION} envelope`);
@@ -85,5 +94,34 @@ export function createSecretKeyring(keys: { current: string; previous?: string }
     digest(plaintext) {
       return createHmac("sha256", current.mac).update(plaintext).digest("base64url").slice(0, DIGEST_CHARS);
     },
+  };
+}
+
+export type SecretKeys = { current?: string; previous?: string };
+
+export function createSecretUnsealer(keys: SecretKeys, log: PinoLike) {
+  const keyring = keys.current === undefined
+    ? null
+    : createSecretKeyring({ current: keys.current, previous: keys.previous });
+
+  return (envKey: string, value: string): string | undefined => {
+    if (!isSealed(value)) {
+      return value;
+    }
+
+    if (keyring === null) {
+      log.error(
+        { envKey },
+        "Ignoring an encrypted setting: XINITY_SECRET_KEY is not set on this host, so it cannot be read",
+      );
+      return undefined;
+    }
+
+    try {
+      return keyring.open(value);
+    } catch (err) {
+      log.error({ err, envKey }, "Ignoring an encrypted setting that could not be decrypted");
+      return undefined;
+    }
   };
 }

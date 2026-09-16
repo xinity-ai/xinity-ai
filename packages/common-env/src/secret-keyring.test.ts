@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { randomBytes } from "node:crypto";
-import { createSecretKeyring, isSealed } from "./secret-keyring";
+import { createSecretKeyring, createSecretUnsealer, isSealed } from "./secret-keyring";
 
 const key = () => randomBytes(32).toString("base64");
 
@@ -60,5 +60,40 @@ describe("createSecretKeyring", () => {
     const ring = createSecretKeyring({ current: A });
     const sealed = ring.seal("hf_abc123");
     expect(sealed).not.toContain(ring.digest("hf_abc123"));
+  });
+});
+
+describe("createSecretUnsealer", () => {
+  const quiet = { error: () => {}, warn: () => {}, info: () => {}, debug: () => {} } as never;
+
+  test("opens a sealed value and leaves an unsealed one alone", () => {
+    const unseal = createSecretUnsealer({ current: A }, quiet);
+    const sealed = createSecretKeyring({ current: A }).seal("hf_abc123");
+
+    expect(unseal("VLLM_HF_TOKEN", sealed)).toBe("hf_abc123");
+    expect(unseal("LOAD_BALANCE_STRATEGY", "round-robin")).toBe("round-robin");
+  });
+
+  test("gives up on a sealed value when the host has no key", () => {
+    const unseal = createSecretUnsealer({}, quiet);
+    const sealed = createSecretKeyring({ current: A }).seal("hf_abc123");
+
+    expect(unseal("VLLM_HF_TOKEN", sealed)).toBeUndefined();
+    expect(unseal("LOAD_BALANCE_STRATEGY", "round-robin")).toBe("round-robin");
+  });
+
+  test("gives up on a value sealed with a key this host does not have", () => {
+    const unseal = createSecretUnsealer({ current: B }, quiet);
+
+    expect(unseal("VLLM_HF_TOKEN", createSecretKeyring({ current: A }).seal("hf_abc123"))).toBeUndefined();
+  });
+});
+
+describe("envelope versioning", () => {
+  test("refuses a later envelope format instead of reading it as plaintext", () => {
+    const ring = createSecretKeyring({ current: A });
+
+    expect(isSealed("enc.v2:whatever")).toBe(true);
+    expect(() => ring.open("enc.v2:whatever")).toThrow(/cannot open/);
   });
 });

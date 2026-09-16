@@ -4,6 +4,7 @@ import {
   clearOverride,
   dynamicSettings,
   listOverrides,
+  missingSecretKey,
   overrideProblem,
   setOverride,
 } from "../../../../routes/(authenticated)/instance-settings/configuration/dynamic-config";
@@ -31,12 +32,12 @@ const set = rootOs
       throw errors.BAD_REQUEST({ message: `${input.key} is not a dashboard-managed setting` });
     }
 
-    const problem = overrideProblem(setting, input.value);
+    const problem = overrideProblem(setting, input.value) ?? missingSecretKey(setting);
     if (problem) {
       throw errors.BAD_REQUEST({ message: problem });
     }
 
-    await setOverride(input.key, input.value, context.actor.actorLabel);
+    await setOverride(setting, input.value, context.actor.actorLabel);
     return { key: input.key };
   });
 

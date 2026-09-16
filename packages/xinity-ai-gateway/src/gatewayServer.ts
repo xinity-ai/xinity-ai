@@ -18,7 +18,7 @@ import { handleRerank } from "./llm-forward/endpoints/handle-rerank";
 import { handleTranscription } from "./llm-forward/endpoints/handle-transcription";
 import { handleMetrics, withMetrics } from "./metrics";
 import { LONG_RUNNING_ROUTES, withoutConnectionTimeout, type RouteHandler } from "./serve-config";
-import { activationRefusal, createDbConfigFeed } from "common-env";
+import { activationRefusal, createDbConfigFeed, createSecretUnsealer } from "common-env";
 import { DYNAMIC_CONFIG_CHANNEL, logMigrationFailureFatal, readDynamicConfig } from "common-db";
 import { getSearchProvider } from "./llm-forward/tools/search-providers";
 import { setSearchProvider } from "./llm-forward/tools/response-tools";
@@ -62,6 +62,8 @@ try {
   rootLogger.error({ err }, "Cache invalidation unavailable, falling back to TTL expiry");
 }
 
+const unseal = createSecretUnsealer({ current: config.secretKey, previous: config.previousSecretKey }, rootLogger);
+
 // Every delegated setting already holds its configured fallback, so a failed subscription
 // costs dashboard control of them, not a working gateway.
 try {
@@ -70,7 +72,7 @@ try {
     read: () => readDynamicConfig(getDB()),
     subscribe,
     log: rootLogger,
-  }));
+  }), { unseal });
 } catch (err) {
   rootLogger.error({ err }, "Dynamic configuration unavailable, keeping the values this process booted with");
 }

@@ -4,7 +4,7 @@ import { configInt } from "./leaf-types";
 import { defineGroup, dynamic, env } from "./group";
 import { defineConfig } from "./build";
 import { resolveConfig } from "./resolve";
-import { createDynamicConfig, type ApplyOverrides, type ConfigFeed } from "./dynamic-config";
+import { createDynamicConfig, type ApplyOverrides, type ConfigFeed, type Unseal } from "./dynamic-config";
 
 type Cache = { url: string; responseTtlSeconds: () => number; modelTtlSeconds: () => number };
 type Inference = { strategy: () => "random" | "least-connections"; timeoutMs: number };
@@ -49,7 +49,7 @@ const declaration = defineConfig<Service>({
 
 const BASE = { REDIS_URL: "redis://localhost:6379", ORIGIN: "https://x.example" };
 
-function startFed(rawEnv: Record<string, string | undefined>) {
+function startFed(rawEnv: Record<string, string | undefined>, unseal?: Unseal) {
   let push: ApplyOverrides = () => [];
   const feed: ConfigFeed = async (apply) => {
     push = apply;
@@ -59,7 +59,7 @@ function startFed(rawEnv: Record<string, string | undefined>) {
   const config = createDynamicConfig({ declaration, rawEnv });
   return {
     config,
-    started: config.start(feed),
+    started: config.start(feed, { unseal }),
     push: (overrides: Record<string, string>) => push(overrides),
   };
 }
@@ -225,5 +225,38 @@ describe("the feed", () => {
     await config.start(feed);
     await config.stop();
     expect(teardowns).toBe(1);
+  });
+});
+
+describe("unseal", () => {
+  const BOOTED = { ...BASE, LOAD_BALANCE_STRATEGY: "@dynamic:random", S3_ENDPOINT: "https://s3.example", S3_BUCKET: "@dynamic:from-env" };
+
+  test("applies what the unsealer returns rather than the stored value", async () => {
+    const { config, started, push } = startFed(BOOTED, (_key, value) => value.replace("sealed:", ""));
+    await started;
+
+    push({ S3_BUCKET: "sealed:opened-bucket" });
+    expect(config.value.s3!.bucket()).toBe("opened-bucket");
+  });
+
+  test("leaves a value it cannot open on the fallback, and applies the rest of the batch", async () => {
+    const { config, started, push } = startFed(BOOTED, (key, value) => key === "S3_BUCKET" ? undefined : value);
+    await started;
+
+    const changed = push({ S3_BUCKET: "unreadable", LOAD_BALANCE_STRATEGY: "least-connections" });
+
+    expect(config.value.s3!.bucket()).toBe("from-env");
+    expect(config.value.inference.strategy()).toBe("least-connections");
+    expect(changed).toEqual(["inference.strategy"]);
+  });
+
+  test("reports a key it could not open as not overridden", async () => {
+    const { config, started, push } = startFed(BOOTED, () => undefined);
+    await started;
+
+    push({ S3_BUCKET: "unreadable" });
+    const bucket = config.provenance().find((entry) => entry.envKey === "S3_BUCKET");
+
+    expect(bucket?.source).not.toBe("dynamic");
   });
 });

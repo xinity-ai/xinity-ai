@@ -1,5 +1,7 @@
 import { dynamicConfigT, sql } from "common-db";
+import { createSecretKeyring, SEALED_PREFIX, type SecretKeyring } from "common-env";
 import { getDB } from "$lib/server/db";
+import { config } from "$lib/server/config";
 import {
   DYNAMIC_SETTINGS,
   findDynamicSetting,
@@ -29,6 +31,9 @@ export function overrideProblem(setting: DynamicSetting, value: string): string 
   if (value === "") {
     return `${setting.key} cannot be empty. Clear the override instead to fall back.`;
   }
+  if (value.startsWith(SEALED_PREFIX)) {
+    return `${setting.key} cannot start with "${SEALED_PREFIX}", which marks a value this dashboard encrypted.`;
+  }
   const parsed = setting.schema.safeParse(value);
   return parsed.success ? undefined : parsed.error.issues[0]?.message;
 }
@@ -54,13 +59,41 @@ export async function listOverrides(): Promise<DynamicOverride[]> {
   });
 }
 
-export async function setOverride(key: string, value: string, updatedBy: string | null): Promise<void> {
+let keyring: SecretKeyring | null | undefined;
+
+function secretKeyring(): SecretKeyring | null {
+  if (keyring === undefined) {
+    keyring = config.secretKey === undefined
+      ? null
+      : createSecretKeyring({ current: config.secretKey, previous: config.previousSecretKey });
+  }
+  return keyring;
+}
+
+export function missingSecretKey(setting: DynamicSetting): string | undefined {
+  if (!summarize(setting).isSecret || secretKeyring() !== null) {
+    return undefined;
+  }
+  return `${setting.key} is a secret, and this dashboard has no XINITY_SECRET_KEY to encrypt it with. `
+    + "Set one on every host that reads it before managing this setting here.";
+}
+
+export async function setOverride(
+  setting: DynamicSetting,
+  value: string,
+  updatedBy: string | null,
+): Promise<void> {
+  const ring = summarize(setting).isSecret ? secretKeyring() : null;
+  const row = ring === null
+    ? { value, encrypted: false, valueDigest: null }
+    : { value: ring.seal(value), encrypted: true, valueDigest: ring.digest(value) };
+
   await getDB()
     .insert(dynamicConfigT)
-    .values({ key, value, updatedBy })
+    .values({ key: setting.key, updatedBy, ...row })
     .onConflictDoUpdate({
       target: dynamicConfigT.key,
-      set: { value, updatedBy, updatedAt: new Date() },
+      set: { ...row, updatedBy, updatedAt: new Date() },
     });
 }
 

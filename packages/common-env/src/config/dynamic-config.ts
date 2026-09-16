@@ -27,7 +27,7 @@ export type DynamicConfig<T> = {
   ) => Derived<R>;
   /** Runs `react` now and whenever the selected values change, for side effects rather than values. */
   watch: <I>(selectInputs: (value: T) => I, react: (inputs: I) => void) => () => void;
-  start: (feed: ConfigFeed) => Promise<void>;
+  start: (feed: ConfigFeed, opts?: { unseal?: Unseal }) => Promise<void>;
   stop: () => Promise<void>;
 };
 
@@ -38,6 +38,8 @@ function valueAt(values: ConfigValues, path: readonly string[]): unknown {
   }
   return cursor;
 }
+
+export type Unseal = (envKey: string, value: string) => string | undefined;
 
 export function createDynamicConfig<T>(deps: {
   declaration: ConfigDef<T>;
@@ -61,6 +63,7 @@ export function createDynamicConfig<T>(deps: {
   let resolved = resolve(envWithFallbacks);
   let overriddenKeys = new Set<string>();
   let stopFeed: Teardown | null = null;
+  let unseal: Unseal | undefined;
 
   const value = projectValues<T>(declaration, () => resolved.values);
   const derivations = new Set<Derivation>();
@@ -70,10 +73,15 @@ export function createDynamicConfig<T>(deps: {
     const applied = new Set<string>();
     for (const key of delegatedKeys) {
       const override = overrides[key];
-      if (override !== undefined) {
-        env[key] = override;
-        applied.add(key);
+      if (override === undefined) {
+        continue;
       }
+      const opened = unseal ? unseal(key, override) : override;
+      if (opened === undefined) {
+        continue;
+      }
+      env[key] = opened;
+      applied.add(key);
     }
 
     const next = resolve(env);
@@ -116,10 +124,11 @@ export function createDynamicConfig<T>(deps: {
         ? { ...entry, source: "dynamic" as const }
         : entry),
 
-    async start(feed) {
+    async start(feed, opts) {
       if (stopFeed) {
         return;
       }
+      unseal = opts?.unseal;
       stopFeed = await feed(apply);
     },
 

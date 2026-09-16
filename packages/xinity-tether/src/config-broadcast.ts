@@ -1,6 +1,14 @@
 import type { PinoLike } from "common-env";
+import { DAEMON_DYNAMIC_KEYS } from "./daemon-config-keys";
 
 const COALESCE_WINDOW_MS = 200;
+
+/** Every daemon gets every daemon setting. Which of them a node uses is the node's own business. */
+function daemonKeysOf(values: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(
+    DAEMON_DYNAMIC_KEYS.filter((key) => key in values).map((key) => [key, values[key]!]),
+  );
+}
 
 export type ConfigBroadcastDeps = {
   channel: string;
@@ -32,7 +40,7 @@ export function createConfigBroadcast(deps: ConfigBroadcastDeps) {
 
   async function refresh(): Promise<void> {
     try {
-      latest = await deps.read();
+      latest = daemonKeysOf(await deps.read());
     } catch (err) {
       deps.log.error({ err }, "Failed to read dynamic configuration for daemons");
       return;

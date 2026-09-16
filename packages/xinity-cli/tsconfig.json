@@ -29,6 +29,7 @@
       "common-env": ["../common-env/src/"],
       "common-log": ["../common-log/src/"],
       "xinity-ai-dashboard/*": ["../xinity-ai-dashboard/*"],
+      "xinity-tether/*": ["../xinity-tether/*"],
       "$lib/*": ["../xinity-ai-dashboard/src/lib/*"]
     }
   },
