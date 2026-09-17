@@ -14,7 +14,7 @@ import type { Host } from "./host.ts";
 import { pass, fail, info, warn, promptOrUndefined } from "./output.ts";
 import { heredoc } from "./service.ts";
 import { resolveComposeCmd, composeArgs, composeName, stackDir, dockerDaemonReady, tcpPortInUse } from "./docker-stack.ts";
-import { DASHBOARD_DEFAULT_PORT, TETHER_DEFAULT_PORT } from "./component-meta.ts";
+import { DASHBOARD_DEFAULT_PORT, GATEWAY_DEFAULT_PORT, TETHER_DEFAULT_PORT } from "./component-meta.ts";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -248,16 +248,17 @@ export async function prometheusSetup(
     try {
       u = new URL(value ?? "");
     } catch {
-      return "Enter a full URL, e.g. http://localhost:4121";
+      return `Enter a full URL, e.g. http://localhost:${GATEWAY_DEFAULT_PORT}`;
     }
     if (u.protocol !== "http:" && u.protocol !== "https:") return "URL must start with http:// or https://";
     return undefined;
   };
 
+  const gatewayDefault = `http://localhost:${GATEWAY_DEFAULT_PORT}`;
   const gatewayUrl = await promptOrUndefined(text({
     message: "Gateway base URL",
-    placeholder: "http://localhost:4121",
-    defaultValue: "http://localhost:4121",
+    placeholder: gatewayDefault,
+    defaultValue: gatewayDefault,
     validate: validateUrl,
   }));
   if (gatewayUrl === undefined) return undefined;
