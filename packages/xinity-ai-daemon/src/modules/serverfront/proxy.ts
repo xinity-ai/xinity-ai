@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { verifyRequest } from "common-env";
 import { resolveModel } from "../model-registry";
 import { getAuthToken } from "../statekeeper";
 import { rootLogger } from "../../logger";
@@ -7,16 +7,23 @@ const log = rootLogger.child({ name: "proxy" });
 
 const PROXY_ROUTE_RE = /^\/proxy\/([^/]+)\/v1\/(.*)/;
 
-function verifyAuth(req: Request): boolean {
-  const actual = Buffer.from(req.headers.get("authorization") ?? "");
-  const expected = Buffer.from(`Bearer ${getAuthToken()}`);
-  if (actual.length !== expected.length) return false;
-  return timingSafeEqual(actual, expected);
+function refuseUnsigned(req: Request, url: URL): Response | null {
+  const result = verifyRequest(getAuthToken(), req.headers.get("authorization"), {
+    method: req.method,
+    path: `${url.pathname}${url.search}`,
+  });
+  if (result.ok) {
+    return null;
+  }
+  // Only place this surfaces: a gateway whose clock drifted sees 401s with nothing else to go on.
+  log.warn({ reason: result.reason, path: url.pathname }, "Proxy request rejected");
+  return new Response(null, { status: 401 });
 }
 
 export async function handleProxyRequest(req: Request, url: URL): Promise<Response> {
-  if (!verifyAuth(req)) {
-    return new Response(null, { status: 401 });
+  const refused = refuseUnsigned(req, url);
+  if (refused) {
+    return refused;
   }
 
   const match = url.pathname.match(PROXY_ROUTE_RE);
