@@ -121,7 +121,7 @@ const deepResearch = defineGroup<DeepResearch>({
   title: "Deep research",
   expert: true,
   fields: {
-    maxSteps: env("DEEP_RESEARCH_MAX_STEPS", configNumber(z.number().positive()).default(30)
+    maxSteps: env("DEEP_RESEARCH_MAX_STEPS", configInt(z.int().positive()).default(30)
       .describe("Maximum tool-call steps for deep research mode")),
     compactionThreshold: env("DEEP_RESEARCH_COMPACTION_THRESHOLD",
       configNumber(z.number().min(0.1).max(0.95)).default(0.70)

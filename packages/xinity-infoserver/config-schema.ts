@@ -18,7 +18,7 @@ const server = defineGroup<Server>({
   id: "server",
   title: "HTTP server",
   fields: {
-    port: env("PORT", configNumber().default(8090).describe("Listen port")),
+    port: env("PORT", configInt().default(8090).describe("Listen port")),
   },
 });
 
@@ -40,7 +40,7 @@ const catalog = defineGroup<Catalog>({
       .describe("Directory of model YAML files in the deprecated v1 format, served only on the v1 endpoints. Removed before 1.0.0, so migrate these entries to MODEL_INFO_DIR. Leave unset to serve the v1 endpoints as an empty catalog")),
     refreshIntervalMs: env("REFRESH_INTERVAL_MS", configNumber().default(5 * 60_000)
       .describe("How often to re-read model files and re-fetch includes (ms)").meta(expert())),
-    maxIncludeDepth: env("MAX_INCLUDE_DEPTH", configNumber().default(10)
+    maxIncludeDepth: env("MAX_INCLUDE_DEPTH", configInt().default(10)
       .describe("Maximum recursion depth when resolving include URLs").meta(expert())),
   },
 });
