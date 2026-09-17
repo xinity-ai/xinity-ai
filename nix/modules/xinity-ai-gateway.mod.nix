@@ -26,11 +26,17 @@
           ([ "services" "xinity-ai-gateway" ] ++ path)
           message;
 
+      renamed = from: to:
+        lib.mkRenamedOptionModule
+          ([ "services" "xinity-ai-gateway" ] ++ from)
+          ([ "services" "xinity-ai-gateway" ] ++ to);
+
       loadCredentialEntries =
         lib.optional (cfg.dbConnectionUrlFile != null) "db-connection-url:${cfg.dbConnectionUrlFile}"
         ++ lib.optional (cfg.redisUrlFile != null) "redis-url:${cfg.redisUrlFile}"
         ++ lib.optional (cfg.metricsAuthFile != null) "metrics-auth:${cfg.metricsAuthFile}"
         ++ lib.optional (cfg.secretKeyFile != null) "secret-key:${cfg.secretKeyFile}"
+        ++ lib.optional (cfg.webSearchCredentialFile != null) "web-search-credential:${cfg.webSearchCredentialFile}"
         ++ lib.optional (cfg.s3AccessKeyIdFile != null) "s3-access-key-id:${cfg.s3AccessKeyIdFile}"
         ++ lib.optional (cfg.s3SecretAccessKeyFile != null) "s3-secret-access-key:${cfg.s3SecretAccessKeyFile}"
         ++ lib.optional (cfg.tlsCertFile != null) "tls-cert:${cfg.tlsCertFile}"
@@ -44,6 +50,7 @@
           "The gateway now runs as a native systemd service, not an OCI container. Remove this option from your configuration.")
         (removed [ "extraOptions" ]
           "OCI container runtime arguments don't apply to the systemd service the gateway now runs as. Remove this option from your configuration.")
+        (renamed [ "webSearchEngineUrl" ] [ "webSearchCredential" ])
       ];
 
       options.services.xinity-ai-gateway = {
@@ -87,10 +94,21 @@
           '';
         };
 
-        webSearchEngineUrl = lib.mkOption {
+        webSearchProvider = lib.mkOption {
+          type = lib.types.enum [ "searxng" "google" "bing" "brave" "serper" "tavily" ];
+          default = "searxng";
+          description = "Web search backend the gateway queries. Only takes effect once a credential is set.";
+        };
+
+        webSearchCredential = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description = "URL of a web search engine instance (e.g. a SearXNG endpoint). When set, the gateway exposes web-search-augmented generation capabilities to clients.";
+          description = ''
+            Credential for webSearchProvider, which enables web-search-augmented generation when set.
+            searxng takes the instance URL, google takes apikey:cx, the others take an API key.
+            WARNING: DO NOT USE IN PRODUCTION for anything but a SearXNG URL. Use webSearchCredentialFile
+            for API keys, which this option would expose in the Nix store.
+          '';
         };
 
         responseCacheTtlSeconds = lib.mkOption {
@@ -204,6 +222,12 @@
           '';
         };
 
+        webSearchCredentialFile = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Path to a file containing the credential for webSearchProvider.";
+        };
+
         s3AccessKeyIdFile = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
@@ -272,8 +296,11 @@
           // lib.optionalAttrs (cfg.redisUrl != null) {
             REDIS_URL = cfg.redisUrl;
           }
-          // lib.optionalAttrs (cfg.webSearchEngineUrl != null) {
-            WEB_SEARCH_ENGINE_URL = cfg.webSearchEngineUrl;
+          // lib.optionalAttrs (cfg.webSearchCredential != null || cfg.webSearchCredentialFile != null) {
+            WEB_SEARCH_PROVIDER = cfg.webSearchProvider;
+          }
+          // lib.optionalAttrs (cfg.webSearchCredential != null) {
+            WEB_SEARCH_CREDENTIAL = cfg.webSearchCredential;
           }
           // lib.optionalAttrs (cfg.infoserverUrl != null) {
             INFOSERVER_URL = cfg.infoserverUrl;
@@ -313,6 +340,9 @@
           }
           // lib.optionalAttrs (cfg.secretKeyFile != null) {
             XINITY_SECRET_KEY_FILE = "%d/secret-key";
+          }
+          // lib.optionalAttrs (cfg.webSearchCredentialFile != null) {
+            WEB_SEARCH_CREDENTIAL_FILE = "%d/web-search-credential";
           }
           // lib.optionalAttrs (cfg.s3AccessKeyIdFile != null) {
             S3_ACCESS_KEY_ID_FILE = "%d/s3-access-key-id";
