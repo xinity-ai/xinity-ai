@@ -1,18 +1,24 @@
-import { protocolFingerprint } from "common-env";
+import {
+  canonicalRegistration,
+  protocolFingerprint,
+  signAsNode,
+  type NodeRegistration,
+  type UnsignedNodeRegistration,
+} from "common-env";
+import { loadOrCreateIdentity, readNodeId, type NodeIdentity } from "./node-identity-store";
 import { $ } from "bun";
 import { config } from "../config";
-import { join } from "node:path";
 import { networkInterfaces } from "node:os";
 import { detectHardwareProfile, detectNodeName, type HardwareProfile } from "./hardware-detect";
 import { normalizePep440 } from "xinity-infoserver";
 import { rootLogger } from "../logger";
 import { detectVllmFeatures, resolvePythonForVllm } from "./vllm-features";
-import type { NodeRegistration } from "common-env";
 
 const log = rootLogger.child({ name: "statekeeper" });
 
 let cachedProfile: HardwareProfile | null = null;
 let cachedNodeId: string | null = null;
+let cachedIdentity: NodeIdentity | null = null;
 let cachedMachineName: string | null = null;
 const authToken = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64url");
 
@@ -166,18 +172,20 @@ function findHostIPv4Address(): string {
   return match?.address || '127.0.0.1';
 }
 
-/** Reads the persisted node id from STATE_DIR, or null if it has not been written yet. */
 export async function readNodeIdFile(): Promise<string | null> {
-  const idFile = Bun.file(join(config.node.stateDir, "node_id"));
-  if (!(await idFile.exists())) {
-    return null;
-  }
-  const id = (await idFile.text()).trim();
-  return id.length > 0 ? id : null;
+  return readNodeId(config.node.stateDir);
 }
 
-async function writeNodeIdFile(id: string): Promise<void> {
-  await Bun.file(join(config.node.stateDir, "node_id")).write(id);
+/** Memoised, so a concurrent first boot cannot write two different identities. */
+async function loadIdentity(): Promise<NodeIdentity> {
+  if (!cachedIdentity) {
+    const previous = await readNodeId(config.node.stateDir);
+    cachedIdentity = await loadOrCreateIdentity(config.node.stateDir);
+    if (previous && previous !== cachedIdentity.nodeId) {
+      log.warn({ previous, nodeId: cachedIdentity.nodeId }, "Node key was missing or unreadable, registering as a new node");
+    }
+  }
+  return cachedIdentity;
 }
 
 async function collectRegistrationData(): Promise<NodeRegistration> {
@@ -190,15 +198,11 @@ async function collectRegistrationData(): Promise<NodeRegistration> {
   const host = findHostIPv4Address();
   const port = config.server.port;
 
-  let id = await readNodeIdFile();
-  if (!id) {
-    id = crypto.randomUUID();
-    await writeNodeIdFile(id);
-  }
+  const { nodeId: id, keypair } = await loadIdentity();
 
   cachedNodeId = id;
 
-  return {
+  const unsigned: UnsignedNodeRegistration = {
     nodeId: id,
     host,
     port,
@@ -211,7 +215,18 @@ async function collectRegistrationData(): Promise<NodeRegistration> {
     machineName,
     authToken,
     protocolFingerprint: protocolFingerprint(),
+    publicKey: keypair.publicKey,
   };
+
+  return {
+    ...unsigned,
+    signature: signAsNode(keypair.privateKeyPem, canonicalRegistration(unsigned)),
+  };
+}
+
+export async function signPayloadAsNode(payload: string): Promise<string> {
+  const { keypair } = await loadIdentity();
+  return signAsNode(keypair.privateKeyPem, payload);
 }
 
 export async function getNodeId(): Promise<string> {

@@ -17,7 +17,7 @@ export const LicensePayloadSchema = z.object({
   expiresAt: z.number().int(),
   // Optional binding to a specific dashboard install. When set, validation
   // requires the local deployment_config.instance_id to match.
-  instanceId: z.string().uuid().optional(),
+  instanceId: z.uuid().optional(),
 });
 
 export type LicensePayload = z.infer<typeof LicensePayloadSchema>;

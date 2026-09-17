@@ -3,7 +3,7 @@
  */
 import { z } from "zod";
 
-const uuid = z.string().uuid();
+const uuid = z.uuid();
 /**
  * Validates a route parameter as a UUID for `[param=uuid]` routes.
  */

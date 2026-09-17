@@ -18,6 +18,7 @@ function makeNode(overrides: Partial<AiNode> & { id: string }): AiNode {
     gpuCount: 1,
     machineName: null,
     authToken: null,
+    publicKey: null,
     tls: false,
     deletedAt: null,
     createdAt: new Date(),

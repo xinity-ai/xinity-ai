@@ -18,8 +18,9 @@ Daemon  --HTTP(S)--> Tether (:4020) /api/v1/stream, /api/v1/status
 ## Security layers
 
 1. **App-level auth**: Each daemon generates a per-instance token on startup and sends it to the tether, which stores it in the database. The gateway reads the token and sends it with every request. No manual configuration needed.
-2. **TLS** (opt-in): Encrypts traffic between gateway and daemons. Configure with cert/key env vars.
-3. **Overlay networks** (recommended): For production deployments, use an overlay network like WireGuard, Tailscale, or Headscale to isolate service-to-service traffic at the network level.
+2. **Node identity**: Each daemon keeps an Ed25519 keypair in its `STATE_DIR` and signs everything it tells the tether about itself. The tether pins the public key the first time a node registers and refuses any later claim on that node id under a different key, so the shared `TETHER_SECRET` alone does not let one node speak as another. A daemon that loses its state directory comes back as a new node, and the old record stays until an operator deletes it.
+3. **TLS** (opt-in): Encrypts traffic between gateway and daemons. Configure with cert/key env vars.
+4. **Overlay networks** (recommended): For production deployments, use an overlay network like WireGuard, Tailscale, or Headscale to isolate service-to-service traffic at the network level.
 
 ## Quickstart with self-signed certs
 

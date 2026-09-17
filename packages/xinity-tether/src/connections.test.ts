@@ -90,14 +90,14 @@ describe("connections", () => {
 
   test("addConnection makes node connected", async () => {
     const { controller } = makeController();
-    await addConnection("node-1", controller);
+    await addConnection("node-1", controller, "pub-key");
     expect(isConnected("node-1")).toBe(true);
     expect(getConnectedNodeIds()).toContain("node-1");
   });
 
   test("removeConnection makes node disconnected", async () => {
     const { controller } = makeController();
-    await addConnection("node-1", controller);
+    await addConnection("node-1", controller, "pub-key");
     await removeConnection("node-1", "cancel");
     expect(isConnected("node-1")).toBe(false);
   });
@@ -111,8 +111,8 @@ describe("connections", () => {
     const first = makeController();
     const second = makeController();
 
-    await addConnection("node-1", first.controller);
-    await addConnection("node-1", second.controller);
+    await addConnection("node-1", first.controller, "pub-key");
+    await addConnection("node-1", second.controller, "pub-key");
 
     expect(isConnected("node-1")).toBe(true);
 
@@ -124,8 +124,8 @@ describe("connections", () => {
     const first = makeController();
     const second = makeController();
 
-    const firstConnId = await addConnection("node-1", first.controller);
-    await addConnection("node-1", second.controller);
+    const firstConnId = await addConnection("node-1", first.controller, "pub-key");
+    await addConnection("node-1", second.controller, "pub-key");
 
     await removeConnection("node-1", "cancel", firstConnId);
 
@@ -135,7 +135,7 @@ describe("connections", () => {
 
   test("pushDesiredState sends SSE event", async () => {
     const { controller, chunks } = makeController();
-    await addConnection("node-1", controller);
+    await addConnection("node-1", controller, "pub-key");
 
     const state = { nodeId: "node-1", installations: [] };
     const ok = pushDesiredState("node-1", state);
@@ -152,7 +152,7 @@ describe("connections", () => {
   });
 
   test("pushDesiredState removes connection on write failure", async () => {
-    await addConnection("node-broken", makeBrokenController());
+    await addConnection("node-broken", makeBrokenController(), "pub-key");
     expect(isConnected("node-broken")).toBe(true);
 
     const ok = pushDesiredState("node-broken", { nodeId: "node-broken", installations: [] });
@@ -166,8 +166,8 @@ describe("connections", () => {
     const a = makeController();
     const b = makeController();
 
-    await addConnection("node-a", a.controller);
-    await addConnection("node-b", b.controller);
+    await addConnection("node-a", a.controller, "pub-key");
+    await addConnection("node-b", b.controller, "pub-key");
 
     sendShutdownToAll();
 
@@ -180,8 +180,8 @@ describe("connections", () => {
     const a = makeController();
     const b = makeController();
 
-    await addConnection("node-a", a.controller);
-    await addConnection("node-b", b.controller);
+    await addConnection("node-a", a.controller, "pub-key");
+    await addConnection("node-b", b.controller, "pub-key");
 
     expect(getConnectedNodeIds()).toHaveLength(2);
     expect(isConnected("node-a")).toBe(true);
@@ -195,13 +195,13 @@ describe("connections", () => {
   test("addConnection succeeds even when DB write fails", async () => {
     dbShouldFail = true;
     const { controller } = makeController();
-    await addConnection("node-dbfail", controller);
+    await addConnection("node-dbfail", controller, "pub-key");
     expect(isConnected("node-dbfail")).toBe(true);
   });
 
   test("removeConnection succeeds even when DB write fails", async () => {
     const { controller } = makeController();
-    await addConnection("node-dbfail2", controller);
+    await addConnection("node-dbfail2", controller, "pub-key");
     dbShouldFail = true;
     await removeConnection("node-dbfail2", "cancel");
     expect(isConnected("node-dbfail2")).toBe(false);
@@ -216,7 +216,7 @@ describe("keepalive loop", () => {
 
   test("sends keepalive comment to connected nodes", async () => {
     const { controller, chunks } = makeController();
-    await addConnection("node-ka", controller);
+    await addConnection("node-ka", controller, "pub-key");
 
     const timer = runKeepaliveLoop(50, () => 10_000);
     await Bun.sleep(80);
@@ -227,7 +227,7 @@ describe("keepalive loop", () => {
   });
 
   test("removes node after liveness timeout", async () => {
-    await addConnection("node-timeout", makeBrokenController());
+    await addConnection("node-timeout", makeBrokenController(), "pub-key");
     expect(isConnected("node-timeout")).toBe(true);
 
     const timer = runKeepaliveLoop(50, () => 10);

@@ -2,17 +2,17 @@ import "zod/compile";
 
 import { z } from "zod";
 import { DYNAMIC_CONFIG_CHANNEL, logMigrationFailureFatal, readDynamicConfig } from "common-db";
-import { nodeRegistrationSchema, installationStateReportSchema, protocolFingerprint, activationRefusal, createDbConfigFeed, STREAM_PATH, STATUS_PATH, type VerifyFailure } from "common-env";
+import { nodeRegistrationSchema, installationStateReportSchema, protocolFingerprint, activationRefusal, createDbConfigFeed, canonicalRegistration, canonicalStateReport, verifyNodeSignature, STREAM_PATH, STATUS_PATH, type VerifyFailure } from "common-env";
 import { tetherConfig } from "./config-schema";
 import { config, configStore } from "./config";
 import { rootLogger } from "./logger";
 import { checkMigrations, getDB, subscribe, end as endDB } from "./db";
 import { verifySignature, unauthorized } from "./auth";
-import { addConnection, removeConnection, pushDesiredState, pushConfig, pushConfigToAll, runKeepaliveLoop, sendShutdownToAll, isConnected, getConnectedNodeIds } from "./connections";
+import { addConnection, removeConnection, pushDesiredState, pushConfig, pushConfigToAll, runKeepaliveLoop, sendShutdownToAll, isConnected, getConnectedNodeIds, connectedPublicKey } from "./connections";
 import { createConfigBroadcast } from "./config-broadcast";
 import { buildDesiredState } from "./desired-state";
 import { createNotifyBus } from "./notify-bus";
-import { writeRegistration, queueInstallationStates, flushAndStop } from "./status-writer";
+import { writeRegistration, queueInstallationStates, flushAndStop, readPinnedPublicKey, partitionOwnedStates } from "./status-writer";
 import { handleMetrics, httpMetrics, incRequestRejections } from "./metrics";
 import { buildListenTarget } from "./serve-config";
 
@@ -128,10 +128,19 @@ async function handleSSEStream(req: Request): Promise<Response> {
     return Response.json({ error: parsed.error.message }, { status: 400 });
   }
 
-  const { nodeId } = parsed.data;
+  const { nodeId, publicKey, signature } = parsed.data;
+
+  if (!verifyNodeSignature(publicKey, canonicalRegistration(parsed.data), signature)) {
+    incRequestRejections("stream", "identity_mismatch");
+    log.warn({ nodeId }, "Registration signature does not match the key it presents");
+    return Response.json({ error: "Registration signature is invalid" }, { status: 401 });
+  }
 
   try {
-    await writeRegistration(parsed.data);
+    if (await writeRegistration(parsed.data) === "identity_mismatch") {
+      incRequestRejections("stream", "identity_mismatch");
+      return Response.json({ error: "This node id is registered to a different key" }, { status: 403 });
+    }
   } catch (err) {
     incRequestRejections("stream", "registration_failed");
     log.error({ err, nodeId }, "Registration write failed during SSE handshake");
@@ -143,7 +152,7 @@ async function handleSSEStream(req: Request): Promise<Response> {
 
   const stream = new ReadableStream({
     async start(controller) {
-      connId = await addConnection(nodeId, controller);
+      connId = await addConnection(nodeId, controller, publicKey);
 
       if (cancelled) {
         await removeConnection(nodeId, "cancel", connId);
@@ -186,7 +195,26 @@ async function handleStatus(req: Request): Promise<Response> {
     return Response.json({ error: parsed.error.message }, { status: 400 });
   }
 
-  queueInstallationStates(parsed.data);
+  const { nodeId, states, signature } = parsed.data;
+
+  const publicKey = connectedPublicKey(nodeId) ?? await readPinnedPublicKey(nodeId);
+  if (!publicKey || !verifyNodeSignature(publicKey, canonicalStateReport(parsed.data), signature)) {
+    incRequestRejections("status", "identity_mismatch");
+    log.warn({ nodeId, pinned: !!publicKey }, "Status report is not signed by this node");
+    return Response.json({ error: "Report signature is invalid" }, { status: 401 });
+  }
+
+  const { owned, foreign } = await partitionOwnedStates(nodeId, states);
+  if (foreign.length > 0) {
+    incRequestRejections("status", "installation_not_owned");
+    log.error(
+      { nodeId, installationIds: foreign.map((s) => s.installationId) },
+      "Status report refused, it covers installations belonging to another node",
+    );
+    return Response.json({ error: "Report covers installations owned by another node" }, { status: 403 });
+  }
+
+  queueInstallationStates(owned);
   return Response.json({ ok: true });
 }
 

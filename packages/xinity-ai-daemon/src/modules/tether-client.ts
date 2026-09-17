@@ -1,4 +1,5 @@
 import {
+  canonicalStateReport,
   desiredStateSchema,
   serviceUrl,
   signRequest,
@@ -7,7 +8,9 @@ import {
   type DesiredState,
   type NodeRegistration,
   type InstallationStateReport,
+  type UnsignedInstallationStateReport,
 } from "common-env";
+import { signPayloadAsNode } from "./statekeeper";
 import { rootLogger } from "../logger";
 import { receiveConfigEvent } from "./config-feed";
 import { config } from "../config";
@@ -106,12 +109,16 @@ export async function* connectSSE(registration: NodeRegistration): AsyncGenerato
   }
 }
 
-export async function reportInstallationStates(report: InstallationStateReport): Promise<void> {
+export async function reportInstallationStates(report: UnsignedInstallationStateReport): Promise<void> {
   try {
+    const signed: InstallationStateReport = {
+      ...report,
+      signature: await signPayloadAsNode(canonicalStateReport(report)),
+    };
     const res = await fetch(serviceUrl(config.tether.url, STATUS_PATH), {
       method: "POST",
       headers: signedHeaders(STATUS_PATH),
-      body: JSON.stringify(report),
+      body: JSON.stringify(signed),
     });
     if (!res.ok) {
       log.error({ status: res.status }, "Status POST failed");

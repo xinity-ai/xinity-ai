@@ -59,6 +59,8 @@ export type RejectionReason =
   | "invalid_payload"
   | "protocol_mismatch"
   | "registration_failed"
+  | "identity_mismatch"
+  | "installation_not_owned"
   | "method_not_allowed";
 
 export function incSSEConnections() {

@@ -14,7 +14,7 @@ const gpuSchema = z.object({
 // Outbound: tether -> daemon (SSE)
 
 export const desiredInstallationSchema = z.object({
-  installationId: z.string().uuid(),
+  installationId: z.uuid(),
   specifier: z.string(),
   driver: driverEnum,
   estCapacity: z.number(),
@@ -25,7 +25,7 @@ export const desiredInstallationSchema = z.object({
 export type DesiredInstallation = z.infer<typeof desiredInstallationSchema>;
 
 export const desiredStateSchema = z.object({
-  nodeId: z.string().uuid(),
+  nodeId: z.uuid(),
   installations: z.array(desiredInstallationSchema),
 });
 export type DesiredState = z.infer<typeof desiredStateSchema>;
@@ -33,7 +33,7 @@ export type DesiredState = z.infer<typeof desiredStateSchema>;
 // Inbound: daemon -> tether (POST /api/v1/register)
 
 export const nodeRegistrationSchema = z.object({
-  nodeId: z.string().uuid(),
+  nodeId: z.uuid(),
   host: z.string(),
   port: z.number(),
   gpuCount: z.number(),
@@ -45,13 +45,16 @@ export const nodeRegistrationSchema = z.object({
   machineName: z.string().optional(),
   authToken: z.string(),
   protocolFingerprint: z.string(),
+  publicKey: z.string(),
+  signature: z.string(),
 });
 export type NodeRegistration = z.infer<typeof nodeRegistrationSchema>;
+export type UnsignedNodeRegistration = Omit<NodeRegistration, "signature">;
 
 // Inbound: daemon -> tether (POST /api/v1/status)
 
 export const installationStatePayloadSchema = z.object({
-  installationId: z.string().uuid(),
+  installationId: z.uuid(),
   lifecycleState: lifecycleStateEnum,
   progress: z.number().nullable().optional(),
   statusMessage: z.string().nullable().optional(),
@@ -61,10 +64,51 @@ export const installationStatePayloadSchema = z.object({
 export type InstallationStatePayload = z.infer<typeof installationStatePayloadSchema>;
 
 export const installationStateReportSchema = z.object({
-  nodeId: z.string().uuid(),
+  nodeId: z.uuid(),
   states: z.array(installationStatePayloadSchema),
+  signature: z.string(),
 });
 export type InstallationStateReport = z.infer<typeof installationStateReportSchema>;
+export type UnsignedInstallationStateReport = Omit<InstallationStateReport, "signature">;
+
+// What the daemon signs with its node key. Positional and sorted rather than derived from the
+// object, because the two ends must produce identical bytes from the same payload.
+
+function sortedPairs(record: Record<string, unknown>): [string, unknown][] {
+  return Object.entries(record).sort(([a], [b]) => (a < b ? -1 : 1));
+}
+
+export function canonicalRegistration(reg: UnsignedNodeRegistration): string {
+  return JSON.stringify([
+    reg.nodeId,
+    reg.host,
+    reg.port,
+    reg.gpuCount,
+    reg.gpus.map((g) => [g.vendor, g.name, g.vramMb]),
+    sortedPairs(reg.driverVersions),
+    sortedPairs(reg.driverFeatures),
+    reg.tls,
+    reg.estCapacity,
+    reg.machineName ?? null,
+    reg.authToken,
+    reg.protocolFingerprint,
+    reg.publicKey,
+  ]);
+}
+
+export function canonicalStateReport(report: UnsignedInstallationStateReport): string {
+  return JSON.stringify([
+    report.nodeId,
+    report.states.map((s) => [
+      s.installationId,
+      s.lifecycleState,
+      s.progress ?? null,
+      s.statusMessage ?? null,
+      s.errorMessage ?? null,
+      s.failureLogs ?? null,
+    ]),
+  ]);
+}
 
 /** Signed by the caller and verified by the tether, so both ends must name them identically. */
 export const STREAM_PATH = "/api/v1/stream";
