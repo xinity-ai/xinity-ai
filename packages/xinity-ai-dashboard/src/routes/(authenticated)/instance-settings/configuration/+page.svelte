@@ -8,13 +8,15 @@
   import * as Tooltip from "$lib/components/ui/tooltip";
   import { Badge } from "$lib/components/ui/badge";
   import { Switch } from "$lib/components/ui/switch";
-  import { Search, RotateCcw } from "@lucide/svelte";
+  import { Search, RotateCcw, TriangleAlert } from "@lucide/svelte";
   import { toastState } from "$lib/state/toast.svelte";
-  import type { DynamicSettingSummary } from "./dynamic-settings";
+  import type { DynamicGroupSummary, DynamicSettingSummary } from "./dynamic-settings";
 
   type Override = { value?: string; digest?: string; updatedBy: string | null; updatedAt: string };
 
   let settings = $state<DynamicSettingSummary[]>([]);
+  let groups = $state<DynamicGroupSummary[]>([]);
+  let groupDrafts = $state<Record<string, Record<string, string>>>({});
   let notDelegatedHere = $state<Set<string>>(new Set());
   let overrides = $state<Record<string, Override>>({});
   let drafts = $state<Record<string, string>>({});
@@ -22,25 +24,43 @@
   let query = $state("");
   let onlyManaged = $state(false);
 
-  const managedCount = $derived(settings.filter((setting) => overrides[setting.key]).length);
+  function isGroupManaged(group: DynamicGroupSummary): boolean {
+    return group.members.every((member) => overrides[member.key]);
+  }
 
-  const visible = $derived.by(() => {
-    const needle = query.trim().toLowerCase();
-    return settings.filter((setting) => {
-      if (onlyManaged && !overrides[setting.key]) {
-        return false;
-      }
-      return !needle || `${setting.key} ${setting.description}`.toLowerCase().includes(needle);
-    });
-  });
+  const managedCount = $derived(
+    settings.filter((setting) => overrides[setting.key]).length + groups.filter(isGroupManaged).length,
+  );
 
-  const groups = $derived.by(() => {
-    const byGroup = new Map<string, DynamicSettingSummary[]>();
+  const needle = $derived(query.trim().toLowerCase());
+
+  const visible = $derived.by(() => settings.filter((setting) => {
+    if (onlyManaged && !overrides[setting.key]) {
+      return false;
+    }
+    return !needle || `${setting.key} ${setting.description}`.toLowerCase().includes(needle);
+  }));
+
+  const visibleGroups = $derived.by(() => groups.filter((group) => {
+    if (onlyManaged && !isGroupManaged(group)) {
+      return false;
+    }
+    const haystack = [group.title, group.description, ...group.members.map((member) => member.key)];
+    return !needle || haystack.join(" ").toLowerCase().includes(needle);
+  }));
+
+  /** Sections and groups in one ordered stream, so a group is not stranded below the filter. */
+  const blocks = $derived.by(() => {
+    const bySection = new Map<string, DynamicSettingSummary[]>();
     for (const setting of visible) {
       const name = setting.group ?? "General";
-      byGroup.set(name, [...(byGroup.get(name) ?? []), setting]);
+      bySection.set(name, [...(bySection.get(name) ?? []), setting]);
     }
-    return [...byGroup.entries()].sort(([a], [b]) => a.localeCompare(b));
+
+    return [
+      ...[...bySection.entries()].map(([name, items]) => ({ kind: "section" as const, name, items })),
+      ...visibleGroups.map((group) => ({ kind: "group" as const, name: group.title, group })),
+    ].sort((a, b) => a.name.localeCompare(b.name));
   });
 
   async function refresh() {
@@ -49,6 +69,7 @@
       return;
     }
     settings = data.settings;
+    groups = data.groups;
     notDelegatedHere = new Set(data.notDelegatedHere);
     overrides = Object.fromEntries(data.overrides.map((override) => [override.key, {
       value: override.value,
@@ -57,6 +78,45 @@
       updatedAt: String(override.updatedAt),
     }]));
     drafts = {};
+    // A secret is never read back, so its box always starts blank and has to be retyped to save.
+    groupDrafts = Object.fromEntries(groups.map((group) => [
+      group.id,
+      Object.fromEntries(group.members.map((member) => [
+        member.key,
+        member.isSecret ? "" : overrides[member.key]?.value ?? "",
+      ])),
+    ]));
+  }
+
+  function setGroupDraft(group: DynamicGroupSummary, key: string, value: string) {
+    groupDrafts = { ...groupDrafts, [group.id]: { ...groupDrafts[group.id], [key]: value } };
+  }
+
+  async function saveGroup(group: DynamicGroupSummary) {
+    busy = group.id;
+    const { error } = await orpc.dynamicConfig.setGroup({
+      id: group.id,
+      values: groupDrafts[group.id] ?? {},
+    });
+    busy = null;
+    if (error) {
+      toastState.add(error.message, "error");
+      return;
+    }
+    toastState.add(`${group.title} is now managed from here`, "success");
+    await refresh();
+  }
+
+  async function clearGroup(group: DynamicGroupSummary) {
+    busy = group.id;
+    const { error } = await orpc.dynamicConfig.clearGroup({ id: group.id });
+    busy = null;
+    if (error) {
+      toastState.add(error.message, "error");
+      return;
+    }
+    toastState.add(`${group.title} returned to each component's own value`, "success");
+    await refresh();
   }
 
   /** What the field shows when untouched: the managed value, or the value the schema declares. */
@@ -135,7 +195,7 @@
     </div>
     <div class="flex items-center gap-1">
       <Button variant={onlyManaged ? "outline" : "secondary"} size="sm" onclick={() => (onlyManaged = false)}>
-        All {settings.length}
+        All {settings.length + groups.length}
       </Button>
       <Button variant={onlyManaged ? "secondary" : "outline"} size="sm" onclick={() => (onlyManaged = true)}>
         Managed here {managedCount}
@@ -143,13 +203,14 @@
     </div>
   </div>
 
-  {#each groups as [groupName, groupSettings] (groupName)}
+  {#each blocks as block (`${block.kind}:${block.name}`)}
+    {#if block.kind === "section"}
     <Card.Root>
       <Card.Header class="pb-2">
-        <Card.Title class="text-base">{groupName}</Card.Title>
+        <Card.Title class="text-base">{block.name}</Card.Title>
       </Card.Header>
       <Card.Content class="p-0">
-        {#each groupSettings as setting (setting.key)}
+        {#each block.items as setting (setting.key)}
           {@const override = overrides[setting.key]}
           {@const dirty = edited(setting)}
           <div
@@ -264,11 +325,83 @@
         {/each}
       </Card.Content>
     </Card.Root>
+    {:else}
+    {@const group = block.group}
+    {@const managed = isGroupManaged(group)}
+    {@const busyHere = busy === group.id}
+    <Card.Root>
+      <Card.Header class="pb-2">
+        <Card.Title class="text-base">{group.title}</Card.Title>
+        <Card.Description>
+          {group.description}
+          These are saved together, because neither is valid without the other.
+        </Card.Description>
+        {#if group.warning}
+          <p class="flex items-start gap-2 text-xs text-amber-600 dark:text-amber-400">
+            <TriangleAlert class="mt-0.5 size-3.5 shrink-0" />
+            <span>{group.warning}</span>
+          </p>
+        {/if}
+      </Card.Header>
+      <Card.Content
+        class="space-y-3 border-l-2 {managed ? 'border-l-primary' : 'border-l-transparent'}"
+      >
+        {#each group.members as member (member.key)}
+          <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4">
+            <div class="min-w-0 sm:w-72">
+              <span class="font-mono text-sm font-medium">{member.key}</span>
+              {#if member.isSecret}
+                <Badge variant="secondary" class="ml-2 font-normal">secret</Badge>
+              {/if}
+              <p class="text-xs text-muted-foreground">{member.description}</p>
+            </div>
+            {#if member.enumValues}
+              <Select.Root
+                type="single"
+                value={groupDrafts[group.id]?.[member.key] ?? ""}
+                onValueChange={(value) => setGroupDraft(group, member.key, value)}
+              >
+                <Select.Trigger class="w-56">
+                  {groupDrafts[group.id]?.[member.key] || "Select a value"}
+                </Select.Trigger>
+                <Select.Content>
+                  {#each member.enumValues as option (option)}
+                    <Select.Item value={option}>{option}</Select.Item>
+                  {/each}
+                </Select.Content>
+              </Select.Root>
+            {:else}
+              <Input
+                class="w-56 font-mono"
+                type={member.isSecret ? "password" : "text"}
+                placeholder={member.isSecret && overrides[member.key] ? "Stored, enter a value to replace it" : "Not set"}
+                value={groupDrafts[group.id]?.[member.key] ?? ""}
+                oninput={(event) => setGroupDraft(group, member.key, event.currentTarget.value)}
+              />
+            {/if}
+          </div>
+        {/each}
+
+        <div class="flex flex-wrap items-center gap-2 pt-1">
+          <Button size="sm" disabled={busyHere} onclick={() => saveGroup(group)}>Save both</Button>
+          {#if managed}
+            <Button size="sm" variant="ghost" disabled={busyHere} onclick={() => clearGroup(group)}>
+              <RotateCcw class="size-4" />
+              Clear
+            </Button>
+          {/if}
+          {#if managed}
+            <span class="text-xs text-muted-foreground">Managed from here</span>
+          {/if}
+        </div>
+      </Card.Content>
+    </Card.Root>
+    {/if}
   {/each}
 
-  {#if settings.length === 0}
+  {#if settings.length + groups.length === 0}
     <p class="text-sm text-muted-foreground">No settings are declared as dashboard-managed.</p>
-  {:else if visible.length === 0}
+  {:else if blocks.length === 0}
     <p class="text-sm text-muted-foreground">Nothing matches that filter.</p>
   {/if}
 </div>

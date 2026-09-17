@@ -1,15 +1,20 @@
 import { z } from "zod";
 import { rootOs, withInstanceAdmin, auditMiddleware } from "../root";
 import {
+  clearGroupOverride,
   clearOverride,
+  dynamicGroups,
   dynamicSettings,
+  groupProblem,
   listOverrides,
-  notDelegatedHere,
   missingSecretKey,
+  missingSecretKeyForGroup,
+  notDelegatedHere,
   overrideProblem,
+  setGroupOverride,
   setOverride,
 } from "../../../../routes/(authenticated)/instance-settings/configuration/dynamic-config";
-import { findDynamicSetting } from "../../../../routes/(authenticated)/instance-settings/configuration/dynamic-settings";
+import { findDynamicGroup, findDynamicSetting } from "../../../../routes/(authenticated)/instance-settings/configuration/dynamic-settings";
 
 const tags = ["Dynamic Configuration"];
 
@@ -18,9 +23,46 @@ const list = rootOs
   .route({ method: "GET", path: "/dynamic-config", tags, summary: "List dashboard-managed settings" })
   .handler(async () => ({
     settings: dynamicSettings(),
+    groups: dynamicGroups(),
     overrides: await listOverrides(),
     notDelegatedHere: notDelegatedHere(),
   }));
+
+const setGroup = rootOs
+  .use(withInstanceAdmin)
+  .use(auditMiddleware)
+  .meta({ audit: { action: "dynamicConfig.set", resource: "dynamicConfig", resourceId: { fromInput: "id" }, captureInput: ["id"] } })
+  .route({ method: "PUT", path: "/dynamic-config/groups/{id}", tags, summary: "Set a dashboard-managed group" })
+  .input(z.object({ id: z.string(), values: z.record(z.string(), z.string()) }))
+  .handler(async ({ input, context, errors }) => {
+    const group = findDynamicGroup(input.id);
+    if (!group) {
+      throw errors.BAD_REQUEST({ message: `${input.id} is not a dashboard-managed group` });
+    }
+
+    const problem = groupProblem(group, input.values) ?? missingSecretKeyForGroup(group);
+    if (problem) {
+      throw errors.BAD_REQUEST({ message: problem });
+    }
+
+    await setGroupOverride(group, input.values, context.actor.actorLabel);
+    return { id: group.id };
+  });
+
+const clearGroup = rootOs
+  .use(withInstanceAdmin)
+  .use(auditMiddleware)
+  .meta({ audit: { action: "dynamicConfig.clear", resource: "dynamicConfig", resourceId: { fromInput: "id" } } })
+  .route({ method: "DELETE", path: "/dynamic-config/groups/{id}", tags, summary: "Clear a dashboard-managed group" })
+  .input(z.object({ id: z.string() }))
+  .handler(async ({ input, errors }) => {
+    const group = findDynamicGroup(input.id);
+    if (!group) {
+      throw errors.BAD_REQUEST({ message: `${input.id} is not a dashboard-managed group` });
+    }
+    await clearGroupOverride(group);
+    return { id: group.id };
+  });
 
 const set = rootOs
   .use(withInstanceAdmin)
@@ -54,4 +96,4 @@ const clear = rootOs
     return { key: input.key };
   });
 
-export const dynamicConfigRouter = { list, set, clear };
+export const dynamicConfigRouter = { list, set, clear, setGroup, clearGroup };

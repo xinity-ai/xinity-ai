@@ -123,8 +123,8 @@ Backend for web-search-augmented generation. Disabled when unset.
 
 | Variable | Default | Description |
 |---|---|---|
-| `WEB_SEARCH_PROVIDER` | (unset) | Web search backend. When unset, web search is disabled. One of `searxng`, `google`, `bing`, `brave`, `serper`, `tavily`. |
-| `WEB_SEARCH_CREDENTIAL` | (unset) | Provider credential: searxng=instance URL, google=apikey:cx, bing/brave/serper/tavily=API key. Secret. |
+| `WEB_SEARCH_PROVIDER` | (unset) | Web search backend. When unset, web search is disabled. One of `searxng`, `google`, `bing`, `brave`, `serper`, `tavily`. Can be set to `@dynamic` to take its value from the dashboard. |
+| `WEB_SEARCH_CREDENTIAL` | (unset) | Provider credential: searxng=instance URL, google=apikey:cx, bing/brave/serper/tavily=API key. Secret. Can be set to `@dynamic` to take its value from the dashboard. |
 | `WEB_SEARCH_ENGINE_URL` | (unset) | @deprecated Use WEB_SEARCH_PROVIDER + WEB_SEARCH_CREDENTIAL instead. SearXNG search engine URL. |
 
 ### Inference backends
