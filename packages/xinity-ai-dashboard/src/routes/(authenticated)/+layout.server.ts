@@ -38,7 +38,7 @@ export const load: LayoutServerLoad = async ({ request, url, cookies }) => {
   const { displaySettings, temporaryPassword } = userSettings;
 
   if (temporaryPassword && !url.pathname.startsWith("/settings/auth")) {
-    redirect(302, "/settings/auth");
+    redirect(302, "/settings/auth/");
   }
 
   const userIsInstanceAdmin = isInstanceAdmin(session.user.email);

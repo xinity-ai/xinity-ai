@@ -35,7 +35,7 @@
       <Tooltip.Root>
         <Tooltip.Trigger>
           <span>
-            <Button href={data.canCreateOrganization ? "/organizations/create" : undefined} disabled={!data.canCreateOrganization}>
+            <Button href={data.canCreateOrganization ? "/organizations/create/" : undefined} disabled={!data.canCreateOrganization}>
               <Plus class="w-4 h-4" />
               Create Organization
             </Button>
@@ -115,7 +115,7 @@
           <Tooltip.Root>
             <Tooltip.Trigger>
               <span>
-                <Button href={data.canCreateOrganization ? "/organizations/create" : undefined} disabled={!data.canCreateOrganization}>
+                <Button href={data.canCreateOrganization ? "/organizations/create/" : undefined} disabled={!data.canCreateOrganization}>
                   <Plus class="w-4 h-4" />
                   Create Organization
                 </Button>

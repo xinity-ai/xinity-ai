@@ -17,7 +17,7 @@ export const load: PageServerLoad = async ({ params, request, parent }) => {
   const organization = organizations?.find((org) => org.slug === slug);
 
   if (!organization) {
-    throw redirect(302, "/organizations");
+    throw redirect(302, "/organizations/");
   }
 
   const [fullOrg, invitations, [activeMember], [orgRow]] = await Promise.all([
@@ -38,7 +38,7 @@ export const load: PageServerLoad = async ({ params, request, parent }) => {
   ]);
 
   if (!fullOrg) {
-    throw redirect(302, "/organizations");
+    throw redirect(302, "/organizations/");
   }
 
   return {
