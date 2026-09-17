@@ -81,5 +81,33 @@ describe("systemd", () => {
       expect(unit).toContain("ProtectHome=yes");
       expect(unit).toContain("PrivateTmp=true");
     });
+
+    test("root services are unsandboxed unless they opt in", () => {
+      const base: UnitConfig = {
+        component: "daemon",
+        description: "Test",
+        execStart: "/test",
+        secretKeys: [],
+        runAsRoot: true,
+      };
+
+      expect(generateUnit(base)).not.toContain("ProtectSystem=strict");
+
+      const hardened = generateUnit({ ...base, hardened: true, readWritePaths: ["/var/lib/data"] });
+      expect(hardened).toContain("ProtectSystem=strict");
+      expect(hardened).toContain("ReadWritePaths=/var/lib/data");
+    });
+
+    test("omits EnvironmentFile when the service has no env file", () => {
+      const config: UnitConfig = {
+        component: "seaweedfs",
+        description: "Test",
+        execStart: "/test",
+        secretKeys: [],
+        environmentFile: null,
+      };
+
+      expect(generateUnit(config)).not.toContain("EnvironmentFile");
+    });
   });
 });
