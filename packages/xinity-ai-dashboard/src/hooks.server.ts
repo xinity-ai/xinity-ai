@@ -144,14 +144,20 @@ if (isMigrationOk()) {
 /**
  * Start the notification scheduler (deployment status, node health, capacity, weekly reports).
  */
-if (isMigrationOk() && config.notificationsEnabled) {
-  void startNotificationScheduler();
-}
+let stopNotifications: (() => void) | null = null;
+configStore.watch(
+  (value) => value.notificationsEnabled(),
+  (enabled) => {
+    stopNotifications?.();
+    stopNotifications = enabled && isMigrationOk() ? startNotificationScheduler() : null;
+  },
+);
 
 /**
  * Every shutdown action belongs here. Registering a signal listener elsewhere would
  * suppress the default termination and leave the process running after a stop.
  */
+onShutdown("notifications", () => stopNotifications?.());
 onShutdown("dynamic-config", () => configStore.stop());
 onShutdown("audit-forwarder", flushAuditEvents);
 installShutdownHandlers();

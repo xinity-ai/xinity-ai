@@ -306,7 +306,7 @@ const computeLiveMetrics = rootOs
   .input(z.object({}).optional())
   .output(LiveMetricsOutput)
   .handler(async () => {
-    const prometheusUrl = config.compute.prometheusUrl;
+    const prometheusUrl = config.compute.prometheusUrl();
     if (!prometheusUrl) return { available: false, nodes: [] };
 
     try {

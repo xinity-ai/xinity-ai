@@ -131,7 +131,7 @@ Model deployment across inference nodes, and what the Compute page shows.
 |---|---|---|
 | `COMPUTE_MANAGEMENT_ENABLED` | `true` | Enable compute management. |
 | `DEPLOYMENT_STRATEGY` | `balanced` | Node selection strategy for new model installations. 'first-fit' picks the first node that fits (deterministic). 'balanced' picks the node with the most absolute free VRAM (spread for HA). 'bin-pack' picks the tightest fit (consolidate so idle nodes stay drainable). 'proportional' picks the node with the lowest percent utilization (fair spread across heterogeneous nodes). One of `first-fit`, `balanced`, `bin-pack`, `proportional`. Can be set to `@dynamic` to take its value from the dashboard. |
-| `PROMETHEUS_URL` | (unset) | Prometheus server URL for live GPU metrics overlay on the Compute page (e.g. http://prometheus:9090). Enables utilization rings and energy readouts on compute nodes. |
+| `PROMETHEUS_URL` | (unset) | Prometheus server URL for live GPU metrics overlay on the Compute page (e.g. http://prometheus:9090). Enables utilization rings and energy readouts on compute nodes. Can be set to `@dynamic` to take its value from the dashboard. |
 
 ### Audit event export
 
@@ -208,7 +208,7 @@ Only needed when something sits in front of this service.
 | `GATEWAY_URL` | `http://localhost:4010` | Gateway base URL shown to users in docs and code examples (e.g. https://api.example.com). Must NOT include the /v1 path segment - that is appended where needed. A trailing slash is stripped. |
 | `LICENSE_KEY` | (unset) | License key for unlocking paid features (Ed25519-signed token). Secret. Can be set to `@dynamic` to take its value from the dashboard. |
 | `MCP_ENABLED` | `true` | Enable the /mcp Model Context Protocol endpoint. Can be set to `@dynamic` to take its value from the dashboard. |
-| `NOTIFICATIONS_ENABLED` | `true` | Enable the notification scheduler (deployment status, node health, capacity warnings, weekly reports). |
+| `NOTIFICATIONS_ENABLED` | `true` | Enable the notification scheduler (deployment status, node health, capacity warnings, weekly reports). Can be set to `@dynamic` to take its value from the dashboard. |
 | `XINITY_SECRET_KEY` | (unset) | 32 bytes of base64 (openssl rand -base64 32) encrypting dashboard-managed secrets at rest. The same value on every host that sets or reads one. Secret. |
 | `XINITY_SECRET_KEY_PREVIOUS` | (unset) | The key XINITY_SECRET_KEY replaced, accepted for decryption only. Set during a rotation, removed once every value has been re-sealed. Secret. |
 

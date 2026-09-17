@@ -105,7 +105,7 @@ const mail = defineGroup<Mail>({
 type Compute = {
   managementEnabled: boolean;
   deploymentStrategy: () => "first-fit" | "balanced" | "bin-pack" | "proportional";
-  prometheusUrl?: string;
+  prometheusUrl: () => string | undefined;
 };
 
 const compute = defineGroup<Compute>({
@@ -119,7 +119,7 @@ const compute = defineGroup<Compute>({
     deploymentStrategy: dynamic("DEPLOYMENT_STRATEGY",
       z.enum(["first-fit", "balanced", "bin-pack", "proportional"]).default("balanced")
         .describe("Node selection strategy for new model installations. 'first-fit' picks the first node that fits (deterministic). 'balanced' picks the node with the most absolute free VRAM (spread for HA). 'bin-pack' picks the tightest fit (consolidate so idle nodes stay drainable). 'proportional' picks the node with the lowest percent utilization (fair spread across heterogeneous nodes).")),
-    prometheusUrl: env("PROMETHEUS_URL", z.url().optional()
+    prometheusUrl: dynamic("PROMETHEUS_URL", z.url().optional()
       .describe("Prometheus server URL for live GPU metrics overlay on the Compute page (e.g. http://prometheus:9090). Enables utilization rings and energy readouts on compute nodes.")),
   },
 });
@@ -190,7 +190,7 @@ export type DashboardConfig = {
   gatewayUrl: string;
   licenseKey: () => string | undefined;
   mcpEnabled: () => boolean;
-  notificationsEnabled: boolean;
+  notificationsEnabled: () => boolean;
   secretKey?: string;
   previousSecretKey?: string;
 };
@@ -224,7 +224,7 @@ export const dashboardConfig = defineConfig<DashboardConfig>({
     .describe("License key for unlocking paid features (Ed25519-signed token)").meta(secret())),
   mcpEnabled: dynamic("MCP_ENABLED", configBool().default(true)
     .describe("Enable the /mcp Model Context Protocol endpoint")),
-  notificationsEnabled: env("NOTIFICATIONS_ENABLED", configBool().default(true)
+  notificationsEnabled: dynamic("NOTIFICATIONS_ENABLED", configBool().default(true)
     .describe("Enable the notification scheduler (deployment status, node health, capacity warnings, weekly reports)")
     .meta(expert())),
   secretKey: secretKeyField(),
