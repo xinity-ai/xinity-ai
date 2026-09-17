@@ -52,6 +52,6 @@ WORKDIR /usr/src/app/packages/xinity-ai-gateway
 COPY --from=build /usr/src/app/packages/xinity-ai-gateway/dist ./dist
 
 USER bun
-ENV PORT=3418
-EXPOSE 3418/tcp
+ENV PORT=4010
+EXPOSE 4010/tcp
 CMD [ "bun", "run", "dist/gatewayServer" ]

@@ -13,7 +13,7 @@ COPY --chown=xinity:xinity --chmod=755 linux/${TARGETARCH}/xinity-ai-gateway /ap
 
 USER xinity
 
-ENV PORT=3418
-EXPOSE 3418/tcp
+ENV PORT=4010
+EXPOSE 4010/tcp
 
 CMD [ "/app/xinity-ai-gateway" ]

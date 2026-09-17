@@ -53,6 +53,6 @@ WORKDIR /usr/src/app/packages/xinity-ai-dashboard
 COPY --from=build /usr/src/app/packages/xinity-ai-dashboard/build ./dist
 
 USER bun
-ENV HTTP_PORT=4121
-EXPOSE 4121/tcp
+ENV HTTP_PORT=4030
+EXPOSE 4030/tcp
 CMD ["bun", "run", "dist/index.js"]
