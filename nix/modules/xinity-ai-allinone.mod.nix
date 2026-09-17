@@ -1085,7 +1085,7 @@
             port = lib.mkDefault cfg.gateway.port;
             backendTimeoutMs = lib.mkDefault cfg.gateway.backendTimeoutMs;
             infoserverUrl = lib.mkDefault infoserverUrl;
-            webSearchEngineUrl = lib.mkDefault (
+            webSearchCredential = lib.mkDefault (
               if cfg.searxng.enable
               then "http://127.0.0.1:${toString cfg.searxng.port}"
               else null
