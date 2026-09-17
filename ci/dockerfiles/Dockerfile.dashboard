@@ -13,7 +13,7 @@ COPY --chown=xinity:xinity --chmod=755 linux/${TARGETARCH}/xinity-ai-dashboard /
 
 USER xinity
 
-ENV HTTP_PORT=4121
-EXPOSE 4121/tcp
+ENV HTTP_PORT=4030
+EXPOSE 4030/tcp
 
 CMD [ "/app/xinity-ai-dashboard" ]
