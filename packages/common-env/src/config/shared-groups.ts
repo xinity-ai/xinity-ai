@@ -2,6 +2,7 @@ import { z } from "zod";
 import { expert, secret } from "../index";
 import { metricsAuthSchema } from "../metrics-auth";
 import { configInt, configList, configNumber } from "./leaf-types";
+import { isValidSecretKey } from "../secret-keyring";
 import { defineGroup, env, type ConfigField, type GroupDef } from "./group";
 
 export type ServerConfig = { host: string; port: number; idleTimeout: number; unixSocket?: string };
@@ -93,13 +94,16 @@ export function tetherSecretField() {
 }
 
 export function secretKeyField() {
-  return env("XINITY_SECRET_KEY", z.string().optional()
+  return env("XINITY_SECRET_KEY", z.string()
+    .refine(isValidSecretKey, "Must be 32 bytes of base64 (openssl rand -base64 32)")
     .describe("32 bytes of base64 (openssl rand -base64 32) encrypting dashboard-managed secrets at rest. The same value on every host that sets or reads one")
     .meta(secret()));
 }
 
 export function previousSecretKeyField() {
-  return env("XINITY_SECRET_KEY_PREVIOUS", z.string().optional()
+  return env("XINITY_SECRET_KEY_PREVIOUS", z.string()
+    .refine(isValidSecretKey, "Must be 32 bytes of base64 (openssl rand -base64 32)")
+    .optional()
     .describe("The key XINITY_SECRET_KEY replaced, accepted for decryption only. Set during a rotation, removed once every value has been re-sealed")
     .meta({ ...secret(), ...expert() }));
 }
