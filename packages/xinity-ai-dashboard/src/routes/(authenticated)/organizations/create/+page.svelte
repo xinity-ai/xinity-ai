@@ -75,7 +75,7 @@
       error = createError.message || "Failed to create organization";
       isSubmitting = false;
     } else if (data) {
-      goto(`/organizations/${slug}`, { invalidateAll: true });
+      goto(`/organizations/${slug}/`, { invalidateAll: true });
     }
   }
 

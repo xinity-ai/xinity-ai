@@ -22,7 +22,7 @@
     <h2 class="text-xl font-semibold tracking-tight mb-4">Pending Invitations</h2>
     <div class="space-y-3">
       {#each invites as { email, id, status, expiresAt, role }}
-        {@const acceptInviteLink = `/organizations/accept-invitation-${id}`}
+        {@const acceptInviteLink = `/organizations/accept-invitation-${id}/`}
         <Card.Root>
           <Card.Content class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 py-4">
             <div class="flex items-center gap-3">

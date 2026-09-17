@@ -33,7 +33,7 @@
       const { error } = await signIn.sso({
         providerId,
         callbackURL,
-        errorCallbackURL: `/login/sso/${providerId}`,
+        errorCallbackURL: `/login/sso/${providerId}/`,
       });
 
       if (error?.message) {
