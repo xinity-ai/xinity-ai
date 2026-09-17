@@ -191,7 +191,7 @@ export type DashboardConfig = {
   licenseKey: () => string | undefined;
   mcpEnabled: () => boolean;
   notificationsEnabled: () => boolean;
-  secretKey?: string;
+  secretKey: string;
   previousSecretKey?: string;
 };
 

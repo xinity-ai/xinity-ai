@@ -220,6 +220,11 @@ export function findDynamicGroup(id: string): DynamicGroup | undefined {
   return DYNAMIC_GROUPS.find((group) => group.id === id);
 }
 
+/** A member cannot be set or cleared on its own: the group is only valid as a whole. */
+export function groupOwning(key: string): DynamicGroup | undefined {
+  return DYNAMIC_GROUPS.find((group) => group.members.some((member) => member.key === key));
+}
+
 type JsonSchema = { type?: string; enum?: string[]; default?: unknown; description?: string };
 
 /** The part of a setting that survives the wire, since a schema cannot be serialized. */

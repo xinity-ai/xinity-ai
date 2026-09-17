@@ -122,7 +122,7 @@ export type DaemonConfig = {
   log: LoggingConfig;
   /** Its own driver, with one knob, so it is not worth a group of its own. */
   ollamaUrl: string;
-  secretKey?: string;
+  secretKey: string;
   previousSecretKey?: string;
 };
 

@@ -4,6 +4,7 @@ import { daemonConfig, type DaemonConfig } from "./config-schema";
 const TEST_ENV = {
   TETHER_URL: "http://localhost:4020",
   TETHER_SECRET: "test",
+  XINITY_SECRET_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
   INFOSERVER_URL: "http://localhost:19090",
   LOG_LEVEL: "fatal",
 };

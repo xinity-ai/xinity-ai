@@ -1016,6 +1016,19 @@
                 that tether was given.
               '';
             }
+            {
+              assertion = !noEnvFiles
+                || !(cfg.gateway.enable || cfg.dashboard.enable || cfg.daemon.enable)
+                || cfg.secrets.secretKeyFile != null || generateSecretKey;
+              message = ''
+                Nothing provides XINITY_SECRET_KEY, which encrypts dashboard-managed secrets and
+                which the gateway, dashboard and daemon all refuse to start without. It is created
+                for you only where the dashboard runs, because it belongs to the deployment and a
+                key created here would not match the one those secrets were sealed with. Set
+                services.xinity-ai.secrets.secretKeyFile to a file holding the same value the
+                dashboard was given.
+              '';
+            }
           ];
 
 

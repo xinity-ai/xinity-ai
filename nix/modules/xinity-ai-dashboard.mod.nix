@@ -278,6 +278,7 @@
             Path to a file containing XINITY_SECRET_KEY, 32 bytes of base64 from
             `openssl rand -base64 32`. The dashboard encrypts dashboard-managed secrets with
             it before storing them, so every host that sets or reads one needs the same value.
+            Required: the dashboard refuses to start without it, here or through environmentFiles.
 
             During a key rotation, supply XINITY_SECRET_KEY_PREVIOUS through environmentFiles.
           '';

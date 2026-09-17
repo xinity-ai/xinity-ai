@@ -193,7 +193,8 @@
             Path to a file containing XINITY_SECRET_KEY, 32 bytes of base64 from
             `openssl rand -base64 32`. It decrypts dashboard-managed secrets, which reach this
             node still encrypted, so it must hold the same value as the dashboard that set
-            them.
+            them. Required: the daemon refuses to start without it, here or through
+            environmentFiles.
 
             During a key rotation, supply XINITY_SECRET_KEY_PREVIOUS through environmentFiles.
           '';

@@ -74,23 +74,12 @@ export async function listOverrides(): Promise<DynamicOverride[]> {
   });
 }
 
-let keyring: SecretKeyring | null | undefined;
+let keyring: SecretKeyring | undefined;
 
-function secretKeyring(): SecretKeyring | null {
-  if (keyring === undefined) {
-    keyring = config.secretKey === undefined
-      ? null
-      : createSecretKeyring({ current: config.secretKey, previous: config.previousSecretKey });
-  }
+/** Built on first use: at module scope this would run during the CLI's build-time router import. */
+function secretKeyring(): SecretKeyring {
+  keyring ??= createSecretKeyring({ current: config.secretKey, previous: config.previousSecretKey });
   return keyring;
-}
-
-export function missingSecretKey(setting: DynamicSetting): string | undefined {
-  if (!summarize(setting).isSecret || secretKeyring() !== null) {
-    return undefined;
-  }
-  return `${setting.key} is a secret, and this dashboard has no XINITY_SECRET_KEY to encrypt it with. `
-    + "Set one on every host that reads it before managing this setting here.";
 }
 
 export async function setOverride(
@@ -136,15 +125,6 @@ export function groupProblem(group: DynamicGroup, values: Record<string, string>
     Object.fromEntries(group.members.map((member) => [member.name, values[member.key]])),
   );
   return parsed.success ? undefined : parsed.error.issues[0]?.message;
-}
-
-export function missingSecretKeyForGroup(group: DynamicGroup): string | undefined {
-  const holdsSecret = group.members.some((member) => isSecretKey(member.key));
-  if (!holdsSecret || secretKeyring() !== null) {
-    return undefined;
-  }
-  return `${group.title} holds a secret, and this dashboard has no XINITY_SECRET_KEY to encrypt it with. `
-    + "Set one on every host that reads it before managing this setting here.";
 }
 
 /** One transaction, so no reader can see a provider that disagrees with its credential. */

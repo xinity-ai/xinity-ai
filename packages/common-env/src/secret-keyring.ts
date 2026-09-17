@@ -97,24 +97,14 @@ export function createSecretKeyring(keys: { current: string; previous?: string }
   };
 }
 
-export type SecretKeys = { current?: string; previous?: string };
+export type SecretKeys = { current: string; previous?: string };
 
 export function createSecretUnsealer(keys: SecretKeys, log: PinoLike) {
-  const keyring = keys.current === undefined
-    ? null
-    : createSecretKeyring({ current: keys.current, previous: keys.previous });
+  const keyring = createSecretKeyring(keys);
 
   return (envKey: string, value: string): string | undefined => {
     if (!isSealed(value)) {
       return value;
-    }
-
-    if (keyring === null) {
-      log.error(
-        { envKey },
-        "Ignoring an encrypted setting: XINITY_SECRET_KEY is not set on this host, so it cannot be read",
-      );
-      return undefined;
     }
 
     try {
@@ -124,4 +114,9 @@ export function createSecretUnsealer(keys: SecretKeys, log: PinoLike) {
       return undefined;
     }
   };
+}
+
+/** Checked where the key is declared, so a malformed one fails at boot rather than at first use. */
+export function isValidSecretKey(raw: string): boolean {
+  return Buffer.from(raw, "base64").length === KEY_BYTES;
 }

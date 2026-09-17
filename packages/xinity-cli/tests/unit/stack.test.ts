@@ -393,6 +393,7 @@ describe("sharedLayerProblems", () => {
     DB_CONNECTION_URL: "postgresql://u:p@db:5432/xinity",
     REDIS_URL: "redis://redis:6379",
     TETHER_SECRET: "shhh",
+    XINITY_SECRET_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
     METRICS_AUTH: "user:pass",
   };
 

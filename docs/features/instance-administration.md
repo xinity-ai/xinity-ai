@@ -59,3 +59,19 @@ services.xinity-ai-gateway = {
   dashboardManaged = [ "LOAD_BALANCE_STRATEGY" "RESPONSE_CACHE_TTL_SECONDS" ];
 };
 ```
+
+### Secrets
+
+Some dashboard-managed settings are secrets, marked as such on the page. They are encrypted before they are stored, with `XINITY_SECRET_KEY`: 32 bytes of base64 from `openssl rand -base64 32`, the same value on every host that sets or reads one.
+
+**The gateway, dashboard and daemon require it and refuse to start without one**, or with a malformed one, so a bad key is caught at boot rather than the first time somebody saves a secret. The tether is the exception: it relays encrypted settings to daemons without ever reading them, so it never holds the key. The CLI generates one for a new stack; a NixOS deployment sets `services.<service>.secretKeyFile`, and the allinone module creates one where the dashboard runs.
+
+Upgrading an existing deployment means distributing the key before rolling out, since a host without one will not come back up.
+
+A secret's value is never read back: the page shows that one is stored and a short fingerprint of it, and the audit trail records that it changed without recording what to. Replacing one means typing the new value in full.
+
+Rotating the key means setting `XINITY_SECRET_KEY` to the new value and `XINITY_SECRET_KEY_PREVIOUS` to the old one, which is accepted for reading only. Values re-encrypt as they are next written.
+
+### Settings that travel together
+
+A few settings are only meaningful as a set, such as a web search provider and the credential it authenticates with, where what counts as a valid credential depends on which provider is chosen. These appear as one block with a single Save, are written in one transaction, and are judged together, so no component ever sees one half of a pair. Clearing one clears the whole set.

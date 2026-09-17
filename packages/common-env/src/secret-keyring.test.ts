@@ -74,14 +74,6 @@ describe("createSecretUnsealer", () => {
     expect(unseal("LOAD_BALANCE_STRATEGY", "round-robin")).toBe("round-robin");
   });
 
-  test("gives up on a sealed value when the host has no key", () => {
-    const unseal = createSecretUnsealer({}, quiet);
-    const sealed = createSecretKeyring({ current: A }).seal("hf_abc123");
-
-    expect(unseal("VLLM_HF_TOKEN", sealed)).toBeUndefined();
-    expect(unseal("LOAD_BALANCE_STRATEGY", "round-robin")).toBe("round-robin");
-  });
-
   test("gives up on a value sealed with a key this host does not have", () => {
     const unseal = createSecretUnsealer({ current: B }, quiet);
 

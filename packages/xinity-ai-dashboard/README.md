@@ -209,7 +209,7 @@ Only needed when something sits in front of this service.
 | `LICENSE_KEY` | (unset) | License key for unlocking paid features (Ed25519-signed token). Secret. Can be set to `@dynamic` to take its value from the dashboard. |
 | `MCP_ENABLED` | `true` | Enable the /mcp Model Context Protocol endpoint. Can be set to `@dynamic` to take its value from the dashboard. |
 | `NOTIFICATIONS_ENABLED` | `true` | Enable the notification scheduler (deployment status, node health, capacity warnings, weekly reports). Can be set to `@dynamic` to take its value from the dashboard. |
-| `XINITY_SECRET_KEY` | (unset) | 32 bytes of base64 (openssl rand -base64 32) encrypting dashboard-managed secrets at rest. The same value on every host that sets or reads one. Secret. |
+| `XINITY_SECRET_KEY` | (required) | 32 bytes of base64 (openssl rand -base64 32) encrypting dashboard-managed secrets at rest. The same value on every host that sets or reads one. Secret. |
 | `XINITY_SECRET_KEY_PREVIOUS` | (unset) | The key XINITY_SECRET_KEY replaced, accepted for decryption only. Set during a rotation, removed once every value has been re-sealed. Secret. |
 
 <!-- [/sync:config] -->

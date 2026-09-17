@@ -148,7 +148,7 @@ How the gateway picks a node, how long it waits, and how it trusts one.
 
 | Variable | Default | Description |
 |---|---|---|
-| `XINITY_SECRET_KEY` | (unset) | 32 bytes of base64 (openssl rand -base64 32) encrypting dashboard-managed secrets at rest. The same value on every host that sets or reads one. Secret. |
+| `XINITY_SECRET_KEY` | (required) | 32 bytes of base64 (openssl rand -base64 32) encrypting dashboard-managed secrets at rest. The same value on every host that sets or reads one. Secret. |
 | `XINITY_SECRET_KEY_PREVIOUS` | (unset) | The key XINITY_SECRET_KEY replaced, accepted for decryption only. Set during a rotation, removed once every value has been re-sealed. Secret. |
 
 <!-- [/sync:config] -->

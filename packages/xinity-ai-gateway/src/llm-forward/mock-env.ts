@@ -1,5 +1,6 @@
 export const TEST_ENV = {
   DB_CONNECTION_URL: "postgresql://localhost/test",
+  XINITY_SECRET_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
   REDIS_URL: "redis://localhost:6379",
   INFOSERVER_URL: "http://localhost:3000",
   INFOSERVER_CACHE_TTL_MS: "30000",

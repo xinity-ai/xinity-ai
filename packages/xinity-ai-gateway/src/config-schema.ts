@@ -141,7 +141,7 @@ export type GatewayConfig = {
   webSearch: WebSearch;
   inference: Inference;
   deepResearch: DeepResearch;
-  secretKey?: string;
+  secretKey: string;
   previousSecretKey?: string;
 };
 

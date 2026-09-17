@@ -197,8 +197,8 @@
           description = ''
             Path to a file containing XINITY_SECRET_KEY, 32 bytes of base64 from
             `openssl rand -base64 32`. It decrypts dashboard-managed secrets, so every host
-            that sets or reads one needs the same value. Only needed once a secret setting is
-            handed to the dashboard via `dashboardManaged`.
+            that sets or reads one needs the same value. Required: the service refuses to start without it, here or through
+            environmentFiles.
 
             During a key rotation, supply XINITY_SECRET_KEY_PREVIOUS through environmentFiles.
           '';

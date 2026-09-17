@@ -8,14 +8,12 @@ import {
   groupProblem,
   auditableValue,
   listOverrides,
-  missingSecretKey,
-  missingSecretKeyForGroup,
   notDelegatedHere,
   overrideProblem,
   setGroupOverride,
   setOverride,
 } from "../../../../routes/(authenticated)/instance-settings/configuration/dynamic-config";
-import { findDynamicGroup, findDynamicSetting } from "../../../../routes/(authenticated)/instance-settings/configuration/dynamic-settings";
+import { findDynamicGroup, findDynamicSetting, groupOwning } from "../../../../routes/(authenticated)/instance-settings/configuration/dynamic-settings";
 
 const tags = ["Dynamic Configuration"];
 
@@ -41,7 +39,7 @@ const setGroup = rootOs
       throw errors.BAD_REQUEST({ message: `${input.id} is not a dashboard-managed group` });
     }
 
-    const problem = groupProblem(group, input.values) ?? missingSecretKeyForGroup(group);
+    const problem = groupProblem(group, input.values);
     if (problem) {
       throw errors.BAD_REQUEST({ message: problem });
     }
@@ -86,7 +84,7 @@ const set = rootOs
       throw errors.BAD_REQUEST({ message: `${input.key} is not a dashboard-managed setting` });
     }
 
-    const problem = overrideProblem(setting, input.value) ?? missingSecretKey(setting);
+    const problem = overrideProblem(setting, input.value);
     if (problem) {
       throw errors.BAD_REQUEST({ message: problem });
     }
@@ -101,7 +99,17 @@ const clear = rootOs
   .meta({ audit: { action: "dynamicConfig.clear", resource: "dynamicConfig", resourceId: { fromInput: "key" } } })
   .route({ method: "DELETE", path: "/dynamic-config/{key}", tags, summary: "Clear a dashboard-managed setting" })
   .input(z.object({ key: z.string() }))
-  .handler(async ({ input }) => {
+  .handler(async ({ input, errors }) => {
+    const group = groupOwning(input.key);
+    if (group) {
+      throw errors.BAD_REQUEST({
+        message: `${input.key} is part of ${group.title} and cannot be cleared on its own. Clear the group instead.`,
+      });
+    }
+    if (!findDynamicSetting(input.key)) {
+      throw errors.BAD_REQUEST({ message: `${input.key} is not a dashboard-managed setting` });
+    }
+
     await clearOverride(input.key);
     return { key: input.key };
   });
