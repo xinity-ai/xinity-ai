@@ -1,6 +1,6 @@
 # TLS: Encrypted Inference Backend Communication
 
-xinity supports optional TLS between the gateway and inference daemons. When enabled, inference traffic is encrypted in transit. Authentication between services is handled automatically via per-node tokens: the daemon sends its token to the tether at registration, and the gateway reads it from the database when routing requests.
+xinity supports optional TLS between the gateway and inference daemons. When enabled, inference traffic is encrypted in transit. Authentication between services is handled automatically via per-node tokens: the daemon sends its token to the tether at registration, the gateway reads it from the database when routing requests, and each request is signed with it.
 
 ## Architecture
 
@@ -12,12 +12,12 @@ Daemon  --HTTP(S)--> Tether (:4020) /api/v1/stream, /api/v1/status
 - The daemon acts as a reverse proxy for all inference traffic on its existing HTTP(S) port
 - The tether is typically reached by daemons directly rather than through a reverse proxy, and daemons prove they hold `TETHER_SECRET` by signing each request with it. Enabling TLS on it is still possible, and recommended for any untrusted network. 
 - Inference backends (vLLM, Ollama) bind to `127.0.0.1` only and are not directly reachable from the network
-- Each daemon generates a random auth token on startup and sends it to the tether as part of its registration. The tether writes it to the database, and the gateway reads it automatically
+- Each daemon generates a random auth token on startup and sends it to the tether as part of its registration. The tether writes it to the database, and the gateway reads it automatically. The gateway proves it holds the token by signing the method and path of each request.
 - When TLS is configured on a daemon, it reports this to the tether so the gateway connects via HTTPS
 
 ## Security layers
 
-1. **App-level auth**: Each daemon generates a per-instance token on startup and sends it to the tether, which stores it in the database. The gateway reads the token and sends it with every request. No manual configuration needed.
+1. **App-level auth**: Each daemon generates a per-instance token on startup and sends it to the tether, which stores it in the database. The gateway reads the token and signs every request with it. No manual configuration needed.
 2. **Node identity**: Each daemon keeps an Ed25519 keypair in its `STATE_DIR` and signs everything it tells the tether about itself. The tether pins the public key the first time a node registers and refuses any later claim on that node id under a different key, so the shared `TETHER_SECRET` alone does not let one node speak as another. A daemon that loses its state directory comes back as a new node, and the old record stays until an operator deletes it.
 3. **TLS** (opt-in): Encrypts traffic between gateway and daemons. Configure with cert/key env vars.
 4. **Overlay networks** (recommended): For production deployments, use an overlay network like WireGuard, Tailscale, or Headscale to isolate service-to-service traffic at the network level.
@@ -66,7 +66,7 @@ All variables support the `_FILE` suffix (e.g., `XINITY_TLS_CERT_FILE=/path/to/c
 
 ### Authentication
 
-No configuration needed. Each daemon generates a random token on startup and stores it in the `ai_node.auth_token` database column. The gateway reads it per-node when routing inference requests.
+No configuration needed. Each daemon generates a random token on startup and stores it in the `ai_node.auth_token` database column. The gateway reads it per-node and signs each inference request with it.
 
 ## Deployment
 

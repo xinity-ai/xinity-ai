@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeAll, afterAll, mock } from "bun:test";
 import { mockDaemonConfig } from "../../mock-config";
+import { signRequest } from "common-env";
 
 let mockPort: number = 0;
 
@@ -42,14 +43,20 @@ afterAll(() => {
   server.stop(true);
 });
 
-function proxyRequest(path: string, options?: { method?: string; body?: unknown; token?: string | null }) {
+function proxyRequest(
+  path: string,
+  options?: { method?: string; body?: unknown; token?: string | null; signedPath?: string },
+) {
   const method = options?.method ?? "POST";
   const token = options?.token === undefined ? getAuthToken() : options.token;
   const headers: Record<string, string> = { "content-type": "application/json" };
-  if (token !== null) {
-    headers.authorization = `Bearer ${token}`;
-  }
   const url = new URL(path, "http://localhost");
+  if (token !== null) {
+    headers.authorization = signRequest(token, {
+      method,
+      path: options?.signedPath ?? `${url.pathname}${url.search}`,
+    });
+  }
   const req = new Request(url.toString(), {
     method,
     headers,
@@ -59,17 +66,44 @@ function proxyRequest(path: string, options?: { method?: string; body?: unknown;
 }
 
 describe("proxy auth", () => {
-  test("rejects missing auth token", async () => {
+  test("rejects a missing signature", async () => {
     const res = await proxyRequest("/proxy/llama3%3Alatest/v1/chat/completions", { token: null });
     expect(res.status).toBe(401);
   });
 
-  test("rejects wrong auth token", async () => {
+  test("rejects a signature made with the wrong token", async () => {
     const res = await proxyRequest("/proxy/llama3%3Alatest/v1/chat/completions", { token: "wrong" });
     expect(res.status).toBe(401);
   });
 
-  test("accepts valid auth token", async () => {
+  test("rejects the raw token as a bearer header", async () => {
+    const url = new URL("/proxy/llama3%3Alatest/v1/chat/completions", "http://localhost");
+    const req = new Request(url.toString(), {
+      method: "POST",
+      headers: { authorization: `Bearer ${getAuthToken()}` },
+    });
+    expect((await handleProxyRequest(req, url)).status).toBe(401);
+  });
+
+  // Every model on the node shares one token, so the path is what keeps a captured header from
+  // being pointed at a different model.
+  test("rejects a signature made for another model's path", async () => {
+    const res = await proxyRequest("/proxy/llama3%3Alatest/v1/chat/completions", {
+      signedPath: "/proxy/meta-llama%2FLlama-3.1-8B/v1/chat/completions",
+      body: { model: "llama3:latest", messages: [] },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  test("rejects a signature that omits the query string", async () => {
+    const res = await proxyRequest("/proxy/llama3%3Alatest/v1/chat/completions?stream=true", {
+      signedPath: "/proxy/llama3%3Alatest/v1/chat/completions",
+      body: { model: "llama3:latest", messages: [] },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  test("accepts a request signed with the node token", async () => {
     const res = await proxyRequest("/proxy/llama3%3Alatest/v1/chat/completions", {
       body: { model: "llama3:latest", messages: [] },
     });

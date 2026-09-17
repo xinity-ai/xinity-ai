@@ -1,3 +1,4 @@
+import { signRequest } from "common-env";
 import { config } from "../config";
 
 const customCa = config.inference.ca;
@@ -11,11 +12,15 @@ export function backendUrl(host: string, specifier: string, path: string, tls: b
   return `${protocol}://${host}/proxy/${encodeURIComponent(specifier)}${path}`;
 }
 
-/** Perform a fetch to a daemon inference proxy with auth token and optional custom CA. */
+/** Perform a fetch to a daemon inference proxy, proving the node token without sending it. */
 export function backendFetch(url: string | URL | Request, init?: RequestInit & { authToken?: string }): Promise<Response> {
   const headers = new Headers(init?.headers);
   if (init?.authToken) {
-    headers.set("authorization", `Bearer ${init.authToken}`);
+    const { pathname, search } = new URL(url instanceof Request ? url.url : url);
+    headers.set("authorization", signRequest(init.authToken, {
+      method: init.method ?? "GET",
+      path: `${pathname}${search}`,
+    }));
   }
   return fetch(url, { ...init, headers, ...(tlsOptions ? { tls: tlsOptions } : {}) });
 }
