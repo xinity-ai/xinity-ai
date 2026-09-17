@@ -17,6 +17,7 @@ type ActiveConnection = {
   controller: ReadableStreamDefaultController;
   connectedAt: number;
   lastWriteAt: number;
+  publicKey: string;
 };
 
 let nextConnectionId = 1;
@@ -55,6 +56,7 @@ async function setNodeAvailable(nodeId: string, available: boolean): Promise<voi
 export async function addConnection(
   nodeId: string,
   controller: ReadableStreamDefaultController,
+  publicKey: string,
 ): Promise<number> {
   const existing = connections.get(nodeId);
   if (existing) {
@@ -72,6 +74,7 @@ export async function addConnection(
     controller,
     connectedAt: Date.now(),
     lastWriteAt: Date.now(),
+    publicKey,
   };
   connections.set(nodeId, conn);
   setConnectedNodes(connections.size);
@@ -155,6 +158,10 @@ export function runKeepaliveLoop(intervalMs: number, livenessTimeoutMs: () => nu
 
 export function isConnected(nodeId: string): boolean {
   return connections.has(nodeId);
+}
+
+export function connectedPublicKey(nodeId: string): string | null {
+  return connections.get(nodeId)?.publicKey ?? null;
 }
 
 export function getConnectedNodeIds(): string[] {

@@ -11,9 +11,9 @@ bun run dev
 
 ## How it works
 
-1. A daemon connects to `POST /api/v1/stream` with an `Authorization` header that proves it holds the shared `TETHER_SECRET`, and sends its hardware profile as the SSE request body. The tether upserts the node record in the database.
+1. A daemon connects to `POST /api/v1/stream` with an `Authorization` header that proves it holds the shared `TETHER_SECRET`, and sends its hardware profile as the SSE request body. The body is signed with the node's own Ed25519 key, which the tether pins on first registration, so holding the shared secret is not enough to register as an existing node. The tether upserts the node record in the database.
 2. The tether subscribes to PostgreSQL `LISTEN/NOTIFY` for desired-state changes. When the dashboard updates a deployment, the tether pushes the new state to the affected daemon over its SSE connection.
-3. Daemons report installation lifecycle state back via `POST /api/v1/status`. The tether batches these writes to the database.
+3. Daemons report installation lifecycle state back via `POST /api/v1/status`, signed by the same node key. A report is refused if it covers an installation belonging to another node. The tether batches these writes to the database.
 4. A keepalive is sent every `KEEPALIVE_INTERVAL_MS`. If a connection goes silent for `LIVENESS_TIMEOUT_MS`, the tether marks the node as offline.
 
 ## Configuration

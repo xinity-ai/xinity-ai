@@ -83,6 +83,8 @@ export const aiNodeT = pgTable("ai_node", {
   gpus: jsonb().$type<{ vendor: string; name: string; vramMb: number }[]>().notNull().default([]),
   /** Random token generated on daemon startup, used by the gateway to authenticate requests to this node. */
   authToken: text("auth_token"),
+  /** Ed25519 public key pinned on first registration. Null means not yet pinned, which adopts the next key seen. */
+  publicKey: text("public_key"),
   /** Whether this node serves over TLS. Set by the daemon based on its config. */
   tls: boolean().notNull().default(false),
   /** Operator-assigned display name for this node (from MACHINE_NAME env var, falls back to hostname). */
