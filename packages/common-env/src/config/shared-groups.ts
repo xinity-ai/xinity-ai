@@ -11,8 +11,8 @@ export function serverFields(defaults: { host: string; port: number; idleTimeout
   return {
     host: env("HOST", z.string().default(defaults.host)
       .describe("Bind address (use 0.0.0.0 to listen on all interfaces)")),
-    port: env("PORT", configNumber().default(defaults.port).describe("Listen port")),
-    idleTimeout: env("IDLE_TIMEOUT", configNumber(z.number().max(255)).default(defaults.idleTimeout ?? 255)
+    port: env("PORT", configInt().default(defaults.port).describe("Listen port")),
+    idleTimeout: env("IDLE_TIMEOUT", configInt(z.int().max(255)).default(defaults.idleTimeout ?? 255)
       .describe("Seconds a connection may go without traffic before it is closed (Bun allows at most 255)")),
     unixSocket: env("UNIX_SOCKET", z.string().optional()
       .describe("Unix socket path (overrides HOST/PORT when set)").meta(expert())),
