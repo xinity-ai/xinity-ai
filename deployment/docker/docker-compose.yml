@@ -49,7 +49,8 @@ services:
       DB_CONNECTION_URL_FILE: /run/secrets/db_connection_url
       REDIS_URL_FILE: /run/secrets/redis_url
       INFOSERVER_URL: ${INFOSERVER_URL:-https://sysinfo.xinity.ai}
-      WEB_SEARCH_ENGINE_URL: ${WEB_SEARCH_ENGINE_URL:-http://searxng:${SEARXNG_PORT:-8888}}
+      WEB_SEARCH_PROVIDER: ${WEB_SEARCH_PROVIDER:-searxng}
+      WEB_SEARCH_CREDENTIAL: ${WEB_SEARCH_CREDENTIAL:-http://searxng:${SEARXNG_PORT:-8888}}
       RESPONSE_CACHE_TTL_SECONDS: ${RESPONSE_CACHE_TTL:-3600}
       METRICS_AUTH_FILE: /run/secrets/metrics_auth
     networks:
