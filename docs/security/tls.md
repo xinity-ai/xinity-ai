@@ -10,7 +10,7 @@ Daemon  --HTTP(S)--> Tether (:4020) /api/v1/stream, /api/v1/status
 ```
 
 - The daemon acts as a reverse proxy for all inference traffic on its existing HTTP(S) port
-- The tether is typically reached by daemons directly rather than through a reverse proxy, and it carries `TETHER_SECRET` as a bearer token. Enabling TLS on it is still possible, and recommended for any untrusted network. 
+- The tether is typically reached by daemons directly rather than through a reverse proxy, and daemons prove they hold `TETHER_SECRET` by signing each request with it. Enabling TLS on it is still possible, and recommended for any untrusted network. 
 - Inference backends (vLLM, Ollama) bind to `127.0.0.1` only and are not directly reachable from the network
 - Each daemon generates a random auth token on startup and sends it to the tether as part of its registration. The tether writes it to the database, and the gateway reads it automatically
 - When TLS is configured on a daemon, it reports this to the tether so the gateway connects via HTTPS

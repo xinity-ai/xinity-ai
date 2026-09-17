@@ -2,12 +2,12 @@ import "zod/compile";
 
 import { z } from "zod";
 import { DYNAMIC_CONFIG_CHANNEL, logMigrationFailureFatal, readDynamicConfig } from "common-db";
-import { nodeRegistrationSchema, installationStateReportSchema, protocolFingerprint, activationRefusal, createDbConfigFeed } from "common-env";
+import { nodeRegistrationSchema, installationStateReportSchema, protocolFingerprint, activationRefusal, createDbConfigFeed, STREAM_PATH, STATUS_PATH, type VerifyFailure } from "common-env";
 import { tetherConfig } from "./config-schema";
 import { config, configStore } from "./config";
 import { rootLogger } from "./logger";
 import { checkMigrations, getDB, subscribe, end as endDB } from "./db";
-import { verifyBearerToken, unauthorized } from "./auth";
+import { verifySignature, unauthorized } from "./auth";
 import { addConnection, removeConnection, pushDesiredState, pushConfig, pushConfigToAll, runKeepaliveLoop, sendShutdownToAll, isConnected, getConnectedNodeIds } from "./connections";
 import { createConfigBroadcast } from "./config-broadcast";
 import { buildDesiredState } from "./desired-state";
@@ -19,6 +19,13 @@ import { buildListenTarget } from "./serve-config";
 const log = rootLogger;
 
 const handshakeSchema = z.object({ protocolFingerprint: z.string() });
+
+// A skewed clock gets its own series, so a fleet drifting out of the window is not read as
+// a fleet configured with the wrong secret.
+function rejectUnsigned(endpoint: "stream" | "status", reason: VerifyFailure): Response {
+  incRequestRejections(endpoint, reason === "stale" ? "unauthorized_stale" : "unauthorized");
+  return unauthorized(reason);
+}
 
 const refusal = activationRefusal(tetherConfig, rootLogger);
 if (refusal) {
@@ -94,9 +101,9 @@ async function handleSSEStream(req: Request): Promise<Response> {
     return new Response("Method Not Allowed", { status: 405 });
   }
 
-  if (!verifyBearerToken(req)) {
-    incRequestRejections("stream", "unauthorized");
-    return unauthorized();
+  const refused = verifySignature(req, STREAM_PATH);
+  if (refused) {
+    return rejectUnsigned("stream", refused);
   }
 
   const body = await req.json().catch(() => null);
@@ -168,13 +175,12 @@ async function handleSSEStream(req: Request): Promise<Response> {
 }
 
 async function handleStatus(req: Request): Promise<Response> {
-  if (!verifyBearerToken(req)) {
-    incRequestRejections("status", "unauthorized");
-    return unauthorized();
+  const refused = verifySignature(req, STATUS_PATH);
+  if (refused) {
+    return rejectUnsigned("status", refused);
   }
 
-  const body = await req.json().catch(() => null);
-  const parsed = installationStateReportSchema.safeParse(body);
+  const parsed = installationStateReportSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
     incRequestRejections("status", "invalid_payload");
     return Response.json({ error: parsed.error.message }, { status: 400 });

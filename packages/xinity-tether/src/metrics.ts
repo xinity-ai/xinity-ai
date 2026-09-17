@@ -55,6 +55,7 @@ export type DisconnectReason =
 
 export type RejectionReason =
   | "unauthorized"
+  | "unauthorized_stale"
   | "invalid_payload"
   | "protocol_mismatch"
   | "registration_failed"

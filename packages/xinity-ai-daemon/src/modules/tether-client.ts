@@ -1,6 +1,9 @@
 import {
   desiredStateSchema,
   serviceUrl,
+  signRequest,
+  STATUS_PATH,
+  STREAM_PATH,
   type DesiredState,
   type NodeRegistration,
   type InstallationStateReport,
@@ -13,8 +16,11 @@ const log = rootLogger.child({ name: "tether-client" });
 
 const MAX_BACKOFF_MS = 30_000;
 
-function authHeaders(): Record<string, string> {
-  return { Authorization: `Bearer ${config.tether.secret}` };
+function signedHeaders(path: string): Record<string, string> {
+  return {
+    Authorization: signRequest(config.tether.secret, { method: "POST", path }),
+    "Content-Type": "application/json",
+  };
 }
 
 export async function* connectSSE(registration: NodeRegistration): AsyncGenerator<DesiredState> {
@@ -22,9 +28,9 @@ export async function* connectSSE(registration: NodeRegistration): AsyncGenerato
 
   while (true) {
     try {
-      const res = await fetch(serviceUrl(config.tether.url, "/api/v1/stream"), {
+      const res = await fetch(serviceUrl(config.tether.url, STREAM_PATH), {
         method: "POST",
-        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        headers: signedHeaders(STREAM_PATH),
         body: JSON.stringify(registration),
       });
 
@@ -102,9 +108,9 @@ export async function* connectSSE(registration: NodeRegistration): AsyncGenerato
 
 export async function reportInstallationStates(report: InstallationStateReport): Promise<void> {
   try {
-    const res = await fetch(serviceUrl(config.tether.url, "/api/v1/status"), {
+    const res = await fetch(serviceUrl(config.tether.url, STATUS_PATH), {
       method: "POST",
-      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      headers: signedHeaders(STATUS_PATH),
       body: JSON.stringify(report),
     });
     if (!res.ok) {

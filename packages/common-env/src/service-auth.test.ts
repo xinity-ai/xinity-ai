@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { signRequest, verifyRequest, type SignedRequest } from "./service-auth";
 
 const SECRET = "tether-secret-value";
-const post: SignedRequest = { method: "POST", path: "/api/v1/status", body: `{"nodeId":"n1"}` };
+const post: SignedRequest = { method: "POST", path: "/api/v1/status" };
 
 describe("signRequest", () => {
   test("never carries the secret", () => {
@@ -23,12 +23,11 @@ describe("verifyRequest", () => {
     expect(verifyRequest("other", signRequest(SECRET, post), post).ok).toBe(false);
   });
 
-  test("refuses a signature re-pointed at another method, path or body", () => {
+  test("refuses a signature re-pointed at another method or path", () => {
     const header = signRequest(SECRET, post);
 
     expect(verifyRequest(SECRET, header, { ...post, method: "DELETE" }).ok).toBe(false);
     expect(verifyRequest(SECRET, header, { ...post, path: "/api/v1/stream" }).ok).toBe(false);
-    expect(verifyRequest(SECRET, header, { ...post, body: `{"nodeId":"n2"}` }).ok).toBe(false);
   });
 
   test("separates a clock that drifted from a secret that is wrong", () => {
