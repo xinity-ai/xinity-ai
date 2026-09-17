@@ -14,6 +14,7 @@ import { type Host, commandExistsOn } from "./host.ts";
 import { pass, fail, info, promptOrUndefined, warn } from "./output.ts";
 import { heredoc } from "./service.ts";
 import { BIN_DIR, ENV_DIR, UNIT_DIR } from "./component-meta.ts";
+import { generateUnit } from "./systemd.ts";
 import { randomToken } from "./secrets.ts";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -201,23 +202,17 @@ async function installSystemdUnit(
   dataDir: string,
   dryRun: boolean,
 ): Promise<boolean> {
-  const unitContent = [
-    "[Unit]",
-    "Description=Xinity SeaweedFS Object Store",
-    "After=network-online.target",
-    "Wants=network-online.target",
-    "",
-    "[Service]",
-    "Type=simple",
-    "User=root",
-    `ExecStartPre=mkdir -p ${dataDir}`,
-    `ExecStart=${WEED_BIN} server -s3 -s3.config=${S3_CONFIG_PATH} -dir=${dataDir} -ip.bind=127.0.0.1 -s3.port=${S3_PORT}`,
-    "Restart=on-failure",
-    "RestartSec=5",
-    "",
-    "[Install]",
-    "WantedBy=multi-user.target",
-  ].join("\n") + "\n";
+  const unitContent = generateUnit({
+    component: "seaweedfs",
+    description: "Xinity SeaweedFS Object Store",
+    execStart: `${WEED_BIN} server -s3 -s3.config=${S3_CONFIG_PATH} -dir=${dataDir} -ip.bind=127.0.0.1 -s3.port=${S3_PORT}`,
+    secretKeys: [],
+    environmentFile: null,
+    // The data dir is root-owned, so switching to DynamicUser would strand it.
+    runAsRoot: true,
+    hardened: true,
+    readWritePaths: [dataDir],
+  });
 
   if (dryRun) {
     info("Dry run", `Would install systemd unit: ${SEAWEEDFS_UNIT}`);
@@ -225,8 +220,9 @@ async function installSystemdUnit(
   }
 
   const unitPath = `${UNIT_DIR}/${SEAWEEDFS_UNIT}`;
+  // ReadWritePaths refuses to start the unit if the data dir does not exist yet.
   const result = await host.withElevation(
-    `cat > ${unitPath} ${heredoc("UNIT_EOF", unitContent)}\nsystemctl daemon-reload`,
+    `mkdir -p ${dataDir}\ncat > ${unitPath} ${heredoc("UNIT_EOF", unitContent)}\nsystemctl daemon-reload`,
     "Install SeaweedFS systemd unit",
   );
 

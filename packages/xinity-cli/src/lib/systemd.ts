@@ -15,8 +15,15 @@ export type UnitConfig = {
   execStart: string;
   secretKeys: string[];
   afterUnits?: string[];
-  /** When true, the unit runs as root with no sandboxing. */
+  execStartPre?: string;
+  /** Path to the EnvironmentFile, or null for services configured entirely on the command line. */
+  environmentFile?: string | null;
+  /** When true, the unit runs as root. */
   runAsRoot?: boolean;
+  /** Defaults to sandboxing everything that does not run as root. */
+  hardened?: boolean;
+  /** Paths the service must still be able to write under ProtectSystem=strict. */
+  readWritePaths?: string[];
 }
 
 type ComponentDefaults = Omit<UnitConfig, "component" | "secretKeys" | "execStart">;
@@ -73,7 +80,12 @@ export function generateUnit(config: UnitConfig): string {
   lines.push(`StateDirectory=xinity-ai-${config.component}`);
 
   // Non-secret config via EnvironmentFile (read by PID 1, no permission issues)
-  lines.push(`EnvironmentFile=${ENV_DIR}/${config.component}.env`);
+  const environmentFile = config.environmentFile === undefined
+    ? `${ENV_DIR}/${config.component}.env`
+    : config.environmentFile;
+  if (environmentFile) {
+    lines.push(`EnvironmentFile=${environmentFile}`);
+  }
 
   // LoadCredential reads each secret file as PID 1; the matching Environment wires it
   // to common-env's _FILE resolution (%d = credentials dir at runtime).
@@ -84,11 +96,14 @@ export function generateUnit(config: UnitConfig): string {
     );
   }
 
+  if (config.execStartPre) {
+    lines.push(`ExecStartPre=${config.execStartPre}`);
+  }
+
   lines.push(`ExecStart=${config.execStart}`);
   lines.push("Restart=on-failure", "RestartSec=5", "RestartSteps=10", "RestartMaxDelaySec=300");
 
-  // Security hardening (only for sandboxed services)
-  if (!config.runAsRoot) {
+  if (config.hardened ?? !config.runAsRoot) {
     lines.push(
       "",
       "# Security",
@@ -97,6 +112,9 @@ export function generateUnit(config: UnitConfig): string {
       "ProtectHome=yes",
       "PrivateTmp=true",
     );
+    for (const path of config.readWritePaths ?? []) {
+      lines.push(`ReadWritePaths=${path}`);
+    }
   }
 
   lines.push("", "[Install]", "WantedBy=multi-user.target");
