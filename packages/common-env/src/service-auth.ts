@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 const SCHEME = "Xinity";
 const MAX_SKEW_MS = 60_000;
@@ -7,20 +7,13 @@ export type SignedRequest = {
   method: string;
   /** Path and query, so a signature cannot be re-pointed at another endpoint. */
   path: string;
-  body?: string;
 };
 
 export type VerifyFailure = "missing" | "malformed" | "stale" | "mismatch";
 export type VerifyResult = { ok: true } | { ok: false; reason: VerifyFailure };
 
 function canonical(request: SignedRequest, timestamp: number, nonce: string): string {
-  return [
-    request.method.toUpperCase(),
-    request.path,
-    String(timestamp),
-    nonce,
-    createHash("sha256").update(request.body ?? "").digest("base64url"),
-  ].join("\n");
+  return [request.method.toUpperCase(), request.path, String(timestamp), nonce].join("\n");
 }
 
 function mac(secret: string, request: SignedRequest, timestamp: number, nonce: string): string {
@@ -28,8 +21,9 @@ function mac(secret: string, request: SignedRequest, timestamp: number, nonce: s
 }
 
 /**
- * Proves the caller holds the shared secret without putting it on the wire. The method, path and
- * body are signed too, so a captured header cannot be re-pointed at a different request.
+ * Proves the caller holds the shared secret without putting it on the wire. The method and path are
+ * signed, so a captured header cannot be re-pointed at another endpoint. The body deliberately is
+ * not, so this stays usable on requests whose payload is too large to buffer.
  */
 export function signRequest(secret: string, request: SignedRequest): string {
   const timestamp = Date.now();

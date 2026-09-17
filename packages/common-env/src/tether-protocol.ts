@@ -66,6 +66,10 @@ export const installationStateReportSchema = z.object({
 });
 export type InstallationStateReport = z.infer<typeof installationStateReportSchema>;
 
+/** Signed by the caller and verified by the tether, so both ends must name them identically. */
+export const STREAM_PATH = "/api/v1/stream";
+export const STATUS_PATH = "/api/v1/status";
+
 let cachedFingerprint: string | null = null;
 
 export function protocolFingerprint(): string {

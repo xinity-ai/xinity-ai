@@ -1,20 +1,19 @@
-import { timingSafeEqual } from "node:crypto";
+import { verifyRequest, type VerifyFailure } from "common-env";
 import { config } from "./config";
 
-const secretBuffer = Buffer.from(config.tetherSecret);
-
-export function verifyBearerToken(req: Request): boolean {
-  const header = req.headers.get("authorization");
-  if (!header?.startsWith("Bearer ")) {
-    return false;
-  }
-  const token = Buffer.from(header.slice(7));
-  if (token.length !== secretBuffer.length) {
-    return false;
-  }
-  return timingSafeEqual(token, secretBuffer);
+export function verifySignature(req: Request, path: string): VerifyFailure | null {
+  const result = verifyRequest(
+    config.tetherSecret,
+    req.headers.get("authorization"),
+    { method: req.method, path },
+  );
+  return result.ok ? null : result.reason;
 }
 
-export function unauthorized(): Response {
-  return new Response("Unauthorized", { status: 401 });
+/** Names the scheme, because a daemon predating it fails here rather than at the protocol check. */
+export function unauthorized(reason: VerifyFailure): Response {
+  const detail = reason === "stale"
+    ? "Signature timestamp is outside the accepted window; check the clock on this node."
+    : "Expected an Authorization header signed with the tether secret.";
+  return new Response(`Unauthorized: ${detail}`, { status: 401 });
 }
