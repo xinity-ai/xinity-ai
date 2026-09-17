@@ -6,6 +6,7 @@ import {
   dynamicGroups,
   dynamicSettings,
   groupProblem,
+  auditableValue,
   listOverrides,
   missingSecretKey,
   missingSecretKeyForGroup,
@@ -31,7 +32,7 @@ const list = rootOs
 const setGroup = rootOs
   .use(withInstanceAdmin)
   .use(auditMiddleware)
-  .meta({ audit: { action: "dynamicConfig.set", resource: "dynamicConfig", resourceId: { fromInput: "id" }, captureInput: ["id"] } })
+  .meta({ audit: { action: "dynamicConfig.set", resource: "dynamicConfig", resourceId: { fromInput: "id" }, captureOutput: ["values"] } })
   .route({ method: "PUT", path: "/dynamic-config/groups/{id}", tags, summary: "Set a dashboard-managed group" })
   .input(z.object({ id: z.string(), values: z.record(z.string(), z.string()) }))
   .handler(async ({ input, context, errors }) => {
@@ -46,7 +47,14 @@ const setGroup = rootOs
     }
 
     await setGroupOverride(group, input.values, context.actor.actorLabel);
-    return { id: group.id };
+    return {
+      id: group.id,
+      values: Object.fromEntries(
+        group.members
+          .map((member) => [member.key, auditableValue(member.key, input.values[member.key]!)])
+          .filter(([, value]) => value !== undefined),
+      ),
+    };
   });
 
 const clearGroup = rootOs
@@ -67,7 +75,9 @@ const clearGroup = rootOs
 const set = rootOs
   .use(withInstanceAdmin)
   .use(auditMiddleware)
-  .meta({ audit: { action: "dynamicConfig.set", resource: "dynamicConfig", resourceId: { fromInput: "key" }, captureInput: ["key"] } })
+  // captureOutput, not captureInput: the handler withholds a secret's value, so the audit trail
+  // records what a non-secret was set to without ever carrying a secret into the log.
+  .meta({ audit: { action: "dynamicConfig.set", resource: "dynamicConfig", resourceId: { fromInput: "key" }, captureOutput: ["value"] } })
   .route({ method: "PUT", path: "/dynamic-config/{key}", tags, summary: "Set a dashboard-managed setting" })
   .input(z.object({ key: z.string(), value: z.string() }))
   .handler(async ({ input, context, errors }) => {
@@ -82,7 +92,7 @@ const set = rootOs
     }
 
     await setOverride(setting, input.value, context.actor.actorLabel);
-    return { key: input.key };
+    return { key: input.key, value: auditableValue(input.key, input.value) };
   });
 
 const clear = rootOs
