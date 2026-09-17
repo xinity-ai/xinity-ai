@@ -348,6 +348,40 @@ Getting the arithmetic to reproduce vLLM's `X GiB is needed` exactly is how you 
 right rather than merely large enough, and it lets you predict which values fail, which is worth
 confirming with one run at the value just below.
 
+**The floor is engine-version-dependent, so measure it on the newest engine you support.** vLLM
+changes how it accounts for the cache between releases, and a floor measured on an older build can
+be too small to start on a newer one — a hard startup failure, not a warning. Measured on
+Qwen3.8-27B between 0.26 and 0.29, where the floor rose 17.37 → 17.58 GB for the same model,
+context and weights, from two independent changes:
+
+- **Prefix caching defaults changed.** 0.26 ran that architecture with `enable_prefix_caching=False`
+  (mamba cache mode `none`, one block per recurrent group); 0.29 enables it, which selects mamba
+  cache mode `align`, and `align` reserves **two** blocks per recurrent group. Check the engine
+  config line vLLM logs at startup rather than assuming, and note that `align` also honours
+  `num_speculative_blocks` and `num_prefill_checkpoint_blocks` on top.
+- **0.29 holds back the BlockPool null block before the capacity check** (`check_memory =
+  avail_mem - _pool_bytes_per_block(groups)` in `v1/core/kv_cache_utils.py`), so one pool block of
+  the cache you allocate is not available to serve with.
+
+Both are counted in **pool blocks**, not per layer, and that is the part worth internalising: vLLM
+splits layers into groups of equal size (group size = the smallest layer bucket, unless the largest
+is under 1.5x it), and **every group is charged a whole pool block sized by the largest group**. A
+model with 16 attention and 48 recurrent layers becomes 4 groups of 16, so a block costs
+`16 × page_size` and the three recurrent groups each pay for 16 layers while using 16 — but a model
+whose buckets divide unevenly pays for padding layers it never uses. vLLM warns when it pads
+(`Add N padding layers, may waste at most X% KV cache memory`). The requirement is then:
+
+```
+pool_block = page_size × max_group_layers
+needed     = pool_block × ( ceil(max_model_len / blk)            # the attention group
+                          + blocks_per_recurrent_group × n_recurrent_groups )
+```
+
+Reproducing vLLM's `X GiB is needed` exactly is still the test that the number is right. When a
+model must run across a range of engine versions, author the **highest** floor you measured:
+`minKvCacheGb` is a minimum, so an older engine simply gets more cache than it needs, and record
+both figures in a comment so the next person does not re-derive them.
+
 **Speculative decoding raises the floor too.** An MTP or draft head is an extra decoder layer with
 its own KV, so an entry enabling `--speculative-config` needs both a higher `minKvCacheGb` and a
 higher `weightGb` than the same checkpoint without it. Measure both; do not inherit the base
