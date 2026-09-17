@@ -10,8 +10,10 @@
       dashboardManageableKeys = [
         "SIGNUP_ENABLED"
         "DEPLOYMENT_STRATEGY"
+        "PROMETHEUS_URL"
         "LICENSE_KEY"
         "MCP_ENABLED"
+        "NOTIFICATIONS_ENABLED"
       ];
       # [/sync:dynamic-keys]
 

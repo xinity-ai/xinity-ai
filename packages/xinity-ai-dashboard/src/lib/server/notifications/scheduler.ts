@@ -431,20 +431,37 @@ async function runChecks() {
 
 // ── Public API ──────────────────────────────────────────────────────
 
-function scheduleRecurring(fn: () => unknown, intervalMs: number): void {
-  const handle = setInterval(fn, intervalMs);
-  process.on("beforeExit", () => clearInterval(handle));
-}
-
-export async function startNotificationScheduler() {
-  if (building) return;
+/** Returns a stop, because the setting that starts this can be turned off while the process runs. */
+export function startNotificationScheduler(): () => void {
+  if (building) {
+    return () => {};
+  }
 
   log.info("Starting notification scheduler");
 
-  await Bun.sleep(WARMUP_DELAY_MS);
-  await runChecks();
+  const handles: Timer[] = [];
+  let stopped = false;
 
-  scheduleRecurring(runChecks, CHECK_INTERVAL_MS);
-  // Weekly report check runs hourly; checkWeeklyReport gates on Monday 8 AM UTC.
-  scheduleRecurring(checkWeeklyReport, WEEKLY_CHECK_INTERVAL_MS);
+  void (async () => {
+    await Bun.sleep(WARMUP_DELAY_MS);
+    if (stopped) {
+      return;
+    }
+    await runChecks();
+    if (stopped) {
+      return;
+    }
+    handles.push(setInterval(runChecks, CHECK_INTERVAL_MS));
+    // Weekly report check runs hourly; checkWeeklyReport gates on Monday 8 AM UTC.
+    handles.push(setInterval(checkWeeklyReport, WEEKLY_CHECK_INTERVAL_MS));
+  })();
+
+  return () => {
+    stopped = true;
+    for (const handle of handles) {
+      clearInterval(handle);
+    }
+    handles.length = 0;
+    log.info("Stopped notification scheduler");
+  };
 }

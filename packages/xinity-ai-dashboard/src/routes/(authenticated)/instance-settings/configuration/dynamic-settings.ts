@@ -128,6 +128,20 @@ export const DYNAMIC_SETTINGS: DynamicSetting[] = [
       .describe("HuggingFace token for downloading private or gated models").meta(secret()),
   },
   {
+    key: "PROMETHEUS_URL",
+    components: ["dashboard"],
+    group: "Compute",
+    schema: z.url().optional()
+      .describe("Prometheus server URL for live GPU metrics overlay on the Compute page (e.g. http://prometheus:9090). Enables utilization rings and energy readouts on compute nodes."),
+  },
+  {
+    key: "NOTIFICATIONS_ENABLED",
+    components: ["dashboard"],
+    schema: configBool().default(true)
+      .describe("Enable the notification scheduler (deployment status, node health, capacity warnings, weekly reports)")
+      .meta(expert()),
+  },
+  {
     key: "MCP_ENABLED",
     components: ["dashboard"],
     schema: configBool().default(true)
