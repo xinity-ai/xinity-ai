@@ -663,10 +663,7 @@ async function handleUp(name: string, versionFlag: string | undefined, dryRun: b
   } else {
     targetVersion = stack.pinnedVersion;
   }
-  const versionLabel = targetVersion.startsWith("local:")
-    ? `local build (${targetVersion.slice(6)})`
-    : targetVersion;
-  log.info(`Stack version: ${cyan(versionLabel)}`);
+  log.info(`Stack version: ${cyan(versionLabel(targetVersion))}`);
 
   const ok = await runStackFlow(stack, { targetVersion, dryRun });
   outro(ok ? "Done" : "Failed");
