@@ -109,7 +109,7 @@ Who can sign in, and who is allowed to create an organization.
 
 Used for invitations, password resets and notifications. Disabled when unset.
 
-Off unless all of `MAIL_URL` are set.
+Off unless `MAIL_URL` is set.
 
 | Variable | Default | Description |
 |---|---|---|
@@ -137,7 +137,7 @@ Model deployment across inference nodes, and what the Compute page shows.
 
 Mirrors audit events to one SIEM sink. The URL scheme picks the transport: http(s) pushes to Loki, udp, tcp or tls sends RFC 5424 syslog. Settings for the other transport are ignored. Requires a license with the audit-log feature.
 
-Off unless all of `AUDIT_SINK_URL` are set.
+Off unless `AUDIT_SINK_URL` is set.
 
 | Variable | Default | Description |
 |---|---|---|

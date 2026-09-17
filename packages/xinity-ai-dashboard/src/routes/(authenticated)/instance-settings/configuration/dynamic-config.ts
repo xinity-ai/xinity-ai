@@ -3,9 +3,13 @@ import { createSecretKeyring, SEALED_PREFIX, type SecretKeyring } from "common-e
 import { getDB } from "$lib/server/db";
 import { config, configStore } from "$lib/server/config";
 import {
+  DYNAMIC_GROUPS,
   DYNAMIC_SETTINGS,
-  findDynamicSetting,
+  isSecretKey,
   summarize,
+  summarizeGroup,
+  type DynamicGroup,
+  type DynamicGroupSummary,
   type DynamicSetting,
   type DynamicSettingSummary,
 } from "./dynamic-settings";
@@ -59,8 +63,7 @@ export async function listOverrides(): Promise<DynamicOverride[]> {
     .from(dynamicConfigT);
 
   return rows.map((row) => {
-    const setting = findDynamicSetting(row.key);
-    const withheld = setting !== undefined && summarize(setting).isSecret;
+    const withheld = isSecretKey(row.key);
     return {
       key: row.key,
       value: withheld ? undefined : row.value,
@@ -111,4 +114,65 @@ export async function setOverride(
 
 export async function clearOverride(key: string): Promise<void> {
   await getDB().delete(dynamicConfigT).where(sql`${dynamicConfigT.key} = ${key}`);
+}
+
+export function dynamicGroups(): DynamicGroupSummary[] {
+  return DYNAMIC_GROUPS.map(summarizeGroup);
+}
+
+/** Judges the members together, which is the whole reason they are a group. */
+export function groupProblem(group: DynamicGroup, values: Record<string, string>): string | undefined {
+  const missing = group.members.filter((member) => !values[member.key]);
+  if (missing.length > 0) {
+    return `${missing.map((member) => member.key).join(" and ")} must be set together with the rest of ${group.title}.`;
+  }
+
+  const sealed = group.members.find((member) => values[member.key]!.startsWith(SEALED_PREFIX));
+  if (sealed) {
+    return `${sealed.key} cannot start with "${SEALED_PREFIX}", which marks a value this dashboard encrypted.`;
+  }
+
+  const parsed = group.schema.safeParse(
+    Object.fromEntries(group.members.map((member) => [member.name, values[member.key]])),
+  );
+  return parsed.success ? undefined : parsed.error.issues[0]?.message;
+}
+
+export function missingSecretKeyForGroup(group: DynamicGroup): string | undefined {
+  const holdsSecret = group.members.some((member) => isSecretKey(member.key));
+  if (!holdsSecret || secretKeyring() !== null) {
+    return undefined;
+  }
+  return `${group.title} holds a secret, and this dashboard has no XINITY_SECRET_KEY to encrypt it with. `
+    + "Set one on every host that reads it before managing this setting here.";
+}
+
+/** One transaction, so no reader can see a provider that disagrees with its credential. */
+export async function setGroupOverride(
+  group: DynamicGroup,
+  values: Record<string, string>,
+  updatedBy: string | null,
+): Promise<void> {
+  await getDB().transaction(async (tx) => {
+    for (const member of group.members) {
+      const ring = isSecretKey(member.key) ? secretKeyring() : null;
+      const value = values[member.key]!;
+      const row = ring === null
+        ? { value, encrypted: false, valueDigest: null }
+        : { value: ring.seal(value), encrypted: true, valueDigest: ring.digest(value) };
+
+      await tx
+        .insert(dynamicConfigT)
+        .values({ key: member.key, updatedBy, ...row })
+        .onConflictDoUpdate({
+          target: dynamicConfigT.key,
+          set: { ...row, updatedBy, updatedAt: new Date() },
+        });
+    }
+  });
+}
+
+export async function clearGroupOverride(group: DynamicGroup): Promise<void> {
+  const keys = group.members.map((member) => member.key);
+  await getDB().delete(dynamicConfigT).where(sql`${dynamicConfigT.key} = ANY(${keys})`);
 }

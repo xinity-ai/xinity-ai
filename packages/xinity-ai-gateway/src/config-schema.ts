@@ -24,7 +24,7 @@ import {
   type TlsConfig,
 } from "common-env";
 import { loggingGroup, type LoggingConfig } from "common-log";
-import { WEB_SEARCH_PROVIDER_NAMES } from "./llm-forward/tools/search-providers";
+import { WEB_SEARCH_PROVIDER_NAMES, webSearchPairSchema } from "./llm-forward/tools/search-providers";
 
 type Cache = {
   url: string;
@@ -62,8 +62,8 @@ const cache = defineGroup<Cache>({
 });
 
 type WebSearch = {
-  provider?: (typeof WEB_SEARCH_PROVIDER_NAMES)[number];
-  credential?: string;
+  provider: () => (typeof WEB_SEARCH_PROVIDER_NAMES)[number] | undefined;
+  credential: () => string | undefined;
   engineUrl?: string;
 };
 
@@ -72,10 +72,17 @@ const webSearch = defineGroup<WebSearch>({
   title: "Web search",
   description: "Backend for web-search-augmented generation. Disabled when unset.",
   expert: true,
+  violations: ({ provider, credential }) => {
+    if (!provider) {
+      return [];
+    }
+    const pair = webSearchPairSchema.safeParse({ provider, credential });
+    return pair.success ? [] : [{ field: "credential", message: pair.error.issues[0]!.message }];
+  },
   fields: {
-    provider: env("WEB_SEARCH_PROVIDER", z.enum(WEB_SEARCH_PROVIDER_NAMES).optional()
+    provider: dynamic("WEB_SEARCH_PROVIDER", z.enum(WEB_SEARCH_PROVIDER_NAMES).optional()
       .describe("Web search backend. When unset, web search is disabled.")),
-    credential: env("WEB_SEARCH_CREDENTIAL", z.string().optional()
+    credential: dynamic("WEB_SEARCH_CREDENTIAL", z.string().optional()
       .describe("Provider credential: searxng=instance URL, google=apikey:cx, bing/brave/serper/tavily=API key")
       .meta(secret())),
     engineUrl: env("WEB_SEARCH_ENGINE_URL", z.url().optional()

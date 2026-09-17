@@ -145,6 +145,67 @@ export function findDynamicSetting(key: string): DynamicSetting | undefined {
   return DYNAMIC_SETTINGS.find((setting) => setting.key === key);
 }
 
+export type DynamicGroupMember = { name: string; key: string; schema: z.ZodType };
+
+/** Settings only meaningful as a set: written in one transaction and judged by one schema. */
+export type DynamicGroup = {
+  id: string;
+  title: string;
+  description: string;
+  /** Consequences of turning this on that the setting itself cannot show. */
+  warning?: string;
+  components: string[];
+  members: DynamicGroupMember[];
+  /** Over `{ [member.name]: value }`, because no member schema can judge the others. */
+  schema: z.ZodType;
+};
+
+const API_KEY_PROVIDERS = ["bing", "brave", "serper", "tavily"] as const;
+const SEARCH_PROVIDERS = ["searxng", "google", ...API_KEY_PROVIDERS] as const;
+
+export const DYNAMIC_GROUPS: DynamicGroup[] = [
+  {
+    id: "webSearch",
+    title: "Web search",
+    description: "Backend for web-search-augmented generation, and the credential it authenticates with.",
+    warning: "Search queries leave your deployment: the provider you choose receives every search the "
+      + "model runs. The model decides what to search for, so a query can carry content from a user's "
+      + "conversation.",
+    components: ["gateway"],
+    members: [
+      {
+        name: "provider",
+        key: "WEB_SEARCH_PROVIDER",
+        schema: z.enum(SEARCH_PROVIDERS).describe("Web search backend"),
+      },
+      {
+        name: "credential",
+        key: "WEB_SEARCH_CREDENTIAL",
+        schema: z.string().describe("searxng=instance URL, google=apikey:cx, others=API key").meta(secret()),
+      },
+    ],
+    schema: z.discriminatedUnion("provider", [
+      z.object({
+        provider: z.literal("searxng"),
+        credential: z.url({ message: "WEB_SEARCH_CREDENTIAL for searxng must be a valid URL" }),
+      }),
+      z.object({
+        provider: z.literal("google"),
+        credential: z.string().regex(/^[^:]+:.+$/, "WEB_SEARCH_CREDENTIAL for google must be in apikey:cx format"),
+      }),
+      ...API_KEY_PROVIDERS.map((provider) => z.object({
+        provider: z.literal(provider),
+        credential: z.string().trim()
+          .min(1, `WEB_SEARCH_CREDENTIAL for ${provider} must be a non-empty API key`),
+      })),
+    ]),
+  },
+];
+
+export function findDynamicGroup(id: string): DynamicGroup | undefined {
+  return DYNAMIC_GROUPS.find((group) => group.id === id);
+}
+
 type JsonSchema = { type?: string; enum?: string[]; default?: unknown; description?: string };
 
 /** The part of a setting that survives the wire, since a schema cannot be serialized. */
@@ -159,20 +220,64 @@ export type DynamicSettingSummary = {
   enumValues?: string[];
 };
 
-export function summarize(setting: DynamicSetting): DynamicSettingSummary {
-  const json = z.toJSONSchema(setting.schema, { io: "output" }) as JsonSchema;
-  const kind = json.type === "number" || json.type === "integer" || json.type === "boolean"
-    ? json.type
-    : "string";
+type FieldShape = {
+  description: string;
+  defaultValue?: string;
+  isSecret: boolean;
+  kind: "number" | "integer" | "boolean" | "string";
+  enumValues?: string[];
+};
 
+function shapeOf(schema: z.ZodType): FieldShape {
+  const json = z.toJSONSchema(schema, { io: "output" }) as JsonSchema;
+  return {
+    description: json.description ?? "",
+    defaultValue: json.default === undefined ? undefined : String(json.default),
+    isSecret: readLeafMeta(schema).secret === true,
+    kind: json.type === "number" || json.type === "integer" || json.type === "boolean" ? json.type : "string",
+    enumValues: json.enum,
+  };
+}
+
+export function summarize(setting: DynamicSetting): DynamicSettingSummary {
   return {
     key: setting.key,
     components: setting.components,
     group: setting.group,
-    description: json.description ?? "",
-    defaultValue: json.default === undefined ? undefined : String(json.default),
-    isSecret: readLeafMeta(setting.schema).secret === true,
-    kind,
-    enumValues: json.enum,
+    ...shapeOf(setting.schema),
   };
+}
+
+export type DynamicGroupSummary = {
+  id: string;
+  title: string;
+  description: string;
+  warning?: string;
+  components: string[];
+  members: ({ name: string; key: string } & FieldShape)[];
+};
+
+export function summarizeGroup(group: DynamicGroup): DynamicGroupSummary {
+  return {
+    id: group.id,
+    title: group.title,
+    description: group.description,
+    warning: group.warning,
+    components: group.components,
+    members: group.members.map((member) => ({
+      name: member.name,
+      key: member.key,
+      ...shapeOf(member.schema),
+    })),
+  };
+}
+
+/** Group members are not settings, so a lookup by key has to consider both to judge secrecy. */
+export function isSecretKey(key: string): boolean {
+  const setting = findDynamicSetting(key);
+  if (setting) {
+    return summarize(setting).isSecret;
+  }
+  const member = DYNAMIC_GROUPS.flatMap((group) => group.members).find((entry) => entry.key === key);
+  return member !== undefined && readLeafMeta(member.schema).secret === true;
 }

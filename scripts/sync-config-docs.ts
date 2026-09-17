@@ -68,7 +68,10 @@ function sections(fields: EnvField[]): string[] {
     const group = members[0]!.group!;
     lines.push(`### ${group.title}`, "");
     if (group.description) lines.push(group.description, "");
-    if (group.activation.length > 0) {
+    const [only] = group.activation;
+    if (group.activation.length === 1) {
+      lines.push(`Off unless \`${only}\` is set.`, "");
+    } else if (group.activation.length > 1) {
       lines.push(`Off unless all of ${group.activation.map((k) => `\`${k}\``).join(", ")} are set.`, "");
     }
     lines.push(...table(members), "");

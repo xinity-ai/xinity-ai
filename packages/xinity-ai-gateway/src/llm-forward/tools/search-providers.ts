@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { SearchProvider } from "./search-types";
 
 const SEARCH_TIMEOUT_MS = 10_000;
@@ -182,27 +183,11 @@ function createTavilyProvider(credential: string): SearchProvider {
 
 type ProviderEntry = {
   create: (credential: string) => SearchProvider;
-  validateCredential?: (credential: string) => void;
 };
 
 const SEARCH_PROVIDERS = {
-  searxng: {
-    create: createSearxngProvider,
-    validateCredential(credential) {
-      if (!URL.canParse(credential)) {
-        throw new Error("WEB_SEARCH_CREDENTIAL for searxng must be a valid URL");
-      }
-    },
-  },
-  google: {
-    create: createGoogleProvider,
-    validateCredential(credential) {
-      const idx = credential.indexOf(":");
-      if (idx < 1 || idx === credential.length - 1) {
-        throw new Error("WEB_SEARCH_CREDENTIAL for google must be in apikey:cx format");
-      }
-    },
-  },
+  searxng: { create: createSearxngProvider },
+  google: { create: createGoogleProvider },
   bing: { create: createBingProvider },
   brave: { create: createBraveProvider },
   serper: { create: createSerperProvider },
@@ -241,12 +226,34 @@ export function resolveSearchConfig(
   return null;
 }
 
+const apiKeyProvider = (provider: WebSearchProviderName) => z.object({
+  provider: z.literal(provider),
+  credential: z.string().trim().min(1, `WEB_SEARCH_CREDENTIAL for ${provider} must be a non-empty API key`),
+});
+
+/**
+ * A schema rather than a check per field, because the credential is only meaningful against the
+ * provider that reads it. Exported so the dashboard can judge the pair exactly as the gateway will.
+ */
+export const webSearchPairSchema = z.discriminatedUnion("provider", [
+  z.object({
+    provider: z.literal("searxng"),
+    credential: z.url({ message: "WEB_SEARCH_CREDENTIAL for searxng must be a valid URL" }),
+  }),
+  z.object({
+    provider: z.literal("google"),
+    credential: z.string().regex(/^[^:]+:.+$/, "WEB_SEARCH_CREDENTIAL for google must be in apikey:cx format"),
+  }),
+  apiKeyProvider("bing"),
+  apiKeyProvider("brave"),
+  apiKeyProvider("serper"),
+  apiKeyProvider("tavily"),
+]);
+
 export function validateSearchCredential(provider: WebSearchProviderName, credential: string): void {
-  const entry: ProviderEntry = SEARCH_PROVIDERS[provider];
-  if (entry.validateCredential) {
-    entry.validateCredential(credential);
-  } else if (!credential.trim()) {
-    throw new Error(`WEB_SEARCH_CREDENTIAL for ${provider} must be a non-empty API key`);
+  const result = webSearchPairSchema.safeParse({ provider, credential });
+  if (!result.success) {
+    throw new Error(result.error.issues[0]!.message);
   }
 }
 

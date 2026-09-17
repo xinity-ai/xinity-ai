@@ -82,7 +82,12 @@ const handler = new OpenAPIHandler(serverRouter, {
 });
 
 const tls = config.tls && { cert: config.tls.cert, key: config.tls.key };
-setSearchProvider(getSearchProvider(config.webSearch));
+configStore.watch(
+  (value) => [value.webSearch.provider(), value.webSearch.credential()] as const,
+  ([provider, credential]) => {
+    setSearchProvider(getSearchProvider({ provider, credential, engineUrl: config.webSearch.engineUrl }));
+  },
+);
 
 const meteredEndpoints: Array<[string, RouteHandler]> = [
   ["/v1/chat/completions", handleChatCompletion],
