@@ -100,8 +100,8 @@ export async function setOverride(
 ): Promise<void> {
   const ring = summarize(setting).isSecret ? secretKeyring() : null;
   const row = ring === null
-    ? { value, encrypted: false, valueDigest: null }
-    : { value: ring.seal(value), encrypted: true, valueDigest: ring.digest(value) };
+    ? { value, valueDigest: null }
+    : { value: ring.seal(value), valueDigest: ring.digest(value) };
 
   await getDB()
     .insert(dynamicConfigT)
@@ -158,8 +158,8 @@ export async function setGroupOverride(
       const ring = isSecretKey(member.key) ? secretKeyring() : null;
       const value = values[member.key]!;
       const row = ring === null
-        ? { value, encrypted: false, valueDigest: null }
-        : { value: ring.seal(value), encrypted: true, valueDigest: ring.digest(value) };
+        ? { value, valueDigest: null }
+        : { value: ring.seal(value), valueDigest: ring.digest(value) };
 
       await tx
         .insert(dynamicConfigT)
@@ -175,4 +175,9 @@ export async function setGroupOverride(
 export async function clearGroupOverride(group: DynamicGroup): Promise<void> {
   const keys = group.members.map((member) => member.key);
   await getDB().delete(dynamicConfigT).where(sql`${dynamicConfigT.key} = ANY(${keys})`);
+}
+
+/** What the audit trail may record: a secret's value is withheld there exactly as it is on read. */
+export function auditableValue(key: string, value: string): string | undefined {
+  return isSecretKey(key) ? undefined : value;
 }

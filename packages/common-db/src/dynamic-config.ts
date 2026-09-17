@@ -1,5 +1,5 @@
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { dynamicConfigT } from "./schema/dynamic-config";
+import { dynamicConfigT } from "./schema/deployment-config";
 
 export async function readDynamicConfig(db: PostgresJsDatabase): Promise<Record<string, string>> {
   const rows = await db
