@@ -13,7 +13,7 @@ export function verifySignature(req: Request, path: string): VerifyFailure | nul
 /** Names the scheme, because a daemon predating it fails here rather than at the protocol check. */
 export function unauthorized(reason: VerifyFailure): Response {
   const detail = reason === "stale"
-    ? "Signature timestamp is outside the accepted window; check the clock on this node."
+    ? `Signature timestamp is outside the accepted window. This tether's clock reads ${new Date().toISOString()}. Compare it with the clock on the calling node.`
     : "Expected an Authorization header signed with the tether secret.";
   return new Response(`Unauthorized: ${detail}`, { status: 401 });
 }
