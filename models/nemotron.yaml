@@ -25,9 +25,11 @@ models:
       # cache, and the checkpoint asks for an fp8 one, so a token costs
       # 2 * 8 * 2 kv heads * 128 head_dim * 1 byte. The 40 mamba blocks hold a fixed
       # state per request instead: vLLM pages them at 3,211,264 bytes each.
+      # Bracketed: 1.36 aborts, 1.37 starts. Nearly all of this is per-request mamba state
+      # rather than context KV, so re-bracket rather than derive after an engine change.
       kvBytesPerToken: 4096
       stateBytesPerSequence: 128450560
-      minKvCacheGb: 1.22
+      minKvCacheGb: 1.37
       maxContextLength: 262144
       weightGb: 47.95  # measured resident, 44.65 GiB
       activeWeightGb: 7
@@ -81,7 +83,8 @@ models:
       # blocks holds a fixed 4,259,840-byte page per request in flight.
       kvBytesPerToken: 4096
       stateBytesPerSequence: 170393600
-      minKvCacheGb: 1.27  # 1.00x; vLLM picks an 8320-token attention block here
+      # Bracketed: 1.46 aborts, 1.47 starts at 1.02x. Per-request mamba state, as above.
+      minKvCacheGb: 1.47
       maxContextLength: 262144
       weightGb: 74.76  # measured resident, 69.62 GiB
       activeWeightGb: 11

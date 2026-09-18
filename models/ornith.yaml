@@ -25,16 +25,14 @@ models:
     engine: vllm
     engineSpecifier: ornith-ai/Ornith-1.0-9B
     sizing: &ornith9-kv
-      # 32 layers, of which 8 are full attention and 24 are linear -> a token costs
-      # 2 * 8 * 4 kv heads * 256 head_dim * 2, and the linear layers hold a fixed
-      # per-sequence state instead: 24 * the 2,162,688-byte page vLLM pads them to.
-      # The floor is not the plain product of the two. vLLM raises the attention block
-      # size to 528 tokens so an attention page covers a linear one, which rounds the
-      # context up to 497 whole blocks:
-      #   497 * 2162688 * 8 + 24 * 2162688 = 8.65 GB
+      # 32 layers, 8 full attention and 24 linear -> a token costs
+      # 2 * 8 * 4 kv heads * 256 head_dim * 2, and each linear layer holds a fixed
+      # 2,162,688-byte per-sequence state instead. minKvCacheGb is authored, not
+      # derived: whole-block allocation puts it above the product of the two.
+      # Bracketed: 8.71 aborts, 8.72 starts at 1.00x.
       kvBytesPerToken: 32768
       stateBytesPerSequence: 51904512
-      minKvCacheGb: 8.66
+      minKvCacheGb: 8.72
       maxContextLength: 262144
       weightGb: 18.04  # measured resident, 16.80 GiB
       weightBits: 16
@@ -84,9 +82,10 @@ models:
     sizing: &ornith35-kv
       # 40 layers, 10 full attention and 30 linear, 2 kv heads at head_dim 256. Byte for
       # byte the Qwen3.5 35B A3B layout.
+      # Bracketed: 5.53 aborts, 5.54 starts at 1.00x.
       kvBytesPerToken: 20480
       stateBytesPerSequence: 64880640
-      minKvCacheGb: 5.45
+      minKvCacheGb: 5.54
       maxContextLength: 262144
       weightGb: 69.46  # measured resident, 64.69 GiB
       activeWeightGb: 7
@@ -174,18 +173,11 @@ models:
     engine: vllm
     engineSpecifier: ornith-ai/Ornith-1.5-9B
     sizing: &ornith15-9b-kv
-      # 32 layers, 8 of them full attention and 24 linear: a token costs
-      # 2 * 8 * 4 kv heads * 256 head_dim * 2 bytes, and each linear layer holds a
-      # fixed per-sequence state instead. vLLM raises the attention block size to
-      # 528 tokens so an attention page covers a linear one, then pads the linear
-      # page by 0.76% to match, which is the 2,162,688 bytes counted below.
-      #   ceil(262144 / 528) = 497 blocks -> 497 * 2162688 * 8 + 24 * 2162688 = 8.66 GB
-      # Measured: vLLM demands 8.06 GiB, aborts at 8.60, starts at 8.66 with
-      # concurrency 1.00x. The floor has to be authored: the value derived from
-      # kvBytesPerToken alone is 8.65 and aborts, 752 KB short of the block total.
+      # The 1.0 9B geometry unchanged, and the same authored floor.
+      # Bracketed: 8.71 aborts, 8.72 starts at 1.00x.
       kvBytesPerToken: 32768
       stateBytesPerSequence: 51904512
-      minKvCacheGb: 8.66
+      minKvCacheGb: 8.72
       maxContextLength: 262144
       weightGb: 18.04  # measured resident, 16.80 GiB
       weightBits: 16
@@ -251,16 +243,12 @@ models:
     engine: vllm
     engineSpecifier: ornith-ai/Ornith-1.5-35B-A3B
     sizing: &ornith15-35b-kv
-      # 40 layers, 10 full attention and 30 linear, 2 kv heads at head_dim 256.
-      # Same linear state per layer as the 9B; here vLLM picks a 1056-token
-      # attention block and pads the linear page by the same 0.76%.
-      #   ceil(262144 / 1056) = 249 blocks -> 249 * 2162688 * 10 + 30 * 2162688 = 5.45 GB
-      # Measured: starts at 5.45 with concurrency 1.00x, and the floor has to be
-      # authored here too: the derived 5.44 aborts, vLLM wanting 5.08 GiB of the
-      # 5.07 it leaves.
+      # 40 layers, 10 full attention and 30 linear, 2 kv heads at head_dim 256; same
+      # linear state per layer as the 9B. minKvCacheGb is authored, not derived.
+      # Bracketed: 5.53 aborts, 5.54 starts at 1.00x.
       kvBytesPerToken: 20480
       stateBytesPerSequence: 64880640
-      minKvCacheGb: 5.45
+      minKvCacheGb: 5.54
       maxContextLength: 262144
       weightGb: 69.48  # measured resident, 64.69 GiB
       activeWeightGb: 7
@@ -324,10 +312,9 @@ models:
     sizing:
       <<: *ornith15-35b-kv
       weightGb: 71.16  # measured resident with the MTP head, 66.26 GiB
-      # The MTP head is an extra decoder layer with its own KV, and its cache does
-      # not follow the block accounting above, so this figure is measured rather
-      # than derived: vLLM demands 5.65 GiB, aborts at 5.99, starts at 6.07.
-      minKvCacheGb: 6.07
+      # The MTP head is an extra decoder layer with its own KV, so only the floor
+      # moves. Bracketed: 6.16 aborts, 6.17 starts at 1.00x.
+      minKvCacheGb: 6.17
     engineArgs:
       # engineArgs are deep-flattened on load, so this composes with the shared list.
       # n=1 was chosen by measurement: acceptance is 0.83 at the first position and
@@ -408,15 +395,12 @@ models:
       min: "0.23.1"
     sizing: &ornith15-35b-nvfp4-kv
       <<: *ornith15-35b-kv
-      # The checkpoint carries a kv_cache_scheme and vLLM honours it, so the cache
-      # runs fp8_e4m3 and a token costs half the bf16 build's 20480 bytes. The
-      # linear pages then need no padding: at the 2096-token attention block vLLM
-      # picks, an attention page is exactly one 2,146,304-byte linear page.
-      #   ceil(262144 / 2096) = 126 blocks -> 126 * 2146304 * 10 + 30 * 2146304 = 2.77 GB
-      # Measured: vLLM demands 2.58 GiB, aborts at 2.75, starts at 2.77.
+      # The checkpoint carries a kv_cache_scheme and vLLM honours it, so the cache runs
+      # fp8_e4m3 and a token costs half the bf16 build's 20480 bytes.
+      # Bracketed: 2.85 aborts, 2.86 starts at 1.00x.
       kvBytesPerToken: 10240
       stateBytesPerSequence: 64389120
-      minKvCacheGb: 2.77
+      minKvCacheGb: 2.86
       weightGb: 20.99  # measured resident, 19.55 GiB
       activeWeightGb: 3
       weightBits: 4

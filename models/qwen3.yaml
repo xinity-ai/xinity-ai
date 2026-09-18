@@ -1,13 +1,10 @@
 # yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
 #
 # The Qwen 3 family: Qwen3.8 27B in six builds, and the Qwen3.6 releases it succeeds.
-# Verified on GB10; the measurements behind every number are in
-# ~/modeloutputs/qwen3.8-27b.yaml and ~/modeloutputs/qwen3.6.yaml. Every weightGb and
-# minKvCacheGb here is measured, not estimated.
+# Verified on GB10; every weightGb and minKvCacheGb here is measured, not estimated.
 #
 # Each variant merges the entry it is a variant of and overrides what differs, so a
-# variant shows only what makes it one. Qwen3.6-27B and Qwen3.8-27B are the same
-# architecture, so the former reuses the latter's sizing outright.
+# variant shows only what makes it one.
 
 models:
   qwen3.8-27b-vllm: &qwen38-27b
@@ -48,24 +45,11 @@ models:
     #   kvBytesPerToken       = 2 * 16 * 4 * 256 * 2   = 65536
     #   block size 784, mamba page padded to 3,211,264
     #   stateBytesPerSequence = 3,211,264 * 48         = 154,140,672
-    # minKvCacheGb is authored above the 17.34 those two derive, deliberately: vLLM
-    # raises the attention block size so an attention page is at least a mamba page,
-    # rounding 262144 up to 335 blocks. Quantization and disabling vision do not
-    # change it. The figure is the highest floor across the supported engine range,
-    # because 0.29 needs 0.21 GB more than 0.26 for the same model and context. The
-    # unit is a pool block: the 64 layers split into 4 groups of 16 (1 attention, 3
-    # linear), and a block costs 16 * 3,211,264 B = 51,380,224 B across a group.
-    #   0.26 runs this architecture with prefix caching OFF, so the mamba cache is in
-    #     'none' mode and each linear group holds 1 block: 335 + 3 = 338 blocks
-    #     = 16.17 GiB. Starts at 17.37, aborts at 17.34 and 17.36.
-    #   0.29 turns prefix caching ON, which selects mamba cache mode 'align', and
-    #     'align' holds 2 blocks per group: 335 + 6 = 341 blocks = 16.32 GiB. It
-    #     additionally holds back one pool block for BlockPool's null block before
-    #     checking capacity, which 0.26 did not.
-    # That is 4 blocks = 0.2055 GB, and 17.37 + 0.2055 rounds to 17.58: aborts at
-    # 17.57, starts at 17.58 reporting 1.00x. Neither change is about this model, so
-    # expect the same on every hybrid entry. Older engines simply get 0.21 GB more
-    # cache than they need, which is why one number covers both.
+    # minKvCacheGb is authored, not derived: whole-block allocation puts the floor above
+    # the 17.34 those two imply, and it moves when the engine changes how it pages
+    # recurrent state. Bracketed: 17.57 aborts, 17.58 starts at 1.00x; quantization and
+    # disabling vision do not change it. Re-bracket after an engine upgrade rather than
+    # deriving - packages/xinity-infoserver/docs/integrating-a-model.md says how.
     sizing: &sizing-27b-bf16
       kvBytesPerToken: 65536
       stateBytesPerSequence: 154140672
@@ -82,9 +66,8 @@ models:
       - qwen3_coder
       - --reasoning-parser
       - qwen3
-    # Non-standard extras the gateway cannot know about. Standard OpenAI fields
-    # (temperature, top_p, presence_penalty, reasoning_effort, ...) are the gateway's
-    # responsibility, not this file's.
+    # Non-standard extras only. Standard OpenAI fields are the gateway's job, not this
+    # file's.
     requestParams:
       top_k: number
       min_p: number
@@ -147,9 +130,9 @@ models:
     name: Qwen3.8 27B NVFP4 (fast decode)
     description: |
       The NVFP4 build with speculative decoding enabled: the same weights and the
-      same answers, roughly 1.5x more tokens per second for a single stream. How much
-      you actually get depends on the engine, which decides how often a speculated
-      token is accepted: 1.7x on vLLM 0.26, 1.45x on 0.29.
+      same answers, roughly 1.5x more tokens per second for a single stream. The exact
+      figure moves with the engine, which decides how often a speculated token is
+      accepted; measured between 1.45x and 1.7x.
 
       That speedup is a low-concurrency effect. It is largest when the GPU is
       otherwise idle and shrinks as more requests share the card, so choose this
@@ -176,21 +159,15 @@ models:
     platforms: [nvidia]
     sizing:
       <<: *sizing-27b-bf16
-      weightGb: 26.8   # measured resident with the MTP head, 24.97 GiB (0.26) / 24.99 (0.29)
+      weightGb: 26.8   # measured resident with the MTP head, 24.99 GiB
       weightBits: 4
       # The MTP head is an extra decoder layer carrying its own KV, so only the floor
-      # moves, by a constant +1.47 GiB on every version measured. It also makes the
-      # attention group 17 layers rather than 16, so a pool block is 54,591,488 B and
-      # the same four blocks 0.29 adds (see the bf16 entry) cost 0.2184 GB here.
-      # vLLM <= 0.26 demands 17.64 GiB and starts at 18.95; 0.29 demands 17.79 GiB,
-      # aborts at 19.16 and starts at 19.17. Highest of the two, same reasoning.
+      # moves. Bracketed: 19.16 aborts, 19.17 starts at 1.00x.
       minKvCacheGb: 19.17
     # The shared list offers chat_template_kwargs.enable_thinking; this build must not,
-    # so the allowlist is replaced rather than inherited. See the description.
-    # min_p is dropped too: vLLM refuses it outright under speculative decoding
-    # ("The min_p and logit_bias sampling parameters are not yet supported with
-    # speculative decoding", HTTP 400), on every version measured. top_k and
-    # repetition_penalty are unaffected.
+    # so the allowlist is replaced rather than inherited. See the description. min_p is
+    # dropped too: vLLM rejects it under speculative decoding with HTTP 400 ("not yet
+    # supported with speculative decoding").
     requestParams:
       top_k: number
       repetition_penalty: number
@@ -205,10 +182,9 @@ models:
       - --speculative-config
       - '{"method":"mtp","num_speculative_tokens":3}'
 
-  # The two entries below serve the same checkpoints with the vision tower left unbuilt.
-  # Measured: --language-model-only really does skip loading it, ~0.9 GB off the weights,
-  # after which images are refused with HTTP 400. The KV floor is unchanged, because the
-  # text layers are untouched.
+  # The two entries below serve the same checkpoints with the vision tower left unbuilt:
+  # --language-model-only really does skip loading it, ~0.9 GB off the weights, after
+  # which images are refused with HTTP 400. The KV floor is unchanged.
   qwen3.8-27b-blind-vllm:
     <<: *qwen38-27b
     name: Qwen3.8 27B (text-only)
@@ -280,12 +256,12 @@ models:
     #   kvBytesPerToken       = 2 * 10 * 2 * 256 * 2   = 20480
     #   block size 1056, mamba page padded 0.76% to 2,162,688
     #   stateBytesPerSequence = 2,162,688 * 30         = 64,880,640
-    # Measured: starts at 5.45 at 1.00x, aborts at 5.44 (5.08 GiB needed vs 5.07
-    # available). The margin at 5.45 is only 26 KB, so do not round it down.
+    # minKvCacheGb is authored, not derived, for the reason on the 27B entry above.
+    # Bracketed: 5.53 aborts, 5.54 starts at 1.00x.
     sizing: &sizing-35b-bf16
       kvBytesPerToken: 20480
       stateBytesPerSequence: 64880640
-      minKvCacheGb: 5.45
+      minKvCacheGb: 5.54
       maxContextLength: 262144
       weightGb: 70.4   # measured resident, 65.53 GiB
       activeWeightGb: 7

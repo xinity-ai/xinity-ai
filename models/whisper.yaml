@@ -36,7 +36,9 @@ models:
       # start.
       kvBytesPerToken: 163840
       stateBytesPerSequence: 245760000
-      minKvCacheGb: 0.32  # self-attention + one 1500-state cross-attention cache
+      # Bracketed: 0.32 aborts, 0.33 starts. One whole block is a large fraction of a floor
+      # this small, so bracket each entry in this family rather than scaling one to another.
+      minKvCacheGb: 0.33  # self-attention + one 1500-state cross-attention cache
       maxContextLength: 448
       weightGb: 3.09  # measured resident, 2.88 GiB
       weightBits: 16
@@ -68,7 +70,8 @@ models:
       # shrinks with them: 1500 * 20480 bytes per request.
       kvBytesPerToken: 20480
       stateBytesPerSequence: 30720000
-      minKvCacheGb: 0.04
+      # Bracketed: 0.04 aborts, 0.05 starts.
+      minKvCacheGb: 0.05
       maxContextLength: 448
       weightGb: 1.62  # measured resident, 1.51 GiB
       weightBits: 16

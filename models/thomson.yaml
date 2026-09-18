@@ -69,14 +69,12 @@ models:
     #   kvBytesPerToken       = 2 * 10 * 2 * 256 * 2  = 20480
     #   block size 1056, mamba page padded 0.76% to 2,162,688
     #   stateBytesPerSequence = 2,162,688 * 30        = 64,880,640
-    # minKvCacheGb must be authored: block alignment rounds 262144 up to 249 whole
-    # blocks, putting the real floor above what kvBytesPerToken derives. Bracketed on
-    # this checkpoint, not inherited - 5.44 aborts ("5.08 GiB needed vs available
-    # 5.07"), 5.45 starts at 1.00x. The margin is ~26 KB, so do not round it down.
+    # minKvCacheGb is authored, not derived. 5.54 was bracketed on Ornith-1.5-35B-A3B,
+    # which shares this geometry byte for byte; re-bracket if that stops being true.
     sizing:
       kvBytesPerToken: 20480
       stateBytesPerSequence: 64880640
-      minKvCacheGb: 5.45
+      minKvCacheGb: 5.54
       maxContextLength: 262144
       weightGb: 70.4   # measured resident, 65.53 GiB
       # 35.11B params of which 32.21B are routed experts; 8 of 256 active per token
