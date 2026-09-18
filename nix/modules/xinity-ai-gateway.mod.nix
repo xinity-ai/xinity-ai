@@ -18,6 +18,8 @@
         "WEB_SEARCH_CREDENTIAL"
         "LOAD_BALANCE_STRATEGY"
         "BACKEND_TIMEOUT_MS"
+        "DEEP_RESEARCH_MAX_STEPS"
+        "DEEP_RESEARCH_COMPACTION_THRESHOLD"
       ];
       # [/sync:dynamic-keys]
 

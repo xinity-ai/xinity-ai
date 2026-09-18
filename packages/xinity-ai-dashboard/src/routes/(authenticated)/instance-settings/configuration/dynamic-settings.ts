@@ -73,6 +73,20 @@ export const DYNAMIC_SETTINGS: DynamicSetting[] = [
       .describe("Load balancing strategy for distributing requests across inference nodes"),
   },
   {
+    key: "DEEP_RESEARCH_MAX_STEPS",
+    components: ["gateway"],
+    group: "Deep research",
+    schema: configInt(z.int().positive()).default(30)
+      .describe("Maximum tool-call steps for deep research mode"),
+  },
+  {
+    key: "DEEP_RESEARCH_COMPACTION_THRESHOLD",
+    components: ["gateway"],
+    group: "Deep research",
+    schema: configNumber(z.number().min(0.1).max(0.95)).default(0.70)
+      .describe("Fraction of model context window at which compaction triggers"),
+  },
+  {
     key: "SIGNUP_ENABLED",
     components: ["dashboard"],
     group: "Authentication",

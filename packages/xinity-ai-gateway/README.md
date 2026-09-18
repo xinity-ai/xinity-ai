@@ -141,8 +141,8 @@ How the gateway picks a node, how long it waits, and how it trusts one.
 
 | Variable | Default | Description |
 |---|---|---|
-| `DEEP_RESEARCH_MAX_STEPS` | `30` | Maximum tool-call steps for deep research mode. |
-| `DEEP_RESEARCH_COMPACTION_THRESHOLD` | `0.7` | Fraction of model context window at which compaction triggers. |
+| `DEEP_RESEARCH_MAX_STEPS` | `30` | Maximum tool-call steps for deep research mode. Can be set to `@dynamic` to take its value from the dashboard. |
+| `DEEP_RESEARCH_COMPACTION_THRESHOLD` | `0.7` | Fraction of model context window at which compaction triggers. Can be set to `@dynamic` to take its value from the dashboard. |
 
 ### Other
 

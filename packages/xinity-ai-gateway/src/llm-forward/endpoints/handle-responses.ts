@@ -176,10 +176,10 @@ async function runDeepResearch(prepared: PreparedRequest): Promise<Response> {
   const compactionUsage = { inputTokens: 0, outputTokens: 0 };
   const genParams = {
     ...buildGenerationParams(body, modelInfo, provider, toModelMessages(messagesForLLM), deepTools, true, outputConfig),
-    stopWhen: [isLoopFinished(), stepCountIs(config.deepResearch.maxSteps)],
+    stopWhen: [isLoopFinished(), stepCountIs(config.deepResearch.maxSteps())],
     prepareStep: createCompactionStep(
       provider, modelInfo.model, modelInfo.maxContextLength,
-      config.deepResearch.compactionThreshold, extractText(input) ?? "",
+      config.deepResearch.compactionThreshold(), extractText(input) ?? "",
       (usage) => {
         compactionUsage.inputTokens += usage.inputTokens;
         compactionUsage.outputTokens += usage.outputTokens;

@@ -114,16 +114,16 @@ const inference = defineGroup<Inference>({
   },
 });
 
-type DeepResearch = { maxSteps: number; compactionThreshold: number };
+type DeepResearch = { maxSteps: () => number; compactionThreshold: () => number };
 
 const deepResearch = defineGroup<DeepResearch>({
   id: "deepResearch",
   title: "Deep research",
   expert: true,
   fields: {
-    maxSteps: env("DEEP_RESEARCH_MAX_STEPS", configInt(z.int().positive()).default(30)
+    maxSteps: dynamic("DEEP_RESEARCH_MAX_STEPS", configInt(z.int().positive()).default(30)
       .describe("Maximum tool-call steps for deep research mode")),
-    compactionThreshold: env("DEEP_RESEARCH_COMPACTION_THRESHOLD",
+    compactionThreshold: dynamic("DEEP_RESEARCH_COMPACTION_THRESHOLD",
       configNumber(z.number().min(0.1).max(0.95)).default(0.70)
         .describe("Fraction of model context window at which compaction triggers")),
   },
