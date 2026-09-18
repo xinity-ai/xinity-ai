@@ -169,5 +169,6 @@ export const auditMiddleware = rootOs.middleware(({ context, procedure, next }, 
     throw new Error(`auditMiddleware applied to procedure without .meta({ audit })`);
   }
   const ctx = context as AuditContext;
-  return runWithAudit(ctx, tag, input, () => next());
+  // next() resolves to oRPC's { output, context }, never the handler's return value on its own.
+  return runWithAudit(ctx, tag, input, () => next(), (result) => result.output);
 });

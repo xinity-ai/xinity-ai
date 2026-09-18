@@ -195,12 +195,15 @@ export async function runWithAudit<T>(
   tag: AuditTag | undefined,
   input: unknown,
   next: () => T | PromiseLike<T>,
+  /** Middleware hands back a wrapper around the handler's return, so what to read has to be said. */
+  outputOf: (result: Awaited<T>) => unknown = (result) => result,
 ): Promise<T> {
   if (!tag) return next();
   try {
     const result = await next();
-    const resourceId = resolveResourceId(tag.resourceId, input, result);
-    const captured = { ...captureFields(tag.captureInput, input), ...captureFields(tag.captureOutput, result) };
+    const output = outputOf(result);
+    const resourceId = resolveResourceId(tag.resourceId, input, output);
+    const captured = { ...captureFields(tag.captureInput, input), ...captureFields(tag.captureOutput, output) };
     fireAudit(context, tag, "success", resourceId, Object.keys(captured).length > 0 ? captured : undefined);
     return result;
   } catch (err) {
