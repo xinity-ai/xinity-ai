@@ -45,6 +45,8 @@ export async function ensureSystemReady(): Promise<void> {
     }
   }
 
+  process.env.XINITY_SECRET_KEY ??= "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+
   const dbUrl = requireDockerEnv("DB_CONNECTION_URL");
   requireDockerEnv("REDIS_URL");
 
