@@ -54,3 +54,40 @@ describe("backendFetch", () => {
     expect(sent[0]!.headers.get("authorization")).toBeNull();
   });
 });
+
+// The gateway signs the path it builds and the daemon verifies the one it receives, so the
+// encoded specifier has to cross a real connection unchanged.
+describe("across a real connection", () => {
+  const daemonVerdictFor = async (specifier: string) => {
+    let verdict: unknown;
+    const server = Bun.serve({
+      port: 0,
+      fetch: (req) => {
+        const url = new URL(req.url);
+        verdict = verifyRequest(TOKEN, req.headers.get("authorization"), {
+          method: req.method,
+          path: `${url.pathname}${url.search}`,
+        });
+        return new Response("{}");
+      },
+    });
+
+    try {
+      await backendFetch(
+        backendUrl(`127.0.0.1:${server.port}`, specifier, "/v1/chat/completions", false),
+        { method: "POST", authToken: TOKEN, body: "{}" },
+      );
+    } finally {
+      server.stop(true);
+    }
+    return verdict;
+  };
+
+  test("the signature still matches when the model name contains a slash", async () => {
+    expect(await daemonVerdictFor("meta-llama/Llama-3.1-8B")).toEqual({ ok: true });
+  });
+
+  test("the signature still matches when the model name contains a colon", async () => {
+    expect(await daemonVerdictFor("llama3:latest")).toEqual({ ok: true });
+  });
+});
