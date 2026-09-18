@@ -8,13 +8,20 @@ import { readSecrets, type Host } from "./host.ts";
 import { readManifest } from "./manifest.ts";
 
 
+/**
+ * The schema tolerates their absence, but a deployment without them starts and is then unusable.
+ * Asked up front rather than left to the cross-field rule, which only refuses the edit at the end.
+ */
+const ALWAYS_ASKED: ReadonlySet<string> = new Set(["INSTANCE_ADMIN_EMAILS"]);
+
 export function componentFields(component: Component): EnvField[] {
-  return analyzeConfig(COMPONENT_CONFIGS[component]);
+  return analyzeConfig(COMPONENT_CONFIGS[component])
+    .map((field) => (ALWAYS_ASKED.has(field.key) ? { ...field, requiredOverride: true } : field));
 }
 
 /** A field in a switched-off optional group is not required, whatever its schema says. */
 export function isRequired(field: EnvField, values: Record<string, string | undefined>): boolean {
-  if (!field.isRequiredBySchema) {
+  if (!(field.requiredOverride ?? field.isRequiredBySchema)) {
     return false;
   }
   const activation = field.group?.activation ?? [];

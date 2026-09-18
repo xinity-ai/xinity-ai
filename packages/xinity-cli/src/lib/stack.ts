@@ -111,7 +111,7 @@ export function sharedFields(): EnvField[] {
       throw new Error(`Components declare ${key} differently, so the stack cannot offer one of them`);
     }
     const wanted = REQUIRED_IN_EVERY_STACK.has(key) || matches.some((field) => field.isRequiredBySchema);
-    return { ...first, isRequiredBySchema: wanted && !DERIVED_FROM_HOST_ADDRESSES.has(key) };
+    return { ...first, requiredOverride: wanted && !DERIVED_FROM_HOST_ADDRESSES.has(key) };
   });
 }
 
