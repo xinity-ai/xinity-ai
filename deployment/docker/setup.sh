@@ -93,8 +93,10 @@ mkdir -p secrets && chmod 700 secrets
 [ -f secrets/better_auth_secret ] || printf '%s' "$(gen_base64)" > secrets/better_auth_secret
 [ -f secrets/metrics_password ] || printf '%s' "$(gen_url_safe)" > secrets/metrics_password
 [ -f secrets/tether_secret ] || printf '%s' "$(gen_url_safe)" > secrets/tether_secret
+# Never regenerated: it decrypts what the dashboard already sealed, so a new one orphans those values.
+[ -f secrets/xinity_secret_key ] || printf '%s' "$(gen_base64)" > secrets/xinity_secret_key
 printf 'metrics:%s' "$(cat secrets/metrics_password)" > secrets/metrics_auth
-chmod 600 secrets/better_auth_secret secrets/metrics_password secrets/metrics_auth secrets/tether_secret
+chmod 600 secrets/better_auth_secret secrets/metrics_password secrets/metrics_auth secrets/tether_secret secrets/xinity_secret_key
 
 # Connection URLs carry credentials, so the apps receive them as secrets too.
 # Derived from .env, rewritten each run to stay in sync.
