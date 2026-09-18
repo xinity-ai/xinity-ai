@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { z } from "zod";
 import { configInt } from "./leaf-types";
 import { defineGroup, dynamic, env } from "./group";
@@ -258,5 +261,36 @@ describe("unseal", () => {
     const bucket = config.provenance().find((entry) => entry.envKey === "S3_BUCKET");
 
     expect(bucket?.source).not.toBe("dynamic");
+  });
+});
+
+// A secret's value lives in a file rather than the environment, so a deployment can only hand one
+// to the dashboard by writing the marker there.
+describe("a delegation written into a secret file", () => {
+  const withFile = (contents: string) => {
+    const path = join(mkdtempSync(join(tmpdir(), "delegated-secret-")), "RESPONSE_CACHE_TTL_SECONDS");
+    writeFileSync(path, contents);
+    return { ...BASE, RESPONSE_CACHE_TTL_SECONDS_FILE: path };
+  };
+
+  test("is delegated, and its fallback is the one the file carries", () => {
+    const config = createDynamicConfig({ declaration, rawEnv: withFile("@dynamic:90") });
+
+    expect(config.delegatedKeys).toContain("RESPONSE_CACHE_TTL_SECONDS");
+    expect(config.value.cache.responseTtlSeconds()).toBe(90);
+  });
+
+  test("falls back to the declared default when the file names no fallback", () => {
+    const config = createDynamicConfig({ declaration, rawEnv: withFile("@dynamic") });
+
+    expect(config.delegatedKeys).toContain("RESPONSE_CACHE_TTL_SECONDS");
+    expect(config.value.cache.responseTtlSeconds()).toBe(3600);
+  });
+
+  test("is still just a value when the file holds one", () => {
+    const config = createDynamicConfig({ declaration, rawEnv: withFile("120") });
+
+    expect(config.delegatedKeys).not.toContain("RESPONSE_CACHE_TTL_SECONDS");
+    expect(config.value.cache.responseTtlSeconds()).toBe(120);
   });
 });

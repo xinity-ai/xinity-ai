@@ -3,7 +3,7 @@ import { z } from "zod";
 import { analyzeConfig, configBool, configInt, defineConfig, defineGroup, env, secret } from "common-env";
 import {
   categorizeFields, componentFields, diffEnv,
-  missingRequiredFields, planSecretFileRemoval,
+  missingRequiredFields, planSecretFileRemoval, undelegated,
   type EnvBundle, type EnvChange,
 } from "../../src/lib/env-prompt.ts";
 import { readEnvFile, serializeEnvFile, readSecretFiles } from "../../src/lib/env-file.ts";
@@ -75,6 +75,23 @@ describe("env-prompt", () => {
 
     expect(missingRequiredFields(fields, {})).toContain(admins);
     expect(missingRequiredFields(fields, { INSTANCE_ADMIN_EMAILS: "ops@example.com" })).not.toContain(admins);
+  });
+
+  // Getting this wrong wrote @dynamic back as its own fallback, so the marker was delegated a
+  // second time and the value behind it was the sentinel.
+  describe("undelegated", () => {
+    test("a delegation with no fallback is holding nothing", () => {
+      expect(undelegated("@dynamic")).toBeUndefined();
+    });
+
+    test("a delegation hands back what it falls back to", () => {
+      expect(undelegated("@dynamic:30")).toBe("30");
+    });
+
+    test("anything else is already the value", () => {
+      expect(undelegated("30")).toBe("30");
+      expect(undelegated(undefined)).toBeUndefined();
+    });
   });
 
   describe("categorizeFields", () => {

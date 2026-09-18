@@ -183,10 +183,15 @@ const FIELD_CANCELLED: unique symbol = Symbol("field-cancelled");
 
 const UNSET_OPTION = "__unset__";
 
+/** The value behind a delegation, which is nothing when it was written without a fallback. */
+export function undelegated(raw: string | undefined): string | undefined {
+  const delegation = parseDelegation(raw);
+  return delegation ? delegation.fallback : raw;
+}
+
 /** Keeps whatever the component runs on today as the fallback, so delegating changes nothing yet. */
 function fallbackFor(field: EnvField, existingValue: string | undefined): string | undefined {
-  const current = parseDelegation(existingValue)?.fallback ?? existingValue;
-  return current ?? (field.hasDefault ? String(field.defaultValue) : undefined);
+  return undelegated(existingValue) ?? (field.hasDefault ? String(field.defaultValue) : undefined);
 }
 
 async function promptField(
@@ -220,7 +225,7 @@ async function promptField(
     if (source === "dashboard") {
       return delegate(fallbackFor(field, existingValue));
     }
-    existingValue = parseDelegation(existingValue)?.fallback ?? existingValue;
+    existingValue = undelegated(existingValue);
   }
 
   const existing = existingValue ?? (field.hasDefault ? String(field.defaultValue) : undefined);

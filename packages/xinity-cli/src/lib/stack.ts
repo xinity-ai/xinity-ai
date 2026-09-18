@@ -13,7 +13,7 @@ import { loadPrivateJson, savePrivateJson } from "./config.ts";
 import { configDir } from "./platform.ts";
 import { z } from "zod";
 import { version as cliVersion } from "../../../../package.json";
-import { checkComponentConfig, type Component, COMPONENTS, getAutoDefaults } from "./component-meta.ts";
+import { checkComponentConfig, type Component, COMPONENTS, getAutoDefaults, INFOSERVER_DEFAULT_PORT, TETHER_DEFAULT_PORT } from "./component-meta.ts";
 import { componentFields } from "./env-prompt.ts";
 import type { ConfigProblem, EnvField } from "common-env";
 import { log } from "./clack.ts";
@@ -86,6 +86,43 @@ const SHARED_KEYS = [
 
 const DERIVED_FROM_HOST_ADDRESSES: ReadonlySet<string> = new Set(["INFOSERVER_URL", "TETHER_URL"]);
 
+/**
+ * Where deploy will reach an in-stack component, from its host's address. Null when the stack has
+ * no host to say, which is the whole of `stack init` before any host exists.
+ */
+export function inStackComponentUrl(
+  stack: StackDefinition,
+  component: "infoserver" | "tether",
+): string | null {
+  const hosts = stack.hosts.filter((h) => h.components.includes(component));
+  // Several tethers need an explicit URL, usually a load balancer, so none is derivable.
+  if (hosts.length === 0 || (component === "tether" && hosts.length > 1)) {
+    return null;
+  }
+  const address = hosts[0]!.address;
+  const hostname = address === "local" ? "localhost" : (address.split("@").pop() ?? address);
+  const port = stack.componentEnv[component]?.PORT
+    ?? (component === "tether" ? TETHER_DEFAULT_PORT : INFOSERVER_DEFAULT_PORT);
+  const raw = `http://${hostname}:${port}`;
+  return URL.canParse(raw) ? raw : null;
+}
+
+/** The values a layer editor cannot ask for, so it validates against what deploy will supply. */
+export function fillDeferred(
+  stack: StackDefinition,
+  values: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  const filled = { ...values };
+  filled.INFOSERVER_URL ??= inStackComponentUrl(stack, "infoserver") ?? undefined;
+  filled.TETHER_URL ??= inStackComponentUrl(stack, "tether") ?? undefined;
+  return filled;
+}
+
+/** Still absent once deploy's values are filled in, which is every layer before a host exists. */
+export function isDeferredToDeploy(problem: ConfigProblem): boolean {
+  return problem.fields.some((field) => DERIVED_FROM_HOST_ADDRESSES.has(field.envKey));
+}
+
 // Worth having on every deployment, so it is asked for even when no component here requires it.
 const REQUIRED_IN_EVERY_STACK: ReadonlySet<string> = new Set(["METRICS_AUTH"]);
 
@@ -133,8 +170,7 @@ export function sharedLayerProblems(
       const keys = problem.fields.map((field) => field.envKey);
       // Anything else belongs to the layer that owns the key, whose own editor checks it.
       if (!keys.some((key) => STACK_SHARED_KEYS.has(key))) continue;
-      // Absent by design while editing: the stack fills these in from host addresses at deploy.
-      if (keys.some((key) => DERIVED_FROM_HOST_ADDRESSES.has(key))) continue;
+      if (isDeferredToDeploy(problem)) continue;
 
       const id = `${keys.join(",")}:${problem.message}`;
       if (seen.has(id)) continue;

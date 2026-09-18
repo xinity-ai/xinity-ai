@@ -17,8 +17,9 @@ import {
   listStacks,
   STACK_SHARED_KEYS,
   sharedFields,
-  sharedLayerProblems,
+  sharedLayerProblems, isDeferredToDeploy, fillDeferred,
 } from "../../src/lib/stack.ts";
+import { checkComponentConfig, TETHER_DEFAULT_PORT } from "../../src/lib/component-meta.ts";
 import { loadStackState, markHostManaged } from "../../src/lib/stack-state.ts";
 import { isRequired, missingRequiredFields } from "../../src/lib/env-prompt.ts";
 
@@ -411,5 +412,38 @@ describe("sharedLayerProblems", () => {
   test("reports each distinct problem once, not once per component that shares the key", () => {
     const problems = sharedLayerProblems(makeStack(), { ...valid, DB_CONNECTION_URL: "not-a-url" });
     expect(problems).toHaveLength(1);
+  });
+});
+
+// A layer editor never offers these, so without one of the two it refuses an edit over a key it
+// would not let you set.
+describe("keys the stack fills in at deploy", () => {
+  const tetherUrlProblem = (values: Record<string, string | undefined>) =>
+    checkComponentConfig("daemon", values).find((p) => p.fields.some((f) => f.envKey === "TETHER_URL"));
+
+  test("supplies the url the tether host implies, so the editor judges what deploy will use", () => {
+    const stack = makeStack({ hosts: [makeHost({ address: "10.0.0.5", components: ["tether"] })] });
+    const filled = fillDeferred(stack, { TETHER_SECRET: "shhh" });
+
+    expect(filled.TETHER_URL).toBe(`http://10.0.0.5:${TETHER_DEFAULT_PORT}`);
+    expect(tetherUrlProblem(filled)).toBeUndefined();
+  });
+
+  test("cannot supply one while several tethers make the address ambiguous", () => {
+    const stack = makeStack({
+      hosts: [
+        makeHost({ address: "10.0.0.5", components: ["tether"] }),
+        makeHost({ address: "10.0.0.6", components: ["tether"] }),
+      ],
+    });
+
+    expect(fillDeferred(stack, {}).TETHER_URL).toBeUndefined();
+  });
+
+  test("forgives it only while no host can say what it will be", () => {
+    const problem = tetherUrlProblem(fillDeferred(makeStack(), { TETHER_SECRET: "shhh" }));
+
+    expect(problem, "the daemon should still demand a tether url of its own").toBeDefined();
+    expect(isDeferredToDeploy(problem!)).toBe(true);
   });
 });
