@@ -1,5 +1,13 @@
 import { aiNodeT, modelInstallationT, modelInstallationStateT, preconfigureDB, sql } from "common-db";
-import { generateNodeKeypair } from "common-env";
+import {
+  canonicalRegistration,
+  canonicalStateReport,
+  generateNodeKeypair,
+  STATUS_PATH,
+  STREAM_PATH,
+  verifyNodeSignature,
+  verifyRequest,
+} from "common-env";
 import type { InstallationStateReport, NodeRegistration } from "common-env";
 import { getAvailablePort } from "../test-helpers";
 import { ensureInfoServerRunning, infoServerUrl } from "../infoserver/infoserver-test-helpers";
@@ -40,18 +48,43 @@ export type TetherMock = {
   stop: () => void;
 };
 
+export const TETHER_SECRET = "test-secret";
+
+/**
+ * The real checks rather than a stub, so these tests are the only place a daemon's outbound
+ * requests meet the code the tether verifies them with.
+ */
+function refuseUnsigned(req: Request, path: string): Response | null {
+  const result = verifyRequest(TETHER_SECRET, req.headers.get("authorization"), {
+    method: req.method,
+    path,
+  });
+  return result.ok ? null : new Response(`Unauthorized: ${result.reason}`, { status: 401 });
+}
+
 async function startMockTetherServer(): Promise<TetherMock> {
   const port = await getAvailablePort();
   const db = getDB();
+  const pinnedKeys = new Map<string, string>();
 
   const server = Bun.serve({
     port,
     async fetch(req) {
       const url = new URL(req.url);
 
-      if (req.method === "POST" && url.pathname === "/api/v1/stream") {
+      if (req.method === "POST" && url.pathname === STREAM_PATH) {
+        const refused = refuseUnsigned(req, STREAM_PATH);
+        if (refused) {
+          return refused;
+        }
+
         const body = await req.json() as NodeRegistration;
         const nodeId = body.nodeId as string;
+
+        if (!verifyNodeSignature(body.publicKey, canonicalRegistration(body), body.signature)) {
+          return new Response("Registration signature is invalid", { status: 401 });
+        }
+        pinnedKeys.set(nodeId, body.publicKey);
 
         await db.insert(aiNodeT).values({
           id: nodeId,
@@ -122,8 +155,20 @@ async function startMockTetherServer(): Promise<TetherMock> {
         });
       }
 
-      if (req.method === "POST" && url.pathname === "/api/v1/status") {
+      if (req.method === "POST" && url.pathname === STATUS_PATH) {
+        const refused = refuseUnsigned(req, STATUS_PATH);
+        if (refused) {
+          return refused;
+        }
+
         const body = await req.json() as InstallationStateReport;
+        // Only once the node has registered: a report that beats its own handshake is a race in
+        // the test, not a daemon that signs wrongly.
+        const pinned = pinnedKeys.get(body.nodeId);
+        if (pinned && !verifyNodeSignature(pinned, canonicalStateReport(body), body.signature)) {
+          return new Response("Report signature is invalid", { status: 401 });
+        }
+
         for (const state of body.states) {
           await db.insert(modelInstallationStateT).values({
             id: state.installationId,
@@ -195,7 +240,7 @@ export async function startDaemon(options: {
       SYNC_INTERVAL_MS: String(syncIntervalMs),
       INFOSERVER_URL: infoServerUrl(""),
       TETHER_URL: tether.endpoint,
-      TETHER_SECRET: "test-secret",
+      TETHER_SECRET,
       // Blank so driver detection cannot block on pulling a multi-gigabyte image.
       VLLM_DOCKER_IMAGE: "",
     },
