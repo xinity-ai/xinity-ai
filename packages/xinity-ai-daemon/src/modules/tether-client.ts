@@ -19,6 +19,14 @@ const log = rootLogger.child({ name: "tether-client" });
 
 const MAX_BACKOFF_MS = 30_000;
 
+/**
+ * The tether writes its refusals for a human, and this host is the one that can act on them: a
+ * clock outside the signature window is only visible from here as a bare 401.
+ */
+async function refusal(res: Response): Promise<string> {
+  return (await res.text().catch(() => "")).trim().slice(0, 300);
+}
+
 function signedHeaders(path: string): Record<string, string> {
   return {
     Authorization: signRequest(config.tether.secret, { method: "POST", path }),
@@ -38,7 +46,7 @@ export async function* connectSSE(registration: NodeRegistration): AsyncGenerato
       });
 
       if (!res.ok) {
-        log.error({ status: res.status }, "SSE connection rejected");
+        log.error({ status: res.status, refusal: await refusal(res) }, "SSE connection rejected");
         await Bun.sleep(backoffMs);
         backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
         continue;
@@ -121,7 +129,7 @@ export async function reportInstallationStates(report: UnsignedInstallationState
       body: JSON.stringify(signed),
     });
     if (!res.ok) {
-      log.error({ status: res.status }, "Status POST failed");
+      log.error({ status: res.status, refusal: await refusal(res) }, "Status POST failed");
     }
   } catch (err) {
     log.error({ err }, "Status POST error");
