@@ -48,6 +48,7 @@ services:
       PORT: ${GATEWAY_PORT:-4121}
       DB_CONNECTION_URL_FILE: /run/secrets/db_connection_url
       REDIS_URL_FILE: /run/secrets/redis_url
+      XINITY_SECRET_KEY_FILE: /run/secrets/xinity_secret_key
       INFOSERVER_URL: ${INFOSERVER_URL:-https://sysinfo.xinity.ai}
       WEB_SEARCH_PROVIDER: ${WEB_SEARCH_PROVIDER:-searxng}
       WEB_SEARCH_CREDENTIAL: ${WEB_SEARCH_CREDENTIAL:-http://searxng:${SEARXNG_PORT:-8888}}
@@ -61,6 +62,7 @@ services:
       - db_connection_url
       - redis_url
       - metrics_auth
+      - xinity_secret_key
 
   dashboard:
     image: ghcr.io/xinity-ai/xinity-ai-dashboard:${VERSION:?VERSION is required (set in .env)}
@@ -76,6 +78,7 @@ services:
       NODE_ENV: production
       DB_CONNECTION_URL_FILE: /run/secrets/db_connection_url
       BETTER_AUTH_SECRET_FILE: /run/secrets/better_auth_secret
+      XINITY_SECRET_KEY_FILE: /run/secrets/xinity_secret_key
       METRICS_AUTH_FILE: /run/secrets/metrics_auth
       ORIGIN: ${ORIGIN:-http://localhost:${DASHBOARD_PORT:-5121}}
       HTTP_OVERRIDE_ORIGIN: ${HTTP_OVERRIDE_ORIGIN:-${ORIGIN:-http://localhost:${DASHBOARD_PORT:-5121}}}
@@ -93,6 +96,7 @@ services:
       - db_connection_url
       - better_auth_secret
       - metrics_auth
+      - xinity_secret_key
 
   tether:
     image: ghcr.io/xinity-ai/xinity-tether:${VERSION:?VERSION is required (set in .env)}
@@ -226,6 +230,8 @@ secrets:
     file: ./secrets/metrics_auth
   tether_secret:
     file: ./secrets/tether_secret
+  xinity_secret_key:
+    file: ./secrets/xinity_secret_key
   metrics_password:
     file: ./secrets/metrics_password
 
