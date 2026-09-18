@@ -237,6 +237,19 @@
       } // s3Options;
 
       config = lib.mkIf cfg.enable {
+        # Nix cannot look inside an environment file, so that is taken as provision enough.
+        assertions = [
+          {
+            assertion = cfg.secretKeyFile != null || cfg.environmentFiles != [ ];
+            message = ''
+              services.xinity-ai-gateway: XINITY_SECRET_KEY is required. It decrypts
+              dashboard-managed secrets, so it must hold the same value as the dashboard that
+              sealed them and cannot be created here. Set `secretKeyFile`, or provide
+              XINITY_SECRET_KEY through `environmentFiles`.
+            '';
+          }
+        ];
+
         systemd.services.xinity-ai-gateway = {
           description = "Xinity AI Gateway";
           wantedBy = [ "multi-user.target" ];

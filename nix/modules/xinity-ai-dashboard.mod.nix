@@ -351,6 +351,10 @@
             message = "services.xinity-ai-dashboard: METRICS_AUTH is required. Set `metricsAuth`, `metricsAuthFile`, or provide METRICS_AUTH via `environmentFiles`.";
           }
           {
+            assertion = cfg.secretKeyFile != null || cfg.environmentFiles != [ ];
+            message = "services.xinity-ai-dashboard: XINITY_SECRET_KEY is required. It encrypts dashboard-managed secrets at rest, and the gateway and every daemon must be given the same value. Set `secretKeyFile`, or provide XINITY_SECRET_KEY via `environmentFiles`.";
+          }
+          {
             assertion = cfg.origin != null;
             message = "services.xinity-ai-dashboard: `origin` is required. Set it to the URL users visit in their browser, scheme included (e.g. https://dashboard.example.com). The allinone module sets it for you from `domain` and `dashboardSubdomain`.";
           }
