@@ -367,8 +367,8 @@ Both are counted in **pool blocks**, not per layer, and that is the part worth i
 splits layers into groups of equal size (group size = the smallest layer bucket, unless the largest
 is under 1.5x it), and **every group is charged a whole pool block sized by the largest group**. A
 model with 16 attention and 48 recurrent layers becomes 4 groups of 16, so a block costs
-`16 × page_size` and the three recurrent groups each pay for 16 layers while using 16 — but a model
-whose buckets divide unevenly pays for padding layers it never uses. vLLM warns when it pads
+`16 × page_size`. That one divides evenly; a model whose buckets do not pays for padding layers it
+never uses. vLLM warns when it pads
 (`Add N padding layers, may waste at most X% KV cache memory`). The requirement is then:
 
 ```
@@ -377,10 +377,15 @@ needed     = pool_block × ( ceil(max_model_len / blk)            # the attentio
                           + blocks_per_recurrent_group × n_recurrent_groups )
 ```
 
-Reproducing vLLM's `X GiB is needed` exactly is still the test that the number is right. When a
-model must run across a range of engine versions, author the **highest** floor you measured:
-`minKvCacheGb` is a minimum, so an older engine simply gets more cache than it needs, and record
-both figures in a comment so the next person does not re-derive them.
+Reproducing vLLM's `X GiB is needed` exactly is still the test that the number is right.
+
+**Author the largest floor that works across the versions you support.** `minKvCacheGb` is a
+minimum, so the largest measured figure is the one with the best coverage: an engine that needs
+less simply over-allocates a little, while an entry carrying a smaller figure does not boot at all
+on an engine that needs more. Write it as the model's floor, not as a diff against whichever
+release you happened to measure on — a comment saying "version X needs more" reads as noise once
+that release is old, whereas the bracket that produced the number (which value aborts, which
+starts) stays useful. Re-bracket after an engine upgrade rather than deriving the figure again.
 
 **Speculative decoding raises the floor too.** An MTP or draft head is an extra decoder layer with
 its own KV, so an entry enabling `--speculative-config` needs both a higher `minKvCacheGb` and a

@@ -7,6 +7,7 @@
  * runtime/db dependencies and is cheap to unit-test.
  */
 import {
+  blockedVersionRules,
   checkNodeCompatibility,
 
   requiredFeaturesForEngine,
@@ -125,6 +126,10 @@ export function toModelRequirements(resolved: ResolvedVllmModel): ModelNodeRequi
     driver: "vllm",
     capacityGb: resolved.estCapacity,
     minVersion: resolved.minVersion,
+    // Without these the gate can never report version_blocked, though it has a message for
+    // it: a model entry blocking the installed release would start anyway, which is exactly
+    // the case verification needs to catch.
+    blockedVersions: blockedVersionRules(resolved.model),
     requiredPlatforms: resolved.requiredPlatforms,
     requiredFeatures: resolved.requiredFeatures,
   };

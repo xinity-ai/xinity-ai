@@ -46,6 +46,19 @@ models:
     tags: [vision, tools]
     engineVersions:
       min: "0.23.1"
+      rules:
+        # Crash site, for checking whether a later release fixes it: `route_decode = causal
+        # or self.use_dedicated_xqa` in v1/attention/backends/flashinfer.py, raising
+        # "Boolean value of Tensor with more than one value is ambiguous".
+        # Not a sizing problem - it fails identically at every cache size from 6.43 to 6.49,
+        # so do not go hunting the floor. Measured on the bf16 entry; the quantized siblings
+        # inherit this rule by shared architecture rather than having been run.
+        - range: ">=0.29.0"
+          effect: blocked
+          reason: >-
+            Crashes on start-up building attention metadata (FlashInfer rejects the
+            per-position causal mask block diffusion needs). Pin the engine below 0.29.0
+            to serve this model.
     engineArgs:
       # DiffusionGemma inherits Gemma 4's <|channel|> format for both reasoning and
       # tool calls, so the gemma4 parsers apply unchanged.

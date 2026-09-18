@@ -47,6 +47,18 @@ models:
     requestParams:
       top_k: number
       repetition_penalty: number
+    engineVersions:
+      rules:
+        # Crash site, for checking a later release: CUDA-graph capture raises
+        # `torch.AcceleratorError: CUDA error: operation not permitted when stream is
+        # capturing`. Not a sizing problem - the cache is reserved before it dies. Confirmed
+        # a regression rather than a local fault by starting this entry on 0.26.0-gb10.2,
+        # where it serves. Still crashes identically on 0.30.
+        - range: ">=0.29.0"
+          effect: blocked
+          reason: >-
+            Crashes during CUDA-graph capture on start-up; works on 0.26. Pin the engine
+            below 0.29.0 to serve this model.
     engineArgs:
       - --max-model-len
       - "32768"
