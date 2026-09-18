@@ -15,6 +15,11 @@ export type EnvField = {
   hasDefault: boolean;
   defaultValue?: unknown;
   isRequiredBySchema: boolean;
+  /**
+   * Set by a caller that demands more or less than the declaration does, so `isRequiredBySchema`
+   * keeps meaning exactly what it says for anything that reads it, generated docs included.
+   */
+  requiredOverride?: boolean;
   isSecret: boolean;
   isExpert: boolean;
   isPublic: boolean;

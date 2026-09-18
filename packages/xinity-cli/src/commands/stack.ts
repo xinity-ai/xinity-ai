@@ -24,7 +24,7 @@ import {
 import { editSharedLayer, editComponentLayer, editFleetLayer } from "../lib/stack-layers.ts";
 import { searchSelect, searchMultiselect, listSelect, type SearchListOption } from "../lib/search-list.ts";
 import { runStackFlow } from "../lib/stack-plan.ts";
-import { randomToken } from "../lib/secrets.ts";
+import { randomSecretKey, randomToken } from "../lib/secrets.ts";
 import { runDoctor, buildSummaryLine, type DoctorReport } from "../lib/doctor.ts";
 import { fetchRelease, listReleases, type ReleaseListEntry } from "../lib/github.ts";
 import { loadStackState, findOrphanHosts } from "../lib/stack-state.ts";
@@ -182,6 +182,7 @@ async function handleInit(name: string): Promise<void> {
   }
 
   stack.secrets.TETHER_SECRET = randomToken();
+  stack.secrets.XINITY_SECRET_KEY = randomSecretKey();
   // One value across the dashboard's instances rather than across components, so it is not shared.
   stack.componentEnv.dashboard = {
     ...stack.componentEnv.dashboard,

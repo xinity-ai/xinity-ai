@@ -68,6 +68,15 @@ describe("env-prompt", () => {
     });
   });
 
+  // Defaults to an empty list, so nothing in the schema would ask for it.
+  test("demands the instance admins the dashboard is unusable without", () => {
+    const fields = componentFields("dashboard");
+    const admins = fields.find((f) => f.key === "INSTANCE_ADMIN_EMAILS")!;
+
+    expect(missingRequiredFields(fields, {})).toContain(admins);
+    expect(missingRequiredFields(fields, { INSTANCE_ADMIN_EMAILS: "ops@example.com" })).not.toContain(admins);
+  });
+
   describe("categorizeFields", () => {
     test("separates config and secret fields", () => {
       const fields = analyzeConfig(defineConfig<{ host: string; dbPassword: string }>({

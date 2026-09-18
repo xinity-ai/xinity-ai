@@ -20,7 +20,7 @@ import {
   sharedLayerProblems,
 } from "../../src/lib/stack.ts";
 import { loadStackState, markHostManaged } from "../../src/lib/stack-state.ts";
-import { missingRequiredFields } from "../../src/lib/env-prompt.ts";
+import { isRequired, missingRequiredFields } from "../../src/lib/env-prompt.ts";
 
 function makeStack(overrides: Partial<StackDefinition> = {}): StackDefinition {
   return {
@@ -373,11 +373,11 @@ describe("sharedFields", () => {
   });
 
   test("a key several components declare takes the strictest of them", () => {
-    expect(byKey.get("METRICS_AUTH")!.isRequiredBySchema).toBe(true);
+    expect(isRequired(byKey.get("METRICS_AUTH")!, {})).toBe(true);
   });
 
   test("a key derived from a host address is not demanded before the hosts exist", () => {
-    expect(byKey.get("TETHER_URL")!.isRequiredBySchema).toBe(false);
+    expect(isRequired(byKey.get("TETHER_URL")!, {})).toBe(false);
   });
 
   test("an empty stack is short its infra keys, but not the switched-off S3 group", () => {
