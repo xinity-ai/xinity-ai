@@ -9,7 +9,7 @@
  */
 import { cancel, confirm, isCancel, log, note } from "./clack.ts";
 import { bold, cyan, dim, yellow } from "picocolors";
-import { type Component, INFOSERVER_DEFAULT_PORT, TETHER_DEFAULT_PORT } from "./component-meta.ts";
+import type { Component } from "./component-meta.ts";
 import { type Host, isUnitActiveOn } from "./host.ts";
 import { heading, warn, fail, pass } from "./output.ts";
 import { unitName } from "./systemd.ts";
@@ -28,6 +28,7 @@ import {
   resolveEnv, saveStack, getFleetForHost, hostLabel,
   componentLayerSeed, fleetLayerSeed,
   sharedFields,
+  inStackComponentUrl,
 } from "./stack.ts";
 import { editSharedLayer, editComponentLayer, editFleetLayer, editHostLayer } from "./stack-layers.ts";
 import { loadStackState, findOrphanHosts, markHostManaged, unmarkHostManaged } from "./stack-state.ts";
@@ -90,17 +91,8 @@ function deriveInfoserverUrl(stack: StackDefinition): void {
   if (stack.env.INFOSERVER_URL) {
     return;
   }
-  const infoHost = stack.hosts.find((h) => h.components.includes("infoserver"));
-  if (!infoHost) {
-    return;
-  }
-  const hostname = infoHost.address === "local"
-    ? "localhost"
-    : (infoHost.address.split("@").pop() ?? infoHost.address);
-  const port = stack.componentEnv.infoserver?.PORT ?? INFOSERVER_DEFAULT_PORT;
-  const raw = `http://${hostname}:${port}`;
-  if (!URL.canParse(raw)) {
-    warn("INFOSERVER_URL", `could not derive a valid URL from host address "${infoHost.address}"`);
+  const raw = inStackComponentUrl(stack, "infoserver");
+  if (!raw) {
     return;
   }
   stack.derivedEnv = { ...stack.derivedEnv, INFOSERVER_URL: raw };
@@ -112,22 +104,12 @@ function deriveTetherUrl(stack: StackDefinition): void {
   if (stack.env.TETHER_URL || stack.secrets.TETHER_URL) {
     return;
   }
-  const tetherHosts = stack.hosts.filter((h) => h.components.includes("tether"));
-  if (tetherHosts.length === 0) {
-    return;
-  }
-  if (tetherHosts.length > 1) {
+  if (stack.hosts.filter((h) => h.components.includes("tether")).length > 1) {
     log.info(dim("Multiple tether hosts found; set TETHER_URL explicitly (e.g. to a load balancer)"));
     return;
   }
-  const host = tetherHosts[0]!;
-  const hostname = host.address === "local"
-    ? "localhost"
-    : (host.address.split("@").pop() ?? host.address);
-  const port = stack.componentEnv.tether?.PORT ?? TETHER_DEFAULT_PORT;
-  const raw = `http://${hostname}:${port}`;
-  if (!URL.canParse(raw)) {
-    warn("TETHER_URL", `could not derive a valid URL from host address "${host.address}"`);
+  const raw = inStackComponentUrl(stack, "tether");
+  if (!raw) {
     return;
   }
   stack.derivedEnv = { ...stack.derivedEnv, TETHER_URL: raw };

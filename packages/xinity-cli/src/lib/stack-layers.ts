@@ -9,11 +9,12 @@ import { componentFields, menuEditEnv, flattenBundle } from "./env-prompt.ts";
 import {
   type StackDefinition, type FleetDefinition,
   STACK_SHARED_KEYS, sharedFields,
-  applySharedResult, diffFromLayer, sharedLayerProblems,
+  applySharedResult, diffFromLayer, sharedLayerProblems, isDeferredToDeploy, fillDeferred,
   componentLayerBase, fleetLayerBase, getHost, saveStack,
 } from "./stack.ts";
 
 export async function menuEditLayer(opts: {
+  stack: StackDefinition;
   component: Component;
   inherited: Record<string, string>;
   own: Record<string, string>;
@@ -24,7 +25,10 @@ export async function menuEditLayer(opts: {
     attentionKeys: attentionKeysFor(opts.component),
     hiddenKeys: opts.hiddenKeys,
     message: opts.message,
-    validate: (values) => checkComponentConfig(opts.component, values),
+    // Judged against what deploy will supply, so only a stack with no host yet falls back to
+    // forgiving the keys it cannot know.
+    validate: (values) => checkComponentConfig(opts.component, fillDeferred(opts.stack, values))
+      .filter((p) => !isDeferredToDeploy(p)),
   });
   if (result === null) {
     return null;
@@ -51,6 +55,7 @@ export async function editComponentLayer(
   message = `${component} settings (stack-wide)`,
 ): Promise<boolean> {
   const overrides = await menuEditLayer({
+    stack,
     component,
     inherited: componentLayerBase(stack, component),
     own: stack.componentEnv[component] ?? {},
@@ -70,6 +75,7 @@ export async function editFleetLayer(
   message = `Daemon settings for fleet "${fleet.name}"`,
 ): Promise<boolean> {
   const overrides = await menuEditLayer({
+    stack,
     component: "daemon",
     inherited: fleetLayerBase(stack),
     own: fleet.envOverrides ?? {},
@@ -91,6 +97,7 @@ export async function editHostLayer(
 ): Promise<Record<string, string> | null> {
   const host = getHost(stack, address);
   const overrides = await menuEditLayer({
+    stack,
     component,
     inherited,
     own: host?.envOverrides ?? {},
