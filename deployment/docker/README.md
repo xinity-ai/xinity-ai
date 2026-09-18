@@ -36,7 +36,7 @@ What you must set in `.env` (the setup script handles most of these):
 - For HTTPS: `DOMAIN`, `ACME_EMAIL`, `ORIGIN`, `HTTP_OVERRIDE_ORIGIN`, `GATEWAY_URL`.
 - For SearXNG: `SEARXNG_SECRET` (`openssl rand -hex 32`).
 
-`BETTER_AUTH_SECRET` and `METRICS_AUTH` are not `.env` variables — `setup.sh` generates them directly into `secrets/` as Docker secrets. See `example.env` for everything else: multi-tenancy toggle, mail, S3 object storage, gateway tuning. S3 is optional and points at storage you already run, and the bucket has to exist first, since an upload to a missing one is dropped rather than failing the request.
+`BETTER_AUTH_SECRET`, `METRICS_AUTH` and `XINITY_SECRET_KEY` are not `.env` variables — `setup.sh` generates them directly into `secrets/` as Docker secrets. See `example.env` for everything else: multi-tenancy toggle, mail, S3 object storage, gateway tuning. S3 is optional and points at storage you already run, and the bucket has to exist first, since an upload to a missing one is dropped rather than failing the request.
 
 ### 2. Run database migrations
 
@@ -107,9 +107,9 @@ xinity configure apiKey <paste-key-here>
 
 For single-server deployments, plain `.env` (mode 600) is fine. Container env shows up in `docker inspect`, which is acceptable when the operator owns the host.
 
-`setup.sh` already generates `secrets/db_connection_url`, `secrets/better_auth_secret`, `secrets/metrics_auth`, and `secrets/tether_secret`, and `docker-compose.yml` wires them into the relevant services as `*_FILE` environment variables (e.g. `DB_CONNECTION_URL_FILE`, `TETHER_SECRET_FILE`).
+`setup.sh` already generates `secrets/db_connection_url`, `secrets/better_auth_secret`, `secrets/metrics_auth`, `secrets/tether_secret`, and `secrets/xinity_secret_key`, and `docker-compose.yml` wires them into the relevant services as `*_FILE` environment variables (e.g. `DB_CONNECTION_URL_FILE`, `TETHER_SECRET_FILE`).
 
-`secrets/tether_secret` is also needed off this host: every inference node authenticates to the tether with it as `TETHER_SECRET`, so `cat secrets/tether_secret` and supply it when `xinity up daemon` prompts. The tether is published on all interfaces (port 4020, unlike the other services which bind to `127.0.0.1`) because daemons connect to it from other machines. To serve them over HTTPS, mount a certificate and key and set `XINITY_TLS_CERT_FILE` and `XINITY_TLS_KEY_FILE`. Nodes then use `TETHER_URL=https://<host>:4020`. See [TLS](../../docs/security/tls.md).  
+Two secrets are also needed off this host. Every inference node authenticates to the tether with `secrets/tether_secret` as `TETHER_SECRET`, and decrypts dashboard-managed settings with `secrets/xinity_secret_key` as `XINITY_SECRET_KEY`, which it refuses to start without. `cat` both and supply them when `xinity up daemon` prompts. The key belongs to the deployment, so every node gets this same value rather than one of its own. The tether is published on all interfaces (port 4020, unlike the other services which bind to `127.0.0.1`) because daemons connect to it from other machines. To serve them over HTTPS, mount a certificate and key and set `XINITY_TLS_CERT_FILE` and `XINITY_TLS_KEY_FILE`. Nodes then use `TETHER_URL=https://<host>:4020`. See [TLS](../../docs/security/tls.md).  
 
 For any other *Xinity* service env var `VAR`, set `VAR_FILE` to a file path and the service reads the file at startup (direct env vars take precedence over the `_FILE` variant); wire it in via a `docker-compose.override.yml` using Compose's `secrets:` block.
 
