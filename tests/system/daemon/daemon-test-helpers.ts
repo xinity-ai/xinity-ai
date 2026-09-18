@@ -1,4 +1,5 @@
 import { aiNodeT, modelInstallationT, modelInstallationStateT, preconfigureDB, sql } from "common-db";
+import { generateNodeKeypair } from "common-env";
 import type { InstallationStateReport, NodeRegistration } from "common-env";
 import { getAvailablePort } from "../test-helpers";
 import { ensureInfoServerRunning, infoServerUrl } from "../infoserver/infoserver-test-helpers";
@@ -28,7 +29,9 @@ export function createTempStateDir(): string {
   return dir;
 }
 
-export async function writeNodeId(stateDir: string, nodeId: string): Promise<void> {
+/** Both files, because a daemon that cannot prove an id does not keep it. */
+export async function writeNodeIdentity(stateDir: string, nodeId: string): Promise<void> {
+  await Bun.write(`${stateDir}/node_key`, generateNodeKeypair().privateKeyPem);
   await Bun.write(`${stateDir}/node_id`, nodeId);
 }
 

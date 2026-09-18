@@ -11,7 +11,7 @@ import {
   waitForInstallationState,
   waitForNodeAvailability,
   waitForNodeIdFile,
-  writeNodeId,
+  writeNodeIdentity,
   type DaemonHandle,
 } from "./daemon-test-helpers";
 
@@ -85,7 +85,7 @@ describe("xinity-ai-daemon", () => {
       available: false,
     });
     createdNodeIds.push(nodeId);
-    await writeNodeId(stateDir, nodeId);
+    await writeNodeIdentity(stateDir, nodeId);
 
     const proc = await startDaemon({
       stateDir,
@@ -115,7 +115,7 @@ describe("xinity-ai-daemon", () => {
       available: true,
     });
     createdNodeIds.push(nodeId);
-    await writeNodeId(stateDir, nodeId);
+    await writeNodeIdentity(stateDir, nodeId);
 
     const [installation] = await db.insert(modelInstallationT).values({
       nodeId,
@@ -173,7 +173,7 @@ describe("xinity-ai-daemon", () => {
       available: true,
     });
     createdNodeIds.push(nodeId);
-    await writeNodeId(stateDir, nodeId);
+    await writeNodeIdentity(stateDir, nodeId);
 
     const staleModel = `stale-${nodeId}`;
     mock.addInstalledModel(staleModel);
@@ -206,7 +206,7 @@ describe("xinity-ai-daemon", () => {
       available: true,
     });
     createdNodeIds.push(nodeId);
-    await writeNodeId(stateDir, nodeId);
+    await writeNodeIdentity(stateDir, nodeId);
 
     const removeModel = `remove-${nodeId}`;
     // Catalog entry from packages/xinity-infoserver/models.yaml; the daemon
