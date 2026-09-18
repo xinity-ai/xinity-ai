@@ -137,6 +137,29 @@ describe("runWithAudit", () => {
     expect(row.context).toEqual({ name: "GPT", specifier: "gpt-4" });
   });
 
+  // What auditMiddleware passes: oRPC resolves next() to { output, context }, so reading the
+  // result itself finds none of the handler's fields and records nothing but the channel.
+  test("reads the handler's output from the wrapper the middleware hands back", async () => {
+    const tag: AuditTag = {
+      action: "dynamicConfig.set",
+      resource: "dynamicConfig",
+      resourceId: { fromOutput: "key" },
+      captureOutput: ["value"],
+    };
+
+    await runWithAudit(
+      ctx(),
+      tag,
+      { key: "PROMETHEUS_URL" },
+      async () => ({ output: { key: "PROMETHEUS_URL", value: "http://prom:9090" }, context: {} }),
+      (result) => result.output,
+    );
+
+    const row = insertValues.mock.calls[0]![0] as { resourceId: string; context: Record<string, unknown> };
+    expect(row.resourceId).toBe("PROMETHEUS_URL");
+    expect(row.context).toMatchObject({ value: "http://prom:9090" });
+  });
+
   test("skips undefined input fields in capture", async () => {
     const tag: AuditTag = { action: "apiKey.toggle_enabled", resource: "apiKey", captureInput: ["enabled"] };
     await runWithAudit(ctx(), tag, { id: "k-1" }, async () => "OK");
