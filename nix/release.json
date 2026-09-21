@@ -1,20 +1,20 @@
 {
-  "tag": "v0.24.2",
-  "version": "0.24.2",
+  "tag": "v0.25.0",
+  "version": "0.25.0",
   "bundles": {
-    "xinity-ai-daemon": "sha256-4Fz8MP84BvRaDPIFiWhHlzTcTsDGXbvp7MR0zmQ9Xws=",
-    "xinity-ai-gateway": "sha256-1UvswoTdbZXXtZ6C+I1qxT5wy2sIlaBz6aSw4ZevIOA=",
-    "xinity-infoserver": "sha256-G7hgWB2JEQF2ZeXjd3lR40hZimE8rLKfCSkkeK4NrFo=",
-    "xinity-tether": "sha256-oUpgy2YFrU8jHfwQtmvf2ZnaHp3ZlThTkbU3EJr+IFQ="
+    "xinity-ai-daemon": "sha256-h0BsM7jKU3JPc27uJ9822jwQxC/Z+9gc+6jm5W7zMUo=",
+    "xinity-ai-gateway": "sha256-s0jJoxo5TqWf6W8Gmv3mau407WXWjyeYG+5qjAm1nJs=",
+    "xinity-infoserver": "sha256-vVxbNU/5H6TfJWEHmUXjMlk/79NtLf43uMEMKqygp5E=",
+    "xinity-tether": "sha256-RteBm5vIfMBKD9Hs7L0yUfkPhIxQTsDZSFc4VgjctJE="
   },
   "binaries": {
     "xinity-ai-dashboard": {
-      "x86_64-linux": "sha256-cJ8k5spJUk09rqIBbDdynlhjQQls9KFwXHVepS5h6FE=",
-      "aarch64-linux": "sha256-aySUtIoMrxJsKsI6zfR3C/tjvP0FotsDGAB0MC7wv5Y="
+      "x86_64-linux": "sha256-X5yLLSFspKRB/4kTX8qCTfdFN9O9szrf3YvUwFc06bk=",
+      "aarch64-linux": "sha256-Vwz6jtF8aeUfx7Ek5D5i4ZCdQAqeENLIyJ7OlscEV8w="
     },
     "xinity-cli": {
-      "x86_64-linux": "sha256-t86U6eR9NOsIQQOcaOTw4UuIbq36RoOPGJk2u0P0Qlg=",
-      "aarch64-linux": "sha256-VJg7sdWvwAnCXICmVuMYCrj/fy9Nlz2qIOHA31Profs="
+      "x86_64-linux": "sha256-Gu9IfmQDtT0S//Xa4rx1xikCQjtDq87dQmnwspjAaeQ=",
+      "aarch64-linux": "sha256-nTY/FrSf3PC9cTUX12YAjnIXjT3Z76nx9d7VbPD2a/4="
     }
   }
 }
