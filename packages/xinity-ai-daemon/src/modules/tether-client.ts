@@ -1,6 +1,7 @@
 import {
   canonicalStateReport,
   desiredStateSchema,
+  KEEPALIVE_INTERVAL_HEADER,
   serviceUrl,
   signRequest,
   STATUS_PATH,
@@ -18,6 +19,7 @@ import { config } from "../config";
 const log = rootLogger.child({ name: "tether-client" });
 
 const MAX_BACKOFF_MS = 30_000;
+const MISSED_KEEPALIVES_BEFORE_RECONNECT = 3;
 
 /**
  * The tether writes its refusals for a human, and this host is the one that can act on them: a
@@ -34,15 +36,24 @@ function signedHeaders(path: string): Record<string, string> {
   };
 }
 
+function silenceLimitMs(res: Response): number | null {
+  const intervalMs = Number(res.headers.get(KEEPALIVE_INTERVAL_HEADER));
+  return intervalMs > 0 ? intervalMs * MISSED_KEEPALIVES_BEFORE_RECONNECT : null;
+}
+
 export async function* connectSSE(registration: NodeRegistration): AsyncGenerator<DesiredState> {
   let backoffMs = 1000;
+  let warnedUnannouncedKeepalive = false;
 
   while (true) {
+    const abort = new AbortController();
+    let silenceTimer: Timer | undefined;
     try {
       const res = await fetch(serviceUrl(config.tether.url, STREAM_PATH), {
         method: "POST",
         headers: signedHeaders(STREAM_PATH),
         body: JSON.stringify(registration),
+        signal: abort.signal,
       });
 
       if (!res.ok) {
@@ -55,17 +66,35 @@ export async function* connectSSE(registration: NodeRegistration): AsyncGenerato
       backoffMs = 1000;
       log.info("SSE connection established");
 
+      const limitMs = silenceLimitMs(res);
+      if (limitMs === null && !warnedUnannouncedKeepalive) {
+        warnedUnannouncedKeepalive = true;
+        log.warn("Tether does not announce its keepalive interval, a silently dropped stream will not be detected");
+      }
+      const armSilenceTimer = () => {
+        if (limitMs === null) {
+          return;
+        }
+        clearTimeout(silenceTimer);
+        silenceTimer = setTimeout(() => {
+          log.warn({ silentMs: limitMs }, "No data from tether, reconnecting");
+          abort.abort();
+        }, limitMs);
+      };
+
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
       let currentEvent = "";
       let currentData = "";
 
+      armSilenceTimer();
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
           break;
         }
+        armSilenceTimer();
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
@@ -108,7 +137,11 @@ export async function* connectSSE(registration: NodeRegistration): AsyncGenerato
 
       log.warn("SSE connection closed by server");
     } catch (err) {
-      log.error({ err }, "SSE connection error");
+      if (!abort.signal.aborted) {
+        log.error({ err }, "SSE connection error");
+      }
+    } finally {
+      clearTimeout(silenceTimer);
     }
 
     await Bun.sleep(backoffMs);
