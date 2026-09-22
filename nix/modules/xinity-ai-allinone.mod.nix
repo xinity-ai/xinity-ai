@@ -352,6 +352,7 @@
             description = "Compose and create the managed xinity-ai credentials";
           serviceConfig = {
             Type = "oneshot";
+            RemainAfterExit = true;
             RuntimeDirectory = "xinity";
             RuntimeDirectoryMode = "0700";
             StateDirectory = "xinity";
