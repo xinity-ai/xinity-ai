@@ -114,6 +114,8 @@ export function canonicalStateReport(report: UnsignedInstallationStateReport): s
 export const STREAM_PATH = "/api/v1/stream";
 export const STATUS_PATH = "/api/v1/status";
 
+export const KEEPALIVE_INTERVAL_HEADER = "X-Keepalive-Interval-Ms";
+
 let cachedFingerprint: string | null = null;
 
 export function protocolFingerprint(): string {

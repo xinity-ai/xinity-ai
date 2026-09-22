@@ -3,14 +3,15 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mockConfigModule } from "../mock-config";
-import { canonicalStateReport, readNodeKeypair, verifyNodeSignature, type UnsignedInstallationStateReport } from "common-env";
+import { canonicalStateReport, KEEPALIVE_INTERVAL_HEADER, readNodeKeypair, verifyNodeSignature, type NodeRegistration, type UnsignedInstallationStateReport } from "common-env";
 
 const stateDir = mkdtempSync(join(tmpdir(), "tether-client-test-"));
 
 // The trailing slash is the shape that produced `//api/v1/stream` in production.
 mock.module("../config", () => mockConfigModule({ TETHER_URL: "http://100.64.0.11:2000/", STATE_DIR: stateDir }));
 
-const { reportInstallationStates } = await import("./tether-client");
+const { reportInstallationStates, connectSSE } = await import("./tether-client");
+const { config } = await import("../config");
 
 async function captureStatusPost(report: UnsignedInstallationStateReport) {
   const requested: string[] = [];
@@ -47,4 +48,31 @@ test("a status report is signed by the node key the tether pins", async () => {
   const keypair = readNodeKeypair(await Bun.file(join(stateDir, "node_key")).text());
 
   expect(verifyNodeSignature(keypair!.publicKey, canonicalStateReport(report), signature)).toBe(true);
+});
+
+// Last in the file: the generator has no stop signal, so its reconnect loop outlives the test.
+test("a stream that stays silent past the announced keepalive is reopened", async () => {
+  let connects = 0;
+  const server = Bun.serve({
+    port: 0,
+    fetch() {
+      connects++;
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(": hello\n\n"));
+        },
+      });
+      return new Response(stream, { headers: { [KEEPALIVE_INTERVAL_HEADER]: "20" } });
+    },
+  });
+  config.tether.url = server.url.href;
+
+  void connectSSE({} as NodeRegistration).next();
+  const deadline = Date.now() + 3000;
+  while (connects < 2 && Date.now() < deadline) {
+    await Bun.sleep(20);
+  }
+  await server.stop(true);
+
+  expect(connects).toBeGreaterThanOrEqual(2);
 });
