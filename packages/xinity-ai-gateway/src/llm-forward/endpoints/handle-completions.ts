@@ -136,6 +136,7 @@ export const handleCompletion = withEndpointGuards({
       streamSpec: completionStreamSpec,
       nonStreamSpec: completionNonStreamSpec,
       logFields,
+      route: modelInfo,
       log,
       onStreamChunk: idle?.reset,
       onStreamEnd: idle?.clear,

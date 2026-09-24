@@ -30,7 +30,7 @@ export const handleRerank = withEndpointGuards({
     }, signal);
 
     if (!backendResponse.ok) {
-      return forwardBackendError(backendResponse, log, modelInfo.model);
+      return forwardBackendError(backendResponse, log, modelInfo);
     }
 
     let result: Record<string, unknown>;

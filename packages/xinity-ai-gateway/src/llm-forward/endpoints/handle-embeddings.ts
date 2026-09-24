@@ -43,7 +43,7 @@ export const handleEmbeddingGeneration = withEndpointGuards({
     const backendResponse = await backendPostJson(modelInfo, "/v1/embeddings", fetchBody, signal);
 
     if (!backendResponse.ok) {
-      return forwardBackendError(backendResponse, log, modelInfo.model);
+      return forwardBackendError(backendResponse, log, modelInfo);
     }
 
     let raw: Record<string, unknown>;

@@ -115,7 +115,7 @@ export function withEndpointGuards<TBody>(
         req,
       }));
     } catch (error) {
-      return noteFailedRequest(handleEndpointError(error, opts.log));
+      return noteFailedRequest(handleEndpointError(error, opts.log, resolved?.modelInfo));
     }
   };
 }
