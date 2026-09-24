@@ -279,6 +279,23 @@ function isJsonString(text: string): boolean {
   }
 }
 
+export type BackendRoute = {
+  nodeId: string | null;
+  host: string;
+  specifier: string;
+  authToken: string | null;
+};
+
+/** Where a request was sent, so a failure log can be traced to one node and installation. */
+export function backendRouteFields(route: BackendRoute): Record<string, unknown> {
+  return {
+    nodeId: route.nodeId,
+    host: route.host,
+    specifier: route.specifier,
+    signed: route.authToken !== null,
+  };
+}
+
 /**
  * Handles a non-ok backend response. Forwards 4xx status codes as-is (e.g.
  * context length exceeded) and maps 5xx to 502 (actual bad gateway).
@@ -286,11 +303,20 @@ function isJsonString(text: string): boolean {
 export async function forwardBackendError(
   backendResponse: Response,
   log: { error: (obj: Record<string, unknown>, msg: string) => void },
-  model?: string,
+  route: BackendRoute & { model: string },
 ): Promise<Response> {
   const text = await backendResponse.text().catch(() => "");
-  log.error({ status: backendResponse.status, body: text }, "Backend error");
-  if (model) recordBackendError(model, backendResponse.status);
+  const fields = { ...backendRouteFields(route), status: backendResponse.status, body: text };
+  recordBackendError(route.model, backendResponse.status);
+
+  // The client's API key never reaches the daemon, so a 401 is the daemon refusing the
+  // gateway itself. Passing it through would tell the user their own key is bad.
+  if (backendResponse.status === 401) {
+    log.error(fields, "Daemon refused the gateway's request signature");
+    return errorResponse("Bad Gateway", 502);
+  }
+
+  log.error(fields, "Backend error");
   const status = mapBackendStatusToClient(backendResponse.status);
   if (backendResponse.status >= 500) {
     return errorResponse("Bad Gateway", status);
@@ -348,32 +374,34 @@ export const BACKEND_RESTART_RETRY_AFTER = 120;
 export function handleEndpointError(
   error: unknown,
   log: { info: (obj: Record<string, unknown>, msg: string) => void; warn: (obj: Record<string, unknown>, msg: string) => void; error: (obj: Record<string, unknown>, msg: string) => void },
+  route?: BackendRoute,
 ): Response {
+  const fields = { err: error, ...(route ? backendRouteFields(route) : {}) };
   if (isAbortError(error)) {
-    log.info({ err: error }, "Client disconnected");
+    log.info(fields, "Client disconnected");
     return new Response(null, { status: 499 });
   }
   if (isTimeoutError(error)) {
-    log.warn({ err: error }, "Backend timeout");
+    log.warn(fields, "Backend timeout");
     return errorResponse("Backend timeout", 504);
   }
   if (isImageTooLarge(error)) {
-    log.warn({ err: error }, "Image rejected at ingest");
+    log.warn(fields, "Image rejected at ingest");
     return errorResponse((error as Error).message, 413);
   }
   if (isImageTypeUnsupported(error)) {
-    log.warn({ err: error }, "Image rejected at ingest");
+    log.warn(fields, "Image rejected at ingest");
     return errorResponse((error as Error).message, 415);
   }
   if (isConnectionRefused(error)) {
-    log.warn({ err: error }, "Backend unreachable");
+    log.warn(fields, "Backend unreachable");
     return errorResponse(
       "Service temporarily unavailable. Consider adding cluster capacity",
       503,
       { "Retry-After": String(BACKEND_RESTART_RETRY_AFTER) },
     );
   }
-  log.error({ err: error }, "Internal gateway error");
+  log.error(fields, "Internal gateway error");
   // Generic message: error.message can include DB/SDK internals that must not
   // reach the client. Full error is logged above for debugging.
   return errorResponse("Internal Server Error", 500);

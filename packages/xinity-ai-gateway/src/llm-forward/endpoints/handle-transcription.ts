@@ -13,6 +13,7 @@ import {
   SSE_RESPONSE_HEADERS,
   sseEncoder,
   validateModelType,
+  type BackendRoute,
   type FailedRequestContext,
 } from "../util";
 import { backendPostForm, createIdleTimeout, type IdleTimeout } from "../backend-fetch";
@@ -113,6 +114,7 @@ export const TRANSCRIPTION_MODEL_TYPE = "transcription";
 export async function handleTranscription(req: Request): Promise<Response> {
   const callStartTime = Date.now();
   let leased: FailedRequestContext | undefined;
+  let routed: BackendRoute | undefined;
 
   // Counts a failure against the leased node, except 499 (client disconnect).
   const noteFailedRequest = (res: Response): Response => {
@@ -151,6 +153,7 @@ export async function handleTranscription(req: Request): Promise<Response> {
     }
     releaseCallbacks.set(req, modelInfo.release);
     leased = { auth, modelInfo, callStartTime };
+    routed = modelInfo;
 
     const typeError = validateModelType(modelInfo, [TRANSCRIPTION_MODEL_TYPE]);
     if (typeError) {
@@ -171,7 +174,7 @@ export async function handleTranscription(req: Request): Promise<Response> {
     const signal = AbortSignal.any([req.signal, timeoutSignal]);
     const backendResponse = await backendPostForm(modelInfo, "/v1/audio/transcriptions", form as FormData, signal);
     if (!backendResponse.ok) {
-      return noteFailedRequest(await forwardBackendError(backendResponse, log, modelInfo.model));
+      return noteFailedRequest(await forwardBackendError(backendResponse, log, modelInfo));
     }
 
     if (wantsStream) {
@@ -204,6 +207,6 @@ export async function handleTranscription(req: Request): Promise<Response> {
       headers: { "Content-Type": contentType },
     });
   } catch (error) {
-    return noteFailedRequest(handleEndpointError(error, log));
+    return noteFailedRequest(handleEndpointError(error, log, routed));
   }
 }

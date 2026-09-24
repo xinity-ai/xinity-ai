@@ -9,6 +9,7 @@ import {
   recordFailedRequest,
   SSE_RESPONSE_HEADERS,
   sseEncoder,
+  type BackendRoute,
 } from "./util";
 import { recordTimeToFirstToken } from "../metrics";
 import { BackendUsageSchema } from "./backend-schemas";
@@ -261,6 +262,7 @@ export function forwardOpenAIResponse<Chunk extends StreamChunkLike, Acc, Choice
   streamSpec,
   nonStreamSpec,
   logFields,
+  route,
   log,
   onStreamChunk,
   onStreamEnd,
@@ -271,13 +273,14 @@ export function forwardOpenAIResponse<Chunk extends StreamChunkLike, Acc, Choice
   streamSpec: StreamSpec<Chunk, Acc>;
   nonStreamSpec: NonStreamSpec<Choice>;
   logFields: CallLogFields;
+  route: BackendRoute & { model: string };
   log: Logger;
   onStreamChunk?: () => void;
   onStreamEnd?: () => void;
 }): Response | Promise<Response> {
   if (!backendResponse.ok) {
     onStreamEnd?.();
-    return forwardBackendError(backendResponse, log, logFields.modelInfo.model);
+    return forwardBackendError(backendResponse, log, route);
   }
   if (stream) {
     return forwardOpenAIStream({ backendResponse, originalModel, spec: streamSpec, logFields, log, onStreamChunk, onStreamEnd });

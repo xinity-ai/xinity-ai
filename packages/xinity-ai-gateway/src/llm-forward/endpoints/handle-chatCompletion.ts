@@ -249,6 +249,7 @@ export const handleChatCompletion = withEndpointGuards({
       streamSpec: chatStreamSpec,
       nonStreamSpec: chatNonStreamSpec,
       logFields,
+      route: modelInfo,
       log,
       onStreamChunk: idle?.reset,
       onStreamEnd: idle?.clear,
