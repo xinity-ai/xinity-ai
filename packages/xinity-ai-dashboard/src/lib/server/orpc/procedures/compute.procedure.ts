@@ -348,19 +348,26 @@ const removeNode = rootOs
   .route({
     path: "/{nodeId}", method: "DELETE", tags,
     summary: "Remove Compute Node",
-    description: "Soft-deletes a compute node so it no longer appears in the dashboard",
+    description: "Soft-deletes a disconnected compute node so it no longer appears in the dashboard",
   })
   .input(z.object({ nodeId: z.uuid() }))
-  .handler(async ({ input }) => {
+  .errors({ CONFLICT: {} })
+  .handler(async ({ input, errors }) => {
     const db = getDB();
-    await db
+    const removed = await db
       .update(aiNodeT)
       .set({ deletedAt: new Date() })
       .where(sql`
         ${aiNodeT.id} = ${input.nodeId}
       AND
         ${aiNodeT.deletedAt} IS NULL
-      `);
+      AND
+        NOT ${aiNodeT.available}
+      `)
+      .returning({ id: aiNodeT.id });
+    if (removed.length === 0) {
+      throw errors.CONFLICT({ message: "Only a disconnected node can be removed" });
+    }
   });
 
 export const computeRouter = rootOs.prefix("/compute").router({

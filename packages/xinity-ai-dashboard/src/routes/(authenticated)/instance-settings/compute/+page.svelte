@@ -111,7 +111,8 @@
 
     const [error] = await orpc.compute.removeNode({ nodeId: node.id });
     if (error) {
-      toastState.add("Failed to remove node", "error");
+      toastState.add(error.message || "Failed to remove node", "error");
+      void refresh(rangeHours);
       return;
     }
     toastState.add(`Removed "${node.machineName ?? node.host}"`, "success");
@@ -237,7 +238,7 @@
 <ConfirmDialog
   bind:open={removeDialogOpen}
   title="Remove Compute Node"
-  description="Are you sure you want to remove {nodeToRemove?.machineName ?? nodeToRemove?.host ?? 'this node'}? It will no longer appear in the dashboard. If the daemon is still running on this machine, it will restore itself on its next heartbeat."
+  description="Are you sure you want to remove {nodeToRemove?.machineName ?? nodeToRemove?.host ?? 'this node'}? It will no longer appear in the dashboard. If its daemon connects again, it reappears."
   confirmLabel="Remove"
   onConfirm={() => void confirmRemoveNode()}
   onCancel={() => (nodeToRemove = null)}

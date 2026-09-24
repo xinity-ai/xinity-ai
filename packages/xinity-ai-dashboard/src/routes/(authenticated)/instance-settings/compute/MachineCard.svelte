@@ -49,15 +49,15 @@
     <div class="flex items-center gap-2 shrink-0">
       {#if !node.online}
         <span class="text-xs text-gray-400 whitespace-nowrap">offline</span>
+        <button
+          type="button"
+          title="Remove node"
+          onclick={() => onRemove(node)}
+          class="text-muted-foreground hover:text-destructive transition-colors cursor-pointer p-1 -m-1 rounded"
+        >
+          <Trash2 class="w-4 h-4" />
+        </button>
       {/if}
-      <button
-        type="button"
-        title="Remove node"
-        onclick={() => onRemove(node)}
-        class="text-muted-foreground hover:text-destructive transition-colors cursor-pointer p-1 -m-1 rounded"
-      >
-        <Trash2 class="w-4 h-4" />
-      </button>
     </div>
   </div>
 
