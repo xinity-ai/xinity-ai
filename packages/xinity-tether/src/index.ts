@@ -1,14 +1,14 @@
 import "zod/compile";
 
 import { z } from "zod";
-import { DYNAMIC_CONFIG_CHANNEL, logMigrationFailureFatal, readDynamicConfig } from "common-db";
+import { DYNAMIC_CONFIG_CHANNEL, logMigrationFailureFatal, readDynamicConfig, sql } from "common-db";
 import { nodeRegistrationSchema, installationStateReportSchema, protocolFingerprint, activationRefusal, createDbConfigFeed, canonicalRegistration, canonicalStateReport, verifyNodeSignature, STREAM_PATH, STATUS_PATH, KEEPALIVE_INTERVAL_HEADER, type VerifyFailure } from "common-env";
 import { tetherConfig } from "./config-schema";
 import { config, configStore } from "./config";
 import { rootLogger } from "./logger";
 import { checkMigrations, getDB, subscribe, end as endDB } from "./db";
 import { verifySignature, unauthorized } from "./auth";
-import { addConnection, removeConnection, pushDesiredState, pushConfig, pushConfigToAll, runKeepaliveLoop, sendShutdownToAll, isConnected, getConnectedNodeIds, connectedPublicKey } from "./connections";
+import { addConnection, removeConnection, pushDesiredState, pushConfig, pushConfigToAll, runKeepaliveLoop, sendShutdownToAll, dropAllConnections, isConnected, getConnectedNodeIds, connectedPublicKey } from "./connections";
 import { createConfigBroadcast } from "./config-broadcast";
 import { buildDesiredState } from "./desired-state";
 import { createNotifyBus } from "./notify-bus";
@@ -86,12 +86,40 @@ try {
   rootLogger.error({ err }, "Daemons will not receive dynamic configuration changes");
 }
 
+let databaseReachable = true;
+let probingDatabase = false;
+
+async function probeDatabase(): Promise<void> {
+  if (probingDatabase) {
+    return;
+  }
+  probingDatabase = true;
+  try {
+    await getDB().execute(sql`SELECT 1`);
+    if (!databaseReachable) {
+      log.info("Database reachable again");
+    }
+    databaseReachable = true;
+  } catch (err) {
+    if (databaseReachable) {
+      log.error({ err }, "Database unreachable, dropping all daemon connections");
+      dropAllConnections("db_unreachable");
+    }
+    databaseReachable = false;
+  } finally {
+    probingDatabase = false;
+  }
+}
+
 let keepaliveTimer: Timer | undefined;
+let databaseProbeTimer: Timer | undefined;
 configStore.watch(
   (value) => value.server.keepaliveIntervalMs(),
   (intervalMs) => {
     clearInterval(keepaliveTimer);
+    clearInterval(databaseProbeTimer);
     keepaliveTimer = runKeepaliveLoop(intervalMs, config.server.livenessTimeoutMs);
+    databaseProbeTimer = setInterval(() => void probeDatabase(), intervalMs);
   },
 );
 
@@ -144,7 +172,7 @@ async function handleSSEStream(req: Request): Promise<Response> {
   } catch (err) {
     incRequestRejections("stream", "registration_failed");
     log.error({ err, nodeId }, "Registration write failed during SSE handshake");
-    return Response.json({ error: "Internal error" }, { status: 500 });
+    return Response.json({ error: "Tether cannot write to its database" }, { status: 503 });
   }
 
   let connId: number | undefined;
@@ -226,7 +254,8 @@ const server = Bun.serve({
   ...serveTarget,
   tls,
   routes: {
-    "/health": httpMetrics.route("/health", () => Response.json({ ok: true })),
+    "/health": httpMetrics.route("/health", () =>
+      Response.json({ ok: databaseReachable }, { status: databaseReachable ? 200 : 503 })),
     "/metrics": handleMetrics,
     "/api/v1/stream": httpMetrics.route("/api/v1/stream", handleSSEStream),
     "/api/v1/status": httpMetrics.route("/api/v1/status", handleStatus),
@@ -238,6 +267,7 @@ log.info({ ...serveTarget, tls: !!tls }, `Tether started (${tls ? "https" : "htt
 
 async function shutdown() {
   clearInterval(keepaliveTimer);
+  clearInterval(databaseProbeTimer);
   await configStore.stop();
   await configBroadcast.stop();
   sendShutdownToAll();

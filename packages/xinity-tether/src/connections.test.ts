@@ -192,13 +192,6 @@ describe("connections", () => {
     expect(isConnected("node-b")).toBe(true);
   });
 
-  test("addConnection succeeds even when DB write fails", async () => {
-    dbShouldFail = true;
-    const { controller } = makeController();
-    await addConnection("node-dbfail", controller, "pub-key");
-    expect(isConnected("node-dbfail")).toBe(true);
-  });
-
   test("removeConnection succeeds even when DB write fails", async () => {
     const { controller } = makeController();
     await addConnection("node-dbfail2", controller, "pub-key");

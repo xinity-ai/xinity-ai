@@ -51,6 +51,7 @@ export type DisconnectReason =
   | "write_failed"
   | "keepalive_failed"
   | "liveness_timeout"
+  | "db_unreachable"
   | "shutdown";
 
 export type RejectionReason =

@@ -42,14 +42,14 @@ function recordClose(conn: ActiveConnection, reason: DisconnectReason): void {
   observeConnectionDuration(reason, (Date.now() - conn.connectedAt) / 1000);
 }
 
-async function setNodeAvailable(nodeId: string, available: boolean): Promise<void> {
+async function markNodeUnavailable(nodeId: string): Promise<void> {
   try {
     await getDB()
       .update(aiNodeT)
-      .set({ available })
+      .set({ available: false })
       .where(sql`${aiNodeT.id} = ${nodeId}`);
   } catch (err) {
-    log.error({ err, nodeId, available }, "Failed to update node availability");
+    log.error({ err, nodeId }, "Failed to mark node unavailable");
   }
 }
 
@@ -81,7 +81,6 @@ export async function addConnection(
   incSSEConnections();
 
   log.info({ nodeId, connId }, "Daemon connected");
-  await setNodeAvailable(nodeId, true);
   return connId;
 }
 
@@ -104,7 +103,7 @@ export async function removeConnection(nodeId: string, reason: DisconnectReason,
   } catch {}
 
   log.info({ nodeId, connId: conn.id, reason }, "Daemon disconnected");
-  await setNodeAvailable(nodeId, false);
+  await markNodeUnavailable(nodeId);
 }
 
 export function pushConfig(nodeId: string, values: Record<string, string>): void {
@@ -168,14 +167,20 @@ export function getConnectedNodeIds(): string[] {
   return [...connections.keys()];
 }
 
-export function sendShutdownToAll(): void {
+export function dropAllConnections(reason: DisconnectReason): void {
   for (const [nodeId, conn] of connections) {
-    tryWrite(conn, sseEncode("shutdown", "{}"));
     try {
       conn.controller.close();
     } catch {}
-    recordClose(conn, "shutdown");
+    recordClose(conn, reason);
     connections.delete(nodeId);
   }
   setConnectedNodes(0);
+}
+
+export function sendShutdownToAll(): void {
+  for (const conn of connections.values()) {
+    tryWrite(conn, sseEncode("shutdown", "{}"));
+  }
+  dropAllConnections("shutdown");
 }

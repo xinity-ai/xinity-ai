@@ -18,10 +18,10 @@ export async function writeRegistration(reg: NodeRegistration): Promise<Registra
   const outcome = await getDB().transaction(async (tx): Promise<RegistrationOutcome> => {
     const written = await tx
       .insert(aiNodeT)
-      .values({ id: nodeId, host, port, ...rest })
+      .values({ id: nodeId, host, port, ...rest, available: true })
       .onConflictDoUpdate({
         target: aiNodeT.id,
-        set: { host, port, ...rest, deletedAt: null },
+        set: { host, port, ...rest, available: true, deletedAt: null },
         setWhere: sql`${aiNodeT.publicKey} IS NULL OR ${aiNodeT.publicKey} = ${rest.publicKey}`,
       })
       .returning({ id: aiNodeT.id });
