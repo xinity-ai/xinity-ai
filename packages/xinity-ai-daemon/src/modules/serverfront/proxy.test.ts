@@ -69,11 +69,13 @@ describe("proxy auth", () => {
   test("rejects a missing signature", async () => {
     const res = await proxyRequest("/proxy/llama3%3Alatest/v1/chat/completions", { token: null });
     expect(res.status).toBe(401);
+    expect(await res.text()).toContain("No Authorization header");
   });
 
   test("rejects a signature made with the wrong token", async () => {
     const res = await proxyRequest("/proxy/llama3%3Alatest/v1/chat/completions", { token: "wrong" });
     expect(res.status).toBe(401);
+    expect(await res.text()).toContain("does not match this node's auth token");
   });
 
   test("rejects the raw token as a bearer header", async () => {
@@ -82,7 +84,9 @@ describe("proxy auth", () => {
       method: "POST",
       headers: { authorization: `Bearer ${getAuthToken()}` },
     });
-    expect((await handleProxyRequest(req, url)).status).toBe(401);
+    const res = await handleProxyRequest(req, url);
+    expect(res.status).toBe(401);
+    expect(await res.text()).toContain("not a Xinity signature");
   });
 
   // Every model on the node shares one token, so the path is what keeps a captured header from
