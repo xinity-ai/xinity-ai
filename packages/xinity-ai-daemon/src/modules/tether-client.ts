@@ -20,6 +20,7 @@ const log = rootLogger.child({ name: "tether-client" });
 
 const MAX_BACKOFF_MS = 30_000;
 const MISSED_KEEPALIVES_BEFORE_RECONNECT = 3;
+const HANDSHAKE_TIMEOUT_MS = 30_000;
 
 /**
  * The tether writes its refusals for a human, and this host is the one that can act on them: a
@@ -47,7 +48,10 @@ export async function* connectSSE(registration: NodeRegistration): AsyncGenerato
 
   while (true) {
     const abort = new AbortController();
-    let silenceTimer: Timer | undefined;
+    let silenceTimer: Timer | undefined = setTimeout(() => {
+      log.warn({ timeoutMs: HANDSHAKE_TIMEOUT_MS }, "Tether did not answer, reconnecting");
+      abort.abort();
+    }, HANDSHAKE_TIMEOUT_MS);
     try {
       const res = await fetch(serviceUrl(config.tether.url, STREAM_PATH), {
         method: "POST",
@@ -55,6 +59,7 @@ export async function* connectSSE(registration: NodeRegistration): AsyncGenerato
         body: JSON.stringify(registration),
         signal: abort.signal,
       });
+      clearTimeout(silenceTimer);
 
       if (!res.ok) {
         log.error({ status: res.status, refusal: await refusal(res) }, "SSE connection rejected");
