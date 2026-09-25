@@ -1,0 +1,158 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+
+models:
+  agents-a1-35b-a3b-vllm: &a1-35b
+    name: Agents-A1 35B-A3B
+    description: |
+      InternScience's 35B agentic mixture of experts, with about 3B parameters active per
+      token, so it decodes at a speed set by the active weights rather than by its
+      footprint. It is built for long-horizon agent work: multi-step search, engineering
+      and scientific-research tasks, tool calling and precise instruction following. On its
+      publisher's numbers it competes with far larger frontier systems on agentic
+      benchmarks while staying in the 35B class.
+
+      It reasons before answering. The chain of thought arrives in `reasoning`, separate
+      from the answer: send `chat_template_kwargs: {"enable_thinking": false}` to suppress
+      it, which cuts a short factual reply from hundreds of tokens to a handful. It calls
+      tools natively, returning structured `tool_calls`, and it reads images as well as
+      text, so an agent can work from screenshots and charts.
+
+      Regarding settings: The recommended defaults are `temperature: 0.85`, `top_p: 0.95`, `top_k: 20`, `min_p: 0.0`,
+      `presence_penalty: 1.1` and `repetition_penalty: 1.0`. The window is 262K tokens.
+    url: https://huggingface.co/InternScience/Agents-A1
+    license: apache-2.0
+    createdAt: 2026-06-26
+    registeredAt: 2026-09-25
+    engine: vllm
+    engineSpecifier: InternScience/Agents-A1
+    sizing: &a1-35b-kv
+      # 40 layers, 10 full attention and 30 linear, 2 kv heads at head_dim 256. The linear
+      # layers hold a fixed state per request instead of growing with context, and they force
+      # vLLM to block-align the attention page to them, so the derived floor falls short and
+      # minKvCacheGb is authored. Bracketed: 5.53 aborts, 5.54 starts at 1.00x.
+      kvBytesPerToken: 20480
+      stateBytesPerSequence: 64880640
+      minKvCacheGb: 5.54
+      maxContextLength: 262144
+      weightGb: 70.38  # measured resident, 65.53 GiB
+      activeWeightGb: 5.89
+      weightBits: 16
+    type: chat
+    family: Agents-A1
+    tags: [tools, vision]
+    requestParams: &a1-params
+      top_k: number
+      min_p: number
+      repetition_penalty: number
+      chat_template_kwargs.enable_thinking: boolean
+    engineArgs: &a1-parsers
+      - --tool-call-parser
+      - qwen3_coder
+      - --reasoning-parser
+      - qwen3
+    engineVersions:
+      min: "0.19.2"
+
+  agents-a1-35b-a3b-fp8-vllm:
+    <<: *a1-35b
+    name: Agents-A1 35B-A3B FP8
+    description: |
+      The 35B-A3B in FP8, at a little over half the memory of the bf16 release and the
+      practical default for this model: it matched the bf16 entry question for question on
+      a twelve-prompt battery, with tool calling and image reading unchanged.
+
+      Reasoning, tool calling, sampling and the 262K window behave exactly as on the bf16
+      entry, including `chat_template_kwargs: {"enable_thinking": false}` to turn the chain
+      of thought off. This checkpoint leaves the vision tower unquantized, so images
+      genuinely work rather than degrading the way some FP8 vision builds do.
+
+      Pick the bf16 entry if you want the untouched weights, or the INT4 entry if you need
+      the smallest footprint and can accept a community requantization.
+    url: https://huggingface.co/InternScience/Agents-A1-FP8
+    variantOf: agents-a1-35b-a3b-vllm
+    engineSpecifier: InternScience/Agents-A1-FP8
+    sizing:
+      <<: *a1-35b-kv
+      weightGb: 37.89  # measured resident, 35.28 GiB
+      activeWeightGb: 4.49
+      weightBits: 8
+
+  agents-a1-35b-a3b-int4-vllm:
+    <<: *a1-35b
+    name: Agents-A1 35B-A3B INT4
+    description: |
+      A community 4-bit requantization of the 35B-A3B, and the smallest way to run it: a
+      third of the bf16 footprint, which is what makes it the entry to reach for when the
+      model has to share a node. It was calibrated on STEM and agentic data, and it came
+      through a twelve-prompt battery run three times plus sixty short requests with no
+      empty or malformed replies, matching the official builds question for question.
+
+      Reasoning, tool calling, image reading, sampling and the 262K window behave as on the
+      bf16 entry.
+
+      Choose it for footprint rather than for speed. Only the experts are quantized here,
+      so the weights read per token barely differ from the FP8 entry's, and on a single
+      stream it measured marginally slower rather than faster. What you gain is roughly
+      13 GB of memory. Being a third-party repack it also needs a newer engine than the
+      official builds, and the official FP8 entry is the safer default if neither
+      constraint binds.
+    url: https://huggingface.co/cyankiwi/Agents-A1-AWQ-INT4
+    variantOf: agents-a1-35b-a3b-vllm
+    engineSpecifier: cyankiwi/Agents-A1-AWQ-INT4
+    engineVersions:
+      # The checkpoint is asymmetric (zero points), which 0.19.2, 0.20.2 and 0.21.1 route
+      # to a Marlin MoE method that refuses it: `AssertionError: Only symmetric quantization
+      # is supported for MoE`. 0.23.1 picks MarlinExperts instead and serves. No 0.22
+      # build exists for this hardware, so the floor is the oldest one testable.
+      min: "0.23.1"
+    sizing:
+      <<: *a1-35b-kv
+      weightGb: 24.56  # measured resident, 22.87 GiB
+      activeWeightGb: 4.46
+      weightBits: 4
+
+  agents-a1-4b-vllm:
+    name: Agents-A1 4B
+    description: |
+      The small Agents-A1: a 4B dense model that keeps the family's agentic behaviour,
+      tool calling and image reading in a footprint that fits almost anywhere. Use it when
+      the 35B entries are too large for the node, or for local and edge deployments.
+
+      It reasons before answering, with the chain of thought in `reasoning` and
+      `chat_template_kwargs: {"enable_thinking": false}` to suppress it. It returns
+      structured `tool_calls`, reads images, and takes the same 262K window as its larger
+      siblings.
+
+      Send the publisher's sampling settings, since the repository ships no defaults:
+      `temperature: 0.85`, `top_p: 0.95`, `top_k: 20`, `min_p: 0.0`,
+      `presence_penalty: 1.1`, `repetition_penalty: 1.0`.
+
+      It is a 4B, and it shows on arithmetic: with reasoning off it got a two-digit
+      multiplication wrong that the 35B entries answer correctly, so leave reasoning on for
+      anything quantitative. Reach for a 35B entry when a task has to be got right
+      rather than got quickly. One
+      thing to plan for: its KV-cache floor at the full 262K window is larger than the 35B
+      entries', so it needs more cache than its weights suggests.
+    url: https://huggingface.co/InternScience/Agents-A1-4B
+    license: apache-2.0
+    createdAt: 2026-07-14
+    registeredAt: 2026-09-25
+    engine: vllm
+    engineSpecifier: InternScience/Agents-A1-4B
+    sizing:
+      kvBytesPerToken: 32768
+      stateBytesPerSequence: 51904512
+      # 32 layers, 8 full attention and 24 linear, 4 kv heads at head_dim 256.
+      # minKvCacheGb is authored: the linear layers block-align the attention page,
+      # so the derived floor falls short. Bracketed: 8.71 aborts, 8.72 starts at 1.00x.
+      minKvCacheGb: 8.72
+      maxContextLength: 262144
+      weightGb: 9.25  # measured resident, 8.61 GiB
+      weightBits: 16
+    type: chat
+    family: Agents-A1
+    tags: [tools, vision]
+    requestParams: *a1-params
+    engineArgs: *a1-parsers
+    engineVersions:
+      min: "0.19.2"
