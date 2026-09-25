@@ -364,7 +364,11 @@ export const auth = betterAuth({
   },
   trustedOrigins: config.nodeEnv === "development" ? ["*"] : [
     config.origin,
-    "*.google.com",
+    "https://accounts.google.com",
+    "https://oauth2.googleapis.com",
+    "https://openidconnect.googleapis.com",
+    "https://login.microsoftonline.com",
+    "https://graph.microsoft.com",
     ...config.trustedOrigins,
   ],
 

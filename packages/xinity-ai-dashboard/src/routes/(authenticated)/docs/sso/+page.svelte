@@ -234,6 +234,15 @@
 
       <div class="rounded-lg border p-4">
         <div class="flex items-center gap-2 mb-2">
+          <code class="text-xs font-mono bg-red-100 text-red-800 px-2 py-0.5 rounded">discovery_untrusted_origin</code>
+          <span class="text-xs font-medium text-red-600">Common</span>
+        </div>
+        <p class="text-sm text-gray-600 mb-1"><strong>Cause:</strong> Registering an OIDC provider failed because its discovery document points to an origin that is not in the dashboard's trusted origins. Every discovered endpoint must be trusted. Only a small set of Google and Microsoft identity origins are trusted by default.</p>
+        <p class="text-sm text-gray-600"><strong>Fix:</strong> Add the origin named in the error to the dashboard's <code class="font-mono text-xs bg-gray-100 px-1 py-0.5 rounded">TRUSTED_ORIGINS</code> setting. Google needs <code class="font-mono text-xs bg-gray-100 px-1 py-0.5 rounded">https://www.googleapis.com</code> for its signing keys, and GitLab needs <code class="font-mono text-xs bg-gray-100 px-1 py-0.5 rounded">https://gitlab.com</code>. Trusted origins are also accepted as redirect targets after sign-in and password reset, so only add origins you trust.</p>
+      </div>
+
+      <div class="rounded-lg border p-4">
+        <div class="flex items-center gap-2 mb-2">
           <code class="text-xs font-mono bg-red-100 text-red-800 px-2 py-0.5 rounded">missing_user_info</code>
           <span class="text-xs font-medium text-red-600">Common</span>
         </div>
