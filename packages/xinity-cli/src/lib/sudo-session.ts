@@ -152,7 +152,7 @@ export class SudoSession {
     // and the leading `\n` in printf guarantees the delimiter lands on its own line regardless of whether
     // the command output ended with a newline.
     const wrapped =
-      `( ${command} ) < /dev/null 2>&1; __xrc=$?\n` +
+      `( ${command}\n) < /dev/null 2>&1; __xrc=$?\n` +
       `printf '\\n${delimiter}%s\\n' "$__xrc"\n`;
 
     writeAndFlush(this.proc, wrapped);
