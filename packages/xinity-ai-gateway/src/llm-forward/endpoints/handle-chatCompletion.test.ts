@@ -1152,3 +1152,35 @@ describe("streaming tool-call resilience", () => {
     expect(finishReasons(chunks)).toContain("tool_calls");
   });
 });
+
+describe("handleChatCompletion, audio input", () => {
+  const WAV_BASE64 = Buffer.from([...Buffer.from("RIFF"), 0x24, 0, 0, 0, ...Buffer.from("WAVEfmt ")]).toString("base64");
+  const audioRequest = (inputAudio: Record<string, unknown>) => new Request("http://localhost:4000/v1/chat/completions", {
+    method: "POST",
+    headers: { "Authorization": "Bearer test" },
+    body: JSON.stringify({
+      model: "test-model",
+      store: false,
+      messages: [{ role: "user", content: [{ type: "text", text: "transcribe" }, { type: "input_audio", input_audio: inputAudio }] }],
+    }),
+  });
+
+  test("forwards the part to the backend exactly as OpenAI defines it", async () => {
+    const res = await handleChatCompletion(audioRequest({ data: WAV_BASE64, format: "wav" }));
+
+    expect(res.status).toBe(200);
+    const [message] = lastUpstreamBody!.messages as Array<{ content: unknown[] }>;
+    expect(message!.content[1]).toEqual({ type: "input_audio", input_audio: { data: WAV_BASE64, format: "wav" } });
+  });
+
+  test.each([
+    ["a format OpenAI does not accept", { data: WAV_BASE64, format: "flac" }],
+    ["bytes that contradict the declared format", { data: WAV_BASE64, format: "mp3" }],
+    ["a part without data", { format: "wav" }],
+  ])("answers %s with a 400, without reaching the backend", async (_label, inputAudio) => {
+    const res = await handleChatCompletion(audioRequest(inputAudio));
+
+    expect(res.status).toBe(400);
+    expect(lastUpstreamBody).toBeNull();
+  });
+});

@@ -60,25 +60,32 @@ export function isMediaTooLarge(error: unknown): boolean {
 const MEDIA_TYPE_UNSUPPORTED = "media_type_unsupported";
 
 /** Refused rather than stored: these bytes are served back to a browser later. */
-function mediaTypeUnsupportedError(message: string): Error {
-  return Object.assign(new Error(message), { code: MEDIA_TYPE_UNSUPPORTED });
-}
-
 function imageTypeUnsupportedError(declared: string): Error {
-  return mediaTypeUnsupportedError(
-    `Image type ${declared || "unknown"} is not supported. Supported: ${STORABLE_IMAGE_TYPES.join(", ")}`,
-  );
-}
-
-function audioTypeUnsupportedError(declared: string): Error {
-  return mediaTypeUnsupportedError(
-    `Audio format ${declared || "unknown"} is not supported. Supported: ${Object.keys(STORABLE_AUDIO_TYPES).join(", ")}`,
+  return Object.assign(
+    new Error(`Image type ${declared || "unknown"} is not supported. Supported: ${STORABLE_IMAGE_TYPES.join(", ")}`),
+    { code: MEDIA_TYPE_UNSUPPORTED },
   );
 }
 
 export function isMediaTypeUnsupported(error: unknown): boolean {
   return typeof error === "object" && error !== null
     && (error as { code?: unknown }).code === MEDIA_TYPE_UNSUPPORTED;
+}
+
+const AUDIO_INVALID = "audio_invalid";
+
+/** OpenAI answers a bad `input_audio` part with a 400, and so do we. */
+function audioInvalidError(message: string): Error {
+  return Object.assign(new Error(message), { code: AUDIO_INVALID });
+}
+
+export function isAudioInvalid(error: unknown): boolean {
+  return typeof error === "object" && error !== null
+    && (error as { code?: unknown }).code === AUDIO_INVALID;
+}
+
+function isAudioFormat(value: string): value is AudioFormat {
+  return Object.hasOwn(STORABLE_AUDIO_TYPES, value);
 }
 
 const MAGIC: Array<{ type: StorableImageType; matches: (b: Uint8Array) => boolean }> = [
@@ -201,20 +208,24 @@ async function processAudio(
   orgId: string,
   imageStore: ImageStore | null,
   store: boolean,
-): Promise<{ format: AudioFormat; dbRef: string | null }> {
+): Promise<string | null> {
+  if (!isAudioFormat(declaredFormat)) {
+    throw audioInvalidError(
+      `Audio format ${declaredFormat || "unknown"} is not supported. Supported: ${Object.keys(STORABLE_AUDIO_TYPES).join(", ")}`,
+    );
+  }
   const bytes = new Uint8Array(Buffer.from(data, "base64"));
   if (bytes.byteLength > MAX_MEDIA_BYTES) {
     throw mediaTooLargeError("Audio", bytes.byteLength);
   }
-  const format = sniffAudioFormat(bytes);
-  if (!format) {
-    throw audioTypeUnsupportedError(declaredFormat);
+  if (sniffAudioFormat(bytes) !== declaredFormat) {
+    throw audioInvalidError(`Audio data is not valid ${declaredFormat}`);
   }
   if (!store) {
-    return { format, dbRef: null };
+    return null;
   }
-  const mimeType: StorableAudioType = STORABLE_AUDIO_TYPES[format];
-  return { format, dbRef: await storeMedia(bytes, mimeType, null, orgId, imageStore) };
+  const mimeType: StorableAudioType = STORABLE_AUDIO_TYPES[declaredFormat];
+  return storeMedia(bytes, mimeType, null, orgId, imageStore);
 }
 
 /** The `xinity-media://` reference for the stored bytes, or null when storing failed. */
@@ -294,10 +305,13 @@ async function processPart(
     };
   }
   if (part.type === "input_audio") {
-    const { data, format: declaredFormat } = part.input_audio;
-    const { format, dbRef } = await processAudio(data, declaredFormat, orgId, imageStore, store);
+    const { data, format } = part.input_audio ?? {};
+    if (typeof data !== "string" || typeof format !== "string") {
+      throw audioInvalidError("input_audio requires a base64 data string and a format");
+    }
+    const dbRef = await processAudio(data, format, orgId, imageStore, store);
     return {
-      llmPart: { type: "input_audio", input_audio: { data, format } },
+      llmPart: part,
       dbPart: dbRef !== null ? { type: "input_audio", input_audio: { data: dbRef, format } } : null,
     };
   }

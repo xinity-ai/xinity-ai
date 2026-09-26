@@ -522,18 +522,26 @@ describe("processMessageMedia – audio", () => {
     expect(options.type).toBe("audio/wav");
   });
 
-  test("takes the format from the bytes, not the declaration", async () => {
-    const { messagesForLLM, messagesForDB } = await processMessageMedia(audioMessage(WAV_BASE64, "mp3"), "org-1", null, true);
-
-    expect((messagesForLLM[0]!.content as any[])[1].input_audio.format).toBe("wav");
-    expect((messagesForDB[0]!.content as any[])[1].input_audio.format).toBe("wav");
+  test("refuses bytes that do not match the declared format", async () => {
+    await expect(processMessageMedia(audioMessage(WAV_BASE64, "mp3"), "org-1", null, true))
+      .rejects.toThrow("Audio data is not valid mp3");
   });
 
-  test("refuses bytes that are not a supported audio format, logged or not", async () => {
+  test("refuses unrecognisable bytes, logged or not", async () => {
     const flac = Buffer.from("fLaC\0\0\0\"").toString("base64");
-    await expect(processMessageMedia(audioMessage(flac), "org-1", null, true)).rejects.toThrow(/not supported/);
-    await expect(processMessageMedia(audioMessage(flac), "org-1", null, false)).rejects.toThrow(/not supported/);
+    await expect(processMessageMedia(audioMessage(flac), "org-1", null, true)).rejects.toThrow("not valid wav");
+    await expect(processMessageMedia(audioMessage(flac), "org-1", null, false)).rejects.toThrow("not valid wav");
     expect(findInsert()).toBeUndefined();
+  });
+
+  test("refuses a format OpenAI does not accept", async () => {
+    await expect(processMessageMedia(audioMessage(WAV_BASE64, "flac"), "org-1", null, false))
+      .rejects.toThrow("Audio format flac is not supported. Supported: wav, mp3");
+  });
+
+  test("refuses a part without data, rather than crashing on it", async () => {
+    const malformed = [{ role: "user", content: [{ type: "input_audio", input_audio: { format: "wav" } }] }] as any;
+    await expect(processMessageMedia(malformed, "org-1", null, false)).rejects.toThrow(/requires a base64 data string/);
   });
 
   test("rejects oversize audio", async () => {

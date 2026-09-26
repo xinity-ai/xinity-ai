@@ -1,6 +1,6 @@
 import { recordBackendError } from "../metrics";
 import { BLOCKED_REQUEST_PARAM_PREFIXES } from "xinity-infoserver";
-import { isMediaTooLarge, isMediaTypeUnsupported } from "../image-store";
+import { isAudioInvalid, isMediaTooLarge, isMediaTypeUnsupported } from "../image-store";
 
 export { toModelMessages } from "./message-convert";
 export { recordUsage, recordFailedRequest, logChatUsage } from "./usage";
@@ -392,6 +392,10 @@ export function handleEndpointError(
   if (isMediaTypeUnsupported(error)) {
     log.warn(fields, "Media rejected at ingest");
     return errorResponse((error as Error).message, 415);
+  }
+  if (isAudioInvalid(error)) {
+    log.warn(fields, "Media rejected at ingest");
+    return errorResponse((error as Error).message, 400);
   }
   if (isConnectionRefused(error)) {
     log.warn(fields, "Backend unreachable");
