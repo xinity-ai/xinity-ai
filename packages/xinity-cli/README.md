@@ -91,7 +91,7 @@ xinity up all
 | `infra-seaweedfs` | Downloads and configures SeaweedFS for S3 storage |
 | `infra-prometheus` | Provisions Prometheus via Docker with auto-generated scrape config |
 | `infra-vllm` | (coming soon) |
-| `infra-searxng` | (coming soon) |
+| `infra-searxng` | Provisions SearXNG via Docker with the JSON output format the gateway needs |
 | `cli` | Self-update (same as `xinity update`) |
 | `all` | Guided setup of the full stack in sequence |
 
