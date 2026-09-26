@@ -21,7 +21,7 @@ import { downloadAndVerify } from "./install-download.ts";
 import { localVersionString } from "./local-build.ts";
 import { runSteps } from "../term/step-runner.ts";
 import { parseEnvString } from "../config/env-file.ts";
-import { fail, pass, info, warn } from "../core/output.ts";
+import { fail, pass, warn } from "../core/output.ts";
 import { planPostgresProvision, type PostgresProvision } from "../infra/postgres-setup.ts";
 import { type Host, localRun } from "../core/host.ts";
 import { readManifest, saveDbHint, updateManifestEntry } from "./manifest.ts";
@@ -281,7 +281,6 @@ async function resolveReleaseMigrations(targetVersion: string): Promise<Migratio
 export async function runMigrations(opts: {
   connectionUrl: string;
   targetVersion: string;
-  dryRun: boolean;
   host: Host;
   /** Store the URL/hint in the host's secrets dir and manifest (default). Stacks carry the URL themselves. */
   persist?: boolean;
@@ -294,11 +293,6 @@ export async function runMigrations(opts: {
     : await resolveReleaseMigrations(opts.targetVersion);
   if ("error" in source) {
     return { success: false, errors: [source.error] };
-  }
-
-  if (opts.dryRun) {
-    info("Dry run", "Would apply migrations, skipping actual execution");
-    return { success: true, errors: [] };
   }
 
   // Apply migrations (tunnels through SSH when targeting a remote host)

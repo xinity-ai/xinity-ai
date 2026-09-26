@@ -3,7 +3,7 @@ import { confirm, intro, isCancel, log, outro } from "../lib/core/clack.ts";
 import { bold, cyan, dim, yellow } from "picocolors";
 import type { Component } from "../lib/core/component-meta.ts";
 import { preflightCheck, showDashboardHints } from "../lib/up/installer.ts";
-import { discoverConnectionUrl, describeMigrationStep, runMigrations } from "../lib/up/migrator.ts";
+import { discoverConnectionUrl } from "../lib/up/migrator.ts";
 import {
   planUp,
   renderUpPlan,
@@ -11,13 +11,14 @@ import {
   reviewGate,
   applyUpPlan,
   printPostInstallSummary,
+  type UpPlan,
 } from "../lib/up/up-plan.ts";
 import { warn, heading } from "../lib/core/output.ts";
 import { connectHost, TARGET_HOST_OPTION } from "../lib/remote/remote-host.ts";
 import type { Host } from "../lib/core/host.ts";
 import { seaweedfsSetup } from "../lib/infra/seaweedfs-setup.ts";
-import { infraRedis, planRedis, applyRedisPlan } from "../lib/infra/redis-setup.ts";
-import { postgresSetup, describePostgresProvision, applyPostgresProvision } from "../lib/infra/postgres-setup.ts";
+import { infraRedis, planRedis } from "../lib/infra/redis-setup.ts";
+import { postgresSetup } from "../lib/infra/postgres-setup.ts";
 import { ollamaSetup } from "../lib/infra/ollama-setup.ts";
 import { prometheusSetup } from "../lib/infra/prometheus-setup.ts";
 import { searxngSetup } from "../lib/infra/searxng-setup.ts";
@@ -39,42 +40,43 @@ const INFRA_SETUPS: Partial<Record<string, (host: Host, dryRun: boolean) => Prom
   "infra-searxng": searxngSetup,
 };
 
+async function reviewAndApply(plan: UpPlan, dryRun: boolean, host: Host): Promise<"applied" | "stopped" | "failed"> {
+  renderUpPlan(plan);
+
+  if (dryRun) {
+    log.info(yellow("Dry run, stopping before apply."));
+    return "stopped";
+  }
+
+  if (!(await reviewGate(() => renderUpPlanScript(plan)))) return "stopped";
+
+  const result = await applyUpPlan(plan, host);
+  if (!result.success) {
+    for (const err of result.errors) log.error(err);
+    return "failed";
+  }
+  return "applied";
+}
+
 async function runDbFlow(opts: { targetVersion: string; dryRun: boolean }, host: Host): Promise<boolean> {
   const dbPlan = await discoverConnectionUrl(host);
   if (!dbPlan) return false;
 
-  log.step(bold("Planned actions"));
-  let step = 1;
-  if (dbPlan.provision) {
-    log.info(`${step++}. ${describePostgresProvision(dbPlan.provision)}`);
-  }
-  log.info(`${step}. ${describeMigrationStep(opts.targetVersion, dbPlan.connectionUrl)}`);
-
-  if (opts.dryRun) {
-    log.info(yellow("Dry run, stopping before apply."));
-    return true;
-  }
-  if (!(await reviewGate())) return true;
-
-  if (dbPlan.provision) {
-    if (!(await applyPostgresProvision(dbPlan.provision, host))) return false;
-  }
-
-  const result = await runMigrations({ connectionUrl: dbPlan.connectionUrl, targetVersion: opts.targetVersion, dryRun: false, host });
-  if (!result.success) {
-    for (const err of result.errors) log.error(err);
-    return false;
-  }
-
   // Redis is a shared infrastructure dependency; non-fatal when skipped.
   heading("redis");
   const redisPlan = await planRedis(host);
-  if (redisPlan && (await applyRedisPlan(redisPlan, host))) {
-    log.success("Redis - Connection configured");
-  } else {
+  if (!redisPlan) {
     warn("Redis", "No Redis URL configured (can be set up later with xinity up infra-redis)");
   }
-  return true;
+
+  const plan: UpPlan = {
+    targetVersion: opts.targetVersion,
+    provisionPostgres: dbPlan.provision,
+    migrations: { connectionUrl: dbPlan.connectionUrl },
+    redis: redisPlan?.persist || redisPlan?.provision ? redisPlan : undefined,
+    components: [],
+  };
+  return (await reviewAndApply(plan, opts.dryRun, host)) !== "failed";
 }
 
 async function runPlannedFlow(
@@ -91,20 +93,8 @@ async function runPlannedFlow(
   );
   if (!plan) return true;
 
-  renderUpPlan(plan);
-
-  if (opts.dryRun) {
-    log.info(yellow("Dry run, stopping before apply."));
-    return true;
-  }
-
-  if (!(await reviewGate(() => renderUpPlanScript(plan)))) return true;
-
-  const result = await applyUpPlan(plan, host);
-  if (!result.success) {
-    for (const err of result.errors) log.error(err);
-    return false;
-  }
+  const outcome = await reviewAndApply(plan, opts.dryRun, host);
+  if (outcome !== "applied") return outcome === "stopped";
 
   if (isAll) {
     await printPostInstallSummary(host);

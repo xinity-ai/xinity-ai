@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeEach, afterEach } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import { analyzeConfig, configBool, configInt, defineConfig, defineGroup, env, secret } from "common-env";
 import {
@@ -6,9 +6,8 @@ import {
   missingRequiredFields, planSecretFileRemoval, undelegated,
   type EnvBundle, type EnvChange,
 } from "../../../src/lib/config/env-prompt.ts";
-import { readEnvFile, serializeEnvFile, readSecretFiles } from "../../../src/lib/config/env-file.ts";
+import { parseEnvString, serializeEnvFile } from "../../../src/lib/config/env-file.ts";
 import { buildSecretsRemoveCommand } from "../../../src/lib/up/service.ts";
-import { createTempDir, type TempDir } from "../../helpers/temp-config.ts";
 import { FakeHost } from "../../helpers/fake-host.ts";
 import { COMPONENTS, getAutoDefaults } from "../../../src/lib/core/component-meta.ts";
 
@@ -204,27 +203,9 @@ describe("env-prompt", () => {
     });
   });
 
-  describe("readEnvFile", () => {
-    let tmp: TempDir;
-
-    beforeEach(() => {
-      tmp = createTempDir("env-prompt-test");
-    });
-
-    afterEach(() => {
-      tmp.cleanup();
-    });
-
-    test("returns empty object for missing file", () => {
-      const result = readEnvFile(tmp.resolve("nonexistent.env"));
-      expect(result).toEqual({});
-    });
-
-    test("handles lines without equals sign", () => {
-      tmp.write("test.env", "HOST=localhost\nINVALID_LINE\nPORT=3000\n");
-
-      const result = readEnvFile(tmp.resolve("test.env"));
-      expect(result).toEqual({ HOST: "localhost", PORT: "3000" });
+  describe("parseEnvString", () => {
+    test("skips lines without an equals sign", () => {
+      expect(parseEnvString("HOST=localhost\nINVALID_LINE\nPORT=3000\n")).toEqual({ HOST: "localhost", PORT: "3000" });
     });
   });
 
@@ -232,48 +213,6 @@ describe("env-prompt", () => {
     test("quotes values with special characters", () => {
       const result = serializeEnvFile({ COMMENT: "has # symbol" });
       expect(result).toBe('COMMENT="has # symbol"\n');
-    });
-  });
-
-  describe("readSecretFiles", () => {
-    let tmp: TempDir;
-
-    beforeEach(() => {
-      tmp = createTempDir("secrets-test");
-    });
-
-    afterEach(() => {
-      tmp.cleanup();
-    });
-
-    test("reads existing secret files", () => {
-      tmp.write("DB_PASSWORD", "supersecret");
-      tmp.write("API_KEY", "key-123");
-
-      const result = readSecretFiles(tmp.path, ["DB_PASSWORD", "API_KEY"]);
-      expect(result).toEqual({ DB_PASSWORD: "supersecret", API_KEY: "key-123" });
-    });
-
-    test("only reads requested keys", () => {
-      tmp.write("DB_PASSWORD", "supersecret");
-      tmp.write("OTHER_SECRET", "should-not-read");
-
-      const result = readSecretFiles(tmp.path, ["DB_PASSWORD"]);
-      expect(result).toEqual({ DB_PASSWORD: "supersecret" });
-    });
-
-    test("skips missing files gracefully", () => {
-      tmp.write("DB_PASSWORD", "supersecret");
-
-      const result = readSecretFiles(tmp.path, ["DB_PASSWORD", "MISSING_KEY"]);
-      expect(result).toEqual({ DB_PASSWORD: "supersecret" });
-    });
-
-    test("trims whitespace from secret values", () => {
-      tmp.write("TOKEN", "  secret-with-whitespace  \n");
-
-      const result = readSecretFiles(tmp.path, ["TOKEN"]);
-      expect(result).toEqual({ TOKEN: "secret-with-whitespace" });
     });
   });
 });

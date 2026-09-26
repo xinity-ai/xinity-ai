@@ -67,12 +67,7 @@ export type PlanUpOptions = {
 
 // ─── Collect ────────────────────────────────────────────────────────────────
 
-/**
- * Assemble the action for a resolved version and collected env; the
- * single-host and stack planners differ only in how the env is collected.
- * Returns null when no matching release asset exists.
- */
-export async function buildComponentAction(
+async function buildComponentAction(
   base: {
     component: Component;
     hardReset: boolean;
@@ -116,17 +111,12 @@ export async function buildComponentAction(
   };
 }
 
-/** Returns null when the user cancels or resolution fails. */
-async function planComponentAction(
+export async function planComponentAction(
   component: Component,
-  opts: PlanUpOptions,
+  opts: { targetVersion: string; hardReset: boolean },
   host: Host,
-  shared: Record<string, string>,
-  resolvedKeys: Set<string>,
+  collect: () => Promise<{ env: EnvBundle; envChanges: EnvChange[] } | null>,
 ): Promise<ComponentAction | null> {
-  heading(component);
-
-  const autoDefaults = { ...getAutoDefaults(component), ...shared };
   const base = {
     component,
     hardReset: opts.hardReset,
@@ -134,28 +124,27 @@ async function planComponentAction(
   };
 
   if (opts.targetVersion.startsWith("local:")) {
-    const collected = await collectEnv(component, host, autoDefaults, resolvedKeys);
+    const collected = await collect();
     if (!collected) return null;
     const installed = (await readManifest(host)).components[component];
     return {
       ...base,
+      ...collected,
       kind: installed ? "update" : "install",
       installedVersion: installed?.version,
       toVersion: "local",
       localRepoPath: opts.targetVersion.slice(6),
-      env: collected,
-      envChanges: collected.changes,
-      secretFiles: await planSecretFileRemoval(component, collected.changes, host),
+      secretFiles: await planSecretFileRemoval(component, collected.envChanges, host),
     };
   }
 
   const version = await resolveVersion(component, opts.targetVersion, host);
   if (version.status === "failed") return null;
 
-  const collected = await collectEnv(component, host, autoDefaults, resolvedKeys);
+  const collected = await collect();
   if (!collected) return null;
 
-  return buildComponentAction({ ...base, env: collected, envChanges: collected.changes }, version, host);
+  return buildComponentAction({ ...base, ...collected }, version, host);
 }
 
 export function coreComponents(opts: { installInfoserver: boolean; installDaemon: boolean }): Component[] {
@@ -235,7 +224,12 @@ export async function planUp(
   }
 
   for (const component of orderedComponents) {
-    const action = await planComponentAction(component, opts, host, shared, resolvedKeys);
+    heading(component);
+    const autoDefaults = { ...getAutoDefaults(component), ...shared };
+    const action = await planComponentAction(component, opts, host, async () => {
+      const collected = await collectEnv(component, host, autoDefaults, resolvedKeys);
+      return collected && { env: collected, envChanges: collected.changes };
+    });
     if (!action) return null;
     plan.components.push(action);
 
@@ -499,7 +493,6 @@ export async function applyUpPlan(plan: UpPlan, host: Host): Promise<ApplyResult
     const result = await runMigrations({
       connectionUrl: plan.migrations.connectionUrl,
       targetVersion: plan.targetVersion,
-      dryRun: false,
       host,
     });
     if (!result.success) {

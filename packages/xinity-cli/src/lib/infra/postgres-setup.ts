@@ -15,6 +15,7 @@ import {
   composeBaseCommand, execCommand,
 } from "./compose-service.ts";
 import { randomToken } from "../core/secrets.ts";
+import { parseEnvString } from "../config/env-file.ts";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -89,19 +90,8 @@ export function buildComposeFile(port: number, envPath: string): string {
 // ─── Pre-existing state ──────────────────────────────────────────────────────
 
 export function parsePostgresEnv(content: string): { db?: string; user?: string; password?: string } {
-  const out: { db?: string; user?: string; password?: string } = {};
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eq = trimmed.indexOf("=");
-    if (eq === -1) continue;
-    const key = trimmed.slice(0, eq);
-    const value = trimmed.slice(eq + 1);
-    if (key === "POSTGRES_DB") out.db = value;
-    else if (key === "POSTGRES_USER") out.user = value;
-    else if (key === "POSTGRES_PASSWORD") out.password = value;
-  }
-  return out;
+  const env = parseEnvString(content);
+  return { db: env.POSTGRES_DB, user: env.POSTGRES_USER, password: env.POSTGRES_PASSWORD };
 }
 
 function readinessProbe(host: Host, compose: ComposeCmd, user: string): () => Promise<boolean> {

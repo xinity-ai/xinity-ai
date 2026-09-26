@@ -10,19 +10,18 @@
 import { cancel, confirm, isCancel, log, note } from "../core/clack.ts";
 import { bold, cyan, dim, yellow } from "picocolors";
 import type { Component } from "../core/component-meta.ts";
-import { type Host, isUnitActiveOn } from "../core/host.ts";
+import type { Host } from "../core/host.ts";
 import { heading, warn, fail, pass } from "../core/output.ts";
-import { unitName } from "../up/systemd.ts";
 import { fetchRelease } from "../up/github.ts";
-import { resolveVersion, applyComponentAction } from "../up/installer.ts";
+import { applyComponentAction } from "../up/installer.ts";
 import { buildLocalArtifact, localVersionString } from "../up/local-build.ts";
 import { runSteps, createSilentProgress, collectSteps } from "../term/step-runner.ts";
 import { removeComponent } from "../up/install-remove.ts";
 import { readManifest, saveStackMembership, type StackMembership } from "../up/manifest.ts";
 import { describeMigrationStep, migrationScriptComment, runMigrations } from "../up/migrator.ts";
 import { connectHost } from "../remote/remote-host.ts";
-import { type ComponentAction, describeComponentAction, buildComponentAction, reviewGate, scriptComponentSection } from "../up/up-plan.ts";
-import { componentFields, splitValuesByCategory, readExistingEnvState, diffEnv, missingRequiredFields, planSecretFileRemoval } from "../config/env-prompt.ts";
+import { type ComponentAction, describeComponentAction, planComponentAction, reviewGate, scriptComponentSection } from "../up/up-plan.ts";
+import { componentFields, splitValuesByCategory, readExistingEnvState, diffEnv, missingRequiredFields } from "../config/env-prompt.ts";
 import {
   type StackDefinition, type StackHost, type FleetDefinition,
   resolveEnv, saveStack, getFleetForHost, hostLabel,
@@ -196,49 +195,6 @@ async function resolveHostEnv(
   };
 }
 
-async function planHostComponent(
-  stack: StackDefinition,
-  component: Component,
-  address: string,
-  host: Host,
-  targetVersion: string,
-): Promise<ComponentAction | null> {
-  const serviceRunning = await isUnitActiveOn(host, unitName(component));
-
-  if (targetVersion.startsWith("local:")) {
-    const envResult = await resolveHostEnv(stack, component, address, host);
-    if (!envResult) return null;
-    const isUpdate = !!(await readManifest(host)).components[component];
-    return {
-      component,
-      kind: isUpdate ? "update" : "install",
-      toVersion: "local",
-      localRepoPath: targetVersion.slice(6),
-      env: envResult.env,
-      envChanges: envResult.envChanges,
-      secretFiles: await planSecretFileRemoval(component, envResult.envChanges, host),
-      hardReset: false,
-      serviceRunning,
-    };
-  }
-
-  const version = await resolveVersion(component, targetVersion, host);
-  if (version.status === "failed") {
-    return null;
-  }
-
-  const envResult = await resolveHostEnv(stack, component, address, host);
-  if (!envResult) return null;
-
-  return buildComponentAction({
-    component,
-    hardReset: false,
-    serviceRunning,
-    env: envResult.env,
-    envChanges: envResult.envChanges,
-  }, version, host);
-}
-
 /**
  * Collect the full plan: evacuations for hosts that left the definition,
  * stack-level config (prompting where required values are missing), then
@@ -334,7 +290,12 @@ async function planStack(
 
     const actions: ComponentAction[] = [];
     for (const component of d.components) {
-      const action = await planHostComponent(stack, component, d.host.address, host, targetVersion);
+      const action = await planComponentAction(
+        component,
+        { targetVersion, hardReset: false },
+        host,
+        () => resolveHostEnv(stack, component, d.host.address, host),
+      );
       if (!action) {
         return { status: "failed" };
       }
@@ -494,7 +455,6 @@ async function applyStackPlan(
       const result = await runMigrations({
         connectionUrl: plan.migration.url,
         targetVersion: plan.targetVersion,
-        dryRun: false,
         host: migrationHost,
         persist: false,
       });
@@ -566,7 +526,7 @@ async function applyStackPlan(
       }
       for (const action of hostPlan.actions) {
         slot.update(`${action.component}: preparing`);
-        const result = await applyComponentAction(action, host, "rollback", guard);
+        const result = await applyComponentAction(action, host, guard);
         if (!result.success) {
           errors.push({ component: action.component, messages: result.errors });
         }

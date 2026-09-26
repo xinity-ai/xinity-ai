@@ -38,7 +38,6 @@ describe("runMigrations with a local target", () => {
     const result = await runMigrations({
       connectionUrl: "postgresql://ops:hunter2@localhost/xinity",
       targetVersion: `local:${repoPath}`,
-      dryRun: false,
       host: unreachableHost(),
     });
 
@@ -47,14 +46,14 @@ describe("runMigrations with a local target", () => {
   });
 
   test("resolves the repository folder without contacting a release", async () => {
+    const host = { openTunnel: async () => ({ ok: false, error: "tunnel reached" }) } as unknown as Host;
     const result = await runMigrations({
       connectionUrl: "postgresql://ops:hunter2@localhost/xinity",
       targetVersion: `local:${REPO_ROOT}`,
-      dryRun: true,
-      host: unreachableHost(),
+      host,
     });
 
-    expect(result).toEqual({ success: true, errors: [] });
+    expect(result).toEqual({ success: false, errors: ["tunnel reached"] });
   });
 
   test("the repository folder carries the layout drizzle's migrator expects", async () => {

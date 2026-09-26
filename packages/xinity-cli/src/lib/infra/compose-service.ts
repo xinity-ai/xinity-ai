@@ -64,7 +64,6 @@ export async function requireCompose(
 
 export type ExistingStack = {
   volumeExists: boolean;
-  containerExists: boolean;
   composeFile: string | null;
 }
 
@@ -72,12 +71,8 @@ export async function inspectStack(host: Host, stack: ComposeStack): Promise<Exi
   const volume = stack.volumeName
     ? await host.run(["docker", "volume", "inspect", stack.volumeName])
     : undefined;
-  const container = await host.run([
-    "docker", "ps", "-a", "--filter", `name=${stack.containerName}`, "--format", "{{.Names}}",
-  ]);
   return {
     volumeExists: volume?.ok ?? false,
-    containerExists: container.ok && container.output.trim().length > 0,
     composeFile: await host.readFile(stackPaths(stack).composePath),
   };
 }

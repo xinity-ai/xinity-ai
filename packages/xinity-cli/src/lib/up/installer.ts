@@ -27,8 +27,6 @@ import vllmTemplateUnit from "xinity-ai-daemon/src/assets/vllm-driver@.service" 
 import { installBinary, downloadAndVerifyOnHost } from "./install-download.ts";
 import type { EnvBundle } from "../config/env-prompt.ts";
 
-export type ServiceFailurePolicy = "rollback" | "keep";
-
 // ─── Pre-checks ────────────────────────────────────────────────────────────
 
 export type PreflightIssue = {
@@ -375,7 +373,6 @@ async function applyConfigAndStart(
   removeSecretKeys: string[],
   host: Host,
   isUpdate: boolean,
-  onFailure: ServiceFailurePolicy,
   progress: Progress,
   binaryChanged = true,
 ): Promise<string[]> {
@@ -411,7 +408,7 @@ async function applyConfigAndStart(
   }
   printServiceFailureDiagnostics(unit);
 
-  if (isUpdate && onFailure === "rollback") {
+  if (isUpdate) {
     await performRollback(component, host, progress, binaryChanged);
     errors.push(binaryChanged
       ? "Service failed to start; rolled back to the previous version"
@@ -442,7 +439,6 @@ function actionSummary(action: ComponentAction, versionString: string): string {
 export async function applyComponentAction(
   action: ComponentAction,
   host: Host,
-  onFailure: ServiceFailurePolicy = "rollback",
   externalProgress?: Progress,
 ): Promise<InstallResult> {
   const { component } = action;
@@ -504,7 +500,7 @@ export async function applyComponentAction(
     }
 
     const binaryChanged = action.kind !== "reconfigure";
-    const errors = await applyConfigAndStart(component, action.env, action.secretFiles.remove, host, isUpdate, onFailure, progress, binaryChanged);
+    const errors = await applyConfigAndStart(component, action.env, action.secretFiles.remove, host, isUpdate, progress, binaryChanged);
 
     const success = errors.length === 0;
 

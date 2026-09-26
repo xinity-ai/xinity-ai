@@ -8,7 +8,7 @@
 import { COMMAND_FALLBACK_BIN_DIRS, type Host, type RunResult } from "../core/host.ts";
 import type { Manifest } from "../up/manifest.ts";
 import { unitName } from "../up/systemd.ts";
-import { type Component, ENV_DIR, SECRETS_DIR, BIN_DIR, UNIT_DIR } from "../core/component-meta.ts";
+import { type Component, ENV_DIR, SECRETS_DIR, UNIT_DIR } from "../core/component-meta.ts";
 import { componentFields, categorizeFields } from "../config/env-prompt.ts";
 
 export type RemoteState = {
@@ -31,12 +31,8 @@ export async function collectRemoteState(
 ): Promise<RemoteState> {
   const filesToCheck: string[] = [];
   const filesToRead: string[] = [];
-  const commandsToCheck: string[] = ["systemctl", "weed", "ollama", "docker", "nvidia-smi", "tar", "curl"];
-  const unitsToCheck: string[] = ["xinity-ai-seaweedfs.service", "ollama.service", "ollama"];
-
-  // SeaweedFS paths
-  filesToCheck.push(`${BIN_DIR}/weed`);
-  filesToCheck.push(`${UNIT_DIR}/xinity-ai-seaweedfs.service`);
+  const commandsToCheck: string[] = ["systemctl", "ollama", "docker", "nvidia-smi"];
+  const unitsToCheck: string[] = ["ollama.service", "ollama"];
 
   // Per component
   const components: Component[] = ["gateway", "dashboard", "daemon", "infoserver", "tether"];

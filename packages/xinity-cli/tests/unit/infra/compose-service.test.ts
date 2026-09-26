@@ -56,40 +56,21 @@ describe("buildWriteFileCommand", () => {
 });
 
 describe("inspectStack", () => {
-  test("reports a fully provisioned stack (volume + container + compose file)", async () => {
+  test("reports a fully provisioned stack (volume + compose file)", async () => {
     const host = new FakeHost({
-      run: (a) => {
-        if (a[0] === "docker" && a[1] === "volume") return { ok: true };
-        if (a[0] === "docker" && a[1] === "ps") return { ok: true, output: "xinity-ai-postgres" };
-        return undefined;
-      },
+      run: (a) => (a[0] === "docker" && a[1] === "volume" ? { ok: true } : undefined),
       files: { [stackPaths(PUBLISHED).composePath]: "services: {}\n" },
     });
     const existing = await inspectStack(host, PUBLISHED);
     expect(existing.volumeExists).toBe(true);
-    expect(existing.containerExists).toBe(true);
     expect(existing.composeFile).toContain("services");
   });
 
-  test("reports a clean host (no volume, no container, no compose file)", async () => {
+  test("reports a clean host (no volume, no compose file)", async () => {
     const host = new FakeHost({ run: () => ({ ok: false }) });
     const existing = await inspectStack(host, PUBLISHED);
     expect(existing.volumeExists).toBe(false);
-    expect(existing.containerExists).toBe(false);
     expect(existing.composeFile).toBeNull();
-  });
-
-  test("treats an empty `docker ps` result as no container", async () => {
-    const host = new FakeHost({
-      run: (a) => {
-        if (a[0] === "docker" && a[1] === "volume") return { ok: true };
-        if (a[0] === "docker" && a[1] === "ps") return { ok: true, output: "" };
-        return undefined;
-      },
-    });
-    const existing = await inspectStack(host, PUBLISHED);
-    expect(existing.volumeExists).toBe(true);
-    expect(existing.containerExists).toBe(false);
   });
 
   test("a stack with no named volume never probes for one", async () => {
