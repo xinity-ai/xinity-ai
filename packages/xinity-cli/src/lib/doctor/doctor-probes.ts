@@ -66,60 +66,6 @@ export async function checkPostgresAndMigrations(url: string, host: Host): Promi
   return results;
 }
 
-type TcpProbeOptions = {
-  hostname: string;
-  port: number;
-  label: string;
-  failStatus?: CheckStatus;
-  timeoutMs?: number;
-  onOpen?: (socket: { write: (data: string) => void }) => void;
-  onData: (response: string) => { status: CheckStatus; message: string; detail?: string };
-}
-
-export function probeTcpService(opts: TcpProbeOptions): Promise<CheckResult> {
-  const { hostname, port, label, timeoutMs = 5000 } = opts;
-  const failStatus = opts.failStatus ?? "fail";
-
-  return new Promise<CheckResult>((resolve) => {
-    let settled = false;
-    const done = (result: CheckResult) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve(result);
-    };
-    const timer = setTimeout(() => {
-      done({ label, status: failStatus, message: "Connection timed out" });
-    }, timeoutMs);
-
-    const fail = (error: unknown) => {
-      done({ label, status: failStatus, message: "Connection failed", detail: String(error) });
-    };
-
-    Bun.connect({
-      hostname,
-      port,
-      socket: {
-        data(_socket, data) {
-          const response = new TextDecoder().decode(data);
-          _socket.end();
-          done({ label, ...opts.onData(response) });
-        },
-        open(socket) {
-          opts.onOpen?.(socket);
-        },
-        error(_socket, error) {
-          _socket.end();
-          fail(error);
-        },
-        connectError(_socket, error) {
-          fail(error);
-        },
-      },
-    }).catch(fail);
-  });
-}
-
 export async function checkRedis(url: string, host: Host): Promise<CheckResult> {
   const tunnel = await host.openTunnel(url);
   if (!tunnel.ok) {
@@ -189,20 +135,37 @@ export async function checkSmtp(url: string, host: Host): Promise<CheckResult> {
   }
   try {
     const parsed = new URL(tunnel.localUrl);
-    const hostname = parsed.hostname;
-    const port = parseInt(parsed.port || "587", 10);
+    return await new Promise<CheckResult>((resolve) => {
+      let settled = false;
+      const done = (result: Omit<CheckResult, "label">) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({ label: "SMTP", ...result });
+      };
+      const timer = setTimeout(() => done({ status: "warn", message: "Connection timed out" }), 5000);
+      const fail = (error: unknown) => done({ status: "warn", message: "Connection failed", detail: String(error) });
 
-    return await probeTcpService({
-      hostname,
-      port,
-      label: "SMTP",
-      failStatus: "warn",
-      onData(response) {
-        if (response.startsWith("220")) {
-          return { status: "pass", message: "SMTP server reachable" };
-        }
-        return { status: "warn", message: "Unexpected SMTP response", detail: response.trim() };
-      },
+      Bun.connect({
+        hostname: parsed.hostname,
+        port: parseInt(parsed.port || "587", 10),
+        socket: {
+          data(socket, data) {
+            const response = new TextDecoder().decode(data);
+            socket.end();
+            done(response.startsWith("220")
+              ? { status: "pass", message: "SMTP server reachable" }
+              : { status: "warn", message: "Unexpected SMTP response", detail: response.trim() });
+          },
+          error(socket, error) {
+            socket.end();
+            fail(error);
+          },
+          connectError(_socket, error) {
+            fail(error);
+          },
+        },
+      }).catch(fail);
     });
   } catch (err) {
     return {
@@ -265,11 +228,4 @@ export async function serviceActiveCheck(host: Host, unit: string, hasSystemd: b
     return { label: "Service", status: "pass", message: "active" };
   }
   return { label: "Service", status: "fail", message: status || "inactive" };
-}
-
-export async function checkS3Endpoint(
-  endpoint: string,
-  host: Host,
-): Promise<CheckResult> {
-  return checkServiceHealth(host, "S3 endpoint", endpoint + "/");
 }

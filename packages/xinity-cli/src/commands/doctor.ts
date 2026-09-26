@@ -27,6 +27,17 @@ function renderReport(report: DoctorReport, verbose: boolean): void {
   }
 }
 
+function emitReport(report: DoctorReport, format: "text" | "json" | "yaml", verbose: boolean): void {
+  if (format === "json") {
+    process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+  } else if (format === "yaml") {
+    process.stdout.write(Bun.YAML.stringify(report, null, 2));
+  } else {
+    renderReport(report, verbose);
+    outro(buildSummaryLine(report.summary));
+  }
+}
+
 function renderComponentSection(comp: ComponentReport, verbose: boolean): void {
   const name = bold(comp.component.toUpperCase());
   const ver = comp.version?.replace(/^v/, "") ?? null;
@@ -101,14 +112,7 @@ export const doctorCommand: CommandModule = {
         }],
         summary: { pass: 0, warn: 0, fail: 1, skip: 0 },
       };
-      if (format === "json") {
-        process.stdout.write(JSON.stringify(report, null, 2) + "\n");
-      } else if (format === "yaml") {
-        process.stdout.write(Bun.YAML.stringify(report, null, 2));
-      } else {
-        renderReport(report, verbose);
-        outro(buildSummaryLine(report.summary));
-      }
+      emitReport(report, format, verbose);
       process.exit(1);
       return;
     }
@@ -129,14 +133,7 @@ export const doctorCommand: CommandModule = {
 
       clackSpinner.stop("");
 
-      if (format === "json") {
-        process.stdout.write(JSON.stringify(report, null, 2) + "\n");
-      } else if (format === "yaml") {
-        process.stdout.write(Bun.YAML.stringify(report, null, 2));
-      } else {
-        renderReport(report, verbose);
-        outro(buildSummaryLine(report.summary));
-      }
+      emitReport(report, format, verbose);
       hasFailures = report.summary.fail > 0;
     } finally {
       await host.dispose();

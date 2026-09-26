@@ -11,7 +11,7 @@ import { collectRemoteState, createCachedHost } from "../remote/remote-probe.ts"
 import {
   type CheckResult, type CheckStatus,
   checkPostgresAndMigrations, checkRedis, checkServiceHealth, checkSmtp,
-  checkInfoserverUrl, checkS3Endpoint,
+  checkInfoserverUrl,
   fileExistsCheck, serviceActiveCheck, isLocalUrl,
 } from "./doctor-probes.ts";
 
@@ -298,6 +298,11 @@ async function pushInfoserverCheck(checks: CheckResult[], values: Record<string,
   checks.push(result);
 }
 
+function healthCheckHost(values: Record<string, string>): string {
+  const bindHost = values.HOST || "0.0.0.0";
+  return bindHost === "0.0.0.0" ? "localhost" : bindHost;
+}
+
 async function checkGatewayConnectivity(
   values: Record<string, string>,
   serviceActive: boolean,
@@ -307,14 +312,10 @@ async function checkGatewayConnectivity(
   await pushDbChecks(checks, values, host);
   if (values.REDIS_URL) checks.push(await checkRedis(values.REDIS_URL, host));
   await pushInfoserverCheck(checks, values, host);
-  if (values.S3_ENDPOINT) {
-    checks.push(await checkS3Endpoint(values.S3_ENDPOINT, host));
-  }
+  if (values.S3_ENDPOINT) checks.push(await checkServiceHealth(host, "S3 endpoint", values.S3_ENDPOINT + "/"));
   if (serviceActive) {
-    const bindHost = values.HOST || "0.0.0.0";
-    const port = values.PORT || GATEWAY_DEFAULT_PORT;
-    const checkHost = bindHost === "0.0.0.0" ? "localhost" : bindHost;
-    checks.push(await checkServiceHealth(host, "Health endpoint", `http://${checkHost}:${port}/healthCheck`));
+    const url = `http://${healthCheckHost(values)}:${values.PORT || GATEWAY_DEFAULT_PORT}/healthCheck`;
+    checks.push(await checkServiceHealth(host, "Health endpoint", url));
   }
   return checks;
 }
@@ -348,9 +349,7 @@ function dashboardHealthProbe(values: Record<string, string>): { url: string; cu
     };
   }
 
-  const bindHost = values.HOST || "0.0.0.0";
-  const checkHost = bindHost === "0.0.0.0" ? "localhost" : bindHost;
-  return { url: `${scheme}://${checkHost}:${values.HTTP_PORT || DASHBOARD_DEFAULT_PORT}/api/health`, curlArgs };
+  return { url: `${scheme}://${healthCheckHost(values)}:${values.HTTP_PORT || DASHBOARD_DEFAULT_PORT}/api/health`, curlArgs };
 }
 
 async function checkDaemonConnectivity(
@@ -362,10 +361,8 @@ async function checkDaemonConnectivity(
   await pushDbChecks(checks, values, host);
   await pushInfoserverCheck(checks, values, host);
   if (serviceActive) {
-    const bindHost = values.HOST || "0.0.0.0";
-    const port = values.PORT || "4044";
-    const checkHost = bindHost === "0.0.0.0" ? "localhost" : bindHost;
-    checks.push(await checkServiceHealth(host, "Health endpoint", `http://${checkHost}:${port}/healthCheck`));
+    const url = `http://${healthCheckHost(values)}:${values.PORT || "4044"}/healthCheck`;
+    checks.push(await checkServiceHealth(host, "Health endpoint", url));
   }
   return checks;
 }
