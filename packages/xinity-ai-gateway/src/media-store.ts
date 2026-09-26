@@ -14,21 +14,21 @@ import {
   type AudioFormat,
   type StorableAudioType,
   type StorableImageType,
-} from "common-env/image-types";
+} from "common-env/media-types";
 import { rootLogger } from "./logger";
 import { getDB } from "./db";
 import { config } from "./config";
 import type { GatewayConfig } from "./config-schema";
 import { safeFetch } from "./llm-forward/tools/url-safety";
 
-const log = rootLogger.child({ name: "image-store" });
+const log = rootLogger.child({ name: "media-store" });
 
-export type ImageStore = {
+export type MediaStore = {
   client: S3Client;
   bucket: string;
 }
 
-export function createImageStore(s3: GatewayConfig["s3"]): ImageStore | null {
+export function createMediaStore(s3: GatewayConfig["s3"]): MediaStore | null {
   if (!s3) {
     return null;
   }
@@ -172,7 +172,7 @@ async function fetchExternalImage(url: string): Promise<ResolvedImage | null> {
 async function processImage(
   imageUrl: string,
   orgId: string,
-  imageStore: ImageStore | null,
+  mediaStore: MediaStore | null,
   store: boolean,
 ): Promise<{ dataUri: string | null; dbUrl: string | null }> {
   const isDataUri = imageUrl.startsWith("data:");
@@ -198,7 +198,7 @@ async function processImage(
   }
 
   const originalUrl = isDataUri ? null : imageUrl;
-  const dbUrl = await storeMedia(bytes, mimeType, originalUrl, orgId, imageStore);
+  const dbUrl = await storeMedia(bytes, mimeType, originalUrl, orgId, mediaStore);
   return { dataUri, dbUrl: dbUrl ?? originalUrl };
 }
 
@@ -206,7 +206,7 @@ async function processAudio(
   data: string,
   declaredFormat: string,
   orgId: string,
-  imageStore: ImageStore | null,
+  mediaStore: MediaStore | null,
   store: boolean,
 ): Promise<string | null> {
   if (!isAudioFormat(declaredFormat)) {
@@ -225,7 +225,7 @@ async function processAudio(
     return null;
   }
   const mimeType: StorableAudioType = STORABLE_AUDIO_TYPES[declaredFormat];
-  return storeMedia(bytes, mimeType, null, orgId, imageStore);
+  return storeMedia(bytes, mimeType, null, orgId, mediaStore);
 }
 
 /** The `xinity-media://` reference for the stored bytes, or null when storing failed. */
@@ -234,11 +234,11 @@ async function storeMedia(
   mimeType: string,
   originalUrl: string | null,
   orgId: string,
-  imageStore: ImageStore | null,
+  mediaStore: MediaStore | null,
 ): Promise<string | null> {
   try {
     const sha256 = bytesDigest(bytes);
-    const s3Key = imageStore ? `${orgId}/${sha256}` : null;
+    const s3Key = mediaStore ? `${orgId}/${sha256}` : null;
 
     // Upsert: if already stored by this org, reuse
     await getDB()
@@ -247,20 +247,20 @@ async function storeMedia(
         sha256,
         mimeType,
         originalUrl,
-        s3Bucket: imageStore?.bucket ?? null,
+        s3Bucket: mediaStore?.bucket ?? null,
         s3Key,
-        bytes: imageStore ? null : bytes,
+        bytes: mediaStore ? null : bytes,
         organizationId: orgId,
         size: bytes.byteLength,
       })
       .onConflictDoNothing();
 
-    if (imageStore && s3Key) {
+    if (mediaStore && s3Key) {
       // Idempotent: same key = same content, since the key is the digest
-      await imageStore.client.write(s3Key, bytes, { type: mimeType });
+      await mediaStore.client.write(s3Key, bytes, { type: mimeType });
     }
 
-    log.debug({ sha256, mimeType, size: bytes.byteLength, inS3: Boolean(imageStore) }, "Media stored");
+    log.debug({ sha256, mimeType, size: bytes.byteLength, inS3: Boolean(mediaStore) }, "Media stored");
     return formatMediaRef(sha256);
   } catch (err) {
     log.error({ err, mimeType }, "Failed to store media");
@@ -294,7 +294,7 @@ type ProcessedPart = { llmPart: ApiCallInputMessageContent; dbPart: ApiCallInput
 async function processPart(
   part: ApiCallInputMessageContent,
   orgId: string,
-  imageStore: ImageStore | null,
+  mediaStore: MediaStore | null,
   store: boolean,
 ): Promise<ProcessedPart> {
   if (part.type === "image_url") {
@@ -302,7 +302,7 @@ async function processPart(
     if (typeof url !== "string") {
       throw mediaPartInvalidError("image_url requires a url string");
     }
-    const { dataUri, dbUrl } = await processImage(url, orgId, imageStore, store);
+    const { dataUri, dbUrl } = await processImage(url, orgId, mediaStore, store);
     return {
       llmPart: dataUri ? { type: "image_url", image_url: { url: dataUri } } : part,
       dbPart: dbUrl !== null ? { type: "image_url", image_url: { url: dbUrl } } : null,
@@ -313,7 +313,7 @@ async function processPart(
     if (typeof data !== "string" || typeof format !== "string") {
       throw mediaPartInvalidError("input_audio requires a base64 data string and a format");
     }
-    const dbRef = await processAudio(data, format, orgId, imageStore, store);
+    const dbRef = await processAudio(data, format, orgId, mediaStore, store);
     return {
       llmPart: part,
       dbPart: dbRef !== null ? { type: "input_audio", input_audio: { data: dbRef, format } } : null,
@@ -331,7 +331,7 @@ async function processPart(
 export async function processMessageMedia(
   messages: ApiCallInputMessage[],
   orgId: string,
-  imageStore: ImageStore | null,
+  mediaStore: MediaStore | null,
   store: boolean,
 ): Promise<{ messagesForLLM: ApiCallInputMessage[]; messagesForDB: ApiCallInputMessage[] }> {
   // Fast path: if no message has array content, skip processing
@@ -353,7 +353,7 @@ export async function processMessageMedia(
     const processedParts = await mapConcurrent(
       message.content,
       MAX_MEDIA_CONCURRENCY,
-      (part) => processPart(part, orgId, imageStore, store),
+      (part) => processPart(part, orgId, mediaStore, store),
     );
 
     const llmParts: ApiCallInputMessageContent[] = processedParts.map((p) => p.llmPart);
@@ -379,7 +379,7 @@ export async function processMessageMedia(
 export async function resolveMediaRef(
   sha256: string,
   orgId: string,
-  store: ImageStore | null,
+  store: MediaStore | null,
 ): Promise<string | null> {
   const object = await readMediaObject(sha256, orgId, store);
   return object && `data:${object.mimeType};base64,${Buffer.from(object.bytes).toString("base64")}`;
@@ -388,7 +388,7 @@ export async function resolveMediaRef(
 async function readMediaObject(
   sha256: string,
   orgId: string,
-  store: ImageStore | null,
+  store: MediaStore | null,
 ): Promise<{ mimeType: string; bytes: Uint8Array } | null> {
   const [row] = await getDB()
     .select({ s3Key: mediaObjectT.s3Key, mimeType: mediaObjectT.mimeType, bytes: mediaObjectT.bytes })
@@ -415,7 +415,7 @@ async function readMediaObject(
 async function restoreMediaPart(
   part: ApiCallInputMessageContent,
   orgId: string,
-  store: ImageStore | null,
+  store: MediaStore | null,
 ): Promise<ApiCallInputMessageContent | null> {
   if (part.type === "image_url") {
     const sha256 = parseMediaRef(part.image_url.url);
@@ -453,7 +453,7 @@ async function restoreMediaPart(
 export async function restoreMessageMedia(
   messages: ApiCallInputMessage[],
   orgId: string,
-  store: ImageStore | null,
+  store: MediaStore | null,
 ): Promise<ApiCallInputMessage[]> {
   if (!messages.some((message) => Array.isArray(message.content))) {
     return messages;
@@ -478,4 +478,4 @@ export async function restoreMessageMedia(
 // ─── Module-level singleton ──────────────────────────────────────────────────
 
 /** Gateway-wide S3 media store. Null when object storage is not configured. */
-export const imageStore: ImageStore | null = createImageStore(config.s3);
+export const mediaStore: MediaStore | null = createMediaStore(config.s3);

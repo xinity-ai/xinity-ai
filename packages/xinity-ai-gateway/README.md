@@ -21,7 +21,7 @@ bun run dev
 - `src/callLogger.ts` writes call body (input/output messages) to the database.
 - `src/usageRecorder.ts` writes per-request usage events (tokens, duration, success).
 - `src/metrics.ts` exposes Prometheus metrics at `/metrics`.
-- `src/image-store.ts` handles multimodal image upload to S3 and deduplication.
+- `src/media-store.ts` handles multimodal image upload to S3 and deduplication.
 - `src/llm-forward/load-balancer.ts` implements three strategies: `random`, `round-robin`, and `least-connections` (default), with prefix-cache affinity for KV cache hit optimization.
 - `src/llm-forward/model-data.ts` handles canary deployment traffic splitting.
 - `src/llm-forward/endpoints/handle-responses.ts` implements the OpenAI Responses API with built-in web search and web fetch tools.

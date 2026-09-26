@@ -22,8 +22,8 @@ mock.module("./db", () => ({
 
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 
-const { processMessageMedia, resolveMediaRef, restoreMessageMedia, sniffAudioFormat, sniffImageType } = await import("./image-store");
-import type { StorableImageType } from "common-env/image-types";
+const { processMessageMedia, resolveMediaRef, restoreMessageMedia, sniffAudioFormat, sniffImageType } = await import("./media-store");
+import type { StorableImageType } from "common-env/media-types";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -32,7 +32,7 @@ const TINY_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwADhQGAWjR9awAAAABJRU5ErkJggg==";
 const TINY_PNG_DATA_URI = `data:image/png;base64,${TINY_PNG_BASE64}`;
 
-function makeImageStore(writeFn = mock(() => Promise.resolve())) {
+function makeMediaStore(writeFn = mock(() => Promise.resolve())) {
   return {
     client: { write: writeFn } as any,
     bucket: "xinity-media",
@@ -48,12 +48,12 @@ function findInsert(): CapturedQuery | undefined {
 
 describe("processMessageMedia – S3 enabled", () => {
   let writeCall: ReturnType<typeof mock>;
-  let store: ReturnType<typeof makeImageStore>;
+  let store: ReturnType<typeof makeMediaStore>;
 
   beforeEach(() => {
     capturedQueries.length = 0;
     writeCall = mock(() => Promise.resolve());
-    store = makeImageStore(writeCall);
+    store = makeMediaStore(writeCall);
   });
 
   test("data URI: LLM receives data URI, DB receives xinity-media:// reference", async () => {
@@ -169,7 +169,7 @@ describe("processMessageMedia – S3 enabled", () => {
 
 // ─── processMessageMedia – S3 disabled ──────────────────────────────────────
 
-describe("processMessageMedia – S3 disabled (imageStore = null)", () => {
+describe("processMessageMedia – S3 disabled (mediaStore = null)", () => {
   beforeEach(() => {
     capturedQueries.length = 0;
   });
@@ -346,7 +346,7 @@ describe("processMessageMedia – store = false", () => {
   });
 
   test("stores nothing for a call that will not be logged", async () => {
-    const store = makeImageStore();
+    const store = makeMediaStore();
     const messages = [
       { role: "user", content: [{ type: "image_url", image_url: { url: TINY_PNG_DATA_URI } }] },
     ] as any;
@@ -403,12 +403,12 @@ describe("sniffImageType", () => {
 
 describe("stored mime type", () => {
   let writeCall: ReturnType<typeof mock>;
-  let store: ReturnType<typeof makeImageStore>;
+  let store: ReturnType<typeof makeMediaStore>;
 
   beforeEach(() => {
     capturedQueries.length = 0;
     writeCall = mock(() => Promise.resolve());
-    store = makeImageStore(writeCall);
+    store = makeMediaStore(writeCall);
   });
 
   test("keeps a declared image type, even when the bytes say otherwise", async () => {
@@ -463,7 +463,7 @@ describe("unsupported image types", () => {
       { role: "user", content: [{ type: "image_url", image_url: { url } }] },
     ] as any;
 
-    await expect(processMessageMedia(messages, "org-1", makeImageStore(), true))
+    await expect(processMessageMedia(messages, "org-1", makeMediaStore(), true))
       .rejects.toThrow(/not supported/);
     expect(findInsert()).toBeUndefined();
   });
@@ -511,7 +511,7 @@ describe("processMessageMedia – audio", () => {
   });
 
   test("the model gets the base64, the log gets a reference", async () => {
-    const { messagesForLLM, messagesForDB } = await processMessageMedia(audioMessage(WAV_BASE64), "org-1", makeImageStore(writeCall), true);
+    const { messagesForLLM, messagesForDB } = await processMessageMedia(audioMessage(WAV_BASE64), "org-1", makeMediaStore(writeCall), true);
 
     expect((messagesForLLM[0]!.content as any[])[1]).toEqual({ type: "input_audio", input_audio: { data: WAV_BASE64, format: "wav" } });
     const dbPart = (messagesForDB[0]!.content as any[])[1];
@@ -550,7 +550,7 @@ describe("processMessageMedia – audio", () => {
   });
 
   test("stores nothing for a call that will not be logged", async () => {
-    const store = makeImageStore(writeCall);
+    const store = makeMediaStore(writeCall);
     const { messagesForLLM, messagesForDB } = await processMessageMedia(audioMessage(WAV_BASE64), "org-1", store, false);
 
     expect(findInsert()).toBeUndefined();

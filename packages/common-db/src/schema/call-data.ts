@@ -18,7 +18,7 @@ import { aiNodeT } from "./models";
 import { organizationT } from "./orgSchema";
 import { userT } from "./auth";
 import type { InferSelectModel } from "drizzle-orm";
-import type { AudioFormat } from "common-env/image-types";
+import type { AudioFormat } from "common-env/media-types";
 import { callDataSchema } from "./pg-schemas";
 
 const bytea = customType<{ data: Uint8Array<ArrayBuffer>; driverData: Buffer }>({

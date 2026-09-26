@@ -1,6 +1,6 @@
 import { recordBackendError } from "../metrics";
 import { BLOCKED_REQUEST_PARAM_PREFIXES } from "xinity-infoserver";
-import { isMediaPartInvalid, isMediaTooLarge, isMediaTypeUnsupported } from "../image-store";
+import { isMediaPartInvalid, isMediaTooLarge, isMediaTypeUnsupported } from "../media-store";
 
 export { toModelMessages } from "./message-convert";
 export { recordUsage, recordFailedRequest, logChatUsage } from "./usage";

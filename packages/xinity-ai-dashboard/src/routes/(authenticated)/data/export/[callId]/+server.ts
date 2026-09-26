@@ -13,7 +13,7 @@ import { apiCallT, inferenceCallT, sql, type ApiCallResponse, type ApiCallInputM
 import { resolveCallMessages } from "$lib/server/lib/call-messages";
 import { inferenceToCallRecord, legacyToCallRecord, type CallRecord } from "$lib/server/lib/call-record";
 import { resolveFirstRating } from "$lib/server/lib/call-ratings";
-import { readMediaObject, resolveToDataUri } from "$lib/server/image-store";
+import { readMediaObject, resolveToDataUri } from "$lib/server/media-store";
 import { parseMediaRef } from "common-env/media-ref";
 import { error } from "@sveltejs/kit";
 

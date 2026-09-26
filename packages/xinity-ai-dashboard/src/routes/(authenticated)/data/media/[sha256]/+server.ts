@@ -6,9 +6,9 @@
  */
 import type { RequestHandler } from "./$types";
 import { auth } from "$lib/server/auth-server";
-import { getPresignedUrl, readMediaObject } from "$lib/server/image-store";
+import { getPresignedUrl, readMediaObject } from "$lib/server/media-store";
 import { isMediaDigest } from "common-env/media-ref";
-import { isStorableAudioType, isStorableImageType } from "common-env/image-types";
+import { isStorableAudioType, isStorableImageType } from "common-env/media-types";
 import { error } from "@sveltejs/kit";
 
 export const GET: RequestHandler = async ({ params, locals }) => {

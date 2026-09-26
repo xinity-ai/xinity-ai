@@ -1,6 +1,6 @@
 import type { ModelMessage, FilePart, ImagePart, TextPart } from "ai";
 import type { ApiCallInputMessage, ApiCallInputMessageContent } from "common-db";
-import { STORABLE_AUDIO_TYPES } from "common-env/image-types";
+import { STORABLE_AUDIO_TYPES } from "common-env/media-types";
 
 export function toModelMessages(messages: ApiCallInputMessage[]): ModelMessage[] {
   const toolCallNameMap = new Map<string, string>();

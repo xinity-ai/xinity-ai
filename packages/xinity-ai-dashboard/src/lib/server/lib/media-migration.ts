@@ -6,7 +6,7 @@
 import { mediaObjectT, sql, count } from "common-db";
 import { config } from "../config";
 import { getDB } from "../db";
-import { mediaS3Client } from "../image-store";
+import { mediaS3Client } from "../media-store";
 import { rootLogger } from "../logging";
 
 const log = rootLogger.child({ name: "media-migration" });

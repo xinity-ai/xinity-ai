@@ -3,7 +3,7 @@ import { resolveAuthorizedModel } from "../ai-sdk";
 import { errorResponse, logChatUsage, recordUsage, validateModelType, toModelMessages, SSE_RESPONSE_HEADERS, validationError, isUpstreamError, upstreamHttpStatus, modelLacksToolSupport } from "../util";
 import { deleteResponse, getResponse, getResponseMessages, saveResponse, type ResponseCreation } from "../response-store";
 import { rootLogger } from "../../logger";
-import { processMessageMedia, restoreMessageMedia, imageStore } from "../../image-store";
+import { processMessageMedia, restoreMessageMedia, mediaStore } from "../../media-store";
 import { config } from "../../config";
 import { createIdleTimeout, type IdleTimeout } from "../backend-fetch";
 import { DEEP_RESEARCH_SYSTEM_PROMPT, createCompactionStep } from "../deep-research";
@@ -100,11 +100,11 @@ async function prepareResponseRequest(req: Request): Promise<PreparedRequest | R
     // reading one hop back carries all of it however long the exchange has run.
     historyForLog = await getResponseMessages(auth.orgId, body.previous_response_id);
     // Logged messages carry `xinity-media://` references, which no backend can fetch.
-    historyForModel = await restoreMessageMedia(historyForLog, auth.orgId, imageStore);
+    historyForModel = await restoreMessageMedia(historyForLog, auth.orgId, mediaStore);
   }
 
   const willLog = callWillBeLogged(auth, body.store);
-  const processed = await processMessageMedia(messages, auth.orgId, imageStore, willLog);
+  const processed = await processMessageMedia(messages, auth.orgId, mediaStore, willLog);
   const messagesForLLM = [...historyForModel, ...processed.messagesForLLM];
   const messagesForDB = [...historyForLog, ...processed.messagesForDB];
 

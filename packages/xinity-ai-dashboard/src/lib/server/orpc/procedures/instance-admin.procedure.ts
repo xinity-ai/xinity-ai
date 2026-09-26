@@ -7,7 +7,7 @@ import { userT, accountT, memberT, organizationT, auditEventT, sql, and, count }
 import { RoleSchema } from "$lib/server/roles";
 import { countLegacyCalls, postfillLegacyCalls } from "$lib/server/lib/legacy-postfill";
 import { countDatabaseBackedMedia, moveMediaToS3 } from "$lib/server/lib/media-migration";
-import { mediaS3Client } from "$lib/server/image-store";
+import { mediaS3Client } from "$lib/server/media-store";
 import { hasFeature } from "$lib/server/license";
 
 const log = rootLogger.child({ name: "instance-admin.procedure" });

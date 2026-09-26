@@ -1,5 +1,5 @@
 /**
- * Dashboard-side S3 image store utilities.
+ * Dashboard-side S3 media store utilities.
  *
  * Generates presigned URLs for in-browser display and resolves
  * xinity-media:// references to data URIs for self-contained exports.
@@ -12,7 +12,7 @@ import { mediaObjectT, sql } from "common-db";
 import { getDB } from "./db";
 import { rootLogger } from "./logging";
 
-const log = rootLogger.child({ name: "image-store" });
+const log = rootLogger.child({ name: "media-store" });
 
 /** Presigned URL TTL in seconds: 15 minutes is enough for one page view. */
 const PRESIGN_TTL_SECONDS = 900;
@@ -106,7 +106,7 @@ export async function readMediaObject(
     const bytes = await readObject(row);
     return bytes ? { bytes, mimeType: row.mimeType } : null;
   } catch (err) {
-    log.error({ err, sha256 }, "Failed to read the stored image");
+    log.error({ err, sha256 }, "Failed to read the stored media object");
     return null;
   }
 }

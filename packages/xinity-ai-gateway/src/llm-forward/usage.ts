@@ -24,7 +24,7 @@ function normalizeOutputTokens(usage: UsageData): number {
 }
 
 /**
- * The single answer to whether a call gets logged. Both the image store and the usage recorder ask,
+ * The single answer to whether a call gets logged. Both the media store and the usage recorder ask,
  * and they must agree: images skipped for a call that then logs would leave the conversation with
  * references to pictures that were never stored.
  */
