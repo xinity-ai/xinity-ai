@@ -72,16 +72,16 @@ export function isMediaTypeUnsupported(error: unknown): boolean {
     && (error as { code?: unknown }).code === MEDIA_TYPE_UNSUPPORTED;
 }
 
-const AUDIO_INVALID = "audio_invalid";
+const MEDIA_PART_INVALID = "media_part_invalid";
 
-/** OpenAI answers a bad `input_audio` part with a 400, and so do we. */
-function audioInvalidError(message: string): Error {
-  return Object.assign(new Error(message), { code: AUDIO_INVALID });
+/** OpenAI answers a malformed content part with a 400, and so do we. */
+function mediaPartInvalidError(message: string): Error {
+  return Object.assign(new Error(message), { code: MEDIA_PART_INVALID });
 }
 
-export function isAudioInvalid(error: unknown): boolean {
+export function isMediaPartInvalid(error: unknown): boolean {
   return typeof error === "object" && error !== null
-    && (error as { code?: unknown }).code === AUDIO_INVALID;
+    && (error as { code?: unknown }).code === MEDIA_PART_INVALID;
 }
 
 function isAudioFormat(value: string): value is AudioFormat {
@@ -210,7 +210,7 @@ async function processAudio(
   store: boolean,
 ): Promise<string | null> {
   if (!isAudioFormat(declaredFormat)) {
-    throw audioInvalidError(
+    throw mediaPartInvalidError(
       `Audio format ${declaredFormat || "unknown"} is not supported. Supported: ${Object.keys(STORABLE_AUDIO_TYPES).join(", ")}`,
     );
   }
@@ -219,7 +219,7 @@ async function processAudio(
     throw mediaTooLargeError("Audio", bytes.byteLength);
   }
   if (sniffAudioFormat(bytes) !== declaredFormat) {
-    throw audioInvalidError(`Audio data is not valid ${declaredFormat}`);
+    throw mediaPartInvalidError(`Audio data is not valid ${declaredFormat}`);
   }
   if (!store) {
     return null;
@@ -298,7 +298,11 @@ async function processPart(
   store: boolean,
 ): Promise<ProcessedPart> {
   if (part.type === "image_url") {
-    const { dataUri, dbUrl } = await processImage(part.image_url.url, orgId, imageStore, store);
+    const url = part.image_url?.url;
+    if (typeof url !== "string") {
+      throw mediaPartInvalidError("image_url requires a url string");
+    }
+    const { dataUri, dbUrl } = await processImage(url, orgId, imageStore, store);
     return {
       llmPart: dataUri ? { type: "image_url", image_url: { url: dataUri } } : part,
       dbPart: dbUrl !== null ? { type: "image_url", image_url: { url: dbUrl } } : null,
@@ -307,7 +311,7 @@ async function processPart(
   if (part.type === "input_audio") {
     const { data, format } = part.input_audio ?? {};
     if (typeof data !== "string" || typeof format !== "string") {
-      throw audioInvalidError("input_audio requires a base64 data string and a format");
+      throw mediaPartInvalidError("input_audio requires a base64 data string and a format");
     }
     const dbRef = await processAudio(data, format, orgId, imageStore, store);
     return {

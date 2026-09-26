@@ -1184,3 +1184,20 @@ describe("handleChatCompletion, audio input", () => {
     expect(lastUpstreamBody).toBeNull();
   });
 });
+
+describe("handleChatCompletion, malformed image input", () => {
+  test.each([
+    ["no image_url at all", { type: "image_url" }],
+    ["an image_url without a url", { type: "image_url", image_url: {} }],
+    ["a url that is not a string", { type: "image_url", image_url: { url: 42 } }],
+  ])("answers %s with a 400, without reaching the backend", async (_label, part) => {
+    const res = await handleChatCompletion(new Request("http://localhost:4000/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({ model: "test-model", store: false, messages: [{ role: "user", content: [part] }] }),
+    }));
+
+    expect(res.status).toBe(400);
+    expect(lastUpstreamBody).toBeNull();
+  });
+});
