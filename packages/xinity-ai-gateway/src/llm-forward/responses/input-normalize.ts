@@ -56,6 +56,17 @@ function extractContent(raw: unknown): string | ApiCallInputMessage["content"] |
   return extractText(raw);
 }
 
+/** OpenAI's Responses API takes no audio input, so an `input_audio` part is refused, not dropped. */
+export function hasAudioPart(input: unknown): boolean {
+  const items = Array.isArray(input) ? input : [input];
+  return items.some((item) => {
+    const obj = item as Record<string, unknown> | null;
+    const content = obj && typeof obj === "object" ? obj.content ?? obj.input ?? obj.text : null;
+    return Array.isArray(content)
+      && content.some((part) => (part as Record<string, unknown> | null)?.type === "input_audio");
+  });
+}
+
 export function normalizeMessages(input: unknown): ApiCallInputMessage[] | null {
   if (typeof input === "string") return [{ role: "user", content: input }];
   if (Array.isArray(input)) {

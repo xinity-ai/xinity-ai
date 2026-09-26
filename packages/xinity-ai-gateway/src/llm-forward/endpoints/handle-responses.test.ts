@@ -801,3 +801,24 @@ describe("handleResponses", () => {
     });
   });
 });
+
+describe("handleResponses, audio input", () => {
+  const audioPart = { type: "input_audio", input_audio: { data: "UklGRg==", format: "wav" } };
+  const responsesRequest = (payload: Record<string, unknown>) => new Request("http://localhost:4000/v1/responses", {
+    method: "POST",
+    headers: { "Authorization": "Bearer test" },
+    body: JSON.stringify({ model: "test-model", ...payload }),
+  });
+
+  test.each([
+    ["an input list", { input: [{ role: "user", content: [{ type: "input_text", text: "hi" }, audioPart] }] }],
+    ["a single input message", { input: { role: "user", content: [audioPart] } }],
+    ["the messages alias", { messages: [{ role: "user", content: [audioPart] }] }],
+  ])("refuses audio in %s rather than dropping it", async (_label, payload) => {
+    const res = await handleCreateResponseRequest(responsesRequest(payload));
+
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as any).error.message).toContain("input_audio is not supported by /v1/responses");
+    expect(lastUpstreamBody).toBeUndefined();
+  });
+});
