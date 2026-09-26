@@ -41,7 +41,8 @@ function describeProblem(problem: ConfigProblem): string {
   const where = problem.fields
     .map((field) => (field.groupTitle ? `${field.envKey} under ${field.groupTitle}` : field.envKey))
     .join(", ");
-  return `  ${where}: ${problem.message}`;
+  // Only a problem with the declaration itself has no field, and its message already names the key.
+  return where ? `  ${where}: ${problem.message}` : `  ${problem.message}`;
 }
 
 export function categorizeFields(fields: EnvField[]): {
