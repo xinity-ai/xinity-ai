@@ -22,6 +22,12 @@ export function info(label: string, detail?: string) {
   log.info(formatLabelDetail(label, detail));
 }
 
+export function reportDryRunCommands(commands: string[]): void {
+  for (const cmd of commands) {
+    info("Dry run", `Would run: ${dim(cmd.split("\n")[0] ?? cmd)}`);
+  }
+}
+
 /** Section header rendered as a colored badge. */
 export function heading(text: string) {
   log.step(bgCyan(black(` ${text} `)));

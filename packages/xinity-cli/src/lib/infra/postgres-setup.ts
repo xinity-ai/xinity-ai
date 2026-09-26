@@ -6,11 +6,11 @@
 import { confirm, log, note, password as passwordPrompt, text } from "../core/clack.ts";
 import { bold, cyan, dim } from "picocolors";
 import type { Host } from "../core/host.ts";
-import { pass, info, warn, promptOrUndefined } from "../core/output.ts";
-import { tcpPortInUse, type ComposeCmd } from "./docker-stack.ts";
+import { pass, info, warn, promptOrUndefined, reportDryRunCommands } from "../core/output.ts";
+import type { ComposeCmd } from "./docker-stack.ts";
 import {
   type ComposeStack, type ExistingStack,
-  stackPaths, requireCompose, inspectStack, parsePublishedPort,
+  stackPaths, requireCompose, inspectStack, parsePublishedPort, promptPublishedPort,
   buildWriteFileCommand, writeStackFile, startStack, composeUpCommand,
   composeBaseCommand, execCommand,
 } from "./compose-service.ts";
@@ -200,19 +200,8 @@ export async function planPostgresProvision(host: Host): Promise<PostgresProvisi
     password = pw;
   }
 
-  const portStr = await promptOrUndefined(text({
-    message: "Port to publish on localhost",
-    placeholder: String(POSTGRES.defaultPort),
-    defaultValue: String(POSTGRES.defaultPort),
-  }));
-  if (portStr === undefined) return undefined;
-  const port = Number(portStr) || POSTGRES.defaultPort;
-
-  // Best-effort, non-fatal: a clash here is most often a native Postgres the
-  // user could instead supply via "use an existing database".
-  if (await tcpPortInUse(host, port)) {
-    warn("Port", `Something is already listening on localhost:${port}. Starting the container will fail if it is still bound.`);
-  }
+  const port = await promptPublishedPort(host, POSTGRES);
+  if (port === undefined) return undefined;
 
   return {
     compose,
@@ -269,9 +258,7 @@ export async function postgresSetup(host: Host, dryRun: boolean): Promise<string
   if (!prov) return undefined;
 
   if (dryRun) {
-    for (const cmd of buildPostgresProvisionCommands(prov)) {
-      info("Dry run", `Would run: ${dim(cmd.split("\n")[0] ?? cmd)}`);
-    }
+    reportDryRunCommands(buildPostgresProvisionCommands(prov));
     note(`DB_CONNECTION_URL=${prov.url}`, prov.files ? "Connection URL (not yet created)" : "Existing connection URL");
     return prov.url;
   }

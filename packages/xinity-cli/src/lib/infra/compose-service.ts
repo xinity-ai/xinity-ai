@@ -6,14 +6,14 @@
  * service module is then left with only its own policy, meaning its compose
  * file body, its prompts, and how it treats a stack that already exists.
  */
-import { log, spinner as clackSpinner } from "../core/clack.ts";
+import { log, spinner as clackSpinner, text } from "../core/clack.ts";
 import { cyan, dim } from "picocolors";
 import { type Host, waitForReady } from "../core/host.ts";
-import { pass, fail, warn } from "../core/output.ts";
+import { pass, fail, warn, promptOrUndefined } from "../core/output.ts";
 import { heredoc } from "../up/service.ts";
 import {
   resolveComposeCmd, composeArgs, composeName, stackDir,
-  dockerDaemonReady, type ComposeCmd,
+  dockerDaemonReady, tcpPortInUse, type ComposeCmd,
 } from "./docker-stack.ts";
 
 export type ComposeStack = {
@@ -80,6 +80,27 @@ export async function inspectStack(host: Host, stack: ComposeStack): Promise<Exi
     containerExists: container.ok && container.output.trim().length > 0,
     composeFile: await host.readFile(stackPaths(stack).composePath),
   };
+}
+
+export function localEndpoint(port: number): string {
+  return `http://127.0.0.1:${port}`;
+}
+
+export async function promptPublishedPort(host: Host, stack: ComposeStack): Promise<number | undefined> {
+  const portStr = await promptOrUndefined(text({
+    message: "Port to publish on localhost",
+    placeholder: String(stack.defaultPort),
+    defaultValue: String(stack.defaultPort),
+  }));
+  if (portStr === undefined) return undefined;
+  const port = Number(portStr) || stack.defaultPort;
+
+  // Best-effort and non-fatal: a clash is most often a native instance the user
+  // could supply directly instead of provisioning one.
+  if (await tcpPortInUse(host, port)) {
+    warn("Port", `Something is already listening on localhost:${port}. Starting the container will fail if it is still bound.`);
+  }
+  return port;
 }
 
 export function parsePublishedPort(composeContent: string, stack: ComposeStack): number {

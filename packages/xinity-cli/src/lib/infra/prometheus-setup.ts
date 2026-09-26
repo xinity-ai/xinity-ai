@@ -8,14 +8,14 @@
  * bridge-networked deployment template, whose targets are in-stack.)
  */
 import { log, note, text } from "../core/clack.ts";
-import { bold, cyan, dim } from "picocolors";
-import type { Host } from "../core/host.ts";
-import { pass, info, warn, promptOrUndefined } from "../core/output.ts";
+import { bold, cyan } from "picocolors";
+import { type Host, httpOk } from "../core/host.ts";
+import { pass, warn, promptOrUndefined, reportDryRunCommands } from "../core/output.ts";
 import { tcpPortInUse, type ComposeCmd } from "./docker-stack.ts";
 import {
   type ComposeStack,
   stackPaths, requireCompose, buildWriteFileCommand, writeStackFile,
-  startStack, composeUpCommand, composeBaseCommand,
+  startStack, composeUpCommand, composeBaseCommand, localEndpoint,
 } from "./compose-service.ts";
 import { DASHBOARD_DEFAULT_PORT, GATEWAY_DEFAULT_PORT, TETHER_DEFAULT_PORT } from "../core/component-meta.ts";
 
@@ -42,10 +42,6 @@ const CONFIG_PATH = `${STACK_DIR}/prometheus.yml`;
 // deployments, so this is deliberately coarse.
 const SD_REFRESH_INTERVAL = "3m";
 
-function endpoint(port: number): string {
-  return `http://127.0.0.1:${port}`;
-}
-
 function scrapeTarget(rawUrl: string): { target: string; scheme: string } {
   const u = new URL(rawUrl);
   const scheme = u.protocol.replace(":", "");
@@ -61,9 +57,8 @@ function parseBasicAuth(value: string): BasicAuth | undefined {
   return { username: trimmed.slice(0, sep), password: trimmed.slice(sep + 1) };
 }
 
-async function isPrometheusRunning(host: Host, port: number): Promise<boolean> {
-  const res = await host.run(["curl", "-sf", "-o", "/dev/null", `${endpoint(port)}/-/healthy`]);
-  return res.ok;
+function isPrometheusRunning(host: Host, port: number): Promise<boolean> {
+  return httpOk(host, `${localEndpoint(port)}/-/healthy`);
 }
 
 // ─── Config generation ───────────────────────────────────────────────────────
@@ -90,6 +85,18 @@ function schemeLine(scheme: string | undefined): string[] {
   return scheme === "https" ? ["    scheme: https"] : [];
 }
 
+function staticJobLines(jobName: string, target: string, scheme: string | undefined): string[] {
+  return [
+    `  - job_name: ${jobName}`,
+    ...schemeLine(scheme),
+    "    metrics_path: /metrics",
+    "    static_configs:",
+    "      - targets:",
+    `          - ${target}`,
+    "",
+  ];
+}
+
 export function buildPrometheusConfig(opts: {
   scrapeInterval: string;
   gatewayTarget: string;
@@ -108,27 +115,9 @@ export function buildPrometheusConfig(opts: {
     `  evaluation_interval: ${opts.scrapeInterval}`,
     "",
     "scrape_configs:",
-    "  - job_name: xinity-gateway",
-    ...schemeLine(opts.gatewayScheme),
-    "    metrics_path: /metrics",
-    "    static_configs:",
-    "      - targets:",
-    `          - ${opts.gatewayTarget}`,
-    "",
-    "  - job_name: xinity-dashboard",
-    ...schemeLine(opts.dashboardScheme),
-    "    metrics_path: /metrics",
-    "    static_configs:",
-    "      - targets:",
-    `          - ${opts.dashboardTarget}`,
-    "",
-    "  - job_name: xinity-tether",
-    ...schemeLine(opts.tetherScheme),
-    "    metrics_path: /metrics",
-    "    static_configs:",
-    "      - targets:",
-    `          - ${opts.tetherTarget}`,
-    "",
+    ...staticJobLines("xinity-gateway", opts.gatewayTarget, opts.gatewayScheme),
+    ...staticJobLines("xinity-dashboard", opts.dashboardTarget, opts.dashboardScheme),
+    ...staticJobLines("xinity-tether", opts.tetherTarget, opts.tetherScheme),
     "  # Daemon targets are discovered dynamically from the dashboard's node",
     "  # registry; this stays current as the node set changes, no edits needed.",
     "  - job_name: xinity-daemon",
@@ -194,6 +183,11 @@ const validateUrl = (value: string | undefined): string | undefined => {
   return undefined;
 };
 
+function promptBaseUrl(message: string, defaultPort: string): Promise<string | undefined> {
+  const fallback = `http://localhost:${defaultPort}`;
+  return promptOrUndefined(text({ message, placeholder: fallback, defaultValue: fallback, validate: validateUrl }));
+}
+
 export async function planPrometheusProvision(host: Host): Promise<PrometheusProvision | undefined> {
   const compose = await requireCompose(host, PROMETHEUS, {
     requiredTo: "run the monitoring stack",
@@ -216,30 +210,11 @@ export async function planPrometheusProvision(host: Host): Promise<PrometheusPro
     warn("Port", `Port ${port} is already in use. Prometheus may fail to start; choose a different port or stop the process using it.`);
   }
 
-  const gatewayDefault = `http://localhost:${GATEWAY_DEFAULT_PORT}`;
-  const gatewayUrl = await promptOrUndefined(text({
-    message: "Gateway base URL",
-    placeholder: gatewayDefault,
-    defaultValue: gatewayDefault,
-    validate: validateUrl,
-  }));
+  const gatewayUrl = await promptBaseUrl("Gateway base URL", GATEWAY_DEFAULT_PORT);
   if (gatewayUrl === undefined) return undefined;
-
-  const dashboardDefault = `http://localhost:${DASHBOARD_DEFAULT_PORT}`;
-  const dashboardUrl = await promptOrUndefined(text({
-    message: "Dashboard base URL",
-    placeholder: dashboardDefault,
-    defaultValue: dashboardDefault,
-    validate: validateUrl,
-  }));
+  const dashboardUrl = await promptBaseUrl("Dashboard base URL", DASHBOARD_DEFAULT_PORT);
   if (dashboardUrl === undefined) return undefined;
-
-  const tetherUrl = await promptOrUndefined(text({
-    message: "Tether base URL",
-    placeholder: `http://localhost:${TETHER_DEFAULT_PORT}`,
-    defaultValue: `http://localhost:${TETHER_DEFAULT_PORT}`,
-    validate: validateUrl,
-  }));
+  const tetherUrl = await promptBaseUrl("Tether base URL", TETHER_DEFAULT_PORT);
   if (tetherUrl === undefined) return undefined;
 
   const gateway = scrapeTarget(gatewayUrl);
@@ -267,7 +242,7 @@ export async function planPrometheusProvision(host: Host): Promise<PrometheusPro
   return {
     compose,
     port,
-    url: endpoint(port),
+    url: localEndpoint(port),
     daemonSdUrl,
     configFile: buildPrometheusConfig({
       scrapeInterval: "30s",
@@ -337,9 +312,7 @@ export async function prometheusSetup(host: Host, dryRun: boolean): Promise<stri
   if (!prov) return undefined;
 
   if (dryRun) {
-    for (const cmd of buildPrometheusProvisionCommands(prov)) {
-      info("Dry run", `Would run: ${dim(cmd.split("\n")[0] ?? cmd)}`);
-    }
+    reportDryRunCommands(buildPrometheusProvisionCommands(prov));
     note(`PROMETHEUS_URL=${prov.url}`, "Endpoint (not yet created)");
     return prov.url;
   }

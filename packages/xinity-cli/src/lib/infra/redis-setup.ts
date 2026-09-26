@@ -9,14 +9,15 @@
 import { cancel, isCancel, log, note, select, spinner as clackSpinner, text } from "../core/clack.ts";
 import { bold, cyan, dim } from "picocolors";
 import { type Host, readSecrets } from "../core/host.ts";
-import { pass, info, promptOrUndefined, warn } from "../core/output.ts";
+import { pass, info, reportDryRunCommands } from "../core/output.ts";
 import { parseEnvString } from "../config/env-file.ts";
 import { randomToken } from "../core/secrets.ts";
 import { SECRETS_DIR, ENV_DIR } from "../core/component-meta.ts";
-import { tcpPortInUse, type ComposeCmd } from "./docker-stack.ts";
+import { buildSecretsWriteCommand } from "../up/service.ts";
+import type { ComposeCmd } from "./docker-stack.ts";
 import {
   type ComposeStack,
-  stackPaths, requireCompose, inspectStack, parsePublishedPort,
+  stackPaths, requireCompose, inspectStack, parsePublishedPort, promptPublishedPort,
   buildWriteFileCommand, writeStackFile, startStack, composeUpCommand,
   composeBaseCommand, execCommand,
 } from "./compose-service.ts";
@@ -127,19 +128,8 @@ export async function planRedisProvision(host: Host): Promise<RedisProvision | u
     return { compose, port, url: buildRedisUrl(port, parseRequirePass(existing.composeFile)) };
   }
 
-  const portStr = await promptOrUndefined(text({
-    message: "Port to publish on localhost",
-    placeholder: String(REDIS.defaultPort),
-    defaultValue: String(REDIS.defaultPort),
-  }));
-  if (portStr === undefined) return undefined;
-  const port = Number(portStr) || REDIS.defaultPort;
-
-  // Best-effort, non-fatal: a clash here is most often a native Redis the user
-  // could instead supply via "I have a connection URL".
-  if (await tcpPortInUse(host, port)) {
-    warn("Port", `Something is already listening on localhost:${port}. Starting the container will fail if it is still bound.`);
-  }
+  const port = await promptPublishedPort(host, REDIS);
+  if (port === undefined) return undefined;
 
   const password = randomToken(32);
   return { compose, port, url: buildRedisUrl(port, password), composeFile: buildComposeFile(port, password) };
@@ -225,12 +215,7 @@ async function persistRedisUrl(host: Host, url: string): Promise<void> {
   const existing = await readSecrets(host, SECRETS_DIR, ["REDIS_URL"], "Read stored Redis URL");
   if (existing.secrets.REDIS_URL === url) return;
 
-  const escaped = url.replace(/'/g, "'\\''");
-  await host.withElevation(
-    `mkdir -p '${SECRETS_DIR}' && chmod 700 '${SECRETS_DIR}'` +
-    ` && printf '%s' '${escaped}' > '${SECRETS_DIR}/REDIS_URL' && chmod 600 '${SECRETS_DIR}/REDIS_URL'`,
-    "Store Redis connection URL",
-  );
+  await host.withElevation(buildSecretsWriteCommand({ REDIS_URL: url })!, "Store Redis connection URL");
 }
 
 export async function planRedis(host: Host): Promise<RedisPlan | undefined> {
@@ -350,9 +335,7 @@ async function planRedisSetup(host: Host): Promise<RedisPlan | undefined> {
 
 function describeRedisPlanDryRun(plan: RedisPlan): void {
   if (plan.provision) {
-    for (const cmd of buildRedisProvisionCommands(plan.provision)) {
-      info("Dry run", `Would run: ${dim(cmd.split("\n")[0] ?? cmd)}`);
-    }
+    reportDryRunCommands(buildRedisProvisionCommands(plan.provision));
   }
   if (plan.persist) {
     info("Dry run", `Would store REDIS_URL in ${SECRETS_DIR}`);

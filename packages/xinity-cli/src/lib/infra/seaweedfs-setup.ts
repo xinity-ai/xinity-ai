@@ -7,9 +7,9 @@
  * for local and remote (--target-host) execution.
  */
 import { confirm, isCancel, log, note, password, spinner as clackSpinner, text } from "../core/clack.ts";
-import { bold, cyan, dim } from "picocolors";
-import { type Host, commandExistsOn, waitForReady } from "../core/host.ts";
-import { pass, fail, info, promptOrUndefined, warn } from "../core/output.ts";
+import { bold, cyan } from "picocolors";
+import { type Host, commandExistsOn, httpOk, waitForReady } from "../core/host.ts";
+import { pass, fail, info, promptOrUndefined, warn, reportDryRunCommands } from "../core/output.ts";
 import { heredoc } from "../up/service.ts";
 import { BIN_DIR, ENV_DIR, UNIT_DIR } from "../core/component-meta.ts";
 import { generateUnit } from "../up/systemd.ts";
@@ -46,9 +46,8 @@ async function detectArch(host: Host): Promise<"amd64" | "arm64" | null> {
   return null;
 }
 
-async function isSeaweedFSRunning(host: Host): Promise<boolean> {
-  const res = await host.run(["curl", "-sf", "-o", "/dev/null", `${S3_ENDPOINT}/`]);
-  return res.ok;
+function isSeaweedFSRunning(host: Host): Promise<boolean> {
+  return httpOk(host, `${S3_ENDPOINT}/`);
 }
 
 async function fetchLatestVersion(host: Host): Promise<string | null> {
@@ -366,9 +365,7 @@ export async function seaweedfsSetup(
   if (!plan) return undefined;
 
   if (dryRun) {
-    for (const cmd of buildSeaweedfsCommands(plan)) {
-      info("Dry run", `Would run: ${dim(cmd.split("\n")[0] ?? cmd)}`);
-    }
+    reportDryRunCommands(buildSeaweedfsCommands(plan));
     note(credentialLines(plan.credentials), "S3 credentials (not yet created)");
     return plan.credentials;
   }

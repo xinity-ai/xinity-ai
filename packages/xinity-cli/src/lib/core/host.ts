@@ -188,6 +188,10 @@ export async function getUnitStatusOn(host: Host, unit: string): Promise<string>
   return (await host.run(["systemctl", "is-active", unit])).output;
 }
 
+export async function httpOk(host: Host, url: string): Promise<boolean> {
+  return (await host.run(["curl", "-sf", "-o", "/dev/null", url])).ok;
+}
+
 export async function waitForReady(
   probe: () => Promise<boolean>,
   opts: { intervalMs?: number; attempts?: number } = {},

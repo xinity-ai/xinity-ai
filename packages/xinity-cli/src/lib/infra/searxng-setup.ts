@@ -6,16 +6,16 @@
  * instance without json answers every liveness check while failing every
  * search. That is why setup verifies the format rather than just the port.
  */
-import { log, note, text } from "../core/clack.ts";
+import { log, note } from "../core/clack.ts";
 import { bold, cyan, dim } from "picocolors";
-import type { Host } from "../core/host.ts";
-import { pass, info, warn, promptOrUndefined } from "../core/output.ts";
-import { tcpPortInUse, type ComposeCmd } from "./docker-stack.ts";
+import { type Host, httpOk } from "../core/host.ts";
+import { pass, info, warn, reportDryRunCommands } from "../core/output.ts";
+import type { ComposeCmd } from "./docker-stack.ts";
 import {
   type ComposeStack,
-  stackPaths, requireCompose, inspectStack, parsePublishedPort,
+  stackPaths, requireCompose, inspectStack, parsePublishedPort, promptPublishedPort,
   buildWriteFileCommand, writeStackFile, startStack, composeUpCommand,
-  composeBaseCommand,
+  composeBaseCommand, localEndpoint,
 } from "./compose-service.ts";
 import { randomToken } from "../core/secrets.ts";
 
@@ -36,10 +36,6 @@ const { dir: STACK_DIR, composePath: COMPOSE_PATH } = stackPaths(SEARXNG);
 // business seeing docker-compose.yml.
 const CONFIG_DIR = `${STACK_DIR}/config`;
 const SETTINGS_PATH = `${CONFIG_DIR}/settings.yml`;
-
-function endpoint(port: number): string {
-  return `http://127.0.0.1:${port}`;
-}
 
 // ─── Config generation ───────────────────────────────────────────────────────
 
@@ -109,29 +105,18 @@ export async function planSearxng(host: Host): Promise<SearxngProvision | undefi
   if (existing.composeFile) {
     const port = parsePublishedPort(existing.composeFile, SEARXNG);
     info("SearXNG", `Reusing the existing stack in ${STACK_DIR}.`);
-    return { compose, port, url: endpoint(port) };
+    return { compose, port, url: localEndpoint(port) };
   }
 
   log.step(bold("Configure SearXNG"));
 
-  const portStr = await promptOrUndefined(text({
-    message: "Port to publish on localhost",
-    placeholder: String(SEARXNG.defaultPort),
-    defaultValue: String(SEARXNG.defaultPort),
-  }));
-  if (portStr === undefined) return undefined;
-  const port = Number(portStr) || SEARXNG.defaultPort;
-
-  // Best-effort, non-fatal: a clash is most often a SearXNG the user could
-  // instead point the gateway at directly.
-  if (await tcpPortInUse(host, port)) {
-    warn("Port", `Something is already listening on localhost:${port}. Starting the container will fail if it is still bound.`);
-  }
+  const port = await promptPublishedPort(host, SEARXNG);
+  if (port === undefined) return undefined;
 
   return {
     compose,
     port,
-    url: endpoint(port),
+    url: localEndpoint(port),
     files: {
       settings: buildSettings(randomToken(32), port),
       composeFile: buildComposeFile(port, CONFIG_DIR),
@@ -186,7 +171,7 @@ export async function applySearxng(prov: SearxngProvision, host: Host): Promise<
 
   const started = await startStack(host, prov.compose, SEARXNG, {
     reachableAt: prov.url,
-    ready: async () => (await host.run(["curl", "-sf", "-o", "/dev/null", `${prov.url}/`])).ok,
+    ready: () => httpOk(host, `${prov.url}/`),
   });
   if (!started) return false;
 
@@ -208,9 +193,7 @@ export async function searxngSetup(host: Host, dryRun: boolean): Promise<string 
   if (!prov) return undefined;
 
   if (dryRun) {
-    for (const cmd of buildSearxngCommands(prov)) {
-      info("Dry run", `Would run: ${dim(cmd.split("\n")[0] ?? cmd)}`);
-    }
+    reportDryRunCommands(buildSearxngCommands(prov));
     note(`WEB_SEARCH_CREDENTIAL=${prov.url}`, prov.files ? "Instance URL (not yet created)" : "Existing instance URL");
     return prov.url;
   }

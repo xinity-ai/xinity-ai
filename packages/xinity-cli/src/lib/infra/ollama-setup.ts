@@ -6,7 +6,7 @@
 import { isCancel, log, select, spinner as clackSpinner } from "../core/clack.ts";
 import { bold, dim } from "picocolors";
 import { type Host, commandExistsOn, isUnitActiveOn, waitForReady } from "../core/host.ts";
-import { pass, fail, info, warn } from "../core/output.ts";
+import { pass, fail, info, warn, reportDryRunCommands } from "../core/output.ts";
 import { DEFAULT_OLLAMA_URL } from "../core/component-meta.ts";
 
 const INSTALL_COMMAND = "curl -fsSL https://ollama.com/install.sh | sh";
@@ -182,9 +182,7 @@ export async function ollamaSetup(host: Host, dryRun: boolean): Promise<void> {
       info("Dry run", "Ollama is already running, nothing to do");
       return;
     }
-    for (const cmd of commands) {
-      info("Dry run", `Would run: ${dim(cmd)}`);
-    }
+    reportDryRunCommands(commands);
     return;
   }
 
