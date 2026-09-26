@@ -22,7 +22,7 @@ mock.module("./db", () => ({
 
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 
-const { processMessageImages, resolveMediaRef, restoreMessageImages, sniffImageType } = await import("./image-store");
+const { processMessageMedia, resolveMediaRef, restoreMessageMedia, sniffAudioFormat, sniffImageType } = await import("./image-store");
 import type { StorableImageType } from "common-env/image-types";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -44,9 +44,9 @@ function findInsert(): CapturedQuery | undefined {
   return capturedQueries.find((q) => q.sql.includes("media_object"));
 }
 
-// ─── processMessageImages – S3 enabled ───────────────────────────────────────
+// ─── processMessageMedia – S3 enabled ───────────────────────────────────────
 
-describe("processMessageImages – S3 enabled", () => {
+describe("processMessageMedia – S3 enabled", () => {
   let writeCall: ReturnType<typeof mock>;
   let store: ReturnType<typeof makeImageStore>;
 
@@ -67,7 +67,7 @@ describe("processMessageImages – S3 enabled", () => {
       },
     ] as any;
 
-    const { messagesForLLM, messagesForDB } = await processMessageImages(messages, "org-1", store, true);
+    const { messagesForLLM, messagesForDB } = await processMessageMedia(messages, "org-1", store, true);
 
     const llmParts = messagesForLLM[0]!.content as any[];
     expect(llmParts[0]).toEqual({ type: "text", text: "Look at this image:" });
@@ -86,7 +86,7 @@ describe("processMessageImages – S3 enabled", () => {
       },
     ] as any;
 
-    await processMessageImages(messages, "org-1", store, true);
+    await processMessageMedia(messages, "org-1", store, true);
 
     const q = findInsert();
     expect(q).toBeDefined();
@@ -111,7 +111,7 @@ describe("processMessageImages – S3 enabled", () => {
       },
     ] as any;
 
-    await processMessageImages(messages, "org-abc", store, true);
+    await processMessageMedia(messages, "org-abc", store, true);
 
     expect(writeCall).toHaveBeenCalledTimes(1);
     const [s3Key] = writeCall.mock.calls[0] as [string, ...unknown[]];
@@ -129,7 +129,7 @@ describe("processMessageImages – S3 enabled", () => {
       },
     ] as any;
 
-    const { messagesForDB } = await processMessageImages(messages, "org-1", store, true);
+    const { messagesForDB } = await processMessageMedia(messages, "org-1", store, true);
 
     const inserts = capturedQueries.filter((q) => q.sql.includes("media_object"));
     expect(inserts).toHaveLength(2);
@@ -149,7 +149,7 @@ describe("processMessageImages – S3 enabled", () => {
       },
     ] as any;
 
-    const { messagesForLLM, messagesForDB } = await processMessageImages(messages, "org-1", store, true);
+    const { messagesForLLM, messagesForDB } = await processMessageMedia(messages, "org-1", store, true);
 
     // LLM still gets the original part (fallback), DB omits the blocked image
     expect((messagesForLLM[0]!.content as any[])[0]!.image_url.url).toBe(privateUrl);
@@ -159,7 +159,7 @@ describe("processMessageImages – S3 enabled", () => {
 
   test("text-only messages pass through without any DB or S3 calls", async () => {
     const messages = [{ role: "user", content: "Hello" }] as any;
-    const { messagesForLLM, messagesForDB } = await processMessageImages(messages, "org-1", store, true);
+    const { messagesForLLM, messagesForDB } = await processMessageMedia(messages, "org-1", store, true);
     expect(messagesForLLM).toBe(messages);
     expect(messagesForDB).toBe(messages);
     expect(capturedQueries).toHaveLength(0);
@@ -167,9 +167,9 @@ describe("processMessageImages – S3 enabled", () => {
   });
 });
 
-// ─── processMessageImages – S3 disabled ──────────────────────────────────────
+// ─── processMessageMedia – S3 disabled ──────────────────────────────────────
 
-describe("processMessageImages – S3 disabled (imageStore = null)", () => {
+describe("processMessageMedia – S3 disabled (imageStore = null)", () => {
   beforeEach(() => {
     capturedQueries.length = 0;
   });
@@ -180,7 +180,7 @@ describe("processMessageImages – S3 disabled (imageStore = null)", () => {
       { role: "user", content: [{ type: "image_url", image_url: { url: oversize } }] },
     ] as any;
 
-    await expect(processMessageImages(messages, "org-1", null, true)).rejects.toThrow(/over the 40MB limit/);
+    await expect(processMessageMedia(messages, "org-1", null, true)).rejects.toThrow(/over the 40MB limit/);
   });
 
   test("keeps an inline image, storing its bytes in the row it references", async () => {
@@ -191,7 +191,7 @@ describe("processMessageImages – S3 disabled (imageStore = null)", () => {
       },
     ] as any;
 
-    const { messagesForLLM, messagesForDB } = await processMessageImages(messages, "org-1", null, true);
+    const { messagesForLLM, messagesForDB } = await processMessageMedia(messages, "org-1", null, true);
 
     expect((messagesForLLM[0]!.content as any[])[0]!.image_url.url).toBe(TINY_PNG_DATA_URI);
     expect((messagesForDB[0]!.content as any[])[0]!.image_url.url).toMatch(/^xinity-media:\/\//);
@@ -212,7 +212,7 @@ describe("processMessageImages – S3 disabled (imageStore = null)", () => {
       },
     ] as any;
 
-    const { messagesForLLM, messagesForDB } = await processMessageImages(messages, "org-1", null, true);
+    const { messagesForLLM, messagesForDB } = await processMessageMedia(messages, "org-1", null, true);
 
     expect((messagesForLLM[0]!.content as any[])).toHaveLength(2);
     const dbParts = messagesForDB[0]!.content as any[];
@@ -230,7 +230,7 @@ describe("processMessageImages – S3 disabled (imageStore = null)", () => {
       },
     ] as any;
 
-    const { messagesForLLM, messagesForDB } = await processMessageImages(messages, "org-1", null, true);
+    const { messagesForLLM, messagesForDB } = await processMessageMedia(messages, "org-1", null, true);
 
     // LLM still gets the original part (fallback), DB omits the blocked image
     expect((messagesForLLM[0]!.content as any[])[0]!.image_url.url).toBe(privateUrl);
@@ -305,7 +305,7 @@ describe("restoring logged images", () => {
 
   test("replaces a reference in a message with the image itself", async () => {
     storedMediaRows = [{ s3Key: `org-1/${DIGEST}`, mimeType: "image/png" }];
-    const [message] = await restoreMessageImages([refMessage(`xinity-media://${DIGEST}`)], "org-1", readableStore());
+    const [message] = await restoreMessageMedia([refMessage(`xinity-media://${DIGEST}`)], "org-1", readableStore());
     const parts = message!.content as any[];
     expect(parts[1].image_url.url).toStartWith("data:image/png;base64,");
   });
@@ -313,7 +313,7 @@ describe("restoring logged images", () => {
   // A xinity-media:// url reaching a backend is a hard error there, so it must not survive.
   test("drops an image it cannot restore, keeping the rest of the message", async () => {
     storedMediaRows = [];
-    const [message] = await restoreMessageImages([refMessage(`xinity-media://${DIGEST}`)], "org-1", readableStore());
+    const [message] = await restoreMessageMedia([refMessage(`xinity-media://${DIGEST}`)], "org-1", readableStore());
     const parts = message!.content as any[];
     expect(parts).toHaveLength(1);
     expect(parts[0]).toEqual({ type: "text", text: "look" });
@@ -322,25 +322,25 @@ describe("restoring logged images", () => {
   test("drops a message whose only content was an unrestorable image", async () => {
     storedMediaRows = [];
     const imageOnly = { role: "user", content: [{ type: "image_url", image_url: { url: `xinity-media://${DIGEST}` } }] } as any;
-    expect(await restoreMessageImages([imageOnly], "org-1", readableStore())).toEqual([]);
+    expect(await restoreMessageMedia([imageOnly], "org-1", readableStore())).toEqual([]);
   });
 
   test("leaves urls that are not references alone", async () => {
     const external = refMessage("https://example.com/cat.png");
-    expect(await restoreMessageImages([external], "org-1", readableStore())).toEqual([external]);
+    expect(await restoreMessageMedia([external], "org-1", readableStore())).toEqual([external]);
     expect(capturedQueries).toHaveLength(0);
   });
 
   test("returns plain text conversations untouched, without querying", async () => {
     const messages = [{ role: "user", content: "hi" }] as any;
-    expect(await restoreMessageImages(messages, "org-1", readableStore())).toBe(messages);
+    expect(await restoreMessageMedia(messages, "org-1", readableStore())).toBe(messages);
     expect(capturedQueries).toHaveLength(0);
   });
 });
 
-// ─── processMessageImages – call will not be logged ──────────────────────────
+// ─── processMessageMedia – call will not be logged ──────────────────────────
 
-describe("processMessageImages – store = false", () => {
+describe("processMessageMedia – store = false", () => {
   beforeEach(() => {
     capturedQueries.length = 0;
   });
@@ -351,7 +351,7 @@ describe("processMessageImages – store = false", () => {
       { role: "user", content: [{ type: "image_url", image_url: { url: TINY_PNG_DATA_URI } }] },
     ] as any;
 
-    const { messagesForLLM, messagesForDB } = await processMessageImages(messages, "org-1", store, false);
+    const { messagesForLLM, messagesForDB } = await processMessageMedia(messages, "org-1", store, false);
 
     expect(findInsert()).toBeUndefined();
     expect(store.client.write).not.toHaveBeenCalled();
@@ -366,7 +366,7 @@ describe("processMessageImages – store = false", () => {
       { role: "user", content: [{ type: "image_url", image_url: { url: oversize } }] },
     ] as any;
 
-    await expect(processMessageImages(messages, "org-1", null, false)).rejects.toThrow(/over the 40MB limit/);
+    await expect(processMessageMedia(messages, "org-1", null, false)).rejects.toThrow(/over the 40MB limit/);
   });
 });
 
@@ -417,7 +417,7 @@ describe("stored mime type", () => {
       { role: "user", content: [{ type: "image_url", image_url: { url: mislabelled } }] },
     ] as any;
 
-    await processMessageImages(messages, "org-1", store, true);
+    await processMessageMedia(messages, "org-1", store, true);
 
     expect(findInsert()!.params).toContain("image/gif");
   });
@@ -428,7 +428,7 @@ describe("stored mime type", () => {
       { role: "user", content: [{ type: "image_url", image_url: { url: unhelpful } }] },
     ] as any;
 
-    await processMessageImages(messages, "org-1", store, true);
+    await processMessageMedia(messages, "org-1", store, true);
 
     expect(findInsert()!.params).toContain("image/png");
     expect(findInsert()!.params).not.toContain("application/octet-stream");
@@ -439,7 +439,7 @@ describe("stored mime type", () => {
       { role: "user", content: [{ type: "image_url", image_url: { url: TINY_PNG_DATA_URI } }] },
     ] as any;
 
-    await processMessageImages(messages, "org-1", store, true);
+    await processMessageMedia(messages, "org-1", store, true);
 
     const [, , options] = writeCall.mock.calls[0] as [string, unknown, { type: string }];
     expect(options.type).toBe("image/png");
@@ -463,7 +463,7 @@ describe("unsupported image types", () => {
       { role: "user", content: [{ type: "image_url", image_url: { url } }] },
     ] as any;
 
-    await expect(processMessageImages(messages, "org-1", makeImageStore(), true))
+    await expect(processMessageMedia(messages, "org-1", makeImageStore(), true))
       .rejects.toThrow(/not supported/);
     expect(findInsert()).toBeUndefined();
   });
@@ -474,7 +474,100 @@ describe("unsupported image types", () => {
       { role: "user", content: [{ type: "image_url", image_url: { url: svg } }] },
     ] as any;
 
-    await expect(processMessageImages(messages, "org-1", null, false))
+    await expect(processMessageMedia(messages, "org-1", null, false))
       .rejects.toThrow(/not supported/);
+  });
+});
+
+// ─── audio ───────────────────────────────────────────────────────────────────
+
+const WAV_BYTES = new Uint8Array([...Buffer.from("RIFF"), 0x24, 0, 0, 0, ...Buffer.from("WAVEfmt ")]);
+const WAV_BASE64 = Buffer.from(WAV_BYTES).toString("base64");
+const audioMessage = (data: string, format = "wav") => [
+  { role: "user", content: [{ type: "text", text: "listen" }, { type: "input_audio", input_audio: { data, format } }] },
+] as any;
+
+describe("sniffAudioFormat", () => {
+  test("recognises wav and both ways an mp3 can start", () => {
+    expect(sniffAudioFormat(WAV_BYTES)).toBe("wav");
+    expect(sniffAudioFormat(new Uint8Array([...Buffer.from("ID3"), 0x04, 0x00]))).toBe("mp3");
+    expect(sniffAudioFormat(new Uint8Array([0xff, 0xfb, 0x90, 0x64]))).toBe("mp3");
+  });
+
+  test("rejects lookalikes", () => {
+    // ADTS shares the MPEG frame sync but is AAC.
+    expect(sniffAudioFormat(new Uint8Array([0xff, 0xf1, 0x50, 0x80]))).toBeNull();
+    expect(sniffAudioFormat(new Uint8Array([...Buffer.from("RIFF"), 0, 0, 0, 0, ...Buffer.from("WEBP")]))).toBeNull();
+    expect(sniffAudioFormat(new Uint8Array([]))).toBeNull();
+  });
+});
+
+describe("processMessageMedia – audio", () => {
+  let writeCall: ReturnType<typeof mock>;
+
+  beforeEach(() => {
+    capturedQueries.length = 0;
+    writeCall = mock(() => Promise.resolve());
+  });
+
+  test("the model gets the base64, the log gets a reference", async () => {
+    const { messagesForLLM, messagesForDB } = await processMessageMedia(audioMessage(WAV_BASE64), "org-1", makeImageStore(writeCall), true);
+
+    expect((messagesForLLM[0]!.content as any[])[1]).toEqual({ type: "input_audio", input_audio: { data: WAV_BASE64, format: "wav" } });
+    const dbPart = (messagesForDB[0]!.content as any[])[1];
+    expect(dbPart.input_audio.data).toMatch(/^xinity-media:\/\/[0-9a-f]{64}$/);
+    expect(dbPart.input_audio.format).toBe("wav");
+    expect(findInsert()!.params).toContain("audio/wav");
+    const [, , options] = writeCall.mock.calls[0] as [string, unknown, { type: string }];
+    expect(options.type).toBe("audio/wav");
+  });
+
+  test("takes the format from the bytes, not the declaration", async () => {
+    const { messagesForLLM, messagesForDB } = await processMessageMedia(audioMessage(WAV_BASE64, "mp3"), "org-1", null, true);
+
+    expect((messagesForLLM[0]!.content as any[])[1].input_audio.format).toBe("wav");
+    expect((messagesForDB[0]!.content as any[])[1].input_audio.format).toBe("wav");
+  });
+
+  test("refuses bytes that are not a supported audio format, logged or not", async () => {
+    const flac = Buffer.from("fLaC\0\0\0\"").toString("base64");
+    await expect(processMessageMedia(audioMessage(flac), "org-1", null, true)).rejects.toThrow(/not supported/);
+    await expect(processMessageMedia(audioMessage(flac), "org-1", null, false)).rejects.toThrow(/not supported/);
+    expect(findInsert()).toBeUndefined();
+  });
+
+  test("rejects oversize audio", async () => {
+    await expect(processMessageMedia(audioMessage("A".repeat(56 * 1024 * 1024)), "org-1", null, false))
+      .rejects.toThrow(/Audio is \d+ bytes, over the 40MB limit/);
+  });
+
+  test("stores nothing for a call that will not be logged", async () => {
+    const store = makeImageStore(writeCall);
+    const { messagesForLLM, messagesForDB } = await processMessageMedia(audioMessage(WAV_BASE64), "org-1", store, false);
+
+    expect(findInsert()).toBeUndefined();
+    expect(writeCall).not.toHaveBeenCalled();
+    expect(messagesForDB[0]!.content).toEqual([{ type: "text", text: "listen" }]);
+    expect((messagesForLLM[0]!.content as any[])[1].input_audio.data).toBe(WAV_BASE64);
+  });
+});
+
+describe("restoring logged audio", () => {
+  const DIGEST = "b1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
+
+  beforeEach(() => {
+    capturedQueries.length = 0;
+    storedMediaRows = [];
+  });
+
+  test("replaces a reference with the stored bytes as bare base64", async () => {
+    storedMediaRows = [{ s3Key: null, mimeType: "audio/wav", bytes: WAV_BYTES }];
+    const [message] = await restoreMessageMedia(audioMessage(`xinity-media://${DIGEST}`), "org-1", null);
+    expect((message!.content as any[])[1]).toEqual({ type: "input_audio", input_audio: { data: WAV_BASE64, format: "wav" } });
+  });
+
+  test("drops audio it cannot restore, keeping the rest of the message", async () => {
+    const [message] = await restoreMessageMedia(audioMessage(`xinity-media://${DIGEST}`), "org-1", null);
+    expect(message!.content).toEqual([{ type: "text", text: "listen" }]);
   });
 });

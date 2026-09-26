@@ -122,11 +122,16 @@ function toInputContentParts(content: ApiCallInputMessage["content"]) {
   if (!Array.isArray(content)) {
     return [];
   }
-  return content.map((part) =>
-    part.type === "image_url"
-      ? { type: "input_image", image_url: part.image_url.url }
-      : { type: "input_text", text: part.text },
-  );
+  return content.flatMap<Record<string, unknown>>((part) => {
+    switch (part.type) {
+      case "image_url":
+        return [{ type: "input_image", image_url: part.image_url.url }];
+      case "text":
+        return [{ type: "input_text", text: part.text }];
+      case "input_audio":
+        return [];
+    }
+  });
 }
 
 /** Renders stored input messages the way the Responses API describes items, which is not

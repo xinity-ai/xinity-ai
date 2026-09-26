@@ -18,6 +18,7 @@ import { aiNodeT } from "./models";
 import { organizationT } from "./orgSchema";
 import { userT } from "./auth";
 import type { InferSelectModel } from "drizzle-orm";
+import type { AudioFormat } from "common-env/image-types";
 import { callDataSchema } from "./pg-schemas";
 
 const bytea = customType<{ data: Uint8Array<ArrayBuffer>; driverData: Buffer }>({
@@ -43,7 +44,9 @@ const updatedAt = timestamp("updated_at", { withTimezone: true })
 export type ApiCallInputMessageContent =
   | { type: "text"; text: string }
   /** `url` is a `xinity-media://{sha256hex}` reference into `media_object`. */
-  | { type: "image_url"; image_url: { url: string } };
+  | { type: "image_url"; image_url: { url: string } }
+  /** `data` is base64 on its way to a model and a `xinity-media://{sha256hex}` reference once logged. */
+  | { type: "input_audio"; input_audio: { data: string; format: AudioFormat } };
 export type ApiCallToolCall = {
   id: string;
   type: "function";

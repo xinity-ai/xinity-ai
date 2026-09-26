@@ -9,7 +9,7 @@ import { BackendChatChunkSchema } from "../backend-schemas";
 import type { ApiCallInputMessage } from "common-db";
 import { rootLogger } from "../../logger";
 import { config } from "../../config";
-import { processMessageImages, imageStore } from "../../image-store";
+import { processMessageMedia, imageStore } from "../../image-store";
 import { callWillBeLogged } from "../usage";
 import { backendPostJson, createIdleTimeout } from "../backend-fetch";
 import {
@@ -190,7 +190,7 @@ export const handleChatCompletion = withEndpointGuards({
     const callStartTime = Date.now();
     const willLog = callWillBeLogged(auth, body.store);
 
-    const { messagesForLLM, messagesForDB } = await processMessageImages(
+    const { messagesForLLM, messagesForDB } = await processMessageMedia(
       body.messages as ApiCallInputMessage[],
       auth.orgId,
       imageStore,

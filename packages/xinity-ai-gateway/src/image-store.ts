@@ -1,5 +1,5 @@
 /**
- * Multimodal image handling. Inference nodes always receive resolved data URIs, and the
+ * Multimodal image and audio handling. Inference nodes always receive the resolved bytes, and the
  * database always receives a `xinity-media://` reference, whether the bytes went to S3 or
  * into `media_object` itself.
  */
@@ -7,7 +7,14 @@ import type { S3Client } from "bun";
 import { mediaObjectT, sql, type ApiCallInputMessage, type ApiCallInputMessageContent } from "common-db";
 import { bytesDigest } from "common-env";
 import { formatMediaRef, parseMediaRef } from "common-env/media-ref";
-import { isStorableImageType, STORABLE_IMAGE_TYPES, type StorableImageType } from "common-env/image-types";
+import {
+  isStorableImageType,
+  STORABLE_AUDIO_TYPES,
+  STORABLE_IMAGE_TYPES,
+  type AudioFormat,
+  type StorableAudioType,
+  type StorableImageType,
+} from "common-env/image-types";
 import { rootLogger } from "./logger";
 import { getDB } from "./db";
 import { config } from "./config";
@@ -30,39 +37,48 @@ export function createImageStore(s3: GatewayConfig["s3"]): ImageStore | null {
 
 type ResolvedImage = { mimeType: string; bytes: Uint8Array<ArrayBuffer> };
 
-const MAX_IMAGE_BYTES = 40 * 1024 * 1024;
+const MAX_MEDIA_BYTES = 40 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 10_000;
 
-const IMAGE_TOO_LARGE = "image_too_large";
+const MEDIA_TOO_LARGE = "media_too_large";
 
-/** Rejected rather than dropped: a picture missing from the log is missing from the
+/** Rejected rather than dropped: a picture or clip missing from the log is missing from the
  * conversation every later turn replays. */
-function imageTooLargeError(size: number): Error {
-  const limitMb = Math.floor(MAX_IMAGE_BYTES / (1024 * 1024));
+function mediaTooLargeError(kind: "Image" | "Audio", size: number): Error {
+  const limitMb = Math.floor(MAX_MEDIA_BYTES / (1024 * 1024));
   return Object.assign(
-    new Error(`Image is ${size} bytes, over the ${limitMb}MB limit`),
-    { code: IMAGE_TOO_LARGE },
+    new Error(`${kind} is ${size} bytes, over the ${limitMb}MB limit`),
+    { code: MEDIA_TOO_LARGE },
   );
 }
 
-export function isImageTooLarge(error: unknown): boolean {
+export function isMediaTooLarge(error: unknown): boolean {
   return typeof error === "object" && error !== null
-    && (error as { code?: unknown }).code === IMAGE_TOO_LARGE;
+    && (error as { code?: unknown }).code === MEDIA_TOO_LARGE;
 }
 
-const IMAGE_TYPE_UNSUPPORTED = "image_type_unsupported";
+const MEDIA_TYPE_UNSUPPORTED = "media_type_unsupported";
 
 /** Refused rather than stored: these bytes are served back to a browser later. */
+function mediaTypeUnsupportedError(message: string): Error {
+  return Object.assign(new Error(message), { code: MEDIA_TYPE_UNSUPPORTED });
+}
+
 function imageTypeUnsupportedError(declared: string): Error {
-  return Object.assign(
-    new Error(`Image type ${declared || "unknown"} is not supported. Supported: ${STORABLE_IMAGE_TYPES.join(", ")}`),
-    { code: IMAGE_TYPE_UNSUPPORTED },
+  return mediaTypeUnsupportedError(
+    `Image type ${declared || "unknown"} is not supported. Supported: ${STORABLE_IMAGE_TYPES.join(", ")}`,
   );
 }
 
-export function isImageTypeUnsupported(error: unknown): boolean {
+function audioTypeUnsupportedError(declared: string): Error {
+  return mediaTypeUnsupportedError(
+    `Audio format ${declared || "unknown"} is not supported. Supported: ${Object.keys(STORABLE_AUDIO_TYPES).join(", ")}`,
+  );
+}
+
+export function isMediaTypeUnsupported(error: unknown): boolean {
   return typeof error === "object" && error !== null
-    && (error as { code?: unknown }).code === IMAGE_TYPE_UNSUPPORTED;
+    && (error as { code?: unknown }).code === MEDIA_TYPE_UNSUPPORTED;
 }
 
 const MAGIC: Array<{ type: StorableImageType; matches: (b: Uint8Array) => boolean }> = [
@@ -93,13 +109,27 @@ export function sniffImageType(bytes: Uint8Array): StorableImageType | null {
   return MAGIC.find((format) => format.matches(bytes))?.type ?? null;
 }
 
+const AUDIO_MAGIC: Array<{ format: AudioFormat; matches: (b: Uint8Array) => boolean }> = [
+  { format: "wav", matches: (b) => tagAt(b, 0) === "RIFF" && tagAt(b, 8) === "WAVE" },
+  {
+    format: "mp3",
+    // An ID3 tag, or a bare MPEG frame sync. A zero layer field is AAC's ADTS header, not MP3.
+    matches: (b) => tagAt(b, 0).startsWith("ID3")
+      || (b[0] === 0xff && ((b[1] ?? 0) & 0xe0) === 0xe0 && ((b[1] ?? 0) & 0x06) !== 0),
+  },
+];
+
+export function sniffAudioFormat(bytes: Uint8Array): AudioFormat | null {
+  return AUDIO_MAGIC.find((entry) => entry.matches(bytes))?.format ?? null;
+}
+
 function parseDataUri(url: string): ResolvedImage | null {
   // data:[<mediatype>][;base64],<data>
   const [, mimeType, data] = url.match(/^data:([^;,]+)(?:;base64)?,(.+)$/s) ?? [];
   if (!mimeType || !data) return null;
   const bytes = new Uint8Array(Buffer.from(data, "base64"));
-  if (bytes.byteLength > MAX_IMAGE_BYTES) {
-    throw imageTooLargeError(bytes.byteLength);
+  if (bytes.byteLength > MAX_MEDIA_BYTES) {
+    throw mediaTooLargeError("Image", bytes.byteLength);
   }
   return { mimeType, bytes };
 }
@@ -114,18 +144,18 @@ async function fetchExternalImage(url: string): Promise<ResolvedImage | null> {
     const mimeType = rawMimeType.trim();
 
     const declaredSize = parseInt(res.headers.get("content-length") ?? "", 10);
-    if (Number.isFinite(declaredSize) && declaredSize > MAX_IMAGE_BYTES) {
-      throw imageTooLargeError(declaredSize);
+    if (Number.isFinite(declaredSize) && declaredSize > MAX_MEDIA_BYTES) {
+      throw mediaTooLargeError("Image", declaredSize);
     }
 
     const buffer = await res.arrayBuffer();
-    if (buffer.byteLength > MAX_IMAGE_BYTES) {
-      throw imageTooLargeError(buffer.byteLength);
+    if (buffer.byteLength > MAX_MEDIA_BYTES) {
+      throw mediaTooLargeError("Image", buffer.byteLength);
     }
 
     return { mimeType, bytes: new Uint8Array(buffer) };
   } catch (err) {
-    if (isImageTooLarge(err)) {
+    if (isMediaTooLarge(err)) {
       throw err;
     }
     return null;
@@ -161,7 +191,40 @@ async function processImage(
   }
 
   const originalUrl = isDataUri ? null : imageUrl;
+  const dbUrl = await storeMedia(bytes, mimeType, originalUrl, orgId, imageStore);
+  return { dataUri, dbUrl: dbUrl ?? originalUrl };
+}
 
+async function processAudio(
+  data: string,
+  declaredFormat: string,
+  orgId: string,
+  imageStore: ImageStore | null,
+  store: boolean,
+): Promise<{ format: AudioFormat; dbRef: string | null }> {
+  const bytes = new Uint8Array(Buffer.from(data, "base64"));
+  if (bytes.byteLength > MAX_MEDIA_BYTES) {
+    throw mediaTooLargeError("Audio", bytes.byteLength);
+  }
+  const format = sniffAudioFormat(bytes);
+  if (!format) {
+    throw audioTypeUnsupportedError(declaredFormat);
+  }
+  if (!store) {
+    return { format, dbRef: null };
+  }
+  const mimeType: StorableAudioType = STORABLE_AUDIO_TYPES[format];
+  return { format, dbRef: await storeMedia(bytes, mimeType, null, orgId, imageStore) };
+}
+
+/** The `xinity-media://` reference for the stored bytes, or null when storing failed. */
+async function storeMedia(
+  bytes: Uint8Array<ArrayBuffer>,
+  mimeType: string,
+  originalUrl: string | null,
+  orgId: string,
+  imageStore: ImageStore | null,
+): Promise<string | null> {
   try {
     const sha256 = bytesDigest(bytes);
     const s3Key = imageStore ? `${orgId}/${sha256}` : null;
@@ -186,15 +249,15 @@ async function processImage(
       await imageStore.client.write(s3Key, bytes, { type: mimeType });
     }
 
-    log.debug({ sha256, size: bytes.byteLength, inS3: Boolean(imageStore) }, "Image stored");
-    return { dataUri, dbUrl: formatMediaRef(sha256) };
+    log.debug({ sha256, mimeType, size: bytes.byteLength, inS3: Boolean(imageStore) }, "Media stored");
+    return formatMediaRef(sha256);
   } catch (err) {
-    log.error({ err }, "Failed to store image, falling back to the original URL");
-    return { dataUri, dbUrl: originalUrl };
+    log.error({ err, mimeType }, "Failed to store media");
+    return null;
   }
 }
 
-const MAX_IMAGE_CONCURRENCY = 4;
+const MAX_MEDIA_CONCURRENCY = 4;
 
 async function mapConcurrent<T, R>(
   items: T[],
@@ -215,13 +278,39 @@ async function mapConcurrent<T, R>(
   return results;
 }
 
+type ProcessedPart = { llmPart: ApiCallInputMessageContent; dbPart: ApiCallInputMessageContent | null };
+
+async function processPart(
+  part: ApiCallInputMessageContent,
+  orgId: string,
+  imageStore: ImageStore | null,
+  store: boolean,
+): Promise<ProcessedPart> {
+  if (part.type === "image_url") {
+    const { dataUri, dbUrl } = await processImage(part.image_url.url, orgId, imageStore, store);
+    return {
+      llmPart: dataUri ? { type: "image_url", image_url: { url: dataUri } } : part,
+      dbPart: dbUrl !== null ? { type: "image_url", image_url: { url: dbUrl } } : null,
+    };
+  }
+  if (part.type === "input_audio") {
+    const { data, format: declaredFormat } = part.input_audio;
+    const { format, dbRef } = await processAudio(data, declaredFormat, orgId, imageStore, store);
+    return {
+      llmPart: { type: "input_audio", input_audio: { data, format } },
+      dbPart: dbRef !== null ? { type: "input_audio", input_audio: { data: dbRef, format } } : null,
+    };
+  }
+  return { llmPart: part, dbPart: part };
+}
+
 /**
- * `messagesForLLM` carries resolved data URIs, `messagesForDB` carries references.
+ * `messagesForLLM` carries resolved media, `messagesForDB` carries references.
  *
- * `store` is `callWillBeLogged`: an unlogged call still needs its data URIs for the model, but a
+ * `store` is `callWillBeLogged`: an unlogged call still needs its media for the model, but a
  * `media_object` written for it would be referenced by nothing, ever.
  */
-export async function processMessageImages(
+export async function processMessageMedia(
   messages: ApiCallInputMessage[],
   orgId: string,
   imageStore: ImageStore | null,
@@ -245,25 +334,8 @@ export async function processMessageImages(
 
     const processedParts = await mapConcurrent(
       message.content,
-      MAX_IMAGE_CONCURRENCY,
-      async (part) => {
-        if (part.type !== "image_url") {
-          return { llmPart: part, dbPart: part as ApiCallInputMessageContent | null };
-        }
-
-        const imageUrl = part.image_url.url;
-        const { dataUri, dbUrl } = await processImage(imageUrl, orgId, imageStore, store);
-
-        const llmPart: ApiCallInputMessageContent = dataUri
-          ? { type: "image_url", image_url: { url: dataUri } }
-          : part;
-
-        const dbPart: ApiCallInputMessageContent | null = dbUrl !== null
-          ? { type: "image_url", image_url: { url: dbUrl } }
-          : null;
-
-        return { llmPart, dbPart };
-      },
+      MAX_MEDIA_CONCURRENCY,
+      (part) => processPart(part, orgId, imageStore, store),
     );
 
     const llmParts: ApiCallInputMessageContent[] = processedParts.map((p) => p.llmPart);
@@ -276,21 +348,30 @@ export async function processMessageImages(
     if (dbParts.length > 0) {
       messagesForDB.push({ ...message, content: dbParts });
     }
-    // If the message had only images and all were stripped, omit it from DB
+    // If the message had only media and all of it was stripped, omit it from DB
   }
 
   return { messagesForLLM, messagesForDB };
 }
 
 /**
- * Reads a stored image back out as a data URI. Logged messages keep `xinity-media://` references
- * instead of image data, so replaying one to a model means resolving it first.
+ * Reads a stored media object back out as a data URI. Logged messages keep `xinity-media://`
+ * references instead of media data, so replaying one to a model means resolving it first.
  */
 export async function resolveMediaRef(
   sha256: string,
   orgId: string,
   store: ImageStore | null,
 ): Promise<string | null> {
+  const object = await readMediaObject(sha256, orgId, store);
+  return object && `data:${object.mimeType};base64,${Buffer.from(object.bytes).toString("base64")}`;
+}
+
+async function readMediaObject(
+  sha256: string,
+  orgId: string,
+  store: ImageStore | null,
+): Promise<{ mimeType: string; bytes: Uint8Array } | null> {
   const [row] = await getDB()
     .select({ s3Key: mediaObjectT.s3Key, mimeType: mediaObjectT.mimeType, bytes: mediaObjectT.bytes })
     .from(mediaObjectT)
@@ -306,39 +387,52 @@ export async function resolveMediaRef(
     if (!bytes) {
       return null;
     }
-    return `data:${row.mimeType};base64,${Buffer.from(bytes).toString("base64")}`;
+    return { mimeType: row.mimeType, bytes };
   } catch (err) {
-    log.error({ err, sha256 }, "Failed to read a stored image");
+    log.error({ err, sha256 }, "Failed to read a stored media object");
     return null;
   }
 }
 
-async function restoreImagePart(
+async function restoreMediaPart(
   part: ApiCallInputMessageContent,
   orgId: string,
   store: ImageStore | null,
 ): Promise<ApiCallInputMessageContent | null> {
-  if (part.type !== "image_url") {
-    return part;
+  if (part.type === "image_url") {
+    const sha256 = parseMediaRef(part.image_url.url);
+    if (!sha256) {
+      return part;
+    }
+    const dataUri = await resolveMediaRef(sha256, orgId, store);
+    if (!dataUri) {
+      log.warn({ sha256 }, "Dropping an image that could not be restored");
+      return null;
+    }
+    return { type: "image_url", image_url: { url: dataUri } };
   }
-  const sha256 = parseMediaRef(part.image_url.url);
-  if (!sha256) {
-    return part;
+  if (part.type === "input_audio") {
+    const sha256 = parseMediaRef(part.input_audio.data);
+    if (!sha256) {
+      return part;
+    }
+    const object = await readMediaObject(sha256, orgId, store);
+    if (!object) {
+      log.warn({ sha256 }, "Dropping audio that could not be restored");
+      return null;
+    }
+    const data = Buffer.from(object.bytes).toString("base64");
+    return { type: "input_audio", input_audio: { data, format: part.input_audio.format } };
   }
-  const dataUri = await resolveMediaRef(sha256, orgId, store);
-  if (!dataUri) {
-    log.warn({ sha256 }, "Dropping an image that could not be restored");
-    return null;
-  }
-  return { type: "image_url", image_url: { url: dataUri } };
+  return part;
 }
 
 /**
- * Turns logged messages back into something a model can read. An image that cannot be restored
- * is dropped rather than passed along, because a `xinity-media://` url reaching a backend is a
- * hard error there, where a missing image is only a gap.
+ * Turns logged messages back into something a model can read. Media that cannot be restored
+ * is dropped rather than passed along, because a `xinity-media://` reference reaching a backend
+ * is a hard error there, where a missing image or clip is only a gap.
  */
-export async function restoreMessageImages(
+export async function restoreMessageMedia(
   messages: ApiCallInputMessage[],
   orgId: string,
   store: ImageStore | null,
@@ -354,7 +448,7 @@ export async function restoreMessageImages(
       continue;
     }
     const parts = (await Promise.all(
-      message.content.map((part) => restoreImagePart(part, orgId, store)),
+      message.content.map((part) => restoreMediaPart(part, orgId, store)),
     )).filter((part): part is ApiCallInputMessageContent => part !== null);
     if (parts.length > 0) {
       restored.push({ ...message, content: parts });
@@ -365,5 +459,5 @@ export async function restoreMessageImages(
 
 // ─── Module-level singleton ──────────────────────────────────────────────────
 
-/** Gateway-wide S3 image store. Null when object storage is not configured. */
+/** Gateway-wide S3 media store. Null when object storage is not configured. */
 export const imageStore: ImageStore | null = createImageStore(config.s3);

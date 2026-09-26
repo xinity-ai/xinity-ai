@@ -1,7 +1,7 @@
 /**
- * Media types a stored image may carry.
+ * Media types a stored image or audio clip may carry.
  *
- * Every entry is an inert raster format. That is the point: these bytes are served back to a
+ * Every entry is an inert format. That is the point: these bytes are served back to a
  * browser, either from the dashboard's own origin or from a presigned S3 URL, so anything the
  * browser would execute while rendering becomes stored script running as the viewer. SVG carries
  * `<script>`, HTML is HTML, and PDF viewers run JavaScript, so none of them belong here.
@@ -25,3 +25,12 @@ export type StorableImageType = (typeof STORABLE_IMAGE_TYPES)[number];
 export function isStorableImageType(value: string): value is StorableImageType {
   return (STORABLE_IMAGE_TYPES as readonly string[]).includes(value);
 }
+
+/** The formats OpenAI's `input_audio` part accepts, keyed by the name it uses for each. */
+export const STORABLE_AUDIO_TYPES = {
+  wav: "audio/wav",
+  mp3: "audio/mpeg",
+} as const;
+
+export type AudioFormat = keyof typeof STORABLE_AUDIO_TYPES;
+export type StorableAudioType = (typeof STORABLE_AUDIO_TYPES)[AudioFormat];
