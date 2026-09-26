@@ -1,31 +1,42 @@
 /**
- * `xinity up infra-prometheus`: run Prometheus as a Docker container from a
- * small, fixed-location compose stack. Prometheus is observability infra, not a
- * bare-metal workload, so this avoids per-distro binary/systemd handling; if
- * Docker is absent the environment is reported as unsupported.
+ * `xinity up infra-prometheus`. Docker only, by the same rule as PostgreSQL:
+ * Prometheus is observability infra rather than a bare-metal workload, so this
+ * avoids per-distro binary and systemd handling.
  *
- * The container uses host networking so it can scrape the gateway/dashboard/tether/daemon
- * running as host processes on localhost. (Unrelated to the bridge-networked
- * deployment template, whose targets are in-stack.)
+ * The container uses host networking so it can scrape the gateway, dashboard,
+ * tether and daemon running as host processes on localhost. (Unrelated to the
+ * bridge-networked deployment template, whose targets are in-stack.)
  */
-import { log, note, spinner as clackSpinner, text } from "./clack.ts";
+import { log, note, text } from "./clack.ts";
 import { bold, cyan, dim } from "picocolors";
 import type { Host } from "./host.ts";
-import { pass, fail, info, warn, promptOrUndefined } from "./output.ts";
-import { heredoc } from "./service.ts";
-import { resolveComposeCmd, composeArgs, composeName, stackDir, dockerDaemonReady, tcpPortInUse } from "./docker-stack.ts";
+import { pass, info, warn, promptOrUndefined } from "./output.ts";
+import { tcpPortInUse, type ComposeCmd } from "./docker-stack.ts";
+import {
+  type ComposeStack,
+  stackPaths, requireCompose, buildWriteFileCommand, writeStackFile,
+  startStack, composeUpCommand, composeBaseCommand,
+} from "./compose-service.ts";
 import { DASHBOARD_DEFAULT_PORT, GATEWAY_DEFAULT_PORT, TETHER_DEFAULT_PORT } from "./component-meta.ts";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const STACK_DIR = stackDir("prometheus");
-const COMPOSE_PATH = `${STACK_DIR}/docker-compose.yml`;
+const VOLUME_NAME = "xinity-prometheus-data";
+
+// Image pinned to match the deployment/docker monitoring template so both paths
+// run the same Prometheus version.
+const PROMETHEUS: ComposeStack = {
+  name: "prometheus",
+  displayName: "Prometheus",
+  containerName: "xinity-ai-prometheus",
+  image: "prom/prometheus:v3.1.0",
+  defaultPort: 9090,
+  volumeName: VOLUME_NAME,
+};
+
+const { dir: STACK_DIR, composePath: COMPOSE_PATH } = stackPaths(PROMETHEUS);
 const CONFIG_PATH = `${STACK_DIR}/prometheus.yml`;
-const DEFAULT_PORT = 9090;
-const CONTAINER_NAME = "xinity-ai-prometheus";
-// Pinned to match the deployment/docker monitoring template so both paths run
-// the same Prometheus version.
-const PROMETHEUS_IMAGE = "prom/prometheus:v3.1.0";
+
 // How often Prometheus re-discovers the daemon set (membership only; metric
 // resolution is governed by scrape_interval). The node set changes on the order of
 // deployments, so this is deliberately coarse.
@@ -50,29 +61,15 @@ function parseBasicAuth(value: string): BasicAuth | undefined {
   return { username: trimmed.slice(0, sep), password: trimmed.slice(sep + 1) };
 }
 
-// ─── Health ────────────────────────────────────────────────────────────────
-
 async function isPrometheusRunning(host: Host, port: number): Promise<boolean> {
   const res = await host.run(["curl", "-sf", "-o", "/dev/null", `${endpoint(port)}/-/healthy`]);
   return res.ok;
-}
-
-const POLL_INTERVAL_MS = 1000;
-const POLL_ATTEMPTS = 30;
-
-async function waitForPrometheusRunning(host: Host, port: number): Promise<boolean> {
-  for (let i = 0; i < POLL_ATTEMPTS; i++) {
-    if (await isPrometheusRunning(host, port)) return true;
-    await Bun.sleep(POLL_INTERVAL_MS);
-  }
-  return false;
 }
 
 // ─── Config generation ───────────────────────────────────────────────────────
 
 export type BasicAuth = { username: string; password: string };
 
-/** Render an indented `basic_auth:` block, or a commented placeholder when no creds are given. */
 function basicAuthLines(indent: string, auth: BasicAuth | undefined, hint: string): string[] {
   if (!auth) {
     return [
@@ -155,9 +152,9 @@ export function buildComposeFile(port: number, configPath: string): string {
     "# Host networking lets Prometheus scrape the gateway/dashboard/daemon that",
     "# run as host processes on localhost. This assumes a Linux host.",
     "services:",
-    "  prometheus:",
-    `    image: ${PROMETHEUS_IMAGE}`,
-    `    container_name: ${CONTAINER_NAME}`,
+    `  ${PROMETHEUS.name}:`,
+    `    image: ${PROMETHEUS.image}`,
+    `    container_name: ${PROMETHEUS.containerName}`,
     "    restart: unless-stopped",
     "    network_mode: host",
     "    command:",
@@ -167,92 +164,57 @@ export function buildComposeFile(port: number, configPath: string): string {
     "      - '--web.enable-lifecycle'",
     "    volumes:",
     `      - ${configPath}:/etc/prometheus/prometheus.yml:ro`,
-    "      - xinity-prometheus-data:/prometheus",
+    `      - ${VOLUME_NAME}:/prometheus`,
     "",
     "volumes:",
-    "  xinity-prometheus-data:",
+    `  ${VOLUME_NAME}:`,
     "",
   ].join("\n");
 }
 
-// ─── File writing ──────────────────────────────────────────────────────────
+// ─── Provision via Docker ────────────────────────────────────────────────────
 
-async function writeFile(host: Host, path: string, content: string, label: string): Promise<boolean> {
-  const result = await host.withElevation(
-    `cat > ${path} ${heredoc("XINITY_PROM_EOF", content)}`,
-    `Write ${label}`,
-  );
-  if (!result.success) {
-    fail("Config", `Failed to write ${label}`);
-    return false;
-  }
-  return true;
+export type PrometheusProvision = {
+  compose: ComposeCmd;
+  port: number;
+  url: string;
+  daemonSdUrl: string;
+  configFile: string;
+  composeFile: string;
 }
 
-// ─── Main entry point ────────────────────────────────────────────────────────
-
-/**
- * Interactive Prometheus setup flow.
- *
- * Returns the Prometheus endpoint URL if the stack was started, or undefined if
- * the user cancelled or the environment is unsupported.
- */
-export async function prometheusSetup(
-  host: Host,
-  dryRun: boolean,
-): Promise<string | undefined> {
-  log.step(bold("Prometheus metrics store setup"));
-  log.info(
-    "Prometheus scrapes the gateway, dashboard, tether, and daemon /metrics endpoints.\n" +
-    "It runs as a Docker container and powers the live GPU overlay on the Compute page.",
-  );
-
-  // ── Step 1: Require Docker + compose ────────────────────────────────────
-  const compose = await resolveComposeCmd(host);
-  if (!compose) {
-    warn("Docker", "Docker with Compose is required to run the monitoring stack, and was not found.");
-    log.info(
-      dim("  This environment is not supported for CLI-managed Prometheus.\n") +
-      dim("  Install Docker (https://docs.docker.com/engine/install/) and re-run,\n") +
-      dim("  or run Prometheus yourself and point the dashboard at it via PROMETHEUS_URL."),
-    );
-    return undefined;
+const validateUrl = (value: string | undefined): string | undefined => {
+  let u: URL;
+  try {
+    u = new URL(value ?? "");
+  } catch {
+    return `Enter a full URL, e.g. http://localhost:${GATEWAY_DEFAULT_PORT}`;
   }
-  if (compose.docker === "docker" && !(await dockerDaemonReady(host))) {
-    warn("Docker", "The Docker CLI is installed but the daemon is not reachable.");
-    log.info(
-      dim("  Start Docker (e.g. `systemctl start docker`) or ensure your user can\n") +
-      dim("  access the Docker socket (docker group), then re-run."),
-    );
-    return undefined;
-  }
-  pass("Docker", `Using ${cyan(composeName(compose))}`);
+  if (u.protocol !== "http:" && u.protocol !== "https:") return "URL must start with http:// or https://";
+  return undefined;
+};
 
-  // ── Step 2: Prompt for configuration ────────────────────────────────────
+export async function planPrometheusProvision(host: Host): Promise<PrometheusProvision | undefined> {
+  const compose = await requireCompose(host, PROMETHEUS, {
+    requiredTo: "run the monitoring stack",
+    fallbackHint: "or run Prometheus yourself and point the dashboard at it via PROMETHEUS_URL.",
+  });
+  if (!compose) return undefined;
+
   log.step(bold("Configure Prometheus"));
 
   const portStr = await promptOrUndefined(text({
     message: "Prometheus port (bound to localhost)",
-    placeholder: String(DEFAULT_PORT),
-    defaultValue: String(DEFAULT_PORT),
+    placeholder: String(PROMETHEUS.defaultPort),
+    defaultValue: String(PROMETHEUS.defaultPort),
   }));
   if (portStr === undefined) return undefined;
-  const port = Number(portStr) || DEFAULT_PORT;
+  const port = Number(portStr) || PROMETHEUS.defaultPort;
 
+  // An already-running Prometheus on this port is a re-run, not a clash.
   if (!(await isPrometheusRunning(host, port)) && (await tcpPortInUse(host, port))) {
     warn("Port", `Port ${port} is already in use. Prometheus may fail to start; choose a different port or stop the process using it.`);
   }
-
-  const validateUrl = (value: string | undefined): string | undefined => {
-    let u: URL;
-    try {
-      u = new URL(value ?? "");
-    } catch {
-      return `Enter a full URL, e.g. http://localhost:${GATEWAY_DEFAULT_PORT}`;
-    }
-    if (u.protocol !== "http:" && u.protocol !== "https:") return "URL must start with http:// or https://";
-    return undefined;
-  };
 
   const gatewayDefault = `http://localhost:${GATEWAY_DEFAULT_PORT}`;
   const gatewayUrl = await promptOrUndefined(text({
@@ -302,72 +264,85 @@ export async function prometheusSetup(
   if (daemonAuthRaw === undefined) return undefined;
 
   const daemonSdUrl = new URL("/metrics/sd/daemons", dashboardUrl).href;
-  const config = buildPrometheusConfig({
-    scrapeInterval: "30s",
-    gatewayTarget: gateway.target,
-    gatewayScheme: gateway.scheme,
-    dashboardTarget: dashboard.target,
-    dashboardScheme: dashboard.scheme,
-    tetherTarget: tether.target,
-    tetherScheme: tether.scheme,
+  return {
+    compose,
+    port,
+    url: endpoint(port),
     daemonSdUrl,
-    sdAuth: parseBasicAuth(sdAuthRaw),
-    daemonAuth: parseBasicAuth(daemonAuthRaw),
-  });
-  const composeFile = buildComposeFile(port, CONFIG_PATH);
+    configFile: buildPrometheusConfig({
+      scrapeInterval: "30s",
+      gatewayTarget: gateway.target,
+      gatewayScheme: gateway.scheme,
+      dashboardTarget: dashboard.target,
+      dashboardScheme: dashboard.scheme,
+      tetherTarget: tether.target,
+      tetherScheme: tether.scheme,
+      daemonSdUrl,
+      sdAuth: parseBasicAuth(sdAuthRaw),
+      daemonAuth: parseBasicAuth(daemonAuthRaw),
+    }),
+    composeFile: buildComposeFile(port, CONFIG_PATH),
+  };
+}
 
-  // ── Step 3: Write the stack ─────────────────────────────────────────────
-  if (dryRun) {
-    info("Dry run", `Would write ${CONFIG_PATH} and ${COMPOSE_PATH}`);
-    info("Dry run", `Would run: ${dim(composeArgs(compose, COMPOSE_PATH, "up", "-d").join(" "))}`);
-    return endpoint(port);
-  }
+export function buildPrometheusProvisionCommands(prov: PrometheusProvision): string[] {
+  return [
+    `mkdir -p ${STACK_DIR}`,
+    buildWriteFileCommand(PROMETHEUS, CONFIG_PATH, prov.configFile),
+    buildWriteFileCommand(PROMETHEUS, COMPOSE_PATH, prov.composeFile),
+    composeUpCommand(prov.compose, PROMETHEUS),
+  ];
+}
 
-  await host.withElevation(`mkdir -p ${STACK_DIR}`, "Create stack directory");
-  if (!(await writeFile(host, CONFIG_PATH, config, "Prometheus scrape config"))) return undefined;
-  if (!(await writeFile(host, COMPOSE_PATH, composeFile, "monitoring compose file"))) return undefined;
-  pass("Config", `Wrote ${CONFIG_PATH} and ${COMPOSE_PATH}`);
-
-  // ── Step 4: Bring up the container ──────────────────────────────────────
-  const upResult = await host.withElevation(
-    composeArgs(compose, COMPOSE_PATH, "up", "-d").join(" "),
-    "Start Prometheus container",
-  );
-  if (!upResult.success) {
-    fail("Start", "Failed to start the Prometheus container");
-    return undefined;
-  }
-
-  const spinner = clackSpinner();
-  spinner.start("Waiting for Prometheus to start…");
-  const ready = await waitForPrometheusRunning(host, port);
-  if (ready) {
-    spinner.stop("Prometheus is ready");
-    pass("Health", `Prometheus reachable at ${endpoint(port)}`);
-  } else {
-    spinner.stop("Timed out");
-    fail("Health", "Prometheus container did not become ready within 30 seconds");
-    return undefined;
-  }
-
-  const promUrl = endpoint(port);
-  const manageCmd = composeArgs(compose, COMPOSE_PATH).join(" ");
-
-  note(
-    [`PROMETHEUS_URL=${promUrl}`].join("\n"),
-    "Add this to your dashboard env file to enable the compute GPU overlay",
-  );
-
+function reportSuccess(prov: PrometheusProvision): void {
+  const manageCmd = composeBaseCommand(prov.compose, PROMETHEUS);
+  note(`PROMETHEUS_URL=${prov.url}`, "Add this to your dashboard env file to enable the compute GPU overlay");
   log.info(
     `This stack is yours to manage. Files live in ${STACK_DIR}:\n` +
     `  ${cyan(`${manageCmd} restart`)}   (after editing ${CONFIG_PATH})\n` +
     `  ${cyan(`${manageCmd} down`)}      (stop and remove the container)`,
   );
-
   log.info(
-    `Daemon targets are discovered from ${cyan(daemonSdUrl)} and refresh automatically\n` +
+    `Daemon targets are discovered from ${cyan(prov.daemonSdUrl)} and refresh automatically\n` +
     `as nodes register or drop out, no edits or reloads needed.`,
   );
+}
 
-  return promUrl;
+export async function applyPrometheusProvision(prov: PrometheusProvision, host: Host): Promise<boolean> {
+  await host.withElevation(`mkdir -p ${STACK_DIR}`, "Create stack directory");
+  if (!(await writeStackFile(host, PROMETHEUS, CONFIG_PATH, prov.configFile, "Prometheus scrape config"))) return false;
+  if (!(await writeStackFile(host, PROMETHEUS, COMPOSE_PATH, prov.composeFile, "monitoring compose file"))) return false;
+  pass("Config", `Wrote ${CONFIG_PATH} and ${COMPOSE_PATH}`);
+
+  const started = await startStack(host, prov.compose, PROMETHEUS, {
+    reachableAt: prov.url,
+    ready: () => isPrometheusRunning(host, prov.port),
+  });
+  if (!started) return false;
+
+  reportSuccess(prov);
+  return true;
+}
+
+// ─── Main entry point ────────────────────────────────────────────────────────
+
+export async function prometheusSetup(host: Host, dryRun: boolean): Promise<string | undefined> {
+  log.step(bold("Prometheus metrics store setup"));
+  log.info(
+    "Prometheus scrapes the gateway, dashboard, tether, and daemon /metrics endpoints.\n" +
+    "It runs as a Docker container and powers the live GPU overlay on the Compute page.",
+  );
+
+  const prov = await planPrometheusProvision(host);
+  if (!prov) return undefined;
+
+  if (dryRun) {
+    for (const cmd of buildPrometheusProvisionCommands(prov)) {
+      info("Dry run", `Would run: ${dim(cmd.split("\n")[0] ?? cmd)}`);
+    }
+    note(`PROMETHEUS_URL=${prov.url}`, "Endpoint (not yet created)");
+    return prov.url;
+  }
+
+  return (await applyPrometheusProvision(prov, host)) ? prov.url : undefined;
 }
