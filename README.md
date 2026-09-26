@@ -198,11 +198,7 @@ find . -name 'example.env' -not -path '*/node_modules/*' | while read -r f; do
 done
 ```
 
-This copies each `example.env` to `.env` without overwriting existing files. Review and adjust values as needed. In particular, generate a real secret for `BETTER_AUTH_SECRET` in `packages/xinity-ai-dashboard/.env`:
-
-```bash
-openssl rand -base64 32
-```
+This copies each `example.env` to `.env` without overwriting existing files. The values work as-is for local development against the Docker Compose services below; review and adjust only if your setup differs.
 
 **4. Start infrastructure**
 
@@ -436,10 +432,7 @@ Another process is using that port. Check with `lsof -i :5432` and stop the conf
 Ensure Docker Compose is running (`docker compose ps`). The `db` service must be healthy before running migrations.
 
 **`BETTER_AUTH_SECRET` error on dashboard startup**
-Generate a secret and set it in `packages/xinity-ai-dashboard/.env`:
-```bash
-openssl rand -base64 32
-```
+The dashboard has no `.env`. Re-run step 3 to create it from `example.env`.
 
 **`bun2nix` is slow or fails during install**
 This runs in the postinstall hook for NixOS support. Run `CI=1 bun install` to skip it.
