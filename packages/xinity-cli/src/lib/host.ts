@@ -213,3 +213,17 @@ export async function isUnitActiveOn(host: Host, unit: string): Promise<boolean>
 export async function getUnitStatusOn(host: Host, unit: string): Promise<string> {
   return (await host.run(["systemctl", "is-active", unit])).output;
 }
+
+export async function waitForReady(
+  probe: () => Promise<boolean>,
+  opts: { intervalMs?: number; attempts?: number } = {},
+): Promise<boolean> {
+  const { intervalMs = 1000, attempts = 30 } = opts;
+  for (let i = 0; i < attempts; i++) {
+    if (await probe()) {
+      return true;
+    }
+    await Bun.sleep(intervalMs);
+  }
+  return false;
+}

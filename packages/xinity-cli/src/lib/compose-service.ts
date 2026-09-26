@@ -8,7 +8,7 @@
  */
 import { log, spinner as clackSpinner } from "./clack.ts";
 import { cyan, dim } from "picocolors";
-import type { Host } from "./host.ts";
+import { type Host, waitForReady } from "./host.ts";
 import { pass, fail, warn } from "./output.ts";
 import { heredoc } from "./service.ts";
 import {
@@ -124,19 +124,7 @@ export async function writeStackFile(
 
 // ─── Start and health ────────────────────────────────────────────────────────
 
-const POLL_INTERVAL_MS = 1000;
-const POLL_ATTEMPTS = 30;
-const POLL_TIMEOUT_SECONDS = (POLL_ATTEMPTS * POLL_INTERVAL_MS) / 1000;
-
-export async function waitForReady(probe: () => Promise<boolean>): Promise<boolean> {
-  for (let i = 0; i < POLL_ATTEMPTS; i++) {
-    if (await probe()) {
-      return true;
-    }
-    await Bun.sleep(POLL_INTERVAL_MS);
-  }
-  return false;
-}
+const READY_TIMEOUT_SECONDS = 30;
 
 export function composeUpCommand(compose: ComposeCmd, stack: ComposeStack): string {
   return composeArgs(compose, stackPaths(stack).composePath, "up", "-d").join(" ");
@@ -169,7 +157,7 @@ export async function startStack(
   spinner.start(`Waiting for ${stack.displayName} to become ready…`);
   if (!(await waitForReady(opts.ready))) {
     spinner.stop("Timed out");
-    fail("Health", `${stack.displayName} container did not become ready within ${POLL_TIMEOUT_SECONDS} seconds`);
+    fail("Health", `${stack.displayName} container did not become ready within ${READY_TIMEOUT_SECONDS} seconds`);
     return false;
   }
   spinner.stop(`${stack.displayName} is ready`);

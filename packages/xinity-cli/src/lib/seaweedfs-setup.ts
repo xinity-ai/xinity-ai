@@ -8,10 +8,9 @@
  */
 import { confirm, isCancel, log, note, password, spinner as clackSpinner, text } from "./clack.ts";
 import { bold, cyan, dim } from "picocolors";
-import { type Host, commandExistsOn } from "./host.ts";
+import { type Host, commandExistsOn, waitForReady } from "./host.ts";
 import { pass, fail, info, promptOrUndefined, warn } from "./output.ts";
 import { heredoc } from "./service.ts";
-import { waitForReady } from "./compose-service.ts";
 import { BIN_DIR, ENV_DIR, UNIT_DIR } from "./component-meta.ts";
 import { generateUnit } from "./systemd.ts";
 import { randomToken } from "./secrets.ts";

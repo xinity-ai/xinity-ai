@@ -517,8 +517,9 @@ export async function applyUpPlan(plan: UpPlan, host: Host): Promise<ApplyResult
 
   if (plan.provisionOllama) {
     heading("ollama");
-    const { ensureOllama } = await import("./ollama-setup.ts");
-    if (!(await ensureOllama(host, false))) {
+    const { planOllama, applyOllama } = await import("./ollama-setup.ts");
+    const ollamaAction = await planOllama(host, { interactive: false });
+    if (ollamaAction === undefined || !(await applyOllama(ollamaAction, host))) {
       warn("Ollama", "Provisioning failed; the daemon may not reach its ollama endpoint");
     }
   }
