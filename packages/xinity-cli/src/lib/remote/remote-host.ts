@@ -1,0 +1,535 @@
+import { createServer, connect } from "node:net";
+import { hostname as osHostname } from "node:os";
+import { localRun, type Host, type RunResult, type ElevationResult, type TunnelResult } from "../core/host.ts";
+import { cancel, log } from "../core/clack.ts";
+import { cyan, dim } from "picocolors";
+import { SudoSession, checkPasswordlessSudo } from "./sudo-session.ts";
+import { quoteShellArg, quoteShellArgv } from "common-env";
+import { sshSocketPath, SUPPORTS_SSH_MULTIPLEXING } from "../core/platform.ts";
+
+async function findAvailableLoopbackPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close();
+        reject(new Error("Failed to allocate port"));
+        return;
+      }
+      const port = address.port;
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+async function isLoopbackPortReachable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = connect({ port, host: "127.0.0.1" });
+    socket.once("connect", () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once("error", () => {
+      socket.destroy();
+      resolve(false);
+    });
+  });
+}
+
+async function waitForLoopbackPort(port: number, timeoutMs = 10_000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await isLoopbackPortReachable(port)) {
+      return true;
+    }
+    await Bun.sleep(100);
+  }
+  return false;
+}
+
+function sanitizeHost(hostname: string): string {
+  return hostname.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+const CTRL_C = 0x03;
+const CTRL_D = 0x04;
+const CARRIAGE_RETURN = 0x0D;
+const LINE_FEED = 0x0A;
+const DEL = 0x7F;
+const BACKSPACE = 0x08;
+const FIRST_PRINTABLE_ASCII = 0x20;
+
+const DEFAULT_REDIS_PORT = "6379";
+const DEFAULT_POSTGRES_PORT = "5432";
+const DEFAULT_SMTP_PORT = "587";
+
+function defaultPortForProtocol(protocol: string): string {
+  switch (protocol) {
+    case "postgresql:":
+    case "postgres:":
+      return DEFAULT_POSTGRES_PORT;
+    case "redis:":
+    case "rediss:":
+      return DEFAULT_REDIS_PORT;
+    case "smtp:":
+    case "smtps:":
+      return DEFAULT_SMTP_PORT;
+    default:
+      throw new Error(`No default port for protocol "${protocol}"; specify an explicit port in the URL`);
+  }
+}
+
+/**
+ * Read a password from the terminal with echo fully disabled.
+ *
+ * Handles raw keystrokes manually so backspace works while revealing
+ * nothing about the input (no mask characters, no length indication).
+ * Returns null on Ctrl-C / Ctrl-D.
+ */
+async function readSudoPassword(prompt: string): Promise<string | null> {
+  // Drain any stale keystrokes left in stdin from previous prompts (e.g. clack menus).
+  // Without this, a buffered Enter from the menu confirmation can be read as an
+  // immediate empty-password submission.
+  await drainStdinBuffer();
+
+  return new Promise((resolve) => {
+    process.stderr.write(prompt);
+
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true);
+    }
+    process.stdin.resume();
+
+    const rawBytes: number[] = [];
+    let resolved = false;
+
+    const finish = (value: string | null) => {
+      if (resolved) return;
+      resolved = true;
+      process.stdin.removeListener("data", onData);
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(false);
+      }
+      process.stdin.pause();
+      process.stderr.write("\n");
+      resolve(value);
+    };
+
+    const onData = (chunk: Buffer) => {
+      for (const byte of chunk) {
+        if (byte === CTRL_C || byte === CTRL_D) {
+          return finish(null);
+        }
+        if (byte === CARRIAGE_RETURN || byte === LINE_FEED) {
+          return finish(Buffer.from(rawBytes).toString("utf-8"));
+        }
+        if (byte === DEL || byte === BACKSPACE) {
+          // Pop one UTF-8 character: strip continuation bytes (10xxxxxx), then the leading byte
+          while (rawBytes.length > 0 && (rawBytes[rawBytes.length - 1]! & 0xC0) === 0x80) {
+            rawBytes.pop();
+          }
+          if (rawBytes.length > 0) {
+            rawBytes.pop();
+          }
+        } else if (byte >= FIRST_PRINTABLE_ASCII) {
+          rawBytes.push(byte);
+        }
+      }
+    };
+
+    process.stdin.on("data", onData);
+  });
+}
+
+/** Consume any bytes already sitting in the stdin buffer (e.g. from prior prompts). */
+function drainStdinBuffer(): Promise<void> {
+  return new Promise((resolve) => {
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true);
+    }
+    process.stdin.resume();
+
+    // Read and discard any immediately available data
+    const onData = () => {};
+    process.stdin.on("data", onData);
+
+    // After a tick, nothing more is buffered - stop draining
+    setTimeout(() => {
+      process.stdin.removeListener("data", onData);
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(false);
+      }
+      process.stdin.pause();
+      resolve();
+    }, 50);
+  });
+}
+
+export function socketPath(hostname: string): string {
+  return sshSocketPath(sanitizeHost(hostname));
+}
+
+function b64Cmd(command: string): string {
+  return Buffer.from(command).toString("base64");
+}
+
+const LOCALHOST_NAMES = new Set(["localhost", "127.0.0.1", "::1"]);
+
+function detectLocalhost(hostname: string): boolean {
+  if (LOCALHOST_NAMES.has(hostname)) {
+    return true;
+  }
+  try {
+    return hostname === osHostname();
+  } catch {
+    return false;
+  }
+}
+
+export class RemoteHost implements Host {
+  private readonly hostname: string;
+  private readonly isLocalhost: boolean;
+  private readonly socket: string;
+  private readonly ctrlArgs: string[];
+
+  private sudoSession: SudoSession | null = null;
+  private isRootCached: boolean | null = null;
+  private elevationDenied = false;
+
+  constructor(hostname: string) {
+    this.hostname = hostname;
+    this.isLocalhost = detectLocalhost(hostname);
+    this.socket = socketPath(hostname);
+    this.ctrlArgs = SUPPORTS_SSH_MULTIPLEXING
+      ? [
+          "-o", "ControlMaster=auto",
+          "-o", `ControlPath=${this.socket}`,
+          "-o", "ControlPersist=yes",
+        ]
+      : [];
+  }
+
+  async connect(): Promise<void> {
+    // Kill any stale control socket from a previous CLI run. Reusing a stale
+    // socket can corrupt stdin piping for sudo sessions.
+    if (SUPPORTS_SSH_MULTIPLEXING) {
+      await localRun(["ssh", "-O", "exit", ...this.ctrlArgs, this.hostname]).catch(() => {});
+    }
+
+    const result = await localRun([
+      "ssh",
+      ...this.ctrlArgs,
+      "-o", "BatchMode=no", // allow interactive auth (key passphrase / password)
+      this.hostname,
+      "echo xinity-connected",
+    ]);
+
+    if (!result.ok || !result.output.includes("xinity-connected")) {
+      throw new Error(
+        `Could not connect to ${this.hostname}: ${result.output || "SSH connection failed"}`,
+      );
+    }
+
+    const os = await localRun(["ssh", ...this.ctrlArgs, this.hostname, "uname -s"]);
+    if (!os.ok || os.output.trim() !== "Linux") {
+      throw new Error(
+        `${this.hostname} is not a Linux host (uname: ${os.output.trim() || "unknown"}). ` +
+        `Xinity services require Linux.`,
+      );
+    }
+  }
+
+  async run(args: string[]): Promise<RunResult> {
+    return localRun(["ssh", ...this.ctrlArgs, this.hostname, quoteShellArgv(args)]);
+  }
+
+  async runShell(command: string): Promise<RunResult> {
+    return localRun(["ssh", ...this.ctrlArgs, this.hostname, command]);
+  }
+
+  private async isRoot(): Promise<boolean> {
+    // Cache the root check so we don't run `id -u` on every call.
+    if (this.isRootCached === null) {
+      const whoami = await localRun(["ssh", ...this.ctrlArgs, this.hostname, "id -u"]);
+      this.isRootCached = whoami.ok && whoami.output.trim() === "0";
+    }
+    return this.isRootCached;
+  }
+
+  async prepareElevation(): Promise<boolean> {
+    if (await this.isRoot()) return true;
+    if (this.sudoSession?.isAlive) return true;
+    if (this.elevationDenied) return false;
+    log.info(dim(`Root privileges on ${this.hostname} are required to inspect and configure it.`));
+    return (await this.ensureSudoSessionAndExecute("true")).success;
+  }
+
+  async withElevation(command: string, description: string): Promise<ElevationResult> {
+    if (await this.isRoot()) {
+      const b64 = b64Cmd(command);
+      const result = await localRun([
+        "ssh", ...this.ctrlArgs, this.hostname,
+        `echo '${b64}' | base64 -d | sh`,
+      ]);
+      return { success: result.ok, output: result.output };
+    }
+
+    if (this.elevationDenied) {
+      return { success: false, output: "sudo authentication was declined" };
+    }
+
+    log.step(dim(description));
+    return this.ensureSudoSessionAndExecute(command);
+  }
+
+  async dispose(): Promise<void> {
+    if (this.sudoSession) {
+      await this.sudoSession.close();
+      this.sudoSession = null;
+    }
+  }
+
+  // -- sudo session helpers ---------------------------------------------------
+
+  private async ensureSudoSessionAndExecute(command: string): Promise<ElevationResult> {
+    if (!this.sudoSession || !this.sudoSession.isAlive) {
+      this.sudoSession = null;
+
+      // Check if passwordless sudo is available.
+      const passwordless = await checkPasswordlessSudo(this.ctrlArgs, this.hostname);
+
+      if (passwordless) {
+        try {
+          this.sudoSession = await SudoSession.create(this.ctrlArgs, this.hostname, "");
+          log.success("Passwordless sudo detected.");
+        } catch (err) {
+          log.warn(`Failed to establish sudo session: ${(err as Error).message}`);
+          this.elevationDenied = true;
+          return { success: false, output: "" };
+        }
+      } else {
+        // Prompt for password with up to 3 attempts. The fixed-length mask
+        // prevents leaking the password length via the terminal output.
+        const MAX_ATTEMPTS = 3;
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+          const input = await readSudoPassword(
+            attempt === 1
+              ? `Sudo password for ${cyan(this.hostname)}: `
+              : `Wrong password. Try again (${attempt}/${MAX_ATTEMPTS}): `,
+          );
+          if (input === null) {
+            cancel("Cancelled.");
+            this.elevationDenied = true;
+            return { success: false, output: "" };
+          }
+
+          try {
+            this.sudoSession = await SudoSession.create(this.ctrlArgs, this.hostname, input);
+            log.success("Sudo session established.");
+            break;
+          } catch {
+            if (attempt === MAX_ATTEMPTS) {
+              log.error(`Failed to authenticate after ${MAX_ATTEMPTS} attempts.`);
+              this.elevationDenied = true;
+              return { success: false, output: "" };
+            }
+          }
+        }
+      }
+    }
+
+    return this.executeViaSudoSession(command);
+  }
+
+  private async executeViaSudoSession(command: string): Promise<ElevationResult> {
+    if (!this.sudoSession || !this.sudoSession.isAlive) {
+      // Session died, try to re-establish.
+      return this.ensureSudoSessionAndExecute(command);
+    }
+
+    try {
+      const { exitCode, output } = await this.sudoSession.execute(command);
+      return { success: exitCode === 0, output };
+    } catch (err) {
+      log.warn(`Sudo session error: ${(err as Error).message}`);
+      this.sudoSession = null;
+      return { success: false, output: "" };
+    }
+  }
+
+  async readFile(path: string): Promise<string | null> {
+    const result = await localRun([
+      "ssh", ...this.ctrlArgs, this.hostname,
+      `cat ${quoteShellArg(path)}`,
+    ]);
+    return result.ok ? result.output : null;
+  }
+
+  async fileExists(path: string): Promise<boolean> {
+    const result = await localRun([
+      "ssh", ...this.ctrlArgs, this.hostname,
+      // stat exits 0 when the file exists. If it fails with "Permission denied"
+      // the file exists but the current user cannot access it (needs elevation).
+      `s=$(stat ${quoteShellArg(path)} 2>&1) && echo yes || (echo "$s" | grep -qi 'permission denied' && echo perm || echo no)`,
+    ]);
+    const out = result.output.trim();
+    return out === "yes" || out === "perm";
+  }
+
+  async uploadFile(localPath: string, destPath: string): Promise<string> {
+    if (this.isLocalhost) {
+      return localPath;
+    }
+    const result = await localRun([
+      "scp",
+      ...(SUPPORTS_SSH_MULTIPLEXING ? ["-o", `ControlPath=${this.socket}`] : []),
+      localPath,
+      `${this.hostname}:${destPath}`,
+    ]);
+    if (!result.ok) {
+      throw new Error(`Failed to upload ${localPath} to ${this.hostname}:${destPath}: ${result.output}`);
+    }
+    return destPath;
+  }
+
+  async downloadFile(url: string, destPath: string): Promise<void> {
+    const result = await localRun([
+      "ssh", ...this.ctrlArgs, this.hostname,
+      `curl -fsSL -o ${quoteShellArg(destPath)} ${quoteShellArg(url)}`,
+    ]);
+    if (!result.ok) {
+      throw new Error(`Remote download failed: ${result.output}`);
+    }
+  }
+
+  async verifySha256(filePath: string, expectedHash: string): Promise<boolean> {
+    const actualHash = await this.computeSha256(filePath);
+    return actualHash === expectedHash;
+  }
+
+  async computeSha256(filePath: string): Promise<string | null> {
+    const result = await localRun([
+      "ssh", ...this.ctrlArgs, this.hostname,
+      `sha256sum ${quoteShellArg(filePath)}`,
+    ]);
+    if (!result.ok) return null;
+    // sha256sum output format: "hash  filename"
+    const hash = result.output.split(/\s+/)[0];
+    return hash || null;
+  }
+
+  async getArch(): Promise<string> {
+    const result = await localRun([
+      "ssh", ...this.ctrlArgs, this.hostname,
+      "uname -m",
+    ]);
+    if (!result.ok) throw new Error(`Failed to detect remote architecture: ${result.output}`);
+    const raw = result.output.trim();
+    if (raw === "aarch64" || raw === "arm64") return "arm64";
+    if (raw === "x86_64" || raw === "amd64") return "x64";
+    return raw;
+  }
+
+  async openTunnel(url: string): Promise<TunnelResult> {
+    if (this.isLocalhost) {
+      return { ok: true, localUrl: url, close: async () => {} };
+    }
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return { ok: false, error: `Invalid URL: ${url}` };
+    }
+    const remoteHost = parsed.hostname;
+    const remotePort = parsed.port || defaultPortForProtocol(parsed.protocol);
+
+    // SSH local-port forwarding needs us to pick a free local port before opening
+    // the tunnel; SSH can pick one with "-L 0:..." but doesn't surface which port
+    // it chose, so we allocate ourselves and pass an explicit port.
+    const localPort = await findAvailableLoopbackPort();
+    const forward = `${localPort}:${remoteHost}:${remotePort}`;
+
+    const localParsed = new URL(url);
+    localParsed.hostname = "127.0.0.1";
+    localParsed.port = String(localPort);
+    const localUrl = localParsed.toString();
+
+    return SUPPORTS_SSH_MULTIPLEXING
+      ? this.forwardViaControlSocket(forward, localUrl)
+      : this.forwardViaChildProcess(forward, localPort, localUrl);
+  }
+
+  // -f sends SSH to the background after connecting, -N means no remote command.
+  private async forwardViaControlSocket(forward: string, localUrl: string): Promise<TunnelResult> {
+    const result = await localRun([
+      "ssh", "-f", "-N",
+      "-o", "ExitOnForwardFailure=yes",
+      "-L", forward,
+      ...this.ctrlArgs,
+      this.hostname,
+    ]);
+
+    if (!result.ok) {
+      return { ok: false, error: `SSH tunnel failed: ${result.output}` };
+    }
+
+    return {
+      ok: true,
+      localUrl,
+      close: async () => {
+        await localRun(["ssh", "-O", "cancel", "-L", forward, ...this.ctrlArgs, this.hostname]);
+      },
+    };
+  }
+
+  /** Killing the process is the only way to close a forward without "ssh -O cancel". */
+  private async forwardViaChildProcess(
+    forward: string,
+    localPort: number,
+    localUrl: string,
+  ): Promise<TunnelResult> {
+    const proc = Bun.spawn(
+      ["ssh", "-N", "-o", "ExitOnForwardFailure=yes", "-L", forward, this.hostname],
+      { stdin: "ignore", stdout: "ignore", stderr: "pipe" },
+    );
+
+    // Foreground SSH never signals readiness, so watch the port instead.
+    const ready = await Promise.race([
+      waitForLoopbackPort(localPort),
+      proc.exited.then(() => false),
+    ]);
+
+    if (!ready) {
+      proc.kill();
+      const reason = (await new Response(proc.stderr).text()).trim();
+      return { ok: false, error: `SSH tunnel failed: ${reason || `${forward} never opened`}` };
+    }
+
+    return {
+      ok: true,
+      localUrl,
+      close: async () => {
+        proc.kill();
+        await proc.exited;
+      },
+    };
+  }
+}
+
+/** yargs descriptor for the single-host selector, declared per command that supports it. */
+export const TARGET_HOST_OPTION = {
+  describe: "SSH host to operate on (any valid ssh bind_address or host alias)",
+  type: "string",
+} as const;
+
+export async function connectHost(hostname?: string): Promise<RemoteHost> {
+  const target = hostname || "localhost";
+  const host = new RemoteHost(target);
+  await host.connect();
+  if (hostname) {
+    log.success(`Connected to ${cyan(target)}`);
+  }
+  return host;
+}

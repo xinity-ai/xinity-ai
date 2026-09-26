@@ -1,8 +1,8 @@
 import type { CommandModule } from "yargs";
-import { intro, outro, cancel, note, log, confirm, text, multiselect } from "../lib/clack.ts";
+import { intro, outro, cancel, note, log, confirm, text, multiselect } from "../lib/core/clack.ts";
 import { bold, cyan, dim, green, red, yellow } from "picocolors";
-import { promptOrExit, promptOrUndefined, fail, warn, heading } from "../lib/output.ts";
-import type { Component } from "../lib/component-meta.ts";
+import { promptOrExit, promptOrUndefined, fail, warn, heading } from "../lib/core/output.ts";
+import type { Component } from "../lib/core/component-meta.ts";
 import {
   type StackDefinition,
   type StackHost,
@@ -20,15 +20,15 @@ import {
   hostLabel,
   claimFleetHosts,
   pruneFleetMembership,
-} from "../lib/stack.ts";
-import { editSharedLayer, editComponentLayer, editFleetLayer } from "../lib/stack-layers.ts";
-import { searchSelect, searchMultiselect, listSelect, type SearchListOption } from "../lib/search-list.ts";
-import { runStackFlow } from "../lib/stack-plan.ts";
-import { randomSecretKey, randomToken } from "../lib/secrets.ts";
-import { runDoctor, buildSummaryLine, type DoctorReport } from "../lib/doctor.ts";
-import { fetchRelease, listReleases, type ReleaseListEntry } from "../lib/github.ts";
-import { loadStackState, findOrphanHosts } from "../lib/stack-state.ts";
-import { connectHosts, disposeAll, mapBounded, HOST_CONCURRENCY } from "../lib/multi-host.ts";
+} from "../lib/stack/stack.ts";
+import { editSharedLayer, editComponentLayer, editFleetLayer } from "../lib/stack/stack-layers.ts";
+import { searchSelect, searchMultiselect, listSelect, type SearchListOption } from "../lib/term/search-list.ts";
+import { runStackFlow } from "../lib/stack/stack-plan.ts";
+import { randomSecretKey, randomToken } from "../lib/core/secrets.ts";
+import { runDoctor, buildSummaryLine, type DoctorReport } from "../lib/doctor/doctor.ts";
+import { fetchRelease, listReleases, type ReleaseListEntry } from "../lib/up/github.ts";
+import { loadStackState, findOrphanHosts } from "../lib/stack/stack-state.ts";
+import { connectHosts, disposeAll, mapBounded, HOST_CONCURRENCY } from "../lib/remote/multi-host.ts";
 
 const AVAILABLE_COMPONENTS: Component[] = ["gateway", "dashboard", "daemon", "infoserver", "tether"];
 

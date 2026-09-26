@@ -11,7 +11,7 @@
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { $ } from "bun";
-import { serverStubs, serverStubSources, appStubSources } from "./src/lib/dashboard-stubs.ts";
+import { serverStubs, serverStubSources, appStubSources } from "./src/lib/act/dashboard-stubs.ts";
 
 const { values } = parseArgs({
   args: process.argv.slice(2),
@@ -28,7 +28,7 @@ console.log(`Building ${outfile} for ${target}…`);
 
 // ── Dashboard stub plugin (build-time) ──────────────────────────────────────
 //
-// Uses shared stub definitions from src/lib/dashboard-stubs.ts.
+// Uses shared stub definitions from src/lib/act/dashboard-stubs.ts.
 // Bun.build()'s plugin API (onResolve + onLoad) resolves SvelteKit virtual
 // modules ($app/*, $lib/*) and inlines the oRPC router metadata.
 

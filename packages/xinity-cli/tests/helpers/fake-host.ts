@@ -6,7 +6,7 @@
  * Only the methods the infra setups actually use are wired meaningfully; the
  * rest return inert defaults so the Host interface is satisfied.
  */
-import type { Host, RunResult, ElevationResult, TunnelResult } from "../../src/lib/host.ts";
+import type { Host, RunResult, ElevationResult, TunnelResult } from "../../src/lib/core/host.ts";
 
 type RunHandler = (args: string[]) => Partial<RunResult> | undefined;
 type ShellHandler = (command: string) => Partial<RunResult> | undefined;

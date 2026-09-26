@@ -1,11 +1,11 @@
 import type { CommandModule } from "yargs";
-import * as p from "../lib/clack.ts";
+import * as p from "../lib/core/clack.ts";
 import pc from "picocolors";
-import { loadRoutes, getRouteNames, getRouteLoadError, type RouteInfo } from "../lib/routes.ts";
-import { promptForSchema } from "../lib/schema-prompt.ts";
-import { resolveConfigValue, ENV_VAR_MAP } from "../lib/config.ts";
-import { workflows, workflowNames } from "../lib/workflows.ts";
-import { DASHBOARD_DEFAULT_PORT } from "../lib/component-meta.ts";
+import { loadRoutes, getRouteNames, getRouteLoadError, type RouteInfo } from "../lib/act/routes.ts";
+import { promptForSchema } from "../lib/term/schema-prompt.ts";
+import { resolveConfigValue, ENV_VAR_MAP } from "../lib/config/config.ts";
+import { workflows, workflowNames } from "../lib/act/workflows.ts";
+import { DASHBOARD_DEFAULT_PORT } from "../lib/core/component-meta.ts";
 
 const DEFAULT_DASHBOARD_URL = `http://localhost:${DASHBOARD_DEFAULT_PORT}`;
 const REQUEST_TIMEOUT_MS = 15_000;

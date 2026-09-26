@@ -5,7 +5,7 @@ import { runCli } from "../helpers/cli-runner.ts";
  * Doctor command integration tests.
  *
  * The `--format json` flag makes these tests deterministic: clack UI
- * chrome goes to stderr (see src/lib/clack.ts) so stdout is pure JSON.
+ * chrome goes to stderr (see src/lib/core/clack.ts) so stdout is pure JSON.
  * `--no-interactive` disables sudo prompts so the runner never blocks.
  *
  * Tests cover both the JSON API contract and the text rendering path.

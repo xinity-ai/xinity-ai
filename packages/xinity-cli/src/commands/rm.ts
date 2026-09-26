@@ -1,10 +1,10 @@
 import type { CommandModule } from "yargs";
-import { cancel, confirm, intro, isCancel, outro } from "../lib/clack.ts";
+import { cancel, confirm, intro, isCancel, outro } from "../lib/core/clack.ts";
 import { cyan, dim, yellow } from "picocolors";
-import { removeComponentCollapsed, removeAll } from "../lib/install-remove.ts";
-import type { Component } from "../lib/component-meta.ts";
-import { logErrors } from "../lib/output.ts";
-import { connectHost, TARGET_HOST_OPTION } from "../lib/remote-host.ts";
+import { removeComponentCollapsed, removeAll } from "../lib/up/install-remove.ts";
+import type { Component } from "../lib/core/component-meta.ts";
+import { logErrors } from "../lib/core/output.ts";
+import { connectHost, TARGET_HOST_OPTION } from "../lib/remote/remote-host.ts";
 
 const COMPONENTS = ["gateway", "dashboard", "daemon", "infoserver", "tether", "all"] as const;
 

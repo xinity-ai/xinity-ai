@@ -2,17 +2,17 @@ import type { CommandModule } from "yargs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdirSync, copyFileSync, renameSync, unlinkSync, chmodSync, existsSync } from "node:fs";
-import { cancel, confirm, intro, isCancel, log, outro, spinner as clackSpinner } from "../lib/clack.ts";
+import { cancel, confirm, intro, isCancel, log, outro, spinner as clackSpinner } from "../lib/core/clack.ts";
 import { cyan, green, yellow } from "picocolors";
-import { defaultInstallDir, binaryName, IS_WINDOWS } from "../lib/platform.ts";
+import { defaultInstallDir, binaryName, IS_WINDOWS } from "../lib/core/platform.ts";
 
 import { version } from "../../../../package.json";
 const CLI_VERSION = `v${version}`;
-import { fetchRelease, pickReleaseAsset, type Release } from "../lib/github.ts";
-import { downloadAndVerify, extractCommandArgv } from "../lib/install-download.ts";
-import { runSteps } from "../lib/step-runner.ts";
-import { pass, fail } from "../lib/output.ts";
-import { localRun } from "../lib/host.ts";
+import { fetchRelease, pickReleaseAsset, type Release } from "../lib/up/github.ts";
+import { downloadAndVerify, extractCommandArgv } from "../lib/up/install-download.ts";
+import { runSteps } from "../lib/term/step-runner.ts";
+import { pass, fail } from "../lib/core/output.ts";
+import { localRun } from "../lib/core/host.ts";
 
 export function cleanupOldBinary(): void {
   if (!IS_WINDOWS) {

@@ -1,0 +1,713 @@
+import { select, confirm, text, password, log, isCancel } from "../core/clack.ts";
+import { bold, cyan, dim, yellow, green } from "picocolors";
+import { promptOrExit, cancelAndExit } from "../core/output.ts";
+import { parseEnvString } from "./env-file.ts";
+import { analyzeConfig, delegate, parseDelegation, type ConfigProblem, type EnvField, type EnvFieldGroup } from "common-env";
+import { type Component, COMPONENTS, COMPONENT_CONFIGS, ENV_DIR, SECRETS_DIR } from "../core/component-meta.ts";
+import { readSecrets, type Host } from "../core/host.ts";
+import { readManifest } from "../up/manifest.ts";
+
+
+/**
+ * The schema tolerates their absence, but a deployment without them starts and is then unusable.
+ * Asked up front rather than left to the cross-field rule, which only refuses the edit at the end.
+ */
+const ALWAYS_ASKED: ReadonlySet<string> = new Set(["INSTANCE_ADMIN_EMAILS"]);
+
+export function componentFields(component: Component): EnvField[] {
+  return analyzeConfig(COMPONENT_CONFIGS[component])
+    .map((field) => (ALWAYS_ASKED.has(field.key) ? { ...field, requiredOverride: true } : field));
+}
+
+/** A field in a switched-off optional group is not required, whatever its schema says. */
+export function isRequired(field: EnvField, values: Record<string, string | undefined>): boolean {
+  if (!(field.requiredOverride ?? field.isRequiredBySchema)) {
+    return false;
+  }
+  const activation = field.group?.activation ?? [];
+  return activation.length === 0 || activation.some((key) => Boolean(values[key]));
+}
+
+function isRequiredUnset(field: EnvField, values: Record<string, string | undefined>): boolean {
+  return isRequired(field, values) && !values[field.key];
+}
+
+export function missingRequiredFields(fields: EnvField[], values: Record<string, string | undefined>): EnvField[] {
+  return fields.filter((f) => isRequiredUnset(f, values));
+}
+
+/** Names each key where the menu keeps it, since a grouped key is a level down from the top. */
+function describeProblem(problem: ConfigProblem): string {
+  const where = problem.fields
+    .map((field) => (field.groupTitle ? `${field.envKey} under ${field.groupTitle}` : field.envKey))
+    .join(", ");
+  return `  ${where}: ${problem.message}`;
+}
+
+export function categorizeFields(fields: EnvField[]): {
+  configFields: EnvField[];
+  secretFields: EnvField[];
+} {
+  return {
+    configFields: fields.filter((f) => !f.isSecret),
+    secretFields: fields.filter((f) => f.isSecret),
+  };
+}
+
+function assignByCategory(
+  field: EnvField,
+  value: string,
+  config: Record<string, string>,
+  secrets: Record<string, string>,
+): void {
+  if (field.isSecret) secrets[field.key] = value;
+  else config[field.key] = value;
+}
+
+/** Splits a flat values map into separate config and secret records based on each field's category. */
+export function splitValuesByCategory(
+  fields: EnvField[],
+  values: Record<string, string | undefined>,
+): { config: Record<string, string>; secrets: Record<string, string> } {
+  const config: Record<string, string> = {};
+  const secrets: Record<string, string> = {};
+  for (const field of fields) {
+    const val = values[field.key];
+    if (val !== undefined) assignByCategory(field, val, config, secrets);
+  }
+  return { config, secrets };
+}
+
+export type EnvBundle = {
+  config: Record<string, string>;
+  secrets: Record<string, string>;
+}
+
+export function flattenBundle(bundle: EnvBundle): Record<string, string> {
+  return { ...bundle.config, ...bundle.secrets };
+}
+
+export type EnvChange = {
+  key: string;
+  kind: "added" | "changed" | "removed";
+  isSecret: boolean;
+  before?: string;
+  after?: string;
+}
+
+/** What applying `after` would change relative to the values currently on the host. */
+export function diffEnv(before: EnvBundle, after: EnvBundle): EnvChange[] {
+  const changes: EnvChange[] = [];
+  const compare = (prev: Record<string, string>, next: Record<string, string>, isSecret: boolean) => {
+    for (const [key, value] of Object.entries(next)) {
+      if (!(key in prev)) {
+        changes.push({ key, kind: "added", isSecret, after: value });
+      } else if (prev[key] !== value) {
+        changes.push({ key, kind: "changed", isSecret, before: prev[key], after: value });
+      }
+    }
+    for (const key of Object.keys(prev)) {
+      if (!(key in next)) changes.push({ key, kind: "removed", isSecret });
+    }
+  };
+  compare(before.config, after.config, false);
+  compare(before.secrets, after.secrets, true);
+  return changes;
+}
+
+function prefillFromExisting(
+  fields: EnvField[],
+  existing: Record<string, string> | undefined,
+  config: Record<string, string>,
+  secrets: Record<string, string>,
+): void {
+  for (const field of fields) {
+    const val = existing?.[field.key];
+    if (val !== undefined) assignByCategory(field, val, config, secrets);
+  }
+}
+
+/**
+ * Prompt the user for env values for a component.
+ * Shows existing values as defaults when updating.
+ *
+ * Fields marked expert are silently set from
+ * `existingValues` (which includes auto-defaults) and only shown if the user
+ * opts into advanced settings at the end.
+ *
+ * Returns split { config, secrets } records ready for writing.
+ */
+export async function promptForEnv(
+  component: string,
+  fields: EnvField[],
+  existingValues?: Record<string, string>,
+  skipKeys?: Set<string>,
+): Promise<{ config: Record<string, string>; secrets: Record<string, string> }> {
+  const { configFields, secretFields } = categorizeFields(fields);
+  const skip = skipKeys ?? new Set<string>();
+
+  // Split into visible (essential), expert (advanced), and skipped
+  const visibleConfig = configFields.filter((f) => !f.isExpert && !skip.has(f.key));
+  const visibleSecrets = secretFields.filter((f) => !f.isExpert && !skip.has(f.key));
+  const expertFields = fields.filter((f) => f.isExpert);
+  const skippedFields = fields.filter((f) => skip.has(f.key) && !f.isExpert);
+
+  const config: Record<string, string> = {};
+  const secrets: Record<string, string> = {};
+
+  prefillFromExisting([...expertFields, ...skippedFields], existingValues, config, secrets);
+
+  await promptFieldsUnderHeading(visibleConfig, "Configuration", existingValues, config, secrets);
+  await promptFieldsUnderHeading(visibleSecrets, "Secrets", existingValues, config, secrets);
+
+  return { config, secrets };
+}
+
+async function promptFieldsUnderHeading(
+  fields: EnvField[],
+  heading: string,
+  existingValues: Record<string, string> | undefined,
+  config: Record<string, string>,
+  secrets: Record<string, string>,
+): Promise<void> {
+  if (fields.length === 0) return;
+  log.step(bold(heading));
+  for (const field of fields) {
+    const value = await promptField(field, existingValues?.[field.key], isRequired(field, existingValues ?? {}));
+    if (value !== undefined && value !== FIELD_CANCELLED) assignByCategory(field, value, config, secrets);
+  }
+}
+
+/** Distinguishes an Escape (back out, change nothing) from a skipped/cleared field. */
+const FIELD_CANCELLED: unique symbol = Symbol("field-cancelled");
+
+const UNSET_OPTION = "__unset__";
+
+/** The value behind a delegation, which is nothing when it was written without a fallback. */
+export function undelegated(raw: string | undefined): string | undefined {
+  const delegation = parseDelegation(raw);
+  return delegation ? delegation.fallback : raw;
+}
+
+/** Keeps whatever the component runs on today as the fallback, so delegating changes nothing yet. */
+function fallbackFor(field: EnvField, existingValue: string | undefined): string | undefined {
+  return undelegated(existingValue) ?? (field.hasDefault ? String(field.defaultValue) : undefined);
+}
+
+async function promptField(
+  field: EnvField,
+  existingValue: string | undefined,
+  required: boolean,
+  inMenuEditor = false,
+): Promise<string | undefined | typeof FIELD_CANCELLED> {
+  const resolve = async <T>(prompt: Promise<T | symbol>): Promise<T | typeof FIELD_CANCELLED> => {
+    const value = await prompt;
+    if (isCancel(value)) {
+      if (inMenuEditor) return FIELD_CANCELLED;
+      cancelAndExit();
+    }
+    return value as T;
+  };
+
+  const hint = field.description ? dim(` (${field.description})`) : "";
+  const optTag = required ? "" : dim(" [optional]");
+
+  if (inMenuEditor && field.isDynamic) {
+    const source = await resolve(select({
+      message: `${field.key}${hint}`,
+      options: [
+        { value: "here", label: "Set a value here" },
+        { value: "dashboard", label: "Manage from the dashboard" },
+      ],
+      initialValue: parseDelegation(existingValue) ? "dashboard" : "here",
+    }));
+    if (source === FIELD_CANCELLED) return source;
+    if (source === "dashboard") {
+      return delegate(fallbackFor(field, existingValue));
+    }
+    existingValue = undelegated(existingValue);
+  }
+
+  const existing = existingValue ?? (field.hasDefault ? String(field.defaultValue) : undefined);
+  // Only the menu editor can back out with Escape, so only there is an empty submit safe to read as "unset".
+  const unsetOnEmpty = inMenuEditor && !required;
+  const emptyHint = existingValue === undefined
+    ? ""
+    : dim(unsetOnEmpty ? " [Enter to unset]" : " [Enter to keep current]");
+  const keepOnEmpty = unsetOnEmpty ? undefined : existing;
+  const validateInput = (val: string | undefined) => {
+    if (!val) {
+      return !existing && required ? "This field is required" : undefined;
+    }
+    return field.validate(val);
+  };
+
+  // Secret → masked password input
+  if (field.isSecret) {
+    const value = await resolve(password({
+      message: `${field.key}${hint}${optTag}${emptyHint}`,
+      validate: validateInput,
+    }));
+    if (value === FIELD_CANCELLED) return value;
+    return value || keepOnEmpty || undefined;
+  }
+
+  // Enum → select
+  if (field.enumValues) {
+    const options = field.enumValues.map((v) => ({ value: v, label: v }));
+    if (!required) {
+      options.unshift({ value: UNSET_OPTION, label: dim(inMenuEditor ? "unset" : "skip") });
+    }
+    const value = await resolve(select({
+      message: `${field.key}${hint}${optTag}`,
+      options,
+      initialValue: existing,
+    }));
+    if (value === FIELD_CANCELLED) return value;
+    return value === UNSET_OPTION ? undefined : value;
+  }
+
+  // Boolean → confirm
+  if (field.isBoolean) {
+    const value = await resolve(confirm({
+      message: `${field.key}${hint}`,
+      initialValue: existingValue !== undefined
+        ? existingValue === "true" || existingValue === "1"
+        : field.hasDefault && field.defaultValue === true,
+    }));
+    if (value === FIELD_CANCELLED) return value;
+    return String(value);
+  }
+
+  // Number or string → text input
+  const value = await resolve(text({
+    message: `${field.key}${hint}${optTag}${emptyHint}`,
+    placeholder: existing ?? undefined,
+    defaultValue: unsetOnEmpty ? undefined : existing ?? undefined,
+    validate: validateInput,
+  }));
+  if (value === FIELD_CANCELLED) return value;
+  return value || keepOnEmpty || undefined;
+}
+
+/** Format a field's current value for display in the menu. */
+function displayValue(field: EnvField, value: string | undefined, required: boolean): string {
+  const delegation = parseDelegation(value);
+  if (delegation) {
+    const fallback = delegation.fallback ?? String(field.defaultValue ?? "unset");
+    return `${green("dashboard")} ${dim(`(falls back to ${fallback})`)}`;
+  }
+  if (value !== undefined && value !== "") {
+    if (field.isSecret) return dim("••••••");
+    return cyan(value);
+  }
+  if (field.hasDefault) return dim(`(default: ${field.defaultValue})`);
+  return required ? yellow("(not set)") : dim("(not set)");
+}
+
+type MenuGroup = { definition: EnvFieldGroup; fields: EnvField[] };
+
+const GROUP_PREFIX = "__group__:";
+const GROUP_TITLE_WIDTH = 22;
+
+const ADVANCED_THRESHOLD = 6;
+
+/** Groups in the order their first key appears, so the declaration dictates the layout. */
+function collectGroups(fields: EnvField[]): MenuGroup[] {
+  const groups: MenuGroup[] = [];
+  for (const field of fields) {
+    if (!field.group) {
+      continue;
+    }
+    const existing = groups.find((group) => group.definition.id === field.group!.id);
+    if (existing) {
+      existing.fields.push(field);
+    } else {
+      groups.push({ definition: field.group, fields: [field] });
+    }
+  }
+  return groups;
+}
+
+type GroupState = "always" | "off" | "partial" | "on";
+
+function groupState(group: MenuGroup, values: Record<string, string | undefined>): GroupState {
+  const { activation } = group.definition;
+  if (activation.length === 0) {
+    return "always";
+  }
+  const present = activation.filter((key) => values[key] !== undefined && values[key] !== "").length;
+  if (present === 0) {
+    return "off";
+  }
+  return present === activation.length ? "on" : "partial";
+}
+
+function groupStatus(
+  state: GroupState,
+  missing: number,
+  group: MenuGroup,
+  values: Record<string, string | undefined>,
+): string {
+  if (state === "off") {
+    return dim("off");
+  }
+  if (state === "partial") {
+    return yellow("partially configured");
+  }
+  if (missing > 0) {
+    return yellow(`${missing} required`);
+  }
+  const set = group.fields.filter((f) => values[f.key] !== undefined && values[f.key] !== "").length;
+  return set > 0 ? green("configured") : dim("defaults");
+}
+
+function fieldMarker(field: EnvField, required: boolean, attentionKeys: Set<string>): string {
+  if (required) {
+    return yellow("● required ");
+  }
+  return attentionKeys.has(field.key) ? cyan("● review ") : "";
+}
+
+export type MenuEditOptions = {
+  /** Keys asked for outright while unset, alongside the required ones, and marked in the menu after. */
+  attentionKeys?: Set<string>;
+  /** Keys owned by another layer (e.g. stack shared settings): not shown, not editable; their seeded values pass through. */
+  hiddenKeys?: Set<string>;
+  /** Message displayed above the menu. */
+  message?: string;
+  /** Refuses the save when it returns anything. */
+  validate?: (values: Record<string, string | undefined>) => readonly ConfigProblem[];
+}
+
+/**
+ * Menu-based env editor. Returns the merged { config, secrets } without
+ * persisting anything. Returns null if the user cancels.
+ *
+ * Required fields are marked and block saving while unset. Expert fields
+ * live behind the "advanced settings" toggle, set or not.
+ */
+export async function menuEditEnv(
+  fields: EnvField[],
+  existing: Record<string, string>,
+  opts?: MenuEditOptions,
+): Promise<{ config: Record<string, string>; secrets: Record<string, string> } | null> {
+  const attentionKeys = opts?.attentionKeys ?? new Set<string>();
+  const hiddenKeys = opts?.hiddenKeys ?? new Set<string>();
+  const editable = fields.filter((f) => !hiddenKeys.has(f.key));
+  const values: Record<string, string | undefined> = { ...existing };
+  let showExpert = false;
+  // Returning to the top after every edit means scrolling back down to the neighbouring key, which
+  // is exactly the one you usually want next.
+  let cursor: string | undefined;
+
+  const requiredUnset = (f: EnvField) => isRequiredUnset(f, values);
+  const isVisible = (f: EnvField, hideAdvanced: boolean) => !hideAdvanced || !f.isExpert || showExpert;
+
+  const ungrouped = editable.filter((f) => !f.group);
+  const groups = collectGroups(editable);
+
+  // Declared keys only: a stray KEY_FILE in the host's env file would otherwise be resolved
+  // against this machine's disk rather than the host's.
+  const declaredValues = () => Object.fromEntries(fields.map((f) => [f.key, values[f.key]]));
+
+  const fieldOption = (field: EnvField) => ({
+    value: field.key,
+    label: `${fieldMarker(field, requiredUnset(field), attentionKeys)}${field.isExpert ? dim(field.key) : field.key}  ${displayValue(field, values[field.key], isRequired(field, values))}`,
+    hint: field.description,
+  });
+
+  const editField = async (field: EnvField): Promise<void> => {
+    const newValue = await promptField(field, values[field.key], isRequired(field, values), true);
+    if (newValue === FIELD_CANCELLED) {
+      return;
+    }
+    if (newValue !== undefined) {
+      values[field.key] = newValue;
+    } else {
+      delete values[field.key];
+    }
+  };
+
+  /** Turning a group on asks for exactly the keys that decide whether it is on. */
+  const enableGroup = async (group: MenuGroup): Promise<void> => {
+    for (const key of group.definition.activation) {
+      const field = group.fields.find((candidate) => candidate.key === key);
+      if (field) {
+        await editField(field);
+      }
+    }
+  };
+
+  const editGroup = async (group: MenuGroup): Promise<void> => {
+    let groupCursor: string | undefined;
+    const hideAdvanced = group.fields.length > ADVANCED_THRESHOLD;
+    while (true) {
+      const visible = group.fields.filter((f) => isVisible(f, hideAdvanced));
+      const options = visible.map(fieldOption);
+      const hidden = group.fields.length - visible.length;
+      if (hidden > 0 && !showExpert) {
+        options.push({ value: "__expert__", label: dim(`Show advanced settings (${hidden} more)…`), hint: undefined });
+      }
+      if (group.definition.activation.length > 0 && groupState(group, values) !== "off") {
+        options.push({ value: "__clear__", label: dim(`Turn off ${group.definition.title}`), hint: undefined });
+      }
+      options.push({ value: "__back__", label: green("Back"), hint: undefined });
+
+      const choice = await select({
+        message: group.definition.description
+          ? `${bold(group.definition.title)} ${dim(group.definition.description)}`
+          : bold(group.definition.title),
+        options,
+        initialValue: groupCursor,
+      });
+      if (isCancel(choice) || choice === "__back__") {
+        return;
+      }
+      if (choice === "__expert__") {
+        showExpert = true;
+        continue;
+      }
+      if (choice === "__clear__") {
+        for (const field of group.fields) {
+          delete values[field.key];
+        }
+        return;
+      }
+      groupCursor = choice;
+      await editField(group.fields.find((f) => f.key === choice)!);
+    }
+  };
+
+  /**
+   * Asks for everything that has to be answered before the menu opens, so none of it has to be
+   * hunted for a level down inside a group. Escape leaves the rest to the menu.
+   */
+  const askWhatMustBeSet = async (): Promise<void> => {
+    const pending = (field: EnvField) =>
+      values[field.key] === undefined && (isRequired(field, values) || attentionKeys.has(field.key));
+    if (!editable.some(pending)) {
+      return;
+    }
+    log.step(bold("Values that need to be set"));
+    for (const field of editable) {
+      // Re-checked per field: answering one can activate the group that makes the next required.
+      if (!pending(field)) {
+        continue;
+      }
+      // A default the user is being asked to confirm counts as an answer, so Enter accepts it.
+      const value = await promptField(field, undefined, isRequired(field, values) || field.hasDefault, true);
+      if (value === FIELD_CANCELLED) {
+        return;
+      }
+      if (value !== undefined) {
+        values[field.key] = value;
+      }
+    }
+  };
+
+  await askWhatMustBeSet();
+
+  // A group is one row of navigation rather than an option, so it never counts towards the
+  // threshold and is never hidden: its own view decides what to show once you are inside it.
+  const hideAdvanced = ungrouped.length > ADVANCED_THRESHOLD;
+
+  while (true) {
+    const hiddenCount = ungrouped.filter((f) => !isVisible(f, hideAdvanced)).length;
+
+    const options = ungrouped.filter((f) => isVisible(f, hideAdvanced)).map(fieldOption);
+
+    for (const group of groups) {
+      const missing = group.fields.filter(requiredUnset).length;
+      options.push({
+        value: `${GROUP_PREFIX}${group.definition.id}`,
+        label: `${group.definition.title.padEnd(GROUP_TITLE_WIDTH)} ${groupStatus(groupState(group, values), missing, group, values)}`,
+        hint: group.definition.description,
+      });
+    }
+
+    if (hiddenCount > 0) {
+      options.push({ value: "__expert__", label: dim(`Show advanced settings (${hiddenCount} more)…`), hint: undefined });
+    } else if (showExpert && hideAdvanced && ungrouped.some((f) => f.isExpert)) {
+      options.push({ value: "__expert__", label: dim("Hide advanced settings"), hint: undefined });
+    }
+    options.push({ value: "__save__", label: green("Save & exit"), hint: undefined });
+
+    const choice = await select({
+      message: opts?.message ?? "Select a value to update",
+      options,
+      initialValue: cursor,
+    });
+
+    if (isCancel(choice)) return null;
+
+    if (choice === "__expert__") {
+      showExpert = !showExpert;
+      cursor = "__expert__";
+      continue;
+    }
+
+    if (choice === "__save__") {
+      const blocking = missingRequiredFields(editable, values);
+      if (blocking.length > 0) {
+        log.warn(
+          `These variables are required and not set: ${blocking.map((f) => f.key).join(", ")}`,
+        );
+        continue;
+      }
+      const rejected = opts?.validate?.(declaredValues()) ?? [];
+      if (rejected.length > 0) {
+        log.warn(`The service would refuse these values:\n${rejected.map(describeProblem).join("\n")}`);
+        continue;
+      }
+      break;
+    }
+
+    cursor = choice;
+
+    if (choice.startsWith(GROUP_PREFIX)) {
+      const group = groups.find((g) => `${GROUP_PREFIX}${g.definition.id}` === choice)!;
+      if (groupState(group, values) === "off") {
+        const enable = await confirm({ message: `Enable ${group.definition.title}?`, initialValue: false });
+        if (isCancel(enable) || !enable) {
+          continue;
+        }
+        await enableGroup(group);
+      }
+      await editGroup(group);
+      continue;
+    }
+
+    const field = editable.find((f) => f.key === choice)!;
+    const newValue = await promptField(field, values[field.key], isRequired(field, values), true);
+    if (newValue === FIELD_CANCELLED) {
+      continue;
+    }
+    if (newValue !== undefined) {
+      values[field.key] = newValue;
+    } else {
+      delete values[field.key];
+    }
+  }
+
+  return splitValuesByCategory(fields, values);
+}
+
+/** A component's env values as currently present on the host. */
+export type ExistingEnvState = {
+  existingConfig: Record<string, string>;
+  existingSecrets: Record<string, string>;
+}
+
+export async function readExistingEnvState(component: Component, host: Host): Promise<ExistingEnvState> {
+  const { secretFields } = categorizeFields(componentFields(component));
+  const secretKeys = secretFields.map((f) => f.key);
+
+  const [envContent, secretsResult] = await Promise.all([
+    host.readFile(`${ENV_DIR}/${component}.env`),
+    secretKeys.length > 0
+      ? readSecrets(host, SECRETS_DIR, secretKeys, "Read existing secrets")
+      : Promise.resolve({ secrets: {} as Record<string, string>, permissionDenied: false }),
+  ]);
+
+  return {
+    existingConfig: envContent ? parseEnvString(envContent) : {},
+    existingSecrets: secretsResult.secrets,
+  };
+}
+
+export type SecretFilePlan = {
+  remove: string[];
+  keptForOtherComponents: string[];
+}
+
+export async function secretKeysOfOtherComponents(component: Component, host: Host): Promise<Set<string>> {
+  const manifest = await readManifest(host);
+  const others = COMPONENTS.filter((c) => c !== component && manifest.components[c]);
+  return new Set(
+    others.flatMap((c) => categorizeFields(componentFields(c)).secretFields.map((f) => f.key)),
+  );
+}
+
+export async function planSecretFileRemoval(
+  component: Component,
+  changes: EnvChange[],
+  host: Host,
+): Promise<SecretFilePlan> {
+  const unset = changes.filter((c) => c.kind === "removed" && c.isSecret).map((c) => c.key);
+  if (unset.length === 0) {
+    return { remove: [], keptForOtherComponents: [] };
+  }
+  const heldElsewhere = await secretKeysOfOtherComponents(component, host);
+  return {
+    remove: unset.filter((key) => !heldElsewhere.has(key)),
+    keptForOtherComponents: unset.filter((key) => heldElsewhere.has(key)),
+  };
+}
+
+export type CollectedEnv = {
+  changes: EnvChange[];
+} & EnvBundle
+
+/**
+ * Planning-phase env collection: load current values from the host, prompt
+ * for whatever is missing (or let the user edit), and report what applying
+ * the result would change. Writes nothing. Returns null on cancel.
+ */
+export async function collectEnv(
+  component: Component,
+  host: Host,
+  autoDefaults: Record<string, string>,
+  skipKeys?: Set<string>,
+): Promise<CollectedEnv | null> {
+  const fields = componentFields(component);
+  const { existingConfig, existingSecrets } = await readExistingEnvState(component, host);
+
+  // Only the component's own env file marks it as previously configured.
+  // The secrets dir is shared infrastructure: on a fresh install the redis
+  // step already stored REDIS_URL there before any component exists, and
+  // that must not make the first component look like a leftover install.
+  const hasExistingConfig = Object.keys(existingConfig).length > 0;
+  const existing = { ...autoDefaults, ...existingConfig, ...existingSecrets };
+
+  const missingRequired = missingRequiredFields(fields, existing);
+
+  const withChanges = (result: EnvBundle): CollectedEnv => ({
+    ...result,
+    changes: diffEnv({ config: existingConfig, secrets: existingSecrets }, result),
+  });
+  const useExisting = () => withChanges(splitValuesByCategory(fields, existing));
+
+  const isInstalled = !!(await readManifest(host)).components[component];
+
+  if (isInstalled && hasExistingConfig) {
+    if (missingRequired.length === 0) {
+      const action = await promptOrExit(select({
+        message: "All configuration variables are already set.",
+        options: [
+          { value: "skip", label: "Keep current configuration" },
+          { value: "edit", label: "Edit configuration" },
+        ],
+      }));
+      if (action === "skip") return useExisting();
+      const result = await menuEditEnv(fields, existing);
+      return result ? withChanges(result) : useExisting();
+    } else {
+      log.info(
+        `${missingRequired.length} new variable(s) need to be set. Edit any other values too if you like.`,
+      );
+      const result = await menuEditEnv(fields, existing);
+      if (result === null) cancelAndExit();
+      return withChanges(result);
+    }
+  } else if (hasExistingConfig && missingRequired.length === 0) {
+    // Not in manifest but has existing config, preserve original behavior
+    const reconfigure = await promptOrExit(confirm({
+      message: "Existing configuration found. Reconfigure?",
+      initialValue: false,
+    }));
+    if (!reconfigure) return useExisting();
+  }
+
+  return withChanges(await promptForEnv(component, fields, existing, skipKeys));
+}

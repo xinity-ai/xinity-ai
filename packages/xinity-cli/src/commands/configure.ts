@@ -1,9 +1,9 @@
 import type { CommandModule } from "yargs";
-import { menuConfigureCli, clearConfigKey, updateConfig } from "../lib/config.ts";
-import { configureComponentFlow } from "../lib/up-plan.ts";
-import type { Component } from "../lib/component-meta.ts";
-import type { CliConfig } from "../lib/config.ts";
-import { connectHost, TARGET_HOST_OPTION } from "../lib/remote-host.ts";
+import { menuConfigureCli, clearConfigKey, updateConfig } from "../lib/config/config.ts";
+import { configureComponentFlow } from "../lib/up/up-plan.ts";
+import type { Component } from "../lib/core/component-meta.ts";
+import type { CliConfig } from "../lib/config/config.ts";
+import { connectHost, TARGET_HOST_OPTION } from "../lib/remote/remote-host.ts";
 
 const CLI_CONFIG_KEYS = ["apiKey", "dashboardUrl", "githubProjectUrl", "githubToken"] as const;
 const COMPONENTS = ["cli", "gateway", "dashboard", "daemon", "infoserver", "tether"] as const;

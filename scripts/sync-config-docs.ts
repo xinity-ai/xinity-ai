@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { analyzeConfig, type EnvField } from "common-env";
-import { COMPONENTS, COMPONENT_CONFIGS, type Component } from "../packages/xinity-cli/src/lib/component-meta.ts";
+import { COMPONENTS, COMPONENT_CONFIGS, type Component } from "../packages/xinity-cli/src/lib/core/component-meta.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const START_MARKER = "<!-- [sync:config] - generated from the config declaration, do not edit -->";

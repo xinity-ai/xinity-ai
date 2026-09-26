@@ -1,0 +1,477 @@
+/**
+ * Stack definitions: declarative multi-host deployments stored locally.
+ *
+ * Configuration is layered, most general first, later layers win:
+ * schema defaults → shared env/secrets → per-component-type settings →
+ * fleet overrides (daemon only) → per-host overrides. Values live at the
+ * highest level possible; per-host settings are the escape hatch, not the
+ * norm.
+ */
+import { existsSync, readdirSync, unlinkSync } from "node:fs";
+import { join } from "node:path";
+import { loadPrivateJson, savePrivateJson } from "../config/config.ts";
+import { configDir } from "../core/platform.ts";
+import { z } from "zod";
+import { version as cliVersion } from "../../../../../package.json";
+import { checkComponentConfig, type Component, COMPONENTS, getAutoDefaults, INFOSERVER_DEFAULT_PORT, TETHER_DEFAULT_PORT } from "../core/component-meta.ts";
+import { componentFields } from "../config/env-prompt.ts";
+import type { ConfigProblem, EnvField } from "common-env";
+import { log } from "../core/clack.ts";
+import { dim } from "picocolors";
+import { deleteStackState } from "./stack-state.ts";
+
+// ── Schemas & Types ─────────────────────────────────────────────────────
+
+const componentT = z.enum(["gateway", "dashboard", "daemon", "infoserver", "tether"]);
+
+const envRecordT = z.record(z.string(), z.string());
+
+const hostAddressT = z.string().regex(
+  /^[a-zA-Z0-9_.@:[\]-]+$/,
+  "Host address may only contain alphanumerics, dots, hyphens, underscores, @, colons, and brackets",
+);
+
+const stackHostT = z.object({
+  alias: z.string().optional(),
+  address: hostAddressT,
+  components: z.array(componentT),
+  envOverrides: envRecordT.optional(),
+});
+
+const fleetDefinitionT = z.object({
+  name: z.string(),
+  hosts: z.array(z.string()),
+  envOverrides: envRecordT.optional(),
+});
+
+const stackDefinitionT = z.object({
+  version: z.string().default("0.0.0"),
+  name: z.string(),
+  env: envRecordT.default({}),
+  secrets: envRecordT.default({}),
+  componentEnv: z.record(z.string(), envRecordT).default({}) as z.ZodType<Partial<Record<Component, Record<string, string>>>>,
+  dbMigratedVersion: z.string().optional(),
+  pinnedVersion: z.string().default(""),
+  hosts: z.array(stackHostT).default([]),
+  fleets: z.array(fleetDefinitionT).default([]),
+});
+
+export type StackDefinition = z.infer<typeof stackDefinitionT> & {
+  derivedEnv?: Record<string, string>;
+};
+export type StackHost = z.infer<typeof stackHostT>;
+export type FleetDefinition = z.infer<typeof fleetDefinitionT>;
+
+export function hostLabel(host: StackHost): string {
+  return host.alias ? `${host.alias} (${host.address})` : host.address;
+}
+
+// Not derivable: REDIS_URL is gateway-only and VLLM_HF_TOKEN daemon-only, yet both are set once.
+const SHARED_KEYS = [
+  "DB_CONNECTION_URL",
+  "REDIS_URL",
+  "INFOSERVER_URL",
+  "TETHER_URL",
+  "TETHER_SECRET",
+  "METRICS_AUTH",
+  "XINITY_SECRET_KEY",
+  "XINITY_SECRET_KEY_PREVIOUS",
+  "VLLM_HF_TOKEN",
+  "S3_ENDPOINT",
+  "S3_ACCESS_KEY_ID",
+  "S3_SECRET_ACCESS_KEY",
+  "S3_BUCKET",
+  "S3_REGION",
+] as const;
+
+const DERIVED_FROM_HOST_ADDRESSES: ReadonlySet<string> = new Set(["INFOSERVER_URL", "TETHER_URL"]);
+
+/**
+ * Where deploy will reach an in-stack component, from its host's address. Null when the stack has
+ * no host to say, which is the whole of `stack init` before any host exists.
+ */
+export function inStackComponentUrl(
+  stack: StackDefinition,
+  component: "infoserver" | "tether",
+): string | null {
+  const hosts = stack.hosts.filter((h) => h.components.includes(component));
+  // Several tethers need an explicit URL, usually a load balancer, so none is derivable.
+  if (hosts.length === 0 || (component === "tether" && hosts.length > 1)) {
+    return null;
+  }
+  const address = hosts[0]!.address;
+  const hostname = address === "local" ? "localhost" : (address.split("@").pop() ?? address);
+  const port = stack.componentEnv[component]?.PORT
+    ?? (component === "tether" ? TETHER_DEFAULT_PORT : INFOSERVER_DEFAULT_PORT);
+  const raw = `http://${hostname}:${port}`;
+  return URL.canParse(raw) ? raw : null;
+}
+
+/** The values a layer editor cannot ask for, so it validates against what deploy will supply. */
+export function fillDeferred(
+  stack: StackDefinition,
+  values: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  const filled = { ...values };
+  filled.INFOSERVER_URL ??= inStackComponentUrl(stack, "infoserver") ?? undefined;
+  filled.TETHER_URL ??= inStackComponentUrl(stack, "tether") ?? undefined;
+  return filled;
+}
+
+/** Still absent once deploy's values are filled in, which is every layer before a host exists. */
+export function isDeferredToDeploy(problem: ConfigProblem): boolean {
+  return problem.fields.some((field) => DERIVED_FROM_HOST_ADDRESSES.has(field.envKey));
+}
+
+// Worth having on every deployment, so it is asked for even when no component here requires it.
+const REQUIRED_IN_EVERY_STACK: ReadonlySet<string> = new Set(["METRICS_AUTH"]);
+
+/** Owned by the shared layer; component/fleet/host editors must not offer them. */
+export const STACK_SHARED_KEYS: Set<string> = new Set(SHARED_KEYS);
+
+/** Everything but requiredness is taken from one declarer, so the rest has to agree. */
+function agreedShape(field: EnvField): string {
+  return JSON.stringify([field.description, field.isSecret, field.isBoolean, field.enumValues, field.defaultValue]);
+}
+
+/** The shared keys as their components declare them, so nothing restates their descriptions. */
+export function sharedFields(): EnvField[] {
+  const declared = COMPONENTS.flatMap((component) => componentFields(component));
+
+  return SHARED_KEYS.map((key) => {
+    const matches = declared.filter((field) => field.key === key);
+    const first = matches[0];
+    if (!first) {
+      throw new Error(`The stack offers ${key}, which no component declares`);
+    }
+    if (matches.some((field) => agreedShape(field) !== agreedShape(first))) {
+      throw new Error(`Components declare ${key} differently, so the stack cannot offer one of them`);
+    }
+    const wanted = REQUIRED_IN_EVERY_STACK.has(key) || matches.some((field) => field.isRequiredBySchema);
+    return { ...first, requiredOverride: wanted && !DERIVED_FROM_HOST_ADDRESSES.has(key) };
+  });
+}
+
+export function sharedLayerProblems(
+  stack: StackDefinition,
+  shared: Record<string, string | undefined>,
+): ConfigProblem[] {
+  const problems: ConfigProblem[] = [];
+  const seen = new Set<string>();
+
+  for (const component of COMPONENTS) {
+    const env = {
+      ...getAutoDefaults(component),
+      ...stack.derivedEnv,
+      ...shared,
+      ...stack.componentEnv[component],
+    };
+    for (const problem of checkComponentConfig(component, env)) {
+      const keys = problem.fields.map((field) => field.envKey);
+      // Anything else belongs to the layer that owns the key, whose own editor checks it.
+      if (!keys.some((key) => STACK_SHARED_KEYS.has(key))) continue;
+      if (isDeferredToDeploy(problem)) continue;
+
+      const id = `${keys.join(",")}:${problem.message}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      problems.push(problem);
+    }
+  }
+
+  return problems;
+}
+
+/** Write a shared-settings editor result back, honoring deletions of optional keys. */
+export function applySharedResult(
+  stack: StackDefinition,
+  result: { config: Record<string, string>; secrets: Record<string, string> },
+): void {
+  for (const field of sharedFields()) {
+    const bucket = field.isSecret ? stack.secrets : stack.env;
+    const value = field.isSecret ? result.secrets[field.key] : result.config[field.key];
+    if (value === undefined) {
+      delete bucket[field.key];
+    } else {
+      bucket[field.key] = value;
+    }
+  }
+}
+
+/** True when the stack runs its own infoserver (configured or placed on a host). */
+export function stackHostsInfoserver(stack: StackDefinition): boolean {
+  return stack.componentEnv.infoserver !== undefined
+    || stack.hosts.some((h) => h.components.includes("infoserver"));
+}
+
+// ── Paths ────────────────────────────────────────────────────────────────
+
+function stacksDir(): string {
+  return join(configDir(), "stacks");
+}
+
+function stackPath(name: string): string {
+  return join(stacksDir(), `${name}.json`);
+}
+
+export function stackExists(name: string): boolean {
+  return existsSync(stackPath(name));
+}
+
+// ── Persistence ──────────────────────────────────────────────────────────
+
+export function loadStack(name: string): StackDefinition | null {
+  const path = stackPath(name);
+  let raw: unknown;
+  try {
+    raw = loadPrivateJson<unknown>(path);
+  } catch {
+    log.error(`Stack file is not valid JSON: ${dim(path)}`);
+    return null;
+  }
+  if (raw === null) {
+    return null;
+  }
+  const result = stackDefinitionT.safeParse(raw);
+  if (!result.success) {
+    log.error(`Stack file is malformed: ${dim(path)}`);
+    for (const issue of result.error.issues) {
+      const field = issue.path.length > 0 ? issue.path.join(".") : "(root)";
+      log.message(`  ${dim("•")} ${field}: ${issue.message}`);
+    }
+    log.message("");
+    log.message(`  Fix the file manually, or remove and re-create it:`)
+    log.message(`  ${dim("xinity stack rm <name> && xinity stack init <name>")}`);
+    return null;
+  }
+  return migrateSharedKeys(result.data as StackDefinition);
+}
+
+/**
+ * HF_TOKEN was collected but declared by no component, so it was filtered out before any env
+ * file was written. Renaming it to the key the daemon reads makes an already-entered token
+ * take effect instead of being lost.
+ */
+function migrateSharedKeys(stack: StackDefinition): StackDefinition {
+  const stale = stack.secrets.HF_TOKEN;
+  if (stale !== undefined) {
+    stack.secrets.VLLM_HF_TOKEN ??= stale;
+    delete stack.secrets.HF_TOKEN;
+  }
+  return stack;
+}
+
+export function saveStack(stack: StackDefinition): void {
+  stack.version = cliVersion;
+  const { derivedEnv: _, ...persisted } = stack;
+  savePrivateJson(stackPath(stack.name), persisted);
+}
+
+export function deleteStack(name: string): boolean {
+  const path = stackPath(name);
+  if (!existsSync(path)) {
+    return false;
+  }
+  unlinkSync(path);
+  deleteStackState(name);
+  return true;
+}
+
+export function listStacks(): string[] {
+  if (!existsSync(stacksDir())) {
+    return [];
+  }
+  return readdirSync(stacksDir())
+    .filter((f) => f.endsWith(".json"))
+    .map((f) => f.replace(/\.json$/, ""))
+    .sort();
+}
+
+// ── Lookup ───────────────────────────────────────────────────────────────
+
+export function getFleet(stack: StackDefinition, fleetName: string): FleetDefinition | null {
+  return stack.fleets.find((f) => f.name === fleetName) ?? null;
+}
+
+export function getHost(stack: StackDefinition, address: string): StackHost | null {
+  return stack.hosts.find((h) => h.address === address) ?? null;
+}
+
+export function getFleetForHost(stack: StackDefinition, address: string): FleetDefinition | null {
+  return stack.fleets.find((f) => f.hosts.includes(address)) ?? null;
+}
+
+// ── Fleet membership ─────────────────────────────────────────────────────
+
+/** Assign members to a fleet, pulling any that belonged to other fleets. Returns the names of fleets removed because they lost their last host. */
+export function claimFleetHosts(stack: StackDefinition, fleet: FleetDefinition, members: string[]): string[] {
+  const claimed = new Set(members);
+  fleet.hosts = members;
+  const emptied: string[] = [];
+  for (const other of stack.fleets) {
+    if (other === fleet) {
+      continue;
+    }
+    const remaining = other.hosts.filter((a) => !claimed.has(a));
+    if (remaining.length === 0 && other.hosts.length > 0) {
+      emptied.push(other.name);
+    }
+    other.hosts = remaining;
+  }
+  stack.fleets = stack.fleets.filter((f) => f.hosts.length > 0);
+  return emptied;
+}
+
+/** Hosts no longer running a daemon can't stay fleet members. */
+export function pruneFleetMembership(stack: StackDefinition, address: string): void {
+  for (const fleet of stack.fleets) {
+    fleet.hosts = fleet.hosts.filter((a) => a !== address);
+  }
+  stack.fleets = stack.fleets.filter((f) => f.hosts.length > 0);
+}
+
+// ── Env resolution ───────────────────────────────────────────────────────
+// One layer order, used by both the editors (base/seed) and the deploy
+// (resolveEnv): schema auto defaults → derived → shared env → shared
+// secrets → component type → fleet (daemon only) → host.
+
+export function componentLayerBase(stack: StackDefinition, component: Component): Record<string, string> {
+  return { ...getAutoDefaults(component), ...stack.derivedEnv, ...stack.env, ...stack.secrets };
+}
+
+export function componentLayerSeed(stack: StackDefinition, component: Component): Record<string, string> {
+  return { ...componentLayerBase(stack, component), ...stack.componentEnv[component] };
+}
+
+export function fleetLayerBase(stack: StackDefinition): Record<string, string> {
+  return componentLayerSeed(stack, "daemon");
+}
+
+export function fleetLayerSeed(stack: StackDefinition, fleet: FleetDefinition): Record<string, string> {
+  return { ...fleetLayerBase(stack), ...fleet.envOverrides };
+}
+
+/**
+ * The stack's declared configuration for one component on one host.
+ * Fleets are a daemon concept; their overrides don't leak into other
+ * components that happen to share the host.
+ */
+export function resolveEnv(
+  stack: StackDefinition,
+  component: Component,
+  hostAddress?: string,
+): Record<string, string> {
+  const host = hostAddress ? getHost(stack, hostAddress) : null;
+  const fleet = component === "daemon" && hostAddress ? getFleetForHost(stack, hostAddress) : null;
+  return {
+    ...componentLayerSeed(stack, component),
+    ...fleet?.envOverrides,
+    ...host?.envOverrides,
+  };
+}
+
+/** Keep only entries that differ from the base layer, so stored overrides stay minimal. */
+export function diffFromLayer(
+  values: Record<string, string>,
+  base: Record<string, string>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(values)) {
+    if (base[key] !== value) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+// ── Validation ───────────────────────────────────────────────────────────
+
+export type ValidationError = {
+  field: string;
+  message: string;
+}
+
+export function validateStackName(name: string): string | null {
+  return !name || !/^[a-z0-9][a-z0-9_-]*$/.test(name)
+    ? "Must be lowercase alphanumeric with hyphens/underscores, starting with a letter or digit"
+    : null;
+}
+
+export function validateStack(stack: StackDefinition): ValidationError[] {
+  const errors: ValidationError[] = [];
+
+  const nameError = validateStackName(stack.name);
+  if (nameError) {
+    errors.push({ field: "name", message: nameError });
+  }
+
+  // Only reachable through hand-edited files; the CLI never writes a stack
+  // without a pin.
+  if (!stack.pinnedVersion) {
+    errors.push({ field: "pinnedVersion", message: "No release version pinned" });
+  }
+
+  const hostAddresses = new Set(stack.hosts.map((h) => h.address));
+
+  if (hostAddresses.size !== stack.hosts.length) {
+    errors.push({ field: "hosts", message: "Duplicate host addresses" });
+  }
+
+  for (const host of stack.hosts) {
+    if (!host.address) {
+      errors.push({ field: "hosts", message: "Host address must not be empty" });
+    }
+    if (host.components.length === 0) {
+      errors.push({ field: "hosts", message: `Host ${host.address} has no components assigned` });
+    }
+  }
+
+  const fleetNames = new Set<string>();
+  const fleetOf = new Map<string, string>();
+  for (const fleet of stack.fleets) {
+    if (!fleet.name) {
+      errors.push({ field: "fleets", message: "Fleet name must not be empty" });
+      continue;
+    }
+    if (fleetNames.has(fleet.name)) {
+      errors.push({ field: "fleets", message: `Duplicate fleet name: ${fleet.name}` });
+    }
+    fleetNames.add(fleet.name);
+
+    let hasDaemonHost = false;
+    for (const hostAddr of fleet.hosts) {
+      const owner = fleetOf.get(hostAddr);
+      if (owner) {
+        errors.push({ field: "fleets", message: `Host ${hostAddr} is in multiple fleets ("${owner}", "${fleet.name}"); a host belongs to at most one fleet` });
+      } else {
+        fleetOf.set(hostAddr, fleet.name);
+      }
+      if (!hostAddresses.has(hostAddr)) {
+        errors.push({ field: "fleets", message: `Fleet "${fleet.name}" references unknown host: ${hostAddr}` });
+      }
+      if (getHost(stack, hostAddr)?.components.includes("daemon")) {
+        hasDaemonHost = true;
+      }
+    }
+    if (!hasDaemonHost && fleet.hosts.length > 0) {
+      errors.push({ field: "fleets", message: `Fleet "${fleet.name}" has no hosts with the daemon component` });
+    }
+  }
+
+  return errors;
+}
+
+// ── Factory ──────────────────────────────────────────────────────────────
+
+export function createStack(name: string, pinnedVersion: string): StackDefinition {
+  return {
+    version: cliVersion,
+    name,
+    env: {},
+    secrets: {},
+    componentEnv: {},
+    pinnedVersion,
+    hosts: [],
+    fleets: [],
+  };
+}
