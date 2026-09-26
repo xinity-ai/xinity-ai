@@ -126,11 +126,8 @@ export function createMultiProgress(opts: {
     if (!isTTY || finished) {
       return;
     }
-    if (lastLineCount > 0) {
-      clear();
-    }
-    const frame = buildFrame();
-    out.write(frame);
+    clear();
+    out.write(buildFrame());
     lastLineCount = states.length + 1;
   }
 
@@ -146,7 +143,7 @@ export function createMultiProgress(opts: {
     }
     finished = true;
     clearInterval(interval);
-    if (isTTY && lastLineCount > 0) {
+    if (isTTY) {
       clear();
     }
     showCursor();
@@ -246,22 +243,12 @@ export function createMultiProgress(opts: {
         return;
       }
       for (const s of states) {
-        if (!s.settled) {
-          s.settled = true;
-        }
+        s.settled = true;
       }
-      finished = true;
-      clearInterval(interval);
-      removeHandlers();
+      cleanup();
 
       if (isTTY) {
-        if (lastLineCount > 0) {
-          clear();
-        }
-        frameIdx = 0;
-        const frame = buildFrame();
-        out.write(frame);
-        showCursor();
+        out.write(buildFrame());
       } else {
         const anyFailed = states.some((s) => s.failed);
         const icon = anyFailed ? S_ERROR : S_SUCCESS;

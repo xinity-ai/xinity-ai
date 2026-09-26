@@ -564,16 +564,7 @@ export async function menuEditEnv(
       continue;
     }
 
-    const field = editable.find((f) => f.key === choice)!;
-    const newValue = await promptField(field, values[field.key], isRequired(field, values), true);
-    if (newValue === FIELD_CANCELLED) {
-      continue;
-    }
-    if (newValue !== undefined) {
-      values[field.key] = newValue;
-    } else {
-      delete values[field.key];
-    }
+    await editField(editable.find((f) => f.key === choice)!);
   }
 
   return splitValuesByCategory(fields, values);

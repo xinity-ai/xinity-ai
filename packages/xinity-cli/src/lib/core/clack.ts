@@ -8,10 +8,10 @@
  */
 import * as clack from "@clack/prompts";
 export { isCancel } from "@clack/prompts";
+import { stripVTControlCharacters } from "node:util";
 
 const OUT = process.stderr;
 
-const ANSI = /\[[0-9;]*m/g;
 /** What log lines sit behind: one symbol and two spaces, on continuation lines too. */
 const LOG_GUTTER = 3;
 
@@ -22,7 +22,7 @@ const LOG_GUTTER = 3;
  */
 function wrap(message: string): string {
   const max = Math.max(30, (OUT.columns ?? 80) - LOG_GUTTER);
-  const width = (text: string) => text.replace(ANSI, "").length;
+  const width = (text: string) => stripVTControlCharacters(text).length;
 
   return message.split("\n").map((paragraph) => {
     const lines: string[] = [];

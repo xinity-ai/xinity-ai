@@ -17,6 +17,7 @@
  */
 import { Prompt } from "@clack/core";
 import { cyan, dim, green, inverse, yellow } from "picocolors";
+import { stripVTControlCharacters } from "node:util";
 
 export type SearchListOption<Value> = {
   value: Value;
@@ -45,11 +46,6 @@ export type SearchMultiselectOptions<Value> = {
 const OUT = process.stderr;
 const S_BAR = "│";
 const S_END = "└";
-
-function strip(text: string): string {
-  // eslint-disable-next-line no-control-regex
-  return text.replace(/\[[0-9;]*m/g, "");
-}
 
 // Transient final frames are exactly one line; one row up plus erase-down
 // removes them together with the trailing newline the prompt base emits.
@@ -133,7 +129,7 @@ function run<Value>(opts: {
   // text once and reuse one filtered array per query value. Only string
   // values add search text; objects would all match "object".
   const searchable = opts.options.map(
-    (o) => `${strip(o.label)} ${o.hint ?? ""} ${typeof o.value === "string" ? o.value : ""}`.toLowerCase(),
+    (o) => `${stripVTControlCharacters(o.label)} ${o.hint ?? ""} ${typeof o.value === "string" ? o.value : ""}`.toLowerCase(),
   );
   let filteredCache = opts.options;
   let filteredForQuery = "";
@@ -235,7 +231,7 @@ function run<Value>(opts: {
 
     const settled = settledFrame(state, opts, () => opts.multiple
       ? `${selected.size} selected`
-      : strip(opts.options.find((o) => o.value === currentValue())?.label ?? ""));
+      : stripVTControlCharacters(opts.options.find((o) => o.value === currentValue())?.label ?? ""));
     if (settled !== null) {
       return settled;
     }
@@ -288,7 +284,7 @@ export function listSelect<Value>(opts: ListSelectOptions<Value>): Promise<Value
   const prompt = new Prompt<Value>({
     output: OUT,
     render: () => {
-      const settled = settledFrame(prompt.state, opts, () => strip(opts.options[cursor]?.label ?? ""));
+      const settled = settledFrame(prompt.state, opts, () => stripVTControlCharacters(opts.options[cursor]?.label ?? ""));
       if (settled !== null) {
         return settled;
       }

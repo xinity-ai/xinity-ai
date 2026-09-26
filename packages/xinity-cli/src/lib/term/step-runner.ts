@@ -172,20 +172,14 @@ function renderEvent(event: StepEvent, spinners: Map<string, SpinnerResult>): vo
 }
 
 export async function runSteps<T>(gen: AsyncGenerator<StepEvent, T>, progress?: Progress): Promise<T> {
-  if (progress) {
-    let result = await gen.next();
-    while (!result.done) {
-      renderToProgress(result.value, progress);
-      result = await gen.next();
-    }
-    return result.value;
-  }
-
   const spinners = new Map<string, SpinnerResult>();
+  const render = progress
+    ? (event: StepEvent) => renderToProgress(event, progress)
+    : (event: StepEvent) => renderEvent(event, spinners);
   try {
     let result = await gen.next();
     while (!result.done) {
-      renderEvent(result.value, spinners);
+      render(result.value);
       result = await gen.next();
     }
     return result.value;
