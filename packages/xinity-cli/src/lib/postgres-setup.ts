@@ -1,34 +1,37 @@
 /**
- * `xinity up infra-postgres`: provision a new PostgreSQL database via Docker.
- *
- * Native package installs are not supported; if Docker is absent the environment
- * is reported as unsupported. The "use an existing database" case is intentionally
- * absent here, the migrator (`xinity up db`) owns it and only delegates to this
- * assistant when the user chose to set one up.
+ * `xinity up infra-postgres`. Docker only, by decision: native package installs
+ * are not supported. "Use an existing database" is the migrator's (`xinity up
+ * db`), which delegates here only once the user chose to set one up instead.
  */
-import { confirm, log, note, password as passwordPrompt, spinner as clackSpinner, text } from "./clack.ts";
+import { confirm, log, note, password as passwordPrompt, text } from "./clack.ts";
 import { bold, cyan, dim } from "picocolors";
 import type { Host } from "./host.ts";
-import { pass, fail, info, warn, promptOrUndefined } from "./output.ts";
-import { heredoc } from "./service.ts";
+import { pass, info, warn, promptOrUndefined } from "./output.ts";
+import { tcpPortInUse, type ComposeCmd } from "./docker-stack.ts";
 import {
-  resolveComposeCmd, composeArgs, composeName, stackDir,
-  dockerDaemonReady, tcpPortInUse, type ComposeCmd,
-} from "./docker-stack.ts";
+  type ComposeStack, type ExistingStack,
+  stackPaths, requireCompose, inspectStack, parsePublishedPort,
+  buildWriteFileCommand, writeStackFile, startStack, composeUpCommand,
+  composeBaseCommand, execCommand,
+} from "./compose-service.ts";
 import { randomToken } from "./secrets.ts";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const STACK_DIR = stackDir("postgres");
-const COMPOSE_PATH = `${STACK_DIR}/docker-compose.yml`;
-const ENV_PATH = `${STACK_DIR}/postgres.env`;
-const CONTAINER_NAME = "xinity-ai-postgres";
 const VOLUME_NAME = "xinity-postgres-data";
-const DEFAULT_PORT = 5432;
-// Pinned to match the dev compose.yaml and deployment template.
-const POSTGRES_IMAGE = "postgres:17.4-alpine";
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+const POSTGRES: ComposeStack = {
+  name: "postgres",
+  displayName: "PostgreSQL",
+  containerName: "xinity-ai-postgres",
+  image: "postgres:17.4-alpine",
+  containerPort: 5432,
+  defaultPort: 5432,
+  volumeName: VOLUME_NAME,
+};
+
+const { dir: STACK_DIR, composePath: COMPOSE_PATH } = stackPaths(POSTGRES);
+const ENV_PATH = `${STACK_DIR}/postgres.env`;
 
 export function buildConnectionUrl(opts: {
   user: string;
@@ -42,7 +45,6 @@ export function buildConnectionUrl(opts: {
   return `postgresql://${user}:${password}@localhost:${opts.port}/${db}`;
 }
 
-/** The 0600 env file the compose stack reads POSTGRES_* from. Keeps the secret out of compose.yml. */
 export function buildPostgresEnv(opts: { db: string; user: string; password: string }): string {
   return [
     `POSTGRES_DB=${opts.db}`,
@@ -62,16 +64,16 @@ export function buildComposeFile(port: number, envPath: string): string {
     "# The port is published on 127.0.0.1 only, so the database is reachable at",
     "# localhost but not exposed to the network.",
     "services:",
-    "  postgres:",
-    `    image: ${POSTGRES_IMAGE}`,
-    `    container_name: ${CONTAINER_NAME}`,
+    `  ${POSTGRES.name}:`,
+    `    image: ${POSTGRES.image}`,
+    `    container_name: ${POSTGRES.containerName}`,
     "    restart: unless-stopped",
     "    env_file:",
     `      - ${envPath}`,
     "    ports:",
-    `      - "127.0.0.1:${port}:5432"`,
+    `      - "127.0.0.1:${port}:${POSTGRES.containerPort}"`,
     "    volumes:",
-    "      - xinity-postgres-data:/var/lib/postgresql/data",
+    `      - ${VOLUME_NAME}:/var/lib/postgresql/data`,
     "    healthcheck:",
     '      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]',
     "      interval: 10s",
@@ -79,14 +81,13 @@ export function buildComposeFile(port: number, envPath: string): string {
     "      retries: 5",
     "",
     "volumes:",
-    "  xinity-postgres-data:",
+    `  ${VOLUME_NAME}:`,
     "",
   ].join("\n");
 }
 
 // ─── Pre-existing state ──────────────────────────────────────────────────────
 
-/** Parse a postgres.env file back into its POSTGRES_* values. */
 export function parsePostgresEnv(content: string): { db?: string; user?: string; password?: string } {
   const out: { db?: string; user?: string; password?: string } = {};
   for (const line of content.split("\n")) {
@@ -103,104 +104,18 @@ export function parsePostgresEnv(content: string): { db?: string; user?: string;
   return out;
 }
 
-/** Recover the published host port from an existing compose file, falling back to the default. */
-export function parsePublishedPort(composeContent: string, fallback: number = DEFAULT_PORT): number {
-  const match = composeContent.match(/127\.0\.0\.1:(\d+):5432/);
-  return match ? Number(match[1]) : fallback;
-}
-
-export type ExistingPostgres = {
-  /** Data volume exists, so the cluster is already initialized and its credentials are fixed. */
-  volumeExists: boolean;
-  containerExists: boolean;
-  envFile: string | null;
-  composeFile: string | null;
-};
-
-/** Probe the host for an already-provisioned Postgres stack. Read-only. */
-export async function inspectExistingPostgres(host: Host): Promise<ExistingPostgres> {
-  const volume = await host.run(["docker", "volume", "inspect", VOLUME_NAME]);
-  const container = await host.run([
-    "docker", "ps", "-a", "--filter", `name=${CONTAINER_NAME}`, "--format", "{{.Names}}",
-  ]);
-  return {
-    volumeExists: volume.ok,
-    containerExists: container.ok && container.output.trim().length > 0,
-    envFile: await host.readFile(ENV_PATH),
-    composeFile: await host.readFile(COMPOSE_PATH),
+function readinessProbe(host: Host, compose: ComposeCmd, user: string): () => Promise<boolean> {
+  const probe = execCommand(compose, POSTGRES, "pg_isready", "-U", user);
+  return async () => {
+    const res = await host.withElevation(probe, "Check PostgreSQL readiness");
+    return res.success;
   };
-}
-
-// ─── Health ────────────────────────────────────────────────────────────────
-
-const POLL_INTERVAL_MS = 1000;
-const POLL_ATTEMPTS = 30;
-
-/** Poll pg_isready inside the container (the host has no native psql in the Docker model). */
-async function waitForPostgresReady(
-  host: Host,
-  compose: ComposeCmd,
-  user: string,
-): Promise<boolean> {
-  const args = composeArgs(compose, COMPOSE_PATH, "exec", "-T", "postgres", "pg_isready", "-U", user);
-  for (let i = 0; i < POLL_ATTEMPTS; i++) {
-    const res = await host.withElevation(args.join(" "), "Check PostgreSQL readiness");
-    if (res.success) return true;
-    await Bun.sleep(POLL_INTERVAL_MS);
-  }
-  return false;
-}
-
-// ─── File writing ──────────────────────────────────────────────────────────
-
-function buildWriteFileCommand(path: string, content: string, mode?: string): string {
-  const chmod = mode ? `\nchmod ${mode} ${path}` : "";
-  return `cat > ${path} ${heredoc("XINITY_PG_EOF", content)}${chmod}`;
-}
-
-async function writeFile(
-  host: Host,
-  path: string,
-  content: string,
-  label: string,
-  mode?: string,
-): Promise<boolean> {
-  const result = await host.withElevation(buildWriteFileCommand(path, content, mode), `Write ${label}`);
-  if (!result.success) {
-    fail("Config", `Failed to write ${label}`);
-    return false;
-  }
-  return true;
 }
 
 // ─── Provision via Docker ────────────────────────────────────────────────────
 
-/** Start (or ensure running) the stack and wait for readiness. Returns false on failure. */
-async function startAndWait(host: Host, compose: ComposeCmd, user: string, port: number): Promise<boolean> {
-  const upResult = await host.withElevation(
-    composeArgs(compose, COMPOSE_PATH, "up", "-d").join(" "),
-    "Start PostgreSQL container",
-  );
-  if (!upResult.success) {
-    fail("Start", "Failed to start the PostgreSQL container");
-    return false;
-  }
-
-  const spinner = clackSpinner();
-  spinner.start("Waiting for PostgreSQL to become ready…");
-  const ready = await waitForPostgresReady(host, compose, user);
-  if (ready) {
-    spinner.stop("PostgreSQL is ready");
-    pass("Health", `PostgreSQL reachable at localhost:${port}`);
-    return true;
-  }
-  spinner.stop("Timed out");
-  fail("Health", "PostgreSQL container did not become ready within 30 seconds");
-  return false;
-}
-
 function reportSuccess(compose: ComposeCmd, connectionUrl: string): void {
-  const manageCmd = composeArgs(compose, COMPOSE_PATH).join(" ");
+  const manageCmd = composeBaseCommand(compose, POSTGRES);
   note(`DB_CONNECTION_URL=${connectionUrl}`, "Use this in your gateway, dashboard, and daemon env files");
   log.info(
     `This stack is yours to manage. Files live in ${STACK_DIR}:\n` +
@@ -211,75 +126,48 @@ function reportSuccess(compose: ComposeCmd, connectionUrl: string): void {
   );
 }
 
-/**
- * A fully-decided provisioning action: everything the apply half needs to
- * bring the database up without asking anything else.
- */
 export type PostgresProvision = {
   compose: ComposeCmd;
   user: string;
   port: number;
   url: string;
-  /** Present when creating a new stack; absent when restarting an existing one. */
   files?: { envFile: string; composeFile: string };
 }
 
-/**
- * Handle a stack whose data volume already exists. The Postgres image only
- * applies POSTGRES_* on first init, so we must NOT regenerate credentials: we
- * reuse the existing env file, or refuse if we can't recover the password.
- */
 function planReuseExisting(
   compose: ComposeCmd,
-  existing: ExistingPostgres,
+  existing: ExistingStack,
+  envFile: string | null,
 ): PostgresProvision | undefined {
-  const creds = existing.envFile ? parsePostgresEnv(existing.envFile) : {};
+  const creds = envFile ? parsePostgresEnv(envFile) : {};
   if (!creds.user || !creds.password || !creds.db) {
     warn("PostgreSQL", `An existing data volume (${VOLUME_NAME}) was found, but its credentials could not be recovered from ${ENV_PATH}.`);
     log.info(
       dim("  The database already holds data and its password cannot be changed by re-running setup.\n") +
       dim("  Either choose \"use an existing database\" and supply its connection URL, or, to start\n") +
-      dim(`  fresh (DESTROYS DATA), run: ${composeArgs(compose, COMPOSE_PATH, "down", "-v").join(" ")}`),
+      dim(`  fresh (DESTROYS DATA), run: ${composeBaseCommand(compose, POSTGRES)} down -v`),
     );
     return undefined;
   }
 
-  const port = existing.composeFile ? parsePublishedPort(existing.composeFile) : DEFAULT_PORT;
+  const port = existing.composeFile ? parsePublishedPort(existing.composeFile, POSTGRES) : POSTGRES.defaultPort;
   const connectionUrl = buildConnectionUrl({ user: creds.user, password: creds.password, db: creds.db, port });
   info("PostgreSQL", `Reusing the existing database (credentials from ${ENV_PATH}); not regenerating.`);
   return { compose, user: creds.user, port, url: connectionUrl };
 }
 
-/**
- * Planning half: environment checks and configuration prompts only, nothing
- * on the host changes.
- */
 export async function planPostgresProvision(host: Host): Promise<PostgresProvision | undefined> {
-  const compose = await resolveComposeCmd(host);
-  if (!compose) {
-    warn("Docker", "Docker with Compose is required to provision a database, and was not found.");
-    log.info(
-      dim("  This environment is not supported for CLI-managed PostgreSQL.\n") +
-      dim("  Install Docker (https://docs.docker.com/engine/install/) and re-run,\n") +
-      dim("  or re-run and choose \"use an existing database\" with a connection URL."),
-    );
-    return undefined;
-  }
-  if (compose.docker === "docker" && !(await dockerDaemonReady(host))) {
-    warn("Docker", "The Docker CLI is installed but the daemon is not reachable.");
-    log.info(
-      dim("  Start Docker (e.g. `systemctl start docker`) or ensure your user can\n") +
-      dim("  access the Docker socket (docker group), then re-run."),
-    );
-    return undefined;
-  }
-  pass("Docker", `Using ${cyan(composeName(compose))}`);
+  const compose = await requireCompose(host, POSTGRES, {
+    requiredTo: "provision a database",
+    fallbackHint: "or re-run and choose \"use an existing database\" with a connection URL.",
+  });
+  if (!compose) return undefined;
 
-  // Re-running over an already-initialized cluster cannot change its credentials,
-  // so reuse rather than silently hand out a password the database never adopted.
-  const existing = await inspectExistingPostgres(host);
+  const existing = await inspectStack(host, POSTGRES);
+  // The image applies POSTGRES_* on first init only, so an existing volume has
+  // frozen credentials: regenerating here would hand out a password it never took.
   if (existing.volumeExists) {
-    return planReuseExisting(compose, existing);
+    return planReuseExisting(compose, existing, await host.readFile(ENV_PATH));
   }
 
   log.step(bold("Configure the new database"));
@@ -313,10 +201,12 @@ export async function planPostgresProvision(host: Host): Promise<PostgresProvisi
   }
 
   const portStr = await promptOrUndefined(text({
-    message: "Port to publish on localhost", placeholder: String(DEFAULT_PORT), defaultValue: String(DEFAULT_PORT),
+    message: "Port to publish on localhost",
+    placeholder: String(POSTGRES.defaultPort),
+    defaultValue: String(POSTGRES.defaultPort),
   }));
   if (portStr === undefined) return undefined;
-  const port = Number(portStr) || DEFAULT_PORT;
+  const port = Number(portStr) || POSTGRES.defaultPort;
 
   // Best-effort, non-fatal: a clash here is most often a native Postgres the
   // user could instead supply via "use an existing database".
@@ -336,46 +226,43 @@ export async function planPostgresProvision(host: Host): Promise<PostgresProvisi
   };
 }
 
-/** One-line summary of the provisioning action for review lists. */
 export function describePostgresProvision(prov: PostgresProvision): string {
   return prov.files
-    ? `Provision PostgreSQL via Docker (${POSTGRES_IMAGE} on localhost:${prov.port})`
+    ? `Provision PostgreSQL via Docker (${POSTGRES.image} on localhost:${prov.port})`
     : `Start the existing PostgreSQL Docker stack (localhost:${prov.port})`;
 }
 
-/** The exact root shell commands the apply half runs, for the script dump. */
 export function buildPostgresProvisionCommands(prov: PostgresProvision): string[] {
-  const up = composeArgs(prov.compose, COMPOSE_PATH, "up", "-d").join(" ");
+  const up = composeUpCommand(prov.compose, POSTGRES);
   if (!prov.files) return [up];
   return [
     `mkdir -p ${STACK_DIR}`,
-    buildWriteFileCommand(ENV_PATH, prov.files.envFile, "600"),
-    buildWriteFileCommand(COMPOSE_PATH, prov.files.composeFile),
+    buildWriteFileCommand(POSTGRES, ENV_PATH, prov.files.envFile, "600"),
+    buildWriteFileCommand(POSTGRES, COMPOSE_PATH, prov.files.composeFile),
     up,
   ];
 }
 
-/** Apply half: write the stack files (new stacks only), start, wait for readiness. */
 export async function applyPostgresProvision(prov: PostgresProvision, host: Host): Promise<boolean> {
   if (prov.files) {
     await host.withElevation(`mkdir -p ${STACK_DIR}`, "Create stack directory");
-    if (!(await writeFile(host, ENV_PATH, prov.files.envFile, "database env file", "600"))) return false;
-    if (!(await writeFile(host, COMPOSE_PATH, prov.files.composeFile, "compose file"))) return false;
+    if (!(await writeStackFile(host, POSTGRES, ENV_PATH, prov.files.envFile, "database env file", "600"))) return false;
+    if (!(await writeStackFile(host, POSTGRES, COMPOSE_PATH, prov.files.composeFile, "compose file"))) return false;
     pass("Config", `Wrote ${COMPOSE_PATH} and ${ENV_PATH}`);
   }
 
-  if (!(await startAndWait(host, prov.compose, prov.user, prov.port))) return false;
+  const started = await startStack(host, prov.compose, POSTGRES, {
+    reachableAt: `localhost:${prov.port}`,
+    ready: readinessProbe(host, prov.compose, prov.user),
+  });
+  if (!started) return false;
+
   reportSuccess(prov.compose, prov.url);
   return true;
 }
 
 // ─── Main entry point ───────────────────────────────────────────────────────
 
-/**
- * `xinity up infra-postgres`: plan, then immediately apply (or describe, on
- * dry runs). The existing-database case is handled upstream by the migrator
- * (see the module comment), not here.
- */
 export async function postgresSetup(host: Host, dryRun: boolean): Promise<string | undefined> {
   log.step(bold("PostgreSQL setup"));
   const prov = await planPostgresProvision(host);

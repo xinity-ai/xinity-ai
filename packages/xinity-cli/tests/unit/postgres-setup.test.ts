@@ -1,12 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
-  buildConnectionUrl, buildPostgresEnv, buildComposeFile,
-  parsePostgresEnv, parsePublishedPort, inspectExistingPostgres,
+  buildConnectionUrl, buildPostgresEnv, buildComposeFile, parsePostgresEnv,
 } from "../../src/lib/postgres-setup.ts";
-import { FakeHost } from "../helpers/fake-host.ts";
-
-const ENV_PATH = "/etc/xinity-ai/infra/postgres/postgres.env";
-const COMPOSE_PATH = "/etc/xinity-ai/infra/postgres/docker-compose.yml";
 
 describe("buildConnectionUrl", () => {
   test("assembles a localhost URL from parts", () => {
@@ -61,55 +56,5 @@ describe("parsePostgresEnv", () => {
     expect(parsed.password).toBe("a=b=c");
     expect(parsed.user).toBe("u");
     expect(parsed.db).toBeUndefined();
-  });
-});
-
-describe("parsePublishedPort", () => {
-  test("recovers the published port from a compose file", () => {
-    expect(parsePublishedPort(buildComposeFile(5544, ENV_PATH))).toBe(5544);
-  });
-
-  test("falls back when no published port is present", () => {
-    expect(parsePublishedPort("services: {}", 5432)).toBe(5432);
-  });
-});
-
-describe("inspectExistingPostgres", () => {
-  test("reports a fully provisioned stack (volume + container + files)", async () => {
-    const host = new FakeHost({
-      run: (a) => {
-        if (a[0] === "docker" && a[1] === "volume") return { ok: true };
-        if (a[0] === "docker" && a[1] === "ps") return { ok: true, output: "xinity-ai-postgres" };
-        return undefined;
-      },
-      files: { [ENV_PATH]: "POSTGRES_DB=xinity\n", [COMPOSE_PATH]: "services: {}\n" },
-    });
-    const existing = await inspectExistingPostgres(host);
-    expect(existing.volumeExists).toBe(true);
-    expect(existing.containerExists).toBe(true);
-    expect(existing.envFile).toContain("POSTGRES_DB=xinity");
-    expect(existing.composeFile).toContain("services");
-  });
-
-  test("reports a clean host (no volume, no container, no files)", async () => {
-    const host = new FakeHost({ run: () => ({ ok: false }) });
-    const existing = await inspectExistingPostgres(host);
-    expect(existing.volumeExists).toBe(false);
-    expect(existing.containerExists).toBe(false);
-    expect(existing.envFile).toBeNull();
-    expect(existing.composeFile).toBeNull();
-  });
-
-  test("treats an empty `docker ps` result as no container", async () => {
-    const host = new FakeHost({
-      run: (a) => {
-        if (a[0] === "docker" && a[1] === "volume") return { ok: true };
-        if (a[0] === "docker" && a[1] === "ps") return { ok: true, output: "" };
-        return undefined;
-      },
-    });
-    const existing = await inspectExistingPostgres(host);
-    expect(existing.volumeExists).toBe(true);
-    expect(existing.containerExists).toBe(false);
   });
 });
