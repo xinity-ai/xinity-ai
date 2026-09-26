@@ -8,7 +8,7 @@
   import { humanDate, formatDurationMs } from "$lib/util";
   import { getAPICallResponse, upsertApiCallResponse, type DataViewCall } from "./data.remote";
   import { orpc } from "$lib/orpc/orpc-client";
-  import { messageContentToString, getRoleStyle, resolveImageSrc } from "./data.utils";
+  import { messageContentToString, getRoleStyle, resolveMediaSrc } from "./data.utils";
   import HighlightPopup from "./HighlightPopup.svelte";
   import RatingControls from "./RatingControls.svelte";
   import { browserLogger } from "$lib/browserLogging";
@@ -869,11 +869,18 @@
                         {/if}
                       {:else if piece.type === "image_url"}
                         <img
-                          src={resolveImageSrc(piece.image_url.url)}
+                          src={resolveMediaSrc(piece.image_url.url)}
                           alt="attachment"
                           class="max-w-xs max-h-64 rounded mt-1 object-contain"
                           loading="lazy"
                         />
+                      {:else if piece.type === "input_audio"}
+                        <audio
+                          controls
+                          preload="none"
+                          src={resolveMediaSrc(piece.input_audio.data)}
+                          class="mt-1 max-w-xs"
+                        ></audio>
                       {:else}
                         <pre class="whitespace-pre-wrap text-xs font-mono bg-muted/50 p-2 rounded mt-1">{JSON.stringify(piece, null, 2)}</pre>
                       {/if}

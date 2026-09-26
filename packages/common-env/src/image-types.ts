@@ -34,3 +34,7 @@ export const STORABLE_AUDIO_TYPES = {
 
 export type AudioFormat = keyof typeof STORABLE_AUDIO_TYPES;
 export type StorableAudioType = (typeof STORABLE_AUDIO_TYPES)[AudioFormat];
+
+export function isStorableAudioType(value: string): value is StorableAudioType {
+  return (Object.values(STORABLE_AUDIO_TYPES) as string[]).includes(value);
+}

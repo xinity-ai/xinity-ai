@@ -17,11 +17,11 @@ export function messageContentToString(
 }
 
 /**
- * Convert a xinity-media:// or other image_url URL into an <img> src
+ * Convert a xinity-media:// or other URL into an <img> or <audio> src
  * that the browser can fetch. xinity-media:// URLs are routed through
  * the authenticated /data/media/[sha256] endpoint.
  */
-export function resolveImageSrc(url: string): string {
+export function resolveMediaSrc(url: string): string {
   const sha256 = parseMediaRef(url);
   return sha256 ? `/data/media/${sha256}` : url;
 }

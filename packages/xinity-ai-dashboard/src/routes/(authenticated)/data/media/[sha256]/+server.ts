@@ -8,7 +8,7 @@ import type { RequestHandler } from "./$types";
 import { auth } from "$lib/server/auth-server";
 import { getPresignedUrl, readMediaObject } from "$lib/server/image-store";
 import { isMediaDigest } from "common-env/media-ref";
-import { isStorableImageType } from "common-env/image-types";
+import { isStorableAudioType, isStorableImageType } from "common-env/image-types";
 import { error } from "@sveltejs/kit";
 
 export const GET: RequestHandler = async ({ params, locals }) => {
@@ -40,7 +40,8 @@ export const GET: RequestHandler = async ({ params, locals }) => {
     error(404, "Media object not found");
   }
 
-  const contentType = isStorableImageType(object.mimeType) ? object.mimeType : "application/octet-stream";
+  const servable = isStorableImageType(object.mimeType) || isStorableAudioType(object.mimeType);
+  const contentType = servable ? object.mimeType : "application/octet-stream";
 
   return new Response(new Blob([object.bytes]), {
     headers: {
