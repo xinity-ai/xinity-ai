@@ -1201,3 +1201,24 @@ describe("handleChatCompletion, malformed image input", () => {
     expect(lastUpstreamBody).toBeNull();
   });
 });
+
+describe("handleChatCompletion, malformed content parts", () => {
+  test("answers a null part with a 400 naming where it was lost, without reaching the backend", async () => {
+    const res = await handleChatCompletion(new Request("http://localhost:4000/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        store: false,
+        messages: [
+          { role: "system", content: "be brief" },
+          { role: "user", content: [{ type: "text", text: "hi" }, null] },
+        ],
+      }),
+    }));
+
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as any).error.message).toBe("messages[1].content[1] is null, expected a content part object");
+    expect(lastUpstreamBody).toBeNull();
+  });
+});
