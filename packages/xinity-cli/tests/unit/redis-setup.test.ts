@@ -1,11 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import {
-  buildRedisUrl, buildComposeFile, parsePublishedPort, parseRequirePass, inspectExistingRedis,
-} from "../../src/lib/redis-setup.ts";
+import { buildRedisUrl, buildComposeFile, parseRequirePass } from "../../src/lib/redis-setup.ts";
 import { randomToken } from "../../src/lib/secrets.ts";
-import { FakeHost } from "../helpers/fake-host.ts";
 
-const COMPOSE_PATH = "/etc/xinity-ai/infra/redis/docker-compose.yml";
 const PASSWORD = "tok3n-with_url-safe";
 
 describe("buildRedisUrl", () => {
@@ -47,16 +43,6 @@ describe("buildComposeFile", () => {
   });
 });
 
-describe("parsePublishedPort", () => {
-  test("recovers the published port from a compose file", () => {
-    expect(parsePublishedPort(buildComposeFile(6390, PASSWORD))).toBe(6390);
-  });
-
-  test("falls back when no published port is present", () => {
-    expect(parsePublishedPort("services: {}", 6379)).toBe(6379);
-  });
-});
-
 describe("parseRequirePass", () => {
   test("round-trips a generated password, so a re-run reuses it", () => {
     const generated = randomToken(32);
@@ -66,43 +52,5 @@ describe("parseRequirePass", () => {
   test("is undefined for a stack without one", () => {
     const legacy = 'command: ["redis-server", "--appendonly", "yes"]';
     expect(parseRequirePass(legacy)).toBeUndefined();
-  });
-});
-
-describe("inspectExistingRedis", () => {
-  test("reports a fully provisioned stack (volume + container + compose file)", async () => {
-    const host = new FakeHost({
-      run: (a) => {
-        if (a[0] === "docker" && a[1] === "volume") return { ok: true };
-        if (a[0] === "docker" && a[1] === "ps") return { ok: true, output: "xinity-ai-redis" };
-        return undefined;
-      },
-      files: { [COMPOSE_PATH]: "services: {}\n" },
-    });
-    const existing = await inspectExistingRedis(host);
-    expect(existing.volumeExists).toBe(true);
-    expect(existing.containerExists).toBe(true);
-    expect(existing.composeFile).toContain("services");
-  });
-
-  test("reports a clean host (no volume, no container, no compose file)", async () => {
-    const host = new FakeHost({ run: () => ({ ok: false }) });
-    const existing = await inspectExistingRedis(host);
-    expect(existing.volumeExists).toBe(false);
-    expect(existing.containerExists).toBe(false);
-    expect(existing.composeFile).toBeNull();
-  });
-
-  test("treats an empty `docker ps` result as no container", async () => {
-    const host = new FakeHost({
-      run: (a) => {
-        if (a[0] === "docker" && a[1] === "volume") return { ok: true };
-        if (a[0] === "docker" && a[1] === "ps") return { ok: true, output: "" };
-        return undefined;
-      },
-    });
-    const existing = await inspectExistingRedis(host);
-    expect(existing.volumeExists).toBe(true);
-    expect(existing.containerExists).toBe(false);
   });
 });
