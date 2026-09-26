@@ -15,7 +15,7 @@ import { buildGenerationParams, buildOutputConfig } from "../responses/generatio
 import type { ApiCallInputMessage } from "common-db";
 import { createResponseStream } from "../responses/stream";
 import { withResponseIdRoute } from "../endpoint-guards";
-import { extractText, normalizeMessages, refuseInput } from "../responses/input-normalize";
+import { extractText, normalizeMessages } from "../responses/input-normalize";
 import { loadResponse, loadResponseInputItems } from "../responses/persistence";
 import { newResponseId } from "../responses/response-id";
 import { callWillBeLogged, type CallLogFields } from "../usage";
@@ -67,12 +67,10 @@ async function prepareResponseRequest(req: Request): Promise<PreparedRequest | R
   const body = parseResult.data;
 
   const input = body.input ?? body.messages ?? body.prompt;
-  const refusal = refuseInput(input);
-  if (refusal) {
-    return errorResponse(refusal, 400);
-  }
-  const messages = normalizeMessages(input);
-  if (!messages) return errorResponse("Unsupported data type", 422);
+  const normalized = normalizeMessages(input);
+  if (!normalized) return errorResponse("Unsupported data type", 422);
+  if ("refusal" in normalized) return errorResponse(normalized.refusal, 400);
+  const { messages } = normalized;
 
   const outputConfig = buildOutputConfig(body.text ?? null);
   const { activeTools } = resolveActiveTools(body.tools ?? [], body.tool_choice);

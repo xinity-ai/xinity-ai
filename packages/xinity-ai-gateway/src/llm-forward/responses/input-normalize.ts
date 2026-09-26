@@ -29,28 +29,58 @@ function normalizeRole(raw: unknown): TextMessageRole {
   return "user";
 }
 
-/** Extract content parts, preserving image_url entries alongside text. */
-function extractContent(raw: unknown): string | ApiCallInputMessage["content"] | null {
+type ContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
+type Refusal = { refusal: string };
+
+function isRefusal(value: unknown): value is Refusal {
+  return typeof value === "object" && value !== null && "refusal" in value;
+}
+
+/** One input part as chat content: kept, refused with a reason, or null when it carries nothing to keep. */
+function convertPart(part: unknown): ContentPart | Refusal | null {
+  if (typeof part === "string") {
+    return { type: "text", text: part };
+  }
+  const p = part as Record<string, unknown> | null;
+  if (!p || typeof p !== "object") {
+    return null;
+  }
+  switch (p.type) {
+    case "input_image":
+      return typeof p.image_url === "string"
+        ? { type: "image_url", image_url: { url: p.image_url } }
+        : { refusal: "input_image requires an image_url string. file_id is not supported" };
+    case "image_url": {
+      const url = (p.image_url as Record<string, unknown> | null | undefined)?.url;
+      if (typeof url === "string") {
+        return { type: "image_url", image_url: { url } };
+      }
+      break;
+    }
+    // OpenAI's Responses API takes no audio input.
+    case "input_audio":
+      return { refusal: "input_audio is not supported by /v1/responses. Send audio to /v1/chat/completions instead" };
+  }
+  if (typeof p.text === "string") {
+    return { type: "text", text: p.text };
+  }
+  if (typeof p.content === "string") {
+    return { type: "text", text: p.content };
+  }
+  return null;
+}
+
+function extractContent(raw: unknown): ApiCallInputMessage["content"] | Refusal {
   if (typeof raw === "string") return raw;
   if (Array.isArray(raw)) {
-    const parts: Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }> = [];
-    for (const part of raw) {
-      if (typeof part === "string") {
-        parts.push({ type: "text", text: part });
-        continue;
+    const parts: ContentPart[] = [];
+    for (const converted of raw.map(convertPart)) {
+      if (isRefusal(converted)) {
+        return converted;
       }
-      const p = part as Record<string, unknown> | null;
-      if (!p) continue;
-      if (p.type === "image_url" && p.image_url && typeof (p.image_url as Record<string, unknown>).url === "string") {
-        parts.push({ type: "image_url", image_url: { url: (p.image_url as { url: string }).url } });
-        continue;
+      if (converted) {
+        parts.push(converted);
       }
-      if (p.type === "input_image" && typeof p.image_url === "string") {
-        parts.push({ type: "image_url", image_url: { url: p.image_url } });
-        continue;
-      }
-      if (typeof p.text === "string") parts.push({ type: "text", text: p.text });
-      else if (typeof p.content === "string") parts.push({ type: "text", text: p.content });
     }
     if (!parts.length) return null;
     const [first] = parts;
@@ -60,40 +90,12 @@ function extractContent(raw: unknown): string | ApiCallInputMessage["content"] |
   return extractText(raw);
 }
 
-function refusalFor(part: Record<string, unknown>): string | null {
-  if (part.type === "input_audio") {
-    return "input_audio is not supported by /v1/responses. Send audio to /v1/chat/completions instead";
-  }
-  if (part.type === "input_image" && typeof part.image_url !== "string") {
-    return "input_image requires an image_url string. file_id is not supported";
-  }
-  return null;
-}
-
-/** Why the input cannot be served, for parts that would otherwise be dropped without a word. */
-export function refuseInput(input: unknown): string | null {
-  const items = Array.isArray(input) ? input : [input];
-  for (const item of items) {
-    const obj = item as Record<string, unknown> | null;
-    const content = obj && typeof obj === "object" ? obj.content ?? obj.input ?? obj.text : null;
-    if (!Array.isArray(content)) {
-      continue;
-    }
-    for (const part of content) {
-      const refusal = part && typeof part === "object" ? refusalFor(part as Record<string, unknown>) : null;
-      if (refusal) {
-        return refusal;
-      }
-    }
-  }
-  return null;
-}
-
-export function normalizeMessages(input: unknown): ApiCallInputMessage[] | null {
-  if (typeof input === "string") return [{ role: "user", content: input }];
+/** Null when the input has no shape this endpoint understands. */
+export function normalizeMessages(input: unknown): { messages: ApiCallInputMessage[] } | Refusal | null {
+  if (typeof input === "string") return { messages: [{ role: "user", content: input }] };
   if (Array.isArray(input)) {
     if (input.every((item) => typeof item === "string"))
-      return input.map((text) => ({ role: "user", content: text }));
+      return { messages: input.map((text) => ({ role: "user", content: text })) };
     const messages: ApiCallInputMessage[] = [];
     for (const item of input) {
       if (!item || typeof item !== "object") return null;
@@ -113,16 +115,18 @@ export function normalizeMessages(input: unknown): ApiCallInputMessage[] | null 
       const role = normalizeRole(obj.role);
       const content = extractContent(obj.content ?? obj.input ?? obj.text);
       if (!content) return null;
+      if (isRefusal(content)) return content;
       messages.push({ role, content } as ApiCallInputMessage);
     }
-    return messages;
+    return { messages };
   }
   if (input && typeof input === "object") {
     const obj = input as Record<string, unknown>;
     const role = normalizeRole(obj.role);
     const content = extractContent(obj.content ?? obj.input ?? obj.text);
     if (!content) return null;
-    return [{ role, content } as ApiCallInputMessage];
+    if (isRefusal(content)) return content;
+    return { messages: [{ role, content } as ApiCallInputMessage] };
   }
   return null;
 }
