@@ -1,5 +1,6 @@
-import type { ModelMessage, ImagePart, TextPart } from "ai";
-import type { ApiCallInputMessage } from "common-db";
+import type { ModelMessage, FilePart, ImagePart, TextPart } from "ai";
+import type { ApiCallInputMessage, ApiCallInputMessageContent } from "common-db";
+import { STORABLE_AUDIO_TYPES } from "common-env/image-types";
 
 export function toModelMessages(messages: ApiCallInputMessage[]): ModelMessage[] {
   const toolCallNameMap = new Map<string, string>();
@@ -50,12 +51,21 @@ export function toModelMessages(messages: ApiCallInputMessage[]): ModelMessage[]
     if (typeof msg.content === "string" || !Array.isArray(msg.content)) {
       return msg as ModelMessage;
     }
-    const content = (msg.content as Array<{ type: string; text?: string; image_url?: { url: string } }>).flatMap<TextPart | ImagePart>((part) => {
-      if (part.type !== "image_url" || !part.image_url) {
-        return [part as TextPart];
-      }
-      return [{ type: "image", image: part.image_url.url }];
-    });
-    return { ...msg, content } as ModelMessage;
+    return { ...msg, content: msg.content.map(toModelPart) } as ModelMessage;
   });
+}
+
+function toModelPart(part: ApiCallInputMessageContent): TextPart | ImagePart | FilePart {
+  switch (part.type) {
+    case "text":
+      return { type: "text", text: part.text };
+    case "image_url":
+      return { type: "image", image: part.image_url.url };
+    case "input_audio":
+      return { type: "file", mediaType: STORABLE_AUDIO_TYPES[part.input_audio.format], data: part.input_audio.data };
+    default: {
+      const unhandled: never = part;
+      throw new Error(`Unhandled content part type: ${(unhandled as { type: unknown }).type}`);
+    }
+  }
 }
