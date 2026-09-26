@@ -66,8 +66,11 @@ export function splitDelegations(config: AnyConfig, env: RawEnv): DelegationSpli
 
     if (!entry.isDynamic) {
       rejected.push(`${entry.envKey} is not declared dynamic`);
-    } else if (activationKeys.has(entry.envKey)) {
+      continue;
+    }
+    if (activationKeys.has(entry.envKey)) {
       rejected.push(`${entry.envKey} decides whether its group is active, which cannot change while running`);
+      continue;
     }
 
     delegatedKeys.push(entry.envKey);
