@@ -224,10 +224,14 @@ export const upCommand: CommandModule = {
         return;
       }
 
-      if (
-        component === "infra-vllm" ||
-        component === "infra-searxng"
-      ) {
+      if (component === "infra-searxng") {
+        const { searxngSetup } = await import("../lib/searxng-setup.ts");
+        await searxngSetup(host, dryRun);
+        outro("Done");
+        return;
+      }
+
+      if (component === "infra-vllm") {
         log.warn(`${cyan(component)} is not yet implemented.`);
         outro("Coming soon");
         return;
