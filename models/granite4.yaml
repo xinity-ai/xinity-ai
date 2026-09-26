@@ -49,3 +49,63 @@ models:
       maxContextLength: 131072
       weightGb: 6.84  # measured resident, 6.37 GiB
       weightBits: 16
+
+  granite-4.0-micro-ollama:
+    name: Granite 4.0 Micro (Ollama)
+    description: |
+      The same IBM Granite 4.0 Micro as the vLLM entry, served by Ollama from the library
+      GGUF. It calls tools, takes a 128K window, and is small enough to sit beside other
+      work on a modest node.
+
+      Note this is a 4-bit build, where the vLLM entry is bf16: Ollama publishes Micro at
+      one precision only, so this entry is a third of the memory and correspondingly
+      lossier. Use the vLLM entry when the answers have to match full precision.
+    url: https://ollama.com/library/granite4
+    license: apache-2.0
+    createdAt: 2025-10-02
+    registeredAt: 2026-09-26
+    engine: ollama
+    engineSpecifier: granite4:micro
+    variantOf: granite-4.0-micro-vllm
+    sizing:
+      # Hybrid attention/SSM, so only the attention layers hold a KV cache. The GGUF does
+      # not publish head_count_kv, so this is the vLLM entry's verified figure for the
+      # same model rather than one derived from Ollama's metadata.
+      kvBytesPerToken: 81920
+      maxContextLength: 131072
+      weightGb: 2.1
+      weightBits: 4
+    type: chat
+    family: Granite
+    tags: [tools]
+    engineVersions:
+      min: "0.33.1"
+
+  granite-4.0-350m-ollama:
+    name: Granite 4.0 350M (Ollama)
+    description: |
+      The same 350M Granite 4.0 as the vLLM entry, served by Ollama from the library GGUF
+      at bf16, so it matches the vLLM entry's precision as well as its behaviour. It calls
+      tools and takes a 32K window in well under a gigabyte.
+
+      The smallest thing in the catalogue that still does tool calling, which makes it a
+      reasonable router or classifier where a larger model would be wasted.
+    url: https://ollama.com/library/granite4
+    license: apache-2.0
+    createdAt: 2025-10-02
+    registeredAt: 2026-09-26
+    engine: ollama
+    engineSpecifier: granite4:350m
+    variantOf: granite-4.0-350m-vllm
+    sizing:
+      # As above: the GGUF omits head_count_kv, so this is the vLLM entry's verified
+      # figure for the same model.
+      kvBytesPerToken: 28672
+      maxContextLength: 32768
+      weightGb: 0.71
+      weightBits: 16
+    type: chat
+    family: Granite
+    tags: [tools]
+    engineVersions:
+      min: "0.33.1"

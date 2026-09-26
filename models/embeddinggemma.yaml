@@ -53,3 +53,71 @@ models:
     type: embedding
     family: EmbeddingGemma
     tags: []
+
+  embeddinggemma-300m-ollama: &eg-ollama
+    name: EmbeddingGemma 300M (Ollama)
+    description: |
+      The same EmbeddingGemma as the vLLM entry, served by Ollama from the library GGUF.
+      768-dimension vectors over a 2K window, which is short for an embedder, so chunk to
+      match it.
+
+      This entry is the bf16 build, the one to pick when quality matters more than
+      footprint. The two QAT entries are quantization-aware-trained builds that cut the
+      footprint to roughly a half and a third for the same vector dimension.
+    url: https://ollama.com/library/embeddinggemma
+    license:
+      name: Gemma Terms of Use
+      url: https://ai.google.dev/gemma/terms
+      use: conditional
+      summary: >
+        Commercial use and redistribution are permitted. The use restrictions have to be
+        passed through to downstream users, and Google may update the prohibited-use
+        policy.
+    createdAt: 2025-07-17
+    registeredAt: 2026-09-26
+    engine: ollama
+    engineSpecifier: embeddinggemma:300m
+    variantOf: embeddinggemma-300m-vllm
+    sizing: &eg-ollama-kv
+      # 24 layers, 1 kv head, head_dim 256 -> 2 * 24 * 1 * 256 * 2.
+      kvBytesPerToken: 24576
+      maxContextLength: 2048
+      weightGb: 0.62
+      weightBits: 16
+    type: embedding
+    family: EmbeddingGemma
+    tags: []
+    engineVersions:
+      min: "0.33.1"
+
+  embeddinggemma-300m-qat-q8-ollama:
+    <<: *eg-ollama
+    name: EmbeddingGemma 300M QAT Q8 (Ollama)
+    description: |
+      EmbeddingGemma in a quantization-aware-trained 8-bit build, a little over half the
+      memory of the bf16 entry for the same 768-dimension vectors and the same 2K window.
+
+      QAT means the quantization was trained for rather than applied afterwards, so this
+      is the one to reach for when the bf16 entry does not fit. Take the Q4 entry if it
+      still does not.
+    engineSpecifier: embeddinggemma:300m-qat-q8_0
+    sizing:
+      <<: *eg-ollama-kv
+      weightGb: 0.34
+      weightBits: 8
+
+  embeddinggemma-300m-qat-q4-ollama:
+    <<: *eg-ollama
+    name: EmbeddingGemma 300M QAT Q4 (Ollama)
+    description: |
+      EmbeddingGemma in a quantization-aware-trained 4-bit build, the smallest way to run
+      it at roughly a third of the bf16 footprint, with the same 768-dimension vectors and
+      2K window.
+
+      Small enough to sit alongside a chat model on a modest node. Prefer the Q8 or bf16
+      entry when retrieval quality is the binding constraint.
+    engineSpecifier: embeddinggemma:300m-qat-q4_0
+    sizing:
+      <<: *eg-ollama-kv
+      weightGb: 0.24
+      weightBits: 4

@@ -63,3 +63,34 @@ models:
     type: rerank
     family: BGE
     tags: []
+
+  bge-m3-ollama:
+    name: BGE M3 Embedding (Ollama)
+    description: |
+      The same BGE-M3 multilingual embedder as the vLLM entry, served by Ollama from the
+      library GGUF. Behaviour is identical: over a hundred languages, cross-lingual
+      retrieval, 1024-dimension vectors, and no instruction or query prefix to keep in
+      sync between indexing and serving.
+
+      Pick this when the node runs Ollama. Pick the vLLM entry for throughput serving.
+      Ollama publishes this model at one precision only, so there is no quality choice to
+      make here.
+    url: https://ollama.com/library/bge-m3
+    license: mit
+    createdAt: 2024-01-27
+    registeredAt: 2026-09-26
+    engine: ollama
+    engineSpecifier: bge-m3:567m
+    variantOf: bge-m3-vllm
+    sizing:
+      # Encoder-only, so no paged KV cache is reserved. The figure keeps the capacity
+      # estimate honest. 24 layers, 16 heads, head_dim 64 -> 2 * 24 * 16 * 64 * 2.
+      kvBytesPerToken: 98304
+      maxContextLength: 8192
+      weightGb: 1.16
+      weightBits: 16
+    type: embedding
+    family: BGE
+    tags: []
+    engineVersions:
+      min: "0.33.1"

@@ -29,3 +29,31 @@ models:
     type: embedding
     family: Snowflake Arctic
     tags: []
+
+  snowflake-arctic-embed-l-v2-ollama:
+    name: Snowflake Arctic Embed L v2.0 (Ollama)
+    description: |
+      The same Arctic Embed L v2.0 multilingual embedder as the vLLM entry, served by
+      Ollama from the library GGUF. 1024-dimension vectors over an 8K window, and it
+      expects the same query prefix convention as the vLLM entry.
+
+      Pick this when the node runs Ollama. Pick the vLLM entry for throughput serving.
+      Ollama publishes this model at one precision only.
+    url: https://ollama.com/library/snowflake-arctic-embed2
+    license: apache-2.0
+    createdAt: 2024-11-08
+    registeredAt: 2026-09-26
+    engine: ollama
+    engineSpecifier: snowflake-arctic-embed2:568m
+    variantOf: snowflake-arctic-embed-l-v2-vllm
+    sizing:
+      # Encoder-only: 24 layers, 16 heads, head_dim 64 -> 2 * 24 * 16 * 64 * 2.
+      kvBytesPerToken: 98304
+      maxContextLength: 8192
+      weightGb: 1.16
+      weightBits: 16
+    type: embedding
+    family: Snowflake Arctic
+    tags: []
+    engineVersions:
+      min: "0.33.1"

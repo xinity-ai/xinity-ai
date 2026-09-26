@@ -131,3 +131,168 @@ models:
       - "131072"
     engineVersions:
       min: "0.19.0"
+
+  gemma-4-e4b-it-ollama: &g4e4b-ollama
+    name: Gemma 4 E4B (Ollama)
+    description: |
+      The same Gemma 4 E4B as the vLLM entries, served by Ollama from the library GGUF.
+      It reads images, calls tools, reasons before answering, and takes a 128K window in
+      under 10 GB, which makes it the most capable thing here that fits on a small node.
+
+      Under Ollama it answers directly rather than reasoning first, so a short reply costs
+      a handful of tokens rather than a few hundred.
+
+      This entry is the 4-bit build Ollama serves by default and it reads fine text
+      accurately. The QAT entry is smaller but measurably worse at it. The q8 and bf16
+      entries cost more memory for the same answers.
+    url: https://ollama.com/library/gemma4
+    license:
+      name: Gemma Terms of Use
+      url: https://ai.google.dev/gemma/terms
+      use: conditional
+      summary: >
+        Commercial use and redistribution are permitted. The use restrictions have to be
+        passed through to downstream users, and Google may update the prohibited-use
+        policy.
+    createdAt: 2026-05-20
+    registeredAt: 2026-09-26
+    engine: ollama
+    engineSpecifier: gemma4:e4b
+    variantOf: gemma-4-e4b-it-fp8-vllm
+    sizing: &g4e4b-ollama-kv
+      # Mostly sliding-window attention with shared-KV layers, so the flat per-layer
+      # formula overstates it by an order of magnitude. This is the vLLM entry's verified
+      # figure for the same model.
+      kvBytesPerToken: 14336
+      maxContextLength: 131072
+      weightGb: 9.61
+      weightBits: 4
+    type: chat
+    family: Gemma 4
+    tags: [vision, tools]
+    engineVersions:
+      min: "0.33.1"
+
+  gemma-4-e4b-it-qat-ollama:
+    <<: *g4e4b-ollama
+    name: Gemma 4 E4B QAT (Ollama)
+    description: |
+      Gemma 4 E4B in a quantization-aware-trained 4-bit build, about half the memory of
+      the default entry and the smallest way to run this model.
+
+      One measured caveat decides between them: asked to read small text in an image, this
+      build misread it identically on every attempt where the default 4-bit entry read it
+      correctly every time. Take it when memory is the binding constraint and images are
+      incidental. Take the default entry for anything that has to read a screenshot.
+
+      Tool calling, reasoning and the 128K window behave as on the default entry.
+    engineSpecifier: gemma4:e4b-it-qat
+    sizing:
+      <<: *g4e4b-ollama-kv
+      weightGb: 5.15
+      weightBits: 4
+
+  gemma-4-e4b-it-q8-ollama:
+    <<: *g4e4b-ollama
+    name: Gemma 4 E4B Q8 (Ollama)
+    description: |
+      Gemma 4 E4B in an 8-bit build, a little over the default entry's memory and close to
+      the precision of the vLLM FP8 entries. Vision, tool calling, reasoning and the 128K
+      window are unchanged, and it reads fine text accurately.
+    engineSpecifier: gemma4:e4b-it-q8_0
+    sizing:
+      <<: *g4e4b-ollama-kv
+      weightGb: 11.64
+      weightBits: 8
+
+  gemma-4-e4b-it-bf16-ollama:
+    <<: *g4e4b-ollama
+    name: Gemma 4 E4B BF16 (Ollama)
+    description: |
+      Gemma 4 E4B at full precision under Ollama, the reference build of this model and
+      the one to measure the quantized entries against. Vision, tool calling, reasoning
+      and the 128K window behave as on the smaller builds.
+
+      Prefer a quantized entry unless you specifically want untouched weights. This one
+      costs roughly three times the default entry's memory for answers that matched it on
+      every check here.
+    engineSpecifier: gemma4:e4b-it-bf16
+    sizing:
+      <<: *g4e4b-ollama-kv
+      weightGb: 16.04
+      weightBits: 16
+
+  gemma-4-26b-a4b-it-ollama: &g426b-ollama
+    name: Gemma 4 26B-A4B (Ollama)
+    description: |
+      The same Gemma 4 26B-A4B sparse mixture of experts as the vLLM entry, served by
+      Ollama from the library GGUF. About 4B parameters are active per token, so it
+      decodes far faster than its 26B size suggests. It reads images, calls tools, and
+      serves the full 262K window here, where the vLLM entry is capped at 131K to keep
+      its cache affordable.
+
+      This entry is the 4-bit build at around 18 GB, the practical default. The q8 entry
+      costs 28 GB for answers closer to full precision, and the QAT entry is the smallest
+      at 14 GB.
+
+      Under Ollama it answers directly rather than reasoning first.
+    url: https://ollama.com/library/gemma4
+    license:
+      name: Gemma Terms of Use
+      url: https://ai.google.dev/gemma/terms
+      use: conditional
+      summary: >
+        Commercial use and redistribution are permitted. The use restrictions have to be
+        passed through to downstream users, and Google may update the prohibited-use
+        policy.
+    createdAt: 2026-04-15
+    registeredAt: 2026-09-26
+    engine: ollama
+    engineSpecifier: gemma4:26b-a4b-it-q4_K_M
+    variantOf: gemma-4-26b-a4b-nvfp4-vllm
+    sizing: &g426b-ollama-kv
+      # Sliding-window attention with shared-KV layers, so the flat per-layer formula
+      # overstates it. This is the vLLM entry's verified figure for the same model.
+      kvBytesPerToken: 40960
+      maxContextLength: 262144
+      weightGb: 17.99
+      activeWeightGb: 3.1
+      weightBits: 4
+    type: chat
+    family: Gemma 4
+    tags: [vision, tools]
+    engineVersions:
+      min: "0.33.1"
+
+  gemma-4-26b-a4b-it-q8-ollama:
+    <<: *g426b-ollama
+    name: Gemma 4 26B-A4B Q8 (Ollama)
+    description: |
+      Gemma 4 26B-A4B in an 8-bit build at around 28 GB. Vision, tool calling and the 262K
+      window behave as on the 4-bit entry, and it still decodes at the speed its 4B active
+      parameters imply rather than its footprint.
+
+      Take this when the 4-bit build's answers are not good enough and the node has the
+      memory to spare.
+    engineSpecifier: gemma4:26b-a4b-it-q8_0
+    sizing:
+      <<: *g426b-ollama-kv
+      weightGb: 28.05
+      activeWeightGb: 4.8
+      weightBits: 8
+
+  gemma-4-26b-a4b-it-qat-ollama:
+    <<: *g426b-ollama
+    name: Gemma 4 26B-A4B QAT (Ollama)
+    description: |
+      Gemma 4 26B-A4B in a quantization-aware-trained 4-bit build, the smallest way to run
+      it at around 14 GB. Quantization was trained for rather than applied afterwards.
+
+      Vision, tool calling and the 262K window behave as on the default 4-bit entry, and
+      it read fine text in an image correctly here, which the E4B QAT build did not.
+    engineSpecifier: gemma4:26b-a4b-it-qat
+    sizing:
+      <<: *g426b-ollama-kv
+      weightGb: 14.44
+      activeWeightGb: 2.5
+      weightBits: 4
