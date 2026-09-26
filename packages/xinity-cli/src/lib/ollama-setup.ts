@@ -102,6 +102,13 @@ export async function planOllama(
   return "start";
 }
 
+export function describeOllama(action: OllamaAction): string | undefined {
+  if (action === "none") return undefined;
+  if (action === "start") return "Start the ollama service";
+  if (action === "update") return "Update ollama to the latest version and start its service";
+  return "Install ollama and start its service";
+}
+
 export function buildOllamaCommands(action: OllamaAction): string[] {
   if (action === "none") return [];
   if (action === "start") return [START_COMMAND];

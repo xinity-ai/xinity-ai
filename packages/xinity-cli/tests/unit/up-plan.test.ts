@@ -34,7 +34,7 @@ const provisionedRedis: RedisPlan = {
 };
 
 function planWith(overrides: Partial<UpPlan>): UpPlan {
-  return { targetVersion: "v1.0.0", provisionOllama: false, components: [], ...overrides };
+  return { targetVersion: "v1.0.0", components: [], ...overrides };
 }
 
 describe("buildPostgresProvisionCommands", () => {
@@ -103,6 +103,23 @@ describe("renderUpPlanScript", () => {
   test("a keep-current redis plan is not part of an up-all script", async () => {
     const script = await renderUpPlanScript(planWith({}));
     expect(script).not.toContain("Redis");
+  });
+
+  test("the ollama section carries the commands apply will actually run", async () => {
+    const script = await renderUpPlanScript(planWith({ ollama: "install" }));
+    expect(script).toContain("curl -fsSL https://ollama.com/install.sh | sh");
+    expect(script).toContain("systemctl enable --now ollama");
+  });
+
+  test("an ollama that only needs starting does not carry the install command", async () => {
+    const script = await renderUpPlanScript(planWith({ ollama: "start" }));
+    expect(script).toContain("systemctl enable --now ollama");
+    expect(script).not.toContain("ollama.com/install.sh");
+  });
+
+  test("an already-running ollama produces no section at all", async () => {
+    const script = await renderUpPlanScript(planWith({ ollama: "none" }));
+    expect(script).not.toContain("Ollama");
   });
 });
 

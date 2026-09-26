@@ -24,6 +24,7 @@ import { componentFields, collectEnv, menuEditEnv, readExistingEnvState, diffEnv
 import { discoverConnectionUrl, describeMigrationStep, migrationScriptComment, runMigrations } from "./migrator.ts";
 import { describePostgresProvision, buildPostgresProvisionCommands, applyPostgresProvision, type PostgresProvision } from "./postgres-setup.ts";
 import { planRedis, applyRedisPlan, describeRedisPlan, buildRedisProvisionCommands, type RedisPlan } from "./redis-setup.ts";
+import { planOllama, describeOllama, buildOllamaCommands, applyOllama, type OllamaAction } from "./ollama-setup.ts";
 
 import { readManifest } from "./manifest.ts";
 import { initialSharedSecrets } from "./secrets.ts";
@@ -52,7 +53,7 @@ export type UpPlan = {
   provisionPostgres?: PostgresProvision;
   migrations?: { connectionUrl: string };
   redis?: RedisPlan;
-  provisionOllama: boolean;
+  ollama?: OllamaAction;
   components: ComponentAction[];
 }
 
@@ -181,7 +182,6 @@ export async function planUp(
   const resolvedKeys = new Set<string>();
   const plan: UpPlan = {
     targetVersion: opts.targetVersion,
-    provisionOllama: false,
     components: [],
   };
   let orderedComponents = components;
@@ -227,7 +227,7 @@ export async function planUp(
       });
       if (isCancel(setupOllama)) return null;
       if (setupOllama) {
-        plan.provisionOllama = true;
+        plan.ollama = await planOllama(host, { interactive: false });
       }
     }
 
@@ -350,8 +350,9 @@ export function renderUpPlan(plan: UpPlan): void {
     const lines = describeRedisPlan(plan.redis);
     if (lines.length > 0) item(lines);
   }
-  if (plan.provisionOllama) {
-    item(["Provision ollama (install when missing, start the service)"]);
+  if (plan.ollama) {
+    const line = describeOllama(plan.ollama);
+    if (line) item([line]);
   }
   for (const action of plan.components) {
     item(describeComponentAction(action));
@@ -462,13 +463,11 @@ export async function renderUpPlanScript(plan: UpPlan): Promise<string> {
     if (plan.redis.persist) sections.push(buildSecretsWriteCommand({ REDIS_URL: plan.redis.url })!);
     sections.push("");
   }
-  if (plan.provisionOllama) {
-    sections.push(
-      "# Ollama provisioning:",
-      "curl -fsSL https://ollama.com/install.sh | sh",
-      "systemctl enable --now ollama",
-      "",
-    );
+  if (plan.ollama) {
+    const commands = buildOllamaCommands(plan.ollama);
+    if (commands.length > 0) {
+      sections.push("# Ollama provisioning:", ...commands, "");
+    }
   }
 
   for (const action of plan.components) {
@@ -515,11 +514,9 @@ export async function applyUpPlan(plan: UpPlan, host: Host): Promise<ApplyResult
     }
   }
 
-  if (plan.provisionOllama) {
+  if (plan.ollama) {
     heading("ollama");
-    const { planOllama, applyOllama } = await import("./ollama-setup.ts");
-    const ollamaAction = await planOllama(host, { interactive: false });
-    if (ollamaAction === undefined || !(await applyOllama(ollamaAction, host))) {
+    if (!(await applyOllama(plan.ollama, host))) {
       warn("Ollama", "Provisioning failed; the daemon may not reach its ollama endpoint");
     }
   }
