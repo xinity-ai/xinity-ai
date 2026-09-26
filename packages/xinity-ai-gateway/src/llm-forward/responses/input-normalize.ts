@@ -45,6 +45,10 @@ function extractContent(raw: unknown): string | ApiCallInputMessage["content"] |
         parts.push({ type: "image_url", image_url: { url: (p.image_url as { url: string }).url } });
         continue;
       }
+      if (p.type === "input_image" && typeof p.image_url === "string") {
+        parts.push({ type: "image_url", image_url: { url: p.image_url } });
+        continue;
+      }
       if (typeof p.text === "string") parts.push({ type: "text", text: p.text });
       else if (typeof p.content === "string") parts.push({ type: "text", text: p.content });
     }
@@ -56,15 +60,33 @@ function extractContent(raw: unknown): string | ApiCallInputMessage["content"] |
   return extractText(raw);
 }
 
-/** OpenAI's Responses API takes no audio input, so an `input_audio` part is refused, not dropped. */
-export function hasAudioPart(input: unknown): boolean {
+function refusalFor(part: Record<string, unknown>): string | null {
+  if (part.type === "input_audio") {
+    return "input_audio is not supported by /v1/responses. Send audio to /v1/chat/completions instead";
+  }
+  if (part.type === "input_image" && typeof part.image_url !== "string") {
+    return "input_image requires an image_url string. file_id is not supported";
+  }
+  return null;
+}
+
+/** Why the input cannot be served, for parts that would otherwise be dropped without a word. */
+export function refuseInput(input: unknown): string | null {
   const items = Array.isArray(input) ? input : [input];
-  return items.some((item) => {
+  for (const item of items) {
     const obj = item as Record<string, unknown> | null;
     const content = obj && typeof obj === "object" ? obj.content ?? obj.input ?? obj.text : null;
-    return Array.isArray(content)
-      && content.some((part) => (part as Record<string, unknown> | null)?.type === "input_audio");
-  });
+    if (!Array.isArray(content)) {
+      continue;
+    }
+    for (const part of content) {
+      const refusal = part && typeof part === "object" ? refusalFor(part as Record<string, unknown>) : null;
+      if (refusal) {
+        return refusal;
+      }
+    }
+  }
+  return null;
 }
 
 export function normalizeMessages(input: unknown): ApiCallInputMessage[] | null {

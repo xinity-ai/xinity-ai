@@ -822,3 +822,41 @@ describe("handleResponses, audio input", () => {
     expect(lastUpstreamBody).toBeUndefined();
   });
 });
+
+describe("handleResponses, image input", () => {
+  const PNG_DATA_URI = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwADhQGAWjR9awAAAABJRU5ErkJggg==";
+
+  test("forwards an input_image part in OpenAI's shape to the model", async () => {
+    const res = await handleCreateResponseRequest(new Request("http://localhost:4000/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        store: false,
+        input: [{ role: "user", content: [{ type: "input_text", text: "what is this" }, { type: "input_image", image_url: PNG_DATA_URI }] }],
+      }),
+    }));
+
+    expect(res.status).toBe(200);
+    const [message] = lastChatMessages;
+    expect(message!.content).toEqual([
+      { type: "text", text: "what is this" },
+      { type: "image_url", image_url: { url: PNG_DATA_URI } },
+    ]);
+  });
+
+  test("refuses an input_image that names an uploaded file, since there is no file store to read it from", async () => {
+    const res = await handleCreateResponseRequest(new Request("http://localhost:4000/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        input: [{ role: "user", content: [{ type: "input_text", text: "hi" }, { type: "input_image", file_id: "file-abc" }] }],
+      }),
+    }));
+
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as any).error.message).toContain("input_image requires an image_url string");
+    expect(lastUpstreamBody).toBeUndefined();
+  });
+});

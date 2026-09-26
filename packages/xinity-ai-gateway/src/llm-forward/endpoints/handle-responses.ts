@@ -15,7 +15,7 @@ import { buildGenerationParams, buildOutputConfig } from "../responses/generatio
 import type { ApiCallInputMessage } from "common-db";
 import { createResponseStream } from "../responses/stream";
 import { withResponseIdRoute } from "../endpoint-guards";
-import { extractText, hasAudioPart, normalizeMessages } from "../responses/input-normalize";
+import { extractText, normalizeMessages, refuseInput } from "../responses/input-normalize";
 import { loadResponse, loadResponseInputItems } from "../responses/persistence";
 import { newResponseId } from "../responses/response-id";
 import { callWillBeLogged, type CallLogFields } from "../usage";
@@ -67,8 +67,9 @@ async function prepareResponseRequest(req: Request): Promise<PreparedRequest | R
   const body = parseResult.data;
 
   const input = body.input ?? body.messages ?? body.prompt;
-  if (hasAudioPart(input)) {
-    return errorResponse("input_audio is not supported by /v1/responses. Send audio to /v1/chat/completions instead", 400);
+  const refusal = refuseInput(input);
+  if (refusal) {
+    return errorResponse(refusal, 400);
   }
   const messages = normalizeMessages(input);
   if (!messages) return errorResponse("Unsupported data type", 422);
