@@ -232,7 +232,7 @@ export class RemoteHost implements Host {
       );
     }
 
-    const os = await localRun(["ssh", ...this.ctrlArgs, this.hostname, "uname -s"]);
+    const os = await this.runShell("uname -s");
     if (!os.ok || os.output.trim() !== "Linux") {
       throw new Error(
         `${this.hostname} is not a Linux host (uname: ${os.output.trim() || "unknown"}). ` +
@@ -252,7 +252,7 @@ export class RemoteHost implements Host {
   private async isRoot(): Promise<boolean> {
     // Cache the root check so we don't run `id -u` on every call.
     if (this.isRootCached === null) {
-      const whoami = await localRun(["ssh", ...this.ctrlArgs, this.hostname, "id -u"]);
+      const whoami = await this.runShell("id -u");
       this.isRootCached = whoami.ok && whoami.output.trim() === "0";
     }
     return this.isRootCached;
@@ -269,10 +269,7 @@ export class RemoteHost implements Host {
   async withElevation(command: string, description: string): Promise<ElevationResult> {
     if (await this.isRoot()) {
       const b64 = b64Cmd(command);
-      const result = await localRun([
-        "ssh", ...this.ctrlArgs, this.hostname,
-        `echo '${b64}' | base64 -d | sh`,
-      ]);
+      const result = await this.runShell(`echo '${b64}' | base64 -d | sh`);
       return { success: result.ok, output: result.output };
     }
 
@@ -360,20 +357,16 @@ export class RemoteHost implements Host {
   }
 
   async readFile(path: string): Promise<string | null> {
-    const result = await localRun([
-      "ssh", ...this.ctrlArgs, this.hostname,
-      `cat ${quoteShellArg(path)}`,
-    ]);
+    const result = await this.runShell(`cat ${quoteShellArg(path)}`);
     return result.ok ? result.output : null;
   }
 
   async fileExists(path: string): Promise<boolean> {
-    const result = await localRun([
-      "ssh", ...this.ctrlArgs, this.hostname,
+    const result = await this.runShell(
       // stat exits 0 when the file exists. If it fails with "Permission denied"
       // the file exists but the current user cannot access it (needs elevation).
       `s=$(stat ${quoteShellArg(path)} 2>&1) && echo yes || (echo "$s" | grep -qi 'permission denied' && echo perm || echo no)`,
-    ]);
+    );
     const out = result.output.trim();
     return out === "yes" || out === "perm";
   }
@@ -395,10 +388,7 @@ export class RemoteHost implements Host {
   }
 
   async downloadFile(url: string, destPath: string): Promise<void> {
-    const result = await localRun([
-      "ssh", ...this.ctrlArgs, this.hostname,
-      `curl -fsSL -o ${quoteShellArg(destPath)} ${quoteShellArg(url)}`,
-    ]);
+    const result = await this.runShell(`curl -fsSL -o ${quoteShellArg(destPath)} ${quoteShellArg(url)}`);
     if (!result.ok) {
       throw new Error(`Remote download failed: ${result.output}`);
     }
@@ -410,10 +400,7 @@ export class RemoteHost implements Host {
   }
 
   async computeSha256(filePath: string): Promise<string | null> {
-    const result = await localRun([
-      "ssh", ...this.ctrlArgs, this.hostname,
-      `sha256sum ${quoteShellArg(filePath)}`,
-    ]);
+    const result = await this.runShell(`sha256sum ${quoteShellArg(filePath)}`);
     if (!result.ok) return null;
     // sha256sum output format: "hash  filename"
     const hash = result.output.split(/\s+/)[0];
@@ -421,10 +408,7 @@ export class RemoteHost implements Host {
   }
 
   async getArch(): Promise<string> {
-    const result = await localRun([
-      "ssh", ...this.ctrlArgs, this.hostname,
-      "uname -m",
-    ]);
+    const result = await this.runShell("uname -m");
     if (!result.ok) throw new Error(`Failed to detect remote architecture: ${result.output}`);
     const raw = result.output.trim();
     if (raw === "aarch64" || raw === "arm64") return "arm64";
