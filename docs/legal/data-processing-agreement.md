@@ -1,8 +1,8 @@
-# Xinity AI — Standard Data Processing Agreement
+# Xinity AI: Standard Data Processing Agreement
 
 **Version:** 1.1.0
 **Published:** March 2026
-**Status:** Draft — pending legal review before use
+**Status:** Draft, pending legal review before use
 
 ---
 

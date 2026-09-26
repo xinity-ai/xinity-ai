@@ -350,7 +350,7 @@ confirming with one run at the value just below.
 
 **The floor is engine-version-dependent, so measure it on the newest engine you support.** vLLM
 changes how it accounts for the cache between releases, and a floor measured on an older build can
-be too small to start on a newer one — a hard startup failure, not a warning. Measured on
+be too small to start on a newer one, which is a hard startup failure, not a warning. Measured on
 Qwen3.8-27B between 0.26 and 0.29, where the floor rose 17.37 → 17.58 GB for the same model,
 context and weights, from two independent changes:
 
@@ -383,7 +383,7 @@ Reproducing vLLM's `X GiB is needed` exactly is still the test that the number i
 minimum, so the largest measured figure is the one with the best coverage: an engine that needs
 less simply over-allocates a little, while an entry carrying a smaller figure does not boot at all
 on an engine that needs more. Write it as the model's floor, not as a diff against whichever
-release you happened to measure on — a comment saying "version X needs more" reads as noise once
+release you happened to measure on. A comment saying "version X needs more" reads as noise once
 that release is old, whereas the bracket that produced the number (which value aborts, which
 starts) stays useful. Re-bracket after an engine upgrade rather than deriving the figure again.
 

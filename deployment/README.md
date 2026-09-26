@@ -17,7 +17,7 @@ The control plane can be deployed using any of the three methods below. The daem
 | Production with a domain + HTTPS | [Docker Compose](docker/README.md) or [NixOS](nixos/README.md) |
 | NixOS infrastructure | [NixOS Flake modules](nixos/README.md) |
 | Bare metal Linux with systemd | [Xinity CLI](cli/README.md) |
-| Managed Postgres/Redis already available | Any method — point services at your existing database |
+| Managed Postgres/Redis already available | Any method (point services at your existing database) |
 
 ## Deployment Guides
 
@@ -63,7 +63,7 @@ A common pattern is Docker Compose for the control plane and the CLI for inferen
   - Expose port 4020 on the host (already the default in `docker-compose.yml`)
   - Use Docker's host networking mode
 
-NixOS control plane with CLI daemons works the same way — the daemon just needs the tether URL and shared secret.
+NixOS control plane with CLI daemons works the same way. The daemon just needs the tether URL and shared secret.
 
 ---
 
@@ -73,6 +73,6 @@ All three deployment targets support the same `_FILE` convention for secrets: fo
 
 Each target documents this in detail:
 
-- **Docker**: [Secrets](docker/README.md#secrets) — Docker `secrets:` block with `_FILE` env vars
-- **NixOS**: [Secrets: Three Tiers](nixos/README.md#secrets-three-tiers) — direct values, environment file, or per-secret `*File` options
-- **CLI**: [Secrets Management](cli/README.md#secrets-management) — systemd `LoadCredential` with mode-600 files in `/etc/xinity-ai/secrets/`
+- **Docker**: [Secrets](docker/README.md#secrets): Docker `secrets:` block with `_FILE` env vars
+- **NixOS**: [Secrets: Three Tiers](nixos/README.md#secrets-three-tiers): direct values, environment file, or per-secret `*File` options
+- **CLI**: [Secrets Management](cli/README.md#secrets-management): systemd `LoadCredential` with mode-600 files in `/etc/xinity-ai/secrets/`

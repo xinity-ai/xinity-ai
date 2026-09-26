@@ -441,7 +441,7 @@ This runs in the postinstall hook for NixOS support. Run `CI=1 bun install` to s
 <summary><strong>Licensing FAQ</strong></summary>
 
 **Can I use it for free?**
-Yes. The engine (gateway, daemon, CLI, infoserver, DB layer) is Apache 2.0 with no restrictions. The dashboard free tier supports a single organization with up to 120 GB of total VRAM across your cluster — enough to evaluate or run smaller deployments.
+Yes. The engine (gateway, daemon, CLI, infoserver, DB layer) is Apache 2.0 with no restrictions. The dashboard free tier supports a single organization with up to 120 GB of total VRAM across your cluster, enough to evaluate or run smaller deployments.
 
 **Can I audit the system?**
 Yes. Every line of code is here and intended to be auditable. That's the point.
@@ -462,7 +462,7 @@ We'd love your help. Whether it's bug reports, documentation improvements, or ne
 # 3. Integrations with inference engines beyond Ollama/vLLM
 ```
 
-Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening a PR — it covers scope, review expectations, and how to propose changes.
+Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening a PR. It covers scope, review expectations, and how to propose changes.
 
 **Join the community:** [Discord](https://discord.gg/xinity) · [Discussions](https://github.com/xinity-ai/xinity-ai/discussions)
 
@@ -530,7 +530,7 @@ cd packages/xinity-ai-gateway && bun run test
 cd packages/xinity-cli && bun run test
 ```
 
-Dashboard tests have additional prerequisites — see the [dashboard README](packages/xinity-ai-dashboard/README.md#testing) for details.
+Dashboard tests have additional prerequisites. See the [dashboard README](packages/xinity-ai-dashboard/README.md#testing) for details.
 
 </details>
 

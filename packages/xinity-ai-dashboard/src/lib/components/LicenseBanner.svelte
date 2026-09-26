@@ -15,7 +15,7 @@
     aria-live="polite"
   >
     <p class="font-semibold">
-      License key doesn't match this {license.originMismatch ? "origin" : "instance"} — running in free tier.
+      License key doesn't match this {license.originMismatch ? "origin" : "instance"}. Running in free tier.
     </p>
     <p class="mt-1 text-red-800">
       {#if license.originMismatch}

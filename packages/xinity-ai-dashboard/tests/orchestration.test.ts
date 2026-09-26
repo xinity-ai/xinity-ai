@@ -59,7 +59,7 @@ describe("orchestration: node goes unavailable", () => {
   const nodeA = makeNode({ id: "node-a", host: "10.0.0.1" });
 
   test("installations on a downed node are not counted, and replacement is planned on a healthy node", () => {
-    // node-b just went offline — syncDeployedModels filters it out of availableServers
+    // node-b just went offline, so syncDeployedModels filters it out of availableServers
     // and partitions its installations as orphaned. We simulate that here:
     const availableServers = [nodeA];
     const allInstallations = [

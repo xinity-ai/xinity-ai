@@ -218,7 +218,7 @@ export async function buildComputeHistory(rangeHours: number): Promise<ComputeHi
 
   // bucketSeconds is server-derived (pickBucketSeconds), never user input, and is
   // inlined as a literal so the SELECT and GROUP BY expressions are textually
-  // identical — with bound parameters Postgres treats them as different expressions.
+  // identical. With bound parameters, Postgres treats them as different expressions.
   const width = sql.raw(String(bucketSeconds));
   const usageBucket = sql`floor(extract(epoch from ${usageEventT.createdAt}) / ${width}) * ${width}`;
 

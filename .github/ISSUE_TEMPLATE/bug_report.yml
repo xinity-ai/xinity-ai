@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         Before opening a bug report, please check that the issue has not already been reported.
-        For security vulnerabilities, do **not** use this form — see [SECURITY.md](../../SECURITY.md).
+        For security vulnerabilities, do **not** use this form. See [SECURITY.md](../../SECURITY.md).
 
   - type: dropdown
     id: component

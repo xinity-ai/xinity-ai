@@ -30,7 +30,7 @@ export const myProcedure = rootOs
   });
 ```
 
-2. **Implicitly**, if the procedure's route is tagged `.internal` — `isProcedureExcludedFromMcp()` in `mcp.ts` drops any `.internal`-tagged procedure unless `NODE_ENV === "development"`.
+2. **Implicitly**, if the procedure's route is tagged `.internal`: `isProcedureExcludedFromMcp()` in `mcp.ts` drops any `.internal`-tagged procedure unless `NODE_ENV === "development"`.
 
 The `ProcedureMeta` type (defined in `src/lib/server/orpc/root.ts`) carries the `mcp` flag alongside other unrelated procedure metadata (e.g. `audit`):
 

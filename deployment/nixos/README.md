@@ -149,19 +149,19 @@ services.xinity-ai = {
 
 The modules offer three ways to provide secrets, from simplest to most secure:
 
-**1. Direct values (development only)** — set values in Nix. These end up in the world-readable Nix store. Do NOT use in production.
+**1. Direct values (development only):** set values in Nix. These end up in the world-readable Nix store. Do NOT use in production.
 
 ```nix
 services.xinity-ai-gateway.dbConnectionUrl = "postgresql://...";
 ```
 
-**2. Environment files** — one or more files outside the Nix store, sourced by systemd. Secrets stay off disk in the store but share one file.
+**2. Environment files:** one or more files outside the Nix store, sourced by systemd. Secrets stay off disk in the store but share one file.
 
 ```nix
 services.xinity-ai.environmentFiles = [ "/run/secrets/xinity" ];
 ```
 
-**3. Per-secret files with `_FILE` (recommended)** — each secret gets its own file on the host. The service loads them into its runtime credential directory via systemd's `LoadCredential`, and the application reads them at startup; the value never appears as an environment variable.
+**3. Per-secret files with `_FILE` (recommended):** each secret gets its own file on the host. The service loads them into its runtime credential directory via systemd's `LoadCredential`, and the application reads them at startup; the value never appears as an environment variable.
 
 ```nix
 services.xinity-ai.secrets = {

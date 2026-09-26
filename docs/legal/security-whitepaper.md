@@ -1,14 +1,14 @@
-# Xinity AI — Security & Architecture Whitepaper
+# Xinity AI: Security & Architecture Whitepaper
 
 **Version:** 1.1.0
 **Date:** March 2026
-**Status:** Draft — pending legal review
+**Status:** Draft, pending legal review
 
 ---
 
 ## 1. Executive Summary
 
-Xinity AI is a self-hostable AI orchestration platform designed for organizations with strict data residency, sovereignty, and security requirements. The entire stack — inference, API routing, model management, and the management dashboard — executes within the customer's own infrastructure. No inference data, prompts, or model outputs are ever transmitted to Xinity.
+Xinity AI is a self-hostable AI orchestration platform designed for organizations with strict data residency, sovereignty, and security requirements. The entire stack (inference, API routing, model management, and the management dashboard) executes within the customer's own infrastructure. No inference data, prompts, or model outputs are ever transmitted to Xinity.
 
 This document describes the architecture, data flows, and security properties relevant to enterprise procurement and security review.
 
@@ -65,7 +65,7 @@ In the default configuration, all inference traffic flows within the customer's 
 Application → Gateway (customer-hosted) → Ollama / vLLM (customer-hosted)
 ```
 
-After each request completes, the Gateway logs call data — including input messages and output — to the `apiCall` table in the customer's PostgreSQL database. This data is stored on customer infrastructure and is accessible only to authorized users of that installation.
+After each request completes, the Gateway logs call data, including input messages and output, to the `apiCall` table in the customer's PostgreSQL database. This data is stored on customer infrastructure and is accessible only to authorized users of that installation.
 
 ### 3.5 Image data (multimodal)
 

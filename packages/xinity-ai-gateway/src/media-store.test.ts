@@ -44,9 +44,9 @@ function findInsert(): CapturedQuery | undefined {
   return capturedQueries.find((q) => q.sql.includes("media_object"));
 }
 
-// ─── processMessageMedia – S3 enabled ───────────────────────────────────────
+// ─── processMessageMedia, S3 enabled ───────────────────────────────────────
 
-describe("processMessageMedia – S3 enabled", () => {
+describe("processMessageMedia, S3 enabled", () => {
   let writeCall: ReturnType<typeof mock>;
   let store: ReturnType<typeof makeMediaStore>;
 
@@ -167,9 +167,9 @@ describe("processMessageMedia – S3 enabled", () => {
   });
 });
 
-// ─── processMessageMedia – S3 disabled ──────────────────────────────────────
+// ─── processMessageMedia, S3 disabled ──────────────────────────────────────
 
-describe("processMessageMedia – S3 disabled (mediaStore = null)", () => {
+describe("processMessageMedia, S3 disabled (mediaStore = null)", () => {
   beforeEach(() => {
     capturedQueries.length = 0;
   });
@@ -338,9 +338,9 @@ describe("restoring logged images", () => {
   });
 });
 
-// ─── processMessageMedia – call will not be logged ──────────────────────────
+// ─── processMessageMedia, call will not be logged ──────────────────────────
 
-describe("processMessageMedia – store = false", () => {
+describe("processMessageMedia, store = false", () => {
   beforeEach(() => {
     capturedQueries.length = 0;
   });
@@ -502,7 +502,7 @@ describe("sniffAudioFormat", () => {
   });
 });
 
-describe("processMessageMedia – audio", () => {
+describe("processMessageMedia, audio", () => {
   let writeCall: ReturnType<typeof mock>;
 
   beforeEach(() => {

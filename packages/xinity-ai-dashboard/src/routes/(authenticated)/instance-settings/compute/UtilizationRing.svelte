@@ -36,7 +36,7 @@
   </svg>
   <div class="absolute inset-0 flex flex-col items-center justify-center">
     {#if value === null}
-      <span class="text-lg font-semibold text-gray-300">—</span>
+      <span class="text-lg font-semibold text-gray-300">n/a</span>
     {:else}
       <span class="text-lg font-bold text-gray-800"><AnimatedNumber {value} format={(v) => `${Math.round(v)}%`} /></span>
       <span class="text-[10px] uppercase tracking-wide text-gray-400">load</span>

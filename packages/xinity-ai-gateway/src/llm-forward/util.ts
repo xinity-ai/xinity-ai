@@ -356,7 +356,7 @@ export function clientFacingErrorMessage(error: unknown): string {
 }
 
 /**
- * True when the model has a tag list that does not include "tools" — i.e. the catalog
+ * True when the model has a tag list that does not include "tools", i.e. the catalog
  * knows the model and it's marked as lacking tool-use support. Unknown tags (undefined)
  * are treated as "may support tools" to avoid blocking on missing catalog data.
  */

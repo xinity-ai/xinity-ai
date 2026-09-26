@@ -152,7 +152,7 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
               streamToolCalls.push({ id: callId, aiToolCallId: part.toolCallId, outputIndex: outputIdx, toolName: "web_search" });
               emitToolCallStarted(controller, callId, outputIdx, seq);
             } else if (!INTERNAL_TOOL_NAMES.has(part.toolName)) {
-              // Function tool call (manual — no execute in AI SDK)
+              // Function tool call (manual, no execute in AI SDK)
               const callId = generateCallId();
               const outputIdx = nextOutputIndex++;
               const argsStr = JSON.stringify(part.input ?? {});

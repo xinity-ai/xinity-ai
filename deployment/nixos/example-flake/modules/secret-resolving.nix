@@ -10,7 +10,7 @@
         mode = "0400";
       };
 
-      # Readable by root only — fine for systemd LoadCredential (postgres-auth-setup).
+      # Readable by root only, which is fine for systemd LoadCredential (postgres-auth-setup).
       forRoot = file: { inherit file; };
 
       # Readable by a specific system user/group (e.g. redis).

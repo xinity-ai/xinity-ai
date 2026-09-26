@@ -182,14 +182,14 @@ export function resolveActiveTools(
 
   const activeTools: ToolSet = {};
 
-  // Built-in tools (with execute functions — auto-executed by AI SDK)
+  // Built-in tools (with execute functions, auto-executed by AI SDK)
   if (builtinNames.includes("web_search")) activeTools["web_fetch"] = responseTools["web_fetch"];
   for (const name of builtinNames) {
     if (name in responseTools) activeTools[name] = responseTools[name];
   }
   const hasBuiltinTools = Object.keys(activeTools).length > 0;
 
-  // Function tools (manual — no execute, AI SDK returns them to caller)
+  // Function tools (manual: no execute, AI SDK returns them to caller)
   const functionTools = toolChoice === "none" ? [] : parseFunctionTools(tools);
   const functionToolSet = buildFunctionToolSet(functionTools);
   Object.assign(activeTools, functionToolSet);
