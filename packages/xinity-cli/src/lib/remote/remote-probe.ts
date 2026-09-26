@@ -145,15 +145,6 @@ export function createCachedHost(realHost: Host, state: RemoteState): Host {
       if (args[0] === "uname" && args[1] === "-s") {
         return Promise.resolve({ ok: true, output: state.platform, exitCode: 0 });
       }
-      // Intercept `which <name>` or `test -e`
-      if (args[0] === "which" && args[1]) {
-        const found = state.commands[args[1]] ?? false;
-        return Promise.resolve({ ok: found, output: found ? args[1] : "", exitCode: found ? 0 : 1 });
-      }
-      if (args[0] === "test" && args[1] === "-e" && args[2]) {
-        const exists = state.files[args[2]] ?? false;
-        return Promise.resolve({ ok: exists, output: "", exitCode: exists ? 0 : 1 });
-      }
       return realHost.run(args);
     },
 

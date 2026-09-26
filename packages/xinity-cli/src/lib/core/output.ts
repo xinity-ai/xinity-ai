@@ -62,27 +62,3 @@ export function logErrors(result: { success: boolean; errors: string[] }): void 
     }
   }
 }
-
-/** Reports a failed elevation result and returns true so the caller can short-circuit. */
-export function elevationHardFailed(
-  result: { success: boolean; output: string },
-  label: string,
-): boolean {
-  if (result.success) return false;
-  fail(label, result.output);
-  return true;
-}
-
-/** Reports an elevation outcome with the appropriate log level. Returns true on success. */
-export function reportElevationOutcome(
-  result: { success: boolean },
-  label: string,
-  messages: { success: string; failed: string },
-): boolean {
-  if (result.success) {
-    pass(label, messages.success);
-    return true;
-  }
-  fail(label, messages.failed);
-  return false;
-}

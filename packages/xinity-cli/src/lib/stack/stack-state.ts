@@ -22,7 +22,6 @@ const stackStateT = z.object({
   hosts: z.array(managedHostT).default([]),
 });
 
-export type ManagedHost = z.infer<typeof managedHostT>;
 export type StackState = z.infer<typeof stackStateT>;
 
 // ── Paths ───────────────────────────────────────────────────────────────

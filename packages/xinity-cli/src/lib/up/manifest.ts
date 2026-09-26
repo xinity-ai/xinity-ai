@@ -61,11 +61,6 @@ export async function readManifest(host: Host): Promise<Manifest> {
   return structuredClone(manifest);
 }
 
-/** Get the installed version for a component, or null if not installed. */
-export async function getInstalledVersion(component: string, host: Host): Promise<string | null> {
-  return (await readManifest(host)).components[component]?.version ?? null;
-}
-
 /** Write the manifest to disk (requires elevation). */
 export async function writeManifest(manifest: Manifest, host: Host): Promise<boolean> {
   manifestCache.delete(host);

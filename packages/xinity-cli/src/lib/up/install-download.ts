@@ -1,4 +1,4 @@
-import { fetchChecksums, verifySha256, resolveDirectUrl, downloadAsset, pickReleaseAsset, type Release } from "./github.ts";
+import { fetchChecksums, verifySha256, resolveDirectUrl, downloadAsset, type Release } from "./github.ts";
 import { type Component, BIN_DIR, DASHBOARD_DIR, binaryBaseName } from "../core/component-meta.ts";
 import type { Host } from "../core/host.ts";
 import type { StepEvent } from "../term/step-event.ts";
@@ -181,21 +181,4 @@ export async function* installBinary(
 
   yield { type: "pass", label: "Install", detail: "Installed" };
   return true;
-}
-
-export async function* resolveRemoteArtifact(
-  release: Release,
-  component: Component,
-  host: Host,
-): AsyncGenerator<StepEvent, string | null> {
-  const hostArch = await host.getArch();
-  let assetName: string;
-  try {
-    assetName = pickReleaseAsset(release, component, hostArch);
-  } catch (err) {
-    yield { type: "fail", label: "Download", detail: (err as Error).message };
-    return null;
-  }
-
-  return yield* downloadAndVerifyOnHost(release, assetName, host);
 }

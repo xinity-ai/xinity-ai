@@ -116,18 +116,6 @@ export function diffEnv(before: EnvBundle, after: EnvBundle): EnvChange[] {
   return changes;
 }
 
-function prefillFromExisting(
-  fields: EnvField[],
-  existing: Record<string, string> | undefined,
-  config: Record<string, string>,
-  secrets: Record<string, string>,
-): void {
-  for (const field of fields) {
-    const val = existing?.[field.key];
-    if (val !== undefined) assignByCategory(field, val, config, secrets);
-  }
-}
-
 /**
  * Prompt the user for env values for a component.
  * Shows existing values as defaults when updating.
@@ -153,10 +141,7 @@ export async function promptForEnv(
   const expertFields = fields.filter((f) => f.isExpert);
   const skippedFields = fields.filter((f) => skip.has(f.key) && !f.isExpert);
 
-  const config: Record<string, string> = {};
-  const secrets: Record<string, string> = {};
-
-  prefillFromExisting([...expertFields, ...skippedFields], existingValues, config, secrets);
+  const { config, secrets } = splitValuesByCategory([...expertFields, ...skippedFields], existingValues ?? {});
 
   await promptFieldsUnderHeading(visibleConfig, "Configuration", existingValues, config, secrets);
   await promptFieldsUnderHeading(visibleSecrets, "Secrets", existingValues, config, secrets);

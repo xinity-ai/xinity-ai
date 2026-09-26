@@ -32,32 +32,6 @@ export async function localRun(args: string[]): Promise<RunResult> {
   };
 }
 
-// stdin must not be inherited: Bun corrupts process.stdin when the child exits,
-// silently killing the next clack prompt. sudo reads its password from /dev/tty.
-export async function localRunInteractive(args: string[]): Promise<RunResult> {
-  const proc = Bun.spawn(args, {
-    stdin: "ignore",
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  const exitCode = await proc.exited;
-
-  resetStdin();
-
-  return {
-    ok: exitCode === 0,
-    output: "",
-    exitCode,
-  };
-}
-
-function resetStdin(): void {
-  if (process.stdin.isTTY) {
-    process.stdin.setRawMode(false);
-  }
-  process.stdin.resume();
-}
-
 // ─── Elevation (sudo) ──────────────────────────────────────────────────────
 
 export type ElevationResult = {

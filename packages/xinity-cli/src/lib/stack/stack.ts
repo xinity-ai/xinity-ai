@@ -198,12 +198,6 @@ export function applySharedResult(
   }
 }
 
-/** True when the stack runs its own infoserver (configured or placed on a host). */
-export function stackHostsInfoserver(stack: StackDefinition): boolean {
-  return stack.componentEnv.infoserver !== undefined
-    || stack.hosts.some((h) => h.components.includes("infoserver"));
-}
-
 // ── Paths ────────────────────────────────────────────────────────────────
 
 function stacksDir(): string {
