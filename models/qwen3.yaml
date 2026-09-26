@@ -391,3 +391,141 @@ models:
       - qwen3
     engineVersions:
       min: "0.19.0"
+
+  qwen3.8-27b-ollama: &q38-ollama
+    name: Qwen3.8 27B (Ollama)
+    description: |
+      The same Qwen3.8 27B as the vLLM entries, served by Ollama from the library GGUF.
+      It reads images, calls tools, and takes the full 262K window.
+
+      This entry is the 4-bit build, which is the practical default: it fits in under
+      17 GB and leaves room on the node for something else. The q8 entry roughly doubles
+      the memory and sits closest to the vLLM FP8 entry.
+
+      Under Ollama it answers directly rather than reasoning first.
+    url: https://ollama.com/library/qwen3.8
+    license: apache-2.0
+    createdAt: 2026-08-14
+    registeredAt: 2026-09-26
+    engine: ollama
+    engineSpecifier: qwen3.8:27b
+    variantOf: qwen3.8-27b-vllm
+    sizing: &q38-ollama-kv
+      # Hybrid attention, so only some layers hold a KV cache and the rest keep a fixed
+      # per-request state. Both figures are the vLLM entry's verified values for the same
+      # model rather than ones derived from Ollama's metadata.
+      kvBytesPerToken: 65536
+      stateBytesPerSequence: 154140672
+      maxContextLength: 262144
+      weightGb: 16.81
+      weightBits: 4
+    type: chat
+    family: Qwen3
+    tags: [vision, tools]
+    engineVersions:
+      min: "0.33.1"
+
+  qwen3.8-27b-q8-ollama:
+    <<: *q38-ollama
+    name: Qwen3.8 27B Q8 (Ollama)
+    description: |
+      Qwen3.8 27B in an 8-bit build, close to the vLLM FP8 entry's precision at a little
+      under 30 GB. Vision, tool calling and the 262K window behave as on the 4-bit entry.
+
+      Take this when the 4-bit build's answers are not good enough and the node has the
+      memory to spare.
+    engineSpecifier: qwen3.8:27b-q8_0
+    sizing:
+      <<: *q38-ollama-kv
+      weightGb: 29.05
+      weightBits: 8
+
+  qwen3.6-27b-ollama: &q36-ollama
+    name: Qwen3.6 27B (Ollama)
+    description: |
+      The same Qwen3.6 27B as the vLLM entries, served by Ollama from the library GGUF.
+      It reads images, calls tools, and takes the full 262K window.
+
+      This entry is the 4-bit build and the practical default at around 17 GB. The q8
+      entry doubles the memory for answers closer to the vLLM FP8 entry.
+
+      Qwen3.8 is the newer model at the same size. Prefer it unless you are pinned to 3.6.
+    url: https://ollama.com/library/qwen3.6
+    license: apache-2.0
+    createdAt: 2026-04-21
+    registeredAt: 2026-09-26
+    engine: ollama
+    engineSpecifier: qwen3.6:27b-q4_K_M
+    variantOf: qwen3.6-27b-vllm
+    sizing: &q36-ollama-kv
+      # As on the 3.8 entry: hybrid attention, and both figures are the vLLM entry's
+      # verified values for the same model.
+      kvBytesPerToken: 65536
+      stateBytesPerSequence: 154140672
+      maxContextLength: 262144
+      weightGb: 17.42
+      weightBits: 4
+    type: chat
+    family: Qwen3
+    tags: [vision, tools]
+    engineVersions:
+      min: "0.33.1"
+
+  qwen3.6-27b-q8-ollama:
+    <<: *q36-ollama
+    name: Qwen3.6 27B Q8 (Ollama)
+    description: |
+      Qwen3.6 27B in an 8-bit build at around 30 GB, the closest Ollama build to the vLLM
+      FP8 entry. Vision, tool calling and the 262K window are unchanged from the 4-bit
+      entry.
+    engineSpecifier: qwen3.6:27b-q8_0
+    sizing:
+      <<: *q36-ollama-kv
+      weightGb: 29.97
+      weightBits: 8
+
+  qwen3.6-35b-a3b-ollama: &q36moe-ollama
+    name: Qwen3.6 35B-A3B (Ollama)
+    description: |
+      The same Qwen3.6 35B-A3B sparse mixture of experts as the vLLM entries, served by
+      Ollama from the library GGUF. About 3B parameters are active per token, so it
+      decodes far faster than its size suggests. It reads images, calls tools, and takes
+      the full 262K window.
+
+      This entry is the 4-bit build at around 24 GB, which is the one to pick when the
+      27B dense entries are too slow and the node cannot hold the q8 build.
+    url: https://ollama.com/library/qwen3.6
+    license: apache-2.0
+    createdAt: 2026-04-21
+    registeredAt: 2026-09-26
+    engine: ollama
+    engineSpecifier: qwen3.6:35b-a3b-q4_K_M
+    variantOf: qwen3.6-35b-a3b-vllm
+    sizing: &q36moe-ollama-kv
+      # Hybrid attention with a fixed per-request state on the recurrent layers. Both
+      # figures are the vLLM entry's verified values for the same model.
+      kvBytesPerToken: 20480
+      stateBytesPerSequence: 64880640
+      maxContextLength: 262144
+      weightGb: 23.94
+      activeWeightGb: 2.1
+      weightBits: 4
+    type: chat
+    family: Qwen3
+    tags: [vision, tools]
+    engineVersions:
+      min: "0.33.1"
+
+  qwen3.6-35b-a3b-q8-ollama:
+    <<: *q36moe-ollama
+    name: Qwen3.6 35B-A3B Q8 (Ollama)
+    description: |
+      Qwen3.6 35B-A3B in an 8-bit build at around 39 GB, the closest Ollama build to the
+      vLLM FP8 entry. Vision, tool calling and the 262K window are unchanged, and it still
+      decodes at the speed its 3B active parameters imply rather than its footprint.
+    engineSpecifier: qwen3.6:35b-a3b-q8_0
+    sizing:
+      <<: *q36moe-ollama-kv
+      weightGb: 38.7
+      activeWeightGb: 3.4
+      weightBits: 8
