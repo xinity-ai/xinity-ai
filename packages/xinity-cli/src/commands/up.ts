@@ -14,8 +14,13 @@ import {
 } from "../lib/up/up-plan.ts";
 import { warn, heading } from "../lib/core/output.ts";
 import { connectHost, TARGET_HOST_OPTION } from "../lib/remote/remote-host.ts";
+import type { Host } from "../lib/core/host.ts";
 import { seaweedfsSetup } from "../lib/infra/seaweedfs-setup.ts";
-import { infraRedis } from "../lib/infra/redis-setup.ts";
+import { infraRedis, planRedis, applyRedisPlan } from "../lib/infra/redis-setup.ts";
+import { postgresSetup, describePostgresProvision, applyPostgresProvision } from "../lib/infra/postgres-setup.ts";
+import { ollamaSetup } from "../lib/infra/ollama-setup.ts";
+import { prometheusSetup } from "../lib/infra/prometheus-setup.ts";
+import { searxngSetup } from "../lib/infra/searxng-setup.ts";
 import { runUpdateFlow } from "./update.ts";
 
 const COMPONENTS = [
@@ -30,15 +35,22 @@ const COMPONENTS = [
   "cli", "all",
 ] as const;
 
+const INFRA_SETUPS: Partial<Record<string, (host: Host, dryRun: boolean) => Promise<unknown>>> = {
+  "infra-seaweedfs": seaweedfsSetup,
+  "infra-prometheus": prometheusSetup,
+  "infra-postgres": postgresSetup,
+  "infra-ollama": ollamaSetup,
+  "infra-searxng": searxngSetup,
+};
+
 /** `up db`: plan (discover the URL), review, then provision/migrate and wire Redis. */
-async function runDbFlow(opts: { targetVersion: string; dryRun: boolean }, host: import("../lib/core/host.ts").Host): Promise<boolean> {
+async function runDbFlow(opts: { targetVersion: string; dryRun: boolean }, host: Host): Promise<boolean> {
   const dbPlan = await discoverConnectionUrl(host);
   if (!dbPlan) return false;
 
   log.step(bold("Planned actions"));
   let step = 1;
   if (dbPlan.provision) {
-    const { describePostgresProvision } = await import("../lib/infra/postgres-setup.ts");
     log.info(`${step++}. ${describePostgresProvision(dbPlan.provision)}`);
   }
   log.info(`${step}. ${describeMigrationStep(opts.targetVersion, dbPlan.connectionUrl)}`);
@@ -50,7 +62,6 @@ async function runDbFlow(opts: { targetVersion: string; dryRun: boolean }, host:
   if (!(await reviewGate())) return true;
 
   if (dbPlan.provision) {
-    const { applyPostgresProvision } = await import("../lib/infra/postgres-setup.ts");
     if (!(await applyPostgresProvision(dbPlan.provision, host))) return false;
   }
 
@@ -62,7 +73,6 @@ async function runDbFlow(opts: { targetVersion: string; dryRun: boolean }, host:
 
   // Redis is a shared infrastructure dependency; non-fatal when skipped.
   heading("redis");
-  const { planRedis, applyRedisPlan } = await import("../lib/infra/redis-setup.ts");
   const redisPlan = await planRedis(host);
   if (redisPlan && (await applyRedisPlan(redisPlan, host))) {
     log.success("Redis - Connection configured");
@@ -76,7 +86,7 @@ async function runDbFlow(opts: { targetVersion: string; dryRun: boolean }, host:
 async function runPlannedFlow(
   component: string,
   opts: { targetVersion: string; dryRun: boolean; hardReset: boolean },
-  host: import("../lib/core/host.ts").Host,
+  host: Host,
 ): Promise<boolean> {
   const isAll = component === "all";
 
@@ -197,36 +207,9 @@ export const upCommand: CommandModule = {
         return;
       }
 
-      if (component === "infra-seaweedfs") {
-        await seaweedfsSetup(host, dryRun);
-        outro("Done");
-        return;
-      }
-
-      if (component === "infra-prometheus") {
-        const { prometheusSetup } = await import("../lib/infra/prometheus-setup.ts");
-        await prometheusSetup(host, dryRun);
-        outro("Done");
-        return;
-      }
-
-      if (component === "infra-postgres") {
-        const { postgresSetup } = await import("../lib/infra/postgres-setup.ts");
-        await postgresSetup(host, dryRun);
-        outro("Done");
-        return;
-      }
-
-      if (component === "infra-ollama") {
-        const { ollamaSetup } = await import("../lib/infra/ollama-setup.ts");
-        await ollamaSetup(host, dryRun);
-        outro("Done");
-        return;
-      }
-
-      if (component === "infra-searxng") {
-        const { searxngSetup } = await import("../lib/infra/searxng-setup.ts");
-        await searxngSetup(host, dryRun);
+      const infraSetup = INFRA_SETUPS[component];
+      if (infraSetup) {
+        await infraSetup(host, dryRun);
         outro("Done");
         return;
       }
