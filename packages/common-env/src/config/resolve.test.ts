@@ -180,6 +180,13 @@ describe("checkConfig", () => {
       message: "must be at most a third of IDLE_TIMEOUT",
     }]);
   });
+
+  test("and goes unjudged once that field is delegated, fallback or no fallback", () => {
+    expect(checkConfig(withInvariant, {
+      env: { IDLE_TIMEOUT: "20" },
+      delegated: ["KEEPALIVE_INTERVAL_MS"],
+    })).toEqual([]);
+  });
 });
 
 describe("rules spanning members", () => {
@@ -208,6 +215,20 @@ describe("rules spanning members", () => {
       ],
       message: "needs a licence",
     }]);
+  });
+
+  test("a delegated key takes the whole rule with it, since its real value lives elsewhere", () => {
+    expect(checkConfig(licensed, {
+      env: { AUDIT_LOKI_URL: "http://loki:3100" },
+      delegated: ["LICENSE_KEY"],
+    })).toEqual([]);
+  });
+
+  test("but delegating some other key leaves the rule to be judged as before", () => {
+    expect(checkConfig(licensed, {
+      env: { AUDIT_LOKI_URL: "http://loki:3100" },
+      delegated: ["SOMETHING_ELSE"],
+    })).toHaveLength(1);
   });
 
   test("and says nothing once the rule is satisfied", () => {

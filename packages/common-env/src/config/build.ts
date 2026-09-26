@@ -131,17 +131,7 @@ function groupObjectSchema(group: AnyGroup): z.ZodObject<z.ZodRawShape> {
     shape[name] = field.schema;
   }
 
-  const object = z.object(shape);
-  const violations = group.violations;
-  if (!violations) {
-    return object;
-  }
-
-  return object.check((ctx) => {
-    for (const violation of violations(ctx.value)) {
-      ctx.issues.push({ code: "custom", input: ctx.value, path: [violation.field], message: violation.message });
-    }
-  });
+  return z.object(shape);
 }
 
 export function entryFor(config: AnyConfig, envKey: string): ConfigEntry | undefined {

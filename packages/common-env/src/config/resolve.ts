@@ -1,8 +1,8 @@
 import type { z } from "zod";
 import { readSecretFile } from "../secret-file";
 import { checkGroupActivation, isGroupActive, type ActivationWarning } from "./activation";
-import { fieldRefs, groupAt, refFor, type AnyConfig, type ConfigDef, type FieldRef } from "./build";
-import { isGroup, type ConfigEntry } from "./group";
+import { fieldRefs, groupAt, refFor, type AnyConfig, type ConfigDef, type ConfigViolation, type FieldRef } from "./build";
+import { isGroup, type AnyGroup, type ConfigEntry } from "./group";
 
 export type ValueSource = "env" | "env-file" | "default" | "dynamic";
 
@@ -16,6 +16,7 @@ export type Provenance = {
 
 export type ResolveOptions = {
   readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly delegated?: readonly string[];
 };
 
 export type Resolved<T> = {
@@ -72,6 +73,25 @@ function attribute(
   });
 }
 
+function judgeable(
+  violations: readonly ConfigViolation[],
+  delegated: ReadonlySet<string>,
+): ConfigProblem[] {
+  return violations.filter((violation) => !violation.fields.some((field) => delegated.has(field.envKey)));
+}
+
+function groupViolations(
+  config: AnyConfig,
+  key: string,
+  group: AnyGroup,
+  settled: Record<string, unknown>,
+): ConfigViolation[] {
+  return (group.violations?.(settled) ?? []).map((violation) => ({
+    fields: [refFor(entryAt(config, [key, violation.field]))],
+    message: violation.message,
+  }));
+}
+
 type Parsed = {
   readonly value: Record<string, unknown>;
   readonly problems: readonly ConfigProblem[];
@@ -92,6 +112,7 @@ function parseConfig(config: AnyConfig, opts: ResolveOptions): Parsed {
   }
 
   const activation = checkGroupActivation(config, presence);
+  const delegated = new Set(opts.delegated ?? []);
   const value: Record<string, unknown> = {};
   const problems: ConfigProblem[] = [];
 
@@ -126,6 +147,7 @@ function parseConfig(config: AnyConfig, opts: ResolveOptions): Parsed {
     const parsed = mounted.schema.safeParse(input);
     if (parsed.success) {
       value[key] = parsed.data;
+      problems.push(...judgeable(groupViolations(config, key, member, parsed.data), delegated));
     } else {
       problems.push(...attribute(parsed.error.issues, entries));
     }
@@ -133,7 +155,7 @@ function parseConfig(config: AnyConfig, opts: ResolveOptions): Parsed {
 
   // Only on a complete value: a rule reads members a failed one would have left undefined.
   if (problems.length === 0 && config.violations) {
-    problems.push(...config.violations(value, fieldRefs(config)));
+    problems.push(...judgeable(config.violations(value, fieldRefs(config)), delegated));
   }
 
   return { value, problems, located, warnings: activation.warnings };

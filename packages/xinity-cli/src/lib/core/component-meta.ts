@@ -107,7 +107,8 @@ export function checkComponentConfig(
 ): readonly ConfigProblem[] {
   const declaration = COMPONENT_CONFIGS[component];
   try {
-    return checkConfig(declaration, { env: splitDelegations(declaration, env).envWithFallbacks });
+    const { envWithFallbacks, delegatedKeys } = splitDelegations(declaration, env);
+    return checkConfig(declaration, { env: envWithFallbacks, delegated: delegatedKeys });
   } catch (err) {
     return [{ fields: [], message: err instanceof Error ? err.message : String(err) }];
   }

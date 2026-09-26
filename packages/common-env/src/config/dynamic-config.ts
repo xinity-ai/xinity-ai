@@ -53,7 +53,7 @@ export function createDynamicConfig<T>(deps: {
   const dynamicEntries = declaration.entries.filter((entry) => entry.isDynamic);
 
   const resolve = (env: RawEnv) => {
-    const resolved = resolveValues(declaration, { env });
+    const resolved = resolveValues(declaration, { env, delegated: delegatedKeys });
     if (resolved.problems.length > 0) {
       throw configError(resolved.problems);
     }

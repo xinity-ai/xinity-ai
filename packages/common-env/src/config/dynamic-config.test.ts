@@ -294,3 +294,48 @@ describe("a delegation written into a secret file", () => {
     expect(config.value.cache.responseTtlSeconds()).toBe(120);
   });
 });
+
+describe("rules spanning a delegated key", () => {
+  type Audit = { url: string };
+  type Licensed = { audit: Audit | undefined; licenseKey: () => string | undefined };
+
+  const licensed = defineConfig<Licensed>({
+    audit: defineGroup<Audit>({
+      id: "audit",
+      title: "Audit export",
+      optional: { requires: ["url"] },
+      fields: { url: env("AUDIT_SINK_URL", z.url()) },
+    }),
+    licenseKey: dynamic("LICENSE_KEY", z.string().optional()),
+  }, {
+    violations: (value, at) => value.audit && !value.licenseKey
+      ? [{ fields: [at.audit.url, at.licenseKey], message: "needs a licence" }]
+      : [],
+  });
+
+  const DELEGATED = { AUDIT_SINK_URL: "http://loki:3100", LICENSE_KEY: "@dynamic" };
+
+  test("does not hold up boot, since a throw there is what stops the feed from ever running", () => {
+    const config = createDynamicConfig({ declaration: licensed, rawEnv: DELEGATED });
+
+    expect(config.value.licenseKey()).toBeUndefined();
+  });
+
+  test("stays unjudged after a feed that had nothing to say about it", async () => {
+    let push: ApplyOverrides = () => [];
+    const config = createDynamicConfig({ declaration: licensed, rawEnv: DELEGATED });
+    await config.start(async (apply) => {
+      push = apply;
+      return async () => {};
+    });
+
+    expect(() => push({})).not.toThrow();
+  });
+
+  test("while the same settings without delegation still refuse to boot", () => {
+    expect(() => createDynamicConfig({
+      declaration: licensed,
+      rawEnv: { AUDIT_SINK_URL: "http://loki:3100" },
+    })).toThrow(/needs a licence/);
+  });
+});
