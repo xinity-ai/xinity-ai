@@ -88,7 +88,9 @@ models:
       minKvCacheGb: 5.54
       maxContextLength: 262144
       weightGb: 69.46  # measured resident, 64.69 GiB
-      activeWeightGb: 7
+      # 8 of 256 experts per token, plus the shared expert, attention and lm_head read in
+      # full. From the checkpoint's tensor sizes; the embedding table is not read per token.
+      activeWeightGb: 5.89
       weightBits: 16
     type: chat
     family: Ornith
@@ -127,7 +129,7 @@ models:
     sizing:
       <<: *ornith35-kv
       weightGb: 37.00  # measured resident, 34.46 GiB
-      activeWeightGb: 4
+      activeWeightGb: 4.49
       weightBits: 8
 
   # ---------------------------------------------------------------------------
@@ -251,7 +253,10 @@ models:
       minKvCacheGb: 5.54
       maxContextLength: 262144
       weightGb: 69.48  # measured resident, 64.69 GiB
-      activeWeightGb: 7
+      # 8 of 256 experts per token, plus the shared expert, attention and lm_head read in
+      # full. From the checkpoint's tensor sizes; the embedding table is not read per token.
+      # Single-stream decode measured 30.8 tok/s, which this figure predicts to within 2%.
+      activeWeightGb: 5.89
       weightBits: 16
     type: chat
     family: Ornith
@@ -315,10 +320,14 @@ models:
       # The MTP head is an extra decoder layer with its own KV, so only the floor
       # moves. Bracketed: 6.16 aborts, 6.17 starts at 1.00x.
       minKvCacheGb: 6.17
+      # A step emits about 1.41 tokens here, so the per-token read is the plain entry's
+      # 5.89 amortized over them. Derived from the measured 43.4 tok/s, not from bytes.
+      activeWeightGb: 4.18
     engineArgs:
       # engineArgs are deep-flattened on load, so this composes with the shared list.
-      # n=1 was chosen by measurement: acceptance is 0.83 at the first position and
-      # n=3 reuses the single MTP layer, dropping to 71 tok/s against this 91.
+      # n=1 was chosen by measurement: single-stream decode is 43.4 tok/s here against
+      # 30.8 for the plain entry, and n=3 reuses the single MTP layer, dropping to
+      # 39.9 tok/s while also needing more KV cache than this entry reserves.
       - *ornith15-args-text
       - --speculative-config
       - '{"method":"mtp","num_speculative_tokens":1}'
@@ -344,7 +353,7 @@ models:
     sizing: &ornith15-35b-fp8-kv
       <<: *ornith15-35b-kv
       weightGb: 37.01  # measured resident, 34.46 GiB
-      activeWeightGb: 4
+      activeWeightGb: 4.49
       weightBits: 8
 
   ornith-1.5-35b-a3b-fp8-vl-vllm:
@@ -377,7 +386,7 @@ models:
 
       Its cache is cheaper too, not just its weights: the checkpoint asks for an
       fp8 KV cache and vLLM obliges, so a request at full context reserves under
-      3 GB where the bf16 and FP8 entries reserve 5.45. That is what makes this the
+      3 GB where the bf16 and FP8 entries reserve 5.54. That is what makes this the
       entry to pick when many requests have to share one node.
 
       Answers held up against the other builds on a twelve-prompt battery, and
@@ -402,7 +411,8 @@ models:
       stateBytesPerSequence: 64389120
       minKvCacheGb: 2.86
       weightGb: 20.99  # measured resident, 19.55 GiB
-      activeWeightGb: 3
+      # Single-stream decode measured 79.7 tok/s, which this figure predicts to within 2%.
+      activeWeightGb: 2.25
       weightBits: 4
 
   ornith-1.5-35b-a3b-nvfp4-vl-vllm:
