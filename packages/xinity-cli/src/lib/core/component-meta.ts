@@ -13,8 +13,6 @@ import { infoserverConfig } from "xinity-infoserver/config-schema.ts";
 import { daemonConfig } from "xinity-ai-daemon/src/config-schema.ts";
 import { dashboardConfig } from "xinity-ai-dashboard/src/lib/server/config-schema.ts";
 
-export type { Release } from "../up/github.ts";
-
 export type Component = "gateway" | "dashboard" | "daemon" | "infoserver" | "tether";
 
 export const COMPONENTS: readonly Component[] = ["gateway", "dashboard", "daemon", "infoserver", "tether"];

@@ -1,7 +1,8 @@
 import type { CommandModule } from "yargs";
 import { intro, outro, spinner } from "../lib/core/clack.ts";
 import { bold, dim, green, red, yellow } from "picocolors";
-import { runDoctor, buildSummaryLine, type CheckResult, type ComponentReport, type DoctorReport } from "../lib/doctor/doctor.ts";
+import { runDoctor, buildSummaryLine, type ComponentReport, type DoctorReport } from "../lib/doctor/doctor.ts";
+import type { CheckResult } from "../lib/doctor/doctor-probes.ts";
 import { connectHost, TARGET_HOST_OPTION } from "../lib/remote/remote-host.ts";
 
 // ─── Status symbols ──────────────────────────────────────────────────────────

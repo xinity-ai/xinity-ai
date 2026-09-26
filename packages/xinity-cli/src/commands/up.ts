@@ -24,14 +24,10 @@ import { searxngSetup } from "../lib/infra/searxng-setup.ts";
 import { runUpdateFlow } from "./update.ts";
 
 const COMPONENTS = [
-  // Core application components
   "gateway", "dashboard", "daemon", "infoserver", "tether",
-  // Shared infrastructure (Postgres migrations + Redis discovery)
   "db",
-  // Infrastructure utilities
   "infra-redis", "infra-seaweedfs", "infra-postgres",
   "infra-ollama", "infra-vllm", "infra-searxng", "infra-prometheus",
-  // Meta
   "cli", "all",
 ] as const;
 
@@ -43,7 +39,6 @@ const INFRA_SETUPS: Partial<Record<string, (host: Host, dryRun: boolean) => Prom
   "infra-searxng": searxngSetup,
 };
 
-/** `up db`: plan (discover the URL), review, then provision/migrate and wire Redis. */
 async function runDbFlow(opts: { targetVersion: string; dryRun: boolean }, host: Host): Promise<boolean> {
   const dbPlan = await discoverConnectionUrl(host);
   if (!dbPlan) return false;
@@ -82,7 +77,6 @@ async function runDbFlow(opts: { targetVersion: string; dryRun: boolean }, host:
   return true;
 }
 
-/** Service components and `all`: collect, review, gate, apply. */
 async function runPlannedFlow(
   component: string,
   opts: { targetVersion: string; dryRun: boolean; hardReset: boolean },

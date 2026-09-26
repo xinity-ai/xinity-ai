@@ -9,13 +9,11 @@ import { unitName } from "../up/systemd.ts";
 import { type Component, ENV_DIR, SECRETS_DIR, UNIT_DIR, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT, DASHBOARD_DEFAULT_PORT, DEFAULT_OLLAMA_URL } from "../core/component-meta.ts";
 import { collectRemoteState, createCachedHost } from "../remote/remote-probe.ts";
 import {
-  type CheckResult, type CheckStatus,
+  type CheckResult,
   checkPostgresAndMigrations, checkRedis, checkServiceHealth, checkSmtp,
   checkInfoserverUrl,
   fileExistsCheck, serviceActiveCheck, isLocalUrl,
 } from "./doctor-probes.ts";
-
-export type { CheckResult, CheckStatus };
 
 export type DoctorSpinner = {
   message: (msg: string) => void;
@@ -25,9 +23,7 @@ export type DoctorSpinner = {
 export type DoctorRunOptions = {
   /** Prompt for sudo when permission is denied instead of silently skipping. */
   interactive?: boolean;
-  /** Spinner instance for progress updates during collection. */
   spinner?: DoctorSpinner;
-  /** Host to run diagnostics on. */
   host: Host;
 }
 
@@ -64,12 +60,6 @@ function notInstalledReport(component: string, message = "Not installed"): Compo
   };
 }
 
-// File helpers
-
-/**
- * Read a file via the host, optionally prompting for sudo when permission is denied.
- * Returns the content, or null with flags indicating why it was unavailable.
- */
 async function readFileWithElevation(
   path: string,
   description: string,
@@ -80,7 +70,6 @@ async function readFileWithElevation(
   if (content !== null) {
     return { content, permissionDenied: false };
   }
-  // File not found or inaccessible, try elevated read if interactive
   if (opts.interactive) {
     opts.spinner?.stop();
     const result = await host.withElevation(`cat '${path}'`, description);
@@ -107,7 +96,6 @@ async function checkSystem(host: Host): Promise<ComponentReport> {
     });
   }
 
-  // systemd
   if (await commandExistsOn(host, "systemctl")) {
     checks.push({
       label: "systemd",
@@ -122,7 +110,6 @@ async function checkSystem(host: Host): Promise<ComponentReport> {
     });
   }
 
-  // Manifest
   const manifest = await readManifest(host);
   const components = Object.keys(manifest.components);
   if (components.length > 0) {
@@ -169,10 +156,6 @@ async function checkInstallation(
   return checks;
 }
 
-/**
- * Check env config: file exists, readable, required keys present, secrets exist.
- * When opts.interactive is true and a file is permission-denied, prompts for sudo.
- */
 async function checkConfiguration(
   component: Component,
   opts: DoctorRunOptions,
@@ -186,7 +169,6 @@ async function checkConfiguration(
 
   const host = opts.host;
 
-  // Env file exists
   if (!(await host.fileExists(envPath))) {
     checks.push({
       label: "Env file",
@@ -196,7 +178,6 @@ async function checkConfiguration(
     return { checks, values: {}, permissionDenied: false };
   }
 
-  // Env file readable (with optional sudo elevation)
   const envRead = await readFileWithElevation(
     envPath,
     `Read ${component} configuration`,
@@ -215,11 +196,9 @@ async function checkConfiguration(
   const config = envRead.content ? parseEnvString(envRead.content) : {};
   checks.push({ label: "Env file", status: "pass", message: envPath });
 
-  // Check required config keys
   const fields = componentFields(component);
   const { configFields, secretFields } = categorizeFields(fields);
 
-  // Read all secrets, elevating if needed
   let secretsPermDenied = false;
   let secrets: Record<string, string> = {};
 
@@ -376,14 +355,12 @@ async function checkInfoserverConnectivity(
   const checks: CheckResult[] = [];
   const localPort = values.PORT || INFOSERVER_DEFAULT_PORT;
 
-  // Check configured INFOSERVER_URL(s) from other components
   for (const { url, components } of discoveredUrls) {
     const compList = components.join(", ");
     checks.push(
       await checkServiceHealth(host, `Configured URL (${compList})`, `${url}/health`),
     );
 
-    // Warn if the configured URL doesn't point to the local instance
     if (!isLocalUrl(url, localPort)) {
       checks.push({
         label: "URL notice",
@@ -422,7 +399,6 @@ async function checkDaemonDrivers(
       message: "Found",
     });
 
-    // Service running
     if (await isOllamaRunning(host)) {
       checks.push({
         label: "Ollama service",
@@ -463,7 +439,6 @@ async function checkDaemonDrivers(
 
   // vLLM (docker backend)
   if (values.VLLM_DOCKER_IMAGE) {
-    // Docker available
     if (await commandExistsOn(host, "docker")) {
       checks.push({
         label: "Docker",
@@ -549,17 +524,13 @@ async function checkComponent(
   const host = opts.host;
   const checks: CheckResult[] = [];
 
-  // Installation
   checks.push(...(await checkInstallation(component, entry, host)));
 
-  // Configuration
   const configResult = await checkConfiguration(component, opts);
   checks.push(...configResult.checks);
 
-  // Determine if service is active (for connectivity self-checks)
   const serviceActive = await isUnitActiveOn(host, unitName(component)).catch(() => false);
 
-  // Connectivity
   switch (component) {
     case "gateway":
       checks.push(
@@ -605,7 +576,7 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
   infoserverCheckCache.clear();
   const components: ComponentReport[] = [];
 
-  // 2. Read manifest (needed before probe to know which components to check)
+  // Read before the probe, which needs to know which components to check.
   const manifest = await readManifest(opts.host);
 
   // Collect all state in a single SSH call to avoid dozens of individual round-trips.
@@ -613,11 +584,9 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
   const state = await collectRemoteState(opts.host, manifest);
   const host = createCachedHost(opts.host, state);
 
-  // 1. System checks
   opts.spinner?.message("Checking system…");
   components.push(await checkSystem(host));
 
-  // 3. Each installable component
   const discoveredInfoserverUrls = new Map<string, string[]>();
   const remoteInfoserverChecks: CheckResult[] = [];
 
@@ -655,7 +624,6 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
     }
   }
 
-  // 5. Summary
   const summary = { pass: 0, warn: 0, fail: 0, skip: 0 };
   for (const comp of components) {
     for (const check of comp.checks) {
