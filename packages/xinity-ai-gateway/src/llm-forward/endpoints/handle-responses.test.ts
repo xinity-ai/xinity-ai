@@ -894,3 +894,41 @@ describe("handleResponses, content parts OpenAI does not define", () => {
     expect(lastChatMessages.map((m) => m.content)).toEqual(["hi", "hello", "do something bad", "I can't help with that.", "why not?"]);
   });
 });
+
+describe("handleResponses, instruction messages", () => {
+  const responsesRequest = (input: unknown) => new Request("http://localhost:4000/v1/responses", {
+    method: "POST",
+    headers: { "Authorization": "Bearer test" },
+    body: JSON.stringify({ model: "test-model", store: false, input }),
+  });
+
+  test("passes a developer message to the backend as a developer message", async () => {
+    const res = await handleCreateResponseRequest(responsesRequest([
+      { role: "developer", content: [{ type: "input_text", text: "answer in French" }] },
+      { role: "user", content: "hi" },
+    ]));
+
+    expect(res.status).toBe(200);
+    expect(lastChatMessages[0]).toEqual({ role: "developer", content: "answer in French" });
+  });
+
+  test("joins a system message's text parts into the single string a system turn holds", async () => {
+    const res = await handleCreateResponseRequest(responsesRequest([
+      { role: "system", content: [{ type: "input_text", text: "be brief" }, { type: "input_text", text: "be kind" }] },
+      { role: "user", content: "hi" },
+    ]));
+
+    expect(res.status).toBe(200);
+    expect(lastChatMessages[0]).toEqual({ role: "system", content: "be brief\nbe kind" });
+  });
+
+  test("refuses an image in a developer message", async () => {
+    const res = await handleCreateResponseRequest(responsesRequest([
+      { role: "developer", content: [{ type: "input_image", image_url: "https://example.com/a.png" }] },
+      { role: "user", content: "hi" },
+    ]));
+
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as any).error.message).toBe("input[0].content[0]: input_image is not allowed in developer messages. Allowed: input_text");
+  });
+});

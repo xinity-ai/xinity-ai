@@ -1222,3 +1222,20 @@ describe("handleChatCompletion, malformed content parts", () => {
     expect(lastUpstreamBody).toBeNull();
   });
 });
+
+describe("handleChatCompletion, developer messages", () => {
+  test("reach the backend as developer messages", async () => {
+    const res = await handleChatCompletion(new Request("http://localhost:4000/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        store: false,
+        messages: [{ role: "developer", content: "answer in French" }, { role: "user", content: "hi" }],
+      }),
+    }));
+
+    expect(res.status).toBe(200);
+    expect((lastUpstreamBody!.messages as unknown[])[0]).toEqual({ role: "developer", content: "answer in French" });
+  });
+});

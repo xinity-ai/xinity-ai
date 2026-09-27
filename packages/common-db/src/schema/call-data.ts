@@ -54,7 +54,7 @@ export type ApiCallToolCall = {
 };
 export type ApiCallInputMessage = {
   content: string | ApiCallInputMessageContent[] | null;
-  role: "assistant" | "user" | "system" | "tool";
+  role: "assistant" | "user" | "system" | "developer" | "tool";
   /** Present on assistant messages that invoke tools. */
   tool_calls?: ApiCallToolCall[];
   /** Present on tool result messages (role: "tool"). */

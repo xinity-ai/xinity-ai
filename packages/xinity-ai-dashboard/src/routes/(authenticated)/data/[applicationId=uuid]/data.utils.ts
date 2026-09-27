@@ -46,6 +46,12 @@ const roleStyles: Record<string, RoleStyle> = {
     badgeColor: "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300",
     label: "System",
   },
+  developer: {
+    borderColor: "border-l-amber-500",
+    bgColor: "bg-amber-50/50 dark:bg-amber-950/20",
+    badgeColor: "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300",
+    label: "Developer",
+  },
   assistant: {
     borderColor: "border-l-green-500",
     bgColor: "bg-green-50/50 dark:bg-green-950/20",

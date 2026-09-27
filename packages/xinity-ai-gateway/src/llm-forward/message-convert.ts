@@ -48,11 +48,28 @@ export function toModelMessages(messages: ApiCallInputMessage[]): ModelMessage[]
       } as unknown as ModelMessage;
     }
 
+    if (msg.role === "system" || msg.role === "developer") {
+      return toInstructionMessage(msg.role, msg.content);
+    }
+
     if (typeof msg.content === "string" || !Array.isArray(msg.content)) {
       return msg as ModelMessage;
     }
     return { ...msg, content: msg.content.map(toModelPart) } as ModelMessage;
   });
+}
+
+// The AI SDK has no developer role, so the provider is told to write this system message out as one.
+function toInstructionMessage(role: "system" | "developer", content: ApiCallInputMessage["content"]): ModelMessage {
+  const text = typeof content === "string" ? content : (content ?? []).map((part) => {
+    if (part.type !== "text") {
+      throw new Error(`${role} messages can only carry text, got ${part.type}`);
+    }
+    return part.text;
+  }).join("\n");
+  return role === "developer"
+    ? { role: "system", content: text, providerOptions: { openaiCompatible: { role: "developer" } } }
+    : { role: "system", content: text };
 }
 
 function toModelPart(part: ApiCallInputMessageContent): TextPart | ImagePart | FilePart {

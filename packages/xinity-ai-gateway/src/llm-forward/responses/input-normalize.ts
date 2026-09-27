@@ -21,8 +21,8 @@ export function extractText(content: unknown): string | null {
   return null;
 }
 
-type TextMessageRole = "user" | "assistant" | "system";
-const VALID_TEXT_ROLES = new Set<TextMessageRole>(["user", "assistant", "system"]);
+type TextMessageRole = "user" | "assistant" | "system" | "developer";
+const VALID_TEXT_ROLES = new Set<TextMessageRole>(["user", "assistant", "system", "developer"]);
 
 function normalizeRole(raw: unknown): TextMessageRole {
   if (typeof raw === "string" && VALID_TEXT_ROLES.has(raw as TextMessageRole)) return raw as TextMessageRole;
@@ -36,8 +36,12 @@ function isRefusal(value: unknown): value is Refusal {
   return typeof value === "object" && value !== null && "refusal" in value;
 }
 
-const INPUT_PART_TYPES = ["input_text", "input_image"];
-const ASSISTANT_PART_TYPES = [...INPUT_PART_TYPES, "output_text", "refusal"];
+const PART_TYPES: Record<TextMessageRole, readonly string[]> = {
+  user: ["input_text", "input_image"],
+  assistant: ["input_text", "output_text", "refusal"],
+  system: ["input_text"],
+  developer: ["input_text"],
+};
 
 function convertPart(part: unknown, role: TextMessageRole, at: string): ContentPart | Refusal {
   if (typeof part !== "object" || part === null) {
@@ -50,7 +54,7 @@ function convertPart(part: unknown, role: TextMessageRole, at: string): ContentP
   if (p.type === "input_audio") {
     return { refusal: `${at}: input_audio is not supported by /v1/responses. Send audio to /v1/chat/completions instead` };
   }
-  const allowed = role === "assistant" ? ASSISTANT_PART_TYPES : INPUT_PART_TYPES;
+  const allowed = PART_TYPES[role];
   if (typeof p.type !== "string" || !allowed.includes(p.type)) {
     return { refusal: `${at}: ${String(p.type)} is not allowed in ${role} messages. Allowed: ${allowed.join(", ")}` };
   }
