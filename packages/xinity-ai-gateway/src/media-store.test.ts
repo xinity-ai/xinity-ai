@@ -140,21 +140,21 @@ describe("processMessageMedia, S3 enabled", () => {
     expect(dbParts[0]!.image_url.url).toMatch(/^xinity-media:\/\/[0-9a-f]{64}$/);
   });
 
-  test("external URL pointing to private IP is blocked by SSRF validation", async () => {
-    const privateUrl = "http://127.0.0.1:9999/image.png";
+  test("refuses an external URL pointing to a private IP rather than passing it on", async () => {
     const messages = [
-      {
-        role: "user",
-        content: [{ type: "image_url", image_url: { url: privateUrl } }],
-      },
+      { role: "user", content: [{ type: "image_url", image_url: { url: "http://127.0.0.1:9999/image.png" } }] },
     ] as any;
 
-    const { messagesForLLM, messagesForDB } = await processMessageMedia(messages, "org-1", store, true);
-
-    // LLM still gets the original part (fallback), DB omits the blocked image
-    expect((messagesForLLM[0]!.content as any[])[0]!.image_url.url).toBe(privateUrl);
-    expect(messagesForDB).toHaveLength(0);
+    await expect(processMessageMedia(messages, "org-1", store, true)).rejects.toThrow("image_url could not be fetched");
     expect(capturedQueries).toHaveLength(0);
+  });
+
+  test("refuses a data URI it cannot decode", async () => {
+    const messages = [
+      { role: "user", content: [{ type: "image_url", image_url: { url: "data:image/png;base64" } }] },
+    ] as any;
+
+    await expect(processMessageMedia(messages, "org-1", store, true)).rejects.toThrow("image_url is not a valid data URI");
   });
 
   test("text-only messages pass through without any DB or S3 calls", async () => {
@@ -221,20 +221,12 @@ describe("processMessageMedia, S3 disabled (mediaStore = null)", () => {
     expect(dbParts[1].image_url.url).toMatch(/^xinity-media:\/\//);
   });
 
-  test("external URL pointing to private IP is blocked (S3 disabled)", async () => {
-    const privateUrl = "http://192.168.1.1:8080/photo.png";
+  test("refuses an external URL pointing to a private IP (S3 disabled)", async () => {
     const messages = [
-      {
-        role: "user",
-        content: [{ type: "image_url", image_url: { url: privateUrl } }],
-      },
+      { role: "user", content: [{ type: "image_url", image_url: { url: "http://192.168.1.1:8080/photo.png" } }] },
     ] as any;
 
-    const { messagesForLLM, messagesForDB } = await processMessageMedia(messages, "org-1", null, true);
-
-    // LLM still gets the original part (fallback), DB omits the blocked image
-    expect((messagesForLLM[0]!.content as any[])[0]!.image_url.url).toBe(privateUrl);
-    expect(messagesForDB).toHaveLength(0);
+    await expect(processMessageMedia(messages, "org-1", null, true)).rejects.toThrow("image_url could not be fetched");
     expect(capturedQueries).toHaveLength(0);
   });
 });

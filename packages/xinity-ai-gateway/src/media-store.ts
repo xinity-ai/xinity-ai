@@ -216,13 +216,13 @@ async function processImage(
   orgId: string,
   mediaStore: MediaStore | null,
   store: boolean,
-): Promise<{ dataUri: string | null; dbUrl: string | null }> {
+): Promise<{ dataUri: string; dbUrl: string | null }> {
   const isDataUri = imageUrl.startsWith("data:");
   const resolved = isDataUri ? parseDataUri(imageUrl) : await fetchExternalImage(imageUrl);
 
   if (!resolved) {
-    log.warn({ imageUrl: imageUrl.slice(0, 100) }, "Failed to resolve image, skipping");
-    return { dataUri: null, dbUrl: null };
+    log.warn({ imageUrl: imageUrl.slice(0, 100) }, "Failed to resolve image");
+    throw mediaPartInvalidError(isDataUri ? "image_url is not a valid data URI" : "image_url could not be fetched");
   }
 
   const { bytes } = resolved;
@@ -346,7 +346,7 @@ async function processPart(
     }
     const { dataUri, dbUrl } = await processImage(url, orgId, mediaStore, store);
     return {
-      llmPart: dataUri ? { type: "image_url", image_url: { url: dataUri } } : part,
+      llmPart: { type: "image_url", image_url: { url: dataUri } },
       dbPart: dbUrl !== null ? { type: "image_url", image_url: { url: dbUrl } } : null,
     };
   }
