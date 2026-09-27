@@ -452,10 +452,25 @@ async function restoreMediaPart(
 }
 
 /**
- * Turns logged messages back into something a model can read. Media that cannot be restored
- * is dropped rather than passed along, because a `xinity-media://` reference reaching a backend
- * is a hard error there, where a missing image or clip is only a gap.
+ * A logged message with its media read back in. A part that cannot be restored is removed rather
+ * than passed along, because a `xinity-media://` reference reaching a backend is a hard error
+ * there, where a missing image or clip is only a gap.
  */
+export async function restoreMediaParts(
+  message: ApiCallInputMessage,
+  orgId: string,
+  store: MediaStore | null,
+): Promise<ApiCallInputMessage> {
+  if (!Array.isArray(message.content)) {
+    return message;
+  }
+  const parts = (await Promise.all(
+    message.content.map((part) => restoreMediaPart(part, orgId, store)),
+  )).filter((part): part is ApiCallInputMessageContent => part !== null);
+  return { ...message, content: parts };
+}
+
+/** Logged history made readable to a model again. A message left with no content gives the model nothing, so it goes. */
 export async function restoreMessageMedia(
   messages: ApiCallInputMessage[],
   orgId: string,
@@ -464,21 +479,8 @@ export async function restoreMessageMedia(
   if (!messages.some((message) => Array.isArray(message.content))) {
     return messages;
   }
-
-  const restored: ApiCallInputMessage[] = [];
-  for (const message of messages) {
-    if (!Array.isArray(message.content)) {
-      restored.push(message);
-      continue;
-    }
-    const parts = (await Promise.all(
-      message.content.map((part) => restoreMediaPart(part, orgId, store)),
-    )).filter((part): part is ApiCallInputMessageContent => part !== null);
-    if (parts.length > 0) {
-      restored.push({ ...message, content: parts });
-    }
-  }
-  return restored;
+  const restored = await Promise.all(messages.map((message) => restoreMediaParts(message, orgId, store)));
+  return restored.filter((message) => !Array.isArray(message.content) || message.content.length > 0);
 }
 
 // ─── Module-level singleton ──────────────────────────────────────────────────

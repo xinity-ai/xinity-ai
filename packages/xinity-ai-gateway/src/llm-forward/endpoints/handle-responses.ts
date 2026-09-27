@@ -3,7 +3,7 @@ import { resolveAuthorizedModel } from "../ai-sdk";
 import { errorResponse, logChatUsage, recordUsage, validateModelType, toModelMessages, SSE_RESPONSE_HEADERS, validationError, isUpstreamError, upstreamHttpStatus, modelLacksToolSupport } from "../util";
 import { deleteResponse, getResponse, getResponseMessages, saveResponse, type ResponseCreation } from "../response-store";
 import { rootLogger } from "../../logger";
-import { processMessageMedia, restoreMessageMedia, mediaStore } from "../../media-store";
+import { processMessageMedia, restoreMediaParts, restoreMessageMedia, mediaStore } from "../../media-store";
 import { config } from "../../config";
 import { createIdleTimeout, type IdleTimeout } from "../backend-fetch";
 import { DEEP_RESEARCH_SYSTEM_PROMPT, createCompactionStep } from "../deep-research";
@@ -355,7 +355,10 @@ export const handleListInputItemsRequest = withResponseIdRoute(["GET"], async ({
     return errorResponse("Not found", 404);
   }
 
-  const data = buildInputItems(responseId, page.messages);
+  const messages = await Promise.all(page.messages.map(async ({ seq, body }) => (
+    { seq, body: await restoreMediaParts(body, auth.orgId, mediaStore) }
+  )));
+  const data = buildInputItems(responseId, messages);
   return Response.json({
     object: "list",
     data,

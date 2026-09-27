@@ -16,12 +16,17 @@ const db = drizzle.mock();
 const capturedQueries: Array<{ sql: string; params: unknown[] }> = [];
 /** Rows the join yields, newest-first or oldest-first as the query asked. */
 let messageRows: Array<{ seq: number; body: ApiCallInputMessage }> = [];
+/** The media_object rows a reference lookup finds. */
+let mediaRows: Array<{ s3Key: string | null; mimeType: string; bytes: Uint8Array | null }> = [];
 /** Whether the header lookup should find the response at all. */
 let headerExists = true;
 
 const preparedProto = Object.getPrototypeOf(db.select().from(apiResponseT).prepare("_spy"));
 jest.spyOn(preparedProto, "execute").mockImplementation(async function (this: { queryString: string; params: unknown[] }) {
   capturedQueries.push({ sql: this.queryString, params: this.params });
+  if (/media_object/i.test(this.queryString)) {
+    return mediaRows;
+  }
   if (/api_response_message/i.test(this.queryString)) {
     return messageRows;
   }
@@ -35,6 +40,7 @@ const { handleListInputItemsRequest } = await import("./handle-responses");
 beforeEach(() => {
   capturedQueries.length = 0;
   messageRows = [];
+  mediaRows = [];
   headerExists = true;
   checkAuth.mockClear();
 });
@@ -159,5 +165,35 @@ describe("handleListInputItemsRequest", () => {
   test("rejects non-GET methods", async () => {
     const res = await handleListInputItemsRequest(listRequest("", "POST"));
     expect(res.status).toBe(405);
+  });
+});
+
+describe("handleListInputItemsRequest, media", () => {
+  const DIGEST = "c1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
+  const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const imageMessage: ApiCallInputMessage = {
+    role: "user",
+    content: [{ type: "text", text: "what is this" }, { type: "image_url", image_url: { url: `xinity-media://${DIGEST}` } }],
+  };
+
+  test("returns a logged image as the image, not as a reference the client cannot fetch", async () => {
+    messageRows = [{ seq: 0, body: imageMessage }];
+    mediaRows = [{ s3Key: null, mimeType: "image/png", bytes: PNG_BYTES }];
+
+    const body = await (await handleListInputItemsRequest(listRequest())).json() as any;
+
+    expect(body.data[0].content).toEqual([
+      { type: "input_text", text: "what is this" },
+      { type: "input_image", image_url: `data:image/png;base64,${Buffer.from(PNG_BYTES).toString("base64")}` },
+    ]);
+  });
+
+  test("keeps an item whose only image is gone, empty rather than leaking the reference", async () => {
+    const imageOnly: ApiCallInputMessage = { role: "user", content: [{ type: "image_url", image_url: { url: `xinity-media://${DIGEST}` } }] };
+    messageRows = [{ seq: 1, body: imageOnly }, { seq: 0, body: userMessage("first") }];
+
+    const body = await (await handleListInputItemsRequest(listRequest())).json() as any;
+
+    expect(body.data.map((item: any) => item.content)).toEqual([[], [{ type: "input_text", text: "first" }]]);
   });
 });
