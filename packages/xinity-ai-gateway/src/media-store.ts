@@ -74,7 +74,6 @@ export function isMediaTypeUnsupported(error: unknown): boolean {
 
 const MEDIA_PART_INVALID = "media_part_invalid";
 
-/** OpenAI answers a malformed content part with a 400, and so do we. */
 function mediaPartInvalidError(message: string): Error {
   return Object.assign(new Error(message), { code: MEDIA_PART_INVALID });
 }
@@ -270,7 +269,6 @@ async function processAudio(
   return storeMedia(bytes, mimeType, null, orgId, mediaStore);
 }
 
-/** The `xinity-media://` reference for the stored bytes, or null when storing failed. */
 async function storeMedia(
   bytes: Uint8Array<ArrayBuffer>,
   mimeType: string,

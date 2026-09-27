@@ -36,7 +36,6 @@ function isRefusal(value: unknown): value is Refusal {
   return typeof value === "object" && value !== null && "refusal" in value;
 }
 
-/** One input part as chat content: kept, refused with a reason, or null when it carries nothing to keep. */
 function convertPart(part: unknown): ContentPart | Refusal | null {
   if (typeof part === "string") {
     return { type: "text", text: part };
@@ -57,7 +56,6 @@ function convertPart(part: unknown): ContentPart | Refusal | null {
       }
       break;
     }
-    // OpenAI's Responses API takes no audio input.
     case "input_audio":
       return { refusal: "input_audio is not supported by /v1/responses. Send audio to /v1/chat/completions instead" };
   }

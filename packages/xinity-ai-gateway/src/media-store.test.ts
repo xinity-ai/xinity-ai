@@ -487,7 +487,6 @@ describe("sniffAudioFormat", () => {
   });
 
   test("rejects lookalikes", () => {
-    // ADTS shares the MPEG frame sync but is AAC.
     expect(sniffAudioFormat(new Uint8Array([0xff, 0xf1, 0x50, 0x80]))).toBeNull();
     expect(sniffAudioFormat(new Uint8Array([...Buffer.from("RIFF"), 0, 0, 0, 0, ...Buffer.from("WEBP")]))).toBeNull();
     expect(sniffAudioFormat(new Uint8Array([]))).toBeNull();
