@@ -116,14 +116,56 @@ export function sniffImageType(bytes: Uint8Array): StorableImageType | null {
   return MAGIC.find((format) => format.matches(bytes))?.type ?? null;
 }
 
+const LAYER3_KBPS = {
+  mpeg1: [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320],
+  mpeg2: [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160],
+};
+const MPEG_SAMPLE_RATES: Record<number, number[]> = {
+  3: [44100, 48000, 32000],
+  2: [22050, 24000, 16000],
+  0: [11025, 12000, 8000],
+};
+const MP3_SCAN_BYTES = 4096;
+
+function layer3FrameLength(b: Uint8Array, offset: number): number | null {
+  const b1 = b[offset + 1];
+  const b2 = b[offset + 2];
+  if (b[offset] !== 0xff || b1 === undefined || b2 === undefined) {
+    return null;
+  }
+  if ((b1 & 0xe0) !== 0xe0 || ((b1 >> 1) & 3) !== 1) {
+    return null;
+  }
+  const version = (b1 >> 3) & 3;
+  const sampleRate = MPEG_SAMPLE_RATES[version]?.[(b2 >> 2) & 3];
+  const kbps = (version === 3 ? LAYER3_KBPS.mpeg1 : LAYER3_KBPS.mpeg2)[b2 >> 4];
+  if (!sampleRate || !kbps) {
+    return null;
+  }
+  const bytesPerKbps = version === 3 ? 144 : 72;
+  return Math.floor((bytesPerKbps * kbps * 1000) / sampleRate) + ((b2 >> 1) & 1);
+}
+
+// Encoders and stream cuts can leave junk before the first frame, so the header is searched for.
+// A lone 0xFF 0xFB pair turns up in arbitrary bytes, so it only counts when the next frame begins
+// exactly where this one ends, or when the clip ends first.
+function looksLikeMp3(b: Uint8Array): boolean {
+  if (tagAt(b, 0).startsWith("ID3")) {
+    return true;
+  }
+  const scanEnd = Math.min(b.length, MP3_SCAN_BYTES);
+  for (let offset = 0; offset < scanEnd; offset++) {
+    const length = layer3FrameLength(b, offset);
+    if (length !== null && (offset + length >= b.length || layer3FrameLength(b, offset + length) !== null)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 const AUDIO_MAGIC: Array<{ format: AudioFormat; matches: (b: Uint8Array) => boolean }> = [
   { format: "wav", matches: (b) => tagAt(b, 0) === "RIFF" && tagAt(b, 8) === "WAVE" },
-  {
-    format: "mp3",
-    // An ID3 tag, or a bare MPEG frame sync. A zero layer field is AAC's ADTS header, not MP3.
-    matches: (b) => tagAt(b, 0).startsWith("ID3")
-      || (b[0] === 0xff && ((b[1] ?? 0) & 0xe0) === 0xe0 && ((b[1] ?? 0) & 0x06) !== 0),
-  },
+  { format: "mp3", matches: looksLikeMp3 },
 ];
 
 export function sniffAudioFormat(bytes: Uint8Array): AudioFormat | null {

@@ -500,6 +500,30 @@ describe("sniffAudioFormat", () => {
     expect(sniffAudioFormat(new Uint8Array([...Buffer.from("RIFF"), 0, 0, 0, 0, ...Buffer.from("WEBP")]))).toBeNull();
     expect(sniffAudioFormat(new Uint8Array([]))).toBeNull();
   });
+
+  // MPEG-1 Layer III, 128 kbps, 44.1 kHz: 417-byte frames. MPEG-2 Layer III, 80 kbps, 22.05 kHz: 261-byte frames.
+  const MPEG1_HEADER = [0xff, 0xfb, 0x90, 0x64];
+  const MPEG2_HEADER = [0xff, 0xf3, 0x90, 0x64];
+  function frames(header: number[], frameLength: number, count: number, junk = 0): Uint8Array {
+    const bytes = new Uint8Array(junk + frameLength * count + 64);
+    for (let i = 0; i < count; i++) {
+      bytes.set(header, junk + i * frameLength);
+    }
+    return bytes;
+  }
+
+  test("finds the first frame behind leading junk", () => {
+    expect(sniffAudioFormat(frames(MPEG1_HEADER, 417, 3, 100))).toBe("mp3");
+  });
+
+  test("works out the frame length for each MPEG version", () => {
+    expect(sniffAudioFormat(frames(MPEG2_HEADER, 261, 3))).toBe("mp3");
+    expect(sniffAudioFormat(frames(MPEG2_HEADER, 417, 3))).toBeNull();
+  });
+
+  test("does not take a stray sync pair in arbitrary bytes for a frame", () => {
+    expect(sniffAudioFormat(frames(MPEG1_HEADER, 2000, 1, 100))).toBeNull();
+  });
 });
 
 describe("processMessageMedia, audio", () => {
