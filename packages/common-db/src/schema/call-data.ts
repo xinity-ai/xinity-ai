@@ -315,10 +315,10 @@ export const usageEventT = callDataSchema.table("usage_event", {
   index("usage_event_node_id_created_at_idx").on(table.nodeId, table.createdAt),
 ]);
 
-/** A media object (image) referenced from message payloads via xinity-media://{sha256} URLs. */
+/** A media object (an image or audio clip) referenced from message payloads via xinity-media://{sha256} URLs. */
 export const mediaObjectT = callDataSchema.table("media_object", {
   id: uuid().primaryKey().defaultRandom(),
-  /** Hex-encoded SHA-256 of the raw image bytes. Used as the xinity-media:// URL identifier. */
+  /** Hex-encoded SHA-256 of the raw bytes. Used as the xinity-media:// URL identifier. */
   sha256: text().notNull(),
   mimeType: text("mime_type").notNull(),
   /** Original source URL if the image came from an external URL. Null for data URIs. */
@@ -327,12 +327,12 @@ export const mediaObjectT = callDataSchema.table("media_object", {
   s3Bucket: text("s3_bucket"),
   /** S3 object key, formatted as {organizationId}/{sha256} */
   s3Key: text("s3_key"),
-  /** Holds the object when no S3 bucket is configured, so an inline image still survives. */
+  /** Holds the object when no S3 bucket is configured, so inline media still survives. */
   bytes: bytea(),
   organizationId: text("organization_id")
     .notNull()
     .references(() => organizationT.id, { onDelete: "cascade" }),
-  /** Size of the image in bytes */
+  /** Size in bytes */
   size: integer().notNull(),
   createdAt,
   updatedAt,

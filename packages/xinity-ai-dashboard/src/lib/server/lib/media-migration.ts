@@ -1,5 +1,5 @@
 /**
- * Moves media the database is carrying itself into S3. `media_object` holds image bytes directly
+ * Moves media the database is carrying itself into S3. `media_object` holds media bytes directly
  * when no bucket is configured, so an operator who configures one later is left with rows the
  * database has no reason to keep.
  */
@@ -29,7 +29,7 @@ const mediaKey = (organizationId: string, sha256: string) => `${organizationId}/
 
 /**
  * S3 is outside the transaction, so the upload has to land before the row stops carrying the only
- * copy. A row updated after a failed upload would lose the image outright; an upload followed by a
+ * copy. A row updated after a failed upload would lose the object outright; an upload followed by a
  * failed update just leaves an unreferenced object that the next run overwrites, since the key is
  * the digest.
  */
