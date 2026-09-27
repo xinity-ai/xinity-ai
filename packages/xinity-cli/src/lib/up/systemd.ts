@@ -102,6 +102,8 @@ export function generateUnit(config: UnitConfig): string {
 
   lines.push(`ExecStart=${config.execStart}`);
   lines.push("Restart=on-failure", "RestartSec=5", "RestartSteps=10", "RestartMaxDelaySec=300");
+  // Bun exits 128+SIGTERM when stopped, which systemd would otherwise record as a failure.
+  lines.push("SuccessExitStatus=143");
 
   if (config.hardened ?? !config.runAsRoot) {
     lines.push(
