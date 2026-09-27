@@ -860,3 +860,37 @@ describe("handleResponses, image input", () => {
     expect(lastUpstreamBody).toBeUndefined();
   });
 });
+
+describe("handleResponses, content parts OpenAI does not define", () => {
+  const responsesRequest = (input: unknown) => new Request("http://localhost:4000/v1/responses", {
+    method: "POST",
+    headers: { "Authorization": "Bearer test" },
+    body: JSON.stringify({ model: "test-model", store: false, input }),
+  });
+
+  test.each([
+    ["an input_file part", [{ role: "user", content: [{ type: "input_file", file_data: "JVBERi0=" }] }], "input[0].content[0]: input_file parts are not supported by the inference backends"],
+    ["chat's image_url shape", [{ role: "user", content: [{ type: "image_url", image_url: { url: "https://example.com/a.png" } }] }], "input[0].content[0]: image_url is not allowed in user messages. Allowed: input_text, input_image"],
+    ["output_text outside an assistant message", [{ role: "user", content: [{ type: "output_text", text: "hi" }] }], "input[0].content[0]: output_text is not allowed in user messages. Allowed: input_text, input_image"],
+    ["a bare string part", [{ role: "user", content: ["hi"] }], "input[0].content[0] is string, expected a content part object"],
+  ])("refuses %s with a 400, without reaching the backend", async (_label, input, message) => {
+    const res = await handleCreateResponseRequest(responsesRequest(input));
+
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as any).error.message).toBe(message);
+    expect(lastUpstreamBody).toBeUndefined();
+  });
+
+  test("replays earlier assistant output and refusals as text", async () => {
+    const res = await handleCreateResponseRequest(responsesRequest([
+      { role: "user", content: [{ type: "input_text", text: "hi" }] },
+      { role: "assistant", content: [{ type: "output_text", text: "hello" }] },
+      { role: "user", content: [{ type: "input_text", text: "do something bad" }] },
+      { role: "assistant", content: [{ type: "refusal", refusal: "I can't help with that." }] },
+      { role: "user", content: [{ type: "input_text", text: "why not?" }] },
+    ]));
+
+    expect(res.status).toBe(200);
+    expect(lastChatMessages.map((m) => m.content)).toEqual(["hi", "hello", "do something bad", "I can't help with that.", "why not?"]);
+  });
+});

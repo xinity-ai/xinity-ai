@@ -36,49 +36,45 @@ function isRefusal(value: unknown): value is Refusal {
   return typeof value === "object" && value !== null && "refusal" in value;
 }
 
-function convertPart(part: unknown): ContentPart | Refusal | null {
-  if (typeof part === "string") {
-    return { type: "text", text: part };
+const INPUT_PART_TYPES = ["input_text", "input_image"];
+const ASSISTANT_PART_TYPES = [...INPUT_PART_TYPES, "output_text", "refusal"];
+
+function convertPart(part: unknown, role: TextMessageRole, at: string): ContentPart | Refusal {
+  if (typeof part !== "object" || part === null) {
+    return { refusal: `${at} is ${part === null ? "null" : typeof part}, expected a content part object` };
   }
-  const p = part as Record<string, unknown> | null;
-  if (!p || typeof p !== "object") {
-    return null;
+  const p = part as Record<string, unknown>;
+  if (p.type === "input_file") {
+    return { refusal: `${at}: input_file parts are not supported by the inference backends` };
   }
-  switch (p.type) {
-    case "input_image":
-      return typeof p.image_url === "string"
-        ? { type: "image_url", image_url: { url: p.image_url } }
-        : { refusal: "input_image requires an image_url string. file_id is not supported" };
-    case "image_url": {
-      const url = (p.image_url as Record<string, unknown> | null | undefined)?.url;
-      if (typeof url === "string") {
-        return { type: "image_url", image_url: { url } };
-      }
-      break;
-    }
-    case "input_audio":
-      return { refusal: "input_audio is not supported by /v1/responses. Send audio to /v1/chat/completions instead" };
+  if (p.type === "input_audio") {
+    return { refusal: `${at}: input_audio is not supported by /v1/responses. Send audio to /v1/chat/completions instead` };
   }
-  if (typeof p.text === "string") {
-    return { type: "text", text: p.text };
+  const allowed = role === "assistant" ? ASSISTANT_PART_TYPES : INPUT_PART_TYPES;
+  if (typeof p.type !== "string" || !allowed.includes(p.type)) {
+    return { refusal: `${at}: ${String(p.type)} is not allowed in ${role} messages. Allowed: ${allowed.join(", ")}` };
   }
-  if (typeof p.content === "string") {
-    return { type: "text", text: p.content };
+  if (p.type === "input_image") {
+    return typeof p.image_url === "string"
+      ? { type: "image_url", image_url: { url: p.image_url } }
+      : { refusal: `${at}: input_image requires an image_url string. file_id is not supported` };
   }
-  return null;
+  const text = p.type === "refusal" ? p.refusal : p.text;
+  return typeof text === "string"
+    ? { type: "text", text }
+    : { refusal: `${at}: ${p.type} requires a ${p.type === "refusal" ? "refusal" : "text"} string` };
 }
 
-function extractContent(raw: unknown): ApiCallInputMessage["content"] | Refusal {
+function extractContent(raw: unknown, role: TextMessageRole, at: string): ApiCallInputMessage["content"] | Refusal {
   if (typeof raw === "string") return raw;
   if (Array.isArray(raw)) {
     const parts: ContentPart[] = [];
-    for (const converted of raw.map(convertPart)) {
+    for (const [index, part] of raw.entries()) {
+      const converted = convertPart(part, role, `${at}.content[${index}]`);
       if (isRefusal(converted)) {
         return converted;
       }
-      if (converted) {
-        parts.push(converted);
-      }
+      parts.push(converted);
     }
     if (!parts.length) return null;
     const [first] = parts;
@@ -95,7 +91,7 @@ export function normalizeMessages(input: unknown): { messages: ApiCallInputMessa
     if (input.every((item) => typeof item === "string"))
       return { messages: input.map((text) => ({ role: "user", content: text })) };
     const messages: ApiCallInputMessage[] = [];
-    for (const item of input) {
+    for (const [index, item] of input.entries()) {
       if (!item || typeof item !== "object") return null;
       const obj = item as Record<string, unknown>;
 
@@ -111,7 +107,7 @@ export function normalizeMessages(input: unknown): { messages: ApiCallInputMessa
       }
 
       const role = normalizeRole(obj.role);
-      const content = extractContent(obj.content ?? obj.input ?? obj.text);
+      const content = extractContent(obj.content ?? obj.input ?? obj.text, role, `input[${index}]`);
       if (!content) return null;
       if (isRefusal(content)) return content;
       messages.push({ role, content } as ApiCallInputMessage);
@@ -121,7 +117,7 @@ export function normalizeMessages(input: unknown): { messages: ApiCallInputMessa
   if (input && typeof input === "object") {
     const obj = input as Record<string, unknown>;
     const role = normalizeRole(obj.role);
-    const content = extractContent(obj.content ?? obj.input ?? obj.text);
+    const content = extractContent(obj.content ?? obj.input ?? obj.text, role, "input");
     if (!content) return null;
     if (isRefusal(content)) return content;
     return { messages: [{ role, content } as ApiCallInputMessage] };
