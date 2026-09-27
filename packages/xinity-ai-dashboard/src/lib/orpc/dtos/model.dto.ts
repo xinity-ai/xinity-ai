@@ -20,7 +20,7 @@ export const DeploymentDto = CommonDto.extend({
     }),
   /** Canonical model identifier. */
   specifier: z.string().trim(),
-  /** Canonical identifier for the canary (early) model in a canary deployment. */
+  /** In a canary rollout, the model traffic moves away from. `specifier` is the canary and `progress` its share. */
   earlySpecifier: z.string().trim().nullish(),
   replicas: z.number().default(1),
   canaryProgressUntil: z.date().nullish(),

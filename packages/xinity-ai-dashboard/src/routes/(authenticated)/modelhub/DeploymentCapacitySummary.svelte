@@ -7,10 +7,10 @@
     primaryModel,
     canaryModel,
     isCanaryEnabled = false,
-    progress = 100,
+    canaryTraffic = 0,
     replicas = 1,
     kvCacheSize = null,
-    earlyKvCacheSize = null,
+    canaryKvCacheSize = null,
     maxNodeFreeCapacity = Infinity,
     nodeCapabilities = [],
     enabled = true,
@@ -21,10 +21,10 @@
     primaryModel: ModelWithSpecifier | undefined;
     canaryModel?: ModelWithSpecifier | undefined;
     isCanaryEnabled?: boolean;
-    progress?: number;
+    canaryTraffic?: number;
     replicas?: number;
     kvCacheSize?: number | null;
-    earlyKvCacheSize?: number | null;
+    canaryKvCacheSize?: number | null;
     maxNodeFreeCapacity?: number;
     nodeCapabilities?: NodeCapability[];
     enabled?: boolean;
@@ -44,14 +44,14 @@
     return model.engine === "ollama" ? model.sizing.minKvCacheGb : Math.max(kv ?? 0, model.sizing.minKvCacheGb);
   }
 
-  const splitsCanary = $derived(Boolean(isCanaryEnabled && canaryModel && progress < 100));
+  const hasCanary = $derived(Boolean(isCanaryEnabled && canaryModel));
 
   // Replica counts per model mirror the server split (each rounded up independently).
-  const primaryReplicas = $derived(splitsCanary ? Math.ceil(replicas * (progress / 100)) : replicas);
-  const canaryReplicas = $derived(splitsCanary ? Math.ceil(replicas * ((100 - progress) / 100)) : 0);
+  const canaryReplicas = $derived(!hasCanary ? 0 : canaryTraffic >= 100 ? replicas : Math.ceil(replicas * (canaryTraffic / 100)));
+  const primaryReplicas = $derived(!hasCanary ? replicas : canaryTraffic >= 100 ? 0 : Math.ceil(replicas * ((100 - canaryTraffic) / 100)));
 
   const primaryPer = $derived(primaryModel ? perReplica(primaryModel, kvCacheSize) : 0);
-  const canaryPer = $derived(canaryModel && isCanaryEnabled ? perReplica(canaryModel, earlyKvCacheSize) : 0);
+  const canaryPer = $derived(canaryModel && isCanaryEnabled ? perReplica(canaryModel, canaryKvCacheSize) : 0);
 
   const totalNeeded = $derived(primaryPer * primaryReplicas + canaryPer * canaryReplicas);
 
@@ -86,7 +86,7 @@
         <div class="flex justify-between gap-4">
           <dt class="text-muted-foreground">Canary per replica</dt>
           <dd class="text-right">
-            {formatGb(canaryModel.sizing.weightGb)} model + {formatGb(effKvCache(canaryModel, earlyKvCacheSize))} kv-cache
+            {formatGb(canaryModel.sizing.weightGb)} model + {formatGb(effKvCache(canaryModel, canaryKvCacheSize))} kv-cache
             = <span class="font-medium">{formatGb(canaryPer)}</span>
             <span class="text-muted-foreground"> &times; {canaryReplicas}</span>
           </dd>

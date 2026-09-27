@@ -27,7 +27,7 @@
     timeBasedDurationHours = $bindable(),
     replicas = $bindable(),
     kvCacheSize = $bindable(),
-    earlyKvCacheSize = $bindable(),
+    canaryKvCacheSize = $bindable(),
     settings = $bindable<DeploymentSettings>({ version: 1 }),
     maxKvCache = 0,
     maxCanaryKvCache = 0,
@@ -63,7 +63,7 @@
     timeBasedDurationHours: number;
     replicas: number;
     kvCacheSize: number | null;
-    earlyKvCacheSize: number | null;
+    canaryKvCacheSize: number | null;
     settings: DeploymentSettings;
     maxKvCache: number;
     maxCanaryKvCache: number;
@@ -302,13 +302,13 @@
           {#if selectedCanaryModel && showKvCacheSliders}
             <div class="space-y-2">
               <Label for="canary-kv-cache-size{idSuffix}">
-                Canary KV Cache Size: <span class="font-bold text-primary">{earlyKvCacheSize ?? minCanaryKvCache} GB</span>
+                Canary KV Cache Size: <span class="font-bold text-primary">{canaryKvCacheSize ?? minCanaryKvCache} GB</span>
               </Label>
               {#if requiresDisabled}
                 <input
                   id="canary-kv-cache-size{idSuffix}"
                   type="range" min={minCanaryKvCache} max={maxCanaryKvCache || minCanaryKvCache + 1} step="0.1"
-                  value={earlyKvCacheSize ?? minCanaryKvCache}
+                  value={canaryKvCacheSize ?? minCanaryKvCache}
                   disabled
                   class="w-full h-2 bg-muted rounded-lg appearance-none cursor-not-allowed opacity-50"
                 />
@@ -317,15 +317,15 @@
                 <input
                   id="canary-kv-cache-size{idSuffix}"
                   type="range" min={minCanaryKvCache} max={maxCanaryKvCache || minCanaryKvCache + 1} step="0.1"
-                  value={earlyKvCacheSize ?? minCanaryKvCache}
-                  oninput={(e) => (earlyKvCacheSize = e.currentTarget.valueAsNumber)}
+                  value={canaryKvCacheSize ?? minCanaryKvCache}
+                  oninput={(e) => (canaryKvCacheSize = e.currentTarget.valueAsNumber)}
                   class="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
                 />
                 <p class="text-sm text-muted-foreground">
                   Min: {minCanaryKvCache} GB · Max: {maxCanaryKvCache} GB.
                 </p>
               {/if}
-              {#if earlyKvCacheSize !== null && earlyKvCacheSize < minCanaryKvCache}
+              {#if canaryKvCacheSize !== null && canaryKvCacheSize < minCanaryKvCache}
                 <p class="text-sm text-destructive">Value must be at least {minCanaryKvCache} GB for the canary model.</p>
               {/if}
             </div>
@@ -448,10 +448,10 @@
     primaryModel={selectedPrimaryModel}
     canaryModel={selectedCanaryModel}
     {isCanaryEnabled}
-    progress={canaryTraffic}
+    {canaryTraffic}
     {replicas}
     {kvCacheSize}
-    {earlyKvCacheSize}
+    {canaryKvCacheSize}
     {maxNodeFreeCapacity}
     {nodeCapabilities}
     {enabled}

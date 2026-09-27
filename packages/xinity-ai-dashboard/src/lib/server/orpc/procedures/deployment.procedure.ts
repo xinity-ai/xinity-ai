@@ -39,15 +39,14 @@ async function resolveType(specifier: string): Promise<string | undefined> {
   return resolution.status === "found" ? resolution.model.type : undefined;
 }
 
-/** Validates that primary and canary models share the same type. Returns an error message or null. */
-async function validateCanaryModelTypes(primarySpecifier: string, earlySpecifier: string | null): Promise<string | null> {
-  if (!earlySpecifier) return null;
-  const [primaryType, earlyType] = await Promise.all([
-    resolveType(primarySpecifier),
-    resolveType(earlySpecifier),
+async function validateCanaryModelTypes(canarySpecifier: string, replacedSpecifier: string | null): Promise<string | null> {
+  if (!replacedSpecifier) return null;
+  const [canaryType, replacedType] = await Promise.all([
+    resolveType(canarySpecifier),
+    resolveType(replacedSpecifier),
   ]);
-  if (primaryType && earlyType && primaryType !== earlyType) {
-    return `Cannot mix model types in a canary deployment: primary is "${primaryType}" but canary is "${earlyType}"`;
+  if (canaryType && replacedType && canaryType !== replacedType) {
+    return `Cannot mix model types in a canary deployment: the canary is "${canaryType}" but the model it replaces is "${replacedType}"`;
   }
   return null;
 }

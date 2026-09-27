@@ -53,7 +53,7 @@
   let advancementStrategy = $state<"manual" | "time-based" | "smart-auto">("manual");
   let timeBasedDurationHours = $state(72);
   let kvCacheSize = $state<number | null>(null);
-  let earlyKvCacheSize = $state<number | null>(null);
+  let canaryKvCacheSize = $state<number | null>(null);
   let settings = $state<DeploymentSettings>({ version: 1 });
   let preferredDriver = $state<"ollama" | "vllm" | null>(null);
   let replicas = $state(1);
@@ -63,11 +63,13 @@
 
   // --- Edit mode tracking ---
   type Snapshot = {
+    primarySpecifier: string | null; canarySpecifier: string | null;
+    kvCacheSize: number | null; canaryKvCacheSize: number | null;
     name: string; publicSpecifier: string; enabled: boolean;
-    specifier: string | null; earlySpecifier: string | null; progress: number;
+    progress: number;
     canaryProgressWithFeedback: boolean;
-    preferredDriver: string | null; replicas: number; kvCacheSize: number | null;
-    earlyKvCacheSize: number | null; settings: DeploymentSettings;
+    preferredDriver: string | null; replicas: number;
+    settings: DeploymentSettings;
   };
   let initialSnapshot = $state<Snapshot | null>(null);
   let lastInitDeploymentId = $state<string | undefined>(undefined);
@@ -115,12 +117,19 @@
     deploymentName = d.name;
     deploymentNameEdited = true;
     enabled = d.enabled;
-    selectedPrimarySpecifier = d.specifier;
-    selectedCanarySpecifier = d.earlySpecifier ?? null;
-    isCanaryEnabled = Boolean(d.earlySpecifier);
+    const hasCanary = Boolean(d.earlySpecifier);
+    const models = {
+      primarySpecifier: d.earlySpecifier ?? d.specifier,
+      canarySpecifier: hasCanary ? d.specifier : null,
+      kvCacheSize: (hasCanary ? d.earlyKvCacheSize : d.kvCacheSize) ?? null,
+      canaryKvCacheSize: hasCanary ? d.kvCacheSize ?? null : null,
+    };
+    selectedPrimarySpecifier = models.primarySpecifier;
+    selectedCanarySpecifier = models.canarySpecifier;
+    isCanaryEnabled = hasCanary;
     canaryTraffic = d.progress ?? 100;
-    kvCacheSize = d.kvCacheSize ?? null;
-    earlyKvCacheSize = d.earlyKvCacheSize ?? null;
+    kvCacheSize = models.kvCacheSize;
+    canaryKvCacheSize = models.canaryKvCacheSize;
     settings = { ...d.settings ?? { version: 1 } };
     preferredDriver = d.preferredDriver ?? null;
     replicas = d.replicas;
@@ -134,11 +143,11 @@
     }
 
     initialSnapshot = {
+      ...models,
       name: d.name, publicSpecifier: d.publicSpecifier, enabled: d.enabled,
-      specifier: d.specifier ?? null, earlySpecifier: d.earlySpecifier ?? null, progress: d.progress,
+      progress: d.progress,
       canaryProgressWithFeedback: d.canaryProgressWithFeedback,
       preferredDriver: d.preferredDriver ?? null, replicas: d.replicas,
-      kvCacheSize: d.kvCacheSize ?? null, earlyKvCacheSize: d.earlyKvCacheSize ?? null,
       settings: { ...d.settings ?? { version: 1 } },
     };
   });
@@ -163,11 +172,11 @@
    * off possible without first moving it to a current entry.
    */
   const keepsUnknownPrimary = $derived(
-    isEditMode && primaryAbsentFromCatalog && selectedPrimarySpecifier === deployment?.specifier,
+    isEditMode && primaryAbsentFromCatalog && selectedPrimarySpecifier === initialSnapshot?.primarySpecifier,
   );
   const keepsUnknownCanary = $derived(
     isEditMode && canaryAbsentFromCatalog
-    && (selectedCanarySpecifier ?? null) === (deployment?.earlySpecifier ?? null),
+    && (selectedCanarySpecifier ?? null) === (initialSnapshot?.canarySpecifier ?? null),
   );
   const keepsUnknownEntry = $derived(keepsUnknownPrimary || keepsUnknownCanary);
 
@@ -215,11 +224,13 @@
       capacityChecked = false; capacityBlocked = false; capacityReason = undefined; return;
     }
     const abort = new AbortController();
+    const canary = isCanaryEnabled ? selectedCanarySpecifier : null;
     orpc.deployment.checkCapacity({
-      specifier: selectedPrimarySpecifier,
-      earlySpecifier: isCanaryEnabled ? selectedCanarySpecifier : null,
-      replicas, progress: isCanaryEnabled ? canaryTraffic : 100, kvCacheSize,
-      earlyKvCacheSize: isCanaryEnabled ? earlyKvCacheSize : null,
+      specifier: canary ?? selectedPrimarySpecifier,
+      earlySpecifier: canary ? selectedPrimarySpecifier : null,
+      kvCacheSize: canary ? canaryKvCacheSize : kvCacheSize,
+      earlyKvCacheSize: canary ? kvCacheSize : null,
+      replicas, progress: isCanaryEnabled ? canaryTraffic : 100,
       preferredDriver,
     }, { signal: abort.signal }).then(([error, data]) => {
       if (abort.signal.aborted) return;
@@ -234,7 +245,7 @@
   /** Only asked for on a change: an unchanged deployment was already consented to. */
   const requiresCustomCodeConsent = $derived.by(() => {
     if (!selectedPrimaryModel?.tags.includes("custom_code")) return false;
-    return !isEditMode || selectedPrimarySpecifier !== deployment?.specifier;
+    return !isEditMode || selectedPrimarySpecifier !== initialSnapshot?.primarySpecifier;
   });
 
   function isNewSelection(model: ModelWithSpecifier | null, deployedSpecifier: string | null | undefined): boolean {
@@ -246,8 +257,8 @@
 
   const restrictedLicenses = $derived.by(() => {
     const reviewable = [
-      isNewSelection(selectedPrimaryModel, deployment?.specifier) ? selectedPrimaryModel : null,
-      isCanaryEnabled && isNewSelection(selectedCanaryModel, deployment?.earlySpecifier) ? selectedCanaryModel : null,
+      isNewSelection(selectedPrimaryModel, initialSnapshot?.primarySpecifier) ? selectedPrimaryModel : null,
+      isCanaryEnabled && isNewSelection(selectedCanaryModel, initialSnapshot?.canarySpecifier) ? selectedCanaryModel : null,
     ];
     const byName = new Map<string, ModelLicense>();
     for (const model of reviewable) {
@@ -266,14 +277,14 @@
     return (
       deploymentName.trim() !== s.name.trim() ||
       publicSpecifier.trim() !== s.publicSpecifier.trim() ||
-      (selectedPrimarySpecifier ?? null) !== s.specifier ||
-      (isCanaryEnabled ? (selectedCanarySpecifier ?? null) : null) !== s.earlySpecifier ||
+      (selectedPrimarySpecifier ?? null) !== s.primarySpecifier ||
+      (isCanaryEnabled ? (selectedCanarySpecifier ?? null) : null) !== s.canarySpecifier ||
       (isCanaryEnabled ? canaryTraffic : 100) !== s.progress ||
       (isCanaryEnabled && advancementStrategy === "smart-auto") !== s.canaryProgressWithFeedback ||
       (preferredDriver ?? null) !== s.preferredDriver ||
       replicas !== s.replicas ||
       (kvCacheSize ?? null) !== s.kvCacheSize ||
-      (earlyKvCacheSize ?? null) !== s.earlyKvCacheSize ||
+      (isCanaryEnabled ? (canaryKvCacheSize ?? null) : null) !== s.canaryKvCacheSize ||
       !settingsEqual(settings, s.settings)
     );
   });
@@ -286,7 +297,7 @@
     (selectedPrimaryModel || keepsUnknownPrimary) && deploymentName.trim() && publicSpecifier.trim() &&
     (!isCanaryEnabled || ((selectedCanaryModel || keepsUnknownCanary) && !canaryTypeMismatch)) &&
     (kvCacheSize === null || kvCacheSize >= minKvCache) &&
-    (!isCanaryEnabled || earlyKvCacheSize === null || earlyKvCacheSize >= minCanaryKvCache) &&
+    (!isCanaryEnabled || canaryKvCacheSize === null || canaryKvCacheSize >= minCanaryKvCache) &&
     (!requiresCustomCodeConsent || customCodeConsent) &&
     (!requiresLicenseConsent || licenseConsent) &&
     DeploymentSettingsDto.safeParse(settings).success &&
@@ -316,7 +327,7 @@
   });
 
   $effect(() => { if (!isEditMode) kvCacheSize = selectedPrimaryModel ? selectedPrimaryModel.sizing.minKvCacheGb : null; });
-  $effect(() => { if (!isEditMode) earlyKvCacheSize = selectedCanaryModel ? selectedCanaryModel.sizing.minKvCacheGb : null; });
+  $effect(() => { if (!isEditMode) canaryKvCacheSize = selectedCanaryModel ? selectedCanaryModel.sizing.minKvCacheGb : null; });
 
   $effect(() => { if (!isEditMode) { selectedPrimarySpecifier; customCodeConsent = false; } });
 
@@ -358,39 +369,44 @@
     const primarySpecifier = selectedPrimaryModel?.publicSpecifier ?? selectedPrimarySpecifier;
     if (!isFormValid || !primarySpecifier) return;
 
-    const earlySpecifier = isCanaryEnabled && selectedCanaryModel ? selectedCanaryModel.publicSpecifier : null;
     // Ollama has no KV-cache knob; clear any value carried over from a different driver
     const engine = selectedPrimaryModel?.engine;
     const submittedKvCacheSize = engine === "ollama" ? null : kvCacheSize;
-    const submittedEarlyKvCacheSize = engine === "ollama" ? null : earlyKvCacheSize;
+    const submittedCanaryKvCacheSize = engine === "ollama" ? null : canaryKvCacheSize;
     const submittedSettings = settingsForSubmit();
+
+    const canary = isCanaryEnabled ? (selectedCanarySpecifier ?? null) : null;
+    const createdCanary = isCanaryEnabled && selectedCanaryModel ? selectedCanaryModel.publicSpecifier : null;
+    const createdKvCacheSize = submittedKvCacheSize && submittedKvCacheSize > minKvCache ? submittedKvCacheSize : undefined;
+    const createdCanaryKvCacheSize = createdCanary && submittedCanaryKvCacheSize && submittedCanaryKvCacheSize > minCanaryKvCache
+      ? submittedCanaryKvCacheSize : undefined;
 
     const [error] = deployment
       ? await orpc.deployment.update({
           ...deployment,
+          specifier: canary ?? primarySpecifier,
+          earlySpecifier: canary ? primarySpecifier : null,
+          kvCacheSize: canary ? submittedCanaryKvCacheSize : submittedKvCacheSize,
+          earlyKvCacheSize: canary ? submittedKvCacheSize : null,
           name: deploymentName.trim(),
           publicSpecifier: publicSpecifier.trim(),
           enabled,
-          specifier: primarySpecifier,
-          earlySpecifier: isCanaryEnabled ? (selectedCanarySpecifier ?? null) : null,
           progress: isCanaryEnabled ? canaryTraffic : 100,
           canaryProgressWithFeedback: isCanaryEnabled && advancementStrategy === "smart-auto",
           canaryProgressFrom: isCanaryEnabled && advancementStrategy !== "manual"
             ? (deployment.canaryProgressFrom ?? new Date()) : null,
           canaryProgressUntil: isCanaryEnabled && advancementStrategy === "time-based"
             ? new Date(Date.now() + timeBasedDurationHours * 3_600_000) : null,
-          kvCacheSize: submittedKvCacheSize,
-          earlyKvCacheSize: isCanaryEnabled ? submittedEarlyKvCacheSize : null,
           preferredDriver: preferredDriver || null, replicas,
           settings: submittedSettings,
         })
       : await orpc.deployment.create({
           enabled, name: deploymentName.trim(), publicSpecifier: publicSpecifier.trim(),
-          specifier: primarySpecifier,
-          earlySpecifier: earlySpecifier ?? undefined,
+          specifier: createdCanary ?? primarySpecifier,
+          earlySpecifier: createdCanary ? primarySpecifier : undefined,
           replicas, canaryProgressWithFeedback: advancementStrategy === "smart-auto",
-          kvCacheSize: submittedKvCacheSize && submittedKvCacheSize > minKvCache ? submittedKvCacheSize : undefined,
-          earlyKvCacheSize: isCanaryEnabled && selectedCanaryModel && submittedEarlyKvCacheSize && submittedEarlyKvCacheSize > minCanaryKvCache ? submittedEarlyKvCacheSize : undefined,
+          kvCacheSize: createdCanary ? createdCanaryKvCacheSize : createdKvCacheSize,
+          earlyKvCacheSize: createdCanary ? createdKvCacheSize : undefined,
           preferredDriver: preferredDriver || null,
           progress: isCanaryEnabled && selectedCanaryModel ? canaryTraffic : undefined,
           canaryProgressFrom: isCanaryEnabled && selectedCanaryModel ? new Date() : undefined,
@@ -419,7 +435,7 @@
     selectedPrimarySpecifier = null; selectedCanarySpecifier = null;
     isCanaryEnabled = false; canaryTraffic = 5;
     advancementStrategy = "manual"; timeBasedDurationHours = 72;
-    kvCacheSize = null; earlyKvCacheSize = null; settings = { version: 1 }; preferredDriver = null; replicas = 1;
+    kvCacheSize = null; canaryKvCacheSize = null; settings = { version: 1 }; preferredDriver = null; replicas = 1;
     customCodeConsent = false; licenseConsent = false; shouldAutoSelectCanary = true;
   }
 </script>
@@ -462,7 +478,7 @@
           bind:timeBasedDurationHours
           bind:replicas
           bind:kvCacheSize
-          bind:earlyKvCacheSize
+          bind:canaryKvCacheSize
           bind:settings
           {maxKvCache}
           {maxCanaryKvCache}

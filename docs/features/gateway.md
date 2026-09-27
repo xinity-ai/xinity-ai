@@ -26,12 +26,12 @@ The gateway exposes per-decision load-balancer metrics (candidate host count, se
 
 ## Canary Deployments
 
-A deployment can specify an "early" (canary) model alongside the primary model. Traffic is split based on a progress percentage.
+A canary deployment names two models: the canary (`specifier`) and the model it replaces (`earlySpecifier`). `progress` is the share of traffic the canary gets.
 
 | Mode | How it works |
 |---|---|
 | **Manual** | Progress stays at the configured value until changed. |
-| **Time-based** | Progress interpolates linearly from the starting value toward (but capped at) 99 over a configured time window. Once the window truly expires, progress jumps to 100 and all traffic moves to the primary model. |
+| **Time-based** | Progress interpolates linearly from the starting value toward (but capped at) 99 over a configured time window. Once the window truly expires, progress jumps to 100 and all traffic moves to the canary. |
 
 Canary deployments are configured through the [dashboard's Model Hub](dashboard.md#model-hub).
 
