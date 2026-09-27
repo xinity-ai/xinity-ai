@@ -173,6 +173,42 @@ const chatNonStreamSpec: NonStreamSpec<z.infer<typeof ChatSyncChoiceSchema>> = {
   toLogOutput: (choices, model) => ({ model, choices }),
 };
 
+/**
+ * What OpenAI lets each role carry. Parts only some backend understands stay out: vLLM's
+ * `audio_url` and `video_url` for instance, would make the inference node fetch a URL the gateway never saw.
+ */
+const CHAT_PART_TYPES: Record<string, readonly string[]> = {
+  user: ["text", "image_url", "input_audio"],
+  assistant: ["text", "refusal"],
+  system: ["text"],
+  developer: ["text"],
+  tool: ["text"],
+};
+
+function refuseChatContent(messages: Array<{ role: string; content?: unknown }>): string | null {
+  for (const [messageIndex, message] of messages.entries()) {
+    if (!Array.isArray(message.content)) {
+      continue;
+    }
+    const allowed = CHAT_PART_TYPES[message.role] ?? ["text"];
+    for (const [partIndex, part] of message.content.entries()) {
+      const at = `messages[${messageIndex}].content[${partIndex}]`;
+      // A serializer that failed to build a part writes null in its place, so point at where it was lost.
+      if (typeof part !== "object" || part === null) {
+        return `${at} is ${part === null ? "null" : typeof part}, expected a content part object`;
+      }
+      const type = (part as { type?: unknown }).type;
+      if (type === "file") {
+        return `${at}: file parts are not supported by the inference backends`;
+      }
+      if (typeof type !== "string" || !allowed.includes(type)) {
+        return `${at}: ${String(type)} is not allowed in ${message.role} messages. Allowed: ${allowed.join(", ")}`;
+      }
+    }
+  }
+  return null;
+}
+
 export const handleChatCompletion = withEndpointGuards({
   modelTypes: ["chat"],
   bodySchema: ChatCompletionBodySchema,
@@ -185,6 +221,11 @@ export const handleChatCompletion = withEndpointGuards({
     const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
     if (hasTools && modelLacksToolSupport(modelInfo)) {
       return errorResponse("Model does not support tool use", 400);
+    }
+
+    const refusal = refuseChatContent(body.messages);
+    if (refusal) {
+      return errorResponse(refusal, 400);
     }
 
     const callStartTime = Date.now();

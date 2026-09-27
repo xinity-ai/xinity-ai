@@ -385,17 +385,11 @@ export async function processMessageMedia(
   const messagesForLLM: ApiCallInputMessage[] = [];
   const messagesForDB: ApiCallInputMessage[] = [];
 
-  for (const [messageIndex, message] of messages.entries()) {
+  for (const message of messages) {
     if (typeof message.content === "string" || !Array.isArray(message.content)) {
       messagesForLLM.push(message);
       messagesForDB.push(message);
       continue;
-    }
-
-    // A serializer that failed to build a part writes null in its place, so point at where it was lost.
-    const nullIndex = (message.content as unknown[]).indexOf(null);
-    if (nullIndex !== -1) {
-      throw mediaPartInvalidError(`messages[${messageIndex}].content[${nullIndex}] is null, expected a content part object`);
     }
 
     const processedParts = await mapConcurrent(
