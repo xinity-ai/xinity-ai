@@ -90,7 +90,7 @@ mock.module("./page-cache", () => ({
   dropPageCache: mock(() => Promise.resolve()),
 }));
 
-const { syncVllmInstallations$, computeGpuUtilization, buildVllmExtraArgs, concurrencyCap } = await import("./vllm");
+const { syncVllmInstallations$, computeGpuUtilization, buildVllmExtraArgs, concurrencyCap, matchFatalPattern } = await import("./vllm");
 afterAll(() => {
   downloadModelSpy.mockRestore();
 });
@@ -605,5 +605,29 @@ describe("buildVllmExtraArgs", () => {
   test("keeps the runner and tool flags it already derived", () => {
     expect(buildVllmExtraArgs("embedding", true, ["--x"], 8))
       .toEqual(["--runner", "pooling", "--enable-auto-tool-choice", "--max-num-seqs", "8", "--x"]);
+  });
+});
+
+describe("matchFatalPattern", () => {
+  test("names a cache too small for one full-context request, in vllm's own wording", () => {
+    const logs = "ValueError: To serve at least one request with the model's max seq len (32768), "
+      + "(2.01 GiB KV cache is needed, which is larger than the available KV cache memory (1.50 GiB). "
+      + "Based on the available memory, the estimated maximum model length is 24448. "
+      + "Try increasing `gpu_memory_utilization` or decreasing `max_model_len` when initializing the engine.";
+    expect(matchFatalPattern(logs)).toBe("KV cache too small for one full-context request");
+  });
+
+  test("names a cache with no memory at all, in vllm's own wording", () => {
+    const logs = "ValueError: No available memory for the cache blocks. "
+      + "Try increasing `gpu_memory_utilization` when initializing the engine.";
+    expect(matchFatalPattern(logs)).toBe("No GPU memory left for the KV cache");
+  });
+
+  test("reads amd and intel failures in their runtimes' own wording", () => {
+    expect(matchFatalPattern("torch.OutOfMemoryError: HIP out of memory. Tried to allocate 2.00 GiB.")).toBe("GPU out of memory");
+    expect(matchFatalPattern("torch.OutOfMemoryError: XPU out of memory. Tried to allocate 2.00 GiB.")).toBe("GPU out of memory");
+    expect(matchFatalPattern("hipErrorNoBinaryForGpu: Unable to find code object for all current devices!")).toBe("vLLM build has no kernels for this GPU");
+    expect(matchFatalPattern("RuntimeError: HIP error: invalid device ordinal")).toBe("Invalid GPU device index");
+    expect(matchFatalPattern("RuntimeError: UR_RESULT_ERROR_DEVICE_LOST")).toBe("GPU runtime error");
   });
 });
