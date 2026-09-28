@@ -11,10 +11,16 @@ import {
 } from "common-env";
 import { version } from "../../../../../package.json";
 import { config } from "../../config";
+import { rootLogger } from "../../logger";
 import { getMetricsSnapshot, type GpuSnapshot } from "../metrics-sampler";
+import { listInstallations } from "../model-registry";
 import { getNodeId, getMachineName } from "../statekeeper";
 
+const log = rootLogger.child({ name: "metrics" });
+
 const metricsAuth = createMetricsAuth(config.metrics.auth);
+
+const ENGINE_SCRAPE_TIMEOUT_MS = 2000;
 
 export const httpMetrics = createHttpMetrics();
 
@@ -41,8 +47,33 @@ function gpuGauge(
   return gauge;
 }
 
-function metricsResponse(metrics: Metric[]): Response {
-  return new Response(serializeMetrics([...metrics, ...httpMetrics.metrics, ...processMetrics()]), {
+async function scrapeEngines(): Promise<string[]> {
+  const engines = listInstallations().filter((inst) => inst.driver === "vllm");
+
+  const results = await Promise.allSettled(engines.map(async ({ port }) => {
+    const res = await fetch(`http://127.0.0.1:${port}/metrics`, {
+      signal: AbortSignal.timeout(ENGINE_SCRAPE_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    return await res.text();
+  }));
+
+  const bodies: string[] = [];
+  for (const [index, result] of results.entries()) {
+    if (result.status === "fulfilled") {
+      bodies.push(result.value);
+    } else {
+      log.debug({ err: result.reason, specifier: engines[index]?.specifier }, "Engine metrics scrape failed");
+    }
+  }
+  return bodies;
+}
+
+function metricsResponse(metrics: Metric[], engineBodies: string[]): Response {
+  const daemon = serializeMetrics([...metrics, ...httpMetrics.metrics, ...processMetrics()]);
+  return new Response([daemon, ...engineBodies].join("\n"), {
     headers: { "Content-Type": "text/plain; version=0.0.4; charset=utf-8" },
   });
 }
@@ -57,6 +88,7 @@ export async function handleDaemonMetrics(req: Request): Promise<Response> {
     return authErr;
   }
 
+  const engineBodies = await scrapeEngines();
   const node: Labels = { node_id: await getNodeId(), machine_name: getMachineName() };
 
   const up = createGauge("daemon_up", "1 when the daemon process is running.");
@@ -66,7 +98,7 @@ export async function handleDaemonMetrics(req: Request): Promise<Response> {
 
   const snapshot = getMetricsSnapshot();
   if (snapshot === null) {
-    return metricsResponse([up, buildInfo]);
+    return metricsResponse([up, buildInfo], engineBodies);
   }
 
   const sampleFailures = createCounter(
@@ -124,5 +156,5 @@ export async function handleDaemonMetrics(req: Request): Promise<Response> {
       gpus, labels, (g) => (g.throttled === null ? null : g.throttled ? 1 : 0)),
     eccErrors,
     energy,
-  ]);
+  ], engineBodies);
 }

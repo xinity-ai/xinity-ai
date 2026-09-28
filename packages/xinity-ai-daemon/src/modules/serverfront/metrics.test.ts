@@ -1,4 +1,4 @@
-import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { describe, test, expect, mock, beforeEach, afterEach } from "bun:test";
 import { mockDaemonConfig } from "../../mock-config";
 
 mock.module("../../config", () => ({ config: mockDaemonConfig() }));
@@ -19,6 +19,7 @@ mock.module("../metrics-sampler", () => ({
 }));
 
 const { handleDaemonMetrics } = await import("./metrics");
+const { updateRegistry } = await import("../model-registry");
 
 function gpu(over: Partial<GpuSnapshot> = {}): GpuSnapshot {
   return {
@@ -55,6 +56,7 @@ describe("handleDaemonMetrics", () => {
   beforeEach(() => {
     mockSnapshot.mockReset();
     mockSnapshot.mockReturnValue(null);
+    updateRegistry([]);
   });
 
   test("returns 405 for non-GET requests", async () => {
@@ -132,5 +134,77 @@ describe("handleDaemonMetrics", () => {
     mockSnapshot.mockReturnValue(snapshot([], 4));
     const body = await (await handleDaemonMetrics(makeReq())).text();
     expect(body).toContain('daemon_gpu_sample_failures_total{machine_name="test-machine",node_id="test-node-uuid"} 4');
+  });
+});
+
+const VLLM_EXPOSITION = [
+  "# HELP vllm:prefix_cache_hits_total Prefix cache block hits.",
+  "# TYPE vllm:prefix_cache_hits_total counter",
+  'vllm:prefix_cache_hits_total{model_name="qwen3"} 128',
+  "",
+].join("\n");
+
+describe("engine metrics", () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    mockSnapshot.mockReset();
+    mockSnapshot.mockReturnValue(null);
+    updateRegistry([]);
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test("appends the engine exposition unmodified", async () => {
+    updateRegistry([{ specifier: "qwen3", port: 8001, driver: "vllm" }]);
+    const fetchMock = mock(async () => new Response(VLLM_EXPOSITION));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const body = await (await handleDaemonMetrics(makeReq())).text();
+
+    expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8001/metrics", expect.anything());
+    expect(body).toContain(VLLM_EXPOSITION);
+    expect(body).toContain("daemon_up");
+  });
+
+  test("keeps the reachable engine when another one fails", async () => {
+    updateRegistry([
+      { specifier: "hung", port: 8001, driver: "vllm" },
+      { specifier: "qwen3", port: 8002, driver: "vllm" },
+    ]);
+    globalThis.fetch = mock(async (input: string) => {
+      if (input.includes("8001")) {
+        throw new Error("The operation timed out.");
+      }
+      return new Response(VLLM_EXPOSITION);
+    }) as unknown as typeof fetch;
+
+    const body = await (await handleDaemonMetrics(makeReq())).text();
+
+    expect(body).toContain('vllm:prefix_cache_hits_total{model_name="qwen3"} 128');
+    expect(body).toContain("daemon_up");
+  });
+
+  test("drops an engine that answers with an error status", async () => {
+    updateRegistry([{ specifier: "qwen3", port: 8001, driver: "vllm" }]);
+    globalThis.fetch = mock(async () => new Response("nope", { status: 503 })) as unknown as typeof fetch;
+
+    const body = await (await handleDaemonMetrics(makeReq())).text();
+
+    expect(body).not.toContain("nope");
+    expect(body).toContain("daemon_up");
+  });
+
+  test("does not scrape an ollama installation", async () => {
+    updateRegistry([{ specifier: "llama3.3", port: 8003, driver: "ollama" }]);
+    const fetchMock = mock(async () => new Response(VLLM_EXPOSITION));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const body = await (await handleDaemonMetrics(makeReq())).text();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(body).not.toContain("vllm:");
   });
 });

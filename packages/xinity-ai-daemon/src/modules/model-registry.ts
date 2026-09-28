@@ -17,3 +17,7 @@ export function updateRegistry(installations: Array<{ specifier: string; port: n
 export function resolveModel(specifier: string): { port: number; driver: string } | undefined {
   return registry.get(specifier);
 }
+
+export function listInstallations(): Array<{ specifier: string; port: number; driver: string }> {
+  return [...registry].map(([specifier, { port, driver }]) => ({ specifier, port, driver }));
+}

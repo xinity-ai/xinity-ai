@@ -6,16 +6,8 @@ let mockPort: number = 0;
 
 mock.module("../../config", () => ({ config: mockDaemonConfig({ STATE_DIR: "/tmp/test" }) }));
 
-mock.module("../model-registry", () => ({
-  resolveModel: (model: string) => {
-    if (model === "llama3:latest") return { port: mockPort, driver: "ollama" };
-    if (model === "meta-llama/Llama-3.1-8B") return { port: mockPort, driver: "vllm" };
-    if (model === "dead-backend") return { port: 1, driver: "vllm" };
-    return undefined;
-  },
-}));
-
 const { getAuthToken } = await import("../statekeeper");
+const { updateRegistry } = await import("../model-registry");
 const { handleProxyRequest } = await import("./proxy");
 
 let server: ReturnType<typeof Bun.serve>;
@@ -37,6 +29,12 @@ beforeAll(() => {
   });
   if (server.port == null) throw new Error("Bun.serve did not allocate a TCP port");
   mockPort = server.port;
+
+  updateRegistry([
+    { specifier: "llama3:latest", port: mockPort, driver: "ollama" },
+    { specifier: "meta-llama/Llama-3.1-8B", port: mockPort, driver: "vllm" },
+    { specifier: "dead-backend", port: 1, driver: "vllm" },
+  ]);
 });
 
 afterAll(() => {
