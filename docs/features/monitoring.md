@@ -104,6 +104,23 @@ All `daemon_*` metrics carry a `node_id` label, plus `machine_name` when the nod
 | `daemon_gpu_ecc_errors_total` | counter | ECC errors (labeled `type`: uncorrected or corrected) |
 | `daemon_gpu_energy_wh_total` | counter | Cumulative energy since daemon start (Wh) |
 
+### Engine metrics
+
+vLLM engines bind to loopback, so the daemon scrapes each one whenever its own `/metrics` is scraped and forwards the `vllm:` series, labeled by vLLM's `model_name` and carrying the node labels from service discovery. Nothing else is forwarded, since the engine's `process_*` and `http_*` collectors share family names with the daemon's own. An engine that does not answer within two seconds is left out, and its absence is the only sign of that, as there is no per-engine `up`. Names and buckets are the engine's, so upstream vLLM dashboards apply and the set moves with the engine version.
+
+The ones that answer whether prefix caching is working:
+
+| Metric | Type | Description |
+|---|---|---|
+| `vllm:prefix_cache_queries_total` | counter | Prefix cache block lookups |
+| `vllm:prefix_cache_hits_total` | counter | Lookups served from cache |
+| `vllm:kv_cache_usage_perc` | gauge | KV cache in use, where 1 means full |
+| `vllm:num_preemptions_total` | counter | Requests preempted to free cache blocks |
+
+Hit rate is `rate(vllm:prefix_cache_hits_total[5m]) / rate(vllm:prefix_cache_queries_total[5m])`. A near-full cache with rising preemptions is ordinary eviction under load. Spare cache with no hits is structural, usually an architecture the engine version does not cache. Older engines call the gauge `vllm:gpu_cache_usage_perc`.
+
+Ollama contributes nothing: no metrics endpoint, and no cache, preemption or queue state to expose. The gateway covers request rate, latency and tokens for ollama-backed models as it does for every engine.
+
 ## Service Discovery
 
 The dashboard exposes `GET /metrics/sd/daemons` as an [HTTP service discovery](https://prometheus.io/docs/prometheus/latest/http_sd/) endpoint. It returns one target group per registered node (including offline ones, so Prometheus reports them as `up==0`). Each target includes:
