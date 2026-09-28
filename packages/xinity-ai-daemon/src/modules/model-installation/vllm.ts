@@ -42,7 +42,9 @@ const FATAL_LOG_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /ncclSystemError|ncclInternalError|NCCL error/i, label: "NCCL communication error" },
   { pattern: /address already in use|Address already in use/i, label: "Port already in use" },
   { pattern: /Model architectures \[.*\] are not supported/i, label: "Unsupported model architecture" },
-  { pattern: /max_model_len.*is too large|the model's max seq_len/i, label: "Configured context length too large" },
+  { pattern: /No available memory for the cache blocks/i, label: "No GPU memory left for the KV cache" },
+  { pattern: /the model's max seq[ _]len/i, label: "KV cache too small for one full-context request" },
+  { pattern: /max_model_len.*is too large/i, label: "Configured context length too large" },
   { pattern: /Access to model.*is restricted|gated repo|Cannot access gated repo|You must have access to it and be authenticated/i, label: "HuggingFace authentication required" },
   { pattern: /OSError:.*does not appear to have a file named|repository.*not found|does not exist on the Hub/i, label: "Model files missing or not found" },
   { pattern: /PermissionError:.*triton|triton.*PermissionError/i, label: "Triton cache permission error" },
@@ -52,7 +54,7 @@ const FATAL_LOG_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /Engine core initialization failed|EngineCore failed to start/i, label: "Engine initialization failed" },
 ];
 
-function matchFatalPattern(logs: string): string | null {
+export function matchFatalPattern(logs: string): string | null {
   for (const { pattern, label } of FATAL_LOG_PATTERNS) {
     if (pattern.test(logs)) {
       return label;
