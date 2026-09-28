@@ -174,14 +174,14 @@
       </Collapsible.Root>
     </section>
 
-    <!-- CUDA Runtime -->
+    <!-- GPU Runtime -->
     <section class="p-6 bg-white rounded-lg shadow-md">
       <div class="flex items-start gap-3 mb-3">
         <span class="mt-0.5 inline-block px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 shrink-0">GPU</span>
         <div>
-          <h3 class="text-lg font-semibold">CUDA runtime error</h3>
+          <h3 class="text-lg font-semibold">GPU runtime error</h3>
           <p class="text-sm text-gray-500 mt-0.5">
-            Look for: <code class="bg-gray-100 px-1 rounded">RuntimeError: CUDA error</code>
+            Look for: <code class="bg-gray-100 px-1 rounded">RuntimeError: CUDA error</code>, <code class="bg-gray-100 px-1 rounded">HIP error</code> or <code class="bg-gray-100 px-1 rounded">UR_RESULT_ERROR</code>
           </p>
         </div>
       </div>
@@ -200,9 +200,9 @@
         <Collapsible.Content>
           <div class="mt-3 p-3 bg-gray-50 rounded text-sm text-gray-600 space-y-2">
             <p>
-              CUDA runtime errors are typically caused by GPU driver version mismatches, hardware
-              faults, or corrupted GPU state. Run <code class="bg-gray-100 px-1 rounded">nvidia-smi</code>
-              on the node to verify GPU accessibility. Restarting the node often clears transient GPU state issues.
+              GPU runtime errors are typically caused by GPU driver version mismatches, hardware
+              faults, or corrupted GPU state. Run the vendor's tool (<code class="bg-gray-100 px-1 rounded">nvidia-smi</code>,
+              <code class="bg-gray-100 px-1 rounded">amd-smi</code> or <code class="bg-gray-100 px-1 rounded">xpu-smi</code>) on the node to verify GPU accessibility. Restarting the node often clears transient GPU state issues.
             </p>
           </div>
         </Collapsible.Content>
@@ -298,7 +298,7 @@
         <div>
           <h3 class="text-lg font-semibold">Invalid GPU device index</h3>
           <p class="text-sm text-gray-500 mt-0.5">
-            Look for: <code class="bg-gray-100 px-1 rounded">CUDA error: invalid device ordinal</code>
+            Look for: <code class="bg-gray-100 px-1 rounded">invalid device ordinal</code>
           </p>
         </div>
       </div>
@@ -307,8 +307,48 @@
       </p>
       <p class="text-sm font-semibold text-gray-700 mb-1">Likely fix:</p>
       <ul class="list-disc pl-6 space-y-1 text-sm text-gray-600 mb-3">
-        <li>Check that <code class="bg-gray-100 px-1 rounded">CUDA_VISIBLE_DEVICES</code> is set correctly.</li>
+        <li>Check that the node still has the GPUs the installation was assigned.</li>
         <li>Ensure <code class="bg-gray-100 px-1 rounded">--tensor-parallel-size</code> does not exceed the number of GPUs.</li>
+      </ul>
+    </section>
+
+    <!-- No GPU Kernels -->
+    <section class="p-6 bg-white rounded-lg shadow-md">
+      <div class="flex items-start gap-3 mb-3">
+        <span class="mt-0.5 inline-block px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 shrink-0">GPU</span>
+        <div>
+          <h3 class="text-lg font-semibold">vLLM build has no kernels for this GPU</h3>
+          <p class="text-sm text-gray-500 mt-0.5">
+            Look for: <code class="bg-gray-100 px-1 rounded">hipErrorNoBinaryForGpu</code>
+          </p>
+        </div>
+      </div>
+      <p class="text-gray-600 mb-3">
+        The installed vLLM was not built for this GPU model.
+      </p>
+      <p class="text-sm font-semibold text-gray-700 mb-1">Likely fix:</p>
+      <ul class="list-disc pl-6 space-y-1 text-sm text-gray-600 mb-3">
+        <li>Ask your system administrator to install a vLLM build that supports this GPU.</li>
+      </ul>
+    </section>
+
+    <!-- No GPU Visible -->
+    <section class="p-6 bg-white rounded-lg shadow-md">
+      <div class="flex items-start gap-3 mb-3">
+        <span class="mt-0.5 inline-block px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 shrink-0">GPU</span>
+        <div>
+          <h3 class="text-lg font-semibold">No GPU visible to vLLM</h3>
+          <p class="text-sm text-gray-500 mt-0.5">
+            Look for: <code class="bg-gray-100 px-1 rounded">No HIP GPUs are available</code>
+          </p>
+        </div>
+      </div>
+      <p class="text-gray-600 mb-3">
+        vLLM started but could not open any GPU on the node.
+      </p>
+      <p class="text-sm font-semibold text-gray-700 mb-1">Likely fix:</p>
+      <ul class="list-disc pl-6 space-y-1 text-sm text-gray-600 mb-3">
+        <li>Ask your system administrator to check the GPU drivers on the node.</li>
       </ul>
     </section>
 
