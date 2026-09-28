@@ -169,6 +169,30 @@ describe("engine metrics", () => {
     expect(body).toContain("daemon_up");
   });
 
+  test("drops the engine's python and http collectors, which collide with the daemon's own", async () => {
+    updateRegistry([{ specifier: "qwen3", port: 8001, driver: "vllm" }]);
+    globalThis.fetch = mock(async () => new Response([
+      "# HELP process_resident_memory_bytes Resident memory size in bytes.",
+      "# TYPE process_resident_memory_bytes gauge",
+      "process_resident_memory_bytes 1.098084352e+09",
+      "# HELP python_info Python platform information",
+      "# TYPE python_info gauge",
+      'python_info{version="3.12.7"} 1.0',
+      "# HELP http_requests_total Total HTTP requests.",
+      "# TYPE http_requests_total counter",
+      'http_requests_total{handler="/v1/chat/completions",method="POST",status="2xx"} 1.0',
+      VLLM_EXPOSITION,
+    ].join("\n"))) as unknown as typeof fetch;
+
+    const body = await (await handleDaemonMetrics(makeReq())).text();
+
+    expect(body).toContain('vllm:prefix_cache_hits_total{model_name="qwen3"} 128');
+    expect(body).not.toContain("1.098084352e+09");
+    expect(body).not.toContain("python_info");
+    expect(body).not.toContain('handler="/v1/chat/completions"');
+    expect(body.match(/^process_resident_memory_bytes /gm)).toHaveLength(1);
+  });
+
   test("keeps the reachable engine when another one fails", async () => {
     updateRegistry([
       { specifier: "hung", port: 8001, driver: "vllm" },

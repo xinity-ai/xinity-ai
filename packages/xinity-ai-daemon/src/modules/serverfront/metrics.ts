@@ -47,6 +47,17 @@ function gpuGauge(
   return gauge;
 }
 
+// vLLM also serves process and http collectors whose family names collide with the daemon's own.
+function vllmSeriesOnly(body: string): string {
+  const kept = body.split("\n").filter((line) => {
+    if (line.startsWith("# HELP ") || line.startsWith("# TYPE ")) {
+      return line.split(" ")[2]?.startsWith("vllm:") ?? false;
+    }
+    return line.startsWith("vllm:");
+  });
+  return kept.length === 0 ? "" : `${kept.join("\n")}\n`;
+}
+
 async function scrapeEngines(): Promise<string[]> {
   const engines = listInstallations().filter((inst) => inst.driver === "vllm");
 
@@ -63,7 +74,10 @@ async function scrapeEngines(): Promise<string[]> {
   const bodies: string[] = [];
   for (const [index, result] of results.entries()) {
     if (result.status === "fulfilled") {
-      bodies.push(result.value);
+      const series = vllmSeriesOnly(result.value);
+      if (series !== "") {
+        bodies.push(series);
+      }
     } else {
       log.debug({ err: result.reason, specifier: engines[index]?.specifier }, "Engine metrics scrape failed");
     }
