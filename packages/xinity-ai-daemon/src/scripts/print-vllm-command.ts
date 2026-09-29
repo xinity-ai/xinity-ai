@@ -91,7 +91,7 @@ if (state.vllmPath) process.env.VLLM_PATH = state.vllmPath;
 if (state.dockerImage) process.env.VLLM_DOCKER_IMAGE = state.dockerImage;
 
 const [
-  { buildDockerRunArgs, buildSystemdEnvFile, buildSystemdServeArgv },
+  { buildDockerRunArgs, buildSystemdEnvFile, buildSystemdDropIn, buildSystemdServeArgv },
   { computeGpuUtilization, buildVllmExtraArgs, concurrencyCap },
   { buildHardwareProfile },
 ] = await Promise.all([
@@ -136,12 +136,12 @@ if (state.backend === "docker") {
   const argv = buildDockerRunArgs(state.id, config, "preview");
   console.log(quoteShellArgv(argv));
 } else {
-  const envContent = buildSystemdEnvFile(config);
-  const argv = buildSystemdServeArgv(config);
-
   console.log(`# /etc/vllm/${state.id}.env`);
-  process.stdout.write(envContent);
+  process.stdout.write(buildSystemdEnvFile(config));
   console.log();
-  console.log(`# Equivalent vllm serve command (synthesized from the .service template)`);
-  console.log(quoteShellArgv(argv));
+  console.log(`# vllm-driver@${state.id}.service.d/serve.conf`);
+  process.stdout.write(buildSystemdDropIn(config));
+  console.log();
+  console.log(`# Equivalent vllm serve command`);
+  console.log(quoteShellArgv(buildSystemdServeArgv(config)));
 }

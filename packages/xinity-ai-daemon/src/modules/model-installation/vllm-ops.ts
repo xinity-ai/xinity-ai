@@ -1,4 +1,5 @@
 import { $ } from "bun";
+import { dirname } from "node:path";
 import { config as daemonConfig } from "../../config";
 // @ts-expect-error Bun text import
 import templateUnit from "../../assets/vllm-driver@.service" with { type: "text" };
@@ -63,26 +64,7 @@ const OFFLINE_ENV = ["HF_HUB_OFFLINE=1", "TRANSFORMERS_OFFLINE=1"];
 // ---------------------------------------------------------------------------
 
 export function buildSystemdEnvFile(config: VllmInstanceConfig): string {
-  const lines = [
-    `VLLM_MODEL=${config.model}`,
-    `VLLM_PORT=${config.port}`,
-    `VLLM_HOST=127.0.0.1`,
-    `VLLM_SERVED_MODEL_NAME=${config.model}`,
-    `VLLM_KV_CACHE_BYTES=${config.kvCacheBytes}`,
-    ...OFFLINE_ENV,
-  ];
-  if (daemonConfig.vllm.path) {
-    lines.push(`VLLM_BINARY_PATH=${daemonConfig.vllm.path}`);
-  }
-  if (config.trustRemoteCode) {
-    lines.push(`VLLM_TRUST_REMOTE_CODE=true`);
-  }
-  if (config.gpuMemoryUtilization != null) {
-    lines.push(`VLLM_GPU_MEMORY_UTILIZATION=${config.gpuMemoryUtilization}`);
-  }
-  if (config.extraArgs && config.extraArgs.length > 0) {
-    lines.push(`VLLM_EXTRA_ARGS=${config.extraArgs.join(" ")}`);
-  }
+  const lines: string[] = [...OFFLINE_ENV];
   const audioDuration = resolveMaxAudioInputDurationS(config.settings);
   if (audioDuration != null) {
     lines.push(`VLLM_MAX_AUDIO_DECODE_DURATION_S=${audioDuration}`);
@@ -107,7 +89,6 @@ function appendVllmCommonArgs(args: string[], config: VllmInstanceConfig): void 
   }
 }
 
-// Mirror of the ExecStart logic in src/assets/vllm-driver@.service; keep in sync.
 export function buildSystemdServeArgv(config: VllmInstanceConfig): string[] {
   const binary = daemonConfig.vllm.path || "/usr/bin/vllm";
   const argv = [binary, "serve", config.model,
@@ -122,8 +103,25 @@ export function buildSystemdServeArgv(config: VllmInstanceConfig): string[] {
   return argv;
 }
 
+// systemd.syntax(5) quoting, plus the "$" and "%" that ExecStart= would otherwise expand.
+const SYSTEMD_ESCAPES: Record<string, string> = {
+  "\\": "\\\\", "\"": "\\\"", "\n": "\\n", "\r": "\\r", "\t": "\\t", "$": "$$", "%": "%%",
+};
+
+function quoteSystemdArg(arg: string): string {
+  return `"${arg.replace(/[\\"\n\r\t$%]/g, (char) => SYSTEMD_ESCAPES[char]!)}"`;
+}
+
+// The empty ExecStart= clears the template's, which only units started before drop-ins still use.
+export function buildSystemdDropIn(config: VllmInstanceConfig): string {
+  const execStart = buildSystemdServeArgv(config).map(quoteSystemdArg).join(" ");
+  return `[Service]\nExecStart=\nExecStart=${execStart}\n`;
+}
+
 const SYSTEMD_UNIT_INSTANCE_RE = /^vllm-driver@(.+)\.service$/;
 const systemdUnitFor = (id: string) => `vllm-driver@${id}.service`;
+const systemdDropInDirFor = (id: string) =>
+  `${dirname(daemonConfig.vllm.templateUnitPath)}/${systemdUnitFor(id)}.d`;
 
 export function createSystemdVllmOps(): VllmOps {
   return {
@@ -152,12 +150,18 @@ export function createSystemdVllmOps(): VllmOps {
       );
       await Bun.write(envPath, envContent);
       await $`chmod 600 ${envPath}`;
+      const dropInDir = systemdDropInDirFor(id);
+      await $`mkdir -p ${dropInDir}`;
+      await Bun.write(`${dropInDir}/serve.conf`, buildSystemdDropIn(config));
+      await $`systemctl daemon-reload`;
       await $`systemctl enable --now ${systemdUnitFor(id)}`;
     },
 
     async stop(id) {
       await $`systemctl disable --now ${systemdUnitFor(id)}`.nothrow();
       await $`rm -f ${daemonConfig.vllm.envDir}/${id}.env`;
+      await $`rm -rf ${systemdDropInDirFor(id)}`;
+      await $`systemctl daemon-reload`.nothrow();
     },
 
     checkHealth,
@@ -190,12 +194,12 @@ export function createSystemdVllmOps(): VllmOps {
     async ensureSetup() {
       const targetPath = daemonConfig.vllm.templateUnitPath;
       const existing = await Bun.file(targetPath).text().catch(() => null);
-      if (existing != null) {
-        log.debug({ targetPath }, "vLLM systemd template already present, skipping");
+      if (existing === templateUnit) {
+        log.debug({ targetPath }, "vLLM systemd template up to date, skipping");
       } else {
         await Bun.write(targetPath, templateUnit);
         await $`systemctl daemon-reload`;
-        log.info("Installed vLLM systemd template unit");
+        log.info({ targetPath, replaced: existing != null }, "Installed vLLM systemd template unit");
       }
 
       // Ensure cache and env directories exist with correct ownership.
