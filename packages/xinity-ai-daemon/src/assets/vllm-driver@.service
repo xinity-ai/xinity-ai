@@ -2,11 +2,11 @@
 #
 # Usage:
 #   1. Create a config file at /etc/vllm/<instance>.env
-#   2. Start with: systemctl start vllm-driver@<instance>.service
+#   2. Put the serve command in vllm-driver@<instance>.service.d/serve.conf
+#   3. Start with: systemctl start vllm-driver@<instance>.service
 #
-# Example:
-#   /etc/vllm/llama8b.env
-#   systemctl start vllm-driver@llama8b.service
+# The daemon does all three. The drop-in carries the exact argv, since a flat
+# env var cannot hold an argument that contains a space or a newline.
 #
 # Install this file to: /etc/systemd/system/vllm-driver@.service
 
@@ -44,6 +44,7 @@ Environment=HF_HOME=/var/lib/vllm/hf-cache
 Environment=TRITON_CACHE_DIR=/var/lib/vllm/triton-cache
 Environment=HF_TOKEN=
 
+# Only instances started before serve.conf drop-ins still run this.
 ExecStart=/bin/bash -c '\
     ARGS=""; \
     [ -n "$VLLM_KV_CACHE_BYTES" ] && ARGS="$ARGS --kv-cache-memory-bytes $VLLM_KV_CACHE_BYTES"; \

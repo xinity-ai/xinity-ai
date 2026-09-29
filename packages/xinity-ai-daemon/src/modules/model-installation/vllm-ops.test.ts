@@ -5,6 +5,7 @@ mock.module("../../config", () => ({ config: mockDaemonConfig({ VLLM_PATH: "/usr
 
 const {
   buildDockerRunArgs,
+  buildSystemdDropIn,
   buildSystemdEnvFile,
   buildSystemdServeArgv,
 } = await import("./vllm-ops");
@@ -112,30 +113,8 @@ describe("buildDockerRunArgs", () => {
 });
 
 describe("buildSystemdEnvFile", () => {
-  test("base config writes only the required variables", () => {
-    const out = buildSystemdEnvFile(baseConfig);
-    expect(out).toBe(
-      "VLLM_MODEL=meta-llama/Llama-3.1-8B-Instruct\n" +
-      "VLLM_PORT=8000\n" +
-      "VLLM_HOST=127.0.0.1\n" +
-      "VLLM_SERVED_MODEL_NAME=meta-llama/Llama-3.1-8B-Instruct\n" +
-      "VLLM_KV_CACHE_BYTES=8g\n" +
-      "HF_HUB_OFFLINE=1\n" +
-      "TRANSFORMERS_OFFLINE=1\n" +
-      "VLLM_BINARY_PATH=/usr/local/bin/vllm\n",
-    );
-  });
-
-  test("emits trust-remote-code, gpu-mem, and extra args when present", () => {
-    const out = buildSystemdEnvFile({
-      ...baseConfig,
-      trustRemoteCode: true,
-      gpuMemoryUtilization: 0.85,
-      extraArgs: ["--runner", "pooling"],
-    });
-    expect(out).toContain("VLLM_TRUST_REMOTE_CODE=true");
-    expect(out).toContain("VLLM_GPU_MEMORY_UTILIZATION=0.85");
-    expect(out).toContain("VLLM_EXTRA_ARGS=--runner pooling");
+  test("keeps hugging face offline for every instance", () => {
+    expect(buildSystemdEnvFile(baseConfig)).toBe("HF_HUB_OFFLINE=1\nTRANSFORMERS_OFFLINE=1\n");
   });
 
   test("emits the audio decode duration env var only when set", () => {
@@ -179,5 +158,35 @@ describe("buildSystemdServeArgv", () => {
       "--runner", "pooling",
       "--enable-auto-tool-choice",
     ]);
+  });
+});
+
+describe("buildSystemdDropIn", () => {
+  test("clears the template's ExecStart and replaces it with the serve argv", () => {
+    expect(buildSystemdDropIn(baseConfig)).toBe(
+      "[Service]\n" +
+      "ExecStart=\n" +
+      "ExecStart=\"/usr/local/bin/vllm\" \"serve\" \"meta-llama/Llama-3.1-8B-Instruct\" " +
+      "\"--host\" \"127.0.0.1\" \"--port\" \"8000\" \"--kv-cache-memory-bytes\" \"8g\" " +
+      "\"--served-model-name\" \"meta-llama/Llama-3.1-8B-Instruct\"\n",
+    );
+  });
+
+  test("keeps each extra arg whole through spaces, quotes, newlines and systemd's own expansions", () => {
+    const dropIn = buildSystemdDropIn({
+      ...baseConfig,
+      extraArgs: [
+        "--default-chat-template-kwargs", "{\"enable_thinking\": false}",
+        "--chat-template", "{%- if x -%}\n\t{{ \"a\\b\" }}\n{%- endif -%}",
+        "--x", "$HOME ;",
+      ],
+    });
+    const execStart = dropIn.split("\n")[2]!;
+    expect(execStart).toEndWith(
+      " \"--default-chat-template-kwargs\" \"{\\\"enable_thinking\\\": false}\"" +
+      " \"--chat-template\" \"{%%- if x -%%}\\n\\t{{ \\\"a\\\\b\\\" }}\\n{%%- endif -%%}\"" +
+      " \"--x\" \"$$HOME ;\"",
+    );
+    expect(dropIn.split("\n")).toHaveLength(4);
   });
 });
