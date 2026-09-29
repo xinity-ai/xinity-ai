@@ -10,6 +10,7 @@ const {
   parseXpuSmiDeviceDetails,
   classifyCapacitySource,
   normalizeDmiProductName,
+  cardCapacityGib,
 } = await import("./hardware-detect");
 type DetectedGpu = import("./hardware-detect").DetectedGpu;
 
@@ -252,5 +253,27 @@ describe("normalizeDmiProductName", () => {
   test("returns null for missing or empty input", () => {
     expect(normalizeDmiProductName(null)).toBeNull();
     expect(normalizeDmiProductName("  ")).toBeNull();
+  });
+});
+
+describe("cardCapacityGib", () => {
+  const card = (vramMb: number): DetectedGpu => ({ vendor: "nvidia", name: "card", vramMb });
+  const mixed = { gpus: [card(49152), card(24576)], systemRamMb: 131072 };
+
+  test("defaults to the first card", () => {
+    expect(cardCapacityGib(mixed)).toBe(48);
+  });
+
+  test("is bound by the smallest card the instance spans", () => {
+    expect(cardCapacityGib(mixed, [0, 1])).toBe(24);
+    expect(cardCapacityGib(mixed, [1])).toBe(24);
+  });
+
+  test("takes a unified-memory card as the whole of system RAM, unrounded", () => {
+    expect(cardCapacityGib({ gpus: [card(0)], systemRamMb: 124549 })).toBeCloseTo(121.63, 2);
+  });
+
+  test("refuses a card the node does not have", () => {
+    expect(() => cardCapacityGib(mixed, [2])).toThrow("No GPU at index 2");
   });
 });

@@ -38,6 +38,7 @@ export type HardwareProfile = {
   detectedCapacityGb: number;
   /** Full physical VRAM or system RAM in GB; denominator for vLLM --gpu-memory-utilization. */
   physicalCapacityGb: number;
+  systemRamMb: number;
   source: CapacitySource;
 };
 
@@ -387,6 +388,7 @@ export function buildHardwareProfile(gpus: DetectedGpu[], systemRamMb: number): 
       gpuCount,
       detectedCapacityGb: mbToGb(totalVramMb),
       physicalCapacityGb: mbToGb(totalVramMb),
+      systemRamMb,
       source: classifyCapacitySource(gpus),
     };
   }
@@ -398,6 +400,7 @@ export function buildHardwareProfile(gpus: DetectedGpu[], systemRamMb: number): 
       gpuCount,
       detectedCapacityGb: mbToGb(Math.floor(systemRamMb * UNIFIED_MEM_USABLE_FRACTION)),
       physicalCapacityGb: mbToGb(systemRamMb),
+      systemRamMb,
       source: "unified-memory",
     };
   }
@@ -408,8 +411,27 @@ export function buildHardwareProfile(gpus: DetectedGpu[], systemRamMb: number): 
     gpuCount: 0,
     detectedCapacityGb: mbToGb(systemRamMb),
     physicalCapacityGb: mbToGb(systemRamMb),
+    systemRamMb,
     source: "system-ram",
   };
+}
+
+// vLLM applies one utilization fraction to every card an instance spans, so the smallest binds.
+export function cardCapacityGib(
+  profile: Pick<HardwareProfile, "gpus" | "systemRamMb">,
+  cards: readonly number[] = [0],
+): number {
+  if (cards.length === 0) {
+    throw new Error("An instance runs on at least one card");
+  }
+  const cardMb = cards.map((card) => {
+    const gpu = profile.gpus[card];
+    if (!gpu) {
+      throw new Error(`No GPU at index ${card}`);
+    }
+    return gpu.vramMb > 0 ? gpu.vramMb : profile.systemRamMb;
+  });
+  return Math.min(...cardMb) / 1024;
 }
 
 export async function detectHardwareProfile(): Promise<HardwareProfile> {
