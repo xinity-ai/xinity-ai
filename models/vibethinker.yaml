@@ -25,6 +25,8 @@ models:
       # sliding_window 32768 but sets use_sliding_window false, so attention is full and
       # no attentionWindow applies.
       kvBytesPerToken: 36864
+      attentionHeads: 16
+      kvHeads: 2
       maxContextLength: 131072
       weightGb: 6.24  # measured resident, 5.81 GiB
       weightBits: 16

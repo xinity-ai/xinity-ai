@@ -38,6 +38,8 @@ models:
     sizing: &hy-mt2-sizing
       # 32 layers, 4 kv heads, head_dim 128 -> 2 * 32 * 4 * 128 * 2
       kvBytesPerToken: 65536
+      attentionHeads: 16
+      kvHeads: 4
       maxContextLength: 32768
       weightGb: 3.68  # measured resident, 3.43 GiB
       weightBits: 16

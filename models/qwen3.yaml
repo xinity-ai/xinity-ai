@@ -52,6 +52,8 @@ models:
     # deriving - packages/xinity-infoserver/docs/integrating-a-model.md says how.
     sizing: &sizing-27b-bf16
       kvBytesPerToken: 65536
+      attentionHeads: 24
+      kvHeads: 4
       stateBytesPerSequence: 154140672
       minKvCacheGb: 17.58
       maxContextLength: 262144
@@ -260,6 +262,8 @@ models:
     # Bracketed: 5.53 aborts, 5.54 starts at 1.00x.
     sizing: &sizing-35b-bf16
       kvBytesPerToken: 20480
+      attentionHeads: 16
+      kvHeads: 2
       stateBytesPerSequence: 64880640
       minKvCacheGb: 5.54
       maxContextLength: 262144

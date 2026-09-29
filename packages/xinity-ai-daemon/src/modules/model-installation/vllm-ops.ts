@@ -16,6 +16,7 @@ export type VllmInstanceConfig = {
   extraArgs?: string[];
   gpuMemoryUtilization?: number;
   settings?: DeploymentSettings | null;
+  pinnedGpus?: { uuid: string; index: number }[];
 }
 
 export type VllmOps = {
@@ -65,6 +66,9 @@ const OFFLINE_ENV = ["HF_HUB_OFFLINE=1", "TRANSFORMERS_OFFLINE=1"];
 
 export function buildSystemdEnvFile(config: VllmInstanceConfig): string {
   const lines: string[] = [...OFFLINE_ENV];
+  if (config.pinnedGpus?.length) {
+    lines.push(`CUDA_VISIBLE_DEVICES=${config.pinnedGpus.map((gpu) => gpu.index).join(",")}`);
+  }
   const audioDuration = resolveMaxAudioInputDurationS(config.settings);
   if (audioDuration != null) {
     lines.push(`VLLM_MAX_AUDIO_DECODE_DURATION_S=${audioDuration}`);
@@ -80,6 +84,9 @@ export function buildSystemdEnvFile(config: VllmInstanceConfig): string {
 function appendVllmCommonArgs(args: string[], config: VllmInstanceConfig): void {
   if (config.gpuMemoryUtilization != null) {
     args.push("--gpu-memory-utilization", String(config.gpuMemoryUtilization));
+  }
+  if (config.pinnedGpus && config.pinnedGpus.length > 1) {
+    args.push("--tensor-parallel-size", String(config.pinnedGpus.length));
   }
   if (config.trustRemoteCode) {
     args.push("--trust-remote-code");
@@ -228,6 +235,11 @@ export async function ensureVllmNetwork(): Promise<void> {
   log.info({ network: VLLM_NETWORK }, "Created egress-blocked vLLM docker network");
 }
 
+// docker reads --gpus as CSV, so a device list containing commas has to be one quoted field.
+function dockerGpus(pinnedGpus: VllmInstanceConfig["pinnedGpus"]): string {
+  return pinnedGpus?.length ? `"device=${pinnedGpus.map((gpu) => gpu.uuid).join(",")}"` : "all";
+}
+
 export function buildDockerRunArgs(
   id: string,
   config: VllmInstanceConfig,
@@ -243,10 +255,11 @@ export function buildDockerRunArgs(
   const args = [
     "docker", "run", "-d",
     "--name", containerName,
-    "--gpus", "all",
+    "--gpus", dockerGpus(config.pinnedGpus),
     "--ipc=host",
     "--network", VLLM_NETWORK,
     "-p", `127.0.0.1:${config.port}:8000`,
+    "-e", "CUDA_DEVICE_ORDER=PCI_BUS_ID",
     "-e", "HF_HOME=/data/hf-cache",
     "-e", "TRITON_CACHE_DIR=/data/triton-cache",
     ...OFFLINE_ENV.flatMap((entry) => ["-e", entry]),

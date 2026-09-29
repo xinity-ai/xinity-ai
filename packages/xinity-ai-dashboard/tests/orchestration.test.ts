@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { buildClusterState, collectDriftedInstallations, collectExcessInstallations, collectReassignableOrphans, findServerForModel, mergeRequirementsBySpecifier, rankServers } from "../src/lib/server/lib/deployments/orchestration";
+import { buildClusterState, cardForVllm, collectDriftedInstallations, collectExcessInstallations, collectReassignableOrphans, findServerForModel, mergeRequirementsBySpecifier, rankServers } from "../src/lib/server/lib/deployments/orchestration";
 import type { AiNode, ModelInstallation } from "common-db";
 import type { ModelRequirement, ModelRequirementTable, DeploymentStrategy } from "../src/lib/server/lib/deployments/orchestration";
 import type { SchedulableModel } from "../src/lib/server/lib/models/model-catalog";
@@ -34,6 +34,7 @@ function makeInstallation(overrides: Partial<ModelInstallation> & { id: string; 
     port: 11434,
     driver: "ollama",
     settings: { version: 1 },
+    gpuUuids: [],
     deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -174,6 +175,75 @@ describe("orchestration: node goes unavailable", () => {
     const state = buildClusterState([], [node]);
 
     expect(findServerForModel("chat-model", "vllm", 8, state, [], FF)).toBe("node-m");
+  });
+});
+
+describe("orchestration: vllm runs on the first card", () => {
+  const card = (vramMb: number) => ({ vendor: "nvidia", name: "card", vramMb });
+  const twoCards = makeNode({
+    id: "node-2x24", estCapacity: 48, gpuCount: 2,
+    gpus: [card(24576), card(24576)], driverVersions: { vllm: "0.30.0", ollama: "0.6.3" },
+  });
+  const vllmOnFirstCard = makeInstallation({ id: "inst-v", nodeId: "node-2x24", specifier: "a-vllm", driver: "vllm", estCapacity: 20 });
+
+  test("refuses a vllm installation the first card cannot hold, though the node's sum could", () => {
+    const state = buildClusterState([vllmOnFirstCard], [twoCards]);
+    expect(findServerForModel("b-vllm", "vllm", 8, state, [], FF)).toBeNull();
+  });
+
+  test("still places ollama against the node's whole capacity", () => {
+    const state = buildClusterState([vllmOnFirstCard], [twoCards]);
+    expect(findServerForModel("b-ollama", "ollama", 8, state, [], FF)).toBe("node-2x24");
+  });
+
+  test("does not count ollama against the card vllm runs on", () => {
+    const ollama = makeInstallation({ id: "inst-o", nodeId: "node-2x24", specifier: "o", driver: "ollama", estCapacity: 20 });
+    const state = buildClusterState([ollama], [twoCards]);
+    expect(findServerForModel("b-vllm", "vllm", 20, state, [], FF)).toBe("node-2x24");
+  });
+
+  test("treats a unified-memory node as one card of its whole capacity", () => {
+    const gb10 = makeNode({ id: "node-gb10", estCapacity: 109, gpus: [card(0)], driverVersions: { vllm: "0.30.0" } });
+    const state = buildClusterState([], [gb10]);
+    expect(findServerForModel("big-vllm", "vllm", 60, state, [], FF)).toBe("node-gb10");
+  });
+});
+
+describe("orchestration: vllm pinned to cards", () => {
+  const card = (uuid: string) => ({ vendor: "nvidia", name: "card", vramMb: 24576, uuid });
+  const node = makeNode({
+    id: "node-ab", estCapacity: 48, gpuCount: 2,
+    gpus: [card("GPU-A"), card("GPU-B")], driverVersions: { vllm: "0.30.0" },
+  });
+  const vllm = (id: string, estCapacity: number, gpuUuids: string[]) =>
+    makeInstallation({ id, nodeId: "node-ab", specifier: id, driver: "vllm", estCapacity, gpuUuids });
+
+  test("pins to the card that still has room", () => {
+    const state = buildClusterState([vllm("a", 20, ["GPU-A"])], [node]);
+    expect(cardForVllm(state, "node-ab", 8, FF)?.uuid).toBe("GPU-B");
+    expect(findServerForModel("b", "vllm", 8, state, [], FF)).toBe("node-ab");
+  });
+
+  test("counts an unpinned installation against the first card, where the daemon runs it", () => {
+    const state = buildClusterState([vllm("a", 20, [])], [node]);
+    expect(cardForVllm(state, "node-ab", 8, FF)?.uuid).toBe("GPU-B");
+  });
+
+  test("chooses between cards with the same strategy as between nodes", () => {
+    const state = buildClusterState([vllm("a", 10, ["GPU-A"])], [node]);
+    expect(cardForVllm(state, "node-ab", 8, "bin-pack")?.uuid).toBe("GPU-A");
+    expect(cardForVllm(state, "node-ab", 8, "balanced")?.uuid).toBe("GPU-B");
+  });
+
+  test("refuses the node once no single card can hold the installation", () => {
+    const state = buildClusterState([vllm("a", 20, ["GPU-A"]), vllm("b", 20, ["GPU-B"])], [node]);
+    expect(findServerForModel("c", "vllm", 8, state, [], FF)).toBeNull();
+  });
+
+  test("leaves the installation unpinned on a node whose cards report no uuid", () => {
+    const legacy = makeNode({ id: "node-old", gpus: [{ vendor: "nvidia", name: "card", vramMb: 24576 }], driverVersions: { vllm: "0.30.0" } });
+    const state = buildClusterState([], [legacy]);
+    expect(cardForVllm(state, "node-old", 8, FF)?.uuid).toBeNull();
   });
 });
 

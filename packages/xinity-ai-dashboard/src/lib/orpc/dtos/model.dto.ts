@@ -2,12 +2,14 @@
  * DTO schema for model deployments.
  */
 import { z } from "zod";
+import { OPTIMIZATION_GOALS } from "common-env/deployment-settings";
 import { CommonDto } from "./common.dto";
 
 export const DeploymentSettingsDto = z.object({
   version: z.literal(1),
   maxAudioInputDurationS: z.number().int().min(1).max(24 * 60 * 60).optional(),
   maxAudioInputFileSizeMB: z.number().int().min(1).optional(),
+  optimizeFor: z.enum(OPTIMIZATION_GOALS).optional(),
 });
 
 export const DeploymentDto = CommonDto.extend({

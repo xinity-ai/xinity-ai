@@ -24,5 +24,4 @@ systemRamMb: 122880
 
 # Optional. Total free memory at the time of the snapshot. For unified-memory
 # devices the daemon queries nvidia-smi (which reports live free system RAM).
-# Omit to take the requiredGb-only branch in computeGpuUtilization.
 # freeMemoryMb: 102400

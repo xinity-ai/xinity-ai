@@ -32,6 +32,8 @@ models:
     sizing: &qwen3-asr-kv
       # Text decoder: 28 layers, 8 kv heads, head_dim 128 -> 2 * 28 * 8 * 128 * 2
       kvBytesPerToken: 114688
+      attentionHeads: 16
+      kvHeads: 8
       maxContextLength: 16384
       weightGb: 1.64  # measured resident, 1.53 GiB
       weightBits: 16

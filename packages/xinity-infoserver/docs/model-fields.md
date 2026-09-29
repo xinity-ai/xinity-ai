@@ -89,6 +89,10 @@ Everything the variant costs to run. Grouped because these figures are read toge
 | `kvBytesPerToken` | number | - | KV cache one token of context consumes, in bytes: `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes`. This is the factor `minKvCacheGb` is built from, kept instead of discarded, because how many requests a deployment serves at once follows from it. Loading an authored file warns when the two disagree by more than a factor of two. |
 | `attentionWindow` | number | - | Sliding-window attention span in tokens, for models that have one. KV per request stops growing past this point, so without it a windowed model looks far more expensive at long context than it is |
 | `stateBytesPerSequence` | number | - | Recurrent state one concurrent request consumes, in bytes, for hybrid architectures whose layers are not all attention. A fixed cost per request in flight rather than one that grows with context, so it bounds concurrency in a way shortening the context cannot relieve. See [Hybrid architectures](#hybrid-architectures) |
+| `attentionHeads` | number | - | Attention heads per layer of the language model (`num_attention_heads`) |
+| `kvHeads` | number | - | Key/value heads per layer of the language model (`num_key_value_heads`). Equal to `attentionHeads` without grouped-query attention, fewer with it. Needs `attentionHeads` and must not exceed it |
+| `overheadGb` | number | - | Memory the engine holds beyond weights and KV cache once started, in GB: peak activation, non-torch allocations and CUDA graphs, as measured at startup. See [`integrating-a-model.md`](./integrating-a-model.md#researching-the-fields) for how to read it off a load |
+| `mlaAttention` | boolean | - | `true` when the model uses multi-head latent attention, as DeepSeek V2 and V3 do, caching one compressed latent per token instead of keys and values per head |
 
 ## Hybrid architectures
 

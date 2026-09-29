@@ -37,6 +37,7 @@ Environment=VLLM_SERVED_MODEL_NAME=
 Environment=VLLM_API_KEY=
 Environment=VLLM_KV_CACHE_DTYPE=auto
 Environment=VLLM_BINARY_PATH=/usr/bin/vllm
+Environment=CUDA_DEVICE_ORDER=PCI_BUS_ID
 Environment=CUDA_VISIBLE_DEVICES=0
 
 # HuggingFace cache: ensure models are downloaded here

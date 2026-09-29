@@ -9,6 +9,8 @@ const gpuSchema = z.object({
   vendor: z.string(),
   name: z.string(),
   vramMb: z.number(),
+  index: z.number().optional(),
+  uuid: z.string().optional(),
 });
 
 // Outbound: tether -> daemon (SSE)
@@ -21,6 +23,7 @@ export const desiredInstallationSchema = z.object({
   kvCacheCapacity: z.number(),
   port: z.number(),
   settings: deploymentSettingsSchema,
+  gpuUuids: z.array(z.string()),
 });
 export type DesiredInstallation = z.infer<typeof desiredInstallationSchema>;
 
@@ -86,7 +89,7 @@ export function canonicalRegistration(reg: UnsignedNodeRegistration, requestAuth
     reg.host,
     reg.port,
     reg.gpuCount,
-    reg.gpus.map((g) => [g.vendor, g.name, g.vramMb]),
+    reg.gpus.map((g) => [g.vendor, g.name, g.vramMb, g.index ?? null, g.uuid ?? null]),
     sortedPairs(reg.driverVersions),
     sortedPairs(reg.driverFeatures),
     reg.tls,

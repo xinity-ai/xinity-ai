@@ -23,6 +23,8 @@ import {
 } from "./vllm-ops";
 import { rootLogger } from "../../logger";
 import { getHardwareProfile } from "../statekeeper";
+import { cardCapacityGib, type DetectedGpu, type HardwareProfile } from "../hardware-detect";
+import { tensorParallelLayouts } from "common-env";
 import { downloadModel } from "./vllm-download";
 import { estimateConcurrency, type GpuInfo, type ModelSizingFields } from "common-env/model-catalog";
 import { dropPageCache } from "./page-cache";
@@ -161,12 +163,46 @@ function pollUntilHealthy$(
   );
 }
 
+// Assignments name cards by UUID so they survive renumbering. CUDA gets the index, since vLLM
+// before 0.24 parses CUDA_VISIBLE_DEVICES as integers and rejects a UUID.
+function resolvePinnedGpus(gpus: readonly DetectedGpu[], gpuUuids: readonly string[]): { uuid: string; index: number }[] {
+  return gpuUuids.map((uuid) => {
+    const gpu = gpus.find((candidate) => candidate.uuid === uuid);
+    if (gpu?.index === undefined) {
+      throw new Error(`Assigned GPU ${uuid} is not on this node`);
+    }
+    return { uuid, index: gpu.index };
+  });
+}
+
+// vLLM sizes --kv-cache-memory-bytes per card, so an installation split across cards passes each
+// card's share, and sizes utilization against one card's weights and cache.
+export function perCardSizing(
+  installation: Pick<SyncInstallation, "specifier" | "estCapacity" | "kvCacheCapacity">,
+  sizing: ModelSizingFields | undefined,
+  cards: number,
+): { weightGb: number; kvCacheGb: number } {
+  const weightGb = installation.estCapacity - installation.kvCacheCapacity;
+  if (cards <= 1) {
+    return { weightGb, kvCacheGb: installation.kvCacheCapacity };
+  }
+  const layout = tensorParallelLayouts({ ...sizing, weightGb }, { cards, kvCacheGb: installation.kvCacheCapacity })
+    .find((candidate) => candidate.tensorParallelSize === cards);
+  if (!layout) {
+    throw new Error(`${installation.specifier} cannot run tensor parallel across ${cards} cards`);
+  }
+  return { weightGb: layout.perCardWeightGb, kvCacheGb: layout.perCardKvCacheGb };
+}
+
 async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): Promise<{ modelType: string | undefined; providerModel: string }> {
   const entry = await resolveInstallationEntry(installation.specifier, "vllm");
   if (!entry) {
     throw new Error(`No vllm catalog entry for installation ${installation.id}`);
   }
   const providerModel = entry.engineSpecifier;
+  const profile = await getHardwareProfile();
+  const pinnedGpus = resolvePinnedGpus(profile.gpus, installation.gpuUuids);
+  const perCard = perCardSizing(installation, entry.sizing, pinnedGpus.length);
 
   await updateInstallationState(installation.id, "downloading", { statusMessage: "Downloading model", progress: 0 });
 
@@ -178,8 +214,13 @@ async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): P
 
   await updateInstallationState(installation.id, "installing", { statusMessage: "Starting vLLM service" });
 
-  const profile = await getHardwareProfile();
-  const gpuMemoryUtilization = computeGpuUtilization(installation, profile);
+  const gpuMemoryUtilization = computeGpuUtilization({
+    specifier: installation.specifier,
+    weightGb: perCard.weightGb,
+    kvCacheGb: perCard.kvCacheGb,
+    overheadGb: entry.sizing?.overheadGb,
+    gpuUuids: installation.gpuUuids,
+  }, profile);
   const modelType = entry.type;
 
   await dropPageCache();
@@ -187,7 +228,7 @@ async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): P
   await ops.start(installation.id, {
     model: providerModel,
     port: installation.port,
-    kvCacheBytes: `${installation.kvCacheCapacity}g`,
+    kvCacheBytes: `${perCard.kvCacheGb}g`,
     trustRemoteCode: entry.tags.includes("custom_code"),
     gpuMemoryUtilization,
     extraArgs: buildVllmExtraArgs(
@@ -197,6 +238,7 @@ async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): P
       concurrencyCap(entry.sizing, profile.gpus, installation.kvCacheCapacity),
     ),
     settings: installation.settings,
+    pinnedGpus,
   });
 
   return { modelType, providerModel };
@@ -238,23 +280,37 @@ export function buildVllmExtraArgs(
   ];
 }
 
-/** Multiplier applied to estimated capacity to leave headroom for activations and fragmentation. */
-const CAPACITY_OVERHEAD_FACTOR = 1.1;
+// CUDA context, activations and CUDA graphs cost a fixed amount plus a share of the weights,
+// not a share of weights plus cache. Fitted to measured loads, see the test that asserts it.
+const OVERHEAD_BASE_GIB = 3.5;
+const OVERHEAD_WEIGHT_FRACTION = 0.15;
+const GB_PER_GIB = 1.073741824;
 /** Hard cap on vLLM's --gpu-memory-utilization so the driver never claims the whole device. */
 const MAX_GPU_UTILIZATION = 0.90;
 
+// An unpinned installation runs on the first card.
+function pinnedCardIndices(gpus: readonly { uuid?: string }[], gpuUuids: readonly string[]): number[] {
+  const indices = gpus.flatMap((gpu, index) => (gpu.uuid !== undefined && gpuUuids.includes(gpu.uuid) ? [index] : []));
+  return indices.length > 0 ? indices : [0];
+}
+
 export function computeGpuUtilization(
-  installation: Pick<SyncInstallation, "specifier" | "estCapacity">,
-  profile: { gpuCount: number; detectedCapacityGb: number; physicalCapacityGb: number },
+  installation: { specifier: string; weightGb: number; kvCacheGb: number; overheadGb?: number; gpuUuids?: string[] },
+  profile: Pick<HardwareProfile, "gpus" | "gpuCount" | "systemRamMb" | "detectedCapacityGb" | "physicalCapacityGb">,
 ): number | undefined {
   if (profile.gpuCount === 0 || profile.physicalCapacityGb === 0) {
     return undefined;
   }
 
-  const requiredGb = installation.estCapacity * CAPACITY_OVERHEAD_FACTOR;
+  const weightGib = installation.weightGb / GB_PER_GIB;
+  const overheadGib = installation.overheadGb !== undefined
+    ? installation.overheadGb / GB_PER_GIB
+    : OVERHEAD_BASE_GIB + OVERHEAD_WEIGHT_FRACTION * weightGib;
+  const neededGib = weightGib + installation.kvCacheGb / GB_PER_GIB + overheadGib;
+  const cardGib = cardCapacityGib(profile, pinnedCardIndices(profile.gpus, installation.gpuUuids ?? []));
   const headroomCap = profile.detectedCapacityGb / profile.physicalCapacityGb;
   const utilization = Math.min(
-    requiredGb / profile.physicalCapacityGb,
+    neededGib / cardGib,
     headroomCap,
     MAX_GPU_UTILIZATION,
   );
@@ -263,8 +319,8 @@ export function computeGpuUtilization(
     {
       model: installation.specifier,
       gpuMemoryUtilization: utilization.toFixed(3),
-      estCapacityGb: installation.estCapacity,
-      physicalCapacityGb: profile.physicalCapacityGb,
+      neededGib,
+      cardCapacityGib: cardGib,
       detectedCapacityGb: profile.detectedCapacityGb,
     },
     "Calculated GPU memory utilization",

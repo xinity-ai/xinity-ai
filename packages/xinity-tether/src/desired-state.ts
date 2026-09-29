@@ -18,6 +18,7 @@ export async function buildDesiredState(nodeId: string): Promise<DesiredState> {
       kvCacheCapacity: row.kvCacheCapacity,
       port: row.port,
       settings: row.settings,
+      gpuUuids: row.gpuUuids,
     })),
   };
 }

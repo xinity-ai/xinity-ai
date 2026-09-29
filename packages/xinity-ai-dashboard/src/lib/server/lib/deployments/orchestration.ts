@@ -20,9 +20,13 @@ type NewInstallation = InferInsertModel<typeof modelInstallationT>;
 type ClusterState = {
   installationsByModel: Map<string, ModelInstallation[]>;
   installationsByServer: Map<string, ModelInstallation[]>;
-  serverCapacity: Map<string, { total: number; used: number }>;
+  serverCapacity: Map<string, Capacity>;
+  cardCapacity: Map<string, CardCapacity[]>;
   availableServers: AiNode[];
 }
+
+type Capacity = { total: number; used: number };
+type CardCapacity = Capacity & { uuid: string | null };
 
 export type ModelRequirement = { specifier: string; replicas: number; kvCacheSize: number | null; preferredDriver: Provider | null; settings: DeploymentSettings };
 export type ModelRequirementTable = Record<string, ModelRequirement>;
@@ -32,20 +36,24 @@ export type DeploymentStrategy = "first-fit" | "balanced" | "bin-pack" | "propor
 /** Returns availableServers ordered by the given strategy's preference.
  * Re-evaluated per placement so spread strategies see updated `used` after each replica. */
 export function rankServers(strategy: DeploymentStrategy, state: ClusterState): AiNode[] {
-  const free = (s: AiNode) => {
-    const cap = state.serverCapacity.get(s.id);
+  return orderByStrategy(strategy, state.availableServers, (server) => state.serverCapacity.get(server.id));
+}
+
+function orderByStrategy<T>(strategy: DeploymentStrategy, items: T[], capacityOf: (item: T) => Capacity | undefined): T[] {
+  const free = (item: T) => {
+    const cap = capacityOf(item);
     return cap ? cap.total - cap.used : 0;
   };
-  const ratio = (s: AiNode) => {
-    const cap = state.serverCapacity.get(s.id);
+  const ratio = (item: T) => {
+    const cap = capacityOf(item);
     return cap && cap.total > 0 ? cap.used / cap.total : 1;
   };
-  const servers = [...state.availableServers];
+  const ordered = [...items];
   switch (strategy) {
-    case "first-fit":    return servers;
-    case "balanced":     return servers.sort((a, b) => free(b) - free(a));
-    case "bin-pack":     return servers.sort((a, b) => free(a) - free(b));
-    case "proportional": return servers.sort((a, b) => ratio(a) - ratio(b));
+    case "first-fit":    return ordered;
+    case "balanced":     return ordered.sort((a, b) => free(b) - free(a));
+    case "bin-pack":     return ordered.sort((a, b) => free(a) - free(b));
+    case "proportional": return ordered.sort((a, b) => ratio(a) - ratio(b));
   }
 }
 
@@ -98,35 +106,81 @@ function requirementFor(
   return { specifier, replicas, kvCacheSize, preferredDriver, settings };
 }
 
+// Without card sizes (unified memory, or none reported) the node is one card of its whole capacity.
+function nodeCards(server: AiNode): CardCapacity[] {
+  const cards = server.gpus
+    .filter((gpu) => gpu.vramMb > 0)
+    .map((gpu) => ({ uuid: gpu.uuid ?? null, total: gpu.vramMb / 1024, used: 0 }));
+  return cards.length > 0 ? cards : [{ uuid: null, total: server.estCapacity, used: 0 }];
+}
+
+// The daemon runs an unpinned vLLM instance on the node's first card, so that card carries it.
+function cardsCarrying(state: ClusterState, nodeId: string, gpuUuids: string[]): CardCapacity[] {
+  const cards = state.cardCapacity.get(nodeId) ?? [];
+  const pinned = cards.filter((card) => card.uuid !== null && gpuUuids.includes(card.uuid));
+  return pinned.length > 0 ? pinned : cards.slice(0, 1);
+}
+
+function chargeCapacity(
+  state: ClusterState,
+  nodeId: string,
+  driver: string,
+  capacity: number,
+  gpuUuids: string[],
+): void {
+  const cap = state.serverCapacity.get(nodeId);
+  if (cap) {
+    cap.used += capacity;
+  }
+  if (driver !== "vllm") {
+    return;
+  }
+  const carrying = cardsCarrying(state, nodeId, gpuUuids);
+  for (const card of carrying) {
+    card.used += capacity / carrying.length;
+  }
+}
+
+// Only a card with a UUID can be pinned. On a node without any, vLLM lands on the first card unpinned.
+export function cardForVllm(state: ClusterState, nodeId: string, capacity: number, strategy: DeploymentStrategy): CardCapacity | undefined {
+  const cards = state.cardCapacity.get(nodeId) ?? [];
+  const pinnable = cards.filter((card) => card.uuid !== null);
+  const candidates = pinnable.length > 0 ? pinnable : cards.slice(0, 1);
+  return orderByStrategy(strategy, candidates, (card) => card).find((card) => card.total - card.used >= capacity);
+}
+
 export function buildClusterState(existing: ModelInstallation[], availableServers: AiNode[]): ClusterState {
-  const installationsByModel = new Map<string, ModelInstallation[]>();
-  const installationsByServer = new Map<string, ModelInstallation[]>();
-  const serverCapacity = new Map<string, { total: number; used: number }>();
+  const state: ClusterState = {
+    installationsByModel: new Map(),
+    installationsByServer: new Map(),
+    serverCapacity: new Map(),
+    cardCapacity: new Map(),
+    availableServers,
+  };
 
   for (const server of availableServers) {
-    serverCapacity.set(server.id, { total: server.estCapacity, used: 0 });
-    installationsByServer.set(server.id, []);
+    state.serverCapacity.set(server.id, { total: server.estCapacity, used: 0 });
+    state.cardCapacity.set(server.id, nodeCards(server));
+    state.installationsByServer.set(server.id, []);
   }
 
   for (const install of existing) {
-    const modelInstalls = installationsByModel.get(install.specifier) || [];
+    const modelInstalls = state.installationsByModel.get(install.specifier) || [];
     modelInstalls.push(install);
-    installationsByModel.set(install.specifier, modelInstalls);
+    state.installationsByModel.set(install.specifier, modelInstalls);
 
-    const serverInstalls = installationsByServer.get(install.nodeId);
+    const serverInstalls = state.installationsByServer.get(install.nodeId);
     if (serverInstalls) {
       serverInstalls.push(install);
-      const cap = serverCapacity.get(install.nodeId);
-      if (cap) cap.used += install.estCapacity;
+      chargeCapacity(state, install.nodeId, install.driver, install.estCapacity, install.gpuUuids);
     }
   }
 
-  return { installationsByModel, installationsByServer, serverCapacity, availableServers };
+  return state;
 }
 
 function releaseInstallationFromState(state: ClusterState, installation: ModelInstallation): void {
-  const cap = state.serverCapacity.get(installation.nodeId);
-  if (cap) cap.used -= installation.estCapacity;
+  chargeCapacity(state, installation.nodeId, installation.driver, -installation.estCapacity, installation.gpuUuids);
 
   const serverInstalls = state.installationsByServer.get(installation.nodeId);
   if (serverInstalls) {
@@ -232,6 +286,10 @@ export function findServerForModel(
 
     if (checkNodeCompatibility(nodeCap, req) !== null) continue;
 
+    if (driver === "vllm" && !cardForVllm(state, server.id, weight, strategy)) {
+      continue;
+    }
+
     return server.id;
   }
   return null;
@@ -311,6 +369,8 @@ async function planNewInstallations(
       }
 
       const port = allocatePort(driver, nodeId, state, toInstall);
+      const card = driver === "vllm" ? cardForVllm(state, nodeId, totalCapacity, strategy) : undefined;
+      const gpuUuids = card?.uuid ? [card.uuid] : [];
       toInstall.push({
         nodeId,
         specifier: requirement.specifier,
@@ -319,10 +379,10 @@ async function planNewInstallations(
         driver,
         port,
         settings: requirement.settings,
+        gpuUuids,
       });
 
-      const cap = state.serverCapacity.get(nodeId)!;
-      cap.used += totalCapacity;
+      chargeCapacity(state, nodeId, driver, totalCapacity, gpuUuids);
       usedVram += totalCapacity;
     }
   }

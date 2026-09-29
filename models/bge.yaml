@@ -32,6 +32,8 @@ models:
       # model reserves no paged KV cache at all, so this figure exists to keep the
       # capacity estimate honest rather than to size an allocation.
       kvBytesPerToken: 98304
+      attentionHeads: 16
+      kvHeads: 16
       maxContextLength: 8192
       weightGb: 1.14  # measured resident, 1.06 GiB
       weightBits: 16
