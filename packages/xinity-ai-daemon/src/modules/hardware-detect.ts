@@ -416,7 +416,6 @@ export function buildHardwareProfile(gpus: DetectedGpu[], systemRamMb: number): 
   };
 }
 
-// vLLM applies one utilization fraction to every card an instance spans, so the smallest binds.
 export function cardCapacityGib(
   profile: Pick<HardwareProfile, "gpus" | "systemRamMb">,
   cards: readonly number[] = [0],

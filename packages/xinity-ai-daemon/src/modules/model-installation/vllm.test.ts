@@ -79,6 +79,7 @@ mock.module("../statekeeper", () => ({
     gpuCount: 1,
     detectedCapacityGb: 24,
     physicalCapacityGb: 24,
+    systemRamMb: 131072,
     source: "nvidia",
   }),
 }));
@@ -94,6 +95,8 @@ const { syncVllmInstallations$, computeGpuUtilization, buildVllmExtraArgs, concu
 afterAll(() => {
   downloadModelSpy.mockRestore();
 });
+
+const nvidiaCard = (vramMb: number) => ({ vendor: "nvidia" as const, name: "Test GPU", vramMb });
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -516,7 +519,7 @@ describe("syncVllmInstallations$", () => {
     expect(ops.stop).toHaveBeenCalled();
   });
 
-  test("calculates gpuMemoryUtilization as requiredGb / physicalCapacityGb", async () => {
+  test("calculates gpuMemoryUtilization as requiredGb over the card's capacity", async () => {
     const id = crypto.randomUUID();
     const inst = makeInstallation("mem-test-model", id, 9100);
     const ops = createMockOps({
@@ -535,7 +538,7 @@ describe("syncVllmInstallations$", () => {
   test("caps gpuMemoryUtilization at MAX_GPU_UTILIZATION (0.90)", () => {
     const util = computeGpuUtilization(
       { specifier: "cap-model", estCapacity: 22 },
-      { gpuCount: 1, detectedCapacityGb: 24, physicalCapacityGb: 24 },
+      { gpus: [nvidiaCard(24576)], gpuCount: 1, systemRamMb: 131072, detectedCapacityGb: 24, physicalCapacityGb: 24 },
     );
     expect(util).toBe(0.90);
   });
@@ -543,7 +546,7 @@ describe("syncVllmInstallations$", () => {
   test("caps gpuMemoryUtilization at unified-memory headroom fraction", () => {
     const util = computeGpuUtilization(
       { specifier: "large-unified-model", estCapacity: 100 },
-      { gpuCount: 1, detectedCapacityGb: 107, physicalCapacityGb: 120 },
+      { gpus: [nvidiaCard(0)], gpuCount: 1, systemRamMb: 122880, detectedCapacityGb: 107, physicalCapacityGb: 120 },
     );
     expect(util).toBeCloseTo(107 / 120, 4);
   });
@@ -551,9 +554,17 @@ describe("syncVllmInstallations$", () => {
   test("allocates exactly requiredGb for a small model on unified memory", () => {
     const util = computeGpuUtilization(
       { specifier: "small-unified-model", estCapacity: 16 },
-      { gpuCount: 1, detectedCapacityGb: 107, physicalCapacityGb: 120 },
+      { gpus: [nvidiaCard(0)], gpuCount: 1, systemRamMb: 122880, detectedCapacityGb: 107, physicalCapacityGb: 120 },
     );
     expect(util).toBeCloseTo((16 * 1.1) / 120, 4);
+  });
+
+  test("sizes against the instance's card, not the node's summed VRAM", () => {
+    const util = computeGpuUtilization(
+      { specifier: "two-card-node-model", estCapacity: 10 },
+      { gpus: [nvidiaCard(24576), nvidiaCard(24576)], gpuCount: 2, systemRamMb: 131072, detectedCapacityGb: 48, physicalCapacityGb: 48 },
+    );
+    expect(util).toBeCloseTo((10 * 1.1) / 24, 4);
   });
 });
 

@@ -23,6 +23,7 @@ import {
 } from "./vllm-ops";
 import { rootLogger } from "../../logger";
 import { getHardwareProfile } from "../statekeeper";
+import { cardCapacityGib, type HardwareProfile } from "../hardware-detect";
 import { downloadModel } from "./vllm-download";
 import { estimateConcurrency, type GpuInfo, type ModelSizingFields } from "common-env/model-catalog";
 import { dropPageCache } from "./page-cache";
@@ -243,16 +244,17 @@ const MAX_GPU_UTILIZATION = 0.90;
 
 export function computeGpuUtilization(
   installation: Pick<SyncInstallation, "specifier" | "estCapacity">,
-  profile: { gpuCount: number; detectedCapacityGb: number; physicalCapacityGb: number },
+  profile: Pick<HardwareProfile, "gpus" | "gpuCount" | "systemRamMb" | "detectedCapacityGb" | "physicalCapacityGb">,
 ): number | undefined {
   if (profile.gpuCount === 0 || profile.physicalCapacityGb === 0) {
     return undefined;
   }
 
   const requiredGb = installation.estCapacity * CAPACITY_OVERHEAD_FACTOR;
+  const cardGib = cardCapacityGib(profile);
   const headroomCap = profile.detectedCapacityGb / profile.physicalCapacityGb;
   const utilization = Math.min(
-    requiredGb / profile.physicalCapacityGb,
+    requiredGb / cardGib,
     headroomCap,
     MAX_GPU_UTILIZATION,
   );
@@ -262,7 +264,7 @@ export function computeGpuUtilization(
       model: installation.specifier,
       gpuMemoryUtilization: utilization.toFixed(3),
       estCapacityGb: installation.estCapacity,
-      physicalCapacityGb: profile.physicalCapacityGb,
+      cardCapacityGib: cardGib,
       detectedCapacityGb: profile.detectedCapacityGb,
     },
     "Calculated GPU memory utilization",
