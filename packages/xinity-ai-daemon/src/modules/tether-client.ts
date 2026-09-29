@@ -1,4 +1,5 @@
 import {
+  canonicalRegistration,
   canonicalStateReport,
   desiredStateSchema,
   KEEPALIVE_INTERVAL_HEADER,
@@ -14,6 +15,7 @@ import {
   type NodeRegistration,
   type InstallationStateReport,
   type UnsignedInstallationStateReport,
+  type UnsignedNodeRegistration,
 } from "common-env";
 import { rotateNodeIdentity, signPayloadAsNode } from "./statekeeper";
 import { rootLogger } from "../logger";
@@ -70,11 +72,12 @@ export function tetherConnection(): TetherConnection {
   return connection;
 }
 
-function signedHeaders(path: string): Record<string, string> {
-  return {
-    Authorization: signRequest(config.tether.secret, { method: "POST", path }),
-    "Content-Type": "application/json",
-  };
+function authorizePost(path: string): string {
+  return signRequest(config.tether.secret, { method: "POST", path });
+}
+
+function jsonHeaders(authorization: string): Record<string, string> {
+  return { Authorization: authorization, "Content-Type": "application/json" };
 }
 
 function silenceLimitMs(res: Response): number | null {
@@ -86,7 +89,7 @@ async function pause(ms: number, signal: AbortSignal): Promise<void> {
   await delay(ms, undefined, { signal }).catch(() => {});
 }
 
-export async function* connectSSE(registration: NodeRegistration, signal: AbortSignal): AsyncGenerator<DesiredState> {
+export async function* connectSSE(registration: UnsignedNodeRegistration, signal: AbortSignal): AsyncGenerator<DesiredState> {
   let backoffMs = 1000;
   let warnedUnannouncedKeepalive = false;
   transition("connecting");
@@ -99,10 +102,15 @@ export async function* connectSSE(registration: NodeRegistration, signal: AbortS
       abort.abort();
     }, HANDSHAKE_TIMEOUT_MS);
     try {
+      const authorization = authorizePost(STREAM_PATH);
+      const signed: NodeRegistration = {
+        ...registration,
+        signature: await signPayloadAsNode(canonicalRegistration(registration, authorization)),
+      };
       const res = await fetch(serviceUrl(config.tether.url, STREAM_PATH), {
         method: "POST",
-        headers: signedHeaders(STREAM_PATH),
-        body: JSON.stringify(registration),
+        headers: jsonHeaders(authorization),
+        body: JSON.stringify(signed),
         signal: AbortSignal.any([signal, abort.signal]),
       });
       clearTimeout(silenceTimer);
@@ -213,13 +221,14 @@ export async function* connectSSE(registration: NodeRegistration, signal: AbortS
 
 export async function reportInstallationStates(report: UnsignedInstallationStateReport): Promise<void> {
   try {
+    const authorization = authorizePost(STATUS_PATH);
     const signed: InstallationStateReport = {
       ...report,
-      signature: await signPayloadAsNode(canonicalStateReport(report)),
+      signature: await signPayloadAsNode(canonicalStateReport(report, authorization)),
     };
     const res = await fetch(serviceUrl(config.tether.url, STATUS_PATH), {
       method: "POST",
-      headers: signedHeaders(STATUS_PATH),
+      headers: jsonHeaders(authorization),
       body: JSON.stringify(signed),
     });
     if (!res.ok) {

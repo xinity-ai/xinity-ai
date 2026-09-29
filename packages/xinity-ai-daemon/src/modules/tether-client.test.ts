@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mockConfigModule } from "../mock-config";
 import { loadOrCreateIdentity } from "./node-identity-store";
-import { canonicalStateReport, KEEPALIVE_INTERVAL_HEADER, readNodeKeypair, verifyNodeSignature, type NodeRegistration, type UnsignedInstallationStateReport } from "common-env";
+import { canonicalRegistration, canonicalStateReport, KEEPALIVE_INTERVAL_HEADER, readNodeKeypair, verifyNodeSignature, type NodeRegistration, type UnsignedInstallationStateReport, type UnsignedNodeRegistration } from "common-env";
 
 const stateDir = mkdtempSync(join(tmpdir(), "tether-client-test-"));
 
@@ -21,13 +21,34 @@ afterEach(() => {
   config.tether.url = configuredTetherUrl;
 });
 
+const registration: UnsignedNodeRegistration = {
+  nodeId: "3f1a2b3c-0000-4000-8000-000000000001",
+  host: "10.0.0.1",
+  port: 4044,
+  gpuCount: 0,
+  gpus: [],
+  driverVersions: {},
+  driverFeatures: {},
+  tls: false,
+  estCapacity: 0,
+  authToken: "token",
+  protocolFingerprint: "fp",
+  publicKey: "key",
+};
+
+async function nodePublicKey(): Promise<string> {
+  return readNodeKeypair(await Bun.file(join(stateDir, "node_key")).text())!.publicKey;
+}
+
 async function captureStatusPost(report: UnsignedInstallationStateReport) {
   const requested: string[] = [];
   const bodies: string[] = [];
+  const authorizations: string[] = [];
   const realFetch = globalThis.fetch;
   globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
     requested.push(String(input));
     bodies.push(String(init?.body ?? ""));
+    authorizations.push(new Headers(init?.headers).get("authorization") ?? "");
     return Promise.resolve(new Response("{}"));
   }) as typeof fetch;
 
@@ -36,7 +57,7 @@ async function captureStatusPost(report: UnsignedInstallationStateReport) {
   } finally {
     globalThis.fetch = realFetch;
   }
-  return { requested, bodies };
+  return { requested, bodies, authorizations };
 }
 
 test("tether endpoints ignore a trailing slash on TETHER_URL", async () => {
@@ -50,12 +71,11 @@ test("a status report is signed by the node key the tether pins", async () => {
     nodeId: "node-1",
     states: [{ installationId: "inst-1", lifecycleState: "ready" }],
   };
-  const { bodies } = await captureStatusPost(report);
+  const { bodies, authorizations } = await captureStatusPost(report);
 
   const { signature } = JSON.parse(bodies[0]!) as { signature: string };
-  const keypair = readNodeKeypair(await Bun.file(join(stateDir, "node_key")).text());
 
-  expect(verifyNodeSignature(keypair!.publicKey, canonicalStateReport(report), signature)).toBe(true);
+  expect(verifyNodeSignature(await nodePublicKey(), canonicalStateReport(report, authorizations[0]!), signature)).toBe(true);
 });
 
 async function waitFor(predicate: () => boolean, timeoutMs = 5000): Promise<void> {
@@ -65,7 +85,7 @@ async function waitFor(predicate: () => boolean, timeoutMs = 5000): Promise<void
   }
 }
 
-function serveTether(fetch: () => Response) {
+function serveTether(fetch: (req: Request) => Response | Promise<Response>) {
   const server = Bun.serve({ port: 0, fetch });
   config.tether.url = server.url.href;
   return server;
@@ -73,7 +93,7 @@ function serveTether(fetch: () => Response) {
 
 function openStream() {
   const stop = new AbortController();
-  const next = connectSSE({} as NodeRegistration, stop.signal).next();
+  const next = connectSSE(registration, stop.signal).next();
   return {
     next,
     close: async () => {
@@ -151,10 +171,13 @@ test("the connection state follows the tether's answers", async () => {
   }
 }, 15_000);
 
-test("a stream that stays silent past the announced keepalive is reopened", async () => {
-  let connects = 0;
-  const server = serveTether(() => {
-    connects++;
+test("a stream that stays silent past the announced keepalive is reopened, signed for the new request", async () => {
+  const attempts: { authorization: string; signature: string }[] = [];
+  const server = serveTether(async (req) => {
+    attempts.push({
+      authorization: req.headers.get("authorization") ?? "",
+      signature: ((await req.json()) as NodeRegistration).signature,
+    });
     const body = new ReadableStream({
       start(controller) {
         controller.enqueue(new TextEncoder().encode(": hello\n\n"));
@@ -165,8 +188,13 @@ test("a stream that stays silent past the announced keepalive is reopened", asyn
   const stream = openStream();
 
   try {
-    await waitFor(() => connects >= 2, 3000);
-    expect(connects).toBeGreaterThanOrEqual(2);
+    await waitFor(() => attempts.length >= 2, 3000);
+    expect(attempts.length).toBeGreaterThanOrEqual(2);
+    const [first, second] = attempts;
+    expect(second!.signature).not.toBe(first!.signature);
+    for (const { authorization, signature } of [first!, second!]) {
+      expect(verifyNodeSignature(await nodePublicKey(), canonicalRegistration(registration, authorization), signature)).toBe(true);
+    }
   } finally {
     await stream.close();
     await server.stop(true);

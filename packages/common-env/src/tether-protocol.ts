@@ -72,13 +72,15 @@ export type InstallationStateReport = z.infer<typeof installationStateReportSche
 export type UnsignedInstallationStateReport = Omit<InstallationStateReport, "signature">;
 
 // What the daemon signs with its node key. Positional and sorted rather than derived from the
-// object, because the two ends must produce identical bytes from the same payload.
+// object, because the two ends must produce identical bytes from the same payload. The request's
+// Authorization header is signed along with it, so a captured body cannot be sent again on a
+// request of its own.
 
 function sortedPairs(record: Record<string, unknown>): [string, unknown][] {
   return Object.entries(record).sort(([a], [b]) => (a < b ? -1 : 1));
 }
 
-export function canonicalRegistration(reg: UnsignedNodeRegistration): string {
+export function canonicalRegistration(reg: UnsignedNodeRegistration, requestAuthorization: string): string {
   return JSON.stringify([
     reg.nodeId,
     reg.host,
@@ -93,10 +95,11 @@ export function canonicalRegistration(reg: UnsignedNodeRegistration): string {
     reg.authToken,
     reg.protocolFingerprint,
     reg.publicKey,
+    requestAuthorization,
   ]);
 }
 
-export function canonicalStateReport(report: UnsignedInstallationStateReport): string {
+export function canonicalStateReport(report: UnsignedInstallationStateReport, requestAuthorization: string): string {
   return JSON.stringify([
     report.nodeId,
     report.states.map((s) => [
@@ -107,6 +110,7 @@ export function canonicalStateReport(report: UnsignedInstallationStateReport): s
       s.errorMessage ?? null,
       s.failureLogs ?? null,
     ]),
+    requestAuthorization,
   ]);
 }
 
@@ -138,6 +142,9 @@ export const STATUS_PATH = "/api/v1/status";
 
 export const KEEPALIVE_INTERVAL_HEADER = "X-Keepalive-Interval-Ms";
 
+// Bump whenever signing changes
+const SIGNED_FORM_VERSION = 2;
+
 let cachedFingerprint: string | null = null;
 
 export function protocolFingerprint(): string {
@@ -148,6 +155,7 @@ export function protocolFingerprint(): string {
     z.toJSONSchema(desiredStateSchema),
     z.toJSONSchema(nodeRegistrationSchema),
     z.toJSONSchema(installationStateReportSchema),
+    SIGNED_FORM_VERSION,
   ]);
   cachedFingerprint = new Bun.CryptoHasher("sha256")
     .update(manifest)

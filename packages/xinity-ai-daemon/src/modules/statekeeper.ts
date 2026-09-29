@@ -1,8 +1,6 @@
 import {
-  canonicalRegistration,
   protocolFingerprint,
   signAsNode,
-  type NodeRegistration,
   type UnsignedNodeRegistration,
 } from "common-env";
 import { loadOrCreateIdentity, readNodeId, rotateIdentity, type NodeIdentity } from "./node-identity-store";
@@ -191,7 +189,7 @@ export async function rotateNodeIdentity(): Promise<void> {
   log.error({ previous, nodeId }, "The tether pins this node id to a different key, restarting as a new node");
 }
 
-async function collectRegistrationData(): Promise<NodeRegistration> {
+async function collectRegistrationData(): Promise<UnsignedNodeRegistration> {
   const { detectedCapacityGb, gpuCount, gpus: detectedGpus } = await getHardwareProfile();
   const [driverVersions, driverFeatures] = await Promise.all([
     getNodeDriverVersions(),
@@ -205,7 +203,7 @@ async function collectRegistrationData(): Promise<NodeRegistration> {
 
   cachedNodeId = id;
 
-  const unsigned: UnsignedNodeRegistration = {
+  return {
     nodeId: id,
     host,
     port,
@@ -219,11 +217,6 @@ async function collectRegistrationData(): Promise<NodeRegistration> {
     authToken,
     protocolFingerprint: protocolFingerprint(),
     publicKey: keypair.publicKey,
-  };
-
-  return {
-    ...unsigned,
-    signature: signAsNode(keypair.privateKeyPem, canonicalRegistration(unsigned)),
   };
 }
 
@@ -241,6 +234,6 @@ export async function getNodeId(): Promise<string> {
 }
 
 /** Collects hardware profile and builds the registration payload for the tether SSE handshake. */
-export async function buildRegistration(): Promise<NodeRegistration> {
+export async function buildRegistration(): Promise<UnsignedNodeRegistration> {
   return collectRegistrationData();
 }

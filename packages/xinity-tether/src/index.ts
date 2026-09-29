@@ -156,7 +156,7 @@ async function handleSSEStream(req: Request): Promise<Response> {
 
   const { nodeId, publicKey, signature } = parsed.data;
 
-  if (!verifyNodeSignature(publicKey, canonicalRegistration(parsed.data), signature)) {
+  if (!verifyNodeSignature(publicKey, canonicalRegistration(parsed.data, req.headers.get("authorization") ?? ""), signature)) {
     log.warn({ nodeId }, "Registration signature does not match the key it presents");
     return refuse("stream", "invalid_signature", "Registration signature is invalid", 401);
   }
@@ -221,7 +221,7 @@ async function handleStatus(req: Request): Promise<Response> {
   const { nodeId, states, signature } = parsed.data;
 
   const publicKey = connectedPublicKey(nodeId) ?? await readPinnedPublicKey(nodeId);
-  if (!publicKey || !verifyNodeSignature(publicKey, canonicalStateReport(parsed.data), signature)) {
+  if (!publicKey || !verifyNodeSignature(publicKey, canonicalStateReport(parsed.data, req.headers.get("authorization") ?? ""), signature)) {
     log.warn({ nodeId, pinned: !!publicKey }, "Status report is not signed by this node");
     return refuse("status", "invalid_signature", "Report signature is invalid", 401);
   }

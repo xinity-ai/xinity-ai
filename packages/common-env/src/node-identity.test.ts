@@ -41,6 +41,7 @@ describe("node signatures", () => {
 });
 
 describe("canonical payloads", () => {
+  const AUTH = "Xinity ts=1,nonce=first,mac=m";
   const base: UnsignedNodeRegistration = {
     nodeId: "3f1a2b3c-0000-4000-8000-000000000001",
     host: "10.0.0.1",
@@ -60,7 +61,7 @@ describe("canonical payloads", () => {
   // otherwise disagree on the bytes and reject every registration.
   test("does not depend on the order of driver record keys", () => {
     const reordered = { ...base, driverVersions: { ollama: "0.6.3", vllm: "0.8.0" } };
-    expect(canonicalRegistration(reordered)).toBe(canonicalRegistration(base));
+    expect(canonicalRegistration(reordered, AUTH)).toBe(canonicalRegistration(base, AUTH));
   });
 
   // A field added to the schema but not to the canonical form would travel unsigned, and the
@@ -88,7 +89,7 @@ describe("canonical payloads", () => {
       }
       const mutation = REGISTRATION_MUTATIONS[field];
       expect(mutation, `${field} is in the schema but not covered here`).toBeDefined();
-      expect(canonicalRegistration({ ...base, ...mutation })).not.toBe(canonicalRegistration(base));
+      expect(canonicalRegistration({ ...base, ...mutation }, AUTH)).not.toBe(canonicalRegistration(base, AUTH));
     }
   });
 
@@ -108,17 +109,24 @@ describe("canonical payloads", () => {
       const mutation = STATE_MUTATIONS[field];
       expect(mutation, `${field} is in the schema but not covered here`).toBeDefined();
       const tampered = { ...report, states: [{ ...report.states[0]!, ...mutation }] };
-      expect(canonicalStateReport(tampered)).not.toBe(canonicalStateReport(report));
+      expect(canonicalStateReport(tampered, AUTH)).not.toBe(canonicalStateReport(report, AUTH));
     }
   });
 
   test("signs the node the report claims to come from", () => {
     const states = [{ installationId: "3f1a2b3c-0000-4000-8000-000000000010", lifecycleState: "ready" as const }];
-    expect(canonicalStateReport({ nodeId: "3f1a2b3c-0000-4000-8000-000000000002", states }))
-      .not.toBe(canonicalStateReport({ nodeId: base.nodeId, states }));
+    expect(canonicalStateReport({ nodeId: "3f1a2b3c-0000-4000-8000-000000000002", states }, AUTH))
+      .not.toBe(canonicalStateReport({ nodeId: base.nodeId, states }, AUTH));
+  });
+
+  test("differs per request, so a signed body is only valid on the request it was signed for", () => {
+    const other = "Xinity ts=1,nonce=second,mac=m";
+    expect(canonicalRegistration(base, other)).not.toBe(canonicalRegistration(base, AUTH));
+    const report = { nodeId: base.nodeId, states: [] };
+    expect(canonicalStateReport(report, other)).not.toBe(canonicalStateReport(report, AUTH));
   });
 
   test("treats an absent optional field the same as an explicit null", () => {
-    expect(canonicalRegistration({ ...base, machineName: undefined })).toBe(canonicalRegistration(base));
+    expect(canonicalRegistration({ ...base, machineName: undefined }, AUTH)).toBe(canonicalRegistration(base, AUTH));
   });
 });
