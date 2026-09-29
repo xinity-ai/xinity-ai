@@ -43,7 +43,15 @@ export const ModelSizing = z.looseObject({
   maxContextLength: z.number().int().positive().describe("Maximum supported context window in tokens"),
   attentionWindow: z.number().int().positive().optional().describe("Sliding-window attention span in tokens, for models that have one. KV per request stops growing past this point, so a windowed model needs far less cache at long context than kvBytesPerToken alone suggests"),
   stateBytesPerSequence: z.number().int().positive().optional().describe("Recurrent state one concurrent request consumes, in bytes, for hybrid architectures whose layers are not all attention, such as Mamba or gated deltanet. Unlike kvBytesPerToken this does not grow with context: it is a fixed cost per request in flight. Present only for hybrid models, and vLLM refuses to start when its per-sequence state does not fit, so a concurrency cap that ignores it can be one the engine rejects"),
+  attentionHeads: z.number().int().positive().optional().describe("Attention heads per layer of the language model, num_attention_heads in config.json"),
+  kvHeads: z.number().int().positive().optional().describe("Key/value heads per layer of the language model, num_key_value_heads in config.json. Equal to attentionHeads without grouped-query attention, fewer with it"),
+  overheadGb: z.number().positive().optional().describe("Memory the engine holds beyond weights and KV cache once started, in GB: peak activation, non-torch allocations and CUDA graphs, as measured at startup"),
+  mlaAttention: z.boolean().optional().describe("Whether the model uses multi-head latent attention, as DeepSeek V2 and V3 do, caching one compressed latent per token instead of keys and values per head"),
 }).refine(
+  sizing => sizing.kvHeads === undefined
+    || (sizing.attentionHeads !== undefined && sizing.kvHeads <= sizing.attentionHeads),
+  { message: "kvHeads needs attentionHeads, and must not exceed it", path: ["kvHeads"] },
+).refine(
   sizing => sizing.activeWeightGb === undefined || sizing.activeWeightGb <= sizing.weightGb,
   { message: "activeWeightGb must not exceed weightGb", path: ["activeWeightGb"] },
 ).refine(

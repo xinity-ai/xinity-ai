@@ -23,6 +23,8 @@ models:
     sizing:
       # 28 layers, 4 kv heads, head_dim 64 -> 2 * 28 * 4 * 64 * 2
       kvBytesPerToken: 28672
+      attentionHeads: 16
+      kvHeads: 4
       maxContextLength: 32768
       weightGb: 0.72  # measured resident, 0.67 GiB
       weightBits: 16
@@ -46,6 +48,8 @@ models:
     sizing:
       # 40 layers, 8 kv heads, head_dim 64 -> 2 * 40 * 8 * 64 * 2
       kvBytesPerToken: 81920
+      attentionHeads: 40
+      kvHeads: 8
       maxContextLength: 131072
       weightGb: 6.84  # measured resident, 6.37 GiB
       weightBits: 16

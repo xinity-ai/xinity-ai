@@ -71,6 +71,7 @@ function makeInstallation(specifier: string, id = crypto.randomUUID()) {
     port: 8080,
     driver: "ollama" as const,
     settings: { version: 1 as const },
+    gpuUuids: [],
   };
 }
 

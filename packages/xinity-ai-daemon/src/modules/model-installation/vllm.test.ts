@@ -79,6 +79,7 @@ mock.module("../statekeeper", () => ({
     gpuCount: 1,
     detectedCapacityGb: 24,
     physicalCapacityGb: 24,
+    systemRamMb: 131072,
     source: "nvidia",
   }),
 }));
@@ -90,10 +91,12 @@ mock.module("./page-cache", () => ({
   dropPageCache: mock(() => Promise.resolve()),
 }));
 
-const { syncVllmInstallations$, computeGpuUtilization, buildVllmExtraArgs, concurrencyCap, matchFatalPattern } = await import("./vllm");
+const { syncVllmInstallations$, computeGpuUtilization, buildVllmExtraArgs, concurrencyCap, matchFatalPattern, perCardSizing } = await import("./vllm");
 afterAll(() => {
   downloadModelSpy.mockRestore();
 });
+
+const nvidiaCard = (vramMb: number) => ({ vendor: "nvidia" as const, name: "Test GPU", vramMb });
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -109,6 +112,7 @@ function makeInstallation(specifier: string, id: string = crypto.randomUUID(), p
     port,
     driver: "vllm" as const,
     settings: { version: 1 as const },
+    gpuUuids: [],
   };
 }
 
@@ -286,6 +290,17 @@ describe("syncVllmInstallations$", () => {
     const failedWrite = stateWrites.find(([, state]) => state === "failed");
     expect(failedWrite).toBeDefined();
     expect(failedWrite![2]?.failureLogs).toBe(sampleLogs);
+  });
+
+  test("fails an installation assigned to a card the node does not report, before starting it", async () => {
+    const inst = { ...makeInstallation("missing-card-model", crypto.randomUUID(), 9096), gpuUuids: ["GPU-gone"] };
+    const ops = createMockOps({ listRunning: mock(() => Promise.resolve([])) });
+
+    await firstValueFrom(syncVllmInstallations$([inst], ops));
+
+    const failedWrite = stateWrites.find(([, state]) => state === "failed");
+    expect((failedWrite![2]?.errorMessage as string)).toBe("Assigned GPU GPU-gone is not on this node");
+    expect(ops.start).not.toHaveBeenCalled();
   });
 
   test("marks failed and stops container on crash-loop during health poll", async () => {
@@ -516,7 +531,7 @@ describe("syncVllmInstallations$", () => {
     expect(ops.stop).toHaveBeenCalled();
   });
 
-  test("calculates gpuMemoryUtilization as requiredGb / physicalCapacityGb", async () => {
+  test("sizes weights, cache and overhead in GiB against the card", async () => {
     const id = crypto.randomUUID();
     const inst = makeInstallation("mem-test-model", id, 9100);
     const ops = createMockOps({
@@ -529,31 +544,69 @@ describe("syncVllmInstallations$", () => {
 
     const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
     const util = startCall[1].gpuMemoryUtilization as number;
-    expect(util).toBeCloseTo((16 * 1.1) / 24, 4);
+    expect(util).toBeCloseTo(0.83656, 4);
   });
 
   test("caps gpuMemoryUtilization at MAX_GPU_UTILIZATION (0.90)", () => {
     const util = computeGpuUtilization(
-      { specifier: "cap-model", estCapacity: 22 },
-      { gpuCount: 1, detectedCapacityGb: 24, physicalCapacityGb: 24 },
+      { specifier: "cap-model", weightGb: 20, kvCacheGb: 4 },
+      { gpus: [nvidiaCard(24576)], gpuCount: 1, systemRamMb: 131072, detectedCapacityGb: 24, physicalCapacityGb: 24 },
     );
     expect(util).toBe(0.90);
   });
 
   test("caps gpuMemoryUtilization at unified-memory headroom fraction", () => {
     const util = computeGpuUtilization(
-      { specifier: "large-unified-model", estCapacity: 100 },
-      { gpuCount: 1, detectedCapacityGb: 107, physicalCapacityGb: 120 },
+      { specifier: "large-unified-model", weightGb: 96, kvCacheGb: 4 },
+      { gpus: [nvidiaCard(0)], gpuCount: 1, systemRamMb: 122880, detectedCapacityGb: 107, physicalCapacityGb: 120 },
     );
     expect(util).toBeCloseTo(107 / 120, 4);
   });
 
-  test("allocates exactly requiredGb for a small model on unified memory", () => {
+  test("sizes a small model on unified memory against the whole of system RAM", () => {
     const util = computeGpuUtilization(
-      { specifier: "small-unified-model", estCapacity: 16 },
-      { gpuCount: 1, detectedCapacityGb: 107, physicalCapacityGb: 120 },
+      { specifier: "small-unified-model", weightGb: 12, kvCacheGb: 4 },
+      { gpus: [nvidiaCard(0)], gpuCount: 1, systemRamMb: 122880, detectedCapacityGb: 107, physicalCapacityGb: 120 },
     );
-    expect(util).toBeCloseTo((16 * 1.1) / 120, 4);
+    expect(util).toBeCloseTo(0.16731, 4);
+  });
+
+  test("sizes against the card the installation is pinned to", () => {
+    const mixed = {
+      gpus: [{ ...nvidiaCard(49152), uuid: "GPU-big" }, { ...nvidiaCard(24576), uuid: "GPU-small" }],
+      gpuCount: 2, systemRamMb: 131072, detectedCapacityGb: 72, physicalCapacityGb: 72,
+    };
+    const sizing = { specifier: "pinned-model", weightGb: 12, kvCacheGb: 4 };
+    expect(computeGpuUtilization({ ...sizing, gpuUuids: ["GPU-small"] }, mixed)).toBeCloseTo(0.83656, 4);
+    expect(computeGpuUtilization({ ...sizing, gpuUuids: [] }, mixed)).toBeCloseTo(0.83656 / 2, 4);
+  });
+
+  test("sizes against the instance's card, not the node's summed VRAM", () => {
+    const util = computeGpuUtilization(
+      { specifier: "two-card-node-model", weightGb: 12, kvCacheGb: 4 },
+      { gpus: [nvidiaCard(24576), nvidiaCard(24576)], gpuCount: 2, systemRamMb: 131072, detectedCapacityGb: 48, physicalCapacityGb: 48 },
+    );
+    expect(util).toBeCloseTo(0.83656, 4);
+  });
+
+  test("takes an entry's measured overhead in place of the estimate", () => {
+    const util = computeGpuUtilization(
+      { specifier: "measured-model", weightGb: 12, kvCacheGb: 4, overheadGb: 2 },
+      { gpus: [nvidiaCard(24576)], gpuCount: 1, systemRamMb: 131072, detectedCapacityGb: 24, physicalCapacityGb: 24 },
+    );
+    expect(util).toBeCloseTo(18 / 1.073741824 / 24, 5);
+  });
+
+  test("covers the tightest measured footprint by more than run-to-run variance", () => {
+    // baidu/Unlimited-OCR on a GB10: 6.24 GiB resident weights and 3.42 GiB measured overhead,
+    // the smallest margin of twelve measured loads. Overhead varies ~0.2 GiB between identical runs.
+    const kvCacheGb = 2.02;
+    const util = computeGpuUtilization(
+      { specifier: "unlimited-ocr-vllm", weightGb: 6.70, kvCacheGb },
+      { gpus: [nvidiaCard(0)], gpuCount: 1, systemRamMb: 124549, detectedCapacityGb: 109, physicalCapacityGb: 121 },
+    )!;
+    const footprintGib = 6.24 + kvCacheGb / 1.073741824 + 3.42;
+    expect(util * (124549 / 1024) - footprintGib).toBeGreaterThan(0.2);
   });
 });
 
@@ -629,5 +682,27 @@ describe("matchFatalPattern", () => {
     expect(matchFatalPattern("hipErrorNoBinaryForGpu: Unable to find code object for all current devices!")).toBe("vLLM build has no kernels for this GPU");
     expect(matchFatalPattern("RuntimeError: HIP error: invalid device ordinal")).toBe("Invalid GPU device index");
     expect(matchFatalPattern("RuntimeError: UR_RESULT_ERROR_DEVICE_LOST")).toBe("GPU runtime error");
+  });
+});
+
+describe("perCardSizing", () => {
+  const installation = { specifier: "qwen3.8-27b-vllm", estCapacity: 42, kvCacheCapacity: 16 };
+  const sizing = { weightGb: 26, minKvCacheGb: 16, maxContextLength: 262144, attentionHeads: 24, kvHeads: 4 };
+
+  test("leaves a single-card installation as the scheduler sized it", () => {
+    expect(perCardSizing(installation, sizing, 1)).toEqual({ weightGb: 26, kvCacheGb: 16 });
+  });
+
+  test("gives each card its share of weights and cache", () => {
+    expect(perCardSizing(installation, sizing, 2)).toEqual({ weightGb: 13, kvCacheGb: 8 });
+  });
+
+  test("keeps one kv head's worth of cache per card once the heads run out", () => {
+    expect(perCardSizing(installation, sizing, 8)).toEqual({ weightGb: 3.25, kvCacheGb: 4 });
+  });
+
+  test("refuses a split the model's heads do not allow", () => {
+    expect(() => perCardSizing(installation, sizing, 3)).toThrow("qwen3.8-27b-vllm cannot run tensor parallel across 3 cards");
+    expect(() => perCardSizing(installation, undefined, 2)).toThrow("cannot run tensor parallel across 2 cards");
   });
 });

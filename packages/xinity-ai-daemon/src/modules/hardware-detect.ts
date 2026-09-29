@@ -14,6 +14,9 @@ export type DetectedGpu = {
   name: string;
   /** 0 when VRAM is not separately addressable (e.g. unified memory). */
   vramMb: number;
+  /** The vendor tool's own device index, which is not the position in a mixed-vendor list. */
+  index?: number;
+  uuid?: string;
 };
 
 export type GpuRuntimeStats = {
@@ -38,6 +41,7 @@ export type HardwareProfile = {
   detectedCapacityGb: number;
   /** Full physical VRAM or system RAM in GB; denominator for vLLM --gpu-memory-utilization. */
   physicalCapacityGb: number;
+  systemRamMb: number;
   source: CapacitySource;
 };
 
@@ -58,7 +62,7 @@ function getSystemRamMb(): number {
 // ─── NVIDIA detection (nvidia-smi) ──────────────────────────────────────────
 
 async function detectNvidiaGpus(): Promise<DetectedGpu[]> {
-  const output = await $`nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader,nounits`
+  const output = await $`nvidia-smi --query-gpu=index,name,memory.total,uuid --format=csv,noheader,nounits`
     .throws(false)
     .text();
 
@@ -80,13 +84,15 @@ export function parseNvidiaSmiOutput(csv: string): DetectedGpu[] {
 }
 
 function parseNvidiaSmiLine(line: string): DetectedGpu | null {
-  const [_index, name, totalMemory] = line.split(",").map((s) => s.trim());
+  const [index, name, totalMemory, uuid] = line.split(",").map((s) => s.trim());
   if (!name) return null;
 
   return {
     vendor: "nvidia",
     name,
     vramMb: Number(totalMemory) || 0,
+    ...(index && Number.isInteger(Number(index)) ? { index: Number(index) } : {}),
+    ...(uuid ? { uuid } : {}),
   };
 }
 
@@ -387,6 +393,7 @@ export function buildHardwareProfile(gpus: DetectedGpu[], systemRamMb: number): 
       gpuCount,
       detectedCapacityGb: mbToGb(totalVramMb),
       physicalCapacityGb: mbToGb(totalVramMb),
+      systemRamMb,
       source: classifyCapacitySource(gpus),
     };
   }
@@ -398,6 +405,7 @@ export function buildHardwareProfile(gpus: DetectedGpu[], systemRamMb: number): 
       gpuCount,
       detectedCapacityGb: mbToGb(Math.floor(systemRamMb * UNIFIED_MEM_USABLE_FRACTION)),
       physicalCapacityGb: mbToGb(systemRamMb),
+      systemRamMb,
       source: "unified-memory",
     };
   }
@@ -408,8 +416,26 @@ export function buildHardwareProfile(gpus: DetectedGpu[], systemRamMb: number): 
     gpuCount: 0,
     detectedCapacityGb: mbToGb(systemRamMb),
     physicalCapacityGb: mbToGb(systemRamMb),
+    systemRamMb,
     source: "system-ram",
   };
+}
+
+export function cardCapacityGib(
+  profile: Pick<HardwareProfile, "gpus" | "systemRamMb">,
+  cards: readonly number[] = [0],
+): number {
+  if (cards.length === 0) {
+    throw new Error("An instance runs on at least one card");
+  }
+  const cardMb = cards.map((card) => {
+    const gpu = profile.gpus[card];
+    if (!gpu) {
+      throw new Error(`No GPU at index ${card}`);
+    }
+    return gpu.vramMb > 0 ? gpu.vramMb : profile.systemRamMb;
+  });
+  return Math.min(...cardMb) / 1024;
 }
 
 export async function detectHardwareProfile(): Promise<HardwareProfile> {

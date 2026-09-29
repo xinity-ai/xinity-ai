@@ -10,6 +10,7 @@ const {
   parseXpuSmiDeviceDetails,
   classifyCapacitySource,
   normalizeDmiProductName,
+  cardCapacityGib,
 } = await import("./hardware-detect");
 type DetectedGpu = import("./hardware-detect").DetectedGpu;
 
@@ -25,6 +26,17 @@ describe("parseNvidiaSmiOutput", () => {
     expect(gpus[0]!.vendor).toBe("nvidia");
     expect(gpus[0]!.name).toBe("NVIDIA GeForce RTX 4090");
     expect(gpus[0]!.vramMb).toBe(24564);
+  });
+
+  test("keeps nvidia-smi's own index and the card's uuid", () => {
+    const csv = [
+      "0, NVIDIA RTX PRO 6000 Blackwell, 97887, GPU-5f1c2b8e-0d4a-4c7e-9b31-2a6f8e1d7c40",
+      "1, NVIDIA L40S, 46068, GPU-a93d7e12-44b0-4f2a-8c6e-19d5b0f3e7a1",
+    ].join("\n");
+    expect(parseNvidiaSmiOutput(csv).map(({ index, uuid }) => ({ index, uuid }))).toEqual([
+      { index: 0, uuid: "GPU-5f1c2b8e-0d4a-4c7e-9b31-2a6f8e1d7c40" },
+      { index: 1, uuid: "GPU-a93d7e12-44b0-4f2a-8c6e-19d5b0f3e7a1" },
+    ]);
   });
 
   test("parses multiple GPUs", () => {
@@ -252,5 +264,27 @@ describe("normalizeDmiProductName", () => {
   test("returns null for missing or empty input", () => {
     expect(normalizeDmiProductName(null)).toBeNull();
     expect(normalizeDmiProductName("  ")).toBeNull();
+  });
+});
+
+describe("cardCapacityGib", () => {
+  const card = (vramMb: number): DetectedGpu => ({ vendor: "nvidia", name: "card", vramMb });
+  const mixed = { gpus: [card(49152), card(24576)], systemRamMb: 131072 };
+
+  test("defaults to the first card", () => {
+    expect(cardCapacityGib(mixed)).toBe(48);
+  });
+
+  test("is bound by the smallest card the instance spans", () => {
+    expect(cardCapacityGib(mixed, [0, 1])).toBe(24);
+    expect(cardCapacityGib(mixed, [1])).toBe(24);
+  });
+
+  test("takes a unified-memory card as the whole of system RAM, unrounded", () => {
+    expect(cardCapacityGib({ gpus: [card(0)], systemRamMb: 124549 })).toBeCloseTo(121.63, 2);
+  });
+
+  test("refuses a card the node does not have", () => {
+    expect(() => cardCapacityGib(mixed, [2])).toThrow("No GPU at index 2");
   });
 });

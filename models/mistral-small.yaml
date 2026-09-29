@@ -26,6 +26,9 @@ models:
       # * 36 layers * 2 bytes. That is why a 119B model needs less cache than a dense
       # 30B does.
       kvBytesPerToken: 23040
+      attentionHeads: 32
+      kvHeads: 32
+      mlaAttention: true
       maxContextLength: 262144
       weightGb: 71.00  # measured resident, 66.12 GiB
       activeWeightGb: 12

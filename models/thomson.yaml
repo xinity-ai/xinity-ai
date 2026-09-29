@@ -73,6 +73,8 @@ models:
     # which shares this geometry byte for byte; re-bracket if that stops being true.
     sizing:
       kvBytesPerToken: 20480
+      attentionHeads: 16
+      kvHeads: 2
       stateBytesPerSequence: 64880640
       minKvCacheGb: 5.54
       maxContextLength: 262144

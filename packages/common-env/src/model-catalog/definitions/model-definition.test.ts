@@ -40,6 +40,20 @@ describe("ModelSizing minKvCacheGb", () => {
   });
 });
 
+describe("ModelSizing head counts", () => {
+  it("accepts grouped-query attention, fewer kv heads than attention heads", () => {
+    expect(ModelSizing.safeParse({ ...base, attentionHeads: 32, kvHeads: 8 }).success).toBe(true);
+  });
+
+  it("rejects kv heads stated without the attention heads they group", () => {
+    expect(ModelSizing.safeParse({ ...base, kvHeads: 8 }).success).toBe(false);
+  });
+
+  it("rejects more kv heads than attention heads", () => {
+    expect(ModelSizing.safeParse({ ...base, attentionHeads: 8, kvHeads: 32 }).success).toBe(false);
+  });
+});
+
 describe("EngineVersions", () => {
   it("accepts a complete version", () => {
     expect(EngineVersions.parse({ min: "0.21.0" }).min).toBe("0.21.0");

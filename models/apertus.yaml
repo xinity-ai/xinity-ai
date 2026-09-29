@@ -27,6 +27,8 @@ models:
     sizing:
       # 32 layers, 8 kv heads, head_dim 128 -> 2 * 32 * 8 * 128 * 2
       kvBytesPerToken: 131072
+      attentionHeads: 32
+      kvHeads: 8
       maxContextLength: 65536
       weightGb: 16.13  # measured resident, 15.02 GiB
       weightBits: 16
@@ -405,6 +407,8 @@ models:
     sizing:
       # 20 layers, 4 kv heads, head_dim 64 -> 2 * 20 * 4 * 64 * 2
       kvBytesPerToken: 20480
+      attentionHeads: 16
+      kvHeads: 4
       maxContextLength: 4096
       weightGb: 0.88  # measured resident, 0.82 GiB
       weightBits: 16
@@ -430,6 +434,8 @@ models:
     sizing: &apertus-15b-sizing
       # 16 layers, 8 kv heads, head_dim 64 -> 2 * 16 * 8 * 64 * 2
       kvBytesPerToken: 32768
+      attentionHeads: 32
+      kvHeads: 8
       maxContextLength: 4096
       weightGb: 3.02  # measured resident, 2.81 GiB
       weightBits: 16
@@ -470,6 +476,8 @@ models:
     sizing:
       # 24 layers, 8 kv heads, head_dim 128 -> 2 * 24 * 8 * 128 * 2
       kvBytesPerToken: 98304
+      attentionHeads: 24
+      kvHeads: 8
       maxContextLength: 4096
       weightGb: 7.66  # measured resident, 7.13 GiB
       weightBits: 16
