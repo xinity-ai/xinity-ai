@@ -14,6 +14,9 @@ export type DetectedGpu = {
   name: string;
   /** 0 when VRAM is not separately addressable (e.g. unified memory). */
   vramMb: number;
+  /** The vendor tool's own device index, which is not the position in a mixed-vendor list. */
+  index?: number;
+  uuid?: string;
 };
 
 export type GpuRuntimeStats = {
@@ -59,7 +62,7 @@ function getSystemRamMb(): number {
 // ─── NVIDIA detection (nvidia-smi) ──────────────────────────────────────────
 
 async function detectNvidiaGpus(): Promise<DetectedGpu[]> {
-  const output = await $`nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader,nounits`
+  const output = await $`nvidia-smi --query-gpu=index,name,memory.total,uuid --format=csv,noheader,nounits`
     .throws(false)
     .text();
 
@@ -81,13 +84,15 @@ export function parseNvidiaSmiOutput(csv: string): DetectedGpu[] {
 }
 
 function parseNvidiaSmiLine(line: string): DetectedGpu | null {
-  const [_index, name, totalMemory] = line.split(",").map((s) => s.trim());
+  const [index, name, totalMemory, uuid] = line.split(",").map((s) => s.trim());
   if (!name) return null;
 
   return {
     vendor: "nvidia",
     name,
     vramMb: Number(totalMemory) || 0,
+    ...(index && Number.isInteger(Number(index)) ? { index: Number(index) } : {}),
+    ...(uuid ? { uuid } : {}),
   };
 }
 

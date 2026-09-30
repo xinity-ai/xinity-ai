@@ -28,6 +28,17 @@ describe("parseNvidiaSmiOutput", () => {
     expect(gpus[0]!.vramMb).toBe(24564);
   });
 
+  test("keeps nvidia-smi's own index and the card's uuid", () => {
+    const csv = [
+      "0, NVIDIA RTX PRO 6000 Blackwell, 97887, GPU-5f1c2b8e-0d4a-4c7e-9b31-2a6f8e1d7c40",
+      "1, NVIDIA L40S, 46068, GPU-a93d7e12-44b0-4f2a-8c6e-19d5b0f3e7a1",
+    ].join("\n");
+    expect(parseNvidiaSmiOutput(csv).map(({ index, uuid }) => ({ index, uuid }))).toEqual([
+      { index: 0, uuid: "GPU-5f1c2b8e-0d4a-4c7e-9b31-2a6f8e1d7c40" },
+      { index: 1, uuid: "GPU-a93d7e12-44b0-4f2a-8c6e-19d5b0f3e7a1" },
+    ]);
+  });
+
   test("parses multiple GPUs", () => {
     const csv = [
       "0, NVIDIA A100, 81920",

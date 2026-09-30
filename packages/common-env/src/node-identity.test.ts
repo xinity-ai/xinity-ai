@@ -93,6 +93,13 @@ describe("canonical payloads", () => {
     }
   });
 
+  test("signs each card's index and uuid", () => {
+    const card = { vendor: "nvidia", name: "RTX 4090", vramMb: 24576, index: 0, uuid: "GPU-1" };
+    const signed = canonicalRegistration({ ...base, gpus: [card] });
+    expect(canonicalRegistration({ ...base, gpus: [{ ...card, index: 1 }] })).not.toBe(signed);
+    expect(canonicalRegistration({ ...base, gpus: [{ ...card, uuid: "GPU-2" }] })).not.toBe(signed);
+  });
+
   const STATE_MUTATIONS: Record<string, Partial<InstallationStatePayload>> = {
     installationId: { installationId: "3f1a2b3c-0000-4000-8000-0000000000ff" },
     lifecycleState: { lifecycleState: "failed" },

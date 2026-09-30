@@ -80,7 +80,7 @@ export const aiNodeT = pgTable("ai_node", {
   /** Maps driver name to detected optional features, e.g. {"vllm": ["audio", "vllm-omni"]} */
   driverFeatures: jsonb("driver_features").$type<Record<string, string[]>>().notNull().default({}),
   /** Detected GPUs with vendor, name, and VRAM. Empty = unknown/CPU-only. */
-  gpus: jsonb().$type<{ vendor: string; name: string; vramMb: number }[]>().notNull().default([]),
+  gpus: jsonb().$type<{ vendor: string; name: string; vramMb: number; index?: number; uuid?: string }[]>().notNull().default([]),
   /** Random token generated on daemon startup, used by the gateway to authenticate requests to this node. */
   authToken: text("auth_token"),
   /** Ed25519 public key pinned on first registration. Null means not yet pinned, which adopts the next key seen. */
