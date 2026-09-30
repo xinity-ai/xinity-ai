@@ -85,6 +85,9 @@ function appendVllmCommonArgs(args: string[], config: VllmInstanceConfig): void 
   if (config.gpuMemoryUtilization != null) {
     args.push("--gpu-memory-utilization", String(config.gpuMemoryUtilization));
   }
+  if (config.pinnedGpus && config.pinnedGpus.length > 1) {
+    args.push("--tensor-parallel-size", String(config.pinnedGpus.length));
+  }
   if (config.trustRemoteCode) {
     args.push("--trust-remote-code");
   }

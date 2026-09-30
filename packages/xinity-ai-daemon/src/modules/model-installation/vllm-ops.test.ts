@@ -145,6 +145,12 @@ describe("buildSystemdEnvFile", () => {
 });
 
 describe("buildSystemdServeArgv", () => {
+  test("runs tensor parallel across the pinned cards, and not at all on one", () => {
+    const twoCards = buildSystemdServeArgv({ ...baseConfig, pinnedGpus: [{ uuid: "GPU-a", index: 0 }, { uuid: "GPU-b", index: 1 }] });
+    expect(twoCards[twoCards.indexOf("--tensor-parallel-size") + 1]).toBe("2");
+    expect(buildSystemdServeArgv({ ...baseConfig, pinnedGpus: [{ uuid: "GPU-a", index: 0 }] })).not.toContain("--tensor-parallel-size");
+  });
+
   test("base config produces minimal vllm serve argv", () => {
     expect(buildSystemdServeArgv(baseConfig)).toEqual([
       "/usr/local/bin/vllm", "serve", "meta-llama/Llama-3.1-8B-Instruct",

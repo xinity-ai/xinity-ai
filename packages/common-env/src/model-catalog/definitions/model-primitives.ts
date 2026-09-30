@@ -84,6 +84,10 @@ export const BLOCKED_VLLM_ARGS = new Set([
   "--kv-cache-memory-bytes",   // system-managed via kvCacheCapacity
   "--gpu-memory-utilization",  // system-managed, calculated from model needs and total VRAM
   "--api-key",                 // system-managed
+  "--tensor-parallel-size",    // system-managed, the number of cards the installation is pinned to
+  "-tp",
+  "--pipeline-parallel-size",  // system-managed alongside tensor parallelism
+  "-pp",
 ]);
 
 /**
@@ -115,9 +119,10 @@ export function stripBlockedVllmArgs(args: string[]): string[] {
     if (arg === undefined) {
       continue;
     }
-    if (BLOCKED_VLLM_ARGS.has(arg)) {
+    const [name = arg] = arg.split("=", 1);
+    if (BLOCKED_VLLM_ARGS.has(name)) {
       const next = args[i + 1];
-      if (next && !next.startsWith("--")) {
+      if (name === arg && next && !next.startsWith("--")) {
         i++;
       }
     } else {

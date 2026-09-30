@@ -24,6 +24,7 @@ import {
 import { rootLogger } from "../../logger";
 import { getHardwareProfile } from "../statekeeper";
 import { cardCapacityGib, type DetectedGpu, type HardwareProfile } from "../hardware-detect";
+import { tensorParallelLayouts } from "common-env";
 import { downloadModel } from "./vllm-download";
 import { estimateConcurrency, type GpuInfo, type ModelSizingFields } from "common-env/model-catalog";
 import { dropPageCache } from "./page-cache";
@@ -172,6 +173,25 @@ function resolvePinnedGpus(gpus: readonly DetectedGpu[], gpuUuids: readonly stri
   });
 }
 
+// vLLM sizes --kv-cache-memory-bytes per card, so an installation split across cards passes each
+// card's share, and sizes utilization against one card's weights and cache.
+export function perCardSizing(
+  installation: Pick<SyncInstallation, "specifier" | "estCapacity" | "kvCacheCapacity">,
+  sizing: ModelSizingFields | undefined,
+  cards: number,
+): { weightGb: number; kvCacheGb: number } {
+  const weightGb = installation.estCapacity - installation.kvCacheCapacity;
+  if (cards <= 1) {
+    return { weightGb, kvCacheGb: installation.kvCacheCapacity };
+  }
+  const layout = tensorParallelLayouts({ ...sizing, weightGb }, { cards, kvCacheGb: installation.kvCacheCapacity })
+    .find((candidate) => candidate.tensorParallelSize === cards);
+  if (!layout) {
+    throw new Error(`${installation.specifier} cannot run tensor parallel across ${cards} cards`);
+  }
+  return { weightGb: layout.perCardWeightGb, kvCacheGb: layout.perCardKvCacheGb };
+}
+
 async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): Promise<{ modelType: string | undefined; providerModel: string }> {
   const entry = await resolveInstallationEntry(installation.specifier, "vllm");
   if (!entry) {
@@ -180,6 +200,7 @@ async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): P
   const providerModel = entry.engineSpecifier;
   const profile = await getHardwareProfile();
   const pinnedGpus = resolvePinnedGpus(profile.gpus, installation.gpuUuids);
+  const perCard = perCardSizing(installation, entry.sizing, pinnedGpus.length);
 
   await updateInstallationState(installation.id, "downloading", { statusMessage: "Downloading model", progress: 0 });
 
@@ -193,8 +214,8 @@ async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): P
 
   const gpuMemoryUtilization = computeGpuUtilization({
     specifier: installation.specifier,
-    weightGb: installation.estCapacity - installation.kvCacheCapacity,
-    kvCacheGb: installation.kvCacheCapacity,
+    weightGb: perCard.weightGb,
+    kvCacheGb: perCard.kvCacheGb,
     overheadGb: entry.sizing?.overheadGb,
     gpuUuids: installation.gpuUuids,
   }, profile);
@@ -205,7 +226,7 @@ async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): P
   await ops.start(installation.id, {
     model: providerModel,
     port: installation.port,
-    kvCacheBytes: `${installation.kvCacheCapacity}g`,
+    kvCacheBytes: `${perCard.kvCacheGb}g`,
     trustRemoteCode: entry.tags.includes("custom_code"),
     gpuMemoryUtilization,
     extraArgs: buildVllmExtraArgs(

@@ -91,7 +91,7 @@ mock.module("./page-cache", () => ({
   dropPageCache: mock(() => Promise.resolve()),
 }));
 
-const { syncVllmInstallations$, computeGpuUtilization, buildVllmExtraArgs, concurrencyCap, matchFatalPattern } = await import("./vllm");
+const { syncVllmInstallations$, computeGpuUtilization, buildVllmExtraArgs, concurrencyCap, matchFatalPattern, perCardSizing } = await import("./vllm");
 afterAll(() => {
   downloadModelSpy.mockRestore();
 });
@@ -674,5 +674,27 @@ describe("matchFatalPattern", () => {
     const logs = "ValueError: No available memory for the cache blocks. "
       + "Try increasing `gpu_memory_utilization` when initializing the engine.";
     expect(matchFatalPattern(logs)).toBe("No GPU memory left for the KV cache");
+  });
+});
+
+describe("perCardSizing", () => {
+  const installation = { specifier: "qwen3.8-27b-vllm", estCapacity: 42, kvCacheCapacity: 16 };
+  const sizing = { weightGb: 26, minKvCacheGb: 16, maxContextLength: 262144, attentionHeads: 24, kvHeads: 4 };
+
+  test("leaves a single-card installation as the scheduler sized it", () => {
+    expect(perCardSizing(installation, sizing, 1)).toEqual({ weightGb: 26, kvCacheGb: 16 });
+  });
+
+  test("gives each card its share of weights and cache", () => {
+    expect(perCardSizing(installation, sizing, 2)).toEqual({ weightGb: 13, kvCacheGb: 8 });
+  });
+
+  test("keeps one kv head's worth of cache per card once the heads run out", () => {
+    expect(perCardSizing(installation, sizing, 8)).toEqual({ weightGb: 3.25, kvCacheGb: 4 });
+  });
+
+  test("refuses a split the model's heads do not allow", () => {
+    expect(() => perCardSizing(installation, sizing, 3)).toThrow("qwen3.8-27b-vllm cannot run tensor parallel across 3 cards");
+    expect(() => perCardSizing(installation, undefined, 2)).toThrow("cannot run tensor parallel across 2 cards");
   });
 });
