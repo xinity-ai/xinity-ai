@@ -47,6 +47,8 @@ models:
       # Describing all 42 as windowed, which the layer count invites, understates the
       # floor by a factor of fifty and the model will not start.
       kvBytesPerToken: 14336
+      attentionHeads: 8
+      kvHeads: 2
       stateBytesPerSequence: 36700160
       maxContextLength: 131072
       minKvCacheGb: 2.34  # bracketed: 2.33 aborts
@@ -111,6 +113,9 @@ models:
       # This entry serves 131072 rather than the architecture's 262144, which halves the
       # cache the full-attention layers demand.
       kvBytesPerToken: 40960
+      # kvHeads is left out on purpose: the sliding layers have 8 kv heads and the 5
+      # full-attention layers 2 (num_global_key_value_heads), so no one figure is true.
+      attentionHeads: 16
       stateBytesPerSequence: 209715200
       minKvCacheGb: 3.93  # 1.00x at 131072
       maxContextLength: 131072

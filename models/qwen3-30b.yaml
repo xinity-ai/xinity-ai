@@ -24,6 +24,8 @@ models:
       # 48 layers, 4 kv heads, head_dim 128 -> 2 * 48 * 4 * 128 * 2. Dense attention on
       # every layer, so the 256K window costs about 26 GB of cache for one request.
       kvBytesPerToken: 98304
+      attentionHeads: 32
+      kvHeads: 4
       maxContextLength: 262144
       weightGb: 61.13  # measured resident, 56.93 GiB
       activeWeightGb: 6

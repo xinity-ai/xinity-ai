@@ -44,6 +44,8 @@ models:
       # not reserve a paged KV cache the way a generative model does. vLLM logs no
       # cache size at all, so this figure only keeps the capacity estimate honest.
       kvBytesPerToken: 24576
+      attentionHeads: 3
+      kvHeads: 1
       attentionWindow: 512
       maxContextLength: 2048
       # The checkpoint is float32 on disk but vLLM loads it bf16 (dtype=torch.bfloat16),

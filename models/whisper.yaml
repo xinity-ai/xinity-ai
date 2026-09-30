@@ -35,6 +35,8 @@ models:
       # Leaving it out puts the floor at a quarter of what vLLM demands and it will not
       # start.
       kvBytesPerToken: 163840
+      attentionHeads: 20
+      kvHeads: 20
       stateBytesPerSequence: 245760000
       # Bracketed: 0.32 aborts, 0.33 starts. One whole block is a large fraction of a floor
       # this small, so bracket each entry in this family rather than scaling one to another.
@@ -69,6 +71,8 @@ models:
       # Only 4 decoder layers -> 2 * 4 * 20 * 64 * 2, and the cross-attention cache
       # shrinks with them: 1500 * 20480 bytes per request.
       kvBytesPerToken: 20480
+      attentionHeads: 20
+      kvHeads: 20
       stateBytesPerSequence: 30720000
       # Bracketed: 0.04 aborts, 0.05 starts.
       minKvCacheGb: 0.05
@@ -92,6 +96,8 @@ models:
       # 24 decoder layers, 16 heads, head_dim 64 -> 2 * 24 * 16 * 64 * 2, plus
       # 1500 * 98304 bytes of cross-attention per request.
       kvBytesPerToken: 98304
+      attentionHeads: 16
+      kvHeads: 16
       stateBytesPerSequence: 147456000
       minKvCacheGb: 0.20  # bracketed: 0.19 aborts
       maxContextLength: 448
@@ -114,6 +120,8 @@ models:
       # 12 decoder layers, 12 heads, head_dim 64 -> 2 * 12 * 12 * 64 * 2, plus
       # 1500 * 36864 bytes of cross-attention per request.
       kvBytesPerToken: 36864
+      attentionHeads: 12
+      kvHeads: 12
       stateBytesPerSequence: 55296000
       minKvCacheGb: 0.08  # bracketed: 0.07 aborts
       maxContextLength: 448

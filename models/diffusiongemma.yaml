@@ -35,6 +35,9 @@ models:
       # (2 * 5 * 8 * 256 * 2), and the windowed 25 are a fixed 25 * 8192 * 1024 bytes per
       # request in flight rather than a cost that keeps growing with context.
       kvBytesPerToken: 40960
+      # kvHeads is left out on purpose: the sliding layers have 8 kv heads and the 5
+      # full-attention layers 2 (num_global_key_value_heads), so no one figure is true.
+      attentionHeads: 16
       stateBytesPerSequence: 209715200
       maxContextLength: 262144
       minKvCacheGb: 6.43  # bracketed: 6.42 aborts

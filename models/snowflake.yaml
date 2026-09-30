@@ -23,6 +23,8 @@ models:
       # 24 layers, 16 heads, head_dim 64 -> 2 * 24 * 16 * 64 * 2. Encoder-only, so no
       # paged KV cache is reserved.
       kvBytesPerToken: 98304
+      attentionHeads: 16
+      kvHeads: 16
       maxContextLength: 8192
       weightGb: 1.14  # measured resident, 1.06 GiB
       weightBits: 16

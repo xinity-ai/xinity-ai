@@ -31,6 +31,8 @@ models:
       # vLLM to block-align the attention page to them, so the derived floor falls short and
       # minKvCacheGb is authored. Bracketed: 5.53 aborts, 5.54 starts at 1.00x.
       kvBytesPerToken: 20480
+      attentionHeads: 16
+      kvHeads: 2
       stateBytesPerSequence: 64880640
       minKvCacheGb: 5.54
       maxContextLength: 262144
@@ -141,6 +143,8 @@ models:
     engineSpecifier: InternScience/Agents-A1-4B
     sizing:
       kvBytesPerToken: 32768
+      attentionHeads: 16
+      kvHeads: 4
       stateBytesPerSequence: 51904512
       # 32 layers, 8 full attention and 24 linear, 4 kv heads at head_dim 256.
       # minKvCacheGb is authored: the linear layers block-align the attention page,
