@@ -114,6 +114,8 @@ export const modelInstallationT = pgTable("model_installation", {
   port: integer().notNull(),
   driver: inferenceDriverEnum().notNull(),
   settings: jsonb().notNull().$type<DeploymentSettings>().default({ version: 1 }),
+  /** Empty means unpinned, which the daemon runs on the node's first card. */
+  gpuUuids: jsonb("gpu_uuids").$type<string[]>().notNull().default([]),
 
   deletedAt,
   createdAt,
