@@ -178,7 +178,11 @@ async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): P
   await updateInstallationState(installation.id, "installing", { statusMessage: "Starting vLLM service" });
 
   const profile = await getHardwareProfile();
-  const gpuMemoryUtilization = computeGpuUtilization(installation, profile);
+  const gpuMemoryUtilization = computeGpuUtilization({
+    specifier: installation.specifier,
+    weightGb: installation.estCapacity - installation.kvCacheCapacity,
+    kvCacheGb: installation.kvCacheCapacity,
+  }, profile);
   const modelType = entry.type;
 
   await dropPageCache();
@@ -237,24 +241,29 @@ export function buildVllmExtraArgs(
   ];
 }
 
-/** Multiplier applied to estimated capacity to leave headroom for activations and fragmentation. */
-const CAPACITY_OVERHEAD_FACTOR = 1.1;
+// CUDA context, activations and CUDA graphs cost a fixed amount plus a share of the weights,
+// not a share of weights plus cache. Fitted to measured loads, see the test that asserts it.
+const OVERHEAD_BASE_GIB = 3.5;
+const OVERHEAD_WEIGHT_FRACTION = 0.15;
+const GB_PER_GIB = 1.073741824;
 /** Hard cap on vLLM's --gpu-memory-utilization so the driver never claims the whole device. */
 const MAX_GPU_UTILIZATION = 0.90;
 
 export function computeGpuUtilization(
-  installation: Pick<SyncInstallation, "specifier" | "estCapacity">,
+  installation: { specifier: string; weightGb: number; kvCacheGb: number },
   profile: Pick<HardwareProfile, "gpus" | "gpuCount" | "systemRamMb" | "detectedCapacityGb" | "physicalCapacityGb">,
 ): number | undefined {
   if (profile.gpuCount === 0 || profile.physicalCapacityGb === 0) {
     return undefined;
   }
 
-  const requiredGb = installation.estCapacity * CAPACITY_OVERHEAD_FACTOR;
+  const weightGib = installation.weightGb / GB_PER_GIB;
+  const neededGib = weightGib + installation.kvCacheGb / GB_PER_GIB
+    + OVERHEAD_BASE_GIB + OVERHEAD_WEIGHT_FRACTION * weightGib;
   const cardGib = cardCapacityGib(profile);
   const headroomCap = profile.detectedCapacityGb / profile.physicalCapacityGb;
   const utilization = Math.min(
-    requiredGb / cardGib,
+    neededGib / cardGib,
     headroomCap,
     MAX_GPU_UTILIZATION,
   );
@@ -263,7 +272,7 @@ export function computeGpuUtilization(
     {
       model: installation.specifier,
       gpuMemoryUtilization: utilization.toFixed(3),
-      estCapacityGb: installation.estCapacity,
+      neededGib,
       cardCapacityGib: cardGib,
       detectedCapacityGb: profile.detectedCapacityGb,
     },

@@ -519,7 +519,7 @@ describe("syncVllmInstallations$", () => {
     expect(ops.stop).toHaveBeenCalled();
   });
 
-  test("calculates gpuMemoryUtilization as requiredGb over the card's capacity", async () => {
+  test("sizes weights, cache and overhead in GiB against the card", async () => {
     const id = crypto.randomUUID();
     const inst = makeInstallation("mem-test-model", id, 9100);
     const ops = createMockOps({
@@ -532,12 +532,12 @@ describe("syncVllmInstallations$", () => {
 
     const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
     const util = startCall[1].gpuMemoryUtilization as number;
-    expect(util).toBeCloseTo((16 * 1.1) / 24, 4);
+    expect(util).toBeCloseTo(0.83656, 4);
   });
 
   test("caps gpuMemoryUtilization at MAX_GPU_UTILIZATION (0.90)", () => {
     const util = computeGpuUtilization(
-      { specifier: "cap-model", estCapacity: 22 },
+      { specifier: "cap-model", weightGb: 20, kvCacheGb: 4 },
       { gpus: [nvidiaCard(24576)], gpuCount: 1, systemRamMb: 131072, detectedCapacityGb: 24, physicalCapacityGb: 24 },
     );
     expect(util).toBe(0.90);
@@ -545,26 +545,38 @@ describe("syncVllmInstallations$", () => {
 
   test("caps gpuMemoryUtilization at unified-memory headroom fraction", () => {
     const util = computeGpuUtilization(
-      { specifier: "large-unified-model", estCapacity: 100 },
+      { specifier: "large-unified-model", weightGb: 96, kvCacheGb: 4 },
       { gpus: [nvidiaCard(0)], gpuCount: 1, systemRamMb: 122880, detectedCapacityGb: 107, physicalCapacityGb: 120 },
     );
     expect(util).toBeCloseTo(107 / 120, 4);
   });
 
-  test("allocates exactly requiredGb for a small model on unified memory", () => {
+  test("sizes a small model on unified memory against the whole of system RAM", () => {
     const util = computeGpuUtilization(
-      { specifier: "small-unified-model", estCapacity: 16 },
+      { specifier: "small-unified-model", weightGb: 12, kvCacheGb: 4 },
       { gpus: [nvidiaCard(0)], gpuCount: 1, systemRamMb: 122880, detectedCapacityGb: 107, physicalCapacityGb: 120 },
     );
-    expect(util).toBeCloseTo((16 * 1.1) / 120, 4);
+    expect(util).toBeCloseTo(0.16731, 4);
   });
 
   test("sizes against the instance's card, not the node's summed VRAM", () => {
     const util = computeGpuUtilization(
-      { specifier: "two-card-node-model", estCapacity: 10 },
+      { specifier: "two-card-node-model", weightGb: 12, kvCacheGb: 4 },
       { gpus: [nvidiaCard(24576), nvidiaCard(24576)], gpuCount: 2, systemRamMb: 131072, detectedCapacityGb: 48, physicalCapacityGb: 48 },
     );
-    expect(util).toBeCloseTo((10 * 1.1) / 24, 4);
+    expect(util).toBeCloseTo(0.83656, 4);
+  });
+
+  test("covers the tightest measured footprint by more than run-to-run variance", () => {
+    // baidu/Unlimited-OCR on a GB10: 6.24 GiB resident weights and 3.42 GiB measured overhead,
+    // the smallest margin of twelve measured loads. Overhead varies ~0.2 GiB between identical runs.
+    const kvCacheGb = 2.02;
+    const util = computeGpuUtilization(
+      { specifier: "unlimited-ocr-vllm", weightGb: 6.70, kvCacheGb },
+      { gpus: [nvidiaCard(0)], gpuCount: 1, systemRamMb: 124549, detectedCapacityGb: 109, physicalCapacityGb: 121 },
+    )!;
+    const footprintGib = 6.24 + kvCacheGb / 1.073741824 + 3.42;
+    expect(util * (124549 / 1024) - footprintGib).toBeGreaterThan(0.2);
   });
 });
 
