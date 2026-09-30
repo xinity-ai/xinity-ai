@@ -103,6 +103,13 @@ describe("buildDockerRunArgs", () => {
     expect(without.some(a => a.startsWith("VLLM_MAX_AUDIO_CLIP_FILESIZE_MB"))).toBe(false);
   });
 
+  test("exposes only the assigned cards, as one quoted device field", () => {
+    const argv = buildDockerRunArgs("inst-1", { ...baseConfig, pinnedGpus: [{ uuid: "GPU-a", index: 1 }, { uuid: "GPU-b", index: 3 }] });
+    expect(argv[argv.indexOf("--gpus") + 1]).toBe("\"device=GPU-a,GPU-b\"");
+    const unpinned = buildDockerRunArgs("inst-1", { ...baseConfig, pinnedGpus: [] });
+    expect(unpinned[unpinned.indexOf("--gpus") + 1]).toBe("all");
+  });
+
   test("preview mode runs detached without a restart policy (one-off, kept for log inspection)", () => {
     const argv = buildDockerRunArgs("inst-1", baseConfig, "preview");
     expect(argv.slice(0, 3)).toEqual(["docker", "run", "-d"]);
@@ -116,6 +123,12 @@ describe("buildDockerRunArgs", () => {
 describe("buildSystemdEnvFile", () => {
   test("keeps hugging face offline for every instance", () => {
     expect(buildSystemdEnvFile(baseConfig)).toBe("HF_HUB_OFFLINE=1\nTRANSFORMERS_OFFLINE=1\n");
+  });
+
+  test("pins the assigned cards by index, and leaves an unpinned instance to the template's default", () => {
+    const pinnedGpus = [{ uuid: "GPU-a", index: 1 }, { uuid: "GPU-b", index: 3 }];
+    expect(buildSystemdEnvFile({ ...baseConfig, pinnedGpus })).toContain("CUDA_VISIBLE_DEVICES=1,3\n");
+    expect(buildSystemdEnvFile({ ...baseConfig, pinnedGpus: [] })).not.toContain("CUDA_VISIBLE_DEVICES");
   });
 
   test("emits the audio decode duration env var only when set", () => {

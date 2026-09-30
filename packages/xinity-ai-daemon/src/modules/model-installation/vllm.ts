@@ -23,7 +23,7 @@ import {
 } from "./vllm-ops";
 import { rootLogger } from "../../logger";
 import { getHardwareProfile } from "../statekeeper";
-import { cardCapacityGib, type HardwareProfile } from "../hardware-detect";
+import { cardCapacityGib, type DetectedGpu, type HardwareProfile } from "../hardware-detect";
 import { downloadModel } from "./vllm-download";
 import { estimateConcurrency, type GpuInfo, type ModelSizingFields } from "common-env/model-catalog";
 import { dropPageCache } from "./page-cache";
@@ -160,12 +160,26 @@ function pollUntilHealthy$(
   );
 }
 
+// Assignments name cards by UUID so they survive renumbering. CUDA gets the index, since vLLM
+// before 0.24 parses CUDA_VISIBLE_DEVICES as integers and rejects a UUID.
+function resolvePinnedGpus(gpus: readonly DetectedGpu[], gpuUuids: readonly string[]): { uuid: string; index: number }[] {
+  return gpuUuids.map((uuid) => {
+    const gpu = gpus.find((candidate) => candidate.uuid === uuid);
+    if (gpu?.index === undefined) {
+      throw new Error(`Assigned GPU ${uuid} is not on this node`);
+    }
+    return { uuid, index: gpu.index };
+  });
+}
+
 async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): Promise<{ modelType: string | undefined; providerModel: string }> {
   const entry = await resolveInstallationEntry(installation.specifier, "vllm");
   if (!entry) {
     throw new Error(`No vllm catalog entry for installation ${installation.id}`);
   }
   const providerModel = entry.engineSpecifier;
+  const profile = await getHardwareProfile();
+  const pinnedGpus = resolvePinnedGpus(profile.gpus, installation.gpuUuids);
 
   await updateInstallationState(installation.id, "downloading", { statusMessage: "Downloading model", progress: 0 });
 
@@ -177,12 +191,12 @@ async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): P
 
   await updateInstallationState(installation.id, "installing", { statusMessage: "Starting vLLM service" });
 
-  const profile = await getHardwareProfile();
   const gpuMemoryUtilization = computeGpuUtilization({
     specifier: installation.specifier,
     weightGb: installation.estCapacity - installation.kvCacheCapacity,
     kvCacheGb: installation.kvCacheCapacity,
     overheadGb: entry.sizing?.overheadGb,
+    gpuUuids: installation.gpuUuids,
   }, profile);
   const modelType = entry.type;
 
@@ -201,6 +215,7 @@ async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): P
       concurrencyCap(entry.sizing, profile.gpus, installation.kvCacheCapacity),
     ),
     settings: installation.settings,
+    pinnedGpus,
   });
 
   return { modelType, providerModel };
@@ -250,8 +265,14 @@ const GB_PER_GIB = 1.073741824;
 /** Hard cap on vLLM's --gpu-memory-utilization so the driver never claims the whole device. */
 const MAX_GPU_UTILIZATION = 0.90;
 
+// An unpinned installation runs on the first card.
+function pinnedCardIndices(gpus: readonly { uuid?: string }[], gpuUuids: readonly string[]): number[] {
+  const indices = gpus.flatMap((gpu, index) => (gpu.uuid !== undefined && gpuUuids.includes(gpu.uuid) ? [index] : []));
+  return indices.length > 0 ? indices : [0];
+}
+
 export function computeGpuUtilization(
-  installation: { specifier: string; weightGb: number; kvCacheGb: number; overheadGb?: number },
+  installation: { specifier: string; weightGb: number; kvCacheGb: number; overheadGb?: number; gpuUuids?: string[] },
   profile: Pick<HardwareProfile, "gpus" | "gpuCount" | "systemRamMb" | "detectedCapacityGb" | "physicalCapacityGb">,
 ): number | undefined {
   if (profile.gpuCount === 0 || profile.physicalCapacityGb === 0) {
@@ -263,7 +284,7 @@ export function computeGpuUtilization(
     ? installation.overheadGb / GB_PER_GIB
     : OVERHEAD_BASE_GIB + OVERHEAD_WEIGHT_FRACTION * weightGib;
   const neededGib = weightGib + installation.kvCacheGb / GB_PER_GIB + overheadGib;
-  const cardGib = cardCapacityGib(profile);
+  const cardGib = cardCapacityGib(profile, pinnedCardIndices(profile.gpus, installation.gpuUuids ?? []));
   const headroomCap = profile.detectedCapacityGb / profile.physicalCapacityGb;
   const utilization = Math.min(
     neededGib / cardGib,

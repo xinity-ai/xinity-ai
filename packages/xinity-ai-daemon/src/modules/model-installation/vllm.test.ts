@@ -292,6 +292,17 @@ describe("syncVllmInstallations$", () => {
     expect(failedWrite![2]?.failureLogs).toBe(sampleLogs);
   });
 
+  test("fails an installation assigned to a card the node does not report, before starting it", async () => {
+    const inst = { ...makeInstallation("missing-card-model", crypto.randomUUID(), 9096), gpuUuids: ["GPU-gone"] };
+    const ops = createMockOps({ listRunning: mock(() => Promise.resolve([])) });
+
+    await firstValueFrom(syncVllmInstallations$([inst], ops));
+
+    const failedWrite = stateWrites.find(([, state]) => state === "failed");
+    expect((failedWrite![2]?.errorMessage as string)).toBe("Assigned GPU GPU-gone is not on this node");
+    expect(ops.start).not.toHaveBeenCalled();
+  });
+
   test("marks failed and stops container on crash-loop during health poll", async () => {
     const id = crypto.randomUUID();
     const inst = makeInstallation("crashloop-model", id, 9097);
@@ -558,6 +569,16 @@ describe("syncVllmInstallations$", () => {
       { gpus: [nvidiaCard(0)], gpuCount: 1, systemRamMb: 122880, detectedCapacityGb: 107, physicalCapacityGb: 120 },
     );
     expect(util).toBeCloseTo(0.16731, 4);
+  });
+
+  test("sizes against the card the installation is pinned to", () => {
+    const mixed = {
+      gpus: [{ ...nvidiaCard(49152), uuid: "GPU-big" }, { ...nvidiaCard(24576), uuid: "GPU-small" }],
+      gpuCount: 2, systemRamMb: 131072, detectedCapacityGb: 72, physicalCapacityGb: 72,
+    };
+    const sizing = { specifier: "pinned-model", weightGb: 12, kvCacheGb: 4 };
+    expect(computeGpuUtilization({ ...sizing, gpuUuids: ["GPU-small"] }, mixed)).toBeCloseTo(0.83656, 4);
+    expect(computeGpuUtilization({ ...sizing, gpuUuids: [] }, mixed)).toBeCloseTo(0.83656 / 2, 4);
   });
 
   test("sizes against the instance's card, not the node's summed VRAM", () => {
