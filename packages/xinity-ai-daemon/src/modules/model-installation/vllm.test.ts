@@ -112,6 +112,7 @@ function makeInstallation(specifier: string, id: string = crypto.randomUUID(), p
     port,
     driver: "vllm" as const,
     settings: { version: 1 as const },
+    gpuUuids: [],
   };
 }
 

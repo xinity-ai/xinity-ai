@@ -23,6 +23,7 @@ export const desiredInstallationSchema = z.object({
   kvCacheCapacity: z.number(),
   port: z.number(),
   settings: deploymentSettingsSchema,
+  gpuUuids: z.array(z.string()),
 });
 export type DesiredInstallation = z.infer<typeof desiredInstallationSchema>;
 
