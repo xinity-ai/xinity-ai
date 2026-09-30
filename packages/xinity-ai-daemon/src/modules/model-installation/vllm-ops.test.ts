@@ -27,6 +27,7 @@ describe("buildDockerRunArgs", () => {
       "--ipc=host",
       "--network", "xinity-vllm-noegress-v1",
       "-p", "127.0.0.1:8000:8000",
+      "-e", "CUDA_DEVICE_ORDER=PCI_BUS_ID",
       "-e", "HF_HOME=/data/hf-cache",
       "-e", "TRITON_CACHE_DIR=/data/triton-cache",
       "-e", "HF_HUB_OFFLINE=1",

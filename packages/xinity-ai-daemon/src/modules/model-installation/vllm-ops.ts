@@ -247,6 +247,7 @@ export function buildDockerRunArgs(
     "--ipc=host",
     "--network", VLLM_NETWORK,
     "-p", `127.0.0.1:${config.port}:8000`,
+    "-e", "CUDA_DEVICE_ORDER=PCI_BUS_ID",
     "-e", "HF_HOME=/data/hf-cache",
     "-e", "TRITON_CACHE_DIR=/data/triton-cache",
     ...OFFLINE_ENV.flatMap((entry) => ["-e", entry]),
