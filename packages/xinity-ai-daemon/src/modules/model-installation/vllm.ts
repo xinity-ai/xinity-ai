@@ -182,6 +182,7 @@ async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): P
     specifier: installation.specifier,
     weightGb: installation.estCapacity - installation.kvCacheCapacity,
     kvCacheGb: installation.kvCacheCapacity,
+    overheadGb: entry.sizing?.overheadGb,
   }, profile);
   const modelType = entry.type;
 
@@ -250,7 +251,7 @@ const GB_PER_GIB = 1.073741824;
 const MAX_GPU_UTILIZATION = 0.90;
 
 export function computeGpuUtilization(
-  installation: { specifier: string; weightGb: number; kvCacheGb: number },
+  installation: { specifier: string; weightGb: number; kvCacheGb: number; overheadGb?: number },
   profile: Pick<HardwareProfile, "gpus" | "gpuCount" | "systemRamMb" | "detectedCapacityGb" | "physicalCapacityGb">,
 ): number | undefined {
   if (profile.gpuCount === 0 || profile.physicalCapacityGb === 0) {
@@ -258,8 +259,10 @@ export function computeGpuUtilization(
   }
 
   const weightGib = installation.weightGb / GB_PER_GIB;
-  const neededGib = weightGib + installation.kvCacheGb / GB_PER_GIB
-    + OVERHEAD_BASE_GIB + OVERHEAD_WEIGHT_FRACTION * weightGib;
+  const overheadGib = installation.overheadGb !== undefined
+    ? installation.overheadGb / GB_PER_GIB
+    : OVERHEAD_BASE_GIB + OVERHEAD_WEIGHT_FRACTION * weightGib;
+  const neededGib = weightGib + installation.kvCacheGb / GB_PER_GIB + overheadGib;
   const cardGib = cardCapacityGib(profile);
   const headroomCap = profile.detectedCapacityGb / profile.physicalCapacityGb;
   const utilization = Math.min(

@@ -170,6 +170,11 @@
                 "exclusiveMinimum": 0,
                 "maximum": 9007199254740991
               },
+              "overheadGb": {
+                "description": "Memory the engine holds beyond weights and KV cache once started, in GB: peak activation, non-torch allocations and CUDA graphs, as measured at startup",
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
               "mlaAttention": {
                 "description": "Whether the model uses multi-head latent attention, as DeepSeek V2 and V3 do, caching one compressed latent per token instead of keys and values per head",
                 "type": "boolean"

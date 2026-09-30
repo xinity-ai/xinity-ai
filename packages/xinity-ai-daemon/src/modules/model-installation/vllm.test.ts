@@ -567,6 +567,14 @@ describe("syncVllmInstallations$", () => {
     expect(util).toBeCloseTo(0.83656, 4);
   });
 
+  test("takes an entry's measured overhead in place of the estimate", () => {
+    const util = computeGpuUtilization(
+      { specifier: "measured-model", weightGb: 12, kvCacheGb: 4, overheadGb: 2 },
+      { gpus: [nvidiaCard(24576)], gpuCount: 1, systemRamMb: 131072, detectedCapacityGb: 24, physicalCapacityGb: 24 },
+    );
+    expect(util).toBeCloseTo(18 / 1.073741824 / 24, 5);
+  });
+
   test("covers the tightest measured footprint by more than run-to-run variance", () => {
     // baidu/Unlimited-OCR on a GB10: 6.24 GiB resident weights and 3.42 GiB measured overhead,
     // the smallest margin of twelve measured loads. Overhead varies ~0.2 GiB between identical runs.

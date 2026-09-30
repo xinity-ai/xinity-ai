@@ -103,7 +103,7 @@ const [
 function buildVllmInstanceConfig(resolved: ResolvedVllmModel, state: State): VllmInstanceConfig {
   const profile = buildHardwareProfile(state.gpus as DetectedGpu[], state.systemRamMb);
   const gpuMemoryUtilization = computeGpuUtilization(
-    { specifier: resolved.vllmProviderName, weightGb: resolved.model.sizing.weightGb, kvCacheGb: resolved.kvCacheGb },
+    { specifier: resolved.vllmProviderName, weightGb: resolved.model.sizing.weightGb, kvCacheGb: resolved.kvCacheGb, overheadGb: resolved.model.sizing.overheadGb },
     profile,
   );
 
