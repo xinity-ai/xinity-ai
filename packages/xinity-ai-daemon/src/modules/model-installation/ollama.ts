@@ -1,5 +1,5 @@
 import { Ollama, type ProgressResponse } from "ollama";
-import { bufferTime, concatMap, defer, endWith, from, ignoreElements, map, merge, mergeMap, type Observable, switchMap, tap } from "rxjs";
+import { bufferTime, catchError, concatMap, defer, EMPTY, endWith, from, ignoreElements, map, merge, mergeMap, type Observable, switchMap, tap } from "rxjs";
 import { config } from "../../config";
 import type { SyncInstallation } from "../db-sync";
 import { rootLogger } from "../../logger";
@@ -49,6 +49,21 @@ async function resolveInstallations(installations: Array<SyncInstallation>): Pro
   return resolved;
 }
 
+/** Reports the failure so the dashboard can show it, and ends this pull without erroring the whole sync. */
+function reportPullFailure$({ installation, tag }: ResolvedInstallation, err: unknown): Observable<never> {
+  log.error({ err, tag, installationId: installation.id }, "Failed to pull Ollama model");
+  return defer(async () => {
+    try {
+      await updateInstallationState(installation.id, "failed", {
+        statusMessage: "Ollama model pull failed",
+        errorMessage: err instanceof Error ? err.message : String(err),
+      });
+    } catch (reportErr) {
+      log.error({ err: reportErr, tag, installationId: installation.id }, "Failed to report Ollama pull failure");
+    }
+  }).pipe(ignoreElements());
+}
+
 function consumePull$({ installation, tag }: ResolvedInstallation): Observable<void> {
   return defer(() => from(getOllamaClient().pull({ model: tag, stream: true }))).pipe(
     switchMap((res) => from(res)),
@@ -64,6 +79,7 @@ function consumePull$({ installation, tag }: ResolvedInstallation): Observable<v
         }
       }
     }),
+    catchError((err) => reportPullFailure$({ installation, tag }, err)),
     ignoreElements(),
     endWith(void 0)
   );
@@ -116,7 +132,12 @@ export function syncOllamaInstallations$(
         switchMap(({ toRemove, toAdd, present }) => {
           const remove$ = from(toRemove).pipe(
             mergeMap(
-              (i) => defer(() => from(getOllamaClient().delete({ model: i.model }))),
+              (i) => defer(() => from(getOllamaClient().delete({ model: i.model }))).pipe(
+                catchError((err) => {
+                  log.error({ err, model: i.model }, "Failed to delete obsolete Ollama model");
+                  return EMPTY;
+                })
+              ),
               OLLAMA_CONCURRENCY
             )
           );
