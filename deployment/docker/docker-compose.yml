@@ -189,11 +189,15 @@ services:
       - xinity-network
 
   caddy:
-    image: caddy:2-alpine
+    # Caddy 2.11.6 cuts the tether's daemon streams 60s after they open
+    # (caddyserver/caddy#8103), fixed in 2.11.7.
+    # TODO: pin caddy:2.11.7-alpine once that image is published.
+    image: caddy:2.11.4-alpine
     restart: unless-stopped
     depends_on:
       - gateway
       - dashboard
+      - tether
     ports:
       - "80:80"
       - "443:443"
@@ -203,12 +207,17 @@ services:
       DASHBOARD_SUBDOMAIN: ${DASHBOARD_SUBDOMAIN:-dashboard}
       GATEWAY_SUBDOMAIN: ${GATEWAY_SUBDOMAIN:-api}
       INFOSERVER_SUBDOMAIN: ${INFOSERVER_SUBDOMAIN:-sysinfo}
+      TETHER_SUBDOMAIN: ${TETHER_SUBDOMAIN:-tether}
+      TETHER_ROUTE: ${TETHER_ROUTE:-on}
       GATEWAY_PORT: ${GATEWAY_PORT:-4121}
       DASHBOARD_PORT: ${DASHBOARD_PORT:-5121}
       INFOSERVER_PORT: ${INFOSERVER_PORT:-8090}
+      TETHER_PORT: ${TETHER_PORT:-4020}
       ACME_EMAIL: ${ACME_EMAIL:-}
     volumes:
       - ../reverse-proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../reverse-proxy/tether-on.caddy:/etc/caddy/tether-on.caddy:ro
+      - ../reverse-proxy/tether-off.caddy:/etc/caddy/tether-off.caddy:ro
       - caddy-data:/data
       - caddy-config:/config
     networks:

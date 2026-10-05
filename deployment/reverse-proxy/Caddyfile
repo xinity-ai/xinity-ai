@@ -1,10 +1,11 @@
 # Xinity AI Caddy Configuration
 # Automatic HTTPS with Let's Encrypt
 #
-# Used as-is by the Docker Compose deployment, which mounts this file and
-# supplies the environment variables below. The upstream hostnames (gateway,
-# dashboard, infoserver) are Compose service names; replace them with real
-# host:port pairs when running Caddy outside that stack.
+# Used as-is by the Docker Compose deployment, which mounts this file and the
+# tether-*.caddy files next to it and supplies the environment variables below.
+# The upstream hostnames (gateway, dashboard, infoserver, tether) are Compose
+# service names; replace them with real host:port pairs when running Caddy
+# outside that stack.
 #
 # See docs/security/reverse-proxy.md for what each gateway setting is for.
 
@@ -102,3 +103,6 @@
 		format json
 	}
 }
+
+# Tether, switched by TETHER_ROUTE (on or off)
+import tether-{$TETHER_ROUTE}.caddy

@@ -1,0 +1,30 @@
+# Tether
+# Imported by the Caddyfile while TETHER_ROUTE is on (the default).
+{$TETHER_SUBDOMAIN}.{$DOMAIN} {
+	# /health reports database reachability and /metrics belongs to the
+	# scrape path, so only the daemon API is public.
+	@daemon path /api/*
+	handle @daemon {
+		reverse_proxy tether:{$TETHER_PORT} {
+			# Without this, a config reload cuts every daemon stream at once.
+			stream_close_delay 5m
+		}
+	}
+	handle {
+		respond 404
+	}
+
+	# Security headers
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+	}
+
+	# No `encode` here: compression would hold back the event stream.
+
+	# Logging
+	log {
+		output file /data/logs/tether-access.log
+		format json
+	}
+}

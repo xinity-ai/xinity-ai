@@ -1,0 +1,2 @@
+# Imported by the Caddyfile when TETHER_ROUTE=off, so the tether is only
+# reachable on its own port.

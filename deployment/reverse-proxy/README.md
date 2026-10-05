@@ -5,6 +5,7 @@ The gateway expects to sit behind a reverse proxy that terminates TLS. These are
 | File | Notes |
 |---|---|
 | [`Caddyfile`](Caddyfile) | Mounted directly by the [Docker Compose deployment](../docker/README.md). Upstreams are Compose service names, so adjust them for other environments. |
+| [`tether-on.caddy`](tether-on.caddy), [`tether-off.caddy`](tether-off.caddy) | Imported by the `Caddyfile` according to `TETHER_ROUTE`. Copy both along with it. |
 | [`nginx.conf`](nginx.conf) | Template. Replace every `CHANGEME` and copy the blocks into your nginx configuration. |
 
 On NixOS the `allinone` module configures Caddy for you; see [`nix/modules/xinity-ai-allinone.mod.nix`](../../nix/modules/xinity-ai-allinone.mod.nix).

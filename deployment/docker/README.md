@@ -18,7 +18,7 @@ Daemons (the GPU inference workers) are not in this stack. Install them per infe
 - Docker Engine 24.0+
 - Docker Compose v2
 - The `xinity` CLI on a host that can reach the Compose Postgres on `127.0.0.1:5432`. Required to run migrations and to manage the running instance.
-- For the `caddy` profile: a domain pointing at this host plus ports 80/443 free.
+- For the `caddy` profile: a domain pointing at this host plus ports 80/443 free. Each routed subdomain, `tether` included, needs a DNS record for this host.
 
 ## Quick Start
 
@@ -109,7 +109,9 @@ For single-server deployments, plain `.env` (mode 600) is fine. Container env sh
 
 `setup.sh` already generates `secrets/db_connection_url`, `secrets/better_auth_secret`, `secrets/metrics_auth`, `secrets/tether_secret`, and `secrets/xinity_secret_key`, and `docker-compose.yml` wires them into the relevant services as `*_FILE` environment variables (e.g. `DB_CONNECTION_URL_FILE`, `TETHER_SECRET_FILE`).
 
-Two secrets are also needed off this host. Every inference node authenticates to the tether with `secrets/tether_secret` as `TETHER_SECRET`, and decrypts dashboard-managed settings with `secrets/xinity_secret_key` as `XINITY_SECRET_KEY`, which it refuses to start without. `cat` both and supply them when `xinity up daemon` prompts. The key belongs to the deployment, so every node gets this same value rather than one of its own. The tether is published on all interfaces (port 4020, unlike the other services which bind to `127.0.0.1`) because daemons connect to it from other machines. To serve them over HTTPS, mount a certificate and key and set `XINITY_TLS_CERT_FILE` and `XINITY_TLS_KEY_FILE`. Nodes then use `TETHER_URL=https://<host>:4020`. See [TLS](../../docs/security/tls.md).  
+Two secrets are also needed off this host. Every inference node authenticates to the tether with `secrets/tether_secret` as `TETHER_SECRET`, and decrypts dashboard-managed settings with `secrets/xinity_secret_key` as `XINITY_SECRET_KEY`, which it refuses to start without. `cat` both and supply them when `xinity up daemon` prompts. The key belongs to the deployment, so every node gets this same value rather than one of its own.
+
+With the `caddy` profile, nodes reach the tether at `TETHER_URL=https://tether.<domain>`, where Caddy serves only its `/api` endpoints. Set `TETHER_ROUTE=off` to drop that route. The tether is also published on all interfaces (port 4020, unlike the other services which bind to `127.0.0.1`), for nodes that connect to it directly. To serve them over HTTPS there, mount a certificate and key and set `XINITY_TLS_CERT_FILE` and `XINITY_TLS_KEY_FILE`. Nodes then use `TETHER_URL=https://<host>:4020`. See [TLS](../../docs/security/tls.md).
 
 For any other *Xinity* service env var `VAR`, set `VAR_FILE` to a file path and the service reads the file at startup (direct env vars take precedence over the `_FILE` variant); wire it in via a `docker-compose.override.yml` using Compose's `secrets:` block.
 
