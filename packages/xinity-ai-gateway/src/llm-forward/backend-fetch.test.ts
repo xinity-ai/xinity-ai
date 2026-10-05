@@ -56,9 +56,9 @@ describe("backendFetch", () => {
 });
 
 // The gateway signs the path it builds and the daemon verifies the one it receives, so the
-// encoded specifier has to cross a real connection unchanged.
+// path has to cross a real connection unchanged.
 describe("across a real connection", () => {
-  const daemonVerdictFor = async (specifier: string) => {
+  const daemonVerdictFor = async (installationId: string) => {
     let verdict: unknown;
     const server = Bun.serve({
       port: 0,
@@ -74,7 +74,7 @@ describe("across a real connection", () => {
 
     try {
       await backendFetch(
-        backendUrl(`127.0.0.1:${server.port}`, specifier, "/v1/chat/completions", false),
+        backendUrl(`127.0.0.1:${server.port}`, installationId, "/v1/chat/completions", false),
         { method: "POST", authToken: TOKEN, body: "{}" },
       );
     } finally {
@@ -83,12 +83,8 @@ describe("across a real connection", () => {
     return verdict;
   };
 
-  test("the signature still matches when the model name contains a slash", async () => {
-    expect(await daemonVerdictFor("meta-llama/Llama-3.1-8B")).toEqual({ ok: true });
-  });
-
-  test("the signature still matches when the model name contains a colon", async () => {
-    expect(await daemonVerdictFor("llama3:latest")).toEqual({ ok: true });
+  test("the signature matches the path the daemon receives", async () => {
+    expect(await daemonVerdictFor("3f1a2b3c-0000-4000-8000-000000000001")).toEqual({ ok: true });
   });
 
   test("requests the AI SDK makes are signed, never sent with the token as a bearer", async () => {
@@ -106,7 +102,7 @@ describe("across a real connection", () => {
 
     const provider = nodeProvider({
       host: `127.0.0.1:${server.port}`,
-      specifier: "llama3:latest",
+      installationId: "inst-1",
       tls: false,
       authToken: TOKEN,
       driver: "ollama",

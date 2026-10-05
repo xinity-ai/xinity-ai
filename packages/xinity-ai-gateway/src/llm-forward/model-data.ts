@@ -42,6 +42,7 @@ const log = rootLogger.child({ name: "model-data" });
 
 
 type CachedDeployment = {
+  id: string;
   specifier: string;
   earlySpecifier: string | null;
   progress: number;
@@ -62,7 +63,7 @@ export function invalidateModelSources(): void {
   modelSourcesCache.clear();
 }
 
-const DEPLOYMENT_CACHE_PREFIX = "gateway:dep:";
+const DEPLOYMENT_CACHE_PREFIX = "gateway:deployment:";
 const SCAN_BATCH = 200;
 
 /** The notified deployment id cannot be mapped back to the org and specifier keying this cache. */
@@ -95,6 +96,7 @@ async function publicModelSpecifierToModelSource(orgId: string, specifier: strin
         canaryProgressUntil: d.canaryProgressUntil !== null ? new Date(d.canaryProgressUntil) : null,
       };
       return {
+        deploymentId: d.id,
         progress: calcCanaryProgress(deploymentForCalc as any),
         primary: d.specifier,
         early: d.earlySpecifier,
@@ -119,6 +121,7 @@ async function publicModelSpecifierToModelSource(orgId: string, specifier: strin
   }
 
   const cachedData: CachedDeployment = {
+    id: deployment.id,
     specifier: deployment.specifier,
     earlySpecifier: deployment.earlySpecifier,
     progress: deployment.progress,
@@ -130,6 +133,7 @@ async function publicModelSpecifierToModelSource(orgId: string, specifier: strin
     .catch((err: unknown) => log.warn({ err }, "Redis error in set deployment cache"));
 
   return {
+    deploymentId: deployment.id,
     progress: calcCanaryProgress(deployment),
     primary: deployment.specifier,
     early: deployment.earlySpecifier,
@@ -137,6 +141,7 @@ async function publicModelSpecifierToModelSource(orgId: string, specifier: strin
 }
 
 type HostLocation = {
+  installationId: string;
   nodeId: string;
   machineName: string | null;
   driver: string;
@@ -149,9 +154,10 @@ type ModelSources = {
   byHost: Map<string, HostLocation>;
 };
 
-async function getModelSources(specifier: string): Promise<ModelSources> {
+async function getModelSources(deploymentId: string, specifier: string): Promise<ModelSources> {
+  const cacheKey = `${deploymentId}:${specifier}`;
   const now = Date.now();
-  const cached = modelSourcesCache.get(specifier);
+  const cached = modelSourcesCache.get(cacheKey);
   if (cached && cached.expiresAt > now) {
     return cached.data;
   }
@@ -159,6 +165,7 @@ async function getModelSources(specifier: string): Promise<ModelSources> {
   const generationAtQuery = sourcesGeneration;
 
   const modelLocations = await getDB().select({
+    installationId: modelInstallationT.id,
     nodeId: aiNodeT.id,
     machineName: aiNodeT.machineName,
     host: aiNodeT.host,
@@ -179,6 +186,8 @@ async function getModelSources(specifier: string): Promise<ModelSources> {
       AND ${modelInstallationStateT.lifecycleState} = 'ready'
     `)
     .where(sql`
+      ${modelInstallationT.deploymentId} = ${deploymentId}
+    AND
       ${installationMatchesLookup(specifier)}
     AND
       ${modelInstallationT.deletedAt} IS NULL
@@ -187,12 +196,12 @@ async function getModelSources(specifier: string): Promise<ModelSources> {
   const byHost = new Map<string, HostLocation>();
   for (const loc of modelLocations) {
     const key = `${loc.host}:${loc.nodePort}`;
-    byHost.set(key, { nodeId: loc.nodeId, machineName: loc.machineName, driver: loc.driver, authToken: loc.authToken, tls: loc.tls });
+    byHost.set(key, { installationId: loc.installationId, nodeId: loc.nodeId, machineName: loc.machineName, driver: loc.driver, authToken: loc.authToken, tls: loc.tls });
   }
 
   const result: ModelSources = { hosts: [...byHost.keys()], byHost };
   if (generationAtQuery === sourcesGeneration) {
-    modelSourcesCache.set(specifier, { data: result, expiresAt: now + config.cache.modelTtlSeconds() * 1000 });
+    modelSourcesCache.set(cacheKey, { data: result, expiresAt: now + config.cache.modelTtlSeconds() * 1000 });
   }
 
   return result;
@@ -252,7 +261,9 @@ export type ModelInfo = {
   nodeId: string | null;
   /** Daemon host:port to route requests through. */
   host: string;
-  /** Canonical model identifier; used to route to the right daemon installation. */
+  /** Daemon installation the request is routed to. */
+  installationId: string;
+  /** Canonical model identifier. */
   specifier: string;
   /** Driver-side provider model name (e.g. gemma3:latest); used as the OpenAI body's `model` field. */
   model: string;
@@ -284,9 +295,9 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, prefi
   }
   const emptySources: ModelSources = { hosts: [], byHost: new Map() };
   const [finalSources, earlySources] = await Promise.all([
-    getModelSources(accessInfo.primary),
+    getModelSources(accessInfo.deploymentId, accessInfo.primary),
     accessInfo.early
-      ? getModelSources(accessInfo.early)
+      ? getModelSources(accessInfo.deploymentId, accessInfo.early)
       : Promise.resolve(emptySources),
   ]);
 
@@ -309,9 +320,11 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, prefi
     : (accessInfo.early ?? accessInfo.primary);
 
   const location = finalSources.byHost.get(result.host) ?? earlySources.byHost.get(result.host);
-  const driver = location?.driver ?? "ollama";
-  const authToken = location?.authToken ?? null;
-  const tls = location?.tls ?? false;
+  if (!location) {
+    result.release();
+    return { status: "unavailable" };
+  }
+  const { driver, authToken, tls } = location;
   const driverProvider = driver as "vllm" | "ollama";
 
   const meta = await resolveCatalogMeta(resolvedSpecifier, driverProvider).catch((err: unknown) => {
@@ -322,7 +335,8 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, prefi
   return {
     status: "found",
     info: {
-      nodeId: location?.nodeId ?? null,
+      installationId: location.installationId,
+      nodeId: location.nodeId,
       host: result.host,
       specifier: resolvedSpecifier,
       // Best-effort pass-through: when the catalog cannot resolve the specifier,

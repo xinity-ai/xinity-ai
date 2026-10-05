@@ -256,6 +256,7 @@ async function main() {
   }
 
   const deploymentIds: string[] = [];
+  const deploymentIdBySpecifier = new Map<string, string>();
   for (const publicSpecifier of uniqueModels.keys()) {
     const replicaCount = machines.filter((m) => m.models.some((m2) => m2.publicSpecifier === publicSpecifier)).length;
     const [dep] = await db.insert(modelDeploymentT).values({
@@ -268,6 +269,7 @@ async function main() {
       progress: 100,
     }).returning();
     deploymentIds.push(dep!.id);
+    deploymentIdBySpecifier.set(publicSpecifier, dep!.id);
   }
 
   // Create nodes and their model installations.
@@ -293,6 +295,7 @@ async function main() {
     for (const model of machine.models) {
       const [installation] = await db.insert(modelInstallationT).values({
         nodeId: node!.id,
+        deploymentId: deploymentIdBySpecifier.get(model.publicSpecifier)!,
         specifier: model.publicSpecifier,
         estCapacity: model.estCapacity,
         kvCacheCapacity: 0,

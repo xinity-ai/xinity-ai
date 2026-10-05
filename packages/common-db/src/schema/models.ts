@@ -104,6 +104,8 @@ export type AiNode = InferSelectModel<typeof aiNodeT>;
 export const modelInstallationT = pgTable("model_installation", {
   id: uuid().primaryKey().defaultRandom(),
   nodeId: uuid("node_id").notNull().references(() => aiNodeT.id, { onDelete: "cascade" }),
+  /** The deployment this installation serves. An installation never serves more than one. */
+  deploymentId: uuid("deployment_id").notNull().references(() => modelDeploymentT.id, { onDelete: "cascade" }),
   /** Canonical model identifier. */
   specifier: text().notNull(),
   /** estimated total GPU capacity required (model weights + KV cache), taken up on the selected node */
@@ -122,17 +124,15 @@ export const modelInstallationT = pgTable("model_installation", {
   updatedAt,
 }, table => [
   index("model_installation_node_id_idx").on(table.nodeId),
+  index("model_installation_deployment_id_idx").on(table.deploymentId),
   index("model_installation_specifier_idx").on(table.specifier),
   index("model_installation_deleted_at_idx").on(table.deletedAt),
 ]);
 export type ModelInstallation = InferSelectModel<typeof modelInstallationT>;
 
-/** SQL: deployment matches an installation by canonical specifier.
+/** SQL: the installation serves the deployment.
  * Use as the JOIN ON condition between modelDeploymentT and modelInstallationT. */
-export const deploymentMatchesInstallation = sql`
-  (${modelDeploymentT.specifier} = ${modelInstallationT.specifier}
-  OR ${modelDeploymentT.earlySpecifier} = ${modelInstallationT.specifier})
-`;
+export const deploymentMatchesInstallation = sql`${modelDeploymentT.id} = ${modelInstallationT.deploymentId}`;
 
 /** SQL: installation matches the given canonical specifier. */
 export function installationMatchesLookup(value: string) {

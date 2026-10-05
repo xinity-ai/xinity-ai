@@ -103,7 +103,7 @@ describe("xinity-ai-gateway chat completion", () => {
 
     const publicSpecifier = `deleted-deploy-${orgId}`;
     const internalModel = `deleted-internal-${orgId}`;
-    await createModelDeployment({
+    const deployment = await createModelDeployment({
       orgId,
       publicSpecifier,
       specifier: internalModel,
@@ -113,6 +113,7 @@ describe("xinity-ai-gateway chat completion", () => {
     const mockServer = await startMockChatCompletionServer();
     const node = await createAiNode({ port: mockServer.port });
     await createModelInstallation({
+      deploymentId: deployment.id,
       nodeId: node.id,
       specifier: internalModel,
       port: mockServer.port,
@@ -142,7 +143,7 @@ describe("xinity-ai-gateway chat completion", () => {
 
     const publicSpecifier = `deleted-node-${orgId}`;
     const internalModel = `deleted-node-internal-${orgId}`;
-    await createModelDeployment({
+    const deployment = await createModelDeployment({
       orgId,
       publicSpecifier,
       specifier: internalModel,
@@ -151,6 +152,7 @@ describe("xinity-ai-gateway chat completion", () => {
     const mockServer = await startMockChatCompletionServer();
     const node = await createAiNode({ deletedAt: new Date() });
     await createModelInstallation({
+      deploymentId: deployment.id,
       nodeId: node.id,
       specifier: internalModel,
       port: mockServer.port,
@@ -180,7 +182,7 @@ describe("xinity-ai-gateway chat completion", () => {
 
     const publicSpecifier = `public-${orgId}`;
     const internalModel = `internal-${orgId}`;
-    await createModelDeployment({
+    const deployment = await createModelDeployment({
       orgId,
       publicSpecifier,
       specifier: internalModel,
@@ -203,6 +205,7 @@ describe("xinity-ai-gateway chat completion", () => {
 
     const node = await createAiNode({ port: mockServer.port });
     await createModelInstallation({
+      deploymentId: deployment.id,
       nodeId: node.id,
       specifier: internalModel,
       port: mockServer.port,

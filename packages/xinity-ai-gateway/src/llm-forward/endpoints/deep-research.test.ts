@@ -181,7 +181,7 @@ describe("deep research", () => {
 
   test("rejects when model lacks tool support", async () => {
     getModelInfo.mockImplementationOnce(async () => modelFound({
-      nodeId: "node-1", host: `localhost:${server.port}`, specifier: "test-model", model: "test-model",
+      installationId: "inst-1", nodeId: "node-1", host: `localhost:${server.port}`, specifier: "test-model", model: "test-model",
       driver: "vllm", authToken: null, tls: false, tags: [],
       maxContextLength: 131072, release: () => {},
     }));

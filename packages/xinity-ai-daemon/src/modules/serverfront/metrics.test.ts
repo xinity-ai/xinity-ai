@@ -158,7 +158,7 @@ describe("engine metrics", () => {
   });
 
   test("appends the engine exposition unmodified", async () => {
-    updateRegistry([{ specifier: "qwen3", port: 8001, driver: "vllm" }]);
+    updateRegistry([{ id: "inst-qwen3", specifier: "qwen3", port: 8001, driver: "vllm" }]);
     const fetchMock = mock(async () => new Response(VLLM_EXPOSITION));
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
@@ -170,7 +170,7 @@ describe("engine metrics", () => {
   });
 
   test("drops the engine's python and http collectors, which collide with the daemon's own", async () => {
-    updateRegistry([{ specifier: "qwen3", port: 8001, driver: "vllm" }]);
+    updateRegistry([{ id: "inst-qwen3", specifier: "qwen3", port: 8001, driver: "vllm" }]);
     globalThis.fetch = mock(async () => new Response([
       "# HELP process_resident_memory_bytes Resident memory size in bytes.",
       "# TYPE process_resident_memory_bytes gauge",
@@ -195,8 +195,8 @@ describe("engine metrics", () => {
 
   test("keeps the reachable engine when another one fails", async () => {
     updateRegistry([
-      { specifier: "hung", port: 8001, driver: "vllm" },
-      { specifier: "qwen3", port: 8002, driver: "vllm" },
+      { id: "inst-hung", specifier: "hung", port: 8001, driver: "vllm" },
+      { id: "inst-qwen3", specifier: "qwen3", port: 8002, driver: "vllm" },
     ]);
     globalThis.fetch = mock(async (input: string) => {
       if (input.includes("8001")) {
@@ -212,7 +212,7 @@ describe("engine metrics", () => {
   });
 
   test("drops an engine that answers with an error status", async () => {
-    updateRegistry([{ specifier: "qwen3", port: 8001, driver: "vllm" }]);
+    updateRegistry([{ id: "inst-qwen3", specifier: "qwen3", port: 8001, driver: "vllm" }]);
     globalThis.fetch = mock(async () => new Response("nope", { status: 503 })) as unknown as typeof fetch;
 
     const body = await (await handleDaemonMetrics(makeReq())).text();
@@ -222,7 +222,7 @@ describe("engine metrics", () => {
   });
 
   test("does not scrape an ollama installation", async () => {
-    updateRegistry([{ specifier: "llama3.3", port: 8003, driver: "ollama" }]);
+    updateRegistry([{ id: "inst-llama", specifier: "llama3.3", port: 8003, driver: "ollama" }]);
     const fetchMock = mock(async () => new Response(VLLM_EXPOSITION));
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 

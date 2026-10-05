@@ -55,7 +55,7 @@ describe("classifyStreamError", () => {
 });
 
 describe("forwardBackendError", () => {
-  const route = { model: "llama3:latest", nodeId: "node-1", host: "10.0.0.5:4010", specifier: "llama3:latest", authToken: "t" };
+  const route = { model: "llama3:latest", nodeId: "node-1", host: "10.0.0.5:4010", installationId: "inst-1", specifier: "llama3:latest", authToken: "t" };
 
   function capturingLog() {
     const log = rootLogger.child({ name: "util-test" });

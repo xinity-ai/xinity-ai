@@ -42,9 +42,10 @@ beforeAll(() => {
   mockPort = server.port;
 
   updateRegistry([
-    { specifier: "llama3:latest", port: mockPort, driver: "ollama" },
-    { specifier: "meta-llama/Llama-3.1-8B", port: mockPort, driver: "vllm" },
-    { specifier: "dead-backend", port: 1, driver: "vllm" },
+    { id: "inst-ollama", specifier: "llama3:latest", port: mockPort, driver: "ollama" },
+    { id: "inst-vllm", specifier: "meta-llama/Llama-3.1-8B", port: mockPort, driver: "vllm" },
+    { id: "inst-vllm-other-deployment", specifier: "meta-llama/Llama-3.1-8B", port: 1, driver: "vllm" },
+    { id: "inst-dead", specifier: "dead-backend", port: 1, driver: "vllm" },
   ]);
 });
 
@@ -77,19 +78,19 @@ function proxyRequest(
 
 describe("proxy auth", () => {
   test("rejects a missing signature", async () => {
-    const res = await proxyRequest("/proxy/llama3%3Alatest/v1/chat/completions", { token: null });
+    const res = await proxyRequest("/proxy/inst-ollama/v1/chat/completions", { token: null });
     expect(res.status).toBe(401);
     expect(await res.text()).toContain("No Authorization header");
   });
 
   test("rejects a signature made with the wrong token", async () => {
-    const res = await proxyRequest("/proxy/llama3%3Alatest/v1/chat/completions", { token: "wrong" });
+    const res = await proxyRequest("/proxy/inst-ollama/v1/chat/completions", { token: "wrong" });
     expect(res.status).toBe(401);
     expect(await res.text()).toContain("does not match this node's auth token");
   });
 
   test("rejects the raw token as a bearer header", async () => {
-    const url = new URL("/proxy/llama3%3Alatest/v1/chat/completions", "http://localhost");
+    const url = new URL("/proxy/inst-ollama/v1/chat/completions", "http://localhost");
     const req = new Request(url.toString(), {
       method: "POST",
       headers: { authorization: `Bearer ${getAuthToken()}` },
@@ -101,24 +102,24 @@ describe("proxy auth", () => {
 
   // Every model on the node shares one token, so the path is what keeps a captured header from
   // being pointed at a different model.
-  test("rejects a signature made for another model's path", async () => {
-    const res = await proxyRequest("/proxy/llama3%3Alatest/v1/chat/completions", {
-      signedPath: "/proxy/meta-llama%2FLlama-3.1-8B/v1/chat/completions",
+  test("rejects a signature made for another installation's path", async () => {
+    const res = await proxyRequest("/proxy/inst-ollama/v1/chat/completions", {
+      signedPath: "/proxy/inst-vllm/v1/chat/completions",
       body: { model: "llama3:latest", messages: [] },
     });
     expect(res.status).toBe(401);
   });
 
   test("rejects a signature that omits the query string", async () => {
-    const res = await proxyRequest("/proxy/llama3%3Alatest/v1/chat/completions?stream=true", {
-      signedPath: "/proxy/llama3%3Alatest/v1/chat/completions",
+    const res = await proxyRequest("/proxy/inst-ollama/v1/chat/completions?stream=true", {
+      signedPath: "/proxy/inst-ollama/v1/chat/completions",
       body: { model: "llama3:latest", messages: [] },
     });
     expect(res.status).toBe(401);
   });
 
   test("accepts a request signed with the node token", async () => {
-    const res = await proxyRequest("/proxy/llama3%3Alatest/v1/chat/completions", {
+    const res = await proxyRequest("/proxy/inst-ollama/v1/chat/completions", {
       body: { model: "llama3:latest", messages: [] },
     });
     expect(res.status).toBe(200);
@@ -127,7 +128,7 @@ describe("proxy auth", () => {
 
 describe("proxy routing", () => {
   test("rejects a signed request sent a second time", async () => {
-    const path = "/proxy/llama3%3Alatest/v1/chat/completions";
+    const path = "/proxy/inst-ollama/v1/chat/completions";
     const url = new URL(`http://daemon${path}`);
     const header = signRequest(getAuthToken(), { method: "POST", path });
     const send = () => handleProxyRequest(new Request(url.toString(), { method: "POST", headers: { authorization: header } }), url);
@@ -143,28 +144,25 @@ describe("proxy routing", () => {
     expect(res.status).toBe(400);
   });
 
-  test("returns 404 for unknown model", async () => {
+  test("returns 404 for an unknown installation", async () => {
     const res = await proxyRequest("/proxy/nonexistent/v1/chat/completions");
     expect(res.status).toBe(404);
   });
 
-  test("decodes URL-encoded model names", async () => {
-    const res = await proxyRequest("/proxy/llama3%3Alatest/v1/chat/completions", {
-      body: { model: "llama3:latest", messages: [] },
-    });
-    expect(res.status).toBe(200);
-  });
-
-  test("handles model names with encoded slashes", async () => {
-    const res = await proxyRequest("/proxy/meta-llama%2FLlama-3.1-8B/v1/chat/completions", {
+  test("routes two installations of one model on the node to their own backends", async () => {
+    const own = await proxyRequest("/proxy/inst-vllm/v1/chat/completions", {
       body: { model: "meta-llama/Llama-3.1-8B", messages: [] },
     });
-    expect(res.status).toBe(200);
+    const other = await proxyRequest("/proxy/inst-vllm-other-deployment/v1/chat/completions", {
+      body: { model: "meta-llama/Llama-3.1-8B", messages: [] },
+    });
+    expect(own.status).toBe(200);
+    expect(other.status).toBe(502);
   });
 
   test("forwards query string to backend", async () => {
     lastUpstreamRequest = null;
-    await proxyRequest("/proxy/llama3%3Alatest/v1/chat/completions?stream=true", {
+    await proxyRequest("/proxy/inst-ollama/v1/chat/completions?stream=true", {
       body: { model: "llama3:latest", messages: [] },
     });
     expect(lastUpstreamRequest!.path).toBe("/v1/chat/completions?stream=true");
@@ -173,7 +171,7 @@ describe("proxy routing", () => {
 
 describe("proxy pass-through", () => {
   test("forwards backend response status and body", async () => {
-    const res = await proxyRequest("/proxy/llama3%3Alatest/v1/chat/completions", {
+    const res = await proxyRequest("/proxy/inst-ollama/v1/chat/completions", {
       body: { model: "llama3:latest", messages: [] },
     });
     expect(res.status).toBe(200);
@@ -182,14 +180,14 @@ describe("proxy pass-through", () => {
   });
 
   test("forwards backend 404 as-is", async () => {
-    const res = await proxyRequest("/proxy/llama3%3Alatest/v1/nonexistent", {
+    const res = await proxyRequest("/proxy/inst-ollama/v1/nonexistent", {
       body: {},
     });
     expect(res.status).toBe(404);
   });
 
   test("returns 502 when backend is unreachable", async () => {
-    const res = await proxyRequest("/proxy/dead-backend/v1/chat/completions", {
+    const res = await proxyRequest("/proxy/inst-dead/v1/chat/completions", {
       body: {},
     });
     expect(res.status).toBe(502);
@@ -199,7 +197,7 @@ describe("proxy pass-through", () => {
 describe("proxy cancellation", () => {
   test("cancels the backend request when the caller gives up", async () => {
     const caller = new AbortController();
-    const res = await proxyRequest("/proxy/meta-llama%2FLlama-3.1-8B/v1/endless", { method: "GET", signal: caller.signal });
+    const res = await proxyRequest("/proxy/inst-vllm/v1/endless", { method: "GET", signal: caller.signal });
     const reader = res.body!.getReader();
     await reader.read();
 

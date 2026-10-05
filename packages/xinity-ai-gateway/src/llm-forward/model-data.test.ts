@@ -97,8 +97,8 @@ function deploymentResult(d: {
   };
 }
 
-function installationResult(r: { host: string; nodePort: number; modelPort: number; driver: string }): Record<string, unknown> {
-  return { host: r.host, nodePort: r.nodePort, modelPort: r.modelPort, driver: r.driver };
+function installationResult(r: { host: string; nodePort: number; modelPort: number; driver: string; installationId?: string }): Record<string, unknown> {
+  return { installationId: r.installationId ?? "inst-1", host: r.host, nodePort: r.nodePort, modelPort: r.modelPort, driver: r.driver };
 }
 
 const noop = () => {};
@@ -186,15 +186,27 @@ describe("getModelInfo", () => {
     expect(result!.host).toBe("node-b:11434");
   });
 
-  test("falls back to 'ollama' driver when host not in either driver map", async () => {
+  test("reports unavailable when the chosen host serves none of the deployment's installations", async () => {
     queryQueue.push([deploymentResult({ specifier: "llama3:latest" })]);
     queryQueue.push([installationResult({ host: "192.168.1.10", nodePort: 11434, modelPort: 11434, driver: "vllm" })]);
-    mockSelectHost.mockResolvedValue({ host: "unknown-host:8000", useFinalModel: true, release: noop });
+    const release = mock(() => {});
+    mockSelectHost.mockResolvedValue({ host: "unknown-host:8000", useFinalModel: true, release });
 
-    const result = infoOf(await getModelInfo("org-1", "my-model"));
+    const lookup = await getModelInfo("org-1", "my-model");
 
-    expect(result).toBeDefined();
-    expect(result!.driver).toBe("ollama");
+    expect(lookup.status).toBe("unavailable");
+    expect(release).toHaveBeenCalled();
+  });
+
+  test("routes to the installation serving the chosen host", async () => {
+    queryQueue.push([deploymentResult({ specifier: "mistral:latest" })]);
+    queryQueue.push([
+      installationResult({ host: "gpu-a", nodePort: 8000, modelPort: 8000, driver: "vllm", installationId: "inst-a" }),
+      installationResult({ host: "gpu-b", nodePort: 8000, modelPort: 8000, driver: "vllm", installationId: "inst-b" }),
+    ]);
+    mockSelectHost.mockResolvedValue({ host: "gpu-b:8000", useFinalModel: true, release: noop });
+
+    expect(infoOf(await getModelInfo("org-1", "my-model"))!.installationId).toBe("inst-b");
   });
 
   test("correctly resolves vllm driver from driver map", async () => {
@@ -359,7 +371,8 @@ describe("getModelInfo", () => {
 
   test("a sources query already in flight does not repopulate the cache it raced", async () => {
     // Served from redis so the only database query is the sources lookup we gate.
-    redisStore.set("gateway:dep:org-1:my-model", JSON.stringify({
+    redisStore.set("gateway:deployment:org-1:my-model", JSON.stringify({
+      id: "dep-id",
       specifier: "llama3:latest",
       earlySpecifier: null,
       progress: 100,
@@ -396,8 +409,8 @@ describe("invalidateDeployments", () => {
     const sendSpy = spyOn(redis, "send").mockImplementation(async (cmd: string, args: string[]) => {
       if (cmd === "SCAN") {
         return args[0] === "0"
-          ? ["7", ["gateway:dep:org-1:a"]]
-          : ["0", ["gateway:dep:org-2:b"]];
+          ? ["7", ["gateway:deployment:org-1:a"]]
+          : ["0", ["gateway:deployment:org-2:b"]];
       }
       deleted.push(args);
       return 1 as any;
@@ -405,7 +418,7 @@ describe("invalidateDeployments", () => {
 
     await invalidateDeployments();
 
-    expect(deleted).toEqual([["gateway:dep:org-1:a"], ["gateway:dep:org-2:b"]]);
+    expect(deleted).toEqual([["gateway:deployment:org-1:a"], ["gateway:deployment:org-2:b"]]);
     sendSpy.mockRestore();
   });
 
