@@ -22,7 +22,7 @@ With `least-connections`, the affinity hint is only honored if the hinted node's
 
 ### Observability
 
-The gateway exposes per-decision load-balancer metrics (candidate host count, selection reason, in-flight connections, canary split, prefix-affinity outcome, Redis fallbacks) via Prometheus, visualized in the "Load Balancing" row of the Xinity Gateway Grafana dashboard. See [Monitoring](monitoring.md#gateway-metrics) for the full metric list.
+The gateway exposes per-decision load-balancer metrics (candidate host count, selection reason, in-flight connections, canary split, canary fallback, prefix-affinity outcome, Redis fallbacks) via Prometheus, visualized in the "Load Balancing" row of the Xinity Gateway Grafana dashboard. See [Monitoring](monitoring.md#gateway-metrics) for the full metric list.
 
 ## Canary Deployments
 

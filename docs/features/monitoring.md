@@ -142,7 +142,7 @@ High-level stats: gateway request rate, error rate, active requests, daemons up,
 
 ### Xinity Gateway
 
-Traffic panels: request rate and latency by endpoint, requests by status, error rate, active requests, input/output token distributions, generation throughput. Model health panels: request rate by model, time-to-first-token, backend errors, client disconnects, failure rate. Organization usage panels: model requests by org, failure rate by org, cumulative token rate by org. Load balancing panels: requests per host, selection reason breakdown, mean candidate hosts and single-candidate share by deployment, in-flight connections per host, canary split, prefix-affinity outcome, Redis fallback events.
+Traffic panels: request rate and latency by endpoint, requests by status, error rate, active requests, input/output token distributions, generation throughput. Model health panels: request rate by model, time-to-first-token, backend errors, client disconnects, failure rate. Organization usage panels: model requests by org, failure rate by org, cumulative token rate by org. Load balancing panels: requests per host, selection reason breakdown, mean candidate hosts and single-candidate share by deployment, in-flight connections per host, canary split, prefix-affinity outcome, Redis fallback events, canary fallback.
 
 ### Xinity GPU / Compute
 
