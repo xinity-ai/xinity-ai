@@ -1,4 +1,5 @@
 import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { TransactionRollbackError } from "common-db";
 
 const mockReturning = mock(() => Promise.resolve([{ id: "node-1" }] as { id: string }[]));
 const mockOnConflictDoUpdate = mock(() => Object.assign(Promise.resolve(), { returning: mockReturning }));
@@ -11,11 +12,29 @@ const mockUpdate = mock(() => ({ set: mockUpdateSet }));
 const mockSelectRows = mock(() => Promise.resolve([] as Record<string, unknown>[]));
 const mockSelect = mock(() => ({ from: () => ({ where: () => mockSelectRows() }) }));
 
-const mockTxInsert = mock(() => ({ values: mockInsertValues }));
-const mockTxUpdate = mock(() => ({ set: mockUpdateSet }));
-const mockTransaction = mock(async (fn: (tx: unknown) => Promise<unknown>) =>
-  fn({ insert: mockTxInsert, update: mockTxUpdate }),
-);
+let txStatements: string[] = [];
+let txCommitted: boolean | undefined;
+const mockTxInsert = mock(() => {
+  txStatements.push("insert");
+  return { values: mockInsertValues };
+});
+const mockTxUpdate = mock(() => {
+  txStatements.push("update");
+  return { set: mockUpdateSet };
+});
+const mockTransaction = mock(async (fn: (tx: unknown) => Promise<unknown>) => {
+  const rollback = () => {
+    throw new TransactionRollbackError();
+  };
+  try {
+    const result = await fn({ insert: mockTxInsert, update: mockTxUpdate, rollback });
+    txCommitted = true;
+    return result;
+  } catch (err) {
+    txCommitted = false;
+    throw err;
+  }
+});
 
 mock.module("./config", () => ({
   config: { tetherSecret: "test", metrics: { auth: undefined } },
@@ -69,6 +88,8 @@ describe("writeRegistration", () => {
     mockOnConflictDoUpdate.mockClear();
     mockUpdateSet.mockClear();
     mockReturning.mockImplementation(() => Promise.resolve([{ id: "node-1" }]));
+    txStatements = [];
+    txCommitted = undefined;
   });
 
   test("writes the node and never stores the request signature", async () => {
@@ -93,7 +114,24 @@ describe("writeRegistration", () => {
 
     await writeRegistration(registration);
 
-    expect(mockTxUpdate).not.toHaveBeenCalled();
+    expect(txStatements).toEqual(["update", "insert"]);
+    expect(txCommitted).toBe(false);
+  });
+
+  test("retires the node already on the host before registering a new id there", async () => {
+    expect(await writeRegistration(registration)).toBe("written");
+
+    expect(txStatements).toEqual(["update", "insert"]);
+    const retired = (mockUpdateSet.mock.calls as unknown as unknown[][])[0]![0] as Record<string, unknown>;
+    expect(retired.available).toBe(false);
+    expect(retired.deletedAt).toBeInstanceOf(Date);
+    expect(txCommitted).toBe(true);
+  });
+
+  test("passes through database errors other than a refused claim", async () => {
+    mockReturning.mockImplementation(() => Promise.reject(new Error("connection lost")));
+
+    await expect(writeRegistration(registration)).rejects.toThrow("connection lost");
   });
 });
 

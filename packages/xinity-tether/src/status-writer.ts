@@ -1,4 +1,4 @@
-import { aiNodeT, inArray, modelInstallationStateT, modelInstallationT, sql } from "common-db";
+import { aiNodeT, inArray, modelInstallationStateT, modelInstallationT, sql, TransactionRollbackError } from "common-db";
 import { keyFingerprint } from "common-env";
 import type { NodeRegistration, InstallationStatePayload } from "common-env";
 import { getDB } from "./db";
@@ -10,12 +10,18 @@ export type RegistrationOutcome = "written" | "identity_mismatch";
 
 /**
  * The pin is enforced by the upsert itself rather than a read followed by a write, so two daemons
- * racing to claim one id cannot both pass the check.
+ * racing to claim one id cannot both pass the check. The old node on the host is retired first
+ * because the live host:port index would reject the insert, and a refused claim rolls that back.
  */
 export async function writeRegistration(reg: NodeRegistration): Promise<RegistrationOutcome> {
   const { nodeId, host, port, protocolFingerprint: _fingerprint, signature: _signature, ...rest } = reg;
 
   const outcome = await getDB().transaction(async (tx): Promise<RegistrationOutcome> => {
+    await tx
+      .update(aiNodeT)
+      .set({ available: false, deletedAt: new Date() })
+      .where(sql`${aiNodeT.host} = ${host} AND ${aiNodeT.port} = ${port} AND ${aiNodeT.deletedAt} IS NULL AND ${aiNodeT.id} <> ${nodeId}`);
+
     const written = await tx
       .insert(aiNodeT)
       .values({ id: nodeId, host, port, ...rest, available: true })
@@ -27,15 +33,15 @@ export async function writeRegistration(reg: NodeRegistration): Promise<Registra
       .returning({ id: aiNodeT.id });
 
     if (written.length === 0) {
-      return "identity_mismatch";
+      tx.rollback();
     }
 
-    await tx
-      .update(aiNodeT)
-      .set({ available: false, deletedAt: new Date() })
-      .where(sql`${aiNodeT.host} = ${host} AND ${aiNodeT.port} = ${port} AND ${aiNodeT.deletedAt} IS NULL AND ${aiNodeT.id} <> ${nodeId}`);
-
     return "written";
+  }).catch((err: unknown): RegistrationOutcome => {
+    if (err instanceof TransactionRollbackError) {
+      return "identity_mismatch";
+    }
+    throw err;
   });
 
   if (outcome === "identity_mismatch") {
