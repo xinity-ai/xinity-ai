@@ -17,14 +17,42 @@
         if cfg.infoserverOrigin != null then cfg.infoserverOrigin
         else "localhost:${toString config.services.xinity-infoserver.port}";
 
+      tetherTarget =
+        if cfg.tetherOrigin != null then cfg.tetherOrigin
+        else "localhost:${toString config.services.xinity-tether.port}";
+
       vhost = subdomain: target: lib.optionalAttrs (subdomain != null) {
         "${subdomain}.${cfg.domain}".extraConfig = lib.mkDefault ''
           reverse_proxy ${target}
         '';
       };
+
+      # /health reports database reachability and /metrics belongs to the scrape path. Without
+      # stream_close_delay a config reload would cut every daemon stream at once.
+      tetherVhost = lib.optionalAttrs (cfg.tetherSubdomain != null) {
+        "${cfg.tetherSubdomain}.${cfg.domain}".extraConfig = lib.mkDefault ''
+          @daemon path /api/*
+          handle @daemon {
+            reverse_proxy ${tetherTarget} {
+              stream_close_delay 5m
+            }
+          }
+          handle {
+            respond 404
+          }
+        '';
+      };
+
+      ownTlsConflicts = lib.filter
+        (s: s.subdomain != null && s.origin == null && (config.services.${s.service}.tlsCertFile or null) != null)
+        [
+          { name = "dashboard"; service = "xinity-ai-dashboard"; subdomain = cfg.dashboardSubdomain; origin = cfg.dashboardOrigin; }
+          { name = "gateway"; service = "xinity-ai-gateway"; subdomain = cfg.gatewaySubdomain; origin = cfg.gatewayOrigin; }
+          { name = "tether"; service = "xinity-tether"; subdomain = cfg.tetherSubdomain; origin = cfg.tetherOrigin; }
+        ];
     in {
       options.services.xinity-ai-caddy = {
-        enable = lib.mkEnableOption "a Caddy reverse proxy that terminates TLS via ACME/Let's Encrypt and routes traffic to the xinity-ai dashboard, gateway, and infoserver by subdomain";
+        enable = lib.mkEnableOption "a Caddy reverse proxy that terminates TLS via ACME/Let's Encrypt and routes traffic to the xinity-ai dashboard, gateway, infoserver, and tether by subdomain";
 
         domain = lib.mkOption {
           type = lib.types.str;
@@ -59,6 +87,16 @@
           type = lib.types.nullOr lib.types.str;
           default = "grafana";
           description = "Subdomain prefix for Grafana (e.g. grafana.example.com). Set to null to leave Grafana unrouted.";
+        };
+
+        tetherSubdomain = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default =
+            if (config.services.xinity-tether.enable or false)
+              && (config.services.xinity-tether.tlsCertFile or null) == null
+            then "tether" else null;
+          defaultText = lib.literalMD ''"tether" when the tether runs on this host without its own certificate, otherwise null'';
+          description = "Subdomain prefix for the tether (e.g. tether.example.com). Only its /api endpoints are routed. Set to null to leave the tether unrouted.";
         };
 
         dashboardOrigin = lib.mkOption {
@@ -96,9 +134,28 @@
             If null, no grafana virtualHost is created.
           '';
         };
+
+        tetherOrigin = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = ''
+            Upstream origin for the tether (e.g. "http://10.0.0.5:4020" or "localhost:4020").
+            If null, defaults to localhost:<port> using the resolved xinity-tether module config.
+          '';
+        };
       };
 
       config = lib.mkIf cfg.enable {
+        assertions = map (s: {
+          assertion = false;
+          message = ''
+            services.${s.service}.tlsCertFile makes the ${s.name} serve its own TLS, but
+            services.xinity-ai-caddy routes ${s.subdomain}.${cfg.domain} to it over plain HTTP.
+            Drop the certificate to serve the ${s.name} through Caddy, or set
+            services.xinity-ai-caddy.${s.name}Subdomain = null to reach it on its own port.
+          '';
+        }) ownTlsConflicts;
+
         services.caddy = {
           enable = lib.mkDefault true;
           globalConfig = lib.mkIf (cfg.acmeEmail != null) (lib.mkDefault ''
@@ -108,6 +165,7 @@
             vhost cfg.dashboardSubdomain dashboardTarget
             // vhost cfg.gatewaySubdomain gatewayTarget
             // vhost cfg.infoserverSubdomain infoserverTarget
+            // tetherVhost
             // lib.optionalAttrs (cfg.grafanaOrigin != null)
               (vhost cfg.grafanaSubdomain cfg.grafanaOrigin);
         };
