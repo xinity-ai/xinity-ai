@@ -29,6 +29,7 @@ function makeNode(overrides: Partial<AiNode> & { id: string }): AiNode {
 
 function makeInstallation(overrides: Partial<ModelInstallation> & { id: string; nodeId: string; specifier: string }): ModelInstallation {
   return {
+    deploymentId: "dep-1",
     estCapacity: 8,
     kvCacheCapacity: 2,
     port: 11434,
@@ -81,7 +82,7 @@ describe("orchestration: node goes unavailable", () => {
 
     // No excess to trim (nothing active)
     const requiredModels: ModelRequirementTable = {
-      "llama2:7b": { specifier: "llama2:7b", replicas: 1, kvCacheSize: 2, preferredDriver: null, settings: { version: 1 } },
+      "llama2:7b": { deploymentId: "dep-1", specifier: "llama2:7b", replicas: 1, kvCacheSize: 2, preferredDriver: null, settings: { version: 1 } },
     };
     const excess = collectExcessInstallations(requiredModels, state);
     expect(excess).toHaveLength(0);
@@ -328,7 +329,7 @@ describe("orchestration: specifier indexing", () => {
 
 describe("orchestration: settings drift", () => {
   function requirement(overrides: Partial<ModelRequirement> = {}): ModelRequirement {
-    return { specifier: "whisper", replicas: 1, kvCacheSize: null, preferredDriver: null, settings: { version: 1 }, ...overrides };
+    return { deploymentId: "dep-1", specifier: "whisper", replicas: 1, kvCacheSize: null, preferredDriver: null, settings: { version: 1 }, ...overrides };
   }
 
   test("installation with drifted settings is collected and released from state", () => {
@@ -394,10 +395,12 @@ describe("orchestration: settings drift", () => {
 describe("orchestration: requirement merging", () => {
   test("settings merge takes the maximum audio duration across deployments", () => {
     const merged = mergeRequirementsBySpecifier([
-      { specifier: "whisper", replicas: 1, kvCacheSize: null, preferredDriver: null, settings: { version: 1, maxAudioInputDurationS: 600 } },
-      { specifier: "whisper", replicas: 2, kvCacheSize: 4, preferredDriver: null, settings: { version: 1, maxAudioInputDurationS: 1800 } },
-      { specifier: "whisper", replicas: 1, kvCacheSize: null, preferredDriver: null, settings: { version: 1 } },
+      { deploymentId: "dep-oldest", specifier: "whisper", replicas: 1, kvCacheSize: null, preferredDriver: null, settings: { version: 1, maxAudioInputDurationS: 600 } },
+      { deploymentId: "dep-2", specifier: "whisper", replicas: 2, kvCacheSize: 4, preferredDriver: null, settings: { version: 1, maxAudioInputDurationS: 1800 } },
+      { deploymentId: "dep-3", specifier: "whisper", replicas: 1, kvCacheSize: null, preferredDriver: null, settings: { version: 1 } },
     ]);
+
+    expect(merged.whisper.deploymentId).toBe("dep-oldest");
 
     expect(merged.whisper.replicas).toBe(2);
     expect(merged.whisper.kvCacheSize).toBe(4);
@@ -472,11 +475,11 @@ describe("orchestration: deployment strategies", () => {
 
     const first = findServerForModel("m", "ollama", 4, empty, pending, "balanced")!;
     empty.serverCapacity.get(first)!.used += 4;
-    pending.push({ nodeId: first, specifier: "m", estCapacity: 4, kvCacheCapacity: 0, driver: "ollama", port: 11434 });
+    pending.push({ nodeId: first, deploymentId: "dep-1", specifier: "m", estCapacity: 4, kvCacheCapacity: 0, driver: "ollama", port: 11434 });
 
     const second = findServerForModel("m", "ollama", 4, empty, pending, "balanced")!;
     empty.serverCapacity.get(second)!.used += 4;
-    pending.push({ nodeId: second, specifier: "m", estCapacity: 4, kvCacheCapacity: 0, driver: "ollama", port: 11434 });
+    pending.push({ nodeId: second, deploymentId: "dep-1", specifier: "m", estCapacity: 4, kvCacheCapacity: 0, driver: "ollama", port: 11434 });
 
     const third = findServerForModel("m", "ollama", 4, empty, pending, "balanced")!;
 

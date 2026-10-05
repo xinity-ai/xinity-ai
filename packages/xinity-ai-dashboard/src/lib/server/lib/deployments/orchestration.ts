@@ -28,7 +28,7 @@ type ClusterState = {
 type Capacity = { total: number; used: number };
 type CardCapacity = Capacity & { uuid: string | null };
 
-export type ModelRequirement = { specifier: string; replicas: number; kvCacheSize: number | null; preferredDriver: Provider | null; settings: DeploymentSettings };
+export type ModelRequirement = { deploymentId: string; specifier: string; replicas: number; kvCacheSize: number | null; preferredDriver: Provider | null; settings: DeploymentSettings };
 export type ModelRequirementTable = Record<string, ModelRequirement>;
 
 export type DeploymentStrategy = "first-fit" | "balanced" | "bin-pack" | "proportional";
@@ -75,35 +75,37 @@ export function mergeRequirementsBySpecifier(entries: ModelRequirement[]): Model
 
 /** Builds the replica requirement table based on enabled deployments. */
 export async function assembleModelRequirementTable(): Promise<ModelRequirementTable> {
+  // Oldest first, so a requirement merged from several deployments carries the oldest one's id.
   const enabledDeployments = await getDB().select().from(modelDeploymentT).where(sql`
     ${modelDeploymentT.enabled}
   AND
     ${modelDeploymentT.deletedAt} IS NULL
-  `);
+  `).orderBy(modelDeploymentT.createdAt);
   const models = enabledDeployments.flatMap((deployment): ModelRequirement[] => {
     const progress = calcCanaryProgress(deployment);
     const earlySpecifier = deployment.earlySpecifier;
     const driver = deployment.preferredDriver;
     const isNotCanary = progress === 100 || !earlySpecifier;
     if (isNotCanary) {
-      return [requirementFor(deployment.specifier, deployment.replicas, deployment.kvCacheSize, driver, deployment.settings)];
+      return [requirementFor(deployment.id, deployment.specifier, deployment.replicas, deployment.kvCacheSize, driver, deployment.settings)];
     }
     return [
-      requirementFor(deployment.specifier, Math.ceil(deployment.replicas * (progress / 100)), deployment.kvCacheSize, driver, deployment.settings),
-      requirementFor(earlySpecifier!, Math.ceil(deployment.replicas * ((100 - progress) / 100)), deployment.earlyKvCacheSize, driver, deployment.settings),
+      requirementFor(deployment.id, deployment.specifier, Math.ceil(deployment.replicas * (progress / 100)), deployment.kvCacheSize, driver, deployment.settings),
+      requirementFor(deployment.id, earlySpecifier!, Math.ceil(deployment.replicas * ((100 - progress) / 100)), deployment.earlyKvCacheSize, driver, deployment.settings),
     ];
   });
   return mergeRequirementsBySpecifier(models);
 }
 
 function requirementFor(
+  deploymentId: string,
   specifier: string,
   replicas: number,
   kvCacheSize: number | null,
   preferredDriver: Provider | null,
   settings: DeploymentSettings,
 ): ModelRequirement {
-  return { specifier, replicas, kvCacheSize, preferredDriver, settings };
+  return { deploymentId, specifier, replicas, kvCacheSize, preferredDriver, settings };
 }
 
 // Without card sizes (unified memory, or none reported) the node is one card of its whole capacity.
@@ -373,6 +375,7 @@ async function planNewInstallations(
       const gpuUuids = card?.uuid ? [card.uuid] : [];
       toInstall.push({
         nodeId,
+        deploymentId: requirement.deploymentId,
         specifier: requirement.specifier,
         estCapacity: totalCapacity,
         kvCacheCapacity: effectiveKvCache,
