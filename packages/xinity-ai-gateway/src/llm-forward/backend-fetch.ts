@@ -1,10 +1,9 @@
+import { createOpenAICompatible, type OpenAICompatibleProvider } from "@ai-sdk/openai-compatible";
 import { signRequest } from "common-env";
 import { config } from "../config";
 
 const customCa = config.inference.ca;
 const tlsOptions = customCa ? { ca: customCa } : undefined;
-
-export const hasCustomCa = !!customCa;
 
 /** Build the full URL for a request through the daemon proxy, addressed by canonical specifier. */
 export function backendUrl(host: string, specifier: string, path: string, tls: boolean): string {
@@ -26,6 +25,17 @@ export function backendFetch(url: string | URL | Request, init?: RequestInit & {
 }
 
 type BackendTarget = { host: string; specifier: string; tls: boolean; authToken: string | null };
+
+export function nodeProvider(target: BackendTarget & { driver: string }): OpenAICompatibleProvider {
+  const authToken = target.authToken ?? undefined;
+  return createOpenAICompatible({
+    name: target.driver,
+    baseURL: backendUrl(target.host, target.specifier, "/v1", target.tls),
+    includeUsage: true,
+    supportsStructuredOutputs: target.driver === "vllm",
+    fetch: ((url, init) => backendFetch(url, { ...init, authToken })) as typeof globalThis.fetch,
+  });
+}
 
 export type IdleTimeout = { signal: AbortSignal; reset: () => void; clear: () => void };
 

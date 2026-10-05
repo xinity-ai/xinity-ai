@@ -1,6 +1,6 @@
 import { describe, test, expect, afterEach } from "bun:test";
 import { verifyRequest } from "common-env";
-import { backendFetch, backendUrl } from "./backend-fetch";
+import { backendFetch, backendUrl, nodeProvider } from "./backend-fetch";
 
 const TOKEN = "node-auth-token-value";
 
@@ -89,5 +89,36 @@ describe("across a real connection", () => {
 
   test("the signature still matches when the model name contains a colon", async () => {
     expect(await daemonVerdictFor("llama3:latest")).toEqual({ ok: true });
+  });
+
+  test("requests the AI SDK makes are signed, never sent with the token as a bearer", async () => {
+    let authorization: string | null = null;
+    let verdict: unknown;
+    const server = Bun.serve({
+      port: 0,
+      fetch: (req) => {
+        const url = new URL(req.url);
+        authorization = req.headers.get("authorization");
+        verdict = verifyRequest(TOKEN, authorization, { method: req.method, path: `${url.pathname}${url.search}` });
+        return new Response("refused", { status: 401 });
+      },
+    });
+
+    const provider = nodeProvider({
+      host: `127.0.0.1:${server.port}`,
+      specifier: "llama3:latest",
+      tls: false,
+      authToken: TOKEN,
+      driver: "ollama",
+    });
+    try {
+      await expect(provider.chatModel("llama3:latest")
+        .doGenerate({ prompt: [{ role: "user", content: [{ type: "text", text: "hi" }] }] })).rejects.toThrow();
+    } finally {
+      server.stop(true);
+    }
+
+    expect(authorization).not.toContain(TOKEN);
+    expect(verdict).toEqual({ ok: true });
   });
 });

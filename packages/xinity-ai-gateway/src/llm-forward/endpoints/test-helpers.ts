@@ -1,4 +1,5 @@
 import { mock, jest } from "bun:test";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { getModelInfo as getModelInfoT, ModelInfo, ModelLookup } from "../model-data";
 import { outputAsMessages } from "../responses/input-normalize";
 
@@ -208,7 +209,8 @@ export function mockBackendFetch(): void {
         signal,
       }),
     createIdleTimeout: () => ({ signal: new AbortController().signal, reset: () => {}, clear: () => {} }),
-    hasCustomCa: false,
+    nodeProvider: (target: { host: string; driver: string }) =>
+      createOpenAICompatible({ name: target.driver, baseURL: `http://${target.host}/v1`, includeUsage: true }),
   }));
 }
 

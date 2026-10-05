@@ -1,11 +1,11 @@
-import { createOpenAICompatible, type OpenAICompatibleProvider } from "@ai-sdk/openai-compatible";
+import type { OpenAICompatibleProvider } from "@ai-sdk/openai-compatible";
 import { checkAuth } from "./auth";
 import type { AuthResult } from "./auth";
 import { getModelInfo, type ModelInfo } from "./model-data";
 import { errorResponse, modelLookupFailureResponse } from "./util";
 import { resolveApplicationByName } from "./application-resolver";
 import { releaseCallbacks } from "./release-registry";
-import { backendUrl, hasCustomCa, backendFetch } from "./backend-fetch";
+import { nodeProvider } from "./backend-fetch";
 import { isDeepResearchRequest, stripDeepResearchSuffix } from "./deep-research/detect";
 
 export type ResolvedModel = {
@@ -136,14 +136,5 @@ export async function resolveAuthorizedModel(
   const resolved = await resolveModel(req);
   if (resolved instanceof Response) return resolved;
 
-  const provider = createOpenAICompatible({
-    name: resolved.modelInfo.driver,
-    baseURL: backendUrl(resolved.modelInfo.host, resolved.modelInfo.specifier, "/v1", resolved.modelInfo.tls),
-    apiKey: resolved.modelInfo.authToken ?? "none",
-    includeUsage: true,
-    supportsStructuredOutputs: resolved.modelInfo.driver === "vllm",
-    ...(hasCustomCa ? { fetch: backendFetch as typeof globalThis.fetch } : {}),
-  });
-
-  return { ...resolved, provider };
+  return { ...resolved, provider: nodeProvider(resolved.modelInfo) };
 }
