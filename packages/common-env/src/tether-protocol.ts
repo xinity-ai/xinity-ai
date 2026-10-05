@@ -117,6 +117,7 @@ export const tetherRefusalReasonSchema = z.enum([
   "protocol_mismatch",
   "registration_failed",
   "identity_mismatch",
+  "invalid_signature",
   "installation_not_owned",
   "method_not_allowed",
 ]);

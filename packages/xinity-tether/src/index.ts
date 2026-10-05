@@ -158,7 +158,7 @@ async function handleSSEStream(req: Request): Promise<Response> {
 
   if (!verifyNodeSignature(publicKey, canonicalRegistration(parsed.data), signature)) {
     log.warn({ nodeId }, "Registration signature does not match the key it presents");
-    return refuse("stream", "identity_mismatch", "Registration signature is invalid", 401);
+    return refuse("stream", "invalid_signature", "Registration signature is invalid", 401);
   }
 
   try {
@@ -223,7 +223,7 @@ async function handleStatus(req: Request): Promise<Response> {
   const publicKey = connectedPublicKey(nodeId) ?? await readPinnedPublicKey(nodeId);
   if (!publicKey || !verifyNodeSignature(publicKey, canonicalStateReport(parsed.data), signature)) {
     log.warn({ nodeId, pinned: !!publicKey }, "Status report is not signed by this node");
-    return refuse("status", "identity_mismatch", "Report signature is invalid", 401);
+    return refuse("status", "invalid_signature", "Report signature is invalid", 401);
   }
 
   const { owned, foreign } = await partitionOwnedStates(nodeId, states);

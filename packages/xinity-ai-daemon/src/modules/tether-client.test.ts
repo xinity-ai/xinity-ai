@@ -124,3 +124,23 @@ test("a stream that stays silent past the announced keepalive is reopened", asyn
 
   expect(connects).toBeGreaterThanOrEqual(2);
 });
+
+test("a signature the tether cannot verify keeps the node id and retries", async () => {
+  const before = await Bun.file(join(stateDir, "node_id")).text();
+  let refusals = 0;
+  const server = Bun.serve({
+    port: 0,
+    fetch: () => {
+      refusals++;
+      return Response.json({ error: "Registration signature is invalid", reason: "invalid_signature" }, { status: 401 });
+    },
+  });
+  config.tether.url = server.url.href;
+
+  void connectSSE({} as NodeRegistration).next();
+  await waitFor(() => refusals >= 2);
+  await server.stop(true);
+
+  expect(refusals).toBeGreaterThanOrEqual(2);
+  expect(await Bun.file(join(stateDir, "node_id")).text()).toBe(before);
+});
