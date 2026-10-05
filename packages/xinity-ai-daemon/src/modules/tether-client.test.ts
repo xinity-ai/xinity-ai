@@ -1,8 +1,9 @@
-import { test, expect, mock } from "bun:test";
+import { test, expect, mock, afterEach } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mockConfigModule } from "../mock-config";
+import { loadOrCreateIdentity } from "./node-identity-store";
 import { canonicalStateReport, KEEPALIVE_INTERVAL_HEADER, readNodeKeypair, verifyNodeSignature, type NodeRegistration, type UnsignedInstallationStateReport } from "common-env";
 
 const stateDir = mkdtempSync(join(tmpdir(), "tether-client-test-"));
@@ -12,6 +13,13 @@ mock.module("../config", () => mockConfigModule({ TETHER_URL: "http://100.64.0.1
 
 const { reportInstallationStates, connectSSE, tetherConnection } = await import("./tether-client");
 const { config } = await import("../config");
+
+await loadOrCreateIdentity(stateDir);
+
+const configuredTetherUrl = config.tether.url;
+afterEach(() => {
+  config.tether.url = configuredTetherUrl;
+});
 
 async function captureStatusPost(report: UnsignedInstallationStateReport) {
   const requested: string[] = [];
@@ -57,90 +65,110 @@ async function waitFor(predicate: () => boolean, timeoutMs = 5000): Promise<void
   }
 }
 
-test("a node id the tether pins to another key is replaced and the stream ends", async () => {
-  const before = await Bun.file(join(stateDir, "node_id")).text();
-  const server = Bun.serve({
-    port: 0,
-    fetch: () => Response.json({ error: "This node id is registered to a different key", reason: "identity_mismatch" }, { status: 403 }),
-  });
+function serveTether(fetch: () => Response) {
+  const server = Bun.serve({ port: 0, fetch });
   config.tether.url = server.url.href;
+  return server;
+}
 
-  const result = await connectSSE({} as NodeRegistration).next();
-  await server.stop(true);
+function openStream() {
+  const stop = new AbortController();
+  const next = connectSSE({} as NodeRegistration, stop.signal).next();
+  return {
+    next,
+    close: async () => {
+      stop.abort();
+      await next;
+    },
+  };
+}
 
-  expect(result.done).toBe(true);
-  expect(await Bun.file(join(stateDir, "node_id")).text()).not.toBe(before);
+test("a node id the tether pins to another key is replaced and the stream ends", async () => {
+  const idFile = Bun.file(join(stateDir, "node_id"));
+  const keyFile = Bun.file(join(stateDir, "node_key"));
+  const [nodeId, nodeKey] = [await idFile.text(), await keyFile.text()];
+  const server = serveTether(() =>
+    Response.json({ error: "This node id is registered to a different key", reason: "identity_mismatch" }, { status: 403 }));
+
+  try {
+    expect((await openStream().next).done).toBe(true);
+    expect(await idFile.text()).not.toBe(nodeId);
+  } finally {
+    await server.stop(true);
+    // The process keeps signing with the identity it loaded, so the files have to match it again.
+    await Bun.write(idFile, nodeId);
+    await Bun.write(keyFile, nodeKey);
+  }
 });
 
-// Last in the file: the generator has no stop signal, so these reconnect loops outlive their tests.
+test("a signature the tether cannot verify keeps the node id and retries", async () => {
+  const before = await Bun.file(join(stateDir, "node_id")).text();
+  let refusals = 0;
+  const server = serveTether(() => {
+    refusals++;
+    return Response.json({ error: "Registration signature is invalid", reason: "invalid_signature" }, { status: 401 });
+  });
+  const stream = openStream();
+
+  try {
+    await waitFor(() => refusals >= 2);
+    expect(refusals).toBeGreaterThanOrEqual(2);
+    expect(await Bun.file(join(stateDir, "node_id")).text()).toBe(before);
+  } finally {
+    await stream.close();
+    await server.stop(true);
+  }
+});
+
 test("the connection state follows the tether's answers", async () => {
   const answers = [
     () => Response.json({ error: "Tether cannot write to its database", reason: "registration_failed" }, { status: 503 }),
     () => new Response("Protocol version mismatch", { status: 409 }),
     () => new Response(new ReadableStream({ start: (controller) => controller.enqueue(new TextEncoder().encode(": hello\n\n")) })),
   ];
-  const server = Bun.serve({ port: 0, fetch: () => answers.shift()!() });
-  config.tether.url = server.url.href;
+  const server = serveTether(() => answers.shift()!());
+  const stream = openStream();
 
-  void connectSSE({} as NodeRegistration).next();
+  try {
+    expect(tetherConnection().state).toBe("connecting");
 
-  await waitFor(() => tetherConnection().reason === "registration_failed");
-  expect(tetherConnection().state).toBe("refused");
+    await waitFor(() => tetherConnection().state === "refused");
+    expect(tetherConnection().reason).toBe("registration_failed");
 
-  // An older tether sends no reason, so the handshake status stands in for it.
-  await waitFor(() => tetherConnection().reason === "protocol_mismatch");
-  expect(tetherConnection().state).toBe("refused");
+    // An older tether sends no reason, so the handshake status stands in for it.
+    await waitFor(() => tetherConnection().reason === "protocol_mismatch");
+    expect(tetherConnection().state).toBe("refused");
 
-  await waitFor(() => tetherConnection().state === "connected");
-  expect(tetherConnection().reason).toBeUndefined();
+    await waitFor(() => tetherConnection().state === "connected");
+    expect(tetherConnection().reason).toBeUndefined();
 
-  await server.stop(true);
-  await waitFor(() => tetherConnection().state === "unreachable");
-  expect(tetherConnection().state).toBe("unreachable");
+    await server.stop(true);
+    await waitFor(() => tetherConnection().state === "unreachable");
+    expect(tetherConnection().state).toBe("unreachable");
+  } finally {
+    await stream.close();
+    await server.stop(true);
+  }
 }, 15_000);
 
 test("a stream that stays silent past the announced keepalive is reopened", async () => {
   let connects = 0;
-  const server = Bun.serve({
-    port: 0,
-    fetch() {
-      connects++;
-      const stream = new ReadableStream({
-        start(controller) {
-          controller.enqueue(new TextEncoder().encode(": hello\n\n"));
-        },
-      });
-      return new Response(stream, { headers: { [KEEPALIVE_INTERVAL_HEADER]: "20" } });
-    },
+  const server = serveTether(() => {
+    connects++;
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(": hello\n\n"));
+      },
+    });
+    return new Response(body, { headers: { [KEEPALIVE_INTERVAL_HEADER]: "20" } });
   });
-  config.tether.url = server.url.href;
+  const stream = openStream();
 
-  void connectSSE({} as NodeRegistration).next();
-  const deadline = Date.now() + 3000;
-  while (connects < 2 && Date.now() < deadline) {
-    await Bun.sleep(20);
+  try {
+    await waitFor(() => connects >= 2, 3000);
+    expect(connects).toBeGreaterThanOrEqual(2);
+  } finally {
+    await stream.close();
+    await server.stop(true);
   }
-  await server.stop(true);
-
-  expect(connects).toBeGreaterThanOrEqual(2);
-});
-
-test("a signature the tether cannot verify keeps the node id and retries", async () => {
-  const before = await Bun.file(join(stateDir, "node_id")).text();
-  let refusals = 0;
-  const server = Bun.serve({
-    port: 0,
-    fetch: () => {
-      refusals++;
-      return Response.json({ error: "Registration signature is invalid", reason: "invalid_signature" }, { status: 401 });
-    },
-  });
-  config.tether.url = server.url.href;
-
-  void connectSSE({} as NodeRegistration).next();
-  await waitFor(() => refusals >= 2);
-  await server.stop(true);
-
-  expect(refusals).toBeGreaterThanOrEqual(2);
-  expect(await Bun.file(join(stateDir, "node_id")).text()).toBe(before);
 });

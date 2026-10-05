@@ -19,6 +19,7 @@ import { rotateNodeIdentity, signPayloadAsNode } from "./statekeeper";
 import { rootLogger } from "../logger";
 import { receiveConfigEvent } from "./config-feed";
 import { config } from "../config";
+import { setTimeout as delay } from "node:timers/promises";
 
 const log = rootLogger.child({ name: "tether-client" });
 
@@ -81,11 +82,16 @@ function silenceLimitMs(res: Response): number | null {
   return intervalMs > 0 ? intervalMs * MISSED_KEEPALIVES_BEFORE_RECONNECT : null;
 }
 
-export async function* connectSSE(registration: NodeRegistration): AsyncGenerator<DesiredState> {
+async function pause(ms: number, signal: AbortSignal): Promise<void> {
+  await delay(ms, undefined, { signal }).catch(() => {});
+}
+
+export async function* connectSSE(registration: NodeRegistration, signal: AbortSignal): AsyncGenerator<DesiredState> {
   let backoffMs = 1000;
   let warnedUnannouncedKeepalive = false;
+  transition("connecting");
 
-  while (true) {
+  while (!signal.aborted) {
     const abort = new AbortController();
     let established = false;
     let silenceTimer: Timer | undefined = setTimeout(() => {
@@ -97,7 +103,7 @@ export async function* connectSSE(registration: NodeRegistration): AsyncGenerato
         method: "POST",
         headers: signedHeaders(STREAM_PATH),
         body: JSON.stringify(registration),
-        signal: abort.signal,
+        signal: AbortSignal.any([signal, abort.signal]),
       });
       clearTimeout(silenceTimer);
 
@@ -110,7 +116,7 @@ export async function* connectSSE(registration: NodeRegistration): AsyncGenerato
           await rotateNodeIdentity();
           return;
         }
-        await Bun.sleep(backoffMs);
+        await pause(backoffMs, signal);
         backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
         continue;
       }
@@ -191,7 +197,7 @@ export async function* connectSSE(registration: NodeRegistration): AsyncGenerato
 
       log.warn("SSE connection closed by server");
     } catch (err) {
-      if (!abort.signal.aborted) {
+      if (!abort.signal.aborted && !signal.aborted) {
         log.error({ err }, "SSE connection error");
       }
     } finally {
@@ -199,7 +205,7 @@ export async function* connectSSE(registration: NodeRegistration): AsyncGenerato
     }
     transition(established ? "connecting" : "unreachable");
 
-    await Bun.sleep(backoffMs);
+    await pause(backoffMs, signal);
     backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
     log.info({ backoffMs }, "Reconnecting to tether");
   }

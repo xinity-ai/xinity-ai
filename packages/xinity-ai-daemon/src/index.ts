@@ -16,6 +16,7 @@ import { daemonConfig } from "./config-schema";
 let shuttingDown = false;
 let subscription: SubscriptionLike | undefined;
 let metricsSampler: MetricsSampler | undefined;
+const tetherStream = new AbortController();
 
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.once(signal, () => void shutdown());
@@ -52,7 +53,7 @@ async function main() {
     unseal: createSecretUnsealer({ current: config.secretKey, previous: config.previousSecretKey }, rootLogger),
   });
 
-  for await (const state of connectSSE(registration)) {
+  for await (const state of connectSSE(registration, tetherStream.signal)) {
     if (shuttingDown) {
       break;
     }
@@ -69,6 +70,7 @@ async function shutdown(exitCode = 0) {
   }
   shuttingDown = true;
 
+  tetherStream.abort();
   await metricsSampler?.stop();
   await configStore.stop();
   subscription?.unsubscribe();
