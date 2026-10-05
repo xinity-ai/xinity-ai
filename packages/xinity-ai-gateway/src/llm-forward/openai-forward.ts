@@ -15,12 +15,7 @@ import { recordTimeToFirstToken } from "../metrics";
 import { BackendUsageSchema } from "./backend-schemas";
 import type { CallLogFields } from "./usage";
 import type { ChatStreamData, ChatSyncData } from "../callLogger";
-
-type Logger = {
-  info: (obj: Record<string, unknown>, msg: string) => void;
-  warn: (obj: Record<string, unknown>, msg: string) => void;
-  error: (obj: Record<string, unknown>, msg: string) => void;
-};
+import type { Logger } from "common-log";
 
 
 type StreamChunkLike = {

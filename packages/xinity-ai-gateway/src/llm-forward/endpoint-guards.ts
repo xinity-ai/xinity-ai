@@ -2,6 +2,7 @@ import type { z } from "zod";
 import { resolveModel, type ResolvedModel } from "./ai-sdk";
 import { errorResponse, handleEndpointError, recordFailedRequest, validateModelType, validationError } from "./util";
 import { checkAuth, type AuthResult } from "./auth";
+import type { Logger } from "common-log";
 
 /** Bun fills `params` in from the route pattern; it is absent on a directly constructed Request. */
 export function pathParam(req: Request, name: string): string | undefined {
@@ -41,12 +42,6 @@ export function withResponseIdRoute(
   };
 }
 
-type EndpointLogger = {
-  info: (obj: Record<string, unknown>, msg: string) => void;
-  warn: (obj: Record<string, unknown>, msg: string) => void;
-  error: (obj: Record<string, unknown>, msg: string) => void;
-};
-
 export type EndpointHandlerContext<TBody> = {
   auth: AuthResult;
   body: TBody;
@@ -59,7 +54,7 @@ export type EndpointHandlerContext<TBody> = {
 export type EndpointGuardOptions<TBody> = {
   modelTypes: string[];
   bodySchema: z.ZodType<TBody>;
-  log: EndpointLogger;
+  log: Logger;
   method?: "POST" | "GET";
   handler: (ctx: EndpointHandlerContext<TBody>) => Promise<Response>;
 };

@@ -227,7 +227,7 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
         }
 
         const { message, logLevel, logMessage } = classifyStreamError(error);
-        (logLevel === "warn" ? log.warn : log.error).call(log, { err: error, responseId }, logMessage);
+        log[logLevel]({ err: error, responseId }, logMessage);
 
         const failedResponse = markResponseFailed(baseResponse, message);
         await saveResponse(orgId, responseId, failedResponse)

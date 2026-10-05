@@ -1,5 +1,6 @@
-import { describe, test, expect, jest } from "bun:test";
+import { describe, test, expect, spyOn } from "bun:test";
 
+import { rootLogger } from "../logger";
 import { BackendChatChunkSchema } from "./backend-schemas";
 const { isStandardStreamingChunk, forwardOpenAIStream } = await import("./openai-forward");
 
@@ -82,11 +83,8 @@ describe("isStandardStreamingChunk fast-path shape check", () => {
 });
 
 describe("forwardOpenAIStream", () => {
-  const dummyLog = {
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-  };
+  const log = rootLogger.child({ name: "openai-forward-test" });
+  const warn = spyOn(log, "warn");
 
   const dummyLogFields = {
     auth: { keyId: "k", orgId: "o", applicationId: null, collectData: false },
@@ -125,7 +123,7 @@ describe("forwardOpenAIStream", () => {
       originalModel: "public-model",
       spec: chatSpec,
       logFields: dummyLogFields,
-      log: dummyLog,
+      log,
     });
 
     const text = await forwardResponse.text();
@@ -150,11 +148,11 @@ describe("forwardOpenAIStream", () => {
       originalModel: "public-model",
       spec: chatSpec,
       logFields: dummyLogFields,
-      log: dummyLog,
+      log,
     });
 
     const text = await forwardResponse.text();
     expect(text).toContain('"unmodeled_field":true');
-    expect(dummyLog.warn).toHaveBeenCalled();
+    expect(warn).toHaveBeenCalled();
   });
 });

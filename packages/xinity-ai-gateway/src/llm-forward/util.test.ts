@@ -1,7 +1,8 @@
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, spyOn } from "bun:test";
+import { rootLogger } from "../logger";
 
 
-const { classifyStreamError, forwardBackendError } = await import("./util");
+const { classifyStreamError, forwardBackendError, handleStreamError } = await import("./util");
 
 function timeoutError() {
   const error = new Error("timed out");
@@ -57,27 +58,50 @@ describe("forwardBackendError", () => {
   const route = { model: "llama3:latest", nodeId: "node-1", host: "10.0.0.5:4010", specifier: "llama3:latest", authToken: "t" };
 
   function capturingLog() {
-    const entries: { fields: Record<string, unknown>; msg: string }[] = [];
-    return { entries, error: (fields: Record<string, unknown>, msg: string) => entries.push({ fields, msg }) };
+    const log = rootLogger.child({ name: "util-test" });
+    return { log, error: spyOn(log, "error").mockImplementation(() => {}) };
   }
 
   test("reports a daemon signature refusal as a bad gateway, not a client auth failure", async () => {
-    const log = capturingLog();
+    const { log, error } = capturingLog();
     const res = await forwardBackendError(new Response("Unauthorized: stale", { status: 401 }), log, route);
 
     expect(res.status).toBe(502);
     expect(JSON.stringify(await res.json())).not.toContain("stale");
-    expect(log.entries[0]?.msg).toBe("Daemon refused the gateway's request signature");
-    expect(log.entries[0]?.fields).toMatchObject({ nodeId: "node-1", host: "10.0.0.5:4010", specifier: "llama3:latest", signed: true, body: "Unauthorized: stale" });
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ nodeId: "node-1", host: "10.0.0.5:4010", specifier: "llama3:latest", signed: true, body: "Unauthorized: stale" }),
+      "Daemon refused the gateway's request signature",
+    );
   });
 
   test("passes other client errors through with the node that produced them logged", async () => {
-    const log = capturingLog();
+    const { log, error } = capturingLog();
     const body = JSON.stringify({ error: { message: "context length exceeded" } });
     const res = await forwardBackendError(new Response(body, { status: 400 }), log, { ...route, authToken: null });
 
     expect(res.status).toBe(400);
     expect(await res.text()).toBe(body);
-    expect(log.entries[0]?.fields).toMatchObject({ nodeId: "node-1", status: 400, signed: false });
+    expect(error).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "node-1", status: 400, signed: false }), "Backend error");
+  });
+});
+
+describe("handleStreamError", () => {
+  function streamFailingWith(error: unknown) {
+    const stream = new ReadableStream({
+      start(controller) {
+        handleStreamError(error, controller, rootLogger.child({ name: "util-test" }));
+      },
+    });
+    return new Response(stream).text();
+  }
+
+  test("ends the stream with an error event on a backend timeout", async () => {
+    const body = await streamFailingWith(new DOMException("The operation timed out.", "TimeoutError"));
+    expect(body).toBe(`data: ${JSON.stringify({ error: { message: "Backend timed out while generating the response", type: "timeout_error" } })}\n\ndata: [DONE]\n\n`);
+  });
+
+  test("ends the stream with an error event on an internal error", async () => {
+    const body = await streamFailingWith(new Error("boom"));
+    expect(body).toBe(`data: ${JSON.stringify({ error: { message: "Internal server error", type: "server_error" } })}\n\ndata: [DONE]\n\n`);
   });
 });

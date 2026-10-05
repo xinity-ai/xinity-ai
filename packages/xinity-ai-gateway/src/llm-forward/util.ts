@@ -1,3 +1,4 @@
+import type { Logger } from "common-log";
 import { recordBackendError } from "../metrics";
 import { BLOCKED_REQUEST_PARAM_PREFIXES } from "xinity-infoserver";
 import { isMediaPartInvalid, isMediaTooLarge, isMediaTypeUnsupported } from "../media-store";
@@ -70,7 +71,7 @@ export function classifyStreamError(e: unknown): StreamErrorInfo {
 export function handleStreamError(
   e: unknown,
   controller: ReadableStreamDefaultController,
-  log: { info: (obj: Record<string, unknown>, msg: string) => void; warn?: (obj: Record<string, unknown>, msg: string) => void; error: (obj: Record<string, unknown>, msg: string) => void },
+  log: Logger,
 ): void {
   if (isAbortError(e)) {
     log.info({ err: e }, "Client disconnected during stream");
@@ -79,7 +80,7 @@ export function handleStreamError(
   }
 
   const { message, errorType, logLevel, logMessage } = classifyStreamError(e);
-  (logLevel === "warn" ? log.warn ?? log.error : log.error)({ err: e }, logMessage);
+  log[logLevel]({ err: e }, logMessage);
 
   try {
     controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify({ error: { message, type: errorType } })}\n\n`));
@@ -313,7 +314,7 @@ export function backendRouteFields(route: BackendRoute): Record<string, unknown>
  */
 export async function forwardBackendError(
   backendResponse: Response,
-  log: { error: (obj: Record<string, unknown>, msg: string) => void },
+  log: Logger,
   route: BackendRoute & { model: string },
 ): Promise<Response> {
   const text = await backendResponse.text().catch(() => "");
@@ -384,7 +385,7 @@ export const BACKEND_RESTART_RETRY_AFTER = 120;
  */
 export function handleEndpointError(
   error: unknown,
-  log: { info: (obj: Record<string, unknown>, msg: string) => void; warn: (obj: Record<string, unknown>, msg: string) => void; error: (obj: Record<string, unknown>, msg: string) => void },
+  log: Logger,
   route?: BackendRoute,
 ): Response {
   const fields = { err: error, ...(route ? backendRouteFields(route) : {}) };
