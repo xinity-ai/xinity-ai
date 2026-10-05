@@ -5,7 +5,7 @@ import {
   type NodeRegistration,
   type UnsignedNodeRegistration,
 } from "common-env";
-import { loadOrCreateIdentity, readNodeId, type NodeIdentity } from "./node-identity-store";
+import { loadOrCreateIdentity, readNodeId, rotateIdentity, type NodeIdentity } from "./node-identity-store";
 import { $ } from "bun";
 import { config } from "../config";
 import { networkInterfaces } from "node:os";
@@ -179,13 +179,16 @@ export async function readNodeIdFile(): Promise<string | null> {
 /** Memoised, so a concurrent first boot cannot write two different identities. */
 async function loadIdentity(): Promise<NodeIdentity> {
   if (!cachedIdentity) {
-    const previous = await readNodeId(config.node.stateDir);
     cachedIdentity = await loadOrCreateIdentity(config.node.stateDir);
-    if (previous && previous !== cachedIdentity.nodeId) {
-      log.warn({ previous, nodeId: cachedIdentity.nodeId }, "Node key was missing or unreadable, registering as a new node");
-    }
   }
   return cachedIdentity;
+}
+
+/** The running process keeps the refused identity, so the new one takes effect on restart. */
+export async function rotateNodeIdentity(): Promise<void> {
+  const previous = (await loadIdentity()).nodeId;
+  const { nodeId } = await rotateIdentity(config.node.stateDir);
+  log.error({ previous, nodeId }, "The tether pins this node id to a different key, restarting as a new node");
 }
 
 async function collectRegistrationData(): Promise<NodeRegistration> {

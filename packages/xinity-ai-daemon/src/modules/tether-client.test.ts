@@ -57,21 +57,35 @@ async function waitFor(predicate: () => boolean, timeoutMs = 5000): Promise<void
   }
 }
 
+test("a node id the tether pins to another key is replaced and the stream ends", async () => {
+  const before = await Bun.file(join(stateDir, "node_id")).text();
+  const server = Bun.serve({
+    port: 0,
+    fetch: () => Response.json({ error: "This node id is registered to a different key", reason: "identity_mismatch" }, { status: 403 }),
+  });
+  config.tether.url = server.url.href;
+
+  const result = await connectSSE({} as NodeRegistration).next();
+  await server.stop(true);
+
+  expect(result.done).toBe(true);
+  expect(await Bun.file(join(stateDir, "node_id")).text()).not.toBe(before);
+});
+
 // Last in the file: the generator has no stop signal, so these reconnect loops outlive their tests.
 test("the connection state follows the tether's answers", async () => {
   const answers = [
-    () => Response.json({ error: "This node id is registered to a different key", reason: "identity_mismatch" }, { status: 403 }),
+    () => Response.json({ error: "Tether cannot write to its database", reason: "registration_failed" }, { status: 503 }),
     () => new Response("Protocol version mismatch", { status: 409 }),
     () => new Response(new ReadableStream({ start: (controller) => controller.enqueue(new TextEncoder().encode(": hello\n\n")) })),
   ];
   const server = Bun.serve({ port: 0, fetch: () => answers.shift()!() });
   config.tether.url = server.url.href;
 
-  expect(tetherConnection().state).toBe("connecting");
   void connectSSE({} as NodeRegistration).next();
 
-  await waitFor(() => tetherConnection().state === "refused");
-  expect(tetherConnection().reason).toBe("identity_mismatch");
+  await waitFor(() => tetherConnection().reason === "registration_failed");
+  expect(tetherConnection().state).toBe("refused");
 
   // An older tether sends no reason, so the handshake status stands in for it.
   await waitFor(() => tetherConnection().reason === "protocol_mismatch");

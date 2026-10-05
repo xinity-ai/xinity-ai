@@ -43,7 +43,7 @@ async function main() {
 
   const onFatal = (label: string) => (err: unknown) => {
     rootLogger.fatal({ err }, label);
-    void shutdown().finally(() => process.exit(1));
+    void shutdown(1).finally(() => process.exit(1));
   };
   process.once("uncaughtException", onFatal("Uncaught exception"));
   process.once("unhandledRejection", onFatal("Unhandled rejection"));
@@ -59,9 +59,11 @@ async function main() {
     setDesiredInstallations(state.installations);
     coordinator.signal("notification");
   }
+
+  await shutdown(1);
 }
 
-async function shutdown() {
+async function shutdown(exitCode = 0) {
   if (shuttingDown) {
     return;
   }
@@ -70,5 +72,5 @@ async function shutdown() {
   await metricsSampler?.stop();
   await configStore.stop();
   subscription?.unsubscribe();
-  process.exit(0);
+  process.exit(exitCode);
 }

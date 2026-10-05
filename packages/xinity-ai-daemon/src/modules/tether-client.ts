@@ -15,7 +15,7 @@ import {
   type InstallationStateReport,
   type UnsignedInstallationStateReport,
 } from "common-env";
-import { signPayloadAsNode } from "./statekeeper";
+import { rotateNodeIdentity, signPayloadAsNode } from "./statekeeper";
 import { rootLogger } from "../logger";
 import { receiveConfigEvent } from "./config-feed";
 import { config } from "../config";
@@ -102,9 +102,14 @@ export async function* connectSSE(registration: NodeRegistration): AsyncGenerato
       clearTimeout(silenceTimer);
 
       if (!res.ok) {
-        const { message, reason } = await readRefusal(res);
-        log.error({ status: res.status, reason, refusal: message }, "SSE connection rejected");
-        transition("refused", reason ?? HANDSHAKE_REFUSAL_BY_STATUS[res.status]);
+        const refusal = await readRefusal(res);
+        const reason = refusal.reason ?? HANDSHAKE_REFUSAL_BY_STATUS[res.status];
+        log.error({ status: res.status, reason, refusal: refusal.message }, "SSE connection rejected");
+        transition("refused", reason);
+        if (reason === "identity_mismatch") {
+          await rotateNodeIdentity();
+          return;
+        }
         await Bun.sleep(backoffMs);
         backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
         continue;

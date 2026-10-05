@@ -20,16 +20,23 @@ async function readKeypair(stateDir: string): Promise<NodeKeypair | null> {
   return readNodeKeypair(await keyFile.text());
 }
 
-/** Keeping an id whose key is gone is the exact claim the tether refuses, so both are replaced. */
+async function writeIdentity(stateDir: string, nodeId: string): Promise<NodeIdentity> {
+  const identity: NodeIdentity = { nodeId, keypair: generateNodeKeypair() };
+  await Bun.write(join(stateDir, "node_key"), identity.keypair.privateKeyPem, { mode: 0o600 });
+  await Bun.file(join(stateDir, "node_id")).write(identity.nodeId);
+  return identity;
+}
+
+/** An id without a key keeps the id, and the tether decides whether the new key may claim it. */
 export async function loadOrCreateIdentity(stateDir: string): Promise<NodeIdentity> {
   const nodeId = await readNodeId(stateDir);
   const keypair = nodeId ? await readKeypair(stateDir) : null;
   if (nodeId && keypair) {
     return { nodeId, keypair };
   }
+  return writeIdentity(stateDir, nodeId ?? crypto.randomUUID());
+}
 
-  const created: NodeIdentity = { nodeId: crypto.randomUUID(), keypair: generateNodeKeypair() };
-  await Bun.write(join(stateDir, "node_key"), created.keypair.privateKeyPem, { mode: 0o600 });
-  await Bun.file(join(stateDir, "node_id")).write(created.nodeId);
-  return created;
+export async function rotateIdentity(stateDir: string): Promise<NodeIdentity> {
+  return writeIdentity(stateDir, crypto.randomUUID());
 }
