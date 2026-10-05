@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// The first goal is the default. When two deployments of one model disagree, the later goal wins.
+// The first goal is the default.
 export const OPTIMIZATION_GOALS = ["space", "speed"] as const;
 export type OptimizationGoal = (typeof OPTIMIZATION_GOALS)[number];
 
@@ -38,25 +38,6 @@ export function settingsEqual(a: DeploymentSettings, b: DeploymentSettings): boo
     return false;
   }
   return aKeys.every((key) => na[key] === nb[key]);
-}
-
-export function mergeSettings(a: DeploymentSettings, b: DeploymentSettings): DeploymentSettings {
-  const merged: DeploymentSettings = { version: 1 };
-  const durations = [a.maxAudioInputDurationS, b.maxAudioInputDurationS]
-    .filter((value): value is number => value != null);
-  if (durations.length > 0) {
-    merged.maxAudioInputDurationS = Math.max(...durations);
-  }
-  const fileSizes = [a.maxAudioInputFileSizeMB, b.maxAudioInputFileSizeMB]
-    .filter((value): value is number => value != null);
-  if (fileSizes.length > 0) {
-    merged.maxAudioInputFileSizeMB = Math.max(...fileSizes);
-  }
-  const goals = [a.optimizeFor, b.optimizeFor].filter(isOptimizationGoal);
-  if (goals.length > 0) {
-    merged.optimizeFor = OPTIMIZATION_GOALS[Math.max(...goals.map((goal) => OPTIMIZATION_GOALS.indexOf(goal)))];
-  }
-  return merged;
 }
 
 // Version-aware field accessors: each setting has a resolve function that

@@ -26,6 +26,7 @@ mock.module("../auth", () => ({
 
 let mockPort = 0;
 const getModelInfo = jest.fn<typeof getModelInfoT>(async () => modelFound({
+  installationId: "inst-1",
   nodeId: "node-1",
   host: `localhost:${mockPort}`,
   specifier: "test-model",
@@ -275,6 +276,7 @@ describe("handleChatCompletion", () => {
 
   test("should reject structured_outputs for non-vLLM driver", async () => {
     getModelInfo.mockImplementationOnce(async () => modelFound({
+      installationId: "inst-1",
       nodeId: "node-1",
       host: `localhost:${mockPort}`,
       specifier: "test-model",
@@ -353,6 +355,7 @@ describe("handleChatCompletion, reasoning_effort", () => {
 
   test("lets a model's requestParams allowlist override the top-level field", async () => {
     getModelInfo.mockImplementationOnce(async () => modelFound({
+      installationId: "inst-1",
       nodeId: "node-1",
       host: `localhost:${mockPort}`,
       specifier: "test-model",
@@ -580,6 +583,7 @@ describe("handleChatCompletion, tool calling", () => {
 
   test("should reject tools when catalog explicitly says model does not support them", async () => {
     getModelInfo.mockImplementationOnce(async () => modelFound({
+      installationId: "inst-1",
       nodeId: "node-1",
       host: `localhost:${mockPort}`,
       specifier: "test-model",
@@ -612,6 +616,7 @@ describe("handleChatCompletion, tool calling", () => {
 
   test("should allow tools when catalog entry is missing (legacy fallback, tags undefined)", async () => {
     getModelInfo.mockImplementationOnce(async () => modelFound({
+      installationId: "inst-1",
       nodeId: "node-1",
       host: `localhost:${mockPort}`,
       specifier: "test-model",

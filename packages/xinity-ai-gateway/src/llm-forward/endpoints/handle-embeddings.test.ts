@@ -18,6 +18,7 @@ mock.module("../auth", () => ({
 
 let mockPort = 0;
 const getModelInfo = jest.fn<typeof getModelInfoT>(async () => modelFound({
+  installationId: "inst-1",
   nodeId: "node-1",
   host: `localhost:${mockPort}`,
   specifier: "test-embedding",
@@ -191,6 +192,7 @@ describe("handleEmbeddingGeneration", () => {
 
   test("returns 400 when model type is wrong", async () => {
     getModelInfo.mockImplementationOnce(async () => modelFound({
+      installationId: "inst-1",
       nodeId: "node-1",
       host: `localhost:${mockPort}`,
       specifier: "test-chat-model",

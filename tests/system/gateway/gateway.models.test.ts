@@ -134,18 +134,21 @@ describe("xinity-ai-gateway models", () => {
     const node = await createAiNode();
     await createModelInstallation({
       nodeId: node.id,
+      deploymentId: downloadingDeployment.id,
       specifier: downloadingDeployment.publicSpecifier,
       port: 19990,
       lifecycleState: "downloading",
     });
     await createModelInstallation({
       nodeId: node.id,
+      deploymentId: installingDeployment.id,
       specifier: installingDeployment.publicSpecifier,
       port: 19991,
       lifecycleState: "installing",
     });
     await createModelInstallation({
       nodeId: node.id,
+      deploymentId: failedDeployment.id,
       specifier: failedDeployment.publicSpecifier,
       port: 19992,
       lifecycleState: "failed",
@@ -180,18 +183,21 @@ describe("xinity-ai-gateway models", () => {
     const node = await createAiNode();
     await createModelInstallation({
       nodeId: node.id,
+      deploymentId: downloadingDeployment.id,
       specifier: downloadingDeployment.publicSpecifier,
       port: 19980,
       lifecycleState: "downloading",
     });
     await createModelInstallation({
       nodeId: node.id,
+      deploymentId: installingDeployment.id,
       specifier: installingDeployment.publicSpecifier,
       port: 19981,
       lifecycleState: "installing",
     });
     await createModelInstallation({
       nodeId: node.id,
+      deploymentId: failedDeployment.id,
       specifier: failedDeployment.publicSpecifier,
       port: 19982,
       lifecycleState: "failed",

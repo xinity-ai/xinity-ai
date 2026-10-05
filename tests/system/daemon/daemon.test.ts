@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { aiNodeT, modelInstallationT, preconfigureDB, sql } from "common-db";
+import { aiNodeT, modelDeploymentT, modelInstallationT, organizationT, preconfigureDB, sql } from "common-db";
 import {
   createTempStateDir,
   getAvailablePort,
@@ -23,6 +23,8 @@ const runningDaemons: DaemonHandle[] = [];
 const runningMocks: Array<() => void> = [];
 const createdNodeIds: string[] = [];
 const createdInstallationIds: string[] = [];
+const createdDeploymentIds: string[] = [];
+const createdOrganizationIds: string[] = [];
 
 afterAll(async () => {
   for (const handle of runningDaemons) {
@@ -41,7 +43,28 @@ afterAll(async () => {
   for (const id of createdNodeIds) {
     try { await db.update(aiNodeT).set({ deletedAt: now }).where(sql`${aiNodeT.id} = ${id}`); } catch {}
   }
+  // Deleting a deployment also deletes its installations.
+  for (const id of createdDeploymentIds) {
+    try { await db.delete(modelDeploymentT).where(sql`${modelDeploymentT.id} = ${id}`); } catch {}
+  }
+  for (const id of createdOrganizationIds) {
+    try { await db.delete(organizationT).where(sql`${organizationT.id} = ${id}`); } catch {}
+  }
 });
+
+async function createDeployment(specifier: string): Promise<string> {
+  const organizationId = `org-${randomUUID()}`;
+  await db.insert(organizationT).values({ id: organizationId, name: "Daemon System Tests", slug: `daemon-tests-${randomUUID()}` });
+  const [deployment] = await db.insert(modelDeploymentT).values({
+    organizationId,
+    name: "Daemon Test Model",
+    publicSpecifier: `${specifier}-${randomUUID()}`,
+    specifier,
+  }).returning();
+  createdDeploymentIds.push(deployment!.id);
+  createdOrganizationIds.push(organizationId);
+  return deployment!.id;
+}
 
 async function waitForCondition(fn: () => boolean, timeoutMs = 10_000): Promise<void> {
   const start = Date.now();
@@ -119,6 +142,7 @@ describe("xinity-ai-daemon", () => {
 
     const [installation] = await db.insert(modelInstallationT).values({
       nodeId,
+      deploymentId: await createDeployment("ministral-3-m"),
       specifier: "ministral-3-m",
       estCapacity: 1,
       port: nodePort,
@@ -217,6 +241,7 @@ describe("xinity-ai-daemon", () => {
 
     const [installation] = await db.insert(modelInstallationT).values({
       nodeId,
+      deploymentId: await createDeployment(addSpecifier),
       specifier: addSpecifier,
       estCapacity: 1,
       port: nodePort,

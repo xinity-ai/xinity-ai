@@ -221,6 +221,7 @@ export async function createAiNode(input: { host?: string; port?: number; estCap
 
 export async function createModelInstallation(input: {
   nodeId: string;
+  deploymentId: string;
   specifier: string;
   port: number;
   estCapacity?: number;
@@ -230,6 +231,7 @@ export async function createModelInstallation(input: {
 }): Promise<{ id: string }> {
   const [installation] = await getDB().insert(modelInstallationT).values({
     nodeId: input.nodeId,
+    deploymentId: input.deploymentId,
     specifier: input.specifier,
     estCapacity: input.estCapacity ?? 1,
     port: input.port,
@@ -248,9 +250,10 @@ export async function createModelInstallation(input: {
   return { id: installation!.id };
 }
 
-export async function createReadyInstallationFor(deployment: { publicSpecifier: string }): Promise<{ id: string }> {
+export async function createReadyInstallationFor(deployment: { id: string; publicSpecifier: string }): Promise<{ id: string }> {
   const node = await createAiNode();
   return createModelInstallation({
+    deploymentId: deployment.id,
     nodeId: node.id,
     specifier: deployment.publicSpecifier,
     port: await getAvailablePort(),

@@ -1,5 +1,5 @@
 import { createRequestVerifier, type VerifyFailure } from "common-env";
-import { resolveModel } from "../model-registry";
+import { resolveInstallation } from "../model-registry";
 import { getAuthToken } from "../statekeeper";
 import { rootLogger } from "../../logger";
 
@@ -48,8 +48,8 @@ export async function handleProxyRequest(req: Request, url: URL): Promise<Respon
     return new Response(null, { status: 400 });
   }
 
-  const model = decodeURIComponent(match[1]);
-  const installation = resolveModel(model);
+  const installationId = decodeURIComponent(match[1]);
+  const installation = resolveInstallation(installationId);
   if (!installation) {
     return new Response(null, { status: 404 });
   }
@@ -65,7 +65,7 @@ export async function handleProxyRequest(req: Request, url: URL): Promise<Respon
       signal: req.signal,
     });
   } catch (err) {
-    log.error({ err, model, port: installation.port, path: backendPath }, "Proxy backend error");
+    log.error({ err, installationId, specifier: installation.specifier, port: installation.port, path: backendPath }, "Proxy backend error");
     return new Response(null, { status: 502 });
   }
 }

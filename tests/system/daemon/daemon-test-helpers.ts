@@ -131,8 +131,10 @@ async function startMockTetherServer(): Promise<TetherMock> {
             driver: row.driver,
             estCapacity: row.estCapacity,
             kvCacheCapacity: row.kvCacheCapacity,
+            hostCapacity: row.hostCapacity,
             port: row.port,
             settings: row.settings,
+            gpuIds: row.gpuIds,
           })),
         };
 

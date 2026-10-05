@@ -5,10 +5,10 @@ import { config } from "../config";
 const customCa = config.inference.ca;
 const tlsOptions = customCa ? { ca: customCa } : undefined;
 
-/** Build the full URL for a request through the daemon proxy, addressed by canonical specifier. */
-export function backendUrl(host: string, specifier: string, path: string, tls: boolean): string {
+/** Build the full URL for a request through the daemon proxy, addressed by installation id. */
+export function backendUrl(host: string, installationId: string, path: string, tls: boolean): string {
   const protocol = tls ? "https" : "http";
-  return `${protocol}://${host}/proxy/${encodeURIComponent(specifier)}${path}`;
+  return `${protocol}://${host}/proxy/${encodeURIComponent(installationId)}${path}`;
 }
 
 /** Perform a fetch to a daemon inference proxy, proving the node token without sending it. */
@@ -24,13 +24,13 @@ export function backendFetch(url: string | URL | Request, init?: RequestInit & {
   return fetch(url, { ...init, headers, ...(tlsOptions ? { tls: tlsOptions } : {}) });
 }
 
-type BackendTarget = { host: string; specifier: string; tls: boolean; authToken: string | null };
+type BackendTarget = { host: string; installationId: string; tls: boolean; authToken: string | null };
 
 export function nodeProvider(target: BackendTarget & { driver: string }): OpenAICompatibleProvider {
   const authToken = target.authToken ?? undefined;
   return createOpenAICompatible({
     name: target.driver,
-    baseURL: backendUrl(target.host, target.specifier, "/v1", target.tls),
+    baseURL: backendUrl(target.host, target.installationId, "/v1", target.tls),
     includeUsage: true,
     supportsStructuredOutputs: target.driver === "vllm",
     fetch: ((url, init) => backendFetch(url, { ...init, authToken })) as typeof globalThis.fetch,
@@ -71,7 +71,7 @@ export function backendPostJson(
   body: unknown,
   signal: AbortSignal,
 ): Promise<Response> {
-  return backendFetch(backendUrl(target.host, target.specifier, path, target.tls), {
+  return backendFetch(backendUrl(target.host, target.installationId, path, target.tls), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -90,7 +90,7 @@ export function backendPostForm(
   form: FormData,
   signal: AbortSignal,
 ): Promise<Response> {
-  return backendFetch(backendUrl(target.host, target.specifier, path, target.tls), {
+  return backendFetch(backendUrl(target.host, target.installationId, path, target.tls), {
     method: "POST",
     body: form,
     signal,
