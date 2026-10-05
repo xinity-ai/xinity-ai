@@ -79,7 +79,7 @@ Only the shared runtime and HTTP metrics above.
 | `tether_sse_connections_total` | counter | | SSE connections established |
 | `tether_sse_connection_duration_seconds` | histogram | `reason` | How long each closed connection lasted, by why it closed |
 | `tether_desired_state_pushes_total` | counter | | Desired-state events pushed to daemons |
-| `tether_request_rejections_total` | counter | `endpoint` (`stream`, `status`), `reason` | Daemon requests refused before any work: `unauthorized`, `unauthorized_stale`, `invalid_payload`, `protocol_mismatch`, `registration_failed`, `identity_mismatch`, `invalid_signature`, `installation_not_owned`, `method_not_allowed` |
+| `tether_request_rejections_total` | counter | `endpoint` (`stream`, `status`), `reason` | Daemon requests refused before any work: `unauthorized`, `unauthorized_stale`, `unauthorized_replayed`, `invalid_payload`, `protocol_mismatch`, `registration_failed`, `identity_mismatch`, `invalid_signature`, `installation_not_owned`, `method_not_allowed` |
 
 A daemon connection is meant to last as long as the node is up, so the connection-duration histogram is the primary health signal: observations in the low buckets mean the fleet is reconnecting, and `reason` says why. `cancel` covers anything that tore down the socket from the far side (daemon restart, network drop, an idle timeout closing the connection), `superseded` means the same node opened a second connection, `write_failed` and `keepalive_failed` mean the tether could no longer write to the stream, `shutdown` is a clean tether stop.
 

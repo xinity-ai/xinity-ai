@@ -27,8 +27,13 @@ function refuse(endpoint: "stream" | "status", reason: TetherRefusalReason, erro
 
 // A skewed clock gets its own category, so a fleet drifting out of the window is not read as
 // a fleet configured with the wrong secret.
+const REJECTION_BY_FAILURE: Partial<Record<VerifyFailure, TetherRefusalReason>> = {
+  stale: "unauthorized_stale",
+  replayed: "unauthorized_replayed",
+};
+
 function rejectUnsigned(endpoint: "stream" | "status", reason: VerifyFailure): Response {
-  return refuse(endpoint, reason === "stale" ? "unauthorized_stale" : "unauthorized", unauthorizedDetail(reason), 401);
+  return refuse(endpoint, REJECTION_BY_FAILURE[reason] ?? "unauthorized", unauthorizedDetail(reason), 401);
 }
 
 const refusal = activationRefusal(tetherConfig, rootLogger);

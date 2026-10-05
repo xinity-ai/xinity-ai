@@ -1,6 +1,6 @@
 # TLS: Encrypted Inference Backend Communication
 
-xinity supports optional TLS between the gateway and inference daemons. When enabled, inference traffic is encrypted in transit. Authentication between services is handled automatically via per-node tokens: the daemon sends its token to the tether at registration, the gateway reads it from the database when routing requests, and each request is signed with it.
+xinity supports optional TLS between the gateway and inference daemons. When enabled, inference traffic is encrypted in transit. Authentication between services is handled automatically via per-node tokens: the daemon sends its token to the tether at registration, the gateway reads it from the database when routing requests, and each request is signed with it in a way that cannot be replayed.
 
 ## Architecture
 

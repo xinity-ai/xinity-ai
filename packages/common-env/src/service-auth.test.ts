@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { signRequest, verifyRequest, type SignedRequest } from "./service-auth";
+import { createRequestVerifier, signRequest, verifyRequest, type SignedRequest } from "./service-auth";
 
 const SECRET = "tether-secret-value";
 const post: SignedRequest = { method: "POST", path: "/api/v1/status" };
@@ -48,5 +48,30 @@ describe("verifyRequest", () => {
     expect(verifyRequest(SECRET, null, post)).toEqual({ ok: false, reason: "missing" });
     expect(verifyRequest(SECRET, `Bearer ${SECRET}`, post)).toEqual({ ok: false, reason: "malformed" });
     expect(verifyRequest(SECRET, "Xinity ts=abc,nonce=,mac=", post)).toEqual({ ok: false, reason: "malformed" });
+  });
+});
+
+describe("createRequestVerifier", () => {
+  test("accepts a signature once and refuses it when sent again", () => {
+    const verify = createRequestVerifier();
+    const header = signRequest(SECRET, post);
+
+    expect(verify(SECRET, header, post)).toEqual({ ok: true });
+    expect(verify(SECRET, header, post)).toEqual({ ok: false, reason: "replayed" });
+  });
+
+  test("keeps accepting fresh signatures after one was used", () => {
+    const verify = createRequestVerifier();
+
+    expect(verify(SECRET, signRequest(SECRET, post), post).ok).toBe(true);
+    expect(verify(SECRET, signRequest(SECRET, post), post).ok).toBe(true);
+  });
+
+  test("does not remember a nonce whose signature failed", () => {
+    const verify = createRequestVerifier();
+    const header = signRequest(SECRET, post);
+
+    expect(verify("other", header, post).ok).toBe(false);
+    expect(verify(SECRET, header, post)).toEqual({ ok: true });
   });
 });

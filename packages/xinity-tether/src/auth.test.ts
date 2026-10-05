@@ -34,4 +34,10 @@ describe("verifySignature", () => {
   test("rejects a missing authorization header", () => {
     expect(verifySignature(post(null), STATUS_PATH)).toBe("missing");
   });
+
+  test("rejects a request sent a second time", () => {
+    const header = signRequest(SECRET, { method: "POST", path: STATUS_PATH });
+    expect(verifySignature(post(header), STATUS_PATH)).toBeNull();
+    expect(verifySignature(post(header), STATUS_PATH)).toBe("replayed");
+  });
 });

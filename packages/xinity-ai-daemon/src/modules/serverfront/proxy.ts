@@ -1,4 +1,4 @@
-import { verifyRequest, type VerifyFailure } from "common-env";
+import { createRequestVerifier, type VerifyFailure } from "common-env";
 import { resolveModel } from "../model-registry";
 import { getAuthToken } from "../statekeeper";
 import { rootLogger } from "../../logger";
@@ -6,6 +6,8 @@ import { rootLogger } from "../../logger";
 const log = rootLogger.child({ name: "proxy" });
 
 const PROXY_ROUTE_RE = /^\/proxy\/([^/]+)\/v1\/(.*)/;
+
+const verifyOnce = createRequestVerifier();
 
 /** Read by the gateway operator, who otherwise cannot tell a drifted clock from a wrong or absent token. */
 function refusalDetail(reason: VerifyFailure): string {
@@ -18,11 +20,13 @@ function refusalDetail(reason: VerifyFailure): string {
       return `Signature timestamp is outside the accepted window. This daemon's clock reads ${new Date().toISOString()}. Compare it with the gateway's clock.`;
     case "mismatch":
       return "Signature does not match this node's auth token. The gateway holds a different token for this node.";
+    case "replayed":
+      return "This signature was already used. Either the request was replayed, or the gateway sent it again without signing anew.";
   }
 }
 
 function refuseUnsigned(req: Request, url: URL): Response | null {
-  const result = verifyRequest(getAuthToken(), req.headers.get("authorization"), {
+  const result = verifyOnce(getAuthToken(), req.headers.get("authorization"), {
     method: req.method,
     path: `${url.pathname}${url.search}`,
   });

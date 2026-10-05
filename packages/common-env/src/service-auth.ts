@@ -9,7 +9,7 @@ export type SignedRequest = {
   path: string;
 };
 
-export type VerifyFailure = "missing" | "malformed" | "stale" | "mismatch";
+export type VerifyFailure = "missing" | "malformed" | "stale" | "mismatch" | "replayed";
 export type VerifyResult = { ok: true } | { ok: false; reason: VerifyFailure };
 
 function canonical(request: SignedRequest, timestamp: number, nonce: string): string {
@@ -81,4 +81,35 @@ export function verifyRequest(
     return { ok: false, reason: "mismatch" };
   }
   return { ok: true };
+}
+
+/**
+ * verifyRequest that also accepts each signature only once. A nonce is remembered until its timestamp
+ * leaves the window, after which the signature is refused as stale anyway.
+ */
+export function createRequestVerifier(): typeof verifyRequest {
+  const expiryByNonce = new Map<string, number>();
+
+  return (secret, header, request, now = Date.now()) => {
+    const result = verifyRequest(secret, header, request, now);
+    if (!result.ok) {
+      return result;
+    }
+
+    // Insertion order roughly follows expiry, so this stops at the first live nonce and leaves
+    // the few out-of-order stragglers for a later call.
+    for (const [nonce, expiresAt] of expiryByNonce) {
+      if (expiresAt >= now) {
+        break;
+      }
+      expiryByNonce.delete(nonce);
+    }
+
+    const { timestamp, nonce } = parseHeader(header!)!;
+    if (expiryByNonce.has(nonce)) {
+      return { ok: false, reason: "replayed" };
+    }
+    expiryByNonce.set(nonce, timestamp + MAX_SKEW_MS);
+    return result;
+  };
 }

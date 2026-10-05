@@ -117,6 +117,7 @@ export function canonicalStateReport(report: UnsignedInstallationStateReport, re
 export const tetherRefusalReasonSchema = z.enum([
   "unauthorized",
   "unauthorized_stale",
+  "unauthorized_replayed",
   "invalid_payload",
   "protocol_mismatch",
   "registration_failed",

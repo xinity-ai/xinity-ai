@@ -114,6 +114,18 @@ describe("proxy auth", () => {
 });
 
 describe("proxy routing", () => {
+  test("rejects a signed request sent a second time", async () => {
+    const path = "/proxy/llama3%3Alatest/v1/chat/completions";
+    const url = new URL(`http://daemon${path}`);
+    const header = signRequest(getAuthToken(), { method: "POST", path });
+    const send = () => handleProxyRequest(new Request(url.toString(), { method: "POST", headers: { authorization: header } }), url);
+
+    expect((await send()).status).not.toBe(401);
+    const replay = await send();
+    expect(replay.status).toBe(401);
+    expect(await replay.text()).toContain("already used");
+  });
+
   test("returns 400 for invalid proxy path", async () => {
     const res = await proxyRequest("/proxy/");
     expect(res.status).toBe(400);
