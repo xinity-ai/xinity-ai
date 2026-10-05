@@ -2,12 +2,12 @@ import "zod/compile";
 
 import { z } from "zod";
 import { DYNAMIC_CONFIG_CHANNEL, logMigrationFailureFatal, readDynamicConfig, sql } from "common-db";
-import { nodeRegistrationSchema, installationStateReportSchema, protocolFingerprint, activationRefusal, createDbConfigFeed, canonicalRegistration, canonicalStateReport, verifyNodeSignature, STREAM_PATH, STATUS_PATH, KEEPALIVE_INTERVAL_HEADER, type VerifyFailure } from "common-env";
+import { nodeRegistrationSchema, installationStateReportSchema, protocolFingerprint, activationRefusal, createDbConfigFeed, canonicalRegistration, canonicalStateReport, verifyNodeSignature, STREAM_PATH, STATUS_PATH, KEEPALIVE_INTERVAL_HEADER, type TetherRefusal, type TetherRefusalReason, type VerifyFailure } from "common-env";
 import { tetherConfig } from "./config-schema";
 import { config, configStore } from "./config";
 import { rootLogger } from "./logger";
 import { checkMigrations, getDB, subscribe, end as endDB } from "./db";
-import { verifySignature, unauthorized } from "./auth";
+import { verifySignature, unauthorizedDetail } from "./auth";
 import { addConnection, removeConnection, pushDesiredState, pushConfig, pushConfigToAll, runKeepaliveLoop, sendShutdownToAll, dropAllConnections, isConnected, getConnectedNodeIds, connectedPublicKey } from "./connections";
 import { createConfigBroadcast } from "./config-broadcast";
 import { buildDesiredState } from "./desired-state";
@@ -20,11 +20,15 @@ const log = rootLogger;
 
 const handshakeSchema = z.object({ protocolFingerprint: z.string() });
 
-// A skewed clock gets its own series, so a fleet drifting out of the window is not read as
+function refuse(endpoint: "stream" | "status", reason: TetherRefusalReason, error: string, status: number): Response {
+  incRequestRejections(endpoint, reason);
+  return Response.json({ error, reason } satisfies TetherRefusal, { status });
+}
+
+// A skewed clock gets its own category, so a fleet drifting out of the window is not read as
 // a fleet configured with the wrong secret.
 function rejectUnsigned(endpoint: "stream" | "status", reason: VerifyFailure): Response {
-  incRequestRejections(endpoint, reason === "stale" ? "unauthorized_stale" : "unauthorized");
-  return unauthorized(reason);
+  return refuse(endpoint, reason === "stale" ? "unauthorized_stale" : "unauthorized", unauthorizedDetail(reason), 401);
 }
 
 const refusal = activationRefusal(tetherConfig, rootLogger);
@@ -125,8 +129,7 @@ configStore.watch(
 
 async function handleSSEStream(req: Request): Promise<Response> {
   if (req.method !== "POST") {
-    incRequestRejections("stream", "method_not_allowed");
-    return new Response("Method Not Allowed", { status: 405 });
+    return refuse("stream", "method_not_allowed", "Method Not Allowed", 405);
   }
 
   const refused = verifySignature(req, STREAM_PATH);
@@ -142,37 +145,29 @@ async function handleSSEStream(req: Request): Promise<Response> {
   const expected = protocolFingerprint();
   if (!handshake.success || handshake.data.protocolFingerprint !== expected) {
     const received = handshake.success ? handshake.data.protocolFingerprint : "unknown";
-    incRequestRejections("stream", "protocol_mismatch");
     log.warn({ expected, received }, "Protocol version mismatch");
-    return Response.json(
-      { error: `Protocol version mismatch (tether: ${expected}, daemon: ${received})` },
-      { status: 409 },
-    );
+    return refuse("stream", "protocol_mismatch", `Protocol version mismatch (tether: ${expected}, daemon: ${received})`, 409);
   }
 
   const parsed = nodeRegistrationSchema.safeParse(body);
   if (!parsed.success) {
-    incRequestRejections("stream", "invalid_payload");
-    return Response.json({ error: parsed.error.message }, { status: 400 });
+    return refuse("stream", "invalid_payload", parsed.error.message, 400);
   }
 
   const { nodeId, publicKey, signature } = parsed.data;
 
   if (!verifyNodeSignature(publicKey, canonicalRegistration(parsed.data), signature)) {
-    incRequestRejections("stream", "identity_mismatch");
     log.warn({ nodeId }, "Registration signature does not match the key it presents");
-    return Response.json({ error: "Registration signature is invalid" }, { status: 401 });
+    return refuse("stream", "identity_mismatch", "Registration signature is invalid", 401);
   }
 
   try {
     if (await writeRegistration(parsed.data) === "identity_mismatch") {
-      incRequestRejections("stream", "identity_mismatch");
-      return Response.json({ error: "This node id is registered to a different key" }, { status: 403 });
+      return refuse("stream", "identity_mismatch", "This node id is registered to a different key", 403);
     }
   } catch (err) {
-    incRequestRejections("stream", "registration_failed");
     log.error({ err, nodeId }, "Registration write failed during SSE handshake");
-    return Response.json({ error: "Tether cannot write to its database" }, { status: 503 });
+    return refuse("stream", "registration_failed", "Tether cannot write to its database", 503);
   }
 
   let connId: number | undefined;
@@ -220,27 +215,24 @@ async function handleStatus(req: Request): Promise<Response> {
 
   const parsed = installationStateReportSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
-    incRequestRejections("status", "invalid_payload");
-    return Response.json({ error: parsed.error.message }, { status: 400 });
+    return refuse("status", "invalid_payload", parsed.error.message, 400);
   }
 
   const { nodeId, states, signature } = parsed.data;
 
   const publicKey = connectedPublicKey(nodeId) ?? await readPinnedPublicKey(nodeId);
   if (!publicKey || !verifyNodeSignature(publicKey, canonicalStateReport(parsed.data), signature)) {
-    incRequestRejections("status", "identity_mismatch");
     log.warn({ nodeId, pinned: !!publicKey }, "Status report is not signed by this node");
-    return Response.json({ error: "Report signature is invalid" }, { status: 401 });
+    return refuse("status", "identity_mismatch", "Report signature is invalid", 401);
   }
 
   const { owned, foreign } = await partitionOwnedStates(nodeId, states);
   if (foreign.length > 0) {
-    incRequestRejections("status", "installation_not_owned");
     log.error(
       { nodeId, installationIds: foreign.map((s) => s.installationId) },
       "Status report refused, it covers installations belonging to another node",
     );
-    return Response.json({ error: "Report covers installations owned by another node" }, { status: 403 });
+    return refuse("status", "installation_not_owned", "Report covers installations owned by another node", 403);
   }
 
   queueInstallationStates(owned);

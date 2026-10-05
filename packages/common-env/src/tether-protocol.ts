@@ -110,6 +110,27 @@ export function canonicalStateReport(report: UnsignedInstallationStateReport): s
   ]);
 }
 
+export const tetherRefusalReasonSchema = z.enum([
+  "unauthorized",
+  "unauthorized_stale",
+  "invalid_payload",
+  "protocol_mismatch",
+  "registration_failed",
+  "identity_mismatch",
+  "installation_not_owned",
+  "method_not_allowed",
+]);
+export type TetherRefusalReason = z.infer<typeof tetherRefusalReasonSchema>;
+
+export type TetherRefusal = { error: string; reason: TetherRefusalReason };
+
+export const tetherConnectionSchema = z.object({
+  state: z.enum(["connecting", "connected", "refused", "unreachable"]),
+  reason: tetherRefusalReasonSchema.optional(),
+  since: z.iso.datetime(),
+});
+export type TetherConnection = z.infer<typeof tetherConnectionSchema>;
+
 /** Signed by the caller and verified by the tether, so both ends must name them identically. */
 export const STREAM_PATH = "/api/v1/stream";
 export const STATUS_PATH = "/api/v1/status";

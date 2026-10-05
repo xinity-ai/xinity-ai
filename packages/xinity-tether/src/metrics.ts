@@ -7,6 +7,7 @@ import {
   createMetricsAuth,
   processMetrics,
   serializeMetrics,
+  type TetherRefusalReason,
 } from "common-env";
 import { version } from "../../../package.json";
 import { config } from "./config";
@@ -54,16 +55,6 @@ export type DisconnectReason =
   | "db_unreachable"
   | "shutdown";
 
-export type RejectionReason =
-  | "unauthorized"
-  | "unauthorized_stale"
-  | "invalid_payload"
-  | "protocol_mismatch"
-  | "registration_failed"
-  | "identity_mismatch"
-  | "installation_not_owned"
-  | "method_not_allowed";
-
 export function incSSEConnections() {
   sseConnectionsTotal.inc({});
 }
@@ -80,7 +71,7 @@ export function setConnectedNodes(n: number) {
   connectedNodes.set({}, n);
 }
 
-export function incRequestRejections(endpoint: "stream" | "status", reason: RejectionReason) {
+export function incRequestRejections(endpoint: "stream" | "status", reason: TetherRefusalReason) {
   requestRejectionsTotal.inc({ endpoint, reason });
 }
 

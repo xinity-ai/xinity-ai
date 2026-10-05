@@ -10,7 +10,7 @@ const stateDir = mkdtempSync(join(tmpdir(), "tether-client-test-"));
 // The trailing slash is the shape that produced `//api/v1/stream` in production.
 mock.module("../config", () => mockConfigModule({ TETHER_URL: "http://100.64.0.11:2000/", STATE_DIR: stateDir }));
 
-const { reportInstallationStates, connectSSE } = await import("./tether-client");
+const { reportInstallationStates, connectSSE, tetherConnection } = await import("./tether-client");
 const { config } = await import("../config");
 
 async function captureStatusPost(report: UnsignedInstallationStateReport) {
@@ -50,7 +50,41 @@ test("a status report is signed by the node key the tether pins", async () => {
   expect(verifyNodeSignature(keypair!.publicKey, canonicalStateReport(report), signature)).toBe(true);
 });
 
-// Last in the file: the generator has no stop signal, so its reconnect loop outlives the test.
+async function waitFor(predicate: () => boolean, timeoutMs = 5000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate() && Date.now() < deadline) {
+    await Bun.sleep(20);
+  }
+}
+
+// Last in the file: the generator has no stop signal, so these reconnect loops outlive their tests.
+test("the connection state follows the tether's answers", async () => {
+  const answers = [
+    () => Response.json({ error: "This node id is registered to a different key", reason: "identity_mismatch" }, { status: 403 }),
+    () => new Response("Protocol version mismatch", { status: 409 }),
+    () => new Response(new ReadableStream({ start: (controller) => controller.enqueue(new TextEncoder().encode(": hello\n\n")) })),
+  ];
+  const server = Bun.serve({ port: 0, fetch: () => answers.shift()!() });
+  config.tether.url = server.url.href;
+
+  expect(tetherConnection().state).toBe("connecting");
+  void connectSSE({} as NodeRegistration).next();
+
+  await waitFor(() => tetherConnection().state === "refused");
+  expect(tetherConnection().reason).toBe("identity_mismatch");
+
+  // An older tether sends no reason, so the handshake status stands in for it.
+  await waitFor(() => tetherConnection().reason === "protocol_mismatch");
+  expect(tetherConnection().state).toBe("refused");
+
+  await waitFor(() => tetherConnection().state === "connected");
+  expect(tetherConnection().reason).toBeUndefined();
+
+  await server.stop(true);
+  await waitFor(() => tetherConnection().state === "unreachable");
+  expect(tetherConnection().state).toBe("unreachable");
+}, 15_000);
+
 test("a stream that stays silent past the announced keepalive is reopened", async () => {
   let connects = 0;
   const server = Bun.serve({

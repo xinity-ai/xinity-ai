@@ -1,5 +1,6 @@
 import postgres from "postgres";
 import { expectedMigrationCount } from "common-db";
+import { tetherConnectionSchema, type TetherConnection } from "common-env";
 import { getUnitStatusOn, type Host } from "../core/host.ts";
 
 export type CheckStatus = "pass" | "warn" | "fail" | "skip";
@@ -101,19 +102,60 @@ export async function checkServiceHealth(
     ...curlArgs,
     url,
   ]);
-  const statusCode = parseInt(result.output.trim(), 10);
+  return statusCodeCheck(label, parseInt(result.output.trim(), 10), result.output);
+}
+
+function statusCodeCheck(label: string, statusCode: number, curlOutput: string): CheckResult {
   if (isNaN(statusCode) || statusCode === 0) {
     return {
       label,
       status: "fail",
       message: "Unreachable",
-      detail: result.output || "curl failed",
+      detail: curlOutput || "curl failed",
     };
   }
   if (statusCode >= 200 && statusCode < 300) {
     return { label, status: "pass", message: `Reachable (${statusCode})` };
   }
   return { label, status: "fail", message: `Returned ${statusCode}` };
+}
+
+/** A daemon predating the tether field gets the plain health check alone. */
+export async function checkDaemonHealth(host: Host, url: string): Promise<CheckResult[]> {
+  const result = await host.run([
+    "curl", "-s", "-w", "\n%{http_code}",
+    "--connect-timeout", "5", "--max-time", "5",
+    url,
+  ]);
+  const lines = result.output.split("\n");
+  const statusCode = parseInt(lines.pop() ?? "", 10);
+  const health = statusCodeCheck("Health endpoint", statusCode, result.output);
+  if (health.status !== "pass") {
+    return [health];
+  }
+  const tether = parseTetherConnection(lines.join("\n"));
+  return tether ? [health, tetherConnectionCheck(tether)] : [health];
+}
+
+function parseTetherConnection(body: string): TetherConnection | undefined {
+  try {
+    return tetherConnectionSchema.parse(JSON.parse(body)?.tether);
+  } catch {
+    return undefined;
+  }
+}
+
+const TETHER_CONNECTION_CHECKS: Record<TetherConnection["state"], { status: CheckStatus; message: string; detail?: string }> = {
+  connected: { status: "pass", message: "Connected" },
+  connecting: { status: "warn", message: "Connecting" },
+  refused: { status: "fail", message: "Refused", detail: "The daemon logs carry the tether's full refusal." },
+  unreachable: { status: "fail", message: "Unreachable", detail: "The daemon logs carry the connection error." },
+};
+
+function tetherConnectionCheck(connection: TetherConnection): CheckResult {
+  const { status, message, detail } = TETHER_CONNECTION_CHECKS[connection.state];
+  const reason = connection.reason ? ` (${connection.reason})` : "";
+  return { label: "Tether connection", status, message: `${message}${reason} since ${connection.since}`, detail };
 }
 
 export function isLocalUrl(url: string, expectedPort: string): boolean {

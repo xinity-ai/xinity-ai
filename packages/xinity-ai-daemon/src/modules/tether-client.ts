@@ -6,7 +6,11 @@ import {
   signRequest,
   STATUS_PATH,
   STREAM_PATH,
+  tetherRefusalReasonSchema,
   type DesiredState,
+  type TetherConnection,
+  type TetherRefusal,
+  type TetherRefusalReason,
   type NodeRegistration,
   type InstallationStateReport,
   type UnsignedInstallationStateReport,
@@ -22,12 +26,47 @@ const MAX_BACKOFF_MS = 30_000;
 const MISSED_KEEPALIVES_BEFORE_RECONNECT = 3;
 const HANDSHAKE_TIMEOUT_MS = 30_000;
 
+// A tether older than the reason field still answers each handshake refusal with its own status.
+const HANDSHAKE_REFUSAL_BY_STATUS: Partial<Record<number, TetherRefusalReason>> = {
+  400: "invalid_payload",
+  401: "unauthorized",
+  403: "identity_mismatch",
+  405: "method_not_allowed",
+  409: "protocol_mismatch",
+  503: "registration_failed",
+};
+
+type Refusal = { message: string; reason?: TetherRefusalReason };
+
 /**
  * The tether writes its refusals for a human, and this host is the one that can act on them: a
  * clock outside the signature window is only visible from here as a bare 401.
  */
-async function refusal(res: Response): Promise<string> {
-  return (await res.text().catch(() => "")).trim().slice(0, 300);
+async function readRefusal(res: Response): Promise<Refusal> {
+  const text = (await res.text().catch(() => "")).trim();
+  let body: Partial<Record<keyof TetherRefusal, unknown>> | null = null;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    // An older tether answers some refusals in plain text.
+  }
+  return {
+    message: (typeof body?.error === "string" ? body.error : text).slice(0, 300),
+    reason: tetherRefusalReasonSchema.safeParse(body?.reason).data,
+  };
+}
+
+let connection: TetherConnection = { state: "connecting", since: new Date().toISOString() };
+
+function transition(state: TetherConnection["state"], reason?: TetherRefusalReason): void {
+  if (connection.state === state && connection.reason === reason) {
+    return;
+  }
+  connection = { state, reason, since: new Date().toISOString() };
+}
+
+export function tetherConnection(): TetherConnection {
+  return connection;
 }
 
 function signedHeaders(path: string): Record<string, string> {
@@ -48,6 +87,7 @@ export async function* connectSSE(registration: NodeRegistration): AsyncGenerato
 
   while (true) {
     const abort = new AbortController();
+    let established = false;
     let silenceTimer: Timer | undefined = setTimeout(() => {
       log.warn({ timeoutMs: HANDSHAKE_TIMEOUT_MS }, "Tether did not answer, reconnecting");
       abort.abort();
@@ -62,13 +102,17 @@ export async function* connectSSE(registration: NodeRegistration): AsyncGenerato
       clearTimeout(silenceTimer);
 
       if (!res.ok) {
-        log.error({ status: res.status, refusal: await refusal(res) }, "SSE connection rejected");
+        const { message, reason } = await readRefusal(res);
+        log.error({ status: res.status, reason, refusal: message }, "SSE connection rejected");
+        transition("refused", reason ?? HANDSHAKE_REFUSAL_BY_STATUS[res.status]);
         await Bun.sleep(backoffMs);
         backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
         continue;
       }
 
       backoffMs = 1000;
+      established = true;
+      transition("connected");
       log.info("SSE connection established");
 
       const limitMs = silenceLimitMs(res);
@@ -148,6 +192,7 @@ export async function* connectSSE(registration: NodeRegistration): AsyncGenerato
     } finally {
       clearTimeout(silenceTimer);
     }
+    transition(established ? "connecting" : "unreachable");
 
     await Bun.sleep(backoffMs);
     backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
@@ -167,7 +212,8 @@ export async function reportInstallationStates(report: UnsignedInstallationState
       body: JSON.stringify(signed),
     });
     if (!res.ok) {
-      log.error({ status: res.status, refusal: await refusal(res) }, "Status POST failed");
+      const { message, reason } = await readRefusal(res);
+      log.error({ status: res.status, reason, refusal: message }, "Status POST failed");
     }
   } catch (err) {
     log.error({ err }, "Status POST error");

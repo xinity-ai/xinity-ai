@@ -10,7 +10,7 @@ import { type Component, ENV_DIR, SECRETS_DIR, UNIT_DIR, GATEWAY_DEFAULT_PORT, I
 import { collectRemoteState, createCachedHost } from "../remote/remote-probe.ts";
 import {
   type CheckResult,
-  checkPostgresAndMigrations, checkRedis, checkServiceHealth, checkSmtp,
+  checkPostgresAndMigrations, checkRedis, checkServiceHealth, checkDaemonHealth, checkSmtp,
   checkInfoserverUrl,
   fileExistsCheck, serviceActiveCheck, isLocalUrl,
 } from "./doctor-probes.ts";
@@ -337,11 +337,10 @@ async function checkDaemonConnectivity(
   host: Host,
 ): Promise<CheckResult[]> {
   const checks: CheckResult[] = [];
-  await pushDbChecks(checks, values, host);
   await pushInfoserverCheck(checks, values, host);
   if (serviceActive) {
     const url = `http://${healthCheckHost(values)}:${values.PORT || "4044"}/healthCheck`;
-    checks.push(await checkServiceHealth(host, "Health endpoint", url));
+    checks.push(...await checkDaemonHealth(host, url));
   }
   return checks;
 }
