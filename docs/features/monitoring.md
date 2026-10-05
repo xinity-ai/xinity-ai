@@ -63,7 +63,8 @@ Load-balancer decision metrics (see [Load Balancing](gateway.md#load-balancing))
 | `gateway_lb_selections_total` | counter | `host`, `node_id`, `machine_name`, `deployment`, `bucket`, `strategy`, `reason` | Host selections, with `reason` = `single_candidate`, `random`, `round_robin`, `least_connections`, `prefix_affinity_hit`, or `redis_fallback` |
 | `gateway_lb_active_connections` | gauge | `host`, `node_id`, `machine_name` | In-flight connections as tracked by the least-connections strategy (mirrors the Redis counter it decides on) |
 | `gateway_lb_prefix_affinity_total` | counter | `outcome` (`hit`, `miss`, `ignored`) | Prefix-cache affinity lookups: hint found and honored, not found, or found but overridden by the strategy |
-| `gateway_lb_canary_split_total` | counter | `deployment`, `bucket` (`final`, `early`) | Canary routing decisions, only recorded when a deployment has an early model |
+| `gateway_lb_canary_split_total` | counter | `deployment`, `bucket` (`final`, `early`) | Canary routing decisions, only recorded when a deployment has an early model. `bucket` is the bucket that served the request |
+| `gateway_lb_canary_fallback_total` | counter | `deployment`, `from`, `to` (`final`, `early`) | Requests served by the other model of a canary deployment because the one picked by the traffic split had no ready hosts |
 | `gateway_lb_redis_fallback_total` | counter | `strategy` | Redis errors that forced a fallback to random selection |
 
 ### Dashboard metrics

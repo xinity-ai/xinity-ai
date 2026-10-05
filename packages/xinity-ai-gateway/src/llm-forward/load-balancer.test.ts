@@ -86,6 +86,42 @@ describe("selectHost", () => {
     mathRandomSpy.mockRestore();
   });
 
+  test("rolled final bucket without hosts falls back to early", async () => {
+    const mathRandomSpy = spyOn(Math, "random").mockReturnValue(0);
+
+    const result = await selectHost(
+      "random",
+      makeInput({ hosts: [], canaryProgress: 100, hasEarlyModel: true }),
+    );
+    expect(result).toBeDefined();
+    expect(result!.useFinalModel).toBe(false);
+    expect(result!.host).toBe("host-c:8080");
+
+    mathRandomSpy.mockRestore();
+  });
+
+  test("rolled early bucket without hosts falls back to final", async () => {
+    const mathRandomSpy = spyOn(Math, "random").mockReturnValue(0.5);
+
+    const result = await selectHost(
+      "random",
+      makeInput({ earlyHosts: [], canaryProgress: 0, hasEarlyModel: true }),
+    );
+    expect(result).toBeDefined();
+    expect(result!.useFinalModel).toBe(true);
+    expect(["host-a:8080", "host-b:8080"]).toContain(result!.host);
+
+    mathRandomSpy.mockRestore();
+  });
+
+  test("both canary buckets empty returns undefined", async () => {
+    const result = await selectHost(
+      "random",
+      makeInput({ hosts: [], earlyHosts: [], canaryProgress: 50, hasEarlyModel: true }),
+    );
+    expect(result).toBeUndefined();
+  });
+
   test("round-robin strategy picks host by modulo of counter", async () => {
     mockRedisSend.mockImplementation(
       ((cmd: string, _args: string[]) => {

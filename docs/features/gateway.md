@@ -26,7 +26,7 @@ The gateway exposes per-decision load-balancer metrics (candidate host count, se
 
 ## Canary Deployments
 
-A canary deployment names two models: the canary (`specifier`) and the model it replaces (`earlySpecifier`). `progress` is the share of traffic the canary gets.
+A canary deployment names two models: the canary (`specifier`) and the model it replaces (`earlySpecifier`). `progress` is the share of traffic the canary gets. When one side has no ready hosts, its share is served by the other side, so a canary that is still downloading does not fail requests.
 
 | Mode | How it works |
 |---|---|

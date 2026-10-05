@@ -103,6 +103,11 @@ export const lbCanarySplitTotal = createCounter(
   "Total canary routing decisions by deployment and bucket",
 );
 
+export const lbCanaryFallbackTotal = createCounter(
+  "gateway_lb_canary_fallback_total",
+  "Total requests served by the other model of a canary deployment because the one picked by the traffic split had no ready hosts",
+);
+
 export const lbRedisFallbackTotal = createCounter(
   "gateway_lb_redis_fallback_total",
   "Total load-balancer Redis failures that fell back to random selection, by strategy",
@@ -127,6 +132,7 @@ const allMetrics = [
   lbActiveConnections,
   lbPrefixAffinityTotal,
   lbCanarySplitTotal,
+  lbCanaryFallbackTotal,
   lbRedisFallbackTotal,
 ];
 
@@ -139,6 +145,10 @@ export function recordLbCandidateHosts(deployment: string, bucket: string, count
 
 export function recordLbCanarySplit(deployment: string, bucket: string): void {
   lbCanarySplitTotal.inc({ deployment, bucket });
+}
+
+export function recordLbCanaryFallback(deployment: string, from: string, to: string): void {
+  lbCanaryFallbackTotal.inc({ deployment, from, to });
 }
 
 export function recordLbSelection(

@@ -2,6 +2,7 @@ import { redis } from "../redis";
 import { rootLogger } from "../logger";
 import {
   recordLbCandidateHosts,
+  recordLbCanaryFallback,
   recordLbCanarySplit,
   recordLbSelection,
   recordLbPrefixAffinity,
@@ -214,14 +215,29 @@ async function selectByStrategy(
   }
 }
 
+const modelRole = (useFinalModel: boolean) => (useFinalModel ? "final" : "early");
+
+function chooseFinalModel(input: SelectHostInput): boolean {
+  const { hosts, earlyHosts, canaryProgress, hasEarlyModel, publicModel } = input;
+  const rolledFinal = !hasEarlyModel || Math.random() * 100 < canaryProgress;
+  const rolledHosts = rolledFinal ? hosts : earlyHosts;
+  const otherHosts = rolledFinal ? earlyHosts : hosts;
+
+  if (hasEarlyModel && rolledHosts.length === 0 && otherHosts.length > 0) {
+    recordLbCanaryFallback(publicModel, modelRole(rolledFinal), modelRole(!rolledFinal));
+    return !rolledFinal;
+  }
+  return rolledFinal;
+}
+
 export async function selectHost(
   strategy: LoadBalanceStrategy,
   input: SelectHostInput,
 ): Promise<SelectHostResult | undefined> {
-  const { hosts, earlyHosts, canaryProgress, hasEarlyModel, publicModel, prefixHashes, hostMeta } = input;
+  const { hosts, earlyHosts, hasEarlyModel, publicModel, prefixHashes, hostMeta } = input;
 
-  const useFinalModel = !hasEarlyModel || Math.random() * 100 < canaryProgress;
-  const bucket = useFinalModel ? "final" : "early";
+  const useFinalModel = chooseFinalModel(input);
+  const bucket = modelRole(useFinalModel);
   const targetHosts = useFinalModel ? hosts : earlyHosts;
 
   recordLbCandidateHosts(publicModel, bucket, targetHosts.length);
