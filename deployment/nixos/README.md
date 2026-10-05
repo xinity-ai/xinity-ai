@@ -297,7 +297,7 @@ An inference node needs Ollama and/or vLLM available on the same machine to actu
 The `environmentFiles` entries must contain:
 
 ```bash
-TETHER_URL=http://control-plane-host:4020
+TETHER_URL=https://tether.example.com
 TETHER_SECRET=<shared-secret>
 ```
 
@@ -307,13 +307,15 @@ The daemon is a native systemd service (`systemd.services.xinity-ai-daemon`). It
 
 ### Reaching the Tether
 
-Inference nodes connect to the tether directly on port 4020, which Caddy does not front, so open it on the control plane host:
+Caddy serves the tether at `tether.<domain>`, so inference nodes on other machines use `TETHER_URL=https://tether.<domain>`. Like the other subdomains, it needs a DNS record pointing at the control plane host. Only the tether's `/api` endpoints are reachable there. The bundled daemon reaches the tether over loopback either way.
+
+#### Without Caddy
+
+Set `services.xinity-ai.tetherSubdomain = null` to keep the tether off Caddy. Nodes then connect directly on port 4020, so open it on the control plane host:
 
 ```nix
 services.xinity-ai.tether.openFirewall = true;
 ```
-
-A single-host deployment does not need this: the bundled daemon reaches the tether over loopback.
 
 `openFirewall` accepts connections from anywhere. To accept them only from your inference nodes, leave it off and write the narrower rule yourself:
 
@@ -329,7 +331,7 @@ Or scope it to one interface, which is the usual choice when the nodes share a V
 networking.firewall.interfaces.wg0.allowedTCPPorts = [ 4020 ];
 ```
 
-To serve nodes over HTTPS, set `services.xinity-ai.tether.tlsCertFile` and `tlsKeyFile`. Caddy's ACME certificates do not cover the tether, so this needs its own certificate, valid for the `<domain>` nodes dial. Nodes then use `TETHER_URL=https://<domain>:4020`, and the bundled daemon follows that name automatically. See [TLS](../../docs/security/tls.md).
+To serve nodes over HTTPS on that port, set `services.xinity-ai.tether.tlsCertFile` and `tlsKeyFile`, which also keeps the tether off Caddy. This needs its own certificate, valid for the `<domain>` nodes dial. Nodes then use `TETHER_URL=https://<domain>:4020`, and the bundled daemon follows that name automatically. See [TLS](../../docs/security/tls.md).
 
 
 ---

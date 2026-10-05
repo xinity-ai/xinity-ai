@@ -20,7 +20,7 @@
       environmentFiles =
         lib.optional (config.age.secrets ? sharedEnv) config.age.secrets.sharedEnv.path;
 
-      # Needed once inference nodes run on other machines, as Caddy does not front the tether
+      # Only for inference nodes that connect to the tether's own port instead of tether.example.com
       # tether.openFirewall = true;
 
       monitoring = {

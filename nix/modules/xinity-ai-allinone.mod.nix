@@ -566,6 +566,12 @@
           description = "Subdomain for Grafana (results in grafana.example.com). Only routed when monitoring and Grafana are enabled.";
         };
 
+        tetherSubdomain = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = "tether";
+          description = "Subdomain for the tether (results in tether.example.com). Only routed when the tether runs here without tether.tlsCertFile. Set to null to keep the tether off Caddy.";
+        };
+
         database = {
           enable = lib.mkOption {
             type = lib.types.bool;
@@ -680,7 +686,7 @@
           openFirewall = lib.mkOption {
             type = lib.types.bool;
             default = false;
-            description = "Open the tether's port in the firewall. Needed when inference nodes run on other machines. Caddy does not front the tether, so this port is separate from 80 and 443.";
+            description = "Open the tether's port in the firewall, for inference nodes on other machines that connect to it directly rather than through tetherSubdomain.";
           };
           tlsCertFile = lib.mkOption {
             type = lib.types.nullOr lib.types.str;
@@ -1288,6 +1294,8 @@
               lib.mkDefault (if cfg.gateway.enable then cfg.gatewaySubdomain else null);
             infoserverSubdomain =
               lib.mkDefault (if cfg.infoserver.enable then cfg.infoserverSubdomain else null);
+            tetherSubdomain = lib.mkDefault
+              (if cfg.tether.enable && cfg.tether.tlsCertFile == null then cfg.tetherSubdomain else null);
             grafanaSubdomain = lib.mkDefault cfg.grafanaSubdomain;
             grafanaOrigin =
               if cfg.monitoring.enable && cfg.monitoring.grafana.enable
