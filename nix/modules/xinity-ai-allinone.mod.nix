@@ -589,7 +589,7 @@
             # Last, so every value it copies has already been written above.
             onboarding=$(cat ${onboardingTemplate})
             ${lib.concatMapStrings (v: ''
-              value=$(cat ${v.file})
+              value=$(cat ${v.file} 2>/dev/null) || value="unreadable on this host"
               onboarding=''${onboarding//@${v.name}@/"$value"}
             '') (lib.filter (v: v.secret && v.known) onboardingValues)}
             printf '%s\n' "$onboarding" > ${cfg.paths.daemonOnboarding}
