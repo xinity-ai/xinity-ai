@@ -169,7 +169,7 @@ describe("xinity-ai-gateway chat completion", () => {
     });
     expect(res.status).toBe(503);
     const body = await res.json();
-    expect(body).toEqual({ error: { message: "Model is currently unavailable, retry later", type: "server_error", param: null, code: null } });
+    expect(body).toEqual({ error: { message: "Model has no ready inference node", type: "server_error", param: null, code: null } });
 
     mockServer.stop();
   });

@@ -267,7 +267,7 @@ export function errorResponse(message: string, statusCode = 500, headers?: Recor
 
 const MODEL_LOOKUP_FAILURES: Record<ModelLookupFailure, { message: string; statusCode: number }> = {
   unknown: { message: "Model not found", statusCode: 404 },
-  unavailable: { message: "Model is currently unavailable, retry later", statusCode: 503 },
+  unavailable: { message: "Model has no ready inference node", statusCode: 503 },
 };
 
 export function modelLookupFailureResponse(failure: ModelLookupFailure): Response {
