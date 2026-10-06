@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { configInt } from "./leaf-types";
 import { defineGroup, env } from "./group";
-import { defineConfig } from "./build";
+import { defineConfig } from "./declaration";
 import { checkConfig, resolveConfig } from "./resolve";
 
 type ObjectStorage = { endpoint: string; accessKeyId: string; bucket: string };

@@ -1,5 +1,5 @@
 import { readSecretFile, type SecretFileReader } from "../secret-file";
-import type { AnyConfig } from "./build";
+import type { AnyConfig } from "./declaration";
 
 export const DYNAMIC_SENTINEL = "@dynamic";
 
@@ -44,7 +44,8 @@ function delegationOf(env: RawEnv, envKey: string, read: SecretFileReader): Dele
 }
 
 export type DelegationSplit = {
-  readonly envWithFallbacks: Record<string, string | undefined>;
+  /** The environment with each delegated key set to its fallback, which dashboard overrides are layered onto. */
+  readonly baseEnv: Record<string, string | undefined>;
   readonly delegatedKeys: readonly string[];
 };
 
@@ -57,7 +58,7 @@ export function splitDelegations(
   env: RawEnv,
   read: SecretFileReader = readSecretFile,
 ): DelegationSplit {
-  const envWithFallbacks: Record<string, string | undefined> = { ...env };
+  const baseEnv: Record<string, string | undefined> = { ...env };
   const delegatedKeys: string[] = [];
   const rejected: string[] = [];
   const activationKeys = activationKeysOf(config);
@@ -78,8 +79,8 @@ export function splitDelegations(
     }
 
     delegatedKeys.push(entry.envKey);
-    envWithFallbacks[entry.envKey] = delegation.fallback;
-    envWithFallbacks[`${entry.envKey}_FILE`] = undefined;
+    baseEnv[entry.envKey] = delegation.fallback;
+    baseEnv[`${entry.envKey}_FILE`] = undefined;
   }
 
   if (rejected.length > 0) {
@@ -92,5 +93,5 @@ export function splitDelegations(
     );
   }
 
-  return { envWithFallbacks, delegatedKeys };
+  return { baseEnv, delegatedKeys };
 }

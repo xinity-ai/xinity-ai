@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import { readSecretFile, type SecretFileReader } from "../secret-file";
 import { checkGroupActivation, isGroupActive, type ActivationWarning } from "./activation";
-import { fieldRefs, groupAt, refFor, type AnyConfig, type ConfigDef, type ConfigViolation, type FieldRef } from "./build";
+import { fieldRefs, groupAt, pointerOf, refFor, type AnyConfig, type ConfigDef, type ConfigViolation, type FieldRef } from "./declaration";
 import { isGroup, type AnyGroup, type ConfigEntry } from "./group";
 
 export type ValueSource = "env" | "env-file" | "default" | "dynamic";
@@ -31,35 +31,33 @@ export type ConfigProblem = {
   readonly message: string;
 };
 
-type Located = {
-  readonly source: Exclude<ValueSource, "default">;
-  readonly raw: unknown;
-  readonly origin?: string;
-};
+type RawValue =
+  | { readonly source: "env"; readonly value: string }
+  | { readonly source: "env-file"; readonly path: string };
 
-function locate(entry: ConfigEntry, opts: ResolveOptions): Located | undefined {
+function findRaw(entry: ConfigEntry, opts: ResolveOptions): RawValue | undefined {
   const env = opts.env ?? {};
 
   const direct = env[entry.envKey];
   if (direct !== undefined && direct !== "") {
-    return { source: "env", raw: direct };
+    return { source: "env", value: direct };
   }
 
   const indirect = env[`${entry.envKey}_FILE`];
   if (indirect) {
-    return { source: "env-file", raw: indirect, origin: indirect };
+    return { source: "env-file", path: indirect };
   }
 
   return undefined;
 }
 
-function materialize(entry: ConfigEntry, located: Located, read: SecretFileReader): unknown {
-  return located.source === "env-file"
-    ? read(String(located.raw), entry.envKey)
-    : located.raw;
+function readRaw(entry: ConfigEntry, raw: RawValue, read: SecretFileReader): unknown {
+  return raw.source === "env-file"
+    ? read(raw.path, entry.envKey)
+    : raw.value;
 }
 
-function attribute(
+function problemsFromIssues(
   issues: readonly z.core.$ZodIssue[],
   within: readonly ConfigEntry[],
 ): ConfigProblem[] {
@@ -74,7 +72,7 @@ function attribute(
   });
 }
 
-function judgeable(
+function withoutDelegatedFields(
   violations: readonly ConfigViolation[],
   delegated: ReadonlySet<string>,
 ): ConfigProblem[] {
@@ -96,19 +94,19 @@ function groupViolations(
 type Parsed = {
   readonly value: Record<string, unknown>;
   readonly problems: readonly ConfigProblem[];
-  readonly located: ReadonlyMap<string, Located>;
+  readonly rawValues: ReadonlyMap<string, RawValue>;
   readonly warnings: readonly ActivationWarning[];
 };
 
 function parseConfig(config: AnyConfig, opts: ResolveOptions): Parsed {
-  const located = new Map<string, Located>();
+  const rawValues = new Map<string, RawValue>();
   const presence: Record<string, unknown> = {};
 
   for (const entry of config.entries) {
-    const found = locate(entry, opts);
+    const found = findRaw(entry, opts);
     if (found) {
-      located.set(entry.envKey, found);
-      presence[entry.envKey] = found.raw;
+      rawValues.set(entry.envKey, found);
+      presence[entry.envKey] = true;
     }
   }
 
@@ -121,12 +119,12 @@ function parseConfig(config: AnyConfig, opts: ResolveOptions): Parsed {
   for (const [key, member] of Object.entries(config.members)) {
     if (!isGroup(member)) {
       const entry = entryAt(config, [key]);
-      const found = located.get(member.envKey);
-      const parsed = member.schema.safeParse(found ? materialize(entry, found, read) : undefined);
+      const found = rawValues.get(member.envKey);
+      const parsed = member.schema.safeParse(found ? readRaw(entry, found, read) : undefined);
       if (parsed.success) {
         value[key] = parsed.data;
       } else {
-        problems.push(...attribute(parsed.error.issues, [entry]));
+        problems.push(...problemsFromIssues(parsed.error.issues, [entry]));
       }
       continue;
     }
@@ -137,30 +135,29 @@ function parseConfig(config: AnyConfig, opts: ResolveOptions): Parsed {
     }
 
     const mounted = groupAt(config, key)!;
-    const entries = config.entries.filter((entry) => entry.path[0] === key);
     const input: Record<string, unknown> = {};
     for (const [name, field] of Object.entries(member.fields)) {
-      const found = located.get(field.envKey);
+      const found = rawValues.get(field.envKey);
       if (found) {
-        input[name] = materialize(entryAt(config, [key, name]), found, read);
+        input[name] = readRaw(entryAt(config, [key, name]), found, read);
       }
     }
 
     const parsed = mounted.schema.safeParse(input);
     if (parsed.success) {
       value[key] = parsed.data;
-      problems.push(...judgeable(groupViolations(config, key, member, parsed.data), delegated));
+      problems.push(...withoutDelegatedFields(groupViolations(config, key, member, parsed.data), delegated));
     } else {
-      problems.push(...attribute(parsed.error.issues, entries));
+      problems.push(...problemsFromIssues(parsed.error.issues, mounted.entries));
     }
   }
 
   // Only on a complete value: a rule reads members a failed one would have left undefined.
   if (problems.length === 0 && config.violations) {
-    problems.push(...judgeable(config.violations(value, fieldRefs(config)), delegated));
+    problems.push(...withoutDelegatedFields(config.violations(value, fieldRefs(config)), delegated));
   }
 
-  return { value, problems, located, warnings: activation.warnings };
+  return { value, problems, rawValues, warnings: activation.warnings };
 }
 
 export function checkConfig(config: AnyConfig, opts: ResolveOptions = {}): readonly ConfigProblem[] {
@@ -197,23 +194,23 @@ export type ResolvedValues = {
 };
 
 export function resolveValues(config: AnyConfig, opts: ResolveOptions = {}): ResolvedValues {
-  const { value, problems, located, warnings } = parseConfig(config, opts);
+  const { value, problems, rawValues, warnings } = parseConfig(config, opts);
 
   const provenance = config.entries.map((entry): Provenance => {
-    const found = located.get(entry.envKey);
+    const found = rawValues.get(entry.envKey);
     return {
-      pointer: entry.path.join("."),
+      pointer: pointerOf(entry),
       envKey: entry.envKey,
       source: found?.source ?? "default",
       isSecret: entry.isSecret,
-      origin: found?.origin,
+      origin: found?.source === "env-file" ? found.path : undefined,
     };
   });
 
   return { values: value, problems, provenance, warnings };
 }
 
-export function projectValues<T>(config: AnyConfig, readCurrentValues: () => ConfigValues): T {
+export function withDynamicAccessors<T>(config: AnyConfig, readCurrentValues: () => ConfigValues): T {
   const projected: ConfigValues = {};
 
   for (const [key, member] of Object.entries(config.members)) {
@@ -249,7 +246,7 @@ export function resolveConfig<T>(config: ConfigDef<T>, opts: ResolveOptions = {}
     throw configError(problems);
   }
 
-  return { value: projectValues<T>(config, () => values), provenance, warnings };
+  return { value: withDynamicAccessors<T>(config, () => values), provenance, warnings };
 }
 
 export function configFromProcessEnv<T>(config: ConfigDef<T>): T {
@@ -258,7 +255,7 @@ export function configFromProcessEnv<T>(config: ConfigDef<T>): T {
 
 function entryAt(config: AnyConfig, path: readonly string[]): ConfigEntry {
   const pointer = path.join(".");
-  const entry = config.entries.find((candidate) => candidate.path.join(".") === pointer);
+  const entry = config.entryByPointer.get(pointer);
   if (!entry) {
     throw new Error(`No config entry at ${pointer}`);
   }

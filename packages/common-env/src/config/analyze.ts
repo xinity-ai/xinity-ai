@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { AnyConfig } from "./build";
+import type { AnyConfig } from "./declaration";
 
 export type EnvFieldGroup = {
   readonly id: string;

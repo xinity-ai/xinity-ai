@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import { configInt, configList } from "./leaf-types";
 import { defineGroup, dynamic, env } from "./group";
-import { defineConfig } from "./build";
+import { defineConfig } from "./declaration";
 import { createDynamicConfig, type ApplyOverrides, type ConfigFeed } from "./dynamic-config";
 
 type Cache = { url: string; responseTtlSeconds: () => number; modelTtlSeconds: () => number };

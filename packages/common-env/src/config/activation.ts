@@ -1,4 +1,4 @@
-import type { AnyConfig } from "./build";
+import type { AnyConfig } from "./declaration";
 
 export type ActivationState = "active" | "inactive" | "partial";
 

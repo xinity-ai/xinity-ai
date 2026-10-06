@@ -26,6 +26,7 @@ export type MountedGroup = {
   readonly schema: z.ZodObject<z.ZodRawShape>;
   /** Env keys whose presence decides activation. Empty when the group is not optional. */
   readonly activation: readonly string[];
+  readonly entries: readonly ConfigEntry[];
 };
 
 export type FieldRef = {
@@ -50,6 +51,8 @@ export type ConfigViolation = { fields: readonly FieldRef[]; message: string };
 export type AnyConfig = {
   readonly members: Readonly<Record<string, AnyMember>>;
   readonly entries: readonly ConfigEntry[];
+  readonly entryByPointer: ReadonlyMap<string, ConfigEntry>;
+  readonly entryByEnvKey: ReadonlyMap<string, ConfigEntry>;
   readonly groups: readonly MountedGroup[];
   readonly violations?: (value: unknown, at: unknown) => readonly ConfigViolation[];
 };
@@ -69,7 +72,7 @@ type ConfigInput<T> = {
 };
 
 export function refFor(entry: ConfigEntry): FieldRef {
-  return { envKey: entry.envKey, pointer: entry.path.join("."), groupTitle: entry.groupTitle };
+  return { envKey: entry.envKey, pointer: pointerOf(entry), groupTitle: entry.groupTitle };
 }
 
 export function fieldRefs(config: AnyConfig): unknown {
@@ -96,30 +99,34 @@ export function defineConfig<T>(members: Members<T>, opts: ConfigInput<T> = {}):
       entries.push(fieldEntry([key], member));
       continue;
     }
-    for (const entry of groupEntries(member)) {
-      entries.push({ ...entry, path: [key, ...entry.path] });
-    }
+    const groupEntriesAtKey = groupEntries(member).map((entry) => ({ ...entry, path: [key, ...entry.path] }));
+    entries.push(...groupEntriesAtKey);
     groups.push({
       key,
       group: member,
       schema: groupObjectSchema(member),
       activation: activationKeys(member),
+      entries: groupEntriesAtKey,
     });
   }
 
-  const seen = new Map<string, string>();
+  const entryByPointer = new Map<string, ConfigEntry>();
+  const entryByEnvKey = new Map<string, ConfigEntry>();
   for (const entry of entries) {
-    const pointer = entry.path.join(".");
-    const clash = seen.get(entry.envKey);
+    const pointer = pointerOf(entry);
+    const clash = entryByEnvKey.get(entry.envKey);
     if (clash) {
-      throw new Error(`${entry.envKey} is read by both ${clash} and ${pointer}`);
+      throw new Error(`${entry.envKey} is read by both ${pointerOf(clash)} and ${pointer}`);
     }
-    seen.set(entry.envKey, pointer);
+    entryByEnvKey.set(entry.envKey, entry);
+    entryByPointer.set(pointer, entry);
   }
 
   return {
     members: mounted,
     entries,
+    entryByPointer,
+    entryByEnvKey,
     groups,
     violations: opts.violations as AnyConfig["violations"],
   } as unknown as ConfigDef<T>;
@@ -135,7 +142,11 @@ function groupObjectSchema(group: AnyGroup): z.ZodObject<z.ZodRawShape> {
 }
 
 export function entryFor(config: AnyConfig, envKey: string): ConfigEntry | undefined {
-  return config.entries.find((entry) => entry.envKey === envKey);
+  return config.entryByEnvKey.get(envKey);
+}
+
+export function pointerOf(entry: ConfigEntry): string {
+  return entry.path.join(".");
 }
 
 export function groupAt(config: AnyConfig, key: string): MountedGroup | undefined {

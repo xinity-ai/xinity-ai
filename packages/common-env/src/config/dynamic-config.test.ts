@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { configInt } from "./leaf-types";
 import { defineGroup, dynamic, env } from "./group";
-import { defineConfig } from "./build";
+import { defineConfig } from "./declaration";
 import { resolveConfig } from "./resolve";
 import { createDynamicConfig, type ApplyOverrides, type ConfigFeed, type Unseal } from "./dynamic-config";
 

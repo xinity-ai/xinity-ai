@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import { defineGroup, env } from "./group";
-import { defineConfig } from "./build";
+import { defineConfig } from "./declaration";
 import { checkGroupActivation, isGroupActive } from "./activation";
 
 type ObjectStorage = { endpoint: string; accessKeyId: string; secretAccessKey: string; bucket: string };

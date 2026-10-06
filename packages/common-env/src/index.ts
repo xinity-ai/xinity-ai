@@ -47,7 +47,7 @@ export function quoteShellArgv(argv: string[]): string {
 
 export * from "./config/leaf-types";
 export * from "./config/group";
-export * from "./config/build";
+export * from "./config/declaration";
 export * from "./config/activation";
 export * from "./config/resolve";
 export * from "./config/delegation";

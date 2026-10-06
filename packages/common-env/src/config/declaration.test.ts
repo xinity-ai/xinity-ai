@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { z } from "zod";
 import { configBool, configInt } from "./leaf-types";
 import { defineGroup, env } from "./group";
-import { defineConfig, entryFor, groupAt, type ConfigDef } from "./build";
+import { defineConfig, entryFor, groupAt, type ConfigDef } from "./declaration";
 
 type ObjectStorage = { endpoint: string; accessKeyId: string; bucket: string };
 type Server = { host: string; port: number };

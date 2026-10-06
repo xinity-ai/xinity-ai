@@ -1,10 +1,10 @@
-import type { ConfigDef } from "./build";
+import type { ConfigDef } from "./declaration";
 import { readSecretFile, type SecretFileReader } from "../secret-file";
 import { splitDelegations, type RawEnv } from "./delegation";
 import { createDerivation, type Derivation, type Derived } from "./derivation";
 import {
   configError,
-  projectValues,
+  withDynamicAccessors,
   resolveValues,
   sameConfigValue,
   type ConfigValues,
@@ -59,7 +59,7 @@ export function createDynamicConfig<T>(deps: {
     return contents;
   };
 
-  const { envWithFallbacks, delegatedKeys } = splitDelegations(
+  const { baseEnv, delegatedKeys } = splitDelegations(
     declaration,
     deps.rawEnv ?? process.env,
     readSecretFileOnce,
@@ -74,16 +74,16 @@ export function createDynamicConfig<T>(deps: {
     return resolved;
   };
 
-  let resolved = resolve(envWithFallbacks);
+  let resolved = resolve(baseEnv);
   let overriddenKeys = new Set<string>();
   let stopFeed: Teardown | null = null;
   let unseal: Unseal | undefined;
 
-  const value = projectValues<T>(declaration, () => resolved.values);
+  const value = withDynamicAccessors<T>(declaration, () => resolved.values);
   const derivations = new Set<Derivation>();
 
   const apply: ApplyOverrides = (overrides) => {
-    const env: Record<string, string | undefined> = { ...envWithFallbacks };
+    const env: Record<string, string | undefined> = { ...baseEnv };
     const applied = new Set<string>();
     for (const key of delegatedKeys) {
       const override = overrides[key];
