@@ -2,6 +2,7 @@ import { describe, test, expect, mock, jest, beforeEach, afterEach, spyOn } from
 import { drizzle, modelDeploymentT } from "common-db";
 import { redis } from "../redis";
 import type { LegacyModel, Model } from "xinity-infoserver";
+import type { ModelInfo, ModelLookup } from "./model-data";
 
 mock.module("../env", () => ({
   env: {
@@ -102,6 +103,11 @@ function installationResult(r: { host: string; nodePort: number; modelPort: numb
 
 const noop = () => {};
 
+function infoOf(lookup: ModelLookup): ModelInfo | undefined {
+  expect(lookup.status).toBe("found");
+  return lookup.status === "found" ? lookup.info : undefined;
+}
+
 let mockRedisGet: ReturnType<typeof spyOn>;
 let mockRedisSet: ReturnType<typeof spyOn>;
 const redisStore = new Map<string, string>();
@@ -136,19 +142,19 @@ afterEach(() => {
 });
 
 describe("getModelInfo", () => {
-  test("returns undefined when deployment is not found", async () => {
+  test("reports an unknown model when deployment is not found", async () => {
     queryQueue.push([]);
     const result = await getModelInfo("org-1", "nonexistent");
-    expect(result).toBeUndefined();
+    expect(result.status).toBe("unknown");
   });
 
-  test("returns undefined when selectHost returns null (no available hosts)", async () => {
+  test("reports an unavailable model when selectHost finds no ready hosts", async () => {
     queryQueue.push([deploymentResult({ specifier: "llama3:latest" })]);
     queryQueue.push([]);
     mockSelectHost.mockResolvedValue(null);
 
     const result = await getModelInfo("org-1", "my-model");
-    expect(result).toBeUndefined();
+    expect(result.status).toBe("unavailable");
   });
 
   test("resolves model info for a simple deployment (no canary)", async () => {
@@ -156,7 +162,7 @@ describe("getModelInfo", () => {
     queryQueue.push([installationResult({ host: "192.168.1.10", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
     mockSelectHost.mockResolvedValue({ host: "192.168.1.10:11434", useFinalModel: true, release: noop });
 
-    const result = await getModelInfo("org-1", "my-model");
+    const result = infoOf(await getModelInfo("org-1", "my-model"));
 
     expect(result).toBeDefined();
     expect(result!.host).toBe("192.168.1.10:11434");
@@ -173,7 +179,7 @@ describe("getModelInfo", () => {
     queryQueue.push([installationResult({ host: "node-b", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
     mockSelectHost.mockResolvedValue({ host: "node-b:11434", useFinalModel: false, release: noop });
 
-    const result = await getModelInfo("org-1", "my-model");
+    const result = infoOf(await getModelInfo("org-1", "my-model"));
 
     expect(result).toBeDefined();
     expect(result!.model).toBe("llama2:latest");
@@ -185,7 +191,7 @@ describe("getModelInfo", () => {
     queryQueue.push([installationResult({ host: "192.168.1.10", nodePort: 11434, modelPort: 11434, driver: "vllm" })]);
     mockSelectHost.mockResolvedValue({ host: "unknown-host:8000", useFinalModel: true, release: noop });
 
-    const result = await getModelInfo("org-1", "my-model");
+    const result = infoOf(await getModelInfo("org-1", "my-model"));
 
     expect(result).toBeDefined();
     expect(result!.driver).toBe("ollama");
@@ -196,7 +202,7 @@ describe("getModelInfo", () => {
     queryQueue.push([installationResult({ host: "gpu-node", nodePort: 8000, modelPort: 8000, driver: "vllm" })]);
     mockSelectHost.mockResolvedValue({ host: "gpu-node:8000", useFinalModel: true, release: noop });
 
-    const result = await getModelInfo("org-1", "my-model");
+    const result = infoOf(await getModelInfo("org-1", "my-model"));
 
     expect(result).toBeDefined();
     expect(result!.driver).toBe("vllm");
@@ -246,7 +252,7 @@ describe("getModelInfo", () => {
       providers: { ollama: "llama3:latest", vllm: "llama3:latest" },
     });
 
-    const result = await getModelInfo("org-1", "my-model");
+    const result = infoOf(await getModelInfo("org-1", "my-model"));
 
     expect(result!.type).toBe("embedding");
     expect(result!.tags).toEqual(["vision"]);
@@ -260,7 +266,7 @@ describe("getModelInfo", () => {
     mockSelectHost.mockResolvedValue({ host: "node-a:11434", useFinalModel: true, release: noop });
     mockFetchModel.mockResolvedValueOnce(undefined);
 
-    const result = await getModelInfo("org-1", "my-model");
+    const result = infoOf(await getModelInfo("org-1", "my-model"));
 
     expect(result).toBeDefined();
     expect(result!.model).toBe("llama3:latest");
@@ -281,7 +287,7 @@ describe("getModelInfo", () => {
       providers: { vllm: "mistral:latest", ollama: "mistral:latest" },
     });
 
-    const result = await getModelInfo("org-1", "my-model");
+    const result = infoOf(await getModelInfo("org-1", "my-model"));
 
     expect(result!.driver).toBe("vllm");
     expect(result!.tags).toEqual(["tools", "vision"]);
@@ -303,7 +309,7 @@ describe("getModelInfo", () => {
       },
     });
 
-    const result = await getModelInfo("org-1", "my-model");
+    const result = infoOf(await getModelInfo("org-1", "my-model"));
 
     expect(result!.model).toBe("google/gemma-4-27b-it");
     expect(result!.tags).toEqual(["tools"]);
@@ -329,12 +335,12 @@ describe("getModelInfo", () => {
     queryQueue.push([installationResult({ host: "192.168.1.10", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
     mockSelectHost.mockResolvedValue({ host: "192.168.1.10:11434", useFinalModel: true, release: noop });
 
-    const first = await getModelInfo("org-1", "my-model");
+    const first = infoOf(await getModelInfo("org-1", "my-model"));
     expect(first).toBeDefined();
     expect(queryQueue.length).toBe(0);
 
     // Second call without pushing anything into queryQueue: should succeed via in-memory cache
-    const second = await getModelInfo("org-1", "my-model");
+    const second = infoOf(await getModelInfo("org-1", "my-model"));
     expect(second).toBeDefined();
     expect(second!.host).toBe("192.168.1.10:11434");
     expect(queryQueue.length).toBe(0);
@@ -363,7 +369,7 @@ describe("getModelInfo", () => {
     invalidateModelSources();
     release();
 
-    expect(await inFlight).toBeDefined();
+    expect((await inFlight).status).toBe("found");
     expect(executeCount).toBe(1);
 
     queryQueue.push([installationResult({ host: "192.168.1.10", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);

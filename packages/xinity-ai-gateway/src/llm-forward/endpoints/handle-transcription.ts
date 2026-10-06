@@ -7,6 +7,7 @@ import {
   handleEndpointError,
   handleStreamError,
   isAbortError,
+  modelLookupFailureResponse,
   readSSEStream,
   recordFailedRequest,
   recordUsage,
@@ -147,10 +148,11 @@ export async function handleTranscription(req: Request): Promise<Response> {
       return errorResponse("Missing 'file' field", 400);
     }
 
-    const modelInfo = await getModelInfo(auth.orgId, originalModel);
-    if (!modelInfo) {
-      return errorResponse("Model not found", 404);
+    const lookup = await getModelInfo(auth.orgId, originalModel);
+    if (lookup.status !== "found") {
+      return modelLookupFailureResponse(lookup.status);
     }
+    const modelInfo = lookup.info;
     releaseCallbacks.set(req, modelInfo.release);
     leased = { auth, modelInfo, callStartTime };
     routed = modelInfo;

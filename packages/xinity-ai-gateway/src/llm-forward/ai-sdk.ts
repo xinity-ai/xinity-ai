@@ -1,8 +1,8 @@
 import { createOpenAICompatible, type OpenAICompatibleProvider } from "@ai-sdk/openai-compatible";
 import { checkAuth } from "./auth";
 import type { AuthResult } from "./auth";
-import { getModelInfo } from "./model-data";
-import { errorResponse } from "./util";
+import { getModelInfo, type ModelInfo } from "./model-data";
+import { errorResponse, modelLookupFailureResponse } from "./util";
 import { resolveApplicationByName } from "./application-resolver";
 import { releaseCallbacks } from "./release-registry";
 import { backendUrl, hasCustomCa, backendFetch } from "./backend-fetch";
@@ -14,7 +14,7 @@ export type ResolvedModel = {
   originalModel: string;
   baseModelName: string;
   deepResearch: boolean;
-  modelInfo: NonNullable<Awaited<ReturnType<typeof getModelInfo>>>;
+  modelInfo: ModelInfo;
 };
 
 export type AuthorizedModelContext = ResolvedModel & {
@@ -112,10 +112,11 @@ export async function resolveModel(
   const baseModelName = deepResearch ? stripDeepResearchSuffix(originalModel) : originalModel;
 
   const prefixHashes = computePrefixHashes(baseModelName, body);
-  const modelInfo = await getModelInfo(auth.orgId, baseModelName, prefixHashes.length > 0 ? prefixHashes : undefined);
-  if (!modelInfo) {
-    return errorResponse("Model not found", 404);
+  const lookup = await getModelInfo(auth.orgId, baseModelName, prefixHashes.length > 0 ? prefixHashes : undefined);
+  if (lookup.status !== "found") {
+    return modelLookupFailureResponse(lookup.status);
   }
+  const modelInfo = lookup.info;
 
   releaseCallbacks.set(req, modelInfo.release);
 

@@ -247,7 +247,7 @@ async function legacyCatalogMeta(specifier: string, driver: "vllm" | "ollama"): 
   };
 }
 
-type ModelInfo = {
+export type ModelInfo = {
   /** ai_node id serving this request. Recorded on usage events for per-node attribution. */
   nodeId: string | null;
   /** Daemon host:port to route requests through. */
@@ -270,10 +270,17 @@ type ModelInfo = {
   release: () => void;
 }
 
-export async function getModelInfo(orgId: string, publicSpecifier: string, prefixHashes?: string[]): Promise<ModelInfo | undefined> {
+export type ModelLookup =
+  | { status: "found"; info: ModelInfo }
+  | { status: "unknown" }
+  | { status: "unavailable" };
+
+export type ModelLookupFailure = Exclude<ModelLookup["status"], "found">;
+
+export async function getModelInfo(orgId: string, publicSpecifier: string, prefixHashes?: string[]): Promise<ModelLookup> {
   const accessInfo = await publicModelSpecifierToModelSource(orgId, publicSpecifier);
   if (!accessInfo) {
-    return;
+    return { status: "unknown" };
   }
   const emptySources: ModelSources = { hosts: [], byHost: new Map() };
   const [finalSources, earlySources] = await Promise.all([
@@ -294,7 +301,7 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, prefi
   });
 
   if (!result) {
-    return;
+    return { status: "unavailable" };
   }
 
   const resolvedSpecifier = result.useFinalModel
@@ -310,19 +317,22 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, prefi
   const meta = await resolveCatalogMeta(resolvedSpecifier, driverProvider);
 
   return {
-    nodeId: location?.nodeId ?? null,
-    host: result.host,
-    specifier: resolvedSpecifier,
-    // Best-effort pass-through: when the catalog cannot resolve the specifier,
-    // forward it as the model name and let the backend reject a mismatch.
-    model: meta.engineSpecifier ?? resolvedSpecifier,
-    driver,
-    authToken,
-    tls,
-    type: meta.type,
-    tags: meta.tags,
-    maxContextLength: meta.maxContextLength,
-    requestParams: meta.requestParams,
-    release: result.release,
+    status: "found",
+    info: {
+      nodeId: location?.nodeId ?? null,
+      host: result.host,
+      specifier: resolvedSpecifier,
+      // Best-effort pass-through: when the catalog cannot resolve the specifier,
+      // forward it as the model name and let the backend reject a mismatch.
+      model: meta.engineSpecifier ?? resolvedSpecifier,
+      driver,
+      authToken,
+      tls,
+      type: meta.type,
+      tags: meta.tags,
+      maxContextLength: meta.maxContextLength,
+      requestParams: meta.requestParams,
+      release: result.release,
+    },
   };
 }

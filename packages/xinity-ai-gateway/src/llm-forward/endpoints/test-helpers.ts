@@ -1,6 +1,10 @@
 import { mock, jest } from "bun:test";
-import type { getModelInfo as getModelInfoT } from "../model-data";
+import type { getModelInfo as getModelInfoT, ModelInfo, ModelLookup } from "../model-data";
 import { outputAsMessages } from "../responses/input-normalize";
+
+export function modelFound(info: ModelInfo): ModelLookup {
+  return { status: "found", info };
+}
 
 /**
  * OpenAI-compliant mock upstream response helpers for unit tests.
@@ -219,7 +223,7 @@ export function setupResponseTestMocks() {
   mock.module("../auth", () => ({ checkAuth }));
 
   let mockPort = 0;
-  const getModelInfo = jest.fn<typeof getModelInfoT>(async () => ({
+  const getModelInfo = jest.fn<typeof getModelInfoT>(async () => modelFound({
     nodeId: "node-1",
     host: `localhost:${mockPort}`,
     specifier: "test-model",

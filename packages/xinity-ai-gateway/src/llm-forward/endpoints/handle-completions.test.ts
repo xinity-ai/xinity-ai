@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, beforeAll, afterAll, jest, afterEach } from "bun:test";
-import { mockBackendFetch } from "./test-helpers";
+import { mockBackendFetch, modelFound } from "./test-helpers";
 
 
 import type { checkAuth as checkAuthT } from "../auth";
@@ -17,7 +17,7 @@ mock.module("../auth", () => ({
 }));
 
 let mockPort = 0;
-const getModelInfo = jest.fn<typeof getModelInfoT>(async () => ({
+const getModelInfo = jest.fn<typeof getModelInfoT>(async () => modelFound({
   nodeId: "node-1",
   host: `localhost:${mockPort}`,
   specifier: "test-model",

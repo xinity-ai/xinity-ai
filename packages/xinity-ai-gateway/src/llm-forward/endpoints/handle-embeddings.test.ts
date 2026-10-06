@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, mock, test, jest } from "bun:test";
-import { makeRawJsonResponse, mockBackendFetch } from "./test-helpers";
+import { makeRawJsonResponse, mockBackendFetch, modelFound } from "./test-helpers";
 
 
 import type { checkAuth as checkAuthT } from "../auth";
@@ -17,7 +17,7 @@ mock.module("../auth", () => ({
 }));
 
 let mockPort = 0;
-const getModelInfo = jest.fn<typeof getModelInfoT>(async () => ({
+const getModelInfo = jest.fn<typeof getModelInfoT>(async () => modelFound({
   nodeId: "node-1",
   host: `localhost:${mockPort}`,
   specifier: "test-embedding",
@@ -190,7 +190,7 @@ describe("handleEmbeddingGeneration", () => {
   });
 
   test("returns 400 when model type is wrong", async () => {
-    getModelInfo.mockImplementationOnce(async () => ({
+    getModelInfo.mockImplementationOnce(async () => modelFound({
       nodeId: "node-1",
       host: `localhost:${mockPort}`,
       specifier: "test-chat-model",

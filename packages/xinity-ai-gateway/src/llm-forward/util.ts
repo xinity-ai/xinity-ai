@@ -1,6 +1,7 @@
 import { recordBackendError } from "../metrics";
 import { BLOCKED_REQUEST_PARAM_PREFIXES } from "xinity-infoserver";
 import { isMediaPartInvalid, isMediaTooLarge, isMediaTypeUnsupported } from "../media-store";
+import type { ModelLookupFailure } from "./model-data";
 
 export { toModelMessages } from "./message-convert";
 export { recordUsage, recordFailedRequest, logChatUsage } from "./usage";
@@ -262,6 +263,16 @@ export function errorResponse(message: string, statusCode = 500, headers?: Recor
     status: statusCode,
     headers: { 'Content-Type': 'application/json', ...headers },
   });
+}
+
+const MODEL_LOOKUP_FAILURES: Record<ModelLookupFailure, { message: string; statusCode: number }> = {
+  unknown: { message: "Model not found", statusCode: 404 },
+  unavailable: { message: "Model is currently unavailable, retry later", statusCode: 503 },
+};
+
+export function modelLookupFailureResponse(failure: ModelLookupFailure): Response {
+  const { message, statusCode } = MODEL_LOOKUP_FAILURES[failure];
+  return errorResponse(message, statusCode);
 }
 
 function mapBackendStatusToClient(backendStatus: number): number {

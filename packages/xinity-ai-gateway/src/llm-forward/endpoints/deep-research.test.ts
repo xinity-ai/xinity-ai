@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, beforeAll, afterAll, afterEach } from "bun:test";
-import { setupResponseTestMocks, waitForResponseStatus, mockBackendFetch, makeChatJsonResponseWithToolCalls, makeChatJsonResponse, requestWithParams } from "./test-helpers";
+import { setupResponseTestMocks, waitForResponseStatus, mockBackendFetch, makeChatJsonResponseWithToolCalls, makeChatJsonResponse, requestWithParams, modelFound } from "./test-helpers";
 
 const mocks = setupResponseTestMocks();
 const { getModelInfo, responseStore } = mocks;
@@ -180,7 +180,7 @@ describe("deep research", () => {
   });
 
   test("rejects when model lacks tool support", async () => {
-    getModelInfo.mockImplementationOnce(async () => ({
+    getModelInfo.mockImplementationOnce(async () => modelFound({
       nodeId: "node-1", host: `localhost:${server.port}`, specifier: "test-model", model: "test-model",
       driver: "vllm", authToken: null, tls: false, tags: [],
       maxContextLength: 131072, release: () => {},

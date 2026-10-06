@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, beforeAll, afterAll, jest, afterEach } from "bun:test";
-import { mockBackendFetch } from "./test-helpers";
+import { mockBackendFetch, modelFound } from "./test-helpers";
 
 
 import type { checkAuth as checkAuthT } from "../auth";
@@ -28,7 +28,7 @@ const transcriptionModel = () => ({
   maxContextLength: 131072,
   release: () => {},
 });
-const getModelInfo = jest.fn<typeof getModelInfoT>(async () => transcriptionModel());
+const getModelInfo = jest.fn<typeof getModelInfoT>(async () => modelFound(transcriptionModel()));
 mock.module("../model-data", () => ({ getModelInfo }));
 
 mockBackendFetch();
@@ -197,7 +197,7 @@ describe("handleTranscription", () => {
   });
 
   test("rejects a non-transcription model type with 400", async () => {
-    getModelInfo.mockImplementationOnce(async () => ({ ...transcriptionModel(), type: "chat" }));
+    getModelInfo.mockImplementationOnce(async () => modelFound({ ...transcriptionModel(), type: "chat" }));
     const res = await handleTranscription(makeReq({ model: "gpt" }));
     expect(res.status).toBe(400);
   });
@@ -225,7 +225,7 @@ describe("handleTranscription", () => {
   });
 
   test("records a failed request for a non-transcription model type", async () => {
-    getModelInfo.mockImplementationOnce(async () => ({ ...transcriptionModel(), type: "chat" }));
+    getModelInfo.mockImplementationOnce(async () => modelFound({ ...transcriptionModel(), type: "chat" }));
     await handleTranscription(makeReq({ model: "gpt" }));
     expect(failedRequests()).toHaveLength(1);
   });
@@ -241,9 +241,16 @@ describe("handleTranscription", () => {
   });
 
   test("does not record a failed request before a node is leased", async () => {
-    getModelInfo.mockImplementationOnce(async () => undefined);
+    getModelInfo.mockImplementationOnce(async () => ({ status: "unknown" }));
     const res = await handleTranscription(makeReq({ model: "nope" }));
     expect(res.status).toBe(404);
+    expect(recordUsageEvent).not.toHaveBeenCalled();
+  });
+
+  test("answers 503 without recording a failed request when the model has no ready hosts", async () => {
+    getModelInfo.mockImplementationOnce(async () => ({ status: "unavailable" }));
+    const res = await handleTranscription(makeReq({ model: "whisper" }));
+    expect(res.status).toBe(503);
     expect(recordUsageEvent).not.toHaveBeenCalled();
   });
 });

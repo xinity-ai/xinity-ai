@@ -14,6 +14,8 @@ Three strategies are available, configured via `LOAD_BALANCE_STRATEGY` (default:
 | `round-robin` | Atomic Redis counter per model, rotating through nodes. Falls back to random on Redis errors. |
 | `random` | Uniform random selection. |
 
+Only nodes with a ready installation of the model are candidates. A request for a known model with no ready node gets `503`, while an unknown model gets `404`.
+
 ### Prefix-cache affinity
 
 For `least-connections` and `random`, the gateway hashes conversation message prefixes and stores the mapping in Redis for 5 minutes. Repeat conversations are routed to the same node when possible, improving KV cache hit rates on the inference engine. This means `random` does use Redis whenever prefix-cache affinity data exists, despite otherwise being the only strategy with no other Redis-backed state (no counters or connection gauges).

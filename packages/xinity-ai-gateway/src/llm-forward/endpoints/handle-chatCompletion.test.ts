@@ -7,6 +7,7 @@ import {
   makeChatSseResponseWithReasoning,
   makeRawJsonResponse,
   mockBackendFetch,
+  modelFound,
 } from "./test-helpers";
 
 
@@ -24,7 +25,7 @@ mock.module("../auth", () => ({
 }));
 
 let mockPort = 0;
-const getModelInfo = jest.fn<typeof getModelInfoT>(async () => ({
+const getModelInfo = jest.fn<typeof getModelInfoT>(async () => modelFound({
   nodeId: "node-1",
   host: `localhost:${mockPort}`,
   specifier: "test-model",
@@ -272,7 +273,7 @@ describe("handleChatCompletion", () => {
   });
 
   test("should reject structured_outputs for non-vLLM driver", async () => {
-    getModelInfo.mockImplementationOnce(async () => ({
+    getModelInfo.mockImplementationOnce(async () => modelFound({
       nodeId: "node-1",
       host: `localhost:${mockPort}`,
       specifier: "test-model",
@@ -350,7 +351,7 @@ describe("handleChatCompletion, reasoning_effort", () => {
   });
 
   test("lets a model's requestParams allowlist override the top-level field", async () => {
-    getModelInfo.mockImplementationOnce(async () => ({
+    getModelInfo.mockImplementationOnce(async () => modelFound({
       nodeId: "node-1",
       host: `localhost:${mockPort}`,
       specifier: "test-model",
@@ -577,7 +578,7 @@ describe("handleChatCompletion, tool calling", () => {
   });
 
   test("should reject tools when catalog explicitly says model does not support them", async () => {
-    getModelInfo.mockImplementationOnce(async () => ({
+    getModelInfo.mockImplementationOnce(async () => modelFound({
       nodeId: "node-1",
       host: `localhost:${mockPort}`,
       specifier: "test-model",
@@ -609,7 +610,7 @@ describe("handleChatCompletion, tool calling", () => {
   });
 
   test("should allow tools when catalog entry is missing (legacy fallback, tags undefined)", async () => {
-    getModelInfo.mockImplementationOnce(async () => ({
+    getModelInfo.mockImplementationOnce(async () => modelFound({
       nodeId: "node-1",
       host: `localhost:${mockPort}`,
       specifier: "test-model",
@@ -807,7 +808,7 @@ describe("handleChatCompletion, error handling", () => {
   });
 
   test("should return 404 when model is not found", async () => {
-    getModelInfo.mockImplementationOnce(async () => undefined);
+    getModelInfo.mockImplementationOnce(async () => ({ status: "unknown" }));
 
     const req = new Request("http://localhost:4000/v1/chat/completions", {
       method: "POST",
@@ -820,6 +821,22 @@ describe("handleChatCompletion, error handling", () => {
 
     const res = await handleChatCompletion(req);
     expect(res.status).toBe(404);
+  });
+
+  test("should return 503 when the model has no ready hosts", async () => {
+    getModelInfo.mockImplementationOnce(async () => ({ status: "unavailable" }));
+
+    const req = new Request("http://localhost:4000/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        messages: [{ role: "user", content: "Hi" }],
+      }),
+    });
+
+    const res = await handleChatCompletion(req);
+    expect(res.status).toBe(503);
   });
 
   test("should return 401 when auth fails", async () => {
@@ -1051,7 +1068,7 @@ describe("handleChatCompletion, usage event attribution", () => {
   });
 
   test("no usage event when the model is not found (no node selected)", async () => {
-    getModelInfo.mockImplementationOnce(async () => undefined);
+    getModelInfo.mockImplementationOnce(async () => ({ status: "unknown" }));
     const res = await handleChatCompletion(makeRequest());
     expect(res.status).toBe(404);
     expect(recordUsageEvent).not.toHaveBeenCalled();

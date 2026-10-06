@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeAll, afterAll, afterEach } from "bun:test";
-import { makeChatSseResponse, makeChatJsonResponse, makeChatSseResponseWithInterleavedReasoning, makeChatJsonResponseWithToolCalls, makeChatSseResponseWithToolCalls, makeChatJsonResponseWithReasoning, makeChatSseResponseWithReasoning, MOCK_REASONING_TOKENS, mockBackendFetch, setupResponseTestMocks, waitForResponseStatus, requestWithParams } from "./test-helpers";
+import { makeChatSseResponse, makeChatJsonResponse, makeChatSseResponseWithInterleavedReasoning, makeChatJsonResponseWithToolCalls, makeChatSseResponseWithToolCalls, makeChatJsonResponseWithReasoning, makeChatSseResponseWithReasoning, MOCK_REASONING_TOKENS, mockBackendFetch, setupResponseTestMocks, waitForResponseStatus, requestWithParams, modelFound } from "./test-helpers";
 
 const mocks = setupResponseTestMocks();
 const { checkAuth, getModelInfo, responseStore, saveResponse, logChatSync } = mocks;
@@ -394,7 +394,7 @@ describe("handleResponses", () => {
   });
 
   test("should reject function tools when catalog explicitly says model does not support them", async () => {
-    getModelInfo.mockImplementationOnce(async () => ({
+    getModelInfo.mockImplementationOnce(async () => modelFound({
       nodeId: "node-1",
       host: `localhost:${server.port}`,
       specifier: "test-model",
@@ -428,7 +428,7 @@ describe("handleResponses", () => {
   });
 
   test("should allow function tools when catalog entry is missing (legacy fallback, tags undefined)", async () => {
-    getModelInfo.mockImplementationOnce(async () => ({
+    getModelInfo.mockImplementationOnce(async () => modelFound({
       nodeId: "node-1",
       host: `localhost:${server.port}`,
       specifier: "test-model",
@@ -460,7 +460,7 @@ describe("handleResponses", () => {
   });
 
   test("should reject structured output when catalog explicitly says model does not support tools", async () => {
-    getModelInfo.mockImplementationOnce(async () => ({
+    getModelInfo.mockImplementationOnce(async () => modelFound({
       nodeId: "node-1",
       host: `localhost:${server.port}`,
       specifier: "test-model",
@@ -498,7 +498,7 @@ describe("handleResponses", () => {
   });
 
   test("should allow structured output when catalog entry is missing (legacy fallback, tags undefined)", async () => {
-    getModelInfo.mockImplementationOnce(async () => ({
+    getModelInfo.mockImplementationOnce(async () => modelFound({
       nodeId: "node-1",
       host: `localhost:${server.port}`,
       specifier: "test-model",
