@@ -161,7 +161,7 @@ The CLI is the operator's tool for installing, configuring, and managing Xinity 
 - **`xinity act [route] [data]`**: Calls any dashboard API route directly. Dynamically discovers available routes by loading the dashboard's oRPC router at runtime. Supports interactive schema-driven prompts when data is omitted.
 - **`xinity configure`**: Manages CLI settings or interactively reconfigures components when run as `xinity configure <component>`.
 
-The CLI generates systemd units with a security-conscious split: non-secret environment variables go into a readable env file, while secrets (annotated with `.meta(secret())` in the schema) are stored in mode-600 files and loaded via systemd's `LoadCredential`.
+The CLI generates systemd units with a security-conscious split: non-secret environment variables go into a readable env file, while secrets (annotated with `.meta(secret())` in the schema) are stored in mode-600 files and loaded via systemd's `LoadCredential`. How each service declares and resolves its configuration is described in [Configuration system](configuration-system.md).
 
 ### Common DB
 

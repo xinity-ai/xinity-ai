@@ -101,6 +101,10 @@ The gateway supports TLS termination on its listen socket (`XINITY_TLS_CERT` / `
 
 `BACKEND_TIMEOUT_MS` (default: 5 minutes) controls how long the gateway waits for the inference backend. For streaming requests, it acts as an idle timeout (reset on each chunk). For non-streaming requests, it acts as a wall-clock deadline. Client disconnects abort the backend call immediately in both cases.
 
+While a stream waits on a quiet backend, the gateway sends an SSE comment (`: keepalive`) after every 15 seconds without output, so clients and proxies do not close a connection that is only quiet. SSE clients, the OpenAI SDKs included, ignore comment lines.
+
+When a chat completion, completion, or transcription stream fails partway (the backend timed out, became unreachable, or ended before finishing), the stream ends with an error event in the format the OpenAI SDKs raise as an `APIError`, `data: {"error": {"message": ..., "type": ...}}`, followed by `data: [DONE]`. A timeout carries the type `timeout_error`.
+
 ## Prometheus Metrics
 
 See [Monitoring](monitoring.md) for the full metrics reference. The gateway exposes request counts, latency histograms, time-to-first-token, token counts, generation throughput, backend errors, and client disconnects at `/metrics`.

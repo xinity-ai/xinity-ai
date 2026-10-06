@@ -12,7 +12,7 @@ Three common proxy defaults break features rather than degrade them. If you take
 
 **A 1 MB body limit rejects images and audio.** Multimodal requests carry images inline as base64 data URLs, and `/v1/audio/transcriptions` takes a multipart upload. The gateway accepts images up to 40 MB, which is roughly 54 MB base64-encoded. nginx defaults `client_max_body_size` to 1 MB; allow at least 64 MB.
 
-**A 60 second read timeout truncates long generations.** Reasoning and deep-research requests legitimately run for minutes. Set the proxy's read timeout just above the gateway's own ceilings so the gateway produces the error rather than the proxy cutting the connection: `BACKEND_TIMEOUT_MS` (default 300s) and `IDLE_TIMEOUT` (default 255s).
+**A 60 second read timeout truncates long non-streaming generations.** Reasoning and deep-research requests legitimately run for minutes. A streamed response is safe behind any read timeout above 15 seconds, because the gateway sends a keepalive comment whenever the backend has been quiet that long. A non-streaming request sends nothing until it is done, so set the proxy's read timeout just above `BACKEND_TIMEOUT_MS` (default 300s), which lets the gateway produce the error rather than the proxy cutting the connection.
 
 ## Forwarded headers
 
