@@ -1,0 +1,120 @@
+<?xml version="1.0"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1339.30999947" height="746.6664800000001" font-family="'Cascadia Code','Source Code Pro',Menlo,Consolas,'DejaVu Sans Mono',monospace,'Symbols Nerd Font'" font-size="14px">
+  <style>
+    .br { font-weight: bold }
+    .fa { fill-opacity: 0.5 }
+    .it { font-style: italic }
+    .un { text-decoration: underline }
+    .term-text tspan tspan { white-space: pre }
+
+    @font-face {
+      font-family: "Symbols Nerd Font";
+      src: url("https://asciinema.org/fonts/SymbolsNerdFont-Regular-337b40fc23735cb78fbe3379fae18138.woff2?vsn=d") format("woff2");
+    }
+
+  </style>
+
+  <rect width="100%" height="100%" style="fill: #15282f" rx="4" ry="4"></rect>
+
+  <svg x="8.42333333" y="9.333331000000001" class="default-text-fill">
+    <image x="0" y="0" width="1322.46333281" height="727.999818" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABOgAAAOoCAIAAADkolxcAAAVrUlEQVR4Xu3XsQmAQAAEQb8IsQUTMbD/yhSxAWNZcCa86NId87pPAAAAUDWEKwAAAGXCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKSN+7xeDy7b8boDAADAl4QrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApI153dMHAQAA+DfhCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGnCFQAAgDThCgAAQJpwBQAAIE24AgAAkCZcAQAASBOuAAAApAlXAAAA0oQrAAAAacIVAACANOEKAABAmnAFAAAgTbgCAACQJlwBAABIE64AAACkCVcAAADShCsAAABpwhUAAIA04QoAAECacAUAACBNuAIAAJAmXAEAAEgTrgAAAKQJVwAAANKEKwAAAGkPbjfWmFb93p8AAAAASUVORK5CYII=" preserveAspectRatio="none" style="image-rendering: pixelated; image-rendering: crisp-edges;"></image>
+
+    <text xml:space="preserve" class="term-text" style="fill: #fefbfc">
+      <tspan y="0.0">
+        <tspan dy="1em" x="0.0">curl -fsSL https://get.xinity.ai/install.sh | bash                                                                                                           </tspan>
+      </tspan><tspan y="18.666662000000002">
+        <tspan dy="1em" x="0.0">  </tspan><tspan x="16.84666666" style="fill: #18b2b2">info</tspan><tspan x="50.539999980000005">  Fetching latest release…                                                                                                                             </tspan>
+      </tspan><tspan y="37.333324000000005">
+        <tspan dy="1em" x="0.0">  </tspan><tspan x="16.84666666" style="fill: #18b2b2">info</tspan><tspan x="50.539999980000005">  Installing xinity CLI v0.18.1 (linux-x64)                                                                                                            </tspan>
+      </tspan><tspan y="55.99998600000001">
+        <tspan dy="1em" x="0.0">  </tspan><tspan x="16.84666666" style="fill: #18b2b2">info</tspan><tspan x="50.539999980000005">  Downloading xinity-cli-linux-x64.zip…                                                                                                                </tspan>
+      </tspan><tspan y="74.66664800000001">
+        <tspan dy="1em" x="0.0">  </tspan><tspan x="16.84666666" style="fill: #18b218">  ok</tspan><tspan x="50.539999980000005">  SHA256 verified                                                                                                                                      </tspan>
+      </tspan><tspan y="93.33331000000001">
+        <tspan dy="1em" x="0.0">  </tspan><tspan x="16.84666666" style="fill: #18b218">  ok</tspan><tspan x="50.539999980000005">  Installed xinity v0.18.1 to /home/jonas/.local/bin/xinity                                                                                            </tspan>
+      </tspan><tspan y="111.99997200000001">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="130.66663400000002">
+        <tspan dy="1em" x="0.0">  </tspan><tspan x="16.84666666" style="fill: #18b2b2">info</tspan><tspan x="50.539999980000005">  To enable shell completion, add to your profile:                                                                                                     </tspan>
+      </tspan><tspan y="149.33329600000002">
+        <tspan dy="1em" x="0.0">  </tspan><tspan x="16.84666666" class="fa">source &lt;(xinity completion)</tspan><tspan x="244.27666657">                                                                                                                                </tspan>
+      </tspan><tspan y="167.99995800000002">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="186.66662000000002">
+        <tspan dy="1em" x="0.0">  </tspan><tspan x="16.84666666" style="fill: #18b2b2">info</tspan><tspan x="50.539999980000005">  Run </tspan><tspan x="101.07999996000001" style="fill: #18b2b2">xinity --help</tspan><tspan x="210.58333325"> to get started                                                                                                                     </tspan>
+      </tspan><tspan y="205.33328200000003">
+        <tspan dy="1em" x="0.0">xinity up all --target-host sys-admin@remote-server                                                                                                          </tspan>
+      </tspan><tspan y="223.99994400000003">
+        <tspan dy="1em" x="0.0" style="fill: #15282f"> </tspan><tspan x="8.42333333">                                                                                                                                                            </tspan>
+      </tspan><tspan y="242.66660600000003">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="261.33326800000003">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="279.99993">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="298.66659200000004">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="317.333254">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="335.99991600000004">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="354.666578">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="373.33324000000005">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="391.999902">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="410.66656400000005">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="429.333226">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="447.99988800000006">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="466.66655000000003">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="485.33321200000006">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="503.99987400000003">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="522.6665360000001">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="541.333198">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="559.99986">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="578.6665220000001">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="597.3331840000001">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="615.999846">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="634.666508">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="653.33317">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="671.9998320000001">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="690.6664940000001">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan><tspan y="709.333156">
+        <tspan dy="1em" x="0.0">                                                                                                                                                             </tspan>
+      </tspan>
+    </text>
+  </svg>
+
+  <svg x="594.988" y="298.667" width="149.333" height="149.333">
+    <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000.0 1000.0" style="filter: drop-shadow(0px 0px 5px rgba(0, 0, 0, 0.4))">
+  <defs>
+    <mask id="small-triangle-mask">
+      <rect width="100%" height="100%" fill="white"></rect>
+      <polygon points="700.0 500.0, 400.00000000000006 326.7949192431122, 399.9999999999999 673.2050807568877" fill="black">
+      </polygon>
+    </mask>
+  </defs>
+  <polygon points="1000.0 500.0, 250.0000000000001 66.98729810778059, 249.99999999999977 933.0127018922192" mask="url(#small-triangle-mask)" fill="white">
+  </polygon>
+  <polyline points="673.2050807568878 400.0, 326.7949192431123 600.0" stroke="white" stroke-width="90">
+  </polyline>
+</svg>
+  </svg>
+</svg>

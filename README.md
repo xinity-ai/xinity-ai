@@ -38,7 +38,7 @@ Xinity gives them a complete AI platform: model orchestration, an OpenAI-compati
 
 ## See it in action
 
-[![asciicast](https://asciinema.org/a/quSaPbFf9aqlQcqf.svg)](https://asciinema.org/a/quSaPbFf9aqlQcqf)
+[![asciicast](docs/assets/cli-demo.svg)](https://asciinema.org/a/quSaPbFf9aqlQcqf)
 
 ```bash
 # Install the CLI
