@@ -27,15 +27,12 @@
         '';
       };
 
-      # /health reports database reachability and /metrics belongs to the scrape path. Without
-      # stream_close_delay a config reload would cut every daemon stream at once.
+      # /health reports database reachability and /metrics belongs to the scrape path.
       tetherVhost = lib.optionalAttrs (cfg.tetherSubdomain != null) {
         "${cfg.tetherSubdomain}.${cfg.domain}".extraConfig = lib.mkDefault ''
           @daemon path /api/*
           handle @daemon {
-            reverse_proxy ${tetherTarget} {
-              stream_close_delay 5m
-            }
+            reverse_proxy ${tetherTarget}
           }
           handle {
             respond 404

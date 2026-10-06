@@ -5,10 +5,7 @@
 	# scrape path, so only the daemon API is public.
 	@daemon path /api/*
 	handle @daemon {
-		reverse_proxy tether:{$TETHER_PORT} {
-			# Without this, a config reload cuts every daemon stream at once.
-			stream_close_delay 5m
-		}
+		reverse_proxy tether:{$TETHER_PORT}
 	}
 	handle {
 		respond 404
