@@ -12,9 +12,9 @@ import {
   readSSEStream,
   recordFailedRequest,
   recordUsage,
-  SSE_RESPONSE_HEADERS,
   TRUNCATED_STREAM_MESSAGE,
   sseEncoder,
+  sseResponse,
   validateModelType,
   type BackendRoute,
   type FailedRequestContext,
@@ -109,7 +109,7 @@ function streamTranscriptionAsOpenAI(
       }
     },
   });
-  return new Response(stream, { headers: SSE_RESPONSE_HEADERS });
+  return sseResponse(stream);
 }
 
 /** Catalog model type for this STT endpoint (TTS would be a separate `speech` type). */

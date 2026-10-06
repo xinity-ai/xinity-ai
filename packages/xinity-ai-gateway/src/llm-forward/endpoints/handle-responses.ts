@@ -1,6 +1,6 @@
 import { streamText, isLoopFinished, stepCountIs } from "ai";
 import { resolveAuthorizedModel } from "../ai-sdk";
-import { errorResponse, logChatUsage, recordUsage, validateModelType, toModelMessages, SSE_RESPONSE_HEADERS, validationError, isUpstreamError, upstreamHttpStatus, modelLacksToolSupport } from "../util";
+import { errorResponse, logChatUsage, recordUsage, validateModelType, toModelMessages, sseResponse, validationError, isUpstreamError, upstreamHttpStatus, modelLacksToolSupport } from "../util";
 import { deleteResponse, getResponse, getResponseMessages, saveResponse, type ResponseCreation } from "../response-store";
 import { rootLogger } from "../../logger";
 import { processMessageMedia, restoreMediaParts, restoreMessageMedia, mediaStore } from "../../media-store";
@@ -229,7 +229,7 @@ async function runStreaming(prepared: PreparedRequest, genParams: GenerationPara
     },
   });
 
-  return new Response(streamBody, { headers: SSE_RESPONSE_HEADERS });
+  return sseResponse(streamBody);
 }
 
 async function runBlocking(prepared: PreparedRequest, genParams: GenerationParams): Promise<Response> {

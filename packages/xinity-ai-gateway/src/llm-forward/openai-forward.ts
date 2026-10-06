@@ -8,9 +8,9 @@ import {
   logChatUsage,
   readSSEStream,
   recordFailedRequest,
-  SSE_RESPONSE_HEADERS,
   TRUNCATED_STREAM_MESSAGE,
   sseEncoder,
+  sseResponse,
   type BackendRoute,
 } from "./util";
 import { recordTimeToFirstToken } from "../metrics";
@@ -210,7 +210,7 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
     },
   });
 
-  return new Response(stream, { headers: SSE_RESPONSE_HEADERS });
+  return sseResponse(stream);
 }
 
 export type NonStreamSpec<Choice> = {

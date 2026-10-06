@@ -2,7 +2,7 @@ import { describe, test, expect, spyOn } from "bun:test";
 import { rootLogger } from "../logger";
 
 
-const { classifyStreamError, forwardBackendError, handleStreamError } = await import("./util");
+const { classifyStreamError, forwardBackendError, handleStreamError, withSseKeepalive } = await import("./util");
 
 function timeoutError() {
   const error = new Error("timed out");
@@ -103,5 +103,88 @@ describe("handleStreamError", () => {
   test("ends the stream with an error event on an internal error", async () => {
     const body = await streamFailingWith(new Error("boom"));
     expect(body).toBe(`data: ${JSON.stringify({ error: { message: "Internal server error", type: "server_error" } })}\n\ndata: [DONE]\n\n`);
+  });
+});
+
+describe("withSseKeepalive", () => {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const frame = encoder.encode('data: {"id":"c1"}\n\n');
+
+  function controlledSource(onCancel?: (reason: unknown) => void) {
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    const stream = new ReadableStream<Uint8Array>({
+      start(c) {
+        controller = c;
+      },
+      cancel: onCancel,
+    });
+    return { stream, controller };
+  }
+
+  test("sends a keepalive comment while the source is silent, between whole frames", async () => {
+    const source = controlledSource();
+    const reader = withSseKeepalive(source.stream, 10).getReader();
+
+    expect(decoder.decode((await reader.read()).value)).toBe(": keepalive\n\n");
+    source.controller.enqueue(frame);
+    expect((await reader.read()).value).toEqual(frame);
+    source.controller.close();
+    expect((await reader.read()).done).toBe(true);
+  });
+
+  test("holds the keepalive back while the source is partway through an event", async () => {
+    const source = controlledSource();
+    const body = new Response(withSseKeepalive(source.stream, 10)).text();
+
+    source.controller.enqueue(encoder.encode('data: {"id"'));
+    await Bun.sleep(40);
+    source.controller.enqueue(encoder.encode(':"c1"}\n\n'));
+    source.controller.close();
+
+    expect(await body).toBe('data: {"id":"c1"}\n\n');
+  });
+
+  test("sends a keepalive after an event that ends in a CRLF blank line", async () => {
+    const source = controlledSource();
+    const reader = withSseKeepalive(source.stream, 10).getReader();
+    source.controller.enqueue(encoder.encode("data: x\r\n\r\n"));
+
+    await reader.read();
+    expect(decoder.decode((await reader.read()).value)).toBe(": keepalive\n\n");
+    await reader.cancel();
+  });
+
+  test("sends a keepalive after an event whose blank line arrives in its own chunk", async () => {
+    const source = controlledSource();
+    const reader = withSseKeepalive(source.stream, 10).getReader();
+    source.controller.enqueue(encoder.encode("data: x\n"));
+    source.controller.enqueue(encoder.encode("\n"));
+
+    await reader.read();
+    await reader.read();
+    expect(decoder.decode((await reader.read()).value)).toBe(": keepalive\n\n");
+    await reader.cancel();
+  });
+
+  test("stops sending keepalives once the source ends", async () => {
+    const source = controlledSource();
+    const reader = withSseKeepalive(source.stream, 10).getReader();
+    source.controller.enqueue(frame);
+    source.controller.close();
+
+    expect((await reader.read()).value).toEqual(frame);
+    expect((await reader.read()).done).toBe(true);
+    await Bun.sleep(30);
+  });
+
+  test("passes a client cancel through to the source", async () => {
+    const cancelled: unknown[] = [];
+    const source = controlledSource((reason) => cancelled.push(reason));
+    const reader = withSseKeepalive(source.stream, 10).getReader();
+
+    await reader.cancel("client gone");
+    await Bun.sleep(30);
+    expect(cancelled).toEqual(["client gone"]);
   });
 });

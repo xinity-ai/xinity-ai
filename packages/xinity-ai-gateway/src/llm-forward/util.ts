@@ -12,8 +12,7 @@ export type { UsageData, RecordUsageContext, FailedRequestContext, UsageLogConte
 // SSE streaming helpers
 // ---------------------------------------------------------------------------
 
-/** Standard headers for SSE streaming responses. */
-export const SSE_RESPONSE_HEADERS = {
+const SSE_RESPONSE_HEADERS = {
   "Content-Type": "text/event-stream",
   "Cache-Control": "no-cache",
   "Connection": "keep-alive",
@@ -21,6 +20,83 @@ export const SSE_RESPONSE_HEADERS = {
 
 /** Shared TextEncoder for SSE frame encoding. */
 export const sseEncoder = new TextEncoder();
+
+/** The SSE spec suggests a comment line every 15 seconds or so to keep proxies from dropping idle connections. */
+const SSE_KEEPALIVE_INTERVAL_MS = 15_000;
+const SSE_KEEPALIVE_FRAME = sseEncoder.encode(": keepalive\n\n");
+
+const CR = 0x0d;
+const LF = 0x0a;
+
+function endsWithBlankLine(tail: Uint8Array): boolean {
+  let end = tail.length;
+  if (tail[end - 1] === LF) {
+    end -= tail[end - 2] === CR ? 2 : 1;
+  } else if (tail[end - 1] === CR) {
+    end -= 1;
+  } else {
+    return false;
+  }
+  return end === 0 || tail[end - 1] === LF || tail[end - 1] === CR;
+}
+
+function lastThreeBytes(previous: Uint8Array, chunk: Uint8Array): Uint8Array {
+  if (chunk.length >= 3) {
+    return chunk.slice(-3);
+  }
+  const joined = new Uint8Array(previous.length + chunk.length);
+  joined.set(previous);
+  joined.set(chunk, previous.length);
+  return joined.slice(-3);
+}
+
+export function withSseKeepalive(source: ReadableStream<Uint8Array>, intervalMs = SSE_KEEPALIVE_INTERVAL_MS): ReadableStream<Uint8Array> {
+  const reader = source.getReader();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let atEventBoundary = true;
+  let tail: Uint8Array = new Uint8Array(0);
+
+  function restartKeepalive(controller: ReadableStreamDefaultController<Uint8Array>) {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (atEventBoundary) {
+        controller.enqueue(SSE_KEEPALIVE_FRAME);
+      }
+      restartKeepalive(controller);
+    }, intervalMs);
+  }
+
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      restartKeepalive(controller);
+    },
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          clearTimeout(timer);
+          controller.close();
+          return;
+        }
+        controller.enqueue(value);
+        tail = lastThreeBytes(tail, value);
+        atEventBoundary = endsWithBlankLine(tail);
+        restartKeepalive(controller);
+      } catch (err) {
+        clearTimeout(timer);
+        throw err;
+      }
+    },
+    cancel(reason) {
+      clearTimeout(timer);
+      return reader.cancel(reason);
+    },
+  });
+}
+
+export function sseResponse(body: ReadableStream<Uint8Array>): Response {
+  return new Response(withSseKeepalive(body), { headers: SSE_RESPONSE_HEADERS });
+}
 
 export type StreamErrorInfo = {
   /** Safe to hand to the client. */
