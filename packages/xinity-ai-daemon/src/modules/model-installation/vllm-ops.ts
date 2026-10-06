@@ -91,10 +91,6 @@ export function buildSystemdEnvFile(config: VllmInstanceConfig): string {
   if (audioFileSize != null) {
     lines.push(`VLLM_MAX_AUDIO_CLIP_FILESIZE_MB=${audioFileSize}`);
   }
-  const hfToken = daemonConfig.vllm.hfToken();
-  if (hfToken) {
-    lines.push(`HF_TOKEN=${hfToken}`);
-  }
   return lines.join("\n") + "\n";
 }
 
@@ -155,7 +151,7 @@ export function createSystemdVllmOps(): VllmOps {
         "Starting vLLM systemd service",
       );
       await Bun.write(envPath, envContent);
-      await $`chmod 644 ${envPath}`;
+      await $`chmod 600 ${envPath}`;
       await $`systemctl enable --now ${systemdUnitFor(id)}`;
     },
 

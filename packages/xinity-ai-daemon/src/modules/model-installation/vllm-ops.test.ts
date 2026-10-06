@@ -1,7 +1,7 @@
 import { describe, test, expect, mock } from "bun:test";
 import { mockDaemonConfig } from "../../mock-config";
 
-mock.module("../../config", () => ({ config: mockDaemonConfig({ VLLM_PATH: "/usr/local/bin/vllm", VLLM_DOCKER_IMAGE: "vllm/vllm-openai:latest" }) }));
+mock.module("../../config", () => ({ config: mockDaemonConfig({ VLLM_PATH: "/usr/local/bin/vllm", VLLM_DOCKER_IMAGE: "vllm/vllm-openai:latest", VLLM_HF_TOKEN: "hf_secret" }) }));
 
 const {
   buildDockerRunArgs,
