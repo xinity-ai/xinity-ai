@@ -96,11 +96,13 @@ fi
 RELEASE_JSON="$(curl -fsSL -H "Accept: application/vnd.github+json" "$RELEASE_URL" 2>/dev/null)" \
   || fail "Could not fetch release ${VERSION} from ${REPO}."
 
-TAG="$(printf '%s' "$RELEASE_JSON" | grep '"tag_name"' | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/')"
+# Here-strings, not pipes: a reader that stops early would SIGPIPE the writer, and pipefail turns
+# that into a failure once the release JSON outgrows the pipe buffer.
+TAG="$(sed -n '/"tag_name"/{s/.*: *"\([^"]*\)".*/\1/p;q;}' <<<"$RELEASE_JSON")"
 [[ -n "$TAG" ]] || fail "Could not parse release tag"
 
 has_asset() {
-  printf '%s' "$RELEASE_JSON" | grep -q "\"name\": *\"$1\""
+  grep -q "\"name\": *\"$1\"" <<<"$RELEASE_JSON"
 }
 
 if has_asset "${ASSET_PREFIX}.tar.gz"; then
