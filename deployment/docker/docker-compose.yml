@@ -189,10 +189,9 @@ services:
       - xinity-network
 
   caddy:
-    # Caddy 2.11.6 cuts the tether's daemon streams 60s after they open
-    # (caddyserver/caddy#8103), fixed in 2.11.7.
-    # TODO: pin caddy:2.11.7-alpine once that image is published.
-    image: caddy:2.11.4-alpine
+    # Pinned exactly: 2.11.6 cuts the tether's daemon streams 60s after they
+    # open (caddyserver/caddy#8103).
+    image: caddy:2.11.7-alpine
     restart: unless-stopped
     depends_on:
       - gateway
