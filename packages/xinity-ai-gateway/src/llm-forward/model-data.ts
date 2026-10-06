@@ -314,7 +314,10 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, prefi
   const tls = location?.tls ?? false;
   const driverProvider = driver as "vllm" | "ollama";
 
-  const meta = await resolveCatalogMeta(resolvedSpecifier, driverProvider);
+  const meta = await resolveCatalogMeta(resolvedSpecifier, driverProvider).catch((err: unknown) => {
+    result.release();
+    throw err;
+  });
 
   return {
     status: "found",

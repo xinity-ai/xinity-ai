@@ -318,6 +318,17 @@ describe("getModelInfo", () => {
     expect(mockFetchModel).not.toHaveBeenCalled();
   });
 
+  test("releases the selected host when the catalog lookup fails", async () => {
+    queryQueue.push([deploymentResult({ specifier: "llama3:latest" })]);
+    queryQueue.push([installationResult({ host: "node-a", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
+    const release = jest.fn();
+    mockSelectHost.mockResolvedValue({ host: "node-a:11434", useFinalModel: true, release });
+    mockLookup.mockResolvedValue({ status: "unavailable", error: "connection refused" });
+
+    await expect(getModelInfo("org-1", "my-model")).rejects.toThrow();
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
   test("skips early model lookup when earlySpecifier is null", async () => {
     queryQueue.push([deploymentResult({ specifier: "llama3:latest", earlySpecifier: null })]);
     queryQueue.push([installationResult({ host: "node-a", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
