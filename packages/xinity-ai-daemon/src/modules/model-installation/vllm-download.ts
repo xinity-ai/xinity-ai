@@ -7,7 +7,9 @@ import { ensureCacheSpace, getDirSize } from "./cache-eviction";
 
 const log = rootLogger.child({ name: "vllm-download" });
 
-const HF_API_URL = "https://huggingface.co";
+export function hfUrl(pathname: string): string {
+  return `${config.hfEndpoint.replace(/\/+$/, "")}${pathname}`;
+}
 
 type HfFileEntry = {
   path: string;
@@ -120,10 +122,10 @@ function linkSnapshot(snapshotDir: string, filePath: string, blobPath: string): 
 }
 
 async function listRepoFiles(model: string): Promise<{ files: HfFileEntry[]; commitHash: string }> {
-  const info = await hfFetchJson<{ sha: string }>(`${HF_API_URL}/api/models/${model}`);
+  const info = await hfFetchJson<{ sha: string }>(hfUrl(`/api/models/${model}`));
 
   const entries = await hfFetchJson<Array<{ type: string; path: string; size: number; lfs?: { size: number } }>>(
-    `${HF_API_URL}/api/models/${model}/tree/${info.sha}?recursive=true`,
+    hfUrl(`/api/models/${model}/tree/${info.sha}?recursive=true`),
   );
 
   return {
@@ -142,7 +144,7 @@ async function downloadFileToCache(
   expectedSize: number,
   onBytes: (bytes: number) => Promise<void>,
 ): Promise<{ etag: string; bytesDownloaded: number }> {
-  const resolveUrl = `${HF_API_URL}/${model}/resolve/${commitHash}/${filePath}`;
+  const resolveUrl = hfUrl(`/${model}/resolve/${commitHash}/${filePath}`);
 
   // Resolve etag (blob filename) via HEAD, preferring x-linked-etag
   const headRes = await hfFetch(resolveUrl, { method: "HEAD", redirect: "follow" });

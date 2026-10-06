@@ -20,7 +20,22 @@ mock.module("../../logger", () => ({
   },
 }));
 
-const { downloadModel } = await import("./vllm-download");
+const { downloadModel, hfUrl } = await import("./vllm-download");
+const { config } = await import("../../config");
+
+describe("hfUrl", () => {
+  test("keeps a mirror's path prefix and drops its trailing slash", () => {
+    const configured = config.hfEndpoint;
+    config.hfEndpoint = "https://repo.example/artifactory/api/huggingfaceml/hf/";
+    try {
+      expect(hfUrl("/api/models/org/model")).toBe(
+        "https://repo.example/artifactory/api/huggingfaceml/hf/api/models/org/model",
+      );
+    } finally {
+      config.hfEndpoint = configured;
+    }
+  });
+});
 
 // ---------------------------------------------------------------------------
 // These tests hit the real HuggingFace API. They use a tiny public model

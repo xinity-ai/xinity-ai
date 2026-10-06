@@ -122,6 +122,7 @@ export type DaemonConfig = {
   log: LoggingConfig;
   /** Its own driver, with one knob, so it is not worth a group of its own. */
   ollamaUrl: string;
+  hfEndpoint: string;
   secretKey: string;
   previousSecretKey?: string;
 };
@@ -137,6 +138,9 @@ export const daemonConfig = defineConfig<DaemonConfig>({
   log: loggingGroup(),
   ollamaUrl: env("OLLAMA_URL", z.url().default("http://localhost:11434")
     .describe("Ollama API endpoint. The ollama driver is enabled whenever this endpoint answers, so it only needs setting when ollama does not listen on its default local port")
+    .meta(expert())),
+  hfEndpoint: env("HF_ENDPOINT", z.url().default("https://huggingface.co")
+    .describe("Base URL of the Hugging Face Hub, or of a mirror of it, that models are downloaded from")
     .meta(expert())),
   secretKey: secretKeyField(),
   previousSecretKey: previousSecretKeyField(),
