@@ -162,6 +162,8 @@ Off unless all of `XINITY_TLS_CERT`, `XINITY_TLS_KEY` are set.
 
 Every variable supports the `_FILE` suffix convention (e.g. `TETHER_SECRET_FILE`) for reading the value from a file.
 
+The `/proxy/*` route is exempt from `IDLE_TIMEOUT` and bounded by the gateway's `BACKEND_TIMEOUT_MS` instead: when the gateway gives up on a request, it cancels the daemon's backend request with it.
+
 ## NixOS Deployment
 
 ```nix

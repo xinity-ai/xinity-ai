@@ -12,6 +12,7 @@ const { handleProxyRequest } = await import("./proxy");
 
 let server: ReturnType<typeof Bun.serve>;
 let lastUpstreamRequest: { method: string; path: string; body: unknown } | null = null;
+let endlessStreamCancelled = false;
 
 beforeAll(() => {
   server = Bun.serve({
@@ -21,6 +22,16 @@ beforeAll(() => {
       const body = req.method !== "GET" ? await req.json().catch(() => null) : null;
       lastUpstreamRequest = { method: req.method, path: url.pathname + url.search, body };
 
+      if (url.pathname === "/v1/endless") {
+        return new Response(new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("data: first\n\n"));
+          },
+          cancel() {
+            endlessStreamCancelled = true;
+          },
+        }));
+      }
       if (url.pathname === "/v1/chat/completions") {
         return Response.json({ id: "chatcmpl-1", choices: [], model: "llama3:latest" });
       }
@@ -43,7 +54,7 @@ afterAll(() => {
 
 function proxyRequest(
   path: string,
-  options?: { method?: string; body?: unknown; token?: string | null; signedPath?: string },
+  options?: { method?: string; body?: unknown; token?: string | null; signedPath?: string; signal?: AbortSignal },
 ) {
   const method = options?.method ?? "POST";
   const token = options?.token === undefined ? getAuthToken() : options.token;
@@ -59,6 +70,7 @@ function proxyRequest(
     method,
     headers,
     body: options?.body ? JSON.stringify(options.body) : undefined,
+    signal: options?.signal,
   });
   return handleProxyRequest(req, url);
 }
@@ -181,5 +193,19 @@ describe("proxy pass-through", () => {
       body: {},
     });
     expect(res.status).toBe(502);
+  });
+});
+
+describe("proxy cancellation", () => {
+  test("cancels the backend request when the caller gives up", async () => {
+    const caller = new AbortController();
+    const res = await proxyRequest("/proxy/meta-llama%2FLlama-3.1-8B/v1/endless", { method: "GET", signal: caller.signal });
+    const reader = res.body!.getReader();
+    await reader.read();
+
+    caller.abort();
+    await reader.read().catch(() => {});
+    await Bun.sleep(50);
+    expect(endlessStreamCancelled).toBe(true);
   });
 });

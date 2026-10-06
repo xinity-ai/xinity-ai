@@ -7,11 +7,11 @@ import {
   createMetricsAuth,
   processMetrics,
   serializeMetrics,
+  type RouteHandler,
 } from "common-env";
 import type { Server } from "bun";
 import { version } from "../../../package.json";
 import { config } from "./config";
-import type { RouteHandler } from "./serve-config";
 import { releaseCallbacks } from "./llm-forward/release-registry";
 import { isAbortError } from "./llm-forward/util";
 import { rootLogger } from "./logger";

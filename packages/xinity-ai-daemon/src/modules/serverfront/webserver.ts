@@ -1,3 +1,5 @@
+import type { Server } from "bun";
+import { withoutConnectionTimeout } from "common-env";
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 
 import { router } from "../../rpc/router";
@@ -22,14 +24,14 @@ export async function startServer() {
       "/": httpMetrics.route("/", () => createScalarPage()),
       "/openapi.json": httpMetrics.route("/openapi.json", () => Response.json(spec)),
     },
-    async fetch(req: Request) {
+    async fetch(req: Request, server: Server<unknown>) {
       const url = new URL(req.url);
       if (url.pathname === "/metrics") {
         return handleDaemonMetrics(req);
       }
       // The proxy path carries a model name, so it is labelled by pattern.
       if (url.pathname.startsWith("/proxy/")) {
-        return httpMetrics.route("/proxy/*", (r) => handleProxyRequest(r, url))(req);
+        return withoutConnectionTimeout(httpMetrics.route("/proxy/*", (r) => handleProxyRequest(r, url)))(req, server);
       }
 
       return httpMetrics.route("/rpc", async (r) => {
