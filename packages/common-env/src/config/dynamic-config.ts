@@ -1,5 +1,6 @@
-import type { ConfigDef } from "./declaration";
-import { readSecretFile, type SecretFileReader } from "../secret-file";
+import { pointerOf, type ConfigDef } from "./declaration";
+import type { ConfigEntry } from "./group";
+import { cachingSecretFileReader } from "../secret-file";
 import { splitDelegations, type RawEnv } from "./delegation";
 import { createDerivation, type Derivation, type Derived } from "./derivation";
 import {
@@ -42,6 +43,40 @@ function valueAt(values: ConfigValues, path: readonly string[]): unknown {
 
 export type Unseal = (envKey: string, value: string) => string | undefined;
 
+/** An override that is missing, or that `unseal` cannot open, leaves its key on the fallback in `baseEnv`. */
+function envWithOverrides(
+  baseEnv: RawEnv,
+  delegatedKeys: readonly string[],
+  overrides: Record<string, string>,
+  unseal: Unseal | undefined,
+): { env: RawEnv; overridden: Set<string> } {
+  const env: Record<string, string | undefined> = { ...baseEnv };
+  const overridden = new Set<string>();
+  for (const key of delegatedKeys) {
+    const override = overrides[key];
+    if (override === undefined) {
+      continue;
+    }
+    const opened = unseal ? unseal(key, override) : override;
+    if (opened === undefined) {
+      continue;
+    }
+    env[key] = opened;
+    overridden.add(key);
+  }
+  return { env, overridden };
+}
+
+function changedPointers(
+  dynamicEntries: readonly ConfigEntry[],
+  before: ConfigValues,
+  after: ConfigValues,
+): string[] {
+  return dynamicEntries
+    .filter((entry) => !sameConfigValue(valueAt(before, entry.path), valueAt(after, entry.path)))
+    .map(pointerOf);
+}
+
 export function createDynamicConfig<T>(deps: {
   declaration: ConfigDef<T>;
   rawEnv?: RawEnv;
@@ -49,15 +84,7 @@ export function createDynamicConfig<T>(deps: {
   const { declaration } = deps;
 
   // Every override re-resolves the declaration, and a secret file must not be read again while serving.
-  const secretFileContents = new Map<string, string>();
-  const readSecretFileOnce: SecretFileReader = (path, envKey) => {
-    let contents = secretFileContents.get(path);
-    if (contents === undefined) {
-      contents = readSecretFile(path, envKey);
-      secretFileContents.set(path, contents);
-    }
-    return contents;
-  };
+  const readSecretFileOnce = cachingSecretFileReader();
 
   const { baseEnv, delegatedKeys } = splitDelegations(
     declaration,
@@ -83,28 +110,12 @@ export function createDynamicConfig<T>(deps: {
   const derivations = new Set<Derivation>();
 
   const apply: ApplyOverrides = (overrides) => {
-    const env: Record<string, string | undefined> = { ...baseEnv };
-    const applied = new Set<string>();
-    for (const key of delegatedKeys) {
-      const override = overrides[key];
-      if (override === undefined) {
-        continue;
-      }
-      const opened = unseal ? unseal(key, override) : override;
-      if (opened === undefined) {
-        continue;
-      }
-      env[key] = opened;
-      applied.add(key);
-    }
-
+    const { env, overridden } = envWithOverrides(baseEnv, delegatedKeys, overrides, unseal);
     const next = resolve(env);
-    const changed = dynamicEntries
-      .filter((entry) => !sameConfigValue(valueAt(resolved.values, entry.path), valueAt(next.values, entry.path)))
-      .map((entry) => entry.path.join("."));
+    const changed = changedPointers(dynamicEntries, resolved.values, next.values);
 
     resolved = next;
-    overriddenKeys = applied;
+    overriddenKeys = overridden;
 
     for (const derivation of derivations) {
       derivation.revalidate();

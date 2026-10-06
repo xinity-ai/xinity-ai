@@ -12,3 +12,15 @@ export function readSecretFile(path: string, key: string): string {
     );
   }
 }
+
+export function cachingSecretFileReader(): SecretFileReader {
+  const contentsByPath = new Map<string, string>();
+  return (path, envKey) => {
+    let contents = contentsByPath.get(path);
+    if (contents === undefined) {
+      contents = readSecretFile(path, envKey);
+      contentsByPath.set(path, contents);
+    }
+    return contents;
+  };
+}
