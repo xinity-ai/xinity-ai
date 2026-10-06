@@ -120,6 +120,8 @@ describe("buildSystemdEnvFile", () => {
       "VLLM_HOST=127.0.0.1\n" +
       "VLLM_SERVED_MODEL_NAME=meta-llama/Llama-3.1-8B-Instruct\n" +
       "VLLM_KV_CACHE_BYTES=8g\n" +
+      "HF_HUB_OFFLINE=1\n" +
+      "TRANSFORMERS_OFFLINE=1\n" +
       "VLLM_BINARY_PATH=/usr/local/bin/vllm\n",
     );
   });

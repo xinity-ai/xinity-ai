@@ -56,6 +56,8 @@ function nonEmptyLines(raw: string): string[] {
   return raw.split("\n").map((line) => line.trim()).filter(Boolean);
 }
 
+const OFFLINE_ENV = ["HF_HUB_OFFLINE=1", "TRANSFORMERS_OFFLINE=1"];
+
 // ---------------------------------------------------------------------------
 // Systemd implementation
 // ---------------------------------------------------------------------------
@@ -67,6 +69,7 @@ export function buildSystemdEnvFile(config: VllmInstanceConfig): string {
     `VLLM_HOST=127.0.0.1`,
     `VLLM_SERVED_MODEL_NAME=${config.model}`,
     `VLLM_KV_CACHE_BYTES=${config.kvCacheBytes}`,
+    ...OFFLINE_ENV,
   ];
   if (daemonConfig.vllm.path) {
     lines.push(`VLLM_BINARY_PATH=${daemonConfig.vllm.path}`);
@@ -246,8 +249,7 @@ export function buildDockerRunArgs(
     "-p", `127.0.0.1:${config.port}:8000`,
     "-e", "HF_HOME=/data/hf-cache",
     "-e", "TRITON_CACHE_DIR=/data/triton-cache",
-    "-e", "HF_HUB_OFFLINE=1",
-    "-e", "TRANSFORMERS_OFFLINE=1",
+    ...OFFLINE_ENV.flatMap((entry) => ["-e", entry]),
     ...(audioDuration != null
       ? ["-e", `VLLM_MAX_AUDIO_DECODE_DURATION_S=${audioDuration}`]
       : []),
