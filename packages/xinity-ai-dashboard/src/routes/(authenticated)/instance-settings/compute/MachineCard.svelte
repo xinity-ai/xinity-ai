@@ -4,6 +4,7 @@
   import AnimatedNumber from "./AnimatedNumber.svelte";
   import { formatTokens, formatPercent, formatEnergy, formatRelativeTime, gpuSummary, totalVramGb } from "$lib/compute/format";
   import { Zap, ArrowRightLeft, CircleCheck, Trash2, Cpu, Lock, MemoryStick } from "@lucide/svelte";
+  import { experimentalGpuVendors, GPU_VENDOR_SUPPORT } from "common-env/model-catalog/definitions/model-primitives";
 
   let { node, rangeLabel, metrics = null, onRemove }: {
     node: NodeSummary;
@@ -18,6 +19,7 @@
       : null,
   );
   const vramGb = $derived(totalVramGb(node.gpus));
+  const experimentalVendorLabels = $derived(experimentalGpuVendors(node.gpus).map((vendor) => GPU_VENDOR_SUPPORT[vendor].label));
   const drivers = $derived(Object.entries(node.driverVersions));
   const lastSeen = $derived(formatRelativeTime(node.lastSeenMs, Date.now()));
   const lifecycleBadge: Record<string, string> = {
@@ -41,6 +43,12 @@
           {/if}
         </span>
         <h3 class="font-semibold text-gray-800 truncate">{node.machineName ?? node.host}</h3>
+        {#if experimentalVendorLabels.length > 0}
+          <span
+            class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium bg-amber-50 text-amber-700"
+            title="{experimentalVendorLabels.join(" and ")} GPU support is experimental and not thoroughly tested"
+          >Experimental</span>
+        {/if}
       </div>
       <p class="text-xs text-gray-400 mt-0.5 truncate" title={gpuSummary(node.gpus)}>
         {node.machineName ? `${node.host} · ` : ""}{gpuSummary(node.gpus) || `${node.gpuCount || "no"} GPU`}

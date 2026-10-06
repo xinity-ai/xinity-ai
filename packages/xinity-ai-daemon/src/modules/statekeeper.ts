@@ -8,9 +8,10 @@ import { $ } from "bun";
 import { config } from "../config";
 import { networkInterfaces } from "node:os";
 import { detectHardwareProfile, detectNodeName, type HardwareProfile } from "./hardware-detect";
-import { normalizePep440 } from "common-env/model-catalog";
+import { experimentalGpuVendors, GPU_VENDOR_SUPPORT, normalizePep440 } from "common-env/model-catalog";
 import { rootLogger } from "../logger";
 import { detectVllmFeatures, resolvePythonForVllm } from "./vllm-features";
+import { NO_HOST_DEVICES, unpinnedDevicesFor } from "./model-installation/gpu-devices";
 
 const log = rootLogger.child({ name: "statekeeper" });
 
@@ -40,6 +41,9 @@ export async function getHardwareProfile(): Promise<HardwareProfile> {
       { gpuCount: cachedProfile.gpuCount, detectedCapacityGb: cachedProfile.detectedCapacityGb, physicalCapacityGb: cachedProfile.physicalCapacityGb, source: cachedProfile.source },
       "Hardware profile detected",
     );
+    for (const vendor of experimentalGpuVendors(cachedProfile.gpus)) {
+      log.warn({ vendor }, `${GPU_VENDOR_SUPPORT[vendor].label} GPU support is experimental and not thoroughly tested`);
+    }
   }
   return cachedProfile;
 }
@@ -109,9 +113,11 @@ async function detectOllamaVersion(endpoint: string): Promise<string | undefined
 async function detectConfiguredVllmVersion(): Promise<string | undefined> {
   const image = config.vllm.dockerImage;
   if (image) {
+    const { gpus } = await getHardwareProfile();
+    const deviceArgs = unpinnedDevicesFor(gpus, NO_HOST_DEVICES).dockerArgs;
     return detectVllmVersion("docker", [
       { label: "metadata", run: () => $`docker run --rm --entrypoint python3 ${image} -c ${VLLM_VERSION_FROM_METADATA}`.throws(false).quiet() },
-      { label: "cli", run: () => $`docker run --rm --gpus all --entrypoint ${config.vllm.path ?? "vllm"} ${image} --version`.throws(false).quiet() },
+      { label: "cli", run: () => $`docker run --rm ${deviceArgs} --entrypoint ${config.vllm.path ?? "vllm"} ${image} --version`.throws(false).quiet() },
     ]);
   }
   const vllmPath = config.vllm.path;
@@ -208,7 +214,7 @@ async function collectRegistrationData(): Promise<UnsignedNodeRegistration> {
     host,
     port,
     gpuCount,
-    gpus: detectedGpus.map(g => ({ vendor: g.vendor, name: g.name, vramMb: g.vramMb, index: g.index, uuid: g.uuid })),
+    gpus: detectedGpus,
     driverVersions,
     driverFeatures,
     tls: !!config.tls,

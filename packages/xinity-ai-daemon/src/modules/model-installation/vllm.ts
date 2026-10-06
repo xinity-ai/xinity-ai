@@ -23,10 +23,11 @@ import {
 } from "./vllm-ops";
 import { rootLogger } from "../../logger";
 import { getHardwareProfile } from "../statekeeper";
-import { cardCapacityGib, type DetectedGpu, type HardwareProfile } from "../hardware-detect";
-import { tensorParallelLayouts } from "common-env";
+import { cardCapacityGib, type HardwareProfile } from "../hardware-detect";
+import { gpuId, tensorParallelLayouts, type GpuInfo } from "common-env";
 import { downloadModel } from "./vllm-download";
-import { estimateConcurrency, type GpuInfo, type ModelSizingFields } from "common-env/model-catalog";
+import { devicesFor, readHostDevices, resolvePinnedCards } from "./gpu-devices";
+import { estimateConcurrency, type ModelSizingFields } from "common-env/model-catalog";
 import { dropPageCache } from "./page-cache";
 import { resolveInstallationEntry } from "./catalog";
 import { updateInstallationState, getLocalInstallationStates } from "./state";
@@ -163,18 +164,6 @@ function pollUntilHealthy$(
   );
 }
 
-// Assignments name cards by UUID so they survive renumbering. CUDA gets the index, since vLLM
-// before 0.24 parses CUDA_VISIBLE_DEVICES as integers and rejects a UUID.
-function resolvePinnedGpus(gpus: readonly DetectedGpu[], gpuUuids: readonly string[]): { uuid: string; index: number }[] {
-  return gpuUuids.map((uuid) => {
-    const gpu = gpus.find((candidate) => candidate.uuid === uuid);
-    if (gpu?.index === undefined) {
-      throw new Error(`Assigned GPU ${uuid} is not on this node`);
-    }
-    return { uuid, index: gpu.index };
-  });
-}
-
 // vLLM sizes --kv-cache-memory-bytes per card, so an installation split across cards passes each
 // card's share, and sizes utilization against one card's weights and cache.
 export function perCardSizing(
@@ -182,7 +171,9 @@ export function perCardSizing(
   sizing: ModelSizingFields | undefined,
   cards: number,
 ): { weightGb: number; kvCacheGb: number } {
-  const weightGb = installation.estCapacity - installation.kvCacheCapacity;
+  // estCapacity is the VRAM occupied, which includes every card's copy of a replicated kv head, so
+  // weights come from the catalog. Only a legacy entry lacks sizing, and it is never split.
+  const weightGb = sizing?.weightGb ?? installation.estCapacity - installation.kvCacheCapacity;
   if (cards <= 1) {
     return { weightGb, kvCacheGb: installation.kvCacheCapacity };
   }
@@ -201,8 +192,9 @@ async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): P
   }
   const providerModel = entry.engineSpecifier;
   const profile = await getHardwareProfile();
-  const pinnedGpus = resolvePinnedGpus(profile.gpus, installation.gpuUuids);
-  const perCard = perCardSizing(installation, entry.sizing, pinnedGpus.length);
+  const pinnedCards = resolvePinnedCards(profile.gpus, installation.gpuIds);
+  const devices = devicesFor(pinnedCards, profile.gpus, await readHostDevices());
+  const perCard = perCardSizing(installation, entry.sizing, devices.tensorParallelSize);
 
   await updateInstallationState(installation.id, "downloading", { statusMessage: "Downloading model", progress: 0 });
 
@@ -219,7 +211,7 @@ async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): P
     weightGb: perCard.weightGb,
     kvCacheGb: perCard.kvCacheGb,
     overheadGb: entry.sizing?.overheadGb,
-    gpuUuids: installation.gpuUuids,
+    gpuIds: installation.gpuIds,
   }, profile);
   const modelType = entry.type;
 
@@ -238,7 +230,7 @@ async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): P
       concurrencyCap(entry.sizing, profile.gpus, installation.kvCacheCapacity),
     ),
     settings: installation.settings,
-    pinnedGpus,
+    devices,
   });
 
   return { modelType, providerModel };
@@ -289,13 +281,16 @@ const GB_PER_GIB = 1.073741824;
 const MAX_GPU_UTILIZATION = 0.90;
 
 // An unpinned installation runs on the first card.
-function pinnedCardIndices(gpus: readonly { uuid?: string }[], gpuUuids: readonly string[]): number[] {
-  const indices = gpus.flatMap((gpu, index) => (gpu.uuid !== undefined && gpuUuids.includes(gpu.uuid) ? [index] : []));
+function pinnedCardIndices(gpus: readonly GpuInfo[], cardIds: readonly string[]): number[] {
+  const indices = gpus.flatMap((gpu, index) => {
+    const id = gpuId(gpu);
+    return id !== undefined && cardIds.includes(id) ? [index] : [];
+  });
   return indices.length > 0 ? indices : [0];
 }
 
 export function computeGpuUtilization(
-  installation: { specifier: string; weightGb: number; kvCacheGb: number; overheadGb?: number; gpuUuids?: string[] },
+  installation: { specifier: string; weightGb: number; kvCacheGb: number; overheadGb?: number; gpuIds?: string[] },
   profile: Pick<HardwareProfile, "gpus" | "gpuCount" | "systemRamMb" | "detectedCapacityGb" | "physicalCapacityGb">,
 ): number | undefined {
   if (profile.gpuCount === 0 || profile.physicalCapacityGb === 0) {
@@ -307,7 +302,7 @@ export function computeGpuUtilization(
     ? installation.overheadGb / GB_PER_GIB
     : OVERHEAD_BASE_GIB + OVERHEAD_WEIGHT_FRACTION * weightGib;
   const neededGib = weightGib + installation.kvCacheGb / GB_PER_GIB + overheadGib;
-  const cardGib = cardCapacityGib(profile, pinnedCardIndices(profile.gpus, installation.gpuUuids ?? []));
+  const cardGib = cardCapacityGib(profile, pinnedCardIndices(profile.gpus, installation.gpuIds ?? []));
   const headroomCap = profile.detectedCapacityGb / profile.physicalCapacityGb;
   const utilization = Math.min(
     neededGib / cardGib,

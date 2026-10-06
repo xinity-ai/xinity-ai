@@ -1,7 +1,7 @@
 import { type InferSelectModel, sql } from "drizzle-orm";
 import { pgEnum, pgTable, real, text, timestamp, uuid, boolean, integer, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { organizationT } from "./orgSchema";
-import type { DeploymentSettings } from "common-env";
+import type { DeploymentSettings, GpuInfo } from "common-env";
 
 export const lifecycleStateEnum = pgEnum("lifecycle_state", ["downloading", "installing", "ready", "failed"]);
 export const inferenceDriverEnum = pgEnum("inference_driver", ["ollama", "vllm"]);
@@ -80,7 +80,7 @@ export const aiNodeT = pgTable("ai_node", {
   /** Maps driver name to detected optional features, e.g. {"vllm": ["audio", "vllm-omni"]} */
   driverFeatures: jsonb("driver_features").$type<Record<string, string[]>>().notNull().default({}),
   /** Detected GPUs with vendor, name, and VRAM. Empty = unknown/CPU-only. */
-  gpus: jsonb().$type<{ vendor: string; name: string; vramMb: number; index?: number; uuid?: string }[]>().notNull().default([]),
+  gpus: jsonb().$type<GpuInfo[]>().notNull().default([]),
   /** Random token generated on daemon startup, used by the gateway to authenticate requests to this node. */
   authToken: text("auth_token"),
   /** Ed25519 public key pinned on first registration. Null means not yet pinned, which adopts the next key seen. */
@@ -108,7 +108,7 @@ export const modelInstallationT = pgTable("model_installation", {
   deploymentId: uuid("deployment_id").notNull().references(() => modelDeploymentT.id, { onDelete: "cascade" }),
   /** Canonical model identifier. */
   specifier: text().notNull(),
-  /** estimated total GPU capacity required (model weights + KV cache), taken up on the selected node */
+  /** GPU memory in GB the installation occupies on its node, summed over all its cards */
   estCapacity: real("est_capacity").notNull(),
   /** KV-cache allocation in GB, used by the daemon for vLLM's --kv-cache-memory-bytes */
   kvCacheCapacity: real("kv_cache_capacity").notNull().default(0),
@@ -117,7 +117,7 @@ export const modelInstallationT = pgTable("model_installation", {
   driver: inferenceDriverEnum().notNull(),
   settings: jsonb().notNull().$type<DeploymentSettings>().default({ version: 1 }),
   /** Empty means unpinned, which the daemon runs on the node's first card. */
-  gpuUuids: jsonb("gpu_uuids").$type<string[]>().notNull().default([]),
+  gpuIds: jsonb("gpu_ids").$type<string[]>().notNull().default([]),
 
   deletedAt,
   createdAt,

@@ -11,6 +11,9 @@ const {
   classifyCapacitySource,
   normalizeDmiProductName,
   cardCapacityGib,
+  normalizePciBusId,
+  amdRocrUuidField,
+  amdCardName,
 } = await import("./hardware-detect");
 type DetectedGpu = import("./hardware-detect").DetectedGpu;
 
@@ -28,14 +31,14 @@ describe("parseNvidiaSmiOutput", () => {
     expect(gpus[0]!.vramMb).toBe(24564);
   });
 
-  test("keeps nvidia-smi's own index and the card's uuid", () => {
+  test("keeps nvidia-smi's own index, the card's uuid and its bus id", () => {
     const csv = [
-      "0, NVIDIA RTX PRO 6000 Blackwell, 97887, GPU-5f1c2b8e-0d4a-4c7e-9b31-2a6f8e1d7c40",
-      "1, NVIDIA L40S, 46068, GPU-a93d7e12-44b0-4f2a-8c6e-19d5b0f3e7a1",
+      "0, NVIDIA RTX PRO 6000 Blackwell, 97887, GPU-5f1c2b8e-0d4a-4c7e-9b31-2a6f8e1d7c40, 00000000:01:00.0",
+      "1, NVIDIA L40S, 46068, GPU-a93d7e12-44b0-4f2a-8c6e-19d5b0f3e7a1, 00000000:81:00.0",
     ].join("\n");
-    expect(parseNvidiaSmiOutput(csv).map(({ index, uuid }) => ({ index, uuid }))).toEqual([
-      { index: 0, uuid: "GPU-5f1c2b8e-0d4a-4c7e-9b31-2a6f8e1d7c40" },
-      { index: 1, uuid: "GPU-a93d7e12-44b0-4f2a-8c6e-19d5b0f3e7a1" },
+    expect(parseNvidiaSmiOutput(csv).map(({ index, uuid, pciBusId }) => ({ index, uuid, pciBusId }))).toEqual([
+      { index: 0, uuid: "GPU-5f1c2b8e-0d4a-4c7e-9b31-2a6f8e1d7c40", pciBusId: "0000:01:00.0" },
+      { index: 1, uuid: "GPU-a93d7e12-44b0-4f2a-8c6e-19d5b0f3e7a1", pciBusId: "0000:81:00.0" },
     ]);
   });
 
@@ -134,27 +137,30 @@ describe("parseRocmSmiOutput", () => {
 // parseXpuSmiDeviceList
 // ---------------------------------------------------------------------------
 
+const XPU_SMI_BORDER = "+-----------+--------------------------------------------------------------------------------------+";
+
 describe("parseXpuSmiDeviceList", () => {
   test("parses device IDs from xpu-smi discovery output", () => {
     const text = [
-      "+------------------+-------------------+",
-      "| Device ID        | 0                 |",
-      "| Device Name      | Intel Data Center GPU Max 1550 |",
-      "+------------------+-------------------+",
-      "| Device ID        | 1                 |",
-      "| Device Name      | Intel Data Center GPU Max 1550 |",
-      "+------------------+-------------------+",
+      XPU_SMI_BORDER,
+      "| Device ID | Device Information                                                                   |",
+      XPU_SMI_BORDER,
+      "| 0         | Device Name: Intel(R) Data Center GPU Max 1550                                       |",
+      "|           | PCI BDF Address: 0000:29:00.0                                                        |",
+      XPU_SMI_BORDER,
+      "| 1         | Device Name: Intel(R) Data Center GPU Max 1550                                       |",
+      "|           | PCI BDF Address: 0000:3a:00.0                                                        |",
+      XPU_SMI_BORDER,
     ].join("\n");
-    const ids = parseXpuSmiDeviceList(text);
-    expect(ids).toEqual([0, 1]);
+    expect(parseXpuSmiDeviceList(text)).toEqual([0, 1]);
   });
 
   test("returns empty for empty input", () => {
     expect(parseXpuSmiDeviceList("")).toEqual([]);
   });
 
-  test("returns empty when no device ID lines present", () => {
-    const text = "Some unrelated output\nNo devices found";
+  test("returns empty when no device rows are present", () => {
+    const text = [XPU_SMI_BORDER, "| Device ID | Device Information |", XPU_SMI_BORDER].join("\n");
     expect(parseXpuSmiDeviceList(text)).toEqual([]);
   });
 });
@@ -164,45 +170,86 @@ describe("parseXpuSmiDeviceList", () => {
 // ---------------------------------------------------------------------------
 
 describe("parseXpuSmiDeviceDetails", () => {
-  test("parses device name and memory from detail output", () => {
+  test("parses name, memory and bus id from detail output", () => {
     const text = [
-      "+------------------+-------------------------------------------+",
-      "| Device Name      | Intel Data Center GPU Max 1550            |",
-      "| Memory Physical Size | 32768.00 MiB                         |",
-      "+------------------+-------------------------------------------+",
+      XPU_SMI_BORDER,
+      "| Device ID | Device Information                                                                   |",
+      XPU_SMI_BORDER,
+      "| 0         | Device Type: GPU                                                                     |",
+      "|           | Device Name: Intel(R) Data Center GPU Max 1550                                       |",
+      "|           | UUID: 00000000-0000-0000-0000-0bd500008086                                           |",
+      "|           | PCI BDF Address: 0000:29:00.0                                                        |",
+      "|           | Memory Physical Size: 131072.00 MiB                                                  |",
+      XPU_SMI_BORDER,
     ].join("\n");
-    const gpu = parseXpuSmiDeviceDetails(text, 0);
-    expect(gpu).not.toBeNull();
-    expect(gpu!.vendor).toBe("intel");
-    expect(gpu!.name).toBe("Intel Data Center GPU Max 1550");
-    expect(gpu!.vramMb).toBe(32768);
+    expect(parseXpuSmiDeviceDetails(text, 0)).toEqual({
+      vendor: "intel",
+      name: "Intel(R) Data Center GPU Max 1550",
+      vramMb: 131072,
+      index: 0,
+      pciBusId: "0000:29:00.0",
+    });
   });
 
   test("falls back to default name when Device Name is missing", () => {
-    const text = [
-      "| Memory Physical Size | 16384.00 MiB |",
-    ].join("\n");
-    const gpu = parseXpuSmiDeviceDetails(text, 3);
-    expect(gpu).not.toBeNull();
+    const gpu = parseXpuSmiDeviceDetails("|           | Memory Physical Size: 16384.00 MiB |", 3);
     expect(gpu!.name).toBe("Intel GPU 3");
     expect(gpu!.vramMb).toBe(16384);
   });
 
   test("returns 0 vramMb when memory line is missing", () => {
-    const text = [
-      "| Device Name | Intel Arc A770 |",
-    ].join("\n");
-    const gpu = parseXpuSmiDeviceDetails(text, 0);
-    expect(gpu).not.toBeNull();
-    expect(gpu!.name).toBe("Intel Arc A770");
+    const gpu = parseXpuSmiDeviceDetails("| 0         | Device Name: Intel(R) Arc(TM) A770 Graphics |", 0);
+    expect(gpu!.name).toBe("Intel(R) Arc(TM) A770 Graphics");
     expect(gpu!.vramMb).toBe(0);
   });
 
   test("handles empty output", () => {
     const gpu = parseXpuSmiDeviceDetails("", 0);
-    expect(gpu).not.toBeNull();
     expect(gpu!.name).toBe("Intel GPU 0");
     expect(gpu!.vramMb).toBe(0);
+    expect(gpu!.pciBusId).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// normalizePciBusId
+// ---------------------------------------------------------------------------
+
+describe("normalizePciBusId", () => {
+  test("spells nvidia-smi's eight-digit domain like sysfs", () => {
+    expect(normalizePciBusId("00000000:0A:00.0")).toBe("0000:0a:00.0");
+  });
+
+  test("keeps domains wider than four digits", () => {
+    expect(normalizePciBusId("10000:01:00.0")).toBe("10000:01:00.0");
+  });
+
+  test("rejects anything that is not a bus id", () => {
+    expect(normalizePciBusId("[N/A]")).toBeNull();
+    expect(normalizePciBusId(undefined)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AMD sysfs identity
+// ---------------------------------------------------------------------------
+
+describe("amdRocrUuidField", () => {
+  test("spells the driver's unique_id the way ROCr reports it", () => {
+    expect(amdRocrUuidField("abc123def4567")).toEqual({ uuid: "GPU-000abc123def4567" });
+    expect(amdRocrUuidField("0x5F2A4C1E9B3D7A60")).toEqual({ uuid: "GPU-5f2a4c1e9b3d7a60" });
+  });
+
+  test("gives no uuid to a card without the id", () => {
+    expect(amdRocrUuidField(null)).toEqual({});
+    expect(amdRocrUuidField("0000000000000000")).toEqual({});
+  });
+});
+
+describe("amdCardName", () => {
+  test("names identical cards identically", () => {
+    expect(amdCardName("AMD Instinct MI300X", "0x74a1")).toBe("AMD Instinct MI300X");
+    expect(amdCardName(null, "0x74a1")).toBe("AMD GPU 0x74a1");
   });
 });
 

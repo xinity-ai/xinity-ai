@@ -26,6 +26,7 @@ import {
   type VllmDriverState,
 } from "./lib/vllm-run";
 import type { VllmInstanceConfig } from "../modules/model-installation/vllm-ops";
+import type { GpuDevices } from "../modules/model-installation/gpu-devices";
 import type { HardwareProfile } from "../modules/hardware-detect";
 
 const DEFAULT_PORT = 8000;
@@ -143,11 +144,13 @@ const [
   { computeGpuUtilization, buildVllmExtraArgs, concurrencyCap },
   { detectHardwareProfile },
   { detectVllmFeatures },
+  { readHostDevices, unpinnedDevicesFor },
 ] = await Promise.all([
   import("../modules/model-installation/vllm-ops"),
   import("../modules/model-installation/vllm"),
   import("../modules/hardware-detect"),
   import("../modules/vllm-features"),
+  import("../modules/model-installation/gpu-devices"),
 ]);
 
 const modelFileSchema = z.object({ models: z.record(z.string(), z.any()) });
@@ -167,11 +170,11 @@ async function loadModelFile(path: string): Promise<{ models: Record<string, any
 
 /** Undefined if unprobeable. The docker probe uses --pull=never so it never triggers a
  * multi-GB image pull; an image not present locally simply reports as undetectable. */
-async function detectVllmVersion(): Promise<string | undefined> {
+async function detectVllmVersion(deviceArgs: string[]): Promise<string | undefined> {
   const run =
     backend === "docker"
-      ? // --gpus all: `vllm --version` needs a visible GPU or it aborts -> version_unknown.
-        () => $`docker run --rm --pull=never --gpus all --entrypoint ${process.env.VLLM_PATH ?? "vllm"} ${values.image} --version`.throws(false).text()
+      ? // `vllm --version` needs a visible GPU or it aborts -> version_unknown.
+        () => $`docker run --rm --pull=never ${deviceArgs} --entrypoint ${process.env.VLLM_PATH ?? "vllm"} ${values.image} --version`.throws(false).text()
       : () => $`${bareVllmPath ?? "vllm"} --version`.throws(false).text();
   try {
     const out = await run();
@@ -182,7 +185,7 @@ async function detectVllmVersion(): Promise<string | undefined> {
   }
 }
 
-function buildConfig(resolved: ResolvedVllmModel, profile: HardwareProfile): VllmInstanceConfig {
+function buildConfig(resolved: ResolvedVllmModel, profile: HardwareProfile, devices: GpuDevices): VllmInstanceConfig {
   const gpuMemoryUtilization =
     gpuUtilOverride ?? computeGpuUtilization({ specifier: resolved.vllmProviderName, weightGb: resolved.model.sizing.weightGb, kvCacheGb: resolved.kvCacheGb, overheadGb: resolved.model.sizing.overheadGb }, profile);
   return {
@@ -197,6 +200,7 @@ function buildConfig(resolved: ResolvedVllmModel, profile: HardwareProfile): Vll
       resolved.args,
       concurrencyCap(resolved.model.sizing, profile.gpus, resolved.kvCacheGb),
     ),
+    devices,
   };
 }
 
@@ -408,9 +412,10 @@ async function main(): Promise<void> {
   }
 
   const profile = await detectHardwareProfile();
+  const devices = unpinnedDevicesFor(profile.gpus, await readHostDevices());
   const source: "docker" | "binary" = backend === "docker" ? "docker" : "binary";
   const [version, features] = await Promise.all([
-    detectVllmVersion(),
+    detectVllmVersion(devices.dockerArgs),
     detectVllmFeatures(source, { dockerImage: values.image, vllmPath: bareVllmPath }),
   ]);
   const driver: VllmDriverState = {
@@ -418,7 +423,7 @@ async function main(): Promise<void> {
     version,
     features,
   };
-  const config = buildConfig(resolved, profile);
+  const config = buildConfig(resolved, profile, devices);
 
   if (verb === "plan") {
     printPlan(resolved, profile, driver, config);
