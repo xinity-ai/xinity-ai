@@ -93,20 +93,19 @@ export async function downloadModel(
   const snapshotDir = path.join(repoDir, "snapshots", commitHash);
   await mkdir(snapshotDir, { recursive: true });
 
-  let downloadedBytes = 0;
+  let completedBytes = 0;
 
   for (const file of files) {
-    const { etag, bytesDownloaded } = await downloadFileToCache(model, file.path, blobsDir, commitHash, fileSize(file), (bytes) => {
-      downloadedBytes += bytes;
-      return onProgress(downloadedBytes / totalBytes);
+    let streamedBytes = 0;
+    const etag = await downloadFileToCache(model, file.path, blobsDir, commitHash, fileSize(file), (bytes) => {
+      streamedBytes += bytes;
+      return onProgress((completedBytes + streamedBytes) / totalBytes);
     });
 
     await linkSnapshot(snapshotDir, file.path, path.join(blobsDir, etag));
 
-    if (bytesDownloaded === 0) {
-      downloadedBytes += fileSize(file);
-      await onProgress(downloadedBytes / totalBytes);
-    }
+    completedBytes += fileSize(file);
+    await onProgress(completedBytes / totalBytes);
   }
 
   await writeFile(path.join(refsDir, "main"), commitHash);
@@ -143,7 +142,7 @@ async function downloadFileToCache(
   commitHash: string,
   expectedSize: number,
   onBytes: (bytes: number) => Promise<void>,
-): Promise<{ etag: string; bytesDownloaded: number }> {
+): Promise<string> {
   const resolveUrl = hfUrl(`/${model}/resolve/${commitHash}/${filePath}`);
 
   // Resolve etag (blob filename) via HEAD, preferring x-linked-etag
@@ -154,14 +153,14 @@ async function downloadFileToCache(
   const etag = cleanEtag(rawEtag);
   const blobPath = path.join(blobsDir, etag);
 
-  if (await Bun.file(blobPath).exists()) return { etag, bytesDownloaded: 0 };
+  if (await Bun.file(blobPath).exists()) return etag;
 
   const incompletePath = `${blobPath}.incomplete`;
   const existingBytes = await getFileSize(incompletePath);
 
-  if (existingBytes === expectedSize) {
+  if (existingBytes > 0 && existingBytes === expectedSize) {
     await rename(incompletePath, blobPath);
-    return { etag, bytesDownloaded: expectedSize };
+    return etag;
   }
 
   const { response: dlRes, existingBytes: resumeBytes } = await fetchBlobResumable(
@@ -172,10 +171,10 @@ async function downloadFileToCache(
 
   if (!dlRes.body) throw new Error(`No response body for ${filePath}`);
 
-  const bytesDownloaded = await streamToFile(incompletePath, dlRes.body, resumeBytes > 0 && dlRes.status === 206, onBytes);
+  await streamToFile(incompletePath, dlRes.body, resumeBytes > 0 && dlRes.status === 206, onBytes);
   await rename(incompletePath, blobPath);
 
-  return { etag, bytesDownloaded: bytesDownloaded + resumeBytes };
+  return etag;
 }
 
 async function fetchBlobResumable(
@@ -189,6 +188,7 @@ async function fetchBlobResumable(
   });
 
   if (response.status === 416) {
+    await response.body?.cancel();
     await unlink(incompletePath);
     existingBytes = 0;
     response = await hfFetch(resolveUrl, { redirect: "follow" });
@@ -207,18 +207,15 @@ async function streamToFile(
   body: ReadableStream<Uint8Array>,
   append: boolean,
   onBytes: (bytes: number) => Promise<void>,
-): Promise<number> {
+): Promise<void> {
   const file = await open(filePath, append ? "a" : "w");
-  let total = 0;
   try {
     for await (const chunk of body) {
       const buf = chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk);
       await file.write(buf);
-      total += buf.byteLength;
       await onBytes(buf.byteLength);
     }
   } finally {
     await file.close();
   }
-  return total;
 }

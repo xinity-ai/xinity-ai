@@ -158,67 +158,48 @@ describe.skip("downloadModel (integration, real HF API)", () => {
 });
 
 describe("downloadModel resume edge cases", () => {
+  const model = "test/model";
+  const commitHash = "a".repeat(40);
+  const blobsDir = path.join(testCacheDir, "hub", `models--${model.replace("/", "--")}`, "blobs");
+  const blobPath = (file: string) => path.join(blobsDir, `etag-${file}`);
+  const incompletePath = (file: string) => `${blobPath(file)}.incomplete`;
+  const contents = new TextEncoder().encode("0123456789");
+
   beforeEach(() => {
-    fs.mkdirSync(testCacheDir, { recursive: true });
+    fs.mkdirSync(blobsDir, { recursive: true });
   });
 
   afterEach(() => {
     fs.rmSync(testCacheDir, { recursive: true, force: true });
   });
 
-  test("retries from scratch when an oversized .incomplete file gets a 416", async () => {
-    const model = "test/model";
-    const commitHash = "a".repeat(40);
-    const etag = "test-etag";
-    const contents = new TextEncoder().encode("0123456789");
-    const staleContents = new TextEncoder().encode("01234567890");
-
-    const repoDir = path.join(testCacheDir, "hub", `models--${model.replace("/", "--")}`);
-    const blobsDir = path.join(repoDir, "blobs");
-    fs.mkdirSync(blobsDir, { recursive: true });
-
-    const incompletePath = path.join(blobsDir, `${etag}.incomplete`);
-    const blobPath = path.join(blobsDir, etag);
-    fs.writeFileSync(incompletePath, staleContents);
-
-    let downloadAttempts = 0;
+  /** Serves `files` from a mocked Hugging Face; `respond` may override the answer to the nth GET of a file. */
+  async function downloadFrom(
+    files: Record<string, Uint8Array>,
+    respond: (file: string, attempt: number) => Response | undefined = () => undefined,
+  ) {
+    const gets: { file: string; headers: RequestInit["headers"] }[] = [];
     const progress: number[] = [];
-    const downloadHeaders: RequestInit["headers"][] = [];
+    const resolvePrefix = `https://huggingface.co/${model}/resolve/${commitHash}/`;
 
     const fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async (input, init) => {
       const url = String(input);
-      const method = init?.method ?? "GET";
-
       if (url === `https://huggingface.co/api/models/${model}`) {
-        return new Response(JSON.stringify({ sha: commitHash }), { status: 200 });
+        return Response.json({ sha: commitHash });
       }
-
       if (url === `https://huggingface.co/api/models/${model}/tree/${commitHash}?recursive=true`) {
-        return new Response(
-          JSON.stringify([{ type: "file", path: "model.safetensors", size: contents.byteLength }]),
-          { status: 200 },
-        );
+        return Response.json(Object.entries(files).map(([file, bytes]) => ({ type: "file", path: file, size: bytes.byteLength })));
       }
-
-      if (url === `https://huggingface.co/${model}/resolve/${commitHash}/model.safetensors`) {
-        if (method === "HEAD") {
-          return new Response(null, {
-            status: 200,
-            headers: { etag: `"${etag}"` },
-          });
-        }
-
-        downloadAttempts++;
-        downloadHeaders.push(init?.headers ?? {});
-
-        if (downloadAttempts === 1) {
-          return new Response(null, { status: 416 });
-        }
-
-        return new Response(contents, { status: 200 });
+      const file = url.startsWith(resolvePrefix) ? url.slice(resolvePrefix.length) : undefined;
+      if (file === undefined || !(file in files)) {
+        throw new Error(`Unexpected fetch: ${url}`);
       }
-
-      throw new Error(`Unexpected fetch: ${method} ${url}`);
+      if (init?.method === "HEAD") {
+        return new Response(null, { headers: { etag: `"etag-${file}"` } });
+      }
+      gets.push({ file, headers: init?.headers ?? {} });
+      const attempt = gets.filter((g) => g.file === file).length;
+      return respond(file, attempt) ?? new Response(files[file]);
     }) as typeof fetch);
 
     try {
@@ -228,18 +209,52 @@ describe("downloadModel resume edge cases", () => {
     } finally {
       fetchSpy.mockRestore();
     }
+    return { gets, progress };
+  }
 
-    expect(downloadAttempts).toBe(2);
-    expect(downloadHeaders[0]).toEqual(
-      expect.objectContaining({ Range: `bytes=${staleContents.byteLength}-` }),
+  test("retries from scratch when an oversized .incomplete file gets a 416", async () => {
+    const staleContents = new TextEncoder().encode("01234567890");
+    fs.writeFileSync(incompletePath("model.safetensors"), staleContents);
+
+    const { gets, progress } = await downloadFrom({ "model.safetensors": contents }, (_file, attempt) =>
+      attempt === 1 ? new Response(null, { status: 416 }) : undefined,
     );
-    expect(downloadHeaders[1]).not.toEqual(
-      expect.objectContaining({ Range: expect.any(String) }),
-    );
+
+    expect(gets).toHaveLength(2);
+    expect(gets[0]?.headers).toEqual(expect.objectContaining({ Range: `bytes=${staleContents.byteLength}-` }));
+    expect(gets[1]?.headers).not.toEqual(expect.objectContaining({ Range: expect.any(String) }));
     expect(progress.at(-1)).toBe(1);
-    expect(fs.existsSync(incompletePath)).toBe(false);
-    expect(new Uint8Array(fs.readFileSync(blobPath))).toEqual(contents);
+    expect(fs.existsSync(incompletePath("model.safetensors"))).toBe(false);
+    expect(new Uint8Array(fs.readFileSync(blobPath("model.safetensors")))).toEqual(contents);
+  });
 
+  test("downloads an empty file that has no partial download yet", async () => {
+    const { gets, progress } = await downloadFrom({ "model.safetensors": contents, "empty.txt": new Uint8Array(0) });
 
+    expect(gets.map((g) => g.file)).toContain("empty.txt");
+    expect(fs.statSync(blobPath("empty.txt")).size).toBe(0);
+    expect(progress.at(-1)).toBe(1);
+  });
+
+  test("moves an .incomplete file that is already full size into place without fetching it", async () => {
+    fs.writeFileSync(incompletePath("model.safetensors"), contents);
+
+    const { gets, progress } = await downloadFrom({ "model.safetensors": contents });
+
+    expect(gets).toHaveLength(0);
+    expect(new Uint8Array(fs.readFileSync(blobPath("model.safetensors")))).toEqual(contents);
+    expect(progress.at(-1)).toBe(1);
+  });
+
+  test("counts the bytes already on disk when a download resumes", async () => {
+    fs.writeFileSync(incompletePath("model.safetensors"), contents.subarray(0, 4));
+
+    const { gets, progress } = await downloadFrom({ "model.safetensors": contents }, () =>
+      new Response(contents.subarray(4), { status: 206 }),
+    );
+
+    expect(gets[0]?.headers).toEqual(expect.objectContaining({ Range: "bytes=4-" }));
+    expect(new Uint8Array(fs.readFileSync(blobPath("model.safetensors")))).toEqual(contents);
+    expect(progress.at(-1)).toBe(1);
   });
 });
