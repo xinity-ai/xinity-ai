@@ -1,6 +1,6 @@
 # Reverse proxy configuration
 
-The gateway expects to sit behind a reverse proxy that terminates TLS. These are the configurations for doing that.
+The gateway expects to sit behind a reverse proxy that terminates TLS, and inference nodes on other machines can reach the tether through it. These are the configurations for doing that.
 
 | File | Notes |
 |---|---|

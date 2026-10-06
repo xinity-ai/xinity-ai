@@ -1,6 +1,6 @@
 # Running xinity behind a reverse proxy
 
-The gateway speaks plain HTTP (or HTTPS, see [TLS](./tls.md)) and is designed to sit behind a reverse proxy that terminates TLS. This page covers what that proxy has to be configured to do.
+The gateway speaks plain HTTP (or HTTPS, see [TLS](./tls.md)) and is designed to sit behind a reverse proxy that terminates TLS. Inference nodes on other machines can reach the tether through the same proxy. This page covers what that proxy has to be configured to do.
 
 Configurations for both nginx and Caddy live in [`deployment/reverse-proxy/`](../../deployment/reverse-proxy/). The Docker Compose deployment mounts the Caddyfile from there directly, and on NixOS the `allinone` module configures Caddy for you.
 
@@ -42,6 +42,17 @@ location = /metrics {
     deny all;
 }
 ```
+
+## The tether
+
+Each inference node holds one long-lived event stream to the tether and reports its state over the same host. Route only `/api/` to it. `/health` reports whether the tether reaches its database, and `/metrics` belongs to the scrape path, so neither should be public.
+
+- **Do not buffer.** The stream carries desired-state pushes and keepalives as they happen. With nginx, set `proxy_buffering off`.
+- **Keep the read timeout above the keepalive interval.** The tether writes at least every `KEEPALIVE_INTERVAL_MS` (default 15s), and a node reconnects after three missed keepalives. A shorter proxy timeout cuts healthy streams.
+- **Let reloads drain.** Caddy and nginx both let open streams finish when their config reloads. With nginx, a `worker_shutdown_timeout` ends them early and every node reconnects at once.
+- **Avoid Caddy 2.11.6.** It cuts these streams 60 seconds after they open ([caddyserver/caddy#8103](https://github.com/caddyserver/caddy/issues/8103)), so every node reconnects once a minute. 2.11.4 and 2.11.7 are not affected.
+
+The tether does not read the client IP, so it needs no forwarded headers.
 
 ## Rate limiting
 
