@@ -251,6 +251,62 @@
       # A switched-off branch of the script still has to evaluate, so values that only
       # exist when their branch is on are read through this rather than directly.
       whenOn = enabled: value: lib.optionalString enabled value;
+
+      onboarding = cfg.daemonOnboarding;
+      unknown = "unknown on this host";
+
+      # Secrets enter the template as placeholders the unit fills in, so the copy in the Nix
+      # store holds none of them.
+      onboardingValues = map (v: v // { known = v.value != null; }) ([
+        { name = "TETHER_URL"; secret = false; nixOption = "tetherUrl"; value = onboarding.tetherUrl; }
+        { name = "INFOSERVER_URL"; secret = false; nixOption = "infoserverUrl"; value = onboarding.infoserverUrl; }
+      ] ++ map (s: s // { secret = true; value = if s.file != null then "@${s.name}@" else null; }) [
+        { name = "TETHER_SECRET"; file = onboarding.tetherSecretFile; }
+        { name = "XINITY_SECRET_KEY"; file = onboarding.secretKeyFile; }
+        { name = "METRICS_AUTH"; file = onboarding.metricsAuthFile; }
+      ]);
+
+      onboardingTemplate = pkgs.writeText "daemon-onboarding.md" ''
+        # Onboarding an inference node
+
+        Written by xinity-secrets.service on ${config.networking.hostName} at every start.
+        It holds deployment secrets, so keep it root-only.
+
+        | Variable | Kind | Value |
+        |---|---|---|
+        ${lib.concatMapStringsSep "\n" (v:
+          "| `${v.name}` | ${if v.secret then "secret" else "config"} | ${if v.known then "`${v.value}`" else unknown} |"
+        ) onboardingValues}
+
+        ## Environment file
+
+        For Docker Compose (`env_file`), a systemd `EnvironmentFile`, or anything else that
+        reads `KEY=value` lines:
+
+        ```
+        ${lib.concatMapStringsSep "\n" (v:
+          if v.known then "${v.name}=${v.value}" else "# ${v.name}= (${unknown})"
+        ) onboardingValues}
+        ```
+
+        ## NixOS
+
+        ```nix
+        services.xinity-ai-daemon = {
+          enable = true;
+        ${lib.concatMapStringsSep "\n" (v:
+          "  ${lib.optionalString (!v.known) "# "}${v.nixOption} = \"${if v.known then v.value else unknown}\";"
+        ) (lib.filter (v: !v.secret) onboardingValues)}
+          # A file holding the secret lines of the environment file above
+          environmentFiles = [ "/run/secrets/xinity-daemon" ];
+        };
+        ```
+
+        ## xinity CLI
+
+        Run `xinity up daemon --target-host <node>` and give it the values from the table
+        when asked. `xinity configure daemon --target-host <node>` changes them later.
+      '';
     in {
       options.services.xinity-ai-secrets = {
         enable = lib.mkOption {
@@ -258,7 +314,7 @@
           default = cfg.dbConnectionUrl.enable || cfg.redisUrl.enable
             || cfg.metricsAuth.enable || cfg.grafanaSecretKey.enable
             || cfg.tetherSecret.enable || cfg.betterAuthSecret.enable
-            || cfg.secretKey.enable;
+            || cfg.secretKey.enable || cfg.daemonOnboarding.enable;
           defaultText = lib.literalMD "true when any of the values below is enabled";
           description = "Run the unit that composes and creates the credentials below. Follows whether any of them is enabled, so it is not normally set by hand.";
         };
@@ -345,6 +401,39 @@
           '';
         };
 
+        daemonOnboarding = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = "Write the values a new inference node needs to reach this tether to paths.daemonOnboarding, readable by root only.";
+          };
+          tetherUrl = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = "TETHER_URL as machines other than this one reach the tether. Null when none can.";
+          };
+          infoserverUrl = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = "INFOSERVER_URL as machines other than this one reach the infoserver. Null when none can.";
+          };
+          tetherSecretFile = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = "File holding TETHER_SECRET. Null when this host has it only through an environment file.";
+          };
+          secretKeyFile = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = "File holding XINITY_SECRET_KEY. Null when this host has it only through an environment file, or not at all.";
+          };
+          metricsAuthFile = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = "File holding the METRICS_AUTH pair. Null when this host has none.";
+          };
+        };
+
         consumers = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           default = [ ];
@@ -394,6 +483,12 @@
             readOnly = true;
             default = "${generatedDir}/secret-key";
             description = "Where the created dashboard-managed-secret encryption key is kept.";
+          };
+          daemonOnboarding = lib.mkOption {
+            type = lib.types.str;
+            readOnly = true;
+            default = "${derivedDir}/daemon-onboarding.md";
+            description = "Where the inference node onboarding values are written.";
           };
         };
       };
@@ -489,6 +584,16 @@
               fi
               chmod 0400 ${cfg.paths.secretKey}
             fi
+          '' + lib.optionalString onboarding.enable ''
+
+            # Last, so every value it copies has already been written above.
+            onboarding=$(cat ${onboardingTemplate})
+            ${lib.concatMapStrings (v: ''
+              value=$(cat ${v.file})
+              onboarding=''${onboarding//@${v.name}@/"$value"}
+            '') (lib.filter (v: v.secret && v.known) onboardingValues)}
+            printf '%s\n' "$onboarding" > ${cfg.paths.daemonOnboarding}
+            chmod 0400 ${cfg.paths.daemonOnboarding}
           '';
           };
         };
@@ -977,6 +1082,18 @@
             then "https://${cfg.domain}:${toString cfg.tether.port}"
             else "http://127.0.0.1:${toString cfg.tether.port}";
 
+          routedTetherSubdomain = config.services.xinity-ai-caddy.tetherSubdomain;
+          remoteTetherUrl =
+            if cfg.caddy.enable && routedTetherSubdomain != null
+            then "https://${routedTetherSubdomain}.${cfg.domain}"
+            else if cfg.tether.tlsCertFile != null then tetherUrl
+            else null;
+          remoteInfoserverUrl =
+            if cfg.infoserverUrl != null then cfg.infoserverUrl
+            else if cfg.caddy.enable && cfg.infoserver.enable
+            then "https://${cfg.infoserverSubdomain}.${cfg.domain}"
+            else null;
+
           envFiles = cfg.environmentFiles
             ++ lib.optional (cfg.environmentFile != null) cfg.environmentFile;
 
@@ -1117,6 +1234,12 @@
             betterAuthSecret.enable = generateBetterAuthSecret;
             tetherSecret.enable = generateTetherSecret;
             secretKey.enable = generateSecretKey;
+            daemonOnboarding = lib.mkIf cfg.tether.enable {
+              enable = true;
+              tetherUrl = remoteTetherUrl;
+              infoserverUrl = remoteInfoserverUrl;
+              inherit tetherSecretFile secretKeyFile metricsAuthFile;
+            };
             consumers =
               lib.optional cfg.gateway.enable "xinity-ai-gateway"
               ++ lib.optional cfg.dashboard.enable "xinity-ai-dashboard"

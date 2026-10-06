@@ -303,6 +303,8 @@ TETHER_SECRET=<shared-secret>
 
 `TETHER_SECRET` must be byte-identical to the value the control plane's tether was given. There is one shared secret per deployment, not one per node.
 
+The control plane host writes everything a new node needs to `/run/xinity/daemon-onboarding.md`, readable by root only: the tether and infoserver URLs, `TETHER_SECRET`, `XINITY_SECRET_KEY` and `METRICS_AUTH`, as a table, an environment file and a NixOS snippet.
+
 The daemon is a native systemd service (`systemd.services.xinity-ai-daemon`). It connects to the tether via SSE to receive deployment instructions and reports its state back. It has no direct database connection.
 
 ### Reaching the Tether
