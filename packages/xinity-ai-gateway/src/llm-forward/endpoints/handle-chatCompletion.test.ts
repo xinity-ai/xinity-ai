@@ -1038,7 +1038,7 @@ describe("handleChatCompletion, usage event attribution", () => {
     expect(event.success).toBe(false);
   });
 
-  test("mid-stream backend failure records a failed event", async () => {
+  test("mid-stream backend failure reaches the client as an error and records a failed event", async () => {
     // A dying backend shows up to the gateway as a stream that ends without the
     // [DONE] sentinel. Closing (not erroring) the mock stream models that
     // deterministically across platforms; controller.error() escapes Bun.serve
@@ -1060,7 +1060,8 @@ describe("handleChatCompletion, usage event attribution", () => {
     });
     const res = await handleChatCompletion(req);
     expect(res.status).toBe(200);
-    await res.text();
+    const text = await res.text();
+    expect(text).toEndWith(`data: ${JSON.stringify({ error: { message: "Backend stream ended before the response was complete", type: "server_error" } })}\n\ndata: [DONE]\n\n`);
 
     const event = lastUsageEvent();
     expect(event.nodeId).toBe("node-1");

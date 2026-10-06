@@ -230,13 +230,15 @@ describe("handleTranscription", () => {
     expect(failedRequests()).toHaveLength(1);
   });
 
-  test("records a failed request when the stream ends without a terminal chunk", async () => {
+  test("reports a stream that ends without a terminal chunk as failed, to the client and in usage", async () => {
     nextResponse = new Response(
       'data: {"id":"t","object":"transcription.chunk","created":1,"model":"m","choices":[{"delta":{"content":"partial"},"finish_reason":null}]}\n\n',
       { headers: { "Content-Type": "text/event-stream" } },
     );
     const res = await handleTranscription(makeReq({ model: "whisper", stream: "true" }));
-    await res.text();
+    const text = await res.text();
+    expect(text).not.toContain("transcript.text.done");
+    expect(text).toEndWith(`data: ${JSON.stringify({ error: { message: "Backend stream ended before the response was complete", type: "server_error" } })}\n\ndata: [DONE]\n\n`);
     expect(failedRequests()).toHaveLength(1);
   });
 

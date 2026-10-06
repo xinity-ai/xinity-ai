@@ -64,6 +64,14 @@ export function classifyStreamError(e: unknown): StreamErrorInfo {
   };
 }
 
+export const TRUNCATED_STREAM_MESSAGE = "Backend stream ended before the response was complete";
+
+/** The official OpenAI SDKs raise an APIError on a data frame carrying `error`, which is how a client learns a stream failed midway. */
+export function enqueueStreamErrorEvent(controller: ReadableStreamDefaultController, message: string, errorType: string): void {
+  controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify({ error: { message, type: errorType } })}\n\n`));
+  controller.enqueue(sseEncoder.encode("data: [DONE]\n\n"));
+}
+
 /**
  * Handles errors inside an OpenAI-compatible streaming ReadableStream.
  * Emits an error event + [DONE] sentinel and closes the controller.
@@ -83,8 +91,7 @@ export function handleStreamError(
   log[logLevel]({ err: e }, logMessage);
 
   try {
-    controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify({ error: { message, type: errorType } })}\n\n`));
-    controller.enqueue(sseEncoder.encode("data: [DONE]\n\n"));
+    enqueueStreamErrorEvent(controller, message, errorType);
     controller.close();
   } catch {
     try { controller.error(e as Error); } catch {}

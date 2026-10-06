@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import {
+  enqueueStreamErrorEvent,
   errorResponse,
   forwardBackendError,
   handleStreamError,
@@ -8,6 +9,7 @@ import {
   readSSEStream,
   recordFailedRequest,
   SSE_RESPONSE_HEADERS,
+  TRUNCATED_STREAM_MESSAGE,
   sseEncoder,
   type BackendRoute,
 } from "./util";
@@ -174,12 +176,14 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
             }
           }
           controller.enqueue(sseEncoder.encode("data: [DONE]\n\n"));
+        } else {
+          // Upstream ended without the [DONE] sentinel: the backend died
+          // mid-stream and delivered a truncated response.
+          enqueueStreamErrorEvent(controller, TRUNCATED_STREAM_MESSAGE, "server_error");
         }
         controller.close();
 
         if (!sawDone) {
-          // Upstream ended without the [DONE] sentinel: the backend died
-          // mid-stream and delivered a truncated response.
           log.error({ model: originalModel }, "Backend stream ended without [DONE]");
           recordFailedRequest(logFields);
           return;

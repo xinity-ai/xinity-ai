@@ -2,6 +2,7 @@ import { resolveAuth } from "../ai-sdk";
 import { getModelInfo } from "../model-data";
 import { releaseCallbacks } from "../release-registry";
 import {
+  enqueueStreamErrorEvent,
   errorResponse,
   forwardBackendError,
   handleEndpointError,
@@ -12,6 +13,7 @@ import {
   recordFailedRequest,
   recordUsage,
   SSE_RESPONSE_HEADERS,
+  TRUNCATED_STREAM_MESSAGE,
   sseEncoder,
   validateModelType,
   type BackendRoute,
@@ -72,6 +74,14 @@ function streamTranscriptionAsOpenAI(
           }
         }
 
+        // No finish_reason or [DONE] means the backend stream was truncated, matching the chat path.
+        if (!completed) {
+          enqueueStreamErrorEvent(controller, TRUNCATED_STREAM_MESSAGE, "server_error");
+          controller.close();
+          recordFailedRequest(logFields);
+          return;
+        }
+
         const done: Record<string, unknown> = { type: "transcript.text.done", text: fullText };
         if (usage) {
           done.usage = {
@@ -84,10 +94,7 @@ function streamTranscriptionAsOpenAI(
         controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(done)}\n\n`));
         controller.close();
 
-        // No finish_reason or [DONE] means the backend stream was truncated, matching the chat path.
-        if (!completed) {
-          recordFailedRequest(logFields);
-        } else if (usage) {
+        if (usage) {
           recordUsage({
             ...logFields,
             usage: { prompt_tokens: usage.prompt_tokens, completion_tokens: usage.completion_tokens },
