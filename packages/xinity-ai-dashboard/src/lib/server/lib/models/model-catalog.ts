@@ -35,6 +35,9 @@ export type SchedulableModel = {
   type: string | undefined;
   weight: number;
   minKvCache: number;
+  attentionHeads?: number;
+  kvHeads?: number;
+  mlaAttention?: boolean;
   minVersion: string | undefined;
   blockedVersions?: BlockedVersion[];
   requiredPlatforms: string[];
@@ -72,6 +75,9 @@ export async function resolveSchedulable(
         type: model.type,
         weight: model.sizing.weightGb,
         minKvCache: model.sizing.minKvCacheGb,
+        attentionHeads: model.sizing.attentionHeads,
+        kvHeads: model.sizing.kvHeads,
+        mlaAttention: model.sizing.mlaAttention,
         minVersion: model.engineVersions?.min,
         blockedVersions: blockedVersionRules(model),
         requiredPlatforms: model.platforms ?? [],

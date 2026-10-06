@@ -39,7 +39,7 @@ export type SyncInstallation = {
   kvCacheCapacity: number;
   port: number;
   settings: DeploymentSettings;
-  gpuUuids: string[];
+  gpuIds: string[];
   nodeId: string;
 };
 
@@ -52,7 +52,7 @@ function toSyncInstallation(d: DesiredInstallation, nodeId: string): SyncInstall
     kvCacheCapacity: d.kvCacheCapacity,
     port: d.port,
     settings: d.settings,
-    gpuUuids: d.gpuUuids,
+    gpuIds: d.gpuIds,
     nodeId,
   };
 }

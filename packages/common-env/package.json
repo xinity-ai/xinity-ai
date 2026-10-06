@@ -21,6 +21,10 @@
     "./model-catalog": {
       "types": "./src/model-catalog/index.ts",
       "default": "./src/model-catalog/index.ts"
+    },
+    "./deployment-settings": {
+      "types": "./src/deployment-settings.ts",
+      "default": "./src/deployment-settings.ts"
     }
   },
   "type": "module",

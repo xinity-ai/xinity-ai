@@ -12,6 +12,7 @@ import { mergeHistorySeries, pickBucketSeconds } from "$lib/server/lib/compute/c
 import { config } from "$lib/server/config";
 import { rootLogger } from "$lib/server/logging";
 import z from "zod";
+import { gpuSchema } from "common-env";
 
 const tags = ["Compute"];
 
@@ -20,11 +21,7 @@ const RangeInputSchema = z.object({
   rangeHours: z.coerce.number().int().min(1).max(90 * 24).default(24),
 });
 
-const GpuInfoSchema = z.object({
-  vendor: z.string(),
-  name: z.string(),
-  vramMb: z.number(),
-});
+const GpuInfoSchema = gpuSchema.pick({ vendor: true, name: true, vramMb: true });
 
 const NodeModelSchema = z.object({
   name: z.string(),

@@ -112,7 +112,7 @@ function makeInstallation(specifier: string, id: string = crypto.randomUUID(), p
     port,
     driver: "vllm" as const,
     settings: { version: 1 as const },
-    gpuUuids: [],
+    gpuIds: [],
   };
 }
 
@@ -293,7 +293,7 @@ describe("syncVllmInstallations$", () => {
   });
 
   test("fails an installation assigned to a card the node does not report, before starting it", async () => {
-    const inst = { ...makeInstallation("missing-card-model", crypto.randomUUID(), 9096), gpuUuids: ["GPU-gone"] };
+    const inst = { ...makeInstallation("missing-card-model", crypto.randomUUID(), 9096), gpuIds: ["GPU-gone"] };
     const ops = createMockOps({ listRunning: mock(() => Promise.resolve([])) });
 
     await firstValueFrom(syncVllmInstallations$([inst], ops));
@@ -577,8 +577,8 @@ describe("syncVllmInstallations$", () => {
       gpuCount: 2, systemRamMb: 131072, detectedCapacityGb: 72, physicalCapacityGb: 72,
     };
     const sizing = { specifier: "pinned-model", weightGb: 12, kvCacheGb: 4 };
-    expect(computeGpuUtilization({ ...sizing, gpuUuids: ["GPU-small"] }, mixed)).toBeCloseTo(0.83656, 4);
-    expect(computeGpuUtilization({ ...sizing, gpuUuids: [] }, mixed)).toBeCloseTo(0.83656 / 2, 4);
+    expect(computeGpuUtilization({ ...sizing, gpuIds: ["GPU-small"] }, mixed)).toBeCloseTo(0.83656, 4);
+    expect(computeGpuUtilization({ ...sizing, gpuIds: [] }, mixed)).toBeCloseTo(0.83656 / 2, 4);
   });
 
   test("sizes against the instance's card, not the node's summed VRAM", () => {
@@ -698,7 +698,12 @@ describe("perCardSizing", () => {
   });
 
   test("keeps one kv head's worth of cache per card once the heads run out", () => {
-    expect(perCardSizing(installation, sizing, 8)).toEqual({ weightGb: 3.25, kvCacheGb: 4 });
+    const replicated = { ...installation, estCapacity: 58 };
+    expect(perCardSizing(replicated, sizing, 8)).toEqual({ weightGb: 3.25, kvCacheGb: 4 });
+  });
+
+  test("derives the weights from the scheduler's figure for a legacy entry without sizing", () => {
+    expect(perCardSizing(installation, undefined, 1)).toEqual({ weightGb: 26, kvCacheGb: 16 });
   });
 
   test("refuses a split the model's heads do not allow", () => {

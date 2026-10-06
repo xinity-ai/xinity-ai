@@ -5,6 +5,7 @@ import { config as daemonConfig } from "../../config";
 import templateUnit from "../../assets/vllm-driver@.service" with { type: "text" };
 import { rootLogger } from "../../logger";
 import { resolveMaxAudioInputDurationS, resolveMaxAudioInputFileSizeMB, type DeploymentSettings } from "common-env";
+import type { GpuDevices } from "./gpu-devices";
 
 const log = rootLogger.child({ name: "vllm-ops" });
 
@@ -16,7 +17,7 @@ export type VllmInstanceConfig = {
   extraArgs?: string[];
   gpuMemoryUtilization?: number;
   settings?: DeploymentSettings | null;
-  pinnedGpus?: { uuid: string; index: number }[];
+  devices: GpuDevices;
 }
 
 export type VllmOps = {
@@ -65,10 +66,7 @@ const OFFLINE_ENV = ["HF_HUB_OFFLINE=1", "TRANSFORMERS_OFFLINE=1"];
 // ---------------------------------------------------------------------------
 
 export function buildSystemdEnvFile(config: VllmInstanceConfig): string {
-  const lines: string[] = [...OFFLINE_ENV];
-  if (config.pinnedGpus?.length) {
-    lines.push(`CUDA_VISIBLE_DEVICES=${config.pinnedGpus.map((gpu) => gpu.index).join(",")}`);
-  }
+  const lines: string[] = [...OFFLINE_ENV, ...config.devices.env];
   const audioDuration = resolveMaxAudioInputDurationS(config.settings);
   if (audioDuration != null) {
     lines.push(`VLLM_MAX_AUDIO_DECODE_DURATION_S=${audioDuration}`);
@@ -85,8 +83,8 @@ function appendVllmCommonArgs(args: string[], config: VllmInstanceConfig): void 
   if (config.gpuMemoryUtilization != null) {
     args.push("--gpu-memory-utilization", String(config.gpuMemoryUtilization));
   }
-  if (config.pinnedGpus && config.pinnedGpus.length > 1) {
-    args.push("--tensor-parallel-size", String(config.pinnedGpus.length));
+  if (config.devices.tensorParallelSize > 1) {
+    args.push("--tensor-parallel-size", String(config.devices.tensorParallelSize));
   }
   if (config.trustRemoteCode) {
     args.push("--trust-remote-code");
@@ -122,7 +120,9 @@ function quoteSystemdArg(arg: string): string {
 // The empty ExecStart= clears the template's, which only units started before drop-ins still use.
 export function buildSystemdDropIn(config: VllmInstanceConfig): string {
   const execStart = buildSystemdServeArgv(config).map(quoteSystemdArg).join(" ");
-  return `[Service]\nExecStart=\nExecStart=${execStart}\n`;
+  const { supplementaryGroups } = config.devices;
+  const groupsLine = supplementaryGroups.length > 0 ? `SupplementaryGroups=${supplementaryGroups.join(" ")}\n` : "";
+  return `[Service]\n${groupsLine}ExecStart=\nExecStart=${execStart}\n`;
 }
 
 const SYSTEMD_UNIT_INSTANCE_RE = /^vllm-driver@(.+)\.service$/;
@@ -235,11 +235,6 @@ export async function ensureVllmNetwork(): Promise<void> {
   log.info({ network: VLLM_NETWORK }, "Created egress-blocked vLLM docker network");
 }
 
-// docker reads --gpus as CSV, so a device list containing commas has to be one quoted field.
-function dockerGpus(pinnedGpus: VllmInstanceConfig["pinnedGpus"]): string {
-  return pinnedGpus?.length ? `"device=${pinnedGpus.map((gpu) => gpu.uuid).join(",")}"` : "all";
-}
-
 export function buildDockerRunArgs(
   id: string,
   config: VllmInstanceConfig,
@@ -255,11 +250,10 @@ export function buildDockerRunArgs(
   const args = [
     "docker", "run", "-d",
     "--name", containerName,
-    "--gpus", dockerGpus(config.pinnedGpus),
+    ...config.devices.dockerArgs,
     "--ipc=host",
     "--network", VLLM_NETWORK,
     "-p", `127.0.0.1:${config.port}:8000`,
-    "-e", "CUDA_DEVICE_ORDER=PCI_BUS_ID",
     "-e", "HF_HOME=/data/hf-cache",
     "-e", "TRITON_CACHE_DIR=/data/triton-cache",
     ...OFFLINE_ENV.flatMap((entry) => ["-e", entry]),

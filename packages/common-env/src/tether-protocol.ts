@@ -5,13 +5,21 @@ const driverEnum = z.enum(["ollama", "vllm"]);
 
 const lifecycleStateEnum = z.enum(["downloading", "installing", "ready", "failed"]);
 
-const gpuSchema = z.object({
+export const gpuSchema = z.object({
   vendor: z.string(),
   name: z.string(),
+  // 0 when VRAM is not separately addressable (e.g. unified memory)
   vramMb: z.number(),
+  // The vendor tool's own device index, not the position in a mixed-vendor list
   index: z.number().optional(),
   uuid: z.string().optional(),
+  pciBusId: z.string().optional(),
 });
+export type GpuInfo = z.infer<typeof gpuSchema>;
+
+export function gpuId(gpu: Pick<GpuInfo, "uuid" | "pciBusId">): string | undefined {
+  return gpu.uuid ?? gpu.pciBusId;
+}
 
 // Outbound: tether -> daemon (SSE)
 
@@ -23,7 +31,7 @@ export const desiredInstallationSchema = z.object({
   kvCacheCapacity: z.number(),
   port: z.number(),
   settings: deploymentSettingsSchema,
-  gpuUuids: z.array(z.string()),
+  gpuIds: z.array(z.string()),
 });
 export type DesiredInstallation = z.infer<typeof desiredInstallationSchema>;
 
@@ -89,7 +97,7 @@ export function canonicalRegistration(reg: UnsignedNodeRegistration, requestAuth
     reg.host,
     reg.port,
     reg.gpuCount,
-    reg.gpus.map((g) => [g.vendor, g.name, g.vramMb, g.index ?? null, g.uuid ?? null]),
+    reg.gpus.map((g) => [g.vendor, g.name, g.vramMb, g.index ?? null, g.uuid ?? null, g.pciBusId ?? null]),
     sortedPairs(reg.driverVersions),
     sortedPairs(reg.driverFeatures),
     reg.tls,

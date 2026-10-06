@@ -1,3 +1,11 @@
+import { isKnownGpuVendor, type GpuVendor } from "./model-catalog/definitions/model-primitives";
+
+const RUNS_TENSOR_PARALLEL: Record<GpuVendor, boolean> = { nvidia: true, amd: true, intel: false };
+
+export function runsTensorParallel(vendor: string): boolean {
+  return isKnownGpuVendor(vendor) && RUNS_TENSOR_PARALLEL[vendor];
+}
+
 export type TensorParallelSizing = {
   weightGb: number;
   attentionHeads?: number;

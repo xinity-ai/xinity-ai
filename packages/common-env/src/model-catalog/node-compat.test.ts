@@ -1,5 +1,6 @@
 import { describe, test, expect } from "bun:test";
-import { checkNodeCompatibility, isLegacyModelDeployableOnCluster, explainLegacyClusterIncompatibility, blockedVersionNotes, type DeployableModel, type NodeCapability, type ModelNodeRequirements, type GpuInfo } from "./node-compat";
+import { checkNodeCompatibility, isLegacyModelDeployableOnCluster, explainLegacyClusterIncompatibility, blockedVersionNotes, type DeployableModel, type NodeCapability, type ModelNodeRequirements } from "./node-compat";
+import type { GpuInfo } from "../tether-protocol";
 import { nearestIncompatibility } from "./incompatibility";
 
 const nvidiaGpu: GpuInfo = { vendor: "nvidia", name: "A100", vramMb: 81920 };
