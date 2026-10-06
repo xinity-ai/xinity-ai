@@ -1,8 +1,8 @@
 import { resolve, join, dirname, basename } from "node:path";
-import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { $ } from "bun";
 import { binaryBaseName, type Component } from "../core/component-meta.ts";
+import { isDirectory } from "../core/fs.ts";
 import type { StepEvent } from "../term/step-event.ts";
 
 const BUILDABLE_COMPONENTS = ["daemon", "gateway", "dashboard", "infoserver", "tether"] as const;
@@ -72,13 +72,13 @@ export async function* buildLocalArtifact(
   }
 
   const absRepoPath = resolve(repoPath);
-  if (!existsSync(absRepoPath)) {
+  if (!(await isDirectory(absRepoPath))) {
     yield { type: "fail", label: "Local build", detail: `Directory not found: ${absRepoPath}` };
     return null;
   }
 
   const pkgDir = join(absRepoPath, PACKAGE_DIRS[component]);
-  if (!existsSync(pkgDir)) {
+  if (!(await isDirectory(pkgDir))) {
     yield { type: "fail", label: "Local build", detail: `Package directory not found: ${pkgDir}` };
     return null;
   }
@@ -99,7 +99,7 @@ export async function* buildLocalArtifact(
     return null;
   }
 
-  if (!existsSync(binPath)) {
+  if (!(await Bun.file(binPath).exists())) {
     yield { type: "spinner", id: "build", message: "Build failed", done: true };
     yield { type: "fail", label: "Local build", detail: `Expected binary not found after build: ${binPath}` };
     return null;

@@ -5,7 +5,7 @@
  * gate on a single confirmation (with a bash-script dump as a secondary
  * option), then apply hands-off through the installer.
  */
-import { writeFileSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { cancel, confirm, intro, isCancel, log, note, outro, select, spinner } from "../core/clack.ts";
@@ -371,7 +371,7 @@ export async function reviewGate(renderScript?: () => Promise<string>): Promise<
 
     const script = await renderScript!();
     const path = join(tmpdir(), `xinity-apply-${Date.now()}.sh`);
-    writeFileSync(path, script, { mode: 0o600 });
+    await writeFile(path, script, { mode: 0o600 });
     log.info(`Script written to ${cyan(path)}`);
     log.info(dim("Contains secrets. Inspect, then run on the target host as root."));
   }

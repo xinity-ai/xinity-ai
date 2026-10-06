@@ -9,7 +9,7 @@
  */
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { existsSync, mkdirSync } from "node:fs";
+import { mkdir } from "node:fs/promises";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
@@ -26,6 +26,7 @@ import { planPostgresProvision, type PostgresProvision } from "../infra/postgres
 import { type Host, localRun } from "../core/host.ts";
 import { readManifest, saveDbHint, updateManifestEntry } from "./manifest.ts";
 import { ENV_DIR, SECRETS_DIR } from "../core/component-meta.ts";
+import { isDirectory } from "../core/fs.ts";
 
 const DB_SECRET_PATH = `${SECRETS_DIR}/DB_CONNECTION_URL`;
 
@@ -233,7 +234,7 @@ type MigrationSource = {
 async function resolveLocalMigrations(repoPath: string): Promise<MigrationSource | { error: string }> {
   const absRepoPath = resolve(repoPath);
   const folder = join(absRepoPath, REPO_MIGRATIONS_DIR);
-  if (!existsSync(folder)) {
+  if (!(await isDirectory(folder))) {
     const error = `No migrations found at ${folder}`;
     fail("Migrations", error);
     return { error };
@@ -258,7 +259,7 @@ async function resolveReleaseMigrations(targetVersion: string): Promise<Migratio
 
   const assetName = pickReleaseAsset(release, "db");
   const tmpDir = join(tmpdir(), `xinity-db-migrate-${Date.now()}`);
-  mkdirSync(tmpDir, { recursive: true });
+  await mkdir(tmpDir, { recursive: true });
 
   const archivePath = await runSteps(downloadAndVerify(release, assetName, tmpDir));
   if (!archivePath) {
@@ -266,7 +267,7 @@ async function resolveReleaseMigrations(targetVersion: string): Promise<Migratio
   }
 
   const folder = join(tmpDir, "db-migration");
-  mkdirSync(folder, { recursive: true });
+  await mkdir(folder, { recursive: true });
   const extract = await localRun(["tar", "xzf", archivePath, "-C", folder]);
   if (!extract.ok) {
     fail("Extract", "Failed to extract migration archive");

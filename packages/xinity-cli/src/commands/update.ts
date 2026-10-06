@@ -1,7 +1,8 @@
 import type { CommandModule } from "yargs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { mkdirSync, copyFileSync, renameSync, unlinkSync, chmodSync, existsSync } from "node:fs";
+import { existsSync, unlinkSync } from "node:fs";
+import { chmod, copyFile, mkdir, rename, unlink } from "node:fs/promises";
 import { cancel, confirm, intro, isCancel, log, outro, spinner as clackSpinner } from "../lib/core/clack.ts";
 import { cyan, green, yellow } from "picocolors";
 import { defaultInstallDir, binaryName, IS_WINDOWS } from "../lib/core/platform.ts";
@@ -39,13 +40,13 @@ async function selfUpdate(release: Release): Promise<boolean> {
   }
 
   const tmpDir = join(tmpdir(), `xinity-cli-update-${Date.now()}`);
-  mkdirSync(tmpDir, { recursive: true });
+  await mkdir(tmpDir, { recursive: true });
 
   const filePath = await runSteps(downloadAndVerify(release, assetName, tmpDir));
   if (!filePath) return false;
 
   const extractDir = join(tmpDir, "extracted");
-  mkdirSync(extractDir, { recursive: true });
+  await mkdir(extractDir, { recursive: true });
   const extracted = await localRun(extractCommandArgv(filePath, extractDir));
   if (!extracted.ok) {
     fail("Extract", "Failed to extract archive");
@@ -53,7 +54,7 @@ async function selfUpdate(release: Release): Promise<boolean> {
   }
 
   const fallbackPath = join(defaultInstallDir(), binaryName());
-  const currentPath = locateRunningBinary(fallbackPath);
+  const currentPath = await locateRunningBinary(fallbackPath);
 
   if (!currentPath) {
     fail(
@@ -72,7 +73,7 @@ async function selfUpdate(release: Release): Promise<boolean> {
 
   try {
     if (!IS_WINDOWS) {
-      chmodSync(newBinary, 0o755);
+      await chmod(newBinary, 0o755);
     }
 
     if (IS_WINDOWS) {
@@ -80,22 +81,22 @@ async function selfUpdate(release: Release): Promise<boolean> {
       // Rename the current binary aside, copy the new one in, and let
       // cleanupOldBinary() remove the old file on the next invocation.
       const oldPath = currentPath.replace(/\.exe$/i, ".old.exe");
-      renameSync(currentPath, oldPath);
+      await rename(currentPath, oldPath);
       try {
-        copyFileSync(newBinary, currentPath);
+        await copyFile(newBinary, currentPath);
       } catch (err) {
-        renameSync(oldPath, currentPath);
+        await rename(oldPath, currentPath);
         throw err;
       }
     } else {
       const backupPath = currentPath + ".bak";
-      renameSync(currentPath, backupPath);
+      await rename(currentPath, backupPath);
       try {
-        copyFileSync(newBinary, currentPath);
-        chmodSync(currentPath, 0o755);
-        unlinkSync(backupPath);
+        await copyFile(newBinary, currentPath);
+        await chmod(currentPath, 0o755);
+        await unlink(backupPath);
       } catch (err) {
-        renameSync(backupPath, currentPath);
+        await rename(backupPath, currentPath);
         throw err;
       }
     }
@@ -110,10 +111,10 @@ async function selfUpdate(release: Release): Promise<boolean> {
   }
 }
 
-function locateRunningBinary(fallbackPath: string): string | null {
+async function locateRunningBinary(fallbackPath: string): Promise<string | null> {
   const execPath = process.execPath;
-  if (existsSync(execPath) && execPath === process.argv[0]) return execPath;
-  if (existsSync(fallbackPath)) return fallbackPath;
+  if (execPath === process.argv[0] && await Bun.file(execPath).exists()) return execPath;
+  if (await Bun.file(fallbackPath).exists()) return fallbackPath;
   return null;
 }
 
