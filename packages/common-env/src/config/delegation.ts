@@ -1,4 +1,4 @@
-import { readSecretFile } from "../secret-file";
+import { readSecretFile, type SecretFileReader } from "../secret-file";
 import type { AnyConfig } from "./build";
 
 export const DYNAMIC_SENTINEL = "@dynamic";
@@ -26,7 +26,7 @@ export function delegate(fallback?: string): string {
  * A secret's value normally lives in a file rather than the environment, so the marker that hands
  * it to the dashboard has to be looked for in both, or delegating one silently does nothing.
  */
-function delegationOf(env: RawEnv, envKey: string): Delegation | null {
+function delegationOf(env: RawEnv, envKey: string, read: SecretFileReader): Delegation | null {
   const direct = parseDelegation(env[envKey]);
   if (direct) {
     return direct;
@@ -36,7 +36,7 @@ function delegationOf(env: RawEnv, envKey: string): Delegation | null {
     return null;
   }
   try {
-    return parseDelegation(readSecretFile(path, envKey));
+    return parseDelegation(read(path, envKey));
   } catch {
     // Unreadable is not this step's to report: resolution reaches the same file and names it.
     return null;
@@ -52,14 +52,18 @@ function activationKeysOf(config: AnyConfig): Set<string> {
   return new Set(config.groups.flatMap((mounted) => mounted.activation));
 }
 
-export function splitDelegations(config: AnyConfig, env: RawEnv): DelegationSplit {
+export function splitDelegations(
+  config: AnyConfig,
+  env: RawEnv,
+  read: SecretFileReader = readSecretFile,
+): DelegationSplit {
   const envWithFallbacks: Record<string, string | undefined> = { ...env };
   const delegatedKeys: string[] = [];
   const rejected: string[] = [];
   const activationKeys = activationKeysOf(config);
 
   for (const entry of config.entries) {
-    const delegation = delegationOf(env, entry.envKey);
+    const delegation = delegationOf(env, entry.envKey, read);
     if (!delegation) {
       continue;
     }

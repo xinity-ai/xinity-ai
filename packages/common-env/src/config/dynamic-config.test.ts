@@ -293,6 +293,17 @@ describe("a delegation written into a secret file", () => {
     expect(config.delegatedKeys).not.toContain("RESPONSE_CACHE_TTL_SECONDS");
     expect(config.value.cache.responseTtlSeconds()).toBe(120);
   });
+
+  test("is read once, so a later override does not pick up what the file holds by then", async () => {
+    const rawEnv = withFile("120");
+    const { config, started, push } = startFed(rawEnv);
+    await started;
+
+    writeFileSync(rawEnv.RESPONSE_CACHE_TTL_SECONDS_FILE, "240");
+    push({});
+
+    expect(config.value.cache.responseTtlSeconds()).toBe(120);
+  });
 });
 
 describe("rules spanning a delegated key", () => {

@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { readSecretFile } from "../secret-file";
+import { readSecretFile, type SecretFileReader } from "../secret-file";
 import { checkGroupActivation, isGroupActive, type ActivationWarning } from "./activation";
 import { fieldRefs, groupAt, refFor, type AnyConfig, type ConfigDef, type ConfigViolation, type FieldRef } from "./build";
 import { isGroup, type AnyGroup, type ConfigEntry } from "./group";
@@ -17,6 +17,7 @@ export type Provenance = {
 export type ResolveOptions = {
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly delegated?: readonly string[];
+  readonly readSecretFile?: SecretFileReader;
 };
 
 export type Resolved<T> = {
@@ -52,9 +53,9 @@ function locate(entry: ConfigEntry, opts: ResolveOptions): Located | undefined {
   return undefined;
 }
 
-function materialize(entry: ConfigEntry, located: Located): unknown {
+function materialize(entry: ConfigEntry, located: Located, read: SecretFileReader): unknown {
   return located.source === "env-file"
-    ? readSecretFile(String(located.raw), entry.envKey)
+    ? read(String(located.raw), entry.envKey)
     : located.raw;
 }
 
@@ -113,6 +114,7 @@ function parseConfig(config: AnyConfig, opts: ResolveOptions): Parsed {
 
   const activation = checkGroupActivation(config, presence);
   const delegated = new Set(opts.delegated ?? []);
+  const read = opts.readSecretFile ?? readSecretFile;
   const value: Record<string, unknown> = {};
   const problems: ConfigProblem[] = [];
 
@@ -120,7 +122,7 @@ function parseConfig(config: AnyConfig, opts: ResolveOptions): Parsed {
     if (!isGroup(member)) {
       const entry = entryAt(config, [key]);
       const found = located.get(member.envKey);
-      const parsed = member.schema.safeParse(found ? materialize(entry, found) : undefined);
+      const parsed = member.schema.safeParse(found ? materialize(entry, found, read) : undefined);
       if (parsed.success) {
         value[key] = parsed.data;
       } else {
@@ -140,7 +142,7 @@ function parseConfig(config: AnyConfig, opts: ResolveOptions): Parsed {
     for (const [name, field] of Object.entries(member.fields)) {
       const found = located.get(field.envKey);
       if (found) {
-        input[name] = materialize(entryAt(config, [key, name]), found);
+        input[name] = materialize(entryAt(config, [key, name]), found, read);
       }
     }
 

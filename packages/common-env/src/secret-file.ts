@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 
+export type SecretFileReader = (path: string, envKey: string) => string;
+
 export function readSecretFile(path: string, key: string): string {
   try {
     return readFileSync(path, "utf-8").trim();

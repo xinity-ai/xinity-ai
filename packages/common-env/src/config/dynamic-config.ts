@@ -1,4 +1,5 @@
 import type { ConfigDef } from "./build";
+import { readSecretFile, type SecretFileReader } from "../secret-file";
 import { splitDelegations, type RawEnv } from "./delegation";
 import { createDerivation, type Derivation, type Derived } from "./derivation";
 import {
@@ -46,14 +47,27 @@ export function createDynamicConfig<T>(deps: {
   rawEnv?: RawEnv;
 }): DynamicConfig<T> {
   const { declaration } = deps;
+
+  // Every override re-resolves the declaration, and a secret file must not be read again while serving.
+  const secretFileContents = new Map<string, string>();
+  const readSecretFileOnce: SecretFileReader = (path, envKey) => {
+    let contents = secretFileContents.get(path);
+    if (contents === undefined) {
+      contents = readSecretFile(path, envKey);
+      secretFileContents.set(path, contents);
+    }
+    return contents;
+  };
+
   const { envWithFallbacks, delegatedKeys } = splitDelegations(
     declaration,
     deps.rawEnv ?? process.env,
+    readSecretFileOnce,
   );
   const dynamicEntries = declaration.entries.filter((entry) => entry.isDynamic);
 
   const resolve = (env: RawEnv) => {
-    const resolved = resolveValues(declaration, { env, delegated: delegatedKeys });
+    const resolved = resolveValues(declaration, { env, delegated: delegatedKeys, readSecretFile: readSecretFileOnce });
     if (resolved.problems.length > 0) {
       throw configError(resolved.problems);
     }
