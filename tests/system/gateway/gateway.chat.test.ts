@@ -167,9 +167,9 @@ describe("xinity-ai-gateway chat completion", () => {
         messages: [{ role: "user", content: "hello" }],
       }),
     });
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(503);
     const body = await res.json();
-    expect(body).toEqual({ error: { message: "Model not found", type: "not_found_error", param: null, code: null } });
+    expect(body).toEqual({ error: { message: "Model is currently unavailable, retry later", type: "server_error", param: null, code: null } });
 
     mockServer.stop();
   });
