@@ -1,8 +1,20 @@
 import type { z } from "zod";
 import { readSecretFile, type SecretFileReader } from "../secret-file";
 import { checkGroupActivation, isGroupActive, type ActivationWarning } from "./activation";
-import { fieldRefs, groupAt, pointerOf, refFor, type AnyConfig, type ConfigDef, type ConfigViolation, type FieldRef } from "./declaration";
-import { isGroup, type AnyGroup, type ConfigEntry } from "./group";
+import type { RawEnv } from "./delegation";
+import {
+  fieldNameOf,
+  fieldRefs,
+  groupAt,
+  pointerOf,
+  refFor,
+  type AnyConfig,
+  type ConfigDef,
+  type ConfigViolation,
+  type FieldRef,
+  type MountedGroup,
+} from "./declaration";
+import { isGroup, type ConfigEntry } from "./group";
 
 export type ValueSource = "env" | "env-file" | "default" | "dynamic";
 
@@ -15,7 +27,7 @@ export type Provenance = {
 };
 
 export type ResolveOptions = {
-  readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly env?: RawEnv;
   readonly delegated?: readonly string[];
   readonly readSecretFile?: SecretFileReader;
 };
@@ -35,9 +47,7 @@ type RawValue =
   | { readonly source: "env"; readonly value: string }
   | { readonly source: "env-file"; readonly path: string };
 
-function findRaw(entry: ConfigEntry, opts: ResolveOptions): RawValue | undefined {
-  const env = opts.env ?? {};
-
+function findRaw(entry: ConfigEntry, env: RawEnv): RawValue | undefined {
   const direct = env[entry.envKey];
   if (direct !== undefined && direct !== "") {
     return { source: "env", value: direct };
@@ -51,19 +61,13 @@ function findRaw(entry: ConfigEntry, opts: ResolveOptions): RawValue | undefined
   return undefined;
 }
 
-function readRaw(entry: ConfigEntry, raw: RawValue, read: SecretFileReader): unknown {
-  return raw.source === "env-file"
-    ? read(raw.path, entry.envKey)
-    : raw.value;
-}
-
 function problemsFromIssues(
   issues: readonly z.core.$ZodIssue[],
   within: readonly ConfigEntry[],
 ): ConfigProblem[] {
   return issues.map((issue) => {
     const name = issue.path[0];
-    const entry = within.find((candidate) => candidate.path[candidate.path.length - 1] === name);
+    const entry = within.find((candidate) => fieldNameOf(candidate) === name);
     const target = entry ?? within[0];
     return {
       fields: target ? [refFor(target)] : [{ envKey: String(name ?? ""), pointer: "(root)" }],
@@ -72,23 +76,12 @@ function problemsFromIssues(
   });
 }
 
+// A delegated setting has no value of its own until the dashboard supplies one, so its rules wait for that.
 function withoutDelegatedFields(
   violations: readonly ConfigViolation[],
   delegated: ReadonlySet<string>,
 ): ConfigProblem[] {
   return violations.filter((violation) => !violation.fields.some((field) => delegated.has(field.envKey)));
-}
-
-function groupViolations(
-  config: AnyConfig,
-  key: string,
-  group: AnyGroup,
-  settled: Record<string, unknown>,
-): ConfigViolation[] {
-  return (group.violations?.(settled) ?? []).map((violation) => ({
-    fields: [refFor(entryAt(config, [key, violation.field]))],
-    message: violation.message,
-  }));
 }
 
 type Parsed = {
@@ -98,58 +91,99 @@ type Parsed = {
   readonly warnings: readonly ActivationWarning[];
 };
 
-function parseConfig(config: AnyConfig, opts: ResolveOptions): Parsed {
-  const rawValues = new Map<string, RawValue>();
-  const presence: Record<string, unknown> = {};
+type MemberResult = { readonly value: unknown; readonly problems: readonly ConfigProblem[] };
 
+function findRawValues(config: AnyConfig, env: RawEnv): Map<string, RawValue> {
+  const rawValues = new Map<string, RawValue>();
   for (const entry of config.entries) {
-    const found = findRaw(entry, opts);
+    const found = findRaw(entry, env);
     if (found) {
       rawValues.set(entry.envKey, found);
-      presence[entry.envKey] = true;
+    }
+  }
+  return rawValues;
+}
+
+// Called only for members being parsed, so a secret file behind an inactive group is never opened.
+function readEntryValue(
+  entry: ConfigEntry,
+  rawValues: ReadonlyMap<string, RawValue>,
+  readSecret: SecretFileReader,
+): string | undefined {
+  const raw = rawValues.get(entry.envKey);
+  if (raw?.source === "env-file") {
+    return readSecret(raw.path, entry.envKey);
+  }
+  return raw?.value;
+}
+
+function parseField(
+  entry: ConfigEntry,
+  rawValues: ReadonlyMap<string, RawValue>,
+  readSecret: SecretFileReader,
+): MemberResult {
+  const parsed = entry.schema.safeParse(readEntryValue(entry, rawValues, readSecret));
+  if (!parsed.success) {
+    return { value: undefined, problems: problemsFromIssues(parsed.error.issues, [entry]) };
+  }
+  return { value: parsed.data, problems: [] };
+}
+
+function parseGroup(
+  config: AnyConfig,
+  mounted: MountedGroup,
+  rawValues: ReadonlyMap<string, RawValue>,
+  readSecret: SecretFileReader,
+  delegated: ReadonlySet<string>,
+): MemberResult {
+  const input: Record<string, unknown> = {};
+  for (const entry of mounted.entries) {
+    const value = readEntryValue(entry, rawValues, readSecret);
+    if (value !== undefined) {
+      input[fieldNameOf(entry)] = value;
     }
   }
 
-  const activation = checkGroupActivation(config, presence);
+  const parsed = mounted.schema.safeParse(input);
+  if (!parsed.success) {
+    return { value: undefined, problems: problemsFromIssues(parsed.error.issues, mounted.entries) };
+  }
+  return { value: parsed.data, problems: groupRuleProblems(config, mounted, parsed.data, delegated) };
+}
+
+function groupRuleProblems(
+  config: AnyConfig,
+  mounted: MountedGroup,
+  settled: Record<string, unknown>,
+  delegated: ReadonlySet<string>,
+): ConfigProblem[] {
+  const violations = (mounted.group.violations?.(settled) ?? []).map((violation): ConfigViolation => ({
+    fields: [refFor(entryAt(config, [mounted.key, violation.field]))],
+    message: violation.message,
+  }));
+  return withoutDelegatedFields(violations, delegated);
+}
+
+function parseConfig(config: AnyConfig, opts: ResolveOptions): Parsed {
+  const env = opts.env ?? {};
+  const rawValues = findRawValues(config, env);
+  const activation = checkGroupActivation(config, env);
   const delegated = new Set(opts.delegated ?? []);
-  const read = opts.readSecretFile ?? readSecretFile;
+  const readSecret = opts.readSecretFile ?? readSecretFile;
+
   const value: Record<string, unknown> = {};
   const problems: ConfigProblem[] = [];
-
   for (const [key, member] of Object.entries(config.members)) {
+    let result: MemberResult;
     if (!isGroup(member)) {
-      const entry = entryAt(config, [key]);
-      const found = rawValues.get(member.envKey);
-      const parsed = member.schema.safeParse(found ? readRaw(entry, found, read) : undefined);
-      if (parsed.success) {
-        value[key] = parsed.data;
-      } else {
-        problems.push(...problemsFromIssues(parsed.error.issues, [entry]));
-      }
-      continue;
-    }
-
-    if (!isGroupActive(activation, key)) {
-      value[key] = undefined;
-      continue;
-    }
-
-    const mounted = groupAt(config, key)!;
-    const input: Record<string, unknown> = {};
-    for (const [name, field] of Object.entries(member.fields)) {
-      const found = rawValues.get(field.envKey);
-      if (found) {
-        input[name] = readRaw(entryAt(config, [key, name]), found, read);
-      }
-    }
-
-    const parsed = mounted.schema.safeParse(input);
-    if (parsed.success) {
-      value[key] = parsed.data;
-      problems.push(...withoutDelegatedFields(groupViolations(config, key, member, parsed.data), delegated));
+      result = parseField(entryAt(config, [key]), rawValues, readSecret);
+    } else if (isGroupActive(activation, key)) {
+      result = parseGroup(config, groupAt(config, key)!, rawValues, readSecret, delegated);
     } else {
-      problems.push(...problemsFromIssues(parsed.error.issues, mounted.entries));
+      result = { value: undefined, problems: [] };
     }
+    value[key] = result.value;
+    problems.push(...result.problems);
   }
 
   // Only on a complete value: a rule reads members a failed one would have left undefined.

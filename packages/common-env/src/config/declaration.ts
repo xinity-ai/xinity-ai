@@ -149,6 +149,10 @@ export function pointerOf(entry: ConfigEntry): string {
   return entry.path.join(".");
 }
 
+export function fieldNameOf(entry: ConfigEntry): string {
+  return entry.path[entry.path.length - 1]!;
+}
+
 export function groupAt(config: AnyConfig, key: string): MountedGroup | undefined {
   return config.groups.find((group) => group.key === key);
 }
