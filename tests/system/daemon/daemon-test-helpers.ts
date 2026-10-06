@@ -2,11 +2,11 @@ import { aiNodeT, modelInstallationT, modelInstallationStateT, preconfigureDB, s
 import {
   canonicalRegistration,
   canonicalStateReport,
+  createRequestVerifier,
   generateNodeKeypair,
   STATUS_PATH,
   STREAM_PATH,
   verifyNodeSignature,
-  verifyRequest,
 } from "common-env";
 import type { InstallationStateReport, NodeRegistration } from "common-env";
 import { getAvailablePort } from "../test-helpers";
@@ -50,12 +50,14 @@ export type TetherMock = {
 
 export const TETHER_SECRET = "test-secret";
 
+const verifyOnce = createRequestVerifier();
+
 /**
  * The real checks rather than a stub, so these tests are the only place a daemon's outbound
  * requests meet the code the tether verifies them with.
  */
 function refuseUnsigned(req: Request, path: string): Response | null {
-  const result = verifyRequest(TETHER_SECRET, req.headers.get("authorization"), {
+  const result = verifyOnce(TETHER_SECRET, req.headers.get("authorization"), {
     method: req.method,
     path,
   });
@@ -81,7 +83,7 @@ async function startMockTetherServer(): Promise<TetherMock> {
         const body = await req.json() as NodeRegistration;
         const nodeId = body.nodeId as string;
 
-        if (!verifyNodeSignature(body.publicKey, canonicalRegistration(body), body.signature)) {
+        if (!verifyNodeSignature(body.publicKey, canonicalRegistration(body, req.headers.get("authorization") ?? ""), body.signature)) {
           return new Response("Registration signature is invalid", { status: 401 });
         }
         pinnedKeys.set(nodeId, body.publicKey);
@@ -165,7 +167,7 @@ async function startMockTetherServer(): Promise<TetherMock> {
         // Only once the node has registered: a report that beats its own handshake is a race in
         // the test, not a daemon that signs wrongly.
         const pinned = pinnedKeys.get(body.nodeId);
-        if (pinned && !verifyNodeSignature(pinned, canonicalStateReport(body), body.signature)) {
+        if (pinned && !verifyNodeSignature(pinned, canonicalStateReport(body, req.headers.get("authorization") ?? ""), body.signature)) {
           return new Response("Report signature is invalid", { status: 401 });
         }
 
