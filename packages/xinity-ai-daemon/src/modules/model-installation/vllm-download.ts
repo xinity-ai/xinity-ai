@@ -1,6 +1,6 @@
 import { config } from "../../config";
 import { rootLogger } from "../../logger";
-import * as fs from "node:fs";
+import { mkdir, open, rename, stat, symlink, unlink, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import { buildRules, selectFiles } from "./file-filter";
 import { ensureCacheSpace, getDirSize } from "./cache-eviction";
@@ -61,8 +61,8 @@ export async function downloadModel(
   const blobsDir = path.join(repoDir, "blobs");
   const refsDir = path.join(repoDir, "refs");
 
-  fs.mkdirSync(blobsDir, { recursive: true });
-  fs.mkdirSync(refsDir, { recursive: true });
+  await mkdir(blobsDir, { recursive: true });
+  await mkdir(refsDir, { recursive: true });
 
   const { files: allFiles, commitHash } = await listRepoFiles(model);
   const { rules, mode } = buildRules(allFiles, userPatterns);
@@ -80,7 +80,7 @@ export async function downloadModel(
     return;
   }
 
-  const alreadyCachedBytes = getDirSize(repoDir);
+  const alreadyCachedBytes = await getDirSize(repoDir);
   const requiredBytes = Math.max(0, totalBytes - alreadyCachedBytes);
   const eviction = await ensureCacheSpace({ requiredBytes, reservedModel: model });
   if (eviction.evicted.length > 0) {
@@ -91,7 +91,7 @@ export async function downloadModel(
   }
 
   const snapshotDir = path.join(repoDir, "snapshots", commitHash);
-  fs.mkdirSync(snapshotDir, { recursive: true });
+  await mkdir(snapshotDir, { recursive: true });
 
   let downloadedBytes = 0;
 
@@ -101,7 +101,7 @@ export async function downloadModel(
       return onProgress(downloadedBytes / totalBytes);
     });
 
-    linkSnapshot(snapshotDir, file.path, path.join(blobsDir, etag));
+    await linkSnapshot(snapshotDir, file.path, path.join(blobsDir, etag));
 
     if (bytesDownloaded === 0) {
       downloadedBytes += fileSize(file);
@@ -109,16 +109,16 @@ export async function downloadModel(
     }
   }
 
-  fs.writeFileSync(path.join(refsDir, "main"), commitHash);
+  await writeFile(path.join(refsDir, "main"), commitHash);
   log.info({ model }, "Model download complete");
 }
 
-function linkSnapshot(snapshotDir: string, filePath: string, blobPath: string): void {
+async function linkSnapshot(snapshotDir: string, filePath: string, blobPath: string): Promise<void> {
   const snapshotPath = path.join(snapshotDir, filePath);
   const parentDir = path.dirname(snapshotPath);
-  fs.mkdirSync(parentDir, { recursive: true });
-  try { fs.unlinkSync(snapshotPath); } catch { /* no existing link */ }
-  fs.symlinkSync(path.relative(parentDir, blobPath), snapshotPath);
+  await mkdir(parentDir, { recursive: true });
+  await unlink(snapshotPath).catch(() => { /* no existing link */ });
+  await symlink(path.relative(parentDir, blobPath), snapshotPath);
 }
 
 async function listRepoFiles(model: string): Promise<{ files: HfFileEntry[]; commitHash: string }> {
@@ -154,13 +154,13 @@ async function downloadFileToCache(
   const etag = cleanEtag(rawEtag);
   const blobPath = path.join(blobsDir, etag);
 
-  if (fs.existsSync(blobPath)) return { etag, bytesDownloaded: 0 };
+  if (await Bun.file(blobPath).exists()) return { etag, bytesDownloaded: 0 };
 
   const incompletePath = `${blobPath}.incomplete`;
-  const existingBytes = getFileSize(incompletePath);
+  const existingBytes = await getFileSize(incompletePath);
 
   if (existingBytes === expectedSize) {
-    fs.renameSync(incompletePath, blobPath);
+    await rename(incompletePath, blobPath);
     return { etag, bytesDownloaded: expectedSize };
   }
 
@@ -173,7 +173,7 @@ async function downloadFileToCache(
   if (!dlRes.body) throw new Error(`No response body for ${filePath}`);
 
   const bytesDownloaded = await streamToFile(incompletePath, dlRes.body, resumeBytes > 0 && dlRes.status === 206, onBytes);
-  fs.renameSync(incompletePath, blobPath);
+  await rename(incompletePath, blobPath);
 
   return { etag, bytesDownloaded: bytesDownloaded + resumeBytes };
 }
@@ -189,7 +189,7 @@ async function fetchBlobResumable(
   });
 
   if (response.status === 416) {
-    fs.unlinkSync(incompletePath);
+    await unlink(incompletePath);
     existingBytes = 0;
     response = await hfFetch(resolveUrl, { redirect: "follow" });
   }
@@ -197,8 +197,8 @@ async function fetchBlobResumable(
   return { response, existingBytes };
 }
 
-function getFileSize(filePath: string): number {
-  try { return fs.statSync(filePath).size; }
+async function getFileSize(filePath: string): Promise<number> {
+  try { return (await stat(filePath)).size; }
   catch { return 0; }
 }
 
@@ -208,17 +208,17 @@ async function streamToFile(
   append: boolean,
   onBytes: (bytes: number) => Promise<void>,
 ): Promise<number> {
-  const fd = fs.openSync(filePath, append ? "a" : "w");
+  const file = await open(filePath, append ? "a" : "w");
   let total = 0;
   try {
     for await (const chunk of body) {
       const buf = chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk);
-      fs.writeSync(fd, buf);
+      await file.write(buf);
       total += buf.byteLength;
       await onBytes(buf.byteLength);
     }
   } finally {
-    fs.closeSync(fd);
+    await file.close();
   }
   return total;
 }

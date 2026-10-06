@@ -1,4 +1,5 @@
-import { promises as fsp, readdirSync, rmSync, statSync, type Dirent } from "node:fs";
+import type { Dirent } from "node:fs";
+import { readdir, rm, stat, statfs } from "node:fs/promises";
 import * as path from "node:path";
 import { config } from "../../config";
 import { rootLogger } from "../../logger";
@@ -41,51 +42,51 @@ export function modelForSlug(slug: string): string {
   return `${stripped.slice(0, idx)}/${stripped.slice(idx + 2)}`;
 }
 
-function readDirEntriesOrEmpty(dir: string): Dirent[] {
-  try { return readdirSync(dir, { withFileTypes: true }); } catch { return []; }
+async function readDirEntriesOrEmpty(dir: string): Promise<Dirent[]> {
+  try { return await readdir(dir, { withFileTypes: true }); } catch { return []; }
 }
 
-function safeFileSize(filePath: string): number {
-  try { return statSync(filePath).size; } catch { return 0; }
+async function safeFileSize(filePath: string): Promise<number> {
+  try { return (await stat(filePath)).size; } catch { return 0; }
 }
 
-export function getDirSize(dir: string): number {
+export async function getDirSize(dir: string): Promise<number> {
   let total = 0;
-  function walk(current: string): void {
-    for (const entry of readDirEntriesOrEmpty(current)) {
+  async function walk(current: string): Promise<void> {
+    for (const entry of await readDirEntriesOrEmpty(current)) {
       if (entry.isSymbolicLink()) {
         continue;
       }
       const p = path.join(current, entry.name);
       if (entry.isDirectory()) {
-        walk(p);
+        await walk(p);
       } else {
-        total += safeFileSize(p);
+        total += await safeFileSize(p);
       }
     }
   }
-  walk(dir);
+  await walk(dir);
   return total;
 }
 
 export async function getDiskFree(targetPath: string): Promise<number> {
-  const stat = await fsp.statfs(targetPath);
-  return Number(stat.bsize) * Number(stat.bavail);
+  const fsStat = await statfs(targetPath);
+  return Number(fsStat.bsize) * Number(fsStat.bavail);
 }
 
-function safeMtime(dir: string): Date {
-  try { return statSync(dir).mtime; } catch { return new Date(0); }
+async function safeMtime(dir: string): Promise<Date> {
+  try { return (await stat(dir)).mtime; } catch { return new Date(0); }
 }
 
-export function listCacheEntries(hubDir: string): CacheEntry[] {
+export async function listCacheEntries(hubDir: string): Promise<CacheEntry[]> {
   let names: string[];
-  try { names = readdirSync(hubDir); } catch { return []; }
-  return names
-    .filter((n) => n.startsWith("models--"))
-    .map((slug): CacheEntry => {
-      const dir = path.join(hubDir, slug);
-      return { slug, model: modelForSlug(slug), dir, sizeBytes: getDirSize(dir), mtime: safeMtime(dir) };
-    });
+  try { names = await readdir(hubDir); } catch { return []; }
+  const entries: CacheEntry[] = [];
+  for (const slug of names.filter((n) => n.startsWith("models--"))) {
+    const dir = path.join(hubDir, slug);
+    entries.push({ slug, model: modelForSlug(slug), dir, sizeBytes: await getDirSize(dir), mtime: await safeMtime(dir) });
+  }
+  return entries;
 }
 
 function latestDeletionDate(installations: readonly InstallationCacheRecord[], fallback: Date): Date {
@@ -172,7 +173,7 @@ export async function ensureCacheSpace(input: {
     return { evicted: [], freeBefore, freeAfter: freeBefore };
   }
 
-  const entries = listCacheEntries(hubDir);
+  const entries = await listCacheEntries(hubDir);
   const { getDesiredInstallations } = await import("../db-sync");
   const installations = getDesiredInstallations();
 
@@ -206,7 +207,7 @@ export async function ensureCacheSpace(input: {
       { model: entry.model, sizeBytes: entry.sizeBytes, dir: entry.dir },
       "Evicting stale model cache",
     );
-    rmSync(entry.dir, { recursive: true, force: true });
+    await rm(entry.dir, { recursive: true, force: true });
   }
 
   const freeAfter = await getDiskFree(cacheDir);

@@ -181,7 +181,6 @@ describe("downloadModel resume edge cases", () => {
     const blobPath = path.join(blobsDir, etag);
     fs.writeFileSync(incompletePath, staleContents);
 
-    const symlinkSpy = spyOn(fs, "symlinkSync").mockImplementation(() => {});
     let downloadAttempts = 0;
     const progress: number[] = [];
     const downloadHeaders: RequestInit["headers"][] = [];
@@ -228,7 +227,6 @@ describe("downloadModel resume edge cases", () => {
       });
     } finally {
       fetchSpy.mockRestore();
-      symlinkSpy.mockRestore();
     }
 
     expect(downloadAttempts).toBe(2);
