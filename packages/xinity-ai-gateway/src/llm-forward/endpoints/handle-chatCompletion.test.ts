@@ -139,7 +139,8 @@ describe("handleChatCompletion", () => {
       body: JSON.stringify({
         model: "test-model",
         messages: [{ role: "user", content: "Hi" }],
-        stream: true
+        stream: true,
+        stream_options: { include_usage: true },
       })
     });
 

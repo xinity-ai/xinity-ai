@@ -121,6 +121,7 @@ describe("forwardOpenAIStream", () => {
     const forwardResponse = forwardOpenAIStream({
       backendResponse,
       originalModel: "public-model",
+      includeUsage: false,
       spec: chatSpec,
       logFields: dummyLogFields,
       log,
@@ -146,6 +147,7 @@ describe("forwardOpenAIStream", () => {
     const forwardResponse = forwardOpenAIStream({
       backendResponse,
       originalModel: "public-model",
+      includeUsage: false,
       spec: chatSpec,
       logFields: dummyLogFields,
       log,
