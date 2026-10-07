@@ -10,7 +10,7 @@
         MIGRATION_DIR="${migrationDir}"
 
         # Ensure drizzle migration tracking table exists
-        ${pkgs.postgresql_17}/bin/psql "$DB_URL" <<'SQL'
+        ${pkgs.postgresql_17}/bin/psql -v ON_ERROR_STOP=1 "$DB_URL" <<'SQL'
         CREATE SCHEMA IF NOT EXISTS "drizzle";
         CREATE TABLE IF NOT EXISTS "drizzle"."__drizzle_migrations" (
           id SERIAL PRIMARY KEY,
@@ -34,14 +34,13 @@
           fi
 
           echo "  apply: $TAG"
-          # Strip drizzle breakpoint markers and execute
-          ${pkgs.gnused}/bin/sed 's/--> statement-breakpoint//' \
-            "$MIGRATION_DIR/$TAG.sql" \
-            | ${pkgs.postgresql_17}/bin/psql "$DB_URL"
-
+          # The migration and its tracking row commit together, so a failed migration is never recorded as applied
           TIMESTAMP=$(date +%s%3N)
-          ${pkgs.postgresql_17}/bin/psql "$DB_URL" -c \
-            "INSERT INTO \"drizzle\".\"__drizzle_migrations\" (hash, created_at) VALUES ('$HASH', $TIMESTAMP);"
+          {
+            ${pkgs.gnused}/bin/sed 's/--> statement-breakpoint//' "$MIGRATION_DIR/$TAG.sql"
+            echo
+            echo "INSERT INTO \"drizzle\".\"__drizzle_migrations\" (hash, created_at) VALUES ('$HASH', $TIMESTAMP);"
+          } | ${pkgs.postgresql_17}/bin/psql -v ON_ERROR_STOP=1 --single-transaction "$DB_URL"
 
           echo "  done: $TAG"
         done
