@@ -86,6 +86,21 @@ export const withAuth = rootOs.middleware(async ({ context, next, errors }) => {
   });
 });
 
+export const withUserSession = rootOs.middleware(async ({ context, next, errors }) => {
+  const session = await loadSessionOrThrow(context, errors);
+  const { actor } = await resolveActor(context.request, session);
+  if (actor.actorType === "api_key") {
+    throw errors.FORBIDDEN({ message: "This action requires a signed-in user, not an API key" });
+  }
+  return next({
+    context: {
+      ...context,
+      session,
+      actor,
+    } as App.Locals & { session: Session; actor: ActorInfo },
+  });
+});
+
 /** The cookie-cached session predates any organization activated during this request. */
 async function readActiveOrganizationFromDb(headers: Headers): Promise<string | null> {
   const fresh = await auth.api.getSession({ headers, query: { disableCookieCache: true } });

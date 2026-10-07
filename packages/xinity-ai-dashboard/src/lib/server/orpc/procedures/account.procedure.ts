@@ -1,4 +1,4 @@
-import { rootOs, withAuth, auditMiddleware } from "../root";
+import { rootOs, withUserSession, auditMiddleware } from "../root";
 import { z } from "zod";
 import { auth, getGreenlitCallId } from "$lib/server/auth-server";
 import { rootLogger } from "$lib/server/logging";
@@ -11,7 +11,7 @@ const tags = ["Auth"];
 
 const changePassword = rootOs
   .meta({ mcp: false, audit: { action: "account.change_password", resource: "account" } })
-  .use(withAuth)
+  .use(withUserSession)
   .use(auditMiddleware)
   .route({ path: "/change-password", method: "POST", tags, summary: "Change Password" })
   .input(z.object({
@@ -40,7 +40,7 @@ const changePassword = rootOs
 
 const listPasskeys = rootOs
   .meta({ mcp: false })
-  .use(withAuth)
+  .use(withUserSession)
   .route({ path: "/passkeys", method: "GET", tags, summary: "List Passkeys" })
   .handler(async ({ context }) => {
     return await auth.api.listPasskeys({
@@ -50,7 +50,7 @@ const listPasskeys = rootOs
 
 const deletePasskey = rootOs
   .meta({ mcp: false, audit: { action: "account.delete_passkey", resource: "account", resourceId: { fromInput: "id" } } })
-  .use(withAuth)
+  .use(withUserSession)
   .use(auditMiddleware)
   .route({ path: "/passkeys", method: "DELETE", tags, summary: "Delete Passkey" })
   .input(z.object({ id: z.string() }))
@@ -70,7 +70,7 @@ const deletePasskey = rootOs
 
 const listDashboardApiKeys = rootOs
   .meta({ mcp: false })
-  .use(withAuth)
+  .use(withUserSession)
   .route({ path: "/dashboard-api-keys", method: "GET", tags, summary: "List Dashboard API Keys" })
   .handler(async ({ context }) => {
     const result = await auth.api.listApiKeys({
@@ -81,7 +81,7 @@ const listDashboardApiKeys = rootOs
 
 const createDashboardApiKey = rootOs
   .meta({ mcp: false, audit: { action: "account.create_dashboard_api_key", resource: "account", resourceId: { fromOutput: "id" }, captureInput: ["name"] } })
-  .use(withAuth)
+  .use(withUserSession)
   .use(auditMiddleware)
   .route({ path: "/dashboard-api-keys", method: "POST", tags, summary: "Create Dashboard API Key" })
   .input(z.object({
@@ -120,7 +120,7 @@ const createDashboardApiKey = rootOs
 
 const deleteDashboardApiKey = rootOs
   .meta({ mcp: false, audit: { action: "account.delete_dashboard_api_key", resource: "account", resourceId: { fromInput: "id" } } })
-  .use(withAuth)
+  .use(withUserSession)
   .use(auditMiddleware)
   .route({ path: "/dashboard-api-keys", method: "DELETE", tags, summary: "Delete Dashboard API Key" })
   .input(z.object({ id: z.string() }))
