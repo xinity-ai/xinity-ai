@@ -195,7 +195,7 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
         }
 
         // Stream fully consumed, usage is now available
-        const finalUsage = await result.usage;
+        const finalUsage = await result.totalUsage;
         const finalText = accumulatedText || await result.text;
 
         closeReasoningBlock();
