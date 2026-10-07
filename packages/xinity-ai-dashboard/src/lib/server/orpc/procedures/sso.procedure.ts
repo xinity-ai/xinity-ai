@@ -12,6 +12,54 @@ import { config } from "$lib/server/config";
 const log = rootLogger.child({ name: "sso.procedure" });
 const tags = ["SSO"];
 
+// Allowlists, not denylists: a secret field added by a future Better Auth version must not leak.
+const publicConfigKeys = {
+  oidc: [
+    "issuer",
+    "clientId",
+    "discoveryEndpoint",
+    "authorizationEndpoint",
+    "tokenEndpoint",
+    "userInfoEndpoint",
+    "jwksEndpoint",
+    "scopes",
+    "pkce",
+    "mapping",
+  ],
+  saml: [
+    "issuer",
+    "entryPoint",
+    "callbackUrl",
+    "audience",
+    "cert",
+    "identifierFormat",
+    "signatureAlgorithm",
+    "digestAlgorithm",
+    "wantAssertionsSigned",
+    "mapping",
+  ],
+} as const satisfies Record<string, readonly string[]>;
+
+function publicSsoConfig(kind: keyof typeof publicConfigKeys, raw: string | null): string | null {
+  if (!raw) {
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) {
+    return null;
+  }
+  const source = parsed as Record<string, unknown>;
+  const kept = Object.fromEntries(
+    publicConfigKeys[kind].filter((key) => key in source).map((key) => [key, source[key]]),
+  );
+  return JSON.stringify(kept);
+}
+
 async function requireSsoAccess(
   email: string | undefined | null,
   organizationId: string | undefined | null,
@@ -69,6 +117,7 @@ async function requireSsoAccess(
 }
 
 const listProviders = rootOs
+  .meta({ mcp: false })
   .use(withAuth)
   .route({ path: "/", method: "GET", tags, summary: "List SSO Providers" })
   .input(z.object({
@@ -79,7 +128,12 @@ const listProviders = rootOs
     const scope = input.organizationId
       ? sql`${ssoProviderT.organizationId} = ${input.organizationId}`
       : sql`${ssoProviderT.organizationId} IS NULL`;
-    const providers = await getDB().select().from(ssoProviderT).where(scope);
+    const rows = await getDB().select().from(ssoProviderT).where(scope);
+    const providers = rows.map((row) => ({
+      ...row,
+      oidcConfig: publicSsoConfig("oidc", row.oidcConfig),
+      samlConfig: publicSsoConfig("saml", row.samlConfig),
+    }));
 
     const enriched = await Promise.all(providers.map(async (provider) => {
       if (provider.domainVerified) {
