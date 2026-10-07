@@ -202,7 +202,7 @@ export async function generateAndPersistCompletedResponse(args: GeneratePersistA
   await collector.flush();
 
   const responseText = resolveResponseText(result.text, () => result.output, outputConfig.usesStructuredOutput);
-  const finalUsage = collector.totalUsage(result.usage);
+  const finalUsage = collector.totalUsage(result.totalUsage);
 
   const completedResponse = createResponseObject({
     responseId, createdAt, model: originalModel, status: "completed",
