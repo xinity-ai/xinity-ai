@@ -33,7 +33,6 @@ const HANDSHAKE_TIMEOUT_MS = 30_000;
 const HANDSHAKE_REFUSAL_BY_STATUS: Partial<Record<number, TetherRefusalReason>> = {
   400: "invalid_payload",
   401: "unauthorized",
-  403: "identity_mismatch",
   405: "method_not_allowed",
   409: "protocol_mismatch",
   503: "registration_failed",
