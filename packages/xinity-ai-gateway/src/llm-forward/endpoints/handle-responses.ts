@@ -168,7 +168,6 @@ async function runDeepResearch(prepared: PreparedRequest): Promise<Response> {
   }
 
   const systemPrompt = DEEP_RESEARCH_SYSTEM_PROMPT + (body.instructions ? "\n\n" + body.instructions : "");
-  messagesForLLM.unshift({ role: "system", content: systemPrompt });
 
   const { activeTools: deepTools } = resolveActiveTools(
     [...(body.tools ?? []), { type: "web_search" }],
@@ -178,6 +177,7 @@ async function runDeepResearch(prepared: PreparedRequest): Promise<Response> {
   const compactionUsage = { inputTokens: 0, outputTokens: 0 };
   const genParams = {
     ...buildGenerationParams(body, modelInfo, provider, toModelMessages(messagesForLLM), deepTools, true, outputConfig),
+    system: systemPrompt,
     stopWhen: [isLoopFinished(), stepCountIs(config.deepResearch.maxSteps())],
     prepareStep: createCompactionStep(
       provider, modelInfo.model, modelInfo.maxContextLength,

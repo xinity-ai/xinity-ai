@@ -87,6 +87,7 @@ export function buildGenerationParams(
 ) {
   return {
     model: provider.chatModel(modelInfo.model),
+    system: body.instructions ?? undefined,
     messages,
     temperature: body.temperature,
     maxOutputTokens: body.max_output_tokens ?? body.max_tokens,
