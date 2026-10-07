@@ -10,7 +10,7 @@
   import { ChevronLeft, ChevronRight, Search, Download, ChevronDown, ChevronUp } from "@lucide/svelte";
   import { toastState } from "$lib/state/toast.svelte";
   import { createUrlSearchParamsStore } from "$lib/urlSearchParamsStore";
-  import { humanDate } from "$lib/util";
+  import { humanDate, localDayStart } from "$lib/util";
   import type { PageData } from "./$types";
   import type { AuditEvent } from "common-db";
 
@@ -107,8 +107,8 @@
       action: $searchParams.action || undefined,
       result: ($searchParams.result as "success" | "failure") || undefined,
       actorId: $searchParams.actor || undefined,
-      from: $searchParams.from ? new Date($searchParams.from) : undefined,
-      to: $searchParams.to ? new Date($searchParams.to) : undefined,
+      from: $searchParams.from ? localDayStart($searchParams.from) : undefined,
+      to: $searchParams.to ? localDayStart($searchParams.to, 1) : undefined,
       includeInstanceEvents: instanceView,
     });
     loading = false;
@@ -190,8 +190,8 @@
   }
 
   async function handleExport(format: "ndjson" | "csv") {
-    const from = $searchParams.from ? new Date($searchParams.from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const to = $searchParams.to ? new Date($searchParams.to) : undefined;
+    const from = $searchParams.from ? localDayStart($searchParams.from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const to = $searchParams.to ? localDayStart($searchParams.to, 1) : undefined;
 
     const result = await orpc.audit.export({ from, to, includeInstanceEvents: instanceView });
     if (result.error) {

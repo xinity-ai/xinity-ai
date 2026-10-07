@@ -54,7 +54,7 @@ function buildWhereClause(orgId: string, filters: z.infer<typeof auditFilters>, 
     conditions.push(sql`${auditEventT.createdAt} >= ${filters.from.toISOString()}`);
   }
   if (filters.to) {
-    conditions.push(sql`${auditEventT.createdAt} <= ${filters.to.toISOString()}`);
+    conditions.push(sql`${auditEventT.createdAt} < ${filters.to.toISOString()}`);
   }
   return and(...conditions);
 }

@@ -94,6 +94,11 @@ export function humanMonthYear(isoDate: string) {
   return date.toLocaleDateString(undefined, { month: "short", year: "numeric", timeZone: "UTC" });
 }
 
+export function localDayStart(isoDate: string, offsetDays = 0): Date {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  return new Date(year, month - 1, day + offsetDays);
+}
+
 export function formatDurationMs(ms: number | null): string {
   if (ms == null) return "-";
   return `${(ms / 1000).toFixed(1)}s`;
