@@ -33,7 +33,7 @@ function dispatchAuthEmail(args: {
   template: AnyComponent;
   extraProps?: Record<string, unknown>;
 }): void {
-  log.info({ url: args.url, user: pick(args.user, "email", "id") }, args.logLabel);
+  log.info({ user: pick(args.user, "email", "id") }, args.logLabel);
   void sendEmail({
     to: args.user.email,
     subject: args.subject,
@@ -410,10 +410,15 @@ export const auth = betterAuth({
       cancelPendingInvitationsOnReInvite: true,
       requireEmailVerificationOnInvitation: !!config.mail,
       // disableOrganizationDeletion: true,
-      async sendInvitationEmail(data, request) {
+      async sendInvitationEmail(data) {
         const encodedEmail = encodeURIComponent(data.email);
         const url = `${config.origin}/organizations/accept-invitation-${data.invitation.id}/?email=${encodedEmail}`
-        log.info({ data, request, url }, "Send invitation email");
+        log.info({
+          invitationId: data.invitation.id,
+          organizationId: data.organization.id,
+          email: data.email,
+          inviterId: data.inviter.user.id,
+        }, "Send invitation email");
         void sendEmail({
           to: data.email,
           subject: `You've been invited to join ${data.organization.name}`,
