@@ -24,7 +24,8 @@
 
   let events = $state<OrgAuditEvent[]>([]);
   let nextCursor = $state<string | null>(null);
-  let cursorStack = $state<string[]>([]);
+  let currentCursor = $state<string | undefined>();
+  let cursorStack = $state<(string | undefined)[]>([]);
   let loading = $state(false);
   let expandedRow = $state<string | null>(null);
   let instanceView = $state(false);
@@ -100,6 +101,7 @@
     if (!hasFeature) {
       return;
     }
+    currentCursor = cursor;
     loading = true;
     const result = await orpc.audit.list({
       limit: LIMIT,
@@ -140,10 +142,7 @@
     if (!nextCursor) {
       return;
     }
-    const currentFirst = events[0]?.createdAt.toISOString();
-    if (currentFirst) {
-      cursorStack = [...cursorStack, currentFirst];
-    }
+    cursorStack = [...cursorStack, currentCursor];
     void fetchEvents(nextCursor);
   }
 
@@ -151,7 +150,7 @@
     if (cursorStack.length === 0) {
       return;
     }
-    const prev = cursorStack[cursorStack.length - 2];
+    const prev = cursorStack[cursorStack.length - 1];
     cursorStack = cursorStack.slice(0, -1);
     void fetchEvents(prev);
   }
