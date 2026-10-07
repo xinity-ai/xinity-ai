@@ -86,6 +86,7 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
   backendResponse,
   originalModel,
   spec,
+  includeUsage,
   logFields,
   log,
   onStreamChunk,
@@ -94,6 +95,7 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
   backendResponse: Response;
   originalModel: string;
   spec: StreamSpec<Chunk, Acc>;
+  includeUsage: boolean;
   logFields: CallLogFields;
   log: Logger;
   onStreamChunk?: () => void;
@@ -162,7 +164,11 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
             spec.applyChoice(acc, choice);
           }
 
-          controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+          if (!includeUsage && chunk.choices.length === 0 && chunk.usage) {
+            continue;
+          }
+          const forwarded = includeUsage ? chunk : { ...chunk, usage: undefined };
+          controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(forwarded)}\n\n`));
         }
 
         const sortedAccs = [...accumByChoice.entries()].sort(([a], [b]) => a - b);
@@ -258,6 +264,7 @@ export function forwardOpenAIResponse<Chunk extends StreamChunkLike, Acc, Choice
   backendResponse,
   originalModel,
   stream,
+  includeUsage,
   streamSpec,
   nonStreamSpec,
   logFields,
@@ -269,6 +276,7 @@ export function forwardOpenAIResponse<Chunk extends StreamChunkLike, Acc, Choice
   backendResponse: Response;
   originalModel: string;
   stream: boolean;
+  includeUsage: boolean;
   streamSpec: StreamSpec<Chunk, Acc>;
   nonStreamSpec: NonStreamSpec<Choice>;
   logFields: CallLogFields;
@@ -282,7 +290,7 @@ export function forwardOpenAIResponse<Chunk extends StreamChunkLike, Acc, Choice
     return forwardBackendError(backendResponse, log, route);
   }
   if (stream) {
-    return forwardOpenAIStream({ backendResponse, originalModel, spec: streamSpec, logFields, log, onStreamChunk, onStreamEnd });
+    return forwardOpenAIStream({ backendResponse, originalModel, includeUsage, spec: streamSpec, logFields, log, onStreamChunk, onStreamEnd });
   }
   onStreamEnd?.();
   return forwardOpenAINonStream({ backendResponse, originalModel, spec: nonStreamSpec, logFields, log });
