@@ -42,6 +42,8 @@ function dispatchAuthEmail(args: {
   });
 }
 
+const apiKeyManagementPaths = new Set(["/api-key/get", "/api-key/list", "/api-key/update", "/api-key/delete"]);
+
 // One-time tokens to allow specific server-initiated API key calls to pass through auth hooks.
 const greenlitCallIds = new Set<string>();
 /**
@@ -354,6 +356,12 @@ export const auth = betterAuth({
       if (ctx.path === "/api-key/create") {
         throw new APIError("BAD_REQUEST", {
           message: "API key creation is only allowed server-side.",
+        });
+      }
+
+      if (apiKeyManagementPaths.has(ctx.path) && ctx.headers?.get("x-api-key")) {
+        throw new APIError("FORBIDDEN", {
+          message: "This action requires a signed-in user, not an API key",
         });
       }
     }),
