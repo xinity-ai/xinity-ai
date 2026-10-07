@@ -217,6 +217,7 @@ async function runStreaming(prepared: PreparedRequest, genParams: GenerationPara
     result: streamText(genParams),
     orgId: auth.orgId, responseId, messageItemId: `msg_${responseId}`, createdAt, originalModel, body,
     baseResponse, toolCalls, toolResults, include,
+    abortSignal: genParams.abortSignal,
     onChunk: idle?.reset,
     onFinished: (usage, text) => {
       idle?.clear();

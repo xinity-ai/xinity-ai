@@ -69,6 +69,7 @@ export type StreamResponseParams = {
   toolCalls: ToolCallItem[];
   toolResults: ToolResultData[];
   include: IncludeValue[];
+  abortSignal?: AbortSignal;
   onFinished: (usage: LanguageModelUsage, text: string) => void;
   /** called on every stream part, so a caller's idle timeout can be reset */
   onChunk?: () => void;
@@ -81,7 +82,7 @@ export type StreamResponseParams = {
 export function createResponseStream(params: StreamResponseParams): ReadableStream {
   const {
     result, orgId, responseId, messageItemId, createdAt, originalModel, body,
-    baseResponse, toolCalls, toolResults, include, onFinished, onChunk,
+    baseResponse, toolCalls, toolResults, include, abortSignal, onFinished, onChunk,
   } = params;
 
   return new ReadableStream({
@@ -174,6 +175,11 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
                 arguments: argsStr,
               });
             }
+          } else if (part.type === "error") {
+            throw part.error;
+          } else if (part.type === "abort") {
+            // The part only carries the reason as text, the signal keeps the TimeoutError/AbortError the catch tells apart.
+            throw abortSignal?.reason ?? new DOMException(part.reason ?? "The operation was aborted.", "AbortError");
           } else if (part.type === "tool-result") {
             // Always record results for final response building
             toolResults.push({
