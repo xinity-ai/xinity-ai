@@ -100,6 +100,8 @@ export async function handleModelsRequest(req: Request): Promise<Response> {
       .where(sql`
         ${modelDeploymentT.organizationId} = ${orgId}
       AND
+        ${modelDeploymentT.enabled}
+      AND
         ${modelDeploymentT.deletedAt} IS NULL
       `),
   ]);
