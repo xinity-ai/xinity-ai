@@ -115,7 +115,7 @@ export function queueInstallationStates(states: InstallationStatePayload[]): voi
   }
 }
 
-async function flushPending(): Promise<void> {
+async function flushPending(retry = true): Promise<void> {
   flushTimer = null;
   if (pendingStates.size === 0) {
     return;
@@ -150,6 +150,16 @@ async function flushPending(): Promise<void> {
 
     log.debug({ count: batch.length }, "Batch state flush completed");
   } catch (err) {
+    for (const state of batch) {
+      if (!pendingStates.has(state.installationId)) {
+        pendingStates.set(state.installationId, state);
+      }
+    }
+
+    if (retry && flushTimer === null && pendingStates.size > 0) {
+      flushTimer = setTimeout(() => void flushPending(), FLUSH_INTERVAL_MS);
+    }
+
     log.error({ err, count: batch.length }, "Batch state flush failed");
   }
 }
@@ -159,5 +169,5 @@ export async function flushAndStop(): Promise<void> {
     clearTimeout(flushTimer);
     flushTimer = null;
   }
-  await flushPending();
+  await flushPending(false);
 }

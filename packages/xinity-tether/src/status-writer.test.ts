@@ -177,7 +177,8 @@ describe("partitionOwnedStates", () => {
 describe("queueInstallationStates", () => {
   beforeEach(async () => {
     await flushAndStop();
-    mockInsert.mockClear();
+    mockInsert.mockReset();
+    mockInsert.mockImplementation(() => ({ values: mockInsertValues }));
     mockInsertValues.mockClear();
     mockOnConflictDoUpdate.mockClear();
   });
@@ -224,6 +225,18 @@ describe("queueInstallationStates", () => {
     await flushAndStop();
 
     expect(mockInsert).toHaveBeenCalledTimes(1);
+  });
+
+  test("retries a batch when the database flush fails", async () => {
+    mockInsert.mockImplementationOnce(() => {
+      throw new Error("database unavailable");
+    });
+
+    queueInstallationStates([{ installationId: "inst-retry", lifecycleState: "ready" }]);
+
+    await Bun.sleep(500);
+
+    expect(mockInsert).toHaveBeenCalledTimes(2);
   });
 
   test("merges reports from different daemons into one batch", async () => {
