@@ -12,7 +12,9 @@ import { rootLogger } from "./logging";
 import { omit, pick } from "$lib/util";
 import { config } from "./config";
 import { getDB } from "./db";
-import { ac, isInstanceAdmin, roles } from "./roles";
+import { ac, isInstanceAdmin, isRoleAvailable, roles } from "./roles";
+import type { RoleName } from "$lib/roles";
+import { hasFeature } from "./license";
 import { sendEmail, commonEmailProps, type AnyComponent } from "$lib/server/notifications/email";
 import { notify } from "./notifications/notification.service";
 import { NotificationType } from "./notifications/events";
@@ -44,10 +46,32 @@ function dispatchAuthEmail(args: {
 
 const apiKeyManagementPaths = new Set(["/api-key/get", "/api-key/list", "/api-key/update", "/api-key/delete"]);
 
-// One-time tokens to allow specific server-initiated API key calls to pass through auth hooks.
+// Everything else under /sso/ is management, only reachable through the SSO procedures, which enforce the
+// license, ssoSelfManage and instance admin rules. Denying by default keeps endpoints added by future plugin versions closed.
+const ssoSignInPathPrefixes = ["/sso/callback", "/sso/saml2/"];
+
+function isSsoManagementPath(path: string): boolean {
+  return path.startsWith("/sso/") && !ssoSignInPathPrefixes.some((prefix) => path.startsWith(prefix));
+}
+
+const roleAssignmentPaths = new Set(["/organization/invite-member", "/organization/update-member-role"]);
+
+function requestedRoles(role: unknown): string[] {
+  const values = Array.isArray(role) ? role : [role];
+  return values
+    .filter((value): value is string => typeof value === "string")
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim());
+}
+
+function isKnownRole(role: string): role is RoleName {
+  return Object.hasOwn(roles, role);
+}
+
+// One-time tokens to allow specific server-initiated calls to pass through auth hooks.
 const greenlitCallIds = new Set<string>();
 /**
- * Generates a one-time greenlit call id for server-initiated API key actions.
+ * Generates a one-time greenlit call id for server-initiated actions.
  * The id is consumed by the auth middleware and then invalidated.
  */
 export function getGreenlitCallId() {
@@ -379,6 +403,30 @@ export const auth = betterAuth({
         throw new APIError("FORBIDDEN", {
           message: "This action requires a signed-in user, not an API key",
         });
+      }
+
+      if (isSsoManagementPath(ctx.path)) {
+        throw new APIError("FORBIDDEN", {
+          message: "SSO providers are managed through the dashboard API.",
+        });
+      }
+
+      if (ctx.path === "/organization/create" && !hasFeature("multi-org")) {
+        const [existingOrg] = await getDB().select({ id: organizationT.id }).from(organizationT).limit(1);
+        if (existingOrg) {
+          throw new APIError("FORBIDDEN", {
+            message: "Multiple organizations require an Enterprise license. Upgrade at xinity.ai/xinity-pricing.",
+          });
+        }
+      }
+
+      if (roleAssignmentPaths.has(ctx.path)) {
+        const unlicensed = requestedRoles(ctx.body?.role).find((role) => isKnownRole(role) && !isRoleAvailable(role));
+        if (unlicensed) {
+          throw new APIError("FORBIDDEN", {
+            message: `The "${unlicensed}" role requires a paid license. Upgrade at xinity.ai/xinity-pricing.`,
+          });
+        }
       }
     }),
     after: createAuthMiddleware(async (ctx) => {
