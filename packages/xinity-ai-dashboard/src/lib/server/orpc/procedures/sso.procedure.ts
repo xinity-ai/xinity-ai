@@ -1,6 +1,6 @@
 import { rootOs, withAuth, auditMiddleware } from "../root";
 import { z } from "zod";
-import { auth } from "$lib/server/auth-server";
+import { auth, getGreenlitCallId } from "$lib/server/auth-server";
 import { rootLogger } from "$lib/server/logging";
 import { betterAuthErrorBody } from "$lib/server/lib/auth/better-auth-errors";
 import { isInstanceAdmin } from "$lib/server/roles";
@@ -143,6 +143,7 @@ const listProviders = rootOs
         const result = await auth.api.requestDomainVerification({
           body: { providerId: provider.providerId },
           headers: context.request.headers,
+          query: { greenlitCallId: getGreenlitCallId() },
         });
         const hostname = domainToHostname(provider.domain);
         const { txtRecord, txtValue } = formatTxtRecord(provider.providerId, hostname);
@@ -205,6 +206,7 @@ async function dispatchSsoRegistration(
         ...config,
       } as any,
       headers: context.request.headers,
+      query: { greenlitCallId: getGreenlitCallId() },
     });
     rlog.info({ providerId: input.providerId, organizationId: input.organizationId }, `${kind} provider registered`);
     return result;
@@ -314,6 +316,7 @@ const requestDomainVerification = rootOs
       const result = await auth.api.requestDomainVerification({
         body: { providerId: input.providerId },
         headers: context.request.headers,
+        query: { greenlitCallId: getGreenlitCallId() },
       });
 
       const hostname = domainToHostname(provider.domain);
@@ -341,6 +344,7 @@ const verifyDomain = rootOs
       await auth.api.verifyDomain({
         body: { providerId: input.providerId },
         headers: context.request.headers,
+        query: { greenlitCallId: getGreenlitCallId() },
       });
     } catch (err) {
       rethrowBetterAuthError(err, "Domain verification failed", errors);
