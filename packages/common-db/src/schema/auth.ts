@@ -47,8 +47,9 @@ export const userT = pgTable("user", {
     .$defaultFn(() => defaultDisplaySettings),
   twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),
 
-  // Admin fields (unused for the time being)
+  // Unused for the time being
   role: text().notNull().default("user"),
+
   banned: boolean().notNull().default(false),
   banReason: text("ban_reason"),
   banExpires: timestamp("ban_expires_at"),
