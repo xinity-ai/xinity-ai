@@ -31,6 +31,7 @@
     onDelete = () => {},
     canDelete = false,
     canUpdate = false,
+    canRate = false,
   }: {
     call?: DataViewCall | null;
     apiKeyNameMap: Map<string, string>;
@@ -38,6 +39,7 @@
     onDelete?: (call: DataViewCall) => void;
     canDelete?: boolean;
     canUpdate?: boolean;
+    canRate?: boolean;
   } = $props();
 
   let metadataEditorOpen = $state(false);
@@ -58,6 +60,7 @@
 
   /** Calls in the legacy table are read-only until an instance admin converts them. */
   const frozen = $derived(activeCall?.source === "legacy");
+  const canLabel = $derived(canRate && !frozen);
   let currentRating = $state<ApiCallResponse | null>(null);
   let editedResponse = $state("");
   let lastSavedValue = $state("");
@@ -900,8 +903,9 @@
                   </div>
                   <button
                     type="button"
-                    class="msg-exclude-btn absolute top-2 right-2 p-1 rounded cursor-pointer hover:bg-muted/50 transition-colors {isExcluded ? 'text-red-500' : 'text-muted-foreground hover:text-foreground'}"
+                    class="msg-exclude-btn absolute top-2 right-2 p-1 rounded cursor-pointer hover:bg-muted/50 transition-colors disabled:pointer-events-none {isExcluded ? 'text-red-500' : 'text-muted-foreground hover:text-foreground'}"
                     title={isExcluded ? "Include in training" : "Exclude from training"}
+                    disabled={!canLabel}
                     onclick={() => toggleMessageExclusion(idx)}
                   >
                     {#if isExcluded}
@@ -915,7 +919,7 @@
             </div>
           {/if}
 
-          {#if inputExclusionPopup.visible}
+          {#if canLabel && inputExclusionPopup.visible}
             <div
               class="highlight-popup"
               role="group"
@@ -932,7 +936,7 @@
             </div>
           {/if}
 
-          {#if inputExclusionHoverPopup.visible}
+          {#if canLabel && inputExclusionHoverPopup.visible}
             <div
               class="highlight-popup"
               role="group"
@@ -986,7 +990,7 @@
               <Button
                 variant="outline"
                 size="sm"
-                disabled={frozen}
+                disabled={!canLabel}
                 onclick={() => { editTabUnlocked = true; responseTab = "edit"; }}
               >
                 <Pencil class="w-3.5 h-3.5" />
@@ -1035,14 +1039,14 @@
             </div>
 
             <HighlightPopup
-              visible={selectionPopup.visible && !!selectionPopup.text}
+              visible={canLabel && selectionPopup.visible && !!selectionPopup.text}
               x={selectionPopup.x}
               y={selectionPopup.y}
               onSelect={applyHighlightFromPopup}
             />
 
             <HighlightPopup
-              visible={hoverPopup.visible}
+              visible={canLabel && hoverPopup.visible}
               x={hoverPopup.x}
               y={hoverPopup.y}
               onSelect={(type) => {
@@ -1099,7 +1103,7 @@
           <RatingControls
             value={currentRating?.response ?? null}
             isEdited={isEdited}
-            disabled={frozen}
+            disabled={!canLabel}
             onRate={rateResponse}
           />
         </div>

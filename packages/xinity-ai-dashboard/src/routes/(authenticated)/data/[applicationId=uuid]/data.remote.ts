@@ -3,8 +3,10 @@ import { auth } from '$lib/server/auth-server';
 import { getDB } from '$lib/server/db';
 import { callMatchesSearch, legacyMatchesSearch, resolveCallMessages, searchPattern } from "$lib/server/lib/call-messages";
 import { resolveReactionSummaries, resolveUserRatings } from "$lib/server/lib/call-ratings";
-import { messageIdsOfCalls, pruneUnreferencedMessages } from "$lib/server/lib/chat-message-store";
+import { apiCallRouter } from '$lib/server/orpc/procedures/api-call.procedure';
+import { assertOrgPermission, type PermissionSpec } from '$lib/server/lib/permissions';
 import { pick } from '$lib/util';
+import { call, ORPCError } from '@orpc/server';
 import { error } from '@sveltejs/kit';
 import { apiCallT, aiApiKeyT, inferenceCallT, inferenceCallRatingT, sql, unionAll, type ApiCallInputMessage, type AiApiKey, type PgColumn, and, inArray } from 'common-db';
 import z from 'zod';
@@ -16,6 +18,21 @@ async function getSession() {
     throw error(401, "Not logged in")
   }
   return session;
+}
+
+async function assertPermission(organizationId: string, permissions: PermissionSpec) {
+  await assertOrgPermission(getRequestEvent().locals.request.headers, organizationId, permissions);
+}
+
+async function callIdsInOrg(callIds: string[], organizationId: string): Promise<Set<string>> {
+  const db = getDB();
+  const [legacy, inference] = await Promise.all([
+    db.select({ id: apiCallT.id }).from(apiCallT)
+      .where(and(inArray(apiCallT.id, callIds), sql`${apiCallT.organizationId} = ${organizationId}`)),
+    db.select({ id: inferenceCallT.id }).from(inferenceCallT)
+      .where(and(inArray(inferenceCallT.id, callIds), sql`${inferenceCallT.organizationId} = ${organizationId}`)),
+  ]);
+  return new Set([...legacy, ...inference].map((row) => row.id));
 }
 
 /** Only `inference_call` answers yes. A legacy row is frozen, so nothing may act on it. */
@@ -82,6 +99,7 @@ export const getApiKeys = query(z.object({ applicationId: z.uuid().nullable() })
   if (!session.activeOrganizationId) {
     return [] as PartialPublicApiKey[];
   }
+  await assertPermission(session.activeOrganizationId, { apiCall: ["read"] });
 
   const conditions = [
     sql`${aiApiKeyT.organizationId} = ${session.activeOrganizationId}`,
@@ -140,6 +158,7 @@ export const getApiCalls = query(apiCallFilters, async ({ applicationId, apiKeyI
   if (!session.activeOrganizationId) {
     return [] as DataViewCall[];
   }
+  await assertPermission(session.activeOrganizationId, { apiCall: ["read"] });
 
   const filters = {
     organizationId: session.activeOrganizationId,
@@ -242,6 +261,7 @@ const apiCallCountFilters = z.object({
 export const getApiCallCount = query(apiCallCountFilters, async (params) => {
   const { session } = await getSession();
   if (!session.activeOrganizationId) return 0;
+  await assertPermission(session.activeOrganizationId, { apiCall: ["read"] });
 
   const filters = { organizationId: session.activeOrganizationId, ...params };
   const db = getDB();
@@ -264,7 +284,14 @@ export type ApiCallReactionSummary = {
 };
 
 export const getApiCallReactionSummary = query.batch(z.uuid(), async (ids) => {
-  const summaries = await resolveReactionSummaries([...ids]);
+  const { session } = await getSession();
+  const organizationId = session.activeOrganizationId;
+  if (!organizationId) {
+    error(403, "No active organization");
+  }
+  await assertPermission(organizationId, { callRating: ["read"] });
+  const visible = await callIdsInOrg([...ids], organizationId);
+  const summaries = await resolveReactionSummaries([...visible]);
 
   return (id) =>
     summaries.get(id) ?? { apiCallId: id, likes: 0, dislikes: 0, total: 0 };
@@ -272,6 +299,10 @@ export const getApiCallReactionSummary = query.batch(z.uuid(), async (ids) => {
 
 export const getAPICallResponse = query.batch(z.uuid(), async (ids) => {
   const session = await getSession();
+  if (!session.session.activeOrganizationId) {
+    error(403, "No active organization");
+  }
+  await assertPermission(session.session.activeOrganizationId, { callRating: ["read"] });
   const ratings = await resolveUserRatings([...ids], session.user.id);
 
   return (id) => ratings.get(id);
@@ -298,6 +329,10 @@ export const upsertApiCallResponse = command(z.object({
   }),
 }), async ({ apiCallId, payload }) => {
   const { session, user } = await getSession();
+  if (!session.activeOrganizationId) {
+    error(403, "No active organization");
+  }
+  await assertPermission(session.activeOrganizationId, { callRating: ["create", "update"] });
 
   if (!await callIsWritable(apiCallId, session.activeOrganizationId)) {
     error(404, { message: "The call was not found" });
@@ -318,20 +353,17 @@ export const upsertApiCallResponse = command(z.object({
 )
 
 export const deleteApiCall = command(z.object({ apiCallId: z.uuid() }), async ({ apiCallId }) => {
-  const { session } = await getSession();
-  if (!session.activeOrganizationId) {
-    throw error(403, { message: "No active organization" });
+  const { locals } = getRequestEvent();
+  const { deleted } = await call(apiCallRouter.delete, { apiCallIds: [apiCallId] }, { context: locals })
+    .catch((err: unknown) => {
+      if (err instanceof ORPCError) {
+        error(err.status, err.message);
+      }
+      throw err;
+    });
+  if (deleted === 0) {
+    error(404, { message: "The call was not found" });
   }
-
-  if (!await callIsWritable(apiCallId, session.activeOrganizationId)) {
-    throw error(404, { message: "The call was not found" });
-  }
-
-  await getDB().transaction(async (tx) => {
-    const messageIds = await messageIdsOfCalls([apiCallId], tx);
-    await tx.delete(inferenceCallT).where(sql`${inferenceCallT.id} = ${apiCallId}`);
-    await pruneUnreferencedMessages(messageIds, tx);
-  });
 
   return { success: true };
 });
