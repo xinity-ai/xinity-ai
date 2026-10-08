@@ -8,6 +8,7 @@
  */
 import type { RequestHandler } from "./$types";
 import { auth } from "$lib/server/auth-server";
+import { assertOrgPermission } from "$lib/server/lib/permissions";
 import { getDB } from "$lib/server/db";
 import { apiCallT, inferenceCallT, sql, type ApiCallResponse, type ApiCallInputMessage, type ApiCallInputMessageContent } from "common-db";
 import { resolveCallMessages } from "$lib/server/lib/call-messages";
@@ -27,6 +28,7 @@ export const GET: RequestHandler = async ({ params, locals }) => {
   if (!orgId) {
     error(403, "No active organization");
   }
+  await assertOrgPermission(locals.request.headers, orgId, { apiCall: ["read"] });
 
   const { callId } = params;
 

@@ -343,6 +343,7 @@
         onDelete={requestDelete}
         canDelete={permissions.can("apiCall", "delete")}
         canUpdate={permissions.can("apiCall", "update")}
+        canRate={permissions.can("callRating", "update")}
       />
     </div>
   </div>

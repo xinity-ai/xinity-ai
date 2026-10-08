@@ -5,7 +5,7 @@
 import { auth, type Session } from "$lib/server/auth-server";
 import { os } from "@orpc/server";
 import { rootLogger } from "../logging";
-import type { ac } from "../roles";
+import type { PermissionSpec } from "../lib/permissions";
 import { isInstanceAdmin } from "../roles";
 import { runWithAudit, type ActorInfo, type AuditContext, type AuditTag } from "./audit";
 
@@ -25,10 +25,6 @@ export const rootOs = os.$context<App.Locals>().$meta<ProcedureMeta>({}).errors(
   INTERNAL_SERVER_ERROR: { message: "An internal error occurred" },
 });
 const log = rootLogger.child({ name: "orpc.root" });
-
-type Resource = keyof typeof ac.statements;
-type Action<R extends Resource> = (typeof ac.statements)[R][number];
-type PermissionSpec = { [R in Resource]?: Action<R>[] };
 
 async function loadSessionOrThrow(
   context: App.Locals,

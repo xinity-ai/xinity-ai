@@ -6,6 +6,7 @@
  */
 import type { RequestHandler } from "./$types";
 import { auth } from "$lib/server/auth-server";
+import { assertOrgPermission } from "$lib/server/lib/permissions";
 import { getPresignedUrl, readMediaObject } from "$lib/server/media-store";
 import { isMediaDigest } from "common-env/media-ref";
 import { isStorableAudioType, isStorableImageType } from "common-env/media-types";
@@ -21,6 +22,7 @@ export const GET: RequestHandler = async ({ params, locals }) => {
   if (!orgId) {
     error(403, "No active organization");
   }
+  await assertOrgPermission(locals.request.headers, orgId, { apiCall: ["read"] });
 
   const { sha256 } = params;
   if (!sha256 || !isMediaDigest(sha256)) {
