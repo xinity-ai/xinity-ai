@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterAll, mock, spyOn } from "bun:test";
 import crypto from "node:crypto";
-import * as deploymentId from "$lib/server/deployment-id";
+import * as deploymentId from "$lib/server/lib/instance/deployment-id";
 
 // Generate a dedicated test key pair independent of the production key.
 const testKeyPair = crypto.generateKeyPairSync("ed25519");

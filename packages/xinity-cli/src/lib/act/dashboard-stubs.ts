@@ -43,11 +43,11 @@ export const serverStubs: Record<string, Record<string, unknown>> = {
     isRoleAvailable: () => true,
     isInstanceAdmin: () => false,
   },
-  "$lib/server/email": {
+  "$lib/server/notifications/email": {
     sendEmail: asyncNoop,
     commonEmailProps: {},
   },
-  "$lib/server/lib/orchestration.mod": {
+  "$lib/server/lib/deployments/orchestration": {
     assembleModelRequirementTable: asyncNoop,
     syncDeployedModels: asyncNoop,
     startDeploymentSyncService: asyncNoop,

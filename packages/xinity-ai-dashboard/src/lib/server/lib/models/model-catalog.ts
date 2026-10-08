@@ -17,8 +17,8 @@ import {
   resolveRequiredPlatformsForDriver,
   type Provider,
 } from "xinity-infoserver";
-import { config } from "./config";
-import { rootLogger } from "./logging";
+import { config } from "$lib/server/config";
+import { rootLogger } from "$lib/server/logging";
 
 const log = rootLogger.child({ name: "model-catalog" });
 

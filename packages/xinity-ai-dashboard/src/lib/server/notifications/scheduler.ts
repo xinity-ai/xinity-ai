@@ -12,12 +12,12 @@ import {
 } from "common-db";
 import { config } from "$lib/server/config";
 import { getDB } from "$lib/server/db";
-import { nodeIsLive, installationOnLiveNode } from "$lib/server/lib/node-liveness";
+import { nodeIsLive, installationOnLiveNode } from "$lib/server/lib/deployments/node-liveness";
 import { rootLogger } from "$lib/server/logging";
 import { building } from "$app/environment";
 import { notifyOrgMembers } from "./notification.service";
 import { NotificationType } from "./events";
-import { type DeploymentPhase, type DisplayPhase, aggregatePhase } from "$lib/server/lib/deployment-phase";
+import { type DeploymentPhase, type DisplayPhase, aggregatePhase } from "$lib/server/lib/deployments/deployment-phase";
 
 const log = rootLogger.child({ name: "notification.scheduler" });
 

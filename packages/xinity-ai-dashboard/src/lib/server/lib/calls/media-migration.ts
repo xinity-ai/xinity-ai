@@ -4,10 +4,10 @@
  * database has no reason to keep.
  */
 import { mediaObjectT, sql, count } from "common-db";
-import { config } from "../config";
-import { getDB } from "../db";
-import { mediaS3Client } from "../media-store";
-import { rootLogger } from "../logging";
+import { config } from "$lib/server/config";
+import { getDB } from "$lib/server/db";
+import { mediaS3Client } from "$lib/server/lib/calls/media-store";
+import { rootLogger } from "$lib/server/logging";
 
 const log = rootLogger.child({ name: "media-migration" });
 

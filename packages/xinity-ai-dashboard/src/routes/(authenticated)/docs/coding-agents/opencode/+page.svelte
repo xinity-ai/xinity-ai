@@ -2,7 +2,7 @@
   import { ArrowLeft, Eye, CircleCheck } from "@lucide/svelte";
   import { getClientEnv } from "$lib/clientEnv";
   import CodeExample from "$lib/components/CodeExample.svelte";
-  import type { OrgModel } from "$lib/server/org-models";
+  import type { OrgModel } from "$lib/server/lib/models/org-models";
   import type { PageData } from "./$types";
 
   const { data }: { data: PageData } = $props();

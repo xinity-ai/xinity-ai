@@ -9,7 +9,7 @@ import { NotificationType } from "$lib/server/notifications/events";
 import { memberT, userT, organizationT, invitationT, sql } from "common-db";
 import { isInstanceAdmin, isRoleAvailable, RoleSchema } from "$lib/server/roles";
 import { hasFeature } from "$lib/server/license";
-import { betterAuthErrorBody } from "$lib/server/better-auth-errors";
+import { betterAuthErrorBody } from "$lib/server/lib/auth/better-auth-errors";
 import { findOrgName, findOrgDeleteBlockers, purgeSoftDeletedOrgDependents } from "$lib/server/lib/org-queries";
 
 const log = rootLogger.child({ name: "organization.procedure" });

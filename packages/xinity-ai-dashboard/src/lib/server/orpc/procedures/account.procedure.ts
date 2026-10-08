@@ -4,7 +4,7 @@ import { auth, getGreenlitCallId } from "$lib/server/auth-server";
 import { rootLogger } from "$lib/server/logging";
 import { getDB } from "$lib/server/db";
 import { memberT, userT, sql } from "common-db";
-import { betterAuthErrorBody } from "$lib/server/better-auth-errors";
+import { betterAuthErrorBody } from "$lib/server/lib/auth/better-auth-errors";
 
 const log = rootLogger.child({ name: "account.procedure" });
 const tags = ["Auth"];

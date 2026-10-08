@@ -7,10 +7,10 @@
  * must never be exposed to the browser).
  */
 import type { S3Client } from "bun";
-import { config } from "./config";
+import { config } from "$lib/server/config";
 import { mediaObjectT, sql } from "common-db";
-import { getDB } from "./db";
-import { rootLogger } from "./logging";
+import { getDB } from "$lib/server/db";
+import { rootLogger } from "$lib/server/logging";
 
 const log = rootLogger.child({ name: "media-store" });
 

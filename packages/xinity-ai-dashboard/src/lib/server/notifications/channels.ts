@@ -3,7 +3,7 @@
  * Currently only email is implemented; Slack, Teams, Telegram can be added
  * by implementing the NotificationChannel interface.
  */
-import { sendEmail, type AnyComponent } from "$lib/server/email";
+import { sendEmail, type AnyComponent } from "$lib/server/notifications/email";
 import { rootLogger } from "$lib/server/logging";
 
 const log = rootLogger.child({ name: "notification.channel" });

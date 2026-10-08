@@ -7,7 +7,7 @@
  */
 import type { RequestHandler } from "./$types";
 import { auth } from "$lib/server/auth-server";
-import { fetchGateway } from "$lib/server/gateway-proxy";
+import { fetchGateway } from "$lib/server/lib/models/gateway-proxy";
 import { error } from "@sveltejs/kit";
 
 export const POST: RequestHandler = async ({ request, locals }) => {

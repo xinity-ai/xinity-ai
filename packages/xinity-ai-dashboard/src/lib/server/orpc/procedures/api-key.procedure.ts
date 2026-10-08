@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ApiKeyDto } from "$lib/orpc/dtos/api-key.dto";
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
 import { sql, aiApiKeyT, aiApplicationT, apiKeyVerifier } from "common-db";
-import { generateApiKey } from "$lib/server/api-key";
+import { generateApiKey } from "$lib/server/lib/auth/api-key";
 import { pick } from "$lib/util";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";

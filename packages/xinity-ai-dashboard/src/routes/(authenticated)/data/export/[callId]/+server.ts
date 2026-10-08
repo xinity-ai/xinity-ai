@@ -8,13 +8,13 @@
  */
 import type { RequestHandler } from "./$types";
 import { auth } from "$lib/server/auth-server";
-import { assertOrgPermission } from "$lib/server/lib/permissions";
+import { assertOrgPermission } from "$lib/server/lib/auth/permissions";
 import { getDB } from "$lib/server/db";
 import { apiCallT, inferenceCallT, sql, type ApiCallResponse, type ApiCallInputMessage, type ApiCallInputMessageContent } from "common-db";
-import { resolveCallMessages } from "$lib/server/lib/call-messages";
-import { inferenceToCallRecord, legacyToCallRecord, type CallRecord } from "$lib/server/lib/call-record";
-import { resolveFirstRating } from "$lib/server/lib/call-ratings";
-import { readMediaObject, resolveToDataUri } from "$lib/server/media-store";
+import { resolveCallMessages } from "$lib/server/lib/calls/call-messages";
+import { inferenceToCallRecord, legacyToCallRecord, type CallRecord } from "$lib/server/lib/calls/call-record";
+import { resolveFirstRating } from "$lib/server/lib/calls/call-ratings";
+import { readMediaObject, resolveToDataUri } from "$lib/server/lib/calls/media-store";
 import { parseMediaRef } from "common-env/media-ref";
 import { error } from "@sveltejs/kit";
 

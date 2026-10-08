@@ -16,7 +16,7 @@ SvelteKit admin dashboard for Xinity AI. Built with Vite + Bun, Tailwind CSS, an
 - shadcn-svelte component registry configuration (`packages/xinity-ai-dashboard/components.json`)
 - ORPC client/server utilities (`src/lib/orpc`)
 - Auth helpers built on better-auth (`src/lib/auth.ts`, `src/lib/server/auth-server.ts`)
-- Email support via nodemailer + MJML (`src/lib/server/email.ts`)
+- Email support via nodemailer + MJML (`src/lib/server/notifications/email.ts`)
 - Metrics via `common-env` metric primitives (`src/lib/server/metrics.ts`)
 
 ## Development
