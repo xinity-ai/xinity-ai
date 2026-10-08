@@ -95,8 +95,9 @@ export function humanMonthYear(isoDate: string) {
 }
 
 export function localDayStart(isoDate: string, offsetDays = 0): Date {
-  const [year, month, day] = isoDate.split("-").map(Number);
-  return new Date(year, month - 1, day + offsetDays);
+  const date = new Date(`${isoDate}T00:00:00`);
+  date.setDate(date.getDate() + offsetDays);
+  return date;
 }
 
 export function formatDurationMs(ms: number | null): string {
