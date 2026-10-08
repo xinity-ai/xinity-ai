@@ -244,6 +244,22 @@ export const auth = betterAuth({
       maxAge: 5 * 60, // cache session in cookie for 5 minutes to reduce DB lookups
     },
   },
+  databaseHooks: {
+    session: {
+      create: {
+        async before(session) {
+          const [user] = await getDB()
+            .select({ banned: userT.banned, banExpires: userT.banExpires })
+            .from(userT)
+            .where(sql`${userT.id} = ${session.userId}`)
+            .limit(1);
+          if (user?.banned && (!user.banExpires || user.banExpires > new Date())) {
+            throw new APIError("FORBIDDEN", { message: "This account has been suspended" });
+          }
+        },
+      },
+    },
+  },
   database: drizzleAdapter(getDB(), {
     provider: "pg", // or "mysql", "sqlite"
     transaction: true,

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
 import { adminCreateUser, adminResetPassword } from "$lib/server/auth-server";
-import { userT, accountT, memberT, organizationT, auditEventT, sql, and, count } from "common-db";
+import { userT, accountT, memberT, organizationT, auditEventT, sessionT, dashboardApiKeyT, sql, and, count } from "common-db";
 import { RoleSchema } from "$lib/server/roles";
 import { countLegacyCalls, postfillLegacyCalls } from "$lib/server/lib/legacy-postfill";
 import { countDatabaseBackedMedia, moveMediaToS3 } from "$lib/server/lib/media-migration";
@@ -134,14 +134,18 @@ const banUser = rootOs
       throw errors.FORBIDDEN({ message: "You cannot ban yourself" });
     }
     rlog.info({ userId: input.userId, reason: input.reason }, "Banning user");
-    await getDB()
-      .update(userT)
-      .set({
-        banned: true,
-        banReason: input.reason ?? null,
-        banExpires: input.expiresAt ? new Date(input.expiresAt) : null,
-      })
-      .where(sql`${userT.id} = ${input.userId}`);
+    await getDB().transaction(async (tx) => {
+      await tx
+        .update(userT)
+        .set({
+          banned: true,
+          banReason: input.reason ?? null,
+          banExpires: input.expiresAt ? new Date(input.expiresAt) : null,
+        })
+        .where(sql`${userT.id} = ${input.userId}`);
+      await tx.delete(sessionT).where(sql`${sessionT.userId} = ${input.userId}`);
+      await tx.update(dashboardApiKeyT).set({ enabled: false }).where(sql`${dashboardApiKeyT.userId} = ${input.userId}`);
+    });
     return { success: true };
   });
 
@@ -154,10 +158,13 @@ const unbanUser = rootOs
   .handler(async ({ input, context }) => {
     const rlog = log.child({ traceId: context.traceId });
     rlog.info({ userId: input.userId }, "Unbanning user");
-    await getDB()
-      .update(userT)
-      .set({ banned: false, banReason: null, banExpires: null })
-      .where(sql`${userT.id} = ${input.userId}`);
+    await getDB().transaction(async (tx) => {
+      await tx
+        .update(userT)
+        .set({ banned: false, banReason: null, banExpires: null })
+        .where(sql`${userT.id} = ${input.userId}`);
+      await tx.update(dashboardApiKeyT).set({ enabled: true }).where(sql`${dashboardApiKeyT.userId} = ${input.userId}`);
+    });
     return { success: true };
   });
 

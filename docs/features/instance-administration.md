@@ -7,7 +7,7 @@ Instance administration is available to users whose email appears in the `INSTAN
 Admins can list all users with search and pagination, and perform the following actions per user:
 
 - **Create users** with a generated temporary password (shown once). The user is auto-verified and must change their password on first login.
-- **Ban / unban** users with an optional reason and expiration date.
+- **Ban / unban** users with an optional reason (the API also accepts an expiration date). A ban ends all of the user's sessions, blocks every sign-in method and disables their dashboard API keys. An already open browser keeps working for up to 5 minutes, because sessions are cached in a cookie for that long. Unbanning re-enables the dashboard API keys. A timed ban lifts sign-in on expiry, but the keys stay disabled until an admin unbans the user. Gateway API keys belong to organizations and are not affected.
 - **Verify / unverify** email addresses.
 - **Reset passwords**, generating a new temporary password.
 - **Add users to organizations** with a specified role.

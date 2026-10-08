@@ -420,6 +420,10 @@
   onConfirm={handleBan}
   onCancel={() => { banReason = ""; banTargetUser = null; }}
 >
+  <p class="text-sm text-muted-foreground mb-4">
+    Banning signs {banTargetUser?.name} out everywhere, blocks new sign-ins and disables their dashboard API keys.
+    A browser tab that is already open can keep working for up to 5 minutes.
+  </p>
   <div>
     <label for="ban-reason" class="text-sm font-medium">Reason (optional)</label>
     <Input
