@@ -1,4 +1,4 @@
-import { getMigrationState } from "$lib/server/migration-check";
+import { getMigrationState } from "$lib/server/lib/instance/migration-check";
 import { redirect } from "@sveltejs/kit";
 import type { PageServerLoad } from "./$types";
 

@@ -5,9 +5,9 @@ import { rootOs, withOrganization, requirePermission, auditMiddleware } from "..
 import { z } from "zod";
 import { sql, aiApiKeyT, apiCallT, inferenceCallT } from "common-db";
 import { getDB } from "$lib/server/db";
-import { resolveCallMessages } from "$lib/server/lib/call-messages";
-import { messageIdsOfCalls, pruneUnreferencedMessages } from "$lib/server/lib/chat-message-store";
-import { inferenceToCallRecord, legacyToCallRecord, type CallRecord } from "$lib/server/lib/call-record";
+import { resolveCallMessages } from "$lib/server/lib/calls/call-messages";
+import { messageIdsOfCalls, pruneUnreferencedMessages } from "$lib/server/lib/calls/chat-message-store";
+import { inferenceToCallRecord, legacyToCallRecord, type CallRecord } from "$lib/server/lib/calls/call-record";
 
 const tags = ["API Call"];
 

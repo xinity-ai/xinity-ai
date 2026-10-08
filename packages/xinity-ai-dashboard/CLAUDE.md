@@ -65,9 +65,9 @@ Uses Svelte 5 runes (`$state`, `$derived`, `$props`). Reactive stores in `src/li
 
 ### Server-only Code
 
-All server-only modules are in `src/lib/server/`:
+All server-only modules are in `src/lib/server/`. Its top level holds only the core capabilities. Smaller helpers live in topic folders under `src/lib/server/lib/` (auth, calls, compute, deployments, instance, models), never loose at the top level.
 - `auth-server.ts`, Better Auth configuration
-- `email.ts`, nodemailer + MJML (Svelte component templates in `src/lib/components/mailTemplates/`)
+- `notifications/email.ts`, nodemailer + MJML (Svelte component templates in `src/lib/components/mailTemplates/`)
 - `logging.ts`, Pino logger (browser logs POST to `/log`)
 - `metrics.ts`, Prometheus via `common-env` metric primitives (exposed at `/metrics`)
 - `config.ts`, resolves `config-schema.ts`'s grouped declaration into the typed `config`

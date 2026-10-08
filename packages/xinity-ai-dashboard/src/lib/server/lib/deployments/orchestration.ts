@@ -1,9 +1,9 @@
 import { inArray, modelDeploymentT, sql, calcCanaryProgress, modelInstallationT, aiNodeT, type ModelInstallation, type AiNode, type InferInsertModel } from "common-db";
 import { mergeSettings, settingsEqual, type DeploymentSettings } from "common-env";
-import { getDB } from "../db";
-import { resolveSchedulable, type SchedulableModel } from "../model-catalog";
+import { getDB } from "$lib/server/db";
+import { resolveSchedulable, type SchedulableModel } from "$lib/server/lib/models/model-catalog";
 import { checkNodeCompatibility, type BlockedVersion, type ModelNodeRequirements, type NodeCapability, type Provider } from "xinity-infoserver";
-import { rootLogger } from "../logging";
+import { rootLogger } from "$lib/server/logging";
 import { building } from "$app/environment";
 import { maxVramGb } from "$lib/server/license";
 import { config } from "$lib/server/config";

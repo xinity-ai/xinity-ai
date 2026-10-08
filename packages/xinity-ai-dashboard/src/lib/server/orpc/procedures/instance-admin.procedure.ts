@@ -5,9 +5,9 @@ import { rootLogger } from "$lib/server/logging";
 import { adminCreateUser, adminResetPassword } from "$lib/server/auth-server";
 import { userT, accountT, memberT, organizationT, auditEventT, sessionT, dashboardApiKeyT, sql, and, count } from "common-db";
 import { RoleSchema } from "$lib/server/roles";
-import { countLegacyCalls, postfillLegacyCalls } from "$lib/server/lib/legacy-postfill";
-import { countDatabaseBackedMedia, moveMediaToS3 } from "$lib/server/lib/media-migration";
-import { mediaS3Client } from "$lib/server/media-store";
+import { countLegacyCalls, postfillLegacyCalls } from "$lib/server/lib/calls/legacy-postfill";
+import { countDatabaseBackedMedia, moveMediaToS3 } from "$lib/server/lib/calls/media-migration";
+import { mediaS3Client } from "$lib/server/lib/calls/media-store";
 import { hasFeature } from "$lib/server/license";
 
 const log = rootLogger.child({ name: "instance-admin.procedure" });

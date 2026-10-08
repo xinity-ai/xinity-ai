@@ -36,7 +36,7 @@ export type ResolvedVllmModel = {
   modelType: string | undefined;
   /** KV-cache allocation in GB: max(override, the entry's minKvCache). */
   kvCacheGb: number;
-  /** Total VRAM the install is expected to occupy: weight + kvCacheGb. Mirrors orchestration.mod.ts. */
+  /** Total VRAM the install is expected to occupy: weight + kvCacheGb. Mirrors orchestration.ts in the dashboard. */
   estCapacity: number;
   minVersion: string | undefined;
   requiredPlatforms: string[];

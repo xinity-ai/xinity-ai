@@ -3,7 +3,7 @@ import { LicensePayloadSchema, type LicenseInfo, type LicenseFeature, type Licen
 import { PUBLIC_KEY_BASE64 } from "./public-key";
 import { rootLogger } from "$lib/server/logging";
 import { config, configStore } from "../config";
-import { getDeploymentId } from "../deployment-id";
+import { getDeploymentId } from "$lib/server/lib/instance/deployment-id";
 
 const log = rootLogger.child({ name: "license" });
 

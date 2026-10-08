@@ -8,7 +8,7 @@ import { rootLogger } from "$lib/server/logging";
 import { type NotificationType, isNotificationEnabled } from "./events";
 import { emailChannel } from "./channels";
 import { getTemplateForType, getSubjectForType } from "./templates";
-import { commonEmailProps } from "$lib/server/email";
+import { commonEmailProps } from "$lib/server/notifications/email";
 
 const log = rootLogger.child({ name: "notification.service" });
 

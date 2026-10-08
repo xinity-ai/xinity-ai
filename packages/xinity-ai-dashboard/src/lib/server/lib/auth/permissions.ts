@@ -1,6 +1,6 @@
 import { error } from "@sveltejs/kit";
-import type { ac } from "../roles";
-import { auth } from "../auth-server";
+import type { ac } from "$lib/server/roles";
+import { auth } from "$lib/server/auth-server";
 
 type Resource = keyof typeof ac.statements;
 type Action<R extends Resource> = (typeof ac.statements)[R][number];

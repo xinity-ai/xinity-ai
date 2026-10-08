@@ -3,7 +3,7 @@ import { rootLogger } from "$lib/server/logging";
 import { config } from "$lib/server/config";
 import { isInstanceAdmin } from "$lib/server/roles";
 import { getDB } from "$lib/server/db";
-import { nodeIsLive } from "$lib/server/lib/node-liveness";
+import { nodeIsLive } from "$lib/server/lib/deployments/node-liveness";
 import type { LayoutServerLoad } from "./$types";
 import { redirect, type Cookies } from "@sveltejs/kit";
 // path to root package version

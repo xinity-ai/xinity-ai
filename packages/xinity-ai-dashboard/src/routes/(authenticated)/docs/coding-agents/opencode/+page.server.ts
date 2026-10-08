@@ -1,4 +1,4 @@
-import { loadOrgModels, type OrgModel } from "$lib/server/org-models";
+import { loadOrgModels, type OrgModel } from "$lib/server/lib/models/org-models";
 import type { PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async ({ locals, parent }) => {

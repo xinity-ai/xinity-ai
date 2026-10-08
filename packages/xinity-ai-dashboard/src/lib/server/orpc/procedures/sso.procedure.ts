@@ -2,7 +2,7 @@ import { rootOs, withAuth, auditMiddleware } from "../root";
 import { z } from "zod";
 import { auth } from "$lib/server/auth-server";
 import { rootLogger } from "$lib/server/logging";
-import { betterAuthErrorBody } from "$lib/server/better-auth-errors";
+import { betterAuthErrorBody } from "$lib/server/lib/auth/better-auth-errors";
 import { isInstanceAdmin } from "$lib/server/roles";
 import { getDB } from "$lib/server/db";
 import { ssoProviderT, organizationT, sql } from "common-db";

@@ -2,8 +2,8 @@ import type { Component } from "svelte";
 import { render } from 'svelte/server';
 import mjml from "mjml";
 import nodemailer from "nodemailer";
-import { config } from "./config";
-import { rootLogger } from "./logging";
+import { config } from "$lib/server/config";
+import { rootLogger } from "$lib/server/logging";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- template props vary per call site
 export type AnyComponent = Component<any>;

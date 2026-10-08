@@ -1,7 +1,7 @@
 import { rootOs, withOrganization, requirePermission } from "../root";
 import { sql, aiNodeT, modelInstallationT } from "common-db";
 import { getDB } from "$lib/server/db";
-import { nodeIsLive } from "$lib/server/lib/node-liveness";
+import { nodeIsLive } from "$lib/server/lib/deployments/node-liveness";
 import z from "zod";
 import type { NodeCapability } from "xinity-infoserver";
 

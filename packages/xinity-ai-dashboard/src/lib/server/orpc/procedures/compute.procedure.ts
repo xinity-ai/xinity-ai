@@ -8,7 +8,7 @@ import {
   count,
 } from "common-db";
 import { getDB } from "$lib/server/db";
-import { mergeHistorySeries, pickBucketSeconds } from "$lib/server/compute/compute";
+import { mergeHistorySeries, pickBucketSeconds } from "$lib/server/lib/compute/compute";
 import { config } from "$lib/server/config";
 import { rootLogger } from "$lib/server/logging";
 import z from "zod";

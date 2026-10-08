@@ -2,7 +2,7 @@
 import { rootOs, withAuth } from "../root";
 import z from "zod";
 import { ModelFields } from "xinity-infoserver";
-import { catalogClient } from "$lib/server/model-catalog";
+import { catalogClient } from "$lib/server/lib/models/model-catalog";
 
 const ModelWithSpecifierSchema = ModelFields.extend({
   publicSpecifier: z.string(),

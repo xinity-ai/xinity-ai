@@ -1,6 +1,6 @@
 import { deploymentConfigT } from "common-db";
-import { getDB } from "./db";
-import { rootLogger } from "./logging";
+import { getDB } from "$lib/server/db";
+import { rootLogger } from "$lib/server/logging";
 
 const log = rootLogger.child({ name: "deployment-id" });
 

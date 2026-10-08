@@ -1,10 +1,10 @@
 import { command, getRequestEvent, query } from '$app/server';
 import { auth } from '$lib/server/auth-server';
 import { getDB } from '$lib/server/db';
-import { callMatchesSearch, legacyMatchesSearch, resolveCallMessages, searchPattern } from "$lib/server/lib/call-messages";
-import { resolveReactionSummaries, resolveUserRatings } from "$lib/server/lib/call-ratings";
+import { callMatchesSearch, legacyMatchesSearch, resolveCallMessages, searchPattern } from "$lib/server/lib/calls/call-messages";
+import { resolveReactionSummaries, resolveUserRatings } from "$lib/server/lib/calls/call-ratings";
 import { apiCallRouter } from '$lib/server/orpc/procedures/api-call.procedure';
-import { assertOrgPermission, type PermissionSpec } from '$lib/server/lib/permissions';
+import { assertOrgPermission, type PermissionSpec } from '$lib/server/lib/auth/permissions';
 import { pick } from '$lib/util';
 import { call, ORPCError } from '@orpc/server';
 import { error } from '@sveltejs/kit';

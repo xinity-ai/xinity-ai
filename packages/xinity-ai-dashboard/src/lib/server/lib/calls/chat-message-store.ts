@@ -5,7 +5,7 @@
  */
 import { apiResponseMessageT, chatMessageT, inArray, inferenceCallMessageT, sql, type ApiCallInputMessage } from "common-db";
 import { jsonDigest } from "common-env";
-import { getDB } from "../db";
+import { getDB } from "$lib/server/db";
 
 type Database = ReturnType<typeof getDB>;
 /** Lets callers commit messages together with the rows referencing them. */

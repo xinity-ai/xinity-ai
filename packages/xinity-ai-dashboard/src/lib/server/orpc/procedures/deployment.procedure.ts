@@ -4,13 +4,13 @@ import { sql, modelDeploymentT, modelInstallationT, modelInstallationStateT, aiN
 import z from "zod";
 import { DeploymentDto, DeploymentWithStatusDto, type DeploymentWithStatus } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
-import { installationOnLiveNode } from "$lib/server/lib/node-liveness";
-import { syncDeployedModels } from "$lib/server/lib/orchestration.mod";
-import { resolveSchedulable, resolvesOnlyAsLegacy } from "$lib/server/model-catalog";
+import { installationOnLiveNode } from "$lib/server/lib/deployments/node-liveness";
+import { syncDeployedModels } from "$lib/server/lib/deployments/orchestration";
+import { resolveSchedulable, resolvesOnlyAsLegacy } from "$lib/server/lib/models/model-catalog";
 import { buildClusterCapacity } from "./cluster.procedure";
 import { checkNodeCompatibility, type ModelNodeRequirements } from "xinity-infoserver";
 import { rootLogger } from "$lib/server/logging";
-import { foldDeploymentStatusRows } from "$lib/server/lib/deployment-status";
+import { foldDeploymentStatusRows } from "$lib/server/lib/deployments/deployment-status";
 import { findOrgName } from "$lib/server/lib/org-queries";
 import { notifyOrgMembers } from "$lib/server/notifications/notification.service";
 import { NotificationType } from "$lib/server/notifications/events";

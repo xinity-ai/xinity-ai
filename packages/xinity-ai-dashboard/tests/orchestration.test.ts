@@ -1,8 +1,8 @@
 import { describe, test, expect } from "bun:test";
-import { buildClusterState, collectDriftedInstallations, collectExcessInstallations, collectReassignableOrphans, findServerForModel, mergeRequirementsBySpecifier, rankServers } from "../src/lib/server/lib/orchestration.mod";
+import { buildClusterState, collectDriftedInstallations, collectExcessInstallations, collectReassignableOrphans, findServerForModel, mergeRequirementsBySpecifier, rankServers } from "../src/lib/server/lib/deployments/orchestration";
 import type { AiNode, ModelInstallation } from "common-db";
-import type { ModelRequirement, ModelRequirementTable, DeploymentStrategy } from "../src/lib/server/lib/orchestration.mod";
-import type { SchedulableModel } from "../src/lib/server/model-catalog";
+import type { ModelRequirement, ModelRequirementTable, DeploymentStrategy } from "../src/lib/server/lib/deployments/orchestration";
+import type { SchedulableModel } from "../src/lib/server/lib/models/model-catalog";
 
 const FF: DeploymentStrategy = "first-fit";
 

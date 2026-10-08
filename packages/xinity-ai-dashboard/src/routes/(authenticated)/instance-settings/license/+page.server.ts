@@ -1,6 +1,6 @@
 import type { PageServerLoad } from "./$types";
 import { getLicenseSummary } from "$lib/server/license";
-import { getDeploymentId, loadDeploymentId } from "$lib/server/deployment-id";
+import { getDeploymentId, loadDeploymentId } from "$lib/server/lib/instance/deployment-id";
 import { rootLogger } from "$lib/server/logging";
 import { configStore } from "$lib/server/config";
 import { listOverrides } from "../configuration/dynamic-config";

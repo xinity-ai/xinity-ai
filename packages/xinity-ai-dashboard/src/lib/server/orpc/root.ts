@@ -5,7 +5,7 @@
 import { auth, type Session } from "$lib/server/auth-server";
 import { os } from "@orpc/server";
 import { rootLogger } from "../logging";
-import type { PermissionSpec } from "../lib/permissions";
+import type { PermissionSpec } from "$lib/server/lib/auth/permissions";
 import { isInstanceAdmin } from "../roles";
 import { runWithAudit, type ActorInfo, type AuditContext, type AuditTag } from "./audit";
 
