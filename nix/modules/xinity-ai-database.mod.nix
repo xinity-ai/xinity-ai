@@ -1,4 +1,4 @@
-{ withSystem, ... }: {
+{ moduleWithSystem, ... }: {
 
   # ── Database Module (PostgreSQL + Redis) ───────────────────────────────
   flake.nixosModules.database = { config, lib, pkgs, ... }:
@@ -193,9 +193,8 @@
     };
 
   # ── Database Init Module (Migrations) ──────────────────────────────────
-  flake.nixosModules.db-init = { config, lib, pkgs, ... }:
+  flake.nixosModules.db-init = moduleWithSystem ({ self' }: { config, lib, pkgs, ... }:
     let
-      withHostSystem = withSystem pkgs.stdenv.hostPlatform.system;
       cfg = config.services.xinity-ai-db-init;
       dbCfg = config.services.xinity-ai-database;
     in {
@@ -216,8 +215,7 @@
 
         migratePackage = lib.mkOption {
           type = lib.types.package;
-          default =
-            withHostSystem ({ config, ... }: config.packages.xinity-db-migrate);
+          default = self'.packages.xinity-db-migrate;
           description = "The xinity-db-migrate package containing the Drizzle migration runner. Defaults to the package built from this flake for the current platform.";
         };
       };
@@ -274,5 +272,5 @@
           };
         };
       };
-    };
+    });
 }

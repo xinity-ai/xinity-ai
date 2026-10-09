@@ -1,7 +1,6 @@
-{ withSystem, ... }: {
-  flake.nixosModules.gateway = { config, lib, pkgs, ... }:
+{ moduleWithSystem, ... }: {
+  flake.nixosModules.gateway = moduleWithSystem ({ self' }: { config, lib, pkgs, ... }:
     let
-      withHostSystem = withSystem pkgs.stdenv.hostPlatform.system;
       cfg = config.services.xinity-ai-gateway;
       s3Options = import ./lib/s3-options.nix { inherit lib; };
       dynamicConfig = import ./lib/dynamic-config.nix { inherit lib; };
@@ -60,7 +59,7 @@
 
         package = lib.mkOption {
           type = lib.types.package;
-          default = withHostSystem ({ config, ... }: config.packages.xinity-ai-gateway);
+          default = self'.packages.xinity-ai-gateway;
           description = "The xinity-ai-gateway package to use. Defaults to the prebuilt release binary for the current platform.";
         };
 
@@ -365,5 +364,5 @@
           };
         };
       };
-    };
+    });
 }

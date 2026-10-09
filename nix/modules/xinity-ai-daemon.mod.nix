@@ -1,7 +1,6 @@
-{ withSystem, self, inputs, ... }: {
-  flake.nixosModules.daemon = { config, lib, pkgs, ... }:
+{ moduleWithSystem, self, inputs, ... }: {
+  flake.nixosModules.daemon = moduleWithSystem ({ self' }: { config, lib, pkgs, ... }:
     let
-      withHostSystem = withSystem pkgs.stdenv.hostPlatform.system;
       cfg = config.services.xinity-ai-daemon;
       cfgOllama = config.services.ollama;
       dynamicConfig = import ./lib/dynamic-config.nix { inherit lib; };
@@ -33,8 +32,7 @@
         package = lib.mkOption {
           type = lib.types.package;
 
-          default = withHostSystem
-            ({ config, ... }: config.packages.xinity-ai-daemon);
+          default = self'.packages.xinity-ai-daemon;
           description = "The xinity-ai-daemon package to use. Defaults to the package built from this flake for the current platform.";
         };
         environmentFiles = lib.mkOption {
@@ -335,7 +333,7 @@
           };
         };
       };
-    };
+    });
 
   flake.nixosConfigurations.container = inputs.nixpkgs.lib.nixosSystem {
     system = "x86_64-linux";
