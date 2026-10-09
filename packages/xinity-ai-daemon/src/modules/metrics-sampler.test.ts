@@ -1,6 +1,6 @@
 import { describe, test, expect, mock } from "bun:test";
 import { mockConfigModule } from "../mock-config";
-import { classifyGpu } from "xinity-infoserver";
+import { classifyGpu } from "common-env/model-catalog";
 
 mock.module("../config", () => mockConfigModule());
 

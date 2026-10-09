@@ -1,7 +1,7 @@
 import { calcCanaryProgress, sql, modelDeploymentT, aiNodeT, modelInstallationT, modelInstallationStateT, installationMatchesLookup } from "common-db";
 import { getDB } from "../db";
 import { config } from "../config";
-import { createCatalogClient, createInfoserverClient, resolveTagsForDriver, resolveRequestParamsForDriver } from "xinity-infoserver";
+import { createCatalogClient, createInfoserverClient, resolveTagsForDriver, resolveRequestParamsForDriver } from "common-env/model-catalog";
 import { selectHost as _selectHost, type LoadBalanceStrategy, type HostMeta } from "./load-balancer";
 import { rootLogger } from "../logger";
 

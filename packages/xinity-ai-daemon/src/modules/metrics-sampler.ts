@@ -1,5 +1,5 @@
 import { $ } from "bun";
-import { classifyGpu } from "xinity-infoserver";
+import { classifyGpu } from "common-env/model-catalog";
 import { config } from "../config";
 import { rootLogger } from "../logger";
 import { getHardwareProfile } from "./statekeeper";

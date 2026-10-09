@@ -1,5 +1,5 @@
 /** Display formatters and shared types for the compute overview page. */
-import type { GpuInfo } from "xinity-infoserver";
+import type { GpuInfo } from "common-env/model-catalog";
 
 export type LiveMetricsNode = { nodeId: string; utilizationAvg: number; energyWh: number };
 export type LiveMetrics = { available: boolean; nodes: LiveMetricsNode[] };

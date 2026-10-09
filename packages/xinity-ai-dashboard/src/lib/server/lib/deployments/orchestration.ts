@@ -2,7 +2,7 @@ import { inArray, modelDeploymentT, sql, calcCanaryProgress, modelInstallationT,
 import { mergeSettings, settingsEqual, type DeploymentSettings } from "common-env";
 import { getDB } from "$lib/server/db";
 import { resolveSchedulable, type SchedulableModel } from "$lib/server/lib/models/model-catalog";
-import { checkNodeCompatibility, type BlockedVersion, type ModelNodeRequirements, type NodeCapability, type Provider } from "xinity-infoserver";
+import { checkNodeCompatibility, type BlockedVersion, type ModelNodeRequirements, type NodeCapability, type Provider } from "common-env/model-catalog";
 import { rootLogger } from "$lib/server/logging";
 import { building } from "$app/environment";
 import { maxVramGb } from "$lib/server/license";

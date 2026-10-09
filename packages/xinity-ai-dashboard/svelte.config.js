@@ -22,8 +22,7 @@ const config = {
 		alias: {
 			"common-db": "../common-db/src/",
 			"common-env": "../common-env/src/",
-			"common-log": "../common-log/src/",
-			"xinity-infoserver": "../xinity-infoserver/"
+			"common-log": "../common-log/src/"
 		},
     paths: {
       base: "",

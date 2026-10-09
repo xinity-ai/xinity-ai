@@ -4,7 +4,7 @@
   import { goto, invalidateAll } from "$app/navigation";
   import { copyToClipboard } from "$lib/copy";
   import { slugify } from "$lib/util";
-  import type { ModelWithSpecifier } from "xinity-infoserver";
+  import type { ModelWithSpecifier } from "common-env/model-catalog";
 
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";

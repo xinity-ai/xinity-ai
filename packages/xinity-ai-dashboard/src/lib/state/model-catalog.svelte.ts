@@ -1,5 +1,5 @@
 import { browser } from "$app/environment";
-import type { ModelWithSpecifier } from "xinity-infoserver";
+import type { ModelWithSpecifier } from "common-env/model-catalog";
 import { orpc } from "$lib/orpc/orpc-client";
 
 const PAGE_SIZE = 50;

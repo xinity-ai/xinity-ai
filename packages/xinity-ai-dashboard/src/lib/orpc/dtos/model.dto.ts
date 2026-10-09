@@ -56,5 +56,3 @@ export const DeploymentWithStatusDto = DeploymentDto.extend({
   deprecatedModel: z.boolean().optional(),
 });
 export type DeploymentWithStatus = z.infer<typeof DeploymentWithStatusDto>;
-
-export { type Model, ModelSchema as ModelDto } from "xinity-infoserver";

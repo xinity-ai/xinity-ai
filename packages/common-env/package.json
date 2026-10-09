@@ -17,6 +17,10 @@
     "./media-types": {
       "types": "./src/media-types.ts",
       "default": "./src/media-types.ts"
+    },
+    "./model-catalog": {
+      "types": "./src/model-catalog/index.ts",
+      "default": "./src/model-catalog/index.ts"
     }
   },
   "type": "module",

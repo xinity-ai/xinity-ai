@@ -2,8 +2,12 @@ import { rootOs, withOrganization, requirePermission } from "../root";
 import { sql, aiNodeT, modelInstallationT } from "common-db";
 import { getDB } from "$lib/server/db";
 import { nodeIsLive } from "$lib/server/lib/deployments/node-liveness";
+import { rootLogger } from "$lib/server/logging";
+import { catalogClient } from "$lib/server/lib/models/model-catalog";
 import z from "zod";
-import type { NodeCapability } from "xinity-infoserver";
+import { blockedVersionNotes, explainClusterIncompatibility, IncompatibilityReasonEnum, type NodeCapability } from "common-env/model-catalog";
+
+const log = rootLogger.child({ name: "cluster" });
 
 const tags = ["Cluster"];
 
@@ -28,11 +32,36 @@ const ClusterCapacityOutput = z.object({
 });
 export type ClusterCapacity = z.infer<typeof ClusterCapacityOutput>;
 
-/**
- * Builds a snapshot of current cluster capacity and per-node capabilities.
- * Exported as a plain function so both the oRPC endpoint and +page.server.ts
- * can call it directly without HTTP overhead.
- */
+const ClusterOverviewOutput = ClusterCapacityOutput.extend({
+  modelCompatibility: z.record(z.string(), z.object({
+    incompatibility: IncompatibilityReasonEnum.nullable(),
+    blockedReleaseNote: z.string().optional(),
+  })).describe("Per catalog model, keyed by public specifier. Empty when no node is live or the catalog is unavailable"),
+});
+export type ClusterOverview = z.infer<typeof ClusterOverviewOutput>;
+export type ModelCompatibility = ClusterOverview["modelCompatibility"];
+
+async function buildModelCompatibility(nodes: NodeCapability[]): Promise<ModelCompatibility> {
+  if (nodes.length === 0 || !catalogClient) {
+    return {};
+  }
+  let models;
+  try {
+    models = await catalogClient.getAll();
+  } catch (err) {
+    log.warn({ err }, "Model catalog unavailable, skipping model compatibility");
+    return {};
+  }
+  return Object.fromEntries(models.map(model => {
+    const notes = blockedVersionNotes(nodes, model);
+    return [model.publicSpecifier, {
+      incompatibility: explainClusterIncompatibility(nodes, model),
+      blockedReleaseNote: notes.length > 0 ? notes.join(" ") : undefined,
+    }];
+  }));
+}
+
+/** Builds a snapshot of current cluster capacity and per-node capabilities. */
 export async function buildClusterCapacity(): Promise<ClusterCapacity> {
   const [nodes, installations] = await Promise.all([
     getDB().select({
@@ -68,16 +97,21 @@ export async function buildClusterCapacity(): Promise<ClusterCapacity> {
   return { maxNodeFreeCapacity, availableDrivers, nodeFreeCapacities, nodeCapabilities };
 }
 
+export async function buildClusterOverview(): Promise<ClusterOverview> {
+  const capacity = await buildClusterCapacity();
+  return { ...capacity, modelCompatibility: await buildModelCompatibility(capacity.nodeCapabilities) };
+}
+
 const clusterCapacity = rootOs
   .use(withOrganization)
   .use(requirePermission({ modelDeployment: ["read"] }))
   .route({
     path: "/capacity", method: "GET", tags,
     summary: "Get Cluster Capacity",
-    description: "Returns free VRAM capacity and per-node capabilities across all available nodes",
+    description: "Returns free VRAM capacity, per-node capabilities and per-model deployability across all available nodes",
   })
-  .output(ClusterCapacityOutput)
-  .handler(buildClusterCapacity);
+  .output(ClusterOverviewOutput)
+  .handler(buildClusterOverview);
 
 export const clusterRouter = rootOs.prefix("/cluster").router({
   capacity: clusterCapacity,

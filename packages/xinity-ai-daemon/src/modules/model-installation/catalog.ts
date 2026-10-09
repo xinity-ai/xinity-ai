@@ -1,4 +1,4 @@
-import { createCatalogClient, createInfoserverClient, resolveArgsForDriver, resolveTagsForDriver, type ModelSizingFields } from "xinity-infoserver";
+import { createCatalogClient, createInfoserverClient, resolveArgsForDriver, resolveTagsForDriver, type ModelSizingFields } from "common-env/model-catalog";
 import { config } from "../../config";
 import { rootLogger } from "../../logger";
 

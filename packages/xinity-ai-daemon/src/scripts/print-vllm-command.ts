@@ -4,7 +4,7 @@
 import { parseArgs } from "node:util";
 import { z } from "zod";
 import { quoteShellArgv } from "common-env";
-import { ModelFileSchema } from "xinity-infoserver";
+import { ModelFileSchema } from "common-env/model-catalog";
 import { resolveVllmModel, RunModelError, type ResolvedVllmModel } from "./lib/vllm-run";
 import type { VllmInstanceConfig } from "../modules/model-installation/vllm-ops";
 import type { DetectedGpu } from "../modules/hardware-detect";

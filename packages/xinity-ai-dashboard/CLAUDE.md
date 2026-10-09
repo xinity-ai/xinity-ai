@@ -23,7 +23,7 @@ docker compose up -d   # PostgreSQL + Mailhog (UI: localhost:8025)
 
 ## Architecture
 
-This is a **SvelteKit 2 + Svelte 5** dashboard using Bun as runtime and package manager. It lives at `packages/xinity-ai-dashboard` in a monorepo and depends on workspace packages `common-db` (database schema/utilities) and `xinity-infoserver`.
+This is a **SvelteKit 2 + Svelte 5** dashboard using Bun as runtime and package manager. It lives at `packages/xinity-ai-dashboard` in a monorepo and depends on workspace packages `common-db` (database schema/utilities), `common-env` (shared runtime code) and `common-log`.
 
 ### API Layer (oRPC)
 
@@ -76,7 +76,8 @@ All server-only modules are in `src/lib/server/`. Its top level holds only the c
 
 Configured in `svelte.config.js`:
 - `common-db` → `../common-db/src/`
-- `xinity-infoserver` → `../xinity-infoserver/`
+- `common-env` → `../common-env/src/`
+- `common-log` → `../common-log/src/`
 - `$lib` → `src/lib/` (SvelteKit default)
 
 ## Key Patterns

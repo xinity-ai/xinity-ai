@@ -24,7 +24,7 @@ import {
 import { rootLogger } from "../../logger";
 import { getHardwareProfile } from "../statekeeper";
 import { downloadModel } from "./vllm-download";
-import { estimateConcurrency, type GpuInfo, type ModelSizingFields } from "xinity-infoserver";
+import { estimateConcurrency, type GpuInfo, type ModelSizingFields } from "common-env/model-catalog";
 import { dropPageCache } from "./page-cache";
 import { resolveInstallationEntry } from "./catalog";
 import { updateInstallationState, getLocalInstallationStates } from "./state";

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Badge } from "$lib/components/ui/badge";
   import { ExternalLink, EyeOff } from "@lucide/svelte";
-  import type { ModelWithSpecifier } from "xinity-infoserver";
+  import type { ModelWithSpecifier } from "common-env/model-catalog";
   import { formatGb, humanMonthYear } from "$lib/util";
   import { isRecentlyAdded } from "./model-recency";
   import LicenseBadge from "./LicenseBadge.svelte";

@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PageData } from "./$types";
   import type { DeploymentDefinition } from "./+page.server";
-  import type { ClusterCapacity } from "$lib/server/orpc/procedures/cluster.procedure";
+  import type { ClusterOverview } from "$lib/server/orpc/procedures/cluster.procedure";
   import DeploymentModal from "./DeploymentModal.svelte";
   import TestChatModal from "./TestChatModal.svelte";
   import TestEmbeddingModal from "./TestEmbeddingModal.svelte";
@@ -33,10 +33,11 @@
 
   // Mutable overrides updated by refreshCapacity() after mutations.
   // When set, these take precedence over the load-function values.
-  let capacityOverride = $state<ClusterCapacity | null>(null);
+  let capacityOverride = $state<ClusterOverview | null>(null);
   const activeMaxCapacity = $derived(capacityOverride?.maxNodeFreeCapacity ?? maxNodeFreeCapacity);
   const activeNodeCapacities = $derived(capacityOverride?.nodeFreeCapacities ?? nodeFreeCapacities);
   const activeNodeCapabilities = $derived(capacityOverride?.nodeCapabilities ?? nodeCapabilities);
+  const activeModelCompatibility = $derived(capacityOverride?.modelCompatibility ?? data.modelCompatibility);
 
   async function refreshCapacity() {
     const [err, cap] = await orpc.cluster.capacity({});
@@ -613,6 +614,7 @@
   maxNodeFreeCapacity={activeMaxCapacity}
   nodeFreeCapacities={activeNodeCapacities}
   nodeCapabilities={activeNodeCapabilities}
+  modelCompatibility={activeModelCompatibility}
   close={() => (showCreateDeploymentModal = false)}
   onSaved={refreshDeployments}
 />
@@ -624,6 +626,7 @@
     maxNodeFreeCapacity={activeMaxCapacity}
     nodeFreeCapacities={activeNodeCapacities}
     nodeCapabilities={activeNodeCapabilities}
+    modelCompatibility={activeModelCompatibility}
     close={() => (editDeploymentModalId = null)}
     onSaved={refreshDeployments}
   />

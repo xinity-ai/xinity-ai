@@ -2,7 +2,7 @@
   import { Checkbox } from "$lib/components/ui/checkbox";
   import { Label } from "$lib/components/ui/label";
   import { ExternalLink, ScrollText } from "@lucide/svelte";
-  import type { ModelLicense } from "xinity-infoserver";
+  import type { ModelLicense } from "common-env/model-catalog";
 
   let {
     licenses,
