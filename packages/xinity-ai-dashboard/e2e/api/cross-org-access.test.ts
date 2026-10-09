@@ -10,12 +10,14 @@
 import { describe, test, expect, beforeAll } from "bun:test";
 import { ensureE2EReady } from "../guard";
 import { BASE_URL } from "../utils/test-data";
+import { ensureSignedUp } from "../utils/sign-up";
 
 const ATTACKER = {
   name: "Cross-Org Attacker",
   email: "e2e-cross-org-attacker@xinity-test.local",
   password: "TestPassword123!",
   orgName: "Cross-Org Attacker Org",
+  orgSlug: "cross-org-attacker-org",
 } as const;
 
 const VICTIM = {
@@ -23,6 +25,7 @@ const VICTIM = {
   email: "e2e-cross-org-victim@xinity-test.local",
   password: "TestPassword123!",
   orgName: "Cross-Org Victim Org",
+  orgSlug: "cross-org-victim-org",
 } as const;
 
 const AUTH_HEADERS = {
@@ -39,21 +42,27 @@ let victimOrgId: string;
 let victimMemberId: string;
 let originalVictimRole: string;
 
-async function ensureUser(user: typeof ATTACKER): Promise<void> {
-  const res = await fetch(`${BASE_URL}/api/onboarding/cli`, {
-    method: "POST",
-    headers: AUTH_HEADERS,
-    body: JSON.stringify({
-      name: user.name,
-      email: user.email,
-      password: user.password,
-      orgName: user.orgName,
-    }),
-  });
-  // 409 means the user already exists from a previous run, which is fine
-  if (!res.ok && res.status !== 409) {
-    throw new Error(`Onboarding failed for ${user.email}: ${res.status} ${await res.text()}`);
+// Null when the instance refuses another organization, which it does without a multi-org license.
+async function signInToOwnOrg(user: typeof ATTACKER | typeof VICTIM): Promise<{ cookies: string; orgId: string } | null> {
+  await ensureSignedUp(user);
+  const cookies = await signIn(user.email, user.password);
+  let org = (await listOrgs(cookies)).find((o) => o.name === user.orgName);
+  if (!org) {
+    const res = await fetch(`${BASE_URL}/api/auth/organization/create`, {
+      method: "POST",
+      headers: { ...AUTH_HEADERS, Cookie: cookies },
+      body: JSON.stringify({ name: user.orgName, slug: user.orgSlug }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      if (res.status === 403 && body.includes("license")) {
+        return null;
+      }
+      throw new Error(`Creating ${user.orgName} failed: ${res.status} ${body}`);
+    }
+    org = (await res.json()) as OrgRow;
   }
+  return { cookies: await setActive(org.id, cookies), orgId: org.id };
 }
 
 function extractCookies(res: Response): string {
@@ -137,35 +146,28 @@ async function attackerFetch(path: string, init?: RequestInit): Promise<Response
   });
 }
 
+// Decided before the tests are registered, so the suite can be skipped as a whole.
+await ensureE2EReady();
+const attacker = await signInToOwnOrg(ATTACKER);
+const victim = attacker && await signInToOwnOrg(VICTIM);
+if (!victim) {
+  console.log("  Skipping cross-org access tests: a second organization needs a multi-org license");
+}
+
 beforeAll(async () => {
-  await ensureE2EReady();
-
-  await ensureUser(ATTACKER);
-  await ensureUser(VICTIM);
-
-  // Attacker: sign in and lock onto their own org so withOrganization is happy.
-  let aCookies = await signIn(ATTACKER.email, ATTACKER.password);
-  const aOrgs = await listOrgs(aCookies);
-  const aOrg = aOrgs.find((o) => o.name === ATTACKER.orgName);
-  if (!aOrg) throw new Error(`Attacker's org not found. Got: ${aOrgs.map((o) => o.name).join(", ")}`);
-  aCookies = await setActive(aOrg.id, aCookies);
-  attackerCookies = aCookies;
-
-  // Victim: discover their org id and own memberId so the test has concrete targets.
-  let vCookies = await signIn(VICTIM.email, VICTIM.password);
-  const vOrgs = await listOrgs(vCookies);
-  const vOrg = vOrgs.find((o) => o.name === VICTIM.orgName);
-  if (!vOrg) throw new Error(`Victim's org not found. Got: ${vOrgs.map((o) => o.name).join(", ")}`);
-  victimOrgId = vOrg.id;
-  vCookies = await setActive(victimOrgId, vCookies);
-  const full = await getFullOrg(vCookies);
+  if (!attacker || !victim) {
+    return;
+  }
+  attackerCookies = attacker.cookies;
+  victimOrgId = victim.orgId;
+  const full = await getFullOrg(victim.cookies);
   const me = full.members.find((m) => m.user.email === VICTIM.email);
   if (!me) throw new Error("Victim's own member row not found in their org");
   victimMemberId = me.id;
   originalVictimRole = me.role;
 });
 
-describe("Organization member mutation: cross-org access", () => {
+describe.skipIf(!victim)("Organization member mutation: cross-org access", () => {
   test("removeMember refuses to act on a member of a different org", async () => {
     const res = await attackerFetch("/api/organization/remove-member", {
       method: "POST",

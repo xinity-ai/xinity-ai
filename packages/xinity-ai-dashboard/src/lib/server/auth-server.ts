@@ -253,7 +253,7 @@ export const auth = betterAuth({
   baseURL: config.origin,
   secret: config.auth.secret,
   rateLimit: {
-    enabled: config.nodeEnv !== "test",
+    enabled: config.nodeEnv === "production",
   },
   advanced: {
     // Session rows and rate-limit buckets read the address the adapter already

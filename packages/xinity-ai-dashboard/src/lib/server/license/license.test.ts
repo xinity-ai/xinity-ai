@@ -17,6 +17,15 @@ mock.module("./public-key", () => ({
 }));
 
 // config is mocked for all suites in tests/preload.ts. Each block sets what it needs.
+// Outside production some features are unlocked regardless of the license, so every block runs as production.
+const { config: sharedConfig } = await import("$lib/server/config");
+const preloadNodeEnv = sharedConfig.nodeEnv;
+beforeEach(() => {
+  sharedConfig.nodeEnv = "production";
+});
+afterAll(() => {
+  sharedConfig.nodeEnv = preloadNodeEnv;
+});
 
 const deploymentIdMock = { id: null as string | null };
 const getDeploymentId = spyOn(deploymentId, "getDeploymentId").mockImplementation(() => deploymentIdMock.id);

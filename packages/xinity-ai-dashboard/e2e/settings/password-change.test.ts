@@ -4,7 +4,8 @@ import { freshPage, type TestPage } from "../utils/browser";
 import { expectVisible } from "../utils/helpers";
 import { ensureE2EReady } from "../guard";
 import { ownerFetch } from "../api/api-helpers";
-import { BASE_URL, MAILHOG_API } from "../utils/test-data";
+import { BASE_URL } from "../utils/test-data";
+import { ensureSignedUp } from "../utils/sign-up";
 
 const AUTH_HEADERS = {
   "Content-Type": "application/json",
@@ -21,37 +22,6 @@ const TEST_USER = {
 const NEW_PASSWORD = "NewPassword456!";
 
 const STORAGE_PATH = join(import.meta.dirname, "..", ".auth", `pwchange-${suffix}.json`);
-
-/** Decode quoted-printable encoding and HTML entities. */
-function decodeQP(raw: string): string {
-  return raw
-    .replace(/=\r?\n/g, "")       // join soft line breaks
-    .replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-    .replace(/&amp;/g, "&");
-}
-
-type MailhogResponse = {
-  items?: Array<{ Content?: { Body?: string } }>;
-}
-
-/** Poll Mailhog for a verification URL sent to the given email. */
-async function getVerificationUrl(email: string): Promise<string> {
-  for (let i = 0; i < 20; i++) {
-    const res = await fetch(
-      `${MAILHOG_API}/v2/search?kind=to&query=${encodeURIComponent(email)}`,
-    );
-    if (res.ok) {
-      const data = (await res.json()) as MailhogResponse;
-      for (const item of data?.items ?? []) {
-        const decoded = decodeQP(item?.Content?.Body ?? "");
-        const match = decoded.match(/https?:\/\/[^\s"<>]+verify-email[^\s"<>]*/);
-        if (match) return match[0];
-      }
-    }
-    await Bun.sleep(500);
-  }
-  throw new Error(`No verification email found for ${email}`);
-}
 
 /** Sign in via API and save Playwright-compatible storage state file. */
 async function signInAndSaveState(email: string, password: string): Promise<void> {
@@ -112,36 +82,9 @@ describe("Password change via UI", () => {
     });
 
     // 2. Sign up via Better Auth
-    const signUpRes = await fetch(`${BASE_URL}/api/auth/sign-up/email`, {
-      method: "POST",
-      headers: AUTH_HEADERS,
-      body: JSON.stringify({
-        name: TEST_USER.name,
-        email: TEST_USER.email,
-        password: TEST_USER.password,
-      }),
-    });
-    if (!signUpRes.ok) {
-      throw new Error(`Sign-up failed: ${signUpRes.status} ${await signUpRes.text()}`);
-    }
+    await ensureSignedUp(TEST_USER);
 
-    // 3. Try to sign in immediately -- if email verification is not required
-    //    (MAIL_URL not set), the account is already active after sign-up.
-    //    Only fall back to Mailhog verification if the sign-in fails.
-    const quickSignIn = await fetch(`${BASE_URL}/api/auth/sign-in/email`, {
-      method: "POST",
-      headers: AUTH_HEADERS,
-      body: JSON.stringify({ email: TEST_USER.email, password: TEST_USER.password }),
-      redirect: "manual",
-    });
-
-    if (!quickSignIn.ok && quickSignIn.status !== 302) {
-      // Email verification required -- fetch the link from Mailhog
-      const verifyUrl = await getVerificationUrl(TEST_USER.email);
-      await fetch(verifyUrl, { redirect: "manual" });
-    }
-
-    // 4. Sign in and save storage state for browser tests
+    // 3. Sign in and save storage state for browser tests
     await signInAndSaveState(TEST_USER.email, TEST_USER.password);
   });
 
