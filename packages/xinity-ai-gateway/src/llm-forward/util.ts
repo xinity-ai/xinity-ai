@@ -1,6 +1,6 @@
 import type { Logger } from "common-log";
 import { recordBackendError } from "../metrics";
-import { BLOCKED_REQUEST_PARAM_PREFIXES } from "xinity-infoserver";
+import { BLOCKED_REQUEST_PARAM_PREFIXES } from "common-env/model-catalog";
 import { isMediaPartInvalid, isMediaTooLarge, isMediaTypeUnsupported } from "../media-store";
 import type { ModelLookupFailure } from "./model-data";
 

@@ -1,4 +1,5 @@
-import { nearestIncompatibility, type IncompatibilityReason, type ModelWithSpecifier } from "xinity-infoserver";
+import { nearestIncompatibility, type IncompatibilityReason } from "common-env/model-catalog/incompatibility";
+import type { ModelWithSpecifier } from "common-env/model-catalog";
 
 export type ModelGroup = {
   leader: ModelWithSpecifier;

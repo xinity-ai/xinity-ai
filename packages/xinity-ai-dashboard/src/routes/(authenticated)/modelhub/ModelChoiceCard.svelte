@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { IncompatibilityReason, ModelWithSpecifier } from "xinity-infoserver";
+  import type { IncompatibilityReason, ModelWithSpecifier } from "common-env/model-catalog";
   import { formatGb, humanMonthYear } from "$lib/util";
   import { isRecentlyAdded } from "./model-recency";
   import { Badge } from "$lib/components/ui/badge";

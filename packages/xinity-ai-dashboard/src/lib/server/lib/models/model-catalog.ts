@@ -16,7 +16,7 @@ import {
   resolveRequiredFeaturesForDriver,
   resolveRequiredPlatformsForDriver,
   type Provider,
-} from "xinity-infoserver";
+} from "common-env/model-catalog";
 import { config } from "$lib/server/config";
 import { rootLogger } from "$lib/server/logging";
 

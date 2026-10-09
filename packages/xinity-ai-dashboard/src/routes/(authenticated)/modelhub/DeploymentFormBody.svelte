@@ -1,6 +1,7 @@
 <script lang="ts">
   import { slide } from "svelte/transition";
-  import type { ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
+  import type { ModelWithSpecifier, NodeCapability } from "common-env/model-catalog";
+  import type { ModelCompatibility } from "$lib/server/orpc/procedures/cluster.procedure";
   import ModelSelectorModal from "./ModelSelectorModal.svelte";
   import DeploymentModelTile from "./DeploymentModelTile.svelte";
   import DeploymentCapacitySummary from "./DeploymentCapacitySummary.svelte";
@@ -41,6 +42,7 @@
     showTrafficSlider = true,
     maxNodeFreeCapacity = Infinity,
     nodeCapabilities = [],
+    modelCompatibility = {},
     enabled = true,
     capacityChecked = false,
     capacityBlocked = false,
@@ -77,6 +79,7 @@
     showTrafficSlider?: boolean;
     maxNodeFreeCapacity?: number;
     nodeCapabilities?: NodeCapability[];
+    modelCompatibility?: ModelCompatibility;
     enabled?: boolean;
     capacityChecked?: boolean;
     capacityBlocked?: boolean;
@@ -465,6 +468,7 @@
   bind:open={showModelSelector}
   maxNodeFreeCapacity={selectorCapacity}
   {nodeCapabilities}
+  {modelCompatibility}
   onSelect={handleModelSelect}
   onClose={() => (showModelSelector = false)}
 />

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { ModelLicense, ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
+  import type { ModelLicense, ModelWithSpecifier, NodeCapability } from "common-env/model-catalog";
+  import type { ModelCompatibility } from "$lib/server/orpc/procedures/cluster.procedure";
   import Modal from "$lib/components/Modal.svelte";
   import DeploymentFormBody from "./DeploymentFormBody.svelte";
   import { orpc } from "$lib/orpc/orpc-client";
@@ -25,6 +26,7 @@
     maxNodeFreeCapacity = Infinity,
     nodeFreeCapacities = [],
     nodeCapabilities = [],
+    modelCompatibility = {},
     onSaved = async () => {},
   }: {
     open: boolean;
@@ -33,6 +35,7 @@
     maxNodeFreeCapacity?: number;
     nodeFreeCapacities?: number[];
     nodeCapabilities?: NodeCapability[];
+    modelCompatibility?: ModelCompatibility;
     onSaved?: () => Promise<void>;
   } = $props();
 
@@ -458,6 +461,7 @@
           selectedCanaryModel={selectedCanaryModel ?? undefined}
           {maxNodeFreeCapacity}
           {nodeCapabilities}
+          {modelCompatibility}
           {maxReplicas}
           {enabled}
           {capacityChecked}

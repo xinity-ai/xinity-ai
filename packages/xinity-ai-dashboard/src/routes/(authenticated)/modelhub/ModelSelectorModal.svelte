@@ -1,7 +1,8 @@
 <script lang="ts">
   import Modal from "$lib/components/Modal.svelte";
-  import type { Engine, IncompatibilityReason, ModelType, ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
-  import { EngineEnum, blockedVersionNotes, explainClusterIncompatibility } from "xinity-infoserver";
+  import type { Engine, IncompatibilityReason, ModelType, ModelWithSpecifier, NodeCapability } from "common-env/model-catalog";
+  import { EngineEnum } from "common-env/model-catalog/definitions/model-primitives";
+  import type { ModelCompatibility } from "$lib/server/orpc/procedures/cluster.procedure";
   import { modelCatalog } from "$lib/state/model-catalog.svelte";
   import { formatGb } from "$lib/util";
   import { groupModelVariants, groupIncompatibility, type ModelGroup } from "./model-groups";
@@ -52,12 +53,14 @@
     onClose,
     maxNodeFreeCapacity = Infinity,
     nodeCapabilities = [],
+    modelCompatibility = {},
   }: {
     open: boolean;
     onSelect: (model: ModelWithSpecifier) => void;
     onClose: () => void;
     maxNodeFreeCapacity?: number;
     nodeCapabilities?: NodeCapability[];
+    modelCompatibility?: ModelCompatibility;
   } = $props();
 
   // --- Filter State ---
@@ -183,16 +186,16 @@
   }
 
   function undeployableReason(model: ModelWithSpecifier): IncompatibilityReason | null {
-    // Without a cluster snapshot the only thing knowable is whether it could ever fit.
-    if (nodeCapabilities.length === 0) {
-      return model.sizing.weightGb + model.sizing.minKvCacheGb > maxNodeFreeCapacity ? "insufficient_capacity" : null;
+    const verdict = modelCompatibility[model.publicSpecifier];
+    if (verdict) {
+      return verdict.incompatibility;
     }
-    return explainClusterIncompatibility(nodeCapabilities, model);
+    // Without a cluster verdict the only thing knowable is whether it could ever fit.
+    return model.sizing.weightGb + model.sizing.minKvCacheGb > maxNodeFreeCapacity ? "insufficient_capacity" : null;
   }
 
   function blockedReleaseNote(model: ModelWithSpecifier): string | undefined {
-    const notes = blockedVersionNotes(nodeCapabilities, model);
-    return notes.length > 0 ? notes.join(" ") : undefined;
+    return modelCompatibility[model.publicSpecifier]?.blockedReleaseNote;
   }
 
   function handleSelect(model: ModelWithSpecifier) {

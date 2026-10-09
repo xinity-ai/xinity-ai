@@ -1,6 +1,6 @@
 import "zod/compile";
 
-import { createLegacyModelJsonSchema, createModelJsonSchema } from "./definitions/model-definition";
+import { createLegacyModelJsonSchema, createModelJsonSchema } from "common-env/model-catalog";
 import { version } from "../../package.json";
 import { config } from "./config";
 import { rootLogger } from "./logger";

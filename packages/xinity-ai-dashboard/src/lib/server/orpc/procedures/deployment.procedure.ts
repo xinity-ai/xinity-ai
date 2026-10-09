@@ -8,7 +8,7 @@ import { installationOnLiveNode } from "$lib/server/lib/deployments/node-livenes
 import { syncDeployedModels } from "$lib/server/lib/deployments/orchestration";
 import { resolveSchedulable, resolvesOnlyAsLegacy } from "$lib/server/lib/models/model-catalog";
 import { buildClusterCapacity } from "./cluster.procedure";
-import { checkNodeCompatibility, type ModelNodeRequirements } from "xinity-infoserver";
+import { checkNodeCompatibility, type ModelNodeRequirements } from "common-env/model-catalog";
 import { rootLogger } from "$lib/server/logging";
 import { foldDeploymentStatusRows } from "$lib/server/lib/deployments/deployment-status";
 import { findOrgName } from "$lib/server/lib/org-queries";

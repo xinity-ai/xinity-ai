@@ -1,7 +1,7 @@
 import { describe, test, expect, mock, jest, beforeEach, afterEach, spyOn } from "bun:test";
 import { drizzle, modelDeploymentT } from "common-db";
 import { redis } from "../redis";
-import type { LegacyModel, Model } from "xinity-infoserver";
+import type { LegacyModel, Model } from "common-env/model-catalog";
 import type { ModelInfo, ModelLookup } from "./model-data";
 
 mock.module("../env", () => ({
@@ -53,7 +53,7 @@ function resolveRequestParamsForDriver(model: MockLegacyModel, driver: "vllm" | 
   return model.requestParams?.[driver] ?? {};
 }
 
-mock.module("xinity-infoserver", () => ({
+mock.module("common-env/model-catalog", () => ({
   createCatalogClient: () => ({
     lookup: mockLookup,
   }),

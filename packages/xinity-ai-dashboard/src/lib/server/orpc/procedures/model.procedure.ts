@@ -1,7 +1,7 @@
 /** Public infoserver reference data, and onboarding reads it before an organization exists. */
 import { rootOs, withAuth } from "../root";
 import z from "zod";
-import { ModelFields } from "xinity-infoserver";
+import { ModelFields } from "common-env/model-catalog";
 import { catalogClient } from "$lib/server/lib/models/model-catalog";
 
 const ModelWithSpecifierSchema = ModelFields.extend({

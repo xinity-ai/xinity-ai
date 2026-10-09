@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ModelWithSpecifier, NodeCapability } from "xinity-infoserver";
+  import type { ModelWithSpecifier, NodeCapability } from "common-env/model-catalog";
   import { formatGb } from "$lib/util";
   import { HardDrive, CircleCheck, CircleAlert, Info } from "@lucide/svelte";
 

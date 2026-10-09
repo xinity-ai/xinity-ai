@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import type { IncompatibilityReason, ModelWithSpecifier } from "xinity-infoserver";
+import type { IncompatibilityReason, ModelWithSpecifier } from "common-env/model-catalog";
 import { groupModelVariants, groupIncompatibility } from "./model-groups";
 
 function makeModel(publicSpecifier: string, variantOf?: string): ModelWithSpecifier {

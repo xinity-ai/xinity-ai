@@ -31,7 +31,7 @@ import {
   sql,
   inArray,
 } from "common-db";
-import type { GpuInfo } from "xinity-infoserver";
+import type { GpuInfo } from "common-env/model-catalog";
 
 const SIM_DEPLOYMENT_PREFIX = "demo:";
 const TICK_MS = 10_000;

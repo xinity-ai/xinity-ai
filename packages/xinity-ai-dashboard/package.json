@@ -51,7 +51,6 @@
 		"typescript": "catalog:",
 		"vite": "^7.3.3",
 		"vite-plugin-devtools-json": "^1.0.0",
-		"xinity-infoserver": "workspace:*",
 		"zod": "catalog:"
 	},
 	"dependencies": {

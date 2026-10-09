@@ -3,7 +3,7 @@
  *
  * Turns a model-file entry plus a target machine's hardware profile into the
  * facts needed to build a vLLM command and to decide whether the model may run
- * here at all. Imports only xinity-infoserver so it stays free of the daemon's
+ * here at all. Imports only common-env/model-catalog so it stays free of the daemon's
  * runtime/db dependencies and is cheap to unit-test.
  */
 import {
@@ -16,7 +16,7 @@ import {
   type NodeCapability,
   type ModelNodeRequirements,
   type IncompatibilityReason,
-} from "xinity-infoserver";
+} from "common-env/model-catalog";
 
 /** Minimal machine description the resolver needs; a subset of HardwareProfile. */
 export type MachineProfile = {

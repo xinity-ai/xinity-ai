@@ -2,7 +2,7 @@ import { call } from "@orpc/server";
 import { isRedirect, isHttpError } from "@sveltejs/kit";
 import { router } from "$lib/server/orpc/router";
 import { catalogClient } from "$lib/server/lib/models/model-catalog";
-import type { ModelType, ModelWithSpecifier } from "xinity-infoserver";
+import type { ModelType, ModelWithSpecifier } from "common-env/model-catalog";
 import type { DeploymentWithStatus } from "$lib/orpc/dtos/model.dto";
 
 export type OrgModel = {

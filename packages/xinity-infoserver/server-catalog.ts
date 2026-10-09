@@ -11,7 +11,7 @@ import {
   RelayedModelSchema,
   kvCacheMismatch,
   unsupportedVocabulary,
-} from "./definitions/model-definition";
+} from "common-env/model-catalog";
 import { createCatalog, type FileParseOutcome } from "./catalog";
 import { rootLogger } from "./logger";
 import { z } from "zod";

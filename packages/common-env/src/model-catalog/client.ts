@@ -7,7 +7,7 @@ import {
 } from "./definitions/model-definition";
 import { resolveTagsForDriver, resolveAllTags, resolveArgsForDriver, resolveRequestParamsForDriver, type RequestParamMap } from "./model-tags";
 import { satisfiesMinVersion } from "./semver";
-import { version } from "../../package.json";
+import { version } from "../../../../package.json";
 
 export type CatalogClientConfig = {
   /** Base URL of the infoserver (e.g. "http://localhost:8090"). */

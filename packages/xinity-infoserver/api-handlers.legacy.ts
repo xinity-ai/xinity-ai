@@ -4,7 +4,7 @@
  * together with the format they serve.
  */
 import { legacyCatalog } from "./server-catalog";
-import { resolveAllTags } from "./model-tags";
+import { resolveAllTags } from "common-env/model-catalog";
 import { ModelListQuerySchema } from "./api-schemas";
 import { z } from "zod";
 

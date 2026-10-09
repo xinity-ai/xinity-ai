@@ -16,7 +16,7 @@ import {
   estimateConcurrency,
   normalizePep440,
   type ConcurrencyEstimate,
-} from "xinity-infoserver";
+} from "common-env/model-catalog";
 import {
   resolveVllmModel,
   checkVllmCompatibility,

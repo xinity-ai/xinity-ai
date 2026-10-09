@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Badge } from "$lib/components/ui/badge";
-  import type { ModelLicense } from "xinity-infoserver";
+  import type { ModelLicense } from "common-env/model-catalog";
 
   let { license, class: className = "" }: { license: ModelLicense; class?: string } = $props();
 

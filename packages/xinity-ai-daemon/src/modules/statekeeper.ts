@@ -8,7 +8,7 @@ import { $ } from "bun";
 import { config } from "../config";
 import { networkInterfaces } from "node:os";
 import { detectHardwareProfile, detectNodeName, type HardwareProfile } from "./hardware-detect";
-import { normalizePep440 } from "xinity-infoserver";
+import { normalizePep440 } from "common-env/model-catalog";
 import { rootLogger } from "../logger";
 import { detectVllmFeatures, resolvePythonForVllm } from "./vllm-features";
 
