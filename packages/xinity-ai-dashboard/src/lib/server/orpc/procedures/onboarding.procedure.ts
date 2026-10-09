@@ -140,10 +140,7 @@ const setupOnboarding = rootOs
     };
   });
 
-/**
- * Full CLI onboarding: creates a user, organization, and dashboard API key in one step.
- * Does NOT require authentication; this is the entry point for first-time CLI setup.
- */
+// Unauthenticated and marks an unproven email verified, which is only safe while nobody else could own that address.
 const cli = rootOs
   .meta({ mcp: false, audit: { action: "onboarding.cli", resource: "user", captureInput: ["email", "orgName"] } })
   .use(auditMiddleware)
@@ -152,7 +149,7 @@ const cli = rootOs
     method: "POST",
     tags: ["Onboarding"],
     summary: "Full CLI onboarding: user + org + dashboard API key",
-    description: "Unauthenticated endpoint for first-time CLI setup. Creates a user, marks email as verified, creates an organization with owner membership, and returns a dashboard API key.",
+    description: "Unauthenticated endpoint for first-time CLI setup, available only while the instance has no users. Creates a user, marks email as verified, creates an organization with owner membership, and returns a dashboard API key.",
   })
   .input(z.object({
     name: z.string().min(1).describe("User display name"),
@@ -171,6 +168,13 @@ const cli = rootOs
     const rlog = log.child({ traceId: context.traceId });
     if (!config.auth.signupEnabled()) {
       throw errors.FORBIDDEN({ message: "User signup is currently disabled" });
+    }
+
+    const [existingUser] = await getDB().select({ id: userT.id }).from(userT).limit(1);
+    if (existingUser) {
+      throw errors.FORBIDDEN({
+        message: "This instance is already set up. Sign up in the dashboard, or ask an instance admin to create your account.",
+      });
     }
 
     if (!config.auth.multiTenantMode && !isInstanceAdmin(input.email)) {
