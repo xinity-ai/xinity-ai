@@ -1,4 +1,4 @@
-import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { describe, test, expect, mock, beforeEach, jest } from "bun:test";
 import { TransactionRollbackError } from "common-db";
 
 const mockReturning = mock(() => Promise.resolve([{ id: "node-1" }] as { id: string }[]));
@@ -78,6 +78,27 @@ const registration = {
   publicKey: "pub-key-1",
   signature: "sig",
 };
+
+async function waitForInserts(count: number): Promise<void> {
+  const deadline = Date.now() + 2_000;
+  while (mockInsert.mock.calls.length < count) {
+    if (Date.now() > deadline) {
+      throw new Error(`expected ${count} inserts, saw ${mockInsert.mock.calls.length}`);
+    }
+    await Bun.sleep(10);
+  }
+}
+
+function insertedValues(call: number): Array<{ id: string; lifecycleState: string }> {
+  return (mockInsertValues.mock.calls as unknown as unknown[][])[call]![0] as Array<{ id: string; lifecycleState: string }>;
+}
+
+function holdNextInsert(): (err: Error) => void {
+  let reject!: (err: Error) => void;
+  mockOnConflictDoUpdate.mockImplementationOnce(() =>
+    Object.assign(new Promise<void>((_, rej) => { reject = rej; }), { returning: mockReturning }));
+  return (err) => reject(err);
+}
 
 describe("writeRegistration", () => {
   beforeEach(() => {
@@ -234,9 +255,57 @@ describe("queueInstallationStates", () => {
 
     queueInstallationStates([{ installationId: "inst-retry", lifecycleState: "ready" }]);
 
-    await Bun.sleep(500);
+    await waitForInserts(2);
+    expect(insertedValues(0).map((v) => v.id)).toEqual(["inst-retry"]);
+  });
 
-    expect(mockInsert).toHaveBeenCalledTimes(2);
+  test("a state queued while a failing flush is in flight wins over the failed batch", async () => {
+    const rejectFirst = holdNextInsert();
+
+    queueInstallationStates([{ installationId: "inst-race", lifecycleState: "downloading", progress: 0.5 }]);
+    await waitForInserts(1);
+    queueInstallationStates([{ installationId: "inst-race", lifecycleState: "ready" }]);
+    rejectFirst(new Error("database unavailable"));
+
+    await waitForInserts(2);
+    expect(insertedValues(1)).toEqual([expect.objectContaining({ id: "inst-race", lifecycleState: "ready" })]);
+  });
+
+  test("drops states of installations that vanished when the insert hits a foreign key violation", async () => {
+    const foreignKeyViolation = Object.assign(new Error("violates foreign key constraint"), { code: "23503" });
+    mockInsert.mockImplementationOnce(() => {
+      throw new Error("Failed query", { cause: foreignKeyViolation });
+    });
+    mockSelectRows.mockImplementation(() => Promise.resolve([{ id: "inst-kept" }]));
+
+    queueInstallationStates([
+      { installationId: "inst-kept", lifecycleState: "ready" },
+      { installationId: "inst-gone", lifecycleState: "ready" },
+    ]);
+
+    await waitForInserts(2);
+    expect(insertedValues(0).map((v) => v.id)).toEqual(["inst-kept"]);
+  });
+
+  test("a flush failing during flushAndStop schedules no retry", async () => {
+    const rejectFirst = holdNextInsert();
+    queueInstallationStates([{ installationId: "inst-stop", lifecycleState: "ready" }]);
+    await waitForInserts(1);
+
+    mockInsert.mockImplementationOnce(() => {
+      throw new Error("database unavailable");
+    });
+    jest.useFakeTimers();
+    try {
+      const stopping = flushAndStop();
+      rejectFirst(new Error("database unavailable"));
+      await stopping;
+
+      expect(mockInsert).toHaveBeenCalledTimes(2);
+      expect(jest.getTimerCount()).toBe(0);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test("merges reports from different daemons into one batch", async () => {

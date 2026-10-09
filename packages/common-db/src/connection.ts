@@ -35,7 +35,7 @@ const NO_TABLE_CODES = new Set([
 ]);
 
 /** Drizzle wraps driver errors, so the SQLSTATE is on `cause`, not on the error we catch. */
-function driverErrorCode(err: unknown): string | null {
+export function driverErrorCode(err: unknown): string | null {
   let current: unknown = err;
   for (let depth = 0; current instanceof Error && depth < 5; depth++) {
     const { code } = current as Error & { code?: unknown };

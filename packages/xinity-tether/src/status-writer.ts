@@ -1,4 +1,4 @@
-import { aiNodeT, inArray, modelInstallationStateT, modelInstallationT, sql, TransactionRollbackError } from "common-db";
+import { aiNodeT, driverErrorCode, inArray, modelInstallationStateT, modelInstallationT, sql, TransactionRollbackError } from "common-db";
 import { keyFingerprint } from "common-env";
 import type { NodeRegistration, InstallationStatePayload } from "common-env";
 import { getDB } from "./db";
@@ -103,71 +103,112 @@ export async function partitionOwnedStates(
 }
 
 const FLUSH_INTERVAL_MS = 200;
+const MAX_RETRY_DELAY_MS = 30_000;
+const FOREIGN_KEY_VIOLATION = "23503";
 const pendingStates = new Map<string, InstallationStatePayload>();
 let flushTimer: Timer | null = null;
+let flushing: Promise<void> | null = null;
+let failedFlushes = 0;
 
 export function queueInstallationStates(states: InstallationStatePayload[]): void {
   for (const state of states) {
     pendingStates.set(state.installationId, state);
   }
-  if (flushTimer === null && pendingStates.size > 0) {
-    flushTimer = setTimeout(() => void flushPending(), FLUSH_INTERVAL_MS);
-  }
+  scheduleFlush();
 }
 
-async function flushPending(retry = true): Promise<void> {
-  flushTimer = null;
-  if (pendingStates.size === 0) {
+// One flush at a time, so an older batch can never land after a newer one. A running flush schedules the next itself.
+function scheduleFlush(): void {
+  if (flushTimer !== null || flushing !== null || pendingStates.size === 0) {
+    return;
+  }
+  const delayMs = Math.min(FLUSH_INTERVAL_MS * 2 ** failedFlushes, MAX_RETRY_DELAY_MS);
+  flushTimer = setTimeout(async () => {
+    flushTimer = null;
+    flushing = flushPending();
+    await flushing;
+    flushing = null;
+    scheduleFlush();
+  }, delayMs);
+}
+
+async function flushPending(): Promise<void> {
+  const batch = [...pendingStates.values()];
+  pendingStates.clear();
+  if (batch.length === 0) {
     return;
   }
 
-  const batch = [...pendingStates.values()];
-  pendingStates.clear();
-
   try {
-    const values = batch.map((s) => ({
-      id: s.installationId,
-      lifecycleState: s.lifecycleState,
-      progress: s.progress ?? null,
-      statusMessage: s.statusMessage ?? null,
-      errorMessage: s.errorMessage ?? null,
-      failureLogs: s.failureLogs ?? null,
-    }));
-
-    await getDB()
-      .insert(modelInstallationStateT)
-      .values(values)
-      .onConflictDoUpdate({
-        target: modelInstallationStateT.id,
-        set: {
-          lifecycleState: sql`excluded.lifecycle_state`,
-          progress: sql`excluded.progress`,
-          statusMessage: sql`excluded.status_message`,
-          errorMessage: sql`excluded.error_message`,
-          failureLogs: sql`excluded.failure_logs`,
-        },
-      });
-
-    log.debug({ count: batch.length }, "Batch state flush completed");
+    await writeStates(batch);
+    failedFlushes = 0;
   } catch (err) {
-    for (const state of batch) {
+    failedFlushes++;
+    log.error({ err, count: batch.length }, "Batch state flush failed");
+    for (const state of await withoutVanishedInstallations(batch, err)) {
       if (!pendingStates.has(state.installationId)) {
         pendingStates.set(state.installationId, state);
       }
     }
-
-    if (retry && flushTimer === null && pendingStates.size > 0) {
-      flushTimer = setTimeout(() => void flushPending(), FLUSH_INTERVAL_MS);
-    }
-
-    log.error({ err, count: batch.length }, "Batch state flush failed");
   }
 }
 
+async function writeStates(batch: InstallationStatePayload[]): Promise<void> {
+  const values = batch.map((s) => ({
+    id: s.installationId,
+    lifecycleState: s.lifecycleState,
+    progress: s.progress ?? null,
+    statusMessage: s.statusMessage ?? null,
+    errorMessage: s.errorMessage ?? null,
+    failureLogs: s.failureLogs ?? null,
+  }));
+
+  await getDB()
+    .insert(modelInstallationStateT)
+    .values(values)
+    .onConflictDoUpdate({
+      target: modelInstallationStateT.id,
+      set: {
+        lifecycleState: sql`excluded.lifecycle_state`,
+        progress: sql`excluded.progress`,
+        statusMessage: sql`excluded.status_message`,
+        errorMessage: sql`excluded.error_message`,
+        failureLogs: sql`excluded.failure_logs`,
+      },
+    });
+}
+
+// A state for an installation hard-deleted after it was queued fails the whole insert on every retry.
+async function withoutVanishedInstallations(
+  batch: InstallationStatePayload[],
+  err: unknown,
+): Promise<InstallationStatePayload[]> {
+  if (driverErrorCode(err) !== FOREIGN_KEY_VIOLATION) {
+    return batch;
+  }
+  const existing = await getDB()
+    .select({ id: modelInstallationT.id })
+    .from(modelInstallationT)
+    .where(inArray(modelInstallationT.id, batch.map((s) => s.installationId)))
+    .catch(() => null);
+  if (existing === null) {
+    return batch;
+  }
+  const existingIds = new Set(existing.map((row) => row.id));
+  const vanished = batch.filter((s) => !existingIds.has(s.installationId)).map((s) => s.installationId);
+  if (vanished.length > 0) {
+    log.warn({ installationIds: vanished }, "Dropping states of installations that no longer exist");
+  }
+  return batch.filter((s) => existingIds.has(s.installationId));
+}
+
+// The running flush schedules a retry as it settles, so the timer is cleared only after waiting for it.
 export async function flushAndStop(): Promise<void> {
+  await flushing;
   if (flushTimer !== null) {
     clearTimeout(flushTimer);
     flushTimer = null;
   }
-  await flushPending(false);
+  await flushPending();
 }
+
