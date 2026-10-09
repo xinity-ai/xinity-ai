@@ -11,7 +11,7 @@ import { building } from "$app/environment";
 import { startDeploymentSyncService } from "$lib/server/lib/deployments/orchestration";
 import { startNotificationScheduler } from "$lib/server/notifications/scheduler";
 import { config, configStore } from "$lib/server/config";
-import { checkMigrationState, isMigrationOk } from "$lib/server/lib/instance/migration-check";
+import { checkMigrationState, exitWhenMigrationsSettle, isMigrationOk } from "$lib/server/lib/instance/migration-check";
 import { DYNAMIC_CONFIG_CHANNEL, logMigrationFailureFatal, readDynamicConfig } from "common-db";
 import { createDbConfigFeed, createSecretUnsealer } from "common-env";
 import { getDB, subscribe } from "$lib/server/db";
@@ -27,6 +27,10 @@ const migrationState = await checkMigrationState();
 if (migrationState.status === "unreachable") {
   logMigrationFailureFatal(migrationState, log, "dashboard");
   process.exit(1);
+}
+
+if (!isMigrationOk()) {
+  exitWhenMigrationsSettle();
 }
 
 /**

@@ -56,12 +56,12 @@
           or manually with
           <code class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-800 text-xs">cd packages/common-db && bun run migrate</code>
         </li>
-        <li>Restart the dashboard after migrations complete.</li>
+        <li>Wait a moment. The dashboard checks again every few seconds and restarts on its own once the migrations are applied.</li>
       </ol>
     </div>
 
     <p class="text-xs text-gray-400 text-center">
-      The migration check runs once at startup. The dashboard must be restarted after applying migrations.
+      If this page stays, reload it in a minute. The dashboard restarts periodically to check again.
     </p>
   </div>
 </div>
