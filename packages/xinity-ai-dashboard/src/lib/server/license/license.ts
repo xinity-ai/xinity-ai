@@ -10,6 +10,8 @@ const log = rootLogger.child({ name: "license" });
 const GRACE_PERIOD_DAYS = 30;
 const FREE_MAX_VRAM_GB = 120;
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
+// Lets unlicensed development and e2e runs exercise restricted roles. Neither development nor test mode is secure.
+const NON_PRODUCTION_FEATURES: readonly LicenseFeature[] = ["all-roles"];
 
 let cachedLicense: LicenseInfo | null = null;
 
@@ -171,6 +173,9 @@ export function isLicenseEffective(): boolean {
  * Expired licenses beyond grace period are treated as free tier (no features).
  */
 export function hasFeature(feature: LicenseFeature): boolean {
+  if (config.nodeEnv !== "production" && NON_PRODUCTION_FEATURES.includes(feature)) {
+    return true;
+  }
   return effectiveLicensePayload()?.features.includes(feature) ?? false;
 }
 

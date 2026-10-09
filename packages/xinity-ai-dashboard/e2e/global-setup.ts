@@ -1,5 +1,5 @@
 /**
- * API-based setup: creates test users via /api/onboarding/cli,
+ * API-based setup: bootstraps the owner via /api/onboarding/cli, signs the viewer up through Better Auth,
  * signs them in to get session cookies, saves Playwright storage state files.
  *
  * Can be run standalone (`bun run e2e/global-setup.ts`) or imported.
@@ -14,6 +14,7 @@ import {
 } from "./utils/test-data";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { ensureSignedUp } from "./utils/sign-up";
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -123,9 +124,10 @@ async function onboardUser(user: { name: string; email: string; password: string
 
   if (!res.ok) {
     const body = await res.text();
-    // CONFLICT means user/org already exists, recover by signing in
-    if (res.status === 409) {
-      console.log(`  User ${user.email} or org "${orgName}" already exists, recovering...`);
+    // CONFLICT means user/org already exists, FORBIDDEN that the instance was bootstrapped already. Both recover by signing in.
+    if (res.status === 409 || res.status === 403) {
+      console.log(`  ${body}`);
+      console.log(`  Recovering ${user.email} by signing in.`);
       return recoverExistingUser(user, orgName);
     }
     throw new Error(`Onboarding failed for ${user.email}: ${res.status} ${body}`);
@@ -319,13 +321,13 @@ export async function runSetup(): Promise<{ ownerApiKey: string; orgId: string }
   ownerCookieStr = await setActiveOrg(ownerResult.orgId, ownerCookieStr);
   await writeStorageState(STORAGE_STATE.owner, parseCookiesFromString(ownerCookieStr));
 
-  // ── 3. Create viewer user ─────────────────────────────────────
-  console.log("  Creating viewer user...");
-  await onboardUser(VIEWER, `${TEST_ORG.name} Viewer Temp`);
-
-  // ── 4. Invite viewer to owner's org ───────────────────────────
+  // ── 3. Invite viewer to owner's org ───────────────────────────
   console.log("  Inviting viewer to org...");
   await inviteMember(VIEWER.email, "viewer", ownerResult.orgId, ownerCookieStr);
+
+  // ── 4. Create viewer user ─────────────────────────────────────
+  console.log("  Creating viewer user...");
+  await ensureSignedUp(VIEWER);
 
   // ── 5. Accept invitation as viewer ────────────────────────────
   console.log("  Accepting invitation as viewer...");
