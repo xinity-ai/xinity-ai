@@ -278,6 +278,19 @@ async function resolveReleaseMigrations(targetVersion: string): Promise<Migratio
   return { folder, version: release.tagName };
 }
 
+export function describeWithCauses(error: unknown): string {
+  const messages: string[] = [];
+  let current: unknown = error;
+  while (current instanceof Error && messages.length < 5) {
+    messages.push(current.message.trim());
+    current = current.cause;
+  }
+  if (messages.length === 0) {
+    return String(error);
+  }
+  return messages.join("\ncaused by: ");
+}
+
 /** Resolve the migrations for the target version and apply them to the database. */
 export async function runMigrations(opts: {
   connectionUrl: string;
@@ -315,7 +328,7 @@ export async function runMigrations(opts: {
     pass("Migrate", "All pending migrations applied successfully");
   } catch (e) {
     spinner.stop("Failed");
-    const msg = e instanceof Error ? e.message : String(e);
+    const msg = describeWithCauses(e);
     fail("Migrate", msg);
     errors.push(msg);
     return { success: false, errors };
