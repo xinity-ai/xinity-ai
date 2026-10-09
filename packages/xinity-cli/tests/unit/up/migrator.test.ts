@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { join, resolve } from "node:path";
 import type { Host } from "../../../src/lib/core/host.ts";
-import { describeMigrationStep, runMigrations } from "../../../src/lib/up/migrator.ts";
+import { describeMigrationStep, describeWithCauses, runMigrations } from "../../../src/lib/up/migrator.ts";
 
 const REPO_ROOT = resolve(import.meta.dir, "../../../../..");
 const MIGRATIONS_IN_REPO = "packages/common-db/db-migration";
@@ -59,5 +59,18 @@ describe("runMigrations with a local target", () => {
   test("the repository folder carries the layout drizzle's migrator expects", async () => {
     const journal = join(REPO_ROOT, MIGRATIONS_IN_REPO, "meta/_journal.json");
     expect(await Bun.file(journal).exists()).toBe(true);
+  });
+});
+
+describe("describeWithCauses", () => {
+  test("surfaces the driver error drizzle wraps in cause", () => {
+    const driverError = new Error("permission denied for database xinity");
+    const queryError = new Error("Failed query: CREATE SCHEMA IF NOT EXISTS \"drizzle\"\nparams: ", { cause: driverError });
+    expect(describeWithCauses(queryError))
+      .toBe("Failed query: CREATE SCHEMA IF NOT EXISTS \"drizzle\"\nparams:\ncaused by: permission denied for database xinity");
+  });
+
+  test("stringifies non-errors", () => {
+    expect(describeWithCauses("boom")).toBe("boom");
   });
 });
