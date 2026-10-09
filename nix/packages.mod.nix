@@ -1,8 +1,8 @@
-{ self, ... }:
+{ lib, ... }:
 {
   perSystem = { pkgs, ... }:
     let
-      releaseInfo = builtins.fromJSON (builtins.readFile "${self}/nix/release.json");
+      releaseInfo = lib.importJSON ./release.json;
 
       releaseUrl = path:
         "https://github.com/xinity-ai/xinity-ai/releases/download/${releaseInfo.tag}/${path}";

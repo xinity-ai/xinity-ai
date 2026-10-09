@@ -1,7 +1,6 @@
-{ withSystem, ... }: {
-  flake.nixosModules.dashboard = { config, lib, pkgs, ... }:
+{ moduleWithSystem, ... }: {
+  flake.nixosModules.dashboard = moduleWithSystem ({ self' }: { config, lib, pkgs, ... }:
     let
-      withHostSystem = withSystem pkgs.stdenv.hostPlatform.system;
       cfg = config.services.xinity-ai-dashboard;
       s3Options = import ./lib/s3-options.nix { inherit lib; };
       dynamicConfig = import ./lib/dynamic-config.nix { inherit lib; };
@@ -61,7 +60,7 @@
 
         package = lib.mkOption {
           type = lib.types.package;
-          default = withHostSystem ({ config, ... }: config.packages.xinity-ai-dashboard);
+          default = self'.packages.xinity-ai-dashboard;
           description = "The xinity-ai-dashboard package to use. Defaults to the prebuilt release binary for the current platform.";
         };
 
@@ -475,5 +474,5 @@
           };
         };
       };
-    };
+    });
 }

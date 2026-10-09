@@ -3,6 +3,8 @@
     {
       packages.options-doc = let
         nixosStub = ({ lib, ... }: {
+              # moduleWithSystem reads the system from here, a real NixOS evaluation provides it through pkgs.
+              config._module.args.system = pkgs.stdenv.hostPlatform.system;
               options = {
                 assertions = lib.mkOption {
                   type = lib.types.listOf lib.types.unspecified;
@@ -33,7 +35,7 @@
               };
             });
         eval = lib.evalModules {
-          specialArgs = { inherit pkgs self; inherit (self) inputs; withSystem = _: _: {}; };
+          specialArgs = { inherit pkgs self; inherit (self) inputs; };
           modules = with self.nixosModules; [
             gateway
             dashboard

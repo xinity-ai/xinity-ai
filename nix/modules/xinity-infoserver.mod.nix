@@ -1,7 +1,6 @@
-{ withSystem, ... }: {
-  flake.nixosModules.infoserver = { config, lib, pkgs, ... }:
+{ moduleWithSystem, ... }: {
+  flake.nixosModules.infoserver = moduleWithSystem ({ self' }: { config, lib, pkgs, ... }:
     let
-      withHostSystem = withSystem pkgs.stdenv.hostPlatform.system;
       cfg = config.services.xinity-infoserver;
 
       removed = path: message:
@@ -23,7 +22,7 @@
 
         package = lib.mkOption {
           type = lib.types.package;
-          default = withHostSystem ({ config, ... }: config.packages.xinity-infoserver);
+          default = self'.packages.xinity-infoserver;
           description = "The xinity-infoserver package to use. Defaults to the prebuilt release binary for the current platform.";
         };
 
@@ -35,7 +34,7 @@
 
         modelInfoDir = lib.mkOption {
           type = lib.types.path;
-          default = withHostSystem ({ config, ... }: config.packages.xinity-models);
+          default = self'.packages.xinity-models;
           defaultText = lib.literalExpression "pkgs.xinity-models";
           description = ''
             Directory of model YAML files in the current format.
@@ -131,5 +130,5 @@
           };
         };
       };
-    };
+    });
 }

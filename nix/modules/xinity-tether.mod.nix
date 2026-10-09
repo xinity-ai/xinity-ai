@@ -1,7 +1,6 @@
-{ withSystem, ... }: {
-  flake.nixosModules.tether = { config, lib, pkgs, ... }:
+{ moduleWithSystem, ... }: {
+  flake.nixosModules.tether = moduleWithSystem ({ self' }: { config, lib, pkgs, ... }:
     let
-      withHostSystem = withSystem pkgs.stdenv.hostPlatform.system;
       cfg = config.services.xinity-tether;
       dynamicConfig = import ./lib/dynamic-config.nix { inherit lib; };
 
@@ -17,7 +16,7 @@
 
         package = lib.mkOption {
           type = lib.types.package;
-          default = withHostSystem ({ config, ... }: config.packages.xinity-tether);
+          default = self'.packages.xinity-tether;
           description = "The xinity-tether package to use. Defaults to the prebuilt release bundle for the current platform.";
         };
 
@@ -188,5 +187,5 @@
           };
         };
       };
-    };
+    });
 }
