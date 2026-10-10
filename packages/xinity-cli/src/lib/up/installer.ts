@@ -312,6 +312,14 @@ async function backupCurrentBinary(component: Component, host: Host, progress: P
   if (result.success) progress.update(`Previous binary saved to ${binPath}.bak`);
 }
 
+async function restoreBackedUpBinary(component: Component, host: Host): Promise<void> {
+  const binPath = `${BIN_DIR}/${binaryBaseName(component)}`;
+  await host.withElevation(
+    `[ -f ${binPath}.bak ] && mv -f ${binPath}.bak ${binPath} || true`,
+    `Restore ${component} binary`,
+  );
+}
+
 /** Copy the current env file and secrets aside to .bak before reconfiguring. */
 async function backupCurrentConfig(component: Component, host: Host, progress: Progress): Promise<void> {
   const envPath = `${ENV_DIR}/${component}.env`;
@@ -460,6 +468,22 @@ export async function applyComponentAction(
     }
 
     if (action.kind !== "reconfigure") {
+      let archivePath: string;
+      if (action.localArchivePath) {
+        const uploaded = await uploadPrebuiltArtifact(action.localArchivePath, host, progress);
+        if (!uploaded) return { success: false, version: versionString, errors: ["Upload failed"] };
+        archivePath = uploaded;
+      } else if (action.localRepoPath) {
+        const built = await buildAndUploadLocalArtifact(component, action.localRepoPath, host, progress);
+        if (!built) return { success: false, version: versionString, errors: ["Local build failed"] };
+        archivePath = built.archivePath;
+        versionString = built.version;
+      } else {
+        const downloaded = await runSteps(downloadAndVerifyOnHost(action.release!, action.assetName!, host), progress);
+        if (!downloaded) return { success: false, version: versionString, errors: ["Download failed"] };
+        archivePath = downloaded;
+      }
+
       if (isUpdate) {
         await backupCurrentBinary(component, host, progress);
 
@@ -479,24 +503,16 @@ export async function applyComponentAction(
         }
       }
 
-      let archivePath: string;
-      if (action.localArchivePath) {
-        const uploaded = await uploadPrebuiltArtifact(action.localArchivePath, host, progress);
-        if (!uploaded) return { success: false, version: versionString, errors: ["Upload failed"] };
-        archivePath = uploaded;
-      } else if (action.localRepoPath) {
-        const built = await buildAndUploadLocalArtifact(component, action.localRepoPath, host, progress);
-        if (!built) return { success: false, version: versionString, errors: ["Local build failed"] };
-        archivePath = built.archivePath;
-        versionString = built.version;
-      } else {
-        const downloaded = await runSteps(downloadAndVerifyOnHost(action.release!, action.assetName!, host), progress);
-        if (!downloaded) return { success: false, version: versionString, errors: ["Download failed"] };
-        archivePath = downloaded;
-      }
-
       const installed = await runSteps(installBinary(component, archivePath, host), progress);
-      if (!installed) return { success: false, version: versionString, errors: ["Installation failed or skipped"] };
+      if (!installed) {
+        if (isUpdate) {
+          await restoreBackedUpBinary(component, host);
+          if (action.hardReset && action.serviceRunning) {
+            await runSteps(startService(component, host), progress);
+          }
+        }
+        return { success: false, version: versionString, errors: ["Installation failed or skipped"] };
+      }
     }
 
     const binaryChanged = action.kind !== "reconfigure";
