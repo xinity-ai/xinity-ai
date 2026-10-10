@@ -141,6 +141,22 @@ export async function writeStackFile(
 // ─── Start and health ────────────────────────────────────────────────────────
 
 const READY_TIMEOUT_SECONDS = 30;
+const DIAGNOSTIC_LOG_LINES = 30;
+
+function showCommandOutput(output: string): void {
+  if (output) {
+    log.message(dim(output));
+  }
+}
+
+async function showContainerState(host: Host, compose: ComposeCmd, stack: ComposeStack): Promise<void> {
+  const base = composeBaseCommand(compose, stack);
+  const state = await host.withElevation(
+    `${base} ps --all; ${base} logs --tail ${DIAGNOSTIC_LOG_LINES}`,
+    `Collect ${stack.displayName} container state`,
+  );
+  showCommandOutput(state.output);
+}
 
 export function composeUpCommand(compose: ComposeCmd, stack: ComposeStack): string {
   return composeArgs(compose, stackPaths(stack).composePath, "up", "-d").join(" ");
@@ -166,6 +182,7 @@ export async function startStack(
   );
   if (!up.success) {
     fail("Start", `Failed to start the ${stack.displayName} container`);
+    showCommandOutput(up.output);
     return false;
   }
 
@@ -174,6 +191,7 @@ export async function startStack(
   if (!(await waitForReady(opts.ready))) {
     spinner.stop("Timed out");
     fail("Health", `${stack.displayName} container did not become ready within ${READY_TIMEOUT_SECONDS} seconds`);
+    await showContainerState(host, compose, stack);
     return false;
   }
   spinner.stop(`${stack.displayName} is ready`);
