@@ -9,7 +9,7 @@
 import { cancel, isCancel, log, note, select, spinner as clackSpinner, text } from "../core/clack.ts";
 import { bold, cyan, dim } from "picocolors";
 import { type Host, readSecrets } from "../core/host.ts";
-import { pass, info, reportDryRunCommands } from "../core/output.ts";
+import { pass, fail, info, reportDryRunCommands } from "../core/output.ts";
 import { parseEnvString } from "../config/env-file.ts";
 import { randomToken } from "../core/secrets.ts";
 import { SECRETS_DIR, ENV_DIR } from "../core/component-meta.ts";
@@ -188,8 +188,7 @@ export type RedisPlan = {
 
 export async function applyRedisPlan(plan: RedisPlan, host: Host): Promise<boolean> {
   if (plan.provision && !(await applyRedisProvision(plan.provision, host))) return false;
-  if (plan.persist) await persistRedisUrl(host, plan.url);
-  return true;
+  return !plan.persist || persistRedisUrl(host, plan.url);
 }
 
 export function describeRedisPlan(plan: RedisPlan): string[] {
@@ -210,12 +209,17 @@ function redactRedisUrl(url: string): string {
   }
 }
 
-async function persistRedisUrl(host: Host, url: string): Promise<void> {
+async function persistRedisUrl(host: Host, url: string): Promise<boolean> {
   // Only write if the value actually changed.
   const existing = await readSecrets(host, SECRETS_DIR, ["REDIS_URL"], "Read stored Redis URL");
-  if (existing.secrets.REDIS_URL === url) return;
+  if (existing.secrets.REDIS_URL === url) return true;
 
-  await host.withElevation(buildSecretsWriteCommand({ REDIS_URL: url })!, "Store Redis connection URL");
+  const result = await host.withElevation(buildSecretsWriteCommand({ REDIS_URL: url })!, "Store Redis connection URL");
+  if (!result.success) {
+    fail("Config", "Failed to store the Redis connection URL");
+    return false;
+  }
+  return true;
 }
 
 export async function planRedis(host: Host): Promise<RedisPlan | undefined> {
