@@ -166,16 +166,18 @@ export async function downloadAsset(
   return destPath;
 }
 
-/** Fetch and parse SHASUMS256.txt from a release into a Map<filename, hash>. */
+/** Fetch and parse SHASUMS256.txt from a release into a Map<filename, hash>, or null if the release has none. */
 export async function fetchChecksums(
   release: Release,
-): Promise<Map<string, string>> {
+): Promise<Map<string, string> | null> {
   const asset = release.assets.find((a) => a.name === "SHASUMS256.txt");
-  if (!asset) return new Map();
+  if (!asset) return null;
 
   const headers = await apiHeaders("application/octet-stream");
   const res = await fetch(asset.apiUrl, { headers });
-  if (!res.ok) return new Map();
+  if (!res.ok) {
+    throw new Error(`Fetching SHASUMS256.txt failed: ${res.status} ${res.statusText}`);
+  }
 
   const text = await res.text();
   const checksums = new Map<string, string>();
