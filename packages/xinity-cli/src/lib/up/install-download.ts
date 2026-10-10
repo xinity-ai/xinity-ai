@@ -19,17 +19,24 @@ async function* verifyReleaseChecksum(
   successLabel: string,
 ): AsyncGenerator<StepEvent, boolean> {
   yield { type: "spinner", id: "checksum", message: "Verifying checksum…" };
-  const checksums = await fetchChecksums(release);
-  if (checksums.size === 0) {
+  let checksums: Map<string, string> | null;
+  try {
+    checksums = await fetchChecksums(release);
+  } catch (err) {
+    yield { type: "spinner", id: "checksum", message: "Verification failed", done: true };
+    yield { type: "fail", label: "Checksum", detail: (err as Error).message };
+    return false;
+  }
+  if (!checksums) {
     yield { type: "spinner", id: "checksum", message: "No checksums available", done: true };
     yield { type: "warn", label: "Checksum", detail: "No SHASUMS256.txt found in release, skipping verification" };
     return true;
   }
   const expected = checksums.get(assetName);
   if (!expected) {
-    yield { type: "spinner", id: "checksum", message: "No checksum entry", done: true };
-    yield { type: "warn", label: "Checksum", detail: `No checksum entry for ${assetName} in SHASUMS256.txt, skipping verification` };
-    return true;
+    yield { type: "spinner", id: "checksum", message: "Verification failed", done: true };
+    yield { type: "fail", label: "Checksum", detail: `No checksum entry for ${assetName} in SHASUMS256.txt` };
+    return false;
   }
   const valid = await verify(filePath, expected);
   if (!valid) {
