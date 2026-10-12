@@ -202,35 +202,39 @@ function printServiceFailureDiagnostics(unit: string): void {
   log.info(`  ${cyan(`journalctl -u ${unit} -e --no-pager`)}`);
 }
 
-/** Move the current binary aside to <path>.bak before installing the new one. */
-async function backupCurrentBinary(component: Component, host: Host, progress: Progress): Promise<void> {
-  const binPath = `${BIN_DIR}/${binaryBaseName(component)}`;
-  const result = await host.withElevation(
-    `[ -f ${binPath} ] && mv -f ${binPath} ${binPath}.bak || true`,
-    `Back up ${component} binary`,
-  );
-  if (result.success) progress.update(`Previous binary saved to ${binPath}.bak`);
+function binaryPath(component: Component): string {
+  return `${BIN_DIR}/${binaryBaseName(component)}`;
 }
 
-async function restoreBackedUpBinary(component: Component, host: Host): Promise<void> {
-  const binPath = `${BIN_DIR}/${binaryBaseName(component)}`;
-  await host.withElevation(
-    `[ -f ${binPath}.bak ] && mv -f ${binPath}.bak ${binPath} || true`,
-    `Restore ${component} binary`,
-  );
-}
+type Backup = { restore(): Promise<void> };
 
-/** Copy the current env file and secrets aside to .bak before reconfiguring. */
-async function backupCurrentConfig(component: Component, host: Host, progress: Progress): Promise<void> {
-  const envPath = `${ENV_DIR}/${component}.env`;
+/**
+ * Copies the component's env file, the shared secrets directory and, when the
+ * binary is about to be replaced, the binary to <path>.bak. A path that does
+ * not exist leaves no .bak, so restore never brings back an older backup.
+ */
+async function backUpInstallation(
+  component: Component,
+  includeBinary: boolean,
+  host: Host,
+  progress: Progress,
+): Promise<Backup> {
+  const paths = [`${ENV_DIR}/${component}.env`, SECRETS_DIR, ...(includeBinary ? [binaryPath(component)] : [])];
   const result = await host.withElevation(
-    [
-      `[ -f ${envPath} ] && cp -p ${envPath} ${envPath}.bak || true`,
-      `[ -d ${SECRETS_DIR} ] && cp -ap ${SECRETS_DIR} ${SECRETS_DIR}.bak 2>/dev/null || true`,
-    ].join(" && "),
-    `Back up ${component} configuration`,
+    paths.map((path) => `rm -rf ${path}.bak && if [ -e ${path} ]; then cp -a ${path} ${path}.bak; fi`).join("\n"),
+    `Back up ${component}`,
   );
-  if (result.success) progress.update(`Previous configuration saved to ${envPath}.bak`);
+  if (result.success) {
+    progress.update(`Previous ${includeBinary ? "binary and configuration" : "configuration"} saved to .bak`);
+  }
+  return {
+    restore: async () => {
+      await host.withElevation(
+        paths.map((path) => `if [ -e ${path}.bak ]; then rm -rf ${path} && cp -a ${path}.bak ${path}; fi`).join("\n"),
+        `Restore ${component}`,
+      );
+    },
+  };
 }
 
 async function bringServiceUp(component: Component, host: Host, progress: Progress): Promise<boolean> {
@@ -239,30 +243,15 @@ async function bringServiceUp(component: Component, host: Host, progress: Progre
     : runSteps(startService(component, host), progress);
 }
 
-/** Restore the .bak binary and configuration, then bring the service back up. */
-async function performRollback(component: Component, host: Host, progress: Progress, restoreBinary = true): Promise<void> {
-  const binPath = `${BIN_DIR}/${binaryBaseName(component)}`;
-  const envPath = `${ENV_DIR}/${component}.env`;
+async function rollBack(component: Component, backup: Backup, binaryChanged: boolean, host: Host, progress: Progress): Promise<void> {
   const unit = unitName(component);
 
-  info("Rollback", restoreBinary ? "Restoring previous version…" : "Restoring previous configuration…");
-  if (restoreBinary) {
-    await host.withElevation(
-      `[ -f ${binPath}.bak ] && cp -p ${binPath}.bak ${binPath} && chmod +x ${binPath} || true`,
-      `Restore ${component} binary`,
-    );
-  }
-  await host.withElevation(
-    [
-      `[ -f ${envPath}.bak ] && cp -p ${envPath}.bak ${envPath} || true`,
-      `[ -d ${SECRETS_DIR}.bak ] && cp -ap ${SECRETS_DIR}.bak/. ${SECRETS_DIR}/ 2>/dev/null || true`,
-    ].join(" && "),
-    `Restore ${component} configuration`,
-  );
-  pass("Rollback", restoreBinary ? "Previous binary and configuration restored" : "Previous configuration restored");
+  info("Rollback", binaryChanged ? "Restoring previous version…" : "Restoring previous configuration…");
+  await backup.restore();
+  pass("Rollback", binaryChanged ? "Previous binary and configuration restored" : "Previous configuration restored");
 
   if (await bringServiceUp(component, host, progress)) {
-    pass("Rollback", restoreBinary ? `${unit} is back on the previous version` : `${unit} restarted with previous configuration`);
+    pass("Rollback", binaryChanged ? `${unit} is back on the previous version` : `${unit} restarted with previous configuration`);
   } else {
     warn("Rollback", "Service did not restart after rollback. Manual intervention may be needed");
     log.info(`  ${cyan(`systemctl start ${unit}`)}`);
@@ -270,19 +259,19 @@ async function performRollback(component: Component, host: Host, progress: Progr
 }
 
 /**
- * Write env config and systemd unit, then bring the service up. On failure
- * the outcome follows the failure policy: roll back to the .bak backups
- * (updates only) or keep the broken state for manual diagnosis.
+ * Write env config and systemd unit, then bring the service up. A service
+ * that does not start is rolled back when there is a backup, otherwise
+ * disabled and left in place for manual diagnosis.
  * Returns accumulated non-fatal errors.
  */
 async function applyConfigAndStart(
   component: Component,
   env: EnvBundle,
   removeSecretKeys: string[],
+  backup: Backup | null,
+  binaryChanged: boolean,
   host: Host,
-  isUpdate: boolean,
   progress: Progress,
-  binaryChanged = true,
 ): Promise<string[]> {
   const errors: string[] = [];
   const unit = unitName(component);
@@ -316,21 +305,19 @@ async function applyConfigAndStart(
   }
   printServiceFailureDiagnostics(unit);
 
-  if (isUpdate) {
-    await performRollback(component, host, progress, binaryChanged);
+  if (backup) {
+    await rollBack(component, backup, binaryChanged, host, progress);
     errors.push(binaryChanged
       ? "Service failed to start; rolled back to the previous version"
       : "Service failed to start; rolled back to the previous configuration");
     return errors;
   }
 
-  if (!isUpdate) {
-    // Disable the broken unit so it doesn't start on boot.
-    await host.withElevation(
-      `systemctl disable --now ${unit} 2>/dev/null; systemctl reset-failed ${unit} 2>/dev/null`,
-      `Disable ${unit}`,
-    );
-  }
+  // Disable the broken unit so it doesn't start on boot.
+  await host.withElevation(
+    `systemctl disable --now ${unit} 2>/dev/null; systemctl reset-failed ${unit} 2>/dev/null`,
+    `Disable ${unit}`,
+  );
   errors.push("Service did not start successfully");
   return errors;
 }
@@ -359,16 +346,13 @@ export async function applyComponentAction(
   }
 
   const isUpdate = action.kind !== "install";
+  const binaryChanged = action.kind !== "reconfigure";
   let versionString = action.toVersion;
   const progress = externalProgress ?? createProgress(`${component}: preparing…`);
 
   try {
-    if (isUpdate) {
-      await backupCurrentConfig(component, host, progress);
-    }
-
-    if (action.kind !== "reconfigure") {
-      let archivePath: string;
+    let archivePath: string | null = null;
+    if (binaryChanged) {
       if (action.localArchivePath) {
         const uploaded = await uploadPrebuiltArtifact(action.localArchivePath, host, progress);
         if (!uploaded) return { success: false, version: versionString, errors: ["Upload failed"] };
@@ -383,10 +367,12 @@ export async function applyComponentAction(
         if (!downloaded) return { success: false, version: versionString, errors: ["Download failed"] };
         archivePath = downloaded;
       }
+    }
 
+    const backup = isUpdate ? await backUpInstallation(component, binaryChanged, host, progress) : null;
+
+    if (archivePath) {
       if (isUpdate) {
-        await backupCurrentBinary(component, host, progress);
-
         if (action.hardReset) {
           await stopService(component, host);
           const unit = unitName(component);
@@ -405,8 +391,8 @@ export async function applyComponentAction(
 
       const installed = await runSteps(installBinary(component, archivePath, host), progress);
       if (!installed) {
-        if (isUpdate) {
-          await restoreBackedUpBinary(component, host);
+        if (backup) {
+          await backup.restore();
           if (action.hardReset && action.serviceRunning) {
             await runSteps(startService(component, host), progress);
           }
@@ -415,18 +401,16 @@ export async function applyComponentAction(
       }
     }
 
-    const binaryChanged = action.kind !== "reconfigure";
-    const errors = await applyConfigAndStart(component, action.env, action.secretFiles.remove, host, isUpdate, progress, binaryChanged);
+    const errors = await applyConfigAndStart(component, action.env, action.secretFiles.remove, backup, binaryChanged, host, progress);
 
     const success = errors.length === 0;
 
-    if (action.kind !== "reconfigure") {
-      const binaryPath = `${BIN_DIR}/${binaryBaseName(component)}`;
-      const binaryChecksum = (await host.computeSha256(binaryPath)) ?? undefined;
+    if (binaryChanged) {
+      const binaryChecksum = (await host.computeSha256(binaryPath(component))) ?? undefined;
       await updateManifestEntry(component, {
         version: success ? versionString : (action.installedVersion ?? versionString),
         installedAt: new Date().toISOString(),
-        binaryPath,
+        binaryPath: binaryPath(component),
         unitName: unitName(component),
         binaryChecksum,
       }, host);
