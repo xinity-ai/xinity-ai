@@ -134,7 +134,7 @@ async function buildComponentAction(
     return {
       ...base,
       secretFiles,
-      kind: base.envChanges.length > 0 ? "reconfigure" : "none",
+      kind: base.envChanges.length > 0 || !base.serviceRunning ? "reconfigure" : "none",
       installedVersion: version.version,
       toVersion: version.version,
     };
