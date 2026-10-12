@@ -130,12 +130,9 @@ export const modelInstallationT = pgTable("model_installation", {
 ]);
 export type ModelInstallation = InferSelectModel<typeof modelInstallationT>;
 
-/** SQL: deployment matches an installation by canonical specifier.
+/** SQL: the installation serves the deployment.
  * Use as the JOIN ON condition between modelDeploymentT and modelInstallationT. */
-export const deploymentMatchesInstallation = sql`
-  (${modelDeploymentT.specifier} = ${modelInstallationT.specifier}
-  OR ${modelDeploymentT.earlySpecifier} = ${modelInstallationT.specifier})
-`;
+export const deploymentMatchesInstallation = sql`${modelDeploymentT.id} = ${modelInstallationT.deploymentId}`;
 
 /** SQL: installation matches the given canonical specifier. */
 export function installationMatchesLookup(value: string) {

@@ -42,6 +42,7 @@ const log = rootLogger.child({ name: "model-data" });
 
 
 type CachedDeployment = {
+  id: string;
   specifier: string;
   earlySpecifier: string | null;
   progress: number;
@@ -62,7 +63,7 @@ export function invalidateModelSources(): void {
   modelSourcesCache.clear();
 }
 
-const DEPLOYMENT_CACHE_PREFIX = "gateway:dep:";
+const DEPLOYMENT_CACHE_PREFIX = "gateway:deployment:";
 const SCAN_BATCH = 200;
 
 /** The notified deployment id cannot be mapped back to the org and specifier keying this cache. */
@@ -95,6 +96,7 @@ async function publicModelSpecifierToModelSource(orgId: string, specifier: strin
         canaryProgressUntil: d.canaryProgressUntil !== null ? new Date(d.canaryProgressUntil) : null,
       };
       return {
+        deploymentId: d.id,
         progress: calcCanaryProgress(deploymentForCalc as any),
         primary: d.specifier,
         early: d.earlySpecifier,
@@ -119,6 +121,7 @@ async function publicModelSpecifierToModelSource(orgId: string, specifier: strin
   }
 
   const cachedData: CachedDeployment = {
+    id: deployment.id,
     specifier: deployment.specifier,
     earlySpecifier: deployment.earlySpecifier,
     progress: deployment.progress,
@@ -130,6 +133,7 @@ async function publicModelSpecifierToModelSource(orgId: string, specifier: strin
     .catch((err: unknown) => log.warn({ err }, "Redis error in set deployment cache"));
 
   return {
+    deploymentId: deployment.id,
     progress: calcCanaryProgress(deployment),
     primary: deployment.specifier,
     early: deployment.earlySpecifier,
@@ -149,9 +153,10 @@ type ModelSources = {
   byHost: Map<string, HostLocation>;
 };
 
-async function getModelSources(specifier: string): Promise<ModelSources> {
+async function getModelSources(deploymentId: string, specifier: string): Promise<ModelSources> {
+  const cacheKey = `${deploymentId}:${specifier}`;
   const now = Date.now();
-  const cached = modelSourcesCache.get(specifier);
+  const cached = modelSourcesCache.get(cacheKey);
   if (cached && cached.expiresAt > now) {
     return cached.data;
   }
@@ -179,6 +184,8 @@ async function getModelSources(specifier: string): Promise<ModelSources> {
       AND ${modelInstallationStateT.lifecycleState} = 'ready'
     `)
     .where(sql`
+      ${modelInstallationT.deploymentId} = ${deploymentId}
+    AND
       ${installationMatchesLookup(specifier)}
     AND
       ${modelInstallationT.deletedAt} IS NULL
@@ -192,7 +199,7 @@ async function getModelSources(specifier: string): Promise<ModelSources> {
 
   const result: ModelSources = { hosts: [...byHost.keys()], byHost };
   if (generationAtQuery === sourcesGeneration) {
-    modelSourcesCache.set(specifier, { data: result, expiresAt: now + config.cache.modelTtlSeconds() * 1000 });
+    modelSourcesCache.set(cacheKey, { data: result, expiresAt: now + config.cache.modelTtlSeconds() * 1000 });
   }
 
   return result;
@@ -284,9 +291,9 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, prefi
   }
   const emptySources: ModelSources = { hosts: [], byHost: new Map() };
   const [finalSources, earlySources] = await Promise.all([
-    getModelSources(accessInfo.primary),
+    getModelSources(accessInfo.deploymentId, accessInfo.primary),
     accessInfo.early
-      ? getModelSources(accessInfo.early)
+      ? getModelSources(accessInfo.deploymentId, accessInfo.early)
       : Promise.resolve(emptySources),
   ]);
 

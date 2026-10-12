@@ -359,7 +359,8 @@ describe("getModelInfo", () => {
 
   test("a sources query already in flight does not repopulate the cache it raced", async () => {
     // Served from redis so the only database query is the sources lookup we gate.
-    redisStore.set("gateway:dep:org-1:my-model", JSON.stringify({
+    redisStore.set("gateway:deployment:org-1:my-model", JSON.stringify({
+      id: "dep-id",
       specifier: "llama3:latest",
       earlySpecifier: null,
       progress: 100,
@@ -396,8 +397,8 @@ describe("invalidateDeployments", () => {
     const sendSpy = spyOn(redis, "send").mockImplementation(async (cmd: string, args: string[]) => {
       if (cmd === "SCAN") {
         return args[0] === "0"
-          ? ["7", ["gateway:dep:org-1:a"]]
-          : ["0", ["gateway:dep:org-2:b"]];
+          ? ["7", ["gateway:deployment:org-1:a"]]
+          : ["0", ["gateway:deployment:org-2:b"]];
       }
       deleted.push(args);
       return 1 as any;
@@ -405,7 +406,7 @@ describe("invalidateDeployments", () => {
 
     await invalidateDeployments();
 
-    expect(deleted).toEqual([["gateway:dep:org-1:a"], ["gateway:dep:org-2:b"]]);
+    expect(deleted).toEqual([["gateway:deployment:org-1:a"], ["gateway:deployment:org-2:b"]]);
     sendSpy.mockRestore();
   });
 
