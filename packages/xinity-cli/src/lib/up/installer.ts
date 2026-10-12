@@ -2,15 +2,13 @@
  * Component installer: the apply half of the up flow. Executes decisions
  * already made and reviewed during planning (up-plan.ts); nothing prompts.
  */
-import { log, note, spinner } from "../core/clack.ts";
-import { bold, cyan, yellow } from "picocolors";
+import { log } from "../core/clack.ts";
+import { cyan, yellow } from "picocolors";
 
-import { fetchRelease, type Release } from "./github.ts";
 import { buildLocalArtifact } from "./local-build.ts";
-import { readManifest, updateManifestEntry } from "./manifest.ts";
+import { updateManifestEntry } from "./manifest.ts";
 import { unitName } from "./systemd.ts";
-import { parseEnvString } from "../config/env-file.ts";
-import { pass, fail, warn, info } from "../core/output.ts";
+import { pass, warn, info } from "../core/output.ts";
 import { type Host, commandExistsOn, isUnitActiveOn } from "../core/host.ts";
 import { isOllamaRunning } from "../infra/ollama-setup.ts";
 import { heredoc, writeEnvConfig, writeSystemdUnit, stopService, startService, restartService } from "./service.ts";
@@ -26,54 +24,6 @@ import vllmTemplateUnit from "xinity-ai-daemon/src/assets/vllm-driver@.service" 
 
 import { installBinary, downloadAndVerifyOnHost } from "./install-download.ts";
 import type { EnvBundle } from "../config/env-prompt.ts";
-
-// ─── Pre-checks ────────────────────────────────────────────────────────────
-
-export type PreflightIssue = {
-  tool: string;
-  reason: string;
-  hint?: string;
-}
-
-/**
- * Check all tool requirements upfront for the given components.
- * Returns a list of missing tools with install hints.
- * Deduplicates across components so each tool is only reported once.
- */
-export async function preflightCheck(
-  components: readonly string[],
-  host: Host,
-): Promise<PreflightIssue[]> {
-  const issues: PreflightIssue[] = [];
-  const checked = new Set<string>();
-
-  const check = async (tool: string, reason: string, hint?: string) => {
-    if (checked.has(tool)) return;
-    checked.add(tool);
-    if (!(await commandExistsOn(host, tool))) {
-      issues.push({ tool, reason, hint });
-    }
-  };
-
-  // systemd is required for any service component
-  const serviceComponents: string[] = ["gateway", "dashboard", "daemon", "infoserver", "tether"];
-  if (components.some((c) => serviceComponents.includes(c) || c === "all")) {
-    await check("systemctl", "systemd is required to manage services");
-  }
-
-  const needsExtractor = components.some(
-    (c) => c === "all" || serviceComponents.includes(c),
-  );
-  if (needsExtractor) {
-    await check("tar", "required on the target host for binary extraction", "apt install tar / dnf install tar / pacman -S tar");
-  }
-
-  if (components.some((c) => serviceComponents.includes(c) || c === "all" || c === "db")) {
-    await check("curl", "required on the target host for downloading release assets");
-  }
-
-  return issues;
-}
 
 // ─── vLLM systemd template install ─────────────────────────────────────────
 
@@ -198,56 +148,6 @@ async function checkDriverTools(
     const templatePath = all.VLLM_TEMPLATE_UNIT_PATH ?? `${UNIT_DIR}/vllm-driver@.service`;
     await installVllmTemplate(host, templatePath, progress);
   }
-}
-
-// ─── Version resolution (planning phase, read-only) ────────────────────────
-
-export type VersionResult =
-  | { status: "proceed"; release: Release; isUpdate: boolean; installedVersion?: string }
-  | { status: "current"; version: string }
-  | { status: "failed" };
-
-export async function resolveVersion(
-  component: Component,
-  targetVersion: string,
-  host: Host,
-): Promise<VersionResult> {
-  let release: Release;
-  try {
-    release = await fetchRelease(targetVersion);
-  } catch (err) {
-    fail("GitHub API", (err as Error).message);
-    return { status: "failed" };
-  }
-
-  const manifest = await readManifest(host);
-  const installedEntry = manifest.components[component];
-  const installedVersion = installedEntry?.version;
-  const isUpdate = !!installedVersion;
-
-  if (installedVersion === release.tagName) {
-    // Verify the installed binary is intact before deciding.
-    if (installedEntry?.binaryChecksum && installedEntry.binaryPath) {
-      const checksumSpinner = spinner();
-      checksumSpinner.start(`Verifying installed ${component} binary…`);
-      const currentHash = await host.computeSha256(installedEntry.binaryPath);
-      if (currentHash === installedEntry.binaryChecksum) {
-        checksumSpinner.stop(`${component} ${release.tagName} installed and verified`);
-        return { status: "current", version: release.tagName };
-      }
-      checksumSpinner.stop(`${component}: checksum mismatch, binary may be corrupted. Reinstalling`);
-      return { status: "proceed", release, isUpdate: true, installedVersion };
-    }
-
-    // No stored checksum (legacy install): treat as current.
-    info("Version", `${component} already installed (no checksum recorded to verify)`);
-    return { status: "current", version: release.tagName };
-  }
-
-  if (isUpdate) {
-    info("Version", `${component}: update available ${installedVersion} → ${release.tagName}`);
-  }
-  return { status: "proceed", release, isUpdate, installedVersion };
 }
 
 // ─── Apply ──────────────────────────────────────────────────────────────────
@@ -538,28 +438,4 @@ export async function applyComponentAction(
   } finally {
     progress.ensureSettled();
   }
-}
-
-/** Show onboarding hints after a dashboard install. */
-export async function showDashboardHints(host: Host): Promise<void> {
-  const dashContent = await host.readFile(`${ENV_DIR}/dashboard.env`);
-  const origin = dashContent ? parseEnvString(dashContent).ORIGIN : undefined;
-
-  const lines: string[] = [];
-  if (origin) {
-    lines.push(`Dashboard:  ${cyan(origin)}`);
-    lines.push("");
-    lines.push(bold("Next steps:"));
-    lines.push(`  1. Connect the CLI to your dashboard:`);
-    lines.push(`     ${cyan(`xinity configure dashboardUrl ${origin}`)}`);
-    lines.push(`  2. Create your admin account from the CLI:`);
-    lines.push(`     ${cyan("xinity act onboarding.cli")}`);
-    lines.push(`     Or open ${cyan(origin)} in a browser to sign up there.`);
-  } else {
-    lines.push(bold("Next steps:"));
-    lines.push(`  1. Create your admin account via the dashboard UI`);
-    lines.push(`     Or from the CLI: ${cyan("xinity act onboarding.cli")}`);
-  }
-
-  note(lines.join("\n"), "Dashboard installed");
 }
