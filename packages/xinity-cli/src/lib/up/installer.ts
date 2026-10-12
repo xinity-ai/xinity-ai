@@ -2,13 +2,12 @@
  * Component installer: the apply half of the up flow. Executes decisions
  * already made and reviewed during planning (up-plan.ts); nothing prompts.
  */
-import { log } from "../core/clack.ts";
-import { cyan, yellow } from "picocolors";
+import { cyan } from "picocolors";
 
 import { buildLocalArtifact } from "./local-build.ts";
 import { updateManifestEntry } from "./manifest.ts";
 import { unitName } from "./systemd.ts";
-import { pass, warn, info } from "../core/output.ts";
+import { pass } from "../core/output.ts";
 import { type Host, commandExistsOn, isUnitActiveOn } from "../core/host.ts";
 import { isOllamaRunning } from "../infra/ollama-setup.ts";
 import { heredoc, writeEnvConfig, writeSystemdUnit, stopService, startService, restartService } from "./service.ts";
@@ -277,27 +276,6 @@ async function bringServiceUp(component: Component, host: Host, progress: Progre
     : runSteps(startService(component, host), progress);
 }
 
-function printServiceFailureDiagnostics(unit: string): void {
-  log.warn(yellow("Service failed to start. Diagnostic commands:"));
-  log.info(`  ${cyan(`systemctl status ${unit}`)}`);
-  log.info(`  ${cyan(`journalctl -u ${unit} -e --no-pager`)}`);
-}
-
-async function rollBack(component: Component, backup: Backup, host: Host, progress: Progress): Promise<void> {
-  const unit = unitName(component);
-
-  info("Rollback", backup.includesBinary ? "Restoring previous version…" : "Restoring previous configuration…");
-  await backup.restore();
-  pass("Rollback", backup.includesBinary ? "Previous binary and configuration restored" : "Previous configuration restored");
-
-  if (await bringServiceUp(component, host, progress)) {
-    pass("Rollback", backup.includesBinary ? `${unit} is back on the previous version` : `${unit} restarted with previous configuration`);
-  } else {
-    warn("Rollback", "Service did not restart after rollback. Manual intervention may be needed");
-    log.info(`  ${cyan(`systemctl start ${unit}`)}`);
-  }
-}
-
 /**
  * Write env config and systemd unit, then bring the service up. A service
  * that does not start is rolled back when there is a backup, otherwise
@@ -342,13 +320,19 @@ async function applyConfigAndStart(
   if (!progress.hasFailed()) {
     progress.fail("Service", `${unit} did not start successfully`);
   }
-  printServiceFailureDiagnostics(unit);
+  progress.update(`Diagnose with ${cyan(`systemctl status ${unit}`)} and ${cyan(`journalctl -u ${unit} -e --no-pager`)}`);
 
   if (backup) {
-    await rollBack(component, backup, host, progress);
-    errors.push(backup.includesBinary
-      ? "Service failed to start; rolled back to the previous version"
-      : "Service failed to start; rolled back to the previous configuration");
+    const previous = backup.includesBinary ? "previous version" : "previous configuration";
+    progress.update(`Restoring the ${previous}…`);
+    await backup.restore();
+    if (await bringServiceUp(component, host, progress)) {
+      progress.update(`${unit} is back on the ${previous}`);
+      errors.push(`Service failed to start; rolled back to the ${previous}`);
+    } else {
+      progress.warn("Rollback", `${unit} did not restart after restoring the ${previous}`, `  ${cyan(`systemctl start ${unit}`)}`);
+      errors.push(`Service failed to start; restored the ${previous}, but it did not restart either`);
+    }
     return errors;
   }
 
