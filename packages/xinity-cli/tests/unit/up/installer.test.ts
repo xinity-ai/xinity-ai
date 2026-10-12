@@ -29,22 +29,22 @@ describe("applyComponentAction on an update", () => {
     const result = await applyComponentAction(updateAction(), host, createSilentProgress());
 
     expect(result.success).toBe(false);
-    expect(host.calls.some((c) => c.includes(`mv -f ${BIN_PATH} `))).toBe(false);
+    expect(host.calls.some((c) => c.includes(`${BIN_PATH}.bak`))).toBe(false);
     expect(host.calls.some((c) => c.includes("systemctl stop") || c.includes("systemctl clean"))).toBe(false);
   });
 
   test("restores the backed-up binary and restarts the hard-reset service when installing fails", async () => {
     const host = new FakeHost({
       run: (args) => (args[1] === "is-active" ? RUN_OK : undefined),
-      withElevation: (cmd) => (cmd.includes(`cp `) && cmd.includes(` ${BIN_PATH}`) ? { success: false, output: "no space left" } : undefined),
+      withElevation: (cmd) => (cmd.includes(`chmod +x ${BIN_PATH}`) ? { success: false, output: "no space left" } : undefined),
     });
 
     const result = await applyComponentAction(updateAction(), host, createSilentProgress());
 
     expect(result.success).toBe(false);
-    const backup = host.calls.findIndex((c) => c.includes(`mv -f ${BIN_PATH} ${BIN_PATH}.bak`));
+    const backup = host.calls.findIndex((c) => c.includes(`cp -a ${BIN_PATH} ${BIN_PATH}.bak`));
     const stop = host.calls.findIndex((c) => c.includes("systemctl stop"));
-    const restore = host.calls.findIndex((c) => c.includes(`mv -f ${BIN_PATH}.bak ${BIN_PATH}`));
+    const restore = host.calls.findIndex((c) => c.includes(`cp -a ${BIN_PATH}.bak ${BIN_PATH}`));
     const start = host.calls.findIndex((c) => c.includes("systemctl enable --now"));
     expect(backup).toBeGreaterThanOrEqual(0);
     expect(stop).toBeGreaterThan(backup);
