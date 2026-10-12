@@ -18,7 +18,7 @@ import {
   ENV_DIR, SECRETS_DIR, BIN_DIR, UNIT_DIR,
   binaryBaseName,
 } from "../core/component-meta.ts";
-import type { ComponentAction } from "./up-plan.ts";
+import type { ComponentAction, ComponentActionKind } from "./up-plan.ts";
 // @ts-expect-error Bun text import
 import vllmTemplateUnit from "xinity-ai-daemon/src/assets/vllm-driver@.service" with { type: "text" };
 
@@ -152,61 +152,82 @@ async function checkDriverTools(
 
 // ─── Apply ──────────────────────────────────────────────────────────────────
 
-async function buildAndUploadLocalArtifact(
-  component: Component,
-  repoPath: string,
-  host: Host,
-  progress: Progress,
-): Promise<{ archivePath: string; version: string } | null> {
-  const hostArch = await host.getArch();
-  const buildResult = await runSteps(buildLocalArtifact(component, repoPath, hostArch as "x64" | "arm64"), progress);
-  if (!buildResult) return null;
+type ApplyableKind = Exclude<ComponentActionKind, "none">;
 
-  const remoteTmp = `/tmp/xinity-local-${Date.now()}.tar.gz`;
-  progress.update("Uploading artifact…");
-  let effectivePath: string;
-  try {
-    effectivePath = await host.uploadFile(buildResult.archivePath, remoteTmp);
-  } catch (err) {
-    progress.fail("Upload", (err as Error).message);
-    return null;
-  }
-
-  const hostHash = await host.computeSha256(effectivePath);
-  if (hostHash && hostHash !== buildResult.sha256) {
-    progress.fail("Verify", `Checksum mismatch after upload (local: ${buildResult.sha256}, host: ${hostHash})`);
-    return null;
-  }
-  progress.update("Upload checksum matched");
-  return { archivePath: effectivePath, version: buildResult.version };
-}
-
-async function uploadPrebuiltArtifact(
-  localPath: string,
-  host: Host,
-  progress: Progress,
-): Promise<string | null> {
-  const remoteTmp = `/tmp/xinity-local-${Date.now()}.tar.gz`;
-  progress.update("Uploading pre-built artifact…");
-  try {
-    return await host.uploadFile(localPath, remoteTmp);
-  } catch (err) {
-    progress.fail("Upload", (err as Error).message);
-    return null;
-  }
-}
-
-function printServiceFailureDiagnostics(unit: string): void {
-  log.warn(yellow("Service failed to start. Diagnostic commands:"));
-  log.info(`  ${cyan(`systemctl status ${unit}`)}`);
-  log.info(`  ${cyan(`journalctl -u ${unit} -e --no-pager`)}`);
-}
+const KIND_BEHAVIOUR: Record<ApplyableKind, {
+  replacesBinary: boolean;
+  backsUp: boolean;
+  summary: (component: Component, version: string) => string;
+}> = {
+  install: {
+    replacesBinary: true,
+    backsUp: false,
+    summary: (component, version) => `${component} ${version} installed, service active`,
+  },
+  update: {
+    replacesBinary: true,
+    backsUp: true,
+    summary: (component, version) => `${component} updated to ${version}, service active`,
+  },
+  reconfigure: {
+    replacesBinary: false,
+    backsUp: true,
+    summary: (component) => `${component} reconfigured, service restarted`,
+  },
+};
 
 function binaryPath(component: Component): string {
   return `${BIN_DIR}/${binaryBaseName(component)}`;
 }
 
-type Backup = { restore(): Promise<void> };
+type Artifact = { archivePath: string; version: string };
+
+async function uploadArtifact(localPath: string, host: Host, progress: Progress): Promise<string | null> {
+  progress.update("Uploading artifact…");
+  try {
+    return await host.uploadFile(localPath, `/tmp/xinity-local-${Date.now()}.tar.gz`);
+  } catch (err) {
+    progress.fail("Upload", (err as Error).message);
+    return null;
+  }
+}
+
+async function buildAndUploadLocalArtifact(
+  component: Component,
+  repoPath: string,
+  host: Host,
+  progress: Progress,
+): Promise<Artifact | null> {
+  const hostArch = await host.getArch();
+  const buildResult = await runSteps(buildLocalArtifact(component, repoPath, hostArch as "x64" | "arm64"), progress);
+  if (!buildResult) return null;
+
+  const archivePath = await uploadArtifact(buildResult.archivePath, host, progress);
+  if (!archivePath) return null;
+
+  const hostHash = await host.computeSha256(archivePath);
+  if (hostHash && hostHash !== buildResult.sha256) {
+    progress.fail("Verify", `Checksum mismatch after upload (local: ${buildResult.sha256}, host: ${hostHash})`);
+    return null;
+  }
+  progress.update("Upload checksum matched");
+  return { archivePath, version: buildResult.version };
+}
+
+async function obtainArtifact(action: ComponentAction, host: Host, progress: Progress): Promise<Artifact | { error: string }> {
+  if (action.localArchivePath) {
+    const archivePath = await uploadArtifact(action.localArchivePath, host, progress);
+    return archivePath ? { archivePath, version: action.toVersion } : { error: "Upload failed" };
+  }
+  if (action.localRepoPath) {
+    const built = await buildAndUploadLocalArtifact(action.component, action.localRepoPath, host, progress);
+    return built ?? { error: "Local build failed" };
+  }
+  const archivePath = await runSteps(downloadAndVerifyOnHost(action.release!, action.assetName!, host), progress);
+  return archivePath ? { archivePath, version: action.toVersion } : { error: "Download failed" };
+}
+
+type Backup = { includesBinary: boolean; restore(): Promise<void> };
 
 /**
  * Copies the component's env file, the shared secrets directory and, when the
@@ -215,19 +236,20 @@ type Backup = { restore(): Promise<void> };
  */
 async function backUpInstallation(
   component: Component,
-  includeBinary: boolean,
+  includesBinary: boolean,
   host: Host,
   progress: Progress,
 ): Promise<Backup> {
-  const paths = [`${ENV_DIR}/${component}.env`, SECRETS_DIR, ...(includeBinary ? [binaryPath(component)] : [])];
+  const paths = [`${ENV_DIR}/${component}.env`, SECRETS_DIR, ...(includesBinary ? [binaryPath(component)] : [])];
   const result = await host.withElevation(
     paths.map((path) => `rm -rf ${path}.bak && if [ -e ${path} ]; then cp -a ${path} ${path}.bak; fi`).join("\n"),
     `Back up ${component}`,
   );
   if (result.success) {
-    progress.update(`Previous ${includeBinary ? "binary and configuration" : "configuration"} saved to .bak`);
+    progress.update(`Previous ${includesBinary ? "binary and configuration" : "configuration"} saved to .bak`);
   }
   return {
+    includesBinary,
     restore: async () => {
       await host.withElevation(
         paths.map((path) => `if [ -e ${path}.bak ]; then rm -rf ${path} && cp -a ${path}.bak ${path}; fi`).join("\n"),
@@ -237,21 +259,39 @@ async function backUpInstallation(
   };
 }
 
+async function hardResetService(component: Component, host: Host, progress: Progress): Promise<void> {
+  const unit = unitName(component);
+  await stopService(component, host);
+  progress.update(`Cleaning state for ${unit}…`);
+  const result = await host.withElevation(`systemctl clean --what=state ${unit}`, `Clean state for ${unit}`);
+  if (result.success) {
+    progress.update(`State cleaned for ${unit}`);
+  } else {
+    progress.warn("Hard reset", `Failed to clean state: ${result.output}`);
+  }
+}
+
 async function bringServiceUp(component: Component, host: Host, progress: Progress): Promise<boolean> {
   return (await isUnitActiveOn(host, unitName(component)))
     ? runSteps(restartService(component, host), progress)
     : runSteps(startService(component, host), progress);
 }
 
-async function rollBack(component: Component, backup: Backup, binaryChanged: boolean, host: Host, progress: Progress): Promise<void> {
+function printServiceFailureDiagnostics(unit: string): void {
+  log.warn(yellow("Service failed to start. Diagnostic commands:"));
+  log.info(`  ${cyan(`systemctl status ${unit}`)}`);
+  log.info(`  ${cyan(`journalctl -u ${unit} -e --no-pager`)}`);
+}
+
+async function rollBack(component: Component, backup: Backup, host: Host, progress: Progress): Promise<void> {
   const unit = unitName(component);
 
-  info("Rollback", binaryChanged ? "Restoring previous version…" : "Restoring previous configuration…");
+  info("Rollback", backup.includesBinary ? "Restoring previous version…" : "Restoring previous configuration…");
   await backup.restore();
-  pass("Rollback", binaryChanged ? "Previous binary and configuration restored" : "Previous configuration restored");
+  pass("Rollback", backup.includesBinary ? "Previous binary and configuration restored" : "Previous configuration restored");
 
   if (await bringServiceUp(component, host, progress)) {
-    pass("Rollback", binaryChanged ? `${unit} is back on the previous version` : `${unit} restarted with previous configuration`);
+    pass("Rollback", backup.includesBinary ? `${unit} is back on the previous version` : `${unit} restarted with previous configuration`);
   } else {
     warn("Rollback", "Service did not restart after rollback. Manual intervention may be needed");
     log.info(`  ${cyan(`systemctl start ${unit}`)}`);
@@ -269,7 +309,6 @@ async function applyConfigAndStart(
   env: EnvBundle,
   removeSecretKeys: string[],
   backup: Backup | null,
-  binaryChanged: boolean,
   host: Host,
   progress: Progress,
 ): Promise<string[]> {
@@ -306,8 +345,8 @@ async function applyConfigAndStart(
   printServiceFailureDiagnostics(unit);
 
   if (backup) {
-    await rollBack(component, backup, binaryChanged, host, progress);
-    errors.push(binaryChanged
+    await rollBack(component, backup, host, progress);
+    errors.push(backup.includesBinary
       ? "Service failed to start; rolled back to the previous version"
       : "Service failed to start; rolled back to the previous configuration");
     return errors;
@@ -320,14 +359,6 @@ async function applyConfigAndStart(
   );
   errors.push("Service did not start successfully");
   return errors;
-}
-
-function actionSummary(action: ComponentAction, versionString: string): string {
-  switch (action.kind) {
-    case "install": return `${action.component} ${versionString} installed, service active`;
-    case "update": return `${action.component} updated to ${versionString}, service active`;
-    default: return `${action.component} reconfigured, service restarted`;
-  }
 }
 
 /** Execute one reviewed component action from the plan. */
@@ -345,80 +376,51 @@ export async function applyComponentAction(
     return { success: true, version: action.toVersion, errors: [] };
   }
 
-  const isUpdate = action.kind !== "install";
-  const binaryChanged = action.kind !== "reconfigure";
-  let versionString = action.toVersion;
+  const behaviour = KIND_BEHAVIOUR[action.kind];
   const progress = externalProgress ?? createProgress(`${component}: preparing…`);
 
   try {
-    let archivePath: string | null = null;
-    if (binaryChanged) {
-      if (action.localArchivePath) {
-        const uploaded = await uploadPrebuiltArtifact(action.localArchivePath, host, progress);
-        if (!uploaded) return { success: false, version: versionString, errors: ["Upload failed"] };
-        archivePath = uploaded;
-      } else if (action.localRepoPath) {
-        const built = await buildAndUploadLocalArtifact(component, action.localRepoPath, host, progress);
-        if (!built) return { success: false, version: versionString, errors: ["Local build failed"] };
-        archivePath = built.archivePath;
-        versionString = built.version;
-      } else {
-        const downloaded = await runSteps(downloadAndVerifyOnHost(action.release!, action.assetName!, host), progress);
-        if (!downloaded) return { success: false, version: versionString, errors: ["Download failed"] };
-        archivePath = downloaded;
+    let artifact: Artifact | null = null;
+    if (behaviour.replacesBinary) {
+      const obtained = await obtainArtifact(action, host, progress);
+      if ("error" in obtained) return { success: false, version: action.toVersion, errors: [obtained.error] };
+      artifact = obtained;
+    }
+    const version = artifact?.version ?? action.toVersion;
+
+    const backup = behaviour.backsUp ? await backUpInstallation(component, behaviour.replacesBinary, host, progress) : null;
+
+    if (artifact) {
+      const hardReset = backup !== null && action.hardReset;
+      if (hardReset) {
+        await hardResetService(component, host, progress);
+      }
+
+      if (!(await runSteps(installBinary(component, artifact.archivePath, host), progress))) {
+        await backup?.restore();
+        if (hardReset && action.serviceRunning) {
+          await runSteps(startService(component, host), progress);
+        }
+        return { success: false, version, errors: ["Installation failed or skipped"] };
       }
     }
 
-    const backup = isUpdate ? await backUpInstallation(component, binaryChanged, host, progress) : null;
-
-    if (archivePath) {
-      if (isUpdate) {
-        if (action.hardReset) {
-          await stopService(component, host);
-          const unit = unitName(component);
-          progress.update(`Cleaning state for ${unit}…`);
-          const result = await host.withElevation(
-            `systemctl clean --what=state ${unit}`,
-            `Clean state for ${unit}`,
-          );
-          if (result.success) {
-            progress.update(`State cleaned for ${unit}`);
-          } else {
-            progress.warn("Hard reset", `Failed to clean state: ${result.output}`);
-          }
-        }
-      }
-
-      const installed = await runSteps(installBinary(component, archivePath, host), progress);
-      if (!installed) {
-        if (backup) {
-          await backup.restore();
-          if (action.hardReset && action.serviceRunning) {
-            await runSteps(startService(component, host), progress);
-          }
-        }
-        return { success: false, version: versionString, errors: ["Installation failed or skipped"] };
-      }
-    }
-
-    const errors = await applyConfigAndStart(component, action.env, action.secretFiles.remove, backup, binaryChanged, host, progress);
-
+    const errors = await applyConfigAndStart(component, action.env, action.secretFiles.remove, backup, host, progress);
     const success = errors.length === 0;
 
-    if (binaryChanged) {
-      const binaryChecksum = (await host.computeSha256(binaryPath(component))) ?? undefined;
+    if (artifact) {
       await updateManifestEntry(component, {
-        version: success ? versionString : (action.installedVersion ?? versionString),
+        version: success ? version : (action.installedVersion ?? version),
         installedAt: new Date().toISOString(),
         binaryPath: binaryPath(component),
         unitName: unitName(component),
-        binaryChecksum,
+        binaryChecksum: (await host.computeSha256(binaryPath(component))) ?? undefined,
       }, host);
     }
     if (success) {
-      progress.done(actionSummary(action, versionString));
+      progress.done(behaviour.summary(component, version));
     }
-    return { success, version: versionString, errors };
+    return { success, version, errors };
   } finally {
     progress.ensureSettled();
   }
