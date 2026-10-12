@@ -1,5 +1,5 @@
-import { inArray, modelDeploymentT, sql, calcCanaryProgress, modelInstallationT, aiNodeT, type ModelInstallation, type AiNode, type InferInsertModel } from "common-db";
-import { mergeSettings, settingsEqual, type DeploymentSettings } from "common-env";
+import { inArray, modelDeploymentT, sql, calcCanaryProgress, modelInstallationT, aiNodeT, type ModelDeployment, type ModelInstallation, type AiNode, type InferInsertModel } from "common-db";
+import { settingsEqual, type DeploymentSettings } from "common-env";
 import { getDB } from "$lib/server/db";
 import { resolveSchedulable, type SchedulableModel } from "$lib/server/lib/models/model-catalog";
 import { checkNodeCompatibility, type BlockedVersion, type ModelNodeRequirements, type NodeCapability, type Provider } from "common-env/model-catalog";
@@ -18,7 +18,7 @@ type NewInstallation = InferInsertModel<typeof modelInstallationT>;
 
 /** Mutable tracking state built from current DB contents. */
 type ClusterState = {
-  installationsByModel: Map<string, ModelInstallation[]>;
+  installationsByRequirement: Map<string, ModelInstallation[]>;
   installationsByServer: Map<string, ModelInstallation[]>;
   serverCapacity: Map<string, Capacity>;
   cardCapacity: Map<string, CardCapacity[]>;
@@ -57,44 +57,36 @@ function orderByStrategy<T>(strategy: DeploymentStrategy, items: T[], capacityOf
   }
 }
 
-export function mergeRequirementsBySpecifier(entries: ModelRequirement[]): ModelRequirementTable {
-  return entries.reduce((agg, entry) => {
-    const existing = agg[entry.specifier];
-    if (!existing) {
-      agg[entry.specifier] = entry;
-      return agg;
-    }
-    if (entry.replicas > existing.replicas) existing.replicas = entry.replicas;
-    if (entry.kvCacheSize != null && (existing.kvCacheSize == null || entry.kvCacheSize > existing.kvCacheSize)) {
-      existing.kvCacheSize = entry.kvCacheSize;
-    }
-    existing.settings = mergeSettings(existing.settings, entry.settings);
-    return agg;
-  }, {} as ModelRequirementTable);
+export function requirementKey(entry: { deploymentId: string; specifier: string }): string {
+  return `${entry.deploymentId}:${entry.specifier}`;
 }
 
-/** Builds the replica requirement table based on enabled deployments. */
-export async function assembleModelRequirementTable(): Promise<ModelRequirementTable> {
-  // Oldest first, so a requirement merged from several deployments carries the oldest one's id.
-  const enabledDeployments = await getDB().select().from(modelDeploymentT).where(sql`
-    ${modelDeploymentT.enabled}
-  AND
-    ${modelDeploymentT.deletedAt} IS NULL
-  `).orderBy(modelDeploymentT.createdAt);
-  const models = enabledDeployments.flatMap((deployment): ModelRequirement[] => {
+// One requirement per deployment and model side, since an installation serves exactly one deployment
+export function requirementsForDeployments(deployments: ModelDeployment[]): ModelRequirementTable {
+  const requirements = deployments.flatMap((deployment): ModelRequirement[] => {
     const progress = calcCanaryProgress(deployment);
     const earlySpecifier = deployment.earlySpecifier;
     const driver = deployment.preferredDriver;
-    const isNotCanary = progress === 100 || !earlySpecifier;
+    const isNotCanary = progress === 100 || !earlySpecifier || earlySpecifier === deployment.specifier;
     if (isNotCanary) {
       return [requirementFor(deployment.id, deployment.specifier, deployment.replicas, deployment.kvCacheSize, driver, deployment.settings)];
     }
     return [
       requirementFor(deployment.id, deployment.specifier, Math.ceil(deployment.replicas * (progress / 100)), deployment.kvCacheSize, driver, deployment.settings),
-      requirementFor(deployment.id, earlySpecifier!, Math.ceil(deployment.replicas * ((100 - progress) / 100)), deployment.earlyKvCacheSize, driver, deployment.settings),
+      requirementFor(deployment.id, earlySpecifier, Math.ceil(deployment.replicas * ((100 - progress) / 100)), deployment.earlyKvCacheSize, driver, deployment.settings),
     ];
   });
-  return mergeRequirementsBySpecifier(models);
+  return Object.fromEntries(requirements.map((requirement) => [requirementKey(requirement), requirement]));
+}
+
+// Builds the replica requirement table based on enabled deployments.
+export async function assembleModelRequirementTable(): Promise<ModelRequirementTable> {
+  const enabledDeployments = await getDB().select().from(modelDeploymentT).where(sql`
+    ${modelDeploymentT.enabled}
+  AND
+    ${modelDeploymentT.deletedAt} IS NULL
+  `);
+  return requirementsForDeployments(enabledDeployments);
 }
 
 function requirementFor(
@@ -153,7 +145,7 @@ export function cardForVllm(state: ClusterState, nodeId: string, capacity: numbe
 
 export function buildClusterState(existing: ModelInstallation[], availableServers: AiNode[]): ClusterState {
   const state: ClusterState = {
-    installationsByModel: new Map(),
+    installationsByRequirement: new Map(),
     installationsByServer: new Map(),
     serverCapacity: new Map(),
     cardCapacity: new Map(),
@@ -167,9 +159,10 @@ export function buildClusterState(existing: ModelInstallation[], availableServer
   }
 
   for (const install of existing) {
-    const modelInstalls = state.installationsByModel.get(install.specifier) || [];
-    modelInstalls.push(install);
-    state.installationsByModel.set(install.specifier, modelInstalls);
+    const key = requirementKey(install);
+    const requirementInstalls = state.installationsByRequirement.get(key) || [];
+    requirementInstalls.push(install);
+    state.installationsByRequirement.set(key, requirementInstalls);
 
     const serverInstalls = state.installationsByServer.get(install.nodeId);
     if (serverInstalls) {
@@ -195,8 +188,8 @@ function releaseInstallationFromState(state: ClusterState, installation: ModelIn
 export function collectExcessInstallations(requiredModels: ModelRequirementTable, state: ClusterState): string[] {
   const toUninstall: string[] = [];
 
-  for (const [model, installs] of state.installationsByModel) {
-    const required = requiredModels[model]?.replicas || 0;
+  for (const [key, installs] of state.installationsByRequirement) {
+    const required = requiredModels[key]?.replicas || 0;
     if (installs.length <= required) continue;
 
     const excess = installs.length - required;
@@ -205,7 +198,7 @@ export function collectExcessInstallations(requiredModels: ModelRequirementTable
       toUninstall.push(rem.id);
       releaseInstallationFromState(state, rem);
     }
-    state.installationsByModel.set(model, installs.slice(excess));
+    state.installationsByRequirement.set(key, installs.slice(excess));
   }
 
   return toUninstall;
@@ -215,8 +208,8 @@ export function collectExcessInstallations(requiredModels: ModelRequirementTable
 export function collectDriftedInstallations(requiredModels: ModelRequirementTable, state: ClusterState): string[] {
   const toUninstall: string[] = [];
 
-  for (const [model, installs] of state.installationsByModel) {
-    const requirement = requiredModels[model];
+  for (const [key, installs] of state.installationsByRequirement) {
+    const requirement = requiredModels[key];
     if (!requirement) {
       continue;
     }
@@ -230,7 +223,7 @@ export function collectDriftedInstallations(requiredModels: ModelRequirementTabl
       toUninstall.push(install.id);
       releaseInstallationFromState(state, install);
     }
-    state.installationsByModel.set(model, kept);
+    state.installationsByRequirement.set(key, kept);
   }
 
   return toUninstall;
@@ -330,8 +323,9 @@ async function planNewInstallations(
   const toInstall: NewInstallation[] = [];
   let usedVram = totalVramUsed(state);
 
-  for (const [specifier, requirement] of Object.entries(requiredModels)) {
-    const current = (state.installationsByModel.get(specifier) || []).length;
+  for (const [key, requirement] of Object.entries(requiredModels)) {
+    const { specifier } = requirement;
+    const current = (state.installationsByRequirement.get(key) || []).length;
     if (current >= requirement.replicas) continue;
 
     const resolution = await resolveSchedulable(requirement.specifier, requirement.preferredDriver);

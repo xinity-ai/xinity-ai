@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
-import { buildClusterState, cardForVllm, collectDriftedInstallations, collectExcessInstallations, collectReassignableOrphans, findServerForModel, mergeRequirementsBySpecifier, rankServers } from "../src/lib/server/lib/deployments/orchestration";
-import type { AiNode, ModelInstallation } from "common-db";
+import { buildClusterState, cardForVllm, collectDriftedInstallations, collectExcessInstallations, collectReassignableOrphans, findServerForModel, rankServers, requirementsForDeployments } from "../src/lib/server/lib/deployments/orchestration";
+import type { AiNode, ModelDeployment, ModelInstallation } from "common-db";
 import type { ModelRequirement, ModelRequirementTable, DeploymentStrategy } from "../src/lib/server/lib/deployments/orchestration";
 import type { SchedulableModel } from "../src/lib/server/lib/models/model-catalog";
 
@@ -78,11 +78,11 @@ describe("orchestration: node goes unavailable", () => {
 
     // Cluster state sees zero existing replicas for llama2:7b
     const state = buildClusterState(active, availableServers);
-    expect(state.installationsByModel.has("llama2:7b")).toBe(false);
+    expect(state.installationsByRequirement.has("dep-1:llama2:7b")).toBe(false);
 
     // No excess to trim (nothing active)
     const requiredModels: ModelRequirementTable = {
-      "llama2:7b": { deploymentId: "dep-1", specifier: "llama2:7b", replicas: 1, kvCacheSize: 2, preferredDriver: null, settings: { version: 1 } },
+      "dep-1:llama2:7b": { deploymentId: "dep-1", specifier: "llama2:7b", replicas: 1, kvCacheSize: 2, preferredDriver: null, settings: { version: 1 } },
     };
     const excess = collectExcessInstallations(requiredModels, state);
     expect(excess).toHaveLength(0);
@@ -311,13 +311,13 @@ describe("orchestration: reassignable orphans", () => {
   });
 });
 
-describe("orchestration: specifier indexing", () => {
+describe("orchestration: installation indexing", () => {
   const node = makeNode({ id: "node-1" });
 
-  test("installation indexes under its specifier", () => {
+  test("installation indexes under its deployment and model", () => {
     const inst = makeInstallation({ id: "i1", nodeId: "node-1", specifier: "llama-3.3-70b" });
     const state = buildClusterState([inst], [node]);
-    expect(state.installationsByModel.has("llama-3.3-70b")).toBe(true);
+    expect(state.installationsByRequirement.has("dep-1:llama-3.3-70b")).toBe(true);
   });
 
   test("findServerForModel skips a node that already hosts the specifier", () => {
@@ -337,13 +337,13 @@ describe("orchestration: settings drift", () => {
     const inst = makeInstallation({ id: "i1", nodeId: "node-1", specifier: "whisper", settings: { version: 1, maxAudioInputDurationS: 600 } });
     const state = buildClusterState([inst], [node]);
     const required: ModelRequirementTable = {
-      whisper: requirement({ settings: { version: 1, maxAudioInputDurationS: 1200 } }),
+      "dep-1:whisper": requirement({ settings: { version: 1, maxAudioInputDurationS: 1200 } }),
     };
 
     const drifted = collectDriftedInstallations(required, state);
 
     expect(drifted).toEqual(["i1"]);
-    expect(state.installationsByModel.get("whisper")).toHaveLength(0);
+    expect(state.installationsByRequirement.get("dep-1:whisper")).toHaveLength(0);
     expect(state.serverCapacity.get("node-1")!.used).toBe(0);
     expect(findServerForModel("whisper", "ollama", 8, state, [], FF)).toBe("node-1");
   });
@@ -353,11 +353,11 @@ describe("orchestration: settings drift", () => {
     const inst = makeInstallation({ id: "i1", nodeId: "node-1", specifier: "whisper", settings: { version: 1, maxAudioInputDurationS: 1200 } });
     const state = buildClusterState([inst], [node]);
     const required: ModelRequirementTable = {
-      whisper: requirement({ settings: { version: 1, maxAudioInputDurationS: 1200 } }),
+      "dep-1:whisper": requirement({ settings: { version: 1, maxAudioInputDurationS: 1200 } }),
     };
 
     expect(collectDriftedInstallations(required, state)).toHaveLength(0);
-    expect(state.installationsByModel.get("whisper")).toHaveLength(1);
+    expect(state.installationsByRequirement.get("dep-1:whisper")).toHaveLength(1);
     expect(state.serverCapacity.get("node-1")!.used).toBe(8);
   });
 
@@ -366,7 +366,7 @@ describe("orchestration: settings drift", () => {
     const inst = makeInstallation({ id: "i1", nodeId: "node-1", specifier: "whisper" });
     const state = buildClusterState([inst], [node]);
 
-    expect(collectDriftedInstallations({ whisper: requirement() }, state)).toHaveLength(0);
+    expect(collectDriftedInstallations({ "dep-1:whisper": requirement() }, state)).toHaveLength(0);
   });
 
   test("installations without a requirement are left to excess trimming", () => {
@@ -375,7 +375,7 @@ describe("orchestration: settings drift", () => {
     const state = buildClusterState([inst], [node]);
 
     expect(collectDriftedInstallations({}, state)).toHaveLength(0);
-    expect(state.installationsByModel.get("whisper")).toHaveLength(1);
+    expect(state.installationsByRequirement.get("dep-1:whisper")).toHaveLength(1);
   });
 
   test("only the drifted replica of a pair is collected", () => {
@@ -384,27 +384,66 @@ describe("orchestration: settings drift", () => {
     const stale = makeInstallation({ id: "i2", nodeId: "node-1", specifier: "whisper" });
     const state = buildClusterState([current, stale], [node]);
     const required: ModelRequirementTable = {
-      whisper: requirement({ replicas: 2, settings: { version: 1, maxAudioInputDurationS: 1200 } }),
+      "dep-1:whisper": requirement({ replicas: 2, settings: { version: 1, maxAudioInputDurationS: 1200 } }),
     };
 
     expect(collectDriftedInstallations(required, state)).toEqual(["i2"]);
-    expect(state.installationsByModel.get("whisper")!.map(i => i.id)).toEqual(["i1"]);
+    expect(state.installationsByRequirement.get("dep-1:whisper")!.map(i => i.id)).toEqual(["i1"]);
   });
 });
 
-describe("orchestration: requirement merging", () => {
-  test("settings merge takes the maximum audio duration across deployments", () => {
-    const merged = mergeRequirementsBySpecifier([
-      { deploymentId: "dep-oldest", specifier: "whisper", replicas: 1, kvCacheSize: null, preferredDriver: null, settings: { version: 1, maxAudioInputDurationS: 600 } },
-      { deploymentId: "dep-2", specifier: "whisper", replicas: 2, kvCacheSize: 4, preferredDriver: null, settings: { version: 1, maxAudioInputDurationS: 1800 } },
-      { deploymentId: "dep-3", specifier: "whisper", replicas: 1, kvCacheSize: null, preferredDriver: null, settings: { version: 1 } },
+describe("orchestration: requirements per deployment", () => {
+  function makeDeployment(overrides: Partial<ModelDeployment> & { id: string; specifier: string }): ModelDeployment {
+    return {
+      organizationId: "org-1",
+      name: overrides.id,
+      description: null,
+      enabled: true,
+      publicSpecifier: overrides.id,
+      earlySpecifier: null,
+      replicas: 1,
+      canaryProgressUntil: null,
+      canaryProgressFrom: null,
+      canaryProgressWithFeedback: false,
+      progress: 100,
+      kvCacheSize: null,
+      earlyKvCacheSize: null,
+      preferredDriver: null,
+      settings: { version: 1 },
+      deletedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...overrides,
+    };
+  }
+
+  test("keeps two deployments of one model apart, each with its own replicas and settings", () => {
+    const table = requirementsForDeployments([
+      makeDeployment({ id: "dep-a", specifier: "whisper", replicas: 1, settings: { version: 1, maxAudioInputDurationS: 600 } }),
+      makeDeployment({ id: "dep-b", specifier: "whisper", replicas: 2 }),
     ]);
 
-    expect(merged.whisper.deploymentId).toBe("dep-oldest");
+    expect(Object.keys(table).sort()).toEqual(["dep-a:whisper", "dep-b:whisper"]);
+    expect(table["dep-a:whisper"]!.settings).toEqual({ version: 1, maxAudioInputDurationS: 600 });
+    expect(table["dep-b:whisper"]!.replicas).toBe(2);
+  });
 
-    expect(merged.whisper.replicas).toBe(2);
-    expect(merged.whisper.kvCacheSize).toBe(4);
-    expect(merged.whisper.settings).toEqual({ version: 1, maxAudioInputDurationS: 1800 });
+  test("splits a canary deployment into its primary and early side", () => {
+    const table = requirementsForDeployments([
+      makeDeployment({ id: "dep-a", specifier: "old", earlySpecifier: "new", progress: 25, replicas: 4 }),
+    ]);
+
+    expect(table["dep-a:old"]!.replicas).toBe(1);
+    expect(table["dep-a:new"]!.replicas).toBe(3);
+  });
+
+  test("treats a canary onto the same model as one requirement with every replica", () => {
+    const table = requirementsForDeployments([
+      makeDeployment({ id: "dep-a", specifier: "same", earlySpecifier: "same", progress: 25, replicas: 4 }),
+    ]);
+
+    expect(Object.keys(table)).toEqual(["dep-a:same"]);
+    expect(table["dep-a:same"]!.replicas).toBe(4);
   });
 });
 
