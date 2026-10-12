@@ -1,8 +1,7 @@
 import type { CommandModule } from "yargs";
-import { confirm, intro, isCancel, log, outro } from "../lib/core/clack.ts";
+import { confirm, intro, isCancel, log, note, outro } from "../lib/core/clack.ts";
 import { bold, cyan, dim, yellow } from "picocolors";
-import type { Component } from "../lib/core/component-meta.ts";
-import { preflightCheck, showDashboardHints } from "../lib/up/installer.ts";
+import { type Component, ENV_DIR } from "../lib/core/component-meta.ts";
 import { discoverConnectionUrl } from "../lib/up/migrator.ts";
 import {
   planUp,
@@ -15,7 +14,8 @@ import {
 } from "../lib/up/up-plan.ts";
 import { warn, heading } from "../lib/core/output.ts";
 import { connectHost, TARGET_HOST_OPTION } from "../lib/remote/remote-host.ts";
-import type { Host } from "../lib/core/host.ts";
+import { type Host, commandExistsOn } from "../lib/core/host.ts";
+import { parseEnvString } from "../lib/config/env-file.ts";
 import { seaweedfsSetup } from "../lib/infra/seaweedfs-setup.ts";
 import { infraRedis, planRedis } from "../lib/infra/redis-setup.ts";
 import { postgresSetup } from "../lib/infra/postgres-setup.ts";
@@ -39,6 +39,76 @@ const INFRA_SETUPS: Partial<Record<string, (host: Host, dryRun: boolean) => Prom
   "infra-ollama": ollamaSetup,
   "infra-searxng": searxngSetup,
 };
+
+type PreflightIssue = {
+  tool: string;
+  reason: string;
+  hint?: string;
+}
+
+/**
+ * Check all tool requirements upfront for the given components.
+ * Returns a list of missing tools with install hints.
+ * Deduplicates across components so each tool is only reported once.
+ */
+async function preflightCheck(
+  components: readonly string[],
+  host: Host,
+): Promise<PreflightIssue[]> {
+  const issues: PreflightIssue[] = [];
+  const checked = new Set<string>();
+
+  const check = async (tool: string, reason: string, hint?: string) => {
+    if (checked.has(tool)) return;
+    checked.add(tool);
+    if (!(await commandExistsOn(host, tool))) {
+      issues.push({ tool, reason, hint });
+    }
+  };
+
+  // systemd is required for any service component
+  const serviceComponents: string[] = ["gateway", "dashboard", "daemon", "infoserver", "tether"];
+  if (components.some((c) => serviceComponents.includes(c) || c === "all")) {
+    await check("systemctl", "systemd is required to manage services");
+  }
+
+  const needsExtractor = components.some(
+    (c) => c === "all" || serviceComponents.includes(c),
+  );
+  if (needsExtractor) {
+    await check("tar", "required on the target host for binary extraction", "apt install tar / dnf install tar / pacman -S tar");
+  }
+
+  if (components.some((c) => serviceComponents.includes(c) || c === "all" || c === "db")) {
+    await check("curl", "required on the target host for downloading release assets");
+  }
+
+  return issues;
+}
+
+/** Show onboarding hints after a dashboard install. */
+async function showDashboardHints(host: Host): Promise<void> {
+  const dashContent = await host.readFile(`${ENV_DIR}/dashboard.env`);
+  const origin = dashContent ? parseEnvString(dashContent).ORIGIN : undefined;
+
+  const lines: string[] = [];
+  if (origin) {
+    lines.push(`Dashboard:  ${cyan(origin)}`);
+    lines.push("");
+    lines.push(bold("Next steps:"));
+    lines.push(`  1. Connect the CLI to your dashboard:`);
+    lines.push(`     ${cyan(`xinity configure dashboardUrl ${origin}`)}`);
+    lines.push(`  2. Create your admin account from the CLI:`);
+    lines.push(`     ${cyan("xinity act onboarding.cli")}`);
+    lines.push(`     Or open ${cyan(origin)} in a browser to sign up there.`);
+  } else {
+    lines.push(bold("Next steps:"));
+    lines.push(`  1. Create your admin account via the dashboard UI`);
+    lines.push(`     Or from the CLI: ${cyan("xinity act onboarding.cli")}`);
+  }
+
+  note(lines.join("\n"), "Dashboard installed");
+}
 
 async function reviewAndApply(plan: UpPlan, dryRun: boolean, host: Host): Promise<"applied" | "stopped" | "failed"> {
   renderUpPlan(plan);

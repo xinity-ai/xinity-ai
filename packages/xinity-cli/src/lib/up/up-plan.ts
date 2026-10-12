@@ -12,14 +12,14 @@ import { cancel, confirm, intro, isCancel, log, note, outro, select, spinner } f
 import { bold, cyan, dim } from "picocolors";
 import { attentionKeysFor, checkComponentConfig, type Component, ENV_DIR, getAutoDefaults, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT, TETHER_DEFAULT_PORT } from "../core/component-meta.ts";
 import { type Host, isUnitActiveOn } from "../core/host.ts";
-import { pass, fail, warn, heading } from "../core/output.ts";
+import { pass, fail, warn, info, heading } from "../core/output.ts";
 import { parseEnvString } from "../config/env-file.ts";
 import { unitName } from "./systemd.ts";
-import { pickReleaseAsset, resolveDirectUrl, getProjectUrl, type Release } from "./github.ts";
+import { fetchRelease, pickReleaseAsset, resolveDirectUrl, getProjectUrl, type Release } from "./github.ts";
 import { assetSizeMb, buildInstallBinaryCommand } from "./install-download.ts";
 import { buildEnvWriteCommand, buildSecretsWriteCommand, buildSecretsRemoveCommand, buildUnitWriteCommand, writeEnvConfig, writeSystemdUnit, restartService } from "./service.ts";
 import { runSteps, createProgress } from "../term/step-runner.ts";
-import { resolveVersion, applyComponentAction, type VersionResult } from "./installer.ts";
+import { applyComponentAction } from "./installer.ts";
 import { componentFields, collectEnv, menuEditEnv, readExistingEnvState, diffEnv, planSecretFileRemoval, type EnvBundle, type EnvChange, type SecretFilePlan } from "../config/env-prompt.ts";
 import { discoverConnectionUrl, describeMigrationStep, migrationScriptComment, runMigrations } from "./migrator.ts";
 import { describePostgresProvision, buildPostgresProvisionCommands, applyPostgresProvision, type PostgresProvision } from "../infra/postgres-setup.ts";
@@ -63,6 +63,56 @@ export type PlanUpOptions = {
   dryRun: boolean;
   /** `up all`: resolve shared infrastructure (db, redis, optional ollama) first. */
   withInfra: boolean;
+}
+
+// ─── Version resolution ─────────────────────────────────────────────────────
+
+type VersionResult =
+  | { status: "proceed"; release: Release; isUpdate: boolean; installedVersion?: string }
+  | { status: "current"; version: string }
+  | { status: "failed" };
+
+async function resolveVersion(
+  component: Component,
+  targetVersion: string,
+  host: Host,
+): Promise<VersionResult> {
+  let release: Release;
+  try {
+    release = await fetchRelease(targetVersion);
+  } catch (err) {
+    fail("GitHub API", (err as Error).message);
+    return { status: "failed" };
+  }
+
+  const manifest = await readManifest(host);
+  const installedEntry = manifest.components[component];
+  const installedVersion = installedEntry?.version;
+  const isUpdate = !!installedVersion;
+
+  if (installedVersion === release.tagName) {
+    // Verify the installed binary is intact before deciding.
+    if (installedEntry?.binaryChecksum && installedEntry.binaryPath) {
+      const checksumSpinner = spinner();
+      checksumSpinner.start(`Verifying installed ${component} binary…`);
+      const currentHash = await host.computeSha256(installedEntry.binaryPath);
+      if (currentHash === installedEntry.binaryChecksum) {
+        checksumSpinner.stop(`${component} ${release.tagName} installed and verified`);
+        return { status: "current", version: release.tagName };
+      }
+      checksumSpinner.stop(`${component}: checksum mismatch, binary may be corrupted. Reinstalling`);
+      return { status: "proceed", release, isUpdate: true, installedVersion };
+    }
+
+    // No stored checksum (legacy install): treat as current.
+    info("Version", `${component} already installed (no checksum recorded to verify)`);
+    return { status: "current", version: release.tagName };
+  }
+
+  if (isUpdate) {
+    info("Version", `${component}: update available ${installedVersion} → ${release.tagName}`);
+  }
+  return { status: "proceed", release, isUpdate, installedVersion };
 }
 
 // ─── Collect ────────────────────────────────────────────────────────────────
