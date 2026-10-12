@@ -141,6 +141,7 @@ async function publicModelSpecifierToModelSource(orgId: string, specifier: strin
 }
 
 type HostLocation = {
+  installationId: string;
   nodeId: string;
   machineName: string | null;
   driver: string;
@@ -164,6 +165,7 @@ async function getModelSources(deploymentId: string, specifier: string): Promise
   const generationAtQuery = sourcesGeneration;
 
   const modelLocations = await getDB().select({
+    installationId: modelInstallationT.id,
     nodeId: aiNodeT.id,
     machineName: aiNodeT.machineName,
     host: aiNodeT.host,
@@ -194,7 +196,7 @@ async function getModelSources(deploymentId: string, specifier: string): Promise
   const byHost = new Map<string, HostLocation>();
   for (const loc of modelLocations) {
     const key = `${loc.host}:${loc.nodePort}`;
-    byHost.set(key, { nodeId: loc.nodeId, machineName: loc.machineName, driver: loc.driver, authToken: loc.authToken, tls: loc.tls });
+    byHost.set(key, { installationId: loc.installationId, nodeId: loc.nodeId, machineName: loc.machineName, driver: loc.driver, authToken: loc.authToken, tls: loc.tls });
   }
 
   const result: ModelSources = { hosts: [...byHost.keys()], byHost };
@@ -259,7 +261,9 @@ export type ModelInfo = {
   nodeId: string | null;
   /** Daemon host:port to route requests through. */
   host: string;
-  /** Canonical model identifier; used to route to the right daemon installation. */
+  /** Daemon installation the request is routed to. */
+  installationId: string;
+  /** Canonical model identifier. */
   specifier: string;
   /** Driver-side provider model name (e.g. gemma3:latest); used as the OpenAI body's `model` field. */
   model: string;
@@ -316,9 +320,11 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, prefi
     : (accessInfo.early ?? accessInfo.primary);
 
   const location = finalSources.byHost.get(result.host) ?? earlySources.byHost.get(result.host);
-  const driver = location?.driver ?? "ollama";
-  const authToken = location?.authToken ?? null;
-  const tls = location?.tls ?? false;
+  if (!location) {
+    result.release();
+    return { status: "unavailable" };
+  }
+  const { driver, authToken, tls } = location;
   const driverProvider = driver as "vllm" | "ollama";
 
   const meta = await resolveCatalogMeta(resolvedSpecifier, driverProvider).catch((err: unknown) => {
@@ -329,7 +335,8 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, prefi
   return {
     status: "found",
     info: {
-      nodeId: location?.nodeId ?? null,
+      installationId: location.installationId,
+      nodeId: location.nodeId,
       host: result.host,
       specifier: resolvedSpecifier,
       // Best-effort pass-through: when the catalog cannot resolve the specifier,

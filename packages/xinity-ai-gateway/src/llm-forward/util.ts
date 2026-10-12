@@ -377,6 +377,7 @@ function isJsonString(text: string): boolean {
 export type BackendRoute = {
   nodeId: string | null;
   host: string;
+  installationId: string;
   specifier: string;
   authToken: string | null;
 };
@@ -386,6 +387,7 @@ export function backendRouteFields(route: BackendRoute): Record<string, unknown>
   return {
     nodeId: route.nodeId,
     host: route.host,
+    installationId: route.installationId,
     specifier: route.specifier,
     signed: route.authToken !== null,
   };

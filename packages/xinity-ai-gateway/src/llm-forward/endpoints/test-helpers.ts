@@ -226,6 +226,7 @@ export function setupResponseTestMocks() {
 
   let mockPort = 0;
   const getModelInfo = jest.fn<typeof getModelInfoT>(async () => modelFound({
+    installationId: "inst-1",
     nodeId: "node-1",
     host: `localhost:${mockPort}`,
     specifier: "test-model",

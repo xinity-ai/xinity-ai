@@ -395,6 +395,7 @@ describe("handleResponses", () => {
 
   test("should reject function tools when catalog explicitly says model does not support them", async () => {
     getModelInfo.mockImplementationOnce(async () => modelFound({
+      installationId: "inst-1",
       nodeId: "node-1",
       host: `localhost:${server.port}`,
       specifier: "test-model",
@@ -429,6 +430,7 @@ describe("handleResponses", () => {
 
   test("should allow function tools when catalog entry is missing (legacy fallback, tags undefined)", async () => {
     getModelInfo.mockImplementationOnce(async () => modelFound({
+      installationId: "inst-1",
       nodeId: "node-1",
       host: `localhost:${server.port}`,
       specifier: "test-model",
@@ -461,6 +463,7 @@ describe("handleResponses", () => {
 
   test("should reject structured output when catalog explicitly says model does not support tools", async () => {
     getModelInfo.mockImplementationOnce(async () => modelFound({
+      installationId: "inst-1",
       nodeId: "node-1",
       host: `localhost:${server.port}`,
       specifier: "test-model",
@@ -499,6 +502,7 @@ describe("handleResponses", () => {
 
   test("should allow structured output when catalog entry is missing (legacy fallback, tags undefined)", async () => {
     getModelInfo.mockImplementationOnce(async () => modelFound({
+      installationId: "inst-1",
       nodeId: "node-1",
       host: `localhost:${server.port}`,
       specifier: "test-model",

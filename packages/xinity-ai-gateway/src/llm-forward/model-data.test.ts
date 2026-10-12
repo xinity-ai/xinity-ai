@@ -97,8 +97,8 @@ function deploymentResult(d: {
   };
 }
 
-function installationResult(r: { host: string; nodePort: number; modelPort: number; driver: string }): Record<string, unknown> {
-  return { host: r.host, nodePort: r.nodePort, modelPort: r.modelPort, driver: r.driver };
+function installationResult(r: { host: string; nodePort: number; modelPort: number; driver: string; installationId?: string }): Record<string, unknown> {
+  return { installationId: r.installationId ?? "inst-1", host: r.host, nodePort: r.nodePort, modelPort: r.modelPort, driver: r.driver };
 }
 
 const noop = () => {};
@@ -186,15 +186,27 @@ describe("getModelInfo", () => {
     expect(result!.host).toBe("node-b:11434");
   });
 
-  test("falls back to 'ollama' driver when host not in either driver map", async () => {
+  test("reports unavailable when the chosen host serves none of the deployment's installations", async () => {
     queryQueue.push([deploymentResult({ specifier: "llama3:latest" })]);
     queryQueue.push([installationResult({ host: "192.168.1.10", nodePort: 11434, modelPort: 11434, driver: "vllm" })]);
-    mockSelectHost.mockResolvedValue({ host: "unknown-host:8000", useFinalModel: true, release: noop });
+    const release = mock(() => {});
+    mockSelectHost.mockResolvedValue({ host: "unknown-host:8000", useFinalModel: true, release });
 
-    const result = infoOf(await getModelInfo("org-1", "my-model"));
+    const lookup = await getModelInfo("org-1", "my-model");
 
-    expect(result).toBeDefined();
-    expect(result!.driver).toBe("ollama");
+    expect(lookup.status).toBe("unavailable");
+    expect(release).toHaveBeenCalled();
+  });
+
+  test("routes to the installation serving the chosen host", async () => {
+    queryQueue.push([deploymentResult({ specifier: "mistral:latest" })]);
+    queryQueue.push([
+      installationResult({ host: "gpu-a", nodePort: 8000, modelPort: 8000, driver: "vllm", installationId: "inst-a" }),
+      installationResult({ host: "gpu-b", nodePort: 8000, modelPort: 8000, driver: "vllm", installationId: "inst-b" }),
+    ]);
+    mockSelectHost.mockResolvedValue({ host: "gpu-b:8000", useFinalModel: true, release: noop });
+
+    expect(infoOf(await getModelInfo("org-1", "my-model"))!.installationId).toBe("inst-b");
   });
 
   test("correctly resolves vllm driver from driver map", async () => {
