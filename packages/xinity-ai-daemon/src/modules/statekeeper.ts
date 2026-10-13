@@ -11,6 +11,7 @@ import { detectHardwareProfile, detectNodeName, type HardwareProfile } from "./h
 import { normalizePep440 } from "common-env/model-catalog";
 import { rootLogger } from "../logger";
 import { detectVllmFeatures, resolvePythonForVllm } from "./vllm-features";
+import { NO_HOST_DEVICES, unpinnedDevicesFor } from "./model-installation/gpu-devices";
 
 const log = rootLogger.child({ name: "statekeeper" });
 
@@ -109,9 +110,11 @@ async function detectOllamaVersion(endpoint: string): Promise<string | undefined
 async function detectConfiguredVllmVersion(): Promise<string | undefined> {
   const image = config.vllm.dockerImage;
   if (image) {
+    const { gpus } = await getHardwareProfile();
+    const deviceArgs = unpinnedDevicesFor(gpus, NO_HOST_DEVICES).dockerArgs;
     return detectVllmVersion("docker", [
       { label: "metadata", run: () => $`docker run --rm --entrypoint python3 ${image} -c ${VLLM_VERSION_FROM_METADATA}`.throws(false).quiet() },
-      { label: "cli", run: () => $`docker run --rm --gpus all --entrypoint ${config.vllm.path ?? "vllm"} ${image} --version`.throws(false).quiet() },
+      { label: "cli", run: () => $`docker run --rm ${deviceArgs} --entrypoint ${config.vllm.path ?? "vllm"} ${image} --version`.throws(false).quiet() },
     ]);
   }
   const vllmPath = config.vllm.path;

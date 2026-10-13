@@ -94,10 +94,12 @@ const [
   { buildDockerRunArgs, buildSystemdEnvFile, buildSystemdDropIn, buildSystemdServeArgv },
   { computeGpuUtilization, buildVllmExtraArgs, concurrencyCap },
   { buildHardwareProfile },
+  { NO_HOST_DEVICES, unpinnedDevicesFor },
 ] = await Promise.all([
   import("../modules/model-installation/vllm-ops"),
   import("../modules/model-installation/vllm"),
   import("../modules/hardware-detect"),
+  import("../modules/model-installation/gpu-devices"),
 ]);
 
 function buildVllmInstanceConfig(resolved: ResolvedVllmModel, state: State): VllmInstanceConfig {
@@ -119,6 +121,7 @@ function buildVllmInstanceConfig(resolved: ResolvedVllmModel, state: State): Vll
       resolved.args,
       concurrencyCap(resolved.model.sizing, profile.gpus, resolved.kvCacheGb),
     ),
+    devices: unpinnedDevicesFor(profile.gpus, NO_HOST_DEVICES),
   };
 }
 

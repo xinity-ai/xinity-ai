@@ -35,7 +35,7 @@ The installation flow: download weights from HuggingFace (resumable, with file f
 | Backend | How it works |
 |---|---|
 | `systemd` (default) | Manages `vllm-driver@{id}.service` template units. Uses `VLLM_PATH` if set, otherwise falls back to `/usr/bin/vllm`. |
-| `docker` | Runs in containers with `--gpus all` on an egress-blocked network. Requires setting `VLLM_BACKEND=docker` explicitly plus `VLLM_DOCKER_IMAGE`; it is not selected automatically just by setting `VLLM_DOCKER_IMAGE`. |
+| `docker` | Runs in containers on an egress-blocked network. Requires setting `VLLM_BACKEND=docker` explicitly plus `VLLM_DOCKER_IMAGE`; it is not selected automatically just by setting `VLLM_DOCKER_IMAGE`. |
 
 The Docker backend blocks all outbound internet from the inference process (IP masquerade disabled, `HF_HUB_OFFLINE=1`). Models are pre-downloaded by the daemon outside the container.
 

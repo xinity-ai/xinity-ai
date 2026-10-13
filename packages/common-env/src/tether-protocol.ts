@@ -17,6 +17,10 @@ export const gpuSchema = z.object({
 });
 export type GpuInfo = z.infer<typeof gpuSchema>;
 
+export function gpuCardId(gpu: Pick<GpuInfo, "uuid" | "pciBusId">): string | undefined {
+  return gpu.uuid ?? gpu.pciBusId;
+}
+
 // Outbound: tether -> daemon (SSE)
 
 export const desiredInstallationSchema = z.object({

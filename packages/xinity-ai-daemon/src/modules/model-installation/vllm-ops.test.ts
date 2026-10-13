@@ -15,7 +15,15 @@ const baseConfig: VllmInstanceConfig = {
   model: "meta-llama/Llama-3.1-8B-Instruct",
   port: 8000,
   kvCacheBytes: "8g",
+  devices: {
+    env: ["CUDA_DEVICE_ORDER=PCI_BUS_ID", "CUDA_VISIBLE_DEVICES=0"],
+    supplementaryGroups: [],
+    dockerArgs: ["--gpus", "all", "-e", "CUDA_DEVICE_ORDER=PCI_BUS_ID"],
+    tensorParallelSize: 1,
+  },
 };
+
+const amdPair = { env: ["ROCR_VISIBLE_DEVICES=GPU-a,GPU-b"], supplementaryGroups: [992, 44], dockerArgs: ["--device", "/dev/kfd"], tensorParallelSize: 2 };
 
 describe("buildDockerRunArgs", () => {
   test("base config emits stable argv (always egress-blocked + offline)", () => {
@@ -24,10 +32,10 @@ describe("buildDockerRunArgs", () => {
       "docker", "run", "-d",
       "--name", "vllm-inst-1",
       "--gpus", "all",
+      "-e", "CUDA_DEVICE_ORDER=PCI_BUS_ID",
       "--ipc=host",
       "--network", "xinity-vllm-noegress-v1",
       "-p", "127.0.0.1:8000:8000",
-      "-e", "CUDA_DEVICE_ORDER=PCI_BUS_ID",
       "-e", "HF_HOME=/data/hf-cache",
       "-e", "TRITON_CACHE_DIR=/data/triton-cache",
       "-e", "HF_HUB_OFFLINE=1",
@@ -103,11 +111,10 @@ describe("buildDockerRunArgs", () => {
     expect(without.some(a => a.startsWith("VLLM_MAX_AUDIO_CLIP_FILESIZE_MB"))).toBe(false);
   });
 
-  test("exposes only the assigned cards, as one quoted device field", () => {
-    const argv = buildDockerRunArgs("inst-1", { ...baseConfig, pinnedGpus: [{ uuid: "GPU-a", index: 1 }, { uuid: "GPU-b", index: 3 }] });
-    expect(argv[argv.indexOf("--gpus") + 1]).toBe("\"device=GPU-a,GPU-b\"");
-    const unpinned = buildDockerRunArgs("inst-1", { ...baseConfig, pinnedGpus: [] });
-    expect(unpinned[unpinned.indexOf("--gpus") + 1]).toBe("all");
+  test("exposes the devices the vendor needs in place of nvidia's", () => {
+    const argv = buildDockerRunArgs("inst-1", { ...baseConfig, devices: amdPair });
+    expect(argv.slice(5, 7)).toEqual(["--device", "/dev/kfd"]);
+    expect(argv).not.toContain("--gpus");
   });
 
   test("preview mode runs detached without a restart policy (one-off, kept for log inspection)", () => {
@@ -122,13 +129,7 @@ describe("buildDockerRunArgs", () => {
 
 describe("buildSystemdEnvFile", () => {
   test("keeps hugging face offline for every instance", () => {
-    expect(buildSystemdEnvFile(baseConfig)).toBe("HF_HUB_OFFLINE=1\nTRANSFORMERS_OFFLINE=1\n");
-  });
-
-  test("pins the assigned cards by index, and leaves an unpinned instance to the template's default", () => {
-    const pinnedGpus = [{ uuid: "GPU-a", index: 1 }, { uuid: "GPU-b", index: 3 }];
-    expect(buildSystemdEnvFile({ ...baseConfig, pinnedGpus })).toContain("CUDA_VISIBLE_DEVICES=1,3\n");
-    expect(buildSystemdEnvFile({ ...baseConfig, pinnedGpus: [] })).not.toContain("CUDA_VISIBLE_DEVICES");
+    expect(buildSystemdEnvFile(baseConfig)).toBe("HF_HUB_OFFLINE=1\nTRANSFORMERS_OFFLINE=1\nCUDA_DEVICE_ORDER=PCI_BUS_ID\nCUDA_VISIBLE_DEVICES=0\n");
   });
 
   test("emits the audio decode duration env var only when set", () => {
@@ -146,9 +147,9 @@ describe("buildSystemdEnvFile", () => {
 
 describe("buildSystemdServeArgv", () => {
   test("runs tensor parallel across the pinned cards, and not at all on one", () => {
-    const twoCards = buildSystemdServeArgv({ ...baseConfig, pinnedGpus: [{ uuid: "GPU-a", index: 0 }, { uuid: "GPU-b", index: 1 }] });
+    const twoCards = buildSystemdServeArgv({ ...baseConfig, devices: amdPair });
     expect(twoCards[twoCards.indexOf("--tensor-parallel-size") + 1]).toBe("2");
-    expect(buildSystemdServeArgv({ ...baseConfig, pinnedGpus: [{ uuid: "GPU-a", index: 0 }] })).not.toContain("--tensor-parallel-size");
+    expect(buildSystemdServeArgv(baseConfig)).not.toContain("--tensor-parallel-size");
   });
 
   test("base config produces minimal vllm serve argv", () => {
@@ -190,6 +191,10 @@ describe("buildSystemdDropIn", () => {
       "\"--host\" \"127.0.0.1\" \"--port\" \"8000\" \"--kv-cache-memory-bytes\" \"8g\" " +
       "\"--served-model-name\" \"meta-llama/Llama-3.1-8B-Instruct\"\n",
     );
+  });
+
+  test("lets the service open the cards' device nodes through their groups", () => {
+    expect(buildSystemdDropIn({ ...baseConfig, devices: amdPair })).toStartWith("[Service]\nSupplementaryGroups=992 44\nExecStart=\n");
   });
 
   test("keeps each extra arg whole through spaces, quotes, newlines and systemd's own expansions", () => {

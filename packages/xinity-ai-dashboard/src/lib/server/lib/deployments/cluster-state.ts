@@ -1,4 +1,5 @@
 import type { AiNode, ModelInstallation, InferInsertModel, modelInstallationT } from "common-db";
+import { gpuCardId } from "common-env";
 import { ENGINE_SCHEDULERS } from "./engines";
 import { requirementKey } from "./placement";
 import { orderByStrategy, type Capacity, type DeploymentStrategy } from "./strategy";
@@ -26,7 +27,7 @@ export function rankServers(strategy: DeploymentStrategy, state: ClusterState): 
 function nodeCards(server: AiNode): CardCapacity[] {
   const cards = server.gpus
     .filter((gpu) => gpu.vramMb > 0)
-    .map((gpu) => ({ uuid: gpu.uuid ?? null, name: gpu.name, total: gpu.vramMb / 1024, used: 0 }));
+    .map((gpu) => ({ uuid: gpuCardId(gpu) ?? null, name: gpu.name, total: gpu.vramMb / 1024, used: 0 }));
   return cards.length > 0 ? cards : [{ uuid: null, name: "", total: server.estCapacity, used: 0 }];
 }
 
