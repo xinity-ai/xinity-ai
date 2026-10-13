@@ -1,5 +1,5 @@
 import { inArray, modelDeploymentT, sql, calcCanaryProgress, modelInstallationT, aiNodeT, type ModelDeployment, type ModelInstallation, type AiNode, type InferInsertModel } from "common-db";
-import { settingsEqual, type DeploymentSettings } from "common-env";
+import { settingsEqual, tensorParallelLayouts, type DeploymentSettings, type OptimizationGoal } from "common-env";
 import { getDB } from "$lib/server/db";
 import { resolveSchedulable, type SchedulableModel } from "$lib/server/lib/models/model-catalog";
 import { checkNodeCompatibility, type BlockedVersion, type ModelNodeRequirements, type NodeCapability, type Provider } from "common-env/model-catalog";
@@ -26,7 +26,7 @@ type ClusterState = {
 }
 
 type Capacity = { total: number; used: number };
-type CardCapacity = Capacity & { uuid: string | null };
+type CardCapacity = Capacity & { uuid: string | null; name: string };
 
 export type ModelRequirement = { deploymentId: string; specifier: string; replicas: number; kvCacheSize: number | null; preferredDriver: Provider | null; settings: DeploymentSettings };
 export type ModelRequirementTable = Record<string, ModelRequirement>;
@@ -104,8 +104,8 @@ function requirementFor(
 function nodeCards(server: AiNode): CardCapacity[] {
   const cards = server.gpus
     .filter((gpu) => gpu.vramMb > 0)
-    .map((gpu) => ({ uuid: gpu.uuid ?? null, total: gpu.vramMb / 1024, used: 0 }));
-  return cards.length > 0 ? cards : [{ uuid: null, total: server.estCapacity, used: 0 }];
+    .map((gpu) => ({ uuid: gpu.uuid ?? null, name: gpu.name, total: gpu.vramMb / 1024, used: 0 }));
+  return cards.length > 0 ? cards : [{ uuid: null, name: "", total: server.estCapacity, used: 0 }];
 }
 
 // The daemon runs an unpinned vLLM instance on the node's first card, so that card carries it.
@@ -141,6 +141,59 @@ export function cardForVllm(state: ClusterState, nodeId: string, capacity: numbe
   const pinnable = cards.filter((card) => card.uuid !== null);
   const candidates = pinnable.length > 0 ? pinnable : cards.slice(0, 1);
   return orderByStrategy(strategy, candidates, (card) => card).find((card) => card.total - card.used >= capacity);
+}
+
+export type VllmLayout = { cards: CardCapacity[]; perCardGb: number };
+
+// vLLM gives every rank the same share and one utilization fraction, so a split spans identical cards only.
+function identicalCardGroups(cards: CardCapacity[]): CardCapacity[][] {
+  const groups = new Map<string, CardCapacity[]>();
+  for (const card of cards) {
+    const key = `${card.name}:${card.total}`;
+    groups.set(key, [...(groups.get(key) ?? []), card]);
+  }
+  return [...groups.values()];
+}
+
+function vllmLayouts(
+  state: ClusterState,
+  nodeId: string,
+  model: Pick<SchedulableModel, "weight" | "attentionHeads" | "kvHeads" | "mlaAttention">,
+  kvCacheGb: number,
+  strategy: DeploymentStrategy,
+): VllmLayout[] {
+  const cards = state.cardCapacity.get(nodeId) ?? [];
+  const pinnable = cards.filter((card) => card.uuid !== null);
+  const groups = pinnable.length > 0 ? identicalCardGroups(pinnable) : [cards.slice(0, 1)];
+  const sizing = { weightGb: model.weight, attentionHeads: model.attentionHeads, kvHeads: model.kvHeads, mlaAttention: model.mlaAttention };
+
+  return groups.flatMap((group) => {
+    const ordered = orderByStrategy(strategy, group, (card) => card);
+    return tensorParallelLayouts(sizing, { cards: group.length, kvCacheGb }).flatMap((layout) => {
+      const perCardGb = layout.perCardWeightGb + layout.perCardKvCacheGb;
+      const fitting = ordered.filter((card) => card.total - card.used >= perCardGb);
+      return fitting.length >= layout.tensorParallelSize
+        ? [{ cards: fitting.slice(0, layout.tensorParallelSize), perCardGb }]
+        : [];
+    });
+  });
+}
+
+// Space packs a model onto the fewest cards, speed splits it across the most.
+const LAYOUT_PREFERENCE: Record<OptimizationGoal, (a: VllmLayout, b: VllmLayout) => number> = {
+  space: (a, b) => a.cards.length - b.cards.length,
+  speed: (a, b) => b.cards.length - a.cards.length,
+};
+
+export function layoutForVllm(
+  state: ClusterState,
+  nodeId: string,
+  model: Pick<SchedulableModel, "weight" | "attentionHeads" | "kvHeads" | "mlaAttention">,
+  kvCacheGb: number,
+  goal: OptimizationGoal,
+  strategy: DeploymentStrategy,
+): VllmLayout | undefined {
+  return vllmLayouts(state, nodeId, model, kvCacheGb, strategy).sort(LAYOUT_PREFERENCE[goal])[0];
 }
 
 export function buildClusterState(existing: ModelInstallation[], availableServers: AiNode[]): ClusterState {
