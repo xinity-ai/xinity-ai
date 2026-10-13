@@ -675,6 +675,14 @@ describe("matchFatalPattern", () => {
       + "Try increasing `gpu_memory_utilization` when initializing the engine.";
     expect(matchFatalPattern(logs)).toBe("No GPU memory left for the KV cache");
   });
+
+  test("reads amd and intel failures in their runtimes' own wording", () => {
+    expect(matchFatalPattern("torch.OutOfMemoryError: HIP out of memory. Tried to allocate 2.00 GiB.")).toBe("GPU out of memory");
+    expect(matchFatalPattern("torch.OutOfMemoryError: XPU out of memory. Tried to allocate 2.00 GiB.")).toBe("GPU out of memory");
+    expect(matchFatalPattern("hipErrorNoBinaryForGpu: Unable to find code object for all current devices!")).toBe("vLLM build has no kernels for this GPU");
+    expect(matchFatalPattern("RuntimeError: HIP error: invalid device ordinal")).toBe("Invalid GPU device index");
+    expect(matchFatalPattern("RuntimeError: UR_RESULT_ERROR_DEVICE_LOST")).toBe("GPU runtime error");
+  });
 });
 
 describe("perCardSizing", () => {

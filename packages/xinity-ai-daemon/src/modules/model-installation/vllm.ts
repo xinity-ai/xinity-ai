@@ -36,12 +36,14 @@ const log = rootLogger.child({ name: "vllm" });
 
 const FATAL_LOG_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /Free memory on device.*is less than desired GPU memory utilization|Decrease GPU memory utilization/i, label: "GPU memory utilization too high" },
-  { pattern: /torch\.cuda\.OutOfMemoryError|torch\.OutOfMemoryError|CUDA out of memory/i, label: "GPU out of memory" },
+  { pattern: /torch\.(cuda\.)?OutOfMemoryError|(CUDA|HIP|XPU) out of memory|UR_RESULT_ERROR_OUT_OF_DEVICE_MEMORY/i, label: "GPU out of memory" },
   { pattern: /Bfloat16 is not supported|bfloat16.*not supported/i, label: "GPU does not support bfloat16" },
-  { pattern: /CUDA error: invalid device ordinal/i, label: "Invalid GPU device index" },
+  { pattern: /(CUDA|HIP) error: invalid device ordinal/i, label: "Invalid GPU device index" },
+  { pattern: /hipErrorNoBinaryForGpu|HIP error: invalid device function/i, label: "vLLM build has no kernels for this GPU" },
   { pattern: /NVIDIA driver on your system is too old|provided PTX was compiled with an unsupported toolchain|cuda capability.*not compatible/i, label: "CUDA/driver version mismatch" },
-  { pattern: /RuntimeError:.*CUDA error/i, label: "CUDA runtime error" },
+  { pattern: /RuntimeError:.*(CUDA|HIP) error|(UR|ZE)_RESULT_ERROR_/i, label: "GPU runtime error" },
   { pattern: /could not select device driver|unknown or invalid runtime name: nvidia|Found no NVIDIA driver/i, label: "NVIDIA container runtime missing" },
+  { pattern: /No HIP GPUs are available/i, label: "No GPU visible to vLLM" },
   { pattern: /ncclSystemError|ncclInternalError|NCCL error/i, label: "NCCL communication error" },
   { pattern: /address already in use|Address already in use/i, label: "Port already in use" },
   { pattern: /Model architectures \[.*\] are not supported/i, label: "Unsupported model architecture" },
