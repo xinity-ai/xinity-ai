@@ -272,6 +272,7 @@
       <Label for="saml-entry-point">Entry point</Label>
       <Input
         id="saml-entry-point"
+        type="url"
         bind:value={samlEntryPoint}
         placeholder="https://idp.example.com/sso"
         required

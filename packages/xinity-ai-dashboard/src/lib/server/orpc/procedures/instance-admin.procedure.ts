@@ -126,7 +126,7 @@ const banUser = rootOs
   .input(z.object({
     userId: z.string(),
     reason: z.string().optional(),
-    expiresAt: z.string().datetime().optional(),
+    expiresAt: z.iso.datetime({ offset: true }).optional(),
   }))
   .handler(async ({ input, context, errors }) => {
     const rlog = log.child({ traceId: context.traceId });
