@@ -1,6 +1,6 @@
 import { aiApplicationT, sql } from "common-db";
 import { getDB } from "../db";
-import { redis } from "../redis";
+import { cache } from "../cache";
 import { rootLogger } from "../logger";
 import { config } from "../config";
 
@@ -8,7 +8,7 @@ const log = rootLogger.child({ name: "application-resolver" });
 
 /**
  * Resolves an application name to its ID within an organization.
- * Uses Redis cache to avoid repeated DB lookups.
+ * Cached to avoid repeated DB lookups.
  * Returns the application ID or null if not found / soft-deleted.
  */
 export async function resolveApplicationByName(
@@ -18,10 +18,10 @@ export async function resolveApplicationByName(
   const cacheKey = `app:${organizationId}:${name}`;
 
   try {
-    const cached = await redis.get(cacheKey);
+    const cached = await cache.get(cacheKey);
     if (cached) return cached;
   } catch (err) {
-    log.warn({ err }, "Redis error in resolveApplicationByName (get)");
+    log.warn({ err }, "Cache error in resolveApplicationByName (get)");
   }
 
   const [app] = await getDB()
@@ -40,7 +40,7 @@ export async function resolveApplicationByName(
 
   if (!app) return null;
 
-  redis.set(cacheKey, app.id, "EX", config.cache.applicationTtlSeconds())
-    .catch((err: unknown) => log.warn({ err }, "Redis error in resolveApplicationByName (set)"));
+  cache.set(cacheKey, app.id, config.cache.applicationTtlSeconds())
+    .catch((err: unknown) => log.warn({ err }, "Cache error in resolveApplicationByName (set)"));
   return app.id;
 }

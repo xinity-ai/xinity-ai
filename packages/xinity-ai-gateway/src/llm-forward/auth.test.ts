@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, jest, beforeEach, afterEach, spyOn } from "bun:test";
-import { redis } from "../redis";
+import { cache } from "../cache";
 
 // --- Mocks (hoisted by bun:test) ---
 
@@ -51,10 +51,10 @@ function makeBearerHeader(prefix?: string): string {
   return `Bearer ${prefix ?? FIXED_PREFIX}SECRETSUFFIX`;
 }
 
-// --- Redis spies ---
+// --- Cache spies ---
 
-let mockRedisGet: ReturnType<typeof spyOn>;
-let mockRedisSet: ReturnType<typeof spyOn>;
+let mockCacheGet: ReturnType<typeof spyOn>;
+let mockCacheSet: ReturnType<typeof spyOn>;
 
 // --- Helpers ---
 
@@ -78,13 +78,13 @@ describe("checkAuth", () => {
     dbGate = null;
 
     // Default: cache miss, set succeeds
-    mockRedisGet = spyOn(redis, "get").mockResolvedValue(null);
-    mockRedisSet = spyOn(redis, "set").mockResolvedValue("OK" as any);
+    mockCacheGet = spyOn(cache, "get").mockResolvedValue(null);
+    mockCacheSet = spyOn(cache, "set").mockResolvedValue();
   });
 
   afterEach(() => {
-    mockRedisGet.mockRestore();
-    mockRedisSet.mockRestore();
+    mockCacheGet.mockRestore();
+    mockCacheSet.mockRestore();
   });
 
   test("returns 401 when auth header doesn't start with 'Bearer '", async () => {
@@ -92,14 +92,14 @@ describe("checkAuth", () => {
     await expectUnauthorized(result, "Missing API Key");
   });
 
-  test("returns AuthResult from Redis cache when key is cached", async () => {
+  test("returns AuthResult from cache when key is cached", async () => {
     const cached = {
       id: "cached-key",
       organizationId: "cached-org",
       applicationId: "cached-app",
       collectData: false,
     };
-    mockRedisGet.mockResolvedValue(JSON.stringify(cached));
+    mockCacheGet.mockResolvedValue(JSON.stringify(cached));
 
     const result = await checkAuth(makeBearerHeader());
 
@@ -120,7 +120,7 @@ describe("checkAuth", () => {
       applicationId: null,
       // collectData intentionally omitted
     };
-    mockRedisGet.mockResolvedValue(JSON.stringify(cached));
+    mockCacheGet.mockResolvedValue(JSON.stringify(cached));
 
     const result = await checkAuth(makeBearerHeader());
 
@@ -139,7 +139,7 @@ describe("checkAuth", () => {
   });
 
   test("returns 401 from cached failure without hitting DB", async () => {
-    mockRedisGet.mockResolvedValue(JSON.stringify({ fail: "API Key not found" }));
+    mockCacheGet.mockResolvedValue(JSON.stringify({ fail: "API Key not found" }));
 
     const result = await checkAuth(makeBearerHeader());
 
@@ -152,7 +152,7 @@ describe("checkAuth", () => {
 
     await checkAuth(makeBearerHeader());
 
-    const [cacheKey, cacheValue, , ttl] = mockRedisSet.mock.calls[0] as [string, string, string, number];
+    const [cacheKey, cacheValue, ttl] = mockCacheSet.mock.calls[0] as [string, string, number];
     expect(cacheKey).toBe(`apikey:${FULL_KEY_HASH}`);
     expect(JSON.parse(cacheValue)).toEqual({ fail: "API Key not found" });
     expect(ttl).toBeLessThan(120);
@@ -200,7 +200,7 @@ describe("checkAuth", () => {
     }
   });
 
-  test("returns AuthResult on successful verification and caches in Redis", async () => {
+  test("returns AuthResult on successful verification and caches it", async () => {
     mockQueryResult.push({ ...fakeApiKey });
 
     const originalVerify = Bun.password.verify;
@@ -216,9 +216,9 @@ describe("checkAuth", () => {
       expect(auth.applicationId).toBe("app-789");
       expect(auth.collectData).toBe(true);
 
-      // Verify it was cached in Redis
-      expect(mockRedisSet).toHaveBeenCalled();
-      const [cacheKey, cacheValue] = mockRedisSet.mock.calls[0];
+      // Verify it was cached
+      expect(mockCacheSet).toHaveBeenCalled();
+      const [cacheKey, cacheValue] = mockCacheSet.mock.calls[0];
       expect(cacheKey).toBe(`apikey:${FULL_KEY_HASH}`);
       const cached = JSON.parse(cacheValue);
       expect(cached.id).toBe("key-123");
@@ -309,7 +309,7 @@ describe("checkAuth", () => {
     expect((shed as Response).status).toBe(503);
     expect((shed as Response).headers.get("Retry-After")).toBe("1");
     // A transient shed must not be remembered as an auth failure
-    expect(mockRedisSet).not.toHaveBeenCalled();
+    expect(mockCacheSet).not.toHaveBeenCalled();
 
     openGate();
     await Promise.all(held);

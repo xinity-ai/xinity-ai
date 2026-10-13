@@ -1,11 +1,17 @@
 import { describe, test, expect, beforeEach, spyOn, afterEach } from "bun:test";
-import { redis } from "../redis";
-
-
+import { cache } from "../cache";
 import type { SelectHostInput } from "./load-balancer";
 const { admissionLimit, admit, selectHost } = await import("./load-balancer");
 
-let mockRedisSend: ReturnType<typeof spyOn>;
+let mget: ReturnType<typeof spyOn<typeof cache, "mget">>;
+let incr: ReturnType<typeof spyOn<typeof cache, "incr">>;
+let set: ReturnType<typeof spyOn<typeof cache, "set">>;
+let decr: ReturnType<typeof spyOn<typeof cache, "decr">>;
+let tryIncr: ReturnType<typeof spyOn<typeof cache, "tryIncr">>;
+
+function mgetReturning(prefixHints: (string | null)[], connCounts: (string | null)[] = ["0", "0"]) {
+  mget.mockImplementation(async (keys) => (keys[0]?.startsWith("lb:prefix:") ? prefixHints : connCounts));
+}
 
 function makeInput(overrides?: Partial<SelectHostInput>): SelectHostInput {
   return {
@@ -19,20 +25,17 @@ function makeInput(overrides?: Partial<SelectHostInput>): SelectHostInput {
 }
 
 beforeEach(() => {
-  mockRedisSend = spyOn(redis, "send").mockImplementation(
-    ((cmd: string, _args: string[]) => {
-      if (cmd === "INCR") return Promise.resolve(1);
-      if (cmd === "MGET") return Promise.resolve(["0", "0"]);
-      if (cmd === "SET") return Promise.resolve("OK");
-      if (cmd === "EVAL") return Promise.resolve(1);
-      if (cmd === "DECR") return Promise.resolve(0);
-      return Promise.resolve(null);
-    }) as any,
-  );
+  mget = spyOn(cache, "mget").mockResolvedValue(["0", "0"]);
+  incr = spyOn(cache, "incr").mockResolvedValue(1);
+  set = spyOn(cache, "set").mockResolvedValue();
+  decr = spyOn(cache, "decr").mockResolvedValue();
+  tryIncr = spyOn(cache, "tryIncr").mockResolvedValue(true);
 });
 
 afterEach(() => {
-  mockRedisSend.mockRestore();
+  for (const spy of [mget, incr, set, decr, tryIncr]) {
+    spy.mockRestore();
+  }
 });
 
 describe("selectHost", () => {
@@ -123,12 +126,7 @@ describe("selectHost", () => {
   });
 
   test("round-robin strategy picks host by modulo of counter", async () => {
-    mockRedisSend.mockImplementation(
-      ((cmd: string, _args: string[]) => {
-        if (cmd === "EVAL") return Promise.resolve(3);
-        return Promise.resolve(null);
-      }) as any,
-    );
+    incr.mockResolvedValue(3);
 
     const hosts = ["host-a:8080", "host-b:8080", "host-c:8080"];
     const result = await selectHost("round-robin", makeInput({ hosts }));
@@ -139,14 +137,7 @@ describe("selectHost", () => {
   });
 
   test("least-connections strategy picks host with lowest count", async () => {
-    mockRedisSend.mockImplementation(
-      ((cmd: string, _args: string[]) => {
-        if (cmd === "MGET") return Promise.resolve(["5", "2", "8"]);
-        if (cmd === "EVAL") return Promise.resolve(1);
-        if (cmd === "DECR") return Promise.resolve(0);
-        return Promise.resolve(null);
-      }) as any,
-    );
+    mget.mockResolvedValue(["5", "2", "8"]);
 
     const hosts = ["host-a:8080", "host-b:8080", "host-c:8080"];
     const result = await selectHost("least-connections", makeInput({ hosts }));
@@ -160,33 +151,17 @@ describe("selectHost", () => {
     const result = await selectHost("least-connections", makeInput());
     expect(result).toBeDefined();
 
-    mockRedisSend.mockClear();
-    mockRedisSend.mockImplementation(
-      ((cmd: string, _args: string[]) => {
-        if (cmd === "DECR") return Promise.resolve(0);
-        return Promise.resolve(null);
-      }) as any,
-    );
-
     result!.release();
 
     // Allow the promise in release to settle
     await new Promise((r) => setTimeout(r, 50));
 
-    const decrCalls = mockRedisSend.mock.calls.filter(
-      ([cmd]: any) => cmd === "DECR",
-    );
-    expect(decrCalls).toHaveLength(1);
-    expect((decrCalls[0] as any)[1][0]).toContain("lb:conn:");
+    expect(decr).toHaveBeenCalledTimes(1);
+    expect(decr.mock.calls[0]![0]).toContain("lb:conn:");
   });
 
-  test("redis failure in round-robin falls back to random", async () => {
-    mockRedisSend.mockImplementation(
-      ((cmd: string, _args: string[]) => {
-        if (cmd === "EVAL") return Promise.reject(new Error("Redis down"));
-        return Promise.resolve(null);
-      }) as any,
-    );
+  test("cache failure in round-robin falls back to random", async () => {
+    incr.mockRejectedValue(new Error("cache down"));
 
     const result = await selectHost("round-robin", makeInput());
     expect(result).toBeDefined();
@@ -196,19 +171,7 @@ describe("selectHost", () => {
 
 describe("prefix hint routing", () => {
   test("random strategy returns hint host when present", async () => {
-    mockRedisSend.mockImplementation(
-      ((cmd: string, args: string[]) => {
-        if (cmd === "MGET") {
-          const keys = args as string[];
-          if (keys[0]?.startsWith("lb:prefix:")) {
-            return Promise.resolve(["host-b:8080"]);
-          }
-          return Promise.resolve(["0", "0"]);
-        }
-        if (cmd === "SET") return Promise.resolve("OK");
-        return Promise.resolve(null);
-      }) as any,
-    );
+    mgetReturning(["host-b:8080"]);
 
     const result = await selectHost("random", makeInput({
       prefixHashes: ["abc123"],
@@ -218,19 +181,7 @@ describe("prefix hint routing", () => {
   });
 
   test("random strategy ignores hint host not in pool", async () => {
-    mockRedisSend.mockImplementation(
-      ((cmd: string, args: string[]) => {
-        if (cmd === "MGET") {
-          const keys = args as string[];
-          if (keys[0]?.startsWith("lb:prefix:")) {
-            return Promise.resolve(["gone-host:8080"]);
-          }
-          return Promise.resolve(["0", "0"]);
-        }
-        if (cmd === "SET") return Promise.resolve("OK");
-        return Promise.resolve(null);
-      }) as any,
-    );
+    mgetReturning(["gone-host:8080"]);
 
     const seen = new Set<string>();
     for (let i = 0; i < 30; i++) {
@@ -243,22 +194,8 @@ describe("prefix hint routing", () => {
   });
 
   test("least-connections prefers hint host within margin", async () => {
-    mockRedisSend.mockImplementation(
-      ((cmd: string, args: string[]) => {
-        if (cmd === "MGET") {
-          const keys = args as string[];
-          if (keys[0]?.startsWith("lb:prefix:")) {
-            return Promise.resolve(["host-b:8080"]);
-          }
-          // host-a=3, host-b=5 (within margin of 2 from min 3)
-          return Promise.resolve(["3", "5"]);
-        }
-        if (cmd === "SET") return Promise.resolve("OK");
-        if (cmd === "EVAL") return Promise.resolve(1);
-        if (cmd === "DECR") return Promise.resolve(0);
-        return Promise.resolve(null);
-      }) as any,
-    );
+    // host-a=3, host-b=5 (within margin of 2 from min 3)
+    mgetReturning(["host-b:8080"], ["3", "5"]);
 
     const result = await selectHost("least-connections", makeInput({
       prefixHashes: ["abc123"],
@@ -268,22 +205,8 @@ describe("prefix hint routing", () => {
   });
 
   test("least-connections ignores hint host over margin", async () => {
-    mockRedisSend.mockImplementation(
-      ((cmd: string, args: string[]) => {
-        if (cmd === "MGET") {
-          const keys = args as string[];
-          if (keys[0]?.startsWith("lb:prefix:")) {
-            return Promise.resolve(["host-b:8080"]);
-          }
-          // host-a=0, host-b=5 (over margin of 2 from min 0)
-          return Promise.resolve(["0", "5"]);
-        }
-        if (cmd === "SET") return Promise.resolve("OK");
-        if (cmd === "EVAL") return Promise.resolve(1);
-        if (cmd === "DECR") return Promise.resolve(0);
-        return Promise.resolve(null);
-      }) as any,
-    );
+    // host-a=0, host-b=5 (over margin of 2 from min 0)
+    mgetReturning(["host-b:8080"], ["0", "5"]);
 
     const result = await selectHost("least-connections", makeInput({
       prefixHashes: ["abc123"],
@@ -293,20 +216,8 @@ describe("prefix hint routing", () => {
   });
 
   test("round-robin ignores hint host", async () => {
-    mockRedisSend.mockImplementation(
-      ((cmd: string, args: string[]) => {
-        if (cmd === "MGET") {
-          const keys = args as string[];
-          if (keys[0]?.startsWith("lb:prefix:")) {
-            return Promise.resolve(["host-b:8080"]);
-          }
-          return Promise.resolve(["0", "0"]);
-        }
-        if (cmd === "SET") return Promise.resolve("OK");
-        if (cmd === "EVAL") return Promise.resolve(2);
-        return Promise.resolve(null);
-      }) as any,
-    );
+    mgetReturning(["host-b:8080"]);
+    incr.mockResolvedValue(2);
 
     const result = await selectHost("round-robin", makeInput({
       prefixHashes: ["abc123"],
@@ -317,20 +228,8 @@ describe("prefix hint routing", () => {
   });
 
   test("cascade picks first matching hash (longest prefix)", async () => {
-    mockRedisSend.mockImplementation(
-      ((cmd: string, args: string[]) => {
-        if (cmd === "MGET") {
-          const keys = args as string[];
-          if (keys[0]?.startsWith("lb:prefix:")) {
-            // First hash (longest) misses, second hits
-            return Promise.resolve([null, "host-a:8080"]);
-          }
-          return Promise.resolve(["0", "0"]);
-        }
-        if (cmd === "SET") return Promise.resolve("OK");
-        return Promise.resolve(null);
-      }) as any,
-    );
+    // First hash (longest) misses, second hits
+    mgetReturning([null, "host-a:8080"]);
 
     const result = await selectHost("random", makeInput({
       prefixHashes: ["long-hash", "short-hash"],
@@ -340,51 +239,23 @@ describe("prefix hint routing", () => {
   });
 
   test("stores full hash after selection", async () => {
-    const setCalls: string[][] = [];
-    mockRedisSend.mockImplementation(
-      ((cmd: string, args: string[]) => {
-        if (cmd === "MGET") {
-          const keys = args as string[];
-          if (keys[0]?.startsWith("lb:prefix:")) {
-            return Promise.resolve([null]);
-          }
-          return Promise.resolve(["0", "0"]);
-        }
-        if (cmd === "SET") {
-          setCalls.push(args as string[]);
-          return Promise.resolve("OK");
-        }
-        return Promise.resolve(null);
-      }) as any,
-    );
+    mgetReturning([null]);
 
     const result = await selectHost("random", makeInput({
       prefixHashes: ["full-hash", "partial-hash"],
     }));
     expect(result).toBeDefined();
 
-    const prefixSet = setCalls.find(a => a[0]?.startsWith("lb:prefix:"));
-    expect(prefixSet).toBeDefined();
-    expect(prefixSet![0]).toBe("lb:prefix:full-hash");
-    expect(prefixSet![1]).toBe(result!.host);
-    expect(prefixSet![2]).toBe("EX");
-    expect(prefixSet![3]).toBe("300");
+    expect(set).toHaveBeenCalledWith("lb:prefix:full-hash", result!.host, 300);
   });
 
-  test("redis failure in prefix lookup falls back to strategy", async () => {
-    mockRedisSend.mockImplementation(
-      ((cmd: string, args: string[]) => {
-        if (cmd === "MGET") {
-          const keys = args as string[];
-          if (keys[0]?.startsWith("lb:prefix:")) {
-            return Promise.reject(new Error("Redis down"));
-          }
-          return Promise.resolve(["0", "0"]);
-        }
-        if (cmd === "SET") return Promise.resolve("OK");
-        return Promise.resolve(null);
-      }) as any,
-    );
+  test("cache failure in prefix lookup falls back to strategy", async () => {
+    mget.mockImplementation(async (keys) => {
+      if (keys[0]?.startsWith("lb:prefix:")) {
+        throw new Error("cache down");
+      }
+      return ["0", "0"];
+    });
 
     const result = await selectHost("random", makeInput({
       prefixHashes: ["abc123"],
@@ -394,21 +265,9 @@ describe("prefix hint routing", () => {
   });
 
   test("no prefixHashes skips prefix lookup entirely", async () => {
-    const mgetKeys: string[][] = [];
-    mockRedisSend.mockImplementation(
-      ((cmd: string, args: string[]) => {
-        if (cmd === "MGET") {
-          mgetKeys.push(args as string[]);
-          return Promise.resolve(["0", "0"]);
-        }
-        if (cmd === "SET") return Promise.resolve("OK");
-        return Promise.resolve(null);
-      }) as any,
-    );
-
     await selectHost("random", makeInput());
 
-    const prefixMgets = mgetKeys.filter(k => k[0]?.startsWith("lb:prefix:"));
+    const prefixMgets = mget.mock.calls.filter(([keys]) => keys[0]?.startsWith("lb:prefix:"));
     expect(prefixMgets).toHaveLength(0);
   });
 });
@@ -419,25 +278,23 @@ describe("admit", () => {
     expect(admissionLimit(1)).toBe(2);
   });
 
-  test("passes the limit to Redis and releases the slot once", async () => {
+  test("passes the limit to the cache and releases the slot once", async () => {
     const release = await admit("inst-1", 64);
     expect(release).toBeDefined();
-    const evalCall = mockRedisSend.mock.calls.find(([cmd]: unknown[]) => cmd === "EVAL")!;
-    expect(evalCall[1]).toContain("lb:admitted:inst-1");
-    expect(evalCall[1]).toContain("80");
+    expect(tryIncr.mock.calls[0]?.slice(0, 2)).toEqual(["lb:admitted:inst-1", 80]);
     release!();
     release!();
-    expect(mockRedisSend.mock.calls.filter(([cmd]: unknown[]) => cmd === "DECR")).toHaveLength(1);
+    expect(decr).toHaveBeenCalledTimes(1);
   });
 
-  test("refuses once Redis reports the installation full", async () => {
-    mockRedisSend.mockImplementation((() => Promise.resolve(0)) as any);
+  test("refuses once the cache reports the installation full", async () => {
+    tryIncr.mockResolvedValue(false);
     expect(await admit("inst-1", 64)).toBeUndefined();
   });
 
-  test("admits without a limit and when Redis fails", async () => {
+  test("admits without a limit and when the cache fails", async () => {
     expect(await admit("inst-1", null)).toBeDefined();
-    mockRedisSend.mockImplementation((() => Promise.reject(new Error("down"))) as any);
+    tryIncr.mockRejectedValue(new Error("down"));
     expect(await admit("inst-1", 64)).toBeDefined();
   });
 });

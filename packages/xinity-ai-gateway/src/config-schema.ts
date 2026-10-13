@@ -27,7 +27,7 @@ import { loggingGroup, type LoggingConfig } from "common-log";
 import { WEB_SEARCH_PROVIDER_NAMES, webSearchPairSchema } from "./llm-forward/tools/search-providers";
 
 type Cache = {
-  url: string;
+  url?: string;
   responseTtlSeconds: () => number;
   applicationTtlSeconds: () => number;
   apiKeyTtlSeconds: () => number;
@@ -41,10 +41,10 @@ const ttl = (seconds: number) => configNumber(z.number().positive()).default(sec
 const cache = defineGroup<Cache>({
   id: "cache",
   title: "Cache",
-  description: "Redis, and the lifetimes of what the gateway keeps in it.",
+  description: "Where the gateway caches, and the lifetimes of what it keeps there.",
   fields: {
-    url: env("REDIS_URL", z.url({ protocol: /^(redis|valkey)s?$/ })
-      .describe("Redis or Valkey connection URL (e.g. redis://:PASSWORD@localhost:6379). Percent-encode the password.").meta(secret())),
+    url: env("REDIS_URL", z.url({ protocol: /^(redis|valkey)s?$/ }).optional()
+      .describe("Redis or Valkey connection URL (e.g. redis://:PASSWORD@localhost:6379). Percent-encode the password. Unset keeps the cache in the gateway process, which suits a single gateway.").meta(secret())),
     responseTtlSeconds: dynamic("RESPONSE_CACHE_TTL_SECONDS", ttl(3600)
       .describe("How long an identical completion is served from cache instead of the backend")),
     applicationTtlSeconds: dynamic("CACHE_APPLICATION_TTL_SECONDS", ttl(300)

@@ -1,4 +1,4 @@
-import { redis } from "../redis";
+import { cache } from "../cache";
 import { rootLogger } from "../logger";
 import {
   recordLbCandidateHosts,
@@ -59,17 +59,10 @@ function hostLabels(host: string, hostMeta?: Map<string, HostMeta>): LbHostLabel
   };
 }
 
-/** Atomically INCR a key and set its EXPIRE in one round-trip. */
-const INCR_WITH_EXPIRE_SCRIPT = `
-local v = redis.call('INCR', KEYS[1])
-redis.call('EXPIRE', KEYS[1], ARGV[1])
-return v
-`;
-
 function incrWithExpire(key: string, ttl: number): Promise<boolean> {
-  return redis.send("EVAL", [INCR_WITH_EXPIRE_SCRIPT, "1", key, String(ttl)])
+  return cache.incr(key, ttl)
     .then(() => true)
-    .catch((err: unknown) => { log.warn({ err }, "Redis INCR+EXPIRE error"); return false; });
+    .catch((err: unknown) => { log.warn({ err }, "Cache INCR+EXPIRE error"); return false; });
 }
 
 /** Atomically track a connection for least-connections balancing. Returns a release function. */
@@ -84,7 +77,7 @@ function trackConnection(host: string, labels: LbHostLabels): { release: () => v
       released = true;
       incrPromise.then((ok) => {
         if (ok) {
-          redis.send("DECR", [key]).catch((err: unknown) => log.warn({ err }, "Redis DECR error"));
+          cache.decr(key).catch((err: unknown) => log.warn({ err }, "Cache DECR error"));
           decLbActiveConnections(labels);
         }
       });
@@ -97,7 +90,7 @@ async function lookupPrefixHint(hashes: string[], validHosts: string[]): Promise
     return null;
   }
   const keys = hashes.map(h => `${PREFIX_KEY_PREFIX}${h}`);
-  const values = (await redis.send("MGET", keys)) as (string | null)[];
+  const values = await cache.mget(keys);
   for (const v of values) {
     if (v && validHosts.includes(v)) {
       return v;
@@ -107,8 +100,8 @@ async function lookupPrefixHint(hashes: string[], validHosts: string[]): Promise
 }
 
 function storePrefixHint(hash: string, host: string): void {
-  redis.send("SET", [`${PREFIX_KEY_PREFIX}${hash}`, host, "EX", String(PREFIX_TTL)])
-    .catch((err: unknown) => log.warn({ err }, "Redis prefix store error"));
+  cache.set(`${PREFIX_KEY_PREFIX}${hash}`, host, PREFIX_TTL)
+    .catch((err: unknown) => log.warn({ err }, "Cache prefix store error"));
 }
 
 type SelectionReason =
@@ -140,7 +133,7 @@ async function withRandomFallback(
   try {
     return await body();
   } catch (err) {
-    log.warn({ err }, `Redis error in ${strategyLabel}, falling back to random`);
+    log.warn({ err }, `Cache error in ${strategyLabel}, falling back to random`);
     recordLbRedisFallback(strategyLabel);
     return { ...selectRandom(hosts, null), reason: "redis_fallback" };
   }
@@ -148,10 +141,7 @@ async function withRandomFallback(
 
 function selectRoundRobin(hosts: string[], resolvedModel: string): Promise<HostSelection> {
   return withRandomFallback(hosts, "round-robin", async () => {
-    const counter = await redis.send(
-      "EVAL",
-      [INCR_WITH_EXPIRE_SCRIPT, "1", roundRobinKey(resolvedModel), String(ROUND_ROBIN_TTL)],
-    ) as number;
+    const counter = await cache.incr(roundRobinKey(resolvedModel), ROUND_ROBIN_TTL);
     const index = counter % hosts.length;
     return { host: hosts[index]!, release: noOpRelease, reason: "round_robin" };
   });
@@ -164,7 +154,7 @@ function selectLeastConnections(
 ): Promise<HostSelection> {
   return withRandomFallback(hosts, "least-connections", async () => {
     const keys = hosts.map(connKey);
-    const counts = (await redis.send("MGET", keys)) as (string | null)[];
+    const counts = await cache.mget(keys);
 
     let minCount = Infinity;
     let minIndex = 0;
@@ -253,7 +243,7 @@ export async function selectHost(
   let hintFound = false;
   if (prefixHashes && prefixHashes.length > 0) {
     hintHost = await lookupPrefixHint(prefixHashes, targetHosts)
-      .catch((err: unknown) => { log.warn({ err }, "Redis prefix lookup error"); return null; });
+      .catch((err: unknown) => { log.warn({ err }, "Cache prefix lookup error"); return null; });
     hintFound = hintHost !== null;
   }
 
@@ -277,29 +267,18 @@ const ADMISSION_PREFIX = "lb:admitted:";
 // Requests beyond the engine's own batch wait in its queue, which stays short this way.
 const ADMISSION_QUEUE_SHARE = 0.25;
 
-const ADMIT_SCRIPT = `
-local v = redis.call('INCR', KEYS[1])
-if v > tonumber(ARGV[1]) then
-  redis.call('DECR', KEYS[1])
-  return 0
-end
-redis.call('EXPIRE', KEYS[1], ARGV[2])
-return 1
-`;
-
 export function admissionLimit(maxNumSeqs: number): number {
   return maxNumSeqs + Math.max(1, Math.ceil(maxNumSeqs * ADMISSION_QUEUE_SHARE));
 }
 
-// Counted in Redis, so every gateway instance sees the same load.
+// Counted in the cache, so with Redis every gateway instance sees the same load.
 export async function admit(installationId: string, maxNumSeqs: number | null): Promise<(() => void) | undefined> {
   if (maxNumSeqs === null) {
     return noOpRelease;
   }
   const key = `${ADMISSION_PREFIX}${installationId}`;
-  const admitted = await redis.send("EVAL", [ADMIT_SCRIPT, "1", key, String(admissionLimit(maxNumSeqs)), String(CONN_SAFETY_TTL)])
-    .then((result) => result === 1)
-    .catch((err: unknown) => { log.warn({ err }, "Redis admission error, admitting"); return null; });
+  const admitted = await cache.tryIncr(key, admissionLimit(maxNumSeqs), CONN_SAFETY_TTL)
+    .catch((err: unknown) => { log.warn({ err }, "Cache admission error, admitting"); return null; });
   if (admitted === null) {
     return noOpRelease;
   }
@@ -310,6 +289,6 @@ export async function admit(installationId: string, maxNumSeqs: number | null): 
   return () => {
     if (released) return;
     released = true;
-    redis.send("DECR", [key]).catch((err: unknown) => log.warn({ err }, "Redis DECR error"));
+    cache.decr(key).catch((err: unknown) => log.warn({ err }, "Cache DECR error"));
   };
 }

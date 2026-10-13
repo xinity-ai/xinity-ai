@@ -1,6 +1,6 @@
 import { describe, test, expect, mock, jest, beforeEach, afterEach, spyOn } from "bun:test";
 import { drizzle, modelDeploymentT } from "common-db";
-import { redis } from "../redis";
+import { cache } from "../cache";
 import type { LegacyModel, Model } from "common-env/model-catalog";
 import type { ModelInfo, ModelLookup } from "./model-data";
 
@@ -49,7 +49,7 @@ mock.module("common-env/model-catalog", () => ({
   BLOCKED_REQUEST_PARAM_PREFIXES: ["chat_template", "tokenize", "prompt", "api_key"],
 }));
 
-const { getModelInfo, invalidateModelSources, invalidateDeployments, _deps } = await import("./model-data");
+const { getModelInfo, invalidateModelSources, _deps } = await import("./model-data");
 const mockSelectHost = jest.fn<(strategy: unknown, input: { hosts: string[] }) => Promise<{ host: string; useFinalModel: boolean; release: () => void } | null>>();
 _deps.selectHost = mockSelectHost as any;
 const mockAdmit = jest.fn<(installationId: string, maxNumSeqs: number | null) => Promise<(() => void) | undefined>>(async () => () => {});
@@ -94,16 +94,16 @@ function infoOf(lookup: ModelLookup): ModelInfo | undefined {
   return lookup.status === "found" ? lookup.info : undefined;
 }
 
-let mockRedisGet: ReturnType<typeof spyOn>;
-let mockRedisSet: ReturnType<typeof spyOn>;
-const redisStore = new Map<string, string>();
+let mockCacheGet: ReturnType<typeof spyOn>;
+let mockCacheSet: ReturnType<typeof spyOn>;
+const cacheStore = new Map<string, string>();
 
 beforeEach(() => {
   invalidateModelSources();
   queryQueue.length = 0;
   executeCount = 0;
   gatedExecute = null;
-  redisStore.clear();
+  cacheStore.clear();
   mockSelectHost.mockReset();
   mockLookup.mockReset();
   // The legacy specifiers these tests use are absent from the current catalog.
@@ -113,18 +113,18 @@ beforeEach(() => {
     return { type: "chat", tags: ["tools"], providers: { ollama: specifier, vllm: specifier } };
   });
 
-  mockRedisGet = spyOn(redis, "get").mockImplementation(async (key: string) => {
-    return redisStore.get(key) ?? null;
+  mockCacheGet = spyOn(cache, "get").mockImplementation(async (key: string) => {
+    return cacheStore.get(key) ?? null;
   });
-  mockRedisSet = spyOn(redis, "set").mockImplementation(async (key: string, val: string) => {
-    redisStore.set(key, val);
-    return "OK" as any;
+  mockCacheSet = spyOn(cache, "set").mockImplementation(async (key: string, val: string) => {
+    cacheStore.set(key, val);
+    return;
   });
 });
 
 afterEach(() => {
-  mockRedisGet.mockRestore();
-  mockRedisSet.mockRestore();
+  mockCacheGet.mockRestore();
+  mockCacheSet.mockRestore();
 });
 
 describe("getModelInfo", () => {
@@ -358,7 +358,7 @@ describe("getModelInfo", () => {
     expect(call[1].hasEarlyModel).toBe(false);
   });
 
-  test("uses Redis-cached deployment and source data on subsequent calls without querying DB", async () => {
+  test("uses cached deployment and source data on subsequent calls without querying DB", async () => {
     queryQueue.push([deploymentResult({ specifier: "llama3:latest", earlySpecifier: null })]);
     queryQueue.push([installationResult({ host: "192.168.1.10", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
     mockSelectHost.mockResolvedValue({ host: "192.168.1.10:11434", useFinalModel: true, release: noop });
@@ -375,8 +375,8 @@ describe("getModelInfo", () => {
   });
 
   test("a sources query already in flight does not repopulate the cache it raced", async () => {
-    // Served from redis so the only database query is the sources lookup we gate.
-    redisStore.set("gateway:deployment:org-1:my-model", JSON.stringify({
+    // Served from the cache so the only database query is the sources lookup we gate.
+    cacheStore.set("gateway:deployment:org-1:my-model", JSON.stringify({
       id: "dep-id",
       specifier: "llama3:latest",
       earlySpecifier: null,
@@ -405,39 +405,5 @@ describe("getModelInfo", () => {
     await getModelInfo("org-1", "my-model");
 
     expect(executeCount).toBe(2);
-  });
-});
-
-describe("invalidateDeployments", () => {
-  test("follows the scan cursor to the end and deletes every page", async () => {
-    const deleted: string[][] = [];
-    const sendSpy = spyOn(redis, "send").mockImplementation(async (cmd: string, args: string[]) => {
-      if (cmd === "SCAN") {
-        return args[0] === "0"
-          ? ["7", ["gateway:deployment:org-1:a"]]
-          : ["0", ["gateway:deployment:org-2:b"]];
-      }
-      deleted.push(args);
-      return 1 as any;
-    });
-
-    await invalidateDeployments();
-
-    expect(deleted).toEqual([["gateway:deployment:org-1:a"], ["gateway:deployment:org-2:b"]]);
-    sendSpy.mockRestore();
-  });
-
-  test("skips the delete when a page is empty", async () => {
-    let dels = 0;
-    const sendSpy = spyOn(redis, "send").mockImplementation(async (cmd: string) => {
-      if (cmd === "SCAN") return ["0", []];
-      dels += 1;
-      return 1 as any;
-    });
-
-    await invalidateDeployments();
-
-    expect(dels).toBe(0);
-    sendSpy.mockRestore();
   });
 });

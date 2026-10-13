@@ -1,6 +1,6 @@
 import { aiApiKeyT, sql, hashApiKey, apiKeyVerifier, SHA256_VERIFIER_PREFIX, type AiApiKey } from "common-db";
 import { getDB } from "../db";
-import { redis } from "../redis";
+import { cache } from "../cache";
 import { timingSafeEqual } from "node:crypto";
 import { rootLogger } from "../logger";
 import { config } from "../config";
@@ -152,20 +152,20 @@ function setApiKeyCache(
   data: CachedAuth,
   ttlSeconds: number,
 ): void {
-  void redis.set(apiKeyCacheKey(identifier), JSON.stringify(data), "EX", ttlSeconds)
-    .catch((err: unknown) => log.warn({ err }, "Redis error in setApiKeyCache"));
+  void cache.set(apiKeyCacheKey(identifier), JSON.stringify(data), ttlSeconds)
+    .catch((err: unknown) => log.warn({ err }, "Cache error in setApiKeyCache"));
 }
 
 async function getApiKeyCache(identifier: string): Promise<CachedAuth | null> {
   try {
-    const result = await redis.get(apiKeyCacheKey(identifier));
+    const result = await cache.get(apiKeyCacheKey(identifier));
     if (!result) return null;
     const parsed = JSON.parse(result);
     if (typeof parsed.fail === "string") return parsed as { fail: string };
     // Handle old cache entries missing collectData (safe default during rolling deploy)
     return { collectData: true, ...parsed };
   } catch (err) {
-    log.warn({ err }, "Redis error in getApiKeyCache");
+    log.warn({ err }, "Cache error in getApiKeyCache");
     return null;
   }
 }

@@ -1,4 +1,4 @@
-import { redis } from "../redis";
+import { cache } from "../cache";
 import type { ApiCallInputMessage } from "common-db";
 import { config } from "../config";
 import { rootLogger } from "../logger";
@@ -21,11 +21,11 @@ const responseKey = (orgId: string, id: string) => `response:${orgId}:${id}`;
 export type ResponseCreation = ResponseAttribution & { inputMessages: ApiCallInputMessage[] };
 
 async function cacheResponse(orgId: string, id: string, payload: unknown): Promise<void> {
-  await redis.set(responseKey(orgId, id), JSON.stringify(payload), "EX", config.cache.responseTtlSeconds());
+  await cache.set(responseKey(orgId, id), JSON.stringify(payload), config.cache.responseTtlSeconds());
 }
 
 /**
- * Postgres failures are logged rather than thrown: Redis already holds the response, so
+ * Postgres failures are logged rather than thrown: the cache already holds the response, so
  * the request can still be served for the cache window.
  */
 async function persist(orgId: string, response: ResponseObject, creation?: ResponseCreation): Promise<void> {
@@ -66,9 +66,9 @@ export async function saveResponse(
 export async function getResponse(orgId: string, id: string): Promise<unknown | null> {
   let payload: string | null;
   try {
-    payload = await redis.get(responseKey(orgId, id));
+    payload = await cache.get(responseKey(orgId, id));
   } catch (err) {
-    log.warn({ err }, "Redis error in getResponse");
+    log.warn({ err }, "Cache error in getResponse");
     payload = null;
   }
 
@@ -76,7 +76,7 @@ export async function getResponse(orgId: string, id: string): Promise<unknown | 
     try {
       return JSON.parse(payload);
     } catch (err) {
-      log.error({ err, responseId: id }, "Corrupted response data in Redis");
+      log.error({ err, responseId: id }, "Corrupted response data in cache");
     }
   }
 
@@ -90,7 +90,7 @@ export async function getResponse(orgId: string, id: string): Promise<unknown | 
 }
 
 /**
- * The messages a stored response was built from. Only Postgres holds these; the Redis entry is
+ * The messages a stored response was built from. Only Postgres holds these; the cache entry is
  * the response object, which carries the answer but not the question. Empty for a response
  * created with `store: false`, which is never written to Postgres at all.
  */
@@ -101,7 +101,7 @@ export function getResponseMessages(orgId: string, id: string): Promise<ApiCallI
 /** Returns false when the entry could not be removed, so callers do not report a delete that did not happen. */
 export async function deleteResponse(orgId: string, id: string): Promise<boolean> {
   try {
-    await redis.del(responseKey(orgId, id));
+    await cache.del(responseKey(orgId, id));
     await deletePersistedResponse(orgId, id);
     return true;
   } catch (err) {
