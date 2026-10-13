@@ -115,7 +115,7 @@ cat <<'EOF'
 Setup complete. Next:
   1. Run migrations against the Compose Postgres:
        docker compose up -d postgres
-       xinity up db    # press Esc when prompted for Redis
+       xinity up db    # keep the cache in the gateway when asked about Redis
   2. Bring up the rest of the stack:
        docker compose up -d                          # localhost (default)
        docker compose --profile caddy up -d          # HTTPS via Caddy

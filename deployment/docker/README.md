@@ -10,6 +10,7 @@ Optional services live behind their own profiles:
 - `--profile searxng` adds web search.
 - `--profile infoserver` adds a self-hosted model registry (the dashboard otherwise uses the public one at `https://sysinfo.xinity.ai`).
 - `--profile monitoring` adds Prometheus + Grafana.
+- `--profile redis` adds Redis, which the gateway uses once `REDIS_URL_FILE=/run/secrets/redis_url` is set in `.env`. Without it the gateway keeps its cache in process. Redis only pays off when several gateways share one cache, for even load balancing and a cache that stays warm across them.
 
 Daemons (the GPU inference workers) are not in this stack. Install them per inference node with the Xinity CLI: see [deployment/cli/README.md](../cli/README.md).
 
@@ -50,7 +51,7 @@ xinity up db
 `xinity up db` is interactive:
 
 - Answer **yes** to "Do you have a connection URL for an existing database?", then enter `postgresql://<POSTGRES_USER>:<POSTGRES_PASSWORD>@127.0.0.1:5432/<POSTGRES_DB>` using values from your `.env`. Do **not** pick "No, help me set one up". That path installs a native PostgreSQL on the host.
-- After applying migrations, the command moves on to a Redis discovery step. Press **Esc** to dismiss it; Redis has no schema and the Compose stack already configures its own Redis from `.env`.
+- After applying migrations, the command moves on to a Redis discovery step. Pick "No, keep the cache in the gateway". Redis has no schema, and the Compose stack configures its own Redis from `.env` when the `redis` profile is on.
 
 Migrations are tracked, so re-running `xinity up db` after a release upgrade is safe.
 
@@ -120,7 +121,7 @@ This convention does not apply to `POSTGRES_PASSWORD`/`REDIS_PASSWORD`. Postgres
 ### Volumes
 
 - `postgres-data`: Postgres data
-- `redis-data`: Redis persistence
+- `redis-data`: Redis persistence (`redis` profile)
 - `caddy-data`, `caddy-config`: Caddy's ACME account, issued certs, runtime config
 - `./models.yaml`: mounted read-only into the infoserver container when the profile is active
 

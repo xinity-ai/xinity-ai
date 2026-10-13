@@ -4,7 +4,7 @@
 
 A Xinity deployment has two distinct roles:
 
-- **Control plane**: runs the gateway, dashboard, tether, database, and Redis. Serves the API and admin UI. The tether bridges the database to the daemon fleet(s).
+- **Control plane**: runs the gateway, dashboard, tether, database, and optionally Redis. Serves the API and admin UI. The tether bridges the database to the daemon fleet(s).
 - **Inference node(s)**: each GPU machine runs a daemon alongside Ollama or vLLM. The daemon connects to the tether via SSE to receive deployment instructions and report state.
 
 The control plane can be deployed using any of the three methods below. The daemon is always installed on each inference node using the Xinity CLI, regardless of how the control plane is deployed.

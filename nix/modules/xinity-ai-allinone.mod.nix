@@ -879,7 +879,7 @@
           enable = lib.mkOption {
             type = lib.types.bool;
             default = true;
-            description = "Provision the local Redis instance. Set to false to use an external Redis, and give the gateway its URL through secrets.redisUrlFile.";
+            description = "Provision a local Redis and point the gateway at it. Off, the gateway keeps its cache in process unless secrets.redisUrlFile names an external Redis. Redis pays off once several gateways share one cache.";
           };
           port = lib.mkOption {
             type = lib.types.port;
@@ -1020,7 +1020,7 @@
           redisUrlFile = lib.mkOption {
             type = lib.types.nullOr lib.types.str;
             default = null;
-            description = "Path to file containing Redis URL. Applied to gateway.";
+            description = "Path to file containing Redis URL. Applied to gateway, which keeps its cache in process without one.";
           };
           betterAuthSecretFile = lib.mkOption {
             type = lib.types.nullOr lib.types.str;

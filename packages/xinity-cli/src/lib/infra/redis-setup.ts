@@ -222,7 +222,12 @@ async function persistRedisUrl(host: Host, url: string): Promise<boolean> {
   return true;
 }
 
-export async function planRedis(host: Host): Promise<RedisPlan | undefined> {
+export const IN_PROCESS_CACHE = "in-process";
+
+export async function planRedis(
+  host: Host,
+  opts: { offerInProcess: boolean },
+): Promise<RedisPlan | typeof IN_PROCESS_CACHE | undefined> {
   // 1. Check stored secret
   const stored = await readSecrets(host, SECRETS_DIR, ["REDIS_URL"], "Read stored Redis URL");
   if (stored.secrets.REDIS_URL) {
@@ -274,6 +279,13 @@ export async function planRedis(host: Host): Promise<RedisPlan | undefined> {
   const choice = await select({
     message: "No existing Redis connection found. Do you already have a Redis instance?",
     options: [
+      ...(opts.offerInProcess
+        ? [{
+          value: IN_PROCESS_CACHE,
+          label: "No, keep the cache in the gateway",
+          hint: "suits a single gateway, add Redis later with xinity up infra-redis",
+        }]
+        : []),
       {
         value: "existing",
         label: "Yes, I have a connection URL",
@@ -292,6 +304,7 @@ export async function planRedis(host: Host): Promise<RedisPlan | undefined> {
     return undefined;
   }
 
+  if (choice === IN_PROCESS_CACHE) return IN_PROCESS_CACHE;
   if (choice === "setup") return planRedisSetup(host);
 
   // Existing instance, prompt for URL then validate connectivity
@@ -376,7 +389,8 @@ export async function infraRedis(host: Host, dryRun: boolean): Promise<string | 
     }
   } else {
     // No stored URL, or stored but unreachable: planRedis owns the stale-URL flow.
-    plan = await planRedis(host);
+    const planned = await planRedis(host, { offerInProcess: false });
+    plan = planned === IN_PROCESS_CACHE ? undefined : planned;
   }
 
   if (!plan) return undefined;
