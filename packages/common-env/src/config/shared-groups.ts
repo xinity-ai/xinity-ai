@@ -26,7 +26,7 @@ export function serverGroup(defaults: { host: string; port: number; idleTimeout?
 export type DatabaseConfig = { connectionUrl: string; maxConnections: number };
 
 export function databaseUrlField() {
-  return env("DB_CONNECTION_URL", z.url()
+  return env("DB_CONNECTION_URL", z.url({ protocol: /^postgres(ql)?$/ })
     .describe("PostgreSQL connection string (e.g. postgresql://user:pass@host:5432/dbname)")
     .meta(secret()));
 }
@@ -50,7 +50,7 @@ export function catalogGroup(): GroupDef<CatalogConfig> {
     id: "infoserver",
     title: "Model catalog",
     fields: {
-      url: env("INFOSERVER_URL", z.url().default("https://sysinfo.xinity.ai")
+      url: env("INFOSERVER_URL", z.url({ protocol: /^https?$/ }).default("https://sysinfo.xinity.ai")
         .describe("Infoserver URL (default hosted: https://sysinfo.xinity.ai, or your self-hosted instance)")),
       cacheTtlMs: env("INFOSERVER_CACHE_TTL_MS", configNumber().default(10 * 60_000)
         .describe("How long the local catalog snapshot is trusted before a conditional re-fetch (ms). A refresh costs one 304 when nothing changed, so the ceiling on how stale a new entry can be is what this trades against")
@@ -124,7 +124,7 @@ export function objectStorageGroup(): GroupDef<ObjectStorageConfig | undefined> 
     expert: true,
     optional: { requires: ["endpoint", "accessKeyId", "secretAccessKey"] },
     fields: {
-      endpoint: env("S3_ENDPOINT", z.url().describe("S3-compatible endpoint URL")),
+      endpoint: env("S3_ENDPOINT", z.url({ protocol: /^https?$/ }).describe("S3-compatible endpoint URL")),
       accessKeyId: env("S3_ACCESS_KEY_ID", z.string().describe("S3 access key ID").meta(secret())),
       secretAccessKey: env("S3_SECRET_ACCESS_KEY", z.string().describe("S3 secret access key").meta(secret())),
       bucket: env("S3_BUCKET", z.string().default("xinity-media").describe("S3 bucket for media objects")),
