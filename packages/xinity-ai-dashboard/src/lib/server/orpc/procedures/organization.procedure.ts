@@ -6,9 +6,9 @@ import { config } from "$lib/server/config";
 import { getDB } from "$lib/server/db";
 import { notifyOrgMembers } from "$lib/server/notifications/notification.service";
 import { NotificationType } from "$lib/server/notifications/events";
-import { memberT, userT, organizationT, invitationT, sql } from "common-db";
+import { memberT, userT, invitationT, sql } from "common-db";
 import { isInstanceAdmin, isRoleAvailable, RoleSchema } from "$lib/server/roles";
-import { hasFeature } from "$lib/server/license";
+import { MULTI_ORG_LICENSE_MESSAGE, organizationLimitReached } from "$lib/server/lib/instance/organization-limit";
 import { betterAuthErrorBody } from "$lib/server/lib/auth/better-auth-errors";
 import { findOrgName, findOrgDeleteBlockers, purgeSoftDeletedOrgDependents } from "$lib/server/lib/org-queries";
 
@@ -36,15 +36,8 @@ export const createOrganization = rootOs
       throw errors.FORBIDDEN({ message: "Only instance admins can create organizations." });
     }
 
-    // License gate: multi-org requires enterprise license
-    if (!hasFeature("multi-org")) {
-      const existingOrgs = await getDB()
-        .select({ id: organizationT.id })
-        .from(organizationT)
-        .limit(1);
-      if (existingOrgs.length > 0) {
-        throw errors.FORBIDDEN({ message: "Multiple organizations require an Enterprise license. Upgrade at xinity.ai/xinity-pricing." });
-      }
+    if (await organizationLimitReached()) {
+      throw errors.FORBIDDEN({ message: MULTI_ORG_LICENSE_MESSAGE });
     }
 
     rlog.info({ name: input.name, slug: input.slug }, "Creating organization");

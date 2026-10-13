@@ -14,7 +14,7 @@ import { config } from "./config";
 import { getDB } from "./db";
 import { ac, isInstanceAdmin, isRoleAvailable, roles } from "./roles";
 import type { RoleName } from "$lib/roles";
-import { hasFeature } from "./license";
+import { MULTI_ORG_LICENSE_MESSAGE, organizationLimitReached } from "$lib/server/lib/instance/organization-limit";
 import { sendEmail, commonEmailProps, type AnyComponent } from "$lib/server/notifications/email";
 import { notify } from "./notifications/notification.service";
 import { NotificationType } from "./notifications/events";
@@ -411,13 +411,8 @@ export const auth = betterAuth({
         });
       }
 
-      if (ctx.path === "/organization/create" && !hasFeature("multi-org")) {
-        const [existingOrg] = await getDB().select({ id: organizationT.id }).from(organizationT).limit(1);
-        if (existingOrg) {
-          throw new APIError("FORBIDDEN", {
-            message: "Multiple organizations require an Enterprise license. Upgrade at xinity.ai/xinity-pricing.",
-          });
-        }
+      if (ctx.path === "/organization/create" && await organizationLimitReached()) {
+        throw new APIError("FORBIDDEN", { message: MULTI_ORG_LICENSE_MESSAGE });
       }
 
       if (roleAssignmentPaths.has(ctx.path)) {
