@@ -27,6 +27,7 @@ const registration: UnsignedNodeRegistration = {
   port: 4044,
   gpuCount: 0,
   gpus: [],
+  interconnect: [],
   driverVersions: {},
   driverFeatures: {},
   tls: false,
@@ -93,7 +94,7 @@ function serveTether(fetch: (req: Request) => Response | Promise<Response>) {
 
 function openStream() {
   const stop = new AbortController();
-  const next = connectSSE(registration, stop.signal).next();
+  const next = connectSSE(async () => registration, stop.signal).next();
   return {
     next,
     close: async () => {

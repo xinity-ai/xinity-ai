@@ -1,15 +1,16 @@
 <script lang="ts">
-  import type { NodeSummary } from "$lib/compute/format";
+  import type { NodeInterconnect, NodeSummary } from "$lib/compute/format";
   import UtilizationRing from "./UtilizationRing.svelte";
   import AnimatedNumber from "./AnimatedNumber.svelte";
   import { formatTokens, formatPercent, formatEnergy, formatRelativeTime, gpuSummary, totalVramGb } from "$lib/compute/format";
-  import { Zap, ArrowRightLeft, CircleCheck, Trash2, Cpu, Lock, MemoryStick } from "@lucide/svelte";
+  import { Zap, ArrowRightLeft, CircleCheck, Trash2, Cpu, Lock, MemoryStick, Cable, TriangleAlert, Info } from "@lucide/svelte";
   import { experimentalGpuVendors, GPU_VENDOR_SUPPORT } from "common-env/model-catalog/definitions/model-primitives";
 
-  let { node, rangeLabel, metrics = null, onRemove }: {
+  let { node, rangeLabel, metrics = null, interconnect, onRemove }: {
     node: NodeSummary;
     rangeLabel: string;
     metrics?: { utilizationAvg: number; energyWh: number } | null;
+    interconnect: NodeInterconnect;
     onRemove: (node: NodeSummary) => void;
   } = $props();
 
@@ -129,6 +130,24 @@
       seen {lastSeen}
     </span>
   </div>
+
+  {#if interconnect.coupledWith.length > 0 || interconnect.issues.length > 0}
+    <div class="flex flex-col gap-1 pt-1 border-t border-gray-100 text-xs">
+      {#if interconnect.coupledWith.length > 0}
+        <span class="inline-flex items-center gap-1 text-gray-600">
+          <Cable class="w-3 h-3 text-xinity-purple shrink-0" />Coupled with {interconnect.coupledWith.join(", ")}
+        </span>
+      {/if}
+      {#each interconnect.issues as issue}
+        <span class="inline-flex items-start gap-1 text-amber-700">
+          <TriangleAlert class="w-3 h-3 mt-px shrink-0" />{issue.text}
+          <a href={issue.docsUrl} target="_blank" rel="noopener noreferrer" title="How to fix this" aria-label="How to fix this" class="text-muted-foreground hover:text-amber-700">
+            <Info class="w-3 h-3 mt-px shrink-0" />
+          </a>
+        </span>
+      {/each}
+    </div>
+  {/if}
 
   {#if node.models.length > 0}
     <div class="flex flex-wrap gap-1.5 pt-1 border-t border-gray-100">

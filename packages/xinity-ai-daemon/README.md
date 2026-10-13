@@ -16,11 +16,12 @@ If you have direnv installed, set up a `.envrc` file with `use flake .` to autom
 On startup, the daemon:
 
 1. Detects GPU hardware (NVIDIA via `nvidia-smi`, AMD via sysfs/`rocm-smi`, Intel via `xpu-smi`). Falls back to system RAM when no GPUs are found. Unified memory systems (e.g., DGX Spark) are detected and allocated at 90% of system RAM.
-2. Opens a persistent SSE connection to the tether, sending its hardware profile (capacity, GPU details, drivers, hostname, port) as the registration body. The tether upserts the node record in the database.
-3. Receives desired state (model installations) from the tether over the SSE stream and installs/removes models accordingly. Changes are pushed immediately when the dashboard updates a deployment.
-4. Reports installation lifecycle state back to the tether via `POST /api/v1/status`.
-5. Starts GPU telemetry sampling (NVIDIA only, every `METRICS_SAMPLE_INTERVAL_MS`, default 20 seconds) for utilization, temperature, power, energy, ECC errors, and throttling.
-6. Exposes Prometheus metrics at `/metrics` and an OpenAI-compatible proxy at `/proxy/*`.
+2. Detects RDMA-capable network ports and the nodes on the other end of each, re-checks them every 30 seconds and reports changes via `POST /api/v1/interconnect`. See [Node Coupling](../../docs/features/node-coupling.md).
+3. Opens a persistent SSE connection to the tether, sending its hardware profile (capacity, GPU details, interconnect ports, drivers, hostname, port) as the registration body. The tether upserts the node record in the database.
+4. Receives desired state (model installations) from the tether over the SSE stream and installs/removes models accordingly. Changes are pushed immediately when the dashboard updates a deployment.
+5. Reports installation lifecycle state back to the tether via `POST /api/v1/status`.
+6. Starts GPU telemetry sampling (NVIDIA only, every `METRICS_SAMPLE_INTERVAL_MS`, default 20 seconds) for utilization, temperature, power, energy, ECC errors, and throttling.
+7. Exposes Prometheus metrics at `/metrics` and an OpenAI-compatible proxy at `/proxy/*`.
 
 On disconnect, the tether marks the node as offline in the database.
 
@@ -67,6 +68,10 @@ Or use `xinity up infra-ollama`.
 ### vLLM
 
 Set `VLLM_BACKEND` to choose the backend explicitly (`systemd`, the default, or `docker`); it is not inferred from which of `VLLM_PATH`/`VLLM_DOCKER_IMAGE` is set. Then set `VLLM_PATH` (path to binary, for the systemd backend) or `VLLM_DOCKER_IMAGE` (for the Docker backend) in the daemon's environment.
+
+### Node Coupling
+
+To couple nodes over an RDMA link (for example two DGX Sparks on their ConnectX cable), set up the cabled ports as described in [Node Coupling](../../docs/features/node-coupling.md#setting-up-the-link).
 
 ## Configuration
 

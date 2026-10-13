@@ -1,6 +1,7 @@
 import {
   protocolFingerprint,
   signAsNode,
+  type InterconnectPort,
   type UnsignedNodeRegistration,
 } from "common-env";
 import { loadOrCreateIdentity, readNodeId, rotateIdentity, type NodeIdentity } from "./node-identity-store";
@@ -8,6 +9,7 @@ import { $ } from "bun";
 import { config } from "../config";
 import { networkInterfaces } from "node:os";
 import { detectHardwareProfile, detectNodeName, type HardwareProfile } from "./hardware-detect";
+import { createInterconnectMonitor } from "./interconnect-detect";
 import { experimentalGpuVendors, GPU_VENDOR_SUPPORT, normalizePep440 } from "common-env/model-catalog";
 import { rootLogger } from "../logger";
 import { detectVllmFeatures, resolvePythonForVllm } from "./vllm-features";
@@ -19,6 +21,18 @@ let cachedProfile: HardwareProfile | null = null;
 let cachedNodeId: string | null = null;
 let cachedIdentity: NodeIdentity | null = null;
 let cachedMachineName: string | null = null;
+
+const monitorInterconnect = createInterconnectMonitor();
+let lastInterconnect: InterconnectPort[] = [];
+
+export async function checkInterconnect(): Promise<InterconnectPort[]> {
+  lastInterconnect = await monitorInterconnect();
+  return lastInterconnect;
+}
+
+export function lastInterconnectCheck(): InterconnectPort[] {
+  return lastInterconnect;
+}
 const authToken = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64url");
 
 /** Returns the auth token generated for this daemon instance. */
@@ -197,9 +211,10 @@ export async function rotateNodeIdentity(): Promise<void> {
 
 async function collectRegistrationData(): Promise<UnsignedNodeRegistration> {
   const { detectedCapacityGb, gpuCount, gpus: detectedGpus } = await getHardwareProfile();
-  const [driverVersions, driverFeatures] = await Promise.all([
+  const [driverVersions, driverFeatures, interconnect] = await Promise.all([
     getNodeDriverVersions(),
     getNodeDriverFeatures(),
+    checkInterconnect(),
   ]);
   const machineName = detectNodeName(config.node.machineName);
   const host = findHostIPv4Address();
@@ -215,6 +230,7 @@ async function collectRegistrationData(): Promise<UnsignedNodeRegistration> {
     port,
     gpuCount,
     gpus: detectedGpus,
+    interconnect,
     driverVersions,
     driverFeatures,
     tls: !!config.tls,

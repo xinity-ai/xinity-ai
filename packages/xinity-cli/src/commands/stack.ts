@@ -26,6 +26,9 @@ import { searchSelect, searchMultiselect, listSelect, type SearchListOption } fr
 import { runStackFlow } from "../lib/stack/stack-plan.ts";
 import { randomSecretKey, randomToken } from "../lib/core/secrets.ts";
 import { runDoctor, buildSummaryLine, type DoctorReport } from "../lib/doctor/doctor.ts";
+import { describeCouplingIssue, describePortIssue, deriveInterconnectOverview, rdmaEndpoints, type Coupling, type InterconnectPort, type IssueDescription, type PortRef, type RdmaEndpoint } from "common-env";
+import { testRdmaPath } from "../lib/doctor/rdma-test.ts";
+import type { Host } from "../lib/core/host.ts";
 import { fetchRelease, listReleases, type ReleaseListEntry } from "../lib/up/github.ts";
 import { loadStackState, findOrphanHosts } from "../lib/stack/stack-state.ts";
 import { connectHosts, disposeAll, mapBounded, HOST_CONCURRENCY } from "../lib/remote/multi-host.ts";
@@ -726,6 +729,9 @@ async function handleDoctor(name: string, fleetName?: string): Promise<void> {
       }
       log.info(buildSummaryLine(entry.report.summary));
     }
+
+    const nodes = reports.flatMap((entry) => ("report" in entry ? [{ id: entry.address, interconnect: entry.report.interconnect }] : []));
+    totalFailed += await reportInterconnect(nodes, hosts);
   } finally {
     await disposeAll(hosts);
   }
@@ -734,6 +740,69 @@ async function handleDoctor(name: string, fleetName?: string): Promise<void> {
   if (totalFailed > 0) {
     process.exit(1);
   }
+}
+
+type InterconnectNode = { id: string; interconnect: InterconnectPort[] };
+type RdmaTestEnd = { nodeId: string; endpoint: RdmaEndpoint };
+
+// The first member tests against every other one, so each node is covered once.
+function rdmaTestPairs(coupling: Coupling, nodes: InterconnectNode[]): { server: RdmaTestEnd; client: RdmaTestEnd }[] {
+  const portOf = (ref: PortRef) =>
+    nodes.find((node) => node.id === ref.nodeId)?.interconnect.find((port) => port.networkCard === ref.networkCard && port.port === ref.port);
+  const [first, ...others] = coupling.members;
+  const firstPort = first && portOf(first);
+  if (!first || !firstPort) {
+    return [];
+  }
+  return others.flatMap((other) => {
+    const otherPort = portOf(other);
+    const endpoints = otherPort && other.nodeId !== first.nodeId ? rdmaEndpoints(firstPort, otherPort) : null;
+    return endpoints
+      ? [{ server: { nodeId: first.nodeId, endpoint: endpoints[0] }, client: { nodeId: other.nodeId, endpoint: endpoints[1] } }]
+      : [];
+  });
+}
+
+const withDocsLink = ({ text, docsUrl }: IssueDescription) => `${text} (${docsUrl})`;
+
+// Couplings span hosts, so they are judged across the whole set after the per-host checks. A port
+// problem is a warning, but a coupling that looks usable and fails a real transfer is an error.
+// Returns how many such errors it found.
+async function reportInterconnect(nodes: InterconnectNode[], hosts: Map<string, Host>): Promise<number> {
+  const { couplings, portIssues } = deriveInterconnectOverview(nodes);
+  if (couplings.length === 0 && portIssues.length === 0) {
+    return 0;
+  }
+  heading("Interconnect");
+  for (const { port, issues } of portIssues) {
+    for (const issue of issues) {
+      warn(`${port.nodeId} · ${port.port}`, withDocsLink(describePortIssue(issue)));
+    }
+  }
+
+  const testSide = ({ nodeId, endpoint }: RdmaTestEnd) => ({ name: nodeId, host: hosts.get(nodeId)!, endpoint });
+  let failed = 0;
+  for (const coupling of couplings) {
+    log.info(`Coupled: ${coupling.nodeIds.join(" · ")}`);
+    for (const issue of coupling.issues) {
+      warn(coupling.nodeIds.join(" · "), withDocsLink(describeCouplingIssue(issue)));
+    }
+    if (!coupling.viable) {
+      continue;
+    }
+    for (const { server, client } of rdmaTestPairs(coupling, nodes)) {
+      const result = await testRdmaPath(testSide(server), testSide(client));
+      if (result.status === "fail") {
+        failed++;
+        fail(result.label, result.message);
+      } else if (result.status === "warn") {
+        warn(result.label, result.message);
+      } else {
+        log.success(`${result.label}: ${result.message}`);
+      }
+    }
+  }
+  return failed;
 }
 
 async function handleRm(name: string): Promise<void> {

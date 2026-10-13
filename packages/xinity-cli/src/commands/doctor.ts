@@ -111,6 +111,7 @@ export const doctorCommand: CommandModule = {
           version: null,
           checks: [{ label: "SSH", status: "fail", message: `Cannot connect to target host: ${msg}` }],
         }],
+        interconnect: [],
         summary: { pass: 0, warn: 0, fail: 1, skip: 0 },
       };
       emitReport(report, format, verbose);

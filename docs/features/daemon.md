@@ -18,6 +18,8 @@ Unified memory systems (e.g., DGX Spark) are detected when GPUs report zero VRAM
 
 The detected hardware profile is sent to the tether at registration (which writes it to the database) and visible on the [dashboard's Compute page](dashboard.md#compute-dashboard).
 
+The daemon also detects RDMA-capable network links to other nodes, see [Node Coupling](node-coupling.md).
+
 ## Model Installation
 
 The daemon receives deployment instructions from the tether via a persistent SSE connection. When the dashboard creates or modifies a deployment, a PostgreSQL trigger notifies the tether, which pushes the updated desired state to the daemon immediately. A periodic resync (default: every 5 minutes) acts as a safety net.
