@@ -27,7 +27,7 @@ Xinity AI consists of four services that the customer installs and operates on t
 
 The **Xinity CLI** is an operator tool for installing, configuring, and managing these services on Linux hosts.
 
-The gateway, dashboard, and tether coordinate through a shared PostgreSQL database that the customer hosts. Daemons do not connect to the database. They communicate exclusively with the tether via authenticated SSE. There is no external coordination endpoint. Redis is used by the Gateway for ephemeral state (authentication caching, load balancer coordination). Both PostgreSQL and Redis are customer-managed.
+The gateway, dashboard, and tether coordinate through a shared PostgreSQL database that the customer hosts. Daemons do not connect to the database. They communicate exclusively with the tether via authenticated SSE. There is no external coordination endpoint. The Gateway keeps ephemeral state (authentication caching, load balancer coordination) in its own process memory, or in Redis when one is configured so that several gateways share it. PostgreSQL and, where used, Redis are customer-managed.
 
 An optional S3-compatible object store can be configured for multimodal image storage. This is also customer-managed; no images are transmitted to Xinity.
 
@@ -52,7 +52,7 @@ Xinity AI is a software platform, not a managed service. All infrastructure comp
 | Component | Role | Notes |
 |---|---|---|
 | **PostgreSQL** | Shared coordination database; stores call logs, users, deployments, API keys | Customer-managed; location determined by customer |
-| **Redis** | Ephemeral gateway state: auth cache, load balancer counters, responses store | Customer-managed |
+| **Redis** | Optional store for ephemeral gateway state: auth cache, load balancer counters, responses store | Customer-managed. Without it the gateway holds this state in process memory |
 | **Ollama / vLLM** | Local inference drivers | Run on customer-managed inference nodes; model weights and inference data do not leave those nodes |
 | **S3-compatible object store** | Optional store for multimodal image data | Customer-managed; not configured by default |
 | **Info Server** | Model catalog metadata (model names, capabilities, driver identifiers) | Defaults to Xinity's hosted instance (`sysinfo.xinity.ai`); metadata lookup only, no inference data. Can be self-hosted (see 3.1 above) |
