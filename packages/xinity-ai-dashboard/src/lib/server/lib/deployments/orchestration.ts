@@ -229,15 +229,26 @@ export function collectDriftedInstallations(requiredModels: ModelRequirementTabl
   return toUninstall;
 }
 
-function nodeAlreadyHostsModel(
+type Placement = { deploymentId: string; specifier: string };
+
+const EXCLUDED_ON_SAME_NODE: Record<Provider, (placed: Placement, candidate: Placement) => boolean> = {
+  ollama: (placed, candidate) => placed.specifier === candidate.specifier,
+  vllm: (placed, candidate) => requirementKey(placed) === requirementKey(candidate),
+};
+
+function nodeExcludesPlacement(
   nodeId: string,
-  specifier: string,
+  driver: Provider,
+  candidate: Placement,
   state: ClusterState,
   pending: NewInstallation[],
 ): boolean {
+  const excludes = EXCLUDED_ON_SAME_NODE[driver];
   const existing = state.installationsByServer.get(nodeId) ?? [];
-  if (existing.some(inst => inst.specifier === specifier)) return true;
-  return pending.some(p => p.nodeId === nodeId && p.specifier === specifier);
+  if (existing.some(inst => inst.driver === driver && excludes(inst, candidate))) {
+    return true;
+  }
+  return pending.some(p => p.nodeId === nodeId && p.driver === driver && excludes(p, candidate));
 }
 
 /** What a model demands of a node, beyond the driver and the room to hold it. */
@@ -248,10 +259,10 @@ export type PlacementConstraints = {
   requiredFeatures?: string[];
 };
 
-/** Picks a node according to the configured strategy; skips nodes that already host the model. */
+/** Picks a node according to the configured strategy; skips nodes where the engine's node rule excludes the placement. */
 export function findServerForModel(
-  specifier: string,
-  driver: string,
+  placement: Placement,
+  driver: Provider,
   weight: number,
   state: ClusterState,
   pending: NewInstallation[],
@@ -270,7 +281,9 @@ export function findServerForModel(
     const cap = state.serverCapacity.get(server.id);
     if (!cap) continue;
 
-    if (nodeAlreadyHostsModel(server.id, specifier, state, pending)) continue;
+    if (nodeExcludesPlacement(server.id, driver, placement, state, pending)) {
+      continue;
+    }
 
     const nodeCap: NodeCapability = {
       free: cap.total - cap.used,
@@ -357,7 +370,7 @@ async function planNewInstallations(
         break;
       }
 
-      const nodeId = findServerForModel(specifier, driver, totalCapacity, state, toInstall, strategy,
+      const nodeId = findServerForModel({ deploymentId: requirement.deploymentId, specifier }, driver, totalCapacity, state, toInstall, strategy,
         { minVersion, blockedVersions, requiredPlatforms, requiredFeatures });
       if (!nodeId) {
         log.warn({ specifier: requirement.specifier }, "No server with enough capacity for additional replica");
@@ -401,7 +414,7 @@ async function hasReassignmentTarget(install: ModelInstallation, state: ClusterS
   if (!modelInfo) return false;
 
   const nodeId = findServerForModel(
-    install.specifier, install.driver, install.estCapacity, state, [], "first-fit",
+    install, install.driver, install.estCapacity, state, [], "first-fit",
     modelInfo,
   );
   return nodeId !== null;

@@ -88,7 +88,7 @@ describe("orchestration: node goes unavailable", () => {
     expect(excess).toHaveLength(0);
 
     // Planner would place the replacement on node-a
-    const replacement = findServerForModel("llama2:7b", "ollama", 8, state, [], FF);
+    const replacement = findServerForModel({ deploymentId: "dep-1", specifier: "llama2:7b" }, "ollama", 8, state, [], FF);
     expect(replacement).toBe("node-a");
   });
 
@@ -96,35 +96,35 @@ describe("orchestration: node goes unavailable", () => {
     const ollamaOnly = makeNode({ id: "node-c", host: "10.0.0.3" });
     const state = buildClusterState([], [ollamaOnly]);
 
-    expect(findServerForModel("some-model", "vllm", 8, state, [], FF)).toBeNull();
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "some-model" }, "vllm", 8, state, [], FF)).toBeNull();
   });
 
   test("findServerForModel skips nodes without enough capacity", () => {
     const tinyNode = makeNode({ id: "node-d", host: "10.0.0.4", estCapacity: 4 });
     const state = buildClusterState([], [tinyNode]);
 
-    expect(findServerForModel("big-model", "ollama", 16, state, [], FF)).toBeNull();
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "big-model" }, "ollama", 16, state, [], FF)).toBeNull();
   });
 
   test("findServerForModel skips nodes with incompatible driver version", () => {
     const oldNode = makeNode({ id: "node-e", host: "10.0.0.5", driverVersions: { vllm: "0.18.0" } });
     const state = buildClusterState([], [oldNode]);
 
-    expect(findServerForModel("new-model", "vllm", 8, state, [], FF, { minVersion: "0.19.1" })).toBeNull();
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "new-model" }, "vllm", 8, state, [], FF, { minVersion: "0.19.1" })).toBeNull();
   });
 
   test("findServerForModel accepts nodes with sufficient driver version", () => {
     const newNode = makeNode({ id: "node-f", host: "10.0.0.6", driverVersions: { vllm: "0.20.0" } });
     const state = buildClusterState([], [newNode]);
 
-    expect(findServerForModel("new-model", "vllm", 8, state, [], FF, { minVersion: "0.19.1" })).toBe("node-f");
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "new-model" }, "vllm", 8, state, [], FF, { minVersion: "0.19.1" })).toBe("node-f");
   });
 
   test("findServerForModel allows nodes whose driver version is recorded as empty (fail-open)", () => {
     const unknownNode = makeNode({ id: "node-g", host: "10.0.0.7", driverVersions: { vllm: "" } });
     const state = buildClusterState([], [unknownNode]);
 
-    expect(findServerForModel("new-model", "vllm", 8, state, [], FF, { minVersion: "0.19.1" })).toBe("node-g");
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "new-model" }, "vllm", 8, state, [], FF, { minVersion: "0.19.1" })).toBe("node-g");
   });
 
   test("findServerForModel routes past a node on a blocked release to one that is not", () => {
@@ -132,50 +132,50 @@ describe("orchestration: node goes unavailable", () => {
     const onBadRelease = makeNode({ id: "node-blocked", host: "10.0.0.20", driverVersions: { vllm: "0.27.1" } });
     const onGoodRelease = makeNode({ id: "node-ok", host: "10.0.0.21", driverVersions: { vllm: "0.27.2" } });
 
-    expect(findServerForModel("m", "vllm", 8, buildClusterState([], [onBadRelease]), [], FF, { blockedVersions })).toBeNull();
-    expect(findServerForModel("m", "vllm", 8, buildClusterState([], [onBadRelease, onGoodRelease]), [], FF, { blockedVersions })).toBe("node-ok");
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "m" }, "vllm", 8, buildClusterState([], [onBadRelease]), [], FF, { blockedVersions })).toBeNull();
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "m" }, "vllm", 8, buildClusterState([], [onBadRelease, onGoodRelease]), [], FF, { blockedVersions })).toBe("node-ok");
   });
 
   test("findServerForModel skips nodes with wrong GPU platform", () => {
     const amdNode = makeNode({ id: "node-h", host: "10.0.0.8", driverVersions: { vllm: "0.20.0" }, gpus: [{ vendor: "amd", name: "MI300X", vramMb: 196608 }] });
     const state = buildClusterState([], [amdNode]);
 
-    expect(findServerForModel("mxfp4-model", "vllm", 8, state, [], FF, { requiredPlatforms: ["nvidia"] })).toBeNull();
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "mxfp4-model" }, "vllm", 8, state, [], FF, { requiredPlatforms: ["nvidia"] })).toBeNull();
   });
 
   test("findServerForModel accepts nodes with matching GPU platform", () => {
     const nvidiaNode = makeNode({ id: "node-i", host: "10.0.0.9", driverVersions: { vllm: "0.20.0" }, gpus: [{ vendor: "nvidia", name: "A100", vramMb: 81920 }] });
     const state = buildClusterState([], [nvidiaNode]);
 
-    expect(findServerForModel("mxfp4-model", "vllm", 8, state, [], FF, { requiredPlatforms: ["nvidia"] })).toBe("node-i");
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "mxfp4-model" }, "vllm", 8, state, [], FF, { requiredPlatforms: ["nvidia"] })).toBe("node-i");
   });
 
   test("findServerForModel rejects nodes with no GPUs when platform is required", () => {
     const cpuNode = makeNode({ id: "node-j", host: "10.0.0.10", driverVersions: { vllm: "0.20.0" }, gpus: [] });
     const state = buildClusterState([], [cpuNode]);
 
-    expect(findServerForModel("mxfp4-model", "vllm", 8, state, [], FF, { requiredPlatforms: ["nvidia"] })).toBeNull();
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "mxfp4-model" }, "vllm", 8, state, [], FF, { requiredPlatforms: ["nvidia"] })).toBeNull();
   });
 
   test("findServerForModel skips nodes missing a required feature", () => {
     const node = makeNode({ id: "node-k", host: "10.0.0.11", driverVersions: { vllm: "0.20.0" }, driverFeatures: {} });
     const state = buildClusterState([], [node]);
 
-    expect(findServerForModel("whisper", "vllm", 8, state, [], FF, { requiredFeatures: ["audio"] })).toBeNull();
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "whisper" }, "vllm", 8, state, [], FF, { requiredFeatures: ["audio"] })).toBeNull();
   });
 
   test("findServerForModel accepts nodes with the required feature", () => {
     const node = makeNode({ id: "node-l", host: "10.0.0.12", driverVersions: { vllm: "0.20.0" }, driverFeatures: { vllm: ["audio"] } });
     const state = buildClusterState([], [node]);
 
-    expect(findServerForModel("whisper", "vllm", 8, state, [], FF, { requiredFeatures: ["audio"] })).toBe("node-l");
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "whisper" }, "vllm", 8, state, [], FF, { requiredFeatures: ["audio"] })).toBe("node-l");
   });
 
   test("findServerForModel without requiredFeatures does not filter by features", () => {
     const node = makeNode({ id: "node-m", host: "10.0.0.13", driverVersions: { vllm: "0.20.0" } });
     const state = buildClusterState([], [node]);
 
-    expect(findServerForModel("chat-model", "vllm", 8, state, [], FF)).toBe("node-m");
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "chat-model" }, "vllm", 8, state, [], FF)).toBe("node-m");
   });
 });
 
@@ -189,24 +189,24 @@ describe("orchestration: vllm runs on the first card", () => {
 
   test("refuses a vllm installation the first card cannot hold, though the node's sum could", () => {
     const state = buildClusterState([vllmOnFirstCard], [twoCards]);
-    expect(findServerForModel("b-vllm", "vllm", 8, state, [], FF)).toBeNull();
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "b-vllm" }, "vllm", 8, state, [], FF)).toBeNull();
   });
 
   test("still places ollama against the node's whole capacity", () => {
     const state = buildClusterState([vllmOnFirstCard], [twoCards]);
-    expect(findServerForModel("b-ollama", "ollama", 8, state, [], FF)).toBe("node-2x24");
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "b-ollama" }, "ollama", 8, state, [], FF)).toBe("node-2x24");
   });
 
   test("does not count ollama against the card vllm runs on", () => {
     const ollama = makeInstallation({ id: "inst-o", nodeId: "node-2x24", specifier: "o", driver: "ollama", estCapacity: 20 });
     const state = buildClusterState([ollama], [twoCards]);
-    expect(findServerForModel("b-vllm", "vllm", 20, state, [], FF)).toBe("node-2x24");
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "b-vllm" }, "vllm", 20, state, [], FF)).toBe("node-2x24");
   });
 
   test("treats a unified-memory node as one card of its whole capacity", () => {
     const gb10 = makeNode({ id: "node-gb10", estCapacity: 109, gpus: [card(0)], driverVersions: { vllm: "0.30.0" } });
     const state = buildClusterState([], [gb10]);
-    expect(findServerForModel("big-vllm", "vllm", 60, state, [], FF)).toBe("node-gb10");
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "big-vllm" }, "vllm", 60, state, [], FF)).toBe("node-gb10");
   });
 });
 
@@ -222,7 +222,7 @@ describe("orchestration: vllm pinned to cards", () => {
   test("pins to the card that still has room", () => {
     const state = buildClusterState([vllm("a", 20, ["GPU-A"])], [node]);
     expect(cardForVllm(state, "node-ab", 8, FF)?.uuid).toBe("GPU-B");
-    expect(findServerForModel("b", "vllm", 8, state, [], FF)).toBe("node-ab");
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "b" }, "vllm", 8, state, [], FF)).toBe("node-ab");
   });
 
   test("counts an unpinned installation against the first card, where the daemon runs it", () => {
@@ -238,7 +238,7 @@ describe("orchestration: vllm pinned to cards", () => {
 
   test("refuses the node once no single card can hold the installation", () => {
     const state = buildClusterState([vllm("a", 20, ["GPU-A"]), vllm("b", 20, ["GPU-B"])], [node]);
-    expect(findServerForModel("c", "vllm", 8, state, [], FF)).toBeNull();
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "c" }, "vllm", 8, state, [], FF)).toBeNull();
   });
 
   test("leaves the installation unpinned on a node whose cards report no uuid", () => {
@@ -323,7 +323,33 @@ describe("orchestration: installation indexing", () => {
   test("findServerForModel skips a node that already hosts the specifier", () => {
     const inst = makeInstallation({ id: "i1", nodeId: "node-1", specifier: "llama-3.3-70b" });
     const state = buildClusterState([inst], [node]);
-    expect(findServerForModel("llama-3.3-70b", "ollama", 8, state, [], FF)).toBeNull();
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "llama-3.3-70b" }, "ollama", 8, state, [], FF)).toBeNull();
+  });
+});
+
+describe("orchestration: node rule per engine", () => {
+  const card = (uuid: string) => ({ vendor: "nvidia", name: "card", vramMb: 24576, uuid });
+  const node = makeNode({
+    id: "node-ab", estCapacity: 48, gpuCount: 2,
+    gpus: [card("GPU-A"), card("GPU-B")], driverVersions: { vllm: "0.30.0", ollama: "0.6.3" },
+  });
+
+  test("keeps a second deployment's installation of one ollama tag off the node", () => {
+    const inst = makeInstallation({ id: "i1", nodeId: "node-ab", deploymentId: "dep-1", specifier: "llama", driver: "ollama" });
+    const state = buildClusterState([inst], [node]);
+    expect(findServerForModel({ deploymentId: "dep-2", specifier: "llama" }, "ollama", 8, state, [], FF)).toBeNull();
+  });
+
+  test("lets a second deployment's vllm installation of one model share the node", () => {
+    const inst = makeInstallation({ id: "i1", nodeId: "node-ab", deploymentId: "dep-1", specifier: "qwen", driver: "vllm", gpuUuids: ["GPU-A"] });
+    const state = buildClusterState([inst], [node]);
+    expect(findServerForModel({ deploymentId: "dep-2", specifier: "qwen" }, "vllm", 8, state, [], FF)).toBe("node-ab");
+  });
+
+  test("still spreads the vllm replicas of one deployment across nodes", () => {
+    const inst = makeInstallation({ id: "i1", nodeId: "node-ab", deploymentId: "dep-1", specifier: "qwen", driver: "vllm", gpuUuids: ["GPU-A"] });
+    const state = buildClusterState([inst], [node]);
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "qwen" }, "vllm", 8, state, [], FF)).toBeNull();
   });
 });
 
@@ -345,7 +371,7 @@ describe("orchestration: settings drift", () => {
     expect(drifted).toEqual(["i1"]);
     expect(state.installationsByRequirement.get("dep-1:whisper")).toHaveLength(0);
     expect(state.serverCapacity.get("node-1")!.used).toBe(0);
-    expect(findServerForModel("whisper", "ollama", 8, state, [], FF)).toBe("node-1");
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "whisper" }, "ollama", 8, state, [], FF)).toBe("node-1");
   });
 
   test("matching settings produce no drift", () => {
@@ -485,24 +511,24 @@ describe("orchestration: deployment strategies", () => {
 
   test("findServerForModel balanced picks node with most free capacity", () => {
     const state = buildClusterState(preinstalls, [nodeA, nodeB, nodeC]);
-    expect(findServerForModel("new-model", "ollama", 4, state, [], "balanced")).toBe("node-c");
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "new-model" }, "ollama", 4, state, [], "balanced")).toBe("node-c");
   });
 
   test("findServerForModel bin-pack picks tightest fit that still satisfies", () => {
     const state = buildClusterState(preinstalls, [nodeA, nodeB, nodeC]);
     // B has 8 free, the tightest that fits a 4GB model.
-    expect(findServerForModel("new-model", "ollama", 4, state, [], "bin-pack")).toBe("node-b");
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "new-model" }, "ollama", 4, state, [], "bin-pack")).toBe("node-b");
   });
 
   test("findServerForModel bin-pack skips nodes too tight to fit", () => {
     const state = buildClusterState(preinstalls, [nodeA, nodeB, nodeC]);
     // 10GB doesn't fit on B (8 free), so falls through to A (20 free), not C (24 free).
-    expect(findServerForModel("big-model", "ollama", 10, state, [], "bin-pack")).toBe("node-a");
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "big-model" }, "ollama", 10, state, [], "bin-pack")).toBe("node-a");
   });
 
   test("findServerForModel proportional picks lowest percent used", () => {
     const state = buildClusterState(preinstalls, [nodeA, nodeB, nodeC]);
-    expect(findServerForModel("new-model", "ollama", 4, state, [], "proportional")).toBe("node-a");
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "new-model" }, "ollama", 4, state, [], "proportional")).toBe("node-a");
   });
 
   test("balanced spreads replicas across nodes across consecutive placements", () => {
@@ -512,15 +538,15 @@ describe("orchestration: deployment strategies", () => {
     const empty = buildClusterState([], [nodeA, nodeB, nodeC]);
     const pending: Parameters<typeof findServerForModel>[4] = [];
 
-    const first = findServerForModel("m", "ollama", 4, empty, pending, "balanced")!;
+    const first = findServerForModel({ deploymentId: "dep-1", specifier: "m" }, "ollama", 4, empty, pending, "balanced")!;
     empty.serverCapacity.get(first)!.used += 4;
     pending.push({ nodeId: first, deploymentId: "dep-1", specifier: "m", estCapacity: 4, kvCacheCapacity: 0, driver: "ollama", port: 11434 });
 
-    const second = findServerForModel("m", "ollama", 4, empty, pending, "balanced")!;
+    const second = findServerForModel({ deploymentId: "dep-1", specifier: "m" }, "ollama", 4, empty, pending, "balanced")!;
     empty.serverCapacity.get(second)!.used += 4;
     pending.push({ nodeId: second, deploymentId: "dep-1", specifier: "m", estCapacity: 4, kvCacheCapacity: 0, driver: "ollama", port: 11434 });
 
-    const third = findServerForModel("m", "ollama", 4, empty, pending, "balanced")!;
+    const third = findServerForModel({ deploymentId: "dep-1", specifier: "m" }, "ollama", 4, empty, pending, "balanced")!;
 
     expect(new Set([first, second, third])).toEqual(new Set(["node-a", "node-b", "node-c"]));
   });
