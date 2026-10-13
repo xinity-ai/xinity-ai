@@ -224,19 +224,19 @@ const registerOidc = rootOs
   .input(z.object({
     organizationId: z.string().optional(),
     providerId: z.string(),
-    issuer: z.string(),
+    issuer: z.url({ protocol: /^https?$/ }),
     domain: z.string(),
     oidcConfig: z.object({
       clientId: z.string(),
       clientSecret: z.string(),
       scopes: z.array(z.string()).optional(),
       pkce: z.boolean().optional(),
-      discoveryEndpoint: z.string().optional(),
+      discoveryEndpoint: z.url({ protocol: /^https?$/ }).optional(),
       tokenEndpointAuthentication: z.enum(["client_secret_basic", "client_secret_post"]).optional(),
-      authorizationEndpoint: z.string().optional(),
-      tokenEndpoint: z.string().optional(),
-      jwksEndpoint: z.string().optional(),
-      userInfoEndpoint: z.string().optional(),
+      authorizationEndpoint: z.url({ protocol: /^https?$/ }).optional(),
+      tokenEndpoint: z.url({ protocol: /^https?$/ }).optional(),
+      jwksEndpoint: z.url({ protocol: /^https?$/ }).optional(),
+      userInfoEndpoint: z.url({ protocol: /^https?$/ }).optional(),
     }),
   }))
   .handler(async ({ input, context, errors }) => {
@@ -256,7 +256,7 @@ const registerSaml = rootOs
     issuer: z.string(),
     domain: z.string(),
     samlConfig: z.object({
-      entryPoint: z.string(),
+      entryPoint: z.url({ protocol: /^https?$/ }),
       cert: z.string(),
       callbackUrl: z.string(),
       audience: z.string().optional(),
