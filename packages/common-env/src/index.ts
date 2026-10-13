@@ -70,3 +70,4 @@ export * from "./secret-keyring";
 export * from "./service-auth";
 export * from "./node-identity";
 export * from "./tensor-parallel";
+export * from "./node-coupling";

@@ -71,7 +71,9 @@ export function setConnectedNodes(n: number) {
   connectedNodes.set({}, n);
 }
 
-export function incRequestRejections(endpoint: "stream" | "status", reason: TetherRefusalReason) {
+export type DaemonEndpoint = "stream" | "status" | "interconnect";
+
+export function incRequestRejections(endpoint: DaemonEndpoint, reason: TetherRefusalReason) {
   requestRejectionsTotal.inc({ endpoint, reason });
 }
 

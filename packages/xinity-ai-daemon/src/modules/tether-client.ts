@@ -1,7 +1,9 @@
 import {
+  canonicalInterconnectReport,
   canonicalRegistration,
   canonicalStateReport,
   desiredStateSchema,
+  INTERCONNECT_PATH,
   KEEPALIVE_INTERVAL_HEADER,
   serviceUrl,
   signRequest,
@@ -14,7 +16,9 @@ import {
   type TetherRefusalReason,
   type NodeRegistration,
   type InstallationStateReport,
+  type InterconnectReport,
   type UnsignedInstallationStateReport,
+  type UnsignedInterconnectReport,
   type UnsignedNodeRegistration,
 } from "common-env";
 import { rotateNodeIdentity, signPayloadAsNode } from "./statekeeper";
@@ -88,7 +92,7 @@ async function pause(ms: number, signal: AbortSignal): Promise<void> {
   await delay(ms, undefined, { signal }).catch(() => {});
 }
 
-export async function* connectSSE(registration: UnsignedNodeRegistration, signal: AbortSignal): AsyncGenerator<DesiredState> {
+export async function* connectSSE(currentRegistration: () => Promise<UnsignedNodeRegistration>, signal: AbortSignal): AsyncGenerator<DesiredState> {
   let backoffMs = 1000;
   let warnedUnannouncedKeepalive = false;
   transition("connecting");
@@ -101,6 +105,7 @@ export async function* connectSSE(registration: UnsignedNodeRegistration, signal
       abort.abort();
     }, HANDSHAKE_TIMEOUT_MS);
     try {
+      const registration = await currentRegistration();
       const authorization = authorizePost(STREAM_PATH);
       const signed: NodeRegistration = {
         ...registration,
@@ -236,5 +241,28 @@ export async function reportInstallationStates(report: UnsignedInstallationState
     }
   } catch (err) {
     log.error({ err }, "Status POST error");
+  }
+}
+
+export async function reportInterconnect(report: UnsignedInterconnectReport): Promise<boolean> {
+  try {
+    const authorization = authorizePost(INTERCONNECT_PATH);
+    const signed: InterconnectReport = {
+      ...report,
+      signature: await signPayloadAsNode(canonicalInterconnectReport(report, authorization)),
+    };
+    const res = await fetch(serviceUrl(config.tether.url, INTERCONNECT_PATH), {
+      method: "POST",
+      headers: jsonHeaders(authorization),
+      body: JSON.stringify(signed),
+    });
+    if (!res.ok) {
+      const { message, reason } = await readRefusal(res);
+      log.error({ status: res.status, reason, refusal: message }, "Interconnect POST failed");
+    }
+    return res.ok;
+  } catch (err) {
+    log.error({ err }, "Interconnect POST error");
+    return false;
   }
 }

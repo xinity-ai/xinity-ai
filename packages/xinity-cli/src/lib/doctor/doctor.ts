@@ -3,7 +3,7 @@ import { readManifest, type ComponentEntry } from "../up/manifest.ts";
 import { commandExistsOn, isUnitActiveOn, readSecrets, type Host } from "../core/host.ts";
 import { isOllamaRunning } from "../infra/ollama-setup.ts";
 import { componentFields, categorizeFields, isRequired } from "../config/env-prompt.ts";
-import type { EnvField } from "common-env";
+import type { EnvField, InterconnectPort } from "common-env";
 import { parseEnvString } from "../config/env-file.ts";
 import { unitName } from "../up/systemd.ts";
 import { type Component, ENV_DIR, SECRETS_DIR, UNIT_DIR, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT, DASHBOARD_DEFAULT_PORT, DEFAULT_OLLAMA_URL } from "../core/component-meta.ts";
@@ -11,7 +11,7 @@ import { collectRemoteState, createCachedHost } from "../remote/remote-probe.ts"
 import {
   type CheckResult,
   checkPostgresAndMigrations, checkRedis, checkServiceHealth, checkDaemonHealth, checkSmtp,
-  checkInfoserverUrl,
+  checkInfoserverUrl, readDaemonInterconnect,
   fileExistsCheck, serviceActiveCheck, isLocalUrl,
 } from "./doctor-probes.ts";
 
@@ -37,6 +37,8 @@ export type ComponentReport = {
 export type DoctorReport = {
   timestamp: string;
   components: ComponentReport[];
+  // Empty without a reachable daemon on the host
+  interconnect: InterconnectPort[];
   summary: { pass: number; warn: number; fail: number; skip: number };
 }
 
@@ -331,6 +333,10 @@ function dashboardHealthProbe(values: Record<string, string>): { url: string; cu
   return { url: `${scheme}://${healthCheckHost(values)}:${values.HTTP_PORT || DASHBOARD_DEFAULT_PORT}/api/health`, curlArgs };
 }
 
+function daemonHealthUrl(values: Record<string, string>): string {
+  return `http://${healthCheckHost(values)}:${values.PORT || "4044"}/healthCheck`;
+}
+
 async function checkDaemonConnectivity(
   values: Record<string, string>,
   serviceActive: boolean,
@@ -339,8 +345,7 @@ async function checkDaemonConnectivity(
   const checks: CheckResult[] = [];
   await pushInfoserverCheck(checks, values, host);
   if (serviceActive) {
-    const url = `http://${healthCheckHost(values)}:${values.PORT || "4044"}/healthCheck`;
-    checks.push(...await checkDaemonHealth(host, url));
+    checks.push(...await checkDaemonHealth(host, daemonHealthUrl(values)));
   }
   return checks;
 }
@@ -586,6 +591,7 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
   opts.spinner?.message("Checking system…");
   components.push(await checkSystem(host));
 
+  let interconnect: InterconnectPort[] = [];
   const discoveredInfoserverUrls = new Map<string, string[]>();
   const remoteInfoserverChecks: CheckResult[] = [];
 
@@ -612,6 +618,10 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
     });
     components.push(report);
 
+    if (comp === "daemon") {
+      interconnect = await readDaemonInterconnect(host, daemonHealthUrl(values));
+    }
+
     if (comp !== "infoserver" && values.INFOSERVER_URL) {
       const existing = discoveredInfoserverUrls.get(values.INFOSERVER_URL);
       if (existing) {
@@ -630,5 +640,5 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
     }
   }
 
-  return { timestamp: new Date().toISOString(), components, summary };
+  return { timestamp: new Date().toISOString(), components, interconnect, summary };
 }

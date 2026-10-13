@@ -1,5 +1,6 @@
 /** Display formatters and shared types for the compute overview page. */
 import type { GpuInfo } from "common-env";
+import { describeCouplingIssue, describePortIssue, type InterconnectOverview, type IssueDescription } from "common-env/node-coupling";
 
 export type LiveMetricsNode = { nodeId: string; utilizationAvg: number; energyWh: number };
 export type LiveMetrics = { available: boolean; nodes: LiveMetricsNode[] };
@@ -16,7 +17,7 @@ export type ComputeTotals = {
   machinesOnline: number; machinesTotal: number; gpuCount: number;
   requests: number; failedRequests: number; inputTokens: number; outputTokens: number;
 };
-export type ComputeOverview = { rangeHours: number; nodes: NodeSummary[]; totals: ComputeTotals };
+export type ComputeOverview = { rangeHours: number; nodes: NodeSummary[]; totals: ComputeTotals; interconnect: InterconnectOverview };
 export type HistoryPoint = { t: number; tokens: number; requests: number };
 export type ComputeHistory = { rangeHours: number; bucketSeconds: number; series: { nodeId: string; points: HistoryPoint[] }[] };
 
@@ -67,4 +68,24 @@ export function gpuSummary(gpus: { name: string }[]): string {
 
 function trimZero(formatted: string): string {
   return formatted.replace(/\.0$/, "");
+}
+
+export type NodeInterconnect = { coupledWith: string[]; issues: IssueDescription[] };
+
+export function interconnectOfNode(overview: InterconnectOverview, nodeId: string, nameOf: (nodeId: string) => string): NodeInterconnect {
+  const couplings = overview.couplings.filter((coupling) => coupling.nodeIds.includes(nodeId));
+  const peers = new Set(couplings.flatMap((coupling) => coupling.nodeIds).filter((id) => id !== nodeId));
+  return {
+    coupledWith: [...peers].map(nameOf).sort(),
+    issues: [
+      ...overview.portIssues
+        .filter(({ port }) => port.nodeId === nodeId)
+        .flatMap(({ port, issues }) => issues.map((issue) => describeOnPort(port.port, describePortIssue(issue)))),
+      ...couplings.flatMap((coupling) => coupling.issues.map((issue) => describeCouplingIssue(issue))),
+    ],
+  };
+}
+
+function describeOnPort(port: string, { text, docsUrl }: IssueDescription): IssueDescription {
+  return { text: `${port}: ${text}`, docsUrl };
 }

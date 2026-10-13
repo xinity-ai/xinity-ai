@@ -2,7 +2,7 @@ import "zod/compile";
 
 import { z } from "zod";
 import { DYNAMIC_CONFIG_CHANNEL, logMigrationFailureFatal, readDynamicConfig, sql } from "common-db";
-import { nodeRegistrationSchema, installationStateReportSchema, protocolFingerprint, activationRefusal, createDbConfigFeed, canonicalRegistration, canonicalStateReport, verifyNodeSignature, STREAM_PATH, STATUS_PATH, KEEPALIVE_INTERVAL_HEADER, type TetherRefusal, type TetherRefusalReason, type VerifyFailure } from "common-env";
+import { nodeRegistrationSchema, installationStateReportSchema, interconnectReportSchema, protocolFingerprint, activationRefusal, createDbConfigFeed, canonicalRegistration, canonicalStateReport, canonicalInterconnectReport, verifyNodeSignature, STREAM_PATH, STATUS_PATH, INTERCONNECT_PATH, KEEPALIVE_INTERVAL_HEADER, type TetherRefusal, type TetherRefusalReason, type VerifyFailure } from "common-env";
 import { tetherConfig } from "./config-schema";
 import { config, configStore } from "./config";
 import { rootLogger } from "./logger";
@@ -12,15 +12,15 @@ import { addConnection, removeConnection, pushDesiredState, pushConfig, pushConf
 import { createConfigBroadcast } from "./config-broadcast";
 import { buildDesiredState } from "./desired-state";
 import { createNotifyBus } from "./notify-bus";
-import { writeRegistration, queueInstallationStates, flushAndStop, readPinnedPublicKey, partitionOwnedStates } from "./status-writer";
-import { handleMetrics, httpMetrics, incRequestRejections } from "./metrics";
+import { writeRegistration, writeInterconnect, queueInstallationStates, flushAndStop, readPinnedPublicKey, partitionOwnedStates } from "./status-writer";
+import { handleMetrics, httpMetrics, incRequestRejections, type DaemonEndpoint } from "./metrics";
 import { buildListenTarget } from "./serve-config";
 
 const log = rootLogger;
 
 const handshakeSchema = z.object({ protocolFingerprint: z.string() });
 
-function refuse(endpoint: "stream" | "status", reason: TetherRefusalReason, error: string, status: number): Response {
+function refuse(endpoint: DaemonEndpoint, reason: TetherRefusalReason, error: string, status: number): Response {
   incRequestRejections(endpoint, reason);
   return Response.json({ error, reason } satisfies TetherRefusal, { status });
 }
@@ -32,7 +32,7 @@ const REJECTION_BY_FAILURE: Partial<Record<VerifyFailure, TetherRefusalReason>> 
   replayed: "unauthorized_replayed",
 };
 
-function rejectUnsigned(endpoint: "stream" | "status", reason: VerifyFailure): Response {
+function rejectUnsigned(endpoint: DaemonEndpoint, reason: VerifyFailure): Response {
   return refuse(endpoint, REJECTION_BY_FAILURE[reason] ?? "unauthorized", unauthorizedDetail(reason), 401);
 }
 
@@ -244,6 +244,28 @@ async function handleStatus(req: Request): Promise<Response> {
   return Response.json({ ok: true });
 }
 
+async function handleInterconnect(req: Request): Promise<Response> {
+  const refused = verifySignature(req, INTERCONNECT_PATH);
+  if (refused) {
+    return rejectUnsigned("interconnect", refused);
+  }
+
+  const parsed = interconnectReportSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) {
+    return refuse("interconnect", "invalid_payload", parsed.error.message, 400);
+  }
+
+  const { nodeId, interconnect, signature } = parsed.data;
+  const publicKey = connectedPublicKey(nodeId) ?? await readPinnedPublicKey(nodeId);
+  if (!publicKey || !verifyNodeSignature(publicKey, canonicalInterconnectReport(parsed.data, req.headers.get("authorization") ?? ""), signature)) {
+    log.warn({ nodeId, pinned: !!publicKey }, "Interconnect report is not signed by this node");
+    return refuse("interconnect", "invalid_signature", "Report signature is invalid", 401);
+  }
+
+  await writeInterconnect(nodeId, interconnect);
+  return Response.json({ ok: true });
+}
+
 const serveTarget = buildListenTarget(config.server);
 const tls = config.tls && { cert: config.tls.cert, key: config.tls.key };
 
@@ -256,6 +278,7 @@ const server = Bun.serve({
     "/metrics": handleMetrics,
     "/api/v1/stream": httpMetrics.route("/api/v1/stream", handleSSEStream),
     "/api/v1/status": httpMetrics.route("/api/v1/status", handleStatus),
+    "/api/v1/interconnect": httpMetrics.route("/api/v1/interconnect", handleInterconnect),
   },
   fetch: httpMetrics.route("<unmatched>", () => new Response("Not Found", { status: 404 })),
 });

@@ -12,7 +12,7 @@ import { mergeHistorySeries, pickBucketSeconds } from "$lib/server/lib/compute/c
 import { config } from "$lib/server/config";
 import { rootLogger } from "$lib/server/logging";
 import z from "zod";
-import { gpuSchema } from "common-env";
+import { deriveInterconnectOverview, gpuSchema, interconnectOverviewSchema } from "common-env";
 
 const tags = ["Compute"];
 
@@ -71,6 +71,7 @@ const ComputeOverviewOutput = z.object({
   rangeHours: z.number(),
   nodes: z.array(NodeSummarySchema),
   totals: ComputeTotalsSchema,
+  interconnect: interconnectOverviewSchema,
 });
 export type ComputeOverview = z.infer<typeof ComputeOverviewOutput>;
 export type NodeSummary = z.infer<typeof NodeSummarySchema>;
@@ -106,6 +107,7 @@ export async function buildComputeOverview(rangeHours: number): Promise<ComputeO
       available: aiNodeT.available,
       gpuCount: aiNodeT.gpuCount,
       gpus: aiNodeT.gpus,
+      interconnect: aiNodeT.interconnect,
       estCapacity: aiNodeT.estCapacity,
       driverVersions: aiNodeT.driverVersions,
       driverFeatures: aiNodeT.driverFeatures,
@@ -205,6 +207,7 @@ export async function buildComputeOverview(rangeHours: number): Promise<ComputeO
       gpuCount: nodeSummaries.reduce((acc, n) => acc + n.gpuCount, 0),
       ...totalUsage,
     },
+    interconnect: deriveInterconnectOverview(nodes),
   };
 }
 

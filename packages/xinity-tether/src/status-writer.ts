@@ -1,6 +1,6 @@
 import { aiNodeT, driverErrorCode, inArray, modelInstallationStateT, modelInstallationT, sql, TransactionRollbackError } from "common-db";
 import { keyFingerprint } from "common-env";
-import type { NodeRegistration, InstallationStatePayload } from "common-env";
+import type { NodeRegistration, InstallationStatePayload, InterconnectPort } from "common-env";
 import { getDB } from "./db";
 import { rootLogger } from "./logger";
 
@@ -74,6 +74,13 @@ export async function readPinnedPublicKey(nodeId: string): Promise<string | null
 }
 
 /** An installation the tether no longer knows is dropped, because a deployment deleted mid-report is a normal race. */
+export async function writeInterconnect(nodeId: string, interconnect: InterconnectPort[]): Promise<void> {
+  await getDB()
+    .update(aiNodeT)
+    .set({ interconnect })
+    .where(sql`${aiNodeT.id} = ${nodeId}`);
+}
+
 export async function partitionOwnedStates(
   nodeId: string,
   states: InstallationStatePayload[],

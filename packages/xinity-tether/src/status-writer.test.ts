@@ -69,6 +69,7 @@ const registration = {
   port: 4020,
   gpuCount: 1,
   gpus: [{ vendor: "nvidia", name: "RTX 4090", vramMb: 24576 }],
+  interconnect: [],
   driverVersions: { vllm: "0.8.0" },
   driverFeatures: {},
   tls: false,

@@ -1,6 +1,6 @@
 import postgres from "postgres";
 import { expectedMigrationCount } from "common-db";
-import { tetherConnectionSchema, type TetherConnection } from "common-env";
+import { interconnectPortSchema, tetherConnectionSchema, type InterconnectPort, type TetherConnection } from "common-env";
 import { getUnitStatusOn, type Host } from "../core/host.ts";
 
 export type CheckStatus = "pass" | "warn" | "fail" | "skip";
@@ -135,6 +135,19 @@ export async function checkDaemonHealth(host: Host, url: string): Promise<CheckR
   }
   const tether = parseTetherConnection(lines.join("\n"));
   return tether ? [health, tetherConnectionCheck(tether)] : [health];
+}
+
+// Empty when the daemon is unreachable or predates interconnect reporting.
+export async function readDaemonInterconnect(host: Host, healthUrl: string): Promise<InterconnectPort[]> {
+  const result = await host.run(["curl", "-s", "--connect-timeout", "5", "--max-time", "5", healthUrl]);
+  if (!result.ok) {
+    return [];
+  }
+  try {
+    return interconnectPortSchema.array().parse(JSON.parse(result.output)?.interconnect);
+  } catch {
+    return [];
+  }
 }
 
 function parseTetherConnection(body: string): TetherConnection | undefined {

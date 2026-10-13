@@ -8,7 +8,7 @@
   import AnimatedNumber from "./AnimatedNumber.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import { toastState } from "$lib/state/toast.svelte";
-  import { formatTokens, formatPercent, formatEnergy } from "$lib/compute/format";
+  import { formatTokens, formatPercent, formatEnergy, interconnectOfNode } from "$lib/compute/format";
   import { Server, Cpu, ArrowRightLeft, CircleCheck, Gauge, Zap } from "@lucide/svelte";
 
   const RANGES = [
@@ -229,7 +229,13 @@
     <!-- Machines -->
     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 compact:gap-2">
       {#each sortedNodes as node (node.id)}
-        <MachineCard {node} {rangeLabel} metrics={liveByNodeId.get(node.id) ?? null} onRemove={requestRemoveNode} />
+        <MachineCard
+          {node}
+          {rangeLabel}
+          metrics={liveByNodeId.get(node.id) ?? null}
+          interconnect={interconnectOfNode(overview.interconnect, node.id, (id) => nodeNames.get(id) ?? id)}
+          onRemove={requestRemoveNode}
+        />
       {/each}
     </div>
   {/if}

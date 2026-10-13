@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { generateNodeKeypair, readNodeKeypair, signAsNode, verifyNodeSignature } from "./node-identity";
 import {
+  canonicalInterconnectReport,
   canonicalRegistration,
   canonicalStateReport,
   installationStatePayloadSchema,
@@ -48,6 +49,7 @@ describe("canonical payloads", () => {
     port: 4044,
     gpuCount: 1,
     gpus: [{ vendor: "nvidia", name: "RTX 4090", vramMb: 24576 }],
+    interconnect: [],
     driverVersions: { vllm: "0.8.0", ollama: "0.6.3" },
     driverFeatures: { vllm: ["audio"] },
     tls: false,
@@ -72,6 +74,7 @@ describe("canonical payloads", () => {
     port: { port: 1 },
     gpuCount: { gpuCount: 2 },
     gpus: { gpus: [] },
+    interconnect: { interconnect: [{ networkCard: "15d6500003e282b0", port: "p0", paths: [], neighbours: ["b0:82:e2:50:a9:39"] }] },
     driverVersions: { driverVersions: { vllm: "9.9.9" } },
     driverFeatures: { driverFeatures: {} },
     tls: { tls: true },
@@ -99,6 +102,18 @@ describe("canonical payloads", () => {
     expect(canonicalRegistration({ ...base, gpus: [{ ...card, index: 1 }] }, AUTH)).not.toBe(signed);
     expect(canonicalRegistration({ ...base, gpus: [{ ...card, uuid: "GPU-2" }] }, AUTH)).not.toBe(signed);
     expect(canonicalRegistration({ ...base, gpus: [{ ...card, pciBusId: "0000:02:00.0" }] }, AUTH)).not.toBe(signed);
+  });
+
+  test("signs each interconnect path, down to its addresses", () => {
+    const path = { interface: "enp1s0f0np0", mac: "b0:82:e2:50:d6:15", carrier: true, mtu: 9000, speedMbps: 200000, linkLayer: "Ethernet", ipv4: ["192.168.100.1/24"], roceV2Ipv4: ["192.168.100.1"], addressLosses: 0 };
+    const port = { networkCard: "15d6500003e282b0", port: "p0", paths: [path], neighbours: [] };
+    const signed = canonicalRegistration({ ...base, interconnect: [port] }, AUTH);
+    expect(canonicalRegistration({ ...base, interconnect: [{ ...port, paths: [{ ...path, ipv4: ["192.168.100.9/24"] }] }] }, AUTH)).not.toBe(signed);
+    expect(canonicalRegistration({ ...base, interconnect: [{ ...port, paths: [{ ...path, roceV2Ipv4: [] }] }] }, AUTH)).not.toBe(signed);
+    expect(canonicalRegistration({ ...base, interconnect: [{ ...port, paths: [{ ...path, addressLosses: 1 }] }] }, AUTH)).not.toBe(signed);
+
+    const report = { nodeId: base.nodeId, interconnect: [port] };
+    expect(canonicalInterconnectReport({ ...report, interconnect: [{ ...port, neighbours: ["b0:82:e2:50:a9:39"] }] }, AUTH)).not.toBe(canonicalInterconnectReport(report, AUTH));
   });
 
   const STATE_MUTATIONS: Record<string, Partial<InstallationStatePayload>> = {
