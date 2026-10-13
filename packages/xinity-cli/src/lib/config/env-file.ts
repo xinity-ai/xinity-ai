@@ -1,5 +1,5 @@
 
-/** Parse env file content (KEY=value lines) into a key-value record. */
+/** Parse env file content (KEY=value lines) into a key-value record, unescaping as systemd's EnvironmentFile does. */
 export function parseEnvString(content: string): Record<string, string> {
   const result: Record<string, string> = {};
   for (const line of content.split("\n")) {
@@ -10,9 +10,11 @@ export function parseEnvString(content: string): Record<string, string> {
     const key = trimmed.slice(0, eq).trim();
     let value = trimmed.slice(eq + 1).trim();
     if (value.startsWith('"') && value.endsWith('"')) {
-      value = value.slice(1, -1).replace(/\\"/g, '"');
+      value = value.slice(1, -1).replace(/\\(["\\`$])/g, "$1");
     } else if (value.startsWith("'") && value.endsWith("'")) {
       value = value.slice(1, -1);
+    } else {
+      value = value.replace(/\\(.)/g, "$1");
     }
     result[key] = value;
   }
@@ -29,7 +31,7 @@ export function serializeEnvFile(values: Record<string, string>): string {
 }
 
 function quoteEnvValue(value: string): string {
-  if (!/[\s#"']/.test(value)) return value;
+  if (!/[\s#"'\\]/.test(value)) return value;
   if (value.includes('"') && !value.includes("'")) return `'${value}'`;
-  return `"${value.replace(/"/g, '\\"')}"`;
+  return `"${value.replace(/["\\]/g, "\\$&")}"`;
 }

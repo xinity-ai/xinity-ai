@@ -43,3 +43,22 @@ describe("serializeEnvFile", () => {
     expect(parseEnvString(serializeEnvFile(parseEnvString(serialized)))).toEqual(values);
   });
 });
+
+describe("backslashes, as systemd's EnvironmentFile reads them", () => {
+  test("unescapes only \\\\, \\\", \\` and \\$ inside double quotes", () => {
+    expect(parseEnvString(String.raw`A="C:\\x \"q\" \$HOME \d"`)).toEqual({ A: String.raw`C:\x "q" $HOME \d` });
+  });
+
+  test("drops the escaping backslash in unquoted values", () => {
+    expect(parseEnvString(String.raw`A=^a\.b$`)).toEqual({ A: "^a.b$" });
+  });
+
+  test("keeps backslashes literal inside single quotes", () => {
+    expect(parseEnvString(String.raw`A='C:\x'`)).toEqual({ A: String.raw`C:\x` });
+  });
+
+  test("round-trips values containing backslashes", () => {
+    const values = { REGEX: String.raw`^a\.b$`, PATH_LIKE: String.raw`C:\x`, MIXED: String.raw`say "\n" it's` };
+    expect(parseEnvString(serializeEnvFile(values))).toEqual(values);
+  });
+});
