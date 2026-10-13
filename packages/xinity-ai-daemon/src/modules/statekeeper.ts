@@ -8,7 +8,7 @@ import { $ } from "bun";
 import { config } from "../config";
 import { networkInterfaces } from "node:os";
 import { detectHardwareProfile, detectNodeName, type HardwareProfile } from "./hardware-detect";
-import { normalizePep440 } from "common-env/model-catalog";
+import { experimentalGpuVendors, GPU_VENDOR_SUPPORT, normalizePep440 } from "common-env/model-catalog";
 import { rootLogger } from "../logger";
 import { detectVllmFeatures, resolvePythonForVllm } from "./vllm-features";
 import { NO_HOST_DEVICES, unpinnedDevicesFor } from "./model-installation/gpu-devices";
@@ -41,6 +41,9 @@ export async function getHardwareProfile(): Promise<HardwareProfile> {
       { gpuCount: cachedProfile.gpuCount, detectedCapacityGb: cachedProfile.detectedCapacityGb, physicalCapacityGb: cachedProfile.physicalCapacityGb, source: cachedProfile.source },
       "Hardware profile detected",
     );
+    for (const vendor of experimentalGpuVendors(cachedProfile.gpus)) {
+      log.warn({ vendor }, `${GPU_VENDOR_SUPPORT[vendor].label} GPU support is experimental and not thoroughly tested`);
+    }
   }
   return cachedProfile;
 }

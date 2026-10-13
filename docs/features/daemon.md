@@ -39,6 +39,8 @@ The installation flow: download weights from HuggingFace (resumable, with file f
 
 The Docker backend blocks all outbound internet from the inference process (IP masquerade disabled, `HF_HUB_OFFLINE=1`). Models are pre-downloaded by the daemon outside the container.
 
+NVIDIA GPUs are supported. AMD and Intel GPUs are experimental and not thoroughly tested.
+
 Failed processes are restarted up to 3 times (configurable). Fatal log patterns (GPU OOM, CUDA errors, etc.) trigger immediate failure without retries.
 
 ## Cache Eviction

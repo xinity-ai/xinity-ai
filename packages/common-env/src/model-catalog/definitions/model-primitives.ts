@@ -14,6 +14,17 @@ export type Tag = z.infer<typeof TagEnum>;
 export const GpuVendorEnum = z.enum(["nvidia", "amd", "intel"]);
 export type GpuVendor = z.infer<typeof GpuVendorEnum>;
 
+export const GPU_VENDOR_SUPPORT: Record<GpuVendor, { label: string; experimental: boolean }> = {
+  nvidia: { label: "NVIDIA", experimental: false },
+  amd: { label: "AMD", experimental: true },
+  intel: { label: "Intel", experimental: true },
+};
+
+export function experimentalGpuVendors(gpus: readonly { vendor: string }[]): GpuVendor[] {
+  const vendors = new Set(gpus.map((gpu) => gpu.vendor).filter(isKnownGpuVendor));
+  return [...vendors].filter((vendor) => GPU_VENDOR_SUPPORT[vendor].experimental);
+}
+
 export const ModelTypeEnum = z.enum(["embedding", "chat", "rerank", "transcription"]);
 export type ModelType = z.infer<typeof ModelTypeEnum>;
 
