@@ -11,6 +11,7 @@ import { isInstanceAdmin } from "$lib/server/roles";
 import { getDB } from "$lib/server/db";
 import { userT, organizationT, sql } from "common-db";
 import { slugify } from "$lib/util";
+import { MULTI_ORG_LICENSE_MESSAGE, organizationLimitReached } from "$lib/server/lib/instance/organization-limit";
 
 const log = rootLogger.child({ name: "onboarding.procedure" });
 
@@ -28,10 +29,8 @@ async function markEmailVerified(userId: string): Promise<void> {
 async function createOrgWithOwnerMembership(
   orgName: string,
   ownerUserId: string,
-  errors: { CONFLICT: (opts: { message: string }) => Error },
 ): Promise<{ orgId: string; orgSlug: string }> {
   const slug = slugify(orgName);
-  await assertSlugAvailable(slug, errors);
   // CLI onboarding runs without a session, so the creator is named through the
   // server-only userId field; Better Auth adds the owner membership itself.
   const org = await auth.api.createOrganization({
@@ -183,6 +182,11 @@ const cli = rootOs
       });
     }
 
+    await assertSlugAvailable(slugify(input.orgName), errors);
+    if (await organizationLimitReached()) {
+      throw errors.FORBIDDEN({ message: MULTI_ORG_LICENSE_MESSAGE });
+    }
+
     let userId: string;
     try {
       ({ userId } = await adminCreateUser(input.email, input.name, input.password));
@@ -193,7 +197,7 @@ const cli = rootOs
     rlog.info({ userId, email: input.email }, "CLI onboarding: user created");
 
     await markEmailVerified(userId);
-    const { orgId, orgSlug } = await createOrgWithOwnerMembership(input.orgName, userId, errors);
+    const { orgId, orgSlug } = await createOrgWithOwnerMembership(input.orgName, userId);
     rlog.info({ userId, orgId, orgSlug }, "CLI onboarding: organization created");
 
     const apiKeyResult = await issueServerSideDashboardApiKey(userId, orgId);

@@ -29,15 +29,15 @@ describe("Organization management", () => {
     }
   });
 
-  test("Create Organization button is disabled without multi-org license", async () => {
+  test("Create Organization links to the create page, since test mode unlocks multi-org", async () => {
     const { page, context } = await ownerPage();
     try {
       await page.goto("/organizations/");
       await page.waitForLoadState("networkidle");
 
-      const createButton = page.locator('button[disabled]', { hasText: /Create Organization/ }).first();
-      await expectVisible(createButton);
-      expect(await createButton.isDisabled()).toBe(true);
+      const createLink = page.getByRole("link", { name: /Create Organization/ });
+      await expectVisible(createLink);
+      expect(await createLink.getAttribute("href")).toBe("/organizations/create/");
     } finally {
       await context.close();
     }
