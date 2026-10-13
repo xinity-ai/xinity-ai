@@ -69,14 +69,22 @@ function getSystemRamMb(): number {
 
 // ─── NVIDIA detection (nvidia-smi) ──────────────────────────────────────────
 
+// nvidia-smi refuses the whole query when it does not know one field, so the optional trailing
+// fields are dropped one by one instead of losing every card.
+const NVIDIA_QUERY_FIELDS = [
+  "index,name,memory.total,uuid,pci.bus_id",
+  "index,name,memory.total,uuid",
+  "index,name,memory.total",
+];
+
 async function detectNvidiaGpus(): Promise<DetectedGpu[]> {
-  const output = await $`nvidia-smi --query-gpu=index,name,memory.total,uuid,pci.bus_id --format=csv,noheader,nounits`
-    .throws(false)
-    .text();
-
-  if (!output.trim()) return [];
-
-  return parseNvidiaSmiOutput(output);
+  for (const fields of NVIDIA_QUERY_FIELDS) {
+    const result = await $`nvidia-smi --query-gpu=${fields} --format=csv,noheader,nounits`.quiet().nothrow();
+    if (result.exitCode === 0) {
+      return parseNvidiaSmiOutput(result.text());
+    }
+  }
+  return [];
 }
 
 function parseNvidiaCsvLines<T>(csv: string, parseLine: (line: string) => T | null): T[] {
