@@ -163,7 +163,7 @@ export async function safeFetch(
     try {
       response = await fetch(currentUrl, { signal, headers, redirect: "manual" });
     } catch (e) {
-      if (e instanceof DOMException && e.name === "AbortError") {
+      if (e instanceof DOMException && e.name === "TimeoutError") {
         throw new Error(`Fetch timed out after ${timeoutMs}ms`, { cause: e });
       }
       throw e;
@@ -171,10 +171,10 @@ export async function safeFetch(
 
     const location = response.headers.get("location");
     if (response.status >= 300 && response.status < 400 && location) {
+      await response.body?.cancel();
       if (redirects >= MAX_REDIRECTS) {
         throw new Error(`Too many redirects (>${MAX_REDIRECTS})`);
       }
-      await response.body?.cancel();
       currentUrl = new URL(location, currentUrl).toString();
       continue;
     }
