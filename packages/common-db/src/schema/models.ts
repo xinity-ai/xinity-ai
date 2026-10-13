@@ -108,7 +108,7 @@ export const modelInstallationT = pgTable("model_installation", {
   deploymentId: uuid("deployment_id").notNull().references(() => modelDeploymentT.id, { onDelete: "cascade" }),
   /** Canonical model identifier. */
   specifier: text().notNull(),
-  /** estimated total GPU capacity required (model weights + KV cache), taken up on the selected node */
+  /** GPU memory in GB the installation occupies on its node, summed over all its cards */
   estCapacity: real("est_capacity").notNull(),
   /** KV-cache allocation in GB, used by the daemon for vLLM's --kv-cache-memory-bytes */
   kvCacheCapacity: real("kv_cache_capacity").notNull().default(0),
