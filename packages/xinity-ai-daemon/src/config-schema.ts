@@ -28,7 +28,7 @@ const tether = defineGroup<Tether>({
   title: "Tether",
   description: "The control plane this node reports to.",
   fields: {
-    url: env("TETHER_URL", z.url().describe("URL of the xinity-tether service (e.g. http://tether:4020)")),
+    url: env("TETHER_URL", z.url({ protocol: /^https?$/ }).describe("URL of the xinity-tether service (e.g. http://tether:4020)")),
     secret: tetherSecretField(),
     syncIntervalMs: env("SYNC_INTERVAL_MS", configNumber().default(1000 * 60 * 5)
       .describe("Sync interval in milliseconds").meta(expert())),
@@ -136,10 +136,10 @@ export const daemonConfig = defineConfig<DaemonConfig>({
   vllm,
   tls: tlsGroup(),
   log: loggingGroup(),
-  ollamaUrl: env("OLLAMA_URL", z.url().default("http://localhost:11434")
+  ollamaUrl: env("OLLAMA_URL", z.url({ protocol: /^https?$/ }).default("http://localhost:11434")
     .describe("Ollama API endpoint. The ollama driver is enabled whenever this endpoint answers, so it only needs setting when ollama does not listen on its default local port")
     .meta(expert())),
-  hfEndpoint: env("HF_ENDPOINT", z.url().default("https://huggingface.co")
+  hfEndpoint: env("HF_ENDPOINT", z.url({ protocol: /^https?$/ }).default("https://huggingface.co")
     .describe("Base URL of the Hugging Face Hub, or of a mirror of it, that models are downloaded from")
     .meta(expert())),
   secretKey: secretKeyField(),

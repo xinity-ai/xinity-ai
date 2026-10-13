@@ -145,7 +145,7 @@ export const DYNAMIC_SETTINGS: DynamicSetting[] = [
     key: "PROMETHEUS_URL",
     components: ["dashboard"],
     group: "Compute",
-    schema: z.url().optional()
+    schema: z.url({ protocol: /^https?$/ }).optional()
       .describe("Prometheus server URL for live GPU metrics overlay on the Compute page (e.g. http://prometheus:9090). Enables utilization rings and energy readouts on compute nodes."),
   },
   {
@@ -215,7 +215,7 @@ export const DYNAMIC_GROUPS: DynamicGroup[] = [
     schema: z.discriminatedUnion("provider", [
       z.object({
         provider: z.literal("searxng"),
-        credential: z.url({ message: "WEB_SEARCH_CREDENTIAL for searxng must be a valid URL" }),
+        credential: z.url({ protocol: /^https?$/, message: "WEB_SEARCH_CREDENTIAL for searxng must be an http(s) URL" }),
       }),
       z.object({
         provider: z.literal("google"),

@@ -55,7 +55,7 @@ describe("validateSearchCredential", () => {
     });
 
     test("rejects a non-URL string", () => {
-      expect(() => validateSearchCredential("searxng", "not-a-url")).toThrow("valid URL");
+      expect(() => validateSearchCredential("searxng", "not-a-url")).toThrow("http(s) URL");
     });
   });
 

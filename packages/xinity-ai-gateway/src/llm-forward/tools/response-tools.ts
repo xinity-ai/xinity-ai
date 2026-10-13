@@ -44,7 +44,7 @@ export const webSearch = tool({
 export const webFetch = tool({
   description: "Fetch the contents of a URL.",
   inputSchema: z.object({
-    url: z.url().describe("URL to fetch contents from"),
+    url: z.url({ protocol: /^https?$/ }).describe("URL to fetch contents from"),
     max_chars: z.number().int().min(500).max(20000).optional(),
   }),
   execute: async ({ url, max_chars }) => {
