@@ -238,7 +238,7 @@ const apiKeyProvider = (provider: WebSearchProviderName) => z.object({
 export const webSearchPairSchema = z.discriminatedUnion("provider", [
   z.object({
     provider: z.literal("searxng"),
-    credential: z.url({ message: "WEB_SEARCH_CREDENTIAL for searxng must be a valid URL" }),
+    credential: z.url({ protocol: /^https?$/, message: "WEB_SEARCH_CREDENTIAL for searxng must be an http(s) URL" }),
   }),
   z.object({
     provider: z.literal("google"),

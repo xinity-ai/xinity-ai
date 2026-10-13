@@ -85,7 +85,7 @@ const webSearch = defineGroup<WebSearch>({
     credential: dynamic("WEB_SEARCH_CREDENTIAL", z.string().optional()
       .describe("Provider credential: searxng=instance URL, google=apikey:cx, bing/brave/serper/tavily=API key")
       .meta(secret())),
-    engineUrl: env("WEB_SEARCH_ENGINE_URL", z.url().optional()
+    engineUrl: env("WEB_SEARCH_ENGINE_URL", z.url({ protocol: /^https?$/ }).optional()
       .describe("@deprecated Use WEB_SEARCH_PROVIDER + WEB_SEARCH_CREDENTIAL instead. SearXNG search engine URL.")),
   },
 });

@@ -95,7 +95,7 @@ const mail = defineGroup<Mail>({
   description: "Used for invitations, password resets and notifications. Disabled when unset.",
   optional: { requires: ["url"] },
   fields: {
-    url: env("MAIL_URL", z.url()
+    url: env("MAIL_URL", z.url({ protocol: /^smtps?$/ })
       .describe("SMTP mail server URL (e.g. smtp://user:pass@mail.example.com:587)").meta(secret())),
     from: env("MAIL_FROM", z.string()
       .describe("Email sender address (e.g. noreply@mydomain.com)")),
@@ -119,7 +119,7 @@ const compute = defineGroup<Compute>({
     deploymentStrategy: dynamic("DEPLOYMENT_STRATEGY",
       z.enum(["first-fit", "balanced", "bin-pack", "proportional"]).default("balanced")
         .describe("Node selection strategy for new model installations. 'first-fit' picks the first node that fits (deterministic). 'balanced' picks the node with the most absolute free VRAM (spread for HA). 'bin-pack' picks the tightest fit (consolidate so idle nodes stay drainable). 'proportional' picks the node with the lowest percent utilization (fair spread across heterogeneous nodes).")),
-    prometheusUrl: dynamic("PROMETHEUS_URL", z.url().optional()
+    prometheusUrl: dynamic("PROMETHEUS_URL", z.url({ protocol: /^https?$/ }).optional()
       .describe("Prometheus server URL for live GPU metrics overlay on the Compute page (e.g. http://prometheus:9090). Enables utilization rings and energy readouts on compute nodes.")),
   },
 });
@@ -212,12 +212,12 @@ export const dashboardConfig = defineConfig<DashboardConfig>({
     .describe("Node environment").meta(expert())),
   appName: env("APP_NAME", z.string().default("Xinity Admin")
     .describe("Application display name").meta(expert())),
-  origin: env("ORIGIN", z.url().default("http://localhost:4030")
+  origin: env("ORIGIN", z.url({ protocol: /^https?$/ }).default("http://localhost:4030")
     .describe("Public origin URL browsers reach this dashboard at, no trailing slash (e.g. https://xinity.mydomain.com). The default only suits local development")),
   trustedOrigins: env("TRUSTED_ORIGINS", configList(z.string()).default([])
     .describe("Additional trusted origins for CSRF validation behind reverse proxies")
     .meta(expert())),
-  gatewayUrl: env("GATEWAY_URL", z.url().overwrite((url) => url.replace(/\/$/, "")).default("http://localhost:4010")
+  gatewayUrl: env("GATEWAY_URL", z.url({ protocol: /^https?$/ }).overwrite((url) => url.replace(/\/$/, "")).default("http://localhost:4010")
     .describe("Gateway base URL shown to users in docs and code examples (e.g. https://api.example.com). Must NOT include the /v1 path segment - that is appended where needed. A trailing slash is stripped.")
     .meta(clientPublic())),
   licenseKey: dynamic("LICENSE_KEY", z.string().optional()
