@@ -6,7 +6,7 @@ import { orderByStrategy, type Capacity, type DeploymentStrategy } from "./strat
 
 export type NewInstallation = InferInsertModel<typeof modelInstallationT>;
 
-export type CardCapacity = Capacity & { uuid: string | null; name: string };
+export type CardCapacity = Capacity & { id: string | null; vendor: string; name: string };
 
 /** Mutable tracking state built from current DB contents. */
 export type ClusterState = {
@@ -27,8 +27,8 @@ export function rankServers(strategy: DeploymentStrategy, state: ClusterState): 
 function nodeCards(server: AiNode): CardCapacity[] {
   const cards = server.gpus
     .filter((gpu) => gpu.vramMb > 0)
-    .map((gpu) => ({ uuid: gpuCardId(gpu) ?? null, name: gpu.name, total: gpu.vramMb / 1024, used: 0 }));
-  return cards.length > 0 ? cards : [{ uuid: null, name: "", total: server.estCapacity, used: 0 }];
+    .map((gpu) => ({ id: gpuCardId(gpu) ?? null, vendor: gpu.vendor, name: gpu.name, total: gpu.vramMb / 1024, used: 0 }));
+  return cards.length > 0 ? cards : [{ id: null, vendor: "", name: "", total: server.estCapacity, used: 0 }];
 }
 
 export function cardsOf(state: ClusterState, nodeId: string): CardCapacity[] {

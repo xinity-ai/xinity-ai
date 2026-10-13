@@ -225,19 +225,19 @@ describe("orchestration: vllm pinned to cards", () => {
 
   test("pins to the card that still has room", () => {
     const state = buildClusterState([vllm("a", 20, ["GPU-A"])], [node]);
-    expect(layoutForVllm(cardsOf(state, "node-ab"), { weight: 8 }, 0, "space", FF)?.cards[0]?.uuid).toBe("GPU-B");
+    expect(layoutForVllm(cardsOf(state, "node-ab"), { weight: 8 }, 0, "space", FF)?.cards[0]?.id).toBe("GPU-B");
     expect(findServerForModel({ deploymentId: "dep-1", specifier: "b" }, "vllm", need(8), state, [], FF)).toBe("node-ab");
   });
 
   test("counts an unpinned installation against the first card, where the daemon runs it", () => {
     const state = buildClusterState([vllm("a", 20, [])], [node]);
-    expect(layoutForVllm(cardsOf(state, "node-ab"), { weight: 8 }, 0, "space", FF)?.cards[0]?.uuid).toBe("GPU-B");
+    expect(layoutForVllm(cardsOf(state, "node-ab"), { weight: 8 }, 0, "space", FF)?.cards[0]?.id).toBe("GPU-B");
   });
 
   test("chooses between cards with the same strategy as between nodes", () => {
     const state = buildClusterState([vllm("a", 10, ["GPU-A"])], [node]);
-    expect(layoutForVllm(cardsOf(state, "node-ab"), { weight: 8 }, 0, "space", "bin-pack")?.cards[0]?.uuid).toBe("GPU-A");
-    expect(layoutForVllm(cardsOf(state, "node-ab"), { weight: 8 }, 0, "space", "balanced")?.cards[0]?.uuid).toBe("GPU-B");
+    expect(layoutForVllm(cardsOf(state, "node-ab"), { weight: 8 }, 0, "space", "bin-pack")?.cards[0]?.id).toBe("GPU-A");
+    expect(layoutForVllm(cardsOf(state, "node-ab"), { weight: 8 }, 0, "space", "balanced")?.cards[0]?.id).toBe("GPU-B");
   });
 
   test("refuses the node once no single card can hold the installation", () => {
@@ -245,10 +245,10 @@ describe("orchestration: vllm pinned to cards", () => {
     expect(findServerForModel({ deploymentId: "dep-1", specifier: "c" }, "vllm", need(8), state, [], FF)).toBeNull();
   });
 
-  test("leaves the installation unpinned on a node whose cards report no uuid", () => {
+  test("leaves the installation unpinned on a node whose cards report no id", () => {
     const legacy = makeNode({ id: "node-old", gpus: [{ vendor: "nvidia", name: "card", vramMb: 24576 }], driverVersions: { vllm: "0.30.0" } });
     const state = buildClusterState([], [legacy]);
-    expect(layoutForVllm(cardsOf(state, "node-old"), { weight: 8 }, 0, "space", FF)?.cards[0]?.uuid).toBeNull();
+    expect(layoutForVllm(cardsOf(state, "node-old"), { weight: 8 }, 0, "space", FF)?.cards[0]?.id).toBeNull();
   });
 });
 
@@ -338,23 +338,23 @@ describe("orchestration: vllm layouts", () => {
     gpus: [card("L-1", "L40S", 46080), card("L-2", "L40S", 46080), card("A-1", "A6000", 49152)],
   });
   const qwen = { weight: 26, attentionHeads: 24, kvHeads: 4 };
-  const uuids = (layout: { cards: { uuid: string | null }[] } | undefined) => layout?.cards.map((c) => c.uuid);
+  const ids = (layout: { cards: { id: string | null }[] } | undefined) => layout?.cards.map((c) => c.id);
 
   test("space keeps a model on one card when it fits", () => {
     const state = buildClusterState([], [node]);
-    expect(uuids(layoutForVllm(cardsOf(state, "node-mixed"), qwen, 16, "space", FF))).toEqual(["L-1"]);
+    expect(ids(layoutForVllm(cardsOf(state, "node-mixed"), qwen, 16, "space", FF))).toEqual(["L-1"]);
   });
 
   test("speed splits across identical cards and never mixes card models", () => {
     const state = buildClusterState([], [node]);
     const layout = layoutForVllm(cardsOf(state, "node-mixed"), qwen, 16, "speed", FF);
-    expect(uuids(layout)).toEqual(["L-1", "L-2"]);
+    expect(ids(layout)).toEqual(["L-1", "L-2"]);
     expect(layout!.perCardGb).toBe(21);
   });
 
   test("splits a model no single card can hold, even for space", () => {
     const state = buildClusterState([], [node]);
-    expect(uuids(layoutForVllm(cardsOf(state, "node-mixed"), { ...qwen, weight: 60 }, 16, "space", FF))).toEqual(["L-1", "L-2"]);
+    expect(ids(layoutForVllm(cardsOf(state, "node-mixed"), { ...qwen, weight: 60 }, 16, "space", FF))).toEqual(["L-1", "L-2"]);
   });
 
   test("cannot split a model whose head counts are not stated", () => {
@@ -365,13 +365,21 @@ describe("orchestration: vllm layouts", () => {
   test("falls back to fewer cards when an identical card is too full to take its share", () => {
     const busy = makeInstallation({ id: "i1", nodeId: "node-mixed", specifier: "other", driver: "vllm", estCapacity: 30, gpuUuids: ["L-1"] });
     const state = buildClusterState([busy], [node]);
-    expect(uuids(layoutForVllm(cardsOf(state, "node-mixed"), qwen, 16, "speed", FF))).toEqual(["L-2"]);
+    expect(ids(layoutForVllm(cardsOf(state, "node-mixed"), qwen, 16, "speed", FF))).toEqual(["L-2"]);
   });
 
-  test("lands on the first card unpinned when no card reports a uuid", () => {
+  test("lands on the first card unpinned when no card reports an id", () => {
     const legacy = makeNode({ id: "node-old", gpus: [{ vendor: "nvidia", name: "card", vramMb: 49152 }], driverVersions: { vllm: "0.30.0" } });
     const state = buildClusterState([], [legacy]);
-    expect(uuids(layoutForVllm(cardsOf(state, "node-old"), qwen, 16, "speed", FF))).toEqual([null]);
+    expect(ids(layoutForVllm(cardsOf(state, "node-old"), qwen, 16, "speed", FF))).toEqual([null]);
+  });
+
+  test("never splits across intel cards, and pins them by bus id", () => {
+    const arc = (pciBusId: string) => ({ vendor: "intel", name: "Intel(R) Arc(TM) A770 Graphics", vramMb: 16384, pciBusId });
+    const intel = makeNode({ id: "node-arc", gpus: [arc("0000:03:00.0"), arc("0000:04:00.0")], driverVersions: { vllm: "0.30.0" } });
+    const state = buildClusterState([], [intel]);
+    expect(ids(layoutForVllm(cardsOf(state, "node-arc"), { weight: 8, attentionHeads: 32, kvHeads: 8 }, 4, "speed", FF))).toEqual(["0000:03:00.0"]);
+    expect(layoutForVllm(cardsOf(state, "node-arc"), { weight: 20, attentionHeads: 32, kvHeads: 8 }, 4, "space", FF)).toBeUndefined();
   });
 });
 

@@ -1,4 +1,4 @@
-import { tensorParallelLayouts, type OptimizationGoal } from "common-env";
+import { runsTensorParallel, tensorParallelLayouts, type OptimizationGoal } from "common-env";
 import type { CardCapacity } from "../cluster-state";
 import { requirementKey } from "../placement";
 import { orderByStrategy, type DeploymentStrategy } from "../strategy";
@@ -6,9 +6,9 @@ import type { EngineScheduler, PlacementModel } from "./engine";
 
 const VLLM_PORT_BASE = 11435;
 
-// Only a card with a UUID can be pinned. On a node without any, vLLM lands on the first card unpinned.
+// A node whose cards cannot be pinned runs vLLM on its first card.
 function placeableCards(cards: CardCapacity[]): CardCapacity[] {
-  const pinnable = cards.filter((card) => card.uuid !== null);
+  const pinnable = cards.filter((card) => card.id !== null);
   return pinnable.length > 0 ? pinnable : cards.slice(0, 1);
 }
 
@@ -18,7 +18,7 @@ export type VllmLayout = { cards: CardCapacity[]; perCardGb: number };
 function identicalCardGroups(cards: CardCapacity[]): CardCapacity[][] {
   const groups = new Map<string, CardCapacity[]>();
   for (const card of cards) {
-    const key = `${card.name}:${card.total}`;
+    const key = `${card.vendor}:${card.name}:${card.total}`;
     groups.set(key, [...(groups.get(key) ?? []), card]);
   }
   return [...groups.values()];
@@ -34,7 +34,8 @@ function vllmLayouts(
 
   return identicalCardGroups(placeableCards(cards)).flatMap((group) => {
     const ordered = orderByStrategy(strategy, group, (card) => card);
-    return tensorParallelLayouts(sizing, { cards: group.length, kvCacheGb }).flatMap((layout) => {
+    const maxTensorParallel = runsTensorParallel(group[0]!.vendor) ? group.length : 1;
+    return tensorParallelLayouts(sizing, { cards: maxTensorParallel, kvCacheGb }).flatMap((layout) => {
       const perCardGb = layout.perCardWeightGb + layout.perCardKvCacheGb;
       const fitting = ordered.filter((card) => card.total - card.used >= perCardGb);
       return fitting.length >= layout.tensorParallelSize
@@ -70,12 +71,12 @@ export const vllmScheduler: EngineScheduler = {
       return undefined;
     }
     return {
-      gpuUuids: layout.cards.flatMap((card) => (card.uuid ? [card.uuid] : [])),
+      gpuUuids: layout.cards.flatMap((card) => (card.id ? [card.id] : [])),
       estCapacity: layout.perCardGb * layout.cards.length,
     };
   },
   occupiedCards: (cards, gpuUuids) => {
-    const pinned = cards.filter((card) => card.uuid !== null && gpuUuids.includes(card.uuid));
+    const pinned = cards.filter((card) => card.id !== null && gpuUuids.includes(card.id));
     return pinned.length > 0 ? pinned : cards.slice(0, 1);
   },
   port: (usedPorts) => {

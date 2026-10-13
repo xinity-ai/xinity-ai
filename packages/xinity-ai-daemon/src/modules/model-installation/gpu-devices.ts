@@ -1,6 +1,7 @@
 import { readdir, readFile, readlink, stat } from "node:fs/promises";
-import { gpuCardId } from "common-env";
-import { normalizePciBusId, type DetectedGpu, type GpuVendor } from "../hardware-detect";
+import { gpuCardId, runsTensorParallel } from "common-env";
+import type { GpuVendor } from "common-env/model-catalog";
+import { normalizePciBusId, type DetectedGpu } from "../hardware-detect";
 
 export type RenderNode = { pciBusId: string; vendor: GpuVendor | null; path: string; gid: number };
 
@@ -18,7 +19,6 @@ export type GpuDevices = {
 type DeviceAccess = Omit<GpuDevices, "tensorParallelSize">;
 
 type DeviceControl = {
-  tensorParallel: boolean;
   unpinned(host: HostDevices): DeviceAccess;
   pinned(cards: readonly DetectedGpu[], host: HostDevices): DeviceAccess;
 };
@@ -60,7 +60,6 @@ const LEVEL_ZERO_CARD_PER_DEVICE = "ZE_FLAT_DEVICE_HIERARCHY=COMPOSITE";
 
 export const DEVICE_CONTROL: Record<GpuVendor, DeviceControl> = {
   nvidia: {
-    tensorParallel: true,
     unpinned: () => ({
       env: [CUDA_PCI_ORDER, "CUDA_VISIBLE_DEVICES=0"],
       supplementaryGroups: [],
@@ -74,7 +73,6 @@ export const DEVICE_CONTROL: Record<GpuVendor, DeviceControl> = {
     }),
   },
   amd: {
-    tensorParallel: true,
     unpinned: (host) => ({
       env: [],
       supplementaryGroups: distinctGids([host.kfdGid, ...vendorRenderNodes("amd", host).map((node) => node.gid)]),
@@ -90,7 +88,6 @@ export const DEVICE_CONTROL: Record<GpuVendor, DeviceControl> = {
     },
   },
   intel: {
-    tensorParallel: false,
     unpinned: (host) => ({
       env: [LEVEL_ZERO_CARD_PER_DEVICE],
       supplementaryGroups: distinctGids(vendorRenderNodes("intel", host).map((node) => node.gid)),
@@ -127,7 +124,7 @@ export function devicesFor(pinnedCards: readonly DetectedGpu[], nodeGpus: readon
     throw new Error("An installation cannot span GPUs of different vendors");
   }
   const control = DEVICE_CONTROL[vendor];
-  if (pinnedCards.length > 1 && !control.tensorParallel) {
+  if (pinnedCards.length > 1 && !runsTensorParallel(vendor)) {
     throw new Error(`${vendor} GPUs run an installation on one card, tensor parallelism is not supported`);
   }
   const access = pinnedCards.length > 0 ? control.pinned(pinnedCards, host) : control.unpinned(host);

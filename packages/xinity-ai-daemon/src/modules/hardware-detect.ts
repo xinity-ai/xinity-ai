@@ -2,13 +2,12 @@ import { $ } from "bun";
 import { totalmem, hostname } from "node:os";
 import { readdir, readFile, readlink } from "node:fs/promises";
 import type { GpuInfo } from "common-env";
+import type { GpuVendor } from "common-env/model-catalog";
 import { rootLogger } from "../logger";
 
 const log = rootLogger.child({ name: "hardware-detect" });
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-
-export type GpuVendor = "nvidia" | "amd" | "intel";
 
 export type DetectedGpu = GpuInfo & { vendor: GpuVendor };
 
