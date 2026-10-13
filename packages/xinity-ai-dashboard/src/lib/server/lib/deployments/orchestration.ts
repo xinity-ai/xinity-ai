@@ -1,5 +1,5 @@
 import { inArray, modelDeploymentT, sql, modelInstallationT, aiNodeT, type ModelInstallation, type AiNode } from "common-db";
-import { settingsEqual } from "common-env";
+import { resolveOptimizeFor, settingsEqual } from "common-env";
 import { getDB } from "$lib/server/db";
 import { resolveSchedulable, type SchedulableModel } from "$lib/server/lib/models/model-catalog";
 import { checkNodeCompatibility, type BlockedVersion, type ModelNodeRequirements, type NodeCapability, type Provider } from "common-env/model-catalog";
@@ -10,6 +10,7 @@ import { config } from "$lib/server/config";
 import { nodeIsLive } from "./node-liveness";
 import { buildClusterState, cardsOf, chargeCapacity, rankServers, releaseInstallationFromState, type ClusterState, type NewInstallation } from "./cluster-state";
 import { ENGINE_SCHEDULERS } from "./engines";
+import type { PlacementRequest } from "./engines/engine";
 import type { Placement } from "./placement";
 import { requirementsForDeployments, type ModelRequirementTable } from "./requirements";
 import type { DeploymentStrategy } from "./strategy";
@@ -98,20 +99,12 @@ export type PlacementConstraints = {
 export function findServerForModel(
   placement: Placement,
   driver: Provider,
-  weight: number,
+  need: Omit<PlacementRequest, "strategy">,
   state: ClusterState,
   pending: NewInstallation[],
   strategy: DeploymentStrategy,
   constraints: PlacementConstraints = {},
 ): string | null {
-  const req: ModelNodeRequirements = {
-    driver, capacityGb: weight,
-    minVersion: constraints.minVersion,
-    blockedVersions: constraints.blockedVersions,
-    requiredPlatforms: constraints.requiredPlatforms ?? [],
-    requiredFeatures: constraints.requiredFeatures,
-  };
-
   for (const server of rankServers(strategy, state)) {
     const cap = state.serverCapacity.get(server.id);
     if (!cap) continue;
@@ -120,6 +113,18 @@ export function findServerForModel(
       continue;
     }
 
+    const slot = ENGINE_SCHEDULERS[driver].placeOnNode(cardsOf(state, server.id), { ...need, strategy });
+    if (!slot) {
+      continue;
+    }
+
+    const req: ModelNodeRequirements = {
+      driver, capacityGb: slot.estCapacity,
+      minVersion: constraints.minVersion,
+      blockedVersions: constraints.blockedVersions,
+      requiredPlatforms: constraints.requiredPlatforms ?? [],
+      requiredFeatures: constraints.requiredFeatures,
+    };
     const nodeCap: NodeCapability = {
       free: cap.total - cap.used,
       driverVersions: server.driverVersions,
@@ -128,10 +133,6 @@ export function findServerForModel(
     };
 
     if (checkNodeCompatibility(nodeCap, req) !== null) continue;
-
-    if (!ENGINE_SCHEDULERS[driver].placeOnNode(cardsOf(state, server.id), { capacityGb: weight, strategy })) {
-      continue;
-    }
 
     return server.id;
   }
@@ -188,22 +189,22 @@ async function planNewInstallations(
     const needed = requirement.replicas - current;
 
     const effectiveKvCache = Math.max(requirement.kvCacheSize ?? 0, modelInfo.minKvCache);
-    const totalCapacity = modelInfo.weight + effectiveKvCache;
+    const need = { model: modelInfo, kvCacheGb: effectiveKvCache, goal: resolveOptimizeFor(requirement.settings) };
 
     for (let i = 0; i < needed; i++) {
-      if (usedVram + totalCapacity > licenseVramLimit) {
-        log.warn(
-          { specifier: requirement.specifier, usedVram, licenseVramLimit, additional: totalCapacity },
-          "License VRAM limit reached; skipping additional replica",
-        );
+      const nodeId = findServerForModel({ deploymentId: requirement.deploymentId, specifier }, driver, need, state, toInstall, strategy,
+        { minVersion, blockedVersions, requiredPlatforms, requiredFeatures });
+      const slot = nodeId ? ENGINE_SCHEDULERS[driver].placeOnNode(cardsOf(state, nodeId), { ...need, strategy }) : undefined;
+      if (!nodeId || !slot) {
+        log.warn({ specifier: requirement.specifier }, "No server with enough capacity for additional replica");
         break;
       }
 
-      const nodeId = findServerForModel({ deploymentId: requirement.deploymentId, specifier }, driver, totalCapacity, state, toInstall, strategy,
-        { minVersion, blockedVersions, requiredPlatforms, requiredFeatures });
-      const slot = nodeId ? ENGINE_SCHEDULERS[driver].placeOnNode(cardsOf(state, nodeId), { capacityGb: totalCapacity, strategy }) : undefined;
-      if (!nodeId || !slot) {
-        log.warn({ specifier: requirement.specifier }, "No server with enough capacity for additional replica");
+      if (usedVram + slot.estCapacity > licenseVramLimit) {
+        log.warn(
+          { specifier: requirement.specifier, usedVram, licenseVramLimit, additional: slot.estCapacity },
+          "License VRAM limit reached; skipping additional replica",
+        );
         break;
       }
 
@@ -241,10 +242,8 @@ async function hasReassignmentTarget(install: ModelInstallation, state: ClusterS
   const modelInfo = await lookupModel(install.specifier, install.driver as Provider);
   if (!modelInfo) return false;
 
-  const nodeId = findServerForModel(
-    install, install.driver, install.estCapacity, state, [], "first-fit",
-    modelInfo,
-  );
+  const need = { model: modelInfo, kvCacheGb: install.kvCacheCapacity, goal: resolveOptimizeFor(install.settings) };
+  const nodeId = findServerForModel(install, install.driver, need, state, [], "first-fit", modelInfo);
   return nodeId !== null;
 }
 

@@ -1,9 +1,8 @@
 import { tensorParallelLayouts, type OptimizationGoal } from "common-env";
-import type { SchedulableModel } from "$lib/server/lib/models/model-catalog";
 import type { CardCapacity } from "../cluster-state";
 import { requirementKey } from "../placement";
 import { orderByStrategy, type DeploymentStrategy } from "../strategy";
-import type { EngineScheduler } from "./engine";
+import type { EngineScheduler, PlacementModel } from "./engine";
 
 const VLLM_PORT_BASE = 11435;
 
@@ -11,10 +10,6 @@ const VLLM_PORT_BASE = 11435;
 function placeableCards(cards: CardCapacity[]): CardCapacity[] {
   const pinnable = cards.filter((card) => card.uuid !== null);
   return pinnable.length > 0 ? pinnable : cards.slice(0, 1);
-}
-
-export function cardForVllm(cards: CardCapacity[], capacity: number, strategy: DeploymentStrategy): CardCapacity | undefined {
-  return orderByStrategy(strategy, placeableCards(cards), (card) => card).find((card) => card.total - card.used >= capacity);
 }
 
 export type VllmLayout = { cards: CardCapacity[]; perCardGb: number };
@@ -31,7 +26,7 @@ function identicalCardGroups(cards: CardCapacity[]): CardCapacity[][] {
 
 function vllmLayouts(
   cards: CardCapacity[],
-  model: Pick<SchedulableModel, "weight" | "attentionHeads" | "kvHeads" | "mlaAttention">,
+  model: PlacementModel,
   kvCacheGb: number,
   strategy: DeploymentStrategy,
 ): VllmLayout[] {
@@ -57,7 +52,7 @@ const LAYOUT_PREFERENCE: Record<OptimizationGoal, (a: VllmLayout, b: VllmLayout)
 
 export function layoutForVllm(
   cards: CardCapacity[],
-  model: Pick<SchedulableModel, "weight" | "attentionHeads" | "kvHeads" | "mlaAttention">,
+  model: PlacementModel,
   kvCacheGb: number,
   goal: OptimizationGoal,
   strategy: DeploymentStrategy,
@@ -70,11 +65,14 @@ export function layoutForVllm(
 export const vllmScheduler: EngineScheduler = {
   excludes: (placed, candidate) => requirementKey(placed) === requirementKey(candidate),
   placeOnNode: (cards, request) => {
-    const card = cardForVllm(cards, request.capacityGb, request.strategy);
-    if (!card) {
+    const layout = layoutForVllm(cards, request.model, request.kvCacheGb, request.goal, request.strategy);
+    if (!layout) {
       return undefined;
     }
-    return { gpuUuids: card.uuid ? [card.uuid] : [], estCapacity: request.capacityGb };
+    return {
+      gpuUuids: layout.cards.flatMap((card) => (card.uuid ? [card.uuid] : [])),
+      estCapacity: layout.perCardGb * layout.cards.length,
+    };
   },
   occupiedCards: (cards, gpuUuids) => {
     const pinned = cards.filter((card) => card.uuid !== null && gpuUuids.includes(card.uuid));
