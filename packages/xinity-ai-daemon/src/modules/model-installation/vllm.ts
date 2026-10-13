@@ -180,7 +180,9 @@ export function perCardSizing(
   sizing: ModelSizingFields | undefined,
   cards: number,
 ): { weightGb: number; kvCacheGb: number } {
-  const weightGb = installation.estCapacity - installation.kvCacheCapacity;
+  // estCapacity is the VRAM occupied, which includes every card's copy of a replicated kv head, so
+  // weights come from the catalog. Only a legacy entry lacks sizing, and it is never split.
+  const weightGb = sizing?.weightGb ?? installation.estCapacity - installation.kvCacheCapacity;
   if (cards <= 1) {
     return { weightGb, kvCacheGb: installation.kvCacheCapacity };
   }

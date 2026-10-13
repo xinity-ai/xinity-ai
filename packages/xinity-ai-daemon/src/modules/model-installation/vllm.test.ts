@@ -690,7 +690,12 @@ describe("perCardSizing", () => {
   });
 
   test("keeps one kv head's worth of cache per card once the heads run out", () => {
-    expect(perCardSizing(installation, sizing, 8)).toEqual({ weightGb: 3.25, kvCacheGb: 4 });
+    const replicated = { ...installation, estCapacity: 58 };
+    expect(perCardSizing(replicated, sizing, 8)).toEqual({ weightGb: 3.25, kvCacheGb: 4 });
+  });
+
+  test("derives the weights from the scheduler's figure for a legacy entry without sizing", () => {
+    expect(perCardSizing(installation, undefined, 1)).toEqual({ weightGb: 26, kvCacheGb: 16 });
   });
 
   test("refuses a split the model's heads do not allow", () => {
