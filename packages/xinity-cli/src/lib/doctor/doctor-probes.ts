@@ -2,6 +2,7 @@ import postgres from "postgres";
 import { expectedMigrationCount } from "common-db";
 import { tetherConnectionSchema, type TetherConnection } from "common-env";
 import { getUnitStatusOn, type Host } from "../core/host.ts";
+import { defaultPortForProtocol } from "../remote/remote-host.ts";
 
 export type CheckStatus = "pass" | "warn" | "fail" | "skip";
 
@@ -177,6 +178,7 @@ export async function checkSmtp(url: string, host: Host): Promise<CheckResult> {
   }
   try {
     const parsed = new URL(tunnel.localUrl);
+    const implicitTls = parsed.protocol === "smtps:";
     return await new Promise<CheckResult>((resolve) => {
       let settled = false;
       const done = (result: Omit<CheckResult, "label">) => {
@@ -190,7 +192,8 @@ export async function checkSmtp(url: string, host: Host): Promise<CheckResult> {
 
       Bun.connect({
         hostname: parsed.hostname,
-        port: parseInt(parsed.port || "587", 10),
+        port: parseInt(parsed.port || defaultPortForProtocol(parsed.protocol) || "587", 10),
+        tls: implicitTls ? { serverName: new URL(url).hostname } : false,
         socket: {
           data(socket, data) {
             const response = new TextDecoder().decode(data);
