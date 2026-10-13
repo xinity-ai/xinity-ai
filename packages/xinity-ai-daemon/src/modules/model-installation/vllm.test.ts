@@ -112,7 +112,7 @@ function makeInstallation(specifier: string, id: string = crypto.randomUUID(), p
     port,
     driver: "vllm" as const,
     settings: { version: 1 as const },
-    gpuUuids: [],
+    gpuIds: [],
   };
 }
 
@@ -293,7 +293,7 @@ describe("syncVllmInstallations$", () => {
   });
 
   test("fails an installation assigned to a card the node does not report, before starting it", async () => {
-    const inst = { ...makeInstallation("missing-card-model", crypto.randomUUID(), 9096), gpuUuids: ["GPU-gone"] };
+    const inst = { ...makeInstallation("missing-card-model", crypto.randomUUID(), 9096), gpuIds: ["GPU-gone"] };
     const ops = createMockOps({ listRunning: mock(() => Promise.resolve([])) });
 
     await firstValueFrom(syncVllmInstallations$([inst], ops));
@@ -577,8 +577,8 @@ describe("syncVllmInstallations$", () => {
       gpuCount: 2, systemRamMb: 131072, detectedCapacityGb: 72, physicalCapacityGb: 72,
     };
     const sizing = { specifier: "pinned-model", weightGb: 12, kvCacheGb: 4 };
-    expect(computeGpuUtilization({ ...sizing, gpuUuids: ["GPU-small"] }, mixed)).toBeCloseTo(0.83656, 4);
-    expect(computeGpuUtilization({ ...sizing, gpuUuids: [] }, mixed)).toBeCloseTo(0.83656 / 2, 4);
+    expect(computeGpuUtilization({ ...sizing, gpuIds: ["GPU-small"] }, mixed)).toBeCloseTo(0.83656, 4);
+    expect(computeGpuUtilization({ ...sizing, gpuIds: [] }, mixed)).toBeCloseTo(0.83656 / 2, 4);
   });
 
   test("sizes against the instance's card, not the node's summed VRAM", () => {

@@ -71,12 +71,12 @@ export const vllmScheduler: EngineScheduler = {
       return undefined;
     }
     return {
-      gpuUuids: layout.cards.flatMap((card) => (card.id ? [card.id] : [])),
+      gpuIds: layout.cards.flatMap((card) => (card.id ? [card.id] : [])),
       estCapacity: layout.perCardGb * layout.cards.length,
     };
   },
-  occupiedCards: (cards, gpuUuids) => {
-    const pinned = cards.filter((card) => card.id !== null && gpuUuids.includes(card.id));
+  occupiedCards: (cards, gpuIds) => {
+    const pinned = cards.filter((card) => card.id !== null && gpuIds.includes(card.id));
     return pinned.length > 0 ? pinned : cards.slice(0, 1);
   },
   port: (usedPorts) => {

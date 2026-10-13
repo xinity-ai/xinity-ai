@@ -8,7 +8,7 @@ export type PlacementModel = Pick<SchedulableModel, "weight" | "attentionHeads" 
 
 export type PlacementRequest = { model: PlacementModel; kvCacheGb: number; goal: OptimizationGoal; strategy: DeploymentStrategy };
 
-export type NodeSlot = { gpuUuids: string[]; estCapacity: number };
+export type NodeSlot = { gpuIds: string[]; estCapacity: number };
 
 export type EngineScheduler = {
   // Whether an installation already on a node rules out placing the candidate there too.
@@ -16,7 +16,7 @@ export type EngineScheduler = {
   // Where on the node's cards an installation goes and the VRAM it occupies there, or undefined when it does not fit them.
   placeOnNode: (cards: CardCapacity[], request: PlacementRequest) => NodeSlot | undefined;
   // The cards that carry an installation's capacity.
-  occupiedCards: (cards: CardCapacity[], gpuUuids: string[]) => CardCapacity[];
+  occupiedCards: (cards: CardCapacity[], gpuIds: string[]) => CardCapacity[];
   // The port a new installation listens on, given the ports already taken on its node.
   port: (usedPorts: ReadonlySet<number>) => number;
 };

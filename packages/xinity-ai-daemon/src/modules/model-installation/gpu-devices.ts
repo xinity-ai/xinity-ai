@@ -1,5 +1,5 @@
 import { readdir, readFile, readlink, stat } from "node:fs/promises";
-import { gpuCardId, runsTensorParallel } from "common-env";
+import { gpuId, runsTensorParallel } from "common-env";
 import type { GpuVendor } from "common-env/model-catalog";
 import { normalizePciBusId, type DetectedGpu } from "../hardware-detect";
 
@@ -110,7 +110,7 @@ export const DEVICE_CONTROL: Record<GpuVendor, DeviceControl> = {
 
 export function resolvePinnedCards(nodeGpus: readonly DetectedGpu[], cardIds: readonly string[]): DetectedGpu[] {
   return cardIds.map((id) => {
-    const gpu = nodeGpus.find((candidate) => gpuCardId(candidate) === id);
+    const gpu = nodeGpus.find((candidate) => gpuId(candidate) === id);
     if (!gpu) {
       throw new Error(`Assigned GPU ${id} is not on this node`);
     }

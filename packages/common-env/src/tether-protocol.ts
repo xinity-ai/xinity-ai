@@ -17,7 +17,7 @@ export const gpuSchema = z.object({
 });
 export type GpuInfo = z.infer<typeof gpuSchema>;
 
-export function gpuCardId(gpu: Pick<GpuInfo, "uuid" | "pciBusId">): string | undefined {
+export function gpuId(gpu: Pick<GpuInfo, "uuid" | "pciBusId">): string | undefined {
   return gpu.uuid ?? gpu.pciBusId;
 }
 
@@ -31,7 +31,7 @@ export const desiredInstallationSchema = z.object({
   kvCacheCapacity: z.number(),
   port: z.number(),
   settings: deploymentSettingsSchema,
-  gpuUuids: z.array(z.string()),
+  gpuIds: z.array(z.string()),
 });
 export type DesiredInstallation = z.infer<typeof desiredInstallationSchema>;
 

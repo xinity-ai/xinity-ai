@@ -24,7 +24,7 @@ import {
 import { rootLogger } from "../../logger";
 import { getHardwareProfile } from "../statekeeper";
 import { cardCapacityGib, type HardwareProfile } from "../hardware-detect";
-import { gpuCardId, tensorParallelLayouts, type GpuInfo } from "common-env";
+import { gpuId, tensorParallelLayouts, type GpuInfo } from "common-env";
 import { downloadModel } from "./vllm-download";
 import { devicesFor, readHostDevices, resolvePinnedCards } from "./gpu-devices";
 import { estimateConcurrency, type ModelSizingFields } from "common-env/model-catalog";
@@ -192,7 +192,7 @@ async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): P
   }
   const providerModel = entry.engineSpecifier;
   const profile = await getHardwareProfile();
-  const pinnedCards = resolvePinnedCards(profile.gpus, installation.gpuUuids);
+  const pinnedCards = resolvePinnedCards(profile.gpus, installation.gpuIds);
   const devices = devicesFor(pinnedCards, profile.gpus, await readHostDevices());
   const perCard = perCardSizing(installation, entry.sizing, devices.tensorParallelSize);
 
@@ -211,7 +211,7 @@ async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): P
     weightGb: perCard.weightGb,
     kvCacheGb: perCard.kvCacheGb,
     overheadGb: entry.sizing?.overheadGb,
-    gpuUuids: installation.gpuUuids,
+    gpuIds: installation.gpuIds,
   }, profile);
   const modelType = entry.type;
 
@@ -283,14 +283,14 @@ const MAX_GPU_UTILIZATION = 0.90;
 // An unpinned installation runs on the first card.
 function pinnedCardIndices(gpus: readonly GpuInfo[], cardIds: readonly string[]): number[] {
   const indices = gpus.flatMap((gpu, index) => {
-    const id = gpuCardId(gpu);
+    const id = gpuId(gpu);
     return id !== undefined && cardIds.includes(id) ? [index] : [];
   });
   return indices.length > 0 ? indices : [0];
 }
 
 export function computeGpuUtilization(
-  installation: { specifier: string; weightGb: number; kvCacheGb: number; overheadGb?: number; gpuUuids?: string[] },
+  installation: { specifier: string; weightGb: number; kvCacheGb: number; overheadGb?: number; gpuIds?: string[] },
   profile: Pick<HardwareProfile, "gpus" | "gpuCount" | "systemRamMb" | "detectedCapacityGb" | "physicalCapacityGb">,
 ): number | undefined {
   if (profile.gpuCount === 0 || profile.physicalCapacityGb === 0) {
@@ -302,7 +302,7 @@ export function computeGpuUtilization(
     ? installation.overheadGb / GB_PER_GIB
     : OVERHEAD_BASE_GIB + OVERHEAD_WEIGHT_FRACTION * weightGib;
   const neededGib = weightGib + installation.kvCacheGb / GB_PER_GIB + overheadGib;
-  const cardGib = cardCapacityGib(profile, pinnedCardIndices(profile.gpus, installation.gpuUuids ?? []));
+  const cardGib = cardCapacityGib(profile, pinnedCardIndices(profile.gpus, installation.gpuIds ?? []));
   const headroomCap = profile.detectedCapacityGb / profile.physicalCapacityGb;
   const utilization = Math.min(
     neededGib / cardGib,

@@ -1,5 +1,5 @@
 import type { AiNode, ModelInstallation, InferInsertModel, modelInstallationT } from "common-db";
-import { gpuCardId } from "common-env";
+import { gpuId } from "common-env";
 import { ENGINE_SCHEDULERS } from "./engines";
 import { requirementKey } from "./placement";
 import { orderByStrategy, type Capacity, type DeploymentStrategy } from "./strategy";
@@ -27,7 +27,7 @@ export function rankServers(strategy: DeploymentStrategy, state: ClusterState): 
 function nodeCards(server: AiNode): CardCapacity[] {
   const cards = server.gpus
     .filter((gpu) => gpu.vramMb > 0)
-    .map((gpu) => ({ id: gpuCardId(gpu) ?? null, vendor: gpu.vendor, name: gpu.name, total: gpu.vramMb / 1024, used: 0 }));
+    .map((gpu) => ({ id: gpuId(gpu) ?? null, vendor: gpu.vendor, name: gpu.name, total: gpu.vramMb / 1024, used: 0 }));
   return cards.length > 0 ? cards : [{ id: null, vendor: "", name: "", total: server.estCapacity, used: 0 }];
 }
 
@@ -37,14 +37,14 @@ export function cardsOf(state: ClusterState, nodeId: string): CardCapacity[] {
 
 export function chargeCapacity(
   state: ClusterState,
-  installation: Pick<NewInstallation, "nodeId" | "driver" | "gpuUuids">,
+  installation: Pick<NewInstallation, "nodeId" | "driver" | "gpuIds">,
   capacity: number,
 ): void {
   const cap = state.serverCapacity.get(installation.nodeId);
   if (cap) {
     cap.used += capacity;
   }
-  const occupied = ENGINE_SCHEDULERS[installation.driver].occupiedCards(cardsOf(state, installation.nodeId), installation.gpuUuids ?? []);
+  const occupied = ENGINE_SCHEDULERS[installation.driver].occupiedCards(cardsOf(state, installation.nodeId), installation.gpuIds ?? []);
   for (const card of occupied) {
     card.used += capacity / occupied.length;
   }

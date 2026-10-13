@@ -217,7 +217,7 @@ async function planNewInstallations(
         driver,
         port: allocatePort(driver, nodeId, state, toInstall),
         settings: requirement.settings,
-        gpuUuids: slot.gpuUuids,
+        gpuIds: slot.gpuIds,
       };
       toInstall.push(installation);
 
