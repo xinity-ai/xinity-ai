@@ -145,6 +145,7 @@
       </div>
       <Input
         id="oidc-issuer"
+        type="url"
         bind:value={issuer}
         placeholder="https://idp.example.com"
         required
@@ -246,6 +247,7 @@
             <Label for="oidc-discovery-endpoint">Discovery endpoint</Label>
             <Input
               id="oidc-discovery-endpoint"
+              type="url"
               bind:value={discoveryEndpoint}
               placeholder="https://idp.example.com/.well-known/openid-configuration"
             />
@@ -268,6 +270,7 @@
             <Label for="oidc-authorization-endpoint">Authorization endpoint</Label>
             <Input
               id="oidc-authorization-endpoint"
+              type="url"
               bind:value={authorizationEndpoint}
               placeholder="https://idp.example.com/authorize"
             />
@@ -276,6 +279,7 @@
             <Label for="oidc-token-endpoint">Token endpoint</Label>
             <Input
               id="oidc-token-endpoint"
+              type="url"
               bind:value={tokenEndpoint}
               placeholder="https://idp.example.com/token"
             />
@@ -284,6 +288,7 @@
             <Label for="oidc-jwks-endpoint">JWKS endpoint</Label>
             <Input
               id="oidc-jwks-endpoint"
+              type="url"
               bind:value={jwksEndpoint}
               placeholder="https://idp.example.com/jwks"
             />
@@ -292,6 +297,7 @@
             <Label for="oidc-userinfo-endpoint">UserInfo endpoint</Label>
             <Input
               id="oidc-userinfo-endpoint"
+              type="url"
               bind:value={userInfoEndpoint}
               placeholder="https://idp.example.com/userinfo"
             />
