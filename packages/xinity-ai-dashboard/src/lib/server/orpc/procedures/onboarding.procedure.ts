@@ -187,13 +187,13 @@ const cli = rootOs
       throw errors.FORBIDDEN({ message: MULTI_ORG_LICENSE_MESSAGE });
     }
 
-    let userId: string;
-    try {
-      ({ userId } = await adminCreateUser(input.email, input.name, input.password));
-    } catch (err) {
-      rlog.error({ err }, "CLI onboarding signup failed");
-      throw errors.CONFLICT({ message: "Failed to create user, email may already be in use" });
+    const created = await adminCreateUser(input.email, input.name, input.password);
+    if (!created.created) {
+      throw created.reason === "email_taken"
+        ? errors.CONFLICT({ message: "A user with this email already exists." })
+        : errors.BAD_REQUEST({ message: created.reason === "password_too_short" ? "Password is too short." : "Password is too long." });
     }
+    const { userId } = created;
     rlog.info({ userId, email: input.email }, "CLI onboarding: user created");
 
     await markEmailVerified(userId);

@@ -101,6 +101,15 @@ describe("Temporary password flow", () => {
     expect(tempPassword).toHaveLength(16);
   });
 
+  test("createUser answers an existing email with 409", async () => {
+    const res = await ownerFetch("/api/instance-admin/users/create", {
+      method: "POST",
+      body: JSON.stringify({ name: TEST_USER.name, email: TEST_USER.email.toUpperCase() }),
+    });
+    expect(res.status).toBe(409);
+    expect(await res.text()).toContain("already exists");
+  });
+
   test("user with temporary password is redirected to /settings/auth", async () => {
     const { page, context } = await pageWithState(STORAGE_PATH);
     try {

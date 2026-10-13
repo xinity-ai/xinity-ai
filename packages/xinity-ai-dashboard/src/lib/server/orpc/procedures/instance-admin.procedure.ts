@@ -281,14 +281,18 @@ const createUser = rootOs
     name: z.string().min(1, "Name is required"),
     email: z.email("Invalid email address"),
   }))
+  .errors({ CONFLICT: {} })
   .handler(async ({ input, context, errors }) => {
     const rlog = log.child({ traceId: context.traceId });
     const temporaryPassword = generateTempPassword();
-    const { userId } = await adminCreateUser(input.email, input.name, temporaryPassword)
-      .catch((err: unknown) => {
-        rlog.error({ err, email: input.email }, "Admin user creation failed");
-        throw errors.FORBIDDEN({ message: "Failed to create user. Email may already be in use." });
-      });
+    const created = await adminCreateUser(input.email, input.name, temporaryPassword);
+    if (!created.created) {
+      if (created.reason === "email_taken") {
+        throw errors.CONFLICT({ message: "A user with this email already exists." });
+      }
+      throw new Error(`Generated temporary password was rejected: ${created.reason}`);
+    }
+    const { userId } = created;
     await getDB()
       .update(userT)
       .set({ emailVerified: true, temporaryPassword: true })

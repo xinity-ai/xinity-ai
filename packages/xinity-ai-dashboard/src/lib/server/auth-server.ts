@@ -120,21 +120,21 @@ export async function adminCreateUser(
   email: string,
   name: string,
   password: string,
-): Promise<{ userId: string }> {
+): Promise<{ created: true; userId: string } | { created: false; reason: "password_too_short" | "password_too_long" | "email_taken" }> {
   const ctx = await auth.$context;
   const { minPasswordLength, maxPasswordLength } = ctx.password.config;
   if (password.length < minPasswordLength) {
-    throw new Error("Password too short");
+    return { created: false, reason: "password_too_short" };
   }
   if (password.length > maxPasswordLength) {
-    throw new Error("Password too long");
+    return { created: false, reason: "password_too_long" };
   }
 
   const normalizedEmail = email.toLowerCase();
 
   const existing = await ctx.internalAdapter.findUserByEmail(normalizedEmail);
   if (existing) {
-    throw new Error("User already exists");
+    return { created: false, reason: "email_taken" };
   }
 
   const hash = await ctx.password.hash(password);
@@ -154,7 +154,7 @@ export async function adminCreateUser(
     password: hash,
   });
 
-  return { userId: user.id };
+  return { created: true, userId: user.id };
 }
 
 const sendWelcomeNotification = createAuthMiddleware(async (ctx) => {
