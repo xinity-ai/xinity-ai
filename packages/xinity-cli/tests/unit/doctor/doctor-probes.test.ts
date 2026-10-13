@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { probeDaemonHealth } from "../../../src/lib/doctor/doctor-probes.ts";
+import { checkSmtp, probeDaemonHealth } from "../../../src/lib/doctor/doctor-probes.ts";
 import { FakeHost } from "../../helpers/fake-host.ts";
 
 const URL = "http://localhost:4044/healthCheck";
@@ -55,5 +55,41 @@ describe("probeDaemonHealth", () => {
     const host = new FakeHost({ run: () => ({ ok: false, output: "\n000" }) });
 
     expect((await probeDaemonHealth(host, URL)).checks[0]).toMatchObject({ status: "fail", message: "Unreachable" });
+  });
+});
+
+describe("checkSmtp", () => {
+  async function withPlaintextGreeter(run: (port: number) => Promise<void>): Promise<void> {
+    const server = Bun.listen({
+      hostname: "127.0.0.1",
+      port: 0,
+      socket: {
+        open(socket) {
+          socket.write("220 mail.example ESMTP\r\n");
+        },
+        data() {},
+      },
+    });
+    try {
+      await run(server.port);
+    } finally {
+      server.stop(true);
+    }
+  }
+
+  test("reads the greeting of an smtp:// server in plaintext", async () => {
+    await withPlaintextGreeter(async (port) => {
+      const check = await checkSmtp(`smtp://127.0.0.1:${port}`, new FakeHost());
+
+      expect(check).toMatchObject({ status: "pass", message: "SMTP server reachable" });
+    });
+  });
+
+  test("speaks TLS first to an smtps:// server", async () => {
+    await withPlaintextGreeter(async (port) => {
+      const check = await checkSmtp(`smtps://127.0.0.1:${port}`, new FakeHost());
+
+      expect(check.status).toBe("warn");
+    });
   });
 });

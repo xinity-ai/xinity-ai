@@ -64,8 +64,9 @@ const FIRST_PRINTABLE_ASCII = 0x20;
 const DEFAULT_REDIS_PORT = "6379";
 const DEFAULT_POSTGRES_PORT = "5432";
 const DEFAULT_SMTP_PORT = "587";
+const DEFAULT_SMTPS_PORT = "465";
 
-function defaultPortForProtocol(protocol: string): string | undefined {
+export function defaultPortForProtocol(protocol: string): string | undefined {
   switch (protocol) {
     case "postgresql:":
     case "postgres:":
@@ -74,8 +75,9 @@ function defaultPortForProtocol(protocol: string): string | undefined {
     case "rediss:":
       return DEFAULT_REDIS_PORT;
     case "smtp:":
-    case "smtps:":
       return DEFAULT_SMTP_PORT;
+    case "smtps:":
+      return DEFAULT_SMTPS_PORT;
     default:
       return undefined;
   }
