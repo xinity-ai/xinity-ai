@@ -10,8 +10,8 @@ const log = rootLogger.child({ name: "license" });
 const GRACE_PERIOD_DAYS = 30;
 const FREE_MAX_VRAM_GB = 120;
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
-// Lets unlicensed development and e2e runs exercise restricted roles. Neither development nor test mode is secure.
-const NON_PRODUCTION_FEATURES: readonly LicenseFeature[] = ["all-roles"];
+// Lets unlicensed development and e2e runs exercise restricted roles and several organizations. Neither development nor test mode is secure.
+const NON_PRODUCTION_FEATURES: readonly LicenseFeature[] = ["all-roles", "multi-org"];
 
 let cachedLicense: LicenseInfo | null = null;
 
