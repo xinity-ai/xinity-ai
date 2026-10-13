@@ -5,17 +5,14 @@ import { nodeIsLive } from "$lib/server/lib/deployments/node-liveness";
 import { rootLogger } from "$lib/server/logging";
 import { catalogClient } from "$lib/server/lib/models/model-catalog";
 import z from "zod";
+import { gpuSchema } from "common-env";
 import { blockedVersionNotes, explainClusterIncompatibility, IncompatibilityReasonEnum, type NodeCapability } from "common-env/model-catalog";
 
 const log = rootLogger.child({ name: "cluster" });
 
 const tags = ["Cluster"];
 
-const GpuInfoSchema = z.object({
-  vendor: z.string(),
-  name: z.string(),
-  vramMb: z.number(),
-});
+const GpuInfoSchema = gpuSchema.pick({ vendor: true, name: true, vramMb: true });
 
 const NodeCapabilitySchema = z.object({
   free: z.number(),

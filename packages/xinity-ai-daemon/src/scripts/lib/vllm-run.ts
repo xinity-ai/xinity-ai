@@ -11,12 +11,12 @@ import {
   checkNodeCompatibility,
 
   requiredFeaturesForEngine,
-  type GpuInfo,
   type Model,
   type NodeCapability,
   type ModelNodeRequirements,
   type IncompatibilityReason,
 } from "common-env/model-catalog";
+import type { GpuInfo } from "common-env";
 
 /** Minimal machine description the resolver needs; a subset of HardwareProfile. */
 export type MachineProfile = {

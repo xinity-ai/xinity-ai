@@ -208,7 +208,7 @@ async function collectRegistrationData(): Promise<UnsignedNodeRegistration> {
     host,
     port,
     gpuCount,
-    gpus: detectedGpus.map(g => ({ vendor: g.vendor, name: g.name, vramMb: g.vramMb, index: g.index, uuid: g.uuid })),
+    gpus: detectedGpus,
     driverVersions,
     driverFeatures,
     tls: !!config.tls,

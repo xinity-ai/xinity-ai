@@ -1,6 +1,7 @@
 import { $ } from "bun";
 import { totalmem, hostname } from "node:os";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, readlink } from "node:fs/promises";
+import type { GpuInfo } from "common-env";
 import { rootLogger } from "../logger";
 
 const log = rootLogger.child({ name: "hardware-detect" });
@@ -9,15 +10,7 @@ const log = rootLogger.child({ name: "hardware-detect" });
 
 export type GpuVendor = "nvidia" | "amd" | "intel";
 
-export type DetectedGpu = {
-  vendor: GpuVendor;
-  name: string;
-  /** 0 when VRAM is not separately addressable (e.g. unified memory). */
-  vramMb: number;
-  /** The vendor tool's own device index, which is not the position in a mixed-vendor list. */
-  index?: number;
-  uuid?: string;
-};
+export type DetectedGpu = GpuInfo & { vendor: GpuVendor };
 
 export type GpuRuntimeStats = {
   name: string;
@@ -55,6 +48,22 @@ function bytesToMb(bytes: number): number {
   return Math.floor(bytes / (1024 * 1024));
 }
 
+// nvidia-smi prints an eight-digit domain ("00000000:01:00.0"), sysfs and the other vendor tools
+// print at least four. One spelling lets a card be matched across tools.
+export function normalizePciBusId(raw: string | null | undefined): string | null {
+  const match = raw?.trim().match(/^([0-9a-f]{1,8}):([0-9a-f]{2}):([0-9a-f]{2})\.([0-7])$/i);
+  if (!match) {
+    return null;
+  }
+  const [, domain, bus, device, fn] = match;
+  return `${Number.parseInt(domain!, 16).toString(16).padStart(4, "0")}:${bus}:${device}.${fn}`.toLowerCase();
+}
+
+function pciBusIdField(raw: string | null | undefined): { pciBusId?: string } {
+  const pciBusId = normalizePciBusId(raw);
+  return pciBusId ? { pciBusId } : {};
+}
+
 function getSystemRamMb(): number {
   return bytesToMb(totalmem());
 }
@@ -62,7 +71,7 @@ function getSystemRamMb(): number {
 // ─── NVIDIA detection (nvidia-smi) ──────────────────────────────────────────
 
 async function detectNvidiaGpus(): Promise<DetectedGpu[]> {
-  const output = await $`nvidia-smi --query-gpu=index,name,memory.total,uuid --format=csv,noheader,nounits`
+  const output = await $`nvidia-smi --query-gpu=index,name,memory.total,uuid,pci.bus_id --format=csv,noheader,nounits`
     .throws(false)
     .text();
 
@@ -84,7 +93,7 @@ export function parseNvidiaSmiOutput(csv: string): DetectedGpu[] {
 }
 
 function parseNvidiaSmiLine(line: string): DetectedGpu | null {
-  const [index, name, totalMemory, uuid] = line.split(",").map((s) => s.trim());
+  const [index, name, totalMemory, uuid, busId] = line.split(",").map((s) => s.trim());
   if (!name) return null;
 
   return {
@@ -93,6 +102,7 @@ function parseNvidiaSmiLine(line: string): DetectedGpu | null {
     vramMb: Number(totalMemory) || 0,
     ...(index && Number.isInteger(Number(index)) ? { index: Number(index) } : {}),
     ...(uuid ? { uuid } : {}),
+    ...pciBusIdField(busId),
   };
 }
 
@@ -178,12 +188,37 @@ async function readAmdGpuFromSysfs(cardPath: string): Promise<DetectedGpu | null
   const vramBytes = Number(vramBytesStr);
   if (isNaN(vramBytes) || vramBytes <= 0) return null;
 
-  const cardName = cardPath.split("/").pop() ?? "AMD GPU";
+  const [productName, pciDeviceId, uniqueId, deviceLink] = await Promise.all([
+    readSysfsFile(`${cardPath}/device/product_name`),
+    readSysfsFile(`${cardPath}/device/device`),
+    readSysfsFile(`${cardPath}/device/unique_id`),
+    readlink(`${cardPath}/device`).catch(() => null),
+  ]);
   return {
     vendor: "amd",
-    name: `AMD GPU (${cardName})`,
+    name: amdCardName(productName, pciDeviceId),
     vramMb: bytesToMb(vramBytes),
+    ...amdRocrUuidField(uniqueId),
+    ...pciBusIdField(deviceLink?.split("/").pop()),
   };
+}
+
+// Cards of one model must share a name, so the name comes from the model and never the card slot.
+export function amdCardName(productName: string | null, pciDeviceId: string | null): string {
+  if (productName) {
+    return productName;
+  }
+  return pciDeviceId ? `AMD GPU ${pciDeviceId}` : "AMD GPU";
+}
+
+// ROCr reports a card's UUID as "GPU-" and the zero-padded lowercase hex of the same 64-bit id the
+// driver prints to unique_id, and ROCR_VISIBLE_DEVICES accepts it. Cards without the id have none.
+export function amdRocrUuidField(uniqueId: string | null): { uuid?: string } {
+  const hex = uniqueId?.trim().toLowerCase().replace(/^0x/, "");
+  if (!hex || !/^[0-9a-f]{1,16}$/.test(hex) || /^0+$/.test(hex)) {
+    return {};
+  }
+  return { uuid: `GPU-${hex.padStart(16, "0")}` };
 }
 
 async function readSysfsFile(path: string): Promise<string | null> {
@@ -280,7 +315,7 @@ async function listIntelXpuDeviceIds(): Promise<number[]> {
 export function parseXpuSmiDeviceList(text: string): number[] {
   const ids: number[] = [];
   for (const line of text.split("\n")) {
-    const match = line.match(/^\s*\|\s*Device ID\s*\|\s*(\d+)/i);
+    const match = line.match(/^\s*\|\s*(\d+)\s*\|/);
     if (match) {
       ids.push(Number(match[1]));
     }
@@ -298,7 +333,14 @@ async function queryIntelGpuDetails(deviceId: number): Promise<DetectedGpu | nul
 export function parseXpuSmiDeviceDetails(text: string, deviceId: number): DetectedGpu | null {
   const name = extractXpuSmiField(text, "Device Name") ?? `Intel GPU ${deviceId}`;
   const vramMb = parseMibValue(extractXpuSmiField(text, "Memory Physical Size"));
-  return { vendor: "intel", name, vramMb };
+  // xpu-smi's UUID can be built from the PCI device id alone, so identical cards may share it.
+  return {
+    vendor: "intel",
+    name,
+    vramMb,
+    index: deviceId,
+    ...pciBusIdField(extractXpuSmiField(text, "PCI BDF Address")),
+  };
 }
 
 function parseMibValue(value: string | null): number {
@@ -309,13 +351,9 @@ function parseMibValue(value: string | null): number {
 
 function extractXpuSmiField(text: string, fieldName: string): string | null {
   for (const line of text.split("\n")) {
-    if (line.includes(fieldName)) {
-      const parts = line.split("|").map((s) => s.trim());
-      // Typical format: "| Memory Physical Size | 32768.00 MiB |"
-      const valuePart = parts.find(
-        (p) => p.length > 0 && !p.includes(fieldName)
-      );
-      if (valuePart) return valuePart;
+    const cell = line.split("|").map((s) => s.trim()).find((part) => part.startsWith(`${fieldName}:`));
+    if (cell) {
+      return cell.slice(fieldName.length + 1).trim() || null;
     }
   }
   return null;

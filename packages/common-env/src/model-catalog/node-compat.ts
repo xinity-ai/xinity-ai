@@ -6,13 +6,7 @@
 import { matchesVersionRange, satisfiesMinVersion } from "./semver";
 import type { LegacyModel, Model } from "./definitions/model-definition";
 import { nearestIncompatibility, type IncompatibilityReason } from "./incompatibility";
-
-/** Per-GPU info as detected by the daemon and persisted on aiNodeT. */
-export type GpuInfo = {
-  vendor: string;
-  name: string;
-  vramMb: number;
-};
+import type { GpuInfo } from "../tether-protocol";
 
 /** Minimal representation of a node's capabilities.
  * Driver availability is determined by keys present in `driverVersions`:

@@ -24,9 +24,9 @@ import {
 import { rootLogger } from "../../logger";
 import { getHardwareProfile } from "../statekeeper";
 import { cardCapacityGib, type DetectedGpu, type HardwareProfile } from "../hardware-detect";
-import { tensorParallelLayouts } from "common-env";
+import { tensorParallelLayouts, type GpuInfo } from "common-env";
 import { downloadModel } from "./vllm-download";
-import { estimateConcurrency, type GpuInfo, type ModelSizingFields } from "common-env/model-catalog";
+import { estimateConcurrency, type ModelSizingFields } from "common-env/model-catalog";
 import { dropPageCache } from "./page-cache";
 import { resolveInstallationEntry } from "./catalog";
 import { updateInstallationState, getLocalInstallationStates } from "./state";
