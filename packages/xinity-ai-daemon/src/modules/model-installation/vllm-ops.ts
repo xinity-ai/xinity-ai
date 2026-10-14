@@ -18,6 +18,69 @@ export type VllmInstanceConfig = {
   gpuMemoryUtilization?: number;
   settings?: DeploymentSettings | null;
   devices: GpuDevices;
+  group: NodeGroup;
+}
+
+// A model spread across coupled nodes runs one member per node. Rank 0 serves, the others only
+// compute. rdmaDevices and socketInterface name this node's own devices, so they differ per member.
+export type NodeGroup =
+  | { kind: "single" }
+  | {
+      kind: "member";
+      size: number;
+      rank: number;
+      masterAddr: string;
+      masterPort: number;
+      rdmaDevices: string[];
+      socketInterface: string;
+    };
+
+export const SINGLE_NODE: NodeGroup = { kind: "single" };
+
+type GroupLaunch<Group extends NodeGroup> = {
+  size: (group: Group) => number;
+  serveArgs: (group: Group) => string[];
+  env: (group: Group) => string[];
+  docker: (port: number) => { networkArgs: string[]; host: string; port: number };
+};
+
+// NCCL connects the members on ports it picks at runtime, which no bridge network can publish,
+// so members share the host's network.
+const GROUP_LAUNCH: { [Kind in NodeGroup["kind"]]: GroupLaunch<Extract<NodeGroup, { kind: Kind }>> } = {
+  single: {
+    size: () => 1,
+    serveArgs: () => [],
+    env: () => [],
+    docker: (port) => ({ networkArgs: ["--network", VLLM_NETWORK, "-p", `127.0.0.1:${port}:8000`], host: "0.0.0.0", port: 8000 }),
+  },
+  member: {
+    size: (group) => group.size,
+    serveArgs: (group) => [
+      "--nnodes", String(group.size),
+      "--node-rank", String(group.rank),
+      "--master-addr", group.masterAddr,
+      "--master-port", String(group.masterPort),
+      ...(group.rank > 0 ? ["--headless"] : []),
+    ],
+    env: (group) => [
+      `NCCL_IB_HCA==${group.rdmaDevices.join(",")}`,
+      `NCCL_SOCKET_IFNAME=${group.socketInterface}`,
+      `GLOO_SOCKET_IFNAME=${group.socketInterface}`,
+    ],
+    docker: (port) => ({
+      networkArgs: ["--network", "host", "--device", "/dev/infiniband", "--ulimit", "memlock=-1:-1"],
+      host: "127.0.0.1",
+      port,
+    }),
+  },
+};
+
+function launchOf(group: NodeGroup): GroupLaunch<NodeGroup> {
+  return GROUP_LAUNCH[group.kind] as GroupLaunch<NodeGroup>;
+}
+
+export function groupTensorParallelSize(config: Pick<VllmInstanceConfig, "devices" | "group">): number {
+  return config.devices.tensorParallelSize * launchOf(config.group).size(config.group);
 }
 
 export type VllmOps = {
@@ -66,7 +129,7 @@ const OFFLINE_ENV = ["HF_HUB_OFFLINE=1", "TRANSFORMERS_OFFLINE=1"];
 // ---------------------------------------------------------------------------
 
 export function buildSystemdEnvFile(config: VllmInstanceConfig): string {
-  const lines: string[] = [...OFFLINE_ENV, ...config.devices.env];
+  const lines: string[] = [...OFFLINE_ENV, ...config.devices.env, ...launchOf(config.group).env(config.group)];
   const audioDuration = resolveMaxAudioInputDurationS(config.settings);
   if (audioDuration != null) {
     lines.push(`VLLM_MAX_AUDIO_DECODE_DURATION_S=${audioDuration}`);
@@ -83,9 +146,11 @@ function appendVllmCommonArgs(args: string[], config: VllmInstanceConfig): void 
   if (config.gpuMemoryUtilization != null) {
     args.push("--gpu-memory-utilization", String(config.gpuMemoryUtilization));
   }
-  if (config.devices.tensorParallelSize > 1) {
-    args.push("--tensor-parallel-size", String(config.devices.tensorParallelSize));
+  const tensorParallelSize = groupTensorParallelSize(config);
+  if (tensorParallelSize > 1) {
+    args.push("--tensor-parallel-size", String(tensorParallelSize));
   }
+  args.push(...launchOf(config.group).serveArgs(config.group));
   if (config.trustRemoteCode) {
     args.push("--trust-remote-code");
   }
@@ -247,13 +312,15 @@ export function buildDockerRunArgs(
   const containerName = dockerContainerNameFor(id);
   const audioDuration = resolveMaxAudioInputDurationS(config.settings);
   const audioFileSize = resolveMaxAudioInputFileSizeMB(config.settings);
+  const launch = launchOf(config.group);
+  const network = launch.docker(config.port);
   const args = [
     "docker", "run", "-d",
     "--name", containerName,
     ...config.devices.dockerArgs,
     "--ipc=host",
-    "--network", VLLM_NETWORK,
-    "-p", `127.0.0.1:${config.port}:8000`,
+    ...network.networkArgs,
+    ...launch.env(config.group).flatMap((entry) => ["-e", entry]),
     "-e", "HF_HOME=/data/hf-cache",
     "-e", "TRITON_CACHE_DIR=/data/triton-cache",
     ...OFFLINE_ENV.flatMap((entry) => ["-e", entry]),
@@ -269,8 +336,8 @@ export function buildDockerRunArgs(
     "--entrypoint", daemonConfig.vllm.path ?? "vllm",
     dockerImage,
     "serve", config.model,
-    "--host", "0.0.0.0",
-    "--port", "8000",
+    "--host", network.host,
+    "--port", String(network.port),
     "--served-model-name", config.model,
     "--kv-cache-memory-bytes", config.kvCacheBytes,
   ];

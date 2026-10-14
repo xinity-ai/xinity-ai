@@ -2,7 +2,7 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { createInterconnectMonitor, groupIntoPorts, ipv4FromGid, parseNeighbourMacs, readCandidatePaths, readLocalMacs } from "./interconnect-detect";
+import { createInterconnectMonitor, groupIntoPorts, ipv4FromGid, parseNeighbourMacs, rdmaDevicesOf, readCandidatePaths, readLocalMacs } from "./interconnect-detect";
 
 // The Ubuntu GX10 of the test pair: one ConnectX-7, port p0 cabled on both PCIe paths, p1 empty.
 const SWITCH_ID = "15d6500003e282b0";
@@ -84,6 +84,12 @@ describe("readCandidatePaths", () => {
   test("reports an empty port as down with no speed", async () => {
     const empty = (await readCandidatePaths(sysfs)).find((path) => path.interface === "enp1s0f1np1");
     expect(empty).toMatchObject({ carrier: false, speedMbps: null, roceV2Ipv4: [] });
+  });
+});
+
+describe("rdmaDevicesOf", () => {
+  test("names the RDMA device behind each interface once, and skips interfaces without one", async () => {
+    expect(await rdmaDevicesOf(["enp1s0f0np0", "enP2p1s0f0np0", "enP7s7", "enp1s0f0np0"], sysfs)).toEqual(["rocep1s0f0", "roceP2p1s0f0"]);
   });
 });
 

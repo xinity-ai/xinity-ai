@@ -5,7 +5,7 @@
  * builders and downloader so a run here matches a daemon-managed install. See --help.
  */
 import { parseArgs } from "node:util";
-import { tmpdir } from "node:os";
+import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
 import { z } from "zod";
@@ -25,11 +25,12 @@ import {
   type ResolvedVllmModel,
   type VllmDriverState,
 } from "./lib/vllm-run";
-import type { VllmInstanceConfig } from "../modules/model-installation/vllm-ops";
+import type { NodeGroup, VllmInstanceConfig } from "../modules/model-installation/vllm-ops";
 import type { GpuDevices } from "../modules/model-installation/gpu-devices";
 import type { HardwareProfile } from "../modules/hardware-detect";
 
 const DEFAULT_PORT = 8000;
+const DEFAULT_MASTER_PORT = 29500;
 
 let jsonMode = false;
 
@@ -73,6 +74,12 @@ const HELP = [
   "  --id <id>           Instance id for container name / pidfile (default `dev`).",
   "  --force             Start even if the compatibility gate fails.",
   "  --json              Emit machine-readable JSON on stdout (progress/diagnostics stay on stderr).",
+  "",
+  "Across coupled nodes (run once per node, rank 0 serves):",
+  "  --nnodes <n>        Number of nodes the model spans (default 1).",
+  "  --node-rank <r>     This node's rank, 0 to n-1.",
+  "  --master-addr <ip>  Rank 0's LAN address, the same on every node.",
+  `  --master-port <n>   Rendezvous port on rank 0 (default ${DEFAULT_MASTER_PORT}).`,
 ].join("\n");
 
 const { values } = parseArgs({
@@ -93,6 +100,10 @@ const { values } = parseArgs({
     id: { type: "string" },
     force: { type: "boolean" },
     json: { type: "boolean" },
+    nnodes: { type: "string" },
+    "node-rank": { type: "string" },
+    "master-addr": { type: "string" },
+    "master-port": { type: "string" },
     help: { type: "boolean", short: "h" },
   },
   strict: true,
@@ -126,6 +137,25 @@ if (gpuUtilOverride !== undefined && (!(gpuUtilOverride > 0) || gpuUtilOverride 
   die(`--gpu-util must be in (0, 1], got "${values["gpu-util"]}"`);
 }
 
+const nodeCount = values.nnodes ? Number(values.nnodes) : 1;
+if (!Number.isInteger(nodeCount) || nodeCount < 1) {
+  die(`--nnodes must be a positive integer, got "${values.nnodes}"`);
+}
+const nodeRank = values["node-rank"] ? Number(values["node-rank"]) : 0;
+if (!Number.isInteger(nodeRank) || nodeRank < 0 || nodeRank >= nodeCount) {
+  die(`--node-rank must be between 0 and ${nodeCount - 1}, got "${values["node-rank"]}"`);
+}
+const masterPort = values["master-port"] ? Number(values["master-port"]) : DEFAULT_MASTER_PORT;
+if (!Number.isInteger(masterPort) || masterPort <= 0) {
+  die(`--master-port must be a positive integer, got "${values["master-port"]}"`);
+}
+if (nodeCount === 1 && (values["node-rank"] || values["master-addr"] || values["master-port"])) {
+  die("--node-rank, --master-addr and --master-port need --nnodes above 1");
+}
+if (nodeCount > 1 && !z.ipv4().safeParse(values["master-addr"]).success) {
+  die(`--nnodes above 1 needs --master-addr, rank 0's IPv4 LAN address, got "${values["master-addr"] ?? ""}"`);
+}
+
 const backend: "docker" | "bare" = values.image ? "docker" : "bare";
 const bareVllmPath = backend === "bare" ? (values["vllm-path"] ?? Bun.which("vllm") ?? undefined) : undefined;
 
@@ -140,17 +170,19 @@ if (values["cache-dir"]) process.env.VLLM_HF_CACHE_DIR = values["cache-dir"];
 if (values["hf-token"]) process.env.VLLM_HF_TOKEN = values["hf-token"];
 
 const [
-  { buildDockerRunArgs, buildSystemdServeArgv, ensureVllmNetwork, VLLM_NETWORK },
-  { computeGpuUtilization, buildVllmExtraArgs, concurrencyCap },
+  { buildDockerRunArgs, buildSystemdServeArgv, ensureVllmNetwork, groupTensorParallelSize, SINGLE_NODE, VLLM_NETWORK },
+  { computeGpuUtilization, buildVllmExtraArgs, concurrencyCap, perCardSizing },
   { detectHardwareProfile },
   { detectVllmFeatures },
   { readHostDevices, unpinnedDevicesFor },
+  { detectInterconnect, rdmaDevicesOf },
 ] = await Promise.all([
   import("../modules/model-installation/vllm-ops"),
   import("../modules/model-installation/vllm"),
   import("../modules/hardware-detect"),
   import("../modules/vllm-features"),
   import("../modules/model-installation/gpu-devices"),
+  import("../modules/interconnect-detect"),
 ]);
 
 const modelFileSchema = z.object({ models: z.record(z.string(), z.any()) });
@@ -185,13 +217,47 @@ async function detectVllmVersion(deviceArgs: string[]): Promise<string | undefin
   }
 }
 
-function buildConfig(resolved: ResolvedVllmModel, profile: HardwareProfile, devices: GpuDevices): VllmInstanceConfig {
+// The kernel's route, since overlays like Tailscale give every node a /32 that shares no subnet.
+// The route to one of the node's own addresses runs over lo, so that case reads the owner.
+async function interfaceTowards(address: string): Promise<string | undefined> {
+  const owner = Object.entries(networkInterfaces()).find(([, entries]) => (entries ?? []).some((entry) => entry.address === address));
+  if (owner) {
+    return owner[0];
+  }
+  const routes = JSON.parse((await $`ip -j route get ${address}`.quiet().nothrow().text()) || "[]") as { dev?: string }[];
+  return routes[0]?.dev;
+}
+
+// NCCL moves the data over every coupled port, the rendezvous goes over the LAN toward rank 0.
+async function resolveGroup(): Promise<NodeGroup> {
+  if (nodeCount === 1) {
+    return SINGLE_NODE;
+  }
+  const masterAddr = values["master-addr"]!;
+  const coupledInterfaces = (await detectInterconnect())
+    .filter((coupledPort) => coupledPort.neighbours.length > 0)
+    .flatMap((coupledPort) => coupledPort.paths.filter((path) => path.carrier && path.roceV2Ipv4.length > 0))
+    .map((path) => path.interface);
+  const rdmaDevices = await rdmaDevicesOf(coupledInterfaces);
+  if (rdmaDevices.length === 0) {
+    die("this node has no coupled RDMA port, `xinity stack doctor` shows why");
+  }
+  const socketInterface = await interfaceTowards(masterAddr);
+  if (!socketInterface) {
+    die(`this node has no route to --master-addr ${masterAddr}`);
+  }
+  return { kind: "member", size: nodeCount, rank: nodeRank, masterAddr, masterPort, rdmaDevices, socketInterface };
+}
+
+type CardShare = { weightGb: number; kvCacheGb: number };
+
+function buildConfig(resolved: ResolvedVllmModel, profile: HardwareProfile, devices: GpuDevices, group: NodeGroup, share: CardShare): VllmInstanceConfig {
   const gpuMemoryUtilization =
-    gpuUtilOverride ?? computeGpuUtilization({ specifier: resolved.vllmProviderName, weightGb: resolved.model.sizing.weightGb, kvCacheGb: resolved.kvCacheGb, overheadGb: resolved.model.sizing.overheadGb }, profile);
+    gpuUtilOverride ?? computeGpuUtilization({ specifier: resolved.vllmProviderName, weightGb: share.weightGb, kvCacheGb: share.kvCacheGb, overheadGb: resolved.model.sizing.overheadGb }, profile);
   return {
     model: resolved.vllmProviderName,
     port,
-    kvCacheBytes: `${resolved.kvCacheGb}g`,
+    kvCacheBytes: `${share.kvCacheGb}g`,
     trustRemoteCode: resolved.trustRemoteCode,
     gpuMemoryUtilization,
     extraArgs: buildVllmExtraArgs(
@@ -201,6 +267,7 @@ function buildConfig(resolved: ResolvedVllmModel, profile: HardwareProfile, devi
       concurrencyCap(resolved.model.sizing, profile.gpus, resolved.kvCacheGb),
     ),
     devices,
+    group,
   };
 }
 
@@ -208,6 +275,15 @@ function serveArgv(config: VllmInstanceConfig): string[] {
   if (backend !== "docker") return buildSystemdServeArgv(config);
   return buildDockerRunArgs(id, config, "preview");
 }
+
+const DOCKER_NETWORKS: Record<NodeGroup["kind"], { name: string; note: string; setup: string[] }> = {
+  single: {
+    name: VLLM_NETWORK,
+    note: "no egress: internet blocked, published port only",
+    setup: [`docker network create -o com.docker.network.bridge.enable_ip_masquerade=false ${VLLM_NETWORK}  # once (egress-blocked)`],
+  },
+  member: { name: "host", note: "host network: the group members reach each other directly", setup: [] },
+};
 
 const followLogsCommand = `docker logs -f vllm-${id}`;
 const stopCommand = `docker stop vllm-${id} && docker rm vllm-${id}`;
@@ -234,7 +310,7 @@ async function startServer(config: VllmInstanceConfig): Promise<never> {
   // docker run -d returns once the container is created; print the follow/stop hints and exit.
   if (backend === "docker") {
     await ensureVllmNetwork();
-    console.error(`Starting (docker, no egress):\n  ${quoteShellArgv(argv)}\n`);
+    console.error(`Starting (docker, ${DOCKER_NETWORKS[config.group.kind].note}):\n  ${quoteShellArgv(argv)}\n`);
     const proc = Bun.spawn(argv, { stdin: "inherit", stdout: "inherit", stderr: "inherit" });
     const code = await proc.exited;
     if (code !== 0) process.exit(code);
@@ -328,7 +404,16 @@ function describeConcurrency(estimate: ConcurrencyEstimate | undefined, gpuCount
     + `${Math.round(estimate.aggregateTps)} of ${Math.round(estimate.maxAggregateTps)} tok/s total`;
 }
 
-function printPlan(resolved: ResolvedVllmModel, profile: HardwareProfile, driver: VllmDriverState, config: VllmInstanceConfig): void {
+const GROUP_SUMMARIES: { [Kind in NodeGroup["kind"]]: (group: Extract<NodeGroup, { kind: Kind }>) => string } = {
+  single: () => "this node only",
+  member: (group) =>
+    `rank ${group.rank} of ${group.size} (${group.rank === 0 ? "serves" : "headless"}), `
+    + `rendezvous ${group.masterAddr}:${group.masterPort} over ${group.socketInterface}, RDMA over ${group.rdmaDevices.join(", ")}`,
+};
+
+const summarizeGroup = (group: NodeGroup) => (GROUP_SUMMARIES[group.kind] as (group: NodeGroup) => string)(group);
+
+function printPlan(resolved: ResolvedVllmModel, profile: HardwareProfile, driver: VllmDriverState, config: VllmInstanceConfig, share: CardShare): void {
   const reason = checkVllmCompatibility(resolved, profile, driver, { requireKnownVersion: true });
   const speed = estimateThroughput(resolved.model, { gpus: profile.gpus });
   const concurrency = estimateConcurrency(resolved.model, { gpus: profile.gpus }, { kvCacheGb: resolved.kvCacheGb });
@@ -343,7 +428,8 @@ function printPlan(resolved: ResolvedVllmModel, profile: HardwareProfile, driver
       vllmBinary: backend === "bare" ? (bareVllmPath ?? null) : undefined,
       vllm: { available: driver.available, version: driver.version ?? null, minVersion: resolved.minVersion ?? null },
       machine: { gpus: profile.gpus, capacityGb: profile.detectedCapacityGb },
-      sizing: { kvCacheGb: resolved.kvCacheGb, estCapacityGb: resolved.estCapacity, gpuMemoryUtilization: config.gpuMemoryUtilization ?? null },
+      group: config.group,
+      sizing: { kvCacheGb: resolved.kvCacheGb, estCapacityGb: resolved.estCapacity, perCard: share, gpuMemoryUtilization: config.gpuMemoryUtilization ?? null },
       speed: speed?.basis === "known-gpu"
         ? { decodeTps: speed.decodeTps, prefillTps: speed.prefillTps ?? null }
         : null,
@@ -362,7 +448,7 @@ function printPlan(resolved: ResolvedVllmModel, profile: HardwareProfile, driver
         : null,
       gate: { ok: reason === null, reason: reason ?? null, message: reason ? describeIncompatibility(reason, resolved, profile, driver) : null },
       download: { filters: resolved.model.downloadFilter ?? [] },
-      network: backend === "docker" ? { name: VLLM_NETWORK } : undefined,
+      network: backend === "docker" ? { name: DOCKER_NETWORKS[config.group.kind].name } : undefined,
       port,
       startCommand: serveArgv(config),
       followLogsCommand: backend === "docker" ? followLogsCommand : undefined,
@@ -374,10 +460,11 @@ function printPlan(resolved: ResolvedVllmModel, profile: HardwareProfile, driver
   const gpus = profile.gpus.map((g) => `${g.vendor} ${g.name}`).join(", ") || "none";
 
   console.log(`Model:    ${resolved.vllmProviderName}  (type=${resolved.modelType ?? "chat"})`);
-  console.log(`Backend:  ${backend}${backend === "docker" ? ` (${values.image})  [no egress: internet blocked, published port only]` : ` (${bareVllmPath ?? "vllm not found on PATH"})`}`);
+  console.log(`Backend:  ${backend}${backend === "docker" ? ` (${values.image})  [${DOCKER_NETWORKS[config.group.kind].note}]` : ` (${bareVllmPath ?? "vllm not found on PATH"})`}`);
   console.log(`vLLM:     ${driver.available ? (driver.version ?? "version undetectable") : "not available"}${resolved.minVersion ? `  (model requires >= ${resolved.minVersion})` : ""}`);
   console.log(`Machine:  ${gpus}; ${profile.detectedCapacityGb}GB capacity`);
-  console.log(`Sizing:   kvCache=${resolved.kvCacheGb}GB, estCapacity=${resolved.estCapacity}GB, gpuUtil=${config.gpuMemoryUtilization ?? "n/a"}`);
+  console.log(`Group:    ${summarizeGroup(config.group)}`);
+  console.log(`Sizing:   kvCache=${resolved.kvCacheGb}GB, estCapacity=${resolved.estCapacity}GB on this node, per card weights=${share.weightGb}GB kvCache=${share.kvCacheGb}GB, gpuUtil=${config.gpuMemoryUtilization ?? "n/a"}`);
   console.log(`Speed:    ${describeSpeed(speed)}`);
   console.log(`Batch:    ${describeConcurrency(concurrency, profile.gpus.length)}`);
   console.log(`Gate:     ${reason ? `FAIL - ${describeIncompatibility(reason, resolved, profile, driver)}` : "ok"}`);
@@ -387,7 +474,9 @@ function printPlan(resolved: ResolvedVllmModel, profile: HardwareProfile, driver
   console.log();
   console.log(`# Start command`);
   if (backend === "docker") {
-    console.log(`docker network create -o com.docker.network.bridge.enable_ip_masquerade=false ${VLLM_NETWORK}  # once (egress-blocked)`);
+    for (const line of DOCKER_NETWORKS[config.group.kind].setup) {
+      console.log(line);
+    }
   }
   console.log(quoteShellArgv(serveArgv(config)));
   if (backend === "docker") {
@@ -423,10 +512,18 @@ async function main(): Promise<void> {
     version,
     features,
   };
-  const config = buildConfig(resolved, profile, devices);
+  const group = await resolveGroup();
+  const share = perCardSizing(
+    { specifier: resolved.vllmProviderName, estCapacity: resolved.estCapacity, kvCacheCapacity: resolved.kvCacheGb },
+    resolved.model.sizing,
+    groupTensorParallelSize({ devices, group }),
+  );
+  const config = buildConfig(resolved, profile, devices, group, share);
+  // Every node in a group downloads the whole model but only holds its own cards' share of it.
+  const onThisNode: ResolvedVllmModel = { ...resolved, estCapacity: (share.weightGb + share.kvCacheGb) * devices.tensorParallelSize };
 
   if (verb === "plan") {
-    printPlan(resolved, profile, driver, config);
+    printPlan(onThisNode, profile, driver, config, share);
     return;
   }
 
@@ -436,9 +533,9 @@ async function main(): Promise<void> {
     return;
   }
 
-  const reason = checkVllmCompatibility(resolved, profile, driver, { requireKnownVersion: true });
+  const reason = checkVllmCompatibility(onThisNode, profile, driver, { requireKnownVersion: true });
   if (reason && !values.force) {
-    die(`${describeIncompatibility(reason, resolved, profile, driver)}\nUse --force to start anyway.`, reason);
+    die(`${describeIncompatibility(reason, onThisNode, profile, driver)}\nUse --force to start anyway.`, reason);
   }
   if (reason) console.error(`warning: starting despite failed gate (${reason}) because --force was given.`);
   await ensureDownloaded(resolved);

@@ -19,6 +19,7 @@ import { config } from "../../config";
 import {
   createDockerVllmOps,
   createSystemdVllmOps,
+  SINGLE_NODE,
   type VllmOps,
 } from "./vllm-ops";
 import { rootLogger } from "../../logger";
@@ -231,6 +232,7 @@ async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): P
     ),
     settings: installation.settings,
     devices,
+    group: SINGLE_NODE,
   });
 
   return { modelType, providerModel };
