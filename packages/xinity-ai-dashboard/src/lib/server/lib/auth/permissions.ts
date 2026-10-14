@@ -6,9 +6,13 @@ type Resource = keyof typeof ac.statements;
 type Action<R extends Resource> = (typeof ac.statements)[R][number];
 export type PermissionSpec = { [R in Resource]?: Action<R>[] };
 
-export async function assertOrgPermission(headers: Headers, organizationId: string, permissions: PermissionSpec) {
+export async function hasOrgPermission(headers: Headers, organizationId: string, permissions: PermissionSpec): Promise<boolean> {
   const result = await auth.api.hasPermission({ headers, body: { permissions, organizationId } });
-  if (!result.success) {
+  return result.success;
+}
+
+export async function assertOrgPermission(headers: Headers, organizationId: string, permissions: PermissionSpec) {
+  if (!(await hasOrgPermission(headers, organizationId, permissions))) {
     error(403, "Forbidden");
   }
 }

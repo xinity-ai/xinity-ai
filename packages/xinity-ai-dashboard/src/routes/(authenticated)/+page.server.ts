@@ -8,6 +8,7 @@ import type { PageServerLoad } from "./$types";
 import type { ChecklistData, KeyMetrics, ChartsData, TablesData } from "./dashboard.types";
 import { organizationHasRating, resolveRatingTotals } from "$lib/server/lib/calls/call-ratings";
 import { rootLogger } from "$lib/server/logging";
+import { hasOrgPermission, type PermissionSpec } from "$lib/server/lib/auth/permissions";
 
 const log = rootLogger.child({ name: "dashboard-home" });
 
@@ -230,7 +231,7 @@ async function loadCharts(db: DB, orgId: string): Promise<ChartsData> {
   };
 }
 
-async function loadTables(db: DB, orgId: string): Promise<TablesData> {
+async function loadTables(db: DB, orgId: string, includeDeployments: boolean): Promise<TablesData> {
   const [recentActivitiesResult, recentModels] = await Promise.all([
     db.select({
       model: usageEventT.model,
@@ -245,17 +246,19 @@ async function loadTables(db: DB, orgId: string): Promise<TablesData> {
       .orderBy(sql`${usageEventT.createdAt} DESC`)
       .limit(5),
 
-    db.select({
-      name: modelDeploymentT.name,
-    })
-      .from(modelDeploymentT)
-      .where(sql`
-        ${modelDeploymentT.organizationId} = ${orgId}
-      AND
-        ${modelDeploymentT.deletedAt} IS NULL
-      `)
-      .orderBy(sql`${modelDeploymentT.createdAt} DESC`)
-      .limit(3),
+    includeDeployments
+      ? db.select({
+        name: modelDeploymentT.name,
+      })
+        .from(modelDeploymentT)
+        .where(sql`
+          ${modelDeploymentT.organizationId} = ${orgId}
+        AND
+          ${modelDeploymentT.deletedAt} IS NULL
+        `)
+        .orderBy(sql`${modelDeploymentT.createdAt} DESC`)
+        .limit(3)
+      : [],
   ]);
 
   return {
@@ -267,7 +270,11 @@ async function loadTables(db: DB, orgId: string): Promise<TablesData> {
   };
 }
 
-export const load: PageServerLoad = async ({ parent }) => {
+async function loadIfPermitted<T>(allowed: Promise<boolean>, load: () => Promise<T>, fallback: Promise<T>): Promise<T> {
+  return (await allowed) ? load() : fallback;
+}
+
+export const load: PageServerLoad = async ({ parent, request }) => {
   const { user, session } = await parent();
   const userId = user.id;
   const activeOrgId = session.activeOrganizationId;
@@ -285,12 +292,20 @@ export const load: PageServerLoad = async ({ parent }) => {
   void rollupUsageEvents(db, activeOrgId)
     .catch(err => log.error({ err }, "Usage info rollup error"));
 
+  const can = (permissions: PermissionSpec) => hasOrgPermission(request.headers, activeOrgId, permissions);
+  const canReadUsage = can({ apiCall: ["read"] });
+  const empty = emptyData();
+
   // Stream all data. Page renders immediately, sections fill in as queries resolve.
   return {
-    checklist: loadChecklist(db, activeOrgId),
-    keyMetrics: loadKeyMetrics(db, activeOrgId, userId),
-    charts: loadCharts(db, activeOrgId),
-    tables: loadTables(db, activeOrgId),
+    checklist: loadIfPermitted(canReadUsage, () => loadChecklist(db, activeOrgId),
+      empty.checklist.then((checklist) => ({ ...checklist, hasOrganization: true }))),
+    keyMetrics: loadIfPermitted(can({ apiCall: ["read"], callRating: ["read"] }),
+      () => loadKeyMetrics(db, activeOrgId, userId), empty.keyMetrics),
+    charts: loadIfPermitted(can({ apiCall: ["read"], aiApplication: ["read"] }),
+      () => loadCharts(db, activeOrgId), empty.charts),
+    tables: loadIfPermitted(canReadUsage,
+      async () => loadTables(db, activeOrgId, await can({ modelDeployment: ["read"] })), empty.tables),
   };
 };
 
