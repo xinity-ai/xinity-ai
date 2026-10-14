@@ -18,6 +18,7 @@ import { buildListenTarget } from "./serve-config";
 
 const log = rootLogger;
 
+const SHUTDOWN_DRAIN_TIMEOUT_MS = 5_000;
 const handshakeSchema = z.object({ protocolFingerprint: z.string() });
 
 function refuse(endpoint: DaemonEndpoint, reason: TetherRefusalReason, error: string, status: number): Response {
@@ -296,15 +297,17 @@ const server = Bun.serve({
 log.info({ ...serveTarget, tls: !!tls }, `Tether started (${tls ? "https" : "http"})`);
 
 async function shutdown() {
+  const requestsDrained = server.stop();
   clearInterval(keepaliveTimer);
   clearInterval(databaseProbeTimer);
   await configStore.stop();
   await configBroadcast.stop();
   sendShutdownToAll();
+  // A stream that finishes registering after the shutdown events stays open, so the wait is capped.
+  await Promise.race([requestsDrained, Bun.sleep(SHUTDOWN_DRAIN_TIMEOUT_MS)]);
   await flushAndStop();
   await notifyBus.stop();
   await endDB();
-  server.stop();
   process.exit(0);
 }
 
