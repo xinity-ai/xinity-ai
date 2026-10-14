@@ -120,6 +120,27 @@
       "when": 1789685920831,
       "tag": "0016_dynamic_config_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791986253645,
+      "tag": "0017_hardware_coupling",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791986253850,
+      "tag": "0018_installation_deployment_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792240887678,
+      "tag": "0019_cross_node_groups",
+      "breakpoints": true
     }
   ]
 }
