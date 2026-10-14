@@ -91,7 +91,7 @@ if (state.vllmPath) process.env.VLLM_PATH = state.vllmPath;
 if (state.dockerImage) process.env.VLLM_DOCKER_IMAGE = state.dockerImage;
 
 const [
-  { buildDockerRunArgs, buildSystemdEnvFile, buildSystemdDropIn, buildSystemdServeArgv },
+  { buildDockerRunArgs, buildSystemdEnvFile, buildSystemdDropIn, buildSystemdServeArgv, SINGLE_NODE },
   { computeGpuUtilization, buildVllmExtraArgs, concurrencyCap },
   { buildHardwareProfile },
   { NO_HOST_DEVICES, unpinnedDevicesFor },
@@ -122,6 +122,7 @@ function buildVllmInstanceConfig(resolved: ResolvedVllmModel, state: State): Vll
       concurrencyCap(resolved.model.sizing, profile.gpus, resolved.kvCacheGb),
     ),
     devices: unpinnedDevicesFor(profile.gpus, NO_HOST_DEVICES),
+    group: SINGLE_NODE,
   };
 }
 

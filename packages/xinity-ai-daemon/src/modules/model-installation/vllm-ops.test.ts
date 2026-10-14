@@ -8,6 +8,7 @@ const {
   buildSystemdDropIn,
   buildSystemdEnvFile,
   buildSystemdServeArgv,
+  SINGLE_NODE,
 } = await import("./vllm-ops");
 type VllmInstanceConfig = import("./vllm-ops").VllmInstanceConfig;
 
@@ -21,9 +22,54 @@ const baseConfig: VllmInstanceConfig = {
     dockerArgs: ["--gpus", "all", "-e", "CUDA_DEVICE_ORDER=PCI_BUS_ID"],
     tensorParallelSize: 1,
   },
+  group: SINGLE_NODE,
 };
 
 const amdPair = { env: ["ROCR_VISIBLE_DEVICES=GPU-a,GPU-b"], supplementaryGroups: [992, 44], dockerArgs: ["--device", "/dev/kfd"], tensorParallelSize: 2 };
+
+const member = (rank: number) => ({
+  kind: "member" as const,
+  size: 2,
+  rank,
+  masterAddr: "10.0.0.1",
+  masterPort: 29500,
+  rdmaDevices: ["rocep1s0f0", "roceP2p1s0f0"],
+  socketInterface: "enP7s7",
+});
+
+describe("a member of a node group", () => {
+  test("runs on the host network with the RDMA devices and serves on the installation port", () => {
+    const argv = buildDockerRunArgs("inst-1", { ...baseConfig, port: 8123, group: member(0) });
+    expect(argv).not.toContain("xinity-vllm-noegress-v1");
+    expect(argv).not.toContain("-p");
+    expect(argv.slice(argv.indexOf("--network"), argv.indexOf("--network") + 6)).toEqual([
+      "--network", "host", "--device", "/dev/infiniband", "--ulimit", "memlock=-1:-1",
+    ]);
+    expect(argv).toContain("NCCL_IB_HCA==rocep1s0f0,roceP2p1s0f0");
+    expect(argv).toContain("NCCL_SOCKET_IFNAME=enP7s7");
+    expect(argv).toContain("HF_HUB_OFFLINE=1");
+    expect(argv.slice(argv.indexOf("--host"), argv.indexOf("--host") + 4)).toEqual(["--host", "127.0.0.1", "--port", "8123"]);
+  });
+
+  test("splits tensor parallel across every card of every member", () => {
+    const argv = buildSystemdServeArgv({ ...baseConfig, devices: amdPair, group: member(0) });
+    expect(argv[argv.indexOf("--tensor-parallel-size") + 1]).toBe("4");
+    expect(argv.slice(argv.indexOf("--nnodes"), argv.indexOf("--nnodes") + 8)).toEqual([
+      "--nnodes", "2", "--node-rank", "0", "--master-addr", "10.0.0.1", "--master-port", "29500",
+    ]);
+  });
+
+  test("only rank 0 serves, the others run headless", () => {
+    expect(buildSystemdServeArgv({ ...baseConfig, group: member(0) })).not.toContain("--headless");
+    expect(buildSystemdServeArgv({ ...baseConfig, group: member(1) })).toContain("--headless");
+  });
+
+  test("hands NCCL its devices through the systemd env file too", () => {
+    const env = buildSystemdEnvFile({ ...baseConfig, group: member(1) });
+    expect(env).toContain("NCCL_IB_HCA==rocep1s0f0,roceP2p1s0f0\n");
+    expect(env).toContain("GLOO_SOCKET_IFNAME=enP7s7\n");
+  });
+});
 
 describe("buildDockerRunArgs", () => {
   test("base config emits stable argv (always egress-blocked + offline)", () => {
@@ -53,7 +99,7 @@ describe("buildDockerRunArgs", () => {
     ]);
   });
 
-  test("every container is egress-blocked and offline; no mode lets it reach the internet", () => {
+  test("every single-node container is egress-blocked and offline; no mode lets it reach the internet", () => {
     for (const mode of ["daemon", "preview"] as const) {
       const argv = buildDockerRunArgs("inst-1", baseConfig, mode);
       const netIdx = argv.indexOf("--network");

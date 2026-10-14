@@ -15,6 +15,11 @@ async function listDir(path: string): Promise<string[]> {
   return readdir(path).catch(() => []);
 }
 
+export async function rdmaDevicesOf(netdevs: readonly string[], sysfs = "/sys"): Promise<string[]> {
+  const devices = await Promise.all(netdevs.map(async (netdev) => (await listDir(`${sysfs}/class/net/${netdev}/device/infiniband`))[0]));
+  return [...new Set(devices.filter((device) => device !== undefined))];
+}
+
 export function ipv4FromGid(gid: string): string | null {
   const match = gid.match(/^0000:0000:0000:0000:0000:ffff:([0-9a-f]{2})([0-9a-f]{2}):([0-9a-f]{2})([0-9a-f]{2})$/i);
   return match ? match.slice(1).map((byte) => Number.parseInt(byte, 16)).join(".") : null;
