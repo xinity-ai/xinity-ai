@@ -1,5 +1,5 @@
 import type { CommandModule } from "yargs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync, unlinkSync } from "node:fs";
 import { chmod, copyFile, mkdir, rename, unlink } from "node:fs/promises";
@@ -113,8 +113,12 @@ async function selfUpdate(release: Release): Promise<boolean> {
 
 async function locateRunningBinary(fallbackPath: string): Promise<string | null> {
   const execPath = process.execPath;
-  if (execPath === process.argv[0] && await Bun.file(execPath).exists()) return execPath;
-  if (await Bun.file(fallbackPath).exists()) return fallbackPath;
+  if (basename(execPath) === binaryName() && await Bun.file(execPath).exists()) {
+    return execPath;
+  }
+  if (await Bun.file(fallbackPath).exists()) {
+    return fallbackPath;
+  }
   return null;
 }
 
