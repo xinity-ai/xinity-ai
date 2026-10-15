@@ -327,7 +327,13 @@ async function promptAndValidateRedisUrl(host: Host): Promise<string | undefined
         { value: "proceed", label: "Use this URL anyway" },
       ],
     });
-    if (isCancel(action) || action === "proceed") return value;
+    if (isCancel(action)) {
+      cancel("Cancelled.");
+      return undefined;
+    }
+    if (action === "proceed") {
+      return value;
+    }
   }
 }
 
