@@ -280,7 +280,9 @@ async function promptField(
 function displayValue(field: EnvField, value: string | undefined, required: boolean): string {
   const delegation = parseDelegation(value);
   if (delegation) {
-    const fallback = delegation.fallback ?? String(field.defaultValue ?? "unset");
+    const fallback = delegation.fallback && field.isSecret
+      ? "••••••"
+      : delegation.fallback ?? String(field.defaultValue ?? "unset");
     return `${green("dashboard")} ${dim(`(falls back to ${fallback})`)}`;
   }
   if (value !== undefined && value !== "") {
