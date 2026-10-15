@@ -374,15 +374,15 @@ export class RemoteHost implements Host {
   }
 
   async uploadFile(localPath: string, destPath: string): Promise<string> {
-    if (this.isLocalhost) {
-      return localPath;
-    }
-    const result = await localRun([
-      "scp",
-      ...(SUPPORTS_SSH_MULTIPLEXING ? ["-o", `ControlPath=${this.socket}`] : []),
-      localPath,
-      `${this.hostname}:${destPath}`,
-    ]);
+    const argv = this.isLocalhost
+      ? ["cp", localPath, destPath]
+      : [
+        "scp",
+        ...(SUPPORTS_SSH_MULTIPLEXING ? ["-o", `ControlPath=${this.socket}`] : []),
+        localPath,
+        `${this.hostname}:${destPath}`,
+      ];
+    const result = await localRun(argv);
     if (!result.ok) {
       throw new Error(`Failed to upload ${localPath} to ${this.hostname}:${destPath}: ${result.output}`);
     }
