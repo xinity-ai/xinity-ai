@@ -251,31 +251,42 @@ function requiredFieldsPresenceCheck(
   return { label, status: "pass", message: whenSetMessage };
 }
 
-/** Cache for DB check results - avoids re-tunneling and re-querying the same DB multiple times. */
-const dbCheckCache = new Map<string, CheckResult[]>();
+// Keyed by the host a run checks from: the probes tunnel through it, so another host's result for the
+// same URL says nothing, and a later run on the same host gets its own fresh wrapper.
+const dbCheckCache = new WeakMap<Host, Map<string, CheckResult[]>>();
+const infoserverCheckCache = new WeakMap<Host, Map<string, CheckResult>>();
+
+function cacheFor<T>(caches: WeakMap<Host, Map<string, T>>, host: Host): Map<string, T> {
+  let cache = caches.get(host);
+  if (!cache) {
+    cache = new Map();
+    caches.set(host, cache);
+  }
+  return cache;
+}
 
 async function pushDbChecks(checks: CheckResult[], values: Record<string, string>, host: Host): Promise<void> {
   if (!values.DB_CONNECTION_URL) return;
   const url = values.DB_CONNECTION_URL;
 
-  let results = dbCheckCache.get(url);
+  const cache = cacheFor(dbCheckCache, host);
+  let results = cache.get(url);
   if (!results) {
     results = await checkPostgresAndMigrations(url, host);
-    dbCheckCache.set(url, results);
+    cache.set(url, results);
   }
   checks.push(...results);
 }
-
-const infoserverCheckCache = new Map<string, CheckResult>();
 
 async function pushInfoserverCheck(checks: CheckResult[], values: Record<string, string>, host: Host): Promise<void> {
   if (!values.INFOSERVER_URL) return;
   const url = values.INFOSERVER_URL;
 
-  let result = infoserverCheckCache.get(url);
+  const cache = cacheFor(infoserverCheckCache, host);
+  let result = cache.get(url);
   if (!result) {
     result = await checkServiceHealth(host, "Infoserver", `${url}/health`);
-    infoserverCheckCache.set(url, result);
+    cache.set(url, result);
   }
   checks.push(result);
 }
@@ -582,7 +593,6 @@ async function checkComponent(
 
 
 export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
-  infoserverCheckCache.clear();
   const components: ComponentReport[] = [];
 
   // Read before the probe, which needs to know which components to check.
