@@ -56,6 +56,7 @@ export const desiredInstallationSchema = z.object({
   driver: driverEnum,
   estCapacity: z.number(),
   kvCacheCapacity: z.number(),
+  hostCapacity: z.number().nullable(),
   port: z.number(),
   settings: deploymentSettingsSchema,
   gpuIds: z.array(z.string()),
@@ -81,6 +82,7 @@ export const nodeRegistrationSchema = z.object({
   driverFeatures: z.record(z.string(), z.array(z.string())),
   tls: z.boolean(),
   estCapacity: z.number(),
+  hostMemoryGb: z.number().optional(),
   machineName: z.string().optional(),
   authToken: z.string(),
   protocolFingerprint: z.string(),
@@ -150,6 +152,7 @@ export function canonicalRegistration(reg: UnsignedNodeRegistration, requestAuth
     sortedPairs(reg.driverFeatures),
     reg.tls,
     reg.estCapacity,
+    reg.hostMemoryGb ?? null,
     reg.machineName ?? null,
     reg.authToken,
     reg.protocolFingerprint,
@@ -208,7 +211,7 @@ export const INTERCONNECT_PATH = "/api/v1/interconnect";
 export const KEEPALIVE_INTERVAL_HEADER = "X-Keepalive-Interval-Ms";
 
 // Bump whenever signing changes
-const SIGNED_FORM_VERSION = 3;
+const SIGNED_FORM_VERSION = 4;
 
 let cachedFingerprint: string | null = null;
 

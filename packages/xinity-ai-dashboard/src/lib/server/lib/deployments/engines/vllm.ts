@@ -1,8 +1,17 @@
-import { runsTensorParallel, tensorParallelLayouts, type OptimizationGoal } from "common-env";
-import type { CardCapacity } from "../cluster-state";
+import {
+  deploymentFootprint,
+  engineProfile,
+  imagesInFlight,
+  layoutOptions,
+  runsTensorParallel,
+  tensorParallelLayouts,
+  type FootprintEntry,
+  type OptimizationGoal,
+} from "common-env";
+import { poolCharge, type CardCapacity, type NodeResources } from "../cluster-state";
 import { requirementKey } from "../placement";
 import { orderByStrategy, type DeploymentStrategy } from "../strategy";
-import type { EngineScheduler, PlacementModel } from "./engine";
+import type { Charge, EngineScheduler, PlacementModel, PlacementRequest } from "./engine";
 
 const VLLM_PORT_BASE = 11435;
 
@@ -12,7 +21,7 @@ function placeableCards(cards: CardCapacity[]): CardCapacity[] {
   return pinnable.length > 0 ? pinnable : cards.slice(0, 1);
 }
 
-export type VllmLayout = { cards: CardCapacity[]; perCardGb: number };
+export type VllmLayout = { cards: CardCapacity[]; perCardGb: number; hostGb: number };
 
 // vLLM gives every rank the same share and one utilization fraction, so a split spans identical cards only.
 function identicalCardGroups(cards: CardCapacity[]): CardCapacity[][] {
@@ -24,23 +33,52 @@ function identicalCardGroups(cards: CardCapacity[]): CardCapacity[][] {
   return [...groups.values()];
 }
 
-function vllmLayouts(
-  cards: CardCapacity[],
-  model: PlacementModel,
-  kvCacheGb: number,
-  strategy: DeploymentStrategy,
-): VllmLayout[] {
-  const sizing = { weightGb: model.weight, attentionHeads: model.attentionHeads, kvHeads: model.kvHeads, mlaAttention: model.mlaAttention };
+type PerCardCharge = { perCardGb: number; hostGb: number };
 
-  return identicalCardGroups(placeableCards(cards)).flatMap((group) => {
+function footprintCharge(entry: FootprintEntry, node: NodeResources, kvCacheGb: number, cards: number, vendor: string): PerCardCharge | undefined {
+  const layout = { cardsPerNode: cards, nodes: 1 };
+  const allowed = layoutOptions(entry, { maxCardsPerNode: cards, maxNodes: 1, vendor, engineVersion: node.engineVersion })
+    .some((option) => option.allowed && option.layout.cardsPerNode === cards);
+  if (!allowed) {
+    return undefined;
+  }
+  const footprint = deploymentFootprint(entry, {
+    layout,
+    kvCacheGb,
+    imagesInFlight: imagesInFlight(entry, node.gpus, kvCacheGb),
+    profile: engineProfile("vllm", node.engineVersion),
+  });
+  return footprint && { perCardGb: footprint.ranks[0]!.gpuGb, hostGb: footprint.hostGb };
+}
+
+function weightsAndKvCharge(model: PlacementModel, kvCacheGb: number, cards: number): PerCardCharge | undefined {
+  const sizing = { weightGb: model.weight, attentionHeads: model.attentionHeads, kvHeads: model.kvHeads, mlaAttention: model.mlaAttention };
+  const layout = tensorParallelLayouts(sizing, { cards, kvCacheGb }).find((candidate) => candidate.tensorParallelSize === cards);
+  return layout && { perCardGb: layout.perCardWeightGb + layout.perCardKvCacheGb, hostGb: 0 };
+}
+
+function perCardCharge(model: PlacementModel, node: NodeResources, kvCacheGb: number, cards: number, vendor: string): PerCardCharge | undefined {
+  return model.footprint
+    ? footprintCharge(model.footprint, node, kvCacheGb, cards, vendor)
+    : weightsAndKvCharge(model, kvCacheGb, cards);
+}
+
+const asCharge = ({ perCardGb, hostGb }: PerCardCharge, cards: number): Charge => ({ estCapacity: perCardGb * cards, hostCapacity: hostGb });
+
+function vllmLayouts(node: NodeResources, model: PlacementModel, kvCacheGb: number, strategy: DeploymentStrategy): VllmLayout[] {
+  const hostFree = node.host && !node.unified ? node.host.total - node.host.used : Infinity;
+  return identicalCardGroups(placeableCards(node.cards)).flatMap((group) => {
     const ordered = orderByStrategy(strategy, group, (card) => card);
-    const maxTensorParallel = runsTensorParallel(group[0]!.vendor) ? group.length : 1;
-    return tensorParallelLayouts(sizing, { cards: maxTensorParallel, kvCacheGb }).flatMap((layout) => {
-      const perCardGb = layout.perCardWeightGb + layout.perCardKvCacheGb;
-      const fitting = ordered.filter((card) => card.total - card.used >= perCardGb);
-      return fitting.length >= layout.tensorParallelSize
-        ? [{ cards: fitting.slice(0, layout.tensorParallelSize), perCardGb }]
-        : [];
+    const vendor = group[0]!.vendor;
+    const maxCards = runsTensorParallel(vendor) ? group.length : 1;
+    return Array.from({ length: maxCards }, (_, index) => index + 1).flatMap((cards) => {
+      const charge = perCardCharge(model, node, kvCacheGb, cards, vendor);
+      if (!charge || charge.hostGb > hostFree) {
+        return [];
+      }
+      const onEachCard = poolCharge(node, asCharge(charge, cards)) / cards;
+      const fitting = ordered.filter((card) => card.total - card.used >= onEachCard);
+      return fitting.length >= cards ? [{ cards: fitting.slice(0, cards), ...charge }] : [];
     });
   });
 }
@@ -52,28 +90,33 @@ const LAYOUT_PREFERENCE: Record<OptimizationGoal, (a: VllmLayout, b: VllmLayout)
 };
 
 export function layoutForVllm(
-  cards: CardCapacity[],
+  node: NodeResources,
   model: PlacementModel,
   kvCacheGb: number,
   goal: OptimizationGoal,
   strategy: DeploymentStrategy,
 ): VllmLayout | undefined {
-  return vllmLayouts(cards, model, kvCacheGb, strategy).sort(LAYOUT_PREFERENCE[goal])[0];
+  return vllmLayouts(node, model, kvCacheGb, strategy).sort(LAYOUT_PREFERENCE[goal])[0];
 }
 
 // Each vLLM installation is its own process on its own cards, so only replicas of one deployment
 // side are spread across nodes, and the daemon runs an unpinned one on the node's first card.
 export const vllmScheduler: EngineScheduler = {
   excludes: (placed, candidate) => requirementKey(placed) === requirementKey(candidate),
-  placeOnNode: (cards, request) => {
-    const layout = layoutForVllm(cards, request.model, request.kvCacheGb, request.goal, request.strategy);
+  placeOnNode: (node, request: PlacementRequest) => {
+    const layout = layoutForVllm(node, request.model, request.kvCacheGb, request.goal, request.strategy);
     if (!layout) {
       return undefined;
     }
     return {
       gpuIds: layout.cards.flatMap((card) => (card.id ? [card.id] : [])),
-      estCapacity: layout.perCardGb * layout.cards.length,
+      ...asCharge(layout, layout.cards.length),
     };
+  },
+  charge: (node, request, cards) => {
+    const vendor = placeableCards(node.cards)[0]?.vendor ?? "";
+    const charge = perCardCharge(request.model, node, request.kvCacheGb, cards, vendor);
+    return charge && asCharge(charge, cards);
   },
   occupiedCards: (cards, gpuIds) => {
     const pinned = cards.filter((card) => card.id !== null && gpuIds.includes(card.id));

@@ -1,11 +1,12 @@
 import { describe, test, expect } from "bun:test";
-import { collectDriftedInstallations, collectExcessInstallations, collectReassignableOrphans, findServerForModel } from "../src/lib/server/lib/deployments/orchestration";
-import { buildClusterState, cardsOf, rankServers } from "../src/lib/server/lib/deployments/cluster-state";
+import { chargeUnchargedInstallations, collectDriftedInstallations, collectExcessInstallations, collectReassignableOrphans, findServerForModel } from "../src/lib/server/lib/deployments/orchestration";
+import { buildClusterState, rankServers, resourcesOf } from "../src/lib/server/lib/deployments/cluster-state";
 import { layoutForVllm, vllmScheduler } from "../src/lib/server/lib/deployments/engines/vllm";
 import { requirementsForDeployments, type ModelRequirement, type ModelRequirementTable } from "../src/lib/server/lib/deployments/requirements";
 import type { DeploymentStrategy } from "../src/lib/server/lib/deployments/strategy";
 import type { AiNode, ModelDeployment, ModelInstallation } from "common-db";
 import type { SchedulableModel } from "../src/lib/server/lib/models/model-catalog";
+import type { FootprintEntry } from "common-env";
 
 const FF: DeploymentStrategy = "first-fit";
 const need = (weight: number) => ({ model: { weight }, kvCacheGb: 0, goal: "space" as const });
@@ -15,6 +16,7 @@ function makeNode(overrides: Partial<AiNode> & { id: string }): AiNode {
     host: "10.0.0.1",
     port: 9090,
     estCapacity: 24,
+    hostMemoryGb: null,
     available: true,
     driverVersions: { ollama: "0.6.3" },
     driverFeatures: {},
@@ -37,6 +39,7 @@ function makeInstallation(overrides: Partial<ModelInstallation> & { id: string; 
     deploymentId: "dep-1",
     estCapacity: 8,
     kvCacheCapacity: 2,
+    hostCapacity: 0,
     port: 11434,
     driver: "ollama",
     settings: { version: 1 },
@@ -226,19 +229,19 @@ describe("orchestration: vllm pinned to cards", () => {
 
   test("pins to the card that still has room", () => {
     const state = buildClusterState([vllm("a", 20, ["GPU-A"])], [node]);
-    expect(layoutForVllm(cardsOf(state, "node-ab"), { weight: 8 }, 0, "space", FF)?.cards[0]?.id).toBe("GPU-B");
+    expect(layoutForVllm(resourcesOf(state, "node-ab"), { weight: 8 }, 0, "space", FF)?.cards[0]?.id).toBe("GPU-B");
     expect(findServerForModel({ deploymentId: "dep-1", specifier: "b" }, "vllm", need(8), state, [], FF)).toBe("node-ab");
   });
 
   test("counts an unpinned installation against the first card, where the daemon runs it", () => {
     const state = buildClusterState([vllm("a", 20, [])], [node]);
-    expect(layoutForVllm(cardsOf(state, "node-ab"), { weight: 8 }, 0, "space", FF)?.cards[0]?.id).toBe("GPU-B");
+    expect(layoutForVllm(resourcesOf(state, "node-ab"), { weight: 8 }, 0, "space", FF)?.cards[0]?.id).toBe("GPU-B");
   });
 
   test("chooses between cards with the same strategy as between nodes", () => {
     const state = buildClusterState([vllm("a", 10, ["GPU-A"])], [node]);
-    expect(layoutForVllm(cardsOf(state, "node-ab"), { weight: 8 }, 0, "space", "bin-pack")?.cards[0]?.id).toBe("GPU-A");
-    expect(layoutForVllm(cardsOf(state, "node-ab"), { weight: 8 }, 0, "space", "balanced")?.cards[0]?.id).toBe("GPU-B");
+    expect(layoutForVllm(resourcesOf(state, "node-ab"), { weight: 8 }, 0, "space", "bin-pack")?.cards[0]?.id).toBe("GPU-A");
+    expect(layoutForVllm(resourcesOf(state, "node-ab"), { weight: 8 }, 0, "space", "balanced")?.cards[0]?.id).toBe("GPU-B");
   });
 
   test("refuses the node once no single card can hold the installation", () => {
@@ -249,7 +252,7 @@ describe("orchestration: vllm pinned to cards", () => {
   test("leaves the installation unpinned on a node whose cards report no id", () => {
     const legacy = makeNode({ id: "node-old", gpus: [{ vendor: "nvidia", name: "card", vramMb: 24576 }], driverVersions: { vllm: "0.30.0" } });
     const state = buildClusterState([], [legacy]);
-    expect(layoutForVllm(cardsOf(state, "node-old"), { weight: 8 }, 0, "space", FF)?.cards[0]?.id).toBeNull();
+    expect(layoutForVllm(resourcesOf(state, "node-old"), { weight: 8 }, 0, "space", FF)?.cards[0]?.id).toBeNull();
   });
 });
 
@@ -343,44 +346,44 @@ describe("orchestration: vllm layouts", () => {
 
   test("space keeps a model on one card when it fits", () => {
     const state = buildClusterState([], [node]);
-    expect(ids(layoutForVllm(cardsOf(state, "node-mixed"), qwen, 16, "space", FF))).toEqual(["L-1"]);
+    expect(ids(layoutForVllm(resourcesOf(state, "node-mixed"), qwen, 16, "space", FF))).toEqual(["L-1"]);
   });
 
   test("speed splits across identical cards and never mixes card models", () => {
     const state = buildClusterState([], [node]);
-    const layout = layoutForVllm(cardsOf(state, "node-mixed"), qwen, 16, "speed", FF);
+    const layout = layoutForVllm(resourcesOf(state, "node-mixed"), qwen, 16, "speed", FF);
     expect(ids(layout)).toEqual(["L-1", "L-2"]);
     expect(layout!.perCardGb).toBe(21);
   });
 
   test("splits a model no single card can hold, even for space", () => {
     const state = buildClusterState([], [node]);
-    expect(ids(layoutForVllm(cardsOf(state, "node-mixed"), { ...qwen, weight: 60 }, 16, "space", FF))).toEqual(["L-1", "L-2"]);
+    expect(ids(layoutForVllm(resourcesOf(state, "node-mixed"), { ...qwen, weight: 60 }, 16, "space", FF))).toEqual(["L-1", "L-2"]);
   });
 
   test("cannot split a model whose head counts are not stated", () => {
     const state = buildClusterState([], [node]);
-    expect(layoutForVllm(cardsOf(state, "node-mixed"), { weight: 60 }, 16, "space", FF)).toBeUndefined();
+    expect(layoutForVllm(resourcesOf(state, "node-mixed"), { weight: 60 }, 16, "space", FF)).toBeUndefined();
   });
 
   test("falls back to fewer cards when an identical card is too full to take its share", () => {
     const busy = makeInstallation({ id: "i1", nodeId: "node-mixed", specifier: "other", driver: "vllm", estCapacity: 30, gpuIds: ["L-1"] });
     const state = buildClusterState([busy], [node]);
-    expect(ids(layoutForVllm(cardsOf(state, "node-mixed"), qwen, 16, "speed", FF))).toEqual(["L-2"]);
+    expect(ids(layoutForVllm(resourcesOf(state, "node-mixed"), qwen, 16, "speed", FF))).toEqual(["L-2"]);
   });
 
   test("lands on the first card unpinned when no card reports an id", () => {
     const legacy = makeNode({ id: "node-old", gpus: [{ vendor: "nvidia", name: "card", vramMb: 49152 }], driverVersions: { vllm: "0.30.0" } });
     const state = buildClusterState([], [legacy]);
-    expect(ids(layoutForVllm(cardsOf(state, "node-old"), qwen, 16, "speed", FF))).toEqual([null]);
+    expect(ids(layoutForVllm(resourcesOf(state, "node-old"), qwen, 16, "speed", FF))).toEqual([null]);
   });
 
   test("never splits across intel cards, and pins them by bus id", () => {
     const arc = (pciBusId: string) => ({ vendor: "intel", name: "Intel(R) Arc(TM) A770 Graphics", vramMb: 16384, pciBusId });
     const intel = makeNode({ id: "node-arc", gpus: [arc("0000:03:00.0"), arc("0000:04:00.0")], driverVersions: { vllm: "0.30.0" } });
     const state = buildClusterState([], [intel]);
-    expect(ids(layoutForVllm(cardsOf(state, "node-arc"), { weight: 8, attentionHeads: 32, kvHeads: 8 }, 4, "speed", FF))).toEqual(["0000:03:00.0"]);
-    expect(layoutForVllm(cardsOf(state, "node-arc"), { weight: 20, attentionHeads: 32, kvHeads: 8 }, 4, "space", FF)).toBeUndefined();
+    expect(ids(layoutForVllm(resourcesOf(state, "node-arc"), { weight: 8, attentionHeads: 32, kvHeads: 8 }, 4, "speed", FF))).toEqual(["0000:03:00.0"]);
+    expect(layoutForVllm(resourcesOf(state, "node-arc"), { weight: 20, attentionHeads: 32, kvHeads: 8 }, 4, "space", FF)).toBeUndefined();
   });
 });
 
@@ -390,13 +393,13 @@ describe("orchestration: placing across cards", () => {
   const qwen = { weight: 26, attentionHeads: 24, kvHeads: 4 };
 
   test("a split installation occupies its per-card need on every card", () => {
-    const slot = vllmScheduler.placeOnNode(cardsOf(buildClusterState([], [twoCards]), "node-2"), { model: qwen, kvCacheGb: 16, goal: "speed", strategy: FF });
-    expect(slot).toEqual({ gpuIds: ["L-1", "L-2"], estCapacity: 42 });
+    const slot = vllmScheduler.placeOnNode(resourcesOf(buildClusterState([], [twoCards]), "node-2"), { model: qwen, kvCacheGb: 16, goal: "speed", strategy: FF });
+    expect(slot).toEqual({ gpuIds: ["L-1", "L-2"], estCapacity: 42, hostCapacity: 0 });
   });
 
   test("counts the kv cache every card holds once the kv heads are replicated", () => {
     const eight = makeNode({ id: "node-8", estCapacity: 360, gpuCount: 8, gpus: [1, 2, 3, 4, 5, 6, 7, 8].map((n) => l40s(`L-${n}`)), driverVersions: { vllm: "0.30.0" } });
-    const slot = vllmScheduler.placeOnNode(cardsOf(buildClusterState([], [eight]), "node-8"), { model: qwen, kvCacheGb: 16, goal: "speed", strategy: FF });
+    const slot = vllmScheduler.placeOnNode(resourcesOf(buildClusterState([], [eight]), "node-8"), { model: qwen, kvCacheGb: 16, goal: "speed", strategy: FF });
     expect(slot!.gpuIds).toHaveLength(8);
     expect(slot!.estCapacity).toBe(58);
   });
@@ -631,5 +634,70 @@ describe("orchestration: deployment strategies", () => {
     const third = findServerForModel({ deploymentId: "dep-1", specifier: "m" }, "ollama", need(4), empty, pending, "balanced")!;
 
     expect(new Set([first, second, third])).toEqual(new Set(["node-a", "node-b", "node-c"]));
+  });
+});
+
+describe("orchestration: charging footprints", () => {
+  const GIB = 1.073741824;
+  const l40s = (uuid: string) => ({ vendor: "nvidia", name: "L40S", vramMb: 46080, uuid });
+  const discrete = (hostMemoryGb: number | null) => makeNode({
+    id: "node-l40s", estCapacity: 90, gpuCount: 2, gpus: [l40s("L-1"), l40s("L-2")], driverVersions: { vllm: "0.31.0" }, hostMemoryGb,
+  });
+  const entry = (limits: FootprintEntry["placement"]["limits"] = []) => ({
+    weight: 26, attentionHeads: 24, kvHeads: 4,
+    footprint: { sizing: { weightGb: 26, minKvCacheGb: 4, maxContextLength: 32768, attentionHeads: 24, kvHeads: 4 }, tags: [], placement: { limits } },
+  });
+  const request = (goal: "space" | "speed", model = entry()) => ({ model, kvCacheGb: 4, goal, strategy: FF });
+
+  test("charges every card the engine's own memory on top of its weights and kv, and the node its host processes", () => {
+    const node = resourcesOf(buildClusterState([], [discrete(null)]), "node-l40s");
+    const whole = vllmScheduler.placeOnNode(node, request("space"))!;
+    expect(whole.estCapacity).toBeCloseTo(26 + 4 + 2.5 * GIB);
+    expect(whole.hostCapacity).toBeCloseTo(5 * GIB);
+    const split = vllmScheduler.placeOnNode(node, request("speed"))!;
+    expect(split.gpuIds).toEqual(["L-1", "L-2"]);
+    expect(split.estCapacity).toBeCloseTo(2 * (13 + 2 + 3.5 * GIB));
+    expect(split.hostCapacity).toBeCloseTo((5 + 6) * GIB);
+  });
+
+  test("refuses a discrete node whose reported host memory cannot take the host part, and leaves an unreported one unlimited", () => {
+    const placement = { deploymentId: "dep-1", specifier: "qwen" };
+    expect(findServerForModel(placement, "vllm", request("space"), buildClusterState([], [discrete(4)]), [], FF)).toBeNull();
+    expect(findServerForModel(placement, "vllm", request("space"), buildClusterState([], [discrete(null)]), [], FF)).toBe("node-l40s");
+  });
+
+  test("counts host memory already charged on the node", () => {
+    const placed = makeInstallation({ id: "i1", nodeId: "node-l40s", specifier: "other", driver: "vllm", estCapacity: 10, hostCapacity: 60, gpuIds: ["L-1"] });
+    const state = buildClusterState([placed], [discrete(64)]);
+    expect(findServerForModel({ deploymentId: "dep-1", specifier: "qwen" }, "vllm", request("space"), state, [], FF)).toBeNull();
+  });
+
+  test("charges a unified-memory node's one pool for both parts", () => {
+    const gb10 = makeNode({ id: "node-gb10", estCapacity: 109, gpus: [{ vendor: "nvidia", name: "GB10", vramMb: 0 }], driverVersions: { vllm: "0.31.0" }, hostMemoryGb: 115 });
+    const model = (weight: number) => ({ ...entry(), weight, footprint: { ...entry().footprint, sizing: { ...entry().footprint.sizing, weightGb: weight } } });
+    const placement = { deploymentId: "dep-1", specifier: "big" };
+    expect(findServerForModel(placement, "vllm", request("space", model(100)), buildClusterState([], [gb10]), [], FF)).toBeNull();
+    const state = buildClusterState([], [gb10]);
+    const slot = vllmScheduler.placeOnNode(resourcesOf(state, "node-gb10"), request("space", model(95)))!;
+    expect(slot.estCapacity + slot.hostCapacity).toBeLessThanOrEqual(109);
+    expect(findServerForModel(placement, "vllm", request("space", model(95)), state, [], FF)).toBe("node-gb10");
+  });
+
+  test("keeps an installation on the splits its entry allows", () => {
+    const node = resourcesOf(buildClusterState([], [discrete(null)]), "node-l40s");
+    const oneCardOnly = entry([{ limit: "splitSizes", values: [1], reason: "FP8 blocks" }]);
+    expect(vllmScheduler.placeOnNode(node, request("speed", oneCardOnly))!.gpuIds).toEqual(["L-1"]);
+  });
+
+  test("charges a row placed before host memory was charged once, for the cards it runs on", async () => {
+    const uncharged = makeInstallation({ id: "old", nodeId: "node-l40s", specifier: "qwen", driver: "vllm", estCapacity: 30, kvCacheCapacity: 4, hostCapacity: null, gpuIds: ["L-1", "L-2"] });
+    const charged = makeInstallation({ id: "new", nodeId: "node-l40s", specifier: "qwen", driver: "vllm", estCapacity: 33, hostCapacity: 5 });
+    const lookup = async () => makeModel({ ...entry(), driver: "vllm" });
+    const [old, kept] = await chargeUnchargedInstallations([uncharged, charged], [discrete(null)], lookup);
+    expect(old!.estCapacity).toBeCloseTo(2 * (13 + 2 + 3.5 * GIB));
+    expect(old!.hostCapacity).toBeCloseTo((5 + 6) * GIB);
+    expect(kept).toBe(charged);
+    const [unknown] = await chargeUnchargedInstallations([uncharged], [discrete(null)], async () => null);
+    expect(unknown).toBe(uncharged);
   });
 });

@@ -34,6 +34,8 @@ export type HardwareProfile = {
   /** Full physical VRAM or system RAM in GB; denominator for vLLM --gpu-memory-utilization. */
   physicalCapacityGb: number;
   systemRamMb: number;
+  /** RAM installations may use, in decimal GB. */
+  hostMemoryGb?: number;
   source: CapacitySource;
 };
 
@@ -425,8 +427,11 @@ export function classifyCapacitySource(gpus: DetectedGpu[]): CapacitySource {
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
-/** Fraction of system RAM usable for models on unified-memory GPUs; remainder keeps the OS responsive. */
-const UNIFIED_MEM_USABLE_FRACTION = 0.9;
+/** Share of system RAM left to installations, the rest keeps the OS responsive. */
+const USABLE_RAM_FRACTION = 0.9;
+
+const usableRamGb = (systemRamMb: number) =>
+  systemRamMb > 0 ? Math.floor((systemRamMb * 2 ** 20 * USABLE_RAM_FRACTION) / 1e9) : undefined;
 
 export function buildHardwareProfile(gpus: DetectedGpu[], systemRamMb: number): HardwareProfile {
   const gpuCount = gpus.length;
@@ -439,6 +444,7 @@ export function buildHardwareProfile(gpus: DetectedGpu[], systemRamMb: number): 
       detectedCapacityGb: mbToGb(totalVramMb),
       physicalCapacityGb: mbToGb(totalVramMb),
       systemRamMb,
+      hostMemoryGb: usableRamGb(systemRamMb),
       source: classifyCapacitySource(gpus),
     };
   }
@@ -448,9 +454,10 @@ export function buildHardwareProfile(gpus: DetectedGpu[], systemRamMb: number): 
     return {
       gpus,
       gpuCount,
-      detectedCapacityGb: mbToGb(Math.floor(systemRamMb * UNIFIED_MEM_USABLE_FRACTION)),
+      detectedCapacityGb: mbToGb(Math.floor(systemRamMb * USABLE_RAM_FRACTION)),
       physicalCapacityGb: mbToGb(systemRamMb),
       systemRamMb,
+      hostMemoryGb: usableRamGb(systemRamMb),
       source: "unified-memory",
     };
   }
@@ -462,6 +469,7 @@ export function buildHardwareProfile(gpus: DetectedGpu[], systemRamMb: number): 
     detectedCapacityGb: mbToGb(systemRamMb),
     physicalCapacityGb: mbToGb(systemRamMb),
     systemRamMb,
+    hostMemoryGb: usableRamGb(systemRamMb),
     source: "system-ram",
   };
 }

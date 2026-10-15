@@ -1,6 +1,7 @@
 import type { AiNode, ModelInstallation, InferInsertModel, modelInstallationT } from "common-db";
-import { gpuId } from "common-env";
+import { gpuId, type GpuInfo } from "common-env";
 import { ENGINE_SCHEDULERS } from "./engines";
+import type { Charge } from "./engines/engine";
 import { requirementKey } from "./placement";
 import { orderByStrategy, type Capacity, type DeploymentStrategy } from "./strategy";
 
@@ -8,12 +9,21 @@ export type NewInstallation = InferInsertModel<typeof modelInstallationT>;
 
 export type CardCapacity = Capacity & { id: string | null; vendor: string; name: string };
 
+export type NodeResources = {
+  cards: CardCapacity[];
+  unified: boolean;
+  host?: Capacity;
+  gpus: GpuInfo[];
+  engineVersion?: string;
+};
+
 /** Mutable tracking state built from current DB contents. */
 export type ClusterState = {
   installationsByRequirement: Map<string, ModelInstallation[]>;
   installationsByServer: Map<string, ModelInstallation[]>;
   serverCapacity: Map<string, Capacity>;
   cardCapacity: Map<string, CardCapacity[]>;
+  hostCapacity: Map<string, Capacity>;
   availableServers: AiNode[];
 };
 
@@ -22,6 +32,8 @@ export type ClusterState = {
 export function rankServers(strategy: DeploymentStrategy, state: ClusterState): AiNode[] {
   return orderByStrategy(strategy, state.availableServers, (server) => state.serverCapacity.get(server.id));
 }
+
+const isUnified = (server: AiNode) => !server.gpus.some((gpu) => gpu.vramMb > 0);
 
 // Without card sizes (unified memory, or none reported) the node is one card of its whole capacity.
 function nodeCards(server: AiNode): CardCapacity[] {
@@ -35,20 +47,44 @@ export function cardsOf(state: ClusterState, nodeId: string): CardCapacity[] {
   return state.cardCapacity.get(nodeId) ?? [];
 }
 
+export function resourcesOf(state: ClusterState, nodeId: string): NodeResources {
+  const server = state.availableServers.find((candidate) => candidate.id === nodeId);
+  return {
+    cards: cardsOf(state, nodeId),
+    unified: server ? isUnified(server) : false,
+    host: state.hostCapacity.get(nodeId),
+    gpus: server?.gpus ?? [],
+    engineVersion: server?.driverVersions.vllm || undefined,
+  };
+}
+
+export function poolCharge(node: Pick<NodeResources, "unified">, charge: Charge): number {
+  return charge.estCapacity + (node.unified ? charge.hostCapacity : 0);
+}
+
 export function chargeCapacity(
   state: ClusterState,
   installation: Pick<NewInstallation, "nodeId" | "driver" | "gpuIds">,
-  capacity: number,
+  charge: Charge,
+  sign: 1 | -1 = 1,
 ): void {
+  const node = resourcesOf(state, installation.nodeId);
+  const pooled = sign * poolCharge(node, charge);
   const cap = state.serverCapacity.get(installation.nodeId);
   if (cap) {
-    cap.used += capacity;
+    cap.used += pooled;
   }
-  const occupied = ENGINE_SCHEDULERS[installation.driver].occupiedCards(cardsOf(state, installation.nodeId), installation.gpuIds ?? []);
+  const occupied = ENGINE_SCHEDULERS[installation.driver].occupiedCards(node.cards, installation.gpuIds ?? []);
   for (const card of occupied) {
-    card.used += capacity / occupied.length;
+    card.used += pooled / occupied.length;
+  }
+  if (node.host && !node.unified) {
+    node.host.used += sign * charge.hostCapacity;
   }
 }
+
+export const chargeOf = (installation: Pick<ModelInstallation, "estCapacity" | "hostCapacity">): Charge =>
+  ({ estCapacity: installation.estCapacity, hostCapacity: installation.hostCapacity ?? 0 });
 
 export function buildClusterState(existing: ModelInstallation[], availableServers: AiNode[]): ClusterState {
   const state: ClusterState = {
@@ -56,12 +92,16 @@ export function buildClusterState(existing: ModelInstallation[], availableServer
     installationsByServer: new Map(),
     serverCapacity: new Map(),
     cardCapacity: new Map(),
+    hostCapacity: new Map(),
     availableServers,
   };
 
   for (const server of availableServers) {
     state.serverCapacity.set(server.id, { total: server.estCapacity, used: 0 });
     state.cardCapacity.set(server.id, nodeCards(server));
+    if (server.hostMemoryGb !== null) {
+      state.hostCapacity.set(server.id, { total: server.hostMemoryGb, used: 0 });
+    }
     state.installationsByServer.set(server.id, []);
   }
 
@@ -74,7 +114,7 @@ export function buildClusterState(existing: ModelInstallation[], availableServer
     const serverInstalls = state.installationsByServer.get(install.nodeId);
     if (serverInstalls) {
       serverInstalls.push(install);
-      chargeCapacity(state, install, install.estCapacity);
+      chargeCapacity(state, install, chargeOf(install));
     }
   }
 
@@ -82,7 +122,7 @@ export function buildClusterState(existing: ModelInstallation[], availableServer
 }
 
 export function releaseInstallationFromState(state: ClusterState, installation: ModelInstallation): void {
-  chargeCapacity(state, installation, -installation.estCapacity);
+  chargeCapacity(state, installation, chargeOf(installation), -1);
 
   const serverInstalls = state.installationsByServer.get(installation.nodeId);
   if (serverInstalls) {

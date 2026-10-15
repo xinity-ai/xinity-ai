@@ -20,6 +20,7 @@ import {
   createDockerVllmOps,
   createSystemdVllmOps,
   SINGLE_NODE,
+  type MemoryUse,
   type VllmOps,
 } from "./vllm-ops";
 import { rootLogger } from "../../logger";
@@ -34,6 +35,8 @@ import { resolveInstallationEntry } from "./catalog";
 import { updateInstallationState, getLocalInstallationStates } from "./state";
 
 const log = rootLogger.child({ name: "vllm" });
+
+const HEALTHY = "vLLM server healthy";
 
 const FATAL_LOG_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /Free memory on device.*is less than desired GPU memory utilization|Decrease GPU memory utilization/i, label: "GPU memory utilization too high" },
@@ -103,7 +106,8 @@ async function markInstallationReady(installation: SyncInstallation, providerMod
   if (modelType !== "embedding" && modelType !== "rerank" && modelType !== "transcription") {
     await warmupChatModel(installation.port, providerModel);
   }
-  await updateInstallationState(installation.id, "ready", { statusMessage: "vLLM server healthy" });
+  await updateInstallationState(installation.id, "ready", { statusMessage: HEALTHY });
+  releaseAdmission(installation.id);
 }
 
 function throttledDownloadProgress(installationId: string, intervalMs: number): (progress: number) => Promise<void> {
@@ -207,15 +211,18 @@ async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): P
 
   await updateInstallationState(installation.id, "installing", { statusMessage: "Starting vLLM service" });
 
+  const charge = footprintCharge(installation, entry.sizing, devices.tensorParallelSize);
   const gpuMemoryUtilization = computeGpuUtilization({
     specifier: installation.specifier,
-    weightGb: perCard.weightGb,
-    kvCacheGb: perCard.kvCacheGb,
+    gpuGb: charge?.gpuGbPerCard ?? fittedGpuGb(perCard.weightGb, perCard.kvCacheGb),
     gpuIds: installation.gpuIds,
   }, profile);
   const modelType = entry.type;
 
   await dropPageCache();
+  if (charge) {
+    await admit(installation.id, charge, devices.tensorParallelSize, profile.source === "unified-memory");
+  }
 
   await ops.start(installation.id, {
     model: providerModel,
@@ -232,9 +239,56 @@ async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): P
     settings: installation.settings,
     devices,
     group: SINGLE_NODE,
+    hostMemoryLimitBytes: charge && hostMemoryLimitBytes(charge.hostGb),
   });
 
   return { modelType, providerModel };
+}
+
+type FootprintCharge = { gpuGbPerCard: number; hostGb: number };
+
+// A row of the deprecated format is charged no host part, which a limit would turn into a kill.
+export function footprintCharge(
+  installation: Pick<SyncInstallation, "estCapacity" | "hostCapacity">,
+  sizing: ModelSizingFields | undefined,
+  cards: number,
+): FootprintCharge | undefined {
+  if (!sizing || installation.hostCapacity === null) {
+    return undefined;
+  }
+  return { gpuGbPerCard: installation.estCapacity / cards, hostGb: installation.hostCapacity };
+}
+
+const HOST_LIMIT_MARGIN = 1.1;
+const HOST_LIMIT_MIN_BYTES = 2 ** 30;
+
+export function hostMemoryLimitBytes(hostGb: number): number {
+  return Math.max(Math.ceil(hostGb * HOST_LIMIT_MARGIN * 1e9), HOST_LIMIT_MIN_BYTES);
+}
+
+async function availableMemoryGb(): Promise<number> {
+  const meminfo = await Bun.file("/proc/meminfo").text();
+  const kib = Number(/^MemAvailable:\s+(\d+) kB$/m.exec(meminfo)?.[1] ?? 0);
+  return (kib * 1024) / 1e9;
+}
+
+// An installation still loading has not taken its memory yet, so it holds what it was admitted for
+// until it is ready.
+const admittedGb = new Map<string, number>();
+
+function releaseAdmission(installationId: string): void {
+  admittedGb.delete(installationId);
+}
+
+// vLLM checks each card against its window itself. Host memory nothing else checks.
+async function admit(installationId: string, charge: FootprintCharge, cards: number, unified: boolean): Promise<void> {
+  const neededGb = charge.hostGb + (unified ? charge.gpuGbPerCard * cards : 0);
+  const freeGb = await availableMemoryGb();
+  const availableGb = freeGb - [...admittedGb.values()].reduce((total, gb) => total + gb, 0);
+  if (availableGb < neededGb) {
+    throw new Error(`Not enough free memory to start: needs ${neededGb.toFixed(1)} GB, ${availableGb.toFixed(1)} GB available`);
+  }
+  admittedGb.set(installationId, neededGb);
 }
 
 /**
@@ -278,6 +332,11 @@ export function buildVllmExtraArgs(
 const OVERHEAD_BASE_GIB = 3.5;
 const OVERHEAD_WEIGHT_FRACTION = 0.15;
 const GB_PER_GIB = 1.073741824;
+
+export function fittedGpuGb(weightGb: number, kvCacheGb: number): number {
+  return weightGb * (1 + OVERHEAD_WEIGHT_FRACTION) + kvCacheGb + OVERHEAD_BASE_GIB * GB_PER_GIB;
+}
+
 /** Hard cap on vLLM's --gpu-memory-utilization so the driver never claims the whole device. */
 const MAX_GPU_UTILIZATION = 0.90;
 
@@ -291,16 +350,14 @@ function pinnedCardIndices(gpus: readonly GpuInfo[], cardIds: readonly string[])
 }
 
 export function computeGpuUtilization(
-  installation: { specifier: string; weightGb: number; kvCacheGb: number; gpuIds?: string[] },
+  installation: { specifier: string; gpuGb: number; gpuIds?: string[] },
   profile: Pick<HardwareProfile, "gpus" | "gpuCount" | "systemRamMb" | "detectedCapacityGb" | "physicalCapacityGb">,
 ): number | undefined {
   if (profile.gpuCount === 0 || profile.physicalCapacityGb === 0) {
     return undefined;
   }
 
-  const weightGib = installation.weightGb / GB_PER_GIB;
-  const overheadGib = OVERHEAD_BASE_GIB + OVERHEAD_WEIGHT_FRACTION * weightGib;
-  const neededGib = weightGib + installation.kvCacheGb / GB_PER_GIB + overheadGib;
+  const neededGib = installation.gpuGb / GB_PER_GIB;
   const cardGib = cardCapacityGib(profile, pinnedCardIndices(profile.gpus, installation.gpuIds ?? []));
   const headroomCap = profile.detectedCapacityGb / profile.physicalCapacityGb;
   const utilization = Math.min(
@@ -361,6 +418,40 @@ function reconcileStaleStates$(
   );
 }
 
+const OVER_HOST_BUDGET = "over its host memory budget";
+
+const HOST_USE_WARNING_SHARE = 0.9;
+const HOST_USE_WARNING_PREFIX = "Using";
+
+export function hostUseMessage(use: MemoryUse | undefined): string | undefined {
+  if (!use?.limitBytes || use.usedBytes < HOST_USE_WARNING_SHARE * use.limitBytes) {
+    return undefined;
+  }
+  return `${HOST_USE_WARNING_PREFIX} ${(use.usedBytes / 1e9).toFixed(1)} of its ${(use.limitBytes / 1e9).toFixed(1)} GB host memory budget`;
+}
+
+async function reportHostUse(installation: SyncInstallation, statusMessage: string | null, ops: VllmOps): Promise<void> {
+  const warning = hostUseMessage(await ops.memoryUse(installation.id));
+  const warned = statusMessage?.startsWith(HOST_USE_WARNING_PREFIX) ?? false;
+  if (warning && warning !== statusMessage) {
+    await updateInstallationState(installation.id, "ready", { statusMessage: warning });
+    log.warn({ model: installation.specifier, installationId: installation.id, warning }, "vLLM close to its host memory budget");
+  } else if (!warning && warned) {
+    await updateInstallationState(installation.id, "ready", { statusMessage: HEALTHY });
+  }
+}
+
+function reportHostUse$(installations: SyncInstallation[], activeSet: Set<string>, ops: VllmOps): Observable<void> {
+  const running = installations.filter((installation) => activeSet.has(installation.id));
+  const states = getLocalInstallationStates(running.map((installation) => installation.id));
+  const ready = running.filter((installation) => states.get(installation.id)?.lifecycleState === "ready");
+  return from(ready).pipe(
+    mergeMap((installation) => defer(() => from(reportHostUse(installation, states.get(installation.id)?.statusMessage ?? null, ops))), 4),
+    ignoreElements(),
+    endWith(void 0 as void),
+  );
+}
+
 async function reconcileOne(
   installation: SyncInstallation,
   currentState: { lifecycleState: string } | undefined,
@@ -379,8 +470,9 @@ async function reconcileOne(
     const restartCount = await ops.getRestartCount(installation.id);
     if (restartCount >= config.vllm.maxRestartCount()) {
       const { logs, fatalMatch } = await captureLogsAndMatch(installation.id, ops);
+      const cause = await ops.wasOomKilled(installation.id) ? OVER_HOST_BUDGET : fatalMatch;
       await updateInstallationState(installation.id, "failed", {
-        errorMessage: `Container crash-looping (${restartCount} restarts${fatalMatch ? `, ${fatalMatch}` : ""})`,
+        errorMessage: `Container crash-looping (${restartCount} restarts${cause ? `, ${cause}` : ""})`,
         statusMessage: "Container crash-looping",
         failureLogs: logs || null,
       });
@@ -396,8 +488,9 @@ async function reconcileOne(
     }
   } else {
     const logs = await ops.getLogs(installation.id).catch(() => "");
+    const overBudget = await ops.wasOomKilled(installation.id);
     await updateInstallationState(installation.id, "failed", {
-      errorMessage: "Container exited unexpectedly",
+      errorMessage: overBudget ? `Stopped, ${OVER_HOST_BUDGET}` : "Container exited unexpectedly",
       statusMessage: "Container not running",
       failureLogs: logs || null,
     });
@@ -429,10 +522,11 @@ export function syncVllmInstallations$(
       }
 
       const reconcile$ = reconcileStaleStates$(installations, activeSet, ops);
+      const hostUse$ = reportHostUse$(installations, activeSet, ops);
       const remove$ = removeStaleContainers$(toRemove, ops);
       const start$ = startNewInstallations$(candidates, ops);
 
-      const work: Observable<unknown>[] = [reconcile$];
+      const work: Observable<unknown>[] = [reconcile$, hostUse$];
       if (toRemove.length > 0) {
         work.push(remove$);
       }
@@ -498,6 +592,7 @@ function handleInstallationError(
   containerStarted: boolean,
 ): Observable<never> {
   log.error({ err, model: installation.specifier, installationId: installation.id }, "vLLM failed to start");
+  releaseAdmission(installation.id);
 
   const preCapturedLogs = (err as { preCapturedLogs?: string })?.preCapturedLogs;
 

@@ -8,6 +8,7 @@ const {
   buildSystemdDropIn,
   buildSystemdEnvFile,
   buildSystemdServeArgv,
+  parseDockerMemoryUsage,
   SINGLE_NODE,
 } = await import("./vllm-ops");
 type VllmInstanceConfig = import("./vllm-ops").VllmInstanceConfig;
@@ -259,5 +260,35 @@ describe("buildSystemdDropIn", () => {
       " \"--x\" \"$$HOME ;\"",
     );
     expect(dropIn.split("\n")).toHaveLength(4);
+  });
+});
+
+describe("host memory limit", () => {
+  const limited = { ...baseConfig, hostMemoryLimitBytes: 5_500_000_000 };
+
+  test("caps the container at the limit and gives it no swap beyond it", () => {
+    const argv = buildDockerRunArgs("inst-1", limited);
+    expect(argv.slice(argv.indexOf("--memory"), argv.indexOf("--memory") + 4)).toEqual(["--memory", "5500000000", "--memory-swap", "5500000000"]);
+  });
+
+  test("caps the service at the limit and gives it no swap", () => {
+    expect(buildSystemdDropIn(limited)).toStartWith("[Service]\nMemoryMax=5500000000\nMemorySwapMax=0\nExecStart=\n");
+  });
+
+  test("sets no limit when none is given", () => {
+    expect(buildDockerRunArgs("inst-1", baseConfig)).not.toContain("--memory");
+    expect(buildSystemdDropIn(baseConfig)).not.toContain("MemoryMax");
+  });
+});
+
+describe("parseDockerMemoryUsage", () => {
+  test("reads the usage before the limit in either unit system", () => {
+    expect(parseDockerMemoryUsage("1.5GiB / 10GiB\n")).toBe(1.5 * 2 ** 30);
+    expect(parseDockerMemoryUsage("812.4MB / 2GB")).toBeCloseTo(812.4e6);
+  });
+
+  test("reads nothing from output it does not recognise", () => {
+    expect(parseDockerMemoryUsage("")).toBeUndefined();
+    expect(parseDockerMemoryUsage("-- / --")).toBeUndefined();
   });
 });

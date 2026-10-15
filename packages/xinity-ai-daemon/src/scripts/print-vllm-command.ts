@@ -5,7 +5,7 @@ import { parseArgs } from "node:util";
 import { z } from "zod";
 import { quoteShellArgv } from "common-env";
 import { ModelFileSchema } from "common-env/model-catalog";
-import { resolveVllmModel, RunModelError, type ResolvedVllmModel } from "./lib/vllm-run";
+import { chargeOnNode, resolveVllmModel, RunModelError, type ResolvedVllmModel } from "./lib/vllm-run";
 import type { VllmInstanceConfig } from "../modules/model-installation/vllm-ops";
 import type { DetectedGpu } from "../modules/hardware-detect";
 
@@ -92,7 +92,7 @@ if (state.dockerImage) process.env.VLLM_DOCKER_IMAGE = state.dockerImage;
 
 const [
   { buildDockerRunArgs, buildSystemdEnvFile, buildSystemdDropIn, buildSystemdServeArgv, SINGLE_NODE },
-  { computeGpuUtilization, buildVllmExtraArgs, concurrencyCap },
+  { computeGpuUtilization, buildVllmExtraArgs, concurrencyCap, hostMemoryLimitBytes },
   { buildHardwareProfile },
   { NO_HOST_DEVICES, unpinnedDevicesFor },
 ] = await Promise.all([
@@ -104,10 +104,9 @@ const [
 
 function buildVllmInstanceConfig(resolved: ResolvedVllmModel, state: State): VllmInstanceConfig {
   const profile = buildHardwareProfile(state.gpus as DetectedGpu[], state.systemRamMb);
-  const gpuMemoryUtilization = computeGpuUtilization(
-    { specifier: resolved.vllmProviderName, weightGb: resolved.model.sizing.weightGb, kvCacheGb: resolved.kvCacheGb },
-    profile,
-  );
+  const devices = unpinnedDevicesFor(profile.gpus, NO_HOST_DEVICES);
+  const charge = chargeOnNode(resolved, profile.gpus, { cardsPerNode: devices.tensorParallelSize, nodes: 1, node: 0 }, undefined);
+  const gpuMemoryUtilization = charge && computeGpuUtilization({ specifier: resolved.vllmProviderName, gpuGb: charge.gpuGbPerCard }, profile);
 
   return {
     model: resolved.vllmProviderName,
@@ -121,8 +120,9 @@ function buildVllmInstanceConfig(resolved: ResolvedVllmModel, state: State): Vll
       resolved.args,
       concurrencyCap(resolved.model.sizing, profile.gpus, resolved.kvCacheGb),
     ),
-    devices: unpinnedDevicesFor(profile.gpus, NO_HOST_DEVICES),
+    devices,
     group: SINGLE_NODE,
+    hostMemoryLimitBytes: charge && hostMemoryLimitBytes(charge.hostGb),
   };
 }
 
