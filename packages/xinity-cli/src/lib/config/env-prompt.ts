@@ -415,6 +415,9 @@ export async function menuEditEnv(
     }
   };
 
+  const togglableHere = (group: MenuGroup) =>
+    group.definition.activation.some((key) => group.fields.some((field) => field.key === key));
+
   /** Turning a group on asks for exactly the keys that decide whether it is on. */
   const enableGroup = async (group: MenuGroup): Promise<void> => {
     for (const key of group.definition.activation) {
@@ -435,7 +438,7 @@ export async function menuEditEnv(
       if (hidden > 0 && !showExpert) {
         options.push({ value: "__expert__", label: dim(`Show advanced settings (${hidden} more)…`), hint: undefined });
       }
-      if (group.definition.activation.length > 0 && groupState(group, values) !== "off") {
+      if (togglableHere(group) && groupState(group, values) !== "off") {
         options.push({ value: "__clear__", label: dim(`Turn off ${group.definition.title}`), hint: undefined });
       }
       options.push({ value: "__back__", label: green("Back"), hint: undefined });
@@ -471,7 +474,7 @@ export async function menuEditEnv(
    */
   const askWhatMustBeSet = async (): Promise<void> => {
     const pending = (field: EnvField) =>
-      values[field.key] === undefined && (isRequired(field, values) || attentionKeys.has(field.key));
+      requiredUnset(field) || (values[field.key] === undefined && attentionKeys.has(field.key));
     if (!editable.some(pending)) {
       return;
     }
@@ -554,6 +557,10 @@ export async function menuEditEnv(
     if (choice.startsWith(GROUP_PREFIX)) {
       const group = groups.find((g) => `${GROUP_PREFIX}${g.definition.id}` === choice)!;
       if (groupState(group, values) === "off") {
+        if (!togglableHere(group)) {
+          log.info(`${group.definition.title} is switched on in the shared stack settings.`);
+          continue;
+        }
         const enable = await confirm({ message: `Enable ${group.definition.title}?`, initialValue: false });
         if (isCancel(enable) || !enable) {
           continue;
