@@ -68,6 +68,7 @@ function makeInstallation(specifier: string, id = crypto.randomUUID()) {
     specifier,
     estCapacity: 8,
     kvCacheCapacity: 0,
+    hostCapacity: 0,
     port: 8080,
     driver: "ollama" as const,
     settings: { version: 1 as const },

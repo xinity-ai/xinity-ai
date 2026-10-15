@@ -16,7 +16,7 @@ import {
   type ModelNodeRequirements,
   type IncompatibilityReason,
 } from "common-env/model-catalog";
-import type { GpuInfo } from "common-env";
+import { deploymentFootprint, engineProfile, imagesInFlight, type GpuInfo } from "common-env";
 
 /** Minimal machine description the resolver needs; a subset of HardwareProfile. */
 export type MachineProfile = {
@@ -41,6 +41,26 @@ export type ResolvedVllmModel = {
   minVersion: string | undefined;
   requiredPlatforms: string[];
   requiredFeatures: string[];
+}
+
+export type NodeCharge = { gpuGbPerCard: number; hostGb: number };
+
+export function chargeOnNode(
+  resolved: Pick<ResolvedVllmModel, "model" | "kvCacheGb">,
+  gpus: GpuInfo[],
+  layout: { cardsPerNode: number; nodes: number; node: number },
+  engineVersion: string | undefined,
+): NodeCharge | undefined {
+  const { model, kvCacheGb } = resolved;
+  const entry = { sizing: model.sizing, tags: model.tags, engineArgs: model.engineArgs, placement: model.placement };
+  const footprint = deploymentFootprint(entry, {
+    layout,
+    kvCacheGb,
+    imagesInFlight: imagesInFlight(entry, gpus, kvCacheGb),
+    profile: engineProfile("vllm", engineVersion),
+  });
+  const rank = footprint?.ranks.find((candidate) => candidate.node === layout.node);
+  return footprint && rank && { gpuGbPerCard: rank.gpuGb, hostGb: footprint.nodes[layout.node]!.hostGb };
 }
 
 export class RunModelError extends Error {}

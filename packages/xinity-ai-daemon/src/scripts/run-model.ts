@@ -22,6 +22,8 @@ import {
   checkVllmCompatibility,
   describeIncompatibility,
   RunModelError,
+  chargeOnNode,
+  type NodeCharge,
   type ResolvedVllmModel,
   type VllmDriverState,
 } from "./lib/vllm-run";
@@ -171,7 +173,7 @@ if (values["hf-token"]) process.env.VLLM_HF_TOKEN = values["hf-token"];
 
 const [
   { buildDockerRunArgs, buildSystemdServeArgv, ensureVllmNetwork, groupTensorParallelSize, SINGLE_NODE, VLLM_NETWORK },
-  { computeGpuUtilization, buildVllmExtraArgs, concurrencyCap, perCardSizing },
+  { computeGpuUtilization, buildVllmExtraArgs, concurrencyCap, fittedGpuGb, hostMemoryLimitBytes, perCardSizing },
   { detectHardwareProfile },
   { detectVllmFeatures },
   { readHostDevices, unpinnedDevicesFor },
@@ -251,9 +253,9 @@ async function resolveGroup(): Promise<NodeGroup> {
 
 type CardShare = { weightGb: number; kvCacheGb: number };
 
-function buildConfig(resolved: ResolvedVllmModel, profile: HardwareProfile, devices: GpuDevices, group: NodeGroup, share: CardShare): VllmInstanceConfig {
-  const gpuMemoryUtilization =
-    gpuUtilOverride ?? computeGpuUtilization({ specifier: resolved.vllmProviderName, weightGb: share.weightGb, kvCacheGb: share.kvCacheGb }, profile);
+function buildConfig(resolved: ResolvedVllmModel, profile: HardwareProfile, devices: GpuDevices, group: NodeGroup, share: CardShare, charge: NodeCharge | undefined): VllmInstanceConfig {
+  const gpuGb = charge?.gpuGbPerCard ?? fittedGpuGb(share.weightGb, share.kvCacheGb);
+  const gpuMemoryUtilization = gpuUtilOverride ?? computeGpuUtilization({ specifier: resolved.vllmProviderName, gpuGb }, profile);
   return {
     model: resolved.vllmProviderName,
     port,
@@ -268,6 +270,7 @@ function buildConfig(resolved: ResolvedVllmModel, profile: HardwareProfile, devi
     ),
     devices,
     group,
+    hostMemoryLimitBytes: charge && hostMemoryLimitBytes(charge.hostGb),
   };
 }
 
@@ -413,7 +416,7 @@ const GROUP_SUMMARIES: { [Kind in NodeGroup["kind"]]: (group: Extract<NodeGroup,
 
 const summarizeGroup = (group: NodeGroup) => (GROUP_SUMMARIES[group.kind] as (group: NodeGroup) => string)(group);
 
-function printPlan(resolved: ResolvedVllmModel, profile: HardwareProfile, driver: VllmDriverState, config: VllmInstanceConfig, share: CardShare): void {
+function printPlan(resolved: ResolvedVllmModel, profile: HardwareProfile, driver: VllmDriverState, config: VllmInstanceConfig, share: CardShare, charge: NodeCharge | undefined): void {
   const reason = checkVllmCompatibility(resolved, profile, driver, { requireKnownVersion: true });
   const speed = estimateThroughput(resolved.model, { gpus: profile.gpus });
   const concurrency = estimateConcurrency(resolved.model, { gpus: profile.gpus }, { kvCacheGb: resolved.kvCacheGb });
@@ -429,7 +432,15 @@ function printPlan(resolved: ResolvedVllmModel, profile: HardwareProfile, driver
       vllm: { available: driver.available, version: driver.version ?? null, minVersion: resolved.minVersion ?? null },
       machine: { gpus: profile.gpus, capacityGb: profile.detectedCapacityGb },
       group: config.group,
-      sizing: { kvCacheGb: resolved.kvCacheGb, estCapacityGb: resolved.estCapacity, perCard: share, gpuMemoryUtilization: config.gpuMemoryUtilization ?? null },
+      sizing: {
+        kvCacheGb: resolved.kvCacheGb,
+        estCapacityGb: resolved.estCapacity,
+        perCard: share,
+        gpuGbPerCard: charge?.gpuGbPerCard ?? null,
+        hostGb: charge?.hostGb ?? null,
+        hostMemoryLimitBytes: config.hostMemoryLimitBytes ?? null,
+        gpuMemoryUtilization: config.gpuMemoryUtilization ?? null,
+      },
       speed: speed?.basis === "known-gpu"
         ? { decodeTps: speed.decodeTps, prefillTps: speed.prefillTps ?? null }
         : null,
@@ -465,6 +476,7 @@ function printPlan(resolved: ResolvedVllmModel, profile: HardwareProfile, driver
   console.log(`Machine:  ${gpus}; ${profile.detectedCapacityGb}GB capacity`);
   console.log(`Group:    ${summarizeGroup(config.group)}`);
   console.log(`Sizing:   kvCache=${resolved.kvCacheGb}GB, estCapacity=${resolved.estCapacity}GB on this node, per card weights=${share.weightGb}GB kvCache=${share.kvCacheGb}GB, gpuUtil=${config.gpuMemoryUtilization ?? "n/a"}`);
+  console.log(`Charge:   ${charge ? `${charge.gpuGbPerCard.toFixed(2)}GB per card, ${charge.hostGb.toFixed(2)}GB host, limit ${((config.hostMemoryLimitBytes ?? 0) / 1e9).toFixed(2)}GB` : "n/a"}`);
   console.log(`Speed:    ${describeSpeed(speed)}`);
   console.log(`Batch:    ${describeConcurrency(concurrency, profile.gpus.length)}`);
   console.log(`Gate:     ${reason ? `FAIL - ${describeIncompatibility(reason, resolved, profile, driver)}` : "ok"}`);
@@ -518,12 +530,15 @@ async function main(): Promise<void> {
     resolved.model.sizing,
     groupTensorParallelSize({ devices, group }),
   );
-  const config = buildConfig(resolved, profile, devices, group, share);
+  const charge = chargeOnNode(resolved, profile.gpus, { cardsPerNode: devices.tensorParallelSize, nodes: nodeCount, node: nodeRank }, driver.version);
+  const config = buildConfig(resolved, profile, devices, group, share, charge);
   // Every node in a group downloads the whole model but only holds its own cards' share of it.
-  const onThisNode: ResolvedVllmModel = { ...resolved, estCapacity: (share.weightGb + share.kvCacheGb) * devices.tensorParallelSize };
+  const gpuOnThisNode = (charge?.gpuGbPerCard ?? share.weightGb + share.kvCacheGb) * devices.tensorParallelSize;
+  const hostInPool = charge && profile.source === "unified-memory" ? charge.hostGb : 0;
+  const onThisNode: ResolvedVllmModel = { ...resolved, estCapacity: gpuOnThisNode + hostInPool };
 
   if (verb === "plan") {
-    printPlan(onThisNode, profile, driver, config, share);
+    printPlan(onThisNode, profile, driver, config, share, charge);
     return;
   }
 

@@ -8,7 +8,7 @@ import { building } from "$app/environment";
 import { maxVramGb } from "$lib/server/license";
 import { config } from "$lib/server/config";
 import { nodeIsLive } from "./node-liveness";
-import { buildClusterState, cardsOf, chargeCapacity, rankServers, releaseInstallationFromState, type ClusterState, type NewInstallation } from "./cluster-state";
+import { buildClusterState, chargeCapacity, poolCharge, rankServers, releaseInstallationFromState, resourcesOf, type ClusterState, type NewInstallation } from "./cluster-state";
 import { ENGINE_SCHEDULERS } from "./engines";
 import type { PlacementRequest } from "./engines/engine";
 import type { Placement } from "./placement";
@@ -113,13 +113,14 @@ export function findServerForModel(
       continue;
     }
 
-    const slot = ENGINE_SCHEDULERS[driver].placeOnNode(cardsOf(state, server.id), { ...need, strategy });
+    const node = resourcesOf(state, server.id);
+    const slot = ENGINE_SCHEDULERS[driver].placeOnNode(node, { ...need, strategy });
     if (!slot) {
       continue;
     }
 
     const req: ModelNodeRequirements = {
-      driver, capacityGb: slot.estCapacity,
+      driver, capacityGb: poolCharge(node, slot),
       minVersion: constraints.minVersion,
       blockedVersions: constraints.blockedVersions,
       requiredPlatforms: constraints.requiredPlatforms ?? [],
@@ -147,10 +148,13 @@ function allocatePort(driver: Provider, nodeId: string, state: ClusterState, pen
   return ENGINE_SCHEDULERS[driver].port(usedPorts);
 }
 
+// The license counts GPU memory, so a unified node's host part stays out of it.
 function totalVramUsed(state: ClusterState): number {
   let used = 0;
-  for (const cap of state.serverCapacity.values()) {
-    used += cap.used;
+  for (const installs of state.installationsByServer.values()) {
+    for (const install of installs) {
+      used += install.estCapacity;
+    }
   }
   return used;
 }
@@ -194,7 +198,7 @@ async function planNewInstallations(
     for (let i = 0; i < needed; i++) {
       const nodeId = findServerForModel({ deploymentId: requirement.deploymentId, specifier }, driver, need, state, toInstall, strategy,
         { minVersion, blockedVersions, requiredPlatforms, requiredFeatures });
-      const slot = nodeId ? ENGINE_SCHEDULERS[driver].placeOnNode(cardsOf(state, nodeId), { ...need, strategy }) : undefined;
+      const slot = nodeId ? ENGINE_SCHEDULERS[driver].placeOnNode(resourcesOf(state, nodeId), { ...need, strategy }) : undefined;
       if (!nodeId || !slot) {
         log.warn({ specifier: requirement.specifier }, "No server with enough capacity for additional replica");
         break;
@@ -214,6 +218,7 @@ async function planNewInstallations(
         specifier: requirement.specifier,
         estCapacity: slot.estCapacity,
         kvCacheCapacity: effectiveKvCache,
+        hostCapacity: slot.hostCapacity,
         driver,
         port: allocatePort(driver, nodeId, state, toInstall),
         settings: requirement.settings,
@@ -221,7 +226,7 @@ async function planNewInstallations(
       };
       toInstall.push(installation);
 
-      chargeCapacity(state, installation, slot.estCapacity);
+      chargeCapacity(state, installation, slot);
       usedVram += slot.estCapacity;
     }
   }
@@ -256,6 +261,37 @@ export async function collectReassignableOrphans(
   return orphanedCandidates.filter((_, i) => reassignable[i]);
 }
 
+export async function chargeUnchargedInstallations(
+  installations: ModelInstallation[],
+  servers: AiNode[],
+  lookupModel: ModelLookup,
+): Promise<ModelInstallation[]> {
+  const idle = buildClusterState([], servers);
+  return Promise.all(installations.map(async (install) => {
+    if (install.hostCapacity !== null) {
+      return install;
+    }
+    const model = await lookupModel(install.specifier, install.driver);
+    if (!model) {
+      return install;
+    }
+    const cards = Math.max(install.gpuIds.length, 1);
+    const charge = ENGINE_SCHEDULERS[install.driver].charge(resourcesOf(idle, install.nodeId), { model, kvCacheGb: install.kvCacheCapacity }, cards);
+    if (!charge) {
+      log.warn({ installationId: install.id, specifier: install.specifier, cards }, "Installation runs on a split its catalog entry no longer allows; keeping its old charge");
+    }
+    return { ...install, ...(charge ?? { hostCapacity: 0 }) };
+  }));
+}
+
+async function persistCharges(before: ModelInstallation[], after: ModelInstallation[]): Promise<void> {
+  const charged = after.filter((install, index) => before[index]!.hostCapacity === null && install.hostCapacity !== null);
+  await Promise.all(charged.map((install) => getDB()
+    .update(modelInstallationT)
+    .set({ estCapacity: install.estCapacity, hostCapacity: install.hostCapacity })
+    .where(sql`${modelInstallationT.id} = ${install.id}`)));
+}
+
 async function applyChanges(toUninstall: string[], toInstall: NewInstallation[]) {
   if (toUninstall.length > 0) {
     await getDB().update(modelInstallationT).set({ deletedAt: new Date() }).where(inArray(modelInstallationT.id, toUninstall));
@@ -278,11 +314,15 @@ async function runSyncDeployedModels() {
   const orphanedCandidates = existing.filter(i => !availableServerIds.has(i.nodeId));
   const active = existing.filter(i => availableServerIds.has(i.nodeId));
 
-  const state = buildClusterState(active, availableServers);
-  const orphaned = await collectReassignableOrphans(orphanedCandidates, state, async (specifier, driver) => {
+  const lookupModel: ModelLookup = async (specifier, driver) => {
     const resolution = await resolveSchedulable(specifier, driver);
     return resolution.status === "found" ? resolution.model : null;
-  });
+  };
+  const charged = await chargeUnchargedInstallations(active, availableServers, lookupModel);
+  await persistCharges(active, charged);
+
+  const state = buildClusterState(charged, availableServers);
+  const orphaned = await collectReassignableOrphans(orphanedCandidates, state, lookupModel);
   const keptOffline = orphanedCandidates.length - orphaned.length;
 
   log.debug(

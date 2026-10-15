@@ -72,6 +72,8 @@ export const aiNodeT = pgTable("ai_node", {
   port: integer().notNull(),
   /** estimated capacity available on the node, as GB of estimated usable model capacity */
   estCapacity: real("est_capacity").notNull(),
+  /** RAM the node can give installations, in decimal GB. Null when the node does not report it, which leaves host memory unlimited. */
+  hostMemoryGb: real("host_memory_gb"),
   available: boolean().notNull().default(true),
   /** Number of GPUs detected on this node. 0 means CPU-only. */
   gpuCount: integer("gpu_count").notNull().default(0),
@@ -114,6 +116,8 @@ export const modelInstallationT = pgTable("model_installation", {
   estCapacity: real("est_capacity").notNull(),
   /** KV-cache allocation in GB, used by the daemon for vLLM's --kv-cache-memory-bytes */
   kvCacheCapacity: real("kv_cache_capacity").notNull().default(0),
+  /** Host RAM in GB the installation is charged on its node. */
+  hostCapacity: real("host_capacity"),
   /** @deprecated Internal to the daemon. The gateway routes through the daemon proxy and does not use this field. */
   port: integer().notNull(),
   driver: inferenceDriverEnum().notNull(),

@@ -1,4 +1,5 @@
 import { $ } from "bun";
+import { stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import { config as daemonConfig } from "../../config";
 // @ts-expect-error Bun text import
@@ -19,6 +20,7 @@ export type VllmInstanceConfig = {
   settings?: DeploymentSettings | null;
   devices: GpuDevices;
   group: NodeGroup;
+  hostMemoryLimitBytes?: number;
 }
 
 // A model spread across coupled nodes runs one member per node. Rank 0 serves, the others only
@@ -98,6 +100,10 @@ export type VllmOps = {
   getLogs(id: string, tailLines?: number): Promise<string>;
   /** Get the number of times the instance has restarted since creation */
   getRestartCount(id: string): Promise<number>;
+  /** Host memory the instance uses now and the limit it runs under, in bytes, or undefined when they cannot be read */
+  memoryUse(id: string): Promise<MemoryUse | undefined>;
+  /** Whether the instance went over its memory limit since it was started, across the runtime's own restarts */
+  wasOomKilled(id: string): Promise<boolean>;
   /** One-time setup (install systemd template / ensure docker image availability) */
   ensureSetup(): Promise<void>;
 }
@@ -116,6 +122,16 @@ async function checkHealth(port: number): Promise<boolean> {
 function parseRestartCount(raw: string): number {
   const count = parseInt(raw.trim(), 10);
   return Number.isNaN(count) ? 0 : count;
+}
+
+export type MemoryUse = { usedBytes: number; limitBytes?: number };
+
+const MEMORY_UNITS: Record<string, number> = { B: 1, KiB: 2 ** 10, MiB: 2 ** 20, GiB: 2 ** 30, TiB: 2 ** 40, kB: 1e3, MB: 1e6, GB: 1e9, TB: 1e12 };
+
+export function parseDockerMemoryUsage(raw: string): number | undefined {
+  const match = /^([\d.]+)\s*([A-Za-z]+)\s*\//.exec(raw.trim());
+  const unit = match && MEMORY_UNITS[match[2]!];
+  return unit ? Number(match[1]) * unit : undefined;
 }
 
 function nonEmptyLines(raw: string): string[] {
@@ -187,7 +203,9 @@ export function buildSystemdDropIn(config: VllmInstanceConfig): string {
   const execStart = buildSystemdServeArgv(config).map(quoteSystemdArg).join(" ");
   const { supplementaryGroups } = config.devices;
   const groupsLine = supplementaryGroups.length > 0 ? `SupplementaryGroups=${supplementaryGroups.join(" ")}\n` : "";
-  return `[Service]\n${groupsLine}ExecStart=\nExecStart=${execStart}\n`;
+  // Swap would turn going over the limit into a slow node instead of a stopped installation.
+  const memoryLines = config.hostMemoryLimitBytes ? `MemoryMax=${config.hostMemoryLimitBytes}\nMemorySwapMax=0\n` : "";
+  return `[Service]\n${groupsLine}${memoryLines}ExecStart=\nExecStart=${execStart}\n`;
 }
 
 const SYSTEMD_UNIT_INSTANCE_RE = /^vllm-driver@(.+)\.service$/;
@@ -263,6 +281,25 @@ export function createSystemdVllmOps(): VllmOps {
       return parseRestartCount(result);
     },
 
+    async memoryUse(id) {
+      const result = await $`systemctl show -p MemoryCurrent -p MemoryMax --value ${systemdUnitFor(id)}`.nothrow().text();
+      const [used, limit] = result.trim().split("\n").map(Number);
+      if (!Number.isFinite(used)) {
+        return undefined;
+      }
+      return { usedBytes: used!, limitBytes: Number.isFinite(limit) ? limit : undefined };
+    },
+
+    async wasOomKilled(id) {
+      const startedAt = (await stat(`${systemdDropInDirFor(id)}/serve.conf`).catch(() => undefined))?.mtimeMs;
+      if (startedAt === undefined) {
+        return false;
+      }
+      const since = `@${Math.floor(startedAt / 1000)}`;
+      const result = await $`journalctl -u ${systemdUnitFor(id)} --since ${since} --grep oom-kill -n 1 -o cat --no-pager`.nothrow().text();
+      return result.trim().length > 0;
+    },
+
     async ensureSetup() {
       const targetPath = daemonConfig.vllm.templateUnitPath;
       const existing = await Bun.file(targetPath).text().catch(() => null);
@@ -319,6 +356,7 @@ export function buildDockerRunArgs(
     "--name", containerName,
     ...config.devices.dockerArgs,
     "--ipc=host",
+    ...(config.hostMemoryLimitBytes ? ["--memory", String(config.hostMemoryLimitBytes), "--memory-swap", String(config.hostMemoryLimitBytes)] : []),
     ...network.networkArgs,
     ...launch.env(config.group).flatMap((entry) => ["-e", entry]),
     "-e", "HF_HOME=/data/hf-cache",
@@ -403,6 +441,32 @@ export function createDockerVllmOps(): VllmOps {
         .nothrow()
         .text();
       return parseRestartCount(result);
+    },
+
+    async memoryUse(id) {
+      const name = dockerContainerNameFor(id);
+      const [stats, limit] = await Promise.all([
+        $`docker stats --no-stream --format {{.MemUsage}} ${name}`.nothrow().text(),
+        $`docker inspect --format={{.HostConfig.Memory}} ${name}`.nothrow().text(),
+      ]);
+      const usedBytes = parseDockerMemoryUsage(stats);
+      const limitBytes = Number(limit.trim());
+      return usedBytes === undefined ? undefined : { usedBytes, limitBytes: limitBytes > 0 ? limitBytes : undefined };
+    },
+
+    // Docker keeps too few events to remember a kill, so the kernel's record of it is read, which
+    // names the container's cgroup.
+    async wasOomKilled(id) {
+      const format = "{{.Id}} {{.Created}}";
+      const [containerId, created] = (await $`docker inspect --format=${format} ${dockerContainerNameFor(id)}`.nothrow().text()).trim().split(" ");
+      const createdAt = Date.parse((created ?? "").replace(/(\.\d{3})\d+/, "$1"));
+      if (!containerId || Number.isNaN(createdAt)) {
+        return false;
+      }
+      const since = `@${Math.floor(createdAt / 1000)}`;
+      const pattern = `oom-kill.*${containerId}`;
+      const result = await $`journalctl -k --since ${since} --grep ${pattern} -n 1 -o cat --no-pager`.nothrow().text();
+      return result.trim().length > 0;
     },
 
     async ensureSetup() {

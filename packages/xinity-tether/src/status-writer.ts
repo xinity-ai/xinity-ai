@@ -15,6 +15,8 @@ export type RegistrationOutcome = "written" | "identity_mismatch";
  */
 export async function writeRegistration(reg: NodeRegistration): Promise<RegistrationOutcome> {
   const { nodeId, host, port, protocolFingerprint: _fingerprint, signature: _signature, ...rest } = reg;
+  // Written as null when absent, so a node that stops reporting it does not keep a stale figure.
+  const hostMemoryGb = rest.hostMemoryGb ?? null;
 
   const outcome = await getDB().transaction(async (tx): Promise<RegistrationOutcome> => {
     await tx
@@ -24,10 +26,10 @@ export async function writeRegistration(reg: NodeRegistration): Promise<Registra
 
     const written = await tx
       .insert(aiNodeT)
-      .values({ id: nodeId, host, port, ...rest, available: true })
+      .values({ id: nodeId, host, port, ...rest, hostMemoryGb, available: true })
       .onConflictDoUpdate({
         target: aiNodeT.id,
-        set: { host, port, ...rest, available: true, deletedAt: null },
+        set: { host, port, ...rest, hostMemoryGb, available: true, deletedAt: null },
         setWhere: sql`${aiNodeT.publicKey} IS NULL OR ${aiNodeT.publicKey} = ${rest.publicKey}`,
       })
       .returning({ id: aiNodeT.id });

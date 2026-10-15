@@ -25,7 +25,7 @@ mock.module("../../config", () => ({ config: mockDaemonConfig({
 type StateCall = [string, string, Record<string, unknown> | undefined];
 const stateWrites: StateCall[] = [];
 
-const mockLocalStates = new Map<string, { lifecycleState: string }>();
+const mockLocalStates = new Map<string, { lifecycleState: string; statusMessage?: string }>();
 
 const mockUpdateState = mock((id: string, state: string, opts?: Record<string, unknown>) => {
   stateWrites.push([id, state, opts]);
@@ -36,7 +36,7 @@ mock.module("./state", () => ({
   updateInstallationState: mockUpdateState,
   getLocalInstallationState: (id: string) => mockLocalStates.get(id),
   getLocalInstallationStates: (ids: string[]) => {
-    const result = new Map<string, { lifecycleState: string }>();
+    const result = new Map<string, { lifecycleState: string; statusMessage?: string }>();
     for (const id of ids) {
       const entry = mockLocalStates.get(id);
       if (entry) {
@@ -91,7 +91,7 @@ mock.module("./page-cache", () => ({
   dropPageCache: mock(() => Promise.resolve()),
 }));
 
-const { syncVllmInstallations$, computeGpuUtilization, buildVllmExtraArgs, concurrencyCap, matchFatalPattern, perCardSizing } = await import("./vllm");
+const { syncVllmInstallations$, computeGpuUtilization, fittedGpuGb, hostUseMessage, buildVllmExtraArgs, concurrencyCap, matchFatalPattern, perCardSizing } = await import("./vllm");
 afterAll(() => {
   downloadModelSpy.mockRestore();
 });
@@ -109,6 +109,7 @@ function makeInstallation(specifier: string, id: string = crypto.randomUUID(), p
     specifier,
     estCapacity: 16,
     kvCacheCapacity: 4,
+    hostCapacity: null,
     port,
     driver: "vllm" as const,
     settings: { version: 1 as const },
@@ -126,6 +127,8 @@ function createMockOps(overrides: Partial<VllmOps> = {}): VllmOps {
     isAlive: mock(() => Promise.resolve(true)),
     getLogs: mock(() => Promise.resolve("")),
     getRestartCount: mock(() => Promise.resolve(0)),
+    memoryUse: mock(() => Promise.resolve(undefined)),
+    wasOomKilled: mock(() => Promise.resolve(false)),
     ...overrides,
   };
 }
@@ -549,7 +552,7 @@ describe("syncVllmInstallations$", () => {
 
   test("caps gpuMemoryUtilization at MAX_GPU_UTILIZATION (0.90)", () => {
     const util = computeGpuUtilization(
-      { specifier: "cap-model", weightGb: 20, kvCacheGb: 4 },
+      { specifier: "cap-model", gpuGb: fittedGpuGb(20, 4) },
       { gpus: [nvidiaCard(24576)], gpuCount: 1, systemRamMb: 131072, detectedCapacityGb: 24, physicalCapacityGb: 24 },
     );
     expect(util).toBe(0.90);
@@ -557,7 +560,7 @@ describe("syncVllmInstallations$", () => {
 
   test("caps gpuMemoryUtilization at unified-memory headroom fraction", () => {
     const util = computeGpuUtilization(
-      { specifier: "large-unified-model", weightGb: 96, kvCacheGb: 4 },
+      { specifier: "large-unified-model", gpuGb: fittedGpuGb(96, 4) },
       { gpus: [nvidiaCard(0)], gpuCount: 1, systemRamMb: 122880, detectedCapacityGb: 107, physicalCapacityGb: 120 },
     );
     expect(util).toBeCloseTo(107 / 120, 4);
@@ -565,7 +568,7 @@ describe("syncVllmInstallations$", () => {
 
   test("sizes a small model on unified memory against the whole of system RAM", () => {
     const util = computeGpuUtilization(
-      { specifier: "small-unified-model", weightGb: 12, kvCacheGb: 4 },
+      { specifier: "small-unified-model", gpuGb: fittedGpuGb(12, 4) },
       { gpus: [nvidiaCard(0)], gpuCount: 1, systemRamMb: 122880, detectedCapacityGb: 107, physicalCapacityGb: 120 },
     );
     expect(util).toBeCloseTo(0.16731, 4);
@@ -576,14 +579,14 @@ describe("syncVllmInstallations$", () => {
       gpus: [{ ...nvidiaCard(49152), uuid: "GPU-big" }, { ...nvidiaCard(24576), uuid: "GPU-small" }],
       gpuCount: 2, systemRamMb: 131072, detectedCapacityGb: 72, physicalCapacityGb: 72,
     };
-    const sizing = { specifier: "pinned-model", weightGb: 12, kvCacheGb: 4 };
+    const sizing = { specifier: "pinned-model", gpuGb: fittedGpuGb(12, 4) };
     expect(computeGpuUtilization({ ...sizing, gpuIds: ["GPU-small"] }, mixed)).toBeCloseTo(0.83656, 4);
     expect(computeGpuUtilization({ ...sizing, gpuIds: [] }, mixed)).toBeCloseTo(0.83656 / 2, 4);
   });
 
   test("sizes against the instance's card, not the node's summed VRAM", () => {
     const util = computeGpuUtilization(
-      { specifier: "two-card-node-model", weightGb: 12, kvCacheGb: 4 },
+      { specifier: "two-card-node-model", gpuGb: fittedGpuGb(12, 4) },
       { gpus: [nvidiaCard(24576), nvidiaCard(24576)], gpuCount: 2, systemRamMb: 131072, detectedCapacityGb: 48, physicalCapacityGb: 48 },
     );
     expect(util).toBeCloseTo(0.83656, 4);
@@ -594,7 +597,7 @@ describe("syncVllmInstallations$", () => {
     // the smallest margin of twelve measured loads. Overhead varies ~0.2 GiB between identical runs.
     const kvCacheGb = 2.02;
     const util = computeGpuUtilization(
-      { specifier: "unlimited-ocr-vllm", weightGb: 6.70, kvCacheGb },
+      { specifier: "unlimited-ocr-vllm", gpuGb: fittedGpuGb(6.70, kvCacheGb) },
       { gpus: [nvidiaCard(0)], gpuCount: 1, systemRamMb: 124549, detectedCapacityGb: 109, physicalCapacityGb: 121 },
     )!;
     const footprintGib = 6.24 + kvCacheGb / 1.073741824 + 3.42;
@@ -701,5 +704,94 @@ describe("perCardSizing", () => {
   test("refuses a split the model's heads do not allow", () => {
     expect(() => perCardSizing(installation, sizing, 3)).toThrow("qwen3.8-27b-vllm cannot run tensor parallel across 3 cards");
     expect(() => perCardSizing(installation, undefined, 2)).toThrow("cannot run tensor parallel across 2 cards");
+  });
+});
+
+describe("enforcing the charge", () => {
+  const sizing = { weightGb: 12, minKvCacheGb: 4, maxContextLength: 8192 };
+  const startConfig = (ops: VllmOps) => (ops.start as ReturnType<typeof mock>).mock.calls[0]![1];
+  const starting = () => createMockOps({ checkHealth: mock(() => Promise.resolve(true)) });
+
+  beforeEach(() => {
+    stateWrites.length = 0;
+    mockLocalStates.clear();
+  });
+
+  test("opens the window the row is charged and limits host memory to its host part plus margin", async () => {
+    mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { sizing })));
+    const ops = starting();
+    await firstValueFrom(syncVllmInstallations$([{ ...makeInstallation("charged-model"), estCapacity: 18, hostCapacity: 2 }], ops));
+    expect(startConfig(ops).gpuMemoryUtilization).toBeCloseTo(18 / (24 * 1.073741824), 4);
+    expect(startConfig(ops).hostMemoryLimitBytes).toBe(2.2e9);
+  });
+
+  test("never limits host memory below 1 GiB", async () => {
+    mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { sizing })));
+    const ops = starting();
+    await firstValueFrom(syncVllmInstallations$([{ ...makeInstallation("tiny-model"), hostCapacity: 0.1 }], ops));
+    expect(startConfig(ops).hostMemoryLimitBytes).toBe(2 ** 30);
+  });
+
+  test("falls back to the fitted window and no limit for a row the scheduler has not charged, or one of the deprecated format", async () => {
+    mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { sizing })));
+    const uncharged = starting();
+    await firstValueFrom(syncVllmInstallations$([makeInstallation("uncharged-model")], uncharged));
+    expect(startConfig(uncharged).hostMemoryLimitBytes).toBeUndefined();
+    expect(startConfig(uncharged).gpuMemoryUtilization).toBeCloseTo(computeGpuUtilization(
+      { specifier: "uncharged-model", gpuGb: fittedGpuGb(12, 4) },
+      { gpus: [nvidiaCard(24576)], gpuCount: 1, systemRamMb: 131072, detectedCapacityGb: 24, physicalCapacityGb: 24 },
+    )!, 4);
+
+    mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier)));
+    const legacy = starting();
+    await firstValueFrom(syncVllmInstallations$([{ ...makeInstallation("legacy-model"), hostCapacity: 0 }], legacy));
+    expect(startConfig(legacy).hostMemoryLimitBytes).toBeUndefined();
+  });
+
+  test("refuses to start an installation whose host part the node does not have free", async () => {
+    mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { sizing })));
+    const ops = starting();
+    await firstValueFrom(syncVllmInstallations$([{ ...makeInstallation("huge-model"), hostCapacity: 1e9 }], ops));
+    expect(ops.start).not.toHaveBeenCalled();
+    expect(stateWrites.find(([, state]) => state === "failed")?.[2]?.errorMessage).toStartWith("Not enough free memory to start: needs 1000000000.0 GB");
+  });
+
+  test("names going over the host memory budget as the reason an installation stopped", async () => {
+    const id = crypto.randomUUID();
+    const ops = createMockOps({
+      listRunning: mock(() => Promise.resolve([id])),
+      isAlive: mock(() => Promise.resolve(false)),
+      wasOomKilled: mock(() => Promise.resolve(true)),
+    });
+    mockLocalStates.set(id, { lifecycleState: "installing" });
+    await firstValueFrom(syncVllmInstallations$([makeInstallation("oom-model", id)], ops));
+    const failedWrite = stateWrites.find(([, state]) => state === "failed");
+    expect(failedWrite![2]?.errorMessage).toBe("Stopped, over its host memory budget");
+  });
+
+  test("warns from 90% of the limit, and not without one", () => {
+    expect(hostUseMessage({ usedBytes: 9.1e9, limitBytes: 10e9 })).toBe("Using 9.1 of its 10.0 GB host memory budget");
+    expect(hostUseMessage({ usedBytes: 8.9e9, limitBytes: 10e9 })).toBeUndefined();
+    expect(hostUseMessage({ usedBytes: 9.1e9 })).toBeUndefined();
+  });
+
+  test("reports a running installation close to its budget, and clears the warning once it is not", async () => {
+    const id = crypto.randomUUID();
+    const near = createMockOps({
+      listRunning: mock(() => Promise.resolve([id])),
+      memoryUse: mock(() => Promise.resolve({ usedBytes: 9.5e9, limitBytes: 10e9 })),
+    });
+    mockLocalStates.set(id, { lifecycleState: "ready" });
+    await firstValueFrom(syncVllmInstallations$([makeInstallation("busy-model", id)], near));
+    expect(stateWrites.find(([, state]) => state === "ready")?.[2]?.statusMessage).toBe("Using 9.5 of its 10.0 GB host memory budget");
+
+    stateWrites.length = 0;
+    mockLocalStates.set(id, { lifecycleState: "ready", statusMessage: "Using 9.5 of its 10.0 GB host memory budget" });
+    const calm = createMockOps({
+      listRunning: mock(() => Promise.resolve([id])),
+      memoryUse: mock(() => Promise.resolve({ usedBytes: 5e9, limitBytes: 10e9 })),
+    });
+    await firstValueFrom(syncVllmInstallations$([makeInstallation("busy-model", id)], calm));
+    expect(stateWrites.find(([, state]) => state === "ready")?.[2]?.statusMessage).toBe("vLLM server healthy");
   });
 });

@@ -74,6 +74,7 @@ const registration = {
   driverFeatures: {},
   tls: false,
   estCapacity: 24,
+  hostMemoryGb: 115,
   authToken: "token-abc",
   protocolFingerprint: "test",
   publicKey: "pub-key-1",

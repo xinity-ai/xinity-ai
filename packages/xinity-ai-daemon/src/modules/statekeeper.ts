@@ -210,7 +210,7 @@ export async function rotateNodeIdentity(): Promise<void> {
 }
 
 async function collectRegistrationData(): Promise<UnsignedNodeRegistration> {
-  const { detectedCapacityGb, gpuCount, gpus: detectedGpus } = await getHardwareProfile();
+  const { detectedCapacityGb, hostMemoryGb, gpuCount, gpus: detectedGpus } = await getHardwareProfile();
   const [driverVersions, driverFeatures, interconnect] = await Promise.all([
     getNodeDriverVersions(),
     getNodeDriverFeatures(),
@@ -235,6 +235,7 @@ async function collectRegistrationData(): Promise<UnsignedNodeRegistration> {
     driverFeatures,
     tls: !!config.tls,
     estCapacity: detectedCapacityGb,
+    hostMemoryGb,
     machineName,
     authToken,
     protocolFingerprint: protocolFingerprint(),

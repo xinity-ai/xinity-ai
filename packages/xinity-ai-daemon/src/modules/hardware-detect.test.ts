@@ -14,6 +14,7 @@ const {
   normalizePciBusId,
   amdRocrUuidField,
   amdCardName,
+  buildHardwareProfile,
 } = await import("./hardware-detect");
 type DetectedGpu = import("./hardware-detect").DetectedGpu;
 
@@ -333,5 +334,18 @@ describe("cardCapacityGib", () => {
 
   test("refuses a card the node does not have", () => {
     expect(() => cardCapacityGib(mixed, [2])).toThrow("No GPU at index 2");
+  });
+});
+
+describe("buildHardwareProfile", () => {
+  // 128 GiB of RAM is 137.4 decimal GB, of which installations get 90%.
+  test("reports usable RAM in decimal GB, beside discrete cards and as the unified pool alike", () => {
+    const card: DetectedGpu = { vendor: "nvidia", name: "RTX PRO 6000", vramMb: 97887 };
+    expect(buildHardwareProfile([card], 131072).hostMemoryGb).toBe(123);
+    expect(buildHardwareProfile([{ ...card, vramMb: 0 }], 131072).hostMemoryGb).toBe(123);
+  });
+
+  test("reports no host memory when the RAM could not be read", () => {
+    expect(buildHardwareProfile([], 0).hostMemoryGb).toBeUndefined();
   });
 });

@@ -2,6 +2,8 @@ import type { ModelSizingFields, PlacementLimitFields } from "./model-catalog/de
 import type { Engine } from "./model-catalog/definitions/model-primitives";
 import type { KvPaging } from "./model-catalog/kv-cache-floor";
 import { matchesVersionRange, satisfiesMinVersion } from "./model-catalog/semver";
+import { estimateConcurrency } from "./model-catalog/throughput-estimate";
+import type { GpuInfo } from "./tether-protocol";
 import { kvCacheSharePerCard, runsTensorParallel } from "./tensor-parallel";
 
 const GB_PER_GIB = 1.073741824;
@@ -91,6 +93,13 @@ export type FootprintRequest = {
   imagesInFlight: number;
   profile: EngineProfile;
 };
+
+export function imagesInFlight(entry: FootprintEntry, gpus: GpuInfo[], kvCacheGb: number): number {
+  if (!entry.tags.includes("vision")) {
+    return 0;
+  }
+  return estimateConcurrency({ sizing: entry.sizing, engine: "vllm" }, { gpus }, { kvCacheGb })?.sweetSpot ?? 0;
+}
 
 const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
 

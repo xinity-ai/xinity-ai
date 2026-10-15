@@ -1,7 +1,9 @@
 # yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
 #
-# The Qwen 3 family: Qwen3.8 27B in six builds, and the Qwen3.6 releases it succeeds.
-# Verified on GB10; every weightGb and minKvCacheGb here is measured, not estimated.
+# The Qwen 3 family: Qwen3.8 27B in six builds, Qwen3.8 Flash Next, and the Qwen3.6 releases
+# they succeed.
+# Verified on GB10; every weightGb and minKvCacheGb here is measured, not estimated, except on
+# the Flash Next draft.
 #
 # Each variant merges the entry it is a variant of and overrides what differs, so a
 # variant shows only what makes it one.
@@ -233,6 +235,73 @@ models:
       <<: *sizing-27b-fp8
       weightGb: 29.7   # measured resident with the tower unbuilt, 27.64 GiB
     engineArgs: *parsers-blind
+
+  # DRAFT until the run across two GX10s: weightGb, stateBytesPerSequence and engineVersions.min
+  # are estimates and minKvCacheGb is not bracketed yet.
+  qwen3.8-flash-next-fp8-vllm: &qwen38-flash-next
+    name: Qwen3.8 Flash Next FP8
+    description: |
+      Qwen's 180B mixture-of-experts vision-language model, of which only a small
+      fraction runs per token. It reads text, images and video, and was built for
+      long-horizon agentic work and coding.
+
+      Thinking is on by default. Depth is adjustable per request with
+      `reasoning_effort` (`xhigh`, `medium` or `low`), and thinking can be switched
+      off with `chat_template_kwargs: {"enable_thinking": false}`. The window is 262K.
+    url: https://huggingface.co/Qwen/Qwen3.8-Flash-Next-FP8
+    license:
+      name: Qwen Community License 1.0
+      url: https://huggingface.co/Qwen/Qwen3.8-Flash-Next-FP8/blob/main/LICENSE
+      use: conditional
+      summary: |
+        Free to use, modify and deploy, and unrestricted for internal use. Offering it
+        to third parties as a model service or an AI coding or office assistant needs
+        a separate license from Qwen, and a product above 100 million monthly users or
+        US$20 million monthly revenue must display the model name.
+    createdAt: 2026-08-24
+    registeredAt: 2026-10-14
+    engine: vllm
+    engineSpecifier: Qwen/Qwen3.8-Flash-Next-FP8
+    # 48 layers: 12 full attention + 36 linear, 2 kv heads, head_dim 256.
+    #   kvBytesPerToken       = 2 * 12 * 2 * 256 * 2   = 24576, without the sparse-attention indexer
+    #   the linear layers match Qwen3.8 27B, so its measured 3,211,264 page carries over
+    #   stateBytesPerSequence = 3,211,264 * 36         = 115,605,504
+    sizing:
+      kvBytesPerToken: 24576
+      attentionHeads: 24
+      kvHeads: 2
+      stateBytesPerSequence: 115605504
+      maxContextLength: 262144
+      weightGb: 185.6   # estimate, 172.78 GiB checkpoint
+      weightBits: 8
+    type: chat
+    family: Qwen3
+    tags: [vision, tools]
+    # Plain tensor parallel collides with the checkpoint's 128-wide FP8 blocks.
+    engineArgs:
+      - *parsers
+      - --enable-expert-parallel
+    requestParams:
+      chat_template_kwargs.enable_thinking: boolean
+    engineVersions:
+      min: "0.30.0"   # from the vLLM recipe, not yet bracketed
+
+  # DRAFT: weightGb is the checkpoint size, nothing measured yet.
+  qwen3.8-flash-next-nvfp4-vllm:
+    <<: *qwen38-flash-next
+    name: Qwen3.8 Flash Next NVFP4
+    url: https://huggingface.co/nvidia/Qwen3.8-Flash-Next-NVFP4
+    engineSpecifier: nvidia/Qwen3.8-Flash-Next-NVFP4
+    variantOf: qwen3.8-flash-next-fp8-vllm
+    platforms: [nvidia]
+    sizing:
+      kvBytesPerToken: 24576
+      attentionHeads: 24
+      kvHeads: 2
+      stateBytesPerSequence: 115605504
+      maxContextLength: 262144
+      weightGb: 132.0   # estimate, checkpoint size
+      weightBits: 4
 
   qwen3.6-35b-a3b-vllm: &qwen36-35b
     name: Qwen3.6 35B A3B

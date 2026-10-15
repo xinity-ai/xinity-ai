@@ -32,6 +32,7 @@ const registration: UnsignedNodeRegistration = {
   driverFeatures: {},
   tls: false,
   estCapacity: 0,
+  hostMemoryGb: 0,
   authToken: "token",
   protocolFingerprint: "fp",
   publicKey: "key",

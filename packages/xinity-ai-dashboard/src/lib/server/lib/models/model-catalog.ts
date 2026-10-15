@@ -17,6 +17,7 @@ import {
   resolveRequiredPlatformsForDriver,
   type Provider,
 } from "common-env/model-catalog";
+import type { FootprintEntry } from "common-env";
 import { config } from "$lib/server/config";
 import { rootLogger } from "$lib/server/logging";
 
@@ -42,6 +43,7 @@ export type SchedulableModel = {
   blockedVersions?: BlockedVersion[];
   requiredPlatforms: string[];
   requiredFeatures: string[];
+  footprint?: FootprintEntry;
 };
 
 export type CatalogResolution =
@@ -82,6 +84,7 @@ export async function resolveSchedulable(
         blockedVersions: blockedVersionRules(model),
         requiredPlatforms: model.platforms ?? [],
         requiredFeatures: requiredFeaturesForEngine(model.engine, model.type),
+        footprint: { sizing: model.sizing, tags: model.tags, engineArgs: model.engineArgs, placement: model.placement },
       },
     };
   }
