@@ -317,21 +317,30 @@ async function checkDashboardConnectivity(
   values: Record<string, string>,
   serviceActive: boolean,
   host: Host,
+  secretsReadable: boolean,
 ): Promise<CheckResult[]> {
   const checks: CheckResult[] = [];
   await pushDbChecks(checks, values, host);
   await pushInfoserverCheck(checks, values, host);
   if (values.MAIL_URL) checks.push(await checkSmtp(values.MAIL_URL, host));
   if (serviceActive) {
-    const { url, curlArgs } = dashboardHealthProbe(values);
-    checks.push(await checkServiceHealth(host, "Health endpoint", url, curlArgs));
+    const probeHealth = (scheme: "https" | "http") => {
+      const { url, curlArgs } = dashboardHealthProbe(values, scheme);
+      return checkServiceHealth(host, "Health endpoint", url, curlArgs);
+    };
+    if (secretsReadable) {
+      checks.push(await probeHealth(values.XINITY_TLS_CERT || values.XINITY_TLS_CERT_FILE ? "https" : "http"));
+    } else {
+      // Without the secrets there is no telling whether a certificate is configured, so both are tried.
+      const overHttps = await probeHealth("https");
+      checks.push(overHttps.status === "pass" ? overHttps : await probeHealth("http"));
+    }
   }
   return checks;
 }
 
 /** A socket or our own certificate needs curl told about it, or a healthy dashboard reads as unreachable. */
-function dashboardHealthProbe(values: Record<string, string>): { url: string; curlArgs: string[] } {
-  const scheme = values.XINITY_TLS_CERT || values.XINITY_TLS_CERT_FILE ? "https" : "http";
+function dashboardHealthProbe(values: Record<string, string>, scheme: "https" | "http"): { url: string; curlArgs: string[] } {
   // We are the one serving the certificate, so there is nothing to verify it against.
   const curlArgs = scheme === "https" ? ["-k"] : [];
 
@@ -557,7 +566,7 @@ async function checkComponent(
       break;
     case "dashboard":
       checks.push(
-        ...(await checkDashboardConnectivity(configResult.values, serviceActive, host)),
+        ...(await checkDashboardConnectivity(configResult.values, serviceActive, host, !configResult.permissionDenied)),
       );
       break;
     case "daemon": {
