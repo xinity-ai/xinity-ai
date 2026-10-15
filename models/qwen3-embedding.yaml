@@ -33,6 +33,9 @@ models:
       kvHeads: 8
       maxContextLength: 32768
       weightGb: 1.20  # measured resident, 1.12 GiB
+      layers: 28
+      attentionLayers: 28
+      nonLayerWeightGb: 0.31
       weightBits: 16
     type: embedding
     family: Qwen3 Embedding
@@ -56,6 +59,9 @@ models:
       kvHeads: 8
       maxContextLength: 32768
       weightGb: 8.12  # measured resident, 7.56 GiB
+      layers: 36
+      attentionLayers: 36
+      nonLayerWeightGb: 0.78
       weightBits: 16
     engineArgs: &qwen3-emb-cap
       # config.json allows 40960 but Qwen document 32K, and left alone vLLM sizes its
@@ -77,6 +83,7 @@ models:
     sizing:
       <<: *qwen3-emb-large-kv
       weightGb: 15.15  # measured resident, 14.11 GiB
+      nonLayerWeightGb: 1.24
 
   qwen3-reranker-0.6b-vllm:
     <<: *qwen3-emb
@@ -103,6 +110,9 @@ models:
       kvHeads: 8
       maxContextLength: 32768
       weightGb: 1.20  # measured resident, 1.12 GiB
+      layers: 28
+      attentionLayers: 28
+      nonLayerWeightGb: 0.31
       weightBits: 16
 
   qwen3-embedding-0.6b-ollama: &q3e-06b-ollama

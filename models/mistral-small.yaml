@@ -31,6 +31,10 @@ models:
       mlaAttention: true
       maxContextLength: 262144
       weightGb: 71.00  # measured resident, 66.12 GiB
+      hostWeightGb: 0
+      layers: 36
+      attentionLayers: 36
+      nonLayerWeightGb: 3
       activeWeightGb: 12
       weightBits: 4
     type: chat

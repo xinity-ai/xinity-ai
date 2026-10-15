@@ -37,6 +37,10 @@ models:
       minKvCacheGb: 8.72
       maxContextLength: 262144
       weightGb: 18.04  # measured resident, 16.80 GiB
+      layers: 32
+      attentionLayers: 8
+      stateLayers: 24
+      nonLayerWeightGb: 4.07
       weightBits: 16
     type: chat
     family: Ornith
@@ -66,6 +70,7 @@ models:
     sizing:
       <<: *ornith9-kv
       weightGb: 18.96  # measured resident, 17.66 GiB
+      nonLayerWeightGb: 4.98
 
   ornith-1.0-35b-vllm: &ornith35
     name: Ornith 1.0 35B
@@ -92,6 +97,10 @@ models:
       minKvCacheGb: 5.54
       maxContextLength: 262144
       weightGb: 69.46  # measured resident, 64.69 GiB
+      layers: 40
+      attentionLayers: 10
+      stateLayers: 30
+      nonLayerWeightGb: 2.04
       # 8 of 256 experts per token, plus the shared expert, attention and lm_head read in
       # full. From the checkpoint's tensor sizes; the embedding table is not read per token.
       activeWeightGb: 5.89
@@ -115,6 +124,7 @@ models:
     sizing:
       <<: *ornith35-kv
       weightGb: 70.36  # measured resident, 65.53 GiB
+      nonLayerWeightGb: 2.93
 
   ornith-1.0-35b-fp8-vllm:
     <<: *ornith35
@@ -188,6 +198,10 @@ models:
       minKvCacheGb: 8.72
       maxContextLength: 262144
       weightGb: 18.04  # measured resident, 16.80 GiB
+      layers: 32
+      attentionLayers: 8
+      stateLayers: 24
+      nonLayerWeightGb: 4.07
       weightBits: 16
     type: chat
     family: Ornith
@@ -225,6 +239,7 @@ models:
     sizing:
       <<: *ornith15-9b-kv
       weightGb: 18.96  # measured resident, 17.66 GiB
+      nonLayerWeightGb: 4.98
 
   ornith-1.5-35b-a3b-vllm: &ornith15-35b
     name: Ornith 1.5 35B-A3B
@@ -261,6 +276,10 @@ models:
       minKvCacheGb: 5.54
       maxContextLength: 262144
       weightGb: 69.48  # measured resident, 64.69 GiB
+      layers: 40
+      attentionLayers: 10
+      stateLayers: 30
+      nonLayerWeightGb: 2.04
       # 8 of 256 experts per token, plus the shared expert, attention and lm_head read in
       # full. From the checkpoint's tensor sizes; the embedding table is not read per token.
       # Single-stream decode measured 30.8 tok/s, which this figure predicts to within 2%.
@@ -290,6 +309,7 @@ models:
     sizing:
       <<: *ornith15-35b-kv
       weightGb: 70.38  # measured resident, 65.53 GiB
+      nonLayerWeightGb: 2.93
 
   ornith-1.5-35b-a3b-mtp-vllm:
     <<: *ornith15-35b
@@ -325,6 +345,7 @@ models:
     sizing:
       <<: *ornith15-35b-kv
       weightGb: 71.16  # measured resident with the MTP head, 66.26 GiB
+      attentionLayers: 11
       # The MTP head is an extra decoder layer with its own KV, so only the floor
       # moves. Bracketed: 6.16 aborts, 6.17 starts at 1.00x.
       minKvCacheGb: 6.17
@@ -381,6 +402,7 @@ models:
     sizing:
       <<: *ornith15-35b-fp8-kv
       weightGb: 37.92  # measured resident with the tower, 35.31 GiB
+      nonLayerWeightGb: 2.93
 
   ornith-1.5-35b-a3b-nvfp4-vllm: &ornith15-35b-nvfp4
     <<: *ornith15-35b
@@ -419,6 +441,7 @@ models:
       stateBytesPerSequence: 64389120
       minKvCacheGb: 2.86
       weightGb: 20.99  # measured resident, 19.55 GiB
+      nonLayerWeightGb: 1.31
       # Single-stream decode measured 79.7 tok/s, which this figure predicts to within 2%.
       activeWeightGb: 2.25
       weightBits: 4
@@ -440,3 +463,4 @@ models:
     sizing:
       <<: *ornith15-35b-nvfp4-kv
       weightGb: 21.91  # measured resident with the tower, 20.40 GiB
+      nonLayerWeightGb: 2.2

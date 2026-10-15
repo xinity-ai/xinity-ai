@@ -34,6 +34,8 @@ models:
       kvBytesPerToken: 98304
       attentionHeads: 16
       kvHeads: 16
+      layers: 24
+      attentionLayers: 24
       maxContextLength: 8192
       weightGb: 1.14  # measured resident, 1.06 GiB
       weightBits: 16
@@ -62,6 +64,7 @@ models:
     sizing:
       <<: *bge-kv
       weightGb: 1.14  # measured resident, 1.06 GiB
+      nonLayerWeightGb: 0.53
     type: rerank
     family: BGE
     tags: []

@@ -27,6 +27,9 @@ models:
       kvHeads: 4
       maxContextLength: 32768
       weightGb: 0.72  # measured resident, 0.67 GiB
+      layers: 28
+      attentionLayers: 28
+      nonLayerWeightGb: 0.21
       weightBits: 16
     type: chat
     family: Granite 4
@@ -52,6 +55,9 @@ models:
       kvHeads: 8
       maxContextLength: 131072
       weightGb: 6.84  # measured resident, 6.37 GiB
+      layers: 40
+      attentionLayers: 40
+      nonLayerWeightGb: 0.51
       weightBits: 16
 
   granite-4.0-micro-ollama:

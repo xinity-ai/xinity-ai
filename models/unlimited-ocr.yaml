@@ -32,6 +32,10 @@ models:
       kvHeads: 10
       maxContextLength: 32768
       weightGb: 6.70  # measured resident, 6.24 GiB
+      layers: 12
+      attentionLayers: 12
+      nonLayerWeightGb: 1.46
+      activeWeightGb: 1.34
       weightBits: 16
     type: chat
     family: Unlimited-OCR

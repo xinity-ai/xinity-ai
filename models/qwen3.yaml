@@ -60,6 +60,10 @@ models:
       minKvCacheGb: 17.58
       maxContextLength: 262144
       weightGb: 54.9   # measured resident, 51.1 GiB; the safetensors sum higher
+      layers: 64
+      attentionLayers: 16
+      stateLayers: 48
+      nonLayerWeightGb: 6.01
       weightBits: 16
     type: chat
     family: Qwen3
@@ -127,6 +131,7 @@ models:
     sizing:
       <<: *sizing-27b-bf16
       weightGb: 26.0   # measured resident, 24.18 GiB
+      hostWeightGb: 0
       weightBits: 4
 
   qwen3.8-27b-nvfp4-mtp-vllm:
@@ -164,6 +169,7 @@ models:
     sizing:
       <<: *sizing-27b-bf16
       weightGb: 26.8   # measured resident with the MTP head, 24.99 GiB
+      attentionLayers: 17
       weightBits: 4
       # The MTP head is an extra decoder layer carrying its own KV, so only the floor
       # moves. Bracketed: 19.16 aborts, 19.17 starts at 1.00x.
@@ -209,6 +215,7 @@ models:
     sizing:
       <<: *sizing-27b-bf16
       weightGb: 53.9   # measured resident with the tower unbuilt, 50.22 GiB
+      nonLayerWeightGb: 5.09
     engineArgs: &parsers-blind
       - *parsers
       - --language-model-only
@@ -234,6 +241,7 @@ models:
     sizing:
       <<: *sizing-27b-fp8
       weightGb: 29.7   # measured resident with the tower unbuilt, 27.64 GiB
+      nonLayerWeightGb: 5.09
     engineArgs: *parsers-blind
 
   # DRAFT until the run across two GX10s: weightGb, stateBytesPerSequence and engineVersions.min
@@ -286,22 +294,94 @@ models:
     engineVersions:
       min: "0.30.0"   # from the vLLM recipe, not yet bracketed
 
-  # DRAFT: weightGb is the checkpoint size, nothing measured yet.
-  qwen3.8-flash-next-nvfp4-vllm:
+  qwen3.8-flash-next-nvfp4-vllm: &qwen38-flash-next-nvfp4
     <<: *qwen38-flash-next
     name: Qwen3.8 Flash Next NVFP4
     url: https://huggingface.co/nvidia/Qwen3.8-Flash-Next-NVFP4
     engineSpecifier: nvidia/Qwen3.8-Flash-Next-NVFP4
     variantOf: qwen3.8-flash-next-fp8-vllm
     platforms: [nvidia]
-    sizing:
+    license:
+      name: NVIDIA Open Model License and Qwen Community License 1.0
+      url: https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/
+      use: conditional
+      summary: |
+        NVIDIA's quantization of a Qwen model, bound by both licenses. Free to use, modify
+        and deploy, and unrestricted for internal use. Offering it to third parties as a
+        model service or an AI coding or office assistant needs a separate license from
+        Qwen, and a product above 100 million monthly users or US$20 million monthly
+        revenue must display the model name. Rights end if its safety guardrails are
+        circumvented without an equivalent, and redistributing the weights requires
+        NVIDIA's license and notice.
+    # minKvCacheGb is authored: every attention layer also keeps the sparse-attention indexer's
+    # compressed keys, which no rank splits. Bracketed across two nodes: 7.28 aborts, 7.29
+    # starts at 1.01x.
+    sizing: &sizing-flash-next-nvfp4
       kvBytesPerToken: 24576
       attentionHeads: 24
       kvHeads: 2
-      stateBytesPerSequence: 115605504
+      stateBytesPerSequence: 115458048
+      minKvCacheGb: 7.29
       maxContextLength: 262144
-      weightGb: 132.0   # estimate, checkpoint size
+      weightGb: 132.6   # measured resident, 37.9 GiB per card across two plus the n-gram table
+      layers: 48
+      attentionLayers: 12
+      stateLayers: 36
+      nonLayerWeightGb: 3.45
+      activeWeightGb: 9.95
+      hostWeightGb: 51.2   # the n-gram embedding, kept in pinned host memory by the engine
       weightBits: 4
+
+  qwen3.8-flash-next-nvfp4-mtp-vllm: &qwen38-flash-next-nvfp4-mtp
+    <<: *qwen38-flash-next-nvfp4
+    name: Qwen3.8 Flash Next NVFP4 (fast decode)
+    description: |
+      The NVFP4 build with speculative decoding enabled: the same weights and the
+      same answers, more tokens per second for a single stream. Measured between
+      1.3x and 1.45x on prose against the plain NVFP4 entry.
+
+      That speedup is a low-concurrency effect. It is largest when the cards are
+      otherwise idle and shrinks as more requests share them, so choose this entry
+      for latency-sensitive work and the plain NVFP4 entry for throughput serving.
+      For mostly code, the code entry speculates one token further.
+
+      Thinking, `reasoning_effort` and the window behave exactly as on the plain
+      entry.
+    # The MTP head is one more attention layer with its own cache and indexer, so the floor moves.
+    # Bracketed across two nodes: 8.06 aborts, 8.07 starts at 1.01x.
+    sizing:
+      <<: *sizing-flash-next-nvfp4
+      weightGb: 135.5   # measured resident with the MTP head, 39.26 GiB per card across two
+      attentionLayers: 13
+      minKvCacheGb: 8.07
+    engineArgs:
+      - *parsers
+      - --enable-expert-parallel
+      - --speculative-config
+      - '{"method":"mtp","num_speculative_tokens":1}'
+
+  qwen3.8-flash-next-nvfp4-mtp-code-vllm:
+    <<: *qwen38-flash-next-nvfp4-mtp
+    name: Qwen3.8 Flash Next NVFP4 (fast decode, code)
+    description: |
+      The fast decode entry tuned for code: it speculates two tokens ahead instead
+      of one, because code repeats enough for the second token to be kept. Measured
+      about a fifth faster than the fast decode entry on code, and slower than it
+      on prose.
+
+      Thinking, `reasoning_effort` and the window behave exactly as on the plain
+      entry.
+    # Bracketed across two nodes: 8.23 aborts, 8.24 starts at 1.01x.
+    sizing:
+      <<: *sizing-flash-next-nvfp4
+      weightGb: 135.5   # measured resident with the MTP head, 39.26 GiB per card across two
+      attentionLayers: 13
+      minKvCacheGb: 8.24
+    engineArgs:
+      - *parsers
+      - --enable-expert-parallel
+      - --speculative-config
+      - '{"method":"mtp","num_speculative_tokens":2}'
 
   qwen3.6-35b-a3b-vllm: &qwen36-35b
     name: Qwen3.6 35B A3B
@@ -337,6 +417,10 @@ models:
       minKvCacheGb: 5.54
       maxContextLength: 262144
       weightGb: 70.4   # measured resident, 65.53 GiB
+      layers: 40
+      attentionLayers: 10
+      stateLayers: 30
+      nonLayerWeightGb: 2.93
       activeWeightGb: 7
       weightBits: 16
     type: chat
@@ -344,8 +428,9 @@ models:
     tags: [vision, tools]
     engineArgs:
       - *parsers
+      # Not shm: its ring lives with the API server, so a rank on another node cannot open it.
       - --mm-processor-cache-type
-      - shm
+      - lru
       - --mamba-cache-mode
       - align
       - --default-chat-template-kwargs
@@ -376,8 +461,14 @@ models:
     sizing:
       <<: *sizing-35b-bf16
       weightGb: 37.0   # measured resident, 34.49 GiB
+      hostWeightGb: 0
       activeWeightGb: 4
       weightBits: 8
+    placement:
+      limits:
+        - limit: splitSizes
+          values: [1, 2, 4]
+          reason: The FP8 blocks of 128 do not divide the expert width across more than four cards.
 
   # Same architecture as Qwen3.8-27B down to the layer geometry, so these two reuse its
   # sizing outright rather than restating it.
@@ -451,6 +542,7 @@ models:
       # the weights differ.
       <<: *sizing-35b-bf16
       weightGb: 69.46  # measured resident, 64.69 GiB
+      nonLayerWeightGb: 2.03
     type: chat
     family: Qwen-AgentWorld
     tags: [tools]

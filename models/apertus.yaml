@@ -31,6 +31,9 @@ models:
       kvHeads: 8
       maxContextLength: 65536
       weightGb: 16.13  # measured resident, 15.02 GiB
+      layers: 32
+      attentionLayers: 32
+      nonLayerWeightGb: 2.15
       weightBits: 16
     type: chat
     family: Apertus
@@ -411,6 +414,9 @@ models:
       kvHeads: 4
       maxContextLength: 4096
       weightGb: 0.88  # measured resident, 0.82 GiB
+      layers: 20
+      attentionLayers: 20
+      nonLayerWeightGb: 0.27
       weightBits: 16
     type: chat
     family: Apertus
@@ -438,6 +444,9 @@ models:
       kvHeads: 8
       maxContextLength: 4096
       weightGb: 3.02  # measured resident, 2.81 GiB
+      layers: 16
+      attentionLayers: 16
+      nonLayerWeightGb: 1.07
       weightBits: 16
 
   apertus-v1.1-1.5b-nvfp4a16-vllm:
@@ -458,6 +467,7 @@ models:
     sizing:
       <<: *apertus-15b-sizing
       weightGb: 1.64  # measured resident, 1.53 GiB
+      nonLayerWeightGb: 0.54
       weightBits: 4
 
   apertus-v1.1-4b-vllm:
@@ -480,4 +490,7 @@ models:
       kvHeads: 8
       maxContextLength: 4096
       weightGb: 7.66  # measured resident, 7.13 GiB
+      layers: 24
+      attentionLayers: 24
+      nonLayerWeightGb: 1.61
       weightBits: 16

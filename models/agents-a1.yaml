@@ -34,9 +34,13 @@ models:
       attentionHeads: 16
       kvHeads: 2
       stateBytesPerSequence: 64880640
+      layers: 40
+      attentionLayers: 10
+      stateLayers: 30
       minKvCacheGb: 5.54
       maxContextLength: 262144
       weightGb: 70.38  # measured resident, 65.53 GiB
+      nonLayerWeightGb: 2.93
       activeWeightGb: 5.89
       weightBits: 16
     type: chat
@@ -146,12 +150,16 @@ models:
       attentionHeads: 16
       kvHeads: 4
       stateBytesPerSequence: 51904512
+      layers: 32
+      attentionLayers: 8
+      stateLayers: 24
       # 32 layers, 8 full attention and 24 linear, 4 kv heads at head_dim 256.
       # minKvCacheGb is authored: the linear layers block-align the attention page,
       # so the derived floor falls short. Bracketed: 8.71 aborts, 8.72 starts at 1.00x.
       minKvCacheGb: 8.72
       maxContextLength: 262144
       weightGb: 9.25  # measured resident, 8.61 GiB
+      nonLayerWeightGb: 1.94
       weightBits: 16
     type: chat
     family: Agents-A1

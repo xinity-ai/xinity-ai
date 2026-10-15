@@ -27,6 +27,9 @@ models:
       kvHeads: 16
       maxContextLength: 8192
       weightGb: 1.14  # measured resident, 1.06 GiB
+      layers: 24
+      attentionLayers: 24
+      nonLayerWeightGb: 0.53
       weightBits: 16
     type: embedding
     family: Snowflake Arctic

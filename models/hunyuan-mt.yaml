@@ -42,6 +42,9 @@ models:
       kvHeads: 4
       maxContextLength: 32768
       weightGb: 3.68  # measured resident, 3.43 GiB
+      layers: 32
+      attentionLayers: 32
+      nonLayerWeightGb: 0.49
       weightBits: 16
     type: chat
     family: Hunyuan MT
