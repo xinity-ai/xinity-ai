@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { EngineVersions, RelayedEngineVersions, ModelSizing } from "./model-definition";
+import { EngineVersions, RelayedEngineVersions, ModelSizing, Placement, RelayedPlacement } from "./model-definition";
 
 const base = { weightGb: 14, maxContextLength: 32768, kvBytesPerToken: 131072 };
 
@@ -105,5 +105,25 @@ describe("EngineVersions", () => {
     for (const min of ["v0.21.0", "0.21.0.post1", "0.19.2rc1", "0.21", "latest"]) {
       expect(EngineVersions.safeParse({ min }).success).toBe(false);
     }
+  });
+});
+
+describe("placement limits", () => {
+  const twoCards = { limit: "cards", max: 2, reason: "x" };
+
+  it("rejects a limit kind it does not define in a local file, where it is a typo", () => {
+    expect(Placement.safeParse({ limits: [{ limit: "pipeline", max: 1, reason: "x" }] }).success).toBe(false);
+  });
+
+  /** Dropping an unreadable limit would make the entry less restricted than its author meant. */
+  it("reads a relayed limit it cannot understand as a single card, keeping the ones it can", () => {
+    const parsed = RelayedPlacement.parse({
+      limits: [twoCards, { limit: "pipeline", stages: 1, reason: "a kind from a later version" }, { limit: "nodes", max: 0, reason: "unreadable" }],
+    });
+    expect(parsed.limits).toEqual([
+      twoCards,
+      expect.objectContaining({ limit: "cards", max: 1 }),
+      expect.objectContaining({ limit: "cards", max: 1 }),
+    ]);
   });
 });

@@ -211,7 +211,6 @@ async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): P
     specifier: installation.specifier,
     weightGb: perCard.weightGb,
     kvCacheGb: perCard.kvCacheGb,
-    overheadGb: entry.sizing?.overheadGb,
     gpuIds: installation.gpuIds,
   }, profile);
   const modelType = entry.type;
@@ -292,7 +291,7 @@ function pinnedCardIndices(gpus: readonly GpuInfo[], cardIds: readonly string[])
 }
 
 export function computeGpuUtilization(
-  installation: { specifier: string; weightGb: number; kvCacheGb: number; overheadGb?: number; gpuIds?: string[] },
+  installation: { specifier: string; weightGb: number; kvCacheGb: number; gpuIds?: string[] },
   profile: Pick<HardwareProfile, "gpus" | "gpuCount" | "systemRamMb" | "detectedCapacityGb" | "physicalCapacityGb">,
 ): number | undefined {
   if (profile.gpuCount === 0 || profile.physicalCapacityGb === 0) {
@@ -300,9 +299,7 @@ export function computeGpuUtilization(
   }
 
   const weightGib = installation.weightGb / GB_PER_GIB;
-  const overheadGib = installation.overheadGb !== undefined
-    ? installation.overheadGb / GB_PER_GIB
-    : OVERHEAD_BASE_GIB + OVERHEAD_WEIGHT_FRACTION * weightGib;
+  const overheadGib = OVERHEAD_BASE_GIB + OVERHEAD_WEIGHT_FRACTION * weightGib;
   const neededGib = weightGib + installation.kvCacheGb / GB_PER_GIB + overheadGib;
   const cardGib = cardCapacityGib(profile, pinnedCardIndices(profile.gpus, installation.gpuIds ?? []));
   const headroomCap = profile.detectedCapacityGb / profile.physicalCapacityGb;

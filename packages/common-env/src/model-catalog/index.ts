@@ -5,6 +5,7 @@ export * from "./model-tags";
 export { classifyGpu, gpuClassPatterns, type GpuClass } from "./gpu-classes";
 export { estimateThroughput, estimateConcurrency, type ThroughputEstimate, type ConcurrencyEstimate, type KvAllocation } from "./throughput-estimate";
 export { satisfiesMinVersion, normalizePep440, matchesVersionRange, isValidVersionRange } from "./semver";
+export { kvCacheFloorGb, type KvFloorLayout, type KvPaging } from "./kv-cache-floor";
 export { IncompatibilityReasonEnum, nearestIncompatibility, type IncompatibilityReason } from "./incompatibility";
 export { checkNodeCompatibility, isDeployableOnCluster, isLegacyModelDeployableOnCluster, explainClusterIncompatibility, explainLegacyClusterIncompatibility, blockedVersionNotes, modelRequirements, blockedVersionRules, type DeployableModel, modelRequirementsForDriver, requiredFeaturesForEngine, type NodeCapability, type ModelNodeRequirements, type BlockedVersion, type ClusterModel } from "./node-compat";
 export { createCatalogClient, createInfoserverClient, type CatalogClient, type InfoserverClient, type ModelLookup } from "./client";

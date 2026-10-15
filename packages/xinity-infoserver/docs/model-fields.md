@@ -49,7 +49,7 @@ An unrecognised `use` value is read as `unknown` rather than failing validation,
 
 ## Adding a value to a fixed set
 
-Adding to `engine`, `type`, `tags`, `platforms`, an `engineVersions.rules` effect or license `use` is not a breaking change. In a catalog read over `includes`, unknown tags and platforms are filtered out and unknown engines or types skip the entry, and a version rule naming an unknown effect is dropped on its own, so older readers lose only what they could not have used. In a local file an unknown value is a typo and fails the load.
+Adding to `engine`, `type`, `tags`, `platforms`, an `engineVersions.rules` effect, a `placement.limits` kind or license `use` is not a breaking change. In a catalog read over `includes`, unknown tags and platforms are filtered out and unknown engines or types skip the entry, a version rule naming an unknown effect is dropped on its own, and a placement limit of an unknown kind is read as a single-card limit, so older readers lose only what they could not have used and never place an entry more widely than its author allowed. In a local file an unknown value is a typo and fails the load.
 
 Redefining or removing a value is breaking, since deployed readers keep the old meaning.
 
@@ -81,17 +81,22 @@ Everything the variant costs to run. Grouped because these figures are read toge
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `weightGb` | number | required | VRAM consumed by this variant's weights, in GB |
-| `minKvCacheGb` | number | derived | Minimum KV-cache allocation in GB (decimal, 10⁹). The floor below which vLLM refuses to start: KV for one request at full context, plus `stateBytesPerSequence` for a hybrid model. Derived from `kvBytesPerToken` when absent, rounded up, so an entry stating that field needs nothing here. Author it only to demand **more** than the floor. Every entry must state one of the two |
+| `weightGb` | number | required | Memory consumed by this variant's weights, in GB, wherever the engine keeps them |
+| `hostWeightGb` | number | - | Part of `weightGb` the engine keeps in host memory instead of on the GPU, in GB, for example n-gram embedding tables. 0 when every weight is on the GPU. Stating it, 0 included, marks the entry as checked across nodes: without it the entry is placed on one node only, where it counts as 0. Set it only after the entry has passed a run across two nodes |
+| `nonLayerWeightGb` | number | - | Part of `weightGb` outside the decoder layer stack, in GB: input embedding, output head, vision and audio encoders. These sit on the first or last stage when a model is split by layers |
+| `layers` | number | - | Decoder layers in the layer stack (`num_hidden_layers`), without speculative draft layers |
+| `attentionLayers` | number | - | Layers that cache keys and values per token, including a speculative draft layer the entry enables. `kvBytesPerToken` is spread over these, and the engine pages KV per layer |
+| `stateLayers` | number | - | Layers holding a fixed recurrent state per request (Mamba, gated deltanet). `stateBytesPerSequence` is spread over these. Absent for pure attention models |
+| `minKvCacheGb` | number | derived | Minimum KV-cache allocation in GB (decimal, 10⁹). The floor below which vLLM refuses to start: KV for one request at full context, allocated in whole 16-token blocks plus the one block vLLM keeps in reserve, plus `stateBytesPerSequence` for a hybrid model, paged the way vLLM pages it once the entry states `attentionLayers` and `stateLayers`. Derived from `kvBytesPerToken` when absent, rounded up, so an entry stating that field needs nothing here. Author it only to demand **more** than the floor. Every entry must state one of the two |
 | `maxContextLength` | number | required | Maximum supported context window, in tokens. Used by the gateway to enforce per-model context limits (e.g. in the Responses API) and reported via `GET /v1/models`. **Not** passed to the engine: an entry clipping its context below the model's own config has to state `--max-model-len` in `engineArgs` as well, see ["`maxContextLength` is not passed to the engine"](./integrating-a-model.md#maxcontextlength-is-not-passed-to-the-engine) |
-| `activeWeightGb` | number | - | Weights read per token, in GB, for a mixture-of-experts variant. Absent means dense. Throughput scales with this rather than with `weightGb`, so a sparse model left without it reads as far slower than it is. Capacity is unaffected: the full `weightGb` still has to fit in VRAM |
+| `activeWeightGb` | number | - | Weights read per token, in GB, for a mixture-of-experts variant. Present exactly when the model is a mixture of experts, so set it for every one: absent means dense. It decides the concurrency knee, and when the model spans nodes, the extra collective communicator its experts need. Capacity is unaffected: the full `weightGb` still has to fit |
 | `weightBits` | number | - | **Nominal** bits per stored parameter: 16 for fp16/bf16, 8 for fp8 or `q8_0`, 4 for AWQ/GPTQ. Write the headline width of the method, not a computed average, and see [Weight precision](#weight-precision) for why the two are never the same |
 | `kvBytesPerToken` | number | - | KV cache one token of context consumes, in bytes: `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes`. This is the factor `minKvCacheGb` is built from, kept instead of discarded, because how many requests a deployment serves at once follows from it. Loading an authored file warns when the two disagree by more than a factor of two. |
 | `attentionWindow` | number | - | Sliding-window attention span in tokens, for models that have one. KV per request stops growing past this point, so without it a windowed model looks far more expensive at long context than it is |
 | `stateBytesPerSequence` | number | - | Recurrent state one concurrent request consumes, in bytes, for hybrid architectures whose layers are not all attention. A fixed cost per request in flight rather than one that grows with context, so it bounds concurrency in a way shortening the context cannot relieve. See [Hybrid architectures](#hybrid-architectures) |
 | `attentionHeads` | number | - | Attention heads per layer of the language model (`num_attention_heads`) |
 | `kvHeads` | number | - | Key/value heads per layer of the language model (`num_key_value_heads`). Equal to `attentionHeads` without grouped-query attention, fewer with it. Needs `attentionHeads` and must not exceed it |
-| `overheadGb` | number | - | Memory the engine holds beyond weights and KV cache once started, in GB: peak activation, non-torch allocations and CUDA graphs, as measured at startup. See [`integrating-a-model.md`](./integrating-a-model.md#researching-the-fields) for how to read it off a load |
+| `overheadGb` | number | - | Deprecated and no longer read. The engine's own memory depends on how a deployment is split, not on the model, so it comes from the engine profile for the layout. Do not set it |
 | `mlaAttention` | boolean | - | `true` when the model uses multi-head latent attention, as DeepSeek V2 and V3 do, caching one compressed latent per token instead of keys and values per head |
 
 ## Hybrid architectures
@@ -114,8 +119,40 @@ So `weightBits` records the headline width, which is the only figure anyone can 
 |-------|------|-------------|
 | `engineVersions` | object | Which engine versions serve this model, see [Engine versions](#engine-versions) below |
 | `platforms` | string[] (GPU vendors) | Required GPU vendors. Nodes without a matching GPU are excluded. Values: `"nvidia"`, `"amd"`, `"intel"`. Example: `[nvidia]` for models with CUDA-only kernels |
+| `placement` | object | How an installation may be placed and split, see [Placement limits](#placement-limits) below |
 
-Unset means unconstrained: any engine version, any platform.
+Unset means unconstrained: any engine version, any platform, any split the model's facts allow.
+
+### Placement limits
+
+`placement.limits` lists restrictions on splitting an installation that follow from no other field.
+What the other fields already decide is not restated here: splitting across cards needs
+`attentionHeads` and `kvHeads` and only uses sizes they divide by, and spanning nodes needs
+`hostWeightGb`.
+
+```yaml
+placement:
+  limits:
+    - limit: nodes
+      max: 1
+      reason: The n-gram tables cannot be split across machines yet.
+      engineRange: "<0.33.0"
+    - limit: splitSizes
+      values: [1, 2, 4]
+      reason: FP8 blocks of 128 do not divide at other sizes.
+```
+
+| Field | Applies to | Description |
+|-------|-----------|-------------|
+| `limit` | every rule | The kind of rule: `nodes`, `cards` or `splitSizes` |
+| `max` | `nodes`, `cards` | Most machines, or most cards over all machines, one installation may span |
+| `values` | `splitSizes` | The only numbers of cards one installation may be split across |
+| `reason` | every rule | Why, in a sentence shown to someone choosing where to deploy |
+| `engineRange` | every rule, optional | The engine releases the rule applies to, as a version range. Absent means every release, so a rule a later release lifts can expire on its own |
+
+In a local file an unknown `limit` is a typo and fails the load. In a catalog read over `includes`,
+a rule this version cannot read is not dropped, since dropping it would allow what its author meant
+to forbid: it is read as a single-card limit instead.
 
 ### Engine versions
 

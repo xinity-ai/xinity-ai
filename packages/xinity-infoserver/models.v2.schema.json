@@ -83,7 +83,8 @@
                 },
                 "required": [
                   "name",
-                  "url"
+                  "url",
+                  "use"
                 ],
                 "additionalProperties": {}
               }
@@ -118,11 +119,39 @@
             "properties": {
               "weightGb": {
                 "type": "number",
-                "description": "VRAM consumed by this variant's weights, in GB"
+                "description": "Memory consumed by this variant's weights, in GB, wherever the engine keeps them"
               },
               "activeWeightGb": {
-                "description": "Weights read per token by a mixture-of-experts variant, in GB. Absent means dense, where every weight participates. Speed scales with this figure, while capacity still needs the full weight",
+                "description": "Weights read per token by a mixture-of-experts variant, in GB. Present exactly when the model is a mixture of experts, so it must be set for every one: it decides the concurrency knee and, when the model spans nodes, the extra collective communicator its experts need. Absent means dense, where every weight participates. Capacity still needs the full weight",
                 "type": "number"
+              },
+              "hostWeightGb": {
+                "description": "Part of weightGb this entry's engine keeps in host memory instead of on the GPU, in GB, for example n-gram embedding tables. 0 when every weight is on the GPU. Stating it, 0 included, marks the entry as checked across nodes: without it the entry is placed on one node only, where it counts as 0",
+                "type": "number",
+                "minimum": 0
+              },
+              "nonLayerWeightGb": {
+                "description": "Part of weightGb outside the decoder layer stack, in GB: input embedding, output head, vision and audio encoders. These sit on the first or last stage when the model is split by layers",
+                "type": "number",
+                "minimum": 0
+              },
+              "layers": {
+                "description": "Decoder layers in the layer stack, num_hidden_layers in config.json, without speculative draft layers",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "attentionLayers": {
+                "description": "Layers that cache keys and values per token, including a speculative draft layer this entry enables. kvBytesPerToken is spread over these, which the engine pages per layer",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "stateLayers": {
+                "description": "Layers holding a fixed recurrent state per request, such as Mamba or gated deltanet layers. stateBytesPerSequence is spread over these. Absent for pure attention models",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
               },
               "weightBits": {
                 "description": "Nominal bits per stored parameter, e.g. 16 for fp16 or 4 for AWQ. Never an exact average: every method leaves parts of the network wider than its headline width, commonly attention projections, embeddings and norms. Dividing weightGb by it yields a parameter count good enough to estimate throughput from, and good for nothing that needs the real one",
@@ -131,7 +160,7 @@
                 "maximum": 32
               },
               "minKvCacheGb": {
-                "description": "Minimum KV-cache allocation in decimal GB. Optional once kvBytesPerToken is stated, because the floor is then exact: one request at full context plus, for a hybrid model, its per-sequence state. Author it only to demand more than that floor, and expect the server to log any entry whose figure disagrees with the derived one by more than a factor of two",
+                "description": "Minimum KV-cache allocation in decimal GB. Optional once kvBytesPerToken is stated, because the floor then follows from it: one request at full context in whole 16-token blocks plus the block the engine keeps in reserve, and for a hybrid model its per-sequence state. Author it only to demand more than that floor, and expect the server to log any entry whose figure disagrees with the derived one by more than a factor of two",
                 "type": "number"
               },
               "kvBytesPerToken": {
@@ -171,7 +200,7 @@
                 "maximum": 9007199254740991
               },
               "overheadGb": {
-                "description": "Memory the engine holds beyond weights and KV cache once started, in GB: peak activation, non-torch allocations and CUDA graphs, as measured at startup",
+                "description": "Deprecated and no longer read. The engine's own memory depends on how a deployment is split, not on the model, so it comes from the engine profile for the layout",
                 "type": "number",
                 "exclusiveMinimum": 0
               },
@@ -306,6 +335,112 @@
                 "amd",
                 "intel"
               ]
+            }
+          },
+          "placement": {
+            "default": {
+              "limits": []
+            },
+            "description": "How an installation of this entry may be placed and split",
+            "type": "object",
+            "properties": {
+              "limits": {
+                "default": [],
+                "description": "Restrictions on how an installation may be split that follow from no other field",
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "limit": {
+                          "type": "string",
+                          "const": "nodes"
+                        },
+                        "max": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991,
+                          "description": "Most machines one installation may span"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "description": "Why, in a sentence shown to someone choosing where to deploy"
+                        },
+                        "engineRange": {
+                          "description": "The engine releases this limit applies to, as a version range. Absent means every release",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "limit",
+                        "max",
+                        "reason"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "limit": {
+                          "type": "string",
+                          "const": "cards"
+                        },
+                        "max": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991,
+                          "description": "Most cards one installation may span, over all its machines"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "description": "Why, in a sentence shown to someone choosing where to deploy"
+                        },
+                        "engineRange": {
+                          "description": "The engine releases this limit applies to, as a version range. Absent means every release",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "limit",
+                        "max",
+                        "reason"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "limit": {
+                          "type": "string",
+                          "const": "splitSizes"
+                        },
+                        "values": {
+                          "minItems": 1,
+                          "type": "array",
+                          "items": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "description": "The only numbers of cards one installation may be split across"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "description": "Why, in a sentence shown to someone choosing where to deploy"
+                        },
+                        "engineRange": {
+                          "description": "The engine releases this limit applies to, as a version range. Absent means every release",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "limit",
+                        "values",
+                        "reason"
+                      ]
+                    }
+                  ]
+                }
+              }
             }
           },
           "minXinityVersion": {
