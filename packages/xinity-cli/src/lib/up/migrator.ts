@@ -24,7 +24,7 @@ import { parseEnvString } from "../config/env-file.ts";
 import { fail, pass, warn } from "../core/output.ts";
 import { planPostgresProvision, type PostgresProvision } from "../infra/postgres-setup.ts";
 import { type Host, localRun } from "../core/host.ts";
-import { readManifest, saveDbHint, updateManifestEntry } from "./manifest.ts";
+import { manifestWriteFailure, readManifest, saveDbHint, updateManifestEntry } from "./manifest.ts";
 import { ENV_DIR, SECRETS_DIR } from "../core/component-meta.ts";
 import { isDirectory } from "../core/fs.ts";
 
@@ -346,24 +346,41 @@ export async function runMigrations(opts: {
   // Persist secret and manifest only if something actually changed.
   const hint = dbHint(connectionUrl);
   const freshManifest = await readManifest(opts.host);
+  const manifestFailed = () => {
+    const msg = manifestWriteFailure(opts.host);
+    fail("Manifest", msg);
+    errors.push(msg);
+    return { success: false, errors };
+  };
 
   if (freshManifest.db?.hint !== hint) {
     const escaped = connectionUrl.replace(/'/g, "'\\''");
-    await opts.host.withElevation(
+    const stored = await opts.host.withElevation(
       `mkdir -p ${SECRETS_DIR} && chmod 700 ${SECRETS_DIR}` +
       ` && printf '%s' '${escaped}' > '${DB_SECRET_PATH}' && chmod 600 '${DB_SECRET_PATH}'`,
       "Store DB connection URL secret",
     );
-    await saveDbHint(hint, opts.host);
+    if (!stored.success) {
+      const msg = `Could not store the DB connection URL at ${DB_SECRET_PATH}`;
+      fail("DB secret", msg);
+      errors.push(msg);
+      return { success: false, errors };
+    }
+    if (!(await saveDbHint(hint, opts.host))) {
+      return manifestFailed();
+    }
   }
 
   if (freshManifest.components["db"]?.version !== source.version) {
-    await updateManifestEntry("db", {
+    const recorded = await updateManifestEntry("db", {
       version: source.version,
       installedAt: new Date().toISOString(),
       binaryPath: "",
       unitName: "",
     }, opts.host);
+    if (!recorded) {
+      return manifestFailed();
+    }
   }
 
   return { success: true, errors };
