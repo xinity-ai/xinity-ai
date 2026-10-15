@@ -38,6 +38,11 @@ steps.)
    is a question to ask, not a guess to make.
 2. **Research the fields** (table below) from the HuggingFace model card and the repo's
    `config.json`. Where a value is genuinely unknowable, use the documented default and note it.
+   The structural sizing facts are not researched by hand. Run
+   `bun run derive-sizing <repo id>` (in `packages/xinity-infoserver`) and paste the printed block
+   into `sizing`. Its comments say what to adjust for the entry. It reads only `config.json` and the
+   safetensors headers, never the weights, and also takes a local model directory. A gated repo
+   needs `HF_TOKEN`.
 3. **Write the entry** into the family's file under `models/`, keyed by a specifier that carries the
    engine (e.g. `qwen3-coder-30b-vllm`). Start with the required fields; add optional fields only
    when research or a failure justifies them. For editor autocomplete and validation, add the schema
@@ -66,11 +71,14 @@ steps.)
 | `engine`, `engineSpecifier` | `vllm` plus the HuggingFace repo id. An Ollama variant of the same model is a second entry with `engine: ollama` and its own tag, weight and KV floor. |
 | `sizing.weightGb` | VRAM the weights actually occupy, in GB. Estimate it to plan the download (FP16 ≈ params(billions) × 2; ~4-bit ≈ params × 0.5), then **replace the estimate with the measured figure** once it loads: vLLM logs `Model loading took X GiB`, and this field is decimal GB, so record `X × 1.074`. Do not sum the safetensors file sizes, which read high (~0.7 GB on a 27B) because not everything on disk becomes resident weight. |
 | `sizing.weightBits` | The method's headline width: `torch_dtype` in `config.json` for an unquantized repo, the `quantization_config` bits for AWQ/GPTQ, or the digit in an Ollama tag (`q8_0` → 8, `q4_K_M` → 4). Do not try to work out the real average across the checkpoint: parts of the network stay wider than the headline width, and the field is documented as approximate for exactly that reason. |
-| `sizing.activeWeightGb` | MoE only, and only when `config.json` names the sparse layout. Scale `weightGb` by the fraction of parameters active per token, i.e. `num_experts_per_tok / num_experts` over the expert layers, and leave the shared/attention weights counted in full. Omit it for dense models. |
+| `sizing.activeWeightGb` | MoE only. `derive-sizing` sums what one token reads: the routed share of every expert tensor, and everything else in full except the embedding tables and encoders, which are not read per token. Omit it for dense models. On a speculative-decoding entry the read per token is amortized over the accepted tokens, so derive it from measured single-stream decode instead. |
+| `sizing.layers`, `sizing.attentionLayers`, `sizing.stateLayers`, `sizing.nonLayerWeightGb` | From `derive-sizing`. Add the draft layer to `attentionLayers` when the entry enables speculative decoding. Sliding-window layers count toward `stateBytesPerSequence`, not toward `attentionLayers`. |
+| `sizing.hostWeightGb` | Leave it out until the entry has passed a run across two nodes, see "Verify it across nodes" below. `derive-sizing` prints the figure as a comment. |
+| `placement.limits` | `splitSizes` from `derive-sizing` where FP8 block quantization leaves only some splits valid. Add `nodes` or `cards` limits only for a failure you observed, with the reason. |
 | `sizing.minKvCacheGb` | Leave it out on a plain attention model: `kvBytesPerToken` derives the floor exactly and rounds it up, so authoring both only invites the two to disagree. Author it when you want **more** cache than the floor, or when the derived value is **short of what the engine demands**, which happens legitimately on hybrid and speculative-decoding entries. See "Confirm the KV-cache floor" below. Then confirm it starts. |
 | `sizing.kvBytesPerToken` | The `2 × num_hidden_layers × num_key_value_heads × head_dim × dtype_bytes` product from `config.json`, in bytes. The cache floor and the concurrency estimate both come from it, so it is the one KV figure worth getting right. Use the cache dtype the engine will actually run with, which is not always the weight dtype. |
 | `sizing.attentionWindow` | `sliding_window` in `config.json`, when the model sets one and does not disable it (`use_sliding_window: false`). Leave it out for full attention. |
-| `sizing.stateBytesPerSequence` | Hybrid architectures only, where `config.json` mixes attention with Mamba or gated-deltanet layers (look for `linear_attention`, `mamba` or a `layer_types` list that is not uniformly attention). Sum the per-layer state across the recurrent layers: roughly `conv_state + ssm_state` per layer, i.e. `d_inner × d_conv` plus `d_inner × d_state`, times `dtype_bytes`. Omit it for pure attention models. It is worth confirming against the number vLLM reports for the state cache at startup, because on these models it is what a concurrency cap has to respect. |
+| `sizing.stateBytesPerSequence` | The cache a request holds regardless of its length: recurrent state (Mamba, gated deltanet, short conv), sliding-window KV, or a Whisper decoder's cross-attention to the encoder output. `derive-sizing` computes it for the families it knows. For any other, sum the per-layer state by hand and confirm it against the number vLLM reports at startup, because on these models it is what a concurrency cap has to respect. Omit it for pure full-attention models. |
 | `sizing.attentionHeads`, `sizing.kvHeads` | `num_attention_heads` and `num_key_value_heads` in `config.json`. On a multimodal model take the language model's figures, usually under `text_config`, not the vision tower's. |
 | `sizing.overheadGb` | Deprecated, do not set. The engine's own memory depends on how a deployment is split, not on the model, and comes from the engine profile for the layout. |
 | `sizing.mlaAttention` | `true` only when the architecture uses multi-head latent attention, e.g. DeepSeek V2/V3 (`kv_lora_rank` in `config.json`). Omit it otherwise. |
@@ -413,6 +421,19 @@ model at different `--max-model-len` caps**, each one a context/footprint trade-
 smaller floor → more requests fit in the same cache). Note: for models with sliding-window or hybrid
 attention (e.g. Gemma 4), the real floor is well below the dense formula above, so trust the
 empirical `X GiB needed` figure rather than the estimate.
+
+### Verify it across nodes (`hostWeightGb`)
+
+An entry without `hostWeightGb` is placed on one node only. Stating it, 0 included, says the entry
+has run as one installation across nodes, so state it only after that run. Start one `run-model`
+per node with the same `--nnodes`, `--master-addr` (rank 0's address) and a `--node-rank` each,
+and put the entry through the same checks as on one node: a real request, every
+declared capability. Then copy the `hostWeightGb` that `derive-sizing` prints.
+
+The usual failure is an `engineArgs` flag that only works within one machine. Such a flag starts
+fine on one node and breaks a rank on another, for example `--mm-processor-cache-type shm`, which
+needs `lru` across nodes. Fix the flag rather than adding a `nodes` limit, unless the model itself
+cannot be split.
 
 ### Confirm the version floor (`engineVersions.min`)
 
