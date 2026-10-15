@@ -75,11 +75,7 @@ export type Host = {
   /** Return true if the path exists on this host. */
   fileExists(path: string): Promise<boolean>;
 
-  /**
-   * Upload a local file to this host at destPath.
-   * Returns the effective path of the file on the host.
-   * For localhost this is a no-op and returns localPath unchanged.
-   */
+  /** Copy a local file to destPath on this host, localhost included, and return destPath. */
   uploadFile(localPath: string, destPath: string): Promise<string>;
 
   /** Download a file from a URL to destPath on this host. */
