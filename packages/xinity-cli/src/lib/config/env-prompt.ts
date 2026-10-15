@@ -3,7 +3,7 @@ import { bold, cyan, dim, yellow, green } from "picocolors";
 import { promptOrExit, cancelAndExit } from "../core/output.ts";
 import { parseEnvString } from "./env-file.ts";
 import { analyzeConfig, delegate, parseDelegation, type ConfigProblem, type EnvField, type EnvFieldGroup } from "common-env";
-import { type Component, COMPONENTS, COMPONENT_CONFIGS, ENV_DIR, SECRETS_DIR } from "../core/component-meta.ts";
+import { type Component, COMPONENTS, COMPONENT_CONFIGS, ENV_DIR, SECRETS_DIR, attentionKeysFor, checkComponentConfig } from "../core/component-meta.ts";
 import { readSecrets, type Host } from "../core/host.ts";
 import { readManifest } from "../up/manifest.ts";
 
@@ -663,6 +663,10 @@ export async function collectEnv(
     changes: diffEnv({ config: existingConfig, secrets: existingSecrets }, result),
   });
   const useExisting = () => withChanges(splitValuesByCategory(fields, existing));
+  const editOptions = {
+    attentionKeys: attentionKeysFor(component),
+    validate: (values: Record<string, string | undefined>) => checkComponentConfig(component, values),
+  };
 
   const isInstalled = !!(await readManifest(host)).components[component];
 
@@ -676,13 +680,13 @@ export async function collectEnv(
         ],
       }));
       if (action === "skip") return useExisting();
-      const result = await menuEditEnv(fields, existing);
+      const result = await menuEditEnv(fields, existing, editOptions);
       return result ? withChanges(result) : useExisting();
     } else {
       log.info(
         `${missingRequired.length} new variable(s) need to be set. Edit any other values too if you like.`,
       );
-      const result = await menuEditEnv(fields, existing);
+      const result = await menuEditEnv(fields, existing, editOptions);
       if (result === null) cancelAndExit();
       return withChanges(result);
     }
