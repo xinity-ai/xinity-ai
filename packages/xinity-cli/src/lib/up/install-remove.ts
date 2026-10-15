@@ -1,6 +1,6 @@
 import { confirm, isCancel } from "../core/clack.ts";
 import { heading } from "../core/output.ts";
-import { readManifest, writeManifest } from "./manifest.ts";
+import { manifestWriteFailure, readManifest, writeManifest } from "./manifest.ts";
 import { categorizeFields, componentFields, secretKeysOfOtherComponents } from "../config/env-prompt.ts";
 import { type Host, isUnitActiveOn } from "../core/host.ts";
 import { unitName } from "./systemd.ts";
@@ -139,8 +139,13 @@ export async function* removeComponent(opts: {
   }
 
   delete manifest.components[component];
-  await writeManifest(manifest, host);
-  yield { type: "pass", label: "Manifest", detail: `Removed ${component} from manifest` };
+  if (await writeManifest(manifest, host)) {
+    yield { type: "pass", label: "Manifest", detail: `Removed ${component} from manifest` };
+  } else {
+    const error = manifestWriteFailure(host);
+    errors.push(error);
+    yield { type: "fail", label: "Manifest", detail: error };
+  }
 
   const success = errors.length === 0;
   if (success) {

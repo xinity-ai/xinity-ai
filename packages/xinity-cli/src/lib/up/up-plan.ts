@@ -690,11 +690,15 @@ export async function configureComponentFlow(component: Component, host: Host): 
   const configResult = await writeEnvConfig(component, result.config, result.secrets, host, secretFiles.remove);
   if (configResult.success) {
     progress.update("Environment configured");
-    await writeSystemdUnit(component, Object.keys(result.secrets), host);
-    const restarted = await runSteps(restartService(component, host), progress);
-    progress.done(restarted
-      ? `${component} reconfigured, service restarted`
-      : `${component} reconfigured (service not running, takes effect on next start)`);
+    const unitResult = await writeSystemdUnit(component, Object.keys(result.secrets), host);
+    if (unitResult.success) {
+      const restarted = await runSteps(restartService(component, host), progress);
+      progress.done(restarted
+        ? `${component} reconfigured, service restarted`
+        : `${component} reconfigured (service not running, takes effect on next start)`);
+    } else {
+      progress.fail("Systemd", `${unitResult.error || "failed to update the unit"}. The service was not restarted.`);
+    }
   } else if (configResult.error) {
     progress.fail("Config", configResult.error);
   }

@@ -32,12 +32,20 @@ const MANIFEST_PATH = "/opt/xinity/manifest.json";
 // reflects disk again (a skipped elevated write must not go unnoticed).
 const manifestCache = new WeakMap<Host, Manifest>();
 
-async function readManifestContent(host: Host): Promise<string | null> {
+// Hosts whose manifest exists but could not be read or parsed. It reads as empty, and writing
+// that back would erase every other entry, so writes are refused until it is repaired.
+const unreadableManifests = new WeakSet<Host>();
+
+async function readManifestContent(host: Host): Promise<string | null | "unreadable"> {
   const direct = await host.readFile(MANIFEST_PATH);
-  if (direct) return direct;
-  if (!(await host.fileExists(MANIFEST_PATH))) return null;
+  if (direct) {
+    return direct;
+  }
+  if (!(await host.fileExists(MANIFEST_PATH))) {
+    return null;
+  }
   const elevated = await host.withElevation(`cat '${MANIFEST_PATH}'`, "Read install manifest");
-  return elevated.success ? elevated.output : null;
+  return elevated.success ? elevated.output : "unreadable";
 }
 
 /**
@@ -50,44 +58,54 @@ export async function readManifest(host: Host): Promise<Manifest> {
 
   let manifest: Manifest = { components: {} };
   const content = await readManifestContent(host);
-  if (content) {
+  if (content === "unreadable") {
+    unreadableManifests.add(host);
+  } else if (content) {
     try {
       manifest = JSON.parse(content) as Manifest;
     } catch {
-      // Unreadable manifest counts as empty, same as a missing file.
+      unreadableManifests.add(host);
     }
   }
   manifestCache.set(host, manifest);
   return structuredClone(manifest);
 }
 
-/** Write the manifest to disk (requires elevation). */
+/** Write the manifest to disk (requires elevation). Refused while the existing one is unreadable. */
 export async function writeManifest(manifest: Manifest, host: Host): Promise<boolean> {
+  if (unreadableManifests.has(host)) {
+    return false;
+  }
   manifestCache.delete(host);
   const json = JSON.stringify(manifest, null, 2);
-  const cmd = `mkdir -p /opt/xinity && cat > ${MANIFEST_PATH} ${heredoc("MANIFEST_EOF", json)}\nchmod 644 ${MANIFEST_PATH}`;
+  const tmp = `${MANIFEST_PATH}.tmp`;
+  const cmd = `mkdir -p /opt/xinity && { cat > ${tmp} ${heredoc("MANIFEST_EOF", json)}\n} && chmod 644 ${tmp} && mv -f ${tmp} ${MANIFEST_PATH}`;
   const result = await host.withElevation(cmd, "Write install manifest");
   return result.success;
 }
 
 /** Persist a non-secret DB hint (user@host:port/dbname) into the manifest. */
-export async function saveDbHint(hint: string, host: Host): Promise<void> {
+export async function saveDbHint(hint: string, host: Host): Promise<boolean> {
   const manifest = await readManifest(host);
   manifest.db = { hint };
-  await writeManifest(manifest, host);
+  return writeManifest(manifest, host);
 }
 
 /** Record (or clear, with null) which stack and fleet own this host. No-op when already current. */
-export async function saveStackMembership(membership: StackMembership | null, host: Host): Promise<void> {
+export async function saveStackMembership(membership: StackMembership | null, host: Host): Promise<boolean> {
   const manifest = await readManifest(host);
   if (membership === null) {
-    if (!manifest.stack) return;
+    if (!manifest.stack) {
+      return true;
+    }
     delete manifest.stack;
   } else {
-    if (manifest.stack?.name === membership.name && manifest.stack?.fleet === membership.fleet) return;
+    if (manifest.stack?.name === membership.name && manifest.stack?.fleet === membership.fleet) {
+      return true;
+    }
     manifest.stack = membership;
   }
-  await writeManifest(manifest, host);
+  return writeManifest(manifest, host);
 }
 
 /** Update a single component entry in the manifest. */
@@ -95,8 +113,14 @@ export async function updateManifestEntry(
   component: string,
   entry: ComponentEntry,
   host: Host,
-): Promise<void> {
+): Promise<boolean> {
   const manifest = await readManifest(host);
   manifest.components[component] = entry;
-  await writeManifest(manifest, host);
+  return writeManifest(manifest, host);
+}
+
+export function manifestWriteFailure(host: Host): string {
+  return unreadableManifests.has(host)
+    ? `${MANIFEST_PATH} could not be read, so it was left untouched. Repair or remove it, then run again`
+    : `Could not write ${MANIFEST_PATH}`;
 }
