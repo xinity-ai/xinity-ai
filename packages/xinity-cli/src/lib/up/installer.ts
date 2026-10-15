@@ -5,7 +5,7 @@
 import { cyan } from "picocolors";
 
 import { buildLocalArtifact } from "./local-build.ts";
-import { updateManifestEntry } from "./manifest.ts";
+import { manifestWriteFailure, updateManifestEntry } from "./manifest.ts";
 import { unitName } from "./systemd.ts";
 import { pass } from "../core/output.ts";
 import { type Host, commandExistsOn, isUnitActiveOn } from "../core/host.ts";
@@ -226,7 +226,7 @@ async function obtainArtifact(action: ComponentAction, host: Host, progress: Pro
   return archivePath ? { archivePath, version: action.toVersion } : { error: "Download failed" };
 }
 
-type Backup = { includesBinary: boolean; restore(): Promise<void> };
+type Backup = { includesBinary: boolean; restore(): Promise<boolean> };
 
 /**
  * Copies the component's env file, the shared secrets directory and, when the
@@ -250,10 +250,11 @@ async function backUpInstallation(
   return {
     includesBinary,
     restore: async () => {
-      await host.withElevation(
+      const result = await host.withElevation(
         paths.map((path) => `if [ -e ${path}.bak ]; then rm -rf ${path} && cp -a ${path}.bak ${path}; fi`).join("\n"),
         `Restore ${component}`,
       );
+      return result.success;
     },
   };
 }
@@ -325,15 +326,18 @@ async function applyConfigAndStart(
   if (backup) {
     const previous = backup.includesBinary ? "previous version" : "previous configuration";
     progress.update(`Restoring the ${previous}…`);
-    await backup.restore();
-    if (await bringServiceUp(component, host, progress)) {
-      progress.update(`${unit} is back on the ${previous}`);
-      errors.push(`Service failed to start; rolled back to the ${previous}`);
-    } else {
-      progress.warn("Rollback", `${unit} did not restart after restoring the ${previous}`, `  ${cyan(`systemctl start ${unit}`)}`);
-      errors.push(`Service failed to start; restored the ${previous}, but it did not restart either`);
+    if (await backup.restore()) {
+      if (await bringServiceUp(component, host, progress)) {
+        progress.update(`${unit} is back on the ${previous}`);
+        errors.push(`Service failed to start; rolled back to the ${previous}`);
+      } else {
+        progress.warn("Rollback", `${unit} did not restart after restoring the ${previous}`, `  ${cyan(`systemctl start ${unit}`)}`);
+        errors.push(`Service failed to start; restored the ${previous}, but it did not restart either`);
+      }
+      return errors;
     }
-    return errors;
+    progress.fail("Rollback", `Could not restore the ${previous}`);
+    errors.push(`Service failed to start, and restoring the ${previous} failed too`);
   }
 
   // Disable the broken unit so it doesn't start on boot.
@@ -381,26 +385,37 @@ export async function applyComponentAction(
       }
 
       if (!(await runSteps(installBinary(component, artifact.archivePath, host), progress))) {
-        await backup?.restore();
+        const errors = ["Installation failed or skipped"];
+        if (backup && !(await backup.restore())) {
+          const previous = backup.includesBinary ? "previous version" : "previous configuration";
+          progress.fail("Rollback", `Could not restore the ${previous}`);
+          errors.push(`Restoring the ${previous} failed`);
+        }
         if (hardReset && action.serviceRunning) {
           await runSteps(startService(component, host), progress);
         }
-        return { success: false, version, errors: ["Installation failed or skipped"] };
+        return { success: false, version, errors };
       }
     }
 
     const errors = await applyConfigAndStart(component, action.env, action.secretFiles.remove, backup, host, progress);
-    const success = errors.length === 0;
+    const started = errors.length === 0;
 
     if (artifact) {
-      await updateManifestEntry(component, {
-        version: success ? version : (action.installedVersion ?? version),
+      const recorded = await updateManifestEntry(component, {
+        version: started ? version : (action.installedVersion ?? version),
         installedAt: new Date().toISOString(),
         binaryPath: binaryPath(component),
         unitName: unitName(component),
         binaryChecksum: (await host.computeSha256(binaryPath(component))) ?? undefined,
       }, host);
+      if (!recorded) {
+        const msg = manifestWriteFailure(host);
+        progress.fail("Manifest", msg);
+        errors.push(msg);
+      }
     }
+    const success = errors.length === 0;
     if (success) {
       progress.done(behaviour.summary(component, version));
     }

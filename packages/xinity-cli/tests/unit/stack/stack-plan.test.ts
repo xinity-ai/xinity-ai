@@ -21,6 +21,7 @@ let manifests: Record<string, Manifest>;
 let removals: { component: Component; address: string }[];
 let removalFails: boolean;
 let membershipWrites: { address: string; membership: StackMembership | null }[];
+let membershipWriteFails: boolean;
 
 function hostAddress(host: Host): string {
   return (host as unknown as { address: string }).address;
@@ -50,6 +51,7 @@ mock.module("../../../src/lib/up/manifest.ts", () => ({
   readManifest: async (host: Host) => manifests[hostAddress(host)] ?? { components: {} },
   saveStackMembership: async (membership: StackMembership | null, host: Host) => {
     membershipWrites.push({ address: hostAddress(host), membership });
+    return !membershipWriteFails;
   },
 }));
 
@@ -126,6 +128,7 @@ describe("runStackFlow", () => {
     removals = [];
     removalFails = false;
     membershipWrites = [];
+    membershipWriteFails = false;
     migrationCalls = [];
     gateApproves = true;
   });
@@ -189,6 +192,16 @@ describe("runStackFlow", () => {
     expect(removals).toEqual([{ component: "daemon", address: "10.0.0.8" }]);
     expect(membershipWrites).toEqual([{ address: "10.0.0.8", membership: null }]);
     expect(loadStackState("s4").hosts).toEqual([]);
+  });
+
+  test("an evacuated host whose manifest cannot be updated stays managed so the next up retries", async () => {
+    markHostManaged("s8", "10.0.0.12");
+    reachable = new Set(["10.0.0.12"]);
+    manifests["10.0.0.12"] = { components: daemonEntry(), stack: { name: "s8" } };
+    membershipWriteFails = true;
+
+    expect(await runStackFlow(makeStack("s8"), { targetVersion: "latest" })).toBe(false);
+    expect(loadStackState("s8").hosts.map((h) => h.address)).toEqual(["10.0.0.12"]);
   });
 
   test("a failed evacuation keeps the state entry so the next up retries", async () => {

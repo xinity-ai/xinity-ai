@@ -17,7 +17,7 @@ import { applyComponentAction } from "../up/installer.ts";
 import { buildLocalArtifact, localVersionString } from "../up/local-build.ts";
 import { runSteps, createSilentProgress, collectSteps } from "../term/step-runner.ts";
 import { removeComponent } from "../up/install-remove.ts";
-import { readManifest, saveStackMembership, type StackMembership } from "../up/manifest.ts";
+import { manifestWriteFailure, readManifest, saveStackMembership, type StackMembership } from "../up/manifest.ts";
 import { describeMigrationStep, migrationScriptComment, runMigrations } from "../up/migrator.ts";
 import { connectHost } from "../remote/remote-host.ts";
 import { type ComponentAction, describeComponentAction, planComponentAction, reviewGate, scriptComponentSection } from "../up/up-plan.ts";
@@ -531,8 +531,8 @@ async function applyStackPlan(
           errors.push({ component: action.component, messages: result.errors });
         }
       }
-      if (hostPlan.membership) {
-        await saveStackMembership(hostPlan.membership, host);
+      if (hostPlan.membership && !(await saveStackMembership(hostPlan.membership, host))) {
+        errors.push({ component: "manifest", messages: [manifestWriteFailure(host)] });
       }
       if (errors.length > 0) {
         slot.fail(`${errors.length} component(s) failed`);
@@ -559,8 +559,12 @@ async function applyStackPlan(
     for (const { hostPlan, errors } of hostResults) {
       if (hostPlan.evacuate && errors.length === 0) {
         const host = (hosts.get(hostPlan.address) ?? orphanHosts.get(hostPlan.address))!;
-        await saveStackMembership(null, host);
-        unmarkHostManaged(stack.name, hostPlan.address);
+        if (await saveStackMembership(null, host)) {
+          unmarkHostManaged(stack.name, hostPlan.address);
+        } else {
+          fail("manifest", `${hostPlan.address}: ${manifestWriteFailure(host)}`);
+          failures++;
+        }
       }
       failures += errors.length;
     }
