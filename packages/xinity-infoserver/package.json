@@ -7,7 +7,8 @@
     "dev": "bun run server.ts | pino-pretty",
     "build:compile": "bun build --compile --minify --target=bun ./server.ts --outfile xinity-infoserver",
     "test": "bun test .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "derive-sizing": "bun run scripts/derive-sizing.ts"
   },
   "devDependencies": {
     "@types/bun": "catalog:",
