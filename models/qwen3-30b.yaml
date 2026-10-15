@@ -28,6 +28,9 @@ models:
       kvHeads: 4
       maxContextLength: 262144
       weightGb: 61.13  # measured resident, 56.93 GiB
+      layers: 48
+      attentionLayers: 48
+      nonLayerWeightGb: 1.24
       activeWeightGb: 6
       weightBits: 16
     type: chat
@@ -51,6 +54,11 @@ models:
       weightGb: 31.54  # measured resident, 29.37 GiB
       activeWeightGb: 3
       weightBits: 8
+    placement:
+      limits:
+        - limit: splitSizes
+          values: [1, 2]
+          reason: The FP8 blocks of 128 do not divide the expert width across more than two cards.
 
   qwen3-30b-a3b-thinking-vllm:
     <<: *qwen3-30b
@@ -86,6 +94,11 @@ models:
       weightGb: 31.54  # measured resident, 29.37 GiB
       activeWeightGb: 3
       weightBits: 8
+    placement:
+      limits:
+        - limit: splitSizes
+          values: [1, 2]
+          reason: The FP8 blocks of 128 do not divide the expert width across more than two cards.
 
   qwen3-coder-30b-a3b-vllm:
     <<: *qwen3-30b

@@ -34,6 +34,10 @@ models:
       minKvCacheGb: 1.37
       maxContextLength: 262144
       weightGb: 47.95  # measured resident, 44.65 GiB
+      layers: 88
+      attentionLayers: 8
+      stateLayers: 40
+      nonLayerWeightGb: 2.15
       activeWeightGb: 7
       weightBits: 4
     type: chat
@@ -91,6 +95,11 @@ models:
       minKvCacheGb: 1.47
       maxContextLength: 262144
       weightGb: 74.76  # measured resident, 69.62 GiB
+      hostWeightGb: 0
+      layers: 88
+      attentionLayers: 8
+      stateLayers: 40
+      nonLayerWeightGb: 2.15
       activeWeightGb: 11
       weightBits: 4
     type: chat

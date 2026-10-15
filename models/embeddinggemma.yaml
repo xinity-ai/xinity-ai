@@ -51,6 +51,8 @@ models:
       # The checkpoint is float32 on disk but vLLM loads it bf16 (dtype=torch.bfloat16),
       # so this is the measured resident 0.57 GiB, not the 1.2 GB of files.
       weightGb: 0.61
+      layers: 24
+      nonLayerWeightGb: 0.4
       weightBits: 16
     type: embedding
     family: EmbeddingGemma

@@ -28,6 +28,9 @@ models:
       kvHeads: 8
       maxContextLength: 262144
       weightGb: 4.83  # measured resident, 4.50 GiB
+      layers: 26
+      attentionLayers: 26
+      nonLayerWeightGb: 1.65
       weightBits: 8
     type: chat
     family: Ministral 3
@@ -62,6 +65,9 @@ models:
       kvHeads: 8
       maxContextLength: 262144
       weightGb: 10.57  # measured resident, 9.84 GiB
+      layers: 34
+      attentionLayers: 34
+      nonLayerWeightGb: 3
       weightBits: 8
 
   ministral-3-14b-vllm:
@@ -82,4 +88,7 @@ models:
       kvHeads: 8
       maxContextLength: 262144
       weightGb: 15.85  # measured resident, 14.76 GiB
+      layers: 40
+      attentionLayers: 40
+      nonLayerWeightGb: 3.56
       weightBits: 8

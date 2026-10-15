@@ -29,6 +29,9 @@ models:
       kvHeads: 2
       maxContextLength: 131072
       weightGb: 6.24  # measured resident, 5.81 GiB
+      layers: 36
+      attentionLayers: 36
+      nonLayerWeightGb: 0.62
       weightBits: 16
     type: chat
     family: VibeThinker

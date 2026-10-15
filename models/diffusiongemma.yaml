@@ -42,6 +42,9 @@ models:
       maxContextLength: 262144
       minKvCacheGb: 6.43  # bracketed: 6.42 aborts
       weightGb: 52.16  # measured resident, 48.58 GiB
+      layers: 30
+      attentionLayers: 5
+      nonLayerWeightGb: 2.66
       activeWeightGb: 8
       weightBits: 16
     type: chat

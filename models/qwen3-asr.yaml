@@ -36,6 +36,9 @@ models:
       kvHeads: 8
       maxContextLength: 16384
       weightGb: 1.64  # measured resident, 1.53 GiB
+      layers: 28
+      attentionLayers: 28
+      nonLayerWeightGb: 0.68
       weightBits: 16
     type: transcription
     family: Qwen3 ASR
@@ -58,3 +61,4 @@ models:
     sizing:
       <<: *qwen3-asr-kv
       weightGb: 4.19  # measured resident, 3.9 GiB
+      nonLayerWeightGb: 1.26

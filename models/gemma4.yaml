@@ -53,6 +53,9 @@ models:
       maxContextLength: 131072
       minKvCacheGb: 2.34  # bracketed: 2.33 aborts
       weightGb: 13.06  # measured resident, 12.16 GiB
+      layers: 42
+      attentionLayers: 7
+      nonLayerWeightGb: 7.96
       weightBits: 8
     type: chat
     family: Gemma 4
@@ -120,6 +123,9 @@ models:
       minKvCacheGb: 3.93  # 1.00x at 131072
       maxContextLength: 131072
       weightGb: 17.05  # measured resident, 15.88 GiB
+      layers: 30
+      attentionLayers: 5
+      nonLayerWeightGb: 2.62
       activeWeightGb: 3
       weightBits: 4
     type: chat

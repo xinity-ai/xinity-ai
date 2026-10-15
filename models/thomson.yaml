@@ -79,6 +79,10 @@ models:
       minKvCacheGb: 5.54
       maxContextLength: 262144
       weightGb: 70.4   # measured resident, 65.53 GiB
+      layers: 40
+      attentionLayers: 10
+      stateLayers: 30
+      nonLayerWeightGb: 2.93
       # 35.11B params of which 32.21B are routed experts; 8 of 256 active per token
       # leaves 3.90B -> 7.8 GB. Derived, not measured.
       activeWeightGb: 7.8

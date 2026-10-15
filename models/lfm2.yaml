@@ -40,6 +40,10 @@ models:
       stateBytesPerSequence: 270336
       maxContextLength: 131072
       weightGb: 5.42  # measured resident, 5.05 GiB
+      layers: 30
+      attentionLayers: 8
+      stateLayers: 22
+      nonLayerWeightGb: 0.52
       weightBits: 16
     type: chat
     family: LFM2.5
@@ -79,5 +83,9 @@ models:
       stateBytesPerSequence: 221184
       maxContextLength: 128000
       weightGb: 16.97  # measured resident, 15.8 GiB
+      layers: 24
+      attentionLayers: 6
+      stateLayers: 18
+      nonLayerWeightGb: 0.52
       activeWeightGb: 2.1
       weightBits: 16

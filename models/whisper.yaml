@@ -43,6 +43,9 @@ models:
       minKvCacheGb: 0.33  # self-attention + one 1500-state cross-attention cache
       maxContextLength: 448
       weightGb: 3.09  # measured resident, 2.88 GiB
+      layers: 32
+      attentionLayers: 32
+      nonLayerWeightGb: 1.41
       weightBits: 16
     type: transcription
     family: Whisper
@@ -78,6 +81,9 @@ models:
       minKvCacheGb: 0.05
       maxContextLength: 448
       weightGb: 1.62  # measured resident, 1.51 GiB
+      layers: 4
+      attentionLayers: 4
+      nonLayerWeightGb: 1.41
       weightBits: 16
 
   whisper-medium-vllm:
@@ -102,6 +108,9 @@ models:
       minKvCacheGb: 0.20  # bracketed: 0.19 aborts
       maxContextLength: 448
       weightGb: 1.52  # measured resident, 1.42 GiB
+      layers: 24
+      attentionLayers: 24
+      nonLayerWeightGb: 0.72
       weightBits: 16
 
   whisper-small-vllm:
@@ -126,4 +135,7 @@ models:
       minKvCacheGb: 0.08  # bracketed: 0.07 aborts
       maxContextLength: 448
       weightGb: 0.50  # measured resident, 0.47 GiB
+      layers: 12
+      attentionLayers: 12
+      nonLayerWeightGb: 0.26
       weightBits: 16
