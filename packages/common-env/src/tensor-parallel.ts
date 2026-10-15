@@ -40,7 +40,7 @@ export function tensorParallelLayouts(
 
 // vLLM's own rules: attention heads must divide by the TP size, and KV heads split while there
 // are enough of them, then every card holds a copy of one (QKVParallelLinear).
-function kvCacheSharePerCard(sizing: TensorParallelSizing, tensorParallelSize: number): number | undefined {
+export function kvCacheSharePerCard(sizing: Pick<TensorParallelSizing, "attentionHeads" | "kvHeads" | "mlaAttention">, tensorParallelSize: number): number | undefined {
   if (tensorParallelSize === 1) {
     return 1;
   }

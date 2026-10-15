@@ -253,7 +253,7 @@ type CardShare = { weightGb: number; kvCacheGb: number };
 
 function buildConfig(resolved: ResolvedVllmModel, profile: HardwareProfile, devices: GpuDevices, group: NodeGroup, share: CardShare): VllmInstanceConfig {
   const gpuMemoryUtilization =
-    gpuUtilOverride ?? computeGpuUtilization({ specifier: resolved.vllmProviderName, weightGb: share.weightGb, kvCacheGb: share.kvCacheGb, overheadGb: resolved.model.sizing.overheadGb }, profile);
+    gpuUtilOverride ?? computeGpuUtilization({ specifier: resolved.vllmProviderName, weightGb: share.weightGb, kvCacheGb: share.kvCacheGb }, profile);
   return {
     model: resolved.vllmProviderName,
     port,

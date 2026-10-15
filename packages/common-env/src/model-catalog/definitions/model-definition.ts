@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { LicenseSchema } from "./licenses";
+import { kvCacheFloorGb } from "../kv-cache-floor";
+import { engineProfile } from "../../deployment-footprint";
 import { isValidVersionRange } from "../semver";
 import {
   BLOCKED_REQUEST_PARAM_PREFIXES,
@@ -35,17 +37,22 @@ const DOWNLOAD_FILTER_DESCRIPTION =
 // ── Current format ─────────────────────────────────────────────────────
 
 export const ModelSizing = z.looseObject({
-  weightGb: z.number().describe("VRAM consumed by this variant's weights, in GB"),
-  activeWeightGb: z.number().optional().describe("Weights read per token by a mixture-of-experts variant, in GB. Absent means dense, where every weight participates. Speed scales with this figure, while capacity still needs the full weight"),
+  weightGb: z.number().describe("Memory consumed by this variant's weights, in GB, wherever the engine keeps them"),
+  activeWeightGb: z.number().optional().describe("Weights read per token by a mixture-of-experts variant, in GB. Present exactly when the model is a mixture of experts, so it must be set for every one: it decides the concurrency knee and, when the model spans nodes, the extra collective communicator its experts need. Absent means dense, where every weight participates. Capacity still needs the full weight"),
+  hostWeightGb: z.number().min(0).optional().describe("Part of weightGb this entry's engine keeps in host memory instead of on the GPU, in GB, for example n-gram embedding tables. 0 when every weight is on the GPU. Stating it, 0 included, marks the entry as checked across nodes: without it the entry is placed on one node only, where it counts as 0"),
+  nonLayerWeightGb: z.number().min(0).optional().describe("Part of weightGb outside the decoder layer stack, in GB: input embedding, output head, vision and audio encoders. These sit on the first or last stage when the model is split by layers"),
+  layers: z.number().int().positive().optional().describe("Decoder layers in the layer stack, num_hidden_layers in config.json, without speculative draft layers"),
+  attentionLayers: z.number().int().positive().optional().describe("Layers that cache keys and values per token, including a speculative draft layer this entry enables. kvBytesPerToken is spread over these, which the engine pages per layer"),
+  stateLayers: z.number().int().positive().optional().describe("Layers holding a fixed recurrent state per request, such as Mamba or gated deltanet layers. stateBytesPerSequence is spread over these. Absent for pure attention models"),
   weightBits: z.number().positive().max(32).optional().describe("Nominal bits per stored parameter, e.g. 16 for fp16 or 4 for AWQ. Never an exact average: every method leaves parts of the network wider than its headline width, commonly attention projections, embeddings and norms. Dividing weightGb by it yields a parameter count good enough to estimate throughput from, and good for nothing that needs the real one"),
-  minKvCacheGb: z.number().optional().describe("Minimum KV-cache allocation in decimal GB. Optional once kvBytesPerToken is stated, because the floor is then exact: one request at full context plus, for a hybrid model, its per-sequence state. Author it only to demand more than that floor, and expect the server to log any entry whose figure disagrees with the derived one by more than a factor of two"),
+  minKvCacheGb: z.number().optional().describe("Minimum KV-cache allocation in decimal GB. Optional once kvBytesPerToken is stated, because the floor then follows from it: one request at full context in whole 16-token blocks plus the block the engine keeps in reserve, and for a hybrid model its per-sequence state. Author it only to demand more than that floor, and expect the server to log any entry whose figure disagrees with the derived one by more than a factor of two"),
   kvBytesPerToken: z.number().int().positive().optional().describe("KV cache one token of context consumes, in bytes, i.e. 2 * num_hidden_layers * num_key_value_heads * head_dim * dtype_bytes. How many requests a deployment can serve at once follows from this and the cache it was given, so it is the figure concurrency is computed from"),
   maxContextLength: z.number().int().positive().describe("Maximum supported context window in tokens"),
   attentionWindow: z.number().int().positive().optional().describe("Sliding-window attention span in tokens, for models that have one. KV per request stops growing past this point, so a windowed model needs far less cache at long context than kvBytesPerToken alone suggests"),
   stateBytesPerSequence: z.number().int().positive().optional().describe("Recurrent state one concurrent request consumes, in bytes, for hybrid architectures whose layers are not all attention, such as Mamba or gated deltanet. Unlike kvBytesPerToken this does not grow with context: it is a fixed cost per request in flight. Present only for hybrid models, and vLLM refuses to start when its per-sequence state does not fit, so a concurrency cap that ignores it can be one the engine rejects"),
   attentionHeads: z.number().int().positive().optional().describe("Attention heads per layer of the language model, num_attention_heads in config.json"),
   kvHeads: z.number().int().positive().optional().describe("Key/value heads per layer of the language model, num_key_value_heads in config.json. Equal to attentionHeads without grouped-query attention, fewer with it"),
-  overheadGb: z.number().positive().optional().describe("Memory the engine holds beyond weights and KV cache once started, in GB: peak activation, non-torch allocations and CUDA graphs, as measured at startup"),
+  overheadGb: z.number().positive().optional().describe("Deprecated and no longer read. The engine's own memory depends on how a deployment is split, not on the model, so it comes from the engine profile for the layout"),
   mlaAttention: z.boolean().optional().describe("Whether the model uses multi-head latent attention, as DeepSeek V2 and V3 do, caching one compressed latent per token instead of keys and values per head"),
 }).refine(
   sizing => sizing.kvHeads === undefined
@@ -55,27 +62,20 @@ export const ModelSizing = z.looseObject({
   sizing => sizing.activeWeightGb === undefined || sizing.activeWeightGb <= sizing.weightGb,
   { message: "activeWeightGb must not exceed weightGb", path: ["activeWeightGb"] },
 ).refine(
+  sizing => sizing.hostWeightGb === undefined || sizing.hostWeightGb <= sizing.weightGb,
+  { message: "hostWeightGb must not exceed weightGb", path: ["hostWeightGb"] },
+).refine(
+  sizing => sizing.nonLayerWeightGb === undefined || sizing.nonLayerWeightGb <= sizing.weightGb,
+  { message: "nonLayerWeightGb must not exceed weightGb", path: ["nonLayerWeightGb"] },
+).refine(
   sizing => sizing.minKvCacheGb !== undefined || sizing.kvBytesPerToken !== undefined,
   { message: "state kvBytesPerToken, or minKvCacheGb directly", path: ["minKvCacheGb"] },
 ).transform(sizing => ({
   ...sizing,
-  // The refine above guarantees kvBytesPerToken whenever minKvCacheGb is absent.
-  minKvCacheGb: sizing.minKvCacheGb ?? kvCacheFloorGb(
-    sizing.kvBytesPerToken!,
-    Math.min(sizing.maxContextLength, sizing.attentionWindow ?? Infinity),
-    sizing.stateBytesPerSequence ?? 0,
-  ),
+  // The refine above guarantees kvBytesPerToken whenever minKvCacheGb is absent, and one card always
+  // splits. No node version is known while parsing, so the newest engine paging applies.
+  minKvCacheGb: sizing.minKvCacheGb ?? kvCacheFloorGb(sizing, { ranks: 1, speculativeTokens: 0 }, engineProfile("vllm").paging)!,
 }));
-
-/**
- * The floor vLLM enforces before it will start: one sequence holding its full context,
- * plus the state a hybrid model reserves per sequence. Rounded up, never down, since
- * landing a hair under the floor is the one outcome that stops the engine booting.
- */
-function kvCacheFloorGb(bytesPerToken: number, cachedTokens: number, stateBytes: number): number {
-  const floorGb = (bytesPerToken * cachedTokens + stateBytes) / BYTES_PER_GB;
-  return Math.ceil(floorGb * 100) / 100;
-}
 
 export type ModelSizingFields = z.infer<typeof ModelSizing>;
 
@@ -118,6 +118,52 @@ export const EngineVersions = z.object(engineVersionFields)
 export const RelayedEngineVersions = z.object({ ...engineVersionFields, rules: relayedEngineVersionRules.optional() })
   .refine(statesSomething.check, { message: statesSomething.message });
 
+const placementLimitFields = {
+  reason: z.string().describe("Why, in a sentence shown to someone choosing where to deploy"),
+  engineRange: z.string().refine(isValidVersionRange, "Expected comparators over complete versions, e.g. \"<0.33.0\"").optional()
+    .describe("The engine releases this limit applies to, as a version range. Absent means every release"),
+};
+
+export const PlacementLimit = z.discriminatedUnion("limit", [
+  z.object({
+    limit: z.literal("nodes"),
+    max: z.number().int().positive().describe("Most machines one installation may span"),
+    ...placementLimitFields,
+  }),
+  z.object({
+    limit: z.literal("cards"),
+    max: z.number().int().positive().describe("Most cards one installation may span, over all its machines"),
+    ...placementLimitFields,
+  }),
+  z.object({
+    limit: z.literal("splitSizes"),
+    values: z.array(z.number().int().positive()).min(1).describe("The only numbers of cards one installation may be split across"),
+    ...placementLimitFields,
+  }),
+]);
+
+export type PlacementLimitFields = z.infer<typeof PlacementLimit>;
+
+export const Placement = z.object({
+  limits: z.array(PlacementLimit).default([])
+    .describe("Restrictions on how an installation may be split that follow from no other field"),
+});
+
+// A limit this version does not know may forbid what it would otherwise allow, so it is read as the
+// strictest one every version can honour.
+const UNKNOWN_PLACEMENT_LIMIT: PlacementLimitFields = {
+  limit: "cards",
+  max: 1,
+  reason: "This entry carries a placement rule this version does not know, so it runs on a single card",
+};
+
+export const RelayedPlacement = z.object({
+  limits: z.array(z.unknown()).default([]).transform(limits => limits.map(limit => {
+    const parsed = PlacementLimit.safeParse(limit);
+    return parsed.success ? parsed.data : UNKNOWN_PLACEMENT_LIMIT;
+  })),
+});
+
 export const ModelFields = z.looseObject({
   name: z.string().describe("Display name of the model. Intended to be easily human readable"),
   description: z.string().describe("Multi-paragraph description: purpose, strengths, limitations. Shown when choosing between models, so a one-line label is not enough"),
@@ -145,6 +191,7 @@ export const ModelFields = z.looseObject({
   requestParams: z.record(z.string(), RequestParamTypeEnum).optional().describe("Allowlist of extra request-level parameters the gateway may forward, as dot-notation paths mapped to primitive types. All are optional at request time"),
   engineVersions: EngineVersions.optional().describe("What this model needs of the engine version, and what specific releases do. Nodes running a blocked release are passed over when placing the model"),
   platforms: z.array(GpuVendorEnum).optional().describe("GPU vendor requirement. Absent means any platform"),
+  placement: Placement.default({ limits: [] }).describe("How an installation of this entry may be placed and split"),
 
   minXinityVersion: z.string().optional().describe("Minimum xinity-ai version required to use this entry. Older clients skip entries they are too old for"),
   downloadFilter: flatStringArray.optional().describe(DOWNLOAD_FILTER_DESCRIPTION),
@@ -159,6 +206,7 @@ export const RelayedModelFields = ModelFields.extend({
   tags: relayedTags.default([]),
   platforms: relayedPlatforms.optional(),
   engineVersions: RelayedEngineVersions.optional(),
+  placement: RelayedPlacement.default({ limits: [] }),
 });
 
 function withModelRules<T extends typeof ModelFields | typeof RelayedModelFields>(fields: T) {
@@ -196,9 +244,6 @@ export function unsupportedVocabulary(entry: unknown): string | undefined {
   return undefined;
 }
 
-/** minKvCache is decimal GB, not GiB. See "Confirm the KV-cache floor" in docs/integrating-a-model.md. */
-const BYTES_PER_GB = 1e9;
-
 /** Wide enough that an empirically confirmed floor and its overhead still pass. A factor beyond it
  * means the arithmetic itself is wrong, e.g. K and V counted once or the cache dtype misread. */
 const KV_MISMATCH_FACTOR = 2;
@@ -206,12 +251,11 @@ const KV_MISMATCH_FACTOR = 2;
 export type KvCacheMismatch = { minKvCacheGb: number; impliedGb: number; ratio: number };
 
 export function kvCacheMismatch(sizing: ModelSizingFields): KvCacheMismatch | undefined {
-  if (sizing.kvBytesPerToken === undefined) {
+  const impliedGb = kvCacheFloorGb(sizing, { ranks: 1, speculativeTokens: 0 }, engineProfile("vllm").paging);
+  if (impliedGb === undefined) {
     return undefined;
   }
 
-  const cachedTokens = Math.min(sizing.maxContextLength, sizing.attentionWindow ?? Infinity);
-  const impliedGb = (sizing.kvBytesPerToken * cachedTokens) / BYTES_PER_GB;
   const ratio = sizing.minKvCacheGb / impliedGb;
   if (ratio >= 1 / KV_MISMATCH_FACTOR && ratio <= KV_MISMATCH_FACTOR) {
     return undefined;
