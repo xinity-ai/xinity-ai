@@ -156,9 +156,10 @@ export function buildInstallBinaryCommand(component: Component, archivePath: str
   const tmpExtract = stripArchiveSuffix(archivePath);
   return (
     `mkdir -p ${tmpExtract} && ${extractCommand(archivePath, tmpExtract)}` +
-    ` && mkdir -p ${BIN_DIR} && rm -f ${BIN_DIR}/${binName}` +
-    ` && cp ${tmpExtract}/${binName} ${BIN_DIR}/${binName}` +
-    ` && chmod +x ${BIN_DIR}/${binName}` +
+    ` && mkdir -p ${BIN_DIR}` +
+    ` && cp ${tmpExtract}/${binName} ${BIN_DIR}/${binName}.new` +
+    ` && chmod +x ${BIN_DIR}/${binName}.new` +
+    ` && mv -f ${BIN_DIR}/${binName}.new ${BIN_DIR}/${binName}` +
     ` && rm -rf ${tmpExtract} ${archivePath}`
   );
 }
