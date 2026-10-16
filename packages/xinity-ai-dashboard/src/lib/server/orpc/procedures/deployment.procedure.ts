@@ -5,10 +5,11 @@ import z from "zod";
 import { DeploymentDto, DeploymentWithStatusDto, type DeploymentWithStatus } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { installationOnLiveNode } from "$lib/server/lib/deployments/node-liveness";
-import { syncDeployedModels } from "$lib/server/lib/deployments/orchestration";
+import { previewPlacement, syncDeployedModels, type Shortfall, type ShortfallReason } from "$lib/server/lib/deployments/orchestration";
+import { requirementKey } from "$lib/server/lib/deployments/placement";
+import type { ModelRequirement } from "$lib/server/lib/deployments/requirements";
+import { deploymentSettingsSchema } from "common-env";
 import { resolveSchedulable, resolvesOnlyAsLegacy } from "$lib/server/lib/models/model-catalog";
-import { buildClusterCapacity } from "./cluster.procedure";
-import { checkNodeCompatibility, type ModelNodeRequirements } from "common-env/model-catalog";
 import { rootLogger } from "$lib/server/logging";
 import { foldDeploymentStatusRows } from "$lib/server/lib/deployments/deployment-status";
 import { findOrgName } from "$lib/server/lib/org-queries";
@@ -59,115 +60,68 @@ const CapacityCheckInput = z.object({
   kvCacheSize: z.number().nullish(),
   earlyKvCacheSize: z.number().nullish(),
   preferredDriver: z.enum(["ollama", "vllm"]).nullish(),
+  settings: deploymentSettingsSchema.optional(),
+  deploymentId: z.uuid().optional().describe("The deployment this draft changes, which is planned without its own installations"),
+});
+
+const PlannedReplicaDto = z.object({
+  specifier: z.string(),
+  machineName: z.string().describe("The machine the replica would run on"),
+  cards: z.number().describe("Cards the replica would be split across"),
+  gpuGb: z.number().describe("GPU memory in GB the replica would occupy, over all its cards"),
+  hostGb: z.number().describe("Host memory in GB the replica would occupy on its machine"),
 });
 
 const CapacityCheckOutput = z.object({
   deployable: z.boolean(),
   reason: z.string().optional(),
+  replicas: z.array(PlannedReplicaDto).describe("Where each replica would be placed now, as the scheduler would place it"),
 });
 
 type CapacityCheckResult = z.infer<typeof CapacityCheckOutput>;
 
-function noCompatibleNodeReason(
-  label: string,
-  driver: string,
-  minVersion: string | undefined,
-  requiredPlatforms: string[],
-): string {
-  const versionRequirement = minVersion ? ` >= ${minVersion}` : "";
-  const platformRequirement = requiredPlatforms.length ? `, platform: ${requiredPlatforms.join("/")}` : "";
-  return `No compatible node for "${label}" (requires ${driver}${versionRequirement}${platformRequirement})`;
-}
+const SHORTFALL_REASONS: Record<ShortfallReason, (shortfall: Shortfall) => string> = {
+  catalog_unavailable: () => "Capacity could not be verified: model catalog is unavailable",
+  not_found: ({ specifier }) => `Model "${specifier}" was not found in the model catalog`,
+  no_compatible_node: ({ specifier, constraints }) => {
+    const versionRequirement = constraints?.minVersion ? ` >= ${constraints.minVersion}` : "";
+    const platforms = constraints?.requiredPlatforms ?? [];
+    const platformRequirement = platforms.length ? `, platform: ${platforms.join("/")}` : "";
+    return `No compatible node for "${specifier}" (requires ${constraints?.driver}${versionRequirement}${platformRequirement})`;
+  },
+  no_capacity: ({ specifier }) => `"${specifier}" needs more capacity than is currently available`,
+  license_limit: ({ specifier }) => `"${specifier}" would exceed the VRAM your license allows`,
+};
 
-function insufficientCapacityReason(label: string): string {
-  return `"${label}" needs more capacity than is currently available`;
-}
+const DRAFT_DEPLOYMENT_ID = "draft";
 
-/**
- * Checks whether the cluster has enough free capacity to host a deployment configuration.
- * For canary deployments, validates that both primary and canary models can be placed,
- * accounting for the fact that they share the same pool of node capacity.
- */
-async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>): Promise<CapacityCheckResult> {
-  const primarySpecifier = input.specifier;
-  const earlySpecifier = input.earlySpecifier ?? null;
-  const isCanary = input.progress < 100 && !!earlySpecifier;
+// Asks the scheduler where the draft would go now. A deployment being changed is planned without
+// its own installations, which the change replaces.
+async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>, deploymentId?: string): Promise<CapacityCheckResult> {
+  const isCanary = input.progress < 100 && !!input.earlySpecifier;
+  const requirement = (specifier: string, replicas: number, kvCacheSize: number | null | undefined): ModelRequirement => ({
+    deploymentId: deploymentId ?? DRAFT_DEPLOYMENT_ID,
+    specifier,
+    replicas,
+    kvCacheSize: kvCacheSize ?? null,
+    preferredDriver: input.preferredDriver ?? null,
+    settings: input.settings ?? { version: 1 },
+  });
+  const requirements = isCanary
+    ? [
+        requirement(input.specifier, Math.ceil(input.replicas * (input.progress / 100)), input.kvCacheSize),
+        requirement(input.earlySpecifier!, Math.ceil(input.replicas * ((100 - input.progress) / 100)), input.earlyKvCacheSize ?? input.kvCacheSize),
+      ]
+    : [requirement(input.specifier, input.replicas, input.kvCacheSize)];
 
-  // Build the list of models that need capacity
-  const modelsToCheck: { specifier: string; replicas: number; kvCacheSize: number | null | undefined }[] = [];
-  if (isCanary) {
-    modelsToCheck.push(
-      { specifier: primarySpecifier, replicas: Math.ceil(input.replicas * (input.progress / 100)), kvCacheSize: input.kvCacheSize },
-      { specifier: earlySpecifier!, replicas: Math.ceil(input.replicas * ((100 - input.progress) / 100)), kvCacheSize: input.earlyKvCacheSize ?? input.kvCacheSize },
-    );
-  } else {
-    modelsToCheck.push({ specifier: primarySpecifier, replicas: input.replicas, kvCacheSize: input.kvCacheSize });
-  }
-
-  // Fetch model info for all models in parallel with the cluster snapshot; both
-  // are independent inputs to the placement check below.
-  const [modelInfos, { nodeCapabilities }] = await Promise.all([
-    Promise.all(
-      modelsToCheck.map(async (m) => {
-        const resolution = await resolveSchedulable(m.specifier, input.preferredDriver ?? null);
-        if (resolution.status === "unavailable") return { kind: "unavailable" as const, label: m.specifier };
-        if (resolution.status === "not_found") return { kind: "not_found" as const, label: m.specifier };
-        const info = resolution.model;
-        const effectiveKvCache = Math.max(m.kvCacheSize ?? 0, info.minKvCache);
-        return {
-          kind: "found" as const,
-          label: m.specifier,
-          replicas: m.replicas,
-          perReplica: info.weight + effectiveKvCache,
-          driver: info.driver,
-          minVersion: info.minVersion,
-          blockedVersions: info.blockedVersions,
-          requiredPlatforms: info.requiredPlatforms,
-          requiredFeatures: info.requiredFeatures,
-        };
-      }),
-    ),
-    buildClusterCapacity(),
-  ]);
-
-  const notFound = modelInfos.find(m => m.kind === "not_found");
-  if (notFound) return { deployable: false, reason: `Model "${notFound.label}" was not found in the model catalog` };
-
-  const resolved = modelInfos.filter((m): m is Extract<typeof modelInfos[number], { kind: "found" }> => m.kind === "found");
-  if (resolved.length === 0) return { deployable: true, reason: "Capacity could not be verified: model catalog is unavailable" };
-  const remaining = nodeCapabilities
-    .map(n => ({ ...n }))
-    .sort((a, b) => b.free - a.free);
-
-  for (const model of resolved) {
-    // Filter nodes that are structurally compatible (driver, version, platform) - capacity checked in allocation loop
-    const compatible = remaining.filter(n => {
-      const req: ModelNodeRequirements = {
-        driver: model.driver, capacityGb: 0,
-        minVersion: model.minVersion, blockedVersions: model.blockedVersions,
-        requiredPlatforms: model.requiredPlatforms,
-        requiredFeatures: model.requiredFeatures,
-      };
-      const reason = checkNodeCompatibility(n, req);
-      return reason === null || reason === "insufficient_capacity";
-    });
-
-    let placed = 0;
-    for (const node of compatible) {
-      if (placed >= model.replicas) break;
-      if (node.free >= model.perReplica) {
-        node.free -= model.perReplica;
-        placed++;
-      }
-    }
-    if (placed < model.replicas) {
-      const reason = compatible.length === 0
-        ? noCompatibleNodeReason(model.label, model.driver, model.minVersion, model.requiredPlatforms)
-        : insufficientCapacityReason(model.label);
-      return { deployable: false, reason };
-    }
-  }
-  return { deployable: true };
+  const { replicas, shortfalls } = await previewPlacement(Object.fromEntries(requirements.map((r) => [requirementKey(r), r])), deploymentId);
+  const blocking = shortfalls.find((shortfall) => shortfall.reason !== "catalog_unavailable");
+  const shortfall = blocking ?? shortfalls[0];
+  return {
+    deployable: !blocking,
+    reason: shortfall && SHORTFALL_REASONS[shortfall.reason](shortfall),
+    replicas,
+  };
 }
 
 const matchActiveDeploymentInOrg = (id: string, orgId: string) =>
@@ -544,7 +498,7 @@ const checkCapacity = rootOs
   .input(CapacityCheckInput)
   .output(CapacityCheckOutput)
   .handler(async ({ input }): Promise<CapacityCheckResult> =>  {
-    return checkDeploymentCapacity(input);
+    return checkDeploymentCapacity(input, input.deploymentId);
   });
 
 export const deploymentRouter = rootOs.prefix("/deployment").router({

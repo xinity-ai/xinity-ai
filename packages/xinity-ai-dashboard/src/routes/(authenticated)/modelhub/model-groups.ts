@@ -46,9 +46,9 @@ export function groupModelVariants(models: ModelWithSpecifier[]): ModelGroup[] {
  * group means picking one of them. Judging it by its leader marks a whole family
  * unavailable over a quantization the cluster was never going to be asked to run.
  */
-export function groupIncompatibility(
+export function groupIncompatibility<Reason extends IncompatibilityReason>(
   group: ModelGroup,
-  explain: (model: ModelWithSpecifier) => IncompatibilityReason | null,
-): IncompatibilityReason | null {
-  return nearestIncompatibility(group.variants.map(variant => explain(variant)));
+  explain: (model: ModelWithSpecifier) => Reason | null,
+): Reason | null {
+  return nearestIncompatibility(group.variants.map(variant => explain(variant))) as Reason | null;
 }

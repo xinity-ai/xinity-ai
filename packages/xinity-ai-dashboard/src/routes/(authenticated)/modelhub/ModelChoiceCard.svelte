@@ -1,5 +1,11 @@
+<script lang="ts" module>
+  import type { IncompatibilityReason } from "common-env/model-catalog";
+
+  export type PickerIncompatibility = Exclude<IncompatibilityReason, "insufficient_capacity">;
+</script>
+
 <script lang="ts">
-  import type { IncompatibilityReason, ModelWithSpecifier } from "common-env/model-catalog";
+  import type { ModelWithSpecifier } from "common-env/model-catalog";
   import { formatGb, humanMonthYear } from "$lib/util";
   import { isRecentlyAdded } from "./model-recency";
   import { Badge } from "$lib/components/ui/badge";
@@ -11,15 +17,13 @@
     model,
     blockedReason,
     blockedDetail,
-    maxNodeFreeCapacity,
     variantCount = 1,
     repeatsPreviousDescription = false,
     onSelect,
   }: {
     model: ModelWithSpecifier;
-    blockedReason: IncompatibilityReason | null;
+    blockedReason: PickerIncompatibility | null;
     blockedDetail?: string;
-    maxNodeFreeCapacity: number;
     variantCount?: number;
     repeatsPreviousDescription?: boolean;
     onSelect: (model: ModelWithSpecifier) => void;
@@ -29,7 +33,7 @@
   const platformLabel = $derived((model.platforms ?? []).join(" or "));
   const isVariantGroup = $derived(variantCount > 1);
 
-  function undeployableMessage(reason: IncompatibilityReason): string {
+  function undeployableMessage(reason: PickerIncompatibility): string {
     switch (reason) {
       case "missing_driver":
         return `No node runs ${engineLabel}.`;
@@ -42,10 +46,6 @@
         return `No node's ${engineLabel} build supports the features this model needs.`;
       case "wrong_platform":
         return `No node has a compatible GPU${platformLabel ? ` (needs ${platformLabel})` : ""}.`;
-      case "insufficient_capacity":
-        return isVariantGroup
-          ? `No variant fits the largest node's ${formatGb(maxNodeFreeCapacity)} free.`
-          : `Needs ${formatGb(model.sizing.weightGb + model.sizing.minKvCacheGb)}, more than the largest node's ${formatGb(maxNodeFreeCapacity)} free.`;
     }
   }
 </script>
@@ -101,8 +101,7 @@
     {#if !isVariantGroup}
       <span class="flex items-center gap-1.5">
         <HardDrive class="w-3 h-3 shrink-0" />
-        <span>{formatGb(model.sizing.weightGb + model.sizing.minKvCacheGb)}</span>
-        <span class="opacity-50">({parseFloat(model.sizing.weightGb.toFixed(2))} model + {parseFloat(model.sizing.minKvCacheGb.toFixed(2))} kv-cache)</span>
+        <span>{formatGb(model.sizing.weightGb)} model size</span>
       </span>
     {/if}
     <span class="flex items-center gap-1.5" title="Released {model.createdAt}">

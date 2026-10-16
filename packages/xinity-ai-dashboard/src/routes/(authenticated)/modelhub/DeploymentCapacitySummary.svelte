@@ -1,31 +1,18 @@
 <script lang="ts">
-  import type { ModelWithSpecifier, NodeCapability } from "common-env/model-catalog";
+  import type { NodeCapability } from "common-env/model-catalog";
+  import type { PlannedReplica } from "$lib/server/lib/deployments/orchestration";
   import { formatGb } from "$lib/util";
   import { HardDrive, CircleCheck, CircleAlert, Info } from "@lucide/svelte";
 
   let {
-    primaryModel,
-    canaryModel,
-    isCanaryEnabled = false,
-    canaryTraffic = 0,
-    replicas = 1,
-    kvCacheSize = null,
-    canaryKvCacheSize = null,
-    maxNodeFreeCapacity = Infinity,
+    plannedReplicas = [],
     nodeCapabilities = [],
     enabled = true,
     capacityChecked = false,
     capacityBlocked = false,
     capacityReason,
   }: {
-    primaryModel: ModelWithSpecifier | undefined;
-    canaryModel?: ModelWithSpecifier | undefined;
-    isCanaryEnabled?: boolean;
-    canaryTraffic?: number;
-    replicas?: number;
-    kvCacheSize?: number | null;
-    canaryKvCacheSize?: number | null;
-    maxNodeFreeCapacity?: number;
+    plannedReplicas?: PlannedReplica[];
     nodeCapabilities?: NodeCapability[];
     enabled?: boolean;
     capacityChecked?: boolean;
@@ -33,109 +20,68 @@
     capacityReason?: string;
   } = $props();
 
-  // Mirrors the server formula in checkDeploymentCapacity: a model's footprint is
-  // its weight plus its effective KV cache (at least the model minimum). Ollama has
-  // no KV-cache knob, so the value submitted there is always the minimum.
-  function perReplica(model: ModelWithSpecifier, kv: number | null): number {
-    const effKv = effKvCache(model, kv);
-    return model.sizing.weightGb + effKv;
-  }
-  function effKvCache(model: ModelWithSpecifier, kv: number | null): number {
-    return model.engine === "ollama" ? model.sizing.minKvCacheGb : Math.max(kv ?? 0, model.sizing.minKvCacheGb);
-  }
-
-  const hasCanary = $derived(Boolean(isCanaryEnabled && canaryModel));
-
-  // Replica counts per model mirror the server split (each rounded up independently).
-  const canaryReplicas = $derived(!hasCanary ? 0 : canaryTraffic >= 100 ? replicas : Math.ceil(replicas * (canaryTraffic / 100)));
-  const primaryReplicas = $derived(!hasCanary ? replicas : canaryTraffic >= 100 ? 0 : Math.ceil(replicas * ((100 - canaryTraffic) / 100)));
-
-  const primaryPer = $derived(primaryModel ? perReplica(primaryModel, kvCacheSize) : 0);
-  const canaryPer = $derived(canaryModel && isCanaryEnabled ? perReplica(canaryModel, canaryKvCacheSize) : 0);
-
-  const totalNeeded = $derived(primaryPer * primaryReplicas + canaryPer * canaryReplicas);
-
-  // With single-node placement, the largest single replica is the binding constraint:
-  // it must fit on one machine. Worded to allow a future where a model spans nodes.
-  const largestSingle = $derived(Math.max(primaryPer, isCanaryEnabled ? canaryPer : 0));
-
-  const hasAvailability = $derived(Number.isFinite(maxNodeFreeCapacity));
-  const totalFree = $derived(nodeCapabilities.reduce((sum, n) => sum + n.free, 0));
+  const showsSpecifier = $derived(new Set(plannedReplicas.map((replica) => replica.specifier)).size > 1);
+  const totalGpuGb = $derived(plannedReplicas.reduce((sum, replica) => sum + replica.gpuGb, 0));
+  const totalHostGb = $derived(plannedReplicas.reduce((sum, replica) => sum + replica.hostGb, 0));
+  const totalFree = $derived(nodeCapabilities.reduce((sum, node) => sum + node.free, 0));
 </script>
 
-{#if primaryModel}
-  <div class="rounded-lg border bg-muted/30 p-4 space-y-3">
-    <div class="flex items-center gap-2 font-medium">
-      <HardDrive class="w-4 h-4 text-muted-foreground" />
-      Capacity
-    </div>
+<div class="rounded-lg border bg-muted/30 p-4 space-y-3">
+  <div class="flex items-center gap-2 font-medium">
+    <HardDrive class="w-4 h-4 text-muted-foreground" />
+    Capacity
+  </div>
 
+  {#if plannedReplicas.length > 0}
     <dl class="space-y-1.5 text-sm">
-      <div class="flex justify-between gap-4">
-        <dt class="text-muted-foreground">
-          {isCanaryEnabled ? "Primary per replica" : "Per replica"}
-        </dt>
-        <dd class="text-right">
-          {formatGb(primaryModel.sizing.weightGb)} model + {formatGb(effKvCache(primaryModel, kvCacheSize))} kv-cache
-          = <span class="font-medium">{formatGb(primaryPer)}</span>
-          <span class="text-muted-foreground"> &times; {primaryReplicas}</span>
+      {#each plannedReplicas as replica, index (index)}
+        <div class="flex justify-between gap-4">
+          <dt class="text-muted-foreground">
+            {showsSpecifier ? `${replica.specifier} on ` : ""}{replica.machineName}{replica.cards > 1 ? `, ${replica.cards} cards` : ""}
+          </dt>
+          <dd class="text-right">
+            {formatGb(replica.gpuGb)} GPU{replica.hostGb > 0 ? ` + ${formatGb(replica.hostGb)} host` : ""}
+          </dd>
+        </div>
+      {/each}
+
+      <div class="flex justify-between gap-4 border-t pt-1.5">
+        <dt class="text-muted-foreground">Total</dt>
+        <dd class="font-semibold text-right">
+          {formatGb(totalGpuGb)} GPU{totalHostGb > 0 ? ` + ${formatGb(totalHostGb)} host` : ""}
         </dd>
       </div>
 
-      {#if isCanaryEnabled && canaryModel}
+      {#if nodeCapabilities.length > 0}
         <div class="flex justify-between gap-4">
-          <dt class="text-muted-foreground">Canary per replica</dt>
-          <dd class="text-right">
-            {formatGb(canaryModel.sizing.weightGb)} model + {formatGb(effKvCache(canaryModel, canaryKvCacheSize))} kv-cache
-            = <span class="font-medium">{formatGb(canaryPer)}</span>
-            <span class="text-muted-foreground"> &times; {canaryReplicas}</span>
-          </dd>
+          <dt class="text-muted-foreground">Total cluster free</dt>
+          <dd class="text-right">{formatGb(totalFree)}</dd>
         </div>
-      {/if}
-
-      <div class="flex justify-between gap-4 border-t pt-1.5">
-        <dt class="text-muted-foreground">Total capacity needed</dt>
-        <dd class="font-semibold text-right">{formatGb(totalNeeded)}</dd>
-      </div>
-
-      <div class="flex justify-between gap-4">
-        <dt class="text-muted-foreground">Largest single-machine requirement</dt>
-        <dd class="font-medium text-right">{formatGb(largestSingle)}</dd>
-      </div>
-
-      {#if hasAvailability}
-        <div class="flex justify-between gap-4 border-t pt-1.5">
-          <dt class="text-muted-foreground">Largest node free</dt>
-          <dd class="text-right">{formatGb(maxNodeFreeCapacity)}</dd>
-        </div>
-        {#if nodeCapabilities.length > 0}
-          <div class="flex justify-between gap-4">
-            <dt class="text-muted-foreground">Total cluster free</dt>
-            <dd class="text-right">{formatGb(totalFree)}</dd>
-          </div>
-        {/if}
       {/if}
     </dl>
+  {:else if !capacityChecked}
+    <p class="text-sm text-muted-foreground">Working out where it would run…</p>
+  {/if}
 
-    <p class="text-xs text-muted-foreground">
-      Each replica must currently fit on a single node, so the largest single-machine requirement is the binding limit.
-    </p>
-
-    {#if !enabled}
-      <div class="flex items-start gap-2 text-sm text-muted-foreground">
-        <Info class="w-4 h-4 shrink-0 mt-0.5" />
-        <span>This deployment will be saved disabled. Capacity is only enforced when it is enabled.</span>
-      </div>
-    {:else if capacityChecked && capacityBlocked}
-      <div class="flex items-start gap-2 text-sm text-destructive">
-        <CircleAlert class="w-4 h-4 shrink-0 mt-0.5" />
-        <span>{capacityReason ?? "This deployment needs more capacity than is currently available"}</span>
-      </div>
-    {:else if capacityChecked}
-      <div class="flex items-start gap-2 text-sm text-emerald-600 dark:text-emerald-400">
-        <CircleCheck class="w-4 h-4 shrink-0 mt-0.5" />
-        <span>Fits in the current cluster.</span>
-      </div>
-    {/if}
-  </div>
-{/if}
+  {#if !enabled}
+    <div class="flex items-start gap-2 text-sm text-muted-foreground">
+      <Info class="w-4 h-4 shrink-0 mt-0.5" />
+      <span>This deployment will be saved disabled. Capacity is only enforced when it is enabled.</span>
+    </div>
+  {:else if capacityChecked && capacityBlocked}
+    <div class="flex items-start gap-2 text-sm text-destructive">
+      <CircleAlert class="w-4 h-4 shrink-0 mt-0.5" />
+      <span>{capacityReason ?? "This deployment needs more capacity than is currently available"}</span>
+    </div>
+  {:else if capacityChecked && capacityReason}
+    <div class="flex items-start gap-2 text-sm text-muted-foreground">
+      <Info class="w-4 h-4 shrink-0 mt-0.5" />
+      <span>{capacityReason}</span>
+    </div>
+  {:else if capacityChecked}
+    <div class="flex items-start gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+      <CircleCheck class="w-4 h-4 shrink-0 mt-0.5" />
+      <span>Fits in the current cluster.</span>
+    </div>
+  {/if}
+</div>
