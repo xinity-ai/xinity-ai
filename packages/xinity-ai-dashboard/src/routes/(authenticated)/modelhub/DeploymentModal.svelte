@@ -12,6 +12,7 @@
   import type { DeploymentDefinition } from "./+page.server";
   import { settingsEqual, type DeploymentSettings } from "common-env/deployment-settings";
   import { DeploymentSettingsDto } from "$lib/orpc/dtos/model.dto";
+  import type { PlannedReplica } from "$lib/server/lib/deployments/orchestration";
 
   import { Button } from "$lib/components/ui/button";
   import { Checkbox } from "$lib/components/ui/checkbox";
@@ -23,8 +24,6 @@
     open = $bindable(false),
     deployment,
     close,
-    maxNodeFreeCapacity = Infinity,
-    nodeFreeCapacities = [],
     nodeCapabilities = [],
     modelCompatibility = {},
     onSaved = async () => {},
@@ -32,8 +31,6 @@
     open: boolean;
     deployment?: DeploymentDefinition;
     close: () => void;
-    maxNodeFreeCapacity?: number;
-    nodeFreeCapacities?: number[];
     nodeCapabilities?: NodeCapability[];
     modelCompatibility?: ModelCompatibility;
     onSaved?: () => Promise<void>;
@@ -187,62 +184,65 @@
   const minKvCache = $derived(selectedPrimaryModel ? selectedPrimaryModel.sizing.minKvCacheGb : 0);
   const minCanaryKvCache = $derived(selectedCanaryModel ? selectedCanaryModel.sizing.minKvCacheGb : 0);
 
-  const maxKvCache = $derived(
-    selectedPrimaryModel ? Math.max(minKvCache, Math.floor((maxNodeFreeCapacity - selectedPrimaryModel.sizing.weightGb) * 10) / 10) : 0,
-  );
-  const maxCanaryKvCache = $derived(
-    selectedCanaryModel ? Math.max(minCanaryKvCache, Math.floor((maxNodeFreeCapacity - selectedCanaryModel.sizing.weightGb) * 10) / 10) : 0,
-  );
+  const clusterFreeGb = $derived(nodeCapabilities.reduce((sum, node) => sum + node.free, 0));
+  const kvCacheRange = (model: ModelWithSpecifier | null, min: number) =>
+    model ? Math.max(min, Math.floor((clusterFreeGb - model.sizing.weightGb) * 10) / 10) : 0;
+  const maxKvCache = $derived(kvCacheRange(selectedPrimaryModel, minKvCache));
+  const maxCanaryKvCache = $derived(kvCacheRange(selectedCanaryModel, minCanaryKvCache));
 
   const canaryTypeMismatch = $derived(
     Boolean(isCanaryEnabled && selectedPrimaryModel && selectedCanaryModel &&
       selectedPrimaryModel.type !== selectedCanaryModel.type),
   );
 
-  const maxReplicas = $derived.by(() => {
-    if (!selectedPrimaryModel) return 0;
-    const perReplica = selectedPrimaryModel.sizing.weightGb + Math.max(kvCacheSize ?? 0, selectedPrimaryModel.sizing.minKvCacheGb);
-    const nodesWithSpace = nodeFreeCapacities.filter(c => c >= perReplica).length;
-    return nodesWithSpace + (isEditMode && deployment ? (deployment.replicas ?? 0) : 0);
-  });
+  // Replicas of one deployment never share a machine.
+  const maxReplicas = $derived(selectedPrimaryModel ? nodeCapabilities.length : 0);
 
   const showTrafficSlider = $derived(!isEditMode || advancementStrategy === "manual");
   const requiresDisabled = $derived(isEditMode && enabled);
 
   // --- Capacity gate ---
-  // Capacity is only enforced when the resulting deployment would be enabled and is
-  // not already accounted for: that means create mode (enabled), or re-enabling a
-  // currently-disabled deployment. An already-enabled deployment is skipped so its
-  // own running installations are not double-counted against it.
+  // Saving is only blocked where the server enforces capacity too: creating an enabled
+  // deployment, or re-enabling a disabled one.
   const shouldGateCapacity = $derived(Boolean(
     selectedPrimaryModel && enabled && (!isEditMode || (deployment && !deployment.enabled)),
   ));
 
+  const CAPACITY_PREVIEW_DELAY_MS = 300;
+
   let capacityChecked = $state(false);
   let capacityBlocked = $state(false);
   let capacityReason = $state<string | undefined>(undefined);
+  let plannedReplicas = $state<PlannedReplica[]>([]);
 
   $effect(() => {
-    if (!shouldGateCapacity || !selectedPrimarySpecifier) {
-      capacityChecked = false; capacityBlocked = false; capacityReason = undefined; return;
+    if (!selectedPrimarySpecifier) {
+      capacityChecked = false; capacityBlocked = false; capacityReason = undefined; plannedReplicas = []; return;
     }
-    const abort = new AbortController();
     const canary = isCanaryEnabled ? selectedCanarySpecifier : null;
-    orpc.deployment.checkCapacity({
+    const draft = {
       specifier: canary ?? selectedPrimarySpecifier,
       earlySpecifier: canary ? selectedPrimarySpecifier : null,
       kvCacheSize: canary ? canaryKvCacheSize : kvCacheSize,
       earlyKvCacheSize: canary ? kvCacheSize : null,
       replicas, progress: isCanaryEnabled ? canaryTraffic : 100,
       preferredDriver,
-    }, { signal: abort.signal }).then(([error, data]) => {
-      if (abort.signal.aborted) return;
-      if (error) { browserLogger.error({ error }, "Capacity check failed"); capacityChecked = false; capacityBlocked = false; return; }
-      capacityChecked = true;
-      capacityBlocked = !data.deployable;
-      capacityReason = data.reason;
-    });
-    return () => abort.abort();
+      settings: $state.snapshot(settings),
+      deploymentId: deployment?.id,
+    };
+    const gated = shouldGateCapacity;
+    const abort = new AbortController();
+    const timer = setTimeout(() => {
+      orpc.deployment.checkCapacity(draft, { signal: abort.signal }).then(([error, data]) => {
+        if (abort.signal.aborted) return;
+        if (error) { browserLogger.error({ error }, "Capacity check failed"); capacityChecked = false; capacityBlocked = false; plannedReplicas = []; return; }
+        capacityChecked = true;
+        capacityBlocked = gated && !data.deployable;
+        capacityReason = data.reason;
+        plannedReplicas = data.replicas;
+      });
+    }, CAPACITY_PREVIEW_DELAY_MS);
+    return () => { clearTimeout(timer); abort.abort(); };
   });
 
   /** Only asked for on a change: an unchanged deployment was already consented to. */
@@ -459,7 +459,6 @@
         <DeploymentFormBody
           selectedPrimaryModel={selectedPrimaryModel ?? undefined}
           selectedCanaryModel={selectedCanaryModel ?? undefined}
-          {maxNodeFreeCapacity}
           {nodeCapabilities}
           {modelCompatibility}
           {maxReplicas}
@@ -467,6 +466,7 @@
           {capacityChecked}
           {capacityBlocked}
           {capacityReason}
+          {plannedReplicas}
           editMode={isEditMode}
           readonlyModels={requiresDisabled}
           {requiresDisabled}

@@ -1,6 +1,7 @@
 <script lang="ts">
   import Modal from "$lib/components/Modal.svelte";
-  import type { Engine, IncompatibilityReason, ModelType, ModelWithSpecifier, NodeCapability } from "common-env/model-catalog";
+  import type { Engine, ModelType, ModelWithSpecifier, NodeCapability } from "common-env/model-catalog";
+  import type { PickerIncompatibility } from "./ModelChoiceCard.svelte";
   import { EngineEnum } from "common-env/model-catalog/definitions/model-primitives";
   import type { ModelCompatibility } from "$lib/server/orpc/procedures/cluster.procedure";
   import { modelCatalog } from "$lib/state/model-catalog.svelte";
@@ -51,14 +52,12 @@
     open = $bindable(false),
     onSelect,
     onClose,
-    maxNodeFreeCapacity = Infinity,
     nodeCapabilities = [],
     modelCompatibility = {},
   }: {
     open: boolean;
     onSelect: (model: ModelWithSpecifier) => void;
     onClose: () => void;
-    maxNodeFreeCapacity?: number;
     nodeCapabilities?: NodeCapability[];
     modelCompatibility?: ModelCompatibility;
   } = $props();
@@ -185,13 +184,10 @@
     handleSelect(group.leader);
   }
 
-  function undeployableReason(model: ModelWithSpecifier): IncompatibilityReason | null {
-    const verdict = modelCompatibility[model.publicSpecifier];
-    if (verdict) {
-      return verdict.incompatibility;
-    }
-    // Without a cluster verdict the only thing knowable is whether it could ever fit.
-    return model.sizing.weightGb + model.sizing.minKvCacheGb > maxNodeFreeCapacity ? "insufficient_capacity" : null;
+  // Whether a model fits is the placement preview's to say, once it is chosen.
+  function undeployableReason(model: ModelWithSpecifier): PickerIncompatibility | null {
+    const verdict = modelCompatibility[model.publicSpecifier]?.incompatibility ?? null;
+    return verdict === "insufficient_capacity" ? null : verdict;
   }
 
   function blockedReleaseNote(model: ModelWithSpecifier): string | undefined {
@@ -311,19 +307,13 @@
     </div>
 
     <!-- Capacity Info -->
-    {#if maxNodeFreeCapacity !== Infinity}
+    {#if nodeCapabilities.length > 0}
       <div class="px-5 py-3 border-b bg-muted/30 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
         <div class="flex items-center gap-2">
           <HardDrive class="w-4 h-4 text-muted-foreground shrink-0" />
-          <span class="text-muted-foreground">Largest node free:</span>
-          <span class="font-semibold">{formatGb(maxNodeFreeCapacity)}</span>
+          <span class="text-muted-foreground">Total free:</span>
+          <span class="font-semibold">{formatGb(totalFreeCapacity)}</span>
         </div>
-        {#if nodeCapabilities.length > 0}
-          <div class="flex items-center gap-2">
-            <span class="text-muted-foreground">Total free:</span>
-            <span class="font-semibold">{formatGb(totalFreeCapacity)}</span>
-          </div>
-        {/if}
       </div>
     {/if}
 
@@ -371,7 +361,6 @@
                     model={group.leader}
                     blockedReason={groupReason}
                     blockedDetail={groupReason === "version_blocked" ? blockedReleaseNote(group.leader) : undefined}
-                    {maxNodeFreeCapacity}
                     variantCount={group.variants.length}
                     onSelect={() => chooseFromGroup(group)}
                   />
@@ -428,7 +417,6 @@
               model={variant}
               blockedReason={variantReason}
               blockedDetail={variantReason === "version_blocked" ? blockedReleaseNote(variant) : undefined}
-              {maxNodeFreeCapacity}
               repeatsPreviousDescription={variant.description === group.variants[i - 1]?.description}
               onSelect={handleSelect}
             />

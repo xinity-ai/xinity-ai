@@ -159,6 +159,19 @@ function totalVramUsed(state: ClusterState): number {
   return used;
 }
 
+export type ShortfallReason = "catalog_unavailable" | "not_found" | "no_compatible_node" | "no_capacity" | "license_limit";
+
+export type Shortfall = { specifier: string; missing: number; reason: ShortfallReason; constraints?: PlacementConstraints & { driver: Provider } };
+
+export type InstallationPlan = { toInstall: NewInstallation[]; shortfalls: Shortfall[] };
+
+function anyNodeCouldServe(state: ClusterState, driver: Provider, constraints: PlacementConstraints): boolean {
+  return state.availableServers.some((server) => checkNodeCompatibility(
+    { free: Infinity, driverVersions: server.driverVersions, driverFeatures: server.driverFeatures ?? {}, gpus: server.gpus },
+    { driver, capacityGb: 0, ...constraints, requiredPlatforms: constraints.requiredPlatforms ?? [] },
+  ) === null);
+}
+
 /** Plans installations needed to satisfy replica requirements that aren't yet met,
  * stopping a replica loop early when the next install would exceed the license VRAM cap. */
 async function planNewInstallations(
@@ -166,8 +179,9 @@ async function planNewInstallations(
   state: ClusterState,
   licenseVramLimit: number,
   strategy: DeploymentStrategy,
-): Promise<NewInstallation[]> {
+): Promise<InstallationPlan> {
   const toInstall: NewInstallation[] = [];
+  const shortfalls: Shortfall[] = [];
   let usedVram = totalVramUsed(state);
 
   for (const [key, requirement] of Object.entries(requiredModels)) {
@@ -179,12 +193,14 @@ async function planNewInstallations(
     if (resolution.status === "unavailable") {
       log.warn({ specifier: requirement.specifier, error: resolution.error },
         "Info server unreachable; skipping installation planning for this sync cycle");
+      shortfalls.push({ specifier, missing: requirement.replicas - current, reason: "catalog_unavailable" });
       continue;
     }
     if (resolution.status === "not_found") {
       log.warn({ specifier: requirement.specifier },
         "Model not found in catalog; installations cannot be scheduled. " +
         "If this model has been intentionally removed, disable or delete the deployment.");
+      shortfalls.push({ specifier, missing: requirement.replicas - current, reason: "not_found" });
       continue;
     }
     const modelInfo = resolution.model;
@@ -195,12 +211,14 @@ async function planNewInstallations(
     const effectiveKvCache = Math.max(requirement.kvCacheSize ?? 0, modelInfo.minKvCache);
     const need = { model: modelInfo, kvCacheGb: effectiveKvCache, goal: resolveOptimizeFor(requirement.settings) };
 
+    const constraints = { minVersion, blockedVersions, requiredPlatforms, requiredFeatures };
     for (let i = 0; i < needed; i++) {
-      const nodeId = findServerForModel({ deploymentId: requirement.deploymentId, specifier }, driver, need, state, toInstall, strategy,
-        { minVersion, blockedVersions, requiredPlatforms, requiredFeatures });
+      const nodeId = findServerForModel({ deploymentId: requirement.deploymentId, specifier }, driver, need, state, toInstall, strategy, constraints);
       const slot = nodeId ? ENGINE_SCHEDULERS[driver].placeOnNode(resourcesOf(state, nodeId), { ...need, strategy }) : undefined;
       if (!nodeId || !slot) {
         log.warn({ specifier: requirement.specifier }, "No server with enough capacity for additional replica");
+        const reason = anyNodeCouldServe(state, driver, constraints) ? "no_capacity" : "no_compatible_node";
+        shortfalls.push({ specifier, missing: needed - i, reason, constraints: { ...constraints, driver } });
         break;
       }
 
@@ -209,6 +227,7 @@ async function planNewInstallations(
           { specifier: requirement.specifier, usedVram, licenseVramLimit, additional: slot.estCapacity },
           "License VRAM limit reached; skipping additional replica",
         );
+        shortfalls.push({ specifier, missing: needed - i, reason: "license_limit" });
         break;
       }
 
@@ -231,7 +250,7 @@ async function planNewInstallations(
     }
   }
 
-  return toInstall;
+  return { toInstall, shortfalls };
 }
 
 type ModelLookup = (specifier: string, driver: Provider) => Promise<SchedulableModel | null>;
@@ -292,6 +311,42 @@ async function persistCharges(before: ModelInstallation[], after: ModelInstallat
     .where(sql`${modelInstallationT.id} = ${install.id}`)));
 }
 
+export type PlannedReplica = { specifier: string; machineName: string; cards: number; gpuGb: number; hostGb: number };
+
+export type PlacementPreview = { replicas: PlannedReplica[]; shortfalls: Shortfall[] };
+
+const lookupSchedulable: ModelLookup = async (specifier, driver) => {
+  const resolution = await resolveSchedulable(specifier, driver);
+  return resolution.status === "found" ? resolution.model : null;
+};
+
+// Plans a deployment draft on the cluster as it is, without the installations the deployment
+// already has, and writes nothing.
+export async function previewPlacement(requirements: ModelRequirementTable, replacedDeploymentId?: string): Promise<PlacementPreview> {
+  const [existing, servers]: [ModelInstallation[], AiNode[]] = await Promise.all([
+    getDB().select().from(modelInstallationT).where(sql`${modelInstallationT.deletedAt} IS NULL`),
+    getDB().select().from(aiNodeT).where(nodeIsLive),
+  ]);
+  const liveIds = new Set(servers.map((server) => server.id));
+  const others = existing.filter((install) => liveIds.has(install.nodeId) && install.deploymentId !== replacedDeploymentId);
+  const state = buildClusterState(await chargeUnchargedInstallations(others, servers, lookupSchedulable), servers);
+  const { toInstall, shortfalls } = await planNewInstallations(requirements, state, maxVramGb(), config.compute.deploymentStrategy());
+  const machineName = (nodeId: string) => {
+    const server = servers.find((candidate) => candidate.id === nodeId);
+    return server?.machineName ?? server?.host ?? nodeId;
+  };
+  return {
+    replicas: toInstall.map((install) => ({
+      specifier: install.specifier,
+      machineName: machineName(install.nodeId),
+      cards: Math.max(install.gpuIds?.length ?? 0, 1),
+      gpuGb: install.estCapacity,
+      hostGb: install.hostCapacity ?? 0,
+    })),
+    shortfalls,
+  };
+}
+
 async function applyChanges(toUninstall: string[], toInstall: NewInstallation[]) {
   if (toUninstall.length > 0) {
     await getDB().update(modelInstallationT).set({ deletedAt: new Date() }).where(inArray(modelInstallationT.id, toUninstall));
@@ -314,15 +369,11 @@ async function runSyncDeployedModels() {
   const orphanedCandidates = existing.filter(i => !availableServerIds.has(i.nodeId));
   const active = existing.filter(i => availableServerIds.has(i.nodeId));
 
-  const lookupModel: ModelLookup = async (specifier, driver) => {
-    const resolution = await resolveSchedulable(specifier, driver);
-    return resolution.status === "found" ? resolution.model : null;
-  };
-  const charged = await chargeUnchargedInstallations(active, availableServers, lookupModel);
+  const charged = await chargeUnchargedInstallations(active, availableServers, lookupSchedulable);
   await persistCharges(active, charged);
 
   const state = buildClusterState(charged, availableServers);
-  const orphaned = await collectReassignableOrphans(orphanedCandidates, state, lookupModel);
+  const orphaned = await collectReassignableOrphans(orphanedCandidates, state, lookupSchedulable);
   const keptOffline = orphanedCandidates.length - orphaned.length;
 
   log.debug(
@@ -335,7 +386,7 @@ async function runSyncDeployedModels() {
     ...collectExcessInstallations(requiredModels, state),
     ...collectDriftedInstallations(requiredModels, state),
   ];
-  const toInstall = await planNewInstallations(requiredModels, state, maxVramGb(), config.compute.deploymentStrategy());
+  const { toInstall } = await planNewInstallations(requiredModels, state, maxVramGb(), config.compute.deploymentStrategy());
   await applyChanges(toUninstall, toInstall);
 }
 

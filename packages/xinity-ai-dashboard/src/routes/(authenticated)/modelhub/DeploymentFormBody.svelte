@@ -14,6 +14,7 @@
   import { ChevronDown } from "@lucide/svelte";
   import type { DeploymentSettings } from "common-env/deployment-settings";
   import DeploymentSettingsSection from "./DeploymentSettingsSection.svelte";
+  import type { PlannedReplica } from "$lib/server/lib/deployments/orchestration";
 
   let {
     selectedPrimaryModel,
@@ -40,7 +41,7 @@
     keepsUnknownCanary = false,
     maxReplicas = 0,
     showTrafficSlider = true,
-    maxNodeFreeCapacity = Infinity,
+    plannedReplicas = [],
     nodeCapabilities = [],
     modelCompatibility = {},
     enabled = true,
@@ -77,7 +78,7 @@
     keepsUnknownCanary?: boolean;
     maxReplicas?: number;
     showTrafficSlider?: boolean;
-    maxNodeFreeCapacity?: number;
+    plannedReplicas?: PlannedReplica[];
     nodeCapabilities?: NodeCapability[];
     modelCompatibility?: ModelCompatibility;
     enabled?: boolean;
@@ -101,16 +102,6 @@
   // --- Derived ---
   const minKvCache = $derived(selectedPrimaryModel ? selectedPrimaryModel.sizing.minKvCacheGb : 0);
   const minCanaryKvCache = $derived(selectedCanaryModel ? selectedCanaryModel.sizing.minKvCacheGb : 0);
-
-  const selectorCapacity = $derived.by(() => {
-    if (selectorMode === "canary" && selectedPrimaryModel) {
-      return maxNodeFreeCapacity - (selectedPrimaryModel.sizing.weightGb + selectedPrimaryModel.sizing.minKvCacheGb);
-    }
-    if (selectorMode === "primary" && isCanaryEnabled && selectedCanaryModel) {
-      return maxNodeFreeCapacity - (selectedCanaryModel.sizing.weightGb + selectedCanaryModel.sizing.minKvCacheGb);
-    }
-    return maxNodeFreeCapacity;
-  });
 
   function driverLabel(d: string) { return d === "vllm" ? "vLLM" : "Ollama"; }
 
@@ -448,14 +439,7 @@
 <!-- Capacity summary -->
 {#if selectedPrimaryModel}
   <DeploymentCapacitySummary
-    primaryModel={selectedPrimaryModel}
-    canaryModel={selectedCanaryModel}
-    {isCanaryEnabled}
-    {canaryTraffic}
-    {replicas}
-    {kvCacheSize}
-    {canaryKvCacheSize}
-    {maxNodeFreeCapacity}
+    {plannedReplicas}
     {nodeCapabilities}
     {enabled}
     {capacityChecked}
@@ -466,7 +450,6 @@
 
 <ModelSelectorModal
   bind:open={showModelSelector}
-  maxNodeFreeCapacity={selectorCapacity}
   {nodeCapabilities}
   {modelCompatibility}
   onSelect={handleModelSelect}

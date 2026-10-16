@@ -27,15 +27,11 @@
   import NoOrganization from "$lib/components/NoOrganization.svelte";
 
   let { data }: { data: PageData } = $props();
-  const maxNodeFreeCapacity = $derived(data.maxNodeFreeCapacity);
-  const nodeFreeCapacities = $derived(data.nodeFreeCapacities);
   const nodeCapabilities = $derived(data.nodeCapabilities);
 
   // Mutable overrides updated by refreshCapacity() after mutations.
   // When set, these take precedence over the load-function values.
   let capacityOverride = $state<ClusterOverview | null>(null);
-  const activeMaxCapacity = $derived(capacityOverride?.maxNodeFreeCapacity ?? maxNodeFreeCapacity);
-  const activeNodeCapacities = $derived(capacityOverride?.nodeFreeCapacities ?? nodeFreeCapacities);
   const activeNodeCapabilities = $derived(capacityOverride?.nodeCapabilities ?? nodeCapabilities);
   const activeModelCompatibility = $derived(capacityOverride?.modelCompatibility ?? data.modelCompatibility);
 
@@ -611,8 +607,6 @@
 
 <DeploymentModal
   open={showCreateDeploymentModal}
-  maxNodeFreeCapacity={activeMaxCapacity}
-  nodeFreeCapacities={activeNodeCapacities}
   nodeCapabilities={activeNodeCapabilities}
   modelCompatibility={activeModelCompatibility}
   close={() => (showCreateDeploymentModal = false)}
@@ -623,8 +617,6 @@
   <DeploymentModal
     open={true}
     deployment={editDeployment}
-    maxNodeFreeCapacity={activeMaxCapacity}
-    nodeFreeCapacities={activeNodeCapacities}
     nodeCapabilities={activeNodeCapabilities}
     modelCompatibility={activeModelCompatibility}
     close={() => (editDeploymentModalId = null)}
