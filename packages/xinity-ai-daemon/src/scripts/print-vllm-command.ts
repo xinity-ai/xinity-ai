@@ -92,7 +92,7 @@ if (state.dockerImage) process.env.VLLM_DOCKER_IMAGE = state.dockerImage;
 
 const [
   { buildDockerRunArgs, buildSystemdEnvFile, buildSystemdDropIn, buildSystemdServeArgv, SINGLE_NODE },
-  { computeGpuUtilization, buildVllmExtraArgs, hostMemoryLimitBytes },
+  { computeGpuUtilization, buildVllmExtraArgs, hostMemoryLimitBytes, loadingAllowanceGb },
   { buildHardwareProfile },
   { NO_HOST_DEVICES, unpinnedDevicesFor },
 ] = await Promise.all([
@@ -102,7 +102,7 @@ const [
   import("../modules/model-installation/gpu-devices"),
 ]);
 
-function buildVllmInstanceConfig(resolved: ResolvedVllmModel, state: State): VllmInstanceConfig {
+function buildVllmInstanceConfig(resolved: ResolvedVllmModel, state: State, loadingGb: number): VllmInstanceConfig {
   const profile = buildHardwareProfile(state.gpus as DetectedGpu[], state.systemRamMb);
   const devices = unpinnedDevicesFor(profile.gpus, NO_HOST_DEVICES);
   const charge = chargeOnNode(resolved, profile.gpus, { cardsPerNode: devices.tensorParallelSize, nodes: 1, node: 0 }, undefined);
@@ -122,7 +122,7 @@ function buildVllmInstanceConfig(resolved: ResolvedVllmModel, state: State): Vll
     ),
     devices,
     group: SINGLE_NODE,
-    hostMemoryLimitBytes: charge && hostMemoryLimitBytes(charge.hostGb),
+    hostMemoryLimitBytes: charge && hostMemoryLimitBytes(charge.hostGb, loadingGb),
   };
 }
 
@@ -134,7 +134,7 @@ try {
   if (err instanceof RunModelError) die(err.message);
   throw err;
 }
-const config = buildVllmInstanceConfig(resolved, state);
+const config = buildVllmInstanceConfig(resolved, state, await loadingAllowanceGb(resolved.vllmProviderName));
 
 if (state.backend === "docker") {
   const argv = buildDockerRunArgs(state.id, config, "preview");

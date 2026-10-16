@@ -20,7 +20,7 @@ mock.module("../../logger", () => ({
   },
 }));
 
-const { downloadModel, hfUrl } = await import("./vllm-download");
+const { downloadModel, hfUrl, largestWeightFileBytes } = await import("./vllm-download");
 const { config } = await import("../../config");
 
 describe("hfUrl", () => {
@@ -256,5 +256,50 @@ describe("downloadModel resume edge cases", () => {
     expect(gets[0]?.headers).toEqual(expect.objectContaining({ Range: "bytes=4-" }));
     expect(new Uint8Array(fs.readFileSync(blobPath("model.safetensors")))).toEqual(contents);
     expect(progress.at(-1)).toBe(1);
+  });
+});
+
+describe("largestWeightFileBytes", () => {
+  const model = "test/sharded";
+  const commitHash = "b".repeat(40);
+  const snapshotDir = path.join(testCacheDir, "hub", `models--${model.replace("/", "--")}`, "snapshots", commitHash);
+
+  afterEach(() => {
+    fs.rmSync(testCacheDir, { recursive: true, force: true });
+  });
+
+  test("takes the largest weight file the repository lists, whatever is cached so far", async () => {
+    fs.mkdirSync(snapshotDir, { recursive: true });
+    fs.writeFileSync(path.join(snapshotDir, "model-00001.safetensors"), new Uint8Array(10));
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async (input) => {
+      const url = String(input);
+      if (url.endsWith(`/api/models/${model}`)) {
+        return Response.json({ sha: commitHash });
+      }
+      return Response.json([
+        { type: "file", path: "model-00001.safetensors", size: 10 },
+        { type: "file", path: "model-00002.safetensors", size: 0, lfs: { size: 70 } },
+        { type: "file", path: "tokenizer.json", size: 900 },
+      ]);
+    }) as typeof fetch);
+    try {
+      expect(await largestWeightFileBytes(model)).toBe(70);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  test("falls back to the cached snapshot when the repository cannot be reached", async () => {
+    fs.mkdirSync(snapshotDir, { recursive: true });
+    fs.mkdirSync(path.join(testCacheDir, "hub", `models--${model.replace("/", "--")}`, "refs"), { recursive: true });
+    fs.writeFileSync(path.join(testCacheDir, "hub", `models--${model.replace("/", "--")}`, "refs", "main"), commitHash);
+    fs.writeFileSync(path.join(snapshotDir, "model-00001.safetensors"), new Uint8Array(30));
+    fs.writeFileSync(path.join(snapshotDir, "tokenizer.json"), new Uint8Array(90));
+    const fetchSpy = spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
+    try {
+      expect(await largestWeightFileBytes(model)).toBe(30);
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 });

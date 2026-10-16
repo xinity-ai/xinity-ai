@@ -30,7 +30,9 @@ Models are pulled from the Ollama registry with progress tracking (debounced to 
 
 ### vLLM
 
-The installation flow: download weights from HuggingFace (resumable, with file filtering), start the server, poll health (default timeout: 1 hour), then run a warmup request. GPU memory utilization is computed automatically with overhead, capped at 90%.
+The installation flow: download weights from HuggingFace (resumable, with file filtering), start the server, poll health (default timeout: 1 hour), then run a warmup request.
+
+Each installation runs within the memory the scheduler charged it, a share of its cards and a share of host memory. The host share is a hard limit without swap, with room for the extra memory a model holds while it loads. An installation that exceeds it is stopped and reported as over its host memory budget, and one that uses more than 90% of it shows a warning in its status. Before a start, the daemon checks that the node has the memory free. If it is not free yet, for example because another installation is still loading, the installation stays installing with a status naming what it needs and what is free, and starts once that memory is free. An installation that cannot fit next to the ones already running on the node fails with that reason.
 
 **Two backends** are available:
 

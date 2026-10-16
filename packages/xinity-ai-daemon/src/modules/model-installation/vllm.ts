@@ -26,8 +26,8 @@ import {
 import { rootLogger } from "../../logger";
 import { getHardwareProfile } from "../statekeeper";
 import { cardCapacityGib, type HardwareProfile } from "../hardware-detect";
-import { gpuId, maxNumSeqs, tensorParallelLayouts, type GpuInfo } from "common-env";
-import { downloadModel } from "./vllm-download";
+import { engineProfile, gpuId, maxNumSeqs, tensorParallelLayouts, type GpuInfo } from "common-env";
+import { downloadModel, largestWeightFileBytes } from "./vllm-download";
 import { devicesFor, readHostDevices, resolvePinnedCards } from "./gpu-devices";
 import type { ModelSizingFields } from "common-env/model-catalog";
 import { dropPageCache } from "./page-cache";
@@ -178,7 +178,9 @@ export function perCardSizing(
 ): { weightGb: number; kvCacheGb: number } {
   // estCapacity is the VRAM occupied, which includes every card's copy of a replicated kv head, so
   // weights come from the catalog. Only a legacy entry lacks sizing, and it is never split.
-  const weightGb = sizing?.weightGb ?? installation.estCapacity - installation.kvCacheCapacity;
+  const weightGb = sizing
+    ? sizing.weightGb - (sizing.hostWeightGb ?? 0)
+    : installation.estCapacity - installation.kvCacheCapacity;
   if (cards <= 1) {
     return { weightGb, kvCacheGb: installation.kvCacheCapacity };
   }
@@ -190,7 +192,14 @@ export function perCardSizing(
   return { weightGb: layout.perCardWeightGb, kvCacheGb: layout.perCardKvCacheGb };
 }
 
-async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): Promise<{ modelType: string | undefined; providerModel: string }> {
+type StartOutcome =
+  | { started: true; modelType: string | undefined; providerModel: string }
+  | { started: false; waiting: string };
+
+// Installations whose download finished and which wait for memory, so a later sync only retries the start.
+const downloaded = new Set<string>();
+
+async function downloadAndStart(installation: SyncInstallation, running: SyncInstallation[], ops: VllmOps): Promise<StartOutcome> {
   const entry = await resolveInstallationEntry(installation.specifier, "vllm");
   if (!entry) {
     throw new Error(`No vllm catalog entry for installation ${installation.id}`);
@@ -201,15 +210,15 @@ async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): P
   const devices = devicesFor(pinnedCards, profile.gpus, await readHostDevices());
   const perCard = perCardSizing(installation, entry.sizing, devices.tensorParallelSize);
 
-  await updateInstallationState(installation.id, "downloading", { statusMessage: "Downloading model", progress: 0 });
-
-  await downloadModel(
-    providerModel,
-    throttledDownloadProgress(installation.id, 5000),
-    entry.downloadFilter,
-  );
-
-  await updateInstallationState(installation.id, "installing", { statusMessage: "Starting vLLM service" });
+  if (!downloaded.has(installation.id)) {
+    await updateInstallationState(installation.id, "downloading", { statusMessage: "Downloading model", progress: 0 });
+    await downloadModel(
+      providerModel,
+      throttledDownloadProgress(installation.id, 5000),
+      entry.downloadFilter,
+    );
+    downloaded.add(installation.id);
+  }
 
   const charge = footprintCharge(installation, entry.sizing, devices.tensorParallelSize);
   const gpuMemoryUtilization = computeGpuUtilization({
@@ -219,11 +228,22 @@ async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): P
   }, profile);
   const modelType = entry.type;
 
+  const loadingGb = await loadingAllowanceGb(providerModel);
   await dropPageCache();
   if (charge) {
-    await admit(installation.id, charge, devices.tensorParallelSize, profile.source === "unified-memory");
+    const unified = profile.source === "unified-memory";
+    const waiting = await admit(installation.id, {
+      neededGb: chargedGb(charge.hostGb, charge.gpuGbPerCard * devices.tensorParallelSize, unified) + loadingGb,
+      chargedElsewhereGb: running.reduce((total, other) => total + chargedGb(other.hostCapacity ?? 0, other.estCapacity, unified), 0),
+      usableGb: profile.hostMemoryGb,
+    });
+    if (waiting) {
+      return { started: false, waiting };
+    }
   }
+  downloaded.delete(installation.id);
 
+  await updateInstallationState(installation.id, "installing", { statusMessage: "Starting vLLM service" });
   await ops.start(installation.id, {
     model: providerModel,
     port: installation.port,
@@ -241,10 +261,10 @@ async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): P
     settings: installation.settings,
     devices,
     group: SINGLE_NODE,
-    hostMemoryLimitBytes: charge && hostMemoryLimitBytes(charge.hostGb),
+    hostMemoryLimitBytes: charge && hostMemoryLimitBytes(charge.hostGb, loadingGb),
   });
 
-  return { modelType, providerModel };
+  return { started: true, modelType, providerModel };
 }
 
 type FootprintCharge = { gpuGbPerCard: number; hostGb: number };
@@ -264,8 +284,13 @@ export function footprintCharge(
 const HOST_LIMIT_MARGIN = 1.1;
 const HOST_LIMIT_MIN_BYTES = 2 ** 30;
 
-export function hostMemoryLimitBytes(hostGb: number): number {
-  return Math.max(Math.ceil(hostGb * HOST_LIMIT_MARGIN * 1e9), HOST_LIMIT_MIN_BYTES);
+export async function loadingAllowanceGb(providerModel: string, engineVersion?: string): Promise<number> {
+  return engineProfile("vllm", engineVersion).hostLoadingPerLargestFile * (await largestWeightFileBytes(providerModel)) / 1e9;
+}
+
+// Not lowered once loading ends.
+export function hostMemoryLimitBytes(hostGb: number, loadingGb: number): number {
+  return Math.max(Math.ceil((hostGb * HOST_LIMIT_MARGIN + loadingGb) * 1e9), HOST_LIMIT_MIN_BYTES);
 }
 
 async function availableMemoryGb(): Promise<number> {
@@ -282,15 +307,33 @@ function releaseAdmission(installationId: string): void {
   admittedGb.delete(installationId);
 }
 
-// vLLM checks each card against its window itself. Host memory nothing else checks.
-async function admit(installationId: string, charge: FootprintCharge, cards: number, unified: boolean): Promise<void> {
-  const neededGb = charge.hostGb + (unified ? charge.gpuGbPerCard * cards : 0);
-  const freeGb = await availableMemoryGb();
-  const availableGb = freeGb - [...admittedGb.values()].reduce((total, gb) => total + gb, 0);
-  if (availableGb < neededGb) {
-    throw new Error(`Not enough free memory to start: needs ${neededGb.toFixed(1)} GB, ${availableGb.toFixed(1)} GB available`);
-  }
-  admittedGb.set(installationId, neededGb);
+// On unified memory the cards draw from the same pool as the host.
+function chargedGb(hostGb: number, gpuGb: number, unified: boolean): number {
+  return hostGb + (unified ? gpuGb : 0);
+}
+
+type AdmissionRequest = { neededGb: number; chargedElsewhereGb: number; usableGb: number | undefined };
+
+// One check at a time, or two starts read the same free memory and both pass.
+let admissionTurn: Promise<unknown> = Promise.resolve();
+
+// vLLM checks each card against its window itself. Host memory nothing else checks. Returns why the
+// start waits, and throws when no amount of waiting frees enough.
+function admit(installationId: string, request: AdmissionRequest): Promise<string | undefined> {
+  const turn = admissionTurn.then(async () => {
+    const { neededGb, chargedElsewhereGb, usableGb } = request;
+    if (usableGb !== undefined && neededGb > usableGb - chargedElsewhereGb) {
+      throw new Error(`Does not fit next to the installations running here: needs ${neededGb.toFixed(1)} GB, at most ${Math.max(0, usableGb - chargedElsewhereGb).toFixed(1)} GB can be free`);
+    }
+    const availableGb = await availableMemoryGb() - [...admittedGb.values()].reduce((total, gb) => total + gb, 0);
+    if (availableGb < neededGb) {
+      return `Waiting for memory: needs ${neededGb.toFixed(1)} GB, ${Math.max(0, availableGb).toFixed(1)} GB free`;
+    }
+    admittedGb.set(installationId, neededGb);
+    return undefined;
+  });
+  admissionTurn = turn.catch(() => undefined);
+  return turn;
 }
 
 export function buildVllmExtraArgs(
@@ -505,7 +548,7 @@ export function syncVllmInstallations$(
       const reconcile$ = reconcileStaleStates$(installations, activeSet, ops);
       const hostUse$ = reportHostUse$(installations, activeSet, ops);
       const remove$ = removeStaleContainers$(toRemove, ops);
-      const start$ = startNewInstallations$(candidates, ops);
+      const start$ = startNewInstallations$(candidates, installations.filter((i) => activeSet.has(i.id)), ops);
 
       const work: Observable<unknown>[] = [reconcile$, hostUse$];
       if (toRemove.length > 0) {
@@ -531,7 +574,7 @@ function removeStaleContainers$(ids: string[], ops: VllmOps): Observable<void> {
   );
 }
 
-function startNewInstallations$(candidates: SyncInstallation[], ops: VllmOps): Observable<void> {
+function startNewInstallations$(candidates: SyncInstallation[], running: SyncInstallation[], ops: VllmOps): Observable<void> {
   if (candidates.length === 0) {
     return EMPTY;
   }
@@ -552,12 +595,14 @@ function startNewInstallations$(candidates: SyncInstallation[], ops: VllmOps): O
     mergeMap((installation) => {
       let containerStarted = false;
       return defer(() =>
-        from(downloadAndStart(installation, ops).then((res) => {
-          containerStarted = true;
-          return res;
+        from(downloadAndStart(installation, running, ops).then((outcome) => {
+          containerStarted = outcome.started;
+          return outcome;
         })),
       ).pipe(
-        switchMap(({ modelType, providerModel }) => pollUntilHealthy$(installation, ops, providerModel, modelType)),
+        switchMap((outcome) => outcome.started
+          ? pollUntilHealthy$(installation, ops, outcome.providerModel, outcome.modelType)
+          : from(updateInstallationState(installation.id, "installing", { statusMessage: outcome.waiting })).pipe(ignoreElements())),
         catchError((err) => handleInstallationError(err, installation, ops, containerStarted)),
       );
     }),
@@ -574,6 +619,7 @@ function handleInstallationError(
 ): Observable<never> {
   log.error({ err, model: installation.specifier, installationId: installation.id }, "vLLM failed to start");
   releaseAdmission(installation.id);
+  downloaded.delete(installation.id);
 
   const preCapturedLogs = (err as { preCapturedLogs?: string })?.preCapturedLogs;
 

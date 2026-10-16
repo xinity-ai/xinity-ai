@@ -33,7 +33,7 @@ Models are pulled from the Ollama registry with progress tracking. Up to 2 concu
 
 ### vLLM Driver
 
-Models go through: download from HuggingFace (resumable, with file filtering), start as a systemd unit or Docker container, health check polling (default timeout: 1 hour), and warmup request. GPU memory utilization is computed automatically with a 10% overhead factor, capped at 90%.
+Models go through: download from HuggingFace (resumable, with file filtering), start as a systemd unit or Docker container, health check polling (default timeout: 1 hour), and warmup request. Each installation runs within the card and host memory the scheduler charged it, see [the daemon docs](../../docs/features/daemon.md#vllm).
 
 Failed processes are restarted up to `VLLM_MAX_RESTART_COUNT` times. A number of fatal log patterns (e.g. GPU OOM, CUDA errors) trigger immediate failure without retries.
 

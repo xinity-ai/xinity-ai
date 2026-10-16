@@ -32,6 +32,7 @@ export type EngineProfile = {
   hostPerImageInFlightGb: number;
   pinnedPerCommunicatorGb: number;
   hostWeightAllocationGb: (gb: number) => number;
+  hostLoadingPerLargestFile: number;
   paging: KvPaging;
 };
 
@@ -49,6 +50,7 @@ const VLLM_0_31: EngineProfile = {
   hostPerImageInFlightGb: 0.02,
   pinnedPerCommunicatorGb: gib(1.25),
   hostWeightAllocationGb: nextPowerOfTwoGb,
+  hostLoadingPerLargestFile: 2.5,
   // Latent attention backends allocate in blocks of up to 128 tokens, and the largest keeps the floor safe.
   paging: { attentionBlockTokens: { standard: 16, latent: 128 }, alignStatePagesPerGroup: 2, groupSizeRatio: 1.5 },
 };
@@ -63,6 +65,7 @@ const OLLAMA: EngineProfile = {
   hostPerImageInFlightGb: 0,
   pinnedPerCommunicatorGb: 0,
   hostWeightAllocationGb: (gb) => gb,
+  hostLoadingPerLargestFile: 0,
   paging: { attentionBlockTokens: { standard: 16, latent: 16 }, alignStatePagesPerGroup: 2, groupSizeRatio: 1.5 },
 };
 
