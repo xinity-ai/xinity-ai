@@ -50,9 +50,10 @@ export const recordUsage = ({
   deployment,
 }: RecordUsageContext): boolean => {
   const durationMs = Date.now() - callStartTime;
-  recordTokenUsage(modelInfo.model, auth.keyId, auth.orgId, usage, { deployment, durationMs });
+  const tokens = usage && { inputTokens: normalizeInputTokens(usage), outputTokens: normalizeOutputTokens(usage) };
+  recordTokenUsage(modelInfo.model, auth.keyId, auth.orgId, tokens, { deployment, durationMs });
   recordModelRequest(modelInfo.model, true, auth.orgId);
-  if (!usage) {
+  if (!tokens) {
     return false;
   }
 
@@ -63,8 +64,7 @@ export const recordUsage = ({
     applicationId: auth.applicationId,
     apiKeyId: auth.keyId,
     model: modelInfo.model,
-    inputTokens: normalizeInputTokens(usage),
-    outputTokens: normalizeOutputTokens(usage),
+    ...tokens,
     duration: durationMs,
     logged: shouldLog,
     nodeId: modelInfo.nodeId ?? null,
