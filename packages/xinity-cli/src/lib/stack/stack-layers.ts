@@ -10,7 +10,7 @@ import {
   type StackDefinition, type FleetDefinition,
   STACK_SHARED_KEYS, sharedFields,
   applySharedResult, diffFromLayer, sharedLayerProblems, isDeferredToDeploy, fillDeferred,
-  componentLayerBase, fleetLayerBase, getHost, saveStack,
+  componentLayerBase, fleetLayerBase, getHost,
 } from "./stack.ts";
 
 export async function menuEditLayer(opts: {
@@ -109,7 +109,6 @@ export async function editHostLayer(
   }
   if (host) {
     host.envOverrides = overrides;
-    saveStack(stack);
   }
   return overrides;
 }
