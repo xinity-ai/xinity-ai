@@ -44,7 +44,7 @@ function nextPowerOfTwoGb(gb: number): number {
 const VLLM_0_31: EngineProfile = {
   gpuPerRankGb: { whole: gib(2.5), split: gib(3.5) },
   gpuSpeculativeGb: gib(1.5),
-  hostLeaderGb: gib(5),
+  hostLeaderGb: gib(5.5),
   hostFollowerGb: gib(6),
   hostVisionGb: gib(6.5),
   hostPerImageInFlightGb: 0.02,

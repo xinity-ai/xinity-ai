@@ -654,11 +654,11 @@ describe("orchestration: charging footprints", () => {
     const node = resourcesOf(buildClusterState([], [discrete(null)]), "node-l40s");
     const whole = vllmScheduler.placeOnNode(node, request("space"))!;
     expect(whole.estCapacity).toBeCloseTo(26 + 4 + 2.5 * GIB);
-    expect(whole.hostCapacity).toBeCloseTo(5 * GIB);
+    expect(whole.hostCapacity).toBeCloseTo(5.5 * GIB);
     const split = vllmScheduler.placeOnNode(node, request("speed"))!;
     expect(split.gpuIds).toEqual(["L-1", "L-2"]);
     expect(split.estCapacity).toBeCloseTo(2 * (13 + 2 + 3.5 * GIB));
-    expect(split.hostCapacity).toBeCloseTo((5 + 6) * GIB);
+    expect(split.hostCapacity).toBeCloseTo((5.5 + 6) * GIB);
   });
 
   test("refuses a discrete node whose reported host memory cannot take the host part, and leaves an unreported one unlimited", () => {
@@ -702,7 +702,7 @@ describe("orchestration: charging footprints", () => {
     const lookup = async () => makeModel({ ...entry(), driver: "vllm" });
     const [old, kept] = await chargeUnchargedInstallations([uncharged, charged], [discrete(null)], lookup);
     expect(old!.estCapacity).toBeCloseTo(2 * (13 + 2 + 3.5 * GIB));
-    expect(old!.hostCapacity).toBeCloseTo((5 + 6) * GIB);
+    expect(old!.hostCapacity).toBeCloseTo((5.5 + 6) * GIB);
     expect(kept).toBe(charged);
     const [unknown] = await chargeUnchargedInstallations([uncharged], [discrete(null)], async () => null);
     expect(unknown).toBe(uncharged);

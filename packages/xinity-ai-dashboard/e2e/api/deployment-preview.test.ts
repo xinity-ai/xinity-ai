@@ -72,7 +72,7 @@ describe("deployment placement preview", () => {
     expect(replica).toBeTruthy();
     expect(replica!.cards).toBe(1);
     expect(replica!.gpuGb).toBeGreaterThan(0.88 + 2.5 * GB_PER_GIB);
-    expect(replica!.hostGb).toBeCloseTo(5 * GB_PER_GIB);
+    expect(replica!.hostGb).toBeCloseTo(5.5 * GB_PER_GIB);
   });
 
   test("names why a replica does not fit, and still shows the ones that do", async () => {
