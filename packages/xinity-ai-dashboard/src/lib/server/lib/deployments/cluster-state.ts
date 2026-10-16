@@ -83,8 +83,8 @@ export function chargeCapacity(
   }
 }
 
-export const chargeOf = (installation: Pick<ModelInstallation, "estCapacity" | "hostCapacity">): Charge =>
-  ({ estCapacity: installation.estCapacity, hostCapacity: installation.hostCapacity ?? 0 });
+export const chargeOf = (installation: Pick<ModelInstallation, "estCapacity" | "hostCapacity" | "maxNumSeqs">): Charge =>
+  ({ estCapacity: installation.estCapacity, hostCapacity: installation.hostCapacity ?? 0, maxNumSeqs: installation.maxNumSeqs });
 
 export function buildClusterState(existing: ModelInstallation[], availableServers: AiNode[]): ClusterState {
   const state: ClusterState = {

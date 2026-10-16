@@ -132,6 +132,7 @@ async function startMockTetherServer(): Promise<TetherMock> {
             estCapacity: row.estCapacity,
             kvCacheCapacity: row.kvCacheCapacity,
             hostCapacity: row.hostCapacity,
+            maxNumSeqs: row.maxNumSeqs,
             port: row.port,
             settings: row.settings,
             gpuIds: row.gpuIds,

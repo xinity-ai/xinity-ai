@@ -118,6 +118,8 @@ export const modelInstallationT = pgTable("model_installation", {
   kvCacheCapacity: real("kv_cache_capacity").notNull().default(0),
   /** Host RAM in GB the installation is charged on its node. */
   hostCapacity: real("host_capacity"),
+  /** Sequences the engine runs at once. Null where the scheduler does not decide it: Ollama, and entries of the deprecated format. */
+  maxNumSeqs: integer("max_num_seqs"),
   /** @deprecated Internal to the daemon. The gateway routes through the daemon proxy and does not use this field. */
   port: integer().notNull(),
   driver: inferenceDriverEnum().notNull(),

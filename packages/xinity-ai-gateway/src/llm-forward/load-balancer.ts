@@ -272,3 +272,44 @@ export async function selectHost(
     release: selected.release,
   };
 }
+
+const ADMISSION_PREFIX = "lb:admitted:";
+// Requests beyond the engine's own batch wait in its queue, which stays short this way.
+const ADMISSION_QUEUE_SHARE = 0.25;
+
+const ADMIT_SCRIPT = `
+local v = redis.call('INCR', KEYS[1])
+redis.call('EXPIRE', KEYS[1], ARGV[2])
+if v > tonumber(ARGV[1]) then
+  redis.call('DECR', KEYS[1])
+  return 0
+end
+return 1
+`;
+
+export function admissionLimit(maxNumSeqs: number): number {
+  return maxNumSeqs + Math.max(1, Math.ceil(maxNumSeqs * ADMISSION_QUEUE_SHARE));
+}
+
+// Counted in Redis, so every gateway instance sees the same load.
+export async function admit(installationId: string, maxNumSeqs: number | null): Promise<(() => void) | undefined> {
+  if (maxNumSeqs === null) {
+    return noOpRelease;
+  }
+  const key = `${ADMISSION_PREFIX}${installationId}`;
+  const admitted = await redis.send("EVAL", [ADMIT_SCRIPT, "1", key, String(admissionLimit(maxNumSeqs)), String(CONN_SAFETY_TTL)])
+    .then((result) => result === 1)
+    .catch((err: unknown) => { log.warn({ err }, "Redis admission error, admitting"); return null; });
+  if (admitted === null) {
+    return noOpRelease;
+  }
+  if (!admitted) {
+    return undefined;
+  }
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    redis.send("DECR", [key]).catch((err: unknown) => log.warn({ err }, "Redis DECR error"));
+  };
+}

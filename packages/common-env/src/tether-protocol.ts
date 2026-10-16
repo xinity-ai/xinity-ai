@@ -57,6 +57,7 @@ export const desiredInstallationSchema = z.object({
   estCapacity: z.number(),
   kvCacheCapacity: z.number(),
   hostCapacity: z.number().nullable(),
+  maxNumSeqs: z.number().nullable(),
   port: z.number(),
   settings: deploymentSettingsSchema,
   gpuIds: z.array(z.string()),

@@ -9,7 +9,7 @@ import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
 import { z } from "zod";
-import { quoteShellArgv } from "common-env";
+import { maxNumSeqs, quoteShellArgv } from "common-env";
 import {
   ModelFileSchema,
   estimateThroughput,
@@ -173,7 +173,7 @@ if (values["hf-token"]) process.env.VLLM_HF_TOKEN = values["hf-token"];
 
 const [
   { buildDockerRunArgs, buildSystemdServeArgv, ensureVllmNetwork, groupTensorParallelSize, SINGLE_NODE, VLLM_NETWORK },
-  { computeGpuUtilization, buildVllmExtraArgs, concurrencyCap, fittedGpuGb, hostMemoryLimitBytes, perCardSizing },
+  { computeGpuUtilization, buildVllmExtraArgs, fittedGpuGb, hostMemoryLimitBytes, perCardSizing },
   { detectHardwareProfile },
   { detectVllmFeatures },
   { readHostDevices, unpinnedDevicesFor },
@@ -266,7 +266,7 @@ function buildConfig(resolved: ResolvedVllmModel, profile: HardwareProfile, devi
       resolved.modelType,
       resolved.hasToolsTag,
       resolved.args,
-      concurrencyCap(resolved.model.sizing, profile.gpus, resolved.kvCacheGb),
+      maxNumSeqs(resolved.model, profile.gpus, resolved.kvCacheGb),
     ),
     devices,
     group,

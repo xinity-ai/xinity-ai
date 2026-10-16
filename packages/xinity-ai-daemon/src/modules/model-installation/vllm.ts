@@ -26,10 +26,10 @@ import {
 import { rootLogger } from "../../logger";
 import { getHardwareProfile } from "../statekeeper";
 import { cardCapacityGib, type HardwareProfile } from "../hardware-detect";
-import { gpuId, tensorParallelLayouts, type GpuInfo } from "common-env";
+import { gpuId, maxNumSeqs, tensorParallelLayouts, type GpuInfo } from "common-env";
 import { downloadModel } from "./vllm-download";
 import { devicesFor, readHostDevices, resolvePinnedCards } from "./gpu-devices";
-import { estimateConcurrency, type ModelSizingFields } from "common-env/model-catalog";
+import type { ModelSizingFields } from "common-env/model-catalog";
 import { dropPageCache } from "./page-cache";
 import { resolveInstallationEntry } from "./catalog";
 import { updateInstallationState, getLocalInstallationStates } from "./state";
@@ -234,7 +234,9 @@ async function downloadAndStart(installation: SyncInstallation, ops: VllmOps): P
       modelType,
       entry.tags.includes("tools"),
       entry.args,
-      concurrencyCap(entry.sizing, profile.gpus, installation.kvCacheCapacity),
+      installation.hostCapacity === null
+        ? entry.sizing && maxNumSeqs({ sizing: entry.sizing, engineArgs: entry.args }, profile.gpus, installation.kvCacheCapacity)
+        : installation.maxNumSeqs ?? undefined,
     ),
     settings: installation.settings,
     devices,
@@ -289,27 +291,6 @@ async function admit(installationId: string, charge: FootprintCharge, cards: num
     throw new Error(`Not enough free memory to start: needs ${neededGb.toFixed(1)} GB, ${availableGb.toFixed(1)} GB available`);
   }
   admittedGb.set(installationId, neededGb);
-}
-
-/**
- * vLLM's default max_num_seqs is 1024. A hybrid model reserves per-sequence recurrent
- * state for every one of those up front and dies at cuda-graph capture long before the
- * usual max_model_len check runs, so the default alone makes such a model unlaunchable.
- * The sweet spot also stops a deployment batching past the point where total throughput
- * has flattened and only per-request latency is still moving.
- *
- * Undefined for a legacy entry, or one stating no kvBytesPerToken, leaving vLLM's default
- * in place rather than guessing a cap from figures the entry does not carry.
- */
-export function concurrencyCap(
-  sizing: ModelSizingFields | undefined,
-  gpus: GpuInfo[],
-  kvCacheGb: number,
-): number | undefined {
-  if (!sizing) {
-    return undefined;
-  }
-  return estimateConcurrency({ sizing, engine: "vllm" }, { gpus }, { kvCacheGb })?.sweetSpot;
 }
 
 export function buildVllmExtraArgs(

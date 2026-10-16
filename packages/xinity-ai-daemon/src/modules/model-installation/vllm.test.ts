@@ -91,7 +91,7 @@ mock.module("./page-cache", () => ({
   dropPageCache: mock(() => Promise.resolve()),
 }));
 
-const { syncVllmInstallations$, computeGpuUtilization, fittedGpuGb, hostUseMessage, buildVllmExtraArgs, concurrencyCap, matchFatalPattern, perCardSizing } = await import("./vllm");
+const { syncVllmInstallations$, computeGpuUtilization, fittedGpuGb, hostUseMessage, buildVllmExtraArgs, matchFatalPattern, perCardSizing } = await import("./vllm");
 afterAll(() => {
   downloadModelSpy.mockRestore();
 });
@@ -110,6 +110,7 @@ function makeInstallation(specifier: string, id: string = crypto.randomUUID(), p
     estCapacity: 16,
     kvCacheCapacity: 4,
     hostCapacity: null,
+    maxNumSeqs: null,
     port,
     driver: "vllm" as const,
     settings: { version: 1 as const },
@@ -605,37 +606,6 @@ describe("syncVllmInstallations$", () => {
   });
 });
 
-describe("concurrencyCap", () => {
-  const gpus = [{ vendor: "nvidia", name: "NVIDIA GeForce RTX 4090", vramMb: 24576 }];
-  const sizing = { weightGb: 14, minKvCacheGb: 4, maxContextLength: 32768, weightBits: 16, kvBytesPerToken: 131072 };
-
-  test("declines for a legacy entry, which states no sizing at all", () => {
-    expect(concurrencyCap(undefined, gpus, 8)).toBeUndefined();
-  });
-
-  test("declines when the entry states no kv cost per token, rather than guessing one", () => {
-    const { kvBytesPerToken, ...withoutPerToken } = sizing;
-    expect(concurrencyCap(withoutPerToken, gpus, 8)).toBeUndefined();
-  });
-
-  test("stays inside what the allocated cache holds, so vllm never rejects the cap", () => {
-    const cap = concurrencyCap(sizing, gpus, 8)!;
-    const cacheHolds = Math.floor((8 * 1e9) / (131072 * 4096));
-
-    expect(cap).toBeLessThanOrEqual(cacheHolds);
-    expect(cap).toBeGreaterThan(0);
-  });
-
-  test("charges a hybrid model for its per-sequence state, lowering the cap", () => {
-    // Few full-attention layers, so KV per token is small and the fixed state dominates.
-    // The cache is tight on purpose: state only shows where the cache floor is what binds.
-    const attentionOnly = { ...sizing, kvBytesPerToken: 24576 };
-    const hybrid = { ...attentionOnly, stateBytesPerSequence: 20_000_000 };
-
-    expect(concurrencyCap(hybrid, gpus, 3)!).toBeLessThan(concurrencyCap(attentionOnly, gpus, 3)!);
-  });
-});
-
 describe("buildVllmExtraArgs", () => {
   test("caps concurrency when an estimate exists", () => {
     expect(buildVllmExtraArgs(undefined, false, [], 17)).toEqual(["--max-num-seqs", "17"]);
@@ -723,6 +693,14 @@ describe("enforcing the charge", () => {
     await firstValueFrom(syncVllmInstallations$([{ ...makeInstallation("charged-model"), estCapacity: 18, hostCapacity: 2 }], ops));
     expect(startConfig(ops).gpuMemoryUtilization).toBeCloseTo(18 / (24 * 1.073741824), 4);
     expect(startConfig(ops).hostMemoryLimitBytes).toBe(2.2e9);
+  });
+
+  test("runs as many sequences at once as the row says", async () => {
+    mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { sizing })));
+    const ops = starting();
+    await firstValueFrom(syncVllmInstallations$([{ ...makeInstallation("capped-model"), hostCapacity: 2, maxNumSeqs: 48 }], ops));
+    const args = startConfig(ops).extraArgs as string[];
+    expect(args.slice(args.indexOf("--max-num-seqs"), args.indexOf("--max-num-seqs") + 2)).toEqual(["--max-num-seqs", "48"]);
   });
 
   test("never limits host memory below 1 GiB", async () => {

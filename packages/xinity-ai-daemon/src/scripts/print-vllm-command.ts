@@ -3,7 +3,7 @@
 
 import { parseArgs } from "node:util";
 import { z } from "zod";
-import { quoteShellArgv } from "common-env";
+import { maxNumSeqs, quoteShellArgv } from "common-env";
 import { ModelFileSchema } from "common-env/model-catalog";
 import { chargeOnNode, resolveVllmModel, RunModelError, type ResolvedVllmModel } from "./lib/vllm-run";
 import type { VllmInstanceConfig } from "../modules/model-installation/vllm-ops";
@@ -92,7 +92,7 @@ if (state.dockerImage) process.env.VLLM_DOCKER_IMAGE = state.dockerImage;
 
 const [
   { buildDockerRunArgs, buildSystemdEnvFile, buildSystemdDropIn, buildSystemdServeArgv, SINGLE_NODE },
-  { computeGpuUtilization, buildVllmExtraArgs, concurrencyCap, hostMemoryLimitBytes },
+  { computeGpuUtilization, buildVllmExtraArgs, hostMemoryLimitBytes },
   { buildHardwareProfile },
   { NO_HOST_DEVICES, unpinnedDevicesFor },
 ] = await Promise.all([
@@ -118,7 +118,7 @@ function buildVllmInstanceConfig(resolved: ResolvedVllmModel, state: State): Vll
       resolved.modelType,
       resolved.hasToolsTag,
       resolved.args,
-      concurrencyCap(resolved.model.sizing, profile.gpus, resolved.kvCacheGb),
+      maxNumSeqs(resolved.model, profile.gpus, resolved.kvCacheGb),
     ),
     devices,
     group: SINGLE_NODE,

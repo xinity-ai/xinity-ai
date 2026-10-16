@@ -38,6 +38,7 @@ export type SyncInstallation = {
   estCapacity: number;
   kvCacheCapacity: number;
   hostCapacity: number | null;
+  maxNumSeqs: number | null;
   port: number;
   settings: DeploymentSettings;
   gpuIds: string[];
@@ -52,6 +53,7 @@ function toSyncInstallation(d: DesiredInstallation, nodeId: string): SyncInstall
     estCapacity: d.estCapacity,
     kvCacheCapacity: d.kvCacheCapacity,
     hostCapacity: d.hostCapacity,
+    maxNumSeqs: d.maxNumSeqs,
     port: d.port,
     settings: d.settings,
     gpuIds: d.gpuIds,
