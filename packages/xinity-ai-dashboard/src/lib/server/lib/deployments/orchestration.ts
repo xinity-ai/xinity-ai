@@ -238,6 +238,7 @@ async function planNewInstallations(
         estCapacity: slot.estCapacity,
         kvCacheCapacity: effectiveKvCache,
         hostCapacity: slot.hostCapacity,
+        maxNumSeqs: slot.maxNumSeqs,
         driver,
         port: allocatePort(driver, nodeId, state, toInstall),
         settings: requirement.settings,
@@ -307,7 +308,7 @@ async function persistCharges(before: ModelInstallation[], after: ModelInstallat
   const charged = after.filter((install, index) => before[index]!.hostCapacity === null && install.hostCapacity !== null);
   await Promise.all(charged.map((install) => getDB()
     .update(modelInstallationT)
-    .set({ estCapacity: install.estCapacity, hostCapacity: install.hostCapacity })
+    .set({ estCapacity: install.estCapacity, hostCapacity: install.hostCapacity, maxNumSeqs: install.maxNumSeqs })
     .where(sql`${modelInstallationT.id} = ${install.id}`)));
 }
 

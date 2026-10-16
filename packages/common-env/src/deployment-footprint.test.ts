@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { deploymentFootprint, engineProfile, layoutOptions, type FootprintEntry, type Layout } from "./deployment-footprint";
+import { deploymentFootprint, engineProfile, layoutOptions, maxNumSeqs, type FootprintEntry, type Layout } from "./deployment-footprint";
 import { ModelSizing } from "./model-catalog/definitions/model-definition";
 
 const GB_PER_GIB = 1.073741824;
@@ -132,5 +132,36 @@ describe("derived KV floor", () => {
     const sizing = ModelSizing.parse({ weightGb: 65.5, kvBytesPerToken: 262144, maxContextLength: 32768 });
     expect(sizing.minKvCacheGb).toBeGreaterThan(8.59);
     expect(sizing.minKvCacheGb).toBeLessThanOrEqual(8.7);
+  });
+});
+
+describe("maxNumSeqs", () => {
+  const gpus = [{ vendor: "nvidia", name: "NVIDIA GeForce RTX 4090", vramMb: 24576 }];
+  const sizing = { weightGb: 14, minKvCacheGb: 4, maxContextLength: 32768, weightBits: 16, kvBytesPerToken: 131072 };
+
+  test("takes the entry's own --max-num-seqs", () => {
+    expect(maxNumSeqs({ sizing, engineArgs: ["--max-num-seqs", "12"] }, gpus, 8)).toBe(12);
+  });
+
+  test("stays inside what the allocated cache holds, so vllm never rejects it", () => {
+    const seqs = maxNumSeqs({ sizing }, gpus, 8);
+    expect(seqs).toBeGreaterThan(0);
+    expect(seqs).toBeLessThanOrEqual(Math.floor((8 * 1e9) / (131072 * 4096)));
+  });
+
+  test("charges a hybrid model for its per-sequence state, lowering it", () => {
+    // Few full-attention layers, so the fixed state dominates in a tight cache.
+    const attentionOnly = { ...sizing, kvBytesPerToken: 24576 };
+    const hybrid = { ...attentionOnly, stateBytesPerSequence: 20_000_000 };
+    expect(maxNumSeqs({ sizing: hybrid }, gpus, 3)).toBeLessThan(maxNumSeqs({ sizing: attentionOnly }, gpus, 3));
+  });
+
+  test("without a card to estimate against, runs as many full-context requests as the cache holds", () => {
+    expect(maxNumSeqs({ sizing }, [], 8)).toBe(Math.floor((8 * 1e9) / (32768 * 131072)));
+  });
+
+  test("without a kv cost per token, runs one at a time rather than the engine's default", () => {
+    const { kvBytesPerToken: _, ...withoutPerToken } = sizing;
+    expect(maxNumSeqs({ sizing: withoutPerToken }, gpus, 8)).toBe(1);
   });
 });

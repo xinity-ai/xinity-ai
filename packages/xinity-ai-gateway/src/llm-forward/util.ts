@@ -349,14 +349,15 @@ export function errorResponse(message: string, statusCode = 500, headers?: Recor
   });
 }
 
-const MODEL_LOOKUP_FAILURES: Record<ModelLookupFailure, { message: string; statusCode: number }> = {
+const MODEL_LOOKUP_FAILURES: Record<ModelLookupFailure, { message: string; statusCode: number; headers?: Record<string, string> }> = {
   unknown: { message: "Model not found", statusCode: 404 },
   unavailable: { message: "Model has no ready inference node", statusCode: 503 },
+  busy: { message: "Model is at capacity, please retry", statusCode: 503, headers: { "Retry-After": "1" } },
 };
 
 export function modelLookupFailureResponse(failure: ModelLookupFailure): Response {
-  const { message, statusCode } = MODEL_LOOKUP_FAILURES[failure];
-  return errorResponse(message, statusCode);
+  const { message, statusCode, headers } = MODEL_LOOKUP_FAILURES[failure];
+  return errorResponse(message, statusCode, headers);
 }
 
 function mapBackendStatusToClient(backendStatus: number): number {

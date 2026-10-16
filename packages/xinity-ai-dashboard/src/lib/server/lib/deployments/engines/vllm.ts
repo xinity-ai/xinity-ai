@@ -3,6 +3,7 @@ import {
   engineProfile,
   imagesInFlight,
   layoutOptions,
+  maxNumSeqs,
   runsTensorParallel,
   tensorParallelLayouts,
   type FootprintEntry,
@@ -21,7 +22,9 @@ function placeableCards(cards: CardCapacity[]): CardCapacity[] {
   return pinnable.length > 0 ? pinnable : cards.slice(0, 1);
 }
 
-export type VllmLayout = { cards: CardCapacity[]; perCardGb: number; hostGb: number };
+type PerCardCharge = { perCardGb: number; hostGb: number; maxNumSeqs: number | null };
+
+export type VllmLayout = PerCardCharge & { cards: CardCapacity[] };
 
 // vLLM gives every rank the same share and one utilization fraction, so a split spans identical cards only.
 function identicalCardGroups(cards: CardCapacity[]): CardCapacity[][] {
@@ -33,7 +36,6 @@ function identicalCardGroups(cards: CardCapacity[]): CardCapacity[][] {
   return [...groups.values()];
 }
 
-type PerCardCharge = { perCardGb: number; hostGb: number };
 
 function footprintCharge(entry: FootprintEntry, node: NodeResources, kvCacheGb: number, cards: number, vendor: string): PerCardCharge | undefined {
   const layout = { cardsPerNode: cards, nodes: 1 };
@@ -48,13 +50,13 @@ function footprintCharge(entry: FootprintEntry, node: NodeResources, kvCacheGb: 
     imagesInFlight: imagesInFlight(entry, node.gpus, kvCacheGb),
     profile: engineProfile("vllm", node.engineVersion),
   });
-  return footprint && { perCardGb: footprint.ranks[0]!.gpuGb, hostGb: footprint.hostGb };
+  return footprint && { perCardGb: footprint.ranks[0]!.gpuGb, hostGb: footprint.hostGb, maxNumSeqs: maxNumSeqs(entry, node.gpus, kvCacheGb) };
 }
 
 function weightsAndKvCharge(model: PlacementModel, kvCacheGb: number, cards: number): PerCardCharge | undefined {
   const sizing = { weightGb: model.weight, attentionHeads: model.attentionHeads, kvHeads: model.kvHeads, mlaAttention: model.mlaAttention };
   const layout = tensorParallelLayouts(sizing, { cards, kvCacheGb }).find((candidate) => candidate.tensorParallelSize === cards);
-  return layout && { perCardGb: layout.perCardWeightGb + layout.perCardKvCacheGb, hostGb: 0 };
+  return layout && { perCardGb: layout.perCardWeightGb + layout.perCardKvCacheGb, hostGb: 0, maxNumSeqs: null };
 }
 
 function perCardCharge(model: PlacementModel, node: NodeResources, kvCacheGb: number, cards: number, vendor: string): PerCardCharge | undefined {
@@ -63,7 +65,7 @@ function perCardCharge(model: PlacementModel, node: NodeResources, kvCacheGb: nu
     : weightsAndKvCharge(model, kvCacheGb, cards);
 }
 
-const asCharge = ({ perCardGb, hostGb }: PerCardCharge, cards: number): Charge => ({ estCapacity: perCardGb * cards, hostCapacity: hostGb });
+const asCharge = ({ perCardGb, hostGb, maxNumSeqs }: PerCardCharge, cards: number): Charge => ({ estCapacity: perCardGb * cards, hostCapacity: hostGb, maxNumSeqs });
 
 function vllmLayouts(node: NodeResources, model: PlacementModel, kvCacheGb: number, strategy: DeploymentStrategy): VllmLayout[] {
   const hostFree = node.host && !node.unified ? node.host.total - node.host.used : Infinity;

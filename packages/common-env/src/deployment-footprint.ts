@@ -94,11 +94,28 @@ export type FootprintRequest = {
   profile: EngineProfile;
 };
 
-export function imagesInFlight(entry: FootprintEntry, gpus: GpuInfo[], kvCacheGb: number): number {
-  if (!entry.tags.includes("vision")) {
-    return 0;
+export function maxNumSeqs(entry: Pick<FootprintEntry, "sizing" | "engineArgs">, gpus: GpuInfo[], kvCacheGb: number): number {
+  const args = entry.engineArgs ?? [];
+  const stated = args.includes("--max-num-seqs") ? Number(args[args.indexOf("--max-num-seqs") + 1]) : NaN;
+  if (Number.isInteger(stated) && stated > 0) {
+    return stated;
   }
-  return estimateConcurrency({ sizing: entry.sizing, engine: "vllm" }, { gpus }, { kvCacheGb })?.sweetSpot ?? 0;
+  return estimateConcurrency({ sizing: entry.sizing, engine: "vllm" }, { gpus }, { kvCacheGb })?.sweetSpot
+    ?? fullContextRequests(entry.sizing, kvCacheGb);
+}
+
+function fullContextRequests(sizing: ModelSizingFields, kvCacheGb: number): number {
+  const { kvBytesPerToken, maxContextLength, attentionWindow, stateBytesPerSequence } = sizing;
+  if (kvBytesPerToken === undefined) {
+    // Without a KV cost per token nothing bounds more than one request.
+    return 1;
+  }
+  const contextTokens = Math.min(maxContextLength, attentionWindow ?? Infinity);
+  return Math.max(1, Math.floor((kvCacheGb * BYTES_PER_GB) / (contextTokens * kvBytesPerToken + (stateBytesPerSequence ?? 0))));
+}
+
+export function imagesInFlight(entry: FootprintEntry, gpus: GpuInfo[], kvCacheGb: number): number {
+  return entry.tags.includes("vision") ? maxNumSeqs(entry, gpus, kvCacheGb) : 0;
 }
 
 const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);

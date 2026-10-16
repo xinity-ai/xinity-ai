@@ -3,7 +3,7 @@ import { redis } from "../redis";
 
 
 import type { SelectHostInput } from "./load-balancer";
-const { selectHost } = await import("./load-balancer");
+const { admissionLimit, admit, selectHost } = await import("./load-balancer");
 
 let mockRedisSend: ReturnType<typeof spyOn>;
 
@@ -410,5 +410,34 @@ describe("prefix hint routing", () => {
 
     const prefixMgets = mgetKeys.filter(k => k[0]?.startsWith("lb:prefix:"));
     expect(prefixMgets).toHaveLength(0);
+  });
+});
+
+describe("admit", () => {
+  test("admits the engine's batch plus a quarter of it, at least one", () => {
+    expect(admissionLimit(64)).toBe(80);
+    expect(admissionLimit(1)).toBe(2);
+  });
+
+  test("passes the limit to Redis and releases the slot once", async () => {
+    const release = await admit("inst-1", 64);
+    expect(release).toBeDefined();
+    const evalCall = mockRedisSend.mock.calls.find(([cmd]: unknown[]) => cmd === "EVAL")!;
+    expect(evalCall[1]).toContain("lb:admitted:inst-1");
+    expect(evalCall[1]).toContain("80");
+    release!();
+    release!();
+    expect(mockRedisSend.mock.calls.filter(([cmd]: unknown[]) => cmd === "DECR")).toHaveLength(1);
+  });
+
+  test("refuses once Redis reports the installation full", async () => {
+    mockRedisSend.mockImplementation((() => Promise.resolve(0)) as any);
+    expect(await admit("inst-1", 64)).toBeUndefined();
+  });
+
+  test("admits without a limit and when Redis fails", async () => {
+    expect(await admit("inst-1", null)).toBeDefined();
+    mockRedisSend.mockImplementation((() => Promise.reject(new Error("down"))) as any);
+    expect(await admit("inst-1", 64)).toBeDefined();
   });
 });

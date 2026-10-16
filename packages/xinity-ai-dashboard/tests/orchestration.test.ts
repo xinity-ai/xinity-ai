@@ -40,6 +40,7 @@ function makeInstallation(overrides: Partial<ModelInstallation> & { id: string; 
     estCapacity: 8,
     kvCacheCapacity: 2,
     hostCapacity: 0,
+    maxNumSeqs: null,
     port: 11434,
     driver: "ollama",
     settings: { version: 1 },
@@ -394,7 +395,7 @@ describe("orchestration: placing across cards", () => {
 
   test("a split installation occupies its per-card need on every card", () => {
     const slot = vllmScheduler.placeOnNode(resourcesOf(buildClusterState([], [twoCards]), "node-2"), { model: qwen, kvCacheGb: 16, goal: "speed", strategy: FF });
-    expect(slot).toEqual({ gpuIds: ["L-1", "L-2"], estCapacity: 42, hostCapacity: 0 });
+    expect(slot).toEqual({ gpuIds: ["L-1", "L-2"], estCapacity: 42, hostCapacity: 0, maxNumSeqs: null });
   });
 
   test("counts the kv cache every card holds once the kv heads are replicated", () => {
@@ -681,6 +682,12 @@ describe("orchestration: charging footprints", () => {
     const slot = vllmScheduler.placeOnNode(resourcesOf(state, "node-gb10"), request("space", model(95)))!;
     expect(slot.estCapacity + slot.hostCapacity).toBeLessThanOrEqual(109);
     expect(findServerForModel(placement, "vllm", request("space", model(95)), state, [], FF)).toBe("node-gb10");
+  });
+
+  test("decides how many sequences the engine runs, from the entry's own setting when it has one", () => {
+    const node = resourcesOf(buildClusterState([], [discrete(null)]), "node-l40s");
+    const capped = { ...entry(), footprint: { ...entry().footprint, engineArgs: ["--max-num-seqs", "64"] } };
+    expect(vllmScheduler.placeOnNode(node, request("space", capped))!.maxNumSeqs).toBe(64);
   });
 
   test("keeps an installation on the splits its entry allows", () => {

@@ -8,7 +8,7 @@ export type PlacementModel = Pick<SchedulableModel, "weight" | "attentionHeads" 
 
 export type PlacementRequest = { model: PlacementModel; kvCacheGb: number; goal: OptimizationGoal; strategy: DeploymentStrategy };
 
-export type Charge = { estCapacity: number; hostCapacity: number };
+export type Charge = { estCapacity: number; hostCapacity: number; maxNumSeqs: number | null };
 
 export type NodeSlot = Charge & { gpuIds: string[] };
 

@@ -6,8 +6,8 @@ const OLLAMA_PORT = 11434;
 // on a node twice and Ollama places models itself rather than on cards we choose.
 export const ollamaScheduler: EngineScheduler = {
   excludes: (placed, candidate) => placed.specifier === candidate.specifier,
-  placeOnNode: (_node, request) => ({ gpuIds: [], estCapacity: request.model.weight + request.kvCacheGb, hostCapacity: 0 }),
-  charge: (_node, request) => ({ estCapacity: request.model.weight + request.kvCacheGb, hostCapacity: 0 }),
+  placeOnNode: (_node, request) => ({ gpuIds: [], estCapacity: request.model.weight + request.kvCacheGb, hostCapacity: 0, maxNumSeqs: null }),
+  charge: (_node, request) => ({ estCapacity: request.model.weight + request.kvCacheGb, hostCapacity: 0, maxNumSeqs: null }),
   occupiedCards: () => [],
   port: () => OLLAMA_PORT,
 };

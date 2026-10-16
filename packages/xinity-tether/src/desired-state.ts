@@ -17,6 +17,7 @@ export async function buildDesiredState(nodeId: string): Promise<DesiredState> {
       estCapacity: row.estCapacity,
       kvCacheCapacity: row.kvCacheCapacity,
       hostCapacity: row.hostCapacity,
+      maxNumSeqs: row.maxNumSeqs,
       port: row.port,
       settings: row.settings,
       gpuIds: row.gpuIds,

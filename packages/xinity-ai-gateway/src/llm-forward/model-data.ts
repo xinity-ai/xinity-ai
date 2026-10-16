@@ -2,11 +2,11 @@ import { calcCanaryProgress, sql, modelDeploymentT, aiNodeT, modelInstallationT,
 import { getDB } from "../db";
 import { config } from "../config";
 import { createCatalogClient, createInfoserverClient, resolveTagsForDriver, resolveRequestParamsForDriver } from "common-env/model-catalog";
-import { selectHost as _selectHost, type LoadBalanceStrategy, type HostMeta } from "./load-balancer";
+import { admit as _admit, selectHost as _selectHost, type LoadBalanceStrategy, type HostMeta, type SelectHostResult } from "./load-balancer";
 import { rootLogger } from "../logger";
 
 /** Indirection for testability. tests can swap this without mock.module. */
-export const _deps = { selectHost: _selectHost };
+export const _deps = { selectHost: _selectHost, admit: _admit };
 
 const DEFAULT_MAX_CONTEXT_LENGTH = 131072;
 
@@ -147,6 +147,7 @@ type HostLocation = {
   driver: string;
   authToken: string | null;
   tls: boolean;
+  maxNumSeqs: number | null;
 };
 
 type ModelSources = {
@@ -171,6 +172,7 @@ async function getModelSources(deploymentId: string, specifier: string): Promise
     host: aiNodeT.host,
     nodePort: aiNodeT.port,
     driver: modelInstallationT.driver,
+    maxNumSeqs: modelInstallationT.maxNumSeqs,
     authToken: aiNodeT.authToken,
     tls: aiNodeT.tls,
   }).from(modelInstallationT)
@@ -196,7 +198,7 @@ async function getModelSources(deploymentId: string, specifier: string): Promise
   const byHost = new Map<string, HostLocation>();
   for (const loc of modelLocations) {
     const key = `${loc.host}:${loc.nodePort}`;
-    byHost.set(key, { installationId: loc.installationId, nodeId: loc.nodeId, machineName: loc.machineName, driver: loc.driver, authToken: loc.authToken, tls: loc.tls });
+    byHost.set(key, { installationId: loc.installationId, nodeId: loc.nodeId, machineName: loc.machineName, driver: loc.driver, authToken: loc.authToken, tls: loc.tls, maxNumSeqs: loc.maxNumSeqs });
   }
 
   const result: ModelSources = { hosts: [...byHost.keys()], byHost };
@@ -284,7 +286,8 @@ export type ModelInfo = {
 export type ModelLookup =
   | { status: "found"; info: ModelInfo }
   | { status: "unknown" }
-  | { status: "unavailable" };
+  | { status: "unavailable" }
+  | { status: "busy" };
 
 export type ModelLookupFailure = Exclude<ModelLookup["status"], "found">;
 
@@ -301,29 +304,41 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, prefi
       : Promise.resolve(emptySources),
   ]);
 
-  const result = await _deps.selectHost(config.inference.loadBalanceStrategy() as LoadBalanceStrategy, {
-    hosts: finalSources.hosts,
-    earlyHosts: earlySources.hosts,
-    canaryProgress: accessInfo.progress,
-    hasEarlyModel: !!accessInfo.early,
-    publicModel: publicSpecifier,
-    prefixHashes,
-    hostMeta: buildHostMeta(finalSources, earlySources),
-  });
-
-  if (!result) {
-    return { status: "unavailable" };
+  const hostMeta = buildHostMeta(finalSources, earlySources);
+  const full = new Set<string>();
+  let result: SelectHostResult | undefined;
+  let location: HostLocation | undefined;
+  for (;;) {
+    result = await _deps.selectHost(config.inference.loadBalanceStrategy() as LoadBalanceStrategy, {
+      hosts: finalSources.hosts.filter((host) => !full.has(host)),
+      earlyHosts: earlySources.hosts.filter((host) => !full.has(host)),
+      canaryProgress: accessInfo.progress,
+      hasEarlyModel: !!accessInfo.early,
+      publicModel: publicSpecifier,
+      prefixHashes,
+      hostMeta,
+    });
+    if (!result) {
+      return { status: full.size > 0 ? "busy" : "unavailable" };
+    }
+    location = finalSources.byHost.get(result.host) ?? earlySources.byHost.get(result.host);
+    if (!location) {
+      result.release();
+      return { status: "unavailable" };
+    }
+    const releaseAdmission = await _deps.admit(location.installationId, location.maxNumSeqs);
+    if (releaseAdmission) {
+      const releaseSelection = result.release;
+      result = { ...result, release: () => { releaseSelection(); releaseAdmission(); } };
+      break;
+    }
+    result.release();
+    full.add(result.host);
   }
 
   const resolvedSpecifier = result.useFinalModel
     ? accessInfo.primary
     : (accessInfo.early ?? accessInfo.primary);
-
-  const location = finalSources.byHost.get(result.host) ?? earlySources.byHost.get(result.host);
-  if (!location) {
-    result.release();
-    return { status: "unavailable" };
-  }
   const { driver, authToken, tls } = location;
   const driverProvider = driver as "vllm" | "ollama";
 

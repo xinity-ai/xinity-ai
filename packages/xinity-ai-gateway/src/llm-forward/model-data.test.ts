@@ -66,8 +66,10 @@ mock.module("common-env/model-catalog", () => ({
 }));
 
 const { getModelInfo, invalidateModelSources, invalidateDeployments, _deps } = await import("./model-data");
-const mockSelectHost = jest.fn<() => Promise<{ host: string; useFinalModel: boolean; release: () => void } | null>>();
+const mockSelectHost = jest.fn<(strategy: unknown, input: { hosts: string[] }) => Promise<{ host: string; useFinalModel: boolean; release: () => void } | null>>();
 _deps.selectHost = mockSelectHost as any;
+const mockAdmit = jest.fn<(installationId: string, maxNumSeqs: number | null) => Promise<(() => void) | undefined>>(async () => () => {});
+_deps.admit = mockAdmit;
 
 function deploymentResult(d: {
   specifier: string;
@@ -155,6 +157,25 @@ describe("getModelInfo", () => {
 
     const result = await getModelInfo("org-1", "my-model");
     expect(result.status).toBe("unavailable");
+  });
+
+  test("routes past a replica that holds its limit, and reports a busy model once every replica does", async () => {
+    queryQueue.push([deploymentResult({ specifier: "llama3:latest" })]);
+    queryQueue.push([
+      installationResult({ host: "192.168.1.10", nodePort: 11434, modelPort: 11434, driver: "vllm", installationId: "full" }),
+      installationResult({ host: "192.168.1.11", nodePort: 11434, modelPort: 11434, driver: "vllm", installationId: "free" }),
+    ]);
+    mockSelectHost.mockImplementation(async (_strategy: unknown, input: { hosts: string[] }) =>
+      input.hosts.length > 0 ? { host: input.hosts[0]!, useFinalModel: true, release: noop } : null);
+    mockAdmit.mockImplementation(async (installationId) => (installationId === "full" ? undefined : noop));
+    expect(infoOf(await getModelInfo("org-1", "my-model"))!.installationId).toBe("free");
+
+    mockAdmit.mockImplementation(async () => undefined);
+    invalidateModelSources();
+    queryQueue.push([deploymentResult({ specifier: "llama3:latest" })]);
+    queryQueue.push([installationResult({ host: "192.168.1.10", nodePort: 11434, modelPort: 11434, driver: "vllm", installationId: "full" })]);
+    expect((await getModelInfo("org-1", "my-model")).status).toBe("busy");
+    mockAdmit.mockImplementation(async () => noop);
   });
 
   test("resolves model info for a simple deployment (no canary)", async () => {
