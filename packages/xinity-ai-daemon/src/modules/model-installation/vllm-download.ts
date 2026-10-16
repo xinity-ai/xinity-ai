@@ -1,6 +1,6 @@
 import { config } from "../../config";
 import { rootLogger } from "../../logger";
-import { mkdir, open, rename, stat, symlink, unlink, writeFile } from "node:fs/promises";
+import { mkdir, open, readdir, readFile, rename, stat, symlink, unlink, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import { buildRules, selectFiles } from "./file-filter";
 import { ensureCacheSpace, getDirSize } from "./cache-eviction";
@@ -57,7 +57,7 @@ export async function downloadModel(
   onProgress: (progress: number) => Promise<void>,
   userPatterns: readonly string[] = [],
 ): Promise<void> {
-  const repoDir = path.join(config.vllm.hfCacheDir, "hub", `models--${model.replace("/", "--")}`);
+  const repoDir = cachedRepoDir(model);
   const blobsDir = path.join(repoDir, "blobs");
   const refsDir = path.join(repoDir, "refs");
 
@@ -110,6 +110,25 @@ export async function downloadModel(
 
   await writeFile(path.join(refsDir, "main"), commitHash);
   log.info({ model }, "Model download complete");
+}
+
+function cachedRepoDir(model: string): string {
+  return path.join(config.vllm.hfCacheDir, "hub", `models--${model.replace("/", "--")}`);
+}
+
+const WEIGHT_FILE = /\.(safetensors|bin|pth?)$/;
+
+export async function largestWeightFileBytes(model: string): Promise<number> {
+  const listed = await listRepoFiles(model).then(({ files }) => files, () => undefined);
+  if (listed) {
+    return Math.max(0, ...listed.filter((file) => WEIGHT_FILE.test(file.path)).map(fileSize));
+  }
+  const repoDir = cachedRepoDir(model);
+  const commitHash = await readFile(path.join(repoDir, "refs", "main"), "utf8").catch(() => "");
+  const snapshotDir = path.join(repoDir, "snapshots", commitHash.trim());
+  const files = commitHash ? await readdir(snapshotDir, { recursive: true }).catch(() => []) : [];
+  const sizes = await Promise.all(files.filter((file) => WEIGHT_FILE.test(file)).map((file) => getFileSize(path.join(snapshotDir, file))));
+  return Math.max(0, ...sizes);
 }
 
 async function linkSnapshot(snapshotDir: string, filePath: string, blobPath: string): Promise<void> {

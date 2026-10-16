@@ -173,7 +173,7 @@ if (values["hf-token"]) process.env.VLLM_HF_TOKEN = values["hf-token"];
 
 const [
   { buildDockerRunArgs, buildSystemdServeArgv, ensureVllmNetwork, groupTensorParallelSize, SINGLE_NODE, VLLM_NETWORK },
-  { computeGpuUtilization, buildVllmExtraArgs, fittedGpuGb, hostMemoryLimitBytes, perCardSizing },
+  { computeGpuUtilization, buildVllmExtraArgs, fittedGpuGb, hostMemoryLimitBytes, loadingAllowanceGb, perCardSizing },
   { detectHardwareProfile },
   { detectVllmFeatures },
   { readHostDevices, unpinnedDevicesFor },
@@ -253,7 +253,7 @@ async function resolveGroup(): Promise<NodeGroup> {
 
 type CardShare = { weightGb: number; kvCacheGb: number };
 
-function buildConfig(resolved: ResolvedVllmModel, profile: HardwareProfile, devices: GpuDevices, group: NodeGroup, share: CardShare, charge: NodeCharge | undefined): VllmInstanceConfig {
+function buildConfig(resolved: ResolvedVllmModel, profile: HardwareProfile, devices: GpuDevices, group: NodeGroup, share: CardShare, charge: NodeCharge | undefined, loadingGb: number): VllmInstanceConfig {
   const gpuGb = charge?.gpuGbPerCard ?? fittedGpuGb(share.weightGb, share.kvCacheGb);
   const gpuMemoryUtilization = gpuUtilOverride ?? computeGpuUtilization({ specifier: resolved.vllmProviderName, gpuGb }, profile);
   return {
@@ -270,7 +270,7 @@ function buildConfig(resolved: ResolvedVllmModel, profile: HardwareProfile, devi
     ),
     devices,
     group,
-    hostMemoryLimitBytes: charge && hostMemoryLimitBytes(charge.hostGb),
+    hostMemoryLimitBytes: charge && hostMemoryLimitBytes(charge.hostGb, loadingGb),
   };
 }
 
@@ -531,7 +531,8 @@ async function main(): Promise<void> {
     groupTensorParallelSize({ devices, group }),
   );
   const charge = chargeOnNode(resolved, profile.gpus, { cardsPerNode: devices.tensorParallelSize, nodes: nodeCount, node: nodeRank }, driver.version);
-  const config = buildConfig(resolved, profile, devices, group, share, charge);
+  const loadingGb = await loadingAllowanceGb(resolved.vllmProviderName, driver.version);
+  const config = buildConfig(resolved, profile, devices, group, share, charge, loadingGb);
   // Every node in a group downloads the whole model but only holds its own cards' share of it.
   const gpuOnThisNode = (charge?.gpuGbPerCard ?? share.weightGb + share.kvCacheGb) * devices.tensorParallelSize;
   const hostInPool = charge && profile.source === "unified-memory" ? charge.hostGb : 0;

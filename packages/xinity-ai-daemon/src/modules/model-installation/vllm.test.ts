@@ -72,6 +72,8 @@ mock.module("./catalog", () => ({
   resolveInstallationEntry: mockResolveEntry,
 }));
 
+let mockHostMemoryGb: number | undefined;
+
 mock.module("../statekeeper", () => ({
   getAuthToken: () => "mock-token",
   getHardwareProfile: () => Promise.resolve({
@@ -80,12 +82,14 @@ mock.module("../statekeeper", () => ({
     detectedCapacityGb: 24,
     physicalCapacityGb: 24,
     systemRamMb: 131072,
+    hostMemoryGb: mockHostMemoryGb,
     source: "nvidia",
   }),
 }));
 
 const vllmDownload = await import("./vllm-download");
 const downloadModelSpy = spyOn(vllmDownload, "downloadModel").mockResolvedValue(undefined);
+const largestWeightFileSpy = spyOn(vllmDownload, "largestWeightFileBytes").mockResolvedValue(0);
 
 mock.module("./page-cache", () => ({
   dropPageCache: mock(() => Promise.resolve()),
@@ -94,6 +98,7 @@ mock.module("./page-cache", () => ({
 const { syncVllmInstallations$, computeGpuUtilization, fittedGpuGb, hostUseMessage, buildVllmExtraArgs, matchFatalPattern, perCardSizing } = await import("./vllm");
 afterAll(() => {
   downloadModelSpy.mockRestore();
+  largestWeightFileSpy.mockRestore();
 });
 
 const nvidiaCard = (vramMb: number) => ({ vendor: "nvidia" as const, name: "Test GPU", vramMb });
@@ -667,6 +672,10 @@ describe("perCardSizing", () => {
     expect(perCardSizing(replicated, sizing, 8)).toEqual({ weightGb: 3.25, kvCacheGb: 4 });
   });
 
+  test("leaves the weights the engine keeps in host memory off the cards", () => {
+    expect(perCardSizing(installation, { ...sizing, hostWeightGb: 6 }, 2)).toEqual({ weightGb: 10, kvCacheGb: 8 });
+  });
+
   test("derives the weights from the scheduler's figure for a legacy entry without sizing", () => {
     expect(perCardSizing(installation, undefined, 1)).toEqual({ weightGb: 26, kvCacheGb: 16 });
   });
@@ -693,6 +702,19 @@ describe("enforcing the charge", () => {
     await firstValueFrom(syncVllmInstallations$([{ ...makeInstallation("charged-model"), estCapacity: 18, hostCapacity: 2 }], ops));
     expect(startConfig(ops).gpuMemoryUtilization).toBeCloseTo(18 / (24 * 1.073741824), 4);
     expect(startConfig(ops).hostMemoryLimitBytes).toBe(2.2e9);
+  });
+
+  test("adds what loading holds beyond the charge to the limit and to what must be free", async () => {
+    mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { sizing })));
+    largestWeightFileSpy.mockResolvedValueOnce(4e8);
+    const ops = starting();
+    await firstValueFrom(syncVllmInstallations$([{ ...makeInstallation("sharded-model"), estCapacity: 18, hostCapacity: 2 }], ops));
+    expect(startConfig(ops).hostMemoryLimitBytes).toBe(3.2e9);
+
+    largestWeightFileSpy.mockResolvedValueOnce(1e12);
+    const tooBig = starting();
+    await firstValueFrom(syncVllmInstallations$([{ ...makeInstallation("huge-shard-model"), hostCapacity: 2 }], tooBig));
+    expect(tooBig.start).not.toHaveBeenCalled();
   });
 
   test("runs as many sequences at once as the row says", async () => {
@@ -726,12 +748,47 @@ describe("enforcing the charge", () => {
     expect(startConfig(legacy).hostMemoryLimitBytes).toBeUndefined();
   });
 
-  test("refuses to start an installation whose host part the node does not have free", async () => {
+  test("waits with the installation still installing while the node does not have its memory free", async () => {
     mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { sizing })));
     const ops = starting();
     await firstValueFrom(syncVllmInstallations$([{ ...makeInstallation("huge-model"), hostCapacity: 1e9 }], ops));
     expect(ops.start).not.toHaveBeenCalled();
-    expect(stateWrites.find(([, state]) => state === "failed")?.[2]?.errorMessage).toStartWith("Not enough free memory to start: needs 1000000000.0 GB");
+    expect(stateWrites.some(([, state]) => state === "failed")).toBe(false);
+    const [, state, update] = stateWrites.at(-1)!;
+    expect(state).toBe("installing");
+    expect(update?.statusMessage).toStartWith("Waiting for memory: needs 1000000000.0 GB");
+  });
+
+  test("retries a waiting start on the next sync without downloading again", async () => {
+    mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { sizing })));
+    const installation = { ...makeInstallation("queued-model"), hostCapacity: 2 };
+    downloadModelSpy.mockClear();
+    largestWeightFileSpy.mockResolvedValueOnce(1e12);
+    const waiting = starting();
+    await firstValueFrom(syncVllmInstallations$([installation], waiting));
+    expect(waiting.start).not.toHaveBeenCalled();
+
+    const ops = starting();
+    await firstValueFrom(syncVllmInstallations$([installation], ops));
+    expect(ops.start).toHaveBeenCalled();
+    expect(downloadModelSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test("fails a start that cannot fit next to the installations already running on the node", async () => {
+    mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { sizing })));
+    mockHostMemoryGb = 100;
+    const neighbour = { ...makeInstallation("neighbour-model"), hostCapacity: 90 };
+    mockLocalStates.set(neighbour.id, { lifecycleState: "ready" });
+    const ops = createMockOps({ listRunning: mock(() => Promise.resolve([neighbour.id])) });
+    try {
+      await firstValueFrom(syncVllmInstallations$([neighbour, { ...makeInstallation("crowded-model"), hostCapacity: 20 }], ops));
+    } finally {
+      mockHostMemoryGb = undefined;
+    }
+    expect(ops.start).not.toHaveBeenCalled();
+    expect(stateWrites.find(([, state]) => state === "failed")?.[2]?.errorMessage).toBe(
+      "Does not fit next to the installations running here: needs 20.0 GB, at most 10.0 GB can be free",
+    );
   });
 
   test("names going over the host memory budget as the reason an installation stopped", async () => {
