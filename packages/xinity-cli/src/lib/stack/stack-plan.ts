@@ -25,7 +25,7 @@ import { componentFields, splitValuesByCategory, readExistingEnvState, diffEnv, 
 import {
   type StackDefinition, type StackHost, type FleetDefinition,
   resolveEnv, saveStack, getFleetForHost, hostLabel,
-  componentLayerSeed, fleetLayerSeed,
+  componentLayerSeed, fleetLayerSeed, hostLayerBase,
   sharedFields,
   inStackComponentUrl,
 } from "./stack.ts";
@@ -177,16 +177,16 @@ async function resolveHostEnv(
 ): Promise<{ env: import("../config/env-prompt.ts").EnvBundle; envChanges: import("../config/env-prompt.ts").EnvChange[] } | null> {
   const fields = componentFields(component);
   const { existingConfig, existingSecrets } = await readExistingEnvState(component, host);
-  const resolved = resolveEnv(stack, component, address);
-  let merged: Record<string, string> = { ...existingConfig, ...existingSecrets, ...resolved };
+  const belowHost = { ...existingConfig, ...existingSecrets, ...hostLayerBase(stack, component, address) };
+  let merged: Record<string, string> = { ...existingConfig, ...existingSecrets, ...resolveEnv(stack, component, address) };
 
   const missing = missingRequiredFields(fields, merged);
   if (missing.length > 0) {
-    const overrides = await editHostLayer(stack, address, component, merged);
+    const overrides = await editHostLayer(stack, address, component, belowHost);
     if (overrides === null) {
       return null;
     }
-    merged = { ...merged, ...overrides };
+    merged = { ...belowHost, ...overrides };
   }
 
   return {

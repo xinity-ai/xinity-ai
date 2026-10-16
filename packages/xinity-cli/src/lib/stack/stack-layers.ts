@@ -108,7 +108,11 @@ export async function editHostLayer(
     return null;
   }
   if (host) {
-    host.envOverrides = overrides;
+    const componentKeys = new Set(componentFields(component).map((field) => field.key));
+    const otherComponentsOverrides = Object.fromEntries(
+      Object.entries(host.envOverrides ?? {}).filter(([key]) => !componentKeys.has(key)),
+    );
+    host.envOverrides = { ...otherComponentsOverrides, ...overrides };
   }
   return overrides;
 }
