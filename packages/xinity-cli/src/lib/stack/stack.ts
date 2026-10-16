@@ -355,13 +355,15 @@ export function resolveEnv(
   component: Component,
   hostAddress?: string,
 ): Record<string, string> {
-  const host = hostAddress ? getHost(stack, hostAddress) : null;
-  const fleet = component === "daemon" && hostAddress ? getFleetForHost(stack, hostAddress) : null;
-  return {
-    ...componentLayerSeed(stack, component),
-    ...fleet?.envOverrides,
-    ...host?.envOverrides,
-  };
+  if (!hostAddress) {
+    return componentLayerSeed(stack, component);
+  }
+  return { ...hostLayerBase(stack, component, hostAddress), ...getHost(stack, hostAddress)?.envOverrides };
+}
+
+export function hostLayerBase(stack: StackDefinition, component: Component, hostAddress: string): Record<string, string> {
+  const fleet = component === "daemon" ? getFleetForHost(stack, hostAddress) : null;
+  return { ...componentLayerSeed(stack, component), ...fleet?.envOverrides };
 }
 
 /** Keep only entries that differ from the base layer, so stored overrides stay minimal. */
