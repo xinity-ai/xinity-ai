@@ -14,7 +14,7 @@ const log = rootLogger.child({ name: "response-generate" });
 
 async function checkCancelled(orgId: string, responseId: string): Promise<boolean> {
   const stored = await getResponse(orgId, responseId) as { status?: string } | null;
-  return stored?.status === "cancelled";
+  return !stored || stored.status === "cancelled";
 }
 
 export async function createAndSaveInProgressResponse(
@@ -45,6 +45,9 @@ export async function saveFailedResponse(
     createResponseObject({ responseId, createdAt, model: originalModel, status: "failed", body }),
     clientFacingErrorMessage(error),
   );
+  if (await checkCancelled(orgId, responseId)) {
+    return;
+  }
   await saveResponse(orgId, responseId, failedResponse)
     .catch((err) => log.error({ err, responseId }, "Failed to persist failed response"));
 }
@@ -218,7 +221,25 @@ export async function generateAndPersistCompletedResponse(args: GeneratePersistA
   return completedResponse;
 }
 
-export async function runBackground(args: GeneratePersistArgs) {
+const backgroundTasks = new Map<string, Promise<void>>();
+
+export function getBackgroundTask(responseId: string): Promise<void> | undefined {
+  return backgroundTasks.get(responseId);
+}
+
+export function runBackground(args: GeneratePersistArgs): Promise<void> {
+  const task = runBackgroundTask(args);
+  backgroundTasks.set(args.responseId, task);
+  const cleanup = () => {
+    if (backgroundTasks.get(args.responseId) === task) {
+      backgroundTasks.delete(args.responseId);
+    }
+  };
+  void task.then(cleanup, cleanup);
+  return task;
+}
+
+async function runBackgroundTask(args: GeneratePersistArgs): Promise<void> {
   const { orgId, responseId, createdAt, originalModel, body } = args;
   try {
     await generateAndPersistCompletedResponse(args, true);

@@ -243,7 +243,9 @@ export function setupResponseTestMocks() {
   const responseStore = new Map<string, any>();
   /** Stands in for api_response_message: what each response was asked, not what it answered. */
   const responseMessages = new Map<string, any[]>();
+  const deletedResponseIds = new Set<string>();
   const saveResponse = jest.fn(async (_orgId: string, id: string, payload: any, creation?: any) => {
+    if (deletedResponseIds.has(id)) return;
     responseStore.set(id, payload);
     if (creation?.inputMessages) {
       responseMessages.set(id, [...creation.inputMessages]);
@@ -256,6 +258,7 @@ export function setupResponseTestMocks() {
   const getResponse = jest.fn(async (_orgId: string, id: string) => responseStore.get(id) ?? null);
   const getResponseMessages = jest.fn(async (_orgId: string, id: string) => responseMessages.get(id) ?? []);
   const deleteResponse = jest.fn(async (_orgId: string, id: string) => {
+    deletedResponseIds.add(id);
     responseStore.delete(id);
     responseMessages.delete(id);
     return true;
@@ -290,6 +293,7 @@ export function setupResponseTestMocks() {
       logChatStream.mockClear();
       responseStore.clear();
       responseMessages.clear();
+      deletedResponseIds.clear();
     },
   };
 }
