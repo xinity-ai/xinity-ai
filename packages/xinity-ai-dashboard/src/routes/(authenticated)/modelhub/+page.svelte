@@ -7,7 +7,7 @@
   import TestEmbeddingModal from "./TestEmbeddingModal.svelte";
   import TestRerankModal from "./TestRerankModal.svelte";
   import { orpc } from "$lib/orpc/orpc-client";
-  import { humanDate, humanDuration, updateOptimistically } from "$lib/util";
+  import { formatGb, humanDate, humanDuration, updateOptimistically } from "$lib/util";
   import { browserLogger } from "$lib/browserLogging";
   import { toastState } from "$lib/state/toast.svelte";
   import { copyToClipboard } from "$lib/copy";
@@ -20,7 +20,7 @@
   import { Badge } from "$lib/components/ui/badge";
 
   // Icons
-  import { Plus, Pencil, Trash2, Copy, Rocket, Info, MessageSquare, RotateCcw } from "@lucide/svelte";
+  import { Plus, Pencil, Trash2, Copy, Rocket, Info, MessageSquare, RotateCcw, TriangleAlert } from "@lucide/svelte";
   import { browser } from "$app/environment";
   import { permissions } from "$lib/state/permissions.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
@@ -457,6 +457,35 @@
                       </div>
                     {/if}
                   {/if}
+                  {#each (deployment.status.replicas ?? []).filter((replica) => replica.members) as replica, index (index)}
+                    <dl class="mt-2 space-y-1 text-xs">
+                      <div class="text-muted-foreground">Across {replica.members!.length} machines</div>
+                      {#each replica.members! as member (member.node)}
+                        {@const memberCfg = phaseConfig[member.phase]}
+                        <div class="flex justify-between gap-3 pl-3">
+                          <dt class="flex items-center gap-1.5 min-w-0">
+                            <span class="w-2 h-2 shrink-0 rounded-full {memberCfg.dot} {memberCfg.pulse ? 'animate-pulse' : ''}" title={memberCfg.label}></span>
+                            <span class="sr-only">{memberCfg.label}:</span>
+                            <span class="truncate">{member.node}{member.cards > 1 ? `, ${member.cards} cards` : ""}</span>
+                          </dt>
+                          <dd class="shrink-0 text-right text-muted-foreground">
+                            {formatGb(member.gpuGb)} GPU{member.hostGb > 0 ? ` + ${formatGb(member.hostGb)} host` : ""}
+                          </dd>
+                        </div>
+                        {#if member.error}
+                          <p class="pl-6 text-destructive">{member.error}</p>
+                        {/if}
+                      {/each}
+                      {#each replica.couplingIssues ?? [] as issue}
+                        <p class="flex items-start gap-1 text-amber-700 dark:text-amber-500">
+                          <TriangleAlert class="w-3 h-3 mt-px shrink-0" aria-hidden="true" />Coupling: {issue.text}
+                          <a href={issue.docsUrl} target="_blank" rel="noopener noreferrer" title="How to fix this" aria-label="How to fix this" class="text-muted-foreground hover:text-amber-700">
+                            <Info class="w-3 h-3 mt-px shrink-0" />
+                          </a>
+                        </p>
+                      {/each}
+                    </dl>
+                  {/each}
                   {#if deployment.status.progress != null}
                     <div title="{Math.round(deployment.status.progress * 100)}%" class="w-full bg-muted rounded-full h-2 mt-2">
                       <div class="bg-primary h-2 rounded-full transition-all" style="width: {deployment.status.progress * 100}%"></div>
