@@ -28,6 +28,7 @@ import { randomSecretKey, randomToken } from "../lib/core/secrets.ts";
 import { runDoctor, buildSummaryLine, type DoctorReport } from "../lib/doctor/doctor.ts";
 import { describeCouplingIssue, describePortIssue, deriveInterconnectOverview, rdmaEndpoints, type Coupling, type InterconnectPort, type IssueDescription, type PortRef, type RdmaEndpoint } from "common-env";
 import { testRdmaPath } from "../lib/doctor/rdma-test.ts";
+import { checkGroup, type HostedMember } from "../lib/doctor/group-check.ts";
 import type { Host } from "../lib/core/host.ts";
 import { fetchRelease, listReleases, type ReleaseListEntry } from "../lib/up/github.ts";
 import { loadStackState, findOrphanHosts } from "../lib/stack/stack-state.ts";
@@ -732,6 +733,7 @@ async function handleDoctor(name: string, fleetName?: string): Promise<void> {
 
     const nodes = reports.flatMap((entry) => ("report" in entry ? [{ id: entry.address, interconnect: entry.report.interconnect }] : []));
     totalFailed += await reportInterconnect(nodes, hosts);
+    totalFailed += await reportGroups(reports.flatMap((entry) => ("report" in entry ? entry.report.groupMembers.map((member) => ({ ...member, hostName: entry.address })) : [])), hosts);
   } finally {
     await disposeAll(hosts);
   }
@@ -798,6 +800,27 @@ async function reportInterconnect(nodes: InterconnectNode[], hosts: Map<string, 
         warn(result.label, result.message);
       } else {
         log.success(`${result.label}: ${result.message}`);
+      }
+    }
+  }
+  return failed;
+}
+
+async function reportGroups(members: HostedMember[], hosts: Map<string, Host>): Promise<number> {
+  if (members.length === 0) {
+    return 0;
+  }
+  heading("Groups");
+  let failed = 0;
+  for (const group of Map.groupBy(members, (member) => member.group.id).values()) {
+    for (const result of await checkGroup(group, (hostName) => hosts.get(hostName)!)) {
+      if (result.status === "fail") {
+        failed++;
+        fail(result.label, result.message);
+      } else if (result.status === "warn") {
+        warn(result.label, result.message);
+      } else {
+        log.info(`${result.label}: ${result.message}`);
       }
     }
   }

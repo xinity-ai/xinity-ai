@@ -3,7 +3,7 @@ import { readManifest, type ComponentEntry } from "../up/manifest.ts";
 import { commandExistsOn, isUnitActiveOn, readSecrets, type Host } from "../core/host.ts";
 import { isOllamaRunning } from "../infra/ollama-setup.ts";
 import { componentFields, categorizeFields, isRequired } from "../config/env-prompt.ts";
-import type { EnvField, InterconnectPort } from "common-env";
+import type { EnvField, GroupMemberHealth, InterconnectPort } from "common-env";
 import { parseEnvString } from "../config/env-file.ts";
 import { unitName } from "../up/systemd.ts";
 import { type Component, ENV_DIR, SECRETS_DIR, UNIT_DIR, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT, DASHBOARD_DEFAULT_PORT, DEFAULT_OLLAMA_URL } from "../core/component-meta.ts";
@@ -11,7 +11,7 @@ import { collectRemoteState, createCachedHost } from "../remote/remote-probe.ts"
 import {
   type CheckResult,
   checkPostgresAndMigrations, checkRedis, checkServiceHealth, checkDaemonHealth, checkSmtp,
-  checkInfoserverUrl, readDaemonInterconnect,
+  checkInfoserverUrl, readDaemonCoupling, type DaemonCoupling,
   fileExistsCheck, serviceActiveCheck, isLocalUrl,
 } from "./doctor-probes.ts";
 
@@ -39,6 +39,7 @@ export type DoctorReport = {
   components: ComponentReport[];
   // Empty without a reachable daemon on the host
   interconnect: InterconnectPort[];
+  groupMembers: GroupMemberHealth[];
   summary: { pass: number; warn: number; fail: number; skip: number };
 }
 
@@ -591,7 +592,7 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
   opts.spinner?.message("Checking system…");
   components.push(await checkSystem(host));
 
-  let interconnect: InterconnectPort[] = [];
+  let coupling: DaemonCoupling = { interconnect: [], groupMembers: [] };
   const discoveredInfoserverUrls = new Map<string, string[]>();
   const remoteInfoserverChecks: CheckResult[] = [];
 
@@ -619,7 +620,7 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
     components.push(report);
 
     if (comp === "daemon") {
-      interconnect = await readDaemonInterconnect(host, daemonHealthUrl(values));
+      coupling = await readDaemonCoupling(host, daemonHealthUrl(values));
     }
 
     if (comp !== "infoserver" && values.INFOSERVER_URL) {
@@ -640,5 +641,5 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
     }
   }
 
-  return { timestamp: new Date().toISOString(), components, interconnect, summary };
+  return { timestamp: new Date().toISOString(), components, ...coupling, summary };
 }
