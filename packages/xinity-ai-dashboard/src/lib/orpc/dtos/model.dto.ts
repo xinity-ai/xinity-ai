@@ -36,10 +36,14 @@ export const DeploymentDto = CommonDto.extend({
   settings: DeploymentSettingsDto.optional(),
 });
 
+const ReplicaPhaseDto = z.enum(["ready", "downloading", "installing", "failed", "scheduling"]);
+
 export const ReplicaStatusDto = z.object({
-  phase: z.enum(["ready", "downloading", "installing", "failed", "scheduling"]),
+  phase: ReplicaPhaseDto,
   node: z.string().nullable(),
   error: z.string().nullable(),
+  /** Each machine of a replica served across several, by rank. */
+  members: z.array(z.object({ node: z.string(), phase: ReplicaPhaseDto, error: z.string().nullable() })).optional(),
 });
 export type ReplicaStatus = z.infer<typeof ReplicaStatusDto>;
 

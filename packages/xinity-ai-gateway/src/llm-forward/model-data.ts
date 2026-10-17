@@ -1,4 +1,4 @@
-import { calcCanaryProgress, sql, modelDeploymentT, aiNodeT, modelInstallationT, modelInstallationStateT, installationMatchesLookup } from "common-db";
+import { calcCanaryProgress, sql, modelDeploymentT, aiNodeT, modelInstallationT, modelInstallationStateT, installationMatchesLookup, installationTakesRequests } from "common-db";
 import { getDB } from "../db";
 import { config } from "../config";
 import { createCatalogClient, createInfoserverClient, resolveTagsForDriver, resolveRequestParamsForDriver } from "common-env/model-catalog";
@@ -193,6 +193,8 @@ async function getModelSources(deploymentId: string, specifier: string): Promise
       ${installationMatchesLookup(specifier)}
     AND
       ${modelInstallationT.deletedAt} IS NULL
+    AND
+      ${installationTakesRequests}
     `);
 
   const byHost = new Map<string, HostLocation>();

@@ -89,3 +89,32 @@ export function aggregatePhase(
   }
   return current;
 }
+
+export type ReplicaMember = {
+  installationId: string;
+  group: { id: string; size: number } | null;
+  phase: DeploymentPhase;
+  progress: number | null;
+  error: string | null;
+  failureLogs: string | null;
+};
+
+export function foldReplicas<Member extends ReplicaMember>(members: Member[]): { info: PhaseInfo; members: Member[] }[] {
+  const replicas = new Map<string, { size: number; members: Member[]; info?: PhaseInfo }>();
+  for (const member of members) {
+    const key = member.group?.id ?? member.installationId;
+    const replica = replicas.get(key) ?? { size: member.group?.size ?? 1, members: [] };
+    replica.members.push(member);
+    replica.info = aggregatePhase(replica.info, member.phase, member.progress, member.error, member.failureLogs);
+    replicas.set(key, replica);
+  }
+  // A group serves only once every member does, so the worst member decides, and one not placed yet is still scheduling.
+  return [...replicas.values()].map(({ size, members, info }) => ({
+    info: members.length < size ? aggregatePhase(info, "scheduling", null, null) : info!,
+    members,
+  }));
+}
+
+export function foldDeployment(replicas: PhaseInfo[]): PhaseInfo | undefined {
+  return replicas.reduce<PhaseInfo | undefined>((deployment, replica) => aggregatePhase(deployment, replica.phase, replica.progress, replica.error, replica.failureLogs), undefined);
+}
