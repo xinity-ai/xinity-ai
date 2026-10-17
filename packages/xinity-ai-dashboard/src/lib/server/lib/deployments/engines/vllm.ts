@@ -116,7 +116,9 @@ export type GroupLayout = { members: MemberLayout[]; perCardGb: number; maxNumSe
 
 type Eligible = { nodeId: string; node: NodeResources; cards: CardCapacity[] };
 
-const cardAndEngineKey = (card: CardCapacity, engineVersion: string | undefined) => `${card.vendor}:${card.name}:${card.total}:${engineVersion ?? ""}`;
+const cardAndEngineKey = (card: CardCapacity, node: NodeResources) =>
+  // A unified card's total is what its node has for models, which differs between identical machines.
+  `${card.vendor}:${card.name}:${node.unified ? "" : card.total}:${node.engineVersion ?? ""}`;
 
 function assignRanks(footprint: Footprint, eligible: Eligible[], cardsPerNode: number, model: PlacementModel): MemberLayout[] | undefined {
   const fits = (candidate: Eligible, hostGb: number): MemberLayout | undefined => {
@@ -148,7 +150,7 @@ export function groupLayoutsForVllm(candidates: CandidateNode[], model: Placemen
   const byKey = new Map<string, Eligible[]>();
   for (const { nodeId, node } of candidates) {
     for (const group of identicalCardGroups(placeableCards(node.cards))) {
-      const key = cardAndEngineKey(group[0]!, node.engineVersion);
+      const key = cardAndEngineKey(group[0]!, node);
       byKey.set(key, [...(byKey.get(key) ?? []), { nodeId, node, cards: orderByStrategy(strategy, group, (card) => card) }]);
     }
   }

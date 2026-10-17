@@ -6,7 +6,7 @@ import { requirementsForDeployments, type ModelRequirement, type ModelRequiremen
 import type { DeploymentStrategy } from "../src/lib/server/lib/deployments/strategy";
 import type { AiNode, ModelDeployment, ModelInstallation } from "common-db";
 import type { SchedulableModel } from "../src/lib/server/lib/models/model-catalog";
-import type { FootprintEntry } from "common-env";
+import { GROUP_MEMBER_FEATURE, type FootprintEntry } from "common-env";
 
 const FF: DeploymentStrategy = "first-fit";
 const need = (weight: number) => ({ model: { weight }, kvCacheGb: 0, goal: "space" as const });
@@ -717,8 +717,8 @@ describe("orchestration: serving across coupled nodes", () => {
     interface: `if-${mac}`, mac, carrier: true, mtu: 9000, speedMbps: 200000, linkLayer: "Ethernet",
     ipv4: [ipv4], roceV2Ipv4: [ipv4.split("/")[0]!], addressLosses: 0,
   });
-  const coupled = (id: string, mac: string, peerMac: string, ipv4: string, hostMemoryGb: number | null = null) => makeNode({
-    id, estCapacity: 45, gpuCount: 1, hostMemoryGb, driverVersions: { vllm: "0.31.0" },
+  const coupled = (id: string, mac: string, peerMac: string, ipv4: string, hostMemoryGb: number | null = null, vllmFeatures = [GROUP_MEMBER_FEATURE]) => makeNode({
+    id, estCapacity: 45, gpuCount: 1, hostMemoryGb, driverVersions: { vllm: "0.31.0" }, driverFeatures: { vllm: vllmFeatures },
     gpus: [{ vendor: "nvidia", name: "L40S", vramMb: 46080, uuid: `${id}-gpu` }],
     interconnect: [{ networkCard: "cx7", port: "p0", paths: [path(mac, ipv4)], neighbours: [peerMac] }],
   });
@@ -740,6 +740,22 @@ describe("orchestration: serving across coupled nodes", () => {
     const found = findPlacement(placement, "vllm", need(60), buildClusterState([], pair()), [], FF);
     expect(nodesOf(found)).toEqual(["node-a", "node-b"]);
     expect(found!.coupling?.nodeIds).toEqual(["node-a", "node-b"]);
+  });
+
+  test("spans two machines with unified memory, whose cards report no size of their own", () => {
+    const gx10 = (node: ReturnType<typeof coupled>, estCapacity: number) => ({
+      ...node, estCapacity, hostMemoryGb: estCapacity + 8,
+      gpus: [{ vendor: "nvidia", name: "NVIDIA GB10", vramMb: 0, uuid: `${node.id}-gpu` }],
+    });
+    const [a, b] = pair();
+    const state = buildClusterState([], [gx10(a!, 107), gx10(b!, 109)]);
+    const found = findPlacement(placement, "vllm", need(135.5, "space", { hostWeightGb: 51.2 }), state, [], FF);
+    expect(nodesOf(found)).toEqual(["node-a", "node-b"]);
+  });
+
+  test("leaves out a machine that cannot run a member, rootless Docker or no RDMA devices", () => {
+    const state = buildClusterState([], [coupled("node-a", "aa", "bb", "192.168.100.1/24"), coupled("node-b", "bb", "aa", "192.168.100.2/24", null, [])]);
+    expect(findPlacement(placement, "vllm", need(60), state, [], FF)).toBeNull();
   });
 
   test("space stays on one node when one holds the model, speed spans the pair for more cards", () => {
