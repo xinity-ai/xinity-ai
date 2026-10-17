@@ -5,7 +5,6 @@ import { config } from "../config";
 const customCa = config.inference.ca;
 const tlsOptions = customCa ? { ca: customCa } : undefined;
 
-/** Build the full URL for a request through the daemon proxy, addressed by installation id. */
 export function backendUrl(host: string, installationId: string, path: string, tls: boolean): string {
   const protocol = tls ? "https" : "http";
   return `${protocol}://${host}/proxy/${encodeURIComponent(installationId)}${path}`;

@@ -767,7 +767,6 @@ const withDocsLink = ({ text, docsUrl }: IssueDescription) => `${text} (${docsUr
 
 // Couplings span hosts, so they are judged across the whole set after the per-host checks. A port
 // problem is a warning, but a coupling that looks usable and fails a real transfer is an error.
-// Returns how many such errors it found.
 async function reportInterconnect(nodes: InterconnectNode[], hosts: Map<string, Host>): Promise<number> {
   const { couplings, portIssues } = deriveInterconnectOverview(nodes);
   if (couplings.length === 0 && portIssues.length === 0) {

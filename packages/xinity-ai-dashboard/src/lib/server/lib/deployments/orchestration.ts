@@ -1,5 +1,5 @@
-import { inArray, modelDeploymentT, sql, modelInstallationT, aiNodeT, type ModelInstallation, type AiNode } from "common-db";
-import { resolveOptimizeFor, settingsEqual } from "common-env";
+import { inArray, modelDeploymentT, sql, modelInstallationT, modelInstallationStateT, aiNodeT, type ModelInstallation, type AiNode } from "common-db";
+import { DOES_NOT_FIT_ON_NODE, deriveInterconnectOverview, freeMemberAddress, resolveOptimizeFor, settingsEqual, sharedRdmaSubnets, type Coupling, type InstallationGroup, type OptimizationGoal } from "common-env";
 import { getDB } from "$lib/server/db";
 import { resolveSchedulable, type SchedulableModel } from "$lib/server/lib/models/model-catalog";
 import { checkNodeCompatibility, type BlockedVersion, type ModelNodeRequirements, type NodeCapability, type Provider } from "common-env/model-catalog";
@@ -8,16 +8,15 @@ import { building } from "$app/environment";
 import { maxVramGb } from "$lib/server/license";
 import { config } from "$lib/server/config";
 import { nodeIsLive } from "./node-liveness";
-import { buildClusterState, chargeCapacity, poolCharge, rankServers, releaseInstallationFromState, resourcesOf, type ClusterState, type NewInstallation } from "./cluster-state";
+import { buildClusterState, chargeCapacity, chargeOf, poolCharge, rankServers, releaseInstallationFromState, replicasOf, resourcesOf, type ClusterState, type NewInstallation } from "./cluster-state";
 import { ENGINE_SCHEDULERS } from "./engines";
-import type { PlacementRequest } from "./engines/engine";
+import type { MemberSlot, PlacementRequest } from "./engines/engine";
 import type { Placement } from "./placement";
 import { requirementsForDeployments, type ModelRequirementTable } from "./requirements";
 import type { DeploymentStrategy } from "./strategy";
 
 const log = rootLogger.child({ name: "orchestration.mod" })
 
-// Builds the replica requirement table based on enabled deployments.
 export async function assembleModelRequirementTable(): Promise<ModelRequirementTable> {
   const enabledDeployments = await getDB().select().from(modelDeploymentT).where(sql`
     ${modelDeploymentT.enabled}
@@ -33,43 +32,49 @@ export function collectExcessInstallations(requiredModels: ModelRequirementTable
 
   for (const [key, installs] of state.installationsByRequirement) {
     const required = requiredModels[key]?.replicas || 0;
-    if (installs.length <= required) continue;
+    const replicas = replicasOf(installs);
+    if (replicas.length <= required) continue;
 
-    const excess = installs.length - required;
-    const removing = installs.slice(0, excess);
-    for (const rem of removing) {
+    const excess = replicas.length - required;
+    for (const rem of replicas.slice(0, excess).flat()) {
       toUninstall.push(rem.id);
       releaseInstallationFromState(state, rem);
     }
-    state.installationsByRequirement.set(key, installs.slice(excess));
+    state.installationsByRequirement.set(key, replicas.slice(excess).flat());
   }
 
   return toUninstall;
 }
 
-/** Collects installations whose settings have drifted; mutates state to free their capacity. */
-export function collectDriftedInstallations(requiredModels: ModelRequirementTable, state: ClusterState): string[] {
+/** Returns all installations that can and should be released */
+function releaseReplicas(state: ClusterState, release: (replica: ModelInstallation[], requirementKey: string) => boolean): string[] {
   const toUninstall: string[] = [];
-
   for (const [key, installs] of state.installationsByRequirement) {
-    const requirement = requiredModels[key];
-    if (!requirement) {
-      continue;
-    }
-
     const kept: ModelInstallation[] = [];
-    for (const install of installs) {
-      if (settingsEqual(install.settings, requirement.settings)) {
-        kept.push(install);
+    for (const replica of replicasOf(installs)) {
+      if (!release(replica, key)) {
+        kept.push(...replica);
         continue;
       }
-      toUninstall.push(install.id);
-      releaseInstallationFromState(state, install);
+      for (const install of replica) {
+        toUninstall.push(install.id);
+        releaseInstallationFromState(state, install);
+      }
     }
     state.installationsByRequirement.set(key, kept);
   }
-
   return toUninstall;
+}
+
+export function collectDriftedInstallations(requiredModels: ModelRequirementTable, state: ClusterState): string[] {
+  return releaseReplicas(state, (replica, key) => {
+    const requirement = requiredModels[key];
+    return requirement !== undefined && !settingsEqual(replica[0]!.settings, requirement.settings);
+  });
+}
+
+export function collectReplicasThatDoNotFit(doesNotFitIds: ReadonlySet<string>, state: ClusterState): string[] {
+  return releaseReplicas(state, (replica) => replica.some((install) => doesNotFitIds.has(install.id)));
 }
 
 function nodeExcludesPlacement(
@@ -95,7 +100,6 @@ export type PlacementConstraints = {
   requiredFeatures?: string[];
 };
 
-/** Picks a node according to the configured strategy; skips nodes where the engine's node rule excludes the placement. */
 export function findServerForModel(
   placement: Placement,
   driver: Provider,
@@ -140,12 +144,121 @@ export function findServerForModel(
   return null;
 }
 
+function nodeCouldServe(server: AiNode, driver: Provider, constraints: PlacementConstraints): boolean {
+  return checkNodeCompatibility(
+    { free: Infinity, driverVersions: server.driverVersions, driverFeatures: server.driverFeatures ?? {}, gpus: server.gpus },
+    { driver, capacityGb: 0, ...constraints, requiredPlatforms: constraints.requiredPlatforms ?? [] },
+  ) === null;
+}
+
+export type GroupPlacement = { coupling: Coupling; members: MemberSlot[] };
+
+export type ReplicaPlacement = { members: MemberSlot[]; coupling?: Coupling };
+
+const ranksOf = (members: MemberSlot[]) => members.reduce((total, member) => total + Math.max(member.gpuIds.length, 1), 0);
+
+const GROUP_PREFERENCE: Record<OptimizationGoal, (a: GroupPlacement, b: GroupPlacement) => number> = {
+  space: (a, b) => ranksOf(a.members) - ranksOf(b.members) || a.members.length - b.members.length,
+  speed: (a, b) => ranksOf(b.members) - ranksOf(a.members) || a.members.length - b.members.length,
+};
+
+export function findGroupForModel(
+  placement: Placement,
+  driver: Provider,
+  need: Omit<PlacementRequest, "strategy">,
+  state: ClusterState,
+  pending: NewInstallation[],
+  strategy: DeploymentStrategy,
+  constraints: PlacementConstraints = {},
+): GroupPlacement | null {
+  const groupsAcrossNodes = ENGINE_SCHEDULERS[driver].groupsAcrossNodes;
+  if (!groupsAcrossNodes) {
+    return null;
+  }
+  const ranked = rankServers(strategy, state);
+  const groups = deriveInterconnectOverview(state.availableServers).couplings
+    .filter((coupling) => coupling.viable)
+    .flatMap((coupling) => {
+      const candidates = ranked
+        .filter((server) => coupling.nodeIds.includes(server.id))
+        .filter((server) => nodeCouldServe(server, driver, constraints) && !nodeExcludesPlacement(server.id, driver, placement, state, pending))
+        .map((server) => ({ nodeId: server.id, node: resourcesOf(state, server.id) }));
+      return groupsAcrossNodes(candidates, { ...need, strategy }).map((members) => ({ coupling, members }));
+    });
+  return groups.sort(GROUP_PREFERENCE[need.goal])[0] ?? null;
+}
+
+export function findPlacement(
+  placement: Placement,
+  driver: Provider,
+  need: Omit<PlacementRequest, "strategy">,
+  state: ClusterState,
+  pending: NewInstallation[],
+  strategy: DeploymentStrategy,
+  constraints: PlacementConstraints = {},
+): ReplicaPlacement | null {
+  const nodeId = findServerForModel(placement, driver, need, state, pending, strategy, constraints);
+  const slot = nodeId ? ENGINE_SCHEDULERS[driver].placeOnNode(resourcesOf(state, nodeId), { ...need, strategy }) : undefined;
+  const single = nodeId && slot ? { members: [{ nodeId, ...slot }] } : null;
+  if (single && need.goal === "space") {
+    return single;
+  }
+  const group = findGroupForModel(placement, driver, need, state, pending, strategy, constraints);
+  if (!group || (single && ranksOf(single.members) >= ranksOf(group.members))) {
+    return single;
+  }
+  return group;
+}
+
+const RENDEZVOUS_PORT_BASE = 29500;
+
+function installationsOn(nodeId: string, state: ClusterState, pending: NewInstallation[]): Pick<NewInstallation, "port" | "group">[] {
+  return [...(state.installationsByServer.get(nodeId) ?? []), ...pending.filter((p) => p.nodeId === nodeId)];
+}
+
+function rendezvousPort(nodeId: string, state: ClusterState, pending: NewInstallation[]): number {
+  const used = new Set(installationsOn(nodeId, state, pending).flatMap((i) => (i.group?.rank === 0 ? [i.group.rendezvousPort] : [])));
+  let port = RENDEZVOUS_PORT_BASE;
+  while (used.has(port)) {
+    port++;
+  }
+  return port;
+}
+
+function takenCouplingAddresses(state: ClusterState, pending: NewInstallation[]): Set<string> {
+  const portAddresses = state.availableServers.flatMap((server) =>
+    server.interconnect.flatMap((port) => port.paths.flatMap((path) => path.ipv4.map((cidr) => cidr.split("/")[0]!))));
+  const memberAddresses = [...[...state.installationsByServer.values()].flat(), ...pending]
+    .flatMap((installation) => installation.group?.addresses.map(({ address }) => address) ?? []);
+  return new Set([...portAddresses, ...memberAddresses]);
+}
+
+function memberGroups(coupling: Coupling, members: MemberSlot[], state: ClusterState, pending: NewInstallation[]): InstallationGroup[] | undefined {
+  const ports = coupling.members.flatMap((ref) => {
+    const port = state.availableServers.find((server) => server.id === ref.nodeId)?.interconnect
+      .find((candidate) => candidate.networkCard === ref.networkCard && candidate.port === ref.port);
+    return port ? [{ nodeId: ref.nodeId, port }] : [];
+  });
+  const subnets = sharedRdmaSubnets(ports, members.map((member) => member.nodeId));
+  const taken = takenCouplingAddresses(state, pending);
+  const addresses = members.map(() => subnets.flatMap(({ subnet }) => {
+    const address = freeMemberAddress(subnet, taken);
+    if (!address) {
+      return [];
+    }
+    taken.add(address);
+    return [{ subnet, address }];
+  }));
+  if (subnets.length === 0 || addresses.some((assigned) => assigned.length < subnets.length)) {
+    return undefined;
+  }
+  const id = crypto.randomUUID();
+  const port = rendezvousPort(members[0]!.nodeId, state, pending);
+  return members.map((_, rank) => ({ id, rank, size: members.length, rendezvousPort: port, addresses: addresses[rank]! }));
+}
+
 function allocatePort(driver: Provider, nodeId: string, state: ClusterState, pending: NewInstallation[]): number {
-  const usedPorts = new Set([
-    ...(state.installationsByServer.get(nodeId) ?? []).map(i => i.port),
-    ...pending.filter(p => p.nodeId === nodeId).map(p => p.port),
-  ]);
-  return ENGINE_SCHEDULERS[driver].port(usedPorts);
+  return ENGINE_SCHEDULERS[driver].port(new Set(installationsOn(nodeId, state, pending).map((i) => i.port)));
 }
 
 // The license counts GPU memory, so a unified node's host part stays out of it.
@@ -166,10 +279,7 @@ export type Shortfall = { specifier: string; missing: number; reason: ShortfallR
 export type InstallationPlan = { toInstall: NewInstallation[]; shortfalls: Shortfall[] };
 
 function anyNodeCouldServe(state: ClusterState, driver: Provider, constraints: PlacementConstraints): boolean {
-  return state.availableServers.some((server) => checkNodeCompatibility(
-    { free: Infinity, driverVersions: server.driverVersions, driverFeatures: server.driverFeatures ?? {}, gpus: server.gpus },
-    { driver, capacityGb: 0, ...constraints, requiredPlatforms: constraints.requiredPlatforms ?? [] },
-  ) === null);
+  return state.availableServers.some((server) => nodeCouldServe(server, driver, constraints));
 }
 
 /** Plans installations needed to satisfy replica requirements that aren't yet met,
@@ -186,7 +296,7 @@ async function planNewInstallations(
 
   for (const [key, requirement] of Object.entries(requiredModels)) {
     const { specifier } = requirement;
-    const current = (state.installationsByRequirement.get(key) || []).length;
+    const current = replicasOf(state.installationsByRequirement.get(key) || []).length;
     if (current >= requirement.replicas) continue;
 
     const resolution = await resolveSchedulable(requirement.specifier, requirement.preferredDriver);
@@ -213,41 +323,44 @@ async function planNewInstallations(
 
     const constraints = { minVersion, blockedVersions, requiredPlatforms, requiredFeatures };
     for (let i = 0; i < needed; i++) {
-      const nodeId = findServerForModel({ deploymentId: requirement.deploymentId, specifier }, driver, need, state, toInstall, strategy, constraints);
-      const slot = nodeId ? ENGINE_SCHEDULERS[driver].placeOnNode(resourcesOf(state, nodeId), { ...need, strategy }) : undefined;
-      if (!nodeId || !slot) {
+      const replica = findPlacement({ deploymentId: requirement.deploymentId, specifier }, driver, need, state, toInstall, strategy, constraints);
+      const groups = replica?.coupling ? memberGroups(replica.coupling, replica.members, state, toInstall) : undefined;
+      if (!replica || (replica.coupling && !groups)) {
         log.warn({ specifier: requirement.specifier }, "No server with enough capacity for additional replica");
         const reason = anyNodeCouldServe(state, driver, constraints) ? "no_capacity" : "no_compatible_node";
         shortfalls.push({ specifier, missing: needed - i, reason, constraints: { ...constraints, driver } });
         break;
       }
 
-      if (usedVram + slot.estCapacity > licenseVramLimit) {
+      const gpuGb = replica.members.reduce((total, member) => total + member.estCapacity, 0);
+      if (usedVram + gpuGb > licenseVramLimit) {
         log.warn(
-          { specifier: requirement.specifier, usedVram, licenseVramLimit, additional: slot.estCapacity },
+          { specifier: requirement.specifier, usedVram, licenseVramLimit, additional: gpuGb },
           "License VRAM limit reached; skipping additional replica",
         );
         shortfalls.push({ specifier, missing: needed - i, reason: "license_limit" });
         break;
       }
 
-      const installation: NewInstallation = {
-        nodeId,
-        deploymentId: requirement.deploymentId,
-        specifier: requirement.specifier,
-        estCapacity: slot.estCapacity,
-        kvCacheCapacity: effectiveKvCache,
-        hostCapacity: slot.hostCapacity,
-        maxNumSeqs: slot.maxNumSeqs,
-        driver,
-        port: allocatePort(driver, nodeId, state, toInstall),
-        settings: requirement.settings,
-        gpuIds: slot.gpuIds,
-      };
-      toInstall.push(installation);
-
-      chargeCapacity(state, installation, slot);
-      usedVram += slot.estCapacity;
+      replica.members.forEach((member, rank) => {
+        const installation: NewInstallation = {
+          nodeId: member.nodeId,
+          deploymentId: requirement.deploymentId,
+          specifier: requirement.specifier,
+          estCapacity: member.estCapacity,
+          kvCacheCapacity: effectiveKvCache,
+          hostCapacity: member.hostCapacity,
+          maxNumSeqs: member.maxNumSeqs,
+          driver,
+          port: allocatePort(driver, member.nodeId, state, toInstall),
+          settings: requirement.settings,
+          gpuIds: member.gpuIds,
+          group: groups?.[rank] ?? null,
+        };
+        toInstall.push(installation);
+        chargeCapacity(state, installation, member);
+      });
+      usedVram += gpuGb;
     }
   }
 
@@ -268,8 +381,17 @@ async function hasReassignmentTarget(install: ModelInstallation, state: ClusterS
   if (!modelInfo) return false;
 
   const need = { model: modelInfo, kvCacheGb: install.kvCacheCapacity, goal: resolveOptimizeFor(install.settings) };
-  const nodeId = findServerForModel(install, install.driver, need, state, [], "first-fit", modelInfo);
-  return nodeId !== null;
+  // A group placed anew frees what its members on live nodes hold, so they are left out while looking.
+  const liveMembers = install.group
+    ? [...state.installationsByServer.values()].flat().filter((other) => other.group?.id === install.group!.id)
+    : [];
+  liveMembers.forEach((member) => releaseInstallationFromState(state, member));
+  const target = findPlacement(install, install.driver, need, state, [], "first-fit", modelInfo);
+  for (const member of liveMembers) {
+    chargeCapacity(state, member, chargeOf(member));
+    state.installationsByServer.get(member.nodeId)?.push(member);
+  }
+  return target !== null;
 }
 
 export async function collectReassignableOrphans(
@@ -277,8 +399,20 @@ export async function collectReassignableOrphans(
   state: ClusterState,
   lookupModel: ModelLookup,
 ): Promise<ModelInstallation[]> {
-  const reassignable = await Promise.all(orphanedCandidates.map(install => hasReassignmentTarget(install, state, lookupModel)));
-  return orphanedCandidates.filter((_, i) => reassignable[i]);
+  const replicas = replicasOf(orphanedCandidates);
+  const reassignable = await Promise.all(replicas.map((replica) => hasReassignmentTarget(replica[0]!, state, lookupModel)));
+  return replicas.filter((_, i) => reassignable[i]).flat();
+}
+
+export function collectGroupsOf(installations: ModelInstallation[], state: ClusterState): string[] {
+  const groupIds = new Set(installations.flatMap((install) => (install.group ? [install.group.id] : [])));
+  return releaseReplicas(state, (replica) => groupIds.has(replica[0]!.group?.id ?? ""));
+}
+
+export function collectIncompleteGroups(existing: ModelInstallation[], state: ClusterState): string[] {
+  const incomplete = replicasOf(existing).filter((replica) => replica[0]!.group && replica.length < replica[0]!.group.size).flat();
+  const offline = incomplete.filter((install) => !state.installationsByServer.has(install.nodeId)).map((install) => install.id);
+  return [...offline, ...collectGroupsOf(incomplete, state)];
 }
 
 export async function chargeUnchargedInstallations(
@@ -312,7 +446,9 @@ async function persistCharges(before: ModelInstallation[], after: ModelInstallat
     .where(sql`${modelInstallationT.id} = ${install.id}`)));
 }
 
-export type PlannedReplica = { specifier: string; machineName: string; cards: number; gpuGb: number; hostGb: number };
+export type PlannedMachine = { machineName: string; cards: number; gpuGb: number; hostGb: number };
+
+export type PlannedReplica = { specifier: string; machines: PlannedMachine[] };
 
 export type PlacementPreview = { replicas: PlannedReplica[]; shortfalls: Shortfall[] };
 
@@ -321,8 +457,6 @@ const lookupSchedulable: ModelLookup = async (specifier, driver) => {
   return resolution.status === "found" ? resolution.model : null;
 };
 
-// Plans a deployment draft on the cluster as it is, without the installations the deployment
-// already has, and writes nothing.
 export async function previewPlacement(requirements: ModelRequirementTable, replacedDeploymentId?: string): Promise<PlacementPreview> {
   const [existing, servers]: [ModelInstallation[], AiNode[]] = await Promise.all([
     getDB().select().from(modelInstallationT).where(sql`${modelInstallationT.deletedAt} IS NULL`),
@@ -337,12 +471,14 @@ export async function previewPlacement(requirements: ModelRequirementTable, repl
     return server?.machineName ?? server?.host ?? nodeId;
   };
   return {
-    replicas: toInstall.map((install) => ({
-      specifier: install.specifier,
-      machineName: machineName(install.nodeId),
-      cards: Math.max(install.gpuIds?.length ?? 0, 1),
-      gpuGb: install.estCapacity,
-      hostGb: install.hostCapacity ?? 0,
+    replicas: replicasOf(toInstall.map((install, index) => ({ ...install, id: String(index), group: install.group ?? null }))).map((members) => ({
+      specifier: members[0]!.specifier,
+      machines: members.map((install) => ({
+        machineName: machineName(install.nodeId),
+        cards: Math.max(install.gpuIds?.length ?? 0, 1),
+        gpuGb: install.estCapacity,
+        hostGb: install.hostCapacity ?? 0,
+      })),
     })),
     shortfalls,
   };
@@ -357,6 +493,15 @@ async function applyChanges(toUninstall: string[], toInstall: NewInstallation[])
     await getDB().insert(modelInstallationT).values(toInstall);
     log.info({ toInstall }, `Installed ${toInstall.length} models`);
   }
+}
+
+async function installationsThatDoNotFit(): Promise<Set<string>> {
+  const rows = await getDB().select({ id: modelInstallationStateT.id }).from(modelInstallationStateT).where(sql`
+    ${modelInstallationStateT.lifecycleState} = 'failed'
+  AND
+    ${modelInstallationStateT.errorMessage} LIKE ${`${DOES_NOT_FIT_ON_NODE}%`}
+  `);
+  return new Set(rows.map((row) => row.id));
 }
 
 async function runSyncDeployedModels() {
@@ -384,8 +529,11 @@ async function runSyncDeployedModels() {
 
   const toUninstall = [
     ...orphaned.map(i => i.id),
+    ...collectGroupsOf(orphaned, state),
+    ...collectIncompleteGroups(existing, state),
     ...collectExcessInstallations(requiredModels, state),
     ...collectDriftedInstallations(requiredModels, state),
+    ...collectReplicasThatDoNotFit(await installationsThatDoNotFit(), state),
   ];
   const { toInstall } = await planNewInstallations(requiredModels, state, maxVramGb(), config.compute.deploymentStrategy());
   await applyChanges(toUninstall, toInstall);

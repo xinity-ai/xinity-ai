@@ -1,7 +1,7 @@
 import { type InferSelectModel, sql } from "drizzle-orm";
 import { pgEnum, pgTable, real, text, timestamp, uuid, boolean, integer, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { organizationT } from "./orgSchema";
-import type { DeploymentSettings, GpuInfo, InterconnectPort } from "common-env";
+import type { DeploymentSettings, GpuInfo, InstallationGroup, InterconnectPort } from "common-env";
 
 export const lifecycleStateEnum = pgEnum("lifecycle_state", ["downloading", "installing", "ready", "failed"]);
 export const inferenceDriverEnum = pgEnum("inference_driver", ["ollama", "vllm"]);
@@ -126,6 +126,8 @@ export const modelInstallationT = pgTable("model_installation", {
   settings: jsonb().notNull().$type<DeploymentSettings>().default({ version: 1 }),
   /** Empty means unpinned, which the daemon runs on the node's first card. */
   gpuIds: jsonb("gpu_ids").$type<string[]>().notNull().default([]),
+  /** This node's member of an installation served across several nodes. Null for one served on this node alone. */
+  group: jsonb().$type<InstallationGroup>(),
 
   deletedAt,
   createdAt,

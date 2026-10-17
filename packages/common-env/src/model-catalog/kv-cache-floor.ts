@@ -2,7 +2,6 @@ import { kvCacheSharePerCard } from "../tensor-parallel";
 
 const BYTES_PER_GB = 1e9;
 
-// How an engine version pages KV. Part of its engine profile, since releases change it.
 export type KvPaging = {
   attentionBlockTokens: { standard: number; latent: number };
   alignStatePagesPerGroup: number;

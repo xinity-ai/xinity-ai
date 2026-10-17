@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { chargeUnchargedInstallations, collectDriftedInstallations, collectExcessInstallations, collectReassignableOrphans, findServerForModel } from "../src/lib/server/lib/deployments/orchestration";
+import { chargeUnchargedInstallations, collectDriftedInstallations, collectExcessInstallations, collectIncompleteGroups, collectReassignableOrphans, collectReplicasThatDoNotFit, findPlacement, findServerForModel } from "../src/lib/server/lib/deployments/orchestration";
 import { buildClusterState, rankServers, resourcesOf } from "../src/lib/server/lib/deployments/cluster-state";
 import { layoutForVllm, vllmScheduler } from "../src/lib/server/lib/deployments/engines/vllm";
 import { requirementsForDeployments, type ModelRequirement, type ModelRequirementTable } from "../src/lib/server/lib/deployments/requirements";
@@ -45,6 +45,7 @@ function makeInstallation(overrides: Partial<ModelInstallation> & { id: string; 
     driver: "ollama",
     settings: { version: 1 },
     gpuIds: [],
+    group: null,
     deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -706,5 +707,79 @@ describe("orchestration: charging footprints", () => {
     expect(kept).toBe(charged);
     const [unknown] = await chargeUnchargedInstallations([uncharged], [discrete(null)], async () => null);
     expect(unknown).toBe(uncharged);
+  });
+});
+
+describe("orchestration: serving across coupled nodes", () => {
+  const GIB = 1.073741824;
+  const placement = { deploymentId: "dep-1", specifier: "big" };
+  const path = (mac: string, ipv4: string) => ({
+    interface: `if-${mac}`, mac, carrier: true, mtu: 9000, speedMbps: 200000, linkLayer: "Ethernet",
+    ipv4: [ipv4], roceV2Ipv4: [ipv4.split("/")[0]!], addressLosses: 0,
+  });
+  const coupled = (id: string, mac: string, peerMac: string, ipv4: string, hostMemoryGb: number | null = null) => makeNode({
+    id, estCapacity: 45, gpuCount: 1, hostMemoryGb, driverVersions: { vllm: "0.31.0" },
+    gpus: [{ vendor: "nvidia", name: "L40S", vramMb: 46080, uuid: `${id}-gpu` }],
+    interconnect: [{ networkCard: "cx7", port: "p0", paths: [path(mac, ipv4)], neighbours: [peerMac] }],
+  });
+  const pair = (hostA: number | null = null, hostB: number | null = null) => [
+    coupled("node-a", "aa", "bb", "192.168.100.1/24", hostA),
+    coupled("node-b", "bb", "aa", "192.168.100.2/24", hostB),
+  ];
+  const model = (weightGb: number, sizing: Partial<FootprintEntry["sizing"]> = {}) => ({
+    weight: weightGb, attentionHeads: 24, kvHeads: 4,
+    footprint: {
+      sizing: { weightGb, minKvCacheGb: 4, maxContextLength: 32768, attentionHeads: 24, kvHeads: 4, hostWeightGb: 0, layers: 48, attentionLayers: 48, ...sizing },
+      tags: [], placement: { limits: [] },
+    },
+  });
+  const need = (weightGb: number, goal: "space" | "speed" = "space", sizing: Partial<FootprintEntry["sizing"]> = {}) => ({ model: model(weightGb, sizing), kvCacheGb: 4, goal });
+  const nodesOf = (found: ReturnType<typeof findPlacement>) => found?.members.map((member) => member.nodeId);
+
+  test("serves a model no single node holds across the coupled pair", () => {
+    const found = findPlacement(placement, "vllm", need(60), buildClusterState([], pair()), [], FF);
+    expect(nodesOf(found)).toEqual(["node-a", "node-b"]);
+    expect(found!.coupling?.nodeIds).toEqual(["node-a", "node-b"]);
+  });
+
+  test("space stays on one node when one holds the model, speed spans the pair for more cards", () => {
+    const state = buildClusterState([], pair());
+    expect(nodesOf(findPlacement(placement, "vllm", need(20), state, [], FF))).toEqual(["node-a"]);
+    expect(nodesOf(findPlacement(placement, "vllm", need(20, "speed"), state, [], FF))).toEqual(["node-a", "node-b"]);
+  });
+
+  test("gives rank 0 to the node that has room for rank 0's part but not for a follower's", () => {
+    // A text model's rank 0 needs 5.5 GiB of host memory, every follower 6 GiB, each plus one pinned communicator.
+    const leaderOnly = (5.5 + 1.25) * GIB + 0.1;
+    const found = findPlacement(placement, "vllm", need(60), buildClusterState([], pair(null, leaderOnly)), [], FF);
+    expect(nodesOf(found)).toEqual(["node-b", "node-a"]);
+  });
+
+  test("keeps a node out that holds the steady part but not what loading holds besides it", () => {
+    const hostGb = 5.5 * GIB + 1;
+    const nodes = [coupled("node-a", "aa", "bb", "192.168.100.1/24", hostGb)];
+    expect(findServerForModel(placement, "vllm", need(20), buildClusterState([], nodes), [], FF)).toBe("node-a");
+    expect(findServerForModel(placement, "vllm", need(20, "space", { largestFileGb: 1 }), buildClusterState([], nodes), [], FF)).toBeNull();
+  });
+
+  const member = (id: string, nodeId: string, rank: number, size = 2) => makeInstallation({
+    id, nodeId, specifier: "big", driver: "vllm",
+    group: { id: "group-1", rank, size, rendezvousPort: 29500, addresses: [{ subnet: "192.168.100.0/24", address: `192.168.100.${254 - rank}` }] },
+  });
+  const requirement = (replicas: number): ModelRequirementTable => ({
+    "dep-1:big": { deploymentId: "dep-1", specifier: "big", replicas, preferredDriver: "vllm", settings: { version: 1 } } as ModelRequirement,
+  });
+
+  test("counts a group as one replica and trims it whole", () => {
+    const members = [member("m0", "node-a", 0), member("m1", "node-b", 1)];
+    expect(collectExcessInstallations(requirement(1), buildClusterState(members, pair()))).toEqual([]);
+    expect(collectExcessInstallations(requirement(0), buildClusterState(members, pair())).sort()).toEqual(["m0", "m1"]);
+  });
+
+  test("replaces a whole group when one member cannot fit on its node, or a member is missing", () => {
+    const members = [member("m0", "node-a", 0), member("m1", "node-b", 1)];
+    expect(collectReplicasThatDoNotFit(new Set(["m1"]), buildClusterState(members, pair())).sort()).toEqual(["m0", "m1"]);
+    const lonely = [member("m0", "node-a", 0)];
+    expect(collectIncompleteGroups(lonely, buildClusterState(lonely, pair()))).toEqual(["m0"]);
   });
 });

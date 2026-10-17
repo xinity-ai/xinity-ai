@@ -13,7 +13,6 @@ const LAYER = /(^|\.)layers?\.(\d+)\./;
 const DECODER_LAYER = /(^|\.)decoder\.layers\.(\d+)\./;
 const EXPERT = /\.experts\./;
 const TIED_HEAD = /(^|\.)lm_head\./;
-// Read a few rows per token, never whole.
 const LOOKUP = /(embed_tokens|tok_embeddings|embeddings|wte|ngram_embedding|per_layer_embedding)/;
 // vLLM keeps n-gram embedding tables in pinned host memory.
 const HOST_KEPT = /ngram_embedding\./;
@@ -110,7 +109,6 @@ export function deriveSizing(config: Config, tensors: CheckpointTensor[]) {
 }
 
 type Readable = { arrayBuffer(): Promise<ArrayBuffer>; json(): Promise<any> };
-// Resolves to undefined when the file does not exist.
 type Read = (file: string, range?: [number, number]) => Promise<Readable | undefined>;
 
 const readLocal = (dir: string): Read => async (file, range) => {
@@ -151,10 +149,15 @@ async function shardNames(read: Read): Promise<string[]> {
 }
 
 // Only the header at the start of each shard is read, never the weights.
-async function headerTensors(read: Read, shard: string): Promise<CheckpointTensor[]> {
+async function readShard(read: Read, shard: string): Promise<{ tensors: CheckpointTensor[]; bytes: number }> {
   const length = Number(new DataView(await (await readRequired(read, shard, [0, 8])).arrayBuffer()).getBigUint64(0, true));
   const header = await (await readRequired(read, shard, [8, 8 + length])).json() as Record<string, { data_offsets?: [number, number] }>;
-  return Object.entries(header).flatMap(([name, { data_offsets }]) => (data_offsets ? [{ name, bytes: data_offsets[1] - data_offsets[0] }] : []));
+  const offsets = Object.entries(header).flatMap(([name, { data_offsets }]) => (data_offsets ? [{ name, start: data_offsets[0], end: data_offsets[1] }] : []));
+  return {
+    tensors: offsets.map(({ name, start, end }) => ({ name, bytes: end - start })),
+    // The file is the 8-byte length, the header, then the tensor data up to its last byte.
+    bytes: 8 + length + Math.max(0, ...offsets.map(({ end }) => end)),
+  };
 }
 
 if (import.meta.main) {
@@ -166,8 +169,11 @@ if (import.meta.main) {
   const read = existsSync(source) ? readLocal(source) : readHuggingFace(source);
   // One shard at a time: Hugging Face refuses connections when a repo of a hundred shards is read at once.
   const tensors: CheckpointTensor[] = [];
+  let largestFileBytes = 0;
   for (const shard of await shardNames(read)) {
-    tensors.push(...await headerTensors(read, shard));
+    const { tensors: shardTensors, bytes } = await readShard(read, shard);
+    tensors.push(...shardTensors);
+    largestFileBytes = Math.max(largestFileBytes, bytes);
   }
   const s = deriveSizing(await (await readRequired(read, "config.json")).json(), tensors);
   const lines = [
@@ -181,6 +187,7 @@ if (import.meta.main) {
     `nonLayerWeightGb: ${s.nonLayerWeightGb}${s.encoderWeightGb ? `  # ${s.encoderWeightGb} of it encoders, drop for a text-only entry` : ""}`,
     s.activeWeightGb && `activeWeightGb: ${s.activeWeightGb}  # measure it instead with speculative decoding`,
     s.hostWeightGb && `# hostWeightGb: ${s.hostWeightGb}, state it after a passing run across two nodes`,
+    `largestFileGb: ${gb(largestFileBytes)}`,
     s.splitSizes && `# placement.limits splitSizes: [${s.splitSizes.join(", ")}], unless experts run expert parallel`,
   ];
   console.log(lines.filter(Boolean).join("\n"));

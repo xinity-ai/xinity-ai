@@ -125,6 +125,11 @@
                 "description": "Weights read per token by a mixture-of-experts variant, in GB. Present exactly when the model is a mixture of experts, so it must be set for every one: it decides the concurrency knee and, when the model spans nodes, the extra collective communicator its experts need. Absent means dense, where every weight participates. Capacity still needs the full weight",
                 "type": "number"
               },
+              "largestFileGb": {
+                "description": "Size of the largest weight file in the checkpoint, in GB. Loading holds copies of up to a few such files in host memory besides the installation's steady part",
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
               "hostWeightGb": {
                 "description": "Part of weightGb this entry's engine keeps in host memory instead of on the GPU, in GB, for example n-gram embedding tables. 0 when every weight is on the GPU. Stating it, 0 included, marks the entry as checked across nodes: without it the entry is placed on one node only, where it counts as 0",
                 "type": "number",

@@ -46,8 +46,6 @@ type GroupLaunch<Group extends NodeGroup> = {
   docker: (port: number) => { networkArgs: string[]; host: string; port: number };
 };
 
-// NCCL connects the members on ports it picks at runtime, which no bridge network can publish,
-// so members share the host's network.
 const GROUP_LAUNCH: { [Kind in NodeGroup["kind"]]: GroupLaunch<Extract<NodeGroup, { kind: Kind }>> } = {
   single: {
     size: () => 1,

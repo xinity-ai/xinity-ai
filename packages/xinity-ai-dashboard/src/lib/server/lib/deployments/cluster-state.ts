@@ -17,7 +17,6 @@ export type NodeResources = {
   engineVersion?: string;
 };
 
-/** Mutable tracking state built from current DB contents. */
 export type ClusterState = {
   installationsByRequirement: Map<string, ModelInstallation[]>;
   installationsByServer: Map<string, ModelInstallation[]>;
@@ -81,6 +80,15 @@ export function chargeCapacity(
   if (node.host && !node.unified) {
     node.host.used += sign * charge.hostCapacity;
   }
+}
+
+export function replicasOf<T extends Pick<ModelInstallation, "id" | "group">>(installations: T[]): T[][] {
+  const byReplica = new Map<string, T[]>();
+  for (const installation of installations) {
+    const key = installation.group?.id ?? installation.id;
+    byReplica.set(key, [...(byReplica.get(key) ?? []), installation]);
+  }
+  return [...byReplica.values()];
 }
 
 export const chargeOf = (installation: Pick<ModelInstallation, "estCapacity" | "hostCapacity" | "maxNumSeqs">): Charge =>

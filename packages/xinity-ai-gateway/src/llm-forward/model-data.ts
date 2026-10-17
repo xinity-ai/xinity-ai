@@ -263,9 +263,7 @@ export type ModelInfo = {
   nodeId: string | null;
   /** Daemon host:port to route requests through. */
   host: string;
-  /** Daemon installation the request is routed to. */
   installationId: string;
-  /** Canonical model identifier. */
   specifier: string;
   /** Driver-side provider model name (e.g. gemma3:latest); used as the OpenAI body's `model` field. */
   model: string;

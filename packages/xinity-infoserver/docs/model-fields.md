@@ -82,6 +82,7 @@ Everything the variant costs to run. Grouped because these figures are read toge
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `weightGb` | number | required | Memory consumed by this variant's weights, in GB, wherever the engine keeps them |
+| `largestFileGb` | number | - | Size of the largest weight file in the checkpoint, in GB. Loading holds copies of up to a few such files in host memory besides the installation's steady part, so a node needs that room free to start it. |
 | `hostWeightGb` | number | - | Part of `weightGb` the engine keeps in host memory instead of on the GPU, in GB, for example n-gram embedding tables. 0 when every weight is on the GPU. Stating it, 0 included, marks the entry as checked across nodes: without it the entry is placed on one node only, where it counts as 0. Set it only after the entry has passed a run across two nodes |
 | `nonLayerWeightGb` | number | - | Part of `weightGb` outside the decoder layer stack, in GB: input embedding, output head, vision and audio encoders. These sit on the first or last stage when a model is split by layers |
 | `layers` | number | - | Decoder layers in the layer stack (`num_hidden_layers`), without speculative draft layers |

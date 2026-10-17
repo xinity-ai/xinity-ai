@@ -9,7 +9,7 @@ import { ensureE2EReady } from "../guard";
 type Preview = {
   deployable: boolean;
   reason?: string;
-  replicas: { specifier: string; machineName: string; cards: number; gpuGb: number; hostGb: number }[];
+  replicas: { specifier: string; machines: { machineName: string; cards: number; gpuGb: number; hostGb: number }[] }[];
 };
 
 const MODEL = "apertus-v1.1-0.5b-vllm";
@@ -68,11 +68,11 @@ describe("deployment placement preview", () => {
   test("plans a replica where the scheduler would put it, charged its engine's own memory and a host part", async () => {
     const body = await preview({ specifier: MODEL, replicas: 1 });
     expect(body.deployable).toBe(true);
-    const replica = body.replicas.find((candidate) => candidate.machineName === machineName);
-    expect(replica).toBeTruthy();
-    expect(replica!.cards).toBe(1);
-    expect(replica!.gpuGb).toBeGreaterThan(0.88 + 2.5 * GB_PER_GIB);
-    expect(replica!.hostGb).toBeCloseTo(5.5 * GB_PER_GIB);
+    const machine = body.replicas.flatMap((replica) => replica.machines).find((candidate) => candidate.machineName === machineName);
+    expect(machine).toBeTruthy();
+    expect(machine!.cards).toBe(1);
+    expect(machine!.gpuGb).toBeGreaterThan(0.88 + 2.5 * GB_PER_GIB);
+    expect(machine!.hostGb).toBeCloseTo(5.5 * GB_PER_GIB);
   });
 
   test("names why a replica does not fit, and still shows the ones that do", async () => {
@@ -82,14 +82,14 @@ describe("deployment placement preview", () => {
     const body = await preview({ specifier: MODEL, replicas: vllmNodes + 1 });
     expect(body.deployable).toBe(false);
     expect(body.reason).toBe(`"${MODEL}" needs more capacity than is currently available`);
-    expect(body.replicas.some((candidate) => candidate.machineName === machineName)).toBe(true);
+    expect(body.replicas.some((replica) => replica.machines.some((candidate) => candidate.machineName === machineName))).toBe(true);
   });
 
   test("refuses a machine whose reported host memory cannot take the host part", async () => {
     await db.update(aiNodeT).set({ hostMemoryGb: 1 }).where(sql`${aiNodeT.id} = ${nodeId}`);
     try {
       const body = await preview({ specifier: MODEL, replicas: 1 });
-      expect(body.replicas.some((candidate) => candidate.machineName === machineName)).toBe(false);
+      expect(body.replicas.some((replica) => replica.machines.some((candidate) => candidate.machineName === machineName))).toBe(false);
     } finally {
       await db.update(aiNodeT).set({ hostMemoryGb: 100 }).where(sql`${aiNodeT.id} = ${nodeId}`);
     }
