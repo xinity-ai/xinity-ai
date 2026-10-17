@@ -1,4 +1,4 @@
-import type { DeploymentSettings, DesiredInstallation } from "common-env";
+import type { DeploymentSettings, DesiredGroup, DesiredInstallation } from "common-env";
 import { defer, EMPTY, from, type Observable } from "rxjs";
 import {
   endWith,
@@ -42,6 +42,7 @@ export type SyncInstallation = {
   port: number;
   settings: DeploymentSettings;
   gpuIds: string[];
+  group: DesiredGroup | null;
   nodeId: string;
 };
 
@@ -57,6 +58,7 @@ function toSyncInstallation(d: DesiredInstallation, nodeId: string): SyncInstall
     port: d.port,
     settings: d.settings,
     gpuIds: d.gpuIds,
+    group: d.group,
     nodeId,
   };
 }

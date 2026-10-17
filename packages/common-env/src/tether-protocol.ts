@@ -5,6 +5,11 @@ const driverEnum = z.enum(["ollama", "vllm"]);
 
 const lifecycleStateEnum = z.enum(["downloading", "installing", "ready", "failed"]);
 
+export const GROUP_STAGES = ["preparing", "admitted", "running", "failed"] as const;
+export type GroupStage = (typeof GROUP_STAGES)[number];
+
+export const GROUP_RESTART_BUDGET = 3;
+
 export const gpuSchema = z.object({
   vendor: z.string(),
   name: z.string(),
@@ -63,8 +68,15 @@ export const installationGroupSchema = z.object({
   size: z.number().int().min(2),
   rendezvousPort: z.number().int().positive(),
   addresses: z.array(couplingAddressSchema).min(1),
+  generation: z.number().int().positive(),
 });
 export type InstallationGroup = z.infer<typeof installationGroupSchema>;
+
+export const desiredGroupSchema = installationGroupSchema.extend({
+  masterAddresses: z.array(couplingAddressSchema).min(1),
+  members: z.array(z.object({ rank: z.number().int().nonnegative(), stage: z.enum(GROUP_STAGES).nullable(), generation: z.number().int().positive().nullable() })),
+});
+export type DesiredGroup = z.infer<typeof desiredGroupSchema>;
 
 // Outbound: tether -> daemon (SSE)
 
@@ -79,6 +91,7 @@ export const desiredInstallationSchema = z.object({
   port: z.number(),
   settings: deploymentSettingsSchema,
   gpuIds: z.array(z.string()),
+  group: desiredGroupSchema.nullable(),
 });
 export type DesiredInstallation = z.infer<typeof desiredInstallationSchema>;
 
@@ -120,6 +133,8 @@ export const installationStatePayloadSchema = z.object({
   statusMessage: z.string().nullable().optional(),
   errorMessage: z.string().nullable().optional(),
   failureLogs: z.string().nullable().optional(),
+  groupStage: z.enum(GROUP_STAGES).nullable().optional(),
+  groupGeneration: z.number().int().positive().nullable().optional(),
 });
 export type InstallationStatePayload = z.infer<typeof installationStatePayloadSchema>;
 
@@ -190,6 +205,8 @@ export function canonicalStateReport(report: UnsignedInstallationStateReport, re
       s.statusMessage ?? null,
       s.errorMessage ?? null,
       s.failureLogs ?? null,
+      s.groupStage ?? null,
+      s.groupGeneration ?? null,
     ]),
     requestAuthorization,
   ]);
@@ -230,7 +247,7 @@ export const INTERCONNECT_PATH = "/api/v1/interconnect";
 export const KEEPALIVE_INTERVAL_HEADER = "X-Keepalive-Interval-Ms";
 
 // Bump whenever signing changes
-const SIGNED_FORM_VERSION = 4;
+const SIGNED_FORM_VERSION = 6;
 
 let cachedFingerprint: string | null = null;
 

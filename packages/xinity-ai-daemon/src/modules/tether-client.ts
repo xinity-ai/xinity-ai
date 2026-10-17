@@ -223,7 +223,7 @@ export async function* connectSSE(currentRegistration: () => Promise<UnsignedNod
   }
 }
 
-export async function reportInstallationStates(report: UnsignedInstallationStateReport): Promise<void> {
+export async function reportInstallationStates(report: UnsignedInstallationStateReport): Promise<boolean> {
   try {
     const authorization = authorizePost(STATUS_PATH);
     const signed: InstallationStateReport = {
@@ -239,8 +239,10 @@ export async function reportInstallationStates(report: UnsignedInstallationState
       const { message, reason } = await readRefusal(res);
       log.error({ status: res.status, reason, refusal: message }, "Status POST failed");
     }
+    return res.ok;
   } catch (err) {
     log.error({ err }, "Status POST error");
+    return false;
   }
 }
 

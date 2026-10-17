@@ -74,6 +74,7 @@ function makeInstallation(specifier: string, id = crypto.randomUUID()) {
     driver: "ollama" as const,
     settings: { version: 1 as const },
     gpuIds: [],
+    group: null,
   };
 }
 

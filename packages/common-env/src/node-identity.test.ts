@@ -125,6 +125,8 @@ describe("canonical payloads", () => {
     statusMessage: { statusMessage: "other" },
     errorMessage: { errorMessage: "other" },
     failureLogs: { failureLogs: "other" },
+    groupStage: { groupStage: "admitted" },
+    groupGeneration: { groupGeneration: 2 },
   };
 
   test("signs every field of a reported installation state", () => {

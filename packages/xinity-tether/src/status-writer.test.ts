@@ -60,7 +60,7 @@ mock.module("./logger", () => ({
   },
 }));
 
-const { writeRegistration, queueInstallationStates, flushAndStop, readPinnedPublicKey, partitionOwnedStates } =
+const { writeRegistration, queueInstallationStates, flushAndStop, readPinnedPublicKey, partitionOwnedStates, generationAfter, stageChanges } =
   await import("./status-writer");
 
 const registration = {
@@ -319,5 +319,36 @@ describe("queueInstallationStates", () => {
     expect(mockInsert).toHaveBeenCalledTimes(1);
     const values = (mockInsertValues.mock.calls as unknown as unknown[][])[0]![0] as unknown[];
     expect(values).toHaveLength(2);
+  });
+});
+
+describe("generationAfter", () => {
+  const group = (generation: number) => ({ id: "group-1", rank: 0, size: 2, rendezvousPort: 29500, addresses: [{ subnet: "192.168.100.0/24", address: "192.168.100.254" }], generation });
+
+  test("starts the next attempt when a member fails the current one", () => {
+    expect(generationAfter(group(2), 2)).toBe(3);
+  });
+
+  test("ignores a failure from an attempt the group has already left", () => {
+    expect(generationAfter(group(3), 2)).toBeUndefined();
+  });
+
+  test("starts no further attempt once the group has used its restarts", () => {
+    expect(generationAfter(group(3), 3)).toBe(4);
+    expect(generationAfter(group(4), 4)).toBeUndefined();
+  });
+});
+
+describe("stageChanges", () => {
+  const report = (installationId: string, groupStage: "preparing" | "admitted" | null, groupGeneration: number | null, progress = 0.5) =>
+    ({ installationId, lifecycleState: "downloading" as const, progress, groupStage, groupGeneration });
+  const stored = [{ id: "member", groupStage: "preparing", groupGeneration: 1 }];
+
+  test("passes on a member's new stage or attempt, and its first report, but not a progress report that changes neither", () => {
+    expect(stageChanges([report("member", "preparing", 1, 0.7)], stored)).toEqual([]);
+    expect(stageChanges([report("member", "admitted", 1)], stored).map(({ installationId }) => installationId)).toEqual(["member"]);
+    expect(stageChanges([report("member", "preparing", 2)], stored)).toHaveLength(1);
+    expect(stageChanges([report("new-member", "preparing", 1)], stored)).toHaveLength(1);
+    expect(stageChanges([report("single", null, null)], stored)).toEqual([]);
   });
 });

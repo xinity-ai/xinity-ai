@@ -3,6 +3,7 @@ import { mockDaemonConfig } from "../../mock-config";
 import { firstValueFrom } from "rxjs";
 import type { VllmOps } from "./vllm-ops";
 import type { InstallationEntry } from "./catalog";
+import type { GroupStage } from "common-env";
 
 // ---------------------------------------------------------------------------
 // Mocks: must be set up before importing the module under test
@@ -25,7 +26,7 @@ mock.module("../../config", () => ({ config: mockDaemonConfig({
 type StateCall = [string, string, Record<string, unknown> | undefined];
 const stateWrites: StateCall[] = [];
 
-const mockLocalStates = new Map<string, { lifecycleState: string; statusMessage?: string }>();
+const mockLocalStates = new Map<string, { lifecycleState: string; statusMessage?: string; groupGeneration?: number }>();
 
 const mockUpdateState = mock((id: string, state: string, opts?: Record<string, unknown>) => {
   stateWrites.push([id, state, opts]);
@@ -36,7 +37,7 @@ mock.module("./state", () => ({
   updateInstallationState: mockUpdateState,
   getLocalInstallationState: (id: string) => mockLocalStates.get(id),
   getLocalInstallationStates: (ids: string[]) => {
-    const result = new Map<string, { lifecycleState: string; statusMessage?: string }>();
+    const result = new Map<string, { lifecycleState: string; statusMessage?: string; groupGeneration?: number }>();
     for (const id of ids) {
       const entry = mockLocalStates.get(id);
       if (entry) {
@@ -95,6 +96,14 @@ mock.module("./page-cache", () => ({
   dropPageCache: mock(() => Promise.resolve()),
 }));
 
+const mockAddressInUse = mock((_address: string) => Promise.resolve(false));
+const realCouplingNetwork = await import("./coupling-network");
+mock.module("./coupling-network", () => ({
+  ...realCouplingNetwork,
+  addressInUse: mockAddressInUse,
+  coupledPaths: () => Promise.resolve([{ subnet: "192.168.100.0/24", address: "192.168.100.1", interface: "enp1s0f0np0", rdmaDevice: "rocep1s0f0" }]),
+}));
+
 const { syncVllmInstallations$, computeGpuUtilization, fittedGpuGb, hostUseMessage, buildVllmExtraArgs, matchFatalPattern, perCardSizing } = await import("./vllm");
 afterAll(() => {
   downloadModelSpy.mockRestore();
@@ -120,6 +129,7 @@ function makeInstallation(specifier: string, id: string = crypto.randomUUID(), p
     driver: "vllm" as const,
     settings: { version: 1 as const },
     gpuIds: [],
+    group: null,
   };
 }
 
@@ -242,6 +252,18 @@ describe("syncVllmInstallations$", () => {
 
     const failedWrite = stateWrites.find(([, state]) => state === "failed");
     expect(failedWrite).toBeDefined();
+  });
+
+  test("names the host memory budget when the kernel killed it while loading", async () => {
+    const inst = makeInstallation("oom-while-loading");
+    const ops = createMockOps({
+      isAlive: mock(() => Promise.resolve(false)),
+      wasOomKilled: mock(() => Promise.resolve(true)),
+    });
+
+    await firstValueFrom(syncVllmInstallations$([inst], ops));
+
+    expect(stateWrites.find(([, state]) => state === "failed")?.[2]?.errorMessage).toBe("Stopped while loading, over its host memory budget");
   });
 
   test("reconciles running container with stale failed state to installing", async () => {
@@ -683,6 +705,112 @@ describe("perCardSizing", () => {
   test("refuses a split the model's heads do not allow", () => {
     expect(() => perCardSizing(installation, sizing, 3)).toThrow("qwen3.8-27b-vllm cannot run tensor parallel across 3 cards");
     expect(() => perCardSizing(installation, undefined, 2)).toThrow("cannot run tensor parallel across 2 cards");
+  });
+});
+
+describe("members of a group served across nodes", () => {
+  const group = (stages: (GroupStage | null)[], generations: (number | null)[] = stages.map((stage) => (stage ? 1 : null))) => ({
+    id: "group-1", rank: 1, size: 2, rendezvousPort: 29500, generation: 1,
+    addresses: [{ subnet: "192.168.100.0/24", address: "192.168.100.253" }],
+    masterAddresses: [{ subnet: "192.168.100.0/24", address: "192.168.100.254" }],
+    members: stages.map((stage, rank) => ({ rank, stage, generation: generations[rank]! })),
+  });
+  const lastState = (id: string) => stateWrites.filter(([written]) => written === id).at(-1);
+
+  const splittable = { weightGb: 12, minKvCacheGb: 4, maxContextLength: 8192, attentionHeads: 24, kvHeads: 4 };
+
+  beforeEach(() => {
+    stateWrites.length = 0;
+    mockLocalStates.clear();
+    mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { sizing: splittable })));
+  });
+
+  test("downloads and admits a member, then holds it until the other machines are admitted too, while a single installation starts", async () => {
+    const member = { ...makeInstallation("waiting-member"), group: group([null, null]) };
+    const single = makeInstallation("single-model");
+    const ops = createMockOps({ checkHealth: mock(() => Promise.resolve(true)) });
+    await firstValueFrom(syncVllmInstallations$([member, single], ops));
+    expect((ops.start as ReturnType<typeof mock>).mock.calls.map(([id]) => id)).toEqual([single.id]);
+    expect(stateWrites.find(([id]) => id === member.id)?.[2]?.groupStage).toBe("preparing");
+    expect(lastState(member.id)).toEqual([member.id, "installing", { statusMessage: "Waiting for the other machines of its group", groupStage: "admitted", groupGeneration: 1 }]);
+  });
+
+  test("fails a member whose coupling address something else on its network already holds", async () => {
+    mockAddressInUse.mockImplementationOnce(() => Promise.resolve(true));
+    const member = { ...makeInstallation("crowded-member"), group: group([null, null]) };
+    const ops = createMockOps({ checkHealth: mock(() => Promise.resolve(true)) });
+    await firstValueFrom(syncVllmInstallations$([member], ops));
+    expect(lastState(member.id)?.[1]).toBe("failed");
+    expect(lastState(member.id)?.[2]).toMatchObject({ errorMessage: "Coupling address 192.168.100.253 is already in use on its network", groupStage: "failed" });
+  });
+
+  test("does not count a member admitted for an attempt the group has left", async () => {
+    const member = { ...makeInstallation("stale-member"), group: { ...group(["admitted", "admitted"], [1, 1]), generation: 2 } };
+    const ops = createMockOps({ checkHealth: mock(() => Promise.resolve(true)) });
+    await firstValueFrom(syncVllmInstallations$([member], ops));
+    expect(ops.start).not.toHaveBeenCalled();
+    expect(lastState(member.id)?.[2]).toMatchObject({ groupStage: "admitted", groupGeneration: 2 });
+  });
+
+  test("starts a member with its group once every member is admitted or already running, and counts a headless rank up while it runs", async () => {
+    const member = { ...makeInstallation("ready-member"), group: group(["running", "admitted"]) };
+    const ops = createMockOps({ checkHealth: mock(() => Promise.resolve(false)), isAlive: mock(() => Promise.resolve(true)) });
+    await firstValueFrom(syncVllmInstallations$([member], ops));
+    const [, config] = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
+    expect(config.group).toEqual({
+      kind: "member", size: 2, rank: 1, masterAddr: "192.168.100.254", masterPort: 29500,
+      paths: [{ subnet: "192.168.100.0/24", address: "192.168.100.253", interface: "enp1s0f0np0", rdmaDevice: "rocep1s0f0" }],
+    });
+    expect(config.kvCacheBytes).toBe("2g");
+    expect(lastState(member.id)?.[1]).toBe("ready");
+    expect(lastState(member.id)?.[2]?.groupStage).toBe("running");
+  });
+
+  test("stops a running member once its group moved on to the next attempt, and starts it for that attempt", async () => {
+    const member = { ...makeInstallation("restarted-member"), group: { ...group(["admitted", "admitted"], [2, 2]), generation: 2 } };
+    mockLocalStates.set(member.id, { lifecycleState: "ready", groupGeneration: 1 });
+    const ops = createMockOps({ listRunning: mock(() => Promise.resolve([member.id])), isAlive: mock(() => Promise.resolve(true)) });
+    await firstValueFrom(syncVllmInstallations$([member], ops));
+    expect(ops.stop).toHaveBeenCalledWith(member.id);
+    expect(ops.start).toHaveBeenCalled();
+    expect(lastState(member.id)?.[2]).toMatchObject({ groupStage: "running", groupGeneration: 2 });
+  });
+
+  test("stops a running member whose group failed its current attempt, and fails it with the group", async () => {
+    const member = { ...makeInstallation("abandoned-member"), group: group(["failed", "running"]) };
+    mockLocalStates.set(member.id, { lifecycleState: "ready", groupGeneration: 1 });
+    const ops = createMockOps({ listRunning: mock(() => Promise.resolve([member.id])) });
+    await firstValueFrom(syncVllmInstallations$([member], ops));
+    expect(ops.stop).toHaveBeenCalledWith(member.id);
+    expect(ops.start).not.toHaveBeenCalled();
+    expect(lastState(member.id)).toEqual([member.id, "failed", {
+      errorMessage: "Stopped, another machine of its group failed",
+      statusMessage: "Stopped, another machine of its group failed",
+      groupStage: "failed",
+      groupGeneration: 1,
+    }]);
+  });
+
+  test("fails a member that exited while its group counts it running, naming the host memory budget, rather than launching it alone", async () => {
+    const member = { ...makeInstallation("exited-member"), group: group(["running", "running"]) };
+    mockLocalStates.set(member.id, { lifecycleState: "ready", groupGeneration: 1 });
+    const ops = createMockOps({ wasOomKilled: mock(() => Promise.resolve(true)) });
+    await firstValueFrom(syncVllmInstallations$([member], ops));
+    expect(ops.start).not.toHaveBeenCalled();
+    expect(ops.stop).toHaveBeenCalledWith(member.id);
+    expect(lastState(member.id)?.[1]).toBe("failed");
+    expect(lastState(member.id)?.[2]).toMatchObject({ errorMessage: "Stopped, over its host memory budget", groupStage: "failed", groupGeneration: 1 });
+  });
+
+  test("tries a failed member again once its group moved on to the next attempt, but not before", async () => {
+    const failedMember = (generation: number) => ({ ...makeInstallation("failed-member"), group: { ...group(["admitted", "admitted"], [generation, generation]), generation } });
+    const stillFailed = failedMember(1);
+    mockLocalStates.set(stillFailed.id, { lifecycleState: "failed", groupGeneration: 1 });
+    const retried = failedMember(2);
+    mockLocalStates.set(retried.id, { lifecycleState: "failed", groupGeneration: 1 });
+    const ops = createMockOps({ checkHealth: mock(() => Promise.resolve(false)), isAlive: mock(() => Promise.resolve(true)) });
+    await firstValueFrom(syncVllmInstallations$([stillFailed, retried], ops));
+    expect((ops.start as ReturnType<typeof mock>).mock.calls.map(([id]) => id)).toEqual([retried.id]);
   });
 });
 

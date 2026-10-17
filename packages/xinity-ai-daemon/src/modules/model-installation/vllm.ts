@@ -26,17 +26,43 @@ import {
 import { rootLogger } from "../../logger";
 import { getHardwareProfile } from "../statekeeper";
 import { cardCapacityGib, type HardwareProfile } from "../hardware-detect";
-import { DOES_NOT_FIT_ON_NODE, engineProfile, gpuId, maxNumSeqs, tensorParallelLayouts, type GpuInfo } from "common-env";
+import { DOES_NOT_FIT_ON_NODE, engineProfile, gpuId, maxNumSeqs, tensorParallelLayouts, type DesiredGroup, type GpuInfo, type GroupStage } from "common-env";
 import { downloadModel, largestWeightFileBytes } from "./vllm-download";
 import { devicesFor, readHostDevices, resolvePinnedCards } from "./gpu-devices";
 import type { ModelSizingFields } from "common-env/model-catalog";
 import { dropPageCache } from "./page-cache";
+import { addressInUse, coupledPaths, memberGroupFrom } from "./coupling-network";
 import { resolveInstallationEntry } from "./catalog";
 import { updateInstallationState, getLocalInstallationStates } from "./state";
 
 const log = rootLogger.child({ name: "vllm" });
 
 const HEALTHY = "vLLM server healthy";
+const WAITS_FOR_GROUP = "Waiting for the other machines of its group";
+
+const everyMemberAdmitted = (group: DesiredGroup) =>
+  group.members.length === group.size
+  && group.members.every((member) => (member.stage === "admitted" || member.stage === "running") && member.generation === group.generation);
+
+const failedInItsAttempt = (group: DesiredGroup) =>
+  group.members.some((member) => member.stage === "failed" && member.generation === group.generation);
+
+// A member that never reported an attempt counts as on the current one.
+const behindItsGroup = (installation: SyncInstallation, reportedGeneration: number | null | undefined) =>
+  !!installation.group && (reportedGeneration ?? installation.group.generation) < installation.group.generation;
+
+const GROUP_FAILED = "Stopped, another machine of its group failed";
+
+const servesHttp = (installation: SyncInstallation) => !installation.group || installation.group.rank === 0;
+
+const isUp = (installation: SyncInstallation, ops: VllmOps) =>
+  servesHttp(installation)
+    ? ops.checkHealth(installation.port)
+    // A rank past 0 runs headless with no endpoint to poll, so it counts as up while its process lives.
+    : ops.isAlive(installation.id);
+
+const groupReport = (installation: SyncInstallation, stage: GroupStage) =>
+  (installation.group ? { groupStage: stage, groupGeneration: installation.group.generation } : {});
 
 const FATAL_LOG_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /Free memory on device.*is less than desired GPU memory utilization|Decrease GPU memory utilization/i, label: "GPU memory utilization too high" },
@@ -103,10 +129,10 @@ async function warmupChatModel(port: number, model: string): Promise<void> {
 }
 
 async function markInstallationReady(installation: SyncInstallation, providerModel: string, modelType?: string): Promise<void> {
-  if (modelType !== "embedding" && modelType !== "rerank" && modelType !== "transcription") {
+  if (servesHttp(installation) && modelType !== "embedding" && modelType !== "rerank" && modelType !== "transcription") {
     await warmupChatModel(installation.port, providerModel);
   }
-  await updateInstallationState(installation.id, "ready", { statusMessage: HEALTHY });
+  await updateInstallationState(installation.id, "ready", { statusMessage: HEALTHY, ...groupReport(installation, "running") });
   releaseAdmission(installation.id);
 }
 
@@ -133,6 +159,9 @@ function pollUntilHealthy$(
     mergeMap(async () => {
       const alive = await ops.isAlive(installation.id);
       if (!alive) {
+        if (await ops.wasOomKilled(installation.id)) {
+          throw new Error(`Stopped while loading, ${OVER_HOST_BUDGET}`);
+        }
         throw new Error(`Container for ${installation.specifier} (${installation.id}) died before becoming healthy`);
       }
 
@@ -154,7 +183,7 @@ function pollUntilHealthy$(
         }
       }
 
-      return ops.checkHealth(installation.port);
+      return isUp(installation, ops);
     }),
     tap((healthy) => {
       if (!healthy && Date.now() > deadline) {
@@ -194,7 +223,7 @@ export function perCardSizing(
 
 type StartOutcome =
   | { started: true; modelType: string | undefined; providerModel: string }
-  | { started: false; waiting: string };
+  | { started: false; waiting: string; groupStage?: GroupStage; groupGeneration?: number };
 
 const downloaded = new Set<string>();
 
@@ -207,10 +236,10 @@ async function downloadAndStart(installation: SyncInstallation, running: SyncIns
   const profile = await getHardwareProfile();
   const pinnedCards = resolvePinnedCards(profile.gpus, installation.gpuIds);
   const devices = devicesFor(pinnedCards, profile.gpus, await readHostDevices());
-  const perCard = perCardSizing(installation, entry.sizing, devices.tensorParallelSize);
+  const perCard = perCardSizing(installation, entry.sizing, devices.tensorParallelSize * (installation.group?.size ?? 1));
 
   if (!downloaded.has(installation.id)) {
-    await updateInstallationState(installation.id, "downloading", { statusMessage: "Downloading model", progress: 0 });
+    await updateInstallationState(installation.id, "downloading", { statusMessage: "Downloading model", progress: 0, ...groupReport(installation, "preparing") });
     await downloadModel(
       providerModel,
       throttledDownloadProgress(installation.id, 5000),
@@ -228,6 +257,13 @@ async function downloadAndStart(installation: SyncInstallation, running: SyncIns
   const modelType = entry.type;
 
   const loadingGb = await loadingAllowanceGb(providerModel);
+  if (installation.group && !admittedGb.has(installation.id)) {
+    for (const { address } of installation.group.addresses) {
+      if (await addressInUse(address)) {
+        throw new Error(`Coupling address ${address} is already in use on its network`);
+      }
+    }
+  }
   await dropPageCache();
   if (charge) {
     const unified = profile.source === "unified-memory";
@@ -237,8 +273,11 @@ async function downloadAndStart(installation: SyncInstallation, running: SyncIns
       usableGb: profile.hostMemoryGb,
     });
     if (waiting) {
-      return { started: false, waiting };
+      return { started: false, waiting, ...groupReport(installation, "preparing") };
     }
+  }
+  if (installation.group && !everyMemberAdmitted(installation.group)) {
+    return { started: false, waiting: WAITS_FOR_GROUP, ...groupReport(installation, "admitted") };
   }
   downloaded.delete(installation.id);
 
@@ -259,7 +298,7 @@ async function downloadAndStart(installation: SyncInstallation, running: SyncIns
     ),
     settings: installation.settings,
     devices,
-    group: SINGLE_NODE,
+    group: installation.group ? memberGroupFrom(installation.group, await coupledPaths()) : SINGLE_NODE,
     hostMemoryLimitBytes: charge && hostMemoryLimitBytes(charge.hostGb, loadingGb),
   });
 
@@ -306,6 +345,15 @@ function releaseAdmission(installationId: string): void {
   admittedGb.delete(installationId);
 }
 
+function forgetUndesired(desiredIds: ReadonlySet<string>): void {
+  for (const id of [...admittedGb.keys(), ...downloaded]) {
+    if (!desiredIds.has(id)) {
+      releaseAdmission(id);
+      downloaded.delete(id);
+    }
+  }
+}
+
 function chargedGb(hostGb: number, gpuGb: number, unified: boolean): number {
   return hostGb + (unified ? gpuGb : 0);
 }
@@ -318,6 +366,9 @@ let admissionTurn: Promise<unknown> = Promise.resolve();
 // vLLM checks each card against its window itself. Host memory nothing else checks.
 function admit(installationId: string, request: AdmissionRequest): Promise<string | undefined> {
   const turn = admissionTurn.then(async () => {
+    if (admittedGb.has(installationId)) {
+      return undefined;
+    }
     const { neededGb, chargedElsewhereGb, usableGb } = request;
     if (usableGb !== undefined && neededGb > usableGb - chargedElsewhereGb) {
       throw new Error(`${DOES_NOT_FIT_ON_NODE}: needs ${neededGb.toFixed(1)} GB, at most ${Math.max(0, usableGb - chargedElsewhereGb).toFixed(1)} GB can be free`);
@@ -478,9 +529,9 @@ async function reconcileOne(
   currentState: { lifecycleState: string } | undefined,
   ops: VllmOps,
 ): Promise<void> {
-  const healthy = await ops.checkHealth(installation.port);
+  const healthy = await isUp(installation, ops);
   if (healthy) {
-    await updateInstallationState(installation.id, "ready", { statusMessage: "vLLM server healthy (reconciled)" });
+    await updateInstallationState(installation.id, "ready", { statusMessage: "vLLM server healthy (reconciled)", ...groupReport(installation, "running") });
     log.info({ model: installation.specifier, installationId: installation.id }, "vLLM reconciled to ready");
     return;
   }
@@ -496,6 +547,7 @@ async function reconcileOne(
         errorMessage: `Container crash-looping (${restartCount} restarts${cause ? `, ${cause}` : ""})`,
         statusMessage: "Container crash-looping",
         failureLogs: logs || null,
+        ...groupReport(installation, "failed"),
       });
       await ops.stop(installation.id).catch(() => {});
       log.warn({ model: installation.specifier, installationId: installation.id, restartCount }, "vLLM reconciled to failed (crash-loop)");
@@ -508,16 +560,26 @@ async function reconcileOne(
       log.info({ model: installation.specifier, installationId: installation.id }, "vLLM reconciled to installing (alive, not yet healthy)");
     }
   } else {
-    const logs = await ops.getLogs(installation.id).catch(() => "");
-    const overBudget = await ops.wasOomKilled(installation.id);
-    await updateInstallationState(installation.id, "failed", {
-      errorMessage: overBudget ? `Stopped, ${OVER_HOST_BUDGET}` : "Container exited unexpectedly",
-      statusMessage: "Container not running",
-      failureLogs: logs || null,
-    });
+    await reportExited(installation, ops);
     log.warn({ model: installation.specifier, installationId: installation.id }, "vLLM reconciled to failed (container dead)");
   }
 }
+
+async function reportExited(installation: SyncInstallation, ops: VllmOps): Promise<void> {
+  const logs = await ops.getLogs(installation.id).catch(() => "");
+  const overBudget = await ops.wasOomKilled(installation.id);
+  await updateInstallationState(installation.id, "failed", {
+    errorMessage: overBudget ? `Stopped, ${OVER_HOST_BUDGET}` : "Container exited unexpectedly",
+    statusMessage: "Container not running",
+    failureLogs: logs || null,
+    ...groupReport(installation, "failed"),
+  });
+}
+
+// Members do not restart on their own, so one its group still counts as running, with no process here, has exited.
+const exitedWhileRunning = (installation: SyncInstallation) =>
+  !!installation.group
+  && installation.group.members.some((member) => member.rank === installation.group!.rank && member.stage === "running" && member.generation === installation.group!.generation);
 
 // ---------------------------------------------------------------------------
 // Sync entry point
@@ -531,12 +593,21 @@ export function syncVllmInstallations$(
     switchMap(() => from(ops.listRunning())),
     switchMap((activeIds) => {
       const desiredIds = new Set(installations.map((i) => i.id));
-      const activeSet = new Set(activeIds);
-      const toRemove = activeIds.filter((id) => !desiredIds.has(id));
+      forgetUndesired(desiredIds);
+      const states = getLocalInstallationStates(activeIds);
+      const leaving = new Set(installations
+        .filter((i) => activeIds.includes(i.id) && !!i.group && (failedInItsAttempt(i.group) || behindItsGroup(i, states.get(i.id)?.groupGeneration)))
+        .map((i) => i.id));
+      const activeSet = new Set(activeIds.filter((id) => !leaving.has(id)));
+      const stale = activeIds.filter((id) => !desiredIds.has(id));
+      const toRemove = [...stale, ...leaving];
       const candidates = installations.filter((i) => !activeSet.has(i.id));
 
-      if (toRemove.length) {
-        log.info({ ids: toRemove }, "vLLM removing stale instances");
+      if (stale.length) {
+        log.info({ ids: stale }, "vLLM removing stale instances");
+      }
+      if (leaving.size) {
+        log.info({ ids: [...leaving] }, "vLLM stopping members whose group failed or restarted");
       }
       if (candidates.length) {
         log.info({ instances: candidates.map((i) => `${i.specifier} (${i.id})`) }, "vLLM adding instances");
@@ -577,18 +648,30 @@ function startNewInstallations$(candidates: SyncInstallation[], running: SyncIns
   }
 
   const stateMap = getLocalInstallationStates(candidates.map((i) => i.id));
-  const failedIds = new Set(
-    [...stateMap.entries()]
-      .filter(([, s]) => s.lifecycleState === "failed")
-      .map(([id]) => id),
-  );
-  const toAdd = candidates.filter((i) => !failedIds.has(i.id));
+  const failedIds = new Set(candidates
+    .filter((i) => stateMap.get(i.id)?.lifecycleState === "failed" && !behindItsGroup(i, stateMap.get(i.id)?.groupGeneration))
+    .map((i) => i.id));
+  const groupFailed = candidates.filter((i) => !failedIds.has(i.id) && i.group && failedInItsAttempt(i.group));
+  const exited = candidates.filter((i) => !failedIds.has(i.id) && !groupFailed.includes(i) && exitedWhileRunning(i));
+  const toAdd = candidates.filter((i) => !failedIds.has(i.id) && !groupFailed.includes(i) && !exited.includes(i));
 
   if (failedIds.size > 0) {
     log.info({ ids: [...failedIds] }, "Skipping failed installations (re-deploy to retry)");
   }
 
-  return from(toAdd).pipe(
+  const failWithGroup$ = from(groupFailed).pipe(mergeMap((installation) => {
+    releaseAdmission(installation.id);
+    downloaded.delete(installation.id);
+    return from(updateInstallationState(installation.id, "failed", { errorMessage: GROUP_FAILED, statusMessage: GROUP_FAILED, ...groupReport(installation, "failed") }));
+  }));
+
+  const failExited$ = from(exited).pipe(mergeMap(async (installation) => {
+    await reportExited(installation, ops);
+    await ops.stop(installation.id).catch(() => {});
+    log.warn({ model: installation.specifier, installationId: installation.id }, "vLLM member exited, failing it");
+  }));
+
+  return concat(failWithGroup$, failExited$, from(toAdd).pipe(
     mergeMap((installation) => {
       let containerStarted = false;
       return defer(() =>
@@ -599,10 +682,11 @@ function startNewInstallations$(candidates: SyncInstallation[], running: SyncIns
       ).pipe(
         switchMap((outcome) => outcome.started
           ? pollUntilHealthy$(installation, ops, outcome.providerModel, outcome.modelType)
-          : from(updateInstallationState(installation.id, "installing", { statusMessage: outcome.waiting })).pipe(ignoreElements())),
+          : from(updateInstallationState(installation.id, "installing", { statusMessage: outcome.waiting, groupStage: outcome.groupStage, groupGeneration: outcome.groupGeneration })).pipe(ignoreElements())),
         catchError((err) => handleInstallationError(err, installation, ops, containerStarted)),
       );
     }),
+  )).pipe(
     ignoreElements(),
     endWith(void 0 as void),
   );
@@ -628,6 +712,7 @@ function handleInstallationError(
         errorMessage: fatalMatch ?? String((err as Error)?.message ?? err),
         statusMessage: "Failed to start",
         failureLogs: logs || null,
+        ...groupReport(installation, "failed"),
       });
       if (containerStarted) {
         await ops.stop(installation.id).catch(() => {});

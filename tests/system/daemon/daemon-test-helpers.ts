@@ -136,6 +136,7 @@ async function startMockTetherServer(): Promise<TetherMock> {
             port: row.port,
             settings: row.settings,
             gpuIds: row.gpuIds,
+            group: null,
           })),
         };
 

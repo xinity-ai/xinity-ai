@@ -42,7 +42,9 @@ const RDMA_MTU = 9000;
 
 type LocatedPort = { ref: PortRef; port: InterconnectPort };
 
-const livePaths = (port: InterconnectPort) => port.paths.filter((path) => path.carrier);
+type AddressedPort = { paths: readonly Pick<InterconnectPath, "interface" | "carrier" | "ipv4" | "roceV2Ipv4">[] };
+
+const livePaths = <Port extends AddressedPort>(port: Port): Port["paths"] => port.paths.filter((path) => path.carrier);
 const distinct = <T>(values: T[]) => [...new Set(values)].sort();
 
 function pathIssues(path: InterconnectPath): PortIssue[] {
@@ -90,7 +92,7 @@ function parseCidr(cidr: string): (Subnet & { address: string }) | null {
 
 export type RdmaEndpoint = { interface: string; ipv4: string };
 
-function rdmaAddresses(port: InterconnectPort): (Subnet & { endpoint: RdmaEndpoint })[] {
+function rdmaAddresses(port: AddressedPort): (Subnet & { endpoint: RdmaEndpoint })[] {
   return livePaths(port).flatMap((path) =>
     path.ipv4.flatMap((cidr) => {
       const subnet = parseCidr(cidr);
@@ -169,18 +171,33 @@ function segments(ports: LocatedPort[]): LocatedPort[][] {
 
 const formatIpv4 = (value: number) => [24, 16, 8, 0].map((shift) => (value >>> shift) & 0xff).join(".");
 
+export type RdmaPath = { subnet: string; address: string; interface: string };
+
+export function rdmaPathsOf(port: AddressedPort): RdmaPath[] {
+  return rdmaAddresses(port).map(({ network, prefix, endpoint }) => ({
+    // Named by network address and prefix, so two nodes' different addresses on one subnet name it alike.
+    subnet: `${formatIpv4(network)}/${prefix}`,
+    address: endpoint.ipv4,
+    interface: endpoint.interface,
+  }));
+}
+
+export function inSubnet(address: string, subnet: string): boolean {
+  const ofAddress = parseCidr(`${address}/${subnet.split("/")[1]}`);
+  const ofSubnet = parseCidr(subnet);
+  return ofAddress !== null && ofSubnet !== null && ofAddress.network === ofSubnet.network;
+}
+
 export type SharedSubnet = { subnet: string; addresses: Record<string, string> };
 
 export function sharedRdmaSubnets(ports: readonly { nodeId: string; port: InterconnectPort }[], nodeIds: readonly string[]): SharedSubnet[] {
   const byNode = nodeIds.map((nodeId) => {
     const subnets = new Map<string, string>();
     for (const { port } of ports.filter((located) => located.nodeId === nodeId)) {
-      for (const { network, prefix, endpoint } of rdmaAddresses(port)) {
-        // Keyed by network address and prefix, so two nodes different addresses on one subnet meet under one key.
-        const key = `${formatIpv4(network)}/${prefix}`;
+      for (const { subnet, address } of rdmaPathsOf(port)) {
         // A node with several paths on one subnet still gets one address there, the first one found.
-        if (!subnets.has(key)) {
-          subnets.set(key, endpoint.ipv4);
+        if (!subnets.has(subnet)) {
+          subnets.set(subnet, address);
         }
       }
     }
