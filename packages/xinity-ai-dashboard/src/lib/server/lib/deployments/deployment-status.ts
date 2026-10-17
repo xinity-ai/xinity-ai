@@ -1,5 +1,5 @@
 import type { lifecycleStateEnum, ModelDeployment } from "common-db";
-import type { InstallationGroup } from "common-env";
+import { couplingDocsUrl, deriveInterconnectOverview, describeCouplingIssue, describePortIssue, type InstallationGroup, type InterconnectPort, type IssueDescription, type PortIssue } from "common-env";
 import type { DeploymentWithStatus, ReplicaStatus, StatusPhase } from "$lib/orpc/dtos/model.dto";
 import { foldDeployment, foldReplicas, isProgressBearingPhase, toDisplayPhase, type ReplicaMember } from "./deployment-phase";
 
@@ -8,17 +8,17 @@ type LifecycleState = typeof lifecycleStateEnum.enumValues[number];
 /** One row of the deployment status join, narrowed to the columns the fold reads. */
 export type DeploymentStatusRow = {
   model_deployment: ModelDeployment;
-  model_installation: { id: string; group: InstallationGroup | null } | null;
+  model_installation: { id: string; group: InstallationGroup | null; gpuIds: string[]; estCapacity: number; hostCapacity: number | null } | null;
   model_installation_state: {
     lifecycleState: LifecycleState;
     progress: number | null;
     errorMessage: string | null;
     failureLogs: string | null;
   } | null;
-  ai_node: { machineName: string | null; host: string } | null;
+  ai_node: { id: string; machineName: string | null; host: string; interconnect: InterconnectPort[] } | null;
 };
 
-type Member = ReplicaMember & { node: string; rank: number };
+type Member = ReplicaMember & { nodeId: string; node: string; interconnect: InterconnectPort[]; rank: number; cards: number; gpuGb: number; hostGb: number };
 
 /**
  * Folds the status join into one deployment per id, with a replica per installation, or per group
@@ -49,7 +49,12 @@ export function foldDeploymentStatusRows(rows: DeploymentStatusRow[]): Deploymen
       installationId: installation.id,
       group: installation.group,
       rank: installation.group?.rank ?? 0,
+      nodeId: liveNode.id,
       node: liveNode.machineName ?? liveNode.host,
+      interconnect: liveNode.interconnect,
+      cards: Math.max(installation.gpuIds.length, 1),
+      gpuGb: installation.estCapacity,
+      hostGb: installation.hostCapacity ?? 0,
       phase,
       progress: isProgressBearingPhase(phase) ? (state?.progress ?? null) : null,
       error: state?.errorMessage ?? null,
@@ -80,6 +85,32 @@ function replicaStatus(phase: ReplicaMember["phase"], error: string | null, memb
     phase: phase as ReplicaStatus["phase"],
     node: byRank[0]!.node,
     error,
-    ...(byRank[0]!.group && { members: byRank.map(({ node, phase, error }) => ({ node, phase: phase as ReplicaStatus["phase"], error })) }),
+    ...(byRank[0]!.group && {
+      members: byRank.map(({ node, phase, error, cards, gpuGb, hostGb }) => ({ node, phase: phase as ReplicaStatus["phase"], error, cards, gpuGb, hostGb })),
+      couplingIssues: couplingIssuesOf(byRank),
+    }),
   };
+}
+
+const NOT_COUPLED: IssueDescription = { text: "its machines are no longer coupled", docsUrl: couplingDocsUrl("no-machine-answers") };
+
+// Neighbour issues are left out: only the group's machines are looked at, so every other machine would look unregistered.
+const PATH_ISSUES = new Set<PortIssue["kind"]>(["no-address", "no-rdma-address", "address-keeps-vanishing", "mtu-below-9000"]);
+
+export function couplingIssuesOf(members: Pick<Member, "nodeId" | "node" | "interconnect">[]): IssueDescription[] {
+  const overview = deriveInterconnectOverview(members.map(({ nodeId, interconnect }) => ({ id: nodeId, interconnect })));
+  const coupling = overview.couplings.find(({ nodeIds }) => members.every(({ nodeId }) => nodeIds.includes(nodeId)));
+  if (!coupling) {
+    return [NOT_COUPLED];
+  }
+  const nameOf = (nodeId: string) => members.find((member) => member.nodeId === nodeId)!.node;
+  const portIssues = overview.portIssues
+    .filter(({ port }) => coupling.members.some((member) => member.nodeId === port.nodeId && member.networkCard === port.networkCard && member.port === port.port))
+    .flatMap(({ port, issues }) => issues
+      .filter((issue) => PATH_ISSUES.has(issue.kind))
+      .map((issue) => {
+        const { text, docsUrl } = describePortIssue(issue);
+        return { text: `${nameOf(port.nodeId)}: ${text}`, docsUrl };
+      }));
+  return [...coupling.issues.map(describeCouplingIssue), ...portIssues];
 }

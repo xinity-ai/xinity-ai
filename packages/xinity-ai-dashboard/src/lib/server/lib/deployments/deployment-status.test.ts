@@ -1,5 +1,6 @@
 import { describe, test, expect } from "bun:test";
-import { foldDeploymentStatusRows, type DeploymentStatusRow } from "./deployment-status";
+import { couplingIssuesOf, foldDeploymentStatusRows, type DeploymentStatusRow } from "./deployment-status";
+import type { InterconnectPath, InterconnectPort } from "common-env";
 
 const DEPLOYMENT: DeploymentStatusRow["model_deployment"] = {
   id: "dep-1",
@@ -25,13 +26,18 @@ const DEPLOYMENT: DeploymentStatusRow["model_deployment"] = {
 };
 
 type State = NonNullable<DeploymentStatusRow["model_installation_state"]>;
+type Installation = NonNullable<DeploymentStatusRow["model_installation"]>;
+
+function installation(id: string, group: Installation["group"]): Installation {
+  return { id, group, gpuIds: ["gpu-0"], estCapacity: 60, hostCapacity: 8 };
+}
 
 function row(overrides: Partial<DeploymentStatusRow> = {}): DeploymentStatusRow {
   return {
     model_deployment: DEPLOYMENT,
-    model_installation: { id: "inst-1", group: null },
+    model_installation: installation("inst-1", null),
     model_installation_state: state(),
-    ai_node: { machineName: "gx10-a", host: "192.0.2.1" },
+    ai_node: { id: "192.0.2.1", interconnect: [], machineName: "gx10-a", host: "192.0.2.1" },
     ...overrides,
   };
 }
@@ -43,8 +49,8 @@ function state(overrides: Partial<State> = {}): State {
 /** One live, ready replica per id. */
 function replicas(count: number): DeploymentStatusRow[] {
   return Array.from({ length: count }, (_, i) => row({
-    model_installation: { id: `inst-${i}`, group: null },
-    ai_node: { machineName: `gx10-${i}`, host: `192.0.2.${i + 1}` },
+    model_installation: installation(`inst-${i}`, null),
+    ai_node: { id: `node-${i}`, interconnect: [], machineName: `gx10-${i}`, host: `192.0.2.${i + 1}` },
   }));
 }
 
@@ -58,7 +64,7 @@ describe("foldDeploymentStatusRows", () => {
   test("ignores a replica whose node left the cluster, even while its state still reads ready", () => {
     const [deployment] = foldDeploymentStatusRows([
       ...replicas(2),
-      row({ model_installation: { id: "inst-gone", group: null }, ai_node: null }),
+      row({ model_installation: installation("inst-gone", null), ai_node: null }),
     ]);
     expect(deployment!.status!.replicas).toHaveLength(2);
     expect(deployment!.status!.phase).toBe("ready");
@@ -66,8 +72,8 @@ describe("foldDeploymentStatusRows", () => {
 
   test("reports no status when every installation sits on a node that left the cluster", () => {
     const [deployment] = foldDeploymentStatusRows([
-      row({ model_installation: { id: "inst-0", group: null }, ai_node: null }),
-      row({ model_installation: { id: "inst-1", group: null }, ai_node: null }),
+      row({ model_installation: installation("inst-0", null), ai_node: null }),
+      row({ model_installation: installation("inst-1", null), ai_node: null }),
     ]);
     expect(deployment!.status).toBeUndefined();
     expect(deployment!.id).toBe("dep-1");
@@ -82,8 +88,8 @@ describe("foldDeploymentStatusRows", () => {
 
   test("labels a replica by machine name, falling back to host", () => {
     const [deployment] = foldDeploymentStatusRows([
-      row({ model_installation: { id: "inst-0", group: null }, ai_node: { machineName: "gx10-a", host: "192.0.2.1" } }),
-      row({ model_installation: { id: "inst-1", group: null }, ai_node: { machineName: null, host: "192.0.2.2" } }),
+      row({ model_installation: installation("inst-0", null), ai_node: { id: "192.0.2.1", interconnect: [], machineName: "gx10-a", host: "192.0.2.1" } }),
+      row({ model_installation: installation("inst-1", null), ai_node: { id: "192.0.2.2", interconnect: [], machineName: null, host: "192.0.2.2" } }),
     ]);
     expect(deployment!.status!.replicas!.map(r => r.node)).toEqual(["gx10-a", "192.0.2.2"]);
   });
@@ -98,8 +104,8 @@ describe("foldDeploymentStatusRows", () => {
 
   test("aggregates the worst phase across replicas", () => {
     const [deployment] = foldDeploymentStatusRows([
-      row({ model_installation: { id: "inst-0", group: null } }),
-      row({ model_installation: { id: "inst-1", group: null }, model_installation_state: state({ lifecycleState: "downloading", progress: 42 }) }),
+      row({ model_installation: installation("inst-0", null) }),
+      row({ model_installation: installation("inst-1", null), model_installation_state: state({ lifecycleState: "downloading", progress: 42 }) }),
     ]);
     expect(deployment!.status!.phase).toBe("downloading");
     expect(deployment!.status!.progress).toBe(42);
@@ -107,8 +113,8 @@ describe("foldDeploymentStatusRows", () => {
 
   test("reports partial when some replicas failed and others are ready", () => {
     const [deployment] = foldDeploymentStatusRows([
-      row({ model_installation: { id: "inst-0", group: null } }),
-      row({ model_installation: { id: "inst-1", group: null }, model_installation_state: state({ lifecycleState: "failed", errorMessage: "boom" }) }),
+      row({ model_installation: installation("inst-0", null) }),
+      row({ model_installation: installation("inst-1", null), model_installation_state: state({ lifecycleState: "failed", errorMessage: "boom" }) }),
     ]);
     expect(deployment!.status!.phase).toBe("partial");
     expect(deployment!.status!.error).toBe("boom");
@@ -118,7 +124,7 @@ describe("foldDeploymentStatusRows", () => {
     const other = { ...DEPLOYMENT, id: "dep-2", name: "Other" };
     const result = foldDeploymentStatusRows([
       ...replicas(2),
-      row({ model_deployment: other, model_installation: { id: "inst-x", group: null } }),
+      row({ model_deployment: other, model_installation: installation("inst-x", null) }),
     ]);
     expect(result).toHaveLength(2);
     expect(result.find(d => d.id === "dep-1")!.status!.replicas).toHaveLength(2);
@@ -128,8 +134,8 @@ describe("foldDeploymentStatusRows", () => {
 
 describe("a replica served across machines", () => {
   const group = (rank: number) => ({ id: "group-1", rank, size: 2, rendezvousPort: 29500, generation: 1, addresses: [] });
-  const member = (rank: number, overrides: Partial<State> = {}, node: DeploymentStatusRow["ai_node"] = { machineName: `gx10-${rank}`, host: `192.0.2.${rank + 1}` }) => row({
-    model_installation: { id: `inst-${rank}`, group: group(rank) },
+  const member = (rank: number, overrides: Partial<State> = {}, node: DeploymentStatusRow["ai_node"] = { id: `node-${rank}`, interconnect: [], machineName: `gx10-${rank}`, host: `192.0.2.${rank + 1}` }) => row({
+    model_installation: installation(`inst-${rank}`, group(rank)),
     model_installation_state: state(overrides),
     ai_node: node,
   });
@@ -138,7 +144,11 @@ describe("a replica served across machines", () => {
     const [deployment] = foldDeploymentStatusRows([member(1, { lifecycleState: "installing" }), member(0)]);
     expect(deployment!.status!.replicas).toEqual([{
       phase: "installing", node: "gx10-0", error: null,
-      members: [{ node: "gx10-0", phase: "ready", error: null }, { node: "gx10-1", phase: "installing", error: null }],
+      members: [
+        { node: "gx10-0", phase: "ready", error: null, cards: 1, gpuGb: 60, hostGb: 8 },
+        { node: "gx10-1", phase: "installing", error: null, cards: 1, gpuGb: 60, hostGb: 8 },
+      ],
+      couplingIssues: [expect.objectContaining({ text: "its machines are no longer coupled" })],
     }]);
     expect(deployment!.status!.phase).toBe("installing");
   });
@@ -158,5 +168,29 @@ describe("a replica served across machines", () => {
     const [deployment] = foldDeploymentStatusRows([member(0), member(1), ...replicas(1)]);
     expect(deployment!.status!.replicas).toHaveLength(2);
     expect(deployment!.status!.phase).toBe("ready");
+  });
+});
+
+describe("couplingIssuesOf", () => {
+  const path = (mac: string, ipv4: string, overrides: Partial<InterconnectPath> = {}): InterconnectPath => ({
+    interface: `if-${mac.slice(-2)}`, mac, carrier: true, mtu: 9000, speedMbps: 200000, linkLayer: "Ethernet",
+    ipv4: [ipv4], roceV2Ipv4: [ipv4.split("/")[0]!], addressLosses: 0, ...overrides,
+  });
+  const port = (paths: InterconnectPath[], neighbours: string[]): InterconnectPort => ({ networkCard: "card", port: "p0", paths, neighbours });
+  const pair = (bPath: Partial<InterconnectPath> = {}, bNeighbours = ["d6:15"], aNeighbours = ["a9:39", "ff:01"]) => [
+    { nodeId: "a", node: "gx10-a", interconnect: [port([path("d6:15", "192.168.100.1/24")], aNeighbours)] },
+    { nodeId: "b", node: "gx10-b", interconnect: [port([path("a9:39", "192.168.100.2/24", bPath)], bNeighbours)] },
+  ];
+
+  test("finds nothing wrong with a healthy coupling, though a machine outside the group answers on it", () => {
+    expect(couplingIssuesOf(pair())).toEqual([]);
+  });
+
+  test("names the machine whose coupled port degraded", () => {
+    expect(couplingIssuesOf(pair({ mtu: 1500 })).map(({ text }) => text)).toContain("gx10-b: if-39 runs at MTU 1500, RDMA needs 9000 for full speed");
+  });
+
+  test("says the machines are no longer coupled once no cable joins them", () => {
+    expect(couplingIssuesOf(pair({}, [], [])).map(({ text }) => text)).toEqual(["its machines are no longer coupled"]);
   });
 });

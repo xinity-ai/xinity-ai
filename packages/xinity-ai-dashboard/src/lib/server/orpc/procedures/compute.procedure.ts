@@ -7,6 +7,8 @@ import {
   sql,
   count,
   stateOfInstallation,
+  modelDeploymentT,
+  deploymentMatchesInstallation,
 } from "common-db";
 import { getDB } from "$lib/server/db";
 import { mergeHistorySeries, pickBucketSeconds } from "$lib/server/lib/compute/compute";
@@ -29,6 +31,8 @@ const NodeModelSchema = z.object({
   driver: z.string(),
   lifecycleState: z.string().nullable(),
   progress: z.number().nullable(),
+  deployment: z.string(),
+  groupMachines: z.array(z.object({ nodeId: z.string(), name: z.string() })),
 });
 
 const NodeUsageSchema = z.object({
@@ -120,11 +124,14 @@ export async function buildComputeOverview(rangeHours: number): Promise<ComputeO
     db.select({
       nodeId: modelInstallationT.nodeId,
       specifier: modelInstallationT.specifier,
+      group: modelInstallationT.group,
+      deployment: modelDeploymentT.name,
       driver: modelInstallationT.driver,
       lifecycleState: modelInstallationStateT.lifecycleState,
       progress: modelInstallationStateT.progress,
     }).from(modelInstallationT)
       .leftJoin(modelInstallationStateT, stateOfInstallation)
+      .innerJoin(modelDeploymentT, deploymentMatchesInstallation)
       .where(sql`${modelInstallationT.deletedAt} IS NULL`),
 
     db.select({
@@ -146,6 +153,15 @@ export async function buildComputeOverview(rangeHours: number): Promise<ComputeO
       `)
       .groupBy(usageEventT.nodeId),
   ]);
+
+  const nameOf = (nodeId: string) => {
+    const node = nodes.find((candidate) => candidate.id === nodeId);
+    return node?.machineName ?? node?.host ?? nodeId;
+  };
+  const groupMachines = (groupId: string) => installations
+    .filter((installation) => installation.group?.id === groupId)
+    .toSorted((a, b) => a.group!.rank - b.group!.rank)
+    .map((installation) => ({ nodeId: installation.nodeId, name: nameOf(installation.nodeId) }));
 
   const usageByNode = new Map(usageRows.map((r) => [r.nodeId, r]));
   const modelsByNode = new Map<string, typeof installations>();
@@ -177,6 +193,8 @@ export async function buildComputeOverview(rangeHours: number): Promise<ComputeO
         driver: m.driver,
         lifecycleState: m.lifecycleState,
         progress: m.progress,
+        deployment: m.deployment,
+        groupMachines: m.group ? groupMachines(m.group.id) : [],
       })),
       usage: usage
         ? {

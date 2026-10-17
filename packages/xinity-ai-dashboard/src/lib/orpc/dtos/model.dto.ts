@@ -43,7 +43,17 @@ export const ReplicaStatusDto = z.object({
   node: z.string().nullable(),
   error: z.string().nullable(),
   /** Each machine of a replica served across several, by rank. */
-  members: z.array(z.object({ node: z.string(), phase: ReplicaPhaseDto, error: z.string().nullable() })).optional(),
+  members: z.array(z.object({
+    node: z.string(),
+    phase: ReplicaPhaseDto,
+    error: z.string().nullable(),
+    cards: z.number().describe("Cards the member uses on its machine"),
+    gpuGb: z.number().describe("GPU memory in GB the member occupies on its machine, over all its cards"),
+    hostGb: z.number().describe("Host memory in GB the member occupies on its machine"),
+  })).optional(),
+  couplingIssues: z.array(z.object({ text: z.string(), docsUrl: z.string() }))
+    .describe("What is wrong with the coupling the replica runs across, each with a link to how to fix it")
+    .optional(),
 });
 export type ReplicaStatus = z.infer<typeof ReplicaStatusDto>;
 

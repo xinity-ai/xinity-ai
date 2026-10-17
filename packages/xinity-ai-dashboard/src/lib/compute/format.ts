@@ -4,7 +4,7 @@ import { describeCouplingIssue, describePortIssue, type InterconnectOverview, ty
 
 export type LiveMetricsNode = { nodeId: string; utilizationAvg: number; energyWh: number };
 export type LiveMetrics = { available: boolean; nodes: LiveMetricsNode[] };
-export type NodeModel = { name: string; driver: string; lifecycleState: string | null; progress: number | null };
+export type NodeModel = { name: string; driver: string; lifecycleState: string | null; progress: number | null; deployment: string; groupMachines: { nodeId: string; name: string }[] };
 export type NodeUsage = { requests: number; failedRequests: number; inputTokens: number; outputTokens: number };
 export type NodeSummary = {
   id: string; host: string; machineName: string | null; online: boolean;
