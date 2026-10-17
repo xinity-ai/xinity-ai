@@ -5,11 +5,11 @@
  * builders and downloader so a run here matches a daemon-managed install. See --help.
  */
 import { parseArgs } from "node:util";
-import { networkInterfaces, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
 import { z } from "zod";
-import { maxNumSeqs, quoteShellArgv } from "common-env";
+import { freeMemberAddress, maxNumSeqs, quoteShellArgv } from "common-env";
 import {
   ModelFileSchema,
   estimateThroughput,
@@ -80,7 +80,6 @@ const HELP = [
   "Across coupled nodes (run once per node, rank 0 serves):",
   "  --nnodes <n>        Number of nodes the model spans (default 1).",
   "  --node-rank <r>     This node's rank, 0 to n-1.",
-  "  --master-addr <ip>  Rank 0's LAN address, the same on every node.",
   `  --master-port <n>   Rendezvous port on rank 0 (default ${DEFAULT_MASTER_PORT}).`,
 ].join("\n");
 
@@ -104,7 +103,6 @@ const { values } = parseArgs({
     json: { type: "boolean" },
     nnodes: { type: "string" },
     "node-rank": { type: "string" },
-    "master-addr": { type: "string" },
     "master-port": { type: "string" },
     help: { type: "boolean", short: "h" },
   },
@@ -151,11 +149,8 @@ const masterPort = values["master-port"] ? Number(values["master-port"]) : DEFAU
 if (!Number.isInteger(masterPort) || masterPort <= 0) {
   die(`--master-port must be a positive integer, got "${values["master-port"]}"`);
 }
-if (nodeCount === 1 && (values["node-rank"] || values["master-addr"] || values["master-port"])) {
-  die("--node-rank, --master-addr and --master-port need --nnodes above 1");
-}
-if (nodeCount > 1 && !z.ipv4().safeParse(values["master-addr"]).success) {
-  die(`--nnodes above 1 needs --master-addr, rank 0's IPv4 LAN address, got "${values["master-addr"] ?? ""}"`);
+if (nodeCount === 1 && (values["node-rank"] || values["master-port"])) {
+  die("--node-rank and --master-port need --nnodes above 1");
 }
 
 const backend: "docker" | "bare" = values.image ? "docker" : "bare";
@@ -172,19 +167,19 @@ if (values["cache-dir"]) process.env.VLLM_HF_CACHE_DIR = values["cache-dir"];
 if (values["hf-token"]) process.env.VLLM_HF_TOKEN = values["hf-token"];
 
 const [
-  { buildDockerRunArgs, buildSystemdServeArgv, ensureVllmNetwork, groupTensorParallelSize, SINGLE_NODE, VLLM_NETWORK },
+  { buildDockerRunArgs, buildSystemdServeArgv, couplingNetworkCreateArgs, ensureCouplingNetworks, ensureVllmNetwork, groupTensorParallelSize, SINGLE_NODE, VLLM_NETWORK },
   { computeGpuUtilization, buildVllmExtraArgs, fittedGpuGb, hostMemoryLimitBytes, loadingAllowanceGb, perCardSizing },
   { detectHardwareProfile },
   { detectVllmFeatures },
   { readHostDevices, unpinnedDevicesFor },
-  { detectInterconnect, rdmaDevicesOf },
+  { addressInUse, coupledPaths },
 ] = await Promise.all([
   import("../modules/model-installation/vllm-ops"),
   import("../modules/model-installation/vllm"),
   import("../modules/hardware-detect"),
   import("../modules/vllm-features"),
   import("../modules/model-installation/gpu-devices"),
-  import("../modules/interconnect-detect"),
+  import("../modules/model-installation/coupling-network"),
 ]);
 
 const modelFileSchema = z.object({ models: z.record(z.string(), z.any()) });
@@ -219,36 +214,28 @@ async function detectVllmVersion(deviceArgs: string[]): Promise<string | undefin
   }
 }
 
-// The kernel's route, since overlays like Tailscale give every node a /32 that shares no subnet.
-// The route to one of the node's own addresses runs over lo, so that case reads the owner.
-async function interfaceTowards(address: string): Promise<string | undefined> {
-  const owner = Object.entries(networkInterfaces()).find(([, entries]) => (entries ?? []).some((entry) => entry.address === address));
-  if (owner) {
-    return owner[0];
+function memberAddress(subnet: string, rank: number): string {
+  // Rank r takes the r-th free address from the top, as the scheduler hands them out.
+  const taken = new Set<string>();
+  for (let earlier = 0; earlier < rank; earlier++) {
+    taken.add(freeMemberAddress(subnet, taken)!);
   }
-  const routes = JSON.parse((await $`ip -j route get ${address}`.quiet().nothrow().text()) || "[]") as { dev?: string }[];
-  return routes[0]?.dev;
+  return freeMemberAddress(subnet, taken)!;
 }
 
-// NCCL moves the data over every coupled port, the rendezvous goes over the LAN toward rank 0.
 async function resolveGroup(): Promise<NodeGroup> {
   if (nodeCount === 1) {
     return SINGLE_NODE;
   }
-  const masterAddr = values["master-addr"]!;
-  const coupledInterfaces = (await detectInterconnect())
-    .filter((coupledPort) => coupledPort.neighbours.length > 0)
-    .flatMap((coupledPort) => coupledPort.paths.filter((path) => path.carrier && path.roceV2Ipv4.length > 0))
-    .map((path) => path.interface);
-  const rdmaDevices = await rdmaDevicesOf(coupledInterfaces);
-  if (rdmaDevices.length === 0) {
+  const local = await coupledPaths();
+  if (local.length === 0) {
     die("this node has no coupled RDMA port, `xinity stack doctor` shows why");
   }
-  const socketInterface = await interfaceTowards(masterAddr);
-  if (!socketInterface) {
-    die(`this node has no route to --master-addr ${masterAddr}`);
-  }
-  return { kind: "member", size: nodeCount, rank: nodeRank, masterAddr, masterPort, rdmaDevices, socketInterface };
+  // Sorted, so every rank meets rank 0 on the same subnet whatever order its own ports list in.
+  const paths = local
+    .map((path) => ({ ...path, address: memberAddress(path.subnet, nodeRank) }))
+    .sort((a, b) => a.subnet.localeCompare(b.subnet));
+  return { kind: "member", size: nodeCount, rank: nodeRank, masterAddr: memberAddress(paths[0]!.subnet, 0), masterPort, paths };
 }
 
 type CardShare = { weightGb: number; kvCacheGb: number };
@@ -279,14 +266,17 @@ function serveArgv(config: VllmInstanceConfig): string[] {
   return buildDockerRunArgs(id, config, "preview");
 }
 
-const DOCKER_NETWORKS: Record<NodeGroup["kind"], { name: string; note: string; setup: string[] }> = {
-  single: {
-    name: VLLM_NETWORK,
-    note: "no egress: internet blocked, published port only",
-    setup: [`docker network create -o com.docker.network.bridge.enable_ip_masquerade=false ${VLLM_NETWORK}  # once (egress-blocked)`],
+const EGRESS_BLOCKED_SETUP = `docker network create -o com.docker.network.bridge.enable_ip_masquerade=false ${VLLM_NETWORK}  # once (egress-blocked)`;
+
+const DOCKER_NETWORKS: { [Kind in NodeGroup["kind"]]: { note: string; setup: (group: Extract<NodeGroup, { kind: Kind }>) => string[] } } = {
+  single: { note: "no egress: internet blocked, published port only", setup: () => [EGRESS_BLOCKED_SETUP] },
+  member: {
+    note: "no egress: the other members over the coupling, published port only",
+    setup: (group) => [EGRESS_BLOCKED_SETUP, ...group.paths.map((path) => `docker ${quoteShellArgv(couplingNetworkCreateArgs(path))}  # once per coupled port`)],
   },
-  member: { name: "host", note: "host network: the group members reach each other directly", setup: [] },
 };
+
+const dockerNetworksOf = (group: NodeGroup) => DOCKER_NETWORKS[group.kind] as { note: string; setup: (group: NodeGroup) => string[] };
 
 const followLogsCommand = `docker logs -f vllm-${id}`;
 const stopCommand = `docker stop vllm-${id} && docker rm vllm-${id}`;
@@ -313,7 +303,15 @@ async function startServer(config: VllmInstanceConfig): Promise<never> {
   // docker run -d returns once the container is created; print the follow/stop hints and exit.
   if (backend === "docker") {
     await ensureVllmNetwork();
-    console.error(`Starting (docker, ${DOCKER_NETWORKS[config.group.kind].note}):\n  ${quoteShellArgv(argv)}\n`);
+    if (config.group.kind === "member") {
+      for (const { address } of config.group.paths) {
+        if (await addressInUse(address)) {
+          die(`${address} is already in use on the coupling, so this member cannot take it`);
+        }
+      }
+      await ensureCouplingNetworks(config.group.paths);
+    }
+    console.error(`Starting (docker, ${dockerNetworksOf(config.group).note}):\n  ${quoteShellArgv(argv)}\n`);
     const proc = Bun.spawn(argv, { stdin: "inherit", stdout: "inherit", stderr: "inherit" });
     const code = await proc.exited;
     if (code !== 0) process.exit(code);
@@ -322,6 +320,16 @@ async function startServer(config: VllmInstanceConfig): Promise<never> {
     console.error(`Stop & remove:    ${stopCommand}`);
     emit({ ok: true, event: "started", backend, id, container: `vllm-${id}`, followLogsCommand, stopCommand });
     process.exit(0);
+  }
+
+  const memberAddresses = config.group.kind === "member"
+    ? config.group.paths.map((path) => ({ address: `${path.address}/${path.subnet.split("/")[1]}`, interface: path.interface }))
+    : [];
+  for (const { address, interface: device } of memberAddresses) {
+    if (await addressInUse(address.split("/")[0]!)) {
+      die(`${address} is already in use on the coupling, so this member cannot take it`);
+    }
+    await $`ip addr replace ${address} dev ${device}`;
   }
 
   console.error(`Starting (bare):\n  ${quoteShellArgv(argv)}\n`);
@@ -335,6 +343,9 @@ async function startServer(config: VllmInstanceConfig): Promise<never> {
 
   const code = await proc.exited;
   await $`rm -f ${pidFile}`.nothrow();
+  for (const { address, interface: device } of memberAddresses) {
+    await $`ip addr del ${address} dev ${device}`.nothrow();
+  }
   process.exit(code);
 }
 
@@ -411,7 +422,7 @@ const GROUP_SUMMARIES: { [Kind in NodeGroup["kind"]]: (group: Extract<NodeGroup,
   single: () => "this node only",
   member: (group) =>
     `rank ${group.rank} of ${group.size} (${group.rank === 0 ? "serves" : "headless"}), `
-    + `rendezvous ${group.masterAddr}:${group.masterPort} over ${group.socketInterface}, RDMA over ${group.rdmaDevices.join(", ")}`,
+    + `rendezvous ${group.masterAddr}:${group.masterPort} over ${group.paths[0]!.interface}, RDMA over ${group.paths.map((path) => path.rdmaDevice).join(", ")}`,
 };
 
 const summarizeGroup = (group: NodeGroup) => (GROUP_SUMMARIES[group.kind] as (group: NodeGroup) => string)(group);
@@ -459,7 +470,7 @@ function printPlan(resolved: ResolvedVllmModel, profile: HardwareProfile, driver
         : null,
       gate: { ok: reason === null, reason: reason ?? null, message: reason ? describeIncompatibility(reason, resolved, profile, driver) : null },
       download: { filters: resolved.model.downloadFilter ?? [] },
-      network: backend === "docker" ? { name: DOCKER_NETWORKS[config.group.kind].name } : undefined,
+      network: backend === "docker" ? { name: VLLM_NETWORK } : undefined,
       port,
       startCommand: serveArgv(config),
       followLogsCommand: backend === "docker" ? followLogsCommand : undefined,
@@ -471,7 +482,7 @@ function printPlan(resolved: ResolvedVllmModel, profile: HardwareProfile, driver
   const gpus = profile.gpus.map((g) => `${g.vendor} ${g.name}`).join(", ") || "none";
 
   console.log(`Model:    ${resolved.vllmProviderName}  (type=${resolved.modelType ?? "chat"})`);
-  console.log(`Backend:  ${backend}${backend === "docker" ? ` (${values.image})  [${DOCKER_NETWORKS[config.group.kind].note}]` : ` (${bareVllmPath ?? "vllm not found on PATH"})`}`);
+  console.log(`Backend:  ${backend}${backend === "docker" ? ` (${values.image})  [${dockerNetworksOf(config.group).note}]` : ` (${bareVllmPath ?? "vllm not found on PATH"})`}`);
   console.log(`vLLM:     ${driver.available ? (driver.version ?? "version undetectable") : "not available"}${resolved.minVersion ? `  (model requires >= ${resolved.minVersion})` : ""}`);
   console.log(`Machine:  ${gpus}; ${profile.detectedCapacityGb}GB capacity`);
   console.log(`Group:    ${summarizeGroup(config.group)}`);
@@ -486,7 +497,7 @@ function printPlan(resolved: ResolvedVllmModel, profile: HardwareProfile, driver
   console.log();
   console.log(`# Start command`);
   if (backend === "docker") {
-    for (const line of DOCKER_NETWORKS[config.group.kind].setup) {
+    for (const line of dockerNetworksOf(config.group).setup(config.group)) {
       console.log(line);
     }
   }

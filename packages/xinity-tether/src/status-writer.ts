@@ -1,6 +1,6 @@
 import { aiNodeT, driverErrorCode, inArray, modelInstallationStateT, modelInstallationT, sql, TransactionRollbackError } from "common-db";
-import { keyFingerprint } from "common-env";
-import type { NodeRegistration, InstallationStatePayload, InterconnectPort } from "common-env";
+import { GROUP_RESTART_BUDGET, keyFingerprint } from "common-env";
+import type { NodeRegistration, InstallationGroup, InstallationStatePayload, InterconnectPort } from "common-env";
 import { getDB } from "./db";
 import { rootLogger } from "./logger";
 
@@ -118,6 +118,21 @@ const pendingStates = new Map<string, InstallationStatePayload>();
 let flushTimer: Timer | null = null;
 let flushing: Promise<void> | null = null;
 let failedFlushes = 0;
+const stageListeners = new Set<(states: InstallationStatePayload[]) => void>();
+
+export function onGroupStagesChanged(listener: (states: InstallationStatePayload[]) => void): void {
+  stageListeners.add(listener);
+}
+
+type StoredStage = { id: string; groupStage: string | null; groupGeneration: number | null };
+
+export function stageChanges(batch: InstallationStatePayload[], stored: StoredStage[]): InstallationStatePayload[] {
+  // Members only learn each other's stage and attempt, so a report that changes neither, such as download progress, tells them nothing new.
+  return batch.filter((state) => {
+    const before = stored.find(({ id }) => id === state.installationId);
+    return (state.groupStage ?? null) !== (before?.groupStage ?? null) || (state.groupGeneration ?? null) !== (before?.groupGeneration ?? null);
+  });
+}
 
 export function queueInstallationStates(states: InstallationStatePayload[]): void {
   for (const state of states) {
@@ -149,8 +164,12 @@ async function flushPending(): Promise<void> {
   }
 
   try {
-    await writeStates(batch);
+    const changed = await writeStates(batch);
     failedFlushes = 0;
+    await restartFailedGroups(batch).catch((err) => log.error({ err }, "Failed to restart a group after a member failed"));
+    if (changed.length > 0) {
+      stageListeners.forEach((listener) => listener(changed));
+    }
   } catch (err) {
     failedFlushes++;
     log.error({ err, count: batch.length }, "Batch state flush failed");
@@ -162,7 +181,11 @@ async function flushPending(): Promise<void> {
   }
 }
 
-async function writeStates(batch: InstallationStatePayload[]): Promise<void> {
+async function writeStates(batch: InstallationStatePayload[]): Promise<InstallationStatePayload[]> {
+  const stored = await getDB()
+    .select({ id: modelInstallationStateT.id, groupStage: modelInstallationStateT.groupStage, groupGeneration: modelInstallationStateT.groupGeneration })
+    .from(modelInstallationStateT)
+    .where(inArray(modelInstallationStateT.id, batch.map((state) => state.installationId)));
   const values = batch.map((s) => ({
     id: s.installationId,
     lifecycleState: s.lifecycleState,
@@ -170,6 +193,8 @@ async function writeStates(batch: InstallationStatePayload[]): Promise<void> {
     statusMessage: s.statusMessage ?? null,
     errorMessage: s.errorMessage ?? null,
     failureLogs: s.failureLogs ?? null,
+    groupStage: s.groupStage ?? null,
+    groupGeneration: s.groupGeneration ?? null,
   }));
 
   await getDB()
@@ -183,8 +208,11 @@ async function writeStates(batch: InstallationStatePayload[]): Promise<void> {
         statusMessage: sql`excluded.status_message`,
         errorMessage: sql`excluded.error_message`,
         failureLogs: sql`excluded.failure_logs`,
+        groupStage: sql`excluded.group_stage`,
+        groupGeneration: sql`excluded.group_generation`,
       },
     });
+  return stageChanges(batch, stored);
 }
 
 // A state for an installation hard-deleted after it was queued fails the whole insert on every retry.
@@ -221,3 +249,29 @@ export async function flushAndStop(): Promise<void> {
   await flushPending();
 }
 
+
+export function generationAfter(group: InstallationGroup, failedGeneration: number): number | undefined {
+  if (failedGeneration !== group.generation || group.generation > GROUP_RESTART_BUDGET) {
+    return undefined;
+  }
+  return group.generation + 1;
+}
+
+async function restartFailedGroups(states: InstallationStatePayload[]): Promise<void> {
+  for (const state of states) {
+    if (state.groupStage !== "failed" || state.groupGeneration == null) {
+      continue;
+    }
+    const [row] = await getDB().select({ group: modelInstallationT.group }).from(modelInstallationT)
+      .where(sql`${modelInstallationT.id} = ${state.installationId}`);
+    const next = row?.group && generationAfter(row.group, state.groupGeneration);
+    if (!row?.group || next === undefined) {
+      continue;
+    }
+    // Only while the group is still on the failed attempt, so members failing together restart it once.
+    await getDB().update(modelInstallationT)
+      .set({ group: sql`jsonb_set(${modelInstallationT.group}, '{generation}', to_jsonb(${next}::int))` })
+      .where(sql`${modelInstallationT.group}->>'id' = ${row.group.id} AND (${modelInstallationT.group}->>'generation')::int = ${row.group.generation}`);
+    log.info({ groupId: row.group.id, generation: next }, "Restarting a group after one of its members failed");
+  }
+}

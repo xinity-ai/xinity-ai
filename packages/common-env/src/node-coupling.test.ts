@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { deriveInterconnectOverview, freeMemberAddress, rdmaEndpoints, sharedRdmaSubnets, type CouplingNode } from "./node-coupling";
+import { deriveInterconnectOverview, freeMemberAddress, inSubnet, rdmaEndpoints, sharedRdmaSubnets, type CouplingNode } from "./node-coupling";
 import type { InterconnectPath, InterconnectPort } from "./tether-protocol";
 
 function path(mac: string, ipv4: string | null, overrides: Partial<InterconnectPath> = {}): InterconnectPath {
@@ -154,5 +154,13 @@ describe("freeMemberAddress", () => {
   test("finds nothing in a subnet without a free host address", () => {
     expect(freeMemberAddress("10.0.0.0/30", new Set(["10.0.0.1", "10.0.0.2"]))).toBeUndefined();
     expect(freeMemberAddress("10.0.0.4/31", new Set())).toBeUndefined();
+  });
+});
+
+describe("inSubnet", () => {
+  test("holds an address inside the subnet and refuses one outside it", () => {
+    expect(inSubnet("192.168.100.254", "192.168.100.0/24")).toBe(true);
+    expect(inSubnet("192.168.101.1", "192.168.100.0/24")).toBe(false);
+    expect(inSubnet("192.168.101.1", "192.168.100.0/23")).toBe(true);
   });
 });

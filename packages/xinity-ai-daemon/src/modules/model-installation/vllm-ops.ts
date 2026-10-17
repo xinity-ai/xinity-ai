@@ -23,8 +23,8 @@ export type VllmInstanceConfig = {
   hostMemoryLimitBytes?: number;
 }
 
-// A model spread across coupled nodes runs one member per node. Rank 0 serves, the others only
-// compute. rdmaDevices and socketInterface name this node's own devices, so they differ per member.
+export type CoupledPath = { subnet: string; address: string; interface: string; rdmaDevice: string };
+
 export type NodeGroup =
   | { kind: "single" }
   | {
@@ -33,28 +33,45 @@ export type NodeGroup =
       rank: number;
       masterAddr: string;
       masterPort: number;
-      rdmaDevices: string[];
-      socketInterface: string;
+      // This node's own interfaces and devices, so they differ per member. The one toward rank 0 first.
+      paths: CoupledPath[];
     };
 
 export const SINGLE_NODE: NodeGroup = { kind: "single" };
 
 type GroupLaunch<Group extends NodeGroup> = {
   size: (group: Group) => number;
+  restartsAlone: boolean;
   serveArgs: (group: Group) => string[];
-  env: (group: Group) => string[];
-  docker: (port: number) => { networkArgs: string[]; host: string; port: number };
+  systemdEnv: (group: Group) => string[];
+  systemdUnitLines: (group: Group) => string[];
+  docker: (group: Group, port: number) => { networkArgs: string[]; env: string[]; host: string; port: number };
 };
+
+const COUPLING_NETWORK_PREFIX = "xinity-coupling-";
+
+export const couplingNetworkName = (path: CoupledPath) =>
+  `${COUPLING_NETWORK_PREFIX}${path.interface}-${path.subnet.replace(/[./]/g, "-")}`
+    // Docker lowercases the name when a container joins by name=.
+    .toLowerCase();
+
+const couplingInterface = (index: number) => `coupl${index}`;
+
+const rdmaDevicesEnv = (group: Extract<NodeGroup, { kind: "member" }>) => `NCCL_IB_HCA==${group.paths.map((path) => path.rdmaDevice).join(",")}`;
 
 const GROUP_LAUNCH: { [Kind in NodeGroup["kind"]]: GroupLaunch<Extract<NodeGroup, { kind: Kind }>> } = {
   single: {
     size: () => 1,
+    restartsAlone: true,
     serveArgs: () => [],
-    env: () => [],
-    docker: (port) => ({ networkArgs: ["--network", VLLM_NETWORK, "-p", `127.0.0.1:${port}:8000`], host: "0.0.0.0", port: 8000 }),
+    systemdEnv: () => [],
+    systemdUnitLines: () => [],
+    docker: (_group, port) => ({ networkArgs: ["--network", VLLM_NETWORK, "-p", `127.0.0.1:${port}:8000`], env: [], host: "0.0.0.0", port: 8000 }),
   },
   member: {
     size: (group) => group.size,
+    // A member restarted on its own finds no group to rejoin, so the group restarts as one instead.
+    restartsAlone: false,
     serveArgs: (group) => [
       "--nnodes", String(group.size),
       "--node-rank", String(group.rank),
@@ -62,15 +79,37 @@ const GROUP_LAUNCH: { [Kind in NodeGroup["kind"]]: GroupLaunch<Extract<NodeGroup
       "--master-port", String(group.masterPort),
       ...(group.rank > 0 ? ["--headless"] : []),
     ],
-    env: (group) => [
-      `NCCL_IB_HCA==${group.rdmaDevices.join(",")}`,
-      `NCCL_SOCKET_IFNAME=${group.socketInterface}`,
-      `GLOO_SOCKET_IFNAME=${group.socketInterface}`,
+    systemdEnv: (group) => [
+      rdmaDevicesEnv(group),
+      `NCCL_SOCKET_IFNAME=${group.paths[0]!.interface}`,
+      `GLOO_SOCKET_IFNAME=${group.paths[0]!.interface}`,
+      `VLLM_HOST_IP=${group.paths[0]!.address}`,
     ],
-    docker: (port) => ({
-      networkArgs: ["--network", "host", "--device", "/dev/infiniband", "--ulimit", "memlock=-1:-1"],
-      host: "127.0.0.1",
-      port,
+    systemdUnitLines: (group) => group.paths.flatMap((path) => {
+      const ip = Bun.which("ip") ?? "ip";
+      const address = `${path.address}/${path.subnet.split("/")[1]}`;
+      // The unit holds its member addresses on the host interfaces exactly as long as it runs, across restarts too.
+      return [`ExecStartPre=+${ip} addr replace ${address} dev ${path.interface}`, `ExecStopPost=-${ip} addr del ${address} dev ${path.interface}`];
+    }),
+    docker: (group, port) => ({
+      networkArgs: [
+        "--network", VLLM_NETWORK,
+        ...group.paths.flatMap((path, index) => [
+          "--network", `name=${couplingNetworkName(path)},ip=${path.address},driver-opt=com.docker.network.endpoint.ifname=${couplingInterface(index)}`,
+        ]),
+        "-p", `127.0.0.1:${port}:8000`,
+        "--device", "/dev/infiniband",
+        "--ulimit", "memlock=-1:-1",
+      ],
+      env: [
+        rdmaDevicesEnv(group),
+        `NCCL_SOCKET_IFNAME=${couplingInterface(0)}`,
+        `GLOO_SOCKET_IFNAME=${couplingInterface(0)}`,
+        // vLLM otherwise announces its message queue on the bridge address, which the other members cannot reach.
+        `VLLM_HOST_IP=${group.paths[0]!.address}`,
+      ],
+      host: "0.0.0.0",
+      port: 8000,
     }),
   },
 };
@@ -143,7 +182,7 @@ const OFFLINE_ENV = ["HF_HUB_OFFLINE=1", "TRANSFORMERS_OFFLINE=1"];
 // ---------------------------------------------------------------------------
 
 export function buildSystemdEnvFile(config: VllmInstanceConfig): string {
-  const lines: string[] = [...OFFLINE_ENV, ...config.devices.env, ...launchOf(config.group).env(config.group)];
+  const lines: string[] = [...OFFLINE_ENV, ...config.devices.env, ...launchOf(config.group).systemdEnv(config.group)];
   const audioDuration = resolveMaxAudioInputDurationS(config.settings);
   if (audioDuration != null) {
     lines.push(`VLLM_MAX_AUDIO_DECODE_DURATION_S=${audioDuration}`);
@@ -203,7 +242,9 @@ export function buildSystemdDropIn(config: VllmInstanceConfig): string {
   const groupsLine = supplementaryGroups.length > 0 ? `SupplementaryGroups=${supplementaryGroups.join(" ")}\n` : "";
   // Swap would turn going over the limit into a slow node instead of a stopped installation.
   const memoryLines = config.hostMemoryLimitBytes ? `MemoryMax=${config.hostMemoryLimitBytes}\nMemorySwapMax=0\n` : "";
-  return `[Service]\n${groupsLine}${memoryLines}ExecStart=\nExecStart=${execStart}\n`;
+  const launch = launchOf(config.group);
+  const unitLines = [...(launch.restartsAlone ? [] : ["Restart=no"]), ...launch.systemdUnitLines(config.group)].map((line) => `${line}\n`).join("");
+  return `[Service]\n${groupsLine}${memoryLines}${unitLines}ExecStart=\nExecStart=${execStart}\n`;
 }
 
 const SYSTEMD_UNIT_INSTANCE_RE = /^vllm-driver@(.+)\.service$/;
@@ -335,6 +376,36 @@ export async function ensureVllmNetwork(): Promise<void> {
   log.info({ network: VLLM_NETWORK }, "Created egress-blocked vLLM docker network");
 }
 
+export const couplingNetworkCreateArgs = (path: CoupledPath) => [
+  "network", "create", "-d", "ipvlan", "-o", "ipvlan_mode=l2", "-o", `parent=${path.interface}`,
+  // Internal, so a member reaches the other members on the coupling and nothing beyond it.
+  "--internal",
+  "--subnet", path.subnet, couplingNetworkName(path),
+];
+
+async function couplingNetworksOn(parent: string): Promise<string[]> {
+  const names = nonEmptyLines(await $`docker network ls --filter name=${COUPLING_NETWORK_PREFIX} --format {{.Name}}`.nothrow().text());
+  const parentFormat = "{{index .Options \"parent\"}}";
+  const parents = await Promise.all(names.map(async (name) => (await $`docker network inspect --format ${parentFormat} ${name}`.nothrow().text()).trim()));
+  return names.filter((_name, index) => parents[index] === parent);
+}
+
+export async function ensureCouplingNetworks(paths: CoupledPath[]): Promise<void> {
+  for (const path of paths) {
+    const name = couplingNetworkName(path);
+    if ((await $`docker network inspect ${name}`.quiet().nothrow()).exitCode === 0) {
+      continue;
+    }
+    // Docker takes one ipvlan network per parent interface, so one left from the port's former subnet blocks this one.
+    for (const former of await couplingNetworksOn(path.interface)) {
+      await $`docker network rm ${former}`.quiet().nothrow();
+      log.info({ network: former }, "Removed coupling network of a former subnet");
+    }
+    await $`docker ${couplingNetworkCreateArgs(path)}`.quiet();
+    log.info({ network: name }, "Created coupling network");
+  }
+}
+
 export function buildDockerRunArgs(
   id: string,
   config: VllmInstanceConfig,
@@ -348,7 +419,7 @@ export function buildDockerRunArgs(
   const audioDuration = resolveMaxAudioInputDurationS(config.settings);
   const audioFileSize = resolveMaxAudioInputFileSizeMB(config.settings);
   const launch = launchOf(config.group);
-  const network = launch.docker(config.port);
+  const network = launch.docker(config.group, config.port);
   const args = [
     "docker", "run", "-d",
     "--name", containerName,
@@ -356,7 +427,7 @@ export function buildDockerRunArgs(
     "--ipc=host",
     ...(config.hostMemoryLimitBytes ? ["--memory", String(config.hostMemoryLimitBytes), "--memory-swap", String(config.hostMemoryLimitBytes)] : []),
     ...network.networkArgs,
-    ...launch.env(config.group).flatMap((entry) => ["-e", entry]),
+    ...network.env.flatMap((entry) => ["-e", entry]),
     "-e", "HF_HOME=/data/hf-cache",
     "-e", "TRITON_CACHE_DIR=/data/triton-cache",
     ...OFFLINE_ENV.flatMap((entry) => ["-e", entry]),
@@ -368,7 +439,7 @@ export function buildDockerRunArgs(
       : []),
     "-v", `${daemonConfig.vllm.hfCacheDir}:/data/hf-cache`,
     "-v", `${daemonConfig.vllm.tritonCacheDir}:/data/triton-cache`,
-    ...(mode === "daemon" ? ["--restart", "unless-stopped"] : []),
+    ...(mode === "daemon" && launch.restartsAlone ? ["--restart", "unless-stopped"] : []),
     "--entrypoint", daemonConfig.vllm.path ?? "vllm",
     dockerImage,
     "serve", config.model,
@@ -399,6 +470,9 @@ export function createDockerVllmOps(): VllmOps {
       await $`docker rm -f ${containerName}`.nothrow();
 
       await ensureVllmNetwork();
+      if (config.group.kind === "member") {
+        await ensureCouplingNetworks(config.group.paths);
+      }
       const args = buildDockerRunArgs(id, config);
 
       log.info(

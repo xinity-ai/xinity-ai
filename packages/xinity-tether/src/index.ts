@@ -10,9 +10,9 @@ import { checkMigrations, getDB, subscribe, end as endDB } from "./db";
 import { verifySignature, unauthorizedDetail } from "./auth";
 import { addConnection, removeConnection, pushDesiredState, pushConfig, pushConfigToAll, runKeepaliveLoop, sendShutdownToAll, dropAllConnections, isConnected, getConnectedNodeIds, connectedPublicKey } from "./connections";
 import { createConfigBroadcast } from "./config-broadcast";
-import { buildDesiredState } from "./desired-state";
+import { buildDesiredState, nodesOfGroupsOf } from "./desired-state";
 import { createNotifyBus } from "./notify-bus";
-import { writeRegistration, writeInterconnect, queueInstallationStates, flushAndStop, readPinnedPublicKey, partitionOwnedStates } from "./status-writer";
+import { writeRegistration, writeInterconnect, queueInstallationStates, flushAndStop, readPinnedPublicKey, partitionOwnedStates, onGroupStagesChanged } from "./status-writer";
 import { handleMetrics, httpMetrics, incRequestRejections, type DaemonEndpoint } from "./metrics";
 import { buildListenTarget } from "./serve-config";
 
@@ -54,6 +54,13 @@ const notifyBus = createNotifyBus({
   pushDesiredState,
   isConnected,
   getConnectedNodeIds,
+});
+
+onGroupStagesChanged((states) => {
+  nodesOfGroupsOf(states.map((state) => state.installationId)).then(
+    (nodeIds) => nodeIds.forEach(notifyBus.queue),
+    (err) => rootLogger.error({ err }, "Failed to tell a group's members about a member's stage"),
+  );
 });
 
 // Without the subscription a daemon would connect and then never hear about a

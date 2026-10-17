@@ -32,31 +32,37 @@ const member = (rank: number) => ({
   kind: "member" as const,
   size: 2,
   rank,
-  masterAddr: "10.0.0.1",
+  masterAddr: "192.168.100.1",
   masterPort: 29500,
-  rdmaDevices: ["rocep1s0f0", "roceP2p1s0f0"],
-  socketInterface: "enP7s7",
+  paths: [
+    { subnet: "192.168.100.0/24", address: `192.168.100.${rank + 1}`, interface: "enp1s0f0np0", rdmaDevice: "rocep1s0f0" },
+    { subnet: "192.168.101.0/24", address: `192.168.101.${rank + 1}`, interface: "enP2p1s0f0np0", rdmaDevice: "roceP2p1s0f0" },
+  ],
 });
 
 describe("a member of a node group", () => {
-  test("runs on the host network with the RDMA devices and serves on the installation port", () => {
-    const argv = buildDockerRunArgs("inst-1", { ...baseConfig, port: 8123, group: member(0) });
-    expect(argv).not.toContain("xinity-vllm-noegress-v1");
-    expect(argv).not.toContain("-p");
-    expect(argv.slice(argv.indexOf("--network"), argv.indexOf("--network") + 6)).toEqual([
-      "--network", "host", "--device", "/dev/infiniband", "--ulimit", "memlock=-1:-1",
+  test("stays on the egress-blocked network and joins the coupling on each path with its own address", () => {
+    const argv = buildDockerRunArgs("inst-1", { ...baseConfig, port: 8123, group: member(1) });
+    expect(argv).not.toContain("host");
+    expect(argv.slice(argv.indexOf("--network"), argv.indexOf("--network") + 12)).toEqual([
+      "--network", "xinity-vllm-noegress-v1",
+      "--network", "name=xinity-coupling-enp1s0f0np0-192-168-100-0-24,ip=192.168.100.2,driver-opt=com.docker.network.endpoint.ifname=coupl0",
+      "--network", "name=xinity-coupling-enp2p1s0f0np0-192-168-101-0-24,ip=192.168.101.2,driver-opt=com.docker.network.endpoint.ifname=coupl1",
+      "-p", "127.0.0.1:8123:8000",
+      "--device", "/dev/infiniband",
+      "--ulimit", "memlock=-1:-1",
     ]);
     expect(argv).toContain("NCCL_IB_HCA==rocep1s0f0,roceP2p1s0f0");
-    expect(argv).toContain("NCCL_SOCKET_IFNAME=enP7s7");
+    expect(argv).toContain("NCCL_SOCKET_IFNAME=coupl0");
+    expect(argv).toContain("VLLM_HOST_IP=192.168.100.2");
     expect(argv).toContain("HF_HUB_OFFLINE=1");
-    expect(argv.slice(argv.indexOf("--host"), argv.indexOf("--host") + 4)).toEqual(["--host", "127.0.0.1", "--port", "8123"]);
   });
 
   test("splits tensor parallel across every card of every member", () => {
     const argv = buildSystemdServeArgv({ ...baseConfig, devices: amdPair, group: member(0) });
     expect(argv[argv.indexOf("--tensor-parallel-size") + 1]).toBe("4");
     expect(argv.slice(argv.indexOf("--nnodes"), argv.indexOf("--nnodes") + 8)).toEqual([
-      "--nnodes", "2", "--node-rank", "0", "--master-addr", "10.0.0.1", "--master-port", "29500",
+      "--nnodes", "2", "--node-rank", "0", "--master-addr", "192.168.100.1", "--master-port", "29500",
     ]);
   });
 
@@ -65,10 +71,30 @@ describe("a member of a node group", () => {
     expect(buildSystemdServeArgv({ ...baseConfig, group: member(1) })).toContain("--headless");
   });
 
-  test("hands NCCL its devices through the systemd env file too", () => {
+  test("hands NCCL its devices and the member its address through the systemd env file too", () => {
     const env = buildSystemdEnvFile({ ...baseConfig, group: member(1) });
     expect(env).toContain("NCCL_IB_HCA==rocep1s0f0,roceP2p1s0f0\n");
-    expect(env).toContain("GLOO_SOCKET_IFNAME=enP7s7\n");
+    expect(env).toContain("GLOO_SOCKET_IFNAME=enp1s0f0np0\n");
+    expect(env).toContain("VLLM_HOST_IP=192.168.100.2\n");
+  });
+
+  test("holds the member addresses on the host interfaces for as long as the unit runs", () => {
+    const lines = buildSystemdDropIn({ ...baseConfig, group: member(1) }).split("\n").filter((line) => line.startsWith("ExecStartPre=") || line.startsWith("ExecStopPost="));
+    expect(lines.map((line) => line.replace(/=[+-]\S*ip /, "= ip "))).toEqual([
+      "ExecStartPre= ip addr replace 192.168.100.2/24 dev enp1s0f0np0",
+      "ExecStopPost= ip addr del 192.168.100.2/24 dev enp1s0f0np0",
+      "ExecStartPre= ip addr replace 192.168.101.2/24 dev enP2p1s0f0np0",
+      "ExecStopPost= ip addr del 192.168.101.2/24 dev enP2p1s0f0np0",
+    ]);
+    expect(lines[0]).toMatch(/^ExecStartPre=\+/);
+    expect(lines[1]).toMatch(/^ExecStopPost=-/);
+  });
+
+  test("leaves restarting a member to its group, on both backends, while a single installation restarts on its own", () => {
+    expect(buildSystemdDropIn({ ...baseConfig, group: member(1) })).toContain("\nRestart=no\n");
+    expect(buildSystemdDropIn(baseConfig)).not.toContain("Restart=");
+    expect(buildDockerRunArgs("inst-1", { ...baseConfig, group: member(1) })).not.toContain("--restart");
+    expect(buildDockerRunArgs("inst-1", baseConfig)).toContain("unless-stopped");
   });
 });
 
@@ -100,9 +126,9 @@ describe("buildDockerRunArgs", () => {
     ]);
   });
 
-  test("every single-node container is egress-blocked and offline; no mode lets it reach the internet", () => {
-    for (const mode of ["daemon", "preview"] as const) {
-      const argv = buildDockerRunArgs("inst-1", baseConfig, mode);
+  test("every container is egress-blocked and offline, members of a group too; no mode lets it reach the internet", () => {
+    for (const [mode, group] of [["daemon", SINGLE_NODE], ["preview", SINGLE_NODE], ["daemon", member(0)]] as const) {
+      const argv = buildDockerRunArgs("inst-1", { ...baseConfig, group }, mode);
       const netIdx = argv.indexOf("--network");
       expect(argv[netIdx + 1]).toBe("xinity-vllm-noegress-v1");
       expect(netIdx).toBeLessThan(argv.indexOf("-p")); // network before published port

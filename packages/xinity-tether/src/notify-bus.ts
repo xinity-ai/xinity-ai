@@ -49,6 +49,8 @@ export function createNotifyBus(deps: NotifyBusDeps) {
   }
 
   return {
+    queue,
+
     async start(): Promise<void> {
       // Notifications sent while the listen connection was down are lost, so every
       // live daemon is re-synced whenever the subscription is established again.

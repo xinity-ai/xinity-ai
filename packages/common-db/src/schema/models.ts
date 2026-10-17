@@ -1,10 +1,11 @@
 import { type InferSelectModel, sql } from "drizzle-orm";
 import { pgEnum, pgTable, real, text, timestamp, uuid, boolean, integer, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { organizationT } from "./orgSchema";
-import type { DeploymentSettings, GpuInfo, InstallationGroup, InterconnectPort } from "common-env";
+import { GROUP_STAGES, type DeploymentSettings, type GpuInfo, type InstallationGroup, type InterconnectPort } from "common-env";
 
 export const lifecycleStateEnum = pgEnum("lifecycle_state", ["downloading", "installing", "ready", "failed"]);
 export const inferenceDriverEnum = pgEnum("inference_driver", ["ollama", "vllm"]);
+export const groupStageEnum = pgEnum("group_stage", GROUP_STAGES);
 
 const createdAt = timestamp("created_at", { withTimezone: true }).defaultNow().notNull();
 const updatedAt = timestamp("updated_at", { withTimezone: true })
@@ -166,6 +167,10 @@ export const modelInstallationStateT = pgTable("model_installation_state", {
   statusMessage: text("status_message"),
   /** Raw container/service logs captured on failure, for user diagnostics */
   failureLogs: text("failure_logs"),
+  /** How far a member of a group is toward starting with the others. Null for an installation served on one node alone. */
+  groupStage: groupStageEnum("group_stage"),
+  /** The attempt of its group the stage belongs to. */
+  groupGeneration: integer("group_generation"),
 
   createdAt,
   updatedAt,

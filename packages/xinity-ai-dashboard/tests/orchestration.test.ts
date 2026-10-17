@@ -764,7 +764,7 @@ describe("orchestration: serving across coupled nodes", () => {
 
   const member = (id: string, nodeId: string, rank: number, size = 2) => makeInstallation({
     id, nodeId, specifier: "big", driver: "vllm",
-    group: { id: "group-1", rank, size, rendezvousPort: 29500, addresses: [{ subnet: "192.168.100.0/24", address: `192.168.100.${254 - rank}` }] },
+    group: { id: "group-1", rank, size, rendezvousPort: 29500, generation: 1, addresses: [{ subnet: "192.168.100.0/24", address: `192.168.100.${254 - rank}` }] },
   });
   const requirement = (replicas: number): ModelRequirementTable => ({
     "dep-1:big": { deploymentId: "dep-1", specifier: "big", replicas, preferredDriver: "vllm", settings: { version: 1 } } as ModelRequirement,
