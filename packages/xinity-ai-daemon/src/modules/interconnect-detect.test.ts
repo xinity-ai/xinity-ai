@@ -2,7 +2,7 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { createInterconnectMonitor, groupIntoPorts, ipv4FromGid, parseNeighbourMacs, rdmaDevicesOf, readCandidatePaths, readLocalMacs } from "./interconnect-detect";
+import { createInterconnectMonitor, groupIntoPorts, ipv4FromGid, neighbourMacsAnswering, rdmaDevicesOf, readCandidatePaths, readLocalMacs } from "./interconnect-detect";
 
 // The Ubuntu GX10 of the test pair: one ConnectX-7, port p0 cabled on both PCIe paths, p1 empty.
 const SWITCH_ID = "15d6500003e282b0";
@@ -116,15 +116,23 @@ describe("ipv4FromGid", () => {
   });
 });
 
-describe("parseNeighbourMacs", () => {
-  test("keeps answered entries and drops ones that never resolved", () => {
+describe("neighbourMacsAnswering", () => {
+  test("keeps the machines that answered and drops entries the kernel kept for ones long gone", () => {
+    const ping = [
+      "PING ff02::1%enp1s0f0np0 (ff02::1%enp1s0f0np0) 56 data bytes",
+      "64 bytes from fe80::41e3:a280:6578:3ad5%enp1s0f0np0: icmp_seq=1 ttl=64 time=0.953 ms",
+      "64 bytes from fe80::c332:279c:7805:f9de%enp1s0f0np0: icmp_seq=1 ttl=64 time=0.997 ms",
+      "64 bytes from fe80::41e3:a280:6578:3ad5%enp1s0f0np0: icmp_seq=2 ttl=64 time=0.912 ms",
+    ].join("\n");
     const json = JSON.stringify([
-      { dst: "fe80::deca:6afd:ecbf:4bb7", dev: "enp1s0f0np0", lladdr: "b0:82:e2:50:a9:3d", state: ["REACHABLE"] },
-      { dst: "fe80::2c7d:c435:cd27:b22d", dev: "enp1s0f0np0", lladdr: "b0:82:e2:50:a9:39", state: ["DELAY"] },
+      { dst: "fe80::41e3:a280:6578:3ad5", dev: "enp1s0f0np0", lladdr: "30:c5:99:3d:f4:e6", state: ["STALE"] },
+      { dst: "fe80::c332:279c:7805:f9de", dev: "enp1s0f0np0", lladdr: "30:c5:99:3d:f4:ea", state: ["REACHABLE"] },
+      { dst: "fe80::1cd2:e7ff:fe2a:1b4c", dev: "enp1s0f0np0", lladdr: "1e:d2:e7:2a:1b:4c", state: ["STALE"] },
+      { dst: "192.168.100.2", dev: "enp1s0f0np0", lladdr: "30:c5:99:3d:f4:e6", state: ["REACHABLE"] },
       { dst: "fe80::1", dev: "enp1s0f0np0", state: ["FAILED"] },
     ]);
-    expect(parseNeighbourMacs(json)).toEqual(["b0:82:e2:50:a9:3d", "b0:82:e2:50:a9:39"]);
-    expect(parseNeighbourMacs("")).toEqual([]);
+    expect(neighbourMacsAnswering(ping, json)).toEqual(["30:c5:99:3d:f4:e6", "30:c5:99:3d:f4:ea"]);
+    expect(neighbourMacsAnswering("", "")).toEqual([]);
   });
 });
 
