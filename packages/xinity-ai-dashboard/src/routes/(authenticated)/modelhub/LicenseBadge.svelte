@@ -15,6 +15,6 @@
   const label = $derived(license.use === "unknown" ? "License unknown" : license.name);
 </script>
 
-<Badge variant="outline" class="{tone} {className}" title={license.summary ?? license.name}>
-  {label}
+<Badge variant="outline" class="max-w-full {tone} {className}" title={license.summary ? `${license.name}: ${license.summary}` : license.name}>
+  <span class="truncate">{label}</span>
 </Badge>
