@@ -6,6 +6,7 @@ import {
   usageEventT,
   sql,
   count,
+  stateOfInstallation,
 } from "common-db";
 import { getDB } from "$lib/server/db";
 import { mergeHistorySeries, pickBucketSeconds } from "$lib/server/lib/compute/compute";
@@ -123,7 +124,7 @@ export async function buildComputeOverview(rangeHours: number): Promise<ComputeO
       lifecycleState: modelInstallationStateT.lifecycleState,
       progress: modelInstallationStateT.progress,
     }).from(modelInstallationT)
-      .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`)
+      .leftJoin(modelInstallationStateT, stateOfInstallation)
       .where(sql`${modelInstallationT.deletedAt} IS NULL`),
 
     db.select({

@@ -9,10 +9,12 @@ import {
   count,
   deploymentMatchesInstallation,
   type SQL,
+  nodeIsLive,
+  installationOnLiveNode,
+  stateOfInstallation,
 } from "common-db";
 import { config } from "$lib/server/config";
 import { getDB } from "$lib/server/db";
-import { nodeIsLive, installationOnLiveNode } from "$lib/server/lib/deployments/node-liveness";
 import { rootLogger } from "$lib/server/logging";
 import { building } from "$app/environment";
 import { notifyOrgMembers } from "./notification.service";
@@ -159,7 +161,7 @@ async function getDeploymentPhases(): Promise<Map<string, DeploymentInfo>> {
     AND
       ${modelInstallationT.deletedAt} IS NULL
     `)
-    .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`)
+    .leftJoin(modelInstallationStateT, stateOfInstallation)
     .leftJoin(aiNodeT, installationOnLiveNode);
 
   return foldDeploymentPhaseRows(rows);

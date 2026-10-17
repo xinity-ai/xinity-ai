@@ -1,4 +1,4 @@
-import { calcCanaryProgress, sql, modelDeploymentT, aiNodeT, modelInstallationT, modelInstallationStateT, installationMatchesLookup, installationTakesRequests } from "common-db";
+import { calcCanaryProgress, sql, modelDeploymentT, aiNodeT, modelInstallationT, modelInstallationStateT, installationMatchesLookup, installationTakesRequests, installationOnLiveNode, stateOfInstallation } from "common-db";
 import { getDB } from "../db";
 import { config } from "../config";
 import { createCatalogClient, createInfoserverClient, resolveTagsForDriver, resolveRequestParamsForDriver } from "common-env/model-catalog";
@@ -176,15 +176,9 @@ async function getModelSources(deploymentId: string, specifier: string): Promise
     authToken: aiNodeT.authToken,
     tls: aiNodeT.tls,
   }).from(modelInstallationT)
-    .innerJoin(aiNodeT, sql`
-      ${modelInstallationT.nodeId} = ${aiNodeT.id}
-    AND
-      ${aiNodeT.available}
-    AND
-      ${aiNodeT.deletedAt} IS NULL
-    `)
+    .innerJoin(aiNodeT, installationOnLiveNode)
     .innerJoin(modelInstallationStateT, sql`
-      ${modelInstallationStateT.id} = ${modelInstallationT.id}
+      ${stateOfInstallation}
       AND ${modelInstallationStateT.lifecycleState} = 'ready'
     `)
     .where(sql`

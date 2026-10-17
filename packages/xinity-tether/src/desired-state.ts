@@ -1,4 +1,4 @@
-import { inArray, modelInstallationStateT, modelInstallationT, sql, type ModelInstallation } from "common-db";
+import { inArray, modelInstallationStateT, modelInstallationT, sql, stateOfInstallation, type ModelInstallation } from "common-db";
 import { getDB } from "./db";
 import type { DesiredGroup, DesiredState, GroupStage } from "common-env";
 import { rootLogger } from "./logger";
@@ -54,7 +54,7 @@ async function membersOf(groupIds: string[]): Promise<GroupMember[]> {
   const rows = await getDB()
     .select({ installation: modelInstallationT, stage: modelInstallationStateT.groupStage, stageGeneration: modelInstallationStateT.groupGeneration })
     .from(modelInstallationT)
-    .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`)
+    .leftJoin(modelInstallationStateT, stateOfInstallation)
     .where(sql`${inArray(sql`${modelInstallationT.group}->>'id'`, groupIds)} AND ${modelInstallationT.deletedAt} IS NULL`);
   return rows.map(({ installation, stage, stageGeneration }) => ({ ...installation, stage, stageGeneration }));
 }
