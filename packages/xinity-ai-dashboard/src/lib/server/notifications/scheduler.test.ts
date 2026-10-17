@@ -12,6 +12,7 @@ function row(overrides: Partial<Row> = {}): Row {
     publicSpecifier: "qwen3.6-27b",
     desiredReplicas: 4,
     installationId: "inst-1",
+    installationGroup: null,
     liveNodeId: "node-1",
     lifecycleState: "ready",
     errorMessage: null,
@@ -118,5 +119,15 @@ describe("foldDeploymentPhaseRows", () => {
     const info = foldDeploymentPhaseRows(installations(3)).get("dep-1")!;
     expect(info.phase).toBe("ready");
     expect(info.observedReplicas).toBeLessThan(info.desiredReplicas);
+  });
+
+  test("counts a group served across machines as one replica, failed rather than partial while one machine failed", () => {
+    const installationGroup = { id: "group-1", rank: 0, size: 2, rendezvousPort: 29500, generation: 1, addresses: [] };
+    const info = foldDeploymentPhaseRows([
+      row({ installationId: "inst-0", liveNodeId: "node-0", installationGroup }),
+      row({ installationId: "inst-1", liveNodeId: "node-1", installationGroup: { ...installationGroup, rank: 1 }, lifecycleState: "failed", errorMessage: "boom" }),
+    ]).get("dep-1")!;
+    expect(info.observedReplicas).toBe(1);
+    expect(info.phase).toBe("failed");
   });
 });

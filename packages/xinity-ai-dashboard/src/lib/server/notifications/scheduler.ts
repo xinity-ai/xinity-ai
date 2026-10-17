@@ -17,7 +17,8 @@ import { rootLogger } from "$lib/server/logging";
 import { building } from "$app/environment";
 import { notifyOrgMembers } from "./notification.service";
 import { NotificationType } from "./events";
-import { type DeploymentPhase, type DisplayPhase, aggregatePhase } from "$lib/server/lib/deployments/deployment-phase";
+import { type DeploymentPhase, type DisplayPhase, type ReplicaMember, foldDeployment, foldReplicas, toDisplayPhase } from "$lib/server/lib/deployments/deployment-phase";
+import type { InstallationGroup } from "common-env";
 
 const log = rootLogger.child({ name: "notification.scheduler" });
 
@@ -69,12 +70,10 @@ export type DeploymentInfo = {
   name: string;
   model: string;
   error: string | null;
-  /** Installations that exist, which can fall short of `desiredReplicas`. */
+  /** Replicas placed, which can fall short of `desiredReplicas`. */
   observedReplicas: number;
   desiredReplicas: number;
 };
-
-type DeploymentAcc = Omit<DeploymentInfo, "phase"> & { phase: DeploymentPhase; hasReady: boolean };
 
 export type DeploymentPhaseRow = {
   deploymentId: string;
@@ -84,6 +83,7 @@ export type DeploymentPhaseRow = {
   publicSpecifier: string;
   desiredReplicas: number;
   installationId: string | null;
+  installationGroup: InstallationGroup | null;
   liveNodeId: string | null;
   lifecycleState: string | null;
   errorMessage: string | null;
@@ -96,55 +96,37 @@ export type DeploymentPhaseRow = {
  * observed count keys off that column rather than the row count.
  */
 export function foldDeploymentPhaseRows(rows: DeploymentPhaseRow[]): Map<string, DeploymentInfo> {
-  const accumulators = new Map<string, DeploymentAcc>();
+  const deployments = new Map<string, { first: DeploymentPhaseRow; orgName: string; members: ReplicaMember[] }>();
 
   for (const row of rows) {
-    const existing = accumulators.get(row.deploymentId);
-    const servedByLiveNode = row.installationId !== null && row.liveNodeId !== null;
-    const phase: DeploymentPhase = servedByLiveNode ? (row.lifecycleState as DeploymentPhase ?? "scheduling") : "pending";
-    const observed = servedByLiveNode ? 1 : 0;
-    const error = servedByLiveNode ? row.errorMessage : null;
-
-    if (!existing) {
-      accumulators.set(row.deploymentId, {
-        phase,
-        hasReady: phase === "ready",
-        orgId: row.organizationId,
-        orgName: row.orgName ?? "",
-        name: row.deploymentName,
-        model: row.publicSpecifier,
-        error,
-        observedReplicas: observed,
-        desiredReplicas: row.desiredReplicas,
-      });
-    } else {
-      const agg = aggregatePhase(
-        { phase: existing.phase, progress: null, error: existing.error, failureLogs: null, hasReady: existing.hasReady },
-        phase, null, error,
-      );
-      accumulators.set(row.deploymentId, {
-        ...existing,
-        phase: agg.phase,
-        hasReady: agg.hasReady,
-        orgName: row.orgName ?? existing.orgName,
-        error: agg.error,
-        observedReplicas: existing.observedReplicas + observed,
+    const deployment = deployments.get(row.deploymentId) ?? { first: row, orgName: "", members: [] };
+    deployment.orgName = row.orgName ?? deployment.orgName;
+    if (row.installationId !== null && row.liveNodeId !== null) {
+      deployment.members.push({
+        installationId: row.installationId,
+        group: row.installationGroup,
+        phase: (row.lifecycleState as DeploymentPhase | null) ?? "scheduling",
+        progress: null,
+        error: row.errorMessage,
+        failureLogs: null,
       });
     }
+    deployments.set(row.deploymentId, deployment);
   }
 
   const result = new Map<string, DeploymentInfo>();
-  for (const [id, acc] of accumulators) {
-    const phase = acc.phase === "failed" && acc.hasReady ? "partial" : acc.phase;
+  for (const [id, { first, orgName, members }] of deployments) {
+    const replicas = foldReplicas(members);
+    const info = foldDeployment(replicas.map(({ info }) => info));
     result.set(id, {
-      phase,
-      orgId: acc.orgId,
-      orgName: acc.orgName,
-      name: acc.name,
-      model: acc.model,
-      error: acc.error,
-      observedReplicas: acc.observedReplicas,
-      desiredReplicas: acc.desiredReplicas,
+      phase: info ? toDisplayPhase(info) : "pending",
+      orgId: first.organizationId,
+      orgName,
+      name: first.deploymentName,
+      model: first.publicSpecifier,
+      error: info?.error ?? null,
+      observedReplicas: replicas.length,
+      desiredReplicas: first.desiredReplicas,
     });
   }
   return result;
@@ -160,6 +142,7 @@ async function getDeploymentPhases(): Promise<Map<string, DeploymentInfo>> {
       publicSpecifier: modelDeploymentT.publicSpecifier,
       desiredReplicas: modelDeploymentT.replicas,
       installationId: modelInstallationT.id,
+      installationGroup: modelInstallationT.group,
       liveNodeId: aiNodeT.id,
       lifecycleState: modelInstallationStateT.lifecycleState,
       errorMessage: modelInstallationStateT.errorMessage,

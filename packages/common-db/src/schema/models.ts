@@ -150,6 +150,20 @@ export function installationMatchesLookup(value: string) {
   return sql`${modelInstallationT.specifier} = ${value}`;
 }
 
+/** SQL: the installation takes requests, alone or as rank 0 of a group whose every member is ready on an available node. */
+export const installationTakesRequests = sql`(
+  ${modelInstallationT.group} IS NULL
+  OR (
+    (${modelInstallationT.group}->>'rank')::int = 0
+    AND (
+      SELECT count(*) FROM model_installation member
+      JOIN model_installation_state member_state ON member_state.id = member.id AND member_state.lifecycle_state = 'ready'
+      JOIN ai_node member_node ON member_node.id = member.node_id AND member_node.available AND member_node.deleted_at IS NULL
+      WHERE member."group"->>'id' = ${modelInstallationT.group}->>'id' AND member.deleted_at IS NULL
+    ) = (${modelInstallationT.group}->>'size')::int
+  )
+)`;
+
 /**
  * Represents known additional info about any particular model installation. This is a 1-on-1 mapping, but kept
  * in a separate table 1. since changes to modelInstallation itself should function as a signal for ai nodes to act upon

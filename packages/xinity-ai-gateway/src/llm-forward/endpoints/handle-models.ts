@@ -26,6 +26,18 @@ function deriveStatus(lifecycles: InstallationLifecycle[]): LifecycleState | nul
   });
 }
 
+type Placed = { group: { id: string; size: number } | null; lifecycle: InstallationLifecycle };
+
+export function replicaLifecycles(placed: Placed[]): InstallationLifecycle[] {
+  const singles = placed.filter((installation) => !installation.group).map(({ lifecycle }) => lifecycle);
+  const groups = Map.groupBy(placed.filter((installation) => installation.group), (installation) => installation.group!.id);
+  // A group takes requests only once every member is ready, so it lists as its least ready member.
+  const grouped = [...groups.values()].map((members) => members.length < members[0]!.group!.size
+    ? null
+    : members.map(({ lifecycle }) => lifecycle ?? "downloading").reduce((worst, current) => (LIFECYCLE_PRIORITY[current] < LIFECYCLE_PRIORITY[worst] ? current : worst)));
+  return [...singles, ...grouped];
+}
+
 /**
  * Specifiers left out of the result fall back to the caller's default, which is also
  * how an unreachable catalog is handled: a listing of deployments is still useful
@@ -114,9 +126,9 @@ export async function handleModelsRequest(req: Request): Promise<Response> {
     : new Map<string, number>();
   const modelOutput = [...rowsByDeployment.values()].map((rows) => {
     const deployment = rows[0]!.model_deployment;
-    const lifecycles: InstallationLifecycle[] = rows
+    const lifecycles = replicaLifecycles(rows
       .filter((r) => r.model_installation && r.ai_node)
-      .map((r) => r.model_installation_state?.lifecycleState ?? null);
+      .map((r) => ({ group: r.model_installation!.group, lifecycle: r.model_installation_state?.lifecycleState ?? null })));
     return {
       id: deployment.publicSpecifier,
       object: "model",
