@@ -1,4 +1,4 @@
-import { calcCanaryProgress, modelDeploymentT, modelInstallationT, modelInstallationStateT, aiNodeT, organizationT, sql, deploymentMatchesInstallation, type lifecycleStateEnum } from "common-db";
+import { calcCanaryProgress, modelDeploymentT, modelInstallationT, modelInstallationStateT, aiNodeT, organizationT, sql, deploymentMatchesInstallation, installationOnLiveNode, stateOfInstallation, type lifecycleStateEnum } from "common-db";
 import { getDB } from "../../db";
 import { checkAuth } from "../auth";
 import { getCatalogClient, getInfoClient } from "../model-data";
@@ -101,14 +101,8 @@ export async function handleModelsRequest(req: Request): Promise<Response> {
       AND
         ${modelInstallationT.deletedAt} IS NULL
       `)
-      .leftJoin(aiNodeT, sql`
-        ${modelInstallationT.nodeId} = ${aiNodeT.id}
-      AND
-        ${aiNodeT.available}
-      AND
-        ${aiNodeT.deletedAt} IS NULL
-      `)
-      .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`)
+      .leftJoin(aiNodeT, installationOnLiveNode)
+      .leftJoin(modelInstallationStateT, stateOfInstallation)
       .where(sql`
         ${modelDeploymentT.organizationId} = ${orgId}
       AND

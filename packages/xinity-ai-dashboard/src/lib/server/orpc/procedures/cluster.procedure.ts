@@ -1,7 +1,6 @@
 import { rootOs, withOrganization, requirePermission } from "../root";
-import { sql, aiNodeT, modelInstallationT } from "common-db";
+import { sql, aiNodeT, modelInstallationT, nodeIsLive } from "common-db";
 import { getDB } from "$lib/server/db";
-import { nodeIsLive } from "$lib/server/lib/deployments/node-liveness";
 import { rootLogger } from "$lib/server/logging";
 import { catalogClient } from "$lib/server/lib/models/model-catalog";
 import z from "zod";

@@ -1,10 +1,9 @@
 import { rootOs, withOrganization, requirePermission, auditMiddleware } from "../root";
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
-import { sql, modelDeploymentT, modelInstallationT, modelInstallationStateT, aiNodeT, deploymentMatchesInstallation, type ModelDeployment, type SQL } from "common-db";
+import { sql, modelDeploymentT, modelInstallationT, modelInstallationStateT, aiNodeT, deploymentMatchesInstallation, installationOnLiveNode, stateOfInstallation, type ModelDeployment, type SQL } from "common-db";
 import z from "zod";
 import { DeploymentDto, DeploymentWithStatusDto, type DeploymentWithStatus } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
-import { installationOnLiveNode } from "$lib/server/lib/deployments/node-liveness";
 import { previewPlacement, syncDeployedModels, type Shortfall, type ShortfallReason } from "$lib/server/lib/deployments/orchestration";
 import { requirementKey } from "$lib/server/lib/deployments/placement";
 import type { ModelRequirement } from "$lib/server/lib/deployments/requirements";
@@ -164,7 +163,7 @@ async function queryDeploymentsWithStatus(where: SQL | undefined): Promise<Deplo
     AND
       ${modelInstallationT.deletedAt} IS NULL
     `)
-    .leftJoin(modelInstallationStateT, sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`)
+    .leftJoin(modelInstallationStateT, stateOfInstallation)
     .leftJoin(aiNodeT, installationOnLiveNode)
     .where(where);
 
@@ -386,7 +385,7 @@ const retryDeployment = rootOs
         ${modelInstallationT.deletedAt} IS NULL
       `)
       .innerJoin(modelInstallationStateT, sql`
-        ${modelInstallationStateT.id} = ${modelInstallationT.id}
+        ${stateOfInstallation}
         AND ${modelInstallationStateT.lifecycleState} = ${"failed"}
       `)
       .where(sql`${modelDeploymentT.id} = ${input.id}`);

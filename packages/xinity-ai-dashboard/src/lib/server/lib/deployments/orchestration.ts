@@ -1,4 +1,4 @@
-import { inArray, modelDeploymentT, sql, modelInstallationT, modelInstallationStateT, aiNodeT, type ModelInstallation, type AiNode } from "common-db";
+import { inArray, modelDeploymentT, sql, modelInstallationT, modelInstallationStateT, aiNodeT, nodeIsLive, type ModelInstallation, type AiNode } from "common-db";
 import { DOES_NOT_FIT_ON_NODE, deriveInterconnectOverview, freeMemberAddress, resolveOptimizeFor, settingsEqual, sharedRdmaSubnets, type Coupling, type InstallationGroup, type OptimizationGoal } from "common-env";
 import { getDB } from "$lib/server/db";
 import { resolveSchedulable, type SchedulableModel } from "$lib/server/lib/models/model-catalog";
@@ -7,7 +7,6 @@ import { rootLogger } from "$lib/server/logging";
 import { building } from "$app/environment";
 import { maxVramGb } from "$lib/server/license";
 import { config } from "$lib/server/config";
-import { nodeIsLive } from "./node-liveness";
 import { buildClusterState, chargeCapacity, chargeOf, poolCharge, rankServers, releaseInstallationFromState, replicasOf, resourcesOf, type ClusterState, type NewInstallation } from "./cluster-state";
 import { ENGINE_SCHEDULERS } from "./engines";
 import type { MemberSlot, PlacementRequest } from "./engines/engine";
