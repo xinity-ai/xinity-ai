@@ -1,6 +1,6 @@
 import { rootOs, withOrganization, requirePermission, auditMiddleware } from "../root";
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
-import { sql, modelDeploymentT, modelInstallationT, modelInstallationStateT, aiNodeT, deploymentMatchesInstallation, installationOnLiveNode, stateOfInstallation, type ModelDeployment, type SQL } from "common-db";
+import { inArray, sql, modelDeploymentT, modelInstallationT, modelInstallationStateT, aiNodeT, deploymentMatchesInstallation, installationOnLiveNode, stateOfInstallation, type ModelDeployment, type SQL } from "common-db";
 import z from "zod";
 import { DeploymentDto, DeploymentWithStatusDto, type DeploymentWithStatus } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
@@ -376,24 +376,24 @@ const retryDeployment = rootOs
     const deployment = await findActiveDeploymentInOrg(input.id, context.activeOrganizationId);
     if (!deployment) throw errors.NOT_FOUND();
 
-    const failedStates = await getDB()
-      .select({ stateId: modelInstallationStateT.id })
-      .from(modelDeploymentT)
-      .innerJoin(modelInstallationT, sql`
-        ${deploymentMatchesInstallation}
-      AND
-        ${modelInstallationT.deletedAt} IS NULL
-      `)
+    const failed = await getDB()
+      .select({ id: modelInstallationT.id, group: modelInstallationT.group })
+      .from(modelInstallationT)
       .innerJoin(modelInstallationStateT, sql`
         ${stateOfInstallation}
         AND ${modelInstallationStateT.lifecycleState} = ${"failed"}
       `)
-      .where(sql`${modelDeploymentT.id} = ${input.id}`);
+      .where(sql`${modelInstallationT.deploymentId} = ${deployment.id} AND ${modelInstallationT.deletedAt} IS NULL`);
 
-    if (failedStates.length > 0) {
+    // A daemon keeps a failure it has seen and a group keeps its spent restarts, so fresh installations
+    // replace the failed ones, a group as a whole, instead of their states being cleared.
+    if (failed.length > 0) {
+      const groupIds = [...new Set(failed.flatMap(({ group }) => (group ? [group.id] : [])))];
+      const failedGroups = groupIds.length > 0 ? sql` OR ${inArray(sql`${modelInstallationT.group}->>'id'`, groupIds)}` : sql``;
       await getDB()
-        .delete(modelInstallationStateT)
-        .where(sql`${modelInstallationStateT.id} IN ${failedStates.map(s => s.stateId)}`);
+        .update(modelInstallationT)
+        .set({ deletedAt: new Date() })
+        .where(sql`${modelInstallationT.deletedAt} IS NULL AND (${inArray(modelInstallationT.id, failed.map(({ id }) => id))}${failedGroups})`);
     }
 
     syncDeployedModels();

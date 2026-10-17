@@ -32,6 +32,8 @@ const couplingSchema = z.object({
 });
 export type Coupling = z.infer<typeof couplingSchema>;
 
+export const GROUP_MEMBER_FEATURE = "group-member";
+
 export const interconnectOverviewSchema = z.object({
   couplings: z.array(couplingSchema),
   portIssues: z.array(z.object({ port: portRefSchema, issues: z.array(portIssueSchema) })),

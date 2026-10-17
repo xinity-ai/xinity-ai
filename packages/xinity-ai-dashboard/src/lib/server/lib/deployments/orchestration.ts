@@ -1,5 +1,5 @@
 import { inArray, modelDeploymentT, sql, modelInstallationT, modelInstallationStateT, aiNodeT, nodeIsLive, type ModelInstallation, type AiNode } from "common-db";
-import { DOES_NOT_FIT_ON_NODE, deriveInterconnectOverview, freeMemberAddress, resolveOptimizeFor, settingsEqual, sharedRdmaSubnets, type Coupling, type InstallationGroup, type OptimizationGoal } from "common-env";
+import { DOES_NOT_FIT_ON_NODE, GROUP_MEMBER_FEATURE, deriveInterconnectOverview, freeMemberAddress, resolveOptimizeFor, settingsEqual, sharedRdmaSubnets, type Coupling, type InstallationGroup, type OptimizationGoal } from "common-env";
 import { getDB } from "$lib/server/db";
 import { resolveSchedulable, type SchedulableModel } from "$lib/server/lib/models/model-catalog";
 import { checkNodeCompatibility, type BlockedVersion, type ModelNodeRequirements, type NodeCapability, type Provider } from "common-env/model-catalog";
@@ -174,13 +174,14 @@ export function findGroupForModel(
   if (!groupsAcrossNodes) {
     return null;
   }
+  const memberConstraints = { ...constraints, requiredFeatures: [...(constraints.requiredFeatures ?? []), GROUP_MEMBER_FEATURE] };
   const ranked = rankServers(strategy, state);
   const groups = deriveInterconnectOverview(state.availableServers).couplings
     .filter((coupling) => coupling.viable)
     .flatMap((coupling) => {
       const candidates = ranked
         .filter((server) => coupling.nodeIds.includes(server.id))
-        .filter((server) => nodeCouldServe(server, driver, constraints) && !nodeExcludesPlacement(server.id, driver, placement, state, pending))
+        .filter((server) => nodeCouldServe(server, driver, memberConstraints) && !nodeExcludesPlacement(server.id, driver, placement, state, pending))
         .map((server) => ({ nodeId: server.id, node: resourcesOf(state, server.id) }));
       return groupsAcrossNodes(candidates, { ...need, strategy }).map((members) => ({ coupling, members }));
     });

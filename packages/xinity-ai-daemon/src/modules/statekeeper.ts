@@ -1,4 +1,5 @@
 import {
+  GROUP_MEMBER_FEATURE,
   protocolFingerprint,
   signAsNode,
   type InterconnectPort,
@@ -13,6 +14,7 @@ import { createInterconnectMonitor } from "./interconnect-detect";
 import { experimentalGpuVendors, GPU_VENDOR_SUPPORT, normalizePep440 } from "common-env/model-catalog";
 import { rootLogger } from "../logger";
 import { detectVllmFeatures, resolvePythonForVllm } from "./vllm-features";
+import { runsGroupMembers } from "./model-installation/coupling-network";
 import { NO_HOST_DEVICES, unpinnedDevicesFor } from "./model-installation/gpu-devices";
 
 const log = rootLogger.child({ name: "statekeeper" });
@@ -171,6 +173,9 @@ export async function getNodeDriverFeatures(): Promise<Record<string, string[]>>
         dockerImage: config.vllm.dockerImage,
         vllmPath: config.vllm.path,
       });
+      if (await runsGroupMembers(config.vllm.backend)) {
+        features["vllm"].push(GROUP_MEMBER_FEATURE);
+      }
     }
   } catch (err) {
     log.warn({ err }, "Driver feature detection failed, continuing without features");
