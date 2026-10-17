@@ -64,12 +64,16 @@ const CapacityCheckInput = z.object({
   deploymentId: z.uuid().optional().describe("The deployment this draft changes, which is planned without its own installations"),
 });
 
+const PlannedMachineDto = z.object({
+  machineName: z.string().describe("Name of the machine"),
+  cards: z.number().describe("Cards the replica would use on this machine"),
+  gpuGb: z.number().describe("GPU memory in GB the replica would occupy on this machine, over all its cards"),
+  hostGb: z.number().describe("Host memory in GB the replica would occupy on this machine"),
+});
+
 const PlannedReplicaDto = z.object({
   specifier: z.string(),
-  machineName: z.string().describe("The machine the replica would run on"),
-  cards: z.number().describe("Cards the replica would be split across"),
-  gpuGb: z.number().describe("GPU memory in GB the replica would occupy, over all its cards"),
-  hostGb: z.number().describe("Host memory in GB the replica would occupy on its machine"),
+  machines: z.array(PlannedMachineDto).describe("The machines the replica would run on, the one serving it first"),
 });
 
 const CapacityCheckOutput = z.object({
@@ -95,8 +99,7 @@ const SHORTFALL_REASONS: Record<ShortfallReason, (shortfall: Shortfall) => strin
 
 const DRAFT_DEPLOYMENT_ID = "draft";
 
-// Asks the scheduler where the draft would go now. A deployment being changed is planned without
-// its own installations, which the change replaces.
+// A deployment being changed is planned without its own installations, which the change replaces.
 async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>, deploymentId?: string): Promise<CapacityCheckResult> {
   const isCanary = input.progress < 100 && !!input.earlySpecifier;
   const requirement = (specifier: string, replicas: number, kvCacheSize: number | null | undefined): ModelRequirement => ({

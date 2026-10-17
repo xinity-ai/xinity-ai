@@ -81,6 +81,8 @@ export function engineProfile(engine: Engine, version?: string): EngineProfile {
   return (matching ?? profiles[0]!).profile;
 }
 
+export const DOES_NOT_FIT_ON_NODE = "Does not fit next to the installations running here";
+
 export type RankFootprint = { node: number; gpuGb: number; hostGb: number };
 
 export type Footprint = {
@@ -123,7 +125,6 @@ export function imagesInFlight(entry: FootprintEntry, gpus: GpuInfo[], kvCacheGb
 
 const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
 
-// Undefined when the model cannot be split across this many cards.
 export function deploymentFootprint(entry: FootprintEntry, request: FootprintRequest): Footprint | undefined {
   const { layout, kvCacheGb, imagesInFlight, profile } = request;
   const { sizing } = entry;
@@ -178,8 +179,7 @@ function limitAllows(limit: PlacementLimitFields, context: LayoutContext): boole
   return (PLACEMENT_LIMIT_CHECKS[limit.limit] as (limit: PlacementLimitFields, context: LayoutContext) => boolean)(limit, context);
 }
 
-// Each returns why the layout is ruled out, or undefined. Capabilities unlock only once the facts
-// they need are stated, so a missing fact rules out the wider layout rather than guessing.
+// A missing fact rules out the wider layout
 const LAYOUT_RULES: ((context: LayoutContext) => string | undefined)[] = [
   ({ ranks, vendor }) => ranks > 1 && !runsTensorParallel(vendor)
     ? `${vendor} GPUs run an installation on one card`

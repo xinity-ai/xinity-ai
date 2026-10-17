@@ -48,6 +48,24 @@ export const interconnectPortSchema = z.object({
 });
 export type InterconnectPort = z.infer<typeof interconnectPortSchema>;
 
+// A member's address on one coupled path. The path is named by its subnet, since interface names
+// exist only on their own node.
+const couplingAddressSchema = z.object({
+  subnet: z.cidrv4(),
+  address: z.ipv4(),
+});
+export type CouplingAddress = z.infer<typeof couplingAddressSchema>;
+
+// Rank 0 serves.
+export const installationGroupSchema = z.object({
+  id: z.uuid(),
+  rank: z.number().int().nonnegative(),
+  size: z.number().int().min(2),
+  rendezvousPort: z.number().int().positive(),
+  addresses: z.array(couplingAddressSchema).min(1),
+});
+export type InstallationGroup = z.infer<typeof installationGroupSchema>;
+
 // Outbound: tether -> daemon (SSE)
 
 export const desiredInstallationSchema = z.object({

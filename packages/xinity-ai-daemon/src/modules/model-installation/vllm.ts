@@ -26,7 +26,7 @@ import {
 import { rootLogger } from "../../logger";
 import { getHardwareProfile } from "../statekeeper";
 import { cardCapacityGib, type HardwareProfile } from "../hardware-detect";
-import { engineProfile, gpuId, maxNumSeqs, tensorParallelLayouts, type GpuInfo } from "common-env";
+import { DOES_NOT_FIT_ON_NODE, engineProfile, gpuId, maxNumSeqs, tensorParallelLayouts, type GpuInfo } from "common-env";
 import { downloadModel, largestWeightFileBytes } from "./vllm-download";
 import { devicesFor, readHostDevices, resolvePinnedCards } from "./gpu-devices";
 import type { ModelSizingFields } from "common-env/model-catalog";
@@ -196,7 +196,6 @@ type StartOutcome =
   | { started: true; modelType: string | undefined; providerModel: string }
   | { started: false; waiting: string };
 
-// Installations whose download finished and which wait for memory, so a later sync only retries the start.
 const downloaded = new Set<string>();
 
 async function downloadAndStart(installation: SyncInstallation, running: SyncInstallation[], ops: VllmOps): Promise<StartOutcome> {
@@ -307,7 +306,6 @@ function releaseAdmission(installationId: string): void {
   admittedGb.delete(installationId);
 }
 
-// On unified memory the cards draw from the same pool as the host.
 function chargedGb(hostGb: number, gpuGb: number, unified: boolean): number {
   return hostGb + (unified ? gpuGb : 0);
 }
@@ -317,13 +315,12 @@ type AdmissionRequest = { neededGb: number; chargedElsewhereGb: number; usableGb
 // One check at a time, or two starts read the same free memory and both pass.
 let admissionTurn: Promise<unknown> = Promise.resolve();
 
-// vLLM checks each card against its window itself. Host memory nothing else checks. Returns why the
-// start waits, and throws when no amount of waiting frees enough.
+// vLLM checks each card against its window itself. Host memory nothing else checks.
 function admit(installationId: string, request: AdmissionRequest): Promise<string | undefined> {
   const turn = admissionTurn.then(async () => {
     const { neededGb, chargedElsewhereGb, usableGb } = request;
     if (usableGb !== undefined && neededGb > usableGb - chargedElsewhereGb) {
-      throw new Error(`Does not fit next to the installations running here: needs ${neededGb.toFixed(1)} GB, at most ${Math.max(0, usableGb - chargedElsewhereGb).toFixed(1)} GB can be free`);
+      throw new Error(`${DOES_NOT_FIT_ON_NODE}: needs ${neededGb.toFixed(1)} GB, at most ${Math.max(0, usableGb - chargedElsewhereGb).toFixed(1)} GB can be free`);
     }
     const availableGb = await availableMemoryGb() - [...admittedGb.values()].reduce((total, gb) => total + gb, 0);
     if (availableGb < neededGb) {

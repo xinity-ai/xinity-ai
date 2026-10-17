@@ -167,6 +167,52 @@ function segments(ports: LocatedPort[]): LocatedPort[][] {
   return [...grouped.values()];
 }
 
+const formatIpv4 = (value: number) => [24, 16, 8, 0].map((shift) => (value >>> shift) & 0xff).join(".");
+
+export type SharedSubnet = { subnet: string; addresses: Record<string, string> };
+
+export function sharedRdmaSubnets(ports: readonly { nodeId: string; port: InterconnectPort }[], nodeIds: readonly string[]): SharedSubnet[] {
+  const byNode = nodeIds.map((nodeId) => {
+    const subnets = new Map<string, string>();
+    for (const { port } of ports.filter((located) => located.nodeId === nodeId)) {
+      for (const { network, prefix, endpoint } of rdmaAddresses(port)) {
+        // Keyed by network address and prefix, so two nodes different addresses on one subnet meet under one key.
+        const key = `${formatIpv4(network)}/${prefix}`;
+        // A node with several paths on one subnet still gets one address there, the first one found.
+        if (!subnets.has(key)) {
+          subnets.set(key, endpoint.ipv4);
+        }
+      }
+    }
+    return { nodeId, subnets };
+  });
+  const [first, ...rest] = byNode;
+  // Any subnet missing on one node is no use to the group, so the first node's subnets are cut down to those every other node has too.
+  return [...(first?.subnets.keys() ?? [])]
+    .filter((subnet) => rest.every(({ subnets }) => subnets.has(subnet)))
+    .map((subnet) => ({ subnet, addresses: Object.fromEntries(byNode.map(({ nodeId, subnets }) => [nodeId, subnets.get(subnet)!])) }));
+}
+
+export function freeMemberAddress(subnet: string, taken: ReadonlySet<string>): string | undefined {
+  const parsed = parseCidr(subnet);
+  // A /31 or /32 has no address left over besides the ones that name the network itself.
+  if (!parsed || parsed.prefix > 30) {
+    return undefined;
+  }
+  // All host bits set gives the broadcast address. The final >>> 0 keeps the result an unsigned 32-bit number,
+  // since JavaScript's | returns a signed one.
+  const broadcast = (parsed.network | (0xffffffff >>> parsed.prefix)) >>> 0;
+  // From just below the broadcast address down to just above the network address, both of which no host may use.
+  // Starting at the top keeps members away from the port addresses operators usually assign from the bottom.
+  for (let value = broadcast - 1; value > parsed.network; value--) {
+    const address = formatIpv4(value);
+    if (!taken.has(address)) {
+      return address;
+    }
+  }
+  return undefined;
+}
+
 export function deriveInterconnectOverview(nodes: readonly CouplingNode[]): InterconnectOverview {
   const ports: LocatedPort[] = nodes.flatMap((node) =>
     node.interconnect.map((port) => ({ ref: { nodeId: node.id, networkCard: port.networkCard, port: port.port }, port })),

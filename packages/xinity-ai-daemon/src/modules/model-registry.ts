@@ -6,7 +6,6 @@ type RegisteredInstallation = { id: string; specifier: string; port: number; dri
 
 const registry = new Map<string, RegisteredInstallation>();
 
-/** Replace the entire registry with the current set of installations, keyed by installation id. */
 export function updateRegistry(installations: RegisteredInstallation[]) {
   registry.clear();
   for (const inst of installations) {
@@ -15,7 +14,6 @@ export function updateRegistry(installations: RegisteredInstallation[]) {
   log.debug({ count: registry.size }, "Model registry updated");
 }
 
-/** Look up an installation's local backend port and driver by installation id. */
 export function resolveInstallation(id: string): RegisteredInstallation | undefined {
   return registry.get(id);
 }

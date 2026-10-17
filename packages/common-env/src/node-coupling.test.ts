@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { deriveInterconnectOverview, rdmaEndpoints, type CouplingNode } from "./node-coupling";
+import { deriveInterconnectOverview, freeMemberAddress, rdmaEndpoints, sharedRdmaSubnets, type CouplingNode } from "./node-coupling";
 import type { InterconnectPath, InterconnectPort } from "./tether-protocol";
 
 function path(mac: string, ipv4: string | null, overrides: Partial<InterconnectPath> = {}): InterconnectPath {
@@ -122,5 +122,37 @@ describe("deriveInterconnectOverview", () => {
       },
       { port: { nodeId: "troubled", networkCard: "card", port: "p1" }, issues: [{ kind: "no-neighbours" }] },
     ]);
+  });
+});
+
+describe("sharedRdmaSubnets", () => {
+  const located = [ubuntu, nixos].flatMap((node) => node.interconnect.map((coupled) => ({ nodeId: node.id, port: coupled })));
+
+  test("lists every subnet both machines reach over the cable, with each one's address there", () => {
+    expect(sharedRdmaSubnets(located, ["ubuntu", "nixos"])).toEqual([
+      { subnet: "192.168.100.0/24", addresses: { ubuntu: "192.168.100.1", nixos: "192.168.100.2" } },
+      { subnet: "192.168.101.0/24", addresses: { ubuntu: "192.168.101.1", nixos: "192.168.101.2" } },
+    ]);
+  });
+
+  test("leaves out a subnet one of the machines has no rdma address on", () => {
+    const halfAddressed = { nodeId: "nixos", port: port("p0", [path("a9:39", "192.168.100.2/24"), path("a9:3d", null)], ["d6:15"]) };
+    const ports = [...located.filter((entry) => entry.nodeId === "ubuntu"), halfAddressed];
+    expect(sharedRdmaSubnets(ports, ["ubuntu", "nixos"]).map(({ subnet }) => subnet)).toEqual(["192.168.100.0/24"]);
+  });
+});
+
+describe("freeMemberAddress", () => {
+  test("takes the highest address below the broadcast address", () => {
+    expect(freeMemberAddress("192.168.100.0/24", new Set(["192.168.100.1", "192.168.100.2"]))).toBe("192.168.100.254");
+  });
+
+  test("steps down past addresses already taken", () => {
+    expect(freeMemberAddress("192.168.100.0/24", new Set(["192.168.100.254", "192.168.100.253"]))).toBe("192.168.100.252");
+  });
+
+  test("finds nothing in a subnet without a free host address", () => {
+    expect(freeMemberAddress("10.0.0.0/30", new Set(["10.0.0.1", "10.0.0.2"]))).toBeUndefined();
+    expect(freeMemberAddress("10.0.0.4/31", new Set())).toBeUndefined();
   });
 });

@@ -427,7 +427,6 @@ export function classifyCapacitySource(gpus: DetectedGpu[]): CapacitySource {
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
-/** Share of system RAM left to installations, the rest keeps the OS responsive. */
 const USABLE_RAM_FRACTION = 0.9;
 
 const usableRamGb = (systemRamMb: number) =>

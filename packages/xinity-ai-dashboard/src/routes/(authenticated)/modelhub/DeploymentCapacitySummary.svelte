@@ -21,8 +21,9 @@
   } = $props();
 
   const showsSpecifier = $derived(new Set(plannedReplicas.map((replica) => replica.specifier)).size > 1);
-  const totalGpuGb = $derived(plannedReplicas.reduce((sum, replica) => sum + replica.gpuGb, 0));
-  const totalHostGb = $derived(plannedReplicas.reduce((sum, replica) => sum + replica.hostGb, 0));
+  const plannedMachines = $derived(plannedReplicas.flatMap((replica) => replica.machines));
+  const totalGpuGb = $derived(plannedMachines.reduce((sum, machine) => sum + machine.gpuGb, 0));
+  const totalHostGb = $derived(plannedMachines.reduce((sum, machine) => sum + machine.hostGb, 0));
   const totalFree = $derived(nodeCapabilities.reduce((sum, node) => sum + node.free, 0));
 </script>
 
@@ -35,14 +36,21 @@
   {#if plannedReplicas.length > 0}
     <dl class="space-y-1.5 text-sm">
       {#each plannedReplicas as replica, index (index)}
-        <div class="flex justify-between gap-4">
-          <dt class="text-muted-foreground">
-            {showsSpecifier ? `${replica.specifier} on ` : ""}{replica.machineName}{replica.cards > 1 ? `, ${replica.cards} cards` : ""}
-          </dt>
-          <dd class="text-right">
-            {formatGb(replica.gpuGb)} GPU{replica.hostGb > 0 ? ` + ${formatGb(replica.hostGb)} host` : ""}
-          </dd>
-        </div>
+        {#if replica.machines.length > 1}
+          <div class="text-muted-foreground">
+            {showsSpecifier ? `${replica.specifier} across ` : "Across "}{replica.machines.length} machines
+          </div>
+        {/if}
+        {#each replica.machines as machine (machine.machineName)}
+          <div class="flex justify-between gap-4 {replica.machines.length > 1 ? `pl-4` : ``}">
+            <dt class="text-muted-foreground">
+              {showsSpecifier && replica.machines.length === 1 ? `${replica.specifier} on ` : ""}{machine.machineName}{machine.cards > 1 ? `, ${machine.cards} cards` : ""}
+            </dt>
+            <dd class="text-right">
+              {formatGb(machine.gpuGb)} GPU{machine.hostGb > 0 ? ` + ${formatGb(machine.hostGb)} host` : ""}
+            </dd>
+          </div>
+        {/each}
       {/each}
 
       <div class="flex justify-between gap-4 border-t pt-1.5">
