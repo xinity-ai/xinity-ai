@@ -106,20 +106,22 @@ function ipv4ByInterface(): Map<string, string[]> {
   );
 }
 
-type NeighbourEntry = { lladdr?: string; state?: string[] };
+type NeighbourEntry = { dst?: string; lladdr?: string };
 
-export function parseNeighbourMacs(ipJson: string): string[] {
+const PING_REPLY_SOURCE = /^\d+ bytes from ([0-9a-f:]+)(?:%\S+)?:/gim;
+
+export function neighbourMacsAnswering(pingOutput: string, ipJson: string): string[] {
+  // The kernel keeps entries for machines long gone, so only addresses that answered this ping count.
+  const answered = new Set([...pingOutput.matchAll(PING_REPLY_SOURCE)].map((match) => match[1]!.toLowerCase()));
   const entries = JSON.parse(ipJson || "[]") as NeighbourEntry[];
-  return entries.flatMap((entry) =>
-    entry.lladdr && !entry.state?.some((state) => state === "FAILED" || state === "INCOMPLETE") ? [entry.lladdr] : [],
-  );
+  return [...new Set(entries.flatMap((entry) => (entry.lladdr && entry.dst && answered.has(entry.dst.toLowerCase()) ? [entry.lladdr] : [])))];
 }
 
 // Every node on the segment answers the IPv6 all-nodes address, so this finds peers without
 // knowing their addresses. It needs the port to keep its link-local address.
 async function discoverNeighbourMacs(netdev: string): Promise<string[]> {
-  await $`ping -6 -c1 -W1 ff02::1%${netdev}`.quiet().nothrow();
-  return parseNeighbourMacs(await $`ip -j neigh show dev ${netdev}`.nothrow().text());
+  const ping = await $`ping -6 -n -i 1 -w 2 ff02::1%${netdev}`.quiet().nothrow().text();
+  return neighbourMacsAnswering(ping, await $`ip -j neigh show dev ${netdev}`.nothrow().text());
 }
 
 // A network card can expose one physical port on several PCIe paths that share a segment, so a
