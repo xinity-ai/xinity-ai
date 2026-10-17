@@ -26,14 +26,14 @@ import {
 import { rootLogger } from "../../logger";
 import { getHardwareProfile } from "../statekeeper";
 import { cardCapacityGib, type HardwareProfile } from "../hardware-detect";
-import { DOES_NOT_FIT_ON_NODE, engineProfile, gpuId, maxNumSeqs, tensorParallelLayouts, type DesiredGroup, type GpuInfo, type GroupStage } from "common-env";
+import { DOES_NOT_FIT_ON_NODE, engineProfile, gpuId, maxNumSeqs, tensorParallelLayouts, type DesiredGroup, type GpuInfo, type GroupStage, type GroupMemberHealth } from "common-env";
 import { downloadModel, largestWeightFileBytes } from "./vllm-download";
 import { devicesFor, readHostDevices, resolvePinnedCards } from "./gpu-devices";
 import type { ModelSizingFields } from "common-env/model-catalog";
 import { dropPageCache } from "./page-cache";
 import { addressInUse, coupledPaths, memberGroupFrom } from "./coupling-network";
 import { resolveInstallationEntry } from "./catalog";
-import { updateInstallationState, getLocalInstallationStates } from "./state";
+import { updateInstallationState, getLocalInstallationState, getLocalInstallationStates } from "./state";
 
 const log = rootLogger.child({ name: "vllm" });
 
@@ -47,8 +47,8 @@ const everyMemberAdmitted = (group: DesiredGroup) =>
 const failedInItsAttempt = (group: DesiredGroup) =>
   group.members.some((member) => member.stage === "failed" && member.generation === group.generation);
 
-// A member that never reported an attempt counts as on the current one.
 const behindItsGroup = (installation: SyncInstallation, reportedGeneration: number | null | undefined) =>
+  // A member that never reported an attempt counts as on the current one.
   !!installation.group && (reportedGeneration ?? installation.group.generation) < installation.group.generation;
 
 const GROUP_FAILED = "Stopped, another machine of its group failed";
@@ -576,8 +576,8 @@ async function reportExited(installation: SyncInstallation, ops: VllmOps): Promi
   });
 }
 
-// Members do not restart on their own, so one its group still counts as running, with no process here, has exited.
 const exitedWhileRunning = (installation: SyncInstallation) =>
+  // Members do not restart on their own, so one its group still counts as running, with no process here, has exited.
   !!installation.group
   && installation.group.members.some((member) => member.rank === installation.group!.rank && member.stage === "running" && member.generation === installation.group!.generation);
 
@@ -585,10 +585,21 @@ const exitedWhileRunning = (installation: SyncInstallation) =>
 // Sync entry point
 // ---------------------------------------------------------------------------
 
+let syncedMembers: SyncInstallation[] = [];
+
+export function groupMembersHealth(): GroupMemberHealth[] {
+  return syncedMembers.map(({ id, specifier, group }) => {
+    const { members: _members, ...rest } = group!;
+    const state = getLocalInstallationState(id);
+    return { specifier, group: rest, stage: state?.groupStage ?? null, stageGeneration: state?.groupGeneration ?? null };
+  });
+}
+
 export function syncVllmInstallations$(
   installations: Array<SyncInstallation>,
   ops: VllmOps = resolveDefaultOps(),
 ): Observable<void> {
+  syncedMembers = installations.filter((installation) => installation.group);
   return defer(() => from(ops.ensureSetup())).pipe(
     switchMap(() => from(ops.listRunning())),
     switchMap((activeIds) => {

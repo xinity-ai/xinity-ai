@@ -239,6 +239,14 @@ export const tetherConnectionSchema = z.object({
 });
 export type TetherConnection = z.infer<typeof tetherConnectionSchema>;
 
+export const groupMemberHealthSchema = z.object({
+  specifier: z.string(),
+  group: desiredGroupSchema.omit({ members: true }),
+  stage: z.enum(GROUP_STAGES).nullable(),
+  stageGeneration: z.number().int().positive().nullable(),
+});
+export type GroupMemberHealth = z.infer<typeof groupMemberHealthSchema>;
+
 /** Signed by the caller and verified by the tether, so both ends must name them identically. */
 export const STREAM_PATH = "/api/v1/stream";
 export const STATUS_PATH = "/api/v1/status";

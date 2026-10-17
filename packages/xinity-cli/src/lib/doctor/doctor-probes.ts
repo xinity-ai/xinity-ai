@@ -1,6 +1,6 @@
 import postgres from "postgres";
 import { expectedMigrationCount } from "common-db";
-import { interconnectPortSchema, tetherConnectionSchema, type InterconnectPort, type TetherConnection } from "common-env";
+import { groupMemberHealthSchema, interconnectPortSchema, tetherConnectionSchema, type GroupMemberHealth, type InterconnectPort, type TetherConnection } from "common-env";
 import { getUnitStatusOn, type Host } from "../core/host.ts";
 
 export type CheckStatus = "pass" | "warn" | "fail" | "skip";
@@ -137,16 +137,23 @@ export async function checkDaemonHealth(host: Host, url: string): Promise<CheckR
   return tether ? [health, tetherConnectionCheck(tether)] : [health];
 }
 
-// Empty when the daemon is unreachable or predates interconnect reporting.
-export async function readDaemonInterconnect(host: Host, healthUrl: string): Promise<InterconnectPort[]> {
+export type DaemonCoupling = { interconnect: InterconnectPort[]; groupMembers: GroupMemberHealth[] };
+
+// Empty when the daemon is unreachable or predates what is read.
+export async function readDaemonCoupling(host: Host, healthUrl: string): Promise<DaemonCoupling> {
   const result = await host.run(["curl", "-s", "--connect-timeout", "5", "--max-time", "5", healthUrl]);
-  if (!result.ok) {
-    return [];
-  }
+  const body = result.ok ? parseJson(result.output) : undefined;
+  return {
+    interconnect: interconnectPortSchema.array().safeParse(body?.interconnect).data ?? [],
+    groupMembers: groupMemberHealthSchema.array().safeParse(body?.groupMembers).data ?? [],
+  };
+}
+
+function parseJson(text: string): Record<string, unknown> | undefined {
   try {
-    return interconnectPortSchema.array().parse(JSON.parse(result.output)?.interconnect);
+    return JSON.parse(text);
   } catch {
-    return [];
+    return undefined;
   }
 }
 
