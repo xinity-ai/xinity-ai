@@ -11,7 +11,7 @@ Xinity never configures network ports itself, since the host's network tools wou
 1. **Give each cabled interface a static IPv4 address**, with both ends in the same subnet. Some cards expose one physical port as two interfaces (DGX Spark does). Configure both, each in its own subnet.
 2. **Keep the IPv6 link-local address enabled** on those interfaces. Xinity uses it to find the machine on the other end.
 3. **Set the MTU to 9000** on every coupled interface, and on the switch if there is one. Both ends must use the same value.
-4. **Allow TCP between the coupled nodes** on these addresses. The link test in `xinity stack doctor` needs TCP port 18515. RDMA traffic itself is not affected by host firewalls.
+4. **Trust the coupled interfaces in the host firewall.** A model served across the coupled nodes sets up its connections over TCP on ports that change from start to start, so opening single ports is not enough. The link test in `xinity stack doctor` uses TCP port 18515. RDMA traffic itself is not affected by host firewalls.
 5. **Install `rdma-core`** on each node, so `xinity stack doctor` can test the link.
 
 With NetworkManager, for a DGX Spark whose cable sits in the first port (run on the second machine with `.2` instead of `.1`):
@@ -25,7 +25,27 @@ nmcli con add type ethernet ifname enP2p1s0f0np0 con-name coupling-b \
 
 Without a profile like this, NetworkManager repeatedly takes the port over and removes its addresses, which breaks any connection running across the link.
 
+To trust the coupled interfaces, with the same interface names:
+
+```bash
+# ufw
+sudo ufw allow in on enp1s0f0np0
+sudo ufw allow in on enP2p1s0f0np0
+
+# firewalld
+sudo firewall-cmd --permanent --zone=trusted --add-interface=enp1s0f0np0 --add-interface=enP2p1s0f0np0
+sudo firewall-cmd --reload
+```
+
+On NixOS:
+
+```nix
+networking.firewall.trustedInterfaces = [ "enp1s0f0np0" "enP2p1s0f0np0" ];
+```
+
 Changes to the link show up within about 30 seconds.
+
+With a working coupling, a model too large for one machine can be served across the coupled machines, see [Serving Across Coupled Nodes](serving-across-nodes.md).
 
 ## Where Couplings Show
 
@@ -102,7 +122,7 @@ Put the addresses at both ends of the cable into the same subnet.
 
 could not reach *address* on TCP 18515
 
-The link test starts with a TCP connection on port 18515. Allow TCP between the coupled nodes on their coupled addresses in the host firewall. RDMA traffic itself is not affected by host firewalls.
+The link test starts with a TCP connection on port 18515. Trust the coupled interfaces in the host firewall, as shown in [Setting Up the Link](#setting-up-the-link). RDMA traffic itself is not affected by host firewalls.
 
 ### RDMA transfer failed
 
