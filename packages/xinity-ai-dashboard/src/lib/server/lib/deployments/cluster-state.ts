@@ -32,7 +32,7 @@ export function rankServers(strategy: DeploymentStrategy, state: ClusterState): 
   return orderByStrategy(strategy, state.availableServers, (server) => state.serverCapacity.get(server.id));
 }
 
-const isUnified = (server: AiNode) => !server.gpus.some((gpu) => gpu.vramMb > 0);
+export const isUnified = (server: Pick<AiNode, "gpus">) => !server.gpus.some((gpu) => gpu.vramMb > 0);
 
 // Without card sizes (unified memory, or none reported) the node is one card of its whole capacity.
 function nodeCards(server: AiNode): CardCapacity[] {

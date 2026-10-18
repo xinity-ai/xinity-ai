@@ -832,14 +832,23 @@ describe("enforcing the charge", () => {
     expect(startConfig(ops).hostMemoryLimitBytes).toBe(2.2e9);
   });
 
-  test("adds what loading holds beyond the charge to the limit and to what must be free", async () => {
+  test("gives the limit room for loading the largest file on disk", async () => {
     mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { sizing })));
     largestWeightFileSpy.mockResolvedValueOnce(4e8);
     const ops = starting();
     await firstValueFrom(syncVllmInstallations$([{ ...makeInstallation("sharded-model"), estCapacity: 18, hostCapacity: 2 }], ops));
     expect(startConfig(ops).hostMemoryLimitBytes).toBe(3.2e9);
+  });
 
+  test("reserves for loading only what the catalog charges, as the scheduler does, however large a file on disk", async () => {
+    mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { sizing })));
     largestWeightFileSpy.mockResolvedValueOnce(1e12);
+    const placed = starting();
+    await firstValueFrom(syncVllmInstallations$([{ ...makeInstallation("host-table-model"), hostCapacity: 2 }], placed));
+    expect(placed.start).toHaveBeenCalled();
+    expect(startConfig(placed).hostMemoryLimitBytes).toBeGreaterThan(2.5e12);
+
+    mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { sizing: { ...sizing, largestFileGb: 1000 } })));
     const tooBig = starting();
     await firstValueFrom(syncVllmInstallations$([{ ...makeInstallation("huge-shard-model"), hostCapacity: 2 }], tooBig));
     expect(tooBig.start).not.toHaveBeenCalled();
@@ -889,9 +898,9 @@ describe("enforcing the charge", () => {
 
   test("retries a waiting start on the next sync without downloading again", async () => {
     mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { sizing })));
+    mockResolveEntry.mockImplementationOnce((specifier) => Promise.resolve(catalogEntry(specifier, { sizing: { ...sizing, largestFileGb: 1000 } })));
     const installation = { ...makeInstallation("queued-model"), hostCapacity: 2 };
     downloadModelSpy.mockClear();
-    largestWeightFileSpy.mockResolvedValueOnce(1e12);
     const waiting = starting();
     await firstValueFrom(syncVllmInstallations$([installation], waiting));
     expect(waiting.start).not.toHaveBeenCalled();

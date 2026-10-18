@@ -1,6 +1,7 @@
 import { rootOs, withOrganization, requirePermission } from "../root";
 import { sql, aiNodeT, modelInstallationT, nodeIsLive } from "common-db";
 import { getDB } from "$lib/server/db";
+import { isUnified } from "$lib/server/lib/deployments/cluster-state";
 import { rootLogger } from "$lib/server/logging";
 import { catalogClient } from "$lib/server/lib/models/model-catalog";
 import z from "zod";
@@ -71,9 +72,12 @@ export async function buildClusterCapacity(): Promise<ClusterCapacity> {
       .where(sql`${modelInstallationT.deletedAt} IS NULL`),
   ]);
 
+  const unifiedNodes = new Set(nodes.filter(isUnified).map((node) => node.id));
   const nodeUsed = new Map<string, number>();
   for (const inst of installations) {
-    nodeUsed.set(inst.nodeId, (nodeUsed.get(inst.nodeId) ?? 0) + inst.estCapacity);
+    // On unified memory the host part comes out of the same pool, as the scheduler charges it.
+    const charged = inst.estCapacity + (unifiedNodes.has(inst.nodeId) ? inst.hostCapacity ?? 0 : 0);
+    nodeUsed.set(inst.nodeId, (nodeUsed.get(inst.nodeId) ?? 0) + charged);
   }
 
   const nodeCapabilities: NodeCapability[] = nodes.map(n => ({
