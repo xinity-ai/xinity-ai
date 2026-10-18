@@ -177,6 +177,7 @@ describe("downloadModel resume edge cases", () => {
   async function downloadFrom(
     files: Record<string, Uint8Array>,
     respond: (file: string, attempt: number) => Response | undefined = () => undefined,
+    stallMs?: number,
   ) {
     const gets: { file: string; headers: RequestInit["headers"] }[] = [];
     const progress: number[] = [];
@@ -205,7 +206,7 @@ describe("downloadModel resume edge cases", () => {
     try {
       await downloadModel(model, async (value) => {
         progress.push(value);
-      });
+      }, [], stallMs);
     } finally {
       fetchSpy.mockRestore();
     }
@@ -244,6 +245,27 @@ describe("downloadModel resume edge cases", () => {
     expect(gets).toHaveLength(0);
     expect(new Uint8Array(fs.readFileSync(blobPath("model.safetensors")))).toEqual(contents);
     expect(progress.at(-1)).toBe(1);
+  });
+
+  const hangingAfter = (bytes: Uint8Array) => new Response(new ReadableStream({ start: (controller) => controller.enqueue(bytes) }));
+
+  test("resumes a download whose connection stops sending without closing", async () => {
+    const { gets, progress } = await downloadFrom(
+      { "model.safetensors": contents },
+      (_file, attempt) => (attempt === 1 ? hangingAfter(contents.subarray(0, 4)) : new Response(contents.subarray(4), { status: 206 })),
+      50,
+    );
+
+    expect(gets).toHaveLength(2);
+    expect(gets[1]?.headers).toEqual(expect.objectContaining({ Range: "bytes=4-" }));
+    expect(new Uint8Array(fs.readFileSync(blobPath("model.safetensors")))).toEqual(contents);
+    expect(progress.at(-1)).toBe(1);
+  });
+
+  test("gives up on a file that stalls without sending anything, rather than waiting forever", async () => {
+    const attempt = downloadFrom({ "model.safetensors": contents }, () => hangingAfter(new Uint8Array(0)), 50);
+    await expect(attempt).rejects.toThrow("Download of model.safetensors stalled: no data for 0.05s, 5 times in a row");
+    expect(fs.existsSync(blobPath("model.safetensors"))).toBe(false);
   });
 
   test("counts the bytes already on disk when a download resumes", async () => {
