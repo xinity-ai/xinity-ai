@@ -256,7 +256,9 @@ async function downloadAndStart(installation: SyncInstallation, running: SyncIns
   }, profile);
   const modelType = entry.type;
 
-  const loadingGb = await loadingAllowanceGb(providerModel);
+  // Admission reserves what the scheduler charged for loading, so a member it placed is never refused here for it.
+  const admittedLoadingGb = engineProfile("vllm").hostLoadingPerLargestFile * (entry.sizing?.largestFileGb ?? 0);
+  const limitLoadingGb = await loadingAllowanceGb(providerModel);
   if (installation.group && !admittedGb.has(installation.id)) {
     for (const { address } of installation.group.addresses) {
       if (await addressInUse(address)) {
@@ -268,7 +270,7 @@ async function downloadAndStart(installation: SyncInstallation, running: SyncIns
   if (charge) {
     const unified = profile.source === "unified-memory";
     const waiting = await admit(installation.id, {
-      neededGb: chargedGb(charge.hostGb, charge.gpuGbPerCard * devices.tensorParallelSize, unified) + loadingGb,
+      neededGb: chargedGb(charge.hostGb, charge.gpuGbPerCard * devices.tensorParallelSize, unified) + admittedLoadingGb,
       chargedElsewhereGb: running.reduce((total, other) => total + chargedGb(other.hostCapacity ?? 0, other.estCapacity, unified), 0),
       usableGb: profile.hostMemoryGb,
     });
@@ -299,7 +301,7 @@ async function downloadAndStart(installation: SyncInstallation, running: SyncIns
     settings: installation.settings,
     devices,
     group: installation.group ? memberGroupFrom(installation.group, await coupledPaths()) : SINGLE_NODE,
-    hostMemoryLimitBytes: charge && hostMemoryLimitBytes(charge.hostGb, loadingGb),
+    hostMemoryLimitBytes: charge && hostMemoryLimitBytes(charge.hostGb, limitLoadingGb),
   });
 
   return { started: true, modelType, providerModel };
