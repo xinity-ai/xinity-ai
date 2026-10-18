@@ -56,6 +56,7 @@ export async function downloadModel(
   model: string,
   onProgress: (progress: number) => Promise<void>,
   userPatterns: readonly string[] = [],
+  stallMs = 60_000,
 ): Promise<void> {
   const repoDir = cachedRepoDir(model);
   const blobsDir = path.join(repoDir, "blobs");
@@ -97,7 +98,7 @@ export async function downloadModel(
 
   for (const file of files) {
     let streamedBytes = 0;
-    const etag = await downloadFileToCache(model, file.path, blobsDir, commitHash, fileSize(file), (bytes) => {
+    const etag = await downloadFileToCache(model, file.path, blobsDir, commitHash, fileSize(file), stallMs, (bytes) => {
       streamedBytes += bytes;
       return onProgress((completedBytes + streamedBytes) / totalBytes);
     });
@@ -160,6 +161,7 @@ async function downloadFileToCache(
   blobsDir: string,
   commitHash: string,
   expectedSize: number,
+  stallMs: number,
   onBytes: (bytes: number) => Promise<void>,
 ): Promise<string> {
   const resolveUrl = hfUrl(`/${model}/resolve/${commitHash}/${filePath}`);
@@ -175,42 +177,78 @@ async function downloadFileToCache(
   if (await Bun.file(blobPath).exists()) return etag;
 
   const incompletePath = `${blobPath}.incomplete`;
-  const existingBytes = await getFileSize(incompletePath);
+  let attemptsWithoutBytes = 0;
 
-  if (existingBytes > 0 && existingBytes === expectedSize) {
-    await rename(incompletePath, blobPath);
-    return etag;
+  for (;;) {
+    const existingBytes = await getFileSize(incompletePath);
+    if (existingBytes > 0 && existingBytes === expectedSize) {
+      await rename(incompletePath, blobPath);
+      return etag;
+    }
+
+    const stall = stallWatchdog(stallMs);
+    try {
+      const { response: dlRes, existingBytes: resumeBytes } = await fetchBlobResumable(
+        resolveUrl,
+        incompletePath,
+        existingBytes,
+        stall.signal,
+      );
+      if (!dlRes.body) throw new Error(`No response body for ${filePath}`);
+      await streamToFile(incompletePath, dlRes.body, resumeBytes > 0 && dlRes.status === 206, stall.signal, (bytes) => {
+        stall.reset();
+        return onBytes(bytes);
+      });
+      await rename(incompletePath, blobPath);
+      return etag;
+    } catch (err) {
+      if (!stall.signal.aborted) {
+        throw err;
+      }
+      // A connection that dies without closing never ends the read, so only a timeout notices it.
+      attemptsWithoutBytes = (await getFileSize(incompletePath)) > existingBytes ? 0 : attemptsWithoutBytes + 1;
+      if (attemptsWithoutBytes >= STALLED_ATTEMPTS) {
+        throw new Error(`Download of ${filePath} stalled: no data for ${stallMs / 1000}s, ${STALLED_ATTEMPTS} times in a row`, { cause: err });
+      }
+      log.warn({ model, filePath, stallMs }, "Download stalled, resuming");
+    } finally {
+      stall.stop();
+    }
   }
+}
 
-  const { response: dlRes, existingBytes: resumeBytes } = await fetchBlobResumable(
-    resolveUrl,
-    incompletePath,
-    existingBytes,
-  );
+const STALLED_ATTEMPTS = 5;
 
-  if (!dlRes.body) throw new Error(`No response body for ${filePath}`);
-
-  await streamToFile(incompletePath, dlRes.body, resumeBytes > 0 && dlRes.status === 206, onBytes);
-  await rename(incompletePath, blobPath);
-
-  return etag;
+function stallWatchdog(stallMs: number) {
+  const controller = new AbortController();
+  let timer = setTimeout(() => controller.abort(), stallMs);
+  return {
+    signal: controller.signal,
+    reset: () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => controller.abort(), stallMs);
+    },
+    stop: () => clearTimeout(timer),
+  };
 }
 
 async function fetchBlobResumable(
   resolveUrl: string,
   incompletePath: string,
   existingBytes: number,
+  signal: AbortSignal,
 ): Promise<{ response: Response; existingBytes: number }> {
   let response = await hfFetch(resolveUrl, {
     headers: existingBytes > 0 ? { Range: `bytes=${existingBytes}-` } : {},
     redirect: "follow",
+    signal,
   });
 
   if (response.status === 416) {
     await response.body?.cancel();
     await unlink(incompletePath);
     existingBytes = 0;
-    response = await hfFetch(resolveUrl, { redirect: "follow" });
+    response = await hfFetch(resolveUrl, { redirect: "follow", signal });
   }
 
   return { response, existingBytes };
@@ -225,16 +263,22 @@ async function streamToFile(
   filePath: string,
   body: ReadableStream<Uint8Array>,
   append: boolean,
+  signal: AbortSignal,
   onBytes: (bytes: number) => Promise<void>,
 ): Promise<void> {
   const file = await open(filePath, append ? "a" : "w");
+  const reader = body.getReader();
+  const cancel = () => void reader.cancel(signal.reason).catch(() => {});
+  signal.addEventListener("abort", cancel, { once: true });
   try {
-    for await (const chunk of body) {
-      const buf = chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk);
+    for (let read = await reader.read(); !read.done; read = await reader.read()) {
+      const buf = read.value instanceof Uint8Array ? read.value : new Uint8Array(read.value);
       await file.write(buf);
       await onBytes(buf.byteLength);
     }
+    signal.throwIfAborted();
   } finally {
+    signal.removeEventListener("abort", cancel);
     await file.close();
   }
 }
