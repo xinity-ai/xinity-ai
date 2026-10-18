@@ -83,11 +83,43 @@ export function engineProfile(engine: Engine, version?: string): EngineProfile {
 
 export const DOES_NOT_FIT_ON_NODE = "Does not fit next to the installations running here";
 
-export type RankFootprint = { node: number; gpuGb: number; hostGb: number };
+export function sharesHostMemory(gpus: readonly Pick<GpuInfo, "vramMb">[]): boolean {
+  // Without a GPU that reports memory of its own, the model lives in the machine's RAM beside the host part.
+  return !gpus.some((gpu) => gpu.vramMb > 0);
+}
+
+export type MemoryCharge = { gpuGb: number; hostGb: number };
+
+export function chargedAgainstCards({ gpuGb, hostGb }: MemoryCharge, sharedHostMemory: boolean): number {
+  return gpuGb + (sharedHostMemory ? hostGb : 0);
+}
+
+export function chargedAgainstHostMemory({ gpuGb, hostGb }: MemoryCharge, sharedHostMemory: boolean): number {
+  return hostGb + (sharedHostMemory ? gpuGb : 0);
+}
+
+export const FOOTPRINT_PART_MEMORY = {
+  weights: "gpu",
+  kvCache: "gpu",
+  engine: "gpu",
+  speculative: "gpu",
+  hostWeights: "host",
+  communicators: "host",
+  engineProcess: "host",
+  imageInput: "host",
+} as const satisfies Record<string, "gpu" | "host">;
+
+export type FootprintPartKind = keyof typeof FOOTPRINT_PART_MEMORY;
+
+export type FootprintPart = { part: FootprintPartKind; gb: number };
+
+export type PartedFootprint = { gpuGb: number; hostGb: number; parts: FootprintPart[] };
+
+export type RankFootprint = PartedFootprint & { node: number };
 
 export type Footprint = {
   ranks: RankFootprint[];
-  nodes: { gpuGb: number; hostGb: number }[];
+  nodes: PartedFootprint[];
   gpuGb: number;
   hostGb: number;
 };
@@ -139,30 +171,42 @@ export function deploymentFootprint(entry: FootprintEntry, request: FootprintReq
   const vision = entry.tags.includes("vision");
   const communicators = sizing.activeWeightGb === undefined ? 1 : 2;
 
-  const gpuGb = (sizing.weightGb - hostWeightGb) / ranks
-    + kvCacheGb * kvShare
-    + (ranks > 1 ? profile.gpuPerRankGb.split : profile.gpuPerRankGb.whole)
-    + (speculative ? profile.gpuSpeculativeGb : 0);
-  const sharedHostGb = profile.hostWeightAllocationGb(hostWeightGb / ranks)
-    + (layout.nodes > 1 ? communicators * profile.pinnedPerCommunicatorGb : 0);
-  const leaderHostGb = profile.hostLeaderGb
-    + (vision ? profile.hostVisionGb + imagesInFlight * profile.hostPerImageInFlightGb : 0);
+  const sharedParts: FootprintPart[] = [
+    { part: "weights", gb: (sizing.weightGb - hostWeightGb) / ranks },
+    { part: "kvCache", gb: kvCacheGb * kvShare },
+    { part: "engine", gb: ranks > 1 ? profile.gpuPerRankGb.split : profile.gpuPerRankGb.whole },
+    { part: "speculative", gb: speculative ? profile.gpuSpeculativeGb : 0 },
+    { part: "hostWeights", gb: profile.hostWeightAllocationGb(hostWeightGb / ranks) },
+    { part: "communicators", gb: layout.nodes > 1 ? communicators * profile.pinnedPerCommunicatorGb : 0 },
+  ];
+  const leaderParts: FootprintPart[] = [
+    { part: "engineProcess", gb: profile.hostLeaderGb },
+    { part: "imageInput", gb: vision ? profile.hostVisionGb + imagesInFlight * profile.hostPerImageInFlightGb : 0 },
+  ];
+  const followerParts: FootprintPart[] = [{ part: "engineProcess", gb: profile.hostFollowerGb }];
 
   const rankFootprints = Array.from({ length: ranks }, (_, rank): RankFootprint => ({
     node: Math.floor(rank / layout.cardsPerNode),
-    gpuGb,
-    hostGb: sharedHostGb + (rank === 0 ? leaderHostGb : profile.hostFollowerGb),
+    ...parted([...sharedParts, ...(rank === 0 ? leaderParts : followerParts)]),
   }));
-  const nodes = Array.from({ length: layout.nodes }, (_, node) => {
-    const onNode = rankFootprints.filter((rank) => rank.node === node);
-    return { gpuGb: sum(onNode.map((rank) => rank.gpuGb)), hostGb: sum(onNode.map((rank) => rank.hostGb)) };
-  });
+  const nodes = Array.from({ length: layout.nodes }, (_, node) =>
+    parted(rankFootprints.filter((rank) => rank.node === node).flatMap((rank) => rank.parts)));
   return {
     ranks: rankFootprints,
     nodes,
     gpuGb: sum(nodes.map((node) => node.gpuGb)),
     hostGb: sum(nodes.map((node) => node.hostGb)),
   };
+}
+
+function parted(parts: FootprintPart[]): PartedFootprint {
+  const byKind = new Map<FootprintPartKind, number>();
+  for (const { part, gb } of parts) {
+    byKind.set(part, (byKind.get(part) ?? 0) + gb);
+  }
+  const merged = [...byKind].flatMap(([part, gb]) => (gb > 0 ? [{ part, gb }] : []));
+  const total = (memory: "gpu" | "host") => sum(merged.filter(({ part }) => FOOTPRINT_PART_MEMORY[part] === memory).map(({ gb }) => gb));
+  return { gpuGb: total("gpu"), hostGb: total("host"), parts: merged };
 }
 
 export type LayoutOption = { layout: Layout; allowed: true } | { layout: Layout; allowed: false; reason: string };

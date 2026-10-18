@@ -26,7 +26,7 @@ import {
 import { rootLogger } from "../../logger";
 import { getHardwareProfile } from "../statekeeper";
 import { cardCapacityGib, type HardwareProfile } from "../hardware-detect";
-import { DOES_NOT_FIT_ON_NODE, engineProfile, gpuId, maxNumSeqs, tensorParallelLayouts, type DesiredGroup, type GpuInfo, type GroupStage, type GroupMemberHealth } from "common-env";
+import { DOES_NOT_FIT_ON_NODE, chargedAgainstHostMemory, engineProfile, sharesHostMemory, gpuId, maxNumSeqs, tensorParallelLayouts, type DesiredGroup, type GpuInfo, type GroupStage, type GroupMemberHealth } from "common-env";
 import { downloadModel, largestWeightFileBytes } from "./vllm-download";
 import { devicesFor, readHostDevices, resolvePinnedCards } from "./gpu-devices";
 import type { ModelSizingFields } from "common-env/model-catalog";
@@ -268,10 +268,10 @@ async function downloadAndStart(installation: SyncInstallation, running: SyncIns
   }
   await dropPageCache();
   if (charge) {
-    const unified = profile.source === "unified-memory";
+    const sharedHostMemory = sharesHostMemory(profile.gpus);
     const waiting = await admit(installation.id, {
-      neededGb: chargedGb(charge.hostGb, charge.gpuGbPerCard * devices.tensorParallelSize, unified) + admittedLoadingGb,
-      chargedElsewhereGb: running.reduce((total, other) => total + chargedGb(other.hostCapacity ?? 0, other.estCapacity, unified), 0),
+      neededGb: chargedAgainstHostMemory({ gpuGb: charge.gpuGbPerCard * devices.tensorParallelSize, hostGb: charge.hostGb }, sharedHostMemory) + admittedLoadingGb,
+      chargedElsewhereGb: running.reduce((total, other) => total + chargedAgainstHostMemory({ gpuGb: other.estCapacity, hostGb: other.hostCapacity ?? 0 }, sharedHostMemory), 0),
       usableGb: profile.hostMemoryGb,
     });
     if (waiting) {
@@ -354,10 +354,6 @@ function forgetUndesired(desiredIds: ReadonlySet<string>): void {
       downloaded.delete(id);
     }
   }
-}
-
-function chargedGb(hostGb: number, gpuGb: number, unified: boolean): number {
-  return hostGb + (unified ? gpuGb : 0);
 }
 
 type AdmissionRequest = { neededGb: number; chargedElsewhereGb: number; usableGb: number | undefined };

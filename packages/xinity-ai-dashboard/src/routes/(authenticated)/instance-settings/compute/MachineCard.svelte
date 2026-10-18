@@ -25,11 +25,6 @@
   const lastSeen = $derived(formatRelativeTime(node.lastSeenMs, Date.now()));
   const shortName = (model: NodeSummary["models"][number]) => model.name.split("/").pop();
   const groupPeers = (model: NodeSummary["models"][number]) => model.groupMachines.filter((machine) => machine.nodeId !== node.id).map((machine) => machine.name);
-  const deploymentsAcross = $derived([...new Set(node.models.filter((model) => model.groupMachines.length > 0).map((model) => model.deployment))]);
-  const countedElsewhere = $derived(node.models.flatMap((model) => {
-    const rank0 = model.groupMachines[0];
-    return rank0 && rank0.nodeId !== node.id ? [{ model: shortName(model), machine: rank0.name }] : [];
-  }));
   const lifecycleBadge: Record<string, string> = {
     ready: "bg-gray-100 text-gray-700",
     downloading: "bg-xinity-purple/10 text-xinity-purple animate-pulse",
@@ -142,7 +137,7 @@
     <div class="flex flex-col gap-1 pt-1 border-t border-gray-100 text-xs">
       {#if interconnect.coupledWith.length > 0}
         <span class="inline-flex items-center gap-1 text-gray-600">
-          <Cable class="w-3 h-3 text-xinity-purple shrink-0" />Coupled with {interconnect.coupledWith.join(", ")}{deploymentsAcross.length > 0 ? `, serving ${deploymentsAcross.join(", ")} across it` : ""}
+          <Cable class="w-3 h-3 text-xinity-purple shrink-0" />Coupled with {interconnect.coupledWith.join(", ")}
         </span>
       {/if}
       {#each interconnect.issues as issue}
@@ -171,8 +166,5 @@
         </span>
       {/each}
     </div>
-    {#each countedElsewhere as { model, machine }}
-      <p class="text-xs text-gray-500">Requests to {model} are counted on {machine}, which serves it for the group.</p>
-    {/each}
   {/if}
 </div>

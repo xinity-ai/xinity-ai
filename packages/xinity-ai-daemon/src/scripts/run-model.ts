@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
 import { z } from "zod";
-import { freeMemberAddress, maxNumSeqs, quoteShellArgv } from "common-env";
+import { chargedAgainstCards, freeMemberAddress, maxNumSeqs, quoteShellArgv, sharesHostMemory } from "common-env";
 import {
   ModelFileSchema,
   estimateThroughput,
@@ -546,8 +546,10 @@ async function main(): Promise<void> {
   const config = buildConfig(resolved, profile, devices, group, share, charge, loadingGb);
   // Every node in a group downloads the whole model but only holds its own cards' share of it.
   const gpuOnThisNode = (charge?.gpuGbPerCard ?? share.weightGb + share.kvCacheGb) * devices.tensorParallelSize;
-  const hostInPool = charge && profile.source === "unified-memory" ? charge.hostGb : 0;
-  const onThisNode: ResolvedVllmModel = { ...resolved, estCapacity: gpuOnThisNode + hostInPool };
+  const onThisNode: ResolvedVllmModel = {
+    ...resolved,
+    estCapacity: chargedAgainstCards({ gpuGb: gpuOnThisNode, hostGb: charge?.hostGb ?? 0 }, sharesHostMemory(profile.gpus)),
+  };
 
   if (verb === "plan") {
     printPlan(onThisNode, profile, driver, config, share, charge);

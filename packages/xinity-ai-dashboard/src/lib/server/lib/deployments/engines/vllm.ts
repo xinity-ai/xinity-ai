@@ -8,6 +8,8 @@ import {
   tensorParallelLayouts,
   type Footprint,
   type FootprintEntry,
+  type FootprintPart,
+  type PartedFootprint,
   type OptimizationGoal,
 } from "common-env";
 import { poolCharge, type CardCapacity, type NodeResources } from "../cluster-state";
@@ -23,7 +25,7 @@ function placeableCards(cards: CardCapacity[]): CardCapacity[] {
   return pinnable.length > 0 ? pinnable : cards.slice(0, 1);
 }
 
-type PerCardCharge = { perCardGb: number; hostGb: number; maxNumSeqs: number | null };
+type PerCardCharge = { perCardGb: number; hostGb: number; maxNumSeqs: number | null; parts: FootprintPart[] };
 
 export type VllmLayout = PerCardCharge & { cards: CardCapacity[] };
 
@@ -51,13 +53,18 @@ function footprintCharge(entry: FootprintEntry, node: NodeResources, kvCacheGb: 
     imagesInFlight: imagesInFlight(entry, node.gpus, kvCacheGb),
     profile: engineProfile("vllm", node.engineVersion),
   });
-  return footprint && { perCardGb: footprint.ranks[0]!.gpuGb, hostGb: footprint.hostGb, maxNumSeqs: maxNumSeqs(entry, node.gpus, kvCacheGb) };
+  return footprint && { perCardGb: footprint.ranks[0]!.gpuGb, hostGb: footprint.hostGb, maxNumSeqs: maxNumSeqs(entry, node.gpus, kvCacheGb), parts: footprint.nodes[0]!.parts };
 }
 
 function weightsAndKvCharge(model: PlacementModel, kvCacheGb: number, cards: number): PerCardCharge | undefined {
   const sizing = { weightGb: model.weight, attentionHeads: model.attentionHeads, kvHeads: model.kvHeads, mlaAttention: model.mlaAttention };
   const layout = tensorParallelLayouts(sizing, { cards, kvCacheGb }).find((candidate) => candidate.tensorParallelSize === cards);
-  return layout && { perCardGb: layout.perCardWeightGb + layout.perCardKvCacheGb, hostGb: 0, maxNumSeqs: null };
+  return layout && {
+    perCardGb: layout.perCardWeightGb + layout.perCardKvCacheGb,
+    hostGb: 0,
+    maxNumSeqs: null,
+    parts: [{ part: "weights", gb: layout.perCardWeightGb * cards }, { part: "kvCache", gb: layout.perCardKvCacheGb * cards }],
+  };
 }
 
 function perCardCharge(model: PlacementModel, node: NodeResources, kvCacheGb: number, cards: number, vendor: string): PerCardCharge | undefined {
@@ -110,7 +117,7 @@ export function layoutForVllm(
   return vllmLayouts(node, model, kvCacheGb, strategy).sort(LAYOUT_PREFERENCE[goal])[0];
 }
 
-type MemberLayout = { nodeId: string; cards: CardCapacity[]; hostGb: number };
+type MemberLayout = { nodeId: string; cards: CardCapacity[]; hostGb: number; parts: FootprintPart[] };
 
 export type GroupLayout = { members: MemberLayout[]; perCardGb: number; maxNumSeqs: number | null };
 
@@ -121,19 +128,19 @@ const cardAndEngineKey = (card: CardCapacity, node: NodeResources) =>
   `${card.vendor}:${card.name}:${node.unified ? "" : card.total}:${node.engineVersion ?? ""}`;
 
 function assignRanks(footprint: Footprint, eligible: Eligible[], cardsPerNode: number, model: PlacementModel): MemberLayout[] | undefined {
-  const fits = (candidate: Eligible, hostGb: number): MemberLayout | undefined => {
+  const fits = (candidate: Eligible, { hostGb, parts }: PartedFootprint): MemberLayout | undefined => {
     const cards = fittingCards(candidate.node, candidate.cards, cardsPerNode, footprint.ranks[0]!.gpuGb, hostGb, loadingGbOn(candidate.node, model));
-    return cards && { nodeId: candidate.nodeId, cards, hostGb };
+    return cards && { nodeId: candidate.nodeId, cards, hostGb, parts };
   };
   // Only rank 0 has a part of its own, every follower needs the same. So each candidate is tried as
   // rank 0 and the followers are any others that take a follower's part: a node too small for
   // either one role is not lost for the other.
   const [leader, ...followers] = footprint.nodes;
   for (const candidate of eligible) {
-    const rankZero = fits(candidate, leader!.hostGb);
+    const rankZero = fits(candidate, leader!);
     const others = rankZero && eligible
       .filter((other) => other.nodeId !== candidate.nodeId)
-      .flatMap((other) => fits(other, followers[0]!.hostGb) ?? [])
+      .flatMap((other) => fits(other, followers[0]!) ?? [])
       .slice(0, followers.length);
     if (rankZero && others && others.length === followers.length) {
       return [rankZero, ...others];
@@ -184,12 +191,14 @@ export const vllmScheduler: EngineScheduler = {
     return {
       gpuIds: layout.cards.flatMap((card) => (card.id ? [card.id] : [])),
       ...asCharge(layout, layout.cards.length),
+      parts: layout.parts,
     };
   },
   groupsAcrossNodes: (candidates, request) =>
     groupLayoutsForVllm(candidates, request.model, request.kvCacheGb, request.strategy).map((layout) =>
-      layout.members.map(({ nodeId, cards, hostGb }) => ({
+      layout.members.map(({ nodeId, cards, hostGb, parts }) => ({
         nodeId,
+        parts,
         gpuIds: cards.flatMap((card) => (card.id ? [card.id] : [])),
         estCapacity: layout.perCardGb * cards.length,
         hostCapacity: hostGb,
