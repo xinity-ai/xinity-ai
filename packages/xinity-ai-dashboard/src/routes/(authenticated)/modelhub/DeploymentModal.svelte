@@ -360,9 +360,14 @@
     if (keepsUnknownEntry) {
       return { ...settings };
     }
-    const submitted: DeploymentSettings = { version: 1 };
-    if (selectedPrimaryModel?.type === "transcription" && settings.maxAudioInputDurationS != null) {
-      submitted.maxAudioInputDurationS = Math.round(settings.maxAudioInputDurationS);
+    const submitted: DeploymentSettings = { version: 1, ...(settings.optimizeFor && { optimizeFor: settings.optimizeFor }) };
+    if (selectedPrimaryModel?.type === "transcription") {
+      if (settings.maxAudioInputDurationS != null) {
+        submitted.maxAudioInputDurationS = Math.round(settings.maxAudioInputDurationS);
+      }
+      if (settings.maxAudioInputFileSizeMB != null) {
+        submitted.maxAudioInputFileSizeMB = Math.round(settings.maxAudioInputFileSizeMB);
+      }
     }
     return submitted;
   }
