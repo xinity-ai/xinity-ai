@@ -14,7 +14,7 @@
   import { ChevronDown } from "@lucide/svelte";
   import type { DeploymentSettings } from "common-env/deployment-settings";
   import DeploymentSettingsSection from "./DeploymentSettingsSection.svelte";
-  import type { PlannedReplica } from "$lib/server/lib/deployments/orchestration";
+  import type { CapacityShortfall, PlannedReplicaPreview } from "$lib/server/orpc/procedures/deployment.procedure";
 
   let {
     selectedPrimaryModel,
@@ -48,6 +48,7 @@
     capacityChecked = false,
     capacityBlocked = false,
     capacityReason,
+    capacityShortfall,
     onPublicSpecifierInput,
     onDeploymentNameInput,
     onCanaryEnabledChange,
@@ -78,13 +79,14 @@
     keepsUnknownCanary?: boolean;
     maxReplicas?: number;
     showTrafficSlider?: boolean;
-    plannedReplicas?: PlannedReplica[];
+    plannedReplicas?: PlannedReplicaPreview[];
     nodeCapabilities?: NodeCapability[];
     modelCompatibility?: ModelCompatibility;
     enabled?: boolean;
     capacityChecked?: boolean;
     capacityBlocked?: boolean;
     capacityReason?: string;
+    capacityShortfall?: CapacityShortfall;
     publicSpecifierError?: string;
     onPublicSpecifierInput?: () => void;
     onDeploymentNameInput?: () => void;
@@ -445,6 +447,7 @@
     {capacityChecked}
     {capacityBlocked}
     {capacityReason}
+    {capacityShortfall}
   />
 {/if}
 

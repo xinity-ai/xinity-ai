@@ -1,5 +1,5 @@
 import { inArray, modelDeploymentT, sql, modelInstallationT, modelInstallationStateT, aiNodeT, nodeIsLive, type ModelInstallation, type AiNode } from "common-db";
-import { DOES_NOT_FIT_ON_NODE, GROUP_MEMBER_FEATURE, deriveInterconnectOverview, freeMemberAddress, resolveOptimizeFor, settingsEqual, sharedRdmaSubnets, type Coupling, type InstallationGroup, type OptimizationGoal } from "common-env";
+import { DOES_NOT_FIT_ON_NODE, GROUP_MEMBER_FEATURE, deriveInterconnectOverview, freeMemberAddress, resolveOptimizeFor, settingsEqual, sharedRdmaSubnets, type Coupling, type FootprintPart, type InstallationGroup, type OptimizationGoal } from "common-env";
 import { getDB } from "$lib/server/db";
 import { resolveSchedulable, type SchedulableModel } from "$lib/server/lib/models/model-catalog";
 import { checkNodeCompatibility, type BlockedVersion, type ModelNodeRequirements, type NodeCapability, type Provider } from "common-env/model-catalog";
@@ -7,9 +7,9 @@ import { rootLogger } from "$lib/server/logging";
 import { building } from "$app/environment";
 import { maxVramGb } from "$lib/server/license";
 import { config } from "$lib/server/config";
-import { buildClusterState, chargeCapacity, chargeOf, poolCharge, rankServers, releaseInstallationFromState, replicasOf, resourcesOf, type ClusterState, type NewInstallation } from "./cluster-state";
+import { buildClusterState, chargeCapacity, chargeOf, poolCharge, rankServers, releaseInstallationFromState, replicasOf, resourcesOf, type ClusterState, type NewInstallation, type NodeResources } from "./cluster-state";
 import { ENGINE_SCHEDULERS } from "./engines";
-import type { MemberSlot, PlacementRequest } from "./engines/engine";
+import type { MemberSlot, NodeSlot, PlacementRequest } from "./engines/engine";
 import type { Placement } from "./placement";
 import { requirementsForDeployments, type ModelRequirementTable } from "./requirements";
 import type { DeploymentStrategy } from "./strategy";
@@ -274,12 +274,56 @@ function totalVramUsed(state: ClusterState): number {
 
 export type ShortfallReason = "catalog_unavailable" | "not_found" | "no_compatible_node" | "no_capacity" | "license_limit";
 
-export type Shortfall = { specifier: string; missing: number; reason: ShortfallReason; constraints?: PlacementConstraints & { driver: Provider } };
+export type Shortfall = { specifier: string; missing: number; reason: ShortfallReason; constraints?: PlacementConstraints & { driver: Provider }; need?: CapacityNeed };
 
-export type InstallationPlan = { toInstall: NewInstallation[]; shortfalls: Shortfall[] };
+export type InstallationPlan = { toInstall: NewInstallation[]; shortfalls: Shortfall[]; partsOf: FootprintPart[][] };
 
 function anyNodeCouldServe(state: ClusterState, driver: Provider, constraints: PlacementConstraints): boolean {
   return state.availableServers.some((server) => nodeCouldServe(server, driver, constraints));
+}
+
+export type MachineNeed = { machine: string; neededGb: number; freeGb: number; sharedMemory: boolean; parts: FootprintPart[] };
+
+export type CapacityNeed = { machines: number; perMachine: MachineNeed[] };
+
+const emptied = (node: NodeResources): NodeResources => ({
+  ...node,
+  cards: node.cards.map((card) => ({ ...card, used: 0 })),
+  host: node.host && { ...node.host, used: 0 },
+});
+
+export function capacityNeed(
+  state: ClusterState,
+  driver: Provider,
+  need: Omit<PlacementRequest, "strategy">,
+  constraints: PlacementConstraints,
+  strategy: DeploymentStrategy,
+): CapacityNeed | undefined {
+  const scheduler = ENGINE_SCHEDULERS[driver];
+  const request = { ...need, strategy };
+  const servers = state.availableServers.filter((server) => nodeCouldServe(server, driver, constraints));
+  const machineNeed = (server: AiNode, slot: NodeSlot): MachineNeed => {
+    const node = resourcesOf(state, server.id);
+    return {
+      machine: server.machineName ?? server.host,
+      neededGb: poolCharge(node, slot),
+      freeGb: freeGbOn(state, server.id),
+      sharedMemory: node.unified,
+      parts: slot.parts ?? [],
+    };
+  };
+  // Each machine is charged in its own way, so it is measured against what it needs placed with nothing else on it.
+  const alone = servers.flatMap((server) => {
+    const slot = scheduler.placeOnNode(emptied(resourcesOf(state, server.id)), request);
+    return slot ? [machineNeed(server, slot)] : [];
+  });
+  const memberServers = servers.filter((server) => server.driverFeatures?.[driver]?.includes(GROUP_MEMBER_FEATURE));
+  const members = alone.length > 0
+    ? []
+    : (scheduler.groupsAcrossNodes?.(memberServers.map((server) => ({ nodeId: server.id, node: emptied(resourcesOf(state, server.id)) })), request)[0] ?? [])
+      .map((member) => machineNeed(memberServers.find((server) => server.id === member.nodeId)!, member));
+  const perMachine = (alone.length > 0 ? alone : members).toSorted((a, b) => (a.neededGb - a.freeGb) - (b.neededGb - b.freeGb));
+  return perMachine.length > 0 ? { machines: Math.max(members.length, 1), perMachine } : undefined;
 }
 
 /** Plans installations needed to satisfy replica requirements that aren't yet met,
@@ -291,6 +335,7 @@ async function planNewInstallations(
   strategy: DeploymentStrategy,
 ): Promise<InstallationPlan> {
   const toInstall: NewInstallation[] = [];
+  const partsOf: FootprintPart[][] = [];
   const shortfalls: Shortfall[] = [];
   let usedVram = totalVramUsed(state);
 
@@ -328,7 +373,10 @@ async function planNewInstallations(
       if (!replica || (replica.coupling && !groups)) {
         log.warn({ specifier: requirement.specifier }, "No server with enough capacity for additional replica");
         const reason = anyNodeCouldServe(state, driver, constraints) ? "no_capacity" : "no_compatible_node";
-        shortfalls.push({ specifier, missing: needed - i, reason, constraints: { ...constraints, driver } });
+        shortfalls.push({
+          specifier, missing: needed - i, reason, constraints: { ...constraints, driver },
+          need: reason === "no_capacity" ? capacityNeed(state, driver, need, constraints, strategy) : undefined,
+        });
         break;
       }
 
@@ -358,13 +406,14 @@ async function planNewInstallations(
           group: groups?.[rank] ?? null,
         };
         toInstall.push(installation);
+        partsOf.push(member.parts ?? []);
         chargeCapacity(state, installation, member);
       });
       usedVram += gpuGb;
     }
   }
 
-  return { toInstall, shortfalls };
+  return { toInstall, shortfalls, partsOf };
 }
 
 type ModelLookup = (specifier: string, driver: Provider) => Promise<SchedulableModel | null>;
@@ -446,7 +495,7 @@ async function persistCharges(before: ModelInstallation[], after: ModelInstallat
     .where(sql`${modelInstallationT.id} = ${install.id}`)));
 }
 
-export type PlannedMachine = { machineName: string; cards: number; gpuGb: number; hostGb: number };
+export type PlannedMachine = { machineName: string; cards: number; gpuGb: number; hostGb: number; sharedMemory: boolean; parts: FootprintPart[] };
 
 export type PlannedReplica = { specifier: string; machines: PlannedMachine[] };
 
@@ -457,15 +506,23 @@ const lookupSchedulable: ModelLookup = async (specifier, driver) => {
   return resolution.status === "found" ? resolution.model : null;
 };
 
-export async function previewPlacement(requirements: ModelRequirementTable, replacedDeploymentId?: string): Promise<PlacementPreview> {
+export async function currentClusterState(replacedDeploymentId?: string): Promise<{ state: ClusterState; servers: AiNode[] }> {
   const [existing, servers]: [ModelInstallation[], AiNode[]] = await Promise.all([
     getDB().select().from(modelInstallationT).where(sql`${modelInstallationT.deletedAt} IS NULL`),
     getDB().select().from(aiNodeT).where(nodeIsLive),
   ]);
   const liveIds = new Set(servers.map((server) => server.id));
   const others = existing.filter((install) => liveIds.has(install.nodeId) && install.deploymentId !== replacedDeploymentId);
-  const state = buildClusterState(await chargeUnchargedInstallations(others, servers, lookupSchedulable), servers);
-  const { toInstall, shortfalls } = await planNewInstallations(requirements, state, maxVramGb(), config.compute.deploymentStrategy());
+  return { state: buildClusterState(await chargeUnchargedInstallations(others, servers, lookupSchedulable), servers), servers };
+}
+
+export function freeGbOn(state: ClusterState, nodeId: string): number {
+  return Math.max(0, resourcesOf(state, nodeId).cards.reduce((total, card) => total + card.total - card.used, 0));
+}
+
+export async function previewPlacement(requirements: ModelRequirementTable, replacedDeploymentId?: string): Promise<PlacementPreview> {
+  const { state, servers } = await currentClusterState(replacedDeploymentId);
+  const { toInstall, shortfalls, partsOf } = await planNewInstallations(requirements, state, maxVramGb(), config.compute.deploymentStrategy());
   const machineName = (nodeId: string) => {
     const server = servers.find((candidate) => candidate.id === nodeId);
     return server?.machineName ?? server?.host ?? nodeId;
@@ -478,6 +535,8 @@ export async function previewPlacement(requirements: ModelRequirementTable, repl
         cards: Math.max(install.gpuIds?.length ?? 0, 1),
         gpuGb: install.estCapacity,
         hostGb: install.hostCapacity ?? 0,
+        sharedMemory: resourcesOf(state, install.nodeId).unified,
+        parts: partsOf[Number(install.id)] ?? [],
       })),
     })),
     shortfalls,

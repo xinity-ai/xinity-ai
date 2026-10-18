@@ -1,4 +1,4 @@
-import type { OptimizationGoal } from "common-env";
+import type { FootprintPart, OptimizationGoal } from "common-env";
 import type { SchedulableModel } from "$lib/server/lib/models/model-catalog";
 import type { NodeResources } from "../cluster-state";
 import type { Placement } from "../placement";
@@ -10,7 +10,7 @@ export type PlacementRequest = { model: PlacementModel; kvCacheGb: number; goal:
 
 export type Charge = { estCapacity: number; hostCapacity: number; maxNumSeqs: number | null };
 
-export type NodeSlot = Charge & { gpuIds: string[] };
+export type NodeSlot = Charge & { gpuIds: string[]; parts?: FootprintPart[] };
 
 export type CandidateNode = { nodeId: string; node: NodeResources };
 

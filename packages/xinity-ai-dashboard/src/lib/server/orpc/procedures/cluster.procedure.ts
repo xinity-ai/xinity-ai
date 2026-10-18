@@ -1,7 +1,5 @@
 import { rootOs, withOrganization, requirePermission } from "../root";
-import { sql, aiNodeT, modelInstallationT, nodeIsLive } from "common-db";
-import { getDB } from "$lib/server/db";
-import { isUnified } from "$lib/server/lib/deployments/cluster-state";
+import { currentClusterState, freeGbOn } from "$lib/server/lib/deployments/orchestration";
 import { rootLogger } from "$lib/server/logging";
 import { catalogClient } from "$lib/server/lib/models/model-catalog";
 import z from "zod";
@@ -60,31 +58,12 @@ async function buildModelCompatibility(nodes: NodeCapability[]): Promise<ModelCo
 
 /** Builds a snapshot of current cluster capacity and per-node capabilities. */
 export async function buildClusterCapacity(): Promise<ClusterCapacity> {
-  const [nodes, installations] = await Promise.all([
-    getDB().select({
-      id: aiNodeT.id,
-      estCapacity: aiNodeT.estCapacity,
-      driverVersions: aiNodeT.driverVersions,
-      driverFeatures: aiNodeT.driverFeatures,
-      gpus: aiNodeT.gpus,
-    }).from(aiNodeT).where(nodeIsLive),
-    getDB().select().from(modelInstallationT)
-      .where(sql`${modelInstallationT.deletedAt} IS NULL`),
-  ]);
-
-  const unifiedNodes = new Set(nodes.filter(isUnified).map((node) => node.id));
-  const nodeUsed = new Map<string, number>();
-  for (const inst of installations) {
-    // On unified memory the host part comes out of the same pool, as the scheduler charges it.
-    const charged = inst.estCapacity + (unifiedNodes.has(inst.nodeId) ? inst.hostCapacity ?? 0 : 0);
-    nodeUsed.set(inst.nodeId, (nodeUsed.get(inst.nodeId) ?? 0) + charged);
-  }
-
-  const nodeCapabilities: NodeCapability[] = nodes.map(n => ({
-    free: n.estCapacity - (nodeUsed.get(n.id) ?? 0),
-    driverVersions: n.driverVersions,
-    driverFeatures: n.driverFeatures ?? {},
-    gpus: n.gpus,
+  const { state, servers } = await currentClusterState();
+  const nodeCapabilities: NodeCapability[] = servers.map((server) => ({
+    free: freeGbOn(state, server.id),
+    driverVersions: server.driverVersions,
+    driverFeatures: server.driverFeatures ?? {},
+    gpus: server.gpus,
   }));
 
   const nodesWithFreeCapacity = nodeCapabilities.filter(n => n.free > 0);

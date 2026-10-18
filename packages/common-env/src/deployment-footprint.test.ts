@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { deploymentFootprint, engineProfile, layoutOptions, maxNumSeqs, type FootprintEntry, type Layout } from "./deployment-footprint";
+import { chargedAgainstCards, chargedAgainstHostMemory, deploymentFootprint, engineProfile, FOOTPRINT_PART_MEMORY, layoutOptions, maxNumSeqs, sharesHostMemory, type FootprintEntry, type Layout } from "./deployment-footprint";
 import { ModelSizing } from "./model-catalog/definitions/model-definition";
 
 const GB_PER_GIB = 1.073741824;
@@ -77,6 +77,19 @@ describe("deploymentFootprint against measured runs", () => {
     expect(footprint.nodes[1]!.hostGb).toBe(footprint.ranks[1]!.hostGb);
     // 25.6 GB per rank, allocated as 2^35 bytes
     expect(footprint.ranks[1]!.hostGb).toBeGreaterThanOrEqual(34.359);
+  });
+
+  test("names what each node's charge is made of, adding up to its GPU and host totals", () => {
+    const flash = measured.at(-1)!;
+    const footprint = deploymentFootprint(flash.entry, { layout: twoNodes, kvCacheGb: 8.5, imagesInFlight: 30, profile: vllm })!;
+    const [leader, follower] = footprint.nodes;
+    expect(leader!.parts.map(({ part }) => part)).toEqual(["weights", "kvCache", "engine", "speculative", "hostWeights", "communicators", "engineProcess", "imageInput"]);
+    expect(follower!.parts.map(({ part }) => part)).not.toContain("imageInput");
+    for (const node of footprint.nodes) {
+      const total = (memory: "gpu" | "host") => node.parts.filter(({ part }) => FOOTPRINT_PART_MEMORY[part] === memory).reduce((sum, { gb }) => sum + gb, 0);
+      expect(total("gpu")).toBeCloseTo(node.gpuGb);
+      expect(total("host")).toBeCloseTo(node.hostGb);
+    }
   });
 
   test("has no footprint for a split the heads cannot make", () => {
@@ -163,5 +176,17 @@ describe("maxNumSeqs", () => {
   test("without a kv cost per token, runs one at a time rather than the engine's default", () => {
     const { kvBytesPerToken: _, ...withoutPerToken } = sizing;
     expect(maxNumSeqs({ sizing: withoutPerToken }, gpus, 8)).toBe(1);
+  });
+});
+
+describe("charging a machine's memory", () => {
+  const charge = { gpuGb: 40, hostGb: 10 };
+
+  test("keeps the cards and host memory apart where a GPU has memory of its own, and one pool where none does", () => {
+    const discrete = sharesHostMemory([{ vramMb: 46080 }]);
+    expect([chargedAgainstCards(charge, discrete), chargedAgainstHostMemory(charge, discrete)]).toEqual([40, 10]);
+    const shared = sharesHostMemory([{ vramMb: 0 }]);
+    expect([chargedAgainstCards(charge, shared), chargedAgainstHostMemory(charge, shared)]).toEqual([50, 50]);
+    expect(sharesHostMemory([])).toBe(true);
   });
 });

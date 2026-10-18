@@ -7,7 +7,7 @@ import { getDB } from "$lib/server/db";
 import { previewPlacement, syncDeployedModels, type Shortfall, type ShortfallReason } from "$lib/server/lib/deployments/orchestration";
 import { requirementKey } from "$lib/server/lib/deployments/placement";
 import type { ModelRequirement } from "$lib/server/lib/deployments/requirements";
-import { deploymentSettingsSchema } from "common-env";
+import { deploymentSettingsSchema, FOOTPRINT_PART_MEMORY, type FootprintPart, type FootprintPartKind } from "common-env";
 import { resolveSchedulable, resolvesOnlyAsLegacy } from "$lib/server/lib/models/model-catalog";
 import { rootLogger } from "$lib/server/logging";
 import { foldDeploymentStatusRows } from "$lib/server/lib/deployments/deployment-status";
@@ -63,11 +63,21 @@ const CapacityCheckInput = z.object({
   deploymentId: z.uuid().optional().describe("The deployment this draft changes, which is planned without its own installations"),
 });
 
+const FootprintPartDto = z.object({
+  part: z.enum(Object.keys(FOOTPRINT_PART_MEMORY) as [FootprintPartKind, ...FootprintPartKind[]]),
+  memory: z.enum(["gpu", "host"]),
+  gb: z.number(),
+});
+
+const withMemory = (parts: FootprintPart[]) => parts.map(({ part, gb }) => ({ part, memory: FOOTPRINT_PART_MEMORY[part], gb }));
+
 const PlannedMachineDto = z.object({
   machineName: z.string().describe("Name of the machine"),
   cards: z.number().describe("Cards the replica would use on this machine"),
   gpuGb: z.number().describe("GPU memory in GB the replica would occupy on this machine, over all its cards"),
   hostGb: z.number().describe("Host memory in GB the replica would occupy on this machine"),
+  sharedMemory: z.boolean().describe("Whether host and GPU memory are one pool on this machine, so host parts count against its free memory"),
+  parts: z.array(FootprintPartDto).describe("What the replica's memory on this machine consists of"),
 });
 
 const PlannedReplicaDto = z.object({
@@ -75,13 +85,28 @@ const PlannedReplicaDto = z.object({
   machines: z.array(PlannedMachineDto).describe("The machines the replica would run on, the one serving it first"),
 });
 
+const CapacityShortfallDto = z.object({
+  specifier: z.string(),
+  machines: z.number().describe("Machines one replica spans"),
+  perMachine: z.array(z.object({
+    machineName: z.string(),
+    neededGb: z.number().describe("Memory in GB the replica would take on this machine, charged as this machine counts memory"),
+    freeGb: z.number().describe("Memory in GB free on this machine now"),
+    sharedMemory: z.boolean().describe("Whether host and GPU memory are one pool on this machine, so host parts count against its free memory"),
+    parts: z.array(FootprintPartDto).describe("What the needed memory on this machine consists of"),
+  })).describe("Each machine that could run the model, the one closest to fitting first"),
+});
+
 const CapacityCheckOutput = z.object({
   deployable: z.boolean(),
   reason: z.string().optional(),
   replicas: z.array(PlannedReplicaDto).describe("Where each replica would be placed now, as the scheduler would place it"),
+  shortfall: CapacityShortfallDto.optional().describe("What a model that does not fit needs, against what is free"),
 });
 
 type CapacityCheckResult = z.infer<typeof CapacityCheckOutput>;
+export type CapacityShortfall = z.infer<typeof CapacityShortfallDto>;
+export type PlannedReplicaPreview = z.infer<typeof PlannedReplicaDto>;
 
 const SHORTFALL_REASONS: Record<ShortfallReason, (shortfall: Shortfall) => string> = {
   catalog_unavailable: () => "Capacity could not be verified: model catalog is unavailable",
@@ -92,7 +117,9 @@ const SHORTFALL_REASONS: Record<ShortfallReason, (shortfall: Shortfall) => strin
     const platformRequirement = platforms.length ? `, platform: ${platforms.join("/")}` : "";
     return `No compatible node for "${specifier}" (requires ${constraints?.driver}${versionRequirement}${platformRequirement})`;
   },
-  no_capacity: ({ specifier }) => `"${specifier}" needs more capacity than is currently available`,
+  no_capacity: ({ specifier, need }) => need
+    ? `"${specifier}" does not fit in the free memory`
+    : `"${specifier}" needs more capacity than is currently available`,
   license_limit: ({ specifier }) => `"${specifier}" would exceed the VRAM your license allows`,
 };
 
@@ -122,7 +149,19 @@ async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>
   return {
     deployable: !blocking,
     reason: shortfall && SHORTFALL_REASONS[shortfall.reason](shortfall),
-    replicas,
+    replicas: replicas.map((replica) => ({
+      ...replica,
+      machines: replica.machines.map((machine) => ({ ...machine, parts: withMemory(machine.parts) })),
+    })),
+    shortfall: shortfall?.need && {
+      specifier: shortfall.specifier,
+      machines: shortfall.need.machines,
+      perMachine: shortfall.need.perMachine.map(({ machine, parts, ...rest }) => ({
+        machineName: machine,
+        ...rest,
+        parts: withMemory(parts),
+      })),
+    },
   };
 }
 

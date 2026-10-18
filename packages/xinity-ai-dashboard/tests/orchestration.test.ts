@@ -1,12 +1,12 @@
 import { describe, test, expect } from "bun:test";
-import { chargeUnchargedInstallations, collectDriftedInstallations, collectExcessInstallations, collectIncompleteGroups, collectReassignableOrphans, collectReplicasThatDoNotFit, findPlacement, findServerForModel } from "../src/lib/server/lib/deployments/orchestration";
+import { chargeUnchargedInstallations, collectDriftedInstallations, collectExcessInstallations, collectIncompleteGroups, collectReassignableOrphans, collectReplicasThatDoNotFit, capacityNeed, findPlacement, findServerForModel } from "../src/lib/server/lib/deployments/orchestration";
 import { buildClusterState, rankServers, resourcesOf } from "../src/lib/server/lib/deployments/cluster-state";
 import { layoutForVllm, vllmScheduler } from "../src/lib/server/lib/deployments/engines/vllm";
 import { requirementsForDeployments, type ModelRequirement, type ModelRequirementTable } from "../src/lib/server/lib/deployments/requirements";
 import type { DeploymentStrategy } from "../src/lib/server/lib/deployments/strategy";
 import type { AiNode, ModelDeployment, ModelInstallation } from "common-db";
 import type { SchedulableModel } from "../src/lib/server/lib/models/model-catalog";
-import { GROUP_MEMBER_FEATURE, type FootprintEntry } from "common-env";
+import { FOOTPRINT_PART_MEMORY, GROUP_MEMBER_FEATURE, type FootprintEntry } from "common-env";
 
 const FF: DeploymentStrategy = "first-fit";
 const need = (weight: number) => ({ model: { weight }, kvCacheGb: 0, goal: "space" as const });
@@ -396,7 +396,7 @@ describe("orchestration: placing across cards", () => {
 
   test("a split installation occupies its per-card need on every card", () => {
     const slot = vllmScheduler.placeOnNode(resourcesOf(buildClusterState([], [twoCards]), "node-2"), { model: qwen, kvCacheGb: 16, goal: "speed", strategy: FF });
-    expect(slot).toEqual({ gpuIds: ["L-1", "L-2"], estCapacity: 42, hostCapacity: 0, maxNumSeqs: null });
+    expect(slot).toMatchObject({ gpuIds: ["L-1", "L-2"], estCapacity: 42, hostCapacity: 0, maxNumSeqs: null });
   });
 
   test("counts the kv cache every card holds once the kv heads are replicated", () => {
@@ -751,6 +751,45 @@ describe("orchestration: serving across coupled nodes", () => {
     const state = buildClusterState([], [gx10(a!, 107), gx10(b!, 109)]);
     const found = findPlacement(placement, "vllm", need(135.5, "space", { hostWeightGb: 51.2 }), state, [], FF);
     expect(nodesOf(found)).toEqual(["node-a", "node-b"]);
+  });
+
+  test("says how much a refused model needs and how much the freest machine has, on one machine or on each of a group", () => {
+    const constraints = { requiredPlatforms: [] };
+    const busy = (nodeId: string, gb: number) => makeInstallation({ id: `busy-${nodeId}`, nodeId, specifier: "other", driver: "vllm", estCapacity: gb, gpuIds: [`${nodeId}-gpu`] });
+    const state = buildClusterState([busy("node-a", 30), busy("node-b", 35)], pair());
+
+    const small = capacityNeed(state, "vllm", need(20), constraints, FF)!;
+    expect(small.machines).toBe(1);
+    expect(small.perMachine.map(({ freeGb }) => freeGb)).toEqual([45 - 30, 45 - 35]);
+    const [closest] = small.perMachine;
+    expect(closest!.neededGb).toBeGreaterThan(20);
+    expect(closest!.sharedMemory).toBe(false);
+    expect(closest!.parts.map(({ part }) => part)).toEqual(expect.arrayContaining(["weights", "kvCache"]));
+    const gpuParts = closest!.parts.filter(({ part }) => FOOTPRINT_PART_MEMORY[part] === "gpu").reduce((sum, { gb }) => sum + gb, 0);
+    expect(gpuParts).toBeCloseTo(closest!.neededGb);
+
+    const spanning = capacityNeed(state, "vllm", need(60), constraints, FF)!;
+    expect(spanning.machines).toBe(2);
+    expect(spanning.perMachine).toHaveLength(2);
+    spanning.perMachine.forEach(({ neededGb }) => {
+      expect(neededGb).toBeGreaterThan(30);
+      expect(neededGb).toBeLessThan(45);
+    });
+
+    expect(capacityNeed(state, "vllm", need(200), constraints, FF)).toBeUndefined();
+  });
+
+  test("measures each machine of a mixed setup against its own charge, counting host memory only where it shares the pool", () => {
+    const [discrete, other] = pair();
+    const unified = { ...other!, machineName: "spark", estCapacity: 60, hostMemoryGb: 64, gpus: [{ vendor: "nvidia", name: "NVIDIA GB10", vramMb: 0, uuid: "spark-gpu" }] };
+    const busy = makeInstallation({ id: "busy-discrete", nodeId: discrete!.id, specifier: "other", driver: "vllm", estCapacity: 40, gpuIds: [`${discrete!.id}-gpu`] });
+    const state = buildClusterState([busy, makeInstallation({ id: "busy-spark", nodeId: unified.id, specifier: "other", driver: "vllm", estCapacity: 55 })], [{ ...discrete!, machineName: "l40s" }, unified]);
+    const found = capacityNeed(state, "vllm", need(20), { requiredPlatforms: [] }, FF)!;
+    const byMachine = Object.fromEntries(found.perMachine.map((machine) => [machine.machine, machine]));
+    const hostParts = byMachine.spark!.parts.filter(({ part }) => FOOTPRINT_PART_MEMORY[part] === "host").reduce((sum, { gb }) => sum + gb, 0);
+    expect(byMachine.spark!.sharedMemory).toBe(true);
+    expect(byMachine.l40s!.sharedMemory).toBe(false);
+    expect(byMachine.spark!.neededGb).toBeCloseTo(byMachine.l40s!.neededGb + hostParts);
   });
 
   test("leaves out a machine that cannot run a member, rootless Docker or no RDMA devices", () => {

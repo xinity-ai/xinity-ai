@@ -1,5 +1,5 @@
 import type { AiNode, ModelInstallation, InferInsertModel, modelInstallationT } from "common-db";
-import { gpuId, type GpuInfo } from "common-env";
+import { chargedAgainstCards, gpuId, sharesHostMemory, type GpuInfo } from "common-env";
 import { ENGINE_SCHEDULERS } from "./engines";
 import type { Charge } from "./engines/engine";
 import { requirementKey } from "./placement";
@@ -32,8 +32,6 @@ export function rankServers(strategy: DeploymentStrategy, state: ClusterState): 
   return orderByStrategy(strategy, state.availableServers, (server) => state.serverCapacity.get(server.id));
 }
 
-export const isUnified = (server: Pick<AiNode, "gpus">) => !server.gpus.some((gpu) => gpu.vramMb > 0);
-
 // Without card sizes (unified memory, or none reported) the node is one card of its whole capacity.
 function nodeCards(server: AiNode): CardCapacity[] {
   const cards = server.gpus
@@ -51,7 +49,7 @@ export function resourcesOf(state: ClusterState, nodeId: string): NodeResources 
   const server = state.availableServers.find((candidate) => candidate.id === nodeId);
   return {
     cards: cardsOf(state, nodeId),
-    unified: server ? isUnified(server) : false,
+    unified: server ? sharesHostMemory(server.gpus) : false,
     host: state.hostCapacity.get(nodeId),
     gpus: server?.gpus ?? [],
     engineVersion: server?.driverVersions.vllm || undefined,
@@ -59,7 +57,7 @@ export function resourcesOf(state: ClusterState, nodeId: string): NodeResources 
 }
 
 export function poolCharge(node: Pick<NodeResources, "unified">, charge: Charge): number {
-  return charge.estCapacity + (node.unified ? charge.hostCapacity : 0);
+  return chargedAgainstCards({ gpuGb: charge.estCapacity, hostGb: charge.hostCapacity }, node.unified);
 }
 
 export function chargeCapacity(

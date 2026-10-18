@@ -12,7 +12,7 @@
   import type { DeploymentDefinition } from "./+page.server";
   import { settingsEqual, type DeploymentSettings } from "common-env/deployment-settings";
   import { DeploymentSettingsDto } from "$lib/orpc/dtos/model.dto";
-  import type { PlannedReplica } from "$lib/server/lib/deployments/orchestration";
+  import type { CapacityShortfall, PlannedReplicaPreview } from "$lib/server/orpc/procedures/deployment.procedure";
 
   import { Button } from "$lib/components/ui/button";
   import { Checkbox } from "$lib/components/ui/checkbox";
@@ -213,11 +213,12 @@
   let capacityChecked = $state(false);
   let capacityBlocked = $state(false);
   let capacityReason = $state<string | undefined>(undefined);
-  let plannedReplicas = $state<PlannedReplica[]>([]);
+  let plannedReplicas = $state<PlannedReplicaPreview[]>([]);
+  let capacityShortfall = $state<CapacityShortfall | undefined>(undefined);
 
   $effect(() => {
     if (!selectedPrimarySpecifier) {
-      capacityChecked = false; capacityBlocked = false; capacityReason = undefined; plannedReplicas = []; return;
+      capacityChecked = false; capacityBlocked = false; capacityReason = undefined; plannedReplicas = []; capacityShortfall = undefined; return;
     }
     const canary = isCanaryEnabled ? selectedCanarySpecifier : null;
     const draft = {
@@ -235,11 +236,12 @@
     const timer = setTimeout(() => {
       orpc.deployment.checkCapacity(draft, { signal: abort.signal }).then(([error, data]) => {
         if (abort.signal.aborted) return;
-        if (error) { browserLogger.error({ error }, "Capacity check failed"); capacityChecked = false; capacityBlocked = false; plannedReplicas = []; return; }
+        if (error) { browserLogger.error({ error }, "Capacity check failed"); capacityChecked = false; capacityBlocked = false; plannedReplicas = []; capacityShortfall = undefined; return; }
         capacityChecked = true;
         capacityBlocked = gated && !data.deployable;
         capacityReason = data.reason;
         plannedReplicas = data.replicas;
+        capacityShortfall = data.shortfall;
       });
     }, CAPACITY_PREVIEW_DELAY_MS);
     return () => { clearTimeout(timer); abort.abort(); };
@@ -472,6 +474,7 @@
           {capacityBlocked}
           {capacityReason}
           {plannedReplicas}
+          {capacityShortfall}
           editMode={isEditMode}
           readonlyModels={requiresDisabled}
           {requiresDisabled}
