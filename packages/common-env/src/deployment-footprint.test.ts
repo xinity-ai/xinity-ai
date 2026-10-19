@@ -154,6 +154,7 @@ describe("maxNumSeqs", () => {
 
   test("takes the entry's own --max-num-seqs", () => {
     expect(maxNumSeqs({ sizing, engineArgs: ["--max-num-seqs", "12"] }, gpus, 8)).toBe(12);
+    expect(maxNumSeqs({ sizing, engineArgs: ["--max-num-seqs=12"] }, gpus, 8)).toBe(12);
   });
 
   test("stays inside what the allocated cache holds, so vllm never rejects it", () => {
