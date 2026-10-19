@@ -6,9 +6,11 @@ import {
   endWith,
   filter,
   from,
+  finalize,
   ignoreElements,
   mergeMap,
   type Observable,
+  type Subscription,
   switchMap,
   take,
   tap,
@@ -198,6 +200,28 @@ function pollUntilHealthy$(
   );
 }
 
+// Loading can take many minutes, and a sync that waited for it would hold every other installation
+// on the node, the other members of its group included.
+const healthWatches = new Map<string, Subscription>();
+
+function watchUntilHealthy(installation: SyncInstallation, ops: VllmOps, providerModel: string, modelType?: string): void {
+  stopWatching(installation.id);
+  const watch: Subscription = pollUntilHealthy$(installation, ops, providerModel, modelType).pipe(
+    catchError((err) => handleInstallationError(err, installation, ops, true)),
+    finalize(() => {
+      if (healthWatches.get(installation.id) === watch) {
+        healthWatches.delete(installation.id);
+      }
+    }),
+  ).subscribe();
+  healthWatches.set(installation.id, watch);
+}
+
+function stopWatching(installationId: string): void {
+  healthWatches.get(installationId)?.unsubscribe();
+  healthWatches.delete(installationId);
+}
+
 // vLLM sizes --kv-cache-memory-bytes per card, so an installation split across cards passes each
 // card's share, and sizes utilization against one card's weights and cache.
 export function perCardSizing(
@@ -258,7 +282,6 @@ async function downloadAndStart(installation: SyncInstallation, running: SyncIns
 
   // Admission reserves what the scheduler charged for loading, so a member it placed is never refused here for it.
   const admittedLoadingGb = engineProfile("vllm").hostLoadingPerLargestFile * (entry.sizing?.largestFileGb ?? 0);
-  const limitLoadingGb = await loadingAllowanceGb(providerModel);
   if (installation.group && !admittedGb.has(installation.id)) {
     for (const { address } of installation.group.addresses) {
       if (await addressInUse(address)) {
@@ -301,7 +324,7 @@ async function downloadAndStart(installation: SyncInstallation, running: SyncIns
     settings: installation.settings,
     devices,
     group: installation.group ? memberGroupFrom(installation.group, await coupledPaths()) : SINGLE_NODE,
-    hostMemoryLimitBytes: charge && hostMemoryLimitBytes(charge.hostGb, limitLoadingGb),
+    hostMemoryLimitBytes: charge && hostMemoryLimitBytes(charge.hostGb, await loadingAllowanceGb(providerModel)),
   });
 
   return { started: true, modelType, providerModel };
@@ -348,6 +371,11 @@ function releaseAdmission(installationId: string): void {
 }
 
 function forgetUndesired(desiredIds: ReadonlySet<string>): void {
+  for (const id of healthWatches.keys()) {
+    if (!desiredIds.has(id)) {
+      stopWatching(id);
+    }
+  }
   for (const id of [...admittedGb.keys(), ...downloaded]) {
     if (!desiredIds.has(id)) {
       releaseAdmission(id);
@@ -458,7 +486,7 @@ function reconcileStaleStates$(
   activeSet: Set<string>,
   ops: VllmOps,
 ): Observable<void> {
-  const activeAndDesired = installations.filter((i) => activeSet.has(i.id));
+  const activeAndDesired = installations.filter((i) => activeSet.has(i.id) && !healthWatches.has(i.id));
   if (activeAndDesired.length === 0) {
     return EMPTY;
   }
@@ -643,7 +671,10 @@ export function syncVllmInstallations$(
 function removeStaleContainers$(ids: string[], ops: VllmOps): Observable<void> {
   return from(ids).pipe(
     mergeMap(
-      (id) => defer(() => from(ops.stop(id))).pipe(tap(() => log.info({ id }, "vLLM stopped instance"))),
+      (id) => defer(() => {
+        stopWatching(id);
+        return from(ops.stop(id));
+      }).pipe(tap(() => log.info({ id }, "vLLM stopped instance"))),
       1,
     ),
     ignoreElements(),
@@ -671,6 +702,7 @@ function startNewInstallations$(candidates: SyncInstallation[], running: SyncIns
   const failWithGroup$ = from(groupFailed).pipe(mergeMap((installation) => {
     releaseAdmission(installation.id);
     downloaded.delete(installation.id);
+    log.warn({ model: installation.specifier, installationId: installation.id, generation: installation.group!.generation }, "vLLM member failed with its group");
     return from(updateInstallationState(installation.id, "failed", { errorMessage: GROUP_FAILED, statusMessage: GROUP_FAILED, ...groupReport(installation, "failed") }));
   }));
 
@@ -690,7 +722,10 @@ function startNewInstallations$(candidates: SyncInstallation[], running: SyncIns
         })),
       ).pipe(
         switchMap((outcome) => outcome.started
-          ? pollUntilHealthy$(installation, ops, outcome.providerModel, outcome.modelType)
+          ? defer(() => {
+            watchUntilHealthy(installation, ops, outcome.providerModel, outcome.modelType);
+            return EMPTY;
+          })
           : from(updateInstallationState(installation.id, "installing", { statusMessage: outcome.waiting, groupStage: outcome.groupStage, groupGeneration: outcome.groupGeneration })).pipe(ignoreElements())),
         catchError((err) => handleInstallationError(err, installation, ops, containerStarted)),
       );

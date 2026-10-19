@@ -105,6 +105,17 @@ mock.module("./coupling-network", () => ({
 }));
 
 const { syncVllmInstallations$, computeGpuUtilization, fittedGpuGb, hostUseMessage, buildVllmExtraArgs, matchFatalPattern, perCardSizing } = await import("./vllm");
+
+// The health wait runs after a sync returns, so a test waits until every installation it started is ready or failed.
+async function syncSettled(installations: Parameters<typeof syncVllmInstallations$>[0], ops: VllmOps): Promise<void> {
+  await firstValueFrom(syncVllmInstallations$(installations, ops));
+  const started = () => (ops.start as ReturnType<typeof mock>).mock.calls.map(([id]) => id as string);
+  const settled = (id: string) => ["ready", "failed"].includes(stateWrites.filter(([written]) => written === id).at(-1)?.[1] ?? "");
+  const deadline = Date.now() + 3000;
+  while (!started().every(settled) && Date.now() < deadline) {
+    await Bun.sleep(10);
+  }
+}
 afterAll(() => {
   downloadModelSpy.mockRestore();
   largestWeightFileSpy.mockRestore();
@@ -171,7 +182,7 @@ describe("syncVllmInstallations$", () => {
 
     mockLocalStates.set(id, { lifecycleState: "ready" });
 
-    await firstValueFrom(syncVllmInstallations$([inst], ops));
+    await syncSettled([inst], ops);
 
     expect(ops.stop).not.toHaveBeenCalled();
     expect(ops.start).not.toHaveBeenCalled();
@@ -182,7 +193,7 @@ describe("syncVllmInstallations$", () => {
       listRunning: mock(() => Promise.resolve(["stale-1", "stale-2"])),
     });
 
-    await firstValueFrom(syncVllmInstallations$([], ops));
+    await syncSettled([], ops);
 
     expect(ops.stop).toHaveBeenCalledTimes(2);
   });
@@ -196,7 +207,7 @@ describe("syncVllmInstallations$", () => {
       isAlive: mock(() => Promise.resolve(true)),
     });
 
-    await firstValueFrom(syncVllmInstallations$([inst], ops));
+    await syncSettled([inst], ops);
 
     expect(ops.start).toHaveBeenCalledTimes(1);
     const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
@@ -217,7 +228,7 @@ describe("syncVllmInstallations$", () => {
       isAlive: mock(() => Promise.resolve(true)),
     });
 
-    await firstValueFrom(syncVllmInstallations$([inst], ops));
+    await syncSettled([inst], ops);
 
     const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
     expect(startCall[1].trustRemoteCode).toBe(true);
@@ -233,7 +244,7 @@ describe("syncVllmInstallations$", () => {
       isAlive: mock(() => Promise.resolve(true)),
     });
 
-    await firstValueFrom(syncVllmInstallations$([inst], ops));
+    await syncSettled([inst], ops);
 
     const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
     expect(startCall[1].extraArgs).toContain("--enable-auto-tool-choice");
@@ -248,7 +259,7 @@ describe("syncVllmInstallations$", () => {
       isAlive: mock(() => Promise.resolve(false)),
     });
 
-    await firstValueFrom(syncVllmInstallations$([inst], ops));
+    await syncSettled([inst], ops);
 
     const failedWrite = stateWrites.find(([, state]) => state === "failed");
     expect(failedWrite).toBeDefined();
@@ -261,7 +272,7 @@ describe("syncVllmInstallations$", () => {
       wasOomKilled: mock(() => Promise.resolve(true)),
     });
 
-    await firstValueFrom(syncVllmInstallations$([inst], ops));
+    await syncSettled([inst], ops);
 
     expect(stateWrites.find(([, state]) => state === "failed")?.[2]?.errorMessage).toBe("Stopped while loading, over its host memory budget");
   });
@@ -277,7 +288,7 @@ describe("syncVllmInstallations$", () => {
 
     mockLocalStates.set(id, { lifecycleState: "failed" });
 
-    await firstValueFrom(syncVllmInstallations$([inst], ops));
+    await syncSettled([inst], ops);
 
     const installingWrite = stateWrites.find(([, state]) => state === "installing");
     expect(installingWrite).toBeDefined();
@@ -294,7 +305,7 @@ describe("syncVllmInstallations$", () => {
       getLogs: mock(() => Promise.resolve(sampleLogs)),
     });
 
-    await firstValueFrom(syncVllmInstallations$([inst], ops));
+    await syncSettled([inst], ops);
 
     expect(ops.getLogs).toHaveBeenCalled();
     const failedWrite = stateWrites.find(([, state]) => state === "failed");
@@ -315,7 +326,7 @@ describe("syncVllmInstallations$", () => {
 
     mockLocalStates.set(id, { lifecycleState: "installing" });
 
-    await firstValueFrom(syncVllmInstallations$([inst], ops));
+    await syncSettled([inst], ops);
 
     expect(ops.getLogs).toHaveBeenCalled();
     const failedWrite = stateWrites.find(([, state]) => state === "failed");
@@ -327,7 +338,7 @@ describe("syncVllmInstallations$", () => {
     const inst = { ...makeInstallation("missing-card-model", crypto.randomUUID(), 9096), gpuIds: ["GPU-gone"] };
     const ops = createMockOps({ listRunning: mock(() => Promise.resolve([])) });
 
-    await firstValueFrom(syncVllmInstallations$([inst], ops));
+    await syncSettled([inst], ops);
 
     const failedWrite = stateWrites.find(([, state]) => state === "failed");
     expect((failedWrite![2]?.errorMessage as string)).toBe("Assigned GPU GPU-gone is not on this node");
@@ -346,7 +357,7 @@ describe("syncVllmInstallations$", () => {
       getLogs: mock(() => Promise.resolve(sampleLogs)),
     });
 
-    await firstValueFrom(syncVllmInstallations$([inst], ops));
+    await syncSettled([inst], ops);
 
     const failedWrite = stateWrites.find(([, state]) => state === "failed");
     expect(failedWrite).toBeDefined();
@@ -367,7 +378,7 @@ describe("syncVllmInstallations$", () => {
       getLogs: mock(() => Promise.resolve(sampleLogs)),
     });
 
-    await firstValueFrom(syncVllmInstallations$([inst], ops));
+    await syncSettled([inst], ops);
 
     const failedWrite = stateWrites.find(([, state]) => state === "failed");
     expect(failedWrite).toBeDefined();
@@ -384,9 +395,35 @@ describe("syncVllmInstallations$", () => {
       isAlive: mock(() => Promise.resolve(false)),
     });
 
-    await firstValueFrom(syncVllmInstallations$([inst], ops));
+    await syncSettled([inst], ops);
 
     expect(ops.stop).toHaveBeenCalled();
+  });
+
+  test("returns from a sync while an installation is still loading, so the next sync can start another one", async () => {
+    const loading = makeInstallation("slow-loading-model");
+    const next = makeInstallation("next-model");
+    const ops = createMockOps({ checkHealth: mock(() => Promise.resolve(false)), isAlive: mock(() => Promise.resolve(true)) });
+    const startedAt = Date.now();
+    await firstValueFrom(syncVllmInstallations$([loading], ops));
+    expect(Date.now() - startedAt).toBeLessThan(400);
+
+    ops.listRunning = mock(() => Promise.resolve([loading.id]));
+    await firstValueFrom(syncVllmInstallations$([loading, next], ops));
+    expect((ops.start as ReturnType<typeof mock>).mock.calls.map(([id]) => id)).toEqual([loading.id, next.id]);
+    await firstValueFrom(syncVllmInstallations$([], ops));
+  });
+
+  test("stops watching an installation that is removed while it loads, rather than failing it", async () => {
+    const loading = makeInstallation("removed-while-loading");
+    const ops = createMockOps({ checkHealth: mock(() => Promise.resolve(false)), isAlive: mock(() => Promise.resolve(true)) });
+    await firstValueFrom(syncVllmInstallations$([loading], ops));
+
+    ops.listRunning = mock(() => Promise.resolve([loading.id]));
+    await firstValueFrom(syncVllmInstallations$([], ops));
+    await Bun.sleep(600);
+    expect(ops.stop).toHaveBeenCalledWith(loading.id);
+    expect(stateWrites.some(([id, state]) => id === loading.id && state === "failed")).toBe(false);
   });
 
   test("skips already-failed installations on sync", async () => {
@@ -398,7 +435,7 @@ describe("syncVllmInstallations$", () => {
 
     mockLocalStates.set(id, { lifecycleState: "failed" });
 
-    await firstValueFrom(syncVllmInstallations$([inst], ops));
+    await syncSettled([inst], ops);
 
     expect(ops.start).not.toHaveBeenCalled();
   });
@@ -413,7 +450,7 @@ describe("syncVllmInstallations$", () => {
       isAlive: mock(() => Promise.resolve(true)),
     });
 
-    await firstValueFrom(syncVllmInstallations$([inst], ops));
+    await syncSettled([inst], ops);
 
     const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
     expect(startCall[1].extraArgs).toContain("--runner");
@@ -430,7 +467,7 @@ describe("syncVllmInstallations$", () => {
       isAlive: mock(() => Promise.resolve(true)),
     });
 
-    await firstValueFrom(syncVllmInstallations$([inst], ops));
+    await syncSettled([inst], ops);
 
     const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
     expect(startCall[1].extraArgs).toContain("--runner");
@@ -447,7 +484,7 @@ describe("syncVllmInstallations$", () => {
       isAlive: mock(() => Promise.resolve(true)),
     });
 
-    await firstValueFrom(syncVllmInstallations$([inst], ops));
+    await syncSettled([inst], ops);
 
     const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
     expect(startCall[1].extraArgs).not.toContain("--runner");
@@ -465,7 +502,7 @@ describe("syncVllmInstallations$", () => {
         isAlive: mock(() => Promise.resolve(true)),
       });
 
-      await firstValueFrom(syncVllmInstallations$([inst], ops));
+      await syncSettled([inst], ops);
 
       expect(ops.start).toHaveBeenCalled();
       const warmupCalls = fetchSpy.mock.calls.filter(([url]) => String(url).includes("/v1/chat/completions"));
@@ -486,7 +523,7 @@ describe("syncVllmInstallations$", () => {
       isAlive: mock(() => Promise.resolve(true)),
     });
 
-    await firstValueFrom(syncVllmInstallations$([inst], ops));
+    await syncSettled([inst], ops);
 
     const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
     expect(startCall[1].settings).toEqual(settings);
@@ -502,7 +539,7 @@ describe("syncVllmInstallations$", () => {
       isAlive: mock(() => Promise.resolve(true)),
     });
 
-    await firstValueFrom(syncVllmInstallations$([inst], ops));
+    await syncSettled([inst], ops);
 
     const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
     expect(startCall[1].settings).toEqual({ version: 1 });
@@ -518,7 +555,7 @@ describe("syncVllmInstallations$", () => {
       isAlive: mock(() => Promise.resolve(true)),
     });
 
-    await firstValueFrom(syncVllmInstallations$([inst], ops));
+    await syncSettled([inst], ops);
 
     const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
     expect(startCall[1].model).toBe("real-vllm-name");
@@ -534,7 +571,7 @@ describe("syncVllmInstallations$", () => {
       isAlive: mock(() => Promise.resolve(true)),
     });
 
-    await firstValueFrom(syncVllmInstallations$([inst], ops));
+    await syncSettled([inst], ops);
 
     expect(ops.start).not.toHaveBeenCalled();
   });
@@ -553,7 +590,7 @@ describe("syncVllmInstallations$", () => {
 
     mockLocalStates.set(id, { lifecycleState: "installing" });
 
-    await firstValueFrom(syncVllmInstallations$([inst], ops));
+    await syncSettled([inst], ops);
 
     const failedWrite = stateWrites.find(([, state]) => state === "failed");
     expect(failedWrite).toBeDefined();
@@ -571,7 +608,7 @@ describe("syncVllmInstallations$", () => {
       isAlive: mock(() => Promise.resolve(true)),
     });
 
-    await firstValueFrom(syncVllmInstallations$([inst], ops));
+    await syncSettled([inst], ops);
 
     const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
     const util = startCall[1].gpuMemoryUtilization as number;
@@ -729,7 +766,7 @@ describe("members of a group served across nodes", () => {
     const member = { ...makeInstallation("waiting-member"), group: group([null, null]) };
     const single = makeInstallation("single-model");
     const ops = createMockOps({ checkHealth: mock(() => Promise.resolve(true)) });
-    await firstValueFrom(syncVllmInstallations$([member, single], ops));
+    await syncSettled([member, single], ops);
     expect((ops.start as ReturnType<typeof mock>).mock.calls.map(([id]) => id)).toEqual([single.id]);
     expect(stateWrites.find(([id]) => id === member.id)?.[2]?.groupStage).toBe("preparing");
     expect(lastState(member.id)).toEqual([member.id, "installing", { statusMessage: "Waiting for the other machines of its group", groupStage: "admitted", groupGeneration: 1 }]);
@@ -739,7 +776,7 @@ describe("members of a group served across nodes", () => {
     mockAddressInUse.mockImplementationOnce(() => Promise.resolve(true));
     const member = { ...makeInstallation("crowded-member"), group: group([null, null]) };
     const ops = createMockOps({ checkHealth: mock(() => Promise.resolve(true)) });
-    await firstValueFrom(syncVllmInstallations$([member], ops));
+    await syncSettled([member], ops);
     expect(lastState(member.id)?.[1]).toBe("failed");
     expect(lastState(member.id)?.[2]).toMatchObject({ errorMessage: "Coupling address 192.168.100.253 is already in use on its network", groupStage: "failed" });
   });
@@ -747,7 +784,7 @@ describe("members of a group served across nodes", () => {
   test("does not count a member admitted for an attempt the group has left", async () => {
     const member = { ...makeInstallation("stale-member"), group: { ...group(["admitted", "admitted"], [1, 1]), generation: 2 } };
     const ops = createMockOps({ checkHealth: mock(() => Promise.resolve(true)) });
-    await firstValueFrom(syncVllmInstallations$([member], ops));
+    await syncSettled([member], ops);
     expect(ops.start).not.toHaveBeenCalled();
     expect(lastState(member.id)?.[2]).toMatchObject({ groupStage: "admitted", groupGeneration: 2 });
   });
@@ -755,7 +792,7 @@ describe("members of a group served across nodes", () => {
   test("starts a member with its group once every member is admitted or already running, and counts a headless rank up while it runs", async () => {
     const member = { ...makeInstallation("ready-member"), group: group(["running", "admitted"]) };
     const ops = createMockOps({ checkHealth: mock(() => Promise.resolve(false)), isAlive: mock(() => Promise.resolve(true)) });
-    await firstValueFrom(syncVllmInstallations$([member], ops));
+    await syncSettled([member], ops);
     const [, config] = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
     expect(config.group).toEqual({
       kind: "member", size: 2, rank: 1, masterAddr: "192.168.100.254", masterPort: 29500,
@@ -770,7 +807,7 @@ describe("members of a group served across nodes", () => {
     const member = { ...makeInstallation("restarted-member"), group: { ...group(["admitted", "admitted"], [2, 2]), generation: 2 } };
     mockLocalStates.set(member.id, { lifecycleState: "ready", groupGeneration: 1 });
     const ops = createMockOps({ listRunning: mock(() => Promise.resolve([member.id])), isAlive: mock(() => Promise.resolve(true)) });
-    await firstValueFrom(syncVllmInstallations$([member], ops));
+    await syncSettled([member], ops);
     expect(ops.stop).toHaveBeenCalledWith(member.id);
     expect(ops.start).toHaveBeenCalled();
     expect(lastState(member.id)?.[2]).toMatchObject({ groupStage: "running", groupGeneration: 2 });
@@ -780,7 +817,7 @@ describe("members of a group served across nodes", () => {
     const member = { ...makeInstallation("abandoned-member"), group: group(["failed", "running"]) };
     mockLocalStates.set(member.id, { lifecycleState: "ready", groupGeneration: 1 });
     const ops = createMockOps({ listRunning: mock(() => Promise.resolve([member.id])) });
-    await firstValueFrom(syncVllmInstallations$([member], ops));
+    await syncSettled([member], ops);
     expect(ops.stop).toHaveBeenCalledWith(member.id);
     expect(ops.start).not.toHaveBeenCalled();
     expect(lastState(member.id)).toEqual([member.id, "failed", {
@@ -795,7 +832,7 @@ describe("members of a group served across nodes", () => {
     const member = { ...makeInstallation("exited-member"), group: group(["running", "running"]) };
     mockLocalStates.set(member.id, { lifecycleState: "ready", groupGeneration: 1 });
     const ops = createMockOps({ wasOomKilled: mock(() => Promise.resolve(true)) });
-    await firstValueFrom(syncVllmInstallations$([member], ops));
+    await syncSettled([member], ops);
     expect(ops.start).not.toHaveBeenCalled();
     expect(ops.stop).toHaveBeenCalledWith(member.id);
     expect(lastState(member.id)?.[1]).toBe("failed");
@@ -809,7 +846,7 @@ describe("members of a group served across nodes", () => {
     const retried = failedMember(2);
     mockLocalStates.set(retried.id, { lifecycleState: "failed", groupGeneration: 1 });
     const ops = createMockOps({ checkHealth: mock(() => Promise.resolve(false)), isAlive: mock(() => Promise.resolve(true)) });
-    await firstValueFrom(syncVllmInstallations$([stillFailed, retried], ops));
+    await syncSettled([stillFailed, retried], ops);
     expect((ops.start as ReturnType<typeof mock>).mock.calls.map(([id]) => id)).toEqual([retried.id]);
   });
 });
@@ -827,7 +864,7 @@ describe("enforcing the charge", () => {
   test("opens the window the row is charged and limits host memory to its host part plus margin", async () => {
     mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { sizing })));
     const ops = starting();
-    await firstValueFrom(syncVllmInstallations$([{ ...makeInstallation("charged-model"), estCapacity: 18, hostCapacity: 2 }], ops));
+    await syncSettled([{ ...makeInstallation("charged-model"), estCapacity: 18, hostCapacity: 2 }], ops);
     expect(startConfig(ops).gpuMemoryUtilization).toBeCloseTo(18 / (24 * 1.073741824), 4);
     expect(startConfig(ops).hostMemoryLimitBytes).toBe(2.2e9);
   });
@@ -836,7 +873,7 @@ describe("enforcing the charge", () => {
     mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { sizing })));
     largestWeightFileSpy.mockResolvedValueOnce(4e8);
     const ops = starting();
-    await firstValueFrom(syncVllmInstallations$([{ ...makeInstallation("sharded-model"), estCapacity: 18, hostCapacity: 2 }], ops));
+    await syncSettled([{ ...makeInstallation("sharded-model"), estCapacity: 18, hostCapacity: 2 }], ops);
     expect(startConfig(ops).hostMemoryLimitBytes).toBe(3.2e9);
   });
 
@@ -844,20 +881,20 @@ describe("enforcing the charge", () => {
     mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { sizing })));
     largestWeightFileSpy.mockResolvedValueOnce(1e12);
     const placed = starting();
-    await firstValueFrom(syncVllmInstallations$([{ ...makeInstallation("host-table-model"), hostCapacity: 2 }], placed));
+    await syncSettled([{ ...makeInstallation("host-table-model"), hostCapacity: 2 }], placed);
     expect(placed.start).toHaveBeenCalled();
     expect(startConfig(placed).hostMemoryLimitBytes).toBeGreaterThan(2.5e12);
 
     mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { sizing: { ...sizing, largestFileGb: 1000 } })));
     const tooBig = starting();
-    await firstValueFrom(syncVllmInstallations$([{ ...makeInstallation("huge-shard-model"), hostCapacity: 2 }], tooBig));
+    await syncSettled([{ ...makeInstallation("huge-shard-model"), hostCapacity: 2 }], tooBig);
     expect(tooBig.start).not.toHaveBeenCalled();
   });
 
   test("runs as many sequences at once as the row says", async () => {
     mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { sizing })));
     const ops = starting();
-    await firstValueFrom(syncVllmInstallations$([{ ...makeInstallation("capped-model"), hostCapacity: 2, maxNumSeqs: 48 }], ops));
+    await syncSettled([{ ...makeInstallation("capped-model"), hostCapacity: 2, maxNumSeqs: 48 }], ops);
     const args = startConfig(ops).extraArgs as string[];
     expect(args.slice(args.indexOf("--max-num-seqs"), args.indexOf("--max-num-seqs") + 2)).toEqual(["--max-num-seqs", "48"]);
   });
@@ -865,14 +902,14 @@ describe("enforcing the charge", () => {
   test("never limits host memory below 1 GiB", async () => {
     mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { sizing })));
     const ops = starting();
-    await firstValueFrom(syncVllmInstallations$([{ ...makeInstallation("tiny-model"), hostCapacity: 0.1 }], ops));
+    await syncSettled([{ ...makeInstallation("tiny-model"), hostCapacity: 0.1 }], ops);
     expect(startConfig(ops).hostMemoryLimitBytes).toBe(2 ** 30);
   });
 
   test("falls back to the fitted window and no limit for a row the scheduler has not charged, or one of the deprecated format", async () => {
     mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { sizing })));
     const uncharged = starting();
-    await firstValueFrom(syncVllmInstallations$([makeInstallation("uncharged-model")], uncharged));
+    await syncSettled([makeInstallation("uncharged-model")], uncharged);
     expect(startConfig(uncharged).hostMemoryLimitBytes).toBeUndefined();
     expect(startConfig(uncharged).gpuMemoryUtilization).toBeCloseTo(computeGpuUtilization(
       { specifier: "uncharged-model", gpuGb: fittedGpuGb(12, 4) },
@@ -881,14 +918,14 @@ describe("enforcing the charge", () => {
 
     mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier)));
     const legacy = starting();
-    await firstValueFrom(syncVllmInstallations$([{ ...makeInstallation("legacy-model"), hostCapacity: 0 }], legacy));
+    await syncSettled([{ ...makeInstallation("legacy-model"), hostCapacity: 0 }], legacy);
     expect(startConfig(legacy).hostMemoryLimitBytes).toBeUndefined();
   });
 
   test("waits with the installation still installing while the node does not have its memory free", async () => {
     mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { sizing })));
     const ops = starting();
-    await firstValueFrom(syncVllmInstallations$([{ ...makeInstallation("huge-model"), hostCapacity: 1e9 }], ops));
+    await syncSettled([{ ...makeInstallation("huge-model"), hostCapacity: 1e9 }], ops);
     expect(ops.start).not.toHaveBeenCalled();
     expect(stateWrites.some(([, state]) => state === "failed")).toBe(false);
     const [, state, update] = stateWrites.at(-1)!;
@@ -902,11 +939,11 @@ describe("enforcing the charge", () => {
     const installation = { ...makeInstallation("queued-model"), hostCapacity: 2 };
     downloadModelSpy.mockClear();
     const waiting = starting();
-    await firstValueFrom(syncVllmInstallations$([installation], waiting));
+    await syncSettled([installation], waiting);
     expect(waiting.start).not.toHaveBeenCalled();
 
     const ops = starting();
-    await firstValueFrom(syncVllmInstallations$([installation], ops));
+    await syncSettled([installation], ops);
     expect(ops.start).toHaveBeenCalled();
     expect(downloadModelSpy).toHaveBeenCalledTimes(1);
   });
@@ -918,7 +955,7 @@ describe("enforcing the charge", () => {
     mockLocalStates.set(neighbour.id, { lifecycleState: "ready" });
     const ops = createMockOps({ listRunning: mock(() => Promise.resolve([neighbour.id])) });
     try {
-      await firstValueFrom(syncVllmInstallations$([neighbour, { ...makeInstallation("crowded-model"), hostCapacity: 20 }], ops));
+      await syncSettled([neighbour, { ...makeInstallation("crowded-model"), hostCapacity: 20 }], ops);
     } finally {
       mockHostMemoryGb = undefined;
     }
@@ -936,7 +973,7 @@ describe("enforcing the charge", () => {
       wasOomKilled: mock(() => Promise.resolve(true)),
     });
     mockLocalStates.set(id, { lifecycleState: "installing" });
-    await firstValueFrom(syncVllmInstallations$([makeInstallation("oom-model", id)], ops));
+    await syncSettled([makeInstallation("oom-model", id)], ops);
     const failedWrite = stateWrites.find(([, state]) => state === "failed");
     expect(failedWrite![2]?.errorMessage).toBe("Stopped, over its host memory budget");
   });
@@ -954,7 +991,7 @@ describe("enforcing the charge", () => {
       memoryUse: mock(() => Promise.resolve({ usedBytes: 9.5e9, limitBytes: 10e9 })),
     });
     mockLocalStates.set(id, { lifecycleState: "ready" });
-    await firstValueFrom(syncVllmInstallations$([makeInstallation("busy-model", id)], near));
+    await syncSettled([makeInstallation("busy-model", id)], near);
     expect(stateWrites.find(([, state]) => state === "ready")?.[2]?.statusMessage).toBe("Using 9.5 of its 10.0 GB host memory budget");
 
     stateWrites.length = 0;
@@ -963,7 +1000,7 @@ describe("enforcing the charge", () => {
       listRunning: mock(() => Promise.resolve([id])),
       memoryUse: mock(() => Promise.resolve({ usedBytes: 5e9, limitBytes: 10e9 })),
     });
-    await firstValueFrom(syncVllmInstallations$([makeInstallation("busy-model", id)], calm));
+    await syncSettled([makeInstallation("busy-model", id)], calm);
     expect(stateWrites.find(([, state]) => state === "ready")?.[2]?.statusMessage).toBe("vLLM server healthy");
   });
 });
